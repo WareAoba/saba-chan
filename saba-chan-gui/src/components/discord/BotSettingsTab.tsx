@@ -8,8 +8,7 @@ import { safeShowToast } from '../../utils/helpers';
 import { LANGUAGE_OPTIONS } from '../../utils/languages';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
-import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
-import { Segmented } from '../ui/StatusChip';
+import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { defaultPrefix, prefixProblems } from './prefixes';
 import { DEFAULT_BEDTIME, HALF_HOURS, SLEEP_FEATURES } from './sleep';
 
@@ -81,9 +80,8 @@ function NumberField({ label, unit, hint, value, range, scale = 1, disabled, onC
         <label className="mt-field">
             <span>{label}</span>
             <span className="mt-inline">
-                <input
+                <SabaNumberInput
                     className="input mt-num"
-                    type="number"
                     min={range.min}
                     max={range.max}
                     step={1 / scale}
@@ -534,12 +532,15 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }:
                     </div>
                     <div className="mt-field">
                         <span>{t('discord.bot_settings.tts_names')}</span>
-                        <Segmented
-                            items={TTS_NAMES.map((id) => ({ id, label: t(`discord.bot_settings.tts_names_${id}`) }))}
+                        <CustomDropdown
+                            className="setting-select"
                             value={TTS_NAMES.includes(tts.names) ? tts.names : 'multi'}
-                            onChange={(names) => !locked && save({ tts: { names } })}
                             ariaLabel={t('discord.bot_settings.tts_names')}
+                            disabled={locked}
+                            onChange={(names) => save({ tts: { names } })}
+                            options={TTS_NAMES.map((id) => ({ value: id, label: t(`discord.bot_settings.tts_names_${id}`) }))}
                         />
+
                         <p className="dc-hint">{t('discord.bot_settings.tts_names_desc')}</p>
                     </div>
                     {toggleRow(

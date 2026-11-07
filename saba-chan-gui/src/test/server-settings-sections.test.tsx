@@ -50,15 +50,15 @@ describe('서버 설정 / 사바쨩 설정 나누기', () => {
         render(<ServerSettingsModal {...(props('server') as unknown as ComponentProps<typeof ServerSettingsModal>)} />);
         expect(screen.getByText('MOTD')).toBeTruthy();
         expect(screen.getByText('View distance')).toBeTruthy();
-        expect(has('.danger-zone-btn')).toBe(true);
+        expect(has('.ss-reset')).toBe(true);
         expect(screen.queryByText('Java path')).toBeNull();
         for (const sel of [
-            '.restart-section',
-            '.memory-limit-section',
-            '.game-chat-section',
-            '.stop-timeout-section',
-            '.version-install-btn',
-            '.settings-tabs',
+            '.ss-restart',
+            '.ss-memory',
+            '.ss-game-chat',
+            '.ss-stop-timeout',
+            '.ss-version-install',
+            '.ss-tabs',
         ]) {
             expect(has(sel), sel).toBe(false);
         }
@@ -68,21 +68,21 @@ describe('서버 설정 / 사바쨩 설정 나누기', () => {
         render(<ServerSettingsModal {...(props('saba') as unknown as ComponentProps<typeof ServerSettingsModal>)} />);
         expect(screen.getByText('Java path')).toBeTruthy();
         for (const sel of [
-            '.restart-section',
-            '.memory-limit-section',
-            '.game-chat-section',
-            '.stop-timeout-section',
-            '.version-install-btn',
+            '.ss-restart',
+            '.ss-memory',
+            '.ss-game-chat',
+            '.ss-stop-timeout',
+            '.ss-version-install',
         ]) {
             expect(has(sel), sel).toBe(true);
         }
         expect(screen.queryByText('MOTD')).toBeNull();
         expect(screen.queryByText('View distance')).toBeNull();
-        expect(has('.danger-zone-btn')).toBe(false);
+        expect(has('.ss-reset')).toBe(false);
         // 조작 방식 안내와 "일반 설정" 탭 단추는 없다. 사바쨩 그룹(Java path·버전)은 다른 사바쨩 설정보다 위에 온다
         expect(has('.protocol-mode-info')).toBe(false);
-        expect(has('.settings-tabs')).toBe(false);
-        const form = document.querySelector('.settings-form') as HTMLElement;
-        expect(form.firstElementChild?.classList.contains('settings-group')).toBe(true);
+        expect(has('.ss-tabs')).toBe(false);
+        const form = document.querySelector('.ss-form') as HTMLElement;
+        expect(form.firstElementChild?.classList.contains('ss-saba')).toBe(true);
     });
 });

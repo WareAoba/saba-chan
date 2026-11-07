@@ -48,6 +48,8 @@ export const APP_OPTION_DEFAULTS: Readonly<AppOptions> = Object.freeze({
     auditKeepDays: 0, // 작업 기록 보관 일수, 0은 용량 한도만 (데몬이 지운다)
     consoleTimestamps: 'off', // 콘솔 줄 앞 시각: off | 24h | 12h
     consoleTimestampDate: false,
+    consoleWrap: true, // 콘솔 긴 줄 접기 (끄면 가로 스크롤)
+    consoleAutoScroll: true, // 맨 아래를 볼 때 새 줄 따라가기
     consoleFonts: CONSOLE_FONT_DEFAULTS, // 콘솔 글꼴: 글자마다 하나 (utils/consoleFonts.js)
     systemMonitorNetTrace: false, // 고급: 포트·서버별 네트워크 (모니터를 펼쳐 둔 동안 데몬이 센다)
 });
@@ -61,6 +63,8 @@ type AppOptionKey =
     | 'auditKeepDays'
     | 'consoleTimestamps'
     | 'consoleTimestampDate'
+    | 'consoleWrap'
+    | 'consoleAutoScroll'
     | 'consoleFonts'
     | 'systemMonitorNetTrace';
 type AppOptions = Pick<GuiSettings, AppOptionKey> & { consoleFonts: Readonly<ConsoleFonts> };
@@ -320,6 +324,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         dirtyKeys.clear();
     },
 }));
+
+// 창 불투명도는 저장값을 불러올 때도, 바꿀 때도 창에 바로 적용한다 (Windows만, 다른 곳은 API가 없다)
+useSettingsStore.subscribe((state, prevState) => {
+});
 
 // ── Auto-save subscription (Zustand v5 single-listener) ──
 let settingsSaveTimer: ReturnType<typeof setTimeout> | undefined;

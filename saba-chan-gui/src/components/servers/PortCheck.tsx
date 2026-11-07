@@ -148,7 +148,25 @@ export function PortCheckNotice({ server }: { server: Server }) {
     const { t } = useTranslation('gui');
     const [report, setReport] = useLastPortCheck(server.id);
     const { run, running, error } = usePortCheckRun(server.id, setReport);
-    if (!report || !portCheckAvailable() || !portCheckNeedsAttention(report)) return null;
+    // 닫기 (사용자 11-07): 같은 결과는 이번 실행 동안 다시 띄우지 않는다. 결과가 바뀌면 다시 뜬다
+    const storeKey = `saba.portNoticeDismissed.${server.id}`;
+    const reportKey = report ? JSON.stringify([report.verdict, report.address, report.ports]) : '';
+    const [dismissed, setDismissed] = useState(() => {
+        try {
+            return sessionStorage.getItem(storeKey) || '';
+        } catch {
+            return '';
+        }
+    });
+    if (!report || !portCheckAvailable() || !portCheckNeedsAttention(report) || dismissed === reportKey) return null;
+    const dismiss = () => {
+        setDismissed(reportKey);
+        try {
+            sessionStorage.setItem(storeKey, reportKey);
+        } catch {
+            // 저장 못 해도 지금 화면에서는 닫힌다
+        }
+    };
     return (
         <div className="notice tone-warn port-check-notice" role="status">
             <Icon name="globe" size="sm" />
@@ -158,6 +176,15 @@ export function PortCheckNotice({ server }: { server: Server }) {
                 {error && <span className="port-check-notice-error"> {error}</span>}
             </span>
             <PortCheckButton run={run} running={running} checked />
+            <button
+                type="button"
+                className="icon-btn port-check-notice-close"
+                onClick={dismiss}
+                aria-label={t('modals.close')}
+                data-tooltip={t('modals.close')}
+            >
+                <Icon name="close" size="sm" />
+            </button>
         </div>
     );
 }

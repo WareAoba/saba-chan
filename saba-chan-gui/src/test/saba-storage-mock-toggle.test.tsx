@@ -13,6 +13,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../contexts/ExtensionContext', () => ({
     useExtensions: () => ({
         extensions: [],
+        manifestExtensions: [],
+        availableUpdates: [],
+        installingIds: new Set(),
         loading: false,
         refresh: vi.fn(),
         installExtension: vi.fn(),
@@ -71,7 +74,7 @@ describe('SabaStorage MOCK/REAL toggle (Relay refactor)', () => {
             },
         });
 
-        render(<SabaStorage onBack={() => {}} isExiting={false} devMode />);
+        render(<SabaStorage devMode />);
 
         await waitFor(() => {
             // MOCK 라벨이 표시되어야 함 (isMock=true)
@@ -80,7 +83,7 @@ describe('SabaStorage MOCK/REAL toggle (Relay refactor)', () => {
     });
 
     it('MOCK 으로 토글하면 relay_url 만 전송하고 legacy 필드는 보내지 않는다', async () => {
-        render(<SabaStorage onBack={() => {}} isExiting={false} devMode />);
+        render(<SabaStorage devMode />);
 
         // 초기 cfg 로드 완료 대기 (REAL 상태)
         await waitFor(() => expect(screen.getByText('REAL')).toBeTruthy());
@@ -114,7 +117,7 @@ describe('SabaStorage MOCK/REAL toggle (Relay refactor)', () => {
             },
         });
 
-        render(<SabaStorage onBack={() => {}} isExiting={false} devMode />);
+        render(<SabaStorage devMode />);
 
         // 초기 MOCK 상태 로드 대기
         await waitFor(() => expect(screen.getByText('MOCK')).toBeTruthy());
@@ -138,7 +141,7 @@ describe('SabaStorage MOCK/REAL toggle (Relay refactor)', () => {
     });
 
     it('데몬이 설정을 거부하면 MOCK으로 바뀐 척하지 않고 실패를 보인다', async () => {
-        render(<SabaStorage onBack={() => {}} isExiting={false} devMode />);
+        render(<SabaStorage devMode />);
         await waitFor(() => expect(screen.getByText('REAL')).toBeTruthy());
         setConfigSpy.mockResolvedValueOnce({ ok: false, error: 'daemon down' });
         const toggle = document.querySelector('.update-mock-toggle input[type="checkbox"]');
@@ -148,7 +151,7 @@ describe('SabaStorage MOCK/REAL toggle (Relay refactor)', () => {
     });
 
     it('자동 확인 토글을 저장하지 못하면 원래 값으로 되돌린다', async () => {
-        render(<SabaStorage onBack={() => {}} isExiting={false} devMode />);
+        render(<SabaStorage devMode />);
         await waitFor(() => expect(getConfigSpy).toHaveBeenCalled());
         await act(async () => {});
         const row = [...document.querySelectorAll('.update-panel-setting-row')][0];
@@ -165,7 +168,7 @@ describe('SabaStorage MOCK/REAL toggle (Relay refactor)', () => {
             mock_relay: false,
             config: { enabled: true, relay_url: null, channel: 'stable' },
         });
-        render(<SabaStorage onBack={() => {}} isExiting={false} devMode />);
+        render(<SabaStorage devMode />);
         await waitFor(() => expect(getConfigSpy).toHaveBeenCalled());
         await act(async () => {});
         expect(document.querySelector('.update-mock-toggle')).toBeNull();

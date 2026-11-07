@@ -29,7 +29,7 @@ import { Icon } from '../Icon';
 import { useContextMenu } from '../ui/ContextMenu';
 import { DateField, TimeField } from '../ui/DateTimePicker';
 import { SabaFail } from '../ui/SabaArt';
-import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 
 /** 백업 목록 한 줄 (GET /api/instance/:id/backups) */
@@ -642,9 +642,8 @@ function ScheduleCard({
                                             />
                                             {d.mode === 'every' && (
                                                 <span className="mt-inline">
-                                                    <input
+                                                    <SabaNumberInput
                                                         className="input mt-num"
-                                                        type="number"
                                                         min="1"
                                                         value={d.every}
                                                         aria-label={t('maintenance.every_minutes')}
@@ -655,9 +654,8 @@ function ScheduleCard({
                                             )}
                                             {d.mode === 'days' && (
                                                 <span className="mt-inline">
-                                                    <input
+                                                    <SabaNumberInput
                                                         className="input mt-num"
-                                                        type="number"
                                                         min="1"
                                                         max={MAX_EVERY_DAYS}
                                                         value={d.everyDays}
@@ -781,9 +779,8 @@ function ScheduleCard({
                 <label className="mt-field mt-keep">
                     <span>{t('maintenance.backup_keep')}</span>
                     <span className="mt-inline">
-                        <input
+                        <SabaNumberInput
                             className="input mt-num"
-                            type="number"
                             min="1"
                             value={keep}
                             onChange={(e) => setKeep(e.target.value)}

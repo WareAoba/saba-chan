@@ -1,0 +1,239 @@
+/* 서버 상세의 설정·사바쨩 탭 (ServerSettingsModal.tsx). 카드는 dc-card를 그대로 쓰고, 줄 모양만 여기 둔다 */
+
+.ss-panel,
+.ss-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    min-width: 0;
+}
+
+.ss-card-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+/* 접는 묶음의 머리: 카드 머리 전체가 단추 */
+.ss-card-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-2);
+    text-align: left;
+    cursor: pointer;
+}
+.ss-card-toggle .ss-card-title {
+    flex: 1;
+    color: var(--text-1);
+}
+.ss-card-toggle:hover {
+    color: var(--text-1);
+}
+.ss-count {
+    padding: 0 var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--inset);
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+}
+
+/* 설정 줄: 이름·설명은 왼쪽에 붙여 쌓고, 입력은 오른쪽 끝에서 두 줄 높이의 가운데 (토글 줄과 같은 모양) */
+.ss-rows {
+    display: flex;
+    flex-direction: column;
+}
+.ss-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--sp-4);
+    row-gap: var(--sp-0-5);
+    padding: var(--sp-3) 0;
+}
+.ss-row + .ss-row {
+    border-top: 1px solid var(--line);
+}
+.ss-rows > .ss-row:first-child {
+    padding-top: 0;
+}
+.ss-rows > .ss-row:last-child {
+    padding-bottom: 0;
+}
+.ss-name {
+    grid-column: 1;
+    align-self: end;
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    color: var(--text-1);
+}
+.ss-desc {
+    grid-column: 1;
+    align-self: start;
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.ss-control {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+}
+.ss-error {
+    grid-column: 1 / -1;
+    margin: var(--sp-1) 0 0;
+}
+/* 여러 줄 글·목록: 이름·설명 아래 전체 폭 */
+.ss-row.ss-stack {
+    grid-template-columns: minmax(0, 1fr);
+}
+.ss-row.ss-stack .ss-control {
+    grid-column: 1;
+    grid-row: auto;
+    justify-content: stretch;
+    margin-top: var(--sp-2);
+}
+.ss-row.ss-disabled .ss-name,
+.ss-row.ss-disabled .ss-desc {
+    opacity: 0.5;
+}
+
+/* 입력 폭: 글자 칸은 넉넉히, 숫자·짧은 값은 좁게, 좁은 화면에서는 줄 폭을 넘지 않게 */
+.ss-control .input.ss-text {
+    width: 280px;
+    max-width: 100%;
+}
+.ss-control .input.ss-short {
+    width: 140px;
+}
+.ss-control .saba-number > .input.ss-num {
+    width: 140px;
+}
+.ss-control .ss-select {
+    width: fit-content;
+    min-width: 160px;
+    max-width: 100%;
+}
+.ss-control .input.ss-textarea {
+    width: 100%;
+    height: auto;
+    min-height: 96px;
+    padding: var(--sp-2) var(--sp-3);
+    resize: vertical;
+    line-height: 1.5;
+}
+.ss-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2) var(--sp-4);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+}
+.ss-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.ss-loading {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    font-size: var(--fs-sm);
+}
+/* 다시 시작해야 적용되는 설정 표시 */
+.ss-chip {
+    padding: 0 var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--warn-soft);
+    color: var(--warn);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+}
+
+/* 위험 구역 카드 */
+.ss-danger {
+    border-color: color-mix(in oklch, var(--stop) 40%, var(--line));
+}
+.ss-danger .ss-card-title {
+    color: var(--stop);
+}
+
+/* 익스텐션이 탭을 더할 때의 탭 머리 */
+.ss-tabs {
+    display: inline-flex;
+    align-self: flex-start;
+    gap: var(--sp-1);
+    padding: var(--sp-1);
+    border-radius: var(--r-md);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+    border: 1px solid var(--line);
+}
+.ss-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    height: 32px;
+    padding: 0 var(--sp-4);
+    font-size: var(--fs-sm);
+    background: transparent;
+    color: var(--text-2);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+}
+.ss-tab.active {
+    color: var(--text-1);
+    background: var(--surface-gradient);
+    border-color: var(--line);
+    box-shadow: var(--shadow-raised);
+}
+
+/* 저장 막대: 칸 아래에 붙는다 */
+.ss-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding-bottom: var(--sp-2);
+}
+.ss-savebar {
+    position: static;
+    justify-content: flex-end;
+}
+.ss-savebar .cli-line {
+    margin-right: auto;
+}
+.ss-panel .launch-preview {
+    margin-bottom: 0;
+}
+.ss-toggle-state {
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+}
+/* 서버 상세 안의 section 규칙(가운데 맞춤)을 이 카드에서는 풀어 줄 폭 전체를 쓴다 */
+.ss-panel .ss-card {
+    align-items: stretch;
+    text-align: left;
+}
+/* 설명이 없는 줄은 이름과 입력을 한 줄 가운데에 맞춘다 */
+.ss-row:not(:has(> .ss-desc)) > .ss-name {
+    align-self: center;
+}
+.ss-row:not(.ss-stack):not(:has(> .ss-desc)) > .ss-control {
+    grid-row: 1;
+}

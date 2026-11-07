@@ -42,7 +42,7 @@ afterEach(() => {
 
 describe('모두 업데이트', () => {
     it('업데이트가 있는 모듈·익스텐션도 받고 같은 적용 요청에 싣는다', async () => {
-        render(<SabaStorage onBack={() => {}} isExiting={false} />);
+        render(<SabaStorage />);
         await waitFor(() => expect(document.querySelector('.ss-icon-btn.accent')).not.toBeNull());
         await act(async () => fireEvent.click(document.querySelector('.ss-icon-btn.accent')!));
         await waitFor(() => expect(window.api.updaterApply).toHaveBeenCalled());

@@ -47,7 +47,7 @@ afterEach(() => {
 
 describe('모두 업데이트가 일부만 적용됐을 때', () => {
     it('실패와 함께 적용된 것도 알린다', async () => {
-        render(<SabaStorage onBack={() => {}} isExiting={false} />);
+        render(<SabaStorage />);
         await waitFor(() => expect(document.querySelector('.ss-icon-btn.accent')).not.toBeNull());
         await act(async () => fireEvent.click(document.querySelector('.ss-icon-btn.accent')!));
         await waitFor(() => expect(document.querySelector('.update-modal-status-bar.error')).not.toBeNull());

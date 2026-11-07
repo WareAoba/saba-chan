@@ -11,7 +11,7 @@ describe('정보 페이지의 앱 버전', () => {
         window.api.getAppVersion = vi.fn(() => new Promise(() => {})) as never;
         window.api.getComponentInfo = vi.fn(() => new Promise(() => {})) as never;
         const { container } = render(<SettingsModal isOpen onClose={vi.fn()} />);
-        await act(async () => fireEvent.click(container.querySelector('.settings-about-btn') as HTMLElement));
+        await act(async () => fireEvent.click(container.querySelector('#settings-tab-about') as HTMLElement));
         expect(container.textContent).not.toContain('0.1.0');
         expect(container.querySelector('.about-version-badge')).toBeNull();
     });

@@ -38,6 +38,23 @@
 .monitor-track {
     stroke: var(--chart-idle);
 }
+/* 서버로 나누지 않는 몫의 바탕색: 원 종류마다 고유색을 회색에 조금만 섞는다 (사용자 11-07) */
+.monitor-ring {
+    --ring-hue: var(--info);
+    --ring-base: color-mix(in oklch, var(--ring-hue) 22%, var(--text-3));
+}
+.monitor-ring[data-tone='memory'] {
+    --ring-hue: var(--ok);
+}
+.monitor-ring[data-tone='gpu'] {
+    --ring-hue: var(--warn);
+}
+.monitor-ring[data-tone='disk'] {
+    --ring-hue: var(--accent);
+}
+.monitor-ring[data-tone='net'] {
+    --ring-hue: var(--stop);
+}
 .monitor-arc {
     transition: stroke-dasharray var(--dur) cubic-bezier(0.2, 0.8, 0.2, 1),
         stroke-dashoffset var(--dur) cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -149,4 +166,29 @@
     .monitor-arc {
         transition: none;
     }
+}
+/* 요약 줄의 작은 원 */
+.monitor-mini {
+    flex: none;
+    --ring-hue: var(--info);
+    --ring-base: color-mix(in oklch, var(--ring-hue) 22%, var(--text-3));
+}
+.monitor-mini[data-tone='memory'] {
+    --ring-hue: var(--ok);
+}
+.monitor-mini[data-tone='gpu'] {
+    --ring-hue: var(--warn);
+}
+.monitor-mini[data-tone='disk'] {
+    --ring-hue: var(--accent);
+}
+.monitor-mini[data-tone='net'] {
+    --ring-hue: var(--stop);
+}
+.monitor-mini .monitor-track {
+    fill: none;
+    stroke-linecap: round;
+}
+.monitor-mini-arc {
+    fill: none;
 }

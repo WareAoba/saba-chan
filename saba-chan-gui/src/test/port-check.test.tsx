@@ -103,3 +103,24 @@ describe('포트포워딩 확인', () => {
         expect(portHelpUrl('pt')).toBe('https://saba-chan.online/docs/server-management');
     });
 });
+
+// 포트포워딩 안내는 닫을 수 있고, 같은 결과면 다시 그려도 닫힌 채다. 결과가 바뀌면 다시 뜬다 (사용자 11-07)
+describe('포트포워딩 안내 닫기', () => {
+    it('닫으면 사라지고, 다른 결과가 오면 다시 뜬다', async () => {
+        sessionStorage.clear();
+        window.api = { instancePortCheck: vi.fn(), instancePortCheckLast: vi.fn().mockResolvedValue(closedReport) } as never;
+        const first = render(<PortCheckNotice server={server} />);
+        await screen.findByRole('status');
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Close' })));
+        expect(screen.queryByRole('status')).toBeNull();
+        first.unmount();
+        const again = render(<PortCheckNotice server={server} />);
+        await act(async () => {});
+        expect(screen.queryByRole('status')).toBeNull();
+        again.unmount();
+        window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'firewall' });
+        render(<PortCheckNotice server={server} />);
+        expect(await screen.findByRole('status')).toBeInTheDocument();
+        sessionStorage.clear();
+    });
+});

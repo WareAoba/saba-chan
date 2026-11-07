@@ -91,6 +91,13 @@ function InstanceCard({ inst, onSaved }: InstanceCardProps) {
 
     return (
         <section className="dc-card">
+            {/* 다른 서버 탭(설정·유지보수)과 같은 카드: 제목·설명이 카드 안에 (사용자 11-07) */}
+            <div className="dc-card-head">
+                <h2 className="ss-card-title">
+                    <Icon name="discord" size="sm" /> {t('discord.iw_title')}
+                </h2>
+            </div>
+            <p className="dc-card-desc">{t('discord.iw_desc')}</p>
             <div className="dc-word-table">
                 <div className="dc-word-row">
                     <div className="dc-word-cmd">
@@ -217,7 +224,6 @@ export function InstanceDiscordTab({ server }: InstanceDiscordTabProps) {
     }
     return (
         <div className="dc-tab">
-            <p className="dc-card-desc">{t('discord.iw_desc')}</p>
             <InstanceCard key={inst.id} inst={inst} onSaved={setInst} />
         </div>
     );

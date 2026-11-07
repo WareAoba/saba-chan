@@ -589,17 +589,37 @@ pub async fn put_node_channels(
 }
 
 // ── GET·DELETE /api/relay/mcp/grant ──
-// 이 PC 주인 계정의 원격 MCP 에이전트 연결 (05 §4.4 (l)). 보기는 `{grant:{clientName, createdAt, lastUsedAt}|null}`,
-// 끊기는 204. 연결은 계정마다 하나라 주인의 다른 PC에서 끊어도 같다
+// 이 PC 주인 계정의 원격 MCP 에이전트 연결들 (05 §4.4 (l)). 보기는 `{grants:[{id, clientName, createdAt, lastUsedAt}],
+// grant, url}`(grant는 첫째, 옛 릴레이는 grant만), 끊기는 204. `?id=`면 그 연결만, 없으면 모두 끊는다.
+// 연결은 주인 계정에 묶여 주인의 다른 PC에서 끊어도 같다
 
 pub async fn get_mcp_grant(Query(params): Query<RelayQueryParams>, State(state): State<IPCServer>) -> Response {
     let base = signed_base(&state, params.relay_url.as_deref()).await;
     signed_get(&base, "/api/mcp/grant", invalid_response).await
 }
 
-pub async fn revoke_mcp_grant(Query(params): Query<RelayQueryParams>, State(state): State<IPCServer>) -> Response {
+#[derive(Deserialize)]
+pub struct RevokeGrantParams {
+    #[serde(default, rename = "relayUrl")]
+    relay_url: Option<String>,
+    /// 끊을 연결 (GET이 준 `id`). 없으면 모든 연결
+    #[serde(default)]
+    id: Option<String>,
+}
+
+/// 릴레이가 준 연결 id만 그대로 넘긴다 (16진수 글자). 다른 글자는 주소를 바꿀 수 있어 받지 않는다
+fn grant_id_ok(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+pub async fn revoke_mcp_grant(Query(params): Query<RevokeGrantParams>, State(state): State<IPCServer>) -> Response {
+    let path = match params.id.as_deref() {
+        None => "/api/mcp/grant".to_string(),
+        Some(id) if grant_id_ok(id) => format!("/api/mcp/grant?id={id}"),
+        Some(_) => return error(StatusCode::BAD_REQUEST, "Invalid grant id".into()),
+    };
     let base = signed_base(&state, params.relay_url.as_deref()).await;
-    signed_delete(&base, "/api/mcp/grant").await
+    signed_delete(&base, &path).await
 }
 
 /// 서명한 DELETE를 보낸다. 성공은 204, 실패는 릴레이 답 그대로
@@ -1080,6 +1100,11 @@ mod tests {
         assert_eq!(signed_delete(&base, "/api/mcp/grant").await.status(), StatusCode::NO_CONTENT);
         assert_eq!(body(signed_delete(&base, "/api/mcp/gone").await).await, (StatusCode::NOT_FOUND, json!({ "error": "HOST_NOT_FOUND" })));
         assert_eq!(signed_delete("http://127.0.0.1:9", "/api/mcp/grant").await.status(), StatusCode::BAD_GATEWAY);
+        // 한 연결만 끊을 때는 릴레이가 준 16진수 id만 넘긴다 (사용자 요청 2026-11-08: 여러 에이전트)
+        assert!(grant_id_ok("0123456789abcdef"));
+        assert!(!grant_id_ok(""));
+        assert!(!grant_id_ok("abc&id=x"));
+        assert!(!grant_id_ok("../x"));
     }
 
     /// 노드 목록의 주인은 아직 주인이 없는 길드에만 고정한다 (명령이 처음 올 때와 같은 pin_owner 규칙)

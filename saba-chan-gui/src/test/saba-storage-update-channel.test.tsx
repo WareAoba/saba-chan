@@ -40,7 +40,7 @@ afterEach(() => {
 
 describe('업데이트 채널', () => {
     it('지금 채널을 보여 주고, 고르면 channel 만 저장한다', async () => {
-        render(<SabaStorage onBack={() => {}} isExiting={false} />);
+        render(<SabaStorage />);
         const box = await screen.findByRole('combobox', { name: 'Update channel' });
         await waitFor(() => expect(box.textContent).toContain('Preview'));
 
@@ -51,7 +51,7 @@ describe('업데이트 채널', () => {
     });
 
     it('채널을 바꾸면 새 채널로 목록을 다시 받는다', async () => {
-        render(<SabaStorage onBack={() => {}} isExiting={false} />);
+        render(<SabaStorage />);
         const box = await screen.findByRole('combobox', { name: 'Update channel' });
         await waitFor(() => expect(box.textContent).toContain('Preview'));
         expect(window.api.updaterCheck).not.toHaveBeenCalled();
@@ -66,7 +66,7 @@ describe('업데이트 채널', () => {
 
     it('저장에 실패하면 이전 채널로 되돌린다', async () => {
         setConfigSpy.mockResolvedValue({ ok: false, error: 'nope' });
-        render(<SabaStorage onBack={() => {}} isExiting={false} />);
+        render(<SabaStorage />);
         const box = await screen.findByRole('combobox', { name: 'Update channel' });
         await waitFor(() => expect(box.textContent).toContain('Preview'));
 

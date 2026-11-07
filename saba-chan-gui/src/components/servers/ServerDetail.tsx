@@ -123,7 +123,7 @@ export function ServerDetail({
             label: t('shell.tab_commands'),
             icon: <Icon name="command" size="sm" />,
         },
-        { id: 'settings', label: t('shell.tab_settings'), icon: <Icon name="settings" size="sm" /> },
+        { id: 'settings', label: t('shell.tab_settings'), icon: <Icon name="gamepad" size="sm" /> },
         { id: 'saba', label: t('shell.tab_saba'), icon: <Icon name="sabaFace" size="sm" /> },
         maintenanceAvailable() && {
             id: 'maintenance',
@@ -522,8 +522,6 @@ function SettingsTab({
             section={section}
             modules={modules}
             servers={servers}
-            embedded
-            onClose={() => {}}
         />
     );
 }

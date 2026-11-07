@@ -228,3 +228,23 @@
         clip-path: inset(0 0 0 0);
     }
 }
+
+/* 이름 칸: 보이는 이름과 보이지 않는 모든 이름을 한 칸에 겹친다. 폭을 내용에 맞추면 가장 긴 이름이 폭이 되고,
+   칸이 좁으면 0까지 줄어 보이는 이름이 말줄임된다 */
+.custom-dropdown-sizer {
+    display: grid;
+    grid-template-columns: minmax(0, max-content);
+    min-width: 0;
+}
+.custom-dropdown-sizer > * {
+    grid-area: 1 / 1;
+}
+.custom-dropdown-ghost {
+    visibility: hidden;
+    height: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+.custom-dropdown-ghost::before {
+    content: attr(data-label);
+}

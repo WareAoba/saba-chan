@@ -63,20 +63,20 @@ beforeEach(() => {
 describe('설정 창: 모듈이 구현하지 않은 기능', () => {
     it('목록에 reset_server가 없으면 초기화를, list_versions·install_server가 없으면 버전 설치를 숨긴다', () => {
         render(<ServerSettingsModal {...modalProps([moduleWith(['validate'])])} />);
-        expect(document.querySelector('.danger-zone-btn')).toBeNull();
-        expect(document.querySelector('.version-install-btn')).toBeNull();
+        expect(document.querySelector('.ss-reset')).toBeNull();
+        expect(document.querySelector('.ss-version-install')).toBeNull();
     });
 
     it('목록에 있으면 보이고, 목록을 모르면(null) 모두 보인다', () => {
         const { unmount } = render(
             <ServerSettingsModal {...modalProps([moduleWith(['reset_server', 'list_versions', 'install_server'])])} />,
         );
-        expect(document.querySelector('.danger-zone-btn')).not.toBeNull();
-        expect(document.querySelector('.version-install-btn')).not.toBeNull();
+        expect(document.querySelector('.ss-reset')).not.toBeNull();
+        expect(document.querySelector('.ss-version-install')).not.toBeNull();
         unmount();
         render(<ServerSettingsModal {...modalProps([moduleWith(null)])} />);
-        expect(document.querySelector('.danger-zone-btn')).not.toBeNull();
-        expect(document.querySelector('.version-install-btn')).not.toBeNull();
+        expect(document.querySelector('.ss-reset')).not.toBeNull();
+        expect(document.querySelector('.ss-version-install')).not.toBeNull();
     });
 });
 

@@ -10,8 +10,6 @@ import { Icon } from '../Icon';
 import '../ui/SabaArt.css';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
-import { AgentLink, agentLinkAvailable } from './AgentLink';
-import { PrivacyErase, privacyEraseAvailable } from './PrivacyErase';
 import type { DiscordNode } from './types';
 import type { usePairing } from './usePairing';
 
@@ -251,7 +249,6 @@ interface ConnectionViewProps {
     onCancelPairing: () => void;
     onReload: () => void;
     onDisconnect: () => void;
-    onErased?: () => void;
     onStartAgent: () => void;
     nodes?: DiscordNode[];
     onInviteBot?: (() => void) | null;
@@ -275,7 +272,6 @@ export function ConnectionView({
     onCancelPairing,
     onReload,
     onDisconnect,
-    onErased,
     onStartAgent,
     nodes,
     onInviteBot,
@@ -523,7 +519,7 @@ export function ConnectionView({
                     <span className="muted">{t('discord.disconnect_desc')}</span>
                     <button
                         type="button"
-                        className={clsx('btn', confirmDisconnect ? 'btn-danger' : 'btn-danger-text')}
+                        className={clsx('btn', confirmDisconnect ? 'btn-danger' : 'btn-ghost btn-danger-text')}
                         onClick={() => {
                             if (confirmDisconnect) {
                                 setConfirmDisconnect(false);
@@ -538,8 +534,6 @@ export function ConnectionView({
                         {confirmDisconnect ? t('discord.disconnect_confirm') : t('discord.disconnect')}
                     </button>
                 </div>
-                {agentLinkAvailable() && <AgentLink />}
-                {onErased && privacyEraseAvailable() && <PrivacyErase onErased={onErased} />}
             </section>
         </div>
     );

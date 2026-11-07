@@ -44,7 +44,7 @@ const empty = () => document.querySelector('.saba-art, .saba-empty');
 
 describe('받기 전에는 없음 그림을 띄우지 않는다', () => {
     it('모듈 탭', async () => {
-        render(<SabaStorage onBack={() => {}} isExiting={false} initialTab="modules" />);
+        render(<SabaStorage initialTab="modules" />);
         await act(async () => {});
         expect(empty()).toBeNull();
         await act(async () => resolveModules({ modules: [] }));
@@ -52,7 +52,7 @@ describe('받기 전에는 없음 그림을 띄우지 않는다', () => {
     });
 
     it('익스텐션 탭 (익스텐션 목록을 아직 받는 중)', async () => {
-        render(<SabaStorage onBack={() => {}} isExiting={false} initialTab="extensions" />);
+        render(<SabaStorage initialTab="extensions" />);
         await act(async () => {});
         expect(empty()).toBeNull();
     });
@@ -72,7 +72,7 @@ describe('순서가 바뀌지 않는다', () => {
             { id: 'xna', name: 'XNA' },
             { id: 'steamcmd', name: 'SteamCMD' },
         ];
-        render(<SabaStorage onBack={() => {}} isExiting={false} initialTab="modules" />);
+        render(<SabaStorage initialTab="modules" />);
         await act(async () =>
             resolveModules({
                 modules: [
@@ -82,7 +82,7 @@ describe('순서가 바뀌지 않는다', () => {
             }),
         );
         const names = () =>
-            [...document.querySelectorAll('.ss-cards .ss-card-name')].map((n) => n.firstChild!.textContent);
+            [...document.querySelectorAll('.saba-storage-pane:not([hidden]) .ss-cards .ss-card-name')].map((n) => n.firstChild!.textContent);
         expect(names()).toEqual(['minecraft', 'zomboid']);
         await act(async () => fireEvent.click(document.querySelectorAll('.saba-storage-tab')[2]));
         expect(names()).toEqual(['SteamCMD', 'XNA']);

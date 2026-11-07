@@ -20,7 +20,7 @@ async function openAbout() {
     window.api.getAppVersion = vi.fn(() => Promise.resolve('0.1.12')) as never;
     window.api.getComponentInfo = vi.fn(() => new Promise(() => {})) as never;
     const view = render(<SettingsModal isOpen onClose={vi.fn()} />);
-    await act(async () => fireEvent.click(view.container.querySelector('.settings-about-btn') as HTMLElement));
+    await act(async () => fireEvent.click(view.container.querySelector('#settings-tab-about') as HTMLElement));
     return view.container;
 }
 

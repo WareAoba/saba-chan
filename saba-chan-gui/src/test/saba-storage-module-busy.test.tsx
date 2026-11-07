@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 
 vi.mock('../contexts/ExtensionContext', () => ({
-    useExtensions: () => ({ extensions: [], loading: false, refresh: vi.fn() }),
+    useExtensions: () => ({ extensions: [], manifestExtensions: [], availableUpdates: [], installingIds: new Set(), loading: false, refresh: vi.fn() }),
 }));
 
 import SabaStorage from '../components/Modals/SabaStorage';
@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 async function openModules() {
-    render(<SabaStorage onBack={() => {}} isExiting={false} />);
+    render(<SabaStorage />);
     await act(async () => fireEvent.click(document.querySelectorAll('.saba-storage-tab')[1]));
     await waitFor(() => expect(document.querySelector('.ss-icon-btn.danger')).not.toBeNull());
 }
@@ -58,7 +58,7 @@ describe('모듈 설치·제거가 겹쳐 거절될 때', () => {
 
     it('설치가 거절되면 실패로 굳히지 않고 이유를 알린 뒤 다시 누를 수 있게 둔다', async () => {
         await openModules();
-        const headers = document.querySelectorAll('.ss-store-header');
+        const headers = document.querySelectorAll('.saba-storage-pane:not([hidden]) .ss-store-header');
         const header = headers[headers.length - 1].querySelector('.ss-icon-btn');
         await act(async () => fireEvent.click(header!));
         await waitFor(() => expect(document.querySelector('.ss-icon-btn.accent')).not.toBeNull());

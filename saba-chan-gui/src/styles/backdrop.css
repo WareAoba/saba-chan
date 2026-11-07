@@ -23,7 +23,9 @@
 
 :root[data-backdrop="on"] .servers-page,
 :root[data-backdrop="on"] .server-detail-pane,
-:root[data-backdrop="on"] .activity-bar {
+:root[data-backdrop="on"] .activity-bar,
+:root[data-backdrop="on"] .page-settings,
+:root[data-backdrop="on"] .settings-page .settings-modal-container {
     background: transparent;
 }
 

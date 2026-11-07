@@ -12,7 +12,7 @@ describe('정보 페이지 로고 이스터에그', () => {
         window.api.getComponentInfo = vi.fn(() => new Promise(() => {})) as never;
         window.showToast = vi.fn();
         const { container } = render(<SettingsModal isOpen onClose={vi.fn()} />);
-        await act(async () => fireEvent.click(container.querySelector('.settings-about-btn') as HTMLElement));
+        await act(async () => fireEvent.click(container.querySelector('#settings-tab-about') as HTMLElement));
         const logo = container.querySelector('.about-app-logo') as HTMLElement;
         for (let i = 0; i < 4; i++) fireEvent.click(logo);
         expect(window.showToast).not.toHaveBeenCalled();

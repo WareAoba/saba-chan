@@ -292,7 +292,10 @@ export function applyCustomTheme(config: ThemeConfig) {
         consoleSyntaxHighlight,
         consoleFontScale = 100,
         consoleTokenColors = {},
+        sidebarCompact = false,
     } = config;
+    // 왼쪽 목록 칸을 좁고 촘촘하게 (서버·디스코드·작업 기록·설정)
+    root.dataset.sidebarCompact = sidebarCompact ? 'on' : 'off';
 
     // ── Accent color derivations ──
     const { r, g, b } = hexToRgb(accentColor);

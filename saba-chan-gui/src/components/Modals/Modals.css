@@ -2161,7 +2161,7 @@
 .update-panel-settings {
     display: flex;
     flex-direction: column;
-    margin: 0 var(--sp-6) var(--sp-6);
+    margin: 0 0 var(--sp-6);
     padding: 0 var(--sp-4);
     border: 1px solid var(--line);
     border-radius: var(--r-md);
@@ -2586,7 +2586,7 @@
     align-self: flex-start;
     gap: var(--sp-1);
     padding: var(--sp-1);
-    margin: 0 var(--sp-6) var(--sp-4);
+    margin: 0 0 var(--sp-4);
     border-radius: var(--r-md);
     background: var(--inset);
     box-shadow: var(--shadow-inset);
@@ -2630,17 +2630,13 @@
     box-shadow: var(--shadow-raised);
 }
 
-.saba-storage-content {
-    flex: 1;
-    overflow: hidden;
+.saba-storage {
     display: flex;
     flex-direction: column;
 }
 
 .saba-storage-tab-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0 var(--sp-6) var(--sp-4);
+    padding: 0 0 var(--sp-4);
 }
 
 /* ===== Settings About Button (header) ===== */
@@ -3087,6 +3083,10 @@
     display: flex;
     flex-direction: column;
     gap: var(--sp-2-5);
+}
+/* 구역 뒤에 설정 항목이 이어지면 (연결 탭의 원격 데몬) 마지막 줄이 다음 카드에 붙지 않게 띄운다 */
+.data-transfer + .setting-item {
+    margin-top: var(--sp-5);
 }
 .data-transfer-title {
     display: flex;

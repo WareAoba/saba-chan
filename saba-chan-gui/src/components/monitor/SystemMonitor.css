@@ -185,3 +185,9 @@
         padding: var(--sp-4) var(--sp-4) 0;
     }
 }
+/* 요약 줄 항목: 작은 원 + 이름 + 값 (사용자 11-07) */
+.monitor-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+}

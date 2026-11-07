@@ -383,3 +383,59 @@
     mask-image: var(--spinner-mask-still);
 }
 
+
+/* ── Number Input: 기본 다이얼을 숨기고 오른쪽에 솟은 단추 두 개를 둔다 ── */
+.saba-number {
+    position: relative;
+    display: inline-flex;
+    align-items: stretch;
+    width: fit-content;
+    max-width: 100%;
+}
+.saba-number > input {
+    min-width: 0;
+    padding-right: var(--sp-8);
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.saba-number > input::-webkit-inner-spin-button,
+.saba-number > input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.saba-number-steps {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    bottom: 5px;
+    width: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-0-5);
+}
+.saba-number-steps button {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: var(--bg-surface);
+    box-shadow: 1px 1px 3px var(--neu-dark), -1px -1px 2px var(--neu-light), inset 0 1px 0 var(--neu-hl);
+    color: var(--text-3);
+    cursor: pointer;
+    transition:
+        color 0.15s var(--ease),
+        transform 0.1s var(--ease);
+}
+.saba-number-steps button:hover:not(:disabled) {
+    color: var(--accent);
+}
+.saba-number-steps button:active:not(:disabled) {
+    transform: scale(0.92);
+    box-shadow: var(--neu-in);
+}
+.saba-number-steps button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}

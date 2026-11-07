@@ -1223,35 +1223,17 @@ button.activity-line:hover {
 }
 
 /* ── 박아 넣은 옛 화면들 (서버 설정·설정·디스코드) ── */
-.server-settings-embedded {
-    border-radius: var(--r-lg);
-    background: var(--surface-gradient);
-    border: 1px solid var(--line);
-    box-shadow: var(--shadow-raised);
-    padding: var(--sp-2) var(--sp-5) var(--sp-5);
-}
-.server-settings-embedded .modal-body {
-    max-height: none;
-    overflow: visible;
-    padding: var(--sp-4) 0;
-}
-.server-settings-embedded .modal-footer {
-    position: sticky;
-    bottom: 0;
-    /* 스크롤되는 설정 칸이 저장 줄 밑으로 비치지 않게 */
-    background: var(--surface-gradient);
-    border-top: 1px solid var(--line);
-    padding: var(--sp-3) 0 var(--sp-2);
-}
 
 /* 설정은 높이를 고정한 상자 안에서만 스크롤한다 (탭을 바꿔도 상자가 흔들리지 않게) */
 .page-settings {
     overflow: hidden;
     align-items: stretch;
+    padding: 0;
+    background: var(--bg-0);
 }
+/* 설정: 다른 화면처럼 왼쪽 목록 칸 + 오른쪽 내용 칸 */
 .settings-page {
     width: 100%;
-    max-width: 880px;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -1265,20 +1247,78 @@ button.activity-line:hover {
     animation: none;
     position: relative;
     transform: none;
-    background: var(--sheen), var(--surface-gradient);
-    border: 1px solid var(--line);
-    box-shadow: var(--shadow-raised);
-    border-radius: var(--r-lg);
-}
-.settings-page .about-page-reveal {
-    border-radius: var(--r-lg);
+    background: var(--bg-0);
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
 }
 .settings-page .settings-modal-content {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     max-height: none;
     overflow-y: auto;
     scrollbar-gutter: stable;
+    padding: var(--sp-6);
+}
+.settings-page .settings-modal-content > * {
+    max-width: 1080px;
+    width: 100%;
+    margin-inline: auto;
+}
+/* 사이드바 좁게: 왼쪽 목록 칸을 좁히고 줄을 촘촘하게, 줄 아래 보조 글은 감춘다 */
+:root[data-sidebar-compact='on'] {
+    --list-w: 220px;
+}
+:root[data-sidebar-compact='on'] .server-list-pane .server-row {
+    padding-block: var(--sp-1-5);
+    gap: var(--sp-2);
+}
+:root[data-sidebar-compact='on'] .server-list-pane .server-row-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+}
+:root[data-sidebar-compact='on'] .server-list-pane .server-row-sub {
+    display: none;
+}
+/* 디스코드 서버 아이콘(Avatar)은 크기를 직접 정한다: 좁게 모드의 작은 칸에 맞춘다 (안 그러면 칸을 넘어 글자를 덮는다) */
+:root[data-sidebar-compact='on'] .server-list-pane .server-row-icon > .dc-avatar {
+    width: 100% !important;
+    height: 100% !important;
+}
+/* 콘솔 줄 접기를 끄면 긴 줄은 가로로 넘긴다 */
+.term-output.no-wrap {
+    overflow-x: auto;
+}
+.term-output.no-wrap .console-line {
+    white-space: pre;
+    word-break: normal;
+}
+/* 미리 띄워 둔 사바 스토리지·그 안의 탭은 숨김 속성으로만 감춘다 */
+.settings-tab-content[hidden],
+.saba-storage-pane[hidden] {
+    display: none;
+}
+/* 내용 칸 + 정보 페이지가 펼쳐지는 뷰포트 (정보 페이지는 왼쪽 목록을 덮지 않는다) */
+.settings-viewport {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+/* 정보 탭: 카드는 늘 세로로 쌓고, 스크롤 없이 한 화면에 담는다 (높이가 모자라면 FitHeight가 통째로 줄인다) */
+.settings-modal-content:has(#settings-panel-about) {
+    overflow: hidden;
+}
+.settings-tab-content .about-scroll-area {
+    overflow: visible;
+    padding: 0;
+}
+.settings-page .settings-modal-header {
+    padding: 0 0 var(--sp-4);
 }
 
 /* ── 좁은 창 ── */
@@ -1314,45 +1354,11 @@ button.activity-line:hover {
 }
 
 /* 옛 화면의 탭 줄·확인 버튼을 새 체계로 맞춘다 */
-.server-settings-embedded .settings-tabs,
-.settings-page .settings-modal-tabs {
-    display: inline-flex;
-    width: auto;
-    gap: var(--sp-1);
-    padding: var(--sp-1);
-    margin: var(--sp-3) 0 0;
-    border-radius: var(--r-md);
-    background: var(--inset);
-    box-shadow: var(--shadow-inset);
-    border: 1px solid var(--line);
-}
 /* 설정: 왼쪽 세로 탭 + 오른쪽 내용 (탭이 아홉 개라 가로 줄에 들어가지 않는다) */
 .settings-body {
     flex: 1;
     min-height: 0;
     display: flex;
-}
-.settings-page .settings-modal-tabs {
-    flex-direction: column;
-    flex: none;
-    width: 176px;
-    height: auto;
-    max-height: 100%;
-    overflow-y: auto;
-    margin: 0 0 var(--sp-6) var(--sp-6);
-    align-self: flex-start;
-}
-.settings-page .settings-tab {
-    justify-content: flex-start;
-    gap: var(--sp-2);
-    width: 100%;
-    opacity: 1;
-    text-align: left;
-}
-.settings-page .settings-tab span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 .settings-tab-content.slide-up {
     animation: settingsSlideUp 0.22s cubic-bezier(0.4, 0, 0.2, 1) backwards;
@@ -1380,21 +1386,24 @@ button.activity-line:hover {
         transform: none;
     }
 }
-/* 좁은 창: 탭을 위에 가로로 두고 옆으로 넘긴다 */
+/* 좁은 창: 목록 칸을 위에 가로로 두고 옆으로 넘긴다 */
 @media (max-width: 720px) {
     .settings-body {
         flex-direction: column;
     }
-    .settings-page .settings-modal-tabs {
-        flex-direction: row;
+    .settings-page .settings-nav {
         width: auto;
-        max-width: calc(100% - 2 * var(--sp-6));
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+    }
+    .settings-page .settings-nav .server-list {
+        flex-direction: row;
         overflow-x: auto;
         overflow-y: hidden;
-        margin: 0 var(--sp-6);
     }
-    .settings-page .settings-tab {
+    .settings-page .settings-nav .server-row {
         width: auto;
+        flex: none;
     }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1402,28 +1411,6 @@ button.activity-line:hover {
     .settings-tab-content.slide-down {
         animation: none;
     }
-}
-.server-settings-embedded .settings-tab-indicator,
-.settings-page .settings-tab-indicator {
-    display: none;
-}
-.server-settings-embedded .settings-tab,
-.settings-page .settings-tab {
-    height: 32px;
-    padding: 0 var(--sp-4);
-    font-size: var(--fs-sm);
-    flex: none;
-    background: transparent;
-    color: var(--text-2);
-    border: 1px solid transparent;
-    border-radius: var(--r-sm);
-}
-.server-settings-embedded .settings-tab.active,
-.settings-page .settings-tab.active {
-    color: var(--text-1);
-    background: var(--surface-gradient);
-    border-color: var(--line);
-    box-shadow: var(--shadow-raised);
 }
 .btn.btn-confirm {
     background: var(--brand-gradient);
@@ -1699,15 +1686,6 @@ button.activity-line:hover {
     opacity: 0.5;
 }
 /* 다시 시작해야 적용되는 칸 (module.toml restart_required) */
-.setting-restart-chip {
-    margin-left: var(--sp-1-5);
-    padding: 0 var(--sp-1-5);
-    border-radius: var(--r-xs);
-    background: color-mix(in oklch, var(--warn) 16%, transparent);
-    color: var(--warn);
-    font-size: var(--fs-xs);
-    font-weight: 600;
-}
 /* 저장 막대 위의 다시 시작 안내 (저장 줄 안 첫 줄) */
 .modal-footer:has(> .settings-restart-notice) {
     flex-wrap: wrap;
@@ -1721,13 +1699,6 @@ button.activity-line:hover {
     min-width: 0;
 }
 /* 짧은 숫자·낱말 칸: 줄을 다 채우지 않는다 (.input의 width:100%보다 앞선다) */
-.restart-row > .memory-limit-input,
-.memory-limit-input {
-    flex: none;
-    width: 140px;
-    max-width: 40%;
-    text-align: right;
-}
 
 /* 조작 가능 탭: 닉네임 | 디스코드 | 빼기, 아래에 넣기 줄 */
 .controllers-list {
@@ -1905,6 +1876,57 @@ button.activity-line:hover {
     justify-content: flex-end;
     gap: var(--sp-2);
     flex-wrap: wrap;
+}
+/* 설정 > 보안으로 옮긴 디스코드 계정 줄: 다른 설정 줄과 같은 상자 */
+.setting-item.dc-row-actions {
+    justify-content: space-between;
+    gap: var(--sp-4);
+    padding: var(--sp-4);
+    border-top: 1px solid var(--border-light);
+    font-size: inherit;
+    flex-wrap: nowrap;
+}
+.setting-item.agent-list-box {
+    flex-direction: column;
+    align-items: stretch;
+}
+.agent-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+.agent-item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    padding-right: var(--sp-2);
+}
+.agent-item-head {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2-5) var(--sp-3);
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.agent-item-name {
+    font-weight: 700;
+}
+.agent-item-when {
+    flex: 1;
+    font-size: var(--fs-sm);
 }
 .dc-danger-zone {
     justify-content: space-between;
@@ -2284,6 +2306,10 @@ button.activity-line:hover {
     font-size: var(--fs-xs);
     color: var(--text-3);
     margin-top: calc(-1 * var(--sp-1));
+}
+/* 필드 안 설명은 gap이 이미 간격을 주므로 음수 여백을 빼서 입력칸에 붙지 않게 한다 */
+.mt-field > .dc-hint {
+    margin: 0;
 }
 
 /* 안내 문구 속 화면 링크 (ui/ScreenLink, 사용자 11-06 #19): 가는 길을 보이고 누르면 그 화면을 연다 */
@@ -3271,33 +3297,43 @@ button.dc-ladder-chip.is-fixed {
 }
 
 /* 단어 칩 입력 */
+/* 낱말 칸: 겉모양은 다른 입력칸(base.css .input)과 같다 (사용자 11-07) */
 .word-input {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-1-5);
-    min-height: 40px;
-    padding: var(--sp-1) var(--sp-2);
+    min-height: 36px;
+    padding: var(--sp-0-5) var(--sp-3);
     border-radius: var(--r-sm);
-    background: var(--inset);
+    background: var(--field);
     border: 1px solid var(--line);
-    box-shadow: var(--shadow-inset);
+    box-shadow: var(--neu-in);
+    transition:
+        border-color 0.25s var(--ease),
+        box-shadow 0.25s var(--ease);
     cursor: text;
+}
+.word-input:hover:not(:focus-within) {
+    border-color: var(--line-strong);
 }
 .word-input:focus-within {
     border-color: var(--accent);
-    box-shadow: var(--accent-ring);
+    box-shadow: var(--neu-in), var(--accent-ring);
+}
+.word-input input::placeholder {
+    color: var(--text-3);
 }
 .word-input input {
     flex: 1;
     min-width: 100px;
-    height: 28px;
+    height: 30px;
     border: none;
     outline: none;
     background: transparent;
     color: var(--text-1);
     font: inherit;
-    font-size: var(--fs-sm);
+    font-size: var(--fs-md);
 }
 .word-chip {
     display: inline-flex;
@@ -3402,8 +3438,28 @@ button.dc-ladder-chip.is-fixed {
     background: none;
     border: none;
 }
-.dc-view > .segmented {
+.dc-view > .segmented,
+.dc-view-top > .segmented {
     align-self: flex-start;
+}
+/* 디스코드 서버 화면: 서버 정보 카드와 탭 바는 칸 위에 붙고 그 아래만 스크롤한다 (사용자 11-07).
+   붙었을 때 위쪽 숨 쉴 틈만큼 바탕을 칠해 밑에서 올라오는 내용을 가린다 */
+.dc-view-top {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    margin: calc(-1 * var(--sp-3)) 0;
+    padding: var(--sp-3) 0;
+    background: var(--bg-0);
+}
+/* 위에 뒤로 가기 단추가 없으면 칸 위 여백(.server-detail padding)까지 덮어, 처음 자리와 붙은 자리가 같게 한다.
+   그래야 스크롤을 시작해도 카드가 조금도 움직이지 않는다 */
+.server-detail > .dc-view:first-child > .dc-view-top {
+    margin-top: calc(-1 * var(--sp-6));
+    padding-top: var(--sp-6);
 }
 .dc-savebar:not(.dirty) {
     position: static;
@@ -3638,9 +3694,10 @@ button.appbar-preflight {
     font-size: var(--fs-sm);
 }
 .mt-field > span:first-child {
-    font-size: var(--fs-xs);
+    /* 필드 이름은 설명이 아니라 설정 이름이다: 토글 줄 이름(dc-list-name)과 같은 글자 (사용자 11-07) */
+    font-size: var(--fs-md);
     font-weight: 600;
-    color: var(--text-3);
+    color: var(--text-1);
 }
 .mt-field-wide {
     flex: 1 1 260px;
@@ -3678,9 +3735,9 @@ button.appbar-preflight {
 .mt-fieldset > legend {
     padding: 0;
     margin-bottom: var(--sp-1);
-    font-size: var(--fs-xs);
+    font-size: var(--fs-md);
     font-weight: 600;
-    color: var(--text-3);
+    color: var(--text-1);
 }
 .mt-weekdays {
     display: flex;
@@ -3856,8 +3913,8 @@ button.appbar-preflight {
     align-items: center;
     gap: var(--sp-3);
     padding: 0 var(--sp-4) var(--sp-3);
-    font-size: var(--fs-xs);
-    color: var(--text-3);
+    font-size: var(--fs-md);
+    color: var(--text-1);
     font-weight: 600;
 }
 .cb-key-row .input:placeholder-shown {
@@ -3877,11 +3934,13 @@ button.appbar-preflight {
 .cb-memo-head {
     display: flex;
     justify-content: space-between;
-    font-size: var(--fs-xs);
+    font-size: var(--fs-md);
     font-weight: 600;
-    color: var(--text-3);
+    color: var(--text-1);
 }
 .cb-counter {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
 }
@@ -4591,6 +4650,13 @@ button.appbar-preflight {
     color: inherit;
     margin-top: 0;
 }
+/* 닫기 단추: 옆의 다시 확인 단추와 같은 높이의 정사각형으로 줄을 맞춘다 (사용자 11-07) */
+.port-check-notice-close {
+    --btn-height: 36px;
+    width: 36px;
+    height: 36px;
+    flex: none;
+}
 .server-check-issue.port-in_use {
     color: var(--warning);
 }
@@ -5249,4 +5315,38 @@ button.appbar-preflight {
 .kick-panel-add .input {
     flex: 1;
     min-width: 0;
+}
+/* 숫자 칸의 단추 몫(32px)만큼 넓혀 "비우면 끔" 같은 안내가 잘리지 않게 한다 (사용자 11-07) */
+.mt-field .saba-number > .input.mt-num {
+    width: 124px;
+}
+/* 디스코드 화면의 짧은 선택 칸은 줄 끝까지 늘이지 않고 가장 긴 선택지 폭에 맞춘다 (사용자 11-07) */
+.dc-main :is(.mt-field, .dc-field) > .custom-dropdown:not(.dc-level-select),
+.dc-main .custom-dropdown.setting-select {
+    align-self: flex-start;
+    width: fit-content;
+    min-width: 140px;
+    max-width: 100%;
+}
+/* 선택 칸 하나만 있는 필드는 토글 줄처럼: 이름·설명은 왼쪽에 붙여 쌓고, 선택 칸은 오른쪽 끝에서 두 줄 높이의 가운데 (사용자 11-07).
+   선택 칸이 첫 줄만 차지하면 그 높이만큼 이름과 설명 사이가 벌어진다 */
+.dc-main .mt-field:has(> .custom-dropdown:not(.dc-level-select)) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--sp-3);
+    row-gap: var(--sp-0-5);
+}
+.dc-main .mt-field:has(> .custom-dropdown:not(.dc-level-select)) > :not(.custom-dropdown) {
+    grid-column: 1;
+}
+.dc-main .mt-field:has(> .custom-dropdown:not(.dc-level-select)) > :first-child {
+    align-self: end;
+}
+.dc-main .mt-field:has(> .custom-dropdown:not(.dc-level-select)) > :not(.custom-dropdown):not(:first-child) {
+    align-self: start;
+}
+.dc-main .mt-field:has(> .custom-dropdown:not(.dc-level-select)) > .custom-dropdown {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
 }

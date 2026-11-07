@@ -52,6 +52,10 @@ pub struct GuiSettings {
     pub console_timestamps: String,
     /// 콘솔 시각에 날짜도
     pub console_timestamp_date: bool,
+    /// 콘솔의 긴 줄을 창 폭에서 접는다 (끄면 가로로 넘긴다)
+    pub console_wrap: bool,
+    /// 맨 아래를 보고 있을 때 새 줄을 따라 내려간다
+    pub console_auto_scroll: bool,
 
     // Theme customization
     /// "dark" | "light" | "auto". 없으면 GUI가 정한다(예전 브라우저 저장값 이전, 기본 auto)
@@ -214,6 +218,8 @@ impl Default for GuiSettings {
             audit_keep_days: 0,
             console_timestamps: "off".to_string(),
             console_timestamp_date: false,
+            console_wrap: true,
+            console_auto_scroll: true,
             theme: None,
             accent_color: "#667eea".to_string(),
             accent_secondary: "#764ba2".to_string(),

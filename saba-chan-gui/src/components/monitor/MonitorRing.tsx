@@ -1,7 +1,6 @@
 import type { TFunction } from 'i18next';
-import { useId } from 'react';
 import { SabaCheckbox } from '../ui/SabaUI';
-import { ALL_COLOR, IDLE_COLOR, type PickerGroup, type Ring, type RingSegment, type RingTone, toggleItem } from './systemMetrics';
+import { IDLE_COLOR, type PickerGroup, type Ring, type RingSegment, toggleItem } from './systemMetrics';
 import './MonitorRing.css';
 
 /*
@@ -16,14 +15,11 @@ const ARC = (CIRC * 270) / 360;
 /** 조각 사이 틈 (호 길이) */
 const GAP = 2.5;
 
-/** 원 종류별 그라데이션 (인스턴스로 나누지 않는 전체 몫에 쓴다) */
-const TONES: Record<RingTone, [string, string]> = {
-    cpu: ['var(--info)', 'var(--accent)'],
-    memory: ['var(--ok)', 'var(--info)'],
-    gpu: ['var(--warn)', 'var(--stop)'],
-    disk: ['var(--accent)', 'var(--info)'],
-    net: ['var(--info)', 'var(--ok)'],
-};
+/**
+ * 서버로 나누지 않는 몫(전체·나머지 프로세스)은 원 종류마다 채도를 크게 낮춘 바탕색으로 칠하고,
+ * 서버 몫만 계열색으로 덧칠한다 (사용자 11-07). 바탕색은 MonitorRing.css의 `--ring-base`다.
+ */
+const BASE_KEYS = new Set(['__all', '__others']);
 
 /**
  * 호 [from, to]를 둥근 끝 선으로 그릴 dash 값 (바탕 고리). 둥근 끝이 양쪽으로 STROKE/2씩 나가므로 그만큼 줄여 그린다.
@@ -55,7 +51,6 @@ interface MetricRingProps {
 
 /** 원형 그래프 하나. 조각마다 말풍선으로 이름과 값을 보여 준다 */
 export function MetricRing({ ring, t, size = 104, inlineNote = true }: MetricRingProps) {
-    const gradId = `ring-grad-${useId().replace(/:/g, '')}`;
     const total = ring.total > 0 ? ring.total : 1;
     const visible = ring.segments.filter((s) => s.value > 0 && s.color !== IDLE_COLOR);
     // 채운 부분 전체의 양 끝만 둥글다: 끝점 반원(점)이 STROKE/2를 덮으므로 조각은 그 안쪽에서 시작·끝난다
@@ -72,26 +67,20 @@ export function MetricRing({ ring, t, size = 104, inlineNote = true }: MetricRin
     });
     const firstColor = arcs[0]?.seg;
     const lastColor = arcs[arcs.length - 1]?.seg;
-    const stroke = (seg: RingSegment) => (seg.color === ALL_COLOR ? `url(#${gradId})` : seg.color);
+    const stroke = (seg: RingSegment) => (BASE_KEYS.has(seg.key) ? 'var(--ring-base)' : seg.color);
     const label = (seg: RingSegment) => (seg.labelKey ? t(seg.labelKey) : seg.label);
     const title = t(ring.titleKey, ring.titleVars);
-    const [c1, c2] = TONES[ring.tone];
 
     return (
         <figure
             className="monitor-ring"
+            data-tone={ring.tone}
             data-metric={ring.key}
             data-tooltip={ring.noteKey && !inlineNote ? t(ring.noteKey) : undefined}
         >
             <figcaption className="monitor-ring-title">{title}</figcaption>
             <div className="monitor-ring-chart" style={{ width: size, height: size }}>
                 <svg viewBox="0 0 100 100" role="img" aria-label={`${title} ${ring.value}${ring.unit}`}>
-                    <defs>
-                        <linearGradient id={gradId} gradientUnits="userSpaceOnUse" x1="0" y1="100" x2="100" y2="0">
-                            <stop offset="0" style={{ stopColor: c1 }} />
-                            <stop offset="1" style={{ stopColor: c2 }} />
-                        </linearGradient>
-                    </defs>
                     <g transform="rotate(135 50 50)">
                         <circle className="monitor-track" cx="50" cy="50" r={RADIUS} strokeWidth={STROKE} style={arcDash(0, ARC)} />
                         {arcs.map(({ seg, from, to }) => (
@@ -169,5 +158,39 @@ export function MonitorPicker({ groups, items, onChange, t }: MonitorPickerProps
                 </fieldset>
             ))}
         </div>
+    );
+}
+
+/** 요약 줄의 작은 원 (사용자 11-07): 큰 원과 같은 270° 호와 색 조각, 글자·말풍선 없이 */
+export function MiniRing({ ring, size = 20 }: { ring: Ring; size?: number }) {
+    const total = ring.total > 0 ? ring.total : 1;
+    const segs = ring.segments.filter((s) => s.value > 0 && s.color !== IDLE_COLOR);
+    // pathLength 100인 원 위에서 270°(75)만 쓴다. 시작은 왼쪽 아래(135° 돌림)
+    let at = 0;
+    return (
+        <svg className="monitor-mini" data-tone={ring.tone} viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+            <g transform="rotate(135 12 12)">
+                <circle className="monitor-track" cx="12" cy="12" r="9" strokeWidth={4} pathLength={100} strokeDasharray="75 100" />
+                {segs.map((seg) => {
+                    const len = Math.min(75 - at, (seg.value / total) * 75);
+                    const from = at;
+                    at += len;
+                    return (
+                        <circle
+                            key={seg.key}
+                            className="monitor-mini-arc"
+                            cx="12"
+                            cy="12"
+                            r="9"
+                            strokeWidth={4}
+                            pathLength={100}
+                            strokeDasharray={`${len} 100`}
+                            strokeDashoffset={-from}
+                            style={{ stroke: BASE_KEYS.has(seg.key) ? 'var(--ring-base)' : seg.color }}
+                        />
+                    );
+                })}
+            </g>
+        </svg>
     );
 }
