@@ -147,6 +147,26 @@ pub fn args(grants: &Grants, cwd: Option<&Path>) -> Vec<OsString> {
     out
 }
 
+/// 인증서 묶음을 가리키는 환경 변수 (Python ssl·requests가 따른다)
+const CERTIFICATE_ENV: [&str; 3] = ["SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE"];
+
+/// 환경이 가리키는 인증서 묶음이 시스템 폴더 밖에 있으면 읽기 전용으로 붙인다 (사내 CA 등. 공개 인증서라 숨길 것이 아니다)
+fn certificate_args(cmd: &std::process::Command) -> Vec<OsString> {
+    let mut out = Vec::new();
+    for key in CERTIFICATE_ENV {
+        let value = match cmd.get_envs().find(|(k, _)| *k == key) {
+            Some((_, value)) => value.map(OsString::from),
+            None => std::env::var_os(key),
+        };
+        let Some(path) = value.filter(|v| !v.is_empty()).map(PathBuf::from) else { continue };
+        if !path.is_absolute() || !path.exists() || SYSTEM_DIRS.iter().any(|d| path.starts_with(d)) {
+            continue;
+        }
+        out.extend(["--ro-bind".into(), path.clone().into_os_string(), path.into_os_string()]);
+    }
+    out
+}
+
 /// 격리 안에 넘기지 않는 데스크톱 세션 주소 (데몬이 데스크톱 세션에서 돌 때 물려받은 값)
 const SESSION_ENV: [&str; 4] = ["DBUS_SESSION_BUS_ADDRESS", "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY"];
 
@@ -156,6 +176,7 @@ pub fn wrap(bwrap: &Path, cmd: &std::process::Command, grants: &Grants) -> std::
     let mut wrapped = std::process::Command::new(bwrap);
     wrapped
         .args(args(grants, cmd.get_current_dir()))
+        .args(certificate_args(cmd))
         .arg("--")
         .arg(cmd.get_program())
         .args(cmd.get_args());
@@ -241,6 +262,26 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&out.stdout), "read", "{}", String::from_utf8_lossy(&out.stderr));
     }
 
+    /// 데몬 환경이 가리키는 인증서 묶음(사내 CA 등)은 시스템 폴더 밖에 있어도 읽기 전용으로 붙인다.
+    /// 붙이지 않으면 격리 안의 다운로드가 그 CA를 못 찾아 인증서 확인에 실패한다
+    #[test]
+    fn the_certificate_bundle_named_by_the_environment_is_mounted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ca, dir) = (tmp.path().join("ca.pem"), tmp.path().join("certs"));
+        std::fs::write(&ca, "pem").unwrap();
+        std::fs::create_dir(&dir).unwrap();
+        let mut cmd = std::process::Command::new("python");
+        cmd.env("SSL_CERT_FILE", &ca).env("SSL_CERT_DIR", &dir).env("REQUESTS_CA_BUNDLE", tmp.path().join("missing.pem"));
+        let wrapped = wrap(Path::new("/usr/bin/bwrap"), &cmd, &Grants::default());
+        let args: Vec<OsString> = wrapped.get_args().map(OsString::from).collect();
+        let end = pos(&args, &["--"]).unwrap();
+        for path in [&ca, &dir] {
+            let p = path.to_str().unwrap();
+            assert!(pos(&args, &["--ro-bind", p, p]).is_some_and(|i| i < end), "{args:?}");
+        }
+        assert!(!args.iter().any(|a| a.to_string_lossy().contains("missing.pem")), "a path that does not exist is skipped");
+    }
+
     /// 데스크톱 세션의 화면·세션 버스 주소는 격리 안에 넘기지 않는다 (네트워크를 함께 써서 abstract 소켓은 닿는다)
     #[test]
     fn desktop_session_addresses_are_not_passed_in() {
@@ -305,6 +346,10 @@ mod tests {
         let run = |script: &str| {
             let mut cmd = std::process::Command::new("/bin/sh");
             cmd.args(["-c", script]).current_dir(&granted);
+            // 홈 아래 인증서 묶음을 가리키는 시험 환경이면 그 파일만은 붙으므로 뺀다 (홈이 보이지 않는지 본다)
+            for key in CERTIFICATE_ENV {
+                cmd.env_remove(key);
+            }
             wrap(bwrap, &cmd, &grants).output().unwrap()
         };
         let ok = |script: &str| run(script).status.success();
