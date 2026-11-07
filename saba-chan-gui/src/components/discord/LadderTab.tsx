@@ -32,9 +32,11 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     // 명령 옮긴 차례 (맞바꾸기·줄 옮기기). 줄 자리는 이 차례에서 나온다
     const [steps, setSteps] = useState<L.CommandStep[]>([]);
     // 블록 끌기: key·칸 값은 사다리 자리(위에서부터 0)
-    const blockDrag = usePointerDrag((from: string, to: string) =>
-        setDraft((d) => L.moveLevel(d, Number(from), Number(to))),
-    );
+    // 놓으면 카드들이 옛 자리에서 새 자리로 미끄러진다 (사용자 지정 2026-11-07)
+    const blockDrag = usePointerDrag((from: string, to: string) => {
+        flip();
+        setDraft((d) => L.moveLevel(d, Number(from), Number(to)));
+    });
     // 칩 끌기 (사용자 지정 2026-11-07): 칩을 다른 칸에 놓으면 그 명령을 그 레벨로. key는 칩 id, 칸 값은 사다리 자리
     // moves: 명령 키 → 옮긴 레벨 (맞바꾸기 뒤에 덮는다)
     const [moves, setMoves] = useState<Record<string, number>>({});
@@ -172,6 +174,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                         const block = (
                             <li
                                 key={keyOf(level)}
+                                data-flip={`block:${String(keyOf(level))}`}
                                 aria-label={name}
                                 className={clsx('dc-ladder-block', `level-${L.levelKey(level.id)}`, {
                                     'is-fixed': fixed,
