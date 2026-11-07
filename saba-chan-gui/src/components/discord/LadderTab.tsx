@@ -36,15 +36,8 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     const blockDrag = usePointerDrag((from: string, to: string) =>
         setDraft((d) => L.moveLevel(d, Number(from), Number(to))),
     );
-    // 줄 끌기: 놓은 칸 바로 아래로 (금지·새 칸이면 그 위 칸)
-    const lineDrag = usePointerDrag((_key: string, to: string) => {
-        const at = L.lineDrop(draft, Number(to));
-        const level = draft[at].id;
-        if (level !== undefined) setSteps((s) => [...s, { line: level }]);
-    });
     const dragging = blockDrag.dragging === null ? null : Number(blockDrag.dragging);
     const over = blockDrag.over === null ? null : Number(blockDrag.over);
-    const lineOver = lineDrag.over === null ? null : L.lineDrop(draft, Number(lineDrag.over));
     const [newName, setNewName] = useState('');
     const [editing, setEditing] = useState<number | null>(null); // 이름을 고치는 칸
     const [choosing, setChoosing] = useState(false);
@@ -72,7 +65,9 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     const commandLevels = L.boardPatch(board, levels);
     const commandsChanged = Object.keys(commandLevels).length > 0;
     const changed = ladderChanged || commandsChanged;
-    const chips = L.stairChips(L.draftBoard(board, levels));
+    // 레벨 편집은 사바쨩 기능만 보인다 (사용자 지정 2026-11-07): 인스턴스마다 다른 게임(모듈) 명령과
+    // 인스턴스마다 정하는 조작 가능(서버 조작)은 인스턴스 권한 화면에서 정한다. 맞바꾸기는 모든 명령을 그대로 옮긴다
+    const chips = L.stairChips(L.draftBoard(board, levels)).filter((c) => !c.module && !c.controllers);
     const instanceName = (id?: string) => board?.instances?.find((i) => i.id === id)?.name || id;
     const chipLabel = (c: L.StairChip) => (c.instance ? `${c.title} · ${instanceName(c.instance)}` : c.title || c.name);
     // 마지막 맞바꾸기 (두 칸이 아직 초안에 있을 때만 알린다)
@@ -92,11 +87,6 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     const valid = L.ladderValid(draft);
     const movable = (i: number) => i > 0 && i < draft.length - 1;
     const name = newName.trim();
-    const moveLine = (dir: -1 | 1) => {
-        if (lineAt === null) return;
-        const to = L.lineStep(draft, lineAt, dir);
-        if (to !== null) setSteps((s) => [...s, { line: draft[to].id as number }]);
-    };
     const save = () =>
         write(() =>
             window.api.permissionsUpdate(node.guildId, {
@@ -111,57 +101,11 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
         setPicked(null);
     };
 
-    const lineRow = (at: number) => {
-        const target = draft[at];
-        const text = t(at === 0 ? 'discord.perm_line_only' : 'discord.perm_line_from', { level: label(target) });
-        return (
-            <li
-                key="controllers-line"
-                aria-label={t('discord.perm_line')}
-                className={clsx('dc-ladder-line', { 'is-dragging': lineDrag.dragging !== null })}
-                {...lineDrag.bind('line')}
-            >
-                <span className="dc-ladder-rank" aria-hidden="true">
-                    <Icon name="user" size="sm" />
-                </span>
-                <span className="dc-ladder-line-text">
-                    <strong>{text}</strong>
-                    <small>
-                        {t('discord.perm_line_hint')}
-                        {line && line.apart > 0 && ` ${t('discord.perm_line_apart', { count: line.apart })}`}
-                    </small>
-                </span>
-                <span className="dc-mini-actions">
-                    <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        disabled={L.lineStep(draft, at, -1) === null}
-                        aria-label={t('discord.perm_line_up')}
-                        data-tooltip={t('discord.perm_line_up')}
-                        onClick={() => moveLine(-1)}
-                    >
-                        <Icon name="chevronUp" size="sm" />
-                    </button>
-                    <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        disabled={L.lineStep(draft, at, 1) === null}
-                        aria-label={t('discord.perm_line_down')}
-                        data-tooltip={t('discord.perm_line_down')}
-                        onClick={() => moveLine(1)}
-                    >
-                        <Icon name="chevronDown" size="sm" />
-                    </button>
-                </span>
-            </li>
-        );
-    };
-
     return (
         <div className="dc-tab">
             <section className="dc-card">
                 <div className="dc-card-head">
-                    <h3>{t('discord.perm_ladder')}</h3>
+                    <h3>{t('discord.perm_edit_levels')}</h3>
                     {onClose && (
                         <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
                             <Icon name="chevronLeft" size="sm" /> {t('discord.perm_ladder_done')}
@@ -169,7 +113,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                     )}
                 </div>
                 <p className="dc-hint">{t('discord.perm_ladder_hint')}</p>
-                <ol ref={listRef} className="dc-ladder" aria-label={t('discord.perm_ladder')}>
+                <ol ref={listRef} className="dc-ladder" aria-label={t('discord.perm_edit_levels')}>
                     {draft.flatMap((level, i) => {
                         const name = label(level);
                         const fixed = !movable(i);
@@ -183,7 +127,6 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                                     'is-fixed': fixed,
                                     'is-dragging': dragging === i,
                                     'is-over': over === i && dragging !== i && !fixed,
-                                    'is-line-over': lineOver === i && lineOver !== lineAt,
                                     'is-pickable': pickable,
                                     'is-picked': picked !== null && picked === level.id,
                                 })}
@@ -301,7 +244,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                                 )}
                             </li>
                         );
-                        return lineAt === i ? [block, lineRow(i)] : [block];
+                        return [block];
                     })}
                 </ol>
                 <div className="dc-ladder-swapbar">

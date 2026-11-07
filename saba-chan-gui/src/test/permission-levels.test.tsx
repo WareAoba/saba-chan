@@ -722,33 +722,20 @@ describe('권한 화면', () => {
     });
 
     // 사용자 지정 2026-11-06: 사다리에 조작 가능 줄을 긋고 끌어서 네 명령을 한꺼번에 옮긴다
-    it('레벨 편집: 조작 가능 줄을 끌어 옮기면 줄을 따르는 명령만 저장한다', async () => {
+    it('레벨 편집: 제목은 "레벨 편집", 사바쨩 기능만 보이고 게임 명령·조작 가능 줄은 없다', async () => {
         board.items.push(
             stair('mc-1', 'start', 'Start', 2, { controllers: true, preset: 2 }),
-            stair('mc-2', 'start', 'Start', 2, { controllers: true, preset: 2 }),
-            stair('mc-2', 'restart', 'Restart', 3, { controllers: true, preset: 2, overridden: true }),
+            stair('mc-1', 'give', 'Give Item', 2, { module: true }),
         );
         await openPeople();
         fireEvent.click(screen.getByRole('button', { name: /Edit levels/ }));
-        const line = screen.getByRole('listitem', { name: 'Operators line' });
-        expect(line).toHaveTextContent('Operators · Admin and up');
-        expect(line).toHaveTextContent('1 command(s) set separately stay as they are');
-        // 줄은 관리자 칸 바로 아래
-        const items = screen.getAllByRole('listitem');
-        expect(items.indexOf(line)).toBe(items.indexOf(screen.getByRole('listitem', { name: 'Admin' })) + 1);
-
-        dragTo(line, screen.getByRole('listitem', { name: 'Banned' }));
-        expect(screen.getByRole('listitem', { name: 'Operators line' })).toHaveTextContent('Guest and up');
-        fireEvent.click(screen.getByRole('button', { name: 'Move the operators line up' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Move the operators line up' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Move the operators line up' }));
-        expect(screen.getByRole('listitem', { name: 'Operators line' })).toHaveTextContent('Owner only');
-        expect(screen.getByRole('button', { name: 'Move the operators line up' })).toBeDisabled();
-        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-        await flush();
-        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
-            commandLevels: { 'mc-1/start': 3, 'mc-2/start': 3 },
-        });
+        expect(screen.getByRole('heading', { name: 'Edit levels' })).toBeInTheDocument();
+        expect(screen.queryByRole('listitem', { name: 'Operators line' })).toBeNull();
+        const admin = screen.getByRole('listitem', { name: 'Admin' });
+        // 사바쨩 기능(서버 만들기)은 보이고, 게임 명령(give)과 조작 가능 명령(시작)은 인스턴스 권한 화면에서 정한다
+        expect(within(admin).getByText('Create server')).toBeInTheDocument();
+        expect(within(admin).queryByText(/Give Item/)).toBeNull();
+        expect(within(admin).queryByText(/^Start/)).toBeNull();
     });
 
     it('레벨 편집: 권한 맞바꾸기를 누르고 두 레벨을 고르면 사람은 두고 명령만 바꿔 저장한다', async () => {
