@@ -14,7 +14,7 @@ import { BotSettingsTab, botSettingsAvailable } from './BotSettingsTab';
 import { ChatbotGuildTab } from './ChatbotGuildTab';
 import { chatbotAvailable } from './ChatbotView';
 import { ControllersTab } from '../servers/ControllersTab';
-import { AccessMode, accessOf, KickList, MembersKick } from './InstanceAccess';
+import { AccessMode, accessOf, KickButton, MembersKick } from './InstanceAccess';
 import * as P from './nodePermissions';
 import { ModerationTab, moderationAvailable } from './ModerationTab';
 import { MembersPanel, PermissionPanel } from './PermissionsTab';
@@ -243,17 +243,15 @@ function InstanceMenu({ node, servers, instance, onBack }: InstanceMenuProps) {
                 {srv.module && <small className="muted"> · {srv.module}</small>}
             </h2>
             {/* 사용 모드와 명단은 인스턴스 하나에 붙는다: 이은 모든 디스코드 서버에 같이 적용된다 */}
-            <AccessMode server={srv} />
+            {/* 서버 공용의 자동 강퇴는 모드 줄의 작은 단추: 명령 계단의 저장 막대가 늘 맨 아래에 온다 */}
+            <AccessMode server={srv}>{accessOf(srv) === 'shared' && <KickButton server={srv} />}</AccessMode>
             {accessOf(srv) === 'members' ? (
                 <>
                     <ControllersTab server={srv} />
                     <MembersKick server={srv} />
                 </>
             ) : (
-                <>
-                    <PermissionPanel node={node} instance={srv.id} />
-                    <KickList server={srv} />
-                </>
+                <PermissionPanel node={node} instance={srv.id} />
             )}
         </div>
     );

@@ -1959,6 +1959,7 @@
     "channel_note": "在<link/>中把頻道指定為「遊戲聊天」，或用 /saba assign 選擇「遊戲聊天」。"
   },
   "access": {
+    "applies_all": "模式和名單對所有已連結的 Discord 伺服器同樣適用。",
     "title": "使用模式",
     "shared": "伺服器共用",
     "members": "專屬成員",

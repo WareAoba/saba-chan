@@ -1959,6 +1959,7 @@
     "channel_note": "Den Kanal weist du unter <link/> als Spielchat zu oder mit /saba assign → Spielchat."
   },
   "access": {
+    "applies_all": "Modus und Listen gelten für alle verbundenen Discord-Server.",
     "title": "Nutzungsmodus",
     "shared": "Gemeinsam",
     "members": "Nur Mitglieder",

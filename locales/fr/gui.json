@@ -1959,6 +1959,7 @@
     "channel_note": "Assignez le canal comme Chat du jeu dans <link/> ou avec /saba assign → Chat du jeu."
   },
   "access": {
+    "applies_all": "Le mode et les listes s’appliquent à tous les serveurs Discord reliés.",
     "title": "Mode d’utilisation",
     "shared": "Partagé",
     "members": "Membres seulement",

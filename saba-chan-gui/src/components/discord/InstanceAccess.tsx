@@ -1,15 +1,19 @@
+import clsx from 'clsx';
 import type { TFunction } from 'i18next';
-import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useEffect, useId, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { type Server, useServerStore } from '../../stores/useServerStore';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
+import { usePopover } from '../ui/DateTimePicker';
 import { SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
 
 /**
  * 디스코드 › 서버 › 인스턴스 메뉴의 사용 모드 (데몬 인스턴스 access·kick_players·controllers_only, 사용자 지정 2026-11-08).
- * - 서버 공용: 길드 레벨 권한을 따른다. 자동 강퇴할 닉네임을 적는다
+ * - 서버 공용: 길드 레벨 권한을 따른다. 자동 강퇴할 닉네임을 적는다 (모드 줄의 작은 단추 → 팝업)
  * - 전용 멤버: 길드 레벨과 따로 논다. 전용 멤버 명단(ControllersTab)에 든 사람만 모든 조작·명령을 한다.
  *   명단에 없는 사람 자동 강퇴를 켜고 끈다
  * 모드와 명단은 인스턴스 하나에 붙어 이은 모든 디스코드 서버에 같이 적용된다.
@@ -29,8 +33,8 @@ async function patch(server: Server, values: Partial<Server>, failKey: string, t
     return true;
 }
 
-/** 모드 고르기: 바로 저장한다 */
-export function AccessMode({ server }: { server: Server }) {
+/** 모드 고르기: 한 줄에 제목·선택·설명 말풍선, 오른쪽에 그 모드의 작은 단추(children). 바로 저장한다 */
+export function AccessMode({ server, children }: { server: Server; children?: ReactNode }) {
     const { t } = useTranslation('gui');
     const [mode, setMode] = useState<Access>(accessOf(server));
     const [busy, setBusy] = useState(false);
@@ -42,13 +46,12 @@ export function AccessMode({ server }: { server: Server }) {
         if (ok) setMode(next as Access);
         setBusy(false);
     };
+    const hint = `${t(mode === 'members' ? 'access.members_desc' : 'access.shared_desc')} ${t('access.applies_all')}`;
     return (
-        <div className="protocol-mode-section access-section">
-            <div className="protocol-mode-header">
-                <span className="protocol-mode-title">
-                    <Icon name="key" size="sm" /> {t('access.title')}
-                </span>
-            </div>
+        <div className="access-bar">
+            <span className="access-bar-title">
+                <Icon name="key" size="sm" /> {t('access.title')}
+            </span>
             <Segmented
                 items={[
                     { id: 'shared', label: t('access.shared') },
@@ -58,16 +61,19 @@ export function AccessMode({ server }: { server: Server }) {
                 onChange={change}
                 ariaLabel={t('access.title')}
             />
-            <p className="protocol-mode-description">
-                {t(mode === 'members' ? 'access.members_desc' : 'access.shared_desc')} {t('controllers.all_guilds')}
-            </p>
+            <span className="access-bar-hint" data-tooltip={hint} role="img" aria-label={hint}>
+                <Icon name="info" size="sm" />
+            </span>
+            {children && <span className="access-bar-end">{children}</span>}
         </div>
     );
 }
 
-/** 서버 공용의 자동 강퇴 명단: 적은 닉네임이 들어오면 내보낸다 */
-export function KickList({ server }: { server: Server }) {
+/** 서버 공용의 자동 강퇴: 작은 단추(적은 수)를 누르면 팝업에서 닉네임을 넣고 뺀다. 적은 닉네임이 들어오면 내보낸다 */
+export function KickButton({ server }: { server: Server }) {
     const { t } = useTranslation('gui');
+    const popover = usePopover();
+    const panelId = useId();
     const [list, setList] = useState<string[]>(server.kick_players || []);
     const [name, setName] = useState('');
     const [busy, setBusy] = useState(false);
@@ -90,58 +96,75 @@ export function KickList({ server }: { server: Server }) {
         if (await save([...list, trimmed])) setName('');
     };
     return (
-        <div className="protocol-mode-section kick-section">
-            <div className="protocol-mode-header">
-                <span className="protocol-mode-title">
-                    <Icon name="x" size="sm" /> {t('kick.title')}
-                </span>
-            </div>
-            <p className="protocol-mode-description">{t('kick.desc')}</p>
-            {!server.controllers_only_supported && <p className="protocol-mode-description">{t('kick.unsupported')}</p>}
-            {list.length === 0 ? (
-                <p className="muted controllers-empty">{t('kick.empty')}</p>
-            ) : (
-                <ul className="controllers-list">
-                    {list.map((n) => (
-                        <li key={n} className="restart-row">
-                            <span className="controllers-name">
-                                <strong>{n}</strong>
-                            </span>
-                            <button
-                                type="button"
-                                className="btn btn-ghost btn-sm"
-                                disabled={busy}
-                                aria-label={t('controllers.remove_named', { name: n })}
-                                onClick={() => save(list.filter((x) => x !== n))}
-                            >
-                                {t('controllers.remove')}
-                            </button>
-                        </li>
-                    ))}
-                </ul>
-            )}
-            <form
-                className="controllers-add"
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    add();
-                }}
+        <>
+            <button
+                ref={popover.triggerRef}
+                type="button"
+                className="btn btn-ghost btn-sm kick-btn"
+                onClick={() => (popover.shown ? popover.close() : popover.open())}
+                aria-haspopup="dialog"
+                aria-expanded={popover.shown}
+                aria-controls={popover.isOpen ? panelId : undefined}
             >
-                <input
-                    type="text"
-                    className="input"
-                    value={name}
-                    maxLength={64}
-                    placeholder={t('controllers.name_placeholder')}
-                    aria-label={t('kick.placeholder')}
-                    onChange={(e) => setName(e.target.value)}
-                />
-                <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !name.trim()}>
-                    {t('kick.add')}
-                </button>
-            </form>
-            <p className="protocol-mode-description">{t('controllers_only.hint')}</p>
-        </div>
+                <Icon name="x" size="sm" /> {t('kick.title')}
+                {list.length > 0 && <span className="kick-count">{list.length}</span>}
+            </button>
+            {popover.isOpen &&
+                ReactDOM.createPortal(
+                    <div
+                        {...popover.panelProps}
+                        className={clsx(popover.panelProps.className, 'kick-panel')}
+                        id={panelId}
+                        role="dialog"
+                        aria-label={t('kick.title')}
+                    >
+                        <p className="kick-panel-desc">{t('kick.desc')}</p>
+                        {!server.controllers_only_supported && <p className="kick-panel-desc">{t('kick.unsupported')}</p>}
+                        {list.length === 0 ? (
+                            <p className="muted">{t('kick.empty')}</p>
+                        ) : (
+                            <ul className="kick-panel-list">
+                                {list.map((n) => (
+                                    <li key={n}>
+                                        <strong>{n}</strong>
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost btn-sm"
+                                            disabled={busy}
+                                            aria-label={t('controllers.remove_named', { name: n })}
+                                            onClick={() => save(list.filter((x) => x !== n))}
+                                        >
+                                            {t('controllers.remove')}
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                        <form
+                            className="kick-panel-add"
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                add();
+                            }}
+                        >
+                            <input
+                                type="text"
+                                className="input"
+                                value={name}
+                                maxLength={64}
+                                placeholder={t('controllers.name_placeholder')}
+                                aria-label={t('kick.placeholder')}
+                                onChange={(e) => setName(e.target.value)}
+                            />
+                            <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !name.trim()}>
+                                {t('kick.add')}
+                            </button>
+                        </form>
+                        <p className="kick-panel-desc muted">{t('controllers_only.hint')}</p>
+                    </div>,
+                    document.body,
+                )}
+        </>
     );
 }
 

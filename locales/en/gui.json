@@ -1959,6 +1959,7 @@
     "channel_note": "Assign the channel as Game chat in <link/>, or with /saba assign → Game chat."
   },
   "access": {
+    "applies_all": "The mode and lists apply to every linked Discord server.",
     "title": "Usage mode",
     "shared": "Shared",
     "members": "Members only",

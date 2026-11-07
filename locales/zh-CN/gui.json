@@ -1959,6 +1959,7 @@
     "channel_note": "在<link/>中把频道指定为“游戏聊天”，或用 /saba assign 选择“游戏聊天”。"
   },
   "access": {
+    "applies_all": "模式和名单对所有已连接的 Discord 服务器同样适用。",
     "title": "使用模式",
     "shared": "服务器共用",
     "members": "专属成员",

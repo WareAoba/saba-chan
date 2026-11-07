@@ -5172,3 +5172,73 @@ button.appbar-preflight {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
+
+/* 인스턴스 메뉴의 사용 모드 줄: 제목·선택·설명 말풍선, 오른쪽에 그 모드의 작은 단추 */
+.access-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-3);
+    margin-bottom: var(--sp-3);
+}
+.access-bar-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    font-weight: 600;
+    color: var(--text-2);
+}
+.access-bar-hint {
+    display: inline-flex;
+    color: var(--text-3);
+    cursor: help;
+}
+.access-bar-end {
+    margin-left: auto;
+    display: inline-flex;
+    gap: var(--sp-2);
+}
+.kick-count {
+    min-width: 1.4em;
+    padding: 0 var(--sp-1);
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--text-on-primary);
+    font-size: var(--fs-xs);
+    text-align: center;
+}
+.kick-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    width: min(22rem, calc(100vw - 2 * var(--sp-4)));
+}
+.kick-panel-desc {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+}
+.kick-panel-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    max-height: 12rem;
+    overflow-y: auto;
+}
+.kick-panel-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+}
+.kick-panel-add {
+    display: flex;
+    gap: var(--sp-2);
+}
+.kick-panel-add .input {
+    flex: 1;
+    min-width: 0;
+}

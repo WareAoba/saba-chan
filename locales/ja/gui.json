@@ -1959,6 +1959,7 @@
     "channel_note": "送り先は<link/>で「ゲームチャット」に割り当てるか、/saba assign で「ゲームチャット」を選んで決めます。"
   },
   "access": {
+    "applies_all": "モードと名簿はつないだすべてのDiscordサーバーに同じく適用されます。",
     "title": "利用モード",
     "shared": "サーバー共用",
     "members": "専用メンバー",
