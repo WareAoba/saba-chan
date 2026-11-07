@@ -9,6 +9,8 @@
 //!
 //! stdin: 러너가 127.0.0.1 임의 포트를 연다. 연결의 첫 줄은 토큰(환경 변수
 //! `SABA_RUNNER_TOKEN`으로 받은 값), 이후 한 줄이 명령 하나다.
+//! 첫 줄이 `토큰 interrupt`(`interrupt_request`)면 서버에 Ctrl+C(unix는 SIGINT)를 한 번 보내고
+//! `ok` 또는 `error: 까닭` 한 줄로 답한 뒤 닫는다 (`INTERRUPT_OK`).
 //!
 //! 로그: 세션마다 파일 하나, 한 줄 형식은 `format_line` (데몬의 콘솔 로그 형식과 같다).
 
@@ -19,6 +21,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub const RUNNER_FILE: &str = "runner.json";
 pub const EXIT_FILE: &str = "exit.json";
 pub const TOKEN_ENV: &str = "SABA_RUNNER_TOKEN";
+/// 인터럽트 연결의 첫 줄에서 토큰 뒤에 붙는 말
+pub const INTERRUPT: &str = "interrupt";
+/// 인터럽트를 보냈을 때의 답. 못 보냈으면 `error: 까닭`
+pub const INTERRUPT_OK: &str = "ok";
+
+/// 서버에 Ctrl+C를 보내 달라는 연결의 첫 줄 (줄 끝 없음)
+pub fn interrupt_request(token: &str) -> String {
+    format!("{} {}", token, INTERRUPT)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RunnerInfo {

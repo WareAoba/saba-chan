@@ -311,6 +311,56 @@ fn pump(
 
 type Stdin = Mutex<Option<Box<dyn Write + Send>>>;
 
+/// 서버에 Ctrl+C를 보내는 길 (`saba_runner::INTERRUPT`). 저장하고 끝내는 처리기가 Ctrl+C에만 붙은 서버(발헤임 등)를 위해서다
+enum Interrupt {
+    /// 의사 콘솔: Ctrl+C 글자(0x03)를 입력으로 넣으면 콘솔(ConPTY·pty)이 신호로 바꾼다
+    Pty(Arc<Stdin>),
+    /// 파이프: 서버 PID에 직접. 런처가 남긴 진짜 서버로 PID가 바뀔 수 있어 지금 값을 함께 쥔다
+    Pipe(Arc<std::sync::atomic::AtomicU32>),
+}
+
+impl Interrupt {
+    fn send(&self) -> Result<(), String> {
+        match self {
+            Interrupt::Pty(stdin) => {
+                let mut guard = stdin.lock().map_err(|_| "console input is unavailable".to_string())?;
+                let pipe = guard.as_mut().ok_or("the server closed its console input")?;
+                pipe.write_all(b"\x03").and_then(|_| pipe.flush()).map_err(|e| e.to_string())
+            }
+            Interrupt::Pipe(pid) => send_ctrl_c(pid.load(std::sync::atomic::Ordering::SeqCst)),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn send_ctrl_c(pid: u32) -> Result<(), String> {
+    let pid = i32::try_from(pid).map_err(|_| "bad server PID".to_string())?;
+    if unsafe { libc::kill(pid, libc::SIGINT) } == 0 { Ok(()) } else { Err(std::io::Error::last_os_error().to_string()) }
+}
+
+/// Windows: 서버의 (창 없는) 콘솔에 잠깐 붙어 그 콘솔의 모든 프로세스에 CTRL_C_EVENT를 보낸다.
+/// 러너 자신은 Ctrl+C를 무시한다. 러너는 원래 콘솔로 돌아가지 않는다(새로 만들면 창이 뜬다): 러너는 콘솔을 쓰지 않는다.
+/// 서버는 `start`에서 Ctrl+C를 받을 수 있게 띄웠다 (`CREATE_NEW_PROCESS_GROUP`으로 뜬 러너는 끈 채로 물려준다)
+#[cfg(windows)]
+fn send_ctrl_c(pid: u32) -> Result<(), String> {
+    use windows_sys::Win32::System::Console::{AttachConsole, FreeConsole, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler, CTRL_C_EVENT};
+    static CONSOLE: Mutex<()> = Mutex::new(());
+    let _one_at_a_time = CONSOLE.lock().map_err(|_| "console is busy".to_string())?;
+    unsafe {
+        FreeConsole();
+        if AttachConsole(pid) == 0 {
+            return Err(format!("cannot attach to the server console: {}", std::io::Error::last_os_error()));
+        }
+        SetConsoleCtrlHandler(None, 1);
+        let sent = GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0) != 0;
+        let error = std::io::Error::last_os_error();
+        // 신호는 콘솔이 따로 돌려 보낸다: 바로 떨어지면 받기 전에 끊길 수 있다
+        std::thread::sleep(Duration::from_millis(200));
+        FreeConsole();
+        if sent { Ok(()) } else { Err(format!("cannot send Ctrl+C: {}", error)) }
+    }
+}
+
 /// 인증 전에 받는 첫 줄(토큰)의 길이와 시간 상한. 같은 PC의 다른 프로세스가 끝없는 줄로 러너 메모리를 채우거나
 /// 연결만 열어 둔 채 스레드를 쌓지 못하게 한다
 const AUTH_LINE_MAX: u64 = 256;
@@ -318,7 +368,8 @@ const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// stdin 연결 하나: 첫 줄이 토큰이면 이후 줄을 자식 stdin으로 넘긴다.
 /// 의사 콘솔은 Enter를 `\r`로 받는다.
-fn serve_stdin(conn: TcpStream, token: &str, stdin: &Stdin, enter: &str) {
+/// 첫 줄이 `토큰 interrupt`면 서버에 인터럽트를 한 번 보내고 `ok`나 `error: 까닭`으로 답한 뒤 닫는다.
+fn serve_stdin(conn: TcpStream, token: &str, stdin: &Stdin, enter: &str, interrupt: &dyn Fn() -> Result<(), String>) {
     if conn.set_read_timeout(Some(AUTH_TIMEOUT)).is_err() {
         return;
     }
@@ -328,7 +379,16 @@ fn serve_stdin(conn: TcpStream, token: &str, stdin: &Stdin, enter: &str) {
         return;
     }
     let first = first.strip_suffix(b"\n").unwrap_or(&first);
-    if first.strip_suffix(b"\r").unwrap_or(first) != token.as_bytes() {
+    let first = first.strip_suffix(b"\r").unwrap_or(first);
+    if first == saba_runner::interrupt_request(token).as_bytes() {
+        let answer = match interrupt() {
+            Ok(()) => saba_runner::INTERRUPT_OK.to_string(),
+            Err(e) => format!("error: {}", e.replace(['\r', '\n'], " ")),
+        };
+        let _ = writeln!(reader.get_mut(), "{}", answer);
+        return;
+    }
+    if first != token.as_bytes() {
         return;
     }
     if reader.get_ref().set_read_timeout(None).is_err() {
@@ -494,7 +554,18 @@ fn start(args: &Args) -> Result<Started, String> {
                 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
                 cmd.creation_flags(CREATE_NO_WINDOW);
             }
-            let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+            // 러너는 Ctrl+C를 끈 채로 떴다(`CREATE_NEW_PROCESS_GROUP`). 그 상태는 자식에게 물려지므로, 서버가
+            // Ctrl+C로 저장하고 끝낼 수 있게 띄우는 동안만 켠다 (`Interrupt`). 서버 콘솔은 따로라 사람이 누를 일은 없다
+            #[cfg(windows)]
+            unsafe {
+                windows_sys::Win32::System::Console::SetConsoleCtrlHandler(None, 0);
+            }
+            let spawned = cmd.spawn();
+            #[cfg(windows)]
+            unsafe {
+                windows_sys::Win32::System::Console::SetConsoleCtrlHandler(None, 1);
+            }
+            let mut child = spawned.map_err(|e| e.to_string())?;
             let mut outputs: Vec<(Box<dyn Read + Send>, Stream)> = Vec::new();
             if let Some(out) = child.stdout.take() {
                 outputs.push((Box::new(out), Stream::Stdout));
@@ -581,6 +652,11 @@ fn run(args: Args) -> Result<i32, String> {
     write_json(&runner_file(&args.run_dir), &info).map_err(|e| e.to_string())?;
 
     let stdin: Arc<Stdin> = Arc::new(Mutex::new(Some(stdin)));
+    let server_pid = Arc::new(std::sync::atomic::AtomicU32::new(pid));
+    let interrupt = Arc::new(match args.console {
+        Console::Pty => Interrupt::Pty(stdin.clone()),
+        Console::Pipe => Interrupt::Pipe(server_pid.clone()),
+    });
     // 의사 콘솔의 커서 위치 요청에는 runner가 답한다 (파이프에는 그런 요청이 없다)
     let reply = (args.console == Console::Pty).then(|| stdin.clone());
     let readers: Vec<_> = outputs.into_iter().map(|(r, stream)| pump(r, log.clone(), stream, args.console, reply.clone(), args.line_start.clone(), args.progress.clone())).collect();
@@ -590,8 +666,8 @@ fn run(args: Args) -> Result<i32, String> {
     }
     std::thread::spawn(move || {
         for conn in listener.incoming().map_while(Result::ok) {
-            let (stdin, token) = (stdin.clone(), token.clone());
-            std::thread::spawn(move || serve_stdin(conn, &token, &stdin, enter));
+            let (stdin, token, interrupt) = (stdin.clone(), token.clone(), interrupt.clone());
+            std::thread::spawn(move || serve_stdin(conn, &token, &stdin, enter, &|| interrupt.send()));
         }
     });
 
@@ -611,6 +687,7 @@ fn run(args: Args) -> Result<i32, String> {
                 let current = job.process_ids().into_iter().next();
                 if current.is_some() && current != followed {
                     followed = current;
+                    server_pid.store(current.unwrap_or(pid), std::sync::atomic::Ordering::SeqCst);
                     let info = RunnerInfo { pid: current.unwrap_or(pid), ..info.clone() };
                     let _ = write_json(&runner_file(&args.run_dir), &info);
                 }
@@ -697,7 +774,7 @@ mod tests {
         let stdin: std::sync::Arc<super::Stdin> = std::sync::Arc::new(std::sync::Mutex::new(Some(Box::new(sink.clone()))));
         let serve = |stdin: std::sync::Arc<super::Stdin>| {
             let (conn, _) = listener.accept().unwrap();
-            std::thread::spawn(move || super::serve_stdin(conn, "tok", &stdin, "\n"))
+            std::thread::spawn(move || super::serve_stdin(conn, "tok", &stdin, "\n", &|| Ok(())))
         };
 
         // 끝없는 첫 줄: 상한에서 끊고 닫는다
@@ -718,6 +795,53 @@ mod tests {
         drop(good);
         server.join().unwrap();
         assert_eq!(sink.0.lock().unwrap().as_slice(), b"say hi\n");
+    }
+
+    /// `토큰 interrupt`로 연 연결은 서버 stdin에 아무것도 쓰지 않고 인터럽트를 한 번 보내 결과를 한 줄로 답한다
+    #[test]
+    fn an_interrupt_connection_sends_ctrl_c_once_and_answers() {
+        use std::io::{BufRead, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let sink = Sink::default();
+        let stdin: std::sync::Arc<super::Stdin> = std::sync::Arc::new(std::sync::Mutex::new(Some(Box::new(sink.clone()))));
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let ask = |result: Result<(), String>| {
+            let mut client = std::net::TcpStream::connect(addr).unwrap();
+            let (conn, _) = listener.accept().unwrap();
+            let (stdin, calls) = (stdin.clone(), calls.clone());
+            let server = std::thread::spawn(move || {
+                super::serve_stdin(conn, "tok", &stdin, "\n", &|| {
+                    calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    result.clone()
+                })
+            });
+            client.write_all(format!("{}\nsay hi\n", saba_runner::interrupt_request("tok")).as_bytes()).unwrap();
+            let mut answer = String::new();
+            std::io::BufReader::new(client).read_line(&mut answer).unwrap();
+            server.join().unwrap();
+            answer
+        };
+        assert_eq!(ask(Ok(())), "ok\n");
+        assert_eq!(ask(Err("no console".into())), "error: no console\n");
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert!(sink.0.lock().unwrap().is_empty(), "the lines after an interrupt request never reach the server");
+    }
+
+    /// 파이프로 띄운 서버(unix)는 SIGINT를 받는다: 저장하고 끝내는 처리기가 돈다
+    #[cfg(unix)]
+    #[test]
+    fn a_piped_server_gets_sigint() {
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", "trap 'exit 7' INT; echo ready; while :; do sleep 0.05; done"])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut ready = String::new();
+        std::io::BufRead::read_line(&mut std::io::BufReader::new(child.stdout.take().unwrap()), &mut ready).unwrap();
+        let target = super::Interrupt::Pipe(std::sync::Arc::new(std::sync::atomic::AtomicU32::new(child.id())));
+        target.send().unwrap();
+        assert_eq!(child.wait().unwrap().code(), Some(7));
     }
 
     // 실제 PC: ConPTY가 처음 보낸 커서 위치 요청(줄 끝 없음)에 아무도 답하지 않아 팰월드가 출력 0줄로

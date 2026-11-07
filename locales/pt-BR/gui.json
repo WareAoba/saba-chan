@@ -424,7 +424,7 @@
     "quit_all_label": "Sair Tudo",
     "managed_warning_title": "⚠️ Servidores gerenciados em execução",
     "managed_warning_message": "{{count}} servidor(es) gerenciado(s) ainda em execução: {{names}}",
-    "managed_warning_detail": "Se o daemon for encerrado, as conexões do console com esses servidores serão perdidas e só poderão ser forçados a parar na próxima inicialização.\nTem certeza de que deseja sair?"
+    "managed_warning_detail": "Esses servidores continuam em execução. Quando o saba-chan iniciar de novo, ele se reconecta aos consoles deles. Enquanto estiver fechado, comandos, reinício automático e notificações do Discord não funcionam.\nTem certeza de que deseja sair?"
   },
   "modules": {
     "load_failed_toast": "Falha no carregamento do módulo: {{error}}",
@@ -1810,6 +1810,7 @@
     "source_web": "Saba-chan web",
     "source_remote": "PC remoto",
     "source_mcp": "Agente de IA",
+    "source_agent": "Agente de IA deste PC",
     "source_restart": "Reinício automático",
     "code_invalid_argument": "Um valor informado não era válido",
     "code_missing_argument": "Faltava um valor obrigatório",

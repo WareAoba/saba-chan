@@ -1,7 +1,7 @@
 //! RCON(Source RCON 프로토콜) 클라이언트 — 명령 경로의 마지막 단계
 //!
-//! 명령은 STDIN → REST → RCON 순서로 보낸다. RCON은 module.toml `[protocols] supported`에 `rcon`만 있고
-//! `stdin`·`rest`가 없는 모듈(정말 RCON만 받는 서버)에만 쓴다 (`ModuleMetadata::rcon_only_port`).
+//! 명령은 STDIN → REST → RCON 순서로 보낸다. RCON은 다른 명령 길이 없을 때만 쓴다: `[protocols] supported`에 `rcon`만
+//! 있는 모듈, 또는 `stdin`·`rcon`을 받는 모듈에서 관리형 시작을 끈(콘솔이 없는) 인스턴스 (`Supervisor::rcon_port_for`).
 //! 접속은 늘 127.0.0.1이다. 비밀번호는 데몬이 인스턴스마다 만들어 인스턴스 폴더의 `rcon.json`(주인만 읽기)에
 //! 두고, 모듈 config의 `rcon_port`·`rcon_password`로 넘겨 모듈이 게임 설정에 쓰게 한다.
 //! 비밀번호는 로그·오류·API 응답에 넣지 않는다.

@@ -59,15 +59,18 @@ impl std::fmt::Display for StopWarning {
 
 /// 이 설치본이 마지막인지. 제거 항목(레지스트리)과, 항목 없이 설치된 폴더 목록(CLI `install --dir`)을 함께 본다.
 /// 지우는 폴더는 목록에서 뺀다
-/// `~/.local/bin/saba-chan-cli`가 이 설치 폴더의 CLI를 가리키는 링크면 지운다 (다른 설치를 가리키면 둔다)
+/// `~/.local/bin/saba-chan-cli`·`saba-chan`이 이 설치 폴더의 CLI를 가리키는 링크면 지운다 (다른 설치를 가리키면 둔다)
 #[cfg(unix)]
 fn remove_cli_link(home: &Path, install_dir: &Path) -> bool {
-    let link = home.join(".local").join("bin").join("saba-chan-cli");
-    let Ok(target) = std::fs::read_link(&link) else { return false };
-    if !target.parent().is_some_and(|p| saba_chan_updater_lib::same_path(p, install_dir)) {
-        return false;
+    let mut removed = false;
+    for name in ["saba-chan-cli", "saba-chan"] {
+        let link = home.join(".local").join("bin").join(name);
+        let Ok(target) = std::fs::read_link(&link) else { continue };
+        if target.parent().is_some_and(|p| saba_chan_updater_lib::same_path(p, install_dir)) {
+            removed |= std::fs::remove_file(&link).is_ok();
+        }
     }
-    std::fs::remove_file(&link).is_ok()
+    removed
 }
 
 fn last_install(install_dir: Option<&Path>) -> bool {
@@ -182,6 +185,10 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
         #[cfg(unix)]
         if let Some(home) = std::env::var_os("HOME") {
             remove_cli_link(Path::new(&home), dir);
+        }
+        // Windows: 사용자 PATH의 명령 실행기 폴더 (`bin`)
+        if let Err(e) = crate::user_path::remove(dir) {
+            tracing::warn!("[Uninstall] Failed to remove the saba-chan command from PATH: {}", e);
         }
     }
 
@@ -414,9 +421,12 @@ async fn stop_saba_processes(install_dir: &Path) -> Vec<StopWarning> {
         ("Saba-chan", false), // 0.1.1 Electron GUI
         ("saba-chan-updater", false),
     ];
-    // 명령창 제거(`saba-chan-cli uninstall`)는 이 설치의 CLI 자신이 돌린다: 자기는 끄지 않는다
+    // 명령창 제거(`saba-chan-cli uninstall`)는 이 설치의 CLI 자신이 돌린다: 자기는 끄지 않는다.
+    // `saba-chan uninstall`이면 CLI를 띄운 실행기(`bin\saba-chan.exe`, 이름이 0.1.1 GUI와 같다)도 끄지 않는다
     let me = std::process::id();
-    let found: Vec<(u32, String)> = processes_in(install_dir, &TARGETS.map(|(n, _)| n)).into_iter().filter(|(pid, _)| *pid != me).collect();
+    let launcher = std::env::var("SABA_LAUNCHER_PID").ok().and_then(|p| p.parse::<u32>().ok());
+    let found: Vec<(u32, String)> =
+        processes_in(install_dir, &TARGETS.map(|(n, _)| n)).into_iter().filter(|(pid, _)| *pid != me && Some(*pid) != launcher).collect();
     // 이 설치의 데몬에게 서버 종료를 부탁하지 못했는데 러너가 떠 있으면 그 서버는 저장 없이 끊긴다
     if !asked && found.iter().any(|(_, n)| n.eq_ignore_ascii_case("saba-runner")) {
         not_stopped.push(StopWarning::DaemonUnanswered);
@@ -1255,6 +1265,10 @@ fn remove_install_dir(dir: &PathBuf, dedicated: bool) -> Vec<PathBuf> {
         let _ = remove_dir_robust(dir);
     } else {
         tracing::info!("[Uninstall] {:?} is not a dedicated install folder: removing Saba-chan files only", dir);
+        // 명령 실행기 폴더 (`bin\saba-chan.exe`): 실행기만 지우고, 폴더는 비었을 때만
+        let bin = dir.join(crate::user_path::BIN_DIR);
+        let _ = std::fs::remove_file(bin.join(format!("saba-chan{}", std::env::consts::EXE_SUFFIX)));
+        let _ = std::fs::remove_dir(&bin);
         for path in std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()) {
             if !is_ours(&path) {
                 continue;
@@ -1267,7 +1281,8 @@ fn remove_install_dir(dir: &PathBuf, dedicated: bool) -> Vec<PathBuf> {
         }
         let _ = std::fs::remove_dir(dir);
     }
-    let left = install_leftovers(dir, dedicated, std::env::current_exe().ok().as_deref());
+    let launcher = running_launcher(dir).map(|(_, exe)| exe);
+    let left = install_leftovers(dir, dedicated, std::env::current_exe().ok().as_deref(), launcher.as_deref());
     for path in &left {
         tracing::warn!("[Uninstall] Could not remove {:?}", path);
     }
@@ -1284,8 +1299,9 @@ fn is_ours(path: &Path) -> bool {
     if path.is_dir() { INSTALLED_DIRS.iter().any(|d| d.eq_ignore_ascii_case(&name)) } else { is_installed_entry(&name) }
 }
 
-/// 설치 폴더에 아직 남은 지울 항목: 전용 폴더면 전부, 아니면 사바쨩 항목만. `self_exe`는 뺀다
-fn install_leftovers(dir: &Path, dedicated: bool, self_exe: Option<&Path>) -> Vec<PathBuf> {
+/// 설치 폴더에 아직 남은 지울 항목: 전용 폴더면 전부, 아니면 사바쨩 항목만.
+/// `self_exe`와, 아직 떠 있는 실행기(`launcher`)가 든 폴더는 정리 스크립트가 지우므로 뺀다
+fn install_leftovers(dir: &Path, dedicated: bool, self_exe: Option<&Path>, launcher: Option<&Path>) -> Vec<PathBuf> {
     std::fs::read_dir(dir)
         .into_iter()
         .flatten()
@@ -1293,7 +1309,18 @@ fn install_leftovers(dir: &Path, dedicated: bool, self_exe: Option<&Path>) -> Ve
         .map(|e| e.path())
         .filter(|p| dedicated || is_ours(p))
         .filter(|p| !self_exe.is_some_and(|me| same_name(me, p)))
+        .filter(|p| !launcher.and_then(Path::parent).is_some_and(|bin| same_name(bin, p)))
         .collect()
+}
+
+/// `saba-chan uninstall`로 CLI를 띄우고 끝나기를 기다리는 실행기: (PID, `<설치>\bin\saba-chan.exe`).
+/// 유닉스 실행기는 CLI로 바뀌어(exec) 따로 남지 않는다
+fn running_launcher(install_dir: &Path) -> Option<(u32, PathBuf)> {
+    let pid = std::env::var("SABA_LAUNCHER_PID").ok()?.parse::<u32>().ok()?;
+    if pid == std::process::id() {
+        return None;
+    }
+    Some((pid, install_dir.join(crate::user_path::BIN_DIR).join(format!("saba-chan{}", std::env::consts::EXE_SUFFIX))))
 }
 
 /// 같은 파일 이름인지 (Windows 파일 이름은 대소문자를 가리지 않는다. 실행할 때 적은 이름이 그대로 `current_exe`에 남는다)
@@ -1461,8 +1488,29 @@ fn cleanup_script(
     dedicated: bool,
     parent: Option<&str>,
     held: &[(String, bool)],
+    launcher: Option<(u32, &str)>,
 ) -> String {
     let q = |p: &str| p.replace('%', "%%");
+    // `saba-chan uninstall`의 실행기는 CLI가 끝난 뒤에 끝난다: 그것도 기다렸다가 지우고, 빈 `bin`을 지운다
+    // (설치 폴더를 지우는 줄보다 먼저: 전용 폴더가 아니면 폴더는 비었을 때만 지운다)
+    let launcher_lines = match launcher {
+        Some((lpid, exe)) => {
+            let bin = exe.rsplit_once(['\\', '/']).map_or("", |(bin, _)| bin);
+            format!(
+                ":waitlauncher\r\n\
+                tasklist /FI \"PID eq {lpid}\" 2>nul | find \"{lpid}\" >nul\r\n\
+                if not errorlevel 1 (\r\n\
+                    timeout /t 1 /nobreak >nul\r\n\
+                    goto waitlauncher\r\n\
+                )\r\n\
+                del /f /q \"{exe}\" 2>nul\r\n\
+                rmdir \"{bin}\" 2>nul\r\n",
+                exe = q(exe),
+                bin = q(bin),
+            )
+        }
+        None => String::new(),
+    };
     // 제거기가 끝나야 풀리는 흔적 (`traces::held_by_self`: WebView 데이터 폴더, 기록 파일). `(경로, 폴더인가)`
     let extra_lines: String = held
         .iter()
@@ -1493,6 +1541,7 @@ fn cleanup_script(
             goto wait\r\n\
         )\r\n\
         del /f /q \"{self_exe}\"\r\n\
+        {launcher_lines}\
         {rmdir_line}\r\n\
         {parent_line}\r\n\
         {extra_lines}\
@@ -1519,6 +1568,9 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
         };
 
         let pid = std::process::id();
+        let launcher = install_dir
+            .and_then(|d| running_launcher(d))
+            .map(|(lpid, exe)| (lpid, exe.to_string_lossy().into_owned()));
         let script_path = std::env::temp_dir().join("saba-chan-cleanup.cmd");
         // cmd 명령줄에서는 `%`를 이스케이프할 수 없다. 이런 임시 폴더면 남은 파일 정리를 건너뛴다
         if script_path.to_string_lossy().contains('%') {
@@ -1536,6 +1588,7 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
                 .iter()
                 .map(|p| (p.to_string_lossy().into_owned(), p.is_dir()))
                 .collect::<Vec<_>>(),
+            launcher.as_ref().map(|(pid, exe)| (*pid, exe.as_str())),
         );
 
         // 스크립트 파일 작성
@@ -1662,8 +1715,14 @@ mod tests {
         assert!(bin.join("saba-chan-cli").symlink_metadata().is_ok());
         std::fs::remove_file(bin.join("saba-chan-cli")).unwrap();
         std::os::unix::fs::symlink(ours.path().join("saba-chan-cli"), bin.join("saba-chan-cli")).unwrap();
+        // 짧은 이름 `saba-chan`도 같은 규칙 (다른 설치를 가리키면 둔다)
+        std::os::unix::fs::symlink(ours.path().join("saba-chan-cli"), bin.join("saba-chan")).unwrap();
         assert!(remove_cli_link(home.path(), ours.path()));
         assert!(bin.join("saba-chan-cli").symlink_metadata().is_err());
+        assert!(bin.join("saba-chan").symlink_metadata().is_err());
+        std::os::unix::fs::symlink(other.path().join("saba-chan-cli"), bin.join("saba-chan")).unwrap();
+        assert!(!remove_cli_link(home.path(), ours.path()));
+        assert!(bin.join("saba-chan").symlink_metadata().is_ok());
     }
 
     /// 아무것도 정하지 않으면 설정과 인스턴스를 둘 다 남기고, 지울 것만 따로 고른다
@@ -1837,6 +1896,7 @@ mod tests {
                 ("C:\\Users\\a\\AppData\\Local\\com.saba-chan.installer".to_string(), true),
                 ("C:\\%TEMP%\\saba-chan-installer.log".to_string(), false),
             ],
+            None,
         );
         assert!(s.contains("del /f /q \"C:\\%%TEMP%%\\saba-chan-installer.log\" 2>nul"), "{s}");
         assert!(s.contains("if exist \"C:\\Users\\a\\AppData\\Local\\com.saba-chan.installer\" rmdir /s /q"), "{s}");
@@ -1846,16 +1906,23 @@ mod tests {
         // 스크립트 자신은 경로를 적지 않고 `%~f0`으로 지운다
         assert!(s.ends_with("(goto) 2>nul & del /f /q \"%~f0\"\r\n"));
         // 전용 폴더가 아니면 비었을 때만 지운다
-        let s = cleanup_script(7, "x.exe", Some("D:\\100%\\Saba"), false, None, &[]);
+        let s = cleanup_script(7, "x.exe", Some("D:\\100%\\Saba"), false, None, &[], None);
         assert!(s.contains("rmdir \"D:\\100%%\\Saba\" 2>nul"));
         assert!(!s.contains("/s /q \"D:"));
+        // `saba-chan uninstall`의 실행기는 CLI 뒤에 끝난다: 기다렸다 지우고 빈 bin을 지운 뒤에 설치 폴더를 지운다
+        let s = cleanup_script(7, "D:\\Saba\\saba-chan-cli.exe", Some("D:\\Saba"), false, None, &[], Some((9, "D:\\Saba\\bin\\saba-chan.exe")));
+        let wait = s.find("PID eq 9").expect("waits for the launcher");
+        let del = s.find("del /f /q \"D:\\Saba\\bin\\saba-chan.exe\"").expect("deletes the launcher");
+        let bin = s.find("rmdir \"D:\\Saba\\bin\" 2>nul").expect("removes the empty bin");
+        let root = s.find("rmdir \"D:\\Saba\" 2>nul").unwrap();
+        assert!(wait < del && del < bin && bin < root, "{s}");
     }
 
     // M10: 스크립트는 UTF-8로 쓴다. cmd가 경로를 읽기 전에 코드 페이지를 UTF-8로 바꿔야 한글 경로가 맞고,
     // 지연 확장을 꺼야 경로의 `!`가 펼쳐지지 않는다
     #[test]
     fn the_cleanup_script_reads_non_ascii_paths_as_utf8_without_delayed_expansion() {
-        let s = cleanup_script(7, "C:\\사바쨩!\\saba-chan-installer.exe", Some("C:\\사바쨩!"), true, None, &[]);
+        let s = cleanup_script(7, "C:\\사바쨩!\\saba-chan-installer.exe", Some("C:\\사바쨩!"), true, None, &[], None);
         let first_path = s.find("사바쨩").unwrap();
         let chcp = s.find("chcp 65001").expect("switches cmd to UTF-8");
         assert!(chcp < first_path);
@@ -1878,7 +1945,7 @@ mod tests {
         let pid = done.id();
         done.wait().unwrap();
         let script = root.join("정리.cmd");
-        let body = cleanup_script(pid, &exe.to_string_lossy(), Some(&dir.to_string_lossy()), true, None, &[]);
+        let body = cleanup_script(pid, &exe.to_string_lossy(), Some(&dir.to_string_lossy()), true, None, &[], None);
         std::fs::write(&script, body).unwrap();
 
         // 실제 제거기처럼 창 없는 콘솔(CREATE_NO_WINDOW)에서 돌려 `chcp 65001`이 먹는지까지 본다
@@ -1983,11 +2050,17 @@ mod tests {
             n
         };
         // 사용자 파일이 섞인 폴더에서는 사바쨩 항목만 남은 것으로 센다
-        assert_eq!(names(install_leftovers(&dir, false, Some(&me))), ["locales", "saba-core.exe"]);
+        assert_eq!(names(install_leftovers(&dir, false, Some(&me), None)), ["locales", "saba-core.exe"]);
         // 전용 폴더는 남은 것 전부
-        assert_eq!(names(install_leftovers(&dir, true, Some(&me))), ["locales", "notes.txt", "saba-core.exe"]);
+        assert_eq!(names(install_leftovers(&dir, true, Some(&me), None)), ["locales", "notes.txt", "saba-core.exe"]);
+        // 아직 떠 있는 실행기의 bin 폴더도 정리 스크립트가 지우므로 남은 것으로 세지 않는다
+        std::fs::create_dir_all(dir.join("bin")).unwrap();
+        let launcher = dir.join("bin").join("saba-chan.exe");
+        std::fs::write(&launcher, b"").unwrap();
+        assert_eq!(names(install_leftovers(&dir, true, Some(&me), Some(&launcher))), ["locales", "notes.txt", "saba-core.exe"]);
+        assert!(names(install_leftovers(&dir, true, Some(&me), None)).contains(&"bin".to_string()));
         std::fs::remove_dir_all(&dir).unwrap();
-        assert!(install_leftovers(&dir, true, Some(&me)).is_empty());
+        assert!(install_leftovers(&dir, true, Some(&me), None).is_empty());
     }
 
     // 감사 3: 전용 설치 폴더 안에 둔 서버 폴더는 폴더째 지우지 않는다 (사바쨩 항목만 지우고 서버는 남긴다)

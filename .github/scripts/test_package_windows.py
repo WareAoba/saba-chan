@@ -13,7 +13,7 @@ package_windows = importlib.util.module_from_spec(_spec)
 sys.modules["package_windows"] = package_windows
 _spec.loader.exec_module(package_windows)
 
-EXES = ("saba-core.exe", "saba-runner.exe", "saba-chan-cli.exe", "saba-chan-gui.exe", "saba-chan-installer.exe")
+EXES = ("saba-core.exe", "saba-runner.exe", "saba-chan-cli.exe", "saba-chan.exe", "saba-chan-gui.exe", "saba-chan-installer.exe")
 
 
 class WindowsAssets(unittest.TestCase):
@@ -29,6 +29,9 @@ class WindowsAssets(unittest.TestCase):
             with zipfile.ZipFile(d / "out" / "saba-core-windows-x64.zip") as zf:
                 self.assertEqual(sorted(zf.namelist()), [
                     "common_locales.json", "daemon_rcon.py", "i18n.py", "saba-core.exe", "saba-runner.exe"])
+            # 짧은 명령 실행기는 bin/ 아래: 설치 폴더 바로 아래의 Saba-chan.exe는 0.1.1 GUI 이름이다
+            with zipfile.ZipFile(d / "out" / "saba-chan-cli-windows-x64.zip") as zf:
+                self.assertEqual(sorted(zf.namelist()), ["bin/saba-chan.exe", "saba-chan-cli.exe"])
             with zipfile.ZipFile(d / "out" / "saba-chan-gui-windows-x64.zip") as zf:
                 self.assertEqual(zf.namelist(), ["saba-chan-gui.exe"])
             # 설치기는 zip이 아닌 exe 그대로: 소개 페이지 다운로드와 업데이트가 이 파일을 쓴다

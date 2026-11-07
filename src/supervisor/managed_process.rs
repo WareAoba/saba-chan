@@ -19,7 +19,7 @@ use regex::Regex;
 
 mod runner;
 pub use runner::{clear_run_dir, run_dir, runner_server_pid};
-pub use runner::{MemoryLimitAtStart, RunnerLaunch};
+pub use runner::{MemoryLimitAtStart, RunnerLaunch, RunnerMissing};
 pub use runner::{latest_session_log, runner_binary, sessions_dir, DEFAULT_LOG_SESSIONS};
 
 /// Console log file name within the instance's logs directory.
@@ -267,6 +267,8 @@ pub struct ManagedProcess {
     pub log_follower: bool,
     /// saba-runner가 띄웠으면 러너 PID. 러너를 죽이면 러너의 Job Object가 서버 트리 전체를 끝낸다
     pub runner_pid: Option<u32>,
+    /// saba-runner의 stdin 포트와 토큰. 인터럽트(Ctrl+C)를 부탁할 때 쓴다 (`interrupt`)
+    runner_control: Option<(u16, String)>,
 }
 
 /// 서버 프로세스가 끝난 방식
@@ -339,6 +341,25 @@ impl ManagedProcess {
             server.and(runner)
         })
         .await?
+    }
+
+    /// 서버에 Ctrl+C(unix는 SIGINT)를 한 번 보낸다. 저장하고 끝내는 처리기가 Ctrl+C에만 붙은 서버를 위한 정지 길이다
+    /// (`[config] stop_signal = "interrupt"`). saba-runner가 서버 콘솔에 보낸다(`saba_runner::INTERRUPT`).
+    /// 러너 없이 띄운 서버는 unix에서만 직접 보내고, Windows에서는 보낼 길이 없어 오류다
+    pub async fn interrupt(&self) -> Result<()> {
+        if let Some((port, token)) = &self.runner_control {
+            return runner::ask_interrupt(*port, token).await;
+        }
+        #[cfg(unix)]
+        {
+            let pid = i32::try_from(self.pid).map_err(|_| anyhow::anyhow!("bad server PID {}", self.pid))?;
+            if unsafe { nix::libc::kill(pid, nix::libc::SIGINT) } != 0 {
+                anyhow::bail!("could not send SIGINT: {}", std::io::Error::last_os_error());
+            }
+            Ok(())
+        }
+        #[cfg(not(unix))]
+        anyhow::bail!("the server was not started through saba-runner; Ctrl+C cannot be sent")
     }
 
     /// Spawn a new managed process.
@@ -507,6 +528,7 @@ impl ManagedProcess {
             working_dir: Some(PathBuf::from(working_dir)),
             log_follower: false,
             runner_pid: None,
+            runner_control: None,
         })
     }
 
@@ -695,6 +717,7 @@ impl ManagedProcess {
             working_dir: Some(working_dir.to_path_buf()),
             log_follower: true,
             runner_pid: None,
+            runner_control: None,
         })
     }
 
@@ -813,6 +836,7 @@ impl ManagedProcess {
             working_dir: None,
             log_follower: false,
             runner_pid: None,
+            runner_control: None,
         }
     }
 }

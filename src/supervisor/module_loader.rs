@@ -43,6 +43,9 @@ pub struct ModuleMetadata {
     /// 게임 서버마다 종료 시간이 다르므로 모듈별로 설정.
     #[serde(default)]
     pub stop_timeout: Option<u64>,  // config.stop_timeout
+    /// [config] stop_signal — 일반 정지에 콘솔 명령 대신 보낼 신호 (`interrupt` = Ctrl+C)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_signal: Option<StopSignal>,
     /// [config] announce_command — 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나). 예약 재시작 예고·공지(A3)용
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub announce_command: Option<String>,
@@ -338,6 +341,14 @@ impl ModuleMetadata {
         let supported = self.protocols_supported.as_deref()?;
         let only_rcon = supported.iter().any(|p| p == "rcon") && !supported.iter().any(|p| p == "stdin" || p == "rest");
         self.rcon_port.filter(|p| only_rcon && *p > 0)
+    }
+
+    /// 콘솔 stdin이 없는 인스턴스(관리형 시작을 끔)가 명령을 RCON으로 받는 모듈이면 그 기본 RCON 포트.
+    /// `supported`에 rcon이 있고 rest가 없을 때다 (REST는 콘솔 없이도 쓸 수 있다). RCON만 받는 모듈도 포함한다
+    pub fn rcon_port_without_console(&self) -> Option<u16> {
+        let supported = self.protocols_supported.as_deref()?;
+        let rcon = supported.iter().any(|p| p == "rcon") && !supported.iter().any(|p| p == "rest");
+        self.rcon_port.filter(|p| rcon && *p > 0)
     }
 
     /// 설정 필드의 기본값을 가져옵니다
@@ -952,6 +963,14 @@ pub enum ConsoleMode {
     Pty,
 }
 
+/// 일반 정지 때 서버에 보내는 신호 (`[config] stop_signal`). 없으면 콘솔에 `stop_command`를 보낸다
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum StopSignal {
+    /// Ctrl+C (unix는 SIGINT). 저장 처리기가 Ctrl+C에만 붙은 서버용
+    Interrupt,
+}
+
 impl ConsoleMode {
     /// saba-runner `--console` 값
     pub fn as_arg(self) -> &'static str {
@@ -994,6 +1013,9 @@ struct ConfigSection {
     /// Graceful stop 타임아웃 (초). 예: Minecraft=30, ARK=120
     #[serde(default)]
     stop_timeout: Option<u64>,
+    /// 일반 정지에 콘솔 명령 대신 보낼 신호. `interrupt`면 Ctrl+C(unix는 SIGINT)를 보내고 서버가 끝나기를 기다린다
+    #[serde(default)]
+    stop_signal: Option<StopSignal>,
     /// 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나)
     #[serde(default)]
     announce_command: Option<String>,
@@ -1438,6 +1460,7 @@ impl ModuleToml {
             server_executable: self.config.as_ref().and_then(|c| c.server_executable.clone()),
             stop_command: self.config.as_ref().and_then(|c| c.stop_command.clone()),
             stop_timeout: self.config.as_ref().and_then(|c| c.stop_timeout),
+            stop_signal: self.config.as_ref().and_then(|c| c.stop_signal),
             announce_command: self.config.as_ref().and_then(|c| c.announce_command.clone()),
             kick_command: self.config.as_ref().and_then(|c| c.kick_command.clone()),
             backup: self.backup,
@@ -1953,6 +1976,11 @@ impl ModuleToml {
             let only_rcon = p.supported.as_ref().is_some_and(|s| s.iter().any(|v| v == "rcon") && !s.iter().any(|v| v == "stdin" || v == "rest"));
             if only_rcon && p.rcon_port.unwrap_or(0) == 0 {
                 problems.push("protocols: rcon_port is required when rcon is the only protocol".to_string());
+            }
+            // stdin과 함께 쓰는 rcon은 관리형 시작을 끈 서버의 명령 길이다: 포트가 있어야 데몬이 접속 정보를 만든다
+            let console_rcon = p.supported.as_ref().is_some_and(|s| s.iter().any(|v| v == "rcon") && s.iter().any(|v| v == "stdin") && !s.iter().any(|v| v == "rest"));
+            if console_rcon && p.rcon_port.unwrap_or(0) == 0 {
+                problems.push("protocols: rcon_port is required when rcon is the command path without a console".to_string());
             }
         }
         // 공지·저장 명령은 [commands.fields]의 이름을 가리킨다
@@ -2663,6 +2691,18 @@ interaction_mode = "commands"
         assert_eq!(with("supported = [\"rcon\"]\nrcon_port = 27015").unwrap().rcon_only_port(), Some(27015));
         assert_eq!(with("supported = [\"stdin\", \"rcon\"]\nrcon_port = 27015").unwrap().rcon_only_port(), None);
         let err = with("supported = [\"rcon\"]").unwrap_err().to_string();
+        assert!(err.contains("rcon_port"), "{err}");
+    }
+
+    /// 관리형 시작을 끄면 콘솔 stdin이 없다: stdin과 rcon을 함께 받는 모듈은 그때 RCON이 명령 길이다 (사용자 정의 2026-11-08)
+    #[test]
+    fn stdin_modules_with_rcon_fall_back_to_rcon_without_a_console() {
+        let with = |protocols: &str| parse_module_toml(&format!("[module]\nschema_version = 1\nname = \"g\"\nversion = \"1\"\nentry = \"lifecycle.py\"\n[protocols]\n{protocols}\n"));
+        assert_eq!(with("supported = [\"stdin\", \"rcon\"]\nrcon_port = 25575").unwrap().rcon_port_without_console(), Some(25575));
+        assert_eq!(with("supported = [\"rcon\"]\nrcon_port = 27015").unwrap().rcon_port_without_console(), Some(27015));
+        assert_eq!(with("supported = [\"stdin\", \"rest\", \"rcon\"]\nrcon_port = 25575").unwrap().rcon_port_without_console(), None, "REST works without a console");
+        assert_eq!(with("supported = [\"stdin\"]").unwrap().rcon_port_without_console(), None);
+        let err = with("supported = [\"stdin\", \"rcon\"]").unwrap_err().to_string();
         assert!(err.contains("rcon_port"), "{err}");
     }
 

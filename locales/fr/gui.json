@@ -424,7 +424,7 @@
     "quit_all_label": "Quitter complètement",
     "managed_warning_title": "⚠️ Serveurs gérés en cours d'exécution",
     "managed_warning_message": "{{count}} serveur(s) géré(s) sont encore en cours d'exécution : {{names}}",
-    "managed_warning_detail": "Si le daemon s'arrête, les connexions console à ces serveurs seront perdues et ne pourront être arrêtés que de force au prochain lancement.\nÊtes-vous sûr de vouloir quitter ?"
+    "managed_warning_detail": "Ces serveurs continuent de tourner. Au prochain lancement, saba-chan se reconnecte à leurs consoles. Tant qu'il est arrêté, les commandes, le redémarrage automatique et les notifications Discord ne fonctionnent pas.\nÊtes-vous sûr de vouloir quitter ?"
   },
   "modules": {
     "load_failed_toast": "Échec du chargement du module: {{error}}",
@@ -1810,6 +1810,7 @@
     "source_web": "Web Saba-chan",
     "source_remote": "PC distant",
     "source_mcp": "Agent IA",
+    "source_agent": "Agent IA de ce PC",
     "source_restart": "Redémarrage auto",
     "code_invalid_argument": "Une valeur saisie n'était pas valide",
     "code_missing_argument": "Une valeur obligatoire manquait",

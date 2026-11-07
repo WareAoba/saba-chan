@@ -9,7 +9,7 @@
 #   2. 받은 CLI로 `saba-chan-cli install`을 돌린다. 나머지(데몬·업데이터·GUI·모듈)는 CLI가 받고,
 #      서명된 manifest를 번들 공개키로 검증한 뒤 설치한다 (창 인스톨러와 같은 saba-chan-installer-core).
 #      화면(DISPLAY·WAYLAND_DISPLAY)이 있으면 GUI까지 든 데스크톱 구성, 없으면 헤드리스 구성이다 (--gui·--no-gui로 정한다)
-#   3. CLI를 ~/.local/bin/saba-chan-cli로 링크한다. 헤드리스면 systemd 사용자 서비스(saba-chan.service)로 데몬을 켜고,
+#   3. CLI를 ~/.local/bin/saba-chan(짧은 이름)과 saba-chan-cli로 링크한다. 헤드리스면 systemd 사용자 서비스(saba-chan.service)로 데몬을 켜고,
 #      데스크톱이면 앱 메뉴에 사바쨩을 넣고(CLI 설치가 한다) GUI를 띄운다 (GUI가 데몬을 켠다. Windows 데스크톱 설치와 같다)
 #      맥은 ~/Applications/Saba-chan.app에 설치하고(CLI 설치가 앱 묶음을 만든다) 그 앱을 연다
 #
@@ -149,10 +149,11 @@ CLI="$DIR/saba-chan-cli"
 [ -x "$CLI" ] || die "설치 폴더에 CLI가 없어요: $DIR" "No CLI in the install folder: $DIR"
 mkdir -p "$HOME/.local/bin"
 ln -sf "$CLI" "$HOME/.local/bin/saba-chan-cli"
+ln -sf "$CLI" "$HOME/.local/bin/saba-chan"
 case ":$PATH:" in
     *":$HOME/.local/bin:"*) ;;
-    *) say "saba-chan-cli는 ~/.local/bin에 있어요. 이 폴더를 셸 설정의 PATH에 넣으면 이름만으로 쓸 수 있어요." \
-        "saba-chan-cli is in ~/.local/bin. Add that folder to PATH in your shell profile to run it by name." ;;
+    *) say "saba-chan은 ~/.local/bin에 있어요. 이 폴더를 셸 설정의 PATH에 넣으면 이름만으로 쓸 수 있어요." \
+        "saba-chan is in ~/.local/bin. Add that folder to PATH in your shell profile to run it by name." ;;
 esac
 
 # 데스크톱 구성: GUI가 데몬을 띄운다. GUI가 쓰는 시스템 라이브러리(WebKitGTK)가 없으면 설치 명령만 알린다
@@ -208,7 +209,7 @@ fi
 
 case ":$PATH:" in
     *":$HOME/.local/bin:"*) ;;
-    *) say "~/.local/bin을 PATH에 넣으면 어디서든 saba-chan-cli를 쓸 수 있어요." \
-        "Add ~/.local/bin to PATH to run saba-chan-cli from anywhere." ;;
+    *) say "~/.local/bin을 PATH에 넣으면 어디서든 saba-chan을 쓸 수 있어요." \
+        "Add ~/.local/bin to PATH to run saba-chan from anywhere." ;;
 esac
-say "설치를 마쳤어요. saba-chan-cli 로 시작해 보세요." "Done. Try saba-chan-cli."
+say "설치를 마쳤어요. saba-chan 으로 시작해 보세요." "Done. Try saba-chan."

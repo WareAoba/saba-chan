@@ -424,7 +424,7 @@
     "quit_all_label": "全部結束",
     "managed_warning_title": "⚠️ 託管伺服器正在執行",
     "managed_warning_message": "{{count}} 個託管伺服器仍在執行：{{names}}",
-    "managed_warning_detail": "如果守護程式關閉，這些伺服器的主控台連線將遺失，下次啟動時只能強制終止。\n確定要結束嗎？"
+    "managed_warning_detail": "這些伺服器會繼續執行。再次啟動 saba-chan 時會重新連線它們的主控台。關閉期間無法使用指令、自動重新啟動和 Discord 通知。\n確定要結束嗎？"
   },
   "modules": {
     "load_failed_toast": "模組載入失敗：{{error}}",
@@ -1810,6 +1810,7 @@
     "source_web": "Saba-chan 網頁",
     "source_remote": "遠端電腦",
     "source_mcp": "AI 代理",
+    "source_agent": "此電腦上的 AI 代理",
     "source_restart": "自動重新啟動",
     "code_invalid_argument": "輸入的值不正確",
     "code_missing_argument": "缺少必要的值",

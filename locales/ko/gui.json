@@ -422,9 +422,9 @@
     "confirm_detail": "인터페이스만 종료: 창만 닫고 데몬은 계속 실행해요 (다시 열면 자동으로 다시 연결해요)\n완전히 종료: 데몬까지 모두 종료해요",
     "exit_interface_label": "인터페이스만 종료",
     "quit_all_label": "완전히 종료",
-    "managed_warning_title": "⚠️ 관리 모드 서버 실행 중",
-    "managed_warning_message": "{{count}}개의 관리 모드 서버가 실행 중이에요: {{names}}",
-    "managed_warning_detail": "데몬이 종료되면 이 서버들의 콘솔 연결이 끊어지고, 다음 실행 시 강제 종료만 가능해요.\n정말로 종료할까요?"
+    "managed_warning_title": "⚠️ 관리형 시작 서버 실행 중",
+    "managed_warning_message": "관리형으로 시작한 서버 {{count}}개가 실행 중이에요: {{names}}",
+    "managed_warning_detail": "이 서버들은 계속 실행돼요. 사바쨩을 다시 켜면 콘솔에 다시 연결돼요. 꺼져 있는 동안에는 명령·자동 재시작·디스코드 알림을 쓸 수 없어요.\n정말로 종료할까요?"
   },
   "modules": {
     "load_failed_toast": "모듈 로드 실패: {{error}}",
@@ -1810,6 +1810,7 @@
     "source_web": "사바쨩 웹",
     "source_remote": "원격 PC",
     "source_mcp": "AI 에이전트",
+    "source_agent": "이 PC의 AI 에이전트",
     "source_restart": "자동 재시작",
     "code_invalid_argument": "입력한 값이 맞지 않아요",
     "code_missing_argument": "필요한 값이 빠졌어요",

@@ -424,7 +424,7 @@
     "quit_all_label": "全部退出",
     "managed_warning_title": "⚠️ 托管服务器正在运行",
     "managed_warning_message": "{{count}} 个托管服务器仍在运行：{{names}}",
-    "managed_warning_detail": "如果守护程序关闭，这些服务器的控制台连接将丢失，下次启动时只能强制终止。\n确定要退出吗？"
+    "managed_warning_detail": "这些服务器会继续运行。再次启动 saba-chan 时会重新连接它们的控制台。关闭期间无法使用命令、自动重启和 Discord 通知。\n确定要退出吗？"
   },
   "modules": {
     "load_failed_toast": "模块加载失败：{{error}}",
@@ -1810,6 +1810,7 @@
     "source_web": "Saba-chan 网页",
     "source_remote": "远程电脑",
     "source_mcp": "AI 智能体",
+    "source_agent": "此电脑上的 AI 代理",
     "source_restart": "自动重启",
     "code_invalid_argument": "输入的值不正确",
     "code_missing_argument": "缺少必需的值",

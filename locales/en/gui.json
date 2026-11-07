@@ -424,7 +424,7 @@
     "quit_all_label": "Quit All",
     "managed_warning_title": "⚠️ Managed Servers Running",
     "managed_warning_message": "{{count}} managed server(s) are still running: {{names}}",
-    "managed_warning_detail": "If the daemon shuts down, console connections to these servers will be lost and can only be force-killed on next launch.\nAre you sure you want to quit?"
+    "managed_warning_detail": "These servers keep running. When saba-chan starts again, it reconnects to their consoles. While it is off, commands, auto restart and Discord notifications do not work.\nAre you sure you want to quit?"
   },
   "modules": {
     "load_failed_toast": "Module load failed: {{error}}",
@@ -1810,6 +1810,7 @@
     "source_web": "Saba-chan web",
     "source_remote": "Remote PC",
     "source_mcp": "AI agent",
+    "source_agent": "AI agent on this PC",
     "source_restart": "Auto restart",
     "code_invalid_argument": "An input value wasn't valid",
     "code_missing_argument": "A required value was missing",

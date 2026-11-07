@@ -19,7 +19,7 @@ export interface AuditEntry {
     guildName?: string;
 }
 
-const SOURCES = ['gui', 'cli', 'api', 'discord', 'chatbot', 'schedule', 'daemon', 'web', 'remote', 'mcp', 'restart'];
+const SOURCES = ['gui', 'cli', 'api', 'discord', 'chatbot', 'schedule', 'daemon', 'web', 'remote', 'mcp', 'agent', 'restart'];
 const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin', 'backup', 'restore', 'remote', 'crash'];
 export const PERIODS = ['all', 'today', '7d', '30d', 'custom'];
 const DAYS_BACK: Record<string, number> = { today: 0, '7d': 6, '30d': 29 }; // 오늘을 포함해 며칠

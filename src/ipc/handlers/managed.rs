@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use super::super::IPCServer;
 use crate::supervisor::Supervisor;
 
-/// 관리 시작 (stdin/stdout을 잡는다). `POST /api/instance/:id/start`가 고르면 부른다 (감사는 그쪽이 남긴다)
+/// 관리형 시작 (saba-runner가 콘솔 stdin/stdout을 잡는다). `POST /api/instance/:id/start`가 고르면 부른다 (감사는 그쪽이 남긴다)
 pub async fn start_managed_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
@@ -60,6 +60,15 @@ pub async fn start_managed_handler(
                 (
                     StatusCode::UNPROCESSABLE_ENTITY,
                     Json(json!({ "success": false, "error": message, "error_code": "memory_limit_reached", "limit_mb": hit.limit_mb })),
+                )
+                    .into_response()
+            }
+            None if e.downcast_ref::<crate::supervisor::managed_process::RunnerMissing>().is_some() => {
+                let language = state.config_store.ui_language().await;
+                let message = crate::chat::i18n::Catalog::for_language(&language).t("errors.runner_missing", &[]);
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    Json(json!({ "success": false, "error": message, "error_code": "runner_missing" })),
                 )
                     .into_response()
             }
