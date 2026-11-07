@@ -30,7 +30,8 @@ files = ["Cargo.toml", "runner/Cargo.toml"]
 
 [components.cli]
 version = "0.1.13"
-exes = ["saba-chan-cli.exe"]
+# saba-chan.exe는 짧은 명령 실행기다. zip 안 `bin/`에 들고, 설치기가 그 폴더를 사용자 PATH에 넣는다
+exes = ["saba-chan-cli.exe", "saba-chan.exe"]
 asset = "saba-chan-cli-{platform}.zip"
 install_dir = "."
 files = ["saba-chan-cli/Cargo.toml"]

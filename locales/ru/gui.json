@@ -1761,6 +1761,7 @@
     "source_web": "Saba-chan веб",
     "source_remote": "Удалённый ПК",
     "source_mcp": "ИИ-агент",
+    "source_agent": "ИИ-агент на этом ПК",
     "source_restart": "Автоперезапуск",
     "code_invalid_argument": "Введено неверное значение",
     "code_missing_argument": "Не хватало обязательного значения",

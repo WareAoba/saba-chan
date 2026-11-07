@@ -1011,7 +1011,12 @@
       "bot.clear": "チャンネルの最近のメッセージを削除します(ピン留めメッセージ・サバちゃんのパネルは残ります)。先に確認します",
       "bot.mute": "メンバーのチャット・リアクション・音声を止めます: 期間(10m, 1h, 7d, 最大 28 日)、forever、解除は off",
       "bot.big-emoji": "Discordサーバーの絵文字アップスケール(カスタム絵文字だけのメッセージを大きく表示)。オプションなしで表示",
-      "config.net-trace": "ポート・サーバー別ネットワーク(詳細、Windows)の権限: 動作なしで現在の状態、grantはデーモンPCで管理者の確認を一度表示して権限を付与、revokeは元に戻します。オンにするには config set systemMonitorNetTrace=on"
+      "config.net-trace": "ポート・サーバー別ネットワーク(詳細、Windows)の権限: 動作なしで現在の状態、grantはデーモンPCで管理者の確認を一度表示して権限を付与、revokeは元に戻します。オンにするには config set systemMonitorNetTrace=on",
+      "mcp": "このPCのAIエージェント(Claude Code・Codex)がすべてのコマンドを使えるローカルMCPサーバー(stdin/stdout)",
+      "agent": "このPCのAIエージェントにローカルMCP(`mcp`)を登録します",
+      "agent.link": "Claude CodeとCodexにサバちゃんを追加します(どちらか選ばなければ両方)",
+      "agent.unlink": "Claude CodeとCodexからサバちゃんを外します",
+      "agent.status": "このPCでサバちゃんが入っているエージェント"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -1230,7 +1235,11 @@
       "bot.sleep-mode.no_block": "寝ている間も何の機能も止めない",
       "bot.big-emoji.on": "絵文字アップスケールをオン",
       "bot.big-emoji.off": "絵文字アップスケールをオフ",
-      "config.net-trace.action": "grant(付与)またはrevoke(戻す)。なければ現在の状態"
+      "config.net-trace.action": "grant(付与)またはrevoke(戻す)。なければ現在の状態",
+      "agent.link.claude": "Claude Codeのみ",
+      "agent.link.codex": "Codexのみ",
+      "agent.unlink.claude": "Claude Codeのみ",
+      "agent.unlink.codex": "Codexのみ"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },
@@ -1777,5 +1786,15 @@
       "cgnat": "プロバイダーが1つのグローバルIPを複数の家庭で共有しているため、ポート開放では開けません。プロバイダーにグローバルIPを依頼するか、TailscaleなどのVPNを使ってください。",
       "unknown": "起動中のサーバーのUDPポートと、他のプログラムが使っているポートは確認できません。サーバーを停止してからもう一度確認してください。"
     }
+  },
+  "agent": {
+    "linked": "✓ {{agent}}にサバちゃんを追加しました",
+    "unlinked": "✓ {{agent}}からサバちゃんを外しました",
+    "not_installed": "· {{agent}}はこのPCにありません",
+    "failed": "✗ {{agent}}: {{error}}",
+    "restart_hint": "エージェントを開き直すとサバちゃんのツールが見えます。",
+    "some_failed": "一部のエージェントを変更できませんでした",
+    "is_linked": "✓ {{agent}}: サバちゃんが入っています",
+    "is_not_linked": "· {{agent}}: サバちゃんがありません (saba-chan agent link)"
   }
 }

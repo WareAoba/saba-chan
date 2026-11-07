@@ -1761,6 +1761,7 @@
     "source_web": "사바쨩 웹",
     "source_remote": "원격 PC",
     "source_mcp": "AI 에이전트",
+    "source_agent": "이 PC의 AI 에이전트",
     "source_restart": "자동 재시작",
     "code_invalid_argument": "입력한 값이 맞지 않아요",
     "code_missing_argument": "필요한 값이 빠졌어요",

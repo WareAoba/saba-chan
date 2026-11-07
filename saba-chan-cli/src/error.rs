@@ -9,7 +9,7 @@ use std::fmt;
 pub const EXIT_CODES: &[(i32, &[&str])] = &[
     (0, &[]),
     (1, &["failed", "partial"]),
-    (2, &["usage", "ambiguous"]),
+    (2, &["usage", "ambiguous", "needs_confirm"]),
     (3, &["daemon_unreachable"]),
     (4, &["not_found"]),
     (130, &["cancelled"]),
@@ -42,6 +42,9 @@ pub enum CliError {
     },
     /// 입력이 모자라거나 틀렸다
     Usage(String),
+    /// 확인 질문을 물을 수 없다 (비대화형). 사람에게 물어 동의를 받았으면 같은 명령에 `--yes`를 붙인다.
+    /// `question`은 묻던 말 (로컬 에이전트가 사람에게 그대로 묻는다, `mcp`)
+    NeedsConfirm { message: String, question: String },
     Cancelled,
     Failed(String),
     /// 일부만 됐다. `data`는 JSON 출력에 그대로 싣는 결과 (`{updated, failed}` 등)
@@ -56,7 +59,7 @@ impl CliError {
         match self {
             CliError::DaemonDown { .. } => 3,
             CliError::NotFound { .. } => 4,
-            CliError::Usage(_) | CliError::Ambiguous { .. } => 2,
+            CliError::Usage(_) | CliError::Ambiguous { .. } | CliError::NeedsConfirm { .. } => 2,
             CliError::Cancelled => 130,
             CliError::Api { .. } | CliError::Failed(_) | CliError::Partial { .. } => 1,
         }
@@ -69,6 +72,7 @@ impl CliError {
             CliError::NotFound { .. } => "not_found".into(),
             CliError::Ambiguous { .. } => "ambiguous".into(),
             CliError::Usage(_) => "usage".into(),
+            CliError::NeedsConfirm { .. } => "needs_confirm".into(),
             CliError::Cancelled => "cancelled".into(),
             CliError::Failed(_) => "failed".into(),
             CliError::Partial { .. } => "partial".into(),
@@ -105,6 +109,7 @@ impl CliError {
             }
             CliError::NotFound { suggestions, .. } => v["suggestions"] = json!(suggestions),
             CliError::Ambiguous { candidates, .. } => v["candidates"] = json!(candidates),
+            CliError::NeedsConfirm { question, .. } => v["question"] = json!(question),
             CliError::Partial { data, .. } => {
                 for (k, x) in data.as_object().into_iter().flatten() {
                     v[k] = x.clone();
@@ -303,7 +308,9 @@ impl fmt::Display for CliError {
             CliError::Api { message, .. } => write!(f, "{}", message),
             CliError::NotFound { what, query, .. } => write!(f, "{}", t!("err.not_found", what = what, query = query)),
             CliError::Ambiguous { what, query, .. } => write!(f, "{}", t!("err.ambiguous", what = what, query = query)),
-            CliError::Usage(m) | CliError::Failed(m) | CliError::Partial { message: m, .. } => write!(f, "{}", m),
+            CliError::Usage(m) | CliError::Failed(m) | CliError::Partial { message: m, .. } | CliError::NeedsConfirm { message: m, .. } => {
+                write!(f, "{}", m)
+            }
             CliError::Cancelled => write!(f, "{}", t!("err.cancelled")),
         }
     }
@@ -425,6 +432,7 @@ mod tests {
             CliError::NotFound { what: String::new(), query: String::new(), suggestions: vec![] },
             CliError::Ambiguous { what: String::new(), query: String::new(), candidates: vec![] },
             CliError::Usage(String::new()),
+            CliError::NeedsConfirm { message: String::new(), question: String::new() },
             CliError::Cancelled,
             CliError::Failed(String::new()),
             CliError::Partial { message: String::new(), data: json!({}) },

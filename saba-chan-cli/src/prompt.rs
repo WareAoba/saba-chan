@@ -83,7 +83,7 @@ impl Prompt {
             return Ok(true);
         }
         if !self.enabled {
-            return Err(CliError::Usage(t!("prompt.needs_yes", question = question)).into());
+            return Err(CliError::NeedsConfirm { message: t!("prompt.needs_yes", question = question), question: question.to_string() }.into());
         }
         if let Some(answer) = ask_with(|a| a.confirm(question, default)) {
             return answer.ok_or_else(|| CliError::Cancelled.into());
@@ -224,6 +224,22 @@ mod tests {
         fn secret(&self, _question: &str) -> Option<String> {
             Some("s3cret".into())
         }
+    }
+
+    /// 물을 수 없는 확인 질문은 `needs_confirm`으로 끝나고 묻던 말을 싣는다 (로컬 MCP가 사람에게 그대로 묻는다)
+    #[test]
+    fn an_unaskable_confirm_carries_its_question() {
+        let ask = Prompt { enabled: false, yes: false };
+        let err = ask.ensure("Stop survival?").unwrap_err();
+        match err.downcast_ref::<CliError>() {
+            Some(e @ CliError::NeedsConfirm { question, .. }) => {
+                assert_eq!(question, "Stop survival?");
+                assert_eq!((e.code().as_str(), e.exit_code()), ("needs_confirm", 2));
+                assert_eq!(e.to_json()["question"], "Stop survival?");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(Prompt { enabled: false, yes: true }.ensure("Stop survival?").is_ok());
     }
 
     /// 사람이 직접 하는 동의는 `--yes`로 대신하지 않는다: 물을 수 없으면 터미널에서 하라는 오류

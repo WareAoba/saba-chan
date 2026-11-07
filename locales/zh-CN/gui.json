@@ -1761,6 +1761,7 @@
     "source_web": "Saba-chan 网页",
     "source_remote": "远程电脑",
     "source_mcp": "AI 智能体",
+    "source_agent": "此电脑上的 AI 代理",
     "source_restart": "自动重启",
     "code_invalid_argument": "输入的值不正确",
     "code_missing_argument": "缺少必需的值",

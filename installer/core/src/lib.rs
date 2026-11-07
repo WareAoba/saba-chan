@@ -10,6 +10,7 @@ pub mod runtime_bootstrap;
 pub mod shortcuts;
 pub mod traces;
 pub mod uninstall;
+pub mod user_path;
 
 pub use release::VerifiedRelease;
 use saba_chan_updater_lib::component_dirs;
@@ -497,6 +498,13 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
                 install_dir.display()
             )),
         }
+    }
+
+    // 짧은 명령 `saba-chan`: Windows는 설치 폴더의 `bin`(실행기 하나)을 사용자 PATH에 넣는다. 리눅스는 install.sh가 링크를 만든다
+    match user_path::add(&install_dir) {
+        Ok(true) => tracing::info!("[Install] Added {} to the user PATH", install_dir.join(user_path::BIN_DIR).display()),
+        Ok(false) => {}
+        Err(e) => warn(format!("The saba-chan command was not added to PATH: {}", e)),
     }
 
     // 맥: 바로가기 대신 앱 묶음(`~/Applications/Saba-chan.app`)의 묶음 정보·아이콘을 제자리에 놓는다.
