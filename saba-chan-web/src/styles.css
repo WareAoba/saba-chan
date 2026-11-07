@@ -1744,7 +1744,7 @@ textarea {
     font-size: 12px;
     font-weight: 700;
 }
-/* 휴대폰: 칸이 너무 좁아지므로 위가 높은 레벨인 세로 계단으로 쌓고, 칸마다 높이를 제한한다 */
+/* 휴대폰: 칸이 너무 좁아지므로 위가 높은 레벨이 되게 같은 폭의 카드로 세로로 쌓고(들여쓰기 없음, 멤버 레벨 칸과 같다), 칸마다 높이를 제한한다 */
 @media (max-width: 560px) {
     .stairs {
         display: flex;
@@ -1752,10 +1752,8 @@ textarea {
         height: auto;
     }
     .stair {
-        border-top: 0;
-        border-left: 3px solid var(--accent);
+        border: 1px solid var(--line);
         border-radius: 12px;
-        margin-left: calc(min(var(--step), 6) * 8px);
     }
     .stair-chips {
         max-height: 220px;
