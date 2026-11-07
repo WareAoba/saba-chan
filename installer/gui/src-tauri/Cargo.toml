@@ -16,7 +16,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 # 설치기가 된다: 화면 없는 리눅스 서버에 GTK·WebKit 없이 들어간다 (`cargo build -p saba-chan-installer --no-default-features`)
 [features]
 default = ["window"]
-window = ["dep:tauri", "dep:tauri-plugin-shell", "dep:tauri-plugin-dialog", "dep:tauri-build"]
+window = ["dep:tauri", "dep:tauri-plugin-shell", "dep:tauri-plugin-dialog", "dep:tauri-build", "dep:gtk", "saba-chan-updater-lib/gtk"]
 # 개발용: 모의 릴레이의 고정 키를 믿는다 (scripts/mock-release-server.js). 릴리즈 빌드에는 켜지 않는다
 mock-relay = ["saba-chan-installer-core/mock-relay"]
 
@@ -33,6 +33,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 saba-chan-updater-lib = { path = "../../../updater" }
 saba-chan-installer-core = { path = "../../core" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# 창 바탕 반투명: GTK 창에서 X11 창을 얻는다 (Tauri가 쓰는 판과 같다, window 기능만)
+gtk = { version = "0.18", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [

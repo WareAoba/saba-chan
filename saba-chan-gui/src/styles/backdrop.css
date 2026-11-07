@@ -1,0 +1,38 @@
+/* ════════════════════════════════════════════════════════════════
+ * 창 바탕 반투명 (설정 → 외관, themeManager.applyWindowBackdrop)
+ * 셸이 창 뒤에 OS 효과(Mica·아크릴·리퀴드 글래스·KWin 흐림)를 깔았을 때만 data-backdrop="on"이다.
+ * 창 바닥 한 겹만 테마 바탕을 고른 진하기·밝기로 덮고, 그 위의 큰 판(목록·상세·상단바)은 비워 겹쳐 진해지지 않게 한다.
+ * 카드·입력·콘솔·모달은 그대로 단단하다
+ * ════════════════════════════════════════════════════════════════ */
+
+:root[data-backdrop="on"] {
+    --backdrop-base: color-mix(in oklch, var(--bg-0), var(--backdrop-mix, white) var(--backdrop-mix-amount, 0%));
+    --window-bg: color-mix(in oklch, var(--backdrop-base) var(--backdrop-opacity, 60%), transparent);
+    --appbar-gradient: transparent;
+    --panel-gradient: color-mix(in oklch, var(--bg-1) 30%, transparent);
+}
+
+:root[data-backdrop="on"],
+:root[data-backdrop="on"] body {
+    background: transparent;
+}
+
+:root[data-backdrop="on"] .App {
+    background: var(--window-bg);
+}
+
+:root[data-backdrop="on"] .servers-page,
+:root[data-backdrop="on"] .server-detail-pane,
+:root[data-backdrop="on"] .activity-bar {
+    background: transparent;
+}
+
+/* 따로 띄운 콘솔 창은 콘솔 색을 같은 진하기로 덮는다 */
+:root[data-backdrop="on"] .App.console-popout-app {
+    --console-backdrop-base: color-mix(in oklch, var(--console-custom-bg), var(--backdrop-mix, white) var(--backdrop-mix-amount, 0%));
+    background: color-mix(in oklch, var(--console-backdrop-base) var(--backdrop-opacity, 60%), transparent);
+}
+
+.backdrop-slider {
+    width: min(220px, 50%);
+}

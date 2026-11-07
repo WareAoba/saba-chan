@@ -158,7 +158,14 @@ pub fn set_background(win: &WebviewWindow, css: &str) {
         return;
     };
     *WINDOW_BG.lock().unwrap() = Some(color);
-    let _ = win.set_background_color(Some(color));
+    // 반투명이 켜진 창은 바닥을 비워 둔다 (backdrop.rs)
+    crate::backdrop::apply(win, &crate::backdrop::current(win.app_handle()), color);
+}
+
+/// 렌더러가 창 바탕 반투명 설정을 알린다 (`backdrop.rs`). 끈 창의 바닥은 렌더러가 알린 테마 바탕색으로 칠한다
+pub fn set_backdrop(win: &WebviewWindow, config: Value) -> Value {
+    let app = win.app_handle();
+    crate::backdrop::set_from_renderer(win, config, background_for(app, win.theme().ok()))
 }
 
 /// 창이 앱 화면 밖으로 이동하거나 새 창을 열지 못하게 한다. 웹 링크는 바깥 브라우저로
@@ -255,9 +262,10 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     if let (Some(x), Some(y)) = (bounds["x"].as_f64(), bounds["y"].as_f64()) {
         builder = builder.position(x, y);
     }
+    let builder = crate::backdrop::prepare(app, MAIN, builder);
     let win = lock_navigation(app, frame(builder, APPBAR_HEIGHT)).build()?;
     // 테마가 "시스템 따라"면 창이 생긴 뒤에야 시스템 테마를 안다
-    let _ = win.set_background_color(Some(background_for(app, win.theme().ok())));
+    crate::backdrop::apply(&win, &crate::backdrop::current(app), background_for(app, win.theme().ok()));
     apply_icon(&win);
     // 상주 여부는 업데이트 뒤 다시 띄울 모양을 정한다: 30초 heartbeat를 기다리지 않고 바로 알린다
     crate::lifecycle::report_resident(app, false);
@@ -520,7 +528,9 @@ pub fn open_popout(app: &AppHandle, instance_id: &str, server_name: &str) -> tau
         .min_inner_size(400.0, 250.0)
         .background_color(background)
         .always_on_top(true);
+    let builder = crate::backdrop::prepare(app, &popout_label(instance_id), builder);
     let win = lock_navigation(app, frame(builder, POPOUT_BAR_HEIGHT)).build()?;
+    crate::backdrop::apply(&win, &crate::backdrop::current(app), background);
     apply_icon(&win);
 
     // 메인 창에 팝아웃 열림/닫힘 알림 → 임베디드 콘솔 숨김 제어

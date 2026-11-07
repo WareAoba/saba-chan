@@ -386,6 +386,7 @@ pub(crate) fn run(uninstall: bool, keep: Option<uninstall::Keep>) {
             browse_folder,
             browse_components_folder,
             launch_app,
+            crate::backdrop::get_window_backdrop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

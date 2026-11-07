@@ -586,6 +586,12 @@ pub fn window_set_background(window: WebviewWindow, color: String) {
     window::set_background(&window, &color);
 }
 
+/// 창 바탕 반투명(`gui.windowBackdrop`)을 이 창에 적용한다. 이 컴퓨터에서 쓸 수 있는 것과 켜졌는지를 돌려준다
+#[tauri::command]
+pub fn window_set_backdrop(window: WebviewWindow, config: serde_json::Value) -> serde_json::Value {
+    window::set_backdrop(&window, config)
+}
+
 /// 메인 창이면 닫기 요청이 가로채여 app:closeRequest가 된다
 #[tauri::command]
 pub fn window_close(window: WebviewWindow) {

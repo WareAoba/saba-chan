@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-window-set-backdrop"
+description = "Enables the window_set_backdrop command without any pre-configured scope."
+commands.allow = ["window_set_backdrop"]
+
+[[permission]]
+identifier = "deny-window-set-backdrop"
+description = "Denies the window_set_backdrop command without any pre-configured scope."
+commands.deny = ["window_set_backdrop"]

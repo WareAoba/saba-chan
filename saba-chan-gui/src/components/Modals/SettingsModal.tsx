@@ -16,6 +16,8 @@ import {
     resetCustomTheme,
     ACCENT_PRESETS,
     applyCustomTheme,
+    applyWindowBackdrop,
+    WINDOW_BACKDROP_DEFAULTS,
     type ThemeConfig,
     type ThemeMode,
 } from '../../utils/themeManager';
@@ -32,6 +34,7 @@ import { FolderPathsSection, folderPathsAvailable } from './FolderPathsSection';
 import { RemoteDaemonSection, remoteDaemonAvailable } from './RemoteDaemonSection';
 import { useDaemonTarget } from '../shell/DaemonSwitcher';
 import { AutostartSetting, autostartAvailable } from './AutostartSetting';
+import { WindowBackdropSetting } from './WindowBackdropSetting';
 import { NetTraceSetting, netTraceAvailable } from './NetTraceSetting';
 import { ExtensionGuiSection, extensionGuiAvailable } from './ExtensionGuiSection';
 import { UnisolatedSection, unisolatedAvailable } from './UnisolatedSection';
@@ -362,7 +365,9 @@ function SettingsModal({
             // 부분 저장은 객체를 키별로 합친다: 지운 색은 빈 값으로 보내야 저장된 색이 사라진다
             consoleTokenColors: clearedTokenColors(),
             sidebarCompact: defaults.sidebarCompact,
+            windowBackdrop: WINDOW_BACKDROP_DEFAULTS,
         });
+        void applyWindowBackdrop(WINDOW_BACKDROP_DEFAULTS);
     };
 
     // IPC 포트 변경 핸들러
@@ -687,6 +692,9 @@ function SettingsModal({
                                     onChange={(checked) => handleCustomThemeChange({ useGradient: checked })}
                                 />
                             </div>
+
+                            {/* ── 2-2. 창 바탕 반투명 ── */}
+                            <WindowBackdropSetting />
 
                             {/* ── 3. 문자 크기 배율 ── */}
                             <div className="setting-item setting-item-vertical">

@@ -11,6 +11,7 @@
 //!
 //! 창을 모두 닫아도 프로세스는 트레이로 남는다. 끝나는 것은 완전히 종료·업데이트·데몬이 밖에서 꺼졌을 때뿐이다.
 
+pub mod backdrop;
 pub mod daemon;
 pub mod events;
 pub mod i18n;
@@ -160,6 +161,7 @@ pub fn run() {
             native::console_toggle_always_on_top,
             native::window_minimize,
             native::window_set_background,
+            native::window_set_backdrop,
             native::window_maximize,
             native::window_close,
             native::sandbox_consent_allow,
