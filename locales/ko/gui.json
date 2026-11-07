@@ -1736,7 +1736,7 @@
     "desc_all": "모든 서버를 누가 언제 어디서 조작했는지 보여 줘요. 최신 기록이 먼저 나와요.",
     "nav_all": "모든 서버",
     "nav_label": "작업 기록 서버 목록",
-    "filter": "거르기",
+    "filter": "필터",
     "filter_all": "모두 보기",
     "filter_power": "시작·정지·재시작",
     "filter_crash": "크래시",
