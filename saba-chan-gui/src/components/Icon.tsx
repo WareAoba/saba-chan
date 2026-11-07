@@ -392,6 +392,15 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }: IconProps) =
                 <path d="M20 20v-4h-4" />
             </svg>
         ),
+        // 맞바꾸기: 서로 반대로 가는 두 화살표 (권한 맞바꾸기)
+        swap: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 4 3 8l4 4" />
+                <path d="M3 8h14" />
+                <path d="m17 20 4-4-4-4" />
+                <path d="M21 16H7" />
+            </svg>
+        ),
         clock: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" />

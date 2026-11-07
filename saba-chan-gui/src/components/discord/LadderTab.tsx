@@ -36,6 +36,11 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     const blockDrag = usePointerDrag((from: string, to: string) =>
         setDraft((d) => L.moveLevel(d, Number(from), Number(to))),
     );
+    // 칩 끌기 (사용자 지정 2026-11-07): 칩을 다른 칸에 놓으면 그 명령을 그 레벨로. key는 칩 id, 칸 값은 사다리 자리
+    // moves: 명령 키 → 옮긴 레벨 (맞바꾸기 뒤에 덮는다)
+    const [moves, setMoves] = useState<Record<string, number>>({});
+    const chipDropRef = useRef<(id: string, at: number) => void>(() => {});
+    const chipDrag = usePointerDrag((id: string, to: string) => chipDropRef.current(id, Number(to)));
     const dragging = blockDrag.dragging === null ? null : Number(blockDrag.dragging);
     const over = blockDrag.over === null ? null : Number(blockDrag.over);
     const [newName, setNewName] = useState('');
@@ -49,7 +54,10 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     useEffect(() => setDraft(L.ladderOf(perm)), [perm]);
     // 데몬 값을 다시 읽으면(저장 뒤) 맞바꾸기 초안을 비운다
     // biome-ignore lint/correctness/useExhaustiveDependencies: board 가 바뀔 때만 비운다
-    useEffect(() => setSteps([]), [board]);
+    useEffect(() => {
+        setSteps([]);
+        setMoves({});
+    }, [board]);
 
     const localeName = (level: L.LadderLevel) => t(`discord.level_${L.levelKey(level.id)}`);
     const label = (level: L.LadderLevel) => level.name?.trim() || (isCustom(level) ? '' : localeName(level));
@@ -61,13 +69,25 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     const lineLevel = L.draftLine(line, draft, steps);
     const lineAt = line && lineLevel !== null ? L.lineAt(saved, draft, lineLevel) : null;
     const lineTarget = lineAt === null ? null : (draft[lineAt].id as number);
-    const levels = L.draftLevels(board, draft, steps, line, lineTarget);
+    const items = board?.items || [];
+    const levels = L.draftLevels(board, draft, steps, line, lineTarget).map((level, i) =>
+        items[i] && !items[i].fixed && moves[items[i].key as string] !== undefined ? moves[items[i].key as string] : level,
+    );
     const commandLevels = L.boardPatch(board, levels);
     const commandsChanged = Object.keys(commandLevels).length > 0;
     const changed = ladderChanged || commandsChanged;
     // 레벨 편집은 사바쨩 기능만 보인다 (사용자 지정 2026-11-07): 인스턴스마다 다른 게임(모듈) 명령과
     // 인스턴스마다 정하는 조작 가능(서버 조작)은 인스턴스 권한 화면에서 정한다. 맞바꾸기는 모든 명령을 그대로 옮긴다
     const chips = L.stairChips(L.draftBoard(board, levels)).filter((c) => !c.module && !c.controllers);
+    chipDropRef.current = (id, at) => {
+        const chip = chips.find((c) => c.id === id);
+        const target = draft[at];
+        if (!chip || chip.fixed || !target || !L.swappable(target)) return;
+        const level = target.id as number;
+        flip();
+        setMoves((m) => ({ ...m, ...Object.fromEntries(chip.items.filter((i) => !i.fixed).map((i) => [i.key as string, level])) }));
+    };
+    const chipOver = chipDrag.over === null ? null : Number(chipDrag.over);
     const instanceName = (id?: string) => board?.instances?.find((i) => i.id === id)?.name || id;
     const chipLabel = (c: L.StairChip) => (c.instance ? `${c.title} · ${instanceName(c.instance)}` : c.title || c.name);
     // 마지막 맞바꾸기 (두 칸이 아직 초안에 있을 때만 알린다)
@@ -97,6 +117,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     const revert = () => {
         setDraft(saved);
         setSteps([]);
+        setMoves({});
         setChoosing(false);
         setPicked(null);
     };
@@ -126,7 +147,11 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                                 className={clsx('dc-ladder-block', `level-${L.levelKey(level.id)}`, {
                                     'is-fixed': fixed,
                                     'is-dragging': dragging === i,
-                                    'is-over': over === i && dragging !== i && !fixed,
+                                    // 카드 끌기: 들어갈 자리(이 카드 위 또는 아래)에 선 (사용자 지정 2026-11-07)
+                                    'is-insert-before': dragging !== null && over === i && i < dragging && !fixed,
+                                    'is-insert-after': dragging !== null && over === i && i > dragging && !fixed,
+                                    // 칩 끌기: 놓을 칸
+                                    'is-over': chipDrag.dragging !== null && chipOver === i && L.swappable(level),
                                     'is-pickable': pickable,
                                     'is-picked': picked !== null && picked === level.id,
                                 })}
@@ -186,51 +211,37 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                                             <Icon name="pin" size="xs" /> {t('discord.perm_owner_fixed')}
                                         </span>
                                     ) : (
-                                        <>
-                                            <button
-                                                type="button"
-                                                className="btn btn-ghost btn-sm"
-                                                disabled={!movable(i - 1)}
-                                                aria-label={t('discord.perm_ladder_up', { name })}
-                                                data-tooltip={t('discord.perm_ladder_up', { name })}
-                                                onClick={() => setDraft((d) => L.moveLevel(d, i, i - 1))}
-                                            >
-                                                <Icon name="chevronUp" size="sm" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="btn btn-ghost btn-sm"
-                                                disabled={!movable(i + 1)}
-                                                aria-label={t('discord.perm_ladder_down', { name })}
-                                                data-tooltip={t('discord.perm_ladder_down', { name })}
-                                                onClick={() => setDraft((d) => L.moveLevel(d, i, i + 1))}
-                                            >
-                                                <Icon name="chevronDown" size="sm" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="btn btn-ghost btn-sm"
-                                                disabled={draft.length <= 3 || !L.removable(draft, i)}
-                                                aria-label={t('discord.perm_ladder_delete', { name })}
-                                                data-tooltip={t('discord.perm_ladder_delete', { name })}
-                                                onClick={() => setDraft((d) => L.removeLevel(d, i))}
-                                            >
-                                                <Icon name="trash" size="sm" />
-                                            </button>
-                                        </>
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost btn-sm"
+                                            disabled={draft.length <= 3 || !L.removable(draft, i)}
+                                            aria-label={t('discord.perm_ladder_delete', { name })}
+                                            data-tooltip={t('discord.perm_ladder_delete', { name })}
+                                            onClick={() => setDraft((d) => L.removeLevel(d, i))}
+                                        >
+                                            <Icon name="trash" size="sm" />
+                                        </button>
                                     )}
                                 </span>
                                 {L.swappable(level) && (
                                     <span className="dc-ladder-chips">
                                         {own.slice(0, MAX_CHIPS).map((c) => (
-                                            <span
+                                            <button
+                                                type="button"
                                                 key={c.id}
                                                 data-flip={c.id}
-                                                className={clsx('dc-ladder-chip', { 'is-fixed': c.fixed })}
+                                                aria-label={chipLabel(c)}
+                                                className={clsx('dc-ladder-chip', {
+                                                    'is-fixed': c.fixed,
+                                                    'is-moved': c.items.some((it) => moves[it.key as string] !== undefined),
+                                                    'is-dragging': chipDrag.dragging === c.id,
+                                                })}
+                                                disabled={choosing}
+                                                {...chipDrag.bind(c.id, !c.fixed && !choosing)}
                                             >
                                                 {c.fixed && <Icon name="pin" size="xs" />}
                                                 {chipLabel(c)}
-                                            </span>
+                                            </button>
                                         ))}
                                         {own.length > MAX_CHIPS && (
                                             <span className="dc-ladder-chip is-more">
@@ -257,6 +268,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                             setPicked(null);
                         }}
                     >
+                        <Icon name={choosing ? 'close' : 'swap'} size="sm" />{' '}
                         {choosing ? t('discord.perm_swap_cancel') : t('discord.perm_swap')}
                     </button>
                     <span className="dc-hint" aria-live="polite">

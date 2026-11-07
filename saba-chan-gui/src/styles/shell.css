@@ -3019,11 +3019,52 @@ button.activity-line:hover {
     display: inline-flex;
     align-items: center;
     gap: var(--sp-1);
-    padding: 0 var(--sp-2);
+    /* 끌 수 있는 버튼이지만 앱 버튼 높이·굵기는 따르지 않는다 */
+    height: auto;
+    min-height: 0;
+    padding: var(--sp-0-5) var(--sp-2);
     border: 1px solid var(--line);
     border-radius: 999px;
     background: var(--bg-2);
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-xs);
+    line-height: 1.3;
     white-space: nowrap;
+    cursor: grab;
+}
+button.dc-ladder-chip.is-fixed {
+    cursor: default;
+}
+.dc-ladder-chip.is-moved {
+    border-color: var(--warn);
+}
+.dc-ladder-chip.is-dragging {
+    position: relative;
+    z-index: 20;
+    cursor: grabbing;
+    box-shadow: 0 6px 18px var(--shadow-md);
+}
+/* 카드 끌기: 들어갈 자리에 강조선 (카드 사이 틈 가운데) */
+.dc-ladder-block {
+    position: relative;
+}
+.dc-ladder-block.is-insert-before::before,
+.dc-ladder-block.is-insert-after::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+    pointer-events: none;
+}
+.dc-ladder-block.is-insert-before::before {
+    top: calc(-1 * var(--sp-0-5) - 2px);
+}
+.dc-ladder-block.is-insert-after::after {
+    bottom: calc(-1 * var(--sp-0-5) - 2px);
 }
 .dc-ladder-chip.is-fixed,
 .dc-ladder-chip.is-more {

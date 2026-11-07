@@ -685,12 +685,17 @@ describe('권한 화면', () => {
         expect(block('Banned')).not.toHaveAttribute('data-draggable');
         expect(block('VIP')).toHaveAttribute('data-draggable', 'true');
 
-        dragTo(block('VIP'), block('Admin'));
+        // 끄는 동안은 다른 카드를 강조하지 않고, 들어갈 자리(관리자 카드 위)에 선을 긋는다. 화살표 이동 버튼은 없다
+        pressAndMove(block('VIP'), block('Admin'));
+        expect(block('Admin')).toHaveClass('is-insert-before');
+        expect(block('Admin')).not.toHaveClass('is-over');
+        release();
+        expect(screen.queryByRole('button', { name: /^Move VIP/ })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Delete User' }));
         expect(screen.getByText(/People on a deleted level move/)).toBeInTheDocument();
         fireEvent.change(screen.getByRole('textbox', { name: 'New level name' }), { target: { value: 'Mod' } });
         fireEvent.click(screen.getByRole('button', { name: 'Add' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Move Mod down' }));
+        dragTo(block('Mod'), block('VIP'));
         // 사용자 11-06 #9: 저장은 화면 아래에 붙는 막대에서
         expect(document.querySelector('.dc-savebar.dirty')).not.toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -736,6 +741,14 @@ describe('권한 화면', () => {
         expect(within(admin).getByText('Create server')).toBeInTheDocument();
         expect(within(admin).queryByText(/Give Item/)).toBeNull();
         expect(within(admin).queryByText(/^Start/)).toBeNull();
+
+        // 칩을 다른 레벨 카드로 끌어 옮긴다. 맞바꾸기 버튼에는 아이콘이 있다
+        expect(screen.getByRole('button', { name: /Swap/ }).querySelector('svg')).not.toBeNull();
+        dragTo(within(admin).getByRole('button', { name: 'Create server' }), screen.getByRole('listitem', { name: 'User' }));
+        expect(within(screen.getByRole('listitem', { name: 'User' })).getByRole('button', { name: 'Create server' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await flush();
+        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { commandLevels: { 'instance.create': 1 } });
     });
 
     it('레벨 편집: 권한 맞바꾸기를 누르고 두 레벨을 고르면 사람은 두고 명령만 바꿔 저장한다', async () => {
