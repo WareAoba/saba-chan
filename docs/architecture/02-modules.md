@@ -89,7 +89,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `process_name` | String | 인스턴스 생성 시 `instance.process_name`에 복사 → auto-detect (`instance.rs:109`, `mod.rs:2514-2524`) |
 | `default_port` | u16 | 인스턴스 생성 시 `instance.port` 기본값 |
 | `stop_command` | String | managed stop 때 stdin으로 전송. 기본값 `"stop"` (`mod.rs:961`) |
-| `stop_signal` | `"interrupt"` | 일반 정지에 콘솔 명령 대신 보낼 신호. `interrupt`면 managed stop이 Ctrl+C(unix는 SIGINT)를 보내고 서버가 저장하고 끝나기를 `stop_timeout`만큼 기다린다(§3.4 managed stop 2번). 저장 처리기가 Ctrl+C에만 붙은 서버(공식 정지 방법이 Ctrl+C뿐인 게임)용. 없으면 `stop_command`를 쓴다. 0.1.13 다음 판 |
+| `stop_signal` | `"interrupt"` | 일반 정지에 콘솔 명령 대신 보낼 신호. `interrupt`면 managed stop이 Ctrl+C(unix는 SIGINT)를 보내고 서버가 저장하고 끝나기를 `stop_timeout`만큼 기다린다(§3.4 managed stop 2번). 저장 처리기가 Ctrl+C에만 붙은 서버(공식 정지 방법이 Ctrl+C뿐인 게임)용. 없으면 `stop_command`를 쓴다. 0.1.13 |
 | `stop_timeout` | u64(초) | managed graceful stop 대기 시간. 기본값 30. 인스턴스 설정 `stop_timeout`이 있으면 그 값이 앞선다(§ 데몬이 읽는 setting) |
 | `announce_command` | String | 게임 안 공지에 쓰는 `[[commands.fields]]` 이름 (예약 재시작 예고 등) |
 | `kick_command` | String | 내보내기에 쓰는 `[[commands.fields]]` 이름. "조작 가능한 사람만 접속"(01 문서 §조작 가능)이 명단에 없는 닉네임을 내보낼 때 쓴다. 그 명령의 첫 입력에 닉네임, 둘째 입력이 있으면 이유를 넣는다. 없는 명령 이름이면 `config.kick_command` 참조 오류다 |
