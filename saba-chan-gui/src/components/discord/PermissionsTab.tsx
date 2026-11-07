@@ -269,7 +269,7 @@ function MemberSearch({
                     data-tooltip={t('discord.perm_member_search_clear')}
                     onClick={() => setQuery('')}
                 >
-                    <Icon name="x" size={12} />
+                    <Icon name="close" size={12} />
                 </button>
             )}
             {open && (
