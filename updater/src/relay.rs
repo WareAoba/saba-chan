@@ -114,6 +114,11 @@ pub const MODULE_PREFIX: &str = "module-";
 pub const EXTENSION_PREFIX: &str = "ext-";
 
 impl ReleaseManifest {
+    /// Windows "설치된 앱" 목록에 보일 버전: 데몬(saba-core) 버전. 데몬이 없는 manifest면 릴리즈 버전
+    pub fn display_version(&self) -> &str {
+        self.components.get("saba-core").map_or(self.version.as_str(), |c| c.version.as_str())
+    }
+
     /// 이 플랫폼의 manifest: 맨 위 `platform`이면 그대로, `platforms`에 있으면 그 목록으로 바꾼다
     pub fn for_platform(mut self, platform: &str) -> Result<Self, RelayError> {
         if self.platform != platform {
@@ -403,6 +408,22 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    /// "설치된 앱" 목록의 표시 버전은 데몬(saba-core) 버전이다. 데몬이 없는 manifest만 릴리즈 버전으로 둔다
+    #[test]
+    fn display_version_follows_the_daemon() {
+        let comp = |v: &str| -> ManifestComponent {
+            serde_json::from_value(json!({"version": v, "asset": "a.zip", "sha256": "00", "url": "https://x/a.zip"})).unwrap()
+        };
+        let mut m = ReleaseManifest {
+            version: "0.1.13".into(), channel: "stable".into(), platform: "windows-x64".into(), released_at: None,
+            is_critical: false, components: [("saba-core".to_string(), comp("0.1.12")), ("gui".to_string(), comp("0.1.14"))].into_iter().collect(),
+            platforms: Default::default(),
+        };
+        assert_eq!(m.display_version(), "0.1.12");
+        m.components.remove("saba-core");
+        assert_eq!(m.display_version(), "0.1.13");
+    }
 
     /// 운영 릴레이가 실제로 내려준 0.1.1 manifest (서명 봉투 그대로)
     const PRODUCTION_0_1_1: &str = include_str!("../tests/fixtures/relay-manifest-0.1.1.json");

@@ -230,3 +230,28 @@ describe('제거 창', () => {
         expect((byId(doc, 'btn-close') as HTMLButtonElement).disabled).toBe(false);
     });
 });
+
+describe('창 공통', () => {
+    it('상단 바를 끌어 창을 옮길 권한이 있다 (data-tauri-drag-region은 start_dragging을 부른다)', () => {
+        const cap = JSON.parse(
+            fs.readFileSync(path.resolve(SRC, '../src-tauri/capabilities/default.json'), 'utf8'),
+        ) as { permissions: string[] };
+        expect(cap.permissions).toContain('core:window:allow-start-dragging');
+    });
+
+    it.each(['index.html', 'update.html'])('%s는 GUI와 같은 오버레이 스크롤바를 쓴다', async (page) => {
+        const { doc } = mount(page, {
+            get_theme: 'auto',
+            get_preferred_language: 'en',
+            get_app_mode: { uninstall: false },
+            get_installer_state: { install_path: 'C:\\Saba-chan', components_dir: 'C:\\Saba-data' },
+            get_available_modules: [],
+            get_apply_mode: { enabled: false },
+            fetch_latest_release: never,
+        });
+        await wait();
+        expect(doc.documentElement.dataset.overlayScroll).toBe('on');
+        expect(doc.querySelectorAll('.ovs-thumb.ovs-y').length).toBe(1);
+        expect(doc.querySelectorAll('.ovs-thumb.ovs-x').length).toBe(1);
+    });
+});

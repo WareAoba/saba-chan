@@ -21,6 +21,26 @@ html, body {
 button { font: inherit; color: inherit; }
 input { font: inherit; }
 
+/* 오버레이 스크롤바 (GUI base.css와 같다): 기본 스크롤바는 숨기고 common.js가 손잡이를 겹쳐 그린다 */
+[data-overlay-scroll='on'] *,
+[data-overlay-scroll='on'] { scrollbar-width: none; }
+.ovs-thumb {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 100000;
+    border-radius: var(--r-pill);
+    background: var(--scrollbar-thumb-hover);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.ovs-thumb.ovs-y { width: 6px; margin-left: calc(-1 * var(--sp-1-5)); }
+.ovs-thumb.ovs-x { height: 6px; margin-top: calc(-1 * var(--sp-1-5)); }
+.ovs-thumb.show { opacity: 0.7; pointer-events: auto; }
+.ovs-thumb.show:hover,
+.ovs-thumb.drag { opacity: 1; background: var(--scrollbar-thumb-active); }
+
 .win { position: relative; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 
 /* ── 상단 바: 모드 · 단계 · 언어/테마 · 창 버튼 ── */
@@ -311,7 +331,6 @@ input { font: inherit; }
     /* 시작 칸(430~750px) 안에 사바쨩이 오도록 오른쪽으로 밀고 조금 키운 자리에서 시작한다 */
     transform-origin: 0 50%;
     transform: translateX(167px) scale(1.25);
-    transition: filter var(--t-fold) var(--ease);
 }
 .flow .f-strip { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; transform: translateY(100%); transition: transform 0.3s var(--ease); }
 .flow .f-foot { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; transform: translateY(100%); transition: transform 0.35s var(--ease) 0.1s; }
@@ -325,7 +344,6 @@ input { font: inherit; }
     animation: art-zoom calc(var(--t-open) + var(--t-hold) + var(--t-fold)) linear forwards;
 }
 .flow[data-step="install"] .f-art, .flow[data-step="done"] .f-art { animation: art-fold var(--t-fold) linear forwards; }
-.flow[data-step="install"] .f-art img, .flow[data-step="done"] .f-art img { filter: brightness(1.2) saturate(1.15); }
 .flow[data-step="install"] .f-mat .matrix { opacity: var(--loading-matrix-opacity); transform: none; }
 .flow[data-step="install"] .f-run, .flow[data-step="done"] .f-run { opacity: 1; transform: none; }
 /* 완료: 매트릭스만 끄고 링 색만 바꾼다. 진행 줄 자리에 버튼 */
