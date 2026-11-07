@@ -186,6 +186,7 @@ const DAEMON_USAGE: &str = "Usage: saba-core [--spawned]
        saba-core extension validate <dir>... | extension audit <dir>...
        saba-core sandbox reset   (the uninstaller: remove isolation profiles and folder permissions)
        saba-core net-trace grant|revoke <SID>   (elevated by the daemon: network event permission)
+       saba-core net-trace reset   (the uninstaller: revoke the network event permission saba-chan gave)
        saba-core --version | --help
 
   --spawned   started by the GUI/CLI (skips the boot selector)";
