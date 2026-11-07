@@ -40,10 +40,15 @@ fn main() {
     }
     #[cfg(not(unix))]
     {
-        // Ctrl+C는 같은 콘솔의 CLI가 받아 처리한다: 실행기는 끝나지 않고 CLI가 끝날 때까지 기다린다
+        // Ctrl+C는 같은 콘솔의 CLI가 받아 처리한다: 실행기는 끝나지 않고 CLI가 끝날 때까지 기다린다.
+        // `SetConsoleCtrlHandler(None, TRUE)`의 무시 속성은 자식에게 상속되어 CLI도 Ctrl+C를 못 받으므로,
+        // 상속되지 않는 실행기만의 처리기를 둔다
         #[cfg(windows)]
         unsafe {
-            windows_sys::Win32::System::Console::SetConsoleCtrlHandler(None, 1);
+            unsafe extern "system" fn swallow(_ctrl_type: u32) -> windows_sys::core::BOOL {
+                1
+            }
+            windows_sys::Win32::System::Console::SetConsoleCtrlHandler(Some(swallow), 1);
         }
         match cmd.status() {
             Ok(s) => std::process::exit(s.code().unwrap_or(1)),
