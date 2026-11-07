@@ -2141,6 +2141,8 @@ pub async fn update_instance_settings(
     // 저장
     let updated_clone = updated.clone();
     let new_revision = updated_clone.settings_revision();
+    // "조작 가능한 사람만 접속"을 켰거나 켠 채 명단을 바꿨으면, 이미 들어와 있는 명단 밖 사람도 내보낸다
+    let sweep = crate::controllers::sweep_needed(instance.controllers_only, &instance.controllers, updated_clone.controllers_only, &updated_clone.controllers);
     if let Err(e) = supervisor.instance_store.update(&id, updated) {
         let error = json!({ "error": format!("Failed to update instance: {}", e) });
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
@@ -2163,6 +2165,9 @@ pub async fn update_instance_settings(
         .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
         .unwrap_or_else(|| serde_json::json!({}));
     drop(supervisor);
+    if sweep {
+        crate::controllers::sweep(&state, Some(&id));
+    }
 
     // 게임 설정 파일 동기화 (변경된 항목이 있을 때만). 실패해도 저장은 남기고 응답에 싣는다
     let mut sync_error: Option<Value> = None;
