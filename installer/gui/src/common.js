@@ -26,6 +26,27 @@ window.SabaUI = (() => {
         return t === 'light' || t === 'dark' ? t : systemTheme();
     }
 
+    /**
+     * 창 바탕 반투명 (앱 설정 → 외관을 따른다, src-tauri/src/backdrop.rs). 셸이 OS 효과를 깔았으면 바탕을 비우고
+     * 테마 바탕을 앱과 같은 진하기·밝기로 덮는다 (common.css data-backdrop)
+     */
+    async function applyBackdrop() {
+        const invoke = window.__TAURI__?.core?.invoke;
+        if (!invoke) return;
+        try {
+            const b = await invoke('get_window_backdrop');
+            if (!b?.on) return;
+            const root = document.documentElement;
+            root.style.setProperty('--backdrop-opacity', `${b.opacity}%`);
+            root.style.setProperty('--backdrop-mix', b.brightness >= 0 ? 'white' : 'black');
+            root.style.setProperty('--backdrop-mix-amount', `${Math.abs(b.brightness)}%`);
+            root.dataset.backdrop = 'on';
+        } catch (e) {
+            console.warn('window backdrop', e);
+        }
+    }
+    applyBackdrop();
+
     /** 언어에 맞는 글자 로고 (GUI와 같은 규칙: 한국어·일본어 전용, 나머지 영어) */
     function setWordmark(lang) {
         const file = lang.startsWith('ko') ? 'logo-kr.png' : lang.startsWith('ja') ? 'logo-jp.png' : 'logo-en.png';
@@ -110,8 +131,12 @@ window.SabaUI = (() => {
         });
 
         const step = () => {
-            ctx.fillStyle = fade;
+            // 반투명 창이면 바탕색을 덧칠하지 않고 지난 글자를 지운다 (캔버스가 불투명해지지 않게)
+            const clear = document.documentElement.dataset.backdrop === 'on';
+            if (clear) ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = clear ? 'rgba(0, 0, 0, 0.14)' : fade;
             ctx.fillRect(0, 0, w, h);
+            ctx.globalCompositeOperation = 'source-over';
             for (const c of cols) {
                 c.tick += 1;
                 if (c.tick % c.every) continue;

@@ -12,6 +12,8 @@
 //! 설치 순서는 `saba-chan-installer-core`에 있다 (`saba-chan-cli install`과 같은 코드)
 
 mod apply;
+#[cfg(feature = "window")]
+mod backdrop;
 mod elevate;
 #[cfg(feature = "window")]
 mod install_window;
@@ -70,15 +72,17 @@ fn main_window(app: &tauri::AppHandle, page: Page, title: &str) -> tauri::Result
         Page::Install => ("index.html", 520.0, Color(0xe6, 0xe8, 0xed, 0xff)),
         Page::Update => ("update.html", 500.0, Color(0x73, 0xa5, 0xe2, 0xff)),
     };
-    let win = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
+    // 반투명이 켜졌으면 투명 창으로 만들고 바닥을 칠하지 않는다 (backdrop.rs)
+    let builder = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
         .title(title)
         .inner_size(750.0, height)
         .resizable(false)
         .decorations(false)
         .center()
         .visible(false)
-        .background_color(background)
-        .build()?;
+        .transparent(backdrop::on());
+    let win = if backdrop::on() { builder } else { builder.background_color(background) }.build()?;
+    backdrop::apply(&win);
     // 배율이 바뀌면 다시 건다
     #[cfg(windows)]
     {

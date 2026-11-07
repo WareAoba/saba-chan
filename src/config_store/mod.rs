@@ -67,6 +67,8 @@ pub struct GuiSettings {
     pub console_text_color: String,
     pub sidebar_compact: bool,
     pub window_opacity: u32,
+    /// 창 바탕 반투명: 켜기, OS별 재질, 덮는 바탕의 진하기·밝기 (GUI 셸·인스톨러가 창을 만들 때 읽는다)
+    pub window_backdrop: saba_chan_updater_lib::window_backdrop::WindowBackdrop,
     /// 콘솔 글꼴 배율 (%)
     pub console_font_scale: u32,
     /// 콘솔 구문 강조 색: 토큰 이름 → "#rrggbb". 빈 값이거나 없는 토큰은 테마 기본색
@@ -223,6 +225,7 @@ impl Default for GuiSettings {
             console_text_color: "#cdd6f4".to_string(),
             sidebar_compact: false,
             window_opacity: 100,
+            window_backdrop: Default::default(),
             console_font_scale: 100,
             console_token_colors: HashMap::new(),
             console_fonts: ConsoleFonts::default(),
@@ -271,6 +274,7 @@ impl GuiSettings {
         for (key, value, allowed) in self.console_fonts.clone().slots() {
             choice(&format!("consoleFonts.{key}"), value, &allowed)?;
         }
+        self.window_backdrop.validate()?;
         if self.monitor_items.as_ref().is_some_and(|items| !monitor_items_ok(items)) {
             return Err(format!("monitorItems must be at most {MONITOR_ITEMS_MAX} ids of 1..={MONITOR_ITEM_MAX_LEN} characters"));
         }
@@ -299,6 +303,7 @@ impl GuiSettings {
         if self.monitor_items.as_ref().is_some_and(|items| !monitor_items_ok(items)) {
             self.monitor_items = None;
         }
+        self.window_backdrop.sanitize();
     }
 }
 
@@ -1254,6 +1259,18 @@ mod tests {
         assert!(!old.system_monitor_expanded);
         let saved: GuiSettings = serde_json::from_value(serde_json::json!({"systemMonitorExpanded": true})).unwrap();
         assert!(saved.system_monitor_expanded);
+    }
+
+    /// 사용자 11-08: 창 바탕 반투명은 기본으로 켜져 있고, 고를 수 없는 재질은 거절한 뒤 파일에서는 기본값으로 읽는다
+    #[test]
+    fn window_backdrop_is_validated_and_sanitized() {
+        assert!(GuiSettings::default().window_backdrop.enabled);
+        let mut s: GuiSettings = serde_json::from_value(serde_json::json!({"windowBackdrop": {"windows": "glass", "opacity": 30}})).unwrap();
+        assert!(s.validate().is_err());
+        s.sanitize();
+        assert!(s.validate().is_ok());
+        assert_eq!(s.window_backdrop.windows, "tabbed");
+        assert_eq!(s.window_backdrop.opacity, 30, "valid values stay");
     }
 
     #[test]

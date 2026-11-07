@@ -4,6 +4,7 @@
  */
 import i18n from 'i18next';
 import { safeShowToast } from '../utils/helpers';
+import type { BackdropSupport, WindowBackdropConfig } from '../utils/themeManager';
 import type {
     ApiBody,
     AgentStatus,
@@ -165,6 +166,9 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
     const closeWindow = () => send('window_close');
     // 테마 바탕색(#rrggbb)을 창 바탕에 칠한다 (크기를 바꾸는 중 흰 바탕이 비치지 않게)
     const windowSetBackground = (color: string) => send('window_set_background', { color });
+    // 창 바탕 반투명을 이 창에 적용하고, 이 컴퓨터에서 쓸 수 있는 것과 켜졌는지를 받는다
+    const windowSetBackdrop = (config: WindowBackdropConfig) =>
+        Promise.resolve(invoke('window_set_backdrop', { config })) as Promise<BackdropSupport>;
 
     // 본 마지막 포트 충돌 정지 알림 id. 데몬은 읽어도 알림을 지우지 않으므로 그 뒤 것만 받는다 (L50)
     let noticesAfter = 0;
@@ -1435,6 +1439,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         maximizeWindow,
         closeWindow,
         windowSetBackground,
+        windowSetBackdrop,
     };
 
     const electron = {

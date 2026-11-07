@@ -45,6 +45,7 @@ import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice'
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import './styles/shell.css';
+import './styles/backdrop.css';
 import './styles/motion.css';
 /** 로딩 화면이 사라지는 움직임 길이 (App.css의 loading-leave와 같다) */
 const LOADING_LEAVE_MS = 700;

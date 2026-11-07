@@ -37,13 +37,20 @@ sys-locale = "0.3"
 test-isolation = []
 # 개발용 모의 릴레이의 고정 키를 믿는다. 릴리즈 빌드에는 켜지 않는다
 mock-relay = []
+# 창이 있는 셸(GUI·인스톨러)만: Linux 창 바탕 흐림 요청 (window_backdrop). 데몬은 켜지 않는다
+gtk = ["dep:gdk"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # autostart: launchctl kickstart의 gui/<uid>
 libc = "0.2"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+gdk = { version = "0.18", optional = true }
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
+# window_backdrop: 빌드 번호로 쓸 수 있는 창 재질을 정한다 (window-vibrancy와 같은 판)
+windows-version = "0.1"
 # window_icon: 창 아이콘을 exe 리소스에서 DPI에 맞게 읽는다
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_LibraryLoader", "Win32_System_SystemInformation", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging"] }
 

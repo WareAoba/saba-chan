@@ -2,7 +2,17 @@ import type { TFunction } from 'i18next';
 import { create } from 'zustand';
 import type { ConsoleFonts, GuiSettings, SoundSettings } from '../types/daemon';
 import { safeShowToast } from '../utils/helpers';
-import { THEME_DEFAULTS, clearStoredTheme, getTheme, resetCustomTheme, setCustomTheme, setTheme } from '../utils/themeManager';
+import {
+    THEME_DEFAULTS,
+    WINDOW_BACKDROP_DEFAULTS,
+    type WindowBackdropConfig,
+    applyWindowBackdrop,
+    clearStoredTheme,
+    getTheme,
+    resetCustomTheme,
+    setCustomTheme,
+    setTheme,
+} from '../utils/themeManager';
 import { CONSOLE_FONT_DEFAULTS } from '../utils/consoleFonts';
 
 // i18n translate function — set after store creation
@@ -78,6 +88,8 @@ export interface SettingsValues extends AppOptions {
     sidebarCompact: boolean;
     consoleFontScale: number;
     consoleTokenColors: Record<string, string>;
+    /** 창 바탕 반투명 (셸이 OS 효과를 깔고 화면이 테마 바탕을 덮는다) */
+    windowBackdrop: Readonly<WindowBackdropConfig>;
     systemMonitorExpanded: boolean;
     /** 시스템 모니터에 띄울 항목 id (monitor/systemMetrics.ts). null이면 기본 항목 */
     monitorItems: string[] | null;
@@ -132,6 +144,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     sidebarCompact: THEME_DEFAULTS.sidebarCompact,
     consoleFontScale: THEME_DEFAULTS.consoleFontScale,
     consoleTokenColors: THEME_DEFAULTS.consoleTokenColors,
+    windowBackdrop: WINDOW_BACKDROP_DEFAULTS,
     // 서버 페이지의 시스템 모니터를 펼쳐 둘지 (접으면 요약 한 줄)
     systemMonitorExpanded: false,
     // 시스템 모니터에 띄울 항목 (null이면 기본)
@@ -174,6 +187,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                 patch.sidebarCompact = settings.sidebarCompact ?? THEME_DEFAULTS.sidebarCompact;
                 patch.consoleFontScale = settings.consoleFontScale ?? THEME_DEFAULTS.consoleFontScale;
                 patch.consoleTokenColors = settings.consoleTokenColors ?? THEME_DEFAULTS.consoleTokenColors;
+                patch.windowBackdrop = { ...WINDOW_BACKDROP_DEFAULTS, ...settings.windowBackdrop };
                 patch.systemMonitorExpanded = settings.systemMonitorExpanded ?? false;
                 patch.monitorItems = Array.isArray(settings.monitorItems)
                     ? settings.monitorItems.filter((i): i is string => typeof i === 'string')
@@ -194,6 +208,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                 applyingLoad = false;
             }
             for (const k of Object.keys(patch)) dirtyKeys.delete(k as SettingKey);
+            // 셸이 창을 만들 때 깐 효과와 화면 바탕을 맞춘다 (설정이 없으면 기본값)
+            void applyWindowBackdrop(get().windowBackdrop);
             if (settings) {
                 // config.json 값을 화면에 적용하고 캐시도 맞춘다
                 setTheme(patch.theme as Parameters<typeof setTheme>[0]);
@@ -295,6 +311,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
             consoleTextColor: THEME_DEFAULTS.consoleTextColor,
             sidebarCompact: THEME_DEFAULTS.sidebarCompact,
             consoleFontScale: THEME_DEFAULTS.consoleFontScale,
+            windowBackdrop: WINDOW_BACKDROP_DEFAULTS,
             systemMonitorExpanded: false,
             monitorItems: null,
             daemonView: 'switch',
@@ -330,6 +347,7 @@ const _settingsKeys: SettingKey[] = [
     'sidebarCompact',
     'consoleFontScale',
     'consoleTokenColors',
+    'windowBackdrop',
     'systemMonitorExpanded',
     'monitorItems',
     'daemonView',

@@ -40,7 +40,12 @@ futures-util = "0.3"
 base64 = "0.23"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 sys-locale = "0.3"
-saba-chan-updater-lib = { path = "../../updater" }
+# gtk: Linux 창 바탕 흐림 요청 (window_backdrop)
+saba-chan-updater-lib = { path = "../../updater", features = ["gtk"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# 창 바탕 반투명: GTK 창에서 X11 창을 얻는다 (Tauri가 쓰는 판과 같다)
+gtk = "0.18"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"

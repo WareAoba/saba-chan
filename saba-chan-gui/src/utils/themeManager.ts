@@ -390,3 +390,89 @@ export function applyCustomTheme(config: ThemeConfig) {
         else root.style.removeProperty(`--tok-${token}`);
     }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 3. 창 바탕 반투명 (설정 → 외관, config.json gui.windowBackdrop)
+// ═══════════════════════════════════════════════════════════════
+
+/** 데몬 GuiSettings.windowBackdrop (updater/src/window_backdrop.rs)과 같은 모양·기본값 */
+export interface WindowBackdropConfig {
+    enabled: boolean;
+    /** Windows 재질: tabbed | mica | acrylic */
+    windows: string;
+    /** macOS 리퀴드 글래스: regular | clear */
+    mac: string;
+    /** 덮는 테마 바탕의 진하기 0–100 */
+    opacity: number;
+    /** 덮는 바탕을 흰색(+)·검은색(-) 쪽으로 섞는 정도 -50–50 */
+    brightness: number;
+}
+
+export const WINDOW_BACKDROP_DEFAULTS: Readonly<WindowBackdropConfig> = Object.freeze({
+    enabled: true,
+    windows: 'tabbed',
+    mac: 'regular',
+    opacity: 60,
+    brightness: 0,
+});
+
+/** 셸이 알려 주는, 이 컴퓨터에서 쓸 수 있는 것 (window_backdrop.rs Support + 이 창에 켜졌는지) */
+export interface BackdropSupport {
+    platform: 'windows' | 'macos' | 'linux';
+    available: boolean;
+    /** windows-old | no-compositor */
+    reason?: string;
+    choices: string[];
+    /** 창을 끌 때 느린 재질 */
+    slow: string[];
+    /** system | compositor | none */
+    blur: string;
+    /** false면 켜고 끄기가 창을 다시 열 때 적용된다 (Linux) */
+    liveToggle: boolean;
+    minOpacity: number;
+    active: boolean;
+    transparent: boolean;
+}
+
+/** 덮는 바탕 CSS 값: 진하기(흐림이 없으면 최소값까지)와 밝기(흰색·검은색 쪽으로 섞기) */
+export function backdropVars(config: WindowBackdropConfig, minOpacity = 0): Record<string, string> {
+    return {
+        '--backdrop-opacity': `${Math.min(100, Math.max(config.opacity, minOpacity))}%`,
+        '--backdrop-mix': config.brightness >= 0 ? 'white' : 'black',
+        '--backdrop-mix-amount': `${Math.abs(config.brightness)}%`,
+    };
+}
+
+let backdropSupport: BackdropSupport | null = null;
+const backdropListeners = new Set<() => void>();
+
+/** 마지막으로 셸이 알려 준 것 (설정 화면이 고를 거리·안내를 정한다). 셸이 없으면 null */
+export function getBackdropSupport() {
+    return backdropSupport;
+}
+
+export function subscribeBackdropSupport(listener: () => void) {
+    backdropListeners.add(listener);
+    return () => {
+        backdropListeners.delete(listener);
+    };
+}
+
+/**
+ * 이 창에 반투명을 적용한다. 셸이 효과를 깔았다고 답했을 때만 바탕을 비운다 (data-backdrop="on", styles/backdrop.css).
+ * 트레이 팝업은 원래 투명 창이라 건드리지 않는다
+ */
+export async function applyWindowBackdrop(config: WindowBackdropConfig) {
+    const root = document.documentElement;
+    if (root.dataset.trayPopup !== undefined) return;
+    let info: BackdropSupport | null = null;
+    try {
+        info = (await window.api?.windowSetBackdrop?.(config)) ?? null;
+    } catch (e) {
+        console.warn('[Theme] Failed to apply window backdrop:', e);
+    }
+    backdropSupport = info;
+    for (const [k, v] of Object.entries(backdropVars(config, info?.minOpacity ?? 0))) root.style.setProperty(k, v);
+    root.dataset.backdrop = info?.active ? 'on' : 'off';
+    for (const l of backdropListeners) l();
+}

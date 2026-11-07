@@ -4461,6 +4461,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "futures-util",
+ "gtk",
  "hex",
  "hmac",
  "reqwest",
@@ -4489,6 +4490,7 @@ dependencies = [
 name = "saba-chan-installer"
 version = "0.1.13"
 dependencies = [
+ "gtk",
  "saba-chan-installer-core",
  "saba-chan-updater-lib",
  "serde_json",
@@ -4533,6 +4535,7 @@ dependencies = [
  "chrono",
  "flate2",
  "futures-util",
+ "gdk",
  "libc",
  "proptest",
  "reqwest",
@@ -4552,6 +4555,7 @@ dependencies = [
  "tracing",
  "uuid",
  "windows-sys 0.61.2",
+ "windows-version",
  "winreg 0.55.0",
  "zip",
 ]
