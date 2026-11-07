@@ -5196,7 +5196,11 @@ button.appbar-preflight {
 .access-bar-end {
     margin-left: auto;
     display: inline-flex;
+    align-items: center;
     gap: var(--sp-2);
+}
+.access-bar-note {
+    font-size: var(--fs-sm);
 }
 .kick-count {
     min-width: 1.4em;

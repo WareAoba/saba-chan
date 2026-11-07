@@ -941,32 +941,37 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
 
     return (
         <div className="dc-tab">
-            <div className="dc-toolbar">
-                <span className="dc-field-inline">
-                    <strong>{t('discord.perm_preset')}</strong>
-                    <Segmented
-                        ariaLabel={t('discord.perm_preset')}
-                        value={preset}
-                        onChange={pickPreset}
-                        items={L.PRESETS.map((p) => ({ id: p, label: t(`discord.preset_${p}`) }))}
-                    />
+            {/* 사용 모드 줄(InstanceAccess)과 같은 모양: 제목·선택은 왼쪽, 되돌리기 단추는 오른쪽 끝 */}
+            <div className="access-bar">
+                <span className="access-bar-title">
+                    <Icon name="command" size="sm" /> {t('discord.perm_preset')}
                 </span>
-                <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={resetToDefault}>
-                    <Icon name="undo" size="sm" /> {t('discord.perm_ladder_reset')}
-                </button>
-                {L.overriddenCount(board) > 0 && (
-                    <span className="muted">
-                        {t('discord.perm_moved_count', { count: L.overriddenCount(board) })}{' '}
-                        <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            disabled={busy}
-                            onClick={() => pickPreset(preset)}
-                        >
-                            {t('discord.perm_reset_to_preset')}
-                        </button>
-                    </span>
-                )}
+                <Segmented
+                    ariaLabel={t('discord.perm_preset')}
+                    value={preset}
+                    onChange={pickPreset}
+                    items={L.PRESETS.map((p) => ({ id: p, label: t(`discord.preset_${p}`) }))}
+                />
+                <span className="access-bar-end">
+                    {L.overriddenCount(board) > 0 && (
+                        <>
+                            <span className="muted access-bar-note">
+                                {t('discord.perm_moved_count', { count: L.overriddenCount(board) })}
+                            </span>
+                            <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                disabled={busy}
+                                onClick={() => pickPreset(preset)}
+                            >
+                                {t('discord.perm_reset_to_preset')}
+                            </button>
+                        </>
+                    )}
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={resetToDefault}>
+                        <Icon name="undo" size="sm" /> {t('discord.perm_ladder_reset')}
+                    </button>
+                </span>
             </div>
             {presetDraft && (
                 <div className="notice tone-warn" role="alert">
