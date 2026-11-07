@@ -393,11 +393,16 @@ fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathB
     Ok((hash, read, added, Some(target)))
 }
 
-/// 이 데몬이 켜진 뒤 풀어 보아 맞았던(또는 새로 쓴) 내용 파일: 경로 → (파일 크기, 수정 시각).
+/// 이 데몬이 켜진 뒤 풀어 보아 맞았던(또는 새로 쓴) 내용 파일: 경로 → (파일 크기, 수정 시각, 이 시각까지 믿음).
 /// 백업마다 바뀌지 않은 파일의 내용 파일을 다시 풀지 않는다 (월드가 크면 백업마다 수 초). 내용 파일은 rename으로만
-/// 바뀌므로 크기·수정 시각이 같으면 같은 파일이다. 복원은 이 기록과 상관없이 늘 풀어 본다
-static INTACT_OBJECTS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, (u64, std::time::SystemTime)>>> =
-    std::sync::LazyLock::new(Default::default);
+/// 바뀌므로 크기·수정 시각이 같으면 같은 파일이다. 수정 시각을 바꾸지 않는 손상(디스크 비트 손상)이 백업마다 이어지지
+/// 않게 `INTACT_FOR`가 지나면 다시 풀어 본다. 복원은 이 기록과 상관없이 늘 풀어 본다
+#[allow(clippy::type_complexity)]
+static INTACT_OBJECTS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<PathBuf, (u64, std::time::SystemTime, std::time::Instant)>>,
+> = std::sync::LazyLock::new(Default::default);
+/// 풀어 본 기록을 믿는 시간
+const INTACT_FOR: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
 /// 기록이 이보다 커지면 비운다 (다음 백업이 한 번 더 풀어 볼 뿐이다)
 const INTACT_OBJECTS_MAX: usize = 200_000;
 
@@ -412,15 +417,17 @@ fn remember_intact(object: &Path) {
     if seen.len() >= INTACT_OBJECTS_MAX {
         seen.clear();
     }
-    seen.insert(object.to_path_buf(), stamp);
+    seen.insert(object.to_path_buf(), (stamp.0, stamp.1, std::time::Instant::now() + INTACT_FOR));
 }
 
 /// 저장소의 내용 파일을 풀어 본 크기·해시가 맞는가 (복원이 하는 검사와 같다).
-/// 이 데몬이 이미 풀어 보아 맞았고 그 뒤 바뀌지 않은 내용 파일은 다시 풀지 않는다 (`INTACT_OBJECTS`)
+/// 이 데몬이 `INTACT_FOR` 안에 풀어 보아 맞았고 그 뒤 바뀌지 않은 내용 파일은 다시 풀지 않는다 (`INTACT_OBJECTS`)
 fn object_intact(object: &Path, hash: &str, size: u64) -> bool {
-    let stamp = object_stamp(object);
-    if stamp.is_some() && INTACT_OBJECTS.lock().unwrap_or_else(|e| e.into_inner()).get(object) == stamp.as_ref() {
-        return true;
+    if let Some((len, modified)) = object_stamp(object) {
+        let seen = INTACT_OBJECTS.lock().unwrap_or_else(|e| e.into_inner());
+        if seen.get(object).is_some_and(|&(l, m, until)| l == len && m == modified && std::time::Instant::now() < until) {
+            return true;
+        }
     }
     let intact = object_unpacks_to(object, hash, size);
     if intact {
@@ -1631,6 +1638,32 @@ mod tests {
         fs::write(w.join("level.dat"), b"current").unwrap();
         assert!(restore(&dir, &second).is_err(), "restore still unpacks and refuses damaged content");
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"current");
+    }
+
+    /// 풀어 본 기록에는 유효 시간이 있다. 지나면 크기·수정 시각이 같아도 다시 풀어 보고, 망가졌으면 원본에서 다시 쓴다
+    #[test]
+    fn an_expired_verification_unpacks_the_content_file_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        File::options().write(true).open(w.join("level.dat")).unwrap().set_modified(old).unwrap();
+        let dir = tmp.path().join("backups");
+        let first = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        let m = read_v2(&dir.join(&first)).unwrap().unwrap();
+        let object = object_path(&dir, &m.files.iter().find(|f| f.rel == "level.dat").unwrap().hash).unwrap();
+        let written_at = fs::metadata(&object).unwrap().modified().unwrap();
+        let damaged: Vec<u8> = fs::read(&object).unwrap().iter().map(|b| b ^ 0xFF).collect();
+        fs::write(&object, &damaged).unwrap();
+        File::options().write(true).open(&object).unwrap().set_modified(written_at).unwrap();
+        // 유효 시간이 지난 것처럼
+        if let Some(entry) = INTACT_OBJECTS.lock().unwrap().get_mut(&object) {
+            entry.2 = std::time::Instant::now();
+        }
+        let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        assert_ne!(fs::read(&object).unwrap(), damaged, "the expired record made the backup unpack and replace the content file");
+        fs::write(w.join("level.dat"), b"current").unwrap();
+        restore(&dir, &second).unwrap();
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
     }
 
     /// 리뷰 603: 판 1은 모두 0.1.8까지 만든 것이다. 수정 시각이 새로 찍힌 사본도 이름의 시각보다 새것으로 보지 않는다
