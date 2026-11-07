@@ -79,6 +79,8 @@ pub enum Published {
     Done,
     /// 릴레이가 받지 않는다 (주소 없는 endpoint를 모르는 예전 릴레이): 다시 보내지 않는다
     Refused,
+    /// 릴레이가 이 노드 토큰을 받지 않는다 (401·403: 토큰이 대체되거나 지워짐): 같은 토큰으로는 다시 보내지 않는다
+    Unauthorized,
     Failed,
 }
 
@@ -88,6 +90,7 @@ pub async fn publish(target: &Target, address: Option<&str>, port: u16, cert_sha
     match send(target, reqwest::Method::PUT, "/api/remote/endpoint", Some(&body)).await {
         Ok((204, _)) => Published::Done,
         Ok((400, _)) => Published::Refused,
+        Ok((401 | 403, _)) => Published::Unauthorized,
         _ => Published::Failed,
     }
 }
