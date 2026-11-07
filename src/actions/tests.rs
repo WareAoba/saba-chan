@@ -91,6 +91,17 @@ async fn the_chatbot_cannot_reach_forbidden_actions_whatever_the_levels() {
         assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some(key)), "{:?}", err);
     }
     assert!(plan(&state, "instance.settings.set", Some(&id), &json!({ "admin_pass": "x" }), &gui()).await.is_ok());
+    // 사용 모드와 그 명단·자동 강퇴는 PC 앱·웹에서만 바꾼다 (디스코드·말하는 사바쨩 불가, 사용자 지정 2026-11-08)
+    for (key, value) in [
+        ("access", json!("shared")),
+        ("controllers_only", json!(false)),
+        ("controllers", json!([])),
+        ("kick_players", json!([])),
+    ] {
+        let err = plan(&state, "instance.settings.set", Some(&id), &json!({ key: value }), &owner_bot).await.unwrap_err();
+        assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some(key)), "{:?}", err);
+    }
+    assert!(plan(&state, "instance.settings.set", Some(&id), &json!({ "access": "members" }), &gui()).await.is_ok());
 }
 
 /// 원격 포트(짝 맺은 PC)에서 온 액션은 대상 라우트·칸이 원격 포트에서 막힌 것이면 계획·실행·여러 단계 계획 모두
