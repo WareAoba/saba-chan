@@ -62,9 +62,11 @@ def notes(path):
     body = "\n\n---\n\n".join(p for p in parts if p)
     return (body + "\n\n---\n\n"
             "앱은 이 파일들을 직접 받지 않고, 서명된 manifest(`release-manifest.json`)로 같은 파일을 받습니다. "
-            "Windows 실행 파일은 아직 코드 서명이 없습니다. 받은 파일은 `SHA256SUMS.txt`로 확인할 수 있습니다.\n"
+            "Windows 실행 파일은 아직 코드 서명이 없고, 맥 앱은 Apple 서명·공증이 없습니다. "
+            "받은 파일은 `SHA256SUMS.txt`로 확인할 수 있습니다.\n"
             "The app updates from the signed manifest (`release-manifest.json`), not from this page. "
-            "Windows executables are not code-signed yet. Verify downloads with `SHA256SUMS.txt`.\n")
+            "Windows executables are not code-signed yet, and the macOS app is not signed or notarized by Apple. "
+            "Verify downloads with `SHA256SUMS.txt`.\n")
 
 
 def main():

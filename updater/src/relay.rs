@@ -632,7 +632,7 @@ mod tests {
     }
 
     /// 구성마다 따로 빌드한 같은 컴포넌트(`<키>.<구성>`, 리눅스 서버용 창 없는 설치기)는 이 구성의 것만 `<키>`로 남는다.
-    /// 다른 구성의 몫은 빠지고, 모듈·익스텐션 이름의 `.`은 구성 표시가 아니다
+    /// 다른 구성의 몫(구성이 아닌 `installer.dmg` 포함)은 빠지고, 모듈·익스텐션 이름의 `.`은 구성 표시가 아니다
     #[test]
     fn a_profile_build_stands_in_for_its_component() {
         let entry = |asset: &str| json!({
@@ -645,6 +645,8 @@ mod tests {
         v["components"]["installer.desktop"] = entry("saba-chan-installer-desktop-linux-x64.zip");
         v["components"]["installer.headless"] = entry("saba-chan-installer-headless-linux-x64.zip");
         v["components"]["module-a.b"] = entry("module-a.b.zip");
+        // 구성이 아닌 변형(맥 웹사이트 다운로드용 .dmg)은 어느 구성도 받지 않는다
+        v["components"]["installer.dmg"] = entry("Saba-chan-macos-arm64.dmg");
         let m: ReleaseManifest = serde_json::from_value(v).unwrap();
 
         let headless = m.clone().for_profile(Profile::Headless);
