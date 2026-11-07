@@ -50,7 +50,7 @@ class MacApp(unittest.TestCase):
         self.assertEqual(conf["identifier"], plist["CFBundleIdentifier"])
 
     def test_dmg_window_puts_the_app_left_of_applications_on_the_background(self):
-        # Finder 창: 배경 화살표를 따라 왼쪽 앱 → 오른쪽 응용 프로그램. 둘 말고는 두지 않는다 (창 밖으로 나가면 스크롤이 생긴다)
+        # Finder 창: 배경 낚싯줄을 따라 왼쪽 앱 → 오른쪽 응용 프로그램. 둘 말고는 두지 않는다 (창 밖으로 나가면 스크롤이 생긴다)
         app = Path("/tmp/Saba-chan.app")
         settings = package_macos.dmg_settings(app)
         locations = settings["icon_locations"]
