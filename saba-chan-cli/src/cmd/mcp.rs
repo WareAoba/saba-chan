@@ -9,6 +9,7 @@
 //! 확인은 사람이 한다: `--yes`는 인자로 받지 않고 `confirm`으로만 붙인다. 약관 동의는 `--yes`로도 대신하지 않는다(CLI 규칙).
 
 use crate::error::{failed, Result};
+use clap::Parser;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation, ListToolsResult,
     PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool, ToolAnnotations,
@@ -46,13 +47,18 @@ user in plain words, and only if they agree call saba_run again with the same ar
 - Game agreements (EULA) are accepted only by the user in a terminal or the app; do not try to accept them.";
 
 #[derive(Clone, Default)]
-struct Local;
+struct Local {
+    /// 띄울 때 고른 대상 ([`base_args`])
+    base: Vec<String>,
+}
 
 pub async fn run() -> Result<()> {
-    let server = Local
-        .serve(rmcp::transport::stdio())
-        .await
-        .map_err(|e| failed(e.to_string()))?;
+    let server = Local {
+        base: base_args(std::env::args_os()),
+    }
+    .serve(rmcp::transport::stdio())
+    .await
+    .map_err(|e| failed(e.to_string()))?;
     server.waiting().await.map_err(|e| failed(e.to_string()))?;
     Ok(())
 }
@@ -126,7 +132,7 @@ impl ServerHandler for Local {
                     .and_then(Value::as_u64)
                     .unwrap_or(DEFAULT_TIMEOUT)
                     .clamp(1, MAX_TIMEOUT);
-                match child_args(&strings(input.get("args")), confirm) {
+                match child_args(&strings(input.get("args")), confirm, &self.base) {
                     Ok(args) => reply(run_cli(&args, Duration::from_secs(wait)).await),
                     Err(why) => CallToolResult::error(vec![ContentBlock::text(why)]),
                 }
@@ -155,11 +161,40 @@ fn help(path: &[String]) -> CallToolResult {
     }
 }
 
-/// 에이전트가 준 인자 → 자식 CLI 인자. 늘 `--json`, 확인을 받았을 때만 `--yes`
-fn child_args(args: &[String], confirm: bool) -> std::result::Result<Vec<String>, String> {
-    if args
-        .iter()
-        .any(|a| a == "--yes" || a == "-y" || a.starts_with("--yes="))
+/// 이 서버를 띄울 때 고른 대상(`--daemon`, `--port`, `--lang`): 호출마다 기본으로 자식에 붙인다
+fn base_args<I, T>(argv: I) -> Vec<String>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    let Ok(cli) = crate::cli::Cli::try_parse_from(argv) else {
+        return Vec::new();
+    };
+    let g = cli.global;
+    let mut out = Vec::new();
+    for (flag, value) in [
+        ("--daemon", g.daemon),
+        ("--port", g.port.map(|p| p.to_string())),
+        ("--lang", g.lang),
+    ] {
+        if let Some(v) = value {
+            out.extend([flag.to_string(), v]);
+        }
+    }
+    out
+}
+
+/// 에이전트가 준 인자 → 자식 CLI 인자. 늘 `--json`, 확인을 받았을 때만 `--yes`.
+/// `base`(띄울 때 고른 대상)는 호출이 같은 옵션을 직접 주지 않았을 때만 붙인다
+fn child_args(args: &[String], confirm: bool, base: &[String]) -> std::result::Result<Vec<String>, String> {
+    // 자식과 같은 파서로 읽는다: `-ys`처럼 묶은 짧은 옵션 안의 `-y`도 잡는다
+    let parsed_yes =
+        crate::cli::Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().map(String::as_str)))
+            .is_ok_and(|c| c.global.yes);
+    if parsed_yes
+        || args
+            .iter()
+            .any(|a| a == "--yes" || a == "-y" || a.starts_with("--yes="))
     {
         return Err("Do not pass --yes: ask the user, then call again with confirm: true".into());
     }
@@ -188,6 +223,13 @@ fn child_args(args: &[String], confirm: bool) -> std::result::Result<Vec<String>
     let mut out = vec!["--json".to_string()];
     if confirm {
         out.push("--yes".into());
+    }
+    for pair in base.chunks(2) {
+        let flag = &pair[0];
+        let given = args.iter().any(|a| a == flag || a.starts_with(&format!("{flag}=")));
+        if !given {
+            out.extend(pair.iter().cloned());
+        }
     }
     out.extend(args.iter().cloned());
     Ok(out)
@@ -315,30 +357,56 @@ mod tests {
     #[test]
     fn json_always_and_yes_only_after_confirm() {
         assert_eq!(
-            child_args(&a(&["server", "list"]), false).unwrap(),
+            child_args(&a(&["server", "list"]), false, &[]).unwrap(),
             a(&["--json", "server", "list"])
         );
         assert_eq!(
-            child_args(&a(&["stop", "survival"]), true).unwrap(),
+            child_args(&a(&["stop", "survival"]), true, &[]).unwrap(),
             a(&["--json", "--yes", "stop", "survival"])
         );
-        assert!(child_args(&a(&["stop", "survival", "--yes"]), false).is_err());
-        assert!(child_args(&a(&["-y", "stop", "x"]), false).is_err());
+        assert!(child_args(&a(&["stop", "survival", "--yes"]), false, &[]).is_err());
+        assert!(child_args(&a(&["-y", "stop", "x"]), false, &[]).is_err());
+        // 묶은 짧은 옵션(`-ys` = `-y -s`)도 CLI 파서로 읽어 막는다
+        assert!(child_args(&a(&["do", "server.stop", "-ys", "survival"]), false, &[]).is_err());
+        // `-sy`는 `-s y`(서버 이름 y)라 확인 생략이 아니다
+        assert!(child_args(&a(&["do", "server.stop", "-sy"]), false, &[]).is_ok());
         // 약관 동의는 confirm이 있어도 넘기지 않는다
-        assert!(child_args(&a(&["server", "add", "mc", "--accept", "eula"]), true).is_err());
-        assert!(child_args(&a(&["server", "add", "mc", "--accept=eula"]), false).is_err());
+        assert!(child_args(&a(&["server", "add", "mc", "--accept", "eula"]), true, &[]).is_err());
+        assert!(child_args(&a(&["server", "add", "mc", "--accept=eula"]), false, &[]).is_err());
+    }
+
+    /// `saba-chan --daemon X mcp`처럼 띄울 때 고른 대상은 호출마다 기본으로 붙고, 호출이 고른 대상이 이긴다
+    #[test]
+    fn the_target_chosen_at_start_is_the_default() {
+        let base = a(&["--daemon", "prod", "--port", "5000"]);
+        assert_eq!(
+            child_args(&a(&["status"]), false, &base).unwrap(),
+            a(&["--json", "--daemon", "prod", "--port", "5000", "status"])
+        );
+        assert_eq!(
+            child_args(&a(&["--daemon=home", "status"]), false, &base).unwrap(),
+            a(&["--json", "--port", "5000", "--daemon=home", "status"])
+        );
+        assert_eq!(
+            base_args(["saba-chan-cli", "--daemon", "prod", "mcp"]),
+            a(&["--daemon", "prod"])
+        );
+        assert_eq!(
+            base_args(["saba-chan-cli", "mcp", "--port", "5000"]),
+            a(&["--port", "5000"])
+        );
     }
 
     /// 사람이 키보드로 쓰는 화면과 이 서버 자신은 돌리지 않는다. 전역 옵션의 값은 명령으로 보지 않는다
     #[test]
     fn interactive_screens_are_refused() {
-        assert!(child_args(&[], false).is_err());
-        assert!(child_args(&a(&["--lang", "ko"]), false).is_err());
+        assert!(child_args(&[], false, &[]).is_err());
+        assert!(child_args(&a(&["--lang", "ko"]), false, &[]).is_err());
         for c in ["mcp", "shell", "tui"] {
-            assert!(child_args(&a(&[c]), false).is_err(), "{c}");
-            assert!(child_args(&a(&["--daemon", "home", c]), false).is_err(), "{c}");
+            assert!(child_args(&a(&[c]), false, &[]).is_err(), "{c}");
+            assert!(child_args(&a(&["--daemon", "home", c]), false, &[]).is_err(), "{c}");
         }
-        assert!(child_args(&a(&["--daemon", "mcp", "status"]), false).is_ok());
+        assert!(child_args(&a(&["--daemon", "mcp", "status"]), false, &[]).is_ok());
     }
 
     fn text(r: &CallToolResult) -> String {
