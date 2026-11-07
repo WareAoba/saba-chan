@@ -1,7 +1,7 @@
 //! `agent` — 이 PC의 AI 에이전트(Claude Code·Codex)에 로컬 MCP(`mcp`)를 등록·해제한다
 //!
 //! Claude Code: `claude mcp add --scope user --transport stdio saba-chan-local -- <이 CLI> mcp` (사용자 범위)
-//! Codex: `~/.codex/config.toml`의 `[mcp_servers.saba-chan-local]` (다른 내용은 그대로 둔다)
+//! Codex: `$CODEX_HOME/config.toml`(없으면 `~/.codex/config.toml`)의 `[mcp_servers.saba-chan-local]` (다른 내용은 그대로 둔다)
 
 use crate::cli::AgentCmd;
 use crate::ctx::Ctx;
@@ -200,10 +200,23 @@ fn claude_unlink() -> std::result::Result<bool, String> {
     Ok(true)
 }
 
-/// `~/.codex/config.toml`
+/// Codex 설정 파일: `CODEX_HOME`(Codex 상태의 루트)이 있으면 그 아래, 없으면 `~/.codex/config.toml`
 fn codex_config() -> std::result::Result<PathBuf, String> {
-    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).ok_or("no home folder")?;
-    Ok(PathBuf::from(home).join(".codex").join("config.toml"))
+    codex_config_from(
+        std::env::var_os("CODEX_HOME"),
+        std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }),
+    )
+}
+
+fn codex_config_from(
+    codex_home: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> std::result::Result<PathBuf, String> {
+    let root = match codex_home.filter(|h| !h.is_empty()) {
+        Some(h) => PathBuf::from(h),
+        None => PathBuf::from(home.ok_or("no home folder")?).join(".codex"),
+    };
+    Ok(root.join("config.toml"))
 }
 
 fn codex_linked(file: &Path) -> bool {
@@ -263,6 +276,23 @@ fn codex_text(text: &str, exe: Option<&Path>) -> std::result::Result<String, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Codex 설정은 `CODEX_HOME`이 있으면 그 아래, 없으면 홈의 `.codex` 아래
+    #[test]
+    fn codex_config_follows_codex_home() {
+        assert_eq!(
+            codex_config_from(Some("/x/codex".into()), Some("/home/a".into())).unwrap(),
+            Path::new("/x/codex/config.toml")
+        );
+        assert_eq!(
+            codex_config_from(None, Some("/home/a".into())).unwrap(),
+            Path::new("/home/a/.codex/config.toml")
+        );
+        assert_eq!(
+            codex_config_from(Some("".into()), Some("/home/a".into())).unwrap(),
+            Path::new("/home/a/.codex/config.toml")
+        );
+    }
 
     /// 고르지 않으면 둘 다, 하나만 고르면 그것만
     #[test]
