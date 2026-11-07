@@ -163,6 +163,12 @@ fn child_args(args: &[String], confirm: bool) -> std::result::Result<Vec<String>
     {
         return Err("Do not pass --yes: ask the user, then call again with confirm: true".into());
     }
+    // 약관(EULA) 동의는 사람이 직접 한다: 에이전트가 `--accept <ID>`로 대신 동의하지 못하게 막는다
+    if args.iter().any(|a| a == "--accept" || a.starts_with("--accept=")) {
+        return Err(
+            "Do not pass --accept: game agreements are accepted only by the user in a terminal or the app".into(),
+        );
+    }
     let mut words = args.iter();
     let command = loop {
         match words.next() {
@@ -318,6 +324,9 @@ mod tests {
         );
         assert!(child_args(&a(&["stop", "survival", "--yes"]), false).is_err());
         assert!(child_args(&a(&["-y", "stop", "x"]), false).is_err());
+        // 약관 동의는 confirm이 있어도 넘기지 않는다
+        assert!(child_args(&a(&["server", "add", "mc", "--accept", "eula"]), true).is_err());
+        assert!(child_args(&a(&["server", "add", "mc", "--accept=eula"]), false).is_err());
     }
 
     /// 사람이 키보드로 쓰는 화면과 이 서버 자신은 돌리지 않는다. 전역 옵션의 값은 명령으로 보지 않는다
