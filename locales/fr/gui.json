@@ -1734,6 +1734,8 @@
     "title": "Journal d'activité",
     "desc_server": "Qui a fait quoi sur ce serveur, quand et d'où. Les plus récents en premier.",
     "desc_all": "Qui a fait quoi sur tous les serveurs, quand et d'où. Les plus récents en premier.",
+    "nav_all": "Tous les serveurs",
+    "nav_label": "Serveurs du journal",
     "refresh": "Actualiser",
     "empty": "Aucune activité pour l'instant.",
     "load_failed": "Impossible de charger le journal d'activité.",

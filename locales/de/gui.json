@@ -1734,6 +1734,8 @@
     "title": "Aktivitätsprotokoll",
     "desc_server": "Wer wann und von wo etwas an diesem Server getan hat. Neueste zuerst.",
     "desc_all": "Wer wann und von wo etwas an allen Servern getan hat. Neueste zuerst.",
+    "nav_all": "Alle Server",
+    "nav_label": "Server im Aktivitätsprotokoll",
     "refresh": "Aktualisieren",
     "empty": "Noch keine Aktivität.",
     "load_failed": "Das Aktivitätsprotokoll konnte nicht geladen werden.",

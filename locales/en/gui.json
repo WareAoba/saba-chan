@@ -1734,6 +1734,8 @@
     "title": "Activity log",
     "desc_server": "Who did what to this server, when, and from where. Newest first.",
     "desc_all": "Who did what to every server, when, and from where. Newest first.",
+    "nav_all": "All servers",
+    "nav_label": "Servers in activity log",
     "refresh": "Refresh",
     "empty": "No activity yet.",
     "load_failed": "Couldn't load the activity log.",

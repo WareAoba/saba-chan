@@ -1,8 +1,20 @@
-import type { ComponentProps } from 'react';
+import clsx from 'clsx';
+import type { ComponentProps, ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type AuditEntry, auditRange, auditReason, auditResult, auditWhat, auditWho, PERIODS } from '../../utils/audit';
+import { useServerStore } from '../../stores/useServerStore';
+import {
+    type AuditEntry,
+    auditRange,
+    auditReason,
+    auditResult,
+    auditWhat,
+    auditWho,
+    isInstanceEntry,
+    PERIODS,
+} from '../../utils/audit';
 import { safeShowToast } from '../../utils/helpers';
+import { gameNameOf, initials } from '../../utils/serverView';
 import { Icon } from '../Icon';
 import { DateField } from '../ui/DateTimePicker';
 import { SabaSpinner } from '../ui/SabaUI';
@@ -32,7 +44,11 @@ const EXPORT_ERRORS = ['INVALID_PATH', 'WRITE_FAILED']; // data_transfer.err_* �
 export function AuditLog({ instanceId }: { instanceId?: string }) {
     const { t, i18n } = useTranslation('gui');
     const [entries, setEntries] = useState<AuditRow[] | null>(null);
+    const [rawCount, setRawCount] = useState(0); // 숨긴 줄까지 센 받은 건수 (더 보기 판단)
     const [limit, setLimit] = useState(PAGE);
+    // 다른 서버를 고르면 처음 쪽부터 다시
+    // biome-ignore lint/correctness/useExhaustiveDependencies: instanceId가 바뀔 때만 되돌린다
+    useEffect(() => setLimit(PAGE), [instanceId]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [period, setPeriod] = useState('all');
@@ -63,7 +79,8 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
             });
             if (!current()) return;
             if (!Array.isArray(res?.entries)) throw new Error(res?.error || t('audit.load_failed'));
-            setEntries(res.entries);
+            setRawCount(res.entries.length);
+            setEntries(res.entries.filter(isInstanceEntry));
         } catch (err) {
             if (current()) setError((err as Error).message || String(err));
         } finally {
@@ -110,7 +127,7 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
             second: '2-digit',
         });
     // 받은 건수가 요청보다 적으면 더 없다
-    const more = entries && entries.length >= limit && limit < MAX;
+    const more = entries && rawCount >= limit && limit < MAX;
 
     return (
         <section className="dc-card audit-card" aria-label={t('audit.title')}>
@@ -185,7 +202,9 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
                                         {auditWhat(e, t)}
                                     </span>
                                     <span className="dc-list-sub">{auditWho(e, t)}</span>
-                                    {auditReason(e, t) && <span className="dc-list-sub audit-reason">{auditReason(e, t)}</span>}
+                                    {auditReason(e, t) && (
+                                        <span className="dc-list-sub audit-reason">{auditReason(e, t)}</span>
+                                    )}
                                 </span>
                                 <StatusChip {...(auditResult(e, t) as ComponentProps<typeof StatusChip>)} />
                             </li>
@@ -204,5 +223,67 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
                 </button>
             )}
         </section>
+    );
+}
+
+/**
+ * 상단 탭의 작업 기록 페이지: 왼쪽에 "모든 서버"와 서버(인스턴스) 목록, 오른쪽에 고른 서버의 기록.
+ * 지운 서버의 기록은 "모든 서버"에서만 보인다.
+ */
+export function ActivityPage() {
+    const { t } = useTranslation('gui');
+    const servers = useServerStore((s) => s.servers);
+    const modules = useServerStore((s) => s.modules);
+    const [selected, setSelected] = useState<string | null>(null);
+    const current = selected && servers.some((s) => s.id === selected) ? selected : null;
+
+    const row = (key: string, active: boolean, onClick: () => void, icon: ReactNode, label: string) => (
+        <button
+            key={key}
+            type="button"
+            className={clsx('server-row dc-nav-row', { selected: active })}
+            onClick={onClick}
+            aria-current={active ? 'page' : undefined}
+        >
+            <span className="server-row-icon">{icon}</span>
+            <span className="server-row-text">
+                <span className="server-row-name">{label}</span>
+            </span>
+        </button>
+    );
+
+    return (
+        <div className="page servers-page activity-split">
+            <aside className="server-list-pane dc-nav" aria-label={t('audit.nav_label')}>
+                <div className="server-list dc-nav-list">
+                    {row(
+                        'all',
+                        !current,
+                        () => setSelected(null),
+                        <Icon name="server" size="sm" />,
+                        t('audit.nav_all'),
+                    )}
+                    {servers.map((s) => {
+                        const mod = modules.find((m) => m.name === s.module);
+                        return row(
+                            s.id,
+                            current === s.id,
+                            () => setSelected(s.id),
+                            mod?.icon ? (
+                                <img src={mod.icon} alt="" />
+                            ) : (
+                                <span aria-hidden="true">{initials(gameNameOf(t, s.module, mod))}</span>
+                            ),
+                            s.name,
+                        );
+                    })}
+                </div>
+            </aside>
+            <main className="server-detail-pane">
+                <div className="server-detail dc-main activity-page">
+                    <AuditLog instanceId={current ?? undefined} />
+                </div>
+            </main>
+        </div>
     );
 }

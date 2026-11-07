@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AuditLog } from '../components/servers/AuditTab';
+import { ActivityPage, AuditLog } from '../components/servers/AuditTab';
 import i18n from '../i18n';
+import { type Server, useServerStore } from '../stores/useServerStore';
 import { pickDate } from './picker';
 
 const entry = (over?: Record<string, unknown>) => ({
@@ -114,7 +115,9 @@ describe('AuditLog', () => {
     });
 
     it('스크롤해도 새로고침·기간·더 보기는 목록 밖에 있어 늘 누를 수 있다', async () => {
-        window.api.auditList = vi.fn(async ({ limit }) => ({ entries: Array.from({ length: limit }, () => entry()) })) as never;
+        window.api.auditList = vi.fn(async ({ limit }) => ({
+            entries: Array.from({ length: limit }, () => entry()),
+        })) as never;
         render(<AuditLog />);
         await screen.findAllByText('Command · say hi');
         const scroll = document.querySelector('.audit-scroll') as HTMLElement;
@@ -195,5 +198,29 @@ describe('AuditLog', () => {
         expect(type).toBe('error');
         expect(message).toContain(i18n.t('gui:data_transfer.err_write_failed'));
         expect(message).not.toContain('Could not write');
+    });
+    it('작업 기록 페이지: 왼쪽 서버를 누르면 그 서버 기록만, 서버 밖 설정 기록은 숨긴다', async () => {
+        useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Minecraft', module: 'minecraft' }] as Server[] });
+        window.api.auditList = vi.fn().mockResolvedValue({
+            entries: [
+                entry(),
+                entry({
+                    action: 'discord.settings.set',
+                    instanceId: '',
+                    instance: undefined,
+                    command: undefined,
+                    args: undefined,
+                }),
+            ],
+        }) as never;
+        render(<ActivityPage />);
+        expect(await screen.findByText('Command · say hi')).toBeTruthy();
+        expect(screen.queryByText(/discord.settings.set/)).toBeNull();
+        expect(window.api.auditList).toHaveBeenLastCalledWith({ limit: 100 });
+        fireEvent.click(screen.getByRole('button', { name: 'Minecraft' }));
+        await waitFor(() => expect(window.api.auditList).toHaveBeenLastCalledWith({ limit: 100, instance: 'mc-1' }));
+        expect(screen.getByRole('button', { name: 'Minecraft' }).getAttribute('aria-current')).toBe('page');
+        fireEvent.click(screen.getByRole('button', { name: 'All servers' }));
+        await waitFor(() => expect(window.api.auditList).toHaveBeenLastCalledWith({ limit: 100 }));
     });
 });

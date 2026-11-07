@@ -1734,6 +1734,8 @@
     "title": "Registro de actividad",
     "desc_server": "Quién hizo qué en este servidor, cuándo y desde dónde. Lo más reciente primero.",
     "desc_all": "Quién hizo qué en todos los servidores, cuándo y desde dónde. Lo más reciente primero.",
+    "nav_all": "Todos los servidores",
+    "nav_label": "Servidores del registro",
     "refresh": "Actualizar",
     "empty": "Aún no hay actividad.",
     "load_failed": "No se pudo cargar el registro de actividad.",
