@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import type { TFunction } from 'i18next';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, RefObject } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
@@ -223,10 +223,20 @@ function MemberSearch({
     const { t } = useTranslation('gui');
     const [query, setQuery] = useState('');
     const [shown, setShown] = useState(MEMBER_PAGE);
+    // 끄는 결과 칩은 팝업(스크롤 칸) 밖으로 띄워야 잘리지 않는다: 누른 자리를 적어 두고 끄는 동안 fixed로 그 자리에 둔다
+    const [origin, setOrigin] = useState<{ id: string; left: number; top: number; width: number } | null>(null);
     const results = useMemo(
         () => searchMembers(members, query, (m) => nameOf(String(m.id))),
         [members, query, nameOf],
     );
+    const withOrigin = (mid: string, props: Record<string, unknown>) => ({
+        ...props,
+        onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
+            const box = e.currentTarget.getBoundingClientRect();
+            setOrigin({ id: mid, left: box.left, top: box.top, width: box.width });
+            (props.onPointerDown as ((ev: ReactPointerEvent<HTMLElement>) => void) | undefined)?.(e);
+        },
+    });
     const id = query.trim();
     // 멤버 목록에 없는 사람은 디스코드 ID를 그대로 적어 더한다
     const byId = onPick && isId(id) && !members.some((m) => String(m.id) === id);
@@ -271,9 +281,17 @@ function MemberSearch({
                                     role="option"
                                     aria-selected={false}
                                     aria-label={nameOf(mid)}
-                                    className={clsx('dc-chip', { 'is-dragging': dragging === mid })}
+                                    className={clsx('dc-chip', {
+                                        'is-dragging': dragging === mid,
+                                        'is-floating': dragging === mid && origin?.id === mid,
+                                    })}
+                                    style={
+                                        dragging === mid && origin?.id === mid
+                                            ? { left: origin.left, top: origin.top, width: origin.width }
+                                            : undefined
+                                    }
                                     disabled={disabled}
-                                    {...(dragProps ? dragProps(mid) : {})}
+                                    {...(dragProps ? withOrigin(mid, dragProps(mid)) : {})}
                                     onClick={() => {
                                         if (!onPick) return;
                                         onPick(mid);
@@ -569,7 +587,7 @@ export function PeopleView({
                                     ownerDraft === null ? (
                                         <span className="dc-owner">
                                             {owner ? (
-                                                <span className="dc-chip is-static">
+                                                <span className="dc-chip is-static is-owner">
                                                     <Avatar name={nameOf(owner)} url={avatarOf(owner)} size={20} />
                                                     <span>{nameOf(owner)}</span>
                                                 </span>
@@ -632,7 +650,7 @@ export function PeopleView({
                                         <li>
                                             <button
                                                 type="button"
-                                                className="dc-chip is-add"
+                                                className={clsx('dc-chip is-add', { 'is-active': adding === level })}
                                                 aria-expanded={adding === level}
                                                 aria-label={t('discord.perm_add_person_to', {
                                                     level: L.levelLabel(t, perm, level),

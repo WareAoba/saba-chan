@@ -2499,14 +2499,29 @@ button.activity-line:hover {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent);
 }
+/* 소유자 칩: 버튼 칩과 같은 높이·굵기(버튼 기본값을 맞춘다)에 강조 그라데이션 바탕 (사용자 지정 2026-11-07) */
 .dc-chip.is-static {
+    height: var(--btn-height);
+    font-weight: var(--btn-font-weight);
     cursor: default;
+}
+.dc-chip.is-owner {
+    border-color: color-mix(in oklch, var(--accent) 55%, transparent);
+    background: linear-gradient(135deg, color-mix(in oklch, var(--accent) 38%, var(--bg-1)), color-mix(in oklch, var(--accent) 10%, var(--bg-1)));
 }
 .dc-chip.is-add {
     padding-left: var(--sp-2-5);
     border-style: dashed;
     background: transparent;
     color: var(--text-2);
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+/* 이 레벨에 사람을 더하는 중 */
+.dc-chip.is-add.is-active {
+    border-style: solid;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+    color: var(--accent);
 }
 .dc-add-person {
     margin-top: var(--sp-2);
@@ -2550,16 +2565,24 @@ button.activity-line:hover {
 .dc-member-empty {
     padding: var(--sp-2);
 }
-/* 결과를 끄는 동안: 끄는 칩만 보이고 팝업은 손 아래 칸을 가리지 않는다 */
+/* 결과를 끄는 동안: 팝업은 반투명으로 남고 손 아래 칸을 가리지 않는다. 끄는 칩은 팝업 밖으로 떠서(MemberSearch가 fixed로 띄운다) 잘리지 않는다 */
+.dc-member-results {
+    transition: opacity var(--dur-fast) var(--ease);
+}
 .dc-member-search.is-dragging .dc-member-results {
-    overflow: visible;
-    border-color: transparent;
-    background: transparent;
-    box-shadow: none;
     pointer-events: none;
 }
 .dc-member-search.is-dragging .dc-member-result:not(:has(.is-dragging)) {
-    visibility: hidden;
+    opacity: 0.4;
+}
+.dc-member-search.is-dragging .dc-member-results {
+    background: color-mix(in oklch, var(--bg-1) 55%, transparent);
+    border-color: color-mix(in oklch, var(--line-strong) 50%, transparent);
+}
+.dc-member-result > .dc-chip.is-floating {
+    position: fixed;
+    z-index: 60;
+    pointer-events: none;
 }
 .dc-import summary {
     font-weight: 600;
