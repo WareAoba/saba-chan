@@ -1761,6 +1761,7 @@
     "source_web": "Saba-chan web",
     "source_remote": "Remote PC",
     "source_mcp": "AI agent",
+    "source_agent": "AI agent on this PC",
     "source_restart": "Auto restart",
     "code_invalid_argument": "An input value wasn't valid",
     "code_missing_argument": "A required value was missing",

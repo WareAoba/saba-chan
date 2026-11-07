@@ -1011,7 +1011,12 @@
       "bot.clear": "채널의 최근 메시지를 지워요(고정 메시지·사바쨩 패널은 남아요). 먼저 물어봐요",
       "bot.mute": "멤버의 채팅·반응·음성을 막아요: 기간(10m, 1h, 7d, 28일까지), forever, 풀려면 off",
       "bot.big-emoji": "디스코드 서버의 이모지 업스케일(커스텀 이모지만 쓴 글을 크게 보이기). 옵션이 없으면 보기",
-      "config.net-trace": "포트·서버별 네트워크(고급, Windows) 권한: 동작 없이 쓰면 지금 상태, grant는 데몬 PC에 관리자 확인 창을 한 번 띄워 권한을 받고, revoke는 되돌려요. 켜기는 config set systemMonitorNetTrace=on"
+      "config.net-trace": "포트·서버별 네트워크(고급, Windows) 권한: 동작 없이 쓰면 지금 상태, grant는 데몬 PC에 관리자 확인 창을 한 번 띄워 권한을 받고, revoke는 되돌려요. 켜기는 config set systemMonitorNetTrace=on",
+      "mcp": "이 PC의 AI 에이전트(Claude Code·Codex)가 모든 명령을 쓰게 하는 로컬 MCP 서버(stdin/stdout)",
+      "agent": "이 PC의 AI 에이전트에 로컬 MCP(`mcp`)를 등록해요",
+      "agent.link": "Claude Code와 Codex에 사바쨩을 넣어요(하나만 고르지 않으면 둘 다)",
+      "agent.unlink": "Claude Code와 Codex에서 사바쨩을 빼요",
+      "agent.status": "이 PC에서 사바쨩이 들어간 에이전트"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -1230,7 +1235,11 @@
       "bot.sleep-mode.no_block": "자는 동안에도 아무 기능도 끄지 않기",
       "bot.big-emoji.on": "이모지 업스케일 켜기",
       "bot.big-emoji.off": "이모지 업스케일 끄기",
-      "config.net-trace.action": "grant(권한 받기) 또는 revoke(되돌리기). 없으면 지금 상태"
+      "config.net-trace.action": "grant(권한 받기) 또는 revoke(되돌리기). 없으면 지금 상태",
+      "agent.link.claude": "Claude Code만",
+      "agent.link.codex": "Codex만",
+      "agent.unlink.claude": "Claude Code만",
+      "agent.unlink.codex": "Codex만"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -1777,5 +1786,15 @@
       "cgnat": "통신사가 공인 IP를 여러 집이 나눠 쓰게 해서 포트포워딩으로는 열 수 없어요. 통신사에 공인 IP를 요청하거나 Tailscale 같은 VPN을 써 주세요.",
       "unknown": "실행 중인 서버의 UDP 포트와 다른 프로그램이 쓰는 포트는 확인할 수 없어요. 서버를 정지하고 다시 확인해 주세요."
     }
+  },
+  "agent": {
+    "linked": "✓ {{agent}}에 사바쨩을 넣었어요",
+    "unlinked": "✓ {{agent}}에서 사바쨩을 뺐어요",
+    "not_installed": "· {{agent}}가 이 PC에 없어요",
+    "failed": "✗ {{agent}}: {{error}}",
+    "restart_hint": "에이전트를 다시 열면 사바쨩 도구가 보여요.",
+    "some_failed": "일부 에이전트를 바꾸지 못했어요",
+    "is_linked": "✓ {{agent}}: 사바쨩이 들어가 있어요",
+    "is_not_linked": "· {{agent}}: 사바쨩이 없어요 (saba-chan agent link)"
   }
 }

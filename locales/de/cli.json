@@ -1011,7 +1011,12 @@
       "bot.clear": "Letzte Nachrichten eines Kanals löschen (angeheftete Nachrichten und Saba-chan-Panels bleiben). Fragt vorher nach",
       "bot.mute": "Chat, Reaktionen und Sprache eines Mitglieds sperren: Dauer (10m, 1h, 7d, bis 28 Tage), forever, aufheben mit off",
       "bot.big-emoji": "Emoji-Upscaling (ein einzelnes eigenes Emoji wird groß gezeigt) auf einem Discord-Server. Ohne Optionen: anzeigen",
-      "config.net-trace": "Berechtigung für Netzwerk pro Server und Port (erweitert, Windows): ohne Aktion der aktuelle Stand; grant zeigt auf dem Daemon-PC einmal eine Administratorbestätigung, revoke macht es rückgängig. Einschalten mit config set systemMonitorNetTrace=on"
+      "config.net-trace": "Berechtigung für Netzwerk pro Server und Port (erweitert, Windows): ohne Aktion der aktuelle Stand; grant zeigt auf dem Daemon-PC einmal eine Administratorbestätigung, revoke macht es rückgängig. Einschalten mit config set systemMonitorNetTrace=on",
+      "mcp": "Ein KI-Agent auf diesem PC (Claude Code, Codex) nutzt alle Befehle: lokaler MCP-Server über stdin/stdout",
+      "agent": "Den lokalen MCP-Server (`mcp`) bei KI-Agenten auf diesem PC eintragen",
+      "agent.link": "Saba-chan zu Claude Code und Codex hinzufügen (beide, wenn du keinen wählst)",
+      "agent.unlink": "Saba-chan aus Claude Code und Codex entfernen",
+      "agent.status": "Welche Agenten auf diesem PC Saba-chan haben"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -1230,7 +1235,11 @@
       "bot.sleep-mode.no_block": "Im Schlaf keine Funktion ausschalten",
       "bot.big-emoji.on": "Emoji-Upscaling einschalten",
       "bot.big-emoji.off": "Emoji-Upscaling ausschalten",
-      "config.net-trace.action": "grant oder revoke. Ohne Angabe wird der aktuelle Stand gezeigt"
+      "config.net-trace.action": "grant oder revoke. Ohne Angabe wird der aktuelle Stand gezeigt",
+      "agent.link.claude": "Nur Claude Code",
+      "agent.link.codex": "Nur Codex",
+      "agent.unlink.claude": "Nur Claude Code",
+      "agent.unlink.codex": "Nur Codex"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
@@ -1777,5 +1786,15 @@
       "cgnat": "Dein Anbieter teilt eine öffentliche IP unter vielen Haushalten, daher lässt sie sich nicht per Portweiterleitung öffnen. Frag deinen Anbieter nach einer öffentlichen IP oder nutze ein VPN wie Tailscale.",
       "unknown": "UDP-Ports eines laufenden Servers und Ports, die ein anderes Programm belegt, lassen sich nicht prüfen. Stoppe den Server und prüfe erneut."
     }
+  },
+  "agent": {
+    "linked": "✓ Saba-chan zu {{agent}} hinzugefügt",
+    "unlinked": "✓ Saba-chan aus {{agent}} entfernt",
+    "not_installed": "· {{agent}} ist nicht auf diesem PC",
+    "failed": "✗ {{agent}}: {{error}}",
+    "restart_hint": "Öffne den Agenten neu, um die Saba-chan-Werkzeuge zu sehen.",
+    "some_failed": "Einige Agenten konnten nicht geändert werden",
+    "is_linked": "✓ {{agent}}: Saba-chan ist eingetragen",
+    "is_not_linked": "· {{agent}}: kein Saba-chan (saba-chan agent link)"
   }
 }

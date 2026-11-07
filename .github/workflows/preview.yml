@@ -83,6 +83,8 @@ jobs:
         run: |
           mkdir -p preview/shared-modules
           for exe in saba-core saba-runner saba-chan-gui saba-chan-cli; do cp "target/release/$exe.exe" preview/; done
+          # 짧은 명령 실행기는 설치처럼 bin/ 아래 (같은 폴더의 상위 saba-chan-cli.exe를 실행한다)
+          mkdir -p preview/bin && cp target/release/saba-chan.exe preview/bin/
           cp -r locales preview/locales
           find modules -maxdepth 1 -type f -exec cp {} preview/shared-modules/ \;
           printf '{"pr":%s,"sha":"%s","built_at":"%s"}\n' "$PR" "$SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > preview/preview.json

@@ -185,10 +185,39 @@ pub enum Cmd {
         #[arg(value_name = "SHELL")]
         shell: clap_complete::Shell,
     },
+    /// Let an AI agent on this PC (Claude Code, Codex) use every command: a local MCP server on stdin/stdout
+    Mcp,
+    /// Register the local MCP server (`mcp`) with AI agents on this PC
+    #[command(subcommand)]
+    Agent(AgentCmd),
     /// Install Saba-chan on this PC without the window installer
     Install(InstallArgs),
     /// Remove Saba-chan from this PC. Settings and servers are kept unless removed
     Uninstall(UninstallArgs),
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AgentCmd {
+    /// Add Saba-chan to Claude Code and Codex on this PC (both unless you pick one)
+    Link {
+        /// Only Claude Code
+        #[arg(long)]
+        claude: bool,
+        /// Only Codex
+        #[arg(long)]
+        codex: bool,
+    },
+    /// Remove Saba-chan from Claude Code and Codex on this PC
+    Unlink {
+        /// Only Claude Code
+        #[arg(long)]
+        claude: bool,
+        /// Only Codex
+        #[arg(long)]
+        codex: bool,
+    },
+    /// Which agents on this PC have Saba-chan
+    Status,
 }
 
 #[derive(Args, Debug)]

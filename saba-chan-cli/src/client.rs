@@ -44,6 +44,15 @@ fn read_token() -> Option<String> {
 }
 
 /// 경로 조각 하나를 URL에 넣을 수 있게
+/// 데몬 작업 기록의 출처 (`X-Saba-Client`). 로컬 MCP(`mcp`)가 띄운 CLI는 `agent`
+fn client_name() -> &'static str {
+    if std::env::var_os(crate::cmd::mcp::AGENT_ENV).is_some_and(|v| v == "1") {
+        "agent"
+    } else {
+        "cli"
+    }
+}
+
 pub fn seg(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
@@ -120,7 +129,7 @@ impl Api {
             req = req.header("X-Saba-Token", t);
         }
         // 감사 로그의 출처 (A10)
-        req = self.targeted(req.header("X-Saba-Client", "cli"), path);
+        req = self.targeted(req.header("X-Saba-Client", client_name()), path);
         if let Some(b) = body {
             req = req.json(b);
         }
@@ -726,7 +735,7 @@ impl Api {
     }
 
     async fn open_events(&self, since: Option<u64>) -> Result<reqwest::Response> {
-        let mut req = self.targeted(self.http.get(format!("{}/api/events", self.base)).header("X-Saba-Client", "cli"), "/api/events");
+        let mut req = self.targeted(self.http.get(format!("{}/api/events", self.base)).header("X-Saba-Client", client_name()), "/api/events");
         if let Some(t) = self.token.read().ok().and_then(|t| t.clone()) {
             req = req.header("X-Saba-Token", t);
         }

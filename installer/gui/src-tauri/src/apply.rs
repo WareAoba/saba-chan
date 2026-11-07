@@ -87,7 +87,7 @@ async fn start_apply(
             Err(msg)
         }
         Ok((applied, failed)) => {
-            saba_chan_updater_lib::retire_legacy_updater();
+            after_apply();
             // GUI 재실행 → 업데이터 종료 (하나라도 실패했으면 완료 알림 없이 띄우고 오류 화면을 남긴다)
             relaunch(&app, &apply_config, failed.is_empty());
             Ok(applied)
@@ -438,6 +438,17 @@ fn update_title(language: Option<&str>) -> &'static str {
     }
 }
 
+/// 적용이 끝난 뒤의 정리: 옛 업데이터를 치우고, 명령 실행기(`bin\saba-chan.exe`)가 생겼으면 그 폴더를 사용자 PATH에 넣는다
+/// (실행기가 없던 판에서 업데이트한 설치도 `saba-chan`으로 부를 수 있게)
+fn after_apply() {
+    saba_chan_updater_lib::retire_legacy_updater();
+    if let Some(root) = resolve_install_root_from_exe() {
+        if let Err(e) = saba_chan_installer_core::user_path::add(&root) {
+            tracing::warn!("[Apply] Could not add the saba-chan command to PATH: {}", e);
+        }
+    }
+}
+
 /// 창 없이 적용한다 (Tauri를 시작하지 않는다). 결과는 창 업데이터와 같은 완료 마커에 남는다
 fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaunch_extra: Vec<String>) -> i32 {
     let rt = match tokio::runtime::Runtime::new() {
@@ -452,7 +463,7 @@ fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaun
         let result = manager.apply_staged(|p| tracing::info!("[Apply] {} {}% {}", p.step, p.percent, p.message)).await;
         let applied = matches!(&result, Ok((_, failed)) if failed.is_empty());
         if result.is_ok() {
-            saba_chan_updater_lib::retire_legacy_updater();
+            after_apply();
         }
         // 다시 띄울 것은 데몬이 넘긴 것뿐이다 (헤드리스에는 GUI가 없다)
         if relaunch_exe.is_none() {

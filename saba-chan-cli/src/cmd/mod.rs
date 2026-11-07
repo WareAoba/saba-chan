@@ -1,5 +1,6 @@
 //! 명령 처리 — 갈래마다 파일 하나
 
+pub mod agent;
 pub mod audit;
 pub mod backup;
 pub mod bot;
@@ -12,6 +13,7 @@ pub mod do_action;
 pub mod events;
 pub mod extension;
 pub mod install;
+pub mod mcp;
 pub mod module;
 pub mod monitor;
 pub mod perm;
@@ -79,6 +81,8 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Shell => Box::pin(crate::shell::run(ctx)).await,
         Cmd::Tui { server } => Box::pin(crate::tui::run(ctx, server.as_deref())).await,
         Cmd::Gui { server } => gui(ctx, server.as_deref()).await,
+        Cmd::Mcp => mcp::run().await,
+        Cmd::Agent(c) => agent::run(ctx, c).await,
         Cmd::Install(a) => install::run(ctx, a).await,
         Cmd::Uninstall(a) => uninstall::run(ctx, a).await,
     }
@@ -117,6 +121,8 @@ fn needs_daemon(cmd: &Cmd) -> bool {
             | Cmd::Tui { .. }
             | Cmd::Install(_)
             | Cmd::Uninstall(_)
+            | Cmd::Mcp
+            | Cmd::Agent(_)
             | Cmd::Daemon(DaemonCmd::Start | DaemonCmd::Status | DaemonCmd::Stop { .. } | DaemonCmd::Restart { .. })
     )
 }

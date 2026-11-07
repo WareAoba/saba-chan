@@ -1761,6 +1761,7 @@
     "source_web": "サバちゃんウェブ",
     "source_remote": "リモートPC",
     "source_mcp": "AIエージェント",
+    "source_agent": "このPCのAIエージェント",
     "source_restart": "自動再起動",
     "code_invalid_argument": "入力した値が正しくありません",
     "code_missing_argument": "必要な値が抜けていました",

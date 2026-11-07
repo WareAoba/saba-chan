@@ -1011,7 +1011,12 @@
       "bot.clear": "删除频道的最近消息（置顶消息和 Saba-chan 面板会保留）。会先询问",
       "bot.mute": "禁止成员聊天、反应和语音：时长（10m、1h、7d，最多 28 天）、forever，解除用 off",
       "bot.big-emoji": "Discord 服务器的表情符号放大(只发一个自定义表情符号时放大显示)。不带选项则查看",
-      "config.net-trace": "按服务器·端口统计网络（高级，Windows）的权限：不带操作时显示当前状态，grant 在守护进程电脑上弹出一次管理员确认以授予权限，revoke 撤销。开启：config set systemMonitorNetTrace=on"
+      "config.net-trace": "按服务器·端口统计网络（高级，Windows）的权限：不带操作时显示当前状态，grant 在守护进程电脑上弹出一次管理员确认以授予权限，revoke 撤销。开启：config set systemMonitorNetTrace=on",
+      "mcp": "让此电脑上的 AI 代理(Claude Code、Codex)使用所有命令的本地 MCP 服务器(stdin/stdout)",
+      "agent": "向此电脑上的 AI 代理注册本地 MCP(`mcp`)",
+      "agent.link": "将 Saba-chan 添加到 Claude Code 和 Codex(未选择时两者都添加)",
+      "agent.unlink": "从 Claude Code 和 Codex 移除 Saba-chan",
+      "agent.status": "此电脑上已添加 Saba-chan 的代理"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -1230,7 +1235,11 @@
       "bot.sleep-mode.no_block": "睡着时也不关闭任何功能",
       "bot.big-emoji.on": "开启表情符号放大",
       "bot.big-emoji.off": "关闭表情符号放大",
-      "config.net-trace.action": "grant（授予）或 revoke（撤销）。省略时显示当前状态"
+      "config.net-trace.action": "grant（授予）或 revoke（撤销）。省略时显示当前状态",
+      "agent.link.claude": "仅 Claude Code",
+      "agent.link.codex": "仅 Codex",
+      "agent.unlink.claude": "仅 Claude Code",
+      "agent.unlink.codex": "仅 Codex"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
@@ -1777,5 +1786,15 @@
       "cgnat": "运营商让多户共用一个公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
       "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。"
     }
+  },
+  "agent": {
+    "linked": "✓ 已将 Saba-chan 添加到 {{agent}}",
+    "unlinked": "✓ 已从 {{agent}} 移除 Saba-chan",
+    "not_installed": "· 此电脑上没有 {{agent}}",
+    "failed": "✗ {{agent}}: {{error}}",
+    "restart_hint": "重新打开代理即可看到 Saba-chan 工具。",
+    "some_failed": "部分代理未能更改",
+    "is_linked": "✓ {{agent}}: 已添加 Saba-chan",
+    "is_not_linked": "· {{agent}}: 未添加 Saba-chan (saba-chan agent link)"
   }
 }

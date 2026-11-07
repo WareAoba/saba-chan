@@ -1011,7 +1011,12 @@
       "bot.clear": "刪除頻道的最近訊息（置頂訊息和 Saba-chan 面板會保留）。會先詢問",
       "bot.mute": "禁止成員聊天、反應和語音：時長（10m、1h、7d，最多 28 天）、forever，解除用 off",
       "bot.big-emoji": "Discord 伺服器的表情符號放大(只傳一個自訂表情符號時放大顯示)。不帶選項則查看",
-      "config.net-trace": "依伺服器·連接埠統計網路（進階，Windows）的權限：不帶動作時顯示目前狀態，grant 在常駐程式電腦上跳出一次系統管理員確認以授予權限，revoke 撤銷。開啟：config set systemMonitorNetTrace=on"
+      "config.net-trace": "依伺服器·連接埠統計網路（進階，Windows）的權限：不帶動作時顯示目前狀態，grant 在常駐程式電腦上跳出一次系統管理員確認以授予權限，revoke 撤銷。開啟：config set systemMonitorNetTrace=on",
+      "mcp": "讓此電腦上的 AI 代理(Claude Code、Codex)使用所有指令的本機 MCP 伺服器(stdin/stdout)",
+      "agent": "向此電腦上的 AI 代理註冊本機 MCP(`mcp`)",
+      "agent.link": "將 Saba-chan 加入 Claude Code 和 Codex(未選擇時兩者都加入)",
+      "agent.unlink": "從 Claude Code 和 Codex 移除 Saba-chan",
+      "agent.status": "此電腦上已加入 Saba-chan 的代理"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -1230,7 +1235,11 @@
       "bot.sleep-mode.no_block": "睡著時也不關閉任何功能",
       "bot.big-emoji.on": "開啟表情符號放大",
       "bot.big-emoji.off": "關閉表情符號放大",
-      "config.net-trace.action": "grant（授予）或 revoke（撤銷）。省略時顯示目前狀態"
+      "config.net-trace.action": "grant（授予）或 revoke（撤銷）。省略時顯示目前狀態",
+      "agent.link.claude": "僅 Claude Code",
+      "agent.link.codex": "僅 Codex",
+      "agent.unlink.claude": "僅 Claude Code",
+      "agent.unlink.codex": "僅 Codex"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
@@ -1777,5 +1786,15 @@
       "cgnat": "電信業者讓多戶共用一個公用 IP，無法透過連接埠轉發開放。請向業者申請公用 IP，或使用 Tailscale 等 VPN。",
       "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。"
     }
+  },
+  "agent": {
+    "linked": "✓ 已將 Saba-chan 加入 {{agent}}",
+    "unlinked": "✓ 已從 {{agent}} 移除 Saba-chan",
+    "not_installed": "· 此電腦上沒有 {{agent}}",
+    "failed": "✗ {{agent}}: {{error}}",
+    "restart_hint": "重新開啟代理即可看到 Saba-chan 工具。",
+    "some_failed": "部分代理未能變更",
+    "is_linked": "✓ {{agent}}: 已加入 Saba-chan",
+    "is_not_linked": "· {{agent}}: 未加入 Saba-chan (saba-chan agent link)"
   }
 }

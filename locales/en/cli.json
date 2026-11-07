@@ -854,7 +854,12 @@
       "bot.confirm": "When the bot asks with a Discord button before running (all, caution, danger, none). No options: show",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
       "bot.big-emoji": "Emoji upscale (a lone custom emoji is shown large) on a Discord server. No options: show",
-      "config.net-trace": "Per-server and per-port network (advanced, Windows) permission: without an action shows the current state; grant shows one administrator prompt on the daemon PC, revoke undoes it. Turn it on with config set systemMonitorNetTrace=on"
+      "config.net-trace": "Per-server and per-port network (advanced, Windows) permission: without an action shows the current state; grant shows one administrator prompt on the daemon PC, revoke undoes it. Turn it on with config set systemMonitorNetTrace=on",
+      "mcp": "Let an AI agent on this PC (Claude Code, Codex) use every command: a local MCP server on stdin/stdout",
+      "agent": "Register the local MCP server (`mcp`) with AI agents on this PC",
+      "agent.link": "Add Saba-chan to Claude Code and Codex on this PC (both unless you pick one)",
+      "agent.unlink": "Remove Saba-chan from Claude Code and Codex on this PC",
+      "agent.status": "Which agents on this PC have Saba-chan"
     },
     "arg": {
       "module.maker.game": "Game to put in the first prompt",
@@ -953,7 +958,11 @@
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
       "bot.tts.no_auto_channels": "Clear the always-read voice channels",
-      "config.net-trace.action": "grant or revoke. Shows the current state when left out"
+      "config.net-trace.action": "grant or revoke. Shows the current state when left out",
+      "agent.link.claude": "Only Claude Code",
+      "agent.link.codex": "Only Codex",
+      "agent.unlink.claude": "Only Claude Code",
+      "agent.unlink.codex": "Only Codex"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
@@ -1500,5 +1509,15 @@
       "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
       "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
     }
+  },
+  "agent": {
+    "linked": "✓ Added Saba-chan to {{agent}}",
+    "unlinked": "✓ Removed Saba-chan from {{agent}}",
+    "not_installed": "· {{agent}} is not on this PC",
+    "failed": "✗ {{agent}}: {{error}}",
+    "restart_hint": "Reopen the agent to see the Saba-chan tools.",
+    "some_failed": "Some agents could not be changed",
+    "is_linked": "✓ {{agent}}: Saba-chan is added",
+    "is_not_linked": "· {{agent}}: no Saba-chan (saba-chan agent link)"
   }
 }
