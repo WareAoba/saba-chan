@@ -3,7 +3,8 @@
 //! - `GET /api/system/metrics` — 기계 전체 CPU·RAM·디스크 IO·디스크 용량·네트워크와 인스턴스별 몫
 //!   (형식: `crate::system_monitor::MetricsSnapshot`). 부를 때만 표본을 뜬다.
 //!   `?sizes=false`: 인스턴스 폴더 크기를 새로 재지 않는다 (요약만 보는 화면). 포트·서버별 네트워크(`net_trace`)는
-//!   설정 `systemMonitorNetTrace`가 켜져 있을 때 `sizes=true`(펼친 화면) 요청이 오는 동안만 센다
+//!   설정 `systemMonitorNetTrace`가 켜져 있을 때 `sizes=true`(펼친 화면) 요청이 오는 동안만 센다.
+//!   `?gpu=true`: GPU를 읽는다(화면에서 GPU를 골랐을 때). 없으면 `gpus`는 null이고 NVIDIA 라이브러리를 올리지 않는다
 //! - `GET /api/system/net-trace` — `{ok, access: "ok"|"needs_grant"|"needs_relogin"|"unsupported", enabled}`
 //! - `POST /api/system/net-trace/grant` | `/revoke` — 이 PC에 관리자 확인 창을 띄워 지금 사용자에게
 //!   커널 네트워크 이벤트 권한을 주거나 거둔다. 실패는 HTTP 200 `{ok: false, error_code: "net_trace_<코드>", error}`
@@ -25,6 +26,9 @@ use crate::system_monitor::InstanceRoot;
 pub struct MetricsQuery {
     #[serde(default = "default_sizes")]
     sizes: bool,
+    /// GPU를 읽는다 (화면에서 GPU를 골랐을 때만). 없으면 `gpus`는 null이고 NVIDIA 라이브러리를 올리지 않는다
+    #[serde(default)]
+    gpu: bool,
 }
 
 fn default_sizes() -> bool {
@@ -61,7 +65,7 @@ pub async fn get_metrics(State(state): State<IPCServer>, Query(q): Query<Metrics
     let monitor = state.system_monitor.clone();
     monitor.set_net_trace(state.config_store.get_gui_settings().await.system_monitor_net_trace);
     // sysinfo는 동기 시스템 콜이다
-    match tokio::task::spawn_blocking(move || monitor.sample(&roots, &[data_dir], q.sizes)).await {
+    match tokio::task::spawn_blocking(move || monitor.sample(&roots, &[data_dir], q.sizes, q.gpu)).await {
         Ok(snapshot) => (StatusCode::OK, Json(json!(snapshot))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response(),
     }

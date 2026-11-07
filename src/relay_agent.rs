@@ -647,7 +647,7 @@ impl Session {
         // `/사바쨩 상태`의 CPU·RAM과 PC 부하 (폴더 크기는 재지 않는다)
         let roots = crate::ipc::handlers::system::instance_roots(&self.server).await;
         let monitor = self.server.system_monitor.clone();
-        let snapshot = tokio::task::spawn_blocking(move || monitor.sample(&roots, &[], false)).await.ok();
+        let snapshot = tokio::task::spawn_blocking(move || monitor.sample(&roots, &[], false, false)).await.ok();
         let usage = snapshot.as_ref().map(|s| s.instances.as_slice()).unwrap_or_default();
         let servers: Vec<Value> = match crate::ipc::internal::into_internal(
             crate::ipc::handlers::server::list_servers_internal(&self.server).await,
@@ -2644,7 +2644,7 @@ mod tests {
             net_trace: crate::system_monitor::net_trace::NetTraceMetrics::status("off"),
             volumes: vec![],
             adapters: vec![],
-            gpus: vec![],
+            gpus: None,
         };
         assert_eq!(host_load(&snap), json!({ "cpu": 82, "mem": 80, "diskFree": 7 }));
         let none = MetricsSnapshot { disks: vec![], ..snap };

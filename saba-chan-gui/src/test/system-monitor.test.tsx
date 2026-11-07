@@ -48,8 +48,8 @@ const values = (r: Ring) => Object.fromEntries(r.segments.map((s) => [s.key, s.v
 describe('시스템 모니터 원형 그래프 계산', () => {
     it('인스턴스 - 나머지 프로세스 - 유휴로 나누고 합이 전체와 같다', () => {
         const rings = buildRings(snapshot(), colorSlots(['a', 'b']));
-        // 고른 적이 없으면 기본 항목: 데이터 폴더가 있는 디스크만
-        expect(rings.map((r) => r.key)).toEqual(['cpu', 'memory', 'gpu', 'disk_io', 'volume:C:\\', 'network']);
+        // 고른 적이 없으면 기본 항목: 데이터 폴더가 있는 디스크만, GPU는 직접 켜기 전까지 없다
+        expect(rings.map((r) => r.key)).toEqual(['cpu', 'memory', 'disk_io', 'volume:C:\\', 'network']);
         expect(values(ring(rings, 'cpu'))).toEqual({ a: 30, __others: 20, __idle: 50 });
         expect(values(ring(rings, 'memory'))).toEqual({ a: 4 * GB, __others: 6 * GB, __idle: 6 * GB });
         expect(values(ring(rings, 'volume:C:\\'))).toEqual({ a: 10 * GB, __others: 50 * GB, __idle: 40 * GB });
@@ -133,6 +133,12 @@ describe('시스템 모니터 항목 고르기', () => {
         expect(groups.find((g) => g.key === 'net')!.rows.map((r) => r.id)).toEqual(['network', 'adapter:Ethernet', 'adapter:Wi-Fi']);
         expect(groups.find((g) => g.key === 'gpu')!.rows).toHaveLength(3);
         expect(pickerGroups(snapshot({ gpus: [] })).find((g) => g.key === 'gpu')!.rows).toEqual([]);
+        // GPU를 아직 묻지 않은 표본(gpus: null)도 켤 수 있게 줄을 보인다 (못 잰다는 안내 없이)
+        const unasked = pickerGroups(snapshot({ gpus: null })).find((g) => g.key === 'gpu')!.rows;
+        expect(unasked.map((r) => r.id)).toEqual(['gpu', 'gpu.clock', 'gpu.temp']);
+        expect(unasked.every((r) => !r.noteKey)).toBe(true);
+        // 기본 항목에는 GPU가 없다: 켜기 전까지 데몬이 NVIDIA 라이브러리(약 20MB)를 올리지 않게
+        expect(defaultItems(snapshot()).some((i) => i.startsWith('gpu'))).toBe(false);
         expect(defaultItems(snapshot())).toContain('volume:C:\\');
         expect(defaultItems(snapshot())).not.toContain('volume:D:\\');
     });
@@ -210,7 +216,10 @@ describe('SystemMonitor', () => {
 
     it('데몬 값을 받아 기본 항목 그래프와 범례를 그린다', async () => {
         render(<SystemMonitor servers={[{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }]} />);
-        await waitFor(() => expect(document.querySelectorAll('.monitor-ring')).toHaveLength(6));
+        await waitFor(() => expect(document.querySelectorAll('.monitor-ring')).toHaveLength(5));
+        // 기본 항목은 GPU를 묻지 않는다
+        expect(document.querySelector('[data-metric="gpu"]')).toBeNull();
+        expect(window.api.systemMetrics).toHaveBeenLastCalledWith({ sizes: true, gpu: false });
         const legend = document.querySelector('.monitor-legend')!.textContent;
         expect(legend).toContain('A');
         // 꺼진 인스턴스는 범례에 없다
@@ -226,11 +235,25 @@ describe('SystemMonitor', () => {
         expect(document.querySelector('.monitor-ring')).toBeNull();
         expect(document.querySelector('.monitor-summary')!.textContent).toContain('50%');
         // 요약만 볼 때는 데몬이 폴더 크기를 재지 않게 한다
-        await waitFor(() => expect(window.api.systemMetrics).toHaveBeenLastCalledWith({ sizes: false }));
+        await waitFor(() => expect(window.api.systemMetrics).toHaveBeenLastCalledWith({ sizes: false, gpu: false }));
+    });
+
+    it('GPU는 직접 켜야 데몬에 묻고, 켜면 설정에 남아 다음에도 켜져 있다', async () => {
+        useSettingsStore.setState({ monitorItems: null });
+        render(<SystemMonitor servers={[{ id: 'a', name: 'A' }]} />);
+        await waitFor(() => expect(document.querySelector('.monitor-ring')).not.toBeNull());
+        fireEvent.click(document.querySelector('.monitor-pick-toggle')!);
+        const gpu = document.querySelector('input[data-item="gpu"]') as HTMLInputElement;
+        expect(gpu.checked).toBe(false);
+        fireEvent.click(gpu);
+        expect(useSettingsStore.getState().monitorItems).toContain('gpu');
+        await waitFor(() => expect(window.api.systemMetrics).toHaveBeenLastCalledWith({ sizes: true, gpu: true }));
+        await waitFor(() => expect(document.querySelector('[data-metric="gpu"]')).not.toBeNull());
+        useSettingsStore.setState({ monitorItems: null });
     });
 
     it('항목 고르기에서 끈 항목은 사라지고 설정에 남는다', async () => {
-        useSettingsStore.setState({ monitorItems: null });
+        useSettingsStore.setState({ monitorItems: ['cpu', 'gpu', 'gpu.clock', 'gpu.temp', 'volume:C:\\'] });
         render(<SystemMonitor servers={[{ id: 'a', name: 'A' }]} />);
         await waitFor(() => expect(document.querySelector('[data-metric="gpu"]')).not.toBeNull());
         fireEvent.click(document.querySelector('.monitor-pick-toggle')!);

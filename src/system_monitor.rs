@@ -66,8 +66,8 @@ pub struct MetricsSnapshot {
     pub volumes: Vec<VolumeMetrics>,
     /// 네트워크 어댑터마다 (루프백 제외, 이름순)
     pub adapters: Vec<AdapterMetrics>,
-    /// 잴 수 있는 GPU (없으면 빈 목록)
-    pub gpus: Vec<GpuMetrics>,
+    /// 잴 수 있는 GPU (없으면 빈 목록). GPU를 묻지 않은 요청(`?gpu=true` 없음)은 null
+    pub gpus: Option<Vec<GpuMetrics>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -420,7 +420,8 @@ impl SystemMonitor {
 
     /// 표본을 뜬다. 동기 시스템 콜이므로 `spawn_blocking` 안에서 부른다.
     /// `measure_dirs`가 false면(요약만 보는 화면) 폴더 크기를 새로 재지 않고 마지막 값을 쓴다.
-    pub fn sample(&self, roots: &[InstanceRoot], extra_dirs: &[PathBuf], measure_dirs: bool) -> MetricsSnapshot {
+    /// `gpu`가 false면 GPU를 읽지 않는다(`gpus`는 null). 화면에서 GPU를 골랐을 때만 NVIDIA 라이브러리를 올린다
+    pub fn sample(&self, roots: &[InstanceRoot], extra_dirs: &[PathBuf], measure_dirs: bool, gpu: bool) -> MetricsSnapshot {
         if measure_dirs {
             self.refresh_dir_sizes_if_stale(roots);
         }
@@ -447,7 +448,7 @@ impl SystemMonitor {
         // 인스턴스 IO 몫은 펼친 화면에서만, 전체 디스크 IO를 프로세스 합으로 낼 때는 늘 필요하다
         let want_io = measure_dirs || sampler.physical_rates.is_none();
         if let Some((at, snap)) = &sampler.last {
-            if at.elapsed() < MIN_SAMPLE_INTERVAL && (sampler.proc_io || !want_io) {
+            if at.elapsed() < MIN_SAMPLE_INTERVAL && (sampler.proc_io || !want_io) && (snap.gpus.is_some() || !gpu) {
                 return snap.clone();
             }
         }
@@ -468,7 +469,7 @@ impl SystemMonitor {
                 disk.refresh();
             });
         }
-        sampler.hw = sampler.hardware.read(&sampler.system);
+        sampler.hw = sampler.hardware.read(&sampler.system, gpu);
         let sizes = self.dir_sizes.lock().unwrap_or_else(|e| e.into_inner());
         let net = self.net.take(self.net_enabled.load(std::sync::atomic::Ordering::Relaxed), measure_dirs);
         let snap = build_snapshot(sampler, roots, extra_dirs, &sizes, window, net);
@@ -675,11 +676,11 @@ fn build_snapshot(
         net_trace,
         volumes: build_volumes(&sampler.disks, &hw.disk_rpm),
         adapters,
-        gpus: hw
-            .gpus
-            .iter()
-            .map(|g| GpuMetrics { name: g.name.clone(), util_percent: g.util_percent, clock_mhz: g.clock_mhz, temp_c: g.temp_c })
-            .collect(),
+        gpus: hw.gpus.as_ref().map(|gpus| {
+            gpus.iter()
+                .map(|g| GpuMetrics { name: g.name.clone(), util_percent: g.util_percent, clock_mhz: g.clock_mhz, temp_c: g.temp_c })
+                .collect()
+        }),
     }
 }
 
@@ -881,22 +882,22 @@ mod tests {
         net_trace::fake_start(true);
         let monitor = SystemMonitor::new();
         monitor.set_net_trace(true);
-        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "starting");
+        assert_eq!(monitor.sample(&[], &[], true, false).net_trace.status, "starting");
         std::thread::sleep(MIN_SAMPLE_INTERVAL);
-        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "on");
+        assert_eq!(monitor.sample(&[], &[], true, false).net_trace.status, "on");
         // 권한을 거두면 세던 세션과 직전 표본을 버린다: 다음 요청은 새로 연다
         monitor.stop_net_trace();
-        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "starting");
+        assert_eq!(monitor.sample(&[], &[], true, false).net_trace.status, "starting");
         net_trace::fake_start(false);
     }
 
     #[test]
     fn turning_net_trace_on_does_not_reuse_the_off_sample() {
         let monitor = SystemMonitor::new();
-        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "off");
+        assert_eq!(monitor.sample(&[], &[], true, false).net_trace.status, "off");
         monitor.set_net_trace(true);
         // 직전 표본은 900ms 동안 재사용하지만, 옵션이 바뀌면 새로 뜬다
-        assert_ne!(monitor.sample(&[], &[], true).net_trace.status, "off");
+        assert_ne!(monitor.sample(&[], &[], true, false).net_trace.status, "off");
     }
 
     #[test]
@@ -904,7 +905,7 @@ mod tests {
         let monitor = SystemMonitor::new();
         let me = std::process::id();
         let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(me), dirs: vec![], ports: vec![] }];
-        let snap = monitor.sample(&roots, &[], false);
+        let snap = monitor.sample(&roots, &[], false, false);
         assert!(snap.memory.total_bytes > 0);
         assert!(snap.memory.used_bytes >= snap.memory.others_bytes);
         assert!(snap.cpu.total_percent <= 100.0 && snap.cpu.total_percent >= snap.cpu.others_percent);
@@ -918,12 +919,21 @@ mod tests {
         assert!(!snap.volumes.is_empty() && snap.volumes.iter().all(|v| v.total_bytes > 0));
         assert!(snap.adapters.iter().all(|a| !is_loopback(&a.name)));
         // 바로 다시 부르면 같은 표본
-        assert_eq!(monitor.sample(&roots, &[], false).sampled_at_ms, snap.sampled_at_ms);
+        assert_eq!(monitor.sample(&roots, &[], false, false).sampled_at_ms, snap.sampled_at_ms);
         // 요약 요청은 폴더 크기를 재지 않는다
         assert!(monitor.dir_sizes.lock().unwrap().measured_at.is_none() && !monitor.dir_sizes.lock().unwrap().running);
         // 옵션이 꺼져 있으면 서버별 네트워크를 세지 않는다
         assert_eq!(snap.net_trace.status, "off");
         assert_eq!(inst.net_rx_bps, None);
+    }
+
+    #[test]
+    fn gpu_is_read_only_when_asked() {
+        let monitor = SystemMonitor::new();
+        // GPU를 고르지 않은 화면은 NVIDIA 라이브러리를 올리지 않는다 (한 번 올리면 약 20MB가 데몬이 끝날 때까지 남는다)
+        assert!(monitor.sample(&[], &[], false, false).gpus.is_none());
+        // 직전 표본이 GPU 없이 떴으면 GPU를 원하는 요청은 그 표본을 재사용하지 않는다
+        assert!(monitor.sample(&[], &[], false, true).gpus.is_some());
     }
 
     #[test]
@@ -940,12 +950,12 @@ mod tests {
     #[test]
     fn idle_sampler_is_dropped_and_rebuilt_on_next_request() {
         let monitor = SystemMonitor::new();
-        monitor.sample(&[], &[], false);
+        monitor.sample(&[], &[], false, false);
         assert!(drop_if_idle(&monitor.sampler, Duration::from_secs(3600)).is_some());
         assert!(monitor.sampler.lock().unwrap().is_some());
         assert!(drop_if_idle(&monitor.sampler, Duration::ZERO).is_none());
         assert!(monitor.sampler.lock().unwrap().is_none());
-        assert!(monitor.sample(&[], &[], false).memory.total_bytes > 0);
+        assert!(monitor.sample(&[], &[], false, false).memory.total_bytes > 0);
         assert!(monitor.sampler.lock().unwrap().is_some());
     }
 
@@ -967,7 +977,7 @@ mod tests {
             .collect();
         let monitor = SystemMonitor::new();
         let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(std::process::id()), dirs: vec![], ports: vec![] }];
-        let me = monitor.sample(&roots, &[], false).instances.remove(0);
+        let me = monitor.sample(&roots, &[], false, false).instances.remove(0);
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         threads.into_iter().for_each(|t| t.join().unwrap());
         let status = std::fs::read_to_string("/proc/self/status").unwrap();
@@ -982,13 +992,13 @@ mod tests {
         let monitor = SystemMonitor::new();
         let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(std::process::id()), dirs: vec![], ports: vec![] }];
         // 첫 표본은 물리 카운터를 아직 못 읽어 프로세스 IO도 읽는다
-        monitor.sample(&roots, &[], false);
+        monitor.sample(&roots, &[], false, false);
         std::thread::sleep(MIN_SAMPLE_INTERVAL);
-        let summary = monitor.sample(&roots, &[], false);
+        let summary = monitor.sample(&roots, &[], false, false);
         assert!(!monitor.sampler.lock().unwrap().as_ref().unwrap().proc_io);
         assert_eq!(summary.instances[0].disk_read_bps + summary.instances[0].disk_write_bps, 0);
         // 펼친 화면은 직전 요약 표본을 재사용하지 않고 프로세스 IO를 짧은 구간으로 새로 잰다
-        let full = monitor.sample(&roots, &[], true);
+        let full = monitor.sample(&roots, &[], true, false);
         assert!(monitor.sampler.lock().unwrap().as_ref().unwrap().proc_io);
         assert_ne!(full.sampled_at_ms, summary.sampled_at_ms);
         assert!(full.window_ms >= 250);
