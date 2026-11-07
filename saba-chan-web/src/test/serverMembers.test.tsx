@@ -32,6 +32,7 @@ describe('서버 멤버 레벨', () => {
         await flush();
         await flush();
         fireEvent.click(screen.getByRole('tab', { name: 'Member levels' }));
+        fireEvent.click(screen.getByRole('button', { name: /on the default level/ }));
         expect(screen.getByText('Acorn')).toBeTruthy();
         fireEvent.click(screen.getByRole('tab', { name: 'Instances' }));
         fireEvent.click(screen.getByRole('button', { name: /Survival/ }));

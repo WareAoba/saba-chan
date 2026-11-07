@@ -2468,11 +2468,48 @@ impl Supervisor {
         Ok(result)
     }
 
-    /// Run validation on an instance (via module's validate function)
+    /// Run validation on an instance (via module's validate function).
+    /// 모듈 점검 결과의 `issues`에 데몬이 본 설정 값 문제(`setting_issues`)를 더한다 (사용자 지정 2026-11-08)
     pub async fn validate_instance(sup: &tokio::sync::RwLock<Self>, instance_id: &str) -> Result<Value> {
-        let call = sup.read().await.instance_call(instance_id, "validate")?;
+        let (call, settings) = {
+            let s = sup.read().await;
+            (s.instance_call(instance_id, "validate")?, s.setting_issues(instance_id))
+        };
         let result = call.run().await?;
-        Ok(result)
+        Ok(with_setting_issues(result, settings))
+    }
+
+    /// 저장된 모듈 설정이 module.toml이 선언한 타입·범위·선택지·형식에 맞는지 (서버 점검).
+    /// `visible_when`으로 숨긴 칸과 값이 없는 칸은 보지 않는다. 한 칸이 한 건이다:
+    /// `{code: "setting_invalid", severity: "error", field, error_type, value, message}` (화면이 칸 이름과 error_type으로 번역한다)
+    pub(crate) fn setting_issues(&self, instance_id: &str) -> Vec<Value> {
+        let Some(instance) = self.instance_store.get(instance_id) else { return Vec::new() };
+        let Ok(module) = self.module_loader.get_module(&instance.module_name) else { return Vec::new() };
+        let Some(settings) = module.metadata.settings.as_ref() else { return Vec::new() };
+        let hidden = crate::validator::hidden_fields(&settings.fields, |name| instance.module_settings.get(name).cloned());
+        settings
+            .fields
+            .iter()
+            .filter(|f| !hidden.contains(&f.name))
+            .filter_map(|f| {
+                let value = instance.module_settings.get(&f.name).filter(|v| !v.is_null())?;
+                let e = crate::validator::validate_setting_value(f, Some(value)).err()?;
+                // 비밀 칸(password 타입, 이름에 pass·token 같은 낱말)은 값도, 값이 든 원문 메시지도 싣지 않는다.
+                // 원격 웹·디스코드도 점검을 부르고 이 응답은 비밀 가리기를 거치지 않는다 (리뷰 P2)
+                let secret = f.field_type == "password" || crate::audit::sensitive(&f.name);
+                let mut issue = json!({
+                    "code": "setting_invalid",
+                    "severity": "error",
+                    "field": f.name,
+                    "error_type": e.error_type,
+                });
+                if !secret {
+                    issue["value"] = value.clone();
+                    issue["message"] = json!(e.message);
+                }
+                Some(issue)
+            })
+            .collect()
     }
 
     /// 모듈 `[[queries]]` 조회 (X-2): `validate`와 같은 config에 `args`(입력 이름 → 값)를 더해 lifecycle `function`을 부른다
@@ -3152,6 +3189,16 @@ impl Supervisor {
             "noteCode": event.note_code,
             "noteArgs": event.note_args,
         }));
+        // 크래시·예기치 않은 종료는 작업 기록에도 남긴다 (출처는 데몬 자신, 이유는 근거 코드)
+        if matches!(event.verdict.kind, crash::ExitKind::Crash | crash::ExitKind::UnknownExit) {
+            crate::audit::log().record(&crate::audit::Origin::new("daemon"), &crate::audit::Event {
+                action: "crash",
+                instance_id,
+                instance: Some(instance_name),
+                code: Some(evidence_code),
+                ..Default::default()
+            });
+        }
         if !self.exit_events.contains_key(instance_id) {
             let saved = self.saved_exit_events(instance_id);
             self.exit_events.insert(instance_id.to_string(), saved.into());
@@ -3590,6 +3637,24 @@ fn announce_started(instance_id: &str, name: &str, origin: &crate::audit::Origin
 
 /// `instance.stopped`: 사바쨩을 거쳐 끄거나(`user_stop`) 게임 안에서 끈(`in_game_stop`) 정상 정지.
 /// 크래시·원인 모를 종료는 `instance.exit`만 알린다
+/// 모듈 점검 결과에 설정 값 문제를 더한다: `issues`가 있으면 뒤에 붙이고, 치명 문제가 아니므로 `success`는 그대로 둔다
+fn with_setting_issues(mut result: Value, extra: Vec<Value>) -> Value {
+    if extra.is_empty() {
+        return result;
+    }
+    match &mut result {
+        Value::Object(map) => match map.get_mut("issues") {
+            Some(Value::Array(issues)) => issues.extend(extra),
+            _ => {
+                map.insert("issues".to_string(), Value::Array(extra));
+            }
+        },
+        Value::Array(issues) => issues.extend(extra),
+        _ => return json!({ "issues": extra }),
+    }
+    result
+}
+
 fn announce_stopped(instance_id: &str, name: &str, kind: crash::ExitKind, origin: &crate::audit::Origin) {
     let mut data = origin_fields(origin);
     data.insert("instanceId".into(), json!(instance_id));
@@ -4185,6 +4250,56 @@ mod tests {
         assert_eq!(result["function"], "stop");
     }
 
+    /// 서버 점검은 저장된 설정이 선언한 타입·범위·선택지에 맞는지도 본다 (숨긴 칸·빈 값은 빼고). 사용자 지정 2026-11-08
+    #[test]
+    fn the_server_check_reports_settings_that_do_not_match_their_declared_type() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 2\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"players\"\ntype = \"number\"\nmin = 1\nmax = 10\n\n\
+             [[settings.fields]]\nname = \"mode\"\ntype = \"select\"\noptions = [\"a\", \"b\"]\n\n\
+             [[settings.fields]]\nname = \"hard\"\ntype = \"boolean\"\n\n\
+             [[settings.fields]]\nname = \"note\"\ntype = \"number\"\nvisible_when = { field = \"hard\", equals = true }\n\n\
+             [[settings.fields]]\nname = \"admin_pass\"\ntype = \"password\"\npattern = \"[0-9]+\"\n\n\
+             [[settings.fields]]\nname = \"api_token\"\ntype = \"number\"\n",
+        )
+        .unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let mut inst = crate::instance::ServerInstance::new("g", "game");
+        inst.id = "g".into();
+        for (k, v) in [
+            ("players", json!(50)),
+            ("mode", json!("minecraft\\:normal")),
+            ("hard", json!(false)),
+            ("note", json!("x")),
+            ("admin_pass", json!("hunter2-secret")),
+            ("api_token", json!("tok-secret")),
+        ] {
+            inst.module_settings.insert(k.into(), v);
+        }
+        sup.instance_store.add(inst).unwrap();
+        let issues = sup.setting_issues("g");
+        let fields: Vec<&str> = issues.iter().filter_map(|i| i["field"].as_str()).collect();
+        assert_eq!(fields, ["players", "mode", "admin_pass", "api_token"], "note is hidden, hard is fine: {issues:?}");
+        // 리뷰 P2 (2026-11-08): 비밀 칸(password 타입·이름에 pass·token 등)은 값과 원문 메시지를 싣지 않는다 (원격 웹도 점검을 부른다)
+        let text = serde_json::to_string(&issues).unwrap();
+        assert!(!text.contains("hunter2") && !text.contains("tok-secret"), "{text}");
+        assert!(issues[2].get("value").is_none() && issues[3].get("value").is_none());
+        assert_eq!((issues[0]["code"].as_str(), issues[0]["error_type"].as_str()), (Some("setting_invalid"), Some("out_of_range")));
+        assert_eq!(issues[1]["error_type"], "invalid_option");
+        // 모듈 결과에 붙인다 (success는 그대로)
+        let merged = with_setting_issues(json!({ "success": true, "issues": [{ "code": "X" }] }), issues.clone());
+        assert_eq!((merged["success"].clone(), merged["issues"].as_array().unwrap().len()), (json!(true), 5));
+        assert_eq!(with_setting_issues(json!({ "success": true }), issues)["issues"].as_array().unwrap().len(), 4);
+    }
+
     // 0.1.7 업그레이드: 0.1.6에서 만든 팰월드는 기본 REST 8212를 저장해 두었다. 8212가 Windows 예약 범위(8135-8234)에
     // 들면 시작 전에 새 인스턴스처럼 옮겨 저장해야 서버가 뜬다. 사용자가 정한 기본값 아닌 포트는 그대로 둔다
     #[test]
@@ -4443,6 +4558,10 @@ mod tests {
         assert_eq!(kind("reattached"), Some(crash::ExitKind::UnknownExit), "a server running before the daemon restart did not fail to start");
         assert_eq!(supervisor.exit_events("off")[0].note.as_deref(), Some("auto_restart is off"));
         assert_eq!(supervisor.exit_events("off")[0].note_code.as_deref(), Some("auto_restart_off"));
+        // 크래시·예기치 않은 종료만 작업 기록에 crash로 남는다
+        let crashed = |id: &str| crate::audit::log().recent(10, Some(id)).iter().any(|v| v["action"] == "crash" && v["ok"] == false);
+        assert!(crashed("crash") && crashed("killed") && crashed("off"));
+        assert!(!crashed("clean") && !crashed("stopped"));
         let mut sub = crate::events::bus().subscribe(None);
         supervisor.record_restart_failure("crash", 0, "no java".into());
         let failed = supervisor.exit_events("crash").last().cloned().unwrap();
@@ -5060,6 +5179,8 @@ mod tests {
             game_chat_keyword: String::new(),
             controllers: Vec::new(),
             controllers_only: false,
+            access: Default::default(),
+            kick_players: Vec::new(),
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -5126,6 +5247,8 @@ mod tests {
             game_chat_keyword: String::new(),
             controllers: Vec::new(),
             controllers_only: false,
+            access: Default::default(),
+            kick_players: Vec::new(),
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

@@ -100,7 +100,7 @@
     "unknown_input": "❌ Unbekannter Befehl.",
     "command_not_found": "❌ Befehl existiert nicht.",
     "permission_denied": "❌ Du hast keine Berechtigung, diesen Befehl zu verwenden.",
-    "permission_denied_controllers": "❌ Um diesen Server zu starten oder zu stoppen, musst du in der Saba-chan-App auf seiner Liste „Bediener“ stehen oder die für diesen Befehl festgelegte Stufe haben (standardmäßig Admin).",
+    "members_only": "❌ Nur die Mitglieder dieses Servers können ihn nutzen. Bitte den Serverbesitzer, dich zur Mitgliederliste hinzuzufügen.",
     "local_single_guild_only": "⚠️ Der lokale Bot kann nur auf einem Server verwendet werden. Dieser Bot ist auf {{count}} Servern. Entferne ihn von den Servern, die du nicht nutzt."
   },
   "messages": {
@@ -246,6 +246,9 @@
       "chat": {
         "title": "Spielchat senden",
         "description": "Sendet eine Discord-Nachricht in den Spielchat"
+      },
+      "chat_link": {
+        "title": "Chat-Verknüpfung"
       },
       "update": {
         "check": {

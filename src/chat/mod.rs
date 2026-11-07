@@ -428,8 +428,8 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
 
     fn permission_denied(&self, denied: Denied) -> Reply {
         tracing::info!("[Chat] 권한 거부: user={:?} need={} level={}", self.req.user_id, denied.need, denied.level);
-        // 명단 밖이라 시작·정지를 못 하면 조작 가능 명단을 안내한다
-        let key = if denied.controllers { "errors.permission_denied_controllers" } else { "errors.permission_denied" };
+        // 전용 멤버 서버의 명단 밖 사람이면 그 안내를 한다
+        let key = if denied.members_only { "errors.members_only" } else { "errors.permission_denied" };
         Reply::unrecognized("PERMISSION_DENIED", self.t(key, &[]), json!(denied))
     }
 
@@ -648,21 +648,32 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
             .or_else(|| module.commands.iter().find(|c| command_labels(module, c).iter().any(|l| words::same(l, cmd_alias))).map(|c| c.name.clone()))
             .unwrap_or_else(|| cmd_alias.to_string());
 
-        // 내장 명령의 위험도: status·players·start·stop은 safe (start·stop은 조작 가능 명단과 관리자 이상이 한다).
+        // 내장 명령의 위험도: status·players·start·stop은 safe (start·stop은 유저 이상이 한다).
         // 모듈 명령은 선언값 (없으면 caution)
         let risk = match command.as_str() {
             "status" | "start" | "stop" => "safe",
             "players" if module.players => "safe",
             _ => crate::commands::risk_of(module.command(&command).and_then(|f| f.risk.as_deref())),
         };
-        if let Err(denied) = self.permit(Some((&server.id, &command, risk))) {
-            let lifecycle = permissions::LIFECYCLE_COMMANDS.contains(&command.as_str());
-            // 말하는 사바쨩을 거친 요청은 챗봇 상한을 그대로 받는다
-            let who = self.req.remote.as_ref().filter(|r| !r.via_chatbot).and_then(|r| r.user_id.as_deref());
-            let listed = lifecycle && who.is_some_and(|u| crate::controllers::controls(&server.controllers, u));
-            // 명단 밖 사람은 금지 레벨이 아니면 조작 가능 안내를 받는다. 금지된 사람은 명단에 있어도 막는다
-            if !listed || denied.level == permissions::BANNED {
-                return Err(self.permission_denied(Denied { controllers: lifecycle && denied.via.is_none(), ..denied }));
+        // 전용 멤버 서버는 길드 레벨과 따로 논다: 명단에 디스코드를 이은 사람만 모든 명령을 하고, 나머지는 거절한다.
+        // 말하는 사바쨩을 거친 요청은 명단에 있어도 챗봇 상한(레벨 판정)을 받는다
+        let gate = match &self.req.remote {
+            Some(r) => crate::controllers::gate_for(server.access, &server.controllers, r.user_id.as_deref(), r.via_chatbot),
+            None => crate::controllers::Gate::Allow,
+        };
+        match gate {
+            crate::controllers::Gate::Allow => {}
+            crate::controllers::Gate::Deny => {
+                let Some(who) = &self.req.remote else { unreachable!() };
+                let perms = permissions::NodePermissions::from_node(self.node_settings());
+                let level = perms.effective_level(who);
+                let via = who.via_chatbot.then_some("chatbot");
+                return Err(self.permission_denied(Denied { need: permissions::USER, level, via, members_only: true }));
+            }
+            crate::controllers::Gate::Levels => {
+                if let Err(denied) = self.permit(Some((&server.id, &command, risk))) {
+                    return Err(self.permission_denied(denied));
+                }
             }
         }
         // 위험 명령은 그 서버만 가리키는 말로 불러야 한다: 게임명·모듈 별명은 서버가 늘면 다른 서버를 가리킬 수 있다

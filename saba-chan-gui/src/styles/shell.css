@@ -570,12 +570,6 @@
     flex: 1 0 auto;
     width: 100%;
 }
-.server-detail-host > .server-detail.fill-pane {
-    flex: 1 1 0;
-}
-.server-detail.fill-pane > .detail-body {
-    min-height: auto;
-}
 .detail-head {
     display: flex;
     align-items: center;
@@ -1726,8 +1720,12 @@ button.activity-line:hover {
     flex: 1;
     min-width: 0;
 }
+/* 짧은 숫자·낱말 칸: 줄을 다 채우지 않는다 (.input의 width:100%보다 앞선다) */
+.restart-row > .memory-limit-input,
 .memory-limit-input {
-    width: 120px;
+    flex: none;
+    width: 140px;
+    max-width: 40%;
     text-align: right;
 }
 
@@ -2181,6 +2179,14 @@ button.activity-line:hover {
 .dc-list-row.dim .dc-list-text {
     opacity: 0.55;
 }
+/* 인스턴스 카드: 어디를 눌러도 권한 메뉴로 */
+.dc-list-row.is-openable {
+    cursor: pointer;
+    transition: opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.dc-list-row.is-openable:hover {
+    background: var(--bg-hover, color-mix(in oklch, var(--accent) 6%, transparent));
+}
 .dc-notice-btn.active {
     color: var(--accent);
 }
@@ -2237,6 +2243,10 @@ button.activity-line:hover {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    /* 칩을 끌 때 사진이 손을 가로채지 않게: 누름은 칩이 받는다 */
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
 }
 .dc-srv-icon {
     width: 32px;
@@ -2278,25 +2288,32 @@ button.activity-line:hover {
 
 /* 안내 문구 속 화면 링크 (ui/ScreenLink, 사용자 11-06 #19): 가는 길을 보이고 누르면 그 화면을 연다 */
 .screen-link {
+    /* 글줄 안에 든 링크 (사용자 지적 2026-11-07): 버튼 기본 높이(--btn-height)를 풀고, 글자 기준선을 둘레 글자와 맞춘다.
+       줄 높이는 둘레 글을 따르고, 위아래 여백은 음수 바깥 여백으로 상쇄해 글줄 높이를 늘리지 않는다 */
     display: inline-flex;
-    align-items: center;
+    align-items: baseline;
     gap: var(--sp-1);
-    margin: 0 var(--sp-0-5);
-    padding: 0 var(--sp-2);
+    height: auto;
+    min-height: 0;
+    margin: calc(-1 * var(--sp-0-5)) var(--sp-0-5);
+    padding: var(--sp-0-5) var(--sp-2);
     border: 0;
-    border-radius: 7px;
+    border-radius: 6px;
     background: var(--accent-soft);
     color: var(--accent);
     font: inherit;
     font-weight: 600;
-    line-height: 1.6;
+    line-height: inherit;
+    vertical-align: baseline;
     white-space: nowrap;
     cursor: pointer;
-    vertical-align: baseline;
+    outline: 1px solid transparent;
+    transition: outline-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
 .screen-link:hover,
 .screen-link:focus-visible {
-    outline: 1px solid var(--accent);
+    outline-color: var(--accent);
+    background: color-mix(in oklch, var(--accent) 22%, transparent);
 }
 .screen-link-sep {
     opacity: 0.6;
@@ -2464,11 +2481,20 @@ button.activity-line:hover {
     align-items: center;
     gap: var(--sp-1);
 }
+/* 사람·명령 칩은 얇게 (사용자 지정 2026-11-07): 앱 버튼 높이(--btn-height)·굵기를 풀고 글자 높이에 맞춘다 */
+.dc-chip,
+.dc-cmd-chip {
+    height: auto;
+    min-height: 0;
+    line-height: 1.3;
+    font-weight: 500;
+}
 .dc-chip {
     display: inline-flex;
     align-items: center;
     gap: var(--sp-1-5);
-    padding: var(--sp-0-5) var(--sp-2-5) var(--sp-0-5) var(--sp-1);
+    /* 위·아래·왼쪽·오른쪽 모두 2px씩 키운 값 (사용자 미세조정 2026-11-07) */
+    padding: calc(var(--sp-0-5) + 1px) var(--sp-3) calc(var(--sp-0-5) + 1px) calc(var(--sp-0-5) + 1px);
     border: 1px solid var(--line-strong);
     border-radius: var(--r-pill);
     background: var(--bg-1);
@@ -2484,23 +2510,126 @@ button.activity-line:hover {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent);
 }
+/* 소유자 칩: 버튼 칩과 같은 높이·굵기(버튼 기본값을 맞춘다)에 강조 그라데이션 바탕 (사용자 지정 2026-11-07) */
 .dc-chip.is-static {
     cursor: default;
 }
+/* 앱의 강조 그라데이션(--brand-gradient, 주 버튼과 같다). 그라데이션 설정이 꺼져 있으면 강조색 한 가지 */
+.dc-chip.is-owner {
+    border-color: transparent;
+    background: var(--neu-sheen), var(--brand-gradient);
+    color: var(--brand-text);
+}
 .dc-chip.is-add {
-    padding-left: var(--sp-2-5);
+    padding-left: var(--sp-3);
     border-style: dashed;
     background: transparent;
     color: var(--text-2);
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.dc-add-person .dc-member-pick {
-    min-width: 200px;
+/* 이 레벨에 사람을 더하는 중 */
+.dc-chip.is-add.is-active {
+    border-style: solid;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+    color: var(--accent);
+}
+.dc-add-person {
+    margin-top: var(--sp-2);
+    max-width: 360px;
+}
+/* 멤버 찾기 (사용자 지정 2026-11-07): 닉네임으로 찾고, 결과 팝업은 10명씩 보이며 끝까지 내리면 더 보인다 */
+.dc-member-search {
+    position: relative;
+    max-width: 360px;
+}
+.dc-member-search > .input {
+    width: 100%;
+    padding-right: var(--sp-8);
+}
+/* 검색어 지우기: 입력칸 오른쪽 안쪽 */
+.dc-member-search > .icon-btn.dc-member-clear {
+    position: absolute;
+    top: 50%;
+    right: var(--sp-1);
+    transform: translateY(-50%);
+    /* 상자만 작게, 아이콘 크기는 그대로 */
+    width: 22px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border-radius: var(--r-sm);
+}
+/* 멤버 탭 윗줄: 기본 레벨 · 찾기(남는 폭) · 새로고침 · 레벨 편집 */
+.dc-people-bar {
+    align-items: center;
+    flex-wrap: nowrap;
+}
+.dc-people-bar .dc-member-search {
+    flex: 1 1 auto;
+    min-width: 160px;
+    max-width: none;
+}
+.dc-bar-label {
+    color: var(--text-1);
+    font-weight: 600;
+    white-space: nowrap;
+}
+.dc-member-results {
+    position: absolute;
+    top: calc(100% + var(--sp-1));
+    left: 0;
+    right: 0;
+    z-index: 30;
+    max-height: 280px;
+    margin: 0;
+    padding: var(--sp-1);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    list-style: none;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    box-shadow: 0 8px 24px var(--shadow-md);
+}
+.dc-member-result + .dc-member-result {
+    margin-top: var(--sp-0-5);
+}
+.dc-member-result > .dc-chip {
+    width: 100%;
+    justify-content: flex-start;
+}
+.dc-member-result small {
+    margin-left: auto;
+}
+.dc-member-empty {
+    padding: var(--sp-2);
+}
+/* 결과를 끄는 동안: 팝업은 반투명으로 남고 손 아래 칸을 가리지 않는다. 끄는 칩은 팝업 밖으로 떠서(MemberSearch가 fixed로 띄운다) 잘리지 않는다 */
+.dc-member-results {
+    transition: opacity var(--dur-fast) var(--ease);
+}
+.dc-member-search.is-dragging .dc-member-results {
+    pointer-events: none;
+}
+.dc-member-search.is-dragging .dc-member-result:not(:has(.is-dragging)) {
+    opacity: 0.4;
+}
+.dc-member-search.is-dragging .dc-member-results {
+    background: color-mix(in oklch, var(--bg-1) 55%, transparent);
+    border-color: color-mix(in oklch, var(--line-strong) 50%, transparent);
+}
+.dc-member-result > .dc-chip.is-floating {
+    position: fixed;
+    z-index: 60;
+    pointer-events: none;
 }
 .dc-import summary {
     font-weight: 600;
     cursor: pointer;
 }
-/* 계단: 왼쪽이 낮은 레벨. 계단마다 높이가 한 칸씩 오른다 */
+/* 레벨 칸: 왼쪽이 낮은 레벨. 칸은 모두 같은 높이로 창 높이를 따라 채운다 (금지 칸은 없다) */
 .dc-cmd-tools {
     display: flex;
     flex-wrap: wrap;
@@ -2599,21 +2728,174 @@ button.activity-line:hover {
 .dc-dot.tone-info {
     background: var(--info);
 }
+/* 계단: 왼쪽이 낮은 레벨. 계단마다 높이가 한 칸씩 오른다 */
+.dc-stairs-scroll {
+    overflow: hidden;
+}
+.dc-stairs {
+    display: grid;
+    grid-template-columns: repeat(var(--steps), minmax(0, 1fr));
+    align-items: stretch;
+    gap: var(--sp-1);
+    height: 360px; /* 처음 값. 그린 뒤 남은 높이로 맞춘다 (useFillHeight) */
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.dc-step {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    min-width: 0;
+    min-height: 0;
+    padding: var(--sp-2-5) var(--sp-2);
+    border-top: 3px solid var(--accent);
+    background: color-mix(in oklch, var(--accent) calc(4% + var(--step) * 4%), var(--bg-1));
+    transition: box-shadow var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.dc-step.level-banned {
+    border-top-color: var(--line-strong);
+    background: var(--bg-1);
+}
+.dc-step.is-over {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: color-mix(in oklch, var(--accent) calc(12% + var(--step) * 4%), var(--bg-1));
+}
+.dc-step-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: var(--sp-1);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+/* 끄는 칩이 칸 밖으로 나가도 잘리지 않게 한다 */
+.dc-step-chips:has(.is-dragging) {
+    overflow: visible;
+}
+.dc-step-carry {
+    width: 100%;
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+}
+.dc-step-label {
+    display: flex;
+    flex-direction: column;
+    margin-top: auto;
+}
+.dc-cmd-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: var(--sp-1) var(--sp-2-5);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-pill);
+    background: var(--bg-0);
+    color: var(--text-1);
+    font-size: var(--fs-xs);
+    cursor: grab;
+    max-width: 100%;
+    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+/* 서버 조작 칩: 시작·정지·재시작·백업 만들기를 묶은 칩. 점이 보라색이다 */
+.dc-dot.tone-control {
+    background: oklch(0.62 0.19 300);
+}
+/* 칸보다 긴 이름은 줄임표로 줄인다 (가로 스크롤을 만들지 않는다) */
+.dc-cmd-chip > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dc-cmd-chip:not(.is-fixed):hover {
+    transform: translateY(-1px);
+}
+.dc-cmd-chip.is-dragging {
+    opacity: 0.85;
+    cursor: grabbing;
+}
+.dc-cmd-chip.is-fixed {
+    cursor: pointer;
+}
+.dc-cmd-chip.is-changed {
+    border-color: var(--warn);
+    box-shadow: 0 0 0 1px var(--warn);
+}
+.dc-cmd-chip.is-selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent);
+}
+.dc-cmd-chip.is-legend {
+    cursor: default;
+}
+.dc-chip-edit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+.dc-level-steps {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+}
+.dc-level-step {
+    padding: var(--sp-1) var(--sp-2);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-sm);
+    background: var(--bg-1);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+    cursor: pointer;
+}
+.dc-level-step.is-up {
+    border-color: transparent;
+    background: color-mix(in oklch, var(--accent) 16%, var(--bg-1));
+    color: var(--accent);
+}
+.dc-level-step.is-on {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--text-inverse);
+    font-weight: 700;
+}
+.dc-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-3);
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+}
+.dc-legend > span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
 /* 레벨 편집: 위가 높은 레벨. 끌어서 순서를 바꾼다 (LadderTab.js) */
 .dc-ladder {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-1);
+    gap: var(--sp-2);
     margin: 0;
     padding: 0;
     list-style: none;
 }
 .dc-ladder-block {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-2);
-    min-height: 40px;
-    padding: var(--sp-1) var(--sp-2);
+    /* 세로로 여유 있게 (사용자 지정 2026-11-07) */
+    min-height: 48px;
+    padding: var(--sp-2-5) var(--sp-3);
     border: 1px solid var(--line);
     border-left: 4px solid var(--text-3);
     border-radius: var(--r-md);
@@ -2633,6 +2915,7 @@ button.activity-line:hover {
     cursor: grab;
 }
 .dc-chip.is-dragging,
+.dc-cmd-chip.is-dragging,
 .dc-ladder-block.is-dragging {
     position: relative;
     z-index: 20;
@@ -2729,6 +3012,9 @@ button.activity-line:hover {
     flex-basis: 100%;
     flex-wrap: wrap;
     gap: var(--sp-1);
+    /* 칩 세 줄까지 보이고 넘치면 접는다 (+N을 누르면 편다) */
+    max-height: calc(3 * 1.3em * 1.15 + 3 * var(--sp-1) + 6 * var(--sp-0-5) + 6px);
+    overflow: hidden;
     padding-left: calc(var(--sp-8) + var(--sp-4));
     font-size: var(--fs-sm);
 }
@@ -2736,11 +3022,64 @@ button.activity-line:hover {
     display: inline-flex;
     align-items: center;
     gap: var(--sp-1);
-    padding: 0 var(--sp-2);
+    /* 끌 수 있는 버튼이지만 앱 버튼 높이·굵기는 따르지 않는다 */
+    height: auto;
+    min-height: 0;
+    padding: var(--sp-0-5) var(--sp-2);
     border: 1px solid var(--line);
     border-radius: 999px;
     background: var(--bg-2);
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-xs);
+    line-height: 1.3;
     white-space: nowrap;
+    cursor: grab;
+}
+button.dc-ladder-chip.is-fixed {
+    cursor: default;
+}
+/* 칩을 끄는 동안: 접힌 칩 칸·계단 칸이 끄는 칩을 잘라 숨기지 않게 (사용자 지적 2026-11-07) */
+.dc-ladder-chips:has(.is-dragging),
+.dc-stairs-scroll:has(.is-dragging) {
+    overflow: visible;
+}
+/* 끄는 칩의 카드를 다른 카드 위로: 아래 카드가 칩을 덮지 않게 (고정 카드의 반투명도 칩을 가두지 않게) */
+.dc-ladder-block:has(.dc-ladder-chip.is-dragging) {
+    z-index: 30;
+    opacity: 1;
+}
+/* 저장하지 않은 변경 (사용자 지정 2026-11-07) */
+.dc-ladder-chip.is-changed {
+    border-color: var(--warn);
+    box-shadow: 0 0 0 1px var(--warn);
+}
+.dc-ladder-chip.is-dragging {
+    position: relative;
+    z-index: 20;
+    cursor: grabbing;
+    box-shadow: 0 6px 18px var(--shadow-md);
+}
+/* 카드 끌기: 들어갈 자리에 강조선 (카드 사이 틈 가운데) */
+.dc-ladder-block {
+    position: relative;
+}
+.dc-ladder-block.is-insert-before::before,
+.dc-ladder-block.is-insert-after::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+    pointer-events: none;
+}
+.dc-ladder-block.is-insert-before::before {
+    top: calc(-1 * var(--sp-1) - 2px);
+}
+.dc-ladder-block.is-insert-after::after {
+    bottom: calc(-1 * var(--sp-1) - 2px);
 }
 .dc-ladder-chip.is-fixed,
 .dc-ladder-chip.is-more {
@@ -3797,11 +4136,81 @@ button.appbar-preflight {
     flex: none;
     min-width: 9.5em;
     color: var(--text-3);
-    font-size: var(--fs-sm);
+    font-size: var(--fs-md);
     font-variant-numeric: tabular-nums;
 }
-.audit-more {
-    align-self: center;
+/* 거르기 단추: 고른 것이 있으면 강조색, 고른 수를 작은 둥근 칸에 */
+.audit-filter-btn.active {
+    color: var(--accent);
+}
+.audit-filter-count {
+    min-width: 1.4em;
+    padding: 0 var(--sp-1);
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--text-on-primary);
+    font-size: var(--fs-xs);
+    text-align: center;
+}
+.audit-filter-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    min-width: 12em;
+}
+.audit-filter-panel > .btn {
+    align-self: flex-end;
+}
+/* 한 줄을 누르면 자세한 칸을 펼친다 */
+.audit-row {
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    min-height: 72px;
+    padding-block: var(--sp-4);
+    font-size: var(--fs-lg);
+}
+.audit-row .dc-list-text {
+    gap: var(--sp-1);
+}
+.audit-row .dc-list-sub {
+    font-size: var(--fs-sm);
+}
+.audit-row:hover,
+.audit-item.expanded > .audit-row {
+    background: var(--bg-hover, color-mix(in oklch, var(--accent) 6%, transparent));
+}
+.audit-row > .icon,
+.audit-row > svg {
+    flex: none;
+    color: var(--text-3);
+}
+.audit-detail {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--sp-1) var(--sp-4);
+    margin: 0;
+    padding: var(--sp-2) var(--sp-4) var(--sp-3) calc(var(--sp-4) + 9.5em + var(--sp-3));
+    font-size: var(--fs-sm);
+}
+.audit-detail > div {
+    display: contents;
+}
+.audit-detail dt {
+    color: var(--text-3);
+}
+.audit-detail dd {
+    margin: 0;
+    color: var(--text-1);
+    overflow-wrap: anywhere;
+}
+.audit-end {
+    display: grid;
+    place-items: center;
+    min-height: var(--sp-6);
 }
 /* 머리·기간·더 보기는 제자리에 두고 목록만 스크롤한다 */
 .audit-card {
@@ -3836,6 +4245,17 @@ button.appbar-preflight {
     width: 100%;
     display: flex;
     flex-direction: column;
+    min-height: 0;
+}
+/* 작업 기록 페이지 오른쪽 칸: 칸 높이를 다 쓰고 목록만 스크롤한다. 폭은 설정 화면처럼 넓게 */
+.activity-pane {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.activity-pane > .activity-page {
+    flex: 1 1 0;
+    max-width: 1440px;
     min-height: 0;
 }
 
@@ -4755,4 +5175,78 @@ button.appbar-preflight {
     line-height: 1.5;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+}
+
+/* 인스턴스 메뉴의 사용 모드 줄: 제목·선택·설명 말풍선, 오른쪽에 그 모드의 작은 단추 */
+.access-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-3);
+    margin-bottom: var(--sp-3);
+}
+.access-bar-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    font-weight: 600;
+    color: var(--text-2);
+}
+.access-bar-hint {
+    display: inline-flex;
+    color: var(--text-3);
+    cursor: help;
+}
+.access-bar-end {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.access-bar-note {
+    font-size: var(--fs-sm);
+}
+.kick-count {
+    min-width: 1.4em;
+    padding: 0 var(--sp-1);
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--text-on-primary);
+    font-size: var(--fs-xs);
+    text-align: center;
+}
+.kick-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    width: min(22rem, calc(100vw - 2 * var(--sp-4)));
+}
+.kick-panel-desc {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+}
+.kick-panel-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    max-height: 12rem;
+    overflow-y: auto;
+}
+.kick-panel-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+}
+.kick-panel-add {
+    display: flex;
+    gap: var(--sp-2);
+}
+.kick-panel-add .input {
+    flex: 1;
+    min-width: 0;
 }

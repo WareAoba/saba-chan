@@ -137,10 +137,10 @@ const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'stati
 pub static ACTIONS: &[Def] = &[
     def("instance.list", Kind::Query, "safe", ALL, false, "GET", "/api/servers"),
     def("server.status", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/status"),
-    // 시작·정지·재시작·백업 만들기는 위험도가 아니라 조작 가능 명단(`crate::controllers`)과 관리자 이상이 한다 (사용자 지정 2026-11-06)
-    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.start", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/start") },
-    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.stop", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/stop") },
-    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.restart", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/restart") },
+    // 시작·정지·재시작·백업 만들기는 위험도가 아니라 조작 가능 명단(`crate::controllers`)과 유저 이상이 한다 (사용자 지정 2026-11-06, 기본 유저 2026-11-07)
+    Def { discord_level: Some(crate::chat::permissions::USER), level_movable: true, ..def("server.start", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/start") },
+    Def { discord_level: Some(crate::chat::permissions::USER), level_movable: true, ..def("server.stop", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/stop") },
+    Def { discord_level: Some(crate::chat::permissions::USER), level_movable: true, ..def("server.restart", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/restart") },
     def("server.console.tail", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/console?count=20"),
     // 접속자 이름까지 (검수 13번). 모듈이 `[status] players`를 선언한 서버만 (heartbeat `modules`, 인스턴스 목록)
     def("server.players", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/players"),
@@ -178,7 +178,7 @@ pub static ACTIONS: &[Def] = &[
     // from_snapshot: 지금 상태 대신 게임이 만든 가장 새 자동 백업을 보관한다 (`[backup] snapshots` 모듈)
     Def {
         fields: &[field("from_snapshot", "boolean", false)],
-        discord_level: Some(crate::chat::permissions::ADMIN),
+        discord_level: Some(crate::chat::permissions::USER),
         level_movable: true,
         ..def("backup.create", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/backups")
     },
@@ -317,7 +317,21 @@ pub(crate) fn is_secret_key(key: &str, password_fields: &[String]) -> bool {
 
 /// 원격(디스코드·챗봇)에서 바꿀 수 없는 인스턴스 키: 실행 파일·폴더·인자·메모리 상한과 그 밖으로 새는 연결 대상.
 /// `java_path`는 모듈이 어떤 형식으로 선언하든 실행 대상 검사가 인정하는 런타임이라 늘 막는다
-const LAUNCH_KEYS: &[&str] = &["executable_path", "working_dir", "instance_dir", "extra_args", "extension_data", "rest_host", "memory_limit_mb", "java_path"];
+const LAUNCH_KEYS: &[&str] = &[
+    "executable_path",
+    "working_dir",
+    "instance_dir",
+    "extra_args",
+    "extension_data",
+    "rest_host",
+    "memory_limit_mb",
+    "java_path",
+    // 사용 모드와 그 명단·자동 강퇴: PC 앱·웹에서만 바꾼다 (디스코드·말하는 사바쨩 불가, 사용자 지정 2026-11-08)
+    "access",
+    "controllers",
+    "controllers_only",
+    "kick_players",
+];
 
 /// 모듈 설정 필드 중 원격에서 다루지 않는 것들
 #[derive(Debug, Default)]
@@ -545,13 +559,15 @@ fn view(def: &Def, cat: &crate::chat::i18n::Catalog) -> Value {
     })
 }
 
-/// 모듈 명령 한 개 (`GET /api/instance/:id/commands`의 항목) → 액션
-fn command_view(cmd: &Value) -> Option<Value> {
+/// 모듈 명령 한 개 (`GET /api/instance/:id/commands`의 항목) → 액션. 이름·설명은 요청 언어의 모듈 locales
+/// `commands.<name>.label`·`description`이 먼저고, 없으면 module.toml 값 (`locale`은 그 모듈의 locales 한 언어)
+fn command_view(cmd: &Value, locale: &Value) -> Option<Value> {
     let name = cmd.get("name")?.as_str()?;
     let risk = crate::commands::risk_of(cmd.get("risk").and_then(Value::as_str));
     // danger 명령도 챗봇이 고를 수 있다: 늘 확인 계획을 거치고 요청자가 확인한다 (`needs_confirm`).
     // `remote = false` 명령은 이 PC 화면에서만
     let surfaces = if cmd.get("remote").and_then(Value::as_bool) == Some(false) { vec!["gui", "cli"] } else { vec!["gui", "cli", "discord", "chatbot"] };
+    let text = |key: &str| locale.pointer(&format!("/commands/{}/{}", name, key)).and_then(Value::as_str);
     let inputs = cmd.get("inputs").cloned().unwrap_or(json!([]));
     let props: Map<String, Value> = inputs
         .as_array()
@@ -574,8 +590,8 @@ fn command_view(cmd: &Value) -> Option<Value> {
         "scope": "instance",
         "input": { "type": "object", "properties": props, "required": required },
         "titleKey": Value::Null,
-        "title": cmd.get("label").and_then(Value::as_str).unwrap_or(name),
-        "description": cmd.get("description"),
+        "title": text("label").or_else(|| cmd.get("label").and_then(Value::as_str)).unwrap_or(name),
+        "description": text("description").map(Value::from).or_else(|| cmd.get("description").cloned()),
         "source": cmd.get("source"),
         "route": "POST /api/instance/:id/command",
         "cli": format!("{} do {}{} --server <server>{}", CLI_BIN, COMMAND_PREFIX, name, cli_args(&required)),
@@ -649,13 +665,13 @@ pub async fn list(server: &IPCServer, surface: Option<Surface>, instance: Option
             None => true,
         });
         // 조회는 모든 표면에 열려 있다
+        let texts = module.as_ref().map_or(Value::Null, |m| module_locale(m, &crate::chat::i18n::normalize_language(locale)));
         if let Some(module) = module {
-            let locale = module_locale(&module, &crate::chat::i18n::normalize_language(locale));
-            actions.extend(module.metadata.queries.iter().map(|q| query_view(q, &locale)));
+            actions.extend(module.metadata.queries.iter().map(|q| query_view(q, &texts)));
         }
         let resp = call(server, "GET", &format!("/api/instance/{}/commands", seg(id)), None).await;
         for cmd in resp.body.get("commands").and_then(Value::as_array).into_iter().flatten() {
-            if let Some(v) = command_view(cmd) {
+            if let Some(v) = command_view(cmd, &texts) {
                 let on = surface.is_none_or(|s| v["surfaces"].as_array().is_some_and(|a| a.iter().any(|x| x == s.name())));
                 if on {
                     actions.push(v);
@@ -747,7 +763,10 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
                     let risk = a["risk"].as_str().unwrap_or("caution");
                     let level = perms.required(id, cmd, risk);
                     let keys = vec![format!("{}/{}", id, cmd)];
-                    items.push(entry(id, a["id"].as_str().unwrap_or_default(), cmd, &a["title"], "command", risk, level, perms.preset_need(risk), false, keys));
+                    let mut item = entry(id, a["id"].as_str().unwrap_or_default(), cmd, &a["title"], "command", risk, level, perms.preset_need(risk), false, keys);
+                    // 게임(모듈·플러그인) 명령: 화면은 칩에 명령 원문을, 번역 이름은 말풍선에 쓴다 (사용자 지정 2026-11-07)
+                    item["module"] = json!(true);
+                    items.push(item);
                 }
                 None if a["scope"] == "instance" => items.extend(action_entry(id, a)),
                 None => {}
@@ -1063,7 +1082,7 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
         if !resp.is_success() {
             return Err(ActionError::new(404, "not_found", resp.str_field("error").unwrap_or("Instance not found").to_string()));
         }
-        let Some(view) = resp.body.get("commands").and_then(Value::as_array).into_iter().flatten().find(|c| c.get("name").and_then(Value::as_str) == Some(name)).and_then(command_view) else {
+        let Some(view) = resp.body.get("commands").and_then(Value::as_array).into_iter().flatten().find(|c| c.get("name").and_then(Value::as_str) == Some(name)).and_then(|c| command_view(c, &Value::Null)) else {
             return Err(ActionError::new(404, "unknown_action", format!("Unknown action: {}", id)));
         };
         let surfaces = view["surfaces"].as_array().into_iter().flatten().filter_map(|s| s.as_str().and_then(Surface::parse)).collect();
@@ -1282,8 +1301,16 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
     if r.guild_owner && !who.via_chatbot && who.user_id.is_some() && who.guild_owner_id == who.user_id {
         return Ok(());
     }
-    perms.check_basic(who).map_err(|d| denied(d.need))?;
     let instance = r.instance.as_deref().unwrap_or("");
+    // 전용 멤버 서버는 길드 레벨과 따로 논다: 명단에 디스코드를 이은 사람만 하고(금지 레벨은 빼고), 나머지는 레벨과 상관없이 거절한다
+    let gate = match instance {
+        "" => crate::controllers::Gate::Levels,
+        id => server.supervisor.read().await.instance_store.get(id).map_or(crate::controllers::Gate::Levels, |i| {
+            crate::controllers::gate_for(i.access, &i.controllers, who.user_id.as_deref(), who.via_chatbot)
+        }),
+    };
+    // 금지된 사람은 전용 멤버여도 막는다
+    perms.check_basic(who).map_err(|d| denied(d.need))?;
     // 이 길드에 열리지 않은 인스턴스
     if let (Some(i), Some(allowed)) = (&r.instance, allowed_instances(server, caller).await) {
         if !allowed.contains(i) {
@@ -1294,22 +1321,18 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
             });
         }
     }
-    let need = required_level(&perms, instance, &r.id, r.command.as_deref(), r.kind, &r.risk, r.discord_level);
-    if !perms.meets(perms.effective_level(who), need) {
-        // 조작 가능 명단에 있는 사람은 레벨과 상관없이 그 서버를 시작·정지·재시작·백업한다.
-        // 말하는 사바쨩을 거친 요청은 챗봇 상한을 그대로 받는다 (명단이 상한을 넘지 않는다)
-        if !crate::controllers::CONTROLLED_ACTIONS.contains(&r.id.as_str()) || who.via_chatbot {
-            return Err(denied(need));
-        }
-        let listed = match who.user_id.as_deref() {
-            Some(user) => server.supervisor.read().await.instance_store.get(instance).is_some_and(|i| crate::controllers::controls(&i.controllers, user)),
-            None => false,
-        };
-        if !listed {
-            let mut refused = denied(need);
-            refused.data["args"]["controllers"] = json!(true);
+    match gate {
+        crate::controllers::Gate::Allow => return Ok(()),
+        crate::controllers::Gate::Deny => {
+            let mut refused = denied(crate::chat::permissions::USER);
+            refused.data["args"]["members_only"] = json!(true);
             return Err(refused);
         }
+        crate::controllers::Gate::Levels => {}
+    }
+    let need = required_level(&perms, instance, &r.id, r.command.as_deref(), r.kind, &r.risk, r.discord_level);
+    if !perms.meets(perms.effective_level(who), need) {
+        return Err(denied(need));
     }
     // 예약 작업은 나중에 요청자 없이 돈다: 새로 넣거나 켜는 서버 명령은 요청자가 지금 그 명령을 쓸 수 있어야 한다
     if r.id == "instance.schedule.set" && !instance.is_empty() {

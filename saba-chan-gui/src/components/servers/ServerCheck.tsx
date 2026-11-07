@@ -3,19 +3,13 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type Server, useServerStore } from '../../stores/useServerStore';
 import { moduleSupports } from '../../utils/helpers';
+import { type CheckIssue, checkIssueText } from '../../utils/settingIssue';
 import { Icon } from '../Icon';
 
 /** 데몬에 점검 채널이 있을 때만 (예전 preload면 버튼을 숨긴다) */
 export const checkAvailable = () =>
     typeof window.api?.instanceValidate === 'function' || typeof window.api?.instanceDiagnose === 'function';
 
-/** 모듈 validate·diagnose가 돌려주는 문제 한 건 */
-interface CheckIssue {
-    code?: string;
-    severity: string;
-    message?: string;
-    solution?: string;
-}
 
 interface CheckResult {
     kind: 'validate' | 'diagnose';
@@ -119,8 +113,16 @@ export function ServerCheck({ server }: { server: Server }) {
                         >
                             <Icon name={SEVERITY_ICON[issue.severity] || 'info'} size="sm" />
                             <div>
-                                <p className="server-check-message">{issue.message || issue.code}</p>
-                                {issue.solution && <p className="server-check-solution">{issue.solution}</p>}
+                                {(() => {
+                                    // 데몬이 더한 설정 값 문제는 칸 이름으로 번역한다 (나머지는 모듈 문구)
+                                    const text = checkIssueText(t, issue, server.module, module?.settings?.fields);
+                                    return (
+                                        <>
+                                            <p className="server-check-message">{text.message}</p>
+                                            {text.solution && <p className="server-check-solution">{text.solution}</p>}
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </li>
                     ))}

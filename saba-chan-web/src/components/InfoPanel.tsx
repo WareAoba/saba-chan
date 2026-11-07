@@ -2,94 +2,9 @@ import { gameNameOf, protocolLabel } from '@gui/utils/serverView';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Section } from './ui';
-import type { Server, ServerPanelProps, TFn, WebApi } from '../types';
+import type { ServerPanelProps } from '../types';
 
-/** 서버 종료 기록 한 건 (GET /api/instance/:id/events) */
-interface ExitEvent {
-    at: number | string;
-    kind: string;
-    exit_code?: number | null;
-    signal?: string | null;
-    restart_in_secs?: number | null;
-    note_code?: string;
-    note_args?: { count?: number; reason?: string };
-    note?: string;
-}
-
-const SHOW_MAX = 8;
-
-/** 데몬이 남기는 재시작 안 함 이유 (GUI ExitHistory 와 같은 note_code). 모르는 코드는 그대로 */
-function exitNote(e: ExitEvent, tg: TFn) {
-    const args = e.note_args || {};
-    if (e.note_code === 'auto_restart_off') return tg('shell.exit_note_auto_off');
-    if (e.note_code === 'gave_up') return tg('shell.exit_note_gave_up', { count: args.count });
-    if (e.note_code === 'restart_failed') return tg('shell.exit_note_restart_failed', { reason: args.reason });
-    return e.note || e.note_code || '';
-}
-
-/** 최근 종료 기록: 왜 꺼졌는지와 자동 재시작 여부 */
-function ExitHistory({ api, server }: { api: WebApi; server: Pick<Server, 'id' | 'status'> }) {
-    const { i18n } = useTranslation();
-    const { t: tg } = useTranslation('gui');
-    const [events, setEvents] = useState<ExitEvent[] | null>(null);
-
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 상태가 바뀔 때마다 다시 읽는다
-    useEffect(() => {
-        let alive = true;
-        api.instanceEvents(server.id).then((r) => {
-            if (alive && Array.isArray(r?.events)) setEvents(r.events);
-        });
-        return () => {
-            alive = false;
-        };
-    }, [api, server.id, server.status]);
-
-    if (!events) return null;
-    const fmt = (at: number | string) => {
-        const d = new Date(typeof at === 'number' && at < 1e12 ? at * 1000 : at);
-        return Number.isNaN(d.getTime())
-            ? String(at)
-            : d.toLocaleString(i18n.language, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    };
-    const time = (at: number | string) => new Date(typeof at === 'number' && at < 1e12 ? at * 1000 : at).getTime();
-    const list = [...events].sort((a, b) => time(b.at) - time(a.at)).slice(0, SHOW_MAX);
-
-    return (
-        <Section title={tg('shell.exit_title')}>
-            {list.length === 0 ? (
-                <p className="hint">{tg('shell.exit_empty')}</p>
-            ) : (
-                <ul className="rows">
-                    {list.map((e, i) => (
-                        // biome-ignore lint/suspicious/noArrayIndexKey: 같은 시각의 기록이 여러 개일 수 있어 순번을 붙인다
-                        <li key={`${e.at}-${i}`} className="row">
-                            <div className="row-main">
-                                <div className="row-title">
-                                    <span className={`pill exit-${e.kind}`}>
-                                        {tg(`shell.exit_${e.kind}`, { defaultValue: e.kind })}
-                                    </span>
-                                    <time>{fmt(e.at)}</time>
-                                </div>
-                                <div className="row-sub">
-                                    {e.exit_code != null &&
-                                        (e.exit_code === 0
-                                            ? tg('shell.exit_code_ok')
-                                            : tg('shell.exit_code', { code: e.exit_code }))}{' '}
-                                    {e.signal && <code>{e.signal}</code>}{' '}
-                                    {e.restart_in_secs != null &&
-                                        tg('shell.exit_restart_in', { secs: e.restart_in_secs })}{' '}
-                                    {exitNote(e, tg)}
-                                </div>
-                            </div>
-                        </li>
-                    ))}
-                </ul>
-            )}
-        </Section>
-    );
-}
-
-/** 정보: 게임, 버전(모듈에 물어 확인), 포트, 인스턴스 id, 최근 종료 */
+/** 정보: 게임, 버전(모듈에 물어 확인), 포트, 인스턴스 id */
 export function InfoPanel({ api, server, moduleData }: Omit<ServerPanelProps, 'running'>) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
@@ -137,7 +52,6 @@ export function InfoPanel({ api, server, moduleData }: Omit<ServerPanelProps, 'r
                     </details>
                 )}
             </Section>
-            <ExitHistory api={api} server={server} />
         </div>
     );
 }

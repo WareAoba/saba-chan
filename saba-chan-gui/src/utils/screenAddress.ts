@@ -1,7 +1,7 @@
 /**
  * 화면 주소 (사용자 11-06 #19): 안내 문구의 링크가 가리키는 화면. 앱과 웹이 같은 주소를 쓴다.
  *
- *   server/<서버 id>[/<탭>]                    서버 상세의 탭 (console·commands·settings·saba·maintenance·discord·audit·info)
+ *   server/<서버 id>[/<탭>]                    서버 상세의 탭 (console·commands·settings·saba·maintenance·discord·info)
  *   discord[/connection | /saba]                디스코드 › 연결 · 사바쨩 설정
  *   discord/<디스코드 서버 id | *>[/<탭>[/<안 화면>]]
  *                                               디스코드 서버의 탭 (instances·members·moderation·bot·chatbot·music·tts)과

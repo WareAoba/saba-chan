@@ -46,6 +46,8 @@ export interface CommandItem {
     overridden?: boolean;
     /** 시작·정지·재시작·백업 만들기: 레벨이 모자라도 그 인스턴스의 조작 가능 명단에 있으면 쓴다 */
     controllers?: boolean;
+    /** 게임(모듈·플러그인) 명령 (데몬 `permission_board`) */
+    module?: boolean;
     [key: string]: unknown;
 }
 
@@ -75,6 +77,8 @@ export interface StairChip {
     instance?: string;
     /** 조작 가능 명단에 있는 사람도 쓴다 */
     controllers?: boolean;
+    /** 게임(모듈·플러그인) 명령: 칩에 명령 원문을 쓴다 */
+    module?: boolean;
 }
 
 export const OWNER = 3;
@@ -167,11 +171,14 @@ export function ladderPatch(ladder: LadderLevel[]) {
     });
 }
 
-/** 아래(금지)부터 위(소유자)로 센 레벨 번호. 금지가 Lv 0이다 (화면 표시용, 저장값과 무관) */
+/**
+ * 아래(금지)부터 위(소유자)로 센 레벨 번호. 금지가 Lv -1, 게스트가 Lv 0이다 (사용자 지정 2026-11-07: 기본 사다리의
+ * 저장값 소유자 3·관리자 2·유저 1·게스트 0·금지 -1과 같은 번호를 앱·웹이 함께 쓴다). 사다리 맨 아래는 늘 금지다
+ */
 export function levelNumber(perm: GuildPermissions | null | undefined, id: number | undefined) {
     const ladder = ladderOf(perm);
     const at = ladder.findIndex((l) => l.id === id);
-    return at < 0 ? null : ladder.length - 1 - at;
+    return at < 0 ? null : ladder.length - 2 - at;
 }
 
 /** "Lv 2 · 유저" */
@@ -218,6 +225,7 @@ export function stairChips(board: CommandBoard | null | undefined, view = ALL_IN
             fixed: head.fixed,
             name: head.name,
             controllers: head.controllers === true,
+            module: head.module === true,
         };
         chips.push({ ...chip, id, level, levelMixed: byLevel.size > 1, items: list, overridden: main.some((i) => i.overridden) });
         for (const item of list.filter((i) => i.level !== level)) {
@@ -251,6 +259,35 @@ export function levelPatch(items: CommandItem[], level: number) {
         });
     }
     return out;
+}
+
+/**
+ * 서버 조작 칩 (사용자 지정 2026-11-07): 조작 가능 명단이 쓰는 명령(시작·정지·재시작·백업 만들기)을 계단에서 칩 하나로 묶는다.
+ * 대표 레벨은 가장 많은 명령의 레벨이고, 칩을 옮기면 묶인 명령을 모두 그 레벨로 맞춘다
+ */
+export function groupControllers(chips: StairChip[], title: string): StairChip[] {
+    const isControl = (c: StairChip) => c.controllers === true && !c.fixed;
+    // 인스턴스마다 레벨이 다른 명령은 대표 칩의 items에 모두 있다 (`@인스턴스` 칩은 겹친다)
+    const items = chips.filter((c) => isControl(c) && !c.instance).flatMap((c) => c.items);
+    if (items.length === 0) return chips;
+    const counts = new Map<number, number>();
+    for (const item of items) counts.set(item.level, (counts.get(item.level) || 0) + 1);
+    const [[level]] = [...counts].sort((a, b) => b[1] - a[1]);
+    const tiers = new Set(items.map((i) => i.confirmRisk || i.risk));
+    const control: StairChip = {
+        id: 'controllers',
+        title,
+        kind: 'control',
+        risk: items[0].risk,
+        confirmRisk: tiers.size === 1 ? [...tiers][0] : null,
+        confirmMixed: tiers.size > 1,
+        controllers: true,
+        level,
+        levelMixed: counts.size > 1,
+        items,
+        overridden: items.some((i) => i.overridden),
+    };
+    return [control, ...chips.filter((c) => !isControl(c))];
 }
 
 /** 조작 가능 줄 (사용자 지정 2026-11-06): 조작 가능 명단이 쓰는 명령(시작·정지·재시작·백업 만들기)의 대표 레벨.

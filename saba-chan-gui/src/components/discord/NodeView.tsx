@@ -13,8 +13,9 @@ import { Avatar, initialOf } from './Avatar';
 import { BotSettingsTab, botSettingsAvailable } from './BotSettingsTab';
 import { ChatbotGuildTab } from './ChatbotGuildTab';
 import { chatbotAvailable } from './ChatbotView';
+import { ControllersTab } from '../servers/ControllersTab';
+import { AccessMode, accessOf, KickButton, MembersKick } from './InstanceAccess';
 import * as P from './nodePermissions';
-import { ALL_INSTANCES } from './levels';
 import { ModerationTab, moderationAvailable } from './ModerationTab';
 import { MembersPanel, PermissionPanel } from './PermissionsTab';
 import { SleepCorner } from './SleepCorner';
@@ -134,9 +135,6 @@ function InstancesTab({
                 <span className="muted">
                     <LinkedText i18nKey="discord.instance_menu_hint" to={`discord/${node.guildId}/members`} />
                 </span>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onOpen(ALL_INSTANCES)}>
-                    <Icon name="key" size="sm" /> {t('discord.instance_menu_all')}
-                </button>
             </div>
             {servers.length === 0 ? (
                 <p className="muted pad">{t('discord.no_instances')}</p>
@@ -148,8 +146,18 @@ function InstancesTab({
                         const locked = mode === 'all' || !!owner;
                         const notice = Array.isArray(noticed) && noticed.includes(srv.id);
                         const full = Array.isArray(fullNoticed) && fullNoticed.includes(srv.id);
+                        const openable = allowed && !owner;
                         return (
-                            <li key={srv.id} className={clsx('dc-list-row', { dim: !allowed })}>
+                            // biome-ignore lint/a11y/useKeyWithClickEvents: 카드 어디를 눌러도 권한 메뉴로 (사용자 지정 2026-11-07). 키보드는 오른쪽 화살표 버튼이 받는다
+                            <li
+                                key={srv.id}
+                                className={clsx('dc-list-row', { dim: !allowed, 'is-openable': openable })}
+                                onClick={(e) => {
+                                    // 줄 안의 버튼·토글을 누른 것은 그 버튼의 일이다
+                                    if (!openable || (e.target as HTMLElement).closest('button, input, label, a')) return;
+                                    onOpen(srv.id);
+                                }}
+                            >
                                 <ModuleIcon module={modules.find((m) => m.name === srv.module)} name={srv.name} />
                                 <span className="dc-list-text">
                                     <span className="dc-list-name">{srv.name}</span>
@@ -218,23 +226,33 @@ interface InstanceMenuProps {
 }
 
 /**
- * 인스턴스 메뉴: 레벨별 명령 계단(이 인스턴스 + 서버 전체 명령). 멤버 레벨은 서버의 멤버 탭에서 정한다.
- * `instance`가 ALL_INSTANCES면 모든 인스턴스를 한 계단에 모아 본다
+ * 인스턴스 메뉴: 사용 모드. 서버 공용이면 레벨별 명령 계단(이 인스턴스 + 서버 전체 명령)과 자동 강퇴 명단,
+ * 전용 멤버면 전용 멤버 명단과 자동 강퇴 스위치. 멤버 레벨은 서버의 멤버 탭에서 정한다.
  */
 function InstanceMenu({ node, servers, instance, onBack }: InstanceMenuProps) {
     const { t } = useTranslation('gui');
     const srv = servers.find((s) => s.id === instance);
-    const title = srv ? srv.name : t('discord.perm_view_all');
+    if (!srv) return null;
     return (
         <div className="dc-tab">
             <button type="button" className="dc-crumb" onClick={onBack}>
                 <Icon name="chevronLeft" size="sm" /> {t('discord.back_to_instances')}
             </button>
             <h2 className="dc-menu-title">
-                {title}
-                {srv?.module && <small className="muted"> · {srv.module}</small>}
+                {srv.name}
+                {srv.module && <small className="muted"> · {srv.module}</small>}
             </h2>
-            <PermissionPanel node={node} instance={srv ? srv.id : ALL_INSTANCES} />
+            {/* 사용 모드와 명단은 인스턴스 하나에 붙는다: 이은 모든 디스코드 서버에 같이 적용된다 */}
+            {/* 서버 공용의 자동 강퇴는 모드 줄의 작은 단추: 명령 계단의 저장 막대가 늘 맨 아래에 온다 */}
+            <AccessMode server={srv}>{accessOf(srv) === 'shared' && <KickButton server={srv} />}</AccessMode>
+            {accessOf(srv) === 'members' ? (
+                <>
+                    <ControllersTab server={srv} />
+                    <MembersKick server={srv} />
+                </>
+            ) : (
+                <PermissionPanel node={node} instance={srv.id} />
+            )}
         </div>
     );
 }
@@ -282,9 +300,11 @@ export function NodeView({
 }: NodeViewProps) {
     const { t } = useTranslation('gui');
     const [tab, setTab] = useState('instances');
-    const [instance, setInstance] = useState<string | null>(null); // 연 인스턴스 메뉴 (없으면 목록)
+    const [opened, setInstance] = useState<string | null>(null); // 연 인스턴스 메뉴 (없으면 목록)
     const mode = P.instanceMode(settings, node.guildId);
     const visibleCount = visibleServers(settings, node.guildId, servers).length;
+    // 보이는 인스턴스만 메뉴로 연다 (지웠거나 이 서버에서 뺀 인스턴스면 목록)
+    const instance = opened && visibleServers(settings, node.guildId, servers).some((s) => s.id === opened) ? opened : null;
     const tabs = [
         { id: 'instances', label: t('discord.tab_instances'), icon: <Icon name="server" size="sm" /> },
         { id: 'members', label: t('discord.tab_members'), icon: <Icon name="user" size="sm" /> },

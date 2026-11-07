@@ -49,7 +49,7 @@ function firstWeekday(lang: string) {
  * 트리거 아래(자리가 없으면 위)에 띄우는 팝업. CustomDropdown과 같은 열고 닫기·바깥 클릭 규칙.
  * 열 때 onOpen, 닫힌 뒤 트리거로 포커스를 돌린다.
  */
-function usePopover(onOpen?: () => void) {
+export function usePopover(onOpen?: () => void) {
     const [isOpen, setIsOpen] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
     const [style, setStyle] = useState<CSSProperties>({});

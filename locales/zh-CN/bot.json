@@ -100,7 +100,7 @@
     "unknown_input": "❌ 未知命令。",
     "command_not_found": "❌ 命令不存在。",
     "permission_denied": "❌ 您没有使用此命令的权限。",
-    "permission_denied_controllers": "❌ 要启动或停止这个服务器，需要在沙巴酱应用的“可操作的人”名单里，或拥有这个命令设定的等级（默认为管理员）。",
+    "members_only": "❌ 只有此服务器的专属成员才能使用。请让服务器主人把你加入专属成员名单。",
     "local_single_guild_only": "⚠️ 本地机器人只能在一个服务器中使用。当前已加入{{count}}个服务器，请从不使用的服务器中移除机器人。"
   },
   "messages": {
@@ -246,6 +246,9 @@
       "chat": {
         "title": "发送游戏聊天",
         "description": "把 Discord 消息发送到游戏聊天"
+      },
+      "chat_link": {
+        "title": "聊天联动"
       },
       "update": {
         "check": {

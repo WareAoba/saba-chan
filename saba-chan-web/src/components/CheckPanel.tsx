@@ -1,3 +1,5 @@
+import { type CheckIssue, checkIssueText } from '@gui/utils/settingIssue';
+import type { SettingField } from '@gui/types/daemon';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
@@ -7,13 +9,8 @@ import { PortCheck } from './PortCheck';
 import { Button, Card, errorText, failed } from './ui';
 import type { Module, ServerPanelProps } from '../types';
 
-/** 점검 결과 한 건 (모듈 validate·diagnose_log) */
-interface Issue {
-    code?: string;
-    severity: string;
-    message?: string;
-    solution?: string;
-}
+/** 점검 결과 한 건 (모듈 validate·diagnose_log, 데몬이 더한 setting_invalid) */
+type Issue = CheckIssue;
 
 /** 점검 결과 화면 */
 interface CheckResult {
@@ -85,8 +82,17 @@ function ServerCheck({ api, server, moduleData }: Omit<ServerPanelProps, 'runnin
                     {result?.issues?.map((issue, i) => (
                         // biome-ignore lint/suspicious/noArrayIndexKey: 같은 코드의 문제가 여러 번 올 수 있어 순번을 붙인다
                         <li key={`${issue.code}-${i}`} className={`issue sev-${issue.severity}`}>
-                            <p>{issue.message || issue.code}</p>
-                            {issue.solution && <p className="hint">{issue.solution}</p>}
+                            {(() => {
+                                // 데몬이 더한 설정 값 문제는 칸 이름으로 번역한다 (앱 서버 점검과 같다)
+                                const fields = (moduleData?.settings as { fields?: SettingField[] } | undefined)?.fields;
+                                const text = checkIssueText(tg, issue, server.module, fields);
+                                return (
+                                    <>
+                                        <p>{text.message}</p>
+                                        {text.solution && <p className="hint">{text.solution}</p>}
+                                    </>
+                                );
+                            })()}
                         </li>
                     ))}
                 </ul>

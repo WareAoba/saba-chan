@@ -57,7 +57,9 @@ pub const INSTANCE_FIELDS: &[(&str, &str)] = &[
     // 게임 채팅을 디스코드로: off·all·keyword, keyword면 감지 단어
     ("game_chat", "text"),
     ("game_chat_keyword", "text"),
-    // 조작 가능 명단에 없는 닉네임이 접속하면 내보낸다 (명단 자체는 목록이라 `server set`으로 바꾸지 않는다)
+    // 사용 모드: shared(서버 공용) 또는 members(전용 멤버)
+    ("access", "text"),
+    // 전용 멤버 모드: 명단에 없는 닉네임이 접속하면 내보낸다 (명단·자동 강퇴 닉네임은 목록이라 `server set`으로 바꾸지 않는다)
     ("controllers_only", "boolean"),
 ];
 

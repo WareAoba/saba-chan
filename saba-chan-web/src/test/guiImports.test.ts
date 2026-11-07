@@ -17,6 +17,10 @@ const ALLOWED = new Set([
     '@gui/utils/schedule',
     // 활동 기록 한 건을 문구로 (앱 작업 기록과 같은 규칙)
     '@gui/utils/audit',
+    // 지난 로그 줄의 UTC 시각을 PC 시간대로 (앱 지난 로그와 같다)
+    '@gui/utils/logTime',
+    // 설정 값 검사 오류·서버 점검의 설정 문제를 글로 (앱 서버 점검과 같다)
+    '@gui/utils/settingIssue',
     // 화면 주소 읽기 (앱과 같은 주소, 화면 없는 순수 함수)
     '@gui/utils/screenAddress',
     // 고를 수 있는 언어 목록 (이 화면 설정)
@@ -29,6 +33,8 @@ const ALLOWED = new Set([
     '@gui/components/discord/levels',
     // 칩이 자리를 바꾸는 움직임 (권한 맞바꾸기, 앱 사다리와 같은 움직임)
     '@gui/components/discord/flip',
+    // 마우스·손가락으로 칩 끌어 놓기 (화면 없는 훅, 앱 계단과 같은 끌기)
+    '@gui/components/discord/pointerDrag',
     // 인스턴스 낱말 초안과 검사 오류 나누기 (화면 없는 순수 함수)
     '@gui/components/discord/instanceWords',
     // 조작 가능 명단 넣기·빼기·멤버 고르기 (GUI 조작 가능 탭과 같은 순수 함수)

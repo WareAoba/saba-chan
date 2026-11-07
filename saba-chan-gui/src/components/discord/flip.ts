@@ -12,12 +12,19 @@ export function useFlip<T extends HTMLElement>(ref: RefObject<T | null>, duratio
         before.current = null;
         if (!prev || !root || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
         let moved = 0;
-        root.querySelectorAll<HTMLElement>('[data-flip]').forEach((el) => {
+        const els = [...root.querySelectorAll<HTMLElement>('[data-flip]')];
+        // 새 자리는 움직임을 걸기 전에 모두 잰다 (먼저 건 움직임이 바깥 칸의 자리를 바꿔 놓지 않게)
+        const now = new Map(els.map((el) => [el, el.getBoundingClientRect()]));
+        els.forEach((el) => {
             const from = prev.get(el.dataset.flip as string);
             if (!from || typeof el.animate !== 'function') return;
-            const to = el.getBoundingClientRect();
-            const dx = from.left - to.left;
-            const dy = from.top - to.top;
+            const to = now.get(el) as DOMRect;
+            // 미끄러지는 칸 안의 요소는 그 칸에 대한 자리만 옮긴다 (칸과 함께 두 번 움직이지 않게)
+            const host = el.parentElement?.closest<HTMLElement>('[data-flip]');
+            const hostFrom = host ? prev.get(host.dataset.flip as string) : undefined;
+            const hostTo = host ? now.get(host) : undefined;
+            const dx = from.left - to.left - (hostFrom && hostTo ? hostFrom.left - hostTo.left : 0);
+            const dy = from.top - to.top - (hostFrom && hostTo ? hostFrom.top - hostTo.top : 0);
             if (!dx && !dy) return;
             el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
                 duration,

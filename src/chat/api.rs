@@ -25,7 +25,10 @@ pub struct ServerView {
     /// 시작했지만 아직 준비 문구가 찍히지 않았다 (`supervisor::ready`). 목록 응답에는 없고 데몬 구현이 채운다
     #[serde(skip)]
     pub starting: bool,
-    /// 조작 가능 명단 (`crate::controllers`)
+    /// 사용 모드 (`crate::controllers::Access`)
+    #[serde(default)]
+    pub access: crate::controllers::Access,
+    /// 전용 멤버 명단 (`crate::controllers`)
     #[serde(default)]
     pub controllers: Vec<crate::controllers::Controller>,
 }
