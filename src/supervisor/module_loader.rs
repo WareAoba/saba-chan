@@ -43,6 +43,9 @@ pub struct ModuleMetadata {
     /// 게임 서버마다 종료 시간이 다르므로 모듈별로 설정.
     #[serde(default)]
     pub stop_timeout: Option<u64>,  // config.stop_timeout
+    /// [config] stop_signal — 일반 정지에 콘솔 명령 대신 보낼 신호 (`interrupt` = Ctrl+C)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_signal: Option<StopSignal>,
     /// [config] announce_command — 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나). 예약 재시작 예고·공지(A3)용
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub announce_command: Option<String>,
@@ -952,6 +955,14 @@ pub enum ConsoleMode {
     Pty,
 }
 
+/// 일반 정지 때 서버에 보내는 신호 (`[config] stop_signal`). 없으면 콘솔에 `stop_command`를 보낸다
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum StopSignal {
+    /// Ctrl+C (unix는 SIGINT). 저장 처리기가 Ctrl+C에만 붙은 서버용
+    Interrupt,
+}
+
 impl ConsoleMode {
     /// saba-runner `--console` 값
     pub fn as_arg(self) -> &'static str {
@@ -994,6 +1005,9 @@ struct ConfigSection {
     /// Graceful stop 타임아웃 (초). 예: Minecraft=30, ARK=120
     #[serde(default)]
     stop_timeout: Option<u64>,
+    /// 일반 정지에 콘솔 명령 대신 보낼 신호. `interrupt`면 Ctrl+C(unix는 SIGINT)를 보내고 서버가 끝나기를 기다린다
+    #[serde(default)]
+    stop_signal: Option<StopSignal>,
     /// 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나)
     #[serde(default)]
     announce_command: Option<String>,
@@ -1438,6 +1452,7 @@ impl ModuleToml {
             server_executable: self.config.as_ref().and_then(|c| c.server_executable.clone()),
             stop_command: self.config.as_ref().and_then(|c| c.stop_command.clone()),
             stop_timeout: self.config.as_ref().and_then(|c| c.stop_timeout),
+            stop_signal: self.config.as_ref().and_then(|c| c.stop_signal),
             announce_command: self.config.as_ref().and_then(|c| c.announce_command.clone()),
             kick_command: self.config.as_ref().and_then(|c| c.kick_command.clone()),
             backup: self.backup,

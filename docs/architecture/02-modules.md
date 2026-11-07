@@ -89,6 +89,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `process_name` | String | 인스턴스 생성 시 `instance.process_name`에 복사 → auto-detect (`instance.rs:109`, `mod.rs:2514-2524`) |
 | `default_port` | u16 | 인스턴스 생성 시 `instance.port` 기본값 |
 | `stop_command` | String | managed stop 때 stdin으로 전송. 기본값 `"stop"` (`mod.rs:961`) |
+| `stop_signal` | `"interrupt"` | 일반 정지에 콘솔 명령 대신 보낼 신호. `interrupt`면 managed stop이 Ctrl+C(unix는 SIGINT)를 보내고 서버가 저장하고 끝나기를 `stop_timeout`만큼 기다린다(§3.4 managed stop 2번). 저장 처리기가 Ctrl+C에만 붙은 서버(공식 정지 방법이 Ctrl+C뿐인 게임)용. 없으면 `stop_command`를 쓴다. 0.1.13 다음 판 |
 | `stop_timeout` | u64(초) | managed graceful stop 대기 시간. 기본값 30. 인스턴스 설정 `stop_timeout`이 있으면 그 값이 앞선다(§ 데몬이 읽는 setting) |
 | `announce_command` | String | 게임 안 공지에 쓰는 `[[commands.fields]]` 이름 (예약 재시작 예고 등) |
 | `kick_command` | String | 내보내기에 쓰는 `[[commands.fields]]` 이름. "조작 가능한 사람만 접속"(01 문서 §조작 가능)이 명단에 없는 닉네임을 내보낼 때 쓴다. 그 명령의 첫 입력에 닉네임, 둘째 입력이 있으면 이유를 넣는다. 없는 명령 이름이면 `config.kick_command` 참조 오류다 |
@@ -201,7 +202,7 @@ zomboid의 `beta_branch` 키는 지워졌다. lifecycle에는 `use_beta`를 보�
 
 `[extensions.saba-core]`는 데몬이 읽는 예약 표다(R39, 0.1.9). 이 이름은 데몬 몫이라 `saba-core`라는 id의 익스텐션은 설치·인식하지 않는다(`extension::is_valid_extension_id`). 0.1.8 로더도 `[extensions.*]`는 내용을 보지 않으므로 이 키가 있는 모듈을 그대로 로드한다.
 이 표는 버전 사이를 잇는 자리라, 이 데몬이 모르는 키(더 새 데몬의 키)가 있어도 모듈을 거부하지 않고 경고만 남긴다(`DAEMON_TABLE_KEYS`). 아는 키의 값이 틀리면 그 항목만 버리고 경고한다.
-- `ready_patterns` (Vec<String>, 정규식): 콘솔에 이 중 하나가 찍히면 서버가 준비된 것이다. 데몬이 콘솔을 읽는 시작(managed)에만 쓰인다. 켜지는 중에 들어온 정지는 이 문구가 찍힌 뒤 `stop_command`를 보낸다(§3.4). 정규식이 아니거나 목록이 아니면 그 항목만 버리고 모듈 경고(`warnings`)를 남긴다(로드는 실패하지 않는다).
+- `ready_patterns` (Vec<String>, 정규식): 콘솔에 이 중 하나가 찍히면 서버가 준비된 것이다. 데몬이 콘솔을 읽는 시작(managed)에만 쓰인다. 켜지는 중에 들어온 정지는 이 문구가 찍힌 뒤 `stop_command`나 Ctrl+C(`stop_signal`)를 보낸다(§3.4). 정규식이 아니거나 목록이 아니면 그 항목만 버리고 모듈 경고(`warnings`)를 남긴다(로드는 실패하지 않는다).
 - `ready_timeout` (u64, 초, 기본 600, 최대 900): 시작 뒤 이 시간 안에 준비 문구가 없으면 `ready_timeout`으로 닫는다. 0이거나 숫자가 아니면 경고를 남기고 기본값을 쓴다. 900보다 크면 경고를 남기고 900을 쓴다(디스코드가 시작을 시킨 채널을 15분 기억한다, 05 §4.4).
 - `player_join_patterns`·`player_leave_patterns` (Vec<String>, 정규식, MK8): 콘솔 줄이 맞으면 그 플레이어가 들어오거나 나간 것이다. 각 정규식에 이름 그룹 `(?P<name>…)`이 있어야 하고, 없거나 정규식이 아니면 그 항목만 버리고 경고한다.
 - `chat_patterns` (Vec<String>, 정규식, 0.1.12): 콘솔 줄이 맞으면 게임 채팅이다(게임 채팅 전달). 각 정규식에 이름 그룹 `(?P<name>…)`과 본문 그룹 `(?P<message>…)`이 둘 다 있어야 하고, 없거나 정규식이 아니면 그 항목만 버리고 경고한다. 접속·퇴장 문구처럼 로그 머리를 줄 처음에 묶어, 채팅 본문에 친 글이 다른 줄로 보이지 않게 쓴다. 0.1.11 데몬은 이 키를 모르는 키 경고로 넘긴다.
@@ -564,14 +565,15 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - **stdin**: `POST /api/instance/:id/stdin` `{command}`가 `/rcon`과 같은 `via_stdin`을 부르고, 보낸 뒤 찍힌 콘솔 줄을 `data.response`로 돌려준다 (`managed.rs:117-136`, `command.rs:432-`). 쓰기는 mpsc(256)를 거쳐 writer task가 개행을 붙여 쓴다 (`managed_process.rs:285, 344-351, 408-415`). 보낸 뒤 2초 안에 stdout에 보낸 명령과 같은 줄이 오면 서버가 입력을 되풀이한 것으로 보고 그 한 줄은 버퍼에 넣지 않는다(`LogBuffer::take_echo`, 리눅스 테라리아 등. 클라이언트는 보낸 명령을 이미 보인다).
 - **managed stop** (`mod.rs:951-1026`):
   1. `force`이면 `force_kill`을 한다.
-  2. 모듈이 `stdin`을 지원하고 stdin이 열려 있으면 `stop_command`를 stdin으로 보낸다. 그 시작이 아직 `ready_patterns`를 기다리는 중이면(켜지는 중) 준비 문구가 찍히거나 프로세스가 끝날 때까지, 길어야 4번의 대기 시간만큼 들고 있다가 보낸다. 준비 전에 받은 명령을 실패하는 서버가 있어서다(minecraft 26.3은 `An unexpected error occurred while trying to execute that command`만 찍고 계속 돈다). 테스트 `a_stop_while_starting_waits_for_the_ready_line`.
-  3. 그 밖(REST 전용 게임, stdin 없는 스텁)이면 모듈 `stop()`에 `pid`, `managed: true`, `force: false`를 넘긴다. 모듈이 `{success:false, error_code:"graceful_stop_unavailable"}`로 답하면 기다리거나 강제 종료하지 않고 그 응답을 돌려준다(아래).
-  4. 0.5초 간격으로 `is_running`을 확인한다. 기다리는 시간은 graceful이면 인스턴스 설정 `stop_timeout`, 모듈 `stop_timeout`, 기본 30초 순이고, force면 5초다.
-  5. 시간이 지나면 강제 종료하고 2초 더 기다린다.
-  6. `managed_store`에서 제거하고 종료를 판정·기록하고, `managed.pid`를 삭제하고, 30초짜리 stop cooldown(`STOP_COOLDOWN_SECS`)을 등록한다.
-  - palworld는 stdin이 없어 3번 경로로 간다. 모듈 `stop()`이 REST로 저장·종료를 요청한다 (`M:palworld/lifecycle.py:399-426`).
+  2. 모듈이 `[config] stop_signal = "interrupt"`이면 `ManagedProcess::interrupt`로 Ctrl+C를 보낸다(`managed_process.rs`). saba-runner가 띄운 서버는 러너의 stdin 포트에 첫 줄 `<토큰> interrupt`(`saba_runner::interrupt_request`)로 연결해 부탁하고, 러너가 `ok` 또는 `error: 까닭` 한 줄로 답한다(5초 안). 러너는 파이프 서버면 Windows에서 서버의 창 없는 콘솔에 잠깐 붙어(`AttachConsole`) `CTRL_C_EVENT`를 보내고(러너 자신은 무시, 원래 콘솔로 돌아가지 않는다), unix에서 서버 PID에 SIGINT를 보낸다. 의사 콘솔(`console = "pty"`) 서버면 입력에 0x03을 넣는다. 러너는 `CREATE_NEW_PROCESS_GROUP`으로 떠 Ctrl+C가 꺼진 상태를 물려주므로, 파이프 서버를 띄우는 동안만 켠다(`SetConsoleCtrlHandler(NULL, FALSE)`). 런처가 남긴 진짜 서버를 따라가면 그 PID로 보낸다. 러너 없이 띄운 서버는 unix에서만 데몬이 SIGINT를 보낸다. 보내지 못하면(옛 러너는 답 없이 닫는다) 경고를 남기고 다음 길(3·4번)로 넘어간다. 보냈으면 5번처럼 기다린다. 켜지는 중이면 3번처럼 준비 문구까지 들고 있다가 보낸다(Ctrl+C 저장 처리기도 준비 뒤에야 붙는다). 테스트 `normal_stop_sends_ctrl_c_when_the_module_asks_for_it`, `a_ctrl_c_stop_while_starting_waits_for_the_ready_line`, `an_interrupt_asks_the_runner_and_reports_its_answer`, 러너 `an_interrupt_connection_sends_ctrl_c_once_and_answers`.
+  3. 모듈이 `stdin`을 지원하고 stdin이 열려 있으면 `stop_command`를 stdin으로 보낸다. 그 시작이 아직 `ready_patterns`를 기다리는 중이면(켜지는 중) 준비 문구가 찍히거나 프로세스가 끝날 때까지, 길어야 5번의 대기 시간만큼 들고 있다가 보낸다. 준비 전에 받은 명령을 실패하는 서버가 있어서다(minecraft 26.3은 `An unexpected error occurred while trying to execute that command`만 찍고 계속 돈다). 테스트 `a_stop_while_starting_waits_for_the_ready_line`.
+  4. 그 밖(REST 전용 게임, stdin 없는 스텁)이면 모듈 `stop()`에 `pid`, `managed: true`, `force: false`를 넘긴다. 모듈이 `{success:false, error_code:"graceful_stop_unavailable"}`로 답하면 기다리거나 강제 종료하지 않고 그 응답을 돌려준다(아래).
+  5. 0.5초 간격으로 `is_running`을 확인한다. 기다리는 시간은 graceful이면 인스턴스 설정 `stop_timeout`, 모듈 `stop_timeout`, 기본 30초 순이고, force면 5초다.
+  6. 시간이 지나면 강제 종료하고 2초 더 기다린다.
+  7. `managed_store`에서 제거하고 종료를 판정·기록하고, `managed.pid`를 삭제하고, 30초짜리 stop cooldown(`STOP_COOLDOWN_SECS`)을 등록한다.
+  - palworld는 stdin이 없어 4번 경로로 간다. 모듈 `stop()`이 REST로 저장·종료를 요청한다 (`M:palworld/lifecycle.py:399-426`).
 - **non-managed stop**: 추적 중인 PID가 있을 때만 Python `stop()`에 `pid`와 `force`를 넘긴다. 모듈이 REST나 kill을 직접 처리한다. `success=false`이면 Err가 된다 (`mod.rs:1056-1099`). minecraft·zomboid는 일반 정지에서 바로 죽이지 않고 콘솔 정지(콘솔이 없을 때 불리므로 보통 실패, §6.3 #8) → POSIX면 SIGTERM → 30초 대기 → 강제 종료 순서를 밟는다. Windows처럼 보낼 정상 종료 신호가 없으면 끝내지 않고 `graceful_stop_unavailable`로 답한다(아래).
-- **저장 후 종료를 요청할 길이 없을 때** (MK10): 콘솔도 REST도 없는 서버(runner 없이 다시 붙은 서버 등)에서 `force: false`인 `stop()`은 서버를 끝내지 말고 `{success:false, error_code:"graceful_stop_unavailable", message}`를 돌려준다(message는 모듈 locales). 데몬은 두 경로(managed 3번, non-managed) 모두 서버를 그대로 두고 HTTP 200 `{success:false, server, error_code:"graceful_stop_unavailable", error}`로 답한다. 클라이언트는 저장 없이 끝난다는 것을 알리고 사용자가 고르면 `force: true`로 다시 요청한다. 예약 작업(재시작·업데이트)은 강제 종료하지 않고 그만둔다.
+- **저장 후 종료를 요청할 길이 없을 때** (MK10): 콘솔도 REST도 없는 서버(runner 없이 다시 붙은 서버 등)에서 `force: false`인 `stop()`은 서버를 끝내지 말고 `{success:false, error_code:"graceful_stop_unavailable", message}`를 돌려준다(message는 모듈 locales). 데몬은 두 경로(managed 4번, non-managed) 모두 서버를 그대로 두고 HTTP 200 `{success:false, server, error_code:"graceful_stop_unavailable", error}`로 답한다. 클라이언트는 저장 없이 끝난다는 것을 알리고 사용자가 고르면 `force: true`로 다시 요청한다. 예약 작업(재시작·업데이트)은 강제 종료하지 않고 그만둔다.
 - **extension 위임**: `server.stop` hook은 정지 전에 불린다. `handled`를 돌려주면 그대로 반환하고, 정지를 맡을 익스텐션이 실패하면 실패를 돌려준다 (`mod.rs:908-933`).
 
 ### 3.5 명령 경로 (stdin/REST/RCON)

@@ -1435,6 +1435,7 @@ impl Supervisor {
             if managed.is_running() {
                 // 정지 방법
                 // - force: 즉시 PID 강제 종료
+                // - 모듈이 `stop_signal = "interrupt"`: Ctrl+C (보내지 못하면 다음 길로)
                 // - 모듈이 stdin을 받고 stdin이 열려 있음: stop_command를 stdin으로
                 // - 그 밖(REST 전용 게임, stdin 없는 재부착): 모듈 lifecycle.py `stop()`에
                 //   PID와 managed=true를 넘겨 맡긴다. 시간 안에 안 끝나면 아래에서 강제 종료.
@@ -1444,22 +1445,41 @@ impl Supervisor {
                 // 모듈에서 stop_command를 가져옴 (없으면 "stop" 기본값)
                 let stop_cmd = module.metadata.stop_command.clone().unwrap_or_else(|| "stop".to_string());
 
+                let wants_interrupt = module.metadata.stop_signal == Some(module_loader::StopSignal::Interrupt);
+
+                // 준비 문구 전에 받은 명령을 실패하는 서버가 있다 (마인크래프트 26.3은 오류만 찍고 계속 돈다).
+                // Ctrl+C 저장 처리기도 준비 뒤에야 붙는다. 켜지는 중이면 준비될 때까지(정지 대기 시간 안에서) 들고 있다가 보낸다
+                if !force && (wants_interrupt || via_stdin) && ready::is_waiting(&instance.id) {
+                    tracing::info!("'{}' is still starting; holding the stop until it is ready", server_name);
+                    let hold = Duration::from_secs(stop_timeout_of(&instance, module.metadata.stop_timeout));
+                    let until = tokio::time::Instant::now() + hold;
+                    while ready::is_waiting(&instance.id) && managed.is_running() && tokio::time::Instant::now() < until {
+                        tokio::time::sleep(Duration::from_millis(250)).await;
+                    }
+                }
+
+                // Ctrl+C로 저장하고 끝내는 서버 (`[config] stop_signal = "interrupt"`). 보내지 못하면 아래 길로 넘어간다
+                let interrupted = !force
+                    && wants_interrupt
+                    && match managed.interrupt().await {
+                        Ok(()) => {
+                            tracing::info!("Sent Ctrl+C to managed server '{}'", server_name);
+                            true
+                        }
+                        Err(e) => {
+                            tracing::warn!("Could not send Ctrl+C to '{}': {}", server_name, e);
+                            false
+                        }
+                    };
+
                 if force {
                     tracing::info!("Force-killing managed server '{}'", server_name);
                     if let Err(e) = managed.force_kill().await {
                         tracing::warn!("Force kill of '{}' failed: {}", server_name, e);
                     }
+                } else if interrupted {
+                    // 서버가 저장하고 스스로 끝나기를 아래에서 기다린다
                 } else if via_stdin {
-                    // 준비 문구 전에 받은 명령을 실패하는 서버가 있다 (마인크래프트 26.3은 오류만 찍고 계속 돈다).
-                    // 켜지는 중이면 준비될 때까지(정지 대기 시간 안에서) 들고 있다가 보낸다
-                    if ready::is_waiting(&instance.id) {
-                        tracing::info!("'{}' is still starting; holding '{}' until it is ready", server_name, stop_cmd);
-                        let hold = Duration::from_secs(stop_timeout_of(&instance, module.metadata.stop_timeout));
-                        let until = tokio::time::Instant::now() + hold;
-                        while ready::is_waiting(&instance.id) && managed.is_running() && tokio::time::Instant::now() < until {
-                            tokio::time::sleep(Duration::from_millis(250)).await;
-                        }
-                    }
                     tracing::info!("Sending '{}' to managed server '{}' via stdin", stop_cmd, server_name);
                     if let Err(e) = managed.send_command(&stop_cmd).await {
                         tracing::warn!("Failed to send stop command via stdin: {}", e);
@@ -4670,6 +4690,109 @@ mod tests {
         assert_eq!(result["success"], true, "{}", result);
         assert_eq!(std::fs::read_to_string(&got).unwrap(), "quit-now", "the stop command went over stdin");
         assert!(started.elapsed() < std::time::Duration::from_secs(10), "it exited on its own, not after the kill timeout");
+    }
+
+    /// `[config] stop_signal = "interrupt"`인 모듈의 일반 정지는 콘솔 명령 대신 Ctrl+C(unix는 SIGINT)를 보내고
+    /// 서버가 저장하고 스스로 끝나기를 기다린다 (발헤임처럼 Ctrl+C에만 저장 처리기가 붙은 서버)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn normal_stop_sends_ctrl_c_when_the_module_asks_for_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let dir = modules_dir.join("ctrlc-game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nname = \"ctrlc-game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nstop_signal = \"interrupt\"\n\n[protocols]\nsupported = [\"stdin\"]\n",
+        )
+        .unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(
+            modules_dir.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let mut inst = crate::instance::ServerInstance::new("srv", "ctrlc-game");
+        inst.id = "srv".into();
+        supervisor.instance_store.add(inst).unwrap();
+        // Ctrl+C를 받으면 "저장"하고 끝나는 서버. 콘솔 줄을 받으면 그 줄을 남긴다(오면 안 된다)
+        let got = tmp.path().join("got");
+        let armed = tmp.path().join("armed");
+        let script = format!(
+            "trap 'printf saved > \"{0}\"; exit 0' INT; : > \"{1}\"; while :; do if read -t 1 line; then printf '%s' \"$line\" > \"{0}\"; fi; done",
+            got.display(),
+            armed.display()
+        );
+        let proc = managed_process::ManagedProcess::spawn("bash", &["-c".into(), script], tmp.path().to_str().unwrap(), Vec::new(), None, None)
+            .await
+            .unwrap();
+        supervisor.managed_store.insert("srv", proc).await;
+        // trap이 걸리기 전에 보낸 SIGINT는 bash를 저장 없이 끝낸다. 걸린 뒤에 정지한다
+        for _ in 0..100 {
+            if armed.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert!(armed.exists(), "the test server never set its Ctrl+C handler");
+
+        let supervisor = tokio::sync::RwLock::new(supervisor);
+        let started = std::time::Instant::now();
+        let result = Supervisor::stop_server(&supervisor, "srv", "ctrlc-game", false).await.unwrap();
+        assert_eq!(result["success"], true, "{}", result);
+        assert_eq!(std::fs::read_to_string(&got).unwrap(), "saved", "Ctrl+C, not a console line");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "it exited on its own, not after the kill timeout");
+    }
+
+    /// Ctrl+C로 끝내는 서버도 켜지는 중에 정지하면 준비된 뒤 Ctrl+C를 받는다.
+    /// 저장 처리기는 준비 뒤에야 붙는다: 그 전에 보내면 저장 없이 죽는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_ctrl_c_stop_while_starting_waits_for_the_ready_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("slow-ctrlc");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"slow-ctrlc\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [config]\nstop_signal = \"interrupt\"\nstop_timeout = 4\n\n[protocols]\nsupported = [\"stdin\"]\n\n\
+             [extensions.saba-core]\nready_patterns = [\"^Done\"]\n",
+        )
+        .unwrap();
+        let saved = tmp.path().join("saved");
+        let game = format!(
+            "import signal, sys, time\n\
+             print('booting', flush=True)\n\
+             time.sleep(1.5)\n\
+             def save(*_):\n    open({saved:?}, 'w').write('saved')\n    sys.exit(0)\n\
+             signal.signal(signal.SIGINT, save)\n\
+             print('Done (1.5s)!', flush=True)\n\
+             while True:\n    time.sleep(0.1)\n",
+            saved = saved.display().to_string()
+        );
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            format!(
+                "import json, sys\n\
+                 if sys.argv[1] == 'get_launch_command':\n    \
+                 print(json.dumps({{'success': True, 'program': 'python3', 'args': ['-c', {game:?}], 'working_dir': '.'}}))\n\
+                 else:\n    print(json.dumps({{'success': True}}))\n"
+            ),
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("c-early", "slow-ctrlc");
+        inst.id = "c-early".into();
+        sup.instance_store.add(inst).unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+        let started = Supervisor::start_managed_server(&sup, "c-early", "slow-ctrlc", json!({})).await.unwrap();
+        assert_eq!(started["success"], true, "{started}");
+
+        let stopped = Supervisor::stop_server(&sup, "c-early", "slow-ctrlc", false).await.unwrap();
+        assert_eq!(stopped["success"], true, "{stopped}");
+        assert_eq!(std::fs::read_to_string(&saved).ok().as_deref(), Some("saved"), "Ctrl+C reached the ready server");
     }
 
     /// 준비 문구 전에 받은 명령을 실패하는 서버(마인크래프트 26.3: "An unexpected error occurred")도
