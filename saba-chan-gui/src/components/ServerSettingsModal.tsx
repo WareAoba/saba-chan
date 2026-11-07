@@ -7,6 +7,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import type { ModuleInfo, SettingField } from '../types/daemon';
 import { moduleSupports } from '../utils/helpers';
 import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/validation';
+import { useExtensions } from '../contexts/ExtensionContext';
 import { CliLine, changedForCli } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon, SabaCheckbox, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
@@ -281,23 +282,110 @@ function GeneralTab({
     const showServer = section !== 'saba';
     const module = modules.find((m) => m.name === settingsServer.module);
     const hasModuleSettings = (module?.settings?.fields?.length ?? 0) > 0;
-    const protocols = module?.protocols || ({} as { supported?: string[] });
-    const supportedProtocols = protocols.supported || [];
     const modNs = `mod_${settingsServer.module}`;
+    // visible_when으로 숨긴 설정은 그리지 않는다 (값은 지우지 않는다)
+    const hidden = new Set(hasModuleSettings ? hiddenFields(module!.settings!.fields, settingsValues, unsetSettings) : []);
+    const fields = hasModuleSettings ? module!.settings!.fields.filter((f) => !hidden.has(f.name)) : [];
+    const sabaFields = showSaba ? fields.filter((f) => f.group === 'saba-chan') : [];
 
     return (
         <div className="settings-form">
-            {/* Single protocol info */}
-            {showSaba && supportedProtocols.length > 0 && (
-                <div className="protocol-mode-section protocol-mode-info">
-                    <div className="protocol-mode-header">
-                        <span className="protocol-mode-title">
-                            <Icon name="plug" size="sm" /> {t('server_settings.protocol_title')}
-                        </span>
-                    </div>
-                    <ProtocolNotice protocol={supportedProtocols[0]} />
+            {/* 사바쨩 설정(managed 시작·정상 정지 같은 모듈 saba-chan 그룹, 버전 고르기): 실행 인자 바로 아래 맨 위 */}
+            {sabaFields.length > 0 && (
+                <div className="settings-group">
+                    <h4 className="settings-group-title">
+                        <Icon name="settings" size="sm" />{' '}
+                        {t('server_settings.saba_chan_group', { defaultValue: 'saba-chan Settings' })}
+                    </h4>
+                    {/* Server version selector — only for download-based modules that list and install versions */}
+                    {module?.install?.method === 'download' &&
+                        moduleSupports(module, 'list_versions') &&
+                        moduleSupports(module, 'install_server') && (
+                            <div className="settings-field">
+                                <label htmlFor={versionId}>
+                                    {t('server_settings.server_version', {
+                                        defaultValue: 'Server Version',
+                                    })}
+                                </label>
+                                {versionsLoading ? (
+                                    <div className="version-loading">
+                                        <Icon name="loader" size="sm" />{' '}
+                                        {t('server_settings.loading_versions', {
+                                            defaultValue: 'Loading versions...',
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="version-select-row">
+                                        <CustomDropdown
+                                            id={versionId}
+                                            value={settingsValues.server_version || ''}
+                                            onChange={(val) =>
+                                                handleSettingChange('server_version', val)
+                                            }
+                                            placeholder={t('server_settings.select_version', {
+                                                defaultValue: 'Select version',
+                                            })}
+                                            options={availableVersions.map((v) => ({
+                                                value: (v.id || v.version || v) as string,
+                                                label: `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
+                                            }))}
+                                        />
+                                        <button
+                                            className="btn btn-sm btn-primary version-install-btn"
+                                            onClick={handleInstallVersion}
+                                            disabled={
+                                                !settingsValues.server_version ||
+                                                versionInstalling ||
+                                                serverRunning
+                                            }
+                                            data-tooltip={
+                                                serverRunning
+                                                    ? t('server_settings.install_server_running')
+                                                    : t('server_settings.install_version_tooltip', {
+                                                          defaultValue:
+                                                              'Download and install this version',
+                                                      })
+                                            }
+                                        >
+                                            {versionInstalling ? (
+                                                <>
+                                                    <Icon name="loader" size="sm" />{' '}
+                                                    {t('server_settings.installing', {
+                                                        defaultValue: 'Installing...',
+                                                    })}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Icon name="download" size="sm" />{' '}
+                                                    {t('server_settings.install_version_button', {
+                                                        defaultValue: 'Install',
+                                                    })}
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                )}
+                                <small className="field-description">
+                                    {t('server_settings.version_description_install', {
+                                        defaultValue:
+                                            'Select a version and click Install to download the server files.',
+                                    })}
+                                </small>
+                            </div>
+                        )}
+                    {sabaFields.map((f) => (
+                        <SettingsField
+                            key={f.name}
+                            field={f}
+                            value={settingsValues[f.name]}
+                            modNs={modNs}
+                            onChange={handleSettingChange}
+                            validationError={validationErrors?.[f.name]}
+                        />
+                    ))}
                 </div>
             )}
+
 
             {/* 크래시 자동 재시작 (데몬 A1: instance module_settings 의 auto_restart / restart_on_unknown_exit) */}
             {showSaba && (
@@ -443,10 +531,6 @@ function GeneralTab({
             {/* Module settings fields grouped */}
             {hasModuleSettings
                 ? (() => {
-                      // visible_when으로 숨긴 설정은 그리지 않는다 (값은 지우지 않는다)
-                      const hidden = new Set(hiddenFields(module!.settings!.fields, settingsValues, unsetSettings));
-                      const fields = module!.settings!.fields.filter((f) => !hidden.has(f.name));
-                      const sabaFields = showSaba ? fields.filter((f) => f.group === 'saba-chan') : [];
                       const basicFields = showServer ? fields.filter((f) => !f.group || f.group === 'basic') : [];
                       const advancedFields = showServer ? fields.filter((f) => f.group === 'advanced') : [];
 
@@ -473,102 +557,6 @@ function GeneralTab({
                                       </div>
                                   </div>
                               )}
-                              {/* saba-chan settings */}
-                              {sabaFields.length > 0 && (
-                                  <div className="settings-group">
-                                      <h4 className="settings-group-title">
-                                          <Icon name="settings" size="sm" />{' '}
-                                          {t('server_settings.saba_chan_group', { defaultValue: 'saba-chan Settings' })}
-                                      </h4>
-                                      {/* Server version selector — only for download-based modules that list and install versions */}
-                                      {module?.install?.method === 'download' &&
-                                          moduleSupports(module, 'list_versions') &&
-                                          moduleSupports(module, 'install_server') && (
-                                              <div className="settings-field">
-                                                  <label htmlFor={versionId}>
-                                                      {t('server_settings.server_version', {
-                                                          defaultValue: 'Server Version',
-                                                      })}
-                                                  </label>
-                                                  {versionsLoading ? (
-                                                      <div className="version-loading">
-                                                          <Icon name="loader" size="sm" />{' '}
-                                                          {t('server_settings.loading_versions', {
-                                                              defaultValue: 'Loading versions...',
-                                                          })}
-                                                      </div>
-                                                  ) : (
-                                                      <div className="version-select-row">
-                                                          <CustomDropdown
-                                                              id={versionId}
-                                                              value={settingsValues.server_version || ''}
-                                                              onChange={(val) =>
-                                                                  handleSettingChange('server_version', val)
-                                                              }
-                                                              placeholder={t('server_settings.select_version', {
-                                                                  defaultValue: 'Select version',
-                                                              })}
-                                                              options={availableVersions.map((v) => ({
-                                                                  value: (v.id || v.version || v) as string,
-                                                                  label: `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
-                                                              }))}
-                                                          />
-                                                          <button
-                                                              className="btn btn-sm btn-primary version-install-btn"
-                                                              onClick={handleInstallVersion}
-                                                              disabled={
-                                                                  !settingsValues.server_version ||
-                                                                  versionInstalling ||
-                                                                  serverRunning
-                                                              }
-                                                              data-tooltip={
-                                                                  serverRunning
-                                                                      ? t('server_settings.install_server_running')
-                                                                      : t('server_settings.install_version_tooltip', {
-                                                                            defaultValue:
-                                                                                'Download and install this version',
-                                                                        })
-                                                              }
-                                                          >
-                                                              {versionInstalling ? (
-                                                                  <>
-                                                                      <Icon name="loader" size="sm" />{' '}
-                                                                      {t('server_settings.installing', {
-                                                                          defaultValue: 'Installing...',
-                                                                      })}
-                                                                  </>
-                                                              ) : (
-                                                                  <>
-                                                                      <Icon name="download" size="sm" />{' '}
-                                                                      {t('server_settings.install_version_button', {
-                                                                          defaultValue: 'Install',
-                                                                      })}
-                                                                  </>
-                                                              )}
-                                                          </button>
-                                                      </div>
-                                                  )}
-                                                  <small className="field-description">
-                                                      {t('server_settings.version_description_install', {
-                                                          defaultValue:
-                                                              'Select a version and click Install to download the server files.',
-                                                      })}
-                                                  </small>
-                                              </div>
-                                          )}
-                                      {sabaFields.map((f) => (
-                                          <SettingsField
-                                              key={f.name}
-                                              field={f}
-                                              value={settingsValues[f.name]}
-                                              modNs={modNs}
-                                              onChange={handleSettingChange}
-                                              validationError={validationErrors?.[f.name]}
-                                          />
-                                      ))}
-                                  </div>
-                              )}
-
                               {/* Basic settings */}
                               {basicFields.length > 0 && (
                                   <div className="settings-group">
@@ -749,6 +737,9 @@ export function ServerSettingsModal({
     servers,
 }: ServerSettingsModalProps) {
     const { t } = useTranslation('gui');
+    // 익스텐션이 더한 사바쨩 쪽 탭 수 (없으면 탭 머리를 그리지 않는다)
+    const { slots } = useExtensions();
+    const extensionTabs = ((slots as Record<string, unknown[]>)['ServerSettings.tab'] || []).length;
 
     // "CLI로 보기"에 덧붙일 값의 기준: 이 화면을 열었을 때의 설정
     const openedWith = useRef<{ id: string | null; values: SettingValues }>({ id: null, values: {} });
@@ -828,8 +819,8 @@ export function ServerSettingsModal({
                 </div>
             )}
 
-            {/* Tab header (확장 탭은 사바쨩 쪽에 붙는다) */}
-            {section !== 'server' && (
+            {/* 탭 머리: 익스텐션이 사바쨩 쪽에 탭을 더할 때만 (탭이 하나면 "일반 설정" 단추는 쓸모가 없다) */}
+            {section !== 'server' && extensionTabs > 0 && (
                 <div className="settings-tabs" ref={tabsRef}>
                     <div className="settings-tab-indicator" ref={indicatorRef} />
                     <button
