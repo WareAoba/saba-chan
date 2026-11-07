@@ -38,7 +38,7 @@ function useMemberChoices() {
     return useMemo(() => memberChoices({ ...loaded, ...cached }), [loaded, cached]);
 }
 
-/** 인스턴스 "조작 가능" 탭: 시작·정지·재시작·백업 만들기를 할 수 있는 사람 명단 (사용자 지정 2026-11-06) */
+/** 전용 멤버 명단: 전용 멤버 모드에서 이 인스턴스의 모든 조작·명령을 하는 사람 (사용자 지정 2026-11-08) */
 export function ControllersTab({ server }: { server: Server }) {
     const { t } = useTranslation('gui');
     const [list, setList] = useState<Controller[]>(server.controllers || []);
@@ -92,10 +92,10 @@ export function ControllersTab({ server }: { server: Server }) {
         <div className="protocol-mode-section controllers-section">
             <div className="protocol-mode-header">
                 <span className="protocol-mode-title">
-                    <Icon name="user" size="sm" /> {t('shell.tab_controllers')}
+                    <Icon name="user" size="sm" /> {t('access.members_list')}
                 </span>
             </div>
-            <p className="protocol-mode-description">{t('controllers.desc')} {t('controllers.all_guilds')}</p>
+            <p className="protocol-mode-description">{t('controllers.desc')}</p>
             {list.length === 0 ? (
                 <p className="muted controllers-empty">{t('controllers.empty')}</p>
             ) : (

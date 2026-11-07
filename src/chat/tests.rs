@@ -44,7 +44,7 @@ impl DaemonApi for FakeDaemon {
     }
 }
 
-/// 시험 요청자 u1은 모든 서버의 조작 가능 명단에 있다 (명단 밖은 `only_controllers_and_admins_run_the_server`)
+/// 시험 요청자 u1은 모든 서버의 전용 멤버 명단에 있다 (서버 공용이라 쓰이지 않는다. 전용 멤버 시험은 `members_servers_listen_only_to_their_members_and_shared_servers_follow_levels`)
 fn server(id: &str, name: &str, module: &str, status: &str) -> ServerView {
     let controllers = vec![crate::controllers::Controller { name: "Tester".into(), discord_id: Some("u1".into()) }];
     ServerView { id: id.into(), name: name.into(), module: module.into(), status: status.into(), controllers, ..Default::default() }
@@ -374,30 +374,33 @@ async fn discord_requests_are_judged_by_level_and_local_ones_are_not() {
     assert_eq!(api.calls().len(), 2);
 }
 
-/// 시작·정지는 조작 가능 명단에 있는 사람과 유저 이상(기본)이 한다. 명단 밖이면 조작 가능 안내를 받고, 금지된 사람은 명단에 있어도 못 한다
+async fn ask(api: &FakeDaemon, s: &ChatSettings, text: &str, user: &'static str) -> crate::chat::Reply {
+    let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), remote: discord(user), ..Default::default() };
+    process(api, s, &Catalog::for_language("en"), &req).await
+}
+
+/// 서버 공용은 레벨만 따른다. 전용 멤버는 명단에 디스코드를 이은 사람만 하고(금지 레벨은 빼고), 관리자도 명단 밖이면 못 한다
 #[tokio::test]
-async fn only_controllers_and_admins_run_the_server() {
+async fn members_servers_listen_only_to_their_members_and_shared_servers_follow_levels() {
     let mut api = fixture();
     api.servers[0].controllers.push(crate::controllers::Controller { name: "Alex".into(), discord_id: Some("u2".into()) });
     let mut s = settings();
     s.node_settings = json!({ "g1": { "defaultLevel": 0, "members": { "admin": 2, "u1": -1 } } });
-    let reply = |text: &'static str, user: &'static str| {
-        let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), remote: discord(user), ..Default::default() };
-        let (api, s) = (&api, &s);
-        async move { process(api, s, &Catalog::for_language("en"), &req).await }
-    };
-    let r = reply("mc stop", "someone").await;
-    assert_eq!((r.code, r.args["need"].clone(), r.args["controllers"].clone()), (Some("PERMISSION_DENIED"), json!(1), json!(true)));
-    assert_eq!(r.text, Catalog::for_language("en").t("errors.permission_denied_controllers", &[]));
-    assert_eq!(reply("mc stop", "u1").await.code, Some("PERMISSION_DENIED"), "banned stays banned on the list");
+    // 서버 공용: 명단은 레벨을 넘지 않는다
+    assert_eq!(ask(&api, &s, "mc stop", "u2").await.code, Some("PERMISSION_DENIED"), "shared servers follow levels only");
+    assert_eq!(ask(&api, &s, "mc stop", "admin").await.code, None);
+    // 전용 멤버: 명단에 있는 사람만, 금지 레벨이어도 (길드 설정과 따로 논다)
+    api.servers[0].access = crate::controllers::Access::Members;
+    assert_eq!(ask(&api, &s, "mc stop", "u2").await.code, None, "a member runs it whatever their level");
+    assert_eq!(ask(&api, &s, "mc stop", "u1").await.code, Some("PERMISSION_DENIED"), "banned stays banned");
+    let r = ask(&api, &s, "mc stop", "admin").await;
+    assert_eq!((r.code, r.args["members_only"].clone()), (Some("PERMISSION_DENIED"), json!(true)), "admins are not members");
+    assert_eq!(r.text, Catalog::for_language("en").t("errors.members_only", &[]));
     let mut bot = discord("u2");
     bot.as_mut().unwrap().via_chatbot = true;
     let req = ChatRequest { text: "mc stop".into(), guild_id: Some("g1".into()), remote: bot, ..Default::default() };
     let r = process(&api, &s, &Catalog::for_language("en"), &req).await;
-    assert_eq!((r.code, r.args["controllers"].clone()), (Some("PERMISSION_DENIED"), json!(null)), "the chatbot cap holds for the list too");
-    assert!(api.calls().is_empty());
-    assert_eq!(reply("mc stop", "admin").await.code, None);
-    assert_eq!(api.calls(), vec!["stop survival"]);
+    assert_eq!(r.code, Some("PERMISSION_DENIED"), "the chatbot cap holds for members too");
 }
 
 #[tokio::test]

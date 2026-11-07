@@ -863,8 +863,7 @@
     "logs_empty": "还没有日志。服务器运行一次后就会出现。",
     "logs_failed": "无法读取日志：{{error}}",
     "logs_saved": "已保存日志：{{path}}",
-    "logs_saved_truncated": "日志过长，只保存了最近的部分：{{path}}",
-    "tab_controllers": "可操作的人"
+    "logs_saved_truncated": "日志过长，只保存了最近的部分：{{path}}"
   },
   "discord": {
     "nav_connection": "连接",
@@ -1959,8 +1958,26 @@
     "keyword_placeholder": "例如：!dc",
     "channel_note": "在<link/>中把频道指定为“游戏聊天”，或用 /saba assign 选择“游戏聊天”。"
   },
+  "access": {
+    "title": "使用模式",
+    "shared": "服务器共用",
+    "members": "专属成员",
+    "shared_desc": "按 Discord 服务器的等级权限。成员可在自己等级范围内启动、停止这台服务器并发送命令。",
+    "members_desc": "与 Discord 服务器的权限分开。只有专属成员名单里的人才能操作这台服务器并使用所有命令。",
+    "members_list": "专属成员名单",
+    "save_failed": "无法更改使用模式：{{error}}"
+  },
+  "kick": {
+    "title": "自动踢出",
+    "desc": "这里写的昵称一进入游戏就会被踢出。不会封禁。",
+    "empty": "还没有人。",
+    "placeholder": "要自动踢出的游戏昵称",
+    "add": "加入",
+    "unsupported": "这台服务器读不到玩家进入，无法使用自动踢出。",
+    "save_failed": "无法保存自动踢出名单：{{error}}"
+  },
   "controllers": {
-    "desc": "名单里的人可以启动、停止、重启这个服务器并创建备份。管理员及以上不在名单里也可以。",
+    "desc": "名单里的人可以启动、停止这台服务器并使用所有命令。不看 Discord 等级。",
     "empty": "还没有人。",
     "not_linked": "未关联",
     "remove": "移除",
@@ -1970,20 +1987,18 @@
     "add": "加入名单",
     "all_guilds": "此名单对所有已连接的 Discord 服务器同样适用。",
     "members_hint": "如果看不到 Discord 成员，请先在 Discord 页面打开一次服务器。",
-    "note": "只有关联了 Discord 的人才能在 Discord 里启动或停止。只填昵称的人，是在“沙巴酱”页开启进入限制后可以进入的人。",
+    "note": "只有连接了 Discord 的人才能在 Discord 上使用这台服务器。只填昵称的人是开启自动踢出时可以进入的人。",
     "err_empty": "请输入游戏昵称。",
     "err_duplicate": "这个昵称已经在名单里了。",
     "err_too_long": "昵称最多 64 个字符。",
     "err_too_many": "名单最多 200 人。",
-    "err_gate_on": "要清空名单，请先在“沙巴酱”页关闭“只允许可操作的人进入”。",
+    "err_gate_on": "要清空名单，请先关闭“自动踢出名单外的人”。",
     "save_failed": "无法保存名单：{{error}}"
   },
   "controllers_only": {
-    "title": "只允许可操作的人进入",
-    "desc": "不在“可操作的人”名单里的昵称一进入就会被踢出。不会封禁。",
-    "label": "踢出不在名单里的人",
+    "label": "自动踢出名单外的人",
     "hint": "只检查昵称，所以用名单里的昵称进入的人无法拦住。在可以自由取名的游戏或关闭正版验证的服务器上，任何人都能用这个名字。",
-    "empty": "在 Discord › 服务器 › 实例 画面的“可操作的人”中至少加入一人后才能开启。"
+    "empty": "至少加入一名专属成员后才能开启。"
   },
   "stop_timeout": {
     "title": "停止等待时间",

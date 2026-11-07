@@ -1287,8 +1287,16 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
     if r.guild_owner && !who.via_chatbot && who.user_id.is_some() && who.guild_owner_id == who.user_id {
         return Ok(());
     }
-    perms.check_basic(who).map_err(|d| denied(d.need))?;
     let instance = r.instance.as_deref().unwrap_or("");
+    // 전용 멤버 서버는 길드 레벨과 따로 논다: 명단에 디스코드를 이은 사람만 하고(금지 레벨은 빼고), 나머지는 레벨과 상관없이 거절한다
+    let gate = match instance {
+        "" => crate::controllers::Gate::Levels,
+        id => server.supervisor.read().await.instance_store.get(id).map_or(crate::controllers::Gate::Levels, |i| {
+            crate::controllers::gate_for(i.access, &i.controllers, who.user_id.as_deref(), who.via_chatbot)
+        }),
+    };
+    // 금지된 사람은 전용 멤버여도 막는다
+    perms.check_basic(who).map_err(|d| denied(d.need))?;
     // 이 길드에 열리지 않은 인스턴스
     if let (Some(i), Some(allowed)) = (&r.instance, allowed_instances(server, caller).await) {
         if !allowed.contains(i) {
@@ -1299,22 +1307,18 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
             });
         }
     }
-    let need = required_level(&perms, instance, &r.id, r.command.as_deref(), r.kind, &r.risk, r.discord_level);
-    if !perms.meets(perms.effective_level(who), need) {
-        // 조작 가능 명단에 있는 사람은 레벨과 상관없이 그 서버를 시작·정지·재시작·백업한다.
-        // 말하는 사바쨩을 거친 요청은 챗봇 상한을 그대로 받는다 (명단이 상한을 넘지 않는다)
-        if !crate::controllers::CONTROLLED_ACTIONS.contains(&r.id.as_str()) || who.via_chatbot {
-            return Err(denied(need));
-        }
-        let listed = match who.user_id.as_deref() {
-            Some(user) => server.supervisor.read().await.instance_store.get(instance).is_some_and(|i| crate::controllers::controls(&i.controllers, user)),
-            None => false,
-        };
-        if !listed {
-            let mut refused = denied(need);
-            refused.data["args"]["controllers"] = json!(true);
+    match gate {
+        crate::controllers::Gate::Allow => return Ok(()),
+        crate::controllers::Gate::Deny => {
+            let mut refused = denied(crate::chat::permissions::USER);
+            refused.data["args"]["members_only"] = json!(true);
             return Err(refused);
         }
+        crate::controllers::Gate::Levels => {}
+    }
+    let need = required_level(&perms, instance, &r.id, r.command.as_deref(), r.kind, &r.risk, r.discord_level);
+    if !perms.meets(perms.effective_level(who), need) {
+        return Err(denied(need));
     }
     // 예약 작업은 나중에 요청자 없이 돈다: 새로 넣거나 켜는 서버 명령은 요청자가 지금 그 명령을 쓸 수 있어야 한다
     if r.id == "instance.schedule.set" && !instance.is_empty() {

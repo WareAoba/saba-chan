@@ -13,8 +13,9 @@ import { Avatar, initialOf } from './Avatar';
 import { BotSettingsTab, botSettingsAvailable } from './BotSettingsTab';
 import { ChatbotGuildTab } from './ChatbotGuildTab';
 import { chatbotAvailable } from './ChatbotView';
-import * as P from './nodePermissions';
 import { ControllersTab } from '../servers/ControllersTab';
+import { AccessMode, accessOf, KickList, MembersKick } from './InstanceAccess';
+import * as P from './nodePermissions';
 import { ModerationTab, moderationAvailable } from './ModerationTab';
 import { MembersPanel, PermissionPanel } from './PermissionsTab';
 import { SleepCorner } from './SleepCorner';
@@ -225,7 +226,8 @@ interface InstanceMenuProps {
 }
 
 /**
- * 인스턴스 메뉴: 레벨별 명령 계단(이 인스턴스 + 서버 전체 명령)과 조작 가능 명단. 멤버 레벨은 서버의 멤버 탭에서 정한다.
+ * 인스턴스 메뉴: 사용 모드. 서버 공용이면 레벨별 명령 계단(이 인스턴스 + 서버 전체 명령)과 자동 강퇴 명단,
+ * 전용 멤버면 전용 멤버 명단과 자동 강퇴 스위치. 멤버 레벨은 서버의 멤버 탭에서 정한다.
  */
 function InstanceMenu({ node, servers, instance, onBack }: InstanceMenuProps) {
     const { t } = useTranslation('gui');
@@ -240,9 +242,19 @@ function InstanceMenu({ node, servers, instance, onBack }: InstanceMenuProps) {
                 {srv.name}
                 {srv.module && <small className="muted"> · {srv.module}</small>}
             </h2>
-            <PermissionPanel node={node} instance={srv.id} />
-            {/* 조작 가능 명단은 인스턴스 하나에 붙는다: 이은 모든 디스코드 서버에 같이 적용된다 */}
-            <ControllersTab server={srv} />
+            {/* 사용 모드와 명단은 인스턴스 하나에 붙는다: 이은 모든 디스코드 서버에 같이 적용된다 */}
+            <AccessMode server={srv} />
+            {accessOf(srv) === 'members' ? (
+                <>
+                    <ControllersTab server={srv} />
+                    <MembersKick server={srv} />
+                </>
+            ) : (
+                <>
+                    <PermissionPanel node={node} instance={srv.id} />
+                    <KickList server={srv} />
+                </>
+            )}
         </div>
     );
 }

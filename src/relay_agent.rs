@@ -1829,11 +1829,15 @@ fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::Inst
     if let Some(count) = players.and_then(crate::supervisor::players::parse) {
         entry.insert("players".into(), json!(count));
     }
-    // 조작 가능 명단의 디스코드 ID (릴레이가 시작·정지를 그 사람에게도 보인다). 게임 닉네임은 올리지 않는다
-    let controllers: Vec<&str> =
-        server.get("controllers").and_then(Value::as_array).into_iter().flatten().filter_map(|c| c.get("discord_id")?.as_str()).collect();
-    if !controllers.is_empty() {
-        entry.insert("controllers".into(), json!(controllers));
+    // 전용 멤버 서버: 모드와 명단의 디스코드 ID (릴레이가 시작·정지를 그 사람에게도 보인다). 게임 닉네임은 올리지 않는다.
+    // 서버 공용은 명단을 쓰지 않으므로 올리지 않는다 (판정은 데몬, `controllers::gate_for`)
+    if server.get("access").and_then(Value::as_str) == Some("members") {
+        entry.insert("access".into(), json!("members"));
+        let controllers: Vec<&str> =
+            server.get("controllers").and_then(Value::as_array).into_iter().flatten().filter_map(|c| c.get("discord_id")?.as_str()).collect();
+        if !controllers.is_empty() {
+            entry.insert("controllers".into(), json!(controllers));
+        }
     }
     // 켜진 시각 (Unix 초) — 상황판 가동 시간
     let running = server.get("status").and_then(Value::as_str) == Some("running");
@@ -2554,15 +2558,18 @@ mod tests {
         assert_eq!(relay_server_entry(&server, None), json!({ "id": "i1", "name": "마크", "module": "minecraft", "status": "running" }));
     }
 
-    /// 조작 가능 명단은 디스코드 ID만 올린다 (게임 닉네임은 PC에만)
+    /// 전용 멤버 서버만 모드와 명단의 디스코드 ID를 올린다 (게임 닉네임은 PC에만). 서버 공용은 명단을 쓰지 않는다
     #[test]
-    fn heartbeat_servers_carry_only_the_discord_ids_of_controllers() {
-        let server = json!({
+    fn heartbeat_servers_carry_only_the_discord_ids_of_members_servers() {
+        let mut server = json!({
             "id": "i1", "name": "마크", "module": "minecraft", "status": "stopped",
             "controllers": [{ "name": "Steve", "discord_id": "332007306403250178" }, { "name": "Alex" }]
         });
+        let shared = relay_server_entry(&server, None);
+        assert!(shared.get("controllers").is_none() && shared.get("access").is_none());
+        server["access"] = json!("members");
         let entry = relay_server_entry(&server, None);
-        assert_eq!(entry["controllers"], json!(["332007306403250178"]));
+        assert_eq!((entry["access"].clone(), entry["controllers"].clone()), (json!("members"), json!(["332007306403250178"])));
         assert!(!entry.to_string().contains("Steve"));
     }
 

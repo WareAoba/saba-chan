@@ -99,7 +99,7 @@
     "unknown_input": "❌ Unknown command.",
     "command_not_found": "❌ Command does not exist.",
     "permission_denied": "❌ You don't have permission to use this command.",
-    "permission_denied_controllers": "❌ To start or stop this server you need to be on its \"Operators\" list in the Saba-chan app, or have the level set for this command (Admin by default).",
+    "members_only": "❌ Only this server’s members can use it. Ask the server owner to add you to its member list.",
     "local_single_guild_only": "⚠️ Local bots can only be used in one server. This bot is in {{count}} servers. Remove it from the servers you do not use."
   },
   "messages": {

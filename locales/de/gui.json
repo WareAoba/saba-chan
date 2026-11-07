@@ -863,8 +863,7 @@
     "logs_empty": "Noch keine Logs. Sie erscheinen, sobald der Server einmal lief.",
     "logs_failed": "Log konnte nicht gelesen werden: {{error}}",
     "logs_saved": "Log gespeichert: {{path}}",
-    "logs_saved_truncated": "Das Log war zu lang, daher wurde nur der neueste Teil gespeichert: {{path}}",
-    "tab_controllers": "Bediener"
+    "logs_saved_truncated": "Das Log war zu lang, daher wurde nur der neueste Teil gespeichert: {{path}}"
   },
   "discord": {
     "nav_connection": "Verbindung",
@@ -1959,8 +1958,26 @@
     "keyword_placeholder": "z. B. !dc",
     "channel_note": "Den Kanal weist du unter <link/> als Spielchat zu oder mit /saba assign → Spielchat."
   },
+  "access": {
+    "title": "Nutzungsmodus",
+    "shared": "Gemeinsam",
+    "members": "Nur Mitglieder",
+    "shared_desc": "Folgt den Stufen des Discord-Servers. Jedes Mitglied kann so weit starten, stoppen und Befehle senden, wie seine Stufe erlaubt.",
+    "members_desc": "Unabhängig von den Rechten des Discord-Servers. Nur Personen auf der Mitgliederliste können diesen Server steuern und alle Befehle nutzen.",
+    "members_list": "Mitgliederliste",
+    "save_failed": "Nutzungsmodus konnte nicht geändert werden: {{error}}"
+  },
+  "kick": {
+    "title": "Automatischer Kick",
+    "desc": "Hier eingetragene Spielernamen werden sofort beim Betreten des Spiels gekickt. Sie werden nicht gebannt.",
+    "empty": "Noch niemand.",
+    "placeholder": "Spielername für automatischen Kick",
+    "add": "Hinzufügen",
+    "unsupported": "Dieser Server kann Beitritte nicht lesen, daher ist der automatische Kick nicht verfügbar.",
+    "save_failed": "Kick-Liste konnte nicht gespeichert werden: {{error}}"
+  },
   "controllers": {
-    "desc": "Personen auf dieser Liste können diesen Server starten, stoppen und neu starten und Backups erstellen. Admins und höher müssen nicht auf der Liste stehen.",
+    "desc": "Personen auf dieser Liste können diesen Server starten und stoppen und alle Befehle nutzen. Discord-Stufen werden nicht geprüft.",
     "empty": "Noch niemand.",
     "not_linked": "Nicht verknüpft",
     "remove": "Entfernen",
@@ -1970,20 +1987,18 @@
     "add": "Zur Liste hinzufügen",
     "all_guilds": "Diese Liste gilt für alle verbundenen Discord-Server.",
     "members_hint": "Wenn keine Discord-Mitglieder erscheinen, öffne den Server einmal in der Discord-Ansicht.",
-    "note": "Nur mit Discord verknüpfte Personen können über Discord starten oder stoppen. Personen nur mit Spielname dürfen beitreten, wenn du im Saba-chan-Tab die Beitrittssperre einschaltest.",
+    "note": "Nur Personen mit verknüpftem Discord-Konto können diesen Server über Discord nutzen. Einträge nur mit Spielernamen dürfen beitreten, wenn der automatische Kick an ist.",
     "err_empty": "Gib einen Spielnamen ein.",
     "err_duplicate": "Dieser Spielname steht schon auf der Liste.",
     "err_too_long": "Spielnamen dürfen höchstens 64 Zeichen haben.",
     "err_too_many": "Die Liste fasst höchstens 200 Personen.",
-    "err_gate_on": "Um die Liste zu leeren, schalte zuerst „Nur Bediener dürfen beitreten“ im Saba-chan-Tab aus.",
+    "err_gate_on": "Schalte „Nicht gelistete Personen automatisch kicken“ aus, bevor du die Liste leerst.",
     "save_failed": "Liste konnte nicht gespeichert werden: {{error}}"
   },
   "controllers_only": {
-    "title": "Nur Bediener dürfen beitreten",
-    "desc": "Wer nicht auf der Liste „Bediener“ steht, wird beim Beitreten sofort gekickt. Es wird nicht gebannt.",
-    "label": "Personen ohne Listeneintrag kicken",
+    "label": "Nicht gelistete Personen automatisch kicken",
     "hint": "Es wird nur der Spielname geprüft: Wer mit einem Namen aus der Liste beitritt, kommt herein. In Spielen mit frei wählbarem Namen oder auf Servern ohne Kontoprüfung kann jeder diesen Namen verwenden.",
-    "empty": "Füge unter Discord › Server › Instanz mindestens eine Person zu „Bediener“ hinzu, um dies einzuschalten."
+    "empty": "Füge mindestens ein Mitglied hinzu, um dies einzuschalten."
   },
   "stop_timeout": {
     "title": "Wartezeit beim Stoppen",

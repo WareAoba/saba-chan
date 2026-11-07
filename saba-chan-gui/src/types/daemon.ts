@@ -28,7 +28,7 @@ export type ApiResult<T> = Partial<T> & ApiErrorFields;
 
 // ── 서버 (ipc::ServerInfo) ──
 
-/** 조작 가능 명단 한 줄 (데몬 controllers::Controller): 게임 닉네임과 이은 디스코드 사용자 ID */
+/** 전용 멤버 명단 한 줄 (데몬 controllers::Controller): 게임 닉네임과 이은 디스코드 사용자 ID */
 export interface Controller {
     name: string;
     discord_id?: string;
@@ -84,11 +84,15 @@ export interface ServerInfo {
     game_chat: GameChatMode;
     game_chat_keyword: string;
     game_chat_supported: boolean;
-    /** 조작 가능 명단 (시작·정지·재시작·백업 만들기를 할 수 있는 사람) */
+    /** 사용 모드: 서버 공용(기본, 길드 레벨 권한) 또는 전용 멤버(명단에 있는 사람만) */
+    access?: 'shared' | 'members';
+    /** 전용 멤버 명단 (전용 멤버 모드에서 모든 조작·명령을 하는 사람) */
     controllers?: Controller[];
-    /** 조작 가능한 사람만 접속: 명단에 없는 닉네임은 접속하면 내보낸다 */
+    /** 전용 멤버 모드의 자동 강퇴: 명단에 없는 닉네임은 접속하면 내보낸다 */
     controllers_only?: boolean;
-    /** 모듈이 접속 줄과 내보내기 명령을 알려 주고 데몬이 콘솔을 읽을 때만 참 */
+    /** 서버 공용 모드의 자동 강퇴: 이 닉네임이 접속하면 내보낸다 */
+    kick_players?: string[];
+    /** 자동 강퇴를 쓸 수 있는지: 모듈이 접속 줄과 내보내기 명령을 알려 주고 데몬이 콘솔을 읽을 때만 참 */
     controllers_only_supported?: boolean;
     slots?: JsonObject;
     players?: PlayerCount;
@@ -387,6 +391,10 @@ export interface GuiSettings {
     /** off · 24h · 12h */
     consoleTimestamps: string;
     consoleTimestampDate: boolean;
+    /** 콘솔 긴 줄 접기 */
+    consoleWrap: boolean;
+    /** 맨 아래를 볼 때 새 줄 따라가기 */
+    consoleAutoScroll: boolean;
     /** auto · light · dark. 예전 버전은 저장하지 않았다 */
     theme?: string;
     accentColor: string;

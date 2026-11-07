@@ -863,8 +863,7 @@
     "logs_empty": "Ainda não há logs. Eles aparecem depois que o servidor roda uma vez.",
     "logs_failed": "Não foi possível ler o log: {{error}}",
     "logs_saved": "Log salvo: {{path}}",
-    "logs_saved_truncated": "O log era longo demais; só a parte mais recente foi salva: {{path}}",
-    "tab_controllers": "Operadores"
+    "logs_saved_truncated": "O log era longo demais; só a parte mais recente foi salva: {{path}}"
   },
   "discord": {
     "nav_connection": "Conexão",
@@ -1959,8 +1958,26 @@
     "keyword_placeholder": "ex.: !dc",
     "channel_note": "Designe o canal como Chat do jogo em <link/> ou com /saba assign → Chat do jogo."
   },
+  "access": {
+    "title": "Modo de uso",
+    "shared": "Compartilhado",
+    "members": "Só membros",
+    "shared_desc": "Segue os níveis do servidor do Discord. Cada membro pode iniciar, parar e enviar comandos conforme o seu nível.",
+    "members_desc": "Funciona à parte das permissões do servidor do Discord. Só as pessoas da lista de membros podem controlar este servidor e usar todos os comandos.",
+    "members_list": "Lista de membros",
+    "save_failed": "Não foi possível mudar o modo de uso: {{error}}"
+  },
+  "kick": {
+    "title": "Expulsão automática",
+    "desc": "Os apelidos desta lista são expulsos assim que entram no jogo. Eles não são banidos.",
+    "empty": "Ninguém ainda.",
+    "placeholder": "Apelido no jogo para expulsar automaticamente",
+    "add": "Adicionar",
+    "unsupported": "Este servidor não consegue ler as entradas, então a expulsão automática não está disponível.",
+    "save_failed": "Não foi possível salvar a lista de expulsão: {{error}}"
+  },
   "controllers": {
-    "desc": "Quem está nesta lista pode iniciar, parar e reiniciar este servidor e criar backups. Administradores e acima não precisam estar na lista.",
+    "desc": "As pessoas desta lista podem iniciar e parar este servidor e usar todos os comandos. Os níveis do Discord não são verificados.",
     "empty": "Ninguém ainda.",
     "not_linked": "Não vinculado",
     "remove": "Remover",
@@ -1970,20 +1987,18 @@
     "add": "Adicionar à lista",
     "all_guilds": "Esta lista vale para todos os servidores do Discord conectados.",
     "members_hint": "Se nenhum membro do Discord aparecer, abra o servidor uma vez na tela do Discord.",
-    "note": "Só quem tem o Discord vinculado pode iniciar ou parar pelo Discord. Quem tem só o apelido é quem pode entrar quando você liga o bloqueio de entrada na aba Saba-chan.",
+    "note": "Só quem tem Discord conectado pode usar este servidor pelo Discord. Entradas só com apelido são quem pode entrar com a expulsão automática ligada.",
     "err_empty": "Digite um apelido do jogo.",
     "err_duplicate": "Esse apelido já está na lista.",
     "err_too_long": "O apelido pode ter até 64 caracteres.",
     "err_too_many": "A lista comporta até 200 pessoas.",
-    "err_gate_on": "Para esvaziar a lista, primeiro desligue \"Só operadores podem entrar\" na aba Saba-chan.",
+    "err_gate_on": "Desligue \"Expulsar automaticamente quem não está na lista\" antes de esvaziar a lista.",
     "save_failed": "Não foi possível salvar a lista: {{error}}"
   },
   "controllers_only": {
-    "title": "Só operadores podem entrar",
-    "desc": "Quem não estiver na lista \"Operadores\" é expulso assim que entra. Não é banido.",
-    "label": "Expulsar quem não está na lista",
+    "label": "Expulsar automaticamente quem não está na lista",
     "hint": "Só o apelido é verificado, então quem entrar com um apelido da lista passa. Em jogos em que cada um escolhe o próprio nome, ou em servidores sem verificação de conta, qualquer pessoa pode usar esse nome.",
-    "empty": "Adicione pelo menos uma pessoa em \"Operadores\" em Discord › servidor › instância para ligar."
+    "empty": "Adicione pelo menos um membro para ligar."
   },
   "stop_timeout": {
     "title": "Tempo de espera ao parar",

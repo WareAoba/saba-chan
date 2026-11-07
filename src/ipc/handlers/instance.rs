@@ -1950,7 +1950,19 @@ pub async fn update_instance_settings(
     if let Err(e) = updated.game_chat().check() {
         return game_chat_error(e, "game_chat_keyword");
     }
-    // 조작 가능: 명단과 "조작 가능한 사람만 접속" (명단이 비면 켤 수 없다)
+    // 사용 모드와 명단: 전용 멤버 명단·그 자동 강퇴(명단이 비면 켤 수 없다), 서버 공용의 자동 강퇴 닉네임
+    if let Some(access) = settings.get("access") {
+        match crate::controllers::Access::parse(access) {
+            Ok(access) => updated.access = access,
+            Err(e) => return game_chat_error(e, "access"),
+        }
+    }
+    if let Some(list) = settings.get("kick_players") {
+        match crate::controllers::parse_kick_list(list) {
+            Ok(list) => updated.kick_players = list,
+            Err(e) => return game_chat_error(e, "kick_players"),
+        }
+    }
     if let Some(list) = settings.get("controllers") {
         match crate::controllers::parse(list) {
             Ok(list) => updated.controllers = list,
@@ -2123,7 +2135,7 @@ pub async fn update_instance_settings(
     // 모듈이 사바쨩 설정으로 선언한 값은 뺀다
     const DAEMON_FIELDS: &[&str] = &[
         "protocol_mode", "executable_path", "working_dir", "server_version", "extension_data", "extra_args", "memory_limit_mb",
-        "game_chat", "game_chat_keyword", "controllers", "controllers_only", "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon",
+        "game_chat", "game_chat_keyword", "access", "controllers", "controllers_only", "kick_players", "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon",
     ];
     let saba_fields: Vec<String> = supervisor.module_loader.get_module(&updated.module_name).ok()
         .and_then(|m| m.metadata.settings.as_ref().map(|s| s.saba_fields().into_iter().map(str::to_string).collect()))
@@ -2141,8 +2153,8 @@ pub async fn update_instance_settings(
     // 저장
     let updated_clone = updated.clone();
     let new_revision = updated_clone.settings_revision();
-    // "조작 가능한 사람만 접속"을 켰거나 켠 채 명단을 바꿨으면, 이미 들어와 있는 명단 밖 사람도 내보낸다
-    let sweep = crate::controllers::sweep_needed(instance.controllers_only, &instance.controllers, updated_clone.controllers_only, &updated_clone.controllers);
+    // 모드·자동 강퇴·명단이 바뀌었으면 이미 들어와 있는 사람도 다시 본다
+    let sweep = crate::controllers::sweep_needed(&instance, &updated_clone);
     if let Err(e) = supervisor.instance_store.update(&id, updated) {
         let error = json!({ "error": format!("Failed to update instance: {}", e) });
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();

@@ -863,8 +863,7 @@
     "logs_empty": "Aún no hay registros. Aparecen cuando el servidor se ejecuta una vez.",
     "logs_failed": "No se pudo leer el registro: {{error}}",
     "logs_saved": "Registro guardado: {{path}}",
-    "logs_saved_truncated": "El registro era demasiado largo; solo se guardó la parte más reciente: {{path}}",
-    "tab_controllers": "Operadores"
+    "logs_saved_truncated": "El registro era demasiado largo; solo se guardó la parte más reciente: {{path}}"
   },
   "discord": {
     "nav_connection": "Conexión",
@@ -1959,8 +1958,26 @@
     "keyword_placeholder": "p. ej. !dc",
     "channel_note": "Asigna el canal como Chat del juego en <link/> o con /saba assign → Chat del juego."
   },
+  "access": {
+    "title": "Modo de uso",
+    "shared": "Compartido",
+    "members": "Solo miembros",
+    "shared_desc": "Sigue los niveles del servidor de Discord. Cada miembro puede iniciar, detener y enviar comandos según su nivel.",
+    "members_desc": "Funciona aparte de los permisos del servidor de Discord. Solo las personas de la lista de miembros pueden controlar este servidor y usar todos los comandos.",
+    "members_list": "Lista de miembros",
+    "save_failed": "No se pudo cambiar el modo de uso: {{error}}"
+  },
+  "kick": {
+    "title": "Expulsión automática",
+    "desc": "Los apodos de esta lista se expulsan en cuanto entran al juego. No se les banea.",
+    "empty": "Nadie todavía.",
+    "placeholder": "Apodo de juego a expulsar automáticamente",
+    "add": "Añadir",
+    "unsupported": "Este servidor no puede leer las entradas, así que la expulsión automática no está disponible.",
+    "save_failed": "No se pudo guardar la lista de expulsión: {{error}}"
+  },
   "controllers": {
-    "desc": "Las personas de esta lista pueden iniciar, detener y reiniciar este servidor y crear copias de seguridad. Los administradores y superiores no necesitan estar en la lista.",
+    "desc": "Las personas de esta lista pueden iniciar y detener este servidor y usar todos los comandos. No se miran los niveles de Discord.",
     "empty": "Todavía no hay nadie.",
     "not_linked": "Sin vincular",
     "remove": "Quitar",
@@ -1970,20 +1987,18 @@
     "add": "Añadir a la lista",
     "all_guilds": "Esta lista se aplica a todos los servidores de Discord vinculados.",
     "members_hint": "Si no aparecen miembros de Discord, abre el servidor una vez en la pantalla de Discord.",
-    "note": "Solo quienes tengan Discord vinculado pueden iniciar o detener desde Discord. Quienes solo tienen apodo son los que pueden entrar cuando activas el bloqueo de entrada en la pestaña Saba-chan.",
+    "note": "Solo quien tenga Discord vinculado puede usar este servidor desde Discord. Las entradas con solo apodo son quienes pueden entrar con la expulsión automática activada.",
     "err_empty": "Escribe un apodo del juego.",
     "err_duplicate": "Ese apodo ya está en la lista.",
     "err_too_long": "El apodo puede tener hasta 64 caracteres.",
     "err_too_many": "La lista admite hasta 200 personas.",
-    "err_gate_on": "Para vaciar la lista, primero desactiva «Solo pueden entrar los operadores» en la pestaña Saba-chan.",
+    "err_gate_on": "Desactiva «Expulsar automáticamente a quien no esté en la lista» antes de vaciar la lista.",
     "save_failed": "No se pudo guardar la lista: {{error}}"
   },
   "controllers_only": {
-    "title": "Solo pueden entrar los operadores",
-    "desc": "Quien no esté en la lista «Operadores» es expulsado en cuanto entra. No se le banea.",
-    "label": "Expulsar a quien no esté en la lista",
+    "label": "Expulsar automáticamente a quien no esté en la lista",
     "hint": "Solo se comprueba el apodo, así que quien entre con un apodo de la lista podrá pasar. En juegos donde cada uno elige su nombre, o en servidores sin verificación de cuenta, cualquiera puede usar ese nombre.",
-    "empty": "Añade al menos una persona a «Operadores» en Discord › servidor › instancia para activarlo."
+    "empty": "Añade al menos un miembro para activarlo."
   },
   "stop_timeout": {
     "title": "Tiempo de espera al detener",

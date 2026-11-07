@@ -4941,6 +4941,8 @@ mod tests {
             game_chat_keyword: String::new(),
             controllers: Vec::new(),
             controllers_only: false,
+            access: Default::default(),
+            kick_players: Vec::new(),
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -5007,6 +5009,8 @@ mod tests {
             game_chat_keyword: String::new(),
             controllers: Vec::new(),
             controllers_only: false,
+            access: Default::default(),
+            kick_players: Vec::new(),
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

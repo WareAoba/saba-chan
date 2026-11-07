@@ -91,7 +91,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `stop_command` | String | managed stop 때 stdin으로 전송. 기본값 `"stop"` (`mod.rs:961`) |
 | `stop_timeout` | u64(초) | managed graceful stop 대기 시간. 기본값 30. 인스턴스 설정 `stop_timeout`이 있으면 그 값이 앞선다(§ 데몬이 읽는 setting) |
 | `announce_command` | String | 게임 안 공지에 쓰는 `[[commands.fields]]` 이름 (예약 재시작 예고 등) |
-| `kick_command` | String | 내보내기에 쓰는 `[[commands.fields]]` 이름. "조작 가능한 사람만 접속"(01 문서 §조작 가능)이 명단에 없는 닉네임을 내보낼 때 쓴다. 그 명령의 첫 입력에 닉네임, 둘째 입력이 있으면 이유를 넣는다. 없는 명령 이름이면 `config.kick_command` 참조 오류다 |
+| `kick_command` | String | 내보내기에 쓰는 `[[commands.fields]]` 이름. 자동 강퇴(01 문서 §사용 모드)가 닉네임을 내보낼 때 쓴다. 그 명령의 첫 입력에 닉네임, 둘째 입력이 있으면 이유를 넣는다. 없는 명령 이름이면 `config.kick_command` 참조 오류다 |
 
 `java_path`·`ram` 같은 게임 설정은 `[config]`가 아니라 `[[settings.fields]]`에 있다. `[config]`의 모르는 키는 경고 뒤 무시한다.
 
@@ -629,7 +629,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 실행 | `--port=<port>`. 실제 서버 `Pal/Binaries/Win64/PalServer-Win64-Shipping-Cmd.exe`가 있으면 런처 대신 그것을 직접 띄운다(`:322-331`). `[launch] console = "pty"`. 시작 전 `_enforce_rest_policy`로 INI에 RESTAPIEnabled와 AdminPassword를 보장하고, `AdminPassword`를 최상위로 돌려주어 데몬이 rest_password를 동기화하게 한다 (`:216-346`) |
 | 정지 | stdin이 없어 데몬이 모듈 `stop()`을 부른다. 공용 `graceful_stop`(§2.5)으로 REST 정지를 요청하고 `stop_timeout` 안에 안 끝나면 강제 종료한다. REST를 쓸 수 없으면 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4) |
 | 설정 | `PalWorldSettings.ini`의 `OptionSettings=(...)`를 **`extensions.ue4_ini`** 익스텐션으로 파싱한다. 파일 키는 settings 필드의 `file_key`이다. 로그 진단은 `[[diagnose]]` 규칙이다. 동봉된 `DefaultPalWorldSettings.ini`가 기본값이다. settings 117개. 목록 값 키(`_LIST_KEYS`, 지금은 `DenyTechnologyList`)는 화면의 `PALBOX,RepairBench`를 INI에 `("PALBOX","RepairBench")`로 쓰고 읽을 때 쉼표 형태로 되돌린다 (`:884-904, 927-928, 975-977`). `configure()`는 저장마다 `RCONEnabled=False`를 쓴다 (`:933`) |
-| 명령 | 10개, 모두 `/v1/api/...` REST로 간다. announce, info, players, metrics, settings, save, shutdown은 `method="rest"`라 데몬이 바로 보낸다. kick, ban, unban은 `method="module"`이라 lifecycle `command()`를 거친다. 거기서 `resolve_player_id`가 닉네임을 SteamID로 바꾼다. kick·ban은 이름이 정확히 같은 사람만 찾고, unban만 한 사람에게만 맞는 부분 일치를 받는다. `kick_command = "kick"`(조작 가능한 사람만 접속)이 닉네임을 넘기기 때문이다. 표시 이름은 다른 모듈과 맞춘다(shutdown → 정지, announce → 공지). `protocol_mode`와 상관없이 늘 REST로 보낸다. ~~`protocol_mode=rcon`이면 데몬 `/rcon`으로 보내는 RCON 명령 경로~~ → 해결: 지워졌다 (`:1224-`) |
+| 명령 | 10개, 모두 `/v1/api/...` REST로 간다. announce, info, players, metrics, settings, save, shutdown은 `method="rest"`라 데몬이 바로 보낸다. kick, ban, unban은 `method="module"`이라 lifecycle `command()`를 거친다. 거기서 `resolve_player_id`가 닉네임을 SteamID로 바꾼다. kick·ban은 이름이 정확히 같은 사람만 찾고, unban만 한 사람에게만 맞는 부분 일치를 받는다. `kick_command = "kick"`(자동 강퇴)이 닉네임을 넘기기 때문이다. 표시 이름은 다른 모듈과 맞춘다(shutdown → 정지, announce → 공지). `protocol_mode`와 상관없이 늘 REST로 보낸다. ~~`protocol_mode=rcon`이면 데몬 `/rcon`으로 보내는 RCON 명령 경로~~ → 해결: 지워졌다 (`:1224-`) |
 | 의존성 | `extensions.ue4_ini`는 `try`로 불러온다(`:33-36`). 익스텐션이 없으면 모듈은 로드되고, INI를 만지는 함수만 `extension_required`를 돌려준다 (`:742-757, 1494-1502`) |
 | 미등록 | `get_installed_version` |
 | 기타 | `list_versions`는 Steam 단일 버전 |

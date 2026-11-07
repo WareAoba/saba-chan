@@ -863,8 +863,7 @@
     "logs_empty": "No logs yet. They appear after the server runs once.",
     "logs_failed": "Could not read the log: {{error}}",
     "logs_saved": "Log saved: {{path}}",
-    "logs_saved_truncated": "The log was too long, so only the latest part was saved: {{path}}",
-    "tab_controllers": "Operators"
+    "logs_saved_truncated": "The log was too long, so only the latest part was saved: {{path}}"
   },
   "discord": {
     "nav_connection": "Connection",
@@ -1959,8 +1958,26 @@
     "keyword_placeholder": "e.g. !dc",
     "channel_note": "Assign the channel as Game chat in <link/>, or with /saba assign → Game chat."
   },
+  "access": {
+    "title": "Usage mode",
+    "shared": "Shared",
+    "members": "Members only",
+    "shared_desc": "Follows the Discord server’s levels. Each member can start, stop and send commands as far as their level allows.",
+    "members_desc": "Works apart from the Discord server’s permissions. Only people on the member list can control this server and use every command.",
+    "members_list": "Member list",
+    "save_failed": "Couldn’t change the usage mode: {{error}}"
+  },
+  "kick": {
+    "title": "Auto kick",
+    "desc": "Nicknames listed here are kicked as soon as they join the game. They are not banned.",
+    "empty": "No one yet.",
+    "placeholder": "Game nickname to kick automatically",
+    "add": "Add",
+    "unsupported": "This server can’t read joins, so auto kick isn’t available.",
+    "save_failed": "Couldn’t save the auto kick list: {{error}}"
+  },
   "controllers": {
-    "desc": "People on this list can start, stop and restart this server and make backups. Admins and above don't need to be listed.",
+    "desc": "People on this list can start and stop this server and use every command. Discord levels are not checked.",
     "empty": "No one yet.",
     "not_linked": "Not linked",
     "remove": "Remove",
@@ -1970,20 +1987,18 @@
     "add": "Add to list",
     "all_guilds": "This list applies to every linked Discord server.",
     "members_hint": "If no Discord members show up, open the server once on the Discord screen.",
-    "note": "Only people linked to Discord can start or stop from Discord. People with only a nickname are who may join when you turn on join blocking in the Saba-chan tab.",
+    "note": "Only people with a linked Discord account can use this server from Discord. Nickname-only entries are who may join while auto kick is on.",
     "err_empty": "Enter an in-game nickname.",
     "err_duplicate": "That nickname is already on the list.",
     "err_too_long": "Nicknames can be up to 64 characters.",
     "err_too_many": "The list can hold up to 200 people.",
-    "err_gate_on": "To empty the list, first turn off \"Only operators may join\" in the Saba-chan tab.",
+    "err_gate_on": "Turn off “Auto kick people not on the list” before emptying the list.",
     "save_failed": "Couldn't save the list: {{error}}"
   },
   "controllers_only": {
-    "title": "Only operators may join",
-    "desc": "Anyone whose nickname isn't on the \"Operators\" list is kicked as soon as they join. They are not banned.",
-    "label": "Kick people not on the list",
+    "label": "Auto kick people not on the list",
     "hint": "Only the nickname is checked, so anyone joining with a listed nickname gets in. In games where players pick their own name, or on servers without account verification, anyone can use that name.",
-    "empty": "Add at least one person to \"Operators\" under Discord › server › instance to turn this on."
+    "empty": "Add at least one member to turn this on."
   },
   "stop_timeout": {
     "title": "Stop wait time",

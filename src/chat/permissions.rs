@@ -139,9 +139,9 @@ pub struct Denied {
     pub level: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub via: Option<&'static str>,
-    /// 조작 가능 명단에 있으면 했을 명령 (시작·정지). 릴레이가 "조작 가능" 안내를 고른다
+    /// 전용 멤버 서버의 명단 밖 사람이다 (레벨과 상관없이 거절). 릴레이가 "전용 멤버" 안내를 고른다
     #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub controllers: bool,
+    pub members_only: bool,
 }
 
 /// 한 길드의 권한 설정. 키가 없으면 기본값 (설정이 없는 길드도 같은 규칙으로 판정한다)
@@ -285,7 +285,7 @@ impl NodePermissions {
     }
 
     fn denied(&self, who: &Requester, need: i64) -> Denied {
-        Denied { need, level: self.effective_level(who), via: who.via_chatbot.then_some("chatbot"), controllers: false }
+        Denied { need, level: self.effective_level(who), via: who.via_chatbot.then_some("chatbot"), members_only: false }
     }
 
     /// help·list처럼 명령이 아닌 요청: 금지만 막는다
@@ -507,8 +507,8 @@ mod tests {
         // 시작·정지는 위험도와 상관없이 유저부터다 (기본, 사용자 지정 2026-11-07. 조작 가능 명단은 chat이 따로 본다)
         assert!(p.check(&who("x"), "i", "stop", "safe").is_ok());
         let guest = NodePermissions::from_node(Some(&json!({ "defaultLevel": CHATBOT })));
-        assert_eq!(guest.check(&who("x"), "i", "stop", "safe"), Err(Denied { need: USER, level: CHATBOT, via: None, controllers: false }));
-        assert_eq!(p.check(&who("x"), "i", "op", "danger"), Err(Denied { need: ADMIN, level: USER, via: None, controllers: false }));
+        assert_eq!(guest.check(&who("x"), "i", "stop", "safe"), Err(Denied { need: USER, level: CHATBOT, via: None, members_only: false }));
+        assert_eq!(p.check(&who("x"), "i", "op", "danger"), Err(Denied { need: ADMIN, level: USER, via: None, members_only: false }));
         assert!(p.check(&who("a"), "i", "op", "danger").is_ok());
         assert!(p.check_basic(&who("b")).is_err());
         assert!(p.check(&who("b"), "i", "status", "safe").is_err());
@@ -540,7 +540,7 @@ mod tests {
         let mut bot = who("own");
         bot.via_chatbot = true;
         assert!(p.check(&bot, "i", "status", "safe").is_ok());
-        assert_eq!(p.check(&bot, "i", "kick", "caution"), Err(Denied { need: USER, level: CHATBOT, via: Some("chatbot"), controllers: false }));
+        assert_eq!(p.check(&bot, "i", "kick", "caution"), Err(Denied { need: USER, level: CHATBOT, via: Some("chatbot"), members_only: false }));
         // 상한보다 낮은 작성자는 그대로 낮다
         let p = NodePermissions::from_node(Some(&json!({ "chatbotCap": 2, "members": { "z": 0 } })));
         let mut low = who("z");
@@ -552,7 +552,7 @@ mod tests {
     #[test]
     fn built_in_commands_also_take_the_level_set_for_their_actions() {
         let p = NodePermissions::from_node(Some(&json!({ "preset": "loose", "defaultLevel": 2, "commandLevels": { "i/server.stop": 3, "i/server.start": 3, "i/start": 1 } })));
-        assert_eq!(p.check(&who("x"), "i", "stop", "caution"), Err(Denied { need: OWNER, level: ADMIN, via: None, controllers: false }));
+        assert_eq!(p.check(&who("x"), "i", "stop", "caution"), Err(Denied { need: OWNER, level: ADMIN, via: None, members_only: false }));
         assert!(p.check(&who("x"), "i", "start", "caution").is_ok(), "the command's own key wins");
         assert!(p.check(&who("x"), "j", "stop", "caution").is_ok(), "only that instance");
         assert_eq!(p.required("i", "kick", "caution"), preset_level("loose", "caution"), "module commands have no action key");
@@ -667,8 +667,8 @@ mod tests {
         apply(&mut node, &Change::CommandLevel { key: "i/kick".into(), level: Some(10) }, owner).unwrap();
         let p = NodePermissions::from_node(Some(&Value::Object(node.clone())));
         assert!(p.check(&who("v"), "i", "kick", "danger").is_ok());
-        assert_eq!(p.check(&who("x"), "i", "kick", "danger"), Err(Denied { need: 10, level: USER, via: None, controllers: false }));
-        assert_eq!(p.check(&who("v"), "i", "op", "danger"), Err(Denied { need: ADMIN, level: 10, via: None, controllers: false }));
+        assert_eq!(p.check(&who("x"), "i", "kick", "danger"), Err(Denied { need: 10, level: USER, via: None, members_only: false }));
+        assert_eq!(p.check(&who("v"), "i", "op", "danger"), Err(Denied { need: ADMIN, level: 10, via: None, members_only: false }));
 
         // 관리자를 유저 아래로 내리면 관리자는 유저보다 약하다
         apply(&mut node, &ladder(&[(OWNER, None), (10, Some("VIP")), (USER, None), (ADMIN, None), (CHATBOT, None), (BANNED, None)]), owner).unwrap();

@@ -1756,30 +1756,45 @@ fn server_address_reads_as_address_and_port() {
     assert!(!no_ports.contains("203.0.113.5") && no_ports.contains("포트"), "{no_ports}");
 }
 
-/// 조작 가능 (사용자 지정 2026-11-06): 시작·정지·재시작·백업 만들기는 위험도와 상관없이 명단에 있는 사람과
-/// 유저 이상이 한다(기본, 사용자 지정 2026-11-07). 명단 밖 게스트는 거절되고, 거절에 `controllers`가 실린다
+/// 사용 모드 (사용자 지정 2026-11-08): 서버 공용은 레벨만 따르고(시작·정지·재시작·백업은 기본 유저), 전용 멤버는
+/// 명단에 있는 사람만 한다. 명단 밖은 관리자도 거절되고 거절에 `members_only`가 실린다
 #[tokio::test]
-async fn controllers_run_the_server_without_the_admin_level() {
+async fn members_servers_listen_only_to_their_members_and_shared_servers_follow_levels() {
     let (state, id, _tmp) = server().await;
-    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "default", "defaultLevel": 0, "members": { "admin": 2, "user": 1 } })).await;
-    {
-        let mut sup = state.supervisor.write().await;
-        let mut inst = sup.instance_store.get(&id).cloned().unwrap();
-        inst.controllers = vec![crate::controllers::Controller { name: "Steve".into(), discord_id: Some("friend".into()) }];
-        sup.instance_store.update(&id, inst).unwrap();
-    }
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "default", "defaultLevel": 0, "members": { "admin": 2, "user": 1, "banned": -1 } })).await;
+    let set = |access: crate::controllers::Access| {
+        let (state, id) = (state.clone(), id.clone());
+        async move {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.access = access;
+            inst.controllers = vec![
+                crate::controllers::Controller { name: "Steve".into(), discord_id: Some("friend".into()) },
+                crate::controllers::Controller { name: "Bad".into(), discord_id: Some("banned".into()) },
+            ];
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+    };
+    // 서버 공용: 명단은 레벨을 넘지 않는다
+    set(crate::controllers::Access::Shared).await;
     for action in crate::controllers::CONTROLLED_ACTIONS {
         assert_eq!(find(action).unwrap().risk, "safe", "{action} is not a risk tier");
-        assert!(plan(&state, action, Some(&id), &json!({}), &relay("friend", false)).await.is_ok(), "{action}: a listed user");
-        assert!(plan(&state, action, Some(&id), &json!({}), &relay("admin", false)).await.is_ok(), "{action}: an admin");
         assert!(plan(&state, action, Some(&id), &json!({}), &relay("user", false)).await.is_ok(), "{action}: a user by default");
-        let refused = plan(&state, action, Some(&id), &json!({}), &relay("stranger", false)).await.unwrap_err();
-        assert_eq!((refused.data["args"]["need"].clone(), refused.data["args"]["controllers"].clone()), (json!(1), json!(true)), "{action}");
-        // 말하는 사바쨩을 거치면 챗봇 상한이 그대로다: 명단이 상한을 넘지 않는다
-        let capped = plan(&state, action, Some(&id), &json!({}), &relay("friend", true)).await.unwrap_err();
-        assert_eq!(capped.data["args"]["controllers"], Value::Null, "{action}: the chatbot cap, not the list");
+        let refused = plan(&state, action, Some(&id), &json!({}), &relay("friend", false)).await.unwrap_err();
+        assert_eq!((refused.data["args"]["need"].clone(), refused.data["args"]["members_only"].clone()), (json!(1), Value::Null), "{action}");
     }
-    // 권한 계단은 이 넷을 조작 가능 묶음으로 표시한다
+    // 전용 멤버: 명단에 있는 사람만 (레벨 상관없이), 관리자도 명단 밖이면 거절, 금지는 그대로 금지
+    set(crate::controllers::Access::Members).await;
+    for action in crate::controllers::CONTROLLED_ACTIONS {
+        assert!(plan(&state, action, Some(&id), &json!({}), &relay("friend", false)).await.is_ok(), "{action}: a member");
+        let refused = plan(&state, action, Some(&id), &json!({}), &relay("admin", false)).await.unwrap_err();
+        assert_eq!(refused.data["args"]["members_only"], json!(true), "{action}: admins are not members");
+        assert!(plan(&state, action, Some(&id), &json!({}), &relay("banned", false)).await.is_err(), "{action}: banned stays banned");
+        // 말하는 사바쨩을 거치면 챗봇 상한이 그대로다
+        let capped = plan(&state, action, Some(&id), &json!({}), &relay("friend", true)).await.unwrap_err();
+        assert_eq!(capped.data["args"]["members_only"], Value::Null, "{action}: the chatbot cap, not the list");
+    }
+    // 권한 계단은 이 넷을 조작 가능 줄로 표시한다
     let board = permission_board(&state, "g", "ko").await;
     let start = board["items"].as_array().unwrap().iter().find(|i| i["key"] == format!("{id}/start")).cloned().unwrap();
     assert_eq!((&start["level"], &start["controllers"]), (&json!(1), &json!(true)));
