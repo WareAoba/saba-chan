@@ -4,9 +4,11 @@
  * <SabaToggle>   — on/off toggle switch (sm | md | lg)
  * <SabaCheckbox> — styled checkbox with animated checkmark
  * <SabaSpinner>  — consistent loading ring (xs | sm | md | lg | xl)
+ * <SabaNumberInput> — number input with app-styled step buttons
  */
 
-import type { InputHTMLAttributes, ReactNode } from 'react';
+import { type InputHTMLAttributes, type ReactNode, useRef } from 'react';
+import { Icon } from '../Icon';
 import './SabaUI.css';
 
 /* ── Toggle Switch ────────────────────────────────────────── */
@@ -115,4 +117,36 @@ export function SabaSpinner({ size, light, className, ...rest }: SabaSpinnerProp
         .filter(Boolean)
         .join(' ');
     return <span className={cls} role="status" aria-label="Loading" {...rest} />;
+}
+
+/* ── Number Input ─────────────────────────────────────────── */
+
+/**
+ * 숫자 입력칸. 브라우저 기본 다이얼 대신 앱 모양의 올림·내림 단추를 붙인다 (사용자 11-07).
+ * 단추는 stepUp/stepDown 뒤 input 이벤트를 보내므로 onChange는 직접 입력과 같게 불린다.
+ * 키보드는 입력칸의 화살표 키를 그대로 쓰므로 단추는 탭 순서와 읽기에서 뺀다.
+ */
+export function SabaNumberInput({ className, disabled, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>) {
+    const ref = useRef<HTMLInputElement>(null);
+    const step = (dir: 1 | -1) => {
+        const el = ref.current;
+        if (!el || disabled || el.readOnly) return;
+        if (dir > 0) el.stepUp();
+        else el.stepDown();
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.focus();
+    };
+    return (
+        <span className={['saba-number', disabled ? 'disabled' : ''].filter(Boolean).join(' ')}>
+            <input ref={ref} type="number" className={className} disabled={disabled} {...rest} />
+            <span className="saba-number-steps" aria-hidden="true">
+                <button type="button" tabIndex={-1} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => step(1)}>
+                    <Icon name="chevronUp" size={10} />
+                </button>
+                <button type="button" tabIndex={-1} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => step(-1)}>
+                    <Icon name="chevronDown" size={10} />
+                </button>
+            </span>
+        </span>
+    );
 }

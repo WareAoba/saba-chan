@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
@@ -9,16 +10,25 @@ export const agentLinkAvailable = () =>
 
 const failed = (res: ApiBody | null | undefined) => Boolean(res?.error) || res?.success === false;
 
+/** 데몬 응답의 연결 목록. 지금 릴레이는 계정마다 하나(`grant`)만 주고, 목록(`grants`)을 주면 그대로 쓴다 */
+function grantsOf(res: ApiBody): ApiBody[] {
+    if (Array.isArray(res.grants)) return res.grants;
+    return res.grant ? [res.grant] : [];
+}
+
 /**
  * 원격 MCP 에이전트 연결 (데몬 GET·DELETE /api/relay/mcp/grant).
- * 연결은 이 PC 주인의 디스코드 계정마다 하나이고, 그 계정의 모든 PC를 다룬다. 여기서는 보고 끊기만 한다.
+ * 연결은 이 PC 주인의 디스코드 계정에 묶이고, 그 계정의 모든 PC를 다룬다. 여기서는 목록으로 보고 끊기만 한다.
+ * 끊기 버튼은 늘 보이지 않고, 에이전트 줄을 누르면 그 줄에만 나온다.
  */
-export function AgentLink() {
+export function AgentLink({ className }: { className?: string } = {}) {
     const { t, i18n } = useTranslation('gui');
-    // undefined = 아직 모름(못 받았으면 줄을 그리지 않는다), null = 연결 없음
-    const [grant, setGrant] = useState<ApiBody | null | undefined>(undefined);
+    // undefined = 아직 모름(못 받았으면 줄을 그리지 않는다)
+    const [grants, setGrants] = useState<ApiBody[] | undefined>(undefined);
     // 에이전트에 넣을 주소 (릴레이가 준다)
     const [url, setUrl] = useState('');
+    // 끊기 버튼을 펼친 줄
+    const [open, setOpen] = useState<number | null>(null);
     const [busy, setBusy] = useState(false);
 
     useEffect(() => {
@@ -26,8 +36,8 @@ export function AgentLink() {
         window.api
             .relayMcpGrant()
             .then((res) => {
-                if (!alive || !res || !('grant' in res)) return;
-                setGrant(res.grant);
+                if (!alive || !res || !('grant' in res || 'grants' in res)) return;
+                setGrants(grantsOf(res));
                 setUrl(typeof res.url === 'string' ? res.url : '');
             })
             .catch(() => {});
@@ -36,12 +46,15 @@ export function AgentLink() {
         };
     }, []);
 
-    const revoke = async () => {
+    const revoke = async (index: number) => {
         setBusy(true);
         try {
-            const res = await window.api.relayMcpGrantRevoke();
+            // 그 연결만 끊는다. 옛 릴레이는 id를 주지 않는다: 그때는 연결이 하나뿐이라 모두 끊어도 같다
+            const id = grants?.[index]?.id;
+            const res = await window.api.relayMcpGrantRevoke(typeof id === 'string' ? id : undefined);
             if (failed(res)) throw new Error(res.error || 'failed');
-            setGrant(null);
+            setGrants((prev) => (typeof id === 'string' ? (prev ?? []).filter((_, i) => i !== index) : []));
+            setOpen(null);
             safeShowToast(t('discord.agent_revoked'), 'success', 4000);
         } catch (e) {
             safeShowToast(t('discord.agent_revoke_failed', { error: (e as Error).message }), 'error', 5000);
@@ -50,21 +63,48 @@ export function AgentLink() {
         }
     };
 
-    if (grant === undefined) return null;
-    if (!grant) {
+    if (grants === undefined) return null;
+    if (grants.length === 0) {
         return (
-            <div className="dc-row-actions">
+            <div className={clsx('dc-row-actions', className)}>
                 <span className="muted">{t('discord.agent_none', { url })}</span>
             </div>
         );
     }
-    const when = grant.lastUsedAt ? new Date(grant.lastUsedAt).toLocaleString(i18n.language) : '-';
     return (
-        <div className="dc-row-actions">
-            <span className="muted">{t('discord.agent_linked', { name: grant.clientName || '-', when })}</span>
-            <button type="button" className="btn btn-danger-text" onClick={revoke} disabled={busy}>
-                <Icon name="cloudOff" size="sm" /> {t('discord.agent_revoke')}
-            </button>
+        <div className={clsx('dc-row-actions agent-list-box', className)}>
+            <span className="muted">{t('discord.agent_list_desc')}</span>
+            <ul className="agent-list">
+                {grants.map((grant, i) => {
+                    const when = grant.lastUsedAt ? new Date(grant.lastUsedAt).toLocaleString(i18n.language) : '-';
+                    const expanded = open === i;
+                    return (
+                        <li key={String(grant.id ?? `${grant.clientName}-${grant.createdAt}`)} className={clsx('agent-item', { open: expanded })}>
+                            <button
+                                type="button"
+                                className="agent-item-head"
+                                aria-expanded={expanded}
+                                onClick={() => setOpen(expanded ? null : i)}
+                            >
+                                <Icon name="plug" size="sm" />
+                                <span className="agent-item-name">{grant.clientName || '-'}</span>
+                                <span className="agent-item-when muted">{t('discord.agent_last_used', { when })}</span>
+                                <Icon name={expanded ? 'chevronUp' : 'chevronDown'} size="sm" />
+                            </button>
+                            {expanded && (
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost btn-danger-text agent-item-revoke"
+                                    onClick={() => revoke(i)}
+                                    disabled={busy}
+                                >
+                                    <Icon name="cloudOff" size="sm" /> {t('discord.agent_revoke')}
+                                </button>
+                            )}
+                        </li>
+                    );
+                })}
+            </ul>
         </div>
     );
 }

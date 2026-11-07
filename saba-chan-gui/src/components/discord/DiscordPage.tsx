@@ -516,7 +516,6 @@ export function DiscordPage({
                                 onCancelPairing={pairing.reset}
                                 onReload={relayConnected ? loadNodes : () => useDiscordStore.getState().checkStatus()}
                                 onDisconnect={disconnect}
-                                onErased={clearConnection}
                                 onStartAgent={handleStartDiscordBot}
                                 nodes={cloudNodes}
                                 onInviteBot={inviteBot}

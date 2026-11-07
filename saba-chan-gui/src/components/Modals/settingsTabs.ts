@@ -7,8 +7,10 @@ export const SETTINGS_TABS = [
     'servers',
     'connection',
     'storage',
+    'sabaStorage',
     'security',
     'troubleshoot',
+    'about',
 ] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 export const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
@@ -19,6 +21,8 @@ export const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
     servers: 'gui:settings_modal.tab_servers',
     connection: 'gui:settings_modal.tab_connection',
     storage: 'gui:settings_modal.tab_storage',
+    sabaStorage: 'gui:saba_storage.title',
     security: 'gui:settings_modal.tab_security',
     troubleshoot: 'gui:settings_modal.tab_troubleshoot',
+    about: 'gui:settings_modal.about_title',
 };

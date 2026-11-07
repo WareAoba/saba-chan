@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
@@ -11,6 +12,7 @@ export const privacyEraseAvailable = () =>
 
 interface PrivacyEraseProps {
     onErased: () => void;
+    className?: string;
 }
 
 /**
@@ -18,7 +20,7 @@ interface PrivacyEraseProps {
  * 누르면 데몬이 릴레이에서 받은 웹사이트 동의 페이지를 연다. 사용자가 동의하면 릴레이가 지우고,
  * 데몬이 이 PC 의 릴레이 연결을 끊는다. 여기서는 끝났는지 묻고 화면만 비운다(`onErased`).
  */
-export function PrivacyErase({ onErased }: PrivacyEraseProps) {
+export function PrivacyErase({ onErased, className }: PrivacyEraseProps) {
     const { t, i18n } = useTranslation('gui');
     // null | 'starting' | 'waiting'
     const [phase, setPhase] = useState<'starting' | 'waiting' | null>(null);
@@ -68,9 +70,9 @@ export function PrivacyErase({ onErased }: PrivacyEraseProps) {
     };
 
     return (
-        <div className="dc-row-actions dc-danger-zone">
+        <div className={clsx('dc-row-actions dc-danger-zone', className)}>
             <span className="muted">{phase === 'waiting' ? t('discord.erase_waiting') : t('discord.erase_desc')}</span>
-            <button type="button" className="btn btn-danger-text" onClick={start} disabled={phase === 'starting'}>
+            <button type="button" className="btn btn-ghost btn-danger-text" onClick={start} disabled={phase === 'starting'}>
                 <Icon name="trash" size="sm" /> {t('discord.erase')}
             </button>
         </div>

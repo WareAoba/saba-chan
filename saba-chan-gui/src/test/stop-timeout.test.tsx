@@ -101,9 +101,9 @@ describe('설정 창의 정지 대기 칸', () => {
 
     it('데몬이 띄우는 서버에만 보인다', () => {
         const { unmount } = render(<ServerSettingsModal {...(props(true) as unknown as ComponentProps<typeof ServerSettingsModal>)} />);
-        expect(document.querySelector('.stop-timeout-section')).not.toBeNull();
+        expect(document.querySelector('.ss-stop-timeout')).not.toBeNull();
         unmount();
         render(<ServerSettingsModal {...(props(false) as unknown as ComponentProps<typeof ServerSettingsModal>)} />);
-        expect(document.querySelector('.stop-timeout-section')).toBeNull();
+        expect(document.querySelector('.ss-stop-timeout')).toBeNull();
     });
 });

@@ -69,7 +69,7 @@ afterEach(() => {
 describe('설정에서 익스텐션 탭을 뺀다', () => {
     it('설정 탭 줄에 익스텐션 탭이 없다', () => {
         render(<SettingsModal isOpen onClose={vi.fn()} variant="page" />);
-        const labels = [...document.querySelectorAll('.settings-tab')].map((b) => b.textContent);
+        const labels = [...document.querySelectorAll('[role="tab"]')].map((b) => b.textContent);
         expect(labels).toEqual(
             [
                 'general',
@@ -81,8 +81,32 @@ describe('설정에서 익스텐션 탭을 뺀다', () => {
                 'tab_storage',
                 'tab_security',
                 'tab_troubleshoot',
-            ].map((k) => i18n.t(`gui:settings_modal.${k}`)),
+            ]
+                .map((k) => i18n.t(`gui:settings_modal.${k}`))
+                .toSpliced(7, 0, i18n.t('gui:saba_storage.title'))
+                .concat(i18n.t('gui:settings_modal.about_title')),
         );
+    });
+
+    // 사용자 요청(2026-11-08): 정보는 버튼·오버레이가 아니라 설정 목록의 마지막 탭이다
+    it('정보 탭을 누르면 그 자리에 정보 페이지가 열린다', async () => {
+        render(<SettingsModal isOpen onClose={vi.fn()} variant="page" />);
+        expect(document.querySelector('.settings-about-btn')).toBeNull();
+        const tab = screen.getByRole('tab', { name: i18n.t('gui:settings_modal.about_title') });
+        await act(async () => fireEvent.click(tab));
+        expect(tab.getAttribute('aria-selected')).toBe('true');
+        expect(document.querySelector('#settings-panel-about .about-scroll-area')).not.toBeNull();
+    });
+
+    // 사용자 요청(2026-11-08): 사바 스토리지를 설정 목록의 한 탭으로 뺀다 (뒤로 버튼 없음)
+    it('사바 스토리지 탭을 누르면 그 자리에 열린다', async () => {
+        render(<SettingsModal isOpen onClose={vi.fn()} variant="page" />);
+        const tab = screen.getByRole('tab', { name: i18n.t('gui:saba_storage.title') });
+        await act(async () => fireEvent.click(tab));
+        expect(tab.getAttribute('aria-selected')).toBe('true');
+        expect(document.querySelector('.saba-storage-tab.active')).not.toBeNull();
+        expect(document.querySelector('.update-panel-header')).toBeNull();
+        expect(screen.getAllByRole('tab').length).toBeGreaterThan(3);
     });
 
     // 사용자 요청(2026-11-06): 고급에 몰린 설정을 여러 탭으로 나눈다 (옮기기만, 설정 자체는 그대로)
@@ -117,7 +141,7 @@ describe('설정에서 익스텐션 탭을 뺀다', () => {
 
     it("'익스텐션'으로 열면 사바 스토리지 익스텐션 탭이 열린다", async () => {
         render(<SettingsModal isOpen onClose={vi.fn()} variant="page" initialView="extensions" />);
-        await waitFor(() => expect(document.querySelector('.update-panel')).not.toBeNull());
+        await waitFor(() => expect(document.querySelector('.saba-storage')).not.toBeNull());
         const active = document.querySelector('.saba-storage-tab.active');
         expect(active!.textContent).toBe(i18n.t('gui:saba_storage.tab_extensions'));
     });
@@ -125,7 +149,7 @@ describe('설정에서 익스텐션 탭을 뺀다', () => {
 
 describe('사바 스토리지 익스텐션 탭에서 켜고 끈다', () => {
     async function openExtensions() {
-        render(<SabaStorage onBack={() => {}} isExiting={false} initialTab="extensions" />);
+        render(<SabaStorage initialTab="extensions" />);
         await act(async () => {});
     }
 
@@ -146,7 +170,7 @@ describe('사바 스토리지 익스텐션 탭에서 켜고 끈다', () => {
 describe('작업 기록은 별도 페이지', () => {
     it('설정 > 문제 해결에 작업 기록을 펼쳐 두지 않는다', async () => {
         render(<SettingsModal isOpen onClose={vi.fn()} variant="page" />);
-        const tab = [...document.querySelectorAll('.settings-tab')].find(
+        const tab = [...document.querySelectorAll('[role="tab"]')].find(
             (b) => b.textContent === i18n.t('gui:settings_modal.tab_troubleshoot'),
         );
         await act(async () => fireEvent.click(tab!));

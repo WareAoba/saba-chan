@@ -1,6 +1,6 @@
 /**
  * #5: 서버 설정을 알기 쉽게. 스위치 옆은 켜짐·꺼짐, 설정 이름을 눌러도 스위치가 바뀌고,
- * 다시 시작해야 적용되는 칸은 그렇다고 표시한다. 켜진 서버에서 그런 칸을 저장했으면 저장 막대 위에 다시 시작 단추를 둔다.
+ * 다시 시작해야 적용되는 칸은 바꿨을 때만 그렇다고 표시한다. 켜진 서버에서 그런 칸을 저장했으면 저장 막대 위에 다시 시작 단추를 둔다.
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -30,8 +30,11 @@ describe('서버 설정 칸', () => {
         expect(onChange).toHaveBeenCalledWith('allow_flight', true);
     });
 
-    it('다시 시작해야 적용되는 칸은 그렇다고 표시한다', () => {
-        render(<SettingsField field={flight} value={false} modNs="game" onChange={vi.fn()} />);
+    // 서버 설정은 다시 시작해야 적용되는 게 보통이라, 바꾼 칸에만 표시한다 (사용자 11-07)
+    it('다시 시작해야 적용되는 칸은 바꿨을 때만 그렇다고 표시한다', () => {
+        const { rerender } = render(<SettingsField field={flight} value={false} modNs="game" onChange={vi.fn()} />);
+        expect(screen.queryByText('Applies after restart')).toBeNull();
+        rerender(<SettingsField field={flight} value modNs="game" onChange={vi.fn()} changed />);
         expect(screen.getByText('Applies after restart')).toBeTruthy();
     });
 });

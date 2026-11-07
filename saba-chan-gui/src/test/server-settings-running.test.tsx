@@ -116,13 +116,13 @@ describe('설정 창: 켜져 있는 서버', () => {
 
     it('켜져 있으면 버전 설치와 초기화 버튼을 막는다', () => {
         render(<ServerSettingsModal {...(props('running') as unknown as ComponentProps<typeof ServerSettingsModal>)} />);
-        expect(document.querySelector<HTMLButtonElement>('.version-install-btn')!.disabled).toBe(true);
-        expect(document.querySelector<HTMLButtonElement>('.danger-zone-btn')!.disabled).toBe(true);
+        expect(document.querySelector<HTMLButtonElement>('.ss-version-install')!.disabled).toBe(true);
+        expect(document.querySelector<HTMLButtonElement>('.ss-reset')!.disabled).toBe(true);
     });
 
     it('꺼져 있으면 두 버튼을 쓸 수 있다', () => {
         render(<ServerSettingsModal {...(props('stopped') as unknown as ComponentProps<typeof ServerSettingsModal>)} />);
-        expect(document.querySelector<HTMLButtonElement>('.version-install-btn')!.disabled).toBe(false);
-        expect(document.querySelector<HTMLButtonElement>('.danger-zone-btn')!.disabled).toBe(false);
+        expect(document.querySelector<HTMLButtonElement>('.ss-version-install')!.disabled).toBe(false);
+        expect(document.querySelector<HTMLButtonElement>('.ss-reset')!.disabled).toBe(false);
     });
 });

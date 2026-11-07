@@ -182,8 +182,10 @@ describe('디스코드 봇 설정 탭', () => {
         window.api.discordSettingsSet = vi.fn().mockResolvedValue({ success: true, settings: base, sync: { ok: true } }) as never;
         render(<BotSettingsTab node={node} section="tts" />);
         await flush();
-        expect(screen.getByRole('tab', { name: 'With several people' })).toHaveAttribute('aria-selected', 'true');
-        fireEvent.click(screen.getByRole('tab', { name: 'Never' }));
+        const names = screen.getByRole('combobox', { name: 'Name call' });
+        expect(names).toHaveTextContent('With several people');
+        fireEvent.click(names);
+        fireEvent.click(screen.getByRole('option', { name: 'Never' }));
         await flush();
         expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { tts: { names: 'never' } });
     });

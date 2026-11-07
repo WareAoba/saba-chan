@@ -154,6 +154,8 @@ export function ServerConsole({
     const syntaxEnabled = useSettingsStore((s) => s.consoleSyntaxHighlight);
     const stampMode = useSettingsStore((s) => s.consoleTimestamps);
     const stampDate = useSettingsStore((s) => s.consoleTimestampDate);
+    const consoleWrap = useSettingsStore((s) => s.consoleWrap);
+    const consoleAutoScroll = useSettingsStore((s) => s.consoleAutoScroll);
     const stamp = useMemo(
         () => consoleStamper(stampMode, stampDate, i18n.language),
         [stampMode, stampDate, i18n.language],
@@ -227,7 +229,7 @@ export function ServerConsole({
     // biome-ignore lint/correctness/useExhaustiveDependencies: 줄 수가 바뀔 때만 스크롤
     useLayoutEffect(() => {
         const el = outputRef.current;
-        if (el && stickRef.current) el.scrollTop = el.scrollHeight;
+        if (el && stickRef.current && consoleAutoScroll) el.scrollTop = el.scrollHeight;
     }, [lines.length]);
 
     if (poppedOut) {
@@ -255,7 +257,7 @@ export function ServerConsole({
                 </div>
             )}
             <div
-                className="term-output"
+                className={clsx('term-output', { 'no-wrap': !consoleWrap })}
                 ref={outputRef}
                 onScroll={(e) => {
                     const el = e.currentTarget;

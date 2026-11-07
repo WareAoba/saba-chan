@@ -347,37 +347,40 @@ export function NodeView({
 
     return (
         <div className="dc-view">
-            <header className="detail-head">
-                <div className="detail-icon">
-                    <Avatar name={node.guildName || node.guildId} url={node.iconUrl} size={56} />
-                </div>
-                <div className="detail-title">
-                    <h1>{node.guildName || node.guildId}</h1>
-                    <div className="detail-sub">
-                        <span className="muted">
-                            {mode === 'all'
-                                ? t('discord.node_sub_all')
-                                : t('discord.node_sub_pick', { count: visibleCount })}
-                        </span>
+            {/* 서버 정보 카드와 탭 바는 위에 고정하고 그 아래만 스크롤한다 (사용자 11-07) */}
+            <div className="dc-view-top">
+                <header className="detail-head">
+                    <div className="detail-icon">
+                        <Avatar name={node.guildName || node.guildId} url={node.iconUrl} size={56} />
                     </div>
-                </div>
-                <SleepCorner guildId={node.guildId} />
-                {saveState && (
-                    <span className={clsx('dc-save-state', saveState)}>
-                        {saveState === 'saving' ? t('discord.saving') : t('discord.saved')}
-                    </span>
-                )}
-            </header>
-
-            <Segmented
-                ariaLabel={node.guildName}
-                value={tab}
-                onChange={(v) => {
-                    setTab(v);
-                    setInstance(null);
-                }}
-                items={tabs}
-            />
+                    <div className="detail-title">
+                        <h1>{node.guildName || node.guildId}</h1>
+                        <div className="detail-sub">
+                            <span className="muted">
+                                {mode === 'all'
+                                    ? t('discord.node_sub_all')
+                                    : t('discord.node_sub_pick', { count: visibleCount })}
+                            </span>
+                        </div>
+                    </div>
+                    <SleepCorner guildId={node.guildId} />
+                    {saveState && (
+                        <span className={clsx('dc-save-state', saveState)}>
+                            {saveState === 'saving' ? t('discord.saving') : t('discord.saved')}
+                        </span>
+                    )}
+                </header>
+    
+                <Segmented
+                    ariaLabel={node.guildName}
+                    value={tab}
+                    onChange={(v) => {
+                        setTab(v);
+                        setInstance(null);
+                    }}
+                    items={tabs}
+                />
+            </div>
 
             {membersFailed && !membersLoading && (members?.length ?? 0) > 0 && tab === 'members' && (
                 <p className="dc-field-error">

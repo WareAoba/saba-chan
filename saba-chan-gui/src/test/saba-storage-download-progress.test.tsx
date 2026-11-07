@@ -6,7 +6,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../contexts/ExtensionContext', () => ({
-    useExtensions: () => ({ extensions: [], loading: false, refresh: vi.fn() }),
+    useExtensions: () => ({ extensions: [], manifestExtensions: [], availableUpdates: [], installingIds: new Set(), loading: false, refresh: vi.fn() }),
 }));
 
 import SabaStorage from '../components/Modals/SabaStorage';
@@ -45,7 +45,7 @@ afterEach(() => {
 
 describe('구성요소를 따로 내려받을 때', () => {
     it('먼저 끝난 다운로드가 아직 받는 쪽의 진행률을 지우지 않는다', async () => {
-        render(<SabaStorage onBack={() => {}} isExiting={false} />);
+        render(<SabaStorage />);
         await waitFor(() => expect(document.querySelectorAll('.ss-card .ss-icon-btn.accent')).toHaveLength(2));
         const [cli, bot] = document.querySelectorAll('.ss-card .ss-icon-btn.accent');
         await act(async () => fireEvent.click(cli));

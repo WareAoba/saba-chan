@@ -24,8 +24,6 @@ import type { ApiBody, ModuleInfo } from '../../types/daemon';
 //   [모듈]     — 설치된 모듈 + saba-chan-modules 레지스트리
 //   [익스텐션] — 기존 익스텐션 탭 내용 이전
 //
-// @param {function} onBack  - 설정 일반 탭으로 돌아가기
-// @param {boolean}  isExiting - 나가기 애니메이션 여부
 // @param {boolean}  devMode   - 개발자 모드
 // @param {string}   initialTab - 처음 보일 탭 (components | modules | extensions)
 // ─────────────────────────────────────────────────────────────
@@ -35,13 +33,11 @@ function throwIfRejected(res: ApiBody | null | undefined) {
 }
 
 interface SabaStorageProps {
-    onBack: () => void;
-    isExiting?: boolean;
     devMode?: boolean;
     initialTab?: string;
 }
 
-function SabaStorage({ onBack, isExiting, devMode, initialTab = 'components' }: SabaStorageProps) {
+function SabaStorage({ devMode, initialTab = 'components' }: SabaStorageProps) {
     const { t } = useTranslation('gui');
     const [activeTab, setActiveTab] = useState(initialTab);
     const tabsRef = useRef<HTMLDivElement>(null);
@@ -61,15 +57,8 @@ function SabaStorage({ onBack, isExiting, devMode, initialTab = 'components' }: 
     }, [activeTab, syncIndicator]);
 
     return (
-        <div className={clsx('update-panel', { exiting: isExiting })}>
-            {/* 헤더 */}
-            <div className="update-panel-header">
-                <button className="update-panel-back" onClick={onBack} data-tooltip={t('saba_storage.back')} aria-label={t('saba_storage.back')} disabled={isExiting}>
-                    <Icon name="chevronLeft" size="sm" />
-                </button>
-                <h2 className="update-panel-title">{t('saba_storage.title', '사바 스토리지')}</h2>
-            </div>
-
+        // 설정의 한 탭으로 열린다: 제목(h3)은 설정 쪽이 다른 탭과 같은 모양으로 그린다
+        <div className="saba-storage">
             {/* 내부 탭 */}
             <div className="saba-storage-tabs" ref={tabsRef}>
                 <div className="saba-storage-tab-indicator" ref={indicatorRef} />
@@ -87,10 +76,17 @@ function SabaStorage({ onBack, isExiting, devMode, initialTab = 'components' }: 
                 ))}
             </div>
 
+            {/* 세 탭을 처음부터 모두 띄워 두고 숨기기만 한다: 탭을 바꿀 때마다 목록을 다시 받지 않는다 */}
             <div className="saba-storage-content">
-                {activeTab === 'components' && <ComponentsTab devMode={devMode} />}
-                {activeTab === 'modules' && <ModulesTab />}
-                {activeTab === 'extensions' && <ExtensionsTab />}
+                <div className="saba-storage-pane" hidden={activeTab !== 'components'}>
+                    <ComponentsTab devMode={devMode} />
+                </div>
+                <div className="saba-storage-pane" hidden={activeTab !== 'modules'}>
+                    <ModulesTab />
+                </div>
+                <div className="saba-storage-pane" hidden={activeTab !== 'extensions'}>
+                    <ExtensionsTab />
+                </div>
             </div>
         </div>
     );
@@ -1134,13 +1130,14 @@ type Described = Parameters<typeof localizedDescription>[0];
 function ExtensionsTab() {
     const { t, i18n } = useTranslation('gui');
     const openMenu = useContextMenu();
+    // 이 탭은 설정을 열 때 미리 띄워 두므로, 익스텐션 상태가 덜 채워져 있어도 빈 값으로 그린다
     const {
-        extensions,
+        extensions = [],
         refreshExtensions,
-        manifestExtensions,
-        availableUpdates,
+        manifestExtensions = [],
+        availableUpdates = [],
         manifestLoading,
-        installingIds,
+        installingIds = new Set<string>(),
         fetchManifest,
         installExtension,
         removeExtension,
@@ -1202,7 +1199,7 @@ function ExtensionsTab() {
             return;
         }
         setShowStore(true);
-        await fetchManifest();
+        await fetchManifest?.();
     }, [manifestExtensions, fetchManifest]);
 
     const handleConfirmRemove = useCallback(async () => {

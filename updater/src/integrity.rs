@@ -254,10 +254,16 @@ fn trust_at(records: &Path, official: &Path, component_key: &str, dir: &Path) ->
 
 /// 설치 기록에 없는 코드 파일이 폴더에 있나 (`__pycache__`는 데몬이 읽지 않으므로 뺀다)
 fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool {
-    // 기록의 경로와 폴더 경로가 다른 모양(상대 경로, `\\?\` 접두사)일 수 있어 둘 다 정규화해 비교한다
-    let recorded: BTreeSet<PathBuf> = recorded.keys().filter_map(|p| std::fs::canonicalize(p).ok()).collect();
-    let Ok(dir) = std::fs::canonicalize(dir) else { return false };
-    fn walk(dir: &Path, recorded: &BTreeSet<PathBuf>) -> bool {
+    // 기록의 경로와 폴더 경로가 다른 모양(상대 경로, `\\?\` 접두사, `/`, 대소문자)일 수 있다.
+    // 글자로 맞춘 모양과 실제 위치(canonicalize) 둘 다로 비교한다. 실제 위치만 쓰면 파일과 폴더가
+    // 다른 곳으로 풀리는 환경(Windows 앱 패키지의 AppData 가상화)에서 모든 코드가 기록에 없는 것으로 보인다
+    let mut known: BTreeSet<String> = BTreeSet::new();
+    for file in recorded.keys() {
+        let file = Path::new(file);
+        known.extend(path_key(file));
+        known.extend(std::fs::canonicalize(file).ok().and_then(|p| path_key(&p)));
+    }
+    fn walk(dir: &Path, known: &BTreeSet<String>) -> bool {
         let Ok(entries) = std::fs::read_dir(dir) else { return false };
         entries.flatten().any(|entry| {
             let path = entry.path();
@@ -267,7 +273,7 @@ fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool 
                 return true;
             }
             if kind.is_dir() {
-                return entry.file_name() != "__pycache__" && walk(&path, recorded);
+                return entry.file_name() != "__pycache__" && walk(&path, known);
             }
             let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
             let code = path
@@ -275,10 +281,26 @@ fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool 
                 .map(|e| e.to_string_lossy().to_ascii_lowercase())
                 .is_some_and(|e| CODE_SUFFIXES.contains(&e.as_str()))
                 || name.contains(".so.");
-            code && !recorded.contains(&path)
+            let is_known = || {
+                path_key(&path).is_some_and(|k| known.contains(&k))
+                    || std::fs::canonicalize(&path).ok().and_then(|p| path_key(&p)).is_some_and(|k| known.contains(&k))
+            };
+            code && !is_known()
         })
     }
-    walk(&dir, &recorded)
+    walk(dir, &known)
+}
+
+/// 경로를 비교용 글자로 (절대 경로, `\\?\` 접두사 제거, Windows는 `\`와 소문자로)
+fn path_key(path: &Path) -> Option<String> {
+    let abs = std::path::absolute(path).ok()?;
+    let text = abs.to_string_lossy();
+    let text = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else {
+        text.strip_prefix(r"\\?\").unwrap_or(&text).to_string()
+    };
+    Some(if cfg!(windows) { text.replace('/', r"\").to_lowercase() } else { text })
 }
 
 /// 기록된 모든 설치를 검사한다
@@ -566,6 +588,24 @@ mod tests {
         assert_eq!(trust("module-x"), Trust::Unverified);
         assert_eq!(trust("ext-none"), Trust::Unverified);
         assert_eq!(serde_json::to_value(Trust::Modified).unwrap(), "modified");
+    }
+
+    #[test]
+    fn records_in_another_spelling_still_cover_the_folder_code() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("m");
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), b"a").unwrap();
+        std::fs::write(dir.join("sub").join("helper.py"), b"b").unwrap();
+        let spelled = |rel: &str| {
+            let p = dir.join(rel).to_string_lossy().to_string();
+            if cfg!(windows) { p.replace(std::path::MAIN_SEPARATOR, "/").to_uppercase() } else { p }
+        };
+        let recorded: BTreeMap<String, String> =
+            [spelled("lifecycle.py"), spelled("sub/helper.py")].into_iter().map(|p| (p, String::new())).collect();
+        assert!(!has_unrecorded_code(&dir, &recorded));
+        std::fs::write(dir.join("extra.py"), b"c").unwrap();
+        assert!(has_unrecorded_code(&dir, &recorded));
     }
 
     #[test]

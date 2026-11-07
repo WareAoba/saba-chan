@@ -5,7 +5,7 @@ import type { TFunction } from 'i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import type { Server } from '../../stores/useServerStore';
 import { Icon } from '../Icon';
-import { MetricRing, MonitorPicker } from './MonitorRing';
+import { MetricRing, MiniRing, MonitorPicker } from './MonitorRing';
 import {
     buildRings,
     colorSlots,
@@ -167,6 +167,7 @@ export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorPro
                 <div className="monitor-chips">
                     {rings.map((r) => (
                         <span key={r.key} className="monitor-chip">
+                            <MiniRing ring={r} />
                             <span className="muted">{t(r.titleKey, r.titleVars)}</span>{' '}
                             <strong>
                                 {r.value}

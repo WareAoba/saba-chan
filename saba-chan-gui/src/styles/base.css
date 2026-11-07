@@ -29,35 +29,47 @@
 [data-overlay-scroll='on'] {
     scrollbar-width: none;
 }
+/* 손잡이: 채도를 낮춘 강조색 그라데이션. 스크롤할 때만 투명도만 바꿔 나타났다 사라진다 (사용자 11-07).
+   내용 위에 떠서 자리를 차지하지 않고, 보일 때만 끌 수 있다 */
 .ovs-thumb {
     position: fixed;
     top: 0;
     left: 0;
     z-index: 100000;
     border-radius: var(--r-pill);
-    background: var(--scrollbar-thumb-hover);
     opacity: 0;
     pointer-events: none;
-    transition:
-        opacity var(--dur) var(--ease),
-        background-color var(--dur-fast) var(--ease);
+    transition: opacity var(--dur) var(--ease);
 }
 .ovs-thumb.ovs-y {
     width: 6px;
     margin-left: calc(-1 * var(--sp-1-5));
+    background: linear-gradient(
+        in oklch to bottom,
+        color-mix(in oklch, var(--accent) 35%, var(--text-3)),
+        color-mix(in oklch, var(--info) 30%, var(--text-3))
+    );
 }
 .ovs-thumb.ovs-x {
     height: 6px;
     margin-top: calc(-1 * var(--sp-1-5));
+    background: linear-gradient(
+        in oklch to right,
+        color-mix(in oklch, var(--accent) 35%, var(--text-3)),
+        color-mix(in oklch, var(--info) 30%, var(--text-3))
+    );
 }
 .ovs-thumb.show {
-    opacity: 0.7;
+    opacity: 0.45;
     pointer-events: auto;
 }
+/* 올리거나 끌 때도 끝까지 불투명하게 하지 않는다 */
 .ovs-thumb.show:hover,
 .ovs-thumb.drag {
-    opacity: 1;
-    background: var(--scrollbar-thumb-active);
+    opacity: 0.7;
+}
+[data-no-transitions='true'] .ovs-thumb {
+    transition: none;
 }
 
 input,

@@ -7,7 +7,7 @@ import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SabaFail } from '../ui/SabaArt';
-import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { LinkedText } from '../ui/ScreenLink';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import {
@@ -185,9 +185,8 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
     const numberField = (key: keyof GuildDraft, label: string, hint: ReactNode, step: number, bad: boolean) => (
         <label className="mt-field">
             <span>{label}</span>
-            <input
+            <SabaNumberInput
                 className="input mt-num"
-                type="number"
                 min={step}
                 step={step}
                 value={(draft[key] ?? '') as string | number}
@@ -417,9 +416,8 @@ function MillionTokensField({ label, unit, hint, placeholder, error, tokens, onC
         <label className="mt-field">
             <span>{label}</span>
             <span className="mt-inline">
-                <input
+                <SabaNumberInput
                     className="input mt-num"
-                    type="number"
                     min={0.1}
                     step={0.1}
                     value={text}

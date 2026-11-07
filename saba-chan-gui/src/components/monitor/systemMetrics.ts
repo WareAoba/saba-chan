@@ -103,7 +103,7 @@ export interface RingPill {
     unknown?: boolean;
 }
 
-/** 원 종류: 색 조각이 아닌 전체 몫(`__all`)의 그라데이션 색을 고른다 */
+/** 원 종류: 서버로 나누지 않는 몫의 바탕색을 고른다 (MonitorRing.css `--ring-base`) */
 export type RingTone = 'cpu' | 'memory' | 'gpu' | 'disk' | 'net';
 
 /** 원형 그래프 하나 */
@@ -160,7 +160,7 @@ export function colorSlots(orderedIds: string[]) {
 const seriesColor = (slot: number | null | undefined) => (slot ? `var(--series-${slot})` : 'var(--text-2)');
 export const OTHERS_COLOR = 'var(--text-3)';
 export const IDLE_COLOR = 'var(--chart-idle)';
-/** 인스턴스로 나누지 않는 전체 몫: 그리는 쪽이 원 종류(tone)의 그라데이션으로 칠한다 */
+/** 인스턴스로 나누지 않는 전체 몫: 그리는 쪽이 원 종류(tone)의 바탕색으로 칠한다 */
 export const ALL_COLOR = 'var(--text-2)';
 
 /** 인스턴스 값들을 색 조각으로. 계열색 밖 인스턴스는 한 조각("기타 인스턴스")으로 합친다 */
@@ -395,7 +395,7 @@ export function buildRings(
             rings.push({
                 key: gpus.length > 1 ? `gpu:${i}` : 'gpu',
                 titleKey: g.name ? 'monitor.gpu_named' : 'monitor.gpu',
-                titleVars: { name: g.name },
+                titleVars: { name: shortGpuName(g.name) },
                 value: percentValue(util),
                 unit: '%',
                 tone: 'gpu',
@@ -541,4 +541,21 @@ export function portRows(snap: MetricsSnapshot | null | undefined, slots: Record
     return (snap.net_trace.ports || [])
         .map((p) => ({ ...p, name: names[p.instance_id] || p.instance_id, color: seriesColor(slots[p.instance_id]) }))
         .sort((a, b) => order(a.instance_id) - order(b.instance_id) || a.instance_id.localeCompare(b.instance_id) || a.port - b.port);
+}
+
+/**
+ * GPU 이름에서 제조사·상표 낱말을 빼고 모델만 남긴다 (사용자 11-07: 이름 전체를 보이지 않는다).
+ * "NVIDIA GeForce RTX 5090" → "RTX 5090", "AMD Radeon RX 7900 XTX" → "RX 7900 XTX", "Intel(R) UHD Graphics 770" → "UHD 770"
+ */
+export function shortGpuName(name: string | null | undefined): string | null | undefined {
+    if (!name) return name;
+    const short = name
+        .replace(/\((R|TM)\)|®|™/gi, '')
+        .replace(/\b(NVIDIA|GeForce|AMD|Intel|Graphics|Corporation|Apple)\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        // 모델 번호가 뒤에 있을 때만 Radeon을 뺀다 (내장 그래픽 "Radeon"은 그대로)
+        .replace(/^Radeon\s+(?=\S)/i, '')
+        .trim();
+    return short || name;
 }
