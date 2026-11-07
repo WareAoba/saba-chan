@@ -20,7 +20,7 @@ export interface AuditEntry {
 }
 
 const SOURCES = ['gui', 'cli', 'api', 'discord', 'chatbot', 'schedule', 'daemon', 'web', 'remote', 'mcp', 'restart'];
-const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin', 'backup', 'restore', 'remote'];
+const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin', 'backup', 'restore', 'remote', 'crash'];
 export const PERIODS = ['all', 'today', '7d', '30d', 'custom'];
 const DAYS_BACK: Record<string, number> = { today: 0, '7d': 6, '30d': 29 }; // 오늘을 포함해 며칠
 
@@ -96,8 +96,30 @@ export function auditWhat(e: AuditEntry, t: TFunction) {
     return [action, e.daemon, detail].filter(Boolean).join(' · ');
 }
 
-/** 한 건 → 결과 칩. 예약 백업은 서버가 꺼져 있으면 409로 건너뛴다 */
+/** 작업 기록 거르기: 전체 · 시작·정지·재시작 · 크래시 · 그 외 명령 · 실패 */
+export const FILTERS = ['all', 'power', 'crash', 'command', 'failed'];
+const POWER = ['start', 'stop', 'restart'];
+const skipped = (e: AuditEntry) => e.action === 'backup' && e.status === 409 && !e.code;
+
+/** 한 건이 고른 거르기에 드는지. 실패는 크래시와 건너뛴 예약 백업을 빼고 센다 */
+export function auditMatches(e: AuditEntry, filter: string) {
+    switch (filter) {
+        case 'power':
+            return POWER.includes(e.action);
+        case 'crash':
+            return e.action === 'crash';
+        case 'command':
+            return !POWER.includes(e.action) && e.action !== 'crash';
+        case 'failed':
+            return !e.ok && e.action !== 'crash' && !skipped(e);
+        default:
+            return true;
+    }
+}
+
+/** 한 건 → 결과 칩. 예약 백업은 서버가 꺼져 있으면 409로 건너뛴다. 크래시는 데몬이 남긴 종료 판정이다 */
 export function auditResult(e: AuditEntry, t: TFunction) {
+    if (e.action === 'crash') return { tone: 'stop', label: t('audit.crashed') };
     if (e.ok) return { tone: 'ok', label: t('audit.ok') };
     if (e.action === 'backup' && e.status === 409 && !e.code)
         return { tone: 'idle', label: t('audit.skipped_stopped') };

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ActivityPage, AuditLog } from '../components/servers/AuditTab';
 import i18n from '../i18n';
@@ -27,7 +27,19 @@ describe('AuditLog', () => {
         vi.useRealTimers();
     });
 
-    it('서버별로 누가·무엇을·어디서·성공 여부를 보이고, 꽉 차면 더 불러온다', async () => {
+    it('서버별로 누가·무엇을·어디서·성공 여부를 보이고, 목록 끝까지 내리면 더 불러온다', async () => {
+        // 목록 끝 표시가 보인다고 알리는 IntersectionObserver
+        const seen: Array<() => void> = [];
+        vi.stubGlobal(
+            'IntersectionObserver',
+            class {
+                constructor(private cb: (e: Array<{ isIntersecting: boolean }>) => void) {}
+                observe() {
+                    seen.push(() => this.cb([{ isIntersecting: true }]));
+                }
+                disconnect() {}
+            },
+        );
         window.api.auditList = vi.fn(async ({ limit }) => ({
             entries: Array.from({ length: limit }, (_, i) =>
                 entry(
@@ -49,11 +61,14 @@ describe('AuditLog', () => {
         render(<AuditLog instanceId="mc-1" />);
         expect(await screen.findByText('Command · say hi')).toBeTruthy();
         expect(screen.getByText('Discord · aoba · Village')).toBeTruthy();
-        expect(screen.getAllByText('Failed').length).toBe(99);
+        expect(within(document.querySelector('.audit-list') as HTMLElement).getAllByText('Failed').length).toBe(99);
         expect(screen.queryByText('Minecraft')).toBeNull(); // 서버별 화면에는 서버 이름을 적지 않는다
         expect(window.api.auditList).toHaveBeenLastCalledWith({ limit: 100, instance: 'mc-1' });
-        fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+        expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull(); // 더 보기 단추는 없다
+        await waitFor(() => expect(seen.length).toBeGreaterThan(0));
+        act(() => seen.at(-1)?.());
         await waitFor(() => expect(window.api.auditList).toHaveBeenLastCalledWith({ limit: 200, instance: 'mc-1' }));
+        vi.unstubAllGlobals();
     });
 
     it('원격 데몬에 중계한 조작은 데몬 이름과 요청을 적는다', async () => {
@@ -76,7 +91,7 @@ describe('AuditLog', () => {
         expect(await screen.findByText('Remote daemon · Game PC · POST /api/instance/x/start')).toBeTruthy();
     });
 
-    it('전체 기록은 서버 이름을 적고, 적게 오면 더 보기가 없다', async () => {
+    it('전체 기록은 서버 이름을 적고, 적게 오면 더 불러오지 않는다', async () => {
         window.api.auditList = vi
             .fn()
             .mockResolvedValue({ entries: [entry({ source: 'gui', user: undefined, guild: undefined })] });
@@ -84,7 +99,7 @@ describe('AuditLog', () => {
         expect(await screen.findByText(/Minecraft/)).toBeTruthy();
         expect(screen.getByText('App')).toBeTruthy();
         expect(window.api.auditList).toHaveBeenCalledWith({ limit: 100 });
-        expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+        expect(document.querySelector('.audit-end')).toBeNull();
     });
 
     it('데몬이 이름을 주면 디스코드 id 대신 이름을 보인다', async () => {
@@ -111,10 +126,10 @@ describe('AuditLog', () => {
         render(<AuditLog instanceId="mc-1" />);
         expect(await screen.findByText('Backup')).toBeTruthy();
         expect(screen.getByText('Skipped (server off)')).toBeTruthy();
-        expect(screen.queryByText('Failed')).toBeNull();
+        expect(within(document.querySelector('.audit-list') as HTMLElement).queryByText('Failed')).toBeNull();
     });
 
-    it('스크롤해도 새로고침·기간·더 보기는 목록 밖에 있어 늘 누를 수 있다', async () => {
+    it('스크롤해도 새로고침·기간·거르기는 목록 밖에 있어 늘 누를 수 있다', async () => {
         window.api.auditList = vi.fn(async ({ limit }) => ({
             entries: Array.from({ length: limit }, () => entry()),
         })) as never;
@@ -122,9 +137,8 @@ describe('AuditLog', () => {
         await screen.findAllByText('Command · say hi');
         const scroll = document.querySelector('.audit-scroll') as HTMLElement;
         expect(scroll.querySelector('.audit-list')).not.toBeNull();
-        for (const name of ['Refresh', 'Show more', 'All']) {
-            expect(scroll.contains(screen.getByRole(name === 'All' ? 'tab' : 'button', { name }))).toBe(false);
-        }
+        expect(scroll.contains(screen.getByRole('button', { name: 'Refresh' }))).toBe(false);
+        for (const tab of screen.getAllByRole('tab', { name: 'All' })) expect(scroll.contains(tab)).toBe(false);
     });
 
     it('기간을 고르면 그 기간만 처음부터 다시 불러온다', async () => {
@@ -199,6 +213,40 @@ describe('AuditLog', () => {
         expect(message).toContain(i18n.t('gui:data_transfer.err_write_failed'));
         expect(message).not.toContain('Could not write');
     });
+    it('거르기: 시작·정지·재시작, 크래시, 그 외 명령, 실패', async () => {
+        window.api.auditList = vi.fn().mockResolvedValue({
+            entries: [
+                entry({ action: 'start', command: undefined, args: undefined }),
+                entry({
+                    action: 'crash',
+                    source: 'daemon',
+                    command: undefined,
+                    args: undefined,
+                    ok: false,
+                    code: 'crash_file',
+                }),
+                entry({ command: 'kick', args: undefined, ok: false, status: 400 }),
+                entry(),
+            ],
+        }) as never;
+        render(<AuditLog instanceId="mc-1" />);
+        await screen.findByText('Command · say hi');
+        const rows = () => document.querySelectorAll('.audit-list li').length;
+        expect(rows()).toBe(4);
+        expect(screen.getByText('A crash report file appeared')).toBeTruthy();
+        const pick = async (name: string, n: number) => {
+            fireEvent.click(screen.getByRole('tab', { name }));
+            await waitFor(() => expect(rows()).toBe(n));
+        };
+        await pick('Start · Stop · Restart', 1);
+        await pick('Crashes', 1);
+        expect(screen.getByText('Crashed')).toBeTruthy();
+        await pick('Other commands', 2);
+        await pick('Failed', 1);
+        expect(screen.getByText('Command · kick')).toBeTruthy();
+        expect(window.api.auditList).toHaveBeenCalledTimes(1); // 거르기는 다시 부르지 않는다
+    });
+
     it('작업 기록 페이지: 왼쪽 서버를 누르면 그 서버 기록만, 서버 밖 설정 기록은 숨긴다', async () => {
         useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Minecraft', module: 'minecraft' }] as Server[] });
         window.api.auditList = vi.fn().mockResolvedValue({

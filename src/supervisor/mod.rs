@@ -3122,6 +3122,16 @@ impl Supervisor {
             "noteCode": event.note_code,
             "noteArgs": event.note_args,
         }));
+        // 크래시·예기치 않은 종료는 작업 기록에도 남긴다 (출처는 데몬 자신, 이유는 근거 코드)
+        if matches!(event.verdict.kind, crash::ExitKind::Crash | crash::ExitKind::UnknownExit) {
+            crate::audit::log().record(&crate::audit::Origin::new("daemon"), &crate::audit::Event {
+                action: "crash",
+                instance_id,
+                instance: Some(instance_name),
+                code: Some(evidence_code),
+                ..Default::default()
+            });
+        }
         if !self.exit_events.contains_key(instance_id) {
             let saved = self.saved_exit_events(instance_id);
             self.exit_events.insert(instance_id.to_string(), saved.into());
@@ -4413,6 +4423,10 @@ mod tests {
         assert_eq!(kind("reattached"), Some(crash::ExitKind::UnknownExit), "a server running before the daemon restart did not fail to start");
         assert_eq!(supervisor.exit_events("off")[0].note.as_deref(), Some("auto_restart is off"));
         assert_eq!(supervisor.exit_events("off")[0].note_code.as_deref(), Some("auto_restart_off"));
+        // 크래시·예기치 않은 종료만 작업 기록에 crash로 남는다
+        let crashed = |id: &str| crate::audit::log().recent(10, Some(id)).iter().any(|v| v["action"] == "crash" && v["ok"] == false);
+        assert!(crashed("crash") && crashed("killed") && crashed("off"));
+        assert!(!crashed("clean") && !crashed("stopped"));
         let mut sub = crate::events::bus().subscribe(None);
         supervisor.record_restart_failure("crash", 0, "no java".into());
         let failed = supervisor.exit_events("crash").last().cloned().unwrap();

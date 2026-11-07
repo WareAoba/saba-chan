@@ -5,11 +5,13 @@ import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import {
     type AuditEntry,
+    auditMatches,
     auditRange,
     auditReason,
     auditResult,
     auditWhat,
     auditWho,
+    FILTERS,
     isInstanceEntry,
     PERIODS,
 } from '../../utils/audit';
@@ -38,8 +40,8 @@ const EXPORT_ERRORS = ['INVALID_PATH', 'WRITE_FAILED']; // data_transfer.err_* �
 
 /**
  * 감사 로그 (데몬 GET /api/audit, 최신이 먼저). instanceId가 있으면 그 서버 것만,
- * 없으면 모든 서버를 보이고 서버 이름도 적는다. 머리(새로고침·기간·내보내기)와 더 보기는
- * 스크롤 영역 밖에 둔다. 내보내기는 보고 있는 기간·서버 그대로 데몬이 CSV로 쓴다.
+ * 없으면 모든 서버를 보이고 서버 이름도 적는다. 머리(새로고침·기간·거르기·내보내기)는 스크롤 영역 밖에 두고,
+ * 목록 끝까지 내리면 다음 쪽을 저절로 불러온다. 거르기는 받은 기록 안에서 한다. 내보내기는 보고 있는 기간·서버 그대로 데몬이 CSV로 쓴다.
  */
 export function AuditLog({ instanceId }: { instanceId?: string }) {
     const { t, i18n } = useTranslation('gui');
@@ -52,6 +54,7 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [period, setPeriod] = useState('all');
+    const [filter, setFilter] = useState('all');
     const [from, setFrom] = useState('');
     const [to, setTo] = useState('');
     const [exporting, setExporting] = useState(false);
@@ -127,7 +130,24 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
             second: '2-digit',
         });
     // 받은 건수가 요청보다 적으면 더 없다
-    const more = entries && rawCount >= limit && limit < MAX;
+    const more = !!entries && rawCount >= limit && limit < MAX;
+    const shown = entries?.filter((e) => auditMatches(e, filter)) ?? null;
+
+    // 목록 끝 표시가 보이면 다음 쪽을 불러온다 (거른 결과가 짧아 끝이 계속 보이면 상한까지 이어서)
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const endRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const end = endRef.current;
+        if (!end || !more || loading || typeof IntersectionObserver === 'undefined') return;
+        const io = new IntersectionObserver(
+            (seen) => {
+                if (seen.some((x) => x.isIntersecting)) setLimit((l) => Math.min(l + PAGE, MAX));
+            },
+            { root: scrollRef.current, rootMargin: '120px' },
+        );
+        io.observe(end);
+        return () => io.disconnect();
+    }, [more, loading]);
 
     return (
         <section className="dc-card audit-card" aria-label={t('audit.title')}>
@@ -176,20 +196,28 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
                     </span>
                 )}
             </div>
+            <div className="audit-period">
+                <Segmented
+                    items={FILTERS.map((id) => ({ id, label: t(`audit.filter_${id}`) }))}
+                    value={filter}
+                    onChange={setFilter}
+                    ariaLabel={t('audit.filter')}
+                />
+            </div>
             {error && (
                 <div className="notice tone-warn" role="alert">
                     <Icon name="alertTriangle" size="sm" />
                     <span>{error}</span>
                 </div>
             )}
-            <div className="audit-scroll">
-                {entries === null ? (
+            <div className="audit-scroll" ref={scrollRef}>
+                {shown === null ? (
                     !error && <SabaSpinner />
-                ) : entries.length === 0 ? (
+                ) : shown.length === 0 && !more ? (
                     <p className="muted">{t('audit.empty')}</p>
                 ) : (
                     <ul className="dc-list audit-list">
-                        {entries.map((e, i) => (
+                        {shown.map((e, i) => (
                             <li
                                 // biome-ignore lint/suspicious/noArrayIndexKey: 읽기 전용 목록이라 순서가 바뀌지 않는다
                                 key={`${e.ts}-${i}`}
@@ -211,17 +239,12 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
                         ))}
                     </ul>
                 )}
+                {more && (
+                    <div ref={endRef} className="audit-end">
+                        {loading && <SabaSpinner size="sm" />}
+                    </div>
+                )}
             </div>
-            {more && (
-                <button
-                    type="button"
-                    className="btn btn-ghost btn-sm audit-more"
-                    onClick={() => setLimit((l) => Math.min(l + PAGE, MAX))}
-                    disabled={loading}
-                >
-                    {t('audit.more')}
-                </button>
-            )}
         </section>
     );
 }

@@ -4141,8 +4141,10 @@ button.appbar-preflight {
     font-size: var(--fs-sm);
     font-variant-numeric: tabular-nums;
 }
-.audit-more {
-    align-self: center;
+.audit-end {
+    display: grid;
+    place-items: center;
+    min-height: var(--sp-6);
 }
 /* 머리·기간·더 보기는 제자리에 두고 목록만 스크롤한다 */
 .audit-card {
