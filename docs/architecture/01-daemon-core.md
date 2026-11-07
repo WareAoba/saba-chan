@@ -480,7 +480,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 
 - 헤더: `Authorization: Bearer <node_token>`, `x-request-timestamp`, `x-request-nonce`, `x-request-signature`.
 - 서명값: `HMAC-SHA256(secret, "METHOD\npath\nts\nnonce\nbody")`.
-- 고정 헤더 `X-Saba-Client: 1`이 모든 relay 요청에 붙는다. timeout은 5초다(`relay.rs:69-81`).
+- 고정 헤더 `X-Saba-Client: 1`이 모든 relay 요청에 붙는다. timeout은 5초다(`relay.rs:69-81`). 클라이언트는 함께 쓰고 10분(`RELAY_CLIENT_LIFETIME`)마다 새로 만든다: 시스템 프록시는 만들 때 읽으므로 프록시를 바꾸면 그 안에 따른다.
 
 #### 업데이트 (ipc/updates.rs)
 
