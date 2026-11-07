@@ -1336,6 +1336,7 @@
     "perm_line_down": "Move the operators line down",
     "perm_line_follow": "follows the operators line",
     "perm_swap": "Swap permissions",
+    "perm_ladder_reset": "Reset to defaults",
     "perm_swap_cancel": "Cancel",
     "perm_swap_pick": "Pick two levels to swap (0/2)",
     "perm_swap_pick_more": "{{name}} ⇄ ? · pick one more level (1/2)",

@@ -676,6 +676,20 @@ describe('권한 화면', () => {
         expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '1002', 2);
     });
 
+    it('레벨 편집: 기본값으로 초기화하면 기본 레벨 사다리와 프리셋 레벨로 되돌려 저장한다', async () => {
+        perm = base({ ladder: [{ id: 3 }, { id: 2 }, { id: 10, name: 'VIP' }, { id: 1 }, { id: 0, name: 'Visitor' }, { id: -1 }] });
+        await openPeople();
+        fireEvent.click(screen.getByRole('button', { name: /Edit levels/ }));
+        fireEvent.click(screen.getByRole('button', { name: /Reset to defaults/ }));
+        expect(screen.queryByRole('listitem', { name: 'VIP' })).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await flush();
+        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
+            ladder: [{ id: 3 }, { id: 2 }, { id: 1 }, { id: 0 }, { id: -1 }],
+            commandLevels: { 'mc-2/stop': null, 'mc-2/server.stop': null },
+        });
+    });
+
     it('레벨 편집: 블록을 끌어 순서를 바꾸고, 더하고 지운 뒤 저장한다', async () => {
         perm = base({ ladder: [{ id: 3 }, { id: 2 }, { id: 10, name: 'VIP' }, { id: 1 }, { id: 0 }, { id: -1 }] });
         await openPeople();
@@ -746,6 +760,12 @@ describe('권한 화면', () => {
         expect(screen.getByRole('button', { name: /Swap/ }).querySelector('svg')).not.toBeNull();
         dragTo(within(admin).getByRole('button', { name: 'Create server' }), screen.getByRole('listitem', { name: 'User' }));
         expect(within(screen.getByRole('listitem', { name: 'User' })).getByRole('button', { name: 'Create server' })).toBeInTheDocument();
+        // 노란 테두리는 저장하지 않은 변경: 옮긴 칩에 붙고, 제자리로 돌려 놓으면 사라진다
+        const moved = () => within(screen.getByRole('listitem', { name: 'User' })).getByRole('button', { name: 'Create server' });
+        expect(moved()).toHaveClass('is-changed');
+        dragTo(moved(), screen.getByRole('listitem', { name: 'Admin' }));
+        expect(within(screen.getByRole('listitem', { name: 'Admin' })).getByRole('button', { name: 'Create server' })).not.toHaveClass('is-changed');
+        dragTo(within(screen.getByRole('listitem', { name: 'Admin' })).getByRole('button', { name: 'Create server' }), screen.getByRole('listitem', { name: 'User' }));
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { commandLevels: { 'instance.create': 1 } });

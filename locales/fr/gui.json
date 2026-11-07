@@ -1336,6 +1336,7 @@
     "perm_line_down": "Descendre la ligne des opérateurs",
     "perm_line_follow": "suit la ligne des opérateurs",
     "perm_swap": "Échanger les droits",
+    "perm_ladder_reset": "Réinitialiser par défaut",
     "perm_swap_cancel": "Annuler",
     "perm_swap_pick": "Choisissez deux niveaux à échanger (0/2)",
     "perm_swap_pick_more": "{{name}} ⇄ ? · choisissez encore un niveau (1/2)",

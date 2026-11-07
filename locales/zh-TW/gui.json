@@ -1336,6 +1336,7 @@
     "perm_line_down": "把可操作線下移",
     "perm_line_follow": "跟隨可操作線",
     "perm_swap": "互換權限",
+    "perm_ladder_reset": "重設為預設",
     "perm_swap_cancel": "取消",
     "perm_swap_pick": "選擇要互換的兩個等級 (0/2)",
     "perm_swap_pick_more": "{{name}} ⇄ ? · 再選一個等級 (1/2)",

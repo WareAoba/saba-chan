@@ -2885,17 +2885,19 @@ button.activity-line:hover {
 .dc-ladder {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-1);
+    gap: var(--sp-2);
     margin: 0;
     padding: 0;
     list-style: none;
 }
 .dc-ladder-block {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-2);
-    min-height: 40px;
-    padding: var(--sp-1) var(--sp-2);
+    /* 세로로 여유 있게 (사용자 지정 2026-11-07) */
+    min-height: 48px;
+    padding: var(--sp-2-5) var(--sp-3);
     border: 1px solid var(--line);
     border-left: 4px solid var(--text-3);
     border-radius: var(--r-md);
@@ -3012,6 +3014,9 @@ button.activity-line:hover {
     flex-basis: 100%;
     flex-wrap: wrap;
     gap: var(--sp-1);
+    /* 칩 세 줄까지 보이고 넘치면 접는다 (+N을 누르면 편다) */
+    max-height: calc(3 * 1.3em * 1.15 + 3 * var(--sp-1) + 6 * var(--sp-0-5) + 6px);
+    overflow: hidden;
     padding-left: calc(var(--sp-8) + var(--sp-4));
     font-size: var(--fs-sm);
 }
@@ -3036,8 +3041,10 @@ button.activity-line:hover {
 button.dc-ladder-chip.is-fixed {
     cursor: default;
 }
-.dc-ladder-chip.is-moved {
+/* 저장하지 않은 변경 (사용자 지정 2026-11-07) */
+.dc-ladder-chip.is-changed {
     border-color: var(--warn);
+    box-shadow: 0 0 0 1px var(--warn);
 }
 .dc-ladder-chip.is-dragging {
     position: relative;
@@ -3061,10 +3068,10 @@ button.dc-ladder-chip.is-fixed {
     pointer-events: none;
 }
 .dc-ladder-block.is-insert-before::before {
-    top: calc(-1 * var(--sp-0-5) - 2px);
+    top: calc(-1 * var(--sp-1) - 2px);
 }
 .dc-ladder-block.is-insert-after::after {
-    bottom: calc(-1 * var(--sp-0-5) - 2px);
+    bottom: calc(-1 * var(--sp-1) - 2px);
 }
 .dc-ladder-chip.is-fixed,
 .dc-ladder-chip.is-more {

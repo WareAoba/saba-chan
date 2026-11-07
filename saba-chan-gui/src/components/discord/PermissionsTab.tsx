@@ -1174,9 +1174,6 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
                 <span>
                     <span className="dc-dot tone-info" /> {t('discord.kind_admin')}
                 </span>
-                <span>
-                    <span className="dc-cmd-chip is-moved is-legend">{t('discord.perm_legend_moved')}</span>
-                </span>
             </div>
 
             <div className="dc-field-row">

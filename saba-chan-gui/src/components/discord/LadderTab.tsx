@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
 import { SaveBar } from './ChatbotView';
@@ -11,7 +11,6 @@ import type { DiscordNode } from './types';
 
 const keyOf = (level: L.LadderLevel) => (level.id !== undefined ? `id-${level.id}` : level.key);
 const isCustom = L.isCustomLevel;
-const MAX_CHIPS = 12; // 칸마다 보이는 칩 수 (넘치면 +N)
 
 interface LadderTabProps {
     node: DiscordNode;
@@ -88,6 +87,36 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
         setMoves((m) => ({ ...m, ...Object.fromEntries(chip.items.filter((i) => !i.fixed).map((i) => [i.key as string, level])) }));
     };
     const chipOver = chipDrag.over === null ? null : Number(chipDrag.over);
+    // 노란 테두리는 "저장하지 않은 변경" (사용자 지정 2026-11-07): 저장된 레벨과 초안 레벨이 다른 명령
+    const savedLevel = new Map(items.map((it) => [it.key as string, it.level]));
+    const unsaved = (c: L.StairChip) => c.items.some((it) => savedLevel.get(it.key as string) !== it.level);
+    // 칩은 숨기지 않는다. 카드가 칩 세 줄을 넘을 때만 접고 "+N"을 누르면 그 카드의 칩을 모두 편다
+    const chipBoxes = useRef(new Map<string, HTMLElement>());
+    const [hidden, setHidden] = useState<Record<string, number>>({});
+    const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+    useLayoutEffect(() => {
+        const next: Record<string, number> = {};
+        for (const [k, box] of chipBoxes.current) {
+            if (expanded[k]) continue;
+            // 칸 위에서 잰 칩 자리가 보이는 높이를 넘으면 접힌 칩이다
+            const top = box.getBoundingClientRect().top;
+            const limit = box.clientHeight;
+            const n = [...box.querySelectorAll<HTMLElement>('.dc-ladder-chip')].filter(
+                (el) => el.getBoundingClientRect().top - top >= limit,
+            ).length;
+            if (n > 0) next[k] = n;
+        }
+        if (JSON.stringify(next) !== JSON.stringify(hidden)) setHidden(next);
+    });
+    const resetToDefault = () => {
+        flip();
+        setDraft(L.ladderOf(null));
+        setSteps([]);
+        setChoosing(false);
+        setPicked(null);
+        // 명령은 프리셋 레벨로 (저장하면 명령별 레벨을 지운다)
+        setMoves(Object.fromEntries(items.filter((it) => !it.fixed).map((it) => [it.key as string, it.preset as number])));
+    };
     const instanceName = (id?: string) => board?.instances?.find((i) => i.id === id)?.name || id;
     const chipLabel = (c: L.StairChip) => (c.instance ? `${c.title} · ${instanceName(c.instance)}` : c.title || c.name);
     // 마지막 맞바꾸기 (두 칸이 아직 초안에 있을 때만 알린다)
@@ -224,8 +253,14 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                                     )}
                                 </span>
                                 {L.swappable(level) && (
-                                    <span className="dc-ladder-chips">
-                                        {own.slice(0, MAX_CHIPS).map((c) => (
+                                    <span
+                                        className={clsx('dc-ladder-chips', { 'is-expanded': expanded[String(keyOf(level))] })}
+                                        ref={(el) => {
+                                            if (el) chipBoxes.current.set(String(keyOf(level)), el);
+                                            else chipBoxes.current.delete(String(keyOf(level)));
+                                        }}
+                                    >
+                                        {own.map((c) => (
                                             <button
                                                 type="button"
                                                 key={c.id}
@@ -233,7 +268,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                                                 aria-label={chipLabel(c)}
                                                 className={clsx('dc-ladder-chip', {
                                                     'is-fixed': c.fixed,
-                                                    'is-moved': c.items.some((it) => moves[it.key as string] !== undefined),
+                                                    'is-changed': unsaved(c),
                                                     'is-dragging': chipDrag.dragging === c.id,
                                                 })}
                                                 disabled={choosing}
@@ -243,15 +278,19 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                                                 {chipLabel(c)}
                                             </button>
                                         ))}
-                                        {own.length > MAX_CHIPS && (
-                                            <span className="dc-ladder-chip is-more">
-                                                {t('discord.perm_swap_more', { count: own.length - MAX_CHIPS })}
-                                            </span>
-                                        )}
                                         {own.length === 0 && (
                                             <span className="muted">{t('discord.perm_swap_none')}</span>
                                         )}
                                     </span>
+                                )}
+                                {L.swappable(level) && (hidden[String(keyOf(level))] || 0) > 0 && (
+                                    <button
+                                        type="button"
+                                        className="dc-ladder-chip is-more"
+                                        onClick={() => setExpanded((x) => ({ ...x, [String(keyOf(level))]: true }))}
+                                    >
+                                        {t('discord.perm_swap_more', { count: hidden[String(keyOf(level))] })}
+                                    </button>
                                 )}
                             </li>
                         );
@@ -259,6 +298,9 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                     })}
                 </ol>
                 <div className="dc-ladder-swapbar">
+                    <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={resetToDefault}>
+                        <Icon name="undo" size="sm" /> {t('discord.perm_ladder_reset')}
+                    </button>
                     <button
                         type="button"
                         className={clsx('btn btn-sm', choosing ? 'btn-ghost' : 'btn-secondary')}

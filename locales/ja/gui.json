@@ -1336,6 +1336,7 @@
     "perm_line_down": "操作できる人の線を下へ",
     "perm_line_follow": "操作できる人の線に従う",
     "perm_swap": "権限を入れ替える",
+    "perm_ladder_reset": "既定値に戻す",
     "perm_swap_cancel": "やめる",
     "perm_swap_pick": "入れ替えるレベルを2つ選んでください (0/2)",
     "perm_swap_pick_more": "{{name}} ⇄ ? · もう1つ選んでください (1/2)",

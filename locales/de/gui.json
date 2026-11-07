@@ -1336,6 +1336,7 @@
     "perm_line_down": "Bediener-Linie nach unten",
     "perm_line_follow": "folgt der Bediener-Linie",
     "perm_swap": "Rechte tauschen",
+    "perm_ladder_reset": "Auf Standard zurücksetzen",
     "perm_swap_cancel": "Abbrechen",
     "perm_swap_pick": "Wähle zwei Stufen zum Tauschen (0/2)",
     "perm_swap_pick_more": "{{name}} ⇄ ? · wähle noch eine Stufe (1/2)",

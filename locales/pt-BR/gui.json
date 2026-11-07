@@ -1336,6 +1336,7 @@
     "perm_line_down": "Descer a linha de operadores",
     "perm_line_follow": "segue a linha de operadores",
     "perm_swap": "Trocar permissões",
+    "perm_ladder_reset": "Restaurar padrões",
     "perm_swap_cancel": "Cancelar",
     "perm_swap_pick": "Escolha dois níveis para trocar (0/2)",
     "perm_swap_pick_more": "{{name}} ⇄ ? · escolha mais um nível (1/2)",

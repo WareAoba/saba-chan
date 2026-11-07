@@ -1336,6 +1336,7 @@
     "perm_line_down": "조작 가능 줄 아래로",
     "perm_line_follow": "조작 가능 줄을 따름",
     "perm_swap": "권한 맞바꾸기",
+    "perm_ladder_reset": "기본값으로 초기화",
     "perm_swap_cancel": "그만두기",
     "perm_swap_pick": "바꿀 레벨 두 개를 골라요 (0/2)",
     "perm_swap_pick_more": "{{name}} ⇄ ? · 레벨을 하나 더 골라요 (1/2)",
