@@ -1,7 +1,7 @@
 //! `agent` — 이 PC의 AI 에이전트(Claude Code·Codex)에 로컬 MCP(`mcp`)를 등록·해제한다
 //!
-//! Claude Code: `claude mcp add --scope user --transport stdio saba-chan -- <이 CLI> mcp` (사용자 범위)
-//! Codex: `~/.codex/config.toml`의 `[mcp_servers.saba-chan]` (다른 내용은 그대로 둔다)
+//! Claude Code: `claude mcp add --scope user --transport stdio saba-chan-local -- <이 CLI> mcp` (사용자 범위)
+//! Codex: `~/.codex/config.toml`의 `[mcp_servers.saba-chan-local]` (다른 내용은 그대로 둔다)
 
 use crate::cli::AgentCmd;
 use crate::ctx::Ctx;
@@ -10,8 +10,9 @@ use crate::output::{self, s};
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
-/// 등록 이름 (두 에이전트 공통)
-pub const NAME: &str = "saba-chan";
+/// 등록 이름 (두 에이전트 공통). 원격 MCP(`https://saba-chan.online/mcp`)를 흔히 `saba-chan`으로 등록하므로
+/// 그 칸을 덮어쓰거나 지우지 않게, 그리고 둘을 함께 쓸 수 있게 이름을 나눈다
+pub const NAME: &str = "saba-chan-local";
 
 /// Codex는 도구 호출을 기본 60초만 기다린다: 설치·백업이 끝날 때까지 (mcp의 최대 대기와 같다)
 const CODEX_TOOL_TIMEOUT: i64 = 3600;
@@ -274,12 +275,17 @@ mod tests {
     /// Codex 설정: 사바쨩 칸만 넣고 빼며, 사용자의 다른 설정과 주석은 그대로 둔다. 다시 넣으면 경로만 바뀐다
     #[test]
     fn codex_config_keeps_everything_else() {
-        let before = "# my settings\nmodel = \"gpt-5\"\n\n[mcp_servers.other]\ncommand = \"npx\"\n";
+        let before = "# my settings\nmodel = \"gpt-5\"\n\n[mcp_servers.other]\ncommand = \"npx\"\n\n[mcp_servers.saba-chan]\nurl = \"https://saba-chan.online/mcp\"\n";
         let exe = Path::new("/opt/saba/saba-chan-cli");
         let linked = codex_text(before, Some(exe)).unwrap();
         assert!(linked.starts_with("# my settings\nmodel = \"gpt-5\""), "{linked}");
         let doc: toml_edit::DocumentMut = linked.parse().unwrap();
         assert_eq!(doc["mcp_servers"]["other"]["command"].as_str(), Some("npx"));
+        // 원격 MCP 칸은 건드리지 않는다
+        assert_eq!(
+            doc["mcp_servers"]["saba-chan"]["url"].as_str(),
+            Some("https://saba-chan.online/mcp")
+        );
         assert_eq!(
             doc["mcp_servers"][NAME]["command"].as_str(),
             Some("/opt/saba/saba-chan-cli")
@@ -298,16 +304,18 @@ mod tests {
             Some(CODEX_TOOL_TIMEOUT)
         );
         let again = codex_text(&linked, Some(Path::new("/new/saba-chan-cli"))).unwrap();
-        assert_eq!(again.matches("[mcp_servers.saba-chan]").count(), 1, "{again}");
+        assert_eq!(again.matches("[mcp_servers.saba-chan-local]").count(), 1, "{again}");
         let unlinked = codex_text(&again, None).unwrap();
         assert!(
-            !unlinked.contains(NAME) && unlinked.contains("[mcp_servers.other]"),
+            !unlinked.contains(NAME)
+                && unlinked.contains("[mcp_servers.other]")
+                && unlinked.contains("[mcp_servers.saba-chan]"),
             "{unlinked}"
         );
         assert_eq!(
             codex_text("", Some(exe))
                 .unwrap()
-                .matches("[mcp_servers.saba-chan]")
+                .matches("[mcp_servers.saba-chan-local]")
                 .count(),
             1
         );

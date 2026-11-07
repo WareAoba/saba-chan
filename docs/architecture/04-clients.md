@@ -322,7 +322,7 @@ Tauri 셸과 CLI는 Rust 쪽 SSOT `saba_chan_updater_lib::constants`(`updater/sr
 - `bot sleep-mode GUILD [--block commands,llm,music,tts,extras|--no-block] [--bedtime 01:00-08:00] [--no-bedtime]`: 코코낸내 설정(`sleepBlocks`·`bedtime`). 옵션 없이 부르면 바꾸지 않고 지금 값만 보인다(`bot settings`와 같은 표).
 - `bot erase`: 개인정보 모두 지우기(`POST /api/relay/privacy/erase`). 동의 페이지 주소를 보이고 데몬이 끝났다고 할 때까지 3초마다 묻는다(`GET`). Ctrl+C로 그만둬도 데몬은 계속 묻고 동의하면 연결을 끊는다. `--json`만 주면 주소만 낸다.
 - `bot agent [--unlink]`: 이 PC 주인 계정의 AI 에이전트 연결(원격 MCP)을 보이거나(`GET /api/relay/mcp/grant`), 확인을 받고 끊는다(`DELETE`).
-- `agent link|unlink [--claude] [--codex]`, `agent status`: 로컬 MCP(`mcp`)를 이 PC의 에이전트에 등록·해제한다(`cmd/agent.rs`, 데몬을 깨우지 않는다). 고르지 않으면 둘 다. 등록 이름은 `saba-chan`, 명령은 이 CLI의 절대 경로 + `mcp`다. Claude Code는 PATH의 `claude`로 `claude mcp remove saba-chan --scope user` 뒤 `claude mcp add --scope user --transport stdio saba-chan -- <CLI> mcp`(경로가 바뀌었을 수 있어 늘 다시 넣는다), 해제는 `claude mcp remove`. Codex는 `~/.codex/config.toml`의 `[mcp_servers.saba-chan]`(`command`, `args = ["mcp"]`, `tool_timeout_sec = 3600`: Codex 기본 60초로는 설치·백업이 끝나지 않는다)을 `toml_edit`로 넣고 빼며 다른 설정·주석은 그대로 둔다. `~/.codex` 폴더도 PATH의 `codex`도 없으면 설치 안 됨으로 본다. `status`는 `claude mcp get saba-chan`의 성공 여부와 Codex 설정의 칸 유무를 보인다.
+- `agent link|unlink [--claude] [--codex]`, `agent status`: 로컬 MCP(`mcp`)를 이 PC의 에이전트에 등록·해제한다(`cmd/agent.rs`, 데몬을 깨우지 않는다). 고르지 않으면 둘 다. 등록 이름은 `saba-chan-local`(원격 MCP를 흔히 `saba-chan`으로 등록하므로 그 칸을 덮어쓰거나 지우지 않고 함께 쓰게 나눈다), 명령은 이 CLI의 절대 경로 + `mcp`다. Claude Code는 PATH의 `claude`로 `claude mcp remove saba-chan-local --scope user` 뒤 `claude mcp add --scope user --transport stdio saba-chan-local -- <CLI> mcp`(경로가 바뀌었을 수 있어 늘 다시 넣는다), 해제는 `claude mcp remove`. Codex는 `~/.codex/config.toml`의 `[mcp_servers.saba-chan-local]`(`command`, `args = ["mcp"]`, `tool_timeout_sec = 3600`: Codex 기본 60초로는 설치·백업이 끝나지 않는다)을 `toml_edit`로 넣고 빼며 다른 설정·주석은 그대로 둔다. `~/.codex` 폴더도 PATH의 `codex`도 없으면 설치 안 됨으로 본다. `status`는 `claude mcp get saba-chan-local`의 성공 여부와 Codex 설정의 칸 유무를 보인다.
 - `bot allow GUILD [서버…] [--all]`: 그 디스코드 서버가 보고 부를 수 있는 서버(`nodeSettings[guild].allowedInstances`, Q-4). 서버 없이 부르면 보기, `--all`은 키를 지워 제한 없음. `PUT /api/guilds/:guild/allowed-instances`로 저장한다(`--all`이면 `instances:null`). 없는 서버 id는 데몬이 400으로 거절한다.
 - `bot notice GUILD [서버] [--on|--off]`: 시작·정지 알림(사바쨩이 켠 서버를 그 디스코드 서버의 알림 채널에 알린다, 기본 꺼짐). 서버 없이 부르면 켠 서버 목록, 서버만 주면 그 서버가 켜졌는지, `--on`·`--off`로 바꾼다. `GET /api/guilds/:guild/start-notice`·`PUT /api/instance/:id/start-notice/:guild`.
 - `bot notice GUILD [서버] [--on|--off] --full`: 자리 꽉 참 알림(접속자가 최대에 닿거나 다시 자리가 나면 알린다, 기본 꺼짐). 모양은 시작·정지 알림과 같다
@@ -481,7 +481,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | C10 | bootstrap.rs:92, cmd/daemon.rs:102 | PROC | API 종료가 안 될 때 데몬 PID만 강제 종료 | 이름 기반 kill 아님 |
 | C14 | cmd/chatbot.rs:109-114 | FS-R | `chatbot set KEY=@<파일>`이면 사용자가 지정한 파일 내용을 값으로 읽어 API로 보낸다 | 사용자 입력 편의, 데몬 파일 아님 |
 | C15 | cmd/server.rs:297-305 | FS-R | `server add`에서 폴더 중복 검사용 `canonicalize` | 경로 정규화만 |
-| C16 | cmd/agent.rs | FS-RW/PROC | `agent link`가 `~/.codex/config.toml`의 `[mcp_servers.saba-chan]`만 고치고 `claude mcp add/remove`를 실행한다 | 데몬 데이터가 아니라 그 PC의 에이전트 설정 |
+| C16 | cmd/agent.rs | FS-RW/PROC | `agent link`가 `~/.codex/config.toml`의 `[mcp_servers.saba-chan-local]`만 고치고 `claude mcp add/remove`를 실행한다 | 데몬 데이터가 아니라 그 PC의 에이전트 설정 |
 | C17 | cmd/mcp.rs | PROC | 로컬 MCP가 같은 CLI를 자식으로 실행한다(`--json`) | 명령은 자식 CLI가 데몬 API로 한다 |
 
 ### 7.4 디스코드 봇
