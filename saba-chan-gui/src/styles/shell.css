@@ -4181,6 +4181,17 @@ button.appbar-preflight {
     flex-direction: column;
     min-height: 0;
 }
+/* 작업 기록 페이지 오른쪽 칸: 칸 높이를 다 쓰고 목록만 스크롤한다. 폭은 설정 화면처럼 넓게 */
+.activity-pane {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.activity-pane > .activity-page {
+    flex: 1 1 0;
+    max-width: 1440px;
+    min-height: 0;
+}
 
 /* 서버 설정 맨 위: 최종 실행 인자 미리보기 (읽기 전용) */
 .launch-preview {

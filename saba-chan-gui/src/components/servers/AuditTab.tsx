@@ -302,8 +302,8 @@ export function ActivityPage() {
                     })}
                 </div>
             </aside>
-            <main className="server-detail-pane">
-                <div className="server-detail dc-main activity-page">
+            <main className="server-detail-pane activity-pane">
+                <div className="server-detail activity-page">
                     <AuditLog instanceId={current ?? undefined} />
                 </div>
             </main>
