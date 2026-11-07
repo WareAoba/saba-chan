@@ -2508,8 +2508,58 @@ button.activity-line:hover {
     background: transparent;
     color: var(--text-2);
 }
-.dc-add-person .dc-member-pick {
-    min-width: 200px;
+.dc-add-person {
+    margin-top: var(--sp-2);
+    max-width: 360px;
+}
+/* 멤버 찾기 (사용자 지정 2026-11-07): 닉네임으로 찾고, 결과 팝업은 10명씩 보이며 끝까지 내리면 더 보인다 */
+.dc-member-search {
+    position: relative;
+    max-width: 360px;
+}
+.dc-member-search > .input {
+    width: 100%;
+}
+.dc-member-results {
+    position: absolute;
+    top: calc(100% + var(--sp-1));
+    left: 0;
+    right: 0;
+    z-index: 30;
+    max-height: 280px;
+    margin: 0;
+    padding: var(--sp-1);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    list-style: none;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    box-shadow: 0 8px 24px var(--shadow-md);
+}
+.dc-member-result + .dc-member-result {
+    margin-top: var(--sp-0-5);
+}
+.dc-member-result > .dc-chip {
+    width: 100%;
+    justify-content: flex-start;
+}
+.dc-member-result small {
+    margin-left: auto;
+}
+.dc-member-empty {
+    padding: var(--sp-2);
+}
+/* 결과를 끄는 동안: 끄는 칩만 보이고 팝업은 손 아래 칸을 가리지 않는다 */
+.dc-member-search.is-dragging .dc-member-results {
+    overflow: visible;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    pointer-events: none;
+}
+.dc-member-search.is-dragging .dc-member-result:not(:has(.is-dragging)) {
+    visibility: hidden;
 }
 .dc-import summary {
     font-weight: 600;

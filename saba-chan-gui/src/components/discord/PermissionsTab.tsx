@@ -178,6 +178,143 @@ function levelSummary(
     return t('discord.perm_level_gain', { below: L.levelTitle(t, perm, below), count: gain });
 }
 
+/** 검색 결과를 한 번에 보이는 수. 목록 끝까지 내리면 이만큼 더 보인다 (사용자 지정 2026-11-07) */
+export const MEMBER_PAGE = 10;
+
+/** 서버 닉네임(표시 이름)·전역 이름·사용자 이름으로 찾는다. 아이디로는 찾지 않는다 */
+export function searchMembers(members: DiscordMember[], query: string, name: (m: DiscordMember) => string) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const hit = members.filter((m) =>
+        [m.displayName, m.globalName, m.username].some((v) => typeof v === 'string' && v.toLowerCase().includes(q)),
+    );
+    return L.sortByName(hit, name);
+}
+
+interface MemberSearchProps {
+    members: DiscordMember[];
+    label: string;
+    nameOf: (id: string) => string;
+    avatarOf: (id: string) => string | undefined;
+    /** 고르면 (사람 추가). 없으면 결과는 끌기만 한다 */
+    onPick?: (id: string) => void;
+    /** 결과 칩에 펼칠 끌기 속성 (위쪽 검색바) */
+    dragProps?: (id: string) => Record<string, unknown>;
+    dragging?: string | null;
+    disabled?: boolean;
+    autoFocus?: boolean;
+}
+
+/**
+ * 멤버 찾기: 닉네임으로 찾고, 결과는 10명씩 보이며 목록 끝까지 내리면 더 보인다.
+ * 사람 추가에서는 결과를 눌러 고르고, 위쪽 검색바에서는 결과를 끌어 레벨 칸에 놓는다
+ */
+function MemberSearch({
+    members,
+    label,
+    nameOf,
+    avatarOf,
+    onPick,
+    dragProps,
+    dragging,
+    disabled,
+    autoFocus,
+}: MemberSearchProps) {
+    const { t } = useTranslation('gui');
+    const [query, setQuery] = useState('');
+    const [shown, setShown] = useState(MEMBER_PAGE);
+    const results = useMemo(
+        () => searchMembers(members, query, (m) => nameOf(String(m.id))),
+        [members, query, nameOf],
+    );
+    const id = query.trim();
+    // 멤버 목록에 없는 사람은 디스코드 ID를 그대로 적어 더한다
+    const byId = onPick && isId(id) && !members.some((m) => String(m.id) === id);
+    const open = !!id;
+    return (
+        <div className={clsx('dc-member-search', { 'is-dragging': !!dragging })}>
+            <input
+                className="input"
+                role="combobox"
+                aria-expanded={open}
+                aria-label={label}
+                placeholder={t('discord.perm_member_search')}
+                value={query}
+                disabled={disabled}
+                // biome-ignore lint/a11y/noAutofocus: 사람 추가를 누르면 바로 찾게 한다
+                autoFocus={autoFocus}
+                onChange={(e) => {
+                    setQuery(e.target.value);
+                    setShown(MEMBER_PAGE);
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === 'Escape') setQuery('');
+                }}
+            />
+            {open && (
+                <div
+                    className="dc-member-results"
+                    role="listbox"
+                    aria-label={label}
+                    onScroll={(e) => {
+                        const el = e.currentTarget;
+                        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 24 && shown < results.length)
+                            setShown((n) => n + MEMBER_PAGE);
+                    }}
+                >
+                    {results.slice(0, shown).map((m) => {
+                        const mid = String(m.id);
+                        return (
+                            <div key={mid} className="dc-member-result" role="none">
+                                <button
+                                    type="button"
+                                    role="option"
+                                    aria-selected={false}
+                                    aria-label={nameOf(mid)}
+                                    className={clsx('dc-chip', { 'is-dragging': dragging === mid })}
+                                    disabled={disabled}
+                                    {...(dragProps ? dragProps(mid) : {})}
+                                    onClick={() => {
+                                        if (!onPick) return;
+                                        onPick(mid);
+                                        setQuery('');
+                                    }}
+                                >
+                                    <Avatar name={nameOf(mid)} url={avatarOf(mid)} size={20} />
+                                    <span>{nameOf(mid)}</span>
+                                    {m.username && m.username !== nameOf(mid) && (
+                                        <small className="muted">@{m.username}</small>
+                                    )}
+                                </button>
+                            </div>
+                        );
+                    })}
+                    {byId && (
+                        <div className="dc-member-result" role="none">
+                            <button
+                                type="button"
+                                role="option"
+                                aria-selected={false}
+                                className="dc-chip is-add"
+                                disabled={disabled}
+                                onClick={() => {
+                                    onPick?.(id);
+                                    setQuery('');
+                                }}
+                            >
+                                <Icon name="plus" size="xs" /> {t('discord.perm_add_by_id', { id })}
+                            </button>
+                        </div>
+                    )}
+                    {results.length === 0 && !byId && (
+                        <div className="muted dc-member-empty" role="none">{t('discord.perm_member_search_empty')}</div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 interface PeopleViewProps {
     node: DiscordNode;
     instance?: string;
@@ -203,7 +340,6 @@ export function PeopleView({
     const guildId = node.guildId;
     const [open, setOpen] = useState<string | null>(null); // 레벨을 고치는 사람 id
     const [adding, setAdding] = useState<number | null>(null); // 사람을 더하는 레벨
-    const [newId, setNewId] = useState('');
     const [showDefault, setShowDefault] = useState(false);
     const [picked, setPicked] = useState<string[]>([]);
     const [ownerDraft, setOwnerDraft] = useState<string | null>(null); // null = 편집 안 함
@@ -389,6 +525,16 @@ export function PeopleView({
             <p className="dc-hint">
                 {t('discord.perm_inherit_hint')} {t('discord.perm_people_server_wide')}
             </p>
+            {/* 멤버 찾기: 결과를 끌어 레벨 칸에 놓는다 (사용자 지정 2026-11-07). 소유자는 따로 정한다 */}
+            <MemberSearch
+                members={(members || []).filter((m) => String(m.id) !== owner)}
+                label={t('discord.perm_member_find')}
+                nameOf={nameOf}
+                avatarOf={avatarOf}
+                disabled={busy}
+                dragging={dragging?.id ?? null}
+                dragProps={(id) => peopleDrag.bind(`${id}|${perm.members?.[id] ?? defaultLevel}`)}
+            />
 
             <ol className="dc-levels">
                 {L.ladderOf(perm).map(({ id: levelId }) => {
@@ -491,10 +637,7 @@ export function PeopleView({
                                                 aria-label={t('discord.perm_add_person_to', {
                                                     level: L.levelLabel(t, perm, level),
                                                 })}
-                                                onClick={() => {
-                                                    setAdding(adding === level ? null : level);
-                                                    setNewId('');
-                                                }}
+                                                onClick={() => setAdding(adding === level ? null : level)}
                                             >
                                                 <Icon name="plus" size="xs" /> {t('discord.perm_add_person')}
                                             </button>
@@ -502,41 +645,18 @@ export function PeopleView({
                                     </ul>
                                 )}
                                 {adding === level && (
-                                    <div className="dc-toolbar dc-add-person">
-                                        {addable(level).length > 0 && (
-                                            <CustomDropdown
-                                                className="dc-member-pick"
-                                                value=""
-                                                placeholder={t('discord.perm_pick_member')}
-                                                ariaLabel={t('discord.perm_pick_member')}
-                                                disabled={busy}
-                                                onChange={async (id: string) => {
-                                                    if (await setMember(String(id), level)) setAdding(null);
-                                                }}
-                                                options={addable(level).map((m) => ({
-                                                    value: String(m.id),
-                                                    label: nameOf(String(m.id)),
-                                                }))}
-                                            />
-                                        )}
-                                        <input
-                                            className="input"
-                                            value={newId}
-                                            inputMode="numeric"
-                                            onChange={(e) => setNewId(e.target.value)}
-                                            placeholder={t('discord.perm_add_id')}
-                                            aria-label={t('discord.perm_add_id')}
-                                        />
-                                        <button
-                                            type="button"
-                                            className="btn btn-primary"
-                                            disabled={busy || !isId(newId.trim())}
-                                            onClick={async () => {
-                                                if (await setMember(newId.trim(), level)) setAdding(null);
+                                    <div className="dc-add-person">
+                                        <MemberSearch
+                                            members={addable(level)}
+                                            label={t('discord.perm_add_search', { level: L.levelLabel(t, perm, level) })}
+                                            nameOf={nameOf}
+                                            avatarOf={avatarOf}
+                                            disabled={busy}
+                                            autoFocus
+                                            onPick={async (id) => {
+                                                if (await setMember(id, level)) setAdding(null);
                                             }}
-                                        >
-                                            {t('discord.perm_add_button')}
-                                        </button>
+                                        />
                                     </div>
                                 )}
                             </div>

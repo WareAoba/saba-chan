@@ -363,18 +363,61 @@ describe('권한 화면', () => {
         fireEvent.click(within(user).getByRole('button', { name: 'Show 1 on the default level' }));
         expect(within(user).getByRole('button', { name: 'Newbie' })).toBeInTheDocument();
 
+        // 사람 추가: 멤버 드롭다운 없이 서버 닉네임으로 찾아 고른다 (사용자 지정 2026-11-07)
         fireEvent.click(screen.getByRole('button', { name: 'Add person to Admin' }));
-        pickOption(screen.getByLabelText('Pick a Discord member'), 'Newbie');
+        expect(screen.queryByLabelText('Pick a Discord member')).toBeNull();
+        const add = screen.getByRole('combobox', { name: 'Find a member to add to Admin' });
+        fireEvent.change(add, { target: { value: 'newb' } });
+        fireEvent.click(screen.getByRole('option', { name: 'Newbie' }));
         await flush();
         expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '1003', 2);
 
+        // 아이디가 아니라 닉네임으로 찾는다. 멤버 목록에 없는 사람은 디스코드 ID를 그대로 적어 더한다
         fireEvent.click(screen.getByRole('button', { name: 'Add person to Banned' }));
-        fireEvent.change(screen.getByRole('textbox', { name: 'Discord user ID' }), {
-            target: { value: '123456789012345678' },
-        });
-        fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+        const ban = screen.getByRole('combobox', { name: 'Find a member to add to Banned' });
+        fireEvent.change(ban, { target: { value: '1003' } });
+        expect(screen.queryByRole('option', { name: 'Newbie' })).toBeNull();
+        fireEvent.change(ban, { target: { value: '123456789012345678' } });
+        fireEvent.click(screen.getByRole('option', { name: 'Add by ID 123456789012345678' }));
         await flush();
         expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '123456789012345678', -1);
+    });
+
+    it('사람: 위쪽 검색바는 닉네임으로 찾아 10명씩 보이고, 스크롤하면 더 보이며, 결과를 끌어 레벨에 넣는다', async () => {
+        relayMembers.push(
+            ...Array.from({ length: 25 }, (_, i) => ({
+                id: String(2000 + i),
+                username: `bulk${i}`,
+                displayName: `Bulk ${String(i).padStart(2, '0')}`,
+                level: 0,
+            })),
+        );
+        try {
+            await openPeople();
+            const search = screen.getByRole('combobox', { name: 'Find a member' });
+            fireEvent.change(search, { target: { value: 'bulk' } });
+            const list = screen.getByRole('listbox', { name: 'Find a member' });
+            expect(within(list).getAllByRole('option')).toHaveLength(10);
+            Object.defineProperties(list, {
+                scrollHeight: { configurable: true, value: 400 },
+                clientHeight: { configurable: true, value: 200 },
+                scrollTop: { configurable: true, value: 200 },
+            });
+            fireEvent.scroll(list);
+            expect(within(list).getAllByRole('option')).toHaveLength(20);
+            fireEvent.scroll(list);
+            expect(within(list).getAllByRole('option')).toHaveLength(25);
+
+            fireEvent.change(search, { target: { value: 'mint' } });
+            const mint = within(screen.getByRole('listbox', { name: 'Find a member' })).getByRole('option', {
+                name: 'Mint',
+            });
+            dragTo(mint, level('Guest'));
+            await flush();
+            expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '1002', 0);
+        } finally {
+            relayMembers.splice(3);
+        }
     });
 
     it('사람: 칩을 다른 레벨로 끌어 옮기고, 소유자 레벨에는 놓을 수 없다', async () => {
