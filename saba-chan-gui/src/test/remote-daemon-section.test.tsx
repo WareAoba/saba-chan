@@ -12,7 +12,7 @@ const settings = {
     status: { listening: false, published: false },
 };
 
-describe('설정 > 고급: 원격 데몬 (/api/remote/*)', () => {
+describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
     beforeEach(() => {
         window.api = {
             remoteSettings: vi.fn().mockResolvedValue(settings),

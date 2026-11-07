@@ -45,7 +45,7 @@ export function remoteErrorText(res: ApiBody | null | undefined, t: TFunction) {
 }
 
 /**
- * 설정 > 고급: 원격 데몬 (데몬 `/api/remote/*`, 01 §1.4.2). 이 PC를 내 다른 PC에 열기, 짝 맺은 PC,
+ * 설정 > 연결: 원격 데몬 (데몬 `/api/remote/*`, 01 §1.4.2). 이 PC를 내 다른 PC에 열기, 짝 맺은 PC,
  * 내 다른 PC에 붙기, 붙은 원격 데몬. 상단 바에서 다룰 데몬을 고른다. CLI `remote …`와 같은 기능이다.
  * 이 경로들은 고른 데몬과 상관없이 늘 이 PC의 데몬이 답한다. 메인 데몬(`gui.mainDaemon`)은 앱을 열면 먼저 보일 데몬이다.
  */

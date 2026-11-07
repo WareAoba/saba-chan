@@ -269,6 +269,7 @@
     "import_replaced": "덮어쓴 서버",
     "import_settings": "설정",
     "import_skipped": "{{name}}: 건너뜀 ({{reason}})",
+    "import_partial": "서버 {{n}}개를 가져오지 못했어요.",
     "import_missing_module": "{{module}} 모듈이 이 PC에 없어요. 모듈을 설치해야 그 서버를 시작할 수 있어요.",
     "import_move_files": "게임 서버 파일은 들어 있지 않아요. 서버 폴더를 같은 경로로 옮기거나 서버 설정에서 폴더를 바꾸세요.",
     "skip_reason": {

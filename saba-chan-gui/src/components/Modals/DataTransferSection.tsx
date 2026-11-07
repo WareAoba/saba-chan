@@ -22,7 +22,7 @@ export function dataTransferErrorText(res: ApiBody | null | undefined, t: TFunct
 const names = (list?: ApiBody[]) => (list || []).map((i) => i.name || i.id).join(', ');
 
 /**
- * 설정 > 고급: 데이터 내보내기·가져오기 (데몬 POST /api/migration/export·import).
+ * 설정 > 저장 공간: 데이터 내보내기·가져오기 (데몬 POST /api/migration/export·import).
  * 가져오기는 미리보기(dryRun) 뒤에 같은 파일로 한 번 더 부른다.
  */
 export function DataTransferSection() {

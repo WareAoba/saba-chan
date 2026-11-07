@@ -234,9 +234,13 @@ async fn import(ctx: &Ctx, file: &std::path::Path, dry_run: bool, overwrite: boo
     };
     let (added, replaced) = (names("added"), names("replaced"));
     let msg = if dry_run { t!("config.import_preview") } else { t!("config.imported") };
-    ctx.out.done(&msg, &r);
+    // 일부를 건너뛰었으면 종료 코드로도 알린다 (스크립트가 성공으로 읽지 않게). `--json`에는 결과가 오류와 함께 실린다
+    let failure = if dry_run { None } else { import_failure(&r) };
+    if failure.is_none() || !ctx.out.json {
+        ctx.out.done(&msg, &r);
+    }
     if ctx.out.json {
-        return Ok(());
+        return failure.map_or(Ok(()), Err);
     }
     let mut rows = Vec::new();
     if !added.is_empty() {
@@ -268,7 +272,13 @@ async fn import(ctx: &Ctx, file: &std::path::Path, dry_run: bool, overwrite: boo
     if added.iter().chain(&replaced).next().is_some() {
         ctx.out.hint(&t!("config.import_move_files"));
     }
-    Ok(())
+    failure.map_or(Ok(()), Err)
+}
+
+/// 건너뛴 서버(`instances.skipped`)가 있으면 일부만 가져온 것이다
+fn import_failure(r: &Value) -> Option<anyhow::Error> {
+    let n = r.pointer("/instances/skipped").and_then(Value::as_array).map_or(0, Vec::len);
+    (n > 0).then(|| crate::error::CliError::Partial { message: t!("config.import_partial", n = n), data: r.clone() }.into())
 }
 
 async fn reset(ctx: &Ctx, keys: &[String]) -> Result<()> {
@@ -391,6 +401,18 @@ async fn set(ctx: &Ctx, pairs: &[String]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
+    /// 건너뛴 서버가 있으면 종료 코드 1(Partial)로 끝난다
+    #[test]
+    fn import_with_skipped_servers_is_partial() {
+        let skipped = json!({ "instances": { "added": [], "skipped": [{ "name": "a", "reason": "exists" }] } });
+        let err = super::import_failure(&skipped).expect("partial");
+        assert_eq!(crate::error::classify(&err).exit_code(), 1);
+        assert!(super::import_failure(&json!({ "instances": { "added": [], "skipped": [] } })).is_none());
+        assert!(super::import_failure(&json!({})).is_none());
+    }
+
     /// 원격 데몬에는 그 PC의 전체 경로만 보낸다: Windows·리눅스 어느 쪽 경로든 알아본다 (D2)
     #[test]
     fn a_remote_path_must_be_full_on_either_os() {

@@ -269,6 +269,7 @@
     "import_replaced": "被替換的伺服器",
     "import_settings": "設定",
     "import_skipped": "{{name}}：已跳過（{{reason}}）",
+    "import_partial": "有 {{n}} 個伺服器未能匯入。",
     "import_missing_module": "這臺電腦上沒有 {{module}} 模組。啟動該伺服器前請先安裝它。",
     "import_move_files": "不包含遊戲伺服器檔案。請把伺服器資料夾移到相同路徑，或在伺服器設定中更改資料夾。",
     "skip_reason": {

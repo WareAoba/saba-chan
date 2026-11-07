@@ -63,6 +63,32 @@ class AddonVersionGuard(unittest.TestCase):
         problems, fetched = self.problems("0.1.6", {"module.toml": b"v2"})
         self.assertEqual((problems, fetched), ([], []))
 
+    def test_test_files_in_the_previous_zip_do_not_count_as_a_change(self):
+        """테스트 파일을 싣던 지난 zip과 비교해도, 테스트를 뺀 새 zip은 같은 내용이다"""
+        previous = {"version": "0.1.10", "components": {
+            "module-game": {"version": "0.1.5", "url": "https://r2.example/releases/0.1.10/module-game.zip"},
+        }}
+        old = zip_bytes({"module.toml": b"v1", "lifecycle.py": b"print(1)", "test_lifecycle.py": b"x", "conftest.py": b"y"})
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "module-game.zip").write_bytes(zip_bytes({"module.toml": b"v1", "lifecycle.py": b"print(1)"}))
+            components = {"module-game": {"version": "0.1.5", "asset": "module-game.zip"}}
+            self.assertEqual(versions.addon_version_problems(components, Path(d), previous, lambda url: old), [])
+
+
+class ZipFolderSkipsDevFiles(unittest.TestCase):
+    def test_module_zip_has_no_test_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "game"
+            (src / "locales").mkdir(parents=True)
+            (src / "tests").mkdir()
+            for name in ["module.toml", "lifecycle.py", "test_lifecycle.py", "test_extra.py", "conftest.py",
+                         "locales/test_en.json", "tests/a.py"]:
+                (src / name).write_text("x")
+            dest = Path(d) / "out.zip"
+            versions.zip_folder(src, dest)
+            with zipfile.ZipFile(dest) as zf:
+                self.assertEqual(sorted(zf.namelist()), ["lifecycle.py", "locales/test_en.json", "module.toml"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -208,6 +208,15 @@ def r2_key(release: str, asset: str) -> str:
 SKIP_PARTS = {"__pycache__", ".git", ".pytest_cache", "tests"}
 
 
+def is_dev_file(rel: str) -> bool:
+    """zip에 싣지 않는 개발용 파일: 폴더 바로 아래의 `test_*.py`·`conftest.py`, 캐시·테스트 폴더, .pyc"""
+    parts = rel.split("/")
+    name = parts[-1]
+    return bool(SKIP_PARTS & set(parts)) or name.endswith(".pyc") or (
+        len(parts) == 1 and (name == "conftest.py" or (name.startswith("test_") and name.endswith(".py")))
+    )
+
+
 def zip_folder(src: Path, dest: Path) -> None:
     """폴더 안 파일을 zip 루트에 넣는다 (캐시·테스트 제외, 순서 고정)."""
     import zipfile
@@ -215,7 +224,7 @@ def zip_folder(src: Path, dest: Path) -> None:
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(src.rglob("*")):
             rel = path.relative_to(src)
-            if path.is_dir() or SKIP_PARTS & set(rel.parts) or path.suffix == ".pyc":
+            if path.is_dir() or is_dev_file(rel.as_posix()):
                 continue
             zf.write(path, rel.as_posix())
 
@@ -292,9 +301,10 @@ def addon_components(args: argparse.Namespace, assets: Path) -> dict:
 
 
 def zip_contents(blob: bytes) -> dict[str, str]:
-    """zip 안 파일마다 sha256 (zip 시각·압축 방식은 보지 않는다)"""
+    """zip 안 파일마다 sha256 (zip 시각·압축 방식은 보지 않는다). 개발용 파일은 뺀다:
+    테스트 파일을 싣던 지난 zip과 비교해도 "바뀌었다"로 보지 않게"""
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
-        return {i.filename: hashlib.sha256(zf.read(i)).hexdigest() for i in zf.infolist() if not i.is_dir()}
+        return {i.filename: hashlib.sha256(zf.read(i)).hexdigest() for i in zf.infolist() if not i.is_dir() and not is_dev_file(i.filename)}
 
 
 def addon_version_problems(components: dict, assets: Path, previous: dict, fetch) -> list[str]:

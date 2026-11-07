@@ -20,7 +20,7 @@ const paths = {
     },
 };
 
-describe('설정 > 고급: 폴더 위치 (/api/system/paths)', () => {
+describe('설정 > 저장 공간: 폴더 위치 (/api/system/paths)', () => {
     beforeEach(() => {
         window.api = {
             systemPaths: vi.fn().mockResolvedValue(paths),

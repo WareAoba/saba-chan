@@ -3079,7 +3079,7 @@
     font-size: var(--fs-xs);
 }
 
-/* 설정 > 고급: 데이터 내보내기·가져오기 */
+/* 설정 > 저장 공간: 데이터 내보내기·가져오기 */
 .data-transfer {
     margin-top: var(--sp-5);
     padding-top: var(--sp-4);
@@ -3121,7 +3121,7 @@
     color: var(--text-2);
 }
 
-/* 설정 > 고급: 원격 데몬 */
+/* 설정 > 연결: 원격 데몬 */
 /* 상태 글자를 저장 버튼과 세로 가운데에 맞춘다 */
 .remote-daemon-actions {
     align-items: center;
@@ -3185,7 +3185,7 @@
     margin-bottom: 0;
 }
 
-/* 설정 > 고급: 폴더 위치 (경로 · 출처 · 옮기기) */
+/* 설정 > 저장 공간: 폴더 위치 (경로 · 출처 · 옮기기) */
 .folder-paths-dir {
     display: flex;
     flex-wrap: wrap;

@@ -1,7 +1,7 @@
 /**
  * 설정 정리 (사용자 10-26):
  * - 설정의 익스텐션 탭을 없앤다. 켜기·끄기와 익스텐션 설정은 사바 스토리지 익스텐션 탭에서 한다.
- * - 작업 기록은 설정 > 고급에 펼쳐 두지 않고 상단 탭의 별도 페이지로 둔다.
+ * - 작업 기록은 설정 탭에 펼쳐 두지 않고 상단 탭의 별도 페이지로 둔다.
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

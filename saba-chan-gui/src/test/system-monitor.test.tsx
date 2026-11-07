@@ -1,7 +1,7 @@
-import { fireEvent, render, waitFor } from '@testing-library/react';
+import { fireEvent, render, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildRings, colorSlots, defaultItems, type MetricsSnapshot, nextPeaks, pickerGroups, portRows } from '../components/monitor/systemMetrics';
-import { SystemMonitor } from '../components/monitor/SystemMonitor';
+import { SystemMonitor, useSystemMetrics } from '../components/monitor/SystemMonitor';
 import { useSettingsStore } from '../stores/useSettingsStore';
 
 const GB = 1024 ** 3;
@@ -245,6 +245,27 @@ describe('SystemMonitor', () => {
         fireEvent.click(byItem('volume:D:\\'));
         await waitFor(() => expect([...document.querySelectorAll<HTMLElement>('[data-metric]')].some((f) => f.dataset.metric === 'volume:D:\\')).toBe(true));
         useSettingsStore.setState({ monitorItems: null });
+    });
+
+    it('다룰 데몬을 바꾸면 다른 데몬의 최고값이 눈금으로 이어지지 않는다', async () => {
+        const withIo = (mb: number) => snapshot({ disk_io: { read_bps: mb * MB, write_bps: 0, source: 'physical', per_instance: false } });
+        let target: string | null = 'pc-a';
+        (window.api as unknown as Record<string, unknown>).daemonTarget = vi.fn(async () => ({ target }));
+        window.api.systemMetrics = vi.fn(async () => withIo(target === 'pc-a' ? 500 : 1));
+        const first = renderHook(() => useSystemMetrics(60000));
+        await waitFor(() => expect(first.result.current.peaks.diskIo).toBe(500 * MB));
+        first.unmount();
+        target = 'pc-b';
+        const second = renderHook(() => useSystemMetrics(60000));
+        await waitFor(() => expect(second.result.current.peaks.diskIo).toBe(1 * MB));
+        second.unmount();
+        // 다시 이 PC로 돌아오면 그 데몬에서 본 최고값이 남아 있다
+        target = 'pc-a';
+        window.api.systemMetrics = vi.fn(async () => withIo(1));
+        const third = renderHook(() => useSystemMetrics(60000));
+        await waitFor(() => expect(third.result.current.peaks.diskIo).toBe(500 * MB));
+        third.unmount();
+        delete (window.api as unknown as Record<string, unknown>).daemonTarget;
     });
 
     it('포트·서버별 네트워크를 셀 때만 포트 표를 그린다', async () => {
