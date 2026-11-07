@@ -1,5 +1,9 @@
 {
   "default_prefix": "Saba-chan",
+  "top_level_words": {
+    "help": "help",
+    "list": "list"
+  },
   "commands": {
     "start": "Запустить сервер",
     "stop": "Остановить сервер",

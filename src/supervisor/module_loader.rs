@@ -321,7 +321,7 @@ pub struct ModuleBackup {
 }
 
 /// 명령어 별명 정보
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CommandAliasInfo {
     #[serde(default)]
     pub aliases: Vec<String>,

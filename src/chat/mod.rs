@@ -81,11 +81,19 @@ enum TopLevel {
 }
 
 impl TopLevel {
-    fn parse(word: &str) -> Option<Self> {
-        match word.to_lowercase().as_str() {
-            "help" | "도움" | "도움말" => Some(Self::Help),
-            "list" | "목록" => Some(Self::List),
-            _ => None,
+    /// `help`·`list`, 그리고 답하는 언어의 말 (`top_level_words.<help|list>`, 쉼표로 나눈 목록. 영어 문구로 대신하지 않는다)
+    fn parse(word: &str, cat: &Catalog) -> Option<Self> {
+        let says = |name: &str| {
+            let key = format!("top_level_words.{name}");
+            let local = cat.t(&key, &[]);
+            words::same(word, name) || (local != key && local.split(words::is_comma).any(|w| words::same(w.trim(), word)))
+        };
+        if says("help") {
+            Some(Self::Help)
+        } else if says("list") {
+            Some(Self::List)
+        } else {
+            None
         }
     }
 }
@@ -278,7 +286,8 @@ fn strip_prefix<'t>(text: &'t str, prefixes: &[String]) -> &'t str {
 
 impl<'a, D: DaemonApi> Ctx<'a, D> {
     async fn new(api: &'a D, settings: &'a ChatSettings, cat: &'a Catalog, req: &'a ChatRequest) -> Self {
-        let modules = api.modules().await;
+        // 별명·게임명은 답하는 언어의 것만 받는다 (module.toml의 언어 없는 낱말은 늘)
+        let modules: Vec<ModuleView> = api.modules().await.into_iter().map(|m| m.in_language(Some(cat.language()))).collect();
         let aliases = ModuleAliases::build(&modules);
         Self { api, settings, cat, req, modules, aliases, words: &settings.server_words }
     }
@@ -294,7 +303,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         let Some((first, first_end)) = first_word(text) else {
             return reply(self.help().await.into());
         };
-        match TopLevel::parse(first) {
+        match TopLevel::parse(first, self.cat) {
             Some(TopLevel::Help) => return reply(self.help().await.into()),
             Some(TopLevel::List) => return reply(self.list().await.into()),
             None => {}
@@ -360,9 +369,9 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
             phrases.extend(m.commands.iter().map(|c| c.name.clone()));
         }
         phrases.extend(aliases::BUILTIN_COMMANDS.iter().map(|b| b.to_string()));
-        phrases.extend(builtin_names().iter().map(|(name, _)| name.clone()));
+        phrases.extend(self.builtin_names().into_iter().map(|(name, _)| name));
         if let Some(m) = module {
-            phrases.extend(m.commands.iter().flat_map(|c| command_labels(m, c).into_iter()));
+            phrases.extend(m.commands.iter().filter_map(|c| self.calling_label(m, c)));
         }
         match longest_phrase(rest, phrases.iter().map(|p| (p.as_str(), ()))) {
             Some((_, end, ())) => (rest[..end].trim(), end),
@@ -565,7 +574,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         // 제목은 서버 이름 (한 서버를 가리킬 때), 아니면 게임 이름
         let title = match (named.as_slice(), same_module.as_slice()) {
             ([one], _) | ([], [one]) => one.name.clone(),
-            _ => module.and_then(|m| m.text(self.cat.language(), "/display_name").or_else(|| m.display_name.clone())).unwrap_or_else(|| module_name.clone()),
+            _ => module.and_then(|m| m.text(self.cat.language(), "/module/display_name").or_else(|| m.display_name.clone())).unwrap_or_else(|| module_name.clone()),
         };
 
         let mut out = format!("{}\n\n{}\n", self.t("modules.enter_command", &[]), self.t("help.module_title", &[("module", &title)]));
@@ -644,8 +653,8 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         let command = words::command_for(self.words.get(&server.id), cmd_alias)
             .map(str::to_string)
             .or_else(|| aliases::find_command(Some(module), cmd_alias))
-            .or_else(|| builtin_names().iter().find(|(n, _)| words::same(n, cmd_alias)).map(|(_, b)| b.to_string()))
-            .or_else(|| module.commands.iter().find(|c| command_labels(module, c).iter().any(|l| words::same(l, cmd_alias))).map(|c| c.name.clone()))
+            .or_else(|| self.builtin_names().into_iter().find(|(n, _)| words::same(n, cmd_alias)).map(|(_, b)| b.to_string()))
+            .or_else(|| module.commands.iter().find(|c| self.calling_label(module, c).is_some_and(|l| words::same(&l, cmd_alias))).map(|c| c.name.clone()))
             .unwrap_or_else(|| cmd_alias.to_string());
 
         // 내장 명령의 위험도: status·players·start·stop은 safe (start·stop은 유저 이상이 한다).
@@ -843,6 +852,24 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
     }
 
     /// 명령의 보일 이름: 모듈 locales `commands.<이름>.label` → module.toml label → 이름
+    /// 답하는 언어의 내장 명령 이름 (`actions.server.<명령>.name`) → 내장 명령
+    fn builtin_names(&self) -> Vec<(String, &'static str)> {
+        aliases::BUILTIN_COMMANDS
+            .iter()
+            .filter_map(|b| {
+                let key = format!("actions.server.{b}.name");
+                let name = self.t(&key, &[]);
+                (name != key).then_some((name, *b))
+            })
+            .collect()
+    }
+
+    /// 채팅이 명령 이름처럼 받는 이름표: 답하는 언어로 보이는 이름 (`command_label`). 쉼표가 든 이름표는 받지 않는다
+    fn calling_label(&self, module: &ModuleView, field: &CommandField) -> Option<String> {
+        let label = words::tidy(&self.command_label(module, field));
+        (!label.is_empty() && !label.contains(words::is_comma)).then_some(label)
+    }
+
     fn command_label(&self, module: &ModuleView, field: &CommandField) -> String {
         module
             .text(self.cat.language(), &format!("/commands/{}/label", field.name))
@@ -977,37 +1004,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
     }
 }
 
-/// 내장 명령(start·stop·status)의 언어별 이름 (`actions.server.<명령>.name`). 채팅이 명령 이름처럼 받는다
-fn builtin_names() -> &'static [(String, &'static str)] {
-    static NAMES: std::sync::OnceLock<Vec<(String, &'static str)>> = std::sync::OnceLock::new();
-    NAMES.get_or_init(|| {
-        let mut out: Vec<(String, &'static str)> = Vec::new();
-        for lang in i18n::languages() {
-            let cat = Catalog::for_language(lang);
-            for b in aliases::BUILTIN_COMMANDS {
-                let key = format!("actions.server.{b}.name");
-                let name = cat.t(&key, &[]);
-                if name != key && !out.iter().any(|(n, c)| c == b && words::same(n, &name)) {
-                    out.push((name, b));
-                }
-            }
-        }
-        out
-    })
-}
 
-/// 화면에 보이는 명령 이름: module.toml `label`과 언어마다 모듈 locales `commands.<이름>.label`. 채팅이 명령 이름처럼 받는다
-fn command_labels(module: &ModuleView, field: &CommandField) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let localized = i18n::languages().into_iter().filter_map(|lang| module.text(lang, &format!("/commands/{}/label", field.name)));
-    for label in std::iter::once(field.label.clone()).chain(localized) {
-        let label = words::tidy(&label);
-        if !label.is_empty() && !label.contains(words::is_comma) && !out.iter().any(|l| words::same(l, &label)) {
-            out.push(label);
-        }
-    }
-    out
-}
 
 /// 정의된 명령의 인자를 나눈다. 공백으로 나누되, 큰따옴표로 시작해 큰따옴표로 끝나는 덩어리는 한 칸이다
 /// (`give "Steve Jobs" diamond`). 낱말 중간의 따옴표(`{"text":"a"}`)는 그대로 둔다.

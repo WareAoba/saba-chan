@@ -473,7 +473,8 @@ pub(crate) fn trust_warnings(kind: &str, id: &str, trust: saba_chan_updater_lib:
     vec![json!({ "code": code, kind: id, "isolated": crate::sandbox::enforced() })]
 }
 
-fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>) -> ExtensionInfo {
+/// 모듈 목록 한 줄. 별명은 module.toml(언어 없는 낱말)에 `lang`(앱 언어)의 모듈 locales 별명을 더한다 (`chat::api::locale_aliases`)
+fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>, lang: &str) -> ExtensionInfo {
     let installed: std::collections::HashMap<String, String> = versions.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let unmet_dependencies = m
         .metadata
@@ -489,8 +490,13 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         })
     });
     let trust = module_trust(&m.path);
+    let localized = crate::chat::api::locale_aliases(std::path::Path::new(&m.path), lang).unwrap_or_default();
     let unsupported_reason = m.metadata.unsupported_on(std::env::consts::OS, std::env::consts::ARCH).map(str::to_string);
-    let meta = m.metadata;
+    let mut meta = m.metadata;
+    crate::chat::api::push_words(&mut meta.module_aliases, localized.module.into_iter());
+    for (cmd, words) in localized.commands {
+        crate::chat::api::push_words(&mut meta.command_aliases.entry(cmd).or_default().aliases, words.into_iter());
+    }
     ExtensionInfo {
         platforms: meta.platforms,
         architectures: meta.architectures,
@@ -533,12 +539,13 @@ async fn module_list_response(
     modules: anyhow::Result<Vec<crate::supervisor::module_loader::LoadedModule>>,
     failed: Vec<crate::supervisor::module_loader::ModuleLoadError>,
     versions: &std::collections::BTreeMap<String, String>,
+    lang: &str,
 ) -> axum::response::Response {
     match modules {
         Ok(modules) => {
             // 구현한 함수 목록 (MK1): 캐시에 없으면 짧게만 기다린다(느린 모듈은 null, 묻기는 뒤에서 마저). 데몬 락 밖에서, 모듈끼리 동시에
             let asks: Vec<_> = modules.iter().map(|m| tokio::spawn(crate::plugin::module_functions_for_list(m.entry_path()))).collect();
-            let mut modules: Vec<ExtensionInfo> = modules.into_iter().map(|m| module_info(m, versions)).collect();
+            let mut modules: Vec<ExtensionInfo> = modules.into_iter().map(|m| module_info(m, versions, lang)).collect();
             for (info, ask) in modules.iter_mut().zip(asks) {
                 info.functions = ask.await.ok().flatten();
             }
@@ -557,7 +564,7 @@ pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
         let supervisor = state.supervisor.read().await;
         (supervisor.list_modules(), supervisor.module_loader.load_errors())
     };
-    module_list_response(modules, failed, &versions).await
+    module_list_response(modules, failed, &versions, &state.config_store.ui_language().await).await
 }
 
 /// POST /api/modules/refresh - 모듈 캐시를 새로고침하고 다시 발견
@@ -575,7 +582,7 @@ pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoRespons
     }
     let versions = component_versions(&state).await;
     let failed = state.supervisor.read().await.module_loader.load_errors();
-    module_list_response(modules, failed, &versions).await
+    module_list_response(modules, failed, &versions, &state.config_store.ui_language().await).await
 }
 
 /// GET /api/modules/schema - module.toml 스키마 v1 (JSON Schema)

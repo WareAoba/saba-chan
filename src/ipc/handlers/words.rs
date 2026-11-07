@@ -61,7 +61,9 @@ pub async fn get(State(state): State<IPCServer>, Path(id): Path<String>) -> Resp
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e }))).into_response(),
     };
     let Some(server) = servers.iter().find(|s| s.id == id) else { return not_found(&id) };
-    let modules = state.modules().await;
+    // 기본값은 앱 언어로 보인다 (디스코드 길드 언어를 따로 정하지 않았으면 봇도 이 언어다)
+    let lang = state.config_store.ui_language().await;
+    let modules: Vec<_> = state.modules().await.into_iter().map(|m| m.in_language(Some(&lang))).collect();
     let bot = state.config_store.get_bot_config().await;
     let mine = bot.server_words.get(&id).cloned().unwrap_or_default();
     let defaults = words::default_words(server, &servers, &modules, &bot.server_words);
@@ -84,7 +86,8 @@ pub async fn put(State(state): State<IPCServer>, Path(id): Path<String>, Json(bo
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e }))).into_response(),
     };
     let Some(instance) = servers.iter().find(|s| s.id == id).cloned() else { return not_found(&id) };
-    let modules = state.modules().await;
+    // 낱말은 어느 길드 언어에서나 쓰이므로 모든 언어의 별명과 겹치지 않아야 한다
+    let modules: Vec<_> = state.modules().await.into_iter().map(|m| m.in_language(None)).collect();
     let module = modules.iter().find(|m| m.name == instance.module);
     // 검사와 저장을 설정 잠금 안에서 한다: 동시에 온 두 요청이 같은 낱말을 둘 다 통과시키지 않게.
     // 낱말은 어느 길드에서나 쓰이므로 모든 서버와 겹치지 않아야 한다
