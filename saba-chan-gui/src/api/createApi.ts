@@ -701,9 +701,11 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         instanceReadLiveSettings: (id: string) =>
             daemonCall('get', `/api/instance/${encodeURIComponent(id)}/settings/live`, undefined, 60000),
         runtimePreflight: () => daemonCall('get', '/api/runtime/preflight', undefined, 5000),
-        // sizes=false면 데몬이 인스턴스 폴더 크기를 새로 재지 않는다
-        systemMetrics: (opts: { sizes?: boolean } = {}) =>
-            daemonCall('get', `/api/system/metrics${opts?.sizes === false ? '?sizes=false' : ''}`, undefined, 5000),
+        // sizes=false면 데몬이 인스턴스 폴더 크기를 새로 재지 않는다. gpu=true일 때만 GPU를 읽는다(NVIDIA 라이브러리를 올린다)
+        systemMetrics: (opts: { sizes?: boolean; gpu?: boolean } = {}) => {
+            const query = [opts?.sizes === false && 'sizes=false', opts?.gpu && 'gpu=true'].filter(Boolean).join('&');
+            return daemonCall('get', `/api/system/metrics${query ? `?${query}` : ''}`, undefined, 5000);
+        },
         // keys를 생략하면 kind 전체를 기본값으로 되돌린다
         configReset: (kind: string, keys?: string[]) =>
             daemonCall('post', `/api/config/${encodeURIComponent(kind)}/reset`, keys ? { keys } : {}),

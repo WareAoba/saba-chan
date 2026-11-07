@@ -40,7 +40,8 @@ export interface MetricsSnapshot {
     }[];
     /** 네트워크 카드별 */
     adapters?: { name: string; rx_bps: number; tx_bps: number }[];
-    gpus?: { name?: string | null; util_percent?: number | null; clock_mhz?: number | null; temp_c?: number | null }[];
+    /** GPU를 묻지 않은 표본(`gpu: false`)은 null */
+    gpus?: { name?: string | null; util_percent?: number | null; clock_mhz?: number | null; temp_c?: number | null }[] | null;
     instances?: {
         id: string;
         name: string;
@@ -206,9 +207,12 @@ export function nextPeaks(prev: Peaks, snap: MetricsSnapshot | null | undefined)
 export const volumeItem = (mount: string) => `volume:${mount}`;
 export const adapterItem = (name: string) => `adapter:${name}`;
 
-/** 고른 적이 없을 때(`monitorItems` 없음) 보이는 항목. 데이터 폴더가 있는 디스크가 기본 디스크다 */
+/**
+ * 고른 적이 없을 때(`monitorItems` 없음) 보이는 항목. 데이터 폴더가 있는 디스크가 기본 디스크다.
+ * GPU는 넣지 않는다: 데몬이 GPU를 읽으려면 NVIDIA 라이브러리를 올리는데, 한 번 올리면 약 20MB가 데몬이 끝날 때까지 남는다
+ */
 export function defaultItems(snap: MetricsSnapshot | null | undefined): string[] {
-    const items = ['cpu', 'cpu.clock', 'cpu.temp', 'memory', 'memory.clock', 'gpu', 'gpu.clock', 'gpu.temp', 'disk_io'];
+    const items = ['cpu', 'cpu.clock', 'cpu.temp', 'memory', 'memory.clock', 'disk_io'];
     const dataDisk = snap?.disks?.[0]?.mount;
     if (dataDisk) items.push(volumeItem(dataDisk));
     items.push('volume.kind', 'network');
@@ -237,8 +241,13 @@ export interface PickerGroup {
 
 const volumeLabel = (mount: string) => mount.replace(/[\\/]+$/, '') || mount;
 
+/** GPU를 읽어야 하는 항목을 골랐는가 (데몬에 `gpu=true`로 묻는다) */
+export const wantsGpu = (items: readonly string[]) => items.some((i) => i === 'gpu' || i.startsWith('gpu.'));
+
 /** 표본에 있는 하드웨어로 항목 고르기 창을 만든다 */
 export function pickerGroups(snap: MetricsSnapshot | null | undefined): PickerGroup[] {
+    // GPU를 아직 묻지 않았으면(null) 있는지 모르니 켤 수 있게 줄을 보인다
+    const unasked = snap?.gpus === null;
     const gpus = snap?.gpus || [];
     const dataMounts = new Set((snap?.disks || []).map((d) => d.mount));
     const unknownIf = (missing: boolean) => (missing ? 'monitor.unknown_here' : undefined);
@@ -269,13 +278,14 @@ export function pickerGroups(snap: MetricsSnapshot | null | undefined): PickerGr
             key: 'gpu',
             titleKey: 'monitor.gpu_group',
             emptyKey: 'monitor.no_gpu',
-            rows: gpus.length
-                ? [
-                      { id: 'gpu', labelKey: 'monitor.pick_usage' },
-                      { id: 'gpu.clock', labelKey: 'monitor.pick_clock', parent: 'gpu', noteKey: unknownIf(gpus.every((g) => g.clock_mhz == null)) },
-                      { id: 'gpu.temp', labelKey: 'monitor.pick_temp', parent: 'gpu', noteKey: unknownIf(gpus.every((g) => g.temp_c == null)) },
-                  ]
-                : [],
+            rows:
+                gpus.length || unasked
+                    ? [
+                          { id: 'gpu', labelKey: 'monitor.pick_usage' },
+                          { id: 'gpu.clock', labelKey: 'monitor.pick_clock', parent: 'gpu', noteKey: unknownIf(!unasked && gpus.every((g) => g.clock_mhz == null)) },
+                          { id: 'gpu.temp', labelKey: 'monitor.pick_temp', parent: 'gpu', noteKey: unknownIf(!unasked && gpus.every((g) => g.temp_c == null)) },
+                      ]
+                    : [],
         },
         {
             key: 'disk',

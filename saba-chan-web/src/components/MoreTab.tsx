@@ -9,6 +9,7 @@ import {
     nextPeaks,
     type Peaks,
     pickerGroups,
+    wantsGpu,
 } from '@gui/components/monitor/systemMetrics';
 import { LANGUAGE_OPTIONS } from '@gui/utils/languages';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -51,10 +52,12 @@ function Metrics({ api }: { api: WebApi }) {
     });
     const [picked, setPicked] = useState<string[] | null>(readMonitorItems);
     const [picking, setPicking] = useState(false);
+    // GPU는 고른 때만 묻는다 (데몬이 NVIDIA 라이브러리를 올린다)
+    const gpu = wantsGpu(picked ?? []);
     useEffect(() => {
         let stopped = false;
         const load = async () => {
-            const res = (await api.systemMetrics({ sizes: true })) as MetricsSnapshot | null;
+            const res = (await api.systemMetrics({ sizes: true, gpu })) as MetricsSnapshot | null;
             if (!stopped && res?.cpu) setState((prev) => ({ snap: res, peaks: nextPeaks(prev.peaks, res) }));
         };
         const stop = startPoll(load, 3000);
@@ -62,7 +65,7 @@ function Metrics({ api }: { api: WebApi }) {
             stopped = true;
             stop();
         };
-    }, [api]);
+    }, [api, gpu]);
 
     const { snap, peaks } = state;
     if (!snap) return <Loading />;

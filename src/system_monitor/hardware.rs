@@ -8,6 +8,8 @@
 //!     (WMI ACPI 온도, 보통 관리자 권한이 있어야 나온다)
 //!   - GPU 사용률: PDH `\GPU Engine(*)\Utilization Percentage`를 엔진 종류마다 더해 가장 바쁜 종류 (제조사 상관없음)
 //!   - GPU 이름·클럭·온도: NVIDIA 드라이버가 함께 까는 `nvml.dll`이 있을 때만 (NVIDIA)
+//!   - GPU는 화면에서 고른 요청(`gpu`)만 읽는다. `nvml.dll`은 그때 처음 올린다: 한 번 올리면 약 20MB가
+//!     해제(nvmlShutdown·FreeLibrary)해도 돌아오지 않아 데몬이 끝날 때까지 남는다(PC 실측)
 //!   - RAM 클럭·디스크 종류와 회전 속도: 숨긴 PowerShell 한 번(`Win32_PhysicalMemory`·`Get-PhysicalDisk`).
 //!     값이 거의 바뀌지 않아 `PROBE_TTL`마다만 다시 묻는다
 //! - Linux: CPU 클럭은 sysinfo(`/proc/cpuinfo`), 온도는 sysinfo 부품(hwmon). GPU·RAM 클럭·회전 속도는 없다
@@ -66,7 +68,7 @@ pub struct Reading {
     pub cpu_clock_mhz: Option<u32>,
     pub cpu_temp_c: Option<f32>,
     pub memory_clock_mhz: Option<u32>,
-    pub gpus: Vec<GpuReading>,
+    pub gpus: Option<Vec<GpuReading>>,
     /// 드라이브 문자(대문자 한 글자) → 회전 속도. SSD는 0
     pub disk_rpm: HashMap<char, u32>,
 }
@@ -224,9 +226,9 @@ impl Hardware {
         Self { inner: imp::Inner::new(), components: None, probe: None, probe_running: false, probe_rx: None }
     }
 
-    /// 지금 값. `system`은 CPU 클럭을 sysinfo로 읽는 OS에서 쓴다
-    pub fn read(&mut self, system: &sysinfo::System) -> Reading {
-        let live = self.inner.read(system);
+    /// 지금 값. `system`은 CPU 클럭을 sysinfo로 읽는 OS에서 쓴다. `gpu`가 false면 GPU는 None
+    pub fn read(&mut self, system: &sysinfo::System, gpu: bool) -> Reading {
+        let live = self.inner.read(system, gpu);
         let cpu_temp_c = live.cpu_temp_c.or_else(|| self.component_temp());
         self.poll_probe();
         let probe = self.probe.as_ref().map(|(_, p)| p);
@@ -279,7 +281,7 @@ impl Hardware {
 struct Live {
     cpu_clock_mhz: Option<u32>,
     cpu_temp_c: Option<f32>,
-    gpus: Vec<GpuReading>,
+    gpus: Option<Vec<GpuReading>>,
 }
 
 #[cfg(windows)]
@@ -305,7 +307,8 @@ mod imp {
         perf: PDH_HCOUNTER,
         thermal: PDH_HCOUNTER,
         gpu: PDH_HCOUNTER,
-        nvml: Option<super::nvml::Nvml>,
+        /// GPU를 처음 물을 때 올린다 (`None`: 아직 안 물음, `Some(None)`: 없음)
+        nvml: Option<Option<super::nvml::Nvml>>,
     }
 
     // PDH·NVML 핸들은 스레드에 묶이지 않는다. 접근은 SystemMonitor의 Mutex가 한 번에 하나로 막는다
@@ -313,7 +316,7 @@ mod imp {
 
     impl Inner {
         pub fn new() -> Self {
-            let mut s = Self { query: null_mut(), freq: null_mut(), perf: null_mut(), thermal: null_mut(), gpu: null_mut(), nvml: super::nvml::Nvml::load() };
+            let mut s = Self { query: null_mut(), freq: null_mut(), perf: null_mut(), thermal: null_mut(), gpu: null_mut(), nvml: None };
             unsafe {
                 if PdhOpenQueryW(null(), 0, &mut s.query) != 0 {
                     s.query = null_mut();
@@ -335,7 +338,7 @@ mod imp {
             s
         }
 
-        pub fn read(&mut self, _system: &sysinfo::System) -> Live {
+        pub fn read(&mut self, _system: &sysinfo::System, gpu: bool) -> Live {
             let mut live = Live::default();
             if !self.query.is_null() && unsafe { PdhCollectQueryData(self.query) } == 0 {
                 unsafe {
@@ -344,17 +347,23 @@ mod imp {
                     }
                     let zones: Vec<f64> = array(self.thermal).into_iter().map(|(_, v)| v).collect();
                     live.cpu_temp_c = super::hottest_zone_c(&zones);
-                    let util = super::gpu_engine_util(&array(self.gpu));
-                    live.gpus = util.into_iter().map(|(_, u)| GpuReading { util_percent: Some(u), ..Default::default() }).collect();
+                    if gpu {
+                        let util = super::gpu_engine_util(&array(self.gpu));
+                        live.gpus = Some(util.into_iter().map(|(_, u)| GpuReading { util_percent: Some(u), ..Default::default() }).collect());
+                    }
                 }
+            }
+            if !gpu {
+                return live;
             }
             // NVIDIA가 있으면 NVML 카드만 쓴다: PDH GPU(luid)와 NVML 카드를 짝지을 길이 없어 섞지 않는다
-            if let Some(nv) = &self.nvml {
+            if let Some(nv) = self.nvml.get_or_insert_with(super::nvml::Nvml::load) {
                 let cards = nv.read();
                 if !cards.is_empty() {
-                    live.gpus = cards;
+                    live.gpus = Some(cards);
                 }
             }
+            live.gpus.get_or_insert_with(Vec::new);
             live
         }
     }
@@ -441,10 +450,10 @@ mod imp {
         }
 
         /// CPU 클럭은 sysinfo 코어 값의 평균 (`refresh_cpu_frequency` 뒤). 온도는 부품 온도로 (호출한 쪽)
-        pub fn read(&mut self, system: &sysinfo::System) -> Live {
+        pub fn read(&mut self, system: &sysinfo::System, gpu: bool) -> Live {
             let freqs: Vec<u64> = system.cpus().iter().map(|c| c.frequency()).filter(|f| *f > 0).collect();
             let cpu_clock_mhz = (!freqs.is_empty()).then(|| (freqs.iter().sum::<u64>() / freqs.len() as u64) as u32);
-            Live { cpu_clock_mhz, ..Default::default() }
+            Live { cpu_clock_mhz, gpus: gpu.then(Vec::new), ..Default::default() }
         }
     }
 

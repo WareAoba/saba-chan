@@ -19,6 +19,7 @@ import {
     pickerGroups,
     type PortRow,
     portRows,
+    wantsGpu,
 } from './systemMetrics';
 import './SystemMonitor.css';
 
@@ -43,8 +44,8 @@ async function currentTarget(): Promise<string> {
     }
 }
 
-/** 데몬 표본을 주기적으로 받는다. 창이 가려져 있으면 쉰다. 요약만 볼 때는 폴더 크기를 재지 않게 한다. */
-export function useSystemMetrics(intervalMs: number, sizes = true) {
+/** 데몬 표본을 주기적으로 받는다. 창이 가려져 있으면 쉰다. 요약만 볼 때는 폴더 크기를 재지 않게 한다. GPU는 고른 때만 묻는다 */
+export function useSystemMetrics(intervalMs: number, sizes = true, gpu = false) {
     const [state, setState] = useState<{ snapshot: MetricsSnapshot | null; peaks: Peaks }>({
         snapshot: null,
         peaks: sessionPeaks.get(lastTarget) ?? noPeaks,
@@ -59,7 +60,7 @@ export function useSystemMetrics(intervalMs: number, sizes = true) {
             if (!document.hidden) {
                 try {
                     const target = await currentTarget();
-                    const snap = (await window.api.systemMetrics({ sizes })) as MetricsSnapshot;
+                    const snap = (await window.api.systemMetrics({ sizes, gpu })) as MetricsSnapshot;
                     if (!alive) return;
                     if (snap?.cpu) {
                         lastTarget = target;
@@ -81,7 +82,7 @@ export function useSystemMetrics(intervalMs: number, sizes = true) {
             alive = false;
             clearTimeout(timer as ReturnType<typeof setTimeout>);
         };
-    }, [intervalMs, sizes]);
+    }, [intervalMs, sizes, gpu]);
 
     return { ...state, error };
 }
@@ -136,7 +137,7 @@ export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorPro
     const picked = useSettingsStore((s) => s.monitorItems);
     const update = useSettingsStore((s) => s.update);
     const [picking, setPicking] = useState(false);
-    const { snapshot, error, peaks } = useSystemMetrics(open ? OPEN_INTERVAL_MS : SUMMARY_INTERVAL_MS, open);
+    const { snapshot, error, peaks } = useSystemMetrics(open ? OPEN_INTERVAL_MS : SUMMARY_INTERVAL_MS, open, wantsGpu(picked ?? []));
     const order = useMemo(() => servers.map((s) => s.id), [servers]);
     const slots = useMemo(() => colorSlots(order), [order]);
     const items = useMemo(() => picked ?? defaultItems(snapshot), [picked, snapshot]);

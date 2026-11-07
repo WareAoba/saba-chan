@@ -13,6 +13,9 @@ fn main() {
 
         println!("cargo:rerun-if-changed=icons/saba-core.ico");
         println!("cargo:rerun-if-changed=build.rs");
+        println!("cargo:rerun-if-changed=saba-core.manifest");
+        // Segment Heap 매니페스트 (tests/windows_heap_manifest.rs): 잠깐 커졌다 풀린 힙을 OS에 돌려준다
+        let heap_manifest = PathBuf::from(&manifest_dir).join("saba-core.manifest");
 
         // 버전 정보는 아이콘이 없어도 넣는다: 발행 때 versions.py manifest가 이 파일 버전을 대조한다
         let icon = ico_path.exists().then_some(ico_path.as_path());
@@ -67,8 +70,10 @@ BLOCK "VarFileInfo" {{
 VALUE "Translation", 0x0, 0x04b0
 }}
 }}
-{icon_line}"#,
+{icon_line}1 24 "{manifest}"
+"#,
                 icon_line = icon_line,
+                manifest = heap_manifest.to_str().unwrap().replace('\\', "\\\\"),
                 numeric = numeric,
                 version = version
             );
@@ -96,17 +101,17 @@ VALUE "Translation", 0x0, 0x04b0
                             let stderr = String::from_utf8_lossy(&o.stderr);
                             let stdout = String::from_utf8_lossy(&o.stdout);
                             println!("cargo:warning=rc.exe failed (exit {}): {}{}", o.status, stdout, stderr);
-                            compile_with_winres(icon);
+                            compile_with_winres(icon, &heap_manifest);
                         }
                         Err(e) => {
                             println!("cargo:warning=Failed to run rc.exe: {}", e);
-                            compile_with_winres(icon);
+                            compile_with_winres(icon, &heap_manifest);
                         }
                     }
                 }
                 None => {
                     println!("cargo:warning=rc.exe not found, using winres crate fallback");
-                    compile_with_winres(icon);
+                    compile_with_winres(icon, &heap_manifest);
                 }
             }
         }
@@ -155,8 +160,9 @@ fn find_rc_exe() -> Option<std::path::PathBuf> {
 
 /// winres crate fallback (rc.exe 없는 환경용)
 #[cfg(windows)]
-fn compile_with_winres(icon: Option<&std::path::Path>) {
+fn compile_with_winres(icon: Option<&std::path::Path>, manifest: &std::path::Path) {
     let mut res = winres::WindowsResource::new();
+    res.set_manifest_file(manifest.to_str().unwrap());
     if let Some(ico_path) = icon {
         res.set_icon(ico_path.to_str().unwrap());
     }

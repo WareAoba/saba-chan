@@ -37,28 +37,30 @@ describe('웹 PC 상태', () => {
         // 못 재는 온도는 표시하지 않는다
         expect(metric('cpu')!.textContent).not.toContain('°C');
         expect(metric('cpu')!.querySelectorAll('.monitor-pill')).toHaveLength(2);
-        expect(metric('gpu')!.textContent).toContain('RTX 5090');
+        // GPU는 직접 켜기 전까지 묻지 않는다 (데몬이 NVIDIA 라이브러리를 올리지 않게)
+        expect(metric('gpu')).toBeNull();
         expect(metric('volume:/')).not.toBeNull();
         expect(metric('adapter:eth0')).toBeNull();
-        expect(api.systemMetrics).toHaveBeenCalledWith({ sizes: true });
+        expect(api.systemMetrics).toHaveBeenCalledWith({ sizes: true, gpu: false });
     });
 
     it('고른 항목은 이 브라우저에 남는다', async () => {
         const api = mockApi({ systemMetrics: vi.fn().mockResolvedValue(snapshot()) });
         render(<MoreTab api={api} />);
-        await waitFor(() => expect(metric('gpu')).not.toBeNull());
+        await waitFor(() => expect(metric('cpu')).not.toBeNull());
         fireEvent.click(document.querySelector('.metrics-head button')!);
         fireEvent.click(document.querySelector('input[data-item="gpu"]')!);
         fireEvent.click(document.querySelector('input[data-item="adapter:eth0"]')!);
-        expect(metric('gpu')).toBeNull();
+        expect(metric('gpu')).not.toBeNull();
         expect(metric('adapter:eth0')).not.toBeNull();
         const saved = JSON.parse(localStorage.getItem('saba-web.monitorItems')!);
-        expect(saved).not.toContain('gpu');
+        expect(saved).toContain('gpu');
         expect(saved).toContain('adapter:eth0');
+        await waitFor(() => expect(api.systemMetrics).toHaveBeenLastCalledWith({ sizes: true, gpu: true }));
 
         cleanup();
         render(<MoreTab api={api} />);
         await waitFor(() => expect(metric('adapter:eth0')).not.toBeNull());
-        expect(metric('gpu')).toBeNull();
+        expect(metric('gpu')).not.toBeNull();
     });
 });
