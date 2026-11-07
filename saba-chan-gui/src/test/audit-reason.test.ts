@@ -58,11 +58,11 @@ describe('작업 기록 한 줄', () => {
         expect(isInstanceEntry({ ...base, action: 'discord.settings.set', instanceId: '' })).toBe(false);
         expect(isInstanceEntry({ ...base, action: 'chatbot.settings.set' })).toBe(false);
     });
-    it('응답 코드는 숫자 대신 풀어 쓰고, 성공은 적지 않는다', () => {
+    it('응답 코드는 뜻을 풀어 쓰고 괄호에 코드를 붙인다. 성공은 적지 않는다', () => {
         expect(statusText(200, t)).toBe('');
         expect(statusText(undefined, t)).toBe('');
-        expect(statusText(404, t)).toBe('Not found');
-        expect(statusText(409, t)).toBe('Not possible in the current state');
+        expect(statusText(404, t)).toBe('Not found (404)');
+        expect(statusText(409, t)).toBe('Not possible in the current state (409)');
         expect(statusText(418, t)).toBe('Error (418)');
     });
 });

@@ -186,7 +186,9 @@ const HTTP_KNOWN = [400, 401, 403, 404, 408, 409, 422, 429, 500, 502, 503, 504];
 /** 응답 코드 → 풀어 쓴 말. 성공(2xx)과 없는 값은 빈 글자 */
 export function statusText(status: number | undefined, t: TFunction) {
     if (!status || (status >= 200 && status < 300)) return '';
-    return HTTP_KNOWN.includes(status) ? t(`audit.http_${status}`) : t('audit.http_other', { code: status });
+    return HTTP_KNOWN.includes(status)
+        ? `${t(`audit.http_${status}`)} (${status})`
+        : t('audit.http_other', { code: status });
 }
 
 /** 한 건 → 펼쳐 보이는 자세한 칸 [이름, 값]. 빈 칸은 뺀다 */
