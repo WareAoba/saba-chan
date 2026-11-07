@@ -41,7 +41,6 @@ import { Segmented, StatusChip } from '../ui/StatusChip';
 import { ExitHistory } from './ExitHistory';
 import { ServerLogs } from './ServerLogs';
 import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
-import { ControllersTab } from './ControllersTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
 import { ServerConsole } from './ServerConsole';
@@ -132,7 +131,6 @@ export function ServerDetail({
             label: t('shell.tab_maintenance'),
             icon: <Icon name="clock" size="sm" />,
         },
-        { id: 'controllers', label: t('shell.tab_controllers'), icon: <Icon name="user" size="sm" /> },
         instanceWordsAvailable() && {
             id: 'discord',
             label: t('shell.tab_discord'),
@@ -385,7 +383,6 @@ export function ServerDetail({
                                 )}
                             />
                         )}
-                        {activeTab === 'controllers' && <ControllersTab server={server} />}
                         {activeTab === 'discord' && <InstanceDiscordTab server={server} />}
                         {activeTab === 'info' && (
                             <InfoTab

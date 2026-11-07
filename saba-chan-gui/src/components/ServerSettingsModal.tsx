@@ -412,7 +412,7 @@ function GeneralTab({
                 </div>
             )}
 
-            {/* 조작 가능한 사람만 접속 (데몬 인스턴스 controllers_only, 사용자 지정 2026-11-06). 명단은 "조작 가능" 탭.
+            {/* 조작 가능한 사람만 접속 (데몬 인스턴스 controllers_only, 사용자 지정 2026-11-06). 명단은 디스코드 › 서버 › 인스턴스 화면.
                 모듈이 접속 줄과 내보내기 명령을 알려 주고 데몬이 콘솔을 읽을 때만. 명단이 비면 켤 수 없다 */}
             {showSaba && settingsServer.controllers_only_supported && (
                 <div className="protocol-mode-section controllers-only-section">

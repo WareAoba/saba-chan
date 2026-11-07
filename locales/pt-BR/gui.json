@@ -1969,6 +1969,7 @@
     "name_placeholder": "Apelido no jogo",
     "member_none": "Membro do Discord (opcional)",
     "add": "Adicionar à lista",
+    "all_guilds": "Esta lista vale para todos os servidores do Discord conectados.",
     "members_hint": "Se nenhum membro do Discord aparecer, abra o servidor uma vez na tela do Discord.",
     "note": "Só quem tem o Discord vinculado pode iniciar ou parar pelo Discord. Quem tem só o apelido é quem pode entrar quando você liga o bloqueio de entrada na aba Saba-chan.",
     "err_empty": "Digite um apelido do jogo.",
@@ -1983,7 +1984,7 @@
     "desc": "Quem não estiver na lista \"Operadores\" é expulso assim que entra. Não é banido.",
     "label": "Expulsar quem não está na lista",
     "hint": "Só o apelido é verificado, então quem entrar com um apelido da lista passa. Em jogos em que cada um escolhe o próprio nome, ou em servidores sem verificação de conta, qualquer pessoa pode usar esse nome.",
-    "empty": "Adicione pelo menos uma pessoa na aba \"Operadores\" para ligar."
+    "empty": "Adicione pelo menos uma pessoa em \"Operadores\" em Discord › servidor › instância para ligar."
   },
   "stop_timeout": {
     "title": "Tempo de espera ao parar",

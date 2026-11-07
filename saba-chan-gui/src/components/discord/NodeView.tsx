@@ -14,6 +14,7 @@ import { BotSettingsTab, botSettingsAvailable } from './BotSettingsTab';
 import { ChatbotGuildTab } from './ChatbotGuildTab';
 import { chatbotAvailable } from './ChatbotView';
 import * as P from './nodePermissions';
+import { ControllersTab } from '../servers/ControllersTab';
 import { ALL_INSTANCES } from './levels';
 import { ModerationTab, moderationAvailable } from './ModerationTab';
 import { MembersPanel, PermissionPanel } from './PermissionsTab';
@@ -228,7 +229,7 @@ interface InstanceMenuProps {
 }
 
 /**
- * 인스턴스 메뉴: 레벨별 명령 계단(이 인스턴스 + 서버 전체 명령). 멤버 레벨은 서버의 멤버 탭에서 정한다.
+ * 인스턴스 메뉴: 레벨별 명령 계단(이 인스턴스 + 서버 전체 명령)과 조작 가능 명단. 멤버 레벨은 서버의 멤버 탭에서 정한다.
  * `instance`가 ALL_INSTANCES면 모든 인스턴스를 한 계단에 모아 본다
  */
 function InstanceMenu({ node, servers, instance, onBack }: InstanceMenuProps) {
@@ -245,6 +246,8 @@ function InstanceMenu({ node, servers, instance, onBack }: InstanceMenuProps) {
                 {srv?.module && <small className="muted"> · {srv.module}</small>}
             </h2>
             <PermissionPanel node={node} instance={srv ? srv.id : ALL_INSTANCES} />
+            {/* 조작 가능 명단은 인스턴스 하나에 붙는다: 이은 모든 디스코드 서버에 같이 적용된다 */}
+            {srv && <ControllersTab server={srv} />}
         </div>
     );
 }

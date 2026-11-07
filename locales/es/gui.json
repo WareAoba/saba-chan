@@ -1969,6 +1969,7 @@
     "name_placeholder": "Apodo en el juego",
     "member_none": "Miembro de Discord (opcional)",
     "add": "Añadir a la lista",
+    "all_guilds": "Esta lista se aplica a todos los servidores de Discord vinculados.",
     "members_hint": "Si no aparecen miembros de Discord, abre el servidor una vez en la pantalla de Discord.",
     "note": "Solo quienes tengan Discord vinculado pueden iniciar o detener desde Discord. Quienes solo tienen apodo son los que pueden entrar cuando activas el bloqueo de entrada en la pestaña Saba-chan.",
     "err_empty": "Escribe un apodo del juego.",
@@ -1983,7 +1984,7 @@
     "desc": "Quien no esté en la lista «Operadores» es expulsado en cuanto entra. No se le banea.",
     "label": "Expulsar a quien no esté en la lista",
     "hint": "Solo se comprueba el apodo, así que quien entre con un apodo de la lista podrá pasar. En juegos donde cada uno elige su nombre, o en servidores sin verificación de cuenta, cualquiera puede usar ese nombre.",
-    "empty": "Añade al menos una persona en la pestaña «Operadores» para activarlo."
+    "empty": "Añade al menos una persona a «Operadores» en Discord › servidor › instancia para activarlo."
   },
   "stop_timeout": {
     "title": "Tiempo de espera al detener",

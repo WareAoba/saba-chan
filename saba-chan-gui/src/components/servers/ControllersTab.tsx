@@ -95,7 +95,7 @@ export function ControllersTab({ server }: { server: Server }) {
                     <Icon name="user" size="sm" /> {t('shell.tab_controllers')}
                 </span>
             </div>
-            <p className="protocol-mode-description">{t('controllers.desc')}</p>
+            <p className="protocol-mode-description">{t('controllers.desc')} {t('controllers.all_guilds')}</p>
             {list.length === 0 ? (
                 <p className="muted controllers-empty">{t('controllers.empty')}</p>
             ) : (

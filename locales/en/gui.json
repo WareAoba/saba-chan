@@ -1969,6 +1969,7 @@
     "name_placeholder": "In-game nickname",
     "member_none": "Discord member (optional)",
     "add": "Add to list",
+    "all_guilds": "This list applies to every linked Discord server.",
     "members_hint": "If no Discord members show up, open the server once on the Discord screen.",
     "note": "Only people linked to Discord can start or stop from Discord. People with only a nickname are who may join when you turn on join blocking in the Saba-chan tab.",
     "err_empty": "Enter an in-game nickname.",
@@ -1983,7 +1984,7 @@
     "desc": "Anyone whose nickname isn't on the \"Operators\" list is kicked as soon as they join. They are not banned.",
     "label": "Kick people not on the list",
     "hint": "Only the nickname is checked, so anyone joining with a listed nickname gets in. In games where players pick their own name, or on servers without account verification, anyone can use that name.",
-    "empty": "Add at least one person in the \"Operators\" tab to turn this on."
+    "empty": "Add at least one person to \"Operators\" under Discord › server › instance to turn this on."
   },
   "stop_timeout": {
     "title": "Stop wait time",

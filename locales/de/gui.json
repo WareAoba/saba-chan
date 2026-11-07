@@ -1969,6 +1969,7 @@
     "name_placeholder": "Spielname",
     "member_none": "Discord-Mitglied (optional)",
     "add": "Zur Liste hinzufügen",
+    "all_guilds": "Diese Liste gilt für alle verbundenen Discord-Server.",
     "members_hint": "Wenn keine Discord-Mitglieder erscheinen, öffne den Server einmal in der Discord-Ansicht.",
     "note": "Nur mit Discord verknüpfte Personen können über Discord starten oder stoppen. Personen nur mit Spielname dürfen beitreten, wenn du im Saba-chan-Tab die Beitrittssperre einschaltest.",
     "err_empty": "Gib einen Spielnamen ein.",
@@ -1983,7 +1984,7 @@
     "desc": "Wer nicht auf der Liste „Bediener“ steht, wird beim Beitreten sofort gekickt. Es wird nicht gebannt.",
     "label": "Personen ohne Listeneintrag kicken",
     "hint": "Es wird nur der Spielname geprüft: Wer mit einem Namen aus der Liste beitritt, kommt herein. In Spielen mit frei wählbarem Namen oder auf Servern ohne Kontoprüfung kann jeder diesen Namen verwenden.",
-    "empty": "Füge im Tab „Bediener“ mindestens eine Person hinzu, um das einzuschalten."
+    "empty": "Füge unter Discord › Server › Instanz mindestens eine Person zu „Bediener“ hinzu, um dies einzuschalten."
   },
   "stop_timeout": {
     "title": "Wartezeit beim Stoppen",
