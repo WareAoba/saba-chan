@@ -1,5 +1,9 @@
 {
   "default_prefix": "サバちゃん",
+  "top_level_words": {
+    "help": "help",
+    "list": "list"
+  },
   "commands": {
     "start": "サーバーを起動",
     "stop": "サーバーを停止",
