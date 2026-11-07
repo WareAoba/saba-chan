@@ -2505,9 +2505,11 @@ button.activity-line:hover {
     font-weight: var(--btn-font-weight);
     cursor: default;
 }
+/* 앱의 강조 그라데이션(--brand-gradient, 주 버튼과 같다). 그라데이션 설정이 꺼져 있으면 강조색 한 가지 */
 .dc-chip.is-owner {
-    border-color: color-mix(in oklch, var(--accent) 55%, transparent);
-    background: linear-gradient(135deg, color-mix(in oklch, var(--accent) 38%, var(--bg-1)), color-mix(in oklch, var(--accent) 10%, var(--bg-1)));
+    border-color: transparent;
+    background: var(--neu-sheen), var(--brand-gradient);
+    color: var(--brand-text);
 }
 .dc-chip.is-add {
     padding-left: var(--sp-2-5);
