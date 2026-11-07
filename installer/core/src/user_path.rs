@@ -86,8 +86,10 @@ fn edit(change: impl Fn(&str) -> Option<String>) -> anyhow::Result<bool> {
         Ok(raw) => {
             let units: Vec<u16> = raw
                 .bytes
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|c| u16::from_le_bytes(*c))
                 .collect();
             let text = String::from_utf16_lossy(&units).trim_end_matches('\0').to_string();
             (text, raw.vtype)
@@ -104,7 +106,7 @@ fn edit(change: impl Fn(&str) -> Option<String>) -> anyhow::Result<bool> {
     env.set_raw_value(
         "Path",
         &RegValue {
-            bytes: bytes.into(),
+            bytes,
             vtype: kind,
         },
     )?;
