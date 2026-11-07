@@ -1,13 +1,15 @@
 import * as L from '@gui/components/discord/levels';
 import type { CommandBoard, GuildPermissions as PermData, LadderLevel } from '@gui/components/discord/levels';
 import { useFlip } from '@gui/components/discord/flip';
+import { usePointerDrag } from '@gui/components/discord/pointerDrag';
 import * as P from '@gui/components/discord/nodePermissions';
 import type { DiscordMember } from '@gui/components/discord/types';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
+import { MemberSearch } from './MemberSearch';
 import { PermissionStairs, type PermissionWriter } from './PermissionStairs';
 import { Avatar, Button, Card, Empty, errorText, failed, Loading, Segments } from './ui';
 import type { Server, TFn, WebApi } from '../types';
@@ -26,26 +28,6 @@ interface BoardInstance {
 const levelName = (t: TFn, perm: PermData | null | undefined, id: number | undefined) => L.ladderOf(perm).find((l) => l.id === id)?.name || t(`perm.level.${id}`);
 
 const nameOf = (m: DiscordMember) => m.displayName || m.globalName || m.username || String(m.id);
-const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-
-/** 실제 레벨 높은 순(길드 사다리 순서, 주인 먼저, 따로 정하지 않았으면 기본 레벨), 같은 레벨은 이름순 */
-export function orderMembers(members: DiscordMember[], perm: PermData | null | undefined) {
-    const own = perm?.members || {};
-    const fallback = typeof perm?.defaultLevel === 'number' ? perm.defaultLevel : 1;
-    const ladder = L.ladderOf(perm || {});
-    const rankOf = (m: DiscordMember) => {
-        const id = String(m.id);
-        const level = id === String(perm?.ownerDiscordId ?? '') ? 3 : Object.hasOwn(own, id) ? own[id] : fallback;
-        const at = ladder.findIndex((l) => l.id === level);
-        return at < 0 ? ladder.length : at;
-    };
-    return [...members].sort((a, b) => rankOf(a) - rankOf(b) || collator.compare(nameOf(a), nameOf(b)));
-}
-
-/** 멤버 프로필 사진 (ui.tsx Avatar) */
-const MemberAvatar = ({ member }: { member: DiscordMember }) => (
-    <Avatar url={member.avatarUrl || member.avatar} name={nameOf(member)} />
-);
 
 interface LevelSelectProps {
     value: number | null;
@@ -73,9 +55,9 @@ function LevelSelect({ value, perm, onChange, withDefault, t, disabled, label }:
     );
 }
 
-/** 단계 사다리 (위가 높은 단계). 휴대폰이라 끌기 대신 위·아래 버튼으로 옮긴다. 소유자·차단은 고정.
- * 모든 레벨은 이름을 바꾸고(비우면 원래 이름), 소유자·게스트·차단은 지울 수 없다. 조작 가능 줄도 위·아래 버튼으로 옮긴다
- * (사용자 지정 2026-11-06, GUI LadderTab 과 같은 규칙) */
+/** 레벨 편집 (위가 높은 레벨, 앱 LadderTab 과 같은 규칙, 사용자 지정 2026-11-07). 카드를 끌어 순서를 바꾸고(들어갈 자리에 선),
+ * 이름을 누르면 고친다. 소유자·금지는 고정이고 소유자·게스트·금지는 지울 수 없다. 칸에는 사바쨩 기능 칩만 보이고(게임 명령·조작 가능은
+ * 인스턴스 권한 화면에서 정한다) 칩을 끌어 다른 레벨로 옮긴다. 노란 테두리는 저장하지 않은 변경이다 */
 interface LadderEditorProps {
     perm: PermData;
     board: CommandBoard | null;
@@ -86,7 +68,7 @@ interface LadderEditorProps {
     }) => void;
 }
 
-const MAX_CHIPS = 12; // 칸마다 보이는 칩 수 (넘치면 +N, 앱과 같다)
+const keyOf = (l: LadderLevel) => String(l.id !== undefined ? `id-${l.id}` : l.key);
 
 export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
     const { t } = useTranslation();
@@ -94,28 +76,81 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
     const saved = L.ladderOf(perm);
     const [draft, setDraft] = useState(saved);
     const [name, setName] = useState('');
+    const [editing, setEditing] = useState<number | null>(null); // 이름을 고치는 칸
     const line = L.controllerLine(board);
-    // 권한 맞바꾸기 (사용자 지정 2026-11-07): 아래 버튼을 누르고 칸 두 개를 고르면 두 레벨의 명령이 자리를 바꾼다 (앱과 같은 규칙)
-    // 명령 옮긴 차례 (맞바꾸기·줄 옮기기). 줄 자리는 이 차례에서 나온다
+    // 권한 맞바꾸기: 아래 버튼을 누르고 칸 두 개를 고르면 두 레벨의 명령이 자리를 바꾼다. 명령 옮긴 차례
     const [steps, setSteps] = useState<L.CommandStep[]>([]);
     const [choosing, setChoosing] = useState(false);
     const [picked, setPicked] = useState<number | null>(null);
+    // 칩 끌기로 옮긴 명령: 명령 키 → 레벨 (맞바꾸기 뒤에 덮는다)
+    const [moves, setMoves] = useState<Record<string, number>>({});
     const listRef = useRef<HTMLUListElement>(null);
     const flip = useFlip(listRef);
+    // 카드 끌기: key·칸 값은 사다리 자리(위에서부터 0). 놓으면 카드들이 새 자리로 미끄러진다
+    const blockDrag = usePointerDrag((from: string, to: string) => {
+        flip();
+        setDraft((d) => L.moveLevel(d, Number(from), Number(to)));
+    });
+    const chipDropRef = useRef<(id: string, at: number) => void>(() => {});
+    const chipDrag = usePointerDrag((id: string, to: string) => chipDropRef.current(id, Number(to)));
+    const dragging = blockDrag.dragging === null ? null : Number(blockDrag.dragging);
+    const over = blockDrag.over === null ? null : Number(blockDrag.over);
+    const chipOver = chipDrag.over === null ? null : Number(chipDrag.over);
     useEffect(() => setDraft(L.ladderOf(perm)), [perm]);
-    // 데몬 값을 다시 읽으면(저장 뒤) 맞바꾸기 초안을 비운다
+    // 데몬 값을 다시 읽으면(저장 뒤) 초안을 비운다
     // biome-ignore lint/correctness/useExhaustiveDependencies: board 가 바뀔 때만 비운다
-    useEffect(() => setSteps([]), [board]);
+    useEffect(() => {
+        setSteps([]);
+        setMoves({});
+    }, [board]);
     const patch = L.ladderPatch(draft);
     const ladderChanged = JSON.stringify(patch) !== JSON.stringify(L.ladderPatch(saved));
     const lineLevel = L.draftLine(line, draft, steps);
     const lineAt = line && lineLevel !== null ? L.lineAt(saved, draft, lineLevel) : null;
     const lineTarget = lineAt === null ? null : (draft[lineAt].id as number);
-    const levels = L.draftLevels(board, draft, steps, line, lineTarget);
+    const items = board?.items || [];
+    const levels = L.draftLevels(board, draft, steps, line, lineTarget).map((level, i) =>
+        items[i] && !items[i].fixed && moves[items[i].key as string] !== undefined
+            ? moves[items[i].key as string]
+            : level,
+    );
     const commandLevels = L.boardPatch(board, levels);
     const commandsChanged = Object.keys(commandLevels).length > 0;
     const changed = ladderChanged || commandsChanged;
-    const chips = L.stairChips(L.draftBoard(board, levels));
+    // 사바쨩 기능만 보인다: 게임(모듈) 명령과 조작 가능(서버 조작)은 인스턴스 권한 화면에서 정한다. 맞바꾸기는 모든 명령을 옮긴다
+    const chips = L.stairChips(L.draftBoard(board, levels)).filter((c) => !c.module && !c.controllers);
+    const savedLevel = new Map(items.map((it) => [it.key as string, it.level]));
+    const unsaved = (c: L.StairChip) => c.items.some((it) => savedLevel.get(it.key as string) !== it.level);
+    chipDropRef.current = (id, at) => {
+        const chip = chips.find((c) => c.id === id);
+        const target = draft[at];
+        if (!chip || chip.fixed || !target || !L.swappable(target)) return;
+        const level = target.id as number;
+        flip();
+        setMoves((m) => ({
+            ...m,
+            ...Object.fromEntries(chip.items.filter((i) => !i.fixed).map((i) => [i.key as string, level])),
+        }));
+    };
+    // 칩은 숨기지 않는다. 카드가 칩 세 줄을 넘을 때만 접고 "+N"을 누르면 그 카드의 칩을 모두 편다
+    const chipBoxes = useRef(new Map<string, HTMLElement>());
+    const [hidden, setHidden] = useState<Record<string, number>>({});
+    const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+    useLayoutEffect(() => {
+        // 끄는 동안은 세지 않는다: 손을 따라 나간 칩을 접힌 칩으로 세지 않게
+        if (chipDrag.dragging !== null) return;
+        const next: Record<string, number> = {};
+        for (const [k, box] of chipBoxes.current) {
+            if (expanded[k]) continue;
+            const top = box.getBoundingClientRect().top;
+            const limit = box.clientHeight;
+            const n = [...box.querySelectorAll<HTMLElement>('.ladder-chip')].filter(
+                (el) => el.getBoundingClientRect().top - top >= limit,
+            ).length;
+            if (n > 0) next[k] = n;
+        }
+        if (JSON.stringify(next) !== JSON.stringify(hidden)) setHidden(next);
+    });
     const instanceName = (id?: string) => board?.instances?.find((i) => i.id === id)?.name || id;
     const chipLabel = (c: L.StairChip) => (c.instance ? `${c.title} · ${instanceName(c.instance)}` : c.title || c.name);
     // 마지막 맞바꾸기 (두 칸이 아직 초안에 있을 때만 알린다)
@@ -136,56 +171,55 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
         setPicked(null);
         setChoosing(false);
     };
-    const moveLine = (dir: -1 | 1) => {
-        const to = lineAt === null ? null : L.lineStep(draft, lineAt, dir);
-        if (to !== null) setSteps((s) => [...s, { line: draft[to].id as number }]);
-    };
     const save = () =>
         onSave({
             ...(ladderChanged ? { ladder: patch } : {}),
             ...(commandsChanged ? { commandLevels } : {}),
         });
-    const lineRow = (at: number) => (
-        <li key="controllers-line" className="row ladder-line" aria-label={tg('discord.perm_line')}>
-            <div className="row-main">
-                <div className="row-title">
-                    {tg(at === 0 ? 'discord.perm_line_only' : 'discord.perm_line_from', { level: label(draft[at]) })}
-                </div>
-                <div className="row-sub">
-                    {tg('discord.perm_line_hint')}
-                    {line && line.apart > 0 && ` ${tg('discord.perm_line_apart', { count: line.apart })}`}
-                </div>
-            </div>
-            <Button
-                disabled={L.lineStep(draft, at, -1) === null}
-                aria-label={tg('discord.perm_line_up')}
-                onClick={() => moveLine(-1)}
-            >
-                <Icon name="chevronUp" size={16} />
-            </Button>
-            <Button
-                disabled={L.lineStep(draft, at, 1) === null}
-                aria-label={tg('discord.perm_line_down')}
-                onClick={() => moveLine(1)}
-            >
-                <Icon name="chevronDown" size={16} />
-            </Button>
-        </li>
-    );
+    const revert = () => {
+        setDraft(saved);
+        setSteps([]);
+        setMoves({});
+        setChoosing(false);
+        setPicked(null);
+    };
+    // 기본값으로 초기화: 기본 사다리와 프리셋 레벨 (초안, 저장해야 반영)
+    const resetToDefault = () => {
+        flip();
+        setDraft(L.ladderOf(null));
+        setSteps([]);
+        setChoosing(false);
+        setPicked(null);
+        setMoves(Object.fromEntries(items.filter((it) => !it.fixed).map((it) => [it.key as string, it.preset as number])));
+    };
     return (
         <div className="field">
-            <span>{t('perm.ladder')}</span>
-            <small className="hint">{t('perm.ladder_hint')}</small>
-            <ul ref={listRef} className="rows">
-                {draft.flatMap((l, i) => {
+            <span>{tg('discord.perm_edit_levels')}</span>
+            <small className="hint">{tg('discord.perm_ladder_hint')}</small>
+            <ul ref={listRef} className="rows ladder" aria-label={tg('discord.perm_edit_levels')}>
+                {draft.map((l, i) => {
                     const fixed = i === 0 || i === last;
+                    const k = keyOf(l);
                     const pickable = choosing && L.swappable(l);
                     const own = L.swappable(l) ? chips.filter((c) => c.level === l.id) : [];
-                    const row = (
+                    const classes = [
+                        'row ladder-row',
+                        fixed && 'is-fixed',
+                        dragging === i && 'is-dragging',
+                        dragging !== null && over === i && i < dragging && !fixed && 'is-insert-before',
+                        dragging !== null && over === i && i > dragging && !fixed && 'is-insert-after',
+                        chipDrag.dragging !== null && chipOver === i && L.swappable(l) && 'is-over',
+                        pickable && 'is-pickable',
+                        picked !== null && picked === l.id && 'is-picked',
+                    ];
+                    return (
                         <li
-                            key={l.id ?? l.key}
-                            className={`row ladder-row${pickable ? ' is-pickable' : ''}${picked !== null && picked === l.id ? ' is-picked' : ''}`}
+                            key={k}
+                            data-flip={`block:${k}`}
+                            data-drop={i}
+                            className={classes.filter(Boolean).join(' ')}
                             aria-label={label(l)}
+                            {...blockDrag.bind(String(i), !fixed && !choosing)}
                         >
                             {pickable && (
                                 <button
@@ -197,69 +231,101 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
                                 />
                             )}
                             <div className="row-main">
-                                <input
-                                    value={l.name ?? ''}
-                                    placeholder={L.isCustomLevel(l) ? '' : localeName(l)}
-                                    maxLength={L.MAX_NAME}
-                                    aria-label={t('perm.ladder_name')}
-                                    onChange={(e) => setDraft((d) => L.renameLevel(d, i, e.target.value))}
-                                />
+                                <div className="ladder-head">
+                                    {/* 휴대폰은 이 손잡이를 끌어 카드를 옮긴다 (나머지 자리는 화면 스크롤) */}
+                                    {!fixed && (
+                                        <span className="ladder-grip" aria-hidden="true">
+                                            <Icon name="grip" size={16} />
+                                        </span>
+                                    )}
+                                    <span className="ladder-rank">Lv {draft.length - 2 - i}</span>
+                                    {editing === i ? (
+                                        <input
+                                            // biome-ignore lint/a11y/noAutofocus: 이름을 누른 사람이 바로 고친다
+                                            autoFocus
+                                            value={l.name ?? ''}
+                                            placeholder={L.isCustomLevel(l) ? '' : localeName(l)}
+                                            maxLength={L.MAX_NAME}
+                                            aria-label={t('perm.ladder_name')}
+                                            onChange={(e) => setDraft((d) => L.renameLevel(d, i, e.target.value))}
+                                            onBlur={() => setEditing(null)}
+                                            onKeyDown={(e) =>
+                                                (e.key === 'Enter' || e.key === 'Escape') && setEditing(null)
+                                            }
+                                        />
+                                    ) : (
+                                        // 이름 자리도 끌 수 있게 버튼이 아니라 span 이다 (끌지 않고 누르면 고친다)
+                                        // biome-ignore lint/a11y/useSemanticElements: button 위에서는 끌기가 시작되지 않는다 (pointerDrag)
+                                        <span
+                                            role="button"
+                                            tabIndex={0}
+                                            className={`ladder-name${label(l) ? '' : ' hint'}`}
+                                            aria-label={tg('discord.perm_ladder_rename', { name: label(l) })}
+                                            onClick={() => setEditing(i)}
+                                            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setEditing(i)}
+                                        >
+                                            {label(l) || t('perm.ladder_name')} <Icon name="edit" size={12} />
+                                        </span>
+                                    )}
+                                    {fixed ? (
+                                        <span className="pill">{t('perm.ladder_fixed')}</span>
+                                    ) : (
+                                        <Button
+                                            tone="ghost-danger"
+                                            disabled={draft.length <= 3 || !L.removable(draft, i)}
+                                            aria-label={t('perm.ladder_delete', { name: label(l) })}
+                                            onClick={() => setDraft((d) => L.removeLevel(d, i))}
+                                        >
+                                            <Icon name="trash" size={16} />
+                                        </Button>
+                                    )}
+                                </div>
                                 {L.swappable(l) && (
-                                    <div className="ladder-chips">
-                                        {own.slice(0, MAX_CHIPS).map((c) => (
-                                            <span
+                                    <div
+                                        className={`ladder-chips${expanded[k] ? ' is-expanded' : ''}`}
+                                        ref={(el) => {
+                                            if (el) chipBoxes.current.set(k, el);
+                                            else chipBoxes.current.delete(k);
+                                        }}
+                                    >
+                                        {own.map((c) => (
+                                            <button
+                                                type="button"
                                                 key={c.id}
                                                 data-flip={c.id}
-                                                className={`pill${c.fixed ? ' is-fixed' : ''}`}
+                                                aria-label={chipLabel(c)}
+                                                className={`pill ladder-chip${c.fixed ? ' is-fixed' : ''}${
+                                                    unsaved(c) ? ' is-changed' : ''
+                                                }${chipDrag.dragging === c.id ? ' is-dragging' : ''}`}
+                                                disabled={choosing}
+                                                {...chipDrag.bind(c.id, !c.fixed && !choosing)}
                                             >
                                                 {chipLabel(c)}
-                                            </span>
+                                            </button>
                                         ))}
-                                        {own.length > MAX_CHIPS && (
-                                            <span className="pill is-fixed">
-                                                {tg('discord.perm_swap_more', { count: own.length - MAX_CHIPS })}
-                                            </span>
-                                        )}
                                         {own.length === 0 && (
                                             <span className="row-sub">{tg('discord.perm_swap_none')}</span>
                                         )}
                                     </div>
                                 )}
+                                {L.swappable(l) && (hidden[k] || 0) > 0 && (
+                                    <button
+                                        type="button"
+                                        className="pill ladder-more"
+                                        onClick={() => setExpanded((x) => ({ ...x, [k]: true }))}
+                                    >
+                                        {tg('discord.perm_swap_more', { count: hidden[k] })}
+                                    </button>
+                                )}
                             </div>
-                            {fixed ? (
-                                <span className="pill">{t('perm.ladder_fixed')}</span>
-                            ) : (
-                                <>
-                                    <Button
-                                        disabled={i <= 1}
-                                        aria-label={t('perm.ladder_up', { name: label(l) })}
-                                        onClick={() => setDraft((d) => L.moveLevel(d, i, i - 1))}
-                                    >
-                                        <Icon name="chevronUp" size={16} />
-                                    </Button>
-                                    <Button
-                                        disabled={i >= last - 1}
-                                        aria-label={t('perm.ladder_down', { name: label(l) })}
-                                        onClick={() => setDraft((d) => L.moveLevel(d, i, i + 1))}
-                                    >
-                                        <Icon name="chevronDown" size={16} />
-                                    </Button>
-                                    <Button
-                                        tone="ghost-danger"
-                                        disabled={draft.length <= 3 || !L.removable(draft, i)}
-                                        aria-label={t('perm.ladder_delete', { name: label(l) })}
-                                        onClick={() => setDraft((d) => L.removeLevel(d, i))}
-                                    >
-                                        <Icon name="close" size={16} />
-                                    </Button>
-                                </>
-                            )}
                         </li>
                     );
-                    return lineAt === i ? [row, lineRow(i)] : [row];
                 })}
             </ul>
             <div className="field-row">
+                <Button disabled={busy} onClick={resetToDefault}>
+                    <Icon name="undo" size={16} /> {tg('discord.perm_ladder_reset')}
+                </Button>
                 <Button
                     aria-pressed={choosing}
                     onClick={() => {
@@ -267,6 +333,7 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
                         setPicked(null);
                     }}
                 >
+                    <Icon name={choosing ? 'close' : 'swap'} size={16} />{' '}
                     {choosing ? tg('discord.perm_swap_cancel') : tg('discord.perm_swap')}
                 </Button>
                 <small className="hint" aria-live="polite">
@@ -299,15 +366,7 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
             {removed && <small className="hint">{t('perm.ladder_removed')}</small>}
             {!valid && <small className="hint">{t('perm.ladder_invalid')}</small>}
             <div className="field-row">
-                <Button
-                    disabled={busy || !changed}
-                    onClick={() => {
-                        setDraft(saved);
-                        setSteps([]);
-                        setChoosing(false);
-                        setPicked(null);
-                    }}
-                >
+                <Button disabled={busy || !changed} onClick={revert}>
                     {t('perm.ladder_revert')}
                 </Button>
                 <Button tone="accent" busy={busy} disabled={!changed || !valid} onClick={save}>
@@ -521,6 +580,9 @@ function useGuildPermissions(api: WebApi, guildId: string) {
         load();
     }, [load]);
 
+    // 새로고침을 누르면 다시 받는다 (늦게 온 옛 응답은 버린다)
+    const [membersGen, setMembersGen] = useState(0);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: membersGen 이 바뀌면 다시 받는다
     useEffect(() => {
         let live = true;
         setMembers(null);
@@ -528,7 +590,12 @@ function useGuildPermissions(api: WebApi, guildId: string) {
         return () => {
             live = false;
         };
-    }, [api, guildId]);
+    }, [api, guildId, membersGen]);
+    /** 권한과 멤버 목록을 다시 읽는다 (멤버 탭 새로고침) */
+    const reload = () => {
+        load();
+        setMembersGen((n) => n + 1);
+    };
 
     const write: PermissionWriter = async (fn) => {
         setBusy(true);
@@ -538,10 +605,11 @@ function useGuildPermissions(api: WebApi, guildId: string) {
         await load();
         setBusy(false);
     };
-    return { perm, board, members, busy, write };
+    return { perm, board, members, busy, write, reload };
 }
 
-/** 멤버별 레벨: 기본 레벨, 멤버마다 레벨, 레벨 사다리 편집 (길드 전체에 적용) */
+/** 멤버별 레벨 (앱 `PeopleView`와 같다, 사용자 지정 2026-11-07): 레벨 칸마다 사람 칩. 윗줄은 기본 레벨 · 멤버 찾기 · 새로고침.
+ * 칩을 끌어 다른 레벨 칸에 놓거나 눌러 레벨을 고른다. 찾기 결과도 레벨 칸으로 끈다. 사람 추가는 닉네임으로 찾는다 (길드 전체에 적용) */
 interface MemberLevelsProps {
     api: WebApi;
     guildId: string;
@@ -550,83 +618,225 @@ interface MemberLevelsProps {
     members: DiscordMember[];
     busy: boolean;
     write: PermissionWriter;
+    reload: () => void;
 }
 
-function MemberLevels({ api, guildId, perm, board, members, busy, write }: MemberLevelsProps) {
+/** 레벨마다 그 레벨에서 새로 쓸 수 있게 되는 명령 수 (큰 칩만, help·list 제외) — 앱 `levelSummary`와 같다 */
+function levelSummary(tg: TFn, perm: PermData, board: CommandBoard | null, id: number) {
+    if (id === L.OWNER) return tg('discord.perm_level_all');
+    if (id === L.BANNED) return tg('discord.perm_level_none');
+    if (!board) return null;
+    const up = L.ascending(perm);
+    const below = up[up.indexOf(id) - 1];
+    const gain = L.stairChips(board).filter((c) => !c.instance && c.level === id).length;
+    if (below === L.BANNED) return tg('discord.perm_level_base', { count: gain + 1 });
+    return tg('discord.perm_level_gain', { below: L.levelTitle(tg, perm, below), count: gain });
+}
+
+function MemberLevels({ api, guildId, perm, board, members, busy, write, reload }: MemberLevelsProps) {
     const { t } = useTranslation();
-    const [query, setQuery] = useState('');
+    const { t: tg } = useTranslation('gui');
+    const [open, setOpen] = useState<string | null>(null); // 레벨을 고치는 사람 id
+    const [adding, setAdding] = useState<number | null>(null); // 사람을 더하는 레벨
+    const [showDefault, setShowDefault] = useState(false);
+    // 사람 칩 끌기: key는 `id|레벨`. 놓으면 dropRef가 옮긴다
+    const dropRef = useRef<(id: string, from: number, to: number) => void>(() => {});
+    const peopleDrag = usePointerDrag((key: string, to: string) => {
+        const [id, from] = key.split('|');
+        dropRef.current(id, Number(from), Number(to));
+    });
+    const dragging = peopleDrag.dragging
+        ? { id: peopleDrag.dragging.split('|')[0], level: Number(peopleDrag.dragging.split('|')[1]) }
+        : null;
+    const over = peopleDrag.over === null ? null : Number(peopleDrag.over);
+    const byId = useMemo(() => new Map(members.map((m) => [String(m.id), m])), [members]);
+    const memberName = useCallback((id: string) => {
+        const m = byId.get(id);
+        return m ? nameOf(m) : id;
+    }, [byId]);
+    const avatarOf = (id: string) => byId.get(id)?.avatarUrl || byId.get(id)?.avatar;
     const defaultLevel = typeof perm.defaultLevel === 'number' ? perm.defaultLevel : 1;
-    const levelOf = (id: string) => (Object.hasOwn(perm.members || {}, id) ? (perm.members as Record<string, number>)[id] : null);
-    const q = query.trim().toLowerCase();
-    const shown = orderMembers(members, perm).filter(
-        (m) =>
-            !q ||
-            [nameOf(m), m.username, m.id].some((v) =>
-                String(v ?? '')
-                    .toLowerCase()
-                    .includes(q),
-            ),
+    const owner = perm.ownerDiscordId ? String(perm.ownerDiscordId) : null;
+    const setMember = (id: string, level: number) => write(() => api.permissionsSetMember(guildId, id, level));
+    // 소유자 레벨과 원래 레벨에는 놓아도 바꾸지 않는다
+    dropRef.current = (id, from, to) => {
+        if (to !== L.OWNER && to !== from && !busy) setMember(id, to);
+    };
+    const groups = new Map(L.membersByLevel(perm).map((g) => [g.level, g.ids]));
+    const others = L.sortByName(L.defaultMembers(perm, members), (m) => memberName(String(m.id)));
+    // 이 레벨에 더할 수 있는 디스코드 멤버 (소유자와 이미 이 레벨인 사람 제외)
+    const addable = (level: number) =>
+        members.filter((m) => {
+            const id = String(m.id);
+            return id !== owner && (perm.members?.[id] ?? defaultLevel) !== level;
+        });
+
+    const chip = (id: string, level: number) => (
+        <li key={id} className="person">
+            <button
+                type="button"
+                className={`person-chip${open === id ? ' is-open' : ''}${dragging?.id === id ? ' is-dragging' : ''}`}
+                aria-expanded={open === id}
+                aria-label={memberName(id)}
+                {...peopleDrag.bind(`${id}|${level}`)}
+                onClick={() => setOpen(open === id ? null : id)}
+            >
+                <Avatar url={avatarOf(id)} name={memberName(id)} className="avatar avatar-chip" />
+                <span>{memberName(id)}</span>
+            </button>
+            {open === id && (
+                <span className="person-edit">
+                    <LevelSelect
+                        value={level}
+                        perm={perm}
+                        label={tg('discord.perm_member_level', { name: memberName(id) })}
+                        t={t}
+                        disabled={busy}
+                        onChange={(l) => {
+                            if (l !== null && l !== level) {
+                                setOpen(null);
+                                setMember(id, l);
+                            }
+                        }}
+                    />
+                    {perm.members?.[id] !== undefined && (
+                        <Button
+                            disabled={busy}
+                            onClick={() => write(() => api.permissionsRemoveMember(guildId, id))}
+                        >
+                            {tg('discord.perm_reset_member')}
+                        </Button>
+                    )}
+                </span>
+            )}
+        </li>
     );
 
     return (
         <>
-            <small className="hint">{t('perm.members_server_wide')}</small>
-            <div className="field">
-                <span>{t('perm.default')}</span>
-                <LevelSelect
-                    value={defaultLevel}
-                    perm={perm}
-                    label={t('perm.default')}
-                    t={t}
+            {/* 윗줄 (사용자 지정 2026-11-07): 기본 레벨 · 멤버 찾기 · 새로고침(아이콘) */}
+            <div className="people-bar">
+                <span className="people-default" title={tg('discord.perm_default_level_hint')}>
+                    <strong>{tg('discord.perm_default_level_label')}</strong>
+                    <LevelSelect
+                        value={defaultLevel}
+                        perm={perm}
+                        label={t('perm.default')}
+                        t={t}
+                        disabled={busy}
+                        onChange={(l) => l !== null && write(() => api.permissionsUpdate(guildId, { defaultLevel: l }))}
+                    />
+                </span>
+                {/* 멤버 찾기: 결과를 끌어 레벨 칸에 놓는다. 소유자는 따로 정한다 */}
+                <MemberSearch
+                    members={members.filter((m) => String(m.id) !== owner)}
+                    label={tg('discord.perm_member_find')}
+                    nameOf={memberName}
+                    avatarOf={avatarOf}
                     disabled={busy}
-                    onChange={(l) => l !== null && write(() => api.permissionsUpdate(guildId, { defaultLevel: l }))}
+                    dragging={dragging?.id ?? null}
+                    dragProps={(id) => peopleDrag.bind(`${id}|${perm.members?.[id] ?? defaultLevel}`)}
                 />
-                <small className="hint">{t('perm.default_hint')}</small>
+                <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label={tg('discord.reload')}
+                    title={tg('discord.reload')}
+                    disabled={busy}
+                    onClick={reload}
+                >
+                    <Icon name="refresh" size={18} />
+                </button>
             </div>
-            <input
-                className="search"
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('perm.search')}
-            />
-            {shown.length === 0 ? (
-                <Empty>{t('perm.no_members')}</Empty>
-            ) : (
-                <ul className="rows">
-                    {shown.map((m) => {
-                        const owner = String(m.id) === String(perm.ownerDiscordId);
-                        return (
-                            <li key={m.id} className="row member-row">
-                                <MemberAvatar member={m} />
-                                <div className="row-main">
-                                    <div className="row-title row-title-one">{nameOf(m)}</div>
-                                    {m.username && <div className="row-sub row-title-one">@{m.username}</div>}
-                                </div>
-                                {owner ? (
-                                    <span className="pill">{t('perm.owner')}</span>
-                                ) : (
-                                    <LevelSelect
-                                        value={levelOf(String(m.id))}
-                                        perm={perm}
-                                        label={nameOf(m)}
-                                        withDefault
-                                        t={t}
-                                        disabled={busy}
-                                        onChange={(l) =>
-                                            write(() =>
-                                                l === null
-                                                    ? api.permissionsRemoveMember(guildId, String(m.id))
-                                                    : api.permissionsSetMember(guildId, String(m.id), l),
-                                            )
-                                        }
-                                    />
+            <small className="hint">
+                {tg('discord.perm_inherit_hint')} {tg('discord.perm_people_server_wide')}
+            </small>
+
+            <ol className="level-rows">
+                {L.ladderOf(perm).map(({ id: levelId }) => {
+                    const level = levelId as number;
+                    const ids = L.sortByName(groups.get(level) || [], memberName);
+                    const summary = levelSummary(tg, perm, board, level);
+                    const isDefault = level === defaultLevel;
+                    const droppable = !!dragging && level !== L.OWNER && level !== dragging.level;
+                    return (
+                        <li
+                            key={level}
+                            className={`level-row${over === level && droppable ? ' is-over' : ''}`}
+                            aria-label={L.levelLabel(tg, perm, level)}
+                            data-drop={level}
+                        >
+                            <div className="level-head">
+                                <span className="stair-num">Lv {L.levelNumber(perm, level)}</span>
+                                <strong>{L.levelLabel(tg, perm, level)}</strong>
+                                {isDefault && <span className="pill tone-info">{tg('discord.perm_default_badge')}</span>}
+                                {(level === L.OWNER || level === L.BANNED) && (
+                                    <span className="pill">{tg('discord.perm_owner_fixed')}</span>
                                 )}
-                            </li>
-                        );
-                    })}
-                </ul>
-            )}
+                            </div>
+                            {summary && <small className="hint">{summary}</small>}
+                            {level === L.OWNER ? (
+                                <div className="people">
+                                    {owner ? (
+                                        <span className="person-chip is-static is-owner">
+                                            <Avatar url={avatarOf(owner)} name={memberName(owner)} className="avatar avatar-chip" />
+                                            <span>{memberName(owner)}</span>
+                                        </span>
+                                    ) : (
+                                        <span className="hint">{tg('discord.perm_owner_none')}</span>
+                                    )}
+                                </div>
+                            ) : (
+                                <ul className="people">
+                                    {ids.map((id) => chip(id, level))}
+                                    {isDefault && others.length > 0 && !showDefault && (
+                                        <li>
+                                            <button
+                                                type="button"
+                                                className="person-chip is-add"
+                                                onClick={() => setShowDefault(true)}
+                                            >
+                                                {tg('discord.perm_default_more', { count: others.length })}
+                                            </button>
+                                        </li>
+                                    )}
+                                    {isDefault && showDefault && others.map((m) => chip(String(m.id), level))}
+                                    <li>
+                                        <button
+                                            type="button"
+                                            className={`person-chip is-add${adding === level ? ' is-active' : ''}`}
+                                            aria-expanded={adding === level}
+                                            aria-label={tg('discord.perm_add_person_to', {
+                                                level: L.levelLabel(tg, perm, level),
+                                            })}
+                                            onClick={() => setAdding(adding === level ? null : level)}
+                                        >
+                                            <Icon name="plus" size={14} /> {tg('discord.perm_add_person')}
+                                        </button>
+                                    </li>
+                                </ul>
+                            )}
+                            {adding === level && (
+                                <div className="add-person">
+                                    <MemberSearch
+                                        members={addable(level)}
+                                        label={tg('discord.perm_add_search', { level: L.levelLabel(tg, perm, level) })}
+                                        nameOf={memberName}
+                                        avatarOf={avatarOf}
+                                        disabled={busy}
+                                        autoFocus
+                                        onPick={(id) => {
+                                            setAdding(null);
+                                            setMember(id, level);
+                                        }}
+                                    />
+                                </div>
+                            )}
+                        </li>
+                    );
+                })}
+            </ol>
+            {members.length === 0 && <Empty>{t('perm.no_members')}</Empty>}
             <LadderEditor
                 perm={perm}
                 board={board}
@@ -772,6 +982,7 @@ export function GuildPermissions({
                     members={data.members}
                     busy={data.busy}
                     write={data.write}
+                    reload={data.reload}
                 />
             </>
         );

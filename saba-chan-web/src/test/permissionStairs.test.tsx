@@ -77,10 +77,12 @@ describe('웹 레벨별 명령 계단', () => {
                 name: 'Lv 2 · Admin',
             }),
         );
+        // 옮긴 것은 초안이다: 저장을 눌러야 데몬에 간다 (백업은 이미 관리자라 바뀌지 않는다)
+        expect(api.permissionsUpdate).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await act(async () => {});
         expect(api.permissionsUpdate).toHaveBeenCalledWith('g1', {
-            // 백업은 프리셋이 이미 관리자라 따로 정한 값을 지운다 (levelPatch)
-            commandLevels: { 'mc-1/server.start': 2, 'mc-1/server.stop': 2, 'mc-1/backup.create': null },
+            commandLevels: { 'mc-1/server.start': 2, 'mc-1/server.stop': 2 },
         });
     });
 
@@ -88,6 +90,28 @@ describe('웹 레벨별 명령 계단', () => {
         mount({}, '*');
         expect(within(step('Lv 0 · Guest')).getByRole('button', { name: /Help/ })).toBeTruthy();
         expect(within(step('Lv 3 · Owner')).getByRole('button', { name: 'Update' })).toBeTruthy();
+    });
+
+    it('제자리로 돌려 놓으면 노란 테두리와 저장 막대가 사라지고, 기본값으로 초기화는 프리셋 레벨로', () => {
+        mount({});
+        const pick = (chip: string, level: string) => {
+            if (!screen.queryByRole('region', { name: chip }))
+                fireEvent.click(screen.getByRole('button', { name: chip }));
+            fireEvent.click(within(screen.getByRole('region', { name: chip })).getByRole('button', { name: level }));
+        };
+        pick('Say', 'Lv 1 · User');
+        expect(within(step('Lv 1 · User')).getByRole('button', { name: 'Say' }).classList.contains('is-changed')).toBe(
+            true,
+        );
+        expect(screen.getByRole('status').textContent).toContain('unsaved');
+        pick('Say', 'Lv 0 · Guest');
+        expect(within(step('Lv 0 · Guest')).getByRole('button', { name: 'Say' }).classList.contains('is-changed')).toBe(
+            false,
+        );
+        expect(screen.queryByRole('status')).toBeNull();
+        pick('Say', 'Lv 3 · Owner');
+        fireEvent.click(screen.getByRole('button', { name: /Reset to defaults/ }));
+        expect(within(step('Lv 0 · Guest')).getByRole('button', { name: 'Say' })).toBeTruthy();
     });
 
     it('손가락으로 칩을 다른 칸에 끌어 놓으면 옮기고, 새 자리로 미끄러진다', async () => {
@@ -110,6 +134,12 @@ describe('웹 레벨별 명령 계단', () => {
             expect(say.classList.contains('is-dragging')).toBe(true);
             expect(step('Lv 2 · Admin').classList.contains('is-over')).toBe(true);
             fireEvent.pointerUp(window, { clientX: 205, clientY: 5 });
+            await act(async () => {});
+            // 초안에서 바로 옮겨 그리고, 저장하지 않은 칩은 노란 테두리
+            const moved = within(step('Lv 2 · Admin')).getByRole('button', { name: 'Say' });
+            expect(moved.classList.contains('is-changed')).toBe(true);
+            expect(animate).toHaveBeenCalled();
+            fireEvent.click(screen.getByRole('button', { name: 'Save' }));
             await act(async () => {});
             expect(api.permissionsUpdate).toHaveBeenCalledWith('g1', { commandLevels: { 'mc-1/say': 2 } });
             rerender(board(2));

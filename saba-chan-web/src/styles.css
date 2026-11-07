@@ -847,31 +847,147 @@ textarea {
     flex: 1;
     min-width: 0;
 }
-/* 레벨 사다리의 조작 가능 줄: 칸이 아니라 칸 사이의 선 (사용자 지정 2026-11-06) */
-.row.ladder-line {
-    border: 2px dashed var(--accent);
-    background: color-mix(in srgb, var(--accent) 10%, var(--bg-1));
-}
-.row.ladder-line .row-title {
-    color: var(--accent);
-}
 /* 권한 맞바꾸기 (사용자 지정 2026-11-07): 칸마다 그 레벨부터 쓰는 명령 칩, 고르기 중에는 칸 전체가 버튼 */
 .row.ladder-row {
     position: relative;
 }
+/* 레벨 편집 카드 (사용자 지정 2026-11-07, 앱과 같다): 카드를 끌어 순서를 바꾸고, 들어갈 자리에 선이 보인다 */
+.rows.ladder .row.ladder-row {
+    padding: 12px 16px;
+    cursor: grab;
+}
+.rows.ladder .row.ladder-row.is-fixed {
+    cursor: default;
+}
+.row.ladder-row.is-dragging {
+    z-index: 20;
+    box-shadow: 0 6px 18px var(--shadow-md);
+    cursor: grabbing;
+}
+.row.ladder-row.is-insert-before::before,
+.row.ladder-row.is-insert-after::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+    pointer-events: none;
+}
+.row.ladder-row.is-insert-before::before {
+    top: -6px;
+}
+.row.ladder-row.is-insert-after::after {
+    bottom: -6px;
+}
+.row.ladder-row.is-over {
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+/* 끄는 칩의 카드를 다른 카드 위로: 아래 카드가 칩을 덮지 않게 */
+.row.ladder-row:has(.ladder-chip.is-dragging) {
+    z-index: 30;
+}
+.ladder-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.ladder-head > .btn {
+    margin-left: auto;
+}
+.ladder-head > .pill {
+    margin-left: auto;
+}
+.ladder-rank {
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.ladder-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+    cursor: text;
+}
+.ladder-head input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+/* 손잡이는 손가락에서만 보인다: 휴대폰은 이것을 끌어 카드를 옮기고, 나머지 자리는 화면을 스크롤한다 */
+.ladder-grip {
+    display: none;
+    color: var(--text-3);
+    touch-action: none;
+}
+@media (pointer: coarse) {
+    .ladder-grip {
+        display: inline-grid;
+        place-items: center;
+        margin: -6px 0 -6px -8px;
+        padding: 6px 4px;
+    }
+}
+/* 칩 세 줄까지 보이고 넘치면 접는다 (+N을 누르면 편다) */
 .ladder-chips {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
-    margin-top: 6px;
+    margin-top: 8px;
+    max-height: calc(3 * (1.3em + 10px) + 2 * 4px);
+    overflow: hidden;
 }
-.ladder-chips .pill {
+.ladder-chips.is-expanded {
+    max-height: none;
+}
+/* 칩을 끄는 동안 접힌 칸이 끄는 칩을 잘라 숨기지 않게 */
+.ladder-chips:has(.is-dragging) {
+    overflow: visible;
+}
+.ladder-chips .pill,
+.ladder-more {
     margin-left: 0;
 }
-.ladder-chips .pill.is-fixed {
+.ladder-chip {
+    padding: 4px 10px;
+    border: 1px solid var(--line-strong);
+    background: var(--bg-0);
+    color: var(--text-1);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.3;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+.ladder-chip.is-fixed {
+    border-style: dashed;
     background: transparent;
-    border: 1px dashed var(--line);
     color: var(--text-3);
+    cursor: default;
+}
+.ladder-chip.is-changed {
+    border-color: var(--warn);
+    box-shadow: 0 0 0 1px var(--warn);
+}
+.ladder-chip.is-dragging {
+    position: relative;
+    z-index: 20;
+    cursor: grabbing;
+    box-shadow: 0 6px 18px var(--shadow-md);
+}
+.ladder-more {
+    margin-top: 6px;
+    padding: 2px 10px;
+    border: 0;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
 }
 .row.ladder-row.is-pickable {
     outline: 2px dashed var(--warn);
@@ -1663,6 +1779,8 @@ textarea {
     background: var(--bg-0);
     color: var(--text-1);
     font-size: 13px;
+    font-weight: 500;
+    line-height: 1.3;
     cursor: grab;
     /* 손가락으로 끌 때 화면이 같이 움직이지 않게 */
     touch-action: none;
@@ -1686,7 +1804,8 @@ textarea {
     cursor: pointer;
     touch-action: auto;
 }
-.cmd-chip.is-moved {
+/* 저장하지 않은 변경 (사용자 지정 2026-11-07): 제자리로 돌려 놓으면 사라진다 */
+.cmd-chip.is-changed {
     border-color: var(--warn);
     box-shadow: 0 0 0 1px var(--warn);
 }
@@ -1699,10 +1818,6 @@ textarea {
     z-index: 20;
     opacity: 0.85;
     cursor: grabbing;
-}
-.cmd-chip.is-legend {
-    cursor: default;
-    padding: 0 8px;
 }
 .chip-edit {
     display: grid;
@@ -2572,4 +2687,243 @@ textarea {
     border: 0;
     border-radius: 0;
     box-shadow: none;
+}
+
+/* 저장 막대 (인스턴스 권한, 사용자 지정 2026-11-07): 옮긴 레벨은 초안이고 여기서 저장한다 */
+.save-bar {
+    position: sticky;
+    bottom: 12px;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    background: var(--bg-1);
+    box-shadow: 0 8px 24px var(--shadow-md);
+}
+.save-bar > span {
+    flex: 1 1 auto;
+    color: var(--text-2);
+    font-size: 13px;
+}
+
+/* ── 멤버 탭 (앱 PeopleView와 같다, 사용자 지정 2026-11-07) ── */
+.people-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+.people-default {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.people-default > strong {
+    color: var(--text-1);
+    font-weight: 600;
+    white-space: nowrap;
+}
+.people-bar .member-search {
+    flex: 1 1 200px;
+    min-width: 160px;
+}
+.member-search {
+    position: relative;
+    max-width: 360px;
+}
+.people-bar .member-search {
+    max-width: none;
+}
+.member-search > .search {
+    padding-right: 36px;
+}
+/* 검색어 지우기: 입력칸 오른쪽 안쪽, 그냥 × 아이콘 (상자 22px) */
+.member-clear {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-2);
+    cursor: pointer;
+}
+.member-clear:hover {
+    background: var(--bg-3);
+}
+.member-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 30;
+    max-height: 280px;
+    padding: 4px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    background: var(--bg-1);
+    box-shadow: 0 8px 24px var(--shadow-md);
+    transition: opacity var(--dur-fast) var(--ease);
+}
+.member-result + .member-result {
+    margin-top: 2px;
+}
+.member-result > .person-chip {
+    width: 100%;
+    justify-content: flex-start;
+}
+.member-result small {
+    margin-left: auto;
+}
+.member-empty {
+    padding: 8px;
+}
+/* 결과를 끄는 동안: 팝업은 반투명으로 남고 손 아래 칸을 가리지 않는다. 끄는 칩은 팝업 밖으로 뜬다 */
+.member-search.is-dragging .member-results {
+    pointer-events: none;
+    background: color-mix(in srgb, var(--bg-1) 55%, transparent);
+    border-color: color-mix(in srgb, var(--line-strong) 50%, transparent);
+}
+.member-search.is-dragging .member-result:not(:has(.is-dragging)) {
+    opacity: 0.4;
+}
+.member-result > .person-chip.is-floating {
+    position: fixed;
+    z-index: 60;
+    pointer-events: none;
+}
+.level-rows {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.level-row {
+    display: grid;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg-1);
+    transition:
+        box-shadow var(--dur-fast) var(--ease),
+        background-color var(--dur-fast) var(--ease);
+}
+.level-row.is-over {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-1));
+}
+.level-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.level-head .pill {
+    margin-left: 0;
+}
+.pill.tone-info {
+    background: color-mix(in srgb, var(--info) 18%, transparent);
+    color: var(--info);
+}
+.people {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.person {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+/* 사람 칩은 얇게, 여백은 사방 고르게 (사용자 지정 2026-11-07) */
+.person-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 12px 3px 3px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--bg-0);
+    color: var(--text-1);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.3;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    transition:
+        border-color var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease);
+}
+.person-chip.is-open {
+    border-color: var(--accent);
+}
+.person-chip.is-dragging {
+    position: relative;
+    z-index: 20;
+    opacity: 0.9;
+    cursor: grabbing;
+    box-shadow: 0 6px 18px var(--shadow-md);
+}
+.person-chip.is-static {
+    cursor: default;
+    touch-action: auto;
+}
+/* 소유자 칩: 앱 강조 그라데이션 (주 버튼과 같은 --brand-gradient) */
+.person-chip.is-owner {
+    border-color: transparent;
+    background: var(--neu-sheen), var(--brand-gradient);
+    color: var(--brand-text);
+}
+.person-chip.is-add {
+    padding-left: 12px;
+    border-style: dashed;
+    color: var(--text-2);
+    cursor: pointer;
+    touch-action: auto;
+}
+/* 이 레벨에 사람을 더하는 중 */
+.person-chip.is-add.is-active {
+    border-style: solid;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+    color: var(--accent);
+}
+.person-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.add-person {
+    max-width: 360px;
+}
+.avatar.avatar-chip {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+}
+/* 칩을 끌 때 사진이 손을 가로채지 않게: 누름은 칩이 받는다 */
+.avatar img {
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
 }

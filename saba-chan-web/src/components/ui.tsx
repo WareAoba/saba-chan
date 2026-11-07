@@ -109,7 +109,14 @@ export function Avatar({ url, name, className = 'avatar' }: { url?: unknown; nam
     return (
         <span className={className} aria-hidden="true">
             {ok ? (
-                <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(url)} />
+                <img
+                    src={url}
+                    alt=""
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    draggable={false}
+                    onError={() => setBroken(url)}
+                />
             ) : (
                 String(name ?? '')
                     .trim()

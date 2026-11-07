@@ -2,10 +2,11 @@ import type { CommandBoard, GuildPermissions, StairChip } from '@gui/components/
 import * as L from '@gui/components/discord/levels';
 import { usePointerDrag } from '@gui/components/discord/pointerDrag';
 import type { CSSProperties, RefObject } from 'react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import type { ApiBody, WebApi } from '../types';
+import { Icon } from './icons';
 import { Button, Segments } from './ui';
 
 /** 저장 한 번을 맡기는 함수: 알림·다시 읽기는 부르는 쪽이 한다 */
@@ -19,7 +20,7 @@ const toneOf = (c: StairChip) =>
  * 칩이 다른 칸으로 옮겨지면 옛 자리에서 새 자리로 미끄러지게 한다 (FLIP, 앱 계단과 같다).
  * 자리는 그릴 때마다 다시 재고, 움직임은 `dep`(계단 값)이 바뀔 때만 준다
  */
-function useChipFlip(ref: RefObject<HTMLElement | null>, dep: CommandBoard | null | undefined) {
+function useChipFlip(ref: RefObject<HTMLElement | null>, dep: unknown) {
     const last = useRef(new Map<string, DOMRect>());
     const prevDep = useRef(dep);
     useLayoutEffect(() => {
@@ -96,16 +97,38 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
     const chipDrag = usePointerDrag((id: string, to: string) => dropRef.current(id, Number(to)));
     const dragging = chipDrag.dragging;
     const over = chipDrag.over === null ? null : Number(chipDrag.over);
-    useChipFlip(ref, board);
+    // 옮긴 레벨은 초안이다 (사용자 지정 2026-11-07, 앱과 같다): 저장 막대에서 저장한다. 명령 키 → 레벨
+    const [moves, setMoves] = useState<Record<string, number>>({});
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 데몬 값을 다시 읽으면(저장 뒤) 초안을 비운다
+    useEffect(() => setMoves({}), [board]);
+    // 칩은 저장된 값이 바뀔 때도, 초안에서 옮길 때도 미끄러진다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: board·moves 가 바뀔 때마다 새 표지
+    const flipToken = useMemo(() => ({}), [board, moves]);
+    useChipFlip(ref, flipToken);
     useFillHeight(ref);
 
     const levelName = (id: number) => L.ladderOf(perm).find((l) => l.id === id)?.name || t(`perm.level.${id}`);
     const levelTitle = (id: number) => t('perm.level_numbered', { n: L.levelNumber(perm, id), name: levelName(id) });
     const update = (patch: ApiBody) => write(() => api.permissionsUpdate(guildId, patch));
+    const items = board?.items || [];
+    const draftLevels = items.map((it) =>
+        !it.fixed && moves[it.key as string] !== undefined ? moves[it.key as string] : it.level,
+    );
+    const shownBoard = L.draftBoard(board, draftLevels);
+    const patch = L.boardPatch(board, draftLevels);
+    const dirty = Object.keys(patch).length > 0;
+    // 노란 테두리는 저장하지 않은 변경: 저장된 레벨과 초안 레벨이 다른 명령 (제자리로 돌려 놓으면 사라진다)
+    const savedLevel = new Map(items.map((it) => [it.key as string, it.level]));
+    const unsaved = (c: StairChip) => c.items.some((it) => savedLevel.get(it.key as string) !== it.level);
+    const draftTo = (list: L.CommandItem[], level: (it: L.CommandItem) => number) =>
+        setMoves((m) => ({
+            ...m,
+            ...Object.fromEntries(list.filter((it) => !it.fixed).map((it) => [it.key as string, level(it)])),
+        }));
     const move = (chip: StairChip, level: number) => {
         // 대표 레벨이 같아도 다른 레벨인 인스턴스가 있으면 맞춘다
         if (busy || chip.fixed || level === L.BANNED || chip.items.every((i) => i.fixed || i.level === level)) return;
-        update({ commandLevels: L.levelPatch(chip.items, level) });
+        draftTo(chip.items, () => level);
     };
 
     const instances = board?.instances || [];
@@ -115,12 +138,18 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
     const oneInstance = instance !== L.ALL_INSTANCES;
     const groupControl = (list: StairChip[]) => L.groupControllers(list, tg('discord.perm_server_control'));
     const chips: StairChip[] = oneInstance
-        ? groupControl(L.stairChips(board, instance).filter((c) => c.items.some((i) => i.instance)))
+        ? groupControl(L.stairChips(shownBoard, instance).filter((c) => c.items.some((i) => i.instance)))
         : [
               // help·list는 금지가 아니면 누구나 쓴다 (바꿀 수 없다)
               { id: 'basic', title: t('perm.help_list'), level: steps[0], fixed: true, basic: true, items: [] },
-              ...groupControl(L.stairChips(board, instance)),
+              ...groupControl(L.stairChips(shownBoard, instance)),
           ];
+    // 기본값으로 초기화: 보이는 명령을 프리셋 레벨로 (초안, 저장해야 반영)
+    const resetToDefault = () =>
+        draftTo(
+            chips.flatMap((c) => c.items),
+            (it) => it.preset as number,
+        );
     dropRef.current = (id, level) => {
         const chip = chips.find((c) => c.id === id);
         if (chip) move(chip, level);
@@ -165,6 +194,11 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
                     onChange={pickPreset}
                     options={L.PRESETS.map((p) => ({ value: p, label: t(`perm.preset_${p}`) }))}
                 />
+                <div className="field-row">
+                    <Button disabled={busy} onClick={resetToDefault}>
+                        <Icon name="undo" size={16} /> {tg('discord.perm_ladder_reset')}
+                    </Button>
+                </div>
                 {moved > 0 && (
                     <div className="field-row">
                         <small className="hint">{t('perm.moved_count', { count: moved })}</small>
@@ -207,7 +241,7 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
                                         data-chip={c.id}
                                         aria-label={label(c)}
                                         title={label(c)}
-                                        className={`cmd-chip${c.overridden ? ' is-moved' : ''}${
+                                        className={`cmd-chip${unsaved(c) ? ' is-changed' : ''}${
                                             c.fixed ? ' is-fixed' : ''
                                         }${selected === c.id ? ' is-selected' : ''}${
                                             dragging === c.id ? ' is-dragging' : ''
@@ -282,16 +316,10 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
                                     {tg('discord.perm_applies_to', { count: current.items.length })}
                                 </small>
                             )}
-                            {current.items.some((i) => i.overridden) && (
+                            {current.items.some((i) => !i.fixed && i.level !== i.preset) && (
                                 <Button
                                     disabled={busy}
-                                    onClick={() =>
-                                        update({
-                                            commandLevels: Object.fromEntries(
-                                                current.items.flatMap((i) => (i.keys || [i.key]).map((k) => [k, null])),
-                                            ),
-                                        })
-                                    }
+                                    onClick={() => draftTo(current.items, (it) => it.preset as number)}
                                 >
                                     {t('perm.back_to_preset')}
                                 </Button>
@@ -310,10 +338,18 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
                 <span>
                     <span className="dot tone-info" /> {tg('discord.kind_admin')}
                 </span>
-                <span>
-                    <span className="cmd-chip is-moved is-legend">{tg('discord.perm_legend_moved')}</span>
-                </span>
             </div>
+            {dirty && (
+                <div className="save-bar" role="status">
+                    <span>{tg('discord.unsaved')}</span>
+                    <Button disabled={busy} onClick={() => setMoves({})}>
+                        {tg('discord.revert')}
+                    </Button>
+                    <Button tone="accent" busy={busy} onClick={() => update({ commandLevels: patch })}>
+                        {tg('discord.save')}
+                    </Button>
+                </div>
+            )}
         </div>
     );
 }

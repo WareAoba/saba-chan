@@ -34,6 +34,8 @@ const GUI_NAMES: Record<string, string> = {
     modules: 'extension',
     back: 'chevronLeft',
     close: 'x',
+    // 그냥 × (원 없음): 검색어 지우기 (앱 멤버 찾기와 같다)
+    clear: 'close',
     lock: 'key',
 };
 
