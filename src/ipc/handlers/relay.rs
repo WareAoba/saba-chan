@@ -83,14 +83,29 @@ async fn signed_base(state: &IPCServer, requested: Option<&str>) -> String {
 
 /// Create an HTTP client with 5s timeout for relay requests.
 /// Automatically includes X-Saba-Client: 1 header required by nginx.
-/// 한 번 만든 클라이언트를 함께 쓴다: 요청마다 TLS 설정을 다시 만들지 않고 릴레이 연결을 이어 쓴다 (상태 확인은 5초마다)
+/// 한 번 만든 클라이언트를 함께 쓴다: 요청마다 TLS 설정을 다시 만들지 않고 릴레이 연결을 이어 쓴다 (상태 확인은 5초마다).
+/// 시스템 프록시는 만들 때 읽으므로 `RELAY_CLIENT_LIFETIME`마다 새로 만들어 프록시를 바꿔도 데몬 재시작 없이 따른다
 pub(crate) fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
-    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    if let Some(client) = CLIENT.get() {
+    static CLIENT: std::sync::Mutex<Option<(std::time::Instant, reqwest::Client)>> = std::sync::Mutex::new(None);
+    cached_relay_client(&CLIENT, std::time::Instant::now())
+}
+
+/// 함께 쓰는 릴레이 클라이언트를 이만큼 쓰면 새로 만든다
+const RELAY_CLIENT_LIFETIME: std::time::Duration = std::time::Duration::from_secs(600);
+
+fn cached_relay_client(
+    slot: &std::sync::Mutex<Option<(std::time::Instant, reqwest::Client)>>,
+    now: std::time::Instant,
+) -> Result<reqwest::Client, reqwest::Error> {
+    let mut slot = slot.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((built, client)) = slot.as_ref()
+        && now.saturating_duration_since(*built) < RELAY_CLIENT_LIFETIME
+    {
         return Ok(client.clone());
     }
     let client = build_relay_client()?;
-    Ok(CLIENT.get_or_init(|| client).clone())
+    *slot = Some((now, client.clone()));
+    Ok(client)
 }
 
 fn build_relay_client() -> Result<reqwest::Client, reqwest::Error> {
@@ -903,6 +918,19 @@ mod tests {
     use super::{node_token_in, pairing_body, store_node_token, write_node_token_in, StoredToken};
     use saba_chan_updater_lib::config_file::ConfigFile;
     use serde_json::json;
+
+    /// 시스템 프록시를 바꾸면 데몬을 다시 켜지 않아도 따르게, 함께 쓰는 클라이언트는 일정 시간 뒤 새로 만든다
+    #[test]
+    fn the_shared_relay_client_is_rebuilt_after_its_lifetime() {
+        let slot = std::sync::Mutex::new(None);
+        let start = std::time::Instant::now();
+        super::cached_relay_client(&slot, start).unwrap();
+        super::cached_relay_client(&slot, start + std::time::Duration::from_secs(1)).unwrap();
+        assert_eq!(slot.lock().unwrap().as_ref().map(|(at, _)| *at), Some(start), "reused within the lifetime");
+        let later = start + super::RELAY_CLIENT_LIFETIME;
+        super::cached_relay_client(&slot, later).unwrap();
+        assert_eq!(slot.lock().unwrap().as_ref().map(|(at, _)| *at), Some(later), "rebuilt after it");
+    }
 
     /// 토큰을 저장하지 못했으면 연결된 것으로 보이면 안 된다. 같은 토큰을 다시 받으면 다시 쓰지 않는다
     #[test]

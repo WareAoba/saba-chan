@@ -87,6 +87,16 @@ pub fn roster_change(instance_id: &str, generation: u64, name: &str, joined: boo
     }
 }
 
+/// 접속·퇴장 줄로 센 지금 접속자: (인스턴스 ID, 이름). `instance_id`가 없으면 세는 모든 서버.
+/// 다시 붙은 서버는 세지 않으므로 빠진다 (`player_events::after_reattach`)
+pub fn present(instance_id: Option<&str>) -> Vec<(String, String)> {
+    let map = rosters().lock().unwrap_or_else(|e| e.into_inner());
+    map.iter()
+        .filter(|(id, _)| instance_id.is_none_or(|want| want == id.as_str()))
+        .flat_map(|(id, r)| r.names.iter().map(move |name| (id.clone(), name.clone())))
+        .collect()
+}
+
 /// 지금 세는 목록이 `generation`의 것인가 (그 사이 새 프로세스가 세기 시작하지 않았다)
 pub fn is_current(instance_id: &str, generation: u64) -> bool {
     rosters().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).is_some_and(|r| r.generation == generation)
@@ -302,6 +312,8 @@ mod tests {
         roster_change(id, generation, "Bob", false);
         roster_change(id, generation, "Bob", false);
         assert_eq!(get(id).unwrap().online, 1, "a second leave does not go below zero");
+        assert_eq!(present(Some(id)), [(id.to_string(), "사바쨩".to_string())], "the counted roster names who is in now");
+        assert!(present(None).contains(&(id.to_string(), "사바쨩".to_string())));
 
         // 모듈이 수 없이 최대 인원만 알려 주면 그 값을 붙인다
         apply_refresh(id, Some(1), Ok(Some(json!({ "success": true, "max": 8 }))), std::time::Instant::now(), true);

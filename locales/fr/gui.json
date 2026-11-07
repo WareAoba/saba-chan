@@ -1932,7 +1932,7 @@
     "title": "Seuls les opérateurs peuvent entrer",
     "desc": "Tout pseudo absent de la liste « Opérateurs » est expulsé dès son arrivée. Il n'est pas banni.",
     "label": "Expulser les personnes hors liste",
-    "hint": "Seul le pseudo est vérifié : sur un serveur sans vérification de compte, quelqu'un peut entrer sous le nom d'un autre.",
+    "hint": "Seul le pseudo est vérifié : quiconque entre avec un pseudo de la liste passe. Dans les jeux où chacun choisit son nom, ou sur un serveur sans vérification de compte, n'importe qui peut prendre ce nom.",
     "empty": "Ajoutez au moins une personne dans l'onglet « Opérateurs » pour l'activer."
   },
   "stop_timeout": {

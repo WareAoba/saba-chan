@@ -41,6 +41,13 @@ class RegistrationNotes(unittest.TestCase):
     def test_beta_release_may_go_without_notes(self):
         self.assertIsNone(self.register("beta", None)["notes"])
 
+    def test_rollout_percent_accepts_only_1_to_100(self):
+        self.assertEqual(versions.rollout_percent("100"), 100)
+        self.assertEqual(versions.rollout_percent("1"), 1)
+        for bad in ["0", "101", "-5", "abc", ""]:
+            with self.assertRaises(versions.argparse.ArgumentTypeError):
+                versions.rollout_percent(bad)
+
 
 if __name__ == "__main__":
     unittest.main()

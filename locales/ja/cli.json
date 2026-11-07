@@ -269,6 +269,7 @@
     "import_replaced": "上書きしたサーバー",
     "import_settings": "設定",
     "import_skipped": "{{name}}: スキップ ({{reason}})",
+    "import_partial": "{{n}} 台のサーバーを取り込めませんでした。",
     "import_missing_module": "{{module}} モジュールがこの PC にありません。そのサーバーを起動する前にモジュールをインストールしてください。",
     "import_move_files": "ゲームサーバーのファイルは含まれていません。サーバーフォルダーを同じパスに移すか、サーバー設定でフォルダーを変更してください。",
     "skip_reason": {

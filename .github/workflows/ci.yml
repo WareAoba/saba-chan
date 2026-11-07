@@ -7,8 +7,9 @@
 #
 # PR (바뀐 경로에 해당하는 것만):
 #   guard    — versions.toml 일치, 릴리스 패키징 스크립트 시험 (항상)
-#   windows  — Windows clippy + cargo test (Rust 변경 시). 배포 대상이 Windows뿐이고
-#              Windows 전용 코드는 로컬 클라우드에서 실행되지 않는다
+#   windows  — Windows clippy + cargo test (Rust 변경 시). Windows 전용 코드는
+#              로컬 클라우드에서 실행되지 않는다. 리눅스 배포물은 publish.yml이 빌드하고,
+#              리눅스 빌드·시험은 전체 실행(linux 작업)에서 본다
 #   frontend — GUI 번들 빌드, GUI·웹 타입 검사·린트, 업데이터/설치기 스크립트 문법 (GUI·웹 변경 시)
 #   macos-package — 맥 구성요소 zip·Saba-chan.app·서명 없는 .dmg (패키징·워크플로 변경 시)
 #

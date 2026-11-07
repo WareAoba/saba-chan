@@ -50,7 +50,7 @@ export interface MetricsSnapshot {
         net_rx_bps?: number | null;
         net_tx_bps?: number | null;
     }[];
-    /** 포트·서버별 네트워크 (설정 > 고급, Windows ETW). status가 "on"일 때만 값이 있다 */
+    /** 포트·서버별 네트워크 (설정 > 게임 서버, Windows ETW). status가 "on"일 때만 값이 있다 */
     net_trace?: NetTrace;
 }
 

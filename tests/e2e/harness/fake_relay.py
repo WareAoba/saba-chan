@@ -162,6 +162,12 @@ class FakeRelay:
                     with relay._lock:
                         relay.results[unquote(path[len("/result/"):])] = parsed
                     return self._send(200, {"ok": True})
+                if method in ("PUT", "DELETE") and path == "/api/remote/endpoint":
+                    # 실제 릴레이처럼 원격 주소를 받는다 (받지 않으면 데몬이 계속 다시 올려 요청 수를 세는 시험이 흔들린다)
+                    self.send_response(204)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return None
                 if method == "POST" and path == "/events":
                     with relay._lock:
                         relay.events.extend(parsed.get("events", []))
@@ -176,6 +182,9 @@ class FakeRelay:
 
             def do_PUT(self):
                 self._route("PUT")
+
+            def do_DELETE(self):
+                self._route("DELETE")
 
         return Handler
 

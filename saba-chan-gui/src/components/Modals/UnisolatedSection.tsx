@@ -11,7 +11,7 @@ export const unisolatedAvailable = () =>
 const failed = (res: ApiBody | null | undefined) => !res || res.success === false || Boolean(res.error || res.error_code);
 
 /**
- * 설정 > 고급: 격리 없이 돌리기로 동의한 구성요소 (데몬 config.json sandbox.unisolated).
+ * 설정 > 보안: 격리 없이 돌리기로 동의한 구성요소 (데몬 config.json sandbox.unisolated).
  * current=false면 파일이 바뀌어 그 동의는 쓰이지 않는다(다음 실행 때 다시 묻는다).
  */
 export function UnisolatedSection() {

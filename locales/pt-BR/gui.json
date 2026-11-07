@@ -1932,7 +1932,7 @@
     "title": "Só operadores podem entrar",
     "desc": "Quem não estiver na lista \"Operadores\" é expulso assim que entra. Não é banido.",
     "label": "Expulsar quem não está na lista",
-    "hint": "Só o apelido é verificado, então em servidores sem verificação de conta alguém pode entrar com o nome de outra pessoa.",
+    "hint": "Só o apelido é verificado, então quem entrar com um apelido da lista passa. Em jogos em que cada um escolhe o próprio nome, ou em servidores sem verificação de conta, qualquer pessoa pode usar esse nome.",
     "empty": "Adicione pelo menos uma pessoa na aba \"Operadores\" para ligar."
   },
   "stop_timeout": {

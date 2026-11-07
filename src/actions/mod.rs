@@ -157,8 +157,9 @@ pub static ACTIONS: &[Def] = &[
         ..def("server.chat_link", Kind::Command, "safe", &[Discord], true, "POST", "/api/instance/:id/chat-link/:guild")
     },
     // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 접속해 본다. 공인 주소가 결과에 있어 챗봇에는 열지 않는다 (디스코드는 요약만 보인다)
-    // 서버 주소 (사용자 요청 2026-11-05): 릴레이가 본 이 PC의 접속 주소 + 밖에 여는 포트. 공인 주소라 부른 사람에게만 보이고 챗봇에는 열지 않는다
-    Def { private: true, secret: true, ..def("server.address", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "GET", "/api/instance/:id/address") },
+    // 서버 주소 (사용자 요청 2026-11-05): 릴레이가 본 이 PC의 접속 주소 + 밖에 여는 포트. 공인 주소라 부른 사람에게만 보이고 챗봇에는 열지 않는다.
+    // 기본은 유저(Lv1) 이상이고 길드가 명령별로 옮길 수 있다 (사용자 결정 2026-11-07: 게스트에게 PC 공인 IP를 보이지 않는다)
+    Def { private: true, secret: true, discord_level: Some(crate::chat::permissions::USER), level_movable: true, ..def("server.address", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "GET", "/api/instance/:id/address") },
     Def { private: true, ..def("server.port_check", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/port-check") },
     // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)
     def("instance.events", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/events"),

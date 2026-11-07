@@ -108,7 +108,8 @@ fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
 const RETRY_MAX: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// `first`만큼 기다렸다가 주소를 올린다. 실패하면 간격을 두 배씩 늘려(상한 5분) 올릴 때까지 다시 한다.
-/// 올렸으면 true. `cancel`(포트를 닫거나 설정을 다시 적용함)이면 기다림 중에 멈추고 false. 릴레이가 받지 않으면(`Refused`) 그만두고 false.
+/// 올렸으면 true. `cancel`(포트를 닫거나 설정을 다시 적용함)이면 기다림 중에 멈추고 false. 릴레이가 받지 않거나(`Refused`)
+/// 노드 토큰을 거절하면(`Unauthorized`, 토큰이 바뀌면 `apply`가 다시 올린다) 그만두고 false.
 /// 보내는 중인 요청은 끝까지 기다린다: 다시 적용하는 쪽이 이 작업이 끝난 뒤에 새 주소를 올리도록 (늦게 닿은 예전 주소가 덮지 않게)
 async fn publish_with_retry(
     relay: &server::RelaySource,
@@ -127,7 +128,7 @@ async fn publish_with_retry(
         if let Some(t) = relay.target().await {
             match relay::publish(&t, address, port, sha).await {
                 relay::Published::Done => return true,
-                relay::Published::Refused => return false,
+                relay::Published::Refused | relay::Published::Unauthorized => return false,
                 relay::Published::Failed => {}
             }
         }
@@ -195,6 +196,9 @@ pub async fn apply(server: &IPCServer) -> Status {
         status.published = published == relay::Published::Done;
         if published == relay::Published::Refused {
             tracing::warn!("The relay does not take a remote daemon without a public address yet");
+        }
+        if published == relay::Published::Unauthorized {
+            tracing::warn!("The relay rejected the node token; not publishing the remote daemon address");
         }
         if let (relay::Published::Failed, Some((cancel, _))) = (published, rt.cancel.as_ref()) {
             // 부팅 직후 네트워크가 아직이거나 릴레이가 잠시 받지 않으면, 포트가 열려 있는 동안 다시 올린다
@@ -275,6 +279,29 @@ mod tests {
         assert!(!published);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert!(super::publish_with_retry(&relay, Some("saba.example.com"), 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await);
+    }
+
+    /// 릴레이가 이 노드 토큰을 받지 않으면(401, 같은 계정의 다른 PC가 페어링해 토큰이 대체됨 등) 다시 보내지 않는다.
+    /// 같은 토큰으로는 계속 거절되고, 토큰이 바뀌면 apply가 다시 올린다
+    #[tokio::test]
+    async fn a_relay_that_rejects_the_node_token_is_not_asked_again() {
+        let calls = super::Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app = axum::Router::new().route(
+            "/api/remote/endpoint",
+            axum::routing::put(move || {
+                seen.fetch_add(1, Ordering::SeqCst);
+                async { (axum::http::StatusCode::UNAUTHORIZED, axum::Json(serde_json::json!({"error": "TOKEN_REPLACED"}))) }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let relay = super::server::RelaySource::Fixed(super::relay::Target { base, token: "sbn_host-b.secret".into() });
+        let cancel = super::CancellationToken::new();
+        let published = super::publish_with_retry(&relay, Some("saba.example.com"), 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
+        assert!(!published);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     /// 포트를 닫거나 설정을 다시 적용하면 다시 올리기를 멈춘다

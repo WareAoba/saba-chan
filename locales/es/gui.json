@@ -1932,7 +1932,7 @@
     "title": "Solo pueden entrar los operadores",
     "desc": "Quien no esté en la lista «Operadores» es expulsado en cuanto entra. No se le banea.",
     "label": "Expulsar a quien no esté en la lista",
-    "hint": "Solo se comprueba el apodo, así que en servidores sin verificación de cuenta alguien podría entrar con el nombre de otro.",
+    "hint": "Solo se comprueba el apodo, así que quien entre con un apodo de la lista podrá pasar. En juegos donde cada uno elige su nombre, o en servidores sin verificación de cuenta, cualquiera puede usar ese nombre.",
     "empty": "Añade al menos una persona en la pestaña «Operadores» para activarlo."
   },
   "stop_timeout": {

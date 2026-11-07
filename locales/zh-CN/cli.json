@@ -269,6 +269,7 @@
     "import_replaced": "被替换的服务器",
     "import_settings": "设置",
     "import_skipped": "{{name}}：已跳过（{{reason}}）",
+    "import_partial": "有 {{n}} 个服务器未能导入。",
     "import_missing_module": "这台电脑上没有 {{module}} 模块。启动该服务器前请先安装它。",
     "import_move_files": "不包含游戏服务器文件。请把服务器文件夹移到相同路径，或在服务器设置中更改文件夹。",
     "skip_reason": {

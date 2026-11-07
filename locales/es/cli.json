@@ -269,6 +269,7 @@
     "import_replaced": "Servidores reemplazados",
     "import_settings": "Ajustes",
     "import_skipped": "{{name}}: omitido ({{reason}})",
+    "import_partial": "No se importaron {{n}} servidor(es).",
     "import_missing_module": "El módulo {{module}} no está en este PC. Instálalo antes de iniciar ese servidor.",
     "import_move_files": "No se incluyen los archivos de los servidores de juego. Mueve las carpetas de los servidores a las mismas rutas o cambia la carpeta en los ajustes del servidor.",
     "skip_reason": {

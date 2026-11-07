@@ -39,7 +39,7 @@ export function folderPathsErrorText(res: ApiBody | null | undefined, t: TFuncti
 }
 
 /**
- * 설정 > 고급: 폴더 위치 (데몬 GET /api/system/paths) 와 모듈·익스텐션 폴더 옮기기 (POST /api/system/paths/move).
+ * 설정 > 저장 공간: 폴더 위치 (데몬 GET /api/system/paths) 와 모듈·익스텐션 폴더 옮기기 (POST /api/system/paths/move).
  * 고른 폴더 아래 `modules`·`extensions`를 데몬이 만든다. CLI `config paths`·`config move`와 같은 기능이다.
  */
 export function FolderPathsSection() {

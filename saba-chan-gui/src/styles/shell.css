@@ -4175,7 +4175,7 @@ button.appbar-preflight {
     color: var(--warning);
 }
 
-/* 진단 정보 (설정 > 고급) */
+/* 진단 정보 (설정 > 문제 해결) */
 .setting-item.setting-item-stack {
     flex-direction: column;
     align-items: stretch;

@@ -13,7 +13,7 @@ const ACCESS = ['ok', 'needs_grant', 'needs_relogin'];
 const failed = (res: ApiBody | null | undefined) => !res || res.ok === false;
 
 /**
- * 설정 > 고급: 포트·서버별 네트워크 (기본 꺼짐). 켜면 시스템 모니터를 펼쳐 둔 동안 데몬이 Windows
+ * 설정 > 게임 서버: 포트·서버별 네트워크 (기본 꺼짐). 켜면 시스템 모니터를 펼쳐 둔 동안 데몬이 Windows
  * 네트워크 이벤트로 서버·포트별 트래픽을 센다. 권한은 데몬이 관리자 확인 창 한 번으로 이 계정에 준다
  * (GET /api/system/net-trace, POST …/grant·…/revoke).
  */
