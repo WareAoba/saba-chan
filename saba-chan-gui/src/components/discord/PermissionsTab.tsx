@@ -298,7 +298,7 @@ function MemberSearch({
                                         setQuery('');
                                     }}
                                 >
-                                    <Avatar name={nameOf(mid)} url={avatarOf(mid)} size={20} />
+                                    <Avatar name={nameOf(mid)} url={avatarOf(mid)} size={18} />
                                     <span>{nameOf(mid)}</span>
                                     {m.username && m.username !== nameOf(mid) && (
                                         <small className="muted">@{m.username}</small>
@@ -442,7 +442,7 @@ export function PeopleView({
                 {...peopleDrag.bind(`${id}|${level}`)}
                 onClick={() => setOpen(open === id ? null : id)}
             >
-                <Avatar name={nameOf(id)} url={avatarOf(id)} size={20} />
+                <Avatar name={nameOf(id)} url={avatarOf(id)} size={18} />
                 <span>{nameOf(id)}</span>
             </button>
             {open === id && (
@@ -588,7 +588,7 @@ export function PeopleView({
                                         <span className="dc-owner">
                                             {owner ? (
                                                 <span className="dc-chip is-static is-owner">
-                                                    <Avatar name={nameOf(owner)} url={avatarOf(owner)} size={20} />
+                                                    <Avatar name={nameOf(owner)} url={avatarOf(owner)} size={18} />
                                                     <span>{nameOf(owner)}</span>
                                                 </span>
                                             ) : (

@@ -2479,11 +2479,19 @@ button.activity-line:hover {
     align-items: center;
     gap: var(--sp-1);
 }
+/* 사람·명령 칩은 얇게 (사용자 지정 2026-11-07): 앱 버튼 높이(--btn-height)·굵기를 풀고 글자 높이에 맞춘다 */
+.dc-chip,
+.dc-cmd-chip {
+    height: auto;
+    min-height: 0;
+    line-height: 1.3;
+    font-weight: 500;
+}
 .dc-chip {
     display: inline-flex;
     align-items: center;
     gap: var(--sp-1-5);
-    padding: var(--sp-0-5) var(--sp-2-5) var(--sp-0-5) var(--sp-1);
+    padding: 1px var(--sp-2-5) 1px 1px;
     border: 1px solid var(--line-strong);
     border-radius: var(--r-pill);
     background: var(--bg-1);
@@ -2501,8 +2509,6 @@ button.activity-line:hover {
 }
 /* 소유자 칩: 버튼 칩과 같은 높이·굵기(버튼 기본값을 맞춘다)에 강조 그라데이션 바탕 (사용자 지정 2026-11-07) */
 .dc-chip.is-static {
-    height: var(--btn-height);
-    font-weight: var(--btn-font-weight);
     cursor: default;
 }
 /* 앱의 강조 그라데이션(--brand-gradient, 주 버튼과 같다). 그라데이션 설정이 꺼져 있으면 강조색 한 가지 */
