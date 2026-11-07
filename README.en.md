@@ -47,7 +47,7 @@ The name is a pun: in Japanese, "server" (サーバー) sounds a lot like "macke
 
 - Phone: get a link with `/saba web` in Discord (tied to the Discord account that received it, and it works once within 5 minutes) and manage servers, console, and settings from your phone's browser. Even without a PC, you can change Saba-chan's settings for Discord servers you manage. Nothing to install, no login.
 - Another PC: control Saba-chan running on a Linux box or another PC from your own app and CLI (remote daemon). Only PCs paired with the same Discord account can connect.
-- AI agents: link an MCP-capable agent such as Claude to your Discord account and it can manage your servers. Dangerous commands are confirmed in the agent's own screen first. Check or unlink the agent with `/mysaba agent` or from the Discord screen in the app.
+- AI agents: link an MCP-capable agent such as Claude to your Discord account and it can manage your servers. You can link more than one agent. Dangerous commands are confirmed in the agent's own screen first. Check or unlink each agent with `/mysaba agent` or in Settings › Security in the app.
 
 **And also**
 
