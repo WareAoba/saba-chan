@@ -736,6 +736,7 @@
     "disable": "Disable"
   },
   "shell": {
+    "check_setting_fix": "Fix this value in Server › Settings.",
     "nav_label": "Main sections",
     "nav_servers": "Servers",
     "nav_discord": "Discord",

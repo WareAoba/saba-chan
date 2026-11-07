@@ -736,6 +736,7 @@
     "disable": "Выключить"
   },
   "shell": {
+    "check_setting_fix": "Исправьте это значение в разделе Сервер › Настройки.",
     "nav_label": "Основные разделы",
     "nav_servers": "Серверы",
     "nav_discord": "Discord",

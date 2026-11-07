@@ -736,6 +736,7 @@
     "disable": "끄기"
   },
   "shell": {
+    "check_setting_fix": "서버 › 설정에서 이 값을 고쳐 주세요.",
     "nav_label": "주요 화면",
     "nav_servers": "서버",
     "nav_discord": "디스코드",

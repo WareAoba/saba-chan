@@ -736,6 +736,7 @@
     "disable": "Desativar"
   },
   "shell": {
+    "check_setting_fix": "Corrija este valor em Servidor › Configurações.",
     "nav_label": "Seções principais",
     "nav_servers": "Servidores",
     "nav_discord": "Discord",

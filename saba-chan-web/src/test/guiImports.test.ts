@@ -19,6 +19,8 @@ const ALLOWED = new Set([
     '@gui/utils/audit',
     // 지난 로그 줄의 UTC 시각을 PC 시간대로 (앱 지난 로그와 같다)
     '@gui/utils/logTime',
+    // 설정 값 검사 오류·서버 점검의 설정 문제를 글로 (앱 서버 점검과 같다)
+    '@gui/utils/settingIssue',
     // 화면 주소 읽기 (앱과 같은 주소, 화면 없는 순수 함수)
     '@gui/utils/screenAddress',
     // 고를 수 있는 언어 목록 (이 화면 설정)

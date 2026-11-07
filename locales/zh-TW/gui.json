@@ -736,6 +736,7 @@
     "disable": "關閉"
   },
   "shell": {
+    "check_setting_fix": "請在 伺服器 › 設定 中修正這個值。",
     "nav_label": "主要頁面",
     "nav_servers": "伺服器",
     "nav_discord": "Discord",

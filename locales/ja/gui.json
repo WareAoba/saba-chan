@@ -736,6 +736,7 @@
     "disable": "オフ"
   },
   "shell": {
+    "check_setting_fix": "サーバー › 設定 でこの値を直してください。",
     "nav_label": "メイン画面",
     "nav_servers": "サーバー",
     "nav_discord": "Discord",
