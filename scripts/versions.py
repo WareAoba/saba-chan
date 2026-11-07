@@ -322,6 +322,17 @@ def versions_semver(version: str) -> tuple:
     return (*nums, not pre, ids)
 
 
+def rollout_percent(text: str) -> int:
+    """`--rollout` 값: 1~100의 정수"""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"rollout must be an integer 1-100: {text}") from None
+    if not 1 <= value <= 100:
+        raise argparse.ArgumentTypeError(f"rollout must be 1-100: {value}")
+    return value
+
+
 def fetch_url(url: str) -> bytes:
     import urllib.request
 
@@ -645,7 +656,7 @@ def main() -> int:
     s.add_argument("--out", help="SignPath 매개변수 파일 (기본: 표준 출력)")
     r = sub.add_parser("registration")
     r.add_argument("--signed", required=True, help="release_signing sign 출력")
-    r.add_argument("--rollout", type=int, default=100)
+    r.add_argument("--rollout", type=rollout_percent, default=100, help="롤아웃 비율 1~100 (기본 100)")
     r.add_argument("--critical", action="store_true")
     r.add_argument("--notes", help="릴리즈 노트 JSON (기본: release-notes/<version>.json)")
     r.add_argument("--out")

@@ -29,6 +29,10 @@ on:
         description: '빌드·서명까지만 하고 R2 업로드·릴레이 등록은 하지 않는다'
         type: boolean
         default: false
+      rollout:
+        description: '릴레이 등록 롤아웃 비율 (1~100, 기본 100). 일부만 받게 하고 나중에 릴레이 PATCH로 올린다'
+        type: number
+        default: 100
 
 permissions:
   contents: read
@@ -340,6 +344,7 @@ jobs:
       - name: Build and sign manifest
         env:
           UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
+          ROLLOUT: ${{ inputs.rollout }}
         run: |
           # 지난 릴리스(모든 채널 중 최신)의 manifest: 바뀐 모듈·익스텐션이 같은 버전으로 다시 나가지 않게 대조한다
           prev_url=$(curl -fsS -H 'X-Saba-Client: 1' \
@@ -359,7 +364,7 @@ jobs:
           ./target/debug/examples/release_signing \
             sign release-manifest.unsigned.json saba-updater-v1 > release-manifest.signed.json
           python scripts/versions.py registration --signed release-manifest.signed.json \
-            --out release-registration.json
+            --rollout "$ROLLOUT" --out release-registration.json
           cat release-manifest.unsigned.json
 
       - name: Keep manifest
