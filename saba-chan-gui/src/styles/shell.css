@@ -2555,6 +2555,13 @@ button.activity-line:hover {
     top: 50%;
     right: var(--sp-1);
     transform: translateY(-50%);
+    /* 상자만 작게, 아이콘 크기는 그대로 */
+    width: 22px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border-radius: var(--r-sm);
 }
 /* 멤버 탭 윗줄: 기본 레벨 · 찾기(남는 폭) · 새로고침 · 레벨 편집 */
 .dc-people-bar {
