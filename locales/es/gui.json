@@ -1761,6 +1761,7 @@
     "source_web": "Web de Saba-chan",
     "source_remote": "PC remoto",
     "source_mcp": "Agente de IA",
+    "source_agent": "Agente de IA de este PC",
     "source_restart": "Reinicio automático",
     "code_invalid_argument": "Un valor introducido no era válido",
     "code_missing_argument": "Faltaba un valor obligatorio",

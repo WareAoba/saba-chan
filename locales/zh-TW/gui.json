@@ -1761,6 +1761,7 @@
     "source_web": "Saba-chan 網頁",
     "source_remote": "遠端電腦",
     "source_mcp": "AI 代理",
+    "source_agent": "此電腦上的 AI 代理",
     "source_restart": "自動重新啟動",
     "code_invalid_argument": "輸入的值不正確",
     "code_missing_argument": "缺少必要的值",

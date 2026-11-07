@@ -5,7 +5,9 @@
 
 `--bin`은 `versions.py signing --collect`가 모은 exe 폴더다. 만드는 것:
 - saba-core-windows-x64.zip: saba-core.exe, saba-runner.exe, 공유 모듈(목록은 package-linux.py 하나에서 정한다)
-- saba-chan-cli-windows-x64.zip, saba-chan-gui-windows-x64.zip: 그 exe 하나
+- saba-chan-cli-windows-x64.zip: saba-chan-cli.exe와 짧은 명령 실행기 bin/saba-chan.exe
+  (실행기를 설치 폴더 바로 아래에 두면 0.1.1 GUI 이름 `Saba-chan.exe`와 겹친다. 설치기가 `bin`을 사용자 PATH에 넣는다)
+- saba-chan-gui-windows-x64.zip: 그 exe 하나
 - saba-chan-installer.exe: zip이 아닌 exe 그대로 (소개 페이지 다운로드와 업데이트가 이 파일을 쓴다)
 - locales.zip: 저장소 locales/ (zip 안에는 locales/ 접두사 없이 en/bot.json 꼴)
 """
@@ -19,6 +21,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM = "windows-x64"
+# zip 안에서 루트가 아닌 곳에 두는 exe (exe 이름 → zip 안 경로)
+PLACED = {"saba-chan.exe": "bin/saba-chan.exe"}
 
 
 def _shared_modules() -> dict[str, str]:
@@ -32,7 +36,7 @@ def _shared_modules() -> dict[str, str]:
 def package(bin_dir: Path, out_dir: Path) -> list[Path]:
     zips = {
         f"saba-core-{PLATFORM}.zip": (["saba-core.exe", "saba-runner.exe"], _shared_modules()),
-        f"saba-chan-cli-{PLATFORM}.zip": (["saba-chan-cli.exe"], {}),
+        f"saba-chan-cli-{PLATFORM}.zip": (["saba-chan-cli.exe", "saba-chan.exe"], {}),
         f"saba-chan-gui-{PLATFORM}.zip": (["saba-chan-gui.exe"], {}),
     }
     needed = [exe for exes, _ in zips.values() for exe in exes] + ["saba-chan-installer.exe"]
@@ -45,7 +49,7 @@ def package(bin_dir: Path, out_dir: Path) -> list[Path]:
         target = out_dir / name
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
             for exe in exes:
-                zf.write(bin_dir / exe, exe)
+                zf.write(bin_dir / exe, PLACED.get(exe, exe))
             for rel, inner in extras.items():
                 zf.write(ROOT / rel, inner)
         made.append(target)

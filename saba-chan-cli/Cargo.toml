@@ -15,6 +15,11 @@ workspace = true
 name = "saba-chan-cli"
 path = "src/main.rs"
 
+# 짧은 명령 이름 `saba-chan` (Windows 설치의 `bin\saba-chan.exe`). 같은 설치의 saba-chan-cli를 실행한다
+[[bin]]
+name = "saba-chan"
+path = "src/launcher.rs"
+
 [dependencies]
 hmac = "0.13"
 sha2 = "0.11"
@@ -41,6 +46,10 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 saba-chan-installer-core = { path = "../installer/core" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+# 로컬 MCP 서버 (`mcp`): 공식 Rust SDK, stdio만
+rmcp = { version = "3.9", default-features = false, features = ["server", "transport-io"] }
+# Codex 설정 파일(`agent link`)을 주석·다른 칸을 지키며 고친다
+toml_edit = "0.23"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

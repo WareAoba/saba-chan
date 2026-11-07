@@ -59,15 +59,18 @@ impl std::fmt::Display for StopWarning {
 
 /// 이 설치본이 마지막인지. 제거 항목(레지스트리)과, 항목 없이 설치된 폴더 목록(CLI `install --dir`)을 함께 본다.
 /// 지우는 폴더는 목록에서 뺀다
-/// `~/.local/bin/saba-chan-cli`가 이 설치 폴더의 CLI를 가리키는 링크면 지운다 (다른 설치를 가리키면 둔다)
+/// `~/.local/bin/saba-chan-cli`·`saba-chan`이 이 설치 폴더의 CLI를 가리키는 링크면 지운다 (다른 설치를 가리키면 둔다)
 #[cfg(unix)]
 fn remove_cli_link(home: &Path, install_dir: &Path) -> bool {
-    let link = home.join(".local").join("bin").join("saba-chan-cli");
-    let Ok(target) = std::fs::read_link(&link) else { return false };
-    if !target.parent().is_some_and(|p| saba_chan_updater_lib::same_path(p, install_dir)) {
-        return false;
+    let mut removed = false;
+    for name in ["saba-chan-cli", "saba-chan"] {
+        let link = home.join(".local").join("bin").join(name);
+        let Ok(target) = std::fs::read_link(&link) else { continue };
+        if target.parent().is_some_and(|p| saba_chan_updater_lib::same_path(p, install_dir)) {
+            removed |= std::fs::remove_file(&link).is_ok();
+        }
     }
-    std::fs::remove_file(&link).is_ok()
+    removed
 }
 
 fn last_install(install_dir: Option<&Path>) -> bool {
@@ -182,6 +185,10 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
         #[cfg(unix)]
         if let Some(home) = std::env::var_os("HOME") {
             remove_cli_link(Path::new(&home), dir);
+        }
+        // Windows: 사용자 PATH의 명령 실행기 폴더 (`bin`)
+        if let Err(e) = crate::user_path::remove(dir) {
+            tracing::warn!("[Uninstall] Failed to remove the saba-chan command from PATH: {}", e);
         }
     }
 
@@ -414,9 +421,12 @@ async fn stop_saba_processes(install_dir: &Path) -> Vec<StopWarning> {
         ("Saba-chan", false), // 0.1.1 Electron GUI
         ("saba-chan-updater", false),
     ];
-    // 명령창 제거(`saba-chan-cli uninstall`)는 이 설치의 CLI 자신이 돌린다: 자기는 끄지 않는다
+    // 명령창 제거(`saba-chan-cli uninstall`)는 이 설치의 CLI 자신이 돌린다: 자기는 끄지 않는다.
+    // `saba-chan uninstall`이면 CLI를 띄운 실행기(`bin\saba-chan.exe`, 이름이 0.1.1 GUI와 같다)도 끄지 않는다
     let me = std::process::id();
-    let found: Vec<(u32, String)> = processes_in(install_dir, &TARGETS.map(|(n, _)| n)).into_iter().filter(|(pid, _)| *pid != me).collect();
+    let launcher = std::env::var("SABA_LAUNCHER_PID").ok().and_then(|p| p.parse::<u32>().ok());
+    let found: Vec<(u32, String)> =
+        processes_in(install_dir, &TARGETS.map(|(n, _)| n)).into_iter().filter(|(pid, _)| *pid != me && Some(*pid) != launcher).collect();
     // 이 설치의 데몬에게 서버 종료를 부탁하지 못했는데 러너가 떠 있으면 그 서버는 저장 없이 끊긴다
     if !asked && found.iter().any(|(_, n)| n.eq_ignore_ascii_case("saba-runner")) {
         not_stopped.push(StopWarning::DaemonUnanswered);
@@ -1255,6 +1265,10 @@ fn remove_install_dir(dir: &PathBuf, dedicated: bool) -> Vec<PathBuf> {
         let _ = remove_dir_robust(dir);
     } else {
         tracing::info!("[Uninstall] {:?} is not a dedicated install folder: removing Saba-chan files only", dir);
+        // 명령 실행기 폴더 (`bin\saba-chan.exe`): 실행기만 지우고, 폴더는 비었을 때만
+        let bin = dir.join(crate::user_path::BIN_DIR);
+        let _ = std::fs::remove_file(bin.join(format!("saba-chan{}", std::env::consts::EXE_SUFFIX)));
+        let _ = std::fs::remove_dir(&bin);
         for path in std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()) {
             if !is_ours(&path) {
                 continue;
@@ -1662,8 +1676,14 @@ mod tests {
         assert!(bin.join("saba-chan-cli").symlink_metadata().is_ok());
         std::fs::remove_file(bin.join("saba-chan-cli")).unwrap();
         std::os::unix::fs::symlink(ours.path().join("saba-chan-cli"), bin.join("saba-chan-cli")).unwrap();
+        // 짧은 이름 `saba-chan`도 같은 규칙 (다른 설치를 가리키면 둔다)
+        std::os::unix::fs::symlink(ours.path().join("saba-chan-cli"), bin.join("saba-chan")).unwrap();
         assert!(remove_cli_link(home.path(), ours.path()));
         assert!(bin.join("saba-chan-cli").symlink_metadata().is_err());
+        assert!(bin.join("saba-chan").symlink_metadata().is_err());
+        std::os::unix::fs::symlink(other.path().join("saba-chan-cli"), bin.join("saba-chan")).unwrap();
+        assert!(!remove_cli_link(home.path(), ours.path()));
+        assert!(bin.join("saba-chan").symlink_metadata().is_ok());
     }
 
     /// 아무것도 정하지 않으면 설정과 인스턴스를 둘 다 남기고, 지울 것만 따로 고른다

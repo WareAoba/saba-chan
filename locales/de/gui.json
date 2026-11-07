@@ -1761,6 +1761,7 @@
     "source_web": "Saba-chan Web",
     "source_remote": "Entfernter PC",
     "source_mcp": "KI-Agent",
+    "source_agent": "KI-Agent auf diesem PC",
     "source_restart": "Automatischer Neustart",
     "code_invalid_argument": "Ein eingegebener Wert war ungültig",
     "code_missing_argument": "Ein Pflichtwert fehlte",
