@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import i18n from '../i18n';
-import { auditReason, auditResult, auditWhat, isInstanceEntry } from '../utils/audit';
+import { auditReason, auditResult, auditWhat, isInstanceEntry, statusText } from '../utils/audit';
 
 const t = i18n.getFixedT('en', 'gui');
 const base = { source: 'discord', action: 'command', ok: true, status: 200 };
@@ -57,5 +57,12 @@ describe('작업 기록 한 줄', () => {
         expect(isInstanceEntry({ ...base, action: 'remote', instanceId: '' })).toBe(true);
         expect(isInstanceEntry({ ...base, action: 'discord.settings.set', instanceId: '' })).toBe(false);
         expect(isInstanceEntry({ ...base, action: 'chatbot.settings.set' })).toBe(false);
+    });
+    it('응답 코드는 숫자 대신 풀어 쓰고, 성공은 적지 않는다', () => {
+        expect(statusText(200, t)).toBe('');
+        expect(statusText(undefined, t)).toBe('');
+        expect(statusText(404, t)).toBe('Not found');
+        expect(statusText(409, t)).toBe('Not possible in the current state');
+        expect(statusText(418, t)).toBe('Error (418)');
     });
 });
