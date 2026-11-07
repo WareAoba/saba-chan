@@ -41,6 +41,7 @@
     "allow-window-maximize",
     "allow-window-close",
     "allow-window-set-background",
+    "allow-window-set-backdrop",
     "allow-sandbox-consent-allow"
   ]
 }
