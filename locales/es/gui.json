@@ -1187,7 +1187,6 @@
     "perm_confirm_tier_mixed": "Varía según la instancia",
     "perm_ladder_done": "Volver",
     "instance_menu_hint": "Abre una instancia para ver los comandos de cada nivel. El nivel de cada miembro se fija en <link/>.",
-    "instance_menu_all": "Permisos de todas las instancias",
     "instance_menu_open": "Permisos de {{name}}",
     "back_to_instances": "Instancias",
     "perm_people_server_wide": "Los niveles de miembros se aplican a todas las instancias de este servidor de Discord.",

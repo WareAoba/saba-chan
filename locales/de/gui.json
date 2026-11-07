@@ -1187,7 +1187,6 @@
     "perm_confirm_tier_mixed": "Je nach Instanz",
     "perm_ladder_done": "Zurück",
     "instance_menu_hint": "Öffne eine Instanz, um die Befehle je Stufe zu sehen. Die Stufen der Mitglieder legst du unter <link/> fest.",
-    "instance_menu_all": "Rechte aller Instanzen",
     "instance_menu_open": "Rechte von {{name}}",
     "back_to_instances": "Instanzen",
     "perm_people_server_wide": "Mitgliederstufen gelten für alle Instanzen auf diesem Discord-Server.",

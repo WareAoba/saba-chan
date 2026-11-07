@@ -1187,7 +1187,6 @@
     "perm_confirm_tier_mixed": "各实例不同",
     "perm_ladder_done": "返回",
     "instance_menu_hint": "打开实例即可查看各等级可用的命令。成员等级在<link/>中设置。",
-    "instance_menu_all": "所有实例的权限",
     "instance_menu_open": "{{name}} 的权限",
     "back_to_instances": "实例列表",
     "perm_people_server_wide": "成员等级适用于此 Discord 服务器的所有实例。",

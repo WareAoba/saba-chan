@@ -1187,7 +1187,6 @@
     "perm_confirm_tier_mixed": "인스턴스마다 다름",
     "perm_ladder_done": "돌아가기",
     "instance_menu_hint": "인스턴스를 누르면 레벨별로 쓸 수 있는 명령을 볼 수 있어요. 멤버 레벨은 <link/>에서 정해요.",
-    "instance_menu_all": "모든 인스턴스 권한",
     "instance_menu_open": "{{name}} 권한 메뉴",
     "back_to_instances": "인스턴스 목록",
     "perm_people_server_wide": "멤버 레벨은 이 디스코드 서버의 모든 인스턴스에 같이 적용돼요.",

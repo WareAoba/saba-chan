@@ -1187,7 +1187,6 @@
     "perm_confirm_tier_mixed": "Varies by instance",
     "perm_ladder_done": "Back",
     "instance_menu_hint": "Open an instance to see the commands each level can use. Set member levels in <link/>.",
-    "instance_menu_all": "All instances' permissions",
     "instance_menu_open": "{{name}} permissions",
     "back_to_instances": "Instances",
     "perm_people_server_wide": "Member levels apply to every instance on this Discord server.",

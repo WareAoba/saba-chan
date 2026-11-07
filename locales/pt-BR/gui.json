@@ -1187,7 +1187,6 @@
     "perm_confirm_tier_mixed": "Varia por instância",
     "perm_ladder_done": "Voltar",
     "instance_menu_hint": "Abra uma instância para ver os comandos de cada nível. O nível dos membros é definido em <link/>.",
-    "instance_menu_all": "Permissões de todas as instâncias",
     "instance_menu_open": "Permissões de {{name}}",
     "back_to_instances": "Instâncias",
     "perm_people_server_wide": "Os níveis de membros valem para todas as instâncias deste servidor do Discord.",

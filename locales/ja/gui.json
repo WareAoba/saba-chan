@@ -1187,7 +1187,6 @@
     "perm_confirm_tier_mixed": "インスタンスごとに異なる",
     "perm_ladder_done": "戻る",
     "instance_menu_hint": "インスタンスを開くと、レベルごとに使えるコマンドを見られます。メンバーのレベルは<link/>で決めます。",
-    "instance_menu_all": "すべてのインスタンスの権限",
     "instance_menu_open": "{{name}} の権限",
     "back_to_instances": "インスタンス一覧",
     "perm_people_server_wide": "メンバーのレベルは、このDiscordサーバーのすべてのインスタンスに共通です。",

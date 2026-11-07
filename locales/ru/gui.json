@@ -1187,7 +1187,6 @@
     "perm_confirm_tier_mixed": "Зависит от экземпляра",
     "perm_ladder_done": "Назад",
     "instance_menu_hint": "Откройте экземпляр, чтобы увидеть команды каждого уровня. Уровни участников задаются в разделе <link/>.",
-    "instance_menu_all": "Права всех экземпляров",
     "instance_menu_open": "Права: {{name}}",
     "back_to_instances": "Экземпляры",
     "perm_people_server_wide": "Уровни участников действуют во всех экземплярах этого сервера Discord.",
