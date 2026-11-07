@@ -1737,7 +1737,7 @@
     "nav_all": "所有伺服器",
     "nav_label": "操作紀錄伺服器列表",
     "filter": "篩選",
-    "filter_all": "全部",
+    "filter_all": "顯示全部",
     "filter_power": "啟動·停止·重新啟動",
     "filter_crash": "當機",
     "filter_command": "其他指令",

@@ -1737,7 +1737,7 @@
     "nav_all": "모든 서버",
     "nav_label": "작업 기록 서버 목록",
     "filter": "거르기",
-    "filter_all": "전체",
+    "filter_all": "모두 보기",
     "filter_power": "시작·정지·재시작",
     "filter_crash": "크래시",
     "filter_command": "그 외 명령",

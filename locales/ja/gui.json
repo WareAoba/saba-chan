@@ -1737,7 +1737,7 @@
     "nav_all": "すべてのサーバー",
     "nav_label": "作業記録のサーバー一覧",
     "filter": "絞り込み",
-    "filter_all": "すべて",
+    "filter_all": "すべて表示",
     "filter_power": "起動・停止・再起動",
     "filter_crash": "クラッシュ",
     "filter_command": "その他のコマンド",

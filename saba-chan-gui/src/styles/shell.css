@@ -4141,6 +4141,28 @@ button.appbar-preflight {
     font-size: var(--fs-sm);
     font-variant-numeric: tabular-nums;
 }
+/* 거르기 단추: 고른 것이 있으면 강조색, 고른 수를 작은 둥근 칸에 */
+.audit-filter-btn.active {
+    color: var(--accent);
+}
+.audit-filter-count {
+    min-width: 1.4em;
+    padding: 0 var(--sp-1);
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--text-on-primary);
+    font-size: var(--fs-xs);
+    text-align: center;
+}
+.audit-filter-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    min-width: 12em;
+}
+.audit-filter-panel > .btn {
+    align-self: flex-end;
+}
 .audit-end {
     display: grid;
     place-items: center;

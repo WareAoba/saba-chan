@@ -138,7 +138,8 @@ describe('AuditLog', () => {
         const scroll = document.querySelector('.audit-scroll') as HTMLElement;
         expect(scroll.querySelector('.audit-list')).not.toBeNull();
         expect(scroll.contains(screen.getByRole('button', { name: 'Refresh' }))).toBe(false);
-        for (const tab of screen.getAllByRole('tab', { name: 'All' })) expect(scroll.contains(tab)).toBe(false);
+        expect(scroll.contains(screen.getByRole('tab', { name: 'All' }))).toBe(false);
+        expect(scroll.contains(screen.getByRole('button', { name: 'Filter' }))).toBe(false);
     });
 
     it('기간을 고르면 그 기간만 처음부터 다시 불러온다', async () => {
@@ -234,16 +235,22 @@ describe('AuditLog', () => {
         const rows = () => document.querySelectorAll('.audit-list li').length;
         expect(rows()).toBe(4);
         expect(screen.getByText('A crash report file appeared')).toBeTruthy();
-        const pick = async (name: string, n: number) => {
-            fireEvent.click(screen.getByRole('tab', { name }));
+        // 거르기 단추를 열고 체크하면 고른 것 중 하나라도 드는 기록만 (여럿 고를 수 있다)
+        fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+        const check = async (name: string, n: number) => {
+            fireEvent.click(screen.getByRole('checkbox', { name }));
             await waitFor(() => expect(rows()).toBe(n));
         };
-        await pick('Start · Stop · Restart', 1);
-        await pick('Crashes', 1);
+        await check('Start · Stop · Restart', 1);
+        await check('Crashes', 2);
         expect(screen.getByText('Crashed')).toBeTruthy();
-        await pick('Other commands', 2);
-        await pick('Failed', 1);
+        await check('Start · Stop · Restart', 1); // 다시 누르면 뺀다
+        await check('Failed', 2);
         expect(screen.getByText('Command · kick')).toBeTruthy();
+        expect(screen.getByRole('button', { name: /Filters*2/ })).toBeTruthy(); // 고른 수
+        fireEvent.click(screen.getByRole('button', { name: 'Show all' }));
+        await waitFor(() => expect(rows()).toBe(4));
+        await check('Other commands', 2);
         expect(window.api.auditList).toHaveBeenCalledTimes(1); // 거르기는 다시 부르지 않는다
     });
 

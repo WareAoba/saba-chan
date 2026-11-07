@@ -1737,7 +1737,7 @@
     "nav_all": "Tous les serveurs",
     "nav_label": "Serveurs du journal",
     "filter": "Filtre",
-    "filter_all": "Tout",
+    "filter_all": "Tout afficher",
     "filter_power": "Démarrer · Arrêter · Redémarrer",
     "filter_crash": "Plantages",
     "filter_command": "Autres commandes",

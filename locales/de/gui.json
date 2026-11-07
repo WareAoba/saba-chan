@@ -1737,7 +1737,7 @@
     "nav_all": "Alle Server",
     "nav_label": "Server im Aktivitätsprotokoll",
     "filter": "Filter",
-    "filter_all": "Alle",
+    "filter_all": "Alle anzeigen",
     "filter_power": "Start · Stopp · Neustart",
     "filter_crash": "Abstürze",
     "filter_command": "Andere Befehle",

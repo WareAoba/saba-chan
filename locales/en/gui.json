@@ -1737,7 +1737,7 @@
     "nav_all": "All servers",
     "nav_label": "Servers in activity log",
     "filter": "Filter",
-    "filter_all": "All",
+    "filter_all": "Show all",
     "filter_power": "Start · Stop · Restart",
     "filter_crash": "Crashes",
     "filter_command": "Other commands",

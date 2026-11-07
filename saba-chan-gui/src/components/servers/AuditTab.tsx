@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import type { ComponentProps, ReactNode } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import {
@@ -18,8 +19,8 @@ import {
 import { safeShowToast } from '../../utils/helpers';
 import { gameNameOf, initials } from '../../utils/serverView';
 import { Icon } from '../Icon';
-import { DateField } from '../ui/DateTimePicker';
-import { SabaSpinner } from '../ui/SabaUI';
+import { DateField, usePopover } from '../ui/DateTimePicker';
+import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 
 export { auditRange, auditResult, auditWhat, auditWho };
@@ -54,7 +55,7 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [period, setPeriod] = useState('all');
-    const [filter, setFilter] = useState('all');
+    const [filters, setFilters] = useState<string[]>([]);
     const [from, setFrom] = useState('');
     const [to, setTo] = useState('');
     const [exporting, setExporting] = useState(false);
@@ -131,7 +132,7 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
         });
     // 받은 건수가 요청보다 적으면 더 없다
     const more = !!entries && rawCount >= limit && limit < MAX;
-    const shown = entries?.filter((e) => auditMatches(e, filter)) ?? null;
+    const shown = entries?.filter((e) => auditMatches(e, filters)) ?? null;
 
     // 목록 끝 표시가 보이면 다음 쪽을 불러온다 (거른 결과가 짧아 끝이 계속 보이면 상한까지 이어서)
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -153,6 +154,7 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
         <section className="dc-card audit-card" aria-label={t('audit.title')}>
             <div className="dc-card-head">
                 <h2>{t('audit.title')}</h2>
+                <AuditFilter value={filters} onChange={setFilters} />
                 {typeof window.api?.auditExport === 'function' && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={doExport} disabled={exporting}>
                         {exporting ? <SabaSpinner size="sm" /> : <Icon name="download" size="sm" />} {t('audit.export')}
@@ -196,14 +198,6 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
                     </span>
                 )}
             </div>
-            <div className="audit-period">
-                <Segmented
-                    items={FILTERS.map((id) => ({ id, label: t(`audit.filter_${id}`) }))}
-                    value={filter}
-                    onChange={setFilter}
-                    ariaLabel={t('audit.filter')}
-                />
-            </div>
             {error && (
                 <div className="notice tone-warn" role="alert">
                     <Icon name="alertTriangle" size="sm" />
@@ -246,6 +240,55 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
                 )}
             </div>
         </section>
+    );
+}
+
+/** 거르기 단추: 깔때기 아이콘을 누르면 항목을 체크해 고른다 (여럿 고르면 하나라도 드는 기록). 고른 수를 단추에 적는다 */
+function AuditFilter({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
+    const { t } = useTranslation('gui');
+    const popover = usePopover();
+    const panelId = useId();
+    const toggle = (id: string, on: boolean) => onChange(on ? [...value, id] : value.filter((v) => v !== id));
+    return (
+        <>
+            <button
+                ref={popover.triggerRef}
+                type="button"
+                className={clsx('btn btn-ghost btn-sm audit-filter-btn', { active: value.length > 0 })}
+                onClick={() => (popover.shown ? popover.close() : popover.open())}
+                aria-haspopup="dialog"
+                aria-expanded={popover.shown}
+                aria-controls={popover.isOpen ? panelId : undefined}
+            >
+                <Icon name="filter" size="sm" /> {t('audit.filter')}
+                {value.length > 0 && <span className="audit-filter-count">{value.length}</span>}
+            </button>
+            {popover.isOpen &&
+                ReactDOM.createPortal(
+                    <div
+                        {...popover.panelProps}
+                        className={clsx(popover.panelProps.className, 'audit-filter-panel')}
+                        id={panelId}
+                        role="dialog"
+                        aria-label={t('audit.filter')}
+                    >
+                        {FILTERS.map((id) => (
+                            <SabaCheckbox key={id} checked={value.includes(id)} onChange={(on) => toggle(id, on)}>
+                                {t(`audit.filter_${id}`)}
+                            </SabaCheckbox>
+                        ))}
+                        <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => onChange([])}
+                            disabled={value.length === 0}
+                        >
+                            {t('audit.filter_all')}
+                        </button>
+                    </div>,
+                    document.body,
+                )}
+        </>
     );
 }
 

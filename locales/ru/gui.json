@@ -1737,7 +1737,7 @@
     "nav_all": "Все серверы",
     "nav_label": "Серверы в журнале",
     "filter": "Фильтр",
-    "filter_all": "Все",
+    "filter_all": "Показать все",
     "filter_power": "Запуск · Остановка · Перезапуск",
     "filter_crash": "Сбои",
     "filter_command": "Другие команды",

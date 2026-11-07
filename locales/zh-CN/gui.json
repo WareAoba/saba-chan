@@ -1737,7 +1737,7 @@
     "nav_all": "所有服务器",
     "nav_label": "操作记录服务器列表",
     "filter": "筛选",
-    "filter_all": "全部",
+    "filter_all": "显示全部",
     "filter_power": "启动·停止·重启",
     "filter_crash": "崩溃",
     "filter_command": "其他命令",

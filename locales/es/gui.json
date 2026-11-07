@@ -1737,7 +1737,7 @@
     "nav_all": "Todos los servidores",
     "nav_label": "Servidores del registro",
     "filter": "Filtro",
-    "filter_all": "Todo",
+    "filter_all": "Mostrar todo",
     "filter_power": "Iniciar · Detener · Reiniciar",
     "filter_crash": "Fallos",
     "filter_command": "Otros comandos",

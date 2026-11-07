@@ -384,6 +384,12 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }: IconProps) =
                 <line x1="12" y1="2" x2="12" y2="12" />
             </svg>
         ),
+        // 거르기: 깔때기 (작업 기록 거르기)
+        filter: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+                <path d="M4 5h16l-6 7.5V19l-4-2v-4.5Z" />
+            </svg>
+        ),
         refresh: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M20 11a8 8 0 0 0-14.3-4.9L4 8" />
