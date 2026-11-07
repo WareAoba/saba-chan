@@ -1173,6 +1173,8 @@
     "perm_add_search": "Buscar un miembro para añadir a {{level}}",
     "perm_add_by_id": "Añadir por ID {{id}}",
     "perm_member_search_empty": "Ningún miembro coincide.",
+    "perm_default_level_label": "Nivel predeterminado:",
+    "perm_member_search_clear": "Borrar búsqueda",
     "perm_import_count": "Importar niveles dados antes en Discord ({{count}})",
     "perm_moved_count": "{{count}} comando(s) movidos respecto al preajuste",
     "perm_reset_to_preset": "Volver al preajuste",

@@ -1173,6 +1173,8 @@
     "perm_add_search": "{{level}}에 넣을 멤버 찾기",
     "perm_add_by_id": "ID {{id}}로 추가",
     "perm_member_search_empty": "맞는 멤버가 없어요",
+    "perm_default_level_label": "기본 레벨:",
+    "perm_member_search_clear": "검색어 지우기",
     "perm_import_count": "디스코드에서 예전에 준 레벨 가져오기 ({{count}}명)",
     "perm_moved_count": "프리셋과 다르게 옮긴 명령 {{count}}개",
     "perm_reset_to_preset": "프리셋대로 되돌리기",

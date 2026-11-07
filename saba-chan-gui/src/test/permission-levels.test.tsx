@@ -408,6 +408,10 @@ describe('권한 화면', () => {
             fireEvent.scroll(list);
             expect(within(list).getAllByRole('option')).toHaveLength(25);
 
+            // 검색어를 지우면 결과가 닫힌다
+            fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+            expect(search).toHaveValue('');
+            expect(screen.queryByRole('listbox', { name: 'Find a member' })).toBeNull();
             fireEvent.change(search, { target: { value: 'mint' } });
             const mint = within(screen.getByRole('listbox', { name: 'Find a member' })).getByRole('option', {
                 name: 'Mint',

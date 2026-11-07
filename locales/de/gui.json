@@ -1173,6 +1173,8 @@
     "perm_add_search": "Mitglied für {{level}} finden",
     "perm_add_by_id": "Per ID {{id}} hinzufügen",
     "perm_member_search_empty": "Kein passendes Mitglied.",
+    "perm_default_level_label": "Standardstufe:",
+    "perm_member_search_clear": "Suche leeren",
     "perm_import_count": "Früher auf Discord vergebene Stufen übernehmen ({{count}})",
     "perm_moved_count": "{{count}} Befehl(e) abweichend von der Vorlage",
     "perm_reset_to_preset": "Auf Vorlage zurücksetzen",

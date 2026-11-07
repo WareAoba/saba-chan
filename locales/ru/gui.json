@@ -1173,6 +1173,8 @@
     "perm_add_search": "Найти участника для уровня {{level}}",
     "perm_add_by_id": "Добавить по ID {{id}}",
     "perm_member_search_empty": "Подходящих участников нет.",
+    "perm_default_level_label": "Уровень по умолчанию:",
+    "perm_member_search_clear": "Очистить поиск",
     "perm_import_count": "Импортировать уровни, выданные раньше в Discord ({{count}})",
     "perm_moved_count": "Команд не по пресету: {{count}}",
     "perm_reset_to_preset": "Вернуть пресет",

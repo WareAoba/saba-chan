@@ -261,6 +261,17 @@ function MemberSearch({
                     if (e.key === 'Escape') setQuery('');
                 }}
             />
+            {query && (
+                <button
+                    type="button"
+                    className="icon-btn dc-member-clear"
+                    aria-label={t('discord.perm_member_search_clear')}
+                    data-tooltip={t('discord.perm_member_search_clear')}
+                    onClick={() => setQuery('')}
+                >
+                    <Icon name="x" size={12} />
+                </button>
+            )}
             {open && (
                 <div
                     className="dc-member-results"
@@ -510,9 +521,10 @@ export function PeopleView({
                 </div>
             )}
 
-            <div className="dc-toolbar">
-                <span className="dc-field-inline">
-                    <span className="muted">{t('discord.perm_default_level_hint')}</span>
+            {/* 윗줄 (사용자 지정 2026-11-07): 기본 레벨 · 멤버 찾기 · 새로고침(아이콘) · 레벨 편집 */}
+            <div className="dc-toolbar dc-people-bar">
+                <span className="dc-field-inline" data-tooltip={t('discord.perm_default_level_hint')}>
+                    <strong className="dc-bar-label">{t('discord.perm_default_level_label')}</strong>
                     <LevelSelect
                         value={defaultLevel}
                         levels={grantable}
@@ -522,10 +534,22 @@ export function PeopleView({
                         onChange={(level) => update({ defaultLevel: level })}
                     />
                 </span>
+                {/* 멤버 찾기: 결과를 끌어 레벨 칸에 놓는다. 소유자는 따로 정한다 */}
+                <MemberSearch
+                    members={(members || []).filter((m) => String(m.id) !== owner)}
+                    label={t('discord.perm_member_find')}
+                    nameOf={nameOf}
+                    avatarOf={avatarOf}
+                    disabled={busy}
+                    dragging={dragging?.id ?? null}
+                    dragProps={(id) => peopleDrag.bind(`${id}|${perm.members?.[id] ?? defaultLevel}`)}
+                />
                 <span className="dc-mini-actions">
                     <button
                         type="button"
-                        className="btn btn-secondary"
+                        className="icon-btn"
+                        aria-label={t('discord.reload')}
+                        data-tooltip={t('discord.reload')}
                         onClick={() => {
                             load();
                             loadLegacy();
@@ -533,7 +557,7 @@ export function PeopleView({
                         }}
                         disabled={busy || membersLoading}
                     >
-                        <Icon name="refresh" size="sm" /> {t('discord.reload')}
+                        <Icon name="refresh" size="sm" />
                     </button>
                     <button type="button" className="btn btn-secondary" onClick={onEditLevels}>
                         <Icon name="key" size="sm" /> {t('discord.perm_edit_levels')}
@@ -543,16 +567,6 @@ export function PeopleView({
             <p className="dc-hint">
                 {t('discord.perm_inherit_hint')} {t('discord.perm_people_server_wide')}
             </p>
-            {/* 멤버 찾기: 결과를 끌어 레벨 칸에 놓는다 (사용자 지정 2026-11-07). 소유자는 따로 정한다 */}
-            <MemberSearch
-                members={(members || []).filter((m) => String(m.id) !== owner)}
-                label={t('discord.perm_member_find')}
-                nameOf={nameOf}
-                avatarOf={avatarOf}
-                disabled={busy}
-                dragging={dragging?.id ?? null}
-                dragProps={(id) => peopleDrag.bind(`${id}|${perm.members?.[id] ?? defaultLevel}`)}
-            />
 
             <ol className="dc-levels">
                 {L.ladderOf(perm).map(({ id: levelId }) => {

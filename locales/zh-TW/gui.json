@@ -1173,6 +1173,8 @@
     "perm_add_search": "尋找要加入{{level}}的成員",
     "perm_add_by_id": "依 ID {{id}} 新增",
     "perm_member_search_empty": "沒有符合的成員",
+    "perm_default_level_label": "預設等級：",
+    "perm_member_search_clear": "清除搜尋",
     "perm_import_count": "匯入以前在 Discord 給的等級（{{count}} 人）",
     "perm_moved_count": "有 {{count}} 個命令與預設不同",
     "perm_reset_to_preset": "恢復為預設",

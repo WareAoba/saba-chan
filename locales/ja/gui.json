@@ -1173,6 +1173,8 @@
     "perm_add_search": "{{level}}に追加するメンバーを探す",
     "perm_add_by_id": "ID {{id}} で追加",
     "perm_member_search_empty": "一致するメンバーがいません",
+    "perm_default_level_label": "基本レベル：",
+    "perm_member_search_clear": "検索をクリア",
     "perm_import_count": "以前Discordで付けたレベルを取り込む ({{count}}人)",
     "perm_moved_count": "プリセットから動かしたコマンド {{count}}個",
     "perm_reset_to_preset": "プリセットに戻す",

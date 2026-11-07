@@ -1173,6 +1173,8 @@
     "perm_add_search": "Find a member to add to {{level}}",
     "perm_add_by_id": "Add by ID {{id}}",
     "perm_member_search_empty": "No matching member.",
+    "perm_default_level_label": "Default level:",
+    "perm_member_search_clear": "Clear search",
     "perm_import_count": "Import levels given earlier on Discord ({{count}})",
     "perm_moved_count": "{{count}} command(s) moved away from the preset",
     "perm_reset_to_preset": "Reset to preset",

@@ -2547,6 +2547,29 @@ button.activity-line:hover {
 }
 .dc-member-search > .input {
     width: 100%;
+    padding-right: var(--sp-8);
+}
+/* 검색어 지우기: 입력칸 오른쪽 안쪽 */
+.dc-member-clear {
+    position: absolute;
+    top: 50%;
+    right: var(--sp-1);
+    transform: translateY(-50%);
+}
+/* 멤버 탭 윗줄: 기본 레벨 · 찾기(남는 폭) · 새로고침 · 레벨 편집 */
+.dc-people-bar {
+    align-items: center;
+    flex-wrap: nowrap;
+}
+.dc-people-bar .dc-member-search {
+    flex: 1 1 auto;
+    min-width: 160px;
+    max-width: none;
+}
+.dc-bar-label {
+    color: var(--text-1);
+    font-weight: 600;
+    white-space: nowrap;
 }
 .dc-member-results {
     position: absolute;
