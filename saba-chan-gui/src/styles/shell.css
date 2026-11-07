@@ -3046,6 +3046,11 @@ button.dc-ladder-chip.is-fixed {
 .dc-stairs-scroll:has(.is-dragging) {
     overflow: visible;
 }
+/* 끄는 칩의 카드를 다른 카드 위로: 아래 카드가 칩을 덮지 않게 (고정 카드의 반투명도 칩을 가두지 않게) */
+.dc-ladder-block:has(.dc-ladder-chip.is-dragging) {
+    z-index: 30;
+    opacity: 1;
+}
 /* 저장하지 않은 변경 (사용자 지정 2026-11-07) */
 .dc-ladder-chip.is-changed {
     border-color: var(--warn);

@@ -97,6 +97,8 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     const [hidden, setHidden] = useState<Record<string, number>>({});
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     useLayoutEffect(() => {
+        // 끄는 동안은 세지 않는다: 손을 따라 나간 칩을 접힌 칩으로 세어 "+1"이 뜨지 않게
+        if (chipDrag.dragging !== null) return;
         const next: Record<string, number> = {};
         for (const [k, box] of chipBoxes.current) {
             if (expanded[k]) continue;
