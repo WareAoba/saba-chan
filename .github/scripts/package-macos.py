@@ -103,7 +103,9 @@ def dmg_settings(app: Path) -> dict:
         "show_pathbar": False, "show_icon_preview": False,
         "icon_size": DMG_ICON_SIZE,
         "text_size": 12,
-        "icon_locations": {app.name: (150, 185), "Applications": (510, 185)},
+        # 창 높이(400)에서 제목 막대를 빼고, 사용자가 Finder 경로 막대를 켜 두면 그것까지 가려 그림은 위쪽
+        # 340~370pt만 보인다. 아이콘과 이름 묶음이 두 경우 모두 보이는 칸 가운데쯤 오는 높이다 (배경 화살표도 같은 높이)
+        "icon_locations": {app.name: (150, 165), "Applications": (510, 165)},
     }
 
 
