@@ -38,7 +38,6 @@ import CommandModal from '../Modals/CommandModal';
 import { NativeProvision } from '../NativeProvision';
 import { ServerSettingsModal } from '../ServerSettingsModal';
 import { Segmented, StatusChip } from '../ui/StatusChip';
-import { ExitHistory } from './ExitHistory';
 import { ServerLogs } from './ServerLogs';
 import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
@@ -595,7 +594,6 @@ function InfoTab({
                     </dl>
                 </details>
             )}
-            <ExitHistory server={server} />
             <ServerLogs server={server} />
             <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
             <ExtensionSlot slotId="ServerDetail.section" server={server} t={t} />

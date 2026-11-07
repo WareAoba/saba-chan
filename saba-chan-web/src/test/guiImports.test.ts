@@ -17,6 +17,8 @@ const ALLOWED = new Set([
     '@gui/utils/schedule',
     // 활동 기록 한 건을 문구로 (앱 작업 기록과 같은 규칙)
     '@gui/utils/audit',
+    // 지난 로그 줄의 UTC 시각을 PC 시간대로 (앱 지난 로그와 같다)
+    '@gui/utils/logTime',
     // 화면 주소 읽기 (앱과 같은 주소, 화면 없는 순수 함수)
     '@gui/utils/screenAddress',
     // 고를 수 있는 언어 목록 (이 화면 설정)

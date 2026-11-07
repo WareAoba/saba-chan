@@ -1,3 +1,4 @@
+import { localLogLine } from '@gui/utils/logTime';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
@@ -115,7 +116,7 @@ export function LogsCard({ api, server }: { api: WebApi; server: Pick<Server, 'i
                             {t('logs.more')}
                         </Button>
                     )}
-                    <pre className="log-lines">{view.lines.join('\n')}</pre>
+                    <pre className="log-lines">{view.lines.map(localLogLine).join('\n')}</pre>
                     <small className="hint">{t('logs.count', { count: view.lines.length })}</small>
                 </>
             )}

@@ -69,7 +69,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | moduleGetMetadata (302) | GET /api/module/:name | ✓ 659 |
 | moduleAudit (316) | GET /api/module/:name/audit (위험 능력과 `[permissions]` 선언 비교) | ✓ 660 |
 | instanceEvents (325) | GET /api/instance/:id/events (최근 종료 이력) | ✓ 647 |
-| instanceLogs | GET /api/instance/:id/logs?source=&lines=&before= (지난 로그, 실행분 목록과 끝에서부터의 줄) | ✓ |
+| instanceLogs | GET /api/instance/:id/logs?source=&lines=&before= (지난 로그, 실행분 목록과 끝에서부터의 줄. 줄 머리의 UTC 시각은 화면에서 PC 시간대로 바꿔 보인다, `utils/logTime.ts`) | ✓ |
 | instanceLogsExport | GET /api/instance/:id/logs/export?source= (한 실행분 내용. 웹이 그 기기에 저장) | ✓ |
 | instanceLogsSave | 저장 창(`dialog_save_file`, 원격 데몬이면 그 PC의 경로) → POST /api/instance/:id/logs/export {path, source} | ✓ |
 | moduleGetLocales (351) | GET /api/module/:name/locales | ✓ 712 |
@@ -172,7 +172,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | relayInitiatePairing / relayPollPairingStatus (976-990) | POST /api/relay/pair/initiate, POST /api/relay/pair/status | ✓ 782-783 |
 | relayLinkRequests / relayLinkRequestRespond (992-994) | GET /api/relay/link-requests, POST /api/relay/link-requests/:id `{accept}`. 디스코드에서 코드 없이 온 연결 요청(J1-b). 데몬 본문을 그대로 돌려준다(`daemonJson`) | ✓ 784-785 |
 | relayPrivacyErase / relayPrivacyEraseStatus | POST `/api/relay/privacy/erase` `{locale}` → `{url}`, GET → `{status}`. 개인정보 모두 지우기(`daemonJson`) | ✓ 디스코드 연결 화면 `PrivacyErase`: 동의 페이지를 열고 3초마다 묻는다. `done`이면 연결 해제처럼 화면을 비운다(끊기는 데몬이 한다) |
-| relayMcpGrant / relayMcpGrantRevoke | GET `/api/relay/mcp/grant` → `{grant:{clientName, createdAt, lastUsedAt}\|null, url}`(`url`은 에이전트에 넣을 MCP 주소), DELETE → 204. 이 PC 주인 계정의 AI 에이전트 연결(원격 MCP, 05 §4.4 (l))(`daemonJson`) | ✓ 디스코드 연결 화면 `AgentLink`: 연결된 에이전트와 마지막 사용을 보이고 끊는다. 없으면 릴레이가 준 `url`을 에이전트에 넣으라고 안내한다. 받지 못하면 줄을 그리지 않는다 |
+| relayMcpGrant / relayMcpGrantRevoke(id?) | GET `/api/relay/mcp/grant` → `{grants:[{id, clientName, createdAt, lastUsedAt}], grant, url}`(`url`은 에이전트에 넣을 MCP 주소), DELETE `?id=` → 204(그 연결만, `id`가 없으면 모두). 이 PC 주인 계정의 AI 에이전트 연결들(원격 MCP, 05 §4.4 (l))(`daemonJson`) | ✓ 설정 > 보안 `AgentLink`(디스코드에 연결된 PC만): 연결된 에이전트를 목록으로 보이고(이름·마지막 사용), 줄을 누르면 그 줄에만 끊기 버튼이 나온다. 옛 릴레이(`grant`만)면 한 줄로 보이고 모두 끊는다. 없으면 릴레이가 준 `url`을 에이전트에 넣으라고 안내한다. 받지 못하면 줄을 그리지 않는다 |
 | shellOpenPath (1375) | Rust `shell_open_path`. 디렉터리가 아니면 열지 않는다(`errors.path_not_folder`) | n/a |
 | logsOpenFolder (1379) | Rust `logs_open_folder` | n/a |
 | launchUninstaller (1380) | Rust `launch_uninstaller` (installer 직접 spawn) | n/a |
@@ -190,6 +190,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | daemonStatus (1404) | Rust `daemon_status` → GET /health. 응답의 `token`이 `valid`(필드가 없으면 예전 데몬이라 유효로 본다)일 때만 `running: true`. 어긋나면 토큰 파일을 한 번 다시 읽어 재시도하고, 그래도 어긋나면 `running: false, error_code: "token_invalid"`. 실행 중이면 `in_parent_job`(데몬을 띄운 프로그램과 함께 끝날 수 있는가: `/health` `stops_with_launcher`, 키가 없는 옛 데몬이면 이 GUI가 job breakaway 없이 띄운 데몬이 아직 살아 있는가)도 준다 | ✓ 637 |
 | daemonRestart (1405) | Rust `daemon_restart`: `stop_daemon()`(API 종료, 안 되면 자기 PID만 kill) 후 `/health`가 멎을 때까지 기다렸다가 **`start_daemon()`으로 직접 spawn**(`lifecycle.rs:592-618`) | 부분 |
 | minimize/maximize/closeWindow (1034-1036, electron 1040-1042) | Rust `window_minimize` / `window_maximize`(토글) / `window_close`. 호출한 창에 적용한다 | n/a |
+| windowSetOpacity | Rust `window_set_opacity`(퍼센트, 30–100으로 자른다). 호출한 창 전체의 불투명도를 정한다(Windows: 겹친 창 `WS_EX_LAYERED` 알파, 100이면 속성을 지운다. 다른 OS는 무시). 설정 저장소가 `windowOpacity`를 불러오거나 바꿀 때 부른다(설정 > 모양 '창 불투명도', Windows에만 보인다) | n/a |
 | windowSetBackground | Rust `window_set_background`(`#rrggbb`). 호출한 창의 창·웹뷰 바탕을 테마 `--bg-0`으로 칠한다(크기를 바꾸는 중 흰 바탕 방지). 마지막 색을 기억해 새 창도 그 색으로 연다. 트레이 팝업(투명)은 칠하지 않는다. `themeManager`가 테마 적용·시스템 테마 변경 때 부른다 | n/a |
 | electron.getLanguage/setLanguage (1043-1044) | Rust `language_get`(config.json `gui.language`를 직접 읽는다) / `language_set`(`save_settings`로 API 우선 저장, 셸 번역·트레이 갱신. 데몬은 재시작하지 않는다, `native.rs:241-257`) | 부분 |
 | electron.shell.openExternal (1427) | Rust `shell_open_external` (http(s)만) | n/a |

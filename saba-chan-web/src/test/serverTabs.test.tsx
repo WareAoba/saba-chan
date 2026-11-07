@@ -73,7 +73,7 @@ describe('웹 서버 탭', () => {
 describe('웹 정보 탭', () => {
     beforeAll(() => initI18n('en'));
 
-    it('종료 코드 0은 정상 종료로, 통신 방식은 자세히 안에, 모르는 값은 줄째 숨긴다', async () => {
+    it('통신 방식은 자세히 안에, 모르는 값은 줄째 숨기고, 최근 종료 기록은 없다', async () => {
         const api = apiWith({
             instanceEvents: vi.fn().mockResolvedValue({
                 events: [
@@ -86,8 +86,7 @@ describe('웹 정보 탭', () => {
         await act(async () => render(<InfoPanel api={api} server={server} moduleData={minecraft as never} />));
         const text = document.body.textContent || '';
         expect(text).toContain('abc-123');
-        expect(text).toContain('Exited normally');
-        expect(text).toContain('Exit code 3');
+        expect(text).not.toContain('Exit code 3'); // 최근 종료 기록은 뺐다 (사용자 지정 2026-11-08)
         expect(text).not.toMatch(/exit 0|exit 3/);
         expect(text).not.toContain('—');
         const more = screen.getByText('Details').closest('details') as HTMLElement;
