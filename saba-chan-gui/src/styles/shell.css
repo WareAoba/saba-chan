@@ -1720,8 +1720,12 @@ button.activity-line:hover {
     flex: 1;
     min-width: 0;
 }
+/* 짧은 숫자·낱말 칸: 줄을 다 채우지 않는다 (.input의 width:100%보다 앞선다) */
+.restart-row > .memory-limit-input,
 .memory-limit-input {
-    width: 120px;
+    flex: none;
+    width: 140px;
+    max-width: 40%;
     text-align: right;
 }
 
