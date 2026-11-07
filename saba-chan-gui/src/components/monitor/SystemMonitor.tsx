@@ -28,14 +28,26 @@ const SUMMARY_INTERVAL_MS = 5000;
 
 export const systemMonitorAvailable = () => !!window.api?.systemMetrics;
 
-/** 앱을 켠 뒤 본 디스크 IO·네트워크 최고값 (화면을 오가도 이어진다) */
-let sessionPeaks: Peaks = { diskIo: 0, network: 0 };
+/** 앱을 켠 뒤 본 디스크 IO·네트워크 최고값 (화면을 오가도 이어진다). 데몬마다 따로 둔다: 다른 PC의 최고값이 눈금이 되지 않게 */
+const noPeaks: Peaks = { diskIo: 0, network: 0 };
+const sessionPeaks = new Map<string, Peaks>();
+let lastTarget = '';
+
+/** 지금 다룰 데몬 키 (이 PC는 ''). 브리지가 없거나 실패하면 이 PC로 본다 */
+async function currentTarget(): Promise<string> {
+    try {
+        const res = await window.api?.daemonTarget?.();
+        return res?.target || '';
+    } catch {
+        return '';
+    }
+}
 
 /** 데몬 표본을 주기적으로 받는다. 창이 가려져 있으면 쉰다. 요약만 볼 때는 폴더 크기를 재지 않게 한다. */
 export function useSystemMetrics(intervalMs: number, sizes = true) {
     const [state, setState] = useState<{ snapshot: MetricsSnapshot | null; peaks: Peaks }>({
         snapshot: null,
-        peaks: sessionPeaks,
+        peaks: sessionPeaks.get(lastTarget) ?? noPeaks,
     });
     const [error, setError] = useState(false);
 
@@ -46,11 +58,14 @@ export function useSystemMetrics(intervalMs: number, sizes = true) {
         const tick = async () => {
             if (!document.hidden) {
                 try {
+                    const target = await currentTarget();
                     const snap = (await window.api.systemMetrics({ sizes })) as MetricsSnapshot;
                     if (!alive) return;
                     if (snap?.cpu) {
-                        sessionPeaks = nextPeaks(sessionPeaks, snap);
-                        setState({ snapshot: snap, peaks: sessionPeaks });
+                        lastTarget = target;
+                        const peaks = nextPeaks(sessionPeaks.get(target) ?? noPeaks, snap);
+                        sessionPeaks.set(target, peaks);
+                        setState({ snapshot: snap, peaks });
                         setError(false);
                     } else {
                         setError(true);

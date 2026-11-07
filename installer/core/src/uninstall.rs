@@ -152,6 +152,11 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
     if let Some(dir) = &install_dir {
         emit("sandbox", "Removing isolation profiles and folder permissions...", 15);
         left.extend(reset_sandbox(dir));
+        // 포트·서버별 네트워크 표시에 준 권한(그룹 소속·Kernel-Network 허용)도 거둔다. 남아 있으면 관리자 확인 창이 뜬다.
+        // 이 권한은 설치본마다가 아니라 PC에 하나(HKLM)라, 다른 설치본이 남아 있으면 둔다
+        if last_install {
+            left.extend(reset_net_trace(dir));
+        }
     }
 
     // Step 3: 바로가기 제거
@@ -270,11 +275,35 @@ fn reset_sandbox(install_dir: &Path) -> Vec<PathBuf> {
     sandbox_failures(&text, out.status.success(), &core)
 }
 
+/// 그 설치의 `saba-core net-trace reset`을 돌린다 (Windows). 사바쨩이 준 표시가 남은 계정의 네트워크 이벤트 권한을 거둔다.
+/// 관리자 확인 창을 기다리므로(코어가 60초까지) 그보다 넉넉히 기다린다. 거두지 못한 것은 남은 항목 줄로
+fn reset_net_trace(install_dir: &Path) -> Vec<PathBuf> {
+    let core = install_dir.join(saba_chan_updater_lib::uninstall_entry::CORE_EXE);
+    if !cfg!(windows) || !core.is_file() {
+        return Vec::new();
+    }
+    let mut cmd = std::process::Command::new(&core);
+    cmd.args(["net-trace", "reset"]);
+    saba_chan_updater_lib::process::hide_console(&mut cmd);
+    let Some(out) = output_within(&mut cmd, std::time::Duration::from_secs(120)) else {
+        tracing::warn!("[Uninstall] net-trace reset did not finish");
+        return vec![PathBuf::from(format!("{}: net-trace reset did not finish", core.display()))];
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    tracing::info!("[Uninstall] net-trace reset: {}", text.trim());
+    command_failures(&text, out.status.success(), &core, "net-trace reset")
+}
+
 /// `sandbox reset` 출력의 실패 줄. 실패로 끝났는데 실패 줄이 없으면(명령을 모르는 옛 코어 등) 그 사실을 한 줄로
 fn sandbox_failures(text: &str, succeeded: bool, core: &Path) -> Vec<PathBuf> {
+    command_failures(text, succeeded, core, "sandbox reset")
+}
+
+/// 코어 하위 명령(`what`) 출력의 `FAIL  ` 줄. 실패로 끝났는데 실패 줄이 없으면 그 사실을 한 줄로
+fn command_failures(text: &str, succeeded: bool, core: &Path, what: &str) -> Vec<PathBuf> {
     let mut failed: Vec<PathBuf> = text.lines().filter_map(|l| l.strip_prefix("FAIL  ")).map(PathBuf::from).collect();
     if !succeeded && failed.is_empty() {
-        failed.push(PathBuf::from(format!("{}: sandbox reset failed", core.display())));
+        failed.push(PathBuf::from(format!("{}: {} failed", core.display(), what)));
     }
     failed
 }

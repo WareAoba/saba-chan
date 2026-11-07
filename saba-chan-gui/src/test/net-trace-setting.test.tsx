@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NetTraceSetting } from '../components/Modals/NetTraceSetting';
 import { useSettingsStore } from '../stores/useSettingsStore';
 
-describe('설정 > 고급: 포트·서버별 네트워크 (/api/system/net-trace)', () => {
+describe('설정 > 게임 서버: 포트·서버별 네트워크 (/api/system/net-trace)', () => {
     beforeEach(() => {
         window.api = {
             systemNetTrace: vi.fn().mockResolvedValue({ ok: true, access: 'needs_grant', enabled: false }),

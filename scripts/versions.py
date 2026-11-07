@@ -208,6 +208,15 @@ def r2_key(release: str, asset: str) -> str:
 SKIP_PARTS = {"__pycache__", ".git", ".pytest_cache", "tests"}
 
 
+def is_dev_file(rel: str) -> bool:
+    """zip에 싣지 않는 개발용 파일: 폴더 바로 아래의 `test_*.py`·`conftest.py`, 캐시·테스트 폴더, .pyc"""
+    parts = rel.split("/")
+    name = parts[-1]
+    return bool(SKIP_PARTS & set(parts)) or name.endswith(".pyc") or (
+        len(parts) == 1 and (name == "conftest.py" or (name.startswith("test_") and name.endswith(".py")))
+    )
+
+
 def zip_folder(src: Path, dest: Path) -> None:
     """폴더 안 파일을 zip 루트에 넣는다 (캐시·테스트 제외, 순서 고정)."""
     import zipfile
@@ -215,7 +224,7 @@ def zip_folder(src: Path, dest: Path) -> None:
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(src.rglob("*")):
             rel = path.relative_to(src)
-            if path.is_dir() or SKIP_PARTS & set(rel.parts) or path.suffix == ".pyc":
+            if path.is_dir() or is_dev_file(rel.as_posix()):
                 continue
             zf.write(path, rel.as_posix())
 
@@ -292,9 +301,10 @@ def addon_components(args: argparse.Namespace, assets: Path) -> dict:
 
 
 def zip_contents(blob: bytes) -> dict[str, str]:
-    """zip 안 파일마다 sha256 (zip 시각·압축 방식은 보지 않는다)"""
+    """zip 안 파일마다 sha256 (zip 시각·압축 방식은 보지 않는다). 개발용 파일은 뺀다:
+    테스트 파일을 싣던 지난 zip과 비교해도 "바뀌었다"로 보지 않게"""
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
-        return {i.filename: hashlib.sha256(zf.read(i)).hexdigest() for i in zf.infolist() if not i.is_dir()}
+        return {i.filename: hashlib.sha256(zf.read(i)).hexdigest() for i in zf.infolist() if not i.is_dir() and not is_dev_file(i.filename)}
 
 
 def addon_version_problems(components: dict, assets: Path, previous: dict, fetch) -> list[str]:
@@ -320,6 +330,17 @@ def versions_semver(version: str) -> tuple:
     nums = tuple(int(p) for p in core.split("."))
     ids = tuple((0, int(x), "") if x.isdigit() else (1, 0, x) for x in pre.split(".")) if pre else ()
     return (*nums, not pre, ids)
+
+
+def rollout_percent(text: str) -> int:
+    """`--rollout` 값: 1~100의 정수"""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"rollout must be an integer 1-100: {text}") from None
+    if not 1 <= value <= 100:
+        raise argparse.ArgumentTypeError(f"rollout must be 1-100: {value}")
+    return value
 
 
 def fetch_url(url: str) -> bytes:
@@ -645,7 +666,7 @@ def main() -> int:
     s.add_argument("--out", help="SignPath 매개변수 파일 (기본: 표준 출력)")
     r = sub.add_parser("registration")
     r.add_argument("--signed", required=True, help="release_signing sign 출력")
-    r.add_argument("--rollout", type=int, default=100)
+    r.add_argument("--rollout", type=rollout_percent, default=100, help="롤아웃 비율 1~100 (기본 100)")
     r.add_argument("--critical", action="store_true")
     r.add_argument("--notes", help="릴리즈 노트 JSON (기본: release-notes/<version>.json)")
     r.add_argument("--out")

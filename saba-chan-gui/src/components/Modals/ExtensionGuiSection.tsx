@@ -13,7 +13,7 @@ export const extensionGuiAvailable = () =>
 const failed = (res: ApiBody | null | undefined) => !res || res.success === false || Boolean(res.error || res.error_code);
 
 /**
- * 설정 > 고급: 확인되지 않은 익스텐션의 화면(GUI 번들)을 이 PC에서 허락한 목록 (데몬 config.json sandbox.extension_gui).
+ * 설정 > 보안: 확인되지 않은 익스텐션의 화면(GUI 번들)을 이 PC에서 허락한 목록 (데몬 config.json sandbox.extension_gui).
  * current=false면 허락한 뒤 파일이 바뀌어 그 허락은 쓰이지 않는다. 묻고 거절한 익스텐션은 여기서 허락한다.
  */
 export function ExtensionGuiSection() {

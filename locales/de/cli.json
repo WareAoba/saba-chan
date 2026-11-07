@@ -269,6 +269,7 @@
     "import_replaced": "Ersetzte Server",
     "import_settings": "Einstellungen",
     "import_skipped": "{{name}}: übersprungen ({{reason}})",
+    "import_partial": "{{n}} Server wurden nicht importiert.",
     "import_missing_module": "Das Modul {{module}} ist auf diesem PC nicht vorhanden. Installiere es, bevor du diesen Server startest.",
     "import_move_files": "Die Dateien der Gameserver sind nicht enthalten. Verschiebe die Serverordner an dieselben Pfade oder ändere den Ordner in den Servereinstellungen.",
     "skip_reason": {

@@ -443,9 +443,26 @@ pub fn elevate(grant: bool) -> Result<(), String> {
     platform::elevate(grant)
 }
 
-/// `saba-core net-trace grant|revoke <SID>`: 관리자 권한으로 다시 띄워졌을 때 그룹을 바꾼다
+/// `saba-core net-trace grant|revoke <SID>`: 관리자 권한으로 다시 띄워졌을 때 그룹을 바꾼다.
+/// `saba-core net-trace reset`: 제거기가 부른다. 사바쨩이 준 표시가 남은 계정마다 revoke한다 (관리자가 아니면 확인 창)
 pub fn group_tool(args: &[String]) -> i32 {
+    if args == ["reset"] {
+        return platform::reset_tool();
+    }
     platform::group_tool(args)
+}
+
+/// 표시 값 이름(`group:<SID>`·`provider:<SID>`)에서 거둘 계정들. 겹치면 한 번
+#[cfg_attr(not(windows), allow(dead_code))]
+fn marked_sids(names: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut sids: Vec<String> = names
+        .into_iter()
+        .filter_map(|n| n.strip_prefix("group:").or_else(|| n.strip_prefix("provider:")).map(str::to_string))
+        .filter(|sid| sid.starts_with("S-1-"))
+        .collect();
+    sids.sort();
+    sids.dedup();
+    sids
 }
 
 #[cfg(not(windows))]
@@ -474,6 +491,11 @@ mod platform {
 
     pub(super) fn elevate(_grant: bool) -> Result<(), String> {
         Err("unsupported".into())
+    }
+
+    /// 거둘 것이 없다 (Windows만 권한을 준다)
+    pub(super) fn reset_tool() -> i32 {
+        0
     }
 
     pub(super) fn group_tool(_args: &[String]) -> i32 {
@@ -787,10 +809,15 @@ mod platform {
 
     pub(super) fn elevate(grant: bool) -> Result<(), String> {
         let sid = current_user_sid().ok_or("cannot read the current user")?;
+        run_elevated(&format!("net-trace {} {}", if grant { "grant" } else { "revoke" }, sid))
+    }
+
+    /// 관리자 확인 창으로 자기 자신을 `params`로 다시 띄우고 끝날 때까지 기다린다
+    fn run_elevated(params: &str) -> Result<(), String> {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let verb = wide("runas");
         let file = wide(&exe.to_string_lossy());
-        let params = wide(&format!("net-trace {} {}", if grant { "grant" } else { "revoke" }, sid));
+        let params = wide(params);
         let mut sei: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
         sei.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
         sei.fMask = SEE_MASK_NOCLOSEPROCESS;
@@ -846,6 +873,44 @@ mod platform {
         {
             eprintln!("net-trace: marker write failed ({})", e);
         }
+    }
+
+    /// 표시(`ADDED_KEY`)가 남은 계정마다 사바쨩이 준 그룹 소속·공급자 허용을 거둔다. 관리자가 아니면 확인 창으로 다시 띄운다.
+    /// 거두지 못하면 `FAIL  <이유>` 줄과 종료 코드 1
+    pub(super) fn reset_tool() -> i32 {
+        use winreg::enums::HKEY_LOCAL_MACHINE;
+        let names = winreg::RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey(ADDED_KEY)
+            .map(|k| k.enum_values().filter_map(Result::ok).map(|(name, _)| name).collect::<Vec<_>>())
+            .unwrap_or_default();
+        let sids = marked_sids(names);
+        if sids.is_empty() {
+            println!("ok    no network event permission to revoke");
+            return 0;
+        }
+        if !token_has(ADMINISTRATORS) {
+            return match run_elevated("net-trace reset") {
+                Ok(()) => {
+                    println!("ok    revoked network event permission");
+                    0
+                }
+                Err(e) => {
+                    println!("FAIL  network event permission (Performance Log Users, Kernel-Network): {}", e);
+                    1
+                }
+            };
+        }
+        let mut failed = false;
+        for sid in &sids {
+            if group_tool(&["revoke".to_string(), sid.clone()]) != 0 {
+                println!("FAIL  network event permission for {}", sid);
+                failed = true;
+            }
+        }
+        if !failed {
+            println!("ok    revoked network event permission");
+        }
+        i32::from(failed)
     }
 
     pub(super) fn group_tool(args: &[String]) -> i32 {
@@ -920,6 +985,12 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_revokes_each_marked_account_once() {
+        let names = ["group:S-1-5-21-1-1001", "provider:S-1-5-21-1-1001", "provider:S-1-5-21-1-1002", "other", "group:bad"];
+        assert_eq!(marked_sids(names.map(String::from)), ["S-1-5-21-1-1001", "S-1-5-21-1-1002"]);
+    }
 
     fn pp(field: &str, port: u16, protocol: Protocol) -> PublicPort {
         PublicPort {

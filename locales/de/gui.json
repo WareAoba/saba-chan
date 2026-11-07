@@ -1932,7 +1932,7 @@
     "title": "Nur Bediener dürfen beitreten",
     "desc": "Wer nicht auf der Liste „Bediener“ steht, wird beim Beitreten sofort gekickt. Es wird nicht gebannt.",
     "label": "Personen ohne Listeneintrag kicken",
-    "hint": "Es wird nur der Spielname geprüft. Auf Servern ohne Kontoprüfung kann jemand unter fremdem Namen beitreten.",
+    "hint": "Es wird nur der Spielname geprüft: Wer mit einem Namen aus der Liste beitritt, kommt herein. In Spielen mit frei wählbarem Namen oder auf Servern ohne Kontoprüfung kann jeder diesen Namen verwenden.",
     "empty": "Füge im Tab „Bediener“ mindestens eine Person hinzu, um das einzuschalten."
   },
   "stop_timeout": {

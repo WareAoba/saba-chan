@@ -77,9 +77,9 @@ pub struct GuiSettings {
     /// 서버 페이지의 시스템 모니터 펼침 여부 (기본은 한 줄 요약, 사용자 11-06.
     /// 예전 `systemMonitorOpen`은 기본이 펼침이라 모두 한 번 요약으로 시작하도록 키를 바꿨다)
     pub system_monitor_expanded: bool,
-    /// 고급: 포트·서버별 네트워크 사용량 (Windows ETW, `system_monitor::net_trace`). 펼친 모니터를 보는 동안만 센다
+    /// 게임 서버 탭: 포트·서버별 네트워크 사용량 (Windows ETW, `system_monitor::net_trace`). 펼친 모니터를 보는 동안만 센다
     pub system_monitor_net_trace: bool,
-    /// 시스템 모니터에 띄울 항목 id (`cpu`·`cpu.clock`·`disk:<마운트>`·`net:<어댑터>` 등, GUI `monitorItems.ts`).
+    /// 시스템 모니터에 띄울 항목 id (`cpu`·`cpu.clock`·`volume:<마운트>`·`adapter:<어댑터>` 등, GUI `monitorItems.ts`).
     /// 없으면 GUI 기본 항목
     #[serde(skip_serializing_if = "Option::is_none")]
     pub monitor_items: Option<Vec<String>>,

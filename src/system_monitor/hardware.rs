@@ -22,6 +22,37 @@ use std::time::{Duration, Instant};
 #[cfg_attr(not(windows), allow(dead_code))]
 const PROBE_TTL: Duration = Duration::from_secs(600);
 
+/// 조회 PowerShell을 기다리는 시간. 넘기면 끝내고 이번 조회는 비운다 (`PROBE_TTL` 뒤 다시 묻는다)
+#[cfg_attr(not(windows), allow(dead_code))]
+const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// 명령을 돌려 표준 출력을 받는다. `limit`이 지나도 끝나지 않으면 끝내고 None
+#[cfg_attr(not(windows), allow(dead_code))]
+fn output_within(cmd: &mut std::process::Command, limit: Duration) -> Option<std::process::Output> {
+    use std::io::Read;
+    let mut child = cmd.stdout(std::process::Stdio::piped()).spawn().ok()?;
+    // 출력이 파이프를 채워 막히지 않게 따로 읽는다
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout.read_to_end(&mut buf);
+        buf
+    });
+    let deadline = Instant::now() + limit;
+    let status = loop {
+        if let Some(status) = child.try_wait().ok()? {
+            break status;
+        }
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    Some(std::process::Output { status, stdout: reader.join().ok()?, stderr: Vec::new() })
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct GpuReading {
     pub name: Option<String>,
@@ -385,13 +416,13 @@ mod imp {
     pub fn run_probe() -> Option<Probe> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let out = std::process::Command::new("powershell.exe")
-            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", super::PROBE_SCRIPT])
+        let mut cmd = std::process::Command::new("powershell.exe");
+        cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", super::PROBE_SCRIPT])
             .stdin(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .ok()?;
+            .creation_flags(CREATE_NO_WINDOW);
+        // CIM 조회가 멈추면 이 스레드와 `probe_running`이 묶이지 않게 끝낸다
+        let out = super::output_within(&mut cmd, super::PROBE_TIMEOUT)?;
         out.status.success().then(|| super::parse_probe(&String::from_utf8_lossy(&out.stdout))).flatten()
     }
 }
@@ -511,6 +542,17 @@ mod nvml {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_probe_that_hangs_is_stopped_after_the_limit() {
+        let started = Instant::now();
+        assert!(output_within(std::process::Command::new("sleep").arg("30"), Duration::from_millis(200)).is_none());
+        assert!(started.elapsed() < Duration::from_secs(5));
+        let out = output_within(std::process::Command::new("echo").arg("ok"), Duration::from_secs(5)).unwrap();
+        assert!(out.status.success());
+        assert_eq!(out.stdout, b"ok\n");
+    }
 
     #[test]
     fn gpu_util_sums_processes_per_engine_and_takes_the_busiest_engine() {

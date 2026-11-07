@@ -105,6 +105,8 @@ enum Sent {
 /// 답을 마친 직접 연결을 다음 요청에 다시 쓰는 시간. 원격 데몬은 다음 요청 머리를 15초(`server::HEADER_TIMEOUT`)
 /// 기다린 뒤 연결을 닫으므로, 그보다 넉넉히 짧게 두어 닫히는 연결에 요청을 싣지 않는다 (GUI 폴링 0.5~2초는 이어 쓴다)
 const REUSE_WINDOW: Duration = if cfg!(test) { Duration::from_millis(500) } else { Duration::from_secs(8) };
+/// 다시 쓴 연결에 보낸 읽기 요청이 답 머리를 기다리는 시간. 넘기면 끊긴 연결로 보고 새 연결로 다시 보낸다
+const REUSED_ANSWER_TIMEOUT: Duration = if cfg!(test) { Duration::from_millis(300) } else { Duration::from_secs(10) };
 /// 원격 데몬마다 남겨 두는 직접 연결 수 (HTTP/1.1은 한 연결에 한 요청씩이라 동시 요청만큼 연다)
 const IDLE_PER_ENDPOINT: usize = 4;
 
@@ -141,7 +143,7 @@ enum Reused {
     Sent(Sent),
     /// 남겨 둔 연결이 없거나 요청이 나가지 않았다: 이 요청을 새 연결로 보낸다
     Unsent(Request<Body>),
-    /// 보내다 연결이 끊겼다: 요청을 다시 만들어 새 연결로 보낸다
+    /// 보내다 연결이 끊겼거나 답 머리가 `REUSED_ANSWER_TIMEOUT` 안에 오지 않았다: 요청을 다시 만들어 새 연결로 보낸다
     Lost,
 }
 
@@ -152,13 +154,14 @@ async fn send_reused(endpoint: &Endpoint, req: Request<Body>) -> Reused {
         return Reused::Unsent(req);
     }
     let Some(mut sender) = take_idle(endpoint) else { return Reused::Unsent(req) };
-    match tokio::time::timeout(RESPONSE_TIMEOUT, sender.try_send_request(req)).await {
+    // 그새 원격 PC의 망이 조용히 끊겼으면 OS가 포기할 때까지 기다리게 된다: 머리는 짧게만 기다리고 새 연결로 다시 보낸다
+    match tokio::time::timeout(REUSED_ANSWER_TIMEOUT, sender.try_send_request(req)).await {
         Ok(Ok(res)) => {
             keep_idle(endpoint, sender);
             Reused::Sent(Sent::Answered(res))
         }
         Ok(Err(mut e)) => e.take_message().map_or(Reused::Lost, Reused::Unsent),
-        Err(_) => Reused::Sent(Sent::NoAnswer),
+        Err(_) => Reused::Lost,
     }
 }
 
@@ -529,6 +532,18 @@ mod tests {
                 }),
             )
             .route(
+                "/api/slow-once",
+                get({
+                    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+                    move || async move {
+                        if calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                            tokio::time::sleep(RESPONSE_TIMEOUT * 3).await;
+                        }
+                        Json(json!({ "ok": true }))
+                    }
+                }),
+            )
+            .route(
                 "/api/stream",
                 get(|| async {
                     let chunks = futures_util::stream::once(async { Ok::<_, std::io::Error>(axum::body::Bytes::from("first\n")) })
@@ -615,6 +630,22 @@ mod tests {
         let (status, _) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200);
         assert_eq!(idle(), 1);
+    }
+
+    /// 다시 쓴 연결에 보낸 읽기 요청은 답 머리를 짧게만 기다린다. 조용히 끊긴 연결이면 새 연결로 다시 보낸다
+    #[tokio::test]
+    async fn a_read_on_a_reused_connection_that_goes_quiet_is_sent_again_on_a_new_one() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        assert_eq!(status, 200);
+        // 남겨 둔 연결로 간 첫 요청은 답이 오지 않는다
+        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/slow-once", get_req(&[]), CancellationToken::new()).await).await;
+        assert_eq!((status, body), (200, json!({ "ok": true })));
     }
 
     /// 원격 데몬에 보낸 조작(읽기가 아닌 요청)은 이 PC의 감사 로그에도 시킨 쪽·데몬·경로로 남는다. 쿼리와 본문은 남기지 않는다

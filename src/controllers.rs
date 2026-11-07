@@ -101,7 +101,11 @@ pub fn spawn_gate(state: IPCServer) {
                 Some(e) => e,
                 None => match rx.recv().await {
                     Ok(e) => e,
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    // 밀려 건너뛴 접속 알림이 있을 수 있다: 지금 들어와 있는 사람을 다시 본다
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        sweep(&state, None);
+                        continue;
+                    }
                     Err(_) => return,
                 },
             };
@@ -111,6 +115,20 @@ pub fn spawn_gate(state: IPCServer) {
             }
         }
     });
+}
+
+/// 지금 들어와 있는 사람(접속·퇴장 줄로 센 명단)을 게이트에 한 번 넣는다. `instance_id`가 없으면 모든 서버.
+/// 게이트가 `controllers_only`와 명단을 다시 보므로 명단에 있거나 꺼진 서버의 사람은 그대로 둔다
+pub fn sweep(state: &IPCServer, instance_id: Option<&str>) {
+    for (id, player) in crate::supervisor::players::present(instance_id) {
+        let state = state.clone();
+        tokio::spawn(async move { gate(&state, &id, &player).await });
+    }
+}
+
+/// 설정 저장 뒤 이미 들어와 있는 사람을 볼 때: 켜져 있고, 방금 켰거나 명단이 바뀌었다
+pub fn sweep_needed(was_only: bool, was: &[Controller], only: bool, now: &[Controller]) -> bool {
+    only && (!was_only || was != now)
 }
 
 /// 내보낼 사람이면 모듈의 내보내기 명령 이름과 그 입력 이름들
@@ -190,6 +208,16 @@ mod tests {
     fn the_join_gate_needs_someone_on_the_list() {
         assert!(check(&[], true).is_err());
         assert!(check(&[], false).is_ok());
+    }
+
+    #[test]
+    fn people_already_in_are_checked_when_the_gate_turns_on_or_the_list_changes() {
+        let list = parse(&json!([{ "name": "Steve" }])).unwrap();
+        let other = parse(&json!([{ "name": "Alex" }])).unwrap();
+        assert!(sweep_needed(false, &list, true, &list), "turned on");
+        assert!(sweep_needed(true, &list, true, &other), "someone left the list while it is on");
+        assert!(!sweep_needed(true, &list, true, &list), "nothing changed");
+        assert!(!sweep_needed(true, &list, false, &other), "turned off");
     }
 
     #[test]

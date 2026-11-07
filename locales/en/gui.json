@@ -1932,7 +1932,7 @@
     "title": "Only operators may join",
     "desc": "Anyone whose nickname isn't on the \"Operators\" list is kicked as soon as they join. They are not banned.",
     "label": "Kick people not on the list",
-    "hint": "Only the nickname is checked, so on servers without account verification someone could join under another person's name.",
+    "hint": "Only the nickname is checked, so anyone joining with a listed nickname gets in. In games where players pick their own name, or on servers without account verification, anyone can use that name.",
     "empty": "Add at least one person in the \"Operators\" tab to turn this on."
   },
   "stop_timeout": {
