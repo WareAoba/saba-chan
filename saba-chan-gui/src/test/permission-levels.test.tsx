@@ -545,6 +545,9 @@ describe('권한 화면', () => {
         const edit = screen.getByRole('region', { name: 'Stop' });
         expect(within(edit).getByText('Applies to all 2 instances that have this command.')).toBeInTheDocument();
         fireEvent.click(within(edit).getByRole('button', { name: 'Lv 3 · Owner' }));
+        // 옮긴 것은 초안이다: 저장 막대에서 저장한다
+        expect(window.api.permissionsUpdate).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
             commandLevels: { 'mc-1/stop': 3, 'mc-1/server.stop': null, 'mc-2/stop': 3, 'mc-2/server.stop': null },
@@ -558,9 +561,10 @@ describe('권한 화면', () => {
         fireEvent.click(
             within(screen.getByRole('region', { name: 'Stop' })).getByRole('button', { name: 'Lv 1 · User' }),
         );
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
-            commandLevels: { 'mc-1/stop': null, 'mc-1/server.stop': null, 'mc-2/stop': null, 'mc-2/server.stop': null },
+            commandLevels: { 'mc-2/stop': null, 'mc-2/server.stop': null },
         });
     });
 
@@ -589,6 +593,13 @@ describe('권한 화면', () => {
         const say = within(step('Lv 0 · Guest')).getByRole('button', { name: /^Say$/ });
         expect(say).not.toHaveAttribute('draggable');
         dragTo(say, step('Lv 2 · Admin'));
+        // 저장하지 않은 변경은 노란 테두리, 제자리로 돌려 놓으면 사라진다
+        expect(within(step('Lv 2 · Admin')).getByRole('button', { name: /^Say$/ })).toHaveClass('is-changed');
+        dragTo(within(step('Lv 2 · Admin')).getByRole('button', { name: /^Say$/ }), step('Lv 0 · Guest'));
+        expect(within(step('Lv 0 · Guest')).getByRole('button', { name: /^Say$/ })).not.toHaveClass('is-changed');
+        expect(document.querySelector('.dc-savebar.dirty')).toBeNull();
+        dragTo(within(step('Lv 0 · Guest')).getByRole('button', { name: /^Say$/ }), step('Lv 2 · Admin'));
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
             commandLevels: { 'mc-1/say': 2, 'mc-2/say': 2 },
@@ -609,9 +620,6 @@ describe('권한 화면', () => {
         HTMLElement.prototype.animate = animate;
         try {
             await openCommands();
-            const moved = baseBoard();
-            moved.items = moved.items.map((i) => (i.name === 'say' ? { ...i, level: 2, overridden: true } : i));
-            vi.mocked(window.api.permissionsCommands).mockResolvedValue(moved);
             const say = within(step('Lv 0 · Guest')).getByRole('button', { name: /^Say$/ });
             pressAndMove(say, step('Lv 2 · Admin'));
             expect(say).toHaveClass('is-dragging');

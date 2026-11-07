@@ -2823,7 +2823,7 @@ button.activity-line:hover {
 .dc-cmd-chip.is-fixed {
     cursor: pointer;
 }
-.dc-cmd-chip.is-moved {
+.dc-cmd-chip.is-changed {
     border-color: var(--warn);
     box-shadow: 0 0 0 1px var(--warn);
 }

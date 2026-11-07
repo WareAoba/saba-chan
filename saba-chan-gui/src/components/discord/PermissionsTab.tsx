@@ -11,6 +11,7 @@ import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { SabaFail } from '../ui/SabaArt';
 import { Segmented } from '../ui/StatusChip';
 import { Avatar } from './Avatar';
+import { SaveBar } from './ChatbotView';
 import { LadderTab } from './LadderTab';
 import * as L from './levels';
 import { usePointerDrag } from './pointerDrag';
@@ -847,8 +848,15 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
     const dragging = chipDrag.dragging;
     const over = chipDrag.over === null ? null : Number(chipDrag.over);
     const [presetDraft, setPresetDraft] = useState<string | null>(null); // 명령별 레벨을 덮을 프리셋 (확인 전)
+    // 옮긴 레벨은 초안이다 (사용자 지정 2026-11-07): 저장 막대에서 저장한다. 명령 키 → 레벨
+    const [moves, setMoves] = useState<Record<string, number>>({});
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 데몬 값을 다시 읽으면(저장 뒤) 초안을 비운다
+    useEffect(() => setMoves({}), [board]);
     const stairsRef = useRef<HTMLOListElement>(null);
-    useChipFlip(stairsRef, board);
+    // 칩은 저장된 값이 바뀔 때도, 초안에서 옮길 때도 미끄러진다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: board·moves 가 바뀔 때마다 새 표지
+    const flipToken = useMemo(() => ({}), [board, moves]);
+    useChipFlip(stairsRef, flipToken);
     useFillHeight(stairsRef);
     if (!perm) return <PermState loading={loading} error={error} onRetry={load} />;
     if (!board)
@@ -856,6 +864,21 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
 
     const guildId = node.guildId;
     const update = (patch: ApiBody) => write(() => window.api.permissionsUpdate(guildId, patch));
+    const items = board.items || [];
+    const draftLevels = items.map((it) =>
+        !it.fixed && moves[it.key as string] !== undefined ? moves[it.key as string] : it.level,
+    );
+    const shownBoard = L.draftBoard(board, draftLevels);
+    const patch = L.boardPatch(board, draftLevels);
+    const dirty = Object.keys(patch).length > 0;
+    // 노란 테두리는 저장하지 않은 변경: 저장된 레벨과 초안 레벨이 다른 명령
+    const savedLevel = new Map(items.map((it) => [it.key as string, it.level]));
+    const unsaved = (c: L.StairChip) => c.items.some((it) => savedLevel.get(it.key as string) !== it.level);
+    const draftTo = (list: L.CommandItem[], level: (it: L.CommandItem) => number) =>
+        setMoves((m) => ({
+            ...m,
+            ...Object.fromEntries(list.filter((it) => !it.fixed).map((it) => [it.key as string, level(it)])),
+        }));
     const preset = L.PRESETS.includes(perm.preset as string) ? (perm.preset as string) : 'default';
     // 프리셋은 한 번 적용하는 틀이다: 명령별 레벨이 있으면 다시 맞춘다고 먼저 묻는다 (지금 프리셋을 다시 눌러도)
     const overrides = Object.keys(perm.commandLevels || {}).length;
@@ -874,7 +897,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
     const oneInstance = instance !== L.ALL_INSTANCES;
     const groupControl = (list: L.StairChip[]) => L.groupControllers(list, t('discord.perm_server_control'));
     const chips: L.StairChip[] = oneInstance
-        ? groupControl(L.stairChips(board, shownView).filter((c) => c.items.some((i) => i.instance)))
+        ? groupControl(L.stairChips(shownBoard, shownView).filter((c) => c.items.some((i) => i.instance)))
         : [
               // help·list는 금지가 아니면 누구나 쓴다 (바꿀 수 없다)
               {
@@ -885,14 +908,16 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
                   basic: true,
                   items: [],
               },
-              ...groupControl(L.stairChips(board, shownView)),
+              ...groupControl(L.stairChips(shownBoard, shownView)),
           ];
     const current = chips.find((c) => c.id === selected);
-    const move = async (chip: L.StairChip, level: number) => {
+    const move = (chip: L.StairChip, level: number) => {
         // 대표 레벨이 같아도 다른 레벨인 인스턴스가 있으면 맞춘다
         if (busy || chip.fixed || level === L.BANNED || chip.items.every((i) => i.fixed || i.level === level)) return;
-        await update({ commandLevels: L.levelPatch(chip.items, level) });
+        draftTo(chip.items, () => level);
     };
+    // 기본값으로 초기화: 보이는 명령을 프리셋 레벨로 (초안, 저장해야 반영)
+    const resetToDefault = () => draftTo(chips.flatMap((c) => c.items), (it) => it.preset as number);
     dropRef.current = (id, level) => {
         const chip = chips.find((c) => c.id === id);
         if (chip && level !== L.BANNED) move(chip, level);
@@ -926,6 +951,9 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
                         items={L.PRESETS.map((p) => ({ id: p, label: t(`discord.preset_${p}`) }))}
                     />
                 </span>
+                <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={resetToDefault}>
+                    <Icon name="undo" size="sm" /> {t('discord.perm_ladder_reset')}
+                </button>
                 {L.overriddenCount(board) > 0 && (
                     <span className="muted">
                         {t('discord.perm_moved_count', { count: L.overriddenCount(board) })}{' '}
@@ -1025,6 +1053,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
                                             aria-label={label(c)}
                                             data-tooltip={label(c)}
                                             className={clsx('dc-cmd-chip', `kind-${c.kind || 'basic'}`, {
+                                                'is-changed': unsaved(c),
                                                 'is-moved': c.overridden,
                                                 'is-fixed': c.fixed,
                                                 'is-selected': selected === c.id,
@@ -1140,18 +1169,12 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
                                     {t('discord.perm_applies_to', { count: current.items.length })}
                                 </p>
                             )}
-                            {current.items.some((i) => i.overridden) && (
+                            {current.items.some((i) => !i.fixed && i.level !== i.preset) && (
                                 <button
                                     type="button"
                                     className="btn btn-ghost btn-sm"
                                     disabled={busy}
-                                    onClick={() =>
-                                        update({
-                                            commandLevels: Object.fromEntries(
-                                                current.items.flatMap((i) => (i.keys || [i.key]).map((k) => [k, null])),
-                                            ),
-                                        })
-                                    }
+                                    onClick={() => draftTo(current.items, (it) => it.preset as number)}
                                 >
                                     {t('discord.perm_back_to_preset')}
                                 </button>
@@ -1190,6 +1213,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
                     onChange={(level) => update({ chatbotCap: level })}
                 />
             </div>
+            <SaveBar dirty={dirty} saving={busy} onRevert={() => setMoves({})} onSave={() => update({ commandLevels: patch })} />
         </div>
     );
 }
