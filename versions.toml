@@ -62,8 +62,9 @@ required = true
 # asset 이름에 {platform}이 없는 것 중 이 플랫폼에만 싣는 것 (없으면 모든 플랫폼의 manifest에 싣는다)
 platforms = ["windows-x64"]
 # 다른 플랫폼은 구성마다 따로 빌드한 같은 프로그램을 `installer.<구성>` 키로 싣는다 (그 파일이 있을 때만).
-# 클라이언트가 자기 구성의 것을 `installer`로 읽는다 (화면 없는 리눅스 서버에는 GTK·WebKit이 없어 창 빌드가 뜨지 않는다)
-profile_assets = { desktop = "saba-chan-installer-desktop-{platform}.zip", headless = "saba-chan-installer-headless-{platform}.zip" }
+# 클라이언트가 자기 구성의 것을 `installer`로 읽는다 (화면 없는 리눅스 서버에는 GTK·WebKit이 없어 창 빌드가 뜨지 않는다).
+# `dmg`는 구성이 아니라 맥 첫 설치용 디스크 이미지(앱 묶음)다: 웹사이트 다운로드만 쓰고, 클라이언트는 자기 구성이 아니라 버린다
+profile_assets = { desktop = "saba-chan-installer-desktop-{platform}.zip", headless = "saba-chan-installer-headless-{platform}.zip", dmg = "Saba-chan-{platform}.dmg" }
 files = [
     "installer/gui/src-tauri/Cargo.toml",
     "installer/core/Cargo.toml",

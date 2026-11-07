@@ -78,6 +78,31 @@ class PlatformManifest(unittest.TestCase):
                                                  "saba-chan-installer-desktop-linux-x64.zip"))
         self.assertIn("installer.desktop", m["platforms"]["linux-x64"]["components"])
 
+    def test_mac_release_carries_the_dmg_for_the_website_only_on_mac(self):
+        # 웹사이트 다운로드(릴레이 /v1/updates/download/installer)가 맥에서 받을 .dmg는 `installer.dmg`로 맥 목록에만 든다.
+        # 클라이언트는 자기 구성(desktop·headless)이 아닌 `installer.<…>`를 버리므로 업데이트로 받지 않는다
+        data = versions.load()
+        mac = {key: name for key, _, name in versions.asset_entries(data, "macos-arm64")}
+        self.assertEqual(mac.get("installer.dmg"), "Saba-chan-macos-arm64.dmg")
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            release = data["release"]["version"]
+            for name in ("saba-core-macos-arm64.zip", "saba-chan-installer-headless-macos-arm64.zip"):
+                with zipfile.ZipFile(d / name, "w") as zf:
+                    zf.writestr("x", b"")
+            with zipfile.ZipFile(d / "saba-core-windows-x64.zip", "w") as zf:
+                zf.writestr("saba-core.exe", fake_exe(data["components"]["saba-core"]["version"]))
+            (d / "Saba-chan-macos-arm64.dmg").write_bytes(b"dmg")
+            out = d / "out.json"
+            versions.cmd_manifest(data, versions.argparse.Namespace(
+                assets=str(d), base_url="https://r2.example", platform="windows-x64", also_platform=["macos-arm64"],
+                channel=None, out=str(out), modules_repo=None, extensions_repo=None, addons_ref=None))
+            m = json.loads(out.read_text())
+        dmg = m["platforms"]["macos-arm64"]["components"]["installer.dmg"]
+        self.assertEqual(dmg["url"], f"https://r2.example/releases/{release}/Saba-chan-macos-arm64.dmg")
+        self.assertEqual(dmg["size_bytes"], 3)
+        self.assertNotIn("installer.dmg", m["components"])
+
     def test_registration_lists_each_platforms_assets(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)

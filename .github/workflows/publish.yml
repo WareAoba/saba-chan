@@ -281,9 +281,81 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # 맥(Apple 실리콘): 구성요소 zip은 리눅스와 같은 package-linux.py, 첫 설치용 .dmg는 package-macos.py가 만든다.
+  # Apple 서명·공증 없이 임시(ad-hoc) 서명만 한다. 아이콘 원본(.icon)은 Xcode 26 이상의 actool만 컴파일한다
+  macos:
+    name: Build macos-arm64
+    needs: prepare
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Build GUI frontend
+        working-directory: saba-chan-gui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build
+        run: |
+          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli -p saba-chan-gui -p saba-chan-installer --bins
+          cargo build --release --locked -p saba-chan-installer --no-default-features --target-dir target/headless
+
+      - name: Select Xcode 26+
+        run: |
+          xcode=$(ls -d /Applications/Xcode_2[6-9]*.app 2>/dev/null | sort -V | tail -1)
+          test -n "$xcode" || { ls -d /Applications/Xcode*.app; exit 1; }
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      # .dmg Finder 창 배치(배경·아이콘 자리)를 Finder 없이 기록한다
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dmgbuild
+        run: python -m pip install --quiet dmgbuild==1.6.7
+
+      - name: Package
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          python .github/scripts/package-linux.py --bin target/release --headless-bin target/headless/release \
+            --out output --platform macos-arm64 --version "$VERSION"
+          python .github/scripts/package-macos.py --bin target/release --out output --version "$VERSION" --platform macos-arm64
+          # .dmg 안: 앱 묶음과 응용 프로그램 바로가기
+          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" output/Saba-chan-macos-arm64.dmg
+          test -d "$RUNNER_TEMP/dmg/Saba-chan.app" && test -L "$RUNNER_TEMP/dmg/Applications"
+          codesign --verify --deep --strict "$RUNNER_TEMP/dmg/Saba-chan.app"
+          hdiutil detach "$RUNNER_TEMP/dmg"
+          ls -l output
+
+      - name: Upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: assets-macos-arm64
+          path: |
+            output/*.zip
+            output/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
     name: Sign manifest, upload to R2, register
-    needs: [prepare, windows, linux]
+    needs: [prepare, windows, linux, macos]
     runs-on: ubuntu-22.04
     environment: release
     timeout-minutes: 40
@@ -355,12 +427,14 @@ jobs:
           fi
           curl -fsS -H 'X-Saba-Client: 1' "$prev_url" > previous-manifest.json
           python scripts/versions.py manifest --assets output \
-            --base-url "${{ vars.R2_PUBLIC_BASE }}" --platform windows-x64 --also-platform linux-x64 --also-platform linux-arm64 \
+            --base-url "${{ vars.R2_PUBLIC_BASE }}" --platform windows-x64 --also-platform linux-x64 --also-platform linux-arm64 --also-platform macos-arm64 \
             --modules-repo addons/modules --extensions-repo addons/extensions \
             --addons-ref "$(git -C addons/modules rev-parse HEAD)" \
             --previous previous-manifest.json \
             --out release-manifest.unsigned.json
           # 번들된 공개키로 검증까지 통과해야 출력된다
+          # 맥 웹사이트 다운로드(릴레이가 installer.dmg로 보낸다)가 빠진 채 나가지 않게 한다
+          python -c "import json,sys;m=json.load(open('release-manifest.unsigned.json'));sys.exit(0 if 'installer.dmg' in m['platforms']['macos-arm64']['components'] else 'macos-arm64: no installer.dmg in the manifest')"
           ./target/debug/examples/release_signing \
             sign release-manifest.unsigned.json saba-updater-v1 > release-manifest.signed.json
           python scripts/versions.py registration --signed release-manifest.signed.json \
