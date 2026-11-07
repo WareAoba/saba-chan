@@ -238,7 +238,7 @@ impl DaemonClient {
             Err(e) => return (Err(e.to_string()), false),
         };
         let valid = !token.is_empty() && self.base_is_loopback() && body.get("proof").and_then(Value::as_str).is_some_and(|proof| {
-            use hmac::{Hmac, Mac};
+            use hmac::{Hmac, KeyInit, Mac};
             let Ok(mut mac) = Hmac::<sha2::Sha256>::new_from_slice(token.as_bytes()) else { return false };
             mac.update(challenge.as_bytes());
             hex::decode(proof).ok().is_some_and(|bytes| mac.verify_slice(&bytes).is_ok())
@@ -725,7 +725,7 @@ mod tests {
                 let req = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
                 let challenge = req.lines().find_map(|l| l.strip_prefix("x-saba-challenge: ")).unwrap_or("").to_string();
                 *count2.lock().unwrap() += 1;
-                use hmac::{Hmac, Mac};
+                use hmac::{Hmac, KeyInit, Mac};
                 let mut mac = Hmac::<sha2::Sha256>::new_from_slice(b"secret").unwrap();
                 mac.update(challenge.as_bytes());
                 let body = format!("{{\"status\":\"ok\",\"proof\":\"{}\"}}", hex::encode(mac.finalize().into_bytes()));

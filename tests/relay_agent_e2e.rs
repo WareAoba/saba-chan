@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use saba_core::ipc::IPCServer;
 use saba_core::supervisor::Supervisor;
 use serde_json::{json, Value};

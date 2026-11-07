@@ -429,9 +429,10 @@ impl SystemMonitor {
             self.spawn_idle_reaper();
         }
         let sampler = guard.get_or_insert_with(|| Sampler {
-            system: System::new(),
-            networks: Networks::new_with_refreshed_list(),
-            disks: Disks::new(),
+            // sysinfo 0.40부터 생성이 Result다. Err는 sysinfo가 지원하지 않는 OS뿐이다(Windows·Linux·macOS는 늘 Ok)
+            system: System::new().expect("sysinfo supports this OS"),
+            networks: Networks::new_with_refreshed_list().expect("sysinfo supports this OS"),
+            disks: Disks::new().expect("sysinfo supports this OS"),
             disks_listed_at: None,
             physical_io: PhysicalIo::new(),
             physical_rates: None,
@@ -463,7 +464,7 @@ impl SystemMonitor {
             sampler.disks.refresh(true);
             sampler.disks_listed_at = Some(Instant::now());
         } else {
-            sampler.disks.list_mut().iter_mut().for_each(|disk| {
+            sampler.disks.iter_mut().for_each(|disk| {
                 disk.refresh();
             });
         }
@@ -636,13 +637,14 @@ fn build_snapshot(
     let (mut rx, mut tx) = (0u64, 0u64);
     let mut adapters: Vec<AdapterMetrics> = Vec::new();
     for (name, data) in sampler.networks.iter() {
-        if is_loopback(name) {
+        let name = name.to_string_lossy();
+        if is_loopback(&name) {
             continue;
         }
         rx += data.received();
         tx += data.transmitted();
         adapters.push(AdapterMetrics {
-            name: name.clone(),
+            name: name.into_owned(),
             rx_bps: per_sec(data.received(), window),
             tx_bps: per_sec(data.transmitted(), window),
         });

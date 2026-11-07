@@ -87,14 +87,14 @@ mod imp {
 mod imp {
     use std::ptr::null_mut;
     use windows_sys::Win32::System::Performance::{
-        PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhGetFormattedCounterValue, PdhOpenQueryW, PDH_FMT_COUNTERVALUE, PDH_FMT_DOUBLE,
+        PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhGetFormattedCounterValue, PdhOpenQueryW, PDH_FMT_COUNTERVALUE, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY,
     };
 
-    /// PDH 핸들은 isize다 (0이면 없음)
+    /// PDH 핸들 (null이면 없음)
     pub struct Counter {
-        query: isize,
-        read: isize,
-        write: isize,
+        query: PDH_HQUERY,
+        read: PDH_HCOUNTER,
+        write: PDH_HCOUNTER,
         primed: bool,
     }
 
@@ -107,10 +107,10 @@ mod imp {
 
     impl Counter {
         pub fn new() -> Self {
-            let mut c = Self { query: 0, read: 0, write: 0, primed: false };
+            let mut c = Self { query: null_mut(), read: null_mut(), write: null_mut(), primed: false };
             unsafe {
                 if PdhOpenQueryW(std::ptr::null(), 0, &mut c.query) != 0 {
-                    c.query = 0;
+                    c.query = null_mut();
                     return c;
                 }
                 // English 이름: 윈도우 표시 언어와 상관없이 같은 카운터
@@ -118,14 +118,14 @@ mod imp {
                 let w = PdhAddEnglishCounterW(c.query, wide(r"\PhysicalDisk(_Total)\Disk Write Bytes/sec").as_ptr(), 0, &mut c.write);
                 if r != 0 || w != 0 {
                     PdhCloseQuery(c.query);
-                    c.query = 0;
+                    c.query = null_mut();
                 }
             }
             c
         }
 
         pub fn refresh(&mut self) -> Option<(u64, u64)> {
-            if self.query == 0 {
+            if self.query.is_null() {
                 return None;
             }
             unsafe {
@@ -141,7 +141,7 @@ mod imp {
         }
     }
 
-    unsafe fn value(counter: isize) -> Option<u64> {
+    unsafe fn value(counter: PDH_HCOUNTER) -> Option<u64> {
         unsafe {
             let mut v: PDH_FMT_COUNTERVALUE = std::mem::zeroed();
             // CStatus 0(VALID_DATA)·1(NEW_DATA)은 둘 다 쓸 수 있는 값이다
@@ -154,7 +154,7 @@ mod imp {
 
     impl Drop for Counter {
         fn drop(&mut self) {
-            if self.query != 0 {
+            if !self.query.is_null() {
                 unsafe { PdhCloseQuery(self.query) };
             }
         }

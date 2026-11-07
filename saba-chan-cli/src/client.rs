@@ -146,7 +146,7 @@ impl Api {
             .header("X-Saba-Challenge", &challenge).send().await.map_err(|e| self.send_error(e, "/health"))?;
         let body: Value = response.json().await?;
         let Some(proof) = body.get("proof").and_then(Value::as_str) else { return Ok(false) };
-        use hmac::{Hmac, Mac};
+        use hmac::{Hmac, KeyInit, Mac};
         let mut mac = Hmac::<sha2::Sha256>::new_from_slice(token.as_bytes())?;
         mac.update(challenge.as_bytes());
         let valid = mac.verify_slice(&hex::decode(proof)?).is_ok();

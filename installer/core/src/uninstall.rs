@@ -1076,7 +1076,9 @@ fn list_named(names: &[&str]) -> Option<String> {
 #[cfg(target_os = "macos")]
 fn mac_processes() -> Vec<(u32, u32, u64, String, String)> {
     use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, UpdateKind};
-    let mut sys = sysinfo::System::new();
+    let Ok(mut sys) = sysinfo::System::new() else {
+        return Vec::new();
+    };
     sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing().with_exe(UpdateKind::Always));
     sys.processes()
         .iter()

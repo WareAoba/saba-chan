@@ -65,7 +65,7 @@ const START_TIME_SLACK_SECS: u64 = 10;
 /// 프로세스가 시작된 시각 (Unix 초). 읽지 못하면 None
 pub fn process_start_time(pid: u32) -> Option<u64> {
     let pid = sysinfo::Pid::from_u32(pid);
-    let mut sys = sysinfo::System::new();
+    let mut sys = sysinfo::System::new().ok()?;
     if sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true) == 0 {
         return None;
     }
@@ -357,7 +357,7 @@ mod tests {
         let parent = sysinfo::Pid::from_u32(launcher.id());
         let mut child = None;
         for _ in 0..600 {
-            let mut sys = sysinfo::System::new();
+            let mut sys = sysinfo::System::new().unwrap();
             sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
             child = sys
                 .processes()

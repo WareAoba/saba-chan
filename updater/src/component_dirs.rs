@@ -556,7 +556,17 @@ fn digest(path: &Path) -> std::io::Result<(u64, Vec<u8>)> {
     use sha2::{Digest, Sha256};
     let mut file = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();
-    let len = std::io::copy(&mut file, &mut hasher)?;
+    // sha2 0.11부터 해셔가 io::Write를 구현하지 않는다: 직접 나눠 읽는다
+    let mut buf = [0u8; 64 * 1024];
+    let mut len = 0u64;
+    loop {
+        let n = std::io::Read::read(&mut file, &mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+        len += n as u64;
+    }
     Ok((len, hasher.finalize().to_vec()))
 }
 

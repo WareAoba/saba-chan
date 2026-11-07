@@ -877,7 +877,9 @@ fn running_guis(clients: &[(String, crate::ipc::RegisteredClient)]) -> Vec<(u32,
         .collect();
     pids.sort_unstable();
     pids.dedup();
-    let mut sys = sysinfo::System::new();
+    let Ok(mut sys) = sysinfo::System::new() else {
+        return Vec::new();
+    };
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     pids.into_iter()
         .filter_map(|pid| {
@@ -967,7 +969,9 @@ async fn close_guis(guis: &[(u32, std::path::PathBuf)]) {
 
 /// 기다리는 동안 PID가 다른 프로그램에 다시 쓰였으면 빼고, 같은 실행 파일인 것만 남긴다
 fn running_guis_among(guis: &[(u32, std::path::PathBuf)]) -> Vec<(u32, std::path::PathBuf)> {
-    let mut sys = sysinfo::System::new();
+    let Ok(mut sys) = sysinfo::System::new() else {
+        return Vec::new();
+    };
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     guis.iter()
         .filter(|(pid, exe)| sys.process(sysinfo::Pid::from_u32(*pid)).and_then(|p| p.exe()) == Some(exe.as_path()))

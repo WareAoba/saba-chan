@@ -209,8 +209,11 @@ impl Hardware {
     }
 
     fn component_temp(&mut self) -> Option<f32> {
-        let comps = self.components.get_or_insert_with(sysinfo::Components::new_with_refreshed_list);
-        if comps.list().is_empty() {
+        if self.components.is_none() {
+            self.components = Some(sysinfo::Components::new_with_refreshed_list().ok()?);
+        }
+        let comps = self.components.as_mut()?;
+        if comps.is_empty() {
             return None;
         }
         comps.refresh(false);
@@ -254,7 +257,7 @@ mod imp {
     use std::ptr::{null, null_mut};
     use windows_sys::Win32::System::Performance::{
         PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhGetFormattedCounterArrayW, PdhGetFormattedCounterValue,
-        PdhOpenQueryW, PDH_FMT_COUNTERVALUE, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_MORE_DATA,
+        PdhOpenQueryW, PDH_FMT_COUNTERVALUE, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY, PDH_MORE_DATA,
     };
 
     pub const PROBE_SUPPORTED: bool = true;
@@ -266,11 +269,11 @@ mod imp {
     }
 
     pub struct Inner {
-        query: isize,
-        freq: isize,
-        perf: isize,
-        thermal: isize,
-        gpu: isize,
+        query: PDH_HQUERY,
+        freq: PDH_HCOUNTER,
+        perf: PDH_HCOUNTER,
+        thermal: PDH_HCOUNTER,
+        gpu: PDH_HCOUNTER,
         nvml: Option<super::nvml::Nvml>,
     }
 
@@ -279,19 +282,19 @@ mod imp {
 
     impl Inner {
         pub fn new() -> Self {
-            let mut s = Self { query: 0, freq: 0, perf: 0, thermal: 0, gpu: 0, nvml: super::nvml::Nvml::load() };
+            let mut s = Self { query: null_mut(), freq: null_mut(), perf: null_mut(), thermal: null_mut(), gpu: null_mut(), nvml: super::nvml::Nvml::load() };
             unsafe {
                 if PdhOpenQueryW(null(), 0, &mut s.query) != 0 {
-                    s.query = 0;
+                    s.query = null_mut();
                     return s;
                 }
                 // 카운터마다 따로 더한다: 없는 카운터(가상 머신의 온도 영역 등)가 있어도 나머지는 쓴다
-                let add = |path: &str, out: &mut isize| {
+                let add = |path: &str, out: &mut PDH_HCOUNTER| {
                     if PdhAddEnglishCounterW(s.query, wide(path).as_ptr(), 0, out) != 0 {
-                        *out = 0;
+                        *out = null_mut();
                     }
                 };
-                let (mut freq, mut perf, mut thermal, mut gpu) = (0, 0, 0, 0);
+                let (mut freq, mut perf, mut thermal, mut gpu) = (null_mut(), null_mut(), null_mut(), null_mut());
                 add(r"\Processor Information(_Total)\Processor Frequency", &mut freq);
                 add(r"\Processor Information(_Total)\% Processor Performance", &mut perf);
                 add(r"\Thermal Zone Information(*)\Temperature", &mut thermal);
@@ -303,7 +306,7 @@ mod imp {
 
         pub fn read(&mut self, _system: &sysinfo::System) -> Live {
             let mut live = Live::default();
-            if self.query != 0 && unsafe { PdhCollectQueryData(self.query) } == 0 {
+            if !self.query.is_null() && unsafe { PdhCollectQueryData(self.query) } == 0 {
                 unsafe {
                     if let (Some(base), Some(perf)) = (single(self.freq, 0), single(self.perf, PDH_FMT_NOCAP100)) {
                         live.cpu_clock_mhz = super::effective_clock(base, perf);
@@ -325,8 +328,8 @@ mod imp {
         }
     }
 
-    unsafe fn single(counter: isize, extra: u32) -> Option<f64> {
-        if counter == 0 {
+    unsafe fn single(counter: PDH_HCOUNTER, extra: u32) -> Option<f64> {
+        if counter.is_null() {
             return None;
         }
         unsafe {
@@ -339,8 +342,8 @@ mod imp {
     }
 
     /// 와일드카드 카운터의 (인스턴스 이름, 값)들
-    unsafe fn array(counter: isize) -> Vec<(String, f64)> {
-        if counter == 0 {
+    unsafe fn array(counter: PDH_HCOUNTER) -> Vec<(String, f64)> {
+        if counter.is_null() {
             return Vec::new();
         }
         unsafe {
@@ -372,7 +375,7 @@ mod imp {
 
     impl Drop for Inner {
         fn drop(&mut self) {
-            if self.query != 0 {
+            if !self.query.is_null() {
                 unsafe { PdhCloseQuery(self.query) };
             }
         }

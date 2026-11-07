@@ -122,7 +122,8 @@ mod tests {
         assert!(names_a_stream(std::ffi::OsStr::new("level.dat:hidden")));
         assert!(!names_a_stream(std::ffi::OsStr::new("level.dat")));
         let zip = archive(|w| {
-            w.start_file("mod/a:b", SimpleFileOptions::default()).unwrap();
+            // zip 9.2부터 `a:b`처럼 한 글자 뒤 콜론은 드라이브로 보아 모든 OS에서 거부한다: 스트림 이름으로 시험한다
+            w.start_file("mod/level.dat:hidden", SimpleFileOptions::default()).unwrap();
             w.write_all(b"x").unwrap();
         });
         let dest = tempfile::tempdir().unwrap();
