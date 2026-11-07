@@ -2491,7 +2491,8 @@ button.activity-line:hover {
     display: inline-flex;
     align-items: center;
     gap: var(--sp-1-5);
-    padding: 1px var(--sp-2-5) 1px 1px;
+    /* 위·아래·왼쪽·오른쪽 모두 2px씩 키운 값 (사용자 미세조정 2026-11-07) */
+    padding: calc(var(--sp-0-5) + 1px) var(--sp-3) calc(var(--sp-0-5) + 1px) calc(var(--sp-0-5) + 1px);
     border: 1px solid var(--line-strong);
     border-radius: var(--r-pill);
     background: var(--bg-1);
@@ -2518,7 +2519,7 @@ button.activity-line:hover {
     color: var(--brand-text);
 }
 .dc-chip.is-add {
-    padding-left: var(--sp-2-5);
+    padding-left: var(--sp-3);
     border-style: dashed;
     background: transparent;
     color: var(--text-2);
@@ -2757,7 +2758,7 @@ button.activity-line:hover {
     display: inline-flex;
     align-items: center;
     gap: var(--sp-1);
-    padding: var(--sp-0-5) var(--sp-2);
+    padding: var(--sp-1) var(--sp-2-5);
     border: 1px solid var(--line-strong);
     border-radius: var(--r-pill);
     background: var(--bg-0);
