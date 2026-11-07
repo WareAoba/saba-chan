@@ -4171,6 +4171,15 @@ button.appbar-preflight {
     font: inherit;
     text-align: start;
     cursor: pointer;
+    min-height: 72px;
+    padding-block: var(--sp-4);
+    font-size: var(--fs-lg);
+}
+.audit-row .dc-list-text {
+    gap: var(--sp-1);
+}
+.audit-row .dc-list-sub {
+    font-size: var(--fs-sm);
 }
 .audit-row:hover,
 .audit-item.expanded > .audit-row {
