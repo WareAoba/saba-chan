@@ -2159,7 +2159,7 @@ pub async fn update_instance_settings(
     let updated_clone = updated.clone();
     let new_revision = updated_clone.settings_revision();
     // 모드·자동 강퇴·명단이 바뀌었으면 이미 들어와 있는 사람도 다시 본다
-    let sweep = crate::controllers::sweep_needed(&instance, &updated_clone);
+    let sweep = crate::controllers::sweep_needed(instance, &updated_clone);
     if let Err(e) = supervisor.instance_store.update(&id, updated) {
         let error = json!({ "error": format!("Failed to update instance: {}", e) });
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
