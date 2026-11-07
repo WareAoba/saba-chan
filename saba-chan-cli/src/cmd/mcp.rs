@@ -42,6 +42,7 @@ arguments and exit codes.\n\
 Output is JSON.\n\
 - Never pass --yes. When a command needs the user's OK the result says confirm_required with the question: ask the \
 user in plain words, and only if they agree call saba_run again with the same args and confirm: true.\n\
+- Exit code 3 means the Saba-chan daemon is not running: start it with saba_run [\"daemon\", \"start\"].\n\
 - Game agreements (EULA) are accepted only by the user in a terminal or the app; do not try to accept them.";
 
 #[derive(Clone, Default)]

@@ -444,7 +444,8 @@ mod tests {
                     stack.push(path);
                     continue;
                 }
-                if path.extension().and_then(|x| x.to_str()) != Some("rs") {
+                // `launcher.rs`는 따로 빌드하는 짧은 명령 실행기다 (CLI를 찾지 못했을 때만 한 줄 쓴다, TUI와 무관)
+                if path.extension().and_then(|x| x.to_str()) != Some("rs") || path.ends_with("launcher.rs") {
                     continue;
                 }
                 // 시험 모듈은 터미널에 쓰지 않으므로 보지 않는다 (이 시험의 규칙 문자열도 거기 있다)
