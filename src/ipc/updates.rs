@@ -1352,13 +1352,17 @@ mod tests {
     async fn launching_the_updater_closes_only_registered_gui_processes() {
         let tmp = tempfile::tempdir().unwrap();
         let gui_exe = tmp.path().join("saba-chan-gui");
-        // sleep은 쓰지 않는다: uutils coreutils(우분투 러너)는 실행 파일 이름이 유틸리티 이름과 다르면 바로 끝난다.
-        // 셸 내장 read로 표준 입력이 닫힐 때까지 기다린다
-        std::fs::copy("/bin/sh", &gui_exe).unwrap();
+        // 리눅스는 sleep을 쓰지 않는다: uutils coreutils(우분투 러너)는 실행 파일 이름이 유틸리티 이름과 다르면 바로 끝난다.
+        // 셸 내장 read로 표준 입력이 닫힐 때까지 기다린다. 맥의 /bin/sh는 다른 셸을 다시 띄우는 실행기라 sleep을 쓴다
+        #[cfg(target_os = "linux")]
+        let (waiter, args): (&str, &[&str]) = ("/bin/sh", &["-c", "read _"]);
+        #[cfg(not(target_os = "linux"))]
+        let (waiter, args): (&str, &[&str]) = ("/bin/sleep", &["30"]);
+        std::fs::copy(waiter, &gui_exe).unwrap();
         let spawn = |exe: &std::path::Path| {
             // 방금 복사한 파일은 다른 테스트가 fork하는 동안 쓰기 핸들이 남아 ETXTBSY가 날 수 있다
             let mut child = (0..50)
-                .find_map(|_| match std::process::Command::new(exe).args(["-c", "read _"]).stdin(std::process::Stdio::piped()).spawn() {
+                .find_map(|_| match std::process::Command::new(exe).args(args).stdin(std::process::Stdio::piped()).spawn() {
                     Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
                         std::thread::sleep(std::time::Duration::from_millis(20));
                         None
@@ -1375,7 +1379,7 @@ mod tests {
             pid
         };
         let gui = spawn(&gui_exe);
-        let other = spawn(std::path::Path::new("/bin/sh"));
+        let other = spawn(std::path::Path::new(waiter));
         let registry = crate::ipc::ClientRegistry::new();
         registry.register(crate::ipc::ClientKind::Gui, Some(gui), None).await;
         registry.register(crate::ipc::ClientKind::Gui, Some(other), None).await; // PID가 남의 프로그램에 다시 쓰인 경우
