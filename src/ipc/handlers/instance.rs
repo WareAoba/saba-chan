@@ -1690,9 +1690,9 @@ pub(crate) fn stored_setting(view: &Value, instance: &crate::instance::ServerIns
 }
 
 /// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로):
-/// 공통 칸(`constants::INSTANCE_FIELDS`)과 익스텐션 값·조작 가능 명단, 받지만 쓰지 않는 이름
+/// 공통 칸(`constants::INSTANCE_FIELDS`)과 익스텐션 값·전용 멤버 명단·자동 강퇴 닉네임, 받지만 쓰지 않는 이름
 fn is_known_field(key: &str) -> bool {
-    saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key) || matches!(key, "extension_data" | "controllers") || IGNORED_FIELDS.contains(&key)
+    saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key) || matches!(key, "extension_data" | "controllers" | "kick_players") || IGNORED_FIELDS.contains(&key)
 }
 
 /// 받지만 쓰지 않는 이름 (응답 `ignored`).
@@ -1974,6 +1974,11 @@ pub async fn update_instance_settings(
             Some(only) => updated.controllers_only = only,
             None => return game_chat_error("controllers_only must be true or false", "controllers_only"),
         }
+    }
+    // 명단 밖 자동 강퇴는 전용 멤버 모드의 스위치다: 서버 공용이면 끈다. 꺼 두어야 access가 없는 예전 파일(켠 채 저장된 것)과
+    // 가려진다 (`InstanceStore::load_instance_from_dir`의 옮기기, 리뷰 P1)
+    if updated.access.is_shared() {
+        updated.controllers_only = false;
     }
     if let Err(e) = crate::controllers::check(&updated.controllers, updated.controllers_only) {
         return game_chat_error(e, "controllers_only");
@@ -4166,14 +4171,18 @@ mod tests {
         let stored = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!((stored.game_chat, stored.game_chat_keyword.as_str()), (crate::supervisor::game_chat::Mode::Keyword, "!d"));
 
-        // 조작 가능: 빈 명단으로는 "조작 가능한 사람만 접속"을 켤 수 없고, 겹친 닉네임은 거절한다
-        assert_eq!(patch(json!({ "controllers_only": true })).await.status, axum::http::StatusCode::BAD_REQUEST);
+        // 전용 멤버 명단: 빈 명단으로는 명단 밖 자동 강퇴를 켤 수 없고, 겹친 닉네임은 거절한다
+        assert_eq!(patch(json!({ "access": "members", "controllers_only": true })).await.status, axum::http::StatusCode::BAD_REQUEST);
         assert_eq!(patch(json!({ "controllers": [{ "name": "a" }, { "name": "A" }] })).await.status, axum::http::StatusCode::BAD_REQUEST);
-        let saved = patch(json!({ "controllers": [{ "name": " Steve ", "discord_id": "332007306403250178" }], "controllers_only": true })).await;
+        let saved = patch(json!({ "access": "members", "controllers": [{ "name": " Steve ", "discord_id": "332007306403250178" }], "controllers_only": true })).await;
         assert!(saved.status.is_success(), "{:?}", saved.body);
         let stored = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!((stored.controllers[0].name.as_str(), stored.controllers_only), ("Steve", true));
         assert_eq!(patch(json!({ "controllers": [] })).await.status, axum::http::StatusCode::BAD_REQUEST, "emptying the list keeps the gate on");
+        // 서버 공용으로 바꾸면 명단 밖 자동 강퇴(전용 멤버의 스위치)는 꺼진다 (리뷰 P1: access 없는 예전 파일과 가려진다)
+        assert!(patch(json!({ "access": "shared" })).await.status.is_success());
+        let stored = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!((stored.access, stored.controllers_only), (crate::controllers::Access::Shared, false));
     }
 
     /// 처음 설치(30분까지 걸린다)하는 동안 업데이트·삭제·복원이 같은 폴더에 끼어들지 못한다

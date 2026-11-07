@@ -662,10 +662,21 @@ impl InstanceStore {
                 instance
             }
         };
-        let mut stale = serde_json::from_str::<serde_json::Value>(&content)
-            .ok()
+        let raw = serde_json::from_str::<serde_json::Value>(&content).ok();
+        let mut stale = raw
+            .as_ref()
             .and_then(|v| v.as_object().map(|o| LEGACY_RCON_KEYS.iter().any(|k| o.contains_key(*k))))
             .unwrap_or(false);
+        // 사용 모드 전(2026-11-08)에 "조작 가능한 사람만 접속"을 켠 서버: access가 없어 서버 공용으로 읽히면 자동 강퇴가 꺼진다.
+        // 전용 멤버로 옮겨 한 번 저장한다. 서버 공용으로 바꾸면 controllers_only를 끄므로(PATCH) 이 조건은 예전 파일뿐이다 (리뷰 P1)
+        let legacy_gate = instance.controllers_only
+            && instance.access.is_shared()
+            && raw.as_ref().and_then(|v| v.as_object()).is_some_and(|o| !o.contains_key("access"));
+        if legacy_gate {
+            instance.access = crate::controllers::Access::Members;
+            stale = true;
+            tracing::info!("Instance '{}' kicked people off its list before usage modes: now members-only", instance.name);
+        }
 
         // settings.json이 있으면 module_settings 머지
         let settings_path = dir.join("settings.json");
@@ -694,7 +705,7 @@ impl InstanceStore {
         // RCON을 없애기 전에 만든 인스턴스: 남은 RCON 키를 한 번 지우고 다시 쓴다
         if stale {
             match self.save_instance(&instance) {
-                Ok(()) => tracing::info!("Removed leftover RCON settings from instance '{}'", instance.name),
+                Ok(()) => tracing::info!("Saved the migrated instance file of '{}' (old RCON keys, usage mode)", instance.name),
                 Err(e) => tracing::warn!("Could not clean RCON settings of '{}': {}", instance.name, e),
             }
         }
@@ -883,6 +894,36 @@ mod tests {
         assert_eq!(inst.port, Some(28015));
         assert_eq!(inst.rest_password.as_deref(), Some("pw"));
         assert_eq!(inst.module_settings.get("Other"), Some(&serde_json::json!(1)));
+    }
+
+    /// 리뷰 P1 (2026-11-08): 사용 모드 전에 "조작 가능한 사람만 접속"을 켜 둔 서버는 access가 없어 서버 공용으로 읽혀
+    /// 자동 강퇴가 꺼졌다. 읽을 때 전용 멤버로 옮겨 저장한다 (명단 밖 자동 강퇴가 그대로 이어진다)
+    #[test]
+    fn a_server_that_kicked_people_off_the_list_before_usage_modes_becomes_members_only() {
+        let tmp = TempDir::new().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let mut gated = make_test_instance("gated", "minecraft");
+        gated.controllers = vec![crate::controllers::Controller { name: "Steve".into(), discord_id: None }];
+        gated.controllers_only = true;
+        let mut open = make_test_instance("open", "minecraft");
+        open.controllers = gated.controllers.clone();
+        let (gated_id, open_id) = (gated.id.clone(), open.id.clone());
+        store.add(gated).unwrap();
+        store.add(open).unwrap();
+        // 예전 파일에는 access가 없다 (서버 공용은 저장하지 않으므로 지금 저장한 파일도 같다)
+        for id in [&gated_id, &open_id] {
+            let raw = std::fs::read_to_string(store.instance_dir(id).join("instance.json")).unwrap();
+            assert!(!raw.contains("\"access\""));
+        }
+
+        let mut again = InstanceStore::new(instances_dir.to_str().unwrap());
+        again.load().unwrap();
+        let gated = again.get(&gated_id).unwrap();
+        assert_eq!((gated.access, gated.controllers_only), (crate::controllers::Access::Members, true));
+        assert!(std::fs::read_to_string(again.instance_dir(&gated_id).join("instance.json")).unwrap().contains("\"members\""), "saved once");
+        assert_eq!(again.get(&open_id).unwrap().access, crate::controllers::Access::Shared, "no gate: stays shared");
     }
 
     #[test]

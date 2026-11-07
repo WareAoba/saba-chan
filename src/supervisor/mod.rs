@@ -2464,14 +2464,20 @@ impl Supervisor {
             .filter_map(|f| {
                 let value = instance.module_settings.get(&f.name).filter(|v| !v.is_null())?;
                 let e = crate::validator::validate_setting_value(f, Some(value)).err()?;
-                Some(json!({
+                // 비밀 칸(password 타입, 이름에 pass·token 같은 낱말)은 값도, 값이 든 원문 메시지도 싣지 않는다.
+                // 원격 웹·디스코드도 점검을 부르고 이 응답은 비밀 가리기를 거치지 않는다 (리뷰 P2)
+                let secret = f.field_type == "password" || crate::audit::sensitive(&f.name);
+                let mut issue = json!({
                     "code": "setting_invalid",
                     "severity": "error",
                     "field": f.name,
                     "error_type": e.error_type,
-                    "value": value,
-                    "message": e.message,
-                }))
+                });
+                if !secret {
+                    issue["value"] = value.clone();
+                    issue["message"] = json!(e.message);
+                }
+                Some(issue)
             })
             .collect()
     }
@@ -4227,7 +4233,9 @@ mod tests {
              [[settings.fields]]\nname = \"players\"\ntype = \"number\"\nmin = 1\nmax = 10\n\n\
              [[settings.fields]]\nname = \"mode\"\ntype = \"select\"\noptions = [\"a\", \"b\"]\n\n\
              [[settings.fields]]\nname = \"hard\"\ntype = \"boolean\"\n\n\
-             [[settings.fields]]\nname = \"note\"\ntype = \"number\"\nvisible_when = { field = \"hard\", equals = true }\n",
+             [[settings.fields]]\nname = \"note\"\ntype = \"number\"\nvisible_when = { field = \"hard\", equals = true }\n\n\
+             [[settings.fields]]\nname = \"admin_pass\"\ntype = \"password\"\npattern = \"[0-9]+\"\n\n\
+             [[settings.fields]]\nname = \"api_token\"\ntype = \"number\"\n",
         )
         .unwrap();
         let mut sup = Supervisor::new_with_instances_dir(
@@ -4236,19 +4244,30 @@ mod tests {
         );
         let mut inst = crate::instance::ServerInstance::new("g", "game");
         inst.id = "g".into();
-        for (k, v) in [("players", json!(50)), ("mode", json!("minecraft\\:normal")), ("hard", json!(false)), ("note", json!("x"))] {
+        for (k, v) in [
+            ("players", json!(50)),
+            ("mode", json!("minecraft\\:normal")),
+            ("hard", json!(false)),
+            ("note", json!("x")),
+            ("admin_pass", json!("hunter2-secret")),
+            ("api_token", json!("tok-secret")),
+        ] {
             inst.module_settings.insert(k.into(), v);
         }
         sup.instance_store.add(inst).unwrap();
         let issues = sup.setting_issues("g");
         let fields: Vec<&str> = issues.iter().filter_map(|i| i["field"].as_str()).collect();
-        assert_eq!(fields, ["players", "mode"], "note is hidden, hard is fine: {issues:?}");
+        assert_eq!(fields, ["players", "mode", "admin_pass", "api_token"], "note is hidden, hard is fine: {issues:?}");
+        // 리뷰 P2 (2026-11-08): 비밀 칸(password 타입·이름에 pass·token 등)은 값과 원문 메시지를 싣지 않는다 (원격 웹도 점검을 부른다)
+        let text = serde_json::to_string(&issues).unwrap();
+        assert!(!text.contains("hunter2") && !text.contains("tok-secret"), "{text}");
+        assert!(issues[2].get("value").is_none() && issues[3].get("value").is_none());
         assert_eq!((issues[0]["code"].as_str(), issues[0]["error_type"].as_str()), (Some("setting_invalid"), Some("out_of_range")));
         assert_eq!(issues[1]["error_type"], "invalid_option");
         // 모듈 결과에 붙인다 (success는 그대로)
         let merged = with_setting_issues(json!({ "success": true, "issues": [{ "code": "X" }] }), issues.clone());
-        assert_eq!((merged["success"].clone(), merged["issues"].as_array().unwrap().len()), (json!(true), 3));
-        assert_eq!(with_setting_issues(json!({ "success": true }), issues)["issues"].as_array().unwrap().len(), 2);
+        assert_eq!((merged["success"].clone(), merged["issues"].as_array().unwrap().len()), (json!(true), 5));
+        assert_eq!(with_setting_issues(json!({ "success": true }), issues)["issues"].as_array().unwrap().len(), 4);
     }
 
     // 0.1.7 업그레이드: 0.1.6에서 만든 팰월드는 기본 REST 8212를 저장해 두었다. 8212가 Windows 예약 범위(8135-8234)에
