@@ -4138,7 +4138,7 @@ button.appbar-preflight {
     flex: none;
     min-width: 9.5em;
     color: var(--text-3);
-    font-size: var(--fs-sm);
+    font-size: var(--fs-md);
     font-variant-numeric: tabular-nums;
 }
 /* 거르기 단추: 고른 것이 있으면 강조색, 고른 수를 작은 둥근 칸에 */
