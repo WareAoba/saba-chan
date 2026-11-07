@@ -21,6 +21,26 @@ html, body {
 button { font: inherit; color: inherit; }
 input { font: inherit; }
 
+/* 오버레이 스크롤바 (GUI base.css와 같다): 기본 스크롤바는 숨기고 common.js가 손잡이를 겹쳐 그린다 */
+[data-overlay-scroll='on'] *,
+[data-overlay-scroll='on'] { scrollbar-width: none; }
+.ovs-thumb {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 100000;
+    border-radius: var(--r-pill);
+    background: var(--scrollbar-thumb-hover);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.ovs-thumb.ovs-y { width: 6px; margin-left: calc(-1 * var(--sp-1-5)); }
+.ovs-thumb.ovs-x { height: 6px; margin-top: calc(-1 * var(--sp-1-5)); }
+.ovs-thumb.show { opacity: 0.7; pointer-events: auto; }
+.ovs-thumb.show:hover,
+.ovs-thumb.drag { opacity: 1; background: var(--scrollbar-thumb-active); }
+
 .win { position: relative; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 
 /* ── 상단 바: 모드 · 단계 · 언어/테마 · 창 버튼 ── */
