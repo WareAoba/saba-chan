@@ -516,24 +516,34 @@ textarea {
 }
 /* 안내 문구 속 화면 링크 (ScreenLink, 사용자 11-06 #19). 앱 .screen-link와 같은 모양 */
 .screen-link {
+    /* 글줄 안에 든 링크 (사용자 지적 2026-11-07, 앱과 같다): 글자 기준선을 둘레 글자와 맞추고 줄 높이는 둘레 글을 따른다.
+       위아래 여백 2px은 음수 바깥 여백으로 상쇄해 글줄 높이를 늘리지 않는다 */
     display: inline-flex;
-    align-items: center;
+    align-items: baseline;
     gap: 4px;
-    margin: 0 2px;
-    padding: 0 8px;
+    height: auto;
+    min-height: 0;
+    margin: -2px 2px;
+    padding: 2px 8px;
     border: 0;
-    border-radius: 7px;
+    border-radius: 6px;
     background: color-mix(in srgb, var(--accent) 12%, transparent);
     color: var(--accent);
     font: inherit;
     font-weight: 600;
-    line-height: 1.6;
+    line-height: inherit;
+    vertical-align: baseline;
     white-space: nowrap;
     cursor: pointer;
+    outline: 1px solid transparent;
+    transition:
+        outline-color var(--dur-fast) var(--ease),
+        background-color var(--dur-fast) var(--ease);
 }
 .screen-link:hover,
 .screen-link:focus-visible {
-    outline: 1px solid var(--accent);
+    outline-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .screen-link-arrow {
     font-size: 0.9em;
@@ -1530,6 +1540,19 @@ textarea {
 }
 
 /* ── 권한: 인스턴스 메뉴와 레벨별 명령 계단 (GUI 계단과 같은 규칙, 휴대폰이라 위가 높은 세로 계단) ── */
+/* 인스턴스 카드: 줄 전체가 권한 메뉴로 가는 버튼이다. 마우스를 올리면 살짝 밝아진다 (앱과 같다) */
+.set-card .rows > .row:has(> .row-open) {
+    margin: 0 -8px;
+    padding: 0;
+    border-radius: 8px;
+    transition: background-color var(--dur-fast) var(--ease);
+}
+.set-card .rows > .row:has(> .row-open):hover {
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.set-card .rows > .row > .row-open {
+    padding: 10px 8px;
+}
 .row-open {
     display: flex;
     align-items: center;
@@ -1542,62 +1565,193 @@ textarea {
     cursor: pointer;
 }
 .instance-menu,
-.cmd-list-view {
+.stairs-view {
     display: grid;
     gap: 12px;
 }
-.cmd-group h4 {
-    margin: 8px 0 4px;
-    font-size: 0.85rem;
-    color: var(--text-2);
-}
-
-.cmd-list {
+/* 레벨 칸 (앱 계단과 같다): 왼쪽이 낮은 레벨, 금지 칸은 없다. 칸은 모두 같은 높이로 창에 남은 높이를 채우고
+   넘치는 칩은 칸 안에서만 세로로 스크롤한다 (useFillHeight) */
+.stairs {
     display: grid;
-    gap: 6px;
+    grid-template-columns: repeat(var(--steps), minmax(0, 1fr));
+    align-items: stretch;
+    gap: 4px;
+    height: 360px;
     margin: 0;
     padding: 0;
     list-style: none;
 }
-
-/* 명령 한 줄: 이름 · 누구부터 · 되묻기 · 되돌리기. 좁으면 이름이 한 줄을 다 쓴다 */
-.cmd-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 168px 64px minmax(72px, auto);
-    align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    border-radius: 12px;
-    border: 1px solid var(--line);
-}
-
-.cmd-row.is-moved {
-    border-style: dashed;
-}
-
-.cmd-name {
+.stair {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 8px;
     min-width: 0;
+    min-height: 0;
+    padding: 10px 8px;
+    border-top: 3px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) calc(4% + var(--step) * 4%), var(--bg-1));
+    transition:
+        box-shadow var(--dur-fast) var(--ease),
+        background-color var(--dur-fast) var(--ease);
 }
-
-.cmd-name > span:last-child {
+.stair.is-over {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: color-mix(in srgb, var(--accent) calc(12% + var(--step) * 4%), var(--bg-1));
+}
+.stair-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 4px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+/* 끄는 칩이 칸 밖으로 나가도 잘리지 않게 한다 */
+.stair-chips:has(.is-dragging) {
+    overflow: visible;
+}
+.stair-carry {
+    width: 100%;
+    color: var(--text-2);
+    font-size: 12px;
+}
+.stair-label {
+    display: flex;
+    flex-direction: column;
+    margin-top: auto;
+}
+.stair-num {
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+}
+/* 휴대폰: 칸이 너무 좁아지므로 위가 높은 레벨인 세로 계단으로 쌓고, 칸마다 높이를 제한한다 */
+@media (max-width: 560px) {
+    .stairs {
+        display: flex;
+        flex-direction: column-reverse;
+        height: auto;
+    }
+    .stair {
+        border-top: 0;
+        border-left: 3px solid var(--accent);
+        border-radius: 12px;
+        margin-left: calc(min(var(--step), 6) * 8px);
+    }
+    .stair-chips {
+        max-height: 220px;
+    }
+    .stair-label {
+        order: -1;
+        flex-direction: row;
+        align-items: baseline;
+        gap: 8px;
+        margin-top: 0;
+    }
+}
+.cmd-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 4px 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--bg-0);
+    color: var(--text-1);
+    font-size: 13px;
+    cursor: grab;
+    /* 손가락으로 끌 때 화면이 같이 움직이지 않게 */
+    touch-action: none;
+    user-select: none;
+    transition:
+        opacity var(--dur-fast) var(--ease),
+        transform var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease);
+}
+/* 칸보다 긴 이름은 줄임표로 줄인다 (가로 스크롤을 만들지 않는다) */
+.cmd-chip-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cmd-chip:not(.is-fixed):hover {
+    transform: translateY(-1px);
+}
+.cmd-chip.is-fixed {
+    cursor: pointer;
+    touch-action: auto;
+}
+.cmd-chip.is-moved {
+    border-color: var(--warn);
+    box-shadow: 0 0 0 1px var(--warn);
+}
+.cmd-chip.is-selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent);
+}
+.cmd-chip.is-dragging {
+    position: relative;
+    z-index: 20;
+    opacity: 0.85;
+    cursor: grabbing;
+}
+.cmd-chip.is-legend {
+    cursor: default;
+    padding: 0 8px;
+}
+.chip-edit {
     display: grid;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+}
+.level-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    border: 0;
     min-width: 0;
 }
-
-.cmd-name strong {
-    overflow-wrap: anywhere;
+.level-step {
+    padding: 4px 8px;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: var(--bg-1);
+    color: var(--text-1);
+    font-size: 13px;
+    cursor: pointer;
 }
-
-@media (max-width: 560px) {
-    .cmd-row {
-        grid-template-columns: minmax(0, 1fr) auto;
-    }
-    .cmd-name {
-        grid-column: 1 / -1;
-    }
+.level-step.is-up {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-1));
+    color: var(--accent);
+}
+.level-step.is-on {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--text-inverse);
+    font-weight: 700;
+}
+.stair-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: var(--text-2);
+    font-size: 12px;
+}
+.stair-legend > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .dot {
@@ -1619,6 +1773,10 @@ textarea {
 }
 .dot.tone-info {
     background: var(--info);
+}
+/* 서버 조작 칩: 시작·정지·재시작·백업 만들기를 묶은 칩 (앱과 같은 보라 점) */
+.dot.tone-control {
+    background: oklch(0.62 0.19 300);
 }
 .servers-detail:empty {
     display: none;
