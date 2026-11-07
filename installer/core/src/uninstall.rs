@@ -152,8 +152,11 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
     if let Some(dir) = &install_dir {
         emit("sandbox", "Removing isolation profiles and folder permissions...", 15);
         left.extend(reset_sandbox(dir));
-        // 포트·서버별 네트워크 표시에 준 권한(그룹 소속·Kernel-Network 허용)도 거둔다. 남아 있으면 관리자 확인 창이 뜬다
-        left.extend(reset_net_trace(dir));
+        // 포트·서버별 네트워크 표시에 준 권한(그룹 소속·Kernel-Network 허용)도 거둔다. 남아 있으면 관리자 확인 창이 뜬다.
+        // 이 권한은 설치본마다가 아니라 PC에 하나(HKLM)라, 다른 설치본이 남아 있으면 둔다
+        if last_install {
+            left.extend(reset_net_trace(dir));
+        }
     }
 
     // Step 3: 바로가기 제거
