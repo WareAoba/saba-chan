@@ -79,6 +79,7 @@
     "unknown": "Error desconocido",
     "agreement_required": "Debes aceptar {{names}} antes de poder iniciar este servidor. Acéptalo en Saba-chan en el PC.",
     "memory_limit_at_start": "El servidor alcanzó su límite de memoria de {{limit}} MiB al iniciar y se detuvo. Pon el límite por encima de su RAM o déjalo vacío.",
+    "runner_missing": "Falta saba-runner, así que el inicio gestionado no es posible. Desactiva el inicio gestionado de este servidor o reinstala saba-chan.",
     "preflight_failed": "La comprobación previa encontró un problema, así que el servidor no se inició ({{code}}). Consulta los detalles en Saba-chan en el PC.",
     "agreement_local_only": "Los acuerdos solo se pueden aceptar en Saba-chan en este PC.",
     "no_command_path": "'{{name}}' no tiene una consola de saba-chan conectada, así que no puede recibir comandos. Reinícialo en modo gestionado desde saba-chan en el PC.",

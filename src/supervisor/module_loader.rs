@@ -343,6 +343,14 @@ impl ModuleMetadata {
         self.rcon_port.filter(|p| only_rcon && *p > 0)
     }
 
+    /// 콘솔 stdin이 없는 인스턴스(관리형 시작을 끔)가 명령을 RCON으로 받는 모듈이면 그 기본 RCON 포트.
+    /// `supported`에 rcon이 있고 rest가 없을 때다 (REST는 콘솔 없이도 쓸 수 있다). RCON만 받는 모듈도 포함한다
+    pub fn rcon_port_without_console(&self) -> Option<u16> {
+        let supported = self.protocols_supported.as_deref()?;
+        let rcon = supported.iter().any(|p| p == "rcon") && !supported.iter().any(|p| p == "rest");
+        self.rcon_port.filter(|p| rcon && *p > 0)
+    }
+
     /// 설정 필드의 기본값을 가져옵니다
     pub fn get_setting_default<T: std::str::FromStr>(&self, field_name: &str) -> Option<T> {
         self.settings.as_ref().and_then(|s| {
@@ -1969,6 +1977,11 @@ impl ModuleToml {
             if only_rcon && p.rcon_port.unwrap_or(0) == 0 {
                 problems.push("protocols: rcon_port is required when rcon is the only protocol".to_string());
             }
+            // stdin과 함께 쓰는 rcon은 관리형 시작을 끈 서버의 명령 길이다: 포트가 있어야 데몬이 접속 정보를 만든다
+            let console_rcon = p.supported.as_ref().is_some_and(|s| s.iter().any(|v| v == "rcon") && s.iter().any(|v| v == "stdin") && !s.iter().any(|v| v == "rest"));
+            if console_rcon && p.rcon_port.unwrap_or(0) == 0 {
+                problems.push("protocols: rcon_port is required when rcon is the command path without a console".to_string());
+            }
         }
         // 공지·저장 명령은 [commands.fields]의 이름을 가리킨다
         let named = |name: &str| self.commands.iter().flat_map(|c| &c.fields).any(|f| f.name == name);
@@ -2678,6 +2691,18 @@ interaction_mode = "commands"
         assert_eq!(with("supported = [\"rcon\"]\nrcon_port = 27015").unwrap().rcon_only_port(), Some(27015));
         assert_eq!(with("supported = [\"stdin\", \"rcon\"]\nrcon_port = 27015").unwrap().rcon_only_port(), None);
         let err = with("supported = [\"rcon\"]").unwrap_err().to_string();
+        assert!(err.contains("rcon_port"), "{err}");
+    }
+
+    /// 관리형 시작을 끄면 콘솔 stdin이 없다: stdin과 rcon을 함께 받는 모듈은 그때 RCON이 명령 길이다 (사용자 정의 2026-11-08)
+    #[test]
+    fn stdin_modules_with_rcon_fall_back_to_rcon_without_a_console() {
+        let with = |protocols: &str| parse_module_toml(&format!("[module]\nschema_version = 1\nname = \"g\"\nversion = \"1\"\nentry = \"lifecycle.py\"\n[protocols]\n{protocols}\n"));
+        assert_eq!(with("supported = [\"stdin\", \"rcon\"]\nrcon_port = 25575").unwrap().rcon_port_without_console(), Some(25575));
+        assert_eq!(with("supported = [\"rcon\"]\nrcon_port = 27015").unwrap().rcon_port_without_console(), Some(27015));
+        assert_eq!(with("supported = [\"stdin\", \"rest\", \"rcon\"]\nrcon_port = 25575").unwrap().rcon_port_without_console(), None, "REST works without a console");
+        assert_eq!(with("supported = [\"stdin\"]").unwrap().rcon_port_without_console(), None);
+        let err = with("supported = [\"stdin\", \"rcon\"]").unwrap_err().to_string();
         assert!(err.contains("rcon_port"), "{err}");
     }
 

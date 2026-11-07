@@ -2225,12 +2225,12 @@ impl Supervisor {
                 }
                 spawned?
             }
+            // 단위 테스트는 러너를 빌드하지 않고 돈다: 그때만 데몬이 직접 붙는다
+            None if cfg!(test) => ManagedProcess::spawn(program, &args, working_dir, env_vars, log_pattern, Some(&inst_dir)).await?,
+            // 관리형 시작은 러너가 콘솔을 쥐는 시작이다. 러너 없이 데몬이 대신 띄우지 않는다 (사용자 정의 2026-11-08)
             None => {
-                tracing::warn!("saba-runner not found next to the daemon; '{}' is attached directly and will lose its console if the daemon restarts", instance.name);
-                if let Some(mb) = instance.memory_limit_mb {
-                    tracing::warn!("'{}': memory limit {} MiB needs saba-runner and is not enforced", instance.name, mb);
-                }
-                ManagedProcess::spawn(program, &args, working_dir, env_vars, log_pattern, Some(&inst_dir)).await?
+                tracing::warn!("saba-runner not found next to the daemon; refusing managed start of '{}'", instance.name);
+                return Err(managed_process::RunnerMissing.into());
             }
         };
         drop(gate);
@@ -2269,7 +2269,8 @@ impl Supervisor {
         }))
     }
 
-    /// 이 인스턴스를 managed(데몬이 자식 프로세스로 stdin/stdout을 쥐고)로 시작하는가.
+    /// 이 인스턴스를 관리형으로 시작하는가: saba-runner가 서버 콘솔(stdout·stdin)을 쥐고 앱 안으로 들여온다.
+    /// 끄면 서버를 별도 창의 별도 프로세스로 띄워 사바쨩 콘솔·stdin을 쓸 수 없다.
     /// 인스턴스 설정 `managed_start`가 우선, 없으면 managed가 기본이다(오너 결정).
     /// non-managed는 프로세스를 직접 관리하고 싶은 사용자를 위한 선택지로 남긴다.
     pub fn uses_managed_start(&self, instance: &crate::instance::ServerInstance) -> bool {
@@ -2313,12 +2314,19 @@ impl Supervisor {
         }
     }
 
-    /// RCON만 받는 모듈의 인스턴스면 접속 정보를 만들어 둔다 (시작 전). 그 밖의 모듈은 아무것도 하지 않는다
-    /// 모듈이 RCON을 더 쓰지 않으면(업데이트로 stdin·rest가 생김) 남은 접속 정보를 지운다.
+    /// 명령을 RCON으로 받을 인스턴스면 그 모듈의 기본 RCON 포트: RCON만 받는 모듈, 또는 stdin·rcon을 받는 모듈인데
+    /// 관리형 시작을 꺼서 콘솔 stdin이 없는 인스턴스 (사용자 정의 2026-11-08)
+    fn rcon_port_for(&self, instance: &crate::instance::ServerInstance) -> Option<u16> {
+        let meta = &self.module_loader.get_module(&instance.module_name).ok()?.metadata;
+        meta.rcon_only_port().or_else(|| meta.rcon_port_without_console().filter(|_| !self.uses_managed_start(instance)))
+    }
+
+    /// 명령을 RCON으로 받을 인스턴스면(`rcon_port_for`) 접속 정보를 만들어 둔다 (시작 전). 그 밖에는 아무것도 하지 않는다
+    /// RCON을 더 쓰지 않으면(관리형 시작을 켬, 모듈 업데이트로 stdin·rest가 생김) 남은 접속 정보를 지운다.
     /// 준비하지 못하면 시작을 멈춘다: 비밀번호 없이 띄우면 명령을 보낼 길이 없다
     pub(crate) fn ensure_rcon_access(&self, instance: &crate::instance::ServerInstance) -> Result<()> {
         let dir = self.instance_store.instance_dir(&instance.id);
-        let Some(port) = self.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.rcon_only_port()) else {
+        let Some(port) = self.rcon_port_for(instance) else {
             let _ = std::fs::remove_file(dir.join(crate::protocol::rcon::ACCESS_FILE));
             return Ok(());
         };
@@ -2344,10 +2352,12 @@ impl Supervisor {
             .map_err(|e| anyhow::anyhow!("Could not prepare RCON access for '{}': {}", instance.name, e))
     }
 
-    /// 명령을 RCON으로 보낼 인스턴스면 접속 정보 (모듈이 RCON만 받고, 시작할 때 접속 정보를 만들어 둔 경우)
+    /// 명령을 RCON으로 보낼 인스턴스면 접속 정보: 모듈이 RCON을 받고, 시작할 때 접속 정보를 만들어 둔 경우.
+    /// 관리형 시작 설정은 보지 않는다: 켜진 동안 설정을 바꿔도(재시작 필요) 지금 도는 서버는 시작 때 방식 그대로다.
+    /// 접속 정보는 시작 준비(`ensure_rcon_access`)만 만들고 지우므로 지금 도는 서버의 방식을 따른다
     pub fn rcon_route(&self, instance_id: &str) -> Option<crate::protocol::rcon::Access> {
         let instance = self.instance_store.get(instance_id)?;
-        self.module_loader.get_module(&instance.module_name).ok()?.metadata.rcon_only_port()?;
+        self.module_loader.get_module(&instance.module_name).ok()?.metadata.rcon_port_without_console()?;
         crate::protocol::rcon::load(&self.instance_store.instance_dir(instance_id))
     }
 

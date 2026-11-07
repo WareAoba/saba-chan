@@ -508,7 +508,8 @@ pub(crate) async fn stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor
             "error": "This server does not take console input; use its commands instead", "error_code": "stdin_not_supported",
         }))).into_response();
     }
-    via_stdin_for(supervisor, id, payload).await
+    // 관리형 시작을 꺼 콘솔이 없으면 RCON으로 보낸다 (`rcon_for`가 stdin → RCON → `no_command_path` 순으로 고른다)
+    rcon_for(supervisor, id, payload).await
 }
 
 /// 관리 프로세스의 stdin으로 보낸다. 서버의 답은 콘솔로만 나오므로, 보낸 뒤 잠깐 새로 찍힌 줄을
@@ -865,12 +866,13 @@ mod tests {
         assert_eq!(other["error_code"], "internal_server_error");
     }
 
-    /// RCON만 받는 모듈: 시작 때 만든 접속 정보로 127.0.0.1 RCON에 명령을 보낸다. stdin도 받는 모듈은 RCON을 쓰지 않는다
+    /// RCON만 받는 모듈: 시작 때 만든 접속 정보로 127.0.0.1 RCON에 명령을 보낸다. stdin도 받는 모듈은 관리형 시작이면 RCON을 쓰지 않고,
+    /// 관리형 시작을 끄면(콘솔 stdin 없음) RCON으로 보낸다
     #[tokio::test]
     async fn commands_reach_a_server_that_only_speaks_rcon() {
         use std::sync::Arc;
         use tokio::sync::RwLock;
-        async fn server_for(protocols: &str, port: u16) -> (IPCServer, String, tempfile::TempDir) {
+        async fn server_for(protocols: &str, port: u16, managed: bool) -> (IPCServer, String, tempfile::TempDir) {
             let tmp = tempfile::tempdir().unwrap();
             let modules = tmp.path().join("modules");
             let dir = modules.join("plain");
@@ -884,7 +886,10 @@ mod tests {
             let instances = tmp.path().join("instances");
             let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
             sup.initialize().await.unwrap();
-            let inst = crate::instance::ServerInstance::new("srv", "plain");
+            let mut inst = crate::instance::ServerInstance::new("srv", "plain");
+            if !managed {
+                inst.module_settings.insert("managed_start".into(), json!(false));
+            }
             let id = inst.id.clone();
             sup.instance_store.add(inst.clone()).unwrap();
             sup.tracker.track(&id, std::process::id()).unwrap();
@@ -903,7 +908,7 @@ mod tests {
         let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = probe.local_addr().unwrap().port();
         drop(probe);
-        let (state, id, _tmp) = server_for("[\"rcon\"]", port).await;
+        let (state, id, _tmp) = server_for("[\"rcon\"]", port, true).await;
         let dir = state.supervisor.read().await.instance_store.instance_dir(&id);
         let access = crate::protocol::rcon::load(&dir).expect("access is prepared for an rcon-only module");
         assert_eq!(access.port, port);
@@ -929,13 +934,40 @@ mod tests {
         assert_eq!(seen.lock().unwrap().len(), 1);
 
         // stdin도 받는 모듈: RCON 접속 정보를 만들지 않고, 콘솔이 없으면 예전처럼 409
-        let (state, id, _tmp2) = server_for("[\"stdin\", \"rcon\"]", port).await;
+        let (state, id, _tmp2) = server_for("[\"stdin\", \"rcon\"]", port, true).await;
         let dir = state.supervisor.read().await.instance_store.instance_dir(&id);
         assert!(crate::protocol::rcon::load(&dir).is_none());
         let (status, reply) = body(execute_rcon_command(Path(id.clone()), State(state.clone()), Json(json!({ "command": "say hi" }))).await.into_response()).await;
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(reply["error_code"], "no_command_path");
         assert_eq!(seen.lock().unwrap().len(), 1, "nothing more went over RCON");
+
+        // 관리형 시작을 끈 stdin 모듈: 콘솔이 없으니 접속 정보를 만들고, 명령·모듈 HOST 콘솔 한 줄이 RCON으로 간다
+        // 앞 시험 서버가 아직 그 포트를 쥐고 있다: 새 포트를 쓴다
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = probe.local_addr().unwrap().port();
+        drop(probe);
+        let (state, id, _tmp3) = server_for("[\"stdin\", \"rcon\"]", port, false).await;
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id);
+        let access = crate::protocol::rcon::load(&dir).expect("access is prepared when managed start is off");
+        let seen = crate::protocol::rcon::fake_server_on(port, &access.password).await;
+        let (status, reply) = body(run_command(&id, &state, request("list")).await).await;
+        assert_eq!(status, StatusCode::OK, "{reply}");
+        assert_eq!(reply["protocol"], "rcon");
+        let (status, reply) = body(stdin_for(&state.supervisor, &id, &json!({ "command": "save-all" })).await).await;
+        assert_eq!(status, StatusCode::OK, "{reply}");
+        assert_eq!(reply["protocol"], "rcon");
+        assert_eq!(seen.lock().unwrap().as_slice(), ["list", "save-all"]);
+
+        // 켜진 동안 관리형 시작을 다시 켜도(재시작 필요) 지금 서버는 RCON으로 받는다
+        let mut inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        inst.module_settings.insert("managed_start".into(), json!(true));
+        state.supervisor.write().await.instance_store.update(&id, inst.clone()).unwrap();
+        let (status, reply) = body(run_command(&id, &state, request("list")).await).await;
+        assert_eq!((status, reply["protocol"].as_str()), (StatusCode::OK, Some("rcon")), "{reply}");
+        // 다음 시작 준비에서 접속 정보를 지운다
+        state.supervisor.read().await.ensure_rcon_access(&inst).unwrap();
+        assert!(crate::protocol::rcon::load(&dir).is_none());
     }
 
     #[test]
