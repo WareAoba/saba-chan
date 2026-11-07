@@ -41,11 +41,11 @@ impl ServerView {
 pub struct ModuleView {
     pub name: String,
     pub module_aliases: Vec<String>,
-    /// 게임명: module.toml `display_name`과 모듈 locales마다의 `display_name` (`game_names`). 모듈 별명처럼 서버를 부른다
+    /// 게임명: module.toml `display_name`. `in_language`가 그 언어 모듈 locales의 `module.display_name`을 더한다. 모듈 별명처럼 서버를 부른다
     pub game_names: Vec<String>,
     /// module.toml `display_name` 그대로 (heartbeat 모듈 `display_name`, 상황판 채널의 게임 이름)
     pub display_name: Option<String>,
-    /// 명령어 이름 → 별명 목록 (module.toml [aliases.commands])
+    /// 명령어 이름 → 별명 목록 (module.toml [aliases.commands]. `in_language`가 그 언어 locales `aliases.commands.<이름>`을 더한다)
     pub command_aliases: Vec<(String, Vec<String>)>,
     pub commands: Vec<CommandField>,
     /// [errors] 오류 코드 → 문구
@@ -79,6 +79,29 @@ impl ModuleView {
         read(lang).or_else(|| read("en"))
     }
 
+    /// 한 언어로 부르는 모습: 게임명·모듈 별명·명령 별명에 그 언어 모듈 locales의 낱말(`locale_aliases`)을 더한다.
+    /// module.toml의 낱말은 언어가 없는 낱말이라 늘 남는다. `None`이면 모든 언어를 더한다 (낱말 검사가 어느 언어의 별명과도 겹치지 않게)
+    pub fn in_language(mut self, lang: Option<&str>) -> Self {
+        let Some(dir) = self.locale_dir.clone() else { return self };
+        let langs = match lang {
+            Some(l) => vec![l],
+            None => crate::chat::i18n::languages(),
+        };
+        for l in langs {
+            let Some(found) = locale_aliases(&dir, l) else { continue };
+            push_words(&mut self.game_names, found.game_name.into_iter());
+            push_words(&mut self.module_aliases, found.module.into_iter());
+            for (cmd, words) in found.commands {
+                match self.command_aliases.iter_mut().find(|(c, _)| *c == cmd) {
+                    Some((_, list)) => push_words(list, words.into_iter()),
+                    None => self.command_aliases.push((cmd, words)),
+                }
+            }
+        }
+        self.command_aliases.sort_by(|a, b| a.0.cmp(&b.0));
+        self
+    }
+
     /// 모듈 locales 한 언어 전체 (없으면 Null)
     pub fn locale(&self, lang: &str) -> serde_json::Value {
         self.locale_dir
@@ -107,19 +130,59 @@ pub fn module_locale(module_dir: &std::path::Path, lang: &str) -> Option<std::sy
     Some(value)
 }
 
-/// 모듈의 게임명: module.toml `display_name`, 그다음 언어마다 모듈 locales의 `display_name`.
-/// 띄어 쓴 이름도 부를 수 있다 (낱말 단위로 맞춘다). 쉼표가 든 이름은 빼고, 대소문자만 다른 이름은 하나로 둔다
-pub fn game_names(display_name: Option<&str>, module_dir: Option<&std::path::Path>) -> Vec<String> {
-    let localized = crate::chat::i18n::languages()
+/// 모듈 locales 한 언어의 게임명 `module.display_name` (예전 모양 `display_name`도 읽는다)
+pub fn locale_display_name(locale: &serde_json::Value) -> Option<&str> {
+    let name = locale.pointer("/module/display_name").or_else(|| locale.get("display_name"))?.as_str()?.trim();
+    (!name.is_empty()).then_some(name)
+}
+
+/// 모듈 locales 한 언어가 더하는 낱말
+#[derive(Debug, Default, PartialEq)]
+pub struct LocaleAliases {
+    /// `module.display_name`
+    pub game_name: Option<String>,
+    /// `aliases.module`
+    pub module: Vec<String>,
+    /// 명령 이름 → `aliases.commands.<이름>` (이름 순, 낱말이 있는 명령만)
+    pub commands: Vec<(String, Vec<String>)>,
+}
+
+/// 모듈 폴더의 `locales/<lang>.json`이 그 언어에서 더하는 게임명(`module.display_name`)과 별명
+/// (`aliases: {module: [낱말], commands: {<명령>: [낱말]}}`). 파일이 없으면 None
+pub fn locale_aliases(module_dir: &std::path::Path, lang: &str) -> Option<LocaleAliases> {
+    let locale = module_locale(module_dir, lang)?;
+    let list = |v: Option<&serde_json::Value>| -> Vec<String> {
+        let mut out = Vec::new();
+        push_words(&mut out, v.and_then(|v| v.as_array()).into_iter().flatten().filter_map(|w| w.as_str()).map(str::to_string));
+        out
+    };
+    let mut commands: Vec<(String, Vec<String>)> = locale
+        .pointer("/aliases/commands")
+        .and_then(|c| c.as_object())
         .into_iter()
-        .filter_map(|lang| module_locale(module_dir?, lang)?.get("display_name")?.as_str().map(str::to_string));
-    let mut out: Vec<String> = Vec::new();
-    for name in display_name.map(str::to_string).into_iter().chain(localized) {
-        let name = name.trim();
-        if !name.is_empty() && !name.contains(crate::chat::words::is_comma) && !out.iter().any(|n| crate::chat::words::same(n, name)) {
-            out.push(name.to_string());
+        .flatten()
+        .map(|(name, words)| (name.clone(), list(Some(words))))
+        .filter(|(_, words)| !words.is_empty())
+        .collect();
+    commands.sort_by(|a, b| a.0.cmp(&b.0));
+    Some(LocaleAliases { game_name: locale_display_name(&locale).map(str::to_string), module: list(locale.pointer("/aliases/module")), commands })
+}
+
+/// 낱말을 목록 끝에 더한다. 앞뒤 공백은 떼고, 빈 낱말·쉼표가 든 낱말·이미 있는 낱말(대소문자·공백만 다른 것)은 뺀다
+pub fn push_words(out: &mut Vec<String>, words: impl Iterator<Item = String>) {
+    for word in words {
+        let word = word.trim();
+        if !word.is_empty() && !word.contains(crate::chat::words::is_comma) && !out.iter().any(|n| crate::chat::words::same(n, word)) {
+            out.push(word.to_string());
         }
     }
+}
+
+/// 모듈의 게임명: module.toml `display_name` (언어별 게임명은 `ModuleView::in_language`가 더한다).
+/// 띄어 쓴 이름도 부를 수 있다 (낱말 단위로 맞춘다). 쉼표가 든 이름은 뺀다
+pub fn game_names(display_name: Option<&str>) -> Vec<String> {
+    let mut out = Vec::new();
+    push_words(&mut out, display_name.map(str::to_string).into_iter());
     out
 }
 
@@ -173,7 +236,7 @@ impl DaemonApi for IPCServer {
                     .collect();
                 command_aliases.sort_by(|a, b| a.0.cmp(&b.0));
                 ModuleView {
-                    game_names: game_names(meta.display_name.as_deref(), locale_dir.as_deref()),
+                    game_names: game_names(meta.display_name.as_deref()),
                     display_name: meta.display_name,
                     name: meta.name,
                     module_aliases: meta.module_aliases,
@@ -225,19 +288,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn game_names_come_from_each_locale_display_name() {
+    fn a_language_adds_only_its_own_game_name_and_aliases() {
         let tmp = tempfile::tempdir().unwrap();
         let locales = tmp.path().join("locales");
         std::fs::create_dir_all(&locales).unwrap();
-        std::fs::write(locales.join("ko.json"), r#"{"display_name": "마인크래프트"}"#).unwrap();
-        std::fs::write(locales.join("en.json"), r#"{"display_name": "Minecraft"}"#).unwrap();
-        std::fs::write(locales.join("ja.json"), r#"{"display_name": "minecraft"}"#).unwrap();
-        std::fs::write(locales.join("de.json"), r#"{"display_name": "Mine Craft"}"#).unwrap();
-        // 띄어 쓴 이름도 부를 수 있어 넣는다 (쉼표가 든 이름은 뺀다). 대소문자만 다르면 하나로
-        std::fs::write(locales.join("fr.json"), r#"{"display_name": "Mine, Craft"}"#).unwrap();
-        let got = game_names(Some("Minecraft"), Some(tmp.path()));
-        assert_eq!(got, vec!["Minecraft", "마인크래프트", "Mine Craft"]);
-        assert_eq!(game_names(Some("Terraria"), None), vec!["Terraria"]);
+        std::fs::write(
+            locales.join("ko.json"),
+            r#"{"module": {"display_name": "마인크래프트"}, "aliases": {"module": ["마크", " 마크 ", "mc"], "commands": {"start": ["시작"], "kick": ["추방"]}}, "commands": {"kick": {"label": "추방하기"}}}"#,
+        )
+        .unwrap();
+        std::fs::write(locales.join("ja.json"), r#"{"module": {"display_name": "マインクラフト"}, "aliases": {"module": ["マイクラ"]}}"#).unwrap();
+        // 띄어 쓴 이름은 넣고 쉼표가 든 이름은 뺀다. 대소문자만 다르면 하나로
+        std::fs::write(locales.join("de.json"), r#"{"module": {"display_name": "Mine Craft"}}"#).unwrap();
+        std::fs::write(locales.join("fr.json"), r#"{"module": {"display_name": "Mine, Craft"}}"#).unwrap();
+        std::fs::write(locales.join("es.json"), r#"{"display_name": "minecraft"}"#).unwrap();
+        let mc = ModuleView {
+            name: "minecraft".into(),
+            game_names: game_names(Some("Minecraft")),
+            module_aliases: vec!["mc".into()],
+            command_aliases: vec![("start".into(), vec!["go".into()])],
+            locale_dir: Some(tmp.path().to_path_buf()),
+            ..Default::default()
+        };
+
+        let ko = mc.clone().in_language(Some("ko"));
+        assert_eq!(ko.game_names, vec!["Minecraft", "마인크래프트"]);
+        assert_eq!(ko.module_aliases, vec!["mc", "마크"], "module.toml words stay, the language adds its own");
+        assert_eq!(ko.command_aliases, vec![("kick".to_string(), vec!["추방".to_string()]), ("start".to_string(), vec!["go".to_string(), "시작".to_string()])]);
+
+        let ja = mc.clone().in_language(Some("ja"));
+        assert_eq!(ja.game_names, vec!["Minecraft", "マインクラフト"]);
+        assert_eq!(ja.module_aliases, vec!["mc", "マイクラ"], "no Korean words in Japanese");
+        assert_eq!(ja.command_aliases, vec![("start".to_string(), vec!["go".to_string()])]);
+
+        let pt = mc.clone().in_language(Some("pt-BR"));
+        assert_eq!((pt.game_names, pt.module_aliases), (vec!["Minecraft".to_string()], vec!["mc".to_string()]), "no locale file → module.toml words only");
+
+        let all = mc.in_language(None);
+        assert_eq!(all.game_names, vec!["Minecraft", "마인크래프트", "マインクラフト", "Mine Craft"]);
+        assert_eq!(all.module_aliases, vec!["mc", "마크", "マイクラ"]);
+        assert_eq!(game_names(Some("Terraria")), vec!["Terraria"]);
     }
 
     /// 채팅 명령·하트비트마다 부르므로 그대로인 locales 파일은 다시 읽지 않고, 바뀌면 새 내용을 읽는다

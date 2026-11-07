@@ -373,11 +373,11 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 ### 4.3 채팅 처리기 (`src/chat/`)
 
 - 디스코드 명령과 CLI `chat`, `POST /api/chat/command {text, guild_id?, user_id?} → {reply, code, args}`가 모두 같은 처리기를 쓴다(`handlers/chat.rs:9-16`).
-- 문장은 `<서버> <명령> [덧붙이는 말]`이다. 서버와 명령은 띄어 쓴 말이어도 되고, 앞에서부터 가장 많은 낱말이 맞는 것을 고른다(대소문자와 공백 칸 수는 가리지 않는다, `chat/mod.rs` `longest_phrase`). 서버 후보는 인스턴스 이름·id·서버 낱말·모듈 이름·게임명·별명, 명령 후보는 그 서버의 명령 낱말 → module.toml 별명·명령 이름 → 내장 명령(start·stop·status·players)과 그 언어별 이름(`actions.server.<명령>.name`, 모든 언어) → 화면에 보이는 명령 이름(module.toml `label`과 모듈 locales `commands.<명령>.label`) 순이다. 서버 이름과 낱말에는 쉼표를 둘 수 없다.
+- 문장은 `<서버> <명령> [덧붙이는 말]`이다. 서버와 명령은 띄어 쓴 말이어도 되고, 앞에서부터 가장 많은 낱말이 맞는 것을 고른다(대소문자와 공백 칸 수는 가리지 않는다, `chat/mod.rs` `longest_phrase`). 서버 후보는 인스턴스 이름·id·서버 낱말·모듈 이름·게임명·별명, 명령 후보는 그 서버의 명령 낱말 → 별명·명령 이름 → 내장 명령(start·stop·status·players)과 답하는 언어의 이름(`actions.server.<명령>.name`) → 답하는 언어로 보이는 명령 이름(모듈 locales `commands.<명령>.label`, 없으면 영어, 그것도 없으면 module.toml `label`) 순이다. 게임명·별명은 module.toml의 언어 없는 낱말과 답하는 언어의 locales 낱말만이다(02 §`[aliases]`). 최상위 말은 `help`·`list`와 답하는 언어의 `top_level_words.help`·`list`(bot.json, 쉼표로 나눈 목록. 지금은 ko만 `도움, 도움말`·`목록`)다. 서버 이름과 낱말에는 쉼표를 둘 수 없다.
 - 비밀 액션(부른 사람에게만 답하는 것, `server.address`)의 이름은 문장으로 실행하지 않고 `errors.slash_only`로 슬래시 명령을 안내한다(`actions` `slash_only`). 답이 채널 모두에게 보이기 때문이다.
 - 도움말은 서버마다 그 서버를 부르는 말을, 서버만 부르면 그 서버에서 칠 수 있는 말(응답 언어의 명령 이름·칸 이름·설명)을 보인다. 상태 답은 상태·접속자(모듈이 지원할 때)·켜진 시간이고, 시작 중에 접속자를 물으면 `server.still_starting`으로 답한다.
-- 대상 서버 찾기: 인스턴스 이름·id → 그 서버를 부르는 낱말(`serverWords[id].words`) → 모듈 이름·게임명(모듈 locales `display_name`)·module.toml 별명 순이다. 같은 게임 서버가 여럿인데 하나로 좁혀지지 않으면 `errors.multiple_instances`로 답한다. 위험 명령은 모듈 이름·게임명·별명으로 부르면 `errors.danger_needs_name`으로 거절한다(`chat/mod.rs` `named_servers`·`find_server`, 01 §4).
-- 명령 낱말은 그 길드·서버의 `commands`, 그다음 module.toml 별명이고, 접두사는 `prefixes`다. 맞춰 볼 때 대소문자를 가리지 않고 긴 것부터 보며, 접두사 뒤가 공백·쉼표·쌍점이거나 글 끝이어야 한다. 도움말에는 첫 접두사를, 비어 있으면 언어별 `default_prefix`(bot.json)를 쓴다. 응답 문구는 `locales/<lang>/bot.json`을 바이너리에 넣어 쓴다(`chat/i18n.rs`).
+- 대상 서버 찾기: 인스턴스 이름·id → 그 서버를 부르는 낱말(`serverWords[id].words`) → 모듈 이름·게임명(답하는 언어 모듈 locales `module.display_name`)·별명 순이다. 같은 게임 서버가 여럿인데 하나로 좁혀지지 않으면 `errors.multiple_instances`로 답한다. 위험 명령은 모듈 이름·게임명·별명으로 부르면 `errors.danger_needs_name`으로 거절한다(`chat/mod.rs` `named_servers`·`find_server`, 01 §4).
+- 명령 낱말은 그 길드·서버의 `commands`, 그다음 module.toml 별명과 답하는 언어의 locales 별명이고, 접두사는 `prefixes`다. 맞춰 볼 때 대소문자를 가리지 않고 긴 것부터 보며, 접두사 뒤가 공백·쉼표·쌍점이거나 글 끝이어야 한다. 도움말에는 첫 접두사를, 비어 있으면 언어별 `default_prefix`(bot.json)를 쓴다. 응답 문구는 `locales/<lang>/bot.json`을 바이너리에 넣어 쓴다(`chat/i18n.rs`).
 - 노드(디스코드 서버)별 허용 인스턴스와 권한(멤버 레벨, 명령별 레벨)은 `nodeSettings`에 있다. 레벨은 누적이다(01 §4.4 `nodeSettings`).
 
 ### 4.4 봇 초대

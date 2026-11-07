@@ -221,7 +221,9 @@ zomboid의 `beta_branch` 키는 지워졌다. lifecycle에는 `use_beta`를 보�
 데몬 키(`rest_password` / `rest_username`) → 게임 설정 키. 사용처는 managed start 후 동기화(`mod.rs:1554-1619`), import_settings 결과 반영(`D:src/instance/mod.rs:172-206`), 설정 PATCH 때 역동기화(`instance.rs:1162-1189`)다. **non-managed `start_server`에서는 동기화하지 않는다**.
 
 #### `[aliases]`
-`module_aliases: Vec<String>`, `[aliases.commands.<cmd>] = { aliases = [...], description = "..." }`. 디스코드에서는 `module_aliases` 말고도 module.toml `display_name`과 모듈 locales마다의 `display_name`(띄어 쓰지 않은 것)이 게임명으로 서버를 부른다. 그 게임의 서버가 하나일 때만이다(01 §4 `serverWords`).
+`module_aliases: Vec<String>`, `[aliases.commands.<cmd>] = { aliases = [...], description = "..." }`. 여기에는 언어가 없는 낱말(`pz`·`mc` 같은 약어)만 둔다. 이 낱말은 어느 언어에서나 맞춘다.
+언어마다의 별명은 모듈 locales `<lang>.json`의 `aliases`에 둔다: `{"module": [낱말], "commands": {"<명령>": [낱말]}}`. 명령 이름은 내장(`start`·`stop`·`status`), 접속자 조회(`players`), `[[commands.fields]]`의 이름이다. 별명이 없는 언어는 키를 두지 않아도 된다(conformance `alias_problems`). 게임명은 module.toml `display_name`과 그 언어 locales의 `module.display_name`이다.
+채팅(디스코드·`POST /api/chat/command`)은 답하는 언어(디스코드는 길드 봇 언어, 없으면 앱 언어)의 별명·게임명만 맞춘다(`ModuleView::in_language`, `chat::api::locale_aliases`). 모듈 이름·명령 이름·서버 이름은 언어와 상관없이 늘 맞춘다. 게임명·별명으로 서버를 부르는 것은 그 게임의 서버가 하나일 때만이다(01 §4 `serverWords`). `GET /api/modules`의 `module_aliases`·`command_aliases`는 module.toml 낱말에 앱 언어의 locales 별명을 더한 값이다(GUI·CLI가 쓴다).
 
 #### `[errors]`
 오류 코드 → 사용자 문구. 메타데이터 `errors`에 실리고(`:94-97`), `POST /api/instance/:id/command`가 실패 응답에 `error_message`로 붙인다 (`D:src/ipc/handlers/command.rs:11-15`). 문구는 GUI 언어의 모듈 locales `errors.<code>`가 있으면 그것을, 없으면 module.toml 값을 쓴다 (`module_errors`).
@@ -667,7 +669,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 ### 4.6 i18n과 locales
 
-- 모듈 측: `I18n(MODULE_DIR)`이 `locales/<SABA_LANG>.json`을 읽고, 없으면 `en`으로 대체한다. 키 구조는 `module`, `settings`, `commands`, `presets`, `queries`, `agreements`, `errors`, `messages`, `rcon`, `reset` 등이다(minecraft ko.json 기준). `queries.<name>.label`·`description`과 `[errors]` 코드의 `errors.<code>`는 데몬도 읽는다: 액션 목록(`GET /api/actions?instance=`)과 heartbeat `actions`의 조회 제목·설명(`actions::module_locale`, `<모듈 폴더>/locales/<lang>.json`). `reset.label`·`reset.description`은 서버 초기화(`reset_server`)가 무엇을 지우고 남기는지 GUI 초기화 화면에 보여 주는 문구다(모듈마다 다르다: minecraft는 JAR·eula.txt만 남김, palworld는 설정만 기본값으로, zomboid는 월드 세이브만 지움).
+- 모듈 측: `I18n(MODULE_DIR)`이 `locales/<SABA_LANG>.json`을 읽고, 없으면 `en`으로 대체한다. 키 구조는 `module`, `aliases`(언어별 별명, §2 `[aliases]`), `settings`, `commands`, `presets`, `queries`, `agreements`, `errors`, `messages`, `rcon`, `reset` 등이다(minecraft ko.json 기준). `queries.<name>.label`·`description`과 `[errors]` 코드의 `errors.<code>`는 데몬도 읽는다: 액션 목록(`GET /api/actions?instance=`)과 heartbeat `actions`의 조회 제목·설명(`actions::module_locale`, `<모듈 폴더>/locales/<lang>.json`). `reset.label`·`reset.description`은 서버 초기화(`reset_server`)가 무엇을 지우고 남기는지 GUI 초기화 화면에 보여 주는 문구다(모듈마다 다르다: minecraft는 JAR·eula.txt만 남김, palworld는 설정만 기본값으로, zomboid는 월드 세이브만 지움).
 - 인터페이스 측: `GET /api/module/:name/locales`가 `<modules_dir>/<name>/locales/*.json`을 하나의 맵으로 묶어 돌려준다 (`D:src/ipc/handlers/config.rs:200-234`). GUI는 이를 `mod_<name>` 네임스페이스로 쓴다. 이 경로 계산은 `module.path`가 아니라 **모듈 이름으로 만든 경로**라서, ZIP 모듈(`.extracted/<name>`)이나 폴더명이 name과 다른 모듈에서는 locales가 비어 나온다.
 
 ---

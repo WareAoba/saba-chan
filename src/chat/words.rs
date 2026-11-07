@@ -63,6 +63,13 @@ pub fn is_comma(c: char) -> bool {
     matches!(c, ',' | '，' | '、' | '､')
 }
 
+/// 명령이 어느 언어에서 보이는 이름: module.toml `label`과 언어마다 모듈 locales `commands.<이름>.label`
+fn shown_labels<'a>(module: &'a ModuleView, field: &'a crate::supervisor::module_loader::CommandField) -> impl Iterator<Item = String> + 'a {
+    std::iter::once(field.label.clone())
+        .chain(super::i18n::languages().into_iter().filter_map(move |l| module.text(l, &format!("/commands/{}/label", field.name))))
+        .filter(|l| !l.trim().is_empty())
+}
+
 /// 이 낱말로 부를 명령 (그 인스턴스의 `commands`)
 pub fn command_for<'a>(words: Option<&'a InstanceWords>, input: &str) -> Option<&'a str> {
     words?.commands.iter().find(|(_, list)| list.iter().any(|w| same(w, input))).map(|(cmd, _)| cmd.as_str())
@@ -152,6 +159,8 @@ pub fn validate(
                 .filter(|name| name != cmd)
                 .find(|name| same(name, word))
                 .map(str::to_string)
+                // 채팅은 어느 언어로 답하든 그 언어로 보이는 명령 이름도 받는다 (`chat::Ctx::calling_label`)
+                .or_else(|| module.and_then(|m| m.commands.iter().filter(|c| c.name != *cmd).find(|c| shown_labels(m, c).any(|l| same(&l, word))).map(|c| c.name.clone())))
                 .or_else(|| {
                     want.commands.iter().filter(|(c, _)| *c != cmd).find(|(_, l)| l.iter().any(|w| same(w, word))).map(|(c, _)| c.clone())
                 })
@@ -325,6 +334,20 @@ mod tests {
         // 같은 게임의 서버가 둘이면 인스턴스 이름뿐
         let two = vec![server("a", "survival", "minecraft"), server("b", "creative", "minecraft")];
         assert_eq!(default_words(&two[0], &two, &modules, &HashMap::new()), vec!["survival"]);
+    }
+
+    /// 다른 명령이 어느 언어에서 보이는 이름도 명령 낱말로 둘 수 없다 (채팅이 그 이름으로 그 명령을 부른다)
+    #[test]
+    fn another_commands_shown_name_is_not_a_command_word() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("locales")).unwrap();
+        std::fs::write(tmp.path().join("locales/ko.json"), r#"{"commands": {"kick": {"label": "플레이어 추방"}}}"#).unwrap();
+        let field = |name: &str| crate::supervisor::module_loader::CommandField { name: name.into(), label: name.into(), description: None, method: None, http_method: None, endpoint_template: None, console_template: None, risk: None, inputs: vec![], remote: true, reply_pattern: None };
+        let servers = vec![server("a", "survival", "minecraft")];
+        let mc = ModuleView { name: "minecraft".into(), commands: vec![field("kick"), field("save-all")], locale_dir: Some(tmp.path().to_path_buf()), ..Default::default() };
+        let want = InstanceWords { commands: BTreeMap::from([("save-all".to_string(), vec!["플레이어 추방".to_string()])]), ..Default::default() };
+        let problems = validate(&servers[0], Some(&mc), &want, &servers, std::slice::from_ref(&mc), &HashMap::new());
+        assert_eq!(problems.iter().map(|p| (p.reason, p.conflict_with.as_deref())).collect::<Vec<_>>(), vec![("conflict", Some("kick"))]);
     }
 
     #[test]

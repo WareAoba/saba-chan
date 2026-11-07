@@ -788,16 +788,20 @@ async fn the_spaced_name_a_danger_refusal_suggests_works() {
     assert_eq!(api.calls(), vec![r#"command i-mc wipe []"#]);
 }
 
-/// 화면에 보이는 명령 이름(모듈 locales 이름표)과 내장 명령의 언어별 이름으로도 부른다
+/// 화면에 보이는 명령 이름(모듈 locales 이름표)과 내장 명령의 이름으로도 부른다. 답하는 언어의 이름만이다
 #[tokio::test]
 async fn shown_command_names_call_the_command() {
     let mut api = fixture();
     let texts = module_texts("ko", json!({ "commands": { "say": { "label": "공지" }, "kick": { "label": "플레이어 추방" } } }));
     api.modules[0].locale_dir = Some(texts.path().to_path_buf());
-    run(&api, &settings(), "survival 공지 안녕").await;
-    run(&api, &settings(), "survival 플레이어 추방 steve").await;
-    run(&api, &settings(), "survival 정지").await;
+    let ko = Catalog::for_language("ko");
+    for text in ["survival 공지 안녕", "survival 플레이어 추방 steve", "survival 정지"] {
+        process(&api, &settings(), &ko, &remote_req(text)).await;
+    }
     assert_eq!(api.calls(), vec![r#"command i-mc say ["안녕"]"#, r#"command i-mc kick ["steve"]"#, "stop survival"]);
+    // 영어로 답하는 길드에서는 한국어 이름이 명령 이름이 아니다
+    run(&api, &settings(), "survival 정지").await;
+    assert_eq!(api.calls().len(), 3, "no stop from a Korean name in an English guild");
 }
 
 /// 서버만 부르면 그 서버에서 칠 수 있는 말로 안내한다: 응답 언어의 이름·칸 이름, 내장 명령은 한 번씩, REST 같은 내부 말 없이
@@ -855,4 +859,56 @@ async fn players_while_starting_says_it_is_still_starting() {
     let cat = Catalog::for_language("ko");
     let out = process(&api, &settings(), &cat, &remote_req("survival players")).await.text;
     assert_eq!(out, cat.t("server.still_starting", &[("name", "survival")]));
+}
+
+/// 별명·게임명·내장 명령 이름은 답하는 언어(길드 언어)의 것만 받는다. module.toml의 언어 없는 낱말과 명령 이름은 늘 받는다
+#[tokio::test]
+async fn only_the_reply_language_words_call_servers_and_commands() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("locales")).unwrap();
+    std::fs::write(
+        tmp.path().join("locales/ko.json"),
+        r#"{"module": {"display_name": "팰월드 게임"}, "aliases": {"module": ["팰"], "commands": {"players": ["접속자"]}}}"#,
+    )
+    .unwrap();
+    std::fs::write(tmp.path().join("locales/ja.json"), r#"{"aliases": {"module": ["パル"]}}"#).unwrap();
+    let mut api = fixture();
+    api.modules[1].locale_dir = Some(tmp.path().to_path_buf());
+    let say = |lang: &'static str, text: &'static str| {
+        let api = &api;
+        async move { process(api, &settings(), &Catalog::for_language(lang), &remote_req(text)).await.text }
+    };
+
+    say("ko", "!saba 팰 시작").await;
+    say("ko", "!saba 팰 접속자").await;
+    assert_eq!(api.calls(), vec!["start i-pal", "command i-pal players []"], "Korean words in a Korean guild");
+
+    let ja = Catalog::for_language("ja");
+    let out = say("ja", "!saba 팰 起動").await;
+    assert!(out.contains(&ja.t("server.not_found", &[("alias", "팰"), ("resolved", "팰")])), "Korean alias in a Japanese guild: {out}");
+    say("ja", "!saba 팰월드 시작").await;
+    say("ja", "!saba パル 起動").await;
+    say("ja", "!saba pal1 start").await;
+    assert_eq!(api.calls().len(), 4, "module.toml words and the command name still work, the Korean builtin name does not");
+    assert_eq!(api.calls()[3], "start i-pal");
+
+    let ko = Catalog::for_language("ko");
+    let out = say("ko", "!saba パル 시작").await;
+    assert!(out.contains(&ko.t("server.not_found", &[("alias", "パル"), ("resolved", "パル")])), "Japanese alias in a Korean guild: {out}");
+    say("ko", "!saba 팰월드 게임 시작").await;
+    assert_eq!(api.calls().len(), 5, "the Korean game name calls the server in a Korean guild");
+}
+
+/// 최상위 말(도움말·목록)도 답하는 언어의 것만: 한국어 길드는 `도움말`·`목록`, 다른 언어는 `help`·`list`
+#[tokio::test]
+async fn top_level_words_follow_the_reply_language() {
+    let api = fixture();
+    let ask = |lang: &'static str, text: &'static str| {
+        let api = &api;
+        async move { process(api, &settings(), &Catalog::for_language(lang), &remote_req(text)).await.text }
+    };
+    assert_eq!(ask("ko", "!saba 도움말").await, ask("ko", "!saba help").await);
+    assert_eq!(ask("ko", "!saba 목록").await, ask("ko", "!saba list").await);
+    assert_ne!(ask("ja", "!saba 도움말").await, ask("ja", "!saba help").await);
+    assert_ne!(ask("ja", "!saba 목록").await, ask("ja", "!saba list").await);
 }

@@ -686,13 +686,17 @@ impl Session {
                 let texts: Option<&LocaleTexts<'_>> = Some(&texts);
                 let mut entry = json!({
                     "name": m.name,
-                    // 게임명도 별명처럼 서버를 부른다: 릴레이가 위험 명령 확인에서 같은 서버를 찾도록 함께 보낸다
+                    // 게임명도 별명처럼 서버를 부른다: 릴레이가 위험 명령 확인에서 같은 서버를 찾도록 함께 보낸다.
+                    // 여기는 언어 없는 낱말(module.toml)이고, 언어마다 더하는 낱말은 `module_aliases_by_language`다
                     "module_aliases": m.game_names.iter().chain(&m.module_aliases).collect::<Vec<_>>(),
                     // 디스코드·챗봇에 내보내지 않는 명령(`remote = false`)은 싣지 않는다
                     "commands": { "fields": m.commands.iter().filter(|c| c.remote).map(|c| relay_command_entry(c, m.aliases_of(&c.name), texts)).collect::<Vec<_>>() },
                     "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
                 });
                 relay_module_names(&mut entry, m.display_name.as_deref(), names);
+                if let Some(dir) = &m.locale_dir {
+                    relay_language_aliases(&mut entry, dir);
+                }
                 entry
             })
             .collect())
@@ -1689,12 +1693,38 @@ fn relay_module_names(entry: &mut Value, display_name: Option<&str>, texts: &Loc
     let names: serde_json::Map<String, Value> = crate::chat::i18n::languages()
         .into_iter()
         .filter_map(|l| {
-            let name = texts(l).get("display_name")?.as_str()?.trim().to_string();
-            (!name.is_empty()).then(|| (l.to_string(), json!(name)))
+            let name = crate::chat::api::locale_display_name(&texts(l))?.to_string();
+            Some((l.to_string(), json!(name)))
         })
         .collect();
     if !names.is_empty() {
         entry["display_names"] = Value::Object(names);
+    }
+}
+
+/// 언어마다 더하는 별명 (모듈 locales, `chat::api::locale_aliases`): 모듈 `module_aliases_by_language`(그 언어 게임명과 `aliases.module`),
+/// 명령 `commands.fields[].aliases_by_language`(`aliases.commands.<이름>`). 릴레이는 길드 언어의 것만 `module_aliases`·`aliases`에 더한다
+fn relay_language_aliases(entry: &mut Value, module_dir: &std::path::Path) {
+    let mut module_by = serde_json::Map::new();
+    let mut commands_by: std::collections::HashMap<String, serde_json::Map<String, Value>> = Default::default();
+    for l in crate::chat::i18n::languages() {
+        let Some(found) = crate::chat::api::locale_aliases(module_dir, l) else { continue };
+        let mut words: Vec<String> = Vec::new();
+        crate::chat::api::push_words(&mut words, found.game_name.into_iter().chain(found.module));
+        if !words.is_empty() {
+            module_by.insert(l.to_string(), json!(words));
+        }
+        for (cmd, words) in found.commands {
+            commands_by.entry(cmd).or_default().insert(l.to_string(), json!(words));
+        }
+    }
+    if !module_by.is_empty() {
+        entry["module_aliases_by_language"] = Value::Object(module_by);
+    }
+    for field in entry["commands"]["fields"].as_array_mut().into_iter().flatten() {
+        if let Some(by) = field["name"].as_str().and_then(|n| commands_by.remove(n)) {
+            field["aliases_by_language"] = Value::Object(by);
+        }
     }
 }
 
@@ -2393,6 +2423,32 @@ mod tests {
         let mut bare = json!({});
         relay_module_names(&mut bare, None, &|_: &str| std::sync::Arc::new(Value::Null));
         assert_eq!(bare, json!({}), "no names → no keys (the relay falls back to the module name)");
+
+        // 모듈 locales의 지금 모양은 `module.display_name`이다
+        let nested = |lang: &str| std::sync::Arc::new(if lang == "ko" { json!({ "module": { "display_name": "팰월드" } }) } else { Value::Null });
+        let mut entry = json!({});
+        relay_module_names(&mut entry, None, &nested);
+        assert_eq!(entry["display_names"], json!({ "ko": "팰월드" }));
+    }
+
+    /// 언어마다 더하는 별명은 언어별로 따로 싣는다: 릴레이가 길드 언어의 것만 더한다
+    #[test]
+    fn heartbeat_modules_carry_aliases_by_language() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("locales")).unwrap();
+        std::fs::write(
+            tmp.path().join("locales/ko.json"),
+            r#"{"module": {"display_name": "팰월드"}, "aliases": {"module": ["팰"], "commands": {"kick": ["추방"], "gone": ["없음"]}}}"#,
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("locales/ja.json"), r#"{"aliases": {"module": ["パル"]}}"#).unwrap();
+        std::fs::write(tmp.path().join("locales/en.json"), r#"{"commands": {"kick": {"label": "Kick"}}}"#).unwrap();
+        let mut entry = json!({ "name": "palworld", "module_aliases": ["pw"], "commands": { "fields": [{ "name": "kick" }, { "name": "save" }] } });
+        relay_language_aliases(&mut entry, tmp.path());
+        assert_eq!(entry["module_aliases"], json!(["pw"]), "the language-free words stay as they are");
+        assert_eq!(entry["module_aliases_by_language"], json!({ "ko": ["팰월드", "팰"], "ja": ["パル"] }));
+        assert_eq!(entry["commands"]["fields"][0]["aliases_by_language"], json!({ "ko": ["추방"] }));
+        assert!(entry["commands"]["fields"][1].get("aliases_by_language").is_none());
     }
 
     /// 사바쨩 웹: 릴레이가 세션을 열었다고 알리면 이 세션의 릴레이 주소·토큰으로 웹소켓을 연다
