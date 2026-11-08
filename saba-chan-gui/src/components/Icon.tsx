@@ -669,8 +669,9 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }: IconProps) =
             </svg>
         ),
         windows: (
-            <svg xmlns="http://www.w3.org/2000/svg" className="ionicon" viewBox="0 0 512 512">
-                <path d="M480 265H232v179l248 36V265zM216 265H32v150l184 26.7V265zM480 32L232 67.4V249h248V32zM216 69.7L32 96v153h184V69.7z" fill="currentColor" />
+            // 윈도우 11 로고: 같은 크기의 네모 네 개 (기울어진 창 모양은 윈도우 10까지)
+            <svg role="img" aria-label="Windows" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M1 1h10.4v10.4H1zM12.6 1H23v10.4H12.6zM1 12.6h10.4V23H1zM12.6 12.6H23V23H12.6z" fill="currentColor" />
             </svg>
         ),
         linux: (
