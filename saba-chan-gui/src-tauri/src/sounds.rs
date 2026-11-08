@@ -17,6 +17,10 @@ pub enum Cue {
     Started,
     Stopped,
     Crashed,
+    /// 앱 밖에서 켠 서버가 켜지지 못했거나 크래시 뒤 자동 재시작이 실패했다
+    StartFailed,
+    /// 이 GUI가 띄운 데몬(사바쨩 본체)이 정상 종료가 아니게 끝났다
+    DaemonDown,
     UpdateAvailable,
 }
 
@@ -28,6 +32,8 @@ impl Cue {
             Cue::Started => "instance-started.wav",
             Cue::Stopped => "instance-stopped.wav",
             Cue::Crashed => "instance-crashed.wav",
+            Cue::StartFailed => "instance-start-failed.wav",
+            Cue::DaemonDown => "daemon-down.wav",
             Cue::UpdateAvailable => "update-available.wav",
         }
     }
@@ -37,7 +43,7 @@ impl Cue {
         match self {
             Cue::Started => "serverStart",
             Cue::Stopped => "serverStop",
-            Cue::Crashed => "crash",
+            Cue::Crashed | Cue::StartFailed | Cue::DaemonDown => "crash",
             Cue::InstallSuccess | Cue::InstallFailed => "install",
             Cue::UpdateAvailable => "update",
         }
@@ -50,6 +56,8 @@ impl Cue {
             Cue::Started => include_bytes!("../sounds/instance-started.wav"),
             Cue::Stopped => include_bytes!("../sounds/instance-stopped.wav"),
             Cue::Crashed => include_bytes!("../sounds/instance-crashed.wav"),
+            Cue::StartFailed => include_bytes!("../sounds/instance-start-failed.wav"),
+            Cue::DaemonDown => include_bytes!("../sounds/daemon-down.wav"),
             Cue::UpdateAvailable => include_bytes!("../sounds/update-available.wav"),
         }
     }
@@ -68,8 +76,15 @@ impl EventCues {
             // 디스코드·웹·CLI·예약·자동 재시작·사바쨩 밖에서 켠 것. 앱 버튼은 빼고
             "instance.started" => (d["source"] != "gui").then_some(Cue::Started),
             "instance.stopped" => (d["source"] != "gui").then_some(Cue::Stopped),
-            // 예기치 않은 종료는 크래시와 원인 모를 종료(작업 관리자 강제 종료 등)뿐이다 (01 §이벤트)
-            "instance.exit" => matches!(d["kind"].as_str(), Some("crash" | "unknown_exit")).then_some(Cue::Crashed),
+            // 예기치 않은 종료는 크래시와 원인 모를 종료(작업 관리자 강제 종료 등)뿐이다 (01 §이벤트).
+            // 시작 실패는 앱 밖에서 켠 것만: 시킨 쪽(`source`)이 없는 옛 데몬의 것은 앱 버튼일 수 있어 울리지 않는다
+            "instance.exit" => match d["kind"].as_str() {
+                Some("crash" | "unknown_exit") => Some(Cue::Crashed),
+                Some("start_failed") => d["source"].as_str().is_some_and(|s| s != "gui").then_some(Cue::StartFailed),
+                _ => None,
+            },
+            // 크래시 뒤 자동 재시작마저 실패해 서버가 꺼진 채다
+            "instance.restart_failed" => Some(Cue::StartFailed),
             "provision.progress" => {
                 let name = d["instance"].as_str()?;
                 if d["done"].as_bool() != Some(true) {
@@ -242,8 +257,22 @@ mod tests {
         let exit = |kind: &str| ev("instance.exit", json!({"kind": kind}));
         assert_eq!(cues.cue_for(&exit("crash")), Some(Cue::Crashed));
         assert_eq!(cues.cue_for(&exit("unknown_exit")), Some(Cue::Crashed));
-        assert_eq!(cues.cue_for(&exit("start_failed")), None);
         assert_eq!(cues.cue_for(&exit("normal")), None);
+    }
+
+    #[test]
+    fn start_failure_sounds_unless_started_from_the_app() {
+        let mut cues = EventCues::default();
+        let failed = |source: Value| ev("instance.exit", json!({"kind": "start_failed", "source": source}));
+        for source in ["discord", "schedule", "restart", "web", "remote", "cli"] {
+            assert_eq!(cues.cue_for(&failed(json!(source))), Some(Cue::StartFailed), "{source}");
+        }
+        assert_eq!(cues.cue_for(&failed(json!("gui"))), None, "앱 버튼으로 켠 것은 보고 있다");
+        assert_eq!(cues.cue_for(&failed(Value::Null)), None, "시킨 쪽을 싣지 않는 옛 데몬");
+        assert_eq!(
+            cues.cue_for(&ev("instance.restart_failed", json!({"noteCode": "restart_failed"}))),
+            Some(Cue::StartFailed)
+        );
     }
 
     #[test]
@@ -282,6 +311,8 @@ mod tests {
         assert!(enabled(&json!({}), Cue::Crashed), "on until set");
         let only_crash_off = json!({"sounds": {"enabled": true, "crash": false}});
         assert!(!enabled(&only_crash_off, Cue::Crashed));
+        assert!(!enabled(&only_crash_off, Cue::StartFailed));
+        assert!(!enabled(&only_crash_off, Cue::DaemonDown));
         assert!(enabled(&only_crash_off, Cue::Started));
         let install_off = json!({"sounds": {"install": false}});
         assert!(!enabled(&install_off, Cue::InstallSuccess));
@@ -307,6 +338,8 @@ mod tests {
             Cue::Started,
             Cue::Stopped,
             Cue::Crashed,
+            Cue::StartFailed,
+            Cue::DaemonDown,
             Cue::UpdateAvailable,
         ] {
             let b = cue.bytes();

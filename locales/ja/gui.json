@@ -175,7 +175,7 @@
     "os_notifications_label": "OS 通知",
     "os_notifications_description": "クラッシュや予期しない起動・停止など、必ず知るべきことを Windows・macOS の通知でも送ります。アプリのウィンドウが前面にあるときはアプリ内だけで知らせます。",
     "sound_effects_label": "効果音",
-    "sound_effects_description": "アプリの外（Discord・Web など）からの起動・停止、予期しない停止、インストール結果、アップデートの発見を音で知らせます。アプリで直接起動・停止したときは鳴りません。",
+    "sound_effects_description": "アプリの外（Discord・Web など）からの起動・停止、予期しない停止と起動失敗、サバちゃん本体の突然の停止、インストール結果、アップデートの発見を音で知らせます。アプリで直接起動・停止したときは鳴りません。",
     "sound_server_start": "サーバー起動",
     "sound_server_stop": "サーバー停止",
     "sound_crash": "予期しない停止",
