@@ -1,7 +1,8 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useStickyClip } from '../../hooks/useStickyClip';
 import type { Server } from '../../stores/useServerStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { screenFallbackNotice } from '../../utils/openScreen';
@@ -345,10 +346,13 @@ export function NodeView({
         setInstance(null);
     }, [request?.seq]);
 
+    const topRef = useRef<HTMLDivElement>(null);
+    useStickyClip(topRef);
+
     return (
         <div className="dc-view">
             {/* 서버 정보 카드와 탭 바는 위에 고정하고 그 아래만 스크롤한다 (사용자 11-07) */}
-            <div className="dc-view-top">
+            <div className="dc-view-top" ref={topRef}>
                 <header className="detail-head">
                     <div className="detail-icon">
                         <Avatar name={node.guildName || node.guildId} url={node.iconUrl} size={56} />

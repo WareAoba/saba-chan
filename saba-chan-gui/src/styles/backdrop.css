@@ -23,10 +23,39 @@
 
 :root[data-backdrop="on"] .servers-page,
 :root[data-backdrop="on"] .server-detail-pane,
+:root[data-backdrop="on"] .monitor-pane,
 :root[data-backdrop="on"] .activity-bar,
 :root[data-backdrop="on"] .page-settings,
 :root[data-backdrop="on"] .settings-page .settings-modal-container {
     background: transparent;
+}
+
+/* 위에 붙는 머리(디스코드 서버 카드·탭 바)는 칠하면 창 바탕이 두 겹이 되어 띠가 진다.
+   칠하지 않고, 밑으로 지나가는 블록을 머리가 덮는 높이(--sticky-clip, useStickyClip)만큼 잘라 낸다.
+   옆·아래는 그림자가 잘리지 않게 넉넉히 둔다 */
+:root[data-backdrop="on"] .dc-view-top {
+    background: transparent;
+}
+:root[data-backdrop="on"] .dc-view-top ~ * {
+    clip-path: polygon(
+        -100vw var(--sticky-clip, -100vh),
+        calc(100% + 100vw) var(--sticky-clip, -100vh),
+        calc(100% + 100vw) calc(100% + 100vh),
+        -100vw calc(100% + 100vh)
+    );
+}
+
+/* 카드 밖 바탕에 바로 놓인 옅은 글씨(설명·빈 목록 안내)는 뒤가 비쳐도 읽히게 한 단계 진하게 */
+:root[data-backdrop="on"] {
+    --text-3: #8b8e99;
+}
+:root[data-backdrop="on"][data-theme="light"] {
+    --text-3: #565a68;
+}
+@media (prefers-color-scheme: light) {
+    :root[data-backdrop="on"][data-theme="auto"] {
+        --text-3: #565a68;
+    }
 }
 
 /* 따로 띄운 콘솔 창은 콘솔 색을 같은 진하기로 덮는다 */
