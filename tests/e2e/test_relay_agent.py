@@ -77,7 +77,8 @@ def test_text_plan_roundtrip_reaches_server_console(paired, relay, fake_server):
     assert plan["success"] is True and plan["data"].get("planId"), plan
     result = relay.wait_result(relay.push_command({"action": "run_plan", "planId": plan["data"]["planId"], "via": "direct"}, **who))
     assert result["success"] is True, result
-    assert result["data"]["text"], result
+    # 결과 문장(`text`)은 선택이다: 없으면 릴레이가 계획과 값으로 답을 만든다 (relay dispatch.ts·actionResult.ts)
+    assert "data" in result, result
 
 
 def test_unknown_action_is_answered_not_dropped(paired, relay):
