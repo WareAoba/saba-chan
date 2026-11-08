@@ -90,6 +90,7 @@
     "pair_token_not_saved": "O Discord aceitou o código, mas não foi possível salvar a conexão neste PC. Execute bot pair novamente.",
     "pair_no_code": "O relay não retornou um código de pareamento.",
     "pair_polling": "Aguardando o Discord...",
+    "pair_copied": "Código copiado para a área de transferência (cole com Ctrl+V).",
     "pair_waiting": "Pressione Ctrl+C para cancelar.",
     "paired": "Pareado com o Discord.",
     "prefix": "Prefixo",
@@ -1570,7 +1571,9 @@
       "clients": "Janelas do app",
       "more": "Mais",
       "address": "Endereço",
-      "port_check": "Testar porta"
+      "port_check": "Testar porta",
+      "module_update": "Atualizar",
+      "module_new_server": "Novo servidor com este jogo"
     },
     "col": {
       "name": "Nome",
@@ -1582,7 +1585,8 @@
       "enabled": "Ativo",
       "created": "Criado",
       "kind": "Tipo",
-      "size": "Tamanho"
+      "size": "Tamanho",
+      "used_by": "Usado por"
     },
     "no_servers": "Ainda não há servidores. Aperte n para criar um.",
     "empty": "(nenhum)",
@@ -1670,7 +1674,11 @@
         "members": "Níveis dos membros",
         "common": "Todos os servidores",
         "app": "App",
-        "cli": "CLI"
+        "cli": "CLI",
+        "connection": "Conexão",
+        "servers": "Servidores de jogo",
+        "console": "Console",
+        "storage": "Armazenamento"
       }
     },
     "guilds": "Servidores do Discord",
@@ -1723,6 +1731,35 @@
       "start_now": "Iniciar quando estiver pronto",
       "create": "Criar",
       "back": "Voltar"
+    },
+    "cfg": {
+      "language": "Idioma",
+      "ipcPort": "Porta IPC",
+      "newServerAutoRestart": "Reiniciar automaticamente após uma falha",
+      "newServerBackupKeep": "Backups a manter",
+      "autoGeneratePasswords": "Gerar senhas automaticamente",
+      "portConflictCheck": "Detecção de conflito de porta",
+      "consoleTimestamps": "Horário no console",
+      "consoleTimestampDate": "Mostrar também a data",
+      "auditKeepDays": "Retenção do registro de atividades",
+      "stamp_off": "Desligado",
+      "stamp_24h": "24 horas",
+      "stamp_12h": "12 horas"
+    },
+    "cfg_about": {
+      "ipcPort": "Porta que o app e a CLI usam para acessar o daemon principal (1024–65535). A maioria dos usuários não precisa alterá-la.",
+      "autoGeneratePasswords": "Se a senha REST de um servidor estiver vazia, ela é preenchida com uma aleatória ao iniciar. Senhas existentes nunca são alteradas.",
+      "portConflictCheck": "Mostra avisos quando várias instâncias de servidor usam a mesma porta.",
+      "consoleTimestamps": "Mostra a hora de recebimento antes de cada linha do console.",
+      "auditKeepDays": "O Saba-chan apaga registros de atividade mais antigos. 0 significa sem limite de tempo.",
+      "newServerBackupKeep": "Valores preenchidos ao criar um servidor. Depois você pode alterá-los em cada servidor."
+    },
+    "none": "Nenhum",
+    "newer": "nova {{version}}",
+    "trust_about": {
+      "verified": "Exatamente como baixado do catálogo oficial",
+      "unverified": "Não veio do catálogo oficial. Confirme que a fonte é confiável",
+      "modified": "Os arquivos mudaram após a instalação. Reinstale se não foi você que editou"
     }
   },
   "install": {

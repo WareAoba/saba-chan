@@ -7,6 +7,20 @@
 use serde_json::Value;
 use std::sync::OnceLock;
 
+/// 고를 수 있는 언어 (코드, 그 언어로 쓴 이름)
+pub const LANGUAGES: &[(&str, &str)] = &[
+    ("ko", "한국어"),
+    ("en", "English"),
+    ("ja", "日本語"),
+    ("zh-CN", "简体中文"),
+    ("zh-TW", "繁體中文"),
+    ("es", "Español"),
+    ("fr", "Français"),
+    ("de", "Deutsch"),
+    ("ru", "Русский"),
+    ("pt-BR", "Português (Brasil)"),
+];
+
 const EMBEDDED: &[(&str, &str)] = &[
     ("en", include_str!("../../locales/en/cli.json")),
     ("ko", include_str!("../../locales/ko/cli.json")),

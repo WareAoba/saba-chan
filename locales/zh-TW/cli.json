@@ -90,6 +90,7 @@
     "pair_token_not_saved": "Discord 已接受配對代碼，但無法在此電腦上儲存連線資訊。請重新執行 bot pair。",
     "pair_no_code": "中繼站沒有回傳配對代碼。",
     "pair_polling": "正在等待 Discord...",
+    "pair_copied": "已將代碼複製到剪貼簿 (按 Ctrl+V 貼上)。",
     "pair_waiting": "按 Ctrl+C 取消。",
     "paired": "已與 Discord 配對。",
     "prefix": "前綴",
@@ -1571,7 +1572,9 @@
       "clients": "應用程式視窗",
       "more": "更多",
       "address": "連線位址",
-      "port_check": "連接埠檢查"
+      "port_check": "連接埠檢查",
+      "module_update": "更新",
+      "module_new_server": "用這個遊戲新建伺服器"
     },
     "col": {
       "name": "名稱",
@@ -1583,7 +1586,8 @@
       "enabled": "啟用",
       "created": "建立時間",
       "kind": "種類",
-      "size": "大小"
+      "size": "大小",
+      "used_by": "使用的伺服器"
     },
     "no_servers": "還沒有伺服器。按 n 建立一個。",
     "empty": "（無）",
@@ -1670,7 +1674,11 @@
         "members": "成員等級",
         "common": "所有伺服器",
         "app": "應用程式",
-        "cli": "CLI"
+        "cli": "CLI",
+        "connection": "連線",
+        "servers": "遊戲伺服器",
+        "console": "主控台",
+        "storage": "儲存空間"
       }
     },
     "guilds": "Discord 伺服器",
@@ -1723,6 +1731,35 @@
       "start_now": "完成後立即啟動",
       "create": "建立",
       "back": "上一步"
+    },
+    "cfg": {
+      "language": "語言",
+      "ipcPort": "IPC 連接埠",
+      "newServerAutoRestart": "當機後自動重新啟動",
+      "newServerBackupKeep": "保留備份數",
+      "autoGeneratePasswords": "自動生成密碼",
+      "portConflictCheck": "連接埠衝突偵測",
+      "consoleTimestamps": "主控台時間戳記",
+      "consoleTimestampDate": "同時顯示日期",
+      "auditKeepDays": "活動紀錄保留期限",
+      "stamp_off": "不顯示",
+      "stamp_24h": "24 小時制",
+      "stamp_12h": "12 小時制"
+    },
+    "cfg_about": {
+      "ipcPort": "應用程式和 CLI 連線到核心守護程序所用的連接埠（1024–65535）。大多數使用者不需要變更。",
+      "autoGeneratePasswords": "伺服器的 REST 密碼為空時，啟動時隨機填入。已有的密碼不會變更。",
+      "portConflictCheck": "當多個伺服器實例使用相同連接埠時顯示警告。",
+      "consoleTimestamps": "在每行主控台輸出前顯示接收時間。",
+      "auditKeepDays": "超過此期限的活動紀錄將由 Saba-chan 刪除。 0 表示不限期限。",
+      "newServerBackupKeep": "建立伺服器時填入的值。建立後可以依伺服器個別修改。"
+    },
+    "none": "無",
+    "newer": "新版本 {{version}}",
+    "trust_about": {
+      "verified": "與官方目錄下載的完全一致",
+      "unverified": "不是從官方目錄取得的。請確認來源可信",
+      "modified": "安裝後檔案被改動。若不是你自己修改的，請重新安裝"
     }
   },
   "install": {

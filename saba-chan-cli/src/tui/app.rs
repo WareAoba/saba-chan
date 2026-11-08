@@ -94,6 +94,8 @@ pub enum When {
     Unlinked,
     DaemonUp,
     DaemonDown,
+    /// 고른 모듈·익스텐션에 새 판이 있을 때
+    Newer,
     More,
 }
 
@@ -127,21 +129,20 @@ pub fn page_buttons(page: Page, tab: usize) -> &'static [(&'static str, &'static
             ("bot_config", "bot config", More),
         ],
         (Page::Addons, 0) => &[
-            ("info", "module info {}", Always),
-            ("versions", "module versions {}", Always),
-            ("available", "module available", Always),
-            ("refresh", "module refresh", Always),
-            ("commands", "module commands {}", More),
+            ("module_update", "update download module-{}\nupdate apply module-{}", Newer),
+            ("module_new_server", WIZARD, Always),
+            ("available", "module available", More),
+            ("refresh", "module refresh", More),
             ("remove", "module remove {}", More),
         ],
         (Page::Addons, _) => &[
             ("enable", "extension enable {}", Off),
             ("disable", "extension disable {}", On),
+            ("ext_update", "extension update {}", Newer),
             ("config", "extension config {}", Always),
-            ("ext_update", "extension update {}", Always),
-            ("available", "extension available", Always),
-            ("rescan", "extension rescan", Always),
-            ("info", "extension info {}", More),
+            ("available", "extension available", More),
+            ("rescan", "extension rescan", More),
+            ("remove", "extension remove {}", More),
         ],
         (Page::Updates, _) => &[
             ("update_check", "update check", Always),
@@ -760,6 +761,18 @@ impl App {
 
     // ── 버튼 ──
 
+    /// 고른 모듈·익스텐션의 새 판 (업데이트 확인 결과에서, 지금 판과 다를 때만)
+    pub fn newer_version(&self) -> Option<String> {
+        if self.page != Page::Addons {
+            return None;
+        }
+        let id = self.selected()?;
+        let component = if self.tab_index() == 0 { format!("module-{id}") } else { format!("ext-{id}") };
+        let c = self.snap.updates.as_ref()?.get("components")?.as_array()?.iter().find(|c| s(c, "component") == component)?;
+        let (now, latest) = (s(c, "current_version"), s(c, "latest_version"));
+        (c.get("update_available").and_then(Value::as_bool) == Some(true) && !latest.is_empty() && latest != now).then(|| latest.to_string())
+    }
+
     fn when(&self, w: When) -> bool {
         let server = || self.selected_server().map(|v| s(v, "status")).unwrap_or("");
         let enabled = || self.snap.extensions.get(self.selected_index()).and_then(|v| v.get("enabled")).and_then(Value::as_bool) == Some(true);
@@ -774,6 +787,7 @@ impl App {
             When::Unlinked => !linked(),
             When::DaemonUp => self.snap.health.is_some(),
             When::DaemonDown => self.snap.health.is_none(),
+            When::Newer => self.newer_version().is_some(),
             When::More => false,
         }
     }
@@ -1024,6 +1038,14 @@ impl App {
             self.prefill(b.line);
             return None;
         }
+        // 여러 줄 버튼 (받고 적용하기)은 차례로
+        if b.line.contains('\n') {
+            if self.running {
+                self.notify(&t!("tui.busy"));
+                return None;
+            }
+            return Some(Action::RunAll(b.line.lines().map(str::to_string).collect()));
+        }
         self.run_line(b.line)
     }
 
@@ -1037,8 +1059,14 @@ impl App {
     }
 
     fn open_wizard(&mut self) -> Option<Action> {
+        // 게임 모듈 탭에서 열면 그 게임을 골라 둔다 (마법사의 게임 목록은 같은 모듈 목록이다)
+        let module = (self.page == Page::Addons && self.tab_index() == 0).then(|| self.selected_index());
         self.go(Page::Servers);
-        self.wizard = Some(Wizard::new());
+        let mut w = Wizard::new();
+        if let Some(i) = module {
+            w.module = i;
+        }
+        self.wizard = Some(w);
         Some(Action::Refresh)
     }
 
@@ -1728,7 +1756,10 @@ pub fn refuse(words: &[String]) -> Option<String> {
         Cmd::Shell | Cmd::Tui { .. } | Cmd::Completions { .. } | Cmd::Install(_) => Some(t!("tui.not_here")),
         Cmd::Gui { .. } => Some(t!("tui.use_switch")),
         Cmd::Monitor(a) if a.watch => Some(t!("tui.not_here")),
-        Cmd::Update(UpdateCmd::Apply { .. }) => Some(t!("tui.not_here")),
+        // 모듈·익스텐션만 적용하는 것은 업데이터를 띄우지 않는다: 메뉴 안에서 된다
+        Cmd::Update(UpdateCmd::Apply { components }) if components.is_empty() || !components.iter().all(|c| c.starts_with("module-") || c.starts_with("ext-")) => {
+            Some(t!("tui.not_here"))
+        }
         _ => None,
     }
 }
@@ -1804,12 +1835,15 @@ mod tests {
                     if *template == WIZARD {
                         continue;
                     }
-                    let mut words = shlex::split(&template.replace("{}", "x")).unwrap();
-                    // 채워 여는 버튼은 사용자가 마저 쓴다: 인자 하나를 더해 읽어 본다
-                    if template.ends_with(' ') {
-                        words.push("y=z".into());
+                    for line in template.lines() {
+                        let mut words = shlex::split(&line.replace("{}", "x")).unwrap();
+                        // 채워 여는 버튼은 사용자가 마저 쓴다: 인자 하나를 더해 읽어 본다
+                        if template.ends_with(' ') {
+                            words.push("y=z".into());
+                        }
+                        assert!(parsed(&words).is_some(), "{page:?}/{key}: `{line}` does not parse");
+                        assert!(refuse(&words).is_none(), "{page:?}/{key}: `{line}` is refused in the menu");
                     }
-                    assert!(parsed(&words).is_some(), "{page:?}/{key}: `{template}` does not parse");
                 }
             }
             assert!(crate::i18n::try_t(&format!("tui.page.{}", page.key())).is_some(), "{page:?} has no title");
@@ -2017,6 +2051,28 @@ mod tests {
         a.on_key(ctrl('k'));
         a.on_key(key(KeyCode::Esc));
         assert!(a.palette.is_none());
+    }
+
+    /// 게임 모듈 탭: 새 판이 있을 때만 [업데이트] (받고 적용), [새 서버]는 그 게임을 골라 마법사를 연다
+    #[test]
+    fn the_module_tab_updates_and_starts_a_server_with_that_game() {
+        let mut a = app();
+        a.snap.modules = vec![json!({ "name": "minecraft" }), json!({ "name": "palworld" })];
+        a.go(Page::Addons);
+        a.list_state.select(Some(1));
+        let comp = |now: &str, latest: &str| json!({ "components": [{ "component": "module-palworld", "current_version": now, "latest_version": latest, "update_available": true }] });
+        a.snap.updates = Some(comp("0.1.12", "0.1.12"));
+        assert!(!lines(&a).iter().any(|l| l.starts_with("update")), "the same version is not an update");
+        a.snap.updates = Some(comp("0.1.12", "0.1.13"));
+        a.focus = Focus::Actions;
+        a.button = 0;
+        assert_eq!(a.on_key(key(KeyCode::Enter)), Some(Action::RunAll(vec!["update download module-palworld".into(), "update apply module-palworld".into()])));
+        a.button = a.buttons().iter().position(|b| b.line == WIZARD).unwrap();
+        a.on_key(key(KeyCode::Enter));
+        assert_eq!((a.page, a.wizard.as_ref().map(|w| w.module)), (Page::Servers, Some(1)));
+        // 코어 업데이트 적용은 여전히 메뉴 밖에서
+        assert!(refuse(&shlex::split("update apply saba-core").unwrap()).is_some());
+        assert!(refuse(&shlex::split("update apply").unwrap()).is_some());
     }
 
     /// 찾기 결과에 보이는 화면의 같은 명령은 실제 명령이다

@@ -90,6 +90,7 @@
     "pair_token_not_saved": "Discord ist verbunden, aber die Verbindungsdaten konnten auf diesem PC nicht gespeichert werden. Führe bot pair erneut aus.",
     "pair_no_code": "Das Relay hat keinen Kopplungscode zurückgegeben.",
     "pair_polling": "Warte auf Discord...",
+    "pair_copied": "Code in die Zwischenablage kopiert (mit Strg+V einfügen).",
     "pair_waiting": "Drücke Strg+C zum Abbrechen.",
     "paired": "Mit Discord gekoppelt.",
     "prefix": "Präfix",
@@ -1570,7 +1571,9 @@
       "clients": "App-Fenster",
       "more": "Mehr",
       "address": "Adresse",
-      "port_check": "Port prüfen"
+      "port_check": "Port prüfen",
+      "module_update": "Aktualisieren",
+      "module_new_server": "Neuer Server mit diesem Spiel"
     },
     "col": {
       "name": "Name",
@@ -1582,7 +1585,8 @@
       "enabled": "Aktiv",
       "created": "Erstellt",
       "kind": "Art",
-      "size": "Größe"
+      "size": "Größe",
+      "used_by": "Verwendet von"
     },
     "no_servers": "Noch keine Server. Drück n, um einen zu erstellen.",
     "empty": "(keine)",
@@ -1670,7 +1674,11 @@
         "members": "Mitgliederstufen",
         "common": "Alle Server",
         "app": "App",
-        "cli": "CLI"
+        "cli": "CLI",
+        "connection": "Verbindung",
+        "servers": "Spielserver",
+        "console": "Konsole",
+        "storage": "Speicher"
       }
     },
     "guilds": "Discord-Server",
@@ -1723,6 +1731,35 @@
       "start_now": "Starten, sobald bereit",
       "create": "Erstellen",
       "back": "Zurück"
+    },
+    "cfg": {
+      "language": "Sprache",
+      "ipcPort": "IPC-Port",
+      "newServerAutoRestart": "Nach einem Absturz automatisch neu starten",
+      "newServerBackupKeep": "Aufzubewahrende Backups",
+      "autoGeneratePasswords": "Passwörter automatisch generieren",
+      "portConflictCheck": "Portkonflikterkennung",
+      "consoleTimestamps": "Konsolen-Zeitstempel",
+      "consoleTimestampDate": "Datum ebenfalls anzeigen",
+      "auditKeepDays": "Aufbewahrung des Aktivitätsprotokolls",
+      "stamp_off": "Aus",
+      "stamp_24h": "24-Stunden",
+      "stamp_12h": "12-Stunden"
+    },
+    "cfg_about": {
+      "ipcPort": "Portnummer, über die App und CLI den Core Daemon erreichen (1024–65535). Die meisten müssen sie nicht ändern.",
+      "autoGeneratePasswords": "Ist das REST-Passwort eines Servers leer, wird es beim Start zufällig gesetzt. Vorhandene Passwörter werden nie geändert.",
+      "portConflictCheck": "Zeigt Warnungen an, wenn mehrere Serverinstanzen denselben Port verwenden.",
+      "consoleTimestamps": "Zeigt vor jeder Konsolenzeile die Empfangszeit.",
+      "auditKeepDays": "Ältere Aktivitätseinträge löscht Saba-chan automatisch. 0 bedeutet keine Zeitbegrenzung.",
+      "newServerBackupKeep": "Werte, die beim Erstellen eines Servers eingetragen werden. Danach lassen sie sich pro Server ändern."
+    },
+    "none": "Keine",
+    "newer": "neu {{version}}",
+    "trust_about": {
+      "verified": "Genau wie aus dem offiziellen Katalog geladen",
+      "unverified": "Nicht aus dem offiziellen Katalog. Prüfe, ob die Quelle vertrauenswürdig ist",
+      "modified": "Dateien wurden nach der Installation geändert. Neu installieren, falls du sie nicht selbst bearbeitet hast"
     }
   },
   "install": {

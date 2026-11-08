@@ -90,6 +90,7 @@
     "pair_token_not_saved": "Discord 已接受配对码，但无法在此电脑上保存连接信息。请重新运行 bot pair。",
     "pair_no_code": "中继未返回配对码。",
     "pair_polling": "正在等待 Discord...",
+    "pair_copied": "已将代码复制到剪贴板 (按 Ctrl+V 粘贴)。",
     "pair_waiting": "按 Ctrl+C 取消。",
     "paired": "已与 Discord 配对。",
     "prefix": "前缀",
@@ -1617,7 +1618,9 @@
       "clients": "应用窗口",
       "more": "更多",
       "address": "连接地址",
-      "port_check": "端口检查"
+      "port_check": "端口检查",
+      "module_update": "更新",
+      "module_new_server": "用这个游戏新建服务器"
     },
     "col": {
       "name": "名称",
@@ -1629,7 +1632,8 @@
       "enabled": "启用",
       "created": "创建时间",
       "kind": "类型",
-      "size": "大小"
+      "size": "大小",
+      "used_by": "使用的服务器"
     },
     "no_servers": "还没有服务器。按 n 新建一个。",
     "empty": "（无）",
@@ -1716,7 +1720,11 @@
         "members": "成员等级",
         "common": "所有服务器",
         "app": "应用",
-        "cli": "CLI"
+        "cli": "CLI",
+        "connection": "连接",
+        "servers": "游戏服务器",
+        "console": "控制台",
+        "storage": "存储"
       }
     },
     "guilds": "Discord 服务器",
@@ -1769,6 +1777,35 @@
       "start_now": "完成后立即启动",
       "create": "创建",
       "back": "上一步"
+    },
+    "cfg": {
+      "language": "语言",
+      "ipcPort": "IPC 端口",
+      "newServerAutoRestart": "崩溃后自动重启",
+      "newServerBackupKeep": "保留备份数",
+      "autoGeneratePasswords": "自动生成密码",
+      "portConflictCheck": "端口冲突检测",
+      "consoleTimestamps": "控制台时间戳",
+      "consoleTimestampDate": "同时显示日期",
+      "auditKeepDays": "活动记录保留期限",
+      "stamp_off": "不显示",
+      "stamp_24h": "24 小时制",
+      "stamp_12h": "12 小时制"
+    },
+    "cfg_about": {
+      "ipcPort": "应用和 CLI 连接核心守护进程所用的端口（1024–65535）。大多数用户无需修改。",
+      "autoGeneratePasswords": "服务器的 REST 密码为空时，启动时随机填入。已有的密码不会更改。",
+      "portConflictCheck": "当多个服务器实例使用相同端口时显示警告。",
+      "consoleTimestamps": "在每行控制台输出前显示接收时间。",
+      "auditKeepDays": "超过此期限的活动记录将由 Saba-chan 删除。 0 表示不限期限。",
+      "newServerBackupKeep": "创建服务器时填入的值。创建后可以按服务器单独修改。"
+    },
+    "none": "无",
+    "newer": "新版本 {{version}}",
+    "trust_about": {
+      "verified": "与官方目录下载的完全一致",
+      "unverified": "不是从官方目录获取的。请确认来源可信",
+      "modified": "安装后文件被改动。若不是你自己修改的，请重新安装"
     }
   },
   "install": {

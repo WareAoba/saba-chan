@@ -35,6 +35,15 @@ fn highlight(focused: bool) -> Style {
     }
 }
 
+/// 고른 탭: 화살표가 여기 있으면 채운 칸, 아니면 강조색 밑줄 (쪽 탭과 같다)
+fn selected_tab(focused: bool) -> Style {
+    if focused {
+        highlight(true)
+    } else {
+        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+    }
+}
+
 fn panel(title: impl Into<String>, focused: bool) -> Block<'static> {
     let style = if focused { Style::default().fg(ACCENT) } else { dim() };
     let title = title.into();
@@ -262,9 +271,40 @@ fn draw_lines(f: &mut Frame, area: Rect, lines: Vec<Line<'static>>, scroll: &mut
     f.render_widget(Paragraph::new(lines[start..end].to_vec()), area);
 }
 
-fn module_rows(v: &Value) -> Vec<(String, String)> {
-    let mut rows = vec![(t!("col.version"), s(v, "version").to_string())];
-    for (k, label) in [("game_name", "col.game"), ("description", "tui.col.about"), ("trust", "col.trust"), ("author", "col.author")] {
+/// 판: 지금 판, 새 판이 있으면 그것도
+fn version_cell(v: &Value, newer: Option<String>) -> String {
+    match newer {
+        Some(latest) => format!("{}  →  {}", s(v, "version"), t!("tui.newer", version = latest)),
+        None => s(v, "version").to_string(),
+    }
+}
+
+/// 출처: 확인됨·확인 안 됨·바뀜과 그 뜻
+fn trust_cell(v: &Value) -> Option<String> {
+    let trust = s(v, "trust");
+    if trust.is_empty() {
+        return None;
+    }
+    let label = crate::i18n::try_t(&format!("trust.{trust}")).unwrap_or_else(|| trust.to_string());
+    Some(match crate::i18n::try_t(&format!("tui.trust_about.{trust}")) {
+        Some(about) => format!("{label} · {about}"),
+        None => label,
+    })
+}
+
+fn module_rows(app: &App, v: &Value) -> Vec<(String, String)> {
+    let name = s(v, "name");
+    let mut rows = Vec::new();
+    if !s(v, "game_name").is_empty() {
+        rows.push((t!("col.game"), s(v, "game_name").to_string()));
+    }
+    rows.push((t!("col.version"), version_cell(v, app.newer_version())));
+    let used: Vec<&str> = app.snap.servers.iter().filter(|sv| s(sv, "module") == name).map(|sv| s(sv, "name")).collect();
+    rows.push((t!("tui.col.used_by"), if used.is_empty() { t!("tui.none") } else { used.join(", ") }));
+    if let Some(trust) = trust_cell(v) {
+        rows.push((t!("col.trust"), trust));
+    }
+    for (k, label) in [("description", "tui.col.about"), ("author", "col.author")] {
         if !s(v, k).is_empty() {
             rows.push((t!(label), s(v, k).to_string()));
         }
@@ -272,24 +312,24 @@ fn module_rows(v: &Value) -> Vec<(String, String)> {
     rows
 }
 
-fn extension_rows(v: &Value) -> Vec<(String, String)> {
-    let mut rows = vec![
-        (t!("col.version"), s(v, "version").to_string()),
-        (t!("tui.col.enabled"), crate::output::yes_no(v.get("enabled").and_then(Value::as_bool) == Some(true))),
-    ];
-    for (k, label) in [("name", "tui.col.name"), ("description", "tui.col.about"), ("trust", "col.trust"), ("author", "col.author")] {
+fn extension_rows(app: &App, v: &Value) -> Vec<(String, String)> {
+    let mut rows = Vec::new();
+    if !s(v, "name").is_empty() {
+        rows.push((t!("tui.col.name"), s(v, "name").to_string()));
+    }
+    rows.push((t!("tui.col.enabled"), crate::output::yes_no(v.get("enabled").and_then(Value::as_bool) == Some(true))));
+    rows.push((t!("col.version"), version_cell(v, app.newer_version())));
+    if let Some(trust) = trust_cell(v) {
+        rows.push((t!("col.trust"), trust));
+    }
+    for (k, label) in [("description", "tui.col.about"), ("author", "col.author")] {
         if !s(v, k).is_empty() {
             rows.push((t!(label), s(v, k).to_string()));
         }
     }
-    let hooks: Vec<&str> = v.get("hooks").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
-    if !hooks.is_empty() {
-        rows.push(("hooks".into(), hooks.join(", ")));
-    }
     rows
 }
 
-/// 데몬이 업데이트를 한 번이라도 확인했는가 (`last_check`가 없으면 결과가 비어 있어도 최신이라는 뜻이 아니다)
 fn update_checked(u: &Value) -> bool {
     !s(u, "last_check").is_empty()
 }
@@ -529,11 +569,8 @@ fn tab_row(f: &mut Frame, app: &mut App, area: Rect) -> Rect {
             continue;
         }
         let style = if i == app.tab_index() {
-            if focused {
-                highlight(true)
-            } else {
-                Style::default().fg(Color::Black).bg(ACCENT).add_modifier(Modifier::BOLD)
-            }
+            // 채운 칸은 지금 화살표가 움직이는 곳 하나뿐: 고른 탭은 밑줄로만
+            selected_tab(focused)
         } else {
             Style::default()
         };
@@ -796,11 +833,7 @@ fn draw_addons(f: &mut Frame, app: &mut App, area: Rect) {
             let label = format!(" {} ", app.page.tab_label(key));
             let w = label.width() as u16;
             let style = if i == app.tab_index() {
-                if focused {
-                    highlight(true)
-                } else {
-                    Style::default().fg(Color::Black).bg(ACCENT).add_modifier(Modifier::BOLD)
-                }
+                selected_tab(focused)
             } else {
                 Style::default()
             };
@@ -834,16 +867,15 @@ fn draw_addons(f: &mut Frame, app: &mut App, area: Rect) {
     let Some(right) = right else { return };
     let picked = list.get(app.selected_index());
     let (name, rows) = match picked {
-        Some(v) => (s(v, id_key).to_string(), if modules { module_rows(v) } else { extension_rows(v) }),
+        Some(v) => (s(v, id_key).to_string(), if modules { module_rows(app, v) } else { extension_rows(app, v) }),
         None => (t!("tui.detail"), Vec::new()),
     };
     let block = panel(name, app.focus == Focus::Actions);
     let inner = block.inner(right);
     f.render_widget(block, right);
+    // 탭 자리는 위에서 그렸다: 버튼 줄이 지우지 않게 맡겨 둔다
+    let tabs = std::mem::take(&mut app.areas.detail);
     let rest = tab_row_buttons_only(f, app, inner);
-    // 탭 자리는 위에서 그렸다
-    let mut tabs = Vec::new();
-    std::mem::swap(&mut tabs, &mut app.areas.detail);
     app.areas.detail = tabs;
     f.render_widget(Paragraph::new(kv_lines(&rows)).wrap(Wrap { trim: false }), rest);
 }
@@ -1639,6 +1671,22 @@ mod tests {
         app.tab[Page::Servers.slot()] = 3;
         let t = screen(&mut app, 120, 30);
         assert!(t.contains("saba-chanbackuplistpal-1"), "{t}");
+    }
+
+    /// 채운 칸은 화살표가 움직일 곳 하나뿐: 버튼에 있으면 고른 상세 탭은 채우지 않는다
+    #[test]
+    fn only_the_focused_place_is_filled() {
+        let mut app = app_with_data();
+        app.go(Page::Addons);
+        app.tab[Page::Addons.slot()] = 1;
+        app.snap.extensions = vec![json!({ "id": "steamcmd", "enabled": true })];
+        app.focus = super::super::app::Focus::Actions;
+        let term = render(&mut app, 120, 30);
+        let tab = app.areas.detail[1];
+        assert_ne!(term.backend().buffer()[(tab.x + 1, tab.y)].bg, ACCENT, "the selected tab is not filled");
+        app.focus = super::super::app::Focus::Detail;
+        let term = render(&mut app, 120, 30);
+        assert_eq!(term.backend().buffer()[(tab.x + 1, tab.y)].bg, ACCENT);
     }
 
     /// 창(찾기·묻기·더 보기·도움말)이 뜨면 뒤를 어둡게 한다

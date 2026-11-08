@@ -90,6 +90,7 @@
     "pair_token_not_saved": "디스코드에서는 연결됐지만 이 PC에 연결 정보를 저장하지 못했어요. bot pair를 다시 실행하세요.",
     "pair_no_code": "서버쨩이 페어링 코드를 주지 않았어요.",
     "pair_polling": "디스코드를 기다리는 중...",
+    "pair_copied": "코드를 클립보드에 복사했어요 (Ctrl+V로 붙여 넣기).",
     "pair_waiting": "취소하려면 Ctrl+C.",
     "paired": "디스코드와 페어링했어요.",
     "prefix": "접두사",
@@ -1617,7 +1618,9 @@
       "clients": "붙은 앱 창",
       "more": "더 보기",
       "address": "접속 주소",
-      "port_check": "포트 확인"
+      "port_check": "포트 확인",
+      "module_update": "업데이트",
+      "module_new_server": "이 게임으로 새 서버"
     },
     "col": {
       "name": "이름",
@@ -1629,7 +1632,8 @@
       "enabled": "켜짐",
       "created": "만든 때",
       "kind": "종류",
-      "size": "크기"
+      "size": "크기",
+      "used_by": "쓰는 서버"
     },
     "no_servers": "아직 서버가 없어요. n을 눌러 새 서버를 만들어요.",
     "empty": "(없음)",
@@ -1716,7 +1720,11 @@
         "members": "멤버 레벨",
         "common": "모든 서버",
         "app": "앱",
-        "cli": "CLI"
+        "cli": "CLI",
+        "connection": "연결",
+        "servers": "게임 서버",
+        "console": "콘솔",
+        "storage": "저장 공간"
       }
     },
     "guilds": "디스코드 서버",
@@ -1769,6 +1777,35 @@
       "start_now": "다 되면 바로 시작",
       "create": "만들기",
       "back": "이전"
+    },
+    "cfg": {
+      "language": "언어",
+      "ipcPort": "IPC 포트",
+      "newServerAutoRestart": "크래시 때 자동 재시작",
+      "newServerBackupKeep": "백업 보관 개수",
+      "autoGeneratePasswords": "비밀번호 자동 생성",
+      "portConflictCheck": "포트 충돌 검사",
+      "consoleTimestamps": "콘솔 시각 표시",
+      "consoleTimestampDate": "날짜도 표시",
+      "auditKeepDays": "활동 기록 보관 기간",
+      "stamp_off": "표시 안 함",
+      "stamp_24h": "24시간제",
+      "stamp_12h": "12시간제"
+    },
+    "cfg_about": {
+      "ipcPort": "화면과 CLI가 코어 데몬에 연결할 때 쓰는 포트 번호예요 (1024~65535). 대부분은 바꾸지 않아도 돼요.",
+      "autoGeneratePasswords": "REST 비밀번호가 비어 있으면 서버를 실행할 때 무작위로 채워요. 이미 있는 비밀번호는 바꾸지 않아요.",
+      "portConflictCheck": "서버 여러 개가 같은 포트를 쓰면 경고를 표시해요.",
+      "consoleTimestamps": "콘솔 줄 앞에 받은 시각을 붙여요.",
+      "auditKeepDays": "이 기간이 지난 활동 기록은 사바쨩이 지워요. 0이면 기간 제한 없음.",
+      "newServerBackupKeep": "서버를 새로 만들 때 채워 넣는 값이에요. 만든 뒤에는 서버마다 바꿀 수 있어요."
+    },
+    "none": "없음",
+    "newer": "새 판 {{version}}",
+    "trust_about": {
+      "verified": "공식 카탈로그에서 받은 그대로예요",
+      "unverified": "공식 카탈로그에서 받지 않았어요. 믿을 수 있는 곳에서 받은 것인지 확인하세요",
+      "modified": "설치한 뒤 파일이 바뀌었어요. 직접 고친 게 아니면 다시 설치하세요"
     }
   },
   "install": {

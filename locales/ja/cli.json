@@ -90,6 +90,7 @@
     "pair_token_not_saved": "Discord では接続されましたが、この PC に接続情報を保存できませんでした。もう一度 bot pair を実行してください。",
     "pair_no_code": "リレーからペアリングコードが返されませんでした。",
     "pair_polling": "Discord を待っています...",
+    "pair_copied": "コードをクリップボードにコピーしました (Ctrl+V で貼り付け)。",
     "pair_waiting": "Ctrl+C でキャンセルします。",
     "paired": "Discord とペアリングしました。",
     "prefix": "プレフィックス",
@@ -1621,7 +1622,9 @@
       "clients": "アプリのウィンドウ",
       "more": "その他",
       "address": "接続アドレス",
-      "port_check": "ポート確認"
+      "port_check": "ポート確認",
+      "module_update": "アップデート",
+      "module_new_server": "このゲームで新しいサーバー"
     },
     "col": {
       "name": "名前",
@@ -1633,7 +1636,8 @@
       "enabled": "有効",
       "created": "作成日時",
       "kind": "種類",
-      "size": "サイズ"
+      "size": "サイズ",
+      "used_by": "使っているサーバー"
     },
     "no_servers": "まだサーバーがありません。n を押して作成します。",
     "empty": "(なし)",
@@ -1716,7 +1720,11 @@
         "members": "メンバーのレベル",
         "common": "すべてのサーバー",
         "app": "アプリ",
-        "cli": "CLI"
+        "cli": "CLI",
+        "connection": "接続",
+        "servers": "ゲームサーバー",
+        "console": "コンソール",
+        "storage": "ストレージ"
       }
     },
     "guilds": "Discordサーバー",
@@ -1769,6 +1777,35 @@
       "start_now": "できたらすぐ起動",
       "create": "作成",
       "back": "戻る"
+    },
+    "cfg": {
+      "language": "言語",
+      "ipcPort": "IPC ポート",
+      "newServerAutoRestart": "クラッシュ時に自動再起動",
+      "newServerBackupKeep": "バックアップ保持数",
+      "autoGeneratePasswords": "パスワード自動生成",
+      "portConflictCheck": "ポート競合チェック",
+      "consoleTimestamps": "コンソールの時刻表示",
+      "consoleTimestampDate": "日付も表示",
+      "auditKeepDays": "アクティビティ記録の保存期間",
+      "stamp_off": "表示しない",
+      "stamp_24h": "24時間制",
+      "stamp_12h": "12時間制"
+    },
+    "cfg_about": {
+      "ipcPort": "アプリと CLI がコアデーモンに接続するときに使うポート番号です（1024〜65535）。ほとんどの場合、変更は不要です。",
+      "autoGeneratePasswords": "REST パスワードが空なら、サーバー起動時にランダムな値で埋めます。既にあるパスワードは変えません。",
+      "portConflictCheck": "複数のサーバーインスタンスが同じポートを使用している場合に警告を表示します。",
+      "consoleTimestamps": "コンソールの各行の前に受信時刻を付けます。",
+      "auditKeepDays": "この期間を過ぎたアクティビティ記録はサバちゃんが削除します。 0 は期間制限なし。",
+      "newServerBackupKeep": "サーバーを作成するときに入る値です。作成後はサーバーごとに変更できます。"
+    },
+    "none": "なし",
+    "newer": "新しい版 {{version}}",
+    "trust_about": {
+      "verified": "公式カタログから入れたままです",
+      "unverified": "公式カタログから入れたものではありません。信頼できる入手元か確認してください",
+      "modified": "インストール後にファイルが変わりました。自分で直したのでなければ入れ直してください"
     }
   },
   "install": {

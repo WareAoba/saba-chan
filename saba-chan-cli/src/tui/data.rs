@@ -282,42 +282,32 @@ fn text_field(key: &str, label: String, group: &str, kind: Kind, value: String, 
     }
 }
 
-/// 앱 설정 폼: `config show`의 값들 (점으로 이은 키, `config set 키=값`으로 저장). 묶음은 첫 낱말
-/// (이름 문구가 없는 키는 키 그대로 보인다)
+/// 앱 설정 폼: 데몬과 CLI가 쓰는 앱 설정만 (창 모양·소리 같은 GUI 설정은 GUI에서). 키는 `config set`이 받는 이름
 pub fn config_form(cfg: &Value) -> Form {
-    fn walk(prefix: &str, v: &Value, out: &mut Vec<Field>) {
-        match v {
-            Value::Object(map) if !map.is_empty() => {
-                for (k, v) in map {
-                    let key = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
-                    walk(&key, v, out);
-                }
-            }
-            _ => {
-                if prefix.ends_with("revision") {
-                    return;
-                }
-                // 묶음은 앞 낱말 (점이 없으면 앱), 키는 `config set`이 받는 점 이은 이름 그대로
-                let (section, key) = (prefix.split_once('.').map(|(g, _)| g).unwrap_or("app"), prefix);
-                let kind = match v {
-                    Value::Bool(_) => Kind::Bool,
-                    Value::Number(_) => Kind::Number { min: None, max: None },
-                    Value::String(_) => Kind::Text { secret: false },
-                    _ => Kind::ReadOnly,
-                };
-                let value = match v {
-                    Value::String(s) => s.clone(),
-                    Value::Null => String::new(),
-                    other => other.to_string(),
-                };
-                let label = crate::i18n::try_t(&format!("tui.config.{key}")).unwrap_or_else(|| key.to_string());
-                out.push(text_field(key, label, section, kind, value, ""));
-            }
-        }
-    }
-    let mut fields = Vec::new();
-    walk("", cfg, &mut fields);
-    Form::new(fields)
+    let b = |k: &str, default: bool| cfg.get(k).and_then(Value::as_bool).unwrap_or(default).to_string();
+    let n = |k: &str, default: i64| cfg.get(k).and_then(Value::as_i64).unwrap_or(default).to_string();
+    let num = |min: f64, max: f64| Kind::Number { min: Some(min), max: Some(max) };
+    let field = |key: &str, group: &str, kind: Kind, value: String, default: &str| {
+        let mut f = text_field(key, t!(&format!("tui.cfg.{key}")), group, kind, value, default);
+        f.description = crate::i18n::try_t(&format!("tui.cfg_about.{key}")).unwrap_or_default();
+        f
+    };
+    let languages = crate::i18n::LANGUAGES.iter().map(|(code, name)| (code.to_string(), name.to_string())).collect();
+    let stamps = ["off", "24h", "12h"].iter().map(|k| (k.to_string(), t!(&format!("tui.cfg.stamp_{k}")))).collect();
+    let language = s(cfg, "language");
+    let mut port = field("ipcPort", "connection", num(1024.0, 65535.0), n("ipcPort", 57474), "57474");
+    port.restart = true;
+    Form::new(vec![
+        field("language", "connection", Kind::Choice(languages), if language.is_empty() { crate::i18n::lang().to_string() } else { language.to_string() }, ""),
+        port,
+        field("newServerAutoRestart", "servers", Kind::Bool, b("newServerAutoRestart", true), "true"),
+        field("newServerBackupKeep", "servers", num(0.0, 100.0), n("newServerBackupKeep", 10), "10"),
+        field("autoGeneratePasswords", "servers", Kind::Bool, b("autoGeneratePasswords", true), "true"),
+        field("portConflictCheck", "servers", Kind::Bool, b("portConflictCheck", true), "true"),
+        field("consoleTimestamps", "console", Kind::Choice(stamps), cfg.get("consoleTimestamps").and_then(Value::as_str).unwrap_or("off").to_string(), "off"),
+        field("consoleTimestampDate", "console", Kind::Bool, b("consoleTimestampDate", false), "false"),
+        field("auditKeepDays", "storage", num(0.0, 3650.0), n("auditKeepDays", 0), "0"),
+    ])
 }
 
 /// 노래·읽어주기 폼: 디스코드 서버 설정에서. 칸 키는 `bot music|tts`의 옵션 이름 (`enabled`는 --on/--off)
@@ -469,13 +459,16 @@ mod tests {
         assert_eq!(m.fields.iter().find(|x| x.key == "enabled").unwrap().value, "true");
     }
 
-    /// 앱 설정 폼: 키는 `config set`이 받는 점 이은 이름, 묶음은 첫 낱말
+    /// 앱 설정 폼은 데몬·CLI가 쓰는 칸만, 묶음별로 (GUI 창 설정은 보이지 않는다)
     #[test]
-    fn the_config_form_keeps_dotted_keys() {
+    fn the_config_form_shows_only_what_the_daemon_and_cli_use() {
         crate::i18n::init("ko");
-        let f = config_form(&json!({ "language": "ko", "discord": { "prefix": "!", "auto_start": false }, "revision": 3 }));
+        let f = config_form(&json!({ "language": "ja", "windowOpacity": 100, "sounds": { "enabled": true }, "newServerBackupKeep": 5 }));
         let keys: Vec<(&str, &str)> = f.fields.iter().map(|x| (x.key.as_str(), x.group.as_str())).collect();
-        assert!(keys.contains(&("language", "app")) && keys.contains(&("discord.prefix", "discord")) && keys.contains(&("discord.auto_start", "discord")));
-        assert!(!keys.iter().any(|(k, _)| k.ends_with("revision")));
+        assert!(keys.contains(&("language", "connection")) && keys.contains(&("newServerBackupKeep", "servers")) && keys.contains(&("auditKeepDays", "storage")));
+        assert!(!keys.iter().any(|(k, _)| *k == "windowOpacity" || k.starts_with("sounds")));
+        assert_eq!(f.fields.iter().find(|x| x.key == "newServerBackupKeep").unwrap().value, "5");
+        assert_eq!(f.fields.iter().find(|x| x.key == "language").unwrap().value, "ja");
+        assert!(f.fields.iter().all(|x| !x.label.starts_with("tui.")), "every field has a label");
     }
 }

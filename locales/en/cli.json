@@ -90,6 +90,7 @@
     "pair_token_not_saved": "Discord accepted the code, but the connection could not be saved on this PC. Run bot pair again.",
     "pair_no_code": "Server-chan did not return a pairing code.",
     "pair_polling": "Waiting for Discord...",
+    "pair_copied": "Copied the code to the clipboard (paste with Ctrl+V).",
     "pair_waiting": "Press Ctrl+C to cancel.",
     "paired": "Paired with Discord.",
     "prefix": "Prefix",
@@ -1340,7 +1341,9 @@
       "clients": "App windows",
       "more": "More",
       "address": "Address",
-      "port_check": "Port check"
+      "port_check": "Port check",
+      "module_update": "Update",
+      "module_new_server": "New server with this game"
     },
     "col": {
       "name": "Name",
@@ -1352,7 +1355,8 @@
       "enabled": "Enabled",
       "created": "Created",
       "kind": "Kind",
-      "size": "Size"
+      "size": "Size",
+      "used_by": "Used by"
     },
     "no_servers": "No servers yet. Press n to make one.",
     "empty": "(none)",
@@ -1439,7 +1443,11 @@
         "members": "Member levels",
         "common": "All servers",
         "app": "App",
-        "cli": "CLI"
+        "cli": "CLI",
+        "connection": "Connection",
+        "servers": "Game servers",
+        "console": "Console",
+        "storage": "Storage"
       }
     },
     "guilds": "Discord servers",
@@ -1492,6 +1500,35 @@
       "start_now": "Start it when ready",
       "create": "Create",
       "back": "Back"
+    },
+    "cfg": {
+      "language": "Language",
+      "ipcPort": "IPC Port",
+      "newServerAutoRestart": "Restart automatically after a crash",
+      "newServerBackupKeep": "Backups to keep",
+      "autoGeneratePasswords": "Auto-generate Passwords",
+      "portConflictCheck": "Port Conflict Detection",
+      "consoleTimestamps": "Console Timestamps",
+      "consoleTimestampDate": "Show date too",
+      "auditKeepDays": "Activity Log Retention",
+      "stamp_off": "Off",
+      "stamp_24h": "24-hour",
+      "stamp_12h": "12-hour"
+    },
+    "cfg_about": {
+      "ipcPort": "Port number the app and CLI use to reach the core daemon (1024–65535). Most users do not need to change it.",
+      "autoGeneratePasswords": "If a server's REST password is empty, fill it with a random one when the server starts. Existing passwords are never changed.",
+      "portConflictCheck": "Shows a warning when several servers use the same port.",
+      "consoleTimestamps": "Show the time each console line was received.",
+      "auditKeepDays": "Saba-chan deletes activity records older than this. 0 means no time limit.",
+      "newServerBackupKeep": "Values filled in when you create a server. You can change them per server afterward."
+    },
+    "none": "None",
+    "newer": "new {{version}}",
+    "trust_about": {
+      "verified": "Exactly as downloaded from the official catalog",
+      "unverified": "Not from the official catalog. Make sure you got it from a source you trust",
+      "modified": "Its files changed after install. Reinstall it unless you edited them yourself"
     }
   },
   "install": {

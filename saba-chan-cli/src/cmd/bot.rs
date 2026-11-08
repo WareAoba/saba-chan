@@ -438,6 +438,10 @@ async fn wait_for_claim(ctx: &Ctx, relay: Option<&str>) -> Result<Option<Value>>
     tell!();
     tell!("      {}", console::style(&code).bold().cyan());
     tell!();
+    // 전체 화면 메뉴는 마우스를 잡아 드래그로 고를 수 없다: 코드를 클립보드에도 넣는다
+    if output::copy_to_clipboard(&code) {
+        tell!("  {}", output::dim(&t!("bot.pair_copied")));
+    }
     tell!("  {}", output::dim(&t!("bot.pair_waiting")));
     let spin = crate::progress::spinner(&t!("bot.pair_polling"));
     let mut wait = PairWait::new(std::time::Instant::now());
