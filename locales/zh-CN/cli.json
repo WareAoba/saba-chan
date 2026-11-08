@@ -1539,7 +1539,7 @@
     "question": "确认",
     "dialog_keys": "Enter 选择 · Esc 取消",
     "help_title": "快捷键",
-    "help": "←→↑↓  按画面布局移动 (标签 → 列表 → 按钮 → 控制台)\nTab / Shift+Tab  下一个 / 上一个区域\nEnter  按下按钮 (… 会填好命令行,▾ 打开更多)\n1-6  跳到页面\n服务器控制台  按 ↓ 进入,输入后 Enter 发送到服务器 (↑↓ 历史)\n: 或 /  命令行 (saba-chan-cli 后面要写的内容,Tab 补全,↑↓ 历史)\nF2  打开或关闭输出,  PgUp/PgDn、鼠标滚轮  滚动\nF9  切换到 GUI (可以打开时)\nCtrl+C  停止正在运行的命令,  Esc  后退一步\nq  退出 (守护进程和服务器会继续运行)",
+    "help": "Tab / Shift+Tab  下一栏/上一栏 (页面 → 列表 → 详情标签 → 按钮 → 内容)\n←→↑↓  按画面布局移动,  Esc  总是返回一步\n1-5  跳到页面,  Ctrl+K  查找一切 (画面、设置、命令)\ns  启动或停止所选服务器,  r  重启,  n  新建服务器\n设置标签  ←→ 更改值 · Space 开/关 · Enter 输入 · / 查找 · Ctrl+S 保存 · Esc 还原\n服务器控制台  输入时会提示游戏命令 (Tab 补全), Enter 发送, ↑↓ 历史\n:  命令行 (与 saba-chan-cli 后面写的一样, Tab 补全)。按钮和保存也用同样的命令执行\nF2  打开/关闭输出,  PgUp/PgDn、鼠标滚轮  滚动,  F9  切换到 GUI\nCtrl+C  停止正在运行的命令,  q  退出 (守护进程和服务器会继续运行)",
     "too_narrow": "请将窗口加宽到至少 60 列。",
     "not_here": "此命令无法在全屏菜单中运行。按 q 退出后在终端中运行。",
     "cancelled": "已停止。",
@@ -1559,7 +1559,8 @@
       "extensions": "扩展",
       "discord": "Discord",
       "updates": "更新",
-      "daemon": "守护进程"
+      "addons": "模块与扩展",
+      "settings": "应用设置"
     },
     "btn": {
       "status": "总体状态",
@@ -1614,7 +1615,9 @@
       "daemon_restart": "重启守护进程",
       "daemon_stop": "停止守护进程",
       "clients": "应用窗口",
-      "more": "更多"
+      "more": "更多",
+      "address": "连接地址",
+      "port_check": "端口检查"
     },
     "col": {
       "name": "名称",
@@ -1623,9 +1626,12 @@
       "port": "端口",
       "uptime": "运行",
       "about": "说明",
-      "enabled": "启用"
+      "enabled": "启用",
+      "created": "创建时间",
+      "kind": "类型",
+      "size": "大小"
     },
-    "no_servers": "还没有服务器。按 [新服务器] 或按 : 输入 server add",
+    "no_servers": "还没有服务器。按 n 新建一个。",
     "empty": "（无）",
     "detail": "详情",
     "server_console": "控制台",
@@ -1643,7 +1649,7 @@
       "port": "守护进程端口",
       "language": "语言"
     },
-    "keys_console": "Enter 发送到服务器 · ↑↓ 历史 · PgUp/PgDn 滚动 · Esc 回到按钮",
+    "keys_console": "Enter 发送到服务器 · ↑↓ 历史 · Tab 补全命令 · PgUp/PgDn 滚动 · Esc 返回",
     "keys_running": "命令运行中 · Ctrl+C 停止 · F2 输出 · 其他页面仍可查看",
     "choose": "选择",
     "enter_text": "输入",
@@ -1654,10 +1660,116 @@
     "daemon_log": "守护进程日志",
     "use_switch": "在这里请按 F9(切换到 GUI)。",
     "console_input_hint": "在此输入服务器命令 · Enter 发送",
-    "keys_tabs": "←→ 切换页面 · ↓ 进入 · 1-6 页面 · : 命令 · F2 输出 · ? 帮助 · q 退出",
-    "keys_list": "↑↓ 选择 · → 按钮 · : 命令 · F2 输出 · ? 帮助 · q 退出",
-    "keys_actions": "←→ 选择按钮 · Enter 按下 · ↓ 控制台 · Esc 列表 · F2 输出 · ? 帮助 · q 退出",
-    "keys_command": "Enter 运行 · Tab 补全 · ↑↓ 历史 · Esc 关闭"
+    "keys_tabs": "←→ 切换页面 · ↓ 进入 · 1-5 页面 · Ctrl+K 查找 · : 命令 · ? 帮助 · q 退出",
+    "keys_list": "↑↓ 选择 · → 详情 · Tab 下一栏 · s 启动/停止 · n 新服务器 · Ctrl+K 查找 · ? 帮助 · q 退出",
+    "keys_actions": "←→ 选择按钮 · Enter 按下 · ↓ 内容 · Esc 返回 · F2 输出 · ? 帮助 · q 退出",
+    "keys_command": "Enter 运行 · Tab 补全 · ↑↓ 历史 · Esc 关闭",
+    "tab": {
+      "console": "控制台",
+      "settings": "设置",
+      "players": "在线玩家",
+      "backups": "备份",
+      "schedule": "计划",
+      "log": "日志"
+    },
+    "dtab": {
+      "perm": "权限",
+      "ladder": "等级",
+      "words": "命令别名",
+      "music": "音乐",
+      "tts": "朗读",
+      "moderation": "服务器管理",
+      "notice": "通知",
+      "chatbot": "会说话的 Saba-chan"
+    },
+    "stab": {
+      "app": "应用设置",
+      "daemon_log": "守护进程日志"
+    },
+    "back": {
+      "servers": "服务器列表",
+      "guilds": "Discord 服务器列表",
+      "list": "列表"
+    },
+    "find": {
+      "title": "查找一切",
+      "about": "一次查找画面、设置和命令",
+      "screen": "画面",
+      "setting": "设置",
+      "command": "命令",
+      "none": "没有匹配项。",
+      "keys": "Enter 打开 · Tab 放入命令行 · ↑↓ 选择 · Esc 关闭"
+    },
+    "form": {
+      "changed": "● 已更改 {{count}} 项",
+      "default": "(默认值)",
+      "find": "查找:项目名称或键",
+      "folded": "已折叠 · Enter 展开",
+      "keys": "k 显示键名",
+      "restart": "保存后从下次启动起生效。",
+      "revert": "Esc 还原",
+      "save": "Ctrl+S 保存",
+      "group": {
+        "basic": "基本",
+        "saba-chan": "Saba-chan",
+        "advanced": "高级",
+        "members": "成员等级",
+        "common": "所有服务器",
+        "app": "应用",
+        "cli": "CLI"
+      }
+    },
+    "guilds": "Discord 服务器",
+    "keys_detail": "←→ 标签 · ↓ 进入 · Esc 返回 · s 启动/停止 · r 重启 · Ctrl+K 查找 · ? 帮助 · q 退出",
+    "keys_form": "↑↓ 项目 · ←→ 更改值 · Space 开/关 · Enter 输入 · / 查找 · Ctrl+S 保存 · Esc 返回",
+    "keys_content": "↑↓ 滚动 · Esc 返回 · s 启动/停止 · Ctrl+K 查找 · ? 帮助 · q 退出",
+    "keys_backups": "c 立即备份 · Enter 恢复 · d 删除",
+    "keys_players": "Enter 填入踢出命令",
+    "keys_edit": "e 更改(填入命令行)",
+    "keys_wizard": "↑↓ 选择 · Enter 下一步 · Esc 上一步 · Ctrl+C 放弃",
+    "list": {
+      "players": "{{count}} 人在线"
+    },
+    "pane": {
+      "loading": "正在加载…",
+      "not_running": "服务器已关闭。启动后会显示在线玩家。"
+    },
+    "risk_danger": "危险",
+    "same_command": "相同命令:",
+    "suggest_keys": "Tab 补全 · ↑↓ 选择 · Enter 发送",
+    "wiz": {
+      "title": "新建服务器",
+      "step": {
+        "method": "方式",
+        "game": "游戏",
+        "name": "名称与文件夹",
+        "preset": "推荐设置",
+        "confirm": "确认"
+      },
+      "ask_method": "要怎么创建?",
+      "method_new": "全新安装",
+      "method_new_about": "由Saba-chan下载并安装服务器",
+      "method_import": "导入已有服务器",
+      "method_import_about": "继续使用已有的服务器文件夹",
+      "ask_game": "是哪个游戏?",
+      "no_modules": "还没有游戏模块。请在“模块与扩展”页面获取。",
+      "ask_name": "请起个名字",
+      "name": "名称",
+      "folder": "文件夹",
+      "folder_hint": "要导入的服务器文件夹完整路径 · Tab 切换输入框",
+      "need_name": "请先输入名称。",
+      "need_folder": "请输入要导入的文件夹。",
+      "ask_preset": "要从推荐设置开始吗?",
+      "no_preset": "不选择(默认值)",
+      "ask_confirm": "就这样创建吗?",
+      "confirm_hint": "在要修改的行按 Enter 可回到该步骤",
+      "fix": "修改",
+      "agree": "已阅读并同意 {{id}}",
+      "need_agree": "请先阅读并同意协议(按 Space 勾选)。",
+      "start_now": "完成后立即启动",
+      "create": "创建",
+      "back": "上一步"
+    }
   },
   "install": {
     "fetching": "正在检查最新版本…",

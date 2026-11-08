@@ -1497,7 +1497,7 @@
     "daemon_up": "● daemon v{{version}}",
     "daemon_down": "○ daemon desligado · digite daemon start",
     "servers_running": "{{running}}/{{total}} servidores rodando",
-    "help": "←→↑↓  mover conforme a disposição da tela (abas → lista → botões → console)\nTab / Shift+Tab  próxima / anterior área\nEnter  pressionar um botão (… preenche a linha de comando, ▾ abre mais)\n1-6  ir para uma página\nConsole do servidor  entre com ↓, digite, Enter envia ao servidor (↑↓ histórico)\n: ou /  linha de comando (o que você escreveria após saba-chan-cli, Tab completa, ↑↓ histórico)\nF2  abrir ou fechar a saída,  PgUp/PgDn, roda do mouse  rolar\nF9  mudar para a GUI (quando puder abrir)\nCtrl+C  parar o comando em execução,  Esc  voltar um passo\nq  sair (o daemon e os servidores continuam rodando)",
+    "help": "Tab / Shift+Tab  próxima e anterior área (páginas → lista → abas → botões → conteúdo)\n←→↑↓  mover como a tela está organizada,  Esc  sempre um passo atrás\n1-5  ir para uma página,  Ctrl+K  encontrar qualquer coisa (telas, configurações, comandos)\ns  iniciar ou parar o servidor escolhido,  r  reiniciar,  n  novo servidor\nAba Configurações  ←→ mudar · Espaço ligar/desligar · Enter digitar · / buscar · Ctrl+S salvar · Esc desfazer\nConsole do servidor  sugere comandos do jogo ao digitar (Tab completa), Enter envia, ↑↓ histórico\n:  linha de comando (o que vem depois de saba-chan-cli, Tab completa). Botões e salvamentos usam os mesmos comandos\nF2  abrir ou fechar a saída,  PgUp/PgDn, roda do mouse  rolar,  F9  mudar para a GUI\nCtrl+C  parar o comando em execução,  q  sair (o daemon e os servidores continuam rodando)",
     "brand": "Saba-chan {{version}}",
     "memory_of": "memória {{used}} / {{total}}",
     "discord_on": "Discord ● conectado",
@@ -1512,7 +1512,8 @@
       "extensions": "Extensões",
       "discord": "Discord",
       "updates": "Atualizações",
-      "daemon": "Daemon"
+      "addons": "Módulos e extensões",
+      "settings": "Configurações do app"
     },
     "btn": {
       "status": "Visão geral",
@@ -1567,7 +1568,9 @@
       "daemon_restart": "Reiniciar daemon",
       "daemon_stop": "Parar daemon",
       "clients": "Janelas do app",
-      "more": "Mais"
+      "more": "Mais",
+      "address": "Endereço",
+      "port_check": "Testar porta"
     },
     "col": {
       "name": "Nome",
@@ -1576,9 +1579,12 @@
       "port": "Porta",
       "uptime": "Ativo",
       "about": "Descrição",
-      "enabled": "Ativo"
+      "enabled": "Ativo",
+      "created": "Criado",
+      "kind": "Tipo",
+      "size": "Tamanho"
     },
-    "no_servers": "Ainda não há servidores. Pressione [Novo servidor] ou pressione : e digite server add",
+    "no_servers": "Ainda não há servidores. Aperte n para criar um.",
     "empty": "(nenhum)",
     "detail": "Detalhes",
     "server_console": "Console",
@@ -1596,7 +1602,7 @@
       "port": "Porta do daemon",
       "language": "Idioma"
     },
-    "keys_console": "Enter enviar ao servidor · ↑↓ histórico · PgUp/PgDn rolar · Esc voltar aos botões",
+    "keys_console": "Enter enviar ao servidor · ↑↓ histórico · Tab completar · PgUp/PgDn rolar · Esc voltar",
     "keys_running": "Comando em execução · Ctrl+C parar · F2 saída · as outras páginas continuam disponíveis",
     "choose": "Escolher",
     "enter_text": "Digitar",
@@ -1608,10 +1614,116 @@
     "daemon_log": "Log do daemon",
     "use_switch": "Aqui, pressione F9 (Mudar para a GUI).",
     "console_input_hint": "Digite aqui um comando do servidor · Enter para enviar",
-    "keys_tabs": "←→ páginas · ↓ entrar · 1-6 página · : comando · F2 saída · ? ajuda · q sair",
-    "keys_list": "↑↓ escolher · → botões · : comando · F2 saída · ? ajuda · q sair",
-    "keys_actions": "←→ escolher botão · Enter pressionar · ↓ console · Esc lista · F2 saída · ? ajuda · q sair",
-    "keys_command": "Enter executar · Tab completar · ↑↓ histórico · Esc fechar"
+    "keys_tabs": "←→ páginas · ↓ entrar · 1-5 página · Ctrl+K buscar · : comando · ? ajuda · q sair",
+    "keys_list": "↑↓ escolher · → detalhes · Tab próximo · s iniciar/parar · n novo servidor · Ctrl+K buscar · ? ajuda · q sair",
+    "keys_actions": "←→ escolher botão · Enter apertar · ↓ conteúdo · Esc voltar · F2 saída · ? ajuda · q sair",
+    "keys_command": "Enter executar · Tab completar · ↑↓ histórico · Esc fechar",
+    "tab": {
+      "console": "Console",
+      "settings": "Configurações",
+      "players": "Jogadores",
+      "backups": "Backups",
+      "schedule": "Agenda",
+      "log": "Registro"
+    },
+    "dtab": {
+      "perm": "Permissões",
+      "ladder": "Níveis",
+      "words": "Palavras dos comandos",
+      "music": "Música",
+      "tts": "Leitura",
+      "moderation": "Ferramentas",
+      "notice": "Avisos",
+      "chatbot": "Saba-chan falante"
+    },
+    "stab": {
+      "app": "Configurações do app",
+      "daemon_log": "Registro do daemon"
+    },
+    "back": {
+      "servers": "Servidores",
+      "guilds": "Servidores do Discord",
+      "list": "Lista"
+    },
+    "find": {
+      "title": "Encontrar qualquer coisa",
+      "about": "Telas, configurações e comandos num só lugar",
+      "screen": "Tela",
+      "setting": "Ajuste",
+      "command": "Comando",
+      "none": "Nada encontrado.",
+      "keys": "Enter abrir · Tab pôr na linha de comando · ↑↓ escolher · Esc fechar"
+    },
+    "form": {
+      "changed": "● {{count}} alterados",
+      "default": "(padrão)",
+      "find": "Buscar: nome do campo ou chave",
+      "folded": "recolhido · Enter para abrir",
+      "keys": "k mostrar chaves",
+      "restart": "Vale a partir do próximo início.",
+      "revert": "Esc desfazer",
+      "save": "Ctrl+S salvar",
+      "group": {
+        "basic": "Básico",
+        "saba-chan": "Saba-chan",
+        "advanced": "Avançado",
+        "members": "Níveis dos membros",
+        "common": "Todos os servidores",
+        "app": "App",
+        "cli": "CLI"
+      }
+    },
+    "guilds": "Servidores do Discord",
+    "keys_detail": "←→ abas · ↓ entrar · Esc voltar · s iniciar/parar · r reiniciar · Ctrl+K buscar · ? ajuda · q sair",
+    "keys_form": "↑↓ campos · ←→ mudar · Espaço ligar/desligar · Enter digitar · / buscar · Ctrl+S salvar · Esc voltar",
+    "keys_content": "↑↓ rolar · Esc voltar · s iniciar/parar · Ctrl+K buscar · ? ajuda · q sair",
+    "keys_backups": "c fazer backup agora · Enter restaurar · d apagar",
+    "keys_players": "Enter prepara um comando de expulsão",
+    "keys_edit": "e mudar (preenche a linha de comando)",
+    "keys_wizard": "↑↓ escolher · Enter próximo · Esc etapa anterior · Ctrl+C desistir",
+    "list": {
+      "players": "{{count}} online"
+    },
+    "pane": {
+      "loading": "Carregando…",
+      "not_running": "O servidor está desligado. Os jogadores aparecem quando ele rodar."
+    },
+    "risk_danger": "perigoso",
+    "same_command": "Mesmo comando:",
+    "suggest_keys": "Tab completar · ↑↓ escolher · Enter enviar",
+    "wiz": {
+      "title": "Novo servidor",
+      "step": {
+        "method": "Como",
+        "game": "Jogo",
+        "name": "Nome e pasta",
+        "preset": "Predefinição",
+        "confirm": "Confirmar"
+      },
+      "ask_method": "Como vamos criar?",
+      "method_new": "Instalar novo",
+      "method_new_about": "A Saba-chan baixa e instala o servidor",
+      "method_import": "Importar um servidor",
+      "method_import_about": "Continuar usando uma pasta de servidor que você já tem",
+      "ask_game": "Qual jogo?",
+      "no_modules": "Ainda não há módulos de jogo. Pegue um na página Módulos e extensões.",
+      "ask_name": "Dê um nome",
+      "name": "Nome",
+      "folder": "Pasta",
+      "folder_hint": "Caminho completo da pasta a importar · Tab troca de campo",
+      "need_name": "Digite um nome primeiro.",
+      "need_folder": "Digite a pasta a importar.",
+      "ask_preset": "Começar de uma predefinição?",
+      "no_preset": "Nenhuma (padrões)",
+      "ask_confirm": "Criar assim?",
+      "confirm_hint": "Enter numa linha volta para essa etapa",
+      "fix": "mudar",
+      "agree": "Li e aceito: {{id}}",
+      "need_agree": "Leia e aceite o acordo primeiro (Espaço para marcar).",
+      "start_now": "Iniciar quando estiver pronto",
+      "create": "Criar",
+      "back": "Voltar"
+    }
   },
   "install": {
     "fetching": "Verificando a versão mais recente…",

@@ -1539,7 +1539,7 @@
     "question": "확인",
     "dialog_keys": "Enter 고르기 · Esc 취소",
     "help_title": "단축키",
-    "help": "←→↑↓  보이는 방향대로 옮기기 (탭 → 목록 → 버튼 → 콘솔)\nTab / Shift+Tab  다음·이전 칸\nEnter  버튼 누르기 (… 이 붙은 버튼은 명령 줄을 채워 줘요, ▾ 는 더 보기)\n1-6  쪽 바로 가기\n서버 콘솔  ↓로 들어가 치고 Enter로 서버에 보내기 (↑↓ 지난 입력)\n: 또는 /  명령 줄 (saba-chan-cli 뒤에 쓰는 그대로, Tab 자동 완성, ↑↓ 지난 명령)\nF2  출력 창 열기·닫기,  PgUp/PgDn, 마우스 휠  넘기기\nF9  GUI로 전환 (GUI를 쓸 수 있을 때)\nCtrl+C  실행 중인 명령 멈추기,  Esc  한 칸 뒤로\nq  나가기 (데몬과 서버는 계속 돌아요)",
+    "help": "Tab / Shift+Tab  다음·이전 칸 (쪽 → 목록 → 상세 탭 → 버튼 → 내용)\n←→↑↓  보이는 방향대로 옮기기,  Esc  언제나 한 단계 뒤로\n1-5  쪽 바로 가기,  Ctrl+K  무엇이든 찾기 (화면·설정·명령, 초성도 돼요)\ns  고른 서버 시작·정지,  r  재시작,  n  새 서버 만들기\n설정 탭  ←→ 값 바꾸기 · Space 켜기/끄기 · Enter 입력 · / 찾기 · Ctrl+S 저장 · Esc 되돌리기\n서버 콘솔  치면 게임 명령을 제안해요 (Tab 채우기), Enter로 보내기, ↑↓ 지난 입력\n: 명령 줄 (saba-chan-cli 뒤에 쓰는 그대로, Tab 자동 완성). 버튼·저장도 같은 명령으로 실행돼요\nF2  출력 창 열기·닫기,  PgUp/PgDn, 마우스 휠  넘기기,  F9  GUI로 전환\nCtrl+C  실행 중인 명령 멈추기,  q  나가기 (데몬과 서버는 계속 돌아요)",
     "too_narrow": "창을 60칸 이상으로 넓혀 주세요.",
     "not_here": "이 명령은 전체 화면 메뉴 안에서는 실행할 수 없어요. q로 나간 뒤 터미널에서 실행하세요.",
     "cancelled": "멈췄어요.",
@@ -1559,7 +1559,8 @@
       "extensions": "익스텐션",
       "discord": "디스코드",
       "updates": "업데이트",
-      "daemon": "데몬"
+      "addons": "모듈·익스텐션",
+      "settings": "앱 설정"
     },
     "btn": {
       "status": "전체 상태",
@@ -1614,7 +1615,9 @@
       "daemon_restart": "데몬 다시 켜기",
       "daemon_stop": "데몬 끄기",
       "clients": "붙은 앱 창",
-      "more": "더 보기"
+      "more": "더 보기",
+      "address": "접속 주소",
+      "port_check": "포트 확인"
     },
     "col": {
       "name": "이름",
@@ -1623,9 +1626,12 @@
       "port": "포트",
       "uptime": "가동",
       "about": "설명",
-      "enabled": "켜짐"
+      "enabled": "켜짐",
+      "created": "만든 때",
+      "kind": "종류",
+      "size": "크기"
     },
-    "no_servers": "아직 서버가 없어요. [새 서버]를 누르거나 : 를 눌러 server add",
+    "no_servers": "아직 서버가 없어요. n을 눌러 새 서버를 만들어요.",
     "empty": "(없음)",
     "detail": "자세히",
     "server_console": "콘솔",
@@ -1643,7 +1649,7 @@
       "port": "데몬 포트",
       "language": "언어"
     },
-    "keys_console": "Enter 서버로 보내기 · ↑↓ 지난 입력 · PgUp/PgDn 넘기기 · Esc 버튼으로",
+    "keys_console": "Enter 서버로 보내기 · ↑↓ 지난 입력 · Tab 명령 채우기 · PgUp/PgDn 넘기기 · Esc 뒤로",
     "keys_running": "명령 실행 중 · Ctrl+C 멈추기 · F2 출력 · 다른 쪽은 계속 볼 수 있어요",
     "choose": "고르기",
     "enter_text": "입력",
@@ -1654,10 +1660,116 @@
     "daemon_log": "데몬 로그",
     "use_switch": "여기서는 F9(GUI로 전환)를 누르세요.",
     "console_input_hint": "여기에 서버 명령을 쳐요 · Enter로 보내기",
-    "keys_tabs": "←→ 쪽 옮기기 · ↓ 들어가기 · 1-6 쪽 · : 명령 · F2 출력 · ? 도움말 · q 나가기",
-    "keys_list": "↑↓ 고르기 · → 버튼 · : 명령 · F2 출력 · ? 도움말 · q 나가기",
-    "keys_actions": "←→ 버튼 고르기 · Enter 누르기 · ↓ 콘솔 · Esc 목록 · F2 출력 · ? 도움말 · q 나가기",
-    "keys_command": "Enter 실행 · Tab 자동 완성 · ↑↓ 지난 명령 · Esc 닫기"
+    "keys_tabs": "←→ 쪽 옮기기 · ↓ 들어가기 · 1-5 쪽 · Ctrl+K 찾기 · : 명령 · ? 도움말 · q 나가기",
+    "keys_list": "↑↓ 고르기 · → 상세 · Tab 칸 옮기기 · s 시작/정지 · n 새 서버 · Ctrl+K 찾기 · ? 도움말 · q 나가기",
+    "keys_actions": "←→ 버튼 고르기 · Enter 누르기 · ↓ 내용 · Esc 뒤로 · F2 출력 · ? 도움말 · q 나가기",
+    "keys_command": "Enter 실행 · Tab 자동 완성 · ↑↓ 지난 명령 · Esc 닫기",
+    "tab": {
+      "console": "콘솔",
+      "settings": "설정",
+      "players": "접속자",
+      "backups": "백업",
+      "schedule": "예약",
+      "log": "기록"
+    },
+    "dtab": {
+      "perm": "권한",
+      "ladder": "사다리",
+      "words": "명령 별명",
+      "music": "노래",
+      "tts": "읽어주기",
+      "moderation": "서버 관리",
+      "notice": "알림",
+      "chatbot": "말하는 사바쨩"
+    },
+    "stab": {
+      "app": "앱 설정",
+      "daemon_log": "데몬 로그"
+    },
+    "back": {
+      "servers": "서버 목록",
+      "guilds": "디스코드 서버 목록",
+      "list": "목록"
+    },
+    "find": {
+      "title": "무엇이든 찾기",
+      "about": "화면·설정·명령을 한 번에 찾아요 (초성도 돼요)",
+      "screen": "화면",
+      "setting": "설정",
+      "command": "명령",
+      "none": "맞는 것이 없어요.",
+      "keys": "Enter 열기 · Tab 명령 줄에 넣기 · ↑↓ 고르기 · Esc 닫기"
+    },
+    "form": {
+      "changed": "● 바뀐 칸 {{count}}개",
+      "default": "(기본값)",
+      "find": "찾기: 칸 이름이나 키",
+      "folded": "접혀 있어요 · Enter 펼치기",
+      "keys": "k 키 이름 보기",
+      "restart": "저장하면 다음 시작부터 적용돼요.",
+      "revert": "Esc 되돌리기",
+      "save": "Ctrl+S 저장",
+      "group": {
+        "basic": "기본",
+        "saba-chan": "사바쨩",
+        "advanced": "고급",
+        "members": "멤버 레벨",
+        "common": "모든 서버",
+        "app": "앱",
+        "cli": "CLI"
+      }
+    },
+    "guilds": "디스코드 서버",
+    "keys_detail": "←→ 탭 · ↓ 들어가기 · Esc 뒤로 · s 시작/정지 · r 재시작 · Ctrl+K 찾기 · ? 도움말 · q 나가기",
+    "keys_form": "↑↓ 칸 · ←→ 값 바꾸기 · Space 켜기/끄기 · Enter 입력 · / 찾기 · Ctrl+S 저장 · Esc 뒤로",
+    "keys_content": "↑↓ 넘기기 · Esc 뒤로 · s 시작/정지 · Ctrl+K 찾기 · ? 도움말 · q 나가기",
+    "keys_backups": "c 지금 백업 · Enter 되돌리기 · d 지우기",
+    "keys_players": "Enter 내보내기 명령 채우기",
+    "keys_edit": "e 바꾸기 (명령 줄을 채워요)",
+    "keys_wizard": "↑↓ 고르기 · Enter 다음 · Esc 이전 단계 · Ctrl+C 그만두기",
+    "list": {
+      "players": "{{count}}명"
+    },
+    "pane": {
+      "loading": "불러오는 중…",
+      "not_running": "서버가 꺼져 있어요. 켜면 접속자가 보여요."
+    },
+    "risk_danger": "위험",
+    "same_command": "같은 명령:",
+    "suggest_keys": "Tab 채우기 · ↑↓ 고르기 · Enter 보내기",
+    "wiz": {
+      "title": "새 서버 만들기",
+      "step": {
+        "method": "방법",
+        "game": "게임",
+        "name": "이름·폴더",
+        "preset": "추천 설정",
+        "confirm": "확인"
+      },
+      "ask_method": "어떻게 만들까요?",
+      "method_new": "새로 설치",
+      "method_new_about": "사바쨩이 서버를 받아 설치해요",
+      "method_import": "있는 서버 가져오기",
+      "method_import_about": "이미 있는 서버 폴더를 이어 써요",
+      "ask_game": "어떤 게임인가요?",
+      "no_modules": "게임 모듈이 아직 없어요. 모듈·익스텐션 쪽에서 받아 주세요.",
+      "ask_name": "이름을 지어 주세요",
+      "name": "이름",
+      "folder": "폴더",
+      "folder_hint": "가져올 서버 폴더의 전체 경로 · Tab으로 칸 옮기기",
+      "need_name": "이름을 먼저 적어 주세요.",
+      "need_folder": "가져올 폴더를 적어 주세요.",
+      "ask_preset": "추천 설정을 고를까요?",
+      "no_preset": "고르지 않음 (기본값)",
+      "ask_confirm": "이대로 만들까요?",
+      "confirm_hint": "고칠 줄에서 Enter를 누르면 그 단계로 돌아가요",
+      "fix": "고치기",
+      "agree": "{{id}} 약관을 읽고 동의함",
+      "need_agree": "먼저 약관을 읽고 동의해 주세요 (Space로 체크).",
+      "start_now": "다 되면 바로 시작",
+      "create": "만들기",
+      "back": "이전"
+    }
   },
   "install": {
     "fetching": "최신 릴리스를 확인하고 있어요…",
