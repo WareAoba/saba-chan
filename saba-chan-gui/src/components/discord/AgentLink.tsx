@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
+import { AgentLogo } from '../AgentLogo';
 import { Icon } from '../Icon';
 
 export const agentLinkAvailable = () =>
@@ -84,7 +85,7 @@ export function AgentLink({ className }: { className?: string } = {}) {
                                     onClick={() => setOpen(expanded ? null : i)}
                                 >
                                     <span className="remote-pc-os">
-                                        <Icon name="plug" size="sm" />
+                                        <AgentLogo name={grant.clientName} />
                                     </span>
                                     <span className="remote-pc-who">
                                         <b className="remote-pc-name">{grant.clientName || '-'}</b>

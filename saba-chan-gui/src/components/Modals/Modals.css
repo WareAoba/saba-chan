@@ -3195,8 +3195,8 @@
     gap: var(--sp-2);
     padding: var(--sp-3);
     border-radius: var(--r-md);
-    background: var(--inset);
-    border: 1px solid var(--line);
+    background: var(--settings-item-bg);
+    border: 1px solid var(--border-light);
 }
 .remote-pc-card.me {
     border-color: var(--accent);
@@ -3329,11 +3329,20 @@
 .remote-pc-add {
     display: flex;
 }
+/* 내 PC 목록은 줄마다 같은 높이: 리눅스에 설치 칸도 PC 카드와 같은 크기 */
+.remote-pc-cards-even {
+    grid-auto-rows: 1fr;
+}
 .remote-pc-add .btn {
     flex: 1;
-    min-height: 120px;
-    border: 1px dashed var(--line-strong);
+    flex-direction: column;
+    gap: var(--sp-1);
+    height: 100%;
+    border: 2px dashed var(--line-strong);
     border-radius: var(--r-md);
+    background: var(--inset);
+    box-shadow: none;
+    color: var(--text-muted);
 }
 /* AI 에이전트 카드: 머리를 누르면 끊기 버튼이 나온다 */
 .agent-card-head {
@@ -3401,17 +3410,23 @@
     align-items: center;
     gap: var(--sp-1);
 }
+/* 설치 출력: 서버 콘솔(.term)과 같은 바탕·글자·글꼴 */
 .remote-install-console {
     margin: 0;
     height: 220px;
     overflow: auto;
-    padding: var(--sp-2);
-    border-radius: var(--r-md);
-    background: var(--inset);
-    font-family: "Cascadia Code", "D2Coding", ui-monospace, monospace;
-    font-size: 12px;
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-lg);
+    background: var(--console-custom-bg);
+    color: var(--console-custom-text);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-inset);
+    font-family: var(--font-mono);
+    font-size: calc(13px * var(--console-font-scale, 1));
+    line-height: 1.6;
     white-space: pre-wrap;
-    word-break: break-all;
+    word-break: break-word;
+    user-select: text;
 }
 .remote-install-prompt {
     padding: var(--sp-3);

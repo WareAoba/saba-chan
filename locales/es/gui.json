@@ -2298,7 +2298,7 @@
     "delete": "Eliminar",
     "remove_title": "¿Quitar {{name}}?",
     "remove_forget": "Olvidarlo en este PC",
-    "remove_forget_desc": "Lo quita de los daemons remotos de este PC. Siempre se hace.",
+    "remove_forget_desc": "Lo quita de los daemons remotos de este PC.",
     "remove_uninstall": "Desinstalar también Saba-chan en ese PC",
     "remove_uninstall_desc": "Detiene el daemon y quita el programa. Los servidores en marcha también se detienen.",
     "remove_uninstall_unavailable": "Solo para un PC Linux o Mac en línea",

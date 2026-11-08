@@ -2298,7 +2298,7 @@
     "delete": "Удалить",
     "remove_title": "Удалить {{name}}?",
     "remove_forget": "Забыть на этом ПК",
-    "remove_forget_desc": "Убирает его из удалённых демонов этого ПК. Выполняется всегда.",
+    "remove_forget_desc": "Убирает его из удалённых демонов этого ПК.",
     "remove_uninstall": "Также удалить Saba-chan на том ПК",
     "remove_uninstall_desc": "Останавливает демон и удаляет программу. Запущенные игровые серверы тоже остановятся.",
     "remove_uninstall_unavailable": "Только для ПК с Linux или Mac в сети",

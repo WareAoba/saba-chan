@@ -2298,7 +2298,7 @@
     "delete": "刪除",
     "remove_title": "要移除 {{name}} 嗎？",
     "remove_forget": "在本機忘記它",
-    "remove_forget_desc": "從本機的遠端常駐程式清單中移除。一定會執行。",
+    "remove_forget_desc": "從本機的遠端常駐程式清單中移除。",
     "remove_uninstall": "同時在那台電腦上解除安裝 Saba-chan",
     "remove_uninstall_desc": "停止常駐程式並刪除程式。執行中的遊戲伺服器也會停止。",
     "remove_uninstall_unavailable": "僅適用於線上的 Linux 或 Mac 電腦",
