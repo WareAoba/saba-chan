@@ -221,7 +221,7 @@ pub fn forget_daemon_in(file: &ConfigFile, host_id: &str) -> std::io::Result<boo
 }
 
 /// 릴레이가 알려 준 PC 이름·주인 이름(`(hostId, name, ownerName)`)으로 짝 맺은 PC와 원격 데몬의 이름을 맞춘다.
-/// 바뀐 것이 없으면 쓰지 않는다. 주인 이름을 모르는 옛 릴레이면(빈 값) 주인 이름은 그대로 둔다
+/// 바뀐 것이 없으면 쓰지 않는다. 주인 이름이 빈 값이면 주인 이름은 그대로 둔다
 pub fn refresh_names_in(file: &ConfigFile, known: &[(String, String, String)]) -> std::io::Result<()> {
     let fresh = |host_id: &str, name: &mut String, owner: &mut String| {
         let Some((_, n, o)) = known.iter().find(|(h, ..)| h == host_id) else { return false };
@@ -363,7 +363,7 @@ mod tests {
     #[test]
     fn a_pc_is_shown_as_its_owners_discord_name_and_its_own_name() {
         assert_eq!(label("김마무", "DESKTOP-1"), "김마무(DESKTOP-1)");
-        assert_eq!(label("", "DESKTOP-1"), "DESKTOP-1", "old relays do not send the owner");
+        assert_eq!(label("", "DESKTOP-1"), "DESKTOP-1", "an unknown owner is left out");
         assert_eq!(label("김마무", "김마무"), "김마무", "a PC named after its owner is not doubled");
         assert_eq!(label("김마무", ""), "김마무");
     }

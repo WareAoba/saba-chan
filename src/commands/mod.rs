@@ -10,9 +10,9 @@
 //!
 //! 명령 찾기: 이름(대소문자 무시) → `[aliases.commands]`의 별명.
 //! 정의된 명령의 `method`:
-//! - `console`: `console_template`의 `{입력}` 자리를 채워 서버 콘솔(stdin)로. 예전 이름 `rcon`도 받는다 (RCON은 쓰지 않는다)
+//! - `console`: `console_template`의 `{입력}` 자리를 채워 서버 콘솔(stdin)로
 //! - `rest`: `endpoint_template` + `http_method`, 입력을 본문으로
-//! - `module`(예전 이름 `dual`/`both`) 또는 생략: 모듈 `lifecycle.py`의 `command()`가 처리
+//! - `module` 또는 생략: 모듈 `lifecycle.py`의 `command()`가 처리
 //!
 //! 정의에 없는 명령은 한 줄 그대로 `Plan::Raw`가 된다(콘솔 입력).
 //!
@@ -57,9 +57,6 @@ impl InstanceCommands {
                 || field.console_template.as_deref().is_some_and(has_line_break)
             {
                 continue;
-            }
-            if field.method.as_deref() == Some("rcon") {
-                field.method = Some("console".into());
             }
             field.risk = Some(risk_of(field.risk.as_deref()).to_string());
             if let Some(group) = group {
@@ -200,7 +197,7 @@ pub fn plan(module: &ModuleMetadata, req: &Request) -> Result<Plan, PlanError> {
     }
     let inputs = bind(&field.inputs, &req.args)?;
     match field.method.as_deref().unwrap_or("module") {
-        "console" | "rcon" => {
+        "console" => {
             let template = field.console_template.as_deref().unwrap_or(&field.name);
             for input in &field.inputs {
                 let Some(value) = inputs.get(&input.name).and_then(Value::as_str) else { continue };
@@ -220,7 +217,7 @@ pub fn plan(module: &ModuleMetadata, req: &Request) -> Result<Plan, PlanError> {
             http_method: field.http_method.as_deref().unwrap_or("GET").to_uppercase(),
             body: inputs,
         }),
-        "module" | "dual" | "both" => Ok(Plan::Module { command: field.name.clone(), args: inputs }),
+        "module" => Ok(Plan::Module { command: field.name.clone(), args: inputs }),
         other => Err(PlanError::new(
             "unsupported_method",
             None,

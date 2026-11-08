@@ -1267,8 +1267,7 @@ fn remember_notices(seen: &std::sync::atomic::AtomicU64, body: &mut Value) {
     };
     let newest = list.iter().filter_map(|n| n.get("id").and_then(Value::as_u64)).max().unwrap_or(0);
     let before = seen.fetch_max(newest, std::sync::atomic::Ordering::Relaxed);
-    // id가 없는 알림(옛 데몬)은 그대로 둔다
-    list.retain(|n| n.get("id").and_then(Value::as_u64).is_none_or(|id| id > before));
+    list.retain(|n| n.get("id").and_then(Value::as_u64).is_some_and(|id| id > before));
 }
 
 /// `update last`는 다른 클라이언트(GUI)가 이미 확인한 결과도 다시 본다: 패치노트를 CLI로 다시 읽는 길 (L70)

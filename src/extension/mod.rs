@@ -18,11 +18,6 @@ const PACKAGE_LIMITS: crate::archive::Limits = crate::archive::Limits {
     expanded: 512 * 1024 * 1024,
 };
 
-/// npm package.json 스타일 dependencies 디시리얼라이저.
-/// 예전 hook 이름 → 지금 이름. `server.post_stop`은 실제로는 정지 **전에** 불려
-/// 익스텐션이 정지를 대신 처리하는 hook이었으므로 `server.stop`으로 바뀌었다.
-const HOOK_ALIASES: &[(&str, &str)] = &[("server.post_stop", "server.stop")];
-
 /// 이 데몬이 아는 manifest.json 스키마 버전 (`schema_version`)
 pub const EXTENSION_SCHEMA_VERSION: u32 = 1;
 
@@ -43,21 +38,7 @@ pub const FIRED_HOOKS: &[&str] = &[
 /// 지금 데몬 버전 (`min_app_version`, `dependencies."saba-core"` 비교용)
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// hook 맵을 읽으며 예전 이름을 지금 이름으로 바꾼다 (둘 다 있으면 지금 이름이 이긴다).
-fn deserialize_hooks<'de, D>(deserializer: D) -> Result<HashMap<String, HookBinding>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let mut hooks = HashMap::<String, HookBinding>::deserialize(deserializer)?;
-    for (old, new) in HOOK_ALIASES {
-        if let Some(binding) = hooks.remove(*old) {
-            hooks.entry(new.to_string()).or_insert(binding);
-        }
-    }
-    Ok(hooks)
-}
-
-/// 배열 형식과 맵 형식 모두 지원:
+/// 배열 형식과 맵 형식 모두 지원 (0.1.13까지 배포한 공식 익스텐션은 `[]`를 쓰고, 설치된 사본은 그 익스텐션이 업데이트될 때까지 남는다):
 /// - `["steamcmd", "ue4-ini"]` → `{"steamcmd": "*", "ue4-ini": "*"}`
 /// - `{"steamcmd": ">=0.1.0", "saba-core": ">=0.3.0"}` → 그대로
 fn deserialize_dependencies<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
@@ -253,12 +234,12 @@ pub struct ExtensionManifest {
     /// npm package.json 스타일 의존성 선언.
     /// 익스텐션·컴포넌트 ID를 키로, 버전 요구사항을 값으로 사용.
     /// 예: `{ "steamcmd": ">=0.1.0", "saba-core": ">=0.3.0" }`
-    /// 배열 형식(`["steamcmd"]`)도 하위 호환으로 지원 → `{ "steamcmd": "*" }`로 변환.
+    /// 배열 형식(`["steamcmd"]`)도 받는다 → `{ "steamcmd": "*" }` (`deserialize_dependencies`)
     #[serde(default, deserialize_with = "deserialize_dependencies")]
     pub dependencies: HashMap<String, String>,
     #[serde(default)]
     pub python_modules: HashMap<String, String>, // name → relative path
-    #[serde(default, deserialize_with = "deserialize_hooks")]
+    #[serde(default)]
     pub hooks: HashMap<String, HookBinding>, // hook_name → binding
     #[serde(default)]
     pub gui: Option<GuiManifest>,
@@ -2674,7 +2655,7 @@ mod tests {
                     "function": "pre_start",
                     "condition": "instance.ext_data.docker_enabled"
                 },
-                "server.post_stop": {
+                "server.stop": {
                     "module": "compose_manager",
                     "function": "post_stop"
                 }
@@ -2703,9 +2684,7 @@ mod tests {
         assert_eq!(manifest.dependencies.get("steamcmd").unwrap(), "*");
         assert_eq!(manifest.hooks.len(), 2);
         assert!(manifest.hooks.contains_key("server.pre_start"));
-        // 예전 이름은 읽을 때 지금 이름으로 바뀐다
         assert!(manifest.hooks.contains_key("server.stop"));
-        assert!(!manifest.hooks.contains_key("server.post_stop"));
         assert_eq!(manifest.python_modules.len(), 2);
         assert_eq!(manifest.instance_fields.len(), 2);
         assert!(manifest.gui.is_some());

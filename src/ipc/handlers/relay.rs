@@ -460,8 +460,7 @@ pub async fn clear_node_moderation_channel(
     signed_json(&base, reqwest::Method::POST, &path, &body).await
 }
 
-// 확인 창 전의 검사 — 청소와 같은 권한을 보고 지우지 않는다. 경로가 따로인 까닭: 본문의 dryRun 을 모르는 옛 relay 는
-// 그 값을 버리고 실제로 지운다. 이 경로는 옛 relay 에 없어서 404 가 된다
+// 확인 창 전의 검사 — 청소와 같은 권한을 보고 지우지 않는다
 pub async fn check_clear_node_moderation_channel(
     Path((guild_id, channel_id)): Path<(String, String)>,
     Query(params): Query<RelayQueryParams>,
@@ -590,7 +589,7 @@ pub async fn put_node_channels(
 
 // ── GET·DELETE /api/relay/mcp/grant ──
 // 이 PC 주인 계정의 원격 MCP 에이전트 연결들 (05 §4.4 (l)). 보기는 `{grants:[{id, clientName, createdAt, lastUsedAt}],
-// grant, url}`(grant는 첫째, 옛 릴레이는 grant만), 끊기는 204. `?id=`면 그 연결만, 없으면 모두 끊는다.
+// grant, url}`(grant는 첫째), 끊기는 204. `?id=`면 그 연결만, 없으면 모두 끊는다.
 // 연결은 주인 계정에 묶여 주인의 다른 PC에서 끊어도 같다
 
 pub async fn get_mcp_grant(Query(params): Query<RelayQueryParams>, State(state): State<IPCServer>) -> Response {

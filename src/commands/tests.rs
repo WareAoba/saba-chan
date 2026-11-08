@@ -33,7 +33,7 @@ fn field(name: &str, method: &str, inputs: Vec<CommandInput>) -> CommandField {
 }
 
 fn module() -> ModuleMetadata {
-    let mut give = field("give", "rcon", vec![input("player", "text", true), input("item", "text", true), {
+    let mut give = field("give", "console", vec![input("player", "text", true), input("item", "text", true), {
         let mut amount = input("amount", "number", true);
         amount.default = Some(toml::Value::Integer(1));
         amount.min = Some(1.0);
@@ -61,7 +61,7 @@ fn module() -> ModuleMetadata {
     )
     .expect("minimal module.toml");
     meta.commands = Some(ModuleCommands {
-        fields: vec![give, say, announce, weather, field("kickall", "dual", vec![]), field("odd", "ftp", vec![])],
+        fields: vec![give, say, announce, weather, field("kickall", "module", vec![]), field("odd", "ftp", vec![])],
         hook: false,
         failure_patterns: Vec::new(),
     });
@@ -204,7 +204,7 @@ fn instance_commands_come_after_module_commands_and_bind_like_them() {
               "inputs": [{ "name": "user", "type": "text", "required": true }] },
             // 같은 이름(별명 포함)은 module.toml이 먼저다
             { "name": "말", "label": "shadow", "method": "console", "console_template": "nope" },
-            { "name": "home", "label": "/home", "method": "rcon", "console_template": "home {args}",
+            { "name": "home", "label": "/home", "method": "console", "console_template": "home {args}",
               "inputs": [{ "name": "args", "type": "text", "required": false }] },
             // 모양이 틀린 항목은 건너뛴다
             { "name": "two words", "label": "x" },

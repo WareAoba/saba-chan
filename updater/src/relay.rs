@@ -85,19 +85,19 @@ pub struct PlatformComponents {
 }
 
 /// manifest 컴포넌트 항목. 필드 이름은 운영 중인 manifest(0.1.1~)를 따른다:
-/// `asset`, `size_bytes`, `install_dir`. 예전 초안 이름(`filename` 등)도 읽는다.
+/// `asset`, `size_bytes`, `install_dir`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManifestComponent {
     pub version: String,
-    #[serde(rename = "asset", alias = "filename")]
+    #[serde(rename = "asset")]
     pub filename: String,
-    #[serde(default, rename = "size_bytes", alias = "sizeBytes", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "size_bytes", skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
     pub sha256: String,
     /// R2 공개 URL
     pub url: String,
     /// install_root 기준 설치 폴더
-    #[serde(default, rename = "install_dir", alias = "installDir", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "install_dir", skip_serializing_if = "Option::is_none")]
     pub install_dir: Option<String>,
     /// 이 컴포넌트가 요구하는 다른 컴포넌트의 최소 버전 (예: `{"saba-core": ">=0.3.0"}`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -576,7 +576,7 @@ mod tests {
             "components": {
                 "saba-core": {
                     "version": version,
-                    "filename": "saba-core.zip",
+                    "asset": "saba-core.zip",
                     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
                     "url": "https://cdn.example/saba-core.zip"
                 }
@@ -607,15 +607,15 @@ mod tests {
         };
         assert!(check_manifest_paths(&with("saba-core", "install_dir", ".")).is_ok());
         assert!(check_manifest_paths(&with("locales", "install_dir", "locales")).is_ok());
-        assert!(check_manifest_paths(&with("module-palworld", "filename", "module-palworld.zip")).is_ok());
+        assert!(check_manifest_paths(&with("module-palworld", "asset", "module-palworld.zip")).is_ok());
         for (key, field, value) in [
-            ("module-../evil", "filename", "a.zip"),
-            ("module-..", "filename", "a.zip"),
-            ("module-.", "filename", "a.zip"),
-            ("ext-", "filename", "a.zip"),
-            ("ext-a\\b", "filename", "a.zip"),
-            ("saba-core", "filename", "../saba-core.zip"),
-            ("saba-core", "filename", "C:saba-core.zip"),
+            ("module-../evil", "asset", "a.zip"),
+            ("module-..", "asset", "a.zip"),
+            ("module-.", "asset", "a.zip"),
+            ("ext-", "asset", "a.zip"),
+            ("ext-a\\b", "asset", "a.zip"),
+            ("saba-core", "asset", "../saba-core.zip"),
+            ("saba-core", "asset", "C:saba-core.zip"),
             ("saba-core", "install_dir", "../.."),
             ("saba-core", "install_dir", "C:\\Windows"),
             ("saba-core", "install_dir", "/etc"),

@@ -480,12 +480,9 @@ async fn wait_for_claim(ctx: &Ctx, relay: Option<&str>) -> Result<Option<Value>>
     Ok(Some(result))
 }
 
-/// 이 PC에 노드 토큰이 저장됐는지: 데몬의 `tokenSaved`, 없으면(옛 데몬) 받은 `nodeToken`이 있는지
+/// 이 PC에 노드 토큰이 저장됐는지 (데몬의 `tokenSaved`)
 fn token_saved(result: &Value) -> bool {
-    match result.get("tokenSaved").and_then(Value::as_bool) {
-        Some(saved) => saved,
-        None => !s(result, "nodeToken").is_empty(),
-    }
+    result.get("tokenSaved").and_then(Value::as_bool) == Some(true)
 }
 
 /// 코드 유효기간(릴레이 5분)에 여유를 더한 시간. 릴레이가 `expired`를 알려 주지 못해도 여기서 멈춘다
@@ -908,9 +905,9 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
     let mut rows = vec![
         (t!("bot.locale"), if locale == "auto" { t!("bot.locale_auto") } else { locale.to_string() }),
         (t!("bot.prefix"), prefixes_line(r.get("prefixes").unwrap_or(&Value::Null))),
-        // 값이 없으면(옛 데몬) 켜짐
+        // 값이 없으면 켜짐
         (t!("bot.translate_commands"), on_off(Some(r.get("translateCommands").and_then(Value::as_bool) != Some(false)))),
-        // 슬래시 모양: 값이 없으면(옛 데몬) 접두어 켜짐·인스턴스 이름·모두에게 보임
+        // 슬래시 모양: 값이 없으면(원격의 0.1.11 데몬) 접두어 켜짐·인스턴스 이름·모두에게 보임
         (t!("bot.slash_prefix"), on_off(Some(r.get("slashPrefix").and_then(Value::as_bool) != Some(false)))),
         (
             t!("bot.slash_root_name"),
@@ -919,7 +916,7 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         (t!("bot.private_queries"), on_off(r.get("privateQueries").and_then(Value::as_bool))),
         (t!("bot.sleeping"), on_off(r.get("sleeping").and_then(Value::as_bool))),
     ];
-    // 코코낸내: 옛 데몬은 값이 없다
+    // 코코낸내: 원격의 0.1.11 데몬은 값이 없다
     if let Some(blocks) = r.get("sleepBlocks").and_then(Value::as_array) {
         let names: Vec<&str> = blocks.iter().filter_map(Value::as_str).collect();
         rows.push((t!("bot.sleep_blocks"), if names.is_empty() { t!("bot.sleep_blocks_none") } else { names.join(", ") }));
@@ -936,7 +933,7 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         (t!("bot.music_queue_lines"), music("queueLines").map(|v| v.to_string()).unwrap_or_default()),
         (t!("bot.music_refresh"), music("refreshInterval").map(|v| format!("{} ms", v)).unwrap_or_default()),
         (t!("bot.music_normalize"), on_off(music("normalize").and_then(Value::as_bool))),
-        // 읽어주는 사바쨩: 값이 없으면(옛 데몬) 기본값
+        // 읽어주는 사바쨩: 값이 없으면(원격의 0.1.11 데몬) 기본값
         (t!("bot.tts_volume"), format!("{}%", tts("volume", 100))),
         (t!("bot.tts_speed"), t!("bot.tts_speed_value", value = format!("{}", tts("speed", 100) as f64 / 100.0))),
         (t!("bot.tts_pitch"), t!("bot.tts_pitch_value", value = tts("pitch", 0).to_string())),
@@ -969,30 +966,21 @@ fn print_channels(r: &Value) {
             .map_or(id.to_string(), |c| format!("#{}", s(c, "name")))
     };
     let none = || output::dim(&t!("bot.channel_none"));
-    // 채널 목록 칸 — 옛 릴레이는 게임 채팅·상황판을 채널 하나(문자열)로 준다
+    // 채널 목록 칸
     let names = |key: &str| {
-        let ids: Vec<String> = match r.get(key) {
-            Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(name).collect(),
-            Some(Value::String(id)) => vec![name(id)],
-            _ => Vec::new(),
-        };
+        let ids: Vec<String> =
+            r.get(key).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(name).collect();
         if ids.is_empty() { none() } else { ids.join(", ") }
     };
     let music = r.get("music").and_then(Value::as_str).map(name);
     let notify = r.get("notify").and_then(Value::as_str).map(name);
-    let mut rows = vec![
+    let rows = vec![
         (t!("bot.chatbot_channels"), names("chatbot")),
         (t!("bot.music_channel"), music.unwrap_or_else(none)),
         (t!("bot.notify_channel"), notify.unwrap_or_else(none)),
+        (t!("bot.game_chat_channel"), names("gameChat")),
+        (t!("bot.board_channel"), names("board")),
     ];
-    // 옛 릴레이는 게임 채팅 채널을 모른다 (응답에 gameChat 없음)
-    if r.get("gameChat").is_some() {
-        rows.push((t!("bot.game_chat_channel"), names("gameChat")));
-    }
-    // 상황판을 모르는 릴레이는 응답에 board 가 없다
-    if r.get("board").is_some() {
-        rows.push((t!("bot.board_channel"), names("board")));
-    }
     output::print_kv(&rows);
     if r.get("botAvailable").and_then(Value::as_bool) == Some(false) {
         tell!("{} {}", console::style("!").yellow().bold(), t!("bot.channels_bot_missing"));
@@ -1109,7 +1097,7 @@ async fn clear(ctx: &Ctx, guild: &str, channel: &str, count: u32, member: Option
     }
     let cfg = ctx.api.bot_config().await?;
     // 권한을 먼저 본다(지우지 않는 검사): 지울 수 없으면 묻지 않고 거절을 보인다
-    checked_before_asking(ctx.api.check_clear_channel(guild, &id, body.clone(), relay_of(&cfg)).await)?;
+    ctx.api.check_clear_channel(guild, &id, body.clone(), relay_of(&cfg)).await?;
     ctx.ask.ensure(&t!("bot.confirm_clear", name = name, count = count))?;
     let r = ctx.api.clear_channel(guild, &id, body, relay_of(&cfg)).await?;
     let n = |k: &str| r.get(k).and_then(Value::as_u64).unwrap_or(0);
@@ -1119,15 +1107,6 @@ async fn clear(ctx: &Ctx, guild: &str, channel: &str, count: u32, member: Option
     }
     ctx.out.done(&msg, &r);
     Ok(())
-}
-
-/// 확인 전 권한 검사의 결과. 검사 경로가 없는 옛 릴레이(`not_found`)면 예전처럼 묻는다
-fn checked_before_asking(res: Result<Value>) -> Result<()> {
-    match res {
-        Ok(_) => Ok(()),
-        Err(e) if matches!(e.downcast_ref::<crate::error::CliError>(), Some(c) if c.code() == "not_found") => Ok(()),
-        Err(e) => Err(e),
-    }
 }
 
 async fn mute(ctx: &Ctx, guild: &str, member: &str, duration: &str, reason: Option<String>) -> Result<()> {
@@ -1306,20 +1285,6 @@ mod tests {
 
     use super::*;
 
-    /// 청소는 묻기 전에 권한을 본다: 거절이면 그 거절, 검사 경로가 없는 옛 릴레이면 묻는 데로 넘어간다
-    #[test]
-    fn clear_checks_permission_before_asking() {
-        use crate::error::CliError;
-        let api = |status: u16, code: &str| -> Result<Value> {
-            Err(CliError::Api { status, code: Some(code.into()), message: String::new(), body: json!({}) }.into())
-        };
-        assert!(checked_before_asking(Ok(json!({ "dryRun": true }))).is_ok());
-        assert!(checked_before_asking(api(404, "not_found")).is_ok());
-        let refused = checked_before_asking(api(403, "forbidden")).unwrap_err();
-        assert_eq!(refused.downcast_ref::<CliError>().map(CliError::code).as_deref(), Some("forbidden"));
-        assert!(checked_before_asking(api(404, "unknown_channel")).is_err());
-    }
-
     /// 서버 설정에 그 서버의 호출어와 명령 이름 번역이 보인다 (비면 기본 호출어, 값이 없으면 번역 켜짐)
     /// 저장 문구는 데몬이 다듬어 저장한 접두사를 보인다 (입력 원문이 아니라)
     #[test]
@@ -1342,7 +1307,7 @@ mod tests {
         let old = json!({ "locale": "ko", "music": {} });
         assert_eq!(row(&old, "bot.prefix"), Some(t!("bot.prefix_default")));
         assert_eq!(row(&old, "bot.translate_commands"), Some(t!("bot.on")));
-        // 슬래시 모양도 같은 줄에 (옛 데몬이면 기본값)
+        // 슬래시 모양도 같은 줄에 (원격의 0.1.11 데몬이면 기본값)
         assert_eq!(row(&old, "bot.slash_prefix"), Some(t!("bot.on")));
         assert_eq!(row(&old, "bot.slash_root_name"), Some(t!("bot.slash_root_name_name")));
         assert_eq!(row(&old, "bot.private_queries"), Some(t!("bot.off")));
@@ -1376,7 +1341,7 @@ mod tests {
         let off = json!({ "sleepBlocks": [], "bedtime": null, "music": {} });
         assert_eq!(row(&off, "bot.sleep_blocks"), Some(t!("bot.sleep_blocks_none")));
         assert_eq!(row(&off, "bot.bedtime"), Some(t!("bot.off")));
-        // 옛 데몬은 값이 없다 — 줄을 두지 않는다
+        // 원격의 0.1.11 데몬은 값이 없다 — 줄을 두지 않는다
         assert_eq!(row(&json!({ "music": {} }), "bot.bedtime"), None);
 
         assert_eq!(sleep_patch(Some(vec!["llm".into()]), Some("23:30-07:00".into()), false).unwrap(), json!({ "sleepBlocks": ["llm"], "bedtime": { "start": "23:30", "end": "07:00" } }));
@@ -1409,7 +1374,7 @@ mod tests {
         assert_eq!(row(&r, "bot.tts_speed"), Some(t!("bot.tts_speed_value", value = "1.25")));
         assert_eq!(row(&r, "bot.tts_pitch"), Some(t!("bot.tts_pitch_value", value = "-3")));
         assert_eq!(row(&json!({ "tts": { "names": "always" } }), "bot.tts_names"), Some(t!("bot.tts_names_always")));
-        // 옛 데몬(tts 없음)이면 기본값
+        // 원격의 0.1.11 데몬(tts 없음)이면 기본값
         assert_eq!(row(&json!({}), "bot.tts_names"), Some(t!("bot.tts_names_multi")));
         let on = json!({ "tts": { "voiceChatOnly": true, "keepRead": true, "autoChannels": ["1", "2"] } });
         assert_eq!(row(&on, "bot.tts_voice_chat_only"), Some(t!("bot.on")));
@@ -1423,7 +1388,7 @@ mod tests {
     }
 
     /// 권한 키는 봇 설정 저장으로 바뀌지 않는다(L61, 데몬 #469). 데몬이 `ignored`로 알린 키는 저장했다고 말하지 않고
-    /// 실패로 끝내 그 키와 권한 명령을 보인다. 목록이 없거나 비면(옛 데몬 포함) 저장한 것이다
+    /// 실패로 끝내 그 키와 권한 명령을 보인다. 목록이 없거나 비면 저장한 것이다
     #[test]
     fn permission_keys_the_daemon_kept_are_not_reported_as_saved() {
         crate::i18n::init("en");
@@ -1438,16 +1403,13 @@ mod tests {
         assert_eq!(doc["ignored"], json!(["nodeSettings.g1.defaultLevel", "nodeSettings.g1.members"]), "{doc}");
     }
 
-    /// 페어링 결과: 이 PC에 노드 토큰이 저장됐을 때만 연결됨 (R15). 옛 데몬은 tokenSaved 없이 nodeToken만 준다
+    /// 페어링 결과: 이 PC에 노드 토큰이 저장됐을 때만 연결됨 (R15)
     #[test]
     fn pairing_counts_only_when_the_token_was_saved_on_this_pc() {
         assert!(token_saved(&json!({ "status": "claimed", "nodeToken": "t", "tokenSaved": true })));
         assert!(!token_saved(&json!({ "status": "claimed", "nodeToken": null, "tokenSaved": false })));
         // 쓰기 실패: 토큰은 받았지만 저장하지 못했다
         assert!(!token_saved(&json!({ "status": "claimed", "nodeToken": "t", "tokenSaved": false })));
-        // 옛 데몬
-        assert!(token_saved(&json!({ "status": "claimed", "nodeToken": "t" })));
-        assert!(!token_saved(&json!({ "status": "claimed", "nodeToken": null })));
     }
 
     /// 페어링 대기는 끝이 있다 (R18): 상태 조회가 연달아 실패하거나 코드 유효기간이 지나면 멈춘다
@@ -1497,8 +1459,6 @@ mod tests {
         let cfg = json!({ "revision": "r1", "nodeSettings": { "g1": { "a": 1 }, "g2": { "a": 2 } } });
         let patch = config_patch(&cfg, vec![("nodeSettings.g1.a".into(), json!(5)), ("moduleAliases.pal".into(), Value::Null)]);
         assert_eq!(patch, json!({ "revision": "r1", "nodeSettings": { "g1": { "a": 5 } }, "moduleAliases": { "pal": null } }));
-        // 옛 데몬은 revision을 주지 않는다: 그때는 싣지 않는다
-        assert_eq!(config_patch(&json!({}), vec![("prefixes".into(), json!(["x"]))]), json!({ "prefixes": ["x"] }));
     }
 
     /// 릴레이가 이 PC를 아는지 한 줄로 (C11)

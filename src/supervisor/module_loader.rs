@@ -484,13 +484,11 @@ pub struct CommandField {
     pub name: String,
     pub label: String,
     pub description: Option<String>,
-    /// "console"(서버 콘솔 stdin) | "rest" | "module"(lifecycle.py `command()`). 예전 이름 "rcon"은
-    /// 읽을 때 "console"로, "dual"/"both"는 "module"로 본다. 해석은 `crate::commands`
+    /// "console"(서버 콘솔 stdin) | "rest" | "module"(lifecycle.py `command()`). 해석은 `crate::commands`
     pub method: Option<String>,
     pub http_method: Option<String>,  // "GET", "POST" (REST only)
     pub endpoint_template: Option<String>,  // REST endpoint template
-    /// 콘솔에 보낼 줄 (예: "kick {userid}"). 예전 이름 `rcon_template`
-    #[serde(alias = "rcon_template")]
+    /// 콘솔에 보낼 줄 (예: "kick {userid}")
     pub console_template: Option<String>,
     /// 위험도: "safe" | "caution" | "danger". 없으면 "caution"으로 본다.
     /// 모델이 추론한 명령의 확인 정책이 이 값을 쓴다 (roadmap §10)
@@ -1259,8 +1257,8 @@ struct CommandFieldToml {
     http_method: Option<String>,
     #[serde(default)]
     endpoint_template: Option<String>,
-    /// 콘솔에 보낼 줄. 예전 이름 `rcon_template`도 받는다
-    #[serde(default, alias = "rcon_template")]
+    /// 콘솔에 보낼 줄
+    #[serde(default)]
     console_template: Option<String>,
     /// "safe" | "caution" | "danger" (없으면 caution)
     #[serde(default)]
@@ -1404,7 +1402,7 @@ impl ModuleToml {
                 name: f.name.clone(),
                 label: f.label.unwrap_or(f.name),
                 description: f.description,
-                method: f.method.map(|m| if m == "rcon" { "console".to_string() } else { m }),
+                method: f.method,
                 http_method: f.http_method,
                 endpoint_template: f.endpoint_template,
                 console_template: f.console_template,
@@ -2528,8 +2526,8 @@ group = "saba-chan"
 [[commands.fields]]
 name = "players"
 label = "Player List"
-method = "rcon"
-rcon_template = "list"
+method = "console"
+console_template = "list"
 "#;
         let meta = parse_module_toml(toml).unwrap();
         assert_eq!(meta.name, "minecraft");
@@ -2545,8 +2543,8 @@ rcon_template = "list"
         let commands = meta.commands.unwrap();
         assert_eq!(commands.fields.len(), 1);
         assert_eq!(commands.fields[0].name, "players");
-        assert_eq!(commands.fields[0].console_template.as_deref(), Some("list"), "old name rcon_template still loads");
-        assert_eq!(commands.fields[0].method.as_deref(), Some("console"), "old method name rcon becomes console");
+        assert_eq!(commands.fields[0].console_template.as_deref(), Some("list"));
+        assert_eq!(commands.fields[0].method.as_deref(), Some("console"));
         let v1 = format!("{V1}\n[[commands.fields]]\nname = \"say\"\nmethod = \"console\"\nconsole_template = \"say {{message}}\"\n");
         let meta = parse_module_toml(&v1).unwrap();
         assert!(meta.warnings.is_empty(), "{:?}", meta.warnings);

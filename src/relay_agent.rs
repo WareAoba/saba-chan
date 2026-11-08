@@ -48,8 +48,6 @@ const EVENT_MIN_GAP: Duration = Duration::from_millis(200);
 const EVENT_BATCH: usize = 20;
 /// relay에 닿지 못하는 동안 들고 있는 최근 이벤트 수 (알림은 기록이 아니다)
 const EVENT_PENDING: usize = 50;
-/// relay에 `/events`가 없을 때(404) 다시 알아보기까지 쉬는 시간. 그동안의 이벤트는 버린다
-const EVENT_PROBE: Duration = Duration::from_secs(600);
 
 /// 세션 안에서 토큰 대체를 알리는 오류 표시 (밖으로 나가지 않는다)
 const REPLACED: &str = "token_replaced";
@@ -199,7 +197,6 @@ impl RelayAgent {
                 seen: agent.seen.clone(),
                 metadata_sent: Mutex::new(None),
                 linked_acks: Mutex::default(),
-                ack_supported: std::sync::atomic::AtomicBool::new(true),
             };
             if let Err(e) = session.check_version().await {
                 tracing::error!("[RelayAgent] {}", e);
@@ -395,8 +392,6 @@ struct Session {
     metadata_sent: Mutex<Option<String>>,
     /// 적용했지만 릴레이가 아직 확인 응답을 받지 못한 새로 묶인 길드의 연결 id (`linkedGuildsAckIds`)
     linked_acks: Mutex<Vec<String>>,
-    /// 릴레이가 `/ack`를 모르면(404, 예전 릴레이) 이 세션에서는 더 보내지 않는다
-    ack_supported: std::sync::atomic::AtomicBool,
 }
 
 /// 받은 명령을 처음 본 것인지, 아직 처리 중인지, 이미 끝났는지
@@ -622,7 +617,7 @@ impl Session {
         .await;
 
         // 릴레이가 지문을 되돌려 주면 받아 둔 것이다: 다음 하트비트는 그대로면 바뀌는 부분만 보낸다.
-        // 되돌려 주지 않으면(실패, 다시 달라고 함, 지문을 모르는 옛 릴레이) 다음에도 전체를 보낸다
+        // 되돌려 주지 않으면(실패, 다시 달라고 함) 다음에도 전체를 보낸다
         let need_full = result.as_ref().is_ok_and(|data| data.get("needMetadata").and_then(Value::as_bool) == Some(true));
         let kept = result.as_ref().is_ok_and(|data| data.get("metadataHash").and_then(Value::as_str) == Some(hash.as_str()));
         *self.metadata_sent.lock().unwrap_or_else(|e| e.into_inner()) = kept.then_some(hash);
@@ -639,7 +634,7 @@ impl Session {
                     s.last_error = None;
                     s.last_error_code = None;
                     s.min_version = None;
-                    // 옛 릴레이·사설 주소면 없다
+                    // 사설 주소면 없다
                     seen_changed = s.seen_address != seen;
                     s.seen_address = seen;
                 });
@@ -1096,8 +1091,7 @@ impl Session {
         }
     }
 
-    /// 데몬 이벤트 중 알림 채널에 띄울 것(`relay_event`)을 모아 `POST /events`로 올린다.
-    /// relay가 404면(아직 그 경로가 없음) `EVENT_PROBE` 동안 올리지 않는다
+    /// 데몬 이벤트 중 알림 채널에 띄울 것(`relay_event`)을 모아 `POST /events`로 올린다
     async fn events_loop(&self) {
         use tokio::sync::broadcast::error::{RecvError, TryRecvError};
         let mut rx = crate::events::bus().subscribe(None).rx;
@@ -1153,16 +1147,6 @@ impl Session {
                 r = sent => r,
             };
             match resp {
-                // relay에 경로가 아직 없다: 잠시 쉬었다가 그 뒤 이벤트로 다시 알아본다 (relay가 나중에 배포될 수 있다)
-                Ok(r) if r.status().as_u16() == 404 => {
-                    tracing::info!("[RelayAgent] relay has no /events yet — retrying in {}s", EVENT_PROBE.as_secs());
-                    pending.clear();
-                    self.pause(EVENT_PROBE).await;
-                    if self.cancel.is_cancelled() {
-                        return;
-                    }
-                    rx = rx.resubscribe();
-                }
                 // 4xx는 다시 보내도 같다: 그 묶음을 버린다 (429는 relay의 노드당 한도라 아래에서 쉬었다 다시 보낸다)
                 Ok(r) if r.status().is_success() || (r.status().is_client_error() && r.status().as_u16() != 429) => {
                     if !r.status().is_success() {
@@ -1189,16 +1173,8 @@ impl Session {
 
     /// 받은 명령을 알린다(`POST /ack`). 릴레이는 ack한 호스트에만 답 없는 명령을 다시 보낸다
     async fn post_ack(&self, body: String) {
-        use std::sync::atomic::Ordering;
-        if !self.ack_supported.load(Ordering::Relaxed) {
-            return;
-        }
         match self.send_signed(reqwest::Method::POST, "/ack", Some(body)).await {
             Ok(r) if r.status().is_success() => {}
-            Ok(r) if r.status().as_u16() == 404 => {
-                tracing::info!("[RelayAgent] relay has no /ack; not acking in this session");
-                self.ack_supported.store(false, Ordering::Relaxed);
-            }
             Ok(r) => tracing::warn!("[RelayAgent] ack rejected: {}", r.status()),
             Err(e) => tracing::warn!("[RelayAgent] ack failed: {}", e),
         }
@@ -1981,7 +1957,6 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
-            ack_supported: std::sync::atomic::AtomicBool::new(true),
         };
         let reset = || agent.update(1, |s| *s = AgentStatus { running: true, ..Default::default() });
         let reported = |what: &str| {
@@ -2042,7 +2017,6 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
-            ack_supported: std::sync::atomic::AtomicBool::new(true),
         };
         session.post_result("c1", &json!({ "success": true })).await;
         assert_eq!(CALLS.swap(0, Ordering::SeqCst), 3, "two 503s, then taken");
@@ -2117,7 +2091,6 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
-            ack_supported: std::sync::atomic::AtomicBool::new(true),
         }
     }
 

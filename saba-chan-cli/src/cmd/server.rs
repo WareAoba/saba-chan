@@ -602,7 +602,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         body["extension_data"] = Value::Object(ext_data);
     }
     // 6-1) 다른 서버와 겹치는지 (GUI 마법사의 확인 단계): 이름·폴더는 막고 포트는 알린다.
-    // 확인하지 못하면(옛 데몬 등) 그대로 만든다: 만들기가 이름·폴더를 다시 본다
+    // 확인하지 못하면 그대로 만든다: 만들기가 이름·폴더를 다시 본다
     if let Ok(check) = ctx.api.check_instance(body.clone()).await {
         let (blockers, warnings) = check_problems(&check);
         for w in &warnings {
@@ -1925,15 +1925,11 @@ async fn set(ctx: &Ctx, query: &str, pairs: &[String]) -> Result<()> {
     if !ignored.is_empty() {
         ctx.out.warn(&t!("set.ignored", keys = ignored.join(", ")));
     }
-    // 다시 켜야 적용되는 설정은 데몬이 알려 준다 (06 §8.2). 모르는 옛 데몬이면 켜져 있을 때 늘 안내한다
+    // 다시 켜야 적용되는 설정은 데몬이 알려 준다 (06 §8.2)
     let needs_restart = restart_required(&r);
     if !needs_restart.is_empty() {
         ctx.out
             .warn(&t!("set.restart_required", keys = needs_restart.join(", ")));
-        ctx.out.hint(&t!("set.restart_hint", name = shell_word(&sv.name)));
-    } else if r.get("restart_required").is_none()
-        && status_of(&runtime(ctx, &sv).await.unwrap_or(Value::Null)) == "running"
-    {
         ctx.out.hint(&t!("set.restart_hint", name = shell_word(&sv.name)));
     }
     match sync_error {

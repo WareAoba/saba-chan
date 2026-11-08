@@ -156,10 +156,10 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `name` | String ✔ | |
 | `label` | String | 없으면 `name` |
 | `description` | String | |
-| `method` | String | `console`(템플릿을 채워 콘솔 stdin으로. 예전 이름 `rcon`은 읽을 때 `console`로 바뀐다, `D:src/supervisor/module_loader.rs:1067`) / `rest` / `module`(lifecycle `command()`, 예전 이름 `dual`·`both`도 받음) / 생략(=`module`). 해석은 데몬 `crate::commands`가 한다 (`D:src/commands/mod.rs:167-191`) |
+| `method` | String | `console`(템플릿을 채워 콘솔 stdin으로) / `rest` / `module`(lifecycle `command()`) / 생략(=`module`). 그 밖의 값(옛 이름 `rcon`·`dual`·`both` 포함)은 400 `unsupported_method`다. 해석은 데몬 `crate::commands`가 한다 (`D:src/commands/mod.rs:167-191`) |
 | `http_method` | String | REST 전용. 기본 `GET` |
 | `endpoint_template` | String | REST 전용. 없으면 `/<name>` |
-| `console_template` | String | 예: `"kick {player}"`. 예전 이름 `rcon_template`도 별칭으로 읽는다 (`D:src/supervisor/module_loader.rs:362-363, 941`). 인자에 `\r`·`\n`·NUL이 있으면 400 `invalid_argument`로 거부하고, stdin 전송(`ManagedProcess::send_command`)도 여러 줄 명령을 거부한다. 값 하나가 콘솔 명령 두 줄이 되지 않게 한다. 값은 자기 자리만 채운다(`commands::console_place_problem`): 뒤에 템플릿 글자가 더 있는 자리의 값은 공백이 있으면 400 `invalid_argument`(`must be one word`), 따옴표로 감싼 자리(`"{player}"`)는 공백을 받되 따옴표가 있으면 400(`must not contain quotes`). 마지막 자리는 남은 말을 모두 받는다. 템플릿은 한 번만 채운다(`commands::render_template`): 값 안의 `{key}`는 다시 채우지 않는다. 중간 자리에 여러 단어가 필요하면 템플릿에서 따옴표로 감싼다 |
+| `console_template` | String | 예: `"kick {player}"`. 인자에 `\r`·`\n`·NUL이 있으면 400 `invalid_argument`로 거부하고, stdin 전송(`ManagedProcess::send_command`)도 여러 줄 명령을 거부한다. 값 하나가 콘솔 명령 두 줄이 되지 않게 한다. 값은 자기 자리만 채운다(`commands::console_place_problem`): 뒤에 템플릿 글자가 더 있는 자리의 값은 공백이 있으면 400 `invalid_argument`(`must be one word`), 따옴표로 감싼 자리(`"{player}"`)는 공백을 받되 따옴표가 있으면 400(`must not contain quotes`). 마지막 자리는 남은 말을 모두 받는다. 템플릿은 한 번만 채운다(`commands::render_template`): 값 안의 `{key}`는 다시 채우지 않는다. 중간 자리에 여러 단어가 필요하면 템플릿에서 따옴표로 감싼다 |
 | `risk` | String | `safe` / `caution` / `danger`, 없으면 caution |
 | `inputs` | Vec<CommandInput> | |
 | `remote` | bool | 기본 true. false면 heartbeat 명령 목록에 싣지 않고 디스코드·챗봇 채팅 명령에서 없는 명령(`UNKNOWN_COMMAND`)이다. 데몬 기능이 같은 일을 하는 명령용(접속자 목록은 채팅 `players`) |
@@ -719,7 +719,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 1. ~~`[module].entry`가 쓰이지 않는다~~ 해결됨: 데몬이 `entry_path()`로 쓰고 로드 때 파일 존재를 확인한다 (§1.1).
 2. ~~command `inputs`의 `options`, `min`, `max`가 버려진다~~ → 해결: `CommandInputToml`·`CommandInput`이 받고 데몬이 입력 검사에 쓴다 (`module_loader.rs:373-390, 953-972`).
 3. ~~`[detection.linux]`, `install.beta_branch`, `detection.common_paths`, `config.*` 추가 키, `[errors]`, `game_name`, `display_name`이 무시된다~~ → 해결: schema v1이 모르는 키를 로드 오류로 내고, 모듈에서 그 키들이 지워졌다. `[errors]`·`game_name`·`display_name`은 메타데이터에 실린다 (`module_loader.rs:1193-1246`).
-4. ~~`CommandField.method` 주석은 `both`인데 인터페이스 분기는 `dual`이다~~ → 해결: 데몬 `crate::commands`가 `console`/`rest`/`module`(`rcon`·`dual`·`both` 별칭)을 해석하고 인터페이스는 분기하지 않는다 (`D:src/commands/mod.rs:167-191`).
+4. ~~`CommandField.method` 주석은 `both`인데 인터페이스 분기는 `dual`이다~~ → 해결: 데몬 `crate::commands`가 `console`/`rest`/`module`을 해석하고 인터페이스는 분기하지 않는다 (`D:src/commands/mod.rs:167-191`).
 5. ~~`/api/modules` 응답에 `game_name`과 `display_name`이 없다~~ → 해결: `ExtensionInfo`에 둘 다 있다 (`D:src/ipc/mod.rs:246-249`).
 6. ~~ZIP 로딩에서 `ends_with("module.toml")`로 첫 엔트리를 고른다~~ → 해결: 이름이 정확히 `module.toml`인 가장 얕은 엔트리를 고른다 (`module_loader.rs:1559-1570`). `.extracted` 재추출 문제와, locales·설치 경로가 `<modules>/<name>`을 가정하는 문제는 남았다 (§1.1, §4.6).
 

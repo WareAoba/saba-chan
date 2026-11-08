@@ -982,7 +982,7 @@ pub async fn install_server_handler(
             let mut keep = true;
             let progress = match finish(install.await) {
                 Ok(r) if r.get("success").and_then(Value::as_bool) == Some(true) => {
-                    // 모듈이 붙인 주의 한 줄 (`java_warning`은 예전 이름)
+                    // 모듈이 붙인 주의 한 줄 (`java_warning`은 마인크래프트 모듈이 버전 설치에 쓴다)
                     let warning = ["warning", "java_warning"].iter().find_map(|k| r.get(*k).and_then(Value::as_str)).filter(|w| !w.is_empty());
                     keep = warning.is_some();
                     let message = match warning {
