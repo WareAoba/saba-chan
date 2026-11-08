@@ -3329,13 +3329,20 @@
 .remote-pc-add {
     display: flex;
 }
+/* 내 PC 목록은 줄마다 같은 높이: 리눅스에 설치 칸도 PC 카드와 같은 크기 */
+.remote-pc-cards-even {
+    grid-auto-rows: 1fr;
+}
 .remote-pc-add .btn {
     flex: 1;
-    min-height: 120px;
-    border: 1px dashed var(--line-strong);
+    flex-direction: column;
+    gap: var(--sp-1);
+    height: 100%;
+    border: 2px dashed var(--line-strong);
     border-radius: var(--r-md);
     background: var(--inset);
     box-shadow: none;
+    color: var(--text-muted);
 }
 /* AI 에이전트 카드: 머리를 누르면 끊기 버튼이 나온다 */
 .agent-card-head {
