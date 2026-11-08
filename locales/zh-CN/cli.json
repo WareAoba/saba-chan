@@ -503,7 +503,8 @@
       "move_failed": "无法移动文件夹。请改用“保留在原位置”导入。",
       "port_check_busy": "已经在检查中，请稍后再试",
       "net_trace_elevation_failed": "未在守护进程电脑上获得管理员确认。请在那台电脑前重试。",
-      "net_trace_failed": "无法更改权限。"
+      "net_trace_failed": "无法更改权限。",
+      "sandbox_allow": "如需不隔离运行，请先同意：saba-chan-cli sandbox allow {{component}}"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",
@@ -809,7 +810,10 @@
     "int_missing": "文件缺失",
     "int_changed": "已更改",
     "int_error": "无法读取",
-    "not_checked": "暂无更新信息。立即检查：saba-chan-cli update check"
+    "not_checked": "暂无更新信息。立即检查：saba-chan-cli update check",
+    "reinstall_official": "重新获取官方版本",
+    "name_module": "{{name}} 模块",
+    "name_extension": "{{name}} 扩展"
   },
   "validate": {
     "blocked": "修复这些问题之前服务器无法启动。",

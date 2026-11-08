@@ -503,7 +503,8 @@
       "move_failed": "無法移動資料夾。請改用「保留在原位置」匯入。",
       "port_check_busy": "已經在檢查中，請稍後再試",
       "net_trace_elevation_failed": "未在常駐程式電腦上取得系統管理員確認。請在那台電腦前再試一次。",
-      "net_trace_failed": "無法變更權限。"
+      "net_trace_failed": "無法變更權限。",
+      "sandbox_allow": "如需不隔離執行，請先同意：saba-chan-cli sandbox allow {{component}}"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
@@ -809,7 +810,10 @@
     "int_missing": "檔案遺失",
     "int_changed": "已變更",
     "int_error": "無法讀取",
-    "not_checked": "尚無更新資訊。立即檢查：saba-chan-cli update check"
+    "not_checked": "尚無更新資訊。立即檢查：saba-chan-cli update check",
+    "reinstall_official": "重新取得官方版本",
+    "name_module": "{{name}} 模組",
+    "name_extension": "{{name}} 擴充功能"
   },
   "validate": {
     "blocked": "修正這些問題之前伺服器無法啟動。",

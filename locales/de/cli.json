@@ -503,7 +503,8 @@
       "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
       "port_check_busy": "Es läuft bereits eine Prüfung. Versuch es gleich noch einmal",
       "net_trace_elevation_failed": "Keine Administratorbestätigung auf dem Daemon-PC erhalten. Versuche es direkt an diesem PC erneut.",
-      "net_trace_failed": "Berechtigung konnte nicht geändert werden."
+      "net_trace_failed": "Berechtigung konnte nicht geändert werden.",
+      "sandbox_allow": "Um es ohne Isolation auszuführen, stimme zu: saba-chan-cli sandbox allow {{component}}"
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
@@ -809,7 +810,10 @@
     "int_missing": "Datei fehlt",
     "int_changed": "geändert",
     "int_error": "unlesbar",
-    "not_checked": "Noch keine Update-Informationen. Jetzt prüfen: saba-chan-cli update check"
+    "not_checked": "Noch keine Update-Informationen. Jetzt prüfen: saba-chan-cli update check",
+    "reinstall_official": "Offizielle Version neu laden",
+    "name_module": "Modul {{name}}",
+    "name_extension": "Erweiterung {{name}}"
   },
   "validate": {
     "blocked": "Der Server kann erst starten, wenn diese Punkte behoben sind.",

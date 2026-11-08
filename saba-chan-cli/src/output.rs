@@ -162,15 +162,19 @@ impl Out {
             emit(err.to_json());
             return;
         }
-        tell!("{} {}", style("✗").red().bold(), err);
+        tell!("{} {}", style("✗").red().bold(), err.headline());
         if let crate::error::CliError::Api { body, .. } = err {
             for line in validation_lines(body) {
                 tell!("  {}", line);
             }
-            if let (Some(module), Some(function)) = (body.get("module").and_then(Value::as_str), body.get("function").and_then(Value::as_str)) {
-                tell!("  {}.{}", module, function);
+            // 모듈 함수 이름은 모듈이 남긴 오류 출력이 있을 때만 그 출처로 보인다
+            let tail: Vec<&str> = body.get("stderr_tail").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+            if !tail.is_empty()
+                && let (Some(module), Some(function)) = (body.get("module").and_then(Value::as_str), body.get("function").and_then(Value::as_str))
+            {
+                tell!("  {}", style(format!("{module}.{function}")).dim());
             }
-            for line in body.get("stderr_tail").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
+            for line in tail {
                 tell!("  {}", line);
             }
         }

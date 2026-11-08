@@ -503,7 +503,8 @@
       "move_failed": "フォルダーを移せませんでした。「今の場所のまま」で取り込んでください。",
       "port_check_busy": "すでに確認中です。しばらくしてからもう一度お試しください",
       "net_trace_elevation_failed": "デーモンPCで管理者の確認を得られませんでした。そのPCの前でもう一度お試しください。",
-      "net_trace_failed": "権限を変更できませんでした。"
+      "net_trace_failed": "権限を変更できませんでした。",
+      "sandbox_allow": "分離せずに実行するには同意してください: saba-chan-cli sandbox allow {{component}}"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -809,7 +810,10 @@
     "int_missing": "ファイルなし",
     "int_changed": "変更あり",
     "int_error": "読み取り不可",
-    "not_checked": "アップデート情報はまだありません。今すぐ確認: saba-chan-cli update check"
+    "not_checked": "アップデート情報はまだありません。今すぐ確認: saba-chan-cli update check",
+    "reinstall_official": "公式版を再取得",
+    "name_module": "{{name}} モジュール",
+    "name_extension": "{{name}} 拡張機能"
   },
   "validate": {
     "blocked": "これらを修正するまでサーバーを起動できません。",

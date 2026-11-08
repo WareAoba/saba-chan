@@ -503,7 +503,8 @@
       "move_failed": "폴더를 옮기지 못했어요. '그 자리에 연결'로 가져와 주세요.",
       "port_check_busy": "이미 확인 중이에요. 잠시 뒤 다시 하세요",
       "net_trace_elevation_failed": "데몬 PC에서 관리자 확인을 받지 못했어요. 그 PC 앞에서 다시 시도하세요.",
-      "net_trace_failed": "권한을 바꾸지 못했어요."
+      "net_trace_failed": "권한을 바꾸지 못했어요.",
+      "sandbox_allow": "격리 없이 돌리려면 동의해 주세요: saba-chan-cli sandbox allow {{component}}"
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",
@@ -809,7 +810,10 @@
     "int_missing": "파일 없음",
     "int_changed": "바뀜",
     "int_error": "읽기 실패",
-    "not_checked": "아직 업데이트 정보가 없어요. 지금 확인: saba-chan-cli update check"
+    "not_checked": "아직 업데이트 정보가 없어요. 지금 확인: saba-chan-cli update check",
+    "reinstall_official": "공식 판으로 다시 받기",
+    "name_module": "{{name}} 모듈",
+    "name_extension": "{{name}} 익스텐션"
   },
   "validate": {
     "blocked": "이 문제를 고쳐야 서버를 켤 수 있어요.",

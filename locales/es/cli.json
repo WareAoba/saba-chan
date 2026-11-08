@@ -503,7 +503,8 @@
       "move_failed": "No se pudo mover la carpeta. Impórtala con «Dejarla donde está».",
       "port_check_busy": "Ya hay una comprobación en curso. Inténtalo de nuevo en un momento",
       "net_trace_elevation_failed": "No se obtuvo la confirmación de administrador en el PC del daemon. Inténtalo de nuevo frente a ese PC.",
-      "net_trace_failed": "No se pudo cambiar el permiso."
+      "net_trace_failed": "No se pudo cambiar el permiso.",
+      "sandbox_allow": "Para ejecutarlo sin aislamiento, da tu consentimiento: saba-chan-cli sandbox allow {{component}}"
     },
     "not_a_bool": "«{{value}}» no es sí/no (usa true o false).",
     "not_a_number": "«{{value}}» no es un número.",
@@ -809,7 +810,10 @@
     "int_missing": "falta el archivo",
     "int_changed": "modificado",
     "int_error": "ilegible",
-    "not_checked": "Aún no hay información de actualizaciones. Comprueba ahora: saba-chan-cli update check"
+    "not_checked": "Aún no hay información de actualizaciones. Comprueba ahora: saba-chan-cli update check",
+    "reinstall_official": "Reinstalar versión oficial",
+    "name_module": "Módulo {{name}}",
+    "name_extension": "Extensión {{name}}"
   },
   "validate": {
     "blocked": "El servidor no puede iniciarse hasta que se corrijan estos puntos.",

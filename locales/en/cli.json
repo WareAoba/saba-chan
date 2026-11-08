@@ -503,7 +503,8 @@
       "move_failed": "The folder could not be moved. Import it with \"Keep it where it is\" instead.",
       "port_check_busy": "A check is already running. Try again in a moment",
       "net_trace_elevation_failed": "Couldn't get administrator confirmation on the daemon PC. Try again in front of that PC.",
-      "net_trace_failed": "Couldn't change the permission."
+      "net_trace_failed": "Couldn't change the permission.",
+      "sandbox_allow": "To run it without isolation, give consent: saba-chan-cli sandbox allow {{component}}"
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -809,7 +810,10 @@
     "int_missing": "file missing",
     "int_changed": "changed",
     "int_error": "unreadable",
-    "not_checked": "No update information yet. Check now: saba-chan-cli update check"
+    "not_checked": "No update information yet. Check now: saba-chan-cli update check",
+    "reinstall_official": "Reinstall official build",
+    "name_module": "{{name}} module",
+    "name_extension": "{{name}} extension"
   },
   "validate": {
     "blocked": "The server can't start until these are fixed.",
