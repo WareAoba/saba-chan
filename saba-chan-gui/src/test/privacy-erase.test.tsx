@@ -6,10 +6,8 @@ describe('개인정보 모두 지우기', () => {
     beforeEach(() => {
         vi.useFakeTimers();
         window.showToast = vi.fn();
-        window.electron = {
-            shell: { openExternal: vi.fn().mockResolvedValue(undefined) },
-        } as unknown as typeof window.electron;
         window.api = {
+            shellOpenExternal: vi.fn().mockResolvedValue(undefined),
             relayPrivacyErase: vi.fn().mockResolvedValue({ url: 'https://saba-chan.online/legal/erase#e.s' }),
             relayPrivacyEraseStatus: vi
                 .fn()
@@ -24,7 +22,7 @@ describe('개인정보 모두 지우기', () => {
         render(<PrivacyErase onErased={onErased} />);
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Erase all my data/i })));
         expect(window.api.relayPrivacyErase).toHaveBeenCalledWith('en');
-        expect(window.electron.shell.openExternal).toHaveBeenCalledWith('https://saba-chan.online/legal/erase#e.s');
+        expect(window.api.shellOpenExternal).toHaveBeenCalledWith('https://saba-chan.online/legal/erase#e.s');
         expect(screen.getByText(/Waiting for your consent/i)).toBeInTheDocument();
         await act(async () => vi.advanceTimersByTimeAsync(3000));
         expect(onErased).not.toHaveBeenCalled();
@@ -61,7 +59,7 @@ describe('개인정보 모두 지우기', () => {
         window.api.relayPrivacyErase = vi.fn().mockResolvedValue({ error: 'Relay connection failed' });
         render(<PrivacyErase onErased={vi.fn()} />);
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Erase all my data/i })));
-        expect(window.electron.shell.openExternal).not.toHaveBeenCalled();
+        expect(window.api.shellOpenExternal).not.toHaveBeenCalled();
         expect(window.showToast).toHaveBeenCalled();
         expect(window.api.relayPrivacyEraseStatus).not.toHaveBeenCalled();
     });

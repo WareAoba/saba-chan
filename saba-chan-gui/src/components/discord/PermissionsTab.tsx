@@ -16,11 +16,9 @@ import { LadderTab } from './LadderTab';
 import * as L from './levels';
 import { usePointerDrag } from './pointerDrag';
 import type { DiscordMember, DiscordNode } from './types';
+import { failed } from '../../utils/apiResult';
 
 export const OWNER_CONFIRM_MS = 5000;
-
-const failed = (res: ApiBody | null | undefined) =>
-    !res || res.success === false || Boolean(res.error || res.error_code);
 
 export function permissionsErrorText(res: ApiBody | null | undefined, t: TFunction) {
     switch (res?.error_code || res?.code) {

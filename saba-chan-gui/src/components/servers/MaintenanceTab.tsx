@@ -31,6 +31,7 @@ import { DateField, TimeField } from '../ui/DateTimePicker';
 import { SabaFail } from '../ui/SabaArt';
 import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
+import { failed } from '../../utils/apiResult';
 
 /** 백업 목록 한 줄 (GET /api/instance/:id/backups) */
 interface Backup {
@@ -93,10 +94,6 @@ const CODE_TEXT: Record<string, string> = {
     server_running: 'maintenance.restore_stop_first',
 };
 
-// 원격 중계 실패는 success 없이 {error, error_code}만 준다 (웹 ui.tsx failed()와 같은 판정)
-const failed = (res: ApiBody | null | undefined) =>
-    !res || typeof res !== 'object' || !!res.error || res.success === false || res.ok === false;
-
 const errorText = (res: ApiBody | null | undefined, fallback: string, t: TFunction) => {
     const details = Array.isArray(res?.details) ? res.details.filter(Boolean) : [];
     const known = CODE_TEXT[res?.error_code as string];
@@ -118,7 +115,7 @@ export function MaintenanceTab({ server, moduleCommands = [] }: { server: Server
         setLoadError(null);
         try {
             const res = await window.api.instanceScheduleGet(server.id);
-            if (res?.success === false) throw new Error(errorText(res, t('maintenance.load_failed'), t));
+            if (failed(res)) throw new Error(errorText(res, t('maintenance.load_failed'), t));
             setInfo({
                 schedule: Array.isArray(res?.schedule) ? res.schedule : [],
                 backupKeep: res?.backup_keep ?? 10,

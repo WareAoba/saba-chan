@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
+import { failed } from '../../utils/apiResult';
 
 export const folderPathsAvailable = () =>
     typeof window.api?.systemPaths === 'function' && typeof window.api?.systemPathsMove === 'function';
@@ -28,8 +29,6 @@ const MOVE_ERRORS = [
     'commit_failed',
     'acl_failed',
 ];
-
-const failed = (res: ApiBody | null | undefined) => !res || res.ok === false || res.success === false;
 
 /** 옮기기 실패 → 한 줄 (아는 코드는 번역, 나머지는 데몬 문구) */
 export function folderPathsErrorText(res: ApiBody | null | undefined, t: TFunction) {

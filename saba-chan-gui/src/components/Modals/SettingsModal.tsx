@@ -3,7 +3,6 @@ import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEf
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { useDevMode } from '../../hooks/useDevMode';
-import { useModalClose } from '../../hooks/useModalClose';
 import { DiagnosticsPanel, diagnosticsAvailable } from '../DiagnosticsPanel';
 import { useSettingsStore, DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
 import type { ModalConfig, ProgressBarConfig } from '../../stores/useUIStore';
@@ -83,14 +82,6 @@ function tokenDefaultColor(token: string) {
 }
 
 interface SettingsModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    refreshInterval: number;
-    onRefreshIntervalChange?: (value: number) => void;
-    ipcPort: number;
-    onIpcPortChange?: (port: number) => void;
-    consoleBufferSize: number;
-    onConsoleBufferSizeChange?: (value: number) => void;
     onTestModal?: (modal: ModalConfig | null) => void;
     onTestProgressBar?: (config: ProgressBarConfig | null) => void;
     onTestWaitingImage?: () => void;
@@ -98,18 +89,10 @@ interface SettingsModalProps {
     initialView?: string | null;
     discordCloudRelayUrl?: string;
     onDiscordCloudRelayUrlChange?: (value: string) => void;
-    variant?: 'modal' | 'page';
 }
 
+/** 설정 화면 (앱의 설정 페이지) */
 function SettingsModal({
-    isOpen,
-    onClose,
-    refreshInterval,
-    onRefreshIntervalChange,
-    ipcPort,
-    onIpcPortChange,
-    consoleBufferSize,
-    onConsoleBufferSizeChange,
     onTestModal,
     onTestProgressBar,
     onTestWaitingImage,
@@ -117,29 +100,30 @@ function SettingsModal({
     initialView,
     discordCloudRelayUrl,
     onDiscordCloudRelayUrlChange,
-    variant = 'modal',
 }: SettingsModalProps) {
     const { t, i18n } = useTranslation(['gui', 'common']);
     const daemonTarget = useDaemonTarget();
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     // 사바 스토리지를 열 때 처음 보일 탭 (설정을 '익스텐션'으로 열면 익스텐션 탭)
     const [storageTab, setStorageTab] = useState('components');
-    const [localRefreshInterval, setLocalRefreshInterval] = useState(refreshInterval);
     const [selectedLanguage, setSelectedLanguage] = useState(i18n.language);
     const [selectedTheme, setSelectedTheme] = useState(getTheme());
     const [customTheme, setCustomThemeState] = useState(getCustomTheme());
     const [slideDirection, setSlideDirection] = useState('');
     const [guiTestOpen, setGuiTestOpen] = useState(false);
-    const [localIpcPort, setLocalIpcPort] = useState<number | string>(ipcPort || DEFAULT_IPC_PORT);
-    const [ipcPortChanged, setIpcPortChanged] = useState(false);
+    const refreshInterval = useSettingsStore((s) => s.refreshInterval);
+    const ipcPort = useSettingsStore((s) => s.ipcPort) || DEFAULT_IPC_PORT;
+    const consoleBufferSize = useSettingsStore((s) => s.consoleBufferSize) || 2000;
+    // 지금 데몬이 쓰는 포트(화면을 열 때 값). 바꾸면 다시 시작해야 적용된다
+    const [runningIpcPort] = useState(ipcPort);
+    // 받을 수 없는 포트를 쓰는 중이면 그 글자 (저장하지 않는다)
+    const [ipcPortDraft, setIpcPortDraft] = useState<string | null>(null);
     const [ipcPortError, setIpcPortError] = useState('');
-    const [localConsoleBuffer, setLocalConsoleBuffer] = useState(consoleBufferSize || 2000);
     // 받기 전에는 모른다: 지어낸 버전을 보이지 않는다
     const [appVersion, setAppVersion] = useState<string | null>(null);
     const [componentInfo, setComponentInfo] = useState<ApiBody | null>(null);
     // 이스터에그: 정보 페이지 로고를 다섯 번 누르면 이름 해명
     const logoClicks = useRef(0);
-    const { isClosing, requestClose } = useModalClose(onClose);
 
     const devMode = useDevMode();
     const autoGeneratePasswords = useSettingsStore((s) => s.autoGeneratePasswords);
@@ -164,25 +148,23 @@ function SettingsModal({
 
     // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입 (설정 탭 이름이면 그 탭: 화면 주소 settings/<탭>)
     useEffect(() => {
-        if (isOpen && (initialView === 'update' || initialView === 'extensions')) {
+        if (initialView === 'update' || initialView === 'extensions') {
             setStorageTab(initialView === 'extensions' ? 'extensions' : 'components');
             setActiveTab('sabaStorage');
-        } else if (isOpen && (TABS as readonly string[]).includes(initialView ?? '')) {
+        } else if ((TABS as readonly string[]).includes(initialView ?? '')) {
             setActiveTab(initialView as SettingsTab);
         }
-    }, [isOpen, initialView]);
+    }, [initialView]);
 
     // 앱 버전 & 컴포넌트 정보 가져오기
     useEffect(() => {
-        if (isOpen) {
-            if (window.api?.getAppVersion) {
-                window.api.getAppVersion().then((v) => typeof v === 'string' && setAppVersion(v)).catch(() => {});
-            }
-            if (window.api?.getComponentInfo) {
-                window.api.getComponentInfo().then((info) => info && setComponentInfo(info)).catch(() => {});
-            }
+        if (window.api?.getAppVersion) {
+            window.api.getAppVersion().then((v) => typeof v === 'string' && setAppVersion(v)).catch(() => {});
         }
-    }, [isOpen]);
+        if (window.api?.getComponentInfo) {
+            window.api.getComponentInfo().then((info) => info && setComponentInfo(info)).catch(() => {});
+        }
+    }, []);
 
     // 탭 전환 핸들러
     const handleTabChange = (newTab: SettingsTab) => {
@@ -228,47 +210,22 @@ function SettingsModal({
         }
     }, [t, onTestModal]);
 
-    // refreshInterval prop이 변경되면 로컬 상태 업데이트
-    useEffect(() => {
-        setLocalRefreshInterval(refreshInterval);
-    }, [refreshInterval]);
-
-    // ipcPort prop 동기화
-    useEffect(() => {
-        setLocalIpcPort(ipcPort || DEFAULT_IPC_PORT);
-        setIpcPortChanged(false);
-        setIpcPortError('');
-    }, [ipcPort]);
-
-    // consoleBufferSize prop 동기화
-    useEffect(() => {
-        setLocalConsoleBuffer(consoleBufferSize || 2000);
-    }, [consoleBufferSize]);
-
     // 현재 언어 동기화
     useEffect(() => {
         setSelectedLanguage(i18n.language);
     }, [i18n.language]);
 
-    // 리프레시 주기 변경 핸들러
-    const handleRefreshIntervalChange = (value: number) => {
-        setLocalRefreshInterval(value);
-        if (onRefreshIntervalChange) {
-            onRefreshIntervalChange(value);
-        }
-    };
-
     // 언어 변경 핸들러
     const handleLanguageChange = async (lng: string) => {
         setSelectedLanguage(lng);
         // 1. config.json의 gui에 먼저 확실히 저장 (데몬과 공유하는 원천)
-        if (window.electron) {
+        if (window.api?.languageSet) {
             // 저장하지 못하면 알린다: 화면은 바뀌어도 다음 실행에 옛 언어로 돌아간다 (G-U6)
             try {
-                const res = await window.electron.setLanguage(lng);
+                const res = await window.api.languageSet(lng);
                 if (res?.success === false) safeShowToast(t('gui:settings.save_error'), 'error');
             } catch (err) {
-                console.error('Failed to save language to Electron settings:', err);
+                console.error('Failed to save language to settings:', err);
                 safeShowToast(t('gui:settings.save_error'), 'error');
             }
         }
@@ -317,44 +274,29 @@ function SettingsModal({
         void applyWindowBackdrop(WINDOW_BACKDROP_DEFAULTS);
     };
 
-    // IPC 포트 변경 핸들러
+    // IPC 포트: 받을 수 있는 값만 저장한다
     const handleIpcPortChange = (value: string) => {
         const port = parseInt(value, 10);
-        setLocalIpcPort(value);
         if (Number.isNaN(port) || port < 1024 || port > 65535) {
+            setIpcPortDraft(value);
             setIpcPortError(t('gui:settings_modal.ipc_port_invalid'));
             return;
         }
+        setIpcPortDraft(null);
         setIpcPortError('');
-        setIpcPortChanged(port !== (ipcPort || DEFAULT_IPC_PORT));
-        if (onIpcPortChange) {
-            onIpcPortChange(port);
-        }
+        setOption({ ipcPort: port });
     };
-
-    // 콘솔 버퍼 크기 변경 핸들러
-    const handleConsoleBufferChange = (value: number) => {
-        setLocalConsoleBuffer(value);
-        if (onConsoleBufferSizeChange) {
-            onConsoleBufferSizeChange(value);
-        }
-    };
-
-    if (!isOpen) {
-        return null;
-    }
-
-    const isPage = variant === 'page';
+    const ipcPortChanged = ipcPortDraft === null && ipcPort !== runningIpcPort;
 
     const header = (
         <div className="settings-modal-header">
             <h2 style={{ fontSize: '1.3rem' }}>{t('gui:settings_modal.title')}</h2>
         </div>
     );
-    // 페이지에서는 서버·디스코드·작업 기록 화면의 왼쪽 목록과 같은 줄 모양을 쓴다
+    // 서버·디스코드·작업 기록 화면의 왼쪽 목록과 같은 줄 모양을 쓴다
     const tabList = (
         <div
-            className={isPage ? 'server-list dc-nav-list' : 'settings-modal-tabs'}
+            className="server-list dc-nav-list"
             role="tablist"
             aria-orientation="vertical"
             aria-label={t('gui:settings_modal.title')}
@@ -367,47 +309,29 @@ function SettingsModal({
                     id={`settings-tab-${id}`}
                     aria-selected={activeTab === id}
                     aria-controls={`settings-panel-${id}`}
-                    className={
-                        isPage
-                            ? clsx('server-row dc-nav-row', { selected: activeTab === id })
-                            : clsx('settings-tab', { active: activeTab === id })
-                    }
+                    className={clsx('server-row dc-nav-row', { selected: activeTab === id })}
                     onClick={() => handleTabChange(id)}
                 >
-                    {isPage ? (
-                        <>
-                            <span className="server-row-icon">
-                                <Icon name={TAB_ICONS[id]} size="sm" />
-                            </span>
-                            <span className="server-row-text">
-                                <span className="server-row-name">{t(TAB_LABELS[id])}</span>
-                            </span>
-                        </>
-                    ) : (
-                        <>
-                            <Icon name={TAB_ICONS[id]} size="sm" />
-                            <span>{t(TAB_LABELS[id])}</span>
-                        </>
-                    )}
+                    <span className="server-row-icon">
+                        <Icon name={TAB_ICONS[id]} size="sm" />
+                    </span>
+                    <span className="server-row-text">
+                        <span className="server-row-name">{t(TAB_LABELS[id])}</span>
+                    </span>
                 </button>
             ))}
         </div>
     );
 
     return (
-        <div
-            className={clsx(isPage ? 'settings-page' : 'settings-modal-overlay', { closing: isClosing && !isPage })}
-            onClick={isPage ? undefined : requestClose}
-        >
-            <div className="settings-modal-container" onClick={(e) => e.stopPropagation()}>
-                {!isPage && header}
-
+        <div className="settings-page">
+            <div className="settings-modal-container">
                 <div className="settings-body">
-                {(isPage ? <aside className="server-list-pane dc-nav settings-nav">{tabList}</aside> : tabList)}
+                <aside className="server-list-pane dc-nav settings-nav">{tabList}</aside>
 
                 <div className="settings-viewport">
                 <div className={'settings-modal-content'}>
-                    {isPage && header}
+                    {header}
 
                     {activeTab === 'general' && (
                         <div
@@ -465,8 +389,8 @@ function SettingsModal({
                                 </label>
                                 <CustomDropdown
                                     className="setting-select"
-                                    value={localRefreshInterval}
-                                    onChange={(val) => handleRefreshIntervalChange(Number(val))}
+                                    value={refreshInterval}
+                                    onChange={(val) => setOption({ refreshInterval: Number(val) })}
                                     options={[
                                         { value: 1000, label: t('gui:settings_modal.refresh_1s') },
                                         { value: 2000, label: t('gui:settings_modal.refresh_2s') },
@@ -1019,8 +943,8 @@ function SettingsModal({
                                 </label>
                                 <CustomDropdown
                                     className="setting-select"
-                                    value={localConsoleBuffer}
-                                    onChange={(val) => handleConsoleBufferChange(Number(val))}
+                                    value={consoleBufferSize}
+                                    onChange={(val) => setOption({ consoleBufferSize: Number(val) })}
                                     options={[
                                         { value: 500, label: '500' },
                                         { value: 1000, label: '1,000' },
@@ -1195,7 +1119,7 @@ function SettingsModal({
                                 <input
                                     type="number"
                                     className={clsx('setting-input-number', { 'setting-input-error': ipcPortError })}
-                                    value={localIpcPort}
+                                    value={ipcPortDraft ?? ipcPort}
                                     onChange={(e) => handleIpcPortChange(e.target.value)}
                                     min={1024}
                                     max={65535}
@@ -1548,35 +1472,25 @@ function SettingsModal({
                     )}
 
                     {/* 사바 스토리지는 설정을 열 때 함께 띄워 목록을 미리 받아 두고, 다른 탭에서는 숨긴다 */}
-                    {isOpen && (
-                        <div
-                            className={clsx('settings-tab-content', activeTab === 'sabaStorage' && slideDirection)}
-                            hidden={activeTab !== 'sabaStorage'}
-                            key="sabaStorage"
-                            id="settings-panel-sabaStorage"
-                            role="tabpanel"
-                            aria-labelledby="settings-tab-sabaStorage"
-                            onAnimationEnd={() => setSlideDirection('')}
-                        >
-                            <h3>{t(TAB_LABELS.sabaStorage)}</h3>
-                            <SabaStorage
-                                key={storageTab}
-                                devMode={devMode}
-                                initialTab={storageTab}
-                            />
-                        </div>
-                    )}
-                </div>
-                </div>
-                </div>
-
-                {!isPage && (
-                    <div className="settings-modal-footer">
-                        <button className="settings-btn-cancel" onClick={requestClose}>
-                            {t('gui:modals.cancel')}
-                        </button>
+                    <div
+                        className={clsx('settings-tab-content', activeTab === 'sabaStorage' && slideDirection)}
+                        hidden={activeTab !== 'sabaStorage'}
+                        key="sabaStorage"
+                        id="settings-panel-sabaStorage"
+                        role="tabpanel"
+                        aria-labelledby="settings-tab-sabaStorage"
+                        onAnimationEnd={() => setSlideDirection('')}
+                    >
+                        <h3>{t(TAB_LABELS.sabaStorage)}</h3>
+                        <SabaStorage
+                            key={storageTab}
+                            devMode={devMode}
+                            initialTab={storageTab}
+                        />
                     </div>
-                )}
+                </div>
+                </div>
+                </div>
             </div>
         </div>
     );

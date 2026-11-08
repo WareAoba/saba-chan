@@ -119,7 +119,7 @@ describe('DiscordPage', () => {
 
     it('모듈이 없으면 서버 봇 탭의 사용법 예시에 특정 게임 이름 대신 모듈이라는 말을 쓴다', async () => {
         useDiscordStore.setState({ _botConfigLoaded: true });
-        window.api.discordSettingsGet = vi.fn().mockResolvedValue({ guildId: 'g1', locale: 'auto', music: {} }) as never;
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue({ guildId: 'g1', locale: 'auto', sleepBlocks: [], music: {} }) as never;
         window.api.discordSettingsSet = vi.fn() as never;
         await act(async () => render(<Harness save={vi.fn()} mods={[]} />));
         await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
@@ -158,13 +158,12 @@ describe('DiscordPage', () => {
             .mockResolvedValue({ code: 'C', pollSecret: 'p', expiresAt: '2999-01-01T00:00:00Z' });
         window.api.relayPollPairingStatus = vi
             .fn()
-            .mockResolvedValue({ status: 'claimed', hostId: 'h-new', nodeToken: 'tok' });
-        window.api.saveNodeToken = vi.fn().mockResolvedValue(false) as never;
+            .mockResolvedValue({ status: 'claimed', hostId: 'h-new', nodeToken: 'tok', tokenSaved: false });
         const setHostId = vi.fn();
         const save = vi.fn().mockResolvedValue(undefined);
         await act(async () => render(<Harness save={save} hostId="" setHostId={setHostId} />));
         await act(async () => fireEvent.click(screen.getByText('Connect a Discord server')));
-        await waitFor(() => expect(window.api.saveNodeToken).toHaveBeenCalledTimes(2), { timeout: 5000 });
+        await waitFor(() => expect(window.api.relayPollPairingStatus).toHaveBeenCalled(), { timeout: 5000 });
         await act(async () => {});
         expect(setHostId).not.toHaveBeenCalledWith('h-new');
         expect(save).not.toHaveBeenCalled();
@@ -284,15 +283,6 @@ describe('DiscordPage', () => {
         await waitFor(() => expect(document.querySelector('.dc-nav-empty.dc-field-error')).toBeNull());
     });
 
-    // G-D5: 연결 요청을 수락하면(LinkRequests) 새 길드가 목록에 보이도록 다시 읽는다
-    it('길드 목록이 낡았다는 알림을 받으면 노드 목록을 다시 읽는다', async () => {
-        useDiscordStore.setState({ _botConfigLoaded: true });
-        await act(async () => render(<Harness save={vi.fn()} />));
-        expect(window.api.relayListHostNodes).toHaveBeenCalledTimes(1);
-        await act(async () => useDiscordStore.getState().markCloudNodesStale());
-        expect(window.api.relayListHostNodes).toHaveBeenCalledTimes(2);
-    });
-
     it('호스트가 바뀐 뒤 늦게 온 옛 노드 목록은 버린다', async () => {
         let resolveOld!: (v: unknown) => void;
         window.api.relayListHostNodes = vi.fn((host) =>
@@ -342,12 +332,12 @@ describe('DiscordPage', () => {
         expect(document.querySelector('.dc-danger-zone')).not.toBeNull();
     });
 
-    it('봇 초대: 릴레이가 준 초대 주소를 셸 브리지(window.electron)로 연다', async () => {
-        // 실제 릴레이 응답은 { clientId, inviteUrl, bot }이고, 셸 열기는 window.api가 아니라 window.electron에 있다
+    it('봇 초대: 릴레이가 준 초대 주소를 셸로 연다', async () => {
+        // 실제 릴레이 응답은 { clientId, inviteUrl, bot }이다
         window.api.relayBotInvite = vi
             .fn()
             .mockResolvedValue({ clientId: '1', inviteUrl: 'https://discord.com/invite-x' });
-        window.electron = { shell: { openExternal: vi.fn().mockResolvedValue({ success: true }) } } as unknown as typeof window.electron;
+        window.api.shellOpenExternal = vi.fn().mockResolvedValue({ success: true });
         await act(async () => render(<Harness save={vi.fn()} />));
         const btn = await waitFor(() => {
             const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Invite the bot'));
@@ -356,6 +346,6 @@ describe('DiscordPage', () => {
         });
         await act(async () => fireEvent.click(btn as Element));
         expect(window.api.relayBotInvite).toHaveBeenCalledWith('https://saba-chan.online');
-        expect(window.electron.shell.openExternal).toHaveBeenCalledWith('https://discord.com/invite-x');
+        expect(window.api.shellOpenExternal).toHaveBeenCalledWith('https://discord.com/invite-x');
     });
 });

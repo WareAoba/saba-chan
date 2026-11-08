@@ -636,48 +636,6 @@ async fn signed_delete(base: &str, api_path: &str) -> Response {
     }
 }
 
-// ── GET /api/relay/link-requests · POST /api/relay/link-requests/:id ──
-// 디스코드에서 코드 없이 `/사바쨩 연결`한 요청 (J1-b). 요청은 릴레이가 들고 있고, PC는 보고 수락·거절만 한다.
-// 수락하면 릴레이가 그 길드를 이 PC에 묶는다. 본문과 응답은 릴레이 것을 그대로 전달한다
-
-pub async fn list_link_requests(Query(params): Query<RelayQueryParams>, State(state): State<IPCServer>) -> Response {
-    let base = signed_base(&state, params.relay_url.as_deref()).await;
-    signed_get(&base, "/api/link-requests", empty_list).await
-}
-
-#[derive(Deserialize)]
-pub struct LinkAnswer {
-    accept: bool,
-}
-
-pub async fn answer_link_request(
-    Path(request_id): Path<String>,
-    Query(params): Query<RelayQueryParams>,
-    State(state): State<IPCServer>,
-    Json(answer): Json<LinkAnswer>,
-) -> Response {
-    let base = signed_base(&state, params.relay_url.as_deref()).await;
-    let path = format!("/api/link-requests/{}", encode_path_segment(&request_id));
-    signed_post(&base, &path, &json!({ "accept": answer.accept })).await
-}
-
-/// 서명한 JSON POST를 보내고 답을 전달한다
-async fn signed_post(base: &str, api_path: &str, body: &Value) -> Response {
-    let client = match client() {
-        Ok(c) => c,
-        Err(r) => return r,
-    };
-    let text = body.to_string();
-    let req = apply_signed_headers(client.post(format!("{}{}", base, api_path)), "POST", api_path, Some(&text))
-        .header("Content-Type", "application/json")
-        .body(text);
-    match send(req).await {
-        Ok((code, Some(data))) => (code, Json(data)).into_response(),
-        Ok((code, None)) => invalid_response(code),
-        Err(r) => r,
-    }
-}
-
 // ── GET /api/relay/node/:guild_id/members ──
 // Try discord-members first; fall back to permission-based members on 503
 
@@ -834,7 +792,7 @@ fn device_name() -> Option<String> {
     })
 }
 
-// ── POST /api/relay/pair/status (옛 GET /api/relay/pair/:code/status) ──
+// ── POST /api/relay/pair/status ──
 
 /// 페어링 코드와 poll secret은 본문으로 받는다 (경로·쿼리는 접근 로그와 프록시 기록에 남는다)
 #[derive(Deserialize)]
@@ -848,23 +806,6 @@ pub struct PairStatusBody {
 
 pub async fn pairing_status(State(state): State<IPCServer>, Json(body): Json<PairStatusBody>) -> Response {
     pairing_status_of(&state, &body.code, body.secret.as_deref(), body.relay_url.as_deref()).await
-}
-
-#[derive(Deserialize)]
-pub struct PairStatusQuery {
-    #[serde(default)]
-    secret: Option<String>,
-    #[serde(default, rename = "relayUrl")]
-    relay_url: Option<String>,
-}
-
-/// 옛 경로: 다음 판까지 이전 GUI·CLI와 함께 쓰려고 남긴다. 새 호출은 `pairing_status`
-pub async fn poll_pairing_status(
-    Path(code): Path<String>,
-    Query(params): Query<PairStatusQuery>,
-    State(state): State<IPCServer>,
-) -> Response {
-    pairing_status_of(&state, &code, params.secret.as_deref(), params.relay_url.as_deref()).await
 }
 
 async fn pairing_status_of(state: &IPCServer, code: &str, secret: Option<&str>, relay_url: Option<&str>) -> Response {
@@ -1034,7 +975,7 @@ mod tests {
     }
 
     use super::*;
-    use axum::{routing::{get, post}, Router};
+    use axum::{routing::get, Router};
 
     async fn mock_relay() -> String {
         let app = Router::new()
@@ -1048,8 +989,7 @@ mod tests {
                 get(|Path(code): Path<String>, headers: axum::http::HeaderMap| async move {
                     Json(json!({ "status": "pending", "code": code, "secret": headers.get("x-poll-secret").and_then(|v| v.to_str().ok()) }))
                 }),
-            )
-            .route("/api/link-requests/{id}", post(|Path(id): Path<String>, Json(b): Json<Value>| async move { Json(json!({ "id": id, "accept": b["accept"] })) }));
+            );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1084,13 +1024,6 @@ mod tests {
         let request: PairStatusBody = serde_json::from_value(json!({ "code": "AB/12", "secret": "s3", "relayUrl": base })).unwrap();
         let (code, data) = body(pairing_status(State(state), Json(request)).await).await;
         assert_eq!((code, data), (StatusCode::OK, json!({ "status": "pending", "code": "AB/12", "secret": "s3" })));
-    }
-
-    #[tokio::test]
-    async fn a_link_request_answer_goes_to_the_relay_as_is() {
-        let base = mock_relay().await;
-        let (code, data) = body(signed_post(&base, "/api/link-requests/r1", &json!({ "accept": true })).await).await;
-        assert_eq!((code, data), (StatusCode::OK, json!({ "id": "r1", "accept": true })));
     }
 
     /// 에이전트 연결 끊기: 릴레이가 지웠으면 204, 아니면 릴레이 답 그대로

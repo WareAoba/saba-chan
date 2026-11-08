@@ -1,4 +1,3 @@
-import type { ComponentProps } from 'react';
 /**
  * GUI 설정 자동 저장과 언어 저장이 실패하면 조용히 넘기지 않고 알린다 (G-U6).
  */
@@ -18,7 +17,6 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.useRealTimers();
-    delete (window as { electron?: unknown }).electron;
 });
 
 describe('GUI 설정 저장 실패', () => {
@@ -37,12 +35,12 @@ describe('GUI 설정 저장 실패', () => {
     });
 
     it('언어를 저장하지 못하면 알린다', async () => {
-        window.electron = { setLanguage: vi.fn().mockResolvedValue({ success: false, language: 'ko' }) } as unknown as typeof window.electron;
-        render(<SettingsModal {...({ isOpen: true, onClose: vi.fn() } as unknown as ComponentProps<typeof SettingsModal>)} />);
+        window.api.languageSet = vi.fn().mockResolvedValue({ success: false, language: 'ko' });
+        render(<SettingsModal />);
         const trigger = screen.getAllByRole('combobox').find((el) => el.textContent.includes('English'));
         pickOption(trigger as HTMLElement, '한국어 (Korean)');
         await act(async () => {});
-        expect(window.electron.setLanguage).toHaveBeenCalledWith('ko');
+        expect(window.api.languageSet).toHaveBeenCalledWith('ko');
         expect(window.showToast).toHaveBeenCalledWith(expect.any(String), 'error', undefined, undefined);
         await act(async () => i18n.changeLanguage('en'));
     });

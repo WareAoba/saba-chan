@@ -11,6 +11,7 @@ import { Segmented } from '../ui/StatusChip';
 import { Avatar } from './Avatar';
 import { CHATBOT_MAX, type ChannelAssign, channelsErrorText, channelsPatch, LIST_KINDS } from './ChannelsTab';
 import type { DiscordMember, DiscordNode } from './types';
+import { failed } from '../../utils/apiResult';
 
 /**
  * 디스코드 서버 화면 › 서버 관리 (2026-10-31): 디스코드 명령 /청소·/자동청소·/슬로우·/잠금·/음소거 와 채널 정보 수정,
@@ -55,8 +56,7 @@ interface ModState {
 export const ASSIGN_KINDS = ['chatbot', 'music', 'notify', 'gameChat', 'board'];
 
 const isList = (k: string) => LIST_KINDS.includes(k);
-// 예전 릴레이는 게임 채팅·상황판을 채널 하나로 준다
-const listOf = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : v ? [String(v)] : []);
+const listOf = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 
 const assignOf = (res: ApiBody | null | undefined): ChannelAssign => ({
     chatbot: listOf(res?.chatbot),
@@ -135,8 +135,6 @@ export function modErrorText(res: ApiBody | null | undefined, t: TFunction) {
     return known.includes(code) ? t(`discord.mod.err_${code}`) : t('discord.mod.err_generic');
 }
 
-const isError = (res: ApiBody | null | undefined) => !res || res.error || res.error_code || res.ok === false;
-
 interface ModerationTabProps {
     node: DiscordNode;
     members?: DiscordMember[];
@@ -175,7 +173,7 @@ export function ModerationTab({
             setAssignSaving(true);
             try {
                 const res = await window.api.relayNodeChannelsSave(guildId, body);
-                if (!isError(res)) setAssign(res);
+                if (!failed(res)) setAssign(res);
                 return res;
             } finally {
                 setAssignSaving(false);
@@ -194,9 +192,9 @@ export function ModerationTab({
                 window.api.relayNodeModeration(guildId),
                 window.api.relayNodeChannels(guildId),
             ]);
-            if (isError(m)) setError(m || {});
+            if (failed(m)) setError(m || {});
             else setMod(m as ModState);
-            if (!isError(a)) setAssign(a);
+            if (!failed(a)) setAssign(a);
         } catch (e) {
             setError({ message: (e as Error).message });
         }
@@ -491,7 +489,7 @@ function useAction() {
         setNote(null);
         try {
             const res = await call();
-            if (isError(res)) setNote({ tone: 'error', res });
+            if (failed(res)) setNote({ tone: 'error', res });
             else setNote(onOk ? onOk(res) : null);
         } catch (e) {
             setNote({ tone: 'error', res: { message: (e as Error).message } });
@@ -801,13 +799,10 @@ function ClearSection({ guildId, channel, can, members }: ClearSectionProps) {
         if (Number(period)) body.sinceMinutes = Number(period);
         return body;
     };
-    // 권한을 먼저 본다: 지울 수 없으면 확인 창 대신 거절을 보인다. 검사 경로가 없는 옛 릴레이(NOT_FOUND)면 확인 창만 띄운다
+    // 권한을 먼저 본다: 지울 수 없으면 확인 창 대신 거절을 보인다
     const ask = () =>
         action.run(
-            async () => {
-                const res = await window.api.relayModClearCheck(guildId, channel.id, bodyOf());
-                return res?.error === 'NOT_FOUND' ? { dryRun: true } : res;
-            },
+            () => window.api.relayModClearCheck(guildId, channel.id, bodyOf()),
             () => {
                 setConfirming(true);
                 return null;

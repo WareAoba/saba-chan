@@ -2,7 +2,6 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Server } from '../../stores/useServerStore';
-import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
@@ -10,6 +9,7 @@ import { SaveBar } from './ChatbotView';
 import type { InstanceWordsCommand, InstanceWordsDraft, InstanceWordsEntry, ValidationDetail } from './instanceWords';
 import { draftOf, errorsByField, isDraftDirty, wordsCommandName } from './instanceWords';
 import { TagInput } from './TagInput';
+import { failed } from '../../utils/apiResult';
 
 export { draftOf, errorsByField, isDraftDirty };
 
@@ -24,8 +24,6 @@ interface InstanceWords extends InstanceWordsEntry {
     defaultWords?: string[];
 }
 
-const failed = (res: ApiBody | null | undefined) =>
-    !res || res.success === false || Boolean(res.error_code) || Boolean(res.error);
 function ErrorLines({ details }: { details?: ValidationDetail[] }) {
     const { t } = useTranslation('gui');
     if (!details?.length) return null;

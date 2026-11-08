@@ -20,7 +20,7 @@ import { initTheme } from './utils/themeManager';
 window.React = React;
 window.ReactDOM = ReactDOM as typeof window.ReactDOM;
 
-// 브라우저 미리보기(`npm run dev`, Electron 없이)용 가짜 API
+// 브라우저 미리보기(`npm run dev`, Tauri 셸 없이)용 가짜 API
 if (import.meta.env?.DEV && !window.api) installMockApi();
 
 // 트레이 아이콘을 눌러 뜬 작은 창은 앱 전체가 아니라 팝업만 그린다

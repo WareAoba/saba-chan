@@ -8,6 +8,7 @@ import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
+import { failed } from '../../utils/apiResult';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -64,8 +65,6 @@ interface PlanSummary {
  */
 export const paletteAvailable = () =>
     !!window.api?.actionsList && !!window.api?.actionsPlan && !!window.api?.actionsRun;
-
-const failed = (res?: ApiBody | null) => !res || res.success === false || Boolean(res.error || res.error_code);
 
 const listOf = (res?: ApiBody | PaletteAction[] | null): PaletteAction[] => (Array.isArray(res) ? res : Array.isArray(res?.actions) ? res.actions : []);
 

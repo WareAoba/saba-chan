@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Server } from '../../stores/useServerStore';
-import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { localLogLine } from '../../utils/logTime';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
+import { failed } from '../../utils/apiResult';
 
 interface LogSource {
     id: string;
@@ -20,8 +20,6 @@ interface LogView {
 }
 
 const PAGE = 200;
-const failed = (res: ApiBody | null | undefined) => !res || res.success === false || !!res.error;
-
 /**
  * 지난 로그 (데몬 GET /api/instance/:id/logs): 실행 한 번이 한 묶음이다. 고른 묶음의 끝에서 200줄,
  * [더 보기]로 앞을 붙인다. 줄 머리의 UTC 시각은 이 PC 시간대로 바꿔 보인다 (utils/logTime). 내보내기는 저장 창에서 고른 곳에 데몬이 쓴다 (`instanceLogsSave`). 웹은 점검 탭의 같은 카드

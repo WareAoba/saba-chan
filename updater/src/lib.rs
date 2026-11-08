@@ -1054,122 +1054,7 @@ impl UpdateManager {
 
     // ─────── 적용 ────────────────────────────────────────────────────────────────────────
 
-    /// 다운로드 완료된 업데이트를 적용
-    ///
-    /// ## 주요 동작
-    /// - **모듈**: 기존 파일을 백업하고 다운로드된 zip 압축 해제
-    /// - **GUI/CLI**: 직접 교체 (별도 프로세스 실행으로 처리)
-    /// - **코어 데몬**: 실행 중이면 교체가 불가하므로 재시작 후 업데이트를 예약
-    pub async fn apply_updates(&mut self) -> Result<Vec<String>> {
-        let all_keys: Vec<String> = self.status.components.iter()
-            .filter(|c| c.downloaded && c.update_available)
-            .map(|c| c.component.manifest_key())
-            .collect();
-        self.apply_components(&all_keys).await
-    }
-
-    /// 지정한 컴포넌트만 적용 (빈 목록이면 전체 적용)
-    ///
-    /// ## 적용 순서
-    /// 1. **Updater** — 업데이터 자체를 먼저 교체 (데몬이 수행)
-    /// 2. **비-인터페이스**: 사용하지 않는 인터페이스(GUI 사용 중이면 CLI),
-    ///    CoreDaemon, 모듈, 익스텐션, Locales를 비동기 적용
-    /// 3. **현재 인터페이스**: 마지막에 GUI 또는 CLI를 적용 (재시작 필요)
-    ///
-    /// 이 순서를 지키면 업데이트 도중 프로세스 충돌이 방지됩니다.
-    pub async fn apply_components(&mut self, keys: &[String]) -> Result<Vec<String>> {
-        match self.apply_components_report(keys).await {
-            (applied, None) => Ok(applied),
-            (_, Some(e)) => Err(e),
-        }
-    }
-
-    /// `apply_components`와 같지만 실패해도 그 전에 적용한 목록을 돌려준다 (업데이터가 완료 마커에 싣는다)
-    pub async fn apply_components_report(&mut self, keys: &[String]) -> (Vec<String>, Option<anyhow::Error>) {
-        let mut applied = Vec::new();
-        self.settle_interrupted_updates();
-
-        let mut components: Vec<ComponentVersion> = self.status.components.iter()
-            .filter(|c| c.downloaded && c.update_available)
-            .filter(|c| keys.is_empty() || keys.contains(&c.component.manifest_key()))
-            .cloned()
-            .collect();
-
-        // 적용 우선순위와 같은 묶음의 requires에 따라 정렬
-        let order = self.apply_order(&components.iter().map(|c| c.component.manifest_key()).collect::<Vec<_>>());
-        components.sort_by_key(|c| order.iter().position(|k| *k == c.component.manifest_key()));
-
-        // 실패하면 거기서 멈추되, 먼저 적용한 것은 아래에서 버전을 기록한 뒤 오류를 돌려준다
-        let mut failure = None;
-        // 설치 기록은 끝에 한 번에 적으므로, 이 묶음에서 앞서 적용한 버전을 여기서 더해 requires를 본다
-        let mut installed = self.dependency_versions();
-        for comp in &components {
-            let key = comp.component.manifest_key();
-            let issues = self.requires_of(&key).map(|r| unmet_requires(&key, r, &installed)).unwrap_or_default();
-            let result = if !issues.is_empty() {
-                Err(anyhow::anyhow!("{}", issues.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; ")))
-            } else {
-                match Self::verified_staged_path(comp) {
-                    Ok(staged_path) => self.apply_one(&comp.component, staged_path).await,
-                    Err(e) => Err(e),
-                }
-            };
-            match result {
-                Ok(files) => {
-                    Self::record_files(&comp.component, &files);
-                    if let Some(version) = &comp.latest_version {
-                        installed.insert(key, version.clone());
-                    }
-                    applied.push(comp.component.display_name());
-                }
-                Err(e) => {
-                    failure = Some(e.context(format!("Applying {} failed", comp.component.display_name())));
-                    break;
-                }
-            }
-        }
-
-        // 적용 완료된 컴포넌트의 상태 업데이트
-        for comp in &mut self.status.components {
-            if applied.contains(&comp.component.display_name()) {
-                comp.update_available = false;
-                comp.downloaded = false;
-                comp.downloaded_path = None;
-                if let Some(ref latest) = comp.latest_version {
-                    comp.current_version = latest.clone();
-                }
-            }
-        }
-
-        // 적용 성공한 컴포넌트들의 버전을 로컬 매니페스트에 기록
-        if !applied.is_empty() {
-            if let Err(e) = self.update_installed_versions_batch(&applied) {
-                tracing::warn!("[UpdateManager] Failed to update installed manifest: {}", e);
-            }
-        }
-
-        // 코어 컴포넌트가 업데이트된 경우, 레지스트리의 DisplayVersion을 코어 버전으로 갱신
-        if let Some(core_comp) = self.status.components.iter()
-            .find(|c| matches!(c.component, Component::CoreDaemon))
-        {
-            let core_version = &core_comp.current_version;
-            if let Err(e) = self.update_registry_display_version(core_version) {
-                tracing::warn!("[UpdateManager] Failed to update registry DisplayVersion: {}", e);
-            }
-        }
-
-        // 적용 완료 후 .old 백업 파일 정리
-        if !applied.is_empty() {
-            self.cleanup_old_files();
-        }
-
-        if failure.is_some() && !applied.is_empty() {
-            tracing::warn!("[UpdateManager] Applied before the failure: {:?}", applied);
-        }
-        (applied, failure)
-    }
-
-    /// 데몬이 정한 키 목록(apply-targets)을 차례로 적용한다. 목록 없는 적용처럼 첫 실패에서 멈춘다:
+    /// 데몬이 정한 키 목록(apply-targets)을 차례로 적용한다. 첫 실패에서 멈춘다:
     /// 데몬·업데이터가 실패했는데 인터페이스만 새것으로 바뀌면 서로 맞지 않는다.
     /// `(적용한 키, 실패·건너뛴 키와 이유)`. `on_progress(순번, 키, 지금까지 적용한 키)`
     pub async fn apply_target_keys(
@@ -1277,12 +1162,6 @@ impl UpdateManager {
                 if ProcessChecker::is_cli_running() { 5 } else { 4 }
             }
         }
-    }
-
-    /// 테스트 전용: 컴포넌트 적용 우선순위 조회
-    #[cfg(test)]
-    pub fn component_apply_priority_for_test(component: &Component) -> u8 {
-        Self::component_apply_priority(component)
     }
 
     // ─────── 2-flow 아키텍처: 개별 컴포넌트 적용 ────────────────────────────────────────────────────────────────────────

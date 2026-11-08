@@ -213,7 +213,6 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             });
             Ok(())
         }
-        BotCmd::Link { id, decline } => link(ctx, id.as_deref(), decline).await,
         BotCmd::Allow { guild, servers, all } => allow(ctx, &resolve::guild(ctx, Some(&guild)).await?, &servers, all).await,
         BotCmd::Notice { guild, server, on, off, full } => notice(ctx, &resolve::guild(ctx, Some(&guild)).await?, server.as_deref(), (on || off).then_some(on), full).await,
         BotCmd::BackupNotice { all, failures, off } => {
@@ -1144,58 +1143,6 @@ async fn mute(ctx: &Ctx, guild: &str, member: &str, duration: &str, reason: Opti
     Ok(())
 }
 
-/// 디스코드에서 코드 없이 `/사바쨩 연결`한 요청 (J1-b). 수락하면 릴레이가 그 길드를 이 PC에 묶는다
-async fn link(ctx: &Ctx, id: Option<&str>, decline: bool) -> Result<()> {
-    let cfg = ctx.api.bot_config().await?;
-    let Some(id) = id else {
-        let r = ctx.api.link_requests(relay_of(&cfg)).await?;
-        ctx.out.data(&r, |r| {
-            let rows = link_rows(r, now());
-            if rows.is_empty() {
-                say!("{}", output::dim(&t!("bot.list_empty")));
-                return;
-            }
-            let mut t = output::table(&[t!("col.id"), t!("noun.guild"), t!("bot.requested_by"), t!("bot.expires_in")]);
-            for row in rows {
-                t.add_row(row);
-            }
-            output::print_table(t);
-            ctx.out.hint("saba-chan-cli bot link ID  |  bot link ID --decline");
-        });
-        return Ok(());
-    };
-    let r = ctx.api.answer_link_request(id, !decline, relay_of(&cfg)).await?;
-    if decline {
-        ctx.out.done(&t!("bot.link_declined"), &r);
-    } else {
-        let guild = [s(&r, "guildName"), s(&r, "guildId"), id].into_iter().find(|g| !g.is_empty()).unwrap_or(id);
-        ctx.out.done(&t!("bot.link_accepted", guild = guild), &r);
-    }
-    Ok(())
-}
-
-fn now() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
-}
-
-/// 연결 요청 표의 줄: 요청 id(수락할 때 쓴다), 디스코드 서버, 요청한 사람, 남은 시간
-fn link_rows(r: &Value, now: u64) -> Vec<Vec<String>> {
-    r.get("requests")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(|q| {
-            let left = match output::iso_epoch(s(q, "expiresAt")) {
-                Some(at) if at > now => output::duration(at - now),
-                Some(_) => output::dim(&t!("bot.expired")),
-                None => String::new(),
-            };
-            let who = [s(q, "userName"), s(q, "requestedBy")].into_iter().find(|n| !n.is_empty()).unwrap_or("");
-            vec![s(q, "requestId").to_string(), [s(q, "guildName"), s(q, "guildId")].into_iter().find(|n| !n.is_empty()).unwrap_or("").to_string(), who.to_string(), left]
-        })
-        .collect()
-}
-
 /// 디스코드 서버 멤버 (`{members, partial}`)
 pub async fn members(ctx: &Ctx, guild: &str) -> Result<Value> {
     let cfg = ctx.api.bot_config().await?;
@@ -1584,21 +1531,6 @@ mod tests {
             { "id": "1", "username": "kimchi", "displayName": "김치마요" }
         ], "partial": true });
         assert_eq!(member_rows(&r), vec![vec!["김치마요", "kimchi", "1"], vec!["사바", "saba", "2"]]);
-    }
-
-    /// 연결 요청은 id·서버 이름·요청한 사람·남은 시간만 (C9)
-    #[test]
-    fn link_rows_show_who_asked_and_the_time_left() {
-        let r = json!({ "requests": [
-            { "requestId": "r1", "guildId": "9", "guildName": "친구들", "requestedBy": "5", "userName": "kimchi", "expiresAt": "2026-10-19T17:10:00.000Z" },
-            { "requestId": "r2", "guildId": "8", "guildName": "", "requestedBy": "6", "userName": "", "expiresAt": "2026-10-19T17:00:00.000Z" }
-        ] });
-        let now = output::iso_epoch("2026-10-19T17:05:00Z").unwrap();
-        let rows = link_rows(&r, now);
-        assert_eq!(rows[0][..3], ["r1", "친구들", "kimchi"]);
-        assert_eq!(rows[0][3], output::duration(300));
-        assert_eq!(rows[1][..3], ["r2", "8", "6"]);
-        assert_eq!(console::strip_ansi_codes(&rows[1][3]), t!("bot.expired"));
     }
 
     /// 표에는 알아볼 칸만: 디스코드 프로필 사진 주소 같은 긴 값이 줄을 깨지 않게

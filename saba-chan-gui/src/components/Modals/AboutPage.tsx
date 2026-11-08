@@ -29,7 +29,7 @@ const DAY = [
 const versionLabel = (v?: string | null) => (v ? `v${v}` : '—');
 
 function openExternal(url: string) {
-    if (window.electron?.shell?.openExternal) window.electron.shell.openExternal(url);
+    if (window.api?.shellOpenExternal) window.api.shellOpenExternal(url);
     else window.open(url, '_blank');
 }
 

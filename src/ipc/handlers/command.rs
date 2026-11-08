@@ -680,18 +680,14 @@ pub(crate) async fn rest_for(
     );
 
     // REST 클라이언트 생성
-    let mut client = crate::protocol::client::ProtocolClient::new_rest(
-        rest_host.to_string(),
-        rest_port,
-        use_https,
-    );
-    if let Some(limit) = response_limit { client = client.with_response_limit(limit); }
+    let mut client = crate::protocol::rest::RestClient::new(rest_host.to_string(), rest_port, use_https);
+    if let Some(limit) = response_limit { client.set_response_limit(limit); }
 
     // Basic Auth — 게임 설정 파일에서만 읽음
     if let Some(ref creds) = file_credentials {
         let username = creds.get("rest_username").and_then(|v| v.as_str()).unwrap_or("admin");
         if let Some(pass) = creds.get("rest_password").and_then(|v| v.as_str()) {
-            client = client.with_basic_auth(username.to_string(), pass.to_string());
+            client.set_basic_auth(username.to_string(), pass.to_string());
         }
     }
 
@@ -701,22 +697,15 @@ pub(crate) async fn rest_for(
         .and_then(|v| v.as_str())
         .unwrap_or("GET");
 
-    let http_method = match method.to_uppercase().as_str() {
-        "POST" => crate::protocol::HttpMethod::Post,
-        "PUT" => crate::protocol::HttpMethod::Put,
-        "DELETE" => crate::protocol::HttpMethod::Delete,
-        _ => crate::protocol::HttpMethod::Get,
+    // 모르는 메서드는 GET으로 보낸다. 본문은 POST·PUT에만 싣는다
+    let (http_method, body) = match method.to_uppercase().as_str() {
+        "POST" => (reqwest::Method::POST, payload.get("body").cloned()),
+        "PUT" => (reqwest::Method::PUT, payload.get("body").cloned()),
+        "DELETE" => (reqwest::Method::DELETE, None),
+        _ => (reqwest::Method::GET, None),
     };
-
-    // 명령어 구성 - endpoint는 모듈에서 완전한 형식으로 전달됨
-    let cmd = crate::protocol::ServerCommand {
-        command_type: crate::protocol::CommandType::Rest,
-        command: None,
-        endpoint: Some(endpoint.to_string()),
-        method: Some(http_method),
-        body: payload.get("body").cloned(),
-        timeout_secs: payload.get("timeout").and_then(|v| v.as_u64()),
-    };
+    // endpoint는 모듈에서 완전한 형식으로 전달됨
+    let endpoint_path = endpoint.to_string();
 
     // 연결 확인과 요청은 블로킹 I/O라 async 런타임 밖에서 실행한다
     enum RestFailure {
@@ -725,9 +714,9 @@ pub(crate) async fn rest_for(
     }
     let outcome = tokio::task::spawn_blocking(move || {
         client
-            .connect_rest(std::time::Duration::from_secs(5))
+            .verify_connection()
             .map_err(|e| RestFailure::Connect(e.to_string()))?;
-        client.execute(cmd).map_err(RestFailure::Execute)
+        client.request(http_method, &endpoint_path, body).map_err(RestFailure::Execute)
     })
     .await
     .unwrap_or_else(|e| Err(RestFailure::Execute(crate::protocol::ProtocolError::Protocol(format!("task failed: {}", e)))));

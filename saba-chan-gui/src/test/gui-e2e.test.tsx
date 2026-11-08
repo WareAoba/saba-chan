@@ -98,7 +98,6 @@ function createApiMock(overrides: Record<string, unknown> = {}): typeof window.a
         onCloseRequest: vi.fn(),
         onConsolePopoutOpened: vi.fn(),
         onConsolePopoutClosed: vi.fn(),
-        saveNodeToken: vi.fn().mockResolvedValue({ success: true }),
     };
 
     const merged = { ...base, ...overrides };

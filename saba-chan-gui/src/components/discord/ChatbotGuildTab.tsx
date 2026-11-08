@@ -23,6 +23,7 @@ import {
     useChatbotTools,
 } from './ChatbotView';
 import type { DiscordNode } from './types';
+import { failed } from '../../utils/apiResult';
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -47,7 +48,7 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
         setLoadError(null);
         try {
             const res = await window.api.chatbotGet();
-            if (res?.success === false) throw new Error(res.error || t('chatbot.load_failed'));
+            if (failed(res)) throw new Error(res.error || t('chatbot.load_failed'));
             setData(res);
         } catch (err) {
             setLoadError((err as Error).message || String(err));
@@ -110,7 +111,7 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
             const res = await window.api.chatbotSave({
                 guilds: { [guildId]: guildPatch(draft, legacy, data.defaults) },
             });
-            if (res?.success === false) {
+            if (failed(res)) {
                 setErrors(
                     relayErrorLines(res, () => name).concat(res.guildId || res.error ? [] : [t('chatbot.save_failed')]),
                 );
@@ -131,7 +132,7 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
         setMemArmed(false);
         try {
             const res = await window.api.chatbotClearMemory(guildId);
-            if (res?.success === false) throw new Error(res.error || t('chatbot.save_failed'));
+            if (failed(res)) throw new Error(res.error || t('chatbot.save_failed'));
             safeShowToast(t('chatbot.memory_cleared', { name }), 'success', 3000);
         } catch (err) {
             safeShowToast((err as Error).message || String(err), 'error', 6000);
@@ -143,7 +144,7 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
         setTemplateBusy(true);
         try {
             const res = await window.api.chatbotMemoTemplate(i18n.language);
-            if (res?.success === false || typeof res?.template !== 'string') throw new Error(res?.error || '');
+            if (failed(res) || typeof res?.template !== 'string') throw new Error(res?.error || '');
             // 기다리는 사이 무언가 썼으면 덮지 않는다
             setDraft((d) => (d?.memo.trim() ? d : ({ ...d, memo: res.template } as GuildDraft)));
         } catch (err) {

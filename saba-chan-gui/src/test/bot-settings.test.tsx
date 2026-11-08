@@ -9,6 +9,8 @@ const base = {
     guildId: 'g1',
     locale: 'auto',
     sleeping: false,
+    sleepBlocks: [],
+    bedtime: null,
     music: { enabled: true, ui: true, queueLines: 10, refreshInterval: 5000, normalize: true },
     tts: { volume: 100, speed: 100, pitch: 0 },
     sync: { ok: true },
@@ -113,13 +115,6 @@ describe('디스코드 봇 설정 탭', () => {
         });
         const list = document.getElementById(screen.getByLabelText('Falls asleep at').getAttribute('aria-controls') as string);
         expect(list?.textContent ?? '').not.toContain('08:00');
-    });
-
-    it('코코낸내: 옛 데몬이라 값이 없으면 카드를 보이지 않는다', async () => {
-        window.api.discordSettingsGet = vi.fn().mockResolvedValue(base) as never;
-        render(<BotSettingsTab node={node} section="bot" />);
-        await flush();
-        expect(screen.queryByRole('checkbox', { name: 'Good kid' })).toBeNull();
     });
 
     it('이모지 업스케일: 릴레이를 못 읽어 값이 없으면 보이지 않는다', async () => {

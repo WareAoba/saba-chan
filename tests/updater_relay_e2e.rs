@@ -144,7 +144,8 @@ async fn relay_update_cycle_verifies_signature_and_hashes() {
     assert!(!saba_chan_updater_lib::constants::resolve_staging_dir().join("module-bad-9.0.0.zip").exists());
 
     // 4. 적용: 모듈 폴더가 새 버전으로 바뀌고, 설치 버전이 기록되고, 받은 파일은 남지 않는다
-    let applied = mgr.apply_components(&["module-good".to_string()]).await.expect("apply");
+    let (applied, failed) = mgr.apply_target_keys(&["module-good".to_string()], |_, _, _| {}).await;
+    assert!(failed.is_empty(), "{:?}", failed);
     assert_eq!(applied.len(), 1, "{:?}", applied);
     let toml = std::fs::read_to_string(modules.path().join("good").join("module.toml")).unwrap();
     assert!(toml.contains("9.0.0"), "{}", toml);

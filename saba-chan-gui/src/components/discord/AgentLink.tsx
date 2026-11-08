@@ -5,17 +5,10 @@ import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { AgentLogo } from '../AgentLogo';
 import { Icon } from '../Icon';
+import { failed } from '../../utils/apiResult';
 
 export const agentLinkAvailable = () =>
     typeof window.api?.relayMcpGrant === 'function' && typeof window.api?.relayMcpGrantRevoke === 'function';
-
-const failed = (res: ApiBody | null | undefined) => Boolean(res?.error) || res?.success === false;
-
-/** 데몬 응답의 연결 목록. 릴레이는 계정마다 여러 연결을 목록(`grants`)으로 준다. 옛 릴레이는 하나(`grant`)만 준다 */
-function grantsOf(res: ApiBody): ApiBody[] {
-    if (Array.isArray(res.grants)) return res.grants;
-    return res.grant ? [res.grant] : [];
-}
 
 /**
  * 원격 MCP 에이전트 연결 (데몬 GET·DELETE /api/relay/mcp/grant).
@@ -37,8 +30,9 @@ export function AgentLink({ className }: { className?: string } = {}) {
         window.api
             .relayMcpGrant()
             .then((res) => {
-                if (!alive || !res || !('grant' in res || 'grants' in res)) return;
-                setGrants(grantsOf(res));
+                // 릴레이는 계정마다 여러 연결을 목록(`grants`)으로 준다
+                if (!alive || !Array.isArray(res?.grants)) return;
+                setGrants(res.grants);
                 setUrl(typeof res.url === 'string' ? res.url : '');
             })
             .catch(() => {});
@@ -50,11 +44,10 @@ export function AgentLink({ className }: { className?: string } = {}) {
     const revoke = async (index: number) => {
         setBusy(true);
         try {
-            // 그 연결만 끊는다. 옛 릴레이는 id를 주지 않는다: 그때는 연결이 하나뿐이라 모두 끊어도 같다
-            const id = grants?.[index]?.id;
-            const res = await window.api.relayMcpGrantRevoke(typeof id === 'string' ? id : undefined);
+            // 그 연결만 끊는다
+            const res = await window.api.relayMcpGrantRevoke(String(grants?.[index]?.id));
             if (failed(res)) throw new Error(res.error || 'failed');
-            setGrants((prev) => (typeof id === 'string' ? (prev ?? []).filter((_, i) => i !== index) : []));
+            setGrants((prev) => (prev ?? []).filter((_, i) => i !== index));
             setOpen(null);
             safeShowToast(t('discord.agent_revoked'), 'success', 4000);
         } catch (e) {

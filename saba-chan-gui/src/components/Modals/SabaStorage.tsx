@@ -15,6 +15,7 @@ import { SabaEmpty, SabaFail } from '../ui/SabaArt';
 import { TrustBadge } from '../ui/TrustBadge';
 import { createTranslateError, safeShowToast } from '../../utils/helpers';
 import type { ApiBody, ModuleInfo } from '../../types/daemon';
+import { failed } from '../../utils/apiResult';
 
 // ─────────────────────────────────────────────────────────────
 // 사바 스토리지 (구 업데이트 센터)
@@ -27,9 +28,9 @@ import type { ApiBody, ModuleInfo } from '../../types/daemon';
 // @param {boolean}  devMode   - 개발자 모드
 // @param {string}   initialTab - 처음 보일 탭 (components | modules | extensions)
 // ─────────────────────────────────────────────────────────────
-/** updaterCall은 던지지 않고 {ok:false, error}로 실패를 알린다 */
+/** 브리지는 던지지 않고 실패 본문으로 알린다 */
 function throwIfRejected(res: ApiBody | null | undefined) {
-    if (res?.ok === false || res?.error) throw new Error(res.error || 'failed');
+    if (failed(res)) throw new Error(res?.error || 'failed');
 }
 
 interface SabaStorageProps {
@@ -317,7 +318,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
                             const launchRes = await window.api?.updaterLaunchApply?.(res.needs_updater);
                             if (launchRes?.ok === false)
                                 setError(`${key}: ${launchRes?.error || t('saba_storage.updater_launch_failed')}`);
-                        } else if (res?.ok === false) {
+                        } else if (failed(res)) {
                             setError(
                                 `${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`,
                             );
@@ -336,7 +337,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
             try {
                 const res = await window.api?.updaterApply?.([key]);
                 clearModuleAuditCache();
-                if (res?.ok === false) {
+                if (failed(res)) {
                     setError(`${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`);
                 } else {
                     if (res?.requires_updater && res?.needs_updater?.length > 0) {
@@ -394,7 +395,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
             clearModuleAuditCache();
             // 일부만 적용돼도(ok:false) 적용된 것은 알린다 (G-U9b)
             daemonApplied = res?.applied || [];
-            if (res?.ok === false) {
+            if (failed(res)) {
                 hadError = true;
                 setError(
                     (prev) =>

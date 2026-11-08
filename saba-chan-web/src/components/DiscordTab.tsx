@@ -541,9 +541,6 @@ function TalkingSection({ relay, g, chatbot, busy, write, here }: SectionProps &
     );
 }
 
-// 예전 릴레이는 게임 채팅·상황판을 채널 하나로 준다
-const listOf = (v: string[] | string | null | undefined): string[] => (Array.isArray(v) ? v : v ? [v] : []);
-
 /** 여러 채널을 고르는 일 (말하는 사바쨩·게임 채팅·상황판, 사용자 2026-11-04) — 누른 채널을 더하거나 뺀다 */
 interface ChannelChipsProps {
     label: string;
@@ -616,7 +613,7 @@ function ChannelsSection({ relay, g, channels, busy, write, here }: SectionProps
                             key={kind}
                             label={t(`relay.channel_${kind}`)}
                             list={list}
-                            ids={listOf(channels[kind])}
+                            ids={channels[kind]}
                             busy={busy}
                             onChange={(ids) => save({ [kind]: ids })}
                         />
@@ -1421,24 +1418,24 @@ export function DiscordTab({ api, relay }: { api: WebApi; relay: Relay | null })
     const hostId = useApp((s) => s.session.hostId);
     const [guilds, setGuilds] = useState<GuildEntry[] | null>(null);
     const [guildId, setGuildId] = useState<string | null>(null);
-    // 릴레이가 서버 목록을 주지 못했다 (끊김·5xx). 404·405 는 /relay 를 모르는 옛 릴레이라 실패가 아니다
+    // 릴레이가 서버 목록을 주지 못했다 (끊김·5xx)
     const [relayFailed, setRelayFailed] = useState(false);
     const [round, setRound] = useState(0);
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: round 는 다시 읽기 신호다
     useEffect(() => {
         let alive = true;
-        // 아직 /relay 를 모르는 릴레이도 있다 — 그때는 이 PC 의 서버만 보인다
+        // 릴레이 세션이 없으면 이 PC 의 서버만 보인다
         Promise.all([
             hostId ? api.relayListHostNodes(hostId, '').catch(() => []) : [],
-            relay ? relay.guilds() : ({ ok: false, status: 404 } as const),
+            relay ? relay.guilds() : null,
         ]).then(([nodes, res]) => {
             if (!alive) return;
             const list = mergeGuilds(
                 Array.isArray(nodes) ? (nodes as DiscordNode[]) : [],
-                res.ok && Array.isArray(res.data) ? res.data : [],
+                res?.ok && Array.isArray(res.data) ? res.data : [],
             );
-            setRelayFailed(!res.ok && res.status !== 404 && res.status !== 405);
+            setRelayFailed(!!res && !res.ok);
             setGuilds(list);
             setGuildId((g) => (list.some((x) => x.id === g) ? g : (list[0]?.id ?? null)));
         });

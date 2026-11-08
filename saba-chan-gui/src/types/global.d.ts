@@ -1,9 +1,9 @@
 /**
- * 앱이 window에 거는 전역. window.api·window.electron은 api/install(Tauri)·dev/mockApi(브라우저 미리보기)·테스트가 건다.
+ * 앱이 window에 거는 전역. window.api는 api/install(Tauri)·dev/mockApi(브라우저 미리보기)·테스트가 건다.
  */
 import type * as ReactNamespace from 'react';
 import type * as ReactDOMClient from 'react-dom/client';
-import type { SabaApi, SabaElectron } from '../api/createApi';
+import type { SabaApi } from '../api/createApi';
 import type { TauriGlobal } from '../api/tauri';
 
 export type ToastType = 'info' | 'success' | 'warning' | 'error';
@@ -62,7 +62,6 @@ export interface SabaNoticeApi {
 declare global {
     interface Window {
         api: SabaApi;
-        electron: SabaElectron;
         /** Tauri 셸(withGlobalTauri)에서만 있다 */
         __TAURI__?: TauriGlobal;
         /** Toast가 그려진 뒤에 생긴다. 토스트 id를 돌려준다 */

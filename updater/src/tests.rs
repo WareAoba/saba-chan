@@ -216,27 +216,27 @@ fn test_component_apply_priority_categories() {
 
     // 모듈, 익스텐션, Locales는 동일 우선순위
     assert_eq!(
-        UpdateManager::component_apply_priority_for_test(&module),
-        UpdateManager::component_apply_priority_for_test(&extension),
+        UpdateManager::component_apply_priority(&module),
+        UpdateManager::component_apply_priority(&extension),
         "모듈과 익스텐션은 동일 우선순위"
     );
     assert_eq!(
-        UpdateManager::component_apply_priority_for_test(&module),
-        UpdateManager::component_apply_priority_for_test(&locales),
+        UpdateManager::component_apply_priority(&module),
+        UpdateManager::component_apply_priority(&locales),
         "모듈과 Locales는 동일 우선순위"
     );
 
     // Updater는 최우선
     assert!(
-        UpdateManager::component_apply_priority_for_test(&updater) <
-        UpdateManager::component_apply_priority_for_test(&module),
+        UpdateManager::component_apply_priority(&updater) <
+        UpdateManager::component_apply_priority(&module),
         "Updater가 모듈보다 먼저 적용"
     );
 
     // 모듈은 새 코어를 요구할 수 있다(`requires`): CoreDaemon이 모듈/익스텐션보다 먼저
     assert!(
-        UpdateManager::component_apply_priority_for_test(&core_daemon) <
-        UpdateManager::component_apply_priority_for_test(&module),
+        UpdateManager::component_apply_priority(&core_daemon) <
+        UpdateManager::component_apply_priority(&module),
         "CoreDaemon은 모듈보다 먼저 적용"
     );
 
@@ -708,7 +708,8 @@ fn staged(component: Component, path: &std::path::Path) -> crate::ComponentVersi
     }
 }
 
-// L3(a): 여러 컴포넌트를 적용하다 실패해도 먼저 적용한 것은 버전을 기록한다 (그대로 두면 다시 받으라고 뜬다)
+// L3(a)·U-9: 여러 컴포넌트를 적용하다 실패해도 먼저 적용한 것은 버전을 기록하고 적용한 것으로 돌려준다
+// (그대로 두면 다시 받으라고 뜬다. 업데이터는 완료 마커에 싣고 pending을 지운다)
 #[tokio::test]
 async fn components_applied_before_a_failure_are_recorded() {
     use std::io::Write;
@@ -727,8 +728,11 @@ async fn components_applied_before_a_failure_are_recorded() {
     }
     manager.status.components = vec![staged(ext.clone(), &ext_zip), staged(Component::Cli, &tmp.path().join("missing.zip"))];
 
-    assert!(manager.apply_components(&[]).await.is_err());
+    let keys = manager.pending_keys_in_apply_order();
+    let (applied, failed) = manager.apply_target_keys(&keys, |_, _, _| {}).await;
 
+    assert_eq!(applied, vec![ext.manifest_key()]);
+    assert!(!failed.is_empty());
     let recorded = UpdateManager::load_installed_manifest_at(&manager.installed_manifest_file);
     assert_eq!(recorded.get(&ext.manifest_key()).map(String::as_str), Some("0.2.0"));
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&format!("l3-{}", std::process::id())));
@@ -1218,24 +1222,6 @@ fn pending_keys_come_in_apply_order() {
     assert_eq!(manager.pending_keys_in_apply_order(), vec!["saba-core".to_string(), ext.manifest_key()]);
 }
 
-// U-9: 목록 없는 적용이 실패해도 그 전에 적용한 것을 돌려준다 (업데이터가 완료 마커에 싣고 pending을 지운다)
-#[tokio::test]
-async fn a_failed_apply_reports_what_it_applied_before() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
-    manager.install_root = tmp.path().join("install");
-    std::fs::create_dir_all(&manager.install_root).unwrap();
-    let name = format!("u9-{}", std::process::id());
-    let ext = Component::Extension(name.clone());
-    manager.status.components = vec![staged(ext.clone(), &extension_zip(tmp.path())), staged(Component::Cli, &tmp.path().join("missing.zip"))];
-
-    let (applied, failure) = manager.apply_components_report(&[]).await;
-
-    assert!(failure.is_some());
-    assert_eq!(applied, vec![ext.display_name()]);
-    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
-}
-
 // U-5: locales도 모듈처럼 백업 뒤 통째로 바꾼다. 새 판에 없는 옛 파일은 남지 않고, 풀다 실패하면 되돌린다
 #[tokio::test]
 async fn locales_are_replaced_with_a_backup() {
@@ -1336,33 +1322,13 @@ fn a_dependency_in_the_same_batch_is_applied_first() {
     assert_eq!(manager.pending_keys_in_apply_order(), vec!["saba-core".to_string(), b.manifest_key(), a.manifest_key()]);
 }
 
-// 목록 없는 적용(`apply_components_report`)도 requires를 지킨다
-#[tokio::test]
-async fn an_unlisted_apply_also_refuses_unmet_requires() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
-    manager.install_root = tmp.path().join("install");
-    std::fs::create_dir_all(&manager.install_root).unwrap();
-    let name = format!("unlisted-needs-core-{}", std::process::id());
-    let ext = Component::Extension(name.clone());
-    manager.status.components = vec![crate::ComponentVersion {
-        requires: Some([("saba-core".to_string(), ">=99.0.0".to_string())].into_iter().collect()),
-        ..staged(ext.clone(), &extension_zip(tmp.path()))
-    }];
-
-    let (applied, failure) = manager.apply_components_report(&[]).await;
-
-    assert!(applied.is_empty(), "{:?}", applied);
-    assert!(format!("{:#}", failure.unwrap()).contains("saba-core >=99.0.0"));
-    assert!(!manager.resolve_ext_dir(&name).exists());
-}
-
-// 같은 묶음에서 먼저 적용한 것은 기록 전이어도 뒤의 requires를 채운다
+// 같은 묶음에서 먼저 적용한 것은 뒤의 requires를 채운다
 #[tokio::test]
 async fn an_unlisted_apply_counts_what_it_applied_earlier() {
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.install_root = tmp.path().join("install");
+    manager.installed_manifest_file = tmp.path().join("installed-manifest.json");
     std::fs::create_dir_all(&manager.install_root).unwrap();
     let (first, second) = (format!("first-{}", std::process::id()), format!("second-{}", std::process::id()));
     let (a, b) = (Component::Extension(first.clone()), Component::Extension(second.clone()));
@@ -1371,18 +1337,28 @@ async fn an_unlisted_apply_counts_what_it_applied_earlier() {
         std::fs::create_dir_all(&dir).unwrap();
         dir
     };
+    // 먼저 적용한 익스텐션은 디스크의 manifest 버전으로 센다
+    let a_zip = zip_dir("a").join("ext.zip");
+    {
+        use std::io::Write;
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&a_zip).unwrap());
+        zw.start_file("manifest.json", zip::write::SimpleFileOptions::default()).unwrap();
+        zw.write_all(format!(r#"{{"id":"{first}","version":"9.9.9"}}"#).as_bytes()).unwrap();
+        zw.finish().unwrap();
+    }
     manager.status.components = vec![
         crate::ComponentVersion {
             requires: Some([(a.manifest_key(), ">=9.9.9".to_string())].into_iter().collect()),
             ..staged(b.clone(), &extension_zip(&zip_dir("b")))
         },
-        crate::ComponentVersion { latest_version: Some("9.9.9".into()), ..staged(a.clone(), &extension_zip(&zip_dir("a"))) },
+        crate::ComponentVersion { latest_version: Some("9.9.9".into()), ..staged(a.clone(), &a_zip) },
     ];
 
-    let (applied, failure) = manager.apply_components_report(&[]).await;
+    let keys = manager.pending_keys_in_apply_order();
+    let (applied, failed) = manager.apply_target_keys(&keys, |_, _, _| {}).await;
 
-    assert!(failure.is_none(), "{:?}", failure);
-    assert_eq!(applied, vec![a.display_name(), b.display_name()]);
+    assert!(failed.is_empty(), "{:?}", failed);
+    assert_eq!(applied, vec![a.manifest_key(), b.manifest_key()]);
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&first));
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&second));
 }

@@ -2,7 +2,7 @@
  * ExtensionContext — 범용 익스텐션 시스템 컨텍스트
  *
  * 역할:
- * 1. window.api.extensionList() (Electron IPC) → 활성 익스텐션 목록
+ * 1. window.api.extensionList() (데몬 API) → 활성 익스텐션 목록
  * 2. 활성 익스텐션의 GUI 번들을 IPC를 통해 동적 로드
  * 3. 이름 규칙: window.SabaExt{Id} (예: id가 my-ext면 window.SabaExtMyExt)
  * 4. 슬롯 레지스트리 관리: slotId → [Component, ...]
@@ -26,6 +26,7 @@ import type { ApiBody, ExtensionListItem } from '../types/daemon';
 import { safeShowToast } from '../utils/helpers';
 import { showTrustWarnings } from '../utils/trustNotice';
 import { updateRequiredText } from '../utils/updateRequired';
+import { failed } from '../utils/apiResult';
 
 // 슬롯에 들어가는 컴포넌트: props는 슬롯마다 다르다
 // biome-ignore lint/suspicious/noExplicitAny: 슬롯마다 컴포넌트 props가 다르다
@@ -381,7 +382,7 @@ export function ExtensionProvider({ children }: { children: ReactNode }) {
                     result = await window.api.extensionDisable(extId);
                 }
 
-                if (result && result.success === false) {
+                if (result && failed(result)) {
                     // 구조화된 에러 응답 처리
                     const code = result.error_code || 'unknown';
                     const related = (result.related || []).join(', ');
@@ -527,7 +528,7 @@ export function ExtensionProvider({ children }: { children: ReactNode }) {
             setInstallingIds((prev) => new Set(prev).add(extId));
             try {
                 const result = await window.api.extensionInstall?.(extId, opts);
-                if (result?.success === false) {
+                if (result && failed(result)) {
                     const msg =
                         // 함께 받는 의존 익스텐션이 거절되면 그 이름(result.extension)으로
                         updateRequiredText(t, result, result.extension || extId) ||
@@ -588,7 +589,7 @@ export function ExtensionProvider({ children }: { children: ReactNode }) {
             if (!extId) return false;
             try {
                 const result = await window.api?.extensionRemove?.(extId);
-                if (result?.success === false) {
+                if (result && failed(result)) {
                     const code = result.error_code || 'unknown';
                     const related = (result.related || []).join(', ');
                     let msg: string | undefined;

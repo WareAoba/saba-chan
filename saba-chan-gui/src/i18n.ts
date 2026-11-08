@@ -35,17 +35,17 @@ const localeBackend: BackendModule = {
 const getInitialLanguage = async () => {
     try {
         // 1. config.json의 gui.language가 단일 진실 원천 (데몬과 공유)
-        if (window.electron && window.electron.getLanguage) {
-            const savedLanguage = await window.electron.getLanguage();
+        if (window.api?.languageGet) {
+            const savedLanguage = await window.api.languageGet();
             if (savedLanguage && SUPPORTED_LANGUAGES.includes(savedLanguage)) {
-                console.log('Using language from Electron settings:', savedLanguage);
+                console.log('Using language from settings:', savedLanguage);
                 // localStorage도 동기화 (캐시 역할)
                 localStorage.setItem('i18nextLng', savedLanguage);
                 return savedLanguage;
             }
         }
 
-        // 2. Electron API 사용 불가 시 localStorage 폴백 (웹 전용 모드 등)
+        // 2. 셸 브리지가 없으면 localStorage 폴백 (테스트 등)
         const storedLang = localStorage.getItem('i18nextLng');
         if (storedLang && SUPPORTED_LANGUAGES.includes(storedLang)) {
             console.log('Using language from localStorage:', storedLang);
