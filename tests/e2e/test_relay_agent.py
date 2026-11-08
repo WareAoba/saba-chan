@@ -73,9 +73,9 @@ def test_text_plan_roundtrip_reaches_server_console(paired, relay, fake_server):
     paired.wait_console(iid, DONE)
 
     who = {"requestedBy": "332007306403250178", "guildId": "1", "channelId": "2", "ownerDiscordId": "332007306403250178"}
-    plan = relay.wait_result(relay.push_command({"action": "plan", "text": "mc1 상태", "userName": "e2e", "via": "slash"}, **who))
+    plan = relay.wait_result(relay.push_command({"action": "plan", "text": "mc1 상태", "userName": "e2e", "via": "direct"}, **who))
     assert plan["success"] is True and plan["data"].get("planId"), plan
-    result = relay.wait_result(relay.push_command({"action": "run_plan", "planId": plan["data"]["planId"], "via": "slash"}, **who))
+    result = relay.wait_result(relay.push_command({"action": "run_plan", "planId": plan["data"]["planId"], "via": "direct"}, **who))
     assert result["success"] is True, result
     assert result["data"]["text"], result
 
