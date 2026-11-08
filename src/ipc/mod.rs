@@ -904,6 +904,7 @@ impl IPCServer {
             .route("/api/system/paths", get(handlers::paths::get_paths))
             .route("/api/system/paths/move", post(handlers::paths::move_dir))
             .route("/api/system/browse", get(handlers::paths::browse))
+            .route("/api/system/uninstall", post(handlers::uninstall::uninstall))
             .route("/api/system/autostart", get(handlers::autostart::get_autostart).put(handlers::autostart::put_autostart))
             // ── Client heartbeat ──
             .route("/api/client/register", post(handlers::client::client_register))
@@ -1032,6 +1033,11 @@ impl IPCServer {
             .route("/api/remote/peers", get(handlers::remote_daemon::list_peers))
             .route("/api/remote/daemons", get(handlers::remote_daemon::list_daemons).post(handlers::remote_daemon::connect_daemon))
             .route("/api/remote/daemons/{host_id}", delete(handlers::remote_daemon::forget_daemon))
+            .route("/api/remote/daemons/{host_id}/remove", post(handlers::remote_daemon::remove_daemon))
+            .route("/api/remote/claim", post(handlers::remote_daemon::claim))
+            .route("/api/remote/install", post(handlers::remote_daemon::start_install))
+            .route("/api/remote/install/{id}", get(handlers::remote_daemon::get_install).delete(handlers::remote_daemon::cancel_install))
+            .route("/api/remote/install/{id}/input", post(handlers::remote_daemon::install_input))
             .route("/api/remote/servers", get(handlers::remote_daemon::list_all_servers))
             .route("/api/remote/daemons/{host_id}/proxy/{*rest}", get(handlers::remote_daemon::proxy).post(handlers::remote_daemon::proxy).put(handlers::remote_daemon::proxy).patch(handlers::remote_daemon::proxy).delete(handlers::remote_daemon::proxy))
             .with_state(self.clone())
@@ -1108,6 +1114,8 @@ impl IPCServer {
                     // 원격 포트 (D1): 켜져 있으면 열고 릴레이에 주소를 올린다
                     let remote_server = self.clone();
                     tokio::spawn(async move { crate::remote_daemon::apply(&remote_server).await });
+                    // 서버쨩의 내 PC 목록에 맞춘다 (빠진 PC의 짝 풀기, 원격 데몬의 바뀐 주소)
+                    crate::remote_daemon::spawn_sync(self.clone());
                     // 자동 포트포워딩 확인 (설정이 켜져 있을 때만, 자동 시작한 서버가 포트를 연 뒤)
                     tokio::spawn(crate::port_check::auto_on_start(self.clone()));
 

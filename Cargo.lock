@@ -4579,6 +4579,7 @@ dependencies = [
  "hyper-util",
  "igd-next",
  "nix 0.31.3",
+ "portable-pty",
  "proptest",
  "rcgen",
  "regex",

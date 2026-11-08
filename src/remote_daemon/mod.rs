@@ -5,6 +5,7 @@
 //! 공인 주소가 없으면 주소 없이 올리고, 붙는 PC는 릴레이 터널로 붙는다 (T1, `tunnel.rs`)
 
 pub mod config;
+pub mod onboard;
 pub mod peer;
 pub mod relay;
 pub mod server;
@@ -40,10 +41,87 @@ struct Runtime {
     /// 실패한 주소 올리기를 다시 하는 작업과, 그 작업이 올렸는지
     retry: Option<(tokio::task::JoinHandle<()>, Arc<AtomicBool>)>,
     published: bool,
+    /// 릴레이에 올린 주소: 설정한 주소, 비었으면 릴레이가 본 이 PC의 공인 IP (`None`: 주소 없이, 터널로만)
+    address: Option<String>,
     status: Status,
 }
 
-static RUNTIME: tokio::sync::Mutex<Runtime> = tokio::sync::Mutex::const_new(Runtime { cancel: None, retry: None, published: false, status: Status { listening: false, cert_sha256: None, published: false, error: None } });
+static RUNTIME: tokio::sync::Mutex<Runtime> = tokio::sync::Mutex::const_new(Runtime {
+    cancel: None,
+    retry: None,
+    published: false,
+    address: None,
+    status: Status { listening: false, cert_sha256: None, published: false, error: None },
+});
+
+/// 릴레이에 올릴 직접 연결 주소. 설정한 주소가 먼저이고, 비었으면 릴레이가 하트비트 답으로 알려 준 이 PC의 공인 IP다
+/// (사용자 결정 2026-10-25·2026-11-08: 릴레이 터널은 처음 짝 맺을 때와 직접 닿지 않을 때만 쓴다).
+/// 직접 닿는지는 붙는 PC가 붙어 보고 정한다 (`peer::send_to`)
+fn published_address(settings: &config::Settings, server: &IPCServer) -> Option<String> {
+    Some(settings.address.trim().to_string()).filter(|a| !a.is_empty()).or_else(|| server.relay_agent.seen_address())
+}
+
+/// 릴레이가 본 공인 IP가 바뀌었을 때(첫 하트비트 포함, `relay_agent`): 설정한 주소가 없고 원격 포트가 열려 있으면 새 IP를 올린다
+pub async fn on_seen_address(server: &IPCServer) {
+    let settings = config::settings_in(&ConfigFile::default_location());
+    let mut rt = RUNTIME.lock().await;
+    let (true, Some(sha)) = (rt.status.listening, rt.status.cert_sha256.clone()) else { return };
+    let address = published_address(&settings, server);
+    if address == rt.address {
+        return;
+    }
+    let Some(target) = server::RelaySource::Configured(server.clone()).target().await else { return };
+    if relay::publish(&target, address.as_deref(), settings.port, &sha).await == relay::Published::Done {
+        tracing::info!("Published the remote daemon address the relay sees");
+        rt.address = address;
+        rt.published = true;
+        rt.status.published = true;
+    }
+}
+
+/// 릴레이의 내 PC 목록에 맞춘다 (`GET /api/remote/peers`를 읽을 때와 10분마다):
+/// - 저장한 이름·주인 이름을 릴레이 것으로
+/// - 서버쨩에서 빠진 PC(디스코드에서 지웠거나 개인정보를 지운 PC)는 짝을 푼다. 그 PC가 가진 토큰은 더는 통하지 않는다 (사용자 결정 2026-11-08)
+/// - 저장한 원격 데몬의 주소·지문이 바뀌었으면 따른다 (터널로 짝 맺은 PC가 공인 주소를 올린 뒤 직접 붙게)
+pub async fn sync_with_relay(file: &ConfigFile, target: &relay::Target) -> Result<Vec<relay::Peer>, relay::Failure> {
+    let peers = relay::peers(target).await?;
+    let known: Vec<_> = peers.iter().map(|p| (p.host_id.clone(), p.name.clone(), p.owner_name.clone())).collect();
+    if let Err(e) = config::refresh_names_in(file, &known) {
+        tracing::warn!("Failed to refresh remote PC names: {}", e);
+    }
+    for gone in config::clients_in(file).into_iter().filter(|c| !peers.iter().any(|p| p.host_id == c.host_id)) {
+        match config::revoke_in(file, &gone.host_id) {
+            Ok(_) => tracing::info!("Unpaired remote PC {}: it is no longer one of the owner's PCs", gone.host_id),
+            Err(e) => tracing::warn!("Failed to unpair remote PC {}: {}", gone.host_id, e),
+        }
+    }
+    for d in config::daemons_in(file) {
+        let Some(ep) = peers.iter().find(|p| p.host_id == d.host_id).and_then(|p| p.endpoint.as_ref()) else { continue };
+        if (ep.address.as_str(), ep.port, ep.cert_sha256.as_str()) != (d.address.as_str(), d.port, d.cert_sha256.as_str()) {
+            let _ = config::update_endpoint_in(file, &d.host_id, &ep.address, ep.port, &ep.cert_sha256);
+        }
+    }
+    // 원격 포트가 들고 있는 짝 맺은 PC도 (새 이름, 푼 짝)
+    reload_clients(file);
+    Ok(peers)
+}
+
+/// 데몬이 떠 있는 동안 10분마다 릴레이의 내 PC 목록에 맞춘다 (`sync_with_relay`)
+pub fn spawn_sync(server: IPCServer) {
+    tokio::spawn(async move {
+        let mut wait = std::time::Duration::from_secs(60);
+        loop {
+            tokio::select! {
+                _ = server.shutdown_token.cancelled() => return,
+                _ = tokio::time::sleep(wait) => {}
+            }
+            wait = std::time::Duration::from_secs(600);
+            if let Some(target) = server::RelaySource::Configured(server.clone()).target().await {
+                let _ = sync_with_relay(&ConfigFile::default_location(), &target).await;
+            }
+        }
+    });
+}
 
 /// 짝 맺은 PC 목록 (원격 포트의 인증층이 요청마다 본다). 설정 파일에서 채우고, 짝 맺기·풀기가 고친다
 pub(crate) fn clients() -> server::Clients {
@@ -190,7 +268,8 @@ pub async fn apply(server: &IPCServer) -> Status {
 
     // 릴레이의 주소: 열려 있으면 올리고(공인 주소가 없으면 주소 없이, 터널로만), 아니면 (전에 올렸을 때) 내린다
     let target = relay.target().await;
-    let address = Some(settings.address.trim()).filter(|a| !a.is_empty());
+    let address = published_address(&settings, server);
+    let address = address.as_deref();
     if let (true, Some(sha), Some(t)) = (status.listening, status.cert_sha256.as_deref(), target.as_ref()) {
         let published = relay::publish(t, address, settings.port, sha).await;
         status.published = published == relay::Published::Done;
@@ -222,6 +301,7 @@ pub async fn apply(server: &IPCServer) -> Status {
         }
     }
     rt.published = status.published;
+    rt.address = address.map(str::to_string);
     rt.status = status.clone();
     status
 }

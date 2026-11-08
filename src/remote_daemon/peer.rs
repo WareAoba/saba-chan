@@ -208,12 +208,65 @@ async fn through_tunnel(relay: Option<&Target>, host_id: &str, endpoint: &Endpoi
     Sent::NotConnected
 }
 
-/// 직접 붙어 보고, 주소가 없거나 붙지 못하면 릴레이 터널로. 이 PC까지 터널이 열려 있으면 터널부터 쓴다
-/// (NAT 뒤 PC에 직접 붙기를 요청마다 기다리지 않게). `request`는 보낼 때마다 새로 만든다
+/// 직접 붙지 못한 주소를 다시 직접 붙어 보기까지 터널만 쓰는 시간. 그동안 요청은 기다리지 않고 터널로 가고,
+/// 시간이 지나면 다음 요청이 뒤에서 한 번 직접 붙어 본다 (NAT 뒤 PC에 직접 붙기를 요청마다 기다리지 않게)
+const DIRECT_RETRY: Duration = if cfg!(test) { Duration::from_millis(200) } else { Duration::from_secs(300) };
+
+/// 직접 붙지 못한 주소(주소·포트·지문)와 그때. 뒤에서 다시 붙어 보는 중이면 `probing`
+#[derive(Clone, Copy)]
+struct DirectFailed {
+    at: std::time::Instant,
+    probing: bool,
+}
+static DIRECT_FAILED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<IdleKey, DirectFailed>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn direct_failed() -> std::sync::MutexGuard<'static, std::collections::HashMap<IdleKey, DirectFailed>> {
+    DIRECT_FAILED.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 이 주소로 지금 직접 붙어 봐도 되는가. 얼마 전에 못 붙었으면 아니다. 그때로부터 `DIRECT_RETRY`가 지났으면
+/// 뒤에서 한 번 붙어 보고(되면 다음 요청부터 직접) 이번 요청은 터널로 보낸다
+fn try_direct(endpoint: &Endpoint) -> bool {
+    let key = idle_key(endpoint);
+    let mut failed = direct_failed();
+    let Some(f) = failed.get_mut(&key) else { return true };
+    if !f.probing && f.at.elapsed() >= DIRECT_RETRY {
+        f.probing = true;
+        let endpoint = endpoint.clone();
+        tokio::spawn(async move {
+            let ok = match open(&endpoint).await {
+                Some(sender) => {
+                    keep_idle(&endpoint, sender);
+                    true
+                }
+                None => false,
+            };
+            let mut failed = direct_failed();
+            if ok {
+                failed.remove(&idle_key(&endpoint));
+            } else {
+                failed.insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), probing: false });
+            }
+        });
+    }
+    false
+}
+
+/// 저장한 원격 데몬에 지금 붙는 길 (앱의 PC 카드): 주소가 있고 얼마 전 직접 붙기에 실패하지 않았으면 `direct`, 아니면 `relay`
+pub fn route_of(d: &Daemon) -> &'static str {
+    let endpoint = endpoint_of(d);
+    if endpoint.address.is_empty() || direct_failed().contains_key(&idle_key(&endpoint)) { "relay" } else { "direct" }
+}
+
+/// 직접 붙어 보고, 주소가 없거나 붙지 못하면 릴레이 터널로 (사용자 결정 2026-10-25: 릴레이는 연결될 때까지만 거든다).
+/// (열어 둔 터널은 그 위의 이벤트 스트림이 끝나지 않게 그대로 둔다.) 못 붙은 주소는 한동안 터널로만 보낸다(`try_direct`). `request`는 보낼 때마다 새로 만든다
 async fn send_to(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Sent {
-    if !endpoint.address.is_empty() && !tunnel::is_open(relay, host_id) {
+    if !endpoint.address.is_empty() && try_direct(endpoint) {
         match send(endpoint, request).await {
-            Sent::NotConnected => {}
+            Sent::NotConnected => {
+                direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), probing: false });
+            }
             sent => return sent,
         }
     }

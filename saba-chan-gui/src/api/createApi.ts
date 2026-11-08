@@ -1306,6 +1306,29 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         remoteConnect: (hostId: string) => daemonJson('post', '/api/remote/daemons', { hostId }, 30000),
         remoteForget: async (hostId: string) =>
             (await daemonJson('delete', `/api/remote/daemons/${encodeURIComponent(hostId)}`)) || { ok: true },
+        // 내 PC 카드의 지우기: 그 PC에서 사바쨩 제거(리눅스·맥) → 서버쨩 목록에서 빼기 → 잊기. `{uninstalled, removedFromRelay}`
+        remoteRemove: (hostId: string, body: { uninstall: boolean; keepSettings: boolean; keepInstances: boolean; removePc: boolean }) =>
+            daemonJson('post', `/api/remote/daemons/${encodeURIComponent(hostId)}/remove`, body, 60000),
+        // 다른 PC가 낸 페어링 코드로 붙기. 데몬은 그 PC가 원격 포트를 올릴 때까지 2분까지 기다린다
+        remoteClaim: (code: string) => daemonJson('post', '/api/remote/claim', { code }, 150000),
+        // 이 PC의 ssh로 리눅스에 설치 → `{id}`. 진행은 since(받은 출력 길이)부터 읽고, ssh·sudo 물음에 답한다
+        remoteInstallStart: (body: { host: string; user: string; port?: number; linger?: boolean; steamLibs?: boolean }) =>
+            daemonJson('post', '/api/remote/install', body),
+        remoteInstall: (id: string, since: number) =>
+            daemonJson('get', `/api/remote/install/${encodeURIComponent(id)}${queryString({ since })}`),
+        remoteInstallInput: async (id: string, text: string) =>
+            (await daemonJson('post', `/api/remote/install/${encodeURIComponent(id)}/input`, { text })) || { ok: true },
+        remoteInstallCancel: async (id: string) =>
+            (await daemonJson('delete', `/api/remote/install/${encodeURIComponent(id)}`)) || { ok: true },
+        // 원격 데몬 자신의 업데이트 (`/api/daemon/update`, 고른 데몬과 상관없이 hostId 데몬에 보낸다): 확인·받기·적용
+        remoteDaemonUpdate: async (hostId: string): Promise<ApiBody> => {
+            try {
+                return (await request('post', '/api/daemon/update', {}, { timeout: 600000, target: hostId })).data;
+            } catch (caught) {
+                const error = caught as DaemonError;
+                return error.response ? errorBody(error) : connectionError(error);
+            }
+        },
         // 합쳐 보기 (G1c): 이 PC와 원격 데몬마다의 서버 {daemons:[{hostId(이 PC는 null), name, ok, error_code?, servers}]}
         // 데몬이 원격 데몬 하나를 30초까지 기다린다 (01 §1.4.2 8)
         remoteServers: () => daemonJson('get', '/api/remote/servers', undefined, 40000),

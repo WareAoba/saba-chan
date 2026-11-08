@@ -14,6 +14,10 @@
 #      맥은 ~/Applications/Saba-chan.app에 설치하고(CLI 설치가 앱 묶음을 만든다) 그 앱을 연다
 #
 # 인자는 `saba-chan-cli install`의 것이다 (--dir, --modules, --components-dir, --gui, --no-gui, --yes).
+# 이 스크립트만 받는 인자 (다른 PC의 앱이 ssh로 설치할 때 붙인다):
+#   --pair        데몬을 켠 뒤 서버쨩 페어링 코드를 받아 `SABA_PAIR_CODE=<코드>` 줄로 찍고, 누가 받을 때까지 기다린다
+#   --linger      로그아웃해도 데몬이 돌게 한다 (sudo loginctl enable-linger)
+#   --steam-libs  SteamCMD에 필요한 32비트 라이브러리를 설치한다 (sudo, apt·dnf)
 # 정식 채널만 설치한다 (CLI 설치도 정식 채널을 받는다). 채널은 설치 뒤 `saba-chan-cli update config channel=beta`로
 # 필요: curl, sha256sum, python3(manifest JSON 읽기, zip 풀기. 클라우드 서버 이미지에는 unzip이 없는 일이 많다).
 # 맥은 OS에 든 것만 쓴다: shasum, osascript(JSON), ditto(zip). 맥의 python3는 개발 도구를 깔라는 창을 띄울 수 있다
@@ -21,6 +25,18 @@ set -eu
 
 RELAY=https://saba-chan.online
 CHANNEL=stable
+
+# 이 스크립트의 인자를 빼고 나머지를 CLI 설치에 넘긴다
+PAIR= LINGER= STEAM_LIBS=
+for arg in "$@"; do
+    shift
+    case "$arg" in
+        --pair) PAIR=1 ;;
+        --linger) LINGER=1 ;;
+        --steam-libs) STEAM_LIBS=1 ;;
+        *) set -- "$@" "$arg" ;;
+    esac
+done
 
 case "${LANG:-}${LC_ALL:-}" in
     *ko*) KO=1 ;;
@@ -201,11 +217,39 @@ else
     "$CLI" daemon start
 fi
 
+# 로그아웃해도(ssh를 닫아도) systemd 사용자 서비스가 돌게
+if [ -n "$LINGER" ] && [ -z "$MAC" ] && command -v loginctl >/dev/null 2>&1; then
+    sudo loginctl enable-linger "$(id -un)" ||
+        say "로그아웃 뒤에도 돌게 하지 못했어요 (sudo loginctl enable-linger)." "Could not keep the daemon running after logout (sudo loginctl enable-linger)."
+fi
+
 # SteamCMD(팰월드·좀보이드 등)는 32비트 프로그램이다: 32비트 C 라이브러리가 없으면 설치가 "required file not found"로 실패한다.
 # ARM에는 SteamCMD 게임이 없으니 알리지 않는다
-[ "$PLATFORM" != linux-x64 ] || [ -e /lib/ld-linux.so.2 ] || [ -e /lib32/ld-linux.so.2 ] ||
-    say "Steam 게임을 설치하려면 32비트 라이브러리가 필요해요. 예: sudo apt install lib32gcc-s1" \
-        "Steam games need 32-bit libraries. For example: sudo apt install lib32gcc-s1"
+if [ "$PLATFORM" = linux-x64 ] && [ ! -e /lib/ld-linux.so.2 ] && [ ! -e /lib32/ld-linux.so.2 ]; then
+    if [ -n "$STEAM_LIBS" ] && command -v apt-get >/dev/null 2>&1; then
+        sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y lib32gcc-s1 || STEAM_LIBS=
+    elif [ -n "$STEAM_LIBS" ] && command -v dnf >/dev/null 2>&1; then
+        sudo dnf install -y glibc.i686 libstdc++.i686 || STEAM_LIBS=
+    else
+        STEAM_LIBS=
+    fi
+    [ -n "$STEAM_LIBS" ] ||
+        say "Steam 게임을 설치하려면 32비트 라이브러리가 필요해요. 예: sudo apt install lib32gcc-s1" \
+            "Steam games need 32-bit libraries. For example: sudo apt install lib32gcc-s1"
+fi
+
+# 다른 PC의 앱이 설치를 맡겼다: 페어링 코드를 그 앱이 받는다 (디스코드 `/사바쨩 연결` 대신)
+if [ -n "$PAIR" ]; then
+    # 서비스로 켠 데몬이 답할 때까지 (몇 초)
+    i=0
+    while [ $i -lt 30 ] && ! "$CLI" --json daemon status 2>/dev/null | grep -q '"running": *true'; do
+        i=$((i + 1))
+        sleep 1
+    done
+    SABA_PAIR_MARKER=1 "$CLI" bot pair ||
+        say "서버쨩 연결을 마치지 못했어요. 나중에 saba-chan bot pair 로 다시 해 주세요." \
+            "Could not finish connecting to Server-chan. Run saba-chan bot pair later."
+fi
 
 case ":$PATH:" in
     *":$HOME/.local/bin:"*) ;;

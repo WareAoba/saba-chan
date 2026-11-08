@@ -438,6 +438,10 @@ async fn wait_for_claim(ctx: &Ctx, relay: Option<&str>) -> Result<Option<Value>>
     tell!();
     tell!("      {}", console::style(&code).bold().cyan());
     tell!();
+    // 다른 PC의 앱이 ssh로 설치하며 이 줄을 읽고 코드를 대신 받는다 (install.sh `--pair`, 데몬 `remote_daemon::onboard`)
+    if std::env::var_os("SABA_PAIR_MARKER").is_some() {
+        say!("SABA_PAIR_CODE={code}");
+    }
     tell!("  {}", output::dim(&t!("bot.pair_waiting")));
     let spin = crate::progress::spinner(&t!("bot.pair_polling"));
     let mut wait = PairWait::new(std::time::Instant::now());

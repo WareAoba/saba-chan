@@ -1177,7 +1177,10 @@ function SettingsModal({
                         >
                             <h3>{t(TAB_LABELS.connection)}</h3>
 
-                            {remoteDaemonAvailable() && <RemoteDaemonSection onAsk={onTestModal} />}
+                            {remoteDaemonAvailable() && <RemoteDaemonSection />}
+
+                            {/* AI 에이전트(MCP) 연결: PC 카드와 같은 카드로 보인다 */}
+                            {discordHostId && agentLinkAvailable() && <AgentLink />}
 
                             {/* IPC 포트 설정 */}
                             <div className="setting-item">
@@ -1270,8 +1273,7 @@ function SettingsModal({
 
                             {extensionGuiAvailable() && <ExtensionGuiSection />}
 
-                            {/* 디스코드 계정: AI 에이전트 연결, 개인정보 지우기 (디스코드 화면에서 옮겨 옴) */}
-                            {discordHostId && agentLinkAvailable() && <AgentLink className="setting-item" />}
+                            {/* 디스코드 계정: 개인정보 지우기 (디스코드 화면에서 옮겨 옴). AI 에이전트 연결은 연결 탭에 있다 */}
                             {discordHostId && privacyEraseAvailable() && (
                                 <PrivacyErase
                                     className="setting-item"

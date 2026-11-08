@@ -130,6 +130,7 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/integrity", get(check_integrity))
         .route("/api/updates/config", get(get_config))
         .route("/api/updates/config", put(set_config))
+        .route("/api/daemon/update", get(get_daemon_update).post(install_updates).put(put_daemon_update))
         .with_state(state)
 }
 
@@ -250,6 +251,14 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
 
     let has_visible_update = status.components.iter()
         .any(|c| c.update_available && !c.downloaded && !matches!(c.component, Component::Locales));
+    // 화면 없는 설치는 앱을 열 일이 없다: 자동 적용이면 받고 바로 적용한다 (원격 데몬 자동 업데이트, 사용자 결정 2026-11-08)
+    if auto_apply_headless(&state.manager.read().await.get_config(), saba_chan_updater_lib::profile::Profile::load()) {
+        let has_pending = status.components.iter().any(|c| c.update_available && !matches!(c.component, Component::Locales));
+        if has_pending {
+            spawn_headless_apply(state.clone());
+        }
+        return Ok(status);
+    }
     if auto_download && has_visible_update {
         let manager = state.manager.clone();
         tokio::spawn(async move {
@@ -272,6 +281,103 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
         });
     }
     Ok(status)
+}
+
+/// 받고 바로 적용하는가: 자동 적용이 켜진 화면 없는 설치 (GUI가 있으면 앱을 열 때 적용한다, `apply-on-launch`)
+fn auto_apply_headless(cfg: &saba_chan_updater_lib::UpdateConfig, profile: saba_chan_updater_lib::profile::Profile) -> bool {
+    cfg.enabled && cfg.auto_apply && profile == saba_chan_updater_lib::profile::Profile::Headless
+}
+
+/// 서버가 켜져 있어 미룬 적용을 다시 해 보는 간격
+const HEADLESS_HOLD_RETRY: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+static HEADLESS_APPLYING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 화면 없는 설치의 자동 적용: 받아 두고, 켜진 서버가 없을 때 적용하고 업데이터를 띄운다 (데몬은 서비스로 다시 뜬다).
+/// 서버가 켜져 있으면 데몬·런타임 적용을 미루고 15분마다 다시 본다. 한 번에 하나만 돈다
+fn spawn_headless_apply(state: UpdateState) {
+    use std::sync::atomic::Ordering;
+    if HEADLESS_APPLYING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    tokio::spawn(async move {
+        use crate::ipc::internal::into_internal;
+        let downloaded = into_internal(download_components_with(state.clone(), DownloadRequest::default()).await).await.body;
+        if let Some(errors) = downloaded.get("errors").and_then(Value::as_array).filter(|e| !e.is_empty()) {
+            tracing::warn!("[Updates] Auto-download failed for some components: {:?}", errors);
+        }
+        if let Err(e) = state.manager.write().await.save_pending_manifest() {
+            tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
+        }
+        loop {
+            let answer = into_internal(apply_on_launch(State(state.clone())).await).await.body;
+            if answer.get("requires_updater").and_then(Value::as_bool) == Some(true) {
+                tracing::info!("[Updates] Applying downloaded updates on this headless install");
+                let _ = into_internal(launch_updater(State(state.clone()), LooseJson(None)).await).await;
+                break;
+            }
+            if answer.get("held").and_then(Value::as_array).is_none_or(Vec::is_empty) {
+                break;
+            }
+            tracing::info!("[Updates] Servers are running; applying updates later");
+            let stop = state.stop_requested.clone().unwrap_or_default();
+            tokio::select! {
+                _ = stop.cancelled() => break,
+                _ = tokio::time::sleep(HEADLESS_HOLD_RETRY) => {}
+            }
+        }
+        HEADLESS_APPLYING.store(false, Ordering::SeqCst);
+    });
+}
+
+/// GET /api/daemon/update — 짝 맺은 PC의 앱 카드가 이 데몬의 판·업데이트를 본다 (`/api/updates/*`는 앱이 있는 PC 전용이라 따로 둔다).
+/// `{ok, version, profile, auto, updatesAvailable, latestVersion}` (`latestVersion`: 데몬 구성요소의 새 판, 없으면 null)
+async fn get_daemon_update(State(state): State<UpdateState>) -> impl IntoResponse {
+    let mgr = state.manager.read().await;
+    let cfg = mgr.get_config();
+    let status = mgr.get_status();
+    let visible = status.components.iter().filter(|c| c.update_available && !matches!(c.component, Component::Locales));
+    let latest = status.components.iter().find(|c| matches!(c.component, Component::CoreDaemon) && c.update_available).and_then(|c| c.latest_version.clone());
+    Json(json!({
+        "ok": true,
+        "version": crate::relay_agent::AGENT_VERSION,
+        "profile": saba_chan_updater_lib::profile::Profile::load().as_str(),
+        "auto": cfg.enabled && cfg.auto_apply,
+        "updatesAvailable": visible.count(),
+        "latestVersion": latest,
+    }))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DaemonUpdateBody {
+    auto: bool,
+}
+
+/// PUT /api/daemon/update {auto} — 자동 업데이트(확인·받기·적용)를 켜고 끈다. 켜면 바로 한 번 확인한다
+async fn put_daemon_update(State(state): State<UpdateState>, Json(body): Json<DaemonUpdateBody>) -> impl IntoResponse {
+    let cfg = {
+        let mut mgr = state.manager.write().await;
+        let mut cfg = mgr.get_config();
+        if body.auto {
+            cfg.enabled = true;
+            cfg.auto_download = true;
+        }
+        cfg.auto_apply = body.auto;
+        mgr.update_config(cfg.clone());
+        cfg
+    };
+    if let Err(e) = save_updater_config(&cfg) {
+        tracing::warn!("[Updates] Failed to persist update config: {}", e);
+    }
+    if body.auto {
+        let state = state.clone();
+        tokio::spawn(async move {
+            if let Err(e) = check_and_follow_up(&state).await {
+                tracing::warn!("[Updates] Check after enabling auto-update failed: {}", e);
+            }
+        });
+    }
+    Json(json!({ "ok": true, "auto": body.auto }))
 }
 
 /// 데몬 기동 후 업데이트를 주기적으로 확인한다 (U6).
@@ -1550,6 +1656,20 @@ mod tests {
     }
 
     /// 헤드리스 설치는 창 없이 적용하고, 다시 띄울 것을 받지 않았으면 데몬 자신을 다시 띄운다. 데스크톱은 그대로
+    /// 화면 없는 설치만 받고 바로 적용한다 (원격 데몬 자동 업데이트). GUI가 있는 설치는 앱을 열 때 적용한다
+    #[test]
+    fn only_a_headless_install_with_auto_apply_applies_right_away() {
+        use saba_chan_updater_lib::profile::Profile;
+        let mut cfg = saba_chan_updater_lib::UpdateConfig { auto_apply: true, ..Default::default() };
+        assert!(super::auto_apply_headless(&cfg, Profile::Headless));
+        assert!(!super::auto_apply_headless(&cfg, Profile::Desktop));
+        cfg.enabled = false;
+        assert!(!super::auto_apply_headless(&cfg, Profile::Headless));
+        cfg.enabled = true;
+        cfg.auto_apply = false;
+        assert!(!super::auto_apply_headless(&cfg, Profile::Headless));
+    }
+
     #[test]
     fn a_headless_install_applies_without_a_window_and_relaunches_the_daemon() {
         use saba_chan_updater_lib::profile::Profile;
