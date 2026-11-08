@@ -373,6 +373,42 @@ pub enum RemoteCmd {
     Servers,
     /// Forget a remote daemon (pair again with `remote connect`)
     Forget { host_id: String },
+    /// Take a pairing code another PC printed (for example after the one-line Linux install) and connect to it
+    Claim { code: String },
+    /// Install Saba-chan on a Linux PC over this PC's ssh and connect to it (`user@host`)
+    Install {
+        target: String,
+        #[arg(long, default_value_t = 22)]
+        port: u16,
+        /// Keep the daemon running after you log out (sudo)
+        #[arg(long)]
+        linger: bool,
+        /// Install the 32-bit libraries SteamCMD needs (sudo)
+        #[arg(long)]
+        steam_libs: bool,
+    },
+    /// Remove one of your PCs: forget it here, and optionally uninstall Saba-chan there and drop it from the relay
+    Remove {
+        host_id: String,
+        /// Uninstall Saba-chan on that PC (Linux and macOS)
+        #[arg(long)]
+        uninstall: bool,
+        /// With --uninstall: remove its settings and Discord connection too
+        #[arg(long)]
+        remove_settings: bool,
+        /// With --uninstall: remove its game servers too
+        #[arg(long)]
+        remove_instances: bool,
+        /// Remove the PC from your PCs on the relay too
+        #[arg(long)]
+        from_relay: bool,
+    },
+    /// Update a remote daemon now, or turn its automatic updates on or off (`--auto on|off`)
+    Update {
+        host_id: String,
+        #[arg(long, value_parser = clap::builder::BoolishValueParser::new())]
+        auto: Option<bool>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

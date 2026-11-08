@@ -49,6 +49,8 @@ tempfile = "3.8"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 glob = "0.3"
 regex = "1"
+# ssh로 다른 PC에 설치할 때 처음 접속 확인·비밀번호 물음을 앱에 넘긴다 (remote_daemon::onboard)
+portable-pty = "0.9"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "system-proxy", "blocking"] }
 base64 = "0.23"
 sysinfo = "0.40"

@@ -818,6 +818,37 @@ impl Api {
     pub async fn forget_remote_daemon(&self, host_id: &str) -> Result<Value> {
         self.delete(&format!("/api/remote/daemons/{}", seg(host_id))).await
     }
+    /// POST /api/remote/claim `{code}` — 다른 PC가 낸 페어링 코드로 붙는다 (그 PC가 원격 포트를 올릴 때까지 데몬이 기다린다)
+    pub async fn claim_remote(&self, code: &str) -> Result<Value> {
+        self.post_long("/api/remote/claim", json!({ "code": code })).await
+    }
+    /// POST /api/remote/daemons/:hostId/remove `{uninstall, keepSettings, keepInstances, removePc}`
+    pub async fn remove_remote_daemon(&self, host_id: &str, body: Value) -> Result<Value> {
+        self.post(&format!("/api/remote/daemons/{}/remove", seg(host_id)), body).await
+    }
+    /// POST /api/remote/install `{host, user, port, linger, steamLibs}` → `{id}`
+    pub async fn start_remote_install(&self, body: Value) -> Result<Value> {
+        self.post("/api/remote/install", body).await
+    }
+    /// GET /api/remote/install/:id?since=N
+    pub async fn remote_install(&self, id: &str, since: u64) -> Result<Value> {
+        self.get(&format!("/api/remote/install/{}?since={since}", seg(id))).await
+    }
+    /// POST /api/remote/install/:id/input `{text}`
+    pub async fn answer_remote_install(&self, id: &str, text: &str) -> Result<Value> {
+        self.post(&format!("/api/remote/install/{}/input", seg(id)), json!({ "text": text })).await
+    }
+    /// DELETE /api/remote/install/:id
+    pub async fn cancel_remote_install(&self, id: &str) -> Result<Value> {
+        self.delete(&format!("/api/remote/install/{}", seg(id))).await
+    }
+    /// 고른 원격 데몬(`host_id`) 자신의 업데이트 (`/api/daemon/update`): 판 보기, 지금 업데이트, 자동 업데이트 켜고 끄기
+    pub async fn daemon_update_on(&self, host_id: &str, method: Method, body: Option<Value>) -> Result<Value> {
+        let mut api = self.clone();
+        api.target = Some(host_id.to_string());
+        let timeout = if method == Method::POST { LONG } else { SLOW };
+        api.call(method, "/api/daemon/update", body, timeout).await
+    }
     /// GET /api/actions?surface=cli&instance&locale (P2)
     pub async fn actions(&self, instance: Option<&str>) -> Result<Value> {
         let mut path = "/api/actions?surface=cli".to_string();
@@ -1705,6 +1736,7 @@ mod route_coverage {
     /// 데몬 라우트 중 CLI가 부르지 않는 것과 그 까닭. 여기 없는 라우트는 모두 CLI(그래서 TUI)에서 닿아야 한다
     const NOT_FOR_CLI: &[(&str, &str)] = &[
         ("/api/client/register", "GUI 창 수명 (CLI는 한 번 돌고 끝난다)"),
+        ("/api/system/uninstall", "짝 맺은 PC가 원격으로 부르는 제거 (CLI는 `remote remove --uninstall`이 그 PC에 보내고, 이 PC는 `uninstall`)"),
         ("/api/relay/pair/{code}/status", "이전 GUI·CLI가 쓰던 페어링 상태 (지금은 `POST /api/relay/pair/status`, 다음 판에서 뺀다)"),
         ("/api/chatbot/common", "원격(디스코드 `/설정` 사바쨩 전체)용 모델·키만 바꾸기 (CLI는 `PUT /api/chatbot`으로 같은 값을 바꾼다)"),
         ("/api/updates/install", "원격(디스코드 `/사바쨩 업데이트`)용 한 번에 받고 적용 (CLI `update`는 단계마다 진행을 보인다)"),

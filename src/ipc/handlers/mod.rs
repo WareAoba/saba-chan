@@ -21,6 +21,7 @@ pub mod events;
 pub mod migration;
 pub mod diagnostics;
 pub mod system;
+pub mod uninstall;
 pub mod paths;
 pub mod autostart;
 pub mod maker;

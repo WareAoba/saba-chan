@@ -1031,7 +1031,11 @@
       "agent": "向此電腦上的 AI 代理註冊本機 MCP(`mcp`)",
       "agent.link": "將 Saba-chan 加入 Claude Code 和 Codex(未選擇時兩者都加入)",
       "agent.unlink": "從 Claude Code 和 Codex 移除 Saba-chan",
-      "agent.status": "此電腦上已加入 Saba-chan 的代理"
+      "agent.status": "此電腦上已加入 Saba-chan 的代理",
+      "remote.claim": "領取其他電腦顯示的配對碼並連線到那台電腦（例如 Linux 一行安裝之後）",
+      "remote.install": "透過本機 ssh 在 Linux 電腦上安裝 Saba-chan 並連線（`使用者@主機`）",
+      "remote.remove": "移除一台電腦：在這裡忘記它，可選在那台電腦上解除安裝 Saba-chan 並從 Server-chan 清單中移除",
+      "remote.update": "立即更新遠端常駐程式，或開關自動更新（`--auto on|off`）"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -1258,7 +1262,19 @@
       "agent.link.claude": "僅 Claude Code",
       "agent.link.codex": "僅 Codex",
       "agent.unlink.claude": "僅 Claude Code",
-      "agent.unlink.codex": "僅 Codex"
+      "agent.unlink.codex": "僅 Codex",
+      "remote.claim.code": "那台電腦顯示的配對碼",
+      "remote.install.target": "要安裝的電腦（`使用者@主機`）",
+      "remote.install.port": "ssh 連接埠",
+      "remote.install.linger": "登出後常駐程式繼續執行（sudo）",
+      "remote.install.steam_libs": "安裝 SteamCMD 所需的 32 位元函式庫（sudo）",
+      "remote.remove.host_id": "要移除的電腦 id（見 `remote peers`）",
+      "remote.remove.uninstall": "同時在那台電腦上解除安裝 Saba-chan（Linux、Mac）",
+      "remote.remove.remove_settings": "與 --uninstall 一起：同時刪除設定和 Discord 連線",
+      "remote.remove.remove_instances": "與 --uninstall 一起：同時刪除遊戲伺服器",
+      "remote.remove.from_relay": "同時從 Server-chan 的電腦清單中移除",
+      "remote.update.host_id": "遠端常駐程式的電腦 id（見 `remote daemons`）",
+      "remote.update.auto": "開啟(on)或關閉(off)自動更新。省略則立即更新"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
@@ -1765,12 +1781,32 @@
       "remote_bad_path": "該路徑不能傳給遠端常駐程式",
       "remote_unauthorized": "遠端常駐程式不再接受本機。請重新連線",
       "remote_local_only": "這只能在那台電腦上直接操作",
-      "remote_field_blocked": "以下設定只能在那台電腦上直接變更：{{fields}}"
+      "remote_field_blocked": "以下設定只能在那台電腦上直接變更：{{fields}}",
+      "pair_code_not_found": "沒有這個配對碼。請再檢查一下",
+      "pair_code_used": "該配對碼已被使用",
+      "pair_code_expired": "配對碼已過期。請在那台電腦上取得新的",
+      "remote_not_ready": "已領取配對碼，但那台電腦尚未開啟遠端連接埠。稍後用 `remote connect` 再連線",
+      "ssh_missing": "本機找不到 ssh。請安裝 OpenSSH 用戶端",
+      "ssh_spawn_failed": "無法執行 ssh",
+      "ssh_failed": "無法用 ssh 連線（請檢查位址、使用者和密碼）",
+      "install_failed": "安裝腳本失敗",
+      "pair_code_missing": "安裝已完成，但沒有輸出配對碼",
+      "install_unknown": "找不到該安裝",
+      "unsupported": "無法遠端解除安裝那台電腦（Windows）",
+      "cli_missing": "那台電腦上沒有 saba-chan-cli，無法解除安裝",
+      "remote_uninstall_failed": "無法在那台電腦上解除安裝 Saba-chan"
     },
     "daemon": "守護程式",
     "this_pc": "本機",
     "no_servers": "沒有伺服器",
-    "via_relay": "透過中繼"
+    "via_relay": "透過中繼",
+    "removed": "已移除 {{host}}。",
+    "auto_update_on": "已為 {{host}} 開啟自動更新。",
+    "auto_update_off": "已為 {{host}} 關閉自動更新。",
+    "update_started": "已開始更新 {{host}}。完成後常駐程式會重新啟動。",
+    "install_target": "請以 `使用者@主機` 指定電腦（例如 saba@192.168.0.20）",
+    "install_failed": "安裝未完成（{{code}}）",
+    "install_host_key": "這是首次連線該電腦。如果上面的指紋屬於那台電腦，要繼續嗎？"
   },
   "address": {
     "title": "{{server}} 的位址",

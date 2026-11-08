@@ -195,6 +195,12 @@ pub static ROUTES: &[Route] = &[
     not_on_web("GET", "/api/system/browse"),
     deny("POST", "/api/remote/daemons"),
     deny("DELETE", "/api/remote/daemons/{host_id}"),
+    deny("POST", "/api/remote/daemons/{host_id}/remove"),
+    deny("POST", "/api/remote/claim"),
+    deny("POST", "/api/remote/install"),
+    deny("GET", "/api/remote/install/{id}"),
+    deny("DELETE", "/api/remote/install/{id}"),
+    deny("POST", "/api/remote/install/{id}/input"),
     deny("GET", "/api/remote/daemons/{host_id}/proxy/{*rest}"),
     deny("POST", "/api/remote/daemons/{host_id}/proxy/{*rest}"),
     deny("PUT", "/api/remote/daemons/{host_id}/proxy/{*rest}"),
@@ -208,6 +214,8 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/system/net-trace/revoke"),
     deny("GET", "/api/system/paths"),
     deny("POST", "/api/system/paths/move"),
+    // 이 PC에서 사바쨩 지우기: 짝 맺은 PC의 앱 카드가 부른다 (웹은 아니다)
+    not_on_web("POST", "/api/system/uninstall"),
     // 이 PC에 로그인할 때 무엇을 띄울지는 PC에서만 정한다
     deny("GET", "/api/system/autostart"),
     deny("PUT", "/api/system/autostart"),
@@ -305,6 +313,10 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/updates/integrity"),
     deny("GET", "/api/updates/config"),
     deny("PUT", "/api/updates/config"),
+    // 이 데몬 자신의 업데이트: 짝 맺은 PC의 앱 카드가 원격 데몬을 고르고 부른다 (자동 업데이트·업데이트 단추)
+    not_on_web("GET", "/api/daemon/update"),
+    not_on_web("POST", "/api/daemon/update"),
+    not_on_web("PUT", "/api/daemon/update"),
     // 그 데몬의 런타임 준비 단계만 담는다
     not_on_web("GET", "/api/runtime/preflight"),
 ];

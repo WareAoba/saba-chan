@@ -1031,7 +1031,11 @@
       "agent": "Registra el servidor MCP local (`mcp`) en los agentes de IA de este PC",
       "agent.link": "Añade Saba-chan a Claude Code y Codex (a ambos si no eliges uno)",
       "agent.unlink": "Quita Saba-chan de Claude Code y Codex",
-      "agent.status": "Qué agentes de este PC tienen Saba-chan"
+      "agent.status": "Qué agentes de este PC tienen Saba-chan",
+      "remote.claim": "Tomar el código de emparejamiento que mostró otro PC y conectarse a él (por ejemplo, tras la instalación de una línea en Linux)",
+      "remote.install": "Instalar Saba-chan en un PC Linux con el ssh de este PC y conectarse (`usuario@host`)",
+      "remote.remove": "Quitar uno de tus PC: olvidarlo aquí y, si quieres, desinstalar Saba-chan allí y quitarlo de la lista del relay",
+      "remote.update": "Actualizar ahora un daemon remoto o activar/desactivar sus actualizaciones automáticas (`--auto on|off`)"
     },
     "arg": {
       "module.maker.game": "Juego para la primera petición",
@@ -1258,7 +1262,19 @@
       "agent.link.claude": "Solo Claude Code",
       "agent.link.codex": "Solo Codex",
       "agent.unlink.claude": "Solo Claude Code",
-      "agent.unlink.codex": "Solo Codex"
+      "agent.unlink.codex": "Solo Codex",
+      "remote.claim.code": "El código de emparejamiento que mostró ese PC",
+      "remote.install.target": "PC de destino (`usuario@host`)",
+      "remote.install.port": "Puerto ssh",
+      "remote.install.linger": "Mantener el daemon en marcha al cerrar sesión (sudo)",
+      "remote.install.steam_libs": "Instalar las bibliotecas de 32 bits que necesita SteamCMD (sudo)",
+      "remote.remove.host_id": "Id del PC a quitar (ver `remote peers`)",
+      "remote.remove.uninstall": "Desinstalar también Saba-chan en ese PC (Linux, Mac)",
+      "remote.remove.remove_settings": "Con --uninstall: borrar también ajustes y conexión con Discord",
+      "remote.remove.remove_instances": "Con --uninstall: borrar también los servidores de juego",
+      "remote.remove.from_relay": "Quitar también de tu lista de PC en el relay",
+      "remote.update.host_id": "Id del PC del daemon remoto (ver `remote daemons`)",
+      "remote.update.auto": "Activar (on) o desactivar (off) las actualizaciones automáticas. Sin él: actualizar ahora"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
@@ -1765,12 +1781,32 @@
       "remote_bad_path": "Esa ruta no se puede enviar a un daemon remoto",
       "remote_unauthorized": "El daemon remoto ya no acepta este PC. Conéctalo de nuevo",
       "remote_local_only": "Esto solo se puede hacer en ese PC",
-      "remote_field_blocked": "Estos ajustes solo se pueden cambiar en ese PC: {{fields}}"
+      "remote_field_blocked": "Estos ajustes solo se pueden cambiar en ese PC: {{fields}}",
+      "pair_code_not_found": "No existe ese código de emparejamiento. Revisa el código",
+      "pair_code_used": "Ese código de emparejamiento ya se usó",
+      "pair_code_expired": "El código caducó. Obtén uno nuevo en ese PC",
+      "remote_not_ready": "Se tomó el código, pero ese PC aún no abrió su puerto remoto. Prueba `remote connect` en un momento",
+      "ssh_missing": "No se encontró ssh en este PC. Instala el cliente OpenSSH",
+      "ssh_spawn_failed": "No se pudo ejecutar ssh",
+      "ssh_failed": "No se pudo conectar por ssh (revisa dirección, usuario y contraseña)",
+      "install_failed": "El script de instalación falló",
+      "pair_code_missing": "La instalación terminó pero no mostró código de emparejamiento",
+      "install_unknown": "No se encontró esa instalación",
+      "unsupported": "Ese PC no se puede desinstalar a distancia (Windows)",
+      "cli_missing": "Falta saba-chan-cli en ese PC, no se pudo desinstalar",
+      "remote_uninstall_failed": "No se pudo desinstalar Saba-chan en ese PC"
     },
     "daemon": "Daemon",
     "this_pc": "Este PC",
     "no_servers": "Sin servidores",
-    "via_relay": "A través del relay"
+    "via_relay": "A través del relay",
+    "removed": "Se quitó {{host}}.",
+    "auto_update_on": "Actualizaciones automáticas activadas para {{host}}.",
+    "auto_update_off": "Actualizaciones automáticas desactivadas para {{host}}.",
+    "update_started": "Se empezó a actualizar {{host}}. Su daemon se reinicia al terminar.",
+    "install_target": "Indica el PC como `usuario@host` (por ejemplo saba@192.168.0.20)",
+    "install_failed": "La instalación no terminó ({{code}})",
+    "install_host_key": "Es la primera conexión a ese PC. ¿Continuar si la huella de arriba es la suya?"
   },
   "address": {
     "title": "Dirección de {{server}}",

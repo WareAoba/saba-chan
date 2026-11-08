@@ -1,6 +1,7 @@
 //! 원격 포트의 HTTP (D1). 로컬 IPC와 같은 라우트에, 인증층만 짝 맺은 PC 토큰으로 바꿔 씌운다.
 //!
 //!   POST /remote/pair {ticketId, secret}   토큰 없이 받는다. 릴레이에 연결표를 한 번 확인하고 그 PC 앞으로 토큰을 낸다
+//!   DELETE /remote/self                    부른 PC가 제 짝을 푼다 (그 PC가 이 데몬을 잊을 때, 토큰 필요)
 //!   그 밖                                  `Authorization: Bearer sbr_…`. 노드 토큰·원격 설정 라우트는 원격에서 막는다
 
 use std::collections::HashMap;
@@ -320,6 +321,19 @@ async fn remote_auth(State(ctx): State<Ctx>, mut req: Request<Body>, next: Next)
     let Some((client, revoked)) = ctx.clients.verify(token) else {
         return error(StatusCode::UNAUTHORIZED, "remote_unauthorized");
     };
+    if path == "/remote/self" {
+        if req.method() != axum::http::Method::DELETE {
+            return error(StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed");
+        }
+        return match config::revoke_in(&ctx.file, &client.host_id) {
+            Ok(_) => {
+                ctx.clients.reload(&ctx.file);
+                tracing::info!("Remote PC {} unpaired itself", client.host_id);
+                StatusCode::NO_CONTENT.into_response()
+            }
+            Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed"),
+        };
+    }
     let mut origin = crate::audit::Origin::from_headers(req.headers());
     origin.source = "remote".into();
     origin.user_name = Some(client.label());
@@ -597,6 +611,23 @@ pub(crate) mod tests {
         assert_eq!((s, body), (200, json!([])));
         let (s, _) = call(r.addr, &r.pin, "GET", "/api/instances", Some("sbr_guess"), None).await.unwrap();
         assert_eq!(s, 401);
+        r.cancel.cancel();
+    }
+
+    /// 붙는 쪽이 이 데몬을 잊을 때 제 짝을 스스로 푼다: 그 뒤로 같은 토큰은 통하지 않는다
+    #[tokio::test]
+    async fn a_pc_unpairs_itself_and_its_token_stops_working() {
+        let r = start(Some(fake_relay().await)).await;
+        let (_, body) =
+            call(r.addr, &r.pin, "POST", "/remote/pair", None, Some(json!({ "ticketId": "good", "secret": "s3cret" }))).await.unwrap();
+        let token = body["token"].as_str().unwrap().to_string();
+        let (s, _) = call(r.addr, &r.pin, "DELETE", "/remote/self", None, None).await.unwrap();
+        assert_eq!(s, 401);
+        let (s, _) = call(r.addr, &r.pin, "DELETE", "/remote/self", Some(&token), None).await.unwrap();
+        assert_eq!(s, 204);
+        let (s, _) = call(r.addr, &r.pin, "GET", "/api/instances", Some(&token), None).await.unwrap();
+        assert_eq!(s, 401);
+        assert!(config::clients_in(&r.file).is_empty());
         r.cancel.cancel();
     }
 

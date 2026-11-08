@@ -3180,6 +3180,282 @@
     white-space: nowrap;
 }
 
+/* 설정 > 연결: 내 PC 카드 (이 PC가 맨 앞, 강조 테두리) */
+.remote-pc-cards {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: var(--sp-2);
+}
+.remote-pc-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--inset);
+    border: 1px solid var(--line);
+}
+.remote-pc-card.me {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+.remote-pc-card.off .remote-pc-os,
+.remote-pc-card.off .remote-pc-kv {
+    opacity: 0.7;
+}
+.remote-pc-top {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+.remote-pc-os {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-md);
+    background: var(--line);
+    color: var(--text-1);
+}
+.remote-pc-who {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.remote-pc-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+.remote-pc-sub {
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.remote-pc-me {
+    margin-left: var(--sp-1);
+    padding: 1px var(--sp-1-5);
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+.remote-pc-pill {
+    flex-shrink: 0;
+    padding: var(--sp-0-5) var(--sp-2);
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid currentColor;
+}
+.remote-pc-pill.on {
+    color: var(--ok);
+}
+.remote-pc-pill.off {
+    color: var(--text-2);
+}
+.remote-pc-pill.warn {
+    color: var(--warn);
+}
+/* 별: 채운 별이 메인 데몬, 빈 별을 누르면 그 PC가 메인이 된다 */
+.remote-pc-star {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: var(--r-md);
+    border: 1px solid transparent;
+    background: none;
+    color: var(--text-2);
+    cursor: pointer;
+    opacity: 0.45;
+}
+.remote-pc-star:hover {
+    border-color: var(--line-strong);
+    opacity: 1;
+}
+.remote-pc-star.on {
+    color: var(--star);
+    opacity: 1;
+}
+.remote-pc-kv {
+    margin: 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--sp-0-5) var(--sp-3);
+    font-size: var(--fs-sm);
+}
+.remote-pc-kv dt {
+    color: var(--text-2);
+}
+.remote-pc-kv dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.remote-pc-acts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--sp-1);
+    margin-top: auto;
+}
+.remote-pc-acts .btn.danger {
+    color: var(--stop);
+}
+.remote-pc-tag {
+    margin-right: auto;
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+}
+.remote-pc-tag.warn {
+    color: var(--warn);
+}
+.remote-pc-add {
+    display: flex;
+}
+.remote-pc-add .btn {
+    flex: 1;
+    min-height: 120px;
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--r-md);
+}
+/* AI 에이전트 카드: 머리를 누르면 끊기 버튼이 나온다 */
+.agent-card-head {
+    width: 100%;
+    padding: 0;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+/* 지우기·리눅스에 설치 창 */
+.modal.remote-pc-dialog {
+    max-width: 480px;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+.modal.remote-install {
+    max-width: 620px;
+}
+.remote-pc-dialog-title {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.remote-pc-choice {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-0-5);
+}
+.remote-pc-choice > .setting-description {
+    padding-left: var(--sp-6);
+}
+.remote-pc-subchoice {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    padding: var(--sp-1) 0 0 var(--sp-6);
+}
+.remote-pc-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+}
+.remote-install-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 90px;
+    gap: var(--sp-2);
+}
+.remote-install-grid label,
+.remote-install-prompt label,
+.remote-install-claim {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    font-size: var(--fs-sm);
+}
+.remote-install-phase {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+.remote-install-console {
+    margin: 0;
+    height: 220px;
+    overflow: auto;
+    padding: var(--sp-2);
+    border-radius: var(--r-md);
+    background: var(--inset);
+    font-family: "Cascadia Code", "D2Coding", ui-monospace, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.remote-install-prompt {
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    border: 1px solid var(--accent);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+.remote-install-prompt p {
+    margin: 0;
+}
+.remote-install-prompt form {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--sp-2);
+}
+.remote-install-prompt form label {
+    flex: 1;
+}
+.remote-install-fingerprint {
+    margin: 0;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.remote-install-oneliner {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.remote-install-oneliner code {
+    flex: 1;
+    min-width: 0;
+    padding: var(--sp-2);
+    border-radius: var(--r-md);
+    background: var(--inset);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+.remote-install-claim {
+    margin-top: var(--sp-2);
+}
+
 /* 서버 만들기·가져오기의 신뢰 안내 (as-body-stack이 간격을 준다) */
 .trust-create-notice {
     margin-bottom: 0;

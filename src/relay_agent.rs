@@ -288,6 +288,38 @@ impl RelayAgent {
     }
 }
 
+/// 이 PC의 리눅스 배포판 `{id, version?, name?}` (`/etc/os-release`의 ID·VERSION_ID·PRETTY_NAME). 리눅스가 아니거나 읽지 못하면 없다
+static LINUX_DISTRO: std::sync::LazyLock<Option<Value>> = std::sync::LazyLock::new(|| {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    let text = std::fs::read_to_string("/etc/os-release").or_else(|_| std::fs::read_to_string("/usr/lib/os-release")).ok()?;
+    parse_os_release(&text)
+});
+
+/// os-release 본문 → `{id, version?, name?}`. ID는 릴레이가 받는 모양(소문자·숫자·`.-_`, 32자)일 때만
+fn parse_os_release(text: &str) -> Option<Value> {
+    let field = |key: &str| {
+        text.lines().find_map(|line| {
+            let value = line.trim().strip_prefix(key)?.strip_prefix('=')?.trim();
+            let value = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')).unwrap_or(value);
+            Some(value.to_string()).filter(|v| !v.is_empty())
+        })
+    };
+    let id = field("ID")?;
+    if id.len() > 32 || !id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-')) {
+        return None;
+    }
+    let mut distro = json!({ "id": id });
+    if let Some(v) = field("VERSION_ID").filter(|v| v.chars().count() <= 32) {
+        distro["version"] = json!(v);
+    }
+    if let Some(n) = field("PRETTY_NAME").map(|n| n.chars().take(64).collect::<String>()) {
+        distro["name"] = json!(n);
+    }
+    Some(distro)
+}
+
 /// 하트비트 답의 `address`: 릴레이가 본 이 PC의 공인 주소. IP로 읽히는 값만 받는다
 fn relay_seen_address(data: &Value) -> Option<String> {
     data.get("address").and_then(Value::as_str).and_then(|a| a.parse::<std::net::IpAddr>().ok()).map(|ip| ip.to_string())
@@ -600,14 +632,22 @@ impl Session {
                 if data.get("warning").and_then(|v| v.as_str()) == Some("UPDATE_REQUIRED") {
                     tracing::warn!("[RelayAgent] relay asks for agent update (min {})", data.get("minVersion").and_then(|v| v.as_str()).unwrap_or("?"));
                 }
+                let seen = relay_seen_address(&data);
+                let mut seen_changed = false;
                 self.agent.update(self.generation, |s| {
                     s.last_heartbeat_at = Some(now_ms());
                     s.last_error = None;
                     s.last_error_code = None;
                     s.min_version = None;
                     // 옛 릴레이·사설 주소면 없다
-                    s.seen_address = relay_seen_address(&data);
+                    seen_changed = s.seen_address != seen;
+                    s.seen_address = seen;
                 });
+                // 원격 포트의 직접 연결 주소를 따로 적지 않았으면 릴레이가 본 공인 IP를 올린다
+                if seen_changed {
+                    let server = self.server.clone();
+                    tokio::spawn(async move { crate::remote_daemon::on_seen_address(&server).await });
+                }
                 // 릴레이가 받은 확인 응답은 지운다. 그 사이 새로 적용한 길드는 남는다
                 self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).retain(|g| !acks.contains(g));
                 // 새로 묶인 길드에 열 서버를 정했으면 곧바로 한 번 더 보내 확인 응답과 그 목록을 릴레이에 알린다
@@ -1792,13 +1832,25 @@ struct LinkedAck {
 }
 
 /// 하트비트 본문. 적용한 새 길드가 있으면 확인 응답을 싣는다: 길드 id(`linkedGuildsAck`, 옛 릴레이)와 연결 id(`linkedGuildsAckIds`)
+/// 이 PC의 OS·CPU와 리눅스 배포판 `{os, distro?}` (하트비트, 앱의 PC 카드)
+pub fn platform() -> Value {
+    let mut v = json!({ "os": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH) });
+    // 리눅스 배포판: 내 다른 PC의 앱 카드가 배포판 로고를 보인다
+    if let Some(distro) = LINUX_DISTRO.as_ref() {
+        v["distro"] = distro.clone();
+    }
+    v
+}
+
 fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[LinkedAck]) -> Value {
     let mut body = json!({
         "agentVersion": AGENT_VERSION,
-        "os": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
         "metadata": metadata,
         "metadataHash": hash,
     });
+    if let Value::Object(platform) = platform() {
+        body.as_object_mut().expect("object").extend(platform);
+    }
     if unchanged {
         body["metadataUnchanged"] = Value::Bool(true);
     }
@@ -1916,6 +1968,16 @@ mod tests {
         assert_eq!(relay_seen_address(&json!({ "address": "2001:db8::1" })).as_deref(), Some("2001:db8::1"));
         assert_eq!(relay_seen_address(&json!({ "address": "evil.example:1" })), None);
         assert_eq!(relay_seen_address(&json!({ "status": "ok" })), None);
+    }
+
+    /// 배포판은 os-release의 ID·VERSION_ID·PRETTY_NAME으로 싣는다 (앱 카드의 배포판 로고). 릴레이가 받지 않는 ID면 싣지 않는다
+    #[test]
+    fn the_linux_distro_comes_from_os_release() {
+        let ubuntu = "PRETTY_NAME=\"Ubuntu 24.04.1 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nID=ubuntu\nID_LIKE=debian\n";
+        assert_eq!(parse_os_release(ubuntu), Some(json!({ "id": "ubuntu", "version": "24.04", "name": "Ubuntu 24.04.1 LTS" })));
+        assert_eq!(parse_os_release("ID=arch\nPRETTY_NAME=\"Arch Linux\"\n"), Some(json!({ "id": "arch", "name": "Arch Linux" })));
+        assert_eq!(parse_os_release("ID=\"<svg>\"\n"), None);
+        assert_eq!(parse_os_release("NAME=x\n"), None);
     }
 
     /// 릴레이가 이 PC의 버전을 받지 않으면(최소 버전 미달) 상태에 `agent_too_old`와 요구 버전을 남겨

@@ -1031,7 +1031,11 @@
       "agent": "이 PC의 AI 에이전트에 로컬 MCP(`mcp`)를 등록해요",
       "agent.link": "Claude Code와 Codex에 사바쨩을 넣어요(하나만 고르지 않으면 둘 다)",
       "agent.unlink": "Claude Code와 Codex에서 사바쨩을 빼요",
-      "agent.status": "이 PC에서 사바쨩이 들어간 에이전트"
+      "agent.status": "이 PC에서 사바쨩이 들어간 에이전트",
+      "remote.claim": "다른 PC가 낸 페어링 코드를 받아 그 PC에 붙기 (리눅스 한 줄 설치 뒤 등)",
+      "remote.install": "이 PC의 ssh로 리눅스 PC에 사바쨩을 설치하고 붙기 (`계정@호스트`)",
+      "remote.remove": "내 PC 하나 지우기: 여기서 잊고, 원하면 그 PC에서 사바쨩을 지우고 서버쨩 목록에서도 빼기",
+      "remote.update": "원격 데몬을 지금 업데이트하거나 자동 업데이트 켜고 끄기 (`--auto on|off`)"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -1258,7 +1262,19 @@
       "agent.link.claude": "Claude Code만",
       "agent.link.codex": "Codex만",
       "agent.unlink.claude": "Claude Code만",
-      "agent.unlink.codex": "Codex만"
+      "agent.unlink.codex": "Codex만",
+      "remote.claim.code": "그 PC가 보여 준 페어링 코드",
+      "remote.install.target": "설치할 PC (`계정@호스트`)",
+      "remote.install.port": "ssh 포트",
+      "remote.install.linger": "로그아웃해도 데몬이 계속 돌게 (sudo)",
+      "remote.install.steam_libs": "SteamCMD에 필요한 32비트 라이브러리 설치 (sudo)",
+      "remote.remove.host_id": "지울 PC id (`remote peers`에 보여요)",
+      "remote.remove.uninstall": "그 PC에서 사바쨩도 지움 (리눅스·맥)",
+      "remote.remove.remove_settings": "--uninstall과 함께: 설정과 디스코드 연결도 지움",
+      "remote.remove.remove_instances": "--uninstall과 함께: 게임 서버도 지움",
+      "remote.remove.from_relay": "서버쨩의 내 PC 목록에서도 뺌",
+      "remote.update.host_id": "원격 데몬 PC id (`remote daemons`에 보여요)",
+      "remote.update.auto": "자동 업데이트 켜기(on)·끄기(off). 없으면 지금 업데이트"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -1765,12 +1781,32 @@
       "remote_bad_path": "그 경로는 원격 데몬에 보낼 수 없어요",
       "remote_unauthorized": "원격 데몬이 이 PC를 더는 받지 않아요. 다시 연결해 주세요",
       "remote_local_only": "그 PC에서 직접 해야 하는 일이에요",
-      "remote_field_blocked": "이 설정은 그 PC에서 직접 바꿔야 해요: {{fields}}"
+      "remote_field_blocked": "이 설정은 그 PC에서 직접 바꿔야 해요: {{fields}}",
+      "pair_code_not_found": "그런 페어링 코드가 없어요. 코드를 다시 확인해 주세요",
+      "pair_code_used": "이미 쓴 페어링 코드예요",
+      "pair_code_expired": "페어링 코드가 만료됐어요. 그 PC에서 새 코드를 받아 주세요",
+      "remote_not_ready": "코드는 받았지만 그 PC가 아직 원격 포트를 열지 않았어요. 잠시 뒤 `remote connect`로 다시 붙어 주세요",
+      "ssh_missing": "이 PC에서 ssh를 찾지 못했어요. OpenSSH 클라이언트를 설치해 주세요",
+      "ssh_spawn_failed": "ssh를 실행하지 못했어요",
+      "ssh_failed": "ssh로 접속하지 못했어요 (주소·계정·비밀번호를 확인해 주세요)",
+      "install_failed": "설치 스크립트가 실패했어요",
+      "pair_code_missing": "설치는 끝났지만 페어링 코드가 나오지 않았어요",
+      "install_unknown": "그 설치를 찾지 못했어요",
+      "unsupported": "그 PC에서는 원격으로 지울 수 없어요 (Windows)",
+      "cli_missing": "그 PC에 saba-chan-cli가 없어 지우지 못했어요",
+      "remote_uninstall_failed": "그 PC에서 사바쨩을 지우지 못했어요"
     },
     "daemon": "데몬",
     "this_pc": "이 PC",
     "no_servers": "서버 없음",
-    "via_relay": "서버쨩 거침"
+    "via_relay": "서버쨩 거침",
+    "removed": "{{host}}을(를) 지웠어요.",
+    "auto_update_on": "{{host}}의 자동 업데이트를 켰어요.",
+    "auto_update_off": "{{host}}의 자동 업데이트를 껐어요.",
+    "update_started": "{{host}}의 업데이트를 시작했어요. 끝나면 데몬이 다시 켜져요.",
+    "install_target": "설치할 PC는 `계정@호스트`로 적어 주세요 (예: saba@192.168.0.20)",
+    "install_failed": "설치를 마치지 못했어요 ({{code}})",
+    "install_host_key": "처음 접속하는 PC예요. 위 지문이 그 PC의 것이 맞으면 계속할까요?"
   },
   "address": {
     "title": "{{server}} 주소",

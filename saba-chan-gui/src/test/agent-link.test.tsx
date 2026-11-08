@@ -48,6 +48,9 @@ describe('AI 에이전트 연결', () => {
         await act(async () => render(<AgentLink />));
         expect(screen.getByText('Claude')).toBeInTheDocument();
         expect(screen.getByText('ChatGPT')).toBeInTheDocument();
+        // PC 카드처럼 에이전트마다 카드 하나 (사용자 요청 2026-11-08)
+        expect(screen.getByRole('list', { name: i18n.t('gui:discord.agent_title') }).children).toHaveLength(2);
+        expect(screen.getAllByText(i18n.t('gui:discord.agent_created'))).toHaveLength(2);
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /ChatGPT/ })));
         await act(async () => fireEvent.click(screen.getByText(i18n.t('gui:discord.agent_revoke'))));
         expect(window.api.relayMcpGrantRevoke).toHaveBeenCalledWith('bbbb');

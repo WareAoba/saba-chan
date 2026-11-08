@@ -1031,7 +1031,11 @@
       "agent": "向此电脑上的 AI 代理注册本地 MCP(`mcp`)",
       "agent.link": "将 Saba-chan 添加到 Claude Code 和 Codex(未选择时两者都添加)",
       "agent.unlink": "从 Claude Code 和 Codex 移除 Saba-chan",
-      "agent.status": "此电脑上已添加 Saba-chan 的代理"
+      "agent.status": "此电脑上已添加 Saba-chan 的代理",
+      "remote.claim": "领取其他电脑显示的配对码并连接到那台电脑（例如 Linux 一行安装之后）",
+      "remote.install": "通过本机 ssh 在 Linux 电脑上安装 Saba-chan 并连接（`用户@主机`）",
+      "remote.remove": "移除一台电脑：在这里忘记它，可选在那台电脑上卸载 Saba-chan 并从 Server-chan 列表中移除",
+      "remote.update": "立即更新远程守护进程，或开关自动更新（`--auto on|off`）"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -1258,7 +1262,19 @@
       "agent.link.claude": "仅 Claude Code",
       "agent.link.codex": "仅 Codex",
       "agent.unlink.claude": "仅 Claude Code",
-      "agent.unlink.codex": "仅 Codex"
+      "agent.unlink.codex": "仅 Codex",
+      "remote.claim.code": "那台电脑显示的配对码",
+      "remote.install.target": "要安装的电脑（`用户@主机`）",
+      "remote.install.port": "ssh 端口",
+      "remote.install.linger": "注销后守护进程继续运行（sudo）",
+      "remote.install.steam_libs": "安装 SteamCMD 所需的 32 位库（sudo）",
+      "remote.remove.host_id": "要移除的电脑 id（见 `remote peers`）",
+      "remote.remove.uninstall": "同时在那台电脑上卸载 Saba-chan（Linux、Mac）",
+      "remote.remove.remove_settings": "与 --uninstall 一起：同时删除设置和 Discord 连接",
+      "remote.remove.remove_instances": "与 --uninstall 一起：同时删除游戏服务器",
+      "remote.remove.from_relay": "同时从 Server-chan 的电脑列表中移除",
+      "remote.update.host_id": "远程守护进程的电脑 id（见 `remote daemons`）",
+      "remote.update.auto": "开启(on)或关闭(off)自动更新。省略则立即更新"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
@@ -1765,12 +1781,32 @@
       "remote_bad_path": "该路径不能发送给远程守护进程",
       "remote_unauthorized": "远程守护进程不再接受本机。请重新连接",
       "remote_local_only": "这只能在那台电脑上直接操作",
-      "remote_field_blocked": "以下设置只能在那台电脑上直接更改：{{fields}}"
+      "remote_field_blocked": "以下设置只能在那台电脑上直接更改：{{fields}}",
+      "pair_code_not_found": "没有这个配对码。请再检查一下",
+      "pair_code_used": "该配对码已被使用",
+      "pair_code_expired": "配对码已过期。请在那台电脑上获取新的",
+      "remote_not_ready": "已领取配对码，但那台电脑尚未打开远程端口。稍后用 `remote connect` 再连接",
+      "ssh_missing": "本机找不到 ssh。请安装 OpenSSH 客户端",
+      "ssh_spawn_failed": "无法运行 ssh",
+      "ssh_failed": "无法用 ssh 连接（请检查地址、用户和密码）",
+      "install_failed": "安装脚本失败",
+      "pair_code_missing": "安装已完成，但没有输出配对码",
+      "install_unknown": "找不到该安装",
+      "unsupported": "无法远程卸载那台电脑（Windows）",
+      "cli_missing": "那台电脑上没有 saba-chan-cli，无法卸载",
+      "remote_uninstall_failed": "无法在那台电脑上卸载 Saba-chan"
     },
     "daemon": "守护进程",
     "this_pc": "本机",
     "no_servers": "没有服务器",
-    "via_relay": "通过中继"
+    "via_relay": "通过中继",
+    "removed": "已移除 {{host}}。",
+    "auto_update_on": "已为 {{host}} 开启自动更新。",
+    "auto_update_off": "已为 {{host}} 关闭自动更新。",
+    "update_started": "已开始更新 {{host}}。完成后守护进程会重启。",
+    "install_target": "请以 `用户@主机` 指定电脑（例如 saba@192.168.0.20）",
+    "install_failed": "安装未完成（{{code}}）",
+    "install_host_key": "这是首次连接该电脑。如果上面的指纹属于那台电脑，要继续吗？"
   },
   "address": {
     "title": "{{server}} 的地址",
