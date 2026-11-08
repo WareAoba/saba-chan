@@ -3885,6 +3885,19 @@ button.appbar-preflight {
     font-size: var(--fs-xs);
     color: var(--text-3);
 }
+.cb-hint.dc-dm-warn {
+    color: var(--warn);
+}
+.dc-dm-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+.dc-dm-group-label {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text-3);
+}
 .cb-tool-group + .cb-tool-group {
     margin-top: var(--sp-3);
 }

@@ -745,10 +745,7 @@ impl Session {
         if let Some(snapshot) = &snapshot {
             meta["host"] = host_load(snapshot);
         }
-        // 백업은 실패만 알린다 (봇 설정 `backupNotice`)
-        if bot.backup_notice == crate::config_store::BackupNotice::Failures {
-            meta["backupNotice"] = json!("failures");
-        }
+        dm_notice_meta(&mut meta, &bot);
         // 길드별 자리 꽉 참 알림을 켠 서버 (`/api/instance/:id/full-notice/:guild`). 켠 길드만 싣는다
         if let Some(on) = ids_by_guild(&bot.node_settings, crate::ipc::handlers::start_notice::FULL_KEY) {
             meta["fullNotice"] = on;
@@ -1824,6 +1821,20 @@ fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[LinkedAc
 /// 하트비트 메타데이터를 보낼 모양으로: (보낼 메타데이터, 지문, 바뀌지 않아 줄였는가).
 /// 지문은 `HEARTBEAT_VOLATILE`을 뺀 나머지(권한 포함)의 SHA-256이다. 릴레이가 받아 둔 지문(`sent`)과 같으면
 /// `HEARTBEAT_ALWAYS`만 보낸다 (모듈 명령·액션·낱말처럼 큰 값은 바뀔 때만)
+/// PC 주인 DM 알림 설정 (봇 설정 `backupNotice`·`dmNotice`). 기본값이면 싣지 않는다
+fn dm_notice_meta(meta: &mut Value, bot: &crate::config_store::BotConfig) {
+    use crate::config_store::BackupNotice;
+    match bot.backup_notice {
+        BackupNotice::All => {}
+        BackupNotice::Failures => meta["backupNotice"] = json!("failures"),
+        BackupNotice::Off => meta["backupNotice"] = json!("off"),
+    }
+    let off = bot.dm_notice.off_kinds();
+    if !off.is_empty() {
+        meta["dmOff"] = json!(off);
+    }
+}
+
 fn heartbeat_metadata(mut meta: Value, sent: Option<&str>) -> (Value, String, bool) {
     use sha2::{Digest, Sha256};
     let Value::Object(map) = &mut meta else { return (meta, String::new(), false) };
@@ -2813,6 +2824,26 @@ mod tests {
         );
         assert_eq!(allowed_instances_by_guild(&json!({ "g2": {} })), None);
         assert_eq!(allowed_instances_by_guild(&json!(null)), None);
+    }
+
+    // PC 주인 DM 알림: 백업 범위와 끈 종류 (사용자 2026-11-08)
+    #[test]
+    fn dm_notice_is_sent_only_when_something_is_off() {
+        use crate::config_store::{BackupNotice, BotConfig};
+        let mut meta = json!({});
+        dm_notice_meta(&mut meta, &BotConfig::default());
+        assert_eq!(meta, json!({}));
+
+        let mut bot: BotConfig = serde_json::from_value(json!({ "backupNotice": "off", "dmNotice": { "crash": false, "chatbotUsage": false } })).unwrap();
+        assert_eq!(bot.backup_notice, BackupNotice::Off);
+        assert!(bot.dm_notice.moderation, "빠진 칸은 켜짐");
+        dm_notice_meta(&mut meta, &bot);
+        assert_eq!(meta, json!({ "backupNotice": "off", "dmOff": ["crash", "chatbotUsage"] }));
+
+        bot.backup_notice = BackupNotice::Failures;
+        let mut meta = json!({});
+        dm_notice_meta(&mut meta, &bot);
+        assert_eq!(meta["backupNotice"], "failures");
     }
 
     // 켜짐 알림을 켠 서버는 길드마다 싣는다. 켠 서버가 없는 길드는 싣지 않는다 (릴레이는 없으면 알리지 않는다)

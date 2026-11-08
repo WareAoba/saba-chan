@@ -19,6 +19,27 @@ export const setDiscordI18n = (t: TFunction | Translate) => {
 
 const RELAY_URL_FALLBACK = 'https://saba-chan.online';
 
+/** 백업 결과 DM 범위 (데몬 봇 설정 `backupNotice`) */
+export type BackupNotice = 'all' | 'failures' | 'off';
+/** PC 주인 DM 알림 종류 (데몬 `config_store::DmNotice`, 백업은 `backupNotice`) */
+export const DM_NOTICE_KINDS = [
+    'crash',
+    'externalStart',
+    'schedule',
+    'update',
+    'disk',
+    'chatbotUsage',
+    'moderation',
+] as const;
+export type DmNoticeKind = (typeof DM_NOTICE_KINDS)[number];
+export type DmNotice = Record<DmNoticeKind, boolean>;
+/** 데몬 값 → 종류별 켜짐. 빠지거나 모르는 칸은 데몬 기본(켜짐) */
+export function readDmNotice(raw: unknown): DmNotice {
+    const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    return Object.fromEntries(DM_NOTICE_KINDS.map((k) => [k, src[k] !== false])) as DmNotice;
+}
+const readBackupNotice = (raw: unknown): BackupNotice => (raw === 'failures' || raw === 'off' ? raw : 'all');
+
 // bot-config 최상위 키 ↔ 스토어 필드. 바뀐 칸만 PATCH(JSON Merge Patch)로 보낸다:
 // 다른 경로(CLI·원격·다른 길드 설정)가 그사이 바꾼 값을 옛 스냅샷으로 되돌리지 않게
 const BOT_KEYS: Record<string, (keyof DiscordData)[]> = {
@@ -32,6 +53,7 @@ const BOT_KEYS: Record<string, (keyof DiscordData)[]> = {
     translateCommands: ['discordTranslateCommands'],
     newGuildInstances: ['discordNewGuildInstances'],
     backupNotice: ['discordBackupNotice'],
+    dmNotice: ['discordDmNotice'],
 };
 // 마지막으로 데몬과 맞춘 값 (로드·저장 성공 때 갱신). 여기와 다른 필드만 바뀐 것으로 본다
 let synced: Partial<DiscordData> = {};
@@ -64,7 +86,9 @@ export interface DiscordData {
     cloudMembers: MembersByGuild;
     discordTranslateCommands: boolean;
     discordNewGuildInstances: 'auto' | 'manual';
-    discordBackupNotice: 'all' | 'failures';
+    discordBackupNotice: BackupNotice;
+    /** PC 주인 DM 알림 종류별 켜짐 (데몬 봇 설정 `dmNotice`) */
+    discordDmNotice: DmNotice;
     /** stopped · connecting · running */
     discordBotStatus: string;
     discordAgentReplaced: boolean;
@@ -115,8 +139,10 @@ const initialState = (): DiscordData => ({
     discordTranslateCommands: true,
     // 페어링 코드로 새로 묶인 디스코드 서버에 이 PC의 서버를 바로 열지('auto') 나중에 고를지('manual') (데몬 기본 auto)
     discordNewGuildInstances: 'auto',
-    // 백업 결과 DM: 모두('all') 또는 실패만('failures') (데몬 기본 all)
+    // 백업 결과 DM: 모두('all')·실패만('failures')·끄기('off') (데몬 기본 all)
     discordBackupNotice: 'all',
+    // DM 알림 종류별 켜짐 (데몬 기본 모두 켬)
+    discordDmNotice: readDmNotice(null),
 
     // ── Runtime status ──
     // stopped: 에이전트 정지 / connecting: 에이전트 실행 중, 릴레이 미확인 / running: 둘 다 OK
@@ -180,7 +206,8 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
                     discordCloudHostId: botCfg.cloud?.hostId || '',
                     discordTranslateCommands: botCfg.translateCommands !== false,
                     discordNewGuildInstances: botCfg.newGuildInstances === 'manual' ? 'manual' : 'auto',
-                    discordBackupNotice: botCfg.backupNotice === 'failures' ? 'failures' : 'all',
+                    discordBackupNotice: readBackupNotice(botCfg.backupNotice),
+                    discordDmNotice: readDmNotice(botCfg.dmNotice),
                     _botConfigLoaded: true,
                 };
                 if (botCfg.nodeSettings && typeof botCfg.nodeSettings === 'object') {
@@ -455,6 +482,7 @@ const _discordSaveKeys: (keyof DiscordData)[] = [
     'discordTranslateCommands',
     'discordNewGuildInstances',
     'discordBackupNotice',
+    'discordDmNotice',
 ];
 useDiscordStore.subscribe((state, prevState) => {
     if (!state._settingsReady) return;

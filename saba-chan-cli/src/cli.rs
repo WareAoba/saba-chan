@@ -1247,12 +1247,26 @@ pub enum BotCmd {
         #[arg(long)]
         full: bool,
     },
-    /// Backup results sent to the PC owner as a DM: all (--all) or only failures (--failures). No options: show
+    /// Backup results sent to the PC owner as a DM: all (--all), only failures (--failures) or none (--off). No options: show
     BackupNotice {
-        #[arg(long, conflicts_with = "failures")]
+        #[arg(long, conflicts_with_all = ["failures", "off"])]
         all: bool,
-        #[arg(long)]
+        #[arg(long, conflicts_with = "off")]
         failures: bool,
+        #[arg(long)]
+        off: bool,
+    },
+    /// Turn each kind of DM alert to the PC owner on or off. No kind: show all. Kind with `--on`/`--off`: change
+    DmNotice {
+        /// Alert kind
+        #[arg(requires = "state")]
+        kind: Option<DmKind>,
+        /// Send this kind of DM
+        #[arg(long, group = "state")]
+        on: bool,
+        /// Don't send this kind of DM
+        #[arg(long, group = "state")]
+        off: bool,
     },
     /// Bot settings back to their defaults (all when no key is named)
     Reset { keys: Vec<String> },
@@ -1364,6 +1378,43 @@ pub enum ConfigCmd {
         #[arg(long)]
         overwrite: bool,
     },
+}
+
+/// `bot dm-notice`의 DM 알림 종류 (데몬 봇 설정 `dmNotice`의 키)
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DmKind {
+    Crash,
+    ExternalStart,
+    Schedule,
+    Update,
+    Disk,
+    ChatbotUsage,
+    Moderation,
+}
+
+impl DmKind {
+    pub const ALL: [DmKind; 7] = [
+        DmKind::Crash,
+        DmKind::ExternalStart,
+        DmKind::Schedule,
+        DmKind::Update,
+        DmKind::Disk,
+        DmKind::ChatbotUsage,
+        DmKind::Moderation,
+    ];
+
+    /// 데몬 `dmNotice`의 키
+    pub fn key(self) -> &'static str {
+        match self {
+            DmKind::Crash => "crash",
+            DmKind::ExternalStart => "externalStart",
+            DmKind::Schedule => "schedule",
+            DmKind::Update => "update",
+            DmKind::Disk => "disk",
+            DmKind::ChatbotUsage => "chatbotUsage",
+            DmKind::Moderation => "moderation",
+        }
+    }
 }
 
 /// `config move`로 옮길 수 있는 폴더 (데몬 `/api/system/paths/move`의 `kind`)
