@@ -2298,7 +2298,7 @@
     "delete": "删除",
     "remove_title": "要移除 {{name}} 吗？",
     "remove_forget": "在本机忘记它",
-    "remove_forget_desc": "从本机的远程守护进程列表中移除。总会执行。",
+    "remove_forget_desc": "从本机的远程守护进程列表中移除。",
     "remove_uninstall": "同时在那台电脑上卸载 Saba-chan",
     "remove_uninstall_desc": "停止守护进程并删除程序。运行中的游戏服务器也会停止。",
     "remove_uninstall_unavailable": "仅适用于在线的 Linux 或 Mac 电脑",

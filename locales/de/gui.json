@@ -2298,7 +2298,7 @@
     "delete": "Löschen",
     "remove_title": "{{name}} entfernen?",
     "remove_forget": "Auf diesem PC vergessen",
-    "remove_forget_desc": "Entfernt ihn aus den Remote-Daemons dieses PCs. Passiert immer.",
+    "remove_forget_desc": "Entfernt ihn aus den Remote-Daemons dieses PCs.",
     "remove_uninstall": "Saba-chan auf dem PC auch deinstallieren",
     "remove_uninstall_desc": "Stoppt den Daemon und entfernt das Programm. Laufende Spielserver stoppen auch.",
     "remove_uninstall_unavailable": "Nur für einen Linux- oder Mac-PC, der online ist",

@@ -2298,7 +2298,7 @@
     "delete": "Supprimer",
     "remove_title": "Retirer {{name}} ?",
     "remove_forget": "L’oublier sur ce PC",
-    "remove_forget_desc": "Le retire des démons distants de ce PC. Toujours effectué.",
+    "remove_forget_desc": "Le retire des démons distants de ce PC.",
     "remove_uninstall": "Désinstaller aussi Saba-chan sur ce PC",
     "remove_uninstall_desc": "Arrête le démon et supprime le programme. Les serveurs de jeu en cours s’arrêtent aussi.",
     "remove_uninstall_unavailable": "Uniquement pour un PC Linux ou Mac en ligne",

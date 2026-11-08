@@ -2298,7 +2298,7 @@
     "delete": "삭제",
     "remove_title": "{{name}}을(를) 지울까요?",
     "remove_forget": "이 PC에서 잊기",
-    "remove_forget_desc": "이 PC의 원격 데몬 목록에서 빼요. 늘 해요.",
+    "remove_forget_desc": "이 PC의 원격 데몬 목록에서 빼요.",
     "remove_uninstall": "그 PC에서 사바쨩도 지우기",
     "remove_uninstall_desc": "데몬을 멈추고 프로그램을 지워요. 켜져 있는 게임 서버도 멈춰요.",
     "remove_uninstall_unavailable": "그 PC가 온라인인 리눅스·맥일 때만 할 수 있어요",

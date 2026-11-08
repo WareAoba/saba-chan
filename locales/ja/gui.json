@@ -2298,7 +2298,7 @@
     "delete": "削除",
     "remove_title": "{{name}}を削除しますか？",
     "remove_forget": "このPCで忘れる",
-    "remove_forget_desc": "このPCのリモートデーモン一覧から外します。常に行います。",
+    "remove_forget_desc": "このPCのリモートデーモン一覧から外します。",
     "remove_uninstall": "そのPCからサバちゃんも削除",
     "remove_uninstall_desc": "デーモンを止めてプログラムを削除します。起動中のゲームサーバーも止まります。",
     "remove_uninstall_unavailable": "オンラインのLinux・Macのときだけできます",
