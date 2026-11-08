@@ -203,14 +203,15 @@ async fn tell_remote_to_unpair(file: &ConfigFile, state: &IPCServer, host_id: &s
     }
 }
 
-fn forget_here(file: &ConfigFile, host_id: &str) -> Result<(), Response> {
+/// 이 PC에서 잊는다. 실패하면 그 답
+fn forget_here(file: &ConfigFile, host_id: &str) -> Option<Response> {
     match config::forget_daemon_in(file, host_id) {
         Ok(true) => {
             crate::remote_daemon::tunnel::close(host_id);
-            Ok(())
+            None
         }
-        Ok(false) => Err(peer::error(StatusCode::NOT_FOUND, "remote_unknown")),
-        Err(_) => Err(peer::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed")),
+        Ok(false) => Some(peer::error(StatusCode::NOT_FOUND, "remote_unknown")),
+        Err(_) => Some(peer::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed")),
     }
 }
 
@@ -220,10 +221,7 @@ pub async fn forget_daemon(State(state): State<IPCServer>, Path(host_id): Path<S
         return peer::error(StatusCode::NOT_FOUND, "remote_unknown");
     }
     tell_remote_to_unpair(&file, &state, &host_id).await;
-    match forget_here(&file, &host_id) {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(res) => res,
-    }
+    forget_here(&file, &host_id).unwrap_or_else(|| StatusCode::NO_CONTENT.into_response())
 }
 
 #[derive(Deserialize)]
@@ -278,7 +276,7 @@ pub async fn remove_daemon(State(state): State<IPCServer>, Path(host_id): Path<S
         }
     }
     if saved {
-        if let Err(res) = forget_here(&file, &host_id) {
+        if let Some(res) = forget_here(&file, &host_id) {
             return res;
         }
     }
