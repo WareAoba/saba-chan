@@ -345,6 +345,61 @@ pub struct BotConfig {
     pub new_guild_instances: NewGuildInstances,
     /// 백업 결과를 PC 주인에게 DM으로 알리는 범위 (`failures`면 실패만). 릴레이가 하트비트 `backupNotice`로 거른다
     pub backup_notice: BackupNotice,
+    /// PC 주인 DM 알림을 종류별로 켜고 끈다 (사용자 2026-11-08). 백업은 `backup_notice`가 맡는다.
+    /// 릴레이가 하트비트 `dmOff`로 거른다
+    pub dm_notice: DmNotice,
+}
+
+/// PC 주인 DM 알림 종류별 켜짐 (`BotConfig::dm_notice`). 빠진 칸은 켜짐이다
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DmNotice {
+    /// 비정상 종료 (`instance.exit`)
+    pub crash: bool,
+    /// 사바쨩 밖에서 켜짐 (`instance.started` `unexpected`)
+    pub external_start: bool,
+    /// 예약 작업 예고 (`schedule.warn`)
+    pub schedule: bool,
+    /// 사바쨩 업데이트 있음 (`update.available`)
+    pub update: bool,
+    /// 디스크 공간 부족 (릴레이 heartbeat `host.diskFree`)
+    pub disk: bool,
+    /// 말하는 사바쨩 토큰 한도·잔액 (릴레이 `usageAlert`)
+    pub chatbot_usage: bool,
+    /// AI 모더레이션 신고 (릴레이 `moderation`)
+    pub moderation: bool,
+}
+
+impl Default for DmNotice {
+    fn default() -> Self {
+        Self {
+            crash: true,
+            external_start: true,
+            schedule: true,
+            update: true,
+            disk: true,
+            chatbot_usage: true,
+            moderation: true,
+        }
+    }
+}
+
+impl DmNotice {
+    /// 끈 종류 (하트비트 `dmOff`, 이름은 이 설정의 JSON 키)
+    pub fn off_kinds(&self) -> Vec<&'static str> {
+        [
+            ("crash", self.crash),
+            ("externalStart", self.external_start),
+            ("schedule", self.schedule),
+            ("update", self.update),
+            ("disk", self.disk),
+            ("chatbotUsage", self.chatbot_usage),
+            ("moderation", self.moderation),
+        ]
+        .into_iter()
+        .filter_map(|(k, on)| (!on).then_some(k))
+        .collect()
+    }
 }
 
 /// 백업 결과 알림 (`BotConfig::backup_notice`)
@@ -356,6 +411,8 @@ pub enum BackupNotice {
     All,
     /// 실패만
     Failures,
+    /// 보내지 않는다
+    Off,
 }
 
 /// 새로 묶인 디스코드 서버에 서버를 여는 방식 (`BotConfig::new_guild_instances`)
@@ -394,6 +451,7 @@ impl Default for BotConfig {
             translate_commands: true,
             new_guild_instances: NewGuildInstances::Auto,
             backup_notice: BackupNotice::All,
+            dm_notice: DmNotice::default(),
         }
     }
 }

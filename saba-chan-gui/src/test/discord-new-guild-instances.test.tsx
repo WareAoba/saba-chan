@@ -43,14 +43,39 @@ describe('새 디스코드 서버에 서버 열기', () => {
         await waitFor(() => expect(window.api.botConfigSave).toHaveBeenCalledWith({ newGuildInstances: 'auto' }));
     });
 
-    // 사용자 11-04: 백업은 실패만 알리기 (PC마다, 데몬 봇 설정 backupNotice)
-    it('백업 실패만 알리기를 켜면 backupNotice 만 저장한다', async () => {
+    // 사용자 11-08: DM 알림 종류별 켜고 끄기 (PC마다, 데몬 봇 설정 backupNotice·dmNotice)
+    it('백업 DM 범위를 고르면 backupNotice 만 저장한다', async () => {
         await act(() => useDiscordStore.getState().loadConfig());
         useDiscordStore.setState({ _settingsReady: true });
         render(<ConnectionView {...viewProps} />);
-        const toggle = screen.getByRole('checkbox', { name: 'Only alert failed backups' });
-        expect(toggle).not.toBeChecked();
-        fireEvent.click(toggle);
-        await waitFor(() => expect(window.api.botConfigSave).toHaveBeenCalledWith({ backupNotice: 'failures' }));
+        expect(screen.getByRole('tab', { name: 'All' })).toHaveAttribute('aria-selected', 'true');
+        fireEvent.click(screen.getByRole('tab', { name: 'Off' }));
+        await waitFor(() => expect(window.api.botConfigSave).toHaveBeenCalledWith({ backupNotice: 'off' }));
+    });
+
+    it('DM 종류를 끄면 dmNotice 의 그 칸만 저장하고, 크래시를 끄면 경고를 보인다', async () => {
+        await act(() => useDiscordStore.getState().loadConfig());
+        useDiscordStore.setState({ _settingsReady: true });
+        render(<ConnectionView {...viewProps} />);
+        const crash = screen.getByRole('checkbox', { name: 'Crashes' });
+        expect(crash).toBeChecked();
+        expect(screen.queryByText(/you won't hear about crashes/)).toBeNull();
+        fireEvent.click(crash);
+        expect(screen.getByText(/you won't hear about crashes/)).toBeInTheDocument();
+        await waitFor(() =>
+            // 바뀐 칸만 (JSON Merge Patch)
+            expect(window.api.botConfigSave).toHaveBeenCalledWith({ dmNotice: { crash: false } }),
+        );
+    });
+
+    it('데몬이 끈 종류는 꺼진 채로 보인다 (빠진 칸은 켜짐)', async () => {
+        window.api.botConfigLoad = vi
+            .fn()
+            .mockResolvedValue({ backupNotice: 'failures', dmNotice: { moderation: false } });
+        await act(() => useDiscordStore.getState().loadConfig());
+        render(<ConnectionView {...viewProps} />);
+        expect(screen.getByRole('checkbox', { name: 'AI moderation reports' })).not.toBeChecked();
+        expect(screen.getByRole('checkbox', { name: 'Low disk space' })).toBeChecked();
+        expect(screen.getByRole('tab', { name: 'Failures' })).toHaveAttribute('aria-selected', 'true');
     });
 });

@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDiscordStore } from '../../stores/useDiscordStore';
+import { type BackupNotice, type DmNoticeKind, useDiscordStore } from '../../stores/useDiscordStore';
 import { useUIStore } from '../../stores/useUIStore';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
@@ -9,7 +9,7 @@ import { CliText } from '../CliLine';
 import { Icon } from '../Icon';
 import '../ui/SabaArt.css';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
-import { StatusChip } from '../ui/StatusChip';
+import { Segmented, StatusChip } from '../ui/StatusChip';
 import type { DiscordNode } from './types';
 import type { usePairing } from './usePairing';
 
@@ -279,7 +279,6 @@ export function ConnectionView({
     const { t } = useTranslation('gui');
     const [confirmDisconnect, setConfirmDisconnect] = useState(false);
     const newGuildInstances = useDiscordStore((s) => s.discordNewGuildInstances);
-    const backupNotice = useDiscordStore((s) => s.discordBackupNotice);
     // SleepAllButton이 알려 주는 "모든 서버를 재웠는지"
     const [asleep, setAsleep] = useState(false);
 
@@ -480,25 +479,7 @@ export function ConnectionView({
                 )}
             </section>
 
-            <section className="dc-card">
-                <div className="dc-card-head">
-                    <h2>{t('discord.pc_notice_title')}</h2>
-                </div>
-                <p className="dc-card-desc">{t('discord.pc_notice_desc')}</p>
-                <div className="cb-toggle-row">
-                    <span className="dc-list-text">
-                        <span className="dc-list-name">{t('discord.backup_failures_only_title')}</span>
-                        <span className="cb-hint">{t('discord.backup_failures_only_desc')}</span>
-                    </span>
-                    <SabaToggle
-                        checked={backupNotice === 'failures'}
-                        aria-label={t('discord.backup_failures_only_title')}
-                        onChange={(on) =>
-                            useDiscordStore.getState().update({ discordBackupNotice: on ? 'failures' : 'all' })
-                        }
-                    />
-                </div>
-            </section>
+            <PcNoticeCard />
 
             <section className="dc-card">
                 <div className="dc-card-head">
@@ -536,5 +517,85 @@ export function ConnectionView({
                 </div>
             </section>
         </div>
+    );
+}
+
+// PC 주인 DM 알림 묶음 (사용자 2026-11-08). 백업은 범위(끄기·실패만·모두), 나머지는 켜고 끈다
+const DM_GROUPS: { label: string; kinds: DmNoticeKind[] }[] = [
+    { label: 'dm_group_server', kinds: ['crash', 'externalStart', 'schedule'] },
+    { label: 'dm_group_pc', kinds: ['update', 'disk'] },
+    { label: 'dm_group_guild', kinds: ['chatbotUsage', 'moderation'] },
+];
+const DM_KEYS: Record<DmNoticeKind, string> = {
+    crash: 'dm_crash',
+    externalStart: 'dm_external_start',
+    schedule: 'dm_schedule',
+    update: 'dm_update',
+    disk: 'dm_disk',
+    chatbotUsage: 'dm_chatbot_usage',
+    moderation: 'dm_moderation',
+};
+
+/** PC 알림 카드: PC 주인에게 가는 디스코드 DM을 종류별로 켜고 끈다 (데몬 봇 설정 `dmNotice`·`backupNotice`) */
+function PcNoticeCard() {
+    const { t } = useTranslation('gui');
+    const dmNotice = useDiscordStore((s) => s.discordDmNotice);
+    const backupNotice = useDiscordStore((s) => s.discordBackupNotice);
+    const toggleRow = (kind: DmNoticeKind) => {
+        const key = DM_KEYS[kind];
+        return (
+            <div className="cb-toggle-row" key={kind}>
+                <span className="dc-list-text">
+                    <span className="dc-list-name">{t(`discord.${key}_title`)}</span>
+                    <span className="cb-hint">{t(`discord.${key}_desc`)}</span>
+                    {kind === 'crash' && !dmNotice.crash && (
+                        <span className="cb-hint dc-dm-warn">{t('discord.dm_crash_off_warn')}</span>
+                    )}
+                </span>
+                <SabaToggle
+                    checked={dmNotice[kind]}
+                    aria-label={t(`discord.${key}_title`)}
+                    onChange={(on) =>
+                        useDiscordStore.getState().update({ discordDmNotice: { ...dmNotice, [kind]: on } })
+                    }
+                />
+            </div>
+        );
+    };
+    return (
+        <section className="dc-card">
+            <div className="dc-card-head">
+                <h2>{t('discord.pc_notice_title')}</h2>
+            </div>
+            <p className="dc-card-desc">{t('discord.pc_notice_desc')}</p>
+            {DM_GROUPS.map((group, i) => (
+                <div className="dc-dm-group" key={group.label}>
+                    <span className="dc-dm-group-label">{t(`discord.${group.label}`)}</span>
+                    <div className="cb-toggles">
+                        {group.kinds.map(toggleRow)}
+                        {i === 0 && (
+                            <div className="cb-toggle-row">
+                                <span className="dc-list-text">
+                                    <span className="dc-list-name">{t('discord.dm_backup_title')}</span>
+                                    <span className="cb-hint">{t('discord.dm_backup_desc')}</span>
+                                </span>
+                                <Segmented
+                                    ariaLabel={t('discord.dm_backup_title')}
+                                    value={backupNotice}
+                                    onChange={(v) =>
+                                        useDiscordStore.getState().update({ discordBackupNotice: v as BackupNotice })
+                                    }
+                                    items={[
+                                        { id: 'off', label: t('discord.dm_backup_off') },
+                                        { id: 'failures', label: t('discord.dm_backup_failures') },
+                                        { id: 'all', label: t('discord.dm_backup_all') },
+                                    ]}
+                                />
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ))}
+        </section>
     );
 }

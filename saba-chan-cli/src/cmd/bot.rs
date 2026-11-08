@@ -216,15 +216,29 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
         BotCmd::Link { id, decline } => link(ctx, id.as_deref(), decline).await,
         BotCmd::Allow { guild, servers, all } => allow(ctx, &resolve::guild(ctx, Some(&guild)).await?, &servers, all).await,
         BotCmd::Notice { guild, server, on, off, full } => notice(ctx, &resolve::guild(ctx, Some(&guild)).await?, server.as_deref(), (on || off).then_some(on), full).await,
-        BotCmd::BackupNotice { all, failures } => {
-            if all || failures {
-                let mode = if failures { "failures" } else { "all" };
+        BotCmd::BackupNotice { all, failures, off } => {
+            if all || failures || off {
+                let mode = if failures { "failures" } else if off { "off" } else { "all" };
                 let r = ctx.api.patch_bot_config(json!({ "backupNotice": mode })).await?;
                 ctx.out.done(&t!("bot.backup_notice_set", mode = backup_notice_text(mode)), &r);
                 return Ok(());
             }
             let mode = backup_notice_mode(&ctx.api.bot_config().await?);
             ctx.out.data(&json!({ "backupNotice": mode }), |_| say!("{}", t!("bot.backup_notice_show", mode = backup_notice_text(mode))));
+            Ok(())
+        }
+        BotCmd::DmNotice { kind, on, off: _ } => {
+            if let Some(kind) = kind {
+                let r = ctx.api.patch_bot_config(json!({ "dmNotice": { kind.key(): on } })).await?;
+                ctx.out.done(&t!("bot.dm_notice_set", kind = dm_kind_text(kind), state = on_off_text(on)), &r);
+                return Ok(());
+            }
+            let states = dm_notice_states(&ctx.api.bot_config().await?);
+            ctx.out.data(&json!({ "dmNotice": states }), |_| {
+                for kind in crate::cli::DmKind::ALL {
+                    say!("{}", t!("bot.dm_notice_show", kind = dm_kind_text(kind), state = on_off_text(states[kind.key()] == true)));
+                }
+            });
             Ok(())
         }
         BotCmd::Reset { keys } => {
@@ -727,11 +741,37 @@ fn new_guild_mode(cfg: &Value) -> &'static str {
 
 /// 봇 설정의 `backupNotice` (없거나 모르는 값이면 데몬 기본 `all`)
 fn backup_notice_mode(cfg: &Value) -> &'static str {
-    if cfg.get("backupNotice").and_then(Value::as_str) == Some("failures") { "failures" } else { "all" }
+    match cfg.get("backupNotice").and_then(Value::as_str) {
+        Some("failures") => "failures",
+        Some("off") => "off",
+        _ => "all",
+    }
 }
 
 fn backup_notice_text(mode: &str) -> String {
-    if mode == "failures" { t!("bot.backup_notice_failures") } else { t!("bot.backup_notice_all") }
+    match mode {
+        "failures" => t!("bot.backup_notice_failures"),
+        "off" => t!("bot.backup_notice_off"),
+        _ => t!("bot.backup_notice_all"),
+    }
+}
+
+/// 봇 설정의 `dmNotice` → 종류별 켜짐 (빠지거나 모르는 값이면 데몬 기본 켜짐)
+fn dm_notice_states(cfg: &Value) -> Value {
+    let set = cfg.get("dmNotice");
+    let states: serde_json::Map<String, Value> = crate::cli::DmKind::ALL
+        .into_iter()
+        .map(|k| (k.key().to_string(), json!(set.and_then(|s| s.get(k.key())).and_then(Value::as_bool) != Some(false))))
+        .collect();
+    Value::Object(states)
+}
+
+fn dm_kind_text(kind: crate::cli::DmKind) -> String {
+    t!(&format!("bot.dm_kind.{}", kind.key()))
+}
+
+fn on_off_text(on: bool) -> String {
+    if on { t!("bot.dm_notice_on") } else { t!("bot.dm_notice_off") }
 }
 
 fn new_guild_text(mode: &str) -> String {
@@ -1300,6 +1340,17 @@ mod tests {
         assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "failures" })), "failures");
         assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "x" })), "all");
         assert_eq!(super::backup_notice_mode(&json!({})), "all");
+        assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "off" })), "off");
+    }
+
+    #[test]
+    fn dm_notice_states_default_to_on() {
+        use serde_json::json;
+        let s = super::dm_notice_states(&json!({ "dmNotice": { "crash": false, "disk": "x" } }));
+        assert_eq!(s["crash"], false);
+        assert_eq!(s["disk"], true);
+        assert_eq!(s["moderation"], true);
+        assert_eq!(s.as_object().unwrap().len(), 7);
     }
 
     use super::*;
