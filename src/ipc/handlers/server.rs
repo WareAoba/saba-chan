@@ -22,8 +22,12 @@ pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
     let token = super::super::auth::token_status(&headers);
     let challenge = headers.get("X-Saba-Challenge").and_then(|v| v.to_str().ok());
     let proof = challenge.and_then(crate::ipc::auth::identity_proof);
-    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "token": token, "proof": proof, "stops_with_launcher": stops_with_launcher() })))
+    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "started_at_ms": *STARTED_AT_MS, "token": token, "proof": proof, "stops_with_launcher": stops_with_launcher() })))
 }
+
+/// 데몬이 시작한 시각 (Unix ms). `main`이 맨 먼저 잰다. 업데이터가 서비스 관리자·GUI가 다시 띄운 데몬을
+/// PID 대신 판과 이 시각으로 새 데몬인지 가린다 (`live_apply::HealthRule::StartedAfter`)
+pub static STARTED_AT_MS: std::sync::LazyLock<u64> = std::sync::LazyLock::new(saba_chan_updater_lib::live_apply::now_ms);
 
 /// 데몬이 닫히면 함께 끝내는 job 안에 있는가 (L46). GUI가 job breakaway를 거절당해 그대로 띄우면, GUI를 띄운 프로그램이
 /// 끝날 때 데몬도 끝날 수 있다. 시작 뒤 바뀌지 않으므로 한 번만 본다. 바로 위 job만 본다 (중첩 job의 바깥 job은 알 수 없다)
@@ -1295,6 +1299,9 @@ mod tests {
     async fn health_says_whether_the_daemon_stops_with_its_launcher() {
         let done = crate::ipc::internal::into_internal(health_check(axum::http::HeaderMap::new()).await.into_response()).await;
         assert!(done.body["stops_with_launcher"].is_boolean(), "{}", done.body);
+        // 업데이터가 새 데몬인지 가리는 기동 시각 (Unix ms, 지금보다 앞)
+        let started = done.body["started_at_ms"].as_u64().expect("started_at_ms");
+        assert!(started > 0 && started <= saba_chan_updater_lib::live_apply::now_ms(), "{}", done.body);
         #[cfg(not(windows))]
         assert_eq!(done.body["stops_with_launcher"], false);
         // job 밖이면 false, kill-on-close job 안이면 breakaway를 허용하든 말든 true (BREAKAWAY_OK 0x800, SILENT_BREAKAWAY_OK 0x1000)
