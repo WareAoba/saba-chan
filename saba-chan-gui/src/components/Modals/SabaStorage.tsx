@@ -16,6 +16,7 @@ import { TrustBadge } from '../ui/TrustBadge';
 import { createTranslateError, safeShowToast } from '../../utils/helpers';
 import type { ApiBody, ModuleInfo } from '../../types/daemon';
 import { failed } from '../../utils/apiResult';
+import { useInstallingIds } from './useStoreInstall';
 
 // ─────────────────────────────────────────────────────────────
 // 사바 스토리지 (구 업데이트 센터)
@@ -787,7 +788,7 @@ function ModulesTab() {
     const [manifestModules, setManifestModules] = useState<ApiBody[] | null>(null); // null = 미로드, [] = 로드됨
     const [manifestLoading, setManifestLoading] = useState(false);
     const [manifestError, setManifestError] = useState<string | null>(null);
-    const [installingIds, setInstallingIds] = useState<Set<string>>(new Set());
+    const { installingIds, run: runInstall } = useInstallingIds();
     const [installResults, setInstallResults] = useState<Record<string, string | null>>({}); // { id: 'ok'|'error' }
     const [showManifest, setShowManifest] = useState(false);
     const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
@@ -825,12 +826,8 @@ function ModulesTab() {
         loadInstalledModules();
     }, [loadInstalledModules]);
 
-    const handleShowManifest = useCallback(async () => {
-        if (manifestModules !== null) {
-            setShowManifest(true);
-            return;
-        }
-        setShowManifest(true);
+    // 공식 모듈 목록 받기. 받지 못하면 빈 목록과 오류를 보인다
+    const loadManifest = useCallback(async () => {
         setManifestLoading(true);
         setManifestError(null);
         try {
@@ -853,32 +850,20 @@ function ModulesTab() {
             setManifestModules([]);
         }
         setManifestLoading(false);
-    }, [manifestModules, t]);
+    }, [t]);
+
+    const handleShowManifest = useCallback(async () => {
+        setShowManifest(true);
+        if (manifestModules !== null) return;
+        await loadManifest();
+    }, [manifestModules, loadManifest]);
 
     const handleRefreshManifest = useCallback(async () => {
         setManifestModules(null);
-        setManifestLoading(true);
-        setManifestError(null);
-        try {
-            const res = await window.api?.moduleManifest?.();
-            if (res?.ok && res.manifest?.modules) {
-                const mods = Object.entries(res.manifest.modules as Record<string, ApiBody>).map(([id, info]) => ({ id, ...info }));
-                setManifestModules(mods);
-            } else {
-                setManifestError(
-                    res?.error || t('saba_storage.manifest_fetch_failed', '매니페스트를 가져오지 못했습니다.'),
-                );
-                setManifestModules([]);
-            }
-        } catch (e) {
-            setManifestError((e as Error).message);
-            setManifestModules([]);
-        }
-        setManifestLoading(false);
-    }, [t]);
+        await loadManifest();
+    }, [loadManifest]);
 
-    const handleInstallModule = useCallback(async (moduleId: string) => {
-        setInstallingIds((prev) => new Set(prev).add(moduleId));
+    const handleInstallModule = useCallback(async (moduleId: string) => runInstall(moduleId, async () => {
         setInstallResults((prev) => ({ ...prev, [moduleId]: null }));
         try {
             const res = await window.api?.moduleInstallFromManifest?.(moduleId);
@@ -907,12 +892,7 @@ function ModulesTab() {
         } catch (_) {
             setInstallResults((prev) => ({ ...prev, [moduleId]: 'error' }));
         }
-        setInstallingIds((prev) => {
-            const n = new Set(prev);
-            n.delete(moduleId);
-            return n;
-        });
-    }, [t, refreshExtensions]);
+    }), [t, refreshExtensions, runInstall]);
 
     const handleConfirmRemove = useCallback(async () => {
         const id = confirmRemoveId;
@@ -1200,7 +1180,7 @@ function ExtensionsTab() {
             return;
         }
         setShowStore(true);
-        await fetchManifest?.();
+        await fetchManifest();
     }, [manifestExtensions, fetchManifest]);
 
     const handleConfirmRemove = useCallback(async () => {

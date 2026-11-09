@@ -195,7 +195,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 - `discover()`(`ext/:623-648`): 루트에 있는 `*.zip`을 먼저 푼 뒤 `scan()`을 실행한다. 다운로드와 ZIP 파일은 128 MiB, 항목은 10,000개, 누적 해제 크기는 512 MiB로 제한한다. 모듈 ZIP과 익스텐션 패키지는 같은 해제기(`src/archive.rs`)로 푼다: 폴더 밖을 가리키는 경로와 링크 항목은 거부하고, 권한 비트(SUID 등)는 옮기지 않는다. zip은 `.staging-<id>`에 풀어 manifest를 검사하고, 기존 폴더가 있으면 **새 내용으로 바꿔 끼운 뒤** zip을 삭제한다(`ext/:652-721`).
 - `scan()`(`ext/:737-783`): 하위 디렉토리 중 `manifest.json`이 있는 것(`.`으로 시작하는 임시 폴더 제외)을 등록한다. **폴더 이름이 manifest.id(또는 하이픈→밑줄)와 다르면 건너뛰고**, 로드 실패와 함께 `load_errors`에 남긴다. 이 목록은 `GET /api/extensions`의 `failed`로 나간다(`handlers/extension.rs:85-90`).
 - `rescan()`(`ext/:792-796`): `scan()`과 같다. 기존 항목의 manifest를 다시 읽고 새 항목을 추가한다. 디스크에서 사라진 항목은 그대로 남긴다.
-- `mount(id)`(`ext/:800-821`): `ext_dir_on_disk`(discovered → id 그대로 → 하이픈을 언더스코어로 바꾼 이름)로 디렉토리를 찾고, `manifest.id == id`를 검사한다.
+- `mount(id)`(`ext/:800-821`): `ext_dir_on_disk`(discovered → `extension_dir`: 하이픈을 언더스코어로 바꾼 이름 → id 그대로. 둘 다 있으면 언더스코어 폴더로, `scan`·신뢰 판정(`sandbox`)도 같은 폴더를 쓴다)로 디렉토리를 찾고, `manifest.id == id`를 검사한다.
 - `IPCServer::new`(`src/ipc/mod.rs:590-598`)에서 discover를 한 번 실행한다. 상태에 enabled로 되어 있지만 디스크에 없는 익스텐션은 `enabled_but_not_installed()`로 구분한다(`ext/:1076`).
 
 ### 3.3 enable / disable / remove / unmount

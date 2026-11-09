@@ -347,7 +347,7 @@ fn replace_dir_restores_backup_when_extract_fails() {
     let bad = manager.staging_dir.join("module-game.zip");
     std::fs::write(&bad, b"not a zip").unwrap();
 
-    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "game_backup").is_err());
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
 }
 
@@ -368,7 +368,7 @@ fn replace_dir_keeps_the_backup_left_by_an_interrupted_replace() {
     let bad = manager.staging_dir.join("module-game.zip");
     std::fs::write(&bad, b"not a zip").unwrap();
 
-    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "game_backup").is_err());
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
     assert!(!target.join("half.py").exists());
 }
@@ -385,13 +385,13 @@ fn replace_dir_drops_the_backup_after_a_clean_rollback() {
     std::fs::write(target.join("module.toml"), "v1").unwrap();
     let bad = manager.staging_dir.join("module-game.zip");
     std::fs::write(&bad, b"not a zip").unwrap();
-    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "game_backup").is_err());
     assert!(!manager.staging_dir.join("game_backup").exists());
 
     // 설치기가 v2를 깔았다. 다음 교체가 또 실패해도 v2로 남아야 한다
     std::fs::write(target.join("module.toml"), "v2").unwrap();
     std::fs::write(&bad, b"not a zip").unwrap();
-    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "game_backup").is_err());
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "v2");
 }
 
@@ -412,7 +412,7 @@ fn replace_dir_ignores_a_backup_that_was_cut_off_while_copying() {
     let bad = manager.staging_dir.join("module-game.zip");
     std::fs::write(&bad, b"not a zip").unwrap();
 
-    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "game_backup").is_err());
     assert_eq!(std::fs::read_to_string(target.join("lifecycle.py")).unwrap(), "old");
 }
 
@@ -758,7 +758,7 @@ fn a_failed_new_install_leaves_no_folder() {
         zw.finish().unwrap();
     }
 
-    assert!(manager.replace_dir(&target, &bad, "fresh_backup").is_err());
+    assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "fresh_backup").is_err());
     assert!(!target.exists());
 }
 

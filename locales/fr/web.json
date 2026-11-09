@@ -440,12 +440,6 @@
       "NO_CLEAR_JOB": "Aucun nettoyage en cours dans ce salon.",
       "generic": "Impossible de modifier. Réessayez dans un instant."
     },
-    "dur": {
-      "seconds": "{{count}} s",
-      "minutes": "{{count}} min",
-      "hours": "{{count}} h",
-      "days": "{{count}} j"
-    },
     "mod": {
       "title": "Gestion du serveur",
       "locked": "Verrouillé",

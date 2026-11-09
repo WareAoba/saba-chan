@@ -85,6 +85,42 @@ fn open_user_runtime(entry: String, instance: &crate::instance::ServerInstance) 
     tokio::task::spawn_blocking(move || crate::sandbox::open_user_runtime(std::path::Path::new(&entry), &java));
 }
 
+/// 요청 값 하나가 잘못됐다는 400 응답: `error`에 이유
+pub(crate) fn invalid_field(field: &str, error: impl Into<String>) -> axum::response::Response {
+    let error = json!({ "error": error.into(), "error_code": "invalid_format", "fields": [{"field": field}] });
+    (StatusCode::BAD_REQUEST, Json(error)).into_response()
+}
+
+/// 설정 값 하나가 잘못됐다는 400 응답: `error`는 "invalid_format", 이유는 `message`에
+fn invalid_field_message(field: &str, message: impl Into<String>) -> axum::response::Response {
+    let error = json!({ "error": "invalid_format", "error_code": "invalid_format", "message": message.into(), "fields": [{"field": field}] });
+    (StatusCode::BAD_REQUEST, Json(error)).into_response()
+}
+
+/// 필수 익스텐션이 없어 `action`(예: "create instance")을 할 수 없다는 422 응답
+pub(crate) fn extension_required(action: &str, found: &crate::extension::MissingExtensions) -> axum::response::Response {
+    let msg = if !found.not_installed.is_empty() {
+        format!(
+            "Cannot {}: required extension(s) not installed: {}. Install them in Settings → Extensions first.",
+            action,
+            found.not_installed.join(", ")
+        )
+    } else {
+        format!(
+            "Cannot {}: required extension(s) not enabled: {}. Enable them in Settings → Extensions first.",
+            action,
+            found.missing.join(", ")
+        )
+    };
+    let error = json!({
+        "error": msg,
+        "error_code": "extension_required",
+        "missing_extensions": found.missing,
+        "not_installed": found.not_installed,
+    });
+    (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response()
+}
+
 /// POST /api/instances - 새 인스턴스 생성
 pub async fn create_instance(
     State(state): State<IPCServer>,
@@ -116,8 +152,7 @@ pub async fn check_new_instance(State(state): State<IPCServer>, Json(payload): J
 /// 새 서버의 버전 (`version`): 비었으면 None(최신). 경로 조각·명령 인자가 되지 않게 글자를 제한한다
 fn requested_version(payload: &Value) -> Result<Option<String>, Box<axum::response::Response>> {
     let bad = || {
-        let error = json!({ "error": "version must be a version name", "error_code": "invalid_format", "fields": [{"field": "version"}] });
-        Box::new((StatusCode::BAD_REQUEST, Json(error)).into_response())
+        Box::new(invalid_field("version", "version must be a version name"))
     };
     match payload.get("version") {
         None | Some(Value::Null) => Ok(None),
@@ -175,151 +210,17 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
             None | Some(Value::Null) => None,
             Some(Value::Bool(b)) => Some(*b),
             Some(_) => {
-                let error = json!({ "error": "managed_start must be true or false", "error_code": "invalid_format", "fields": [{"field": "managed_start"}] });
-                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+                return invalid_field("managed_start", "managed_start must be true or false");
             }
         };
         let mut instance = crate::instance::ServerInstance::new(name, module);
-        // REST 포트를 모듈 기본값으로 채웠는가 (사용자가 정하지 않은 값만 예약 범위 밖으로 옮긴다)
-        let mut rest_port_defaulted = false;
 
         // 모듈 정보에서 process_name, default_port, install 설정 가져오기
-        let mut module_trust = None;
-        let module_install = if let Ok(loaded_module) = supervisor.module_loader.get_module(module) {
-            if let Some(body) = crate::supervisor::module_loader::host_unsupported_body(module, &loaded_module.metadata) {
-                return (StatusCode::CONFLICT, Json(body)).into_response();
-            }
-            module_trust = Some(super::server::module_trust(&loaded_module.path));
-            instance.process_name = loaded_module.metadata.process_name.clone();
-            if instance.port.is_none() {
-                instance.port = loaded_module.metadata.default_port;
-            }
-            // rest_port 기본값은 모듈이 REST를 지원할 때만 설정
-            let supported = loaded_module.metadata.protocols_supported.as_deref().unwrap_or(&[]);
-            if instance.rest_port.is_none() && supported.iter().any(|s| s == "rest") {
-                instance.rest_port = Some(loaded_module.metadata.default_rest_port());
-                rest_port_defaulted = true;
-            }
-
-            // 고른 프리셋(`[[presets]]`)의 설정이 바탕이 되고, 따로 보낸 설정이 그 위를 덮는다
-            let mut chosen = serde_json::Map::new();
-            if let Some(id) = payload.get("preset").and_then(|v| v.as_str()).filter(|p| !p.is_empty()) {
-                match loaded_module.metadata.presets.iter().find(|p| p.id == id) {
-                    Some(preset) => chosen.extend(preset.settings.clone()),
-                    None => {
-                        let error = json!({ "error": format!("Module '{}' has no preset '{}'", module, id), "error_code": "preset_not_found" });
-                        return (StatusCode::BAD_REQUEST, Json(error)).into_response();
-                    }
-                }
-            }
-            if let Some(given) = payload.get("module_settings").and_then(|v| v.as_object()) {
-                chosen.extend(given.clone());
-            }
-            if chosen.get("rest_port").is_some_and(|v| !v.is_null()) {
-                rest_port_defaulted = false;
-            }
-
-            // 만들 때 동의한 약관 (`[[agreements]]` id). 이 PC에서만 받는다
-            let accepted = match super::managed::requested_agreements(&payload, "accept_agreements") {
-                Ok(ids) => ids,
+        let ModuleDefaults { trust: module_trust, rest_port_defaulted, install: module_install } =
+            match apply_module_definition(&supervisor, &payload, &mut instance, module, managed_start, dry_run) {
+                Ok(found) => found,
                 Err(resp) => return *resp,
             };
-            if let Some(unknown) = accepted.iter().find(|id| !loaded_module.metadata.agreements.iter().any(|a| &a.id == *id)) {
-                let error = json!({ "error": format!("Module '{}' has no agreement '{}'", module, unknown), "error_code": "invalid_format", "fields": [{"field": "accept_agreements"}] });
-                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
-            }
-            let now = chrono::Utc::now().to_rfc3339();
-            instance.accepted_agreements = accepted.into_iter().map(|id| (id, now.clone())).collect();
-
-            // 만들 때 고른 설정 (예: 마인크래프트 서버 종류 — 설치할 jar가 달라진다).
-            // 모듈이 선언한 이름만, select는 고를 수 있는 값만 받는다
-            if let Some(settings) = loaded_module.metadata.settings.as_ref() {
-                for field in &settings.fields {
-                    let Some(value) = chosen.get(&field.name).filter(|v| !v.is_null()) else { continue };
-                    let allowed = field.field_type == "list" || match (&field.options, value.as_str()) {
-                        (Some(options), Some(v)) => options.iter().any(|o| o == v),
-                        (Some(_), None) => false,
-                        (None, _) => !value.is_object() && !value.is_array(),
-                    };
-                    // 새로 설치하는 서버는 모듈이 설치할 수 있는 값만 (가져오는 서버는 판정된 값 그대로)
-                    let installable = payload.get("migration_source").is_some_and(|v| !v.is_null())
-                        || field.install_options.as_ref().is_none_or(|ok| value.as_str().is_some_and(|v| ok.iter().any(|o| o == v)));
-                    if allowed && !installable {
-                        let error = json!({ "error": format!("module_settings.{} cannot be installed by saba-chan", field.name), "error_code": "not_installable", "fields": [{"field": field.name}] });
-                        return (StatusCode::BAD_REQUEST, Json(error)).into_response();
-                    }
-                    if !allowed || crate::validator::validate_setting_value(field, Some(value)).is_err() {
-                        // 조용히 버리면 프리셋·기본값이 남아 고른 것과 다른 서버가 된다
-                        let error = json!({ "error": format!("module_settings.{} is not a valid value", field.name), "error_code": "invalid_format", "fields": [{"field": field.name}] });
-                        return (StatusCode::BAD_REQUEST, Json(error)).into_response();
-                    }
-                    instance.module_settings.insert(field.name.clone(), value.clone());
-                    // 사용자가 보낸 값이 모듈 기본값·프리셋과 다를 때만 사용자가 정한 값이다
-                    // (만들기 화면은 기본값을 채워 보낸다)
-                    let from_module = payload.get("preset").and_then(|v| v.as_str())
-                        .and_then(|id| loaded_module.metadata.presets.iter().find(|p| p.id == id))
-                        .and_then(|p| p.settings.get(&field.name))
-                        .is_some_and(|v| v == value)
-                        || field.default.as_ref().and_then(|d| d.as_str()).is_some_and(|d| {
-                            let dir = supervisor.instance_store.instance_dir(&instance.id);
-                            let substituted = d.replace(INSTANCE_DIR_PLACEHOLDER, &dir.to_string_lossy());
-                            value.as_str().is_some_and(|v| v == d || v == substituted)
-                        });
-                    let given = payload.get("module_settings").and_then(|v| v.get(&field.name)).is_some_and(|v| v == value);
-                    if given && !from_module {
-                        instance.user_settings.insert(field.name.clone());
-                    }
-                }
-            }
-
-            // settings.fields의 default 값을 module_settings에 자동 채우기
-            if let Some(ref settings) = loaded_module.metadata.settings {
-                for field in &settings.fields {
-                    if !instance.module_settings.contains_key(&field.name) {
-                        if let Some(ref default_val) = field.default {
-                            let json_val = match default_val {
-                                // `{instance_dir}`: 이 인스턴스 폴더 (예: 인스턴스마다 따로 두는 게임 데이터 폴더).
-                                // 기존 서버를 가져오는 경우엔 그 서버가 쓰던 위치를 모듈이 고르게 비워 둔다
-                                toml::Value::String(s) if s.contains(INSTANCE_DIR_PLACEHOLDER) => {
-                                    if payload.get("migration_source").is_some() {
-                                        serde_json::json!("")
-                                    } else {
-                                        let dir = supervisor.instance_store.instance_dir(&instance.id);
-                                        serde_json::json!(s.replace(INSTANCE_DIR_PLACEHOLDER, &dir.to_string_lossy()))
-                                    }
-                                }
-                                toml::Value::String(s) => serde_json::json!(s),
-                                toml::Value::Integer(n) => serde_json::json!(n),
-                                toml::Value::Float(f) => serde_json::json!(f),
-                                toml::Value::Boolean(b) => serde_json::json!(b),
-                                // list 기본값 (06 §8.1: TOML 문자열 배열)
-                                toml::Value::Array(_) if field.field_type == "list" => match serde_json::to_value(default_val) {
-                                    Ok(v) => v,
-                                    Err(_) => continue,
-                                },
-                                _ => continue,
-                            };
-                            instance.module_settings.insert(field.name.clone(), json_val);
-                        }
-                    }
-                }
-            }
-
-            if let Some(managed) = managed_start {
-                instance.module_settings.insert("managed_start".into(), json!(managed));
-            }
-            if !dry_run {
-                open_user_runtime(loaded_module.entry_path(), &instance);
-            }
-
-            Some((
-                loaded_module.metadata.install.clone(),
-                loaded_module.entry_path(),  // 모듈 진입 파일 (마이그레이션 설정 import 시 사용)
-                loaded_module.metadata.server_executable.clone(),  // 바이너리 파일명 (마이그레이션 시 executable_path 자동 계산)
-            ))
-        } else {
-            None
-        };
 
         // ── 앱 설정의 새 서버 기본값. 기본값과 같으면 비워 둬 지금처럼 읽을 때 기본값을 쓴다 ──
         let app = state.config_store.get_gui_settings().await;
@@ -339,8 +240,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                 }
             }
             Some(_) => {
-                let error = json!({ "error": "extension_data must be an object", "error_code": "invalid_format", "fields": [{"field": "extension_data"}] });
-                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+                return invalid_field("extension_data", "extension_data must be an object");
             }
         }
 
@@ -355,184 +255,33 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
 
         // ── 필수 익스텐션 활성화 검증 ──
         if !instance.required_extensions.is_empty() {
-            let ext_mgr = state.extension_manager.read().await;
-            let ready = ext_mgr.installed_and_enabled_set();
-            let enabled_not_installed = ext_mgr.enabled_but_not_installed();
-            drop(ext_mgr);
-            let missing = instance.missing_required_extensions(&ready);
-            if !missing.is_empty() {
-                // 활성화되었지만 설치되지 않은 항목 구분
-                let not_installed: Vec<&String> = missing.iter()
-                    .filter(|id| enabled_not_installed.contains(id))
-                    .collect();
-                let msg = if !not_installed.is_empty() {
-                    format!(
-                        "Cannot create instance: required extension(s) not installed: {}. Install them in Settings → Extensions first.",
-                        not_installed.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
-                    )
-                } else {
-                    format!(
-                        "Cannot create instance: required extension(s) not enabled: {}. Enable them in Settings → Extensions first.",
-                        missing.join(", ")
-                    )
-                };
-                let error = json!({
-                    "error": msg,
-                    "error_code": "extension_required",
-                    "missing_extensions": missing,
-                    "not_installed": not_installed,
-                });
-                return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
+            let found = state.extension_manager.read().await.missing_required(&instance.required_extensions);
+            if !found.missing.is_empty() {
+                return extension_required("create instance", &found);
             }
         }
 
         // 버전은 내려받아 설치하는 모듈만 고른다 (SteamCMD·익스텐션 설치는 버전을 받지 않는다)
         let downloads = module_install.as_ref().and_then(|(install, _, _)| install.as_ref()).is_some_and(|i| i.method == "download");
         if chosen_version.is_some() && !downloads {
-            let error = json!({ "error": "this module does not install a chosen version", "error_code": "invalid_format", "fields": [{"field": "version"}] });
-            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            return invalid_field("version", "this module does not install a chosen version");
         }
 
-        // 선택적 필드 설정
-        if let Some(path) = payload.get("executable_path").and_then(|v| v.as_str()) {
-            instance.executable_path = Some(path.to_string());
-        }
-        if let Some(dir) = payload.get("working_dir").and_then(|v| v.as_str()) {
-            instance.working_dir = Some(dir.to_string());
-        }
-        // migration_source → working_dir (마이그레이션: 기존 서버 디렉토리 직접 연결)
-        // `migration_mode = "move"`면 그 폴더를 인스턴스 폴더 안으로 옮겨 전속시킨다 (기본 "link": 그 자리에 연결)
-        let move_mode = match payload.get("migration_mode").and_then(|v| v.as_str()) {
-            None | Some("link") => false,
-            Some("move") => true,
-            Some(_) => {
-                let error = json!({ "error": "migration_mode must be \"link\" or \"move\"", "error_code": "invalid_format", "fields": [{"field": "migration_mode"}] });
-                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
-            }
+        let ServerFolder { migration_mode, moved_from, custom_folder, folder_in_use, folder_not_empty, made_folder } =
+            match choose_server_folder(&supervisor, &payload, &mut instance, &module_install, dry_run) {
+                Ok(folder) => folder,
+                Err(resp) => return *resp,
+            };
+        let port_users = match choose_ports(&supervisor, &payload, &mut instance, module, migration_mode, rest_port_defaulted) {
+            Ok(users) => users,
+            Err(resp) => return *resp,
         };
-        let mut moved_from: Option<std::path::PathBuf> = None;
-        let migration_mode = if let Some(src) = payload.get("migration_source").and_then(|v| v.as_str()) {
-            // 상대 경로는 데몬의 작업 폴더 기준으로 풀린다: 보내는 쪽이 절대 경로로 바꿔 보내야 한다
-            if !std::path::Path::new(src).is_absolute() {
-                let error = json!({ "error": "migration_source must be an absolute path", "error_code": "invalid_format", "fields": [{"field": "migration_source"}] });
-                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
-            }
-            if move_mode {
-                // 옮길 폴더도 다른 인스턴스가 쓰는 폴더와 겹치면 안 된다
-                if let Some(other) = supervisor.instance_store.folder_user(std::path::Path::new(src), &instance.id) {
-                    let error = json!({ "success": false, "error": format!("Server '{}' already uses this folder", other.name), "error_code": "working_dir_in_use", "instance": other.name });
-                    return (StatusCode::CONFLICT, Json(error)).into_response();
-                }
-                let subdir = module_install.as_ref().and_then(|(install, _, _)| install.as_ref()).and_then(|i| i.install_subdir.clone()).unwrap_or_else(|| "server".to_string());
-                let Some(dest) = crate::instance::migration::move_target(&supervisor.instance_store.instance_dir(&instance.id), &subdir) else {
-                    tracing::warn!("Migration: module install_subdir '{}' is not a folder inside the instance, not moving", subdir);
-                    let error = json!({ "success": false, "error": "The module's install folder is not inside the instance folder", "error_code": "move_failed" });
-                    return (StatusCode::CONFLICT, Json(error)).into_response();
-                };
-                instance.working_dir = Some(dest.to_string_lossy().into_owned());
-                moved_from = Some(std::path::PathBuf::from(src));
-            } else if instance.working_dir.is_none() {
-                instance.working_dir = Some(src.to_string());
-            }
-            true
-        } else {
-            false
-        };
-        // 새 서버를 사바쨩 폴더 밖에 설치한다 (`working_dir`): 그 폴더에 바로 설치하므로 절대 경로여야 하고,
-        // 파일이 든 폴더에는 설치하지 않는다 (있는 서버는 가져오기로 연결한다)
-        let custom_folder = !migration_mode && instance.working_dir.is_some();
-        if custom_folder && !instance.working_dir.as_deref().is_some_and(|d| std::path::Path::new(d).is_absolute()) {
-            let error = json!({ "error": "working_dir must be an absolute path", "error_code": "invalid_format", "fields": [{"field": "working_dir"}] });
-            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
-        }
-        // 한 폴더에 서버 둘이면 서로의 월드·설정을 덮어쓴다
-        let folder_in_use = instance.working_dir.as_deref()
-            .and_then(|dir| supervisor.instance_store.folder_user(std::path::Path::new(dir), &instance.id))
-            .map(|other| other.name.clone());
-        if let Some(other) = folder_in_use.as_ref().filter(|_| !dry_run) {
-            let error = json!({
-                "success": false,
-                "error": format!("Server '{}' already uses this folder", other),
-                "error_code": "working_dir_in_use",
-                "instance": other,
-            });
-            return (StatusCode::CONFLICT, Json(error)).into_response();
-        }
-        let folder_not_empty = custom_folder && instance.working_dir.as_deref().is_some_and(|d| folder_has_entries(std::path::Path::new(d)));
-        if folder_not_empty && !dry_run {
-            let error = json!({ "success": false, "error": "The folder already has files", "error_code": "folder_not_empty", "fields": [{"field": "working_dir"}] });
-            return (StatusCode::CONFLICT, Json(error)).into_response();
-        }
-        // 새로 만든 폴더면 인스턴스를 저장하지 못했을 때 지운다 (빈 폴더만)
-        let made_folder = custom_folder && !dry_run && instance.working_dir.as_deref().is_some_and(|d| !std::path::Path::new(d).exists());
-        if custom_folder && !dry_run {
-            if let Err(e) = instance.working_dir.as_deref().map_or(Ok(()), std::fs::create_dir_all) {
-                let error = json!({ "success": false, "error": format!("Could not create the folder: {}", e), "error_code": "folder_unavailable", "fields": [{"field": "working_dir"}] });
-                return (StatusCode::CONFLICT, Json(error)).into_response();
-            }
-        }
-        let given_port = payload.get("port").filter(|v| !v.is_null());
-        if given_port.is_some_and(|v| v.as_u64().and_then(|p| u16::try_from(p).ok()).filter(|&p| p > 0).is_none()) {
-            let error = json!({ "error": "port must be a number from 1 to 65535", "error_code": "invalid_format", "fields": [{"field": "port"}] });
-            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
-        }
-        // 다른 인스턴스가 저장해 둔 포트. 새 인스턴스의 포트(기본값으로 채운 REST 포트 포함)는 이것과 겹치지 않게 고른다
-        let port_fields_of = |module: &str| -> Vec<String> {
-            supervisor.module_loader.get_module(module).ok()
-                .and_then(|m| m.metadata.settings.as_ref().map(|s| s.port_fields().into_iter().map(str::to_string).collect()))
-                .unwrap_or_default()
-        };
-        let mut taken = std::collections::HashSet::new();
-        // 포트 → 그 포트를 저장해 둔 다른 서버 이름 (확인 단계가 보여 준다)
-        let mut port_users: std::collections::BTreeMap<u16, Vec<String>> = Default::default();
-        for other in supervisor.instance_store.list() {
-            let fields = port_fields_of(&other.module_name);
-            let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
-            for (_, p) in crate::validator::instance_ports(other, &fields) {
-                taken.insert(p);
-                let users = port_users.entry(p).or_default();
-                if !users.contains(&other.name) {
-                    users.push(other.name.clone());
-                }
-            }
-        }
-        // Windows가 예약한 포트(예: 팰월드 REST 8212가 Hyper-V 범위 안)도 피한다: 서버가 그 포트를 열지 못한다
-        let taken_or_reserved = |p: u16| taken.contains(&p) || crate::validator::port_reserved_by_windows(p);
-        if let Some(port) = given_port.and_then(|v| v.as_u64()).and_then(|p| u16::try_from(p).ok()) {
-            instance.port = Some(port);
-            // 모듈이 `port` 설정을 선언했으면 그것도 맞춘다 (설치가 module_settings로 게임 설정 파일을 쓴다)
-            let declared = supervisor.module_loader.get_module(module).ok()
-                .and_then(|m| m.metadata.settings.as_ref().map(|s| s.fields.iter().any(|f| f.name == "port")))
-                .unwrap_or(false);
-            if declared {
-                instance.module_settings.insert("port".to_string(), json!(port));
-            }
-        } else if !migration_mode {
-            // 같은 게임을 여러 개 만들면 기본 포트가 겹친다: 다른 인스턴스와 겹치지 않게 옮긴다
-            let fields = port_fields_of(module);
-            let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
-            if let Some(delta) = crate::validator::shift_ports_clear_of(&mut instance, &fields, taken_or_reserved) {
-                tracing::info!("Instance '{}': ports moved by +{} to stay clear of other instances and reserved ports", instance.name, delta);
-            }
-        }
-        // 기본 REST 포트가 Windows 예약 범위에 들면(팰월드 8212가 Hyper-V 범위 8135-8234 안에 든 PC) 서버가 REST를
-        // 열지 못한다: 게임 포트를 직접 정했어도, 사용자가 정하지 않은 REST 포트는 예약 범위와 다른 인스턴스의
-        // 포트를 피해 옮긴다. 설치가 모듈 설정 값으로 게임 설정 파일을 쓰므로 같은 이름의 모듈 설정도 맞춘다
-        if let Some(default) = instance.rest_port.filter(|&p| rest_port_defaulted && crate::validator::port_reserved_by_windows(p)) {
-            if let Some(free) = crate::validator::next_free_port(default, taken_or_reserved) {
-                tracing::info!("Instance '{}': REST port {} is reserved by Windows, using {}", instance.name, default, free);
-                instance.rest_port = Some(free);
-                if instance.module_settings.contains_key("rest_port") {
-                    instance.module_settings.insert("rest_port".to_string(), json!(free));
-                }
-            }
-        }
 
         if dry_run {
             // 추천 이름은 대소문자를 가리지 않고 겹치지 않는 것 (GUI·CLI 이름 칸과 같다)
             let taken_ignoring_case = |n: &str| supervisor.instance_store.list().iter().any(|i| i.name.eq_ignore_ascii_case(n));
             let suggested = (1..).map(|i| if i == 1 { module.to_string() } else { format!("{module}-{i}") }).find(|n| !taken_ignoring_case(n));
-            let fields = port_fields_of(module);
+            let fields = port_fields_of(&supervisor, module);
             let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
             let ports: Vec<Value> = crate::validator::instance_ports(&instance, &fields).into_iter().map(|(field, port)| json!({
                 "field": field,
@@ -681,229 +430,25 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                         // Drop supervisor lock before spawning background task
                         drop(supervisor);
 
-                        crate::audit::spawn(async move {
-                            let mut install_guard = install_guard;
-                            let leftovers: Option<InstallStaging>;
-                            // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
-                            let module_path = {
-                                let sup = supervisor_arc.read().await;
-                                match sup.module_loader.get_module(&module_name_owned) {
-                                    Ok(m) => m.entry_path(),
-                                    Err(e) => {
-                                        drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
-                                        tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
-                                            step: 0, total: 1,
-                                            label: "done".to_string(),
-                                            message: text.t("provision.install_failed", &[]),
-                                            done: true,
-                                            error: Some(text.t("provision.module_missing", &[("error", &e.to_string())])),
-                                            percent: Some(100),
-                                            steps: None, details: Default::default(),
-                                        });
-                                        return;
-                                    }
-                                }
-                            };
-                            // supervisor read lock 해제됨 — 이후 플러그인 호출이
-                            // 모니터 태스크의 write lock을 차단하지 않음
-
-                            // ── Phase 2: 플러그인 호출 (lock 없이 실행) ──
-                            // lifecycle.py install_server 호출 (SteamCMD / download 모두 처리)
-                            let result = {
-                                // download 방식 모듈은 먼저 list_versions로 최신 버전 조회.
-                                // 인스턴스 설정(서버 종류 등)을 넘겨, 그 설정으로 받을 수 있는 최신을 고르게 한다
-                                let version = if let Some(version) = chosen_version {
-                                    Some(version)
-                                } else if install_config.method == "download" {
-                                    match crate::supervisor::Supervisor::latest_version(&module_path, &serde_json::json!(&install_settings)).await {
-                                        Ok(version) => Some(version),
-                                        Err(e) => {
-                                            drop(install_guard.take());
-                                            tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
-                                                step: 0, total: 1,
-                                                label: "done".to_string(),
-                                                message: text.t("provision.install_failed", &[]),
-                                                done: true,
-                                                error: Some(text.t("provision.no_latest_version", &[])),
-                                                percent: Some(100),
-                                                steps: None, details: Default::default(),
-                                            }.with_failure(crate::plugin::error_response(&e)));
-                                            return;
-                                        }
-                                    }
-                                } else {
-                                    None // 익스텐션 방식은 version 불필요
-                                };
-
-                                // 만들 수 없으면 고른 폴더에 바로 설치한다 (실패해도 아무것도 지우지 않는다)
-                                leftovers = leftovers_dir.as_deref().and_then(|dir| {
-                                    InstallStaging::new(dir, made_folder)
-                                        .map_err(|e| tracing::warn!("Could not prepare the install folder in {}: {}", dir.display(), e))
-                                        .ok()
-                                });
-                                let target_dir = leftovers.as_ref().map_or_else(|| install_dir_str.clone(), |l| l.staging.to_string_lossy().to_string());
-                                let mut config = serde_json::json!({
-                                    "install_dir": &target_dir,
-                                    "accepted_agreements": &accepted_agreements,
-                                    "settings": &install_settings,
-                                    crate::sandbox::INSTANCE_DATA_DIRS: &instance_data_dirs,
-                                });
-                                if let Some(ref ver) = version {
-                                    config["version"] = serde_json::json!(ver);
-                                }
-
-                                let tracker_progress = tracker_done.clone();
-                                let name_progress = name_done.clone();
-                                let on_progress = move |prog: crate::plugin::ExtensionProgress| {
-                                    let pct = prog.percent.unwrap_or(0);
-                                    let msg = prog.message.clone().unwrap_or_default();
-                                    tracker_progress.update(&name_progress, crate::ipc::ProvisionProgress {
-                                        step: prog.step.unwrap_or(0),
-                                        total: prog.total.unwrap_or(1),
-                                        label: prog.label.unwrap_or_else(|| provision_label.clone()),
-                                        message: msg,
-                                        done: false,
-                                        error: None,
-                                        percent: Some(pct),
-                                        steps: None, details: Default::default(),
-                                    });
-                                };
-
-                                crate::plugin::PluginCall::new(&module_path, "install_server", config)
-                                    .in_instance(Some(host_context))
-                                    .timeout(crate::plugin::INSTALL_TIMEOUT_SECS)
-                                    .run_with_progress(Box::new(on_progress)).await
-                            };
-
-                            let result = match result {
-                                Ok(mut value) if value.get("success").and_then(Value::as_bool) == Some(true) => 'checked: {
-                                    // 받은 서버를 고른 폴더로 옮긴다 (경로 확인은 옮긴 자리로)
-                                    if let Some(left) = &leftovers {
-                                        if let Err(e) = left.promote(&mut value) {
-                                            break 'checked Err(anyhow::anyhow!("Could not move the installed server into its folder: {}", e));
-                                        }
-                                    }
-                                    let sup = supervisor_arc.read().await;
-                                    match sup.instance_store.get(&id_done) {
-                                        Some(inst) => {
-                                            let metadata = sup.module_loader.get_module(&inst.module_name).ok();
-                                            let boundary = crate::module_paths::Boundary::for_instance(inst, &sup.instance_store.instance_dir(&id_done), metadata.as_ref().map(|m| &m.metadata));
-                                            boundary.returned_paths(&mut value, &module_name_owned, "install_server").map(|()| value)
-                                        }
-                                        None => Err(anyhow::anyhow!("Instance disappeared during install")),
-                                    }
-                                }
-                                other => other,
-                            };
-
-                            match result {
-                                Ok(val) => {
-                                    let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
-                                    if success {
-                                        // 설치 성공: executable_path, working_dir 업데이트
-                                        let exe_path = val.get("executable_path")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s.to_string());
-                                        let install_path = val.get("install_path")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s.to_string());
-
-                                        let saved = {
-                                            let mut sup = supervisor_arc.write().await;
-                                            match sup.instance_store.get(&id_done).cloned() {
-                                                Some(inst) => {
-                                                    let mut updated = inst;
-                                                    if let Some(ref exe) = exe_path {
-                                                        if !exe.is_empty() {
-                                                            updated.executable_path = Some(exe.clone());
-                                                        }
-                                                    }
-                                                    if let Some(ip) = install_path.as_ref().filter(|ip| !ip.trim().is_empty()) {
-                                                        // 확인되지 않은 모듈은 인스턴스 폴더 안만 (서버 폴더는 다음 격리 실행에 쓰기를 받는다)
-                                                        let root = sup.instance_store.instance_dir(&id_done);
-                                                        if crate::sandbox::accepts_module_dir(std::path::Path::new(&module_path), ip, &root) {
-                                                            updated.working_dir = Some(ip.clone());
-                                                        } else {
-                                                            tracing::warn!("Ignoring install_path outside the instance folder from unverified module: {}", ip);
-                                                        }
-                                                    }
-                                                    sup.instance_store.update(&id_done, updated)
-                                                }
-                                                // 그 사이 지워졌다
-                                                None => Ok(()),
-                                            }
-                                        };
-
-                                        // 받은 파일을 치우는 동안은 작업 잠금을 쥔다 (그 사이 시작·복원이 같은 폴더를 쓰지 않게)
-                                        if let (Err(_), Some(left)) = (&saved, &leftovers) { left.clear() }
-                                        drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
-                                        // 실행 경로를 저장하지 못했으면 설치했다고 알리지 않는다 (시작할 실행 파일을 모른다)
-                                        if let Err(e) = saved {
-                                            tracing::warn!("Native provisioning for '{}' finished but the instance could not be saved: {}", name_done, e);
-                                            tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
-                                                step: 0, total: 1,
-                                                label: "done".to_string(),
-                                                message: text.t("provision.install_failed", &[]),
-                                                done: true,
-                                                error: Some(text.t("provision.save_failed", &[])),
-                                                percent: Some(100),
-                                                steps: None, details: Default::default(),
-                                            });
-                                            return;
-                                        }
-                                        tracing::info!("Native provisioning completed for '{}'", name_done);
-                                        tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
-                                            step: 0, total: 1,
-                                            label: "done".to_string(),
-                                            message: text.t("provision.installed", &[]),
-                                            done: true,
-                                            error: None,
-                                            percent: Some(100),
-                                            steps: None, details: Default::default(),
-                                        });
-
-                                        // 5초 후 tracker 자동 정리
-                                        let tracker_cleanup = tracker_done.clone();
-                                        let name_cleanup = name_done.clone();
-                                        tokio::spawn(async move {
-                                            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                                            tracker_cleanup.remove(&name_cleanup);
-                                        });
-                                    } else {
-                                        let err_msg = val.get("message")
-                                            .and_then(|v| v.as_str())
-                                            .map(str::to_string)
-                                            .unwrap_or_else(|| text.t("provision.install_failed", &[]));
-                                        tracing::warn!("Native provisioning failed for '{}': {}", name_done, err_msg);
-                                        if let Some(left) = &leftovers { left.clear() }
-                                        drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
-                                        tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
-                                            step: 0, total: 1,
-                                            label: "done".to_string(),
-                                            message: text.t("provision.install_failed", &[]),
-                                            done: true,
-                                            error: Some(err_msg),
-                                            percent: Some(100),
-                                            steps: None, details: Default::default(),
-                                        }.with_failure(val));
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!("Native provisioning error for '{}': {}", name_done, e);
-                                    if let Some(left) = &leftovers { left.clear() }
-                                    drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
-                                    tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
-                                        step: 0, total: 1,
-                                        label: "done".to_string(),
-                                        message: text.t("provision.install_failed", &[]),
-                                        done: true,
-                                        error: Some(text.t("provision.script_failed", &[])),
-                                        percent: Some(100),
-                                        steps: None, details: Default::default(),
-                                    }.with_failure(crate::plugin::error_response(&e)));
-                                }
-                            }
-                        });
+                        crate::audit::spawn(install_new_server(InstallJob {
+                            install_guard,
+                            supervisor_arc,
+                            module_name_owned,
+                            tracker_done,
+                            name_done,
+                            id_done,
+                            text,
+                            chosen_version,
+                            install_method: install_config.method.clone(),
+                            leftovers_dir,
+                            made_folder,
+                            install_dir_str,
+                            accepted_agreements,
+                            install_settings,
+                            instance_data_dirs,
+                            provision_label,
+                            host_context,
+                        }));
 
                         let response = json!({
                             "success": true,
@@ -1041,6 +586,601 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         (StatusCode::BAD_REQUEST, Json(error)).into_response()
     }
 }
+
+/// 새 서버 설치 (만들기 뒤 백그라운드): 모듈 `install_server`를 부르고 진행·결과를 프로비저닝 추적에 알린다
+async fn install_new_server(job: InstallJob) {
+    let InstallJob {
+        mut install_guard,
+        supervisor_arc,
+        module_name_owned,
+        tracker_done,
+        name_done,
+        id_done,
+        text,
+        chosen_version,
+        install_method,
+        leftovers_dir,
+        made_folder,
+        install_dir_str,
+        accepted_agreements,
+        install_settings,
+        instance_data_dirs,
+        provision_label,
+        host_context,
+    } = job;
+    let leftovers: Option<InstallStaging>;
+    // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
+    let module_path = {
+        let sup = supervisor_arc.read().await;
+        match sup.module_loader.get_module(&module_name_owned) {
+            Ok(m) => m.entry_path(),
+            Err(e) => {
+                drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
+                tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                    step: 0, total: 1,
+                    label: "done".to_string(),
+                    message: text.t("provision.install_failed", &[]),
+                    done: true,
+                    error: Some(text.t("provision.module_missing", &[("error", &e.to_string())])),
+                    percent: Some(100),
+                    steps: None, details: Default::default(),
+                });
+                return;
+            }
+        }
+    };
+    // supervisor read lock 해제됨 — 이후 플러그인 호출이
+    // 모니터 태스크의 write lock을 차단하지 않음
+
+    // ── Phase 2: 플러그인 호출 (lock 없이 실행) ──
+    // lifecycle.py install_server 호출 (SteamCMD / download 모두 처리)
+    let result = {
+        // download 방식 모듈은 먼저 list_versions로 최신 버전 조회.
+        // 인스턴스 설정(서버 종류 등)을 넘겨, 그 설정으로 받을 수 있는 최신을 고르게 한다
+        let version = if let Some(version) = chosen_version {
+            Some(version)
+        } else if install_method == "download" {
+            match crate::supervisor::Supervisor::latest_version(&module_path, &serde_json::json!(&install_settings)).await {
+                Ok(version) => Some(version),
+                Err(e) => {
+                    drop(install_guard.take());
+                    tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                        step: 0, total: 1,
+                        label: "done".to_string(),
+                        message: text.t("provision.install_failed", &[]),
+                        done: true,
+                        error: Some(text.t("provision.no_latest_version", &[])),
+                        percent: Some(100),
+                        steps: None, details: Default::default(),
+                    }.with_failure(crate::plugin::error_response(&e)));
+                    return;
+                }
+            }
+        } else {
+            None // 익스텐션 방식은 version 불필요
+        };
+
+        // 만들 수 없으면 고른 폴더에 바로 설치한다 (실패해도 아무것도 지우지 않는다)
+        leftovers = leftovers_dir.as_deref().and_then(|dir| {
+            InstallStaging::new(dir, made_folder)
+                .map_err(|e| tracing::warn!("Could not prepare the install folder in {}: {}", dir.display(), e))
+                .ok()
+        });
+        let target_dir = leftovers.as_ref().map_or_else(|| install_dir_str.clone(), |l| l.staging.to_string_lossy().to_string());
+        let mut config = serde_json::json!({
+            "install_dir": &target_dir,
+            "accepted_agreements": &accepted_agreements,
+            "settings": &install_settings,
+            crate::sandbox::INSTANCE_DATA_DIRS: &instance_data_dirs,
+        });
+        if let Some(ref ver) = version {
+            config["version"] = serde_json::json!(ver);
+        }
+
+        let tracker_progress = tracker_done.clone();
+        let name_progress = name_done.clone();
+        let on_progress = move |prog: crate::plugin::ExtensionProgress| {
+            let pct = prog.percent.unwrap_or(0);
+            let msg = prog.message.clone().unwrap_or_default();
+            tracker_progress.update(&name_progress, crate::ipc::ProvisionProgress {
+                step: prog.step.unwrap_or(0),
+                total: prog.total.unwrap_or(1),
+                label: prog.label.unwrap_or_else(|| provision_label.clone()),
+                message: msg,
+                done: false,
+                error: None,
+                percent: Some(pct),
+                steps: None, details: Default::default(),
+            });
+        };
+
+        crate::plugin::PluginCall::new(&module_path, "install_server", config)
+            .in_instance(Some(host_context))
+            .timeout(crate::plugin::INSTALL_TIMEOUT_SECS)
+            .run_with_progress(Box::new(on_progress)).await
+    };
+
+    let result = match result {
+        Ok(mut value) if value.get("success").and_then(Value::as_bool) == Some(true) => 'checked: {
+            // 받은 서버를 고른 폴더로 옮긴다 (경로 확인은 옮긴 자리로)
+            if let Some(left) = &leftovers {
+                if let Err(e) = left.promote(&mut value) {
+                    break 'checked Err(anyhow::anyhow!("Could not move the installed server into its folder: {}", e));
+                }
+            }
+            let sup = supervisor_arc.read().await;
+            match sup.instance_store.get(&id_done) {
+                Some(inst) => {
+                    let metadata = sup.module_loader.get_module(&inst.module_name).ok();
+                    let boundary = crate::module_paths::Boundary::for_instance(inst, &sup.instance_store.instance_dir(&id_done), metadata.as_ref().map(|m| &m.metadata));
+                    boundary.returned_paths(&mut value, &module_name_owned, "install_server").map(|()| value)
+                }
+                None => Err(anyhow::anyhow!("Instance disappeared during install")),
+            }
+        }
+        other => other,
+    };
+
+    match result {
+        Ok(val) => {
+            let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
+            if success {
+                // 설치 성공: executable_path, working_dir 업데이트
+                let exe_path = val.get("executable_path")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let install_path = val.get("install_path")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
+                let saved = {
+                    let mut sup = supervisor_arc.write().await;
+                    match sup.instance_store.get(&id_done).cloned() {
+                        Some(inst) => {
+                            let mut updated = inst;
+                            if let Some(ref exe) = exe_path {
+                                if !exe.is_empty() {
+                                    updated.executable_path = Some(exe.clone());
+                                }
+                            }
+                            if let Some(ip) = install_path.as_ref().filter(|ip| !ip.trim().is_empty()) {
+                                // 확인되지 않은 모듈은 인스턴스 폴더 안만 (서버 폴더는 다음 격리 실행에 쓰기를 받는다)
+                                let root = sup.instance_store.instance_dir(&id_done);
+                                if crate::sandbox::accepts_module_dir(std::path::Path::new(&module_path), ip, &root) {
+                                    updated.working_dir = Some(ip.clone());
+                                } else {
+                                    tracing::warn!("Ignoring install_path outside the instance folder from unverified module: {}", ip);
+                                }
+                            }
+                            sup.instance_store.update(&id_done, updated)
+                        }
+                        // 그 사이 지워졌다
+                        None => Ok(()),
+                    }
+                };
+
+                // 받은 파일을 치우는 동안은 작업 잠금을 쥔다 (그 사이 시작·복원이 같은 폴더를 쓰지 않게)
+                if let (Err(_), Some(left)) = (&saved, &leftovers) { left.clear() }
+                drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
+                // 실행 경로를 저장하지 못했으면 설치했다고 알리지 않는다 (시작할 실행 파일을 모른다)
+                if let Err(e) = saved {
+                    tracing::warn!("Native provisioning for '{}' finished but the instance could not be saved: {}", name_done, e);
+                    tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                        step: 0, total: 1,
+                        label: "done".to_string(),
+                        message: text.t("provision.install_failed", &[]),
+                        done: true,
+                        error: Some(text.t("provision.save_failed", &[])),
+                        percent: Some(100),
+                        steps: None, details: Default::default(),
+                    });
+                    return;
+                }
+                tracing::info!("Native provisioning completed for '{}'", name_done);
+                tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                    step: 0, total: 1,
+                    label: "done".to_string(),
+                    message: text.t("provision.installed", &[]),
+                    done: true,
+                    error: None,
+                    percent: Some(100),
+                    steps: None, details: Default::default(),
+                });
+
+                // 5초 후 tracker 자동 정리
+                let tracker_cleanup = tracker_done.clone();
+                let name_cleanup = name_done.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    tracker_cleanup.remove(&name_cleanup);
+                });
+            } else {
+                let err_msg = val.get("message")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| text.t("provision.install_failed", &[]));
+                tracing::warn!("Native provisioning failed for '{}': {}", name_done, err_msg);
+                if let Some(left) = &leftovers { left.clear() }
+                drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
+                tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                    step: 0, total: 1,
+                    label: "done".to_string(),
+                    message: text.t("provision.install_failed", &[]),
+                    done: true,
+                    error: Some(err_msg),
+                    percent: Some(100),
+                    steps: None, details: Default::default(),
+                }.with_failure(val));
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Native provisioning error for '{}': {}", name_done, e);
+            if let Some(left) = &leftovers { left.clear() }
+            drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
+            tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                step: 0, total: 1,
+                label: "done".to_string(),
+                message: text.t("provision.install_failed", &[]),
+                done: true,
+                error: Some(text.t("provision.script_failed", &[])),
+                percent: Some(100),
+                steps: None, details: Default::default(),
+            }.with_failure(crate::plugin::error_response(&e)));
+        }
+    }
+}
+
+/// `install_new_server`가 받는 값 (만들기 요청이 정한 것)
+struct InstallJob {
+    install_guard: Option<super::backup::InstanceLock>,
+    supervisor_arc: std::sync::Arc<tokio::sync::RwLock<crate::supervisor::Supervisor>>,
+    module_name_owned: String,
+    tracker_done: crate::ipc::ProvisionTracker,
+    name_done: String,
+    id_done: String,
+    text: crate::chat::i18n::Catalog,
+    chosen_version: Option<String>,
+    install_method: String,
+    /// 고른 폴더에 설치할 때 그 폴더 (실패하면 설치가 만든 것만 치운다)
+    leftovers_dir: Option<std::path::PathBuf>,
+    made_folder: bool,
+    install_dir_str: String,
+    accepted_agreements: Vec<String>,
+    install_settings: std::collections::HashMap<String, Value>,
+    instance_data_dirs: Vec<String>,
+    provision_label: String,
+    host_context: crate::plugin::host::Context,
+}
+
+/// 만들기 단계: 서버 폴더를 정한다 (보낸 `working_dir`, 가져오기 `migration_source`·`migration_mode`, 고른 폴더 만들기)
+fn choose_server_folder(
+    supervisor: &crate::supervisor::Supervisor,
+    payload: &Value,
+    instance: &mut crate::instance::ServerInstance,
+    module_install: &Option<ModuleInstall>,
+    dry_run: bool,
+) -> Result<ServerFolder, Box<axum::response::Response>> {
+    // 선택적 필드 설정
+    if let Some(path) = payload.get("executable_path").and_then(|v| v.as_str()) {
+        instance.executable_path = Some(path.to_string());
+    }
+    if let Some(dir) = payload.get("working_dir").and_then(|v| v.as_str()) {
+        instance.working_dir = Some(dir.to_string());
+    }
+    // migration_source → working_dir (마이그레이션: 기존 서버 디렉토리 직접 연결)
+    // `migration_mode = "move"`면 그 폴더를 인스턴스 폴더 안으로 옮겨 전속시킨다 (기본 "link": 그 자리에 연결)
+    let move_mode = match payload.get("migration_mode").and_then(|v| v.as_str()) {
+        None | Some("link") => false,
+        Some("move") => true,
+        Some(_) => {
+            return Err(Box::new(invalid_field("migration_mode", "migration_mode must be \"link\" or \"move\"")));
+        }
+    };
+    let mut moved_from: Option<std::path::PathBuf> = None;
+    let migration_mode = if let Some(src) = payload.get("migration_source").and_then(|v| v.as_str()) {
+        // 상대 경로는 데몬의 작업 폴더 기준으로 풀린다: 보내는 쪽이 절대 경로로 바꿔 보내야 한다
+        if !std::path::Path::new(src).is_absolute() {
+            return Err(Box::new(invalid_field("migration_source", "migration_source must be an absolute path")));
+        }
+        if move_mode {
+            // 옮길 폴더도 다른 인스턴스가 쓰는 폴더와 겹치면 안 된다
+            if let Some(other) = supervisor.instance_store.folder_user(std::path::Path::new(src), &instance.id) {
+                let error = json!({ "success": false, "error": format!("Server '{}' already uses this folder", other.name), "error_code": "working_dir_in_use", "instance": other.name });
+                return Err(Box::new((StatusCode::CONFLICT, Json(error)).into_response()));
+            }
+            let subdir = module_install.as_ref().and_then(|(install, _, _)| install.as_ref()).and_then(|i| i.install_subdir.clone()).unwrap_or_else(|| "server".to_string());
+            let Some(dest) = crate::instance::migration::move_target(&supervisor.instance_store.instance_dir(&instance.id), &subdir) else {
+                tracing::warn!("Migration: module install_subdir '{}' is not a folder inside the instance, not moving", subdir);
+                let error = json!({ "success": false, "error": "The module's install folder is not inside the instance folder", "error_code": "move_failed" });
+                return Err(Box::new((StatusCode::CONFLICT, Json(error)).into_response()));
+            };
+            instance.working_dir = Some(dest.to_string_lossy().into_owned());
+            moved_from = Some(std::path::PathBuf::from(src));
+        } else if instance.working_dir.is_none() {
+            instance.working_dir = Some(src.to_string());
+        }
+        true
+    } else {
+        false
+    };
+    // 새 서버를 사바쨩 폴더 밖에 설치한다 (`working_dir`): 그 폴더에 바로 설치하므로 절대 경로여야 하고,
+    // 파일이 든 폴더에는 설치하지 않는다 (있는 서버는 가져오기로 연결한다)
+    let custom_folder = !migration_mode && instance.working_dir.is_some();
+    if custom_folder && !instance.working_dir.as_deref().is_some_and(|d| std::path::Path::new(d).is_absolute()) {
+        return Err(Box::new(invalid_field("working_dir", "working_dir must be an absolute path")));
+    }
+    // 한 폴더에 서버 둘이면 서로의 월드·설정을 덮어쓴다
+    let folder_in_use = instance.working_dir.as_deref()
+        .and_then(|dir| supervisor.instance_store.folder_user(std::path::Path::new(dir), &instance.id))
+        .map(|other| other.name.clone());
+    if let Some(other) = folder_in_use.as_ref().filter(|_| !dry_run) {
+        let error = json!({
+            "success": false,
+            "error": format!("Server '{}' already uses this folder", other),
+            "error_code": "working_dir_in_use",
+            "instance": other,
+        });
+        return Err(Box::new((StatusCode::CONFLICT, Json(error)).into_response()));
+    }
+    let folder_not_empty = custom_folder && instance.working_dir.as_deref().is_some_and(|d| folder_has_entries(std::path::Path::new(d)));
+    if folder_not_empty && !dry_run {
+        let error = json!({ "success": false, "error": "The folder already has files", "error_code": "folder_not_empty", "fields": [{"field": "working_dir"}] });
+        return Err(Box::new((StatusCode::CONFLICT, Json(error)).into_response()));
+    }
+    // 새로 만든 폴더면 인스턴스를 저장하지 못했을 때 지운다 (빈 폴더만)
+    let made_folder = custom_folder && !dry_run && instance.working_dir.as_deref().is_some_and(|d| !std::path::Path::new(d).exists());
+    if custom_folder && !dry_run {
+        if let Err(e) = instance.working_dir.as_deref().map_or(Ok(()), std::fs::create_dir_all) {
+            let error = json!({ "success": false, "error": format!("Could not create the folder: {}", e), "error_code": "folder_unavailable", "fields": [{"field": "working_dir"}] });
+            return Err(Box::new((StatusCode::CONFLICT, Json(error)).into_response()));
+        }
+    }
+    Ok(ServerFolder { migration_mode, moved_from, custom_folder, folder_in_use, folder_not_empty, made_folder })
+}
+
+/// `choose_server_folder`가 정한 것
+struct ServerFolder {
+    /// 있는 서버를 가져온다
+    migration_mode: bool,
+    /// 가져오기 "옮기기"의 원래 폴더
+    moved_from: Option<std::path::PathBuf>,
+    /// 새 서버를 사바쨩 폴더 밖 고른 폴더에 설치한다
+    custom_folder: bool,
+    /// 그 폴더를 쓰는 다른 서버 (확인 단계용)
+    folder_in_use: Option<String>,
+    folder_not_empty: bool,
+    /// 이 요청이 폴더를 새로 만들었다 (저장 실패 시 지운다)
+    made_folder: bool,
+}
+
+/// 모듈 설정 중 포트 칸 이름
+fn port_fields_of(supervisor: &crate::supervisor::Supervisor, module: &str) -> Vec<String> {
+    supervisor.module_loader.get_module(module).ok()
+        .and_then(|m| m.metadata.settings.as_ref().map(|s| s.port_fields().into_iter().map(str::to_string).collect()))
+        .unwrap_or_default()
+}
+
+/// 만들기 단계: 포트를 정한다 (보낸 포트, 아니면 다른 서버·Windows 예약과 겹치지 않게 옮긴 기본 포트).
+/// 돌려주는 것: 포트 → 그 포트를 저장해 둔 다른 서버 이름 (확인 단계가 보여 준다)
+fn choose_ports(
+    supervisor: &crate::supervisor::Supervisor,
+    payload: &Value,
+    instance: &mut crate::instance::ServerInstance,
+    module: &str,
+    migration_mode: bool,
+    rest_port_defaulted: bool,
+) -> Result<std::collections::BTreeMap<u16, Vec<String>>, Box<axum::response::Response>> {
+    let given_port = payload.get("port").filter(|v| !v.is_null());
+    if given_port.is_some_and(|v| v.as_u64().and_then(|p| u16::try_from(p).ok()).filter(|&p| p > 0).is_none()) {
+        return Err(Box::new(invalid_field("port", "port must be a number from 1 to 65535")));
+    }
+    // 다른 인스턴스가 저장해 둔 포트. 새 인스턴스의 포트(기본값으로 채운 REST 포트 포함)는 이것과 겹치지 않게 고른다
+    let mut taken = std::collections::HashSet::new();
+    // 포트 → 그 포트를 저장해 둔 다른 서버 이름 (확인 단계가 보여 준다)
+    let mut port_users: std::collections::BTreeMap<u16, Vec<String>> = Default::default();
+    for other in supervisor.instance_store.list() {
+        let fields = port_fields_of(supervisor, &other.module_name);
+        let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
+        for (_, p) in crate::validator::instance_ports(other, &fields) {
+            taken.insert(p);
+            let users = port_users.entry(p).or_default();
+            if !users.contains(&other.name) {
+                users.push(other.name.clone());
+            }
+        }
+    }
+    // Windows가 예약한 포트(예: 팰월드 REST 8212가 Hyper-V 범위 안)도 피한다: 서버가 그 포트를 열지 못한다
+    let taken_or_reserved = |p: u16| taken.contains(&p) || crate::validator::port_reserved_by_windows(p);
+    if let Some(port) = given_port.and_then(|v| v.as_u64()).and_then(|p| u16::try_from(p).ok()) {
+        instance.port = Some(port);
+        // 모듈이 `port` 설정을 선언했으면 그것도 맞춘다 (설치가 module_settings로 게임 설정 파일을 쓴다)
+        let declared = supervisor.module_loader.get_module(module).ok()
+            .and_then(|m| m.metadata.settings.as_ref().map(|s| s.fields.iter().any(|f| f.name == "port")))
+            .unwrap_or(false);
+        if declared {
+            instance.module_settings.insert("port".to_string(), json!(port));
+        }
+    } else if !migration_mode {
+        // 같은 게임을 여러 개 만들면 기본 포트가 겹친다: 다른 인스턴스와 겹치지 않게 옮긴다
+        let fields = port_fields_of(supervisor, module);
+        let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
+        if let Some(delta) = crate::validator::shift_ports_clear_of(instance, &fields, taken_or_reserved) {
+            tracing::info!("Instance '{}': ports moved by +{} to stay clear of other instances and reserved ports", instance.name, delta);
+        }
+    }
+    // 기본 REST 포트가 Windows 예약 범위에 들면(팰월드 8212가 Hyper-V 범위 8135-8234 안에 든 PC) 서버가 REST를
+    // 열지 못한다: 게임 포트를 직접 정했어도, 사용자가 정하지 않은 REST 포트는 예약 범위와 다른 인스턴스의
+    // 포트를 피해 옮긴다. 설치가 모듈 설정 값으로 게임 설정 파일을 쓰므로 같은 이름의 모듈 설정도 맞춘다
+    if let Some(default) = instance.rest_port.filter(|&p| rest_port_defaulted && crate::validator::port_reserved_by_windows(p)) {
+        if let Some(free) = crate::validator::next_free_port(default, taken_or_reserved) {
+            tracing::info!("Instance '{}': REST port {} is reserved by Windows, using {}", instance.name, default, free);
+            instance.rest_port = Some(free);
+            if instance.module_settings.contains_key("rest_port") {
+                instance.module_settings.insert("rest_port".to_string(), json!(free));
+            }
+        }
+    }
+    Ok(port_users)
+}
+
+/// 만들기 단계: 모듈 정의를 새 인스턴스에 옮긴다 (기본 포트, 프리셋·보낸 설정, 약관, 설정 기본값, 실행 방식).
+/// 모듈을 찾지 못하면 아무것도 옮기지 않는다
+fn apply_module_definition(
+    supervisor: &crate::supervisor::Supervisor,
+    payload: &Value,
+    instance: &mut crate::instance::ServerInstance,
+    module: &str,
+    managed_start: Option<bool>,
+    dry_run: bool,
+) -> Result<ModuleDefaults, Box<axum::response::Response>> {
+    let Ok(loaded_module) = supervisor.module_loader.get_module(module) else {
+        return Ok(ModuleDefaults::default());
+    };
+    // REST 포트를 모듈 기본값으로 채웠는가 (사용자가 정하지 않은 값만 예약 범위 밖으로 옮긴다)
+    let mut rest_port_defaulted = false;
+    if let Some(body) = crate::supervisor::module_loader::host_unsupported_body(module, &loaded_module.metadata) {
+        return Err(Box::new((StatusCode::CONFLICT, Json(body)).into_response()));
+    }
+    let trust = Some(super::server::module_trust(&loaded_module.path));
+    instance.process_name = loaded_module.metadata.process_name.clone();
+    if instance.port.is_none() {
+        instance.port = loaded_module.metadata.default_port;
+    }
+    // rest_port 기본값은 모듈이 REST를 지원할 때만 설정
+    let supported = loaded_module.metadata.protocols_supported.as_deref().unwrap_or(&[]);
+    if instance.rest_port.is_none() && supported.iter().any(|s| s == "rest") {
+        instance.rest_port = Some(loaded_module.metadata.default_rest_port());
+        rest_port_defaulted = true;
+    }
+
+    // 고른 프리셋(`[[presets]]`)의 설정이 바탕이 되고, 따로 보낸 설정이 그 위를 덮는다
+    let mut chosen = serde_json::Map::new();
+    if let Some(id) = payload.get("preset").and_then(|v| v.as_str()).filter(|p| !p.is_empty()) {
+        match loaded_module.metadata.presets.iter().find(|p| p.id == id) {
+            Some(preset) => chosen.extend(preset.settings.clone()),
+            None => {
+                let error = json!({ "error": format!("Module '{}' has no preset '{}'", module, id), "error_code": "preset_not_found" });
+                return Err(Box::new((StatusCode::BAD_REQUEST, Json(error)).into_response()));
+            }
+        }
+    }
+    if let Some(given) = payload.get("module_settings").and_then(|v| v.as_object()) {
+        chosen.extend(given.clone());
+    }
+    if chosen.get("rest_port").is_some_and(|v| !v.is_null()) {
+        rest_port_defaulted = false;
+    }
+
+    // 만들 때 동의한 약관 (`[[agreements]]` id). 이 PC에서만 받는다
+    let accepted = super::managed::requested_agreements(payload, "accept_agreements")?;
+    if let Some(unknown) = accepted.iter().find(|id| !loaded_module.metadata.agreements.iter().any(|a| &a.id == *id)) {
+        return Err(Box::new(invalid_field("accept_agreements", format!("Module '{}' has no agreement '{}'", module, unknown))));
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    instance.accepted_agreements = accepted.into_iter().map(|id| (id, now.clone())).collect();
+
+    // 만들 때 고른 설정 (예: 마인크래프트 서버 종류 — 설치할 jar가 달라진다).
+    // 모듈이 선언한 이름만, select는 고를 수 있는 값만 받는다
+    if let Some(settings) = loaded_module.metadata.settings.as_ref() {
+        for field in &settings.fields {
+            let Some(value) = chosen.get(&field.name).filter(|v| !v.is_null()) else { continue };
+            let allowed = field.field_type == "list" || match (&field.options, value.as_str()) {
+                (Some(options), Some(v)) => options.iter().any(|o| o == v),
+                (Some(_), None) => false,
+                (None, _) => !value.is_object() && !value.is_array(),
+            };
+            // 새로 설치하는 서버는 모듈이 설치할 수 있는 값만 (가져오는 서버는 판정된 값 그대로)
+            let installable = payload.get("migration_source").is_some_and(|v| !v.is_null())
+                || field.install_options.as_ref().is_none_or(|ok| value.as_str().is_some_and(|v| ok.iter().any(|o| o == v)));
+            if allowed && !installable {
+                let error = json!({ "error": format!("module_settings.{} cannot be installed by saba-chan", field.name), "error_code": "not_installable", "fields": [{"field": field.name}] });
+                return Err(Box::new((StatusCode::BAD_REQUEST, Json(error)).into_response()));
+            }
+            if !allowed || crate::validator::validate_setting_value(field, Some(value)).is_err() {
+                // 조용히 버리면 프리셋·기본값이 남아 고른 것과 다른 서버가 된다
+                return Err(Box::new(invalid_field(&field.name, format!("module_settings.{} is not a valid value", field.name))));
+            }
+            instance.module_settings.insert(field.name.clone(), value.clone());
+            // 사용자가 보낸 값이 모듈 기본값·프리셋과 다를 때만 사용자가 정한 값이다
+            // (만들기 화면은 기본값을 채워 보낸다)
+            let from_module = payload.get("preset").and_then(|v| v.as_str())
+                .and_then(|id| loaded_module.metadata.presets.iter().find(|p| p.id == id))
+                .and_then(|p| p.settings.get(&field.name))
+                .is_some_and(|v| v == value)
+                || field.default.as_ref().and_then(|d| d.as_str()).is_some_and(|d| {
+                    let dir = supervisor.instance_store.instance_dir(&instance.id);
+                    let substituted = d.replace(INSTANCE_DIR_PLACEHOLDER, &dir.to_string_lossy());
+                    value.as_str().is_some_and(|v| v == d || v == substituted)
+                });
+            let given = payload.get("module_settings").and_then(|v| v.get(&field.name)).is_some_and(|v| v == value);
+            if given && !from_module {
+                instance.user_settings.insert(field.name.clone());
+            }
+        }
+    }
+
+    // settings.fields의 default 값을 module_settings에 자동 채우기
+    if let Some(ref settings) = loaded_module.metadata.settings {
+        for field in &settings.fields {
+            if !instance.module_settings.contains_key(&field.name) {
+                if let Some(ref default_val) = field.default {
+                    let json_val = match default_val {
+                        // `{instance_dir}`: 이 인스턴스 폴더 (예: 인스턴스마다 따로 두는 게임 데이터 폴더).
+                        // 기존 서버를 가져오는 경우엔 그 서버가 쓰던 위치를 모듈이 고르게 비워 둔다
+                        toml::Value::String(s) if s.contains(INSTANCE_DIR_PLACEHOLDER) => {
+                            if payload.get("migration_source").is_some() {
+                                serde_json::json!("")
+                            } else {
+                                let dir = supervisor.instance_store.instance_dir(&instance.id);
+                                serde_json::json!(s.replace(INSTANCE_DIR_PLACEHOLDER, &dir.to_string_lossy()))
+                            }
+                        }
+                        toml::Value::String(s) => serde_json::json!(s),
+                        toml::Value::Integer(n) => serde_json::json!(n),
+                        toml::Value::Float(f) => serde_json::json!(f),
+                        toml::Value::Boolean(b) => serde_json::json!(b),
+                        // list 기본값 (06 §8.1: TOML 문자열 배열)
+                        toml::Value::Array(_) if field.field_type == "list" => match serde_json::to_value(default_val) {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        },
+                        _ => continue,
+                    };
+                    instance.module_settings.insert(field.name.clone(), json_val);
+                }
+            }
+        }
+    }
+
+    if let Some(managed) = managed_start {
+        instance.module_settings.insert("managed_start".into(), json!(managed));
+    }
+    if !dry_run {
+        open_user_runtime(loaded_module.entry_path(), instance);
+    }
+
+    Ok(ModuleDefaults {
+        trust,
+        rest_port_defaulted,
+        install: Some((
+            loaded_module.metadata.install.clone(),
+            loaded_module.entry_path(),  // 모듈 진입 파일 (마이그레이션 설정 import 시 사용)
+            loaded_module.metadata.server_executable.clone(),  // 바이너리 파일명 (마이그레이션 시 executable_path 자동 계산)
+        )),
+    })
+}
+
+/// `apply_module_definition`이 알아낸 것
+#[derive(Default)]
+struct ModuleDefaults {
+    /// 모듈 확인 상태 (만든 응답의 `module_trust`·`warnings`)
+    trust: Option<saba_chan_updater_lib::integrity::Trust>,
+    rest_port_defaulted: bool,
+    /// (`[install]`, 모듈 진입 파일, 서버 실행 파일 이름). 모듈이 없으면 None
+    install: Option<ModuleInstall>,
+}
+
+type ModuleInstall = (Option<crate::supervisor::module_loader::ModuleInstallConfig>, String, Option<String>);
 
 /// 가져오기의 모듈 `import_settings` 호출. instance_dir: 모듈이 서버 폴더 대신 인스턴스 폴더에 둘 것(가져온 서버의
 /// 포터블 런타임 등)의 자리. 런타임을 받을 수 있으므로 설치와 같은 시간 한도를 주고, 이 호출만 인스턴스 폴더에 쓴다
@@ -1874,8 +2014,7 @@ pub async fn update_instance_settings(
         // null(rest_port 지우기)과 빈 문자열(바꾸지 않음)은 예전처럼 받는다
         let given = settings.get(key).filter(|v| !v.is_null() && v.as_str() != Some(""));
         if given.is_some_and(|v| port_value(v).is_none()) {
-            let error = json!({ "error": format!("{} must be a number from 1 to 65535", key), "error_code": "invalid_format", "fields": [{"field": key}] });
-            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            return invalid_field(key, format!("{} must be a number from 1 to 65535", key));
         }
     }
     if let Some(port) = settings.get("port").and_then(port_value) {
@@ -1915,8 +2054,7 @@ pub async fn update_instance_settings(
         match extra_args_from(extra) {
             Some(args) => updated.extra_args = args,
             None => {
-                let error = json!({ "error": "invalid_format", "error_code": "invalid_format", "message": "extra_args must be a string or an array of strings", "fields": [{"field": "extra_args"}] });
-                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+                return invalid_field_message("extra_args", "extra_args must be a string or an array of strings");
             }
         }
     }
@@ -1925,15 +2063,13 @@ pub async fn update_instance_settings(
         match memory_limit_from(limit) {
             Ok(v) => updated.memory_limit_mb = v,
             Err(()) => {
-                let error = json!({ "error": "invalid_format", "error_code": "invalid_format", "message": format!("memory_limit_mb must be empty or a whole number of MiB of at least {}", MIN_MEMORY_LIMIT_MB), "fields": [{"field": "memory_limit_mb"}] });
-                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+                return invalid_field_message("memory_limit_mb", format!("memory_limit_mb must be empty or a whole number of MiB of at least {}", MIN_MEMORY_LIMIT_MB));
             }
         }
     }
     // 게임 채팅 전달: 모드와 감지 단어를 함께 본다 (감지 단어 모드에는 단어가 있어야 한다)
     let game_chat_error = |message: &str, field: &str| {
-        let error = json!({ "error": "invalid_format", "error_code": "invalid_format", "message": message, "fields": [{"field": field}] });
-        (StatusCode::BAD_REQUEST, Json(error)).into_response()
+        invalid_field_message(field, message)
     };
     if let Some(mode) = settings.get("game_chat") {
         match crate::supervisor::game_chat::Mode::parse(mode) {
@@ -1986,8 +2122,7 @@ pub async fn update_instance_settings(
     // 정지 대기 시간(초): 비우거나(null·"") 0이면 모듈 값을 쓴다
     let stop_timeout = match settings.get("stop_timeout").map(stop_timeout_from) {
         Some(Err(())) => {
-            let error = json!({ "error": "invalid_format", "error_code": "invalid_format", "message": "stop_timeout must be empty or a whole number of seconds from 1 to 3600", "fields": [{"field": "stop_timeout"}] });
-            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            return invalid_field_message("stop_timeout", "stop_timeout must be empty or a whole number of seconds from 1 to 3600");
         }
         other => other.map(Result::unwrap_or_default),
     };

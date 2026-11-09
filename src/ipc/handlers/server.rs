@@ -93,40 +93,11 @@ pub async fn list_servers_internal(state: &IPCServer) -> axum::response::Respons
 async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Response {
     let state = state.clone();
     // ── Phase 1: supervisor lock을 최소 시간만 잡고 필요한 데이터 복사 ──
+    /// 목록 한 줄의 기본 모습(native 상태)과 hook·폴더 판정에 쓰는 값
     struct InstanceSnapshot {
-        id: String,
-        name: String,
-        module_name: String,
-        executable_path: Option<String>,
-        working_dir: Option<String>,
-        port: Option<u16>,
-        rest_host: Option<String>,
-        rest_port: Option<u16>,
-        rest_username: Option<String>,
-        rest_password: Option<String>,
-        protocol_mode: String,
-        module_settings: std::collections::HashMap<String, serde_json::Value>,
-        server_version: Option<String>,
-        extension_data: std::collections::HashMap<String, serde_json::Value>,
-        extra_args: Vec<String>,
-        memory_limit_mb: Option<u64>,
-        game_chat: crate::supervisor::game_chat::Mode,
-        game_chat_keyword: String,
-        access: crate::controllers::Access,
-        controllers: Vec<crate::controllers::Controller>,
-        controllers_only: bool,
-        kick_players: Vec<String>,
-        chat_patterns: bool,
-        kick_on_join: bool,
-        revision: String,
+        info: ServerInfo,
         instance_dir: String,
-        linked_folder: Option<String>,
-        restorable_settings: bool,
         process_patterns: Vec<String>,
-        // Native 모드 데이터
-        pid: Option<u32>,
-        start_time: Option<u64>,
-        managed: bool,
     }
 
     let (snapshots, all_instances, module_protocols): (Vec<InstanceSnapshot>, Vec<_>, _) = {
@@ -146,40 +117,52 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
             let process_patterns = module.as_ref().map(|m| m.metadata.process_patterns.clone()).unwrap_or_default();
             let chat_patterns = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
             let kick_on_join = module.as_ref().is_some_and(|m| m.metadata.kick_command.is_some() && !m.metadata.player_join_patterns.is_empty());
+            let managed = supervisor.uses_managed_start(instance);
             InstanceSnapshot {
-                id: instance.id.clone(),
-                name: instance.name.clone(),
-                module_name: instance.module_name.clone(),
-                executable_path: instance.executable_path.clone(),
-                working_dir: instance.working_dir.clone(),
-                port: instance.port,
-                rest_host: instance.rest_host.clone(),
-                rest_port: instance.rest_port,
-                rest_username: instance.rest_username.clone(),
-                rest_password: instance.rest_password.clone(),
-                protocol_mode: instance.protocol_mode.clone(),
-                module_settings: instance.module_settings.clone(),
-                server_version: instance.server_version.clone(),
-                extension_data: instance.extension_data.clone(),
-                extra_args: instance.extra_args.clone(),
-                memory_limit_mb: instance.memory_limit_mb,
-                game_chat: instance.game_chat,
-                game_chat_keyword: instance.game_chat_keyword.clone(),
-                access: instance.access,
-                controllers: instance.controllers.clone(),
-                controllers_only: instance.controllers_only,
-                kick_players: instance.kick_players.clone(),
-                chat_patterns,
-                kick_on_join,
-                revision: instance.settings_revision(),
+                info: ServerInfo {
+                    id: instance.id.clone(),
+                    name: instance.name.clone(),
+                    module: instance.module_name.clone(),
+                    // Native 모드: 스냅샷의 PID 및 시작 시간
+                    status: if pid.is_some() { "running" } else { "stopped" }.to_string(),
+                    pid,
+                    start_time,
+                    executable_path: instance.executable_path.clone(),
+                    working_dir: instance.working_dir.clone(),
+                    port: instance.port,
+                    rest_host: instance.rest_host.clone(),
+                    rest_port: instance.rest_port,
+                    rest_username: instance.rest_username.clone(),
+                    rest_password: instance.rest_password.clone(),
+                    protocol_mode: instance.protocol_mode.clone(),
+                    module_settings: instance.module_settings.clone(),
+                    server_version: instance.server_version.clone(),
+                    last_api_action: None,
+                    provisioning: false,
+                    managed,
+                    extension_status: std::collections::HashMap::new(),
+                    extension_data: instance.extension_data.clone(),
+                    extra_args: instance.extra_args.clone(),
+                    memory_limit_mb: instance.memory_limit_mb,
+                    game_chat: instance.game_chat,
+                    game_chat_keyword: instance.game_chat_keyword.clone(),
+                    access: instance.access,
+                    controllers: instance.controllers.clone(),
+                    controllers_only: instance.controllers_only,
+                    kick_players: instance.kick_players.clone(),
+                    game_chat_supported: chat_patterns && managed,
+                    controllers_only_supported: kick_on_join && managed,
+                    revision: instance.settings_revision(),
+                    port_conflicts: vec![],
+                    slots: Default::default(),
+                    players: None,
+                    unresponsive: None,
+                    // 폴더 판정은 아래 락 밖에서
+                    linked_folder: None,
+                    restorable_settings: false,
+                },
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
-                // 폴더 판정은 아래 락 밖에서
-                linked_folder: None,
-                restorable_settings: false,
                 process_patterns,
-                managed: supervisor.uses_managed_start(instance),
-                pid,
-                start_time,
             }
         }).collect();
         (snapshots, all_instances, module_protocols)
@@ -192,8 +175,8 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         let mut snapshots = snapshots;
         for s in &mut snapshots {
             let instance_dir = std::path::Path::new(&s.instance_dir);
-            s.linked_folder = crate::instance::migration::linked_folder(s.working_dir.as_deref(), instance_dir);
-            s.restorable_settings = crate::instance::migration::saved(instance_dir);
+            s.info.linked_folder = crate::instance::migration::linked_folder(s.info.working_dir.as_deref(), instance_dir);
+            s.info.restorable_settings = crate::instance::migration::saved(instance_dir);
         }
         snapshots
     })
@@ -209,168 +192,66 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
     // ── Phase 2: Extension hooks (lock 없이 실행) ──
     let mut servers = Vec::new();
 
-    for instance in &snapshots {
+    for InstanceSnapshot { info: mut server, instance_dir, process_patterns } in snapshots {
         // ── Extension hook: server.list_enrich ──
         // Extension이 런타임 상태/통계를 제공할 수 있음 (TTL 캐시 적용)
-        let mut ext_handled = false;
-        let has_ext_hooks = !instance.extension_data.is_empty();
-        if has_ext_hooks {
+        if !server.extension_data.is_empty() {
             // 캐시 확인 — TTL 내 결과가 있으면 Python 프로세스 스폰 생략
-            let enrich_result = if let Some(cached_val) = state.extension_status_cache.get(&instance.id) {
+            let enrich_result = if let Some(cached_val) = state.extension_status_cache.get(&server.id) {
                 cached_val
             } else {
                 let ext_mgr = state.extension_manager.clone();
                 let ctx = serde_json::json!({
-                    "instance_id": &instance.id,
-                    "instance_name": &instance.name,
-                    "module": &instance.module_name,
-                    "extension_data": &instance.extension_data,
-                    "instance_dir": &instance.instance_dir,
-                    "process_patterns": &instance.process_patterns,
+                    "instance_id": &server.id,
+                    "instance_name": &server.name,
+                    "module": &server.module,
+                    "extension_data": &server.extension_data,
+                    "instance_dir": &instance_dir,
+                    "process_patterns": &process_patterns,
                 });
                 let results = crate::extension::run_hook_timed(&ext_mgr, "server.list_enrich", ctx, 10).await;
                 // 첫 번째 성공 응답만 캐시한다 (실패는 다음 목록 요청에서 다시 시도)
                 match results.into_iter().find_map(|(_id, r)| r.ok()) {
                     Some(result) => {
-                        state.extension_status_cache.set(&instance.id, result.clone());
+                        state.extension_status_cache.set(&server.id, result.clone());
                         result
                     }
                     None => json!({"handled": false}),
                 }
             };
 
-            // handled: true인 경우만 Extension이 서버 정보를 제공
+            // handled: true인 경우만 Extension이 서버 정보를 제공: 상태·PID·시작 시간·extension_status만 바꾼다
             let is_handled = enrich_result.get("handled")
                 .and_then(|h| h.as_bool()) == Some(true);
 
             if is_handled {
-                let res = &enrich_result;
-                let ext_status = res.get("status").and_then(|s| s.as_str())
+                server.status = enrich_result.get("status").and_then(|s| s.as_str())
                     .unwrap_or("stopped").to_string();
-                let provision_entry = state.provision_tracker.get(&instance.name);
-                let provisioning = provision_entry.is_some();
-                let actively_provisioning = provision_entry.as_ref().map(|p| !p.done).unwrap_or(false);
-                let status = if actively_provisioning { "provisioning".to_string() } else { ext_status };
-                let last_api = state.api_actions.get(&instance.name)
-                    .or_else(|| state.api_actions.get(&instance.id));
-
-                // Extension 런타임 상태를 extension_status에 저장
-                let mut extension_status = std::collections::HashMap::new();
+                server.pid = None;
+                server.start_time = None;
                 // hook 응답에서 extension_id 필드가 있으면 해당 키로, 아니면 "default"
-                let ext_key = res.get("extension_id")
+                let ext_key = enrich_result.get("extension_id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("default")
                     .to_string();
-                extension_status.insert(ext_key, enrich_result.clone());
-
-                servers.push(ServerInfo {
-                    id: instance.id.clone(),
-                    name: instance.name.clone(),
-                    module: instance.module_name.clone(),
-                    status,
-                    pid: None,
-                    start_time: None,
-                    executable_path: instance.executable_path.clone(),
-                    working_dir: instance.working_dir.clone(),
-                    port: instance.port,
-                    rest_host: instance.rest_host.clone(),
-                    rest_port: instance.rest_port,
-                    rest_username: instance.rest_username.clone(),
-                    rest_password: instance.rest_password.clone(),
-                    protocol_mode: instance.protocol_mode.clone(),
-                    module_settings: instance.module_settings.clone(),
-                    server_version: instance.server_version.clone(),
-                    last_api_action: last_api,
-                    provisioning,
-                    managed: instance.managed,
-                    extension_status,
-                    extension_data: instance.extension_data.clone(),
-                    extra_args: instance.extra_args.clone(),
-                    memory_limit_mb: instance.memory_limit_mb,
-                    game_chat: instance.game_chat,
-                    game_chat_keyword: instance.game_chat_keyword.clone(),
-                    access: instance.access,
-                    controllers: instance.controllers.clone(),
-                    controllers_only: instance.controllers_only,
-                    kick_players: instance.kick_players.clone(),
-                    game_chat_supported: instance.chat_patterns && instance.managed,
-                    controllers_only_supported: instance.kick_on_join && instance.managed,
-                    revision: instance.revision.clone(),
-                    port_conflicts: vec![],
-                    slots: Default::default(),
-                    players: None,
-                    unresponsive: None,
-                    linked_folder: instance.linked_folder.clone(),
-                    restorable_settings: instance.restorable_settings,
-                });
-                ext_handled = true;
+                server.extension_status.insert(ext_key, enrich_result);
             }
         }
-        if ext_handled {
-            continue;
-        }
-
-        // Native 모드: 스냅샷에서 PID 및 시작 시간 사용
-        let (status, start_time) = if instance.pid.is_some() {
-            ("running".to_string(), instance.start_time)
-        } else {
-            ("stopped".to_string(), None)
-        };
 
         // API(CLI/Discord)를 통한 마지막 시작/정지 타임스탬프 조회
-        let last_api = state.api_actions.get(&instance.name)
-            .or_else(|| state.api_actions.get(&instance.id));
+        server.last_api_action = state.api_actions.get(&server.name)
+            .or_else(|| state.api_actions.get(&server.id));
 
         // 프로비저닝 진행 여부 확인 (tracker entry 존재 = provisioning UI 표시)
-        let provision_entry = state.provision_tracker.get(&instance.name);
-        let provisioning = provision_entry.is_some();
-        let actively_provisioning = provision_entry.as_ref().map(|p| !p.done).unwrap_or(false);
-
+        let provision_entry = state.provision_tracker.get(&server.name);
+        server.provisioning = provision_entry.is_some();
         // 프로비저닝 중이면 상태를 "provisioning"으로 오버라이드
-        let status = if actively_provisioning { "provisioning".to_string() } else { status };
+        if provision_entry.as_ref().is_some_and(|p| !p.done) {
+            server.status = "provisioning".to_string();
+        }
 
-        servers.push(ServerInfo {
-            id: instance.id.clone(),
-            name: instance.name.clone(),
-            module: instance.module_name.clone(),
-            status,
-            pid: instance.pid,
-            start_time,
-            executable_path: instance.executable_path.clone(),
-            working_dir: instance.working_dir.clone(),
-            port: instance.port,
-            rest_host: instance.rest_host.clone(),
-            rest_port: instance.rest_port,
-            rest_username: instance.rest_username.clone(),
-            rest_password: instance.rest_password.clone(),
-            protocol_mode: instance.protocol_mode.clone(),
-            module_settings: instance.module_settings.clone(),
-            server_version: instance.server_version.clone(),
-            last_api_action: last_api,
-            provisioning,
-            managed: instance.managed,
-            extension_status: std::collections::HashMap::new(),
-            extension_data: instance.extension_data.clone(),
-            extra_args: instance.extra_args.clone(),
-            memory_limit_mb: instance.memory_limit_mb,
-            game_chat: instance.game_chat,
-            game_chat_keyword: instance.game_chat_keyword.clone(),
-            access: instance.access,
-            controllers: instance.controllers.clone(),
-            controllers_only: instance.controllers_only,
-            kick_players: instance.kick_players.clone(),
-            game_chat_supported: instance.chat_patterns && instance.managed,
-                    controllers_only_supported: instance.kick_on_join && instance.managed,
-            revision: instance.revision.clone(),
-            port_conflicts: vec![],
-            slots: Default::default(),
-            players: None,
-            unresponsive: None,
-            linked_folder: instance.linked_folder.clone(),
-            restorable_settings: instance.restorable_settings,
-        });
+        servers.push(server);
     }
-
     // ── 데이터 slot (Q-7): 조건 판정과 값 찾기는 여기서 한 번만 ──
     {
         let ext_mgr = state.extension_manager.read().await;
@@ -901,8 +782,7 @@ pub async fn get_instance_status(
         let supervisor = state.supervisor.read().await;
         supervisor
             .instance_store
-            .get(&id)
-            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+            .find(&id)
             .map(|i| (i.name.clone(), i.module_name.clone()))
     };
     if let Some((name, module_name)) = instance {
@@ -943,8 +823,7 @@ async fn start_instance(
         let supervisor = state.supervisor.read().await;
         supervisor
             .instance_store
-            .get(&id)
-            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+            .find(&id)
             .cloned()
             .map(|inst| {
                 let managed = supervisor.uses_managed_start(&inst);
@@ -1054,8 +933,7 @@ async fn instance_key_of(state: &IPCServer, key: &str) -> Option<(String, String
     let supervisor = state.supervisor.read().await;
     supervisor
         .instance_store
-        .get(key)
-        .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == key))
+        .find(key)
         .map(|i| (i.id.clone(), i.name.clone()))
 }
 
@@ -1098,8 +976,7 @@ async fn restart_instance(
         let supervisor = state.supervisor.read().await;
         supervisor
             .instance_store
-            .get(&id)
-            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+            .find(&id)
             .map(|i| i.id.clone())
     };
     let Some(inst_id) = picked else {
@@ -1217,7 +1094,7 @@ async fn start_server_handler(
     // 익스텐션 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
     let inst_id = {
         let sup = state.supervisor.read().await;
-        let id = sup.instance_store.get(&name).or_else(|| sup.instance_store.list().iter().find(|i| i.name == name)).map(|i| i.id.clone());
+        let id = sup.instance_store.find(&name).map(|i| i.id.clone());
         if let Some(id) = &id {
             state.extension_status_cache.invalidate(id);
         }
@@ -1388,7 +1265,7 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
 pub(super) async fn fill_passwords(state: &IPCServer, key: &str) {
     let generate = state.config_store.get_gui_settings().await.auto_generate_passwords;
     let mut supervisor = state.supervisor.write().await;
-    let found = supervisor.instance_store.get(key).or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == key)).cloned();
+    let found = supervisor.instance_store.find(key).cloned();
     let Some(mut inst) = found else { return };
     let changed = match supervisor.module_loader.get_module(&inst.module_name).map(|m| m.metadata.supports_protocol("rest")) {
         Ok(true) => inst.ensure_passwords(generate),
@@ -1967,6 +1844,55 @@ mod tests {
         };
         assert_eq!(managed("default"), json!(true), "managed is the default (C8b)");
         assert_eq!(managed("direct"), json!(false));
+    }
+
+    /// 익스텐션이 맡았다고 답한 서버(`server.list_enrich`의 handled)는 상태·PID·시작 시간·extension_status만 익스텐션 답을 따르고
+    /// 나머지 칸은 맡지 않은 서버와 같다
+    #[tokio::test]
+    async fn server_list_takes_only_the_runtime_state_from_an_extension_that_handles_the_server() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let mut handled = crate::instance::ServerInstance::new("handled", "plain");
+        handled.port = Some(25565);
+        handled.extension_data.insert("docker_enabled".into(), json!(true));
+        let mut declined = crate::instance::ServerInstance::new("declined", "plain");
+        declined.port = Some(25566);
+        declined.extension_data.insert("docker_enabled".into(), json!(true));
+        let (handled_id, declined_id) = (handled.id.clone(), declined.id.clone());
+        sup.instance_store.add(handled).unwrap();
+        sup.instance_store.add(declined).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        // 캐시에 둔 답을 쓰므로 hook을 실제로 부르지 않는다
+        state.extension_status_cache.set(&handled_id, json!({ "handled": true, "status": "starting", "extension_id": "docker", "memory_percent": 25.5 }));
+        state.extension_status_cache.set(&declined_id, json!({ "handled": false }));
+
+        let body = crate::ipc::internal::into_internal(list_servers(State(state), Query(ListServersQuery::default())).await).await.body;
+        let server = |name: &str| body["servers"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap().clone();
+        let handled = server("handled");
+        assert_eq!(handled["status"], json!("starting"));
+        assert_eq!(handled["pid"], Value::Null);
+        assert_eq!(handled["extension_status"]["docker"]["memory_percent"], json!(25.5));
+        assert_eq!(handled["port"], json!(25565));
+        assert_eq!(handled["module"], json!("plain"));
+        assert_eq!(handled["extension_data"]["docker_enabled"], json!(true));
+        assert_eq!(handled["provisioning"], json!(false));
+        let declined = server("declined");
+        assert_eq!(declined["status"], json!("stopped"));
+        assert!(declined.get("extension_status").is_none());
+        assert_eq!(declined["port"], json!(25566));
+        let without_status: Vec<&str> = ["status", "extension_status", "id", "name", "port", "revision", "pid", "start_time"].to_vec();
+        let rest = |v: &Value| {
+            let mut v = v.clone();
+            for k in &without_status {
+                v.as_object_mut().unwrap().remove(*k);
+            }
+            v
+        };
+        assert_eq!(rest(&handled), rest(&declined), "the other fields come from the same place");
     }
 
     /// 목록은 인스턴스 폴더 밖 서버 폴더(가져온 서버)와 되돌릴 원래 설정이 있는지를 알린다

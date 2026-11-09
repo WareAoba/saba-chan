@@ -43,6 +43,12 @@ const ALLOWED = new Set([
     '@gui/components/servers/controllers',
     // 디스코드 서버별 보일 서버 규칙 (GUI 노드 인스턴스 탭과 같은 순수 함수)
     '@gui/components/discord/nodePermissions',
+    // 레벨 사다리 편집·명령 계단 초안·멤버 찾기 (화면 없는 훅, 앱 레벨 편집·계단·멤버 찾기와 같은 상태)
+    '@gui/components/discord/useLadderDraft',
+    '@gui/components/discord/useStairsDraft',
+    '@gui/components/discord/useMemberSearch',
+    // 서버 관리 기간 문구와 고르기 값 (GUI 서버 관리 탭과 같은 순수 함수·상수)
+    '@gui/components/discord/modDuration',
     // 코코낸내 기능 묶음·시각 (GUI 봇 설정과 같은 상수)
     '@gui/components/discord/sleep',
     // 데몬·디스코드 응답 모양 (타입만, 실행 코드 없음)

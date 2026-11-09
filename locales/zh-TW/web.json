@@ -440,12 +440,6 @@
       "NO_CLEAR_JOB": "此頻道沒有正在進行的清理。",
       "generic": "無法更改。請稍後再試。"
     },
-    "dur": {
-      "seconds": "{{count}} 秒",
-      "minutes": "{{count}} 分鐘",
-      "hours": "{{count}} 小時",
-      "days": "{{count}} 天"
-    },
     "mod": {
       "title": "伺服器管理",
       "locked": "已鎖定",

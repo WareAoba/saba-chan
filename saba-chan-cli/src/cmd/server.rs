@@ -298,85 +298,9 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     };
 
     // 1) 새로 설치 / 기존 폴더 (폴더를 고르면 게임은 폴더를 보고 알아낸다)
-    let mut from = a.from.clone();
-    let mut move_folder = a.move_folder;
-    // 새 설치에만 있는 선택(--dir, --game-version)을 줬으면 묻지 않는다
-    let fresh_only = a.dir.is_some() || a.game_version.is_some();
-    if from.is_none() && ctx.ask.enabled && a.name.is_none() && !fresh_only {
-        let installs = given
-            .as_ref()
-            .is_none_or(|m| m.get("install").is_some_and(|i| !i.is_null()));
-        let choices = [t!("add.fresh_install"), t!("add.use_existing")];
-        if ctx
-            .ask
-            .select(&t!("add.ask_source"), &choices, if installs { 0 } else { 1 })?
-            == Some(1)
-        {
-            from = ctx.ask.text(&t!("add.ask_folder"), None, false)?;
-            // 그 자리에 연결 / 사바쨩 폴더로 옮기기 (GUI 가져오기와 같은 선택)
-            let modes = [t!("add.mode_link"), t!("add.mode_move")];
-            move_folder = from.is_some() && ctx.ask.select(&t!("add.ask_mode"), &modes, 0)? == Some(1);
-        }
-    }
-
-    // 데몬은 전체 경로만 받는다: 상대 경로는 데몬이 아닌 이 CLI의 지금 폴더 기준으로 푼다
-    if let Some(dir) = from.take() {
-        from = Some(crate::cmd::config::daemon_path(ctx, std::path::Path::new(&dir))?);
-    }
-
-    // 이미 다른 서버가 쓰는 폴더면 막는다 (두 서버가 같은 파일을 덮어쓴다)
-    if let Some(dir) = from.as_deref() {
-        let norm = |p: &str| {
-            std::fs::canonicalize(p)
-                .map(|x| x.display().to_string())
-                .unwrap_or_else(|_| p.trim_end_matches(['/', '\\']).to_string())
-        };
-        let want = norm(dir);
-        for other in resolve::servers(ctx).await.unwrap_or_default() {
-            let wd = s(&other.raw, "working_dir");
-            if !wd.is_empty() && norm(wd) == want {
-                return Err(usage(t!("add.folder_in_use", dir = dir, name = other.name)));
-            }
-        }
-    }
-
+    let (from, move_folder) = choose_source(ctx, &a, given.as_ref())?;
     // 2) 게임
-    let module = match (given, from.as_deref()) {
-        (Some(m), Some(dir)) => {
-            check_folder(ctx, dir, s(&m, "name")).await?;
-            m
-        }
-        (Some(m), None) => m,
-        (None, Some(dir)) => {
-            let found = detected(ctx, dir).await?;
-            let hits: Vec<Value> = all
-                .iter()
-                .filter(|m| found.iter().any(|f| f == s(m, "name")))
-                .cloned()
-                .collect();
-            match hits.len() {
-                1 => {
-                    ctx.out
-                        .note(&t!("add.folder_is", dir = dir, game = resolve::module_label(&hits[0])));
-                    hits.into_iter().next().unwrap()
-                }
-                0 => {
-                    ctx.out.warn(&t!("add.folder_unrecognized", dir = dir));
-                    if !ctx.ask.enabled {
-                        return Err(usage(t!("add.pick_game")));
-                    }
-                    resolve::choose(ctx, &t!("noun.game"), all.clone(), resolve::module_label)?
-                }
-                _ => resolve::choose(ctx, &t!("noun.game"), hits, resolve::module_label)?,
-            }
-        }
-        (None, None) => {
-            if !ctx.ask.enabled {
-                return Err(usage(t!("add.module_required")));
-            }
-            resolve::choose(ctx, &t!("noun.game"), all.clone(), resolve::module_label)?
-        }
-    };
+    let module = choose_game(ctx, &all, given, from.as_deref()).await?;
     if let Some(why) = platform_refusal(&module) {
         return Err(failed(why));
     }
@@ -390,161 +314,39 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         ctx.out.warn(&t!("add.no_installer", game = display));
     }
 
-    // 3) 이름
-    let existing: Vec<String> = resolve::servers(ctx)
-        .await?
-        .into_iter()
-        .map(|x| x.name.to_lowercase())
-        .collect();
-    let taken = |n: &str| existing.contains(&n.trim().to_lowercase());
-    let suggested = (1..)
-        .map(|i| {
-            if i == 1 {
-                module_name.clone()
-            } else {
-                format!("{}-{}", module_name, i)
-            }
-        })
-        .find(|n| !taken(n))
-        .unwrap();
-    let name = match a.name.clone() {
-        Some(n) => n,
-        None => match ctx.ask.text(&t!("add.ask_name"), Some(&suggested), false)? {
-            Some(n) => n,
-            None => suggested.clone(),
-        },
-    };
-    let name = name.trim().to_string();
-    if name.is_empty() {
-        return Err(usage(t!("add.name_empty")));
+    // 3) 이름. 고르자마자 이름·가져올 폴더가 다른 서버와 겹치는지 데몬에게 묻는다 (뒤의 질문에 답하기 전에 알린다)
+    let name = choose_name(ctx, a.name.clone(), &module_name).await?;
+    let mut body = json!({ "name": name, "module_name": module_name });
+    if let Some(dir) = &from {
+        body["migration_source"] = json!(dir);
+        if move_folder {
+            body["migration_mode"] = json!("move");
+        }
     }
-    if taken(&name) {
-        return Err(usage(t!("add.name_taken", name = name)));
-    }
-    if has_comma(&name) {
-        return Err(usage(t!("add.name_comma")));
-    }
+    check_new_server(ctx, &body, from.as_deref(), false).await?;
 
     // 4) 필요한 익스텐션
     ensure_extensions(ctx, &module).await?;
 
     // 5) 익스텐션이 묻는 칸 (AddServer.options). 답은 만들 때 `extension_data`로 보낸다
-    let mut ext_data = Map::new();
-    for d in &crate::slots::create_options(&resolve::extensions(ctx).await.unwrap_or_default()) {
-        let Some(field) = d.get("field").and_then(Value::as_str) else {
-            continue;
-        };
-        let label = d.get("label").and_then(Value::as_str).unwrap_or(field);
-        let default = d.get("default").cloned().unwrap_or(Value::Null);
-        let value = if s(d, "type") == "boolean" {
-            bool_option(&ctx.ask, label, &default)?
-        } else {
-            match ctx.ask.text(label, default.as_str(), true)? {
-                Some(v) if !v.is_empty() => Value::String(v),
-                _ => default,
-            }
-        };
-        if !value.is_null() {
-            ext_data.insert(field.to_string(), value);
-        }
-    }
+    let ext_data = extension_options(ctx).await?;
 
     // 5-1) 만들 때 고르는 모듈 설정 (`install = true`, 예: 마인크래프트 서버 종류). 설치할 파일이
     // 달라지므로 만든 뒤가 아니라 만들 때 보낸다. --set으로 주지 않았으면 새 서버일 때 묻는다
     let fields = setting_fields(&module);
-    let is_install = |key: &str| fields.iter().any(|f| s(f, "name") == key && f.get("install") == Some(&json!(true)));
-    let mut module_settings = Map::new();
-    let mut later_set = Vec::new();
-    for (k, v) in split_pairs(&a.set)? {
-        if is_install(&k) {
-            let (key, value) = typed_setting(&fields, &Value::Null, &k, &v)?;
-            // 새로 설치하는 서버는 사바쨩이 설치할 수 있는 값만 (데몬 `not_installable`을 만들기 전에 알린다)
-            if let Some(f) = fields.iter().find(|f| s(f, "name") == key).filter(|_| from.is_none()) {
-                let choices = install_choices(f);
-                if f.get("install_options").is_some_and(Value::is_array) && !value.as_str().is_some_and(|v| choices.iter().any(|c| c == v)) {
-                    return Err(usage(t!("add.not_installable", key = key, choices = choices.join(", "))));
-                }
-            }
-            module_settings.insert(key, value);
-        } else {
-            later_set.push((k, v));
-        }
-    }
+    let (mut module_settings, later_set) = install_settings_from_args(&fields, &a.set, from.is_none())?;
     // 5-1-a) 추천 설정 묶음 (`[[presets]]`). --preset으로 주지 않았으면 새 서버일 때 묻는다.
     // 설치 설정보다 먼저 고른다: 프리셋이 정한 설치 설정은 다시 묻지 않는다
-    let mut preset = a.preset.clone();
     let presets: Vec<&Value> = module.get("presets").and_then(Value::as_array).map(|p| p.iter().collect()).unwrap_or_default();
     let locales = module_locales(ctx, &module_name).await;
-    if preset.is_none() && from.is_none() && ctx.ask.enabled && !presets.is_empty() {
-        let label = |p: &Value| {
-            let id = s(p, "id");
-            let localized = locales.as_ref().and_then(|l| l.pointer(&format!("/presets/{}/label", id))).and_then(Value::as_str);
-            localized.filter(|l| !l.is_empty()).unwrap_or(if s(p, "label").is_empty() { id } else { s(p, "label") }).to_string()
-        };
-        let mut choices = vec![t!("add.no_preset")];
-        choices.extend(presets.iter().map(|p| label(p)));
-        if let Some(i) = ctx.ask.select(&t!("add.ask_preset"), &choices, 0)?.filter(|i| *i > 0) {
-            preset = Some(s(presets[i - 1], "id").to_string());
-        }
-    }
-    let preset_sets = |key: &str| {
-        presets.iter().any(|p| Some(s(p, "id")) == preset.as_deref() && p.pointer(&format!("/settings/{}", key)).is_some())
-    };
+    let preset = choose_preset(ctx, a.preset.clone(), &presets, locales.as_ref(), from.is_none())?;
+    let chosen_preset = presets.iter().find(|p| Some(s(p, "id")) == preset.as_deref()).copied();
     if from.is_none() && ctx.ask.enabled {
-        for f in fields.iter().filter(|f| is_install(s(f, "name"))) {
-            if module_settings.contains_key(s(f, "name")) || preset_sets(s(f, "name")) {
-                continue;
-            }
-            let label = setting_label(locales.as_ref(), f);
-            let default = f.get("default").cloned().unwrap_or(Value::Null);
-            // GUI와 같다: 고르지 않은(기본값 그대로인) 칸은 보내지 않는다. 데몬이 모듈 기본값을 채운다
-            let value = match s(f, "field_type") {
-                "select" => {
-                    let options = install_choices(f);
-                    if options.is_empty() {
-                        continue;
-                    }
-                    let labels: Vec<String> = options.iter().map(|o| option_label(locales.as_ref(), f, o)).collect();
-                    let at = options.iter().position(|o| Some(o.as_str()) == default.as_str()).unwrap_or(0);
-                    ctx.ask.select(&label, &labels, at)?.map(|i| json!(options[i]))
-                }
-                "boolean" => Some(bool_option(&ctx.ask, &label, &default)?),
-                // 목록·여러 줄·비밀번호·파일 칸은 만든 뒤 `server set`으로 (GUI 만들기 화면과 같다)
-                "" | "text" | "number" => {
-                    let shown = default.as_str().map(str::to_string).or_else(|| (!default.is_null()).then(|| default.to_string()));
-                    match ctx.ask.text(&label, shown.as_deref(), true)? {
-                        Some(v) if !v.is_empty() => Some(typed_setting(&fields, &Value::Null, s(f, "name"), &v)?.1),
-                        _ => None,
-                    }
-                }
-                _ => None,
-            };
-            if let Some(v) = value.filter(|v| *v != default && !v.is_null()) {
-                module_settings.insert(s(f, "name").to_string(), v);
-            }
-        }
+        ask_install_settings(ctx, &fields, chosen_preset, locales.as_ref(), &mut module_settings)?;
     }
 
     // 5-2) 버전·파일 위치·실행 방식 (GUI 마법사와 같다). 고르지 않으면 데몬 기본값: 최신, 사바쨩 폴더, 사바쨩이 관리
-    let downloads = module.pointer("/install/method").and_then(Value::as_str) == Some("download");
-    let mut version = a.game_version.clone();
-    if version.is_some() && (from.is_some() || !downloads) {
-        return Err(usage(t!("add.version_not_chosen", game = display)));
-    }
-    if version.is_none() && downloads && from.is_none() && ctx.ask.enabled {
-        // 고른 추천 설정 위에 고른 설치 설정(서버 종류 등)으로 받을 수 있는 것만 (데몬 만들기가 합치는 순서와 같다).
-        // 목록을 받지 못하면 최신으로 설치한다 (GUI와 같다)
-        let mut chosen = presets.iter().find(|p| Some(s(p, "id")) == preset.as_deref()).and_then(|p| p.get("settings")).and_then(Value::as_object).cloned().unwrap_or_default();
-        chosen.extend(module_settings.clone());
-        let versions = ctx.api.module_versions(&module_name, false, 1, 50, Some(&Value::Object(chosen))).await.map(|v| release_versions(&v)).unwrap_or_default();
-        if !versions.is_empty() {
-            let mut choices = vec![t!("add.version_latest")];
-            choices.extend(versions.iter().cloned());
-            if let Some(i) = ctx.ask.select(&t!("add.ask_version"), &choices, 0)?.filter(|i| *i > 0) {
-                version = Some(versions[i - 1].clone());
-            }
-        }
-    }
+    let version = choose_version(ctx, &a, &module, from.is_none(), chosen_preset, &module_settings, &display).await?;
     let mut dir = a.dir.clone();
     if dir.is_none() && from.is_none() && ctx.ask.enabled {
         let choices = [t!("add.location_default"), t!("add.location_custom")];
@@ -573,7 +375,6 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     }
 
     // 6) 만들기
-    let mut body = json!({ "name": name, "module_name": module_name });
     if let Some(p) = &preset {
         body["preset"] = json!(p);
     }
@@ -592,26 +393,12 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     if !managed {
         body["managed_start"] = json!(false);
     }
-    if let Some(dir) = &from {
-        body["migration_source"] = json!(dir);
-        if move_folder {
-            body["migration_mode"] = json!("move");
-        }
-    }
     if !ext_data.is_empty() {
         body["extension_data"] = Value::Object(ext_data);
     }
     // 6-1) 다른 서버와 겹치는지 (GUI 마법사의 확인 단계): 이름·폴더는 막고 포트는 알린다.
-    // 확인하지 못하면 그대로 만든다: 만들기가 이름·폴더를 다시 본다
-    if let Ok(check) = ctx.api.check_instance(body.clone()).await {
-        let (blockers, warnings) = check_problems(&check);
-        for w in &warnings {
-            ctx.out.warn(w);
-        }
-        if !blockers.is_empty() {
-            return Err(usage(blockers.join("\n")));
-        }
-    }
+    // 이름·가져올 폴더는 위에서 보았고, 여기서는 고른 설치 폴더와 포트까지 본다
+    check_new_server(ctx, &body, from.as_deref(), true).await?;
     // 7-0) 약관 (예: 게임 EULA). GUI처럼 만들기 전에 묻고, 묻고서 동의하지 않으면 만들지 않는다.
     // 물을 수 없으면(`--json`, 터미널 아님) `--accept`로 댄 것만 동의하고 만든 뒤 `server agree`를 안내한다
     let (mut accepted, ask) = split_agreements(&module_agreements(&module, locales.as_ref()), &a.accept, ctx.ask.enabled);
@@ -699,6 +486,268 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     Ok(())
 }
 
+/// 새로 설치할지, 있는 서버 폴더를 쓸지와 그 폴더를 옮길지. 폴더는 데몬이 받는 전체 경로로
+fn choose_source(ctx: &Ctx, a: &AddArgs, given: Option<&Value>) -> Result<(Option<String>, bool)> {
+    let mut from = a.from.clone();
+    let mut move_folder = a.move_folder;
+    // 새 설치에만 있는 선택(--dir, --game-version)을 줬으면 묻지 않는다
+    let fresh_only = a.dir.is_some() || a.game_version.is_some();
+    if from.is_none() && ctx.ask.enabled && a.name.is_none() && !fresh_only {
+        let installs = given.is_none_or(|m| m.get("install").is_some_and(|i| !i.is_null()));
+        let choices = [t!("add.fresh_install"), t!("add.use_existing")];
+        if ctx
+            .ask
+            .select(&t!("add.ask_source"), &choices, if installs { 0 } else { 1 })?
+            == Some(1)
+        {
+            from = ctx.ask.text(&t!("add.ask_folder"), None, false)?;
+            // 그 자리에 연결 / 사바쨩 폴더로 옮기기 (GUI 가져오기와 같은 선택)
+            let modes = [t!("add.mode_link"), t!("add.mode_move")];
+            move_folder = from.is_some() && ctx.ask.select(&t!("add.ask_mode"), &modes, 0)? == Some(1);
+        }
+    }
+    // 데몬은 전체 경로만 받는다: 상대 경로는 데몬이 아닌 이 CLI의 지금 폴더 기준으로 푼다
+    let from = from.map(|dir| crate::cmd::config::daemon_path(ctx, std::path::Path::new(&dir))).transpose()?;
+    Ok((from, move_folder))
+}
+
+/// 게임: 준 모듈(폴더가 있으면 그 게임인지 확인), 아니면 폴더를 보고 알아내거나 고른다
+async fn choose_game(ctx: &Ctx, all: &[Value], given: Option<Value>, from: Option<&str>) -> Result<Value> {
+    Ok(match (given, from) {
+        (Some(m), Some(dir)) => {
+            check_folder(ctx, dir, s(&m, "name")).await?;
+            m
+        }
+        (Some(m), None) => m,
+        (None, Some(dir)) => {
+            let found = detected(ctx, dir).await?;
+            let hits: Vec<Value> = all
+                .iter()
+                .filter(|m| found.iter().any(|f| f == s(m, "name")))
+                .cloned()
+                .collect();
+            match hits.len() {
+                1 => {
+                    ctx.out
+                        .note(&t!("add.folder_is", dir = dir, game = resolve::module_label(&hits[0])));
+                    hits.into_iter().next().unwrap()
+                }
+                0 => {
+                    ctx.out.warn(&t!("add.folder_unrecognized", dir = dir));
+                    if !ctx.ask.enabled {
+                        return Err(usage(t!("add.pick_game")));
+                    }
+                    resolve::choose(ctx, &t!("noun.game"), all.to_vec(), resolve::module_label)?
+                }
+                _ => resolve::choose(ctx, &t!("noun.game"), hits, resolve::module_label)?,
+            }
+        }
+        (None, None) => {
+            if !ctx.ask.enabled {
+                return Err(usage(t!("add.module_required")));
+            }
+            resolve::choose(ctx, &t!("noun.game"), all.to_vec(), resolve::module_label)?
+        }
+    })
+}
+
+/// 새 서버 이름: 준 이름, 아니면 묻는다 (기본값은 다른 서버와 겹치지 않는 게임 이름).
+/// 대소문자만 다른 이름도 겹침으로 막는다 (데몬은 정확히 같은 이름만 막는다).
+/// 쓸 수 없는 글자는 데몬의 만들기 전 확인(`check_new_server`)이 본다
+async fn choose_name(ctx: &Ctx, given: Option<String>, module_name: &str) -> Result<String> {
+    let existing: Vec<String> = resolve::servers(ctx)
+        .await?
+        .into_iter()
+        .map(|x| x.name.to_lowercase())
+        .collect();
+    let taken = |n: &str| existing.contains(&n.to_lowercase());
+    let name = match given {
+        Some(n) => n,
+        None => {
+            let suggested = (1..)
+                .map(|i| if i == 1 { module_name.to_string() } else { format!("{}-{}", module_name, i) })
+                .find(|n| !taken(n))
+                .unwrap();
+            ctx.ask.text(&t!("add.ask_name"), Some(&suggested), false)?.unwrap_or(suggested)
+        }
+    };
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(usage(t!("add.name_empty")));
+    }
+    if taken(&name) {
+        return Err(usage(t!("add.name_taken", name = name)));
+    }
+    Ok(name)
+}
+
+/// 데몬의 만들기 전 확인(`/api/instances/check`, GUI 마법사의 확인 단계): 이름·폴더가 겹치면 막는다.
+/// `ports`면 겹치는 포트도 알린다. 확인하지 못하면 그대로 둔다: 만들기가 이름·폴더를 다시 본다.
+/// `from`은 가져올 폴더 (가져오기는 데몬이 폴더 경로를 싣지 않는다)
+async fn check_new_server(ctx: &Ctx, body: &Value, from: Option<&str>, ports: bool) -> Result<()> {
+    let check = match ctx.api.check_instance(body.clone()).await {
+        Ok(check) => check,
+        // 옮기기로 가져올 폴더를 다른 서버가 쓰면 확인도 만들기처럼 409로 답한다
+        Err(e) if api_code(&e) == Some("working_dir_in_use") => {
+            let other = match e.downcast_ref::<CliError>() {
+                Some(CliError::Api { body, .. }) => s(body, "instance").to_string(),
+                _ => String::new(),
+            };
+            return Err(usage(t!("add.folder_in_use", dir = from.unwrap_or_default(), name = other)));
+        }
+        Err(_) => return Ok(()),
+    };
+    let (blockers, warnings) = check_problems(&check, from);
+    if ports {
+        for w in &warnings {
+            ctx.out.warn(w);
+        }
+    }
+    if !blockers.is_empty() {
+        return Err(usage(blockers.join("\n")));
+    }
+    Ok(())
+}
+
+/// 익스텐션이 만들 때 묻는 칸 (AddServer.options)의 답
+async fn extension_options(ctx: &Ctx) -> Result<Map<String, Value>> {
+    let mut ext_data = Map::new();
+    for d in &crate::slots::create_options(&resolve::extensions(ctx).await.unwrap_or_default()) {
+        let Some(field) = d.get("field").and_then(Value::as_str) else {
+            continue;
+        };
+        let label = d.get("label").and_then(Value::as_str).unwrap_or(field);
+        let default = d.get("default").cloned().unwrap_or(Value::Null);
+        let value = if s(d, "type") == "boolean" {
+            bool_option(&ctx.ask, label, &default)?
+        } else {
+            match ctx.ask.text(label, default.as_str(), true)? {
+                Some(v) if !v.is_empty() => Value::String(v),
+                _ => default,
+            }
+        };
+        if !value.is_null() {
+            ext_data.insert(field.to_string(), value);
+        }
+    }
+    Ok(ext_data)
+}
+
+/// 만들 때 정하는 모듈 설정 칸 (`install = true`)
+fn is_install_field(fields: &[Value], key: &str) -> bool {
+    fields.iter().any(|f| s(f, "name") == key && f.get("install") == Some(&json!(true)))
+}
+
+/// `--set`의 `KEY=VALUE` 하나
+type SetPair = (String, String);
+
+/// `--set`을 만들 때 보낼 설치 설정과 만든 뒤 저장할 나머지로 나눈다. `fresh`(새로 설치)면
+/// 사바쨩이 설치할 수 있는 값만 받는다 (데몬 `not_installable`을 만들기 전에 알린다)
+fn install_settings_from_args(fields: &[Value], set: &[String], fresh: bool) -> Result<(Map<String, Value>, Vec<SetPair>)> {
+    let mut module_settings = Map::new();
+    let mut later_set = Vec::new();
+    for (k, v) in split_pairs(set)? {
+        if is_install_field(fields, &k) {
+            let (key, value) = typed_setting(fields, &Value::Null, &k, &v)?;
+            if let Some(f) = fields.iter().find(|f| s(f, "name") == key).filter(|_| fresh) {
+                let choices = install_choices(f);
+                if f.get("install_options").is_some_and(Value::is_array) && !value.as_str().is_some_and(|v| choices.iter().any(|c| c == v)) {
+                    return Err(usage(t!("add.not_installable", key = key, choices = choices.join(", "))));
+                }
+            }
+            module_settings.insert(key, value);
+        } else {
+            later_set.push((k, v));
+        }
+    }
+    Ok((module_settings, later_set))
+}
+
+/// 추천 설정 묶음: `--preset`, 아니면 새 서버일 때 묻는다
+fn choose_preset(ctx: &Ctx, given: Option<String>, presets: &[&Value], locales: Option<&Value>, fresh: bool) -> Result<Option<String>> {
+    if given.is_some() || !fresh || !ctx.ask.enabled || presets.is_empty() {
+        return Ok(given);
+    }
+    let label = |p: &Value| {
+        let id = s(p, "id");
+        let localized = locales.and_then(|l| l.pointer(&format!("/presets/{}/label", id))).and_then(Value::as_str);
+        localized.filter(|l| !l.is_empty()).unwrap_or(if s(p, "label").is_empty() { id } else { s(p, "label") }).to_string()
+    };
+    let mut choices = vec![t!("add.no_preset")];
+    choices.extend(presets.iter().map(|p| label(p)));
+    Ok(ctx.ask.select(&t!("add.ask_preset"), &choices, 0)?.filter(|i| *i > 0).map(|i| s(presets[i - 1], "id").to_string()))
+}
+
+/// 새 서버의 설치 설정을 묻는다. `--set`으로 주었거나 고른 추천 설정(`preset`)이 정한 칸은 묻지 않는다
+fn ask_install_settings(ctx: &Ctx, fields: &[Value], preset: Option<&Value>, locales: Option<&Value>, settings: &mut Map<String, Value>) -> Result<()> {
+    let preset_sets = |key: &str| preset.is_some_and(|p| p.pointer(&format!("/settings/{}", key)).is_some());
+    for f in fields.iter().filter(|f| is_install_field(fields, s(f, "name"))) {
+        if settings.contains_key(s(f, "name")) || preset_sets(s(f, "name")) {
+            continue;
+        }
+        let label = setting_label(locales, f);
+        let default = f.get("default").cloned().unwrap_or(Value::Null);
+        // GUI와 같다: 고르지 않은(기본값 그대로인) 칸은 보내지 않는다. 데몬이 모듈 기본값을 채운다
+        let value = match s(f, "field_type") {
+            "select" => {
+                let options = install_choices(f);
+                if options.is_empty() {
+                    continue;
+                }
+                let labels: Vec<String> = options.iter().map(|o| option_label(locales, f, o)).collect();
+                let at = options.iter().position(|o| Some(o.as_str()) == default.as_str()).unwrap_or(0);
+                ctx.ask.select(&label, &labels, at)?.map(|i| json!(options[i]))
+            }
+            "boolean" => Some(bool_option(&ctx.ask, &label, &default)?),
+            // 목록·여러 줄·비밀번호·파일 칸은 만든 뒤 `server set`으로 (GUI 만들기 화면과 같다)
+            "" | "text" | "number" => {
+                let shown = default.as_str().map(str::to_string).or_else(|| (!default.is_null()).then(|| default.to_string()));
+                match ctx.ask.text(&label, shown.as_deref(), true)? {
+                    Some(v) if !v.is_empty() => Some(typed_setting(fields, &Value::Null, s(f, "name"), &v)?.1),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        if let Some(v) = value.filter(|v| *v != default && !v.is_null()) {
+            settings.insert(s(f, "name").to_string(), v);
+        }
+    }
+    Ok(())
+}
+
+/// 설치할 서버 버전: `--game-version`, 아니면 받는 게임을 새로 설치할 때 묻는다 (없으면 최신)
+async fn choose_version(
+    ctx: &Ctx,
+    a: &AddArgs,
+    module: &Value,
+    fresh: bool,
+    preset: Option<&Value>,
+    module_settings: &Map<String, Value>,
+    display: &str,
+) -> Result<Option<String>> {
+    let downloads = module.pointer("/install/method").and_then(Value::as_str) == Some("download");
+    let mut version = a.game_version.clone();
+    if version.is_some() && (!fresh || !downloads) {
+        return Err(usage(t!("add.version_not_chosen", game = display)));
+    }
+    if version.is_none() && downloads && fresh && ctx.ask.enabled {
+        // 고른 추천 설정 위에 고른 설치 설정(서버 종류 등)으로 받을 수 있는 것만 (데몬 만들기가 합치는 순서와 같다).
+        // 목록을 받지 못하면 최신으로 설치한다 (GUI와 같다)
+        let mut chosen = preset.and_then(|p| p.get("settings")).and_then(Value::as_object).cloned().unwrap_or_default();
+        chosen.extend(module_settings.clone());
+        let versions = ctx.api.module_versions(s(module, "name"), false, 1, 50, Some(&Value::Object(chosen))).await.map(|v| release_versions(&v)).unwrap_or_default();
+        if !versions.is_empty() {
+            let mut choices = vec![t!("add.version_latest")];
+            choices.extend(versions.iter().cloned());
+            if let Some(i) = ctx.ask.select(&t!("add.ask_version"), &choices, 0)?.filter(|i| *i > 0) {
+                version = Some(versions[i - 1].clone());
+            }
+        }
+    }
+    Ok(version)
+}
+
 /// 서버 이름에 쓸 수 없는 쉼표 (데몬 `chat::words::is_comma`와 같은 글자, 400 `invalid_name`). 띄어쓰기는 된다
 fn has_comma(name: &str) -> bool {
     name.contains([',', '，', '、', '､'])
@@ -706,7 +755,8 @@ fn has_comma(name: &str) -> bool {
 
 /// 만들기 전 확인(`/api/instances/check`)에서 만들기를 막는 것(같은 이름, 다른 서버가 쓰는 폴더, 파일이 든 폴더)과
 /// 알리기만 하는 것(다른 서버도 쓰는 포트, Windows가 예약한 포트)
-fn check_problems(check: &Value) -> (Vec<String>, Vec<String>) {
+/// `from`은 가져올 폴더: 가져오기는 데몬이 폴더 경로(`folder.path`)를 싣지 않는다
+fn check_problems(check: &Value, from: Option<&str>) -> (Vec<String>, Vec<String>) {
     let mut blockers = Vec::new();
     if check.pointer("/name/taken") == Some(&json!(true)) {
         blockers.push(t!("add.name_taken", name = s(&check["name"], "value")));
@@ -715,11 +765,12 @@ fn check_problems(check: &Value) -> (Vec<String>, Vec<String>) {
         blockers.push(t!("add.name_comma"));
     }
     let folder = &check["folder"];
+    let path = folder.get("path").and_then(Value::as_str).or(from).unwrap_or_default();
     if let Some(other) = folder.get("in_use_by").and_then(Value::as_str) {
-        blockers.push(t!("add.folder_in_use", dir = s(folder, "path"), name = other));
+        blockers.push(t!("add.folder_in_use", dir = path, name = other));
     }
     if folder.get("not_empty") == Some(&json!(true)) {
-        blockers.push(t!("add.folder_not_empty", dir = s(folder, "path")));
+        blockers.push(t!("add.folder_not_empty", dir = path));
     }
     let mut warnings = Vec::new();
     for port in check.get("ports").and_then(Value::as_array).into_iter().flatten() {
@@ -2661,6 +2712,133 @@ mod tests {
         assert_eq!(typed_setting(&fields, &fresh, "working_dir", "D:/srv").unwrap().1, json!("D:/srv"));
     }
 
+    /// 요청 줄(`POST /api/instances/check`)과 본문으로 답하는 가짜 데몬. 받은 요청 줄을 모은다.
+    /// 토큰 파일이 있으면 CLI가 신원을 확인하므로 `/health`는 그 토큰으로 증명한다
+    async fn fake_daemon(answer: fn(&str, &Value) -> (u16, Value)) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let (mut req, mut buf) = (Vec::new(), [0; 4096]);
+                let (head, body) = loop {
+                    let n = sock.read(&mut buf).await.unwrap_or(0);
+                    if n == 0 {
+                        break (String::new(), Value::Null);
+                    }
+                    req.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&req).to_string();
+                    if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                        let len = head
+                            .lines()
+                            .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap()))
+                            .unwrap_or(0);
+                        if body.len() >= len {
+                            break (head.to_string(), serde_json::from_str(body).unwrap_or(Value::Null));
+                        }
+                    }
+                };
+                let line = head.lines().next().unwrap_or("").rsplit_once(' ').map(|(l, _)| l.to_string()).unwrap_or_default();
+                let (status, reply) = if line.starts_with("GET /health") {
+                    use hmac::{Hmac, KeyInit, Mac};
+                    let challenge = head.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("x-saba-challenge:").map(|v| v.trim().to_string()));
+                    let token = std::fs::read_to_string(saba_chan_updater_lib::constants::token_file_path()).unwrap_or_default();
+                    let mut mac = Hmac::<sha2::Sha256>::new_from_slice(token.trim().as_bytes()).unwrap();
+                    mac.update(challenge.unwrap_or_default().as_bytes());
+                    (200, json!({ "ok": true, "proof": hex::encode(mac.finalize().into_bytes()) }))
+                } else {
+                    answer(&line, &body)
+                };
+                log.lock().unwrap().push(line);
+                let text = reply.to_string();
+                let _ = sock
+                    .write_all(format!("HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}", text.len(), text).as_bytes())
+                    .await;
+            }
+        });
+        (port, seen)
+    }
+
+    fn quiet_ctx(port: u16) -> Ctx {
+        Ctx {
+            api: crate::client::Api::new(port, None),
+            spawn_port: port,
+            port_fixed: true,
+            out: crate::output::Out::new(true, false),
+            ask: crate::prompt::Prompt { enabled: false, yes: false },
+            in_shell: false,
+            attached: false,
+        }
+    }
+
+    /// 마인크래프트 모듈 하나와 서버 둘(mc, 폴더 /srv/lobby를 쓰는 lobby)이 있는 데몬. 만들기 전 확인은 데몬이 판단한다
+    fn add_daemon(line: &str, body: &Value) -> (u16, Value) {
+        let reply = match line {
+            "GET /api/modules" => json!({ "modules": [{ "name": "minecraft", "display_name": "Minecraft", "install": null }] }),
+            "GET /api/instances" => json!([
+                { "id": "1", "name": "mc", "module_name": "minecraft" },
+                { "id": "2", "name": "lobby", "module_name": "minecraft", "working_dir": "/srv/lobby" },
+            ]),
+            "POST /api/modules/detect" => json!({ "matches": [{ "name": "minecraft" }] }),
+            "POST /api/instances/check" => {
+                let name = s(body, "name");
+                let lobby = body.get("migration_source").and_then(Value::as_str).is_some_and(|d| d.ends_with("lobby"));
+                // 옮기기로 가져올 폴더가 겹치면 확인도 만들기처럼 409로 답한다
+                if lobby && s(body, "migration_mode") == "move" {
+                    return (409, json!({ "success": false, "error": "Server 'lobby' already uses this folder", "error_code": "working_dir_in_use", "instance": "lobby" }));
+                }
+                json!({
+                    "success": true,
+                    "name": { "value": name, "taken": name == "mc", "suggested": "minecraft" },
+                    "folder": { "custom": false, "path": null, "in_use_by": if lobby { json!("lobby") } else { Value::Null }, "not_empty": false },
+                    "ports": [],
+                })
+            }
+            _ => json!({}),
+        };
+        (200, reply)
+    }
+
+    /// 이름이 겹치면 다른 것을 묻거나 만들기 전에 막는다 (아무것도 만들지 않는다)
+    #[tokio::test]
+    async fn adding_a_server_with_a_taken_name_stops_before_creating() {
+        crate::i18n::init("en");
+        let (port, seen) = fake_daemon(add_daemon).await;
+        let a = AddArgs { name: Some("mc".into()), module: Some("minecraft".into()), ..Default::default() };
+        let e = add(&quiet_ctx(port), a).await.unwrap_err();
+        assert_eq!(e.to_string(), t!("add.name_taken", name = "mc"));
+        assert!(!seen.lock().unwrap().iter().any(|l| l == "POST /api/instances"), "{:?}", seen.lock().unwrap());
+    }
+
+    /// 대소문자만 다른 이름도 겹침이다 (데몬은 정확히 같은 이름만 막는다)
+    #[tokio::test]
+    async fn a_name_that_differs_only_in_case_is_taken() {
+        crate::i18n::init("en");
+        let (port, seen) = fake_daemon(add_daemon).await;
+        let a = AddArgs { name: Some("MC".into()), module: Some("minecraft".into()), ..Default::default() };
+        let e = add(&quiet_ctx(port), a).await.unwrap_err();
+        assert_eq!(e.to_string(), t!("add.name_taken", name = "MC"));
+        assert!(!seen.lock().unwrap().iter().any(|l| l == "POST /api/instances"), "{:?}", seen.lock().unwrap());
+    }
+
+    /// 다른 서버가 쓰는 폴더는 가져오지 않는다 (두 서버가 같은 파일을 덮어쓴다)
+    #[tokio::test]
+    async fn importing_a_folder_another_server_uses_stops_before_creating() {
+        crate::i18n::init("en");
+        let (port, seen) = fake_daemon(add_daemon).await;
+        let ctx = quiet_ctx(port);
+        // 데몬에는 전체 경로로 보낸다 (Windows에서는 드라이브가 붙는다)
+        let dir = crate::cmd::config::daemon_path(&ctx, std::path::Path::new("/srv/lobby")).unwrap();
+        let a = AddArgs { name: Some("survival".into()), module: Some("minecraft".into()), from: Some("/srv/lobby".into()), ..Default::default() };
+        let e = add(&ctx, a.clone()).await.unwrap_err();
+        assert_eq!(e.to_string(), t!("add.folder_in_use", dir = dir, name = "lobby"));
+        let e = add(&ctx, AddArgs { move_folder: true, ..a }).await.unwrap_err();
+        assert_eq!(e.to_string(), t!("add.folder_in_use", dir = dir, name = "lobby"));
+        assert!(!seen.lock().unwrap().iter().any(|l| l == "POST /api/instances"), "{:?}", seen.lock().unwrap());
+    }
+
     /// 만들기 전 확인(`/api/instances/check`)은 GUI 마법사와 같다: 이름·폴더는 막고, 포트는 알리기만 한다
     #[test]
     fn the_check_before_adding_blocks_like_the_gui_wizard() {
@@ -2674,7 +2852,7 @@ mod tests {
                 { "field": "query_port", "port": 25570, "in_use_by": [], "reserved": false },
             ],
         });
-        let (blockers, warnings) = check_problems(&clash);
+        let (blockers, warnings) = check_problems(&clash, None);
         assert_eq!(blockers, vec![
             t!("add.name_taken", name = "mc"),
             t!("add.folder_in_use", dir = "D:/srv", name = "lobby"),
@@ -2682,10 +2860,10 @@ mod tests {
         ]);
         assert_eq!(warnings, vec![t!("add.port_in_use", port = 25565, servers = "lobby"), t!("add.port_reserved", port = 50000)]);
         let clear = json!({ "name": { "taken": false }, "folder": { "custom": false }, "ports": [] });
-        assert_eq!(check_problems(&clear), (vec![], vec![]));
+        assert_eq!(check_problems(&clear, None), (vec![], vec![]));
         // 쉼표가 든 이름 (디스코드에서 부르는 말을 쉼표로 나눈다, 사용자 11-06 #2)
         let comma = json!({ "name": { "value": "a,b", "taken": false, "invalid": "comma" }, "folder": { "custom": false }, "ports": [] });
-        assert_eq!(check_problems(&comma).0, vec![t!("add.name_comma")]);
+        assert_eq!(check_problems(&comma, None).0, vec![t!("add.name_comma")]);
         assert!(has_comma("우리，마크") && has_comma("a、b") && !has_comma("우리 마크"));
     }
 

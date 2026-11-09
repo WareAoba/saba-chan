@@ -441,12 +441,9 @@ async fn ask_relay(relay: &Relay, nonce: &str, ports: &[(u16, Protocol)]) -> Res
         "ports": ports.iter().map(|(port, protocol)| json!({ "port": port, "protocol": protocol })).collect::<Vec<_>>(),
     })
     .to_string();
-    let mut req = relay_client()?.post(format!("{}{}", relay.base, path)).header("X-Saba-Client", "1");
-    let headers = crate::ipc::handlers::relay::signed_headers_with(&relay.token, "POST", path, Some(&body)).ok_or(CheckError::NotPaired)?;
-    for (k, v) in headers {
-        req = req.header(k, v);
-    }
-    let res = req.header("Content-Type", "application/json").body(body).send().await.map_err(|e| CheckError::Relay(e.to_string()))?;
+    let req = crate::ipc::handlers::relay::signed_request(&relay_client()?, reqwest::Method::POST, &relay.base, path, &relay.token, Some(body))
+        .ok_or(CheckError::NotPaired)?;
+    let res = req.header("X-Saba-Client", "1").send().await.map_err(|e| CheckError::Relay(e.to_string()))?;
     match res.status().as_u16() {
         200 => res.json::<RelayAnswer>().await.map_err(|_| CheckError::Relay("invalid relay response".into())),
         409 => Err(CheckError::Busy),

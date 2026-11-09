@@ -434,8 +434,14 @@ async fn in_call<T>(entry: &str, function: &str, timeout_secs: u64, skip_busy: b
 /// Called by Supervisor for module lifecycle management
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
+/// 부르는 쪽의 인스턴스 문맥(`with_instance`)을 그대로 쓴다
 pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Result<Value> {
-    run_plugin_inner(module_path, function, config, None, DEFAULT_PLUGIN_TIMEOUT_SECS, None).await
+    PluginCall { host: None, ..PluginCall::new(module_path, function, config) }.run().await
+}
+
+/// `run_plugin`과 같고 한도(초)만 정한다
+pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
+    PluginCall { host: None, ..PluginCall::new(module_path, function, config) }.timeout(timeout_secs).run().await
 }
 
 /// 데몬 락 안에서 만들고 락을 놓은 뒤 실행하는 모듈 호출 (C12).
@@ -447,16 +453,17 @@ pub struct PluginCall {
     /// 데몬이 추적하는 그 인스턴스의 서버 PID: 격리 실행의 루프백 중계는 이 프로세스(트리)가 듣는 포트로만 잇는다
     server: Option<u32>,
     timeout_secs: u64,
-    host: Option<host::Context>,
+    /// 호출 동안의 인스턴스 문맥. None이면 부르는 쪽(`with_instance`)의 것을 그대로 쓴다
+    host: Option<Option<host::Context>>,
 }
 
 impl PluginCall {
     pub fn new(entry: impl Into<String>, function: &str, config: Value) -> Self {
-        Self { entry: entry.into(), function: function.to_string(), config, server: None, timeout_secs: DEFAULT_PLUGIN_TIMEOUT_SECS, host: None }
+        Self { entry: entry.into(), function: function.to_string(), config, server: None, timeout_secs: DEFAULT_PLUGIN_TIMEOUT_SECS, host: Some(None) }
     }
 
     pub(crate) fn in_instance(mut self, host: Option<host::Context>) -> Self {
-        self.host = host;
+        self.host = Some(host);
         self
     }
 
@@ -490,26 +497,27 @@ impl PluginCall {
     }
 
     pub async fn run(self) -> Result<Value> {
-        HOST_CONTEXT.scope(self.host, run_plugin_inner(&self.entry, &self.function, self.config, None, self.timeout_secs, self.server)).await
+        self.call(None, false).await.map(Option::unwrap)
     }
 
     pub async fn run_with_progress(self, callback: Box<dyn Fn(ExtensionProgress) + Send>) -> Result<Value> {
-        HOST_CONTEXT.scope(self.host, run_plugin_inner(&self.entry, &self.function, self.config, Some(callback), self.timeout_secs, self.server)).await
+        self.call(Some(callback), false).await.map(Option::unwrap)
     }
 
+    /// 호출 자리가 모두 차 있으면 기다리지 않고 None
     pub async fn try_run(self) -> Result<Option<Value>> {
-        HOST_CONTEXT.scope(self.host, in_call(&self.entry, &self.function, self.timeout_secs, true,
-            run_requested_plugin(&self.entry, &self.function, self.config, None, self.timeout_secs, self.server))).await
+        self.call(None, true).await
+    }
+
+    async fn call(mut self, on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>, skip_busy: bool) -> Result<Option<Value>> {
+        let host = self.host.take().unwrap_or_else(|| HOST_CONTEXT.try_with(Clone::clone).ok().flatten());
+        let (entry, function, timeout_secs) = (self.entry.clone(), self.function.clone(), self.timeout_secs);
+        HOST_CONTEXT.scope(host, in_call(&entry, &function, timeout_secs, skip_busy, run_requested_plugin(self, on_progress))).await
     }
 }
 
-/// Like `run_plugin` but with a custom timeout (seconds).
 /// 서버 설치·업데이트(`install_server`) 한도: 대용량 다운로드를 허용한다
 pub const INSTALL_TIMEOUT_SECS: u64 = 1800;
-
-pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
-    run_plugin_inner(module_path, function, config, None, timeout_secs, None).await
-}
 
 type Writer = Box<dyn tokio::io::AsyncWrite + Unpin + Send>;
 type Reader = Box<dyn tokio::io::AsyncRead + Unpin + Send>;
@@ -889,7 +897,7 @@ async fn query_functions(entry: &str) -> Result<Option<Vec<String>>> {
             return Ok(list);
         }
         let modified = std::fs::metadata(entry).and_then(|m| m.modified()).ok();
-        let answer = functions_answer(Box::pin(spawn_plugin(entry, FUNCTIONS_QUERY, serde_json::json!({}), None, FUNCTIONS_TIMEOUT_SECS, None)).await);
+        let answer = functions_answer(Box::pin(spawn_plugin(PluginCall::new(entry, FUNCTIONS_QUERY, serde_json::json!({})).timeout(FUNCTIONS_TIMEOUT_SECS), None)).await);
         let list = answer.list();
         MODULE_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(entry.to_string(), (modified, answer, std::time::Instant::now()));
         Ok(list)
@@ -926,26 +934,8 @@ fn unsupported_reply(function: &str, known: Option<&[String]>) -> Option<Value> 
     }))
 }
 
-async fn run_plugin_inner(
-    module_path: &str,
-    function: &str,
-    config: Value,
-    on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
-    timeout_secs: u64,
-    server: Option<u32>,
-) -> Result<Value> {
-    in_call(module_path, function, timeout_secs, false,
-        run_requested_plugin(module_path, function, config, on_progress, timeout_secs, server)).await.map(Option::unwrap)
-}
-
-async fn run_requested_plugin(
-    module_path: &str,
-    function: &str,
-    config: Value,
-    on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
-    timeout_secs: u64,
-    server: Option<u32>,
-) -> Result<Value> {
+async fn run_requested_plugin(call: PluginCall, on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>) -> Result<Value> {
+    let (module_path, function) = (call.entry.as_str(), call.function.as_str());
     // 모듈(옆에 module.toml이 있는 진입 파일)만: 익스텐션 hook 이름은 이 표와 상관없다
     let is_module = std::path::Path::new(module_path).parent().is_some_and(|d| d.join("module.toml").is_file());
     if is_module && OPTIONAL_MODULE_FUNCTIONS.contains(&function) {
@@ -954,17 +944,12 @@ async fn run_requested_plugin(
             return Ok(decorate_result(module_path, function, reply, ""));
         }
     }
-    Box::pin(spawn_plugin(module_path, function, config, on_progress, timeout_secs, server)).await
+    Box::pin(spawn_plugin(call, on_progress)).await
 }
 
-async fn spawn_plugin(
-    module_path: &str,
-    function: &str,
-    config: Value,
-    on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
-    timeout_secs: u64,
-    server: Option<u32>,
-) -> Result<Value> {
+async fn spawn_plugin(call: PluginCall, on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>) -> Result<Value> {
+    let PluginCall { entry, function, config, server, timeout_secs, .. } = call;
+    let (module_path, function) = (entry.as_str(), function.as_str());
     tracing::debug!("Executing plugin: {} -> {}", module_path, function);
 
     let deadline = CALL_DEADLINE.with(Clone::clone);
@@ -1424,9 +1409,9 @@ mod tests {
             ("module_functions", size(|| module_functions("game/lifecycle.py"))),
         ];
         eprintln!("module-call future sizes: {sizes:?}; spawn_plugin={}, query_functions={}, run_requested_plugin={}",
-            size(|| spawn_plugin("game/lifecycle.py", "status", Value::Null, None, 120, None)),
+            size(|| spawn_plugin(PluginCall::new("game/lifecycle.py", "status", Value::Null), None)),
             size(|| query_functions("game/lifecycle.py")),
-            size(|| run_requested_plugin("game/lifecycle.py", "status", Value::Null, None, 120, None)));
+            size(|| run_requested_plugin(PluginCall::new("game/lifecycle.py", "status", Value::Null), None)));
         for (entry, bytes) in sizes {
             assert!(bytes <= 16 * 1024, "{entry} future uses {bytes} bytes; keep module calls small on 2 MiB worker stacks");
         }
@@ -1690,7 +1675,7 @@ print(json.dumps(codes))
             let entry = entry.to_str().unwrap();
             in_call(entry, "status", 1, false, async {
                 assert!(entered.send(CALL_DEADLINE.with(|deadline| deadline.isolation.subscribe())).is_ok());
-                run_requested_plugin(entry, "status", json!({}), None, 1, None).await
+                run_requested_plugin(PluginCall::new(entry, "status", json!({})).timeout(1), None).await
             }).await.map(Option::unwrap)
         });
         let mut isolation = observing.await.unwrap();

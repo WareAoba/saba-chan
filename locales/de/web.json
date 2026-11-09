@@ -440,12 +440,6 @@
       "NO_CLEAR_JOB": "In diesem Kanal wird gerade nichts geleert.",
       "generic": "Konnte nicht geändert werden. Versuch es gleich noch einmal."
     },
-    "dur": {
-      "seconds": "{{count}} s",
-      "minutes": "{{count}} Min.",
-      "hours": "{{count}} Std.",
-      "days": "{{count}} T."
-    },
     "mod": {
       "title": "Serververwaltung",
       "locked": "Gesperrt",

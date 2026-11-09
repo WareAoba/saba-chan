@@ -14,7 +14,7 @@
 //!
 //! 새 명령 종류는 `handle_payload`의 action 분기에 추가합니다.
 
-use crate::ipc::handlers::relay::{load_node_token, parse_node_token, resolve_relay_url, signed_headers_with};
+use crate::ipc::handlers::relay::{load_node_token, parse_node_token, resolve_relay_url, signed_request};
 use crate::ipc::IPCServer;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -478,15 +478,7 @@ impl Session {
 
     /// 이 세션의 주소·토큰으로 서명한 요청
     fn request(&self, method: reqwest::Method, path: &str, body: Option<String>) -> Result<reqwest::RequestBuilder, String> {
-        let headers = signed_headers_with(&self.token, method.as_str(), path, body.as_deref()).ok_or("node token missing")?;
-        let mut req = self.client.request(method, format!("{}{}", self.base, path));
-        for (k, v) in headers {
-            req = req.header(k, v);
-        }
-        if let Some(b) = body {
-            req = req.header("Content-Type", "application/json").body(b);
-        }
-        Ok(req)
+        signed_request(&self.client, method, &self.base, path, &self.token, body).ok_or_else(|| "node token missing".into())
     }
 
     /// 서명된 요청을 보낸다. 보내는 중에 세션이 끝나면 그만둔다
@@ -703,57 +695,13 @@ impl Session {
         };
         // 모듈 locales 파일은 하트비트마다 읽으므로 async 작업자 밖에서 읽는다
         let views = self.server.modules().await;
-        let modules: Vec<Value> = tokio::task::spawn_blocking(move || views
-            .into_iter()
-            .map(|m| {
-                // 번역한 명령 이름: 모듈 locales를 언어마다 한 번 읽는다. 번역을 끈 서버는 릴레이가 빼고 단다 (서버별 `translateCommands`)
-                let locales: std::collections::HashMap<&str, std::sync::Arc<Value>> = match &m.locale_dir {
-                    Some(dir) => crate::chat::i18n::languages()
-                        .into_iter()
-                        .filter_map(|l| Some((l, crate::chat::api::module_locale(dir, l)?)))
-                        .collect(),
-                    None => Default::default(),
-                };
-                // 명령마다·언어마다 부르므로 locales를 복제하지 않고 함께 쓴다
-                let null = std::sync::Arc::new(Value::Null);
-                let texts = |l: &str| locales.get(l).unwrap_or(&null).clone();
-                let names = &texts;
-                let texts: Option<&LocaleTexts<'_>> = Some(&texts);
-                let mut entry = json!({
-                    "name": m.name,
-                    // 게임명도 별명처럼 서버를 부른다: 릴레이가 위험 명령 확인에서 같은 서버를 찾도록 함께 보낸다.
-                    // 여기는 언어 없는 낱말(module.toml)이고, 언어마다 더하는 낱말은 `module_aliases_by_language`다
-                    "module_aliases": m.game_names.iter().chain(&m.module_aliases).collect::<Vec<_>>(),
-                    // 디스코드·챗봇에 내보내지 않는 명령(`remote = false`)은 싣지 않는다
-                    "commands": { "fields": m.commands.iter().filter(|c| c.remote).map(|c| relay_command_entry(c, m.aliases_of(&c.name), texts)).collect::<Vec<_>>() },
-                    "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
-                });
-                relay_module_names(&mut entry, m.display_name.as_deref(), names);
-                if let Some(dir) = &m.locale_dir {
-                    relay_language_aliases(&mut entry, dir);
-                }
-                entry
-            })
-            .collect())
+        let modules: Vec<Value> = tokio::task::spawn_blocking(move || views.iter().map(relay_module_entry).collect())
         .await
         .unwrap_or_else(|e| if e.is_panic() { std::panic::resume_unwind(e.into_panic()) } else { Vec::new() });
 
         // 권한을 읽기 직전의 시각 (권한 변경 응답의 `permissionsAt`과 같은 PC 시계)
         let permissions_at = now_ms();
         let bot = self.server.config_store.get_bot_config().await;
-        // 릴레이 스키마: commandAliases는 모듈 → (명령 → 콤마 문자열)
-        let command_aliases: serde_json::Map<String, Value> = bot
-            .command_aliases
-            .iter()
-            .filter_map(|(module, cmds)| {
-                let cmds: serde_json::Map<String, Value> = cmds
-                    .as_object()?
-                    .iter()
-                    .filter_map(|(c, a)| a.as_str().map(|a| (c.clone(), Value::String(a.to_string()))))
-                    .collect();
-                Some((module.clone(), Value::Object(cmds)))
-            })
-            .collect();
 
         let mut meta = json!({
             "servers": servers,
@@ -765,7 +713,7 @@ impl Session {
                 // 비어 있으면 릴레이가 응답 언어의 기본값을 쓴다
                 "prefixes": bot.prefixes,
                 "moduleAliases": bot.module_aliases,
-                "commandAliases": command_aliases,
+                "commandAliases": command_aliases_json(&bot.command_aliases),
             },
         });
         // 길드별 허용 인스턴스. 목록이 있는 길드만 싣는다 (없으면 릴레이는 제한 없음으로 본다)
@@ -1511,8 +1459,7 @@ fn action_result(result: Result<Value, crate::actions::ActionError>, locale: &st
 }
 
 fn backoff(failures: u32) -> Duration {
-    let factor = 2u32.saturating_pow(failures.saturating_sub(1).min(16));
-    (RETRY_BASE * factor).min(RETRY_MAX)
+    crate::utils::exp_backoff(RETRY_BASE, RETRY_MAX, failures)
 }
 
 /// a < b (x.y.z, 빠진 자리는 0). 프리릴리스(0.1.11-beta.1)는 업데이터와 같은 SemVer 순서로 비교한다
@@ -1669,11 +1616,58 @@ fn ids_by_guild(node_settings: &Value, key: &str) -> Option<Value> {
     (!map.is_empty()).then_some(Value::Object(map))
 }
 
-/// 모듈의 게임 이름 — `display_name`(module.toml)과 `display_names`(언어 → 모듈 locales `display_name`). 없으면 키를 싣지 않는다.
-/// 릴레이가 상황판 채널에 켜진 게임을 보이는 데 쓴다 (`game_names`와 달리 띄어 쓴 이름도 그대로 싣는다)
+/// 하트비트의 모듈 하나: 이름·별명·원격 명령·프리셋과 언어별 이름·별명.
+/// 모듈 locales 파일을 읽으므로 async 작업자 밖에서 부른다
+fn relay_module_entry(m: &crate::chat::api::ModuleView) -> Value {
+    // 번역한 명령 이름: 모듈 locales를 언어마다 한 번 읽는다. 번역을 끈 서버는 릴레이가 빼고 단다 (서버별 `translateCommands`)
+    let locales: std::collections::HashMap<&str, std::sync::Arc<Value>> = match &m.locale_dir {
+        Some(dir) => crate::chat::i18n::languages()
+            .into_iter()
+            .filter_map(|l| Some((l, crate::chat::api::module_locale(dir, l)?)))
+            .collect(),
+        None => Default::default(),
+    };
+    // 명령마다·언어마다 부르므로 locales를 복제하지 않고 함께 쓴다
+    let null = std::sync::Arc::new(Value::Null);
+    let texts = |l: &str| locales.get(l).unwrap_or(&null).clone();
+    let names = &texts;
+    let texts: Option<&LocaleTexts<'_>> = Some(&texts);
+    let mut entry = json!({
+        "name": m.name,
+        // 게임명도 별명처럼 서버를 부른다: 릴레이가 위험 명령 확인에서 같은 서버를 찾도록 함께 보낸다.
+        // 여기는 언어 없는 낱말(module.toml)이고, 언어마다 더하는 낱말은 `module_aliases_by_language`다
+        "module_aliases": m.game_names.iter().chain(&m.module_aliases).collect::<Vec<_>>(),
+        // 디스코드·챗봇에 내보내지 않는 명령(`remote = false`)은 싣지 않는다
+        "commands": { "fields": m.commands.iter().filter(|c| c.remote).map(|c| relay_command_entry(c, m.aliases_of(&c.name), texts)).collect::<Vec<_>>() },
+        "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
+    });
+    relay_module_names(&mut entry, m.display_name.as_deref(), names);
+    if let Some(dir) = &m.locale_dir {
+        relay_language_aliases(&mut entry, dir);
+    }
+    entry
+}
+
+/// 릴레이 스키마: commandAliases는 모듈 → (명령 → 콤마 문자열). 문자열이 아닌 값은 뺀다
+fn command_aliases_json(aliases: &std::collections::HashMap<String, Value>) -> serde_json::Map<String, Value> {
+    aliases
+        .iter()
+        .filter_map(|(module, cmds)| {
+            let cmds: serde_json::Map<String, Value> = cmds
+                .as_object()?
+                .iter()
+                .filter_map(|(c, a)| a.as_str().map(|a| (c.clone(), Value::String(a.to_string()))))
+                .collect();
+            Some((module.clone(), Value::Object(cmds)))
+        })
+        .collect()
+}
+
 /// 언어 → 모듈 locales 한 언어 전체 (없으면 Null). 명령마다·언어마다 부르므로 복제하지 않고 함께 쓴다
 type LocaleTexts<'a> = dyn Fn(&str) -> std::sync::Arc<Value> + 'a;
 
+/// 모듈의 게임 이름 — `display_name`(module.toml)과 `display_names`(언어 → 모듈 locales `display_name`). 없으면 키를 싣지 않는다.
+/// 릴레이가 상황판 채널에 켜진 게임을 보이는 데 쓴다 (`game_names`와 달리 띄어 쓴 이름도 그대로 싣는다)
 fn relay_module_names(entry: &mut Value, display_name: Option<&str>, texts: &LocaleTexts<'_>) {
     if let Some(name) = display_name.map(str::trim).filter(|n| !n.is_empty()) {
         entry["display_name"] = json!(name);

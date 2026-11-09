@@ -1,4 +1,5 @@
 import type { DropdownOption } from '@gui/components/CustomDropdown/CustomDropdown';
+import { AUTO_CLEAR_MINUTES, durationText, LOCK_MINUTES, SLOW_SECONDS } from '@gui/components/discord/modDuration';
 import { DEFAULT_BEDTIME, HALF_HOURS, SLEEP_FEATURES } from '@gui/components/discord/sleep';
 import type { DiscordMember, DiscordNode } from '@gui/components/discord/types';
 import { LANGUAGE_OPTIONS } from '@gui/utils/languages';
@@ -190,21 +191,6 @@ function relayError(t: TFn, res: StoreResult<unknown> & { ok: false }) {
         'NO_CLEAR_JOB',
     ];
     return known.includes(res.error) ? t(`relay.err.${res.error}`) : t('relay.err.generic');
-}
-
-/** 분·초 → "1시간 30분" */
-export function durationText(t: TFn, minutes: number) {
-    if (minutes < 1) return t('relay.dur.seconds', { count: Math.round(minutes * 60) });
-    const m = Math.round(minutes);
-    const parts: [number, string][] = [
-        [Math.floor(m / 1440), 'days'],
-        [Math.floor((m % 1440) / 60), 'hours'],
-        [m % 60, 'minutes'],
-    ];
-    return parts
-        .filter(([n]) => n)
-        .map(([n, unit]) => t(`relay.dur.${unit}`, { count: n }))
-        .join(' ');
 }
 
 const minutesUntil = (iso: string) => Math.max(1, Math.ceil((Date.parse(iso) - Date.now()) / 60_000));
@@ -631,10 +617,7 @@ function ChannelsSection({ relay, g, channels, busy, write, here }: SectionProps
     );
 }
 
-const SLOW_SECONDS = [0, 5, 10, 30, 60, 300, 900, 3600, 21600];
 const SLOW_FOR_MINUTES = [10, 60, 360, 1440];
-const LOCK_MINUTES = [30, 60, 360, 1440, 10080];
-const AUTO_CLEAR_MINUTES = [60, 360, 720, 1440, 4320, 10080];
 const DAILY_CLEAR_AT = '04:00';
 // 릴레이 CLEAR_TARGETS·SANCTION_KINDS 와 같은 값 (server-chan bot/clear/service.ts, bot/guildMod/sanction.ts)
 const CLEAR_TARGETS: RelayClearTarget[] = ['all', 'humans', 'self', 'other_bots', 'bots'];
@@ -659,30 +642,30 @@ export function parseDuration(text: string, words = '') {
 
 const minutesSince = (iso: string) => Math.max(1, Math.floor((Date.now() - Date.parse(iso)) / 60_000));
 
-function lockLine(t: TFn, locked: { until: string | null }) {
+function lockLine(t: TFn, tg: TFn, locked: { until: string | null }) {
     return locked.until
-        ? t('relay.mod.locked_until', { time: durationText(t, minutesUntil(locked.until)) })
+        ? t('relay.mod.locked_until', { time: durationText(tg, { minutes: minutesUntil(locked.until) }) })
         : t('relay.mod.locked');
 }
 
-function channelLine(t: TFn, c: RelayModChannel) {
+function channelLine(t: TFn, tg: TFn, c: RelayModChannel) {
     if (c.clearing)
         return c.clearing.oldestAt
-            ? t('relay.mod.clearing_back', { time: durationText(t, minutesSince(c.clearing.oldestAt)) })
+            ? t('relay.mod.clearing_back', { time: durationText(tg, { minutes: minutesSince(c.clearing.oldestAt) }) })
             : t('relay.mod.clearing');
-    if (c.locked) return lockLine(t, c.locked);
+    if (c.locked) return lockLine(t, tg, c.locked);
     const slow = !c.slowmode
         ? t('relay.mod.slow_off')
         : c.slowUntil
           ? t('relay.mod.slow_until', {
-                time: durationText(t, c.slowmode / 60),
-                left: durationText(t, minutesUntil(c.slowUntil)),
+                time: durationText(tg, { seconds: c.slowmode }),
+                left: durationText(tg, { minutes: minutesUntil(c.slowUntil) }),
             })
-          : t('relay.mod.slow', { time: durationText(t, c.slowmode / 60) });
+          : t('relay.mod.slow', { time: durationText(tg, { seconds: c.slowmode }) });
     const auto = c.autoClearDaily
         ? t('relay.mod.auto_daily', { time: c.autoClearDaily })
         : c.autoClear
-          ? t('relay.mod.auto', { time: durationText(t, c.autoClear) })
+          ? t('relay.mod.auto', { time: durationText(tg, { minutes: c.autoClear }) })
           : t('relay.mod.auto_off');
     const target = (c.autoClearDaily || c.autoClear) && c.autoClearTarget && c.autoClearTarget !== 'all';
     return [slow, auto, ...(target ? [t(`relay.mod.only_${c.autoClearTarget}`)] : [])].join(' · ');
@@ -760,6 +743,7 @@ interface ChannelSheetProps {
 
 function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: ChannelSheetProps) {
     const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     // 슬로우 기간은 다음에 켤 슬로우에도 쓴다 (null: 계속)
     const [slowFor, setSlowFor] = useState<number | null>(null);
     const lock = channel.locked ? 'keep' : 'off';
@@ -782,7 +766,7 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Chann
                             onChange={(v) => onEdit(slowEdit(Number(v), slowFor))}
                             options={withValue(SLOW_SECONDS, channel.slowmode).map((s) => ({
                                 value: String(s),
-                                label: s ? durationText(t, s / 60) : t('relay.off'),
+                                label: s ? durationText(tg, { seconds: s }) : t('relay.off'),
                             }))}
                         />
                         <Chips
@@ -798,12 +782,12 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Chann
                             }}
                             options={[
                                 { value: null, label: t('relay.mod.forever') },
-                                ...SLOW_FOR_MINUTES.map((m) => ({ value: m, label: durationText(t, m) })),
+                                ...SLOW_FOR_MINUTES.map((m) => ({ value: m, label: durationText(tg, { minutes: m }) })),
                             ]}
                         />
                         <small className="hint">
                             {channel.slowmode && channel.slowUntil
-                                ? t('relay.mod.slow_ends', { time: durationText(t, minutesUntil(channel.slowUntil)) })
+                                ? t('relay.mod.slow_ends', { time: durationText(tg, { minutes: minutesUntil(channel.slowUntil) }) })
                                 : t('relay.mod.slow_for_hint')}
                         </small>
                         <Choice
@@ -814,9 +798,9 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Chann
                                 v !== 'keep' && onEdit({ lock: v === 'off' || v === 'forever' ? v : Number(v) })
                             }
                             options={[
-                                ...(channel.locked ? [{ value: 'keep', label: lockLine(t, channel.locked) }] : []),
+                                ...(channel.locked ? [{ value: 'keep', label: lockLine(t, tg, channel.locked) }] : []),
                                 { value: 'off', label: t('relay.off') },
-                                ...LOCK_MINUTES.map((m) => ({ value: String(m), label: durationText(t, m) })),
+                                ...LOCK_MINUTES.map((m) => ({ value: String(m), label: durationText(tg, { minutes: m }) })),
                                 { value: 'forever', label: t('relay.mod.forever') },
                             ]}
                         />
@@ -852,7 +836,7 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Chann
                                 onChange={(v) => onEdit({ autoClear: Number(v) })}
                                 options={withValue(AUTO_CLEAR_MINUTES, channel.autoClear as number).map((m) => ({
                                     value: String(m),
-                                    label: durationText(t, m),
+                                    label: durationText(tg, { minutes: m }),
                                 }))}
                             />
                         )}
@@ -904,6 +888,7 @@ interface ClearSheetProps {
 
 function ClearSheet({ channel, members, busy, onClear, onStop, onClose }: ClearSheetProps) {
     const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const [target, setTarget] = useState('all');
     const [author, setAuthor] = useState('');
     const [range, setRange] = useState('all');
@@ -936,7 +921,7 @@ function ClearSheet({ channel, members, busy, onClear, onStop, onClose }: ClearS
                         <span>
                             {clearing.oldestAt
                                 ? t('relay.mod.clearing_back_long', {
-                                      time: durationText(t, minutesSince(clearing.oldestAt)),
+                                      time: durationText(tg, { minutes: minutesSince(clearing.oldestAt) }),
                                   })
                                 : t('relay.mod.clearing')}
                         </span>
@@ -978,7 +963,7 @@ function ClearSheet({ channel, members, busy, onClear, onStop, onClose }: ClearS
                         value={recent}
                         disabled={busy}
                         onChange={(v) => setRecent(Number(v))}
-                        options={CLEAR_RECENT_MINUTES.map((m) => ({ value: String(m), label: durationText(t, m) }))}
+                        options={CLEAR_RECENT_MINUTES.map((m) => ({ value: String(m), label: durationText(tg, { minutes: m }) }))}
                     />
                 )}
                 {range === 'custom' && (
@@ -1032,6 +1017,7 @@ interface PickedMember {
 
 function SanctionSheet({ members, busy, onSanction, onClose }: SanctionSheetProps) {
     const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const [query, setQuery] = useState('');
     const [picked, setPicked] = useState<PickedMember | null>(null);
     const [kind, setKind] = useState('chat');
@@ -1105,7 +1091,7 @@ function SanctionSheet({ members, busy, onSanction, onClose }: SanctionSheetProp
                     }}
                     options={SANCTION_MINUTES.map((m) => ({
                         value: m,
-                        label: m === 'forever' ? t('relay.mod.forever') : durationText(t, m),
+                        label: m === 'forever' ? t('relay.mod.forever') : durationText(tg, { minutes: m }),
                     }))}
                 />
                 <label className="field">
@@ -1129,7 +1115,7 @@ function SanctionSheet({ members, busy, onSanction, onClose }: SanctionSheetProp
                         onChange={(v) => setPurge(Number(v))}
                         options={PURGE_SECONDS.map((s) => ({
                             value: String(s),
-                            label: s ? durationText(t, s / 60) : t('relay.none'),
+                            label: s ? durationText(tg, { seconds: s }) : t('relay.none'),
                         }))}
                     />
                 )}
@@ -1154,6 +1140,7 @@ function SanctionList({
     onRelease: (sanction: RelayModSanction) => void;
 }) {
     const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     if (sanctions.length === 0) return <small className="hint">{t('relay.mod.no_sanctions')}</small>;
     return (
         <ul className="rows" aria-label={t('relay.mod.sanctions')}>
@@ -1168,7 +1155,7 @@ function SanctionList({
                         <div className="row-sub">
                             {[
                                 s.until
-                                    ? t('relay.mod.left', { time: durationText(t, minutesUntil(s.until)) })
+                                    ? t('relay.mod.left', { time: durationText(tg, { minutes: minutesUntil(s.until) }) })
                                     : t('relay.mod.forever'),
                                 ...(s.inGuild ? [] : [t('relay.mod.not_in_guild')]),
                             ].join(' · ')}
@@ -1198,6 +1185,7 @@ interface ModerationSectionProps extends SectionProps {
 
 function ModerationSection({ relay, g, can, moderation, busy, write, refresh }: ModerationSectionProps) {
     const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     // { id, sheet: 'channel' | 'clear' } | { sheet: 'sanction' }
     const [open, setOpen] = useState<{ id?: string; sheet: 'channel' | 'clear' | 'sanction' } | null>(null);
     const [members, setMembers] = useState<RelayModMember[] | null>(null);
@@ -1233,7 +1221,7 @@ function ModerationSection({ relay, g, can, moderation, busy, write, refresh }: 
                             >
                                 <span className="row-main">
                                     <span className="row-title row-title-one"># {c.name}</span>
-                                    <span className="row-sub">{channelLine(t, c)}</span>
+                                    <span className="row-sub">{channelLine(t, tg, c)}</span>
                                 </span>
                                 <Icon name="chevronRight" size={16} />
                             </button>

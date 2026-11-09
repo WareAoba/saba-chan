@@ -273,18 +273,13 @@ async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
 
     // ── 다운로드 ──
     tracing::info!("포터블 Python 다운로드 중: {}", url);
-    download_file(&url, &tmp_archive)
+    // 고정 해시와 다르면 받은 파일을 남기지 않는다 (풀지 않는다, C6)
+    download_file(&url, &tmp_archive, sha256.as_deref())
         .await
         .context(
             "Python 다운로드 실패. \
              인터넷 연결을 확인하거나, Python 3.11 이상을 수동 설치해 주세요.",
         )?;
-
-    // 고정 해시와 다르면 풀지 않는다 (C6)
-    if let Err(e) = saba_chan_updater_lib::python_pin::verify(&tmp_archive, sha256.as_deref()) {
-        let _ = std::fs::remove_file(&tmp_archive);
-        return Err(anyhow::anyhow!(e));
-    }
 
     // ── 추출 ──
     tracing::info!("포터블 Python 추출 중...");
@@ -329,49 +324,34 @@ async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  Internal: 다운로드 & 추출 (OS 네이티브 도구)
+//  Internal: 다운로드 (검증 다운로드) & 추출 (OS 네이티브 도구)
 // ═══════════════════════════════════════════════════════════════
 
-/// 파일 다운로드 — Windows: PowerShell, Linux/macOS: curl
-async fn download_file(url: &str, dest: &Path) -> Result<()> {
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+/// 받을 때 끊기면 다시 받는 횟수 (예전 `curl --retry 3`과 같다)
+const DOWNLOAD_RETRIES: usize = 3;
 
-    let output = {
-        #[cfg(target_os = "windows")]
-        {
-            // PowerShell .NET WebClient — 진행률 비활성화로 최대 속도
-            // URL·경로는 스크립트에 끼우지 않고 환경변수로 넘긴다 (따옴표가 든 경로도 그대로)
-            let script = "$ProgressPreference = 'SilentlyContinue'; \
-                 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; \
-                 Invoke-WebRequest -Uri $env:SABA_DL_URL -OutFile $env:SABA_DL_DEST -UseBasicParsing";
-            let mut cmd = Command::new(saba_chan_updater_lib::process::system_tool("powershell"));
-            cmd.args(["-NoProfile", "-NonInteractive", "-Command", script])
-                .env("SABA_DL_URL", url)
-                .env("SABA_DL_DEST", dest);
-            apply_creation_flags(&mut cmd);
-            crate::plugin::preparation_output(&mut cmd).await?
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            // curl (macOS/Linux 기본 내장)
-            let mut cmd = Command::new("curl");
-            cmd.args([
-                "-fSL",
-                "--retry", "3",
-                "-o",
-                &dest.to_string_lossy(),
-                url,
-            ]);
-            apply_creation_flags(&mut cmd);
-            crate::plugin::preparation_output(&mut cmd).await?
-        }
-    };
+/// 파일 다운로드 — 업데이터와 같은 검증 다운로드 (`expected`: 고정 SHA-256, 다르면 받은 파일을 남기지 않는다).
+/// 프록시는 reqwest가 환경 변수와 OS 설정에서 읽는다. 연결·전송 실패는 몇 번 다시 받는다 (해시가 다르면 다시 받지 않는다)
+///
+/// 형태를 지운 future를 돌려준다: reqwest 타입의 Send 판정이 이것을 기다리는 시작 경로(자동 재시작 등)마다 깊어지지 않게
+fn download_file<'a>(url: &'a str, dest: &'a Path, expected: Option<&'a str>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+    Box::pin(download_and_check(url, dest, expected))
+}
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!("다운로드 실패: {}", stderr));
+async fn download_and_check(url: &str, dest: &Path, expected: Option<&str>) -> Result<()> {
+    use saba_chan_updater_lib::download::{download_verified, DownloadError};
+    let client = saba_chan_updater_lib::tls::http_client_builder().build()?;
+    let mut attempt = 0;
+    loop {
+        match download_verified(&client, url, dest, expected, None, None).await {
+            Ok(_) => break,
+            Err(e @ (DownloadError::Http(_) | DownloadError::Stalled(_) | DownloadError::Io(_))) if attempt < DOWNLOAD_RETRIES => {
+                attempt += 1;
+                tracing::warn!("다운로드 실패, 다시 받습니다 ({}/{}): {}", attempt, DOWNLOAD_RETRIES, e);
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+            Err(e) => return Err(anyhow::anyhow!("다운로드 실패: {}", e)),
+        }
     }
 
     // 크기 검증 (Python 배포판은 최소 수 MB)

@@ -1,6 +1,6 @@
 //! 원격 데몬이 릴레이에 하는 일 (05 §4.4 (j)): 주소 올리기·내리기, 받은 연결표 확인. 노드 토큰으로 서명한다
 
-use crate::ipc::handlers::relay::{relay_client, signed_headers_with};
+use crate::ipc::handlers::relay::{relay_client, signed_request};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -44,13 +44,7 @@ async fn send(target: &Target, method: reqwest::Method, path: &str, body: Option
     }
     let client = relay_client().map_err(|_| Failure::Unreachable)?;
     let text = body.map(Value::to_string);
-    let mut req = client.request(method.clone(), format!("{}{}", target.base, path));
-    for (k, v) in signed_headers_with(&target.token, method.as_str(), path, text.as_deref()).ok_or(Failure::Unreachable)? {
-        req = req.header(k, v);
-    }
-    if let Some(text) = text {
-        req = req.header("Content-Type", "application/json").body(text);
-    }
+    let req = signed_request(&client, method, &target.base, path, &target.token, text).ok_or(Failure::Unreachable)?;
     let res = req.send().await.map_err(|_| Failure::Unreachable)?;
     let status = res.status().as_u16();
     let data = res.json::<Value>().await.unwrap_or(Value::Null);

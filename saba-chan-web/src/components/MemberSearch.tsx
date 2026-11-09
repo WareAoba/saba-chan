@@ -1,25 +1,8 @@
-import * as L from '@gui/components/discord/levels';
 import type { DiscordMember } from '@gui/components/discord/types';
-import type { PointerEvent as ReactPointerEvent } from 'react';
-import { useMemo, useState } from 'react';
+import { useMemberSearch } from '@gui/components/discord/useMemberSearch';
 import { useTranslation } from 'react-i18next';
 import { Icon } from './icons';
 import { Avatar } from './ui';
-
-/** 검색 결과를 한 번에 보이는 수. 목록 끝까지 내리면 이만큼 더 보인다 (사용자 지정 2026-11-07, 앱과 같다) */
-export const MEMBER_PAGE = 10;
-
-export const isSnowflake = (v: string) => /^\d{17,20}$/.test(v); // 디스코드 ID
-
-/** 서버 닉네임(표시 이름)·전역 이름·사용자 이름으로 찾는다. 아이디로는 찾지 않는다 */
-export function searchMembers(members: DiscordMember[], query: string, name: (m: DiscordMember) => string) {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    const hit = members.filter((m) =>
-        [m.displayName, m.globalName, m.username].some((v) => typeof v === 'string' && v.toLowerCase().includes(q)),
-    );
-    return L.sortByName(hit, name);
-}
 
 interface MemberSearchProps {
     members: DiscordMember[];
@@ -51,23 +34,8 @@ export function MemberSearch({
     autoFocus,
 }: MemberSearchProps) {
     const { t: tg } = useTranslation('gui');
-    const [query, setQuery] = useState('');
-    const [shown, setShown] = useState(MEMBER_PAGE);
-    // 끄는 결과 칩은 팝업(스크롤 칸) 밖으로 띄워야 잘리지 않는다: 누른 자리를 적어 두고 끄는 동안 fixed로 그 자리에 둔다
-    const [origin, setOrigin] = useState<{ id: string; left: number; top: number; width: number } | null>(null);
-    const results = useMemo(() => searchMembers(members, query, (m) => nameOf(String(m.id))), [members, query, nameOf]);
-    const withOrigin = (mid: string, props: Record<string, unknown>) => ({
-        ...props,
-        onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
-            const box = e.currentTarget.getBoundingClientRect();
-            setOrigin({ id: mid, left: box.left, top: box.top, width: box.width });
-            (props.onPointerDown as ((ev: ReactPointerEvent<HTMLElement>) => void) | undefined)?.(e);
-        },
-    });
-    const id = query.trim();
-    // 멤버 목록에 없는 사람은 디스코드 ID를 그대로 적어 더한다
-    const byId = onPick && isSnowflake(id) && !members.some((m) => String(m.id) === id);
-    const open = !!id;
+    const search = useMemberSearch(members, nameOf, onPick, dragging);
+    const { query, id, results, open } = search;
     return (
         <div className={`member-search${dragging ? ' is-dragging' : ''}`}>
             <input
@@ -80,12 +48,9 @@ export function MemberSearch({
                 disabled={disabled}
                 // biome-ignore lint/a11y/noAutofocus: 사람 추가를 누르면 바로 찾게 한다
                 autoFocus={autoFocus}
-                onChange={(e) => {
-                    setQuery(e.target.value);
-                    setShown(MEMBER_PAGE);
-                }}
+                onChange={(e) => search.change(e.target.value)}
                 onKeyDown={(e) => {
-                    if (e.key === 'Escape') setQuery('');
+                    if (e.key === 'Escape') search.clear();
                 }}
             />
             {query && (
@@ -94,7 +59,7 @@ export function MemberSearch({
                     className="member-clear"
                     aria-label={tg('discord.perm_member_search_clear')}
                     title={tg('discord.perm_member_search_clear')}
-                    onClick={() => setQuery('')}
+                    onClick={search.clear}
                 >
                     <Icon name="clear" size={12} />
                 </button>
@@ -104,15 +69,11 @@ export function MemberSearch({
                     className="member-results"
                     role="listbox"
                     aria-label={label}
-                    onScroll={(e) => {
-                        const el = e.currentTarget;
-                        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 24 && shown < results.length)
-                            setShown((n) => n + MEMBER_PAGE);
-                    }}
+                    onScroll={(e) => search.scroll(e.currentTarget)}
                 >
-                    {results.slice(0, shown).map((m) => {
+                    {search.shown.map((m) => {
                         const mid = String(m.id);
-                        const floating = dragging === mid && origin?.id === mid;
+                        const floating = search.floatStyle(mid);
                         return (
                             <div key={mid} className="member-result" role="none">
                                 <button
@@ -121,18 +82,10 @@ export function MemberSearch({
                                     aria-selected={false}
                                     aria-label={nameOf(mid)}
                                     className={`person-chip${dragging === mid ? ' is-dragging' : ''}${floating ? ' is-floating' : ''}`}
-                                    style={
-                                        floating
-                                            ? { left: origin.left, top: origin.top, width: origin.width }
-                                            : undefined
-                                    }
+                                    style={floating}
                                     disabled={disabled}
-                                    {...(dragProps ? withOrigin(mid, dragProps(mid)) : {})}
-                                    onClick={() => {
-                                        if (!onPick) return;
-                                        onPick(mid);
-                                        setQuery('');
-                                    }}
+                                    {...(dragProps ? search.withOrigin(mid, dragProps(mid)) : {})}
+                                    onClick={() => search.pick(mid)}
                                 >
                                     <Avatar url={avatarOf(mid)} name={nameOf(mid)} className="avatar avatar-chip" />
                                     <span>{nameOf(mid)}</span>
@@ -143,7 +96,7 @@ export function MemberSearch({
                             </div>
                         );
                     })}
-                    {byId && (
+                    {search.byId && (
                         <div className="member-result" role="none">
                             <button
                                 type="button"
@@ -151,16 +104,13 @@ export function MemberSearch({
                                 aria-selected={false}
                                 className="person-chip is-add"
                                 disabled={disabled}
-                                onClick={() => {
-                                    onPick?.(id);
-                                    setQuery('');
-                                }}
+                                onClick={() => search.pick(id)}
                             >
                                 <Icon name="plus" size={14} /> {tg('discord.perm_add_by_id', { id })}
                             </button>
                         </div>
                     )}
-                    {results.length === 0 && !byId && (
+                    {results.length === 0 && !search.byId && (
                         <div className="hint member-empty" role="none">
                             {tg('discord.perm_member_search_empty')}
                         </div>

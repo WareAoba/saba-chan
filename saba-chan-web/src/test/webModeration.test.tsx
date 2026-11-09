@@ -97,8 +97,8 @@ describe('웹 서버 관리', () => {
 
     it('채널 줄에 슬로우 끝·매일 청소·이어 지우기를 보인다', async () => {
         await open();
-        expect(screen.getByText(/Slow mode 10s · ends in 1 h/)).toBeTruthy();
-        expect(screen.getByText('Clearing · back to 23 d ago')).toBeTruthy();
+        expect(screen.getByText(/Slow mode 10s · ends in 1h/)).toBeTruthy();
+        expect(screen.getByText('Clearing · back to 23d ago')).toBeTruthy();
     });
 
     it('제재 중인 사람을 종류와 함께 보이고, 풀면 그 종류로 푼다', async () => {
@@ -125,7 +125,7 @@ describe('웹 서버 관리', () => {
         fireEvent.click(sheet.getByRole('button', { name: 'Ban' }));
         expect(sheet.getByText('Delete their messages')).toBeTruthy();
         fireEvent.click(sheet.getByRole('button', { name: 'Voice' }));
-        fireEvent.click(sheet.getByRole('button', { name: '1 h' }));
+        fireEvent.click(sheet.getByRole('button', { name: '1h' }));
         fireEvent.change(sheet.getByLabelText(/Reason/), { target: { value: 'spam' } });
         fireEvent.click(sheet.getByRole('button', { name: 'Sanction' }));
         await flush();
@@ -159,7 +159,7 @@ describe('웹 서버 관리', () => {
         const session = await open();
         fireEvent.click(screen.getByRole('button', { name: /# chat/ }));
         const sheet = within(screen.getByRole('dialog'));
-        fireEvent.click(sheet.getByRole('button', { name: '1 h' }));
+        fireEvent.click(sheet.getByRole('button', { name: '1h' }));
         await flush();
         fireEvent.click(sheet.getByRole('button', { name: 'Daily' }));
         await flush();

@@ -291,7 +291,7 @@ impl ManagedProcess {
         // 러너가 끝났다는 신호. 로그 따라 읽기를 마저 끝낸 뒤에 running을 내린다.
         let (ended_tx, ended_rx) = watch::channel(false);
         let exit_slot: Arc<std::sync::Mutex<Option<ProcessExit>>> = Default::default();
-        let regex = log_pattern.and_then(|p| Regex::new(p).ok());
+        let regex = log_level_regex(log_pattern);
 
         // 러너 로그 파일을 따라 읽어 콘솔 버퍼로 (러너가 디스크 기록을 맡는다)
         let tail = {

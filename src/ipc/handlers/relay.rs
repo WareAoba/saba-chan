@@ -216,6 +216,26 @@ pub(crate) fn signed_headers(
     signed_headers_with(&peek_node_token()?, method, url_path, body)
 }
 
+/// 노드 토큰으로 서명한 요청. 본문이 있으면 서명한 문자열 그대로 JSON으로 싣는다. 토큰이 잘못됐으면 None
+pub(crate) fn signed_request(
+    client: &reqwest::Client,
+    method: reqwest::Method,
+    base: &str,
+    path: &str,
+    token: &str,
+    body: Option<String>,
+) -> Option<reqwest::RequestBuilder> {
+    let headers = signed_headers_with(token, method.as_str(), path, body.as_deref())?;
+    let mut req = client.request(method, format!("{}{}", base, path));
+    for (k, v) in headers {
+        req = req.header(k, v);
+    }
+    if let Some(body) = body {
+        req = req.header("Content-Type", "application/json").body(body);
+    }
+    Some(req)
+}
+
 /// 정해 둔 토큰으로 서명한다 (릴레이 에이전트 세션은 시작할 때의 주소·토큰 쌍을 끝까지 쓴다)
 pub(crate) fn signed_headers_with(
     token: &str,

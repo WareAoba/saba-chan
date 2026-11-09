@@ -54,6 +54,16 @@ window.SabaUI = (() => {
         document.documentElement.style.setProperty('--wordmark', `url("${new URL(file, document.baseURI).href}")`);
     }
 
+    /**
+     * 번역 문구: `bundles[lang][key]`, 없으면 영어, 그것도 없으면 key. `{{name}}`을 `vars.name`으로 바꾼다.
+     * lang은 Rust가 정규화해 준 지원 언어 태그다 (get_preferred_language)
+     */
+    function translate(bundles, lang, key, vars = {}) {
+        const bundle = bundles[lang] || bundles.en;
+        const template = bundle[key] || bundles.en[key] || key;
+        return template.replace(/\{\{(\w+)\}\}/g, (_, name) => String(vars[name] ?? ''));
+    }
+
     // ── 링 ─────────────────────────────────────────────
     // 한 바퀴 1초짜리 회전을 두고 playbackRate로 빠르기를 바꾼다 (각도가 끊기지 않는다)
     const PERIOD = { idle: 6000, spin: 1000, ok: 3000, bad: 2000 };
@@ -251,7 +261,7 @@ window.SabaUI = (() => {
         return { go, reveal, afterReveal, afterSettled, reset, get step() { return el.dataset.step; } };
     }
 
-    return { REDUCE, TIMING, setTheme, systemTheme, effectiveTheme, setWordmark, ring, matrix, flow };
+    return { REDUCE, TIMING, setTheme, systemTheme, effectiveTheme, setWordmark, translate, ring, matrix, flow };
 })();
 
 // ── 오버레이 스크롤바 (saba-chan-gui utils/overlayScrollbar.ts와 같은 동작) ──

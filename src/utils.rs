@@ -254,3 +254,8 @@ mod tests {
         assert_eq!(left, [".hidden", "box", "box.zip"]);
     }
 }
+
+/// 실패할 때마다 두 배로 늘리는 대기 (`failures`가 1이면 `base`), `max`까지
+pub fn exp_backoff(base: std::time::Duration, max: std::time::Duration, failures: u32) -> std::time::Duration {
+    base.saturating_mul(1u32 << failures.saturating_sub(1).min(16)).min(max)
+}

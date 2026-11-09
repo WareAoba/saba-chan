@@ -440,12 +440,6 @@
       "NO_CLEAR_JOB": "Nothing is being cleared in this channel.",
       "generic": "Couldn't change it. Try again in a moment."
     },
-    "dur": {
-      "seconds": "{{count}}s",
-      "minutes": "{{count}} min",
-      "hours": "{{count}} h",
-      "days": "{{count}} d"
-    },
     "mod": {
       "title": "Server management",
       "locked": "Locked",
