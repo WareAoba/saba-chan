@@ -179,20 +179,26 @@ pub(super) fn verdicts(queries: &[Query]) -> Vec<Option<Verdict>> {
     #[cfg(target_os = "macos")]
     {
         let Some(global) = mac::run(&["--getglobalstate"]) else { return vec![None; queries.len()] };
+        let block_all = mac::run(&["--getblockall"]);
+        // 켜짐(앱마다 판정)일 때만 목록과 프로그램을 묻는다
+        let apps = match mac_verdict(&global, block_all.as_deref(), None) {
+            None if global.contains("(State = 1)") => mac::run(&["--listapps"]),
+            _ => None,
+        };
         queries
             .iter()
             .map(|&(port, protocol, program)| {
-                // 켜짐(앱마다 판정)일 때만 프로그램을 묻는다
-                let exe = match mac_verdict(&global, None) {
-                    Some(v) => return Some(v),
-                    None if global.contains("(State = 1)") => match program {
-                        Program::Daemon => std::env::current_exe().ok(),
-                        Program::Listener => mac::listener_exe(port, protocol),
-                    }?,
-                    None => return None,
-                };
-                let app = mac::run(&["--getappblocked", &exe.to_string_lossy()]);
-                mac_verdict(&global, app.as_deref())
+                let Some(apps) = apps.as_deref() else { return mac_verdict(&global, block_all.as_deref(), None) };
+                let exe = match program {
+                    Program::Daemon => std::env::current_exe().ok(),
+                    Program::Listener => mac::listener_exe(port, protocol),
+                }?;
+                let exe = exe.to_string_lossy();
+                if !mac_listed(apps, &exe) {
+                    return None;
+                }
+                let app = mac::run(&["--getappblocked", &exe]);
+                mac_verdict(&global, block_all.as_deref(), app.as_deref())
             })
             .collect()
     }
@@ -202,14 +208,16 @@ pub(super) fn verdicts(queries: &[Query]) -> Vec<Option<Verdict>> {
     }
 }
 
-/// 맥 방화벽 판정: `--getglobalstate` 출력(`State = 0` 꺼짐, `1` 켜짐, `2` 모두 차단)과 받는 프로그램의 `--getappblocked` 출력.
-/// 켜져 있으면 목록에서 막혔는지 허용됐는지 적힌 경우만 판정한다 (목록에 없으면 macOS가 처음 받을 때 묻는다)
+/// 맥 방화벽 판정: `--getglobalstate` 출력(`State = 0` 꺼짐, `1` 켜짐, `2` 모두 차단), `--getblockall` 출력(새 macOS는
+/// 모두 차단을 여기에만 적는다), 받는 프로그램의 `--getappblocked` 출력.
+/// `--getappblocked`는 목록에 없는 프로그램도 "permitted"라고 답하므로, 부르는 쪽이 `--listapps`에 있는 프로그램만 넘긴다
+/// ([`mac_listed`]). 목록에 없으면 macOS가 처음 받을 때 묻거나 서명을 보고 정하므로 판정하지 않는다
 #[cfg(any(target_os = "macos", test))]
-pub(super) fn mac_verdict(global: &str, app: Option<&str>) -> Option<Verdict> {
+pub(super) fn mac_verdict(global: &str, block_all: Option<&str>, app: Option<&str>) -> Option<Verdict> {
     if global.contains("(State = 0)") {
         return Some(Verdict::Allowed);
     }
-    if global.contains("(State = 2)") {
+    if global.contains("(State = 2)") || block_all.is_some_and(|b| b.contains("set to enabled")) {
         return Some(Verdict::Blocked);
     }
     if !global.contains("(State = 1)") {
@@ -225,6 +233,18 @@ pub(super) fn mac_verdict(global: &str, app: Option<&str>) -> Option<Verdict> {
     } else {
         None
     }
+}
+
+/// `--listapps` 출력(`1 : /경로` 줄)에 그 실행 파일이나 그것을 담은 앱 묶음이 있는지
+#[cfg(any(target_os = "macos", test))]
+pub(super) fn mac_listed(apps: &str, exe: &str) -> bool {
+    apps.lines().filter_map(|line| line.split_once(':')).any(|(n, path)| {
+        let path = path.trim().trim_end_matches('/');
+        !path.is_empty()
+            && !n.trim().is_empty()
+            && n.trim().bytes().all(|b| b.is_ascii_digit())
+            && (exe == path || exe.strip_prefix(path).is_some_and(|rest| rest.starts_with('/')))
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -509,12 +529,22 @@ mod tests {
     #[test]
     fn mac_firewall_states_map_to_verdicts() {
         let on = "Firewall is enabled. (State = 1)";
-        assert_eq!(mac_verdict("Firewall is disabled. (State = 0)", None), Some(Verdict::Allowed));
-        assert_eq!(mac_verdict("Firewall is blocking all non-essential incoming connections. (State = 2)", None), Some(Verdict::Blocked));
-        assert_eq!(mac_verdict(on, None), None);
-        assert_eq!(mac_verdict(on, Some("The application /x/java is permitted")), Some(Verdict::Allowed));
-        assert_eq!(mac_verdict(on, Some("The application /x/java is blocked")), Some(Verdict::Blocked));
-        assert_eq!(mac_verdict(on, Some("The application /x/java is not part of the firewall")), None);
-        assert_eq!(mac_verdict("something else", Some("blocked")), None);
+        let off_all = Some("Firewall has block all state set to disabled.");
+        assert_eq!(mac_verdict("Firewall is disabled. (State = 0)", off_all, None), Some(Verdict::Allowed));
+        assert_eq!(mac_verdict("Firewall is blocking all non-essential incoming connections. (State = 2)", None, None), Some(Verdict::Blocked));
+        assert_eq!(mac_verdict(on, Some("Firewall has block all state set to enabled."), None), Some(Verdict::Blocked));
+        assert_eq!(mac_verdict(on, off_all, None), None);
+        assert_eq!(mac_verdict(on, off_all, Some("Incoming connection to /x/java is permitted.")), Some(Verdict::Allowed));
+        assert_eq!(mac_verdict(on, off_all, Some("Incoming connection to /x/java is blocked.")), Some(Verdict::Blocked));
+        assert_eq!(mac_verdict("something else", None, Some("blocked")), None);
+    }
+
+    #[test]
+    fn only_programs_in_the_mac_firewall_list_are_judged() {
+        let apps = "ALF: total number of apps = 2 \n\n1 :  /Applications/Saba-chan.app \n \t ( Allow incoming connections ) \n\n2 :  /opt/java/bin/java \n \t ( Block incoming connections ) \n";
+        assert!(mac_listed(apps, "/opt/java/bin/java"));
+        assert!(mac_listed(apps, "/Applications/Saba-chan.app/Contents/MacOS/saba-core"));
+        assert!(!mac_listed(apps, "/opt/java/bin/java2"));
+        assert!(!mac_listed(apps, "/bin/sh"));
     }
 }

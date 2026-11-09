@@ -152,6 +152,11 @@ fn silent_uninstall(args: &[String]) -> i32 {
     rt.block_on(uninstall::do_silent_uninstall(uninstall::keep_from_args(args)))
 }
 
+/// 앱 설정(tauri.conf.json·Info.plist)을 한 번만 펼친다: 두 곳에서 펼치면 맥에서 `_EMBED_INFO_PLIST` 심볼이 겹쳐 빌드가 깨진다
+fn context() -> tauri::Context {
+    tauri::generate_context!()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();

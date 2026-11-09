@@ -417,7 +417,7 @@ pub(crate) fn run(args: &[String]) {
                 get_theme,
                 crate::backdrop::get_window_backdrop,
             ])
-            .run(tauri::generate_context!())
+            .run(crate::context())
             .expect("error while running tauri application");
     }
 }
