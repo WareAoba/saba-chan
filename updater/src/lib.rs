@@ -49,7 +49,7 @@ pub use relay::{ReleaseManifest, ManifestComponent};
 pub use integrity::{IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity};
 pub use marker::UpdateCompletionMarker;
 pub(crate) use apply::{replace_dir, swap_dir_untouched};
-pub use apply::SWAP_FINGERPRINT;
+pub use apply::{carry_swap_dot_entries, SWAP_FINGERPRINT};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
