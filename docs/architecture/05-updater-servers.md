@@ -174,7 +174,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 | Method | Path | 동작 |
 |---|---|---|
-| GET | `/api/updates/status` | 캐시된 상태. Locales는 숨긴다. `phase: {state: "idle"\|"waiting"\|"applying"\|"done"\|"ready", version, since(RFC 3339), waiting_for: [{kind: "backup"\|"provision"\|"server_update"\|"module_call"\|"non_runner_server"\|"extension_bridge"\|"runner_format", instance_id, name}], reason: "rolled_back"\|"gui_window_open"\|"wait_pid_timeout"\|"failed_release"\|null, notes: {언어: 패치노트}\|null}`, `stable_wait: "0.1.14"\|null`(§1.4 같은 판 베타). `module-install`의 `provision`은 `instance_id`가 비고 `name`이 모듈 id다 |
+| GET | `/api/updates/status` | 캐시된 상태. Locales는 숨긴다. 설치된 번역 판 `locales_version`(`locales/version`)을 싣는다: GUI·CLI TUI가 바뀌면 번역을 다시 읽는다(01 `/api/locales/:lang/:ns`). `phase: {state: "idle"\|"waiting"\|"applying"\|"done"\|"ready", version, since(RFC 3339), waiting_for: [{kind: "backup"\|"provision"\|"server_update"\|"module_call"\|"non_runner_server"\|"extension_bridge"\|"runner_format", instance_id, name}], reason: "rolled_back"\|"gui_window_open"\|"wait_pid_timeout"\|"failed_release"\|null, notes: {언어: 패치노트}\|null}`, `stable_wait: "0.1.14"\|null`(§1.4 같은 판 베타). `module-install`의 `provision`은 `instance_id`가 비고 `name`이 모듈 id다 |
 | POST | `/api/updates/phase/ack` | `done`을 `idle`로 (다른 단계는 그대로). 응답 `{ok, phase}` |
 | POST | `/api/updates/restart` | `ready`의 "지금 다시 시작". `failed_release`를 지우고, 받아 둔 것(없으면 받을 것 전부)을 적용한다. 데몬이 내려가야 하면 `launch-updater`와 같은 본문·응답이고, 아니면 `{ok, updater_launched:false, daemon_stopping:false, gui_restart:false, errors}`. 막는 것을 보지 않는다(사용자가 고른 것) |
 | PUT | `/api/updates/gui-window` | body `{open: bool}`. GUI가 창을 보이거나 숨길 때(트레이) 알린다. GUI 등록이 없으면 닫힘으로 보고, 알린 적이 없으면 트레이 표시(`resident`)로 판단한다. 숨기면 `gui_window_open`으로 미룬 적용을 이어 간다 |

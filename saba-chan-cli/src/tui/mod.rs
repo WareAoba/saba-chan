@@ -295,7 +295,10 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
             }
             Msg::Refreshed(f) => {
                 refreshing = false;
-                app.snap.apply(*f);
+                // 업데이터가 번역을 바꿨으면 cli.json을 다시 읽는다 (다음 그리기부터 새 문구)
+                if app.snap.apply(*f) {
+                    crate::i18n::reload();
+                }
                 app.apply_open_server();
             }
             Msg::ViewRefreshed(v) => {
