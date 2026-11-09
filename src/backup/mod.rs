@@ -750,7 +750,8 @@ pub fn expired_restore_safeties(list: &[BackupInfo], started_at: u64, now: u64) 
         return Vec::new();
     }
     list.iter()
-        .filter(|b| b.kind == BackupKind::PreRestore && b.created < started_at)
+        // 켠 시각은 초 단위라 그 초가 끝나기 전에 만든 백업까지 켜기 전의 것으로 본다 (복원은 서버가 꺼진 동안만 한다)
+        .filter(|b| b.kind == BackupKind::PreRestore && b.made < started_at.saturating_add(1).saturating_mul(1_000_000_000))
         .map(|b| b.name.clone())
         .collect()
 }
@@ -1431,16 +1432,21 @@ mod tests {
     /// 복원 전 백업은 그 뒤에 켠 서버가 15분을 버텼을 때만 치운다: 아직 안 켰거나 켠 지 얼마 안 됐으면 그대로 둔다
     #[test]
     fn restore_safety_backups_expire_after_the_server_has_run_a_while() {
-        let info = |name: &str, kind, created| BackupInfo { name: name.into(), kind, created, size: 0, stored: 0, readable: true, made: created * 1_000_000_000 };
+        let info = |name: &str, kind, made_ns: u64| BackupInfo { name: name.into(), kind, created: made_ns / 1_000_000_000, size: 0, stored: 0, readable: true, made: made_ns };
         let all = vec![
-            info("before-start-pre-restore.zip", BackupKind::PreRestore, 100),
-            info("after-start-pre-restore.zip", BackupKind::PreRestore, 2000),
-            info("old-manual.zip", BackupKind::Manual, 100),
-            info("old-update.zip", BackupKind::PreUpdate, 100),
+            info("before-start-pre-restore.zip", BackupKind::PreRestore, 100 * 1_000_000_000),
+            // 켠 시각은 초 단위로 내려 적히므로, 같은 초 안에 만든 백업도 켜기 전의 것이다 (복원과 시작이 같은 초에 끝난 경우)
+            info("same-second-pre-restore.zip", BackupKind::PreRestore, 1000 * 1_000_000_000 + 900_000_000),
+            info("after-start-pre-restore.zip", BackupKind::PreRestore, 1001 * 1_000_000_000),
+            info("old-manual.zip", BackupKind::Manual, 100 * 1_000_000_000),
+            info("old-update.zip", BackupKind::PreUpdate, 100 * 1_000_000_000),
         ];
         let start = 1000;
         assert!(expired_restore_safeties(&all, start, start + RESTORE_SAFETY_GRACE_SECS - 1).is_empty(), "not yet 15 minutes");
-        assert_eq!(expired_restore_safeties(&all, start, start + RESTORE_SAFETY_GRACE_SECS), vec!["before-start-pre-restore.zip".to_string()]);
+        assert_eq!(
+            expired_restore_safeties(&all, start, start + RESTORE_SAFETY_GRACE_SECS),
+            vec!["before-start-pre-restore.zip".to_string(), "same-second-pre-restore.zip".to_string()]
+        );
     }
 
     /// 백업 전체 용량은 디스크에 실제로 있는 크기다: 같은 내용을 가진 두 백업이 내용 저장소를 나눠 쓰므로 줄 크기의 합보다 작다

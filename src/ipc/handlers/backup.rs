@@ -1133,36 +1133,43 @@ pub fn spawn_scheduler(state: IPCServer) {
 /// 복원한 뒤 켠 서버가 15분 넘게 돌면 복원 직전 안전 백업을 치운다 (그동안 접속해 확인한다고 본다).
 /// 서버를 켜기 전이나 켠 지 15분 안에는 남겨 둔다. 켠 시각은 데몬이 다시 떠도 그대로라 상태를 따로 저장하지 않는다
 async fn sweep_restore_safeties(state: &IPCServer, swept: &mut std::collections::HashMap<String, u64>) {
-    let now = saba_runner::now();
-    let running: Vec<(String, u64, PathBuf)> = {
+    // 지금 도는 서버가 켠 시각(초). 켜져 있지 않거나 켠 지 15분이 안 됐으면 None
+    async fn long_running(state: &IPCServer, id: &str, now: u64) -> Option<u64> {
         let supervisor = state.supervisor.read().await;
-        let mut out = Vec::new();
-        for instance in supervisor.instance_store.list() {
-            if !supervisor.is_running(&instance.id).await {
-                continue;
-            }
-            if let Ok(started) = supervisor.tracker.get_start_time(&instance.id) {
-                if now >= started.saturating_add(backup::RESTORE_SAFETY_GRACE_SECS) && swept.get(&instance.id) != Some(&started) {
-                    out.push((instance.id.clone(), started, backup::backups_dir(&supervisor.instance_store.instance_dir(&instance.id))));
-                }
-            }
+        if !supervisor.is_running(id).await {
+            return None;
         }
-        out
-    };
-    for (id, started, dir) in running {
+        let started = supervisor.tracker.get_start_time(id).ok()?;
+        (now >= started.saturating_add(backup::RESTORE_SAFETY_GRACE_SECS)).then_some(started)
+    }
+    let now = saba_runner::now();
+    let ids: Vec<String> = state.supervisor.read().await.instance_store.list().iter().map(|i| i.id.clone()).collect();
+    for id in ids {
+        match long_running(state, &id, now).await {
+            Some(started) if swept.get(&id) != Some(&started) => {}
+            _ => continue,
+        }
         // 복원·백업·업데이트가 잡고 있으면 다음 차례에 다시 본다
         let Some(_guard) = InstanceLock::take(&id) else { continue };
-        let swept_dir = dir.clone();
-        let removed = tokio::task::spawn_blocking(move || {
-            let expired = backup::expired_restore_safeties(&backup::list(&swept_dir), started, now);
-            expired.into_iter().filter(|n| backup::delete(&swept_dir, n).is_ok()).collect::<Vec<_>>()
+        // 목록을 모으는 동안 서버가 멈추거나 다시 켜졌을 수 있다: 지우기 직전에 켠 시각을 다시 읽는다
+        let Some(started) = long_running(state, &id, saba_runner::now()).await else { continue };
+        let Ok(dir) = backups_dir(state, &id).await else { continue };
+        let (expired, removed) = tokio::task::spawn_blocking(move || {
+            let expired = backup::expired_restore_safeties(&backup::list(&dir), started, saba_runner::now());
+            let removed: Vec<String> = expired.iter().filter(|n| backup::delete(&dir, n).is_ok()).cloned().collect();
+            (expired, removed)
         })
         .await
         .unwrap_or_default();
         if !removed.is_empty() {
             tracing::info!("Removed {} restore safety backup(s) of '{}' after the server ran {} minutes", removed.len(), id, backup::RESTORE_SAFETY_GRACE_SECS / 60);
         }
-        swept.insert(id, started);
+        // 못 지운 것(파일 잠금 등)이 있으면 처리한 것으로 적지 않아 다음 차례(30초 뒤)에 다시 시도한다
+        if removed.len() == expired.len() {
+            swept.insert(id, started);
+        } else {
+            tracing::warn!("Could not remove all restore safety backups of '{}'; will retry", id);
+        }
     }
 }
 
