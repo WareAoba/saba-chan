@@ -21,6 +21,7 @@ pub mod constants;
 pub mod download;
 pub mod python_pin;
 pub mod launch_ticket;
+pub mod live_apply;
 pub mod integrity;
 pub mod marker;
 pub mod notify_app_id;
@@ -48,6 +49,7 @@ pub use process::ProcessChecker;
 pub use relay::{ReleaseManifest, ManifestComponent};
 pub use integrity::{IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity};
 pub use marker::UpdateCompletionMarker;
+#[cfg(test)]
 pub(crate) use apply::replace_dir;
 
 use anyhow::Result;
@@ -1146,8 +1148,11 @@ impl UpdateManager {
             Component::CoreDaemon => self.apply_binary_update("saba-core", staged_path).await,
             Component::Gui => self.apply_gui_update(staged_path).await,
             Component::Installer => self.apply_installer_update(staged_path),
-            // 모듈처럼 백업 뒤 통째로 바꾼다: 새 판에 없는 옛 파일이 남지 않고, 실패하면 되돌린다
-            Component::Locales => replace_dir(&self.install_root.join("locales"), Path::new(staged_path), &self.staging_dir, "locales_backup"),
+            // 옆 폴더에 다 푼 뒤 이름 바꾸기로 통째로 바꾸고 판 번호(`locales/version`)를 적는다: 읽는 쪽이 반쯤 바뀐 묶음을 보지 않는다
+            Component::Locales => {
+                let version = self.status.components.iter().find(|c| c.component == Component::Locales).and_then(|c| c.latest_version.clone());
+                apply::replace_locales(&self.install_root.join("locales"), Path::new(staged_path), version.as_deref())
+            }
         }
     }
 
@@ -1215,6 +1220,7 @@ impl UpdateManager {
     /// 다른 프로세스(데몬 시작 등)가 적용 도중에 부르면 비켜 둔 백업을 되돌리고 쓰는 중인 파일을 지운다
     pub fn settle_interrupted_updates(&self) {
         self.restore_moved_aside_exes();
+        apply::settle_locales(&self.install_root.join("locales"));
         let Ok(entries) = std::fs::read_dir(&self.install_root) else { return };
         for path in entries.flatten().map(|e| e.path()) {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
@@ -1285,9 +1291,52 @@ impl UpdateManager {
         }
     }
 
+    /// 새 데몬이 건강하지 않을 때: `before`(적용 전 목록)에 없던 백업, 곧 이번 적용이 비켜 둔 실행 파일을 모두 되돌린다
+    /// (`restore_moved_aside_exes`를 넓힌 것. 그쪽은 실행 파일이 아예 없을 때만 되돌린다).
+    /// 새 파일은 `<exe>.rolled-back`으로 비켜 두고 지운다(아직 쥐고 있으면 남는다). 되돌린 실행 파일 경로를 돌려준다
+    pub fn roll_back_exes_since(&self, before: &live_apply::ExeBackups) -> Vec<PathBuf> {
+        let mut latest: HashMap<String, (PathBuf, u32)> = HashMap::new();
+        for (path, exe, number, _) in self.old_exe_backups() {
+            if before.contains(&path, live_apply::backup_id(&path)) {
+                continue;
+            }
+            if latest.get(&exe).is_none_or(|(_, n)| number > *n) {
+                latest.insert(exe, (path, number));
+            }
+        }
+        let mut restored = Vec::new();
+        for (exe, (backup, _)) in latest {
+            let target = self.install_root.join(&exe);
+            if target.exists() {
+                let mut name = target.file_name().unwrap_or_default().to_os_string();
+                name.push(".rolled-back");
+                let aside = target.with_file_name(name);
+                let _ = std::fs::remove_file(&aside);
+                if let Err(e) = std::fs::rename(&target, &aside).or_else(|_| std::fs::remove_file(&target)) {
+                    tracing::error!("[Updater] Cannot move {} aside to roll back: {}", target.display(), e);
+                    continue;
+                }
+                let _ = std::fs::remove_file(&aside);
+            }
+            match std::fs::rename(&backup, &target) {
+                Ok(()) => {
+                    tracing::warn!("[Updater] Rolled back {} from {}", target.display(), backup.display());
+                    restored.push(target);
+                }
+                Err(e) => tracing::error!("[Updater] Cannot roll back {} from {}: {}", target.display(), backup.display(), e),
+            }
+        }
+        restored
+    }
+
     /// 업데이트가 남긴 사바쨩 실행 파일 백업(`old_exe_backups`)을 지운다 (설치 폴더 바로 안만).
     /// Windows는 실행 중인 exe를 이름만 바꿔 두므로, 아직 쥐고 있는 파일은 다음 번에 지운다.
+    /// 업데이터가 새 데몬을 지켜보는 동안(`live_apply::watch_in_progress`)은 지우지 않는다: 건강하지 않으면 되돌림에 쓴다
     pub fn cleanup_old_files(&self) {
+        if live_apply::watch_in_progress(&self.staging_dir) {
+            tracing::info!("[Updater] An update is still being checked; keeping the .old backups");
+            return;
+        }
         for (path, exe, _, gui) in self.old_exe_backups() {
             // 실행 파일이 없으면 되돌리지 못한 유일한 사본이다. 예전 이름의 GUI는 새 이름의 GUI가 있으면 지운다 (`retire_other_gui_exes`)
             let replaced = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(&exe).exists() };

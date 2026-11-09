@@ -1632,3 +1632,106 @@ fn test_default_update_channel_is_the_build_channel() {
     let saved: UpdateConfig = serde_json::from_str(r#"{"enabled": true}"#).unwrap();
     assert_eq!(saved.channel, crate::versions::bundled().channel);
 }
+
+// C(W1): 번역 묶음은 옆 폴더에 다 푼 뒤 맞바꾸고 판 번호를 `locales/version`에 적는다. 옆 폴더는 남지 않는다
+#[tokio::test]
+async fn locales_are_swapped_in_whole_with_their_version() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    let locales = manager.install_root.join("locales");
+    std::fs::create_dir_all(locales.join("ko")).unwrap();
+    std::fs::write(locales.join("ko/old.json"), b"{}").unwrap();
+    let zip_path = tmp.path().join("locales.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file("ko/gui.json", zip::write::SimpleFileOptions::default()).unwrap();
+        zw.write_all(b"{\"a\":1}").unwrap();
+        zw.finish().unwrap();
+    }
+    let mut comp = staged(Component::Locales, &zip_path);
+    comp.latest_version = Some("0.1.14".into());
+    manager.status.components = vec![comp];
+
+    let files = manager.apply_one(&Component::Locales, zip_path.to_str().unwrap()).await.unwrap();
+
+    assert_eq!(std::fs::read_to_string(locales.join("version")).unwrap(), "0.1.14");
+    assert!(locales.join("ko/gui.json").exists());
+    assert!(!locales.join("ko/old.json").exists());
+    assert!(files.contains(&locales.join("ko/gui.json")), "recorded paths point into locales/: {files:?}");
+    let names: Vec<String> = std::fs::read_dir(&manager.install_root).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(names, vec!["locales".to_string()], "no side folder is left");
+}
+
+// C(W1): 맞바꾸다 끊겨 `locales`가 없고 옛 묶음만 옆에 남았으면 다음 정리가 옛 묶음을 되돌린다
+#[test]
+fn an_interrupted_locales_swap_is_put_back() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().to_path_buf();
+    std::fs::create_dir_all(tmp.path().join(".locales-old/ko")).unwrap();
+    std::fs::write(tmp.path().join(".locales-old/ko/bot.json"), b"{}").unwrap();
+    std::fs::create_dir_all(tmp.path().join(".locales-new/ko")).unwrap();
+
+    manager.settle_interrupted_updates();
+
+    assert!(tmp.path().join("locales/ko/bot.json").exists());
+    assert!(!tmp.path().join(".locales-old").exists());
+    assert!(!tmp.path().join(".locales-new").exists());
+}
+
+/// 이 OS에서 비켜 둔 데몬·CLI 실행 파일 이름 (실행 파일, 백업)
+fn moved_aside(name: &str) -> (String, String) {
+    if cfg!(windows) { (format!("{name}.exe"), format!("{name}.exe.old")) } else { (name.to_string(), format!("{name}.old")) }
+}
+
+// C(W1): 되돌릴 때는 이번 적용이 비켜 둔 실행 파일만 모두 되돌린다. 적용 전부터 있던 백업(지난 업데이트 뒤로 도는 러너 등)은 건드리지 않는다
+#[test]
+fn a_rollback_restores_only_the_exes_this_apply_moved_aside() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().to_path_buf();
+    let (core, core_old) = moved_aside("saba-core");
+    let (cli, cli_old) = moved_aside("saba-chan-cli");
+    // 적용 전: CLI 백업이 이미 있다 (쥐고 있어 못 지운 것)
+    std::fs::write(tmp.path().join(&cli), b"cli now").unwrap();
+    std::fs::write(tmp.path().join(&cli_old), b"cli older").unwrap();
+    std::fs::write(tmp.path().join(&core), b"core old").unwrap();
+    let before = manager.exe_backups();
+
+    // 적용: 코어를 비켜 두고 새 판을 둔다
+    std::fs::rename(tmp.path().join(&core), tmp.path().join(&core_old)).unwrap();
+    std::fs::write(tmp.path().join(&core), b"core new").unwrap();
+
+    let restored = manager.roll_back_exes_since(&before);
+
+    assert_eq!(restored, vec![tmp.path().join(&core)]);
+    assert_eq!(std::fs::read(tmp.path().join(&core)).unwrap(), b"core old");
+    assert!(!tmp.path().join(&core_old).exists());
+    assert_eq!(std::fs::read(tmp.path().join(&cli)).unwrap(), b"cli now", "a backup from before stays where it is");
+    assert!(tmp.path().join(&cli_old).exists());
+}
+
+// C(W1): 업데이터가 새 데몬을 지켜보는 동안에는 새 데몬이 `.old`를 지우지 않는다 (되돌림에 쓴다)
+#[test]
+fn old_backups_are_kept_while_the_updater_watches_the_new_daemon() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let (core, core_old) = moved_aside("saba-core");
+    std::fs::write(manager.install_root.join(&core), b"new").unwrap();
+    std::fs::write(manager.install_root.join(&core_old), b"old").unwrap();
+
+    crate::live_apply::begin_watch(&manager.staging_dir);
+    manager.cleanup_old_files();
+    assert!(manager.install_root.join(&core_old).exists(), "kept while the watch is on");
+
+    crate::live_apply::end_watch(&manager.staging_dir);
+    manager.cleanup_old_files();
+    assert!(!manager.install_root.join(&core_old).exists());
+}
