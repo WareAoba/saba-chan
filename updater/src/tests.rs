@@ -369,40 +369,54 @@ fn old_module(target: &std::path::Path) {
     std::fs::write(target.join(".git/HEAD"), "ref").unwrap();
 }
 
-// 묻지 않는 교체(Codex #926 재리뷰): 원래 폴더는 옆으로 옮긴 뒤 검사하고, 바꿔 넣은 뒤에도 검사가 통과한 것만 지운다
+fn names_in(dir: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+    names.sort();
+    names
+}
+
+// 묻지 않는 교체(Codex #926 재리뷰): 원래 폴더는 옆으로 옮긴 뒤 그 순간의 지문으로 검사하고, 바꿔 넣은 뒤에도 바로 지우지 않는다.
+// 옮긴 폴더는 다음 교체 때 지문이 그대로일 때만 지운다
 #[test]
-fn an_untouched_swap_puts_the_new_version_in_and_keeps_dot_entries() {
+fn an_untouched_swap_puts_the_new_version_in_and_keeps_the_old_folder_until_the_next_swap() {
     let tmp = tempfile::tempdir().unwrap();
-    let target = tmp.path().join("modules").join("game");
+    let modules = tmp.path().join("modules");
+    let target = modules.join("game");
     old_module(&target);
     let staged = new_module_zip(&tmp.path().join("staging"));
     let mut checked = None;
-    let files = crate::swap_dir_untouched(&target, &staged, |old| {
-        checked = Some(std::fs::read_to_string(old.join("module.toml")).unwrap());
+    let files = crate::swap_dir_untouched(&target, &staged, |fp| {
+        checked = Some(fp.keys().cloned().collect::<Vec<_>>());
         assert!(!target.exists(), "the original is moved away before it is checked");
         true
     })
     .unwrap();
-    assert_eq!(checked.as_deref(), Some("old"));
+    assert_eq!(checked, Some(vec!["module.toml".to_string()]), "dot entries are not part of the check");
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
     assert_eq!(std::fs::read_to_string(target.join(".git/HEAD")).unwrap(), "ref", "dot entries come along");
     assert_eq!(files, vec![target.join("module.toml")]);
-    let left: Vec<_> = std::fs::read_dir(tmp.path().join("modules")).unwrap().map(|e| e.unwrap().file_name()).collect();
-    assert_eq!(left, vec![std::ffi::OsString::from("game")], "nothing is left beside it");
+    assert_eq!(names_in(&modules), [".game.saba-old", "game"], "the old folder stays until the next swap");
+
+    // 다음 교체: 옮긴 폴더가 그대로면 그때 지운다
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    crate::swap_dir_untouched(&target, &staged, |_| true).unwrap();
+    assert_eq!(names_in(&modules), [".game.saba-old", "game"]);
+    assert_eq!(std::fs::read_to_string(modules.join(".game.saba-old/module.toml")).unwrap(), "new", "only the last old folder is kept");
 }
 
 #[test]
 fn an_untouched_swap_puts_a_changed_folder_back_as_it_was() {
     let tmp = tempfile::tempdir().unwrap();
-    let target = tmp.path().join("modules").join("game");
+    let modules = tmp.path().join("modules");
+    let target = modules.join("game");
     old_module(&target);
     std::fs::write(target.join("server.properties"), "mine").unwrap();
     let staged = new_module_zip(&tmp.path().join("staging"));
     assert!(crate::swap_dir_untouched(&target, &staged, |_| false).is_err());
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
     assert_eq!(std::fs::read_to_string(target.join("server.properties")).unwrap(), "mine");
-    let left: Vec<_> = std::fs::read_dir(tmp.path().join("modules")).unwrap().map(|e| e.unwrap().file_name()).collect();
-    assert_eq!(left, vec![std::ffi::OsString::from("game")]);
+    assert_eq!(names_in(&target), [".git", "module.toml", "server.properties"], "no bookkeeping file is left in the folder");
+    assert_eq!(names_in(&modules), ["game"]);
 }
 
 /// 원래 폴더를 옮긴 뒤 같은 경로에 사용자가 파일을 만들면 아무것도 지우지 않고 멈춘다: 그 파일도, 옮긴 원래 폴더도 남는다
@@ -424,6 +438,29 @@ fn a_file_written_after_the_move_is_never_deleted() {
     assert!(err.to_string().contains(".game.saba-old"), "the error names where the original is: {err}");
 }
 
+/// 교체 전에 열어 둔 파일에 교체 뒤 저장해도(유닉스에서는 옮긴 폴더의 파일에 써진다) 지우지 않는다:
+/// 다음 교체가 옮긴 폴더의 지문이 달라진 것을 보고 남긴다 (Codex #926 5차 재리뷰)
+#[cfg(unix)]
+#[test]
+fn a_save_through_a_handle_opened_before_the_swap_is_kept() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let target = modules.join("game");
+    old_module(&target);
+    let mut editor = std::fs::OpenOptions::new().write(true).open(target.join("module.toml")).unwrap();
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    crate::swap_dir_untouched(&target, &staged, |_| true).unwrap();
+    editor.write_all(b"edited").unwrap();
+    drop(editor);
+
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    let err = crate::swap_dir_untouched(&target, &staged, |_| true).unwrap_err();
+    assert!(err.to_string().contains(".game.saba-old"), "{err}");
+    assert_eq!(std::fs::read_to_string(modules.join(".game.saba-old/module.toml")).unwrap(), "edited");
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new", "the new version stays in place");
+}
+
 /// 옮긴 뒤 꺼졌으면(원래 경로가 비었다) 다음 교체가 먼저 원래 폴더를 돌려놓는다
 #[test]
 fn an_interrupted_swap_is_put_back_first() {
@@ -431,13 +468,15 @@ fn an_interrupted_swap_is_put_back_first() {
     let modules = tmp.path().join("modules");
     let aside = modules.join(".game.saba-old");
     old_module(&aside);
+    std::fs::write(aside.join(crate::SWAP_FINGERPRINT), "{}").unwrap();
     std::fs::create_dir_all(modules.join(".game.saba-new")).unwrap();
     std::fs::write(modules.join(".game.saba-new/half"), "x").unwrap();
     let target = modules.join("game");
     let staged = new_module_zip(&tmp.path().join("staging"));
     assert!(crate::swap_dir_untouched(&target, &staged, |_| false).is_err());
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
-    assert!(!aside.exists() && !modules.join(".game.saba-new").exists());
+    assert_eq!(names_in(&target), [".git", "module.toml"]);
+    assert_eq!(names_in(&modules), ["game"]);
 }
 
 // 교체 도중 꺼졌으면 남은 백업이 원래 내용이다: 다음 시도가 반쯤 바뀐 폴더로 백업을 덮지 않는다
