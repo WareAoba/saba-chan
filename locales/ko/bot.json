@@ -477,6 +477,7 @@
     "nothing_to_back_up": "아직 백업할 월드가 없어요",
     "backup_limit": "원격 백업 개수가 가득 찼어요. PC에서 오래된 백업을 지워 주세요",
     "backup_busy": "다른 백업이나 되돌리기가 진행 중이에요",
+    "backups_unreadable": "백업 폴더를 읽지 못했어요. PC의 폴더 권한이나 디스크 상태를 확인해 주세요",
     "server_running": "서버가 실행 중이에요. 먼저 정지해 주세요",
     "no_command_path": "사바쨩 밖에서 켠 서버라 명령을 보낼 수 없어요",
     "autosave_not_resumed": "백업은 만들었지만 서버의 자동 저장을 다시 켜지 못했어요. 서버를 다시 시작해 주세요",
