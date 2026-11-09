@@ -28,6 +28,9 @@ const WATCH_FILE: &str = "apply-watch.json";
 pub const SNAPSHOT_DIR: &str = "update-snapshot";
 /// 스냅샷에 넣는 데이터 폴더 바로 아래 파일: 설정과 설치 기록. 포함 목록이다 (제외 목록으로 바꾸지 않는다, 13절)
 pub const SNAPSHOT_DATA_FILES: &[&str] = &["config.json", "installed-manifest.json", "installed-files.json", "official-components.json"];
+/// 사본 폴더로 옮기지 못한 실행 파일 백업을 둘 곳 (백업 옆, `<설치 폴더>/update-recovery/<사본 이름>/<n>/<이름>`).
+/// 자동으로 지우지 않는다
+pub const RECOVERY_DIR: &str = "update-recovery";
 /// 그중 설치 기록. 되돌릴 때 되돌리는 실행 파일의 항목만 되돌린다 (`merge_install_record`)
 const SNAPSHOT_RECORD_FILES: &[&str] = &["installed-manifest.json", "installed-files.json", "official-components.json"];
 /// 스냅샷에 넣는 인스턴스 폴더 바로 아래 파일
@@ -524,10 +527,18 @@ impl KeptCopy {
                     return (backup, target);
                 };
                 let copy = self.dir.join("exes").join(i.to_string()).join(name);
-                // 옮기기를 먼저 한다: 같은 볼륨이면 공간이 들지 않는다 (디스크가 찼을 때도). 다른 볼륨이면 복사한다
-                let moved = copy.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::rename(&backup, &copy));
-                match moved.or_else(|_| copy_whole(&backup, &copy)) {
-                    Ok(()) => (copy, target),
+                // 옮기기를 먼저 한다: 같은 볼륨이면 공간이 들지 않는다 (디스크가 찼을 때도). 다른 볼륨이면 백업 옆의
+                // `update-recovery/<사본 이름>/`으로 옮기고(같은 볼륨), 그것도 안 되면 사본 폴더에 복사한다
+                let beside = backup.parent().map(|dir| {
+                    let kept = self.dir.file_name().unwrap_or_default();
+                    dir.join(RECOVERY_DIR).join(kept).join(i.to_string()).join(name)
+                });
+                let preserved = move_into(&backup, &copy)
+                    .map(|()| copy.clone())
+                    .or_else(|e| beside.ok_or(e).and_then(|beside| move_into(&backup, &beside).map(|()| beside)))
+                    .or_else(|_| copy_whole(&backup, &copy).map(|()| copy.clone()));
+                match preserved {
+                    Ok(kept) => (kept, target),
                     Err(e) => {
                         tracing::error!("[Apply] Cannot keep a copy of {}: {}", backup.display(), e);
                         all = false;
@@ -599,6 +610,12 @@ fn copy_if_file(from: &Path, to: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::copy(from, to).map(|_| ())
+}
+
+/// 폴더를 만들고 이름을 바꿔 옮긴다 (같은 볼륨에서만 된다)
+fn move_into(from: &Path, to: &Path) -> std::io::Result<()> {
+    to.parent().map_or(Ok(()), std::fs::create_dir_all)?;
+    std::fs::rename(from, to)
 }
 
 /// 다 옮겨 뜬 뒤에만 그 이름에 둔다 (실패하면 반쯤 뜬 파일을 지운다)
@@ -1627,12 +1644,31 @@ mod tests {
         assert!(watch_in_progress(&manager.staging_dir));
     }
 
-    // 사본 폴더에 뜨지 못하면 `.old`를 그대로 가리키고 붙잡아 둔다
+    // 사본 폴더에 옮기지도 뜨지도 못하면(다른 볼륨 + 공간 부족) 백업 옆의 `update-recovery/`로 옮긴다: 같은 볼륨이라 공간이 들지 않고,
+    // 다음 적용(`.old`를 다시 비킴)과 정리(`cleanup_old_files`)가 건드리지 않는 이름이다 (Codex 7차 리뷰)
     #[test]
-    fn exes_that_cannot_be_copied_keep_pointing_at_the_backup() {
+    fn exes_that_cannot_reach_the_kept_copy_move_beside_the_backup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let copy = KeptCopy { dir: tmp.path().join("kept").join("0.1.13-1"), data_dir: tmp.path().into(), instances_dir: tmp.path().into() };
+        write(&copy.dir.join("exes"), "not a folder");
+        let install = tmp.path().join("install");
+        let backup = install.join("saba-core.old");
+        write(&backup, "0.1.13");
+        let (exes, all) = copy.preserve_exes(vec![(backup.clone(), install.join("saba-core"))]);
+        assert!(all);
+        assert!(!backup.exists());
+        assert!(exes[0].0.starts_with(install.join(RECOVERY_DIR)), "{}", exes[0].0.display());
+        assert_eq!(exes[0].0.file_name().unwrap(), "saba-core");
+        assert_eq!(std::fs::read(&exes[0].0).unwrap(), b"0.1.13");
+    }
+
+    // 그것도 못 하면 `.old`를 그대로 가리키고 붙잡아 둔다
+    #[test]
+    fn exes_that_cannot_be_moved_anywhere_keep_pointing_at_the_backup() {
         let tmp = tempfile::tempdir().unwrap();
         let copy = KeptCopy { dir: tmp.path().join("kept"), data_dir: tmp.path().into(), instances_dir: tmp.path().into() };
         write(&copy.dir.join("exes"), "not a folder");
+        write(&tmp.path().join(RECOVERY_DIR), "not a folder");
         let backup = tmp.path().join("saba-core.old");
         write(&backup, "0.1.13");
         let (exes, all) = copy.preserve_exes(vec![(backup.clone(), tmp.path().join("saba-core"))]);
