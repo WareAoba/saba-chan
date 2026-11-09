@@ -632,7 +632,30 @@
     "mode": "发现更新时",
     "mode_check": "仅通知",
     "mode_download": "下载",
-    "mode_apply": "下载并在下次启动时应用"
+    "mode_apply": "下载并在下次启动时应用",
+    "stable_wait": "正在等待正式版 {{version}}"
+  },
+  "update_pill": {
+    "applying": "正在应用更新...",
+    "done": "更新完成",
+    "waiting": "更新等待中...",
+    "ready": "更新已就绪",
+    "applying_sub": "正在替换 Saba-chan。服务器保持运行",
+    "done_title": "已更新到 {{version}}",
+    "done_sub": "原本运行的 {{count}} 个服务器继续运行",
+    "waiting_title": "已下载 {{version}}",
+    "wait_backup": "{{name}} 的备份完成后应用",
+    "wait_provision": "{{name}} 的安装完成后应用",
+    "wait_server_update": "{{name}} 的游戏服务器更新完成后应用",
+    "wait_module_call": "{{name}} 的模块任务完成后应用",
+    "wait_server_stop": "{{name}} 停止后应用",
+    "wait_other": "{{name}} 的任务完成后应用",
+    "notes_more": "查看完整更新说明",
+    "restart_title": "需要重新启动才能更新到 {{version}}",
+    "restart_note": "运行中的服务器保持不变，只重启 Saba-chan。期间暂时无法响应 Discord 命令。",
+    "later": "稍后",
+    "restart_now": "立即重新启动",
+    "restart_failed": "无法重新启动：{{error}}"
   },
   "extensions": {
     "installed_section": "已安装",

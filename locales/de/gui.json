@@ -632,7 +632,30 @@
     "mode": "Wenn Updates gefunden werden",
     "mode_check": "Nur benachrichtigen",
     "mode_download": "Herunterladen",
-    "mode_apply": "Herunterladen und beim nächsten Start anwenden"
+    "mode_apply": "Herunterladen und beim nächsten Start anwenden",
+    "stable_wait": "Warte auf die stabile {{version}}"
+  },
+  "update_pill": {
+    "applying": "Update wird angewendet...",
+    "done": "Update abgeschlossen",
+    "waiting": "Update wartet...",
+    "ready": "Update bereit",
+    "applying_sub": "Saba-chan wird ersetzt. Deine Server laufen weiter",
+    "done_title": "Auf {{version}} aktualisiert",
+    "done_sub": "{{count}} laufende(r) Server lief(en) einfach weiter",
+    "waiting_title": "{{version}} ist heruntergeladen",
+    "wait_backup": "Wird angewendet, sobald das Backup von {{name}} fertig ist",
+    "wait_provision": "Wird angewendet, sobald die Installation von {{name}} fertig ist",
+    "wait_server_update": "Wird angewendet, sobald das Spielserver-Update von {{name}} fertig ist",
+    "wait_module_call": "Wird angewendet, sobald die Modulaufgabe von {{name}} fertig ist",
+    "wait_server_stop": "Wird angewendet, sobald {{name}} gestoppt ist",
+    "wait_other": "Wird angewendet, sobald die Aufgabe von {{name}} fertig ist",
+    "notes_more": "Alle Patchnotes anzeigen",
+    "restart_title": "Neustart nötig für das Update auf {{version}}",
+    "restart_note": "Laufende Server bleiben an; nur Saba-chan startet neu. Discord-Befehle werden kurz nicht beantwortet.",
+    "later": "Später",
+    "restart_now": "Jetzt neu starten",
+    "restart_failed": "Neustart fehlgeschlagen: {{error}}"
   },
   "extensions": {
     "installed_section": "Installiert",

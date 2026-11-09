@@ -820,6 +820,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             }
             return call('get', `/api/updates/last-result${queryString({ lang })}`, undefined, 5000);
         },
+        // 상단 바 업데이트 알약: '완료'를 봤다고 알린다 (데몬이 phase를 idle로)
+        updaterPhaseAck: () => call('post', '/api/updates/phase/ack', {}, 5000),
+        // '준비됨'의 지금 다시 시작: 다시 띄울 자기 경로를 셸이 실어 보낸다. 응답은 updaterLaunchApply와 같다
+        updaterRestart: () => invoke('updater_restart'),
         updaterGetConfig: () => call('get', '/api/updates/config', undefined, 5000),
         updaterSetConfig: (config: ApiBody) => call('put', '/api/updates/config', config, 5000),
         onUpdatesAvailable: (callback: Listener) => {

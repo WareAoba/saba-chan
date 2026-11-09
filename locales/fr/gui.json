@@ -632,7 +632,30 @@
     "mode": "Quand des mises à jour sont trouvées",
     "mode_check": "Notifier seulement",
     "mode_download": "Télécharger",
-    "mode_apply": "Télécharger et appliquer au prochain lancement"
+    "mode_apply": "Télécharger et appliquer au prochain lancement",
+    "stable_wait": "En attente de la version stable {{version}}"
+  },
+  "update_pill": {
+    "applying": "Application de la mise à jour...",
+    "done": "Mise à jour terminée",
+    "waiting": "Mise à jour en attente...",
+    "ready": "Mise à jour prête",
+    "applying_sub": "Remplacement de Saba-chan. Vos serveurs restent allumés",
+    "done_title": "Mis à jour vers {{version}}",
+    "done_sub": "{{count}} serveur(s) en marche ont continué comme avant",
+    "waiting_title": "{{version}} est téléchargée",
+    "wait_backup": "S'appliquera après la sauvegarde de {{name}}",
+    "wait_provision": "S'appliquera après l'installation de {{name}}",
+    "wait_server_update": "S'appliquera après la mise à jour du serveur de jeu de {{name}}",
+    "wait_module_call": "S'appliquera après la tâche du module de {{name}}",
+    "wait_server_stop": "S'appliquera quand {{name}} sera arrêté",
+    "wait_other": "S'appliquera après la tâche de {{name}}",
+    "notes_more": "Voir toutes les notes",
+    "restart_title": "Redémarrez pour passer à {{version}}",
+    "restart_note": "Les serveurs allumés restent en marche ; seul Saba-chan redémarre. Les commandes Discord ne répondront pas un instant.",
+    "later": "Plus tard",
+    "restart_now": "Redémarrer maintenant",
+    "restart_failed": "Impossible de redémarrer : {{error}}"
   },
   "extensions": {
     "installed_section": "Installés",

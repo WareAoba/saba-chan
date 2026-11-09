@@ -632,7 +632,30 @@
     "mode": "Al encontrar actualizaciones",
     "mode_check": "Solo avisar",
     "mode_download": "Descargar",
-    "mode_apply": "Descargar y aplicar en el próximo inicio"
+    "mode_apply": "Descargar y aplicar en el próximo inicio",
+    "stable_wait": "Esperando la versión estable {{version}}"
+  },
+  "update_pill": {
+    "applying": "Aplicando actualización...",
+    "done": "Actualización completa",
+    "waiting": "Actualización en espera...",
+    "ready": "Actualización lista",
+    "applying_sub": "Reemplazando Saba-chan. Tus servidores siguen encendidos",
+    "done_title": "Actualizado a {{version}}",
+    "done_sub": "{{count}} servidor(es) en marcha siguieron igual",
+    "waiting_title": "{{version}} está descargada",
+    "wait_backup": "Se aplicará cuando termine la copia de seguridad de {{name}}",
+    "wait_provision": "Se aplicará cuando termine la instalación de {{name}}",
+    "wait_server_update": "Se aplicará cuando termine la actualización del servidor de juego de {{name}}",
+    "wait_module_call": "Se aplicará cuando termine la tarea del módulo de {{name}}",
+    "wait_server_stop": "Se aplicará cuando {{name}} se detenga",
+    "wait_other": "Se aplicará cuando termine la tarea de {{name}}",
+    "notes_more": "Ver las notas completas",
+    "restart_title": "Reinicia para actualizar a {{version}}",
+    "restart_note": "Los servidores encendidos siguen igual; solo se reinicia Saba-chan. Durante un momento no responderá a comandos de Discord.",
+    "later": "Más tarde",
+    "restart_now": "Reiniciar ahora",
+    "restart_failed": "No se pudo reiniciar: {{error}}"
   },
   "extensions": {
     "installed_section": "Instalados",

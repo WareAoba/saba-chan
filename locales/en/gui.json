@@ -632,7 +632,30 @@
     "mode": "When updates are found",
     "mode_check": "Notify only",
     "mode_download": "Download",
-    "mode_apply": "Download and apply on next launch"
+    "mode_apply": "Download and apply on next launch",
+    "stable_wait": "Waiting for the stable {{version}}"
+  },
+  "update_pill": {
+    "applying": "Applying update...",
+    "done": "Update complete",
+    "waiting": "Update waiting...",
+    "ready": "Update ready",
+    "applying_sub": "Replacing Saba-chan. Your servers stay on",
+    "done_title": "Updated to {{version}}",
+    "done_sub": "{{count}} running server(s) carried on as they were",
+    "waiting_title": "{{version}} is downloaded",
+    "wait_backup": "Applies after {{name}}'s backup finishes",
+    "wait_provision": "Applies after {{name}}'s install finishes",
+    "wait_server_update": "Applies after {{name}}'s game server update finishes",
+    "wait_module_call": "Applies after {{name}}'s module task finishes",
+    "wait_server_stop": "Applies after {{name}} stops",
+    "wait_other": "Applies after {{name}}'s task finishes",
+    "notes_more": "Show full patch notes",
+    "restart_title": "Restart to update to {{version}}",
+    "restart_note": "Running servers stay on; only Saba-chan restarts. Discord commands won't be answered for a moment.",
+    "later": "Later",
+    "restart_now": "Restart now",
+    "restart_failed": "Couldn't restart: {{error}}"
   },
   "extensions": {
     "installed_section": "Installed",

@@ -426,20 +426,6 @@ function App() {
         return () => clearTimeout(timer);
     }, [daemonReady, initFailed, initSeen, t]);
 
-    // '받고 다음 실행 때 적용': 앱을 열 때 한 번 데몬에 맡긴다. 무엇을 적용할지(켜진 서버가 있으면 재시작이 필요한 것은 미룸)는 데몬이 고른다.
-    // 콘솔 팝아웃 창은 앱을 새로 연 것이 아니다
-    const applyOnLaunchDone = useRef(false);
-    useEffect(() => {
-        if (isPopoutMode || !daemonReady || applyOnLaunchDone.current || !window.api?.updaterApplyOnLaunch) return;
-        applyOnLaunchDone.current = true;
-        (async () => {
-            const res = await window.api.updaterApplyOnLaunch();
-            if (res?.requires_updater && res.needs_updater?.length > 0) {
-                await window.api.updaterLaunchApply?.(res.needs_updater);
-            }
-        })();
-    }, [daemonReady, isPopoutMode]);
-
     // Background Daemon status polling
     // biome-ignore lint/correctness/useExhaustiveDependencies: setter is stable
     useEffect(() => {

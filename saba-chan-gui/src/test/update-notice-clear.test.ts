@@ -15,12 +15,12 @@ describe('업데이트 알림 정리', () => {
         localStorage.clear();
     });
 
-    it('업데이트가 없어지면 남아 있던 업데이트 알림을 지우고 다른 알림은 둔다', () => {
-        syncUpdateNotice({ count: 2, names: ['Daemon', 'GUI'] }, t);
+    it('업데이트를 찾아도 알림을 만들지 않고(상단 바 알약이 대신한다), 남아 있던 업데이트 알림은 지운다', () => {
+        // 예전 판이 남긴 "업데이트 N개 발견" 알림 (localStorage에 남아 있다)
+        window.__sabaNotice!.addNotice({ message: 'old', source: 'Updater', action: 'openUpdateModal' });
         window.__sabaNotice!.addNotice({ message: 'other', source: 'saba-chan' });
-        expect(updateNotices()).toHaveLength(1);
 
-        syncUpdateNotice({ count: 0, names: [] }, t);
+        syncUpdateNotice({ count: 2, names: ['Daemon', 'GUI'] }, t);
 
         expect(updateNotices()).toHaveLength(0);
         expect(window.__sabaNotice!.loadNotices().map((n) => n.message)).toEqual(['other']);
@@ -32,7 +32,7 @@ describe('업데이트 알림 정리', () => {
             version: '0.3.0',
             result: { success: true, updated_components: ['saba-core'], failed: [] },
         });
-        syncUpdateNotice({ count: 1, names: ['Saba-Core'] }, t);
+        window.__sabaNotice!.addNotice({ message: 'old', source: 'Updater', action: 'openUpdateModal' });
 
         await announceUpdateCompleted({ message: 'done' }, t);
         await announceUpdateCompleted({ count: 1, names: ['Saba-Core'] }, t);
@@ -52,7 +52,7 @@ describe('업데이트 알림 정리', () => {
             result: { success: false, updated_components: [], failed: ['saba-core'] },
         });
         vi.mocked(window.showToast!).mockClear();
-        syncUpdateNotice({ count: 1, names: ['Saba-Core'] }, t);
+        window.__sabaNotice!.addNotice({ message: 'old', source: 'Updater', action: 'openUpdateModal' });
 
         await announceUpdateCompleted({ message: 'done' }, t);
 
