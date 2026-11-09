@@ -132,6 +132,8 @@ jobs:
           if [ -z "$prev_url" ]; then
             echo "::error::Could not read the previous release manifest from the relay"; exit 1
           fi
+          # /latest는 경로만 준다 (캐시되는 응답이라 호스트를 싣지 않는다): 릴레이 주소에 붙인다
+          case "$prev_url" in /*) prev_url="${relay%/}$prev_url" ;; esac
           curl -fsS -H 'X-Saba-Client: 1' "$prev_url" > previous-manifest.json
 
       - name: Plan the partial release
