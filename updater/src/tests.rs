@@ -518,6 +518,24 @@ fn dot_entries_left_by_a_cut_off_swap_are_carried_first() {
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
 }
 
+// 새 판을 넣은 직후, 지문을 적기 전에 꺼졌다: 다음 교체가 점 항목을 옮기고 옛 폴더를 정리한다
+#[test]
+fn a_swap_cut_off_before_its_mark_is_finished_by_the_next_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let aside = modules.join(".game.saba-old");
+    std::fs::create_dir_all(&aside).unwrap();
+    std::fs::write(aside.join("module.toml"), "old").unwrap();
+    std::fs::write(aside.join(".env"), "secret").unwrap();
+    let target = modules.join("game");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("module.toml"), "mid").unwrap();
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    crate::swap_dir_untouched(&target, &staged, |_| true).unwrap();
+    assert_eq!(std::fs::read_to_string(target.join(".env")).unwrap(), "secret");
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
+}
+
 // 지난 교체를 마친 뒤 사용자가 지운 모듈은 되살리지도, 새 판으로 깔지도 않는다
 #[test]
 fn a_folder_removed_after_a_finished_swap_is_not_brought_back() {

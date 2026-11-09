@@ -678,14 +678,14 @@ pub fn swap_dir_untouched(
     };
 
     // 지난 교체가 남긴 것부터. 지문은 새 판을 넣은 뒤에 적으므로 지문이 있으면 그 교체는 끝났다:
-    // 제자리가 비었어도(사용자가 지움) 되살리지 않고, 넣은 직후 꺼져 남은 점 항목은 먼저 옮긴다
+    // 제자리가 비었어도(사용자가 지움) 되살리지 않는다. 제자리가 있으면 새 판이 들어간 것이니 남은 점 항목을 먼저 옮긴다
     if aside.exists() {
         let finished = aside.join(SWAP_FINGERPRINT).exists();
         if !target_dir.exists() && !finished {
             put_back()?;
         } else {
-            if finished && target_dir.exists() {
-                carry_dot_entries(&aside, target_dir).map_err(|e| kept(&e.to_string()))?;
+            if target_dir.exists() {
+                carry_swap_dot_entries(&aside, target_dir).map_err(|e| kept(&e.to_string()))?;
             }
             drop_old_folder_if_unchanged(&aside).map_err(|e| kept(&e.to_string()))?;
         }
@@ -748,10 +748,15 @@ pub fn swap_dir_untouched(
     Ok(files)
 }
 
-/// 끝난 교체(지문이 있음)가 옮기지 못한 점 항목을 새 폴더로 옮긴다. 기동 정리가 부른다. 끝나지 않은 교체면 아무것도 하지 않는다
+/// 새 판이 들어간(제자리가 있는) 교체가 옮기지 못한 점 항목을 새 폴더로 옮긴다. 기동 정리와 다음 교체가 부른다.
+/// 새 판을 넣은 직후 지문을 적기 전에 꺼졌으면 지금 내용으로 지문을 적어 끝난 교체로 만든다(다음 교체가 정리한다)
 pub fn carry_swap_dot_entries(aside: &Path, target_dir: &Path) -> Result<()> {
-    if !aside.join(SWAP_FINGERPRINT).exists() || !target_dir.is_dir() {
+    if !target_dir.is_dir() || !aside.is_dir() {
         return Ok(());
+    }
+    if !aside.join(SWAP_FINGERPRINT).exists() {
+        let fingerprint = crate::integrity::dir_fingerprint(aside).map_err(|e| anyhow::anyhow!(e))?;
+        crate::write_atomic(&aside.join(SWAP_FINGERPRINT), serde_json::to_string(&fingerprint)?.as_bytes())?;
     }
     carry_dot_entries(aside, target_dir)
 }

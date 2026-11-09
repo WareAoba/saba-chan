@@ -287,7 +287,7 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join("game")).unwrap();
         std::fs::write(tmp.path().join(".game.saba-old/module.toml"), "old").unwrap();
         std::fs::write(tmp.path().join(".game.saba-old/.env"), "secret").unwrap();
-        std::fs::write(tmp.path().join(".game.saba-old").join(saba_chan_updater_lib::SWAP_FINGERPRINT), "{}").unwrap();
+        // 지문을 적기 전에 꺼졌다
         std::fs::write(tmp.path().join("game/module.toml"), "new").unwrap();
         remove_install_leftovers(tmp.path());
         assert_eq!(std::fs::read_to_string(tmp.path().join("game/.env")).unwrap(), "secret");
