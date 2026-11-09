@@ -492,7 +492,7 @@ pub struct KeptCopy {
 }
 
 impl KeptCopy {
-    /// 손으로 되살릴 실행 파일 백업(`.old`)을 사본 폴더(`exes/<n>/<제자리 파일 이름>`)에도 뜬다. `.old`는 다음 적용이 비키며
+    /// 손으로 되살릴 실행 파일 백업(`.old`)을 사본 폴더(`exes/<n>/<제자리 파일 이름>`)로 옮긴다(다른 볼륨이면 복사). `.old`는 다음 적용이 비키며
     /// 덮고 정리가 지우므로, 안내는 이 사본을 가리킨다 (사본 폴더는 자동으로 지우지 않는다). 뜨지 못한 것은 `.old`를
     /// 그대로 가리키고 `false`를 돌려준다: 호출자는 `.old`를 붙잡아 둔다 (`hold_backups`)
     pub fn preserve_exes(&self, exes: Vec<(PathBuf, PathBuf)>) -> (Vec<(PathBuf, PathBuf)>, bool) {
@@ -506,7 +506,9 @@ impl KeptCopy {
                     return (backup, target);
                 };
                 let copy = self.dir.join("exes").join(i.to_string()).join(name);
-                match copy_whole(&backup, &copy) {
+                // 옮기기를 먼저 한다: 같은 볼륨이면 공간이 들지 않는다 (디스크가 찼을 때도). 다른 볼륨이면 복사한다
+                let moved = copy.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::rename(&backup, &copy));
+                match moved.or_else(|_| copy_whole(&backup, &copy)) {
                     Ok(()) => (copy, target),
                     Err(e) => {
                         tracing::error!("[Apply] Cannot keep a copy of {}: {}", backup.display(), e);
@@ -1548,5 +1550,18 @@ mod tests {
         let (exes, all) = copy.preserve_exes(vec![(backup.clone(), tmp.path().join("saba-core"))]);
         assert!(!all);
         assert_eq!(exes[0].0, backup);
+    }
+
+    // Codex 6차 리뷰: 디스크가 차 복사하지 못해도 같은 볼륨이면 옮긴다 (공간이 들지 않는다). 그러면 붙잡을 필요가 없다
+    #[test]
+    fn recovery_exes_are_moved_into_the_kept_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let copy = KeptCopy { dir: tmp.path().join("kept"), data_dir: tmp.path().into(), instances_dir: tmp.path().into() };
+        let backup = tmp.path().join("saba-core.old");
+        write(&backup, "0.1.13");
+        let (exes, all) = copy.preserve_exes(vec![(backup.clone(), tmp.path().join("saba-core"))]);
+        assert!(all);
+        assert!(!backup.exists(), "moved, not copied");
+        assert_eq!(std::fs::read(&exes[0].0).unwrap(), b"0.1.13");
     }
 }
