@@ -885,6 +885,9 @@ fn start_events(app: &AppHandle) {
                         }
                     }
                 }
+                if ev.kind == "update.restarting" && from.is_none() {
+                    on_daemon_swap(&app2, &ev.data);
+                }
                 if ev.kind == "update.available" && from.is_none() {
                     // 이 PC 데몬이 새 업데이트를 찾았다: 10분 주기를 기다리지 않고 바로 알린다
                     let app3 = app2.clone();
@@ -901,6 +904,36 @@ fn start_events(app: &AppHandle) {
         tokio::join!(chosen, local);
     });
     replace_task(&state.life.events_task, Some(task));
+}
+
+/// 이 PC 데몬이 업데이터를 띄우고 곧 내려간다 (자동 적용·CLI처럼 이 GUI가 부르지 않았어도).
+/// 이 GUI가 바뀌면 데몬이 끄기 전에 스스로 끝난다: 데몬은 끄지 않고(스스로 내려간다) 띄운 데몬도 놓는다.
+/// 바뀌지 않으면 데몬만 바뀌는 동안 데몬을 띄우거나 꺼짐을 알리거나 트레이와 함께 끝나지 않고 다시 뜬 데몬에 붙는다
+fn on_daemon_swap(app: &AppHandle, data: &Value) {
+    let state = app.state::<AppState>();
+    if !swap_closes_gui(data, std::process::id()) {
+        tracing::info!("[Updater] The daemon is being updated; waiting for it to come back");
+        state.life.expect_daemon_update();
+        return;
+    }
+    if state.life.quitting.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    tracing::info!("[Updater] The update replaces this GUI; quitting before the daemon closes it");
+    drop(state.life.child.lock().unwrap().take());
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        stop_background(&app.state::<AppState>());
+        tray::remove(&app);
+        exit_app(&app);
+    });
+}
+
+/// `update.restarting`의 끌 GUI(`closingGuis`, PID)에 이 GUI가 들었나
+fn swap_closes_gui(data: &Value, own_pid: u32) -> bool {
+    data["closingGuis"]
+        .as_array()
+        .is_some_and(|pids| pids.iter().any(|p| p.as_u64() == Some(u64::from(own_pid))))
 }
 
 fn start_update_checker(app: &AppHandle) {
@@ -1171,6 +1204,16 @@ pub fn on_exit(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 데몬이 스스로 업데이터를 띄웠다고 알리면(`update.restarting`) 끌 GUI 목록에 든 GUI만 스스로 끝나고, 나머지는 데몬을 기다린다
+    #[test]
+    fn only_a_gui_the_update_closes_quits_for_the_daemon_swap() {
+        let ev = json!({ "closingGuis": [41, 42] });
+        assert!(swap_closes_gui(&ev, 42));
+        assert!(!swap_closes_gui(&ev, 7), "an unchanged GUI stays and waits for the new daemon");
+        assert!(!swap_closes_gui(&json!({ "closingGuis": [] }), 42));
+        assert!(!swap_closes_gui(&json!({}), 42), "nothing said: stay");
+    }
 
     /// 트레이에만 남은 GUI는 창이 닫힌 것으로 알린다 (데몬이 GUI 교체를 자동으로 한다)
     #[test]

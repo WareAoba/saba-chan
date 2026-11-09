@@ -1381,6 +1381,9 @@ async fn launch_updater(
         let release = state.manager.read().await.applying_release();
         state.set_phase(Phase::new(PhaseState::Applying, release.as_ref().map(|r| r.version.clone()), release.map(|r| r.notes).filter(|n| !n.is_empty())));
     }
+    // 붙은 GUI에 데몬이 곧 내려가 바뀐다고 알린다 (GUI가 부르지 않은 자동 적용도). 남는 GUI는 그동안 데몬을 띄우거나
+    // 꺼짐을 알리지 않고 다시 뜬 데몬에 붙는다. `closingGuis`의 GUI는 아래에서 끄기 전에 스스로 끝난다
+    crate::events::emit("update.restarting", json!({ "closingGuis": guis.iter().map(|(pid, _)| *pid).collect::<Vec<_>>() }));
 
     if let Some(stop) = state.stop_requested.clone() {
         let relay = state.relay.clone();
@@ -2138,8 +2141,14 @@ mod tests {
 
         let state = UpdateState::new();
         state.manager.write().await.load_pending_manifest().unwrap();
+        let mut events = crate::events::bus().subscribe(None).rx;
         let first = super::launch_updater(State(state.clone()), crate::ipc::handlers::LooseJson(None)).await;
         assert_eq!(first.status(), axum::http::StatusCode::OK);
+        // 데몬이 내려가기 전에 붙은 GUI가 알게 한다: 남는 GUI는 데몬을 띄우지 않고 기다리고, 끌 GUI는 스스로 끝난다
+        let swap = std::iter::from_fn(|| events.try_recv().ok())
+            .find(|e| e.kind == "update.restarting")
+            .expect("the swap is announced on the event stream");
+        assert_eq!(swap.data["closingGuis"], json!([]), "no GUI is registered, so none is closed");
         let ticket = std::fs::read_to_string(staging.join("apply-ticket")).unwrap();
 
         let second = super::launch_updater(State(state.clone()), crate::ipc::handlers::LooseJson(None)).await;
