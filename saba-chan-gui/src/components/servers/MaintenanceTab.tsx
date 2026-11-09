@@ -165,6 +165,8 @@ function BackupsCard({ server }: { server: Server }) {
     const { t, i18n } = useTranslation('gui');
     const openMenu = useContextMenu();
     const [backups, setBackups] = useState<Backup[] | null>(null);
+    // 백업 폴더가 디스크에 차지하는 크기 (데몬이 계산. 같은 내용은 한 번만 센다)
+    const [totalBytes, setTotalBytes] = useState<number | null>(null);
     // 모듈이 게임 자동 백업을 알려 주는가 (`[backup] snapshots`)
     const [snapshots, setSnapshots] = useState(false);
     const [busy, setBusy] = useState<string | null>(null); // 'create' | `restore:${name}` | `delete:${name}`
@@ -182,6 +184,7 @@ function BackupsCard({ server }: { server: Server }) {
             const res = await window.api.instanceBackups(server.id);
             if (!alive.current) return;
             setBackups(Array.isArray(res?.backups) ? res.backups : []);
+            setTotalBytes(typeof res?.total_bytes === 'number' ? res.total_bytes : null);
             setSnapshots(res?.snapshots_supported === true);
         } catch {
             if (alive.current) setBackups([]);
@@ -278,6 +281,12 @@ function BackupsCard({ server }: { server: Server }) {
             ) : list.length === 0 ? (
                 <p className="muted">{t('maintenance.backups_empty')}</p>
             ) : (
+                <>
+                {totalBytes !== null && (
+                    <p className="dc-card-desc">
+                        {t('maintenance.backup_total', { size: formatBytes(totalBytes), count: list.length })}
+                    </p>
+                )}
                 <ul className="dc-list">
                     {list.map((b) => {
                         const restoreKey = `restore:${b.name}`;
@@ -312,17 +321,18 @@ function BackupsCard({ server }: { server: Server }) {
                                         className={clsx('dc-list-sub', unreadable && 'warn')}
                                         data-tooltip={unreadable ? t('maintenance.backup_unreadable_hint') : b.name}
                                     >
-                                        {unreadable
-                                            ? t('maintenance.backup_unreadable')
-                                            : game
-                                              ? t('maintenance.backup_game_snapshot')
-                                              : typeof b.stored === 'number' && b.stored !== b.size
-                                                ? t('maintenance.backup_size_stored', {
-                                                      size: formatBytes(b.size),
-                                                      stored: formatBytes(b.stored),
-                                                  })
-                                                : formatBytes(b.size)}{' '}
-                                        · {b.name}
+                                        {[
+                                            unreadable
+                                                ? t('maintenance.backup_unreadable')
+                                                : game
+                                                  ? t('maintenance.backup_game_snapshot')
+                                                  : b.kind === 'pre-restore'
+                                                    ? t('maintenance.backup_pre_restore_hint')
+                                                    : null,
+                                            b.name,
+                                        ]
+                                            .filter(Boolean)
+                                            .join(' · ')}
                                     </span>
                                 </span>
                                 <StatusChip
@@ -383,6 +393,7 @@ function BackupsCard({ server }: { server: Server }) {
                         );
                     })}
                 </ul>
+                </>
             )}
         </section>
     );

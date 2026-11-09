@@ -405,7 +405,7 @@
         "manual": "직접",
         "scheduled": "예약",
         "pre-update": "업데이트 전",
-        "pre-restore": "복원 전",
+        "pre-restore": "복원 직전",
         "snapshot": "게임 자동 백업 보관",
         "game-snapshot": "게임 자동 백업"
       },
