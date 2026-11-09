@@ -362,7 +362,10 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }:
                         </section>
                     )}
 
-                    <SleepCard settings={settings} locked={locked} save={save} toggleRow={toggleRow} />
+                    {/* 코코낸내: 원격의 0.1.11 데몬은 값을 주지 않는다 — 그때는 카드를 두지 않는다 */}
+                    {Array.isArray(settings.sleepBlocks) && (
+                        <SleepCard settings={settings} locked={locked} save={save} toggleRow={toggleRow} />
+                    )}
 
                     <section className="dc-card">
                         <div className="dc-card-head">

@@ -117,6 +117,14 @@ describe('디스코드 봇 설정 탭', () => {
         expect(list?.textContent ?? '').not.toContain('08:00');
     });
 
+    it('코코낸내: 원격의 0.1.11 데몬이라 값이 없으면 카드를 보이지 않는다', async () => {
+        const { sleepBlocks: _s, bedtime: _b, ...old } = base;
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue(old) as never;
+        render(<BotSettingsTab node={node} section="bot" />);
+        await flush();
+        expect(screen.queryByRole('checkbox', { name: 'Good kid' })).toBeNull();
+    });
+
     it('이모지 업스케일: 릴레이를 못 읽어 값이 없으면 보이지 않는다', async () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue(base) as never;
         render(<BotSettingsTab node={node} section="bot" />);
