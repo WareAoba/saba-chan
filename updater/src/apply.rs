@@ -592,18 +592,6 @@ foreach ($f in 'Desktop','Programs','CommonDesktopDirectory','CommonPrograms') {
 /// 백업은 `staging_dir/backup_name`에 둔다. `__pycache__`와 점(.)으로 시작하는 항목은 남긴다.
 /// 업데이터(모듈·익스텐션·locales)와 설치기(모듈·익스텐션)가 함께 쓴다
 pub fn replace_dir(target_dir: &Path, staged: &Path, staging_dir: &Path, backup_name: &str) -> Result<Vec<PathBuf>> {
-    replace_dir_checked(target_dir, staged, staging_dir, backup_name, |_| Ok(()))
-}
-
-/// `replace_dir`와 같되, 백업을 뜬 뒤 폴더를 비우기 전에 `check(백업)`을 부른다. 거절하면 폴더를 건드리지 않고 백업을 지운다.
-/// 묻지 않는 교체가 교체 순간의 내용(사용자가 막 넣거나 고친 파일)을 보고 멈추는 데 쓴다
-pub fn replace_dir_checked(
-    target_dir: &Path,
-    staged: &Path,
-    staging_dir: &Path,
-    backup_name: &str,
-    check: impl FnOnce(&Path) -> Result<()>,
-) -> Result<Vec<PathBuf>> {
     let backup_dir = staging_dir.join(backup_name);
     // 백업은 다 복사한 뒤 이름을 바꿔 둔다: `backup_dir`이 있으면 언제나 온전한 원래 내용이다
     let partial = staging_dir.join(format!("{}.partial", backup_name));
@@ -625,13 +613,6 @@ pub fn replace_dir_checked(
         std::fs::rename(&partial, &backup_dir)?;
     }
     let had_target = backup_dir.exists();
-    if had_target {
-        if let Err(e) = check(&backup_dir) {
-            // 폴더는 아직 백업과 같다 (도중에 꺼진 교체였으면 위에서 백업으로 되돌렸다): 백업만 지운다
-            let _ = std::fs::remove_dir_all(&backup_dir);
-            return Err(e);
-        }
-    }
     let result = (|| -> Result<Vec<PathBuf>> {
         if staged.extension().is_some_and(|e| e == "zip") {
             if had_target {
@@ -733,6 +714,93 @@ pub(crate) fn settle_locales(dir: &Path) {
 fn locales_siblings(dir: &Path) -> (PathBuf, PathBuf) {
     let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "locales".into());
     (dir.with_file_name(format!(".{name}-new")), dir.with_file_name(format!(".{name}-old")))
+}
+
+/// 묻지 않는 모듈·익스텐션 교체. 원래 폴더를 지우고 다시 채우지 않고, 통째로 옆(`.<이름>.saba-old`)으로 옮긴 뒤 바꿔 넣는다.
+///
+/// 1. 새 판을 옆 폴더(`.<이름>.saba-new`)에 푼다
+/// 2. 원래 폴더를 이름만 바꿔 옮긴다 (이 순간부터 원래 경로에 쓰는 것은 옮긴 폴더에 섞이지 않는다)
+/// 3. 옮긴 폴더를 `untouched`로 검사한다. 사용자가 넣거나 고친 것이 있으면 원래대로 되돌리고 멈춘다
+/// 4. 새 판을 원래 이름으로 옮기고, 옮긴 폴더의 맨 위 점 항목(.git 등)을 옮겨 준 뒤에만 옮긴 폴더를 지운다
+///
+/// 어느 단계가 실패해도 지우는 것은 새로 푼 판뿐이다. 원래 폴더를 되돌리지 못하면 그 위치를 오류에 적고 남긴다.
+/// 도중에 꺼졌으면 다음 호출이 먼저 정리한다(원래 경로가 비었으면 되돌리고, 바꿔 넣은 뒤였으면 검사가 통과할 때만 지운다)
+pub fn swap_dir_untouched(target_dir: &Path, staged: &Path, mut untouched: impl FnMut(&Path) -> bool) -> Result<Vec<PathBuf>> {
+    let parent = target_dir.parent().ok_or_else(|| anyhow::anyhow!("{} has no parent folder", target_dir.display()))?;
+    let name = target_dir.file_name().ok_or_else(|| anyhow::anyhow!("{} has no name", target_dir.display()))?.to_string_lossy().to_string();
+    let aside = parent.join(format!(".{name}.saba-old"));
+    let fresh = parent.join(format!(".{name}.saba-new"));
+    let kept = |why: &str| anyhow::anyhow!("{}; the original folder is kept at {}", why, aside.display());
+
+    // 지난 교체가 남긴 것부터
+    if aside.exists() {
+        if !target_dir.exists() {
+            std::fs::rename(&aside, target_dir).map_err(|e| kept(&format!("could not put the folder back ({e})")))?;
+        } else if untouched(&aside) {
+            finish_aside(&aside, target_dir).map_err(|e| kept(&e.to_string()))?;
+        } else {
+            return Err(kept("a previous swap left a folder with changes beside it"));
+        }
+    }
+    if fresh.exists() {
+        std::fs::remove_dir_all(&fresh)?;
+    }
+
+    let extracted = match extract_zip(staged, &fresh, |_| Ok(())) {
+        Ok(files) => files,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&fresh);
+            return Err(e);
+        }
+    };
+    let files: Vec<PathBuf> = extracted.iter().filter_map(|f| f.strip_prefix(&fresh).ok().map(|rel| target_dir.join(rel))).collect();
+    let drop_fresh = || {
+        let _ = std::fs::remove_dir_all(&fresh);
+    };
+
+    if target_dir.exists() {
+        if let Err(e) = std::fs::rename(target_dir, &aside) {
+            drop_fresh();
+            return Err(anyhow::anyhow!("could not move {} aside: {}", target_dir.display(), e));
+        }
+        if !untouched(&aside) {
+            drop_fresh();
+            std::fs::rename(&aside, target_dir).map_err(|e| kept(&format!("could not put the folder back ({e})")))?;
+            anyhow::bail!("{} has files that were added or changed after install; left as it is", target_dir.display());
+        }
+    }
+    if let Err(e) = std::fs::rename(&fresh, target_dir) {
+        drop_fresh();
+        if aside.exists() {
+            std::fs::rename(&aside, target_dir).map_err(|re| kept(&format!("could not put the new version in ({e}) nor the folder back ({re})")))?;
+        }
+        return Err(anyhow::anyhow!("could not put the new version of {} in: {}", target_dir.display(), e));
+    }
+    if aside.exists() {
+        // 바꿔 넣기는 끝났다. 정리가 실패하면 옮긴 폴더를 남기고 다음 교체가 다시 정리한다
+        if let Err(e) = finish_aside(&aside, target_dir) {
+            tracing::warn!("[Updater] Kept {} after the swap: {}", aside.display(), e);
+        }
+    }
+    Ok(files)
+}
+
+/// 바꿔 넣은 뒤 옮긴 원래 폴더를 치운다: 맨 위 점 항목(교체가 남기는 .git 등)을 새 폴더로 옮긴 뒤에만 지운다
+fn finish_aside(aside: &Path, target_dir: &Path) -> Result<()> {
+    for entry in std::fs::read_dir(aside)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if !name.to_string_lossy().starts_with('.') {
+            continue;
+        }
+        let to = target_dir.join(&name);
+        if to.exists() {
+            anyhow::bail!("{} is in both the new version and the old folder", name.to_string_lossy());
+        }
+        std::fs::rename(entry.path(), &to)?;
+    }
+    std::fs::remove_dir_all(aside)?;
+    Ok(())
 }
 
 /// `dir` 안을 비운다. `__pycache__`와 점(.)으로 시작하는 항목(.git 등)은 건드리지 않는다

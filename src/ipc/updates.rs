@@ -502,7 +502,11 @@ async fn replace_addons_once(state: &UpdateState) -> bool {
     let keys: Vec<String> = ready.iter().map(Component::manifest_key).filter(|k| replaceable_without_asking(k)).collect();
     if !keys.is_empty() {
         tracing::info!("[Updates] Replacing {:?} without asking", keys);
-        let _ = apply_updates_with(state.clone(), ApplyRequest { components: keys, untouched_only: true }).await;
+        let answer = crate::ipc::internal::into_internal(apply_updates_with(state.clone(), ApplyRequest { components: keys, untouched_only: true }).await.into_response()).await.body;
+        // 바꾸지 못한 것(교체 순간 사용자 파일이 보였거나, 옮기지 못함)은 업데이트 목록에 남아 사용자가 고른다
+        if let Some(errors) = answer.get("errors").and_then(Value::as_array).filter(|e| !e.is_empty()) {
+            tracing::warn!("[Updates] Some modules or extensions were not replaced: {:?}", errors);
+        }
     }
     held
 }

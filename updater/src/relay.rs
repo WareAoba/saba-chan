@@ -249,15 +249,11 @@ pub async fn latest_catalog(relay_url: Option<&str>, channel: &str) -> Result<Op
     let release = client
         .fetch_verified_catalog(channel, &current_platform(), &crate::versions::bundled().release, &anon_client_id())
         .await?;
-    let Some(mut manifest) = release.map(|r| r.manifest) else { return Ok(None) };
     // 모듈·익스텐션은 이 코어로 돌아가는 판 목록에서 (가장 새 릴리즈의 판은 더 새 코어를 요구할 수 있다).
-    // 목록을 받지 못하면 릴리즈 manifest의 판을 그대로 둔다: 설치할 때 requires 검사가 맞지 않는 판을 막는다
-    match client.fetch_addon_catalog(&core_version(), channel).await {
-        Ok(Some(catalog)) => catalog.overlay(&mut manifest),
-        Ok(None) => {}
-        Err(e) => tracing::warn!("[Updater] Addon catalog unavailable, using the release manifest: {}", e),
-    }
-    Ok(Some(manifest))
+    // 목록 API가 없는 릴레이면 릴리즈 manifest의 판을 그대로 두고, 목록을 읽지 못하면 내린 판일 수 있어 모듈·익스텐션을 내지 않는다
+    let Some(release) = release else { return Ok(None) };
+    let catalog = client.fetch_addon_catalog(&core_version(), channel).await;
+    Ok(merge_addon_catalog(Some(release), catalog, &core_version(), channel, &current_platform()).map(|r| r.manifest))
 }
 
 /// 이 빌드의 코어(데몬) 버전 — 모듈·익스텐션 목록을 고르는 기준
@@ -275,6 +271,34 @@ fn current_param(current: &str) -> &str {
 pub struct VerifiedRelease {
     pub latest: LatestRelease,
     pub manifest: ReleaseManifest,
+}
+
+/// 업데이트 확인의 앱 릴리즈와 모듈·익스텐션 판 목록을 합친다.
+/// - 목록이 있으면 그 판으로 바꾼다(내린 판은 뺀다). 앱 릴리즈가 없어도 목록만으로 확인한다
+/// - 목록 API가 없거나 올린 판이 없으면(`Ok(None)`) 릴리즈 manifest 그대로
+/// - 목록을 읽지 못하면 이번 확인에서는 모듈·익스텐션을 내지 않는다: 릴리즈 manifest의 판은 그 뒤 내린 판일 수 있다
+pub fn merge_addon_catalog(
+    release: Option<VerifiedRelease>,
+    catalog: Result<Option<AddonCatalog>, RelayError>,
+    core: &str,
+    channel: &str,
+    platform: &str,
+) -> Option<VerifiedRelease> {
+    match (release, catalog) {
+        (Some(mut release), Ok(Some(catalog))) => {
+            catalog.overlay(&mut release.manifest);
+            Some(release)
+        }
+        (None, Ok(Some(catalog))) => Some(VerifiedRelease::addons_only(core, channel, platform, &catalog)),
+        (release, Ok(None)) => release,
+        (release, Err(e)) => {
+            tracing::warn!("[Updater] Addon catalog unavailable; not offering module or extension updates this time: {}", e);
+            release.map(|mut r| {
+                r.manifest.components.retain(|key, _| !key.starts_with(MODULE_PREFIX) && !key.starts_with(EXTENSION_PREFIX));
+                r
+            })
+        }
+    }
 }
 
 impl VerifiedRelease {
@@ -1151,6 +1175,25 @@ mod tests {
             verify_release(&signed, "linux-x64", "stable", "0.1.0"),
             Err(RelayError::Signature(signature::SignatureError::Invalid))
         ));
+    }
+
+    /// 판 목록을 읽지 못하면(네트워크·서버 오류) 이번 확인에서는 모듈·익스텐션을 내지 않는다: 릴리즈 manifest의 판은
+    /// 그 뒤 내린 판일 수 있고, 내림 기록은 목록에만 있다. 목록 API가 없는 옛 릴레이(`Ok(None)`)는 릴리즈 manifest 그대로
+    #[test]
+    fn an_unreadable_addon_catalog_offers_no_addons() {
+        let mut v = manifest("0.1.13", "windows-x64");
+        v["components"]["module-palworld"] = json!({ "version": "0.1.6", "asset": "m.zip", "sha256": "a".repeat(64), "url": "https://cdn.example/m.zip" });
+        let release = || Some(VerifiedRelease { latest: LatestRelease::default(), manifest: serde_json::from_value(v.clone()).unwrap() });
+        let keys = |r: Option<VerifiedRelease>| {
+            let mut k: Vec<String> = r.unwrap().manifest.components.into_keys().collect();
+            k.sort();
+            k
+        };
+        let failed = merge_addon_catalog(release(), Err(RelayError::Http("timeout".into())), "0.1.13", "stable", "windows-x64");
+        assert_eq!(keys(failed), ["saba-core"]);
+        let old_relay = merge_addon_catalog(release(), Ok(None), "0.1.13", "stable", "windows-x64");
+        assert_eq!(keys(old_relay), ["module-palworld", "saba-core"]);
+        assert!(merge_addon_catalog(None, Err(RelayError::Http("x".into())), "0.1.13", "stable", "windows-x64").is_none());
     }
 
     /// 모듈·익스텐션 판 목록: 서명이 맞고 경로가 안전한 모듈·익스텐션 판만 남기고, 릴리즈 manifest의 판을 바꾼다
