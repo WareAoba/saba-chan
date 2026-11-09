@@ -1088,11 +1088,14 @@ pub fn spawn_scheduler(state: IPCServer) {
     tokio::spawn(async move {
         let started = chrono::Local::now().naive_local();
         let clock = RUNNER.get_or_init(|| (started, std::sync::Arc::new(Mutex::new(Clock::default())))).1.clone();
+        // 복원 전 백업을 이미 살핀 (인스턴스, 켠 시각). 한 번 켠 뒤로 한 번만 살핀다
+        let mut swept: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
         loop {
             tokio::select! {
                 _ = state.shutdown_token.cancelled() => break,
                 _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {}
             }
+            sweep_restore_safeties(&state, &mut swept).await;
             let now = chrono::Local::now().naive_local();
             let tasks: Vec<(String, ScheduledTask)> = {
                 let supervisor = state.supervisor.read().await;
@@ -1125,6 +1128,42 @@ pub fn spawn_scheduler(state: IPCServer) {
             }
         }
     });
+}
+
+/// 복원한 뒤 켠 서버가 15분 넘게 돌면 복원 직전 안전 백업을 치운다 (그동안 접속해 확인한다고 본다).
+/// 서버를 켜기 전이나 켠 지 15분 안에는 남겨 둔다. 켠 시각은 데몬이 다시 떠도 그대로라 상태를 따로 저장하지 않는다
+async fn sweep_restore_safeties(state: &IPCServer, swept: &mut std::collections::HashMap<String, u64>) {
+    let now = saba_runner::now();
+    let running: Vec<(String, u64, PathBuf)> = {
+        let supervisor = state.supervisor.read().await;
+        let mut out = Vec::new();
+        for instance in supervisor.instance_store.list() {
+            if !supervisor.is_running(&instance.id).await {
+                continue;
+            }
+            if let Ok(started) = supervisor.tracker.get_start_time(&instance.id) {
+                if now >= started.saturating_add(backup::RESTORE_SAFETY_GRACE_SECS) && swept.get(&instance.id) != Some(&started) {
+                    out.push((instance.id.clone(), started, backup::backups_dir(&supervisor.instance_store.instance_dir(&instance.id))));
+                }
+            }
+        }
+        out
+    };
+    for (id, started, dir) in running {
+        // 복원·백업·업데이트가 잡고 있으면 다음 차례에 다시 본다
+        let Some(_guard) = InstanceLock::take(&id) else { continue };
+        let swept_dir = dir.clone();
+        let removed = tokio::task::spawn_blocking(move || {
+            let expired = backup::expired_restore_safeties(&backup::list(&swept_dir), started, now);
+            expired.into_iter().filter(|n| backup::delete(&swept_dir, n).is_ok()).collect::<Vec<_>>()
+        })
+        .await
+        .unwrap_or_default();
+        if !removed.is_empty() {
+            tracing::info!("Removed {} restore safety backup(s) of '{}' after the server ran {} minutes", removed.len(), id, backup::RESTORE_SAFETY_GRACE_SECS / 60);
+        }
+        swept.insert(id, started);
+    }
 }
 
 async fn announce(state: &IPCServer, id: &str, message: &str) -> bool {

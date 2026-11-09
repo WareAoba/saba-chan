@@ -740,6 +740,21 @@ fn name_time_ns(name: &str) -> Option<u64> {
     u64::try_from(local.timestamp_nanos_opt()?).ok()
 }
 
+/// 복원 전 안전 백업을 서버를 켠 뒤 이만큼 지나면 치운다 (복원 뒤 접속해 확인할 시간)
+pub const RESTORE_SAFETY_GRACE_SECS: u64 = 15 * 60;
+
+/// 지금 돌고 있는 서버(`started_at`에 켬, 유닉스 초)가 `RESTORE_SAFETY_GRACE_SECS` 넘게 돌았으면,
+/// 그 전에 만든 복원 전 백업의 이름. 아직 켜지 않은 서버의 복원 전 백업은 대상이 아니다 (호출자가 돌고 있을 때만 부른다)
+pub fn expired_restore_safeties(list: &[BackupInfo], started_at: u64, now: u64) -> Vec<String> {
+    if now < started_at.saturating_add(RESTORE_SAFETY_GRACE_SECS) {
+        return Vec::new();
+    }
+    list.iter()
+        .filter(|b| b.kind == BackupKind::PreRestore && b.created < started_at)
+        .map(|b| b.name.clone())
+        .collect()
+}
+
 /// 새것부터
 pub fn list(dir: &Path) -> Vec<BackupInfo> {
     let mut out: Vec<BackupInfo> = fs::read_dir(dir)
@@ -1394,6 +1409,21 @@ mod tests {
         restore(&dir, &made).unwrap();
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
         assert_eq!(fs::read(leftover.join("kept.txt")).unwrap(), b"original");
+    }
+
+    /// 복원 전 백업은 그 뒤에 켠 서버가 15분을 버텼을 때만 치운다: 아직 안 켰거나 켠 지 얼마 안 됐으면 그대로 둔다
+    #[test]
+    fn restore_safety_backups_expire_after_the_server_has_run_a_while() {
+        let info = |name: &str, kind, created| BackupInfo { name: name.into(), kind, created, size: 0, stored: 0, readable: true, made: created * 1_000_000_000 };
+        let all = vec![
+            info("before-start-pre-restore.zip", BackupKind::PreRestore, 100),
+            info("after-start-pre-restore.zip", BackupKind::PreRestore, 2000),
+            info("old-manual.zip", BackupKind::Manual, 100),
+            info("old-update.zip", BackupKind::PreUpdate, 100),
+        ];
+        let start = 1000;
+        assert!(expired_restore_safeties(&all, start, start + RESTORE_SAFETY_GRACE_SECS - 1).is_empty(), "not yet 15 minutes");
+        assert_eq!(expired_restore_safeties(&all, start, start + RESTORE_SAFETY_GRACE_SECS), vec!["before-start-pre-restore.zip".to_string()]);
     }
 
     #[test]
