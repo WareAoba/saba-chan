@@ -10,8 +10,8 @@
 //! 맥은 앱마다 막는 방화벽(Application Firewall)이다: 포트 규칙이 없으므로 켜져 있는지·모두 차단인지와, 받는 프로그램이
 //! 막혔는지(`socketfilterfw`)만 본다. 목록에 없는 프로그램은 처음 받을 때 macOS가 묻기 때문에 판정하지 않는다 ([`mac_verdict`]).
 
-// 판정은 Windows·맥 방화벽만 읽는다: 다른 OS에서는 시험만 이 판정 규칙을 쓴다
-#![cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+// 포트 규칙 판정은 Windows 방화벽만 읽는다: 다른 OS에서는 시험만 이 판정 규칙을 쓴다
+#![cfg_attr(not(windows), allow(dead_code))]
 
 use super::Protocol;
 
