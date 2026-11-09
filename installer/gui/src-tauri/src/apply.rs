@@ -277,7 +277,8 @@ async fn watch_new_daemon(
         }
     };
     let config = saba_chan_updater_lib::config_file::ConfigFile::default_location();
-    let version = live.target_version.clone();
+    // 릴레이는 되돌림을 릴리즈마다 센다 (부분 릴리즈의 코어 판은 릴리즈 판과 다르다)
+    let version = live.report_version().to_string();
     live.roll_back(manager, &config, &UpdateCompletionMarker::path(), reason);
     let saved = live_apply::saved_update_config(&config);
     live_apply::report_rolled_back(saved.relay_url.as_deref(), &version, &saved.channel).await;
@@ -405,7 +406,8 @@ fn spawn_detached(cmd: &str, extra_args: &[String], after_update: bool) -> Resul
     }
     #[cfg(not(target_os = "windows"))]
     {
-        command.spawn().map(|c| c.id()).map_err(|e| format!("Failed to spawn: {}", e))
+        // 손잡이를 맡겨 둔다: 끝난 자식은 거두기 전까지 좀비로 남아 감시가 살아 있다고 볼 수 있다
+        command.spawn().map(live_apply::keep_child).map_err(|e| format!("Failed to spawn: {}", e))
     }
 }
 

@@ -322,6 +322,10 @@ pub struct RelayClient {
     http: reqwest::Client,
     /// 받은 서명 manifest 원문을 두는 폴더 (`<staging>/manifests`). 없으면 매번 받는다
     manifest_cache: Option<std::path::PathBuf>,
+    /// heartbeat가 알린 릴리즈 id. `/latest` 주소에 `r`로 붙여 캐시 키를 바꾼다 (릴레이는 읽지 않는다)
+    release_hint: Option<u64>,
+    /// `/latest` 응답에 담긴 가장 큰 릴리즈 id (후보·지금 판). 0이면 없음
+    latest_seen_id: std::sync::atomic::AtomicU64,
 }
 
 impl RelayClient {
@@ -334,7 +338,24 @@ impl RelayClient {
             .timeout(std::time::Duration::from_secs(20))
             .build()
             .unwrap_or_default();
-        Self { base_url: base_url.trim_end_matches('/').to_string(), http, manifest_cache: None }
+        Self {
+            base_url: base_url.trim_end_matches('/').to_string(),
+            http,
+            manifest_cache: None,
+            release_hint: None,
+            latest_seen_id: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// heartbeat가 알린 릴리즈 id를 `/latest` 캐시 키로 쓴다: 새 id면 캐시된 옛 응답이 아니라 새 응답을 받는다
+    pub fn with_release_hint(mut self, id: Option<u64>) -> Self {
+        self.release_hint = id;
+        self
+    }
+
+    /// 지금까지 받은 `/latest` 응답에 담긴 가장 큰 릴리즈 id
+    pub fn latest_seen_id(&self) -> Option<u64> {
+        Some(self.latest_seen_id.load(std::sync::atomic::Ordering::SeqCst)).filter(|id| *id > 0)
     }
 
     /// 받은 서명 manifest 원문을 `dir/<릴리즈 id>.json`에 두고, 같은 id는 다시 받지 않는다 (서명 검증은 매번 한다)
@@ -346,17 +367,19 @@ impl RelayClient {
     /// 캐시되는 확인 (`/v1/updates/latest`). 이 주소가 없는 옛 릴레이(404·400)면 `Ok(None)`: 옛 `check`로 물러선다
     pub async fn latest(&self, channel: &str, platform: &str, current: &str) -> Result<Option<LatestResponse>, RelayError> {
         let url = format!("{}/v1/updates/latest", self.base_url);
-        let resp = self
-            .http
-            .get(&url)
-            .query(&[("channel", channel), ("platform", platform), ("current", current_param(current))])
-            .send()
-            .await
-            .map_err(|e| RelayError::Http(e.to_string()))?;
+        let mut request = self.http.get(&url).query(&[("channel", channel), ("platform", platform), ("current", current_param(current))]);
+        if let Some(id) = self.release_hint {
+            request = request.query(&[("r", id)]);
+        }
+        let resp = request.send().await.map_err(|e| RelayError::Http(e.to_string()))?;
         if matches!(resp.status().as_u16(), 400 | 404) {
             return Ok(None);
         }
-        Self::json(resp).await.map(Some)
+        let found: LatestResponse = Self::json(resp).await?;
+        if let Some(max) = found.releases.iter().chain(found.installed.as_ref()).filter_map(|r| r.id).max() {
+            self.latest_seen_id.fetch_max(max, std::sync::atomic::Ordering::SeqCst);
+        }
+        Ok(Some(found))
     }
 
     pub async fn check(
@@ -377,10 +400,18 @@ impl RelayClient {
         Self::json(resp).await
     }
 
-    pub async fn fetch_manifest(&self, latest: &LatestRelease) -> Result<SignedManifest, RelayError> {
+    /// manifest를 받아 `check`(서명·대상·판 검증)를 통과한 것만 `<id>.json`으로 보관한다. 같은 id는 보관본을 쓰되 매번 검증하고,
+    /// 보관본이 검증에 실패하면 지우고 한 번 다시 받는다 (릴레이를 바꿨거나 깨진 보관본이 계속 남지 않게)
+    async fn fetch_checked<T>(&self, latest: &LatestRelease, check: impl Fn(&SignedManifest) -> Result<T, RelayError>) -> Result<T, RelayError> {
         let cached = self.manifest_cache.as_ref().zip(latest.id).map(|(dir, id)| dir.join(format!("{id}.json")));
-        if let Some(signed) = cached.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()) {
-            return Ok(signed);
+        if let Some(path) = cached.as_ref() {
+            if let Some(signed) = std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<SignedManifest>(&t).ok()) {
+                match check(&signed) {
+                    Ok(checked) => return Ok(checked),
+                    Err(e) => tracing::warn!("[Updater] Kept manifest {} failed verification ({}); fetching it again", path.display(), e),
+                }
+            }
+            let _ = std::fs::remove_file(path);
         }
         let url = self.manifest_url(latest);
         let resp = self.http.get(&url).send().await.map_err(|e| RelayError::Http(e.to_string()))?;
@@ -389,7 +420,8 @@ impl RelayClient {
         }
         let text = resp.text().await.map_err(|e| RelayError::Parse(e.to_string()))?;
         let signed: SignedManifest = serde_json::from_str(&text).map_err(|e| RelayError::Parse(e.to_string()))?;
-        // 원문 그대로 둔다 (쓰지 못해도 확인은 이어 간다: 다음에 다시 받을 뿐이다)
+        let checked = check(&signed)?;
+        // 검증을 통과한 원문만 그대로 둔다 (쓰지 못해도 확인은 이어 간다: 다음에 다시 받을 뿐이다)
         if let Some(path) = cached {
             let kept = path.parent().map(|dir| std::fs::create_dir_all(dir).and_then(|_| crate::write_atomic(&path, text.as_bytes())));
             match kept {
@@ -398,7 +430,13 @@ impl RelayClient {
                 None => {}
             }
         }
-        Ok(signed)
+        Ok(checked)
+    }
+
+    /// 받은 manifest를 검증해 이 릴리즈와 묶는다 (`verify_release` + `bind_release`)
+    async fn fetch_verified(&self, latest: LatestRelease, platform: &str, channel: &str, current: &str) -> Result<VerifiedRelease, RelayError> {
+        self.fetch_checked(&latest, |signed| verify_release(signed, platform, channel, current).and_then(|m| bind_release(latest.clone(), m)))
+            .await
     }
 
     /// manifest 주소: 릴레이가 준 것. 경로만이면(`/latest`는 캐시되므로 요청 호스트를 싣지 않는다) 이 릴레이 주소에 붙인다.
@@ -450,17 +488,11 @@ impl RelayClient {
             Some(base) if same_base_prerelease(&latest.version, base) => "beta",
             _ => channel,
         };
-        let signed = match self.fetch_manifest(&latest).await {
-            Ok(signed) => signed,
-            Err(RelayError::Status(404)) if by_version => return Ok(None),
-            Err(e) => return Err(e),
-        };
-        let manifest = match verify_release(&signed, platform, accept, current) {
-            Ok(manifest) => manifest,
-            Err(RelayError::WrongChannel { .. } | RelayError::WrongTarget { .. }) if by_version => return Ok(None),
-            Err(e) => return Err(e),
-        };
-        bind_release(latest, manifest).map(Some)
+        match self.fetch_verified(latest, platform, accept, current).await {
+            Ok(release) => Ok(Some(release)),
+            Err(RelayError::Status(404) | RelayError::WrongChannel { .. } | RelayError::WrongTarget { .. }) if by_version => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 
     /// 옛 릴레이의 확인 (`/v1/updates/check`, 롤아웃은 릴레이가 판정한다)
@@ -480,21 +512,16 @@ impl RelayClient {
             (true, None) if !current.is_empty() => LatestRelease { version: current.to_string(), ..Default::default() },
             _ => return Ok(None),
         };
-        let signed = match self.fetch_manifest(&latest).await {
-            Ok(signed) => signed,
+        match self.fetch_verified(latest, platform, channel, current).await {
+            Ok(release) => Ok(Some(release)),
             // 최신인데 그 버전 manifest가 릴레이에 없으면(옛 릴리즈) 받을 것이 없다
-            Err(RelayError::Status(404)) if check.up_to_date => return Ok(None),
-            Err(e) => return Err(e),
-        };
-        let manifest = match verify_release(&signed, platform, channel, current) {
-            Ok(manifest) => manifest,
+            Err(RelayError::Status(404)) if check.up_to_date => Ok(None),
             // 최신이고 릴리즈를 받지 않았으면 버전만으로 manifest를 찾는다. 같은 버전이 다른 채널에도 있으면 그쪽 것이 온다.
             // 다른 채널의 구성요소는 같은 코어 버전이어도 다르다: 비교하지 않고 받을 것이 없다고 본다.
             // 그 버전에 이 플랫폼 몫이 없어도(아직 그 플랫폼 빌드가 나오지 않은 버전) 받을 것이 없다
-            Err(RelayError::WrongChannel { .. } | RelayError::WrongTarget { .. }) if by_version => return Ok(None),
-            Err(e) => return Err(e),
-        };
-        bind_release(latest, manifest).map(Some)
+            Err(RelayError::WrongChannel { .. } | RelayError::WrongTarget { .. }) if by_version => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 
     /// 아무것도 깔리지 않은 상태의 확인(모듈·익스텐션 카탈로그, 설치기): 릴레이에는 현재 버전 없이 묻되,
@@ -512,9 +539,7 @@ impl RelayClient {
             None => self.check(channel, platform, "", client_id).await?.latest,
         };
         let Some(latest) = latest else { return Ok(None) };
-        let signed = self.fetch_manifest(&latest).await?;
-        let manifest = verify_release(&signed, platform, channel, floor)?;
-        bind_release(latest, manifest).map(Some)
+        self.fetch_verified(latest, platform, channel, floor).await.map(Some)
     }
 
     /// 이 코어 버전으로 돌아가는 모듈·익스텐션 판 목록 (`GET /v1/addons/catalog`). 판마다 번들 공개키로 서명을 확인하고,
@@ -961,7 +986,7 @@ mod tests {
     #[tokio::test]
     async fn the_cached_check_keeps_the_manifest_by_release_id() {
         let latest = r#"{"releases":[{"id":7,"version":"0.1.1","channel":"stable","rolloutPercent":100}],"installed":null}"#;
-        let (base, seen) = routed_relay(vec![
+        let (base, seen_log) = routed_relay(vec![
             ("/v1/updates/latest", 200, latest.into()),
             ("/v1/updates/manifest/", 200, PRODUCTION_0_1_1.into()),
         ])
@@ -973,19 +998,64 @@ mod tests {
             assert_eq!(got.manifest.version, "0.1.1");
             assert_eq!(got.latest.id, Some(7));
         }
-        let seen = seen.lock().unwrap().clone();
+        let seen = seen_log.lock().unwrap().clone();
         assert!(seen.iter().all(|p| !p.contains("client_id")), "{seen:?}");
         assert_eq!(seen.iter().filter(|p| p.starts_with("/v1/updates/manifest/")).count(), 1, "{seen:?}");
         assert!(cache.path().join("7.json").is_file());
 
-        // 남겨 둔 원문도 매번 검증한다: 고친 파일은 받지 않는다
+        // 남겨 둔 원문도 매번 검증한다: 고친 파일은 쓰지 않고 지운 뒤 한 번 다시 받는다
         let mut tampered: serde_json::Value = serde_json::from_str(PRODUCTION_0_1_1).unwrap();
         tampered["manifest"]["components"]["gui"]["url"] = json!("https://evil.example/gui.zip");
         std::fs::write(cache.path().join("7.json"), tampered.to_string()).unwrap();
-        assert!(matches!(
-            client.fetch_verified_release("stable", "windows-x64", "0.1.0", "t").await,
-            Err(RelayError::Signature(_))
-        ));
+        let got = client.fetch_verified_release("stable", "windows-x64", "0.1.0", "t").await.unwrap().unwrap();
+        assert_ne!(got.manifest.components["gui"].url, "https://evil.example/gui.zip");
+        assert_eq!(seen_manifests(&seen_log), 2, "fetched once more");
+        assert_eq!(std::fs::read_to_string(cache.path().join("7.json")).unwrap(), PRODUCTION_0_1_1, "the verified copy replaced it");
+    }
+
+    fn seen_manifests(seen: &std::sync::Arc<std::sync::Mutex<Vec<String>>>) -> usize {
+        seen.lock().unwrap().iter().filter(|p| p.starts_with("/v1/updates/manifest/")).count()
+    }
+
+    /// 검증에 실패한 manifest(광고한 판과 서명된 판이 다름)는 보관하지 않는다: 릴레이가 고쳐지면 다음 확인이 다시 받는다
+    #[tokio::test]
+    async fn a_manifest_that_fails_verification_is_not_kept() {
+        let latest = r#"{"releases":[{"id":7,"version":"0.1.2","channel":"stable","rolloutPercent":100}],"installed":null}"#;
+        let (base, seen) = routed_relay(vec![
+            ("/v1/updates/latest", 200, latest.into()),
+            ("/v1/updates/manifest/", 200, PRODUCTION_0_1_1.into()),
+        ])
+        .await;
+        let cache = tempfile::tempdir().unwrap();
+        let client = RelayClient::new(&base).with_manifest_cache(cache.path().to_path_buf());
+        for _ in 0..2 {
+            assert!(matches!(
+                client.fetch_verified_release("stable", "windows-x64", "0.1.0", "t").await,
+                Err(RelayError::VersionMismatch { .. })
+            ));
+        }
+        assert!(!cache.path().join("7.json").exists());
+        assert_eq!(seen_manifests(&seen), 2, "asked the relay again instead of reusing a bad copy");
+    }
+
+    /// heartbeat가 알린 릴리즈 id를 `/latest` 캐시 키(`r`)로 붙이고, 응답에 담긴 가장 큰 id를 알려 준다
+    #[tokio::test]
+    async fn the_heartbeat_release_id_is_the_cache_key_of_the_cached_check() {
+        let latest = r#"{"releases":[{"id":9,"version":"0.1.1","channel":"stable","rolloutPercent":100}],"installed":{"id":4,"version":"0.1.0","channel":"stable"}}"#;
+        let (base, seen) = routed_relay(vec![
+            ("/v1/updates/latest", 200, latest.into()),
+            ("/v1/updates/manifest/", 200, PRODUCTION_0_1_1.into()),
+        ])
+        .await;
+        let client = RelayClient::new(&base).with_release_hint(Some(12));
+        assert_eq!(client.latest_seen_id(), None);
+        client.fetch_verified_release("stable", "windows-x64", "0.1.0", "t").await.unwrap();
+        assert_eq!(client.latest_seen_id(), Some(9));
+        let first = seen.lock().unwrap()[0].clone();
+        assert!(first.starts_with("/v1/updates/latest?") && first.ends_with("&r=12"), "{first}");
+        // 알린 id가 없으면 붙이지 않는다
+        RelayClient::new(&base).fetch_verified_release("stable", "windows-x64", "0.1.0", "t").await.unwrap();
+        assert!(!seen.lock().unwrap().iter().filter(|p| p.starts_with("/v1/updates/latest")).nth(1).unwrap().contains("r="));
     }
 
     /// `/latest`는 경로만인 manifest 주소를 준다: 이 릴레이 주소에 붙여 받는다. 옛 `/check`의 절대 주소는 그대로 쓴다

@@ -705,11 +705,17 @@ impl UpdateManager {
 
     /// 릴레이의 서명된 manifest 하나로 모든 컴포넌트의 최신 버전과 R2 URL을 얻는다.
     pub async fn check_for_updates(&mut self) -> Result<UpdateStatus> {
+        self.check_for_updates_hinted(None).await.map(|(status, _)| status)
+    }
+
+    /// `check_for_updates`에 heartbeat가 알린 릴리즈 id(`hint`)를 캐시 키로 붙인다. 확인 결과와,
+    /// 릴레이 `/latest` 응답에 담긴 가장 큰 릴리즈 id(옛 릴레이면 None)를 준다
+    pub async fn check_for_updates_hinted(&mut self, hint: Option<u64>) -> Result<(UpdateStatus, Option<u64>)> {
         self.status.checking = true;
         self.status.error = None;
 
         let local_versions = self.collect_local_versions();
-        let client = self.relay_client();
+        let client = self.relay_client().with_release_hint(hint);
         let platform = relay::current_platform();
         let current = local_versions.get("saba-core").cloned().unwrap_or_default();
 
@@ -819,7 +825,7 @@ impl UpdateManager {
             error: None,
             stable_wait,
         };
-        Ok(self.status.clone())
+        Ok((self.status.clone(), client.latest_seen_id()))
     }
 
     /// 상태에 싣는 패치노트: 적용 뒤 결과 마커와 같은 규칙(`ReleaseSummary::notes_for`)으로 고른다

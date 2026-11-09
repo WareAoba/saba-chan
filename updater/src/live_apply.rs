@@ -226,6 +226,35 @@ impl HttpProbe {
     }
 }
 
+/// 업데이터가 직접 띄운 프로세스 (`keep_child`). Unix에서 끝난 자식은 거두기 전까지 좀비로 남아 `kill -0`이 살아 있다고 답한다:
+/// 그 PID는 이 손잡이로 끝났는지 보고 거둔다
+static CHILDREN: std::sync::Mutex<Vec<std::process::Child>> = std::sync::Mutex::new(Vec::new());
+
+/// 띄운 자식 프로세스를 맡아 두고 그 PID를 준다 (`process_running`이 끝났는지 본다)
+pub fn keep_child(child: std::process::Child) -> u32 {
+    let pid = child.id();
+    CHILDREN.lock().unwrap_or_else(|e| e.into_inner()).push(child);
+    pid
+}
+
+/// 프로세스가 살아 있는가. 맡아 둔 자식이면 손잡이로 보고, 끝났으면 거둔다
+pub fn process_running(pid: u32) -> bool {
+    let mut children = CHILDREN.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(i) = children.iter().position(|c| c.id() == pid) {
+        return match children[i].try_wait() {
+            Ok(None) => true,
+            Ok(Some(_)) => {
+                // 이미 거뒀다: 남은 상태를 바로 돌려받는다
+                let _ = children.remove(i).wait();
+                false
+            }
+            Err(_) => ProcessChecker::is_pid_running(pid),
+        };
+    }
+    drop(children);
+    ProcessChecker::is_pid_running(pid)
+}
+
 impl Probe for HttpProbe {
     fn health(&self) -> impl Future<Output = Option<Health>> + Send {
         let request = self.http.get(&self.url).send();
@@ -239,14 +268,14 @@ impl Probe for HttpProbe {
     }
 
     fn alive(&self, pid: u32) -> bool {
-        ProcessChecker::is_pid_running(pid)
+        process_running(pid)
     }
 }
 
 /// 프로세스 하나를 끝낸다 (자식은 건드리지 않는다: 러너·게임 서버는 데몬과 따로 산다).
 /// Unix는 TERM을 보내고 5초 안에 끝나지 않으면 KILL
 pub fn stop_process(pid: u32) {
-    if !ProcessChecker::is_pid_running(pid) {
+    if !process_running(pid) {
         return;
     }
     #[cfg(windows)]
@@ -257,11 +286,11 @@ pub fn stop_process(pid: u32) {
     #[cfg(not(windows))]
     {
         let _ = std::process::Command::new("kill").args(["-TERM", &pid.to_string()]).output();
-        if !wait_for_exit(pid, Duration::from_secs(5), Duration::from_millis(200), ProcessChecker::is_pid_running) {
+        if !wait_for_exit(pid, Duration::from_secs(5), Duration::from_millis(200), process_running) {
             let _ = std::process::Command::new("kill").args(["-KILL", &pid.to_string()]).output();
         }
     }
-    wait_for_exit(pid, Duration::from_secs(5), Duration::from_millis(200), ProcessChecker::is_pid_running);
+    wait_for_exit(pid, Duration::from_secs(5), Duration::from_millis(200), process_running);
 }
 
 /// 데몬 단일 인스턴스 잠금(`<data dir>/daemon.lock`)을 쥔 쪽
@@ -490,7 +519,9 @@ pub async fn report_rolled_back(relay_url: Option<&str>, version: &str, channel:
         "outcome": "rolled_back",
     });
     let Ok(http) = crate::tls::http_client_builder().timeout(Duration::from_secs(5)).build() else { return };
-    match http.post(format!("{base}/v1/updates/report")).json(&body).send().await {
+    // 릴레이는 클라이언트 표시가 없는 요청을 받지 않는다 (`RelayClient`와 같은 헤더)
+    let request = http.post(format!("{base}/v1/updates/report")).header(crate::relay::CLIENT_HEADER.0, crate::relay::CLIENT_HEADER.1);
+    match request.json(&body).send().await {
         Ok(resp) if resp.status().is_success() => tracing::info!("[Apply] Reported the rollback of {}", version),
         Ok(resp) => tracing::debug!("[Apply] Rollback report answered {}", resp.status()),
         Err(e) => tracing::debug!("[Apply] Rollback report failed: {}", e),
@@ -509,7 +540,10 @@ pub struct LiveApply {
     before: ExeBackups,
     snapshot: Option<DataSnapshot>,
     pub from_version: String,
+    /// 적용하는 코어 판 (`/health`로 견주고, 되돌리면 `failed_release`와 마커 `version`에 적는다)
     pub target_version: String,
+    /// 적용하는 릴리즈 판 (받아 둔 릴리즈). 되돌림 보고는 이 판으로 한다: 부분 릴리즈는 코어 판이 릴리즈 판과 다르다
+    pub release_version: Option<String>,
 }
 
 impl LiveApply {
@@ -525,7 +559,13 @@ impl LiveApply {
             }
         };
         begin_watch(&manager.staging_dir);
-        Some(Self { staging_dir: manager.staging_dir.clone(), before: manager.exe_backups(), snapshot, from_version, target_version })
+        let release_version = manager.pending_release().map(|r| r.version);
+        Some(Self { staging_dir: manager.staging_dir.clone(), before: manager.exe_backups(), snapshot, from_version, target_version, release_version })
+    }
+
+    /// 되돌림을 릴레이에 알릴 판: 릴리즈 판, 모르면 코어 판
+    pub fn report_version(&self) -> &str {
+        self.release_version.as_deref().unwrap_or(&self.target_version)
     }
 
     /// 새 데몬이 건강하다: 스냅샷과 이번 `.old`를 지운다
@@ -703,6 +743,46 @@ mod tests {
         let stopped = Mutex::new(0);
         assert!(!stop_new_daemons(None, Some(77), || LockHolder::Pid(600), |_| *stopped.lock().unwrap() += 1));
         assert_eq!(*stopped.lock().unwrap(), STOP_ROUNDS);
+    }
+
+    // 업데이터가 띄운 데몬이 끝나면 좀비로 남아도 끝난 것으로 본다 (생존 창이 놓치지 않게)
+    #[cfg(unix)]
+    #[test]
+    fn a_spawned_child_that_exited_is_not_alive() {
+        let pid = keep_child(std::process::Command::new("sleep").arg("0.2").spawn().unwrap());
+        assert!(process_running(pid));
+        std::thread::sleep(Duration::from_millis(600));
+        assert!(ProcessChecker::is_pid_running(pid), "an unreaped child still answers kill -0");
+        assert!(!process_running(pid));
+        assert!(!HttpProbe::at("http://127.0.0.1:9").alive(pid));
+    }
+
+    // 되돌림 보고는 릴레이가 받는 클라이언트 표시를 싣는다
+    #[tokio::test]
+    async fn the_rollback_report_carries_the_client_header() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut req = Vec::new();
+            let mut buf = vec![0u8; 8192];
+            // 머리와 본문이 따로 올 수 있다: 본문 끝까지 읽는다
+            while !String::from_utf8_lossy(&req).contains("rolled_back") {
+                let n = sock.read(&mut buf).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                req.extend_from_slice(&buf[..n]);
+            }
+            let _ = sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}").await;
+            String::from_utf8_lossy(&req).to_lowercase()
+        });
+        report_rolled_back(Some(&base), "0.1.15", "beta").await;
+        let request = server.await.unwrap();
+        assert!(request.starts_with("post /v1/updates/report"), "{request}");
+        assert!(request.contains("x-saba-client: 1"), "{request}");
+        assert!(request.contains("\"version\":\"0.1.15\""), "{request}");
     }
 
     // 잠금을 쥔 데몬은 데몬과 같은 잠금 파일로 찾는다
@@ -890,7 +970,9 @@ mod tests {
             snapshot: Some(DataSnapshot::take(&data, &inst, "0.1.13").unwrap()),
             from_version: "0.1.13".into(),
             target_version: "0.1.14".into(),
+            release_version: Some("0.1.15".into()),
         };
+        assert_eq!(live.report_version(), "0.1.15", "the relay counts rollbacks per release");
         begin_watch(&manager.staging_dir);
         // 적용과 새 데몬
         std::fs::rename(manager.install_root.join(core), manager.install_root.join(core_old)).unwrap();
