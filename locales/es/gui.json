@@ -229,7 +229,7 @@
     "server_name": "Nombre del Servidor",
     "server_name_placeholder": "ej: mi-servidor-1",
     "provision_hint": "El módulo se incrustará en la instancia y los binarios del servidor se descargarán automáticamente.",
-    "no_modules": "No se encontraron módulos. Obtenga módulos de juego en el almacén de Saba, en <link/>.",
+    "no_modules": "No se encontraron módulos. Obtenga módulos de juego en <link/>.",
     "add_server": "Agregar Servidor",
     "provisioning": "Instalando…",
     "step_compose": "Crear configuración",
@@ -290,7 +290,7 @@
     "new_server_desc": "Seleccione un módulo de juego y cree una nueva instancia desde cero.",
     "migrate_title": "Migrar servidor existente",
     "migrate_desc": "Importa un directorio de servidor de juego existente en una instancia saba-chan.",
-    "no_modules_hint": "Agregue primero un módulo. Puede obtenerlo en el almacén de Saba, en <link/>."
+    "no_modules_hint": "Agregue primero un módulo. Puede obtenerlo en <link/>."
   },
   "migration_modal": {
     "title": "Migración de servidor",
@@ -696,8 +696,8 @@
     "installed_modules": "Módulos instalados",
     "no_installed_modules": "No hay módulos instalados.",
     "refresh_modules": "Actualizar módulos",
-    "available_modules": "Módulos disponibles",
-    "show_more_modules": "Mostrar más módulos",
+    "available_modules": "Juegos disponibles",
+    "unsupported_here": "No se puede ejecutar en este dispositivo · {{count}}",
     "show_more_extensions": "Mostrar más extensiones",
     "refresh_manifest": "Actualizar registro",
     "loading_manifest": "Cargando registro...",
@@ -777,7 +777,7 @@
     "search_placeholder": "Buscar un servidor",
     "no_match": "No hay servidores coincidentes",
     "empty_title": "Todavía no hay servidores",
-    "empty_no_modules": "No hay módulos de juego instalados. Obténgalos en el almacén de Saba, en <link/>.",
+    "empty_no_modules": "No hay módulos de juego instalados. Obténgalos en <link/>.",
     "empty_body": "Elige un juego y Saba-chan configurará el servidor por ti.",
     "start": "Iniciar",
     "stop": "Detener",

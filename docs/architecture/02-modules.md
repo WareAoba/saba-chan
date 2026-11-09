@@ -679,7 +679,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 ### 5.1 릴리즈에 싣기 (`D:scripts/versions.py manifest`, `D:.github/workflows/publish.yml`)
 
 - 모듈 저장소에는 릴리즈 워크플로가 없다. 검사용 `M:.github/workflows/check-modules.yml`(스키마·적합성 검사)만 있다.
-- 코어 릴리즈 워크플로가 `saba-chan-modules`의 `main`을 checkout하고(`publish.yml` `publish` 작업), `versions.py manifest --modules-repo`가 모듈마다 `module-<name>.zip`을 만든다(`versions.py:217-245`, `_`·`.`로 시작하는 폴더는 뺀다). 버전은 각 `module.toml`의 `[module].version`, 목록 화면용 정보(`display_name`, `description`, `game_name`, `requires_extensions`, 아이콘 URL)는 `meta`에 들어간다.
+- 코어 릴리즈 워크플로가 `saba-chan-modules`의 `main`을 checkout하고(`publish.yml` `publish` 작업), `versions.py manifest --modules-repo`가 모듈마다 `module-<name>.zip`을 만든다(`versions.py:217-245`, `_`·`.`로 시작하는 폴더는 뺀다). 버전은 각 `module.toml`의 `[module].version`, 목록 화면용 정보(`display_name`, `description`, `game_name`, `requires_extensions`, 아이콘 URL)는 `meta`에 들어간다. 받기 전에도 앱 언어로 보이고 이 기기에서 도는지 알 수 있게 `meta`에 `display_names`·`descriptions`(`{<locale>: 모듈 locales의 module.display_name·module.description}`, 문구가 없는 언어는 빠지고 하나도 없으면 키가 없다, `module_translations`)와 `[extensions.saba-core]`의 `platforms`·`architectures`(목록일 때만, 값 그대로)도 싣는다. 데몬은 그 값을 설치된 모듈과 같은 규칙으로 다듬어 판정한다(`module_loader::catalog_unsupported_on`).
 - 이 zip들은 코어·GUI·CLI와 **같은 릴리즈 manifest**(`components`의 `module-<name>` 키)에 실려 서명되고, R2 `releases/<version>/`에 올라간다. 그래서 모듈 목록과 버전은 릴리즈 단위로 고정된다.
 - 업데이터·데몬은 버전이 오른 모듈·익스텐션만 받으므로, 워크플로는 지난 릴리즈(릴레이 `check?channel=beta`의 최신) manifest를 `--previous`로 넘긴다. 지난 판보다 버전이 낮거나, 같은 버전인데 zip 안 파일 내용이 다르면(지난 zip을 R2에서 받아 파일별 sha256 비교, zip 시각은 보지 않는다) 서명 전에 멈춘다(`versions.py` `addon_version_problems`). 버전은 발행 때 바뀐 것만 한 번 올린다.
 

@@ -297,14 +297,31 @@ const mockNoServers = params.get('servers') === '0'; // 빈 화면 보기
 const mockFailed = params.get('failed') // 불러오지 못한 모듈 보기
     ? [{ path: 'modules/terraria', error: "module.toml: unknown field 'protocl' (did you mean 'protocol'?)" }]
     : [];
+const mockMac = params.get('mac') === '1'; // 모듈 없이 처음 연 맥(Apple 실리콘) 보기
 const settings = {};
+// 받을 수 있는 모듈 (릴레이 0.1.13 카탈로그 모양). 맥 보기에서는 데몬처럼 OS·CPU를 판정해 싣는다
+const ICON = (m: string) => `https://raw.githubusercontent.com/WareAoba/saba-chan-modules/7c3454c70064459b8f4f82c1cd492e590e29e6cc/${m}/icon.png`;
+const catalog: Record<string, Record<string, unknown>> = {
+    minecraft: { display_name: 'Minecraft', display_names: { ko: '마인크래프트' }, description: 'Minecraft server management module with full lifecycle control', descriptions: { ko: '마인크래프트 서버 관리 모듈 (전체 수명주기 제어)' }, icon: ICON('minecraft'), version: '0.1.12', size_bytes: 713031, architectures: ['x86_64', 'aarch64'] },
+    palworld: { display_name: 'Palworld', display_names: { ko: '팰월드' }, description: 'Palworld server management module', descriptions: { ko: '팰월드 서버 관리 모듈' }, icon: ICON('palworld'), version: '0.1.12', size_bytes: 220201, architectures: ['x86_64'] },
+    terraria: { display_name: 'Terraria', display_names: { ko: '테라리아' }, description: 'Terraria dedicated server', descriptions: { ko: '테라리아 데디케이티드 서버' }, icon: ICON('terraria'), version: '0.1.5', size_bytes: 73400, platforms: ['windows', 'linux'], architectures: ['x86_64'] },
+    zomboid: { display_name: 'Project Zomboid', display_names: { ko: '프로젝트 좀보이드' }, description: 'Project Zomboid dedicated server management module', descriptions: { ko: '프로젝트 좀보이드 전용 서버 관리 모듈 (전체 수명주기 제어)' }, icon: ICON('zomboid'), version: '0.1.11', size_bytes: 618659, architectures: ['x86_64'] },
+};
+const judged = (info: Record<string, unknown>) => {
+    if (!mockMac) return { ...info, platform_supported: true };
+    const os = Array.isArray(info.platforms) && !info.platforms.includes('macos');
+    const arch = Array.isArray(info.architectures) && !info.architectures.includes('aarch64');
+    return { ...info, platform_supported: !os && !arch, ...(os ? { unsupported_reason: 'os' } : arch ? { unsupported_reason: 'arch' } : {}) };
+};
 
 // biome-ignore lint/suspicious/noExplicitAny: 인자 모양이 호출마다 다른 가짜 api 함수
 type MockFn = (...args: any[]) => unknown;
 
 const impl: Record<string, MockFn> = {
     serverList: () => ok({ servers: mockNoServers ? [] : servers.map((s) => ({ ...s })) }),
-    moduleList: () => ok({ modules, failed: mockFailed }),
+    moduleList: () => ok({ modules: mockMac ? [] : modules, failed: mockFailed }),
+    moduleManifest: () =>
+        ok({ ok: true, manifest: { modules: Object.fromEntries(Object.entries(catalog).map(([id, info]) => [id, judged(info)])) } }),
     instanceEvents: () =>
         ok({
             events: [

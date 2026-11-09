@@ -229,7 +229,7 @@
     "server_name": "Servername",
     "server_name_placeholder": "z.B.: mein-server-1",
     "provision_hint": "Das Modul wird in die Instanz eingebettet und die Serverbinärdateien werden automatisch heruntergeladen.",
-    "no_modules": "Keine Module gefunden. Holen Sie Spielmodule im Saba-Speicher unter <link/>.",
+    "no_modules": "Keine Module gefunden. Holen Sie Spielmodule unter <link/>.",
     "add_server": "Server hinzufügen",
     "provisioning": "Wird installiert…",
     "step_compose": "Konfiguration erstellen",
@@ -290,7 +290,7 @@
     "new_server_desc": "Wähle ein Spielmodul aus und erstelle eine neue Serverinstanz von Grund auf.",
     "migrate_title": "Vorhandenen Server migrieren",
     "migrate_desc": "Importiere ein vorhandenes Spielserver-Verzeichnis in eine saba-chan-Instanz.",
-    "no_modules_hint": "Fügen Sie zuerst ein Modul hinzu. Im Saba-Speicher unter <link/> können Sie eines holen."
+    "no_modules_hint": "Fügen Sie zuerst ein Modul hinzu. Unter <link/> können Sie eines holen."
   },
   "migration_modal": {
     "title": "Servermigrierung",
@@ -696,8 +696,8 @@
     "installed_modules": "Installierte Module",
     "no_installed_modules": "Keine Module installiert.",
     "refresh_modules": "Module aktualisieren",
-    "available_modules": "Verfügbare Module",
-    "show_more_modules": "Mehr Module anzeigen",
+    "available_modules": "Verfügbare Spiele",
+    "unsupported_here": "Auf diesem Gerät nicht ausführbar · {{count}}",
     "show_more_extensions": "Mehr Erweiterungen anzeigen",
     "refresh_manifest": "Registry aktualisieren",
     "loading_manifest": "Registry wird geladen...",
@@ -777,7 +777,7 @@
     "search_placeholder": "Server suchen",
     "no_match": "Keine passenden Server",
     "empty_title": "Noch keine Server",
-    "empty_no_modules": "Es sind keine Spielmodule installiert. Holen Sie sie im Saba-Speicher unter <link/>.",
+    "empty_no_modules": "Es sind keine Spielmodule installiert. Holen Sie sie unter <link/>.",
     "empty_body": "Wähle ein Spiel und Saba-chan richtet den Server für dich ein.",
     "start": "Starten",
     "stop": "Stoppen",

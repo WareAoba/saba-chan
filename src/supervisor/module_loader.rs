@@ -391,13 +391,7 @@ impl ModuleMetadata {
 
     /// 이 OS·CPU에서 돌아가지 않는 이유: `"os"`(`platforms`) 또는 `"arch"`(`architectures`). 돌아가면 None
     pub fn unsupported_on(&self, os: &str, arch: &str) -> Option<&'static str> {
-        if !self.supports_os(os) {
-            Some("os")
-        } else if !self.architectures.as_ref().is_none_or(|a| a.iter().any(|x| x == arch)) {
-            Some("arch")
-        } else {
-            None
-        }
+        unsupported_reason(self.platforms.as_deref(), self.architectures.as_deref(), os, arch)
     }
 
     /// 컴포넌트 버전 의존성을 확인합니다.
@@ -1669,6 +1663,26 @@ fn platform_unsupported_body(module: &str, platforms: &[String]) -> serde_json::
         "platforms": platforms,
         "os": std::env::consts::OS,
     })
+}
+
+/// 선언한 OS·CPU 목록으로 본 돌지 않는 이유: OS가 먼저다. 선언하지 않은 목록은 막지 않는다
+fn unsupported_reason(platforms: Option<&[String]>, architectures: Option<&[String]>, os: &str, arch: &str) -> Option<&'static str> {
+    if !platforms.is_none_or(|p| p.iter().any(|x| x == os)) {
+        Some("os")
+    } else if !architectures.is_none_or(|a| a.iter().any(|x| x == arch)) {
+        Some("arch")
+    } else {
+        None
+    }
+}
+
+/// 받기 전 카탈로그 모듈 meta의 `platforms`·`architectures`(module.toml `[extensions.saba-core]` 값 그대로)로 본 돌지 않는 이유.
+/// 설치된 모듈과 같이 이름을 다듬고 모르는 이름은 버린다 (경고는 남기지 않는다: 고칠 사람은 모듈 저장소다)
+pub fn catalog_unsupported_on(meta: &serde_json::Value, os: &str, arch: &str) -> Option<&'static str> {
+    let mut ignored = Vec::new();
+    let platforms = read_name_list(meta, "platforms", PLATFORMS, &[], "OS", &mut ignored);
+    let architectures = read_name_list(meta, "architectures", ARCHITECTURES, ARCH_ALIASES, "CPU", &mut ignored);
+    unsupported_reason(platforms.as_deref(), architectures.as_deref(), os, arch)
 }
 
 /// `platforms`에 적을 수 있는 OS (`std::env::consts::OS`와 같은 이름)
@@ -3195,6 +3209,18 @@ entry = "lifecycle.py"
         assert_eq!(unknown.unsupported_on("linux", "x86_64"), None, "a list with no known CPU blocks nowhere");
         let both = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nplatforms = ['windows']\narchitectures = ['x86_64']\n")).unwrap();
         assert_eq!(both.unsupported_on("linux", "aarch64"), Some("os"), "the OS is named first");
+    }
+
+    /// 받기 전 카탈로그 meta(`platforms`·`architectures`)도 설치된 모듈과 같은 규칙으로 판정한다 (이름 다듬기, 모르는 이름 무시)
+    #[test]
+    fn catalog_meta_is_judged_like_an_installed_module() {
+        let meta = serde_json::json!({"platforms": ["Windows", "linux"], "architectures": ["amd64"]});
+        assert_eq!(catalog_unsupported_on(&meta, "macos", "aarch64"), Some("os"));
+        assert_eq!(catalog_unsupported_on(&meta, "linux", "aarch64"), Some("arch"));
+        assert_eq!(catalog_unsupported_on(&meta, "windows", "x86_64"), None);
+        assert_eq!(catalog_unsupported_on(&serde_json::json!({"architectures": ["x86_64", "aarch64"]}), "macos", "aarch64"), None);
+        assert_eq!(catalog_unsupported_on(&serde_json::json!({"platforms": ["beos"]}), "macos", "aarch64"), None, "no known name blocks nowhere");
+        assert_eq!(catalog_unsupported_on(&serde_json::json!({}), "macos", "aarch64"), None, "an old catalog without the keys blocks nowhere");
     }
 
     #[test]

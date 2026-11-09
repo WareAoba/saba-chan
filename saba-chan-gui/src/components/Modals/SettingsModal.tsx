@@ -164,8 +164,8 @@ function SettingsModal({
 
     // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입 (설정 탭 이름이면 그 탭: 화면 주소 settings/<탭>)
     useEffect(() => {
-        if (isOpen && (initialView === 'update' || initialView === 'extensions')) {
-            setStorageTab(initialView === 'extensions' ? 'extensions' : 'components');
+        if (isOpen && (initialView === 'update' || initialView === 'extensions' || initialView === 'modules')) {
+            setStorageTab(initialView === 'update' ? 'components' : initialView);
             setActiveTab('sabaStorage');
         } else if (isOpen && (TABS as readonly string[]).includes(initialView ?? '')) {
             setActiveTab(initialView as SettingsTab);

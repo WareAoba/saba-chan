@@ -26,6 +26,7 @@ describe('화면 주소', () => {
         });
         expect(parseScreen('discord/*/members')).toEqual({ page: 'discord', view: 'node', id: '*', tab: 'members' });
         expect(parseScreen('settings/connection')).toEqual({ page: 'settings', tab: 'connection' });
+        expect(parseScreen('settings/sabaStorage/modules')).toEqual({ page: 'settings', tab: 'sabaStorage', sub: 'modules' });
         expect(parseScreen('activity')).toEqual({ page: 'activity' });
     });
 

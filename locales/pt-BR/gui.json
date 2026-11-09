@@ -229,7 +229,7 @@
     "server_name": "Nome do Servidor",
     "server_name_placeholder": "ex: meu-servidor-1",
     "provision_hint": "O módulo será incorporado na instância e os binários do servidor serão baixados automaticamente.",
-    "no_modules": "Nenhum módulo encontrado. Obtenha módulos de jogo no armazenamento do Saba, em <link/>.",
+    "no_modules": "Nenhum módulo encontrado. Obtenha módulos de jogo em <link/>.",
     "add_server": "Adicionar Servidor",
     "provisioning": "Instalando…",
     "step_compose": "Criar configuração",
@@ -290,7 +290,7 @@
     "new_server_desc": "Selecione um módulo de jogo e crie uma nova instância desde o início.",
     "migrate_title": "Migrar servidor existente",
     "migrate_desc": "Importe um diretório de servidor de jogo existente em uma instância saba-chan.",
-    "no_modules_hint": "Adicione um módulo primeiro. Você pode obtê-lo no armazenamento do Saba, em <link/>."
+    "no_modules_hint": "Adicione um módulo primeiro. Você pode obtê-lo em <link/>."
   },
   "migration_modal": {
     "title": "Migração de servidor",
@@ -696,8 +696,8 @@
     "installed_modules": "Módulos instalados",
     "no_installed_modules": "Nenhum módulo instalado.",
     "refresh_modules": "Atualizar módulos",
-    "available_modules": "Módulos disponíveis",
-    "show_more_modules": "Mostrar mais módulos",
+    "available_modules": "Jogos disponíveis",
+    "unsupported_here": "Não é possível executar neste dispositivo · {{count}}",
     "show_more_extensions": "Mostrar mais extensões",
     "refresh_manifest": "Atualizar registro",
     "loading_manifest": "Carregando registro...",
@@ -777,7 +777,7 @@
     "search_placeholder": "Buscar servidor",
     "no_match": "Nenhum servidor encontrado",
     "empty_title": "Ainda não há servidores",
-    "empty_no_modules": "Nenhum módulo de jogo instalado. Obtenha-os no armazenamento do Saba, em <link/>.",
+    "empty_no_modules": "Nenhum módulo de jogo instalado. Obtenha-os em <link/>.",
     "empty_body": "Escolha um jogo e o Saba-chan configura o servidor para você.",
     "start": "Iniciar",
     "stop": "Parar",

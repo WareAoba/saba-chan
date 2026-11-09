@@ -229,7 +229,7 @@
     "server_name": "서버 이름",
     "server_name_placeholder": "예: my-server-1",
     "provision_hint": "추가하면 서버 파일을 자동으로 내려받아요.",
-    "no_modules": "모듈을 찾을 수 없어요. <link/>에서 사바 스토리지로 게임 모듈을 받으세요.",
+    "no_modules": "모듈을 찾을 수 없어요. <link/>에서 게임 모듈을 받으세요.",
     "add_server": "서버 추가",
     "provisioning": "설치 중…",
     "step_compose": "설정 생성",
@@ -290,7 +290,7 @@
     "new_server_desc": "게임을 고르면 서버 파일을 내려받아 새로 만들어요.",
     "migrate_title": "기존 서버 가져오기",
     "migrate_desc": "쓰던 게임 서버 폴더를 가져와요. 그 자리에 연결하거나 사바쨩으로 옮길 수 있어요.",
-    "no_modules_hint": "먼저 모듈을 추가하세요. <link/>에서 사바 스토리지로 받을 수 있어요."
+    "no_modules_hint": "먼저 모듈을 추가하세요. <link/>에서 받을 수 있어요."
   },
   "migration_modal": {
     "title": "기존 서버 가져오기",
@@ -696,8 +696,8 @@
     "installed_modules": "설치된 모듈",
     "no_installed_modules": "설치된 모듈이 없어요.",
     "refresh_modules": "모듈 새로고침",
-    "available_modules": "사용 가능한 모듈",
-    "show_more_modules": "더 많은 모듈 표시",
+    "available_modules": "받을 수 있는 게임",
+    "unsupported_here": "이 기기에서는 실행할 수 없어요 · {{count}}",
     "show_more_extensions": "더 많은 익스텐션 표시",
     "refresh_manifest": "레지스트리 새로고침",
     "loading_manifest": "레지스트리 로드 중...",
@@ -777,7 +777,7 @@
     "search_placeholder": "서버 찾기",
     "no_match": "찾는 서버가 없어요",
     "empty_title": "아직 추가한 서버가 없어요",
-    "empty_no_modules": "설치된 게임 모듈이 없어요. <link/>에서 사바 스토리지로 게임 모듈을 받으세요.",
+    "empty_no_modules": "설치된 게임 모듈이 없어요. <link/>에서 게임 모듈을 받으세요.",
     "empty_body": "게임을 고르면 사바쨩이 서버를 준비해 줄게요.",
     "start": "시작",
     "stop": "정지",

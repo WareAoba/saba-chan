@@ -226,7 +226,7 @@
     "title": "新規サーバーを追加",
     "server_name": "サーバー名",
     "server_name_placeholder": "例: my-server-1",
-    "no_modules": "モジュールが見つかりません。<link/>のサバストレージからゲームモジュールを入手してください。",
+    "no_modules": "モジュールが見つかりません。<link/>からゲームモジュールを入手してください。",
     "add_server": "サーバーを追加",
     "provisioning": "インストール中…",
     "step_compose": "設定生成",
@@ -654,8 +654,8 @@
     "installed_modules": "インストール済みモジュール",
     "no_installed_modules": "インストール済みモジュールはありません。",
     "refresh_modules": "モジュールを更新",
-    "available_modules": "利用可能なモジュール",
-    "show_more_modules": "さらにモジュールを表示",
+    "available_modules": "追加できるゲーム",
+    "unsupported_here": "このデバイスでは実行できません · {{count}}",
     "show_more_extensions": "さらに拡張機能を表示",
     "refresh_manifest": "レジストリを更新",
     "loading_manifest": "レジストリを読み込み中...",
@@ -704,7 +704,7 @@
     "new_server_desc": "ゲームモジュールを選択し、新しいサーバーインスタンスを最初から作成します。",
     "migrate_title": "既存サーバーの移行",
     "migrate_desc": "既存のゲームサーバーディレクトリをsaba-chanインスタンスとして取り込みます。",
-    "no_modules_hint": "先にモジュールを追加してください。<link/>のサバストレージから入手できます。"
+    "no_modules_hint": "先にモジュールを追加してください。<link/>から入手できます。"
   },
   "migration_modal": {
     "title": "サーバー移行",
@@ -777,7 +777,7 @@
     "search_placeholder": "サーバーを検索",
     "no_match": "一致するサーバーがありません",
     "empty_title": "まだサーバーがありません",
-    "empty_no_modules": "ゲームモジュールがインストールされていません。<link/>のサバストレージから入手してください。",
+    "empty_no_modules": "ゲームモジュールがインストールされていません。<link/>から入手してください。",
     "empty_body": "ゲームを選ぶと、サバちゃんがサーバーを準備します。",
     "start": "起動",
     "stop": "停止",

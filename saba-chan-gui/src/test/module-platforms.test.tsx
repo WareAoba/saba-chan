@@ -33,4 +33,21 @@ describe('새 서버 만들기 — 지원 OS', () => {
         fireEvent.click(card);
         expect(screen.queryByRole('button', { name: /Add/i })).toBeNull();
     });
+
+    it('CPU가 맞지 않는 모듈은 OS가 아니라 CPU 미지원으로 알린다', () => {
+        const arch = { ...palworld, platforms: undefined, architectures: ['x86_64'], unsupported_reason: 'arch' };
+        render(
+            <AddInstanceNewServer
+                extensions={[arch] as unknown as ModuleInfo[]}
+                servers={[]}
+                onAddServer={vi.fn()}
+                onBack={undefined as never}
+                onClose={undefined as never}
+            />,
+        );
+        const card = screen.getByRole('button', { name: /Palworld/ });
+        expect(card).toBeDisabled();
+        expect(card).toHaveTextContent('Not on this CPU');
+        expect(card.getAttribute('data-tooltip')).toContain('x86_64');
+    });
 });
