@@ -709,17 +709,26 @@ fn add_dir(zip: &mut zip::ZipWriter<File>, dir: &Path, prefix: &str, opts: zip::
 }
 
 fn info(path: &Path) -> Option<BackupInfo> {
-    let name = path.file_name()?.to_str()?.to_string();
-    let kind = BackupKind::from_name(&name)?;
+    info_checked(path).ok().flatten()
+}
+
+/// `info`와 같지만 파일의 메타데이터를 읽지 못한 것(권한·입출력 오류)을 오류로 돌려준다. 이름이 맞지 않거나 그사이 지워진 항목은 `Ok(None)`
+fn info_checked(path: &Path) -> io::Result<Option<BackupInfo>> {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()).map(str::to_string) else { return Ok(None) };
+    let Some(kind) = BackupKind::from_name(&name) else { return Ok(None) };
     let meta = match fs::metadata(path) {
         Ok(meta) if meta.is_file() => meta,
-        Ok(_) => return None,
+        Ok(_) => return Ok(None),
         // 대상이 없는 링크: 정리를 멈추니 열 수 없는 백업으로 보인다
-        Err(_) => {
-            fs::symlink_metadata(path).ok()?;
-            let made = name_time_ns(&name).unwrap_or(0);
-            return Some(BackupInfo { name, kind, created: made / 1_000_000_000, size: 0, stored: 0, readable: false, made });
-        }
+        Err(first) => match fs::symlink_metadata(path) {
+            Ok(_) => {
+                let made = name_time_ns(&name).unwrap_or(0);
+                return Ok(Some(BackupInfo { name, kind, created: made / 1_000_000_000, size: 0, stored: 0, readable: false, made }));
+            }
+            // 그사이 지워졌다
+            Err(e) if e.kind() == io::ErrorKind::NotFound && first.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e),
+        },
     };
     let modified = mtime_ns(&meta);
     // 판 2는 요약을 읽는다. 판 1(요약 없음)이나 읽지 못하면 zip 크기.
@@ -730,7 +739,7 @@ fn info(path: &Path) -> Option<BackupInfo> {
     // 판 1은 0.1.8까지 만든 것이다: 수정 시각이 새로 찍힌 사본(옮겼다 되돌린 것)도 이름의 시각보다 새것으로 보지 않는다
     let v1_made = name_time_ns(&name).map_or(modified, |named| named.min(modified));
     let (size, stored, made) = summary.map_or((meta.len(), meta.len(), v1_made), |s| (s.size, s.stored, if s.started > 0 { s.started } else { modified }));
-    Some(BackupInfo { name, kind, created: made / 1_000_000_000, size, stored, readable, made })
+    Ok(Some(BackupInfo { name, kind, created: made / 1_000_000_000, size, stored, readable, made }))
 }
 
 /// 이름 앞의 지역 시각(`YYYYMMDD-HHMMSS`)을 유닉스 나노초로
@@ -788,7 +797,7 @@ pub fn list_checked(dir: &Path) -> io::Result<Vec<BackupInfo>> {
     // 항목 하나를 읽지 못한 것도 오류다: 일부만 담은 목록을 전체로 보면 빠진 백업을 다시 살피지 않는다
     let mut out: Vec<BackupInfo> = Vec::new();
     for entry in entries {
-        out.extend(info(&entry?.path()));
+        out.extend(info_checked(&entry?.path())?);
     }
     out.sort_by(|a, b| b.made.cmp(&a.made).then_with(|| b.name.cmp(&a.name)));
     Ok(out)
@@ -1486,6 +1495,24 @@ mod tests {
         fs::write(&file, b"x").unwrap();
         assert!(list_checked(&file).is_err());
         assert!(list(&file).is_empty());
+    }
+
+    /// 백업 파일의 메타데이터를 읽지 못한 것은 목록에서 빠지는 것이 아니라 오류다 (루트로 돌면 권한이 막지 못해 건너뛴다)
+    #[cfg(unix)]
+    #[test]
+    fn list_checked_reports_an_entry_it_cannot_stat() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("backups");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("20000101-000001-000-manual.zip"), b"x").unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o444)).unwrap();
+        let blocked = fs::metadata(dir.join("20000101-000001-000-manual.zip")).is_err();
+        let listed = list_checked(&dir);
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        if blocked {
+            assert!(listed.is_err(), "an entry that cannot be stat'ed must fail the whole listing");
+        }
     }
 
     #[test]

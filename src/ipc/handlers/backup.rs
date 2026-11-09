@@ -525,7 +525,12 @@ pub async fn list_backups(Path(id): Path<String>, State(state): State<IPCServer>
         Ok(dir) => {
             // 게임이 만든 자동 백업도 함께 (새것부터 사바쨩 백업 뒤에)
             // 백업 파일마다 열어 읽는다: 느린 저장장치에서 Tokio 작업 스레드를 붙잡지 않게
-            let (listed, total) = tokio::task::spawn_blocking(move || (backup::list(&dir), backup::total_bytes(&dir))).await.unwrap_or_default();
+            // 읽지 못한 것을 "백업 없음"으로 보이지 않는다
+            let (listed, total) = match tokio::task::spawn_blocking(move || backup::list_checked(&dir).map(|l| (l, backup::total_bytes(&dir)))).await {
+                Ok(Ok(found)) => found,
+                Ok(Err(e)) => return error(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", format!("Could not read the backup folder: {}", e)),
+                Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", e.to_string()),
+            };
             let mut items: Vec<Value> = listed.into_iter().map(|b| json!(b)).collect();
             let snapshots = snapshot_items(&state, &id).await;
             let snapshots_supported = has_snapshots(&state, &id).await;
