@@ -196,6 +196,8 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
     const [mockRelayBuild, setMockRelayBuild] = useState(false);
     const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
     const [updateChannel, setUpdateChannel] = useState('stable');
+    // 정식 채널인데 지금 판이 베타면 같은 판의 정식을 기다린다 (데몬 status.stable_wait). 알약에는 띄우지 않는다
+    const [stableWait, setStableWait] = useState<string | null>(null);
     // 찾은 뒤 할 일: check(알리기만) / download(받아 두기) / apply(받고 다음 실행 때 적용). 적용은 데몬이 판단한다
     const [updateMode, setUpdateMode] = useState('check');
     const [downloadProgress, setDownloadProgress] = useState<{ component: string | null; percent: number; active: boolean }>({ component: null, percent: 0, active: false });
@@ -266,7 +268,10 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
     const refreshStatus = useCallback(async () => {
         try {
             const res = await window.api?.updaterStatus?.();
-            if (res?.ok && mountedRef.current) setComponents(parseComponents(res.components));
+            if (res?.ok && mountedRef.current) {
+                setComponents(parseComponents(res.components));
+                setStableWait(res.stable_wait || null);
+            }
         } catch (_) {}
     }, []);
 
@@ -521,6 +526,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
         (async () => {
             try {
                 const res = await window.api?.updaterStatus?.();
+                if (res?.ok && mountedRef.current) setStableWait(res.stable_wait || null);
                 if (res?.ok && res.components?.length && mountedRef.current) {
                     setComponents(parseComponents(res.components));
                 } else if (mountedRef.current) {
@@ -541,7 +547,10 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
         pollRef.current = setInterval(async () => {
             try {
                 const res = await window.api?.updaterStatus?.();
-                if (res?.ok && mountedRef.current) setComponents(parseComponents(res.components));
+                if (res?.ok && mountedRef.current) {
+                    setComponents(parseComponents(res.components));
+                    setStableWait(res.stable_wait || null);
+                }
             } catch (_) {}
         }, 30000);
 
@@ -740,6 +749,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
                         }))}
                     />
                 </div>
+                {stableWait && <p className="setting-description update-stable-wait">{t('updates.stable_wait', { version: stableWait })}</p>}
             </div>
 
             <div className="update-panel-actions" />

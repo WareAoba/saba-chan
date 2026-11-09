@@ -12,6 +12,7 @@ import { ParentJobNotice } from './ParentJobNotice';
 import { RuntimePreflight } from './RuntimePreflight';
 import { SwitchToCliButton } from './SwitchToCli';
 import { TaskIndicator } from './TaskIndicator';
+import { UpdatePill } from './UpdatePill';
 
 /** 공식 글자 로고: 한국어·일본어·영어는 각자, 나머지 언어는 영어. ratio = 가로/세로 */
 const WORDMARKS = {
@@ -109,6 +110,8 @@ export function AppBar({
                 <ExtensionSlot slotId="AppBar.status" />
                 <TaskIndicator />
                 <RuntimePreflight daemonStatus={daemonStatus} />
+                {/* 작업 알약과 겹치면 작업 알약을 먼저, 업데이트 알약은 그 옆에 (시안 v8) */}
+                <UpdatePill />
                 {daemonInParentJob && <ParentJobNotice />}
                 {extInitializing && (
                     <span className="appbar-ext-init" data-tooltip={extInitLabel}>

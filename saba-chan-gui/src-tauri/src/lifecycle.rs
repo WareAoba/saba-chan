@@ -641,6 +641,7 @@ async fn sync_install_root(app: &AppHandle) {
 
 /// 창이 열리거나 닫혀 상주 여부가 바뀌었다: 다음 heartbeat를 기다리지 않고 데몬에 알린다 (등록 전이면 등록이 알린다)
 pub fn report_resident(app: &AppHandle, resident: bool) {
+    report_gui_window(app, resident);
     let Some(id) = app.state::<AppState>().life.client_id.lock().unwrap().clone() else {
         return;
     };
@@ -653,6 +654,24 @@ pub fn report_resident(app: &AppHandle, resident: bool) {
             .post(&format!("/api/client/{id}/heartbeat"), &body, 3000)
             .await;
     });
+}
+
+/// 업데이트 쪽에 GUI 창이 열려 있는지 알린다: 창이 열려 있으면 데몬이 GUI 교체를 '준비됨'으로 미루고,
+/// 트레이에만 있으면 자동으로 바꾼다. 이 경로를 모르는 옛 데몬은 404를 주므로 결과는 보지 않는다
+fn report_gui_window(app: &AppHandle, resident: bool) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = app
+            .state::<AppState>()
+            .client
+            .put("/api/updates/gui-window", &gui_window_body(resident), 3000)
+            .await;
+    });
+}
+
+/// 사용자가 보는 창이 없고 트레이만 들었으면(`resident`) 창이 닫힌 것이다
+fn gui_window_body(resident: bool) -> Value {
+    json!({ "open": !resident })
 }
 
 async fn register_with_daemon(app: &AppHandle) -> bool {
@@ -671,6 +690,8 @@ async fn register_with_daemon(app: &AppHandle) -> bool {
                 .and_then(|i| i.as_str().map(String::from).or_else(|| Some(i.to_string())));
             tracing::info!("[Heartbeat] Registered with daemon as client: {:?}", id);
             *state.life.client_id.lock().unwrap() = id;
+            // 다시 뜬 데몬(업데이트 뒤 등)은 창 상태를 모른다
+            report_gui_window(app, crate::window::tray_only_now(app));
             true
         }
         Err(e) => {
@@ -1086,6 +1107,13 @@ pub fn on_exit(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 트레이에만 남은 GUI는 창이 닫힌 것으로 알린다 (데몬이 GUI 교체를 자동으로 한다)
+    #[test]
+    fn a_tray_only_gui_reports_its_window_closed() {
+        assert_eq!(gui_window_body(true), json!({ "open": false }));
+        assert_eq!(gui_window_body(false), json!({ "open": true }));
+    }
 
     /// 데몬만 업데이트하고 다시 붙으면 완료를 한 번만 알린다 (재등록마다 쌓이지 않게)
     #[test]

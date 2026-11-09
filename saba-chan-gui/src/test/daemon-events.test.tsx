@@ -194,10 +194,9 @@ describe('데몬 이벤트 스트림', () => {
             source: 'Survival',
             instanceId: 'srv-1',
         });
+        // 새 판은 상단 바 업데이트 알약이 보인다: "N개 발견" 알림은 만들지 않는다
         await stream.emit({ id: 4, type: 'update.available', data: { components: [{ name: 'saba-core' }, 'gui'] } });
-        expect(window.__sabaNotice?.addNotice).toHaveBeenCalledWith(
-            expect.objectContaining({ message: '📦 2 update(s) found: saba-core, gui' }),
-        );
+        expect(window.__sabaNotice?.addNotice).toHaveBeenCalledTimes(1);
         delete window.__sabaNotice;
         unmount();
         expect(stream.subs.size).toBe(0);
