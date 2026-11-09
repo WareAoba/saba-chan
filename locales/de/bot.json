@@ -477,6 +477,7 @@
     "nothing_to_back_up": "Es gibt noch keine Welt zum Sichern",
     "backup_limit": "Das Limit für Remote-Backups ist erreicht. Alte Backups am PC löschen",
     "backup_busy": "Ein anderes Backup oder eine Wiederherstellung läuft",
+    "backups_unreadable": "Der Backup-Ordner konnte nicht gelesen werden. Prüfe Ordnerberechtigungen und Datenträger am PC",
     "server_running": "Der Server läuft. Zuerst stoppen",
     "no_command_path": "Der Server wurde außerhalb von Saba-chan gestartet und nimmt keine Befehle an",
     "autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten",
