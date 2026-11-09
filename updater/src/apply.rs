@@ -724,12 +724,12 @@ pub const SWAP_FINGERPRINT: &str = ".saba-swap-fingerprint.json";
 /// 1. 새 판을 옆 폴더(`.<이름>.saba-new`)에 푼다
 /// 2. 원래 폴더를 이름만 바꿔 `.<이름>.saba-old`로 옮긴다 (이 순간부터 원래 경로에 새로 쓰는 것은 옮긴 폴더에 섞이지 않는다)
 /// 3. 옮긴 폴더의 지문을 한 번 떠서 `untouched`로 검사한다. 사용자가 넣거나 고친 것이 있으면 원래대로 되돌리고 멈춘다
-/// 4. 그 지문을 옮긴 폴더에 적고, 새 판을 원래 이름으로 옮기고, 맨 위 점 항목(.git 등)을 새 폴더로 옮겨 준다
+/// 4. 새 판을 원래 이름으로 옮긴 뒤 그 지문을 옮긴 폴더에 적고(끝난 표시), 맨 위 점 항목(.git 등)을 새 폴더로 옮겨 준다
 ///
 /// 옮긴 폴더는 남긴다: 교체 전에 열어 둔 파일에 나중에 저장하면 그 내용은 옮긴 폴더에 써진다(유닉스).
 /// 다음 교체가 옮긴 폴더의 지문이 적어 둔 것과 같을 때만 지우고, 다르면 지우지 않고 그 위치를 오류에 적고 멈춘다.
 /// 어느 단계가 실패해도 지우는 것은 새로 푼 판뿐이다. 도중에 꺼졌으면 다음 호출이 먼저 원래 폴더를 돌려놓는다.
-/// 교체를 마친 뒤(지문이 있고 새 판 폴더가 없음) 제자리가 비었으면 사용자가 지운 것이다: 되살리지도 새로 깔지도 않는다
+/// 교체를 마친 뒤(지문이 있음) 제자리가 비었으면 사용자가 지운 것이다: 되살리지도 새로 깔지도 않는다
 pub fn swap_dir_untouched(
     target_dir: &Path,
     staged: &Path,
@@ -746,12 +746,16 @@ pub fn swap_dir_untouched(
         Ok(())
     };
 
-    // 지난 교체가 남긴 것부터. 지문이 있고 새 폴더가 없으면 그 교체는 끝났다: 제자리가 비었어도 되살리지 않는다
+    // 지난 교체가 남긴 것부터. 지문은 새 판을 넣은 뒤에 적으므로 지문이 있으면 그 교체는 끝났다:
+    // 제자리가 비었어도(사용자가 지움) 되살리지 않고, 넣은 직후 꺼져 남은 점 항목은 먼저 옮긴다
     if aside.exists() {
-        let finished = aside.join(SWAP_FINGERPRINT).exists() && !fresh.exists();
+        let finished = aside.join(SWAP_FINGERPRINT).exists();
         if !target_dir.exists() && !finished {
             put_back()?;
         } else {
+            if finished && target_dir.exists() {
+                carry_dot_entries(&aside, target_dir).map_err(|e| kept(&e.to_string()))?;
+            }
             drop_old_folder_if_unchanged(&aside).map_err(|e| kept(&e.to_string()))?;
         }
     }
@@ -784,24 +788,41 @@ pub fn swap_dir_untouched(
         if !untouched(&fp) {
             anyhow::bail!("{} has files that were added or changed after install; left as it is", target_dir.display());
         }
-        crate::write_atomic(&aside.join(SWAP_FINGERPRINT), serde_json::to_string(&fp)?.as_bytes())?;
-        Ok(())
+        Ok(fp)
     });
-    if let Err(e) = checked {
-        drop_fresh();
-        put_back()?;
-        return Err(e);
-    }
+    let fingerprint = match checked {
+        Ok(fp) => fp,
+        Err(e) => {
+            drop_fresh();
+            put_back()?;
+            return Err(e);
+        }
+    };
     if let Err(e) = std::fs::rename(&fresh, target_dir) {
-        drop_fresh();
+        // 되돌리지 못하면 새 판도 남긴다: 옮긴 폴더에 지문이 없으니 기동 정리가 다시 되돌린다
         put_back().map_err(|re| kept(&format!("could not put the new version in ({e}) nor the folder back ({re})")))?;
+        drop_fresh();
         return Err(anyhow::anyhow!("could not put the new version of {} in: {}", target_dir.display(), e));
     }
-    // 바꿔 넣기는 끝났다. 점 항목을 옮기지 못하면 옮긴 폴더에 남는다 (다음 교체가 지우지 않고 알린다)
+    // 새 판이 들어갔다: 끝난 표시로 지문을 적는다. 적지 못하면 다음 교체가 옮긴 폴더를 지우지 않고 알린다
+    let marked = serde_json::to_string(&fingerprint).map_err(anyhow::Error::from)
+        .and_then(|text| crate::write_atomic(&aside.join(SWAP_FINGERPRINT), text.as_bytes()).map_err(Into::into));
+    if let Err(e) = marked {
+        tracing::warn!("[Updater] Could not record the fingerprint of {}: {}", aside.display(), e);
+    }
+    // 점 항목을 옮기지 못하면 옮긴 폴더에 남는다 (다음 교체가 먼저 다시 옮기고, 안 되면 지우지 않고 알린다)
     if let Err(e) = carry_dot_entries(&aside, target_dir) {
         tracing::warn!("[Updater] Left some dot entries in {}: {}", aside.display(), e);
     }
     Ok(files)
+}
+
+/// 끝난 교체(지문이 있음)가 옮기지 못한 점 항목을 새 폴더로 옮긴다. 기동 정리가 부른다. 끝나지 않은 교체면 아무것도 하지 않는다
+pub fn carry_swap_dot_entries(aside: &Path, target_dir: &Path) -> Result<()> {
+    if !aside.join(SWAP_FINGERPRINT).exists() || !target_dir.is_dir() {
+        return Ok(());
+    }
+    carry_dot_entries(aside, target_dir)
 }
 
 /// 옮긴 원래 폴더의 맨 위 점 항목(.git 등, 교체가 남기는 것)을 새 폴더로 옮긴다. 지문 파일은 남긴다

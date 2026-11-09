@@ -52,7 +52,7 @@ pub use marker::UpdateCompletionMarker;
 pub(crate) use apply::swap_dir_untouched;
 #[cfg(test)]
 pub(crate) use apply::replace_dir;
-pub use apply::SWAP_FINGERPRINT;
+pub use apply::{carry_swap_dot_entries, SWAP_FINGERPRINT};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};

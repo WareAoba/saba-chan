@@ -468,7 +468,6 @@ fn an_interrupted_swap_is_put_back_first() {
     let modules = tmp.path().join("modules");
     let aside = modules.join(".game.saba-old");
     old_module(&aside);
-    std::fs::write(aside.join(crate::SWAP_FINGERPRINT), "{}").unwrap();
     std::fs::create_dir_all(modules.join(".game.saba-new")).unwrap();
     std::fs::write(modules.join(".game.saba-new/half"), "x").unwrap();
     let target = modules.join("game");
@@ -477,6 +476,45 @@ fn an_interrupted_swap_is_put_back_first() {
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
     assert_eq!(names_in(&target), [".git", "module.toml"]);
     assert_eq!(names_in(&modules), ["game"]);
+}
+
+// 새 판을 넣지 못하고 되돌리지도 못했으면 옮긴 폴더는 아직 끝나지 않은 교체다: 지문(끝난 표시)을 남기지 않아 기동이 되돌린다
+#[test]
+fn a_swap_that_could_not_put_anything_back_is_not_marked_finished() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let target = modules.join("game");
+    old_module(&target);
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    let blocker = target.clone();
+    // 검사하는 사이 제자리에 파일이 생겨 새 판도 원래 폴더도 들어가지 못한다
+    let result = crate::swap_dir_untouched(&target, &staged, |_| {
+        std::fs::write(&blocker, "x").unwrap();
+        true
+    });
+    assert!(result.is_err());
+    let aside = modules.join(".game.saba-old");
+    assert_eq!(names_in(&aside), [".git", "module.toml"], "no finished mark on a swap that did not finish");
+}
+
+// 새 판을 넣은 직후 꺼져 점 항목을 옮기지 못했으면 다음 교체가 먼저 옮겨 준다
+#[test]
+fn dot_entries_left_by_a_cut_off_swap_are_carried_first() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let aside = modules.join(".game.saba-old");
+    std::fs::create_dir_all(&aside).unwrap();
+    std::fs::write(aside.join("module.toml"), "old").unwrap();
+    let fingerprint = crate::integrity::dir_fingerprint(&aside).unwrap();
+    std::fs::write(aside.join(crate::SWAP_FINGERPRINT), serde_json::to_string(&fingerprint).unwrap()).unwrap();
+    std::fs::write(aside.join(".env"), "secret").unwrap();
+    let target = modules.join("game");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("module.toml"), "mid").unwrap();
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    crate::swap_dir_untouched(&target, &staged, |_| true).unwrap();
+    assert_eq!(std::fs::read_to_string(target.join(".env")).unwrap(), "secret");
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
 }
 
 // 지난 교체를 마친 뒤 사용자가 지운 모듈은 되살리지도, 새 판으로 깔지도 않는다

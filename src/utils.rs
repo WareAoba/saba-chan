@@ -144,7 +144,7 @@ pub fn swap_dir(staged: &std::path::Path, dest: &std::path::Path) -> anyhow::Res
 
 /// 설치 도중 데몬이 끝나 남은 준비·옛 폴더와 받다 만 파일 (`.staging-*`·`.old-*`·`.tmp-*`, 자동 교체의 `.*.saba-new`)을 지운다.
 /// 옛 폴더를 옆으로 옮긴 뒤 새 폴더를 두기 전에 끝났으면(제자리가 비었으면) 옛 폴더(`.old-*`, 자동 교체의 `.*.saba-old`)를 되돌린다.
-/// 자동 교체가 끝난 뒤(지문이 있고 `.*.saba-new`가 없음) 제자리가 비었으면 사용자가 지운 것이라 되돌리지 않는다.
+/// 자동 교체가 끝난 뒤(지문이 있음) 제자리가 비었으면 사용자가 지운 것이라 되돌리지 않고, 제자리가 있으면 옮기지 못한 점 항목을 옮긴다.
 /// 설치가 돌 수 없는 기동 때만 부른다
 pub fn remove_install_leftovers(dir: &std::path::Path) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
@@ -156,12 +156,21 @@ pub fn remove_install_leftovers(dir: &std::path::Path) {
         let swapped = name.strip_prefix('.').and_then(|n| n.strip_suffix(".saba-old"));
         let Some(original) = name.strip_prefix(".old-").or(swapped) else { return true };
         let target = dir.join(original);
-        if original.is_empty() || !path.is_dir() || target.exists() {
+        if original.is_empty() || !path.is_dir() {
             return true;
         }
         let fingerprint = saba_chan_updater_lib::SWAP_FINGERPRINT;
-        // 지문이 있고 새 폴더가 없으면 교체는 끝났다: 제자리가 빈 건 사용자가 지운 것이니 되살리지 않는다
-        if swapped.is_some() && path.join(fingerprint).exists() && !dir.join(format!(".{original}.saba-new")).exists() {
+        if target.exists() {
+            // 새 판을 넣은 직후 꺼져 옛 폴더에 남은 점 항목(.env·.git)을 옮긴다. 옛 폴더는 다음 교체가 정리한다
+            if swapped.is_some() {
+                if let Err(e) = saba_chan_updater_lib::carry_swap_dot_entries(path, &target) {
+                    tracing::warn!("Could not carry dot entries from {}: {}", path.display(), e);
+                }
+            }
+            return true;
+        }
+        // 지문은 새 판을 넣은 뒤에 적는다: 지문이 있으면 교체는 끝났고, 제자리가 빈 건 사용자가 지운 것이니 되살리지 않는다
+        if swapped.is_some() && path.join(fingerprint).exists() {
             return true;
         }
         match std::fs::rename(path, &target) {
@@ -261,7 +270,6 @@ mod tests {
             std::fs::create_dir_all(tmp.path().join(dir)).unwrap();
         }
         std::fs::write(tmp.path().join(".game.saba-old/module.toml"), "old").unwrap();
-        std::fs::write(tmp.path().join(".game.saba-old").join(saba_chan_updater_lib::SWAP_FINGERPRINT), "{}").unwrap();
         std::fs::write(tmp.path().join(".game.saba-new/module.toml"), "half").unwrap();
         remove_install_leftovers(tmp.path());
         let mut left: Vec<String> = std::fs::read_dir(tmp.path()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
@@ -269,6 +277,21 @@ mod tests {
         assert_eq!(left, [".kept.saba-old", "game", "kept"]);
         let restored: Vec<String> = std::fs::read_dir(tmp.path().join("game")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
         assert_eq!(restored, ["module.toml"], "the swap's bookkeeping file does not come back with it");
+    }
+
+    /// 새 판을 넣은 직후 꺼져 점 항목(.env·.git)이 옛 폴더에 남았다: 기동 때 새 폴더로 옮긴다
+    #[test]
+    fn dot_entries_of_a_cut_off_swap_are_carried_at_startup() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".game.saba-old")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("game")).unwrap();
+        std::fs::write(tmp.path().join(".game.saba-old/module.toml"), "old").unwrap();
+        std::fs::write(tmp.path().join(".game.saba-old/.env"), "secret").unwrap();
+        std::fs::write(tmp.path().join(".game.saba-old").join(saba_chan_updater_lib::SWAP_FINGERPRINT), "{}").unwrap();
+        std::fs::write(tmp.path().join("game/module.toml"), "new").unwrap();
+        remove_install_leftovers(tmp.path());
+        assert_eq!(std::fs::read_to_string(tmp.path().join("game/.env")).unwrap(), "secret");
+        assert!(tmp.path().join(".game.saba-old/module.toml").exists(), "the old folder is still left for the next swap");
     }
 
     /// 교체를 마친 뒤 사용자가 모듈을 지웠다: 남은 옛 폴더로 되살리지 않는다
