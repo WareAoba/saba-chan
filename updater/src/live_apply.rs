@@ -28,6 +28,8 @@ const WATCH_FILE: &str = "apply-watch.json";
 pub const SNAPSHOT_DIR: &str = "update-snapshot";
 /// 스냅샷에 넣는 데이터 폴더 바로 아래 파일: 설정과 설치 기록. 포함 목록이다 (제외 목록으로 바꾸지 않는다, 13절)
 pub const SNAPSHOT_DATA_FILES: &[&str] = &["config.json", "installed-manifest.json", "installed-files.json", "official-components.json"];
+/// 그중 설치 기록. 되돌릴 때 되돌리는 실행 파일의 항목만 되돌린다 (`merge_install_record`)
+const SNAPSHOT_RECORD_FILES: &[&str] = &["installed-manifest.json", "installed-files.json", "official-components.json"];
 /// 스냅샷에 넣는 인스턴스 폴더 바로 아래 파일
 pub const SNAPSHOT_INSTANCE_ROOT_FILES: &[&str] = &["order.json"];
 /// 스냅샷에 넣는 인스턴스마다의 파일 (인스턴스 기록). 러너 기록(`runner.json`)·`managed.pid`·서버 파일·백업은 넣지 않는다:
@@ -316,6 +318,8 @@ pub fn daemon_lock_holder(data_dir: &Path) -> LockHolder {
         Err(std::fs::TryLockError::WouldBlock) => std::fs::read_to_string(data_dir.join("daemon.lock.owner"))
             .ok()
             .and_then(|t| t.lines().find_map(|l| l.strip_prefix("pid=").and_then(|p| p.trim().parse().ok())))
+            // 잠금을 막 쥔 데몬이 아직 적지 않았으면 끝난 예전 데몬의 PID가 남아 있다: 살아 있는 PID만 믿는다
+            .filter(|pid| process_running(*pid))
             .map_or(LockHolder::Unknown, LockHolder::Pid),
         Err(std::fs::TryLockError::Error(_)) => LockHolder::Unknown,
     }
@@ -459,9 +463,23 @@ impl DataSnapshot {
     }
 
     /// 사본을 제자리에 되돌린다 (사본에 있는 파일만)
+    /// 설치 기록(`SNAPSHOT_RECORD_FILES`)은 되돌리는 실행 파일의 항목만 되돌린다 (`merge_install_record`)
     pub fn restore(&self) -> std::io::Result<()> {
-        restore_tree(&self.dir.join("data"), &self.data_dir)?;
-        restore_tree(&self.dir.join("instances"), &self.instances_dir)?;
+        let data_root = self.dir.join("data");
+        restore_tree(&data_root, &self.data_dir, &|src, dst, copy| {
+            let is_record = src.parent() == Some(data_root.as_path())
+                && src.file_name().and_then(|n| n.to_str()).is_some_and(|n| SNAPSHOT_RECORD_FILES.contains(&n));
+            if !is_record {
+                return Ok(copy);
+            }
+            let current = match std::fs::read(dst) {
+                Ok(bytes) => bytes,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(copy),
+                Err(e) => return Err(e),
+            };
+            Ok(merge_install_record(&copy, &current).unwrap_or(copy))
+        })?;
+        restore_tree(&self.dir.join("instances"), &self.instances_dir, &|_, _, copy| Ok(copy))?;
         tracing::info!("[Apply] Data restored from {}", self.dir.display());
         Ok(())
     }
@@ -599,19 +617,53 @@ fn copy_whole(from: &Path, to: &Path) -> std::io::Result<()> {
     result
 }
 
-fn restore_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+/// 되살릴 파일마다 쓸 내용을 정한다: (사본 경로, 제자리, 사본 내용) → 쓸 내용
+type RestoreContents<'a> = &'a dyn Fn(&Path, &Path, Vec<u8>) -> std::io::Result<Vec<u8>>;
+
+/// 사본의 파일을 제자리에 쓴다
+fn restore_tree(from: &Path, to: &Path, contents: RestoreContents) -> std::io::Result<()> {
     // 사본에 그 갈래가 없으면(뜰 때 없던 것) 건너뛴다. 읽지 못하면 오류: 되돌림이 빠졌는데 성공으로 보지 않는다
     let Some(entries) = read_dir_if_exists(from)? else { return Ok(()) };
     for entry in entries {
         let entry = entry?;
         let (src, dst) = (entry.path(), to.join(entry.file_name()));
         if std::fs::metadata(&src)?.is_dir() {
-            restore_tree(&src, &dst)?;
+            restore_tree(&src, &dst, contents)?;
         } else {
-            write_atomic(&dst, &std::fs::read(&src)?)?;
+            let body = contents(&src, &dst, std::fs::read(&src)?)?;
+            write_atomic(&dst, &body)?;
         }
     }
     Ok(())
+}
+
+/// 되돌리는 것(실행 파일: 코어·GUI·CLI·업데이터·설치기)의 항목은 사본에서, 나머지(모듈·익스텐션·번역, 모르는 키)는 지금 기록에서
+/// 가져온다. 되돌림은 실행 파일만이라 나머지 파일은 새 판 그대로 남는다. 키→값 표와 키 목록 모두 다룬다. 읽지 못하면 None
+fn merge_install_record(copy: &[u8], current: &[u8]) -> Option<Vec<u8>> {
+    let rolled_back = |key: &str| {
+        matches!(
+            Component::try_from_manifest_key(key),
+            Some(Component::CoreDaemon | Component::Cli | Component::Gui | Component::Updater | Component::Installer)
+        )
+    };
+    let copy: serde_json::Value = serde_json::from_slice(copy).ok()?;
+    let current: serde_json::Value = serde_json::from_slice(current).ok()?;
+    let merged = match (copy, current) {
+        (serde_json::Value::Object(copy), serde_json::Value::Object(current)) => serde_json::Value::Object(
+            copy.into_iter()
+                .filter(|(k, _)| rolled_back(k))
+                .chain(current.into_iter().filter(|(k, _)| !rolled_back(k)))
+                .collect(),
+        ),
+        (serde_json::Value::Array(copy), serde_json::Value::Array(current)) => serde_json::Value::Array(
+            copy.into_iter()
+                .filter(|k| k.as_str().is_some_and(rolled_back))
+                .chain(current.into_iter().filter(|k| !k.as_str().is_some_and(rolled_back)))
+                .collect(),
+        ),
+        _ => return None,
+    };
+    serde_json::to_vec_pretty(&merged).ok()
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1063,8 +1115,15 @@ mod tests {
         assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Free, "nobody holds it");
         lock.lock().unwrap();
         assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Unknown);
-        std::fs::write(tmp.path().join("daemon.lock.owner"), "pid=600\naddr=127.0.0.1:57474\n").unwrap();
-        assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Pid(600));
+        let me = std::process::id();
+        std::fs::write(tmp.path().join("daemon.lock.owner"), format!("pid={me}\naddr=127.0.0.1:57474\n")).unwrap();
+        assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Pid(me));
+        // 자체 리뷰: 잠금을 막 쥔 데몬이 아직 PID를 적지 않았으면 남은 것은 끝난 예전 데몬의 PID다. 그 PID로 보지 않는다
+        let mut gone = std::process::Command::new(if cfg!(windows) { "cmd" } else { "true" }).args(if cfg!(windows) { &["/C", "exit"][..] } else { &[][..] }).spawn().unwrap();
+        let gone_pid = gone.id();
+        gone.wait().unwrap();
+        std::fs::write(tmp.path().join("daemon.lock.owner"), format!("pid={gone_pid}\n")).unwrap();
+        assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Unknown);
         drop(lock);
         assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Free);
         // Codex 4차 점검: 잠금 파일을 열지 못하면(없는 것이 아니라) 쥔 쪽을 모른다고 본다. 비어 있다고 보고 되돌리지 않는다
@@ -1448,6 +1507,35 @@ mod tests {
         assert_eq!(m.reason.as_deref(), Some("restore_failed"));
         assert!(m.message.unwrap_or_default().contains("saba-core"), "names the exe that was not restored");
         assert!(recovery.missing_core);
+    }
+
+    // 자체 리뷰: 되돌림은 실행 파일만이다. 감시 중에 새 데몬이 바꾼 모듈·익스텐션·번역은 그대로 남으므로
+    // 설치 기록도 그 항목은 지금 것을 둔다 (옛 해시로 되돌리면 그 모듈이 "수정됨"으로 보여 다시는 자동 교체되지 않는다)
+    #[test]
+    fn a_restore_keeps_the_install_records_of_what_it_does_not_roll_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let inst = data.join("instances");
+        write(&data.join("installed-manifest.json"), r#"{"saba-core":"0.1.13","module-mc":"1.0.0"}"#);
+        write(&data.join("installed-files.json"), r#"{"saba-core":{"/i/saba-core":"old"},"module-mc":{"/m/mc/a.py":"m1"}}"#);
+        write(&data.join("official-components.json"), r#"["saba-core","module-mc"]"#);
+        let snapshot = DataSnapshot::take(&data, &inst, "0.1.13").unwrap();
+        // 새 데몬: 코어 기록은 적용이 바꿨고, 감시 중에 모듈을 바꾸고 익스텐션을 새로 깔았다
+        write(&data.join("installed-manifest.json"), r#"{"saba-core":"0.1.14","module-mc":"1.1.0","ext-x":"2.0.0"}"#);
+        write(&data.join("installed-files.json"), r#"{"saba-core":{"/i/saba-core":"new"},"module-mc":{"/m/mc/a.py":"m2"},"ext-x":{"/e/x/b.py":"x"}}"#);
+        write(&data.join("official-components.json"), r#"["saba-core","module-mc","ext-x"]"#);
+
+        snapshot.restore().unwrap();
+
+        let read = |name: &str| serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(data.join(name)).unwrap()).unwrap();
+        assert_eq!(read("installed-manifest.json"), serde_json::json!({"saba-core":"0.1.13","module-mc":"1.1.0","ext-x":"2.0.0"}));
+        assert_eq!(
+            read("installed-files.json"),
+            serde_json::json!({"saba-core":{"/i/saba-core":"old"},"module-mc":{"/m/mc/a.py":"m2"},"ext-x":{"/e/x/b.py":"x"}})
+        );
+        let mut official: Vec<String> = serde_json::from_value(read("official-components.json")).unwrap();
+        official.sort();
+        assert_eq!(official, ["ext-x", "module-mc", "saba-core"]);
     }
 
     // Codex 5차 리뷰: 스냅샷을 뜨다 실패하면 반쯤 뜬 사본을 남기지 않는다 (다음 시도는 새 이름이라 쌓인다)
