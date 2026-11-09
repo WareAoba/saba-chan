@@ -297,8 +297,8 @@ export interface ExtensionGuiManifest {
     bundle: string | null;
     styles: string | null;
     builtin: boolean | null;
-    /** slot id → 컴포넌트 이름 */
-    slots: Record<string, string>;
+    /** slot id → 표시 정보 (탭 이름·아이콘·설명, 이름과 설명은 익스텐션 i18n 키나 글자). 옛 모양은 컴포넌트 이름 문자열 */
+    slots: Record<string, string | { label?: string; icon?: string; description?: string }>;
 }
 
 /** extension::FieldDef */

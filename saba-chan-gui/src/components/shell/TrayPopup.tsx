@@ -1,8 +1,10 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ServerInfo } from '../../types/daemon';
 import { playersText, primaryAction, STATUS_TONE, viewStatus } from '../../utils/serverView';
+import { type HostWindow, HostWindowContext } from '../../extensions/host';
+import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { StatusChip } from '../ui/StatusChip';
 import './TrayPopup.css';
@@ -93,6 +95,33 @@ export function TrayPopup() {
     }, []);
 
     const act = (action: string) => window.api?.trayAction?.(action);
+
+    // 익스텐션 칸(`TrayPopup.section`)의 host: 원격 데몬 서버의 정지·재시작은 이 창에서 두 번 눌러 확정하므로 익스텐션은 하지 못한다
+    const serversRef = useRef(servers);
+    serversRef.current = servers;
+    const remoteRef = useRef(remote);
+    remoteRef.current = remote;
+    const hostWindow = useMemo<HostWindow>(
+        () => ({
+            servers: () => serversRef.current,
+            run: async (instanceId, action) => {
+                if (action !== 'start' && remoteRef.current) return false;
+                const call =
+                    action === 'start' ? window.api.instanceStart : action === 'stop' ? window.api.instanceStop : window.api.instanceRestart;
+                if (typeof call !== 'function') return false;
+                try {
+                    const res = await call(instanceId);
+                    return !(res?.error || res?.success === false);
+                } catch {
+                    return false;
+                } finally {
+                    refresh();
+                }
+            },
+            openApp: () => window.api?.trayAction?.('open_window'),
+        }),
+        [refresh],
+    );
 
     const toggleServer = async (server: ServerInfo, action: string) => {
         if (action === 'stop' && remote && armed !== server.id) {
@@ -190,6 +219,14 @@ export function TrayPopup() {
                 ) : (
                     <p className="tray-popup-empty">{t('tray_popup.no_servers')}</p>
                 ))}
+
+            {daemonUp && (
+                <HostWindowContext.Provider value={hostWindow}>
+                    <div className="tray-popup-ext">
+                        <ExtensionSlot slotId="TrayPopup.section" servers={servers} t={t} />
+                    </div>
+                </HostWindowContext.Provider>
+            )}
 
             <div className="tray-popup-actions">
                 <button type="button" className="btn-primary btn-sm" onClick={() => act('open_window')}>

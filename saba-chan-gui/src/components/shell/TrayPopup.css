@@ -123,3 +123,15 @@ html[data-tray-popup] body {
 .tray-popup-link.danger:hover:not(:disabled) {
     background: var(--stop-soft);
 }
+
+/* 익스텐션 칸 (`TrayPopup.section`): 비었으면 자리를 차지하지 않는다 */
+.tray-popup-ext:empty {
+    display: none;
+}
+.tray-popup-ext {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    max-height: 160px;
+    overflow-y: auto;
+}

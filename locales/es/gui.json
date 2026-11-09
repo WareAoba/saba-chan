@@ -769,6 +769,7 @@
     "nav_discord": "Discord",
     "nav_activity": "Actividad",
     "nav_settings": "Ajustes",
+    "nav_more": "Más",
     "daemon_running": "Daemon en ejecución",
     "daemon_stopped": "Daemon detenido",
     "daemon_checking": "Comprobando daemon",
@@ -2109,6 +2110,7 @@
     "no_problems": "No hay advertencias ni errores recientes."
   },
   "extension_config": {
+    "none": "Esta extensión no tiene ajustes.",
     "toggle": "Ajustes",
     "save": "Guardar",
     "saved": "Guardado",

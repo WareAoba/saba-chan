@@ -3,7 +3,7 @@ import type { ComponentProps, ComponentType } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../components/ExtensionSlot', () => ({ default: () => null }));
+vi.mock('../components/ExtensionSlot', () => ({ default: () => null, SlotView: () => null, useSlotPages: () => [] }));
 vi.mock('../components/servers/ServerConsole', () => ({ ServerConsole: () => null }));
 vi.mock('../components/Modals/CommandModal', () => ({ default: () => null }));
 

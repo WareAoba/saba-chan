@@ -3,6 +3,7 @@ import { useState, useCallback, useRef, useLayoutEffect, useEffect } from 'react
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import Icon from '../Icon';
+import { type SlotPage, SlotView, useSlotPages } from '../ExtensionSlot';
 import { LinkedText } from '../ui/ScreenLink';
 import { useModalClose } from '../../hooks/useModalClose';
 import type { Server } from '../../stores/useServerStore';
@@ -44,7 +45,8 @@ export function AddInstanceModal({
     // -- migration props (향후 확장) --
 }: AddInstanceModalProps) {
     const { t } = useTranslation('gui');
-    const [mode, setMode] = useState<'new' | 'migrate' | null>(null); // null | 'new' | 'migrate'
+    // null | 'new' | 'migrate' | 'ext:<id>' (익스텐션이 더한 방법, `AddServer.method` slot)
+    const [mode, setMode] = useState<'new' | 'migrate' | `ext:${string}` | null>(null);
     const [newFlowStep, setNewFlowStep] = useState('select-game');
     const [newFlowProgress, setNewFlowProgress] = useState(0);
     const [migrationFlowStep, setMigrationFlowStep] = useState('pick-dir');
@@ -58,6 +60,8 @@ export function AddInstanceModal({
     }, [onClose]);
 
     const { isClosing, requestClose } = useModalClose(handleClose);
+    const extMethods = useSlotPages('AddServer.method');
+    const extMethod = mode?.startsWith('ext:') ? extMethods.find((p) => p.id === mode) : undefined;
 
     // ── 모달 열릴 때 모듈 목록 새로고침 ──
     useEffect(() => {
@@ -72,7 +76,7 @@ export function AddInstanceModal({
     const animatingRef = useRef(false);
 
     // 상태 변경 직전에 현재 높이를 캡처하는 래퍼
-    const captureAndSetMode = useCallback((newMode: 'new' | 'migrate' | null) => {
+    const captureAndSetMode = useCallback((newMode: 'new' | 'migrate' | `ext:${string}` | null) => {
         const el = contentRef.current;
         if (el) snapshotHeightRef.current = el.getBoundingClientRect().height;
         setMode(newMode);
@@ -146,6 +150,7 @@ export function AddInstanceModal({
         // 새 서버 마법사는 단계 수가 모듈마다 다르다: 마법사가 알린 비율로 20%~100%를 채운다
         if (mode === 'new') return 20 + 80 * newFlowProgress;
         if (mode === 'migrate') return migrationFlowStep === 'configure' ? 78 : 50;
+        if (mode) return 50;
         return 20;
     })();
 
@@ -177,6 +182,8 @@ export function AddInstanceModal({
                         hasModules={extensions && extensions.length > 0}
                         onSelectNew={() => captureAndSetMode('new')}
                         onSelectMigrate={() => captureAndSetMode('migrate')}
+                        extMethods={extMethods}
+                        onSelectExt={(id) => captureAndSetMode(id)}
                         onClose={requestClose}
                     />
                 )}
@@ -192,6 +199,13 @@ export function AddInstanceModal({
                         onBack={goBack}
                         onClose={requestClose}
                     />
+                )}
+
+                {/* ── 익스텐션이 더한 방법: 만들기는 그 화면이 데몬 API로 한다 ── */}
+                {extMethod && (
+                    <div className="add-instance-stage add-instance-ext" key={extMethod.id}>
+                        <SlotView entry={extMethod.entry} slotId="AddServer.method" t={t} onBack={goBack} onClose={requestClose} />
+                    </div>
                 )}
 
                 {/* ── 마이그레이션 흐름 ── */}
@@ -218,10 +232,12 @@ interface InstanceChooserProps {
     hasModules: boolean;
     onSelectNew: () => void;
     onSelectMigrate: () => void;
+    extMethods: SlotPage[];
+    onSelectExt: (id: `ext:${string}`) => void;
     onClose: () => void;
 }
 
-function InstanceChooser({ t, hasModules, onSelectNew, onSelectMigrate, onClose }: InstanceChooserProps) {
+function InstanceChooser({ t, hasModules, onSelectNew, onSelectMigrate, extMethods, onSelectExt, onClose }: InstanceChooserProps) {
     return (
         <div className="add-instance-stage" key="chooser">
             {/* Header */}
@@ -295,6 +311,23 @@ function InstanceChooser({ t, hasModules, onSelectNew, onSelectMigrate, onClose 
                     </div>
                 </button>
                 </div>
+
+                {/* 익스텐션이 더한 방법: 한 줄을 다 쓴다 */}
+                {extMethods.map((m) => (
+                    <div key={m.id} className="ai-choice-col ai-choice-col--ext">
+                        <button className="ai-choice-card" type="button" onClick={() => onSelectExt(m.id as `ext:${string}`)}>
+                            <div className="ai-choice-main">
+                                <div className="ai-choice-icon ai-choice-icon--ext">
+                                    <Icon name={m.icon} size="xl" />
+                                </div>
+                                <div className="ai-choice-text">
+                                    <span className="ai-choice-title">{m.label}</span>
+                                    {m.description && <span className="ai-choice-desc">{m.description}</span>}
+                                </div>
+                            </div>
+                        </button>
+                    </div>
+                ))}
                 </div>
             </div>
 
