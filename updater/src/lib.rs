@@ -215,6 +215,9 @@ pub struct UpdateStatus {
     pub components: Vec<ComponentVersion>,
     pub checking: bool,
     pub error: Option<String>,
+    /// 같은 판 베타 규칙으로 기다리는 정식 판 `X.Y.Z` (정식 채널인데 지금 판이 그 판의 프리릴리스). 정식을 받으면 사라진다
+    #[serde(default)]
+    pub stable_wait: Option<String>,
 }
 
 /// 버전 의존성 확인 결과
@@ -295,6 +298,9 @@ pub struct ApplyComponentResult {
     pub restart_needed: bool,
 }
 
+/// 주기 확인 간격 (시간). 연결 여부와 상관없는 안전망이다
+pub const CHECK_EVERY_HOURS: u32 = 24;
+
 /// 업데이트 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -314,6 +320,9 @@ pub struct UpdateConfig {
     pub relay_url: Option<String>,
     /// 릴레이 업데이트 채널 (stable | rc | beta | nightly). 기본은 이 빌드의 채널
     pub channel: String,
+    /// 적용했다가 되돌린 판 (버전 문자열). 이 판은 자동 적용하지 않는다. 더 새 판이 나오거나 사용자가 다시 시작을 누르면 지운다
+    #[serde(default)]
+    pub failed_release: Option<String>,
 }
 
 /// 빈 주소는 "설정 안 함" (0.1.1은 비워 두면 `""`로 저장했다)
@@ -333,6 +342,7 @@ impl Default for UpdateConfig {
             relay_url: None,
             // 고르지 않았으면 이 빌드의 채널(`versions.toml` `[release] channel`): 베타 빌드가 정식의 옛 판을 내림으로 거절하지 않게
             channel: crate::versions::bundled().channel.clone(),
+            failed_release: None,
         }
     }
 }
@@ -595,6 +605,7 @@ impl UpdateManager {
                 components: Vec::new(),
                 checking: false,
                 error: None,
+                stable_wait: None,
             },
             modules_dir: PathBuf::from(modules_dir),
             extensions_dir,
@@ -675,6 +686,17 @@ impl UpdateManager {
 
     fn relay_client(&self) -> relay::RelayClient {
         relay::RelayClient::new(self.config.relay_url.as_deref().unwrap_or(relay::DEFAULT_RELAY_URL))
+            .with_manifest_cache(self.staging_dir.join("manifests"))
+    }
+
+    /// 받을 코어(manifest `saba-core`)가 다시 붙을 수 있는 러너 형식 범위. 확인 전이거나 코어가 없는 manifest면 None
+    pub fn core_reads_runner_formats(&self) -> Option<(u32, u32)> {
+        self.cached_manifest.as_ref()?.components.get("saba-core").map(relay::ManifestComponent::runner_formats)
+    }
+
+    /// 지금 적용하는(받아 둔) 릴리즈 버전
+    pub fn applying_version(&self) -> Option<String> {
+        self.applying_release().map(|r| r.version)
     }
 
     // ─── 업데이트 확인 ────────────────────────────────────────────────────────
@@ -722,6 +744,7 @@ impl UpdateManager {
             (release, None) => release,
         };
 
+        let offered = release.as_ref().map(|r| r.latest.version.clone());
         let previous = std::mem::take(&mut self.status.components);
         let mut components = Vec::new();
         // 헤드리스 설치는 GUI처럼 그 구성에 들지 않는 컴포넌트를 받지 않는다
@@ -781,13 +804,18 @@ impl UpdateManager {
         }
 
         let now = time::now_iso();
-        let next = time::iso_after_hours(self.config.check_interval_hours);
+        // 주기 확인은 24시간마다다 (연결된 데몬은 heartbeat의 판 번호로 안다). `check_interval_hours`는 읽기만 한다
+        let next = time::iso_after_hours(CHECK_EVERY_HOURS);
+        // 같은 판 베타를 받는 동안 기다리는 정식 판. 정식(그 판 이상)을 받으면 사라진다
+        let stable_wait = relay::stable_wait_base(&self.config.channel, &current)
+            .filter(|_| offered.as_deref().and_then(SemVer::parse).is_none_or(|v| v.is_prerelease()));
         self.status = UpdateStatus {
             last_check: Some(now),
             next_check: Some(next),
             components,
             checking: false,
             error: None,
+            stable_wait,
         };
         Ok(self.status.clone())
     }

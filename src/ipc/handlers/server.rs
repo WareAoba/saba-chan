@@ -691,7 +691,7 @@ pub(crate) fn required_extensions(module: &crate::supervisor::module_loader::Loa
 /// 모듈 하나의 설치·제거는 한 번에 하나만 (같은 모듈을 GUI·CLI가 동시에 설치하면 서로의 파일을 지운다).
 /// 키는 소문자로: Windows에서는 대소문자만 다른 id가 같은 폴더다
 pub(crate) fn module_install_guard(module_id: &str) -> Option<super::backup::InstanceLock> {
-    super::backup::InstanceLock::take(&format!("module-install:{}", module_id.to_lowercase()))
+    super::backup::InstanceLock::take(&format!("module-install:{}", module_id.to_lowercase())).map(|g| g.purpose(super::backup::Purpose::Provision))
 }
 
 pub(crate) fn module_busy(module_id: &str) -> axum::response::Response {

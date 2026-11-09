@@ -17,6 +17,14 @@ pub enum CoreSwapBlockerKind {
     NonRunnerServer,
     ExtensionBridge,
     RunnerFormat,
+    /// 데몬 작업 (`ipc::update_phase::daemon_work`): 백업·복원
+    Backup,
+    /// 서버 설치·모듈 설치
+    Provision,
+    /// 게임 서버 업데이트
+    ServerUpdate,
+    /// 모듈·익스텐션 호출, 이름표 없는 인스턴스 작업(시작·초기화·설정 저장)
+    ModuleCall,
 }
 
 /// 교체를 막는 켜진 서버 하나 (`waiting_for` 항목과 같은 모양)
@@ -49,7 +57,6 @@ fn blocker_kind(proc: &ManagedProcess, new_core_reads: (u32, u32)) -> Option<Cor
 impl Supervisor {
     /// 새 코어(`new_core_reads` = 그 코어가 읽는 러너 형식 범위, 양 끝 포함)로 바꾸면 끊기는 켜진 서버들.
     /// 비어 있어야 데몬을 바꾼다
-    #[allow(dead_code)] // 업데이트 적용 판정이 부르기 전까지 바이너리에서 쓰이지 않는다
     pub async fn core_swap_blockers(&self, new_core_reads: (u32, u32)) -> Vec<CoreSwapBlocker> {
         let mut blockers: Vec<CoreSwapBlocker> = self
             .managed_store

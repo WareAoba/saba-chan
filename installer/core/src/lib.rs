@@ -1232,6 +1232,7 @@ mod tests {
             install_dir: None,
             requires: None,
             meta: None,
+            reads_runner_formats: None,
         };
         let (core, gui) = (comp("core.zip"), comp("gui.zip"));
         let (k1, k2) = ("saba-core".to_string(), "gui".to_string());

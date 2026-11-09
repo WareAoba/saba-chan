@@ -3,8 +3,8 @@
 //! 업데이트 확인(check)과 다운로드(download)를 데몬 프로세스 내에서 수행합니다.
 //! 파일 적용(apply)은 별도 업데이터 프로세스에서 처리합니다.
 //!
-//! 주기 확인은 데몬이 한다(U6, `spawn_update_scheduler`): `check_interval_hours`마다 확인하고,
-//! `auto_download`이면 내려받아 둔다. GUI·CLI는 `/api/updates/status`를 읽어 표시만 한다.
+//! 확인은 데몬이 한다: 릴레이 heartbeat의 판 번호(`latestReleases`)가 바뀌면 확인하고(`on_latest_releases`), 연결과 상관없이
+//! 24시간마다 한 번 더 본다(`spawn_update_scheduler`, `check_interval_hours`는 읽기만 한다). GUI·CLI는 `/api/updates/status`를 읽어 표시만 한다.
 //!
 //! ## 엔드포인트
 //! - `GET  /api/updates/status`              — 캐시된 업데이트 상태 조회
@@ -16,7 +16,13 @@
 //! - `POST /api/updates/install`             — 확인 → 전부 받기 → 적용 → 필요하면 업데이터 띄우기를 한 번에 (액션 `update.apply`, 디스코드 `/사바쨩 업데이트`)
 //! - `GET  /api/updates/last-result`         — 마지막 업데이트 적용 결과 (DELETE로 확인 처리)
 //! - `GET  /api/updates/config`              — 업데이트 설정 조회
-//! - `PUT  /api/updates/config`              — 업데이트 설정 변경
+//! - `PUT  /api/updates/config`              — 업데이트 설정 변경 (채널이 바뀌면 곧바로 확인한다)
+//! - `POST /api/updates/phase/ack`           — 알약의 `done`을 지운다
+//! - `POST /api/updates/restart`             — `ready`에서 "지금 다시 시작": 실패한 판 기록을 지우고 받아 둔 것을 적용한다
+//! - `PUT  /api/updates/gui-window`          — GUI 창이 보이는지 (`{open}`)
+//!
+//! 앱 업데이트는 묻지 않고 적용한다(`spawn_core_apply`): 켜진 서버가 있어도 코어를 바꾸고, 데몬 작업이나 다시 붙지 못하는
+//! 서버가 있을 때만 기다린다. 단계(`phase`)는 `update_phase`가 정한다
 
 use super::handlers::LooseJson;
 use axum::{
@@ -34,6 +40,8 @@ use tokio::sync::RwLock;
 use saba_chan_updater_lib::{
     Component, DownloadProgress, UpdateConfig, UpdateManager,
 };
+
+use super::update_phase::{self, Decision, LiveState, Phase, PhaseState, ReadyReason};
 
 // ═══════════════════════════════════════════════════════
 // 공유 상태
@@ -56,6 +64,13 @@ pub struct UpdateState {
     updater_launched: Arc<std::sync::atomic::AtomicBool>,
     /// 데몬이 모듈 업데이트를 바로 적용했다: 기동 때 띄운 작업이 그 모듈이 쓰는 익스텐션을 맞춘다 (`prepare_after_update`)
     pub modules_updated: Arc<tokio::sync::Notify>,
+    /// 알약 단계·마지막으로 본 릴리즈 id (`<staging>/live-update.json`)
+    live: Arc<std::sync::Mutex<LiveState>>,
+    live_path: Arc<std::path::PathBuf>,
+    /// GUI가 알린 창 상태 (`PUT /api/updates/gui-window`). 알린 적이 없으면 None
+    gui_window: Arc<std::sync::Mutex<Option<bool>>>,
+    /// 내려가기 직전 릴레이에 "업데이트로 잠깐 끊김"을 알린다
+    pub relay: Option<crate::relay_agent::RelayAgent>,
 }
 
 impl UpdateState {
@@ -63,7 +78,28 @@ impl UpdateState {
     pub fn new() -> Self {
         let cfg = load_updater_config();
         let modules_dir = resolve_modules_dir();
-        let mgr = UpdateManager::new(cfg, &modules_dir);
+        let mut mgr = UpdateManager::new(cfg, &modules_dir);
+        let live_path = LiveState::path();
+        let mut live = LiveState::load_from(&live_path);
+        #[cfg(not(test))]
+        let marker = std::fs::read_to_string(saba_chan_updater_lib::UpdateCompletionMarker::path())
+            .ok()
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok());
+        // 시험은 이 PC의 실제 완료 마커로 단계나 설정을 바꾸지 않는다
+        #[cfg(test)]
+        let marker: Option<Value> = None;
+        if update_phase::adopt_marker(&mut live, marker.as_ref()) {
+            live.save_to(&live_path);
+            // 되돌린 판은 설치기가 설정에 남긴다. 옛 설치기가 되돌렸으면 여기서 남긴다 (같은 판을 다시 자동 적용하지 않게)
+            if live.phase.reason == Some(ReadyReason::RolledBack) && mgr.config.failed_release.is_none() {
+                let mut cfg = mgr.get_config();
+                cfg.failed_release = live.phase.version.clone();
+                if let Err(e) = save_updater_config(&cfg) {
+                    tracing::warn!("[Updates] Failed to persist update config: {}", e);
+                }
+                mgr.update_config(cfg);
+            }
+        }
         let progress = mgr.download_progress.clone();
         let manager = Arc::new(RwLock::new(mgr));
         Self {
@@ -75,7 +111,61 @@ impl UpdateState {
             clients: None,
             updater_launched: Arc::default(),
             modules_updated: Arc::default(),
+            live: Arc::new(std::sync::Mutex::new(live)),
+            live_path: Arc::new(live_path),
+            gui_window: Arc::default(),
+            relay: None,
         }
+    }
+
+    pub fn with_relay(mut self, relay: crate::relay_agent::RelayAgent) -> Self {
+        self.relay = Some(relay);
+        self
+    }
+
+    /// 지금 단계 (`done`은 하루가 지나면 `idle`)
+    pub fn phase(&self) -> Phase {
+        self.live.lock().unwrap_or_else(|e| e.into_inner()).phase.visible(chrono::Utc::now())
+    }
+
+    /// 단계를 바꾸고 상태 파일에 남긴다. 같으면(기다리는 것까지) 시각을 새로 찍지 않는다
+    fn set_phase(&self, phase: Phase) {
+        let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
+        let same = live.phase.state == phase.state
+            && live.phase.version == phase.version
+            && live.phase.reason == phase.reason
+            && live.phase.waiting_for == phase.waiting_for;
+        if same {
+            return;
+        }
+        live.phase = phase;
+        live.save_to(&self.live_path);
+    }
+
+    /// 코어 업데이트가 막는 것을 기다리는 중이다: 새 예약 작업(백업·게임 서버 업데이트)은 업데이트 뒤로 미룬다
+    pub fn core_update_waiting(&self) -> bool {
+        self.phase().state == PhaseState::Waiting
+    }
+
+    /// GUI 창이 보이는가: 등록된 GUI가 있고, GUI가 알린 창 상태(알린 적이 없으면 트레이 표시가 아님)가 열림이다.
+    /// GUI 등록이 사라지면 닫힘으로 본다
+    async fn gui_window_open(&self) -> bool {
+        let Some(clients) = &self.clients else { return false };
+        let list = clients.list().await;
+        let any_gui = list.iter().any(|(_, c)| c.kind == crate::ipc::ClientKind::Gui);
+        let told = *self.gui_window.lock().unwrap_or_else(|e| e.into_inner());
+        any_gui && told.unwrap_or_else(|| !only_resident_guis(&list))
+    }
+
+    /// heartbeat 판 번호 중 이 데몬이 보는 것이 지난번과 다른가. 다르면 새 값을 남긴다
+    fn note_release_ids(&self, ids: std::collections::BTreeMap<String, u64>) -> bool {
+        let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
+        if ids.is_empty() || live.seen == ids {
+            return false;
+        }
+        live.seen = ids;
+        live.save_to(&self.live_path);
+        true
     }
 
     /// 핫로드를 위한 supervisor/extension_manager 참조 주입
@@ -130,6 +220,9 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/integrity", get(check_integrity))
         .route("/api/updates/config", get(get_config))
         .route("/api/updates/config", put(set_config))
+        .route("/api/updates/phase/ack", post(ack_phase))
+        .route("/api/updates/restart", post(restart_now))
+        .route("/api/updates/gui-window", put(set_gui_window))
         .route("/api/daemon/update", get(get_daemon_update).post(install_updates).put(put_daemon_update))
         .with_state(state)
 }
@@ -176,6 +269,8 @@ async fn get_status(
         "updates_available": visible_update_count,
         "components": components,
         "profile": saba_chan_updater_lib::profile::Profile::load().as_str(),
+        "phase": state.phase(),
+        "stable_wait": status.stable_wait,
     }))
 }
 
@@ -229,15 +324,9 @@ async fn check_updates(
 
 /// 확인 한 번과 그 뒤처리. 수동 확인(`POST /check`)과 주기 확인이 같은 길을 쓴다.
 /// - Locales 업데이트는 사용자에게 보이지 않게 바로 적용
-/// - `auto_download`(또는 `auto_apply`)이면 나머지 업데이트를 내려받아 두고 pending manifest 저장
-///   (적용은 사용자가 고르거나, `auto_apply`면 앱을 열 때 `POST /apply-on-launch`)
+/// - 모듈·익스텐션은 바꿔 끼우고(`spawn_addon_replace`), 앱 구성요소는 받아서 적용한다(`spawn_core_apply`)
 async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_updater_lib::UpdateStatus> {
-    let (status, auto_download) = {
-        let mut mgr = state.manager.write().await;
-        let status = mgr.check_for_updates().await?;
-        let cfg = mgr.get_config();
-        (status, cfg.auto_download || cfg.auto_apply)
-    };
+    let status = state.manager.write().await.check_for_updates().await?;
     announce_new_updates(&status);
 
     // 모듈·익스텐션은 묻지 않고 바꿔 끼운다 (사용자 결정 2026-11-09). 확인을 끈 설정이면 주기 확인 자체가 돌지 않는다
@@ -254,36 +343,10 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
         });
     }
 
-    let has_visible_update = status.components.iter()
-        .any(|c| c.update_available && !c.downloaded && !matches!(c.component, Component::Locales));
-    // 화면 없는 설치는 앱을 열 일이 없다: 자동 적용이면 받고 바로 적용한다 (원격 데몬 자동 업데이트, 사용자 결정 2026-11-08)
-    if auto_apply_headless(&state.manager.read().await.get_config(), saba_chan_updater_lib::profile::Profile::load()) {
-        let has_pending = status.components.iter().any(|c| c.update_available && !matches!(c.component, Component::Locales));
-        if has_pending {
-            spawn_headless_apply(state.clone());
-        }
-        return Ok(status);
-    }
-    if auto_download && has_visible_update {
-        let manager = state.manager.clone();
-        tokio::spawn(async move {
-            let mut mgr = manager.write().await;
-            match mgr.download_available_updates().await {
-                Ok(downloaded) => {
-                    tracing::info!("[Updates] Auto-downloaded {} update(s)", downloaded.len());
-                    if let Err(e) = mgr.save_pending_manifest() {
-                        tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("[Updates] Auto-download failed: {}", e);
-                    // 실패 전에 받은 것은 적용할 수 있게 남긴다
-                    if let Err(e) = mgr.save_pending_manifest() {
-                        tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
-                    }
-                }
-            }
-        });
+    // 앱 구성요소는 묻지 않고 적용한다 (켜진 서버가 있어도 코어를 바꾸고, 막는 것이 있을 때만 기다린다)
+    let app_update = status.components.iter().any(|c| c.update_available && update_phase::is_app_component(&c.component.manifest_key()));
+    if app_update && state.manager.read().await.get_config().enabled {
+        spawn_core_apply(state.clone());
     }
     Ok(status)
 }
@@ -399,50 +462,146 @@ async fn busy_addons(state: &UpdateState) -> (std::collections::HashSet<String>,
     (modules, extensions)
 }
 
-/// 받고 바로 적용하는가: 자동 적용이 켜진 화면 없는 설치 (GUI가 있으면 앱을 열 때 적용한다, `apply-on-launch`)
-fn auto_apply_headless(cfg: &saba_chan_updater_lib::UpdateConfig, profile: saba_chan_updater_lib::profile::Profile) -> bool {
-    cfg.enabled && cfg.auto_apply && profile == saba_chan_updater_lib::profile::Profile::Headless
-}
+/// 막는 것이 있어 미룬 앱 업데이트 적용을 다시 판정하는 간격
+const CORE_HOLD_RETRY: std::time::Duration = std::time::Duration::from_secs(30);
+/// 모듈 호출만 막고 있으면(상태 조회처럼 금방 끝나는 것) 이만큼씩 몇 번 더 보고 나서 기다린다고 알린다
+const MODULE_CALL_SETTLE: std::time::Duration = std::time::Duration::from_secs(2);
+/// 릴레이에 알리는 업데이트로 끊길 시간(초). 릴레이는 여기에 2분을 더해 기다린다
+const UPDATING_ETA_SECS: u64 = 90;
+static CORE_APPLYING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// 서버가 켜져 있어 미룬 적용을 다시 해 보는 간격
-const HEADLESS_HOLD_RETRY: std::time::Duration = std::time::Duration::from_secs(15 * 60);
-static HEADLESS_APPLYING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// 화면 없는 설치의 자동 적용: 받아 두고, 켜진 서버가 없을 때 적용하고 업데이터를 띄운다 (데몬은 서비스로 다시 뜬다).
-/// 서버가 켜져 있으면 데몬·런타임 적용을 미루고 15분마다 다시 본다. 한 번에 하나만 돈다
-fn spawn_headless_apply(state: UpdateState) {
+/// 앱 업데이트를 묻지 않고 적용한다: 받아 두고, 막는 것이 없으면 적용하고(데몬이 내려가야 하면 업데이터를 띄운다),
+/// 막는 것이 있으면 `waiting`으로 두고 30초마다 다시 본다. 자동으로 할 수 없으면 `ready`. 한 번에 하나만 돈다
+fn spawn_core_apply(state: UpdateState) {
     use std::sync::atomic::Ordering;
-    if HEADLESS_APPLYING.swap(true, Ordering::SeqCst) {
+    if CORE_APPLYING.swap(true, Ordering::SeqCst) {
         return;
     }
     tokio::spawn(async move {
-        use crate::ipc::internal::into_internal;
-        let downloaded = into_internal(download_components_with(state.clone(), DownloadRequest::default()).await).await.body;
-        if let Some(errors) = downloaded.get("errors").and_then(Value::as_array).filter(|e| !e.is_empty()) {
-            tracing::warn!("[Updates] Auto-download failed for some components: {:?}", errors);
-        }
-        if let Err(e) = state.manager.write().await.save_pending_manifest() {
-            tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
-        }
-        loop {
-            let answer = into_internal(apply_on_launch(State(state.clone())).await).await.body;
-            if answer.get("requires_updater").and_then(Value::as_bool) == Some(true) {
-                tracing::info!("[Updates] Applying downloaded updates on this headless install");
-                let _ = into_internal(launch_updater(State(state.clone()), LooseJson(None)).await).await;
-                break;
-            }
-            if answer.get("held").and_then(Value::as_array).is_none_or(Vec::is_empty) {
-                break;
-            }
-            tracing::info!("[Updates] Servers are running; applying updates later");
-            let stop = state.stop_requested.clone().unwrap_or_default();
-            tokio::select! {
-                _ = stop.cancelled() => break,
-                _ = tokio::time::sleep(HEADLESS_HOLD_RETRY) => {}
-            }
-        }
-        HEADLESS_APPLYING.store(false, Ordering::SeqCst);
+        core_apply(&state).await;
+        CORE_APPLYING.store(false, Ordering::SeqCst);
     });
+}
+
+async fn core_apply(state: &UpdateState) {
+    use crate::ipc::internal::into_internal;
+    let keys: Vec<String> = state.manager.read().await.get_status().components.iter()
+        .filter(|c| c.update_available && !c.downloaded && update_phase::is_app_component(&c.component.manifest_key()))
+        .map(|c| c.component.manifest_key())
+        .collect();
+    if !keys.is_empty() {
+        let downloaded = into_internal(download_components_with(state.clone(), DownloadRequest { components: keys }).await).await.body;
+        if let Some(errors) = downloaded.get("errors").and_then(Value::as_array).filter(|e| !e.is_empty()) {
+            tracing::warn!("[Updates] Could not download some updates: {:?}", errors);
+        }
+    }
+    let stop = state.stop_requested.clone().unwrap_or_default();
+    loop {
+        if state.updater_launched() || stop.is_cancelled() {
+            return;
+        }
+        let (decision, version, notes) = plan_core_apply(state).await;
+        match decision {
+            Decision::Nothing => {
+                // 기다리던 것이 사라졌으면(받아 둔 것을 적용했거나 지웠다) 걷는다. 되돌림·실패한 판의 준비됨은 사용자가 고를 때까지 둔다
+                let phase = state.phase();
+                if phase.state == PhaseState::Waiting || phase.reason == Some(ReadyReason::GuiWindowOpen) {
+                    state.set_phase(Phase::default());
+                }
+                return;
+            }
+            Decision::Ready(reason) => {
+                state.set_phase(Phase::ready(reason, version, notes));
+                // 창을 숨기면(트레이) 이어서 적용한다
+                if reason != ReadyReason::GuiWindowOpen {
+                    return;
+                }
+            }
+            Decision::Wait(blockers) => {
+                tracing::info!("[Updates] Waiting for {:?} before applying {:?}", blockers.iter().map(|b| (b.kind, &b.name)).collect::<Vec<_>>(), version);
+                state.set_phase(Phase { waiting_for: blockers, ..Phase::new(PhaseState::Waiting, version, notes) });
+            }
+            Decision::Apply(targets) => {
+                tracing::info!("[Updates] Applying {:?} without asking", targets);
+                state.set_phase(Phase::new(PhaseState::Applying, version.clone(), notes.clone()));
+                let answer = into_internal(apply_updates_with(state.clone(), ApplyRequest { components: targets }).await).await.body;
+                if answer.get("requires_updater").and_then(Value::as_bool) == Some(true) {
+                    let launched = into_internal(launch_updater(State(state.clone()), LooseJson(None)).await).await.body;
+                    if launched.get("ok").and_then(Value::as_bool) != Some(true) {
+                        tracing::warn!("[Updates] Could not start the updater: {}", launched);
+                        state.set_phase(Phase::default());
+                    }
+                } else if answer.get("ok").and_then(Value::as_bool) == Some(true) {
+                    // 데몬이 내려가지 않고 바꾼 것(CLI·설치기)
+                    state.set_phase(Phase::new(PhaseState::Done, version, notes));
+                } else {
+                    tracing::warn!("[Updates] Applying updates failed: {}", answer);
+                    state.set_phase(Phase::default());
+                }
+                return;
+            }
+        }
+        tokio::select! {
+            _ = stop.cancelled() => return,
+            _ = tokio::time::sleep(CORE_HOLD_RETRY) => {}
+        }
+    }
+}
+
+/// 받아 둔 앱 업데이트를 지금 적용할 수 있는가 (`update_phase::decide`)와 그 판·패치노트
+async fn plan_core_apply(state: &UpdateState) -> (Decision, Option<String>, Option<std::collections::HashMap<String, String>>) {
+    let (pending, release, failed, reads) = {
+        let mut mgr = state.manager.write().await;
+        restore_pending(&mut mgr);
+        let pending: Vec<String> = mgr.get_pending_components().iter().map(|c| c.component.manifest_key()).collect();
+        let release = mgr.applying_release();
+        let mut cfg = mgr.get_config();
+        // 되돌린 판보다 새 판을 받았으면 그 기록은 지운다
+        if let (Some(failed), Some(r)) = (cfg.failed_release.as_deref(), release.as_ref()) {
+            if update_phase::failed_release_outdated(failed, &r.version) {
+                cfg.failed_release = None;
+                if let Err(e) = save_updater_config(&cfg) {
+                    tracing::warn!("[Updates] Failed to persist update config: {}", e);
+                }
+                mgr.update_config(cfg.clone());
+            }
+        }
+        let reads = mgr.core_reads_runner_formats().unwrap_or(saba_chan_updater_lib::relay::DEFAULT_READS_RUNNER_FORMATS);
+        (pending, release, cfg.failed_release, reads)
+    };
+    let version = release.as_ref().map(|r| r.version.clone());
+    let notes = release.map(|r| r.notes).filter(|n| !n.is_empty());
+    let gui_window_open = state.gui_window_open().await;
+    let cli_running = tokio::task::spawn_blocking(saba_chan_updater_lib::ProcessChecker::is_cli_running).await.unwrap_or(false);
+    let mut blockers = core_blockers(state, reads).await;
+    // 금방 끝나는 모듈 호출(상태 조회 등)만 걸렸으면 잠깐 더 본다
+    for _ in 0..3 {
+        if blockers.is_empty() || blockers.iter().any(|b| b.kind != crate::supervisor::core_swap::CoreSwapBlockerKind::ModuleCall) {
+            break;
+        }
+        tokio::time::sleep(MODULE_CALL_SETTLE).await;
+        blockers = core_blockers(state, reads).await;
+    }
+    let decision = update_phase::decide(update_phase::PlanInput {
+        pending: &pending,
+        version: version.as_deref(),
+        failed_release: failed.as_deref(),
+        gui_window_open,
+        cli_running,
+        blockers,
+    });
+    (decision, version, notes)
+}
+
+/// 코어를 바꾸면 끊기는 것: 데몬 작업과 다시 붙지 못하는 켜진 서버 (한 곳에서 모은다)
+async fn core_blockers(state: &UpdateState, new_core_reads: (u32, u32)) -> Vec<crate::supervisor::core_swap::CoreSwapBlocker> {
+    let Some(ref sup) = state.supervisor else {
+        return update_phase::daemon_work(|_| None);
+    };
+    let sup = sup.read().await;
+    let mut blockers = update_phase::daemon_work(|id| sup.instance_store.get(id).map(|i| i.name.clone()));
+    blockers.extend(sup.core_swap_blockers(new_core_reads).await);
+    blockers
 }
 
 /// GET /api/daemon/update — 짝 맺은 PC의 앱 카드가 이 데몬의 판·업데이트를 본다 (`/api/updates/*`는 앱이 있는 PC 전용이라 따로 둔다).
@@ -496,7 +655,7 @@ async fn put_daemon_update(State(state): State<UpdateState>, Json(body): Json<Da
     Json(json!({ "ok": true, "auto": body.auto }))
 }
 
-/// 데몬 기동 후 업데이트를 주기적으로 확인한다 (U6).
+/// 데몬 기동 후 업데이트를 주기적으로 확인한다 (U6). 24시간마다.
 /// 설정은 매 회 다시 읽는다. 꺼져 있으면(`enabled=false`) 확인하지 않고 설정만 다시 본다.
 pub fn spawn_update_scheduler(state: UpdateState, shutdown: tokio_util::sync::CancellationToken) {
     /// 기동 직후에는 다른 초기화가 먼저 끝나도록 잠깐 기다린다
@@ -516,8 +675,9 @@ pub fn spawn_update_scheduler(state: UpdateState, shutdown: tokio_util::sync::Ca
                 wait = RETRY;
                 continue;
             }
+            // 연결된 데몬은 heartbeat의 판 번호로 알게 된다. 이것은 연결과 상관없는 안전망이다 (`check_interval_hours`는 쓰지 않는다)
             wait = match check_and_follow_up(&state).await {
-                Ok(_) => std::time::Duration::from_secs(u64::from(cfg.check_interval_hours.max(1)) * 3600),
+                Ok(_) => std::time::Duration::from_secs(u64::from(saba_chan_updater_lib::CHECK_EVERY_HOURS) * 3600),
                 Err(e) => {
                     tracing::warn!("[Updates] Scheduled check failed: {}", e);
                     RETRY
@@ -560,6 +720,31 @@ pub fn on_update_hint(state: &UpdateState, hint: &Value, shutdown: tokio_util::s
         }
         if let Err(e) = check_and_follow_up(&state).await {
             tracing::warn!("[Updates] Check after relay release notice failed: {}", e);
+        }
+    });
+}
+
+/// 릴레이 heartbeat의 채널별 최신 릴리즈 id(`latestReleases`). 이 데몬이 받는 채널(같은 판 베타 규칙 포함)의 값이
+/// 지난번 본 것과 다르면 0~60초 사이에서 늦춘 뒤 한 번 확인한다. 같으면 아무것도 묻지 않는다
+pub fn on_latest_releases(state: &UpdateState, ids: &Value, shutdown: tokio_util::sync::CancellationToken) {
+    let ids = ids.clone();
+    let state = state.clone();
+    tokio::spawn(async move {
+        let channel = state.manager.read().await.get_config().channel;
+        let watched = update_phase::watched_release_ids(&ids, &channel, crate::relay_agent::AGENT_VERSION);
+        if !state.note_release_ids(watched) {
+            return;
+        }
+        let jitter = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_millis()) as u64 * 60;
+        tokio::select! {
+            _ = shutdown.cancelled() => return,
+            _ = tokio::time::sleep(std::time::Duration::from_millis(jitter)) => {}
+        }
+        if !state.manager.read().await.get_config().enabled {
+            return;
+        }
+        if let Err(e) = check_and_follow_up(&state).await {
+            tracing::warn!("[Updates] Check after a new release id failed: {}", e);
         }
     });
 }
@@ -893,12 +1078,12 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     }))
 }
 
-/// 앱을 열 때 적용할 것과 미룰 것. 서버가 켜져 있으면 다시 시작해야 하는 것(데몬·GUI·업데이터)은 미룬다: 서버가 같이 꺼진다
-fn launch_targets(pending: &[Component], servers_running: bool) -> (Vec<Component>, Vec<Component>) {
+/// 앱을 열 때 적용할 것과 미룰 것. 코어 교체를 막는 것이 있으면(`blocked`) 다시 시작해야 하는 것(데몬·GUI·업데이터)은 미룬다
+fn launch_targets(pending: &[Component], blocked: bool) -> (Vec<Component>, Vec<Component>) {
     pending
         .iter()
         .cloned()
-        .partition(|c| !(servers_running && matches!(c, Component::Gui | Component::Updater | Component::CoreDaemon)))
+        .partition(|c| !(blocked && matches!(c, Component::Gui | Component::Updater | Component::CoreDaemon)))
 }
 
 /// 데몬을 다시 켠 뒤 아직 확인 전이면(상태가 비어 있음) 지난번에 받아 둔 목록(`pending.json`)을 되살린다.
@@ -911,7 +1096,7 @@ fn restore_pending(mgr: &mut saba_chan_updater_lib::UpdateManager) {
 
 /// POST /api/updates/apply-on-launch — `auto_apply`가 켜져 있으면 받아 둔 업데이트를 적용한다 (GUI가 열릴 때 부른다).
 /// 꺼져 있거나 받아 둔 것이 없으면 `{ok:true, skipped:"off"|"nothing"}`. 그 밖에는 apply의 답에 미룬 것 `held`
-/// (서버가 켜져 있어 다시 시작하지 않은 구성요소 키)를 붙인다. `requires_updater`면 부른 쪽이 업데이터를 띄운다
+/// (코어 교체를 막는 것이 있어 다시 시작하지 않은 구성요소 키)와 그 까닭 `waiting_for`를 붙인다. `requires_updater`면 부른 쪽이 업데이터를 띄운다
 async fn apply_on_launch(State(state): State<UpdateState>) -> axum::response::Response {
     let pending = {
         let mut mgr = state.manager.write().await;
@@ -921,18 +1106,18 @@ async fn apply_on_launch(State(state): State<UpdateState>) -> axum::response::Re
         restore_pending(&mut mgr);
         mgr.get_pending_components().into_iter().map(|c| c.component.clone()).collect::<Vec<_>>()
     };
-    let servers_running = match state.supervisor {
-        Some(ref sup) => !sup.read().await.running_instances().await.is_empty(),
-        None => false,
-    };
-    let (targets, held) = launch_targets(&pending, servers_running);
+    // 켜진 서버가 있어도 바꾼다. 데몬 작업이나 다시 붙지 못하는 서버가 있을 때만 미룬다 (자동 적용과 같은 판정)
+    let reads = state.manager.read().await.core_reads_runner_formats().unwrap_or(saba_chan_updater_lib::relay::DEFAULT_READS_RUNNER_FORMATS);
+    let blockers = core_blockers(&state, reads).await;
+    let (targets, held) = launch_targets(&pending, !blockers.is_empty());
     let held: Vec<String> = held.iter().map(|c| c.manifest_key()).collect();
     if targets.is_empty() {
-        return Json(json!({ "ok": true, "skipped": if held.is_empty() { "nothing" } else { "servers_running" }, "held": held })).into_response();
+        return Json(json!({ "ok": true, "skipped": if held.is_empty() { "nothing" } else { "blocked" }, "held": held, "waiting_for": blockers })).into_response();
     }
     let body = ApplyRequest { components: targets.iter().map(|c| c.manifest_key()).collect() };
     let mut answer = crate::ipc::internal::into_internal(apply_updates_with(state, body).await.into_response()).await.body;
     answer["held"] = json!(held);
+    answer["waiting_for"] = json!(if held.is_empty() { Vec::new() } else { blockers });
     Json(answer).into_response()
 }
 
@@ -1025,10 +1210,13 @@ async fn launch_updater(
     // 떠 있는 GUI는 실행 파일을 쥐고 있어 바꿀 수 없다. GUI가 바뀌면 GUI가 부른 게 아니어도(CLI·자동 업데이트) 데몬이 끄고
     // 업데이터가 같은 GUI를 다시 띄우게 한다(GUI가 뜨면서 데몬도 띄운다). GUI가 불렀으면 그 GUI는 스스로 끝난다.
     // GUI가 그대로면 GUI는 두고 데몬만 다시 띄운다: 떠 있는 GUI가 다시 뜬 데몬에 붙는다
+    // GUI가 창을 숨겼다고 알렸으면(트레이) 트레이로 다시 띄운다
+    let hidden = *state.gui_window.lock().unwrap_or_else(|e| e.into_inner()) == Some(false);
     let (guis, resident) = match &state.clients {
         Some(clients) => {
             let list = clients.list().await;
-            (running_guis(&list), only_resident_guis(&list))
+            let resident = only_resident_guis(&list) || (hidden && list.iter().any(|(_, c)| c.kind == crate::ipc::ClientKind::Gui));
+            (running_guis(&list), resident)
         }
         None => (Vec::new(), false),
     };
@@ -1049,10 +1237,21 @@ async fn launch_updater(
             .into_response();
     }
     tracing::info!("[Updates] Launched updater {} {:?}; daemon is shutting down", updater.display(), args);
+    if state.phase().state != PhaseState::Applying {
+        let release = state.manager.read().await.applying_release();
+        state.set_phase(Phase::new(PhaseState::Applying, release.as_ref().map(|r| r.version.clone()), release.map(|r| r.notes).filter(|n| !n.is_empty())));
+    }
 
     if let Some(stop) = state.stop_requested.clone() {
+        let relay = state.relay.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await; // 응답이 나가도록
+            // 릴레이가 "PC 꺼짐"으로 보지 않고 디스코드 명령에 "업데이트 중"으로 답하게 (실패해도 진행한다)
+            if let Some(relay) = relay {
+                if let Err(e) = relay.notify_updating(UPDATING_ETA_SECS).await {
+                    tracing::info!("[Updates] Could not tell the relay about the update: {}", e);
+                }
+            }
             close_guis(&guis).await;
             stop.cancel();
         });
@@ -1329,6 +1528,71 @@ async fn clear_last_result() -> impl IntoResponse {
     }
 }
 
+/// POST /api/updates/phase/ack — 알약의 `done`을 지운다 (다른 단계는 그대로). 답은 지금 단계
+async fn ack_phase(State(state): State<UpdateState>) -> impl IntoResponse {
+    if state.phase().state == PhaseState::Done {
+        state.set_phase(Phase::default());
+    }
+    Json(json!({ "ok": true, "phase": state.phase() }))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GuiWindowBody {
+    open: bool,
+}
+
+/// PUT /api/updates/gui-window {open} — GUI가 창을 보이거나 숨길 때(트레이) 알린다. 창이 열려 있어 미룬 적용은 창을 숨기면 이어서 한다
+async fn set_gui_window(State(state): State<UpdateState>, Json(body): Json<GuiWindowBody>) -> impl IntoResponse {
+    *state.gui_window.lock().unwrap_or_else(|e| e.into_inner()) = Some(body.open);
+    let phase = state.phase();
+    if !body.open && phase.state == PhaseState::Ready && phase.reason == Some(ReadyReason::GuiWindowOpen) {
+        spawn_core_apply(state.clone());
+    }
+    Json(json!({ "ok": true, "open": body.open }))
+}
+
+/// POST /api/updates/restart — `ready`에서 "지금 다시 시작". 실패한 판 기록을 지우고, 받아 둔 것(없으면 받을 것)을 적용한다.
+/// 데몬이 내려가야 하면 `launch-updater`와 같은 길을 타고(GUI 재시작 포함, 본문도 같다) 그 답을 그대로 준다.
+/// 데몬이 그대로면 `{ok, updater_launched:false, daemon_stopping:false, gui_restart:false}`
+async fn restart_now(State(state): State<UpdateState>, body: LooseJson<LaunchUpdaterRequest>) -> axum::response::Response {
+    use crate::ipc::internal::into_internal;
+    {
+        let mut mgr = state.manager.write().await;
+        let mut cfg = mgr.get_config();
+        if cfg.failed_release.take().is_some() {
+            if let Err(e) = save_updater_config(&cfg) {
+                tracing::warn!("[Updates] Failed to persist update config: {}", e);
+            }
+            mgr.update_config(cfg);
+        }
+        restore_pending(&mut mgr);
+    }
+    let nothing_staged = state.manager.read().await.get_pending_components().is_empty();
+    if nothing_staged {
+        let downloaded = into_internal(download_components_with(state.clone(), DownloadRequest::default()).await).await.body;
+        if downloaded.get("ok").and_then(Value::as_bool) == Some(false) && downloaded.get("downloaded").is_none() {
+            return (axum::http::StatusCode::BAD_GATEWAY, Json(downloaded)).into_response();
+        }
+    }
+    let applied = into_internal(apply_updates_with(state.clone(), ApplyRequest::default()).await).await.body;
+    if applied.get("requires_updater").and_then(Value::as_bool) == Some(true) {
+        return launch_updater(State(state), body).await;
+    }
+    if applied.get("ok").and_then(Value::as_bool) == Some(true) {
+        let release = state.manager.read().await.applying_release();
+        state.set_phase(Phase::new(PhaseState::Done, release.as_ref().map(|r| r.version.clone()), release.map(|r| r.notes).filter(|n| !n.is_empty())));
+    }
+    Json(json!({
+        "ok": applied.get("ok").and_then(Value::as_bool).unwrap_or(false),
+        "updater_launched": false,
+        "daemon_stopping": false,
+        "gui_restart": false,
+        "errors": applied.get("errors").cloned().unwrap_or_else(|| json!([])),
+    }))
+    .into_response()
+}
+
 /// GET /api/updates/integrity — 업데이터가 설치하며 기록한 파일 해시와 지금 파일을 비교
 async fn check_integrity(
     State(state): State<UpdateState>,
@@ -1433,9 +1697,20 @@ async fn set_config(
         cfg.channel = v.to_string();
     }
 
+    let channel_changed = mgr.get_config().channel != cfg.channel;
     mgr.update_config(cfg.clone());
     if let Err(e) = save_updater_config(&cfg) {
         tracing::warn!("[Updates] Failed to persist update config: {}", e);
+    }
+    drop(mgr);
+    // 채널을 바꾸면 곧바로 확인해 자동 적용 길을 탄다 (내림은 하지 않는다: 확인이 낮은 판을 거절한다)
+    if channel_changed && cfg.enabled {
+        let state = state.clone();
+        tokio::spawn(async move {
+            if let Err(e) = check_and_follow_up(&state).await {
+                tracing::warn!("[Updates] Check after a channel change failed: {}", e);
+            }
+        });
     }
 
     Json(json!({
@@ -1772,7 +2047,6 @@ mod tests {
     }
 
     /// 헤드리스 설치는 창 없이 적용하고, 다시 띄울 것을 받지 않았으면 데몬 자신을 다시 띄운다. 데스크톱은 그대로
-    /// 화면 없는 설치만 받고 바로 적용한다 (원격 데몬 자동 업데이트). GUI가 있는 설치는 앱을 열 때 적용한다
     #[test]
     fn a_module_or_extension_a_running_server_uses_waits_for_the_server_to_stop() {
         use saba_chan_updater_lib::Component;
@@ -1787,19 +2061,6 @@ mod tests {
         let (ready, held) = super::split_by_busy(pending, &busy_modules, &busy_extensions);
         assert_eq!(ready, [Component::Module("minecraft".into()), Component::Extension("xna".into())]);
         assert_eq!(held, [Component::Module("palworld".into()), Component::Extension("steamcmd".into())]);
-    }
-
-    #[test]
-    fn only_a_headless_install_with_auto_apply_applies_right_away() {
-        use saba_chan_updater_lib::profile::Profile;
-        let mut cfg = saba_chan_updater_lib::UpdateConfig { auto_apply: true, ..Default::default() };
-        assert!(super::auto_apply_headless(&cfg, Profile::Headless));
-        assert!(!super::auto_apply_headless(&cfg, Profile::Desktop));
-        cfg.enabled = false;
-        assert!(!super::auto_apply_headless(&cfg, Profile::Headless));
-        cfg.enabled = true;
-        cfg.auto_apply = false;
-        assert!(!super::auto_apply_headless(&cfg, Profile::Headless));
     }
 
     #[test]
@@ -1877,6 +2138,82 @@ mod tests {
             .into_response();
         assert_eq!(resp.status(), axum::http::StatusCode::FORBIDDEN);
         assert_eq!(state.manager.read().await.get_config().relay_url, before);
+    }
+
+    /// 시험용: 상태 파일을 임시 폴더에 둔다
+    fn state_in(dir: &std::path::Path) -> UpdateState {
+        let mut state = UpdateState::new();
+        state.live = Arc::default();
+        state.live_path = Arc::new(dir.join("live-update.json"));
+        state
+    }
+
+    /// 상태 응답에 알약 단계와 정식 기다림을 싣는다. `done`은 확인(ack)하면 `idle`이 되고 상태 파일에 남는다
+    #[tokio::test]
+    async fn the_status_carries_the_phase_and_ack_clears_done() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let body = |r: axum::response::Response| async { crate::ipc::internal::into_internal(r).await.body };
+        let status = body(get_status(State(state.clone())).await.into_response()).await;
+        assert_eq!(status["phase"]["state"], "idle");
+        assert!(status.as_object().unwrap().contains_key("stable_wait"));
+
+        state.set_phase(Phase::new(PhaseState::Done, Some("0.1.14".into()), None));
+        let status = body(get_status(State(state.clone())).await.into_response()).await;
+        assert_eq!((status["phase"]["state"].clone(), status["phase"]["version"].clone()), (json!("done"), json!("0.1.14")));
+        assert_eq!(LiveState::load_from(&tmp.path().join("live-update.json")).phase.state, PhaseState::Done);
+
+        // ready는 ack로 지워지지 않는다 (다시 시작으로만)
+        let acked = body(ack_phase(State(state.clone())).await.into_response()).await;
+        assert_eq!(acked["phase"]["state"], "idle");
+        state.set_phase(Phase::ready(ReadyReason::RolledBack, Some("0.1.14".into()), None));
+        let acked = body(ack_phase(State(state.clone())).await.into_response()).await;
+        assert_eq!(acked["phase"]["state"], "ready");
+    }
+
+    /// 업데이트가 기다리는 동안에만 새 예약 작업을 미룬다
+    #[test]
+    fn scheduled_work_is_held_only_while_an_update_waits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        assert!(!state.core_update_waiting());
+        let waiting = Phase { waiting_for: vec![], ..Phase::new(PhaseState::Waiting, Some("0.1.14".into()), None) };
+        state.set_phase(waiting);
+        assert!(state.core_update_waiting());
+        state.set_phase(Phase::new(PhaseState::Applying, Some("0.1.14".into()), None));
+        assert!(!state.core_update_waiting());
+    }
+
+    /// GUI 창 상태: GUI가 알린 값을 쓰고, 알린 적이 없으면 트레이 표시로 본다. GUI 등록이 없으면 닫힘
+    #[tokio::test]
+    async fn the_gui_window_state_follows_what_the_gui_reports() {
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = crate::ipc::ClientRegistry::new();
+        let state = state_in(tmp.path()).with_clients(registry.clone());
+        assert!(!state.gui_window_open().await, "no GUI");
+        let gui = registry.register(crate::ipc::ClientKind::Gui, Some(1), None).await;
+        assert!(state.gui_window_open().await, "a GUI that never said otherwise has its window open");
+        registry.set_resident(&gui, true).await;
+        assert!(!state.gui_window_open().await, "a tray-only GUI");
+        let _ = set_gui_window(State(state.clone()), Json(GuiWindowBody { open: true })).await;
+        assert!(state.gui_window_open().await);
+        let _ = set_gui_window(State(state.clone()), Json(GuiWindowBody { open: false })).await;
+        assert!(!state.gui_window_open().await);
+        registry.unregister(&gui).await;
+        let _ = set_gui_window(State(state.clone()), Json(GuiWindowBody { open: true })).await;
+        assert!(!state.gui_window_open().await, "a GUI that went away has no window");
+    }
+
+    /// 같은 heartbeat 판 번호는 다시 확인하지 않는다
+    #[test]
+    fn the_same_release_ids_do_not_trigger_another_check() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let ids = std::collections::BTreeMap::from([("stable".to_string(), 12u64)]);
+        assert!(state.note_release_ids(ids.clone()));
+        assert!(!state.note_release_ids(ids));
+        assert!(state.note_release_ids(std::collections::BTreeMap::from([("stable".to_string(), 13u64)])));
+        assert_eq!(LiveState::load_from(&tmp.path().join("live-update.json")).seen["stable"], 13);
     }
 
     /// 모르는 채널은 저장하지 않는다

@@ -99,6 +99,8 @@ pub struct AgentStatus {
 #[derive(Default)]
 struct Inner {
     cancel: Option<CancellationToken>,
+    /// 지금 세션의 릴레이 주소와 노드 토큰 (`notify_updating`이 같은 쌍으로 보낸다)
+    endpoint: Option<(String, String)>,
     status: AgentStatus,
     /// 시작할 때마다 늘어난다. 끝난 세션이 새 세션의 상태를 지우지 않게 한다
     generation: u64,
@@ -172,6 +174,7 @@ impl RelayAgent {
             }
             let token = server.shutdown_token.child_token();
             inner.cancel = Some(token.clone());
+            inner.endpoint = Some((relay_url.clone(), node_token.clone()));
             inner.generation += 1;
             inner.status = AgentStatus { running: true, relay_url: Some(relay_url.clone()), ..Default::default() };
             (token, inner.generation)
@@ -237,9 +240,34 @@ impl RelayAgent {
         true
     }
 
+    /// 데몬이 업데이트로 내려가기 직전: 릴레이가 그동안 디스코드 명령에 "업데이트 중"으로 답하고 "PC 꺼짐"으로 보지 않게 한다
+    /// (`POST /v1/host/updating`). 연결돼 있지 않으면 오류
+    pub async fn notify_updating(&self, eta_seconds: u64) -> Result<(), String> {
+        let (base, token) = {
+            let inner = self.lock();
+            match (&inner.cancel, &inner.endpoint) {
+                (Some(cancel), Some(endpoint)) if !cancel.is_cancelled() => endpoint.clone(),
+                _ => return Err("relay not connected".into()),
+            }
+        };
+        let client = http_client().map_err(|e| e.to_string())?;
+        let body = serde_json::json!({ "etaSeconds": eta_seconds }).to_string();
+        let req = crate::ipc::handlers::relay::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/updating", &token, Some(body))
+            .ok_or("node token missing")?;
+        let resp = tokio::time::timeout(std::time::Duration::from_secs(5), req.send())
+            .await
+            .map_err(|_| "timed out".to_string())?
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("relay answered {}", resp.status()));
+        }
+        Ok(())
+    }
+
     pub fn stop(&self) {
         crate::remote::link::stop();
         let mut inner = self.lock();
+        inner.endpoint = None;
         if let Some(cancel) = inner.cancel.take() {
             cancel.cancel();
         }
@@ -253,6 +281,7 @@ impl RelayAgent {
             return;
         }
         inner.cancel = None;
+        inner.endpoint = None;
         inner.status.running = false;
         if error.is_some() {
             inner.status.last_error = error;
@@ -642,8 +671,11 @@ impl Session {
                 if self.apply_linked_guilds(&data).await {
                     send_again = true;
                 }
-                // 새 릴리즈가 등록됐다는 알림: 채널·버전을 대조해 맞으면 업데이트를 한 번 확인한다 (ipc/updates.rs)
-                if let Some(hint) = data.get("updateHint") {
+                // 채널별 최신 릴리즈 id: 이 데몬이 받는 채널의 값이 바뀌었을 때만 확인한다 (ipc/updates.rs).
+                // 그것이 없는 옛 릴레이는 새 릴리즈 알림(`updateHint`)을 대조한다
+                if let Some(ids) = data.get("latestReleases").filter(|v| v.is_object()) {
+                    crate::ipc::updates::on_latest_releases(&self.server.update_state, ids, self.cancel.clone());
+                } else if let Some(hint) = data.get("updateHint") {
                     crate::ipc::updates::on_update_hint(&self.server.update_state, hint, self.cancel.clone());
                 }
                 // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다
@@ -1906,6 +1938,43 @@ mod tests {
         assert_eq!(parse_os_release("ID=arch\nPRETTY_NAME=\"Arch Linux\"\n"), Some(json!({ "id": "arch", "name": "Arch Linux" })));
         assert_eq!(parse_os_release("ID=\"<svg>\"\n"), None);
         assert_eq!(parse_os_release("NAME=x\n"), None);
+    }
+
+    /// 13절: 업데이트로 내려가기 직전 릴레이에 "업데이트 중"을 알린다 (세션의 주소·토큰으로 서명). 연결돼 있지 않으면 보내지 않는다
+    #[tokio::test]
+    async fn the_relay_is_told_before_the_daemon_goes_down_for_an_update() {
+        use axum::routing::post;
+        let seen: Arc<Mutex<Vec<(String, bool)>>> = Arc::default();
+        let log = seen.clone();
+        let app = axum::Router::new().route(
+            "/v1/host/updating",
+            post(move |headers: axum::http::HeaderMap, body: String| {
+                let log = log.clone();
+                async move {
+                    let signed = headers.keys().any(|k| k.as_str().to_ascii_lowercase().contains("signature"));
+                    log.lock().unwrap().push((body, signed));
+                    axum::Json(json!({ "ok": true, "untilSeconds": 210 }))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let agent = RelayAgent::new();
+        assert!(agent.notify_updating(90).await.is_err(), "not connected");
+        {
+            let mut inner = agent.lock();
+            inner.cancel = Some(CancellationToken::new());
+            inner.endpoint = Some((base, "sbn_host.secret".into()));
+        }
+        agent.notify_updating(90).await.unwrap();
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 1);
+        assert_eq!(serde_json::from_str::<Value>(&seen[0].0).unwrap(), json!({ "etaSeconds": 90 }));
+        assert!(seen[0].1, "signed like the heartbeat");
+        agent.stop();
+        assert!(agent.notify_updating(90).await.is_err(), "a stopped session sends nothing");
     }
 
     /// 릴레이가 이 PC의 버전을 받지 않으면(최소 버전 미달) 상태에 `agent_too_old`와 요구 버전을 남겨

@@ -1070,7 +1070,7 @@ async fn a_failed_download_keeps_the_ones_already_downloaded() {
     let bad = serve_once(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_vec()).await;
     let entry = |name: &str, url: String, sha: &str| crate::relay::ManifestComponent {
         version: "0.2.0".into(), filename: name.into(), size_bytes: None, sha256: sha.into(), url,
-        install_dir: None, requires: None, meta: None,
+        install_dir: None, requires: None, meta: None, reads_runner_formats: None,
     };
     let sha = {
         use sha2::Digest;

@@ -330,7 +330,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         // 가져오기는 이 요청이 끝날 때까지 쥔다: 격리된 `import_settings`가 끝나면 그때 없던 데몬 항목 자리를 지우므로
         // 그 사이 시작·설정 저장·백업이 데몬 항목을 만들지 않게 한다.
         // 목록에 보이기 전에 잡는다 (보인 뒤에 잡으면 그 틈의 삭제가 먼저 잡아 설치가 지워지는 폴더로 돈다)
-        let install_guard = super::backup::InstanceLock::try_take_for_writes(&id);
+        let install_guard = super::backup::InstanceLock::try_take_for_writes(&id).map(|g| g.purpose(super::backup::Purpose::Provision));
 
         // 가져오기 "옮기기": 목록에 보이기 전에 옮긴다 (실패하면 아무것도 만들지 않는다)
         if let (Some(src), Some(dest)) = (&moved_from, instance.working_dir.as_deref()) {
@@ -2503,7 +2503,7 @@ pub async fn apply_server_update(
 #[allow(clippy::result_large_err)]
 pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
     // 업데이트가 끝날 때까지 시작·복원·삭제를 막는다 (작업 안으로 넘긴다)
-    let Some(guard) = super::backup::InstanceLock::take_for_writes(id).await else {
+    let Some(guard) = super::backup::InstanceLock::take_for_writes(id).await.map(|g| g.purpose(super::backup::Purpose::ServerUpdate)) else {
         return Err(super::backup::instance_busy());
     };
     let supervisor = state.supervisor.read().await;

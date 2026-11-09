@@ -12,6 +12,7 @@ use tokio::sync::RwLock;
 
 pub mod handlers;
 pub mod updates;
+pub mod update_phase;
 pub mod auth;
 pub mod internal;
 use updates::UpdateState;
@@ -764,6 +765,7 @@ impl IPCServer {
                 Err(_) => tracing::warn!("[Host] no async runtime to attach the module host channel"),
             },
         }
+        let relay_agent = crate::relay_agent::RelayAgent::new();
         Self {
             supervisor: supervisor.clone(),
             listen_addr: listen_addr.to_string(),
@@ -771,7 +773,8 @@ impl IPCServer {
             update_state: UpdateState::new()
                 .with_hot_reload(supervisor, extension_manager.clone())
                 .with_stop_signal(stop_requested.clone())
-                .with_clients(client_registry),
+                .with_clients(client_registry)
+                .with_relay(relay_agent.clone()),
             api_actions: ApiActionTracker::new(),
             provision_tracker: ProvisionTracker::new(),
             extension_manager,
@@ -782,7 +785,7 @@ impl IPCServer {
             stop_requested,
             config_store,
             daemon_log_buffer,
-            relay_agent: crate::relay_agent::RelayAgent::new(),
+            relay_agent,
             system_monitor: crate::system_monitor::SystemMonitor::new(),
         }
     }
