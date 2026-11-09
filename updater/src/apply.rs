@@ -589,6 +589,18 @@ foreach ($f in 'Desktop','Programs','CommonDesktopDirectory','CommonPrograms') {
 /// 백업은 `staging_dir/backup_name`에 둔다. `__pycache__`와 점(.)으로 시작하는 항목은 남긴다.
 /// 업데이터(모듈·익스텐션·locales)와 설치기(모듈·익스텐션)가 함께 쓴다
 pub fn replace_dir(target_dir: &Path, staged: &Path, staging_dir: &Path, backup_name: &str) -> Result<Vec<PathBuf>> {
+    replace_dir_checked(target_dir, staged, staging_dir, backup_name, |_| Ok(()))
+}
+
+/// `replace_dir`와 같되, 백업을 뜬 뒤 폴더를 비우기 전에 `check(백업)`을 부른다. 거절하면 폴더를 건드리지 않고 백업을 지운다.
+/// 묻지 않는 교체가 교체 순간의 내용(사용자가 막 넣거나 고친 파일)을 보고 멈추는 데 쓴다
+pub fn replace_dir_checked(
+    target_dir: &Path,
+    staged: &Path,
+    staging_dir: &Path,
+    backup_name: &str,
+    check: impl FnOnce(&Path) -> Result<()>,
+) -> Result<Vec<PathBuf>> {
     let backup_dir = staging_dir.join(backup_name);
     // 백업은 다 복사한 뒤 이름을 바꿔 둔다: `backup_dir`이 있으면 언제나 온전한 원래 내용이다
     let partial = staging_dir.join(format!("{}.partial", backup_name));
@@ -610,6 +622,13 @@ pub fn replace_dir(target_dir: &Path, staged: &Path, staging_dir: &Path, backup_
         std::fs::rename(&partial, &backup_dir)?;
     }
     let had_target = backup_dir.exists();
+    if had_target {
+        if let Err(e) = check(&backup_dir) {
+            // 폴더는 아직 백업과 같다 (도중에 꺼진 교체였으면 위에서 백업으로 되돌렸다): 백업만 지운다
+            let _ = std::fs::remove_dir_all(&backup_dir);
+            return Err(e);
+        }
+    }
     let result = (|| -> Result<Vec<PathBuf>> {
         if staged.extension().is_some_and(|e| e == "zip") {
             if had_target {

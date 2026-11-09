@@ -267,6 +267,79 @@ fn replaceable_at(records: &Path, official: &Path, component_key: &str, dir: &Pa
     records.get(component_key).is_some_and(|files| !has_unrecorded(dir, files, Unrecorded::AnyFile))
 }
 
+/// 교체 직전에 뜬 사본(`copy`, 원래 폴더 `dir`의 복사본)이 카탈로그에서 깐 그대로인가: 카탈로그에서 받았고,
+/// 설치 기록의 파일이 모두 같은 내용으로 있고, 기록에 없는 파일이 없다 (맨 위의 점 항목·`__pycache__`는 교체가 남기므로 뺀다).
+/// 묻지 않는 교체가 교체 순간의 내용을 보고 멈추는 데 쓴다 (`replace_dir_checked`)
+pub fn untouched_copy(component_key: &str, dir: &Path, copy: &Path) -> bool {
+    untouched_copy_at(&records_path(), &official_path(), component_key, dir, copy)
+}
+
+fn untouched_copy_at(records: &Path, official: &Path, component_key: &str, dir: &Path, copy: &Path) -> bool {
+    if !load_official(official).contains(component_key) {
+        return false;
+    }
+    let records = load_records(records);
+    let Some(recorded) = records.get(component_key) else { return false };
+    // 기록의 경로(원래 폴더 기준)를 사본 기준 상대 경로로
+    let Some(base) = path_key(dir) else { return false };
+    let canonical_base = std::fs::canonicalize(dir).ok().and_then(|p| path_key(&p));
+    let mut expected: BTreeMap<PathBuf, &String> = BTreeMap::new();
+    for (file, hash) in recorded {
+        let file = Path::new(file);
+        let rel = path_key(file)
+            .and_then(|k| relative_key(&k, &base))
+            .or_else(|| canonical_base.as_ref().and_then(|b| std::fs::canonicalize(file).ok().and_then(|p| path_key(&p)).and_then(|k| relative_key(&k, b))));
+        let Some(rel) = rel else { return false };
+        expected.insert(rel, hash);
+    }
+    fn walk(root: &Path, dir: &Path, top: bool, out: &mut Vec<PathBuf>) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else { return false };
+        for entry in entries {
+            let Ok(entry) = entry else { return false };
+            let Ok(kind) = entry.file_type() else { return false };
+            let name = entry.file_name();
+            if (top && name.to_string_lossy().starts_with('.')) || (kind.is_dir() && name == "__pycache__") {
+                continue;
+            }
+            if kind.is_dir() {
+                if !walk(root, &entry.path(), false, out) {
+                    return false;
+                }
+            } else if kind.is_file() {
+                let Ok(rel) = entry.path().strip_prefix(root).map(Path::to_path_buf) else { return false };
+                out.push(rel);
+            } else {
+                return false; // 링크 등 교체가 기록하지 않는 것
+            }
+        }
+        true
+    }
+    let mut found = Vec::new();
+    if !walk(copy, copy, true, &mut found) || found.len() != expected.len() {
+        return false;
+    }
+    found.iter().all(|rel| {
+        let key = rel_key(rel);
+        expected.get(&key).is_some_and(|hash| compute_sha256(&copy.join(rel)).is_ok_and(|actual| actual.eq_ignore_ascii_case(hash)))
+    })
+}
+
+/// 비교용 상대 경로: `path_key`로 맞춘 절대 경로 글자에서 `base` 아래 부분 (Windows는 `\` 구분)
+fn relative_key(key: &str, base: &str) -> Option<PathBuf> {
+    let rest = key.strip_prefix(base)?;
+    // `.../game`이 `.../gamefoo/...`의 앞부분으로 맞지 않게: 바로 뒤가 구분자여야 한다
+    if !rest.starts_with(['/', '\\']) {
+        return None;
+    }
+    let rest = rest.trim_start_matches(['/', '\\']);
+    (!rest.is_empty()).then(|| rel_key(Path::new(rest)))
+}
+
+/// 상대 경로를 비교용으로 (구분자를 `/` 하나로)
+fn rel_key(rel: &Path) -> PathBuf {
+    PathBuf::from(rel.to_string_lossy().replace('\\', "/"))
+}
+
 /// 설치 기록에 없는 코드 파일이 폴더에 있나 (`__pycache__`는 데몬이 읽지 않으므로 뺀다)
 fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool {
     has_unrecorded(dir, recorded, Unrecorded::Code)
@@ -659,6 +732,46 @@ mod tests {
         assert!(replaceable());
         std::fs::write(&a, b"changed").unwrap();
         assert!(!replaceable());
+    }
+
+    /// 교체 직전에 뜬 사본을 설치 기록과 맞춘다: 기록한 파일이 모두 그대로 있고 다른 파일이 없어야 한다
+    /// (맨 위의 점 항목·`__pycache__`는 교체가 남기므로 상관없다)
+    #[test]
+    fn a_copy_taken_at_swap_time_is_checked_against_the_install_record() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (records, official) = (tmp.path().join("installed-files.json"), tmp.path().join("official.json"));
+        let dir = tmp.path().join("x");
+        std::fs::create_dir_all(dir.join("locales")).unwrap();
+        let files = [dir.join("lifecycle.py"), dir.join("locales/en.json")];
+        for f in &files {
+            std::fs::write(f, b"one").unwrap();
+        }
+        record_install_at(&records, "module-x", &files).unwrap();
+        let copy = tmp.path().join("copy");
+        let fresh_copy = || {
+            let _ = std::fs::remove_dir_all(&copy);
+            std::fs::create_dir_all(copy.join("locales")).unwrap();
+            std::fs::write(copy.join("lifecycle.py"), b"one").unwrap();
+            std::fs::write(copy.join("locales/en.json"), b"one").unwrap();
+        };
+        let untouched = || untouched_copy_at(&records, &official, "module-x", &dir, &copy);
+        fresh_copy();
+        assert!(!untouched(), "not from the catalog");
+        set_official_at(&official, "module-x", true).unwrap();
+        assert!(untouched());
+        std::fs::create_dir_all(copy.join(".git")).unwrap();
+        std::fs::write(copy.join(".git/HEAD"), b"x").unwrap();
+        std::fs::create_dir_all(copy.join("locales/__pycache__")).unwrap();
+        std::fs::write(copy.join("locales/__pycache__/a.pyc"), b"x").unwrap();
+        assert!(untouched());
+        std::fs::write(copy.join("server.properties"), b"mine").unwrap();
+        assert!(!untouched(), "a file the user added");
+        fresh_copy();
+        std::fs::write(copy.join("locales/en.json"), b"edited").unwrap();
+        assert!(!untouched(), "a file the user changed");
+        fresh_copy();
+        std::fs::remove_file(copy.join("lifecycle.py")).unwrap();
+        assert!(!untouched(), "a file the user removed");
     }
 
     #[test]
