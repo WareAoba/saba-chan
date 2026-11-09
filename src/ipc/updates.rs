@@ -370,13 +370,13 @@ fn split_by_busy(
     })
 }
 
-/// 카탈로그 그대로인(Verified) 모듈·익스텐션만 묻지 않고 바꾼다. 사용자가 고쳤거나(Modified) 직접 넣은(Unverified) 것은 둔다:
-/// 바꾸면 사용자의 변경을 지운다. 그런 것은 업데이트 목록에 남아 사용자가 고를 수 있다
+/// 카탈로그 그대로인(Verified) 모듈·익스텐션만 묻지 않고 바꾼다. 사용자가 고쳤거나(Modified) 직접 넣은(Unverified) 것,
+/// 설치 기록에 없는 파일(사용자가 넣은 설정·데이터)이 있는 것은 둔다: 교체가 폴더를 비워 사용자의 것을 지운다.
+/// 그런 것은 업데이트 목록에 남아 사용자가 고를 수 있다
 fn replaceable_without_asking(key: &str) -> bool {
     let Some(dir) = crate::sandbox::component_dir(key) else { return false };
-    let trust = saba_chan_updater_lib::integrity::trust_of(key, &dir);
-    if trust != saba_chan_updater_lib::integrity::Trust::Verified {
-        tracing::info!("[Updates] Not replacing {} automatically: its files are {:?}", key, trust);
+    if !saba_chan_updater_lib::integrity::replaceable_in_place(key, &dir) {
+        tracing::info!("[Updates] Not replacing {} automatically: its folder is not exactly what the catalog installed", key);
         return false;
     }
     true
@@ -392,7 +392,7 @@ async fn busy_addons(state: &UpdateState) -> (std::collections::HashSet<String>,
         for instance in sup.instance_store.list() {
             if running.contains(&instance.id) {
                 modules.insert(instance.module_name.clone());
-                extensions.extend(instance.required_extensions.iter().cloned());
+                extensions.extend(sup.effective_required_extensions(instance));
             }
         }
     }
@@ -893,10 +893,12 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     }))
 }
 
-/// 앱을 열 때 적용할 것과 미룰 것. 서버가 켜져 있으면 다시 시작해야 하는 것(데몬·GUI·업데이터)은 미룬다: 서버가 같이 꺼진다
+/// 앱을 열 때 적용할 것과 미룰 것. 서버가 켜져 있으면 다시 시작해야 하는 것(데몬·GUI·업데이터)은 미룬다: 서버가 같이 꺼진다.
+/// 모듈·익스텐션은 어느 쪽에도 넣지 않는다: 사용자 변경과 켜진 서버를 살피는 자동 교체(`replace_addons_once`)가 맡는다
 fn launch_targets(pending: &[Component], servers_running: bool) -> (Vec<Component>, Vec<Component>) {
     pending
         .iter()
+        .filter(|c| !is_addon(c))
         .cloned()
         .partition(|c| !(servers_running && matches!(c, Component::Gui | Component::Updater | Component::CoreDaemon)))
 }
@@ -1518,16 +1520,14 @@ mod tests {
         super::spawn_and_confirm(sh, &["-c".to_string(), "sleep 3".to_string()], quick).await.unwrap();
     }
 
-    /// 실행할 때 적용: 받아 둔 것을 모두 고르되, 서버가 켜져 있으면 다시 시작해야 하는 것(데몬·GUI·업데이터)은 미룬다
+    /// 실행할 때 적용: 받아 둔 것을 고르되, 서버가 켜져 있으면 다시 시작해야 하는 것(데몬·GUI·업데이터)은 미룬다.
+    /// 모듈·익스텐션은 고르지 않는다: 사용자 변경·켜진 서버를 살피는 자동 교체(`replace_addons_once`)만 바꾼다
     #[test]
     fn applying_on_launch_holds_restarts_while_servers_run() {
         use saba_chan_updater_lib::Component as C;
-        let pending = vec![C::CoreDaemon, C::Module("minecraft".into()), C::Gui, C::Locales];
-        assert_eq!(super::launch_targets(&pending, false), (pending.clone(), vec![]));
-        assert_eq!(
-            super::launch_targets(&pending, true),
-            (vec![C::Module("minecraft".into()), C::Locales], vec![C::CoreDaemon, C::Gui])
-        );
+        let pending = vec![C::CoreDaemon, C::Module("minecraft".into()), C::Gui, C::Extension("xna".into()), C::Locales];
+        assert_eq!(super::launch_targets(&pending, false), (vec![C::CoreDaemon, C::Gui, C::Locales], vec![]));
+        assert_eq!(super::launch_targets(&pending, true), (vec![C::Locales], vec![C::CoreDaemon, C::Gui]));
     }
 
     /// 받아 둔 업데이트의 `pending.json`을 같이 쓰는 시험끼리 차례로

@@ -129,7 +129,10 @@ jobs:
 
       # 서명 도구는 키 없이 먼저 빌드한다: 의존성 빌드 스크립트가 키를 환경에서 읽지 못하게
       - name: Build daemon and signing tool
-        run: cargo build --quiet --locked -p saba-core -p saba-chan-updater-lib --example release_signing
+        # `--example`을 주면 그 예제만 빌드한다: 감사에 쓰는 데몬은 따로 빌드한다
+        run: |
+          cargo build --quiet --locked -p saba-core --bin saba-core
+          cargo build --quiet --locked -p saba-chan-updater-lib --example release_signing
 
       - name: Audit modules and extensions
         run: |

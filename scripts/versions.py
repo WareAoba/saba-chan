@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 import io
+import os
 import re
 import shutil
 import struct
@@ -218,7 +219,8 @@ def is_dev_file(rel: str) -> bool:
 
 
 def zip_folder(src: Path, dest: Path) -> None:
-    """폴더 안 파일을 zip 루트에 넣는다 (캐시·테스트 제외, 순서 고정)."""
+    """폴더 안 파일을 zip 루트에 넣는다 (캐시·테스트 제외, 순서 고정).
+    파일 시각은 싣지 않는다: 같은 내용이면 다시 checkout해도 같은 바이트다 (R2에 올린 zip과 해시를 맞춰 등록을 다시 한다)"""
     import zipfile
 
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -226,7 +228,11 @@ def zip_folder(src: Path, dest: Path) -> None:
             rel = path.relative_to(src)
             if path.is_dir() or is_dev_file(rel.as_posix()):
                 continue
-            zf.write(path, rel.as_posix())
+            info = zipfile.ZipInfo(rel.as_posix(), date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            # 실행 권한만 남긴다 (git이 기록하는 것은 실행 비트뿐이다)
+            info.external_attr = (0o100755 if os.access(path, os.X_OK) else 0o100644) << 16
+            zf.writestr(info, path.read_bytes())
 
 
 def raw_url(repo: str, ref: str | None, rel: str) -> str | None:

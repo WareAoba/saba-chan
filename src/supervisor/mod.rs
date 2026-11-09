@@ -1251,11 +1251,7 @@ impl Supervisor {
 
             // ── 인스턴스 필수 익스텐션 검증 ──
             // 기존 인스턴스의 required_extensions가 비어있으면 모듈의 install.requires_extensions에서 보충
-            let effective_required: Vec<String> = if instance.required_extensions.is_empty() {
-                s.module_loader.get_module(module_name).map(|m| crate::ipc::handlers::server::required_extensions(&m)).unwrap_or_default()
-            } else {
-                instance.required_extensions.clone()
-            };
+            let effective_required = s.effective_required_extensions(&instance);
 
             if !effective_required.is_empty() {
                 if let Some(ref ext_mgr) = s.extension_manager {
@@ -2166,6 +2162,17 @@ impl Supervisor {
     /// "켜져 있으면 거절" 판정은 모두 이것을 쓴다 (재부착 때 추적표 등록이 실패해 managed에만 남은 경우도 켜진 것이다)
     pub async fn is_running(&self, instance_id: &str) -> bool {
         self.tracker.get_pid(instance_id).is_ok() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
+    }
+
+    /// 인스턴스가 쓰는 익스텐션: 인스턴스의 목록, 비어 있으면(옛 인스턴스) 모듈의 `[install] requires_extensions`
+    pub fn effective_required_extensions(&self, instance: &crate::instance::ServerInstance) -> Vec<String> {
+        if !instance.required_extensions.is_empty() {
+            return instance.required_extensions.clone();
+        }
+        self.module_loader
+            .get_module(&instance.module_name)
+            .map(|m| crate::ipc::handlers::server::required_extensions(&m))
+            .unwrap_or_default()
     }
 
     /// 켜져 있는 서버 인스턴스 id (`is_running` 판정)
@@ -4375,6 +4382,27 @@ mod tests {
     }
 
     /// 크래시 직후(모니터가 치우기 전) 들어온 정지는 크래시로 기록하되 다시 켜지 않는다 (D-S6)
+    /// 필수 익스텐션 목록이 빈 옛 인스턴스는 모듈의 `[install] requires_extensions`를 쓴다 (시작 검사와 자동 교체 보류가 같은 답)
+    #[tokio::test]
+    async fn an_instance_without_its_own_list_uses_the_module_requirements() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let dir = modules_dir.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nrequires_extensions = [\"steamcmd\"]\n",
+        )
+        .unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(modules_dir.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        supervisor.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        assert_eq!(supervisor.effective_required_extensions(&inst), vec!["steamcmd".to_string()]);
+        inst.required_extensions = vec!["docker".into()];
+        assert_eq!(supervisor.effective_required_extensions(&inst), vec!["docker".to_string()]);
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn a_stop_right_after_a_crash_does_not_restart_the_server() {

@@ -89,6 +89,21 @@ class ZipFolderSkipsDevFiles(unittest.TestCase):
             with zipfile.ZipFile(dest) as zf:
                 self.assertEqual(sorted(zf.namelist()), ["lifecycle.py", "locales/test_en.json", "module.toml"])
 
+    def test_the_same_files_zip_to_the_same_bytes(self):
+        """다시 실행한 checkout은 파일 시각이 다르다: R2에 이미 올린 zip과 해시가 같아야 등록을 다시 할 수 있다"""
+        import os
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "game"
+            src.mkdir()
+            (src / "module.toml").write_text("x")
+            (src / "lifecycle.py").write_text("y")
+            first, second = Path(d) / "a.zip", Path(d) / "b.zip"
+            versions.zip_folder(src, first)
+            for f in src.iterdir():
+                os.utime(f, (1_900_000_000, 1_900_000_000))
+            versions.zip_folder(src, second)
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+
 
 if __name__ == "__main__":
     unittest.main()
