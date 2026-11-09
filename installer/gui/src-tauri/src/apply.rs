@@ -152,7 +152,8 @@ fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool, watch: W
                 Some(("apply:relaunch-failed", serde_json::Value::Null))
             }
             WindowEnd::RollbackRelaunchFailed => Some(("apply:rollback-relaunch-failed", serde_json::Value::Null)),
-            WindowEnd::RestoreFailed(kept) => Some(("apply:restore-failed", serde_json::json!({ "path": kept.display().to_string() }))),
+            WindowEnd::RestoreFailed(kept) => Some(("apply:restore-failed", kept_payload(Some(&kept)))),
+            WindowEnd::LeftInPlace(kept) => Some(("apply:left-in-place", kept_payload(kept.as_ref()))),
         };
         if let Some((event, payload)) = failure {
             app_handle.emit(event, payload).ok();
@@ -300,8 +301,8 @@ async fn watch_new_daemon(
             if !live_apply::stop_new_daemons(pid, old_pid, || live_apply::daemon_lock_holder(&data_dir), live_apply::stop_process) {
                 tracing::error!("[Apply] A new daemon still holds the daemon lock; leaving {} in place instead of rolling back", live.target_version);
                 // 새 데몬이 이미 데이터를 바꿨을 수 있다: 사본은 남긴다
-                live.leave_in_place();
-                return WatchEnd::LeftInPlace;
+                let kept = live.leave_in_place(&UpdateCompletionMarker::path(), reason);
+                return WatchEnd::LeftInPlace { kept };
             }
             reason
         }
@@ -336,9 +337,9 @@ enum WatchEnd {
     /// 되돌렸다. 이전 판을 다시 띄웠는가
     RolledBack { relaunched: bool },
     /// 실행 파일은 되돌렸지만 데이터를 되돌리지 못했다: 이전 판을 띄우지 않았고 사본을 `kept`에 남겼다
-    RestoreFailed { kept: PathBuf },
+    RestoreFailed { kept: live_apply::KeptCopy },
     /// 새 데몬을 끝내지 못해 새 판을 그대로 뒀다 (사본은 남겼다)
-    LeftInPlace,
+    LeftInPlace { kept: Option<live_apply::KeptCopy> },
 }
 
 /// 창 업데이터가 끝에 할 일
@@ -351,7 +352,9 @@ enum WindowEnd {
     /// 되돌렸지만 이전 판을 다시 띄우지 못했다
     RollbackRelaunchFailed,
     /// 데이터를 되돌리지 못했다 (사본 자리)
-    RestoreFailed(PathBuf),
+    RestoreFailed(live_apply::KeptCopy),
+    /// 새 데몬이 건강하지 않은데 끝내지 못해 그대로 뒀다 (사본 자리)
+    LeftInPlace(Option<live_apply::KeptCopy>),
     /// 적용 실패 화면을 남긴다
     StayOnError,
 }
@@ -361,11 +364,24 @@ fn window_end(end: &WatchEnd, applied: bool, relaunched: bool, has_target: bool)
     match end {
         WatchEnd::RestoreFailed { kept } => WindowEnd::RestoreFailed(kept.clone()),
         WatchEnd::RolledBack { relaunched: false } => WindowEnd::RollbackRelaunchFailed,
-        WatchEnd::RolledBack { relaunched: true } | WatchEnd::LeftInPlace => WindowEnd::Exit,
+        WatchEnd::LeftInPlace { kept } => WindowEnd::LeftInPlace(kept.clone()),
+        WatchEnd::RolledBack { relaunched: true } => WindowEnd::Exit,
         WatchEnd::Healthy if !applied => WindowEnd::StayOnError,
         WatchEnd::Healthy if relaunched || !has_target => WindowEnd::Exit,
         WatchEnd::Healthy => WindowEnd::RelaunchFailed,
     }
+}
+
+/// 남긴 사본을 화면에 넘기는 모양: 사본의 두 갈래(`data`·`instances`)와 각각 되살릴 곳 (사본이 없으면 빈 객체)
+#[cfg_attr(not(feature = "window"), allow(dead_code))]
+fn kept_payload(kept: Option<&live_apply::KeptCopy>) -> serde_json::Value {
+    let Some(k) = kept else { return serde_json::json!({}) };
+    serde_json::json!({
+        "data": k.dir.join("data").display().to_string(),
+        "dataDir": k.data_dir.display().to_string(),
+        "instances": k.dir.join("instances").display().to_string(),
+        "instancesDir": k.instances_dir.display().to_string(),
+    })
 }
 
 /// 되돌리고 릴레이에 한 번 알린 뒤 이전 판을 다시 띄운다. 데이터를 되돌리지 못했으면 일부만 되돌린 데이터를
@@ -378,7 +394,7 @@ async fn roll_back_and_relaunch(live: LiveApply, manager: &UpdateManager, reason
     let saved = live_apply::saved_update_config(&config);
     live_apply::report_rolled_back(saved.relay_url.as_deref(), &version, &saved.channel).await;
     if let Some(kept) = kept {
-        tracing::error!("[Apply] Not relaunching the previous version: the data was not restored (copy at {})", kept.display());
+        tracing::error!("[Apply] Not relaunching the previous version: the data was not restored ({})", kept.restore_hint());
         return WatchEnd::RestoreFailed { kept };
     }
     let (exe, extra) = rollback_relaunch(target.exe, target.extra);
@@ -756,9 +772,20 @@ mod tests {
         assert_eq!(window_end(&ok, false, true, true), WindowEnd::StayOnError);
         assert_eq!(window_end(&WatchEnd::RolledBack { relaunched: true }, true, true, true), WindowEnd::Exit);
         assert_eq!(window_end(&WatchEnd::RolledBack { relaunched: false }, true, false, true), WindowEnd::RollbackRelaunchFailed);
-        let kept = std::path::PathBuf::from("/data/update-snapshot/0.1.13.kept-1");
-        assert_eq!(window_end(&WatchEnd::RestoreFailed { kept: kept.clone() }, true, true, true), WindowEnd::RestoreFailed(kept));
-        assert_eq!(window_end(&WatchEnd::LeftInPlace, true, true, true), WindowEnd::Exit);
+        let kept = live_apply::KeptCopy {
+            dir: "/data/update-snapshot/0.1.13.kept-1".into(),
+            data_dir: "/data".into(),
+            instances_dir: "/srv/instances".into(),
+        };
+        assert_eq!(window_end(&WatchEnd::RestoreFailed { kept: kept.clone() }, true, true, true), WindowEnd::RestoreFailed(kept.clone()));
+        // Codex 3차 리뷰: 새 데몬을 끝내지 못해 새 판을 둔 것도 성공처럼 닫지 않고 알린다
+        assert_eq!(window_end(&WatchEnd::LeftInPlace { kept: Some(kept.clone()) }, true, true, true), WindowEnd::LeftInPlace(Some(kept.clone())));
+        // 화면에는 사본의 두 갈래와 각각 되살릴 곳을 싣는다 (따로 둔 인스턴스 폴더 포함)
+        let payload = kept_payload(Some(&kept));
+        assert_eq!(payload["data"], "/data/update-snapshot/0.1.13.kept-1/data");
+        assert_eq!(payload["dataDir"], "/data");
+        assert_eq!(payload["instances"], "/data/update-snapshot/0.1.13.kept-1/instances");
+        assert_eq!(payload["instancesDir"], "/srv/instances");
     }
 
     // Codex 리뷰: 코어를 바꾼 뒤 다시 띄우지 못하면(권한 오류 등) 성공으로 끝내지 않고 되돌린다

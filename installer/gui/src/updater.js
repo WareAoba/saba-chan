@@ -24,7 +24,9 @@ const TRANSLATIONS = {
         relaunchFailedSub: 'The update is applied. Please start Saba-chan yourself.',
         rollbackRelaunchFailedSub: 'The update was rolled back to the previous version, but Saba-chan could not be restarted. Please start it yourself.',
         restoreFailedTitle: 'Could not restore settings',
-        restoreFailedSub: 'Rolled back to the previous version, but the settings could not be restored. Before starting Saba-chan, copy the files in {{path}} back into the data folder.',
+        restoreFailedSub: 'Rolled back to the previous version, but the settings could not be restored. Before starting Saba-chan, copy the contents of {{data}} into {{dataDir}} and the contents of {{instances}} into {{instancesDir}}.',
+        leftInPlaceSub: 'The new version did not start properly and could not be stopped. Quit Saba-chan completely and start it again.',
+        leftInPlaceUndo: 'To undo, copy the contents of {{data}} into {{dataDir}} and the contents of {{instances}} into {{instancesDir}}.',
     },
     ko: {
         modeUpdate: '업데이트',
@@ -43,7 +45,9 @@ const TRANSLATIONS = {
         relaunchFailedSub: '업데이트는 적용했어요. 사바쨩을 직접 실행해 주세요.',
         rollbackRelaunchFailedSub: '새 버전이 실행되지 않아 이전 버전으로 되돌렸지만 다시 실행하지 못했어요. 사바쨩을 직접 실행해 주세요.',
         restoreFailedTitle: '설정 복구 실패',
-        restoreFailedSub: '이전 버전으로 되돌렸지만 설정을 복구하지 못했어요. 사바쨩을 실행하기 전에 {{path}} 안의 파일을 데이터 폴더로 옮겨 주세요.',
+        restoreFailedSub: '이전 버전으로 되돌렸지만 설정을 복구하지 못했어요. 사바쨩을 실행하기 전에 {{data}}의 내용을 {{dataDir}}에, {{instances}}의 내용을 {{instancesDir}}에 덮어써 주세요.',
+        leftInPlaceSub: '새 버전이 제대로 시작되지 않았는데 종료하지 못했어요. 사바쨩을 완전히 종료한 뒤 다시 실행해 주세요.',
+        leftInPlaceUndo: '되돌리려면 {{data}}의 내용을 {{dataDir}}에, {{instances}}의 내용을 {{instancesDir}}에 덮어써 주세요.',
     },
     ja: {
         modeUpdate: 'アップデート',
@@ -62,7 +66,9 @@ const TRANSLATIONS = {
         relaunchFailedSub: 'アップデートは適用されました。サバちゃんを手動で起動してください。',
         rollbackRelaunchFailedSub: '前のバージョンに戻しましたが、再起動できませんでした。サバちゃんを手動で起動してください。',
         restoreFailedTitle: '設定を復元できませんでした',
-        restoreFailedSub: '前のバージョンに戻しましたが、設定を復元できませんでした。サバちゃんを起動する前に、{{path}} 内のファイルをデータフォルダーに戻してください。',
+        restoreFailedSub: '前のバージョンに戻しましたが、設定を復元できませんでした。サバちゃんを起動する前に、{{data}} の中身を {{dataDir}} に、{{instances}} の中身を {{instancesDir}} に上書きしてください。',
+        leftInPlaceSub: '新しいバージョンが正しく起動せず、終了もできませんでした。サバちゃんを完全に終了してから起動し直してください。',
+        leftInPlaceUndo: '元に戻すには、{{data}} の中身を {{dataDir}} に、{{instances}} の中身を {{instancesDir}} に上書きしてください。',
     },
     'zh-CN': {
         modeUpdate: '更新',
@@ -81,7 +87,9 @@ const TRANSLATIONS = {
         relaunchFailedSub: '更新已应用。请手动启动 Saba-chan。',
         rollbackRelaunchFailedSub: '已回退到之前的版本，但无法重新启动。请手动启动 Saba-chan。',
         restoreFailedTitle: '无法恢复设置',
-        restoreFailedSub: '已回退到之前的版本，但无法恢复设置。启动 Saba-chan 之前，请将 {{path}} 中的文件移回数据文件夹。',
+        restoreFailedSub: '已回退到之前的版本，但无法恢复设置。启动 Saba-chan 之前，请将 {{data}} 中的内容覆盖到 {{dataDir}}，将 {{instances}} 中的内容覆盖到 {{instancesDir}}。',
+        leftInPlaceSub: '新版本未能正常启动，也无法停止。请完全退出 Saba-chan 后重新启动。',
+        leftInPlaceUndo: '如需撤销，请将 {{data}} 中的内容覆盖到 {{dataDir}}，将 {{instances}} 中的内容覆盖到 {{instancesDir}}。',
     },
     'zh-TW': {
         modeUpdate: '更新',
@@ -100,7 +108,9 @@ const TRANSLATIONS = {
         relaunchFailedSub: '更新已套用。請手動啟動 Saba-chan。',
         rollbackRelaunchFailedSub: '已還原至先前的版本，但無法重新啟動。請手動啟動 Saba-chan。',
         restoreFailedTitle: '無法還原設定',
-        restoreFailedSub: '已還原至先前的版本，但無法還原設定。啟動 Saba-chan 之前，請將 {{path}} 中的檔案移回資料資料夾。',
+        restoreFailedSub: '已還原至先前的版本，但無法還原設定。啟動 Saba-chan 之前，請將 {{data}} 中的內容覆寫到 {{dataDir}}，將 {{instances}} 中的內容覆寫到 {{instancesDir}}。',
+        leftInPlaceSub: '新版本未能正常啟動，也無法停止。請完全結束 Saba-chan 後重新啟動。',
+        leftInPlaceUndo: '如需復原，請將 {{data}} 中的內容覆寫到 {{dataDir}}，將 {{instances}} 中的內容覆寫到 {{instancesDir}}。',
     },
     es: {
         modeUpdate: 'Actualización',
@@ -119,7 +129,9 @@ const TRANSLATIONS = {
         relaunchFailedSub: 'La actualización se aplicó. Inicia Saba-chan manualmente.',
         rollbackRelaunchFailedSub: 'Se volvió a la versión anterior, pero no se pudo reiniciar. Inicia Saba-chan manualmente.',
         restoreFailedTitle: 'No se pudo restaurar la configuración',
-        restoreFailedSub: 'Se volvió a la versión anterior, pero no se pudo restaurar la configuración. Antes de iniciar Saba-chan, copia los archivos de {{path}} a la carpeta de datos.',
+        restoreFailedSub: 'Se volvió a la versión anterior, pero no se pudo restaurar la configuración. Antes de iniciar Saba-chan, copia el contenido de {{data}} en {{dataDir}} y el de {{instances}} en {{instancesDir}}.',
+        leftInPlaceSub: 'La nueva versión no se inició correctamente y no se pudo detener. Cierra Saba-chan por completo y vuelve a iniciarlo.',
+        leftInPlaceUndo: 'Para deshacerlo, copia el contenido de {{data}} en {{dataDir}} y el de {{instances}} en {{instancesDir}}.',
     },
     'pt-BR': {
         modeUpdate: 'Atualização',
@@ -138,7 +150,9 @@ const TRANSLATIONS = {
         relaunchFailedSub: 'A atualização foi aplicada. Abra o Saba-chan manualmente.',
         rollbackRelaunchFailedSub: 'A versão anterior foi restaurada, mas não foi possível reiniciar. Abra o Saba-chan manualmente.',
         restoreFailedTitle: 'Não foi possível restaurar as configurações',
-        restoreFailedSub: 'A versão anterior foi restaurada, mas as configurações não. Antes de abrir o Saba-chan, copie os arquivos de {{path}} de volta para a pasta de dados.',
+        restoreFailedSub: 'A versão anterior foi restaurada, mas as configurações não. Antes de abrir o Saba-chan, copie o conteúdo de {{data}} para {{dataDir}} e o de {{instances}} para {{instancesDir}}.',
+        leftInPlaceSub: 'A nova versão não iniciou corretamente e não pôde ser encerrada. Feche o Saba-chan por completo e abra-o novamente.',
+        leftInPlaceUndo: 'Para desfazer, copie o conteúdo de {{data}} para {{dataDir}} e o de {{instances}} para {{instancesDir}}.',
     },
     ru: {
         modeUpdate: 'Обновление',
@@ -157,7 +171,9 @@ const TRANSLATIONS = {
         relaunchFailedSub: 'Обновление применено. Запустите Saba-chan вручную.',
         rollbackRelaunchFailedSub: 'Восстановлена предыдущая версия, но перезапустить не удалось. Запустите Saba-chan вручную.',
         restoreFailedTitle: 'Не удалось восстановить настройки',
-        restoreFailedSub: 'Восстановлена предыдущая версия, но настройки восстановить не удалось. Перед запуском Saba-chan скопируйте файлы из {{path}} обратно в папку данных.',
+        restoreFailedSub: 'Восстановлена предыдущая версия, но настройки восстановить не удалось. Перед запуском Saba-chan скопируйте содержимое {{data}} в {{dataDir}}, а содержимое {{instances}} — в {{instancesDir}}.',
+        leftInPlaceSub: 'Новая версия запустилась неправильно, и её не удалось остановить. Полностью закройте Saba-chan и запустите снова.',
+        leftInPlaceUndo: 'Чтобы отменить, скопируйте содержимое {{data}} в {{dataDir}}, а содержимое {{instances}} — в {{instancesDir}}.',
     },
     de: {
         modeUpdate: 'Update',
@@ -176,7 +192,9 @@ const TRANSLATIONS = {
         relaunchFailedSub: 'Das Update wurde angewendet. Bitte starte Saba-chan selbst.',
         rollbackRelaunchFailedSub: 'Die vorherige Version wurde wiederhergestellt, aber der Neustart ist fehlgeschlagen. Bitte starte Saba-chan selbst.',
         restoreFailedTitle: 'Einstellungen nicht wiederhergestellt',
-        restoreFailedSub: 'Die vorherige Version wurde wiederhergestellt, die Einstellungen jedoch nicht. Kopiere vor dem Start von Saba-chan die Dateien aus {{path}} zurück in den Datenordner.',
+        restoreFailedSub: 'Die vorherige Version wurde wiederhergestellt, die Einstellungen jedoch nicht. Kopiere vor dem Start von Saba-chan den Inhalt von {{data}} nach {{dataDir}} und den Inhalt von {{instances}} nach {{instancesDir}}.',
+        leftInPlaceSub: 'Die neue Version ist nicht richtig gestartet und konnte nicht beendet werden. Beende Saba-chan vollständig und starte es neu.',
+        leftInPlaceUndo: 'Zum Rückgängigmachen kopiere den Inhalt von {{data}} nach {{dataDir}} und den Inhalt von {{instances}} nach {{instancesDir}}.',
     },
     fr: {
         modeUpdate: 'Mise à jour',
@@ -195,7 +213,9 @@ const TRANSLATIONS = {
         relaunchFailedSub: 'La mise à jour est appliquée. Lancez Saba-chan vous-même.',
         rollbackRelaunchFailedSub: 'La version précédente a été rétablie, mais le redémarrage a échoué. Lancez Saba-chan vous-même.',
         restoreFailedTitle: 'Impossible de restaurer les réglages',
-        restoreFailedSub: 'La version précédente a été rétablie, mais pas les réglages. Avant de lancer Saba-chan, recopiez les fichiers de {{path}} dans le dossier de données.',
+        restoreFailedSub: 'La version précédente a été rétablie, mais pas les réglages. Avant de lancer Saba-chan, copiez le contenu de {{data}} dans {{dataDir}} et celui de {{instances}} dans {{instancesDir}}.',
+        leftInPlaceSub: 'La nouvelle version n\'a pas démarré correctement et n\'a pas pu être arrêtée. Quittez complètement Saba-chan puis relancez-le.',
+        leftInPlaceUndo: 'Pour annuler, copiez le contenu de {{data}} dans {{dataDir}} et celui de {{instances}} dans {{instancesDir}}.',
     },
 };
 
@@ -362,7 +382,14 @@ async function enterApplyMode(mode) {
     // 새 판이 실행되지 않아 이전 판으로 되돌렸지만 이전 판도 띄우지 못했다
     await listen('apply:rollback-relaunch-failed', () => showFailure(tr('rollbackRelaunchFailedSub'), 'relaunchFailedTitle'));
     // 되돌렸지만 설정을 되돌리지 못했다: 이전 판을 띄우지 않았다. 사본 자리를 알린다
-    await listen('apply:restore-failed', (event) => showFailure(tr('restoreFailedSub', { path: event.payload?.path ?? '' }), 'restoreFailedTitle'));
+    // 사본의 data·instances를 각각 데이터 폴더·인스턴스 폴더에 덮어쓰라고 안내한다 (인스턴스 폴더를 따로 둔 경우도)
+    await listen('apply:restore-failed', (event) => showFailure(tr('restoreFailedSub', event.payload ?? {}), 'restoreFailedTitle'));
+    // 새 판이 제대로 뜨지 않았는데 끝내지 못해 그대로 뒀다: 실패로 알리고, 사본이 있으면 되돌리는 법을 덧붙인다
+    await listen('apply:left-in-place', (event) => {
+        const kept = event.payload ?? {};
+        const undo = kept.data ? ` ${tr('leftInPlaceUndo', kept)}` : '';
+        showFailure(`${tr('leftInPlaceSub')}${undo}`);
+    });
 
     // 거부 사유는 진단용 원문이라 화면에는 번역한 요약만 보인다
     invoke('start_apply').catch(err => {

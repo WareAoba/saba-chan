@@ -91,9 +91,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |
-          if gh release view "v$VERSION" > /dev/null 2>&1; then
+          # 없음(404)만 경고로 넘긴다. 권한·서버 오류는 실패로 끝내 릴레이와 GitHub가 달라진 채 성공하지 않게 한다
+          if out=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$VERSION" 2>&1 > /dev/null); then
             gh release edit "v$VERSION" --prerelease=false --latest
             echo "GitHub release v$VERSION is no longer a pre-release" >> "$GITHUB_STEP_SUMMARY"
-          else
+          elif grep -q 'HTTP 404' <<< "$out"; then
             echo "::warning::GitHub release v$VERSION not found; nothing to mark"
+          else
+            echo "::error::Cannot read GitHub release v$VERSION: $out"
+            exit 1
           fi

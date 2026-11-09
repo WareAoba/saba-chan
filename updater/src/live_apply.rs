@@ -406,11 +406,13 @@ impl DataSnapshot {
         for file in SNAPSHOT_INSTANCE_ROOT_FILES {
             copy_if_file(&instances_dir.join(file), &partial.join("instances").join(file))?;
         }
-        if let Ok(entries) = std::fs::read_dir(instances_dir) {
-            for entry in entries.flatten() {
+        // 없는 것만 건너뛴다. 읽지 못하면(권한·입출력 오류) 사본이 모자라니 멈춘다
+        if let Some(entries) = read_dir_if_exists(instances_dir)? {
+            for entry in entries {
+                let entry = entry?;
                 let name = entry.file_name();
                 // `.saba-state`(실행 기록) 같은 점 폴더는 인스턴스가 아니다
-                if name.to_string_lossy().starts_with('.') || !entry.path().is_dir() {
+                if name.to_string_lossy().starts_with('.') || !std::fs::metadata(entry.path())?.is_dir() {
                     continue;
                 }
                 for file in SNAPSHOT_INSTANCE_FILES {
@@ -435,23 +437,23 @@ impl DataSnapshot {
         Ok(())
     }
 
-    /// 복원하지 못한 사본을 남긴다: `<판>.kept-<시각>`으로 비켜 둬 같은 판의 다음 스냅샷이 지우지 않게 한다. 남은 자리를 준다
-    pub fn keep(self) -> PathBuf {
+    /// 복원하지 못한 사본을 남긴다: `<판>.kept-<시각>`으로 비켜 둬 같은 판의 다음 스냅샷이 지우지 않게 한다
+    pub fn keep(self) -> KeptCopy {
         let kept = self.dir.with_file_name(format!(
             "{}.kept-{}",
             self.dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
             now_ms()
         ));
-        match std::fs::rename(&self.dir, &kept) {
-            Ok(()) => {
-                tracing::error!("[Apply] The data snapshot is kept at {} for a manual restore", kept.display());
-                kept
-            }
+        let dir = match std::fs::rename(&self.dir, &kept) {
+            Ok(()) => kept,
             Err(e) => {
-                tracing::error!("[Apply] The data snapshot is kept at {} ({})", self.dir.display(), e);
+                tracing::warn!("[Apply] Cannot rename the data snapshot {}: {}", self.dir.display(), e);
                 self.dir
             }
-        }
+        };
+        let copy = KeptCopy { dir, data_dir: self.data_dir, instances_dir: self.instances_dir };
+        tracing::error!("[Apply] The data snapshot is kept for a manual restore: {}", copy.restore_hint());
+        copy
     }
 
     pub fn discard(self) {
@@ -461,6 +463,27 @@ impl DataSnapshot {
         if let Some(root) = self.dir.parent() {
             let _ = std::fs::remove_dir(root); // 비었을 때만
         }
+    }
+}
+
+/// 남긴 사본과 손으로 되살릴 곳: 사본의 `data/`는 데이터 폴더에, `instances/`는 인스턴스 폴더에 덮어쓴다
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeptCopy {
+    pub dir: PathBuf,
+    pub data_dir: PathBuf,
+    pub instances_dir: PathBuf,
+}
+
+impl KeptCopy {
+    /// 마커·기록에 남기는 안내 (영어 원문, 화면은 번역한 문구를 쓴다)
+    pub fn restore_hint(&self) -> String {
+        format!(
+            "copy {} into {} and {} into {}",
+            self.dir.join("data").display(),
+            self.data_dir.display(),
+            self.dir.join("instances").display(),
+            self.instances_dir.display()
+        )
     }
 }
 
@@ -475,9 +498,22 @@ fn create_private_dir(dir: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// 폴더를 연다. 없으면 None, 읽지 못하면 오류 (없는 것과 가른다)
+fn read_dir_if_exists(dir: &Path) -> std::io::Result<Option<std::fs::ReadDir>> {
+    match std::fs::read_dir(dir) {
+        Ok(entries) => Ok(Some(entries)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// 파일이면 옮겨 뜬다. 없으면 건너뛰고, 읽지 못하면 오류
 fn copy_if_file(from: &Path, to: &Path) -> std::io::Result<()> {
-    if !from.is_file() {
-        return Ok(());
+    match std::fs::metadata(from) {
+        Ok(meta) if meta.is_file() => {}
+        Ok(_) => return Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
     }
     if let Some(parent) = to.parent() {
         std::fs::create_dir_all(parent)?;
@@ -486,11 +522,12 @@ fn copy_if_file(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 fn restore_tree(from: &Path, to: &Path) -> std::io::Result<()> {
-    let Ok(entries) = std::fs::read_dir(from) else { return Ok(()) };
+    // 사본에 그 갈래가 없으면(뜰 때 없던 것) 건너뛴다. 읽지 못하면 오류: 되돌림이 빠졌는데 성공으로 보지 않는다
+    let Some(entries) = read_dir_if_exists(from)? else { return Ok(()) };
     for entry in entries {
         let entry = entry?;
         let (src, dst) = (entry.path(), to.join(entry.file_name()));
-        if src.is_dir() {
+        if std::fs::metadata(&src)?.is_dir() {
             restore_tree(&src, &dst)?;
         } else {
             write_atomic(&dst, &std::fs::read(&src)?)?;
@@ -612,9 +649,27 @@ impl LiveApply {
         end_watch(&self.staging_dir);
     }
 
-    /// 새 데몬을 끝내지 못해 새 판을 그대로 둔다. 새 데몬이 이미 데이터를 바꿨을 수 있으니 사본은 지우지 않고 남긴다 (`keep`)
-    pub fn leave_in_place(self) -> Option<PathBuf> {
+    /// 새 데몬을 끝내지 못해 새 판을 그대로 둔다. 새 데몬이 이미 데이터를 바꿨을 수 있으니 사본은 지우지 않고 남긴다 (`keep`).
+    /// 적용 성공으로 남지 않게 완료 마커를 `success:false`·`result:"left_in_place"`·`reason`(감시 결과)과 사본 자리로 바꾼다
+    pub fn leave_in_place(self, marker_path: &Path, reason: &str) -> Option<KeptCopy> {
         let kept = self.snapshot.map(DataSnapshot::keep);
+        let previous = UpdateCompletionMarker::load_from(marker_path).unwrap_or_else(|| UpdateCompletionMarker::failure(String::new()));
+        let marker = UpdateCompletionMarker {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            success: false,
+            message: Some(match &kept {
+                Some(k) => format!("{} did not start properly and could not be stopped; to undo, {}", self.target_version, k.restore_hint()),
+                None => format!("{} did not start properly and could not be stopped", self.target_version),
+            }),
+            result: Some("left_in_place".into()),
+            reason: Some(reason.into()),
+            version: Some(self.target_version.clone()),
+            acknowledged: false,
+            ..previous
+        };
+        if let Err(e) = marker.save_to(marker_path) {
+            tracing::error!("[Apply] Cannot record the failed update: {}", e);
+        }
         end_watch(&self.staging_dir);
         kept
     }
@@ -623,7 +678,7 @@ impl LiveApply {
     /// 그다음 `failed_release`를 적고 완료 마커를 `rolled_back`으로 바꾼다 (이 순서: 스냅샷의 설정이 기록을 덮지 않게).
     /// 데이터를 되돌리지 못했으면 사본을 남기고(`keep`) 마커의 `reason`을 `restore_failed`로 적은 뒤 그 자리를 준다:
     /// 이전 판이 일부만 되돌린 데이터를 읽지 않게 호출자는 다시 띄우지 않는다
-    pub fn roll_back(self, manager: &UpdateManager, config: &ConfigFile, marker_path: &Path, reason: &str) -> Option<PathBuf> {
+    pub fn roll_back(self, manager: &UpdateManager, config: &ConfigFile, marker_path: &Path, reason: &str) -> Option<KeptCopy> {
         let restored = manager.roll_back_exes_since(&self.before);
         tracing::warn!("[Apply] Rolled back {} ({}): {:?}", self.target_version, reason, restored);
         let mut kept = None;
@@ -643,7 +698,7 @@ impl LiveApply {
             None => UpdateCompletionMarker::rolled_back(&self.target_version, reason, previous),
             Some(path) => {
                 let mut m = UpdateCompletionMarker::rolled_back(&self.target_version, "restore_failed", previous);
-                m.message = Some(format!("Rolled back {} ({}) but could not restore the data; the copy is at {}", self.target_version, reason, path.display()));
+                m.message = Some(format!("Rolled back {} ({}) but could not restore the data; {}", self.target_version, reason, path.restore_hint()));
                 m
             }
         };
@@ -1089,10 +1144,15 @@ mod tests {
 
         // Codex 재리뷰: 복원 실패는 따로 알린다 (설치기는 이전 판을 다시 띄우지 않는다)
         let kept_at = kept_at.expect("the caller learns that the data was not restored");
-        assert!(kept_at.join("data").join("config.json").is_file(), "{}", kept_at.display());
+        assert!(kept_at.dir.join("data").join("config.json").is_file(), "{}", kept_at.dir.display());
+        // Codex 3차 리뷰: 손으로 되살릴 곳은 `data/`→데이터 폴더, `instances/`→인스턴스 폴더 (따로 둔 인스턴스 폴더 포함)
+        assert_eq!((kept_at.data_dir.as_path(), kept_at.instances_dir.as_path()), (data.as_path(), inst.as_path()));
         let m = UpdateCompletionMarker::load_from(&marker).unwrap();
         assert_eq!((m.result.as_deref(), m.reason.as_deref()), (Some("rolled_back"), Some("restore_failed")));
-        assert!(m.message.unwrap_or_default().contains(&kept_at.display().to_string()), "the marker names the copy");
+        let message = m.message.unwrap_or_default();
+        for place in [&kept_at.dir, &data, &inst] {
+            assert!(message.contains(&place.display().to_string()), "the marker names {}: {message}", place.display());
+        }
         let kept = files_under(&data.join(SNAPSHOT_DIR));
         assert!(kept.iter().any(|f| f.ends_with("data/config.json")), "the copy is kept: {kept:?}");
         assert!(!watch_in_progress(&manager.staging_dir));
@@ -1109,9 +1169,43 @@ mod tests {
         let inst = data.join("instances");
         write(&data.join("config.json"), "{}");
         let staging = tmp.path().join("staging");
+        let marker = data.join("update-complete.json");
+        UpdateCompletionMarker::success(vec!["saba-core".into()]).save_to(&marker).unwrap();
         let live = LiveApply::start(&staging, ExeBackups::default(), &data, &inst, "0.1.13".into(), "0.1.14".into(), None).unwrap();
-        let kept_at = live.leave_in_place().expect("the copy is kept");
-        assert!(kept_at.join("data").join("config.json").is_file());
+        let kept_at = live.leave_in_place(&marker, "timeout").expect("the copy is kept");
+        assert!(kept_at.dir.join("data").join("config.json").is_file());
         assert!(!watch_in_progress(&staging));
+        // Codex 3차 리뷰: 적용 성공으로 남지 않는다. 실패와 사본 자리를 적는다
+        let m = UpdateCompletionMarker::load_from(&marker).unwrap();
+        assert!(!m.success);
+        assert_eq!((m.result.as_deref(), m.reason.as_deref()), (Some("left_in_place"), Some("timeout")));
+        assert!(m.message.unwrap_or_default().contains(&kept_at.dir.display().to_string()));
+    }
+
+    // Codex 3차 리뷰: 읽지 못한 것(권한·입출력 오류)을 없는 것으로 넘기지 않는다. 없는 것만 건너뛴다
+    #[test]
+    fn a_snapshot_that_cannot_read_its_sources_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        write(&data.join("config.json"), "{}");
+        // 인스턴스 폴더 자리가 폴더가 아니다: 읽지 못한다 (없는 것과 다르다)
+        let inst = data.join("instances");
+        write(&inst, "not a folder");
+        assert!(DataSnapshot::take(&data, &inst, "0.1.13").is_err());
+        // 인스턴스 폴더가 아예 없으면 건너뛴다
+        assert!(DataSnapshot::take(&data, &tmp.path().join("none"), "0.1.13").is_ok());
+    }
+
+    #[test]
+    fn a_restore_that_cannot_read_the_copy_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let inst = data.join("instances");
+        write(&data.join("config.json"), "{}");
+        let snap = DataSnapshot::take(&data, &inst, "0.1.13").unwrap();
+        // 사본의 `data` 자리가 폴더가 아니게 됐다: 읽지 못한다
+        std::fs::remove_dir_all(snap.path().join("data")).unwrap();
+        write(&snap.path().join("data"), "broken");
+        assert!(snap.restore().is_err());
     }
 }
