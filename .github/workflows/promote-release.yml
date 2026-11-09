@@ -5,6 +5,7 @@
 #    이미 그 채널에 있거나, 내렸거나, 클라이언트가 되돌린 보고가 있으면(allow_rollbacks 없이) 멈춘다
 # 2. 그 행의 서명된 manifest가 target 채널 클라이언트에게 받아들여지는지 본다 (versions.py promote-check)
 # 3. `PATCH /admin/releases/:id {channel}`: 릴레이가 확인 캐시를 비워 heartbeat·확인에 바로 반영된다
+# 4. stable로 올렸으면 GitHub Release의 사전 릴리스 표시를 걷는다 (github-release.yml은 beta 등록이라 사전 릴리스로 올린다)
 #
 # environment `release`: secret RELAY_INTERNAL_SECRET, variable RELAY_URL. 서명하지 않으므로 키를 쓰지 않는다
 name: Promote release
@@ -29,7 +30,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   promote:
@@ -76,3 +77,16 @@ jobs:
             -d "{\"channel\":\"$CHANNEL\"}" > /dev/null
           rollbacks=$(python -c "import json,sys;print(next(r.get('rollbacks',0) for r in json.load(open('releases.json'))['releases'] if r['id']==int(sys.argv[1])))" "$id")
           echo "### Promoted $VERSION (release $id) to $CHANNEL (rollback reports: $rollbacks)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Mark the GitHub release as stable
+        if: inputs.channel == 'stable'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            gh release edit "v$VERSION" --prerelease=false --latest
+            echo "GitHub release v$VERSION is no longer a pre-release" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::GitHub release v$VERSION not found; nothing to mark"
+          fi

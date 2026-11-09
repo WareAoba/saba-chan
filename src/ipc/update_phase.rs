@@ -130,7 +130,7 @@ pub fn phase_from_marker(marker: &serde_json::Value, marker_seen: Option<&str>) 
         release.and_then(|r| r.get("notes")).and_then(|n| serde_json::from_value(n.clone()).ok()).filter(|n: &HashMap<_, _>| !n.is_empty());
     match marker.get("result").and_then(serde_json::Value::as_str) {
         Some("rolled_back") => return Some(Phase::ready(ReadyReason::RolledBack, version, notes)),
-        // 이전 데몬이 끝나지 않아 파일을 바꾸지 않았다: 지금은 사용자가 다시 시작할 때까지 둔다
+        // 파일을 바꾸지 않았다(이전 데몬이 끝나지 않음 `wait_pid_timeout`, 데이터 스냅샷 실패 `snapshot_failed`): 사용자가 다시 시작할 때까지 둔다
         Some("deferred") => return Some(Phase::ready(ReadyReason::WaitPidTimeout, version, notes)),
         _ => {}
     }

@@ -696,3 +696,5 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
       sha: ${{ needs.prepare.outputs.sha }}
+      # 릴레이에는 늘 beta로 등록한다: 정식 승격(promote-release.yml) 전까지 사전 릴리스로 둔다
+      channel: beta

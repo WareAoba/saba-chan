@@ -81,13 +81,17 @@ async fn start_apply(
 ) -> Result<Vec<String>, String> {
     let (result, live) = {
         let mut mgr = manager.write().await;
-        let live = prepare_live_apply(&mut mgr);
-        let result = mgr
-            .apply_staged(|p| {
-                app.emit("apply:progress", p).ok();
-            })
-            .await;
-        (result, live)
+        match prepare_live_apply(&mut mgr) {
+            Ok(live) => {
+                let result = mgr
+                    .apply_staged(|p| {
+                        app.emit("apply:progress", p).ok();
+                    })
+                    .await;
+                (result, live)
+            }
+            Err(e) => (Err(e), None),
+        }
     };
     let core_applied = core_was_applied(&result);
     let watch = Watch { live, core_applied, manager: manager.inner().clone() };
@@ -133,9 +137,10 @@ fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool, watch: W
         let Watch { live, core_applied, manager } = watch;
         let manager = manager.read().await;
         let target = Relaunch { exe: relaunch_exe, extra: relaunch_extra, gui };
-        watch_new_daemon(live, &manager, core_applied, launched, wait_pid, since_ms, target).await;
+        // 건강하지 않으면 되돌리고 이전 판을 이미 다시 띄웠다 (새 판을 띄우지 못한 경우도)
+        let healthy = watch_new_daemon(live, &manager, core_applied, launched, wait_pid, since_ms, target).await;
 
-        if applied && (relaunched || !has_target) {
+        if applied && (relaunched || !has_target || !healthy) {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             app_handle.exit(0);
         } else if applied {
@@ -195,8 +200,14 @@ async fn relaunch_now(relaunch_exe: Option<String>, relaunch_extra: Vec<String>,
 }
 
 /// 코어 적용을 지켜볼 준비 (데이터 스냅샷·`.old` 목록·감시 표시). 코어가 바뀌지 않는 묶음이면 None
-fn prepare_live_apply(manager: &mut UpdateManager) -> Option<LiveApply> {
-    LiveApply::prepare(manager, &constants::resolve_data_dir(), &constants::resolve_instances_dir())
+/// 스냅샷을 뜨지 못하면 적용하지 않고 마커에 `deferred`(`snapshot_failed`)를 남긴 뒤 `Err` (다시 시작할 때 다시 시도한다)
+fn prepare_live_apply(manager: &mut UpdateManager) -> Result<Option<LiveApply>, String> {
+    LiveApply::prepare(manager, &constants::resolve_data_dir(), &constants::resolve_instances_dir()).inspect_err(|e| {
+        tracing::error!("[Apply] {}; leaving the files as they are", e);
+        if let Err(e) = UpdateCompletionMarker::deferred("snapshot_failed").save() {
+            tracing::warn!("[Apply] Cannot record the deferred update: {}", e);
+        }
+    })
 }
 
 fn core_was_applied(result: &Result<(Vec<String>, Vec<String>), String>) -> bool {
@@ -249,9 +260,17 @@ async fn watch_new_daemon(
     target: Relaunch,
 ) -> bool {
     let Some(live) = live else { return true };
-    let Some(launched) = launched.filter(|_| core_applied) else {
-        live.skip();
-        return true;
+    let has_target = target.exe.is_some() || target.gui.is_some();
+    let launched = match watch_plan(core_applied, launched, has_target) {
+        WatchPlan::Skip => {
+            live.skip();
+            return true;
+        }
+        WatchPlan::Watch(launched) => launched,
+        WatchPlan::RollBack => {
+            tracing::error!("[Apply] The new daemon {} could not be launched; rolling back", live.target_version);
+            return roll_back_and_relaunch(live, manager, "launch_failed", target).await;
+        }
     };
     let rule = health_rule(&launched, old_pid, since_ms);
     tracing::info!("[Apply] Watching the new daemon {} ({:?})", live.target_version, rule);
@@ -276,6 +295,30 @@ async fn watch_new_daemon(
             reason
         }
     };
+    roll_back_and_relaunch(live, manager, reason, target).await
+}
+
+/// 새 데몬을 어떻게 다룰까
+#[derive(Debug, PartialEq)]
+enum WatchPlan {
+    /// 지켜볼 것이 없다: 코어를 바꾸지 않았거나 다시 띄울 것이 원래 없다
+    Skip,
+    Watch(Launched),
+    /// 코어를 바꿨는데 다시 띄우지 못했다: 이전 데몬은 꺼졌고 새 판은 뜨지 않으니 되돌린다
+    RollBack,
+}
+
+fn watch_plan(core_applied: bool, launched: Option<Launched>, has_target: bool) -> WatchPlan {
+    match (core_applied, launched) {
+        (false, _) => WatchPlan::Skip,
+        (true, Some(launched)) => WatchPlan::Watch(launched),
+        (true, None) if has_target => WatchPlan::RollBack,
+        (true, None) => WatchPlan::Skip,
+    }
+}
+
+/// 되돌리고 릴레이에 한 번 알린 뒤 이전 판을 다시 띄운다. 언제나 false
+async fn roll_back_and_relaunch(live: LiveApply, manager: &UpdateManager, reason: &str, target: Relaunch) -> bool {
     let config = saba_chan_updater_lib::config_file::ConfigFile::default_location();
     // 릴레이는 되돌림을 릴리즈마다 센다 (부분 릴리즈의 코어 판은 릴리즈 판과 다르다)
     let version = live.report_version().to_string();
@@ -609,7 +652,16 @@ fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaun
         }
     };
     rt.block_on(async {
-        let live = prepare_live_apply(&mut manager);
+        let live = match prepare_live_apply(&mut manager) {
+            Ok(live) => live,
+            Err(_) => {
+                // 파일을 바꾸지 않았다: 이전 판을 그대로 다시 띄운다
+                if relaunch_exe.is_some() {
+                    relaunch_now(relaunch_exe, relaunch_extra, None, false).await;
+                }
+                return 1;
+            }
+        };
         let result = manager.apply_staged(|p| tracing::info!("[Apply] {} {}% {}", p.step, p.percent, p.message)).await;
         let applied = matches!(&result, Ok((_, failed)) if failed.is_empty());
         let core_applied = core_was_applied(&result);
@@ -636,6 +688,17 @@ fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaun
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Codex 리뷰: 코어를 바꾼 뒤 다시 띄우지 못하면(권한 오류 등) 성공으로 끝내지 않고 되돌린다
+    #[test]
+    fn a_failed_relaunch_after_the_core_swap_rolls_back() {
+        let launched = Launched { cmd: "saba-core".into(), pid: 7 };
+        assert_eq!(watch_plan(true, None, true), WatchPlan::RollBack);
+        assert_eq!(watch_plan(true, Some(launched.clone()), true), WatchPlan::Watch(launched.clone()));
+        assert_eq!(watch_plan(false, None, true), WatchPlan::Skip, "the core was not swapped");
+        assert_eq!(watch_plan(false, Some(launched), true), WatchPlan::Skip);
+        assert_eq!(watch_plan(true, None, false), WatchPlan::Skip, "nothing was meant to be relaunched");
+    }
 
     // M3: 받은 GUI 경로(0.1.1의 `Saba-chan.exe`)가 업데이트로 비켜났으면 지금 설치된 GUI를 띄운다
     #[test]

@@ -435,6 +435,19 @@ impl DataSnapshot {
         Ok(())
     }
 
+    /// 복원하지 못한 사본을 남긴다: `<판>.kept-<시각>`으로 비켜 둬 같은 판의 다음 스냅샷이 지우지 않게 한다
+    pub fn keep(self) {
+        let kept = self.dir.with_file_name(format!(
+            "{}.kept-{}",
+            self.dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            now_ms()
+        ));
+        match std::fs::rename(&self.dir, &kept) {
+            Ok(()) => tracing::error!("[Apply] The data snapshot is kept at {} for a manual restore", kept.display()),
+            Err(e) => tracing::error!("[Apply] The data snapshot is kept at {} ({})", self.dir.display(), e),
+        }
+    }
+
     pub fn discard(self) {
         if let Err(e) = std::fs::remove_dir_all(&self.dir) {
             tracing::warn!("[Apply] Cannot remove the data snapshot {}: {}", self.dir.display(), e);
@@ -547,20 +560,27 @@ pub struct LiveApply {
 }
 
 impl LiveApply {
-    /// 받아 둔 것 중 이번에 적용할 코어가 있으면 준비한다: 데이터 스냅샷, 지금 있는 `.old` 목록, 감시 표시
-    pub fn prepare(manager: &mut UpdateManager, data_dir: &Path, instances_dir: &Path) -> Option<Self> {
-        let (from_version, target_version) = manager.staged_core_change()?;
-        let snapshot = match DataSnapshot::take(data_dir, instances_dir, &from_version) {
-            Ok(s) => Some(s),
-            Err(e) => {
-                // 스냅샷 없이도 실행 파일은 되돌릴 수 있다
-                tracing::error!("[Apply] Cannot take the data snapshot: {}", e);
-                None
-            }
-        };
-        begin_watch(&manager.staging_dir);
+    /// 받아 둔 것 중 이번에 적용할 코어가 있으면 준비한다: 데이터 스냅샷, 지금 있는 `.old` 목록, 감시 표시.
+    /// 코어가 바뀌지 않으면 `Ok(None)`. 스냅샷을 뜨지 못하면 `Err`: 적용하지 않는다 (설치기가 마커에 `deferred`(`snapshot_failed`)를 남긴다)
+    pub fn prepare(manager: &mut UpdateManager, data_dir: &Path, instances_dir: &Path) -> Result<Option<Self>, String> {
+        let Some((from_version, target_version)) = manager.staged_core_change() else { return Ok(None) };
         let release_version = manager.pending_release().map(|r| r.version);
-        Some(Self { staging_dir: manager.staging_dir.clone(), before: manager.exe_backups(), snapshot, from_version, target_version, release_version })
+        Self::start(&manager.staging_dir, manager.exe_backups(), data_dir, instances_dir, from_version, target_version, release_version).map(Some)
+    }
+
+    /// 스냅샷을 뜨고 감시 표시를 남긴다. 스냅샷 없이 적용하면 새 데몬이 데이터를 바꾼 뒤 죽었을 때 실행 파일만 되돌아가므로 멈춘다
+    pub fn start(
+        staging_dir: &Path,
+        before: ExeBackups,
+        data_dir: &Path,
+        instances_dir: &Path,
+        from_version: String,
+        target_version: String,
+        release_version: Option<String>,
+    ) -> Result<Self, String> {
+        let snapshot = DataSnapshot::take(data_dir, instances_dir, &from_version).map_err(|e| format!("Cannot take the data snapshot: {e}"))?;
+        begin_watch(staging_dir);
+        Ok(Self { staging_dir: staging_dir.to_path_buf(), before, snapshot: Some(snapshot), from_version, target_version, release_version })
     }
 
     /// 되돌림을 릴레이에 알릴 판: 릴리즈 판, 모르면 코어 판
@@ -591,11 +611,15 @@ impl LiveApply {
     pub fn roll_back(self, manager: &UpdateManager, config: &ConfigFile, marker_path: &Path, reason: &str) {
         let restored = manager.roll_back_exes_since(&self.before);
         tracing::warn!("[Apply] Rolled back {} ({}): {:?}", self.target_version, reason, restored);
-        if let Some(snapshot) = &self.snapshot {
-            if let Err(e) = snapshot.restore() {
+        // 복원이 실패하면 사본을 지우지 않고 다른 이름으로 남긴다 (손으로 되살릴 수단. 다음 스냅샷이 덮지 않게)
+        let snapshot = self.snapshot.and_then(|snapshot| match snapshot.restore() {
+            Ok(()) => Some(snapshot),
+            Err(e) => {
                 tracing::error!("[Apply] Cannot restore the data snapshot {}: {}", snapshot.path().display(), e);
+                snapshot.keep();
+                None
             }
-        }
+        });
         if let Err(e) = record_failed_release(config, &self.target_version) {
             tracing::error!("[Apply] Cannot record the failed release {}: {}", self.target_version, e);
         }
@@ -603,7 +627,7 @@ impl LiveApply {
         if let Err(e) = marker.save_to(marker_path) {
             tracing::error!("[Apply] Cannot record the rollback: {}", e);
         }
-        if let Some(s) = self.snapshot {
+        if let Some(s) = snapshot {
             s.discard();
         }
         end_watch(&self.staging_dir);
@@ -1001,5 +1025,49 @@ mod tests {
         assert_eq!(saved.failed_release.as_deref(), Some("0.1.14"));
         assert_eq!(saved.channel, "beta", "the snapshot restored the settings first");
         assert!(saved.auto_apply);
+    }
+
+    // Codex 리뷰: 데이터 스냅샷을 뜨지 못하면 적용하지 않는다. 새 데몬이 데이터를 바꾼 뒤 죽으면 실행 파일만 되돌아가기 때문이다
+    #[test]
+    fn a_failed_data_snapshot_stops_the_apply() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        write(&data.join("config.json"), "{}");
+        // 스냅샷 폴더 자리에 파일이 있어 폴더를 만들 수 없다
+        write(&data.join(SNAPSHOT_DIR), "not a folder");
+        let staging = tmp.path().join("staging");
+        let err = LiveApply::start(&staging, ExeBackups::default(), &data, &data.join("instances"), "0.1.13".into(), "0.1.14".into(), None)
+            .unwrap_err();
+        assert!(err.contains("snapshot"), "{err}");
+        assert!(!watch_in_progress(&staging), "nothing to watch when nothing is applied");
+    }
+
+    // Codex 리뷰: 되돌리다 데이터 복원이 실패하면 사본을 지우지 않고 남긴다 (손으로 되살릴 수단)
+    #[test]
+    fn a_failed_restore_keeps_the_snapshot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let inst = data.join("instances");
+        write(&data.join("config.json"), r#"{"gui":{"language":"ko"}}"#);
+        let config = ConfigFile::at(&data);
+        let marker = data.join("update-complete.json");
+        let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+        manager.install_root = tmp.path().join("install");
+        manager.staging_dir = tmp.path().join("staging");
+        std::fs::create_dir_all(&manager.install_root).unwrap();
+        let live =
+            LiveApply::start(&manager.staging_dir, manager.exe_backups(), &data, &inst, "0.1.13".into(), "0.1.14".into(), None).unwrap();
+        // 새 데몬이 설정 파일 자리를 비울 수 없는 폴더로 바꿨다: 복원이 실패한다
+        std::fs::remove_file(data.join("config.json")).unwrap();
+        write(&data.join("config.json").join("x"), "x");
+
+        live.roll_back(&manager, &config, &marker, "timeout");
+
+        let kept = files_under(&data.join(SNAPSHOT_DIR));
+        assert!(kept.iter().any(|f| f.ends_with("data/config.json")), "the copy is kept: {kept:?}");
+        assert!(!watch_in_progress(&manager.staging_dir));
+        // 같은 판의 다음 스냅샷이 남긴 사본을 덮지 않는다
+        DataSnapshot::take(&data, &inst, "0.1.13").unwrap();
+        assert!(files_under(&data.join(SNAPSHOT_DIR)).iter().any(|f| f.ends_with("data/config.json")));
     }
 }
