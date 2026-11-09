@@ -487,9 +487,10 @@ fn a_swap_that_could_not_put_anything_back_is_not_marked_finished() {
     old_module(&target);
     let staged = new_module_zip(&tmp.path().join("staging"));
     let blocker = target.clone();
-    // 검사하는 사이 제자리에 파일이 생겨 새 판도 원래 폴더도 들어가지 못한다
+    // 검사하는 사이 제자리에 비지 않은 폴더가 생겨 새 판도 원래 폴더도 들어가지 못한다 (파일이면 Windows rename이 덮어쓴다)
     let result = crate::swap_dir_untouched(&target, &staged, |_| {
-        std::fs::write(&blocker, "x").unwrap();
+        std::fs::create_dir_all(&blocker).unwrap();
+        std::fs::write(blocker.join("user.txt"), "x").unwrap();
         true
     });
     assert!(result.is_err());
