@@ -382,10 +382,7 @@ impl RelayClient {
         if let Some(signed) = cached.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()) {
             return Ok(signed);
         }
-        let url = latest
-            .manifest_url
-            .clone()
-            .unwrap_or_else(|| format!("{}/v1/updates/manifest/{}", self.base_url, latest.version));
+        let url = self.manifest_url(latest);
         let resp = self.http.get(&url).send().await.map_err(|e| RelayError::Http(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(RelayError::Status(resp.status().as_u16()));
@@ -402,6 +399,16 @@ impl RelayClient {
             }
         }
         Ok(signed)
+    }
+
+    /// manifest 주소: 릴레이가 준 것. 경로만이면(`/latest`는 캐시되므로 요청 호스트를 싣지 않는다) 이 릴레이 주소에 붙인다.
+    /// 옛 `/check`의 절대 주소는 그대로 쓰고, 없으면 판 번호로 찾는다
+    fn manifest_url(&self, latest: &LatestRelease) -> String {
+        match latest.manifest_url.as_deref() {
+            Some(path) if path.starts_with('/') => format!("{}{}", self.base_url, path),
+            Some(url) => url.to_string(),
+            None => format!("{}/v1/updates/manifest/{}", self.base_url, latest.version),
+        }
     }
 
     /// check → manifest → 서명·대상·다운그레이드 검증까지 한 번에.
@@ -979,6 +986,26 @@ mod tests {
             client.fetch_verified_release("stable", "windows-x64", "0.1.0", "t").await,
             Err(RelayError::Signature(_))
         ));
+    }
+
+    /// `/latest`는 경로만인 manifest 주소를 준다: 이 릴레이 주소에 붙여 받는다. 옛 `/check`의 절대 주소는 그대로 쓴다
+    #[tokio::test]
+    async fn a_path_only_manifest_url_is_fetched_from_this_relay() {
+        let latest = r#"{"releases":[{"id":7,"version":"0.1.1","channel":"stable","rolloutPercent":100,"manifestUrl":"/v1/updates/manifest/0.1.1?release=7"}],"installed":null}"#;
+        let (base, seen) = routed_relay(vec![
+            ("/v1/updates/latest", 200, latest.into()),
+            ("/v1/updates/manifest/0.1.1?release=7", 200, PRODUCTION_0_1_1.into()),
+        ])
+        .await;
+        let got = RelayClient::new(&base).fetch_verified_release("stable", "windows-x64", "0.1.0", "t").await.unwrap().unwrap();
+        assert_eq!(got.manifest.version, "0.1.1");
+        assert!(seen.lock().unwrap().iter().any(|p| p == "/v1/updates/manifest/0.1.1?release=7"));
+
+        let client = RelayClient::new("https://relay.example/");
+        let with = |url: Option<&str>| LatestRelease { version: "0.1.1".into(), manifest_url: url.map(str::to_string), ..Default::default() };
+        assert_eq!(client.manifest_url(&with(Some("/v1/updates/manifest/0.1.1?release=7"))), "https://relay.example/v1/updates/manifest/0.1.1?release=7");
+        assert_eq!(client.manifest_url(&with(Some("https://other.example/v1/updates/manifest/0.1.1"))), "https://other.example/v1/updates/manifest/0.1.1");
+        assert_eq!(client.manifest_url(&with(None)), "https://relay.example/v1/updates/manifest/0.1.1");
     }
 
     /// 옛 릴레이(새 주소가 404)면 옛 확인으로 한 번 물러선다

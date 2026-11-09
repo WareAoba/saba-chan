@@ -11,6 +11,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// `--wait-pid`로 받은 예전 데몬이 끝나길 기다리는 상한. 넘으면 파일을 바꾸지 않는다
 pub const WAIT_PID_TIMEOUT: Duration = Duration::from_secs(30);
+/// 파일을 바꾸지 않기로 한 뒤 예전 데몬이 마저 끝나길 더 기다리는 상한. 끝나야 다시 띄운다
+/// (데몬 종료는 릴레이 정리·`daemon.shutdown` hook 때문에 30초를 넘길 수 있다)
+pub const LATE_EXIT_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// 다시 띄운 뒤 새 데몬이 `/health`에 목표 판으로 답하기까지의 상한.
 /// 잠정값이다: PC 실측(모듈·익스텐션이 많은 설치의 기동 시간)으로 조정한다
 pub const HEALTH_TIMEOUT: Duration = Duration::from_secs(90);
@@ -68,6 +71,19 @@ pub fn wait_for_previous(pid: Option<u32>, timeout: Duration, is_running: impl F
     false
 }
 
+/// 파일을 바꾸지 않기로 한 뒤(`wait_for_previous`가 false) 다시 띄워도 되는가: 예전 데몬이 `timeout` 안에 마저 끝나면 true.
+/// 끝나지 않으면 다시 띄우지 않는다: 새로 띄운 데몬은 단일 인스턴스 잠금에 막혀 끝나고, 그 뒤 예전 데몬마저 끝나면
+/// 아무 데몬도 남지 않는다. 끝나지 않는 예전 데몬은 그대로 둔다
+pub fn may_relaunch_unchanged(pid: Option<u32>, timeout: Duration, is_running: impl Fn(u32) -> bool) -> bool {
+    let Some(pid) = pid else { return true };
+    if wait_for_exit(pid, timeout, POLL_INTERVAL.min(timeout), is_running) {
+        tracing::info!("[Apply] PID {} exited late; relaunching without the update", pid);
+        return true;
+    }
+    tracing::warn!("[Apply] PID {} is still running after {:?}; not relaunching another daemon", pid, timeout);
+    false
+}
+
 // ═══════════════════════════════════════════════════════
 // 건강 확인
 // ═══════════════════════════════════════════════════════
@@ -94,9 +110,11 @@ pub enum HealthRule {
 
 impl HealthRule {
     pub fn accepts(&self, health: &Health, target_version: &str) -> bool {
-        if !same_version(&health.version, target_version) {
-            return false;
-        }
+        same_version(&health.version, target_version) && self.is_new_process(health)
+    }
+
+    /// 판과 상관없이 다시 띄운 뒤의 데몬 프로세스인가 (시간 안에 건강해지지 않으면 끝낼 것)
+    fn is_new_process(&self, health: &Health) -> bool {
         match self {
             Self::SpawnedPid(pid) => health.pid == *pid,
             Self::StartedAfter { since_ms, old_pid } => {
@@ -132,7 +150,7 @@ impl Default for WatchLimits {
 #[derive(Debug, Clone, PartialEq)]
 pub enum WatchOutcome {
     Healthy { pid: u32 },
-    /// `pid`: 목표 판으로 답한 새 데몬 (끝낼 것). `reason`: `timeout`·`exited`·`replaced`
+    /// `pid`: 목표 판으로 답한 새 데몬, 시간이 다 됐으면 그사이 답한 새 프로세스 (끝낼 것). `reason`: `timeout`·`exited`·`replaced`
     Unhealthy { pid: Option<u32>, reason: &'static str },
 }
 
@@ -145,8 +163,14 @@ pub trait Probe {
 /// 새 데몬이 `rule`대로 목표 판으로 답하고, 그 뒤 생존 창 동안 살아 있으면 건강하다
 pub async fn watch(probe: &impl Probe, target_version: &str, rule: &HealthRule, limits: WatchLimits) -> WatchOutcome {
     let deadline = Instant::now() + limits.timeout;
+    // 목표 판으로 답하지 않았어도 다시 띄운 뒤의 프로세스가 답했으면 시간이 다 됐을 때 끝낸다
+    let mut late = None;
     loop {
-        if let Some(health) = probe.health().await.filter(|h| rule.accepts(h, target_version)) {
+        let answer = probe.health().await;
+        if let Some(h) = answer.as_ref().filter(|h| rule.is_new_process(h)) {
+            late = Some(h.pid);
+        }
+        if let Some(health) = answer.filter(|h| rule.accepts(h, target_version)) {
             let pid = health.pid;
             let until = Instant::now() + limits.survival;
             loop {
@@ -166,7 +190,7 @@ pub async fn watch(probe: &impl Probe, target_version: &str, rule: &HealthRule, 
             }
         }
         if Instant::now() >= deadline {
-            return WatchOutcome::Unhealthy { pid: None, reason: "timeout" };
+            return WatchOutcome::Unhealthy { pid: late, reason: "timeout" };
         }
         tokio::time::sleep(limits.poll).await;
     }
@@ -238,6 +262,56 @@ pub fn stop_process(pid: u32) {
         }
     }
     wait_for_exit(pid, Duration::from_secs(5), Duration::from_millis(200), ProcessChecker::is_pid_running);
+}
+
+/// 데몬 단일 인스턴스 잠금(`<data dir>/daemon.lock`)을 쥔 쪽
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LockHolder {
+    Free,
+    Pid(u32),
+    /// 잠겨 있는데 쥔 PID를 읽지 못했다 (막 잠근 데몬이 아직 적지 않았다)
+    Unknown,
+}
+
+/// 지금 데몬 잠금을 쥔 데몬. 잠금을 잠깐 걸어 보고 걸리면 곧바로 푼다 (데몬의 `instance_lock`과 같은 파일·같은 잠금)
+pub fn daemon_lock_holder(data_dir: &Path) -> LockHolder {
+    let path = data_dir.join("daemon.lock");
+    let Ok(file) = std::fs::OpenOptions::new().read(true).write(true).open(&path) else {
+        return LockHolder::Free;
+    };
+    match file.try_lock() {
+        Ok(()) => LockHolder::Free,
+        Err(std::fs::TryLockError::WouldBlock) => std::fs::read_to_string(data_dir.join("daemon.lock.owner"))
+            .ok()
+            .and_then(|t| t.lines().find_map(|l| l.strip_prefix("pid=").and_then(|p| p.trim().parse().ok())))
+            .map_or(LockHolder::Unknown, LockHolder::Pid),
+        Err(std::fs::TryLockError::Error(_)) => LockHolder::Unknown,
+    }
+}
+
+/// 새 데몬을 끝내는 차례 수 (서비스 관리자가 그사이 다시 띄울 수 있다)
+const STOP_ROUNDS: usize = 3;
+
+/// 되돌리기 전에 새 판 데몬을 모두 끝낸다: 감시가 본 새 프로세스(`seen`)와 데몬 잠금을 쥔 데몬 중 예전 데몬이 아닌 것.
+/// GUI·서비스 관리자가 띄운 새 데몬은 업데이터가 PID를 모르므로 잠금으로 찾는다. 잠금을 쥔 새 데몬이 남지 않아야 true:
+/// 그때만 파일과 스냅샷을 되돌린다(새 판 데몬이 잠금·포트를 쥔 채 이전 판 파일이 섞이지 않게). 러너·게임 서버는 건드리지 않는다
+pub fn stop_new_daemons(seen: Option<u32>, old_pid: Option<u32>, holder: impl Fn() -> LockHolder, stop: impl Fn(u32)) -> bool {
+    if let Some(pid) = seen.filter(|p| Some(*p) != old_pid) {
+        stop(pid);
+    }
+    for round in 0..=STOP_ROUNDS {
+        match holder() {
+            LockHolder::Free => return true,
+            LockHolder::Pid(pid) if Some(pid) == old_pid => return true,
+            LockHolder::Pid(pid) if round < STOP_ROUNDS => {
+                tracing::warn!("[Apply] Stopping the new daemon (PID {}) that holds the daemon lock", pid);
+                stop(pid);
+            }
+            LockHolder::Unknown if round < STOP_ROUNDS => std::thread::sleep(Duration::from_millis(500)),
+            _ => {}
+        }
+    }
+    false
 }
 
 // ═══════════════════════════════════════════════════════
@@ -576,6 +650,74 @@ mod tests {
         };
         assert!(wait_for_previous(Some(42), Duration::from_secs(5), exits_later, &marker));
         assert!(!marker.exists(), "nothing is recorded when the daemon exits in time");
+    }
+
+    // 파일을 바꾸지 않기로 한 뒤에는 예전 데몬이 끝나야 다시 띄운다. 끝나지 않으면 두 번째 데몬을 띄우지 않는다
+    #[test]
+    fn an_unchanged_relaunch_waits_for_the_previous_daemon_to_exit() {
+        assert!(LATE_EXIT_TIMEOUT >= Duration::from_secs(120), "a daemon shutdown can take well over 30 s");
+        assert!(may_relaunch_unchanged(None, Duration::from_millis(50), |_| true), "no PID: relaunch as before");
+        assert!(!may_relaunch_unchanged(Some(42), Duration::from_millis(50), |_| true), "still running: leave it");
+        let polls = Mutex::new(0);
+        let exits_later = |_| {
+            let mut n = polls.lock().unwrap();
+            *n += 1;
+            *n < 3
+        };
+        assert!(may_relaunch_unchanged(Some(42), Duration::from_secs(5), exits_later));
+    }
+
+    // 시간이 다 되면 그사이 답한 새 프로세스(판이 달라도)를 끝낼 것으로 넘긴다. 예전 데몬과 다시 띄우기 전에 뜬 것은 아니다
+    #[tokio::test]
+    async fn a_timeout_names_the_new_process_that_answered() {
+        let rule = HealthRule::StartedAfter { since_ms: 1_000, old_pid: Some(77) };
+        let starting = Script {
+            answers: Mutex::new(vec![Some(health("0.1.13", 77, Some(10))), Some(health("0.1.13", 600, Some(1_500)))]),
+            alive: Box::new(|_| true),
+        };
+        assert_eq!(watch(&starting, "0.1.14", &rule, limits()).await, WatchOutcome::Unhealthy { pid: Some(600), reason: "timeout" });
+        let before = Script { answers: Mutex::new(vec![Some(health("0.1.13", 600, Some(900)))]), alive: Box::new(|_| true) };
+        assert_eq!(watch(&before, "0.1.14", &rule, limits()).await, WatchOutcome::Unhealthy { pid: None, reason: "timeout" });
+    }
+
+    // 되돌리기 전: 감시가 본 새 프로세스와 잠금을 쥔 새 데몬을 끝내고, 잠금이 풀려야 되돌린다. 예전 데몬은 끝내지 않는다
+    #[test]
+    fn new_daemons_are_stopped_before_the_rollback() {
+        // 서비스 관리자가 띄운 새 데몬(PID 600)이 잠금을 쥐고 있다
+        let holder = Mutex::new(LockHolder::Pid(600));
+        let stopped = Mutex::new(Vec::new());
+        let gone = stop_new_daemons(None, Some(77), || *holder.lock().unwrap(), |pid| {
+            stopped.lock().unwrap().push(pid);
+            *holder.lock().unwrap() = LockHolder::Free;
+        });
+        assert!(gone);
+        assert_eq!(*stopped.lock().unwrap(), vec![600]);
+
+        // 감시가 본 것도 끝낸다. 예전 데몬 PID는 끝내지 않는다
+        let stopped = Mutex::new(Vec::new());
+        assert!(stop_new_daemons(Some(600), Some(77), || LockHolder::Free, |pid| stopped.lock().unwrap().push(pid)));
+        assert!(stop_new_daemons(Some(77), Some(77), || LockHolder::Pid(77), |pid| stopped.lock().unwrap().push(pid)));
+        assert_eq!(*stopped.lock().unwrap(), vec![600]);
+
+        // 끝내도 계속 새 데몬이 잠금을 쥐면(끝나지 않거나 관리자가 다시 띄움) 되돌리지 않는다
+        let stopped = Mutex::new(0);
+        assert!(!stop_new_daemons(None, Some(77), || LockHolder::Pid(600), |_| *stopped.lock().unwrap() += 1));
+        assert_eq!(*stopped.lock().unwrap(), STOP_ROUNDS);
+    }
+
+    // 잠금을 쥔 데몬은 데몬과 같은 잠금 파일로 찾는다
+    #[test]
+    fn the_daemon_lock_holder_is_read_from_the_lock_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Free, "no lock file");
+        let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(tmp.path().join("daemon.lock")).unwrap();
+        assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Free, "nobody holds it");
+        lock.lock().unwrap();
+        assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Unknown);
+        std::fs::write(tmp.path().join("daemon.lock.owner"), "pid=600\naddr=127.0.0.1:57474\n").unwrap();
+        assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Pid(600));
+        drop(lock);
+        assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Free);
     }
 
     fn health(version: &str, pid: u32, started_at_ms: Option<u64>) -> Health {

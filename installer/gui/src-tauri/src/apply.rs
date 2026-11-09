@@ -262,12 +262,16 @@ async fn watch_new_daemon(
             return true;
         }
         live_apply::WatchOutcome::Unhealthy { pid, reason } => {
-            if let Some(pid) = pid {
-                live_apply::stop_process(pid);
-            }
             // 직접 띄운 사바쨩 프로그램(데몬·GUI)만 끝낸다. 서비스 관리자 명령은 이미 끝났고 그 PID는 다른 프로세스일 수 있다
             if resolve_install_root_from_exe().is_some_and(|root| Path::new(&launched.cmd).starts_with(root)) {
                 live_apply::stop_process(launched.pid);
+            }
+            // GUI·서비스 관리자가 띄운 새 데몬은 PID를 모를 수 있다: 데몬 잠금을 쥔 것까지 끝낸 뒤에만 되돌린다
+            let data_dir = constants::resolve_data_dir();
+            if !live_apply::stop_new_daemons(pid, old_pid, || live_apply::daemon_lock_holder(&data_dir), live_apply::stop_process) {
+                tracing::error!("[Apply] A new daemon still holds the daemon lock; leaving {} in place instead of rolling back", live.target_version);
+                live.skip();
+                return false;
             }
             reason
         }
@@ -479,8 +483,8 @@ pub(crate) fn run(args: &[String]) {
         || after_apply.iter().take(relaunch_pos.unwrap_or(after_apply.len())).any(|a| a == "--headless");
 
     // 띄운 쪽(데몬) 종료 대기. PID를 모르면 예전처럼 잠깐만 기다린다.
-    // 30초 뒤에도 살아 있으면 파일을 바꾸지 않는다: 받아 둔 것은 그대로 두고 다시 띄운 것만 띄운다
-    // (예전 데몬이 아직 있으면 새로 띄운 데몬은 단일 인스턴스 잠금에 막혀 끝나고, GUI는 그 데몬에 붙는다)
+    // 30초 뒤에도 살아 있으면 파일을 바꾸지 않는다: 받아 둔 것은 그대로 두고, 예전 데몬이 마저 끝나면 다시 띄울 것만 띄운다
+    // (예전 데몬이 아직 있을 때 띄우면 새로 띄운 데몬은 단일 인스턴스 잠금에 막혀 끝나고, 그 뒤 예전 데몬도 끝난다)
     let wait_pid = after_apply
         .iter()
         .position(|a| a == "--wait-pid")
@@ -488,7 +492,7 @@ pub(crate) fn run(args: &[String]) {
         .and_then(|i| after_apply.get(i + 1))
         .and_then(|p| p.parse::<u32>().ok());
     if !live_apply::wait_for_previous(wait_pid, live_apply::WAIT_PID_TIMEOUT, saba_chan_updater_lib::ProcessChecker::is_pid_running, &UpdateCompletionMarker::path()) {
-        std::process::exit(relaunch_unchanged(headless, relaunch_exe, relaunch_extra));
+        std::process::exit(relaunch_unchanged(headless, relaunch_exe, relaunch_extra, wait_pid));
     }
 
     // install_root: exe 위치에서 자동 추론
@@ -571,7 +575,11 @@ fn after_apply() {
 }
 
 /// 파일을 바꾸지 않고 끝낼 때: 다시 띄울 것만 띄운다 (창 업데이터는 설치된 GUI도 찾는다). 종료 코드 1
-fn relaunch_unchanged(headless: bool, relaunch_exe: Option<String>, relaunch_extra: Vec<String>) -> i32 {
+/// 예전 데몬이 늦게라도 끝나야 다시 띄운다 (끝나지 않으면 그 데몬이 계속 돈다, `live_apply::may_relaunch_unchanged`)
+fn relaunch_unchanged(headless: bool, relaunch_exe: Option<String>, relaunch_extra: Vec<String>, wait_pid: Option<u32>) -> i32 {
+    if !live_apply::may_relaunch_unchanged(wait_pid, live_apply::LATE_EXIT_TIMEOUT, saba_chan_updater_lib::ProcessChecker::is_pid_running) {
+        return 1;
+    }
     #[cfg(feature = "window")]
     let gui = if headless { None } else { resolve_gui_exe() };
     #[cfg(not(feature = "window"))]

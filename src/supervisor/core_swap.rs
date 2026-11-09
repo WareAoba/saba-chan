@@ -27,6 +27,13 @@ pub enum CoreSwapBlockerKind {
     ModuleCall,
 }
 
+impl CoreSwapBlockerKind {
+    /// 데몬 작업(백업·설치·게임 서버 업데이트·모듈 호출)인가. 켜진 서버 때문이면 false
+    pub fn is_daemon_job(self) -> bool {
+        matches!(self, Self::Backup | Self::Provision | Self::ServerUpdate | Self::ModuleCall)
+    }
+}
+
 /// 교체를 막는 켜진 서버 하나 (`waiting_for` 항목과 같은 모양)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoreSwapBlocker {

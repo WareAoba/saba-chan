@@ -71,6 +71,12 @@ pub struct UpdateState {
     gui_window: Arc<std::sync::Mutex<Option<bool>>>,
     /// 내려가기 직전 릴레이에 "업데이트로 잠깐 끊김"을 알린다
     pub relay: Option<crate::relay_agent::RelayAgent>,
+    /// 확인 중인 heartbeat 판 번호. 확인이 성공해야 본 것(`LiveState::seen`)으로 남긴다
+    release_check: Arc<std::sync::Mutex<Option<std::collections::BTreeMap<String, u64>>>>,
+    /// 앱 업데이트 적용 반복이 도는 중인가 (`spawn_core_apply`, 한 번에 하나)
+    core_applying: Arc<std::sync::atomic::AtomicBool>,
+    /// 적용 반복이 새로 받아 볼 확인이 있었다: 반복이 다음 차례에 받고, 끝난 뒤에 왔으면 반복을 다시 띄운다
+    apply_recheck: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl UpdateState {
@@ -115,6 +121,9 @@ impl UpdateState {
             live_path: Arc::new(live_path),
             gui_window: Arc::default(),
             relay: None,
+            release_check: Arc::default(),
+            core_applying: Arc::default(),
+            apply_recheck: Arc::default(),
         }
     }
 
@@ -142,9 +151,13 @@ impl UpdateState {
         live.save_to(&self.live_path);
     }
 
-    /// 코어 업데이트가 막는 것을 기다리는 중이다: 새 예약 작업(백업·게임 서버 업데이트)은 업데이트 뒤로 미룬다
+    /// 코어 업데이트가 데몬 작업만 기다리는 중이다: 새 예약 작업(백업·게임 서버 업데이트)은 업데이트 뒤로 미룬다.
+    /// 켜진 서버를 기다리면 며칠이 걸릴 수 있으니 예약 작업은 그대로 돈다
     pub fn core_update_waiting(&self) -> bool {
-        self.phase().state == PhaseState::Waiting
+        let phase = self.phase();
+        phase.state == PhaseState::Waiting
+            && !phase.waiting_for.is_empty()
+            && phase.waiting_for.iter().all(|b| b.kind.is_daemon_job())
     }
 
     /// GUI 창이 보이는가: 등록된 GUI가 있고, GUI가 알린 창 상태(알린 적이 없으면 트레이 표시가 아님)가 열림이다.
@@ -157,15 +170,48 @@ impl UpdateState {
         any_gui && told.unwrap_or_else(|| !only_resident_guis(&list))
     }
 
-    /// heartbeat 판 번호 중 이 데몬이 보는 것이 지난번과 다른가. 다르면 새 값을 남긴다
-    fn note_release_ids(&self, ids: std::collections::BTreeMap<String, u64>) -> bool {
-        let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
-        if ids.is_empty() || live.seen == ids {
-            return false;
+    /// heartbeat 판 번호 중 이 데몬이 보는 것이 지난번 확인한 것과 다르고, 지금 확인 중인 것도 아니면 확인할 값.
+    /// 확인을 마치면 `finish_release_check`를 부른다
+    fn release_ids_to_check(&self, ids: std::collections::BTreeMap<String, u64>) -> Option<std::collections::BTreeMap<String, u64>> {
+        if ids.is_empty() || self.live.lock().unwrap_or_else(|e| e.into_inner()).seen == ids {
+            return None;
         }
-        live.seen = ids;
-        live.save_to(&self.live_path);
-        true
+        let mut checking = self.release_check.lock().unwrap_or_else(|e| e.into_inner());
+        if checking.is_some() {
+            return None;
+        }
+        *checking = Some(ids.clone());
+        Some(ids)
+    }
+
+    /// 판 번호 확인을 마쳤다. 성공했을 때만 본 것으로 남긴다: 실패·취소·꺼짐이면 다음 heartbeat가 다시 확인한다
+    fn finish_release_check(&self, ids: std::collections::BTreeMap<String, u64>, checked: bool) {
+        *self.release_check.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        if checked {
+            let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
+            live.seen = ids;
+            live.save_to(&self.live_path);
+        }
+    }
+
+    /// 적용 반복을 시작해도 되는가. 이미 돌고 있으면 그 반복이 새로 받아 보도록 남긴다
+    fn begin_core_apply(&self) -> bool {
+        use std::sync::atomic::Ordering;
+        // 먼저 남긴다: 반복이 막 끝나는 중이어도 `end_core_apply`가 이것을 본다
+        self.apply_recheck.store(true, Ordering::SeqCst);
+        !self.core_applying.swap(true, Ordering::SeqCst)
+    }
+
+    /// 적용 반복이 이번 차례에 새로 받아야 하는가 (받으면 지운다)
+    fn take_apply_recheck(&self) -> bool {
+        self.apply_recheck.swap(false, std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// 적용 반복이 끝났다. 마지막 차례 뒤에 확인이 왔으면 true (반복을 다시 띄운다)
+    fn end_core_apply(&self) -> bool {
+        use std::sync::atomic::Ordering;
+        self.core_applying.store(false, Ordering::SeqCst);
+        self.apply_recheck.swap(false, Ordering::SeqCst)
     }
 
     /// 핫로드를 위한 supervisor/extension_manager 참조 주입
@@ -470,22 +516,27 @@ const CORE_HOLD_RETRY: std::time::Duration = std::time::Duration::from_secs(30);
 const MODULE_CALL_SETTLE: std::time::Duration = std::time::Duration::from_secs(2);
 /// 릴레이에 알리는 업데이트로 끊길 시간(초). 릴레이는 여기에 2분을 더해 기다린다
 const UPDATING_ETA_SECS: u64 = 90;
-static CORE_APPLYING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// 앱 업데이트를 묻지 않고 적용한다: 받아 두고, 막는 것이 없으면 적용하고(데몬이 내려가야 하면 업데이터를 띄운다),
-/// 막는 것이 있으면 `waiting`으로 두고 30초마다 다시 본다. 자동으로 할 수 없으면 `ready`. 한 번에 하나만 돈다
+/// 막는 것이 있으면 `waiting`으로 두고 30초마다 다시 본다. 자동으로 할 수 없으면 `ready`. 한 번에 하나만 돈다.
+/// 도는 중에 다시 불리면(그사이 확인이 더 새 판을 찾았다) 도는 반복이 그 판을 받는다
 fn spawn_core_apply(state: UpdateState) {
-    use std::sync::atomic::Ordering;
-    if CORE_APPLYING.swap(true, Ordering::SeqCst) {
+    if !state.begin_core_apply() {
         return;
     }
     tokio::spawn(async move {
-        core_apply(&state).await;
-        CORE_APPLYING.store(false, Ordering::SeqCst);
+        loop {
+            core_apply(&state).await;
+            let stop = state.stop_requested.as_ref().is_some_and(|s| s.is_cancelled());
+            if !state.end_core_apply() || state.updater_launched() || stop || !state.begin_core_apply() {
+                break;
+            }
+        }
     });
 }
 
-async fn core_apply(state: &UpdateState) {
+/// 확인이 찾은 앱 구성요소 새 판 중 아직 받지 않은 것을 받는다
+async fn download_app_updates(state: &UpdateState) {
     use crate::ipc::internal::into_internal;
     let keys: Vec<String> = state.manager.read().await.get_status().components.iter()
         .filter(|c| c.update_available && !c.downloaded && update_phase::is_app_component(&c.component.manifest_key()))
@@ -497,10 +548,18 @@ async fn core_apply(state: &UpdateState) {
             tracing::warn!("[Updates] Could not download some updates: {:?}", errors);
         }
     }
+}
+
+async fn core_apply(state: &UpdateState) {
+    use crate::ipc::internal::into_internal;
     let stop = state.stop_requested.clone().unwrap_or_default();
     loop {
         if state.updater_launched() || stop.is_cancelled() {
             return;
+        }
+        // 처음 차례와, 기다리는 사이 확인이 더 새 판을 찾았을 때 받는다
+        if state.take_apply_recheck() {
+            download_app_updates(state).await;
         }
         let (decision, version, notes) = plan_core_apply(state).await;
         match decision {
@@ -734,20 +793,32 @@ pub fn on_latest_releases(state: &UpdateState, ids: &Value, shutdown: tokio_util
     tokio::spawn(async move {
         let channel = state.manager.read().await.get_config().channel;
         let watched = update_phase::watched_release_ids(&ids, &channel, crate::relay_agent::AGENT_VERSION);
-        if !state.note_release_ids(watched) {
+        let Some(checking) = state.release_ids_to_check(watched) else {
             return;
-        }
+        };
         let jitter = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_millis()) as u64 * 60;
-        tokio::select! {
-            _ = shutdown.cancelled() => return,
-            _ = tokio::time::sleep(std::time::Duration::from_millis(jitter)) => {}
+        let checked = async {
+            tokio::select! {
+                _ = shutdown.cancelled() => return false,
+                _ = tokio::time::sleep(std::time::Duration::from_millis(jitter)) => {}
+            }
+            if !state.manager.read().await.get_config().enabled {
+                return false;
+            }
+            tokio::select! {
+                _ = shutdown.cancelled() => false,
+                result = check_and_follow_up(&state) => match result {
+                    Ok(_) => true,
+                    Err(e) => {
+                        tracing::warn!("[Updates] Check after a new release id failed: {}", e);
+                        false
+                    }
+                },
+            }
         }
-        if !state.manager.read().await.get_config().enabled {
-            return;
-        }
-        if let Err(e) = check_and_follow_up(&state).await {
-            tracing::warn!("[Updates] Check after a new release id failed: {}", e);
-        }
+        .await;
+        // 성공한 확인만 본 것으로 남긴다: 실패·취소·꺼짐이면 다음 heartbeat가 같은 번호로 다시 확인한다
+        state.finish_release_check(checking, checked);
     });
 }
 
@@ -2183,14 +2254,25 @@ mod tests {
         assert_eq!(acked["phase"]["state"], "ready");
     }
 
-    /// 업데이트가 기다리는 동안에만 새 예약 작업을 미룬다
+    /// 업데이트가 데몬 작업만 기다리는 동안에만 새 예약 작업을 미룬다. 켜진 서버를 기다리면 예약 작업은 돈다
     #[test]
     fn scheduled_work_is_held_only_while_an_update_waits() {
+        use crate::supervisor::core_swap::{CoreSwapBlocker, CoreSwapBlockerKind as K};
+        let blocker = |kind| CoreSwapBlocker { kind, instance_id: "i".into(), name: "n".into() };
+        let waiting = |kinds: &[K]| Phase {
+            waiting_for: kinds.iter().map(|k| blocker(*k)).collect(),
+            ..Phase::new(PhaseState::Waiting, Some("0.1.14".into()), None)
+        };
         let tmp = tempfile::tempdir().unwrap();
         let state = state_in(tmp.path());
         assert!(!state.core_update_waiting());
-        let waiting = Phase { waiting_for: vec![], ..Phase::new(PhaseState::Waiting, Some("0.1.14".into()), None) };
-        state.set_phase(waiting);
+        state.set_phase(waiting(&[K::Backup, K::ModuleCall]));
+        assert!(state.core_update_waiting());
+        for server in [K::NonRunnerServer, K::ExtensionBridge, K::RunnerFormat] {
+            state.set_phase(waiting(&[K::Backup, server]));
+            assert!(!state.core_update_waiting(), "{server:?}");
+        }
+        state.set_phase(waiting(&[K::ServerUpdate, K::Provision]));
         assert!(state.core_update_waiting());
         state.set_phase(Phase::new(PhaseState::Applying, Some("0.1.14".into()), None));
         assert!(!state.core_update_waiting());
@@ -2216,16 +2298,43 @@ mod tests {
         assert!(!state.gui_window_open().await, "a GUI that went away has no window");
     }
 
-    /// 같은 heartbeat 판 번호는 다시 확인하지 않는다
+    /// 같은 heartbeat 판 번호는 다시 확인하지 않는다. 본 것으로 남기는 것은 확인이 성공한 뒤다:
+    /// 확인 중에는 같은 번호로 또 묻지 않고, 실패·취소·꺼짐이면 다음 heartbeat가 다시 확인한다
     #[test]
-    fn the_same_release_ids_do_not_trigger_another_check() {
+    fn release_ids_count_as_seen_only_after_a_successful_check() {
         let tmp = tempfile::tempdir().unwrap();
         let state = state_in(tmp.path());
         let ids = std::collections::BTreeMap::from([("stable".to_string(), 12u64)]);
-        assert!(state.note_release_ids(ids.clone()));
-        assert!(!state.note_release_ids(ids));
-        assert!(state.note_release_ids(std::collections::BTreeMap::from([("stable".to_string(), 13u64)])));
+        assert!(state.release_ids_to_check(std::collections::BTreeMap::new()).is_none());
+        let checking = state.release_ids_to_check(ids.clone()).expect("new ids are checked");
+        assert!(state.release_ids_to_check(ids.clone()).is_none(), "already being checked");
+        state.finish_release_check(checking, false);
+        assert!(LiveState::load_from(&tmp.path().join("live-update.json")).seen.is_empty());
+        let checking = state.release_ids_to_check(ids.clone()).expect("a failed check is tried again");
+        state.finish_release_check(checking, true);
+        assert!(state.release_ids_to_check(ids).is_none());
+        let newer = std::collections::BTreeMap::from([("stable".to_string(), 13u64)]);
+        let checking = state.release_ids_to_check(newer).unwrap();
+        state.finish_release_check(checking, true);
         assert_eq!(LiveState::load_from(&tmp.path().join("live-update.json")).seen["stable"], 13);
+    }
+
+    /// 적용 반복이 도는 중에 들어온 확인은 버려지지 않는다: 반복이 다음 차례에 새로 받고, 그 뒤에 왔으면 끝난 뒤 다시 돈다
+    #[test]
+    fn a_check_during_the_apply_loop_leaves_a_recheck() {
+        let state = UpdateState::new();
+        assert!(state.begin_core_apply(), "nothing running: start");
+        assert!(state.take_apply_recheck(), "the first round downloads");
+        assert!(!state.take_apply_recheck());
+        assert!(!state.begin_core_apply(), "one loop at a time");
+        assert!(state.take_apply_recheck(), "the running loop picks up the new check");
+        assert!(!state.end_core_apply(), "nothing came after the last round");
+        assert!(state.begin_core_apply());
+        assert!(!state.begin_core_apply());
+        let _ = state.take_apply_recheck();
+        assert!(!state.begin_core_apply());
+        assert!(state.end_core_apply(), "a check after the last round runs the loop again");
+        assert!(state.begin_core_apply());
     }
 
     /// 모르는 채널은 저장하지 않는다
