@@ -345,11 +345,14 @@ async fn replace_addons_once(state: &UpdateState) -> bool {
             Err(e) => tracing::warn!("[Updates] Could not download {} for replacement: {}", comp.manifest_key(), e),
         }
     }
+    // 여기부터 교체가 끝날 때까지 서버 시작을 막는다: 사용 확인과 교체 사이에 켜진 서버가 쓰던 판을 바꾸지 않게
+    let _starts = crate::supervisor::Supervisor::hold_starts().await;
     // 받는 사이에 켠 서버가 쓰는 것은 바꾸지 않고 다음 차례로 미룬다
     let (busy_modules, busy_extensions) = busy_addons(state).await;
     let (ready, started) = split_by_busy(downloaded, &busy_modules, &busy_extensions);
     let held = !held.is_empty() || !started.is_empty();
-    let keys: Vec<String> = ready.iter().map(Component::manifest_key).collect();
+    // 받는 사이에 사용자가 고치거나 넣은 파일이 있으면 두고 넘어간다: 교체가 폴더를 비운다
+    let keys: Vec<String> = ready.iter().map(Component::manifest_key).filter(|k| replaceable_without_asking(k)).collect();
     if !keys.is_empty() {
         tracing::info!("[Updates] Replacing {:?} without asking", keys);
         let _ = apply_updates_with(state.clone(), ApplyRequest { components: keys }).await;
