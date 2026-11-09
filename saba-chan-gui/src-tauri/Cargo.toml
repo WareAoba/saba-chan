@@ -48,7 +48,7 @@ saba-chan-updater-lib = { path = "../../updater", features = ["gtk"] }
 gtk = "0.18"
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0.55"
+winreg = "0.56"
 # 알림 플러그인과 같은 토스트 구현. 결과를 받아 기록하려고 직접 부른다
 tauri-winrt-notification = "0.8"
 # 효과음 (PlaySound, 실행 파일에 실은 wav)

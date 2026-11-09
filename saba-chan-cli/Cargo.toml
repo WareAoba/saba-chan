@@ -49,14 +49,14 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 # 로컬 MCP 서버 (`mcp`): 공식 Rust SDK, stdio만
 rmcp = { version = "3.9", default-features = false, features = ["server", "transport-io"] }
 # Codex 설정 파일(`agent link`)을 주석·다른 칸을 지키며 고친다
-toml_edit = "0.23"
+toml_edit = "0.25"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console"] }
-winreg = "0.55"
+winreg = "0.56"
 
 [features]
 # 개발용: `install`이 모의 릴레이(`SABA_RELAY_URL`, scripts/mock-release-server.js)에서 받는다. 릴리즈 빌드에는 켜지 않는다
