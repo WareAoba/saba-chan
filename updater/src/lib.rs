@@ -1350,7 +1350,9 @@ impl UpdateManager {
                     tracing::error!("[Updater] Cannot roll back {} from {}: {}", target.display(), backup.display(), e);
                     if moved {
                         // 새 판을 제자리에 돌려 둔다 (실행 파일이 없는 것보다 낫다)
-                        let _ = std::fs::rename(&aside, &target);
+                        if let Err(e) = std::fs::rename(&aside, &target) {
+                            tracing::error!("[Updater] Cannot put {} back from {}: {}", target.display(), aside.display(), e);
+                        }
                     }
                     rollback.pending.push((backup, target));
                 }
