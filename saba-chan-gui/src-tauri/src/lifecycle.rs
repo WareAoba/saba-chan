@@ -892,18 +892,36 @@ async fn check_for_updates(app: &AppHandle) {
         notice.names.len(),
         notice.names.join(", ")
     );
+    // 앱 구성요소(코어·GUI·CLI·업데이터)는 데몬이 묻지 않고 적용하고 상단 바 알약이 보인다: OS 알림은 모듈·익스텐션만
+    let addon_names: Vec<String> = notice.payload["components"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["update_available"].as_bool().unwrap_or(false))
+        .filter(|c| {
+            c["component"]
+                .as_str()
+                .is_some_and(|k| k.starts_with("module-") || k.starts_with("ext-"))
+        })
+        .filter_map(|c| c["display_name"].as_str().map(String::from))
+        .collect();
+    let addon_key = {
+        let mut sorted = addon_names.clone();
+        sorted.sort();
+        sorted.join("\0")
+    };
     // 확인과 기록을 한 잠금 안에서: 이벤트로 부른 확인과 주기 확인이 겹쳐도 한 번만 알린다
-    let is_new = {
+    let is_new = !addon_names.is_empty() && {
         let mut last = state.life.last_update_key.lock().unwrap();
-        let is_new = last.as_deref() != Some(notice.key.as_str());
+        let is_new = last.as_deref() != Some(addon_key.as_str());
         if is_new {
-            *last = Some(notice.key.clone());
+            *last = Some(addon_key.clone());
         }
         is_new
     };
     if is_new {
-        let count = notice.names.len().to_string();
-        let names = notice.names.join(", ");
+        let count = addon_names.len().to_string();
+        let names = addon_names.join(", ");
         show_notification(
             app,
             &state.t("updates.notification_title", &[]),
@@ -913,9 +931,8 @@ async fn check_for_updates(app: &AppHandle) {
         sounds::play(app, sounds::Cue::UpdateAvailable);
         sounds::request_attention(app);
     } else {
-        tracing::info!("[UpdateChecker] Skipping OS notification — same updates already notified");
+        tracing::info!("[UpdateChecker] Skipping OS notification — no new module or extension updates");
     }
-    // 적용은 사용자가 업데이트 센터에서 고른다
     emit_main(app, "updates:available", notice.payload);
 }
 

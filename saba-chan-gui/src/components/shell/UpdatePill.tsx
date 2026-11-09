@@ -103,8 +103,10 @@ export function UpdatePill() {
     const [asking, setAsking] = useState(false);
     const [allNotes, setAllNotes] = useState(false);
     const stateRef = useRef<State | null>(null);
-    // 지금 다시 시작을 누른 뒤: 데몬이 아직 '준비됨'이라 답해도 적용 중으로 둔다
-    const restarting = useRef(false);
+    // 지금 다시 시작을 누른 때(ms): 그 전에 정해진 '준비됨'은 아직 적용 중으로 둔다. 누른 뒤에 정해진 '준비됨'
+    // (되돌림·미룸으로 다시 뜬 데몬)이나 데몬이 내려갔다 돌아온 뒤의 답은 받아들인다
+    const restarting = useRef<number | null>(null);
+    const daemonWentDown = useRef(false);
     // 본 '완료': 데몬에 확인을 보냈고, 팝오버를 닫으면 사라진다
     const acked = useRef(false);
     const [dismissed, setDismissed] = useState(false);
@@ -112,6 +114,14 @@ export function UpdatePill() {
     const running = useServerStore((s) => s.servers.filter((x) => x.status === 'running').length);
     const nameOf = (id?: string) => useServerStore.getState().servers.find((s) => s.id === id)?.name || id || '';
 
+    // 누르기 전에 정해진 '준비됨'이 아직 오는 중인가
+    const stillRestarting = (next: Phase) => {
+        if (restarting.current === null || daemonWentDown.current) return false;
+        const since = next.since ? Date.parse(next.since) : Number.NaN;
+        return !(since > restarting.current);
+    };
+
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 한 번만 시작하는 읽기 반복이다 (참조는 ref로 본다)
     useEffect(() => {
         if (!window.api?.updaterStatus) return undefined;
         let alive = true;
@@ -125,8 +135,9 @@ export function UpdatePill() {
             }
             if (!alive) return;
             const next = readPhase(res);
-            if (next && !(restarting.current && next.state === 'ready')) {
-                if (next.state !== 'ready') restarting.current = false;
+            if (!next && restarting.current !== null) daemonWentDown.current = true;
+            if (next && !(next.state === 'ready' && stillRestarting(next))) {
+                restarting.current = null;
                 if (next.state !== 'done') {
                     acked.current = false;
                     setDismissed(false);
@@ -212,7 +223,8 @@ export function UpdatePill() {
             safeShowToast(t('update_pill.restart_failed', { error: res.error || '-' }), 'error', 6000);
             return;
         }
-        restarting.current = true;
+        restarting.current = Date.now();
+        daemonWentDown.current = false;
         stateRef.current = 'applying';
         setPhase((p) => (p ? { ...p, state: 'applying' } : p));
     };

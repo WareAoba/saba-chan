@@ -95,6 +95,54 @@ describe('업데이트 알약', () => {
         expect(await screen.findByText('Applying update...')).toBeTruthy();
     });
 
+    it('다시 시작한 뒤 데몬이 새로 준비됨을 주면(되돌림·미룸) 적용 중에 멈추지 않고 다시 준비됨을 보인다', async () => {
+        vi.useFakeTimers();
+        status.mockResolvedValue(phase('ready', { since: new Date(Date.now() - 60000).toISOString() }));
+        render(<UpdatePill />);
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(0);
+        });
+        fireEvent.click(screen.getByText('Update ready'));
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
+        });
+        // 누르기 전에 정해진 준비됨은 아직 적용 중으로 둔다
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(5000);
+        });
+        expect(screen.getByText('Applying update...')).toBeTruthy();
+        // 되돌린 데몬이 새로 정한 준비됨
+        status.mockResolvedValue(phase('ready', { reason: 'rolled_back', since: new Date(Date.now() + 1000).toISOString() }));
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(5000);
+        });
+        expect(screen.getByText('Update ready')).toBeTruthy();
+    });
+
+    it('다시 시작한 뒤 데몬이 내려갔다 돌아와 준비됨을 주면 그것을 보인다', async () => {
+        vi.useFakeTimers();
+        status.mockResolvedValue(phase('ready'));
+        render(<UpdatePill />);
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(0);
+        });
+        fireEvent.click(screen.getByText('Update ready'));
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
+        });
+        status
+            .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+            .mockResolvedValue(phase('ready', { reason: 'wait_pid_timeout' }));
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(5000);
+        });
+        expect(screen.getByText('Applying update...')).toBeTruthy();
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(5000);
+        });
+        expect(screen.getByText('Update ready')).toBeTruthy();
+    });
+
     it('데몬이 꺼진 동안(적용 중)엔 마지막 상태를 그대로 보인다', async () => {
         vi.useFakeTimers();
         status.mockResolvedValueOnce(phase('applying')).mockResolvedValue({ ok: false, error_code: 'ECONNREFUSED' });
