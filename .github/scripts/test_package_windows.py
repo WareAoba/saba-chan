@@ -48,6 +48,15 @@ class WindowsAssets(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 package_windows.package(d, d / "out")
 
+    def test_locales_alone_needs_no_executables(self):
+        # 부분 릴리즈: 번역만 바뀌면 빌드 작업 없이 locales.zip만 만든다
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            made = package_windows.package_locales(d / "out")
+            self.assertEqual([p.name for p in d.joinpath("out").iterdir()], ["locales.zip"])
+            with zipfile.ZipFile(made) as zf:
+                self.assertIn("ko/bot.json", zf.namelist())
+
 
 if __name__ == "__main__":
     unittest.main()
