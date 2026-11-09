@@ -339,6 +339,9 @@ fn same_file_path(a: &std::path::Path, b: &std::path::Path) -> bool {
     }
 }
 
+/// 서버 시작과 모듈·익스텐션 자동 교체가 겹치지 않게 하는 문 (`Supervisor::hold_starts`)
+static ADDON_SWAP_GATE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
+
 impl Supervisor {
     pub(crate) fn host_context(&self, id: &str) -> Option<crate::plugin::host::Context> {
         self.host_runtime.get().map(|runtime| runtime.for_instance(id))
@@ -973,6 +976,7 @@ impl Supervisor {
     ///
     /// managed 시작과 같이, 익스텐션 hook과 `get_launch_command`는 데몬 락 밖에서 부른다 (C12).
     pub async fn start_server(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
+        let _swap = ADDON_SWAP_GATE.read().await;
         tracing::info!("Starting server '{}' with module '{}'", server_name, module_name);
 
         let moved = {
@@ -1924,6 +1928,7 @@ impl Supervisor {
         module_name: &str,
         config: Value,
     ) -> Result<Value> {
+        let _swap = ADDON_SWAP_GATE.read().await;
         let moved = sup.write().await.move_reserved_default_rest_port(instance_id);
         let result = Self::start_managed_server_inner(sup, instance_id, module_name, config).await;
         Self::announce_ready(sup, instance_id, &result).await;
@@ -2163,6 +2168,12 @@ impl Supervisor {
     /// "켜져 있으면 거절" 판정은 모두 이것을 쓴다 (재부착 때 추적표 등록이 실패해 managed에만 남은 경우도 켜진 것이다)
     pub async fn is_running(&self, instance_id: &str) -> bool {
         self.tracker.get_pid(instance_id).is_ok() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
+    }
+
+    /// 서버 시작을 막는다: 모듈·익스텐션 자동 교체가 사용 확인부터 교체까지 쥔다. 진행 중인 시작이 끝나기를 기다린 뒤 돌려준다.
+    /// 시작(`start_server`·`start_managed_server`)은 처음부터 끝까지 읽기로 잡는다. 쥔 채로 서버를 시작하지 않는다
+    pub async fn hold_starts() -> tokio::sync::RwLockWriteGuard<'static, ()> {
+        ADDON_SWAP_GATE.write().await
     }
 
     /// 인스턴스가 쓰는 익스텐션: 인스턴스의 목록, 비어 있으면(옛 인스턴스) 모듈의 `[install] requires_extensions`
@@ -4383,6 +4394,29 @@ mod tests {
     }
 
     /// 크래시 직후(모니터가 치우기 전) 들어온 정지는 크래시로 기록하되 다시 켜지 않는다 (D-S6)
+    /// 모듈·익스텐션 자동 교체가 문을 쥔 동안 서버 시작은 기다린다: 교체 직전의 사용 확인과 교체 사이에 서버가 켜지지 않는다
+    #[tokio::test]
+    async fn starts_wait_while_addons_are_being_swapped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        supervisor.initialize().await.unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(supervisor));
+        let gate = Supervisor::hold_starts().await;
+        let managed = tokio::spawn({
+            let sup = sup.clone();
+            async move { Supervisor::start_managed_server(&sup, "none", "game", json!({})).await }
+        });
+        let plain = tokio::spawn({
+            let sup = sup.clone();
+            async move { Supervisor::start_server(&sup, "none", "game", json!({})).await }
+        });
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(!managed.is_finished() && !plain.is_finished(), "starts must wait for the swap");
+        drop(gate);
+        assert!(managed.await.unwrap().is_err(), "then it runs (no such instance here)");
+        let _ = plain.await.unwrap();
+    }
+
     /// 필수 익스텐션 목록이 빈 옛 인스턴스는 모듈의 `[install] requires_extensions`를 쓴다 (시작 검사와 자동 교체 보류가 같은 답)
     #[tokio::test]
     async fn an_instance_without_its_own_list_uses_the_module_requirements() {
