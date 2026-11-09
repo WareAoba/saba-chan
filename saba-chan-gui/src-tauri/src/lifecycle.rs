@@ -39,6 +39,8 @@ pub struct Lifecycle {
     daemon_updating: Mutex<Option<std::time::Instant>>,
     /// 트레이만 든 채 데몬이 없다고 본 heartbeat 수 (닿으면 0)
     daemon_missed_beats: AtomicU8,
+    /// 이 GUI가 데몬 종료를 요청했다 (다시 시작·트레이에서 끄기·앱 종료). 그 종료는 갑자기 꺼진 것이 아니다
+    daemon_stop_asked: AtomicBool,
     quitting: AtomicBool,
     client_id: Mutex<Option<String>>,
     last_status: Mutex<Option<Value>>,
@@ -319,20 +321,32 @@ pub fn daemon_running(app: &AppHandle) -> bool {
 
 /// 이 GUI가 띄운 데몬이 아직 살아 있는가 (끝났으면 놓는다)
 pub fn own_daemon_alive(app: &AppHandle) -> bool {
+    own_daemon_exit(app).is_none()
+}
+
+/// 이 GUI가 띄운 데몬이 끝났으면 놓고 그 종료 상태를 돌려준다 (돌고 있으면 None, 상태를 모르면 Some(None))
+fn own_daemon_exit(app: &AppHandle) -> Option<Option<std::process::ExitStatus>> {
     let state = app.state::<AppState>();
     let mut guard = state.life.child.lock().unwrap();
     match guard.as_mut().map(|c| c.try_wait()) {
-        Some(Ok(None)) => true,
+        Some(Ok(None)) => None,
         Some(Ok(Some(status))) => {
             tracing::info!("Core Daemon exited with {}", status);
             *guard = None;
-            false
+            Some(Some(status))
         }
         Some(Err(_)) | None => {
             *guard = None;
-            false
+            Some(None)
         }
     }
+}
+
+/// 데몬이 갑자기 꺼졌는가: 한 번은 답한(떠 있던) 데몬이 정상 종료(코드 0)가 아니게 끝났고,
+/// 이 GUI가 끄라고 하지 않았고(다시 시작·트레이·앱 종료), 업데이트가 갈아 끼우는 중도 아니다.
+/// 종료 요청(GUI·CLI)에 따른 데몬은 0으로 끝난다. 뜨다 실패한 것(이미 떠 있음 2 등)은 데몬 화면이 따로 알린다
+fn daemon_went_down(exit_ok: Option<bool>, was_up: bool, stop_asked: bool, quitting: bool, updating: bool) -> bool {
+    exit_ok != Some(true) && was_up && !stop_asked && !quitting && !updating
 }
 
 pub fn start_daemon(app: &AppHandle) {
@@ -397,6 +411,7 @@ pub fn start_daemon(app: &AppHandle) {
                 pipe_log(err);
             }
             *state.life.child.lock().unwrap() = Some(child);
+            state.life.daemon_stop_asked.store(false, Ordering::SeqCst);
             state.life.own_daemon_started(in_parent_job);
             watch_daemon_exit(app.clone(), pid);
         }
@@ -451,9 +466,10 @@ fn pipe_log<R: std::io::Read + Send + 'static>(r: R) {
     });
 }
 
-/// 데몬이 끝나면 놓고 트레이를 갱신한다
+/// 데몬이 끝나면 놓고 트레이를 갱신한다. 갑자기 꺼졌으면 효과음과 OS 알림으로 알린다
 fn watch_daemon_exit(app: AppHandle, pid: u32) {
     tauri::async_runtime::spawn(async move {
+        let mut was_up = false;
         loop {
             sleep(1000).await;
             let same = app
@@ -468,12 +484,42 @@ fn watch_daemon_exit(app: AppHandle, pid: u32) {
             if !same {
                 return;
             }
-            if !own_daemon_alive(&app) {
+            if !was_up {
+                was_up = health_ok(&app, 500).await;
+            }
+            if let Some(status) = own_daemon_exit(&app) {
                 tray::update_menu(&app);
+                let life = &app.state::<AppState>().life;
+                if daemon_went_down(
+                    status.map(|s| s.success()),
+                    was_up,
+                    life.daemon_stop_asked.load(Ordering::SeqCst),
+                    life.quitting.load(Ordering::SeqCst),
+                    life.daemon_updating(),
+                ) {
+                    notify_daemon_down(&app);
+                }
                 return;
             }
         }
     });
+}
+
+/// 사바쨩 본체가 갑자기 꺼졌다: 크래시 감시·자동 재시작·디스코드 연동이 멈춘다 (효과음 `DaemonDown`, OS 알림은 창이 앞에 없을 때)
+fn notify_daemon_down(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    tracing::warn!("[Daemon] Core Daemon went down unexpectedly");
+    sounds::play(app, sounds::Cue::DaemonDown);
+    if state.settings()["osNotifications"] == json!(false) {
+        return;
+    }
+    let in_front = app.get_webview_window(crate::window::MAIN).is_some_and(|w| {
+        w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(true) && w.is_focused().unwrap_or(false)
+    });
+    if !in_front {
+        let silent = sounds::toast_silent(&state.settings(), Some(sounds::Cue::DaemonDown));
+        show_notification(app, &state.t("notify.title", &[]), &state.t("notify.daemon_down", &[]), silent);
+    }
 }
 
 fn force_kill(child: &mut Child) {
@@ -499,6 +545,7 @@ fn force_kill(child: &mut Child) {
 /// 데몬이 종료 요청을 받아들였으면 true
 pub async fn stop_daemon(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
+    state.life.daemon_stop_asked.store(true, Ordering::SeqCst);
     let accepted = match state.client.post("/api/daemon/shutdown", &json!({}), 2000).await {
         Ok(_) => {
             tracing::info!("Daemon shutdown requested via API");
@@ -1130,6 +1177,22 @@ mod tests {
     fn a_tray_only_gui_reports_its_window_closed() {
         assert_eq!(gui_window_body(true), json!({ "open": false }));
         assert_eq!(gui_window_body(false), json!({ "open": true }));
+    }
+
+    /// 사바쨩 본체가 갑자기 꺼졌다고 알리는 것은 떠 있던 데몬이 비정상으로 끝났을 때뿐이다
+    #[test]
+    fn only_an_unexpected_daemon_exit_is_announced() {
+        // 크래시·작업 관리자 강제 종료(코드 1·101 등)·상태를 모르는 종료
+        assert!(daemon_went_down(Some(false), true, false, false, false));
+        assert!(daemon_went_down(None, true, false, false, false));
+        // 종료 요청(GUI·CLI)을 받은 데몬은 0으로 끝난다
+        assert!(!daemon_went_down(Some(true), true, false, false, false));
+        // 뜨다 실패한 데몬(이미 떠 있음 등)은 데몬 화면이 알린다
+        assert!(!daemon_went_down(Some(false), false, false, false, false));
+        // 이 GUI가 끄게 했거나(다시 시작·트레이) 앱을 끄는 중이거나 업데이트가 갈아 끼우는 중
+        assert!(!daemon_went_down(Some(false), true, true, false, false));
+        assert!(!daemon_went_down(Some(false), true, false, true, false));
+        assert!(!daemon_went_down(Some(false), true, false, false, true));
     }
 
     /// 데몬만 업데이트하고 다시 붙으면 완료를 한 번만 알린다 (재등록마다 쌓이지 않게)
