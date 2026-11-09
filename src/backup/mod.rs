@@ -785,7 +785,11 @@ pub fn list_checked(dir: &Path) -> io::Result<Vec<BackupInfo>> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(e),
     };
-    let mut out: Vec<BackupInfo> = entries.flatten().filter_map(|e| info(&e.path())).collect();
+    // 항목 하나를 읽지 못한 것도 오류다: 일부만 담은 목록을 전체로 보면 빠진 백업을 다시 살피지 않는다
+    let mut out: Vec<BackupInfo> = Vec::new();
+    for entry in entries {
+        out.extend(info(&entry?.path()));
+    }
     out.sort_by(|a, b| b.made.cmp(&a.made).then_with(|| b.name.cmp(&a.name)));
     Ok(out)
 }

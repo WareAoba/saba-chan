@@ -1130,6 +1130,24 @@ pub fn spawn_scheduler(state: IPCServer) {
     });
 }
 
+/// 인스턴스마다 하나: 정지가 쥐는 동안 복원 전 백업 정리는 들어오지 않고(다음 차례로 미룬다),
+/// 정리가 쥐는 동안 정지는 끝나기를 기다린다. 그래서 정리가 "돌고 있다"고 확인한 뒤 지우는 동안 서버가 멈추지 않는다
+static STOP_GATES: std::sync::LazyLock<Mutex<std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>>> = std::sync::LazyLock::new(Default::default);
+
+fn stop_gate_of(id: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    STOP_GATES.lock().unwrap_or_else(|e| e.into_inner()).entry(id.to_string()).or_default().clone()
+}
+
+/// 정지 경로가 정지가 끝날 때까지 쥔다
+pub(crate) async fn stop_gate(id: &str) -> tokio::sync::OwnedMutexGuard<()> {
+    stop_gate_of(id).lock_owned().await
+}
+
+/// 복원 전 백업 정리가 쥔다. 정지가 진행 중이면 `None`
+fn sweep_gate(id: &str) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+    stop_gate_of(id).try_lock_owned().ok()
+}
+
 /// 복원한 뒤 켠 서버가 15분 넘게 돌면 복원 직전 안전 백업을 치운다 (그동안 접속해 확인한다고 본다).
 /// 서버를 켜기 전이나 켠 지 15분 안에는 남겨 둔다. 켠 시각은 데몬이 다시 떠도 그대로라 상태를 따로 저장하지 않는다
 async fn sweep_restore_safeties(state: &IPCServer, swept: &mut std::collections::HashMap<String, u64>) {
@@ -1151,7 +1169,8 @@ async fn sweep_restore_safeties(state: &IPCServer, swept: &mut std::collections:
         }
         // 복원·백업·업데이트가 잡고 있으면 다음 차례에 다시 본다
         let Some(_guard) = InstanceLock::take(&id) else { continue };
-        // 목록을 모으는 동안 서버가 멈추거나 다시 켜졌을 수 있다: 지우기 직전에 켠 시각을 다시 읽는다
+        // 정지가 진행 중이면 다음 차례로 미루고, 지우는 동안에는 정지를 붙잡아 둔다
+        let Some(_stopping) = sweep_gate(&id) else { continue };
         let Some(started) = long_running(state, &id, saba_runner::now()).await else { continue };
         let Ok(dir) = backups_dir(state, &id).await else { continue };
         // 폴더를 읽지 못하거나 작업이 실패하면 빈 목록으로 보지 않고 다음 차례에 다시 시도한다
@@ -2717,5 +2736,19 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert_eq!(body["error_code"], "backup_failed_autosave_off", "{body}");
         assert_eq!(body["cause"], "backup_save_rejected", "{body}");
         assert_eq!(body["command"], "save-on", "{body}");
+    }
+
+    /// 정리가 쥐는 동안 정지는 기다리고, 정지가 쥐는 동안 정리는 들어오지 않는다
+    #[tokio::test]
+    async fn the_stop_gate_keeps_the_sweep_and_a_stop_apart() {
+        let id = "gate-test";
+        let stopping = stop_gate(id).await;
+        assert!(sweep_gate(id).is_none(), "a stop in progress keeps the sweep out");
+        drop(stopping);
+        let sweeping = sweep_gate(id).expect("free once the stop is done");
+        let waiting = tokio::time::timeout(std::time::Duration::from_millis(50), stop_gate(id)).await;
+        assert!(waiting.is_err(), "a stop waits while the sweep deletes");
+        drop(sweeping);
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(500), stop_gate(id)).await.is_ok());
     }
 }
