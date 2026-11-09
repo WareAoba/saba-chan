@@ -305,8 +305,11 @@ pub enum LockHolder {
 /// 지금 데몬 잠금을 쥔 데몬. 잠금을 잠깐 걸어 보고 걸리면 곧바로 푼다 (데몬의 `instance_lock`과 같은 파일·같은 잠금)
 pub fn daemon_lock_holder(data_dir: &Path) -> LockHolder {
     let path = data_dir.join("daemon.lock");
-    let Ok(file) = std::fs::OpenOptions::new().read(true).write(true).open(&path) else {
-        return LockHolder::Free;
+    let file = match std::fs::OpenOptions::new().read(true).write(true).open(&path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return LockHolder::Free,
+        // 열지 못했다(권한·폴더 등): 쥔 쪽을 모른다. 비어 있다고 보면 새 데몬이 쥔 채 되돌릴 수 있다
+        Err(_) => return LockHolder::Unknown,
     };
     match file.try_lock() {
         Ok(()) => LockHolder::Free,
@@ -347,11 +350,17 @@ pub fn stop_new_daemons(seen: Option<u32>, old_pid: Option<u32>, holder: impl Fn
 // 감시 중 표시
 // ═══════════════════════════════════════════════════════
 
-/// 감시를 시작한다고 적는다 (이 프로세스의 PID)
-pub fn begin_watch(staging_dir: &Path) {
+/// 감시를 시작한다고 적는다 (이 프로세스의 PID). 적지 못하면 오류: 그러면 새 데몬이 `.old`를 지워 되돌릴 수 없다
+pub fn begin_watch(staging_dir: &Path) -> std::io::Result<()> {
     let body = serde_json::json!({ "pid": std::process::id() }).to_string();
+    write_atomic(&staging_dir.join(WATCH_FILE), body.as_bytes())
+}
+
+/// 손으로 되살려야 하는 동안 `.old`를 붙잡아 둔다 (PID 없이 `hold`). 다음 적용의 `begin_watch`가 덮고, 그 적용이 끝나면 걷힌다
+pub fn hold_backups(staging_dir: &Path) {
+    let body = serde_json::json!({ "hold": true }).to_string();
     if let Err(e) = write_atomic(&staging_dir.join(WATCH_FILE), body.as_bytes()) {
-        tracing::warn!("[Apply] Cannot mark the health watch: {}", e);
+        tracing::error!("[Apply] Cannot hold the .old backups for the manual recovery: {}", e);
     }
 }
 
@@ -359,11 +368,15 @@ pub fn end_watch(staging_dir: &Path) {
     let _ = std::fs::remove_file(staging_dir.join(WATCH_FILE));
 }
 
-/// 업데이터가 아직 새 데몬을 지켜보는 중인가 (표시를 남긴 프로세스가 살아 있다). 그동안 `.old`는 되돌림에 쓴다
+/// 업데이터가 아직 새 데몬을 지켜보는 중인가 (표시를 남긴 프로세스가 살아 있다), 또는 손으로 되살릴 때까지 붙잡아 뒀는가
+/// (`hold_backups`). 그동안 `.old`는 되돌림에 쓴다
 pub fn watch_in_progress(staging_dir: &Path) -> bool {
     let Ok(text) = std::fs::read_to_string(staging_dir.join(WATCH_FILE)) else { return false };
-    serde_json::from_str::<serde_json::Value>(&text)
-        .ok()
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else { return false };
+    if value.get("hold").and_then(serde_json::Value::as_bool) == Some(true) {
+        return true;
+    }
+    Some(value)
         .and_then(|v| v.get("pid").and_then(|p| p.as_u64()))
         .and_then(|p| u32::try_from(p).ok())
         .is_some_and(ProcessChecker::is_pid_running)
@@ -390,14 +403,15 @@ impl DataSnapshot {
             .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+') { c } else { '_' })
             .collect();
         let name = if name.is_empty() || name.starts_with('.') { format!("v{name}") } else { name };
+        // 사본마다 새 이름이다: 앞서 남긴 사본(되살리지 못한 것, 끊긴 실행의 것)을 같은 판이라고 지우지 않는다
+        let stamp = now_ms();
+        let name = (0..)
+            .map(|n| if n == 0 { format!("{name}-{stamp}") } else { format!("{name}-{stamp}-{n}") })
+            .find(|n| !root.join(n).exists() && !root.join(format!("{n}.partial")).exists())
+            .unwrap_or_default();
         let dir = root.join(&name);
         // 다 뜬 뒤 이름을 바꾼다: `dir`이 있으면 언제나 온전한 사본이다
         let partial = root.join(format!("{name}.partial"));
-        for stale in [&partial, &dir] {
-            if stale.exists() {
-                std::fs::remove_dir_all(stale)?;
-            }
-        }
         create_private_dir(&root)?;
         create_private_dir(&partial)?;
         for file in SNAPSHOT_DATA_FILES {
@@ -437,21 +451,9 @@ impl DataSnapshot {
         Ok(())
     }
 
-    /// 복원하지 못한 사본을 남긴다: `<판>.kept-<시각>`으로 비켜 둬 같은 판의 다음 스냅샷이 지우지 않게 한다
+    /// 지우지 않고 남긴다 (옮기지 않는다: 옮기다 실패할 일이 없고, 다음 스냅샷은 새 이름이라 덮지 않는다)
     pub fn keep(self) -> KeptCopy {
-        let kept = self.dir.with_file_name(format!(
-            "{}.kept-{}",
-            self.dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-            now_ms()
-        ));
-        let dir = match std::fs::rename(&self.dir, &kept) {
-            Ok(()) => kept,
-            Err(e) => {
-                tracing::warn!("[Apply] Cannot rename the data snapshot {}: {}", self.dir.display(), e);
-                self.dir
-            }
-        };
-        let copy = KeptCopy { dir, data_dir: self.data_dir, instances_dir: self.instances_dir };
+        let copy = KeptCopy { dir: self.dir, data_dir: self.data_dir, instances_dir: self.instances_dir };
         tracing::error!("[Apply] The data snapshot is kept for a manual restore: {}", copy.restore_hint());
         copy
     }
@@ -594,7 +596,7 @@ pub async fn report_rolled_back(relay_url: Option<&str>, version: &str, channel:
 pub struct LiveApply {
     staging_dir: PathBuf,
     before: ExeBackups,
-    snapshot: Option<DataSnapshot>,
+    snapshot: DataSnapshot,
     pub from_version: String,
     /// 적용하는 코어 판 (`/health`로 견주고, 되돌리면 `failed_release`와 마커 `version`에 적는다)
     pub target_version: String,
@@ -604,14 +606,17 @@ pub struct LiveApply {
 
 impl LiveApply {
     /// 받아 둔 것 중 이번에 적용할 코어가 있으면 준비한다: 데이터 스냅샷, 지금 있는 `.old` 목록, 감시 표시.
-    /// 코어가 바뀌지 않으면 `Ok(None)`. 스냅샷을 뜨지 못하면 `Err`: 적용하지 않는다 (설치기가 마커에 `deferred`(`snapshot_failed`)를 남긴다)
+    /// 코어가 바뀌지 않으면 `Ok(None)`. 준비하지 못하면 `Err`: 적용하지 않는다 (설치기가 마커에 `deferred`(`snapshot_failed`)를 남긴다)
     pub fn prepare(manager: &mut UpdateManager, data_dir: &Path, instances_dir: &Path) -> Result<Option<Self>, String> {
         let Some((from_version, target_version)) = manager.staged_core_change() else { return Ok(None) };
         let release_version = manager.pending_release().map(|r| r.version);
-        Self::start(&manager.staging_dir, manager.exe_backups(), data_dir, instances_dir, from_version, target_version, release_version).map(Some)
+        // 적용 전 백업 목록을 읽지 못하면 되돌릴 때 이번 것과 예전 것을 가를 수 없다
+        let before = manager.try_exe_backups().map_err(|e| format!("Cannot list the exe backups: {e}"))?;
+        Self::start(&manager.staging_dir, before, data_dir, instances_dir, from_version, target_version, release_version).map(Some)
     }
 
-    /// 스냅샷을 뜨고 감시 표시를 남긴다. 스냅샷 없이 적용하면 새 데몬이 데이터를 바꾼 뒤 죽었을 때 실행 파일만 되돌아가므로 멈춘다
+    /// 스냅샷을 뜨고 감시 표시를 남긴다. 스냅샷 없이 적용하면 새 데몬이 데이터를 바꾼 뒤 죽었을 때 실행 파일만 되돌아가고,
+    /// 감시 표시가 없으면 새 데몬이 `.old`를 지워 되돌릴 수 없으므로 어느 쪽이든 실패하면 멈춘다
     pub fn start(
         staging_dir: &Path,
         before: ExeBackups,
@@ -622,8 +627,11 @@ impl LiveApply {
         release_version: Option<String>,
     ) -> Result<Self, String> {
         let snapshot = DataSnapshot::take(data_dir, instances_dir, &from_version).map_err(|e| format!("Cannot take the data snapshot: {e}"))?;
-        begin_watch(staging_dir);
-        Ok(Self { staging_dir: staging_dir.to_path_buf(), before, snapshot: Some(snapshot), from_version, target_version, release_version })
+        if let Err(e) = begin_watch(staging_dir) {
+            snapshot.discard();
+            return Err(format!("Cannot mark the health watch: {e}"));
+        }
+        Ok(Self { staging_dir: staging_dir.to_path_buf(), before, snapshot, from_version, target_version, release_version })
     }
 
     /// 되돌림을 릴레이에 알릴 판: 릴리즈 판, 모르면 코어 판
@@ -633,9 +641,7 @@ impl LiveApply {
 
     /// 새 데몬이 건강하다: 스냅샷과 이번 `.old`를 지운다
     pub fn healthy(self, manager: &UpdateManager) {
-        if let Some(s) = self.snapshot {
-            s.discard();
-        }
+        self.snapshot.discard();
         end_watch(&self.staging_dir);
         manager.cleanup_old_files();
     }
@@ -643,24 +649,25 @@ impl LiveApply {
     /// 지켜볼 것이 없다: 코어를 적용하지 못했거나(그 전에 멈췄거나 되돌려짐) 다시 띄운 것이 없다.
     /// `.old`는 예전처럼 다음 정리(`cleanup_old_files`)가 지운다
     pub fn skip(self) {
-        if let Some(s) = self.snapshot {
-            s.discard();
-        }
+        self.snapshot.discard();
         end_watch(&self.staging_dir);
     }
 
-    /// 새 데몬을 끝내지 못해 새 판을 그대로 둔다. 새 데몬이 이미 데이터를 바꿨을 수 있으니 사본은 지우지 않고 남긴다 (`keep`).
-    /// 적용 성공으로 남지 않게 완료 마커를 `success:false`·`result:"left_in_place"`·`reason`(감시 결과)과 사본 자리로 바꾼다
-    pub fn leave_in_place(self, marker_path: &Path, reason: &str) -> Option<KeptCopy> {
-        let kept = self.snapshot.map(DataSnapshot::keep);
+    /// 새 데몬을 끝내지 못해 새 판을 그대로 둔다. 새 데몬이 이미 데이터를 바꿨을 수 있으니 사본은 남기고(`keep`) `.old`는
+    /// 붙잡아 둔다(`hold_backups`). 완료 마커는 `success:false`·`result:"left_in_place"`·`reason`(감시 결과)과 되살리는 법으로 바꾼다:
+    /// 새 데몬 끝내기 → 실행 파일(백업 → 제자리) → 데이터
+    pub fn leave_in_place(self, manager: &UpdateManager, marker_path: &Path, reason: &str) -> Recovery {
+        let exes = manager.exe_rollbacks_since(&self.before).unwrap_or_else(|e| {
+            tracing::error!("[Apply] Cannot list the exe backups: {}", e);
+            Vec::new()
+        });
+        hold_backups(&self.staging_dir);
+        let recovery = Recovery { stop_first: true, missing_core: !has_core(&exes), exes, copy: self.snapshot.keep(), install_dir: manager.install_root.clone() };
         let previous = UpdateCompletionMarker::load_from(marker_path).unwrap_or_else(|| UpdateCompletionMarker::failure(String::new()));
         let marker = UpdateCompletionMarker {
             timestamp: chrono::Utc::now().to_rfc3339(),
             success: false,
-            message: Some(match &kept {
-                Some(k) => format!("{} did not start properly and could not be stopped; to undo, {}", self.target_version, k.restore_hint()),
-                None => format!("{} did not start properly and could not be stopped", self.target_version),
-            }),
+            message: Some(format!("{} did not start properly and could not be stopped; to undo, {}", self.target_version, recovery.restore_hint())),
             result: Some("left_in_place".into()),
             reason: Some(reason.into()),
             version: Some(self.target_version.clone()),
@@ -670,46 +677,105 @@ impl LiveApply {
         if let Err(e) = marker.save_to(marker_path) {
             tracing::error!("[Apply] Cannot record the failed update: {}", e);
         }
-        end_watch(&self.staging_dir);
-        kept
+        recovery
     }
 
     /// 새 데몬은 이미 끝냈다고 보고 되돌린다: 이번 묶음의 실행 파일 전부를 `.old`에서, 데이터를 스냅샷에서.
     /// 그다음 `failed_release`를 적고 완료 마커를 `rolled_back`으로 바꾼다 (이 순서: 스냅샷의 설정이 기록을 덮지 않게).
-    /// 데이터를 되돌리지 못했으면 사본을 남기고(`keep`) 마커의 `reason`을 `restore_failed`로 적은 뒤 그 자리를 준다:
-    /// 이전 판이 일부만 되돌린 데이터를 읽지 않게 호출자는 다시 띄우지 않는다
-    pub fn roll_back(self, manager: &UpdateManager, config: &ConfigFile, marker_path: &Path, reason: &str) -> Option<KeptCopy> {
-        let restored = manager.roll_back_exes_since(&self.before);
-        tracing::warn!("[Apply] Rolled back {} ({}): {:?}", self.target_version, reason, restored);
-        let mut kept = None;
-        let snapshot = self.snapshot.and_then(|snapshot| match snapshot.restore() {
-            Ok(()) => Some(snapshot),
+    /// 실행 파일(코어 백업이 없는 것 포함)이나 데이터를 되돌리지 못했으면 사본과 `.old`를 남기고 마커의 `reason`을
+    /// `restore_failed`로 적은 뒤 되살리는 법(`Recovery`)을 준다: 섞인 판을 띄우지 않게 호출자는 다시 띄우지 않는다
+    pub fn roll_back(self, manager: &UpdateManager, config: &ConfigFile, marker_path: &Path, reason: &str) -> Option<Recovery> {
+        let (exes, missing_core) = match manager.exe_rollbacks_since(&self.before) {
             Err(e) => {
-                tracing::error!("[Apply] Cannot restore the data snapshot {}: {}", snapshot.path().display(), e);
-                kept = Some(snapshot.keep());
-                None
+                tracing::error!("[Apply] Cannot list the exe backups to roll back: {}", e);
+                (Vec::new(), true)
             }
-        });
+            Ok(plan) => {
+                let missing_core = !has_core(&plan);
+                match manager.roll_back_exes_since(&self.before) {
+                    Ok(done) => {
+                        tracing::warn!("[Apply] Rolled back {} ({}): {:?}", self.target_version, reason, done.restored);
+                        (done.pending, missing_core)
+                    }
+                    Err(e) => {
+                        tracing::error!("[Apply] Cannot roll back the exes: {}", e);
+                        (plan, missing_core)
+                    }
+                }
+            }
+        };
+        // 실행 파일을 되돌리지 못했어도 데이터는 되돌려 둔다 (사람이 실행 파일만 옮기면 되게). 사본은 그때 남긴다
+        let data_restored = match self.snapshot.restore() {
+            Ok(()) => true,
+            Err(e) => {
+                tracing::error!("[Apply] Cannot restore the data snapshot {}: {}", self.snapshot.path().display(), e);
+                false
+            }
+        };
         if let Err(e) = record_failed_release(config, &self.target_version) {
             tracing::error!("[Apply] Cannot record the failed release {}: {}", self.target_version, e);
         }
         let previous = UpdateCompletionMarker::load_from(marker_path);
-        let marker = match &kept {
-            None => UpdateCompletionMarker::rolled_back(&self.target_version, reason, previous),
-            Some(path) => {
-                let mut m = UpdateCompletionMarker::rolled_back(&self.target_version, "restore_failed", previous);
-                m.message = Some(format!("Rolled back {} ({}) but could not restore the data; {}", self.target_version, reason, path.restore_hint()));
-                m
+        if data_restored && exes.is_empty() && !missing_core {
+            let marker = UpdateCompletionMarker::rolled_back(&self.target_version, reason, previous);
+            if let Err(e) = marker.save_to(marker_path) {
+                tracing::error!("[Apply] Cannot record the rollback: {}", e);
             }
-        };
+            self.snapshot.discard();
+            end_watch(&self.staging_dir);
+            return None;
+        }
+        hold_backups(&self.staging_dir);
+        let recovery = Recovery { stop_first: false, missing_core, exes, copy: self.snapshot.keep(), install_dir: manager.install_root.clone() };
+        let mut marker = UpdateCompletionMarker::rolled_back(&self.target_version, "restore_failed", previous);
+        marker.message = Some(format!("Could not fully roll back {} ({}); {}", self.target_version, reason, recovery.restore_hint()));
         if let Err(e) = marker.save_to(marker_path) {
             tracing::error!("[Apply] Cannot record the rollback: {}", e);
         }
-        if let Some(s) = snapshot {
-            s.discard();
+        Some(recovery)
+    }
+}
+
+/// 실행 파일 되돌리기 결과: 되돌린 것과, 되돌리지 못해 손으로 옮길 것 (백업 → 제자리)
+#[derive(Debug, Default, PartialEq)]
+pub struct ExeRollback {
+    pub restored: Vec<PathBuf>,
+    pub pending: Vec<(PathBuf, PathBuf)>,
+}
+
+/// 되돌릴 목록에 코어(`saba-core`)가 있는가
+fn has_core(exes: &[(PathBuf, PathBuf)]) -> bool {
+    exes.iter().any(|(_, target)| target.file_stem().is_some_and(|n| n == "saba-core"))
+}
+
+/// 자동으로 끝내지 못해 손으로 되살릴 것. 차례: (새 데몬 끝내기) → 실행 파일(백업 → 제자리) → 데이터(`copy`)
+#[derive(Debug, Clone, PartialEq)]
+pub struct Recovery {
+    /// 새 판 데몬이 아직 떠 있다: 먼저 사바쨩과 saba-core를 끝내야 한다
+    pub stop_first: bool,
+    /// 손으로 옮길 실행 파일 (백업 → 제자리)
+    pub exes: Vec<(PathBuf, PathBuf)>,
+    /// 코어 백업을 찾지 못했다 (이전 판 코어는 다시 설치해야 한다)
+    pub missing_core: bool,
+    pub copy: KeptCopy,
+    pub install_dir: PathBuf,
+}
+
+impl Recovery {
+    /// 마커·기록에 남기는 안내 (영어 원문, 화면은 번역한 문구를 쓴다)
+    pub fn restore_hint(&self) -> String {
+        let mut steps = Vec::new();
+        if self.stop_first {
+            steps.push("quit Saba-chan and end every saba-core process".to_string());
         }
-        end_watch(&self.staging_dir);
-        kept
+        for (backup, target) in &self.exes {
+            steps.push(format!("replace {} with {}", target.display(), backup.display()));
+        }
+        if self.missing_core {
+            steps.push(format!("no backup of saba-core was found in {}; reinstall the previous version", self.install_dir.display()));
+        }
+        steps.push(self.copy.restore_hint());
+        steps.join("; then ")
     }
 }
 
@@ -753,6 +819,11 @@ impl UpdateManager {
     /// 지금 설치 폴더에 있는 실행 파일 백업 (`old_exe_backups`)
     pub fn exe_backups(&self) -> ExeBackups {
         ExeBackups(self.old_exe_backups().into_iter().filter_map(|(path, ..)| file_id(&path).map(|id| (path, id))).collect())
+    }
+
+    /// `exe_backups`와 같되 설치 폴더를 읽지 못하면 오류
+    pub fn try_exe_backups(&self) -> std::io::Result<ExeBackups> {
+        Ok(ExeBackups(self.try_old_exe_backups()?.into_iter().filter_map(|(path, ..)| file_id(&path).map(|id| (path, id))).collect()))
     }
 }
 
@@ -901,6 +972,10 @@ mod tests {
         assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Pid(600));
         drop(lock);
         assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Free);
+        // Codex 4차 점검: 잠금 파일을 열지 못하면(없는 것이 아니라) 쥔 쪽을 모른다고 본다. 비어 있다고 보고 되돌리지 않는다
+        let odd = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(odd.path().join("daemon.lock")).unwrap();
+        assert_eq!(daemon_lock_holder(odd.path()), LockHolder::Unknown);
     }
 
     fn health(version: &str, pid: u32, started_at_ms: Option<u64>) -> Health {
@@ -1015,7 +1090,8 @@ mod tests {
         write(&inst.join(".saba-state/a/run/runner.json"), "runner");
 
         let snap = DataSnapshot::take(&data, &inst, "0.1.13").unwrap();
-        assert_eq!(snap.path(), data.join(SNAPSHOT_DIR).join("0.1.13"));
+        assert!(snap.path().starts_with(data.join(SNAPSHOT_DIR)));
+        assert!(snap.path().file_name().unwrap().to_string_lossy().starts_with("0.1.13-"), "a new name per copy");
         assert_eq!(
             files_under(snap.path()),
             vec![
@@ -1070,7 +1146,7 @@ mod tests {
         let live = LiveApply {
             staging_dir: manager.staging_dir.clone(),
             before: manager.exe_backups(),
-            snapshot: Some(DataSnapshot::take(&data, &inst, "0.1.13").unwrap()),
+            snapshot: DataSnapshot::take(&data, &inst, "0.1.13").unwrap(),
             from_version: "0.1.13".into(),
             target_version: "0.1.14".into(),
             release_version: Some("0.1.15".into()),
@@ -1144,18 +1220,18 @@ mod tests {
 
         // Codex 재리뷰: 복원 실패는 따로 알린다 (설치기는 이전 판을 다시 띄우지 않는다)
         let kept_at = kept_at.expect("the caller learns that the data was not restored");
-        assert!(kept_at.dir.join("data").join("config.json").is_file(), "{}", kept_at.dir.display());
+        assert!(kept_at.copy.dir.join("data").join("config.json").is_file(), "{}", kept_at.copy.dir.display());
         // Codex 3차 리뷰: 손으로 되살릴 곳은 `data/`→데이터 폴더, `instances/`→인스턴스 폴더 (따로 둔 인스턴스 폴더 포함)
-        assert_eq!((kept_at.data_dir.as_path(), kept_at.instances_dir.as_path()), (data.as_path(), inst.as_path()));
+        assert_eq!((kept_at.copy.data_dir.as_path(), kept_at.copy.instances_dir.as_path()), (data.as_path(), inst.as_path()));
         let m = UpdateCompletionMarker::load_from(&marker).unwrap();
         assert_eq!((m.result.as_deref(), m.reason.as_deref()), (Some("rolled_back"), Some("restore_failed")));
         let message = m.message.unwrap_or_default();
-        for place in [&kept_at.dir, &data, &inst] {
+        for place in [&kept_at.copy.dir, &data, &inst] {
             assert!(message.contains(&place.display().to_string()), "the marker names {}: {message}", place.display());
         }
         let kept = files_under(&data.join(SNAPSHOT_DIR));
         assert!(kept.iter().any(|f| f.ends_with("data/config.json")), "the copy is kept: {kept:?}");
-        assert!(!watch_in_progress(&manager.staging_dir));
+        assert!(watch_in_progress(&manager.staging_dir), "the .old backups are held for the manual recovery");
         // 같은 판의 다음 스냅샷이 남긴 사본을 덮지 않는다
         DataSnapshot::take(&data, &inst, "0.1.13").unwrap();
         assert!(files_under(&data.join(SNAPSHOT_DIR)).iter().any(|f| f.ends_with("data/config.json")));
@@ -1168,18 +1244,42 @@ mod tests {
         let data = tmp.path().join("data");
         let inst = data.join("instances");
         write(&data.join("config.json"), "{}");
-        let staging = tmp.path().join("staging");
+        let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+        manager.install_root = tmp.path().join("install");
+        manager.staging_dir = tmp.path().join("staging");
+        std::fs::create_dir_all(&manager.install_root).unwrap();
+        std::fs::create_dir_all(&manager.staging_dir).unwrap();
+        let (core, core_old) = if cfg!(windows) { ("saba-core.exe", "saba-core.exe.old") } else { ("saba-core", "saba-core.old") };
+        std::fs::write(manager.install_root.join(core), b"0.1.13").unwrap();
         let marker = data.join("update-complete.json");
         UpdateCompletionMarker::success(vec!["saba-core".into()]).save_to(&marker).unwrap();
-        let live = LiveApply::start(&staging, ExeBackups::default(), &data, &inst, "0.1.13".into(), "0.1.14".into(), None).unwrap();
-        let kept_at = live.leave_in_place(&marker, "timeout").expect("the copy is kept");
-        assert!(kept_at.dir.join("data").join("config.json").is_file());
-        assert!(!watch_in_progress(&staging));
+        let live =
+            LiveApply::start(&manager.staging_dir, manager.exe_backups(), &data, &inst, "0.1.13".into(), "0.1.14".into(), None).unwrap();
+        std::fs::rename(manager.install_root.join(core), manager.install_root.join(core_old)).unwrap();
+        std::fs::write(manager.install_root.join(core), b"0.1.14").unwrap();
+
+        let recovery = live.leave_in_place(&manager, &marker, "timeout");
+
+        assert!(recovery.copy.dir.join("data").join("config.json").is_file());
+        // Codex 4차 리뷰: 안내는 새 데몬 끝내기 → 실행 파일 되돌리기 → 데이터 차례다
+        assert!(recovery.stop_first);
+        assert_eq!(recovery.exes, vec![(manager.install_root.join(core_old), manager.install_root.join(core))]);
+        assert!(!recovery.missing_core);
+        // 안내가 가리키는 `.old`를 새 데몬의 정리가 지우지 않는다
+        assert!(watch_in_progress(&manager.staging_dir));
+        manager.cleanup_old_files();
+        assert!(manager.install_root.join(core_old).exists());
         // Codex 3차 리뷰: 적용 성공으로 남지 않는다. 실패와 사본 자리를 적는다
         let m = UpdateCompletionMarker::load_from(&marker).unwrap();
         assert!(!m.success);
         assert_eq!((m.result.as_deref(), m.reason.as_deref()), (Some("left_in_place"), Some("timeout")));
-        assert!(m.message.unwrap_or_default().contains(&kept_at.dir.display().to_string()));
+        let message = m.message.unwrap_or_default();
+        assert!(message.contains(&recovery.copy.dir.display().to_string()));
+        assert!(message.contains("end every saba-core process"), "{message}");
+        // 다음 적용이 감시를 새로 시작하면 붙잡음은 걷힌다
+        begin_watch(&manager.staging_dir).unwrap();
+        end_watch(&manager.staging_dir);
+        assert!(!watch_in_progress(&manager.staging_dir));
     }
 
     // Codex 3차 리뷰: 읽지 못한 것(권한·입출력 오류)을 없는 것으로 넘기지 않는다. 없는 것만 건너뛴다
@@ -1207,5 +1307,61 @@ mod tests {
         std::fs::remove_dir_all(snap.path().join("data")).unwrap();
         write(&snap.path().join("data"), "broken");
         assert!(snap.restore().is_err());
+    }
+
+    // Codex 4차 리뷰: 남긴 사본은 같은 판의 다음 스냅샷이 지우지 않는다. 사본마다 새 이름이고, 끊긴 실행이 남긴 온전한 사본도 남긴다
+    #[test]
+    fn snapshots_never_delete_an_earlier_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let inst = data.join("instances");
+        write(&data.join("config.json"), "{}");
+        let first = DataSnapshot::take(&data, &inst, "0.1.13").unwrap();
+        let first_dir = first.path().to_path_buf();
+        let kept = first.keep();
+        assert_eq!(kept.dir, first_dir, "keeping does not move the copy (a failed rename cannot lose it)");
+        let second = DataSnapshot::take(&data, &inst, "0.1.13").unwrap();
+        assert_ne!(second.path(), first_dir.as_path());
+        assert!(first_dir.join("data").join("config.json").is_file(), "the kept copy is still there");
+        second.discard();
+        assert!(first_dir.join("data").join("config.json").is_file());
+    }
+
+    // Codex 4차 점검: 감시 표시를 남기지 못하면 새 데몬이 `.old`를 지워 되돌릴 수 없으니 적용하지 않는다
+    #[test]
+    fn an_apply_that_cannot_mark_the_watch_does_not_start() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        write(&data.join("config.json"), "{}");
+        let staging = tmp.path().join("staging");
+        write(&staging, "not a folder");
+        assert!(LiveApply::start(&staging, ExeBackups::default(), &data, &data.join("instances"), "0.1.13".into(), "0.1.14".into(), None).is_err());
+    }
+
+    // Codex 4차 점검: 코어 실행 파일을 되돌리지 못하면 데이터만 되돌린 채 이전 판을 띄우지 않는다.
+    // 남은 실행 파일(백업 → 제자리)을 안내에 싣고, `.old`는 지우지 않게 붙잡아 둔다
+    #[test]
+    fn a_rollback_without_the_core_backup_needs_a_manual_recovery() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let inst = data.join("instances");
+        write(&data.join("config.json"), "{}");
+        let config = ConfigFile::at(&data);
+        let marker = data.join("update-complete.json");
+        let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+        manager.install_root = tmp.path().join("install");
+        manager.staging_dir = tmp.path().join("staging");
+        std::fs::create_dir_all(&manager.install_root).unwrap();
+        std::fs::create_dir_all(&manager.staging_dir).unwrap();
+        let live =
+            LiveApply::start(&manager.staging_dir, manager.exe_backups(), &data, &inst, "0.1.13".into(), "0.1.14".into(), None).unwrap();
+        // 적용이 코어를 비켜 두지 않았다 (백업이 없다)
+        let recovery = live.roll_back(&manager, &config, &marker, "timeout").expect("the old core is not back");
+        assert!(recovery.copy.dir.join("data").join("config.json").is_file());
+        let m = UpdateCompletionMarker::load_from(&marker).unwrap();
+        assert_eq!(m.reason.as_deref(), Some("restore_failed"));
+        assert!(m.message.unwrap_or_default().contains("saba-core"), "names the exe that was not restored");
+        assert!(recovery.missing_core);
+        assert!(watch_in_progress(&manager.staging_dir), "the .old backups are held for the manual recovery");
     }
 }

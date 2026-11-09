@@ -152,8 +152,8 @@ fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool, watch: W
                 Some(("apply:relaunch-failed", serde_json::Value::Null))
             }
             WindowEnd::RollbackRelaunchFailed => Some(("apply:rollback-relaunch-failed", serde_json::Value::Null)),
-            WindowEnd::RestoreFailed(kept) => Some(("apply:restore-failed", kept_payload(Some(&kept)))),
-            WindowEnd::LeftInPlace(kept) => Some(("apply:left-in-place", kept_payload(kept.as_ref()))),
+            WindowEnd::RestoreFailed(recovery) => Some(("apply:restore-failed", recovery_payload(&recovery))),
+            WindowEnd::LeftInPlace(recovery) => Some(("apply:left-in-place", recovery_payload(&recovery))),
         };
         if let Some((event, payload)) = failure {
             app_handle.emit(event, payload).ok();
@@ -301,8 +301,8 @@ async fn watch_new_daemon(
             if !live_apply::stop_new_daemons(pid, old_pid, || live_apply::daemon_lock_holder(&data_dir), live_apply::stop_process) {
                 tracing::error!("[Apply] A new daemon still holds the daemon lock; leaving {} in place instead of rolling back", live.target_version);
                 // 새 데몬이 이미 데이터를 바꿨을 수 있다: 사본은 남긴다
-                let kept = live.leave_in_place(&UpdateCompletionMarker::path(), reason);
-                return WatchEnd::LeftInPlace { kept };
+                let recovery = live.leave_in_place(manager, &UpdateCompletionMarker::path(), reason);
+                return WatchEnd::LeftInPlace { recovery };
             }
             reason
         }
@@ -336,10 +336,10 @@ enum WatchEnd {
     Healthy,
     /// 되돌렸다. 이전 판을 다시 띄웠는가
     RolledBack { relaunched: bool },
-    /// 실행 파일은 되돌렸지만 데이터를 되돌리지 못했다: 이전 판을 띄우지 않았고 사본을 `kept`에 남겼다
-    RestoreFailed { kept: live_apply::KeptCopy },
+    /// 실행 파일이나 데이터를 다 되돌리지 못했다: 섞인 판을 띄우지 않았고 되살리는 법을 남겼다
+    RestoreFailed { recovery: live_apply::Recovery },
     /// 새 데몬을 끝내지 못해 새 판을 그대로 뒀다 (사본은 남겼다)
-    LeftInPlace { kept: Option<live_apply::KeptCopy> },
+    LeftInPlace { recovery: live_apply::Recovery },
 }
 
 /// 창 업데이터가 끝에 할 일
@@ -352,9 +352,9 @@ enum WindowEnd {
     /// 되돌렸지만 이전 판을 다시 띄우지 못했다
     RollbackRelaunchFailed,
     /// 데이터를 되돌리지 못했다 (사본 자리)
-    RestoreFailed(live_apply::KeptCopy),
+    RestoreFailed(live_apply::Recovery),
     /// 새 데몬이 건강하지 않은데 끝내지 못해 그대로 뒀다 (사본 자리)
-    LeftInPlace(Option<live_apply::KeptCopy>),
+    LeftInPlace(live_apply::Recovery),
     /// 적용 실패 화면을 남긴다
     StayOnError,
 }
@@ -362,9 +362,9 @@ enum WindowEnd {
 #[cfg_attr(not(feature = "window"), allow(dead_code))]
 fn window_end(end: &WatchEnd, applied: bool, relaunched: bool, has_target: bool) -> WindowEnd {
     match end {
-        WatchEnd::RestoreFailed { kept } => WindowEnd::RestoreFailed(kept.clone()),
+        WatchEnd::RestoreFailed { recovery } => WindowEnd::RestoreFailed(recovery.clone()),
         WatchEnd::RolledBack { relaunched: false } => WindowEnd::RollbackRelaunchFailed,
-        WatchEnd::LeftInPlace { kept } => WindowEnd::LeftInPlace(kept.clone()),
+        WatchEnd::LeftInPlace { recovery } => WindowEnd::LeftInPlace(recovery.clone()),
         WatchEnd::RolledBack { relaunched: true } => WindowEnd::Exit,
         WatchEnd::Healthy if !applied => WindowEnd::StayOnError,
         WatchEnd::Healthy if relaunched || !has_target => WindowEnd::Exit,
@@ -372,15 +372,24 @@ fn window_end(end: &WatchEnd, applied: bool, relaunched: bool, has_target: bool)
     }
 }
 
-/// 남긴 사본을 화면에 넘기는 모양: 사본의 두 갈래(`data`·`instances`)와 각각 되살릴 곳 (사본이 없으면 빈 객체)
+/// 되살리는 법을 화면에 넘기는 모양. 화면은 이 차례로 안내한다: (새 데몬 끝내기 `stop`) → 실행 파일(`exes`의 `from` → `to`,
+/// 코어 백업이 없으면 `missingCore`) → 데이터(사본의 `data`→`dataDir`, `instances`→`instancesDir`)
 #[cfg_attr(not(feature = "window"), allow(dead_code))]
-fn kept_payload(kept: Option<&live_apply::KeptCopy>) -> serde_json::Value {
-    let Some(k) = kept else { return serde_json::json!({}) };
+fn recovery_payload(r: &live_apply::Recovery) -> serde_json::Value {
+    let exes: Vec<_> = r
+        .exes
+        .iter()
+        .map(|(from, to)| serde_json::json!({ "from": from.display().to_string(), "to": to.display().to_string() }))
+        .collect();
     serde_json::json!({
-        "data": k.dir.join("data").display().to_string(),
-        "dataDir": k.data_dir.display().to_string(),
-        "instances": k.dir.join("instances").display().to_string(),
-        "instancesDir": k.instances_dir.display().to_string(),
+        "stop": r.stop_first,
+        "exes": exes,
+        "missingCore": r.missing_core,
+        "installDir": r.install_dir.display().to_string(),
+        "data": r.copy.dir.join("data").display().to_string(),
+        "dataDir": r.copy.data_dir.display().to_string(),
+        "instances": r.copy.dir.join("instances").display().to_string(),
+        "instancesDir": r.copy.instances_dir.display().to_string(),
     })
 }
 
@@ -390,12 +399,12 @@ async fn roll_back_and_relaunch(live: LiveApply, manager: &UpdateManager, reason
     let config = saba_chan_updater_lib::config_file::ConfigFile::default_location();
     // 릴레이는 되돌림을 릴리즈마다 센다 (부분 릴리즈의 코어 판은 릴리즈 판과 다르다)
     let version = live.report_version().to_string();
-    let kept = live.roll_back(manager, &config, &UpdateCompletionMarker::path(), reason);
+    let recovery = live.roll_back(manager, &config, &UpdateCompletionMarker::path(), reason);
     let saved = live_apply::saved_update_config(&config);
     live_apply::report_rolled_back(saved.relay_url.as_deref(), &version, &saved.channel).await;
-    if let Some(kept) = kept {
-        tracing::error!("[Apply] Not relaunching the previous version: the data was not restored ({})", kept.restore_hint());
-        return WatchEnd::RestoreFailed { kept };
+    if let Some(recovery) = recovery {
+        tracing::error!("[Apply] Not relaunching the previous version: the rollback is incomplete ({})", recovery.restore_hint());
+        return WatchEnd::RestoreFailed { recovery };
     }
     let (exe, extra) = rollback_relaunch(target.exe, target.extra);
     let relaunched = relaunch_now(exe, extra, target.gui, false).await.is_some();
@@ -772,19 +781,28 @@ mod tests {
         assert_eq!(window_end(&ok, false, true, true), WindowEnd::StayOnError);
         assert_eq!(window_end(&WatchEnd::RolledBack { relaunched: true }, true, true, true), WindowEnd::Exit);
         assert_eq!(window_end(&WatchEnd::RolledBack { relaunched: false }, true, false, true), WindowEnd::RollbackRelaunchFailed);
-        let kept = live_apply::KeptCopy {
-            dir: "/data/update-snapshot/0.1.13.kept-1".into(),
-            data_dir: "/data".into(),
-            instances_dir: "/srv/instances".into(),
+        let recovery = live_apply::Recovery {
+            stop_first: true,
+            exes: vec![("/opt/saba/saba-core.old".into(), "/opt/saba/saba-core".into())],
+            missing_core: false,
+            copy: live_apply::KeptCopy {
+                dir: "/data/update-snapshot/0.1.13-1".into(),
+                data_dir: "/data".into(),
+                instances_dir: "/srv/instances".into(),
+            },
+            install_dir: "/opt/saba".into(),
         };
-        assert_eq!(window_end(&WatchEnd::RestoreFailed { kept: kept.clone() }, true, true, true), WindowEnd::RestoreFailed(kept.clone()));
+        assert_eq!(window_end(&WatchEnd::RestoreFailed { recovery: recovery.clone() }, true, true, true), WindowEnd::RestoreFailed(recovery.clone()));
         // Codex 3차 리뷰: 새 데몬을 끝내지 못해 새 판을 둔 것도 성공처럼 닫지 않고 알린다
-        assert_eq!(window_end(&WatchEnd::LeftInPlace { kept: Some(kept.clone()) }, true, true, true), WindowEnd::LeftInPlace(Some(kept.clone())));
-        // 화면에는 사본의 두 갈래와 각각 되살릴 곳을 싣는다 (따로 둔 인스턴스 폴더 포함)
-        let payload = kept_payload(Some(&kept));
-        assert_eq!(payload["data"], "/data/update-snapshot/0.1.13.kept-1/data");
+        assert_eq!(window_end(&WatchEnd::LeftInPlace { recovery: recovery.clone() }, true, true, true), WindowEnd::LeftInPlace(recovery.clone()));
+        // 화면에는 끝내기 → 실행 파일 → 데이터(두 갈래와 각각 되살릴 곳, 따로 둔 인스턴스 폴더 포함)를 싣는다
+        let payload = recovery_payload(&recovery);
+        assert_eq!(payload["stop"], true);
+        assert_eq!(payload["exes"][0]["from"], "/opt/saba/saba-core.old");
+        assert_eq!(payload["exes"][0]["to"], "/opt/saba/saba-core");
+        assert_eq!(payload["data"], "/data/update-snapshot/0.1.13-1/data");
         assert_eq!(payload["dataDir"], "/data");
-        assert_eq!(payload["instances"], "/data/update-snapshot/0.1.13.kept-1/instances");
+        assert_eq!(payload["instances"], "/data/update-snapshot/0.1.13-1/instances");
         assert_eq!(payload["instancesDir"], "/srv/instances");
     }
 

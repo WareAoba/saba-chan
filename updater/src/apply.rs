@@ -411,9 +411,12 @@ impl UpdateManager {
             return Ok(Some(backup));
         } else if cfg!(unix) && Self::is_known_binary(out_path) {
             let backup = out_path.with_extension("old");
-            if std::fs::rename(out_path, &backup).is_ok() {
-                return Ok(Some(backup));
+            // 비켜 두지 못하면 덮어쓰지 않는다: 백업 없이 덮으면 새 데몬이 건강하지 않을 때 되돌릴 수 없다
+            if let Err(e) = std::fs::rename(out_path, &backup) {
+                tracing::error!("[Updater] Cannot move {} aside: {}", out_path.display(), e);
+                anyhow::bail!("Cannot replace {}: {}", out_path.display(), e);
             }
+            return Ok(Some(backup));
         }
         Ok(None)
     }

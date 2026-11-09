@@ -1278,9 +1278,18 @@ impl UpdateManager {
     /// Unix는 확장자 없는 바이너리를 비켜 둔 `<이름>.old` (`move_aside`).
     /// (경로, 실행 파일 이름, 번호(`.old`는 0), GUI인가)
     fn old_exe_backups(&self) -> Vec<(PathBuf, String, u32, bool)> {
-        let Ok(entries) = std::fs::read_dir(&self.install_root) else { return Vec::new() };
+        self.try_old_exe_backups().unwrap_or_else(|e| {
+            tracing::warn!("[Updater] Cannot list {}: {}", self.install_root.display(), e);
+            Vec::new()
+        })
+    }
+
+    /// `old_exe_backups`와 같되 설치 폴더(와 그 항목)를 읽지 못하면 오류
+    pub(crate) fn try_old_exe_backups(&self) -> std::io::Result<Vec<(PathBuf, String, u32, bool)>> {
+        let entries = std::fs::read_dir(&self.install_root)?;
         let mut found = Vec::new();
-        for path in entries.flatten().map(|e| e.path()) {
+        for entry in entries {
+            let path = entry?.path();
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
             if let Some(exe) = name.strip_suffix(".old").filter(|_| cfg!(unix)).filter(|exe| Self::is_known_binary(Path::new(exe))) {
                 found.push((path.clone(), exe.to_string(), 0, GUI_EXE_NAMES.contains(&exe)));
@@ -1297,7 +1306,7 @@ impl UpdateManager {
                 found.push((path.clone(), format!("{stem}.exe"), number, gui));
             }
         }
-        found
+        Ok(found)
     }
 
     /// 실행 파일이 아예 없는 것: 비켜 둔 뒤 새 판을 두기 전에 적용이 끊겼다. 가장 최근 사본(번호가 가장 큰 것)을 되돌린다.
@@ -1325,9 +1334,52 @@ impl UpdateManager {
     /// 새 데몬이 건강하지 않을 때: `before`(적용 전 목록)에 없던 백업, 곧 이번 적용이 비켜 둔 실행 파일을 모두 되돌린다
     /// (`restore_moved_aside_exes`를 넓힌 것. 그쪽은 실행 파일이 아예 없을 때만 되돌린다).
     /// 새 파일은 `<exe>.rolled-back`으로 비켜 두고 지운다(아직 쥐고 있으면 남는다). 되돌린 실행 파일 경로를 돌려준다
-    pub fn roll_back_exes_since(&self, before: &live_apply::ExeBackups) -> Vec<PathBuf> {
+    pub fn roll_back_exes_since(&self, before: &live_apply::ExeBackups) -> std::io::Result<live_apply::ExeRollback> {
+        let mut rollback = live_apply::ExeRollback::default();
+        for (backup, target) in self.exe_rollbacks_since(before)? {
+            // 새 판은 비켜 두기만 하고, 백업을 제자리에 놓은 뒤에 지운다: 어느 단계가 실패해도 실행 파일이 없어지지 않는다
+            let mut name = target.file_name().unwrap_or_default().to_os_string();
+            name.push(".rolled-back");
+            let aside = target.with_file_name(name);
+            let moved = if target.exists() {
+                let _ = std::fs::remove_file(&aside);
+                match std::fs::rename(&target, &aside) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        tracing::error!("[Updater] Cannot move {} aside to roll back: {}", target.display(), e);
+                        rollback.pending.push((backup, target));
+                        continue;
+                    }
+                }
+            } else {
+                false
+            };
+            match std::fs::rename(&backup, &target) {
+                Ok(()) => {
+                    tracing::warn!("[Updater] Rolled back {} from {}", target.display(), backup.display());
+                    if moved {
+                        let _ = std::fs::remove_file(&aside);
+                    }
+                    rollback.restored.push(target);
+                }
+                Err(e) => {
+                    tracing::error!("[Updater] Cannot roll back {} from {}: {}", target.display(), backup.display(), e);
+                    if moved {
+                        // 새 판을 제자리에 돌려 둔다 (실행 파일이 없는 것보다 낫다)
+                        let _ = std::fs::rename(&aside, &target);
+                    }
+                    rollback.pending.push((backup, target));
+                }
+            }
+        }
+        Ok(rollback)
+    }
+
+    /// 이번 적용이 비켜 둔 실행 파일마다 (가장 최근 백업, 제자리). 적용 전 목록(`before`)에 있던 백업은 고르지 않는다.
+    /// 설치 폴더를 읽지 못하면 오류 (빈 목록으로 보고 되돌림을 건너뛰지 않는다)
+    pub fn exe_rollbacks_since(&self, before: &live_apply::ExeBackups) -> std::io::Result<Vec<(PathBuf, PathBuf)>> {
         let mut latest: HashMap<String, (PathBuf, u32)> = HashMap::new();
-        for (path, exe, number, _) in self.old_exe_backups() {
+        for (path, exe, number, _) in self.try_old_exe_backups()? {
             if before.contains(&path, live_apply::backup_id(&path)) {
                 continue;
             }
@@ -1335,29 +1387,9 @@ impl UpdateManager {
                 latest.insert(exe, (path, number));
             }
         }
-        let mut restored = Vec::new();
-        for (exe, (backup, _)) in latest {
-            let target = self.install_root.join(&exe);
-            if target.exists() {
-                let mut name = target.file_name().unwrap_or_default().to_os_string();
-                name.push(".rolled-back");
-                let aside = target.with_file_name(name);
-                let _ = std::fs::remove_file(&aside);
-                if let Err(e) = std::fs::rename(&target, &aside).or_else(|_| std::fs::remove_file(&target)) {
-                    tracing::error!("[Updater] Cannot move {} aside to roll back: {}", target.display(), e);
-                    continue;
-                }
-                let _ = std::fs::remove_file(&aside);
-            }
-            match std::fs::rename(&backup, &target) {
-                Ok(()) => {
-                    tracing::warn!("[Updater] Rolled back {} from {}", target.display(), backup.display());
-                    restored.push(target);
-                }
-                Err(e) => tracing::error!("[Updater] Cannot roll back {} from {}: {}", target.display(), backup.display(), e),
-            }
-        }
-        restored
+        let mut pairs: Vec<(PathBuf, PathBuf)> = latest.into_iter().map(|(exe, (backup, _))| (backup, self.install_root.join(exe))).collect();
+        pairs.sort();
+        Ok(pairs)
     }
 
     /// 업데이트가 남긴 사바쨩 실행 파일 백업(`old_exe_backups`)을 지운다 (설치 폴더 바로 안만).

@@ -1724,6 +1724,18 @@ fn moved_aside(name: &str) -> (String, String) {
     if cfg!(windows) { (format!("{name}.exe"), format!("{name}.exe.old")) } else { (name.to_string(), format!("{name}.old")) }
 }
 
+// Codex 4차 점검: 실행 파일을 비켜 두지 못하면 덮어쓰지 않고 실패한다 (백업 없이 덮으면 되돌릴 수 없다)
+#[cfg(unix)]
+#[test]
+fn a_binary_that_cannot_be_moved_aside_is_not_overwritten() {
+    let tmp = tempfile::tempdir().unwrap();
+    let exe = tmp.path().join("saba-core");
+    std::fs::write(&exe, b"old").unwrap();
+    std::fs::create_dir_all(tmp.path().join("saba-core.old").join("x")).unwrap();
+    assert!(UpdateManager::move_aside(&exe).is_err());
+    assert_eq!(std::fs::read(&exe).unwrap(), b"old");
+}
+
 // C(W1): 되돌릴 때는 이번 적용이 비켜 둔 실행 파일만 모두 되돌린다. 적용 전부터 있던 백업(지난 업데이트 뒤로 도는 러너 등)은 건드리지 않는다
 #[test]
 fn a_rollback_restores_only_the_exes_this_apply_moved_aside() {
@@ -1742,13 +1754,39 @@ fn a_rollback_restores_only_the_exes_this_apply_moved_aside() {
     std::fs::rename(tmp.path().join(&core), tmp.path().join(&core_old)).unwrap();
     std::fs::write(tmp.path().join(&core), b"core new").unwrap();
 
-    let restored = manager.roll_back_exes_since(&before);
+    let rollback = manager.roll_back_exes_since(&before).unwrap();
 
-    assert_eq!(restored, vec![tmp.path().join(&core)]);
+    assert_eq!(rollback.restored, vec![tmp.path().join(&core)]);
+    assert!(rollback.pending.is_empty());
     assert_eq!(std::fs::read(tmp.path().join(&core)).unwrap(), b"core old");
     assert!(!tmp.path().join(&core_old).exists());
     assert_eq!(std::fs::read(tmp.path().join(&cli)).unwrap(), b"cli now", "a backup from before stays where it is");
     assert!(tmp.path().join(&cli_old).exists());
+}
+
+// Codex 4차 점검: 실행 파일을 되돌리지 못하면 성공으로 넘기지 않고 남은 것(백업 → 제자리)을 알린다.
+// 새 판을 먼저 지우지 않는다 (예전처럼 비키기에 실패하면 지우고 나서 백업 옮기기도 실패하면 실행 파일이 아예 없어진다)
+#[test]
+fn a_rollback_that_cannot_move_the_new_exe_aside_reports_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().to_path_buf();
+    let (core, core_old) = moved_aside("saba-core");
+    std::fs::write(tmp.path().join(&core), b"core old").unwrap();
+    let before = manager.exe_backups();
+    std::fs::rename(tmp.path().join(&core), tmp.path().join(&core_old)).unwrap();
+    std::fs::write(tmp.path().join(&core), b"core new").unwrap();
+    // 비켜 둘 자리에 지울 수 없는 것(비지 않은 폴더)이 있다
+    let mut aside = core.clone();
+    aside.push_str(".rolled-back");
+    std::fs::create_dir_all(tmp.path().join(&aside).join("x")).unwrap();
+
+    let rollback = manager.roll_back_exes_since(&before).unwrap();
+
+    assert!(rollback.restored.is_empty());
+    assert_eq!(rollback.pending, vec![(tmp.path().join(&core_old), tmp.path().join(&core))]);
+    assert_eq!(std::fs::read(tmp.path().join(&core)).unwrap(), b"core new", "the new exe is not deleted");
+    assert_eq!(std::fs::read(tmp.path().join(&core_old)).unwrap(), b"core old");
 }
 
 // C(W1): 업데이터가 새 데몬을 지켜보는 동안에는 새 데몬이 `.old`를 지우지 않는다 (되돌림에 쓴다)
