@@ -252,8 +252,36 @@ fn trust_at(records: &Path, official: &Path, component_key: &str, dir: &Path) ->
     Trust::Verified
 }
 
+/// 묻지 않고 폴더를 통째로 바꿔도 되는가: 카탈로그 그대로(Verified)이고, 설치 기록에 없는 파일이 하나도 없다.
+/// 신뢰 표시는 코드가 아닌 파일을 보지 않지만, 교체는 폴더를 비우므로 사용자가 넣은 설정·데이터 파일도 지운다.
+/// 교체가 남기는 것(맨 위의 점 항목, `__pycache__`, `replace_dir`)은 세지 않는다
+pub fn replaceable_in_place(component_key: &str, dir: &Path) -> bool {
+    replaceable_at(&records_path(), &official_path(), component_key, dir)
+}
+
+fn replaceable_at(records: &Path, official: &Path, component_key: &str, dir: &Path) -> bool {
+    if trust_at(records, official, component_key, dir) != Trust::Verified {
+        return false;
+    }
+    let records = load_records(records);
+    records.get(component_key).is_some_and(|files| !has_unrecorded(dir, files, Unrecorded::AnyFile))
+}
+
 /// 설치 기록에 없는 코드 파일이 폴더에 있나 (`__pycache__`는 데몬이 읽지 않으므로 뺀다)
 fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool {
+    has_unrecorded(dir, recorded, Unrecorded::Code)
+}
+
+/// 기록에 없는 것 중 무엇을 셀까
+#[derive(Clone, Copy, PartialEq)]
+enum Unrecorded {
+    /// Python이 불러올 수 있는 파일만
+    Code,
+    /// 모든 파일 (폴더 교체가 남기는 맨 위의 점 항목은 빼고)
+    AnyFile,
+}
+
+fn has_unrecorded(dir: &Path, recorded: &BTreeMap<String, String>, what: Unrecorded) -> bool {
     // 기록의 경로와 폴더 경로가 다른 모양(상대 경로, `\\?\` 접두사, `/`, 드라이브 글자)일 수 있다.
     // 글자로 맞춘 모양과 실제 위치(canonicalize) 둘 다로 비교한다. 실제 위치만 쓰면 파일과 폴더가
     // 다른 곳으로 풀리는 환경(Windows 앱 패키지의 AppData 가상화)에서 모든 코드가 기록에 없는 것으로 보인다
@@ -263,17 +291,20 @@ fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool 
         known.extend(path_key(file));
         known.extend(std::fs::canonicalize(file).ok().and_then(|p| path_key(&p)));
     }
-    fn walk(dir: &Path, known: &BTreeSet<String>) -> bool {
+    fn walk(dir: &Path, known: &BTreeSet<String>, what: Unrecorded, top: bool) -> bool {
         let Ok(entries) = std::fs::read_dir(dir) else { return false };
         entries.flatten().any(|entry| {
             let path = entry.path();
             let Ok(kind) = entry.file_type() else { return false };
+            if what == Unrecorded::AnyFile && top && entry.file_name().to_string_lossy().starts_with('.') {
+                return false;
+            }
             // 설치 기록은 링크를 적지 않는다. 링크는 폴더 밖 코드를 끌어올 수 있으니 바뀐 것으로 본다
             if kind.is_symlink() {
                 return true;
             }
             if kind.is_dir() {
-                return entry.file_name() != "__pycache__" && walk(&path, known);
+                return entry.file_name() != "__pycache__" && walk(&path, known, what, false);
             }
             let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
             let code = path
@@ -285,10 +316,10 @@ fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool 
                 path_key(&path).is_some_and(|k| known.contains(&k))
                     || std::fs::canonicalize(&path).ok().and_then(|p| path_key(&p)).is_some_and(|k| known.contains(&k))
             };
-            code && !is_known()
+            (code || what == Unrecorded::AnyFile) && !is_known()
         })
     }
-    walk(dir, &known)
+    walk(dir, &known, what, true)
 }
 
 /// 경로를 비교용 글자로 (절대 경로, `\\?\` 접두사 제거, Windows는 `\`와 드라이브 글자만 대문자로).
@@ -596,6 +627,38 @@ mod tests {
         assert_eq!(trust("module-x"), Trust::Unverified);
         assert_eq!(trust("ext-none"), Trust::Unverified);
         assert_eq!(serde_json::to_value(Trust::Modified).unwrap(), "modified");
+    }
+
+    /// Codex #926: 자동 교체는 폴더를 통째로 바꾼다. 사용자가 넣은 파일(설정 등)이 있으면 코드가 아니어도 바꾸지 않는다.
+    /// 교체가 남기는 것(맨 위의 점 항목, `__pycache__`)은 상관없다
+    #[test]
+    fn a_folder_with_user_files_is_not_replaced_in_place() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (records, official) = (tmp.path().join("installed-files.json"), tmp.path().join("official.json"));
+        let dir = tmp.path().join("x");
+        std::fs::create_dir(&dir).unwrap();
+        let a = dir.join("lifecycle.py");
+        std::fs::write(&a, b"one").unwrap();
+        record_install_at(&records, "module-x", std::slice::from_ref(&a)).unwrap();
+        set_official_at(&official, "module-x", true).unwrap();
+        let replaceable = || replaceable_at(&records, &official, "module-x", &dir);
+        assert!(replaceable());
+        std::fs::create_dir(dir.join("__pycache__")).unwrap();
+        std::fs::write(dir.join("__pycache__/lifecycle.cpython-312.pyc"), b"x").unwrap();
+        std::fs::create_dir(dir.join(".git")).unwrap();
+        std::fs::write(dir.join(".git/HEAD"), b"x").unwrap();
+        assert!(replaceable());
+        std::fs::write(dir.join("server.properties"), b"x").unwrap();
+        assert_eq!(trust_at(&records, &official, "module-x", &dir), Trust::Verified);
+        assert!(!replaceable());
+        std::fs::remove_file(dir.join("server.properties")).unwrap();
+        std::fs::create_dir(dir.join("data")).unwrap();
+        std::fs::write(dir.join("data/.keep"), b"x").unwrap();
+        assert!(!replaceable());
+        std::fs::remove_dir_all(dir.join("data")).unwrap();
+        assert!(replaceable());
+        std::fs::write(&a, b"changed").unwrap();
+        assert!(!replaceable());
     }
 
     #[test]
