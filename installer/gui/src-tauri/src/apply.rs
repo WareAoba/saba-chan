@@ -137,17 +137,27 @@ fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool, watch: W
         let Watch { live, core_applied, manager } = watch;
         let manager = manager.read().await;
         let target = Relaunch { exe: relaunch_exe, extra: relaunch_extra, gui };
-        // 건강하지 않으면 되돌리고 이전 판을 이미 다시 띄웠다 (새 판을 띄우지 못한 경우도)
-        let healthy = watch_new_daemon(live, &manager, core_applied, launched, wait_pid, since_ms, target).await;
+        let end = watch_new_daemon(live, &manager, core_applied, launched, wait_pid, since_ms, target).await;
 
-        if applied && (relaunched || !has_target || !healthy) {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            app_handle.exit(0);
-        } else if applied {
+        let failure = match window_end(&end, applied, relaunched, has_target) {
+            WindowEnd::Exit => {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                app_handle.exit(0);
+                return;
+            }
+            WindowEnd::StayOnError => None,
             // 파일은 바꿨지만 앱(데몬·GUI)이 꺼진 채 남는다: 창을 닫지 않고 직접 실행하라고 알린다
-            tracing::error!("[Apply] Update applied but the app could not be relaunched");
-            app_handle.emit("apply:relaunch-failed", ()).ok();
+            WindowEnd::RelaunchFailed => {
+                tracing::error!("[Apply] Update applied but the app could not be relaunched");
+                Some(("apply:relaunch-failed", serde_json::Value::Null))
+            }
+            WindowEnd::RollbackRelaunchFailed => Some(("apply:rollback-relaunch-failed", serde_json::Value::Null)),
+            WindowEnd::RestoreFailed(kept) => Some(("apply:restore-failed", serde_json::json!({ "path": kept.display().to_string() }))),
+        };
+        if let Some((event, payload)) = failure {
+            app_handle.emit(event, payload).ok();
             if let Some(win) = app_handle.get_webview_window("main") {
+                win.show().ok();
                 win.set_always_on_top(true).ok();
                 win.set_focus().ok();
             }
@@ -248,8 +258,8 @@ fn rollback_relaunch(exe: Option<String>, mut extra: Vec<String>) -> (Option<Str
     (exe, extra)
 }
 
-/// 코어를 바꿨으면 새 데몬을 지켜본다. 건강하면 스냅샷과 `.old`를 지우고 true. 건강하지 않으면 새 데몬(과 함께 띄운 GUI)을
-/// 끝내고 되돌린 뒤 릴레이에 한 번 알리고 이전 판을 다시 띄운 뒤 false. 지켜볼 것이 없으면 true
+/// 코어를 바꿨으면 새 데몬을 지켜본다. 건강하면 스냅샷과 `.old`를 지운다. 건강하지 않으면 새 데몬(과 함께 띄운 GUI)을
+/// 끝내고 되돌린 뒤 릴레이에 한 번 알리고 이전 판을 다시 띄운다 (데이터를 되돌리지 못했으면 띄우지 않는다)
 async fn watch_new_daemon(
     live: Option<LiveApply>,
     manager: &UpdateManager,
@@ -258,13 +268,13 @@ async fn watch_new_daemon(
     old_pid: Option<u32>,
     since_ms: u64,
     target: Relaunch,
-) -> bool {
-    let Some(live) = live else { return true };
+) -> WatchEnd {
+    let Some(live) = live else { return WatchEnd::Healthy };
     let has_target = target.exe.is_some() || target.gui.is_some();
     let launched = match watch_plan(core_applied, launched, has_target) {
         WatchPlan::Skip => {
             live.skip();
-            return true;
+            return WatchEnd::Healthy;
         }
         WatchPlan::Watch(launched) => launched,
         WatchPlan::RollBack => {
@@ -278,7 +288,7 @@ async fn watch_new_daemon(
         live_apply::WatchOutcome::Healthy { pid } => {
             tracing::info!("[Apply] The new daemon is healthy (PID {})", pid);
             live.healthy(manager);
-            return true;
+            return WatchEnd::Healthy;
         }
         live_apply::WatchOutcome::Unhealthy { pid, reason } => {
             // 직접 띄운 사바쨩 프로그램(데몬·GUI)만 끝낸다. 서비스 관리자 명령은 이미 끝났고 그 PID는 다른 프로세스일 수 있다
@@ -289,8 +299,9 @@ async fn watch_new_daemon(
             let data_dir = constants::resolve_data_dir();
             if !live_apply::stop_new_daemons(pid, old_pid, || live_apply::daemon_lock_holder(&data_dir), live_apply::stop_process) {
                 tracing::error!("[Apply] A new daemon still holds the daemon lock; leaving {} in place instead of rolling back", live.target_version);
-                live.skip();
-                return false;
+                // 새 데몬이 이미 데이터를 바꿨을 수 있다: 사본은 남긴다
+                live.leave_in_place();
+                return WatchEnd::LeftInPlace;
             }
             reason
         }
@@ -317,19 +328,65 @@ fn watch_plan(core_applied: bool, launched: Option<Launched>, has_target: bool) 
     }
 }
 
-/// 되돌리고 릴레이에 한 번 알린 뒤 이전 판을 다시 띄운다. 언제나 false
-async fn roll_back_and_relaunch(live: LiveApply, manager: &UpdateManager, reason: &str, target: Relaunch) -> bool {
+/// 지켜본 끝
+#[derive(Debug, PartialEq)]
+enum WatchEnd {
+    /// 새 데몬이 건강하거나 지켜볼 것이 없다
+    Healthy,
+    /// 되돌렸다. 이전 판을 다시 띄웠는가
+    RolledBack { relaunched: bool },
+    /// 실행 파일은 되돌렸지만 데이터를 되돌리지 못했다: 이전 판을 띄우지 않았고 사본을 `kept`에 남겼다
+    RestoreFailed { kept: PathBuf },
+    /// 새 데몬을 끝내지 못해 새 판을 그대로 뒀다 (사본은 남겼다)
+    LeftInPlace,
+}
+
+/// 창 업데이터가 끝에 할 일
+#[derive(Debug, PartialEq)]
+#[cfg_attr(not(feature = "window"), allow(dead_code))]
+enum WindowEnd {
+    Exit,
+    /// 적용은 됐지만 아무것도 다시 띄우지 못했다
+    RelaunchFailed,
+    /// 되돌렸지만 이전 판을 다시 띄우지 못했다
+    RollbackRelaunchFailed,
+    /// 데이터를 되돌리지 못했다 (사본 자리)
+    RestoreFailed(PathBuf),
+    /// 적용 실패 화면을 남긴다
+    StayOnError,
+}
+
+#[cfg_attr(not(feature = "window"), allow(dead_code))]
+fn window_end(end: &WatchEnd, applied: bool, relaunched: bool, has_target: bool) -> WindowEnd {
+    match end {
+        WatchEnd::RestoreFailed { kept } => WindowEnd::RestoreFailed(kept.clone()),
+        WatchEnd::RolledBack { relaunched: false } => WindowEnd::RollbackRelaunchFailed,
+        WatchEnd::RolledBack { relaunched: true } | WatchEnd::LeftInPlace => WindowEnd::Exit,
+        WatchEnd::Healthy if !applied => WindowEnd::StayOnError,
+        WatchEnd::Healthy if relaunched || !has_target => WindowEnd::Exit,
+        WatchEnd::Healthy => WindowEnd::RelaunchFailed,
+    }
+}
+
+/// 되돌리고 릴레이에 한 번 알린 뒤 이전 판을 다시 띄운다. 데이터를 되돌리지 못했으면 일부만 되돌린 데이터를
+/// 이전 판이 읽지 않게 띄우지 않는다
+async fn roll_back_and_relaunch(live: LiveApply, manager: &UpdateManager, reason: &str, target: Relaunch) -> WatchEnd {
     let config = saba_chan_updater_lib::config_file::ConfigFile::default_location();
     // 릴레이는 되돌림을 릴리즈마다 센다 (부분 릴리즈의 코어 판은 릴리즈 판과 다르다)
     let version = live.report_version().to_string();
-    live.roll_back(manager, &config, &UpdateCompletionMarker::path(), reason);
+    let kept = live.roll_back(manager, &config, &UpdateCompletionMarker::path(), reason);
     let saved = live_apply::saved_update_config(&config);
     live_apply::report_rolled_back(saved.relay_url.as_deref(), &version, &saved.channel).await;
+    if let Some(kept) = kept {
+        tracing::error!("[Apply] Not relaunching the previous version: the data was not restored (copy at {})", kept.display());
+        return WatchEnd::RestoreFailed { kept };
+    }
     let (exe, extra) = rollback_relaunch(target.exe, target.extra);
-    if relaunch_now(exe, extra, target.gui, false).await.is_none() {
+    let relaunched = relaunch_now(exe, extra, target.gui, false).await.is_some();
+    if !relaunched {
         tracing::error!("[Apply] The previous version could not be relaunched after the rollback");
     }
-    false
+    WatchEnd::RolledBack { relaunched }
 }
 
 /// 다시 띄우는 것에 `--after-update`를 붙이는가: 설치 폴더의 사바쨩 프로그램만. 서비스 관리자(`systemctl`) 같은
@@ -680,14 +737,29 @@ fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaun
         };
         let relaunched = relaunch_exe.is_none() || launched.is_some();
         let target = Relaunch { exe: relaunch_exe, extra: relaunch_extra, gui: None };
-        let healthy = watch_new_daemon(live, &manager, core_applied, launched, wait_pid, since_ms, target).await;
-        if applied && relaunched && healthy { 0 } else { 1 }
+        let end = watch_new_daemon(live, &manager, core_applied, launched, wait_pid, since_ms, target).await;
+        if applied && relaunched && end == WatchEnd::Healthy { 0 } else { 1 }
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Codex 재리뷰: 되돌린 이전 판까지 띄우지 못했거나 데이터를 되돌리지 못했으면 창을 닫지 않고 알린다
+    #[test]
+    fn the_window_stays_open_when_the_rollback_cannot_finish() {
+        let ok = WatchEnd::Healthy;
+        assert_eq!(window_end(&ok, true, true, true), WindowEnd::Exit);
+        assert_eq!(window_end(&ok, true, false, true), WindowEnd::RelaunchFailed, "applied but nothing came back up");
+        assert_eq!(window_end(&ok, true, false, false), WindowEnd::Exit, "nothing was meant to be relaunched");
+        assert_eq!(window_end(&ok, false, true, true), WindowEnd::StayOnError);
+        assert_eq!(window_end(&WatchEnd::RolledBack { relaunched: true }, true, true, true), WindowEnd::Exit);
+        assert_eq!(window_end(&WatchEnd::RolledBack { relaunched: false }, true, false, true), WindowEnd::RollbackRelaunchFailed);
+        let kept = std::path::PathBuf::from("/data/update-snapshot/0.1.13.kept-1");
+        assert_eq!(window_end(&WatchEnd::RestoreFailed { kept: kept.clone() }, true, true, true), WindowEnd::RestoreFailed(kept));
+        assert_eq!(window_end(&WatchEnd::LeftInPlace, true, true, true), WindowEnd::Exit);
+    }
 
     // Codex 리뷰: 코어를 바꾼 뒤 다시 띄우지 못하면(권한 오류 등) 성공으로 끝내지 않고 되돌린다
     #[test]

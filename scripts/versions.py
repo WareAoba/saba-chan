@@ -716,12 +716,14 @@ def cmd_assemble(args: argparse.Namespace) -> int:
     return 0
 
 
-def promotion_release_id(listing: dict, version: str, channel: str, allow_rollbacks: bool) -> int:
-    """승격할 릴리즈 id: 그 판의 내리지 않은 행 중 `channel`보다 아래 채널(베타 등)에 있는 것.
-    이미 그 채널에 있거나, 되돌림 보고가 있는데 `allow_rollbacks`가 아니면 멈춘다 (릴레이 `GET /admin/releases`)"""
+def promotion_release_id(listing: dict, version: str, channel: str, allow_rollbacks: bool) -> tuple[int, bool]:
+    """승격할 릴리즈 (id, 이미 그 채널에 있는가): 그 판의 내리지 않은 행 중 `channel`보다 아래 채널(베타 등)에 있는 것.
+    이미 그 채널에 있으면 그 행과 True (릴레이는 끝났고 GitHub 동기화만 다시 한다). 되돌림 보고가 있는데
+    `allow_rollbacks`가 아니면 멈춘다 (릴레이 `GET /admin/releases`)"""
     rows = [r for r in listing.get("releases", []) if r["version"] == version and not r.get("yanked")]
-    if any(r["channel"] == channel for r in rows):
-        sys.exit(f"{version} is already on {channel}")
+    done = [r for r in rows if r["channel"] == channel]
+    if done:
+        return max(done, key=lambda r: r["id"])["id"], True
     below = [r for r in rows if r["channel"] in RELAY_CHANNELS
              and RELAY_CHANNELS.index(r["channel"]) > RELAY_CHANNELS.index(channel)]
     if not below:
@@ -729,7 +731,7 @@ def promotion_release_id(listing: dict, version: str, channel: str, allow_rollba
     row = max(below, key=lambda r: r["id"])
     if row.get("rollbacks") and not allow_rollbacks:
         sys.exit(f"{version} was rolled back {row['rollbacks']} time(s) on clients; rerun with allow_rollbacks to promote anyway")
-    return row["id"]
+    return row["id"], False
 
 
 def promotion_channel_problem(signed: dict, channel: str) -> str | None:
@@ -742,7 +744,8 @@ def promotion_channel_problem(signed: dict, channel: str) -> str | None:
 
 def cmd_promote_pick(args: argparse.Namespace) -> int:
     listing = json.loads(Path(args.releases).read_text(encoding="utf-8"))
-    print(promotion_release_id(listing, args.version, args.channel, args.allow_rollbacks))
+    release_id, done = promotion_release_id(listing, args.version, args.channel, args.allow_rollbacks)
+    print(f"{release_id} {'done' if done else 'pending'}")
     return 0
 
 

@@ -277,11 +277,11 @@ class Promotion(unittest.TestCase):
     ]}
 
     def test_the_beta_row_of_that_version_is_picked(self):
-        self.assertEqual(versions.promotion_release_id(self.LISTING, "0.1.14", "stable", False), 7)
+        self.assertEqual(versions.promotion_release_id(self.LISTING, "0.1.14", "stable", False), (7, False))
 
-    def test_a_version_already_on_that_channel_is_refused(self):
-        with self.assertRaises(SystemExit):
-            versions.promotion_release_id(self.LISTING, "0.1.13", "stable", False)
+    def test_a_version_already_on_that_channel_is_left_for_the_github_sync(self):
+        # Codex 재리뷰: 릴레이 승격 뒤 GitHub 동기화가 끊겼으면, 다시 실행해 GitHub만 맞출 수 있어야 한다
+        self.assertEqual(versions.promotion_release_id(self.LISTING, "0.1.13", "stable", False), (5, True))
 
     def test_unknown_or_yanked_versions_are_refused(self):
         for v in ("0.1.99", "0.1.12"):
@@ -291,7 +291,7 @@ class Promotion(unittest.TestCase):
     def test_rolled_back_releases_need_an_explicit_yes(self):
         with self.assertRaises(SystemExit):
             versions.promotion_release_id(self.LISTING, "0.1.14-beta.2", "rc", False)
-        self.assertEqual(versions.promotion_release_id(self.LISTING, "0.1.14-beta.2", "rc", True), 6)
+        self.assertEqual(versions.promotion_release_id(self.LISTING, "0.1.14-beta.2", "rc", True), (6, False))
 
     def test_the_signed_channel_must_reach_the_target(self):
         signed = {"manifest": {"version": "0.1.14", "channel": "beta"}}

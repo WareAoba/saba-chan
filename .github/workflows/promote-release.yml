@@ -2,7 +2,8 @@
 # publish.yml은 늘 beta로 등록하고, 서명된 manifest 채널(versions.toml 채널)이 올릴 수 있는 끝이다.
 #
 # 1. 릴레이 `GET /admin/releases`에서 그 판의 베타 행을 고른다 (versions.py promote-pick).
-#    이미 그 채널에 있거나, 내렸거나, 클라이언트가 되돌린 보고가 있으면(allow_rollbacks 없이) 멈춘다
+#    내렸거나, 클라이언트가 되돌린 보고가 있으면(allow_rollbacks 없이) 멈춘다. 이미 그 채널에 있으면
+#    (지난 실행이 4 전에 끊김) 2·3을 건너뛰고 4만 한다
 # 2. 그 행의 서명된 manifest가 target 채널 클라이언트에게 받아들여지는지 본다 (versions.py promote-check)
 # 3. `PATCH /admin/releases/:id {channel}`: 릴레이가 확인 캐시를 비워 heartbeat·확인에 바로 반영된다
 # 4. stable로 올렸으면 GitHub Release의 사전 릴리스 표시를 걷는다 (github-release.yml은 beta 등록이라 사전 릴리스로 올린다)
@@ -69,7 +70,13 @@ jobs:
           curl -fsS "$relay/admin/releases" -H "x-internal-secret: $RELAY_INTERNAL_SECRET" > releases.json
           allow=()
           if [ "$ALLOW_ROLLBACKS" = true ]; then allow=(--allow-rollbacks); fi
-          id=$(python scripts/versions.py promote-pick --releases releases.json --version "$VERSION" --channel "$CHANNEL" "${allow[@]}")
+          picked=$(python scripts/versions.py promote-pick --releases releases.json --version "$VERSION" --channel "$CHANNEL" "${allow[@]}")
+          read -r id state <<< "$picked"
+          if [ "$state" = done ]; then
+            # 지난 실행이 릴레이를 올린 뒤 끊겼다: GitHub 동기화만 다시 한다
+            echo "### $VERSION (release $id) is already on $CHANNEL; syncing GitHub only" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           curl -fsS -H 'X-Saba-Client: 1' "$relay/v1/updates/manifest/$VERSION?release=$id" > release.signed.json
           python scripts/versions.py promote-check --signed release.signed.json --channel "$CHANNEL"
           curl -fsS -X PATCH "$relay/admin/releases/$id" \

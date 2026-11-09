@@ -435,16 +435,22 @@ impl DataSnapshot {
         Ok(())
     }
 
-    /// 복원하지 못한 사본을 남긴다: `<판>.kept-<시각>`으로 비켜 둬 같은 판의 다음 스냅샷이 지우지 않게 한다
-    pub fn keep(self) {
+    /// 복원하지 못한 사본을 남긴다: `<판>.kept-<시각>`으로 비켜 둬 같은 판의 다음 스냅샷이 지우지 않게 한다. 남은 자리를 준다
+    pub fn keep(self) -> PathBuf {
         let kept = self.dir.with_file_name(format!(
             "{}.kept-{}",
             self.dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
             now_ms()
         ));
         match std::fs::rename(&self.dir, &kept) {
-            Ok(()) => tracing::error!("[Apply] The data snapshot is kept at {} for a manual restore", kept.display()),
-            Err(e) => tracing::error!("[Apply] The data snapshot is kept at {} ({})", self.dir.display(), e),
+            Ok(()) => {
+                tracing::error!("[Apply] The data snapshot is kept at {} for a manual restore", kept.display());
+                kept
+            }
+            Err(e) => {
+                tracing::error!("[Apply] The data snapshot is kept at {} ({})", self.dir.display(), e);
+                self.dir
+            }
         }
     }
 
@@ -606,24 +612,41 @@ impl LiveApply {
         end_watch(&self.staging_dir);
     }
 
+    /// 새 데몬을 끝내지 못해 새 판을 그대로 둔다. 새 데몬이 이미 데이터를 바꿨을 수 있으니 사본은 지우지 않고 남긴다 (`keep`)
+    pub fn leave_in_place(self) -> Option<PathBuf> {
+        let kept = self.snapshot.map(DataSnapshot::keep);
+        end_watch(&self.staging_dir);
+        kept
+    }
+
     /// 새 데몬은 이미 끝냈다고 보고 되돌린다: 이번 묶음의 실행 파일 전부를 `.old`에서, 데이터를 스냅샷에서.
-    /// 그다음 `failed_release`를 적고 완료 마커를 `rolled_back`으로 바꾼다 (이 순서: 스냅샷의 설정이 기록을 덮지 않게)
-    pub fn roll_back(self, manager: &UpdateManager, config: &ConfigFile, marker_path: &Path, reason: &str) {
+    /// 그다음 `failed_release`를 적고 완료 마커를 `rolled_back`으로 바꾼다 (이 순서: 스냅샷의 설정이 기록을 덮지 않게).
+    /// 데이터를 되돌리지 못했으면 사본을 남기고(`keep`) 마커의 `reason`을 `restore_failed`로 적은 뒤 그 자리를 준다:
+    /// 이전 판이 일부만 되돌린 데이터를 읽지 않게 호출자는 다시 띄우지 않는다
+    pub fn roll_back(self, manager: &UpdateManager, config: &ConfigFile, marker_path: &Path, reason: &str) -> Option<PathBuf> {
         let restored = manager.roll_back_exes_since(&self.before);
         tracing::warn!("[Apply] Rolled back {} ({}): {:?}", self.target_version, reason, restored);
-        // 복원이 실패하면 사본을 지우지 않고 다른 이름으로 남긴다 (손으로 되살릴 수단. 다음 스냅샷이 덮지 않게)
+        let mut kept = None;
         let snapshot = self.snapshot.and_then(|snapshot| match snapshot.restore() {
             Ok(()) => Some(snapshot),
             Err(e) => {
                 tracing::error!("[Apply] Cannot restore the data snapshot {}: {}", snapshot.path().display(), e);
-                snapshot.keep();
+                kept = Some(snapshot.keep());
                 None
             }
         });
         if let Err(e) = record_failed_release(config, &self.target_version) {
             tracing::error!("[Apply] Cannot record the failed release {}: {}", self.target_version, e);
         }
-        let marker = UpdateCompletionMarker::rolled_back(&self.target_version, reason, UpdateCompletionMarker::load_from(marker_path));
+        let previous = UpdateCompletionMarker::load_from(marker_path);
+        let marker = match &kept {
+            None => UpdateCompletionMarker::rolled_back(&self.target_version, reason, previous),
+            Some(path) => {
+                let mut m = UpdateCompletionMarker::rolled_back(&self.target_version, "restore_failed", previous);
+                m.message = Some(format!("Rolled back {} ({}) but could not restore the data; the copy is at {}", self.target_version, reason, path.display()));
+                m
+            }
+        };
         if let Err(e) = marker.save_to(marker_path) {
             tracing::error!("[Apply] Cannot record the rollback: {}", e);
         }
@@ -631,6 +654,7 @@ impl LiveApply {
             s.discard();
         }
         end_watch(&self.staging_dir);
+        kept
     }
 }
 
@@ -1061,13 +1085,33 @@ mod tests {
         std::fs::remove_file(data.join("config.json")).unwrap();
         write(&data.join("config.json").join("x"), "x");
 
-        live.roll_back(&manager, &config, &marker, "timeout");
+        let kept_at = live.roll_back(&manager, &config, &marker, "timeout");
 
+        // Codex 재리뷰: 복원 실패는 따로 알린다 (설치기는 이전 판을 다시 띄우지 않는다)
+        let kept_at = kept_at.expect("the caller learns that the data was not restored");
+        assert!(kept_at.join("data").join("config.json").is_file(), "{}", kept_at.display());
+        let m = UpdateCompletionMarker::load_from(&marker).unwrap();
+        assert_eq!((m.result.as_deref(), m.reason.as_deref()), (Some("rolled_back"), Some("restore_failed")));
+        assert!(m.message.unwrap_or_default().contains(&kept_at.display().to_string()), "the marker names the copy");
         let kept = files_under(&data.join(SNAPSHOT_DIR));
         assert!(kept.iter().any(|f| f.ends_with("data/config.json")), "the copy is kept: {kept:?}");
         assert!(!watch_in_progress(&manager.staging_dir));
         // 같은 판의 다음 스냅샷이 남긴 사본을 덮지 않는다
         DataSnapshot::take(&data, &inst, "0.1.13").unwrap();
         assert!(files_under(&data.join(SNAPSHOT_DIR)).iter().any(|f| f.ends_with("data/config.json")));
+    }
+
+    // Codex 재리뷰: 새 데몬을 끝내지 못해 되돌리지 않고 두면, 새 데몬이 이미 데이터를 바꿨을 수 있으니 사본을 남긴다
+    #[test]
+    fn leaving_the_new_daemon_in_place_keeps_the_snapshot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let inst = data.join("instances");
+        write(&data.join("config.json"), "{}");
+        let staging = tmp.path().join("staging");
+        let live = LiveApply::start(&staging, ExeBackups::default(), &data, &inst, "0.1.13".into(), "0.1.14".into(), None).unwrap();
+        let kept_at = live.leave_in_place().expect("the copy is kept");
+        assert!(kept_at.join("data").join("config.json").is_file());
+        assert!(!watch_in_progress(&staging));
     }
 }
