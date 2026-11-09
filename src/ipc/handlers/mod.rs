@@ -28,6 +28,7 @@ pub mod maker;
 pub mod permissions;
 pub mod sandbox;
 pub mod actions;
+pub mod locales;
 
 /// 본문이 없거나 JSON으로 읽히지 않으면 None인 본문. axum 0.7의 `Option<Json<T>>`와 같다
 /// (0.8의 `Option<Json<T>>`는 Content-Type이 있는데 본문이 비었거나 틀리면 400으로 거절한다)

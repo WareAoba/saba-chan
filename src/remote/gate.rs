@@ -167,6 +167,8 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/extensions/{id}/icon"),
     allow("GET", "/api/extensions/{id}/audit"),
     allow("GET", "/api/extensions/{id}/i18n/{locale}"),
+    // 설치 폴더 번역: GUI는 늘 이 PC 데몬에서 받는다 (`target:'local'`). 웹은 자기 번역을 들고 있다
+    deny("GET", "/api/locales/{lang}/{ns}"),
     // ── 데몬·앱 설정, 토큰, 경로 ──
     // 비밀값이 없다 (접두사·릴레이 주소·길드 설정). 바꾸기는 릴레이 주소가 들어 PC에서만
     not_on_web("GET", "/api/config/bot"),

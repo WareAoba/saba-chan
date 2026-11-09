@@ -169,7 +169,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 | Method | Path | 동작 |
 |---|---|---|
-| GET | `/api/updates/status` | 캐시된 상태. Locales는 숨긴다 |
+| GET | `/api/updates/status` | 캐시된 상태. Locales는 숨긴다. 설치된 번역 판 `locales_version`(`locales/version`)을 싣는다: GUI·CLI TUI가 바뀌면 번역을 다시 읽는다(01 `/api/locales/:lang/:ns`) |
 | POST | `/api/updates/check` | 릴레이를 조회한다 |
 | POST | `/api/updates/download` | body `{components:[]}`. 본문이 없으면 전부 받는다 |
 | GET | `/api/updates/download/progress` | 진행률 |

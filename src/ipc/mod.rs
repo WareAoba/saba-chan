@@ -969,6 +969,8 @@ impl IPCServer {
             .route("/api/extensions/{id}/icon", get(handlers::extension::serve_icon))
             .route("/api/extensions/{id}/audit", get(handlers::extension::audit_extension))
             .route("/api/extensions/{id}/i18n/{locale}", get(handlers::extension::serve_i18n))
+            // 설치 폴더 번역 (GUI가 내장본보다 먼저 읽는다. ETag = locales/version)
+            .route("/api/locales/{lang}/{ns}", get(handlers::locales::get_locale))
             // ── Relay server proxy (cloud mode) ──
             .route("/api/relay/host/{host_id}/status", get(handlers::relay::check_host_status))
             .route("/api/relay/host/{host_id}/nodes", get(handlers::relay::list_host_nodes))

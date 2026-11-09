@@ -768,7 +768,13 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             }
             return data;
         },
-        updaterStatus: () => call('get', '/api/updates/status', undefined, 5000),
+        // 번역 판(`locales_version`)을 i18n에 알린다: 바뀌면 번역을 다시 읽는다 (05 §번역 런타임)
+        updaterStatus: async () => {
+            const data = await call('get', '/api/updates/status', undefined, 5000);
+            if (data && 'locales_version' in data) hub.dispatch('locales:version', data.locales_version ?? null);
+            return data;
+        },
+        onLocalesVersion: (callback: Listener) => hub.on('locales:version', callback),
         updaterDownload: (components: string[]) =>
             call('post', '/api/updates/download', { components: Array.isArray(components) ? components : [] }, 600000),
         updaterDownloadProgress: () => call('get', '/api/updates/download/progress', undefined, 5000),
@@ -1172,6 +1178,17 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 언어는 설정 파일 gui.language가 원천이다 (데몬과 공유). 셸이 읽고 쓴다
         languageGet: () => invoke('language_get'),
         languageSet: (language: string) => invoke('language_set', { language }),
+        // 설치 폴더 번역 한 묶음 (이 PC 데몬). 없거나(404) 데몬이 없으면 null: i18n이 내장본을 쓴다
+        localesGet: async (language: string, namespace: string): Promise<Record<string, unknown> | null> => {
+            try {
+                const path = `/api/locales/${encodeURIComponent(language)}/${encodeURIComponent(namespace)}`;
+                // 첫 화면이 이것을 기다리므로 짧게
+                const { data } = await get(path, { timeout: 1500, target: 'local' });
+                return data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+            } catch (_) {
+                return null;
+            }
+        },
         logsOpenFolder: () => invoke('logs_open_folder'),
         launchUninstaller: () => invoke('launch_uninstaller'),
         getAppVersion: () => invoke('app_get_version'),

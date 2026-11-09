@@ -111,7 +111,8 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | consolePopin / ToggleAlwaysOnTop (658-661) | Rust `console_popin` / `console_toggle_always_on_top` | n/a |
 | trayAction / trayPopupFit | Rust `tray_action {action}`(async: 창 열기가 창을 새로 만든다)(`open_window`·`switch_to_cli`·`start_daemon`·`stop_daemon`·`quit_all`·`close`, 팝업을 닫고 `{ok}`) / `tray_popup_fit {height}`(트레이 팝업 크기·자리를 정하고 보인다). daemon 호출 없음 | n/a |
 | updaterCheck (897) | POST /api/updates/check | ✓ updates.rs:109 |
-| updaterStatus (919) | GET /api/updates/status | ✓ 100 |
+| updaterStatus (919) | GET /api/updates/status. 응답에 `locales_version` 칸이 있으면 브리지 안 이벤트 `locales:version`으로 알린다(`onLocalesVersion`) | ✓ 100 |
+| localesGet / onLocalesVersion | GET /api/locales/:lang/:ns (`target:'local'`, 1.5초. 404·연결 실패면 null) / `locales:version` 구독(브리지 안 이벤트, Rust 이벤트 아님) | ✓ i18n 백엔드가 쓴다 |
 | updaterDownload (920) | POST /api/updates/download `{components}` (빈 배열이면 전부) | ✓ 102 |
 | updaterDownloadProgress (928) | GET /api/updates/download/progress | ✓ 103 |
 | updaterApply (930) | POST /api/updates/apply `{components}` (빈 배열이면 전부) | ✓ 104 |
@@ -382,7 +383,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 - 비밀 액션(부른 사람에게만 답하는 것, `server.address`)의 이름은 문장으로 실행하지 않고 `errors.slash_only`로 슬래시 명령을 안내한다(`actions` `slash_only`). 답이 채널 모두에게 보이기 때문이다.
 - 도움말은 서버마다 그 서버를 부르는 말을, 서버만 부르면 그 서버에서 칠 수 있는 말(응답 언어의 명령 이름·칸 이름·설명)을 보인다. 상태 답은 상태·접속자(모듈이 지원할 때)·켜진 시간이고, 시작 중에 접속자를 물으면 `server.still_starting`으로 답한다.
 - 대상 서버 찾기: 인스턴스 이름·id → 그 서버를 부르는 낱말(`serverWords[id].words`) → 모듈 이름·게임명(답하는 언어 모듈 locales `module.display_name`)·별명 순이다. 같은 게임 서버가 여럿인데 하나로 좁혀지지 않으면 `errors.multiple_instances`로 답한다. 위험 명령은 모듈 이름·게임명·별명으로 부르면 `errors.danger_needs_name`으로 거절한다(`chat/mod.rs` `named_servers`·`find_server`, 01 §4).
-- 명령 낱말은 그 길드·서버의 `commands`, 그다음 module.toml 별명과 답하는 언어의 locales 별명이고, 접두사는 `prefixes`다. 맞춰 볼 때 대소문자를 가리지 않고 긴 것부터 보며, 접두사 뒤가 공백·쉼표·쌍점이거나 글 끝이어야 한다. 도움말에는 첫 접두사를, 비어 있으면 언어별 `default_prefix`(bot.json)를 쓴다. 응답 문구는 `locales/<lang>/bot.json`을 바이너리에 넣어 쓴다(`chat/i18n.rs`).
+- 명령 낱말은 그 길드·서버의 `commands`, 그다음 module.toml 별명과 답하는 언어의 locales 별명이고, 접두사는 `prefixes`다. 맞춰 볼 때 대소문자를 가리지 않고 긴 것부터 보며, 접두사 뒤가 공백·쉼표·쌍점이거나 글 끝이어야 한다. 도움말에는 첫 접두사를, 비어 있으면 언어별 `default_prefix`(bot.json)를 쓴다. 응답 문구는 설치 폴더 `locales/<lang>/bot.json`을 부를 때마다 읽고(그래서 업데이터가 번역을 바꾸면 다음 응답부터 새 문구), 없으면 바이너리에 넣은 사본을 쓴다(`chat/i18n.rs`).
 - 노드(디스코드 서버)별 허용 인스턴스와 권한(멤버 레벨, 명령별 레벨)은 `nodeSettings`에 있다. 레벨은 누적이다(01 §4.4 `nodeSettings`).
 
 ### 4.4 봇 초대
@@ -396,10 +397,10 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | common.json (leaf 80개) | app_name, success/error/…, daemon, modules, server, network, port_conflict, init, tray, updates, errors 등 25개 | GUI renderer(`common` ns, JS 브리지의 오류 문구 `createApi.ts:33`), **Tauri 셸**(트레이·알림·status 메시지, `i18n.rs`. 설치 폴더 파일 우선, 없으면 exe 내장본) |
 | gui.json (en leaf 677개) | title, menu, title_bar, modals, settings_modal, add_instance_modal, migration_modal, command_modal, server_*, discord_bot, discord_modal, notice_modal, updates, extensions, saba_storage, validation, context_menu 등 29개 | GUI renderer(`gui` ns) |
 | bot.json | 채팅 응답 문구 | 데몬 채팅 처리기(`src/chat/i18n.rs`, 빌드 때 포함). GUI renderer도 import한다 |
-| cli.json (PR #6 기준 en leaf 402개) | server, daemon, module, ext, bot, backup, schedule, chatbot, err, prompt 등 39개 | CLI `i18n.rs`. 설치 폴더의 `locales/<lang>/cli.json`을 먼저 읽고, 없으면 내장 en/ko를 쓴다(`i18n.rs:11-12, 36-52`). ko만 도움말 번역 `help`(leaf 183개)가 더 있어 585개다. 나머지 언어의 도움말은 clap 기본 영어다. qcza9f에는 아직 예전 TUI용 cli.json(en 200개, `screen`·`menu` 등 16개)이 있다 |
+| cli.json (PR #6 기준 en leaf 402개) | server, daemon, module, ext, bot, backup, schedule, chatbot, err, prompt 등 39개 | CLI `i18n.rs`. 설치 폴더의 `locales/<lang>/cli.json`을 먼저 읽고, 없으면 내장 en/ko를 쓴다(`i18n.rs:11-12, 36-52`). 단발 명령은 켤 때 한 번 읽고, TUI는 `/api/updates/status`의 `locales_version`이 바뀌면 다시 읽는다(`tui/data.rs` `Snapshot::apply` → `i18n::reload`). ko만 도움말 번역 `help`(leaf 183개)가 더 있어 585개다. 나머지 언어의 도움말은 clap 기본 영어다. qcza9f에는 아직 예전 TUI용 cli.json(en 200개, `screen`·`menu` 등 16개)이 있다 |
 | web.json | app_name, tabs, gate, session, servers, console, settings, backups, perm, modules, plugins, more, errors 등 | 사바쨩 웹(`web` ns, §1.5). 10개 언어 모두 en과 같은 키 |
 
-- GUI renderer는 영어 common, gui, bot JSON만 번들에 넣고, 다른 언어는 그 언어로 바꿀 때 `import.meta.glob` 청크로 불러온다(i18n.ts의 `localeBackend`). 첫 렌더는 캐시된 언어 파일을 읽은 뒤로 미룬다(`i18nReady`, index.tsx). 언어 소스는 `window.api.languageGet()`이 1순위, localStorage `i18nextLng`가 2순위다. 확장 i18n은 daemon `/api/extensions/:id/i18n/:locale`에서 받는다.
+- GUI renderer는 영어 common, gui, bot JSON만 번들에 넣고, 다른 언어는 그 언어로 바꿀 때 `import.meta.glob` 청크로 불러온다(i18n.ts). 백엔드(`utils/localeBackend.ts`)는 데몬 `GET /api/locales/:lang/:ns`(브리지 `localesGet`, 설치 폴더 번역)를 먼저 읽고 내장본 위에 덮는다: 데몬이 없거나 키가 빠지면 내장본 글이 남는다. 글(문자열)과 묶음만 받고 다른 모양은 버린다. `locales_version`이 바뀌면(`updaterStatus` → `onLocalesVersion`) `reloadResources`로 다시 그린다(재시작·알약 없음). 첫 렌더는 캐시된 언어 파일을 읽은 뒤로 미룬다(`i18nReady`, index.tsx). 언어 소스는 `window.api.languageGet()`이 1순위, localStorage `i18nextLng`가 2순위다. 확장 i18n은 daemon `/api/extensions/:id/i18n/:locale`에서 받는다.
 - **업데이트가 필요해요**: 사바쨩이 낮아 거절된 경우(릴레이 `agent_too_old`, 모듈 `module_dependency_unsatisfied`의 `saba-core` 요구·`module_schema_unsupported`, 익스텐션 `app_version_unsatisfied`·`component_version_unsatisfied`의 `saba-core`)는 gui.json·cli.json의 `update_required.*`(title·relay·module·module_newer·extension, GUI는 check도) 한 벌로 보인다. 규칙은 GUI `utils/updateRequired.ts`와 CLI `error::update_required`가 같다. 이름은 GUI는 부른 쪽이, CLI는 응답의 `module`·`extension`을 쓴다.
 - **번역 누락**(en 기준 diff):
   - gui.json: de, es, fr, pt-BR, ru, zh-CN, zh-TW는 661개로 **16개가 빠져 있다**(`console.dock_focus/dock_restore/minimize/pin/popin/unpin`, `discord_modal.music_channel_*`, `discord_modal.music_normalize`). ja는 667개로 `discord_modal.music_*` 10개가 빠져 있다.
@@ -466,7 +467,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | R1 | i18n.ts:35-88, SettingsModal.tsx:335 | FS-W(localStorage) | 언어 캐시 `i18nextLng` |
 | R2 | utils/themeManager.ts:72-184 | FS-W(localStorage) | 테마와 커스텀 테마. config.json `gui`에도 accent 계열을 저장하므로 저장소가 둘로 갈린다 |
 | R3 | Modals/NoticeModal.tsx:21-42 | FS-W(localStorage) | 공지와 알림 기록 |
-| R4 | i18n.ts:4-33 | 빌드타임 | 로케일 JSON 정적 번들. 런타임 locale 업데이트(daemon의 Locales 컴포넌트 자동 적용. 셸 알림에서는 빼기만 한다, `events.rs:144-147`)가 renderer에는 반영되지 않는다. 셸 문구는 설치 폴더 파일을 먼저 읽어 반영된다(`i18n.rs:50-58`) |
+| R4 | i18n.ts, utils/localeBackend.ts | 빌드타임 + 데몬 API | 로케일 JSON 정적 번들은 폴백이다. 설치 폴더 번역은 데몬 `/api/locales/:lang/:ns`로 받고 `locales_version`이 바뀌면 다시 읽는다. 셸 문구는 설치 폴더 파일을 먼저 읽어 반영된다(`i18n.rs:50-58`) |
 | R5 | ~~components/ServerCard.js:419-421, App.js:494-501~~ | ~~규칙 중복~~ | → 해결: renderer는 `GET /api/servers`의 `managed`를 그대로 쓴다(`utils/serverView.ts:74-79` `isManaged`, 데몬 `handlers/server.rs:966`). 그 값이 없을 때(옛 데몬)만 데몬과 같은 규칙(`managed_start`가 우선, 없으면 managed, `supervisor/mod.rs:2246-2255`)으로 채운다 |
 
 (renderer는 `fetch`, `axios`, 직접 IP 접근을 하지 않는다. 모두 `window.api`(브리지 → `daemon_request` 명령)를 거친다.)

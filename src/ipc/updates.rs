@@ -176,6 +176,8 @@ async fn get_status(
         "updates_available": visible_update_count,
         "components": components,
         "profile": saba_chan_updater_lib::profile::Profile::load().as_str(),
+        // 설치된 번역 판 (locales/version). 바뀌면 GUI·TUI가 번역을 다시 읽는다
+        "locales_version": crate::chat::i18n::installed_version(),
     }))
 }
 
@@ -1528,6 +1530,16 @@ mod tests {
             super::launch_targets(&pending, true),
             (vec![C::Module("minecraft".into()), C::Locales], vec![C::CoreDaemon, C::Gui])
         );
+    }
+
+    /// 상태 응답은 설치된 번역 판(`locales_version`, 없으면 null)을 늘 싣는다: GUI·TUI가 바뀌면 번역을 다시 읽는다
+    #[tokio::test]
+    async fn status_carries_installed_locales_version() {
+        use axum::response::IntoResponse;
+        let resp = super::get_status(axum::extract::State(super::UpdateState::default())).await.into_response();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body.get("locales_version"), Some(&serde_json::json!(crate::chat::i18n::installed_version())));
     }
 
     /// 받아 둔 업데이트의 `pending.json`을 같이 쓰는 시험끼리 차례로
