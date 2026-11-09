@@ -49,6 +49,7 @@ pub use process::ProcessChecker;
 pub use relay::{ReleaseManifest, ManifestComponent};
 pub use integrity::{IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity};
 pub use marker::UpdateCompletionMarker;
+pub(crate) use apply::replace_dir_checked;
 #[cfg(test)]
 pub(crate) use apply::replace_dir;
 
@@ -1150,6 +1151,23 @@ impl UpdateManager {
         (applied, failed)
     }
 
+    /// 모듈·익스텐션 폴더를 바꾸되, 백업을 뜬 순간의 내용이 설치 기록 그대로가 아니면 멈춘다
+    fn replace_untouched_addon(&self, component: &Component, staged_path: &str) -> Result<Vec<PathBuf>> {
+        let (target, backup) = match component {
+            Component::Module(name) => (self.modules_dir.join(name), format!("{}_backup", name)),
+            Component::Extension(name) => (self.resolve_ext_dir(name), format!("{}_ext_backup", name)),
+            other => anyhow::bail!("{} is not a module or an extension", other.manifest_key()),
+        };
+        let key = component.manifest_key();
+        replace_dir_checked(&target, Path::new(staged_path), &self.staging_dir, &backup, |copy| {
+            if integrity::untouched_copy(&key, &target, copy) {
+                Ok(())
+            } else {
+                anyhow::bail!("{} has files that were added or changed after install; left as it is", key)
+            }
+        })
+    }
+
     /// 컴포넌트 하나를 적용하고 쓴 파일을 돌려준다
     async fn apply_one(&self, component: &Component, staged_path: &str) -> Result<Vec<PathBuf>> {
         match component {
@@ -1411,6 +1429,19 @@ impl UpdateManager {
     /// Flow 1 (백그라운드 워커): IPC 커맨드를 통해 데몬이 직접 적용한 후 재시작
     /// Flow 2 (GUI/CLI): 직접 적용, self-update flow로 전환
     pub async fn apply_single_component(&mut self, component: &Component) -> Result<ApplyComponentResult> {
+        self.apply_single_component_with(component, false).await
+    }
+
+    /// 묻지 않는 모듈·익스텐션 교체: 교체 순간의 폴더가 카탈로그에서 깐 그대로일 때만 바꾼다 (`integrity::untouched_copy`).
+    /// 사용자가 넣거나 고친 파일이 있으면 폴더를 건드리지 않고 실패로 돌려준다
+    pub async fn apply_untouched_addon(&mut self, component: &Component) -> Result<ApplyComponentResult> {
+        if !matches!(component, Component::Module(_) | Component::Extension(_)) {
+            anyhow::bail!("{} is not a module or an extension", component.manifest_key());
+        }
+        self.apply_single_component_with(component, true).await
+    }
+
+    async fn apply_single_component_with(&mut self, component: &Component, untouched_only: bool) -> Result<ApplyComponentResult> {
         // 업데이터·데몬의 개별 적용도 지난 적용이 남긴 것부터 정리한다 (같은 프로세스가 적용하므로 안전하다)
         self.settle_interrupted_updates();
         let comp = self.status.components.iter()
@@ -1424,7 +1455,7 @@ impl UpdateManager {
             anyhow::bail!("{}", deps.issues.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "));
         }
         let staged_path = Self::verified_staged_path(&comp)?;
-        let files = self.apply_one(component, staged_path).await?;
+        let files = if untouched_only { self.replace_untouched_addon(component, staged_path)? } else { self.apply_one(component, staged_path).await? };
         Self::record_files(component, &files);
 
         let message = match component {

@@ -351,6 +351,43 @@ fn replace_dir_restores_backup_when_extract_fails() {
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
 }
 
+// 묻지 않는 교체: 백업을 뜬 그 순간의 내용을 검사하고, 거절하면 폴더를 건드리지 않는다 (Codex #926 재리뷰)
+#[test]
+fn a_checked_replace_leaves_the_folder_alone_when_the_check_refuses() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let staging = tmp.path().join("staging");
+    std::fs::create_dir_all(&staging).unwrap();
+    let target = tmp.path().join("modules").join("game");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("module.toml"), "old").unwrap();
+    std::fs::write(target.join("server.properties"), "mine").unwrap();
+    let zip_at = |name: &str| {
+        let path = staging.join(name);
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        zip.start_file("module.toml", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"new").unwrap();
+        zip.finish().unwrap();
+        path
+    };
+
+    let staged = zip_at("module-game.zip");
+    let mut seen = None;
+    let refused = crate::replace_dir_checked(&target, &staged, &staging, "game_backup", |copy| {
+        seen = Some(std::fs::read_to_string(copy.join("server.properties")).unwrap());
+        anyhow::bail!("user files")
+    });
+    assert!(refused.is_err());
+    assert_eq!(seen.as_deref(), Some("mine"), "the check sees the folder as it was at the swap");
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
+    assert_eq!(std::fs::read_to_string(target.join("server.properties")).unwrap(), "mine");
+    assert!(!staging.join("game_backup").exists(), "a refused swap leaves no backup behind");
+
+    std::fs::remove_file(target.join("server.properties")).unwrap();
+    crate::replace_dir_checked(&target, &staged, &staging, "game_backup", |_| Ok(())).unwrap();
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
+}
+
 // 교체 도중 꺼졌으면 남은 백업이 원래 내용이다: 다음 시도가 반쯤 바뀐 폴더로 백업을 덮지 않는다
 #[test]
 fn replace_dir_keeps_the_backup_left_by_an_interrupted_replace() {

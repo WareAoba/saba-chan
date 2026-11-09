@@ -497,11 +497,12 @@ async fn replace_addons_once(state: &UpdateState) -> bool {
     let (busy_modules, busy_extensions) = busy_addons(state).await;
     let (ready, started) = split_by_busy(downloaded, &busy_modules, &busy_extensions);
     let held = !held.is_empty() || !started.is_empty();
-    // 받는 사이에 사용자가 고치거나 넣은 파일이 있으면 두고 넘어간다: 교체가 폴더를 비운다
+    // 받는 사이에 사용자가 고치거나 넣은 파일이 있으면 두고 넘어간다: 교체가 폴더를 비운다.
+    // 이 확인 뒤(적용이 업데이트 관리자를 기다리는 동안) 생긴 변경은 적용이 백업을 뜬 순간 한 번 더 보고 멈춘다 (`untouched_only`)
     let keys: Vec<String> = ready.iter().map(Component::manifest_key).filter(|k| replaceable_without_asking(k)).collect();
     if !keys.is_empty() {
         tracing::info!("[Updates] Replacing {:?} without asking", keys);
-        let _ = apply_updates_with(state.clone(), ApplyRequest { components: keys }).await;
+        let _ = apply_updates_with(state.clone(), ApplyRequest { components: keys, untouched_only: true }).await;
     }
     held
 }
@@ -631,7 +632,7 @@ async fn core_apply(state: &UpdateState) {
             Decision::Apply(targets) => {
                 tracing::info!("[Updates] Applying {:?} without asking", targets);
                 state.set_phase(Phase::new(PhaseState::Applying, version.clone(), notes.clone()));
-                let answer = into_internal(apply_updates_with(state.clone(), ApplyRequest { components: targets }).await).await.body;
+                let answer = into_internal(apply_updates_with(state.clone(), ApplyRequest { components: targets, ..Default::default() }).await).await.body;
                 if answer.get("requires_updater").and_then(Value::as_bool) == Some(true) {
                     let launched = into_internal(launch_updater(State(state.clone()), LooseJson(None)).await).await.body;
                     if launched.get("ok").and_then(Value::as_bool) != Some(true) {
@@ -1080,6 +1081,9 @@ async fn get_download_progress(
 struct ApplyRequest {
     #[serde(default)]
     components: Vec<String>,
+    /// 묻지 않는 교체(`replace_addons_once`): 교체 순간의 폴더가 카탈로그 그대로인 모듈·익스텐션만 바꾼다. API로는 받지 않는다
+    #[serde(skip)]
+    untouched_only: bool,
 }
 
 async fn apply_updates(State(state): State<UpdateState>, raw: axum::body::Bytes) -> axum::response::Response {
@@ -1137,7 +1141,8 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
                 },
                 _ => None,
             };
-            match mgr.apply_single_component(comp).await {
+            let applying = if body.untouched_only { mgr.apply_untouched_addon(comp).await } else { mgr.apply_single_component(comp).await };
+            match applying {
                 Ok(result) if result.success => {
                     applied.push(comp.display_name());
                     applied_keys.push(comp.manifest_key());
@@ -1259,7 +1264,7 @@ async fn apply_on_launch(State(state): State<UpdateState>) -> axum::response::Re
     if targets.is_empty() {
         return Json(json!({ "ok": true, "skipped": if held.is_empty() { "nothing" } else { "blocked" }, "held": held, "waiting_for": blockers })).into_response();
     }
-    let body = ApplyRequest { components: targets.iter().map(|c| c.manifest_key()).collect() };
+    let body = ApplyRequest { components: targets.iter().map(|c| c.manifest_key()).collect(), ..Default::default() };
     let mut answer = crate::ipc::internal::into_internal(apply_updates_with(state, body).await.into_response()).await.body;
     answer["held"] = json!(held);
     answer["waiting_for"] = json!(if held.is_empty() { Vec::new() } else { blockers });
