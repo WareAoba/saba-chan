@@ -89,6 +89,8 @@ const CODE_TEXT: Record<string, string> = {
     // 켜진 서버를 묶는 사이 서버가 꺼져 그 백업을 지웠다
     backup_server_stopped: 'maintenance.err_backup_server_stopped',
     snapshot_not_found: 'maintenance.err_snapshot_not_found',
+    // 백업 폴더나 그 안의 백업 파일을 읽지 못했다
+    backups_unreadable: 'maintenance.err_backups_unreadable',
     schedule_changed: 'maintenance.err_schedule_changed',
     server_running: 'maintenance.restore_stop_first',
 };

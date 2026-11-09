@@ -44,6 +44,9 @@ describe('백업 목록 용량', () => {
         render(<MaintenanceTab server={server} />);
         const retry = await screen.findByRole('button', { name: i18n.t('gui:maintenance.retry') });
         expect(screen.queryByText(i18n.t('gui:maintenance.backups_empty'))).toBeNull();
+        // 데몬의 영문 오류 문구가 아니라 화면 언어의 문구를 보인다
+        expect(screen.getByText(i18n.t('gui:maintenance.err_backups_unreadable'))).toBeTruthy();
+        expect(screen.queryByText('Could not read the backup folder')).toBeNull();
         fireEvent.click(retry);
         await waitFor(() => expect(screen.getByText(/manual\.zip/)).toBeTruthy());
     });

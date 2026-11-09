@@ -1417,6 +1417,7 @@
     "restored_links_missed": "Restaurado, mas {{count}} link(s) dentro da pasta não puderam ser recriados (por exemplo, permissões do Windows). Os caminhos estão no log do daemon.",
     "err_restore_outside": "Este backup foi feito para outra pasta do servidor, então não pode ser restaurado na atual. Se você moveu a pasta do servidor, devolva-a ao lugar original e tente de novo.",
     "err_backup_busy": "Outra tarefa está em andamento para este servidor (backup, restauração, atualização…). Tente de novo quando terminar.",
+    "err_backups_unreadable": "Não foi possível ler a pasta de backups. Verifique as permissões da pasta e o disco e tente de novo.",
     "err_schedule_changed": "A programação foi alterada em outro lugar, então não foi salva. Recarregue e faça suas alterações de novo.",
     "delete": "Excluir",
     "delete_confirm": "Clique para excluir",

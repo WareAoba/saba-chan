@@ -1417,6 +1417,7 @@
     "restored_links_missed": "Restaurado, pero no se pudieron recrear {{count}} enlace(s) dentro de la carpeta (por ejemplo, permisos de Windows). Las rutas están en el registro del daemon.",
     "err_restore_outside": "Esta copia de seguridad se creó para otra carpeta del servidor, así que no se puede restaurar en la actual. Si moviste la carpeta del servidor, devuélvela a su lugar e inténtalo de nuevo.",
     "err_backup_busy": "Hay otra tarea en curso para este servidor (copia de seguridad, restauración, actualización…). Inténtalo de nuevo cuando termine.",
+    "err_backups_unreadable": "No se pudo leer la carpeta de copias de seguridad. Revisa los permisos de la carpeta y el disco e inténtalo de nuevo.",
     "err_schedule_changed": "La programación se cambió en otro lugar, así que no se guardó. Vuelve a cargarla y haz tus cambios de nuevo.",
     "delete": "Eliminar",
     "delete_confirm": "Haz clic para eliminar",
