@@ -60,7 +60,7 @@ pub struct InstallProgress {
 }
 
 /// 사용 가능한 모듈 정보
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModuleInfo {
     pub id: String,
     pub name: String,
@@ -69,6 +69,19 @@ pub struct ModuleInfo {
     /// 이 모듈이 요구하는 익스텐션 ID 목록 (예: ["steamcmd", "ue4-ini"])
     #[serde(default)]
     pub required_extensions: Vec<String>,
+    /// 언어 → 이름·설명 (카탈로그 meta, 모듈 locales에서). 없으면 `name`·`description`
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub display_names: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub descriptions: HashMap<String, String>,
+    /// 모듈이 선언한 OS·CPU (`module_support` 이름). 비었으면 선언하지 않았다
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub platforms: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub architectures: Vec<String>,
+    /// 이 OS·CPU에서 돌지 않는 이유 (`"os"`·`"arch"`). 돌면 None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unsupported_reason: Option<String>,
 }
 
 /// 설치가 어느 경로로 끝나든 임시 폴더를 지운다 (실패하고 다시 시도하면 새 프로세스는 다른 폴더를 쓴다)
@@ -388,64 +401,12 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         warn(failure);
     }
 
-    // Step 4: 모듈 다운로드 및 설치 (45-55%) — Fix 4: 스트리밍 진행률
-    if !config.selected_modules.is_empty() {
-        emit("modules-download", "Downloading game modules...", 47);
-
-        let modules_dir = constants::resolve_modules_dir();
-        for module_id in &config.selected_modules {
-            let key = format!("{}{}", relay::MODULE_PREFIX, module_id);
-            let Some(info) = manifest.components.get(&key) else {
-                warn(format!("Module '{}' is not in the release", module_id));
-                continue;
-            };
-            emit("modules-download", &format!("Installing module: {}...", module_id), 49);
-            match release::install_addon(&key, info, &modules_dir.join(module_id)).await {
-                Ok(()) => installed.push(format!("module:{}", module_id)),
-                Err(e) => warn(format!("Failed to install module '{}': {}", module_id, e)),
-            }
-        }
-
-        // ── Fix 3: 모듈 의존 익스텐션 자동 설치 ──
-        emit("extensions", "Checking required extensions...", 54);
-        let required_extensions = collect_required_extensions(&config.selected_modules, &config.module_metadata);
-
-        if !required_extensions.is_empty() {
-            tracing::info!("선택된 모듈에 필요한 익스텐션: {:?}", required_extensions);
-
-            let (ext_names, failed) = install_required_extensions(hooks, &manifest, &required_extensions).await;
-            // 고른 모듈이 쓰는 것이니 켜 둔다 (데몬이 시작할 때 `extensions.enabled`를 읽는다)
-            if let Err(e) = enable_extensions(&ConfigFile::default_location(), &ext_names) {
-                warn(format!("Installed extensions could not be enabled ({}); enable them in Settings → Extensions", e));
-            }
-            for name in ext_names {
-                installed.push(format!("extension:{}", name));
-            }
-            for e in failed {
-                warn(e);
-            }
-        }
-    }
+    // Step 4: 모듈 다운로드 및 설치 (45-55%)
+    install_modules(hooks, &manifest, &config.selected_modules, &config.module_metadata, &mut installed, &warn).await;
 
     // Step 5: 포터블 Python 다운로드 + venv 생성 (55-70%)
-    // Fix 5: 기존 런타임이 손상되었으면 삭제 후 재설치
     emit("runtime-python", "Preparing Python runtime...", 57);
-    let runtime_data_dir = runtime_bootstrap::resolve_runtime_data_dir(&install_dir);
-    let _ = std::fs::create_dir_all(&runtime_data_dir);
-
-    match runtime_bootstrap::setup_python_with_repair(&runtime_data_dir).await {
-        Ok(python_path) => {
-            tracing::info!("Python 환경 준비 완료: {}", python_path.display());
-            installed.push("runtime:python".to_string());
-        }
-        Err(e) => {
-            // Python 설정 실패는 치명적이지 않음 — 메인 앱이 첫 실행 시 재시도
-            warn(format!(
-                "Python runtime was not prepared ({}); Saba-chan will retry on first start",
-                e
-            ));
-        }
-    }
+    prepare_python(&install_dir, &mut installed, &warn).await;
 
     // Step 7: 설정 파일 생성 (85-88%)
     emit("config", "Setting up configuration...", 86);
@@ -585,6 +546,154 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
 
     // 임시 디렉토리 정리
     final_progress
+}
+
+
+/// 단계 하나를 알린다
+fn emit_step(hooks: &dyn InstallHooks, step: &str, message: &str, percent: i32) {
+    hooks.progress(&InstallProgress { step: step.to_string(), message: message.to_string(), percent, ..Default::default() });
+}
+
+/// 고른 모듈과 그 모듈이 쓰는 익스텐션을 받아 둔다 (익스텐션은 켠다). 하나가 실패해도 나머지는 계속한다
+async fn install_modules(
+    hooks: &dyn InstallHooks,
+    manifest: &ReleaseManifest,
+    selected: &[String],
+    metadata: &[ModuleInfo],
+    installed: &mut Vec<String>,
+    warn: &(dyn Fn(String) + Sync),
+) {
+    if selected.is_empty() {
+        return;
+    }
+    emit_step(hooks, "modules-download", "Downloading game modules...", 47);
+
+    let modules_dir = constants::resolve_modules_dir();
+    for module_id in selected {
+        let key = format!("{}{}", relay::MODULE_PREFIX, module_id);
+        let Some(info) = manifest.components.get(&key) else {
+            warn(format!("Module '{}' is not in the release", module_id));
+            continue;
+        };
+        emit_step(hooks, "modules-download", &format!("Installing module: {}...", module_id), 49);
+        match release::install_addon(&key, info, &modules_dir.join(module_id)).await {
+            Ok(()) => installed.push(format!("module:{}", module_id)),
+            Err(e) => warn(format!("Failed to install module '{}': {}", module_id, e)),
+        }
+    }
+
+    // ── Fix 3: 모듈 의존 익스텐션 자동 설치 ──
+    emit_step(hooks, "extensions", "Checking required extensions...", 54);
+    let required_extensions = collect_required_extensions(selected, metadata);
+
+    if !required_extensions.is_empty() {
+        tracing::info!("선택된 모듈에 필요한 익스텐션: {:?}", required_extensions);
+
+        let (ext_names, failed) = install_required_extensions(hooks, manifest, &required_extensions).await;
+        // 고른 모듈이 쓰는 것이니 켜 둔다 (데몬이 시작할 때 `extensions.enabled`를 읽는다)
+        if let Err(e) = enable_extensions(&ConfigFile::default_location(), &ext_names) {
+            warn(format!("Installed extensions could not be enabled ({}); enable them in Settings → Extensions", e));
+        }
+        for name in ext_names {
+            installed.push(format!("extension:{}", name));
+        }
+        for e in failed {
+            warn(e);
+        }
+    }
+}
+
+/// 포터블 Python과 venv를 준비한다. 기존 런타임이 손상되었으면 지우고 다시 받는다.
+/// 실패해도 설치는 계속한다: 데몬이 시작할 때 다시 시도한다
+async fn prepare_python(install_dir: &Path, installed: &mut Vec<String>, warn: &(dyn Fn(String) + Sync)) {
+    let runtime_data_dir = runtime_bootstrap::resolve_runtime_data_dir(install_dir);
+    let _ = std::fs::create_dir_all(&runtime_data_dir);
+    match runtime_bootstrap::setup_python_with_repair(&runtime_data_dir).await {
+        Ok(python_path) => {
+            tracing::info!("Python 환경 준비 완료: {}", python_path.display());
+            installed.push("runtime:python".to_string());
+        }
+        Err(e) => warn(format!("Python runtime was not prepared ({}); Saba-chan will retry on first start", e)),
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// 맥 앱 묶음: 처음 켤 때 준비 (`--setup`)
+// ═══════════════════════════════════════════════════════
+
+/// 준비 설정. 앱 묶음(.dmg에서 끌어 넣은 앱)은 실행 파일이 이미 있으니 받지 않고, 고른 모듈·익스텐션과 Python만 준비한다
+#[derive(Debug, Clone)]
+pub struct SetupOptions {
+    /// 앱 묶음의 실행 파일 폴더 (`Saba-chan.app/Contents/MacOS`)
+    pub install_path: PathBuf,
+    pub language: String,
+    pub selected_modules: Vec<String>,
+    /// 미리 받아 둔 검증된 manifest. 없고 고른 모듈이 있으면 받는다
+    pub release: Option<VerifiedRelease>,
+    pub module_metadata: Vec<ModuleInfo>,
+}
+
+/// 처음 켤 때 준비: 모듈·익스텐션, Python, 언어, `saba-chan` 명령어를 준비하고 이 자리를 준비된 것으로 적는다.
+/// 마지막 진행(완료 또는 실패)을 알리고 돌려준다
+pub async fn setup(config: SetupOptions, hooks: &dyn InstallHooks) -> InstallProgress {
+    let warnings = std::sync::Mutex::new(Vec::<String>::new());
+    let warn = |msg: String| {
+        tracing::warn!("{}", msg);
+        if let Ok(mut w) = warnings.lock() {
+            w.push(msg);
+        }
+    };
+    let mut installed = Vec::new();
+
+    if !config.selected_modules.is_empty() {
+        emit_step(hooks, "fetch", "Fetching release information...", 7);
+        let manifest = match config.release.clone() {
+            Some(m) => Ok(m),
+            None => release::fetch_latest().await,
+        };
+        match manifest {
+            Ok(m) => {
+                let manifest = m.for_profile(Profile::Desktop);
+                install_modules(hooks, &manifest, &config.selected_modules, &config.module_metadata, &mut installed, &warn).await;
+            }
+            // 모듈은 앱의 사바 스토리지에서도 받을 수 있다: 준비는 계속한다
+            Err(e) => warn(format!("Game modules were not downloaded ({}); get them in Saba Storage", e)),
+        }
+    }
+
+    emit_step(hooks, "runtime-python", "Preparing Python runtime...", 57);
+    prepare_python(&config.install_path, &mut installed, &warn).await;
+
+    emit_step(hooks, "config-lang", "Saving language settings...", 89);
+    save_language_setting(&config.language);
+
+    emit_step(hooks, "command", "Registering the saba-chan command...", 94);
+    if let Err(e) = finish_setup(&config.install_path, &installs_file()) {
+        warn(e);
+    }
+
+    let warnings = warnings.into_inner().unwrap_or_default();
+    let done = InstallProgress {
+        step: "complete".into(),
+        message: format!("{} items prepared", installed.len()),
+        percent: 100,
+        complete: true,
+        installed_components: installed,
+        log_path: (!warnings.is_empty()).then(|| log_file_path().display().to_string()),
+        warnings,
+        ..Default::default()
+    };
+    hooks.progress(&done);
+    done
+}
+
+/// 준비의 끝: `saba-chan` 명령어를 이 자리로 잇고, 이 자리를 설치 목록에 적는다 (GUI가 다음부터 준비 화면을 띄우지 않는다).
+/// 앱을 옮겼거나 예전 판에서 올라온 자리는 창 없이 이것만 한다 (`--setup --quiet`). 명령어를 잇지 못해도 목록에는 적는다
+pub fn finish_setup(install_dir: &Path, installs: &Path) -> Result<(), String> {
+    let linked = user_path::add(install_dir).map_err(|e| format!("The saba-chan command was not registered: {}", e));
+    saba_chan_updater_lib::uninstall_entry::remember_install(installs, install_dir)
+        .map_err(|e| format!("Failed to record the install folder: {}", e))?;
+    linked.map(|_| ())
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1388,5 +1497,19 @@ mod tests {
         );
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 준비를 마치면 이 자리가 설치 목록에 남아, 앱이 다음부터 준비 화면 없이 열린다
+    #[test]
+    fn finishing_setup_marks_the_app_as_ready() {
+        use saba_chan_updater_lib::app_bundle::{launch_for, Launch};
+        let tmp = tempfile::tempdir().unwrap();
+        let app = tmp.path().join("Saba-chan.app/Contents/MacOS");
+        std::fs::create_dir_all(&app).unwrap();
+        let installs = tmp.path().join("installs.json");
+        let modules = tmp.path().join("modules");
+        assert_eq!(launch_for(&app, &installs, &modules), Launch::Setup);
+        finish_setup(&app, &installs).unwrap();
+        assert_eq!(launch_for(&app, &installs, &modules), Launch::Ready);
     }
 }

@@ -6,7 +6,12 @@
 /** 포트 확인 결과 (port_check::Report)의 쓰는 칸 */
 export interface PortCheckReport {
     verdict?: string;
+    /** 고칠 방법 안내 키 (`port_check.hint.<hint>`). 옛 데몬은 없으므로 verdict로 대신한다 */
+    hint?: string;
 }
+
+/** 고칠 방법 안내 문구 키 */
+export const portCheckHintKey = (report: PortCheckReport) => `port_check.hint.${report.hint || report.verdict}`;
 
 /** 웹사이트의 "친구들이 접속하게 하기" 안내 (영어는 앞에 언어가 없다) */
 const SITE = 'https://saba-chan.online';

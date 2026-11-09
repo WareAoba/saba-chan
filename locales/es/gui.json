@@ -2415,6 +2415,7 @@
     "hint": {
       "closed": "Comprueba que el router reenvía este puerto a este PC y que el cortafuegos del PC lo permite.",
       "firewall": "El Firewall de Windows está bloqueando las conexiones entrantes en este puerto. Para la red a la que estás conectado ahora (privada o pública), permite saba-core si el servidor está detenido, o el programa del servidor del juego si está en marcha, en la configuración del Firewall de Windows y vuelve a comprobar.",
+      "firewall_macos": "El firewall de macOS está bloqueando las conexiones entrantes del programa de este servidor. En Ajustes del Sistema › Red › Firewall › Opciones, pon saba-core (si el servidor está detenido) o el programa del servidor de juego, como java (si está en marcha), en Permitir conexiones entrantes y vuelve a comprobar.",
       "router": "El firewall del PC permite este puerto. Reenvía este puerto a este PC en la configuración del router y vuelve a comprobar.",
       "cgnat": "Tu proveedor comparte una IP pública entre muchos hogares, así que el reenvío de puertos no puede abrirlo. Pide una IP pública a tu proveedor o usa una VPN como Tailscale.",
       "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar."

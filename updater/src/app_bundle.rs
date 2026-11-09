@@ -63,6 +63,41 @@ pub fn remove_shell(install_dir: &Path) {
     let _ = std::fs::remove_dir(&bundle);
 }
 
+/// 묶음 앱을 켤 때 GUI가 창보다 먼저 정하는 일 (처음 켠 것인지)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Launch {
+    /// 준비가 끝난 자리: 그대로 연다
+    Ready,
+    /// 이 자리는 처음이지만 모듈이 있다 (예전 판에서 올라왔거나 앱을 옮겼다): 창 없이 명령어 링크만 고치고 연다
+    Relink,
+    /// 진짜 처음: 설치기 준비 화면을 띄운다
+    Setup,
+    /// 디스크 이미지나 격리된 임시 자리에서 열었다: 응용 프로그램 폴더로 옮기라고 알린다
+    MoveFirst,
+}
+
+/// 디스크 이미지(`/Volumes`)나 macOS가 격리해 연 임시 자리(App Translocation)에서 열렸는가.
+/// 이런 자리는 다음에 열면 없거나 바뀌어 명령어 링크가 끊긴다
+pub fn in_temporary_place(install_dir: &Path) -> bool {
+    install_dir.starts_with("/Volumes") || install_dir.components().any(|c| c.as_os_str() == "AppTranslocation")
+}
+
+/// 준비는 설치기가 마칠 때 설치 목록(`installs.json`)에 이 자리를 적는 것으로 끝난다. 파일이 있는지만 보지 않는 것은
+/// 앱 안 업데이트도 설치 기록 파일을 만들기 때문이다. 준비 도중 창을 닫으면 목록에 없어 다음에 다시 준비한다
+pub fn launch_for(install_dir: &Path, installs_file: &Path, modules_dir: &Path) -> Launch {
+    if in_temporary_place(install_dir) {
+        return Launch::MoveFirst;
+    }
+    let listed = crate::uninstall_entry::listed_installs(installs_file);
+    if listed.iter().any(|d| crate::same_path(Path::new(d), install_dir)) {
+        return Launch::Ready;
+    }
+    let has_modules = std::fs::read_dir(modules_dir)
+        .map(|it| it.flatten().any(|e| e.path().join("module.toml").is_file()))
+        .unwrap_or(false);
+    if has_modules { Launch::Relink } else { Launch::Setup }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,5 +167,28 @@ mod tests {
         assert!(place_files(&macos).unwrap().is_empty());
         assert!(!macos.parent().unwrap().join(PLIST_FILE).exists());
         assert!(place_files(tmp.path()).is_ok(), "not inside a bundle");
+    }
+
+    /// 처음 켤 때만 준비 화면을 띄운다. 준비를 마친 자리는 그대로, 모듈은 있는데 처음 보는 자리(옮긴 앱·예전 판)는 링크만 고친다.
+    /// 디스크 이미지에서 연 앱은 옮기라고 먼저 알린다
+    #[test]
+    fn launch_shows_setup_only_on_a_real_first_run() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = tmp.path().join("Applications/Saba-chan.app/Contents/MacOS");
+        let installs = tmp.path().join("installs.json");
+        let modules = tmp.path().join("modules");
+        std::fs::create_dir_all(&modules).unwrap();
+
+        assert_eq!(launch_for(&app, &installs, &modules), Launch::Setup);
+        std::fs::create_dir_all(modules.join("minecraft")).unwrap();
+        std::fs::write(modules.join("minecraft/module.toml"), "").unwrap();
+        assert_eq!(launch_for(&app, &installs, &modules), Launch::Relink);
+        crate::uninstall_entry::remember_install(&installs, &app).unwrap();
+        assert_eq!(launch_for(&app, &installs, &modules), Launch::Ready);
+
+        let dmg = Path::new("/Volumes/Saba-chan/Saba-chan.app/Contents/MacOS");
+        assert_eq!(launch_for(dmg, &installs, &modules), Launch::MoveFirst);
+        let translocated = Path::new("/private/var/folders/x/T/AppTranslocation/ABC/d/Saba-chan.app/Contents/MacOS");
+        assert_eq!(launch_for(translocated, &installs, &modules), Launch::MoveFirst);
     }
 }
