@@ -173,12 +173,15 @@ jobs:
         run: |
           python -c "import json;[print(e['asset'], 'addons/%s/%s/%s' % (e['key'], e['version'], e['asset'])) for e in json.load(open('addon-entries.json'))]" > r2-uploads.txt
           while read -r file key; do
-            if aws s3api head-object --bucket "${{ vars.R2_BUCKET }}" --key "$key" --endpoint-url "${{ vars.R2_ENDPOINT }}" >/dev/null 2>&1; then
+            # 없음(404)만 "올려도 된다"로 본다. 권한·네트워크 오류를 없음으로 읽으면 있는 파일을 덮어쓴다
+            if head=$(aws s3api head-object --bucket "${{ vars.R2_BUCKET }}" --key "$key" --endpoint-url "${{ vars.R2_ENDPOINT }}" 2>&1); then
               aws s3 cp "s3://${{ vars.R2_BUCKET }}/$key" existing.zip --endpoint-url "${{ vars.R2_ENDPOINT }}" --no-progress
               if [ "$(sha256sum < existing.zip)" = "$(sha256sum < "addon-assets/$file")" ]; then
                 echo "R2 $key already holds this file"; continue
               fi
               echo "::error::R2 $key already exists with different contents"; exit 1
+            elif ! printf '%s' "$head" | grep -q '(404)'; then
+              echo "::error::Could not check R2 $key: $head"; exit 1
             fi
             aws s3 cp "addon-assets/$file" "s3://${{ vars.R2_BUCKET }}/$key" --endpoint-url "${{ vars.R2_ENDPOINT }}" --no-progress
           done < r2-uploads.txt

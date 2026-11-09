@@ -48,7 +48,7 @@ pub use process::ProcessChecker;
 pub use relay::{ReleaseManifest, ManifestComponent};
 pub use integrity::{IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity};
 pub use marker::UpdateCompletionMarker;
-pub(crate) use apply::{replace_dir, replace_dir_checked};
+pub(crate) use apply::{replace_dir, swap_dir_untouched};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -703,24 +703,12 @@ impl UpdateManager {
         };
 
         // 모듈·익스텐션은 앱 릴리즈와 따로 내는 판 목록에서, 지금 코어로 돌아가는 가장 새 판으로 고른다 (릴레이 `/v1/addons/catalog`).
-        // 목록이 없으면(옛 릴레이, 아직 올린 판 없음) 릴리즈 manifest의 판을 그대로 쓴다
+        // 목록이 없으면(옛 릴레이, 아직 올린 판 없음) 릴리즈 manifest의 판을 그대로 쓰고, 읽지 못하면 이번에는 모듈·익스텐션을 내지 않는다
         let core = if current.is_empty() { relay::core_version() } else { current.clone() };
-        let addons = match client.fetch_addon_catalog(&core, &self.config.channel).await {
-            Ok(catalog) => catalog,
-            Err(e) => {
-                tracing::warn!("[Updater] Addon catalog unavailable, using the release manifest: {}", e);
-                None
-            }
-        };
-        let release = match (release, &addons) {
-            (Some(mut release), Some(catalog)) => {
-                catalog.overlay(&mut release.manifest);
-                Some(release)
-            }
-            // 앱 릴리즈를 받지 못해도(그 채널에 지금 버전이 없음) 모듈·익스텐션은 목록으로 확인한다
-            (None, Some(catalog)) => Some(relay::VerifiedRelease::addons_only(&core, &self.config.channel, &platform, catalog)),
-            (release, None) => release,
-        };
+        let catalog = client.fetch_addon_catalog(&core, &self.config.channel).await;
+        // 깐 판이 내린 판인지는 목록의 서명된 내림 기록으로 안다
+        let addons = catalog.as_ref().ok().and_then(Option::as_ref).map(|c| relay::AddonCatalog { components: HashMap::new(), yanked: c.yanked.clone() });
+        let release = relay::merge_addon_catalog(release, catalog, &core, &self.config.channel, &platform);
 
         let previous = std::mem::take(&mut self.status.components);
         let mut components = Vec::new();
@@ -1107,21 +1095,17 @@ impl UpdateManager {
         (applied, failed)
     }
 
-    /// 모듈·익스텐션 폴더를 바꾸되, 백업을 뜬 순간의 내용이 설치 기록 그대로가 아니면 멈춘다
+    /// 모듈·익스텐션 폴더를 바꾸되, 원래 폴더를 옮긴 뒤 설치 기록 그대로가 아니면 되돌리고 멈춘다 (`swap_dir_untouched`)
     fn replace_untouched_addon(&self, component: &Component, staged_path: &str) -> Result<Vec<PathBuf>> {
-        let (target, backup) = match component {
-            Component::Module(name) => (self.modules_dir.join(name), format!("{}_backup", name)),
-            Component::Extension(name) => (self.resolve_ext_dir(name), format!("{}_ext_backup", name)),
+        let target = match component {
+            Component::Module(name) => self.modules_dir.join(name),
+            Component::Extension(name) => self.resolve_ext_dir(name),
             other => anyhow::bail!("{} is not a module or an extension", other.manifest_key()),
         };
         let key = component.manifest_key();
-        replace_dir_checked(&target, Path::new(staged_path), &self.staging_dir, &backup, |copy| {
-            if integrity::untouched_copy(&key, &target, copy) {
-                Ok(())
-            } else {
-                anyhow::bail!("{} has files that were added or changed after install; left as it is", key)
-            }
-        })
+        let files = swap_dir_untouched(&target, Path::new(staged_path), |moved| integrity::untouched_copy(&key, &target, moved))?;
+        std::fs::remove_file(staged_path).ok();
+        Ok(files)
     }
 
     /// 컴포넌트 하나를 적용하고 쓴 파일을 돌려준다

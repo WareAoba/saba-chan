@@ -269,7 +269,7 @@ fn replaceable_at(records: &Path, official: &Path, component_key: &str, dir: &Pa
 
 /// 교체 직전에 뜬 사본(`copy`, 원래 폴더 `dir`의 복사본)이 카탈로그에서 깐 그대로인가: 카탈로그에서 받았고,
 /// 설치 기록의 파일이 모두 같은 내용으로 있고, 기록에 없는 파일이 없다 (맨 위의 점 항목·`__pycache__`는 교체가 남기므로 뺀다).
-/// 묻지 않는 교체가 교체 순간의 내용을 보고 멈추는 데 쓴다 (`replace_dir_checked`)
+/// 묻지 않는 교체가 교체 순간의 내용을 보고 멈추는 데 쓴다 (`swap_dir_untouched`)
 pub fn untouched_copy(component_key: &str, dir: &Path, copy: &Path) -> bool {
     untouched_copy_at(&records_path(), &official_path(), component_key, dir, copy)
 }

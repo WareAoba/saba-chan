@@ -351,41 +351,93 @@ fn replace_dir_restores_backup_when_extract_fails() {
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
 }
 
-// 묻지 않는 교체: 백업을 뜬 그 순간의 내용을 검사하고, 거절하면 폴더를 건드리지 않는다 (Codex #926 재리뷰)
-#[test]
-fn a_checked_replace_leaves_the_folder_alone_when_the_check_refuses() {
+/// 묻지 않는 교체에 쓸 새 판 zip (`module.toml` 하나)
+fn new_module_zip(dir: &std::path::Path) -> std::path::PathBuf {
     use std::io::Write;
-    let tmp = tempfile::tempdir().unwrap();
-    let staging = tmp.path().join("staging");
-    std::fs::create_dir_all(&staging).unwrap();
-    let target = tmp.path().join("modules").join("game");
-    std::fs::create_dir_all(&target).unwrap();
-    std::fs::write(target.join("module.toml"), "old").unwrap();
-    std::fs::write(target.join("server.properties"), "mine").unwrap();
-    let zip_at = |name: &str| {
-        let path = staging.join(name);
-        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
-        zip.start_file("module.toml", zip::write::SimpleFileOptions::default()).unwrap();
-        zip.write_all(b"new").unwrap();
-        zip.finish().unwrap();
-        path
-    };
+    std::fs::create_dir_all(dir).unwrap();
+    let path = dir.join("module-game.zip");
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+    zip.start_file("module.toml", zip::write::SimpleFileOptions::default()).unwrap();
+    zip.write_all(b"new").unwrap();
+    zip.finish().unwrap();
+    path
+}
 
-    let staged = zip_at("module-game.zip");
-    let mut seen = None;
-    let refused = crate::replace_dir_checked(&target, &staged, &staging, "game_backup", |copy| {
-        seen = Some(std::fs::read_to_string(copy.join("server.properties")).unwrap());
-        anyhow::bail!("user files")
-    });
-    assert!(refused.is_err());
-    assert_eq!(seen.as_deref(), Some("mine"), "the check sees the folder as it was at the swap");
+fn old_module(target: &std::path::Path) {
+    std::fs::create_dir_all(target.join(".git")).unwrap();
+    std::fs::write(target.join("module.toml"), "old").unwrap();
+    std::fs::write(target.join(".git/HEAD"), "ref").unwrap();
+}
+
+// 묻지 않는 교체(Codex #926 재리뷰): 원래 폴더는 옆으로 옮긴 뒤 검사하고, 바꿔 넣은 뒤에도 검사가 통과한 것만 지운다
+#[test]
+fn an_untouched_swap_puts_the_new_version_in_and_keeps_dot_entries() {
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("modules").join("game");
+    old_module(&target);
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    let mut checked = None;
+    let files = crate::swap_dir_untouched(&target, &staged, |old| {
+        checked = Some(std::fs::read_to_string(old.join("module.toml")).unwrap());
+        assert!(!target.exists(), "the original is moved away before it is checked");
+        true
+    })
+    .unwrap();
+    assert_eq!(checked.as_deref(), Some("old"));
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
+    assert_eq!(std::fs::read_to_string(target.join(".git/HEAD")).unwrap(), "ref", "dot entries come along");
+    assert_eq!(files, vec![target.join("module.toml")]);
+    let left: Vec<_> = std::fs::read_dir(tmp.path().join("modules")).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert_eq!(left, vec![std::ffi::OsString::from("game")], "nothing is left beside it");
+}
+
+#[test]
+fn an_untouched_swap_puts_a_changed_folder_back_as_it_was() {
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("modules").join("game");
+    old_module(&target);
+    std::fs::write(target.join("server.properties"), "mine").unwrap();
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    assert!(crate::swap_dir_untouched(&target, &staged, |_| false).is_err());
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
     assert_eq!(std::fs::read_to_string(target.join("server.properties")).unwrap(), "mine");
-    assert!(!staging.join("game_backup").exists(), "a refused swap leaves no backup behind");
+    let left: Vec<_> = std::fs::read_dir(tmp.path().join("modules")).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert_eq!(left, vec![std::ffi::OsString::from("game")]);
+}
 
-    std::fs::remove_file(target.join("server.properties")).unwrap();
-    crate::replace_dir_checked(&target, &staged, &staging, "game_backup", |_| Ok(())).unwrap();
-    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
+/// 원래 폴더를 옮긴 뒤 같은 경로에 사용자가 파일을 만들면 아무것도 지우지 않고 멈춘다: 그 파일도, 옮긴 원래 폴더도 남는다
+#[test]
+fn a_file_written_after_the_move_is_never_deleted() {
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("modules").join("game");
+    old_module(&target);
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    let err = crate::swap_dir_untouched(&target, &staged, |_| {
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("late.cfg"), "late").unwrap();
+        true
+    })
+    .unwrap_err();
+    assert_eq!(std::fs::read_to_string(target.join("late.cfg")).unwrap(), "late");
+    let aside = tmp.path().join("modules").join(".game.saba-old");
+    assert_eq!(std::fs::read_to_string(aside.join("module.toml")).unwrap(), "old", "the original is kept");
+    assert!(err.to_string().contains(".game.saba-old"), "the error names where the original is: {err}");
+}
+
+/// 옮긴 뒤 꺼졌으면(원래 경로가 비었다) 다음 교체가 먼저 원래 폴더를 돌려놓는다
+#[test]
+fn an_interrupted_swap_is_put_back_first() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let aside = modules.join(".game.saba-old");
+    old_module(&aside);
+    std::fs::create_dir_all(modules.join(".game.saba-new")).unwrap();
+    std::fs::write(modules.join(".game.saba-new/half"), "x").unwrap();
+    let target = modules.join("game");
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    assert!(crate::swap_dir_untouched(&target, &staged, |_| false).is_err());
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
+    assert!(!aside.exists() && !modules.join(".game.saba-new").exists());
 }
 
 // 교체 도중 꺼졌으면 남은 백업이 원래 내용이다: 다음 시도가 반쯤 바뀐 폴더로 백업을 덮지 않는다
