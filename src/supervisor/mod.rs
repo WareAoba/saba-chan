@@ -339,7 +339,7 @@ fn same_file_path(a: &std::path::Path, b: &std::path::Path) -> bool {
     }
 }
 
-/// 서버 시작과 모듈·익스텐션 자동 교체가 겹치지 않게 하는 문 (`Supervisor::hold_starts`)
+/// 서버 시작·설치와 모듈·익스텐션 자동 교체가 겹치지 않게 하는 문 (`Supervisor::try_hold_starts`)
 static ADDON_SWAP_GATE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
 
 impl Supervisor {
@@ -2170,10 +2170,16 @@ impl Supervisor {
         self.tracker.get_pid(instance_id).is_ok() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
     }
 
-    /// 서버 시작을 막는다: 모듈·익스텐션 자동 교체가 사용 확인부터 교체까지 쥔다. 진행 중인 시작이 끝나기를 기다린 뒤 돌려준다.
-    /// 시작(`start_server`·`start_managed_server`)은 처음부터 끝까지 읽기로 잡는다. 쥔 채로 서버를 시작하지 않는다
-    pub async fn hold_starts() -> tokio::sync::RwLockWriteGuard<'static, ()> {
-        ADDON_SWAP_GATE.write().await
+    /// 서버 시작·설치를 막는다: 모듈·익스텐션 자동 교체가 사용 확인부터 교체까지 쥔다.
+    /// 시작(`start_server`·`start_managed_server`)과 서버 설치·업데이트(`hold_addons`)가 진행 중이면 기다리지 않고 None:
+    /// 기다리면 그 뒤로 새 시작이 줄 서고, 시작 안에서 다시 읽기를 잡는 경로가 멈춘다. 교체는 다음 차례에 다시 본다
+    pub fn try_hold_starts() -> Option<tokio::sync::RwLockWriteGuard<'static, ()>> {
+        ADDON_SWAP_GATE.try_write().ok()
+    }
+
+    /// 모듈·익스텐션을 오래 쓰는 작업(서버 설치·업데이트)이 끝날 때까지 자동 교체를 막는다. 시작과 같이 읽기로 잡는다
+    pub async fn hold_addons() -> tokio::sync::RwLockReadGuard<'static, ()> {
+        ADDON_SWAP_GATE.read().await
     }
 
     /// 인스턴스가 쓰는 익스텐션: 인스턴스의 목록, 비어 있으면(옛 인스턴스) 모듈의 `[install] requires_extensions`
@@ -2663,6 +2669,8 @@ impl Supervisor {
         keep_executable: Option<&str>,
         commit: Option<&InstallCommit<'_>>,
     ) -> Result<Value> {
+        // 설치가 끝날 때까지 모듈·익스텐션 자동 교체를 막는다
+        let _addons = Self::hold_addons().await;
         let module = sup.read().await.module_loader.get_module(module_name)?;
         let module_path = module.entry_path();
 
@@ -4401,7 +4409,13 @@ mod tests {
         let mut supervisor = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         supervisor.initialize().await.unwrap();
         let sup = std::sync::Arc::new(tokio::sync::RwLock::new(supervisor));
-        let gate = Supervisor::hold_starts().await;
+        let gate = loop {
+            // 다른 테스트의 시작이 문을 읽기로 쥐고 있을 수 있다
+            match Supervisor::try_hold_starts() {
+                Some(gate) => break gate,
+                None => tokio::time::sleep(Duration::from_millis(10)).await,
+            }
+        };
         let managed = tokio::spawn({
             let sup = sup.clone();
             async move { Supervisor::start_managed_server(&sup, "none", "game", json!({})).await }
@@ -4415,6 +4429,16 @@ mod tests {
         drop(gate);
         assert!(managed.await.unwrap().is_err(), "then it runs (no such instance here)");
         let _ = plain.await.unwrap();
+    }
+
+    /// 시작·설치가 문을 읽기로 쥔 동안 자동 교체는 기다리지 않고 미룬다: 기다리는 교체 뒤에 다른 시작·설치가 줄 서지 않는다
+    #[tokio::test]
+    async fn an_addon_swap_gives_up_instead_of_queueing_ahead_of_starts() {
+        let install = Supervisor::hold_addons().await;
+        assert!(Supervisor::try_hold_starts().is_none(), "a swap does not run under an install");
+        let another = tokio::time::timeout(Duration::from_millis(500), Supervisor::hold_addons()).await;
+        assert!(another.is_ok(), "nothing waits behind a swap that gave up");
+        drop((install, another));
     }
 
     /// 필수 익스텐션 목록이 빈 옛 인스턴스는 모듈의 `[install] requires_extensions`를 쓴다 (시작 검사와 자동 교체 보류가 같은 답)

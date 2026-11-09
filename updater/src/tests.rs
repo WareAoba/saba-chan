@@ -479,6 +479,22 @@ fn an_interrupted_swap_is_put_back_first() {
     assert_eq!(names_in(&modules), ["game"]);
 }
 
+// 지난 교체를 마친 뒤 사용자가 지운 모듈은 되살리지도, 새 판으로 깔지도 않는다
+#[test]
+fn a_folder_removed_after_a_finished_swap_is_not_brought_back() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let aside = modules.join(".game.saba-old");
+    std::fs::create_dir_all(&aside).unwrap();
+    std::fs::write(aside.join("module.toml"), "old").unwrap();
+    let fingerprint = crate::integrity::dir_fingerprint(&aside).unwrap();
+    std::fs::write(aside.join(crate::SWAP_FINGERPRINT), serde_json::to_string(&fingerprint).unwrap()).unwrap();
+    let target = modules.join("game");
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    assert!(crate::swap_dir_untouched(&target, &staged, |_| true).is_err());
+    assert!(names_in(&modules).is_empty(), "nothing comes back: {:?}", names_in(&modules));
+}
+
 // 교체 도중 꺼졌으면 남은 백업이 원래 내용이다: 다음 시도가 반쯤 바뀐 폴더로 백업을 덮지 않는다
 #[test]
 fn replace_dir_keeps_the_backup_left_by_an_interrupted_replace() {
