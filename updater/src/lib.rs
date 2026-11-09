@@ -48,6 +48,7 @@ pub use process::ProcessChecker;
 pub use relay::{ReleaseManifest, ManifestComponent};
 pub use integrity::{IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity};
 pub use marker::UpdateCompletionMarker;
+pub(crate) use apply::replace_dir;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -631,21 +632,14 @@ impl UpdateManager {
     /// 익스텐션 ID에서 디스크 상의 디렉토리 경로를 해석합니다.
     /// Python import 호환을 위해 하이픈→언더스코어 변환도 시도합니다.
     fn resolve_ext_dir(&self, ext_name: &str) -> PathBuf {
-        // 1. 원본 이름
+        // 데몬(`extension::extension_dir`)과 같은 순서: Python-safe 이름(하이픈→언더스코어) 먼저, 다음 원본 이름.
+        // 둘 다 없으면 Python-safe 이름 (신규 설치용)
+        let safe = self.extensions_dir.join(ext_name.replace('-', "_"));
         let exact = self.extensions_dir.join(ext_name);
-        if exact.exists() {
+        if !safe.exists() && exact.exists() {
             return exact;
         }
-        // 2. Python-safe 이름 (하이픈→언더스코어)
-        let safe_name = ext_name.replace('-', "_");
-        if safe_name != ext_name {
-            let safe = self.extensions_dir.join(&safe_name);
-            if safe.exists() {
-                return safe;
-            }
-        }
-        // 없으면 Python-safe 이름으로 반환 (신규 설치용)
-        self.extensions_dir.join(&safe_name)
+        safe
     }
 
     /// 현재 업데이트 상태를 반환
@@ -708,6 +702,26 @@ impl UpdateManager {
             }
         };
 
+        // 모듈·익스텐션은 앱 릴리즈와 따로 내는 판 목록에서, 지금 코어로 돌아가는 가장 새 판으로 고른다 (릴레이 `/v1/addons/catalog`).
+        // 목록이 없으면(옛 릴레이, 아직 올린 판 없음) 릴리즈 manifest의 판을 그대로 쓴다
+        let core = if current.is_empty() { relay::core_version() } else { current.clone() };
+        let addons = match client.fetch_addon_catalog(&core, &self.config.channel).await {
+            Ok(catalog) => catalog,
+            Err(e) => {
+                tracing::warn!("[Updater] Addon catalog unavailable, using the release manifest: {}", e);
+                None
+            }
+        };
+        let release = match (release, &addons) {
+            (Some(mut release), Some(catalog)) => {
+                catalog.overlay(&mut release.manifest);
+                Some(release)
+            }
+            // 앱 릴리즈를 받지 못해도(그 채널에 지금 버전이 없음) 모듈·익스텐션은 목록으로 확인한다
+            (None, Some(catalog)) => Some(relay::VerifiedRelease::addons_only(&core, &self.config.channel, &platform, catalog)),
+            (release, None) => release,
+        };
+
         let previous = std::mem::take(&mut self.status.components);
         let mut components = Vec::new();
         // 헤드리스 설치는 GUI처럼 그 구성에 들지 않는 컴포넌트를 받지 않는다
@@ -738,6 +752,9 @@ impl UpdateManager {
                 } else if installed && current.is_empty() {
                     let _ = Self::update_installed_version(key, &info.version);
                     false
+                } else if addons.as_ref().is_some_and(|c| c.is_yanked(key, &current)) && info.version != current {
+                    // 깐 판을 내렸다: 목록의 판으로 되돌린다 (더 낮은 판이어도)
+                    true
                 } else {
                     self.compare_versions(&info.version, &current)
                 };
@@ -1102,7 +1119,7 @@ impl UpdateManager {
             Component::Gui => self.apply_gui_update(staged_path).await,
             Component::Installer => self.apply_installer_update(staged_path),
             // 모듈처럼 백업 뒤 통째로 바꾼다: 새 판에 없는 옛 파일이 남지 않고, 실패하면 되돌린다
-            Component::Locales => self.replace_dir(&self.install_root.join("locales"), Path::new(staged_path), "locales_backup"),
+            Component::Locales => replace_dir(&self.install_root.join("locales"), Path::new(staged_path), &self.staging_dir, "locales_backup"),
         }
     }
 

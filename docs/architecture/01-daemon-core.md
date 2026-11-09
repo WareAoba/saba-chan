@@ -497,7 +497,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | GET | `/api/updates/status` | `updates.rs:129` | - | `{ok,last_check,next_check,checking,error,updates_available,components:[{component,display_name,current_version,latest_version,update_available,downloaded,installed}],profile}` (Locales 제외. `profile`은 설치 구성 `"desktop"`\|`"headless"`, `install-profile.json`, 05 §1) |
-| POST | `/api/updates/check` | `updates.rs:169` | - | `{ok,updates_available,update_names,components(+release_notes),last_check}`. Locales 업데이트가 있으면 백그라운드에서 조용히 적용 |
+| POST | `/api/updates/check` | `updates.rs:169` | - | `{ok,updates_available,update_names,components(+release_notes),last_check}`. Locales 업데이트가 있으면 백그라운드에서 조용히 적용. 모듈·익스텐션 새 판은 묻지 않고 바꿔 끼운다(켜진 서버가 쓰는 것은 꺼진 뒤, 고친 것은 두고. 05 §1.6) |
 | POST | `/api/updates/download` | `updates.rs:366` | 선택 `{components?:[key]}`. 본문이 없거나 공백이면 전부, 깨진 JSON은 400 `invalid_body`(`updates.rs:348-357`) | `{ok,downloaded,count,errors?}`. 전부 받기에서 일부가 실패해도 받은 것은 `downloaded`에, 실패한 것은 `errors[{component,error}]`에 싣고 `ok:false` |
 | GET | `/api/updates/download/progress` | `updates.rs:450` | - | `{ok,component,bytes_received,total_bytes,active}` |
 | POST | `/api/updates/apply` | `updates.rs:475` | download와 같은 본문 규칙 | `{ok,applied,needs_updater,requires_updater,errors}` |
@@ -690,7 +690,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - 시스템 Python은 `sys.executable`로 확인한 실제 인터프리터 파일 경로를 사용한다.
 - 성공한 결과는 `OnceCell`에 캐시하고, 실패는 캐시하지 않아 다음 호출이 다시 시도한다(`get_python_path`, `:56`). 모든 `run_plugin` 호출이 여기를 거친다(`plugin/mod.rs:282`). 데몬은 기동하자마자 미리 준비를 시작하고(`main.rs:320-324`), 진행은 `/api/runtime/preflight`(`preflight_snapshot`, `python_env/mod.rs:86-106`)로 보인다.
 - 다운로드 URL: `https://github.com/indygreg/python-build-standalone/releases/download/{tag}/cpython-{ver}+{tag}-{triple}-install_only_stripped.tar.gz`(`python_pin.rs:41-49`). 지원 triple은 win x64, linux x64/arm64, mac x64/arm64다. `SABA_PYTHON_URL`로 미러를 쓸 수 있다.
-- 다운로드 방식: Windows는 PowerShell `Invoke-WebRequest`, 그 외는 `curl`이다. 압축 해제는 `tar`를 쓴다. 풀기 전에 triple별로 고정한 SHA-256과 비교하고 다르면 지운다(`python_env/mod.rs:257-261`, `python_pin.rs:11-17, 53-61`). 미러를 쓰면 `SABA_PYTHON_SHA256`이 있을 때만 검사한다.
+- 다운로드 방식: 업데이터와 같은 검증 다운로드(`saba_chan_updater_lib::download::download_verified`, reqwest. 프록시는 환경 변수와 OS 설정)다. 연결·전송 실패는 3번까지 다시 받는다. 압축 해제는 `tar`를 쓴다. 받으면서 triple별로 고정한 SHA-256과 비교하고 다르면 받은 파일을 남기지 않는다(`python_env::download_file`, `python_pin.rs:11-17`). 미러를 쓰면 `SABA_PYTHON_SHA256`이 있을 때만 검사한다.
 - **`<pyroot>`는 `constants::resolve_data_dir()`와 다르다**(`python_env/mod.rs:395-432`). 순서는 다음과 같다.
   1. `SABA_DATA_DIR`
   2. **exe 디렉토리에 쓰기 권한이 있으면 exe 디렉토리**. 단 맥 앱 묶음 안(`*.app/Contents/MacOS`, `app_bundle::bundle_of`)이면 묶음에 파일을 더하면 서명이 깨지므로 쓰지 않고 `constants::resolve_data_dir()`(`~/.config/saba-chan`)를 쓴다. 제거기가 그 폴더의 런타임 항목으로 지운다(`runtime_root`)

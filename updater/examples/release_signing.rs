@@ -5,6 +5,7 @@
 //! cargo run -p saba-chan-updater-lib --example release_signing -- pubkey   # UPDATER_SIGNING_KEY의 공개키
 //! UPDATER_SIGNING_KEY=<64자리 hex seed | base64 pkcs8> cargo run -p saba-chan-updater-lib \
 //!     --example release_signing -- sign manifest.json [key-id] > signed.json
+//! UPDATER_SIGNING_KEY=... cargo run -p saba-chan-updater-lib --example release_signing -- sign-each entries.json > signed.json
 //! ```
 //!
 //! `gen-key`가 출력한 공개키는 `updater/src/signature.rs`의 `TRUSTED_KEYS`에,
@@ -33,8 +34,30 @@ fn main() {
             signature::verify(&signed).expect("signature does not verify with the bundled public key");
             println!("{}", serde_json::to_string_pretty(&signed).unwrap());
         }
+        // 모듈·익스텐션 판 기록 배열을 하나씩 서명한다 (publish-addons.yml, versions.py addons 출력)
+        Some("sign-each") if args.len() >= 2 => {
+            let key = std::env::var("UPDATER_SIGNING_KEY").expect("UPDATER_SIGNING_KEY is not set");
+            let key_id = args.get(2).map(String::as_str).unwrap_or(signature::TRUSTED_KEYS[0].0);
+            let text = std::fs::read_to_string(&args[1]).expect("read entries");
+            let entries: Vec<serde_json::Value> = serde_json::from_str(&text).expect("entries are not a JSON array");
+            let signed: Vec<_> = entries
+                .into_iter()
+                .map(|entry| {
+                    let signed = signature::sign(entry, key_id, &key).expect("sign");
+                    signature::verify(&signed).expect("signature does not verify with the bundled public key");
+                    signed
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&signed).unwrap());
+        }
+        // 릴레이에서 받은 서명된 manifest가 번들 공개키로 검증되는가 (publish-addons.yml seed)
+        Some("verify") if args.len() >= 2 => {
+            let text = std::fs::read_to_string(&args[1]).expect("read signed manifest");
+            let signed: signature::SignedManifest = serde_json::from_str(&text).expect("not a signed manifest");
+            signature::verify(&signed).expect("signature does not verify with the bundled public key");
+        }
         _ => {
-            eprintln!("usage: release_signing gen-key | pubkey | sign <manifest.json> [key-id]");
+            eprintln!("usage: release_signing gen-key | pubkey | sign <manifest.json> [key-id] | sign-each <entries.json> [key-id] | verify <signed.json>");
             std::process::exit(2);
         }
     }

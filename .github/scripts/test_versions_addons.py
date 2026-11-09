@@ -92,3 +92,64 @@ class ZipFolderSkipsDevFiles(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AddonPublishEntries(unittest.TestCase):
+    """publish-addons.yml: 릴레이에 아직 없는 판만 내고, 버전을 올리지 않은 변경·내린 판 번호 재사용은 막는다"""
+
+    def run_with(self, local_version, published, files=None):
+        prev_zip = zip_bytes({"module.toml": b"v1"})
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "module-game.zip").write_bytes(zip_bytes(files or {"module.toml": b"v1"}, (2026, 11, 9, 0, 0, 0)))
+            addons = {"module-game": {"version": local_version, "asset": "module-game.zip",
+                                      "install_dir": "modules/game", "requires": {"saba-core": ">=0.1.13"}}}
+            return versions.addon_publish_entries(addons, Path(d), published, "https://r2.example/", lambda url: prev_zip)
+
+    def published(self, version="0.1.5", yanked=None):
+        return {"addons": [{"manifest": {"key": "module-game", "version": version,
+                                         "url": "https://r2.example/addons/module-game/0.1.5/module-game.zip"}}],
+                "yanked": [{"manifest": {"key": k, "version": v, "yanked": True}, "signature": "s", "keyId": "k"}
+                           for k, vs in (yanked or {}).items() for v in vs]}
+
+    def test_a_new_version_becomes_an_entry_with_its_own_r2_path(self):
+        entries, problems = self.run_with("0.1.6", self.published(), {"module.toml": b"v2"})
+        self.assertEqual(problems, [])
+        self.assertEqual(len(entries), 1)
+        e = entries[0]
+        self.assertEqual((e["key"], e["version"]), ("module-game", "0.1.6"))
+        self.assertEqual(e["url"], "https://r2.example/addons/module-game/0.1.6/module-game.zip")
+        self.assertEqual(e["requires"], {"saba-core": ">=0.1.13"})
+        self.assertEqual(len(e["sha256"]), 64)
+
+    def test_the_published_version_unchanged_is_skipped(self):
+        entries, problems = self.run_with("0.1.5", self.published())
+        self.assertEqual((entries, problems), ([], []))
+
+    def test_changed_files_without_a_version_bump_are_refused(self):
+        _, problems = self.run_with("0.1.5", self.published(), {"module.toml": b"v2"})
+        self.assertEqual(len(problems), 1)
+
+    def test_a_yanked_version_number_is_not_reused(self):
+        _, problems = self.run_with("0.1.6", self.published(yanked={"module-game": ["0.1.6"]}), {"module.toml": b"v2"})
+        self.assertIn("yanked", problems[0])
+
+    def test_a_module_the_relay_has_never_seen_is_published(self):
+        entries, problems = self.run_with("0.1.0", {"addons": [], "yanked": []})
+        self.assertEqual(problems, [])
+        self.assertEqual([e["version"] for e in entries], ["0.1.0"])
+
+
+class AddonSeed(unittest.TestCase):
+    """따로 내기 전에 앱 릴리즈로 나간 판을 판 목록에 옮겨 담는다: 파일·sha256·주소는 그 릴리즈 그대로"""
+
+    def test_only_modules_and_extensions_become_entries(self):
+        release = {"manifest": {"version": "0.1.13", "components": {
+            "saba-core": {"version": "0.1.13", "asset": "saba-core.zip", "sha256": "c" * 64, "url": "https://r2/x"},
+            "module-game": {"version": "0.1.5", "asset": "module-game.zip", "sha256": "a" * 64,
+                            "url": "https://r2/releases/0.1.13/module-game.zip", "requires": {"saba-core": ">=0.1.13-0"}},
+            "ext-tool": {"version": "0.1.4", "asset": "ext-tool.zip", "sha256": "b" * 64, "url": "https://r2/releases/0.1.13/ext-tool.zip"},
+        }}}
+        entries = versions.addon_seed_entries(release)
+        self.assertEqual([e["key"] for e in entries], ["ext-tool", "module-game"])
+        self.assertEqual(entries[1]["url"], "https://r2/releases/0.1.13/module-game.zip")
+        self.assertEqual(entries[1]["requires"], {"saba-core": ">=0.1.13-0"})

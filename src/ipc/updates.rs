@@ -240,6 +240,11 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
     };
     announce_new_updates(&status);
 
+    // 모듈·익스텐션은 묻지 않고 바꿔 끼운다 (사용자 결정 2026-11-09). 확인을 끈 설정이면 주기 확인 자체가 돌지 않는다
+    if status.components.iter().any(|c| c.update_available && is_addon(&c.component)) {
+        spawn_addon_replace(state.clone());
+    }
+
     let has_locale_update = status.components.iter()
         .any(|c| matches!(c.component, Component::Locales) && c.update_available);
     if has_locale_update {
@@ -281,6 +286,117 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
         });
     }
     Ok(status)
+}
+
+fn is_addon(c: &Component) -> bool {
+    matches!(c, Component::Module(_) | Component::Extension(_))
+}
+
+/// 켜진 서버가 쓰고 있어 미룬 모듈·익스텐션 교체를 다시 해 보는 간격
+const ADDON_HOLD_RETRY: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+static ADDON_REPLACING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 모듈·익스텐션 자동 교체: 새 판(지금 코어로 돌아가는 가장 새 판, 릴레이 `/v1/addons/catalog`)을 받아 바로 바꿔 끼운다.
+/// 켜진 서버가 쓰는 것은 서버가 꺼질 때까지 5분마다 다시 보고, 사용자가 고친 것·직접 넣은 것은 덮어쓰지 않는다. 한 번에 하나만 돈다
+fn spawn_addon_replace(state: UpdateState) {
+    use std::sync::atomic::Ordering;
+    if ADDON_REPLACING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    tokio::spawn(async move {
+        while replace_addons_once(&state).await {
+            tokio::time::sleep(ADDON_HOLD_RETRY).await;
+        }
+        ADDON_REPLACING.store(false, Ordering::SeqCst);
+    });
+}
+
+/// 바꿀 수 있는 것을 바꾸고, 켜진 서버 때문에 미룬 것이 남았는가를 돌려준다
+async fn replace_addons_once(state: &UpdateState) -> bool {
+    // 이 코어로 돌아가지 않는 판(릴리즈 manifest에만 있는 더 새 판)은 앱을 올릴 때까지 둔다: 적용이 requires 검사로 거절한다
+    let core = std::collections::HashMap::from([("saba-core".to_string(), env!("CARGO_PKG_VERSION").to_string())]);
+    let pending: Vec<Component> = state.manager.read().await.get_status().components.into_iter()
+        .filter(|c| c.update_available && is_addon(&c.component))
+        .filter(|c| c.requires.as_ref().is_none_or(|r| {
+            let core_only: std::collections::HashMap<String, String> =
+                r.iter().filter(|(k, _)| k.as_str() == "saba-core").map(|(k, v)| (k.clone(), v.clone())).collect();
+            saba_chan_updater_lib::unmet_requires(&c.component.manifest_key(), &core_only, &core).is_empty()
+        }))
+        .map(|c| c.component)
+        .collect();
+    if pending.is_empty() {
+        return false;
+    }
+    let (busy_modules, busy_extensions) = busy_addons(state).await;
+    let pending: Vec<Component> = pending.into_iter().filter(|c| replaceable_without_asking(&c.manifest_key())).collect();
+    let (ready, held) = split_by_busy(pending, &busy_modules, &busy_extensions);
+    if !held.is_empty() {
+        tracing::info!("[Updates] Servers are using {:?}; replacing them after they stop", held.iter().map(Component::manifest_key).collect::<Vec<_>>());
+    }
+    if ready.is_empty() {
+        return !held.is_empty();
+    }
+    let mut downloaded = Vec::new();
+    for comp in ready {
+        // 판마다 잠갔다 놓는다: 받는 동안 상태 조회·업데이트 화면이 멈추지 않게
+        let result = state.manager.write().await.download_component(&comp).await;
+        match result {
+            Ok(_) => downloaded.push(comp),
+            Err(e) => tracing::warn!("[Updates] Could not download {} for replacement: {}", comp.manifest_key(), e),
+        }
+    }
+    // 받는 사이에 켠 서버가 쓰는 것은 바꾸지 않고 다음 차례로 미룬다
+    let (busy_modules, busy_extensions) = busy_addons(state).await;
+    let (ready, started) = split_by_busy(downloaded, &busy_modules, &busy_extensions);
+    let held = !held.is_empty() || !started.is_empty();
+    let keys: Vec<String> = ready.iter().map(Component::manifest_key).collect();
+    if !keys.is_empty() {
+        tracing::info!("[Updates] Replacing {:?} without asking", keys);
+        let _ = apply_updates_with(state.clone(), ApplyRequest { components: keys }).await;
+    }
+    held
+}
+
+/// 지금 바꿀 것과 켜진 서버가 써서 미룰 것
+fn split_by_busy(
+    pending: Vec<Component>,
+    busy_modules: &std::collections::HashSet<String>,
+    busy_extensions: &std::collections::HashSet<String>,
+) -> (Vec<Component>, Vec<Component>) {
+    pending.into_iter().partition(|c| match c {
+        Component::Module(name) => !busy_modules.contains(name),
+        Component::Extension(id) => !busy_extensions.contains(id),
+        _ => false,
+    })
+}
+
+/// 카탈로그 그대로인(Verified) 모듈·익스텐션만 묻지 않고 바꾼다. 사용자가 고쳤거나(Modified) 직접 넣은(Unverified) 것은 둔다:
+/// 바꾸면 사용자의 변경을 지운다. 그런 것은 업데이트 목록에 남아 사용자가 고를 수 있다
+fn replaceable_without_asking(key: &str) -> bool {
+    let Some(dir) = crate::sandbox::component_dir(key) else { return false };
+    let trust = saba_chan_updater_lib::integrity::trust_of(key, &dir);
+    if trust != saba_chan_updater_lib::integrity::Trust::Verified {
+        tracing::info!("[Updates] Not replacing {} automatically: its files are {:?}", key, trust);
+        return false;
+    }
+    true
+}
+
+/// 켜진 서버가 쓰는 모듈 이름과 익스텐션 id
+async fn busy_addons(state: &UpdateState) -> (std::collections::HashSet<String>, std::collections::HashSet<String>) {
+    let mut modules = std::collections::HashSet::new();
+    let mut extensions = std::collections::HashSet::new();
+    if let Some(ref sup) = state.supervisor {
+        let sup = sup.read().await;
+        let running = sup.running_instances().await;
+        for instance in sup.instance_store.list() {
+            if running.contains(&instance.id) {
+                modules.insert(instance.module_name.clone());
+                extensions.extend(instance.required_extensions.iter().cloned());
+            }
+        }
+    }
+    (modules, extensions)
 }
 
 /// 받고 바로 적용하는가: 자동 적용이 켜진 화면 없는 설치 (GUI가 있으면 앱을 열 때 적용한다, `apply-on-launch`)
@@ -1657,6 +1773,22 @@ mod tests {
 
     /// 헤드리스 설치는 창 없이 적용하고, 다시 띄울 것을 받지 않았으면 데몬 자신을 다시 띄운다. 데스크톱은 그대로
     /// 화면 없는 설치만 받고 바로 적용한다 (원격 데몬 자동 업데이트). GUI가 있는 설치는 앱을 열 때 적용한다
+    #[test]
+    fn a_module_or_extension_a_running_server_uses_waits_for_the_server_to_stop() {
+        use saba_chan_updater_lib::Component;
+        let busy_modules = std::collections::HashSet::from(["palworld".to_string()]);
+        let busy_extensions = std::collections::HashSet::from(["steamcmd".to_string()]);
+        let pending = vec![
+            Component::Module("palworld".into()),
+            Component::Module("minecraft".into()),
+            Component::Extension("steamcmd".into()),
+            Component::Extension("xna".into()),
+        ];
+        let (ready, held) = super::split_by_busy(pending, &busy_modules, &busy_extensions);
+        assert_eq!(ready, [Component::Module("minecraft".into()), Component::Extension("xna".into())]);
+        assert_eq!(held, [Component::Module("palworld".into()), Component::Extension("steamcmd".into())]);
+    }
+
     #[test]
     fn only_a_headless_install_with_auto_apply_applies_right_away() {
         use saba_chan_updater_lib::profile::Profile;
