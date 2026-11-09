@@ -659,7 +659,8 @@ pub const SWAP_FINGERPRINT: &str = ".saba-swap-fingerprint.json";
 ///
 /// 옮긴 폴더는 남긴다: 교체 전에 열어 둔 파일에 나중에 저장하면 그 내용은 옮긴 폴더에 써진다(유닉스).
 /// 다음 교체가 옮긴 폴더의 지문이 적어 둔 것과 같을 때만 지우고, 다르면 지우지 않고 그 위치를 오류에 적고 멈춘다.
-/// 어느 단계가 실패해도 지우는 것은 새로 푼 판뿐이다. 도중에 꺼졌으면 다음 호출이 먼저 원래 폴더를 돌려놓는다
+/// 어느 단계가 실패해도 지우는 것은 새로 푼 판뿐이다. 도중에 꺼졌으면 다음 호출이 먼저 원래 폴더를 돌려놓는다.
+/// 교체를 마친 뒤(지문이 있고 새 판 폴더가 없음) 제자리가 비었으면 사용자가 지운 것이다: 되살리지도 새로 깔지도 않는다
 pub fn swap_dir_untouched(
     target_dir: &Path,
     staged: &Path,
@@ -671,13 +672,15 @@ pub fn swap_dir_untouched(
     let fresh = parent.join(format!(".{name}.saba-new"));
     let kept = |why: &str| anyhow::anyhow!("{}; the original folder is kept at {}", why, aside.display());
     let put_back = || -> Result<()> {
-        let _ = std::fs::remove_file(aside.join(SWAP_FINGERPRINT));
-        std::fs::rename(&aside, target_dir).map_err(|e| kept(&format!("could not put the folder back ({e})")))
+        std::fs::rename(&aside, target_dir).map_err(|e| kept(&format!("could not put the folder back ({e})")))?;
+        let _ = std::fs::remove_file(target_dir.join(SWAP_FINGERPRINT));
+        Ok(())
     };
 
-    // 지난 교체가 남긴 것부터
+    // 지난 교체가 남긴 것부터. 지문이 있고 새 폴더가 없으면 그 교체는 끝났다: 제자리가 비었어도 되살리지 않는다
     if aside.exists() {
-        if !target_dir.exists() {
+        let finished = aside.join(SWAP_FINGERPRINT).exists() && !fresh.exists();
+        if !target_dir.exists() && !finished {
             put_back()?;
         } else {
             drop_old_folder_if_unchanged(&aside).map_err(|e| kept(&e.to_string()))?;
@@ -685,6 +688,10 @@ pub fn swap_dir_untouched(
     }
     if fresh.exists() {
         std::fs::remove_dir_all(&fresh)?;
+    }
+    // 바꿔 끼우기만 한다: 그 사이 사용자가 지운 것을 새로 깔지 않는다
+    if !target_dir.exists() {
+        anyhow::bail!("{} is not installed; nothing to replace", target_dir.display());
     }
 
     let extracted = match extract_zip(staged, &fresh, |_| Ok(())) {
@@ -699,37 +706,31 @@ pub fn swap_dir_untouched(
         let _ = std::fs::remove_dir_all(&fresh);
     };
 
-    if target_dir.exists() {
-        if let Err(e) = std::fs::rename(target_dir, &aside) {
-            drop_fresh();
-            return Err(anyhow::anyhow!("could not move {} aside: {}", target_dir.display(), e));
+    if let Err(e) = std::fs::rename(target_dir, &aside) {
+        drop_fresh();
+        return Err(anyhow::anyhow!("could not move {} aside: {}", target_dir.display(), e));
+    }
+    // 지문은 한 번만 뜬다: 검사한 내용과 적어 두는 내용이 같다
+    let checked = crate::integrity::dir_fingerprint(&aside).map_err(|e| anyhow::anyhow!(e)).and_then(|fp| {
+        if !untouched(&fp) {
+            anyhow::bail!("{} has files that were added or changed after install; left as it is", target_dir.display());
         }
-        // 지문은 한 번만 뜬다: 검사한 내용과 적어 두는 내용이 같다
-        let checked = crate::integrity::dir_fingerprint(&aside).map_err(|e| anyhow::anyhow!(e)).and_then(|fp| {
-            if !untouched(&fp) {
-                anyhow::bail!("{} has files that were added or changed after install; left as it is", target_dir.display());
-            }
-            crate::write_atomic(&aside.join(SWAP_FINGERPRINT), serde_json::to_string(&fp)?.as_bytes())?;
-            Ok(())
-        });
-        if let Err(e) = checked {
-            drop_fresh();
-            put_back()?;
-            return Err(e);
-        }
+        crate::write_atomic(&aside.join(SWAP_FINGERPRINT), serde_json::to_string(&fp)?.as_bytes())?;
+        Ok(())
+    });
+    if let Err(e) = checked {
+        drop_fresh();
+        put_back()?;
+        return Err(e);
     }
     if let Err(e) = std::fs::rename(&fresh, target_dir) {
         drop_fresh();
-        if aside.exists() {
-            put_back().map_err(|re| kept(&format!("could not put the new version in ({e}) nor the folder back ({re})")))?;
-        }
+        put_back().map_err(|re| kept(&format!("could not put the new version in ({e}) nor the folder back ({re})")))?;
         return Err(anyhow::anyhow!("could not put the new version of {} in: {}", target_dir.display(), e));
     }
-    if aside.exists() {
-        // 바꿔 넣기는 끝났다. 점 항목을 옮기지 못하면 옮긴 폴더에 남는다 (다음 교체가 지우지 않고 알린다)
-        if let Err(e) = carry_dot_entries(&aside, target_dir) {
-            tracing::warn!("[Updater] Left some dot entries in {}: {}", aside.display(), e);
-        }
+    // 바꿔 넣기는 끝났다. 점 항목을 옮기지 못하면 옮긴 폴더에 남는다 (다음 교체가 지우지 않고 알린다)
+    if let Err(e) = carry_dot_entries(&aside, target_dir) {
+        tracing::warn!("[Updater] Left some dot entries in {}: {}", aside.display(), e);
     }
     Ok(files)
 }

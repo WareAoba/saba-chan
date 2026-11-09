@@ -338,7 +338,7 @@ async fn replace_addons_once(state: &UpdateState) -> bool {
     }
     let mut downloaded = Vec::new();
     for comp in ready {
-        // 판마다 잠갔다 놓는다: 받는 동안 상태 조회·업데이트 화면이 멈추지 않게
+        // 판마다 잠갔다 놓는다: 판 하나를 받는 동안만 상태 조회·업데이트 화면이 기다린다
         let result = state.manager.write().await.download_component(&comp).await;
         match result {
             Ok(_) => downloaded.push(comp),
@@ -346,7 +346,11 @@ async fn replace_addons_once(state: &UpdateState) -> bool {
         }
     }
     // 여기부터 교체가 끝날 때까지 서버 시작을 막는다: 사용 확인과 교체 사이에 켜진 서버가 쓰던 판을 바꾸지 않게
-    let _starts = crate::supervisor::Supervisor::hold_starts().await;
+    // 시작·설치가 진행 중이면 기다리지 않고 다음 차례로 미룬다 (받은 파일은 남는다)
+    let Some(_starts) = crate::supervisor::Supervisor::try_hold_starts() else {
+        tracing::info!("[Updates] A server is starting or installing; replacing modules and extensions later");
+        return true;
+    };
     // 받는 사이에 켠 서버가 쓰는 것은 바꾸지 않고 다음 차례로 미룬다
     let (busy_modules, busy_extensions) = busy_addons(state).await;
     let (ready, started) = split_by_busy(downloaded, &busy_modules, &busy_extensions);
