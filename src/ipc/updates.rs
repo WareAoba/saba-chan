@@ -1341,7 +1341,11 @@ pub(crate) fn load_updater_config() -> UpdateConfig {
 fn load_updater_config_from(file: &ConfigFile) -> UpdateConfig {
     match file.section("updates") {
         serde_json::Value::Null => UpdateConfig::default(),
-        v => {
+        mut v => {
+            // 0.1.1 이름(`relay_base_url`)과 새 이름이 같이 있으면 별칭이 겹쳐 설정 전체가 깨진다: 새 이름을 쓴다
+            if let Some(obj) = v.as_object_mut().filter(|o| o.contains_key("relay_url")) {
+                obj.remove("relay_base_url");
+            }
             serde_json::from_value(v).unwrap_or_else(|e| {
                 tracing::warn!("[Updates] Ignoring invalid 'updates' config: {}", e);
                 UpdateConfig::default()
@@ -1790,9 +1794,9 @@ mod tests {
         assert!(loaded.auto_download);
     }
 
-    /// 0.1.1이 남긴 `updates` 설정: 채널은 업데이트 뒤에도 남는다 (옛 이름 `relay_base_url`은 읽지 않는다)
+    /// 0.1.1이 남긴 `updates` 설정: 채널과 릴레이 주소가 업데이트 뒤에도 남아야 한다
     #[test]
-    fn settings_written_by_0_1_1_keep_their_channel() {
+    fn settings_written_by_0_1_1_keep_their_channel_and_relay() {
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
         file.set_section(
@@ -1805,9 +1809,15 @@ mod tests {
         )
         .unwrap();
         let loaded = load_updater_config_from(&file);
-        assert_eq!((loaded.channel.as_str(), loaded.relay_url.as_deref()), ("beta", None));
+        assert_eq!(loaded.channel, "beta");
+        assert_eq!(loaded.relay_url.as_deref(), Some("http://127.0.0.1:9876"));
 
-        file.set_section("updates", json!({ "relay_url": "", "channel": "beta" })).unwrap();
+        file.set_section("updates", json!({ "relay_base_url": "", "channel": "beta" })).unwrap();
         assert_eq!(load_updater_config_from(&file).relay_url, None, "blank means the default relay");
+
+        // 둘 다 있으면 새 이름을 쓴다 (설정 전체가 기본값으로 떨어지지 않는다)
+        file.set_section("updates", json!({ "relay_base_url": "http://old", "relay_url": "http://new", "channel": "beta" })).unwrap();
+        let both = load_updater_config_from(&file);
+        assert_eq!((both.relay_url.as_deref(), both.channel.as_str()), (Some("http://new"), "beta"));
     }
 }
