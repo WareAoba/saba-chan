@@ -153,6 +153,7 @@ fn silent_uninstall(args: &[String]) -> i32 {
 }
 
 /// 앱 설정(tauri.conf.json·Info.plist)을 한 번만 펼친다: 두 곳에서 펼치면 맥에서 `_EMBED_INFO_PLIST` 심볼이 겹쳐 빌드가 깨진다
+#[cfg(feature = "window")]
 fn context() -> tauri::Context {
     tauri::generate_context!()
 }
