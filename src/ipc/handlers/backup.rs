@@ -1154,18 +1154,39 @@ async fn sweep_restore_safeties(state: &IPCServer, swept: &mut std::collections:
         // 목록을 모으는 동안 서버가 멈추거나 다시 켜졌을 수 있다: 지우기 직전에 켠 시각을 다시 읽는다
         let Some(started) = long_running(state, &id, saba_runner::now()).await else { continue };
         let Ok(dir) = backups_dir(state, &id).await else { continue };
-        let (expired, removed) = tokio::task::spawn_blocking(move || {
-            let expired = backup::expired_restore_safeties(&backup::list(&dir), started, saba_runner::now());
-            let removed: Vec<String> = expired.iter().filter(|n| backup::delete(&dir, n).is_ok()).cloned().collect();
-            (expired, removed)
-        })
-        .await
-        .unwrap_or_default();
-        if !removed.is_empty() {
-            tracing::info!("Removed {} restore safety backup(s) of '{}' after the server ran {} minutes", removed.len(), id, backup::RESTORE_SAFETY_GRACE_SECS / 60);
+        // 폴더를 읽지 못하거나 작업이 실패하면 빈 목록으로 보지 않고 다음 차례에 다시 시도한다
+        let listing = {
+            let dir = dir.clone();
+            tokio::task::spawn_blocking(move || backup::list_checked(&dir)).await
+        };
+        let list = match listing {
+            Ok(Ok(list)) => list,
+            Ok(Err(e)) => {
+                tracing::warn!("Could not list backups of '{}' to clear restore safety backups; will retry: {}", id, e);
+                continue;
+            }
+            Err(e) => {
+                tracing::warn!("Listing backups of '{}' failed; will retry: {}", id, e);
+                continue;
+            }
+        };
+        let expired = backup::expired_restore_safeties(&list, started, saba_runner::now());
+        let mut removed = 0;
+        for name in &expired {
+            // 하나씩 지우기 직전에 서버가 그대로 같은 실행인지 다시 본다: 그 사이 멈추거나 다시 켜졌으면 남긴다
+            if long_running(state, &id, saba_runner::now()).await != Some(started) {
+                break;
+            }
+            let (dir, name) = (dir.clone(), name.clone());
+            if matches!(tokio::task::spawn_blocking(move || backup::delete(&dir, &name)).await, Ok(Ok(()))) {
+                removed += 1;
+            }
         }
-        // 못 지운 것(파일 잠금 등)이 있으면 처리한 것으로 적지 않아 다음 차례(30초 뒤)에 다시 시도한다
-        if removed.len() == expired.len() {
+        if removed > 0 {
+            tracing::info!("Removed {} restore safety backup(s) of '{}' after the server ran {} minutes", removed, id, backup::RESTORE_SAFETY_GRACE_SECS / 60);
+        }
+        // 못 지운 것(파일 잠금, 도중에 멈춤 등)이 있으면 처리한 것으로 적지 않아 다음 차례(30초 뒤)에 다시 본다
+        if removed == expired.len() {
             swept.insert(id, started);
         } else {
             tracing::warn!("Could not remove all restore safety backups of '{}'; will retry", id);

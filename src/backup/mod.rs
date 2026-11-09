@@ -775,14 +775,19 @@ pub fn total_bytes(dir: &Path) -> u64 {
 
 /// 새것부터
 pub fn list(dir: &Path) -> Vec<BackupInfo> {
-    let mut out: Vec<BackupInfo> = fs::read_dir(dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| info(&e.path()))
-        .collect();
+    list_checked(dir).unwrap_or_default()
+}
+
+/// `list`와 같지만 폴더를 읽지 못한 것(권한·입출력 오류)을 빈 목록과 구별한다. 폴더가 아직 없으면 빈 목록이다
+pub fn list_checked(dir: &Path) -> io::Result<Vec<BackupInfo>> {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    let mut out: Vec<BackupInfo> = entries.flatten().filter_map(|e| info(&e.path())).collect();
     out.sort_by(|a, b| b.made.cmp(&a.made).then_with(|| b.name.cmp(&a.name)));
-    out
+    Ok(out)
 }
 
 /// API로 받은 백업 이름이 잘못됐거나(`Invalid`) 그 백업이 없다(`Missing`). 호출자는 400·404로 알린다
@@ -1466,6 +1471,17 @@ mod tests {
         delete(&dir, &first.name).unwrap();
         delete(&dir, &second.name).unwrap();
         assert_eq!(total_bytes(&dir), 0, "unused content is cleared with the last backup");
+    }
+
+    /// 폴더를 읽지 못한 것은 빈 목록이 아니다: 없는 폴더만 빈 목록이다
+    #[test]
+    fn list_checked_tells_an_unreadable_folder_from_an_empty_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(list_checked(&tmp.path().join("missing")).unwrap().is_empty());
+        let file = tmp.path().join("not-a-folder");
+        fs::write(&file, b"x").unwrap();
+        assert!(list_checked(&file).is_err());
+        assert!(list(&file).is_empty());
     }
 
     #[test]
