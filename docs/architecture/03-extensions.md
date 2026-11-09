@@ -314,8 +314,8 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 | `extension` | 이 host를 받은 익스텐션 id |
 | `t` | 익스텐션 자기 번역(`ext_<id>` 네임스페이스) |
 | `servers()` | 그 창이 지금 아는 서버 목록(`ServerInfo[]`) |
-| `run(instanceId, 'start'\|'stop'\|'restart')` | 보냈으면 `true`. 메인 창은 앱 버튼과 같은 `useServerActions` 손잡이(정지·재시작 확인 창 포함)를 거친다. 트레이 팝업은 `instanceStart`·`instanceStop`·`instanceRestart`를 바로 부르되, 원격 데몬을 골랐으면 정지·재시작은 `false`(그 창은 원격 정지를 두 번 눌러 확정한다) |
-| `openApp(route?)` | 메인 창: 상단 페이지(`servers`·`discord`·`activity`·`settings`·`ext:<id>`)로 옮긴다. 트레이 팝업: 메인 창을 연다 |
+| `run(instanceId, 'start'\|'stop'\|'restart')` | 넘겼으면 `true`, 하지 않았으면 `false`. 메인 창은 앱 버튼과 같은 `useServerActions` 손잡이를 거친다: 정지·재시작은 확인 창을 띄우고 `true`를 돌려주므로, 사용자가 취소해도 `true`다(결과는 `on`으로 받는다). 트레이 팝업은 `instanceStart`·`instanceStop`·`instanceRestart`를 바로 부르고 데몬 답으로 `true`/`false`를 정한다. 이 PC 데몬이라고 확인한 때만 정지·재시작을 보내고, 원격 데몬이거나 아직 모르면 `false`(그 창은 원격 정지를 두 번 눌러 확정한다) |
+| `openApp(route?)` | 메인 창: 상단 페이지(`servers`·`discord`·`activity`·`settings`·`ext:<id>`)로 옮긴다. 그 밖의 값은 무시한다. 트레이 팝업: 메인 창을 연다 |
 | `on(type, fn)` | 데몬 이벤트(`/api/events`, 01 문서) 구독. `type` `*`는 전부. 끊는 함수를 돌려준다. 트레이 팝업은 이벤트를 받지 않아 부르지 않는다 |
 
 - 번들은 여전히 `window.api`에 손이 닿는다(4.1 보안). `host`는 그것을 쓰지 않아도 되게 하는 정해진 통로이고, 막는 장치는 아니다.

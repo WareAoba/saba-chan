@@ -17,7 +17,7 @@ export type ServerAction = 'start' | 'stop' | 'restart';
 export interface HostWindow {
     /** 지금 알고 있는 서버 목록 */
     servers: () => ServerInfo[];
-    /** 서버 켜기·끄기·재시작. 확인이 필요하면 그 창의 확인 규칙을 그대로 거친다. 보냈으면 true */
+    /** 서버 켜기·끄기·재시작. 확인이 필요하면 그 창의 확인 규칙을 그대로 거친다. 넘겼으면 true (메인 창은 확인 창을 띄운 것도 true) */
     run: (instanceId: string, action: ServerAction) => Promise<boolean>;
     /** 메인 창의 그 화면(`servers`·`discord`·`activity`·`settings`·`ext:<id>`)을 연다 */
     openApp: (route?: string) => void;
@@ -32,6 +32,11 @@ export interface ExtensionHost extends HostWindow {
     /** 데몬 이벤트 구독. type `*`는 전부. 이 창이 이벤트를 받지 않으면(트레이 팝업) 부르지 않는다. 끊는 함수를 돌려준다 */
     on: (type: string, fn: (data: DaemonEvent['data'], type: string) => void) => () => void;
 }
+
+/** openApp이 받는 메인 창 화면. 그 밖의 값은 무시한다 (빈 화면으로 가지 않게) */
+const APP_ROUTES = ['servers', 'discord', 'activity', 'settings'];
+export const isAppRoute = (route: unknown): route is string =>
+    typeof route === 'string' && (APP_ROUTES.includes(route) || /^ext:[A-Za-z0-9_-]+$/.test(route));
 
 const NO_WINDOW: HostWindow = {
     servers: () => [],

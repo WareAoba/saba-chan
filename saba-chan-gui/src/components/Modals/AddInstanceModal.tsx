@@ -62,6 +62,8 @@ export function AddInstanceModal({
     const { isClosing, requestClose } = useModalClose(handleClose);
     const extMethods = useSlotPages('AddServer.method');
     const extMethod = mode?.startsWith('ext:') ? extMethods.find((p) => p.id === mode) : undefined;
+    // 그 화면을 보는 사이 익스텐션이 빠지면 고르기 화면으로 (빈 창으로 남지 않게)
+    const shownMode = mode?.startsWith('ext:') && !extMethod ? null : mode;
 
     // ── 모달 열릴 때 모듈 목록 새로고침 ──
     useEffect(() => {
@@ -146,7 +148,7 @@ export function AddInstanceModal({
     }, [mode, newFlowStep, migrationFlowStep]);
 
     const progressPercent = (() => {
-        if (mode === null) return 20;
+        if (shownMode === null) return 20;
         // 새 서버 마법사는 단계 수가 모듈마다 다르다: 마법사가 알린 비율로 20%~100%를 채운다
         if (mode === 'new') return 20 + 80 * newFlowProgress;
         if (mode === 'migrate') return migrationFlowStep === 'configure' ? 78 : 50;
@@ -161,7 +163,7 @@ export function AddInstanceModal({
             <div
                 ref={contentRef}
                 className={clsx('modal-content', 'add-instance-modal', {
-                    'add-instance-modal--chooser': mode === null,
+                    'add-instance-modal--chooser': shownMode === null,
                     'add-instance-modal--flow': mode !== null,
                 })}
                 onClick={(e) => e.stopPropagation()}
@@ -176,7 +178,7 @@ export function AddInstanceModal({
                 </div>
 
                 {/* ── 선택 화면 ── */}
-                {mode === null && (
+                {shownMode === null && (
                     <InstanceChooser
                         t={t}
                         hasModules={extensions && extensions.length > 0}

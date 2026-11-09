@@ -58,12 +58,7 @@ export function ExtensionConfigForm({ ext, inline = false }: { ext: ExtensionLis
         if (inline && usable) load();
     }, [inline, usable, ext.id]);
 
-    if (
-        !usable ||
-        typeof window.api?.extensionConfigGet !== 'function' ||
-        typeof window.api?.extensionConfigSet !== 'function'
-    )
-        return null;
+    if (!usable) return null;
 
     const toggle = async () => {
         if (open) return setOpen(false);

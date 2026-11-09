@@ -36,6 +36,8 @@ export function TrayPopup() {
     // 고른 원격 데몬: {name, reachable}, 이 PC면 null
     const [remote, setRemote] = useState<RemoteState | null>(null);
     const [armed, setArmed] = useState<string | null>(null); // 두 번 눌러 확정할 정지 (원격 서버 id)
+    /** 마지막으로 확인한 고른 데몬: 이 PC면 null, 아직 모르면 undefined (익스텐션 host.run이 본다) */
+    const targetRef = useRef<string | null | undefined>(undefined);
 
     const refresh = useCallback(async () => {
         const [status, current] = await Promise.all([
@@ -44,6 +46,9 @@ export function TrayPopup() {
         ]);
         const up = status?.running === true;
         const target = current?.target || null;
+        // 고를 수 없는 창이면 늘 이 PC 데몬, 물었는데 답을 못 받았으면 모른다
+        targetRef.current =
+            typeof window.api?.daemonTarget !== 'function' ? null : current && 'target' in current ? target : undefined;
         setDaemonUp(up);
         if (!up) {
             setRemote(null);
@@ -96,16 +101,15 @@ export function TrayPopup() {
 
     const act = (action: string) => window.api?.trayAction?.(action);
 
-    // 익스텐션 칸(`TrayPopup.section`)의 host: 원격 데몬 서버의 정지·재시작은 이 창에서 두 번 눌러 확정하므로 익스텐션은 하지 못한다
+    // 익스텐션 칸(`TrayPopup.section`)의 host: 원격 데몬 서버의 정지·재시작은 이 창에서 두 번 눌러 확정하므로 익스텐션은 하지 못한다.
+    // 이 PC 데몬이라고 확인한 때(targetRef null)에만 보낸다. 아직 모르면(undefined) 원격으로 본다
     const serversRef = useRef(servers);
     serversRef.current = servers;
-    const remoteRef = useRef(remote);
-    remoteRef.current = remote;
     const hostWindow = useMemo<HostWindow>(
         () => ({
             servers: () => serversRef.current,
             run: async (instanceId, action) => {
-                if (action !== 'start' && remoteRef.current) return false;
+                if (action !== 'start' && targetRef.current !== null) return false;
                 const call =
                     action === 'start' ? window.api.instanceStart : action === 'stop' ? window.api.instanceStop : window.api.instanceRestart;
                 if (typeof call !== 'function') return false;

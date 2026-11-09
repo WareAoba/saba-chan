@@ -106,6 +106,20 @@ describe('서버 추가 카드 (AddServer.method)', () => {
         fireEvent.click(await screen.findByText('modpack flow'));
         expect(await screen.findByText('From modpack')).toBeTruthy();
     });
+
+    it('그 화면을 보는 사이 익스텐션이 빠지면 빈 창이 아니라 고르기 화면으로 돌아온다', async () => {
+        const Flow = () => <span>modpack flow</span>;
+        slots = { 'AddServer.method': [entry('modpack', Flow, { label: 'From modpack' })] };
+        const props = { isOpen: true, onClose: () => {}, extensions: [], servers: [], onAddServer: async () => null };
+        const { rerender } = render(<AddInstanceModal {...props} />);
+        fireEvent.click(screen.getByText('From modpack'));
+        expect(await screen.findByText('modpack flow')).toBeTruthy();
+        slots = {};
+        rerender(<AddInstanceModal {...props} />);
+        await flush();
+        expect(screen.queryByText('modpack flow')).toBeNull();
+        expect(document.querySelector('.ai-choice-card')).not.toBeNull();
+    });
 });
 
 describe('트레이 칸 (TrayPopup.section)', () => {
@@ -114,6 +128,7 @@ describe('트레이 칸 (TrayPopup.section)', () => {
         window.api.serverList = vi.fn().mockResolvedValue({ servers: [{ id: 'a', name: 'A', status: 'running' }] });
         window.api.instanceStop = vi.fn().mockResolvedValue({ success: true });
         window.api.trayPopupFit = vi.fn();
+        window.api.daemonTarget = vi.fn().mockResolvedValue({ target: null });
     });
     afterEach(() => {
         for (const k of ['daemonStatus', 'serverList', 'instanceStop', 'trayPopupFit', 'daemonTarget', 'remoteDaemons'])
@@ -145,6 +160,23 @@ describe('트레이 칸 (TrayPopup.section)', () => {
         slots = { 'TrayPopup.section': [entry('mini', Section)] };
         render(<TrayPopup />);
         await flush();
+        expect(await host!.run('a', 'stop')).toBe(false);
+        expect(window.api.instanceStop).not.toHaveBeenCalled();
+    });
+
+    it('원격 데몬인지 아직 모르는 동안에도 정지·재시작은 하지 못한다', async () => {
+        window.api.daemonTarget = vi.fn().mockResolvedValue({ target: 'host-b' });
+        window.api.remoteDaemons = vi.fn().mockResolvedValue({ daemons: [{ hostId: 'host-b', name: 'B' }] });
+        window.api.serverList = vi.fn(() => new Promise<never>(() => {}));
+        let host: ExtensionHost | null = null;
+        const Section = (p: { host: ExtensionHost }) => {
+            host = p.host;
+            return null;
+        };
+        slots = { 'TrayPopup.section': [entry('mini', Section)] };
+        render(<TrayPopup />);
+        await flush();
+        expect(host).not.toBeNull();
         expect(await host!.run('a', 'stop')).toBe(false);
         expect(window.api.instanceStop).not.toHaveBeenCalled();
     });
