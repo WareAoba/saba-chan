@@ -19,6 +19,7 @@ import {
     useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { declaredSlots, loadsOn, type SlotMeta, type SlotSurface, slotProblems } from '../extensions/slotTable';
 import { clearModuleAuditCache } from '../components/servers/ModuleAuditNotice';
 import i18n from '../i18n';
 import { useUIStore } from '../stores/useUIStore';
@@ -30,8 +31,14 @@ import { updateRequiredText } from '../utils/updateRequired';
 // 슬롯에 들어가는 컴포넌트: props는 슬롯마다 다르다
 // biome-ignore lint/suspicious/noExplicitAny: 슬롯마다 컴포넌트 props가 다르다
 type SlotComponent = ComponentType<any>;
-/** slotId → 그 슬롯에 넣을 컴포넌트들 */
-export type SlotRegistry = Record<string, SlotComponent[]>;
+/** slot에 들어간 한 칸: 넣은 익스텐션, 컴포넌트(설정 탭은 없으면 config_fields 자동 폼), manifest의 표시 정보 */
+export interface SlotEntry {
+    ext: string;
+    Component?: SlotComponent;
+    meta: SlotMeta;
+}
+/** slotId → 그 슬롯에 넣을 칸들 (익스텐션 목록 순, 한 익스텐션 안에서는 등록 순) */
+export type SlotRegistry = Record<string, SlotEntry[]>;
 
 /** 익스텐션 UMD 번들이 window.SabaExt{Id}에 거는 객체 */
 interface ExtensionBundle {
@@ -189,7 +196,11 @@ async function loadExtensionI18n(ext: ExtensionListItem, lang: string) {
     }
 }
 
-export function ExtensionProvider({ children }: { children: ReactNode }) {
+/**
+ * surface: 이 Provider가 놓인 창 (extensions/slotTable). 트레이 팝업은 그 창 slot을 선언한 번들만,
+ * 이미 허락된 것만 읽고 허락을 묻지 않는다
+ */
+export function ExtensionProvider({ children, surface = 'main' }: { children: ReactNode; surface?: SlotSurface }) {
     const { t } = useTranslation();
     const [extensions, setExtensions] = useState<ExtensionListItem[]>([]);
     const [enabledExtensions, setEnabledExtensions] = useState<ExtensionListItem[]>([]);
@@ -198,6 +209,8 @@ export function ExtensionProvider({ children }: { children: ReactNode }) {
     const loadedRef = useRef(new Set<string>());
     /** 로드된 익스텐션의 버전 추적 (핫로드 시 번들 무효화 판단용) */
     const loadedVersionsRef = useRef<Record<string, string>>({});
+    /** 이 창에서 번역을 읽은 익스텐션 (`id@version`) */
+    const i18nLoadedRef = useRef(new Set<string>());
     /** 지금 켜진 확장 id (늦게 끝난 번들 읽기가 그 사이 꺼졌는지 본다) */
     const enabledIdsRef = useRef(new Set<string>());
     const unloadBundle = (id: string) => {
@@ -272,20 +285,52 @@ export function ExtensionProvider({ children }: { children: ReactNode }) {
         let cancelled = false;
 
         const loadBundles = async () => {
+            const loadI18nOnce = async (ext: ExtensionListItem) => {
+                const key = `${ext.id}@${ext.version}`;
+                if (i18nLoadedRef.current.has(key)) return;
+                i18nLoadedRef.current.add(key);
+                const currentLang = i18n.language || 'en';
+                await loadExtensionI18n(ext, currentLang);
+                if (currentLang !== 'en') await loadExtensionI18n(ext, 'en');
+            };
             const newSlots: SlotRegistry = {};
             const pending: ExtensionListItem[] = [];
 
-            /** 슬롯 맵을 newSlots에 병합하는 헬퍼 */
-            const mergeSlots = (extSlots?: Record<string, SlotComponent | SlotComponent[]>) => {
-                for (const [slotId, components] of Object.entries(extSlots || {})) {
+            /**
+             * 번들이 등록한 컴포넌트를 manifest 선언과 맞춰 newSlots에 넣는다.
+             * 선언과 어긋나면 경고만 남긴다. 컴포넌트 없이 선언만 한 설정 탭은 자동 폼 칸으로 넣는다
+             */
+            const mergeSlots = (ext: ExtensionListItem, extSlots?: Record<string, SlotComponent | SlotComponent[]>) => {
+                const declared = declaredSlots(ext);
+                const registered = extSlots || {};
+                for (const problem of slotProblems(ext, Object.keys(registered))) {
+                    console.warn(`[Extension] '${ext.id}': ${problem}`);
+                }
+                const push = (slotId: string, entry: SlotEntry) => {
                     if (!newSlots[slotId]) newSlots[slotId] = [];
-                    newSlots[slotId].push(...(Array.isArray(components) ? components : [components]));
+                    newSlots[slotId].push(entry);
+                };
+                for (const [slotId, components] of Object.entries(registered)) {
+                    for (const Component of Array.isArray(components) ? components : [components]) {
+                        push(slotId, { ext: ext.id, Component, meta: declared[slotId] ?? {} });
+                    }
+                }
+                if (surface === 'main' && declared['Settings.tab'] && !registered['Settings.tab']) {
+                    push('Settings.tab', { ext: ext.id, meta: declared['Settings.tab'] });
                 }
             };
 
             // 확장 하나가 throw해도 나머지 확장의 슬롯과 허락 대기 목록은 갱신한다
             const loadOne = async (ext: ExtensionListItem) => {
                 const globalName: `SabaExt${string}` = `SabaExt${pascalCase(ext.id)}`;
+                // 이 창에 둘 slot이 없는 익스텐션은 번들·번역을 읽지 않는다 (GUI 선언이 없는 익스텐션은 메인 창만)
+                if (!(ext.gui ? loadsOn(ext, surface) : surface === 'main')) return;
+                // 번들 없이 manifest 선언만 있는 익스텐션 (설정 탭 자동 폼 등)
+                if (ext.gui && !ext.gui.bundle) {
+                    mergeSlots(ext);
+                    await loadI18nOnce(ext);
+                    return;
+                }
                 const prevVersion = loadedVersionsRef.current[ext.id];
                 const versionChanged = prevVersion && ext.version && prevVersion !== ext.version;
 
@@ -311,15 +356,13 @@ export function ExtensionProvider({ children }: { children: ReactNode }) {
                 // ① 이미 로드된 익스텐션 (버전 동일)
                 if (loadedRef.current.has(ext.id)) {
                     const mod = window[globalName] as ExtensionBundle | undefined;
-                    if (mod?.registerSlots) {
-                        mergeSlots(mod.registerSlots());
-                    }
+                    mergeSlots(ext, mod?.registerSlots?.());
                     return;
                 }
 
-                // 허락받지 않은 번들은 요청하지 않는다 (데몬이 gui_allowed로 알려 준다)
+                // 허락받지 않은 번들은 요청하지 않는다 (데몬이 gui_allowed로 알려 준다). 묻는 것은 메인 창만
                 if (ext.gui && ext.gui_allowed === false) {
-                    pending.push(ext);
+                    if (surface === 'main') pending.push(ext);
                     return;
                 }
 
@@ -331,23 +374,15 @@ export function ExtensionProvider({ children }: { children: ReactNode }) {
                     return;
                 }
                 if (mod === GUI_UNAPPROVED) {
-                    pending.push(ext);
+                    if (surface === 'main') pending.push(ext);
                     return;
                 }
                 if (mod === LOAD_FAILED) return;
                 loadedRef.current.add(ext.id);
                 loadedVersionsRef.current[ext.id] = ext.version;
 
-                if (mod?.registerSlots) {
-                    mergeSlots(mod.registerSlots());
-                }
-
-                // i18n 로드
-                const currentLang = i18n.language || 'en';
-                await loadExtensionI18n(ext, currentLang);
-                if (currentLang !== 'en') {
-                    await loadExtensionI18n(ext, 'en');
-                }
+                mergeSlots(ext, mod?.registerSlots?.());
+                await loadI18nOnce(ext);
             };
             for (const ext of enabled) {
                 try {
@@ -367,7 +402,7 @@ export function ExtensionProvider({ children }: { children: ReactNode }) {
         return () => {
             cancelled = true;
         };
-    }, [extensions]);
+    }, [extensions, surface]);
 
     // 익스텐션 활성/비활성 토글
     const toggleExtension = useCallback(
@@ -478,7 +513,7 @@ export function ExtensionProvider({ children }: { children: ReactNode }) {
 
     // 허락을 기다리는 익스텐션을 하나씩 묻는다. 다른 창이 떠 있으면 닫힌 뒤에 묻는다
     useEffect(() => {
-        if (modalOpen || !window.api?.sandboxAllowExtensionGui) return;
+        if (surface !== 'main' || modalOpen || !window.api?.sandboxAllowExtensionGui) return;
         const next = guiPending.find((ext) => !askedGuiRef.current.has(ext.id));
         if (!next) return;
         askedGuiRef.current.add(next.id);
@@ -498,7 +533,7 @@ export function ExtensionProvider({ children }: { children: ReactNode }) {
                 { label: t('trust.extension_gui.deny'), action: () => closeModal() },
             ],
         });
-    }, [guiPending, modalOpen, approveExtensionGui, t]);
+    }, [surface, guiPending, modalOpen, approveExtensionGui, t]);
 
     // ── 매니페스트 페치 ──────────────────────────────────────────────
     /** 원격 매니페스트에서 가용 익스텐션 목록을 가져옵니다. */

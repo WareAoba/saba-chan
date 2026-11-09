@@ -769,6 +769,7 @@
     "nav_discord": "Discord",
     "nav_activity": "Журнал",
     "nav_settings": "Настройки",
+    "nav_more": "Ещё",
     "daemon_running": "Демон работает",
     "daemon_stopped": "Демон остановлен",
     "daemon_checking": "Проверка демона",
@@ -2111,6 +2112,7 @@
     "no_problems": "Недавних предупреждений и ошибок нет."
   },
   "extension_config": {
+    "none": "У этого расширения нет настроек.",
     "toggle": "Настройки",
     "save": "Сохранить",
     "saved": "Сохранено",

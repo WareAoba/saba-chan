@@ -30,7 +30,7 @@ import {
     viewStatus,
 } from '../../utils/serverView';
 import { dataStatusRows } from '../DataSlots';
-import ExtensionSlot from '../ExtensionSlot';
+import ExtensionSlot, { SlotView, useSlotPages } from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { PortCheck, PortCheckNotice } from './PortCheck';
 import { ServerCheck } from './ServerCheck';
@@ -112,6 +112,7 @@ export function ServerDetail({
     const interaction = interactionOf(server, moduleData);
     const gameName = gameNameOf(t, server.module, moduleData);
 
+    const extTabs = useSlotPages('ServerDetail.tab');
     const tabs = [
         interaction.console && {
             id: 'console',
@@ -135,6 +136,8 @@ export function ServerDetail({
             label: t('shell.tab_discord'),
             icon: <Icon name="discord" size="sm" />,
         },
+        // 익스텐션 탭 (`ServerDetail.tab` slot): "정보" 바로 앞
+        ...extTabs.map((p) => ({ id: p.id, label: p.label, icon: <Icon name={p.icon} size="sm" /> })),
         { id: 'info', label: t('shell.tab_info'), icon: <Icon name="info" size="sm" /> },
     ].filter(Boolean) as { id: string; label: string; icon: ReactNode }[];
 
@@ -156,6 +159,7 @@ export function ServerDetail({
     }, [requestedTab]);
     const defaultTab = defaultServerTab(interaction, server.status);
     const activeTab = tabs.some((x) => x.id === tab) ? (tab as string) : defaultTab;
+    const activeExtTab = extTabs.find((p) => p.id === activeTab);
 
     const conflicts = portConflictCheck ? server.port_conflicts || [] : [];
     const uptime = status === 'running' && server.start_time ? <Uptime startTime={server.start_time} /> : null;
@@ -383,6 +387,9 @@ export function ServerDetail({
                             />
                         )}
                         {activeTab === 'discord' && <InstanceDiscordTab server={server} />}
+                        {activeExtTab && (
+                            <SlotView entry={activeExtTab.entry} slotId="ServerDetail.tab" server={server} t={t} />
+                        )}
                         {activeTab === 'info' && (
                             <InfoTab
                                 server={server}

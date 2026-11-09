@@ -769,6 +769,7 @@
     "nav_discord": "Discord",
     "nav_activity": "操作紀錄",
     "nav_settings": "設定",
+    "nav_more": "更多",
     "daemon_running": "守護程序執行中",
     "daemon_stopped": "守護程序已停止",
     "daemon_checking": "正在檢查守護程序",
@@ -2111,6 +2112,7 @@
     "no_problems": "最近沒有警告或錯誤。"
   },
   "extension_config": {
+    "none": "此擴充功能沒有可設定的項目。",
     "toggle": "設定",
     "save": "儲存",
     "saved": "已儲存",

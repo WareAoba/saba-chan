@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 
 /** 상단 페이지 */
-export type ActiveTab = 'servers' | 'discord' | 'activity' | 'settings';
+/** 상단 페이지. `ext:<id>`는 익스텐션 화면 (`App.page` slot) */
+export type ActiveTab = 'servers' | 'discord' | 'activity' | 'settings' | `ext:${string}`;
 
 /** 디스코드 페이지에 "이 화면을 열어 달라"는 요청 (화면 주소 링크). seq는 같은 화면을 다시 눌러도 다시 열게 한다 */
 export interface DiscordViewRequest {

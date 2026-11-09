@@ -12,6 +12,7 @@ import { safeShowToast } from '../../utils/helpers';
 import { screenFallbackNotice } from '../../utils/openScreen';
 import { Icon } from '../Icon';
 import { SINGLE_COLUMN_MAX_WIDTH } from '../servers/ServersPage';
+import { SlotView, useSlotPages } from '../ExtensionSlot';
 import { StatusChip } from '../ui/StatusChip';
 import { ChatbotView, chatbotAvailable } from './ChatbotView';
 import { ConnectionView } from './ConnectionView';
@@ -49,7 +50,8 @@ export function cloudStateOf({ hostId, connected, connecting, error, loaded }: C
 
 /** 오른쪽에 보이는 화면: 연결 / 사바쨩 설정 / 디스코드 서버(노드) 하나 */
 interface DiscordView {
-    kind: 'connection' | 'saba' | 'node';
+    /** ext = 익스텐션 화면 (`Discord.nav` slot), id = `ext:<익스텐션 id>` */
+    kind: 'connection' | 'saba' | 'node' | 'ext';
     id?: string;
     /** 화면 주소 링크로 열 때 디스코드 서버의 탭·안 화면. seq가 바뀌면 다시 연다 */
     tab?: string;
@@ -149,6 +151,9 @@ export function DiscordPage({
         loaded: botConfigLoaded,
     });
 
+    // 익스텐션 화면 (`Discord.nav`): 그 익스텐션이 꺼지면 연결 화면으로
+    const extNav = useSlotPages('Discord.nav');
+    const extView = view.kind === 'ext' ? extNav.find((p) => p.id === view.id) : undefined;
     const go = (next: DiscordView) => {
         setView(next);
         setShowMainNarrow(true);
@@ -442,6 +447,16 @@ export function DiscordPage({
                                 t('discord.nav_saba'),
                                 <span>{t('discord.nav_saba_sub')}</span>,
                             )}
+                        {extNav.map((p) =>
+                            navItem(
+                                p.id,
+                                view.kind === 'ext' && view.id === p.id,
+                                () => go({ kind: 'ext', id: p.id }),
+                                <Icon name={p.icon} size="sm" />,
+                                p.label,
+                                p.description ? <span>{p.description}</span> : undefined,
+                            ),
+                        )}
                         <div className="dc-nav-group">
                             <span>{t('discord.nav_nodes')}</span>
                             {cloudState === 'connected' && (
@@ -500,7 +515,7 @@ export function DiscordPage({
                                 <Icon name="chevronLeft" size="sm" /> {t('discord.back_to_menu')}
                             </button>
                         )}
-                        {view.kind === 'connection' && (
+                        {(view.kind === 'connection' || (view.kind === 'ext' && !extView)) && (
                             <ConnectionView
                                 cloudState={cloudState}
                                 hostId={discordCloudHostId}
@@ -543,6 +558,7 @@ export function DiscordPage({
                             />
                         )}
                         {view.kind === 'saba' && chatbotAvailable() && <ChatbotView nodes={cloudNodes} />}
+                        {extView && <SlotView entry={extView.entry} slotId="Discord.nav" guilds={cloudNodes} t={t} />}
                     </div>
                 </main>
             )}
