@@ -15,11 +15,13 @@ Modules reach the daemon only through the HOST channel; they get no IPC token.
     config_value()                               top level -> module_settings -> settings lookup
     load_setting_types() / coerce_setting()      cast file values by module.toml field type
     atomic_write()                               replace a whole file without leaving it half written
-    setting_file_keys() / settings_to_file() / settings_from_file()
+    setting_file_keys() / settings_to_file() / settings_from_file() / setting_defaults_to_file()
                                                  setting name <-> game file key from module.toml `file_key`
     read_key_values() / update_key_values()      `key=value` config files, keeping comments, order, newlines, encoding
-    graceful_stop() / request_console() / request_terminate() / stop_timeout()
+    graceful_stop() / request_console() / request_terminate() / stop_timeout() / stop_command()
                                                  the save-then-stop procedure of a module `stop()`
+    delete_paths()                               delete files and folders for a reset, collecting errors
+    chat_reply()                                 the reply of a module `send_chat()`
     load_diagnose_rules() / diagnose_lines() / tail_lines()
                                                  log diagnosis from module.toml `[[diagnose]]`
     progress() / download() / safe_extract()     install progress, verified downloads, contained archive extraction
@@ -38,6 +40,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -80,6 +83,10 @@ SINCE = {
     "download": "0.1.11-0",
     "ChecksumMismatch": "0.1.11-0",
     "safe_extract": "0.1.11-0",
+    "setting_defaults_to_file": "0.1.14-0",
+    "stop_command": "0.1.14-0",
+    "delete_paths": "0.1.14-0",
+    "chat_reply": "0.1.14-0",
 }
 
 
@@ -639,6 +646,12 @@ def settings_to_file(module_dir, settings, *, true="true", false="false"):
             for name, value in (settings or {}).items() if name in keys and value is not None}
 
 
+def setting_defaults_to_file(module_dir, *, true="true", false="false"):
+    """새 서버의 설정 파일 값: module.toml 설정 기본값 {파일 키: 문자열} (0.1.14). 기본값을 module.toml 한 곳에만 둔다"""
+    return settings_to_file(module_dir, {f["name"]: f["default"] for f in _setting_fields(module_dir) if "default" in f},
+                            true=true, false=false)
+
+
 def settings_from_file(module_dir, values, *, true="true", false="false", case_insensitive=False):
     """게임 설정 파일 값 {파일 키: 문자열} → {설정 이름: 화면 형식}. 타입은 module.toml을 따른다.
     boolean은 true/false 표기가 맞을 때만 넣는다(모르는 표기는 짐작하지 않고 뺀다)"""
@@ -796,6 +809,12 @@ def request_console(config, command, *, timeout=10):
         return False
 
 
+def stop_command(module_dir):
+    """콘솔 정지 명령: module.toml `[config] stop_command`, 없으면 데몬과 같은 `stop` (0.1.14)"""
+    value = _module_toml(module_dir).get("config", {}).get("stop_command")
+    return value if isinstance(value, str) and value else "stop"
+
+
 def request_terminate(pid):
     """POSIX: SIGTERM으로 저장 후 종료를 요청한다. Windows 콘솔 앱에는 보낼 정상 종료 신호가 없어 False"""
     if os.name == "nt":
@@ -807,6 +826,39 @@ def request_terminate(pid):
     except (OSError, ValueError) as e:
         print(f"[saba] SIGTERM failed: {e}", file=sys.stderr)
         return False
+
+
+def delete_paths(paths, *, root=None):
+    """초기화로 지울 파일·폴더를 지운다 (0.1.14). 심볼릭 링크는 링크만 지운다(Windows 정션은 rmtree가 거절해 오류로 센다). 없는 것은 건너뛰고,
+    읽을 수 없는 것은 '없음'으로 보지 않고 오류로 센다. (지운 것, "이름: 오류" 목록)을 돌려준다"""
+    deleted, errors = [], []
+    for name in paths:
+        item = Path(root, name) if root is not None else Path(name)
+        try:
+            info = os.lstat(item)
+            if stat.S_ISDIR(info.st_mode):
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+            deleted.append(name)
+        except FileNotFoundError:
+            continue
+        except OSError as e:
+            errors.append(f"{name}: {e}")
+    return deleted, errors
+
+
+def chat_reply(send, i18n):
+    """모듈 `send_chat()`의 답 (0.1.14). send()는 데몬 요청을 보내고 그 답을 돌려준다: 실패면 모듈 문구 `errors.chat_failed`"""
+    try:
+        result = send() or {}
+    except PathOutside:
+        raise
+    except Exception as e:
+        return {"success": False, "message": i18n.t("errors.chat_failed", error=str(e))}
+    if result.get("success", True):
+        return {"success": True}
+    return {"success": False, "message": i18n.t("errors.chat_failed", error=result.get("message") or result.get("error") or "")}
 
 
 def graceful_stop(config, request, i18n, *, module_dir=None):

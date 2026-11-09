@@ -473,6 +473,11 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   - 정지: `graceful_stop(config, request, i18n, module_dir=)`가 모듈 `stop()`의 절차(§3.4: force면 그 PID만 강제 종료 → 아니면 `request()` → 요청할 길이 없으면 `graceful_stop_unavailable` → managed면 바로 반환 → `stop_timeout`만큼 기다린 뒤에만 강제 종료)다. 모듈은 저장 후 종료를 요청하는 방법만 넘긴다: `request_console(config, command)`(데몬 `/stdin`), `request_terminate(pid)`(POSIX SIGTERM), REST 등. `stop_timeout(config, module_dir)`는 인스턴스 값 → module.toml `[config] stop_timeout` → 30초, 상한은 `stop_call_limit - 30`(없으면 90).
   - 로그 진단: `load_diagnose_rules(module_dir)`, `diagnose_lines(lines, rules, i18n, message=, solution=)`, `tail_lines(path, limit)`(데몬이 `log_lines`를 주지 않는 non-managed용).
   - 설치: `progress(percent, message)`(stderr `PROGRESS:` 줄), `download(url, dest, on_progress=, timeout=, checksums=)`(sha1·sha256을 늘 계산하고 주어진 값과 다르면 `ChecksumMismatch`, `Content-Length`보다 적게 받고 끝나면 `IOError`. 받을 수 있는 만큼씩 읽어 조금씩 오는 응답도 전체 한도(timeout×10)에서 끊는다. `dest.part`에 받고 성공해야 dest로 바꾸므로 실패해도 dest에 있던 파일은 그대로다), `safe_extract(archive, dest, prefix=, strip_top=, keep_existing=)`(zip·tar. 모든 항목을 먼저 `safe_join`으로 검사해(`./` 같은 표기는 정규화해 `keep_existing`과 비교한다) 하나라도 밖으로 나가면 아무것도 풀지 않는다. 장치 항목은 풀지 않는다. 심볼릭 링크는 상대 경로로 dest 안을 가리킬 때만 POSIX에서 파일을 다 쓴 뒤 만들고, 다 만든 뒤 실제 경로가 dest 밖이면 지운다. tar 하드 링크는 푼 대상을 복사한다. zip은 CRC를 먼저 본다).
+- 0.1.14 공용 도우미 (세 모듈이 따로 갖던 것, `SINCE` `0.1.14-0`):
+  - `setting_defaults_to_file(module_dir, true=, false=)`: 새 서버의 설정 파일 값. `[[settings.fields]]` 중 `file_key`와 `default`가 둘 다 있는 칸을 파일 표기로 바꾼다(`settings_to_file`과 같은 규칙). 기본값은 module.toml 한 곳에만 둔다.
+  - `stop_command(module_dir)`: 콘솔 정지 명령. module.toml `[config] stop_command`, 없으면 데몬과 같은 `stop`.
+  - `delete_paths(paths, root=)`: 초기화로 지울 파일·폴더를 지우고 `(지운 것, ["이름: 오류"])`를 돌려준다. 심볼릭 링크는 링크만 지운다(Windows 정션은 `rmtree`가 거절해 오류로 센다). 없는 것은 건너뛰고, 읽을 수 없는 것(`lstat` 권한 오류)은 '없음'이 아니라 오류로 센다.
+  - `chat_reply(send, i18n)`: 모듈 `send_chat()`의 답. `send()`가 예외를 내거나 `success:false`를 주면 모듈 문구 `errors.chat_failed`(`{{error}}`)로 실패를 돌려준다. `PathOutside`는 그대로 올린다.
 - 배포: 데몬 실행 파일에 공용 파일이 들어 있다. 첫 lifecycle 실행 때 데몬 전용 `<data_dir>/python-shared/`에 쓴다. 이 경로만 공용 유틸리티의 import 경로로 쓴다. 모듈 폴더는 `PYTHONPATH`에 넣지 않는다. 적합성 키트의 `--shared-libs`에는 `<data_dir>/python-shared/`를 지정한다.
 
 **경로 도우미와 SDK 버전 (0.1.10)**
@@ -493,6 +498,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `daemon_rest` | `0.1.10` |
 | `daemon_rcon_command` | `0.1.12` |
 | `setting_file_keys`, `format_setting`, `settings_to_file`, `settings_from_file`, `read_key_values`, `update_key_values`, `stop_timeout`, `request_console`, `request_terminate`, `graceful_stop`, `load_diagnose_rules`, `diagnose_lines`, `tail_lines`, `progress`, `download`, `ChecksumMismatch`, `safe_extract` | `0.1.11-0` (0.1.11 미리보기부터 받도록 `-0`) |
+| `setting_defaults_to_file`, `stop_command`, `delete_paths`, `chat_reply` | `0.1.14-0` |
 
 이력 근거: 공개 태그 `test23`(`f493b78e`, 코어 `0.1.1`)에 `i18n.I18n`이 있다. 기존 통신·설정·프로세스 함수는 `97db8a0e`(`0.1.2` 릴리스 커밋)에 있다. 루프백 함수는 `1862c5c0`(`0.1.7` 릴리스 커밋)에는 없고 `77333cab`(`0.1.8` 릴리스 커밋)에 있다. 공개 origin에는 `test`~`test23` 태그만 있다. 따라서 `0.1.2`·`0.1.8` 값은 릴리스 커밋에 근거한 보수적 값이며 최초 공개 배포 태그로 확정한 값은 아니다. 이 미확정 부분은 07 §4에 남긴다.
 
