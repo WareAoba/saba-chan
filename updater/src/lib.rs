@@ -49,6 +49,7 @@ pub use relay::{ReleaseManifest, ManifestComponent};
 pub use integrity::{IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity};
 pub use marker::UpdateCompletionMarker;
 pub(crate) use apply::{replace_dir, swap_dir_untouched};
+pub use apply::SWAP_FINGERPRINT;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -1103,7 +1104,7 @@ impl UpdateManager {
             other => anyhow::bail!("{} is not a module or an extension", other.manifest_key()),
         };
         let key = component.manifest_key();
-        let files = swap_dir_untouched(&target, Path::new(staged_path), |moved| integrity::untouched_copy(&key, &target, moved))?;
+        let files = swap_dir_untouched(&target, Path::new(staged_path), |fingerprint| integrity::matches_install_record(&key, &target, fingerprint))?;
         std::fs::remove_file(staged_path).ok();
         Ok(files)
     }
@@ -1325,7 +1326,7 @@ impl UpdateManager {
         self.apply_single_component_with(component, false).await
     }
 
-    /// 묻지 않는 모듈·익스텐션 교체: 교체 순간의 폴더가 카탈로그에서 깐 그대로일 때만 바꾼다 (`integrity::untouched_copy`).
+    /// 묻지 않는 모듈·익스텐션 교체: 교체 순간의 폴더가 카탈로그에서 깐 그대로일 때만 바꾼다 (`integrity::matches_install_record`).
     /// 사용자가 넣거나 고친 파일이 있으면 폴더를 건드리지 않고 실패로 돌려준다
     pub async fn apply_untouched_addon(&mut self, component: &Component) -> Result<ApplyComponentResult> {
         if !matches!(component, Component::Module(_) | Component::Extension(_)) {

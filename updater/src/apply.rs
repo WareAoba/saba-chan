@@ -647,30 +647,40 @@ pub fn replace_dir(target_dir: &Path, staged: &Path, staging_dir: &Path, backup_
     Ok(files)
 }
 
-/// 묻지 않는 모듈·익스텐션 교체. 원래 폴더를 지우고 다시 채우지 않고, 통째로 옆(`.<이름>.saba-old`)으로 옮긴 뒤 바꿔 넣는다.
+/// 묻지 않는 교체가 옮긴 원래 폴더에 남기는 지문 파일 (검사한 순간의 내용)
+pub const SWAP_FINGERPRINT: &str = ".saba-swap-fingerprint.json";
+
+/// 묻지 않는 모듈·익스텐션 교체. 원래 폴더를 비우지도, 교체 직후 지우지도 않는다.
 ///
 /// 1. 새 판을 옆 폴더(`.<이름>.saba-new`)에 푼다
-/// 2. 원래 폴더를 이름만 바꿔 옮긴다 (이 순간부터 원래 경로에 쓰는 것은 옮긴 폴더에 섞이지 않는다)
-/// 3. 옮긴 폴더를 `untouched`로 검사한다. 사용자가 넣거나 고친 것이 있으면 원래대로 되돌리고 멈춘다
-/// 4. 새 판을 원래 이름으로 옮기고, 옮긴 폴더의 맨 위 점 항목(.git 등)을 옮겨 준 뒤에만 옮긴 폴더를 지운다
+/// 2. 원래 폴더를 이름만 바꿔 `.<이름>.saba-old`로 옮긴다 (이 순간부터 원래 경로에 새로 쓰는 것은 옮긴 폴더에 섞이지 않는다)
+/// 3. 옮긴 폴더의 지문을 한 번 떠서 `untouched`로 검사한다. 사용자가 넣거나 고친 것이 있으면 원래대로 되돌리고 멈춘다
+/// 4. 그 지문을 옮긴 폴더에 적고, 새 판을 원래 이름으로 옮기고, 맨 위 점 항목(.git 등)을 새 폴더로 옮겨 준다
 ///
-/// 어느 단계가 실패해도 지우는 것은 새로 푼 판뿐이다. 원래 폴더를 되돌리지 못하면 그 위치를 오류에 적고 남긴다.
-/// 도중에 꺼졌으면 다음 호출이 먼저 정리한다(원래 경로가 비었으면 되돌리고, 바꿔 넣은 뒤였으면 검사가 통과할 때만 지운다)
-pub fn swap_dir_untouched(target_dir: &Path, staged: &Path, mut untouched: impl FnMut(&Path) -> bool) -> Result<Vec<PathBuf>> {
+/// 옮긴 폴더는 남긴다: 교체 전에 열어 둔 파일에 나중에 저장하면 그 내용은 옮긴 폴더에 써진다(유닉스).
+/// 다음 교체가 옮긴 폴더의 지문이 적어 둔 것과 같을 때만 지우고, 다르면 지우지 않고 그 위치를 오류에 적고 멈춘다.
+/// 어느 단계가 실패해도 지우는 것은 새로 푼 판뿐이다. 도중에 꺼졌으면 다음 호출이 먼저 원래 폴더를 돌려놓는다
+pub fn swap_dir_untouched(
+    target_dir: &Path,
+    staged: &Path,
+    mut untouched: impl FnMut(&std::collections::BTreeMap<String, String>) -> bool,
+) -> Result<Vec<PathBuf>> {
     let parent = target_dir.parent().ok_or_else(|| anyhow::anyhow!("{} has no parent folder", target_dir.display()))?;
     let name = target_dir.file_name().ok_or_else(|| anyhow::anyhow!("{} has no name", target_dir.display()))?.to_string_lossy().to_string();
     let aside = parent.join(format!(".{name}.saba-old"));
     let fresh = parent.join(format!(".{name}.saba-new"));
     let kept = |why: &str| anyhow::anyhow!("{}; the original folder is kept at {}", why, aside.display());
+    let put_back = || -> Result<()> {
+        let _ = std::fs::remove_file(aside.join(SWAP_FINGERPRINT));
+        std::fs::rename(&aside, target_dir).map_err(|e| kept(&format!("could not put the folder back ({e})")))
+    };
 
     // 지난 교체가 남긴 것부터
     if aside.exists() {
         if !target_dir.exists() {
-            std::fs::rename(&aside, target_dir).map_err(|e| kept(&format!("could not put the folder back ({e})")))?;
-        } else if untouched(&aside) {
-            finish_aside(&aside, target_dir).map_err(|e| kept(&e.to_string()))?;
+            put_back()?;
         } else {
-            return Err(kept("a previous swap left a folder with changes beside it"));
+            drop_old_folder_if_unchanged(&aside).map_err(|e| kept(&e.to_string()))?;
         }
     }
     if fresh.exists() {
@@ -694,34 +704,42 @@ pub fn swap_dir_untouched(target_dir: &Path, staged: &Path, mut untouched: impl 
             drop_fresh();
             return Err(anyhow::anyhow!("could not move {} aside: {}", target_dir.display(), e));
         }
-        if !untouched(&aside) {
+        // 지문은 한 번만 뜬다: 검사한 내용과 적어 두는 내용이 같다
+        let checked = crate::integrity::dir_fingerprint(&aside).map_err(|e| anyhow::anyhow!(e)).and_then(|fp| {
+            if !untouched(&fp) {
+                anyhow::bail!("{} has files that were added or changed after install; left as it is", target_dir.display());
+            }
+            crate::write_atomic(&aside.join(SWAP_FINGERPRINT), serde_json::to_string(&fp)?.as_bytes())?;
+            Ok(())
+        });
+        if let Err(e) = checked {
             drop_fresh();
-            std::fs::rename(&aside, target_dir).map_err(|e| kept(&format!("could not put the folder back ({e})")))?;
-            anyhow::bail!("{} has files that were added or changed after install; left as it is", target_dir.display());
+            put_back()?;
+            return Err(e);
         }
     }
     if let Err(e) = std::fs::rename(&fresh, target_dir) {
         drop_fresh();
         if aside.exists() {
-            std::fs::rename(&aside, target_dir).map_err(|re| kept(&format!("could not put the new version in ({e}) nor the folder back ({re})")))?;
+            put_back().map_err(|re| kept(&format!("could not put the new version in ({e}) nor the folder back ({re})")))?;
         }
         return Err(anyhow::anyhow!("could not put the new version of {} in: {}", target_dir.display(), e));
     }
     if aside.exists() {
-        // 바꿔 넣기는 끝났다. 정리가 실패하면 옮긴 폴더를 남기고 다음 교체가 다시 정리한다
-        if let Err(e) = finish_aside(&aside, target_dir) {
-            tracing::warn!("[Updater] Kept {} after the swap: {}", aside.display(), e);
+        // 바꿔 넣기는 끝났다. 점 항목을 옮기지 못하면 옮긴 폴더에 남는다 (다음 교체가 지우지 않고 알린다)
+        if let Err(e) = carry_dot_entries(&aside, target_dir) {
+            tracing::warn!("[Updater] Left some dot entries in {}: {}", aside.display(), e);
         }
     }
     Ok(files)
 }
 
-/// 바꿔 넣은 뒤 옮긴 원래 폴더를 치운다: 맨 위 점 항목(교체가 남기는 .git 등)을 새 폴더로 옮긴 뒤에만 지운다
-fn finish_aside(aside: &Path, target_dir: &Path) -> Result<()> {
+/// 옮긴 원래 폴더의 맨 위 점 항목(.git 등, 교체가 남기는 것)을 새 폴더로 옮긴다. 지문 파일은 남긴다
+fn carry_dot_entries(aside: &Path, target_dir: &Path) -> Result<()> {
     for entry in std::fs::read_dir(aside)? {
         let entry = entry?;
         let name = entry.file_name();
-        if !name.to_string_lossy().starts_with('.') {
+        if !name.to_string_lossy().starts_with('.') || name == SWAP_FINGERPRINT {
             continue;
         }
         let to = target_dir.join(&name);
@@ -729,6 +747,25 @@ fn finish_aside(aside: &Path, target_dir: &Path) -> Result<()> {
             anyhow::bail!("{} is in both the new version and the old folder", name.to_string_lossy());
         }
         std::fs::rename(entry.path(), &to)?;
+    }
+    Ok(())
+}
+
+/// 지난 교체가 남긴 원래 폴더를 지운다: 적어 둔 지문과 지금 내용이 같고, 옮기지 못한 점 항목이 없을 때만.
+/// 그 사이 열린 파일로 저장했거나 무엇이든 바뀌었으면 지우지 않는다
+fn drop_old_folder_if_unchanged(aside: &Path) -> Result<()> {
+    let recorded: std::collections::BTreeMap<String, String> = crate::read_json(&aside.join(SWAP_FINGERPRINT))
+        .map_err(|e| anyhow::anyhow!(e))?
+        .ok_or_else(|| anyhow::anyhow!("a previous swap left a folder without its fingerprint"))?;
+    let now = crate::integrity::dir_fingerprint(aside).map_err(|e| anyhow::anyhow!(e))?;
+    if now != recorded {
+        anyhow::bail!("a previous swap left a folder that changed after the swap");
+    }
+    for entry in std::fs::read_dir(aside)? {
+        let name = entry?.file_name();
+        if name.to_string_lossy().starts_with('.') && name != SWAP_FINGERPRINT {
+            anyhow::bail!("a previous swap left {} in the old folder", name.to_string_lossy());
+        }
     }
     std::fs::remove_dir_all(aside)?;
     Ok(())
