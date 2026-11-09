@@ -47,6 +47,9 @@ use super::update_phase::{self, Decision, LiveState, Phase, PhaseState, ReadyRea
 // 공유 상태
 // ═══════════════════════════════════════════════════════
 
+/// heartbeat `latestReleases` 중 이 데몬이 보는 채널별 릴리즈 id
+type ReleaseIds = std::collections::BTreeMap<String, u64>;
+
 /// 데몬 업데이트 매니저 — Arc<RwLock>으로 공유
 #[derive(Clone)]
 pub struct UpdateState {
@@ -73,6 +76,8 @@ pub struct UpdateState {
     pub relay: Option<crate::relay_agent::RelayAgent>,
     /// 확인 중인 heartbeat 판 번호. 확인이 성공해야 본 것(`LiveState::seen`)으로 남긴다
     release_check: Arc<std::sync::Mutex<Option<std::collections::BTreeMap<String, u64>>>>,
+    /// 확인했지만 응답에 그 번호가 담기지 않은 판 번호와 그때 (`RELEASE_RECHECK` 뒤 한 번 더 본다)
+    release_unconfirmed: Arc<std::sync::Mutex<Option<(ReleaseIds, std::time::Instant)>>>,
     /// 앱 업데이트 적용 반복이 도는 중인가 (`spawn_core_apply`, 한 번에 하나)
     core_applying: Arc<std::sync::atomic::AtomicBool>,
     /// 적용 반복이 새로 받아 볼 확인이 있었다: 반복이 다음 차례에 받고, 끝난 뒤에 왔으면 반복을 다시 띄운다
@@ -94,17 +99,18 @@ impl UpdateState {
         // 시험은 이 PC의 실제 완료 마커로 단계나 설정을 바꾸지 않는다
         #[cfg(test)]
         let marker: Option<Value> = None;
-        if update_phase::adopt_marker(&mut live, marker.as_ref()) {
+        let (changed, rolled_back) = update_phase::adopt_startup_marker(&mut live, marker.as_ref(), || mgr.pending_release().map(|r| r.version));
+        if changed {
             live.save_to(&live_path);
-            // 되돌린 판은 설치기가 설정에 남긴다. 옛 설치기가 되돌렸으면 여기서 남긴다 (같은 판을 다시 자동 적용하지 않게)
-            if live.phase.reason == Some(ReadyReason::RolledBack) && mgr.config.failed_release.is_none() {
-                let mut cfg = mgr.get_config();
-                cfg.failed_release = live.phase.version.clone();
-                if let Err(e) = save_updater_config(&cfg) {
-                    tracing::warn!("[Updates] Failed to persist update config: {}", e);
-                }
-                mgr.update_config(cfg);
+        }
+        // 되돌린 코어 판은 설치기가 설정에 남긴다. 남기지 못했으면 여기서 남긴다 (같은 코어를 다시 자동 적용하지 않게)
+        if let Some(core) = rolled_back.filter(|_| mgr.config.failed_release.is_none()) {
+            let mut cfg = mgr.get_config();
+            cfg.failed_release = Some(core);
+            if let Err(e) = save_updater_config(&cfg) {
+                tracing::warn!("[Updates] Failed to persist update config: {}", e);
             }
+            mgr.update_config(cfg);
         }
         let progress = mgr.download_progress.clone();
         let manager = Arc::new(RwLock::new(mgr));
@@ -122,6 +128,7 @@ impl UpdateState {
             gui_window: Arc::default(),
             relay: None,
             release_check: Arc::default(),
+            release_unconfirmed: Arc::default(),
             core_applying: Arc::default(),
             apply_recheck: Arc::default(),
         }
@@ -171,11 +178,16 @@ impl UpdateState {
     }
 
     /// heartbeat 판 번호 중 이 데몬이 보는 것이 지난번 확인한 것과 다르고, 지금 확인 중인 것도 아니면 확인할 값.
-    /// 확인을 마치면 `finish_release_check`를 부른다
+    /// 응답에 담기지 않았던 번호는 `RELEASE_RECHECK`가 지난 뒤에 다시 본다. 확인을 마치면 `finish_release_check`를 부른다
     fn release_ids_to_check(&self, ids: std::collections::BTreeMap<String, u64>) -> Option<std::collections::BTreeMap<String, u64>> {
         if ids.is_empty() || self.live.lock().unwrap_or_else(|e| e.into_inner()).seen == ids {
             return None;
         }
+        let unconfirmed = self.release_unconfirmed.lock().unwrap_or_else(|e| e.into_inner());
+        if unconfirmed.as_ref().is_some_and(|(u, at)| *u == ids && at.elapsed() < RELEASE_RECHECK) {
+            return None;
+        }
+        drop(unconfirmed);
         let mut checking = self.release_check.lock().unwrap_or_else(|e| e.into_inner());
         if checking.is_some() {
             return None;
@@ -184,14 +196,23 @@ impl UpdateState {
         Some(ids)
     }
 
-    /// 판 번호 확인을 마쳤다. 성공했을 때만 본 것으로 남긴다: 실패·취소·꺼짐이면 다음 heartbeat가 다시 확인한다
-    fn finish_release_check(&self, ids: std::collections::BTreeMap<String, u64>, checked: bool) {
+    /// 판 번호 확인을 마쳤다. `answered`: 실패·취소·꺼짐이면 None(다음 heartbeat가 다시 확인한다), 확인했으면 `/latest` 응답에
+    /// 담긴 가장 큰 릴리즈 id. 그 id가 알린 번호에 못 미치면(캐시된 옛 응답, 이 플랫폼 몫이 아님) 바로 본 것으로 두지 않고
+    /// `RELEASE_RECHECK` 뒤 한 번 더 본다. 두 번째도 못 미치면 본 것으로 둔다 (확인은 한 번호에 많아야 두 번)
+    fn finish_release_check(&self, ids: std::collections::BTreeMap<String, u64>, answered: Option<Option<u64>>) {
         *self.release_check.lock().unwrap_or_else(|e| e.into_inner()) = None;
-        if checked {
-            let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
-            live.seen = ids;
-            live.save_to(&self.live_path);
+        let Some(latest_id) = answered else { return };
+        let wanted = ids.values().copied().max().unwrap_or(0);
+        let mut unconfirmed = self.release_unconfirmed.lock().unwrap_or_else(|e| e.into_inner());
+        let reflected = latest_id.is_some_and(|id| id >= wanted);
+        if !reflected && unconfirmed.as_ref().is_none_or(|(u, _)| *u != ids) {
+            *unconfirmed = Some((ids, std::time::Instant::now()));
+            return;
         }
+        *unconfirmed = None;
+        let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
+        live.seen = ids;
+        live.save_to(&self.live_path);
     }
 
     /// 적용 반복을 시작해도 되는가. 이미 돌고 있으면 그 반복이 새로 받아 보도록 남긴다
@@ -374,7 +395,12 @@ async fn check_updates(
 /// - Locales 업데이트는 사용자에게 보이지 않게 바로 적용
 /// - 모듈·익스텐션은 바꿔 끼우고(`spawn_addon_replace`), 앱 구성요소는 받아서 적용한다(`spawn_core_apply`)
 async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_updater_lib::UpdateStatus> {
-    let status = state.manager.write().await.check_for_updates().await?;
+    check_and_follow_up_hinted(state, None).await.map(|(status, _)| status)
+}
+
+/// `check_and_follow_up`에 heartbeat가 알린 릴리즈 id를 릴레이 캐시 키로 붙인다. 확인 결과와 `/latest` 응답에 담긴 가장 큰 릴리즈 id
+async fn check_and_follow_up_hinted(state: &UpdateState, hint: Option<u64>) -> anyhow::Result<(saba_chan_updater_lib::UpdateStatus, Option<u64>)> {
+    let (status, latest_id) = state.manager.write().await.check_for_updates_hinted(hint).await?;
     announce_new_updates(&status);
 
     // 모듈·익스텐션은 묻지 않고 바꿔 끼운다 (사용자 결정 2026-11-09). 확인을 끈 설정이면 주기 확인 자체가 돌지 않는다
@@ -391,12 +417,15 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
         });
     }
 
-    // 앱 구성요소는 묻지 않고 적용한다 (켜진 서버가 있어도 코어를 바꾸고, 막는 것이 있을 때만 기다린다)
+    // 앱 구성요소는 묻지 않고 적용한다 (켜진 서버가 있어도 코어를 바꾸고, 막는 것이 있을 때만 기다린다).
+    // 자동 적용을 껐으면 `spawn_core_apply`가 받기만 하거나(auto_download) 그대로 두고 준비됨으로 둔다
     let app_update = status.components.iter().any(|c| c.update_available && update_phase::is_app_component(&c.component.manifest_key()));
     if app_update && state.manager.read().await.get_config().enabled {
         spawn_core_apply(state.clone());
+    } else if !app_update && state.phase().reason == Some(ReadyReason::Manual) {
+        state.set_phase(Phase::default());
     }
-    Ok(status)
+    Ok((status, latest_id))
 }
 
 fn is_addon(c: &Component) -> bool {
@@ -516,6 +545,8 @@ const CORE_HOLD_RETRY: std::time::Duration = std::time::Duration::from_secs(30);
 const MODULE_CALL_SETTLE: std::time::Duration = std::time::Duration::from_secs(2);
 /// 릴레이에 알리는 업데이트로 끊길 시간(초). 릴레이는 여기에 2분을 더해 기다린다
 const UPDATING_ETA_SECS: u64 = 90;
+/// heartbeat 판 번호를 확인했는데 응답에 담기지 않았으면 다시 보기까지 (릴레이 `/latest`의 캐시 수명)
+const RELEASE_RECHECK: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
 /// 앱 업데이트를 묻지 않고 적용한다: 받아 두고, 막는 것이 없으면 적용하고(데몬이 내려가야 하면 업데이터를 띄운다),
 /// 막는 것이 있으면 `waiting`으로 두고 30초마다 다시 본다. 자동으로 할 수 없으면 `ready`. 한 번에 하나만 돈다.
@@ -557,9 +588,15 @@ async fn core_apply(state: &UpdateState) {
         if state.updater_launched() || stop.is_cancelled() {
             return;
         }
-        // 처음 차례와, 기다리는 사이 확인이 더 새 판을 찾았을 때 받는다
-        if state.take_apply_recheck() {
+        let cfg = state.manager.read().await.get_config();
+        // 처음 차례와, 기다리는 사이 확인이 더 새 판을 찾았을 때 받는다. '확인만'(받기·적용 모두 끔)이면 받지 않는다
+        if state.take_apply_recheck() && (cfg.auto_apply || cfg.auto_download) {
             download_app_updates(state).await;
+        }
+        // 자동 적용을 껐다: 사용자가 다시 시작을 누를 때 적용한다 (받아 두지 않았으면 그때 받는다)
+        if !cfg.auto_apply {
+            hold_for_restart(state).await;
+            return;
         }
         let (decision, version, notes) = plan_core_apply(state).await;
         match decision {
@@ -609,17 +646,34 @@ async fn core_apply(state: &UpdateState) {
     }
 }
 
+/// 자동 적용을 끈 설정: 받을 앱 업데이트가 있으면 `ready`(`manual`)로 두고, 없으면 그 단계를 걷는다
+async fn hold_for_restart(state: &UpdateState) {
+    let (available, release) = {
+        let mgr = state.manager.read().await;
+        let available = mgr.get_status().components.iter().any(|c| c.update_available && update_phase::is_app_component(&c.component.manifest_key()));
+        (available, mgr.applying_release())
+    };
+    if available {
+        let version = release.as_ref().map(|r| r.version.clone());
+        state.set_phase(Phase::ready(ReadyReason::Manual, version, release.map(|r| r.notes).filter(|n| !n.is_empty())));
+    } else if state.phase().reason == Some(ReadyReason::Manual) {
+        state.set_phase(Phase::default());
+    }
+}
+
 /// 받아 둔 앱 업데이트를 지금 적용할 수 있는가 (`update_phase::decide`)와 그 판·패치노트
 async fn plan_core_apply(state: &UpdateState) -> (Decision, Option<String>, Option<std::collections::HashMap<String, String>>) {
-    let (pending, release, failed, reads) = {
+    let (pending, release, core_version, failed, reads) = {
         let mut mgr = state.manager.write().await;
         restore_pending(&mut mgr);
         let pending: Vec<String> = mgr.get_pending_components().iter().map(|c| c.component.manifest_key()).collect();
+        // 되돌린 기록은 코어 판으로 견준다: 부분 릴리즈는 안 바뀐 코어를 지난 판 번호 그대로 싣는다
+        let core_version = mgr.get_pending_components().iter().find(|c| c.component == Component::CoreDaemon).and_then(|c| c.latest_version.clone());
         let release = mgr.applying_release();
         let mut cfg = mgr.get_config();
-        // 되돌린 판보다 새 판을 받았으면 그 기록은 지운다
-        if let (Some(failed), Some(r)) = (cfg.failed_release.as_deref(), release.as_ref()) {
-            if update_phase::failed_release_outdated(failed, &r.version) {
+        // 되돌린 코어보다 새 코어를 받았으면 그 기록은 지운다 (코어가 그대로인 새 릴리즈는 지우지 않는다)
+        if let (Some(failed), Some(core)) = (cfg.failed_release.as_deref(), core_version.as_deref()) {
+            if update_phase::failed_release_outdated(failed, core) {
                 cfg.failed_release = None;
                 if let Err(e) = save_updater_config(&cfg) {
                     tracing::warn!("[Updates] Failed to persist update config: {}", e);
@@ -628,7 +682,7 @@ async fn plan_core_apply(state: &UpdateState) -> (Decision, Option<String>, Opti
             }
         }
         let reads = mgr.core_reads_runner_formats().unwrap_or(saba_chan_updater_lib::relay::DEFAULT_READS_RUNNER_FORMATS);
-        (pending, release, cfg.failed_release, reads)
+        (pending, release, core_version, cfg.failed_release, reads)
     };
     let version = release.as_ref().map(|r| r.version.clone());
     let notes = release.map(|r| r.notes).filter(|n| !n.is_empty());
@@ -643,10 +697,15 @@ async fn plan_core_apply(state: &UpdateState) -> (Decision, Option<String>, Opti
         tokio::time::sleep(MODULE_CALL_SETTLE).await;
         blockers = core_blockers(state, reads).await;
     }
+    // 이전 데몬이 끝나지 않아 미룬 묶음: 같은 릴리즈면 사용자가 다시 시작할 때까지 둔다
+    let phase = state.phase();
+    let deferred = (phase.state == PhaseState::Ready && phase.reason == Some(ReadyReason::WaitPidTimeout)).then_some(phase.version).flatten();
     let decision = update_phase::decide(update_phase::PlanInput {
         pending: &pending,
         version: version.as_deref(),
+        core_version: core_version.as_deref(),
         failed_release: failed.as_deref(),
+        deferred_release: deferred.as_deref(),
         gui_window_open,
         cli_running,
         blockers,
@@ -799,19 +858,21 @@ pub fn on_latest_releases(state: &UpdateState, ids: &Value, shutdown: tokio_util
         let jitter = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_millis()) as u64 * 60;
         let checked = async {
             tokio::select! {
-                _ = shutdown.cancelled() => return false,
+                _ = shutdown.cancelled() => return None,
                 _ = tokio::time::sleep(std::time::Duration::from_millis(jitter)) => {}
             }
             if !state.manager.read().await.get_config().enabled {
-                return false;
+                return None;
             }
+            // 알린 번호를 캐시 키로 붙인다: 번호가 바뀌면 캐시된 옛 응답이 아니라 새 응답을 받는다
+            let hint = checking.values().copied().max();
             tokio::select! {
-                _ = shutdown.cancelled() => false,
-                result = check_and_follow_up(&state) => match result {
-                    Ok(_) => true,
+                _ = shutdown.cancelled() => None,
+                result = check_and_follow_up_hinted(&state, hint) => match result {
+                    Ok((_, latest_id)) => Some(latest_id),
                     Err(e) => {
                         tracing::warn!("[Updates] Check after a new release id failed: {}", e);
-                        false
+                        None
                     }
                 },
             }
@@ -1810,10 +1871,20 @@ fn load_updater_config_from(file: &ConfigFile) -> UpdateConfig {
             if let Some(obj) = v.as_object_mut().filter(|o| o.contains_key("relay_url")) {
                 obj.remove("relay_base_url");
             }
-            serde_json::from_value(v).unwrap_or_else(|e| {
+            let mut cfg: UpdateConfig = serde_json::from_value(v).unwrap_or_else(|e| {
                 tracing::warn!("[Updates] Ignoring invalid 'updates' config: {}", e);
                 UpdateConfig::default()
-            })
+            });
+            // 앱 업데이트는 묻지 않고 적용한다 (사용자 결정 2026-11-09): 옛 설정은 한 번만 켠다. 그 뒤 고른 값은 그대로 둔다
+            if !cfg.live_update_migrated {
+                cfg.auto_apply = true;
+                cfg.auto_download = true;
+                cfg.live_update_migrated = true;
+                if let Err(e) = save_updater_config_to(file, &cfg) {
+                    tracing::warn!("[Updates] Failed to persist update config: {}", e);
+                }
+            }
+            cfg
         }
     }
 }
@@ -1916,14 +1987,72 @@ mod tests {
         std::fs::remove_file(&staged).unwrap();
     }
 
+    /// 자동 적용을 끈 설정(받아 두기·알리기만): 받아 둔 앱 업데이트를 적용하지 않고 `ready`(`manual`)로 둔다.
+    /// 받을 것이 없어지면 그 단계를 걷는다
+    #[tokio::test]
+    async fn with_auto_apply_off_the_update_waits_for_a_restart() {
+        let _staging = STAGING.lock().await;
+        let staging = saba_chan_updater_lib::constants::resolve_staging_dir();
+        std::fs::create_dir_all(&staging).unwrap();
+        let staged = staging.join("saba-chan-gui-manual-test.zip");
+        std::fs::write(&staged, b"zip").unwrap();
+        let pending = json!([{
+            "component": "gui", "current_version": "0.1.0", "latest_version": "0.2.0",
+            "update_available": true, "download_url": null, "asset_name": "saba-chan-gui-manual-test.zip",
+            "release_notes": null, "published_at": null, "downloaded": true,
+            "downloaded_path": staged.to_string_lossy(), "installed": true
+        }]);
+        std::fs::write(staging.join("pending.json"), pending.to_string()).unwrap();
+
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        {
+            let mut mgr = state.manager.write().await;
+            super::restore_pending(&mut mgr);
+            let mut cfg = mgr.get_config();
+            cfg.auto_apply = false;
+            mgr.update_config(cfg);
+        }
+        super::core_apply(&state).await;
+        let phase = state.phase();
+        assert_eq!((phase.state, phase.reason), (PhaseState::Ready, Some(ReadyReason::Manual)));
+        assert!(!state.updater_launched());
+
+        std::fs::remove_file(staging.join("pending.json")).unwrap();
+        std::fs::remove_file(&staged).unwrap();
+        let cfg = state.manager.read().await.get_config();
+        *state.manager.write().await = saba_chan_updater_lib::UpdateManager::new(cfg, tmp.path().to_str().unwrap());
+        super::core_apply(&state).await;
+        assert_eq!(state.phase(), Phase::default(), "nothing left to apply");
+    }
+
     #[test]
     fn auto_apply_is_kept_with_the_update_settings() {
         let mut cfg = saba_chan_updater_lib::UpdateConfig::default();
-        assert!(!cfg.auto_apply, "off by default");
-        cfg.auto_apply = true;
+        assert!(cfg.auto_apply && cfg.auto_download, "a new install applies updates without asking");
+        cfg.auto_apply = false;
         let dir = tempfile::tempdir().unwrap();
         super::save_updater_config_to(&saba_chan_updater_lib::config_file::ConfigFile::at(dir.path()), &cfg).unwrap();
-        assert!(super::load_updater_config_from(&saba_chan_updater_lib::config_file::ConfigFile::at(dir.path())).auto_apply);
+        assert!(!super::load_updater_config_from(&saba_chan_updater_lib::config_file::ConfigFile::at(dir.path())).auto_apply);
+    }
+
+    /// 옛 설정(알리기만)은 한 번만 묻지 않는 자동 적용으로 바꾼다. 그 뒤 사용자가 끈 값은 그대로 둔다
+    #[test]
+    fn old_settings_move_to_automatic_updates_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        file.set_section("updates", json!({ "enabled": true, "auto_download": false, "auto_apply": false, "channel": "beta" })).unwrap();
+        let loaded = load_updater_config_from(&file);
+        assert!(loaded.auto_apply && loaded.auto_download && loaded.live_update_migrated);
+        assert_eq!(loaded.channel, "beta");
+        assert_eq!(file.section("updates")["live_update_migrated"], true, "the move is saved");
+
+        let mut off = loaded;
+        off.auto_apply = false;
+        off.auto_download = false;
+        save_updater_config_to(&file, &off).unwrap();
+        let again = load_updater_config_from(&file);
+        assert!(!again.auto_apply && !again.auto_download, "a later choice is kept");
     }
 
     /// 등록된 GUI 중 GUI 실행 파일로 떠 있는 것만 고르고, 업데이터를 띄울 때 끈다
@@ -2308,15 +2437,35 @@ mod tests {
         assert!(state.release_ids_to_check(std::collections::BTreeMap::new()).is_none());
         let checking = state.release_ids_to_check(ids.clone()).expect("new ids are checked");
         assert!(state.release_ids_to_check(ids.clone()).is_none(), "already being checked");
-        state.finish_release_check(checking, false);
+        state.finish_release_check(checking, None);
         assert!(LiveState::load_from(&tmp.path().join("live-update.json")).seen.is_empty());
         let checking = state.release_ids_to_check(ids.clone()).expect("a failed check is tried again");
-        state.finish_release_check(checking, true);
+        state.finish_release_check(checking, Some(Some(12)));
         assert!(state.release_ids_to_check(ids).is_none());
         let newer = std::collections::BTreeMap::from([("stable".to_string(), 13u64)]);
         let checking = state.release_ids_to_check(newer).unwrap();
-        state.finish_release_check(checking, true);
+        state.finish_release_check(checking, Some(Some(14)));
         assert_eq!(LiveState::load_from(&tmp.path().join("live-update.json")).seen["stable"], 13);
+    }
+
+    /// 확인했는데 응답에 알린 번호가 없으면(캐시된 옛 응답) 본 것으로 두지 않고 캐시 수명 뒤 한 번 더 본다.
+    /// 그때도 없으면(이 플랫폼 몫이 아님) 본 것으로 둔다: 한 번호를 두 번 넘게 묻지 않는다
+    #[test]
+    fn a_release_id_missing_from_the_answer_is_checked_once_more_later() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let seen = || LiveState::load_from(&tmp.path().join("live-update.json")).seen;
+        let ids = std::collections::BTreeMap::from([("stable".to_string(), 12u64)]);
+        let checking = state.release_ids_to_check(ids.clone()).unwrap();
+        state.finish_release_check(checking, Some(Some(11)));
+        assert!(seen().is_empty(), "a stale answer does not count");
+        assert!(state.release_ids_to_check(ids.clone()).is_none(), "not again within the cache lifetime");
+        // 캐시 수명이 지났다
+        state.release_unconfirmed.lock().unwrap().as_mut().unwrap().1 = std::time::Instant::now() - RELEASE_RECHECK;
+        let checking = state.release_ids_to_check(ids.clone()).expect("checked once more");
+        state.finish_release_check(checking, Some(None));
+        assert_eq!(seen(), ids, "the second miss counts as seen");
+        assert!(state.release_ids_to_check(ids).is_none());
     }
 
     /// 적용 반복이 도는 중에 들어온 확인은 버려지지 않는다: 반복이 다음 차례에 새로 받고, 그 뒤에 왔으면 끝난 뒤 다시 돈다

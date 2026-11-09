@@ -180,7 +180,8 @@ fn test_update_config_default() {
     let cfg = UpdateConfig::default();
     assert!(cfg.enabled);
     assert_eq!(cfg.check_interval_hours, 3);
-    assert!(!cfg.auto_download);
+    // 앱 업데이트는 묻지 않고 적용한다
+    assert!(cfg.auto_download && cfg.auto_apply);
     assert!(cfg.install_root.is_none());
     assert!(cfg.relay_url.is_none());
 }

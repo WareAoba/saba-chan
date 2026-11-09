@@ -422,7 +422,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 - ~~(옛 Electron main.js:501-503) `syncGuiConfigToDaemon`(no-op)과 이를 부르는 `guiConfig:sync` 채널~~ → 해결: 함수, 채널, preload 항목이 모두 없어졌고, Tauri 브리지에도 없다.
 - ~~(옛 Electron main.js:1005-1011) `preloadLightData`~~ → 해결: 없어졌다. 셸의 `finish_background_init`이 로딩 상태 문구만 보낸다(`lifecycle.rs:93-116`).
 - renderer가 쓰지 않는 window.api(§1.2).
-- ~~(옛 Electron main.js:1223-1224) auto_download/auto_apply는 "향후 구현 예정"~~ → 해결: `auto_download`이면 데몬이 확인 때 미리 내려받아 둔다(`src/ipc/updates.rs:215-216, 236`). 동작하지 않던 `auto_apply`는 설정에서 빠졌다가, 사바 스토리지의 '업데이트를 찾으면'(알리기만·받아 두기·받고 다음 실행 때 적용)으로 다시 생겼다. 적용은 GUI가 열릴 때 `updaterApplyOnLaunch`로 데몬에 맡긴다.
+- ~~(옛 Electron main.js:1223-1224) auto_download/auto_apply는 "향후 구현 예정"~~ → 해결: `auto_download`이면 데몬이 확인 때 미리 내려받아 둔다(`src/ipc/updates.rs:215-216, 236`). 동작하지 않던 `auto_apply`는 설정에서 빠졌다가, 사바 스토리지의 '업데이트를 찾으면'(알리기만·받아 두기·적용)으로 다시 생겼다. 지금은 데몬이 그 값대로 한다: 적용(`auto_apply`, 기본)은 묻지 않고 적용하고, 받아 두기·알리기만은 알약을 준비됨으로 두어 "지금 다시 시작"으로 적용한다(05 §1.6).
 
 ### 6.3 기능 버그
 - ~~**before-quit bot 정지 요청 누락**: (옛 Electron main.js:1536, 1559) `currentPort` 범위 오류로 ReferenceError~~ → 해결: 비정상 종료 경로(`on_exit` `lifecycle.rs:690-712`)는 봇을 건드리지 않고 unregister와 자기 데몬 정리만 한다.

@@ -312,8 +312,13 @@ pub struct UpdateConfig {
     pub check_interval_hours: u32,
     /// 확인 뒤 새 버전을 미리 내려받아 둘지
     pub auto_download: bool,
-    /// 받아 둔 업데이트를 앱을 열 때 적용할지 (켜면 내려받기도 한다). 끄면 적용은 사용자가 고른다
+    /// 앱 업데이트를 묻지 않고 적용할지 (켜면 내려받기도 한다). 끄면 받아 두거나(`auto_download`) 알리기만 하고,
+    /// 적용은 사용자가 다시 시작을 누를 때 한다
     pub auto_apply: bool,
+    /// 묻지 않는 자동 적용으로 바꾸는 한 번의 이전을 했다 (데몬 `load_updater_config`). 이 키가 없는 옛 설정은
+    /// 한 번 `auto_apply`·`auto_download`를 켠다. 그 뒤 사용자가 고른 값은 그대로 둔다
+    #[serde(default)]
+    pub live_update_migrated: bool,
     /// 스테이징 디렉터리 (다운로드와 임시 파일 저장, 기본값: 실행파일 경로 기준)
     pub install_root: Option<String>,
     /// 릴레이 주소 (None이면 relay::DEFAULT_RELAY_URL). 모의 릴레이 시험은 여기에
@@ -338,8 +343,10 @@ impl Default for UpdateConfig {
         Self {
             enabled: true,
             check_interval_hours: 3,
-            auto_download: false,
-            auto_apply: false,
+            // 앱 업데이트는 묻지 않고 적용한다 (사용자 결정 2026-11-09)
+            auto_download: true,
+            auto_apply: true,
+            live_update_migrated: true,
             install_root: None,
             relay_url: None,
             // 고르지 않았으면 이 빌드의 채널(`versions.toml` `[release] channel`): 베타 빌드가 정식의 옛 판을 내림으로 거절하지 않게

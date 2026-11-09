@@ -34,6 +34,8 @@ pub enum ReadyReason {
     GuiWindowOpen,
     WaitPidTimeout,
     FailedRelease,
+    /// 자동 적용을 끈 설정(`auto_apply=false`): 사용자가 다시 시작을 누를 때 적용한다
+    Manual,
 }
 
 /// 알약이 보이는 단계 (`GET /api/updates/status`의 `phase`)
@@ -118,10 +120,11 @@ pub fn phase_from_marker(marker: &serde_json::Value, marker_seen: Option<&str>) 
         return None;
     }
     let release = marker.get("release");
-    let version = marker
-        .get("version")
+    // 보이는 판은 릴리즈 판이다. 되돌림 마커의 `version`은 되돌린 코어 판이라 릴리즈 요약이 없을 때만 쓴다
+    let version = release
+        .and_then(|r| r.get("version"))
         .and_then(serde_json::Value::as_str)
-        .or_else(|| release.and_then(|r| r.get("version")).and_then(serde_json::Value::as_str))
+        .or_else(|| marker.get("version").and_then(serde_json::Value::as_str))
         .map(str::to_string);
     let notes: Option<HashMap<String, String>> =
         release.and_then(|r| r.get("notes")).and_then(|n| serde_json::from_value(n.clone()).ok()).filter(|n: &HashMap<_, _>| !n.is_empty());
@@ -156,6 +159,25 @@ pub fn adopt_marker(live: &mut LiveState, marker: Option<&serde_json::Value>) ->
     false
 }
 
+/// 데몬이 뜰 때 완료 마커를 읽는다(`adopt_marker`). 미룬 단계에 판이 없으면 받아 둔 릴리즈 판(`pending_release`)을 채운다
+/// (같은 묶음을 다시 띄우지 않는 기준). 바뀌었는가와, 이 마커로 되돌림을 알았으면 되돌린 코어 판(마커의 `version`)을 준다
+pub fn adopt_startup_marker(
+    live: &mut LiveState,
+    marker: Option<&serde_json::Value>,
+    pending_release: impl FnOnce() -> Option<String>,
+) -> (bool, Option<String>) {
+    if !adopt_marker(live, marker) {
+        return (false, None);
+    }
+    if live.phase.reason == Some(ReadyReason::WaitPidTimeout) && live.phase.version.is_none() {
+        live.phase.version = pending_release();
+    }
+    let rolled_back = (live.phase.reason == Some(ReadyReason::RolledBack))
+        .then(|| marker.and_then(|m| m.get("version")).and_then(serde_json::Value::as_str).map(str::to_string))
+        .flatten();
+    (true, rolled_back)
+}
+
 /// 앱 구성요소 (모듈·익스텐션·번역이 아닌 것): 이것이 바뀌어야 알약이 움직인다
 pub fn is_app_component(key: &str) -> bool {
     !(key.starts_with("module-") || key.starts_with("ext-") || key == "locales")
@@ -170,8 +192,14 @@ pub fn needs_restart(key: &str) -> bool {
 pub struct PlanInput<'a> {
     /// 받아 둔 구성요소 키 (앱 구성요소만 본다)
     pub pending: &'a [String],
+    /// 적용할 릴리즈 판
     pub version: Option<&'a str>,
+    /// 받아 둔 묶음의 코어(`saba-core`) 판. 묶음에 코어가 없으면 None
+    pub core_version: Option<&'a str>,
+    /// 되돌린 코어 판 (`UpdateConfig::failed_release`, 설치기가 적는다)
     pub failed_release: Option<&'a str>,
+    /// 이전 데몬이 끝나지 않아 미룬 릴리즈 판 (단계 `ready`/`wait_pid_timeout`의 판)
+    pub deferred_release: Option<&'a str>,
     pub gui_window_open: bool,
     pub cli_running: bool,
     /// 데몬 작업 + 켜진 서버 (`daemon_work`, `core_swap_blockers`)
@@ -194,9 +222,14 @@ pub fn decide(input: PlanInput<'_>) -> Decision {
     if targets.is_empty() {
         return Decision::Nothing;
     }
-    // 되돌린 판은 다시 자동으로 적용하지 않는다 (13절): 사용자가 다시 시작을 누를 때까지
-    if input.failed_release.is_some() && input.failed_release == input.version {
+    // 되돌린 코어는 다시 자동으로 적용하지 않는다 (13절): 사용자가 다시 시작을 누를 때까지.
+    // 부분 릴리즈는 안 바뀐 코어를 지난 판 번호 그대로 싣으므로 릴리즈 판이 아니라 코어 판으로 견준다
+    if input.failed_release.is_some() && input.failed_release == input.core_version {
         return Decision::Ready(ReadyReason::FailedRelease);
+    }
+    // 이전 데몬이 끝나지 않아 미룬 묶음도 사용자가 다시 시작하거나 더 새 판이 올 때까지 다시 띄우지 않는다
+    if input.deferred_release.is_some() && input.deferred_release == input.version {
+        return Decision::Ready(ReadyReason::WaitPidTimeout);
     }
     // GUI 창이 떠 있는 채로 GUI를 바꾸면 창이 닫힌다: 사용자가 고를 때까지 묶음 전체를 둔다
     if input.gui_window_open && targets.iter().any(|k| k == "gui") {
@@ -214,7 +247,7 @@ pub fn decide(input: PlanInput<'_>) -> Decision {
     Decision::Apply(targets)
 }
 
-/// 되돌린 판보다 새 판이 왔으면 그 기록은 지운다
+/// 되돌린 코어 판보다 새 코어가 왔으면 그 기록은 지운다 (`offered`: 받아 둔 묶음의 코어 판)
 pub fn failed_release_outdated(failed: &str, offered: &str) -> bool {
     use saba_chan_updater_lib::version::SemVer;
     matches!((SemVer::parse(failed), SemVer::parse(offered)), (Some(f), Some(o)) if o > f)
@@ -278,7 +311,16 @@ mod tests {
     }
 
     fn input<'a>(pending: &'a [String]) -> PlanInput<'a> {
-        PlanInput { pending, version: Some("0.1.14"), failed_release: None, gui_window_open: false, cli_running: false, blockers: Vec::new() }
+        PlanInput {
+            pending,
+            version: Some("0.1.14"),
+            core_version: Some("0.1.14"),
+            failed_release: None,
+            deferred_release: None,
+            gui_window_open: false,
+            cli_running: false,
+            blockers: Vec::new(),
+        }
     }
 
     fn keys(list: &[&str]) -> Vec<String> {
@@ -314,6 +356,27 @@ mod tests {
         assert!(!failed_release_outdated("0.1.14", "0.1.13"));
     }
 
+    /// 부분 릴리즈: 릴리즈 0.1.15가 코어 0.1.14를 그대로 싣는다. 되돌린 코어 0.1.14는 릴리즈 판이 달라도 다시 적용하지 않고,
+    /// 코어가 그대로인 더 새 릴리즈도 그 기록을 지우지 않는다
+    #[test]
+    fn a_rolled_back_core_reused_by_a_partial_release_is_not_applied_again() {
+        let pending = keys(&["saba-core", "gui"]);
+        let partial = PlanInput { version: Some("0.1.15"), core_version: Some("0.1.14"), failed_release: Some("0.1.14"), ..input(&pending) };
+        assert_eq!(decide(partial), Decision::Ready(ReadyReason::FailedRelease));
+        assert!(!failed_release_outdated("0.1.14", "0.1.14"), "the same core in a newer release keeps the record");
+        // 코어가 없는 묶음(GUI만)은 되돌린 코어와 상관없다
+        let gui = keys(&["gui"]);
+        assert_eq!(decide(PlanInput { version: Some("0.1.16"), core_version: None, failed_release: Some("0.1.14"), ..input(&gui) }), Decision::Apply(gui.clone()));
+    }
+
+    /// 이전 데몬이 끝나지 않아 미룬 묶음은 같은 릴리즈면 다시 띄우지 않는다. 더 새 릴리즈면 적용한다
+    #[test]
+    fn a_deferred_release_is_not_applied_again_automatically() {
+        let pending = keys(&["saba-core"]);
+        assert_eq!(decide(PlanInput { deferred_release: Some("0.1.14"), ..input(&pending) }), Decision::Ready(ReadyReason::WaitPidTimeout));
+        assert_eq!(decide(PlanInput { deferred_release: Some("0.1.13"), ..input(&pending) }), Decision::Apply(pending.clone()));
+    }
+
     /// GUI가 바뀌는데 창이 열려 있으면 묶음 전체가 준비됨. 트레이에만 있으면 적용한다. CLI TUI는 CLI만 다음으로
     #[test]
     fn an_open_gui_window_or_tui_holds_its_own_part() {
@@ -339,6 +402,9 @@ mod tests {
         let rolled = json!({ "timestamp": "t2", "updated_components": [], "success": false, "result": "rolled_back", "version": "0.1.14" });
         let phase = phase_from_marker(&rolled, Some("t1")).unwrap();
         assert_eq!((phase.state, phase.reason, phase.version.as_deref()), (PhaseState::Ready, Some(ReadyReason::RolledBack), Some("0.1.14")));
+        // 되돌린 코어 판(0.1.14)이 아니라 릴리즈 판(0.1.15)을 보인다
+        let partial = json!({ "timestamp": "t5", "success": false, "result": "rolled_back", "version": "0.1.14", "release": { "version": "0.1.15" } });
+        assert_eq!(phase_from_marker(&partial, None).unwrap().version.as_deref(), Some("0.1.15"));
         let deferred = json!({ "timestamp": "t3", "updated_components": [], "success": false, "result": "deferred", "reason": "wait_pid_timeout" });
         assert_eq!(phase_from_marker(&deferred, None).unwrap().reason, Some(ReadyReason::WaitPidTimeout));
 
@@ -359,6 +425,21 @@ mod tests {
         live.phase = Phase::default();
         assert!(!adopt_marker(&mut live, Some(&done)));
         assert_eq!(live.phase, Phase::default());
+    }
+
+    /// 뜰 때: 되돌림이면 되돌린 코어 판(릴리즈 판이 아님)을 실패 기록 후보로, 미룸이면 받아 둔 릴리즈 판을 단계에 채운다
+    #[test]
+    fn startup_marker_names_the_rolled_back_core_and_the_deferred_release() {
+        let mut live = LiveState::default();
+        let rolled = json!({ "timestamp": "t1", "success": false, "result": "rolled_back", "version": "0.1.14", "release": { "version": "0.1.15" } });
+        assert_eq!(adopt_startup_marker(&mut live, Some(&rolled), || None), (true, Some("0.1.14".to_string())));
+        assert_eq!(live.phase.version.as_deref(), Some("0.1.15"));
+
+        let mut live = LiveState::default();
+        let deferred = json!({ "timestamp": "t2", "success": false, "result": "deferred", "reason": "wait_pid_timeout" });
+        assert_eq!(adopt_startup_marker(&mut live, Some(&deferred), || Some("0.1.15".into())), (true, None));
+        assert_eq!((live.phase.reason, live.phase.version.as_deref()), (Some(ReadyReason::WaitPidTimeout), Some("0.1.15")));
+        assert_eq!(adopt_startup_marker(&mut live, Some(&deferred), || None), (false, None), "read once");
     }
 
     #[test]

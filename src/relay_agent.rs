@@ -116,6 +116,9 @@ pub struct RelayAgent {
     unsent: Arc<Mutex<Vec<Unsent>>>,
     /// 보내는 중인 명령 결과 수. 데몬이 꺼질 때 이것이 끝나기를 잠깐 기다린다 (원격 업데이트 뒤 재시작 안내 등)
     posting: Arc<std::sync::atomic::AtomicUsize>,
+    /// 업데이트로 내려간다고 릴레이에 알렸다 (`notify_updating`): 그 뒤로는 heartbeat를 보내지 않는다.
+    /// 릴레이는 알린 뒤의 heartbeat를 새 데몬이 돌아온 것으로 보고 "업데이트 중" 창을 닫는다
+    going_down: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// 보내는 중인 결과 하나 (끝나면 수를 줄인다)
@@ -243,6 +246,8 @@ impl RelayAgent {
     /// 데몬이 업데이트로 내려가기 직전: 릴레이가 그동안 디스코드 명령에 "업데이트 중"으로 답하고 "PC 꺼짐"으로 보지 않게 한다
     /// (`POST /v1/host/updating`). 연결돼 있지 않으면 오류
     pub async fn notify_updating(&self, eta_seconds: u64) -> Result<(), String> {
+        // 알리기 전에 막는다: 알린 뒤 옛 데몬의 heartbeat가 창을 닫지 않게
+        self.going_down.store(true, std::sync::atomic::Ordering::SeqCst);
         let (base, token) = {
             let inner = self.lock();
             match (&inner.cancel, &inner.endpoint) {
@@ -614,6 +619,10 @@ impl Session {
 
     /// 하트비트 한 번. 릴레이가 메타데이터 전체를 달라고 했거나(`needMetadata`) 새로 묶인 길드에 열 서버를 정했으면 true
     async fn heartbeat_once(&self) -> bool {
+        // 업데이트로 내려가는 중: 새 데몬의 heartbeat가 "업데이트 중" 창을 닫는다
+        if self.agent.going_down.load(std::sync::atomic::Ordering::SeqCst) {
+            return false;
+        }
         let sent = self.metadata_sent.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let (metadata, hash, unchanged) = heartbeat_metadata(self.metadata().await, sent.as_deref());
         let acks = self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -2133,6 +2142,29 @@ mod tests {
             assert!(second >= Duration::from_millis(150), "the next send waits for the gap ({second:?})");
             assert!(second < Duration::from_millis(600), "but only for the gap ({second:?})");
         });
+    }
+
+    /// 업데이트로 내려간다고 알린 뒤에는 heartbeat를 보내지 않는다 (릴레이의 "업데이트 중" 창을 옛 데몬이 닫지 않게)
+    #[tokio::test]
+    async fn no_heartbeat_is_sent_after_announcing_the_update() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static BEATS: AtomicUsize = AtomicUsize::new(0);
+        async fn beat() -> axum::Json<Value> {
+            BEATS.fetch_add(1, Ordering::SeqCst);
+            axum::Json(json!({ "status": "ok" }))
+        }
+        let app = axum::Router::new().route("/heartbeat", axum::routing::post(beat));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let tmp = tempfile::tempdir().unwrap();
+        let agent = RelayAgent::new();
+        let session = test_session(&agent, &base, "sbn_host.secret", tmp.path()).await;
+        session.heartbeat().await;
+        assert_eq!(BEATS.load(Ordering::SeqCst), 1);
+        let _ = agent.notify_updating(90).await;
+        session.heartbeat().await;
+        assert_eq!(BEATS.load(Ordering::SeqCst), 1);
     }
 
     /// 시험용 세션: 주어진 에이전트·주소·토큰으로
