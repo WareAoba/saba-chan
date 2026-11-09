@@ -1,0 +1,78 @@
+# 베타에 등록된 앱 릴리즈를 정식(또는 rc)으로 올린다. 저장소 주인이 Actions 탭에서 손으로만 실행한다 (docs 05 §3.1).
+# publish.yml은 늘 beta로 등록하고, 서명된 manifest 채널(versions.toml 채널)이 올릴 수 있는 끝이다.
+#
+# 1. 릴레이 `GET /admin/releases`에서 그 판의 베타 행을 고른다 (versions.py promote-pick).
+#    이미 그 채널에 있거나, 내렸거나, 클라이언트가 되돌린 보고가 있으면(allow_rollbacks 없이) 멈춘다
+# 2. 그 행의 서명된 manifest가 target 채널 클라이언트에게 받아들여지는지 본다 (versions.py promote-check)
+# 3. `PATCH /admin/releases/:id {channel}`: 릴레이가 확인 캐시를 비워 heartbeat·확인에 바로 반영된다
+#
+# environment `release`: secret RELAY_INTERNAL_SECRET, variable RELAY_URL. 서명하지 않으므로 키를 쓰지 않는다
+name: Promote release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '올릴 판 (예: 0.1.14)'
+        required: true
+      channel:
+        type: choice
+        options: [stable, rc]
+        default: stable
+      allow_rollbacks:
+        description: '되돌림 보고가 있어도 올린다'
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-22.04
+    environment: release
+    timeout-minutes: 10
+    steps:
+      - name: Require main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run this workflow on main (got $GITHUB_REF)"; exit 1
+
+      - name: Check version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
+            || { echo "::error::version must look like 0.1.14"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+
+      - name: Promote
+        env:
+          RELAY_INTERNAL_SECRET: ${{ secrets.RELAY_INTERNAL_SECRET }}
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
+          ALLOW_ROLLBACKS: ${{ inputs.allow_rollbacks }}
+        run: |
+          relay="${{ vars.RELAY_URL }}"
+          curl -fsS "$relay/admin/releases" -H "x-internal-secret: $RELAY_INTERNAL_SECRET" > releases.json
+          allow=()
+          if [ "$ALLOW_ROLLBACKS" = true ]; then allow=(--allow-rollbacks); fi
+          id=$(python scripts/versions.py promote-pick --releases releases.json --version "$VERSION" --channel "$CHANNEL" "${allow[@]}")
+          curl -fsS -H 'X-Saba-Client: 1' "$relay/v1/updates/manifest/$VERSION?release=$id" > release.signed.json
+          python scripts/versions.py promote-check --signed release.signed.json --channel "$CHANNEL"
+          curl -fsS -X PATCH "$relay/admin/releases/$id" \
+            -H "x-internal-secret: $RELAY_INTERNAL_SECRET" -H "Content-Type: application/json" \
+            -d "{\"channel\":\"$CHANNEL\"}" > /dev/null
+          rollbacks=$(python -c "import json,sys;print(next(r.get('rollbacks',0) for r in json.load(open('releases.json'))['releases'] if r['id']==int(sys.argv[1])))" "$id")
+          echo "### Promoted $VERSION (release $id) to $CHANNEL (rollback reports: $rollbacks)" >> "$GITHUB_STEP_SUMMARY"
