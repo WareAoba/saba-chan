@@ -167,6 +167,8 @@ function BackupsCard({ server }: { server: Server }) {
     const [backups, setBackups] = useState<Backup[] | null>(null);
     // 백업 폴더가 디스크에 차지하는 크기 (데몬이 계산. 같은 내용은 한 번만 센다)
     const [totalBytes, setTotalBytes] = useState<number | null>(null);
+    // 목록을 읽지 못한 이유. 빈 목록("백업 없음")과 구별해 보인다
+    const [loadError, setLoadError] = useState<string | null>(null);
     // 모듈이 게임 자동 백업을 알려 주는가 (`[backup] snapshots`)
     const [snapshots, setSnapshots] = useState(false);
     const [busy, setBusy] = useState<string | null>(null); // 'create' | `restore:${name}` | `delete:${name}`
@@ -183,13 +185,18 @@ function BackupsCard({ server }: { server: Server }) {
         try {
             const res = await window.api.instanceBackups(server.id);
             if (!alive.current) return;
-            setBackups(Array.isArray(res?.backups) ? res.backups : []);
+            if (res?.success === false || (res && !Array.isArray(res.backups))) {
+                setLoadError(errorText(res, t('maintenance.load_failed'), t));
+                return;
+            }
+            setLoadError(null);
+            setBackups(res.backups);
             setTotalBytes(typeof res?.total_bytes === 'number' ? res.total_bytes : null);
             setSnapshots(res?.snapshots_supported === true);
-        } catch {
-            if (alive.current) setBackups([]);
+        } catch (e) {
+            if (alive.current) setLoadError(e instanceof Error && e.message ? e.message : t('maintenance.load_failed'));
         }
-    }, [server.id]);
+    }, [server.id, t]);
 
     useEffect(() => {
         refresh();
@@ -276,7 +283,9 @@ function BackupsCard({ server }: { server: Server }) {
                     <Icon name="info" size="xs" /> {t('maintenance.restore_stop_first')}
                 </p>
             )}
-            {backups === null ? (
+            {loadError ? (
+                <SabaFail message={loadError} onRetry={refresh} retryLabel={t('maintenance.retry')} />
+            ) : backups === null ? (
                 <SabaSpinner />
             ) : list.length === 0 ? (
                 <p className="muted">{t('maintenance.backups_empty')}</p>

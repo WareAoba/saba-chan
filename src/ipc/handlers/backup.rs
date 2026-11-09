@@ -376,12 +376,8 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         return Ok(None);
     }
     let remote = crate::audit::current().is_relay();
-    if remote && backup::list(&plan.dir).iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP {
-        return Err(error(
-            StatusCode::CONFLICT,
-            "backup_limit",
-            format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP),
-        ));
+    if remote && remote_cap_reached(&plan.dir, kind).await? {
+        return Err(backup_limit());
     }
     // 켜진 서버: 자동 저장을 멈추고(pause) 저장한 뒤 묶고, 끝나면(실패해도) 자동 저장을 되돌린다(resume)
     let live = (plan.spec.save_command.is_some() || plan.spec.pause_command.is_some()) && is_running(state, id).await;
@@ -659,8 +655,8 @@ async fn find_snapshot(state: &IPCServer, id: &str, which: Option<&str>) -> Resu
 /// 스냅샷을 사바쨩 백업으로 적는다 (작업 잠금을 쥔 채). 없는 경로는 뺀다
 async fn keep_snapshot_locked(state: &IPCServer, id: &str, snapshot: GameSnapshot, kind: BackupKind) -> Result<BackupInfo, Response> {
     let dir = backups_dir(state, id).await?;
-    if kind == BackupKind::Snapshot && crate::audit::current().is_relay() && backup::list(&dir).iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP {
-        return Err(error(StatusCode::CONFLICT, "backup_limit", format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP)));
+    if kind == BackupKind::Snapshot && crate::audit::current().is_relay() && remote_cap_reached(&dir, kind).await? {
+        return Err(backup_limit());
     }
     if snapshot.archive.as_ref().is_some_and(|a| !a.is_file()) || (snapshot.archive.is_none() && !snapshot.paths.iter().any(|(from, _)| from.exists())) {
         return Err(error(StatusCode::NOT_FOUND, "snapshot_not_found", "The game's automatic backup has no files"));
@@ -1133,6 +1129,20 @@ pub fn spawn_scheduler(state: IPCServer) {
             }
         }
     });
+}
+
+fn backup_limit() -> Response {
+    error(StatusCode::CONFLICT, "backup_limit", format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP))
+}
+
+/// 원격 요청이 만들 수 있는 이 종류의 백업이 상한에 닿았는가. 목록을 읽지 못하면 세지 못한 채 통과시키지 않고 오류로 거절한다
+async fn remote_cap_reached(dir: &FsPath, kind: BackupKind) -> Result<bool, Response> {
+    let dir = dir.to_path_buf();
+    match tokio::task::spawn_blocking(move || backup::list_checked(&dir)).await {
+        Ok(Ok(list)) => Ok(list.iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP),
+        Ok(Err(e)) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", format!("Could not read the backup folder: {}", e))),
+        Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", e.to_string())),
+    }
 }
 
 /// 인스턴스마다 하나: 정지가 쥐는 동안 복원 전 백업 정리는 들어오지 않고(다음 차례로 미룬다),
@@ -2755,5 +2765,16 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert!(waiting.is_err(), "a stop waits while the sweep deletes");
         drop(sweeping);
         assert!(tokio::time::timeout(std::time::Duration::from_millis(500), stop_gate(id)).await.is_ok());
+    }
+
+    /// 원격 백업 상한 검사는 목록을 읽지 못하면 세지 못한 채 통과시키지 않고 오류로 거절한다
+    #[tokio::test]
+    async fn the_remote_cap_check_fails_closed_when_the_backups_cannot_be_listed() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(!remote_cap_reached(&tmp.path().join("missing"), BackupKind::Manual).await.unwrap(), "no folder yet means no backups");
+        let file = tmp.path().join("not-a-folder");
+        std::fs::write(&file, b"x").unwrap();
+        let refused = remote_cap_reached(&file, BackupKind::Manual).await.err().expect("an unreadable folder is an error");
+        assert_eq!(refused.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

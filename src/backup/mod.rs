@@ -848,7 +848,15 @@ pub fn prune(dir: &Path, keep: usize, protect: &[&str]) -> Vec<String> {
     let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     // 종류마다 따로 센다: 업데이트 전·복원 전 안전 백업이 예약 백업을 밀어내지 않게
     let mut seen: std::collections::HashMap<BackupKind, usize> = std::collections::HashMap::new();
-    let removed: Vec<String> = list(dir)
+    // 목록을 읽지 못하면 아무것도 지우지 않고 알린다 (일부만 본 목록으로 정리하면 보호할 것을 잘못 셀 수 있다)
+    let listed = match list_checked(dir) {
+        Ok(listed) => listed,
+        Err(e) => {
+            tracing::warn!("Not pruning backups: could not list {}: {}", dir.display(), e);
+            return Vec::new();
+        }
+    };
+    let removed: Vec<String> = listed
         .into_iter()
         .filter(|b| !matches!(b.kind, BackupKind::Manual | BackupKind::Snapshot))
         .filter(|b| {
