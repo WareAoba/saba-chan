@@ -131,6 +131,7 @@
     "restart_in": "{{secs}} 秒後重新啟動。",
     "gave_up": "已放棄自動重新啟動，請檢查伺服器。",
     "restart_failed": "無法重新啟動 {{name}}。",
+    "daemon_down": "Saba-chan 本體意外停止了。伺服器監控與 Discord 連動已暫停，請在應用程式中重新啟動。",
     "external_start": "{{name}} 在 Saba-chan 之外啟動。這不是 Saba-chan 啟動的程序。",
     "backup_failed": "{{name}} 自動備份失敗。",
     "on_daemon": "在 {{daemon}} 上：{{body}}"

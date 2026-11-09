@@ -166,7 +166,7 @@
     "os_notifications_label": "系统通知",
     "os_notifications_description": "崩溃、意外启动或停止等必须知道的事件也会通过 Windows、macOS 通知发送。应用窗口在前台时只在应用内提示。",
     "sound_effects_label": "音效",
-    "sound_effects_description": "从应用外（Discord、网页等）启动或停止服务器、意外停止、安装结果以及发现更新时播放提示音。在应用内直接启动或停止时不播放。",
+    "sound_effects_description": "从应用外（Discord、网页等）启动或停止服务器、意外停止或启动失败、Saba-chan 本体意外停止、安装结果以及发现更新时播放提示音。在应用内直接启动或停止时不播放。",
     "sound_server_start": "服务器启动",
     "sound_server_stop": "服务器停止",
     "sound_crash": "意外停止",

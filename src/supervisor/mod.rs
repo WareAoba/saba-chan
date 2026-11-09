@@ -2096,7 +2096,7 @@ impl Supervisor {
                         evidence: format!("memory limit {} MiB reached while starting", hit.limit_mb),
                     };
                     let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: None, note: None, note_code: None, note_args: None };
-                    sup.write().await.record_exit(&instance.id, &instance.name, event, None);
+                    sup.write().await.record_exit(&instance.id, &instance.name, event, None, Some(crate::audit::current()));
                 }
                 spawned?
             }
@@ -3037,7 +3037,7 @@ impl Supervisor {
         let (note_code, note_args) = note_code.map(|(c, a)| (c.to_string(), a)).unzip();
         let kind = verdict.kind;
         let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: restart_in, note, note_code, note_args };
-        self.record_exit(instance_id, &instance.name, event, attempt);
+        self.record_exit(instance_id, &instance.name, event, attempt, None);
         match (kind, stop_origin) {
             (crash::ExitKind::UserStop, Some(origin)) => announce_stopped(instance_id, &instance.name, kind, &origin),
             (crash::ExitKind::InGameStop, _) => announce_stopped(instance_id, &instance.name, kind, &crate::audit::Origin::new("game")),
@@ -3047,9 +3047,11 @@ impl Supervisor {
 
     /// 종료 판정 하나를 알리고(`instance.exit`) 이력에 남긴다.
     /// `attempt`는 다시 띄우기로 했을 때 그 복구 시도의 번호 (끝을 알리는 이벤트와 같은 `restartAttempt`)
-    fn record_exit(&mut self, instance_id: &str, instance_name: &str, event: crash::ExitEvent, attempt: Option<u64>) {
+    /// 시작 실패는 시킨 쪽(`source`·`userName?`·`remoteHost?`, `instance.started`와 같다)을 함께 싣는다: 켜는 중에 실패했으면 `started_by`,
+    /// 켜진 뒤 곧 끝났으면 그 시작을 알린 쪽. 앱 버튼으로 켠 실패에 앱이 효과음을 내지 않게 한다
+    fn record_exit(&mut self, instance_id: &str, instance_name: &str, event: crash::ExitEvent, attempt: Option<u64>, started_by: Option<crate::audit::Origin>) {
         let (evidence_code, evidence_args) = crash::evidence_code(&event.verdict.evidence);
-        crate::events::emit("instance.exit", serde_json::json!({
+        let mut data = serde_json::json!({
             "instanceId": instance_id,
             "instance": instance_name,
             "kind": event.verdict.kind,
@@ -3063,7 +3065,14 @@ impl Supervisor {
             "note": event.note,
             "noteCode": event.note_code,
             "noteArgs": event.note_args,
-        }));
+        });
+        if event.verdict.kind == crash::ExitKind::StartFailed {
+            let origin = started_by.or_else(|| start_origins().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).cloned());
+            if let (Some(origin), Some(map)) = (origin, data.as_object_mut()) {
+                map.extend(origin_fields(&origin));
+            }
+        }
+        crate::events::emit("instance.exit", data);
         // 크래시·예기치 않은 종료는 작업 기록에도 남긴다 (출처는 데몬 자신, 이유는 근거 코드)
         if matches!(event.verdict.kind, crash::ExitKind::Crash | crash::ExitKind::UnknownExit) {
             crate::audit::log().record(&crate::audit::Origin::new("daemon"), &crate::audit::Event {
@@ -3245,7 +3254,7 @@ impl Supervisor {
                     if !judged && !self.stop_requested.contains_key(&instance.id) {
                         let verdict = crash::ExitVerdict { kind: crash::ExitKind::UnknownExit, exit_code: None, signal: None, evidence: "exit status unknown".into() };
                         let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: None, note: None, note_code: None, note_args: None };
-                        self.record_exit(&instance.id, &instance.name, event, None);
+                        self.record_exit(&instance.id, &instance.name, event, None, None);
                     }
                 }
                 continue;
@@ -3501,8 +3510,15 @@ fn origin_fields(origin: &crate::audit::Origin) -> serde_json::Map<String, Value
     fields
 }
 
+/// 인스턴스마다 마지막으로 켠 쪽. 켜진 뒤 곧 끝난 시작 실패(`instance.exit` `start_failed`)에 시킨 쪽을 싣는다
+fn start_origins() -> &'static std::sync::Mutex<HashMap<String, crate::audit::Origin>> {
+    static ORIGINS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, crate::audit::Origin>>> = std::sync::OnceLock::new();
+    ORIGINS.get_or_init(Default::default)
+}
+
 /// `instance.started`: 서버가 켜졌다. `unexpected`면 사바쨩이 띄우지 않은 프로세스다
 fn announce_started(instance_id: &str, name: &str, origin: &crate::audit::Origin, unexpected: bool) {
+    start_origins().lock().unwrap_or_else(|e| e.into_inner()).insert(instance_id.to_string(), origin.clone());
     let mut data = origin_fields(origin);
     data.insert("instanceId".into(), json!(instance_id));
     data.insert("instance".into(), json!(name));
@@ -4396,6 +4412,46 @@ mod tests {
         let mut s = sup.write().await;
         assert_eq!(s.exit_events("crashed").last().map(|e| e.verdict.kind), Some(crash::ExitKind::Crash), "it did crash");
         assert!(s.take_pending_restarts().iter().all(|(id, ..)| id != "crashed"), "but the stop keeps it down");
+    }
+
+    /// 켜진 뒤 곧 끝난 시작 실패는 그 시작을 시킨 쪽을 싣는다: 앱 버튼(`gui`)으로 켠 실패에는 앱이 효과음을 내지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn start_failure_names_who_started_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let dir = modules_dir.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        let instances_dir = tmp.path().join("instances");
+        std::fs::create_dir_all(&instances_dir).unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(modules_dir.to_str().unwrap(), instances_dir.to_str().unwrap());
+        let mut inst = crate::instance::ServerInstance::new("sf", "game");
+        inst.id = "start-fail-src".to_string();
+        supervisor.instance_store.add(inst).unwrap();
+        let work = tmp.path().join("sf");
+        std::fs::create_dir_all(&work).unwrap();
+        let proc = managed_process::ManagedProcess::spawn("sh", &["-c".into(), "exit 1".into()], work.to_str().unwrap(), Vec::new(), None, None)
+            .await
+            .unwrap();
+        supervisor.managed_store.insert("start-fail-src", proc).await;
+        let mut discord = crate::audit::Origin::new("discord");
+        discord.user_name = Some("주인님".into());
+        announce_started("start-fail-src", "sf", &discord, false);
+        for _ in 0..50 {
+            if supervisor.managed_store.running_instance_ids().await.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        let mut exits = crate::events::bus().subscribe(None);
+        supervisor.monitor_processes_taken_at(&[], u64::MAX).await.unwrap();
+        let exit = std::iter::from_fn(|| exits.rx.try_recv().ok())
+            .find(|e| e.kind == "instance.exit" && e.data["instanceId"] == "start-fail-src")
+            .unwrap();
+        assert_eq!((exit.data["kind"].clone(), exit.data["source"].clone(), exit.data["userName"].clone()), (json!("start_failed"), json!("discord"), json!("주인님")));
     }
 
     /// 끝난 managed 서버를 크래시·정상 종료·사용자 정지·강제 종료로 가르고 크래시만 재시작한다 (A1)

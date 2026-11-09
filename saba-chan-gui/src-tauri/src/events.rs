@@ -97,9 +97,10 @@ impl Feed {
         self.source(chosen).as_ref() != Some(source)
     }
 
-    /// 이 스트림의 이벤트로 낼 소리. 이 PC 감시는 크래시(예기치 않은 종료)만
+    /// 이 스트림의 이벤트로 낼 소리. 이 PC 감시는 크래시(예기치 않은 종료)와 켜기 실패만
     pub fn plays(self, cue: crate::sounds::Cue) -> bool {
-        self == Feed::Chosen || cue == crate::sounds::Cue::Crashed
+        use crate::sounds::Cue;
+        self == Feed::Chosen || matches!(cue, Cue::Crashed | Cue::StartFailed)
     }
 
     /// 앱 화면이 이 스트림의 데몬을 보이는가 (창이 앞에 있으면 앱 안 알림으로 충분한지)
@@ -410,13 +411,13 @@ mod tests {
         assert!(Feed::Chosen.moves(&local, Some("host-b".into())));
     }
 
-    /// 이 PC 감시 스트림은 소리 중 크래시(예기치 않은 종료)만 낸다. 고른 스트림은 지금 규칙 그대로
+    /// 이 PC 감시 스트림은 소리 중 크래시(예기치 않은 종료)와 켜기 실패만 낸다. 고른 스트림은 지금 규칙 그대로
     #[test]
-    fn the_local_watch_plays_only_the_crash_sound() {
+    fn the_local_watch_plays_only_the_crash_and_start_failure_sounds() {
         use crate::sounds::Cue;
-        for cue in [Cue::Started, Cue::Stopped, Cue::InstallSuccess, Cue::InstallFailed, Cue::Crashed] {
+        for cue in [Cue::Started, Cue::Stopped, Cue::InstallSuccess, Cue::InstallFailed, Cue::Crashed, Cue::StartFailed] {
             assert!(Feed::Chosen.plays(cue), "{cue:?}");
-            assert_eq!(Feed::LocalWhileRemote.plays(cue), cue == Cue::Crashed, "{cue:?}");
+            assert_eq!(Feed::LocalWhileRemote.plays(cue), matches!(cue, Cue::Crashed | Cue::StartFailed), "{cue:?}");
         }
         // 앱 화면은 고른 데몬을 보이므로, 이 PC 감시 스트림의 알림은 창이 앞에 있어도 띄운다
         assert!(Feed::Chosen.shown_in_app());

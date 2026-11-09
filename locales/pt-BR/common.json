@@ -131,6 +131,7 @@
     "restart_in": "Reiniciando em {{secs}} s.",
     "gave_up": "O reinício automático desistiu. Verifique o servidor.",
     "restart_failed": "Não foi possível reiniciar {{name}}.",
+    "daemon_down": "O Saba-chan parou inesperadamente. O monitoramento dos servidores e o Discord ficam pausados até você iniciá-lo de novo pelo app.",
     "external_start": "{{name}} foi iniciado fora do Saba-chan. O Saba-chan não iniciou este processo.",
     "backup_failed": "O backup automático de {{name}} falhou.",
     "on_daemon": "Em {{daemon}}: {{body}}"
