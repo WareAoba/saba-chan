@@ -116,13 +116,13 @@ jobs:
             *) echo "::error::Relay check for $VERSION returned HTTP $code"; exit 1 ;;
           esac
 
-      # 지난 릴리즈 = 모든 채널(nightly 이하) 중 yank되지 않은 가장 높은 판. 옛 릴레이(/latest가 없음)면 /check로 찾는다.
+      # 지난 릴리즈 = 모든 채널(nightly 이하) 중 yank되지 않은 가장 높은 판. `r`은 캐시를 거치지 않게 붙인다(같은 판을 다른 바이트로 다시 내지 않게). 옛 릴레이(/latest가 없음)면 /check로 찾는다.
       # 읽지 못하면 "처음 릴리즈"로 치지 않고 멈춘다: 안 바뀐 컴포넌트를 새 파일로 다시 내 버리게 된다
       - name: Read the previous release
         run: |
           relay="${{ vars.RELAY_URL }}"
           prev_url=$(curl -fsS -H 'X-Saba-Client: 1' \
-            "$relay/v1/updates/latest?channel=nightly&platform=windows-x64&current=0.0.0" \
+            "$relay/v1/updates/latest?channel=nightly&platform=windows-x64&current=0.0.0&r=$(date +%s)" \
             | python -c "import json,sys;r=json.load(sys.stdin).get('releases') or [];print(r[0]['manifestUrl'] if r else '')" || true)
           if [ -z "$prev_url" ]; then
             prev_url=$(curl -fsS -H 'X-Saba-Client: 1' \

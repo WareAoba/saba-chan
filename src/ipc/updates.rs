@@ -177,6 +177,12 @@ impl UpdateState {
         any_gui && told.unwrap_or_else(|| !only_resident_guis(&list))
     }
 
+    /// heartbeat로 알고 확인까지 마친 가장 큰 릴리즈 id. heartbeat가 부르지 않은 확인(기동·채널 바꿈·주기·수동)도
+    /// 이 값을 릴레이 캐시 키로 붙여, 같은 주소의 오래된 캐시 응답(내린 판이 남은 것)을 덜 받게 한다
+    fn known_release_id(&self) -> Option<u64> {
+        self.live.lock().unwrap_or_else(|e| e.into_inner()).seen.values().copied().max()
+    }
+
     /// heartbeat 판 번호 중 이 데몬이 보는 것이 지난번 확인한 것과 다르고, 지금 확인 중인 것도 아니면 확인할 값.
     /// 응답에 담기지 않았던 번호는 `RELEASE_RECHECK`가 지난 뒤에 다시 본다. 확인을 마치면 `finish_release_check`를 부른다
     fn release_ids_to_check(&self, ids: std::collections::BTreeMap<String, u64>) -> Option<std::collections::BTreeMap<String, u64>> {
@@ -395,7 +401,7 @@ async fn check_updates(
 /// - Locales 업데이트는 사용자에게 보이지 않게 바로 적용
 /// - 모듈·익스텐션은 바꿔 끼우고(`spawn_addon_replace`), 앱 구성요소는 받아서 적용한다(`spawn_core_apply`)
 async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_updater_lib::UpdateStatus> {
-    check_and_follow_up_hinted(state, None).await.map(|(status, _)| status)
+    check_and_follow_up_hinted(state, state.known_release_id()).await.map(|(status, _)| status)
 }
 
 /// `check_and_follow_up`에 heartbeat가 알린 릴리즈 id를 릴레이 캐시 키로 붙인다. 확인 결과와 `/latest` 응답에 담긴 가장 큰 릴리즈 id
@@ -2446,6 +2452,18 @@ mod tests {
         let checking = state.release_ids_to_check(newer).unwrap();
         state.finish_release_check(checking, Some(Some(14)));
         assert_eq!(LiveState::load_from(&tmp.path().join("live-update.json")).seen["stable"], 13);
+    }
+
+    /// heartbeat가 부르지 않은 확인도 확인을 마친 가장 큰 릴리즈 id를 캐시 키로 쓴다
+    #[test]
+    fn other_checks_reuse_the_largest_confirmed_release_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        assert_eq!(state.known_release_id(), None);
+        let ids = std::collections::BTreeMap::from([("stable".to_string(), 12u64), ("beta".to_string(), 15u64)]);
+        let checking = state.release_ids_to_check(ids).unwrap();
+        state.finish_release_check(checking, Some(Some(15)));
+        assert_eq!(state.known_release_id(), Some(15));
     }
 
     /// 확인했는데 응답에 알린 번호가 없으면(캐시된 옛 응답) 본 것으로 두지 않고 캐시 수명 뒤 한 번 더 본다.
