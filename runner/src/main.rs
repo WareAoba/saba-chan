@@ -23,7 +23,7 @@
 //! 쓰고, stdin을 로컬 포트로 받고, 종료 코드를 `exit.json`에 남긴다.
 //! 파일 형식은 `saba_runner`(lib.rs)에 있다.
 
-use saba_runner::{decode_line, exit_file, Lines, format_line, matching_files, now, runner_file, write_json, ExitInfo, RunnerInfo, Stream, TOKEN_ENV};
+use saba_runner::{decode_line, exit_file, Lines, format_line, matching_files, now, runner_file, write_json, ExitInfo, RunnerInfo, Stream, RUNNER_FORMAT, TOKEN_ENV};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -648,7 +648,7 @@ fn run(args: Args) -> Result<i32, String> {
         write_log(&log, Stream::System, &format!("Memory limit {} MiB is not enforced because the job object failed", mb));
     }
 
-    let info = RunnerInfo { runner_pid: std::process::id(), pid, port, log: args.log.clone(), started_at: now(), cwd: args.cwd.clone() };
+    let info = RunnerInfo { runner_pid: std::process::id(), pid, port, log: args.log.clone(), started_at: now(), cwd: args.cwd.clone(), format: RUNNER_FORMAT };
     write_json(&runner_file(&args.run_dir), &info).map_err(|e| e.to_string())?;
 
     let stdin: Arc<Stdin> = Arc::new(Mutex::new(Some(stdin)));

@@ -25,6 +25,8 @@ pub const TOKEN_ENV: &str = "SABA_RUNNER_TOKEN";
 pub const INTERRUPT: &str = "interrupt";
 /// 인터럽트를 보냈을 때의 답. 못 보냈으면 `error: 까닭`
 pub const INTERRUPT_OK: &str = "ok";
+/// 지금 러너가 runner.json에 쓰는 형식 번호. 데몬이 붙는 방식을 옛 데몬이 못 읽게 바꿀 때만 올린다
+pub const RUNNER_FORMAT: u32 = 1;
 
 /// 서버에 Ctrl+C를 보내 달라는 연결의 첫 줄 (줄 끝 없음)
 pub fn interrupt_request(token: &str) -> String {
@@ -44,6 +46,10 @@ pub struct RunnerInfo {
     /// 서버 작업 폴더. 크래시 파일(`crash_artifacts`)을 찾는 기준
     #[serde(default)]
     pub cwd: Option<PathBuf>,
+    /// 이 러너가 따르는 실행 폴더 약속(runner.json·exit.json·stdin 포트·로그)의 형식 번호 (`RUNNER_FORMAT`).
+    /// 이 칸이 생기기 전의 러너는 0이다. 데몬은 읽을 수 있는 범위(`READS_RUNNER_FORMATS`) 밖이면 코어를 바꾸지 않는다
+    #[serde(default)]
+    pub format: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -438,9 +444,20 @@ mod tests {
     fn json_files_round_trip() {
         let dir = std::env::temp_dir().join(format!("saba-runner-proto-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let info = RunnerInfo { runner_pid: 1, pid: 2, port: 3, log: dir.join("a.log"), started_at: 4, cwd: None };
+        let info = RunnerInfo { runner_pid: 1, pid: 2, port: 3, log: dir.join("a.log"), started_at: 4, cwd: None, format: RUNNER_FORMAT };
         write_json(&runner_file(&dir), &info).unwrap();
         assert_eq!(read_json::<RunnerInfo>(&runner_file(&dir)), Some(info));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 형식 번호가 생기기 전의 러너가 남긴 runner.json은 형식 0으로 읽는다. 지금 러너는 1을 쓴다
+    #[test]
+    fn runner_json_without_a_format_is_format_zero() {
+        assert_eq!(RUNNER_FORMAT, 1);
+        let old = r#"{"runner_pid":1,"pid":2,"port":3,"log":"a.log","started_at":4}"#;
+        let info: RunnerInfo = serde_json::from_str(old).unwrap();
+        assert_eq!(info.format, 0);
+        let new = RunnerInfo { format: RUNNER_FORMAT, ..info };
+        assert_eq!(serde_json::to_value(&new).unwrap()["format"], 1);
     }
 }

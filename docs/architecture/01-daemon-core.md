@@ -588,6 +588,10 @@ Relay 서명 방식(`relay.rs:115-161`):
 4. **모니터링**: 2초 루프(`main.rs:416`)가 PID와 패턴을 매칭해 auto-detect하고, 크래시를 감지하면 자동 재시작을 예약한다. 세부는 supervisor 담당 문서에 있다.
 5. **정지**: `/api/instance/:id/stop`(`stop_instance`, `server.rs:958`). 성공하면 tracker에서 id로 untrack한다(`server.rs:999`).
 6. **삭제**: 실행 중이면 force kill(2초 대기), `server.pre_delete` 훅, 디렉토리 삭제(최대 3회 재시도) 순으로 진행한다(`instance.rs:789-875`).
+7. **러너 형식과 코어 교체**: 데몬을 바꿔도 saba-runner가 쥔 서버는 새 데몬이 다시 붙는다(02 §3.3). 그러려면 새 데몬이 그 러너의 실행 폴더 약속을 읽어야 하므로 번호로 맞춘다.
+   - 러너는 `runner.json`(`saba_runner::RunnerInfo`)에 `format`을 쓴다. 지금 값은 `saba_runner::RUNNER_FORMAT = 1`이고, 이 칸이 없는 옛 러너는 0이다. 옛 데몬이 붙지 못하게 약속을 바꿀 때만 올린다.
+   - 데몬은 붙을 수 있는 범위를 `managed_process::READS_RUNNER_FORMATS`(`supervisor/managed_process/runner.rs`, 양 끝 포함, 지금 `(0, 1)`)로 둔다. 발행 때 이 값이 manifest `saba-core.reads_runner_formats`로 실린다.
+   - `Supervisor::core_swap_blockers(새 코어의 범위)`(`supervisor/core_swap.rs`)가 코어 교체를 막는 켜진 서버를 `{kind, instance_id, name}`으로 돌려준다(업데이트 상태의 `waiting_for` 항목과 같은 모양). `kind`는 `non_runner_server`(러너 없이 데몬이 파이프로 직접 문 서버. 바뀌면 입력·실시간 콘솔을 잃는다), `extension_bridge`(익스텐션이 붙인 로그 따라가기·입출력 다리, `log_follower`. 새 데몬이 다시 띄우지 않는다), `runner_format`(러너 형식이 새 코어의 범위 밖). 이전 데몬에서 이미 파이프를 잃고 PID만 다시 붙은 서버(`create_reattached_stub`)와 꺼진 서버는 막지 않는다. 비어 있을 때만 코어를 바꾼다.
 
 ### 4.4 config_store와 전역 설정 스키마 (`src/config_store/mod.rs`)
 

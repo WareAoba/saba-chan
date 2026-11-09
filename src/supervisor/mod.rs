@@ -8,6 +8,7 @@ pub mod ready;
 pub mod player_events;
 pub mod chat_link;
 pub mod game_chat;
+pub mod core_swap;
 
 use anyhow::Result;
 use process::ProcessTracker;
