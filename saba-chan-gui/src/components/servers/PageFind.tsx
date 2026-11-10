@@ -143,11 +143,11 @@ export function PageFind({ rootRef, enabled, pageKey, anchorRef }: PageFindProps
                 }
             }
         });
-        setRects(out);
+        // 앱 위 막대(--appbar-h) 밑으로 스크롤되어 들어간 칸은 막대 위에 칠하지 않는다
+        const bar = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--appbar-h')) || 0;
+        setRects(out.filter((r) => r.top + r.height > bar && r.top < window.innerHeight));
         // 찾기 창 자리: 탭 줄 오른쪽 끝 아래, 탭 줄이 위로 밀려 올라가면 앱 위 막대 밑에 붙는다
         const a = anchorRef?.current?.getBoundingClientRect();
-        // 앱 위 막대(--appbar-h) 밑으로는 올라가지 않는다
-        const bar = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--appbar-h')) || 0;
         setPos(a ? { top: Math.max(a.bottom + 8, bar + 8), right: Math.max(window.innerWidth - a.right, 12) } : null);
     }, [anchorRef]);
 
