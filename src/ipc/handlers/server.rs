@@ -2205,7 +2205,10 @@ mod tests {
         let quiet = detect(state.clone(), server.clone()).await;
         assert_eq!(quiet.body["notices"], json!([]), "{}", quiet.body);
         let mut outside = std::process::Command::new("sleep").arg("30").current_dir(&server).spawn().unwrap();
-        let busy = detect(state, server).await;
+        // 링크를 거친 경로로 골라도 알아본다 (macOS 임시 폴더 /var는 /private/var의 링크라 프로세스 경로와 다르다)
+        let linked = tmp.path().join("linked");
+        std::os::unix::fs::symlink(&server, &linked).unwrap();
+        let busy = detect(state, linked).await;
         outside.kill().ok();
         outside.wait().ok();
         assert_eq!(busy.body["notices"], json!(["server_running"]), "{}", busy.body);
