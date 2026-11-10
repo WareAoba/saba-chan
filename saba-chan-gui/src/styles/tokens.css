@@ -350,142 +350,42 @@
  * ════════════════════════════════════════════════════════════════ */
 :root,
 [data-theme] {
-    --bg-app: var(--bg-0);
-    --bg-overlay: var(--scrim);
-    --bg-initializing-overlay: var(--scrim);
 
-    --loading-bg: var(--bg-0);
-    --loading-text: var(--text-1);
-    --loading-logo-filter: none;
 
-    --text-primary: var(--text-1);
-    --text-secondary: var(--text-2);
-    --text-tertiary: var(--text-2);
-    --text-muted: var(--text-3);
-    --text-disabled: var(--text-3);
     --text-on-primary: var(--brand-text);
     --text-on-dark: #ffffff;
-    --text-dark: var(--text-1);
 
-    --border-light: var(--line);
-    --border-default: var(--line);
-    --border-medium: var(--line-strong);
-    --border-strong: var(--line-strong);
-    --border-hover: var(--line-strong);
-    --border-input: var(--line-strong);
-    --border-separator: var(--line);
 
     --shadow-xs: rgba(0, 0, 0, 0.15);
-    --shadow-sm: rgba(0, 0, 0, 0.2);
     --shadow-md: rgba(0, 0, 0, 0.28);
     --shadow-lg: rgba(0, 0, 0, 0.36);
     --shadow-xl: rgba(0, 0, 0, 0.45);
-    --shadow-overlay: var(--scrim);
 
-    --brand-bg-light: var(--accent-soft);
-    --brand-bg-subtle: var(--accent-soft);
-    --brand-bg-muted: var(--brand-shadow-light);
-    --brand-bg-info: var(--accent-soft);
-    --brand-border-light: var(--brand-shadow-medium);
 
-    --btn-secondary-text: var(--text-1);
-    --btn-secondary-border: var(--line-strong);
-    --btn-secondary-hover-border: var(--line-strong);
 
-    --card-shadow: var(--shadow-raised);
-    --card-hover-shadow: var(--shadow-raised-hover);
 
     --scrollbar-thumb-hover: var(--text-3);
     --scrollbar-thumb-active: var(--text-2);
-    --scrollbar-track: transparent;
-
-    --info-bg: var(--info-soft);
-    --info-border: var(--info);
-    --info-title: var(--info);
-    --info-bg-alt: var(--info-soft);
-    --info-bg-gradient: var(--info-soft);
-
-    --tab-text: var(--text-2);
-    --tab-active-text: var(--text-1);
-    --tab-active-border: var(--brand-primary);
-
-    --badge-primary-bg: var(--brand-primary);
-    --badge-primary-text: var(--brand-text);
-    --badge-subtle-bg: var(--accent-soft);
-    --badge-subtle-text: var(--brand-primary);
-    --badge-default-text: var(--text-2);
-
-    --tooltip-text: var(--text-1);
-
-    --icon-default: var(--text-3);
-    --icon-secondary: var(--text-2);
-    --icon-hover: var(--text-1);
-
-    --protocol-section-border: var(--line);
-    --protocol-info-border: var(--line);
 
 
-    --input-border: var(--line-strong);
-    --input-focus-border: var(--brand-primary);
-    --input-focus-shadow: var(--brand-shadow-light);
+
+
+
+
+
+
 
     --toast-shadow: rgba(0, 0, 0, 0.4);
 
-    --cli-bg: var(--console-bg);
-    --cli-border: var(--line);
-    --cli-suggestion-border: var(--line);
-    --cli-text: var(--ok);
-
-    --success-badge-bg: var(--ok-soft);
-    --success-badge-icon: var(--ok);
-    --failure-badge-bg: var(--stop-soft);
-    --failure-badge-icon: var(--stop);
-    --notification-badge-bg: var(--info-soft);
-    --notification-badge-icon: var(--info);
-    --question-badge-bg: var(--warn-soft);
-    --question-badge-icon: var(--warn);
-
-    --status-running-badge-bg: var(--ok-soft);
-    --status-running-badge-text: var(--ok);
-    --status-stopped-badge-bg: var(--stop-soft);
-    --status-stopped-badge-text: var(--stop);
-    --status-error-badge-bg: var(--warn-soft);
-    --status-error-badge-text: var(--warn);
-
-    --command-info-border: var(--brand-primary);
 
 
-    --bg-modal-info-bg: var(--info-soft);
-    --bg-modal-info-border: var(--brand-primary);
 
-    --img-brightness: none;
-    --img-logo-brightness: none;
+
+
+
 
     /* 옛 화면이 정의 없이 쓰던 이름들 (그동안 투명·기본값으로 깨져 보이던 곳) */
-    --accent-color: var(--brand-primary);
-    --accent-primary: var(--brand-primary);
-    --accent-blue: var(--info);
-    --brand-primary-faded: var(--brand-shadow-light);
-    --bg-success-subtle: var(--ok-soft);
-    --bg-warning-subtle: var(--warn-soft);
-    --border-color: var(--line);
-    --border-primary: var(--line);
-    --border-active: var(--brand-primary);
-    --border-success: var(--ok);
-    --border-warning: var(--warn);
-    --text-quaternary: var(--text-3);
-    --text-success: var(--ok);
-    --text-warning: var(--warn);
-    --warning-text: var(--warn);
-    --success: var(--ok);
-    --success-color: var(--ok);
-    --warning: var(--warn);
     --danger: var(--stop);
-    --danger-color: var(--stop);
-    --color-danger: var(--stop);
-    --failure-color: var(--stop);
-    --status-error: var(--stop);
-    --danger-bg: var(--stop-soft);
 }
 
 /* 투명 효과를 끈 시스템(Windows 투명 효과 끔 등)이나 애니메이션을 끈 설정에서는

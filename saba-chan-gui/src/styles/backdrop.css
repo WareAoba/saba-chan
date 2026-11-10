@@ -14,7 +14,7 @@
     --panel-gradient: color-mix(in oklch, var(--bg-1-solid) 30%, transparent);
 
     /* 유리 진하기: 면(카드·버튼)과 홈(입력칸·파인 칸) */
-    --glass-face: 80%;
+    --glass-face: 70%;
     --glass-well: 55%;
     --bg-1: color-mix(in oklch, var(--bg-1-solid) var(--glass-face), transparent);
     --bg-2: color-mix(in oklch, var(--bg-2-solid) var(--glass-face), transparent);

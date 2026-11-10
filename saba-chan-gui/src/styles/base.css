@@ -340,14 +340,6 @@ button:disabled {
     box-shadow: var(--neu-in), var(--accent-ring);
 }
 
-/* 카드 (N1 + N3 + A2) */
-.card {
-    background: var(--surface-gradient);
-    border: 1px solid var(--line);
-    border-radius: var(--r-md);
-    box-shadow: var(--shadow-raised);
-}
-
 /* 상태 칩 (N4: 점 + 글자 + 색) */
 .status-chip {
     display: inline-flex;

@@ -12,7 +12,6 @@ button:not([class*="btn"]),
 .dc-list-row,
 .dc-nav-row,
 .appbar-tab,
-.settings-tab,
 .saba-storage-tab,
 .status-chip,
 .notice-card {
@@ -27,8 +26,7 @@ button:not([class*="btn"]),
 }
 
 /* 누르는 순간 살짝 눌린다 */
-.appbar-tab:active,
-.settings-tab:active {
+.appbar-tab:active {
     transform: scale(0.97);
 }
 

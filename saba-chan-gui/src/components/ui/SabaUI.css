@@ -148,7 +148,7 @@
     min-height: 24px;
     padding-block: var(--sp-0-5);
     line-height: 20px;
-    color: var(--text-primary);
+    color: var(--text-1);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
 }

@@ -215,18 +215,6 @@ function lightenHex(hex: string, factor: number) {
     return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
 }
 
-/**
- * Desaturate a hex color by a factor (0-1). Mixes toward gray of equal luminance.
- */
-function desaturateHex(hex: string, factor: number) {
-    const { r, g, b } = hexToRgb(hex);
-    const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-    const nr = Math.round(r + (gray - r) * factor);
-    const ng = Math.round(g + (gray - g) * factor);
-    const nb = Math.round(b + (gray - b) * factor);
-    return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
-}
-
 // ── WCAG 2.1 contrast utilities ─────────────────────────────
 
 /**
@@ -329,18 +317,9 @@ export function applyCustomTheme(config: ThemeConfig) {
     root.style.setProperty('--brand-shadow-medium', `rgba(${r}, ${g}, ${b}, 0.3)`);
     root.style.setProperty('--brand-shadow-strong', `rgba(${r}, ${g}, ${b}, 0.45)`);
 
-    // Light accent backgrounds (adaptive for light/dark)
+    // 다크 모드는 강조색을 조금 밝혀서 다시 칠한다
     const effectiveTheme = getEffectiveTheme();
-    if (effectiveTheme === 'light') {
-        // Desaturate + lighten for soft pastel tints that blend with white backgrounds
-        const softAccent = desaturateHex(accentColor, 0.4);
-        root.style.setProperty('--brand-bg-light', lightenHex(softAccent, 0.95));
-        root.style.setProperty('--brand-bg-subtle', lightenHex(softAccent, 0.92));
-        root.style.setProperty('--brand-bg-muted', lightenHex(softAccent, 0.86));
-        root.style.setProperty('--brand-bg-info', lightenHex(softAccent, 0.90));
-        root.style.setProperty('--brand-border-light', lightenHex(softAccent, 0.86));
-        root.style.setProperty('--input-focus-shadow', `rgba(${r}, ${g}, ${b}, 0.1)`);
-    } else {
+    if (effectiveTheme !== 'light') {
         const darkAccent = lightenHex(accentColor, 0.15);
         const { r: dr, g: dg, b: db } = hexToRgb(darkAccent);
         root.style.setProperty('--brand-primary', darkAccent);
@@ -353,7 +332,6 @@ export function applyCustomTheme(config: ThemeConfig) {
         root.style.setProperty('--brand-shadow-subtle', `rgba(${dr}, ${dg}, ${db}, 0.08)`);
         root.style.setProperty('--brand-shadow-medium', `rgba(${dr}, ${dg}, ${db}, 0.22)`);
         root.style.setProperty('--brand-shadow-strong', `rgba(${dr}, ${dg}, ${db}, 0.35)`);
-        root.style.setProperty('--input-focus-shadow', `rgba(${dr}, ${dg}, ${db}, 0.12)`);
         if (useGradient) {
             const darkSecondary = lightenHex(accentSecondary, 0.12);
             root.style.setProperty('--brand-from', darkAccent);
