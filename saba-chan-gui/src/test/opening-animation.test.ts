@@ -1,16 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+    beginOpeningSound,
     CHIME_CHORD_MS,
+    claimOpeningSound,
     FALL_END_MS,
     fallFrame,
     fallPoint,
     OPENING_CHIME_LEAD_MS,
     OPENING_CHORD_MS,
     OPENING_END_MS,
+    openingChordMs,
     openingFrame,
     openingShake,
     pullPoint,
     scatterPoint,
+    takeOpeningSound,
     whenOpeningReady,
     wordPull,
 } from '../utils/opening';
@@ -96,6 +100,30 @@ describe('오프닝 애니메이션 (콘솔 글자를 끌어모아 화음에 팟
         expect(openingShake(OPENING_CHORD_MS - 1)).toBe(0);
         expect(openingShake(OPENING_CHORD_MS)).toBe(1);
         expect(openingShake(OPENING_CHORD_MS + 400)).toBeLessThan(0.02);
+    });
+});
+
+describe('오프닝 소리 (처음 사용자는 가이드 열림음에 맞춘다)', () => {
+    it('가이드 열림음은 기동음보다 화음이 늦어, 그만큼 오프닝을 길게 끌어온다', () => {
+        const chord = openingChordMs('guideOpen');
+        expect(chord).toBeGreaterThan(openingChordMs('startup'));
+        expect(openingChordMs('startup')).toBe(OPENING_CHORD_MS);
+        expect(openingFrame(OPENING_CHORD_MS + 10, chord).opened).toBe(false);
+        expect(openingFrame(chord, chord).opened).toBe(true);
+        expect(wordPull(chord - 1, 1, chord)).toBeLessThan(1);
+        expect(wordPull(chord, 1, chord)).toBe(1);
+        expect(openingShake(chord, chord)).toBe(1);
+    });
+
+    it('오프닝을 준비하는 동안 열린 화면이 소리를 맡기면 오프닝이 대신 낸다', () => {
+        expect(claimOpeningSound('guideOpen')).toBe(false);
+        beginOpeningSound();
+        expect(claimOpeningSound('guideOpen')).toBe(true);
+        expect(takeOpeningSound()).toBe('guideOpen');
+        // 오프닝이 소리를 가져간 뒤에는 화면이 직접 낸다
+        expect(claimOpeningSound('guideOpen')).toBe(false);
+        beginOpeningSound();
+        expect(takeOpeningSound()).toBeNull();
     });
 });
 

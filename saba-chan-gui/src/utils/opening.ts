@@ -43,6 +43,40 @@ export const CHIME_CHORD_MS = 726;
 export const OPENING_CHIME_LEAD_MS = 500;
 /** 오프닝에서 화음이 울리는 때 */
 export const OPENING_CHORD_MS = OPENING_CHIME_LEAD_MS + CHIME_CHORD_MS;
+/** 오프닝과 함께 내는 소리: 정상 기동음, 또는 처음 사용자에게 가이드와 함께 여는 가이드 열림음 */
+export type OpeningSound = 'startup' | 'guideOpen';
+/** 소리 안에서 마지막 화음이 울리는 때 (248 BPM. guide-open.wav는 8분음표 열둘 뒤 화음) */
+const SOUND_CHORD_MS: Record<OpeningSound, number> = { startup: CHIME_CHORD_MS, guideOpen: 1452 };
+/** 그 소리와 함께 열 때 오프닝에서 화음이 울리는 때. 소리가 길면 그만큼 길게 끌어온다 */
+export function openingChordMs(sound: OpeningSound): number {
+    return OPENING_CHIME_LEAD_MS + SOUND_CHORD_MS[sound];
+}
+
+/*
+ * 오프닝을 준비하는 동안(메인 화면을 덮어 두고 그리는 동안) 열린 화면이 낼 소리를 오프닝에 맡긴다.
+ * 처음 사용자 가이드가 그 예로, 맡기면 오프닝이 기동음 대신 그 소리에 맞춰 재생한다.
+ */
+let soundPending = false;
+let claimedSound: OpeningSound | null = null;
+/** 오프닝 준비를 시작한다 (이때부터 소리를 맡을 수 있다) */
+export function beginOpeningSound(): void {
+    soundPending = true;
+    claimedSound = null;
+}
+/** 화면이 낼 소리를 오프닝에 맡긴다. 맡았으면 true, 오프닝이 없거나 이미 지났으면 false(화면이 직접 낸다) */
+export function claimOpeningSound(sound: OpeningSound): boolean {
+    if (!soundPending) return false;
+    claimedSound = sound;
+    return true;
+}
+/** 오프닝을 재생할 때 맡은 소리를 가져간다 (없으면 null) */
+export function takeOpeningSound(): OpeningSound | null {
+    soundPending = false;
+    const sound = claimedSound;
+    claimedSound = null;
+    return sound;
+}
+
 /** 낱말 하나가 제자리에서 가운데까지 날아오는 길이 */
 const WORD_FLIGHT_MS = 480;
 /** 메인 화면 준비(글꼴·그림)를 이보다 오래 기다리지 않는다 */
@@ -77,25 +111,25 @@ const smooth01 = (x: number) => {
  * 낱말 하나의 끌려오기 진행 0..1. order(0..1)는 떼어 오는 차례로, 0이 맨 처음·1이 맨 나중이다.
  * 낱말마다 같은 길이로 부드럽게 날아오고, 마지막 낱말이 화음에 가운데 닿는다.
  */
-export function wordPull(ms: number, order: number): number {
-    const start = clamp01(order) * (OPENING_CHORD_MS - WORD_FLIGHT_MS);
+export function wordPull(ms: number, order: number, chordMs = OPENING_CHORD_MS): number {
+    const start = clamp01(order) * (chordMs - WORD_FLIGHT_MS);
     return smooth01((ms - start) / WORD_FLIGHT_MS);
 }
 
-export function openingFrame(ms: number): OpeningFrame {
-    if (ms < OPENING_CHORD_MS) {
-        const p = clamp01(ms / OPENING_CHORD_MS);
+export function openingFrame(ms: number, chordMs = OPENING_CHORD_MS): OpeningFrame {
+    if (ms < chordMs) {
+        const p = clamp01(ms / chordMs);
         // 가운데 빛은 낱말이 모일수록 커지고, 로고는 제 크기로 있다가 화음 무렵에 옅어진다
         return { pull: p * p, burst: 0, opened: false, flash: 0, content: 1 - smooth01((p - 0.7) / 0.3), done: false };
     }
-    const after = ms - OPENING_CHORD_MS;
+    const after = ms - chordMs;
     return {
         pull: 1,
         burst: clamp01(after / OPENING_BURST_MS),
         opened: true,
         flash: Math.exp(-after / FLASH_DECAY_MS),
         content: 0,
-        done: ms >= OPENING_END_MS,
+        done: after >= OPENING_BURST_MS,
     };
 }
 
@@ -122,9 +156,9 @@ export function scatterPoint(center: Point, angle: number, dist: number, burst: 
 }
 
 /** 화음 순간 화면 흔들림 세기 0..1 (곧 잦아든다) */
-export function openingShake(ms: number): number {
-    if (ms < OPENING_CHORD_MS) return 0;
-    return Math.exp(-(ms - OPENING_CHORD_MS) / 90);
+export function openingShake(ms: number, chordMs = OPENING_CHORD_MS): number {
+    if (ms < chordMs) return 0;
+    return Math.exp(-(ms - chordMs) / 90);
 }
 
 /** 후두둑: 로딩 화면이 걷히는 길이 */

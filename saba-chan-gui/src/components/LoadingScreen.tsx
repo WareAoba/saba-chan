@@ -1,10 +1,10 @@
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { fallFrame, OPENING_CHORD_MS, type OpeningKind, openingFrame, openingShake } from '../utils/opening';
 import { Icon } from './Icon';
 import { WindowControls } from './shell/AppBar';
-import { logTokens, MatrixRain, type MatrixPull } from './shell/MatrixRain';
-import { fallFrame, type OpeningKind, openingFrame, openingShake } from '../utils/opening';
+import { logTokens, type MatrixPull, MatrixRain } from './shell/MatrixRain';
 
 /**
  * LoadingScreen — displayed while daemon is initializing.
@@ -77,6 +77,8 @@ interface LoadingScreenProps {
      */
     opening?: 'prepare' | 'play' | null;
     openingKind?: OpeningKind;
+    /** burst에서 화음이 울리는 때 (opening.ts openingChordMs, 함께 내는 소리에 따라 다르다) */
+    openingChord?: number;
     onOpened?: () => void;
     /** 화음 순간 메인 화면을 흔들 만큼 (px). 끝나면 0, 0 */
     onShake?: (dx: number, dy: number) => void;
@@ -90,6 +92,7 @@ interface LoadingScreenProps {
 function useOpeningPlayback(
     playing: boolean,
     kind: OpeningKind,
+    chord: number,
     onOpened?: () => void,
     onShake?: (dx: number, dy: number) => void,
 ) {
@@ -112,6 +115,7 @@ function useOpeningPlayback(
             x: box ? box.left + box.width / 2 : window.innerWidth / 2,
             y: box ? box.top + box.height / 2 : window.innerHeight / 2,
             kind,
+            chord,
         });
         let raf = 0;
         const finish = () => {
@@ -119,7 +123,7 @@ function useOpeningPlayback(
             onOpenedRef.current?.();
         };
         const tickBurst = (ms: number) => {
-            const f = openingFrame(ms);
+            const f = openingFrame(ms, chord);
             const content = contentRef.current;
             if (content) {
                 content.style.transform = `scale(${0.96 + 0.04 * f.content})`;
@@ -130,8 +134,11 @@ function useOpeningPlayback(
             root?.classList.toggle('opened', f.opened);
             // 뒤에 흐리게 깔려 있던 콘솔이 끌려 오면서 또렷해진다 (--loading-matrix-opacity → 1)
             const matrix = root?.querySelector<HTMLElement>('.loading-matrix');
-            if (matrix) matrix.style.opacity = f.opened ? '1' : `calc(var(--loading-matrix-opacity) + (1 - var(--loading-matrix-opacity)) * ${Math.min(1, f.pull * 3)})`;
-            const shake = openingShake(ms) * 6;
+            if (matrix)
+                matrix.style.opacity = f.opened
+                    ? '1'
+                    : `calc(var(--loading-matrix-opacity) + (1 - var(--loading-matrix-opacity)) * ${Math.min(1, f.pull * 3)})`;
+            const shake = openingShake(ms, chord) * 6;
             onShakeRef.current?.((Math.random() - 0.5) * 2 * shake, (Math.random() - 0.5) * 2 * shake);
             return f.done;
         };
@@ -146,7 +153,8 @@ function useOpeningPlayback(
             if (root) {
                 // 떨어지는 글자가 보이게 콘솔을 또렷하게 하고, 바탕·비네트·창 버튼은 함께 옅어진다 (App.css .loading-screen.falling)
                 const matrix = root.querySelector<HTMLElement>('.loading-matrix');
-                if (matrix) matrix.style.opacity = `calc(var(--loading-matrix-opacity) + (1 - var(--loading-matrix-opacity)) * ${0.8 * Math.min(1, ms / 150)})`;
+                if (matrix)
+                    matrix.style.opacity = `calc(var(--loading-matrix-opacity) + (1 - var(--loading-matrix-opacity)) * ${0.8 * Math.min(1, ms / 150)})`;
                 root.classList.add('falling');
                 root.style.setProperty('--opening-cover', String(f.cover));
                 root.style.pointerEvents = f.cover < 0.5 ? 'none' : '';
@@ -166,7 +174,7 @@ function useOpeningPlayback(
             cancelAnimationFrame(raf);
             onShakeRef.current?.(0, 0);
         };
-    }, [playing, kind]);
+    }, [playing, kind, chord]);
 
     return { rootRef, contentRef, logoRef, flashRef, target: playing ? target : null };
 }
@@ -181,13 +189,14 @@ export function LoadingScreen({
     leaving = false,
     opening = null,
     openingKind = 'burst',
+    openingChord = OPENING_CHORD_MS,
     onOpened,
     onShake,
 }: LoadingScreenProps) {
     const { t } = useTranslation('gui');
     const [retrying, setRetrying] = useState(false);
     const { line: log, tokens } = useDaemonLog(!failed && !leaving && !opening);
-    const pull = useOpeningPlayback(opening === 'play', openingKind, onOpened, onShake);
+    const pull = useOpeningPlayback(opening === 'play', openingKind, openingChord, onOpened, onShake);
 
     return (
         <div

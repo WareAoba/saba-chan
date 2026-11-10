@@ -3,7 +3,6 @@ import { motionAllowed } from '../../hooks/useSwapAnimation';
 import {
     fallFrame,
     fallPoint,
-    OPENING_CHORD_MS,
     type OpeningKind,
     openingFrame,
     pullPoint,
@@ -63,6 +62,8 @@ export interface MatrixPull {
     x: number;
     y: number;
     kind: OpeningKind;
+    /** burst에서 화음이 울리는 때 (opening.ts openingChordMs) */
+    chord: number;
 }
 
 /** 오프닝에서 움직이는 낱말 하나: 떠 있던 자리·밝기는 그대로, 회전·흩뿌릴 방향·떨어지는 빠르기만 무작위 */
@@ -81,6 +82,8 @@ interface Word {
     delay: number;
     /** 떼어 오는 차례 0..1 (가운데에서 먼 낱말부터) */
     order: number;
+    /** 터질 때 낱말이 부서져 나온 글자 조각: 낱말 방향에서 비낀 각(da)·거리 배수(dk)·회전(spin) */
+    shards: { ch: string; da: number; dk: number; spin: number }[];
 }
 
 const smooth = (x: number, a: number, b: number) => {
@@ -244,6 +247,12 @@ export function MatrixRain({
                     v0: Math.random() * h * 0.15,
                     delay: Math.random() * 120 * (1 - g.y / Math.max(1, h)),
                     order: 0,
+                    shards: [...g.text].map((ch) => ({
+                        ch,
+                        da: (Math.random() - 0.5) * 0.9,
+                        dk: 0.55 + Math.random() * 0.9,
+                        spin: (Math.random() - 0.5) * 8,
+                    })),
                 };
             });
             // 가운데에서 먼 낱말부터 하나씩 떼어 온다
@@ -277,16 +286,16 @@ export function MatrixRain({
 
         // 정상 기동: 같은 규칙의 곡선으로 끌어모아 먼지로 합치고, 화음에 충격파와 함께 무작위로 흩뿌린다
         const drawBurst = (p: MatrixPull, ms: number) => {
-            const f = openingFrame(ms);
+            const f = openingFrame(ms, p.chord);
             const center = { x: p.x, y: p.y };
             const small = Math.min(w, h);
             const font = `${FONT_PX}px ${mono}`;
             if (!f.opened) {
                 glow(p.x, p.y, small * (0.1 + 0.2 * f.pull), 0.8 * f.pull);
                 glow(p.x, p.y, small * 0.06, 0.9 * f.pull * f.pull);
-                const u = ms / OPENING_CHORD_MS;
+                const u = ms / p.chord;
                 for (const word of words) {
-                    const e = wordPull(ms, word.order);
+                    const e = wordPull(ms, word.order, p.chord);
                     const at = pullPoint(word, center, e);
                     const angle = word.spin * Math.PI * e;
                     // 떨어져 나오는 순간 살짝 부풀었다가, 가운데로 갈수록 작아진다
@@ -313,24 +322,55 @@ export function MatrixRain({
                 return;
             }
             const b = f.burst;
-            const bold = `600 ${FONT_PX * (1.2 - 0.25 * b)}px ${mono}`;
-            const alpha = (1 - b) ** 1.4;
+            // 터지면 낱말이 글자 조각으로 다 부서져 저마다 흩어지고, 조각도 곧 먼지가 되어 사라진다
+            const bold = `600 ${FONT_PX * (1.15 - 0.35 * b)}px ${mono}`;
+            const fade = (1 - b) ** 1.4;
+            const glyphAlpha = fade * (1 - smooth(b, 0.2, 0.6));
+            const dustAlpha = fade * smooth(b, 0.08, 0.3);
             ctx.strokeStyle = head;
+            ctx.fillStyle = head;
             ctx.lineWidth = 1;
             for (const word of words) {
-                const at = scatterPoint(center, word.angle, word.dist, b);
-                const tail = scatterPoint(center, word.angle, word.dist, Math.max(0, b - 0.06));
-                ctx.globalAlpha = alpha * 0.4;
-                ctx.beginPath();
-                ctx.moveTo(tail.x, tail.y);
-                ctx.lineTo(at.x, at.y);
-                ctx.stroke();
-                ctx.globalAlpha = alpha * Math.max(word.seen, 0.55);
-                ctx.fillStyle = head;
-                drawWord(word, at.x, at.y, word.spin * Math.PI * (1 + 1.5 * b), 1, bold);
+                for (const [i, shard] of word.shards.entries()) {
+                    const angle = word.angle + shard.da;
+                    const dist = word.dist * shard.dk;
+                    const at = scatterPoint(center, angle, dist, b);
+                    const seen = Math.max(word.seen, 0.55);
+                    if (i === 0) {
+                        const tail = scatterPoint(center, angle, dist, Math.max(0, b - 0.06));
+                        ctx.globalAlpha = fade * 0.35;
+                        ctx.beginPath();
+                        ctx.moveTo(tail.x, tail.y);
+                        ctx.lineTo(at.x, at.y);
+                        ctx.stroke();
+                    }
+                    if (glyphAlpha > 0.02) {
+                        ctx.globalAlpha = glyphAlpha * seen;
+                        ctx.save();
+                        ctx.translate(at.x, at.y);
+                        ctx.rotate(word.spin * Math.PI + shard.spin * b);
+                        ctx.font = bold;
+                        ctx.fillText(shard.ch, 0, 0);
+                        ctx.restore();
+                    }
+                    if (dustAlpha > 0.02) {
+                        // 조각 하나가 먼지 셋으로 바스러져 조금씩 벌어진다
+                        ctx.globalAlpha = dustAlpha * seen;
+                        const spread = 4 + 22 * b;
+                        for (let k = 0; k < 3; k++) {
+                            const a = angle + shard.spin + (k * Math.PI * 2) / 3;
+                            ctx.fillRect(
+                                at.x + Math.cos(a) * spread * shard.dk - 0.9,
+                                at.y + Math.sin(a) * spread * shard.dk - 0.9,
+                                1.8,
+                                1.8,
+                            );
+                        }
+                    }
+                }
             }
             // 충격파 두 겹
-            const wave = (ms - OPENING_CHORD_MS) / 550;
+            const wave = (ms - p.chord) / 550;
             if (wave < 1) {
                 const r = (1 - (1 - wave) ** 3) * Math.hypot(w, h) * 0.7;
                 for (const [scale, width, a, color] of [

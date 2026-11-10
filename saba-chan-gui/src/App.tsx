@@ -43,9 +43,14 @@ import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStor
 import { eventsAvailable } from './utils/daemonEvents';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
+    beginOpeningSound,
     OPENING_CHIME_LEAD_MS,
+    OPENING_CHORD_MS,
     OPENING_READY_WAIT_MS,
     type OpeningKind,
+    type OpeningSound,
+    openingChordMs,
+    takeOpeningSound,
     openingGate,
     RELAY_WAIT_MS,
     whenOpeningReady,
@@ -675,6 +680,11 @@ function App() {
             window.api?.playSound?.('startup');
         }
     };
+    // 오프닝이 내는 소리: 정상이면 기동음 자리에 맡은 소리(처음 사용자 가이드 열림음)가 있으면 그것을 낸다
+    const playOpeningSound = (sound: OpeningSound) => {
+        if (sound === 'startup') playChime();
+        else window.api?.playSound?.(sound);
+    };
 
     // 로딩이 끝나면 로딩 화면을 그대로 덮어 둔 채 메인 화면을 아래에 다 그리고(prepare),
     // 글꼴·그림까지 준비되면 기동음과 함께 오프닝을 재생한다(play). 움직임을 줄였으면 예전처럼 잠깐 사라지게만 둔다
@@ -684,6 +694,8 @@ function App() {
         showLoading ? 'loading' : 'done',
     );
     const [openingKind, setOpeningKind] = useState<OpeningKind>('burst');
+    const [openingChord, setOpeningChord] = useState(OPENING_CHORD_MS);
+    const openingAfterRef = useRef<OpeningSound | null>(null);
     const appRef = useRef<HTMLDivElement>(null);
     const [loadingLeaving, setLoadingLeaving] = useState(false);
     const wasLoadingRef = useRef(showLoading);
@@ -707,6 +719,8 @@ function App() {
     }, [showLoading]);
     useEffect(() => {
         if (openingPhase !== 'prepare') return undefined;
+        // 메인 화면을 덮어 두고 그리는 동안 열린 화면(처음 사용자 가이드)이 소리를 오프닝에 맡길 수 있다
+        beginOpeningSound();
         let alive = true;
         const decode = (src: string) => {
             const img = new Image();
@@ -720,9 +734,16 @@ function App() {
         ).then(() => {
             if (!alive) return;
             // 데몬·릴레이가 정상이면 기동음과 함께 터뜨리고, 아니면 소리 없이 후두둑
-            // 기동음은 낱말을 떼어 오기 시작한 뒤에 틀어, 그 화음이 오프닝의 화음 순간에 맞게 한다
-            setOpeningKind(chimeRef.current.chime ? 'burst' : 'fall');
-            setTimeout(playChime, OPENING_CHIME_LEAD_MS);
+            // 소리는 낱말을 떼어 오기 시작한 뒤에 틀어, 그 화음이 오프닝의 화음 순간에 맞게 한다.
+            // 맡은 소리가 길면(가이드 열림음) 그 화음까지 오프닝을 길게 끌어온다
+            const claimed = takeOpeningSound();
+            const burst = chimeRef.current.chime;
+            const sound = claimed ?? 'startup';
+            setOpeningKind(burst ? 'burst' : 'fall');
+            setOpeningChord(openingChordMs(sound));
+            // 후두둑(비정상)은 기동음을 내지 않고, 맡은 소리는 화면이 드러난 뒤에 낸다
+            openingAfterRef.current = burst ? null : claimed;
+            if (burst) setTimeout(() => playOpeningSound(sound), OPENING_CHIME_LEAD_MS);
             setOpeningPhase('play');
         });
         return () => {
@@ -876,7 +897,13 @@ function App() {
                 initProgress={100}
                 opening={openingPhase === 'play' ? 'play' : 'prepare'}
                 openingKind={openingKind}
-                onOpened={() => setOpeningPhase('done')}
+                openingChord={openingChord}
+                onOpened={() => {
+                    const after = openingAfterRef.current;
+                    openingAfterRef.current = null;
+                    if (after) playOpeningSound(after);
+                    setOpeningPhase('done');
+                }}
                 onShake={(dx, dy) => {
                     if (appRef.current) appRef.current.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : '';
                 }}
