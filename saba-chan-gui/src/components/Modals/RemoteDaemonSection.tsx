@@ -6,7 +6,7 @@ import type { ApiBody } from '../../types/daemon';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { OsLogo, osFamily, type Platform } from '../OsLogo';
 import { Icon } from '../Icon';
-import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { REMOTE_DAEMONS_CHANGED, reloadWindow, useDaemonTarget } from '../shell/DaemonSwitcher';
 import { PublicAddressRow } from './PublicAddress';
 import { InstallDialog, RemoveDialog } from './RemotePcDialogs';
@@ -62,7 +62,11 @@ export function remoteErrorText(res: ApiBody | null | undefined, t: TFunction) {
 
 /** 판 비교: a가 b보다 옛 판인가 (`0.1.12` < `0.1.13`). 읽지 못하면 false */
 export function olderVersion(a?: string | null, b?: string | null) {
-    const parse = (v: string) => v.split('-')[0].split('.').map((n) => Number.parseInt(n, 10));
+    const parse = (v: string) =>
+        v
+            .split('-')[0]
+            .split('.')
+            .map((n) => Number.parseInt(n, 10));
     if (!a || !b) return false;
     const [x, y] = [parse(a), parse(b)];
     if (x.some(Number.isNaN) || y.some(Number.isNaN)) return false;
@@ -90,7 +94,10 @@ interface RemoteDaemonSectionProps {
     onSwitched?: () => void;
 }
 
-export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = reloadWindow }: RemoteDaemonSectionProps) {
+export function RemoteDaemonSection({
+    onTargetGone = reloadWindow,
+    onSwitched = reloadWindow,
+}: RemoteDaemonSectionProps) {
     const { t, i18n } = useTranslation('gui');
     const [settings, setSettings] = useState<ApiBody | null>(null);
     const [draft, setDraft] = useState<{ enabled: boolean; port: string } | null>(null); // {enabled, port}. 주소는 카드의 게임 서버 주소 줄에서 (PublicAddress)
@@ -124,7 +131,9 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         const res = await window.api.remotePeers();
         if (failed(res)) {
             setPeers(null);
-            setPeersError(res?.error_code === 'relay_not_paired' ? t('remote_daemon.peers_need_relay') : remoteErrorText(res, t));
+            setPeersError(
+                res?.error_code === 'relay_not_paired' ? t('remote_daemon.peers_need_relay') : remoteErrorText(res, t),
+            );
             return;
         }
         setPeersError(null);
@@ -138,7 +147,8 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         // 그 PC의 데몬이 지워졌거나 다시 설치돼 짝을 잊었는지 본다 (닿지 않는 데몬은 늦게 답한다)
         const all = await window.api.remoteServers().catch(() => null);
         const next: Record<string, string> = {};
-        for (const d of (all?.daemons || []) as ApiBody[]) if (d.hostId) next[d.hostId] = d.ok ? 'ok' : d.error_code || 'remote_unreachable';
+        for (const d of (all?.daemons || []) as ApiBody[])
+            if (d.hostId) next[d.hostId] = d.ok ? 'ok' : d.error_code || 'remote_unreachable';
         setReach(next);
     }, []);
 
@@ -176,9 +186,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
             setError(t('remote_daemon.err_invalid_port'));
             return;
         }
-        const res = await run('save', () =>
-            window.api.remoteSettingsSet({ enabled: draft!.enabled, port }),
-        );
+        const res = await run('save', () => window.api.remoteSettingsSet({ enabled: draft!.enabled, port }));
         if (res && !failed(res)) {
             setSettings((old) => ({ ...res, thisPc: res.thisPc || old?.thisPc }));
             setDraft({ enabled: Boolean(res.enabled), port: String(res.port ?? port) });
@@ -194,7 +202,10 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         if (res && !failed(res)) await loadClients();
     };
 
-    const remove = async (card: PcCard, choice: { uninstall: boolean; keepSettings: boolean; keepInstances: boolean; removePc: boolean }) => {
+    const remove = async (
+        card: PcCard,
+        choice: { uninstall: boolean; keepSettings: boolean; keepInstances: boolean; removePc: boolean },
+    ) => {
         const res = await run(`remove:${card.hostId}`, () => window.api.remoteRemove(card.hostId, choice));
         if (!res || failed(res)) return;
         setRemoving(null);
@@ -238,7 +249,9 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     // 카드 차례: 연결한 PC, 아직 연결하지 않은 내 PC
     const cards: PcCard[] = [
         ...daemons.map((d) => ({ hostId: d.hostId, daemon: d, peer: peers?.find((p) => p.hostId === d.hostId) })),
-        ...(peers || []).filter((p) => !daemons.some((d) => d.hostId === p.hostId)).map((p) => ({ hostId: p.hostId, peer: p })),
+        ...(peers || [])
+            .filter((p) => !daemons.some((d) => d.hostId === p.hostId))
+            .map((p) => ({ hostId: p.hostId, peer: p })),
     ];
     const mainIsRemote = daemons.some((d) => d.hostId === mainDaemon);
 
@@ -247,7 +260,9 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const when = (iso?: string | null) => {
         if (!iso) return null;
         const d = new Date(iso);
-        return Number.isNaN(d.getTime()) ? null : d.toLocaleString(i18n.language, { dateStyle: 'medium', timeStyle: 'short' });
+        return Number.isNaN(d.getTime())
+            ? null
+            : d.toLocaleString(i18n.language, { dateStyle: 'medium', timeStyle: 'short' });
     };
     const ago = (iso?: string | null) => {
         if (!iso) return null;
@@ -263,18 +278,21 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const osLine = (platform?: Platform | null, version?: string | null) => {
         const family = osFamily(platform);
         const arch = String(platform?.os || '').split(' ')[1];
-        return [
-            platform?.distro?.name || (family ? t(`remote_daemon.os_${family}`) : ''),
-            arch,
-            version,
-        ]
+        return [platform?.distro?.name || (family ? t(`remote_daemon.os_${family}`) : ''), arch, version]
             .filter(Boolean)
             .join(' · ');
     };
 
     const status = settings?.status || {};
     const statusError = settings?.enabled && status.error ? remoteErrorText({ error_code: status.error }, t) : null;
-    const button = (name: string, label: string, onClick: () => void, icon: string, kind = 'btn-ghost', disabled = false) => (
+    const button = (
+        name: string,
+        label: string,
+        onClick: () => void,
+        icon: string,
+        kind = 'btn-ghost',
+        disabled = false,
+    ) => (
         <button type="button" className={`btn ${kind} btn-sm`} onClick={onClick} disabled={busy !== null || disabled}>
             {busy === name ? <SabaSpinner size="xs" /> : <Icon name={icon} size="sm" />} {label}
         </button>
@@ -314,33 +332,89 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     </span>
                     {state
                         ? pill('warn', t(`remote_daemon.state_${state}`))
-                        : peer && pill(online ? 'on' : 'off', online ? t('remote_daemon.online') : t('remote_daemon.offline'))}
+                        : peer &&
+                          pill(online ? 'on' : 'off', online ? t('remote_daemon.online') : t('remote_daemon.offline'))}
                     {daemon && star(mainDaemon === card.hostId, () => updateSettings({ mainDaemon: card.hostId }))}
                 </div>
                 <dl className="remote-pc-kv">
                     <dt>{t('remote_daemon.paired_at')}</dt>
-                    <dd>{daemon ? when(daemon.pairedAt) || '-' : <span className="muted">{t('remote_daemon.not_paired_yet')}</span>}</dd>
+                    <dd>
+                        {daemon ? (
+                            when(daemon.pairedAt) || '-'
+                        ) : (
+                            <span className="muted">{t('remote_daemon.not_paired_yet')}</span>
+                        )}
+                    </dd>
                     <dt>{t('remote_daemon.last_seen')}</dt>
                     <dd>{lastSeen || '-'}</dd>
                     <dt>{t('remote_daemon.public_ip')}</dt>
-                    <dd>{peer?.publicIp ? <code>{peer.publicIp}</code> : <span className="muted">{t('remote_daemon.ip_unknown')}</span>}</dd>
+                    <dd>
+                        {peer?.publicIp ? (
+                            <code>{peer.publicIp}</code>
+                        ) : (
+                            <span className="muted">{t('remote_daemon.ip_unknown')}</span>
+                        )}
+                    </dd>
                     {daemon && state === null && online && <PublicAddressRow hostId={card.hostId} name={name} />}
                     <dt>{t('remote_daemon.route')}</dt>
                     <dd>
                         {route === 'direct' && t('remote_daemon.route_direct', { port: daemon?.port })}
                         {route === 'relay' && t('remote_daemon.via_relay')}
-                        {!daemon && (peer?.hasEndpoint ? t('remote_daemon.route_open') : <span className="muted">{t('remote_daemon.no_endpoint')}</span>)}
+                        {!daemon &&
+                            (peer?.hasEndpoint ? (
+                                t('remote_daemon.route_open')
+                            ) : (
+                                <span className="muted">{t('remote_daemon.no_endpoint')}</span>
+                            ))}
                     </dd>
                 </dl>
                 <div className="remote-pc-acts">
-                    {needsUpdate && <span className="remote-pc-tag warn">{t('remote_daemon.update_needed', { version: thisVersion })}</span>}
-                    {needsUpdate && button(`update:${card.hostId}`, t('remote_daemon.update'), () => update(card.hostId), 'download', 'btn-ghost', !online)}
-                    {daemon && daemonTarget === card.hostId && <span className="remote-pc-tag">{t('remote_daemon.viewing')}</span>}
-                    {button(`remove:${card.hostId}`, t('remote_daemon.delete'), () => setRemoving(card), 'trash', 'btn-ghost danger')}
-                    {daemon && state === 'unpaired' && button(`connect:${card.hostId}`, t('remote_daemon.reconnect'), () => connect(card.hostId), 'refresh', 'btn-primary')}
-                    {daemon && state !== 'unpaired' && daemonTarget !== card.hostId &&
+                    {needsUpdate && (
+                        <span className="remote-pc-tag warn">
+                            {t('remote_daemon.update_needed', { version: thisVersion })}
+                        </span>
+                    )}
+                    {needsUpdate &&
+                        button(
+                            `update:${card.hostId}`,
+                            t('remote_daemon.update'),
+                            () => update(card.hostId),
+                            'download',
+                            'btn-ghost',
+                            !online,
+                        )}
+                    {daemon && daemonTarget === card.hostId && (
+                        <span className="remote-pc-tag">{t('remote_daemon.viewing')}</span>
+                    )}
+                    {button(
+                        `remove:${card.hostId}`,
+                        t('remote_daemon.delete'),
+                        () => setRemoving(card),
+                        'trash',
+                        'btn-ghost danger',
+                    )}
+                    {daemon &&
+                        state === 'unpaired' &&
+                        button(
+                            `connect:${card.hostId}`,
+                            t('remote_daemon.reconnect'),
+                            () => connect(card.hostId),
+                            'refresh',
+                            'btn-primary',
+                        )}
+                    {daemon &&
+                        state !== 'unpaired' &&
+                        daemonTarget !== card.hostId &&
                         button(`open:${card.hostId}`, t('remote_daemon.open'), () => open(card.hostId), 'externalLink')}
-                    {!daemon && peer?.hasEndpoint && button(`connect:${card.hostId}`, t('remote_daemon.connect'), () => connect(card.hostId), 'plug', 'btn-primary')}
+                    {!daemon &&
+                        peer?.hasEndpoint &&
+                        button(
+                            `connect:${card.hostId}`,
+                            t('remote_daemon.connect'),
+                            () => connect(card.hostId),
+                            'plug',
+                            'btn-primary',
+                        )}
                 </div>
             </li>
         );
@@ -379,11 +453,10 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                                 <Icon name="hash" size="sm" /> {t('remote_daemon.port')}
                             </span>
                         </label>
-                        <input
+                        <SabaNumberInput
                             id="remote-daemon-port"
                             aria-label={t('remote_daemon.port')}
-                            type="number"
-                            className="setting-input-number"
+                            className="input setting-num"
                             value={draft.port}
                             min={1}
                             max={65535}
@@ -393,7 +466,9 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     <div className="data-transfer-actions remote-daemon-actions">
                         <span className="muted" role="status">
                             {!settings!.enabled && t('remote_daemon.status_off')}
-                            {settings!.enabled && status.listening && t('remote_daemon.status_listening', { port: settings!.port })}
+                            {settings!.enabled &&
+                                status.listening &&
+                                t('remote_daemon.status_listening', { port: settings!.port })}
                         </span>
                         {settings!.enabled && status.published && (
                             <span className="muted">{t('remote_daemon.status_published')}</span>
@@ -422,7 +497,8 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                         </span>
                         <span className="remote-pc-who">
                             <b className="remote-pc-name">
-                                {t('daemon_switcher.local')} <span className="remote-pc-me">{t('remote_daemon.this_pc_tag')}</span>
+                                {t('daemon_switcher.local')}{' '}
+                                <span className="remote-pc-me">{t('remote_daemon.this_pc_tag')}</span>
                             </b>
                             <span className="remote-pc-sub">{osLine(thisPc.platform, thisVersion)}</span>
                         </span>
@@ -431,7 +507,13 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     </div>
                     <dl className="remote-pc-kv">
                         <dt>{t('remote_daemon.public_ip')}</dt>
-                        <dd>{thisPc.publicIp ? <code>{thisPc.publicIp}</code> : <span className="muted">{t('remote_daemon.ip_unknown')}</span>}</dd>
+                        <dd>
+                            {thisPc.publicIp ? (
+                                <code>{thisPc.publicIp}</code>
+                            ) : (
+                                <span className="muted">{t('remote_daemon.ip_unknown')}</span>
+                            )}
+                        </dd>
                         <PublicAddressRow hostId={null} name={t('daemon_switcher.local')} />
                         <dt>{t('remote_daemon.route')}</dt>
                         <dd>
@@ -518,7 +600,11 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                 />
             )}
             {installing && (
-                <InstallDialog onClose={() => setInstalling(false)} onPaired={reloadPcs} errorText={(res) => remoteErrorText(res, t)} />
+                <InstallDialog
+                    onClose={() => setInstalling(false)}
+                    onPaired={reloadPcs}
+                    errorText={(res) => remoteErrorText(res, t)}
+                />
             )}
         </div>
     );

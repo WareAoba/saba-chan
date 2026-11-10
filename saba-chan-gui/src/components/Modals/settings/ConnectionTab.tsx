@@ -1,9 +1,9 @@
-import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useDiscordStore } from '../../../stores/useDiscordStore';
 import { DEFAULT_IPC_PORT } from '../../../stores/useSettingsStore';
 import { AgentLink, agentLinkAvailable } from '../../discord/AgentLink';
 import { Icon } from '../../Icon';
+import { SabaNumberInput } from '../../ui/SabaUI';
 import { RemoteDaemonSection, remoteDaemonAvailable } from '../RemoteDaemonSection';
 
 interface ConnectionTabProps {
@@ -41,13 +41,11 @@ export function ConnectionTab({
                     <span className="setting-title">
                         <Icon name="hash" size="sm" /> {t('gui:settings_modal.ipc_port_label')}
                     </span>
-                    <span className="setting-description">
-                        {t('gui:settings_modal.ipc_port_description')}
-                    </span>
+                    <span className="setting-description">{t('gui:settings_modal.ipc_port_description')}</span>
                 </label>
-                <input
-                    type="number"
-                    className={clsx('setting-input-number', { 'setting-input-error': ipcPortError })}
+                <SabaNumberInput
+                    className="input setting-num"
+                    aria-invalid={!!ipcPortError || undefined}
                     value={ipcPortDraft ?? ipcPort}
                     onChange={(e) => handleIpcPortChange(e.target.value)}
                     min={1024}
@@ -70,8 +68,7 @@ export function ConnectionTab({
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="globe" size="sm" />{' '}
-                        {t('gui:settings_modal.relay_url_label', '릴레이 서버 URL')}
+                        <Icon name="globe" size="sm" /> {t('gui:settings_modal.relay_url_label', '릴레이 서버 URL')}
                     </span>
                     <span className="setting-description">
                         {t(
@@ -82,11 +79,9 @@ export function ConnectionTab({
                 </label>
                 <input
                     type="text"
-                    className="setting-input-text"
+                    className="input setting-field"
                     value={discordCloudRelayUrl || ''}
-                    onChange={(e) =>
-                        onDiscordCloudRelayUrlChange && onDiscordCloudRelayUrlChange(e.target.value)
-                    }
+                    onChange={(e) => onDiscordCloudRelayUrlChange && onDiscordCloudRelayUrlChange(e.target.value)}
                     placeholder="https://relay.saba-chan.app"
                 />
             </div>

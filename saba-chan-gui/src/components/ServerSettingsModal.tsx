@@ -28,10 +28,12 @@ const FIELD_TYPES = ['text', 'password', 'number', 'file', 'select', 'boolean', 
 const STACKED_TYPES = ['multiline', 'list'];
 
 /** 값 비교용 글자 (목록은 빈 항목을 빼고, 불리언·숫자는 글자로) */
-const valueKey = (v: unknown) => (Array.isArray(v) ? JSON.stringify(v.map(String).filter((x) => x.trim())) : v == null ? '' : String(v));
+const valueKey = (v: unknown) =>
+    Array.isArray(v) ? JSON.stringify(v.map(String).filter((x) => x.trim())) : v == null ? '' : String(v);
 
 /** list 칸의 편집 중 값 (문자열 배열, 빈 줄 포함). 저장할 때 빈 항목을 뺀다 */
-const listDraft = (value: unknown): string[] => (Array.isArray(value) ? value.map(String) : value ? String(value).split(',') : []);
+const listDraft = (value: unknown): string[] =>
+    Array.isArray(value) ? value.map(String) : value ? String(value).split(',') : [];
 
 /** 설정 이름 → 값 (모듈 설정은 모듈마다 모양이 달라 칸마다 좁혀 읽는다) */
 // biome-ignore lint/suspicious/noExplicitAny: 모듈이 선언한 설정 값은 종류가 제각각이다
@@ -51,7 +53,10 @@ function validationText(t: ReturnType<typeof useTranslation>['t'], fieldLabel: s
         case 'required':
             return t('validation.required', { field: fieldLabel, defaultValue: `${fieldLabel} is required` });
         case 'type_mismatch':
-            return t('validation.type_mismatch', { field: fieldLabel, defaultValue: `${fieldLabel} has an invalid type` });
+            return t('validation.type_mismatch', {
+                field: fieldLabel,
+                defaultValue: `${fieldLabel} has an invalid type`,
+            });
         case 'out_of_range':
             return t('validation.out_of_range', {
                 field: fieldLabel,
@@ -149,7 +154,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
     // 값에 `:`가 있어도(`minecraft:normal`) 네임스페이스로 읽지 않게 네임스페이스를 따로 넘긴다
     const optionText = (opt: string) =>
         t(`settings.${field.name}.options.${opt}`, { ns: modNs, nsSeparator: false, defaultValue: String(opt) });
-    const textClass = clsx('input', { 'setting-input-error': invalid });
+    const textClass = 'input';
 
     let control: ReactNode = null;
     if (fieldType === 'text' || fieldType === 'file' || fieldType === 'password') {
@@ -158,6 +163,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
                 id={inputId}
                 type={fieldType === 'password' ? 'password' : 'text'}
                 className={clsx(textClass, 'ss-text')}
+                aria-invalid={invalid || undefined}
                 value={String(value || '')}
                 onChange={(e) => onChange(field.name, e.target.value)}
             />
@@ -167,6 +173,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
             <SabaNumberInput
                 id={inputId}
                 className={clsx(textClass, 'ss-num')}
+                aria-invalid={invalid || undefined}
                 value={String(value || '')}
                 onChange={(e) => onChange(field.name, e.target.value)}
                 min={field.min ?? undefined}
@@ -190,7 +197,9 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
         const on = value === true || value === 'true';
         control = (
             <span className="ss-inline">
-                <span className="ss-toggle-state">{t(on ? 'server_settings.toggle_on' : 'server_settings.toggle_off')}</span>
+                <span className="ss-toggle-state">
+                    {t(on ? 'server_settings.toggle_on' : 'server_settings.toggle_off')}
+                </span>
                 <SabaToggle id={inputId} checked={on} onChange={(checked) => onChange(field.name, checked)} />
             </span>
         );
@@ -199,6 +208,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
             <textarea
                 id={inputId}
                 className={clsx(textClass, 'ss-textarea')}
+                aria-invalid={invalid || undefined}
                 value={String(value ?? '')}
                 onChange={(e) => onChange(field.name, e.target.value)}
                 rows={4}
@@ -213,7 +223,12 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
                         key={opt}
                         id={`${inputId}-${i}`}
                         checked={picked.includes(opt)}
-                        onChange={(on) => onChange(field.name, field.options!.filter((o) => (o === opt ? on : picked.includes(o))))}
+                        onChange={(on) =>
+                            onChange(
+                                field.name,
+                                field.options!.filter((o) => (o === opt ? on : picked.includes(o))),
+                            )
+                        }
                     >
                         {optionText(opt)}
                     </SabaCheckbox>
@@ -226,6 +241,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
             <textarea
                 id={inputId}
                 className={clsx(textClass, 'ss-textarea')}
+                aria-invalid={invalid || undefined}
                 value={picked.join('\n')}
                 onChange={(e) => onChange(field.name, e.target.value.split('\n'))}
                 rows={4}
@@ -241,7 +257,9 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
                     {fieldLabel}
                     {field.required ? ' *' : ''}
                     {/* 서버 설정은 다시 시작해야 적용되는 게 보통이라, 바꾼 칸에만 표시한다 (사용자 11-07) */}
-                    {changed && field.restart_required && <span className="ss-chip">{t('server_settings.restart_badge')}</span>}
+                    {changed && field.restart_required && (
+                        <span className="ss-chip">{t('server_settings.restart_badge')}</span>
+                    )}
                 </>
             }
             labelId={labelId}
@@ -360,7 +378,9 @@ function GeneralTab({
     const hasModuleSettings = (module?.settings?.fields?.length ?? 0) > 0;
     const modNs = `mod_${settingsServer.module}`;
     // visible_when으로 숨긴 설정은 그리지 않는다 (값은 지우지 않는다)
-    const hidden = new Set(hasModuleSettings ? hiddenFields(module!.settings!.fields, settingsValues, unsetSettings) : []);
+    const hidden = new Set(
+        hasModuleSettings ? hiddenFields(module!.settings!.fields, settingsValues, unsetSettings) : [],
+    );
     const fields = hasModuleSettings ? module!.settings!.fields.filter((f) => !hidden.has(f.name)) : [];
     const sabaFields = showSaba ? fields.filter((f) => f.group === 'saba-chan') : [];
     const basicFields = showServer ? fields.filter((f) => !f.group || f.group === 'basic') : [];
@@ -388,7 +408,11 @@ function GeneralTab({
         <div className="ss-form">
             {/* 사바쨩 설정(managed 시작·정상 정지 같은 모듈 saba-chan 그룹, 버전 고르기): 실행 인자 바로 아래 맨 위 */}
             {(sabaFields.length > 0 || versionPicker) && (
-                <Card icon="sabaFace" title={t('server_settings.saba_chan_group', { defaultValue: 'saba-chan Settings' })} className="ss-saba">
+                <Card
+                    icon="sabaFace"
+                    title={t('server_settings.saba_chan_group', { defaultValue: 'saba-chan Settings' })}
+                    className="ss-saba"
+                >
                     {versionPicker && (
                         <SettingRow
                             label={t('server_settings.server_version', { defaultValue: 'Server Version' })}
@@ -409,7 +433,9 @@ function GeneralTab({
                                             className="ss-select"
                                             value={settingsValues.server_version || ''}
                                             onChange={(val) => handleSettingChange('server_version', val)}
-                                            placeholder={t('server_settings.select_version', { defaultValue: 'Select version' })}
+                                            placeholder={t('server_settings.select_version', {
+                                                defaultValue: 'Select version',
+                                            })}
                                             options={availableVersions.map((v) => ({
                                                 value: (v.id || v.version || v) as string,
                                                 label: `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
@@ -419,7 +445,9 @@ function GeneralTab({
                                             type="button"
                                             className="btn btn-primary btn-sm ss-version-install"
                                             onClick={handleInstallVersion}
-                                            disabled={!settingsValues.server_version || versionInstalling || serverRunning}
+                                            disabled={
+                                                !settingsValues.server_version || versionInstalling || serverRunning
+                                            }
                                             data-tooltip={
                                                 serverRunning
                                                     ? t('server_settings.install_server_running')
@@ -431,7 +459,9 @@ function GeneralTab({
                                             <Icon name={versionInstalling ? 'loader' : 'download'} size="sm" />{' '}
                                             {versionInstalling
                                                 ? t('server_settings.installing', { defaultValue: 'Installing...' })
-                                                : t('server_settings.install_version_button', { defaultValue: 'Install' })}
+                                                : t('server_settings.install_version_button', {
+                                                      defaultValue: 'Install',
+                                                  })}
                                         </button>
                                     </span>
                                 )
@@ -444,7 +474,12 @@ function GeneralTab({
 
             {/* 크래시 자동 재시작 (데몬 A1: instance module_settings 의 auto_restart / restart_on_unknown_exit) */}
             {showSaba && (
-                <Card icon="refresh" title={t('shell.restart_title')} desc={t('shell.restart_desc')} className="ss-restart">
+                <Card
+                    icon="refresh"
+                    title={t('shell.restart_title')}
+                    desc={t('shell.restart_desc')}
+                    className="ss-restart"
+                >
                     <SettingRow
                         label={t('shell.restart_on_crash')}
                         findKey="auto_restart"
@@ -478,7 +513,12 @@ function GeneralTab({
 
             {/* 램 상한 (데몬 인스턴스 memory_limit_mb, MiB). 비우면 제한 없음, 다음 시작부터 적용 */}
             {showSaba && (
-                <Card icon="monitor" title={t('memory_limit.title')} desc={t('memory_limit.desc')} className="ss-memory">
+                <Card
+                    icon="monitor"
+                    title={t('memory_limit.title')}
+                    desc={t('memory_limit.desc')}
+                    className="ss-memory"
+                >
                     <SettingRow
                         label={t('memory_limit.label')}
                         findKey="memory_limit_mb"
@@ -507,7 +547,12 @@ function GeneralTab({
 
             {/* 게임 채팅 전달 (데몬 인스턴스 game_chat·game_chat_keyword). 모듈이 채팅 줄을 알려 주고 데몬이 콘솔을 읽을 때만 */}
             {showSaba && settingsServer.game_chat_supported && (
-                <Card icon="messageSquare" title={t('game_chat.title')} desc={t('game_chat.desc')} className="ss-game-chat">
+                <Card
+                    icon="messageSquare"
+                    title={t('game_chat.title')}
+                    desc={t('game_chat.desc')}
+                    className="ss-game-chat"
+                >
                     <SettingRow
                         label={t('game_chat.mode_label')}
                         findKey="game_chat"
@@ -517,7 +562,10 @@ function GeneralTab({
                                 ariaLabel={t('game_chat.mode_label')}
                                 value={settingsValues.game_chat || 'off'}
                                 onChange={(val) => handleSettingChange('game_chat', val)}
-                                options={['off', 'all', 'keyword'].map((mode) => ({ value: mode, label: t(`game_chat.mode_${mode}`) }))}
+                                options={['off', 'all', 'keyword'].map((mode) => ({
+                                    value: mode,
+                                    label: t(`game_chat.mode_${mode}`),
+                                }))}
                             />
                         }
                     />
@@ -550,7 +598,12 @@ function GeneralTab({
             {/* 정지 대기 시간 (데몬 MK14 module_settings.stop_timeout, 초). 비우면 모듈 값, 지나면 강제로 끈다.
                 데몬이 띄우지 않는 서버(managed:false)는 모듈 stop()이 정지를 맡아 이 값을 쓰지 않는다 */}
             {showSaba && settingsServer.managed !== false && (
-                <Card icon="power" title={t('stop_timeout.title')} desc={t('stop_timeout.desc')} className="ss-stop-timeout">
+                <Card
+                    icon="power"
+                    title={t('stop_timeout.title')}
+                    desc={t('stop_timeout.desc')}
+                    className="ss-stop-timeout"
+                >
                     <SettingRow
                         label={t('stop_timeout.label')}
                         findKey="stop_timeout"
@@ -580,14 +633,20 @@ function GeneralTab({
                         <strong>{t('errors.port_conflict')}</strong>
                         {portConflicts.map((c, i) => (
                             // biome-ignore lint/suspicious/noArrayIndexKey: 검사할 때마다 새로 만드는 읽기 전용 목록
-                            <div key={i}>{t('errors.port_conflict_detail', { port: c.port, name: c.conflictName })}</div>
+                            <div key={i}>
+                                {t('errors.port_conflict_detail', { port: c.port, name: c.conflictName })}
+                            </div>
                         ))}
                     </div>
                 </div>
             )}
 
             {basicFields.length > 0 && (
-                <Card icon="gamepad" title={t('server_settings.basic_group', { defaultValue: 'Server Settings' })} className="ss-basic">
+                <Card
+                    icon="gamepad"
+                    title={t('server_settings.basic_group', { defaultValue: 'Server Settings' })}
+                    className="ss-basic"
+                >
                     {fieldRows(basicFields)}
                 </Card>
             )}
@@ -624,10 +683,18 @@ function GeneralTab({
 
             {/* 위험 구역: 초기화를 구현한 모듈만 (MK1). 무엇을 지우는지는 모듈 locales의 reset.label·description이 먼저 */}
             {showServer && moduleSupports(module, 'reset_server') && (
-                <Card icon="alertTriangle" title={t('server_settings.danger_zone', { defaultValue: 'Danger Zone' })} className="ss-danger">
+                <Card
+                    icon="alertTriangle"
+                    title={t('server_settings.danger_zone', { defaultValue: 'Danger Zone' })}
+                    className="ss-danger"
+                >
                     <SettingRow
-                        label={t(`mod_${settingsServer.module}:reset.label`, { defaultValue: t('server_settings.reset_server_label') })}
-                        desc={t(`mod_${settingsServer.module}:reset.description`, { defaultValue: t('server_settings.reset_server_desc') })}
+                        label={t(`mod_${settingsServer.module}:reset.label`, {
+                            defaultValue: t('server_settings.reset_server_label'),
+                        })}
+                        desc={t(`mod_${settingsServer.module}:reset.description`, {
+                            defaultValue: t('server_settings.reset_server_desc'),
+                        })}
                         control={
                             <button
                                 type="button"
@@ -646,12 +713,15 @@ function GeneralTab({
                 </Card>
             )}
 
-            {showServer && !basicFields.length && !advancedFields.length && (section === 'server' || !hasModuleSettings) && (
-                <div className="empty-inline">
-                    <Icon name="settings" size="lg" />
-                    <p>{t('server_settings.no_settings')}</p>
-                </div>
-            )}
+            {showServer &&
+                !basicFields.length &&
+                !advancedFields.length &&
+                (section === 'server' || !hasModuleSettings) && (
+                    <div className="empty-inline">
+                        <Icon name="settings" size="lg" />
+                        <p>{t('server_settings.no_settings')}</p>
+                    </div>
+                )}
         </div>
     );
 }
@@ -669,13 +739,20 @@ export function RestartNotice({
     onDismiss: () => void;
 }) {
     const { t } = useTranslation('gui');
-    const live = pending && pending.serverId === server.id && server.status === 'running' && (server.start_time ?? null) === pending.startTime;
+    const live =
+        pending &&
+        pending.serverId === server.id &&
+        server.status === 'running' &&
+        (server.start_time ?? null) === pending.startTime;
     if (!live) return null;
     return (
         <div className="notice tone-warn settings-restart-notice">
             <Icon name="refresh" size="sm" />
             <span role="status">
-                {t('server_settings.restart_pending', { count: pending.fields.length, fields: pending.fields.join(', ') })}
+                {t('server_settings.restart_pending', {
+                    count: pending.fields.length,
+                    fields: pending.fields.join(', '),
+                })}
             </span>
             <button type="button" className="btn btn-primary btn-sm" onClick={onRestart}>
                 {t('server_settings.restart_now')}
@@ -690,7 +767,8 @@ export function RestartNotice({
 /**
  * ServerSettingsModal — 서버 상세의 설정·사바쨩 탭 내용 (이름은 옛 모달에서 이어 온 것. 이제 겹쳐 뜨는 창은 없다)
  */
-interface ServerSettingsModalProps extends Omit<GeneralTabProps, 'portConflicts' | 'validationErrors' | 'serverRunning'> {
+interface ServerSettingsModalProps
+    extends Omit<GeneralTabProps, 'portConflicts' | 'validationErrors' | 'serverRunning'> {
     settingsSource?: string;
     settingsActiveTab: string;
     setSettingsActiveTab: (tab: string) => void;
@@ -849,11 +927,21 @@ export function ServerSettingsModal({
             {/* 저장 막대: 칸 아래에 붙어 따라온다. 다시 시작 안내가 그 위에 */}
             <div className="ss-footer">
                 {restartNow && dismissRestart && (
-                    <RestartNotice pending={restartPending} server={liveServer} onRestart={restartNow} onDismiss={dismissRestart} />
+                    <RestartNotice
+                        pending={restartPending}
+                        server={liveServer}
+                        onRestart={restartNow}
+                        onDismiss={dismissRestart}
+                    />
                 )}
                 <div className="dc-savebar ss-savebar">
                     <CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />
-                    <button type="button" className="btn btn-primary" onClick={handleSaveSettings} disabled={savingSettings}>
+                    <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={handleSaveSettings}
+                        disabled={savingSettings}
+                    >
                         <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
                     </button>
                 </div>

@@ -4507,7 +4507,7 @@ button.appbar-pill:focus-visible {
     justify-content: space-between;
     gap: var(--sp-3);
 }
-.extension-config-field .setting-input-text {
+.extension-config-field .setting-field {
     width: 280px;
     max-width: 60%;
 }

@@ -339,6 +339,9 @@ button:disabled {
     border-color: var(--accent);
     box-shadow: var(--neu-in), var(--accent-ring);
 }
+.input[aria-invalid='true'] {
+    border-color: var(--stop);
+}
 
 /* 상태 칩 (N4: 점 + 글자 + 색) */
 .status-chip {

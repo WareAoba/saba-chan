@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { Icon } from '../Icon';
-import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
+import { SabaCheckbox, SabaNumberInput, SabaSpinner } from '../ui/SabaUI';
 import { failed } from '../../utils/apiResult';
 
 /** 리눅스 한 줄 설치 (install.sh 맨 위와 같다). SSH가 안 될 때 그 PC에 붙여 넣는다 */
-export const INSTALL_ONE_LINER = 'curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh -s -- --pair';
+export const INSTALL_ONE_LINER =
+    'curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh -s -- --pair';
 
 interface RemoveDialogProps {
     name: string;
@@ -17,7 +18,12 @@ interface RemoveDialogProps {
     summary: string;
     busy: boolean;
     onCancel: () => void;
-    onConfirm: (choice: { uninstall: boolean; keepSettings: boolean; keepInstances: boolean; removePc: boolean }) => void;
+    onConfirm: (choice: {
+        uninstall: boolean;
+        keepSettings: boolean;
+        keepInstances: boolean;
+        removePc: boolean;
+    }) => void;
 }
 
 /** 내 PC 카드의 지우기: 무엇까지 지울지 한 창에서 고른다 */
@@ -30,7 +36,12 @@ export function RemoveDialog({ name, saved, canUninstall, summary, busy, onCance
     const nothing = !saved && !removePc;
     return (
         <div className="modal-overlay" role="presentation">
-            <div className="modal remote-pc-dialog" role="dialog" aria-modal="true" aria-label={t('remote_daemon.remove_title', { name })}>
+            <div
+                className="modal remote-pc-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-label={t('remote_daemon.remove_title', { name })}
+            >
                 <h3 className="remote-pc-dialog-title">{t('remote_daemon.remove_title', { name })}</h3>
                 <p className="setting-description">{summary}</p>
                 {saved && (
@@ -52,7 +63,9 @@ export function RemoveDialog({ name, saved, canUninstall, summary, busy, onCance
                             {t('remote_daemon.remove_uninstall')}
                         </SabaCheckbox>
                         <span className="setting-description">
-                            {canUninstall ? t('remote_daemon.remove_uninstall_desc') : t('remote_daemon.remove_uninstall_unavailable')}
+                            {canUninstall
+                                ? t('remote_daemon.remove_uninstall_desc')
+                                : t('remote_daemon.remove_uninstall_unavailable')}
                         </span>
                         {uninstall && (
                             <div className="remote-pc-subchoice">
@@ -80,9 +93,12 @@ export function RemoveDialog({ name, saved, canUninstall, summary, busy, onCance
                         type="button"
                         className="btn btn-danger"
                         disabled={busy || nothing}
-                        onClick={() => onConfirm({ uninstall: saved && uninstall, keepSettings, keepInstances, removePc })}
+                        onClick={() =>
+                            onConfirm({ uninstall: saved && uninstall, keepSettings, keepInstances, removePc })
+                        }
                     >
-                        {busy ? <SabaSpinner size="xs" /> : <Icon name="trash" size="sm" />} {t('remote_daemon.remove_go')}
+                        {busy ? <SabaSpinner size="xs" /> : <Icon name="trash" size="sm" />}{' '}
+                        {t('remote_daemon.remove_go')}
                     </button>
                 </div>
             </div>
@@ -220,7 +236,12 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
 
     return (
         <div className="modal-overlay" role="presentation">
-            <div className="modal remote-pc-dialog remote-install" role="dialog" aria-modal="true" aria-label={t('remote_daemon.install_title')}>
+            <div
+                className="modal remote-pc-dialog remote-install"
+                role="dialog"
+                aria-modal="true"
+                aria-label={t('remote_daemon.install_title')}
+            >
                 <h3 className="remote-pc-dialog-title">
                     <Icon name="linux" size="sm" /> {t('remote_daemon.install_title')}
                 </h3>
@@ -232,7 +253,7 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                                 <span>{t('remote_daemon.install_host')}</span>
                                 <input
                                     type="text"
-                                    className="setting-input-text"
+                                    className="input setting-field"
                                     aria-label={t('remote_daemon.install_host')}
                                     placeholder={t('remote_daemon.install_host_placeholder')}
                                     value={form.host}
@@ -243,7 +264,7 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                                 <span>{t('remote_daemon.install_user')}</span>
                                 <input
                                     type="text"
-                                    className="setting-input-text"
+                                    className="input setting-field"
                                     aria-label={t('remote_daemon.install_user')}
                                     value={form.user}
                                     onChange={(e) => setForm({ ...form, user: e.target.value })}
@@ -251,9 +272,8 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                             </label>
                             <label>
                                 <span>{t('remote_daemon.install_port')}</span>
-                                <input
-                                    type="number"
-                                    className="setting-input-number"
+                                <SabaNumberInput
+                                    className="input setting-num"
                                     aria-label={t('remote_daemon.install_port')}
                                     min={1}
                                     max={65535}
@@ -265,7 +285,10 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                         <SabaCheckbox checked={form.linger} onChange={(linger) => setForm({ ...form, linger })}>
                             {t('remote_daemon.install_linger')}
                         </SabaCheckbox>
-                        <SabaCheckbox checked={form.steamLibs} onChange={(steamLibs) => setForm({ ...form, steamLibs })}>
+                        <SabaCheckbox
+                            checked={form.steamLibs}
+                            onChange={(steamLibs) => setForm({ ...form, steamLibs })}
+                        >
                             {t('remote_daemon.install_steam')}
                         </SabaCheckbox>
                     </>
@@ -279,11 +302,19 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                                 ? t('remote_daemon.install_phase_done', { name: view?.name || '' })
                                 : t(`remote_daemon.install_phase_${phase || 'connecting'}`)}
                         </p>
-                        <pre className="remote-install-console" ref={consoleRef} aria-label={t('remote_daemon.install_console')}>
+                        <pre
+                            className="remote-install-console"
+                            ref={consoleRef}
+                            aria-label={t('remote_daemon.install_console')}
+                        >
                             {output}
                         </pre>
                         {prompt && running && (
-                            <div className="remote-install-prompt" role="group" aria-label={t('remote_daemon.install_prompt')}>
+                            <div
+                                className="remote-install-prompt"
+                                role="group"
+                                aria-label={t('remote_daemon.install_prompt')}
+                            >
                                 {prompt.kind === 'host_key' ? (
                                     <>
                                         <p>{t('remote_daemon.prompt_host_key')}</p>
@@ -292,7 +323,11 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                                             <button type="button" className="btn btn-ghost" onClick={() => reply('no')}>
                                                 {t('remote_daemon.prompt_no')}
                                             </button>
-                                            <button type="button" className="btn btn-primary" onClick={() => reply('yes')}>
+                                            <button
+                                                type="button"
+                                                className="btn btn-primary"
+                                                onClick={() => reply('yes')}
+                                            >
                                                 {t('remote_daemon.prompt_yes')}
                                             </button>
                                         </div>
@@ -305,12 +340,16 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                                         }}
                                     >
                                         <label>
-                                            <span>{t(PROMPT_LABELS[prompt.kind] || 'remote_daemon.prompt_password')}</span>
+                                            <span>
+                                                {t(PROMPT_LABELS[prompt.kind] || 'remote_daemon.prompt_password')}
+                                            </span>
                                             <span className="muted">{prompt.text}</span>
                                             <input
                                                 type="password"
-                                                className="setting-input-text"
-                                                aria-label={t(PROMPT_LABELS[prompt.kind] || 'remote_daemon.prompt_password')}
+                                                className="input setting-field"
+                                                aria-label={t(
+                                                    PROMPT_LABELS[prompt.kind] || 'remote_daemon.prompt_password',
+                                                )}
                                                 autoComplete="off"
                                                 value={answer}
                                                 onChange={(e) => setAnswer(e.target.value)}
@@ -338,20 +377,27 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                         <div className="remote-install-oneliner">
                             <code>{INSTALL_ONE_LINER}</code>
                             <button type="button" className="btn btn-ghost btn-sm" onClick={copy}>
-                                <Icon name={copied ? 'check' : 'copy'} size="sm" /> {copied ? t('remote_daemon.copied') : t('remote_daemon.copy')}
+                                <Icon name={copied ? 'check' : 'copy'} size="sm" />{' '}
+                                {copied ? t('remote_daemon.copied') : t('remote_daemon.copy')}
                             </button>
                         </div>
                         <label className="remote-install-claim">
                             <span>{t('remote_daemon.claim_code')}</span>
                             <input
                                 type="text"
-                                className="setting-input-text"
+                                className="input setting-field"
                                 aria-label={t('remote_daemon.claim_code')}
                                 value={code}
                                 onChange={(e) => setCode(e.target.value)}
                             />
-                            <button type="button" className="btn btn-primary" disabled={busy || !code.trim()} onClick={claim}>
-                                {busy ? <SabaSpinner size="xs" /> : <Icon name="plug" size="sm" />} {t('remote_daemon.claim_go')}
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                disabled={busy || !code.trim()}
+                                onClick={claim}
+                            >
+                                {busy ? <SabaSpinner size="xs" /> : <Icon name="plug" size="sm" />}{' '}
+                                {t('remote_daemon.claim_go')}
                             </button>
                         </label>
                     </div>
@@ -374,7 +420,8 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                     </button>
                     {!id && !fallback && (
                         <button type="button" className="btn btn-primary" onClick={start} disabled={busy}>
-                            {busy ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />} {t('remote_daemon.install_start')}
+                            {busy ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}{' '}
+                            {t('remote_daemon.install_start')}
                         </button>
                     )}
                 </div>

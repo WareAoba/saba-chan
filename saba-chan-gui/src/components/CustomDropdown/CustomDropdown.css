@@ -81,7 +81,11 @@
 }
 
 /* --- 팝업 메뉴 (Portal로 body에 그린다) --- */
+/* Radix가 붙이는 상태: data-side(top|bottom), data-state(open|closed), 항목 data-highlighted·data-state=checked·data-disabled */
 .custom-dropdown-menu {
+    min-width: var(--radix-select-trigger-width);
+    max-width: calc(100vw - var(--sp-4));
+    z-index: 10000;
     background: var(--bg-2);
     border: 1px solid var(--line);
     border-radius: var(--r-sm);
@@ -94,11 +98,11 @@
     animation: dropdownPopIn 0.25s var(--ease-spring);
 }
 
-.custom-dropdown-menu.placement-top {
+.custom-dropdown-menu[data-side='top'] {
     transform-origin: bottom center;
 }
 
-.custom-dropdown-menu.closing {
+.custom-dropdown-menu[data-state='closed'] {
     animation: dropdownPopOut 120ms ease-in forwards;
     pointer-events: none;
 }
@@ -110,7 +114,7 @@
     }
 }
 
-.custom-dropdown-menu.placement-top:not(.closing) {
+.custom-dropdown-menu[data-side='top'][data-state='open'] {
     animation-name: dropdownPopInUp;
 }
 
@@ -129,7 +133,7 @@
 }
 
 .custom-dropdown-scroll {
-    max-height: var(--dropdown-max, 240px);
+    max-height: min(280px, calc(var(--radix-select-content-available-height, 280px) - var(--sp-2)));
     overflow-y: auto;
     padding: var(--sp-1);
 }
@@ -153,6 +157,7 @@
 
 /* --- 항목 --- */
 .custom-dropdown-item {
+    outline: none;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -168,22 +173,26 @@
     gap: var(--sp-2);
 }
 
-/* 가리킨 항목은 살짝 파인다 */
-.custom-dropdown-item.active {
+/* 가리킨 항목은 살짝 파인다. Radix가 항목에 포커스를 옮기므로 링 대신 이 표시로 보인다 */
+.custom-dropdown-item:focus-visible {
+    outline: none;
+}
+
+.custom-dropdown-item[data-highlighted] {
     background: var(--inset);
     box-shadow: var(--neu-in);
 }
 
-.custom-dropdown-item.selected {
+.custom-dropdown-item[data-state='checked'] {
     color: var(--brand-primary);
     font-weight: 600;
 }
 
-.custom-dropdown-item.selected:not(.active) {
+.custom-dropdown-item[data-state='checked']:not([data-highlighted]) {
     background: var(--accent-soft);
 }
 
-.custom-dropdown-item.disabled {
+.custom-dropdown-item[data-disabled] {
     color: var(--text-3);
     cursor: not-allowed;
 }

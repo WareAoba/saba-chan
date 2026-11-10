@@ -435,35 +435,17 @@
 
 /* ── 노드 없음 ── */
 
-/* ── 고급 설정 릴레이 URL 입력 ── */
-.setting-input-text {
-    width: 100%;
-    padding: var(--sp-2) var(--sp-3);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--field);
-    color: var(--text-1);
-    font-size: calc(13px * var(--font-scale));
-    font-family: "Consolas", "Monaco", monospace;
-    outline: none;
-    transition: border-color 0.15s;
-}
-
-/* 설정 줄 안에서는 설명 글이 좁아지지 않게 입력칸 폭을 정한다 */
-.setting-item > .setting-input-text {
+/* 설정 줄 안의 입력칸(.input): 설명 글이 좁아지지 않게 폭을 정한다 */
+.setting-item > .setting-field {
     width: 280px;
     max-width: 50%;
     flex-shrink: 0;
     margin-left: var(--sp-4);
 }
 
-.setting-input-text:focus {
-    border-color: var(--brand-primary);
-}
-
-.setting-input-text::placeholder {
-    color: var(--text-2);
-    font-family: inherit;
+.input.setting-num {
+    width: 124px;
+    text-align: right;
 }
 
 /* ===== Background Modal ===== */
@@ -922,37 +904,6 @@
 .notice-card-dismiss:hover {
     background: var(--stop-soft);
     color: var(--stop);
-}
-
-/* ===== Advanced Settings Input Styles ===== */
-.setting-input-number {
-    width: 100px;
-    padding: var(--sp-2) var(--sp-3);
-    border: 1px solid var(--line-strong);
-    border-radius: 6px;
-    background: var(--field);
-    font-size: calc(14px * var(--font-scale));
-    color: var(--text-1);
-    text-align: right;
-    transition: border-color 0.2s;
-    appearance: textfield;
-    -moz-appearance: textfield;
-}
-
-.setting-input-number::-webkit-outer-spin-button,
-.setting-input-number::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-
-.setting-input-number:focus {
-    outline: none;
-    border-color: var(--brand-primary);
-    box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent) 15%, transparent);
-}
-
-.setting-input-number.setting-input-error {
-    border-color: var(--stop);
 }
 
 .setting-validation-error {
