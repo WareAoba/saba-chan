@@ -966,8 +966,13 @@ fn draw_content(f: &mut Frame, app: &mut App, area: Rect) {
             return;
         }
         PaneState::Rows(rows) => {
-            let lines = table_lines(tab, rows, cursor, focused, body.width as usize);
+            let mut lines = table_lines(tab, rows, cursor, focused, body.width as usize);
             let empty = lines.len() <= 1;
+            // 고른 줄이 늘 보이게 넘긴다 (머리줄은 남긴다)
+            let room = (body.height as usize).saturating_sub(1).max(1);
+            if cursor >= room && lines.len() > 1 {
+                lines.drain(1..=cursor + 1 - room);
+            }
             f.render_widget(Paragraph::new(lines), body);
             if empty {
                 let r = Rect { y: body.y + 1, height: 1, ..body };
@@ -1192,6 +1197,8 @@ fn field_line(x: &super::form::Field, form: &Form, selected: bool, label_w: usiz
     match &x.kind {
         _ if editing => {
             let text = form.editing.clone().unwrap_or_default();
+            // 비밀번호는 고칠 때도 가린다
+            let text = if matches!(x.kind, Kind::Text { secret: true }) { "•".repeat(text.chars().count()) } else { text };
             spans.push(Span::styled(format!(" {text}"), Style::default().bg(Color::Rgb(31, 41, 55))));
             spans.push(Span::styled("▏", Style::default().fg(ACCENT)));
         }

@@ -219,7 +219,16 @@ impl Form {
     /// 저장이 끝나 새로 읽은 값으로 바꾼다. 커서·펼침·찾기는 남긴다
     pub fn reload(&mut self, fresh: Form) {
         let (cursor, open, filter, show_keys) = (self.cursor, std::mem::take(&mut self.open), std::mem::take(&mut self.filter), self.show_keys);
+        // 아직 저장하지 않은 칸은 새로 읽은 값 위에 남긴다 (다른 명령이 끝나 다시 읽어도, 저장이 실패해도 고친 것을 잃지 않게)
+        let edits: Vec<(String, String)> = self.fields.iter().filter(|f| f.dirty()).map(|f| (f.key.clone(), f.value.clone())).collect();
+        let editing = self.editing.take();
         *self = fresh;
+        for (key, value) in edits {
+            if let Some(f) = self.fields.iter_mut().find(|f| f.key == key) {
+                f.value = value;
+            }
+        }
+        self.editing = editing;
         self.open = open;
         self.filter = filter;
         self.show_keys = show_keys;
@@ -472,6 +481,19 @@ mod tests {
         f.on_key(key(KeyCode::Esc));
         assert!(f.changes().is_empty());
         assert_eq!(f.on_key(key(KeyCode::Esc)), Some(FormOut::Leave));
+    }
+
+    /// 다시 읽어도 저장하지 않은 칸은 남는다
+    #[test]
+    fn a_reload_keeps_unsaved_edits() {
+        let mut f = Form::from_doc(&doc());
+        f.on_key(key(KeyCode::Right));
+        let mut fresh = Form::from_doc(&doc());
+        fresh.fields[1].value = "false".into();
+        fresh.fields[1].original = "false".into();
+        f.reload(fresh);
+        assert_eq!(f.changes(), vec![("difficulty".to_string(), "hard".to_string())]);
+        assert_eq!(f.fields[1].value, "false", "the rest comes from the daemon");
     }
 
     /// 한글 초성으로도 칸을 찾는다

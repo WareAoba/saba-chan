@@ -292,8 +292,11 @@ impl Saver {
                 let mut line = format!("bot {sub} {}", q(guild));
                 for (k, v) in changes {
                     let arg = match (k.as_str(), v.as_str()) {
+                        // 지운 칸은 보내지 않는다 (`bot` 옵션에는 "기본값으로"가 없다)
+                        (_, "") => continue,
                         ("enabled", "true") => "--on".to_string(),
-                        ("enabled", _) => "--off".to_string(),
+                        ("enabled", "false") => "--off".to_string(),
+                        ("enabled", _) => "--on|--off".to_string(),
                         (k, "true") => format!("--{k} on"),
                         (k, "false") => format!("--{k} off"),
                         (k, v) => format!("--{k} {}", q(v)),
@@ -306,7 +309,10 @@ impl Saver {
             Saver::Perm(guild) => changes
                 .iter()
                 .map(|(k, v)| match k.strip_prefix("member:") {
+                    // 지운 칸은 기본으로: 멤버는 레벨을 거두고, 명령은 레벨을 빼면 기본값
+                    Some(member) if v.is_empty() => format!("perm revoke {} {}", q(guild), q(member)),
                     Some(member) => format!("perm grant {} {} {}", q(guild), q(member), q(v)),
+                    None if v.is_empty() => format!("perm command {} {}", q(guild), q(k)),
                     None => format!("perm command {} {} {}", q(guild), q(k), q(v)),
                 })
                 .collect(),
@@ -481,6 +487,12 @@ pub struct App {
     pub port: u16,
     /// 마지막으로 그린 폭이 좁아 목록과 상세를 한 번에 하나씩 보이는가
     pub narrow: bool,
+    /// 멈춘 명령: 끝 소식이 와도 탭을 다시 읽지 않는다 (명령 출력 탭이 곧바로 같은 명령을 다시 돌리지 않게)
+    pub cancelled: bool,
+    /// 다음 명령 줄에서 가릴 값 (폼에서 저장하는 비밀번호)
+    pub secrets: Vec<String>,
+    /// 디스코드 서버 목록을 마지막으로 받은 때 (릴레이를 3초마다 부르지 않게)
+    pub guilds_at: Option<std::time::Instant>,
     pub areas: Areas,
 }
 
@@ -520,6 +532,9 @@ impl App {
             open_server: None,
             port: 0,
             narrow: false,
+            cancelled: false,
+            secrets: Vec::new(),
+            guilds_at: None,
             areas: Areas::default(),
         }
     }
@@ -651,7 +666,8 @@ impl App {
         Some(match (self.page, self.tab_key()) {
             (Page::Servers, "schedule") => format!("schedule add {} ", sq()?),
             (Page::Discord, "ladder") => format!("perm level add {} ", gq()?),
-            (Page::Discord, "words") => format!("server discord {} --word ", sq().or_else(|| self.snap.servers.first().map(|v| quote(s(v, "name"))))?),
+            // 별명은 서버마다: 어느 서버인지는 사용자가 쓴다
+            (Page::Discord, "words") => "server discord ".to_string(),
             (Page::Discord, "moderation") => format!("bot channel {} ", gq()?),
             (Page::Discord, "notice") => format!("bot notice {} ", gq()?),
             (Page::Discord, "chatbot") => format!("chatbot set --guild {} ", gq()?),
@@ -869,6 +885,15 @@ impl App {
         self.toast = Some(line.to_string());
     }
 
+    /// 화면에 보일 명령 줄: 폼에서 저장한 비밀번호는 가린다
+    pub fn masked(&mut self, line: &str) -> String {
+        let mut out = line.to_string();
+        for secret in std::mem::take(&mut self.secrets) {
+            out = out.replace(&quote(&secret), "••••").replace(&secret, "••••");
+        }
+        out
+    }
+
     /// 명령을 시작한다: 출력 창 제목과 줄 수를 새로
     pub fn begin_command(&mut self, shown: &str) {
         self.push_line("");
@@ -889,6 +914,10 @@ impl App {
             return None;
         }
         self.picked[self.page.slot()] = self.list_state.selected().unwrap_or(0);
+        if page != Page::Servers {
+            // 새 서버 창은 서버 쪽에만 뜬다: 다른 쪽으로 가면 닫는다
+            self.wizard = None;
+        }
         self.page = page;
         self.list_state.select(Some(self.picked[page.slot()]));
         self.button = 0;
@@ -1073,6 +1102,8 @@ impl App {
     /// 지금 보이는 서버 콘솔·데몬 로그·글·출력 창을 넘긴다
     fn scroll(&mut self, up: bool, by: usize) {
         let text = matches!(self.pane.state, PaneState::Text(_)) && self.pane_is_current() && self.tab_key() != "console";
+        // 명령 출력 탭은 위에서 센다
+        let up = if text && !self.output.open && self.tab_key() != "log" { !up } else { up };
         let target = if self.output.open {
             &mut self.output.scroll
         } else if text {
@@ -1089,7 +1120,8 @@ impl App {
             Focus::Command => true,
             Focus::Content => match (&self.pane.state, self.tab_key()) {
                 (_, "console") if self.page == Page::Servers => true,
-                (PaneState::Form(f, _), _) => f.editing.is_some() || f.filtering,
+                // 폼에서는 글자 키가 칸을 다룬다: s·r·q·숫자가 서버를 끄거나 메뉴를 닫지 않게 (나가기는 Esc)
+                (PaneState::Form(..), _) => self.pane_is_current(),
                 _ => false,
             },
             _ => false,
@@ -1289,6 +1321,8 @@ impl App {
             match form.on_key(key) {
                 Some(FormOut::Save(changes)) => {
                     let lines = saver.lines(&changes);
+                    let secret = |k: &str| form.fields.iter().any(|f| f.key == k && f.kind == Kind::Text { secret: true });
+                    self.secrets = changes.iter().filter(|(k, v)| secret(k) && !v.is_empty()).map(|(_, v)| v.clone()).collect();
                     if self.running {
                         self.notify(&t!("tui.busy"));
                         return None;
@@ -1316,10 +1350,14 @@ impl App {
             }
             return None;
         }
+        // 기록 탭은 아래에서 센다(새 줄이 아래에 붙는다), 명령 출력 탭은 위에서 센다
+        let from_bottom = tab == "log";
         match key.code {
             KeyCode::Esc => self.backward(),
-            KeyCode::Up => self.pane.scroll += 1,
-            KeyCode::Down => self.pane.scroll = self.pane.scroll.saturating_sub(1),
+            KeyCode::Up if from_bottom => self.pane.scroll += 1,
+            KeyCode::Down if from_bottom => self.pane.scroll = self.pane.scroll.saturating_sub(1),
+            KeyCode::Up => self.pane.scroll = self.pane.scroll.saturating_sub(1),
+            KeyCode::Down => self.pane.scroll += 1,
             KeyCode::Char('c') if tab == "backups" => return self.run_line(format!("backup create {}", server?)),
             KeyCode::Char('e') | KeyCode::Enter => {
                 if let Some(p) = self.edit_prefix() {
@@ -1989,6 +2027,49 @@ mod tests {
         assert_eq!(a.focus, Focus::Content);
         a.on_key(key(KeyCode::Esc));
         assert_eq!(a.focus, Focus::Detail);
+    }
+
+    /// 폼에서는 글자 키가 서버를 끄거나 메뉴를 닫지 않는다. 지운 칸은 기본값으로 저장한다. 비밀번호는 명령 줄에서 가린다
+    #[test]
+    fn a_form_keeps_letter_keys_and_hides_secrets() {
+        let mut a = app();
+        a.list_state.select(Some(1));
+        a.tab[Page::Servers.slot()] = 1;
+        let (k, _) = a.pane_want().unwrap();
+        let mut doc = settings_doc();
+        doc["fields"].as_array_mut().unwrap().push(json!({ "key": "rcon_password", "label": "RCON", "type": "password", "group": null, "value": "old" }));
+        a.apply_pane(k, super::super::data::PaneData::Settings(doc));
+        a.focus = Focus::Content;
+        for c in ['s', 'r', 'q', '2'] {
+            assert_eq!(a.on_key(key(KeyCode::Char(c))), None, "{c}");
+        }
+        assert_eq!((a.page, a.focus), (Page::Servers, Focus::Content));
+        a.on_key(key(KeyCode::Down));
+        a.on_key(key(KeyCode::Down));
+        a.on_key(key(KeyCode::Enter));
+        for _ in 0..3 {
+            a.on_key(key(KeyCode::Backspace));
+        }
+        typed(&mut a, "hunter2");
+        a.on_key(key(KeyCode::Enter));
+        let Some(Action::Run(line)) = a.on_key(ctrl('s')) else { panic!("save") };
+        assert!(line.contains("hunter2"));
+        assert!(!a.masked(&line).contains("hunter2"));
+        let c = |pairs: &[(&str, &str)]| pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<Vec<_>>();
+        assert_eq!(Saver::Bot("music", "1".into()).lines(&c(&[("ui", ""), ("refresh", "3000")])), ["bot music 1 --refresh 3000"]);
+        let perm = Saver::Perm("1".into()).lines(&c(&[("start", ""), ("member:42", "")]));
+        assert_eq!(perm, ["perm command 1 start", "perm revoke 1 42"]);
+        assert!(perm.iter().all(|l| parses(l)));
+    }
+
+    /// 새 서버 창은 다른 쪽으로 가면 닫힌다
+    #[test]
+    fn the_wizard_closes_on_another_page() {
+        let mut a = app();
+        a.on_key(key(KeyCode::Char('n')));
+        assert!(a.wizard.is_some());
+        a.go(Page::Updates);
+        assert!(a.wizard.is_none());
     }
 
     /// 명령 출력으로 보이는 탭은 출력 창이 아니라 그 탭에 받는다 (`saba-chan-cli` 머리는 뗀다)

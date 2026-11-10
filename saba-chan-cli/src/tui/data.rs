@@ -156,9 +156,13 @@ pub async fn fetch(ctx: &Ctx, want: &Want) -> Fetched {
         true => api.launchable().await.ok(),
         false => None,
     };
-    // 페어링 전이면 빈 목록 (디스코드 쪽이 "페어링하세요"를 보인다)
+    // 페어링 전이면 빈 목록 (디스코드 쪽이 "페어링하세요"를 보인다). 릴레이에 잠깐 닿지 않으면 있던 목록을 둔다
     let guilds = match want.guilds {
-        true => Some(crate::cmd::bot::paired_nodes(ctx).await.map(|r| r.get("nodes").or(Some(&r)).and_then(Value::as_array).cloned().unwrap_or_default()).unwrap_or_default()),
+        true => match api.bot_config().await {
+            Ok(cfg) if cfg.pointer("/cloud/hostId").and_then(Value::as_str).unwrap_or("").is_empty() => Some(Vec::new()),
+            Ok(_) => crate::cmd::bot::paired_nodes(ctx).await.ok().map(|r| r.get("nodes").or(Some(&r)).and_then(Value::as_array).cloned().unwrap_or_default()),
+            Err(_) => None,
+        },
         false => None,
     };
     Fetched {

@@ -282,8 +282,10 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                 }
                 task = None;
                 app.running = false;
+                // 페어링·연결 해제 같은 명령이 디스코드 서버 목록을 바꿨을 수 있다
+                app.guilds_at = None;
                 // 상세 탭으로 받던 명령이면 그것으로 끝. 아니면 명령이 바꿨을 수 있는 상세 탭도 다시 읽는다
-                let captured = app.capture.take().is_some();
+                let captured = app.capture.take().is_some() | std::mem::take(&mut app.cancelled);
                 // 명령이 상태를 바꿨을 수 있으니(데몬 포트까지) 곧바로 다시 읽는다
                 ctx.follow_daemon_port();
                 app.port = ctx.api.port;
@@ -313,6 +315,9 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
             }
             Msg::Refreshed(f) => {
                 refreshing = false;
+                if f.guilds.is_some() {
+                    app.guilds_at = Some(std::time::Instant::now());
+                }
                 // 업데이터가 번역을 바꿨으면 cli.json을 다시 읽는다 (다음 그리기부터 새 문구)
                 if app.snap.apply(*f) {
                     crate::i18n::reload();
@@ -379,6 +384,7 @@ async fn act(
             }
             app.running = false;
             app.capture = None;
+            app.cancelled = true;
             app.jobs.clear();
             app.notify(&t!("tui.cancelled"));
             Flow::Stay
@@ -428,7 +434,8 @@ fn refresh(ctx: &Ctx, app: &App, tx: UnboundedSender<Msg>, busy: bool) -> bool {
         modules: (addons && app.tab_index() == 0) || app.wizard.is_some(),
         extensions: addons && app.tab_index() == 1,
         launchable: app.snap.launchable.is_none(),
-        guilds: app.page == app::Page::Discord,
+        // 릴레이에 묻는 것이라 30초에 한 번 (명령이 끝나면 곧바로)
+        guilds: app.page == app::Page::Discord && app.guilds_at.is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(30)),
     };
     let ctx = ctx.clone();
     tokio::spawn(async move {
@@ -530,8 +537,8 @@ fn start_all(ctx: &Ctx, app: &mut App, lines: Vec<String>, id: u64, tx: Unbounde
     }
     let shown = match lines.len() {
         0 => return None,
-        1 => lines[0].clone(),
-        n => format!("{} (+{})", lines[0], n - 1),
+        1 => app.masked(&lines[0]),
+        n => format!("{} (+{})", app.masked(&lines[0]), n - 1),
     };
     app.begin_command(&shown);
     let ctx = ctx.clone();
@@ -599,7 +606,7 @@ fn start(ctx: &Ctx, app: &mut App, line: &str, id: u64, tx: UnboundedSender<Msg>
         return None;
     }
     let words = app::adapt(words);
-    let shown = words.iter().map(|w| form::quote(w)).collect::<Vec<_>>().join(" ");
+    let shown = app.masked(&words.iter().map(|w| form::quote(w)).collect::<Vec<_>>().join(" "));
     app.begin_command(&shown);
     let ctx = ctx.clone();
     Some(spawn_job(id, tx, async move {
