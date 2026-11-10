@@ -50,7 +50,7 @@
 :root[data-backdrop="on"] .saba-tooltip,
 :root[data-backdrop="on"] .page-find,
 :root[data-backdrop="on"] .palette,
-:root[data-backdrop="on"] .popover-anchor .ext-popover,
+:root[data-backdrop="on"] .saba-popover,
 :root[data-backdrop="on"] .popover-anchor .bg-pop,
 :root[data-backdrop="on"] .update-pill-pop,
 :root[data-backdrop="on"] .update-pill-dialog,

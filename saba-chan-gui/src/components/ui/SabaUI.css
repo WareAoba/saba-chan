@@ -439,3 +439,31 @@
     opacity: 0.4;
     cursor: not-allowed;
 }
+
+/* ── Popover: 단추 옆에 뜨는 작은 창 (Popover.tsx, Radix가 자리·여닫기를 맡는다) ── */
+.saba-popover {
+    z-index: 1100;
+    max-height: min(480px, calc(var(--radix-popover-content-available-height, 100vh) - var(--sp-4)));
+    overflow: auto;
+    padding: var(--sp-4);
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow-float);
+    transform-origin: var(--radix-popover-content-transform-origin);
+    animation: sabaPopIn 0.22s var(--ease-spring);
+}
+.saba-popover:focus-visible {
+    outline: none;
+}
+@keyframes sabaPopIn {
+    from {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .saba-popover {
+        animation: none;
+    }
+}

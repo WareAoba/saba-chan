@@ -5,6 +5,7 @@ import { useServerStore } from '../../stores/useServerStore';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
+import { Popover } from '../ui/Popover';
 import { AppBarPill } from './AppBarPill';
 
 /** 업데이트가 진행 중이면 자주, 할 일이 없으면 드물게 읽는다 (이 PC 데몬에 묻는 로컬 요청) */
@@ -173,22 +174,6 @@ export function UpdatePill() {
         if (acked.current && stateRef.current === 'done') setDismissed(true);
     };
 
-    // 팝오버 밖을 누르거나 Esc면 닫는다
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 열려 있는 동안만 듣는다
-    useEffect(() => {
-        if (!open) return undefined;
-        const onClick = (e: MouseEvent) => {
-            if (!anchor.current?.contains(e.target as Node)) close();
-        };
-        const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-        document.addEventListener('click', onClick);
-        document.addEventListener('keydown', onKey);
-        return () => {
-            document.removeEventListener('click', onClick);
-            document.removeEventListener('keydown', onKey);
-        };
-    }, [open]);
-
     // 사라진 뒤에는 열린 것도 닫는다
     useEffect(() => {
         if (!visible) {
@@ -257,8 +242,15 @@ export function UpdatePill() {
         );
     }
 
-    const popover = open && state !== 'ready' && (
-        <div className="update-pill-pop" role="dialog" aria-label={t(LABEL_KEYS[state] || 'update_pill.applying')}>
+    const popover = (
+        <Popover
+            open={open && state !== 'ready'}
+            onOpenChange={(o) => !o && close()}
+            anchorRef={anchor}
+            label={t(LABEL_KEYS[state] || 'update_pill.applying')}
+            className="update-pill-pop"
+            autoFocus={false}
+        >
             <div>
                 <p className="update-pill-version">{title}</p>
                 {subs.map((s, i) => (
@@ -274,7 +266,7 @@ export function UpdatePill() {
                     {t('update_pill.notes_more')}
                 </button>
             )}
-        </div>
+        </Popover>
     );
 
     const dialog =
