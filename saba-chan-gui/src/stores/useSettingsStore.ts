@@ -99,6 +99,8 @@ export interface SettingsValues extends AppOptions {
     systemMonitorExpanded: boolean;
     /** 시스템 모니터에 띄울 항목 id (monitor/systemMetrics.ts). null이면 기본 항목 */
     monitorItems: string[] | null;
+    /** ✕로 닫은 가이드 id (components/guides/guides.ts) */
+    closedGuides: string[];
     /** switch: 고른 데몬만 · unified: 다른 데몬의 서버도 데몬별로 */
     daemonView: 'switch' | 'unified';
     /** 앱을 열면 먼저 볼 원격 데몬 hostId, null이면 이 PC */
@@ -155,6 +157,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     systemMonitorExpanded: false,
     // 시스템 모니터에 띄울 항목 (null이면 기본)
     monitorItems: null,
+    // 닫은 가이드 (설정 → 일반에서 다시 연다)
+    closedGuides: [],
     // 서버 목록 보기 (G1c): 'switch' 고른 데몬만 | 'unified' 다른 데몬의 서버도 데몬별로
     daemonView: 'switch',
     // 앱을 열면 먼저 볼 데몬: 원격 데몬 hostId, null이면 이 PC
@@ -198,6 +202,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                 patch.monitorItems = Array.isArray(settings.monitorItems)
                     ? settings.monitorItems.filter((i): i is string => typeof i === 'string')
                     : null;
+                patch.closedGuides = Array.isArray(settings.closedGuides)
+                    ? settings.closedGuides.filter((i): i is string => typeof i === 'string')
+                    : [];
                 patch.daemonView = settings.daemonView === 'unified' ? 'unified' : 'switch';
                 patch.mainDaemon =
                     typeof settings.mainDaemon === 'string' && settings.mainDaemon ? settings.mainDaemon : null;
@@ -315,6 +322,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
             windowBackdrop: WINDOW_BACKDROP_DEFAULTS,
             systemMonitorExpanded: false,
             monitorItems: null,
+            closedGuides: [],
             daemonView: 'switch',
             mainDaemon: null,
         });
@@ -355,6 +363,7 @@ const _settingsKeys: SettingKey[] = [
     'windowBackdrop',
     'systemMonitorExpanded',
     'monitorItems',
+    'closedGuides',
     'daemonView',
     'mainDaemon',
 ];
