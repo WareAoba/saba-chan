@@ -220,7 +220,7 @@
     "server_name": "Nom du serveur",
     "server_name_placeholder": "ex: mon-serveur-1",
     "provision_hint": "Le module sera intégré dans l'instance et les binaires du serveur seront téléchargés automatiquement.",
-    "no_modules": "Aucun module trouvé. Obtenez des modules de jeu depuis le stockage Saba, dans <link/>.",
+    "no_modules": "Aucun module trouvé. Obtenez des modules de jeu dans <link/>.",
     "add_server": "Ajouter un serveur",
     "provisioning": "Installation en cours…",
     "step_compose": "Créer la configuration",
@@ -281,7 +281,7 @@
     "new_server_desc": "Sélectionnez un module de jeu et créez une nouvelle instance de serveur à partir de zéro.",
     "migrate_title": "Migration d'un serveur existant",
     "migrate_desc": "Importe un répertoire de serveur de jeu existant en tant qu'instance saba-chan.",
-    "no_modules_hint": "Ajoutez d'abord un module. Vous pouvez en obtenir un depuis le stockage Saba, dans <link/>."
+    "no_modules_hint": "Ajoutez d'abord un module. Vous pouvez en obtenir un dans <link/>."
   },
   "migration_modal": {
     "title": "Migration du serveur",
@@ -683,8 +683,8 @@
     "installed_modules": "Modules installés",
     "no_installed_modules": "Aucun module installé.",
     "refresh_modules": "Actualiser les modules",
-    "available_modules": "Modules disponibles",
-    "show_more_modules": "Afficher plus de modules",
+    "available_modules": "Jeux disponibles",
+    "unsupported_here": "Impossible à exécuter sur cet appareil · {{count}}",
     "show_more_extensions": "Afficher plus d'extensions",
     "refresh_manifest": "Actualiser le registre",
     "loading_manifest": "Chargement du registre...",
@@ -765,7 +765,7 @@
     "search_placeholder": "Rechercher un serveur",
     "no_match": "Aucun serveur correspondant",
     "empty_title": "Aucun serveur pour l'instant",
-    "empty_no_modules": "Aucun module de jeu n'est installé. Obtenez-en depuis le stockage Saba, dans <link/>.",
+    "empty_no_modules": "Aucun module de jeu n'est installé. Obtenez-en dans <link/>.",
     "empty_body": "Choisissez un jeu et Saba-chan configurera le serveur pour vous.",
     "start": "Démarrer",
     "stop": "Arrêter",
@@ -2397,6 +2397,7 @@
     "hint": {
       "closed": "Vérifiez que le routeur redirige ce port vers ce PC et que le pare-feu du PC l’autorise.",
       "firewall": "Le pare-feu Windows bloque les connexions entrantes sur ce port. Pour le réseau auquel vous êtes connecté (privé ou public), autorisez saba-core si le serveur est arrêté, ou le programme du serveur de jeu s’il est en marche, dans les paramètres du pare-feu Windows, puis vérifiez à nouveau.",
+      "firewall_macos": "Le coupe-feu de macOS bloque les connexions entrantes du programme de ce serveur. Dans Réglages Système › Réseau › Coupe-feu › Options, réglez saba-core (si le serveur est arrêté) ou le programme du serveur de jeu, comme java (s’il tourne), sur Autoriser les connexions entrantes, puis vérifiez à nouveau.",
       "router": "Le pare-feu du PC autorise ce port. Redirigez ce port vers ce PC dans les paramètres du routeur, puis vérifiez à nouveau.",
       "cgnat": "Votre fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l’ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
       "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau."

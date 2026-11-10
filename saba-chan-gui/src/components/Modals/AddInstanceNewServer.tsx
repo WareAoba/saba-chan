@@ -28,6 +28,7 @@ import Icon from '../Icon';
 import { ModuleMakerCard } from '../ModuleMakerCard';
 import { LinkedText } from '../ui/ScreenLink';
 import { SabaToggle } from '../ui/SabaUI';
+import { unsupportedText } from '../../utils/moduleSupport';
 import { Segmented } from '../ui/StatusChip';
 import { TrustCreateNotice } from '../ui/TrustBadge';
 import type { AddServerPayload } from '../../hooks/useServerActions';
@@ -290,7 +291,7 @@ export function AddInstanceNewServer({
                         {extensions.length === 0 ? (
                             <p className="as-empty-hint">
                                 <Icon name="alertCircle" size="sm" />
-                                <LinkedText i18nKey="add_server_modal.no_modules" to="settings/storage" />
+                                <LinkedText i18nKey="add_server_modal.no_modules" to="settings/sabaStorage/modules" />
                             </p>
                         ) : (
                             <div className="as-grid-wrap">
@@ -299,21 +300,16 @@ export function AddInstanceNewServer({
                                         const displayName = t(`mod_${m.name}:module.display_name`, {
                                             defaultValue: m.game_name || m.name,
                                         });
-                                        // 이 데몬의 OS에서 돌아가지 않는 모듈 (`platform_supported`, D3·M1)
-                                        const unsupported = m.platform_supported === false;
+                                        // 이 데몬의 OS·CPU에서 돌아가지 않는 모듈 (`platform_supported`, D3·M1)
+                                        const unsupportedHere = unsupportedText(t, m);
+                                        const unsupported = unsupportedHere !== null;
                                         return (
                                             <button
                                                 key={m.name}
                                                 className={clsx('as-game-card', { unsupported })}
                                                 type="button"
                                                 disabled={unsupported}
-                                                data-tooltip={
-                                                    unsupported
-                                                        ? t('add_server_modal.platform_unsupported_detail', {
-                                                              platforms: (m.platforms || []).join(', '),
-                                                          })
-                                                        : undefined
-                                                }
+                                                data-tooltip={unsupportedHere?.detail}
                                                 onClick={() => handleGameSelect(m.name)}
                                             >
                                                 <div className="as-game-card-icon">
@@ -327,9 +323,7 @@ export function AddInstanceNewServer({
                                                 </div>
                                                 <span className="as-game-card-name">{displayName}</span>
                                                 <span className="as-game-card-version">
-                                                    {unsupported
-                                                        ? t('add_server_modal.platform_unsupported')
-                                                        : `v${m.version}`}
+                                                    {unsupportedHere ? unsupportedHere.label : `v${m.version}`}
                                                 </span>
                                             </button>
                                         );

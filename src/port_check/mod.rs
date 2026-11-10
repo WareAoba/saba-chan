@@ -179,7 +179,16 @@ pub struct Report {
     /// closed: 닫힌 포트가 있다 (방화벽을 읽지 못해 원인을 가리지 못했다), cgnat: 공유기에 공인 주소가 없다, unknown: 닫힌 것은 없지만 모두 확인하지 못했다,
     /// no_ports: 모듈이 밖에 여는 포트를 선언하지 않았다
     pub verdict: &'static str,
+    /// 고칠 방법 안내 문구 키 (`port_check.hint.<hint>`). 보통 `verdict`와 같고, 방화벽은 OS마다 고치는 곳이 달라 맥은 `firewall_macos`
+    pub hint: &'static str,
     pub ports: Vec<PortResult>,
+}
+
+fn hint(verdict: &'static str, os: &str) -> &'static str {
+    match (verdict, os) {
+        ("firewall", "macos") => "firewall_macos",
+        _ => verdict,
+    }
 }
 
 fn verdict(nat: Nat, ports: &[PortResult]) -> &'static str {
@@ -597,6 +606,7 @@ async fn run_with(
                 nat,
                 running: t.running,
                 verdict: verdict(nat, &ports),
+                hint: hint(verdict(nat, &ports), std::env::consts::OS),
                 ports,
             }
         })
@@ -678,6 +688,7 @@ pub async fn check(state: &crate::ipc::IPCServer, ids: &[String]) -> Result<Vec<
         nat: Nat::Unknown,
         running: t.running,
         verdict: "no_ports",
+        hint: "no_ports",
         ports: Vec::new(),
     }));
     remember(&reports);

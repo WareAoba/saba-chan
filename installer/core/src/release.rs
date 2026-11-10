@@ -109,24 +109,39 @@ pub fn installable(
 
 /// 설치 화면의 모듈 목록 (`module-*` 컴포넌트와 그 meta)
 pub fn modules(manifest: &ReleaseManifest) -> Vec<crate::ModuleInfo> {
+    modules_for(manifest, std::env::consts::OS, std::env::consts::ARCH)
+}
+
+/// `os`·`arch`(`std::env::consts` 이름)에서 본 모듈 목록. 돌지 않는 모듈은 `unsupported_reason`에 이유를 단다
+fn modules_for(manifest: &ReleaseManifest, os: &str, arch: &str) -> Vec<crate::ModuleInfo> {
+    use saba_chan_updater_lib::module_support;
     manifest
         .addons(relay::MODULE_PREFIX)
         .into_iter()
         .map(|(name, comp)| {
-            let meta = comp.meta.as_ref();
-            let text = |key: &str| meta.and_then(|m| m.get(key)).and_then(|v| v.as_str()).map(str::to_string);
+            let empty = serde_json::Value::Null;
+            let meta = comp.meta.as_ref().unwrap_or(&empty);
+            let text = |key: &str| meta.get(key).and_then(|v| v.as_str()).map(str::to_string);
+            let mut ignored = Vec::new();
             crate::ModuleInfo {
                 id: name.to_string(),
                 name: text("display_name").or_else(|| text("game_name")).unwrap_or_else(|| name.to_string()),
                 description: text("description").unwrap_or_default(),
                 icon: text("icon").unwrap_or_default(),
-                required_extensions: meta
-                    .and_then(|m| m.get("requires_extensions"))
-                    .and_then(|v| serde_json::from_value(v.clone()).ok())
-                    .unwrap_or_default(),
+                required_extensions: meta_value(meta, "requires_extensions"),
+                display_names: meta_value(meta, "display_names"),
+                descriptions: meta_value(meta, "descriptions"),
+                platforms: module_support::read_platforms(meta, &mut ignored).unwrap_or_default(),
+                architectures: module_support::read_architectures(meta, &mut ignored).unwrap_or_default(),
+                unsupported_reason: module_support::catalog_unsupported_on(meta, os, arch).map(str::to_string),
             }
         })
         .collect()
+}
+
+/// meta의 한 값을 읽는다. 없거나 모양이 다르면 빈 값
+fn meta_value<T: serde::de::DeserializeOwned + Default>(meta: &serde_json::Value, key: &str) -> T {
+    meta.get(key).and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default()
 }
 
 /// 받은 zip을 두는 임시 폴더. 설치기 창과 CLI가 함께 돌아도 서로의 파일을 지우지 않게 프로세스마다 따로 쓴다
@@ -298,6 +313,37 @@ mod tests {
         let root = Path::new("/opt/saba");
         assert_eq!(target_dir(root, &component("1", Some("."))), root);
         assert_eq!(target_dir(root, &component("1", Some("locales"))), root.join("locales"));
+    }
+
+    /// 받기 전 목록에도 앱 언어의 이름·설명과, 이 OS·CPU에서 돌지 않는 이유를 싣는다 (데몬 카탈로그와 같은 판정)
+    #[test]
+    fn modules_carry_translations_and_whether_they_run_here() {
+        let with_meta = |meta: serde_json::Value| ManifestComponent { meta: Some(meta), ..component("0.1.12", None) };
+        let mut components = HashMap::new();
+        components.insert(
+            "module-minecraft".to_string(),
+            with_meta(serde_json::json!({"display_name": "Minecraft", "display_names": {"ko": "마인크래프트"}, "descriptions": {"ko": "마크"}})),
+        );
+        components.insert("module-palworld".to_string(), with_meta(serde_json::json!({"architectures": ["x86_64"]})));
+        components.insert("module-terraria".to_string(), with_meta(serde_json::json!({"platforms": ["windows", "linux"]})));
+        let manifest = ReleaseManifest {
+            version: "0.2.0".into(),
+            channel: "stable".into(),
+            platform: "macos-arm64".into(),
+            released_at: None,
+            is_critical: false,
+            components,
+            platforms: Default::default(),
+        };
+        let mods = modules_for(&manifest, "macos", "aarch64");
+        let by_id = |id: &str| mods.iter().find(|m| m.id == id).unwrap();
+        assert_eq!(by_id("minecraft").display_names["ko"], "마인크래프트");
+        assert_eq!(by_id("minecraft").descriptions["ko"], "마크");
+        assert_eq!(by_id("minecraft").unsupported_reason, None);
+        assert_eq!(by_id("palworld").unsupported_reason.as_deref(), Some("arch"));
+        assert_eq!(by_id("palworld").architectures, ["x86_64"]);
+        assert_eq!(by_id("terraria").unsupported_reason.as_deref(), Some("os"));
+        assert_eq!(by_id("terraria").platforms, ["windows", "linux"]);
     }
 
     /// 풀다가 실패하면(깨진 zip, 디스크 부족) 이미 설치돼 있던 모듈·익스텐션을 그대로 둔다

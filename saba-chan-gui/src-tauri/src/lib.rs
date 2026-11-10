@@ -82,10 +82,59 @@ fn install_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// 맥 앱 묶음을 켤 때 설치기에 넘길 일: (인자, GUI가 여기서 끝나는가). 준비가 끝난 자리면 None
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn first_run_handoff(launch: saba_chan_updater_lib::app_bundle::Launch, tray: bool) -> Option<(&'static [&'static str], bool)> {
+    use saba_chan_updater_lib::app_bundle::Launch;
+    // 데몬이 띄운 상주 트레이(`--tray`)는 넘기지 않는다: 끝나면 데몬이 다시 띄워 준비 창이 거듭 뜬다
+    if tray {
+        return None;
+    }
+    match launch {
+        Launch::Ready => None,
+        // 옮긴 앱·예전 판: 창 없이 명령어 링크만 고치고 앱은 그대로 연다
+        Launch::Relink => Some((&["--setup", "--quiet"], false)),
+        // 처음 켬·디스크 이미지에서 엶: 준비(또는 옮기라는) 창이 앱 대신 뜬다. 준비 창이 끝나면 앱을 다시 연다
+        Launch::Setup | Launch::MoveFirst => Some((&["--setup"], true)),
+    }
+}
+
+/// 맥 앱 묶음을 처음 켰으면 설치기를 띄운다. GUI가 여기서 끝나야 하면 true (설치기를 띄우지 못하면 앱을 그대로 연다)
+#[cfg(target_os = "macos")]
+fn hand_over_first_run(install_root: &std::path::Path) -> bool {
+    use saba_chan_updater_lib::{app_bundle, uninstall_entry};
+    if app_bundle::bundle_of(install_root).is_none() {
+        return false;
+    }
+    let launch = app_bundle::launch_for(install_root, &uninstall_entry::installs_file(), &constants::resolve_modules_dir());
+    let Some((args, exits)) = first_run_handoff(launch, lifecycle::tray_arg(std::env::args())) else { return false };
+    tracing::info!("[Setup] {:?}: launching the installer with {:?}", launch, args);
+    use std::os::unix::process::CommandExt;
+    let spawned = std::process::Command::new(install_root.join("saba-chan-installer"))
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .process_group(0)
+        .spawn();
+    match spawned {
+        Ok(_) => exits,
+        Err(e) => {
+            tracing::warn!("[Setup] Failed to launch the installer: {}", e);
+            false
+        }
+    }
+}
+
 pub fn run() {
     let data_dir = constants::resolve_data_dir();
     logging::init(&data_dir);
     let install_root = install_root();
+    // 맥 앱 묶음을 처음 켰으면 앱 대신 준비 창을 띄운다 (준비를 마치면 설치기가 앱을 다시 연다)
+    #[cfg(target_os = "macos")]
+    if hand_over_first_run(&install_root) {
+        return;
+    }
     tracing::info!(
         "Saba-chan starting... version {} ({})",
         env!("CARGO_PKG_VERSION"),
@@ -197,4 +246,21 @@ pub fn run() {
         RunEvent::Exit => lifecycle::on_exit(app),
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use saba_chan_updater_lib::app_bundle::Launch;
+
+    /// 처음 켤 때만 앱 대신 준비 창이 뜬다. 링크만 고칠 때는 앱이 그대로 열린다
+    #[test]
+    fn only_a_first_run_hands_the_app_over_to_the_setup_window() {
+        assert_eq!(first_run_handoff(Launch::Ready, false), None);
+        assert_eq!(first_run_handoff(Launch::Relink, false), Some((&["--setup", "--quiet"][..], false)));
+        assert_eq!(first_run_handoff(Launch::Setup, false), Some((&["--setup"][..], true)));
+        assert_eq!(first_run_handoff(Launch::MoveFirst, false), Some((&["--setup"][..], true)));
+        // 데몬이 띄운 트레이는 끝나면 다시 뜨므로 준비 창을 띄우지 않는다
+        assert_eq!(first_run_handoff(Launch::Setup, true), None);
+    }
 }

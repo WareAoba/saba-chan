@@ -9,7 +9,9 @@ import { ModuleMakerCard } from '../ModuleMakerCard';
 import { useContextMenu } from '../ui/ContextMenu';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { QuestionModal } from './Modals';
-import { localizedDescription } from '../../utils/localizedText';
+import { localizedDescription, localizedName } from '../../utils/localizedText';
+import { type CatalogModule, unsupportedText } from '../../utils/moduleSupport';
+import { formatBytes } from '../../utils/schedule';
 import { clearModuleAuditCache, ExtensionAuditNotice } from '../servers/ModuleAuditNotice';
 import { SabaEmpty, SabaFail } from '../ui/SabaArt';
 import { TrustBadge } from '../ui/TrustBadge';
@@ -781,16 +783,15 @@ function ModuleCardIcon({ icon }: { icon?: string | null }) {
 // 모듈 탭
 // ─────────────────────────────────────────────────────────────
 function ModulesTab() {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
     const openMenu = useContextMenu();
     const { refreshExtensions } = useExtensions();
     const [installedModules, setInstalledModules] = useState<ModuleInfo[] | null>(null); // null = 받는 중
-    const [manifestModules, setManifestModules] = useState<ApiBody[] | null>(null); // null = 미로드, [] = 로드됨
+    const [manifestModules, setManifestModules] = useState<CatalogModule[] | null>(null); // null = 미로드, [] = 로드됨
     const [manifestLoading, setManifestLoading] = useState(false);
     const [manifestError, setManifestError] = useState<string | null>(null);
     const { installingIds, run: runInstall } = useInstallingIds();
     const [installResults, setInstallResults] = useState<Record<string, string | null>>({}); // { id: 'ok'|'error' }
-    const [showManifest, setShowManifest] = useState(false);
     const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
     const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
     const [refreshingModules, setRefreshingModules] = useState(false);
@@ -826,18 +827,16 @@ function ModulesTab() {
         loadInstalledModules();
     }, [loadInstalledModules]);
 
-    // 공식 모듈 목록 받기. 받지 못하면 빈 목록과 오류를 보인다
+    // 받을 수 있는 목록은 탭을 열면 바로 받는다 (예전처럼 ▾ 뒤에 접어 두면 지나치기 쉽다)
     const loadManifest = useCallback(async () => {
+        setManifestModules(null);
         setManifestLoading(true);
         setManifestError(null);
         try {
             const res = await window.api?.moduleManifest?.();
             if (res?.ok && res.manifest?.modules) {
-                // manifest.modules: { id: { version, display_name, description, ... } }
-                const mods = Object.entries(res.manifest.modules as Record<string, ApiBody>).map(([id, info]) => ({
-                    id,
-                    ...info,
-                }));
+                // manifest.modules: { id: { version, display_name, display_names?, descriptions?, platform_supported, ... } }
+                const mods = Object.entries(res.manifest.modules as Record<string, Omit<CatalogModule, 'id'>>).map(([id, info]) => ({ ...info, id }));
                 setManifestModules(mods);
             } else {
                 setManifestError(
@@ -852,15 +851,8 @@ function ModulesTab() {
         setManifestLoading(false);
     }, [t]);
 
-    const handleShowManifest = useCallback(async () => {
-        setShowManifest(true);
-        if (manifestModules !== null) return;
-        await loadManifest();
-    }, [manifestModules, loadManifest]);
-
-    const handleRefreshManifest = useCallback(async () => {
-        setManifestModules(null);
-        await loadManifest();
+    useEffect(() => {
+        loadManifest();
     }, [loadManifest]);
 
     const handleInstallModule = useCallback(async (moduleId: string) => runInstall(moduleId, async () => {
@@ -932,6 +924,8 @@ function ModulesTab() {
 
     // 매니페스트에서 미설치 모듈
     const uninstalledModules = manifestModules ? manifestModules.filter((m) => !installedIds.has(m.id)) : [];
+    const runnableModules = uninstalledModules.filter((m) => m.platform_supported !== false);
+    const unrunnableModules = uninstalledModules.filter((m) => m.platform_supported === false);
 
     return (
         <div className="saba-storage-tab-content">
@@ -951,7 +945,8 @@ function ModulesTab() {
                 </button>
             </div>
             {installedModules === null ? null : installedModules.length === 0 ? (
-                <SabaEmpty compact body={t('saba_storage.no_installed_modules', '설치된 모듈이 없습니다.')} />
+                // 받을 수 있는 목록이 바로 아래 보이므로 그림 대신 한 줄로 둔다
+                <p className="ss-empty ss-installed-empty">{t('saba_storage.no_installed_modules', '설치된 모듈이 없습니다.')}</p>
             ) : (
                 <div className="ss-cards">
                     {sortedModules.map((m, idx) => {
@@ -1000,90 +995,94 @@ function ModulesTab() {
                 </div>
             )}
 
-            {/* 스토어 헤더 */}
+            {/* 받을 수 있는 모듈: 이 데몬에서 도는 것은 카드로, 돌지 않는 것은 접힌 묶음에 이유와 함께 */}
             <div className="ss-store-header">
                 <div className="ss-section-label" style={{ margin: 0 }}>
-                    {t('saba_storage.available_modules', '사용 가능한 모듈')}
+                    {t('saba_storage.available_modules', '받을 수 있는 게임')}
                 </div>
-                {showManifest ? (
-                    <button
-                        className="ss-icon-btn"
-                        disabled={manifestLoading}
-                        onClick={handleRefreshManifest}
-                        data-tooltip={t('saba_storage.refresh_manifest', '매니페스트 새로고침')}
-                        aria-label={t('saba_storage.refresh_manifest', '매니페스트 새로고침')}
-                    >
-                        <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
-                    </button>
-                ) : (
-                    <button
-                        className="ss-icon-btn"
-                        onClick={handleShowManifest}
-                        data-tooltip={t('saba_storage.show_more_modules', '더 많은 모듈 표시')}
-                        aria-label={t('saba_storage.show_more_modules', '더 많은 모듈 표시')}
-                    >
-                        <Icon name="chevronDown" size="sm" />
-                    </button>
-                )}
+                <button
+                    className="ss-icon-btn"
+                    disabled={manifestLoading}
+                    onClick={loadManifest}
+                    data-tooltip={t('saba_storage.refresh_manifest', '목록 새로고침')}
+                    aria-label={t('saba_storage.refresh_manifest', '목록 새로고침')}
+                >
+                    <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
+                </button>
             </div>
-
-            {showManifest && (
-                <>
-                    {manifestLoading && (
-                        <p className="ss-empty">{t('saba_storage.loading_manifest', '매니페스트 로드 중...')}</p>
-                    )}
-                    {manifestError && <SabaFail message={manifestError} />}
-                    {!manifestLoading &&
-                        manifestModules !== null &&
-                        uninstalledModules.length === 0 &&
-                        !manifestError && (
-                            <p className="ss-empty">
-                                {t('saba_storage.all_modules_installed', '사용 가능한 모든 모듈이 설치되어 있습니다.')}
-                            </p>
-                        )}
-                    <div className="ss-cards">
-                        {uninstalledModules.map((m) => {
-                            const isInstalling = installingIds.has(m.id);
-                            const result = installResults[m.id];
-                            return (
-                                <div className="ss-card" key={m.id}>
-                                    <div className="ss-card-body">
-                                        <span className="ss-card-name">
-                                            {m.display_name || m.id}
-                                            {m.version && <span className="ss-card-version">v{m.version}</span>}
+            {manifestLoading && <p className="ss-empty">{t('saba_storage.loading_manifest', '목록 받는 중…')}</p>}
+            {manifestError && <SabaFail message={manifestError} />}
+            {!manifestLoading && manifestModules !== null && uninstalledModules.length === 0 && !manifestError && (
+                <p className="ss-empty">
+                    {t('saba_storage.all_modules_installed', '사용 가능한 모든 모듈이 설치되어 있습니다.')}
+                </p>
+            )}
+            {runnableModules.length > 0 && (
+                <div className="ss-catalog">
+                    {runnableModules.map((m) => {
+                        const isInstalling = installingIds.has(m.id);
+                        const result = installResults[m.id];
+                        const name = localizedName(m, i18n.language) || m.id;
+                        return (
+                            <div className="ss-catalog-card" key={m.id}>
+                                <div className="ss-catalog-top">
+                                    <ModuleCardIcon icon={m.icon} />
+                                    <div className="ss-catalog-title">
+                                        <span className="ss-card-name">{name}</span>
+                                        <span className="ss-card-version">
+                                            {[m.version && `v${m.version}`, typeof m.size_bytes === 'number' && formatBytes(m.size_bytes)].filter(Boolean).join(' · ')}
                                         </span>
-                                        {m.description && <span className="ss-card-desc">{m.description}</span>}
-                                    </div>
-                                    <div className="ss-card-actions">
-                                        {result === 'ok' ? (
-                                            <span className="ss-status-ok">
-                                                <Icon name="checkCircle" size="sm" />
-                                            </span>
-                                        ) : result === 'error' ? (
-                                            <span className="ss-status-err">
-                                                <Icon name="xCircle" size="sm" />
-                                            </span>
-                                        ) : (
-                                            <button
-                                                className="ss-icon-btn accent"
-                                                disabled={isInstalling}
-                                                onClick={() => handleInstallModule(m.id)}
-                                                data-tooltip={t('saba_storage.install_btn', '설치')}
-                                                aria-label={t('saba_storage.install_btn', '설치')}
-                                            >
-                                                {isInstalling ? (
-                                                    <SabaSpinner size="xs" />
-                                                ) : (
-                                                    <Icon name="download" size="sm" />
-                                                )}
-                                            </button>
-                                        )}
                                     </div>
                                 </div>
-                            );
+                                <p className="ss-catalog-desc">{localizedDescription(m, i18n.language)}</p>
+                                <div className="ss-catalog-foot">
+                                    {result === 'ok' ? (
+                                        <span className="ss-status-ok">
+                                            <Icon name="checkCircle" size="sm" />
+                                        </span>
+                                    ) : result === 'error' ? (
+                                        <span className="ss-status-err">
+                                            <Icon name="xCircle" size="sm" />
+                                        </span>
+                                    ) : (
+                                        <button
+                                            className="btn btn-primary btn-sm ss-install-btn"
+                                            type="button"
+                                            disabled={isInstalling}
+                                            onClick={() => handleInstallModule(m.id)}
+                                        >
+                                            {isInstalling ? <SabaSpinner size="xs" /> : null}
+                                            {t('saba_storage.install_btn', '설치')}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+            {unrunnableModules.length > 0 && (
+                <details className="ss-unsupported">
+                    <summary>
+                        {t('saba_storage.unsupported_here', {
+                            count: unrunnableModules.length,
+                            defaultValue: '이 기기에서는 실행할 수 없어요 · {{count}}',
                         })}
-                    </div>
-                </>
+                    </summary>
+                    {unrunnableModules.map((m) => {
+                        const why = unsupportedText(t, m);
+                        return (
+                            <div className="ss-unsupported-row" key={m.id}>
+                                <ModuleCardIcon icon={m.icon} />
+                                <div className="ss-card-body">
+                                    <span className="ss-card-name">{localizedName(m, i18n.language) || m.id}</span>
+                                    <span className="ss-card-desc">{why?.detail}</span>
+                                </div>
+                                <span className="ss-unsupported-chip">{why?.label}</span>
+                            </div>
+                        );
+                    })}
+                </details>
             )}
 
             <ModuleMakerCard />
