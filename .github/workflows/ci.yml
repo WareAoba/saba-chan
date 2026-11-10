@@ -387,7 +387,8 @@ jobs:
           "$cli" config autostart off
           test ! -e "$agent"
           "$cli" config autostart daemon
-          "$cli" update config relay_url=http://127.0.0.1:9877
+          # 받기·적용은 CLI로 직접 한다: 묻지 않는 자동 적용(기본값)을 끄지 않으면 확인 직후 데몬이 먼저 적용한다
+          "$cli" update config relay_url=http://127.0.0.1:9877 auto_apply=false auto_download=false
           "$cli" update check
           "$cli" update download
           "$cli" --yes update apply
