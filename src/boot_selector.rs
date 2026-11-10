@@ -616,6 +616,51 @@ pub fn find_tagged_process(tag: &str, name: &str) -> Option<u32> {
     })
 }
 
+/// 맥: 터미널 앱이 열 `.command` 스크립트. 자기 pid를 `pid_file`에 적고 같은 프로세스로 CLI가 된다(`exec`),
+/// 그래서 적힌 pid가 CLI다. 경로·인자는 작은따옴표로 감싸 셸이 풀지 않게 한다
+#[cfg(any(target_os = "macos", test))]
+pub fn terminal_script(cli: &std::path::Path, args: &[String], pid_file: &std::path::Path) -> String {
+    let quote = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
+    let dir = cli.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_else(|| ".".into());
+    let mut line = quote(&cli.to_string_lossy());
+    for a in args {
+        line.push(' ');
+        line.push_str(&quote(a));
+    }
+    format!(
+        "#!/bin/sh\ncd {} || exit 1\necho $$ > {}\nexec {}\n",
+        quote(&dir),
+        quote(&pid_file.to_string_lossy()),
+        line
+    )
+}
+
+/// 맥: CLI를 터미널 앱의 새 창에 띄운다 ("CLI로 전환"). 스크립트를 `script`에 쓰고 `open -a Terminal`로 연다.
+/// CLI pid는 스크립트가 `pid_file`에 적는다 ([`terminal_script`])
+#[cfg(target_os = "macos")]
+pub fn spawn_cli_in_terminal_app(
+    cli: &std::path::Path,
+    args: &[String],
+    script: &std::path::Path,
+    pid_file: &std::path::Path,
+) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::write(script, terminal_script(cli, args, pid_file))?;
+    std::fs::set_permissions(script, std::fs::Permissions::from_mode(0o700))?;
+    let status = std::process::Command::new("open")
+        .args(["-a", "Terminal"])
+        .arg(script)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!("open -a Terminal exited with {status}")))
+    }
+}
+
 /// Windows: 데몬 콘솔 창 숨기기 (GUI 모드에서 사용)
 #[cfg(windows)]
 pub fn hide_console_window() {
@@ -772,5 +817,30 @@ mod tests {
             .ok()
             .unwrap_or_default();
         assert_eq!(config.last_mode, BootMode::Gui);
+    }
+
+    /// 맥 터미널 스크립트는 CLI 자신의 pid를 남기고, 따옴표가 든 경로·인자도 그대로 넘긴다 (sh로 직접 돌려 본다)
+    #[cfg(unix)]
+    #[test]
+    fn the_terminal_script_records_the_cli_pid_and_keeps_arguments_intact() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("it's here");
+        std::fs::create_dir_all(&dir).unwrap();
+        let out = tmp.path().join("args.txt");
+        let cli = dir.join("saba-chan-cli");
+        std::fs::write(&cli, format!("#!/bin/sh\necho $$ > '{0}.pid'\nfor a in \"$@\"; do echo \"$a\"; done > '{0}'\n", out.display())).unwrap();
+        std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let pid_file = tmp.path().join("cli.pid");
+        let script = tmp.path().join("open.command");
+        std::fs::write(&script, terminal_script(&cli, &["tui".into(), "--server=a b'c".into()], &pid_file)).unwrap();
+
+        assert!(std::process::Command::new("sh").arg(&script).status().unwrap().success());
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "tui\n--server=a b'c\n");
+        assert_eq!(
+            std::fs::read_to_string(&pid_file).unwrap().trim(),
+            std::fs::read_to_string(tmp.path().join("args.txt.pid")).unwrap().trim(),
+            "exec keeps the pid, so the recorded pid is the CLI"
+        );
     }
 }

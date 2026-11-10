@@ -220,7 +220,7 @@
     "server_name": "Nome do Servidor",
     "server_name_placeholder": "ex: meu-servidor-1",
     "provision_hint": "O módulo será incorporado na instância e os binários do servidor serão baixados automaticamente.",
-    "no_modules": "Nenhum módulo encontrado. Obtenha módulos de jogo no armazenamento do Saba, em <link/>.",
+    "no_modules": "Nenhum módulo encontrado. Obtenha módulos de jogo em <link/>.",
     "add_server": "Adicionar Servidor",
     "provisioning": "Instalando…",
     "step_compose": "Criar configuração",
@@ -281,7 +281,7 @@
     "new_server_desc": "Selecione um módulo de jogo e crie uma nova instância desde o início.",
     "migrate_title": "Migrar servidor existente",
     "migrate_desc": "Importe um diretório de servidor de jogo existente em uma instância saba-chan.",
-    "no_modules_hint": "Adicione um módulo primeiro. Você pode obtê-lo no armazenamento do Saba, em <link/>."
+    "no_modules_hint": "Adicione um módulo primeiro. Você pode obtê-lo em <link/>."
   },
   "migration_modal": {
     "title": "Migração de servidor",
@@ -706,8 +706,8 @@
     "installed_modules": "Módulos instalados",
     "no_installed_modules": "Nenhum módulo instalado.",
     "refresh_modules": "Atualizar módulos",
-    "available_modules": "Módulos disponíveis",
-    "show_more_modules": "Mostrar mais módulos",
+    "available_modules": "Jogos disponíveis",
+    "unsupported_here": "Não é possível executar neste dispositivo · {{count}}",
     "show_more_extensions": "Mostrar mais extensões",
     "refresh_manifest": "Atualizar registro",
     "loading_manifest": "Carregando registro...",
@@ -779,6 +779,7 @@
     "nav_discord": "Discord",
     "nav_activity": "Atividade",
     "nav_settings": "Configurações",
+    "nav_more": "Mais",
     "daemon_running": "Daemon em execução",
     "daemon_stopped": "Daemon parado",
     "daemon_checking": "Verificando daemon",
@@ -787,7 +788,7 @@
     "search_placeholder": "Buscar servidor",
     "no_match": "Nenhum servidor encontrado",
     "empty_title": "Ainda não há servidores",
-    "empty_no_modules": "Nenhum módulo de jogo instalado. Obtenha-os no armazenamento do Saba, em <link/>.",
+    "empty_no_modules": "Nenhum módulo de jogo instalado. Obtenha-os em <link/>.",
     "empty_body": "Escolha um jogo e o Saba-chan configura o servidor para você.",
     "start": "Iniciar",
     "stop": "Parar",
@@ -1415,7 +1416,8 @@
     "backups_desc": "Compacta o mundo e os arquivos de salvamento. Backups feitos por você nunca são apagados automaticamente.",
     "backups_empty": "Ainda não há backups.",
     "backup_now": "Fazer backup agora",
-    "backup_size_stored": "{{size}} · {{stored}} novos",
+    "backup_total": "Backups no total {{size}} · {{count}}",
+    "backup_pre_restore_hint": "Estado logo antes da restauração · apagado automaticamente 15 minutos após o servidor iniciar",
     "backup_created": "Backup criado.",
     "backup_nothing": "Ainda não há arquivos para fazer backup.",
     "restore": "Restaurar",
@@ -1426,6 +1428,7 @@
     "restored_links_missed": "Restaurado, mas {{count}} link(s) dentro da pasta não puderam ser recriados (por exemplo, permissões do Windows). Os caminhos estão no log do daemon.",
     "err_restore_outside": "Este backup foi feito para outra pasta do servidor, então não pode ser restaurado na atual. Se você moveu a pasta do servidor, devolva-a ao lugar original e tente de novo.",
     "err_backup_busy": "Outra tarefa está em andamento para este servidor (backup, restauração, atualização…). Tente de novo quando terminar.",
+    "err_backups_unreadable": "Não foi possível ler a pasta de backups. Verifique as permissões da pasta e o disco e tente de novo.",
     "err_schedule_changed": "A programação foi alterada em outro lugar, então não foi salva. Recarregue e faça suas alterações de novo.",
     "delete": "Excluir",
     "delete_confirm": "Clique para excluir",
@@ -2119,6 +2122,7 @@
     "no_problems": "Nenhum aviso ou erro recente."
   },
   "extension_config": {
+    "none": "Esta extensão não tem configurações.",
     "toggle": "Configurações",
     "save": "Salvar",
     "saved": "Salvo",
@@ -2416,6 +2420,7 @@
     "hint": {
       "closed": "Confira se o roteador redireciona esta porta para este PC e se o firewall do PC a permite.",
       "firewall": "O Firewall do Windows está bloqueando conexões de entrada nesta porta. Para a rede em que você está conectado agora (privada ou pública), permita o saba-core se o servidor estiver parado, ou o programa do servidor do jogo se estiver rodando, nas configurações do Firewall do Windows e verifique novamente.",
+      "firewall_macos": "O firewall do macOS está bloqueando conexões de entrada para o programa deste servidor. Em Ajustes do Sistema › Rede › Firewall › Opções, defina saba-core (se o servidor estiver parado) ou o programa do servidor de jogo, como java (se estiver rodando), como Permitir conexões de entrada e verifique de novo.",
       "router": "O firewall do PC permite esta porta. Redirecione esta porta para este PC nas configurações do roteador e verifique novamente.",
       "cgnat": "Sua operadora divide um IP público entre várias casas, então o redirecionamento de portas não consegue abri-lo. Peça um IP público à operadora ou use uma VPN como o Tailscale.",
       "unknown": "Não é possível verificar portas UDP de um servidor ligado nem portas usadas por outro programa. Pare o servidor e verifique de novo."

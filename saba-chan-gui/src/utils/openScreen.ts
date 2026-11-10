@@ -37,7 +37,8 @@ export function openScreen(address: string) {
             );
             return;
         case 'settings':
-            ui.openSettings(screen.tab ?? null);
+            // 사바 스토리지의 안 탭은 설정 창이 그 탭 이름으로 받는다 (SettingsModal initialView)
+            ui.openSettings(screen.tab === 'sabaStorage' && screen.sub ? screen.sub : (screen.tab ?? null));
             return;
         case 'activity':
             ui.setActiveTab('activity');

@@ -18,9 +18,11 @@ import {
     type ThemeConfig,
     type ThemeMode,
 } from '../../utils/themeManager';
+import { useSlotPages } from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
 import { useDaemonTarget } from '../shell/DaemonSwitcher';
+import { ExtensionSettingsPanel } from './ExtensionSettingsPanel';
 import SabaStorage from './SabaStorage';
 import { type SettingsTab, SETTINGS_TAB_LABELS as TAB_LABELS, SETTINGS_TABS as TABS } from './settingsTabs';
 import { AboutTab } from './settings/AboutTab';
@@ -71,7 +73,12 @@ function SettingsModal({
 }: SettingsModalProps) {
     const { t, i18n } = useTranslation(['gui', 'common']);
     const daemonTarget = useDaemonTarget();
-    const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+    const [chosenTab, setActiveTab] = useState<SettingsTab | `ext:${string}`>('general');
+    // 익스텐션 설정 탭 (`Settings.tab` slot): "정보" 바로 위. 그 익스텐션이 꺼지면 일반 탭으로
+    const extTabs = useSlotPages('Settings.tab');
+    const tabOrder: string[] = [...TABS.filter((id) => id !== 'about'), ...extTabs.map((p) => p.id), 'about'];
+    const activeTab = tabOrder.includes(chosenTab) ? chosenTab : 'general';
+    const activeExtTab = extTabs.find((p) => p.id === activeTab);
     // 사바 스토리지를 열 때 처음 보일 탭 (설정을 '익스텐션'으로 열면 익스텐션 탭)
     const [storageTab, setStorageTab] = useState('components');
     const [selectedLanguage, setSelectedLanguage] = useState(i18n.language);
@@ -95,11 +102,11 @@ function SettingsModal({
 
     // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입 (설정 탭 이름이면 그 탭: 화면 주소 settings/<탭>)
     useEffect(() => {
-        if (initialView === 'update' || initialView === 'extensions') {
-            setStorageTab(initialView === 'extensions' ? 'extensions' : 'components');
+        if (initialView === 'update' || initialView === 'extensions' || initialView === 'modules') {
+            setStorageTab(initialView === 'update' ? 'components' : initialView);
             setActiveTab('sabaStorage');
-        } else if ((TABS as readonly string[]).includes(initialView ?? '')) {
-            setActiveTab(initialView as SettingsTab);
+        } else if ((TABS as readonly string[]).includes(initialView ?? '') || initialView?.startsWith('ext:')) {
+            setActiveTab(initialView as SettingsTab | `ext:${string}`);
         }
     }, [initialView]);
 
@@ -114,9 +121,9 @@ function SettingsModal({
     }, []);
 
     // 탭 전환 핸들러
-    const handleTabChange = (newTab: SettingsTab) => {
-        const oldIndex = TABS.indexOf(activeTab as SettingsTab);
-        const newIndex = TABS.indexOf(newTab as SettingsTab);
+    const handleTabChange = (newTab: SettingsTab | `ext:${string}`) => {
+        const oldIndex = tabOrder.indexOf(activeTab);
+        const newIndex = tabOrder.indexOf(newTab);
         if (newTab === activeTab) return;
         // 세로 탭: 아래 탭이면 아래에서, 위 탭이면 위에서 들어온다
         setSlideDirection(newIndex > oldIndex ? 'slide-up' : 'slide-down');
@@ -264,25 +271,30 @@ function SettingsModal({
             aria-orientation="vertical"
             aria-label={t('gui:settings_modal.title')}
         >
-            {TABS.map((id) => (
-                <button
-                    key={id}
-                    type="button"
-                    role="tab"
-                    id={`settings-tab-${id}`}
-                    aria-selected={activeTab === id}
-                    aria-controls={`settings-panel-${id}`}
-                    className={clsx('server-row dc-nav-row', { selected: activeTab === id })}
-                    onClick={() => handleTabChange(id)}
-                >
-                    <span className="server-row-icon">
-                        <Icon name={TAB_ICONS[id]} size="sm" />
-                    </span>
-                    <span className="server-row-text">
-                        <span className="server-row-name">{t(TAB_LABELS[id])}</span>
-                    </span>
-                </button>
-            ))}
+            {tabOrder.map((id) => {
+                const ext = extTabs.find((p) => p.id === id);
+                const label = ext ? ext.label : t(TAB_LABELS[id as SettingsTab]);
+                const icon = ext ? ext.icon : TAB_ICONS[id as SettingsTab];
+                return (
+                    <button
+                        key={id}
+                        type="button"
+                        role="tab"
+                        id={`settings-tab-${id}`}
+                        aria-selected={activeTab === id}
+                        aria-controls={`settings-panel-${id}`}
+                        className={clsx('server-row dc-nav-row', { selected: activeTab === id })}
+                        onClick={() => handleTabChange(id as SettingsTab | `ext:${string}`)}
+                    >
+                        <span className="server-row-icon">
+                            <Icon name={icon} size="sm" />
+                        </span>
+                        <span className="server-row-text">
+                            <span className="server-row-name">{label}</span>
+                        </span>
+                    </button>
+                );
+            })}
         </div>
     );
 
@@ -362,6 +374,20 @@ function SettingsModal({
                             onTestWaitingImage={onTestWaitingImage}
                             onTestLoadingScreen={onTestLoadingScreen}
                         />,
+                    )}
+
+                    {activeExtTab && (
+                        <div
+                            className={clsx('settings-tab-content', slideDirection)}
+                            key={activeExtTab.id}
+                            id={`settings-panel-${activeExtTab.id}`}
+                            role="tabpanel"
+                            aria-labelledby={`settings-tab-${activeExtTab.id}`}
+                            onAnimationEnd={() => setSlideDirection('')}
+                        >
+                            <h3>{activeExtTab.label}</h3>
+                            <ExtensionSettingsPanel entry={activeExtTab.entry} />
+                        </div>
                     )}
 
                     {panel(

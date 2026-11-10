@@ -42,10 +42,9 @@ async function installPalworld(response: Record<string, unknown>) {
     vi.mocked(window.api.moduleInstallFromManifest).mockResolvedValue(response);
     render(<SabaStorage />);
     await act(async () => fireEvent.click(document.querySelectorAll('.saba-storage-tab')[1]));
-    const headers = document.querySelectorAll('.saba-storage-pane:not([hidden]) .ss-store-header');
-    await act(async () => fireEvent.click(headers[headers.length - 1].querySelector('.ss-icon-btn')!));
-    await waitFor(() => expect(document.querySelector('.saba-storage-pane:not([hidden]) .ss-icon-btn.accent')).not.toBeNull());
-    await act(async () => fireEvent.click(document.querySelector('.saba-storage-pane:not([hidden]) .ss-icon-btn.accent')!));
+    // 받을 수 있는 목록은 탭을 열면 바로 받는다
+    await waitFor(() => expect(document.querySelector('.saba-storage-pane:not([hidden]) .ss-install-btn')).not.toBeNull());
+    await act(async () => fireEvent.click(document.querySelector('.saba-storage-pane:not([hidden]) .ss-install-btn')!));
 }
 
 describe('모듈 설치 때 켠 익스텐션', () => {

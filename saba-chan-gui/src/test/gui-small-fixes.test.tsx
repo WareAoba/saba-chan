@@ -7,7 +7,8 @@ import { type AddServerPayload, useServerActions } from '../hooks/useServerActio
 import type { HighlightRule, ModuleInfo } from '../types/daemon';
 import { getCachedRules, highlightLine } from '../utils/syntaxHighlight';
 
-let slots = {};
+let slots: Record<string, { ext: string; Component: unknown; meta: object }[]> = {};
+const entries = (...cs: unknown[]) => cs.map((Component) => ({ ext: 'x', Component, meta: {} }));
 vi.mock('../contexts/ExtensionContext', () => ({ useExtensions: () => ({ slots }) }));
 
 describe('대체 강조(hl 그룹) 위치', () => {
@@ -33,9 +34,9 @@ describe('확장 슬롯', () => {
             }, []);
             return null;
         };
-        slots = { s: [A, B] };
+        slots = { s: entries(A, B) };
         const { rerender } = render(<ExtensionSlot slotId="s" />);
-        slots = { s: [B] };
+        slots = { s: entries(B) };
         rerender(<ExtensionSlot slotId="s" />);
         expect(mounts).toEqual(['B']);
     });
@@ -49,9 +50,9 @@ describe('확장 슬롯', () => {
             }, []);
             return null;
         });
-        slots = { s: [A, B] };
+        slots = { s: entries(A, B) };
         const { rerender } = render(<ExtensionSlot slotId="s" />);
-        slots = { s: [B] };
+        slots = { s: entries(B) };
         rerender(<ExtensionSlot slotId="s" />);
         expect(mounts).toEqual(['B']);
     });

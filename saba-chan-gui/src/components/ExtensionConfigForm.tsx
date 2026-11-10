@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from './Icon';
 import type { ExtensionFieldDef, ExtensionListItem, Json } from '../types/daemon';
@@ -19,25 +19,22 @@ const coerce = (def: ExtensionFieldDef, raw: Json | undefined) => {
 /**
  * 익스텐션 전역 설정 (manifest `config_fields`, GET/PUT /api/extensions/:id/config, Q-2).
  * 값은 데몬이 config.json에 저장한다. 이름은 익스텐션 locales의 config.<키>가 있으면 그것을 쓴다.
+ * inline: 접는 버튼 없이 처음부터 펼친다 (설정 창의 익스텐션 탭)
  */
-export function ExtensionConfigForm({ ext }: { ext: ExtensionListItem }) {
+export function ExtensionConfigForm({ ext, inline = false }: { ext: ExtensionListItem; inline?: boolean }) {
     const { t } = useTranslation('gui');
     const fields = Object.entries(ext.config_fields || {});
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(inline);
     const [values, setValues] = useState<Record<string, Json | undefined> | null>(null);
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState<{ tone: string; text: string } | null>(null); // {tone, text}
 
-    if (
-        !fields.length ||
-        typeof window.api?.extensionConfigGet !== 'function' ||
-        typeof window.api?.extensionConfigSet !== 'function'
-    )
-        return null;
+    const usable =
+        fields.length > 0 &&
+        typeof window.api?.extensionConfigGet === 'function' &&
+        typeof window.api?.extensionConfigSet === 'function';
 
-    const toggle = async () => {
-        if (open) return setOpen(false);
-        setOpen(true);
+    const load = async () => {
         setBusy(true);
         setMessage(null);
         try {
@@ -54,6 +51,19 @@ export function ExtensionConfigForm({ ext }: { ext: ExtensionListItem }) {
         } finally {
             setBusy(false);
         }
+    };
+
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 펼친 채로 열 때 한 번 (익스텐션이 바뀌면 다시)
+    useEffect(() => {
+        if (inline && usable) load();
+    }, [inline, usable, ext.id]);
+
+    if (!usable) return null;
+
+    const toggle = async () => {
+        if (open) return setOpen(false);
+        setOpen(true);
+        await load();
     };
 
     const save = async () => {
@@ -75,9 +85,11 @@ export function ExtensionConfigForm({ ext }: { ext: ExtensionListItem }) {
 
     return (
         <div className="extension-config">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={toggle} aria-expanded={open}>
-                <Icon name={open ? 'chevronUp' : 'settings'} size="sm" /> {t('extension_config.toggle')}
-            </button>
+            {!inline && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={toggle} aria-expanded={open}>
+                    <Icon name={open ? 'chevronUp' : 'settings'} size="sm" /> {t('extension_config.toggle')}
+                </button>
+            )}
             {open && values && (
                 <div className="extension-config-form">
                     {fields.map(([key, def]) => {

@@ -219,10 +219,11 @@ SKIP_PARTS = {"__pycache__", ".git", ".pytest_cache", "tests"}
 
 
 def is_dev_file(rel: str) -> bool:
-    """zip에 싣지 않는 개발용 파일: 폴더 바로 아래의 `test_*.py`·`conftest.py`, 캐시·테스트 폴더, .pyc"""
+    """zip에 싣지 않는 개발용 파일: 폴더 바로 아래의 `test_*.py`·`conftest.py`, 캐시·테스트 폴더, .pyc,
+    맨 위 점 항목(.git·.gitignore 등: 교체가 깐 폴더의 것을 새 폴더로 옮겨 주므로 패키지에 있으면 부딪힌다)"""
     parts = rel.split("/")
     name = parts[-1]
-    return bool(SKIP_PARTS & set(parts)) or name.endswith(".pyc") or (
+    return bool(SKIP_PARTS & set(parts)) or parts[0].startswith(".") or name.endswith(".pyc") or (
         len(parts) == 1 and (name == "conftest.py" or (name.startswith("test_") and name.endswith(".py")))
     )
 
@@ -259,6 +260,24 @@ def extension_core_requirement(ext: dict) -> str | None:
     return f">={ext['min_app_version']}" if ext.get("min_app_version") else None
 
 
+def module_translations(folder: Path) -> dict:
+    """모듈 locales의 `module.display_name`·`module.description` → `{display_names, descriptions}` (언어 → 문구).
+    읽지 못하는 파일·문구가 없는 언어는 빠지고, 하나도 없으면 키가 없다"""
+    names, descriptions = {}, {}
+    for path in sorted((folder / "locales").glob("*.json")):
+        try:
+            info = json.loads(path.read_text(encoding="utf-8")).get("module", {})
+        except (OSError, ValueError, AttributeError):
+            continue
+        if not isinstance(info, dict):
+            continue
+        if isinstance(info.get("display_name"), str) and info["display_name"]:
+            names[path.stem] = info["display_name"]
+        if isinstance(info.get("description"), str) and info["description"]:
+            descriptions[path.stem] = info["description"]
+    return {k: v for k, v in (("display_names", names), ("descriptions", descriptions)) if v}
+
+
 def addon_components(args: argparse.Namespace, assets: Path) -> dict:
     """모듈·익스텐션 저장소를 zip으로 묶고 `{키: {version, asset, install_dir, meta, requires?}}`를 돌려준다."""
     found = {}
@@ -279,6 +298,12 @@ def addon_components(args: argparse.Namespace, assets: Path) -> dict:
                 "description": info.get("description", ""),
                 "requires_extensions": mod.get("install", {}).get("requires_extensions", []),
             }
+            # 받기 전 목록이 이 기기에서 도는지 보이도록 지원 OS·CPU를 그대로 싣는다 (데몬이 이름을 다듬어 판정한다)
+            daemon_table = mod.get("extensions", {}).get("saba-core", {})
+            for key in ("platforms", "architectures"):
+                if isinstance(daemon_table.get(key), list):
+                    meta[key] = daemon_table[key]
+            meta.update(module_translations(folder))
             icon = raw_url("WareAoba/saba-chan-modules", args.addons_ref, f"{folder.name}/{info.get('icon', 'icon.png')}")
             if icon and (folder / info.get("icon", "icon.png")).is_file():
                 meta["icon"] = icon

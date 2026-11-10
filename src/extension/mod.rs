@@ -310,8 +310,10 @@ pub struct GuiManifest {
     pub styles: Option<String>,
     #[serde(default)]
     pub builtin: Option<bool>,
+    /// slot id → 표시 정보 `{label?, icon?, description?}` (옛 모양: 컴포넌트 이름 문자열).
+    /// 데몬은 그대로 넘기고, GUI가 자기 slot 표와 대조하고 이 창에 읽을 번들을 고른다 (03 §4.2)
     #[serde(default)]
-    pub slots: HashMap<String, String>, // slot_id → component_name
+    pub slots: HashMap<String, Value>,
 }
 
 /// CLI 매니페스트 — GUI의 GuiManifest에 대응하는 TUI 슬롯 선언
@@ -947,6 +949,11 @@ impl ExtensionManager {
 
     /// 인스턴스의 extension_data에서 이 익스텐션이 선언한 instance_fields를
     /// 하나라도 truthy 값으로 사용하는 인스턴스 이름 목록.
+    /// 주어진 인스턴스 값(`extension_data`)이 쓰는 익스텐션 id: 필수 목록에 없어도 인스턴스 칸(`instance_fields`)에 값이 있으면 쓴다
+    pub fn extensions_in_use(&self, ext_data: &[(&str, &HashMap<String, Value>)]) -> std::collections::HashSet<String> {
+        self.discovered.keys().filter(|id| !self.instances_using_ext(id, ext_data).is_empty()).cloned().collect()
+    }
+
     fn instances_using_ext(
         &self,
         ext_id: &str,
@@ -2240,6 +2247,8 @@ mod tests {
         let zero: HashMap<String, Value> = [("box_enabled".to_string(), json!(0))].into_iter().collect();
         let used: HashMap<String, Value> = [("box_enabled".to_string(), json!(true))].into_iter().collect();
         assert!(mgr.instances_using_ext("box", &[("a", &unused), ("b", &zero)]).is_empty());
+        assert!(mgr.extensions_in_use(&[("a", &unused)]).is_empty());
+        assert_eq!(mgr.extensions_in_use(&[("a", &unused), ("b", &used)]), ["box".to_string()].into_iter().collect());
         let err = mgr.remove("box", &[("stopped", &used)]).unwrap_err();
         assert_eq!(err.downcast_ref::<ExtensionError>().unwrap().error_code, "in_use");
         assert!(tmp.path().join("box").exists());
@@ -3372,6 +3381,22 @@ mod tests {
 
         // i18n_dir
         assert_eq!(manifest.i18n_dir.as_deref(), Some("i18n/"));
+    }
+
+    /// gui.slots: slot id → 표시 정보 객체 (탭 이름·아이콘). 옛 문자열 모양도 받는다. GUI가 slot 표와 대조한다
+    #[test]
+    fn gui_slots_take_display_objects() {
+        let json = r#"{
+          "id": "pet", "name": "Pet", "version": "0.1.0",
+          "gui": { "bundle": "gui/dist/pet.umd.js", "slots": {
+            "App.page": { "label": "page.title", "icon": "globe" },
+            "ServerCard.badge": "Badge"
+          } }
+        }"#;
+        let manifest: ExtensionManifest = serde_json::from_str(json).unwrap();
+        let gui = manifest.gui.unwrap();
+        assert_eq!(gui.slots["App.page"]["label"], "page.title");
+        assert_eq!(gui.slots["ServerCard.badge"], "Badge");
     }
 
     /// music manifest — gui.builtin, dependencies: [], i18n_dir: null

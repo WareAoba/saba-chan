@@ -312,7 +312,12 @@ fn matches_install_record_at(records: &Path, official: &Path, component_key: &st
     let mut expected: BTreeMap<String, String> = BTreeMap::new();
     for (file, hash) in recorded {
         let Some(rel) = path_key(Path::new(file)).and_then(|k| relative_key(&k, &base)) else { return false };
-        expected.insert(rel.to_string_lossy().to_string(), hash.to_ascii_lowercase());
+        let rel = rel.to_string_lossy().to_string();
+        // 지문과 같은 규칙: 맨 위 점 항목과 `__pycache__` 아래는 비교하지 않는다
+        if rel.starts_with('.') || rel.split('/').any(|part| part == "__pycache__") {
+            continue;
+        }
+        expected.insert(rel, hash.to_ascii_lowercase());
     }
     expected.len() == fingerprint.len()
         && fingerprint.iter().all(|(rel, hash)| expected.get(rel).is_some_and(|h| h.eq_ignore_ascii_case(hash)))
@@ -765,6 +770,22 @@ mod tests {
             std::os::unix::fs::symlink(tmp.path(), moved.join("link")).unwrap();
             assert!(dir_fingerprint(&moved).is_err(), "a link is not something we can vouch for");
         }
+    }
+
+    /// 패키지에 맨 위 점 파일(.gitignore)이 있어도 지문과 같은 규칙으로 빼고 비교한다
+    #[test]
+    fn a_packaged_top_level_dot_file_does_not_block_the_swap() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (records, official) = (tmp.path().join("installed-files.json"), tmp.path().join("official.json"));
+        let dir = tmp.path().join("x");
+        std::fs::create_dir_all(&dir).unwrap();
+        let files = [dir.join("lifecycle.py"), dir.join(".gitignore")];
+        for f in &files {
+            std::fs::write(f, b"one").unwrap();
+        }
+        record_install_at(&records, "module-x", &files).unwrap();
+        set_official_at(&official, "module-x", true).unwrap();
+        assert!(matches_install_record_at(&records, &official, "module-x", &dir, &dir_fingerprint(&dir).unwrap()));
     }
 
     #[test]

@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::RwLock;
-use saba_chan_installer_core::{release, uninstall, InstallHooks, InstallOptions, InstallProgress, ModuleInfo, VerifiedRelease};
+use saba_chan_installer_core::{release, uninstall, InstallHooks, InstallOptions, InstallProgress, ModuleInfo, SetupOptions, VerifiedRelease};
 use crate::elevate::elevate_create_dir;
 
 // ═══════════════════════════════════════════════════════
@@ -57,6 +57,10 @@ pub struct AppMode {
     pub silent: bool,
     /// 제거 화면 체크박스의 처음 값 (인자에서)
     pub keep: Option<uninstall::Keep>,
+    /// 맥 앱 묶음을 처음 켤 때 준비 (`--setup`): 설치 위치·구성요소는 고르지 않고 모듈만 고른다
+    pub setup: bool,
+    /// 디스크 이미지·임시 자리에서 열려 준비하지 않고 옮기라고만 알린다
+    pub move_first: bool,
 }
 
 type SharedState = Arc<RwLock<InstallerState>>;
@@ -260,6 +264,29 @@ async fn start_install(
     Ok(())
 }
 
+/// 맥 앱 묶음 준비 (`--setup`): 고른 모듈·익스텐션과 Python, 명령어를 준비한다. 진행은 설치와 같은 이벤트로 알린다
+#[tauri::command]
+async fn start_setup(app: AppHandle, state: State<'_, SharedState>) -> Result<(), String> {
+    let guard = WorkGuard::try_begin().ok_or_else(|| "busy".to_string())?;
+    let config = {
+        let s = state.read().await;
+        SetupOptions {
+            install_path: s.install_path.clone().into(),
+            language: s.language.clone(),
+            selected_modules: s.selected_modules.clone(),
+            release: s.release.clone(),
+            module_metadata: s.module_metadata.clone(),
+        }
+    };
+    let state_clone = state.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        let _guard = guard;
+        let last = saba_chan_installer_core::setup(config, &WindowHooks(app)).await;
+        state_clone.write().await.progress = last;
+    });
+    Ok(())
+}
+
 /// 창 인스톨러의 설치 진행: 화면에 이벤트로 알리고, 쓸 수 없는 폴더는 UAC로 만든다
 struct WindowHooks(AppHandle);
 
@@ -298,12 +325,23 @@ async fn get_app_mode(mode: State<'_, AppMode>) -> Result<serde_json::Value, Str
         "silent": mode.silent,
         "keepSettings": mode.keep.is_none_or(|k| k.settings),
         "keepInstances": mode.keep.is_none_or(|k| k.instances),
+        "setup": mode.setup,
+        "moveFirst": mode.move_first,
     }))
 }
 
 #[tauri::command]
 async fn launch_app(state: State<'_, SharedState>) -> Result<(), String> {
     let install_path = state.read().await.install_path.clone();
+    // 맥 앱 묶음은 묶음째 연다 (Dock·메뉴 막대가 앱으로 잡는다)
+    #[cfg(target_os = "macos")]
+    if let Some(bundle) = saba_chan_updater_lib::app_bundle::bundle_of(Path::new(&install_path)) {
+        std::process::Command::new("open")
+            .arg(&bundle)
+            .spawn()
+            .map_err(|e| format!("Failed to launch Saba-chan: {}", e))?;
+        return Ok(());
+    }
     if let Some(exe) = saba_chan_updater_lib::find_gui_exe(Path::new(&install_path)) {
         std::process::Command::new(&exe)
             .current_dir(&install_path)
@@ -339,16 +377,23 @@ async fn browse_components_folder(app: AppHandle) -> Result<Option<String>, Stri
 }
 
 
-/// 설치 창, `uninstall`이면 제거 창을 띄운다 (`keep`은 제거 화면 체크박스의 처음 값)
-pub(crate) fn run(uninstall: bool, keep: Option<uninstall::Keep>) {
-    let app_mode = AppMode { uninstall, silent: false, keep };
-
+/// 설치 창을 띄운다. 제거(`uninstall`)·준비(`setup`) 창도 같은 화면이다
+pub(crate) fn run(app_mode: AppMode) {
+    let uninstall = app_mode.uninstall;
     let mut initial = InstallerState::default();
+    if app_mode.setup {
+        // 준비는 이 앱 묶음 자리 그대로다 (실행 파일이 이미 있다)
+        initial.install_path = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
+            .unwrap_or_default();
+    }
     if uninstall {
         // 제거 화면에 보이는 경로 = 실제로 지울 폴더 (제거기 자신이 든 설치 폴더)
         initial.install_path = uninstall::target_dir().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
     }
     let installer_state: SharedState = Arc::new(RwLock::new(initial));
+    let setup = app_mode.setup;
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -365,7 +410,7 @@ pub(crate) fn run(uninstall: bool, keep: Option<uninstall::Keep>) {
         })
         .setup(move |app| {
             // 페이지가 창을 보인다 (installer.js `show()`)
-            let title = if uninstall { "Saba-chan — Uninstaller" } else { "Saba-chan Installer" };
+            let title = if uninstall { "Saba-chan — Uninstaller" } else if setup { "Saba-chan" } else { "Saba-chan Installer" };
             crate::main_window(app.handle(), crate::Page::Install, title)?;
             Ok(())
         })
@@ -380,6 +425,7 @@ pub(crate) fn run(uninstall: bool, keep: Option<uninstall::Keep>) {
             fetch_latest_release,
             prepare_install,
             start_install,
+            start_setup,
             start_uninstall,
             get_app_mode,
             crate::get_preferred_language,
@@ -388,7 +434,7 @@ pub(crate) fn run(uninstall: bool, keep: Option<uninstall::Keep>) {
             launch_app,
             crate::backdrop::get_window_backdrop,
         ])
-        .run(tauri::generate_context!())
+        .run(crate::context())
         .expect("error while running tauri application");
 }
 

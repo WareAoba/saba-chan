@@ -560,20 +560,31 @@ pub async fn fetch_module_manifest() -> impl IntoResponse {
             let mut modules = serde_json::Map::new();
             if let Some(manifest) = &catalog {
                 for (name, comp) in manifest.addons(saba_chan_updater_lib::relay::MODULE_PREFIX) {
-                    let mut info = match &comp.meta {
-                        Some(serde_json::Value::Object(meta)) => meta.clone(),
-                        _ => serde_json::Map::new(),
-                    };
-                    info.insert("version".into(), json!(comp.version));
-                    info.insert("sha256".into(), json!(comp.sha256));
-                    info.insert("size_bytes".into(), json!(comp.size_bytes));
-                    modules.insert(name.to_string(), serde_json::Value::Object(info));
+                    modules.insert(name.to_string(), catalog_module_info(comp, std::env::consts::OS, std::env::consts::ARCH));
                 }
             }
             (StatusCode::OK, Json(json!({ "ok": true, "manifest": { "modules": modules } }))).into_response()
         }
         Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
     }
+}
+
+/// 카탈로그 모듈 하나의 목록 정보: meta에 버전·해시·크기와, 이 OS·CPU에서 도는지(`platform_supported`,
+/// 아니면 `unsupported_reason` `os`·`arch`)를 더한다. 설치된 모듈 목록과 같은 이름이다
+fn catalog_module_info(comp: &saba_chan_updater_lib::relay::ManifestComponent, os: &str, arch: &str) -> Value {
+    let mut info = match &comp.meta {
+        Some(Value::Object(meta)) => meta.clone(),
+        _ => serde_json::Map::new(),
+    };
+    let reason = crate::supervisor::module_loader::catalog_unsupported_on(&Value::Object(info.clone()), os, arch);
+    info.insert("version".into(), json!(comp.version));
+    info.insert("sha256".into(), json!(comp.sha256));
+    info.insert("size_bytes".into(), json!(comp.size_bytes));
+    info.insert("platform_supported".into(), json!(reason.is_none()));
+    if let Some(reason) = reason {
+        info.insert("unsupported_reason".into(), json!(reason));
+    }
+    Value::Object(info)
 }
 
 /// POST /api/modules/manifest/:id/install - 최신 릴리즈에서 모듈을 받아 설치한다 (SHA-256 검증)
@@ -1198,6 +1209,8 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
         return instance_not_found(key);
     };
     let id = id.as_str();
+    // 정지가 끝날 때까지 복원 전 백업 정리를 붙잡아 둔다 (정리가 "돌고 있다"고 본 서버를 지우는 동안 멈추지 않게, 반대로 멈추는 중에는 지우지 않게)
+    let _stopping = super::backup::stop_gate(id).await;
     // API 경유 정지 기록 (GUI 외부 정지 감지용)
     state.api_actions.record(&name);
     // 익스텐션 상태 캐시 무효화 — 정지 직후 fresh 상태 반영
@@ -1295,6 +1308,22 @@ mod tests {
     use tokio::sync::RwLock;
 
     /// L46: 데몬이 자기를 띄운 프로그램과 함께 끝나는 job 안에 있는지 /health에 싣는다 (GUI·CLI가 알린다)
+    /// 받기 전 목록도 이 OS·CPU에서 도는지 싣는다 (맥에서 x86_64 전용 모듈을 받은 뒤에야 막히지 않게)
+    #[test]
+    fn catalog_modules_say_whether_they_run_here() {
+        let comp = |meta: Value| -> saba_chan_updater_lib::relay::ManifestComponent {
+            serde_json::from_value(json!({"version": "1.0.0", "asset": "module-g.zip", "sha256": "ab", "url": "https://r2/g.zip", "size_bytes": 7, "meta": meta})).unwrap()
+        };
+        let x86 = catalog_module_info(&comp(json!({"display_name": "G", "architectures": ["x86_64"]})), "macos", "aarch64");
+        assert_eq!((x86["platform_supported"].clone(), x86["unsupported_reason"].clone()), (json!(false), json!("arch")));
+        assert_eq!((x86["display_name"].clone(), x86["version"].clone(), x86["size_bytes"].clone()), (json!("G"), json!("1.0.0"), json!(7)));
+        let win = catalog_module_info(&comp(json!({"platforms": ["windows", "linux"]})), "macos", "aarch64");
+        assert_eq!(win["unsupported_reason"], "os");
+        let any = catalog_module_info(&comp(json!({})), "macos", "aarch64");
+        assert_eq!(any["platform_supported"], true);
+        assert!(any.get("unsupported_reason").is_none());
+    }
+
     #[tokio::test]
     async fn health_says_whether_the_daemon_stops_with_its_launcher() {
         let done = crate::ipc::internal::into_internal(health_check(axum::http::HeaderMap::new()).await.into_response()).await;

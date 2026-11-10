@@ -459,6 +459,10 @@ fn spawn_addon_replace(state: UpdateState) {
 
 /// 바꿀 수 있는 것을 바꾸고, 켜진 서버 때문에 미룬 것이 남았는가를 돌려준다
 async fn replace_addons_once(state: &UpdateState) -> bool {
+    // 미뤄 둔 사이 업데이트 확인을 껐으면 멈춘다
+    if !state.manager.read().await.get_config().enabled {
+        return false;
+    }
     // 이 코어로 돌아가지 않는 판(릴리즈 manifest에만 있는 더 새 판)은 앱을 올릴 때까지 둔다: 적용이 requires 검사로 거절한다
     let core = std::collections::HashMap::from([("saba-core".to_string(), env!("CARGO_PKG_VERSION").to_string())]);
     let pending: Vec<Component> = state.manager.read().await.get_status().components.into_iter()
@@ -544,6 +548,7 @@ fn replaceable_without_asking(key: &str) -> bool {
 async fn busy_addons(state: &UpdateState) -> (std::collections::HashSet<String>, std::collections::HashSet<String>) {
     let mut modules = std::collections::HashSet::new();
     let mut extensions = std::collections::HashSet::new();
+    let mut ext_data = Vec::new();
     if let Some(ref sup) = state.supervisor {
         let sup = sup.read().await;
         let running = sup.running_instances().await;
@@ -551,8 +556,14 @@ async fn busy_addons(state: &UpdateState) -> (std::collections::HashSet<String>,
             if running.contains(&instance.id) {
                 modules.insert(instance.module_name.clone());
                 extensions.extend(sup.effective_required_extensions(instance));
+                ext_data.push((instance.id.clone(), instance.extension_data.clone()));
             }
         }
+    }
+    // 필수 목록에 없어도 켜진 인스턴스가 칸 값으로 쓰는 익스텐션 (손으로 교체할 때의 `in_use` 판정과 같다). 데몬 락을 놓은 뒤에 본다
+    if let Some(ref mgr) = state.extension_manager {
+        let data: Vec<(&str, &std::collections::HashMap<String, Value>)> = ext_data.iter().map(|(id, d)| (id.as_str(), d)).collect();
+        extensions.extend(mgr.read().await.extensions_in_use(&data));
     }
     (modules, extensions)
 }

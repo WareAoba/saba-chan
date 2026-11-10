@@ -477,6 +477,7 @@
     "nothing_to_back_up": "There is no world to back up yet",
     "backup_limit": "The remote backup limit is full. Delete old backups on the PC",
     "backup_busy": "Another backup or restore is in progress",
+    "backups_unreadable": "Couldn't read the backup folder. Check the folder permissions and the disk on the PC",
     "server_running": "The server is on. Stop it first",
     "no_command_path": "The server was started outside Saba-chan, so it cannot take commands",
     "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server",
