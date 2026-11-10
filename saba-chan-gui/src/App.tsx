@@ -41,7 +41,8 @@ import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
-import { openingGate, RELAY_WAIT_MS } from './utils/opening';
+import { motionAllowed } from './hooks/useSwapAnimation';
+import { OPENING_READY_WAIT_MS, openingGate, RELAY_WAIT_MS, whenOpeningReady } from './utils/opening';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
 import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
@@ -660,28 +661,69 @@ function App() {
     const chimeRef = useRef({ chime: false, played: false });
     chimeRef.current.chime = opening.chime;
 
-    // 로딩이 끝나면 로딩 화면을 바로 지우지 않고 메인 화면 위에서 잠깐 사라지게 둔다
+    // 정상 기동음은 첫 오프닝과 함께 한 번 (셸이 낸다, 설정 sounds.startup)
+    const playChime = () => {
+        if (chimeRef.current.chime && !chimeRef.current.played) {
+            chimeRef.current.played = true;
+            window.api?.playSound?.('startup');
+        }
+    };
+
+    // 로딩이 끝나면 로딩 화면을 그대로 덮어 둔 채 메인 화면을 아래에 다 그리고(prepare),
+    // 글꼴·그림까지 준비되면 기동음과 함께 오프닝을 재생한다(play). 움직임을 줄였으면 예전처럼 잠깐 사라지게만 둔다
     const showLoading = !daemonDone || opening.hold;
+    // 처음부터 로딩할 것이 없으면(HMR로 데몬이 이미 떠 있으면) 오프닝 없이 바로 연다
+    const [openingPhase, setOpeningPhase] = useState<'loading' | 'prepare' | 'play' | 'done'>(() =>
+        showLoading ? 'loading' : 'done',
+    );
     const [loadingLeaving, setLoadingLeaving] = useState(false);
     const wasLoadingRef = useRef(showLoading);
     useEffect(() => {
         const was = wasLoadingRef.current;
         wasLoadingRef.current = showLoading;
-        if (!was || showLoading) return undefined;
-        // 정상 기동음은 첫 오프닝과 함께 한 번 (셸이 낸다, 설정 sounds.startup)
-        if (chimeRef.current.chime && !chimeRef.current.played) {
-            chimeRef.current.played = true;
-            window.api?.playSound?.('startup');
+        if (showLoading) {
+            setOpeningPhase('loading');
+            return undefined;
         }
+        if (!was) return undefined;
+        if (!isPopoutMode && motionAllowed()) {
+            setOpeningPhase('prepare');
+            return undefined;
+        }
+        setOpeningPhase('done');
+        if (!isPopoutMode) playChime();
         setLoadingLeaving(true);
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);
     }, [showLoading]);
+    useEffect(() => {
+        if (openingPhase !== 'prepare') return undefined;
+        let alive = true;
+        const decode = (src: string) => {
+            const img = new Image();
+            img.src = src;
+            return img.decode ? img.decode() : Promise.resolve();
+        };
+        whenOpeningReady(
+            [document.fonts?.ready, decode('./title.png'), decode(logoSrc)].filter(Boolean),
+            OPENING_READY_WAIT_MS,
+            (cb) => requestAnimationFrame(() => cb()),
+        ).then(() => {
+            if (!alive) return;
+            playChime();
+            setOpeningPhase('play');
+        });
+        return () => {
+            alive = false;
+        };
+    }, [openingPhase]);
 
     // Loading screen (daemon not ready or servers still initializing)
     if (showLoading) {
+        // 메인 화면을 그릴 때도 로딩 화면이 같은 자리(둘째)에 남아 이어지게 한다 (매트릭스가 다시 시작하지 않게)
         return (
             <>
+                {null}
                 <LoadingScreen
                     logoSrc={logoSrc}
                     initStatus={initStatus}
@@ -814,7 +856,21 @@ function App() {
 
     const anyPopoverOpen = showBackgroundSection || showNoticeSection;
 
+    const openingOverlay =
+        openingPhase === 'loading' || openingPhase === 'prepare' || openingPhase === 'play' ? (
+            <LoadingScreen
+                logoSrc={logoSrc}
+                initStatus={initStatus}
+                initProgress={100}
+                opening={openingPhase === 'play' ? 'play' : 'prepare'}
+                onOpened={() => setOpeningPhase('done')}
+            />
+        ) : loadingLeaving ? (
+            <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={100} leaving />
+        ) : null;
+
     return (
+        <>
         <ExtensionProvider>
             <HostWindowContext.Provider value={hostWindow}>
             <TooltipProvider>
@@ -950,12 +1006,11 @@ function App() {
 
                     {/* 작업 진행은 상단 바(TaskIndicator)가 보여 준다 */}
                 </div>
-                {loadingLeaving && (
-                    <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={100} leaving />
-                )}
             </TooltipProvider>
             </HostWindowContext.Provider>
         </ExtensionProvider>
+        {openingOverlay}
+        </>
     );
 }
 

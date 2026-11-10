@@ -1,9 +1,10 @@
 import clsx from 'clsx';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from './Icon';
 import { WindowControls } from './shell/AppBar';
-import { logTokens, MatrixRain } from './shell/MatrixRain';
+import { logTokens, MatrixRain, type MatrixPull } from './shell/MatrixRain';
+import { openingFrame } from '../utils/opening';
 
 /**
  * LoadingScreen — displayed while daemon is initializing.
@@ -70,6 +71,57 @@ interface LoadingScreenProps {
     onRetry?: () => void | Promise<void>;
     onContinue?: () => void;
     leaving?: boolean;
+    /**
+     * 오프닝 (utils/opening.ts). prepare: 메인 화면을 아래에 그리는 동안 로딩 화면 그대로 덮어 둔다.
+     * play: 떠 있던 콘솔 글자를 끌어모아 화음에 섬광과 함께 메인 화면을 연다. 끝나면 onOpened
+     */
+    opening?: 'prepare' | 'play' | null;
+    onOpened?: () => void;
+}
+
+/**
+ * 오프닝 재생: 시작 시각과 로고 가운데를 정해 매트릭스에 넘기고, 같은 시계로 가운데 묶음·섬광을 움직인다.
+ * 화음(메인 화면이 열리는 때)부터는 로딩 화면 바탕을 걷어 글자만 메인 화면 위에 흩어지게 둔다
+ */
+function useOpeningPlayback(playing: boolean, onOpened?: () => void) {
+    const rootRef = useRef<HTMLDivElement>(null);
+    const contentRef = useRef<HTMLDivElement>(null);
+    const logoRef = useRef<HTMLDivElement>(null);
+    const flashRef = useRef<HTMLElement>(null);
+    const [target, setTarget] = useState<MatrixPull | null>(null);
+    const onOpenedRef = useRef(onOpened);
+    onOpenedRef.current = onOpened;
+
+    useEffect(() => {
+        if (!playing) return undefined;
+        const box = logoRef.current?.getBoundingClientRect();
+        const start = performance.now();
+        setTarget({
+            start,
+            x: box ? box.left + box.width / 2 : window.innerWidth / 2,
+            y: box ? box.top + box.height / 2 : window.innerHeight / 2,
+        });
+        let raf = 0;
+        const tick = (now: number) => {
+            const f = openingFrame(now - start);
+            const content = contentRef.current;
+            if (content) {
+                content.style.transform = `scale(${0.2 + 0.8 * f.content})`;
+                content.style.opacity = String(f.opened ? 0 : 0.1 + 0.9 * f.content);
+            }
+            if (flashRef.current) flashRef.current.style.opacity = String(0.95 * f.flash);
+            rootRef.current?.classList.toggle('opened', f.opened);
+            if (f.done) {
+                onOpenedRef.current?.();
+                return;
+            }
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [playing]);
+
+    return { rootRef, contentRef, logoRef, flashRef, target: playing ? target : null };
 }
 
 export function LoadingScreen({
@@ -80,22 +132,30 @@ export function LoadingScreen({
     onRetry,
     onContinue,
     leaving = false,
+    opening = null,
+    onOpened,
 }: LoadingScreenProps) {
     const { t } = useTranslation('gui');
     const [retrying, setRetrying] = useState(false);
-    const { line: log, tokens } = useDaemonLog(!failed && !leaving);
+    const { line: log, tokens } = useDaemonLog(!failed && !leaving && !opening);
+    const pull = useOpeningPlayback(opening === 'play', onOpened);
 
     return (
-        <div className={clsx('loading-screen', { leaving })} aria-hidden={leaving || undefined}>
+        <div
+            ref={pull.rootRef}
+            className={clsx('loading-screen', { leaving, opening: !!opening })}
+            aria-hidden={leaving || opening === 'play' || undefined}
+        >
+            <i ref={pull.flashRef} className="loading-flash" aria-hidden="true" />
             {/* 뒤에서 흐르는 서버 콘솔 (가운데는 비워 둔다) */}
-            <MatrixRain className="loading-matrix" tokens={tokens} />
+            <MatrixRain className="loading-matrix" tokens={tokens} pull={pull.target} />
             <div className="loading-vignette" aria-hidden="true" />
             <div className="appbar appbar-bare" data-tauri-drag-region>
                 <div className="appbar-spacer" data-tauri-drag-region />
                 <WindowControls />
             </div>
-            <div className="loading-content">
-                <div className="loading-logo-container">
+            <div ref={pull.contentRef} className="loading-content">
+                <div ref={pull.logoRef} className="loading-logo-container">
                     <i className="glow-blur"></i>
                     <i className="glow-ring"></i>
                     <i className="glow-mask"></i>

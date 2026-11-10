@@ -449,6 +449,22 @@ describe('로딩 스크린 상태 머신', () => {
             { timeout: 3000 },
         );
     });
+
+    it('로딩이 끝나면 메인 화면을 로딩 화면 아래에 먼저 그리고, 오프닝을 재생한 뒤 로딩 화면을 걷는다', async () => {
+        window.api = createApiMock({ playSound: vi.fn() });
+        const { container } = await act(async () => render(<App />));
+        // 메인 화면이 이미 그려진 채로 로딩 화면이 덮고 있다
+        await waitFor(
+            () => {
+                expect(container.querySelector('.App')).toBeInTheDocument();
+                expect(container.querySelector('.loading-screen.opening')).toBeInTheDocument();
+            },
+            { timeout: 3000 },
+        );
+        await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
+            timeout: 5000,
+        });
+    });
 });
 
 // ════════════════════════════════════════════════════════════
