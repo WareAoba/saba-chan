@@ -309,7 +309,7 @@ where
 {
     let deadline = std::time::Instant::now() + START_WAIT_LIMIT;
     loop {
-        let start = super::server::start_instance_handler(Path(id.to_string()), State(state.clone()));
+        let start = Box::pin(super::server::start_instance_handler(Path(id.to_string()), State(state.clone())));
         let resp = crate::ipc::internal::into_internal(crate::supervisor::START_SINCE.scope(generation, start).await).await;
         if resp.body["error_code"] != "instance_busy" || std::time::Instant::now() >= deadline {
             return Some(resp);
@@ -1303,7 +1303,8 @@ async fn count_down(
 
 async fn run_task(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
     // 감사 로그 (A10): 예약 작업이 한 일은 출처 schedule
-    crate::audit::with_origin(crate::audit::Origin::new("schedule"), run_task_now(state, id, task, fire, key)).await
+    // 갈래마다 큰 핸들러 future를 품으므로 힙에 둔다 (디버그 빌드 스택 넘침)
+    crate::audit::with_origin(crate::audit::Origin::new("schedule"), Box::pin(run_task_now(state, id, task, fire, key))).await
 }
 
 async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
@@ -1344,18 +1345,18 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
             }
             tracing::info!("Scheduled restart of '{}'", id);
             let resp = crate::ipc::internal::into_internal(
-                super::server::restart_instance_handler(Path(id.to_string()), State(state.clone()), LooseJson(None)).await,
+                Box::pin(super::server::restart_instance_handler(Path(id.to_string()), State(state.clone()), LooseJson(None))).await,
             )
             .await;
             if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
                 tracing::warn!("Scheduled restart of '{}' failed: {}", id, resp.body);
             }
         }
-        TaskAction::Update => run_update(state, id, task, fire, key).await,
+        TaskAction::Update => Box::pin(run_update(state, id, task, fire, key)).await,
         TaskAction::Start if !running => {
             tracing::info!("Scheduled start of '{}'", id);
             let resp = crate::ipc::internal::into_internal(
-                super::server::start_instance_handler(Path(id.to_string()), State(state.clone())).await,
+                Box::pin(super::server::start_instance_handler(Path(id.to_string()), State(state.clone()))).await,
             )
             .await;
             if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
@@ -1370,7 +1371,7 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
             tracing::info!("Scheduled stop of '{}'", id);
             // 예약 작업은 강제 종료하지 않는다 (저장 후 종료를 못 하는 서버는 그대로 둔다)
             let resp = crate::ipc::internal::into_internal(
-                super::server::stop_instance_handler(Path(id.to_string()), State(state.clone()), LooseJson(None)).await,
+                Box::pin(super::server::stop_instance_handler(Path(id.to_string()), State(state.clone()), LooseJson(None))).await,
             )
             .await;
             if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
