@@ -77,9 +77,7 @@ fn disabled_by_env() -> bool {
 
 /// 연속 실패 n번째 뒤 다음 시도까지 기다릴 시간 (5s, 10s, 20s … 최대 5분)
 fn backoff(fails: u32) -> Duration {
-    BACKOFF_BASE
-        .saturating_mul(1u32 << fails.saturating_sub(1).min(16))
-        .min(BACKOFF_MAX)
+    crate::utils::exp_backoff(BACKOFF_BASE, BACKOFF_MAX, fails)
 }
 
 /// 되살리기 판단 상태

@@ -98,7 +98,6 @@ function createApiMock(overrides: Record<string, unknown> = {}): typeof window.a
         onCloseRequest: vi.fn(),
         onConsolePopoutOpened: vi.fn(),
         onConsolePopoutClosed: vi.fn(),
-        saveNodeToken: vi.fn().mockResolvedValue({ success: true }),
     };
 
     const merged = { ...base, ...overrides };
@@ -183,38 +182,18 @@ describe('앱 부팅 파이프라인', () => {
         );
     }, 20000);
 
-    it('앱을 열면 받아 둔 업데이트 적용을 데몬에 한 번 맡기고, 업데이터가 필요하면 띄운다', async () => {
+    it('앱을 열어도 업데이트 적용을 부르지 않는다 (받은 판은 데몬이 스스로 적용한다)', async () => {
         window.api = createApiMock({
-            updaterApplyOnLaunch: vi.fn().mockResolvedValue({
-                ok: true,
-                applied: [],
-                requires_updater: true,
-                needs_updater: ['gui'],
-            }),
+            updaterApplyOnLaunch: vi.fn().mockResolvedValue({ ok: true, requires_updater: true, needs_updater: ['gui'] }),
             updaterLaunchApply: vi.fn().mockResolvedValue({ ok: true }),
         });
         await act(async () => {
             render(<App />);
         });
-        await waitFor(() => expect(window.api.updaterLaunchApply).toHaveBeenCalledWith(['gui']), { timeout: 6000 });
-        expect(window.api.updaterApplyOnLaunch).toHaveBeenCalledTimes(1);
-    }, 15000);
-
-    it('콘솔 팝아웃 창은 받아 둔 업데이트를 적용하지 않는다 (앱을 새로 연 것이 아니다)', async () => {
-        window.history.replaceState(null, '', '/?console-popout=mc&name=MC');
-        try {
-            window.api = createApiMock({
-                updaterApplyOnLaunch: vi.fn().mockResolvedValue({ ok: true, skipped: 'nothing' }),
-            });
-            await act(async () => {
-                render(<App />);
-            });
-            await waitFor(() => expect(window.api.daemonStatus).toHaveBeenCalled(), { timeout: 6000 });
-            await new Promise((r) => setTimeout(r, 800));
-            expect(window.api.updaterApplyOnLaunch).not.toHaveBeenCalled();
-        } finally {
-            window.history.replaceState(null, '', '/');
-        }
+        await waitFor(() => expect(window.api.daemonStatus).toHaveBeenCalled(), { timeout: 6000 });
+        await new Promise((r) => setTimeout(r, 800));
+        expect(window.api.updaterApplyOnLaunch).not.toHaveBeenCalled();
+        expect(window.api.updaterLaunchApply).not.toHaveBeenCalled();
     }, 15000);
 
     it('settings 로드 실패 → settingsReady=true (fallback), 봇 설정은 별도 로드', async () => {

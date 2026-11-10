@@ -70,10 +70,7 @@
     "relay_check": "Comprobación del relay",
     "relay_ok": "responde",
     "relay_failed": "no responde: {{error}}",
-    "expired": "caducada",
-    "expires_in": "Tiempo restante",
     "members_partial": "No se pudo obtener la lista completa de Discord; solo se muestran miembros con nivel guardado.",
-    "requested_by": "Solicitado por",
     "username": "Usuario",
     "config_saved": "Ajustes del bot guardados.",
     "config_ignored": "La configuración del bot no cambia las claves de permisos, así que conservan su valor anterior: {{keys}}. Lo demás se guardó. Cambia los permisos con saba-chan-cli perm",
@@ -146,8 +143,6 @@
     "allow_none": "No hay servidores abiertos.",
     "allow_all_saved": "{{guild}} ahora ve todos los servidores.",
     "allow_saved": "{{guild}} ahora solo ve: {{servers}}",
-    "link_accepted": "{{guild}} está conectado a este PC.",
-    "link_declined": "Solicitud de conexión rechazada.",
     "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI.",
     "words": "Palabras",
     "command_words": "Palabras de los comandos",
@@ -1036,7 +1031,11 @@
       "agent": "Registra el servidor MCP local (`mcp`) en los agentes de IA de este PC",
       "agent.link": "Añade Saba-chan a Claude Code y Codex (a ambos si no eliges uno)",
       "agent.unlink": "Quita Saba-chan de Claude Code y Codex",
-      "agent.status": "Qué agentes de este PC tienen Saba-chan"
+      "agent.status": "Qué agentes de este PC tienen Saba-chan",
+      "remote.claim": "Tomar el código de emparejamiento que mostró otro PC y conectarse a él (por ejemplo, tras la instalación de una línea en Linux)",
+      "remote.install": "Instalar Saba-chan en un PC Linux con el ssh de este PC y conectarse (`usuario@host`)",
+      "remote.remove": "Quitar uno de tus PC: olvidarlo aquí y, si quieres, desinstalar Saba-chan allí y quitarlo de la lista del relay",
+      "remote.update": "Actualizar ahora un daemon remoto o activar/desactivar sus actualizaciones automáticas (`--auto on|off`)"
     },
     "arg": {
       "module.maker.game": "Juego para la primera petición",
@@ -1263,7 +1262,19 @@
       "agent.link.claude": "Solo Claude Code",
       "agent.link.codex": "Solo Codex",
       "agent.unlink.claude": "Solo Claude Code",
-      "agent.unlink.codex": "Solo Codex"
+      "agent.unlink.codex": "Solo Codex",
+      "remote.claim.code": "El código de emparejamiento que mostró ese PC",
+      "remote.install.target": "PC de destino (`usuario@host`)",
+      "remote.install.port": "Puerto ssh",
+      "remote.install.linger": "Mantener el daemon en marcha al cerrar sesión (sudo)",
+      "remote.install.steam_libs": "Instalar las bibliotecas de 32 bits que necesita SteamCMD (sudo)",
+      "remote.remove.host_id": "Id del PC a quitar (ver `remote peers`)",
+      "remote.remove.uninstall": "Desinstalar también Saba-chan en ese PC (Linux, Mac)",
+      "remote.remove.remove_settings": "Con --uninstall: borrar también ajustes y conexión con Discord",
+      "remote.remove.remove_instances": "Con --uninstall: borrar también los servidores de juego",
+      "remote.remove.from_relay": "Quitar también de tu lista de PC en el relay",
+      "remote.update.host_id": "Id del PC del daemon remoto (ver `remote daemons`)",
+      "remote.update.auto": "Activar (on) o desactivar (off) las actualizaciones automáticas. Sin él: actualizar ahora"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
@@ -1918,12 +1929,32 @@
       "remote_bad_path": "Esa ruta no se puede enviar a un daemon remoto",
       "remote_unauthorized": "El daemon remoto ya no acepta este PC. Conéctalo de nuevo",
       "remote_local_only": "Esto solo se puede hacer en ese PC",
-      "remote_field_blocked": "Estos ajustes solo se pueden cambiar en ese PC: {{fields}}"
+      "remote_field_blocked": "Estos ajustes solo se pueden cambiar en ese PC: {{fields}}",
+      "pair_code_not_found": "No existe ese código de emparejamiento. Revisa el código",
+      "pair_code_used": "Ese código de emparejamiento ya se usó",
+      "pair_code_expired": "El código caducó. Obtén uno nuevo en ese PC",
+      "remote_not_ready": "Se tomó el código, pero ese PC aún no abrió su puerto remoto. Prueba `remote connect` en un momento",
+      "ssh_missing": "No se encontró ssh en este PC. Instala el cliente OpenSSH",
+      "ssh_spawn_failed": "No se pudo ejecutar ssh",
+      "ssh_failed": "No se pudo conectar por ssh (revisa dirección, usuario y contraseña)",
+      "install_failed": "El script de instalación falló",
+      "pair_code_missing": "La instalación terminó pero no mostró código de emparejamiento",
+      "install_unknown": "No se encontró esa instalación",
+      "unsupported": "Ese PC no se puede desinstalar a distancia (Windows)",
+      "cli_missing": "Falta saba-chan-cli en ese PC, no se pudo desinstalar",
+      "remote_uninstall_failed": "No se pudo desinstalar Saba-chan en ese PC"
     },
     "daemon": "Daemon",
     "this_pc": "Este PC",
     "no_servers": "Sin servidores",
-    "via_relay": "A través del relay"
+    "via_relay": "A través del relay",
+    "removed": "Se quitó {{host}}.",
+    "auto_update_on": "Actualizaciones automáticas activadas para {{host}}.",
+    "auto_update_off": "Actualizaciones automáticas desactivadas para {{host}}.",
+    "update_started": "Se empezó a actualizar {{host}}. Su daemon se reinicia al terminar.",
+    "install_target": "Indica el PC como `usuario@host` (por ejemplo saba@192.168.0.20)",
+    "install_failed": "La instalación no terminó ({{code}})",
+    "install_host_key": "Es la primera conexión a ese PC. ¿Continuar si la huella de arriba es la suya?"
   },
   "address": {
     "title": "Dirección de {{server}}",
@@ -1954,6 +1985,7 @@
     "hint": {
       "closed": "Comprueba que el router reenvía este puerto a este PC y que el cortafuegos del PC lo permite.",
       "firewall": "El Firewall de Windows está bloqueando las conexiones entrantes en este puerto. Para la red a la que estás conectado ahora (privada o pública), permite saba-core si el servidor está detenido, o el programa del servidor del juego si está en marcha, en la configuración del Firewall de Windows y vuelve a comprobar.",
+      "firewall_macos": "El firewall de macOS está bloqueando las conexiones entrantes del programa de este servidor. En Ajustes del Sistema › Red › Firewall › Opciones, pon saba-core (si el servidor está detenido) o el programa del servidor de juego, como java (si está en marcha), en Permitir conexiones entrantes y vuelve a comprobar.",
       "router": "El firewall del PC permite este puerto. Reenvía este puerto a este PC en la configuración del router y vuelve a comprobar.",
       "cgnat": "Tu proveedor comparte una IP pública entre muchos hogares, así que el reenvío de puertos no puede abrirlo. Pide una IP pública a tu proveedor o usa una VPN como Tailscale.",
       "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar."

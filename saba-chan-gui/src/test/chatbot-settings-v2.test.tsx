@@ -8,11 +8,9 @@ import { openDropdown } from './dropdown';
 const t = ((k: string, o?: unknown) => (o ? `${k}:${JSON.stringify(o)}` : k)) as unknown as TFunction;
 
 describe('접두사 (chatbot-settings-v2 §2·§3)', () => {
-    it('옛 기본값 !saba와 빈 값은 기본값(빈 목록)으로, 그 밖의 옛 값은 하나짜리 목록으로 읽는다', () => {
-        expect(readPrefixes({ prefix: '!saba' })).toEqual([]);
-        expect(readPrefixes({ prefix: '' })).toEqual([]);
-        expect(readPrefixes({ prefix: '!pal' })).toEqual(['!pal']);
-        expect(readPrefixes({ prefix: '!pal', prefixes: ['사바', '!s'] })).toEqual(['사바', '!s']);
+    it('저장된 접두사 목록을 읽고, 없으면 기본값(빈 목록)이다', () => {
+        expect(readPrefixes({})).toEqual([]);
+        expect(readPrefixes({ prefixes: ['사바', '', '!s'] })).toEqual(['사바', '!s']);
     });
 
     it('11개 이상이거나 32자를 넘으면 저장할 수 없다', () => {

@@ -5,12 +5,11 @@ import { useExtensions } from '../../contexts/ExtensionContext';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
+import { failed } from '../../utils/apiResult';
 
 export const extensionGuiAvailable = () =>
     typeof window.api?.sandboxListExtensionGui === 'function' &&
     typeof window.api?.sandboxRevokeExtensionGui === 'function';
-
-const failed = (res: ApiBody | null | undefined) => !res || res.success === false || Boolean(res.error || res.error_code);
 
 /**
  * 설정 > 보안: 확인되지 않은 익스텐션의 화면(GUI 번들)을 이 PC에서 허락한 목록 (데몬 config.json sandbox.extension_gui).

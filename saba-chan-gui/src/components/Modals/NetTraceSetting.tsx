@@ -4,13 +4,12 @@ import { useSettingsStore } from '../../stores/useSettingsStore';
 import type { ApiBody } from '../../types/daemon';
 import { Icon } from '../Icon';
 import { SabaToggle } from '../ui/SabaUI';
+import { failed } from '../../utils/apiResult';
 
 export const netTraceAvailable = () => typeof window.api?.systemNetTrace === 'function';
 
 /** 데몬 `net_trace::Access` 중 문구가 있는 것 (unsupported면 설정을 숨긴다) */
 const ACCESS = ['ok', 'needs_grant', 'needs_relogin'];
-
-const failed = (res: ApiBody | null | undefined) => !res || res.ok === false;
 
 /**
  * 설정 > 게임 서버: 포트·서버별 네트워크 (기본 꺼짐). 켜면 시스템 모니터를 펼쳐 둔 동안 데몬이 Windows

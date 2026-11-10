@@ -72,7 +72,12 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    pub fn apply(&mut self, f: Fetched) {
+    /// 읽은 상태를 둔다. 설치된 번역 판(`/api/updates/status`의 `locales_version`)이 바뀌었으면 true: cli.json을 다시 읽는다
+    pub fn apply(&mut self, f: Fetched) -> bool {
+        let locales_changed = match (self.updates.as_ref(), f.updates.as_ref().and_then(|u| u.get("locales_version"))) {
+            (Some(prev), Some(next)) => prev.get("locales_version").is_some_and(|p| p != next),
+            _ => false,
+        };
         self.health = f.health;
         self.servers = f.servers;
         if self.health.is_none() {
@@ -101,6 +106,7 @@ impl Snapshot {
         if let Some(g) = f.guilds {
             self.guilds = g;
         }
+        locales_changed
     }
 
     pub fn apply_view(&mut self, v: View) {
@@ -470,5 +476,18 @@ mod tests {
         assert_eq!(f.fields.iter().find(|x| x.key == "newServerBackupKeep").unwrap().value, "5");
         assert_eq!(f.fields.iter().find(|x| x.key == "language").unwrap().value, "ja");
         assert!(f.fields.iter().all(|x| !x.label.starts_with("tui.")), "every field has a label");
+    }
+
+    /// 번역 판(`locales_version`)이 바뀌면 cli.json을 다시 읽으라고 알린다. 처음 읽은 판·판을 모르는 데몬·이번에 못 읽음은 아니다
+    #[test]
+    fn reports_a_changed_locales_version() {
+        let status = |v: Value| Fetched { health: Some(json!({})), updates: Some(json!({ "ok": true, "locales_version": v })), ..Fetched::default() };
+        let mut snap = Snapshot::default();
+        assert!(!snap.apply(status(json!("0.1.13"))));
+        assert!(!snap.apply(status(json!("0.1.13"))));
+        assert!(!snap.apply(Fetched::default()));
+        assert!(snap.apply(status(json!("0.1.14"))));
+        assert!(snap.apply(status(Value::Null)));
+        assert!(!snap.apply(Fetched { health: Some(json!({})), updates: Some(json!({ "ok": true })), ..Fetched::default() }));
     }
 }

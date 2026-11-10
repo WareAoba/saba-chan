@@ -9,7 +9,9 @@ name: GitHub release
 # (.github/scripts/github-release.py). R2·릴레이는 읽기만 하므로 secret을 쓰지 않는다
 # (environment `release`의 변수 RELAY_URL만 읽는다).
 # 덮어쓰기 금지: 그 태그나 Release가 이미 있으면 멈춘다.
-# 채널이 stable이 아니면 사전 릴리스(pre-release)로 올린다.
+# 채널이 stable이 아니면 사전 릴리스(pre-release)로 올린다. 채널은 릴레이에 등록한 채널(`channel`)이고,
+# 주지 않으면 서명된 manifest의 채널이다 (지난 릴리스). publish.yml은 늘 beta로 등록하므로 beta를 넘기고,
+# 정식 승격 때 promote-release.yml이 사전 릴리스 표시를 걷는다.
 # ─────────────────────────────────────────────────────────
 
 on:
@@ -21,6 +23,10 @@ on:
       sha:
         type: string
         required: true
+      channel:
+        type: string
+        required: false
+        default: ''
   workflow_dispatch:
     inputs:
       version:
@@ -31,6 +37,11 @@ on:
         description: '그 버전을 빌드한 saba-chan 커밋 (40자리)'
         type: string
         required: true
+      channel:
+        description: '릴레이에 등록된 채널 (비우면 서명된 manifest의 채널)'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -53,6 +64,7 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
       SHA: ${{ inputs.sha }}
+      REGISTERED_CHANNEL: ${{ inputs.channel }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Require main
@@ -97,7 +109,10 @@ jobs:
 
       - name: Create release
         run: |
-          channel=$(python -c "import json;print(json.load(open('gh-release/release-manifest.json'))['manifest'].get('channel','stable'))")
+          channel="$REGISTERED_CHANNEL"
+          if [ -z "$channel" ]; then
+            channel=$(python -c "import json;print(json.load(open('gh-release/release-manifest.json'))['manifest'].get('channel','stable'))")
+          fi
           flags=()
           if [ "$channel" != "stable" ]; then flags+=(--prerelease); fi
           gh release create "v$VERSION" gh-release/* \

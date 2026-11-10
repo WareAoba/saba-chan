@@ -87,7 +87,7 @@ describe('약관 동의: 기존 서버 가져오기', () => {
 
 describe('약관 동의: 확인 창', () => {
     it('원문은 외부 브라우저로 열고, 모두 체크해야 동의 버튼이 켜진다', () => {
-        window.electron = { shell: { openExternal: vi.fn() } } as unknown as typeof window.electron;
+        window.api = { ...window.api, shellOpenExternal: vi.fn() } as unknown as typeof window.api;
         const onAccept = vi.fn();
         render(
             <AgreementDialog
@@ -100,7 +100,7 @@ describe('약관 동의: 확인 창', () => {
             />,
         );
         fireEvent.click(screen.getByRole('button', { name: /Read/i }));
-        expect(window.electron.shell.openExternal).toHaveBeenCalledWith(eula.url);
+        expect(window.api.shellOpenExternal).toHaveBeenCalledWith(eula.url);
 
         const accept = screen.getByRole('button', { name: /Agree and start/i });
         expect(accept).toBeDisabled();

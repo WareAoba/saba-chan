@@ -131,6 +131,7 @@
     "restart_in": "Redémarrage dans {{secs}} s.",
     "gave_up": "Le redémarrage auto a abandonné. Vérifiez le serveur.",
     "restart_failed": "Impossible de redémarrer {{name}}.",
+    "daemon_down": "Saba-chan s'est arrêté de façon inattendue. La surveillance des serveurs et Discord sont en pause jusqu'à ce que vous le relanciez depuis l'app.",
     "external_start": "{{name}} a été démarré en dehors de Saba-chan. Saba-chan n'a pas lancé ce processus.",
     "backup_failed": "La sauvegarde automatique de {{name}} a échoué.",
     "on_daemon": "Sur {{daemon}} : {{body}}"

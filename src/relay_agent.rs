@@ -14,7 +14,7 @@
 //!
 //! 새 명령 종류는 `handle_payload`의 action 분기에 추가합니다.
 
-use crate::ipc::handlers::relay::{load_node_token, parse_node_token, resolve_relay_url, signed_headers_with};
+use crate::ipc::handlers::relay::{load_node_token, parse_node_token, resolve_relay_url, signed_request};
 use crate::ipc::IPCServer;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -48,8 +48,6 @@ const EVENT_MIN_GAP: Duration = Duration::from_millis(200);
 const EVENT_BATCH: usize = 20;
 /// relay에 닿지 못하는 동안 들고 있는 최근 이벤트 수 (알림은 기록이 아니다)
 const EVENT_PENDING: usize = 50;
-/// relay에 `/events`가 없을 때(404) 다시 알아보기까지 쉬는 시간. 그동안의 이벤트는 버린다
-const EVENT_PROBE: Duration = Duration::from_secs(600);
 
 /// 세션 안에서 토큰 대체를 알리는 오류 표시 (밖으로 나가지 않는다)
 const REPLACED: &str = "token_replaced";
@@ -101,6 +99,8 @@ pub struct AgentStatus {
 #[derive(Default)]
 struct Inner {
     cancel: Option<CancellationToken>,
+    /// 지금 세션의 릴레이 주소와 노드 토큰 (`notify_updating`이 같은 쌍으로 보낸다)
+    endpoint: Option<(String, String)>,
     status: AgentStatus,
     /// 시작할 때마다 늘어난다. 끝난 세션이 새 세션의 상태를 지우지 않게 한다
     generation: u64,
@@ -116,6 +116,9 @@ pub struct RelayAgent {
     unsent: Arc<Mutex<Vec<Unsent>>>,
     /// 보내는 중인 명령 결과 수. 데몬이 꺼질 때 이것이 끝나기를 잠깐 기다린다 (원격 업데이트 뒤 재시작 안내 등)
     posting: Arc<std::sync::atomic::AtomicUsize>,
+    /// 업데이트로 내려간다고 릴레이에 알렸다 (`notify_updating`): 그 뒤로는 heartbeat를 보내지 않는다.
+    /// 릴레이는 알린 뒤의 heartbeat를 새 데몬이 돌아온 것으로 보고 "업데이트 중" 창을 닫는다
+    going_down: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// 보내는 중인 결과 하나 (끝나면 수를 줄인다)
@@ -174,6 +177,7 @@ impl RelayAgent {
             }
             let token = server.shutdown_token.child_token();
             inner.cancel = Some(token.clone());
+            inner.endpoint = Some((relay_url.clone(), node_token.clone()));
             inner.generation += 1;
             inner.status = AgentStatus { running: true, relay_url: Some(relay_url.clone()), ..Default::default() };
             (token, inner.generation)
@@ -199,7 +203,6 @@ impl RelayAgent {
                 seen: agent.seen.clone(),
                 metadata_sent: Mutex::new(None),
                 linked_acks: Mutex::default(),
-                ack_supported: std::sync::atomic::AtomicBool::new(true),
             };
             if let Err(e) = session.check_version().await {
                 tracing::error!("[RelayAgent] {}", e);
@@ -240,9 +243,36 @@ impl RelayAgent {
         true
     }
 
+    /// 데몬이 업데이트로 내려가기 직전: 릴레이가 그동안 디스코드 명령에 "업데이트 중"으로 답하고 "PC 꺼짐"으로 보지 않게 한다
+    /// (`POST /v1/host/updating`). 연결돼 있지 않으면 오류
+    pub async fn notify_updating(&self, eta_seconds: u64) -> Result<(), String> {
+        // 알리기 전에 막는다: 알린 뒤 옛 데몬의 heartbeat가 창을 닫지 않게
+        self.going_down.store(true, std::sync::atomic::Ordering::SeqCst);
+        let (base, token) = {
+            let inner = self.lock();
+            match (&inner.cancel, &inner.endpoint) {
+                (Some(cancel), Some(endpoint)) if !cancel.is_cancelled() => endpoint.clone(),
+                _ => return Err("relay not connected".into()),
+            }
+        };
+        let client = http_client().map_err(|e| e.to_string())?;
+        let body = serde_json::json!({ "etaSeconds": eta_seconds }).to_string();
+        let req = crate::ipc::handlers::relay::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/updating", &token, Some(body))
+            .ok_or("node token missing")?;
+        let resp = tokio::time::timeout(std::time::Duration::from_secs(5), req.send())
+            .await
+            .map_err(|_| "timed out".to_string())?
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("relay answered {}", resp.status()));
+        }
+        Ok(())
+    }
+
     pub fn stop(&self) {
         crate::remote::link::stop();
         let mut inner = self.lock();
+        inner.endpoint = None;
         if let Some(cancel) = inner.cancel.take() {
             cancel.cancel();
         }
@@ -256,6 +286,7 @@ impl RelayAgent {
             return;
         }
         inner.cancel = None;
+        inner.endpoint = None;
         inner.status.running = false;
         if error.is_some() {
             inner.status.last_error = error;
@@ -286,6 +317,38 @@ impl RelayAgent {
             f(&mut inner.status)
         }
     }
+}
+
+/// 이 PC의 리눅스 배포판 `{id, version?, name?}` (`/etc/os-release`의 ID·VERSION_ID·PRETTY_NAME). 리눅스가 아니거나 읽지 못하면 없다
+static LINUX_DISTRO: std::sync::LazyLock<Option<Value>> = std::sync::LazyLock::new(|| {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    let text = std::fs::read_to_string("/etc/os-release").or_else(|_| std::fs::read_to_string("/usr/lib/os-release")).ok()?;
+    parse_os_release(&text)
+});
+
+/// os-release 본문 → `{id, version?, name?}`. ID는 릴레이가 받는 모양(소문자·숫자·`.-_`, 32자)일 때만
+fn parse_os_release(text: &str) -> Option<Value> {
+    let field = |key: &str| {
+        text.lines().find_map(|line| {
+            let value = line.trim().strip_prefix(key)?.strip_prefix('=')?.trim();
+            let value = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')).unwrap_or(value);
+            Some(value.to_string()).filter(|v| !v.is_empty())
+        })
+    };
+    let id = field("ID")?;
+    if id.len() > 32 || !id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-')) {
+        return None;
+    }
+    let mut distro = json!({ "id": id });
+    if let Some(v) = field("VERSION_ID").filter(|v| v.chars().count() <= 32) {
+        distro["version"] = json!(v);
+    }
+    if let Some(n) = field("PRETTY_NAME").map(|n| n.chars().take(64).collect::<String>()) {
+        distro["name"] = json!(n);
+    }
+    Some(distro)
 }
 
 /// 하트비트 답의 `address`: 릴레이가 본 이 PC의 공인 주소. IP로 읽히는 값만 받는다
@@ -361,10 +424,8 @@ struct Session {
     seen: Arc<Mutex<SeenCommands>>,
     /// 릴레이가 메타데이터 전체를 받아 둔 지문 (`heartbeat_metadata`). 없으면 다음 하트비트는 전체를 보낸다
     metadata_sent: Mutex<Option<String>>,
-    /// 적용했지만 릴레이가 아직 확인 응답을 받지 못한 새로 묶인 길드 (`linkedGuildsAck`·`linkedGuildsAckIds`)
-    linked_acks: Mutex<Vec<LinkedAck>>,
-    /// 릴레이가 `/ack`를 모르면(404, 예전 릴레이) 이 세션에서는 더 보내지 않는다
-    ack_supported: std::sync::atomic::AtomicBool,
+    /// 적용했지만 릴레이가 아직 확인 응답을 받지 못한 새로 묶인 길드의 연결 id (`linkedGuildsAckIds`)
+    linked_acks: Mutex<Vec<String>>,
 }
 
 /// 받은 명령을 처음 본 것인지, 아직 처리 중인지, 이미 끝났는지
@@ -451,15 +512,7 @@ impl Session {
 
     /// 이 세션의 주소·토큰으로 서명한 요청
     fn request(&self, method: reqwest::Method, path: &str, body: Option<String>) -> Result<reqwest::RequestBuilder, String> {
-        let headers = signed_headers_with(&self.token, method.as_str(), path, body.as_deref()).ok_or("node token missing")?;
-        let mut req = self.client.request(method, format!("{}{}", self.base, path));
-        for (k, v) in headers {
-            req = req.header(k, v);
-        }
-        if let Some(b) = body {
-            req = req.header("Content-Type", "application/json").body(b);
-        }
-        Ok(req)
+        signed_request(&self.client, method, &self.base, path, &self.token, body).ok_or_else(|| "node token missing".into())
     }
 
     /// 서명된 요청을 보낸다. 보내는 중에 세션이 끝나면 그만둔다
@@ -566,6 +619,10 @@ impl Session {
 
     /// 하트비트 한 번. 릴레이가 메타데이터 전체를 달라고 했거나(`needMetadata`) 새로 묶인 길드에 열 서버를 정했으면 true
     async fn heartbeat_once(&self) -> bool {
+        // 업데이트로 내려가는 중: 새 데몬의 heartbeat가 "업데이트 중" 창을 닫는다
+        if self.agent.going_down.load(std::sync::atomic::Ordering::SeqCst) {
+            return false;
+        }
         let sent = self.metadata_sent.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let (metadata, hash, unchanged) = heartbeat_metadata(self.metadata().await, sent.as_deref());
         let acks = self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -590,7 +647,7 @@ impl Session {
         .await;
 
         // 릴레이가 지문을 되돌려 주면 받아 둔 것이다: 다음 하트비트는 그대로면 바뀌는 부분만 보낸다.
-        // 되돌려 주지 않으면(실패, 다시 달라고 함, 지문을 모르는 옛 릴레이) 다음에도 전체를 보낸다
+        // 되돌려 주지 않으면(실패, 다시 달라고 함) 다음에도 전체를 보낸다
         let need_full = result.as_ref().is_ok_and(|data| data.get("needMetadata").and_then(Value::as_bool) == Some(true));
         let kept = result.as_ref().is_ok_and(|data| data.get("metadataHash").and_then(Value::as_str) == Some(hash.as_str()));
         *self.metadata_sent.lock().unwrap_or_else(|e| e.into_inner()) = kept.then_some(hash);
@@ -600,14 +657,22 @@ impl Session {
                 if data.get("warning").and_then(|v| v.as_str()) == Some("UPDATE_REQUIRED") {
                     tracing::warn!("[RelayAgent] relay asks for agent update (min {})", data.get("minVersion").and_then(|v| v.as_str()).unwrap_or("?"));
                 }
+                let seen = relay_seen_address(&data);
+                let mut seen_changed = false;
                 self.agent.update(self.generation, |s| {
                     s.last_heartbeat_at = Some(now_ms());
                     s.last_error = None;
                     s.last_error_code = None;
                     s.min_version = None;
-                    // 옛 릴레이·사설 주소면 없다
-                    s.seen_address = relay_seen_address(&data);
+                    // 사설 주소면 없다
+                    seen_changed = s.seen_address != seen;
+                    s.seen_address = seen;
                 });
+                // 원격 포트의 직접 연결 주소를 따로 적지 않았으면 릴레이가 본 공인 IP를 올린다
+                if seen_changed {
+                    let server = self.server.clone();
+                    tokio::spawn(async move { crate::remote_daemon::on_seen_address(&server).await });
+                }
                 // 릴레이가 받은 확인 응답은 지운다. 그 사이 새로 적용한 길드는 남는다
                 self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).retain(|g| !acks.contains(g));
                 // 새로 묶인 길드에 열 서버를 정했으면 곧바로 한 번 더 보내 확인 응답과 그 목록을 릴레이에 알린다
@@ -615,8 +680,11 @@ impl Session {
                 if self.apply_linked_guilds(&data).await {
                     send_again = true;
                 }
-                // 새 릴리즈가 등록됐다는 알림: 채널·버전을 대조해 맞으면 업데이트를 한 번 확인한다 (ipc/updates.rs)
-                if let Some(hint) = data.get("updateHint") {
+                // 채널별 최신 릴리즈 id: 이 데몬이 받는 채널의 값이 바뀌었을 때만 확인한다 (ipc/updates.rs).
+                // 그것이 없는 옛 릴레이는 새 릴리즈 알림(`updateHint`)을 대조한다
+                if let Some(ids) = data.get("latestReleases").filter(|v| v.is_object()) {
+                    crate::ipc::updates::on_latest_releases(&self.server.update_state, ids, self.cancel.clone());
+                } else if let Some(hint) = data.get("updateHint") {
                     crate::ipc::updates::on_update_hint(&self.server.update_state, hint, self.cancel.clone());
                 }
                 // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다
@@ -668,57 +736,13 @@ impl Session {
         };
         // 모듈 locales 파일은 하트비트마다 읽으므로 async 작업자 밖에서 읽는다
         let views = self.server.modules().await;
-        let modules: Vec<Value> = tokio::task::spawn_blocking(move || views
-            .into_iter()
-            .map(|m| {
-                // 번역한 명령 이름: 모듈 locales를 언어마다 한 번 읽는다. 번역을 끈 서버는 릴레이가 빼고 단다 (서버별 `translateCommands`)
-                let locales: std::collections::HashMap<&str, std::sync::Arc<Value>> = match &m.locale_dir {
-                    Some(dir) => crate::chat::i18n::languages()
-                        .into_iter()
-                        .filter_map(|l| Some((l, crate::chat::api::module_locale(dir, l)?)))
-                        .collect(),
-                    None => Default::default(),
-                };
-                // 명령마다·언어마다 부르므로 locales를 복제하지 않고 함께 쓴다
-                let null = std::sync::Arc::new(Value::Null);
-                let texts = |l: &str| locales.get(l).unwrap_or(&null).clone();
-                let names = &texts;
-                let texts: Option<&LocaleTexts<'_>> = Some(&texts);
-                let mut entry = json!({
-                    "name": m.name,
-                    // 게임명도 별명처럼 서버를 부른다: 릴레이가 위험 명령 확인에서 같은 서버를 찾도록 함께 보낸다.
-                    // 여기는 언어 없는 낱말(module.toml)이고, 언어마다 더하는 낱말은 `module_aliases_by_language`다
-                    "module_aliases": m.game_names.iter().chain(&m.module_aliases).collect::<Vec<_>>(),
-                    // 디스코드·챗봇에 내보내지 않는 명령(`remote = false`)은 싣지 않는다
-                    "commands": { "fields": m.commands.iter().filter(|c| c.remote).map(|c| relay_command_entry(c, m.aliases_of(&c.name), texts)).collect::<Vec<_>>() },
-                    "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
-                });
-                relay_module_names(&mut entry, m.display_name.as_deref(), names);
-                if let Some(dir) = &m.locale_dir {
-                    relay_language_aliases(&mut entry, dir);
-                }
-                entry
-            })
-            .collect())
+        let modules: Vec<Value> = tokio::task::spawn_blocking(move || views.iter().map(relay_module_entry).collect())
         .await
         .unwrap_or_else(|e| if e.is_panic() { std::panic::resume_unwind(e.into_panic()) } else { Vec::new() });
 
         // 권한을 읽기 직전의 시각 (권한 변경 응답의 `permissionsAt`과 같은 PC 시계)
         let permissions_at = now_ms();
         let bot = self.server.config_store.get_bot_config().await;
-        // 릴레이 스키마: commandAliases는 모듈 → (명령 → 콤마 문자열)
-        let command_aliases: serde_json::Map<String, Value> = bot
-            .command_aliases
-            .iter()
-            .filter_map(|(module, cmds)| {
-                let cmds: serde_json::Map<String, Value> = cmds
-                    .as_object()?
-                    .iter()
-                    .filter_map(|(c, a)| a.as_str().map(|a| (c.clone(), Value::String(a.to_string()))))
-                    .collect();
-                Some((module.clone(), Value::Object(cmds)))
-            })
-            .collect();
 
         let mut meta = json!({
             "servers": servers,
@@ -730,13 +754,9 @@ impl Session {
                 // 비어 있으면 릴레이가 응답 언어의 기본값을 쓴다
                 "prefixes": bot.prefixes,
                 "moduleAliases": bot.module_aliases,
-                "commandAliases": command_aliases,
+                "commandAliases": command_aliases_json(&bot.command_aliases),
             },
         });
-        // 옛 릴레이는 `prefix` 하나만 안다 (첫 접두사, 기본값이면 싣지 않는다)
-        if let Some(first) = bot.prefixes.first() {
-            meta["botConfig"]["prefix"] = json!(first);
-        }
         // 길드별 허용 인스턴스. 목록이 있는 길드만 싣는다 (없으면 릴레이는 제한 없음으로 본다)
         if let Some(allowed) = allowed_instances_by_guild(&bot.node_settings) {
             meta["allowedInstances"] = allowed;
@@ -985,14 +1005,6 @@ impl Session {
                 tokio::spawn(crate::remote_daemon::tunnel::accept(relay, id.to_string(), port));
                 json!({ "success": true, "data": { "connecting": true } })
             }
-            // 디스코드에서 코드 없이 `/사바쨩 연결` (J1-b): PC 화면에 알리기만 한다. 수락은 PC에서 사람이 누른다
-            "link_request" => match link_request_event(cmd, &payload) {
-                Some(data) => {
-                    crate::events::emit("relay.link_request", data);
-                    json!({ "success": true, "data": { "notified": true } })
-                }
-                None => json!({ "success": false, "data": { "error": "invalid link_request" } }),
-            },
             other => json!({ "success": false, "data": { "error": format!("Unknown action: {}", other) } }),
         }
     }
@@ -1006,16 +1018,18 @@ impl Session {
         let mut applied = false;
         for g in list {
             let (Some(guild), Some(via)) = (g.get("guildId").and_then(Value::as_str), g.get("via").and_then(Value::as_str)) else { continue };
+            // 릴레이가 연결마다 준 id로 답해야, 풀고 다시 묶은 사이 늦게 간 답이 새 연결의 확인이 되지 않는다
             let link_id = g.get("linkId").and_then(Value::as_str).map(str::to_string);
             match store.update_node_settings(guild, |node| {
                 let c = close_linked_guild(node, via, policy);
                 (c, c)
             }).await {
                 Ok(_) => {
-                    let mut acks = self.linked_acks.lock().unwrap_or_else(|e| e.into_inner());
-                    let ack = LinkedAck { guild: guild.to_string(), link_id };
-                    if !acks.contains(&ack) {
-                        acks.push(ack);
+                    if let Some(ack) = link_id {
+                        let mut acks = self.linked_acks.lock().unwrap_or_else(|e| e.into_inner());
+                        if !acks.contains(&ack) {
+                            acks.push(ack);
+                        }
                     }
                     applied = true;
                 }
@@ -1066,8 +1080,7 @@ impl Session {
         }
     }
 
-    /// 데몬 이벤트 중 알림 채널에 띄울 것(`relay_event`)을 모아 `POST /events`로 올린다.
-    /// relay가 404면(아직 그 경로가 없음) `EVENT_PROBE` 동안 올리지 않는다
+    /// 데몬 이벤트 중 알림 채널에 띄울 것(`relay_event`)을 모아 `POST /events`로 올린다
     async fn events_loop(&self) {
         use tokio::sync::broadcast::error::{RecvError, TryRecvError};
         let mut rx = crate::events::bus().subscribe(None).rx;
@@ -1123,16 +1136,6 @@ impl Session {
                 r = sent => r,
             };
             match resp {
-                // relay에 경로가 아직 없다: 잠시 쉬었다가 그 뒤 이벤트로 다시 알아본다 (relay가 나중에 배포될 수 있다)
-                Ok(r) if r.status().as_u16() == 404 => {
-                    tracing::info!("[RelayAgent] relay has no /events yet — retrying in {}s", EVENT_PROBE.as_secs());
-                    pending.clear();
-                    self.pause(EVENT_PROBE).await;
-                    if self.cancel.is_cancelled() {
-                        return;
-                    }
-                    rx = rx.resubscribe();
-                }
                 // 4xx는 다시 보내도 같다: 그 묶음을 버린다 (429는 relay의 노드당 한도라 아래에서 쉬었다 다시 보낸다)
                 Ok(r) if r.status().is_success() || (r.status().is_client_error() && r.status().as_u16() != 429) => {
                     if !r.status().is_success() {
@@ -1159,16 +1162,8 @@ impl Session {
 
     /// 받은 명령을 알린다(`POST /ack`). 릴레이는 ack한 호스트에만 답 없는 명령을 다시 보낸다
     async fn post_ack(&self, body: String) {
-        use std::sync::atomic::Ordering;
-        if !self.ack_supported.load(Ordering::Relaxed) {
-            return;
-        }
         match self.send_signed(reqwest::Method::POST, "/ack", Some(body)).await {
             Ok(r) if r.status().is_success() => {}
-            Ok(r) if r.status().as_u16() == 404 => {
-                tracing::info!("[RelayAgent] relay has no /ack; not acking in this session");
-                self.ack_supported.store(false, Ordering::Relaxed);
-            }
             Ok(r) => tracing::warn!("[RelayAgent] ack rejected: {}", r.status()),
             Err(e) => tracing::warn!("[RelayAgent] ack failed: {}", e),
         }
@@ -1345,21 +1340,6 @@ fn close_linked_guild(node: &mut serde_json::Map<String, Value>, via: &str, poli
     true
 }
 
-/// `link_request` → 데몬 이벤트 `relay.link_request` 본문. 요청 id와 길드가 없으면 None
-fn link_request_event(cmd: &Value, payload: &Value) -> Option<Value> {
-    let text = |v: Option<&Value>| v.and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
-    let request_id = text(payload.get("requestId"))?;
-    let guild_id = text(payload.get("guildId").or(cmd.get("guildId")))?;
-    Some(json!({
-        "requestId": request_id,
-        "guildId": guild_id,
-        "guildName": text(payload.get("guildName")),
-        "requestedBy": text(cmd.get("requestedBy")),
-        "userName": text(payload.get("userName")),
-        "expiresAt": text(payload.get("expiresAt")),
-    }))
-}
-
 /// poll 응답 본문. 릴레이가 이모지를 반으로 잘라 짝 없는 서로게이트(`\ud83d`)가 오면 serde_json이
 /// 본문 전체를 거부해 그 묶음의 명령이 다 사라진다: 짝 없는 서로게이트만 U+FFFD로 바꿔 다시 읽는다
 fn decode_poll(text: &str) -> Value {
@@ -1520,8 +1500,7 @@ fn action_result(result: Result<Value, crate::actions::ActionError>, locale: &st
 }
 
 fn backoff(failures: u32) -> Duration {
-    let factor = 2u32.saturating_pow(failures.saturating_sub(1).min(16));
-    (RETRY_BASE * factor).min(RETRY_MAX)
+    crate::utils::exp_backoff(RETRY_BASE, RETRY_MAX, failures)
 }
 
 /// a < b (x.y.z, 빠진 자리는 0). 프리릴리스(0.1.11-beta.1)는 업데이터와 같은 SemVer 순서로 비교한다
@@ -1678,11 +1657,58 @@ fn ids_by_guild(node_settings: &Value, key: &str) -> Option<Value> {
     (!map.is_empty()).then_some(Value::Object(map))
 }
 
-/// 모듈의 게임 이름 — `display_name`(module.toml)과 `display_names`(언어 → 모듈 locales `display_name`). 없으면 키를 싣지 않는다.
-/// 릴레이가 상황판 채널에 켜진 게임을 보이는 데 쓴다 (`game_names`와 달리 띄어 쓴 이름도 그대로 싣는다)
+/// 하트비트의 모듈 하나: 이름·별명·원격 명령·프리셋과 언어별 이름·별명.
+/// 모듈 locales 파일을 읽으므로 async 작업자 밖에서 부른다
+fn relay_module_entry(m: &crate::chat::api::ModuleView) -> Value {
+    // 번역한 명령 이름: 모듈 locales를 언어마다 한 번 읽는다. 번역을 끈 서버는 릴레이가 빼고 단다 (서버별 `translateCommands`)
+    let locales: std::collections::HashMap<&str, std::sync::Arc<Value>> = match &m.locale_dir {
+        Some(dir) => crate::chat::i18n::languages()
+            .into_iter()
+            .filter_map(|l| Some((l, crate::chat::api::module_locale(dir, l)?)))
+            .collect(),
+        None => Default::default(),
+    };
+    // 명령마다·언어마다 부르므로 locales를 복제하지 않고 함께 쓴다
+    let null = std::sync::Arc::new(Value::Null);
+    let texts = |l: &str| locales.get(l).unwrap_or(&null).clone();
+    let names = &texts;
+    let texts: Option<&LocaleTexts<'_>> = Some(&texts);
+    let mut entry = json!({
+        "name": m.name,
+        // 게임명도 별명처럼 서버를 부른다: 릴레이가 위험 명령 확인에서 같은 서버를 찾도록 함께 보낸다.
+        // 여기는 언어 없는 낱말(module.toml)이고, 언어마다 더하는 낱말은 `module_aliases_by_language`다
+        "module_aliases": m.game_names.iter().chain(&m.module_aliases).collect::<Vec<_>>(),
+        // 디스코드·챗봇에 내보내지 않는 명령(`remote = false`)은 싣지 않는다
+        "commands": { "fields": m.commands.iter().filter(|c| c.remote).map(|c| relay_command_entry(c, m.aliases_of(&c.name), texts)).collect::<Vec<_>>() },
+        "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
+    });
+    relay_module_names(&mut entry, m.display_name.as_deref(), names);
+    if let Some(dir) = &m.locale_dir {
+        relay_language_aliases(&mut entry, dir);
+    }
+    entry
+}
+
+/// 릴레이 스키마: commandAliases는 모듈 → (명령 → 콤마 문자열). 문자열이 아닌 값은 뺀다
+fn command_aliases_json(aliases: &std::collections::HashMap<String, Value>) -> serde_json::Map<String, Value> {
+    aliases
+        .iter()
+        .filter_map(|(module, cmds)| {
+            let cmds: serde_json::Map<String, Value> = cmds
+                .as_object()?
+                .iter()
+                .filter_map(|(c, a)| a.as_str().map(|a| (c.clone(), Value::String(a.to_string()))))
+                .collect();
+            Some((module.clone(), Value::Object(cmds)))
+        })
+        .collect()
+}
+
 /// 언어 → 모듈 locales 한 언어 전체 (없으면 Null). 명령마다·언어마다 부르므로 복제하지 않고 함께 쓴다
 type LocaleTexts<'a> = dyn Fn(&str) -> std::sync::Arc<Value> + 'a;
 
+/// 모듈의 게임 이름 — `display_name`(module.toml)과 `display_names`(언어 → 모듈 locales `display_name`). 없으면 키를 싣지 않는다.
+/// 릴레이가 상황판 채널에 켜진 게임을 보이는 데 쓴다 (`game_names`와 달리 띄어 쓴 이름도 그대로 싣는다)
 fn relay_module_names(entry: &mut Value, display_name: Option<&str>, texts: &LocaleTexts<'_>) {
     if let Some(name) = display_name.map(str::trim).filter(|n| !n.is_empty()) {
         entry["display_name"] = json!(name);
@@ -1783,37 +1809,32 @@ fn host_load(snapshot: &crate::system_monitor::MetricsSnapshot) -> Value {
     load
 }
 
-/// 적용한 새 길드 하나. 릴레이가 연결마다 준 id(`linkId`)로 답해야, 풀고 다시 묶은 사이 늦게 간 답이 새 연결의 확인이 되지 않는다.
-/// id를 주지 않는 옛 릴레이에서 받은 것은 `None`
-#[derive(Clone, Debug, PartialEq)]
-struct LinkedAck {
-    guild: String,
-    link_id: Option<String>,
+
+/// 하트비트 본문. 적용한 새 길드가 있으면 그 연결 id로 확인 응답을 싣는다(`linkedGuildsAckIds`)
+/// 이 PC의 OS·CPU와 리눅스 배포판 `{os, distro?}` (하트비트, 앱의 PC 카드)
+pub fn platform() -> Value {
+    let mut v = json!({ "os": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH) });
+    // 리눅스 배포판: 내 다른 PC의 앱 카드가 배포판 로고를 보인다
+    if let Some(distro) = LINUX_DISTRO.as_ref() {
+        v["distro"] = distro.clone();
+    }
+    v
 }
 
-/// 하트비트 본문. 적용한 새 길드가 있으면 확인 응답을 싣는다: 길드 id(`linkedGuildsAck`, 옛 릴레이)와 연결 id(`linkedGuildsAckIds`)
-fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[LinkedAck]) -> Value {
+fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[String]) -> Value {
     let mut body = json!({
         "agentVersion": AGENT_VERSION,
-        "os": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
         "metadata": metadata,
         "metadataHash": hash,
     });
+    if let Value::Object(platform) = platform() {
+        body.as_object_mut().expect("object").extend(platform);
+    }
     if unchanged {
         body["metadataUnchanged"] = Value::Bool(true);
     }
     if !acks.is_empty() {
-        let mut guilds: Vec<&str> = Vec::new();
-        for a in acks {
-            if !guilds.contains(&a.guild.as_str()) {
-                guilds.push(&a.guild);
-            }
-        }
-        body["linkedGuildsAck"] = json!(guilds);
-        let ids: Vec<&str> = acks.iter().filter_map(|a| a.link_id.as_deref()).collect();
-        if !ids.is_empty() {
-            body["linkedGuildsAckIds"] = json!(ids);
-        }
+        body["linkedGuildsAckIds"] = json!(acks);
     }
     body
 }
@@ -1918,6 +1939,53 @@ mod tests {
         assert_eq!(relay_seen_address(&json!({ "status": "ok" })), None);
     }
 
+    /// 배포판은 os-release의 ID·VERSION_ID·PRETTY_NAME으로 싣는다 (앱 카드의 배포판 로고). 릴레이가 받지 않는 ID면 싣지 않는다
+    #[test]
+    fn the_linux_distro_comes_from_os_release() {
+        let ubuntu = "PRETTY_NAME=\"Ubuntu 24.04.1 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nID=ubuntu\nID_LIKE=debian\n";
+        assert_eq!(parse_os_release(ubuntu), Some(json!({ "id": "ubuntu", "version": "24.04", "name": "Ubuntu 24.04.1 LTS" })));
+        assert_eq!(parse_os_release("ID=arch\nPRETTY_NAME=\"Arch Linux\"\n"), Some(json!({ "id": "arch", "name": "Arch Linux" })));
+        assert_eq!(parse_os_release("ID=\"<svg>\"\n"), None);
+        assert_eq!(parse_os_release("NAME=x\n"), None);
+    }
+
+    /// 13절: 업데이트로 내려가기 직전 릴레이에 "업데이트 중"을 알린다 (세션의 주소·토큰으로 서명). 연결돼 있지 않으면 보내지 않는다
+    #[tokio::test]
+    async fn the_relay_is_told_before_the_daemon_goes_down_for_an_update() {
+        use axum::routing::post;
+        let seen: Arc<Mutex<Vec<(String, bool)>>> = Arc::default();
+        let log = seen.clone();
+        let app = axum::Router::new().route(
+            "/v1/host/updating",
+            post(move |headers: axum::http::HeaderMap, body: String| {
+                let log = log.clone();
+                async move {
+                    let signed = headers.keys().any(|k| k.as_str().to_ascii_lowercase().contains("signature"));
+                    log.lock().unwrap().push((body, signed));
+                    axum::Json(json!({ "ok": true, "untilSeconds": 210 }))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let agent = RelayAgent::new();
+        assert!(agent.notify_updating(90).await.is_err(), "not connected");
+        {
+            let mut inner = agent.lock();
+            inner.cancel = Some(CancellationToken::new());
+            inner.endpoint = Some((base, "sbn_host.secret".into()));
+        }
+        agent.notify_updating(90).await.unwrap();
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 1);
+        assert_eq!(serde_json::from_str::<Value>(&seen[0].0).unwrap(), json!({ "etaSeconds": 90 }));
+        assert!(seen[0].1, "signed like the heartbeat");
+        agent.stop();
+        assert!(agent.notify_updating(90).await.is_err(), "a stopped session sends nothing");
+    }
+
     /// 릴레이가 이 PC의 버전을 받지 않으면(최소 버전 미달) 상태에 `agent_too_old`와 요구 버전을 남겨
     /// GUI·CLI가 업데이트를 안내하게 하고, 받기는 업데이트 전에는 같은 답이므로 heartbeat 주기로만 다시 묻는다
     #[tokio::test]
@@ -1961,7 +2029,6 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
-            ack_supported: std::sync::atomic::AtomicBool::new(true),
         };
         let reset = || agent.update(1, |s| *s = AgentStatus { running: true, ..Default::default() });
         let reported = |what: &str| {
@@ -2022,7 +2089,6 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
-            ack_supported: std::sync::atomic::AtomicBool::new(true),
         };
         session.post_result("c1", &json!({ "success": true })).await;
         assert_eq!(CALLS.swap(0, Ordering::SeqCst), 3, "two 503s, then taken");
@@ -2078,6 +2144,29 @@ mod tests {
         });
     }
 
+    /// 업데이트로 내려간다고 알린 뒤에는 heartbeat를 보내지 않는다 (릴레이의 "업데이트 중" 창을 옛 데몬이 닫지 않게)
+    #[tokio::test]
+    async fn no_heartbeat_is_sent_after_announcing_the_update() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static BEATS: AtomicUsize = AtomicUsize::new(0);
+        async fn beat() -> axum::Json<Value> {
+            BEATS.fetch_add(1, Ordering::SeqCst);
+            axum::Json(json!({ "status": "ok" }))
+        }
+        let app = axum::Router::new().route("/heartbeat", axum::routing::post(beat));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let tmp = tempfile::tempdir().unwrap();
+        let agent = RelayAgent::new();
+        let session = test_session(&agent, &base, "sbn_host.secret", tmp.path()).await;
+        session.heartbeat().await;
+        assert_eq!(BEATS.load(Ordering::SeqCst), 1);
+        let _ = agent.notify_updating(90).await;
+        session.heartbeat().await;
+        assert_eq!(BEATS.load(Ordering::SeqCst), 1);
+    }
+
     /// 시험용 세션: 주어진 에이전트·주소·토큰으로
     async fn test_session(agent: &RelayAgent, base: &str, token: &str, tmp: &std::path::Path) -> Session {
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
@@ -2097,7 +2186,6 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
-            ack_supported: std::sync::atomic::AtomicBool::new(true),
         }
     }
 
@@ -2604,18 +2692,6 @@ mod tests {
     }
 
     #[test]
-    fn a_link_request_from_discord_only_reaches_the_pc_screen() {
-        let cmd = json!({ "guildId": "g1", "requestedBy": "u1" });
-        let payload = json!({ "action": "link_request", "requestId": "r1", "guildName": "길드", "userName": "주인", "expiresAt": "2026-10-18T08:00:00Z" });
-        let data = link_request_event(&cmd, &payload).unwrap();
-        assert_eq!(data, json!({ "requestId": "r1", "guildId": "g1", "guildName": "길드", "requestedBy": "u1", "userName": "주인", "expiresAt": "2026-10-18T08:00:00Z" }));
-        assert!(link_request_event(&cmd, &json!({ "action": "link_request" })).is_none(), "no request id");
-        assert!(link_request_event(&json!({}), &json!({ "requestId": "r1" })).is_none(), "no guild");
-        let event = crate::events::Event { id: 1, kind: "relay.link_request".into(), data, replay: true };
-        assert!(relay_event(&event).is_none(), "never sent back to the relay");
-    }
-
-    #[test]
     fn heartbeat_servers_carry_only_what_the_relay_reads() {
         let server = json!({
             "id": "i1", "name": "마크", "module": "minecraft", "status": "running",
@@ -2732,22 +2808,16 @@ mod tests {
         assert!(FEATURES.iter().all(|f| !f.is_empty() && f.chars().all(|c| c.is_ascii_lowercase() || c == '_')));
     }
 
-    /// 새로 묶인 길드를 적용했으면 다음 하트비트가 그 길드들을 확인 응답(`linkedGuildsAck`)으로, 릴레이가 준 연결 id는
-    /// `linkedGuildsAckIds`로 싣는다. 없으면 싣지 않는다
+    /// 새로 묶인 길드를 적용했으면 다음 하트비트가 릴레이가 준 연결 id를 확인 응답(`linkedGuildsAckIds`)으로 싣는다.
+    /// 없으면 싣지 않는다
     #[test]
     fn heartbeat_acks_the_linked_guilds_it_applied() {
-        let acks = [
-            LinkedAck { guild: "111".into(), link_id: Some("a".into()) },
-            LinkedAck { guild: "222".into(), link_id: None },
-        ];
+        let acks = ["a".to_string(), "b".to_string()];
         let body = heartbeat_body(json!({}), "h", false, &acks);
-        assert_eq!(body["linkedGuildsAck"], json!(["111", "222"]));
-        assert_eq!(body["linkedGuildsAckIds"], json!(["a"]));
+        assert_eq!(body["linkedGuildsAckIds"], json!(["a", "b"]));
+        assert!(body.get("linkedGuildsAck").is_none());
         assert_eq!(body["metadataHash"], "h");
         assert!(body.get("metadataUnchanged").is_none());
-        // 연결 id를 모르는 옛 릴레이에서 받은 것만 있으면 길드 id만 싣는다
-        let body = heartbeat_body(json!({}), "h", false, &acks[1..]);
-        assert!(body.get("linkedGuildsAckIds").is_none());
         let body = heartbeat_body(json!({}), "h", true, &[]);
         assert!(body.get("linkedGuildsAck").is_none());
         assert!(body.get("linkedGuildsAckIds").is_none());

@@ -70,10 +70,7 @@
     "relay_check": "リレー確認",
     "relay_ok": "応答あり",
     "relay_failed": "応答なし: {{error}}",
-    "expired": "期限切れ",
-    "expires_in": "残り時間",
     "members_partial": "Discordの全メンバー一覧を取得できなかったため、権限を登録したメンバーのみ表示しています。",
-    "requested_by": "依頼者",
     "username": "ユーザー名",
     "config_saved": "ボットの設定を保存しました。",
     "config_ignored": "権限キーはボット設定では変わらないため、以前の値のままです: {{keys}}。ほかは保存しました。権限は saba-chan-cli perm で変更してください",
@@ -146,8 +143,6 @@
     "allow_none": "開いているサーバーがありません。",
     "allow_all_saved": "{{guild}} はすべてのサーバーを見られるようになりました。",
     "allow_saved": "{{guild}} で見られるのは次のサーバーだけです: {{servers}}",
-    "link_accepted": "{{guild}} をこのPCに接続しました。",
-    "link_declined": "接続リクエストを拒否しました。",
     "pair_gui_hint": "Discordの接続状態はGUIのDiscord画面でも確認できます。",
     "words": "呼び出し語",
     "command_words": "コマンド語",
@@ -1036,7 +1031,11 @@
       "agent": "このPCのAIエージェントにローカルMCP(`mcp`)を登録します",
       "agent.link": "Claude CodeとCodexにサバちゃんを追加します(どちらか選ばなければ両方)",
       "agent.unlink": "Claude CodeとCodexからサバちゃんを外します",
-      "agent.status": "このPCでサバちゃんが入っているエージェント"
+      "agent.status": "このPCでサバちゃんが入っているエージェント",
+      "remote.claim": "別のPCが表示したペアリングコードを受け取ってそのPCに接続（Linuxワンライン導入の後など）",
+      "remote.install": "このPCのsshでLinux PCにサバちゃんをインストールして接続（`ユーザー@ホスト`）",
+      "remote.remove": "自分のPCを削除：ここで忘れ、必要ならそのPCからサバちゃんを削除しサーバーちゃんの一覧からも外す",
+      "remote.update": "リモートデーモンを今すぐ更新、または自動更新のオン/オフ（`--auto on|off`）"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -1263,7 +1262,19 @@
       "agent.link.claude": "Claude Codeのみ",
       "agent.link.codex": "Codexのみ",
       "agent.unlink.claude": "Claude Codeのみ",
-      "agent.unlink.codex": "Codexのみ"
+      "agent.unlink.codex": "Codexのみ",
+      "remote.claim.code": "そのPCが表示したペアリングコード",
+      "remote.install.target": "インストール先のPC（`ユーザー@ホスト`）",
+      "remote.install.port": "sshポート",
+      "remote.install.linger": "ログアウトしてもデーモンを動かし続ける（sudo）",
+      "remote.install.steam_libs": "SteamCMDに必要な32ビットライブラリを入れる（sudo）",
+      "remote.remove.host_id": "削除するPC id（`remote peers`に表示）",
+      "remote.remove.uninstall": "そのPCからサバちゃんも削除（Linux・Mac）",
+      "remote.remove.remove_settings": "--uninstallと一緒に：設定とDiscord連携も削除",
+      "remote.remove.remove_instances": "--uninstallと一緒に：ゲームサーバーも削除",
+      "remote.remove.from_relay": "サーバーちゃんの自分のPC一覧からも外す",
+      "remote.update.host_id": "リモートデーモンのPC id（`remote daemons`に表示）",
+      "remote.update.auto": "自動更新のオン(on)/オフ(off)。省略すると今すぐ更新"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },
@@ -1918,12 +1929,32 @@
       "remote_bad_path": "そのパスはリモートデーモンに送れません",
       "remote_unauthorized": "リモートデーモンがこのPCを受け付けなくなりました。もう一度接続してください",
       "remote_local_only": "そのPCで直接行う必要があります",
-      "remote_field_blocked": "次の設定はそのPCで直接変更する必要があります: {{fields}}"
+      "remote_field_blocked": "次の設定はそのPCで直接変更する必要があります: {{fields}}",
+      "pair_code_not_found": "そのペアリングコードはありません。コードを確認してください",
+      "pair_code_used": "そのペアリングコードは使用済みです",
+      "pair_code_expired": "ペアリングコードの期限が切れました。そのPCで新しいコードを出してください",
+      "remote_not_ready": "コードは受け取りましたが、そのPCはまだリモートポートを開いていません。少し後に`remote connect`で接続してください",
+      "ssh_missing": "このPCにsshが見つかりません。OpenSSHクライアントを入れてください",
+      "ssh_spawn_failed": "sshを起動できませんでした",
+      "ssh_failed": "sshで接続できませんでした（アドレス・ユーザー・パスワードを確認してください）",
+      "install_failed": "インストールスクリプトが失敗しました",
+      "pair_code_missing": "インストールは終わりましたが、ペアリングコードが出ませんでした",
+      "install_unknown": "そのインストールが見つかりません",
+      "unsupported": "そのPCはリモートで削除できません（Windows）",
+      "cli_missing": "そのPCにsaba-chan-cliがないため削除できませんでした",
+      "remote_uninstall_failed": "そのPCからサバちゃんを削除できませんでした"
     },
     "daemon": "デーモン",
     "this_pc": "このPC",
     "no_servers": "サーバーなし",
-    "via_relay": "リレー経由"
+    "via_relay": "リレー経由",
+    "removed": "{{host}}を削除しました。",
+    "auto_update_on": "{{host}}の自動更新をオンにしました。",
+    "auto_update_off": "{{host}}の自動更新をオフにしました。",
+    "update_started": "{{host}}の更新を始めました。終わるとデーモンが再起動します。",
+    "install_target": "インストール先は`ユーザー@ホスト`で指定してください（例: saba@192.168.0.20）",
+    "install_failed": "インストールを完了できませんでした（{{code}}）",
+    "install_host_key": "初めて接続するPCです。上の指紋がそのPCのものなら続けますか？"
   },
   "address": {
     "title": "{{server}} のアドレス",
@@ -1954,6 +1985,7 @@
     "hint": {
       "closed": "ルーターでこのポートをこのPCへ転送しているか、PCのファイアウォールで許可しているか確認してください。",
       "firewall": "Windowsファイアウォールがこのポートへの受信接続をブロックしています。いま接続しているネットワーク（プライベート・パブリック）で、サーバーが停止中ならsaba-coreを、起動中ならゲームサーバーのプログラムをWindowsファイアウォールの設定で許可してから、もう一度確認してください。",
+      "firewall_macos": "macOSのファイアウォールがこのサーバーのプログラムへの接続をブロックしています。システム設定 › ネットワーク › ファイアウォール › オプションで、サーバーが停止中ならsaba-coreを、実行中ならゲームサーバーのプログラム（javaなど）を「外部からの接続を許可」にしてから、もう一度確認してください。",
       "router": "PCのファイアウォールはこのポートを許可しています。ルーターの設定でこのポートをこのPCに転送してから、もう一度確認してください。",
       "cgnat": "プロバイダーが1つのグローバルIPを複数の家庭で共有しているため、ポート開放では開けません。プロバイダーにグローバルIPを依頼するか、TailscaleなどのVPNを使ってください。",
       "unknown": "起動中のサーバーのUDPポートと、他のプログラムが使っているポートは確認できません。サーバーを停止してからもう一度確認してください。"

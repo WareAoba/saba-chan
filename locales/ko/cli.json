@@ -70,10 +70,7 @@
     "relay_check": "서버쨩 확인",
     "relay_ok": "응답함",
     "relay_failed": "응답 없음: {{error}}",
-    "expired": "만료됨",
-    "expires_in": "남은 시간",
     "members_partial": "디스코드 전체 목록을 받지 못해 권한을 등록한 멤버만 보여요.",
-    "requested_by": "요청한 사람",
     "username": "사용자 이름",
     "config_saved": "봇 설정을 저장했어요.",
     "config_ignored": "권한 키는 봇 설정으로 바꾸지 않아 이전 값 그대로예요: {{keys}}. 나머지는 저장했어요. 권한은 saba-chan-cli perm으로 바꾸세요",
@@ -146,8 +143,6 @@
     "allow_none": "열어 둔 서버가 없어요.",
     "allow_all_saved": "{{guild}}에서 이제 모든 서버를 볼 수 있어요.",
     "allow_saved": "{{guild}}에서 이제 이 서버만 볼 수 있어요: {{servers}}",
-    "link_accepted": "{{guild}}을(를) 이 PC에 연결했어요.",
-    "link_declined": "연결 요청을 거절했어요.",
     "pair_gui_hint": "디스코드 연결 상태는 GUI의 디스코드 화면에서도 볼 수 있어요.",
     "words": "부르는 낱말",
     "command_words": "명령 낱말",
@@ -1036,7 +1031,11 @@
       "agent": "이 PC의 AI 에이전트에 로컬 MCP(`mcp`)를 등록해요",
       "agent.link": "Claude Code와 Codex에 사바쨩을 넣어요(하나만 고르지 않으면 둘 다)",
       "agent.unlink": "Claude Code와 Codex에서 사바쨩을 빼요",
-      "agent.status": "이 PC에서 사바쨩이 들어간 에이전트"
+      "agent.status": "이 PC에서 사바쨩이 들어간 에이전트",
+      "remote.claim": "다른 PC가 낸 페어링 코드를 받아 그 PC에 붙기 (리눅스 한 줄 설치 뒤 등)",
+      "remote.install": "이 PC의 ssh로 리눅스 PC에 사바쨩을 설치하고 붙기 (`계정@호스트`)",
+      "remote.remove": "내 PC 하나 지우기: 여기서 잊고, 원하면 그 PC에서 사바쨩을 지우고 서버쨩 목록에서도 빼기",
+      "remote.update": "원격 데몬을 지금 업데이트하거나 자동 업데이트 켜고 끄기 (`--auto on|off`)"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -1263,7 +1262,19 @@
       "agent.link.claude": "Claude Code만",
       "agent.link.codex": "Codex만",
       "agent.unlink.claude": "Claude Code만",
-      "agent.unlink.codex": "Codex만"
+      "agent.unlink.codex": "Codex만",
+      "remote.claim.code": "그 PC가 보여 준 페어링 코드",
+      "remote.install.target": "설치할 PC (`계정@호스트`)",
+      "remote.install.port": "ssh 포트",
+      "remote.install.linger": "로그아웃해도 데몬이 계속 돌게 (sudo)",
+      "remote.install.steam_libs": "SteamCMD에 필요한 32비트 라이브러리 설치 (sudo)",
+      "remote.remove.host_id": "지울 PC id (`remote peers`에 보여요)",
+      "remote.remove.uninstall": "그 PC에서 사바쨩도 지움 (리눅스·맥)",
+      "remote.remove.remove_settings": "--uninstall과 함께: 설정과 디스코드 연결도 지움",
+      "remote.remove.remove_instances": "--uninstall과 함께: 게임 서버도 지움",
+      "remote.remove.from_relay": "서버쨩의 내 PC 목록에서도 뺌",
+      "remote.update.host_id": "원격 데몬 PC id (`remote daemons`에 보여요)",
+      "remote.update.auto": "자동 업데이트 켜기(on)·끄기(off). 없으면 지금 업데이트"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -1290,7 +1301,7 @@
       "manual": "직접",
       "scheduled": "예약",
       "pre-update": "업데이트 전",
-      "pre-restore": "되돌리기 전",
+      "pre-restore": "복원 직전",
       "snapshot": "게임 자동 백업 보관",
       "game-snapshot": "게임 자동 백업"
     },
@@ -1918,12 +1929,32 @@
       "remote_bad_path": "그 경로는 원격 데몬에 보낼 수 없어요",
       "remote_unauthorized": "원격 데몬이 이 PC를 더는 받지 않아요. 다시 연결해 주세요",
       "remote_local_only": "그 PC에서 직접 해야 하는 일이에요",
-      "remote_field_blocked": "이 설정은 그 PC에서 직접 바꿔야 해요: {{fields}}"
+      "remote_field_blocked": "이 설정은 그 PC에서 직접 바꿔야 해요: {{fields}}",
+      "pair_code_not_found": "그런 페어링 코드가 없어요. 코드를 다시 확인해 주세요",
+      "pair_code_used": "이미 쓴 페어링 코드예요",
+      "pair_code_expired": "페어링 코드가 만료됐어요. 그 PC에서 새 코드를 받아 주세요",
+      "remote_not_ready": "코드는 받았지만 그 PC가 아직 원격 포트를 열지 않았어요. 잠시 뒤 `remote connect`로 다시 붙어 주세요",
+      "ssh_missing": "이 PC에서 ssh를 찾지 못했어요. OpenSSH 클라이언트를 설치해 주세요",
+      "ssh_spawn_failed": "ssh를 실행하지 못했어요",
+      "ssh_failed": "ssh로 접속하지 못했어요 (주소·계정·비밀번호를 확인해 주세요)",
+      "install_failed": "설치 스크립트가 실패했어요",
+      "pair_code_missing": "설치는 끝났지만 페어링 코드가 나오지 않았어요",
+      "install_unknown": "그 설치를 찾지 못했어요",
+      "unsupported": "그 PC에서는 원격으로 지울 수 없어요 (Windows)",
+      "cli_missing": "그 PC에 saba-chan-cli가 없어 지우지 못했어요",
+      "remote_uninstall_failed": "그 PC에서 사바쨩을 지우지 못했어요"
     },
     "daemon": "데몬",
     "this_pc": "이 PC",
     "no_servers": "서버 없음",
-    "via_relay": "서버쨩 거침"
+    "via_relay": "서버쨩 거침",
+    "removed": "{{host}}을(를) 지웠어요.",
+    "auto_update_on": "{{host}}의 자동 업데이트를 켰어요.",
+    "auto_update_off": "{{host}}의 자동 업데이트를 껐어요.",
+    "update_started": "{{host}}의 업데이트를 시작했어요. 끝나면 데몬이 다시 켜져요.",
+    "install_target": "설치할 PC는 `계정@호스트`로 적어 주세요 (예: saba@192.168.0.20)",
+    "install_failed": "설치를 마치지 못했어요 ({{code}})",
+    "install_host_key": "처음 접속하는 PC예요. 위 지문이 그 PC의 것이 맞으면 계속할까요?"
   },
   "address": {
     "title": "{{server}} 주소",
@@ -1954,6 +1985,7 @@
     "hint": {
       "closed": "공유기에서 이 포트를 이 PC로 포트포워딩했는지, PC 방화벽에서 허용했는지 확인해 주세요.",
       "firewall": "Windows 방화벽이 이 포트로 들어오는 연결을 막고 있어요. 지금 연결된 네트워크(개인·공용)에서, 서버가 정지돼 있으면 saba-core를, 실행 중이면 게임 서버 프로그램을 Windows 방화벽 설정에서 허용한 뒤 다시 확인해 주세요.",
+      "firewall_macos": "macOS 방화벽이 이 서버 프로그램이 받는 연결을 막고 있어요. 시스템 설정 › 네트워크 › 방화벽 › 옵션에서, 서버가 정지돼 있으면 saba-core를, 실행 중이면 게임 서버 프로그램(예: java)을 '들어오는 연결 허용'으로 바꾼 뒤 다시 확인해 주세요.",
       "router": "PC 방화벽은 이 포트를 허용하고 있어요. 공유기 설정에서 이 포트를 이 PC로 포트포워딩한 뒤 다시 확인해 주세요.",
       "cgnat": "통신사가 공인 IP를 여러 집이 나눠 쓰게 해서 포트포워딩으로는 열 수 없어요. 통신사에 공인 IP를 요청하거나 Tailscale 같은 VPN을 써 주세요.",
       "unknown": "실행 중인 서버의 UDP 포트와 다른 프로그램이 쓰는 포트는 확인할 수 없어요. 서버를 정지하고 다시 확인해 주세요."

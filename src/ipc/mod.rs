@@ -12,6 +12,7 @@ use tokio::sync::RwLock;
 
 pub mod handlers;
 pub mod updates;
+pub mod update_phase;
 pub mod auth;
 pub mod internal;
 use updates::UpdateState;
@@ -764,6 +765,7 @@ impl IPCServer {
                 Err(_) => tracing::warn!("[Host] no async runtime to attach the module host channel"),
             },
         }
+        let relay_agent = crate::relay_agent::RelayAgent::new();
         Self {
             supervisor: supervisor.clone(),
             listen_addr: listen_addr.to_string(),
@@ -771,7 +773,8 @@ impl IPCServer {
             update_state: UpdateState::new()
                 .with_hot_reload(supervisor, extension_manager.clone())
                 .with_stop_signal(stop_requested.clone())
-                .with_clients(client_registry),
+                .with_clients(client_registry)
+                .with_relay(relay_agent.clone()),
             api_actions: ApiActionTracker::new(),
             provision_tracker: ProvisionTracker::new(),
             extension_manager,
@@ -782,7 +785,7 @@ impl IPCServer {
             stop_requested,
             config_store,
             daemon_log_buffer,
-            relay_agent: crate::relay_agent::RelayAgent::new(),
+            relay_agent,
             system_monitor: crate::system_monitor::SystemMonitor::new(),
         }
     }
@@ -904,6 +907,7 @@ impl IPCServer {
             .route("/api/system/paths", get(handlers::paths::get_paths))
             .route("/api/system/paths/move", post(handlers::paths::move_dir))
             .route("/api/system/browse", get(handlers::paths::browse))
+            .route("/api/system/uninstall", post(handlers::uninstall::uninstall))
             .route("/api/system/autostart", get(handlers::autostart::get_autostart).put(handlers::autostart::put_autostart))
             // ── Client heartbeat ──
             .route("/api/client/register", post(handlers::client::client_register))
@@ -968,6 +972,8 @@ impl IPCServer {
             .route("/api/extensions/{id}/icon", get(handlers::extension::serve_icon))
             .route("/api/extensions/{id}/audit", get(handlers::extension::audit_extension))
             .route("/api/extensions/{id}/i18n/{locale}", get(handlers::extension::serve_i18n))
+            // 설치 폴더 번역 (GUI가 내장본보다 먼저 읽는다. ETag = locales/version)
+            .route("/api/locales/{lang}/{ns}", get(handlers::locales::get_locale))
             // ── Relay server proxy (cloud mode) ──
             .route("/api/relay/host/{host_id}/status", get(handlers::relay::check_host_status))
             .route("/api/relay/host/{host_id}/nodes", get(handlers::relay::list_host_nodes))
@@ -997,11 +1003,7 @@ impl IPCServer {
             .route("/api/relay/bot-invite", get(handlers::relay::get_bot_invite))
             .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
             .route("/api/relay/pair/status", post(handlers::relay::pairing_status))
-            // 옛 경로 (코드가 경로에 실린다): 다음 판에서 뺀다
-            .route("/api/relay/pair/{code}/status", get(handlers::relay::poll_pairing_status))
             .route("/api/relay/mcp/grant", get(handlers::relay::get_mcp_grant).delete(handlers::relay::revoke_mcp_grant))
-            .route("/api/relay/link-requests", get(handlers::relay::list_link_requests))
-            .route("/api/relay/link-requests/{request_id}", post(handlers::relay::answer_link_request))
             // 개인정보 모두 지우기: 웹사이트에서 동의하면 릴레이가 지우고, 데몬이 연결을 끊는다
             .route("/api/relay/privacy/erase", get(handlers::privacy::erase_status).post(handlers::privacy::start_erase))
             // ── Relay agent (cloud Discord bot ↔ daemon) ──
@@ -1032,6 +1034,11 @@ impl IPCServer {
             .route("/api/remote/peers", get(handlers::remote_daemon::list_peers))
             .route("/api/remote/daemons", get(handlers::remote_daemon::list_daemons).post(handlers::remote_daemon::connect_daemon))
             .route("/api/remote/daemons/{host_id}", delete(handlers::remote_daemon::forget_daemon))
+            .route("/api/remote/daemons/{host_id}/remove", post(handlers::remote_daemon::remove_daemon))
+            .route("/api/remote/claim", post(handlers::remote_daemon::claim))
+            .route("/api/remote/install", post(handlers::remote_daemon::start_install))
+            .route("/api/remote/install/{id}", get(handlers::remote_daemon::get_install).delete(handlers::remote_daemon::cancel_install))
+            .route("/api/remote/install/{id}/input", post(handlers::remote_daemon::install_input))
             .route("/api/remote/servers", get(handlers::remote_daemon::list_all_servers))
             .route("/api/remote/daemons/{host_id}/proxy/{*rest}", get(handlers::remote_daemon::proxy).post(handlers::remote_daemon::proxy).put(handlers::remote_daemon::proxy).patch(handlers::remote_daemon::proxy).delete(handlers::remote_daemon::proxy))
             .with_state(self.clone())
@@ -1108,6 +1115,8 @@ impl IPCServer {
                     // 원격 포트 (D1): 켜져 있으면 열고 릴레이에 주소를 올린다
                     let remote_server = self.clone();
                     tokio::spawn(async move { crate::remote_daemon::apply(&remote_server).await });
+                    // 서버쨩의 내 PC 목록에 맞춘다 (빠진 PC의 짝 풀기, 원격 데몬의 바뀐 주소)
+                    crate::remote_daemon::spawn_sync(self.clone());
                     // 자동 포트포워딩 확인 (설정이 켜져 있을 때만, 자동 시작한 서버가 포트를 연 뒤)
                     tokio::spawn(crate::port_check::auto_on_start(self.clone()));
 
@@ -1458,30 +1467,6 @@ mod tests {
         assert_eq!(announce_inputs.len(), 1);
         assert_eq!(announce_inputs[0].get("name").unwrap().as_str().unwrap(), "message");
         assert_eq!(announce_inputs[0].get("required").unwrap().as_bool().unwrap(), true);
-    }
-
-    #[test]
-    fn test_http_method_parsing() {
-        let test_cases = vec![
-            ("GET", crate::protocol::HttpMethod::Get),
-            ("get", crate::protocol::HttpMethod::Get),
-            ("POST", crate::protocol::HttpMethod::Post),
-            ("post", crate::protocol::HttpMethod::Post),
-            ("PUT", crate::protocol::HttpMethod::Put),
-            ("DELETE", crate::protocol::HttpMethod::Delete),
-            ("UNKNOWN", crate::protocol::HttpMethod::Get),
-            ("", crate::protocol::HttpMethod::Get),
-        ];
-
-        for (input, expected) in test_cases {
-            let result = match input.to_uppercase().as_str() {
-                "POST" => crate::protocol::HttpMethod::Post,
-                "PUT" => crate::protocol::HttpMethod::Put,
-                "DELETE" => crate::protocol::HttpMethod::Delete,
-                _ => crate::protocol::HttpMethod::Get,
-            };
-            assert_eq!(result, expected, "Failed for input: {}", input);
-        }
     }
 
     #[test]

@@ -1,10 +1,10 @@
 import i18n from 'i18next';
-import type { BackendModule, ResourceKey } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 // 영어는 폴백이라 번들에 넣고, 나머지 언어는 그 언어로 바꿀 때 불러온다 (첫 로딩 파싱을 줄인다)
 import enBot from '../../locales/en/bot.json';
 import enCommon from '../../locales/en/common.json';
 import enGui from '../../locales/en/gui.json';
+import { createLocaleBackend, createLocalesVersionWatcher } from './utils/localeBackend';
 
 // Single Source of Truth — Rust constants 모듈과 동일한 목록
 const SUPPORTED_LANGUAGES = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
@@ -14,38 +14,45 @@ const localeFiles = import.meta.glob(
     { import: 'default' },
 );
 
-/** i18next 백엔드: 언어·네임스페이스 하나를 따로 묶인 JSON에서 읽는다 */
-const localeBackend: BackendModule = {
-    type: 'backend',
-    init() {},
-    read(language: string, namespace: string, callback) {
-        const load = localeFiles[`../../locales/${language}/${namespace}.json`];
-        if (!load) {
-            callback(null, {});
-            return;
-        }
-        load().then(
-            (data) => callback(null, data as ResourceKey),
-            (err) => callback(err, false),
-        );
-    },
+const embeddedEn: Record<string, Record<string, unknown>> = { common: enCommon, gui: enGui, bot: enBot };
+
+/** 빌드에 묶인 번역 (폴백) */
+const embedded = async (language: string, namespace: string) => {
+    if (language === 'en') return embeddedEn[namespace] ?? null;
+    const load = localeFiles[`../../locales/${language}/${namespace}.json`];
+    return load ? ((await load()) as Record<string, unknown>) : null;
 };
+
+// 번역 판이 바뀌면 지금 언어(와 폴백)를 다시 읽는다 (05 §번역 런타임)
+const localesWatcher = createLocalesVersionWatcher(() => {
+    i18n.reloadResources().catch((err) =>
+        console.warn('[i18n] Failed to reload translations:', (err as Error)?.message || err),
+    );
+});
+
+/** i18next 백엔드: 설치 폴더 번역(데몬)을 먼저, 없거나 키가 빠지면 내장본 */
+const localeBackend = createLocaleBackend(
+    embedded,
+    async (language, namespace) => (window.api?.localesGet ? window.api.localesGet(language, namespace) : null),
+    localesWatcher.markDaemonServed,
+);
+window.api?.onLocalesVersion?.(localesWatcher.apply);
 
 // 저장된 언어 또는 시스템 언어 가져오기
 const getInitialLanguage = async () => {
     try {
         // 1. config.json의 gui.language가 단일 진실 원천 (데몬과 공유)
-        if (window.electron && window.electron.getLanguage) {
-            const savedLanguage = await window.electron.getLanguage();
+        if (window.api?.languageGet) {
+            const savedLanguage = await window.api.languageGet();
             if (savedLanguage && SUPPORTED_LANGUAGES.includes(savedLanguage)) {
-                console.log('Using language from Electron settings:', savedLanguage);
+                console.log('Using language from settings:', savedLanguage);
                 // localStorage도 동기화 (캐시 역할)
                 localStorage.setItem('i18nextLng', savedLanguage);
                 return savedLanguage;
             }
         }
 
-        // 2. Electron API 사용 불가 시 localStorage 폴백 (웹 전용 모드 등)
+        // 2. 셸 브리지가 없으면 localStorage 폴백 (테스트 등)
         const storedLang = localStorage.getItem('i18nextLng');
         if (storedLang && SUPPORTED_LANGUAGES.includes(storedLang)) {
             console.log('Using language from localStorage:', storedLang);

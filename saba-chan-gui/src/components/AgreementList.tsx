@@ -50,7 +50,7 @@ export function AgreementList({ module, agreements, checked, onToggle, disabled 
                             <button
                                 type="button"
                                 className="btn btn-ghost btn-sm agreement-read"
-                                onClick={() => window.electron?.shell?.openExternal?.(a.url as string)}
+                                onClick={() => window.api?.shellOpenExternal?.(a.url as string)}
                                 aria-label={t('agreements.read', { name })}
                             >
                                 <Icon name="externalLink" size="sm" /> {t('agreements.read_short')}

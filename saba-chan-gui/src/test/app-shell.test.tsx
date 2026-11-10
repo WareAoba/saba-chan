@@ -57,7 +57,6 @@ function createApiMock(overrides = {}) {
         offBotRelaunch: vi.fn(),
         onConsolePopoutOpened: vi.fn(),
         onConsolePopoutClosed: vi.fn(),
-        saveNodeToken: vi.fn().mockResolvedValue({ success: true }),
     };
 
     const merged = { ...base, ...overrides };
@@ -128,7 +127,6 @@ describe('상단 탭 페이지 전환', () => {
 
         await act(async () => fireEvent.click(tabs[3]));
         await waitFor(() => expect(document.querySelector('.settings-page')).not.toBeNull());
-        expect(document.querySelector('.settings-modal-overlay')).toBeNull();
     }, 20000);
 
     it('다른 탭으로 가면 열어 둔 데몬 팝오버를 닫는다', async () => {

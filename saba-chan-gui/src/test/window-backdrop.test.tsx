@@ -107,7 +107,7 @@ describe('window backdrop', () => {
 
     it('settings → appearance: the toggle turns it off and the Windows material can be picked', async () => {
         const call = mockApi(WIN11);
-        render(<SettingsModal isOpen onClose={vi.fn()} />);
+        render(<SettingsModal />);
         fireEvent.click(screen.getByRole('tab', { name: i18n.t('gui:settings_modal.appearance') }));
         await act(async () => {});
         const toggle = screen.getByRole('checkbox', { name: i18n.t('gui:settings_modal.backdrop_label') });

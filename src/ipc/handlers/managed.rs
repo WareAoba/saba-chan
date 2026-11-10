@@ -538,8 +538,7 @@ pub(crate) fn requested_agreements(payload: &Value, key: &str) -> Result<Vec<Str
             items.iter().filter_map(Value::as_str).map(str::to_string).collect()
         }
         Some(_) => {
-            let error = json!({ "error": format!("'{}' must be a list of agreement ids", key), "error_code": "invalid_format", "fields": [{"field": key}] });
-            return Err(Box::new((StatusCode::BAD_REQUEST, Json(error)).into_response()));
+            return Err(Box::new(super::instance::invalid_field(key, format!("'{}' must be a list of agreement ids", key))));
         }
     };
     if !ids.is_empty() && crate::audit::current().is_relay() {
@@ -574,8 +573,7 @@ pub async fn accept_agreements_handler(
             (StatusCode::OK, Json(json!({ "success": true, "agreements": agreements }))).into_response()
         }
         Ok(Err(unknown)) => {
-            let error = json!({ "error": format!("This server's module has no agreement '{}'", unknown), "error_code": "invalid_format", "fields": [{"field": "accept"}] });
-            (StatusCode::BAD_REQUEST, Json(error)).into_response()
+            super::instance::invalid_field("accept", format!("This server's module has no agreement '{}'", unknown))
         }
         Err(e) if e.to_string().starts_with("Instance not found") => {
             (StatusCode::NOT_FOUND, Json(json!({ "error": e.to_string(), "error_code": "not_found" }))).into_response()
@@ -724,8 +722,7 @@ pub async fn install_server_handler(
         None => Ok(None),
         Some(Value::String(v)) => Ok(Some(v.clone())),
         Some(_) => {
-            let error = json!({ "error": format!("'{}' must be a string", field), "error_code": "invalid_format", "fields": [{"field": field}] });
-            Err(Box::new((StatusCode::BAD_REQUEST, Json(error)).into_response()))
+            Err(Box::new(super::instance::invalid_field(field, format!("'{}' must be a string", field))))
         }
     };
     // 비우면 아래에서 그 인스턴스 설정으로 최신을 고른다
@@ -763,8 +760,7 @@ pub async fn install_server_handler(
             match state.supervisor.read().await.instance_store.get(id) {
                 Some(inst) if inst.module_name == module_name => {}
                 Some(_) => {
-                    let error = json!({ "error": format!("Instance '{}' is not a '{}' server", id, module_name), "error_code": "invalid_format", "fields": [{"field": "instance_id"}] });
-                    return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+                    return super::instance::invalid_field("instance_id", format!("Instance '{}' is not a '{}' server", id, module_name));
                 }
                 None => return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response(),
             }
@@ -801,49 +797,13 @@ pub async fn install_server_handler(
             }
         };
         if let Some(unknown) = accepted_agreements.iter().find(|id| !module.metadata.agreements.iter().any(|a| &a.id == *id)) {
-            let error = json!({ "error": format!("Module '{}' has no agreement '{}'", module_name, unknown), "error_code": "invalid_format", "fields": [{"field": "accept_agreements"}] });
-            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            return super::instance::invalid_field("accept_agreements", format!("Module '{}' has no agreement '{}'", module_name, unknown));
         }
         if let Some(ref install_cfg) = module.metadata.install {
             if !install_cfg.requires_extensions.is_empty() {
-                let ext_mgr = state.extension_manager.read().await;
-                let ready = ext_mgr.installed_and_enabled_set();
-                let enabled_not_installed = ext_mgr.enabled_but_not_installed();
-                drop(ext_mgr);
-
-                let missing: Vec<String> = install_cfg
-                    .requires_extensions
-                    .iter()
-                    .filter(|ext_id| !ready.contains(ext_id.as_str()))
-                    .cloned()
-                    .collect();
-
-                if !missing.is_empty() {
-                    let not_installed: Vec<&String> = missing
-                        .iter()
-                        .filter(|id| enabled_not_installed.contains(id))
-                        .collect();
-                    let msg = if !not_installed.is_empty() {
-                        format!(
-                            "Cannot install server: required extension(s) not installed: {}. Install them in Settings → Extensions first.",
-                            not_installed.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
-                        )
-                    } else {
-                        format!(
-                            "Cannot install server: required extension(s) not enabled: {}. Enable them in Settings → Extensions first.",
-                            missing.join(", ")
-                        )
-                    };
-                    return (
-                        StatusCode::UNPROCESSABLE_ENTITY,
-                        Json(json!({
-                            "error": msg,
-                            "error_code": "extension_required",
-                            "missing_extensions": missing,
-                            "not_installed": not_installed,
-                        })),
-                    )
-                        .into_response();
+                let found = state.extension_manager.read().await.missing_required(&install_cfg.requires_extensions);
+                if !found.missing.is_empty() {
+                    return super::instance::extension_required("install server", &found);
                 }
             }
         }
@@ -982,7 +942,7 @@ pub async fn install_server_handler(
             let mut keep = true;
             let progress = match finish(install.await) {
                 Ok(r) if r.get("success").and_then(Value::as_bool) == Some(true) => {
-                    // 모듈이 붙인 주의 한 줄 (`java_warning`은 예전 이름)
+                    // 모듈이 붙인 주의 한 줄 (`java_warning`은 마인크래프트 모듈이 버전 설치에 쓴다)
                     let warning = ["warning", "java_warning"].iter().find_map(|k| r.get(*k).and_then(Value::as_str)).filter(|w| !w.is_empty());
                     keep = warning.is_some();
                     let message = match warning {

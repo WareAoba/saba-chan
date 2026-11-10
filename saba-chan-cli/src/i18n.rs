@@ -5,7 +5,7 @@
 //! 새 언어는 `locales/<lang>/cli.json` 하나만 두면 된다.
 
 use serde_json::Value;
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 
 /// 고를 수 있는 언어 (코드, 그 언어로 쓴 이름)
 pub const LANGUAGES: &[(&str, &str)] = &[
@@ -27,12 +27,13 @@ const EMBEDDED: &[(&str, &str)] = &[
 ];
 
 struct Catalog {
-    lang: String,
     primary: Value,
     fallback: Value,
 }
 
-static CATALOG: OnceLock<Catalog> = OnceLock::new();
+static LANG: OnceLock<String> = OnceLock::new();
+/// TUI가 번역 판이 바뀌면 다시 읽으므로 바꿀 수 있게 둔다 (`reload`)
+static CATALOG: RwLock<Option<Catalog>> = RwLock::new(None);
 
 /// "ko-KR", "ko_KR.UTF-8" → "ko". 지역이 의미 있는 언어(zh-CN, pt-BR)는 그대로 둔다.
 pub fn normalize(lang: &str) -> String {
@@ -64,18 +65,28 @@ fn load(lang: &str) -> Value {
     installed(lang).or_else(|| embedded(lang)).unwrap_or(Value::Null)
 }
 
+fn catalog() -> std::sync::RwLockReadGuard<'static, Option<Catalog>> {
+    CATALOG.read().unwrap_or_else(|e| e.into_inner())
+}
+
 /// 한 번만 부른다. 두 번째부터는 무시된다.
 pub fn init(lang: &str) {
-    let lang = normalize(lang);
-    let _ = CATALOG.set(Catalog {
-        primary: load(&lang),
-        fallback: load("en"),
-        lang,
-    });
+    let _ = LANG.set(normalize(lang));
+    // 동시에 부른 쪽도 문구가 채워진 뒤에 돌아간다
+    if catalog().is_none() {
+        reload();
+    }
+}
+
+/// 같은 언어의 문구를 다시 읽는다 (업데이터가 설치 폴더 번역을 바꾼 뒤. 단발 명령은 다음 실행부터 새 번역을 쓴다)
+pub fn reload() {
+    let Some(lang) = LANG.get() else { return };
+    let fresh = Catalog { primary: load(lang), fallback: load("en") };
+    *CATALOG.write().unwrap_or_else(|e| e.into_inner()) = Some(fresh);
 }
 
 pub fn lang() -> &'static str {
-    CATALOG.get().map(|c| c.lang.as_str()).unwrap_or("en")
+    LANG.get().map(String::as_str).unwrap_or("en")
 }
 
 /// 점으로 나눠 찾는다. 남은 부분이 통째로 키인 경우도 본다 (`help.cmd`의 "server.start" 같은 키)
@@ -88,7 +99,8 @@ fn lookup<'v>(root: &'v Value, key: &str) -> Option<&'v str> {
 }
 
 pub fn t(key: &str) -> String {
-    let Some(cat) = CATALOG.get() else {
+    let guard = catalog();
+    let Some(cat) = guard.as_ref() else {
         return key.to_string();
     };
     lookup(&cat.primary, key)
@@ -99,7 +111,8 @@ pub fn t(key: &str) -> String {
 
 /// 키가 없으면 None (도움말처럼 없으면 원래 문구를 쓰는 곳용)
 pub fn try_t(key: &str) -> Option<String> {
-    let cat = CATALOG.get()?;
+    let guard = catalog();
+    let cat = guard.as_ref()?;
     lookup(&cat.primary, key)
         .or_else(|| lookup(&cat.fallback, key))
         .map(str::to_string)
@@ -171,6 +184,17 @@ mod tests {
         assert_eq!(normalize("zh_CN"), "zh-CN");
         assert_eq!(normalize("pt-br"), "pt-BR");
         assert_eq!(normalize("C"), "en");
+    }
+
+    /// 다시 읽어도 언어는 그대로이고 문구를 계속 찾는다
+    #[test]
+    fn reload_keeps_the_language() {
+        init("ko");
+        let before = lang();
+        reload();
+        assert_eq!(lang(), before);
+        assert_ne!(t("update_required.title"), "update_required.title");
+        assert!(try_t("no.such.key").is_none());
     }
 
     #[test]

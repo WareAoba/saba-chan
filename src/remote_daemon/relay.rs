@@ -1,6 +1,6 @@
 //! 원격 데몬이 릴레이에 하는 일 (05 §4.4 (j)): 주소 올리기·내리기, 받은 연결표 확인. 노드 토큰으로 서명한다
 
-use crate::ipc::handlers::relay::{relay_client, signed_headers_with};
+use crate::ipc::handlers::relay::{relay_client, signed_request};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -24,7 +24,7 @@ impl Target {
 pub struct Redeemed {
     pub from_host_id: String,
     pub from_host_name: String,
-    /// 그 PC 주인의 디스코드 이름. 옛 릴레이는 보내지 않는다
+    /// 그 PC 주인의 디스코드 이름 (모르면 빈 값)
     #[serde(default)]
     pub from_owner_name: String,
 }
@@ -44,13 +44,7 @@ async fn send(target: &Target, method: reqwest::Method, path: &str, body: Option
     }
     let client = relay_client().map_err(|_| Failure::Unreachable)?;
     let text = body.map(Value::to_string);
-    let mut req = client.request(method.clone(), format!("{}{}", target.base, path));
-    for (k, v) in signed_headers_with(&target.token, method.as_str(), path, text.as_deref()).ok_or(Failure::Unreachable)? {
-        req = req.header(k, v);
-    }
-    if let Some(text) = text {
-        req = req.header("Content-Type", "application/json").body(text);
-    }
+    let req = signed_request(&client, method, &target.base, path, &target.token, text).ok_or(Failure::Unreachable)?;
     let res = req.send().await.map_err(|_| Failure::Unreachable)?;
     let status = res.status().as_u16();
     let data = res.json::<Value>().await.unwrap_or(Value::Null);
@@ -77,7 +71,7 @@ pub async fn redeem(target: &Target, ticket_id: &str, secret: &str) -> Result<Re
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Published {
     Done,
-    /// 릴레이가 받지 않는다 (주소 없는 endpoint를 모르는 예전 릴레이): 다시 보내지 않는다
+    /// 릴레이가 본문을 받지 않는다 (400): 같은 본문으로는 다시 보내지 않는다
     Refused,
     /// 릴레이가 이 노드 토큰을 받지 않는다 (401·403: 토큰이 대체되거나 지워짐): 같은 토큰으로는 다시 보내지 않는다
     Unauthorized,
@@ -124,6 +118,19 @@ pub struct Peer {
     #[serde(default)]
     pub status: String,
     pub endpoint: Option<Endpoint>,
+    /// OS·CPU·배포판 `{os, distro:{id, version, name}}` (heartbeat). 아직 heartbeat 전이면 없다
+    #[serde(default)]
+    pub platform: Option<Value>,
+    #[serde(default)]
+    pub agent_version: Option<String>,
+    /// 서버쨩에 처음 연결한 때·마지막 heartbeat (ISO)
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub last_seen_at: Option<String>,
+    /// 그 PC가 서버쨩에 접속해 온 공인 IP (릴레이는 메모리에만 둔다)
+    #[serde(default)]
+    pub public_ip: Option<String>,
 }
 
 pub async fn peers(target: &Target) -> Result<Vec<Peer>, Failure> {
@@ -133,6 +140,48 @@ pub async fn peers(target: &Target) -> Result<Vec<Peer>, Failure> {
     }
     match send(target, reqwest::Method::GET, "/api/remote/peers", None).await? {
         (200, data) => serde_json::from_value::<Peers>(data).map(|p| p.peers).map_err(|_| Failure::Unreachable),
+        _ => Err(Failure::Unreachable),
+    }
+}
+
+/// 페어링 코드를 디스코드 대신 받은 결과: 같은 주인의 새 PC
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Claimed {
+    pub host_id: String,
+    #[serde(default)]
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimFailure {
+    /// 없는 코드
+    NotFound,
+    /// 이미 누가 받은 코드
+    AlreadyClaimed,
+    Expired,
+    Unreachable,
+}
+
+/// 다른 PC(새로 설치한 리눅스 등)가 낸 페어링 코드를 이 PC 주인의 것으로 받는다 (디스코드 `/사바쨩 연결`과 같다)
+pub async fn claim(target: &Target, code: &str) -> Result<Claimed, ClaimFailure> {
+    match send(target, reqwest::Method::POST, "/api/remote/pair-claim", Some(&json!({ "code": code }))).await {
+        Ok((200, data)) => serde_json::from_value(data).map_err(|_| ClaimFailure::Unreachable),
+        Ok((400 | 404, _)) => Err(ClaimFailure::NotFound),
+        Ok((409, _)) => Err(ClaimFailure::AlreadyClaimed),
+        Ok((410, _)) => Err(ClaimFailure::Expired),
+        _ => Err(ClaimFailure::Unreachable),
+    }
+}
+
+/// 같은 주인의 다른 PC 하나를 서버쨩에서 뺀다. 빠졌거나 이미 없으면 true
+pub async fn remove_peer(target: &Target, host_id: &str) -> Result<bool, Failure> {
+    if !valid_ticket_id(host_id) {
+        return Ok(false);
+    }
+    match send(target, reqwest::Method::DELETE, &format!("/api/remote/peers/{host_id}"), None).await? {
+        (204, _) => Ok(true),
+        (404, _) => Ok(false),
         _ => Err(Failure::Unreachable),
     }
 }
@@ -154,7 +203,7 @@ pub struct Ticket {
 pub enum TicketFailure {
     /// 같은 주인의 다른 PC가 아니다 (없음·남의 것·자기 자신)
     NotFound,
-    /// 그 PC가 원격 포트를 올리지 않았다 (꺼졌거나, 공인 주소가 없는데 예전 릴레이다)
+    /// 그 PC가 원격 포트를 올리지 않았다 (꺼져 있다)
     NoEndpoint,
     Unreachable,
 }

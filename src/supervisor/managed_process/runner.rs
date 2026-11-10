@@ -24,6 +24,11 @@ const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 /// 세션 로그 기본 보관 개수
 pub const DEFAULT_LOG_SESSIONS: usize = 20;
 
+/// 이 데몬이 붙을 수 있는 러너 형식(`saba_runner::RunnerInfo::format`) 범위, 양 끝 포함.
+/// 발행 때 manifest `saba-core.reads_runner_formats`로 실린다. 켜진 러너가 새 코어의 범위 밖이면 코어를 바꾸지 않는다 (`core_swap`)
+#[allow(dead_code)] // 발행 스크립트가 소스에서 읽는다. 바이너리에서는 아직 부르는 곳이 없다
+pub const READS_RUNNER_FORMATS: (u32, u32) = (0, 1);
+
 /// `<state_dir>/run/`. `state_dir`은 인스턴스의 데몬 전용 기록 폴더(`InstanceStore::state_dir`)다
 pub fn run_dir(state_dir: &Path) -> PathBuf {
     state_dir.join(RUN_DIR)
@@ -291,7 +296,7 @@ impl ManagedProcess {
         // 러너가 끝났다는 신호. 로그 따라 읽기를 마저 끝낸 뒤에 running을 내린다.
         let (ended_tx, ended_rx) = watch::channel(false);
         let exit_slot: Arc<std::sync::Mutex<Option<ProcessExit>>> = Default::default();
-        let regex = log_pattern.and_then(|p| Regex::new(p).ok());
+        let regex = log_level_regex(log_pattern);
 
         // 러너 로그 파일을 따라 읽어 콘솔 버퍼로 (러너가 디스크 기록을 맡는다)
         let tail = {
@@ -411,6 +416,7 @@ impl ManagedProcess {
             working_dir: info.cwd.clone(),
             log_follower: false,
             runner_pid: Some(info.runner_pid),
+            runner_format: Some(info.format),
             runner_control: Some((info.port, token_for_interrupt)),
         }
     }
@@ -492,7 +498,7 @@ mod tests {
         std::fs::write(&log, "").unwrap();
         std::fs::write(run.join(TOKEN_FILE), "tok").unwrap();
         // 살아 있는 러너 대신 이 테스트 프로세스
-        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: 1, log: log.clone(), started_at: saba_runner::now(), cwd: None };
+        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: 1, log: log.clone(), started_at: saba_runner::now(), cwd: None, format: saba_runner::RUNNER_FORMAT };
         saba_runner::write_json(&runner_file(&run), &info).unwrap();
         let proc = ManagedProcess::attach_runner(inst, None).await.expect("attached");
 
@@ -514,7 +520,7 @@ mod tests {
         let log = inst.join("session.log");
         std::fs::write(&log, "").unwrap();
         std::fs::write(run.join(TOKEN_FILE), "tok").unwrap();
-        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: 1, log: log.clone(), started_at: saba_runner::now(), cwd: None };
+        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: 1, log: log.clone(), started_at: saba_runner::now(), cwd: None, format: saba_runner::RUNNER_FORMAT };
         saba_runner::write_json(&runner_file(&run), &info).unwrap();
         let proc = ManagedProcess::attach_runner(inst, None).await.expect("attached");
 
@@ -542,7 +548,7 @@ mod tests {
         std::fs::write(run.join(TOKEN_FILE), "tok").unwrap();
         // 아무도 받지 않는 포트
         let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: closed, log, started_at: saba_runner::now(), cwd: None };
+        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: closed, log, started_at: saba_runner::now(), cwd: None, format: saba_runner::RUNNER_FORMAT };
         saba_runner::write_json(&runner_file(&run), &info).unwrap();
         let proc = ManagedProcess::attach_runner(inst, None).await.expect("attached");
         assert!(proc.send_command("stop").await.is_err());
@@ -561,7 +567,7 @@ mod tests {
         std::fs::write(run.join(TOKEN_FILE), "tok").unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port, log, started_at: saba_runner::now(), cwd: None };
+        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port, log, started_at: saba_runner::now(), cwd: None, format: saba_runner::RUNNER_FORMAT };
         saba_runner::write_json(&runner_file(&run), &info).unwrap();
         let proc = ManagedProcess::attach_runner(inst, None).await.expect("attached");
 
@@ -594,7 +600,7 @@ mod tests {
         std::fs::write(&log, "").unwrap();
         std::fs::write(run.join(TOKEN_FILE), "tok").unwrap();
         let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: closed, log, started_at: saba_runner::now(), cwd: None };
+        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: closed, log, started_at: saba_runner::now(), cwd: None, format: saba_runner::RUNNER_FORMAT };
         saba_runner::write_json(&runner_file(&run), &info).unwrap();
         let proc = ManagedProcess::attach_runner(inst, None).await.expect("attached");
         assert!(proc.interrupt().await.is_err());

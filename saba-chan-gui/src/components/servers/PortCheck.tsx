@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { type MouseEvent, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { subscribeDaemonEvents } from '../../utils/daemonEvents';
-import { type PortCheckReport, portCheckNeedsAttention, portCheckShown, portHelpUrl, portLabel } from '../../utils/portCheck';
+import { type PortCheckReport, portCheckHintKey, portCheckNeedsAttention, portCheckShown, portHelpUrl, portLabel } from '../../utils/portCheck';
 import type { Server } from '../../stores/useServerStore';
 import { Icon } from '../Icon';
 
@@ -48,7 +48,7 @@ function HelpLink() {
     const { t, i18n } = useTranslation('gui');
     const url = portHelpUrl(i18n.language);
     const open = (e: MouseEvent<HTMLAnchorElement>) => {
-        const openExternal = window.electron?.shell?.openExternal;
+        const openExternal = window.api?.shellOpenExternal;
         if (!openExternal) return;
         e.preventDefault();
         openExternal(url);
@@ -134,7 +134,7 @@ export function PortCheck({ server }: { server: Server }) {
                     </ul>
                     {report.verdict !== 'open' && (
                         <p className="server-check-solution">
-                            {t(`port_check.hint.${report.verdict}`)} <HelpLink />
+                            {t(portCheckHintKey(report))} <HelpLink />
                         </p>
                     )}
                 </div>
@@ -171,7 +171,7 @@ export function PortCheckNotice({ server }: { server: Server }) {
         <div className="notice tone-warn port-check-notice" role="status">
             <Icon name="globe" size="sm" />
             <span className="port-check-notice-text">
-                <strong>{t(`port_check.verdict.${report.verdict}`)}</strong> {t(`port_check.hint.${report.verdict}`)}{' '}
+                <strong>{t(`port_check.verdict.${report.verdict}`)}</strong> {t(portCheckHintKey(report))}{' '}
                 <HelpLink />
                 {error && <span className="port-check-notice-error"> {error}</span>}
             </span>

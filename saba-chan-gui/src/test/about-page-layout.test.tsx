@@ -19,7 +19,7 @@ const LANGS = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'f
 async function openAbout() {
     window.api.getAppVersion = vi.fn(() => Promise.resolve('0.1.12')) as never;
     window.api.getComponentInfo = vi.fn(() => new Promise(() => {})) as never;
-    const view = render(<SettingsModal isOpen onClose={vi.fn()} />);
+    const view = render(<SettingsModal />);
     await act(async () => fireEvent.click(view.container.querySelector('#settings-tab-about') as HTMLElement));
     return view.container;
 }

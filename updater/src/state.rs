@@ -61,7 +61,7 @@ impl UpdateManager {
     }
 
     /// staging 디렉터리의 매니페스트를 읽어 컴포넌트 상태를 복원합니다.
-    /// 네트워크 없이 apply_updates()를 실행할 수 있게 해줍니다.
+    /// 업데이터 `--apply`가 네트워크 없이 적용할 수 있게 해줍니다.
     pub fn load_pending_manifest(&mut self) -> Result<usize> {
         let manifest_path = self.staging_dir.join("pending.json");
         if !manifest_path.exists() {
@@ -247,29 +247,6 @@ impl UpdateManager {
         let mut manifest = Self::read_installed_manifest(path)?;
         manifest.insert(component_key.to_string(), version.to_string());
         Self::save_installed_manifest_at(path, &manifest)
-    }
-
-    /// apply 성공 후 적용된 컴포넌트들의 버전을 일괄 업데이트
-    pub fn update_installed_versions_batch(&self, applied_keys: &[String]) -> Result<()> {
-        let mut manifest = Self::read_installed_manifest(&self.installed_manifest_file)?;
-        let mut updated = false;
-
-        for comp in &self.status.components {
-            let key = comp.component.manifest_key();
-            if applied_keys.iter().any(|a| a == &comp.component.display_name() || a == &key) {
-                if let Some(ref _ver) = comp.latest_version {
-                    // apply 후 current_version이 이미 latest로 업데이트되어 있음
-                    manifest.insert(key.clone(), comp.current_version.clone());
-                    updated = true;
-                    tracing::info!("[UpdateManager] Updated installed version: {} -> {}", key, comp.current_version);
-                }
-            }
-        }
-
-        if updated {
-            Self::save_installed_manifest_at(&self.installed_manifest_file, &manifest)?;
-        }
-        Ok(())
     }
 
     // ══════════════════════════════════════════════════════

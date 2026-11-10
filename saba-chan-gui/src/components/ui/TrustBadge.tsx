@@ -5,7 +5,7 @@ const ICONS: Record<string, string> = { verified: 'checkCircle', modified: 'aler
 
 /**
  * 모듈·익스텐션 신뢰 배지 (데몬 GET /api/modules·/api/extensions의 `trust`).
- * verified = 서명된 카탈로그에서 받았고 그 뒤로 파일이 그대로다. 값이 없으면(옛 데몬) 그리지 않는다.
+ * verified = 서명된 카탈로그에서 받았고 그 뒤로 파일이 그대로다. 모르는 값이면 그리지 않는다.
  */
 export function TrustBadge({ trust }: { trust?: string }) {
     const { t } = useTranslation('gui');

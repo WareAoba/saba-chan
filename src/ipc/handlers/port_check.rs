@@ -15,7 +15,7 @@ use crate::port_check::CheckError;
 
 async fn resolve(state: &IPCServer, id: &str) -> Option<String> {
     let sup = state.supervisor.read().await;
-    sup.instance_store.get(id).or_else(|| sup.instance_store.list().iter().find(|i| i.name == id)).map(|i| i.id.clone())
+    sup.instance_store.find(id).map(|i| i.id.clone())
 }
 
 fn not_found(id: &str) -> axum::response::Response {

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 
 vi.mock('../contexts/ExtensionContext', () => ({
-    useExtensions: () => ({ extensions: [], manifestExtensions: [], availableUpdates: [], installingIds: new Set(), loading: false, refresh: vi.fn() }),
+    useExtensions: () => ({ extensions: [], loading: false, refresh: vi.fn() }),
 }));
 
 import SabaStorage from '../components/Modals/SabaStorage';
@@ -58,14 +58,11 @@ describe('모듈 설치·제거가 겹쳐 거절될 때', () => {
 
     it('설치가 거절되면 실패로 굳히지 않고 이유를 알린 뒤 다시 누를 수 있게 둔다', async () => {
         await openModules();
-        const headers = document.querySelectorAll('.saba-storage-pane:not([hidden]) .ss-store-header');
-        const header = headers[headers.length - 1].querySelector('.ss-icon-btn');
-        await act(async () => fireEvent.click(header!));
-        await waitFor(() => expect(document.querySelector('.ss-icon-btn.accent')).not.toBeNull());
-        await act(async () => fireEvent.click(document.querySelector('.ss-icon-btn.accent')!));
+        await waitFor(() => expect(document.querySelector('.ss-install-btn')).not.toBeNull());
+        await act(async () => fireEvent.click(document.querySelector('.ss-install-btn')!));
         await waitFor(() => expect(window.showToast).toHaveBeenCalledWith(busyText(), 'warning', 4000, undefined));
         expect(document.querySelector('.ss-status-err')).toBeNull();
-        expect(document.querySelector('.ss-icon-btn.accent')).not.toBeNull();
+        expect(document.querySelector('.ss-install-btn')).not.toBeNull();
     });
 
     it('다른 이유로 제거하지 못하면 데몬 원문 대신 번역한 이유를 알린다', async () => {

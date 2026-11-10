@@ -96,6 +96,94 @@ pub async fn run(ctx: &Ctx, cmd: RemoteCmd) -> Result<()> {
             ctx.out.done(&t!("remote.forgotten", host = host_id), &r);
             Ok(())
         }
+        RemoteCmd::Claim { code } => {
+            let r = ctx.api.claim_remote(code.trim()).await?;
+            ctx.out.done(&t!("remote.connected", name = pc_name(&r)), &r);
+            Ok(())
+        }
+        RemoteCmd::Install { target, port, linger, steam_libs } => install(ctx, &target, port, linger, steam_libs).await,
+        RemoteCmd::Remove { host_id, uninstall, remove_settings, remove_instances, from_relay } => {
+            let body = json!({ "uninstall": uninstall, "keepSettings": !remove_settings, "keepInstances": !remove_instances, "removePc": from_relay });
+            let r = ctx.api.remove_remote_daemon(&host_id, body).await?;
+            ctx.out.done(&t!("remote.removed", host = host_id), &r);
+            Ok(())
+        }
+        RemoteCmd::Update { host_id, auto } => {
+            let r = match auto {
+                Some(on) => ctx.api.daemon_update_on(&host_id, reqwest::Method::PUT, Some(json!({ "auto": on }))).await?,
+                None => ctx.api.daemon_update_on(&host_id, reqwest::Method::POST, None).await?,
+            };
+            let msg = match auto {
+                Some(true) => t!("remote.auto_update_on", host = host_id),
+                Some(false) => t!("remote.auto_update_off", host = host_id),
+                None => t!("remote.update_started", host = host_id),
+            };
+            ctx.out.done(&msg, &r);
+            Ok(())
+        }
+    }
+}
+
+/// `user@host` → (계정, 호스트)
+fn split_target(target: &str) -> Option<(&str, &str)> {
+    let (user, host) = target.split_once('@')?;
+    (!user.is_empty() && !host.is_empty()).then_some((user, host))
+}
+
+/// 데몬이 ssh로 설치하는 동안 출력을 보이고, ssh·sudo 물음은 여기서 묻는다 (비밀번호는 숨겨서)
+async fn install(ctx: &Ctx, target: &str, port: u16, linger: bool, steam_libs: bool) -> Result<()> {
+    let Some((user, host)) = split_target(target) else {
+        return Err(crate::error::failed(t!("remote.install_target")));
+    };
+    let started = ctx.api.start_remote_install(json!({ "host": host, "user": user, "port": port, "linger": linger, "steamLibs": steam_libs })).await?;
+    let id = s(&started, "id").to_string();
+    let mut offset = 0u64;
+    let mut asked: Option<String> = None;
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {}
+            _ = tokio::signal::ctrl_c() => {
+                let _ = ctx.api.cancel_remote_install(&id).await;
+                return Err(crate::error::CliError::Cancelled.into());
+            }
+        }
+        let v = ctx.api.remote_install(&id, offset).await?;
+        offset = v.get("offset").and_then(Value::as_u64).unwrap_or(offset);
+        let output = s(&v, "output");
+        if !output.is_empty() && !ctx.out.json {
+            tell!("{}", output.trim_end_matches('\n'));
+        }
+        match s(&v, "phase") {
+            "done" => {
+                let _ = ctx.api.cancel_remote_install(&id).await;
+                ctx.out.done(&t!("remote.connected", name = s(&v, "name")), &v);
+                return Ok(());
+            }
+            "failed" | "cancelled" => {
+                let _ = ctx.api.cancel_remote_install(&id).await;
+                let code = s(&v, "error_code");
+                return Err(crate::error::failed(t!("remote.install_failed", code = code)));
+            }
+            _ => {}
+        }
+        let Some(prompt) = v.get("prompt").filter(|p| p.is_object()) else {
+            asked = None;
+            continue;
+        };
+        let text = s(prompt, "text").to_string();
+        if asked.as_deref() == Some(text.as_str()) {
+            continue;
+        }
+        asked = Some(text.clone());
+        let answer = match s(prompt, "kind") {
+            "host_key" => Some(if ctx.ask.confirm(&t!("remote.install_host_key"), false)? { "yes".to_string() } else { "no".to_string() }),
+            _ => ctx.ask.secret(text.lines().last().unwrap_or("").trim())?,
+        };
+        let Some(answer) = answer else {
+            let _ = ctx.api.cancel_remote_install(&id).await;
+            return Err(crate::error::CliError::Cancelled.into());
+        };
+        ctx.api.answer_remote_install(&id, &answer).await?;
     }
 }
 
@@ -133,12 +221,9 @@ fn server_rows(v: &Value) -> Vec<[String; 4]> {
     rows
 }
 
-/// 화면에 보일 PC 이름: 데몬이 정한 `디스코드 이름(PC 이름)`, 옛 데몬이면 PC 이름
+/// 화면에 보일 PC 이름: 데몬이 정한 `디스코드 이름(PC 이름)`
 fn pc_name(v: &Value) -> String {
-    match s(v, "label") {
-        "" => s(v, "name").to_string(),
-        label => label.to_string(),
-    }
+    s(v, "label").to_string()
 }
 
 fn yes_no(v: &Value, key: &str) -> String {
@@ -201,6 +286,13 @@ fn print_status(v: &Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_install_target_is_user_at_host() {
+        assert_eq!(split_target("saba@nas.local"), Some(("saba", "nas.local")));
+        assert_eq!(split_target("nas.local"), None);
+        assert_eq!(split_target("@nas"), None);
+    }
 
     #[test]
     fn set_sends_only_what_was_given() {

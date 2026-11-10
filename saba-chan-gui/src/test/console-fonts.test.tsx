@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import i18n from 'i18next';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import SettingsModalImpl from '../components/Modals/SettingsModal';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import {
@@ -71,7 +71,7 @@ describe('설정 > 화면 > 콘솔 글꼴', () => {
     beforeEach(() => useSettingsStore.getState()._resetForTest());
 
     it('글자마다 드롭다운이 있고, 고르면 그 칸만 바뀐다', async () => {
-        render(<SettingsModal isOpen onClose={vi.fn()} />);
+        render(<SettingsModal />);
         fireEvent.click(screen.getByRole('tab', { name: i18n.t('gui:settings_modal.tab_console') }));
         const box = screen.getByText(i18n.t('gui:settings_modal.console_fonts_label')).closest('.setting-item');
         const ko = within(box as HTMLElement).getByRole('combobox', { name: i18n.t('gui:settings_modal.console_fonts_ko') });

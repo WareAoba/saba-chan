@@ -9,12 +9,16 @@ import { ModuleMakerCard } from '../ModuleMakerCard';
 import { useContextMenu } from '../ui/ContextMenu';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { QuestionModal } from './Modals';
-import { localizedDescription } from '../../utils/localizedText';
+import { localizedDescription, localizedName } from '../../utils/localizedText';
+import { type CatalogModule, unsupportedText } from '../../utils/moduleSupport';
+import { formatBytes } from '../../utils/schedule';
 import { clearModuleAuditCache, ExtensionAuditNotice } from '../servers/ModuleAuditNotice';
 import { SabaEmpty, SabaFail } from '../ui/SabaArt';
 import { TrustBadge } from '../ui/TrustBadge';
 import { createTranslateError, safeShowToast } from '../../utils/helpers';
 import type { ApiBody, ModuleInfo } from '../../types/daemon';
+import { failed } from '../../utils/apiResult';
+import { useInstallingIds } from './useStoreInstall';
 
 // ─────────────────────────────────────────────────────────────
 // 사바 스토리지 (구 업데이트 센터)
@@ -27,9 +31,9 @@ import type { ApiBody, ModuleInfo } from '../../types/daemon';
 // @param {boolean}  devMode   - 개발자 모드
 // @param {string}   initialTab - 처음 보일 탭 (components | modules | extensions)
 // ─────────────────────────────────────────────────────────────
-/** updaterCall은 던지지 않고 {ok:false, error}로 실패를 알린다 */
+/** 브리지는 던지지 않고 실패 본문으로 알린다 */
 function throwIfRejected(res: ApiBody | null | undefined) {
-    if (res?.ok === false || res?.error) throw new Error(res.error || 'failed');
+    if (failed(res)) throw new Error(res?.error || 'failed');
 }
 
 interface SabaStorageProps {
@@ -194,6 +198,8 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
     const [mockRelayBuild, setMockRelayBuild] = useState(false);
     const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
     const [updateChannel, setUpdateChannel] = useState('stable');
+    // 정식 채널인데 지금 판이 베타면 같은 판의 정식을 기다린다 (데몬 status.stable_wait). 알약에는 띄우지 않는다
+    const [stableWait, setStableWait] = useState<string | null>(null);
     // 찾은 뒤 할 일: check(알리기만) / download(받아 두기) / apply(받고 다음 실행 때 적용). 적용은 데몬이 판단한다
     const [updateMode, setUpdateMode] = useState('check');
     const [downloadProgress, setDownloadProgress] = useState<{ component: string | null; percent: number; active: boolean }>({ component: null, percent: 0, active: false });
@@ -264,7 +270,10 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
     const refreshStatus = useCallback(async () => {
         try {
             const res = await window.api?.updaterStatus?.();
-            if (res?.ok && mountedRef.current) setComponents(parseComponents(res.components));
+            if (res?.ok && mountedRef.current) {
+                setComponents(parseComponents(res.components));
+                setStableWait(res.stable_wait || null);
+            }
         } catch (_) {}
     }, []);
 
@@ -317,7 +326,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
                             const launchRes = await window.api?.updaterLaunchApply?.(res.needs_updater);
                             if (launchRes?.ok === false)
                                 setError(`${key}: ${launchRes?.error || t('saba_storage.updater_launch_failed')}`);
-                        } else if (res?.ok === false) {
+                        } else if (failed(res)) {
                             setError(
                                 `${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`,
                             );
@@ -336,7 +345,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
             try {
                 const res = await window.api?.updaterApply?.([key]);
                 clearModuleAuditCache();
-                if (res?.ok === false) {
+                if (failed(res)) {
                     setError(`${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`);
                 } else {
                     if (res?.requires_updater && res?.needs_updater?.length > 0) {
@@ -394,7 +403,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
             clearModuleAuditCache();
             // 일부만 적용돼도(ok:false) 적용된 것은 알린다 (G-U9b)
             daemonApplied = res?.applied || [];
-            if (res?.ok === false) {
+            if (failed(res)) {
                 hadError = true;
                 setError(
                     (prev) =>
@@ -519,6 +528,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
         (async () => {
             try {
                 const res = await window.api?.updaterStatus?.();
+                if (res?.ok && mountedRef.current) setStableWait(res.stable_wait || null);
                 if (res?.ok && res.components?.length && mountedRef.current) {
                     setComponents(parseComponents(res.components));
                 } else if (mountedRef.current) {
@@ -539,7 +549,10 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
         pollRef.current = setInterval(async () => {
             try {
                 const res = await window.api?.updaterStatus?.();
-                if (res?.ok && mountedRef.current) setComponents(parseComponents(res.components));
+                if (res?.ok && mountedRef.current) {
+                    setComponents(parseComponents(res.components));
+                    setStableWait(res.stable_wait || null);
+                }
             } catch (_) {}
         }, 30000);
 
@@ -738,6 +751,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
                         }))}
                     />
                 </div>
+                {stableWait && <p className="setting-description update-stable-wait">{t('updates.stable_wait', { version: stableWait })}</p>}
             </div>
 
             <div className="update-panel-actions" />
@@ -779,16 +793,15 @@ function ModuleCardIcon({ icon }: { icon?: string | null }) {
 // 모듈 탭
 // ─────────────────────────────────────────────────────────────
 function ModulesTab() {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
     const openMenu = useContextMenu();
     const { refreshExtensions } = useExtensions();
     const [installedModules, setInstalledModules] = useState<ModuleInfo[] | null>(null); // null = 받는 중
-    const [manifestModules, setManifestModules] = useState<ApiBody[] | null>(null); // null = 미로드, [] = 로드됨
+    const [manifestModules, setManifestModules] = useState<CatalogModule[] | null>(null); // null = 미로드, [] = 로드됨
     const [manifestLoading, setManifestLoading] = useState(false);
     const [manifestError, setManifestError] = useState<string | null>(null);
-    const [installingIds, setInstallingIds] = useState<Set<string>>(new Set());
+    const { installingIds, run: runInstall } = useInstallingIds();
     const [installResults, setInstallResults] = useState<Record<string, string | null>>({}); // { id: 'ok'|'error' }
-    const [showManifest, setShowManifest] = useState(false);
     const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
     const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
     const [refreshingModules, setRefreshingModules] = useState(false);
@@ -824,44 +837,16 @@ function ModulesTab() {
         loadInstalledModules();
     }, [loadInstalledModules]);
 
-    const handleShowManifest = useCallback(async () => {
-        if (manifestModules !== null) {
-            setShowManifest(true);
-            return;
-        }
-        setShowManifest(true);
-        setManifestLoading(true);
-        setManifestError(null);
-        try {
-            const res = await window.api?.moduleManifest?.();
-            if (res?.ok && res.manifest?.modules) {
-                // manifest.modules: { id: { version, display_name, description, ... } }
-                const mods = Object.entries(res.manifest.modules as Record<string, ApiBody>).map(([id, info]) => ({
-                    id,
-                    ...info,
-                }));
-                setManifestModules(mods);
-            } else {
-                setManifestError(
-                    res?.error || t('saba_storage.manifest_fetch_failed', '매니페스트를 가져오지 못했습니다.'),
-                );
-                setManifestModules([]);
-            }
-        } catch (e) {
-            setManifestError((e as Error).message);
-            setManifestModules([]);
-        }
-        setManifestLoading(false);
-    }, [manifestModules, t]);
-
-    const handleRefreshManifest = useCallback(async () => {
+    // 받을 수 있는 목록은 탭을 열면 바로 받는다 (예전처럼 ▾ 뒤에 접어 두면 지나치기 쉽다)
+    const loadManifest = useCallback(async () => {
         setManifestModules(null);
         setManifestLoading(true);
         setManifestError(null);
         try {
             const res = await window.api?.moduleManifest?.();
             if (res?.ok && res.manifest?.modules) {
-                const mods = Object.entries(res.manifest.modules as Record<string, ApiBody>).map(([id, info]) => ({ id, ...info }));
+                // manifest.modules: { id: { version, display_name, display_names?, descriptions?, platform_supported, ... } }
+                const mods = Object.entries(res.manifest.modules as Record<string, Omit<CatalogModule, 'id'>>).map(([id, info]) => ({ ...info, id }));
                 setManifestModules(mods);
             } else {
                 setManifestError(
@@ -876,8 +861,11 @@ function ModulesTab() {
         setManifestLoading(false);
     }, [t]);
 
-    const handleInstallModule = useCallback(async (moduleId: string) => {
-        setInstallingIds((prev) => new Set(prev).add(moduleId));
+    useEffect(() => {
+        loadManifest();
+    }, [loadManifest]);
+
+    const handleInstallModule = useCallback(async (moduleId: string) => runInstall(moduleId, async () => {
         setInstallResults((prev) => ({ ...prev, [moduleId]: null }));
         try {
             const res = await window.api?.moduleInstallFromManifest?.(moduleId);
@@ -906,12 +894,7 @@ function ModulesTab() {
         } catch (_) {
             setInstallResults((prev) => ({ ...prev, [moduleId]: 'error' }));
         }
-        setInstallingIds((prev) => {
-            const n = new Set(prev);
-            n.delete(moduleId);
-            return n;
-        });
-    }, [t, refreshExtensions]);
+    }), [t, refreshExtensions, runInstall]);
 
     const handleConfirmRemove = useCallback(async () => {
         const id = confirmRemoveId;
@@ -951,6 +934,8 @@ function ModulesTab() {
 
     // 매니페스트에서 미설치 모듈
     const uninstalledModules = manifestModules ? manifestModules.filter((m) => !installedIds.has(m.id)) : [];
+    const runnableModules = uninstalledModules.filter((m) => m.platform_supported !== false);
+    const unrunnableModules = uninstalledModules.filter((m) => m.platform_supported === false);
 
     return (
         <div className="saba-storage-tab-content">
@@ -970,7 +955,8 @@ function ModulesTab() {
                 </button>
             </div>
             {installedModules === null ? null : installedModules.length === 0 ? (
-                <SabaEmpty compact body={t('saba_storage.no_installed_modules', '설치된 모듈이 없습니다.')} />
+                // 받을 수 있는 목록이 바로 아래 보이므로 그림 대신 한 줄로 둔다
+                <p className="ss-empty ss-installed-empty">{t('saba_storage.no_installed_modules', '설치된 모듈이 없습니다.')}</p>
             ) : (
                 <div className="ss-cards">
                     {sortedModules.map((m, idx) => {
@@ -1019,90 +1005,94 @@ function ModulesTab() {
                 </div>
             )}
 
-            {/* 스토어 헤더 */}
+            {/* 받을 수 있는 모듈: 이 데몬에서 도는 것은 카드로, 돌지 않는 것은 접힌 묶음에 이유와 함께 */}
             <div className="ss-store-header">
                 <div className="ss-section-label" style={{ margin: 0 }}>
-                    {t('saba_storage.available_modules', '사용 가능한 모듈')}
+                    {t('saba_storage.available_modules', '받을 수 있는 게임')}
                 </div>
-                {showManifest ? (
-                    <button
-                        className="ss-icon-btn"
-                        disabled={manifestLoading}
-                        onClick={handleRefreshManifest}
-                        data-tooltip={t('saba_storage.refresh_manifest', '매니페스트 새로고침')}
-                        aria-label={t('saba_storage.refresh_manifest', '매니페스트 새로고침')}
-                    >
-                        <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
-                    </button>
-                ) : (
-                    <button
-                        className="ss-icon-btn"
-                        onClick={handleShowManifest}
-                        data-tooltip={t('saba_storage.show_more_modules', '더 많은 모듈 표시')}
-                        aria-label={t('saba_storage.show_more_modules', '더 많은 모듈 표시')}
-                    >
-                        <Icon name="chevronDown" size="sm" />
-                    </button>
-                )}
+                <button
+                    className="ss-icon-btn"
+                    disabled={manifestLoading}
+                    onClick={loadManifest}
+                    data-tooltip={t('saba_storage.refresh_manifest', '목록 새로고침')}
+                    aria-label={t('saba_storage.refresh_manifest', '목록 새로고침')}
+                >
+                    <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
+                </button>
             </div>
-
-            {showManifest && (
-                <>
-                    {manifestLoading && (
-                        <p className="ss-empty">{t('saba_storage.loading_manifest', '매니페스트 로드 중...')}</p>
-                    )}
-                    {manifestError && <SabaFail message={manifestError} />}
-                    {!manifestLoading &&
-                        manifestModules !== null &&
-                        uninstalledModules.length === 0 &&
-                        !manifestError && (
-                            <p className="ss-empty">
-                                {t('saba_storage.all_modules_installed', '사용 가능한 모든 모듈이 설치되어 있습니다.')}
-                            </p>
-                        )}
-                    <div className="ss-cards">
-                        {uninstalledModules.map((m) => {
-                            const isInstalling = installingIds.has(m.id);
-                            const result = installResults[m.id];
-                            return (
-                                <div className="ss-card" key={m.id}>
-                                    <div className="ss-card-body">
-                                        <span className="ss-card-name">
-                                            {m.display_name || m.id}
-                                            {m.version && <span className="ss-card-version">v{m.version}</span>}
+            {manifestLoading && <p className="ss-empty">{t('saba_storage.loading_manifest', '목록 받는 중…')}</p>}
+            {manifestError && <SabaFail message={manifestError} />}
+            {!manifestLoading && manifestModules !== null && uninstalledModules.length === 0 && !manifestError && (
+                <p className="ss-empty">
+                    {t('saba_storage.all_modules_installed', '사용 가능한 모든 모듈이 설치되어 있습니다.')}
+                </p>
+            )}
+            {runnableModules.length > 0 && (
+                <div className="ss-catalog">
+                    {runnableModules.map((m) => {
+                        const isInstalling = installingIds.has(m.id);
+                        const result = installResults[m.id];
+                        const name = localizedName(m, i18n.language) || m.id;
+                        return (
+                            <div className="ss-catalog-card" key={m.id}>
+                                <div className="ss-catalog-top">
+                                    <ModuleCardIcon icon={m.icon} />
+                                    <div className="ss-catalog-title">
+                                        <span className="ss-card-name">{name}</span>
+                                        <span className="ss-card-version">
+                                            {[m.version && `v${m.version}`, typeof m.size_bytes === 'number' && formatBytes(m.size_bytes)].filter(Boolean).join(' · ')}
                                         </span>
-                                        {m.description && <span className="ss-card-desc">{m.description}</span>}
-                                    </div>
-                                    <div className="ss-card-actions">
-                                        {result === 'ok' ? (
-                                            <span className="ss-status-ok">
-                                                <Icon name="checkCircle" size="sm" />
-                                            </span>
-                                        ) : result === 'error' ? (
-                                            <span className="ss-status-err">
-                                                <Icon name="xCircle" size="sm" />
-                                            </span>
-                                        ) : (
-                                            <button
-                                                className="ss-icon-btn accent"
-                                                disabled={isInstalling}
-                                                onClick={() => handleInstallModule(m.id)}
-                                                data-tooltip={t('saba_storage.install_btn', '설치')}
-                                                aria-label={t('saba_storage.install_btn', '설치')}
-                                            >
-                                                {isInstalling ? (
-                                                    <SabaSpinner size="xs" />
-                                                ) : (
-                                                    <Icon name="download" size="sm" />
-                                                )}
-                                            </button>
-                                        )}
                                     </div>
                                 </div>
-                            );
+                                <p className="ss-catalog-desc">{localizedDescription(m, i18n.language)}</p>
+                                <div className="ss-catalog-foot">
+                                    {result === 'ok' ? (
+                                        <span className="ss-status-ok">
+                                            <Icon name="checkCircle" size="sm" />
+                                        </span>
+                                    ) : result === 'error' ? (
+                                        <span className="ss-status-err">
+                                            <Icon name="xCircle" size="sm" />
+                                        </span>
+                                    ) : (
+                                        <button
+                                            className="btn btn-primary btn-sm ss-install-btn"
+                                            type="button"
+                                            disabled={isInstalling}
+                                            onClick={() => handleInstallModule(m.id)}
+                                        >
+                                            {isInstalling ? <SabaSpinner size="xs" /> : null}
+                                            {t('saba_storage.install_btn', '설치')}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+            {unrunnableModules.length > 0 && (
+                <details className="ss-unsupported">
+                    <summary>
+                        {t('saba_storage.unsupported_here', {
+                            count: unrunnableModules.length,
+                            defaultValue: '이 기기에서는 실행할 수 없어요 · {{count}}',
                         })}
-                    </div>
-                </>
+                    </summary>
+                    {unrunnableModules.map((m) => {
+                        const why = unsupportedText(t, m);
+                        return (
+                            <div className="ss-unsupported-row" key={m.id}>
+                                <ModuleCardIcon icon={m.icon} />
+                                <div className="ss-card-body">
+                                    <span className="ss-card-name">{localizedName(m, i18n.language) || m.id}</span>
+                                    <span className="ss-card-desc">{why?.detail}</span>
+                                </div>
+                                <span className="ss-unsupported-chip">{why?.label}</span>
+                            </div>
+                        );
+                    })}
+                </details>
             )}
 
             <ModuleMakerCard />
@@ -1199,7 +1189,7 @@ function ExtensionsTab() {
             return;
         }
         setShowStore(true);
-        await fetchManifest?.();
+        await fetchManifest();
     }, [manifestExtensions, fetchManifest]);
 
     const handleConfirmRemove = useCallback(async () => {

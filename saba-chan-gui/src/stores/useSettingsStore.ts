@@ -14,6 +14,7 @@ import {
     setTheme,
 } from '../utils/themeManager';
 import { CONSOLE_FONT_DEFAULTS } from '../utils/consoleFonts';
+import { failed } from '../utils/apiResult';
 
 // i18n translate function — set after store creation
 let _t = (key: string): string => key;
@@ -230,11 +231,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                     consoleTokenColors: patch.consoleTokenColors,
                     sidebarCompact: patch.sidebarCompact,
                 });
-                // 예전 버전은 테마 모드를 브라우저 저장소에만 뒀다 — 한 번 config.json으로 옮긴다
-                if (settings.theme == null && !isTest) {
-                    dirtyKeys.add('theme');
-                    get().save();
-                }
             }
             if (!isTest) console.log('[Settings] Ready flag set to true');
             return settings; // Return raw settings for discord token etc.
@@ -250,7 +246,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         if (!window.api?.configReset) return false;
         try {
             const res = await window.api.configReset('gui');
-            if (res?.ok === false) return false;
+            if (failed(res)) return false;
             // 데몬 기본값에는 theme이 없다 → 브라우저 캐시를 지워야 load()가 예전 값 대신 'auto'를 쓴다
             clearStoredTheme();
             resetCustomTheme();

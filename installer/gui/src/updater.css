@@ -39,3 +39,6 @@
     72.41% { transform: translateX(-70px) scale(1.12); animation-timing-function: cubic-bezier(0.55, 0, 0.85, 0.35); }
     100% { transform: translateX(-230px) scale(1.1); }
 }
+
+/* 실패 요약에 긴 경로(설정 사본 자리)가 들어갈 수 있다 */
+#fail-summary { overflow-wrap: anywhere; }

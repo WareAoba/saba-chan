@@ -22,6 +22,17 @@ pub struct UpdateCompletionMarker {
     /// 데몬이 바뀐 모듈이 쓰는 익스텐션을 맞췄다 (`take_unprepared_at`). 업데이터는 적지 않는다
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub extensions_prepared: bool,
+    /// 적용하지 않고 끝난 까닭: `"rolled_back"`(새 데몬이 건강하지 않아 되돌림)·`"deferred"`(파일을 바꾸지 않음).
+    /// 보통의 성공·실패는 비운다 (`success`로 본다)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<String>,
+    /// `result`의 이유 (`"wait_pid_timeout"`, `"unhealthy"` …)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// 되돌린 판 (`result: "rolled_back"`). 마커는 읽으면 지워지므로 같은 판을 다시 적용하지 않게 하는 기록은
+    /// `UpdateConfig::failed_release`에 따로 둔다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
 /// 릴리즈 버전과 언어별 패치노트
@@ -64,6 +75,35 @@ impl UpdateCompletionMarker {
             release: None,
             acknowledged: false,
             extensions_prepared: false,
+            result: None,
+            reason: None,
+            version: None,
+        }
+    }
+
+    /// 파일을 바꾸지 않고 끝났다 (예: 예전 데몬이 끝나지 않음 `wait_pid_timeout`). 받아 둔 것은 그대로 남는다
+    pub fn deferred(reason: &str) -> Self {
+        Self {
+            message: Some(format!("Update deferred: {}", reason)),
+            result: Some("deferred".into()),
+            reason: Some(reason.into()),
+            ..Self::failure(String::new())
+        }
+    }
+
+    /// 새 데몬이 건강하지 않아 `version`을 되돌렸다. 적용 때 남긴 마커(`applied`)의 릴리즈 요약은 그대로 싣는다
+    pub fn rolled_back(version: &str, reason: &str, applied: Option<Self>) -> Self {
+        let base = applied.unwrap_or_else(|| Self::failure(String::new()));
+        Self {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            success: false,
+            message: Some(format!("Rolled back {}: {}", version, reason)),
+            result: Some("rolled_back".into()),
+            reason: Some(reason.into()),
+            version: Some(version.into()),
+            acknowledged: false,
+            extensions_prepared: false,
+            ..base
         }
     }
 
@@ -77,6 +117,9 @@ impl UpdateCompletionMarker {
             release: None,
             acknowledged: false,
             extensions_prepared: false,
+            result: None,
+            reason: None,
+            version: None,
         }
     }
 

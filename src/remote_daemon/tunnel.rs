@@ -274,7 +274,8 @@ fn slot(relay: &Target, host_id: &str) -> Slot {
         .clone()
 }
 
-/// 이 PC까지 열린 터널이 있는가 (있으면 직접 연결보다 먼저 쓴다: NAT 뒤 PC에 직접 붙기를 매번 기다리지 않게)
+/// 이 PC까지 열린 터널이 있는가 (테스트가 잊기 뒤 터널을 놓았는지 본다)
+#[cfg(test)]
 pub fn is_open(relay: Option<&Target>, host_id: &str) -> bool {
     relay.is_some_and(|r| {
         slot(r, host_id)

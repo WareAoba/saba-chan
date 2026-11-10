@@ -61,37 +61,30 @@ export function createDaemonClient(invoke: Invoke) {
         return { status, data: moduleErrorBody(res?.data as ApiBody) as T };
     }
 
-    /** 데몬이 준 오류 본문(error_code, details 등)을 버리지 않고 렌더러에 넘긴다 (error가 없으면 모듈이 준 message) */
-    function errorBody(err: DaemonError, extra: ApiBody = {}): ApiBody {
-        const data = err.response?.data;
-        const body: ApiBody = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
-        return { ...body, ...extra, error: body.error || body.message || err.message };
-    }
-
-    // 데몬 응답 본문을 그대로 돌려준다. HTTP 오류면 데몬이 준 본문({ok, error, error_code})을 돌려준다.
-    async function daemonCall(method: HttpMethod, path: string, body?: unknown, timeout = 30000): Promise<ApiBody> {
+    // 데몬 응답 본문을 그대로 돌려준다. 실패하면 던지지 않고 failureBody를 돌려준다
+    async function call(method: HttpMethod, path: string, body?: unknown, timeout = 30000): Promise<ApiBody> {
         try {
             return (await request(method, path, body, { timeout })).data;
         } catch (e) {
-            const error = e as DaemonError;
-            if (error.response) {
-                return error.response.data || { ok: false, error: `HTTP ${error.response.status}` };
-            }
-            return { ok: false, error: error.message, error_code: error.code };
+            return failureBody(e as DaemonError);
         }
     }
 
-    // 데몬 JSON 호출. 4xx·5xx도 데몬이 준 본문을 그대로 돌려준다 (error_code, details)
-    async function daemonJson(method: HttpMethod, path: string, data?: unknown, timeout = 15000): Promise<ApiBody> {
-        try {
-            return (await request(method, path, data, { timeout })).data;
-        } catch (e) {
-            const err = e as DaemonError;
-            return err.response?.data || { success: false, error: err.message };
-        }
-    }
+    return { request, call };
+}
 
-    return { request, errorBody, daemonCall, daemonJson };
+/**
+ * 브리지의 실패 모양 (하나뿐이다): 데몬이 준 오류 본문(error_code, details 등)을 버리지 않고 error 문구를 채운다.
+ * error가 없으면 모듈이 준 message, 그것도 없으면 오류 문구. 연결 실패면 error_code에 연결 오류 코드(ECONNREFUSED 등).
+ * 판정은 utils/apiResult `failed`.
+ */
+export function failureBody(err: DaemonError): ApiBody {
+    const data = err.response?.data;
+    const body: ApiBody = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+    const out: ApiBody = { ...body, error: body.error || body.message || err.message };
+    const code = body.error_code ?? err.code;
+    if (code !== undefined) out.error_code = code;
+    return out;
 }
 
 /** axios params처럼 값이 있는 것만 쿼리 문자열로 ('?' 포함, 없으면 빈 문자열) */

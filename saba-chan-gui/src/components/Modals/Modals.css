@@ -2198,6 +2198,12 @@
     flex-shrink: 0;
 }
 
+/* 같은 판의 정식을 기다리는 중: 채널 줄 아래 한 줄 */
+.update-stable-wait {
+    margin: 0;
+    padding-bottom: var(--sp-3);
+}
+
 .update-panel-actions {
     display: none;
 }
@@ -2570,6 +2576,136 @@
     padding: 0 var(--sp-2);
     border-radius: 999px;
     white-space: nowrap;
+}
+
+/* 받을 수 있는 모듈 카드 (이 데몬에서 도는 것) */
+.ss-catalog {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-4);
+}
+
+.ss-catalog-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    min-width: 0;
+}
+
+.ss-catalog-top {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-width: 0;
+}
+
+.ss-catalog-top .ss-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--r-sm);
+}
+
+.ss-catalog-top .ss-card-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
+}
+
+.ss-catalog-title {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-0-5);
+    min-width: 0;
+}
+
+.ss-catalog-desc {
+    margin: 0;
+    flex: 1;
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    color: var(--text-2);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.ss-catalog-foot {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.ss-install-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+
+/* 이 데몬의 OS·CPU에서 돌지 않는 모듈: 접힌 묶음, 설치 버튼 없음 */
+.ss-unsupported {
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    overflow: hidden;
+    margin-bottom: var(--sp-4);
+}
+
+.ss-unsupported > summary {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-2);
+    cursor: pointer;
+    list-style: none;
+}
+
+.ss-unsupported > summary::-webkit-details-marker {
+    display: none;
+}
+
+.ss-unsupported > summary::before {
+    content: '›';
+    font-size: 16px;
+    line-height: 1;
+    transition: transform var(--dur-fast) var(--ease);
+}
+
+.ss-unsupported[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.ss-unsupported > summary:focus-visible {
+    outline: 2px solid var(--brand-primary);
+    outline-offset: -2px;
+}
+
+.ss-unsupported-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    border-top: 1px solid var(--line);
+    opacity: 0.75;
+}
+
+.ss-unsupported-chip {
+    flex-shrink: 0;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    padding: var(--sp-0-5) var(--sp-2);
+    border-radius: 999px;
+    background: var(--stop-soft);
+    color: var(--stop);
 }
 
 .ss-empty {
@@ -3178,6 +3314,297 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* 설정 > 연결: 내 PC 카드 (이 PC가 맨 앞, 강조 테두리) */
+.remote-pc-cards {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: var(--sp-2);
+}
+.remote-pc-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--settings-item-bg);
+    border: 1px solid var(--border-light);
+}
+.remote-pc-card.me {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+.remote-pc-card.off .remote-pc-os,
+.remote-pc-card.off .remote-pc-kv {
+    opacity: 0.7;
+}
+.remote-pc-top {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+.remote-pc-os {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-md);
+    background: var(--line);
+    color: var(--text-1);
+}
+.remote-pc-who {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.remote-pc-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+.remote-pc-sub {
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.remote-pc-me {
+    margin-left: var(--sp-1);
+    padding: 1px var(--sp-1-5);
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+.remote-pc-pill {
+    flex-shrink: 0;
+    padding: var(--sp-0-5) var(--sp-2);
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid currentColor;
+}
+.remote-pc-pill.on {
+    color: var(--ok);
+}
+.remote-pc-pill.off {
+    color: var(--text-2);
+}
+.remote-pc-pill.warn {
+    color: var(--warn);
+}
+/* 별: 채운 별이 메인 데몬, 빈 별을 누르면 그 PC가 메인이 된다 */
+.remote-pc-star {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: var(--r-md);
+    border: 1px solid transparent;
+    background: none;
+    color: var(--text-2);
+    cursor: pointer;
+    opacity: 0.45;
+}
+.remote-pc-star:hover {
+    border-color: var(--line-strong);
+    opacity: 1;
+}
+.remote-pc-star.on {
+    color: var(--star);
+    opacity: 1;
+}
+.remote-pc-kv {
+    margin: 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--sp-0-5) var(--sp-3);
+    font-size: var(--fs-sm);
+}
+.remote-pc-kv dt {
+    color: var(--text-2);
+}
+.remote-pc-kv dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.remote-pc-acts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--sp-1);
+    margin-top: auto;
+}
+.remote-pc-acts .btn.danger {
+    color: var(--stop);
+}
+.remote-pc-tag {
+    margin-right: auto;
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+}
+.remote-pc-tag.warn {
+    color: var(--warn);
+}
+.remote-pc-add {
+    display: flex;
+}
+/* 내 PC 목록은 줄마다 같은 높이: 리눅스에 설치 칸도 PC 카드와 같은 크기 */
+.remote-pc-cards-even {
+    grid-auto-rows: 1fr;
+}
+.remote-pc-add .btn {
+    flex: 1;
+    flex-direction: column;
+    gap: var(--sp-1);
+    height: 100%;
+    border: 2px dashed var(--line-strong);
+    border-radius: var(--r-md);
+    background: var(--inset);
+    box-shadow: none;
+    color: var(--text-muted);
+}
+/* AI 에이전트 카드: 머리를 누르면 끊기 버튼이 나온다 */
+.agent-card-head {
+    width: 100%;
+    padding: 0;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+/* 지우기·리눅스에 설치 창 */
+.modal.remote-pc-dialog {
+    max-width: 480px;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+.modal.remote-install {
+    max-width: 620px;
+}
+.remote-pc-dialog-title {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.remote-pc-choice {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-0-5);
+}
+.remote-pc-choice > .setting-description {
+    padding-left: var(--sp-6);
+}
+.remote-pc-subchoice {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    padding: var(--sp-1) 0 0 var(--sp-6);
+}
+.remote-pc-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+}
+.remote-install-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 90px;
+    gap: var(--sp-2);
+}
+.remote-install-grid label,
+.remote-install-prompt label,
+.remote-install-claim {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    font-size: var(--fs-sm);
+}
+.remote-install-phase {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+/* 설치 출력: 서버 콘솔(.term)과 같은 바탕·글자·글꼴 */
+.remote-install-console {
+    margin: 0;
+    height: 220px;
+    overflow: auto;
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-lg);
+    background: var(--console-custom-bg);
+    color: var(--console-custom-text);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-inset);
+    font-family: var(--font-mono);
+    font-size: calc(13px * var(--console-font-scale, 1));
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: text;
+}
+.remote-install-prompt {
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    border: 1px solid var(--accent);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+.remote-install-prompt p {
+    margin: 0;
+}
+.remote-install-prompt form {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--sp-2);
+}
+.remote-install-prompt form label {
+    flex: 1;
+}
+.remote-install-fingerprint {
+    margin: 0;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.remote-install-oneliner {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.remote-install-oneliner code {
+    flex: 1;
+    min-width: 0;
+    padding: var(--sp-2);
+    border-radius: var(--r-md);
+    background: var(--inset);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+.remote-install-claim {
+    margin-top: var(--sp-2);
 }
 
 /* 서버 만들기·가져오기의 신뢰 안내 (as-body-stack이 간격을 준다) */

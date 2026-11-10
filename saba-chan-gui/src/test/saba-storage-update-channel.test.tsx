@@ -76,4 +76,21 @@ describe('업데이트 채널', () => {
         await waitFor(() => expect(box.textContent).toContain('Preview'));
         expect(window.api.updaterCheck).not.toHaveBeenCalled();
     });
+
+    it('같은 판의 정식을 기다리는 중이면(stable_wait) 채널 아래에 한 줄로 보인다', async () => {
+        window.api.updaterStatus = vi.fn().mockResolvedValue({
+            ok: true,
+            components: [{ component: 'saba-core', current_version: '0.1.14-beta.2' }],
+            stable_wait: '0.1.14',
+        }) as never;
+        render(<SabaStorage />);
+        expect(await screen.findByText('Waiting for the stable 0.1.14')).toBeTruthy();
+    });
+
+    it('기다리는 정식이 없으면 그 줄이 없다', async () => {
+        render(<SabaStorage />);
+        await screen.findByRole('combobox', { name: 'Update channel' });
+        await waitFor(() => expect(window.api.updaterStatus).toHaveBeenCalled());
+        expect(screen.queryByText(/Waiting for the stable/)).toBeNull();
+    });
 });

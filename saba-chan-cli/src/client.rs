@@ -818,6 +818,37 @@ impl Api {
     pub async fn forget_remote_daemon(&self, host_id: &str) -> Result<Value> {
         self.delete(&format!("/api/remote/daemons/{}", seg(host_id))).await
     }
+    /// POST /api/remote/claim `{code}` — 다른 PC가 낸 페어링 코드로 붙는다 (그 PC가 원격 포트를 올릴 때까지 데몬이 기다린다)
+    pub async fn claim_remote(&self, code: &str) -> Result<Value> {
+        self.post_long("/api/remote/claim", json!({ "code": code })).await
+    }
+    /// POST /api/remote/daemons/:hostId/remove `{uninstall, keepSettings, keepInstances, removePc}`
+    pub async fn remove_remote_daemon(&self, host_id: &str, body: Value) -> Result<Value> {
+        self.post(&format!("/api/remote/daemons/{}/remove", seg(host_id)), body).await
+    }
+    /// POST /api/remote/install `{host, user, port, linger, steamLibs}` → `{id}`
+    pub async fn start_remote_install(&self, body: Value) -> Result<Value> {
+        self.post("/api/remote/install", body).await
+    }
+    /// GET /api/remote/install/:id?since=N
+    pub async fn remote_install(&self, id: &str, since: u64) -> Result<Value> {
+        self.get(&format!("/api/remote/install/{}?since={since}", seg(id))).await
+    }
+    /// POST /api/remote/install/:id/input `{text}`
+    pub async fn answer_remote_install(&self, id: &str, text: &str) -> Result<Value> {
+        self.post(&format!("/api/remote/install/{}/input", seg(id)), json!({ "text": text })).await
+    }
+    /// DELETE /api/remote/install/:id
+    pub async fn cancel_remote_install(&self, id: &str) -> Result<Value> {
+        self.delete(&format!("/api/remote/install/{}", seg(id))).await
+    }
+    /// 고른 원격 데몬(`host_id`) 자신의 업데이트 (`/api/daemon/update`): 판 보기, 지금 업데이트, 자동 업데이트 켜고 끄기
+    pub async fn daemon_update_on(&self, host_id: &str, method: Method, body: Option<Value>) -> Result<Value> {
+        let mut api = self.clone();
+        api.target = Some(host_id.to_string());
+        let timeout = if method == Method::POST { LONG } else { SLOW };
+        api.call(method, "/api/daemon/update", body, timeout).await
+    }
     /// GET /api/actions?surface=cli&instance&locale (P2)
     pub async fn actions(&self, instance: Option<&str>) -> Result<Value> {
         let mut path = "/api/actions?surface=cli".to_string();
@@ -1174,15 +1205,6 @@ impl Api {
         ))
         .await
     }
-    /// GET /api/relay/link-requests — 디스코드에서 코드 없이 온 연결 요청 (J1-b)
-    pub async fn link_requests(&self, relay_url: Option<&str>) -> Result<Value> {
-        self.get(&with_query("/api/relay/link-requests", &[("relayUrl", relay_url.map(str::to_string))])).await
-    }
-    /// POST /api/relay/link-requests/:id — 수락·거절
-    pub async fn answer_link_request(&self, id: &str, accept: bool, relay_url: Option<&str>) -> Result<Value> {
-        let path = format!("/api/relay/link-requests/{}", seg(id));
-        self.post(&with_query(&path, &[("relayUrl", relay_url.map(str::to_string))]), json!({ "accept": accept })).await
-    }
     /// POST /api/chat/command — 디스코드와 같은 텍스트 명령 처리 (`{reply}`)
     pub async fn chat(&self, text: &str) -> Result<Value> {
         self.post("/api/chat/command", json!({ "text": text })).await
@@ -1245,8 +1267,7 @@ fn remember_notices(seen: &std::sync::atomic::AtomicU64, body: &mut Value) {
     };
     let newest = list.iter().filter_map(|n| n.get("id").and_then(Value::as_u64)).max().unwrap_or(0);
     let before = seen.fetch_max(newest, std::sync::atomic::Ordering::Relaxed);
-    // id가 없는 알림(옛 데몬)은 그대로 둔다
-    list.retain(|n| n.get("id").and_then(Value::as_u64).is_none_or(|id| id > before));
+    list.retain(|n| n.get("id").and_then(Value::as_u64).is_some_and(|id| id > before));
 }
 
 /// `update last`는 다른 클라이언트(GUI)가 이미 확인한 결과도 다시 본다: 패치노트를 CLI로 다시 읽는 길 (L70)
@@ -1705,9 +1726,12 @@ mod route_coverage {
     /// 데몬 라우트 중 CLI가 부르지 않는 것과 그 까닭. 여기 없는 라우트는 모두 CLI(그래서 TUI)에서 닿아야 한다
     const NOT_FOR_CLI: &[(&str, &str)] = &[
         ("/api/client/register", "GUI 창 수명 (CLI는 한 번 돌고 끝난다)"),
-        ("/api/relay/pair/{code}/status", "이전 GUI·CLI가 쓰던 페어링 상태 (지금은 `POST /api/relay/pair/status`, 다음 판에서 뺀다)"),
+        ("/api/system/uninstall", "짝 맺은 PC가 원격으로 부르는 제거 (CLI는 `remote remove --uninstall`이 그 PC에 보내고, 이 PC는 `uninstall`)"),
         ("/api/chatbot/common", "원격(디스코드 `/설정` 사바쨩 전체)용 모델·키만 바꾸기 (CLI는 `PUT /api/chatbot`으로 같은 값을 바꾼다)"),
         ("/api/updates/install", "원격(디스코드 `/사바쨩 업데이트`)용 한 번에 받고 적용 (CLI `update`는 단계마다 진행을 보인다)"),
+        ("/api/updates/phase/ack", "GUI 상단 바 알약의 '업데이트 완료'를 지운다 (CLI는 `update status`로 상태만 본다)"),
+        ("/api/updates/restart", "GUI 알약 '업데이트 준비됨'의 다시 시작 (CLI는 `update apply`로 받아 둔 것을 바로 적용한다)"),
+        ("/api/updates/gui-window", "GUI 창이 열려 있는지 알린다 (GUI 교체를 미룰지 정하는 값)"),
         ("/api/updates/apply-on-launch", "GUI가 열릴 때 '받고 다음 실행 때 적용' (CLI는 `update apply`로 바로 적용한다)"),
         ("/api/client/{id}/heartbeat", "GUI 창 수명"),
         ("/api/client/{id}/unregister", "GUI 창 수명"),
@@ -1715,6 +1739,7 @@ mod route_coverage {
         ("/api/extensions/{id}/gui/styles", "GUI 번들"),
         ("/api/extensions/{id}/icon", "GUI 그림"),
         ("/api/extensions/{id}/i18n/{locale}", "GUI 번들 문구"),
+        ("/api/locales/{lang}/{ns}", "GUI 번역 (CLI는 설치 폴더 cli.json을 직접 읽고, TUI는 `locales_version`이 바뀌면 다시 읽는다)"),
         ("/api/instance/{id}/status", "GUI가 시작·정지가 끝났는지 묻는 길 (CLI `server info`·`list`는 /api/servers 상태를 쓴다)"),
         ("/api/instance/{id}/chat-link/{guild}", "디스코드 채널과 게임 채팅을 잇는 원격(디스코드 `/채팅연동`) 전용 (잇는 채널이 디스코드에만 있다)"),
         ("/api/remote/daemons/{host_id}/proxy/{*rest}", "원격 데몬 중계: 데몬 API 전체를 그 데몬으로 넘기는 길 (원격 데몬 고르기는 G1)"),

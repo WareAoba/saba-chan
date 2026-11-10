@@ -7,6 +7,8 @@
 //! - 둘 다 `--remove-settings`·`--remove-instances`로 지울 것을 고른다. 없으면 설정·인스턴스를 남긴다
 //! - `saba-chan-installer --apply ...`          → 데몬이 받아 둔 업데이트 적용 (`apply.rs`, 데몬이 띄운다)
 //! - `saba-chan-installer --elevate-mkdir ...`  → 관리자 권한으로 설치 폴더 만들기 (`elevate.rs`, 자기 자신이 띄운다)
+//! - `saba-chan-installer --setup`              → 맥 앱 묶음을 처음 켤 때 준비 창 (GUI가 띄운다, `app_bundle::launch_for`)
+//! - `saba-chan-installer --setup --quiet`      → 창 없이 명령어 링크만 고치고 이 자리를 준비된 것으로 적는다
 //!
 //! `window` 기능 없이 빌드하면(화면 없는 리눅스 서버용) 창을 띄우지 않는다: 적용은 창 없이, 제거는 명령창으로 한다.
 //! 설치 순서는 `saba-chan-installer-core`에 있다 (`saba-chan-cli install`과 같은 코드)
@@ -28,6 +30,8 @@ enum Mode {
     SilentUninstall,
     Apply,
     ElevateMkdir,
+    Setup,
+    SetupQuiet,
 }
 
 impl Mode {
@@ -39,6 +43,10 @@ impl Mode {
             Mode::ElevateMkdir
         } else if has("--apply") {
             Mode::Apply
+        } else if has("--setup") && has("--quiet") {
+            Mode::SetupQuiet
+        } else if has("--setup") {
+            Mode::Setup
         } else if has("--uninstall") && has("--silent") {
             Mode::SilentUninstall
         } else if has("--uninstall") {
@@ -144,6 +152,12 @@ fn silent_uninstall(args: &[String]) -> i32 {
     rt.block_on(uninstall::do_silent_uninstall(uninstall::keep_from_args(args)))
 }
 
+/// 앱 설정(tauri.conf.json·Info.plist)을 한 번만 펼친다: 두 곳에서 펼치면 맥에서 `_EMBED_INFO_PLIST` 심볼이 겹쳐 빌드가 깨진다
+#[cfg(feature = "window")]
+fn context() -> tauri::Context {
+    tauri::generate_context!()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
@@ -152,6 +166,26 @@ pub fn run() {
         Mode::ElevateMkdir => std::process::exit(elevate::run(&args)),
         Mode::Apply => apply::run(&args),
         Mode::SilentUninstall => exit_on_failure(silent_uninstall(&args)),
+        Mode::SetupQuiet => {
+            init_logging();
+            let app = own_dir();
+            match saba_chan_installer_core::finish_setup(&app, &saba_chan_updater_lib::uninstall_entry::installs_file()) {
+                Ok(()) => tracing::info!("[Setup] {} is ready", app.display()),
+                Err(e) => tracing::warn!("[Setup] {}", e),
+            }
+        }
+        #[cfg(not(feature = "window"))]
+        Mode::Setup => {
+            eprintln!("This build of the Saba-chan installer has no window.");
+            std::process::exit(1);
+        }
+        #[cfg(feature = "window")]
+        Mode::Setup => {
+            init_logging();
+            let app = own_dir();
+            let move_first = saba_chan_updater_lib::app_bundle::in_temporary_place(&app);
+            install_window::run(install_window::AppMode { setup: true, move_first, ..Default::default() });
+        }
         // 창 없는 빌드: 화면이 없으니 제거는 명령창으로 한다
         #[cfg(not(feature = "window"))]
         Mode::Uninstall => exit_on_failure(silent_uninstall(&args)),
@@ -163,14 +197,22 @@ pub fn run() {
         #[cfg(feature = "window")]
         Mode::Uninstall => {
             init_logging();
-            install_window::run(true, Some(uninstall::keep_from_args(&args)));
+            install_window::run(install_window::AppMode { uninstall: true, keep: Some(uninstall::keep_from_args(&args)), ..Default::default() });
         }
         #[cfg(feature = "window")]
         Mode::Install => {
             init_logging();
-            install_window::run(false, None);
+            install_window::run(install_window::AppMode::default());
         }
     }
+}
+
+/// 이 프로그램이 든 폴더 (앱 묶음이면 `Contents/MacOS`)
+fn own_dir() -> std::path::PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
 }
 
 fn exit_on_failure(code: i32) {
@@ -198,6 +240,8 @@ mod tests {
             Mode::from_args(&args(&["--apply", "--wait-pid", "7", "--launch-token", "t", "--relaunch", "/opt/saba/saba-chan-gui"])),
             Mode::Apply
         );
+        assert_eq!(Mode::from_args(&args(&["--setup"])), Mode::Setup);
+        assert_eq!(Mode::from_args(&args(&["--setup", "--quiet"])), Mode::SetupQuiet);
         assert_eq!(Mode::from_args(&args(&["--elevate-mkdir", r"C:\Saba", "--grant-sid", "S-1-5-21-1"])), Mode::ElevateMkdir);
         assert_eq!(
             Mode::from_args(&args(&["--relaunch", "/opt/saba/saba-chan-cli", "--uninstall"])),

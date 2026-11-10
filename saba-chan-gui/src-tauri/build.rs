@@ -8,6 +8,7 @@ const COMMANDS: &[&str] = &[
     "daemon_restart",
     "app_close_response",
     "updater_launch_apply",
+    "updater_restart",
     "launch_uninstaller",
     "settings_local_load",
     "settings_local_save",

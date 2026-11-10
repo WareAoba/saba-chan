@@ -14,13 +14,11 @@ const INFO = {
 };
 
 beforeEach(() => {
-    window.api = { makerInfo: vi.fn().mockResolvedValue(INFO) } as unknown as typeof window.api;
-    window.electron = { shell: { openExternal: vi.fn() } } as unknown as typeof window.electron;
+    window.api = { makerInfo: vi.fn().mockResolvedValue(INFO), shellOpenExternal: vi.fn() } as unknown as typeof window.api;
 });
 
 afterEach(() => {
     delete (window as unknown as Record<string, unknown>).api;
-    delete (window as unknown as Record<string, unknown>).electron;
 });
 
 const lines = () => [...document.querySelectorAll('.cli-line code')].map((c) => c.textContent);
@@ -67,7 +65,7 @@ describe('모듈 메이커 카드', () => {
     it('안내 링크는 데몬이 준 주소를 연다', async () => {
         await open();
         fireEvent.click(screen.getByRole('button', { name: i18n.t('gui:saba_storage.maker_guide') }));
-        expect(window.electron.shell.openExternal).toHaveBeenCalledWith(INFO.guide);
+        expect(window.api.shellOpenExternal).toHaveBeenCalledWith(INFO.guide);
     });
 
     it('데몬이 답하지 못하면 이유를 알린다', async () => {

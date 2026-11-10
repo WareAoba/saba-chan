@@ -38,6 +38,13 @@ pub struct Context {
     id: String,
 }
 
+impl Context {
+    /// 이 호출이 가리키는 인스턴스
+    pub(crate) fn instance_id(&self) -> &str {
+        &self.id
+    }
+}
+
 #[derive(Clone)]
 pub struct Proxy {
     pub dir: PathBuf,

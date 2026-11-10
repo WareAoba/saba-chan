@@ -13,6 +13,28 @@ const { getCurrentWindow } = window.__TAURI__.window;
 
 const T = {
     en: {
+        // 준비 모드 (맥 앱을 처음 켤 때)
+        modeSetup: 'Setup',
+        stepPick: 'Pick',
+        stepPrepare: 'Prepare',
+        welcomeSetup: 'Let\'s get Saba-chan ready',
+        welcomeSetupSub: 'Saba-chan downloads game modules and sets up Python and the saba-chan command. This happens only once.',
+        labelSetup: 'What Saba-chan prepares on this Mac',
+        setupPython: 'Python runtime',
+        setupCommand: 'The saba-chan command (for Terminal and AI agents)',
+        setupModules: 'The game modules you pick and the extensions they need',
+        hintSetup: 'Saba-chan stays inside the app in your Applications folder. There is no install location to choose.',
+        hintModulesSetup: 'You can pick only the games that run on this Mac. You can get more in Saba Storage later.',
+        btnSetup: 'Start',
+        setupRunning: 'Preparing!',
+        setupSub: 'This only happens once.',
+        setupCompleteTitle: 'Saba-chan is ready',
+        setupCompleteSub: 'You can now use the saba-chan command in a new Terminal window.',
+        progressCommand: 'Registering the saba-chan command...',
+        moveFirst: 'Move Saba-chan to Applications first',
+        moveFirstSub: 'Saba-chan is running from the disk image or a temporary place. Drag it into the Applications folder, then open it from there.',
+        unsupportedOs: 'Not for this OS',
+        unsupportedArch: 'Not for this CPU',
         welcome: 'Welcome to Saba-chan Installer',
         modeInstall: 'Install',
         modeUninstall: 'Uninstall',
@@ -113,6 +135,28 @@ const T = {
         uninstallProgressSelfDelete: 'Scheduling self-deletion...',
     },
     ko: {
+        // 준비 모드 (맥 앱을 처음 켤 때)
+        modeSetup: '준비',
+        stepPick: '고르기',
+        stepPrepare: '준비',
+        welcomeSetup: '사바쨩을 처음 준비할게요',
+        welcomeSetupSub: '게임 모듈을 받고, 파이썬과 saba-chan 명령어를 준비해요. 처음 한 번만 해요.',
+        labelSetup: '이 Mac에서 준비할 것',
+        setupPython: '파이썬 실행 환경',
+        setupCommand: 'saba-chan 명령어 (터미널·AI 에이전트용)',
+        setupModules: '고른 게임 모듈과 필요한 익스텐션',
+        hintSetup: '사바쨩은 응용 프로그램 폴더의 앱 안에 그대로 있어요. 설치 위치는 고르지 않아요.',
+        hintModulesSetup: '이 Mac에서 돌릴 수 있는 게임만 고를 수 있어요. 나중에 사바 스토리지에서 더 받을 수 있어요.',
+        btnSetup: '준비 시작',
+        setupRunning: '준비 중!',
+        setupSub: '처음 한 번만 하는 준비예요.',
+        setupCompleteTitle: '준비가 끝났어요',
+        setupCompleteSub: '이제 새 터미널 창에서 saba-chan 명령을 쓸 수 있어요.',
+        progressCommand: 'saba-chan 명령어 등록 중...',
+        moveFirst: '먼저 응용 프로그램 폴더로 옮겨 주세요',
+        moveFirstSub: '지금은 디스크 이미지나 임시 위치에서 열렸어요. 사바쨩을 응용 프로그램 폴더로 끌어 넣은 뒤 거기서 열어 주세요.',
+        unsupportedOs: '이 OS 미지원',
+        unsupportedArch: '이 CPU 미지원',
         welcome: '사바쨩 인스톨러에 오신 것을 환영합니다',
         modeInstall: '설치',
         modeUninstall: '제거',
@@ -213,6 +257,28 @@ const T = {
         uninstallProgressSelfDelete: '자체 삭제 예약 중...',
     },
     ja: {
+        // 준비 모드 (맥 앱을 처음 켤 때)
+        modeSetup: '準備',
+        stepPick: '選ぶ',
+        stepPrepare: '準備',
+        welcomeSetup: 'サバちゃんの準備を始めます',
+        welcomeSetupSub: 'ゲームモジュールをダウンロードし、Pythonとsaba-chanコマンドを準備します。最初の一回だけです。',
+        labelSetup: 'このMacで準備するもの',
+        setupPython: 'Python実行環境',
+        setupCommand: 'saba-chanコマンド（ターミナル・AIエージェント用）',
+        setupModules: '選んだゲームモジュールと必要な拡張機能',
+        hintSetup: 'サバちゃんはアプリケーションフォルダのアプリの中にそのまま置かれます。インストール先は選びません。',
+        hintModulesSetup: 'このMacで動くゲームだけ選べます。あとでサバストレージから追加できます。',
+        btnSetup: '準備を始める',
+        setupRunning: '準備中！',
+        setupSub: '最初の一回だけの準備です。',
+        setupCompleteTitle: '準備ができました',
+        setupCompleteSub: '新しいターミナルウィンドウでsaba-chanコマンドが使えます。',
+        progressCommand: 'saba-chanコマンドを登録中...',
+        moveFirst: '先にアプリケーションフォルダへ移動してください',
+        moveFirstSub: 'ディスクイメージか一時的な場所から開かれています。サバちゃんをアプリケーションフォルダへドラッグしてから、そこで開いてください。',
+        unsupportedOs: 'このOSは非対応',
+        unsupportedArch: 'このCPUは非対応',
         welcome: 'サバちゃん インストーラーへようこそ',
         modeInstall: 'インストール',
         modeUninstall: 'アンインストール',
@@ -313,6 +379,28 @@ const T = {
         uninstallProgressSelfDelete: '自己削除をスケジュール中...',
     },
     'zh-CN': {
+        // 준비 모드 (맥 앱을 처음 켤 때)
+        modeSetup: '准备',
+        stepPick: '选择',
+        stepPrepare: '准备',
+        welcomeSetup: '现在来准备 Saba 酱',
+        welcomeSetupSub: '下载游戏模块，并准备 Python 和 saba-chan 命令。只需一次。',
+        labelSetup: '将在这台 Mac 上准备',
+        setupPython: 'Python 运行环境',
+        setupCommand: 'saba-chan 命令（用于终端和 AI 代理）',
+        setupModules: '所选游戏模块及其所需扩展',
+        hintSetup: 'Saba 酱保留在“应用程序”文件夹的应用中，无需选择安装位置。',
+        hintModulesSetup: '只能选择可在这台 Mac 上运行的游戏。之后可在 Saba 存储中获取更多。',
+        btnSetup: '开始准备',
+        setupRunning: '准备中！',
+        setupSub: '只在第一次进行。',
+        setupCompleteTitle: '准备完成',
+        setupCompleteSub: '现在可以在新的终端窗口中使用 saba-chan 命令。',
+        progressCommand: '正在注册 saba-chan 命令...',
+        moveFirst: '请先移到“应用程序”文件夹',
+        moveFirstSub: '当前是从磁盘映像或临时位置打开的。请将 Saba 酱拖入“应用程序”文件夹，然后从那里打开。',
+        unsupportedOs: '不支持此系统',
+        unsupportedArch: '不支持此 CPU',
         welcome: '欢迎使用 Saba-chan 安装程序',
         modeInstall: '安装',
         modeUninstall: '卸载',
@@ -413,6 +501,28 @@ const T = {
         uninstallProgressSelfDelete: '正在计划自我删除...',
     },
     'zh-TW': {
+        // 준비 모드 (맥 앱을 처음 켤 때)
+        modeSetup: '準備',
+        stepPick: '選擇',
+        stepPrepare: '準備',
+        welcomeSetup: '現在來準備 Saba 醬',
+        welcomeSetupSub: '下載遊戲模組，並準備 Python 和 saba-chan 指令。只需一次。',
+        labelSetup: '將在這台 Mac 上準備',
+        setupPython: 'Python 執行環境',
+        setupCommand: 'saba-chan 指令（用於終端機和 AI 代理）',
+        setupModules: '所選遊戲模組及其所需擴充功能',
+        hintSetup: 'Saba 醬保留在「應用程式」資料夾的 App 中，無需選擇安裝位置。',
+        hintModulesSetup: '只能選擇可在這台 Mac 上執行的遊戲。之後可在 Saba 儲存空間取得更多。',
+        btnSetup: '開始準備',
+        setupRunning: '準備中！',
+        setupSub: '只在第一次進行。',
+        setupCompleteTitle: '準備完成',
+        setupCompleteSub: '現在可以在新的終端機視窗中使用 saba-chan 指令。',
+        progressCommand: '正在註冊 saba-chan 指令...',
+        moveFirst: '請先移到「應用程式」資料夾',
+        moveFirstSub: '目前是從磁碟映像或暫存位置開啟的。請將 Saba 醬拖入「應用程式」資料夾，再從那裡開啟。',
+        unsupportedOs: '不支援此系統',
+        unsupportedArch: '不支援此 CPU',
         welcome: '歡迎使用 Saba-chan 安裝程式',
         modeInstall: '安裝',
         modeUninstall: '解除安裝',
@@ -513,6 +623,28 @@ const T = {
         uninstallProgressSelfDelete: '正在排程自我刪除...',
     },
     es: {
+        // 준비 모드 (맥 앱을 처음 켤 때)
+        modeSetup: 'Preparar',
+        stepPick: 'Elegir',
+        stepPrepare: 'Preparar',
+        welcomeSetup: 'Vamos a preparar Saba-chan',
+        welcomeSetupSub: 'Saba-chan descarga módulos de juego y prepara Python y el comando saba-chan. Solo se hace una vez.',
+        labelSetup: 'Qué se prepara en este Mac',
+        setupPython: 'Entorno de Python',
+        setupCommand: 'El comando saba-chan (para Terminal y agentes de IA)',
+        setupModules: 'Los módulos de juego que elijas y las extensiones que necesitan',
+        hintSetup: 'Saba-chan se queda dentro de la app en tu carpeta Aplicaciones. No hay que elegir ubicación.',
+        hintModulesSetup: 'Solo puedes elegir juegos que funcionan en este Mac. Puedes obtener más en Saba Storage después.',
+        btnSetup: 'Empezar',
+        setupRunning: '¡Preparando!',
+        setupSub: 'Esto solo pasa una vez.',
+        setupCompleteTitle: 'Saba-chan está listo',
+        setupCompleteSub: 'Ya puedes usar el comando saba-chan en una nueva ventana de Terminal.',
+        progressCommand: 'Registrando el comando saba-chan...',
+        moveFirst: 'Primero mueve Saba-chan a Aplicaciones',
+        moveFirstSub: 'Saba-chan se abrió desde la imagen de disco o un lugar temporal. Arrástralo a la carpeta Aplicaciones y ábrelo desde allí.',
+        unsupportedOs: 'No para este sistema',
+        unsupportedArch: 'No para esta CPU',
         welcome: 'Bienvenido al instalador de Saba-chan',
         modeInstall: 'Instalar',
         modeUninstall: 'Desinstalar',
@@ -613,6 +745,28 @@ const T = {
         uninstallProgressSelfDelete: 'Programando auto-eliminación...',
     },
     'pt-BR': {
+        // 준비 모드 (맥 앱을 처음 켤 때)
+        modeSetup: 'Preparar',
+        stepPick: 'Escolher',
+        stepPrepare: 'Preparar',
+        welcomeSetup: 'Vamos preparar a Saba-chan',
+        welcomeSetupSub: 'A Saba-chan baixa módulos de jogo e prepara o Python e o comando saba-chan. Isso acontece só uma vez.',
+        labelSetup: 'O que é preparado neste Mac',
+        setupPython: 'Ambiente Python',
+        setupCommand: 'O comando saba-chan (para o Terminal e agentes de IA)',
+        setupModules: 'Os módulos de jogo escolhidos e as extensões de que precisam',
+        hintSetup: 'A Saba-chan fica dentro do app na pasta Aplicativos. Não é preciso escolher local.',
+        hintModulesSetup: 'Você só pode escolher jogos que rodam neste Mac. Depois pode obter mais no Saba Storage.',
+        btnSetup: 'Começar',
+        setupRunning: 'Preparando!',
+        setupSub: 'Isso só acontece uma vez.',
+        setupCompleteTitle: 'A Saba-chan está pronta',
+        setupCompleteSub: 'Agora você pode usar o comando saba-chan em uma nova janela do Terminal.',
+        progressCommand: 'Registrando o comando saba-chan...',
+        moveFirst: 'Primeiro mova a Saba-chan para Aplicativos',
+        moveFirstSub: 'A Saba-chan foi aberta da imagem de disco ou de um local temporário. Arraste-a para a pasta Aplicativos e abra-a de lá.',
+        unsupportedOs: 'Não para este sistema',
+        unsupportedArch: 'Não para esta CPU',
         welcome: 'Bem-vindo ao instalador do Saba-chan',
         modeInstall: 'Instalar',
         modeUninstall: 'Desinstalar',
@@ -713,6 +867,28 @@ const T = {
         uninstallProgressSelfDelete: 'Agendando auto-exclusão...',
     },
     ru: {
+        // 준비 모드 (맥 앱을 처음 켤 때)
+        modeSetup: 'Подготовка',
+        stepPick: 'Выбор',
+        stepPrepare: 'Подготовка',
+        welcomeSetup: 'Подготовим Saba-chan',
+        welcomeSetupSub: 'Saba-chan загрузит игровые модули и подготовит Python и команду saba-chan. Это нужно только один раз.',
+        labelSetup: 'Что будет подготовлено на этом Mac',
+        setupPython: 'Среда Python',
+        setupCommand: 'Команда saba-chan (для Терминала и ИИ-агентов)',
+        setupModules: 'Выбранные игровые модули и нужные им расширения',
+        hintSetup: 'Saba-chan остаётся внутри приложения в папке «Программы». Выбирать место установки не нужно.',
+        hintModulesSetup: 'Можно выбрать только игры, которые работают на этом Mac. Остальные можно получить позже в Saba Storage.',
+        btnSetup: 'Начать',
+        setupRunning: 'Подготовка!',
+        setupSub: 'Это нужно только один раз.',
+        setupCompleteTitle: 'Saba-chan готова',
+        setupCompleteSub: 'Теперь команду saba-chan можно использовать в новом окне Терминала.',
+        progressCommand: 'Регистрация команды saba-chan...',
+        moveFirst: 'Сначала переместите Saba-chan в «Программы»',
+        moveFirstSub: 'Saba-chan открыта из образа диска или временного места. Перетащите её в папку «Программы» и откройте оттуда.',
+        unsupportedOs: 'Не для этой ОС',
+        unsupportedArch: 'Не для этого CPU',
         welcome: 'Добро пожаловать в установщик Saba-chan',
         modeInstall: 'Установка',
         modeUninstall: 'Удаление',
@@ -813,6 +989,28 @@ const T = {
         uninstallProgressSelfDelete: 'Планирование самоудаления...',
     },
     de: {
+        // 준비 모드 (맥 앱을 처음 켤 때)
+        modeSetup: 'Einrichten',
+        stepPick: 'Auswahl',
+        stepPrepare: 'Einrichten',
+        welcomeSetup: 'Saba-chan wird eingerichtet',
+        welcomeSetupSub: 'Saba-chan lädt Spielmodule und richtet Python und den Befehl saba-chan ein. Das passiert nur einmal.',
+        labelSetup: 'Was auf diesem Mac eingerichtet wird',
+        setupPython: 'Python-Laufzeit',
+        setupCommand: 'Der Befehl saba-chan (für Terminal und KI-Agenten)',
+        setupModules: 'Die gewählten Spielmodule und die Erweiterungen, die sie brauchen',
+        hintSetup: 'Saba-chan bleibt in der App im Ordner „Programme“. Ein Installationsort wird nicht gewählt.',
+        hintModulesSetup: 'Nur Spiele, die auf diesem Mac laufen, sind wählbar. Mehr gibt es später im Saba Storage.',
+        btnSetup: 'Starten',
+        setupRunning: 'Wird eingerichtet!',
+        setupSub: 'Das passiert nur einmal.',
+        setupCompleteTitle: 'Saba-chan ist bereit',
+        setupCompleteSub: 'Der Befehl saba-chan funktioniert jetzt in einem neuen Terminal-Fenster.',
+        progressCommand: 'Befehl saba-chan wird registriert...',
+        moveFirst: 'Bitte zuerst nach „Programme“ verschieben',
+        moveFirstSub: 'Saba-chan wurde vom Disk-Image oder einem temporären Ort geöffnet. Zieh die App in den Ordner „Programme“ und öffne sie dort.',
+        unsupportedOs: 'Nicht für dieses System',
+        unsupportedArch: 'Nicht für diese CPU',
         welcome: 'Willkommen beim Saba-chan Installationsprogramm',
         modeInstall: 'Installieren',
         modeUninstall: 'Deinstallieren',
@@ -913,6 +1111,28 @@ const T = {
         uninstallProgressSelfDelete: 'Selbstlöschung wird geplant...',
     },
     fr: {
+        // 준비 모드 (맥 앱을 처음 켤 때)
+        modeSetup: 'Préparation',
+        stepPick: 'Choix',
+        stepPrepare: 'Préparation',
+        welcomeSetup: 'Préparons Saba-chan',
+        welcomeSetupSub: 'Saba-chan télécharge les modules de jeu et prépare Python et la commande saba-chan. Cela ne se fait qu’une fois.',
+        labelSetup: 'Ce qui est préparé sur ce Mac',
+        setupPython: 'Environnement Python',
+        setupCommand: 'La commande saba-chan (pour le Terminal et les agents IA)',
+        setupModules: 'Les modules de jeu choisis et les extensions dont ils ont besoin',
+        hintSetup: 'Saba-chan reste dans l’app du dossier Applications. Aucun emplacement à choisir.',
+        hintModulesSetup: 'Seuls les jeux qui tournent sur ce Mac peuvent être choisis. D’autres sont disponibles plus tard dans Saba Storage.',
+        btnSetup: 'Commencer',
+        setupRunning: 'Préparation !',
+        setupSub: 'Cela ne se fait qu’une fois.',
+        setupCompleteTitle: 'Saba-chan est prête',
+        setupCompleteSub: 'La commande saba-chan fonctionne maintenant dans une nouvelle fenêtre du Terminal.',
+        progressCommand: 'Enregistrement de la commande saba-chan...',
+        moveFirst: 'Déplacez d’abord Saba-chan dans Applications',
+        moveFirstSub: 'Saba-chan a été ouverte depuis l’image disque ou un emplacement temporaire. Glissez-la dans le dossier Applications, puis ouvrez-la depuis là.',
+        unsupportedOs: 'Pas pour ce système',
+        unsupportedArch: 'Pas pour ce CPU',
         welcome: 'Bienvenue dans l\'installateur de Saba-chan',
         modeInstall: 'Installer',
         modeUninstall: 'Désinstaller',
@@ -1017,9 +1237,7 @@ const T = {
 let lang = 'en';
 
 function tr(key, vars = {}) {
-    const b = T[lang] || T.en;
-    const t = b[key] || T.en[key] || key;
-    return t.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? ''));
+    return SabaUI.translate(T, lang, key, vars);
 }
 
 // Step → i18n key mappings for progress messages
@@ -1039,6 +1257,7 @@ const INSTALL_STEP_KEYS = {
     'config-lang': 'progressConfigLang',
     'registry': 'progressRegistry',
     'shortcuts': 'progressShortcuts',
+    'command': 'progressCommand',
 };
 
 const UNINSTALL_STEP_KEYS = {
@@ -1079,25 +1298,32 @@ function applyTranslations() {
     document.documentElement.lang = lang;
     SabaUI.setWordmark(lang);
     const s = (id, key) => { const el = document.getElementById(id); if (el) el.textContent = tr(key); };
-    s('welcome-text', 'welcome');
-    s('btn-next-text', 'btnNext');
-    s('mode-chip', uninstallMode ? 'modeUninstall' : 'modeInstall');
+    s('welcome-text', moveFirst ? 'moveFirst' : setupMode ? 'welcomeSetup' : 'welcome');
+    s('welcome-setup-sub', moveFirst ? 'moveFirstSub' : 'welcomeSetupSub');
+    s('btn-next-text', moveFirst ? 'btnClose' : 'btnNext');
+    s('mode-chip', uninstallMode ? 'modeUninstall' : setupMode ? 'modeSetup' : 'modeInstall');
     s('step-start', 'stepStart');
-    s('step-settings', 'stepSettings');
-    s('step-install', 'stepInstall');
+    s('step-settings', setupMode ? 'stepPick' : 'stepSettings');
+    s('step-install', setupMode ? 'stepPrepare' : 'stepInstall');
+    s('label-setup', 'labelSetup');
+    s('setup-python', 'setupPython');
+    s('setup-command', 'setupCommand');
+    s('setup-modules', 'setupModules');
+    s('hint-setup', 'hintSetup');
     s('step-done', 'stepDone');
     s('label-path', 'labelPath');
     s('label-components', 'labelComponents');
     s('hint-components', 'hintComponents');
     s('label-modules', 'labelModules');
-    s('hint-modules', 'hintModules');
+    s('hint-modules', setupMode ? 'hintModulesSetup' : 'hintModules');
     s('label-options', 'labelOptions');
     s('label-desktop', 'labelDesktop');
     s('label-startmenu', 'labelStartMenu');
     s('privacy-notice', 'privacyNotice');
-    s('btn-install-text', 'btnInstall');
+    s('btn-install-text', setupMode ? 'btnSetup' : 'btnInstall');
     s('btn-close-text', 'btnClose');
     s('btn-launch-text', 'btnLaunch');
+    renderModules();
     s('btn-retry-text', 'btnRetry');
     s('uninstall-title', 'uninstallTitle');
     s('uninstall-desc', 'uninstallDesc');
@@ -1132,6 +1358,10 @@ const matrix = SabaUI.matrix(document.getElementById('matrix'));
 const flow = SabaUI.flow($flowEl, { onFold: () => matrix.start() });
 
 let uninstallMode = false;
+// 맥 앱을 처음 켤 때 준비 (`--setup`): 설치 위치·바로가기 없이 모듈만 고르고, 준비를 마치면 앱을 연다
+let setupMode = false;
+// 디스크 이미지·임시 자리에서 열림: 준비하지 않고 응용 프로그램 폴더로 옮기라고만 알린다
+let moveFirst = false;
 
 // ═══════════════════════════════════════════════════════
 // 타이틀바
@@ -1202,8 +1432,8 @@ function enterInstalling() {
     $warnWrap.classList.remove('in');
     setWorking(true);
     resetProgress();
-    $statusText.textContent = tr('installing');
-    $statusSub.textContent = tr('installSub');
+    $statusText.textContent = tr(setupMode ? 'setupRunning' : 'installing');
+    $statusSub.textContent = tr(setupMode ? 'setupSub' : 'installSub');
     ring.set('spin');
     markSteps(2);
     // [설치]를 누른 때부터 진행 줄이 올라오고, 그림이 펼쳐졌다 접히며 매트릭스가 드러난다
@@ -1245,8 +1475,8 @@ function enterComplete(p) {
     currentState = 'complete';
     const warnings = (p && p.warnings) || [];
     showResult(true, {
-        title: tr('completeTitle'),
-        sub: tr('completeSub'),
+        title: tr(setupMode ? 'setupCompleteTitle' : 'completeTitle'),
+        sub: tr(setupMode ? 'setupCompleteSub' : 'completeSub'),
         warningTitle: warnings.length ? tr('completeWarnings') : '',
         lines: warnings,
         logPath: warnings.length ? p.log_path : '',
@@ -1295,7 +1525,7 @@ function enterError(p, titleKey = 'installFailed', canRetry = true) {
 // 이벤트: Welcome → Settings
 // ═══════════════════════════════════════════════════════
 
-document.getElementById('btn-next').addEventListener('click', () => enterSettings());
+document.getElementById('btn-next').addEventListener('click', () => moveFirst ? appWindow.close() : enterSettings());
 
 // ═══════════════════════════════════════════════════════
 // 이벤트: Settings 패널 내부
@@ -1339,56 +1569,93 @@ $installPath?.addEventListener('change', async () => {
 // 모듈
 let selectedModules = new Set();
 
+/** 앱 언어의 이름·설명 (카탈로그 번역). 없으면 기본값 */
+function localized(map, fallback) {
+    if (!map) return fallback;
+    return map[lang] || map[lang.split('-')[0]] || fallback;
+}
+
+/** 이 OS·CPU에서 돌지 않는 이유 (설치기 core가 데몬과 같은 판정으로 단다) */
+function unsupportedLabel(m) {
+    if (m.unsupported_reason === 'arch') return tr('unsupportedArch');
+    if (m.unsupported_reason === 'os') return tr('unsupportedOs');
+    return '';
+}
+
+let availableModules = null;
+
 async function loadModules() {
-    const $list = document.getElementById('module-list');
     try {
-        const mods = await invoke('get_available_modules');
-        $list.innerHTML = '';
-        for (const m of mods) {
-            const card = document.createElement('div');
-            card.className = 'module-card';
-            card.dataset.id = m.id;
-            // 의존 익스텐션 표시
-            const extBadges = (m.required_extensions || []).length > 0
-                ? `<div class="module-extensions">${(m.required_extensions || []).map(e => `<span class="ext-badge">${esc(e)}</span>`).join(' ')}</div>`
-                : '';
-            card.innerHTML = `
-                <div class="module-icon"></div>
-                <div class="module-info">
-                    <div class="module-name">${esc(m.name)}</div>
-                    <div class="module-desc">${esc(m.description)}</div>
-                    ${extBadges}
-                </div>
-                <div class="module-check">
-                    <input type="checkbox" class="mod-chk" data-id="${esc(m.id)}" />
-                    <span class="box" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M4 8.2 6.8 11 12 5"/></svg></span>
-                </div>`;
-            // 아이콘: img를 먼저 만들고 error 핸들러 연결 후 src 설정
-            const iconContainer = card.querySelector('.module-icon');
-            const iconImg = document.createElement('img');
-            iconImg.alt = m.name;
-            iconImg.addEventListener('error', () => {
-                iconImg.remove();
-                iconContainer.classList.add('icon-fallback');
-                iconContainer.textContent = '🎮';
-            });
-            iconImg.src = m.icon;
-            iconContainer.appendChild(iconImg);
-            card.addEventListener('click', (e) => {
-                if (e.target.tagName === 'INPUT') return;
-                const cb = card.querySelector('.mod-chk');
-                cb.checked = !cb.checked;
-                toggleMod(m.id, cb.checked);
-            });
-            card.querySelector('.mod-chk').addEventListener('change', (e) => toggleMod(m.id, e.target.checked));
-            $list.appendChild(card);
-        }
+        availableModules = await invoke('get_available_modules');
+        // 준비 모드는 이 기기에서 도는 게임을 처음부터 골라 둔다 (빼고 싶은 것만 끈다)
+        if (setupMode) availableModules.filter(m => !m.unsupported_reason).forEach(m => selectedModules.add(m.id));
     } catch (_) {
-        $list.innerHTML = '';
+        availableModules = [];
+    }
+    renderModules();
+}
+
+/** 모듈 목록을 그린다 (언어를 바꾸면 다시 그린다). 돌지 않는 모듈은 고를 수 없고 이유를 붙인다 */
+function renderModules() {
+    const $list = document.getElementById('module-list');
+    if (!$list || availableModules === null) return;
+    $list.innerHTML = '';
+    if (!availableModules.length) {
         const note = document.createElement('div');
         note.className = 'module-desc';
         note.textContent = tr('modulesUnavailable');
         $list.appendChild(note);
+        return;
+    }
+    // 돌릴 수 있는 것이 먼저
+    const mods = [...availableModules].sort((a, b) => Number(!!a.unsupported_reason) - Number(!!b.unsupported_reason));
+    for (const m of mods) {
+        const why = unsupportedLabel(m);
+        const name = localized(m.display_names, m.name);
+        const card = document.createElement('div');
+        card.className = 'module-card';
+        card.dataset.id = m.id;
+        // 의존 익스텐션 표시 (돌지 않는 모듈은 이유만)
+        const extBadges = !why && (m.required_extensions || []).length > 0
+            ? `<div class="module-extensions">${(m.required_extensions || []).map(e => `<span class="ext-badge">${esc(e)}</span>`).join(' ')}</div>`
+            : '';
+        card.innerHTML = `
+            <div class="module-icon"></div>
+            <div class="module-info">
+                <div class="module-name">${esc(name)}</div>
+                <div class="module-desc">${esc(localized(m.descriptions, m.description))}</div>
+                ${why ? `<span class="module-why">${esc(why)}</span>` : extBadges}
+            </div>
+            <div class="module-check">
+                <input type="checkbox" class="mod-chk" data-id="${esc(m.id)}" ${why ? 'disabled' : ''} />
+                <span class="box" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M4 8.2 6.8 11 12 5"/></svg></span>
+            </div>`;
+        // 아이콘: img를 먼저 만들고 error 핸들러 연결 후 src 설정
+        const iconContainer = card.querySelector('.module-icon');
+        const iconImg = document.createElement('img');
+        iconImg.alt = name;
+        iconImg.addEventListener('error', () => {
+            iconImg.remove();
+            iconContainer.classList.add('icon-fallback');
+            iconContainer.textContent = '🎮';
+        });
+        iconImg.src = m.icon;
+        iconContainer.appendChild(iconImg);
+        const cb = card.querySelector('.mod-chk');
+        if (why) {
+            card.classList.add('unsupported');
+            selectedModules.delete(m.id);
+        } else {
+            cb.checked = selectedModules.has(m.id);
+            card.classList.toggle('selected', cb.checked);
+            card.addEventListener('click', (e) => {
+                if (e.target.tagName === 'INPUT') return;
+                cb.checked = !cb.checked;
+                toggleMod(m.id, cb.checked);
+            });
+            cb.addEventListener('change', (e) => toggleMod(m.id, e.target.checked));
+        }
+        $list.appendChild(card);
     }
 }
 
@@ -1426,6 +1693,10 @@ async function prepareInstall() {
 // 설치 버튼
 document.getElementById('btn-install')?.addEventListener('click', async () => {
     if (currentState !== 'settings') return;
+    if (setupMode) {
+        await startSetup();
+        return;
+    }
     // 옵션 저장
     $installPath.value = await invoke('set_install_path', { path: $installPath.value });
     if (!(await setComponentsDir($componentsPath.value))) return;
@@ -1460,6 +1731,19 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
         enterError({ message: String(e) });
     }
 });
+
+/** 준비 모드: 설치 폴더는 이 앱 자리 그대로라 준비할 것이 없다. 고른 모듈과 언어만 넘기고 시작한다 */
+async function startSetup() {
+    await invoke('set_language', { language: lang });
+    await invoke('set_selected_modules', { modules: Array.from(selectedModules) });
+    enterInstalling();
+    try {
+        await invoke('start_setup');
+    } catch (e) {
+        if (String(e) === 'busy') return;
+        enterError({ message: String(e) });
+    }
+}
 
 // ═══════════════════════════════════════════════════════
 // 설치 진행 이벤트
@@ -1695,19 +1979,9 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
     // 테마 감지 (OS 설정 기본값)
     SabaUI.setTheme(SabaUI.systemTheme());
 
-    // 언어 감지
+    // 언어: Rust가 앱 설정 → OS 언어 → 영어 순으로 골라 지원 언어 태그로 준다
     try {
-        const pref = await invoke('get_preferred_language');
-        const supported = ['en','ko','ja','zh-CN','zh-TW','es','pt-BR','ru','de','fr'];
-        const norm = pref.trim().replace('_', '-');
-        const exact = supported.find(l => l.toLowerCase() === norm.toLowerCase());
-        if (exact) lang = exact;
-        else {
-            const base = norm.toLowerCase().split('-')[0];
-            if (base.startsWith('pt')) lang = 'pt-BR';
-            else if (base.startsWith('zh')) lang = 'zh-CN';
-            else lang = { ko:'ko', ja:'ja', es:'es', ru:'ru', de:'de', fr:'fr' }[base] || 'en';
-        }
+        lang = await invoke('get_preferred_language');
     } catch (_) {}
 
     applyTranslations();
@@ -1718,6 +1992,16 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
     // 모드 확인
     try {
         const mode = await invoke('get_app_mode');
+        if (mode.setup) {
+            setupMode = true;
+            moveFirst = !!mode.moveFirst;
+            document.body.classList.add('setup');
+            // 옮기라는 안내의 버튼은 닫기다 (다음 화살표 없이)
+            if (moveFirst) document.querySelector('#btn-next svg')?.setAttribute('display', 'none');
+            // 준비가 끝나면 앱을 연다: 설치기를 닫기만 하는 버튼은 두지 않는다
+            document.getElementById('btn-close-installer').hidden = true;
+            applyTranslations();
+        }
         if (mode.uninstall) {
             // 처음 값은 인자에서 (`--remove-*`가 없으면 둘 다 남김)
             const check = (id, on) => { const el = document.getElementById(id); if (el) el.checked = on !== false; };
@@ -1729,6 +2013,7 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
     } catch (_) {}
 
     enterWelcome();
+    if (moveFirst) return;
 
     // 설치 경로 로드
     try {

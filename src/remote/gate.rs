@@ -167,6 +167,8 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/extensions/{id}/icon"),
     allow("GET", "/api/extensions/{id}/audit"),
     allow("GET", "/api/extensions/{id}/i18n/{locale}"),
+    // 설치 폴더 번역: GUI는 늘 이 PC 데몬에서 받는다 (`target:'local'`). 웹은 자기 번역을 들고 있다
+    deny("GET", "/api/locales/{lang}/{ns}"),
     // ── 데몬·앱 설정, 토큰, 경로 ──
     // 비밀값이 없다 (접두사·릴레이 주소·길드 설정). 바꾸기는 릴레이 주소가 들어 PC에서만
     not_on_web("GET", "/api/config/bot"),
@@ -195,6 +197,12 @@ pub static ROUTES: &[Route] = &[
     not_on_web("GET", "/api/system/browse"),
     deny("POST", "/api/remote/daemons"),
     deny("DELETE", "/api/remote/daemons/{host_id}"),
+    deny("POST", "/api/remote/daemons/{host_id}/remove"),
+    deny("POST", "/api/remote/claim"),
+    deny("POST", "/api/remote/install"),
+    deny("GET", "/api/remote/install/{id}"),
+    deny("DELETE", "/api/remote/install/{id}"),
+    deny("POST", "/api/remote/install/{id}/input"),
     deny("GET", "/api/remote/daemons/{host_id}/proxy/{*rest}"),
     deny("POST", "/api/remote/daemons/{host_id}/proxy/{*rest}"),
     deny("PUT", "/api/remote/daemons/{host_id}/proxy/{*rest}"),
@@ -208,6 +216,8 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/system/net-trace/revoke"),
     deny("GET", "/api/system/paths"),
     deny("POST", "/api/system/paths/move"),
+    // 이 PC에서 사바쨩 지우기: 짝 맺은 PC의 앱 카드가 부른다 (웹은 아니다)
+    not_on_web("POST", "/api/system/uninstall"),
     // 이 PC에 로그인할 때 무엇을 띄울지는 PC에서만 정한다
     deny("GET", "/api/system/autostart"),
     deny("PUT", "/api/system/autostart"),
@@ -257,12 +267,9 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/relay/bot-invite"),
     deny("POST", "/api/relay/pair/initiate"),
     deny("POST", "/api/relay/pair/status"),
-    deny("GET", "/api/relay/pair/{code}/status"),
     // 계정의 에이전트 연결은 PC에서만 보고 끊는다
     deny("GET", "/api/relay/mcp/grant"),
     deny("DELETE", "/api/relay/mcp/grant"),
-    deny("GET", "/api/relay/link-requests"),
-    deny("POST", "/api/relay/link-requests/{request_id}"),
     deny("GET", "/api/relay/privacy/erase"),
     deny("POST", "/api/relay/privacy/erase"),
     deny("GET", "/api/relay/agent"),
@@ -305,6 +312,13 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/updates/integrity"),
     deny("GET", "/api/updates/config"),
     deny("PUT", "/api/updates/config"),
+    deny("POST", "/api/updates/phase/ack"),
+    deny("POST", "/api/updates/restart"),
+    deny("PUT", "/api/updates/gui-window"),
+    // 이 데몬 자신의 업데이트: 짝 맺은 PC의 앱 카드가 원격 데몬을 고르고 부른다 (자동 업데이트·업데이트 단추)
+    not_on_web("GET", "/api/daemon/update"),
+    not_on_web("POST", "/api/daemon/update"),
+    not_on_web("PUT", "/api/daemon/update"),
     // 그 데몬의 런타임 준비 단계만 담는다
     not_on_web("GET", "/api/runtime/preflight"),
 ];

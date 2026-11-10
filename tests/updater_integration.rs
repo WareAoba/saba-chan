@@ -180,7 +180,8 @@ fn test_update_config_default() {
     let cfg = UpdateConfig::default();
     assert!(cfg.enabled);
     assert_eq!(cfg.check_interval_hours, 3);
-    assert!(!cfg.auto_download);
+    // 앱 업데이트는 묻지 않고 적용한다
+    assert!(cfg.auto_download && cfg.auto_apply);
     assert!(cfg.install_root.is_none());
     assert!(cfg.relay_url.is_none());
 }
@@ -364,8 +365,9 @@ async fn test_apply_without_downloaded_returns_empty() {
     let tmp = TempDir::new().unwrap();
     let mut mgr = create_test_manager(&tmp);
 
-    let result = mgr.apply_updates().await.unwrap();
-    assert!(result.is_empty(), "Should apply nothing if nothing downloaded");
+    let keys = mgr.pending_keys_in_apply_order();
+    let (applied, failed) = mgr.apply_target_keys(&keys, |_, _, _| {}).await;
+    assert!(applied.is_empty() && failed.is_empty(), "Should apply nothing if nothing downloaded: {applied:?} {failed:?}");
 }
 
 

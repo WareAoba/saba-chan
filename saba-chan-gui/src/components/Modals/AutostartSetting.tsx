@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
+import { failed } from '../../utils/apiResult';
 
 export const autostartAvailable = () =>
     typeof window.api?.systemAutostart === 'function' && typeof window.api?.systemAutostartSet === 'function';
@@ -10,8 +11,6 @@ export const autostartAvailable = () =>
 const MODES = ['off', 'daemon', 'full'];
 // 데몬 `autostart_<코드>` (`saba_chan_updater_lib::autostart::AutostartError`) 중 문구가 있는 것
 const ERRORS = ['gui_missing', 'write_failed', 'unsupported'];
-
-const failed = (res: ApiBody | null | undefined) => !res || res.ok === false || res.success === false;
 
 /**
  * 설정 > 일반: 로그인할 때 자동 실행 (데몬 GET·PUT /api/system/autostart). 고르면 바로 저장한다.

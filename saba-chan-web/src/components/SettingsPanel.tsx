@@ -7,8 +7,8 @@ import { Button, Empty, errorText, failed, Section } from './ui';
 import type { SettingField } from '@gui/types/daemon';
 import type { ApiBody, Json, Server, ServerPanelProps, TFn } from '../types';
 
-/** 설정 칸 (module.toml `[[settings.fields]]`). 예전 모듈은 field_type 대신 type 을 쓴다 */
-export type Field = SettingField & { type?: string };
+/** 설정 칸 (module.toml `[[settings.fields]]`) */
+export type Field = SettingField;
 
 /** 데몬 문지기(src/remote/gate.rs SETTINGS_PC_ONLY)가 원격으로 받지 않는 칸. 모듈의 비밀번호·file·path 칸도 같다 (비밀번호는 읽어 오지도 않는다) */
 const PC_ONLY = new Set([
@@ -37,7 +37,7 @@ const TOP_LEVEL = new Set([
     'extra_args',
 ]);
 
-const typeOf = (f: Field) => f.field_type || f.type || 'text';
+const typeOf = (f: Field) => f.field_type || 'text';
 const pcOnly = (f: Field) => PC_ONLY.has(f.name) || ['file', 'path', 'password'].includes(typeOf(f)) || f.format === 'path';
 
 export function savedValue(server: Partial<Server> | ApiBody, field: Pick<Field, 'name' | 'default'>): Json {

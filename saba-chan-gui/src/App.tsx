@@ -20,13 +20,14 @@ import { ActivityPage } from './components/servers/AuditTab';
 import { SabaBubble } from './components/shell/SabaBubble';
 import { CommandPalette, paletteAvailable } from './components/shell/CommandPalette';
 import { DaemonEvents } from './components/shell/DaemonEvents';
-import { LinkRequests, linkRequestsAvailable } from './components/discord/LinkRequests';
 import { AppBar } from './components/shell/AppBar';
+import { ExtensionAppPage } from './components/shell/ExtensionAppPage';
 import RemotePathPicker from './components/shell/RemotePathPicker';
 import { daemonStateOf } from './components/servers/DaemonDown';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
 import { ExtensionProvider } from './contexts/ExtensionContext';
+import { type HostWindow, HostWindowContext, isAppRoute } from './extensions/host';
 import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
@@ -135,7 +136,9 @@ function App() {
     const refreshInterval = useSettingsStore((s) => s.refreshInterval);
     const ipcPort = useSettingsStore((s) => s.ipcPort);
     const consoleBufferSize = useSettingsStore((s) => s.consoleBufferSize);
-    const consoleBufferRef = useRef(2000);
+    // 콘솔 줄 수 한도: 콘솔 이벤트 처리기가 지금 값을 읽는다
+    const consoleBufferRef = useRef(consoleBufferSize);
+    consoleBufferRef.current = consoleBufferSize;
     const _settingsReady = useSettingsStore((s) => s.settingsReady);
 
     // ── Discord Store (Zustand) ──────────────────────────────
@@ -186,6 +189,30 @@ function App() {
                 useUIStore.getState().openSettings('extensions');
             },
         });
+
+    // 익스텐션 화면의 host가 쓰는 이 창의 동작 (extensions/host). 손잡이는 바뀌어도 host는 그대로 둔다
+    const serverActionsRef = useRef({ handleStart, handleStop, handleRestart });
+    serverActionsRef.current = { handleStart, handleStop, handleRestart };
+    const hostWindow = useMemo<HostWindow>(
+        () => ({
+            servers: () => useServerStore.getState().servers,
+            run: async (instanceId, action) => {
+                const server = useServerStore.getState().servers.find((x) => x.id === instanceId);
+                if (!server) return false;
+                const { handleStart: start, handleStop: stop, handleRestart: restart } = serverActionsRef.current;
+                if (action === 'start') await start(server.name, server.module);
+                else if (action === 'stop') await stop(server.name);
+                else if (action === 'restart') await restart(server.name);
+                else return false;
+                return true;
+            },
+            openApp: (route) => {
+                if (isAppRoute(route)) useUIStore.getState().setActiveTab(route as ActiveTab);
+            },
+        }),
+        [],
+    );
+    const leaveExtensionPage = useCallback(() => useUIStore.getState().setActiveTab('servers'), []);
 
     // Store-based fetchModules
     const fetchModules = useServerStore((s) => s.fetchModules);
@@ -381,10 +408,7 @@ function App() {
         useServerStore.getState().startUptimeClock();
 
         const loadSettings = async () => {
-            const settings = await useSettingsStore.getState().load();
-            if (settings) {
-                consoleBufferRef.current = settings.consoleBufferSize ?? 2000;
-            }
+            await useSettingsStore.getState().load();
 
             // Load bot config into discord store
             await useDiscordStore.getState().loadConfig();
@@ -427,20 +451,6 @@ function App() {
         }, INIT_STALL_MS);
         return () => clearTimeout(timer);
     }, [daemonReady, initFailed, initSeen, t]);
-
-    // '받고 다음 실행 때 적용': 앱을 열 때 한 번 데몬에 맡긴다. 무엇을 적용할지(켜진 서버가 있으면 재시작이 필요한 것은 미룸)는 데몬이 고른다.
-    // 콘솔 팝아웃 창은 앱을 새로 연 것이 아니다
-    const applyOnLaunchDone = useRef(false);
-    useEffect(() => {
-        if (isPopoutMode || !daemonReady || applyOnLaunchDone.current || !window.api?.updaterApplyOnLaunch) return;
-        applyOnLaunchDone.current = true;
-        (async () => {
-            const res = await window.api.updaterApplyOnLaunch();
-            if (res?.requires_updater && res.needs_updater?.length > 0) {
-                await window.api.updaterLaunchApply?.(res.needs_updater);
-            }
-        })();
-    }, [daemonReady, isPopoutMode]);
 
     // Background Daemon status polling
     // biome-ignore lint/correctness/useExhaustiveDependencies: setter is stable
@@ -777,6 +787,7 @@ function App() {
 
     return (
         <ExtensionProvider>
+            <HostWindowContext.Provider value={hostWindow}>
             <TooltipProvider>
                 <div className="App">
                     {anyPopoverOpen && (
@@ -852,23 +863,10 @@ function App() {
                         )}
                         {page === 'discord' && <DiscordPage {...discordPageProps} />}
                         {(page as string) === 'activity' && <ActivityPage />}
+                        {page.startsWith('ext:') && <ExtensionAppPage page={page} onMissing={leaveExtensionPage} />}
                         {page === 'settings' && (
                             <div className="page page-scroll page-settings">
                                 <SettingsModal
-                                    variant="page"
-                                    isOpen
-                                    onClose={() => setPage('servers')}
-                                    refreshInterval={refreshInterval}
-                                    onRefreshIntervalChange={(val: number) =>
-                                        useSettingsStore.getState().update({ refreshInterval: val })
-                                    }
-                                    ipcPort={ipcPort}
-                                    onIpcPortChange={(val: number) => useSettingsStore.getState().update({ ipcPort: val })}
-                                    consoleBufferSize={consoleBufferSize}
-                                    onConsoleBufferSizeChange={(val: number) => {
-                                        useSettingsStore.getState().update({ consoleBufferSize: val });
-                                        consoleBufferRef.current = val;
-                                    }}
                                     discordCloudRelayUrl={discordCloudRelayUrl}
                                     onDiscordCloudRelayUrlChange={(val: string) =>
                                         useDiscordStore.getState().update({ discordCloudRelayUrl: val })
@@ -890,7 +888,6 @@ function App() {
                     <SabaBubble />
                     {paletteAvailable() && <CommandPalette />}
                     {eventsAvailable() && <DaemonEvents onServersChanged={fetchServers} />}
-                    {linkRequestsAvailable() && <LinkRequests />}
 
                     {/* 모달 렌더링 */}
                     {patchNotes && <PatchNotesModal data={patchNotes} onClose={() => setPatchNotes(null)} />}
@@ -928,6 +925,7 @@ function App() {
                     <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={100} leaving />
                 )}
             </TooltipProvider>
+            </HostWindowContext.Provider>
         </ExtensionProvider>
     );
 }
