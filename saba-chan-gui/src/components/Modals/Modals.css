@@ -2198,6 +2198,12 @@
     flex-shrink: 0;
 }
 
+/* 같은 판의 정식을 기다리는 중: 채널 줄 아래 한 줄 */
+.update-stable-wait {
+    margin: 0;
+    padding-bottom: var(--sp-3);
+}
+
 .update-panel-actions {
     display: none;
 }

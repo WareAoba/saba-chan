@@ -21,6 +21,8 @@ mod runner;
 pub use runner::{clear_run_dir, run_dir, runner_server_pid};
 pub use runner::{MemoryLimitAtStart, RunnerLaunch, RunnerMissing};
 pub use runner::{latest_session_log, runner_binary, sessions_dir, DEFAULT_LOG_SESSIONS};
+#[allow(unused_imports)] // 바이너리에서는 아직 코어 교체 판정을 부르는 곳이 없다
+pub use runner::READS_RUNNER_FORMATS;
 
 /// Console log file name within the instance's logs directory.
 const CONSOLE_LOG_FILENAME: &str = "console.log";
@@ -267,6 +269,8 @@ pub struct ManagedProcess {
     pub log_follower: bool,
     /// saba-runner가 띄웠으면 러너 PID. 러너를 죽이면 러너의 Job Object가 서버 트리 전체를 끝낸다
     pub runner_pid: Option<u32>,
+    /// saba-runner가 runner.json에 적은 형식 번호 (`saba_runner::RUNNER_FORMAT`). 러너가 없으면 None
+    pub runner_format: Option<u32>,
     /// saba-runner의 stdin 포트와 토큰. 인터럽트(Ctrl+C)를 부탁할 때 쓴다 (`interrupt`)
     runner_control: Option<(u16, String)>,
 }
@@ -489,6 +493,7 @@ impl ManagedProcess {
             working_dir: Some(PathBuf::from(working_dir)),
             log_follower: false,
             runner_pid: None,
+            runner_format: None,
             runner_control: None,
         })
     }
@@ -624,6 +629,7 @@ impl ManagedProcess {
             working_dir: Some(working_dir.to_path_buf()),
             log_follower: true,
             runner_pid: None,
+            runner_format: None,
             runner_control: None,
         })
     }
@@ -743,6 +749,7 @@ impl ManagedProcess {
             working_dir: None,
             log_follower: false,
             runner_pid: None,
+            runner_format: None,
             runner_control: None,
         }
     }
@@ -787,6 +794,12 @@ impl ManagedProcessStore {
             .filter(|(_, proc)| proc.is_running())
             .map(|(id, _)| id.clone())
             .collect()
+    }
+
+    /// 등록된 프로세스 전부 (인스턴스 ID와 함께). 락은 복사하는 동안만 쥔다
+    pub async fn snapshot(&self) -> Vec<(String, Arc<ManagedProcess>)> {
+        let map = self.processes.lock().await;
+        map.iter().map(|(id, proc)| (id.clone(), proc.clone())).collect()
     }
 
     /// Clean up processes that are no longer running.

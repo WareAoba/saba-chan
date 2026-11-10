@@ -632,7 +632,30 @@
     "mode": "업데이트를 찾으면",
     "mode_check": "알리기만",
     "mode_download": "받아 두기",
-    "mode_apply": "받고 다음 실행 때 적용"
+    "mode_apply": "받고 다음 실행 때 적용",
+    "stable_wait": "정식 {{version}}을(를) 기다리는 중"
+  },
+  "update_pill": {
+    "applying": "업데이트 적용 중...",
+    "done": "업데이트 완료",
+    "waiting": "업데이트 대기 중...",
+    "ready": "업데이트 준비됨",
+    "applying_sub": "사바쨩을 바꾸는 중이에요. 서버는 그대로 켜져 있어요",
+    "done_title": "{{version}}(으)로 업데이트했어요",
+    "done_sub": "켜져 있던 서버 {{count}}개는 그대로 이어졌어요",
+    "waiting_title": "{{version}}을(를) 받아 두었어요",
+    "wait_backup": "{{name}}의 백업이 끝나면 적용해요",
+    "wait_provision": "{{name}}의 설치가 끝나면 적용해요",
+    "wait_server_update": "{{name}}의 게임 서버 업데이트가 끝나면 적용해요",
+    "wait_module_call": "{{name}}의 모듈 작업이 끝나면 적용해요",
+    "wait_server_stop": "{{name}}이(가) 꺼지면 적용해요",
+    "wait_other": "{{name}}의 작업이 끝나면 적용해요",
+    "notes_more": "패치노트 전체 보기",
+    "restart_title": "{{version}}(으)로 업데이트하려면 다시 시작해야 해요",
+    "restart_note": "켜져 있는 서버는 그대로 두고 사바쨩만 다시 켜요. 잠깐 디스코드 명령에 답하지 못해요.",
+    "later": "나중에",
+    "restart_now": "지금 다시 시작",
+    "restart_failed": "다시 시작하지 못했어요: {{error}}"
   },
   "extensions": {
     "error_not_found": "익스텐션 '{{id}}'을(를) 찾을 수 없어요. 이미 제거됐을 수 있어요.",

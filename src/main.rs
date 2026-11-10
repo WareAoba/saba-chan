@@ -247,6 +247,8 @@ async fn main() -> anyhow::Result<()> {
             std::process::exit(2);
         }
     }
+    // 기동 시각 (`/health`의 `started_at_ms`)
+    std::sync::LazyLock::force(&ipc::handlers::server::STARTED_AT_MS);
     let spawned = args.iter().any(|a| a == "--spawned");
     let interactive =
         std::io::stdin().is_terminal() && std::io::stdout().is_terminal();

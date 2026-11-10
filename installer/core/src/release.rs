@@ -282,6 +282,7 @@ mod tests {
             install_dir: install_dir.map(Into::into),
             requires: None,
             meta: None,
+            reads_runner_formats: None,
         }
     }
 

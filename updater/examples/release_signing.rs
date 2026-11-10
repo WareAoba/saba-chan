@@ -9,7 +9,7 @@
 //! ```
 //!
 //! `gen-key`가 출력한 공개키는 `updater/src/signature.rs`의 `TRUSTED_KEYS`에,
-//! 개인키는 CI 시크릿 `UPDATER_SIGNING_KEY`에 넣는다.
+//! 개인키는 CI 시크릿 `UPDATER_SIGNING_KEY`(GitHub environment `release-signing`, 필수 승인자 = 저장소 주인)에 넣는다.
 
 use saba_chan_updater_lib::signature;
 

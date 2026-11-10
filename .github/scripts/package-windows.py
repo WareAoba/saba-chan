@@ -2,6 +2,7 @@
 """Windows 배포 에셋을 만든다 (publish.yml).
 
     python .github/scripts/package-windows.py --bin dist --out output
+    python .github/scripts/package-windows.py --locales-only --out output   # 번역만 바뀐 부분 릴리즈
 
 `--bin`은 `versions.py signing --collect`가 모은 exe 폴더다. 만드는 것:
 - saba-core-windows-x64.zip: saba-core.exe, saba-runner.exe, 공유 모듈(목록은 package-linux.py 하나에서 정한다)
@@ -56,22 +57,34 @@ def package(bin_dir: Path, out_dir: Path) -> list[Path]:
     installer = out_dir / "saba-chan-installer.exe"
     shutil.copyfile(bin_dir / "saba-chan-installer.exe", installer)
     made.append(installer)
-    locales = out_dir / "locales.zip"
-    with zipfile.ZipFile(locales, "w", zipfile.ZIP_DEFLATED) as zf:
-        for f in sorted((ROOT / "locales").rglob("*")):
-            if f.is_file():
-                zf.write(f, f.relative_to(ROOT / "locales").as_posix())
-    made.append(locales)
+    made.append(package_locales(out_dir))
     for p in made:
         print(f"    -> {p.name} ({p.stat().st_size / 1024 / 1024:.2f} MB)")
     return made
 
 
+def package_locales(out_dir: Path) -> Path:
+    """locales.zip: 저장소 locales/ (zip 안에는 locales/ 접두사 없이)"""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    locales = out_dir / "locales.zip"
+    with zipfile.ZipFile(locales, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in sorted((ROOT / "locales").rglob("*")):
+            if f.is_file():
+                zf.write(f, f.relative_to(ROOT / "locales").as_posix())
+    return locales
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--bin", required=True, help="versions.py signing --collect 가 모은 exe 폴더")
+    parser.add_argument("--bin", help="versions.py signing --collect 가 모은 exe 폴더")
     parser.add_argument("--out", required=True)
+    parser.add_argument("--locales-only", action="store_true", help="locales.zip만 만든다 (실행 파일 빌드 없이)")
     args = parser.parse_args()
+    if args.locales_only:
+        package_locales(Path(args.out))
+        return 0
+    if not args.bin:
+        parser.error("--bin is required")
     package(Path(args.bin), Path(args.out))
     return 0
 

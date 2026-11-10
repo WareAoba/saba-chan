@@ -411,9 +411,12 @@ impl UpdateManager {
             return Ok(Some(backup));
         } else if cfg!(unix) && Self::is_known_binary(out_path) {
             let backup = out_path.with_extension("old");
-            if std::fs::rename(out_path, &backup).is_ok() {
-                return Ok(Some(backup));
+            // 비켜 두지 못하면 덮어쓰지 않는다: 백업 없이 덮으면 새 데몬이 건강하지 않을 때 되돌릴 수 없다
+            if let Err(e) = std::fs::rename(out_path, &backup) {
+                tracing::error!("[Updater] Cannot move {} aside: {}", out_path.display(), e);
+                anyhow::bail!("Cannot replace {}: {}", out_path.display(), e);
             }
+            return Ok(Some(backup));
         }
         Ok(None)
     }
@@ -645,6 +648,72 @@ pub fn replace_dir(target_dir: &Path, staged: &Path, staging_dir: &Path, backup_
     std::fs::remove_file(staged).ok();
     let _ = std::fs::remove_dir_all(&backup_dir);
     Ok(files)
+}
+
+/// 번역 묶음을 옆 폴더(`.locales-new`)에 다 푼 뒤 `locales/version`에 판 번호를 적고, 이름 바꾸기로 `dir`과 맞바꾼다.
+/// 읽는 쪽은 옛 묶음이나 새 묶음 하나만 본다 (두 이름 바꾸기 사이 아주 잠깐 폴더가 없을 수 있다: 데몬·GUI·CLI는 내장본으로 읽는다).
+/// 풀다 실패하면 `dir`은 건드리지 않는다. 쓴 파일(`dir` 안 경로)을 돌려준다
+pub(crate) fn replace_locales(dir: &Path, staged: &Path, version: Option<&str>) -> Result<Vec<PathBuf>> {
+    if !staged.extension().is_some_and(|e| e == "zip") {
+        anyhow::bail!("Unsupported archive format: {}", staged.display());
+    }
+    settle_locales(dir);
+    let (fresh, old) = locales_siblings(dir);
+    if fresh.exists() {
+        std::fs::remove_dir_all(&fresh)?;
+    }
+    std::fs::create_dir_all(&fresh)?;
+    let written = extract_zip(staged, &fresh, |_| Ok(())).and_then(|files| {
+        if let Some(v) = version {
+            std::fs::write(fresh.join("version"), v)?;
+        }
+        Ok(files)
+    });
+    let written = match written {
+        Ok(files) => files,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&fresh);
+            return Err(e);
+        }
+    };
+    if dir.exists() {
+        std::fs::rename(dir, &old)?;
+    }
+    if let Err(e) = std::fs::rename(&fresh, dir) {
+        if old.exists() {
+            let _ = std::fs::rename(&old, dir);
+        }
+        let _ = std::fs::remove_dir_all(&fresh);
+        anyhow::bail!("Cannot put the new locales in place: {}", e);
+    }
+    let _ = std::fs::remove_dir_all(&old);
+    std::fs::remove_file(staged).ok();
+    let mut files: Vec<PathBuf> = written.iter().filter_map(|f| f.strip_prefix(&fresh).ok().map(|rel| dir.join(rel))).collect();
+    if version.is_some() {
+        files.push(dir.join("version"));
+    }
+    Ok(files)
+}
+
+/// 맞바꾸다 끊긴 번역 묶음을 정리한다: `dir`이 없으면 옛 묶음(`.locales-old`)을 되돌리고, 남은 옆 폴더는 지운다
+pub(crate) fn settle_locales(dir: &Path) {
+    let (fresh, old) = locales_siblings(dir);
+    if !dir.exists() && old.exists() {
+        match std::fs::rename(&old, dir) {
+            Ok(()) => tracing::warn!("[Updater] Restored {} (an earlier locales swap was interrupted)", dir.display()),
+            Err(e) => tracing::warn!("[Updater] Cannot restore {}: {}", dir.display(), e),
+        }
+    }
+    for leftover in [fresh, old] {
+        if leftover.exists() {
+            let _ = std::fs::remove_dir_all(&leftover);
+        }
+    }
+}
+
+fn locales_siblings(dir: &Path) -> (PathBuf, PathBuf) {
+    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "locales".into());
+    (dir.with_file_name(format!(".{name}-new")), dir.with_file_name(format!(".{name}-old")))
 }
 
 /// 묻지 않는 교체가 옮긴 원래 폴더에 남기는 지문 파일 (검사한 순간의 내용)

@@ -512,8 +512,37 @@ impl PluginCall {
     async fn call(mut self, on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>, skip_busy: bool) -> Result<Option<Value>> {
         let host = self.host.take().unwrap_or_else(|| HOST_CONTEXT.try_with(Clone::clone).ok().flatten());
         let (entry, function, timeout_secs) = (self.entry.clone(), self.function.clone(), self.timeout_secs);
+        let _in_flight = InFlight::start(host.as_ref().map(|c| c.instance_id().to_string()), &entry);
         HOST_CONTEXT.scope(host, in_call(&entry, &function, timeout_secs, skip_busy, run_requested_plugin(self, on_progress))).await
     }
+}
+
+/// 진행 중인 모듈·익스텐션 호출 (호출 번호 → 인스턴스, 진입 파일). 코어 업데이트는 이것이 끝나기를 기다린다
+type Calls = std::collections::HashMap<u64, (Option<String>, String)>;
+static IN_FLIGHT: std::sync::LazyLock<std::sync::Mutex<Calls>> = std::sync::LazyLock::new(Default::default);
+
+/// 호출 하나가 끝날 때(취소 포함) 목록에서 빠진다
+struct InFlight(u64);
+
+impl InFlight {
+    fn start(instance: Option<String>, entry: &str) -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner()).insert(id, (instance, entry.to_string()));
+        Self(id)
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
+    }
+}
+
+/// 지금 진행 중인 모듈·익스텐션 호출의 (인스턴스, 모듈·익스텐션 이름)
+pub(crate) fn calls_in_flight() -> Vec<(Option<String>, String)> {
+    let calls: Vec<_> = IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner()).values().cloned().collect();
+    calls.into_iter().map(|(instance, entry)| (instance, module_name(&entry))).collect()
 }
 
 /// 서버 설치·업데이트(`install_server`) 한도: 대용량 다운로드를 허용한다

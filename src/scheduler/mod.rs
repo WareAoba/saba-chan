@@ -278,6 +278,12 @@ impl Clock {
     }
 }
 
+/// 코어 업데이트가 막는 것을 기다리는 동안 미루는 예약 (13절 끝나지 않는 대기): 그 자체가 업데이트를 막는 긴 데몬 작업인 것.
+/// 정지·시작·공지처럼 짧거나 기다림을 끝낼 수 있는 것은 그대로 한다. 사용자가 직접 누른 작업은 이 판정을 거치지 않는다
+pub fn waits_for_update(action: &TaskAction) -> bool {
+    matches!(action, TaskAction::Backup | TaskAction::Update)
+}
+
 /// 작업마다 고유한 열쇠 (인스턴스 id + 작업 내용). 작업을 고치면 새 작업으로 센다
 pub fn task_key(instance_id: &str, task: &ScheduledTask) -> String {
     format!("{}:{}", instance_id, serde_json::to_string(task).unwrap_or_default())
@@ -387,6 +393,16 @@ mod tests {
         let daily = task(serde_json::json!({"action": "restart", "at": "04:00", "warn_minutes": [10]}));
         c.finish("d", t("2026-10-17 04:00"));
         assert_eq!(c.due("d", &daily, start, t("2026-10-19 03:55")), Some(t("2026-10-19 04:00")));
+    }
+
+    /// 업데이트가 기다리는 동안 새 예약 백업·게임 서버 업데이트는 미룬다 (실행기는 그동안 `due`를 부르지 않는다)
+    #[test]
+    fn scheduled_daemon_work_waits_for_a_pending_core_update() {
+        assert!(waits_for_update(&TaskAction::Backup));
+        assert!(waits_for_update(&TaskAction::Update));
+        for other in [TaskAction::Restart, TaskAction::Announce, TaskAction::Start, TaskAction::Stop, TaskAction::Save] {
+            assert!(!waits_for_update(&other));
+        }
     }
 
     #[test]

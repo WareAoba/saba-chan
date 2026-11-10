@@ -8,6 +8,11 @@
   signing   빌드된 exe 폴더를 versions.toml(`exes`)과 SignPath 제약에 대조하고 서명 요청 매개변수를 낸다
   registration  서명된 봉투로 릴레이 `POST /admin/releases` 본문을 만든다.
             `release-notes/<version>.json`({언어: 본문})을 notes로 같이 싣는다(stable은 필수).
+            publish.yml은 `--channel beta`로 늘 베타에 먼저 등록한다.
+  plan      지난 릴리즈 manifest와 비교해 빌드할 컴포넌트와 지난 항목을 그대로 쓸 컴포넌트를 정한다 (부분 릴리즈)
+  assemble  조합 관문용: 서명 전 manifest의 한 플랫폼 에셋을 이번 빌드 또는 지난 릴리즈 R2에서 모아 sha256을 대조한다
+  uploads   등록 본문 중 이번 릴리즈 자리에 올릴 파일 (`--reused`: 그대로 쓰는 지난 파일)
+  promote-pick / promote-check  promote-release.yml: 승격할 베타 행을 고르고, 서명된 채널이 허락하는지 본다
 
 manifest에 --modules-repo / --extensions-repo를 주면 그 저장소의 모듈(module.toml이 있는
 폴더)과 익스텐션(manifest.json이 있는 폴더)을 zip으로 묶어 같은 manifest에 넣는다 (U9e).
@@ -38,6 +43,10 @@ SOURCE = ROOT / "versions.toml"
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
 # 발행 채널: 정식·미리보기(rc)·베타. 위 채널은 아래 채널 릴리즈도 받는다 (updater relay.rs `CHANNELS`)
 CHANNELS = ("stable", "rc", "beta")
+# 릴레이·업데이터의 채널 순서 (relay.rs `CHANNELS`, 릴레이 `CHANNEL_ORDER`). 등록·승격 채널은 이 안에서 고른다
+RELAY_CHANNELS = ("stable", "rc", "beta", "nightly")
+# 데몬이 다시 붙을 수 있는 러너 형식 범위 상수 (manifest saba-core.reads_runner_formats로 싣는다)
+RUNNER_SOURCE = ROOT / "src" / "supervisor" / "managed_process" / "runner.rs"
 
 
 def load() -> dict:
@@ -587,6 +596,191 @@ def cmd_signing(data: dict, args: argparse.Namespace) -> int:
     return 0
 
 
+# ── 실시간 업데이트 발행: 부분 릴리즈·조합 관문·베타 먼저·승격 (docs 05 §3.1) ──
+
+def channel_includes(selected: str, release: str) -> bool:
+    """`selected` 채널을 고른 클라이언트가 `release` 채널의 릴리즈를 받는가 (updater relay.rs `channel_includes`)"""
+    if selected in RELAY_CHANNELS and release in RELAY_CHANNELS:
+        return RELAY_CHANNELS.index(release) <= RELAY_CHANNELS.index(selected)
+    return selected == release
+
+
+def manifest_body(signed_or_manifest: dict) -> dict:
+    """서명 봉투(`{manifest, signature, keyId}`)든 manifest든 manifest 본문"""
+    return signed_or_manifest.get("manifest", signed_or_manifest)
+
+
+def listed_components(manifest: dict, platform: str) -> dict:
+    """한 플랫폼의 컴포넌트 목록: 맨 위 플랫폼이면 `components`, 아니면 `platforms.<플랫폼>.components`"""
+    manifest = manifest_body(manifest)
+    if manifest.get("platform") == platform:
+        return manifest.get("components", {})
+    return manifest.get("platforms", {}).get(platform, {}).get("components", {})
+
+
+def previous_versions(previous: dict) -> dict[str, str]:
+    """지난 릴리즈의 컴포넌트 버전 (구성별 키 `<키>.<구성>`은 `<키>`로 모은다)"""
+    manifest = manifest_body(previous)
+    lists = [manifest.get("components", {})] + [v.get("components", {}) for v in manifest.get("platforms", {}).values()]
+    found = {}
+    for listed in lists:
+        for key, comp in listed.items():
+            found.setdefault(key.split(".")[0], comp["version"])
+    return found
+
+
+def release_plan(data: dict, previous: dict) -> dict:
+    """지난 릴리즈와 비교해 빌드할 앱 컴포넌트와 지난 항목을 그대로 쓸 컴포넌트.
+    버전이 오른 것·지난 릴리즈에 없던 것만 빌드한다. 지난 릴리즈보다 낮으면 멈춘다.
+    `binaries`는 실행 파일을 빌드해야 하는가(`exes`가 있는 컴포넌트가 바뀜), `locales`는 번역 묶음이 바뀌었는가"""
+    manifest = manifest_body(previous)
+    release = data["release"]["version"]
+    if manifest.get("version") and versions_semver(release) <= versions_semver(manifest["version"]):
+        sys.exit(f"release {release} is not above the previous release {manifest['version']}")
+    old = previous_versions(manifest)
+    build, reuse = [], []
+    for key, comp in sorted(data["components"].items()):
+        if "asset" not in comp:
+            continue
+        if key not in old:
+            build.append(key)
+            continue
+        new_v, old_v = versions_semver(comp["version"]), versions_semver(old[key])
+        if new_v < old_v:
+            sys.exit(f"{key} {comp['version']} is lower than {old[key]} in {manifest.get('version')}")
+        (build if new_v > old_v else reuse).append(key)
+    return {
+        "build": build,
+        "reuse": reuse,
+        "binaries": any(data["components"][k].get("exes") for k in build),
+        "locales": "locales" in build,
+    }
+
+
+def cmd_plan(data: dict, args: argparse.Namespace) -> int:
+    plan = release_plan(data, json.loads(Path(args.previous).read_text(encoding="utf-8")))
+    write_json(plan, args.out)
+    if args.github_output:
+        # 워크플로 출력: 빌드 작업은 binaries가 true일 때만 돈다
+        with open(args.github_output, "a", encoding="utf-8") as f:
+            f.write(f"binaries={str(plan['binaries']).lower()}\n")
+            f.write(f"locales={str(plan['locales']).lower()}\n")
+            f.write(f"build={' '.join(plan['build']) or '-'}\n")
+    return 0
+
+
+RUNNER_FORMATS_CONST = re.compile(r"pub const READS_RUNNER_FORMATS:\s*\(u32,\s*u32\)\s*=\s*\((\d+),\s*(\d+)\)\s*;")
+
+
+def runner_formats(source: Path = RUNNER_SOURCE) -> list[int]:
+    """새로 빌드한 코어가 다시 붙을 수 있는 러너 형식 범위 `[min, max]` (데몬 소스 상수). 못 읽으면 멈춘다:
+    범위 없이 내면 클라이언트가 기본값 `[0, 1]`로 읽어, 형식이 바뀐 러너를 모른 채 코어를 바꿀 수 있다"""
+    try:
+        m = RUNNER_FORMATS_CONST.search(source.read_text(encoding="utf-8"))
+    except OSError as e:
+        sys.exit(f"cannot read {source}: {e}")
+    if not m:
+        sys.exit(f"{source}: no `pub const READS_RUNNER_FORMATS: (u32, u32) = (min, max);`")
+    return [int(m.group(1)), int(m.group(2))]
+
+
+def with_verified_core(listed: dict) -> dict:
+    """그 목록(한 플랫폼의 조합)의 코어 판을 컴포넌트마다 `verified_with_core`로 적는다"""
+    core = listed.get("saba-core", {}).get("version")
+    if not core:
+        return listed
+    return {key: {**comp, "verified_with_core": core} for key, comp in listed.items()}
+
+
+def asset_r2_key(release: str, comp: dict) -> str:
+    """에셋의 R2 키. 지난 릴리즈 항목을 그대로 쓴 컴포넌트는 그 릴리즈의 자리(`releases/<옛 판>/<파일>`)다"""
+    m = re.search(r"/(releases/[^/]+/[^/]+)$", comp.get("url", ""))
+    return m.group(1) if m else r2_key(release, comp["asset"])
+
+
+def r2_uploads(body: dict, reused: bool = False) -> list[tuple[str, str]]:
+    """등록 본문 중 이번 릴리즈 자리에 올릴 파일 `(파일 이름, R2 키)`. 지난 릴리즈 파일은 이미 R2에 있다
+    (`reused`면 그 지난 릴리즈 파일들: 올리기 전에 R2에 남아 있는지 본다).
+    모듈·locales는 플랫폼마다 한 줄씩 등록되지만 같은 파일이라 한 번만 올린다"""
+    prefix = f"releases/{body['version']}/"
+    return sorted({(a["filename"], a["r2Key"]) for a in body["assets"] if a["r2Key"].startswith(prefix) != reused})
+
+
+def cmd_uploads(args: argparse.Namespace) -> int:
+    body = json.loads(Path(args.registration).read_text(encoding="utf-8"))
+    sys.stdout.write("".join(f"{name} {key}\n" for name, key in r2_uploads(body, args.reused)))
+    return 0
+
+
+def assemble_assets(manifest: dict, platform: str, keys: list[str], assets: Path, out: Path, fetch) -> list[Path]:
+    """조합 관문용: 한 플랫폼 목록의 `keys` 에셋을 `out`에 모은다. 이번에 빌드한 파일(`assets`)이 manifest의 sha256과
+    같으면 그것을, 아니면(지난 릴리즈 항목) `fetch(url)`로 받는다. sha256이 다르면 멈춘다"""
+    listed = listed_components(manifest, platform)
+    out.mkdir(parents=True, exist_ok=True)
+    made = []
+    for key in keys:
+        comp = listed.get(key)
+        if not comp:
+            sys.exit(f"{platform}: no {key} in the manifest")
+        local = assets / comp["asset"]
+        blob = local.read_bytes() if local.is_file() else None
+        if blob is None or hashlib.sha256(blob).hexdigest() != comp["sha256"]:
+            blob = fetch(comp["url"])
+            if hashlib.sha256(blob).hexdigest() != comp["sha256"]:
+                sys.exit(f"{platform}: {comp['url']} does not match the manifest sha256 of {key}")
+        target = out / comp["asset"]
+        target.write_bytes(blob)
+        made.append(target)
+    return made
+
+
+def cmd_assemble(args: argparse.Namespace) -> int:
+    manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    for path in assemble_assets(manifest, args.platform, args.keys, Path(args.assets), Path(args.out), fetch_url):
+        print(path)
+    return 0
+
+
+def promotion_release_id(listing: dict, version: str, channel: str, allow_rollbacks: bool) -> tuple[int, bool]:
+    """승격할 릴리즈 (id, 이미 그 채널에 있는가): 그 판의 내리지 않은 행 중 `channel`보다 아래 채널(베타 등)에 있는 것.
+    이미 그 채널에 있으면 그 행과 True (릴레이는 끝났고 GitHub 동기화만 다시 한다). 되돌림 보고가 있는데
+    `allow_rollbacks`가 아니면 멈춘다 (릴레이 `GET /admin/releases`)"""
+    rows = [r for r in listing.get("releases", []) if r["version"] == version and not r.get("yanked")]
+    done = [r for r in rows if r["channel"] == channel]
+    if done:
+        return max(done, key=lambda r: r["id"])["id"], True
+    below = [r for r in rows if r["channel"] in RELAY_CHANNELS
+             and RELAY_CHANNELS.index(r["channel"]) > RELAY_CHANNELS.index(channel)]
+    if not below:
+        sys.exit(f"no unyanked {version} below {channel} on the relay")
+    row = max(below, key=lambda r: r["id"])
+    if row.get("rollbacks") and not allow_rollbacks:
+        sys.exit(f"{version} was rolled back {row['rollbacks']} time(s) on clients; rerun with allow_rollbacks to promote anyway")
+    return row["id"], False
+
+
+def promotion_channel_problem(signed: dict, channel: str) -> str | None:
+    """서명된 manifest 채널을 `channel` 클라이언트가 받지 않으면 그 까닭 (승격해도 클라이언트가 거부한다)"""
+    signed_channel = manifest_body(signed).get("channel")
+    if not channel_includes(channel, signed_channel):
+        return f"the release was signed for {signed_channel}; {channel} clients would refuse it"
+    return None
+
+
+def cmd_promote_pick(args: argparse.Namespace) -> int:
+    listing = json.loads(Path(args.releases).read_text(encoding="utf-8"))
+    release_id, done = promotion_release_id(listing, args.version, args.channel, args.allow_rollbacks)
+    print(f"{release_id} {'done' if done else 'pending'}")
+    return 0
+
+
+def cmd_promote_check(args: argparse.Namespace) -> int:
+    problem = promotion_channel_problem(json.loads(Path(args.signed).read_text(encoding="utf-8")), args.channel)
+    if problem:
+        sys.exit(problem)
+    return 0
+
+
 def asset_entries(data: dict, platform: str):
     """이 플랫폼에서 찾을 (manifest 키, 컴포넌트, asset 이름). `{platform}`이 든 asset은 모든 플랫폼에서, 없는 asset은
     `platforms`(없으면 모든 플랫폼)에 들 때만 찾는다. `profile_assets`는 구성마다 빌드한 같은 컴포넌트를 `<키>.<구성>`으로 찾는다"""
@@ -597,12 +791,24 @@ def asset_entries(data: dict, platform: str):
             yield f"{key}.{profile}", comp, asset.format(platform=platform)
 
 
-def platform_components(data: dict, args: argparse.Namespace, assets: Path, platform: str, packaged: dict) -> dict:
-    """이 플랫폼의 앱 컴포넌트 (`asset_entries`). 파일이 있는 것만 싣는다"""
+def platform_components(data: dict, args: argparse.Namespace, assets: Path, platform: str, packaged: dict,
+                        previous: dict | None = None) -> dict:
+    """이 플랫폼의 앱 컴포넌트 (`asset_entries`). 파일이 있는 것만 싣는다.
+    `previous`(지난 릴리즈의 이 플랫폼 목록)에 버전이 같은 항목이 있으면 파일을 보지 않고 그 항목(url·sha256·version)을
+    그대로 싣는다(부분 릴리즈: 사용자 PC에서 바뀌지 않는다). 지난 판보다 낮으면 멈춘다.
+    새로 빌드한 saba-core에는 소스 상수의 `reads_runner_formats`를 싣는다"""
     base = args.base_url.rstrip("/")
     release = data["release"]["version"]
     components = {}
     for key, comp, name in asset_entries(data, platform):
+        old = (previous or {}).get(key)
+        if old:
+            new_v, old_v = versions_semver(comp["version"]), versions_semver(old["version"])
+            if new_v < old_v:
+                sys.exit(f"{key} ({platform}) {comp['version']} is lower than {old['version']} in the previous release")
+            if new_v == old_v:
+                components[key] = {k: v for k, v in old.items() if k != "verified_with_core"}
+                continue
         path = assets / name
         if not path.is_file():
             print(f"skip {key} ({platform}): {path} not found", file=sys.stderr)
@@ -626,6 +832,8 @@ def platform_components(data: dict, args: argparse.Namespace, assets: Path, plat
             "url": f"{base}/{r2_key(release, name)}",
             "version": version,
         }
+        if key == "saba-core":
+            components[key]["reads_runner_formats"] = runner_formats(Path(getattr(args, "runner_source", None) or RUNNER_SOURCE))
     return components
 
 
@@ -648,15 +856,23 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
     # 에셋 폴더의 manifest.json(있으면): 컴포넌트 버전을 그 값으로 적는다. 맨 위 플랫폼(windows-x64)만 본다
     packaged_path = assets / "manifest.json"
     packaged = json.loads(packaged_path.read_text(encoding="utf-8")).get("components", {}) if packaged_path.is_file() else {}
-    components = platform_components(data, args, assets, args.platform, packaged)
-    addons = addon_components(args, assets)
+    previous = None
     if getattr(args, "previous", None):
-        previous = json.loads(Path(args.previous).read_text(encoding="utf-8"))
-        problems = addon_version_problems(addons, assets, previous.get("manifest", previous), fetch_url)
+        previous = manifest_body(json.loads(Path(args.previous).read_text(encoding="utf-8")))
+    components = platform_components(data, args, assets, args.platform, packaged,
+                                     listed_components(previous, args.platform) if previous else None)
+    addons = addon_components(args, assets)
+    if previous:
+        problems = addon_version_problems(addons, assets, previous, fetch_url)
         if problems:
             sys.exit("modules/extensions:\n  " + "\n  ".join(problems))
     addon_entries = {}
     for key, comp in addons.items():
+        old = (previous or {}).get("components", {}).get(key)
+        if old and old["version"] == comp["version"]:
+            # 같은 판은 내용이 같다(위 검사): 지난 릴리즈 파일을 그대로 가리킨다
+            addon_entries[key] = {**comp, **{k: old[k] for k in ("asset", "sha256", "size_bytes", "url")}}
+            continue
         blob = (assets / comp["asset"]).read_bytes()
         addon_entries[key] = {
             **comp,
@@ -669,19 +885,19 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
         sys.exit(f"no assets found in {assets}")
     manifest = {
         "channel": args.channel or data["release"].get("channel", "stable"),
-        "components": components,
+        "components": with_verified_core(components),
         "platform": args.platform,
         "version": release,
     }
     platforms = {}
     for other in getattr(args, "also_platform", None) or []:
-        own = platform_components(data, args, assets, other, {})
+        own = platform_components(data, args, assets, other, {}, listed_components(previous, other) if previous else None)
         if "saba-core" not in own:
             sys.exit(f"{other}: no saba-core asset in {assets}")
         missing = [k for k in required_installers(data, own) if k not in own]
         if missing:
             sys.exit(f"{other}: no {', '.join(missing)} asset in {assets} (clients there could not update the installer)")
-        platforms[other] = {"components": {**own, **addon_entries}}
+        platforms[other] = {"components": with_verified_core({**own, **addon_entries})}
     if platforms:
         manifest["platforms"] = platforms
     write_json(manifest, args.out)
@@ -693,6 +909,10 @@ def cmd_registration(args: argparse.Namespace) -> int:
     signed = json.loads(Path(args.signed).read_text(encoding="utf-8"))
     manifest = signed["manifest"]
     release = manifest["version"]
+    # 등록은 늘 베타 먼저(--channel beta). 서명된 채널은 승격할 수 있는 끝이라 등록 채널의 클라이언트가 받아야 한다
+    channel = getattr(args, "channel", None) or manifest["channel"]
+    if not channel_includes(channel, manifest["channel"]):
+        sys.exit(f"the manifest is signed for {manifest['channel']}; {channel} clients would refuse it")
     notes_path = Path(args.notes) if args.notes else ROOT / "release-notes" / f"{release}.json"
     notes = load_notes(notes_path)
     # 클라이언트는 받을 때의 노트를 보관해 적용 뒤 패치노트로 보여 준다. stable은 노트 없이 내지 않는다
@@ -700,7 +920,7 @@ def cmd_registration(args: argparse.Namespace) -> int:
         raise SystemExit(f"{notes_path}: stable release needs release notes")
     body = {
         "version": release,
-        "channel": manifest["channel"],
+        "channel": channel,
         "rolloutPercent": args.rollout,
         "isCritical": args.critical,
         "signedManifest": json.dumps(signed, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
@@ -712,7 +932,7 @@ def cmd_registration(args: argparse.Namespace) -> int:
                 "filename": comp["asset"],
                 "sizeBytes": comp["size_bytes"],
                 "sha256": comp["sha256"],
-                "r2Key": r2_key(release, comp["asset"]),
+                "r2Key": asset_r2_key(release, comp),
             }
             # 릴레이는 에셋의 플랫폼으로 그 플랫폼의 릴리즈를 고른다. 같은 파일(모듈·locales)은 플랫폼마다 한 줄씩
             for platform, listed in [(manifest["platform"], manifest["components"])]
@@ -766,7 +986,13 @@ def main() -> int:
     m.add_argument("--modules-repo", help="saba-chan-modules 체크아웃 (모듈을 같이 싣는다)")
     m.add_argument("--extensions-repo", help="saba-chan-extensions 체크아웃")
     m.add_argument("--addons-ref", help="아이콘 URL에 쓸 모듈 저장소 커밋")
-    m.add_argument("--previous", help="지난 릴리즈의 (서명된) manifest. 바뀐 모듈·익스텐션의 버전이 오르지 않았으면 멈춘다")
+    m.add_argument("--previous", help="지난 릴리즈의 (서명된) manifest. 버전이 같은 앱 컴포넌트는 그 항목을 그대로 싣고, "
+                   "바뀐 모듈·익스텐션의 버전이 오르지 않았으면 멈춘다")
+    m.add_argument("--runner-source", help="READS_RUNNER_FORMATS 상수가 든 데몬 소스 (기본: src/supervisor/managed_process/runner.rs)")
+    pl = sub.add_parser("plan")
+    pl.add_argument("--previous", required=True, help="지난 릴리즈의 (서명된) manifest")
+    pl.add_argument("--out")
+    pl.add_argument("--github-output", help="binaries·locales·build를 이 파일(GITHUB_OUTPUT)에 덧붙인다")
     s = sub.add_parser("signing")
     s.add_argument("--exes", required=True, help="서명할 exe 폴더")
     s.add_argument("--collect", help="먼저 이 빌드 폴더에서 선언된 exe를 --exes로 모은다")
@@ -775,6 +1001,7 @@ def main() -> int:
     r.add_argument("--signed", required=True, help="release_signing sign 출력")
     r.add_argument("--rollout", type=rollout_percent, default=100, help="롤아웃 비율 1~100 (기본 100)")
     r.add_argument("--critical", action="store_true")
+    r.add_argument("--channel", choices=RELAY_CHANNELS, help="등록 채널 (기본: 서명된 manifest 채널. publish.yml은 늘 beta)")
     r.add_argument("--notes", help="릴리즈 노트 JSON (기본: release-notes/<version>.json)")
     r.add_argument("--out")
     a = sub.add_parser("addons")
@@ -792,6 +1019,23 @@ def main() -> int:
     sd = sub.add_parser("addon-seed")
     sd.add_argument("--release", required=True, help="릴레이 /v1/updates/manifest/<버전> 답 (서명된 릴리즈 manifest)")
     sd.add_argument("--out")
+    up = sub.add_parser("uploads")
+    up.add_argument("--registration", required=True, help="registration 출력. 이번 릴리즈 자리에 올릴 `파일 R2키` 줄을 낸다")
+    up.add_argument("--reused", action="store_true", help="대신 지난 릴리즈에서 그대로 쓰는 파일을 낸다")
+    asm = sub.add_parser("assemble")
+    asm.add_argument("--manifest", required=True, help="서명 전 manifest (조합)")
+    asm.add_argument("--platform", required=True)
+    asm.add_argument("--assets", required=True, help="이번에 빌드한 에셋 폴더")
+    asm.add_argument("--keys", nargs="+", required=True, help="모을 컴포넌트 키")
+    asm.add_argument("--out", required=True)
+    pp = sub.add_parser("promote-pick")
+    pp.add_argument("--releases", required=True, help="릴레이 GET /admin/releases 답")
+    pp.add_argument("--version", required=True)
+    pp.add_argument("--channel", required=True, choices=RELAY_CHANNELS)
+    pp.add_argument("--allow-rollbacks", action="store_true")
+    pc = sub.add_parser("promote-check")
+    pc.add_argument("--signed", required=True, help="릴레이 /v1/updates/manifest/<판>?release=<id> 답")
+    pc.add_argument("--channel", required=True, choices=RELAY_CHANNELS)
     args = parser.parse_args()
 
     if args.cmd == "addon-seed":
@@ -802,6 +1046,14 @@ def main() -> int:
         return cmd_addons(args)
     if args.cmd == "addon-registration":
         return cmd_addon_registration(args)
+    if args.cmd == "uploads":
+        return cmd_uploads(args)
+    if args.cmd == "assemble":
+        return cmd_assemble(args)
+    if args.cmd == "promote-pick":
+        return cmd_promote_pick(args)
+    if args.cmd == "promote-check":
+        return cmd_promote_check(args)
 
     data = load()
     if args.cmd == "check":
@@ -810,6 +1062,8 @@ def main() -> int:
         return cmd_sync(data)
     if args.cmd == "signing":
         return cmd_signing(data, args)
+    if args.cmd == "plan":
+        return cmd_plan(data, args)
     return cmd_manifest(data, args)
 
 

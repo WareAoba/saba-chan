@@ -16,10 +16,19 @@ enum Work {
     Writes,
 }
 
+/// 긴 작업이 무엇인지 (코어 업데이트가 무엇을 기다리는지 보일 때 쓴다, `ipc::update_phase`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Purpose {
+    Backup,
+    Provision,
+    ServerUpdate,
+}
+
 type FileLocks = HashMap<String, Arc<tokio::sync::Mutex<()>>>;
 
-/// 긴 작업을 쥔 키와 그 작업의 종류
-static BUSY: LazyLock<Mutex<HashMap<String, Work>>> = LazyLock::new(Default::default);
+/// 긴 작업을 쥔 키와 그 작업의 종류·이름표
+type Busy = HashMap<String, (Work, Option<Purpose>)>;
+static BUSY: LazyLock<Mutex<Busy>> = LazyLock::new(Default::default);
 /// 인스턴스마다 설정 파일 작업 한 줄
 static FILES: LazyLock<Mutex<FileLocks>> = LazyLock::new(Default::default);
 
@@ -57,6 +66,21 @@ impl InstanceLock {
         Some(lock)
     }
 
+    /// 이 작업이 무엇인지 적는다 (`busy`가 보인다)
+    pub(crate) fn purpose(self, purpose: Purpose) -> Self {
+        if let Some(entry) = BUSY.lock().unwrap_or_else(|e| e.into_inner()).get_mut(&self.key) {
+            entry.1 = Some(purpose);
+        }
+        self
+    }
+
+    /// 지금 쥐어진 긴 작업의 키와 이름표. 이름표가 없는 것(시작·초기화·설정 저장 등)은 모듈을 부르는 작업이다
+    pub(crate) fn busy() -> Vec<(String, Option<Purpose>)> {
+        let mut list: Vec<_> = BUSY.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(k, (_, p))| (k.clone(), *p)).collect();
+        list.sort_by(|a, b| a.0.cmp(&b.0));
+        list
+    }
+
     /// 잡지 않고 잡혀 있는지만 본다 (잠깐 잡아 보는 것만으로 다른 작업이 409를 받지 않게)
     pub(crate) fn held(key: &str) -> bool {
         BUSY.lock().unwrap_or_else(|e| e.into_inner()).contains_key(key)
@@ -76,7 +100,7 @@ impl InstanceLock {
     }
 
     fn writing(id: &str) -> bool {
-        BUSY.lock().unwrap_or_else(|e| e.into_inner()).get(id) == Some(&Work::Writes)
+        BUSY.lock().unwrap_or_else(|e| e.into_inner()).get(id).map(|w| w.0) == Some(Work::Writes)
     }
 
     fn mark(key: &str, work: Work) -> bool {
@@ -84,7 +108,7 @@ impl InstanceLock {
         if busy.contains_key(key) {
             return false;
         }
-        busy.insert(key.to_string(), work);
+        busy.insert(key.to_string(), (work, None));
         true
     }
 }

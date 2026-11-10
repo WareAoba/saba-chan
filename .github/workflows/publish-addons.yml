@@ -9,8 +9,10 @@
 #   seed     target(앱 릴리즈 버전, 예: 0.1.13)에 실려 나간 판을 그대로 stable 판으로 옮겨 담는다 (처음 한 번).
 #            릴리즈 manifest 서명을 번들 공개키로 확인한 뒤 판마다 다시 서명한다. 파일은 그 릴리즈의 R2 파일을 쓴다
 #
-# environment `release`: secrets UPDATER_SIGNING_KEY, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, RELAY_INTERNAL_SECRET
+# environment `release`: secrets R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, RELAY_INTERNAL_SECRET
 #                        variables R2_ENDPOINT, R2_BUCKET, R2_PUBLIC_BASE, RELAY_URL
+# environment `release-signing`: secret UPDATER_SIGNING_KEY 하나, 필수 승인자 = 저장소 주인 (publish.yml과 같다).
+#   서명은 그 환경의 작업(sign·seed-sign·yank-sign)에서만 한다: 새 판이 있을 때만 승인을 기다리고, 없으면 묻지 않는다
 name: Publish modules and extensions
 
 on:
@@ -99,14 +101,14 @@ jobs:
           python -m pytest conformance -q --shared-libs "$SABA_RUNTIME_DIR"
           python -m pytest -q
 
-  # 관문 2: 선언하지 않은 능력을 쓰지 않는가 (main 데몬으로 본다) → 서명 → R2 → 릴레이
-  publish:
+  # 관문 2: 선언하지 않은 능력을 쓰지 않는가 (main 데몬으로 본다) → 새 판 고르기. 서명은 sign 작업, 올리기는 publish 작업
+  pick:
     needs: [refs, tests]
     runs-on: ubuntu-22.04
     environment: release
     timeout-minutes: 40
-    env:
-      DRY_RUN: ${{ inputs.dry_run || false }}
+    outputs:
+      count: ${{ steps.pick.outputs.count }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -127,12 +129,8 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      # 서명 도구는 키 없이 먼저 빌드한다: 의존성 빌드 스크립트가 키를 환경에서 읽지 못하게
-      - name: Build daemon and signing tool
-        # `--example`을 주면 그 예제만 빌드한다: 감사에 쓰는 데몬은 따로 빌드한다
-        run: |
-          cargo build --quiet --locked -p saba-core --bin saba-core
-          cargo build --quiet --locked -p saba-chan-updater-lib --example release_signing
+      - name: Build daemon
+        run: cargo build --quiet --locked -p saba-core
 
       - name: Audit modules and extensions
         run: |
@@ -155,23 +153,75 @@ jobs:
           echo "count=$count" >> "$GITHUB_OUTPUT"
           python -c "import json;[print(e['key'], e['version']) for e in json.load(open('addon-entries.json'))]" | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Sign
+      - name: Keep new versions
         if: steps.pick.outputs.count != '0'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: addon-entries
+          path: |
+            addon-entries.json
+            addon-assets/
+          if-no-files-found: error
+          retention-days: 7
+
+  # 서명: 키는 environment `release-signing`에만 있다. 새 판이 있을 때만 돈다(승인을 기다린다)
+  sign:
+    needs: [refs, pick]
+    if: needs.pick.outputs.count != '0'
+    runs-on: ubuntu-22.04
+    environment: release-signing
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.refs.outputs.core }}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      # 서명 도구는 키 없이 먼저 빌드한다: 의존성 빌드 스크립트가 키를 환경에서 읽지 못하게
+      - name: Build signing tool
+        run: cargo build --quiet --locked -p saba-chan-updater-lib --example release_signing
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: addon-entries
+      - name: Sign
         env:
           UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
         run: |
           ./target/debug/examples/release_signing sign-each addon-entries.json saba-updater-v1 > addon-entries.signed.json
           python scripts/versions.py addon-registration --signed addon-entries.signed.json --channel beta --out addon-registration.jsonl
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: addon-registration
+          path: addon-registration.jsonl
+          if-no-files-found: error
+          retention-days: 7
+
+  # R2 → 릴레이 (beta)
+  publish:
+    needs: [pick, sign]
+    if: ${{ needs.pick.outputs.count != '0' && !inputs.dry_run }}
+    runs-on: ubuntu-22.04
+    environment: release
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: addon-entries
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: addon-registration
 
       # 같은 파일이 이미 있으면(앞 실행이 올리고 등록 전에 멈춤) 건너뛰고, 다른 파일이면 멈춘다
       - name: Upload to R2 (never overwrite)
-        if: steps.pick.outputs.count != '0' && env.DRY_RUN != 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          python -c "import json;[print(e['asset'], 'addons/%s/%s/%s' % (e['key'], e['version'], e['asset'])) for e in json.load(open('addon-entries.json'))]" > r2-uploads.txt
+          python3 -c "import json;[print(e['asset'], 'addons/%s/%s/%s' % (e['key'], e['version'], e['asset'])) for e in json.load(open('addon-entries.json'))]" > r2-uploads.txt
           while read -r file key; do
             # 없음(404)만 "올려도 된다"로 본다. 권한·네트워크 오류를 없음으로 읽으면 있는 파일을 덮어쓴다
             if head=$(aws s3api head-object --bucket "${{ vars.R2_BUCKET }}" --key "$key" --endpoint-url "${{ vars.R2_ENDPOINT }}" 2>&1); then
@@ -187,7 +237,6 @@ jobs:
           done < r2-uploads.txt
 
       - name: Register with relay
-        if: steps.pick.outputs.count != '0' && env.DRY_RUN != 'true'
         env:
           RELAY_INTERNAL_SECRET: ${{ secrets.RELAY_INTERNAL_SECRET }}
         run: |
@@ -198,10 +247,30 @@ jobs:
           done < addon-registration.jsonl
           echo "### Published to beta" >> "$GITHUB_STEP_SUMMARY"
 
+  # seed: 릴리즈 manifest 받기(release) → 확인·판마다 서명(release-signing) → 등록(release)
   seed:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.action == 'seed' }}
     runs-on: ubuntu-22.04
     environment: release
+    timeout-minutes: 5
+    steps:
+      - name: Fetch the release manifest
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          case "$TARGET" in [0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::target must be a release version"; exit 1 ;; esac
+          curl -fsS -H 'X-Saba-Client: 1' "${{ vars.RELAY_URL }}/v1/updates/manifest/$TARGET" > release.signed.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: seed-release
+          path: release.signed.json
+          if-no-files-found: error
+          retention-days: 7
+
+  seed-sign:
+    needs: seed
+    runs-on: ubuntu-22.04
+    environment: release-signing
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -214,20 +283,36 @@ jobs:
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: Build signing tool
         run: cargo build --quiet --locked -p saba-chan-updater-lib --example release_signing
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: seed-release
       - name: Sign the release's modules and extensions
         env:
           UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
-          TARGET: ${{ inputs.target }}
         run: |
-          case "$TARGET" in [0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::target must be a release version"; exit 1 ;; esac
-          curl -fsS -H 'X-Saba-Client: 1' "${{ vars.RELAY_URL }}/v1/updates/manifest/$TARGET" > release.signed.json
           ./target/debug/examples/release_signing verify release.signed.json
           python scripts/versions.py addon-seed --release release.signed.json --out addon-entries.json
           ./target/debug/examples/release_signing sign-each addon-entries.json saba-updater-v1 > addon-entries.signed.json
           python scripts/versions.py addon-registration --signed addon-entries.signed.json --channel stable --out addon-registration.jsonl
           python -c "import json;[print(e['key'], e['version']) for e in json.load(open('addon-entries.json'))]" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: seed-registration
+          path: addon-registration.jsonl
+          if-no-files-found: error
+          retention-days: 7
+
+  seed-register:
+    needs: seed-sign
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-22.04
+    environment: release
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: seed-registration
       - name: Register with relay
-        if: ${{ !inputs.dry_run }}
         env:
           RELAY_INTERNAL_SECRET: ${{ secrets.RELAY_INTERNAL_SECRET }}
         run: |
@@ -239,10 +324,10 @@ jobs:
 
   # promote·yank: 판 하나의 채널·내림 표시만 바꾼다 (판 파일·서명은 그대로). 내림은 데몬이 판을 되돌리게 하므로
   # 내림 기록 `{key, version, yanked:true}`를 서명해 보낸다: 데몬은 서명된 내림만 믿는다
-  change:
-    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.action == 'promote' || inputs.action == 'yank') }}
+  yank-sign:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.action == 'yank' }}
     runs-on: ubuntu-22.04
-    environment: release
+    environment: release-signing
     timeout-minutes: 30
     steps:
       - name: Check target
@@ -252,21 +337,45 @@ jobs:
           echo "$TARGET" | grep -Eq '^(module|ext)-[a-z0-9][a-z0-9_-]{0,63}@[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
             || { echo "::error::target must look like module-<name>@<version>"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: ${{ inputs.action == 'yank' }}
         with:
           ref: main
       - name: Install Rust toolchain
-        if: ${{ inputs.action == 'yank' }}
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      # 서명 도구는 키 없이 먼저 빌드한다
+      - name: Build signing tool
+        run: cargo build --quiet --locked -p saba-chan-updater-lib --example release_signing
       - name: Sign the yank record
-        if: ${{ inputs.action == 'yank' }}
         env:
           UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
           TARGET: ${{ inputs.target }}
         run: |
-          cargo build --quiet --locked -p saba-chan-updater-lib --example release_signing
           python3 -c "import json,os;k,v=os.environ['TARGET'].split('@');json.dump({'key':k,'version':v,'yanked':True},open('yank.json','w'))"
           ./target/debug/examples/release_signing sign yank.json saba-updater-v1 > yank.signed.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: yank-record
+          path: yank.signed.json
+          if-no-files-found: error
+          retention-days: 7
+
+  change:
+    needs: yank-sign
+    # promote는 서명이 없어 yank-sign을 건너뛴다
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.action == 'promote' || (inputs.action == 'yank' && needs.yank-sign.result == 'success')) }}
+    runs-on: ubuntu-22.04
+    environment: release
+    timeout-minutes: 10
+    steps:
+      - name: Check target
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          echo "$TARGET" | grep -Eq '^(module|ext)-[a-z0-9][a-z0-9_-]{0,63}@[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
+            || { echo "::error::target must look like module-<name>@<version>"; exit 1; }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ inputs.action == 'yank' }}
+        with:
+          name: yank-record
       - name: Update the relay
         env:
           RELAY_INTERNAL_SECRET: ${{ secrets.RELAY_INTERNAL_SECRET }}

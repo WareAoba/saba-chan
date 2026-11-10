@@ -32,7 +32,7 @@ const REMOTE_BACKUP_CAP: usize = 50;
 /// 재시작이 작업 잠금이 풀리기를 기다리는 가장 긴 시간 (큰 월드의 백업·업데이트)
 const START_WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
-pub(crate) use crate::instance::lock::InstanceLock;
+pub(crate) use crate::instance::lock::{InstanceLock, Purpose};
 
 fn error(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
     (status, Json(json!({ "success": false, "error": message.into(), "error_code": code }))).into_response()
@@ -55,8 +55,9 @@ async fn save_reply(state: &IPCServer, id: &str, name: &str) -> Option<String> {
 /// 이름 하나로 게임 명령 실행. 성공하면 서버의 콘솔 답(없으면 빈 글자)
 async fn command_reply(state: &IPCServer, id: &str, name: &str, args: Value) -> Option<String> {
     let req = CommandRequest { command: name.to_string(), args };
+    // 명령 실행 future는 크다: 백업 안에서 겹겹이 품지 않게 힙에 둔다 (디버그 빌드 스택 넘침)
     let resp = crate::ipc::internal::into_internal(
-        super::command::execute_command(Path(id.to_string()), State(state.clone()), Json(req)).await,
+        Box::pin(super::command::execute_command(Path(id.to_string()), State(state.clone()), Json(req))).await,
     )
     .await;
     let ok = resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false);
@@ -282,7 +283,7 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
 /// 백업 하나를 만들고 오래된 자동 백업을 정리한다. 백업할 것이 없으면 Ok(None).
 /// 모듈이 백업을 지원하지 않으면 수동 백업만 오류이고, 자동 백업(업데이트 전·예약)은 건너뛴다
 pub async fn take_backup(state: &IPCServer, id: &str, kind: BackupKind) -> Result<Option<BackupInfo>, Response> {
-    let Some(guard) = InstanceLock::take(id) else {
+    let Some(guard) = InstanceLock::take(id).map(|g| g.purpose(Purpose::Backup)) else {
         return Err(error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
     };
     let (state, id) = (state.clone(), id.to_string());
@@ -308,7 +309,7 @@ where
 {
     let deadline = std::time::Instant::now() + START_WAIT_LIMIT;
     loop {
-        let start = super::server::start_instance_handler(Path(id.to_string()), State(state.clone()));
+        let start = Box::pin(super::server::start_instance_handler(Path(id.to_string()), State(state.clone())));
         let resp = crate::ipc::internal::into_internal(crate::supervisor::START_SINCE.scope(generation, start).await).await;
         if resp.body["error_code"] != "instance_busy" || std::time::Instant::now() >= deadline {
             return Some(resp);
@@ -702,7 +703,7 @@ pub async fn create_from(state: &IPCServer, id: &str, source: Source) -> Result<
         }
         Source::Snapshot(which) => which,
     };
-    let Some(guard) = InstanceLock::take(id) else {
+    let Some(guard) = InstanceLock::take(id).map(|g| g.purpose(Purpose::Backup)) else {
         return Err(error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
     };
     let (state, id) = (state.clone(), id.to_string());
@@ -790,7 +791,7 @@ async fn restore_unaudited(id: &str, name: String, state: IPCServer) -> Response
     }
     // 잠금을 먼저 잡고 실행 여부를 본다: 시작도 같은 잠금을 잡으니 확인 뒤에 켜지지 않는다.
     // 진행 중인 설정 저장이 게임 파일을 쓰는 중이면 기다리고, 복원과 다시 읽기를 마칠 때까지 저장이 끼어들지 않게 한다
-    let Some(guard) = InstanceLock::take_for_writes(&id).await else {
+    let Some(guard) = InstanceLock::take_for_writes(&id).await.map(|g| g.purpose(Purpose::Backup)) else {
         return error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance");
     };
     if is_running(&state, &id).await {
@@ -1108,11 +1109,16 @@ pub fn spawn_scheduler(state: IPCServer) {
                     .collect()
             };
             let mut due = Vec::new();
+            // 코어 업데이트가 기다리는 동안 새 예약 백업·업데이트는 미룬다: 잦은 예약이 업데이트를 끝없이 미루지 않게 (13절)
+            let update_waiting = state.update_state.core_update_waiting();
             {
                 let mut c = clock.lock().unwrap_or_else(|e| e.into_inner());
                 let keys: HashSet<String> = tasks.iter().map(|(id, t)| crate::scheduler::task_key(id, t)).collect();
                 c.retain(&keys, now);
                 for (id, task) in tasks {
+                    if update_waiting && crate::scheduler::waits_for_update(&task.action) {
+                        continue;
+                    }
                     let key = crate::scheduler::task_key(&id, &task);
                     if let Some(fire) = c.due(&key, &task, started, now) {
                         due.push((key, id, task, fire));
@@ -1297,7 +1303,8 @@ async fn count_down(
 
 async fn run_task(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
     // 감사 로그 (A10): 예약 작업이 한 일은 출처 schedule
-    crate::audit::with_origin(crate::audit::Origin::new("schedule"), run_task_now(state, id, task, fire, key)).await
+    // 갈래마다 큰 핸들러 future를 품으므로 힙에 둔다 (디버그 빌드 스택 넘침)
+    crate::audit::with_origin(crate::audit::Origin::new("schedule"), Box::pin(run_task_now(state, id, task, fire, key))).await
 }
 
 async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
@@ -1338,18 +1345,18 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
             }
             tracing::info!("Scheduled restart of '{}'", id);
             let resp = crate::ipc::internal::into_internal(
-                super::server::restart_instance_handler(Path(id.to_string()), State(state.clone()), LooseJson(None)).await,
+                Box::pin(super::server::restart_instance_handler(Path(id.to_string()), State(state.clone()), LooseJson(None))).await,
             )
             .await;
             if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
                 tracing::warn!("Scheduled restart of '{}' failed: {}", id, resp.body);
             }
         }
-        TaskAction::Update => run_update(state, id, task, fire, key).await,
+        TaskAction::Update => Box::pin(run_update(state, id, task, fire, key)).await,
         TaskAction::Start if !running => {
             tracing::info!("Scheduled start of '{}'", id);
             let resp = crate::ipc::internal::into_internal(
-                super::server::start_instance_handler(Path(id.to_string()), State(state.clone())).await,
+                Box::pin(super::server::start_instance_handler(Path(id.to_string()), State(state.clone()))).await,
             )
             .await;
             if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
@@ -1364,7 +1371,7 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
             tracing::info!("Scheduled stop of '{}'", id);
             // 예약 작업은 강제 종료하지 않는다 (저장 후 종료를 못 하는 서버는 그대로 둔다)
             let resp = crate::ipc::internal::into_internal(
-                super::server::stop_instance_handler(Path(id.to_string()), State(state.clone()), LooseJson(None)).await,
+                Box::pin(super::server::stop_instance_handler(Path(id.to_string()), State(state.clone()), LooseJson(None))).await,
             )
             .await;
             if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {

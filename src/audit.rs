@@ -113,6 +113,8 @@ where
     F::Output: Send + 'static,
 {
     let (origin, quiet) = (current(), is_quiet());
+    // 큰 작업 future를 힙에 둔다: 두 갈래가 각각 품으면 디버그 빌드에서 스택이 넘친다
+    let f = Box::pin(f);
     tokio::spawn(async move {
         if quiet {
             with_origin(origin, quietly(f)).await

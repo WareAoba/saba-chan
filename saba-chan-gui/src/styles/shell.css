@@ -3599,7 +3599,6 @@ button.appbar-preflight {
     max-width: 280px;
     flex-shrink: 1;
     min-width: 0;
-    animation: motion-rise var(--dur) var(--ease) backwards;
 }
 .appbar-task .appbar-preflight-text {
     overflow: hidden;
@@ -3611,6 +3610,147 @@ button.appbar-preflight {
 .appbar-preflight-pct {
     font-variant-numeric: tabular-nums;
     color: var(--text-3);
+}
+
+/* ── 상단 바 알약 공용 모양 (업데이트 알림 시안 v8): 작업 진행·Python 준비·업데이트가 같이 쓴다.
+ * 원(아이콘 자리) + 글자. 움직임은 AppBarPill.tsx usePillMotion이 맡는다: 원이 튕기며 생기고 오른쪽 끝을 붙인 채
+ * 왼쪽으로 늘어나며, 사라질 때는 원으로 줄었다가 없어진다 */
+.appbar-pill {
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+    justify-content: flex-start;
+    transform-origin: right center;
+}
+.appbar-pill-icon {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+}
+.appbar-pill-label {
+    padding-right: calc(var(--sp-2-5) + 1px);
+    transition: opacity 0.16s ease;
+}
+.appbar-pill[data-collapsed] .appbar-pill-label {
+    opacity: 0;
+}
+/* 업데이트 네 상태. 점은 고정 문자다 */
+.appbar-pill.tone-applying {
+    color: var(--brand-text);
+    font-weight: 700;
+    border-color: transparent;
+    background: var(--accent);
+}
+:root[data-brand-gradient="on"] .appbar-pill.tone-applying {
+    background: linear-gradient(in oklch 135deg, var(--brand-from), var(--brand-grad-mid), var(--brand-to));
+}
+.appbar-pill.tone-applying .preflight-track {
+    stroke: rgba(255, 255, 255, 0.35);
+}
+.appbar-pill.tone-applying .preflight-fill {
+    stroke: currentColor;
+}
+.appbar-pill.tone-done {
+    color: var(--ok);
+    background: var(--ok-soft);
+    border-color: transparent;
+    font-weight: 700;
+}
+.appbar-pill.tone-waiting {
+    color: var(--warn);
+    background: var(--warn-soft);
+    border-color: transparent;
+}
+.appbar-pill.tone-ready {
+    color: var(--accent);
+    border-color: var(--brand-shadow-strong);
+    background: rgba(var(--brand-primary-rgb), 0.12);
+    font-weight: 700;
+}
+button.appbar-pill:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+/* 업데이트 알약을 누르면 뜨는 버전·패치노트 */
+.update-pill-pop {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: min(330px, calc(100vw - 48px));
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow-float);
+    padding: calc(var(--sp-3) + var(--sp-0-5));
+    display: grid;
+    gap: var(--sp-2-5);
+    z-index: 50;
+    font-size: 13px;
+    color: var(--text-1);
+    -webkit-app-region: no-drag;
+}
+.update-pill-pop p {
+    margin: 0;
+}
+.update-pill-pop .update-pill-version,
+.update-pill-dialog .update-pill-title {
+    font-weight: 700;
+}
+.update-pill-pop .update-pill-sub {
+    color: var(--text-3);
+    font-size: 12px;
+}
+.update-pill-pop ul,
+.update-pill-dialog ul {
+    margin: 0;
+    padding-left: calc(var(--sp-4) + var(--sp-0-5));
+    color: var(--text-2);
+    display: grid;
+    gap: calc(var(--sp-0-5) + 1px);
+    font-size: 12.5px;
+}
+.update-pill-more {
+    justify-self: start;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+/* '준비됨': 다시 시작할지 묻는 창 */
+.update-pill-dialog {
+    width: min(380px, calc(100vw - 32px));
+    background: var(--bg-3);
+    border-radius: 14px;
+    padding: calc(var(--sp-4) + var(--sp-0-5));
+    display: grid;
+    gap: var(--sp-2-5);
+    box-shadow: var(--shadow-float);
+    font-size: 13px;
+    color: var(--text-1);
+}
+.update-pill-dialog p {
+    margin: 0;
+}
+.update-pill-dialog .update-pill-title {
+    font-size: 15px;
+}
+.update-pill-note {
+    font-size: 12px;
+    color: var(--text-2);
+    background: var(--bg-1);
+    border-radius: 9px;
+    padding: var(--sp-2) var(--sp-2-5);
+}
+.update-pill-buttons {
+    display: flex;
+    gap: var(--sp-2);
+    justify-content: flex-end;
+    flex-wrap: wrap;
 }
 .dc-hero-actions {
     display: flex;

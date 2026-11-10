@@ -592,7 +592,30 @@
     "mode": "アップデートが見つかったら",
     "mode_check": "通知のみ",
     "mode_download": "ダウンロードしておく",
-    "mode_apply": "ダウンロードして次回起動時に適用"
+    "mode_apply": "ダウンロードして次回起動時に適用",
+    "stable_wait": "正式版 {{version}} を待っています"
+  },
+  "update_pill": {
+    "applying": "アップデート適用中...",
+    "done": "アップデート完了",
+    "waiting": "アップデート待機中...",
+    "ready": "アップデート準備完了",
+    "applying_sub": "サバちゃんを入れ替えています。サーバーは動いたままです",
+    "done_title": "{{version}} にアップデートしました",
+    "done_sub": "動いていたサーバー {{count}} 台はそのまま続いています",
+    "waiting_title": "{{version}} をダウンロード済みです",
+    "wait_backup": "{{name}} のバックアップが終わったら適用します",
+    "wait_provision": "{{name}} のインストールが終わったら適用します",
+    "wait_server_update": "{{name}} のゲームサーバー更新が終わったら適用します",
+    "wait_module_call": "{{name}} のモジュール処理が終わったら適用します",
+    "wait_server_stop": "{{name}} が停止したら適用します",
+    "wait_other": "{{name}} の作業が終わったら適用します",
+    "notes_more": "パッチノートをすべて見る",
+    "restart_title": "{{version}} にアップデートするには再起動が必要です",
+    "restart_note": "動いているサーバーはそのままで、サバちゃんだけ再起動します。しばらく Discord コマンドに応答できません。",
+    "later": "あとで",
+    "restart_now": "今すぐ再起動",
+    "restart_failed": "再起動できませんでした: {{error}}"
   },
   "extensions": {
     "installed_section": "インストール済み",
