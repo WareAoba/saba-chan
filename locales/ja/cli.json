@@ -87,6 +87,7 @@
     "pair_token_not_saved": "Discord では接続されましたが、この PC に接続情報を保存できませんでした。もう一度 bot pair を実行してください。",
     "pair_no_code": "リレーからペアリングコードが返されませんでした。",
     "pair_polling": "Discord を待っています...",
+    "pair_copied": "コードをクリップボードにコピーしました (Ctrl+V で貼り付け)。",
     "pair_waiting": "Ctrl+C でキャンセルします。",
     "paired": "Discord とペアリングしました。",
     "prefix": "プレフィックス",
@@ -498,7 +499,8 @@
       "move_failed": "フォルダーを移せませんでした。「今の場所のまま」で取り込んでください。",
       "port_check_busy": "すでに確認中です。しばらくしてからもう一度お試しください",
       "net_trace_elevation_failed": "デーモンPCで管理者の確認を得られませんでした。そのPCの前でもう一度お試しください。",
-      "net_trace_failed": "権限を変更できませんでした。"
+      "net_trace_failed": "権限を変更できませんでした。",
+      "sandbox_allow": "分離せずに実行するには同意してください: saba-chan-cli sandbox allow {{component}}"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -804,7 +806,10 @@
     "int_missing": "ファイルなし",
     "int_changed": "変更あり",
     "int_error": "読み取り不可",
-    "not_checked": "アップデート情報はまだありません。今すぐ確認: saba-chan-cli update check"
+    "not_checked": "アップデート情報はまだありません。今すぐ確認: saba-chan-cli update check",
+    "reinstall_official": "公式版を再取得",
+    "name_module": "{{name}} モジュール",
+    "name_extension": "{{name}} 拡張機能"
   },
   "validate": {
     "blocked": "これらを修正するまでサーバーを起動できません。",
@@ -1546,7 +1551,7 @@
     "question": "確認",
     "dialog_keys": "Enter 選択 · Esc キャンセル",
     "help_title": "キー操作",
-    "help": "←→↑↓  画面の並びどおりに移動 (タブ → リスト → ボタン → コンソール)\nTab / Shift+Tab  次・前の欄\nEnter  ボタンを押す (… はコマンド行に入力を用意、▾ はその他)\n1-6  ページへ移動\nサーバーコンソール  ↓ で入って入力し Enter でサーバーへ送信 (↑↓ 履歴)\n: または /  コマンド行 (saba-chan-cli の後ろに書く部分、Tab 補完、↑↓ 履歴)\nF2  出力の開閉、 PgUp/PgDn、マウスホイール  スクロール\nF9  GUIに切り替え (GUIが使えるとき)\nCtrl+C  実行中のコマンドを止める、 Esc  一つ戻る\nq  終了 (デーモンとサーバーは動き続けます)",
+    "help": "Tab / Shift+Tab  次・前の欄 (ページ → 一覧 → 詳細タブ → ボタン → 内容)\n←→↑↓  画面の並びどおりに移動,  Esc  いつでも一段階戻る\n1-5  ページへ移動,  Ctrl+K  なんでも検索 (画面・設定・コマンド)\ns  選んだサーバーの起動・停止,  r  再起動,  n  新しいサーバー\n設定タブ  ←→ 値を変える · Space オン/オフ · Enter 入力 · / 検索 · Ctrl+S 保存 · Esc 元に戻す\nサーバーコンソール  入力するとゲームコマンドを提案 (Tab で補完), Enter で送信, ↑↓ 履歴\n:  コマンド行 (saba-chan-cli の後に書く内容そのまま, Tab で補完)。ボタンや保存も同じコマンドで実行されます\nF2  出力欄の開閉,  PgUp/PgDn, マウスホイール  スクロール,  F9  GUI に切り替え\nCtrl+C  実行中のコマンドを止める,  q  終了 (デーモンとサーバーは動き続けます)",
     "too_narrow": "ウィンドウを 60 桁以上に広げてください。",
     "not_here": "このコマンドは全画面メニューの中では実行できません。q で終了してから端末で実行してください。",
     "cancelled": "停止しました。",
@@ -1564,9 +1569,10 @@
       "extensions": "拡張機能",
       "discord": "Discord",
       "updates": "アップデート",
-      "daemon": "デーモン"
+      "addons": "モジュール・拡張機能",
+      "settings": "アプリ設定"
     },
-    "keys_console": "Enter サーバーへ送信 · ↑↓ 履歴 · PgUp/PgDn スクロール · Esc ボタンへ",
+    "keys_console": "Enter サーバーへ送信 · ↑↓ 履歴 · Tab コマンド補完 · PgUp/PgDn スクロール · Esc 戻る",
     "keys_running": "コマンド実行中 · Ctrl+C 停止 · F2 出力 · 他のページは引き続き見られます",
     "busy": "別のコマンドがまだ実行中です。終わるのを待つか Ctrl+C で止めてから、もう一度試してください。",
     "pick_first": "先にリストから選んでください。",
@@ -1625,7 +1631,11 @@
       "daemon_restart": "デーモン再起動",
       "daemon_stop": "デーモン停止",
       "clients": "アプリのウィンドウ",
-      "more": "その他"
+      "more": "その他",
+      "address": "接続アドレス",
+      "port_check": "ポート確認",
+      "module_update": "アップデート",
+      "module_new_server": "このゲームで新しいサーバー"
     },
     "col": {
       "name": "名前",
@@ -1634,9 +1644,13 @@
       "port": "ポート",
       "uptime": "稼働",
       "about": "説明",
-      "enabled": "有効"
+      "enabled": "有効",
+      "created": "作成日時",
+      "kind": "種類",
+      "size": "サイズ",
+      "used_by": "使っているサーバー"
     },
-    "no_servers": "まだサーバーがありません。[新しいサーバー] を押すか : を押して server add",
+    "no_servers": "まだサーバーがありません。n を押して作成します。",
     "empty": "(なし)",
     "detail": "詳細",
     "server_console": "コンソール",
@@ -1661,10 +1675,149 @@
     "daemon_log": "デーモンログ",
     "use_switch": "ここでは F9 (GUIに切り替え) を押してください。",
     "console_input_hint": "ここにサーバーコマンドを入力 · Enter で送信",
-    "keys_tabs": "←→ ページ移動 · ↓ 入る · 1-6 ページ · : コマンド · F2 出力 · ? ヘルプ · q 終了",
-    "keys_list": "↑↓ 選択 · → ボタン · : コマンド · F2 出力 · ? ヘルプ · q 終了",
-    "keys_actions": "←→ ボタン選択 · Enter 押す · ↓ コンソール · Esc リスト · F2 出力 · ? ヘルプ · q 終了",
-    "keys_command": "Enter 実行 · Tab 補完 · ↑↓ 履歴 · Esc 閉じる"
+    "keys_tabs": "←→ ページ移動 · ↓ 入る · 1-5 ページ · Ctrl+K 検索 · : コマンド · ? ヘルプ · q 終了",
+    "keys_list": "↑↓ 選択 · → 詳細 · Tab 移動 · s 起動/停止 · n 新しいサーバー · Ctrl+K 検索 · ? ヘルプ · q 終了",
+    "keys_actions": "←→ ボタン選択 · Enter 押す · ↓ 内容 · Esc 戻る · F2 出力 · ? ヘルプ · q 終了",
+    "keys_command": "Enter 実行 · Tab 補完 · ↑↓ 履歴 · Esc 閉じる",
+    "tab": {
+      "console": "コンソール",
+      "settings": "設定",
+      "players": "接続者",
+      "backups": "バックアップ",
+      "schedule": "予約",
+      "log": "記録"
+    },
+    "dtab": {
+      "perm": "権限",
+      "ladder": "レベル",
+      "words": "コマンド別名",
+      "music": "音楽",
+      "tts": "読み上げ",
+      "moderation": "サーバー管理",
+      "notice": "通知",
+      "chatbot": "おしゃべりサバちゃん"
+    },
+    "stab": {
+      "app": "アプリ設定",
+      "daemon_log": "デーモンログ"
+    },
+    "back": {
+      "servers": "サーバー一覧",
+      "guilds": "Discordサーバー一覧",
+      "list": "一覧"
+    },
+    "find": {
+      "title": "なんでも検索",
+      "about": "画面・設定・コマンドをまとめて探します",
+      "screen": "画面",
+      "setting": "設定",
+      "command": "コマンド",
+      "none": "一致するものがありません。",
+      "keys": "Enter 開く · Tab コマンド行に入れる · ↑↓ 選択 · Esc 閉じる"
+    },
+    "form": {
+      "changed": "● 変更 {{count}}件",
+      "default": "(既定値)",
+      "find": "検索: 項目名またはキー",
+      "folded": "折りたたみ中 · Enter で開く",
+      "keys": "k キー名を表示",
+      "restart": "保存すると次回の起動から反映されます。",
+      "revert": "Esc 元に戻す",
+      "save": "Ctrl+S 保存",
+      "group": {
+        "basic": "基本",
+        "saba-chan": "サバちゃん",
+        "advanced": "詳細",
+        "members": "メンバーのレベル",
+        "common": "すべてのサーバー",
+        "app": "アプリ",
+        "cli": "CLI",
+        "connection": "接続",
+        "servers": "ゲームサーバー",
+        "console": "コンソール",
+        "storage": "ストレージ"
+      }
+    },
+    "guilds": "Discordサーバー",
+    "keys_detail": "←→ タブ · ↓ 入る · Esc 戻る · s 起動/停止 · r 再起動 · Ctrl+K 検索 · ? ヘルプ · q 終了",
+    "keys_form": "↑↓ 項目 · ←→ 値を変える · Space オン/オフ · Enter 入力 · / 検索 · Ctrl+S 保存 · Esc 戻る",
+    "keys_content": "↑↓ スクロール · Esc 戻る · s 起動/停止 · Ctrl+K 検索 · ? ヘルプ · q 終了",
+    "keys_backups": "c 今すぐバックアップ · Enter 復元 · d 削除",
+    "keys_players": "Enter キックコマンドを入力欄へ",
+    "keys_edit": "e 変更 (コマンド行に入れます)",
+    "keys_wizard": "↑↓ 選択 · Enter 次へ · Esc 前の段階 · Ctrl+C やめる",
+    "list": {
+      "players": "{{count}}人"
+    },
+    "pane": {
+      "loading": "読み込み中…",
+      "not_running": "サーバーが停止しています。起動すると接続者が表示されます。"
+    },
+    "risk_danger": "危険",
+    "same_command": "同じコマンド:",
+    "suggest_keys": "Tab 補完 · ↑↓ 選択 · Enter 送信",
+    "wiz": {
+      "title": "新しいサーバーを作る",
+      "step": {
+        "method": "方法",
+        "game": "ゲーム",
+        "name": "名前・フォルダ",
+        "preset": "おすすめ設定",
+        "confirm": "確認"
+      },
+      "ask_method": "どうやって作りますか?",
+      "method_new": "新しくインストール",
+      "method_new_about": "サバちゃんがサーバーをダウンロードしてインストールします",
+      "method_import": "既存のサーバーを取り込む",
+      "method_import_about": "今あるサーバーフォルダをそのまま使います",
+      "ask_game": "どのゲームですか?",
+      "no_modules": "ゲームモジュールがまだありません。モジュール・拡張機能のページで入手してください。",
+      "ask_name": "名前を付けてください",
+      "name": "名前",
+      "folder": "フォルダ",
+      "folder_hint": "取り込むサーバーフォルダのフルパス · Tab で項目移動",
+      "need_name": "先に名前を入力してください。",
+      "need_folder": "取り込むフォルダを入力してください。",
+      "ask_preset": "おすすめ設定を選びますか?",
+      "no_preset": "選ばない (既定値)",
+      "ask_confirm": "この内容で作りますか?",
+      "confirm_hint": "直したい行で Enter を押すとその段階に戻ります",
+      "fix": "直す",
+      "agree": "{{id}} を読んで同意しました",
+      "need_agree": "先に規約を読んで同意してください (Space でチェック)。",
+      "start_now": "できたらすぐ起動",
+      "create": "作成",
+      "back": "戻る"
+    },
+    "cfg": {
+      "language": "言語",
+      "ipcPort": "IPC ポート",
+      "newServerAutoRestart": "クラッシュ時に自動再起動",
+      "newServerBackupKeep": "バックアップ保持数",
+      "autoGeneratePasswords": "パスワード自動生成",
+      "portConflictCheck": "ポート競合チェック",
+      "consoleTimestamps": "コンソールの時刻表示",
+      "consoleTimestampDate": "日付も表示",
+      "auditKeepDays": "アクティビティ記録の保存期間",
+      "stamp_off": "表示しない",
+      "stamp_24h": "24時間制",
+      "stamp_12h": "12時間制"
+    },
+    "cfg_about": {
+      "ipcPort": "アプリと CLI がコアデーモンに接続するときに使うポート番号です（1024〜65535）。ほとんどの場合、変更は不要です。",
+      "autoGeneratePasswords": "REST パスワードが空なら、サーバー起動時にランダムな値で埋めます。既にあるパスワードは変えません。",
+      "portConflictCheck": "複数のサーバーインスタンスが同じポートを使用している場合に警告を表示します。",
+      "consoleTimestamps": "コンソールの各行の前に受信時刻を付けます。",
+      "auditKeepDays": "この期間を過ぎたアクティビティ記録はサバちゃんが削除します。 0 は期間制限なし。",
+      "newServerBackupKeep": "サーバーを作成するときに入る値です。作成後はサーバーごとに変更できます。"
+    },
+    "none": "なし",
+    "newer": "新しい版 {{version}}",
+    "trust_about": {
+      "verified": "公式カタログから入れたままです",
+      "unverified": "公式カタログから入れたものではありません。信頼できる入手元か確認してください",
+      "modified": "インストール後にファイルが変わりました。自分で直したのでなければ入れ直してください"
+    }
   },
   "install": {
     "fetching": "最新リリースを確認しています…",

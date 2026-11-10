@@ -88,16 +88,29 @@ impl CliError {
             }
             CliError::Ambiguous { candidates, .. } => Some(t!("err.ambiguous_hint", names = candidates.join(", "))),
             CliError::Api { code, body, .. } => {
-                let hints: Vec<String> = code
-                    .as_deref()
-                    .and_then(|c| api_hint(c, body))
+                let code = code.as_deref().unwrap_or_default();
+                // 머리 문구로 쓴 안내는 다시 적지 않는다
+                let guidance = if localized_headline(code) { None } else { api_hint(code, body) };
+                let hints: Vec<String> = guidance
                     .into_iter()
+                    .chain(consent_hint(code, body))
                     .chain(kept_backups(body))
                     .collect();
                 (!hints.is_empty()).then(|| hints.join("\n  "))
             }
             _ => None,
         }
+    }
+
+    /// 사람에게 보일 첫 줄. 데몬이 영어 고정 문구만 주는 오류는 그 코드의 현지화 안내로 바꾼다 (기계용 출력은 `to_string`)
+    pub fn headline(&self) -> String {
+        if let CliError::Api { code: Some(code), body, .. } = self
+            && localized_headline(code)
+            && let Some(text) = api_hint(code, body)
+        {
+            return text;
+        }
+        self.to_string()
     }
 
     pub fn to_json(&self) -> Value {
@@ -163,6 +176,17 @@ pub fn update_required(body: &Value, name: &str) -> Option<String> {
         }
         _ => None,
     }
+}
+
+/// 데몬이 영어 고정 문구만 주는 오류 코드: 사람에게는 코드의 현지화 안내를 첫 줄로 보인다
+fn localized_headline(code: &str) -> bool {
+    code == "isolation_unsupported"
+}
+
+/// 격리 없이 돌리는 동의로 풀리는 오류면 그 명령 (`component`: `module-<id>`·`ext-<id>`)
+fn consent_hint(code: &str, body: &Value) -> Option<String> {
+    let component = body.get("component").and_then(Value::as_str).filter(|c| !c.is_empty())?;
+    (code == "isolation_unsupported").then(|| t!("err.hint.sandbox_allow", component = component))
 }
 
 /// 데몬 오류 코드별 안내. 새 코드는 여기 한 줄.
@@ -339,6 +363,19 @@ pub fn classify(err: &anyhow::Error) -> std::borrow::Cow<'_, CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn isolation_unsupported_reads_in_the_users_language_with_the_consent_command() {
+        crate::i18n::init("en");
+        let body = json!({"error_code": "isolation_unsupported", "module": "palworld", "function": "get_launch_command", "component": "module-palworld"});
+        let err = CliError::Api { status: 200, code: Some("isolation_unsupported".into()), message: "This operating system cannot isolate".into(), body };
+        assert_eq!(err.headline(), crate::i18n::try_t("sandbox.isolation_unsupported.message").unwrap());
+        let hint = err.hint().unwrap_or_default();
+        assert!(hint.contains("sandbox allow module-palworld"), "{hint}");
+        assert!(!hint.contains(&err.headline()), "{hint}");
+        // 기계용 출력은 데몬 문구 그대로
+        assert_eq!(err.to_json()["error"], "This operating system cannot isolate");
+    }
 
     #[test]
     fn isolation_unsupported_uses_the_sandbox_guidance() {

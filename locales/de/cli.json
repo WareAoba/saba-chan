@@ -87,6 +87,7 @@
     "pair_token_not_saved": "Discord ist verbunden, aber die Verbindungsdaten konnten auf diesem PC nicht gespeichert werden. Führe bot pair erneut aus.",
     "pair_no_code": "Das Relay hat keinen Kopplungscode zurückgegeben.",
     "pair_polling": "Warte auf Discord...",
+    "pair_copied": "Code in die Zwischenablage kopiert (mit Strg+V einfügen).",
     "pair_waiting": "Drücke Strg+C zum Abbrechen.",
     "paired": "Mit Discord gekoppelt.",
     "prefix": "Präfix",
@@ -498,7 +499,8 @@
       "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
       "port_check_busy": "Es läuft bereits eine Prüfung. Versuch es gleich noch einmal",
       "net_trace_elevation_failed": "Keine Administratorbestätigung auf dem Daemon-PC erhalten. Versuche es direkt an diesem PC erneut.",
-      "net_trace_failed": "Berechtigung konnte nicht geändert werden."
+      "net_trace_failed": "Berechtigung konnte nicht geändert werden.",
+      "sandbox_allow": "Um es ohne Isolation auszuführen, stimme zu: saba-chan-cli sandbox allow {{component}}"
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
@@ -804,7 +806,10 @@
     "int_missing": "Datei fehlt",
     "int_changed": "geändert",
     "int_error": "unlesbar",
-    "not_checked": "Noch keine Update-Informationen. Jetzt prüfen: saba-chan-cli update check"
+    "not_checked": "Noch keine Update-Informationen. Jetzt prüfen: saba-chan-cli update check",
+    "reinstall_official": "Offizielle Version neu laden",
+    "name_module": "Modul {{name}}",
+    "name_extension": "Erweiterung {{name}}"
   },
   "validate": {
     "blocked": "Der Server kann erst starten, wenn diese Punkte behoben sind.",
@@ -1504,7 +1509,7 @@
     "daemon_up": "● Daemon v{{version}}",
     "daemon_down": "○ Daemon aus · daemon start eingeben",
     "servers_running": "{{running}}/{{total}} Server laufen",
-    "help": "←→↑↓  so bewegen, wie der Bildschirm aufgebaut ist (Tabs → Liste → Schaltflächen → Konsole)\nTab / Shift+Tab  nächster / vorheriger Bereich\nEnter  Schaltfläche drücken (… füllt die Befehlszeile vor, ▾ öffnet Mehr)\n1-6  zu einer Seite springen\nServerkonsole  mit ↓ hinein, tippen, Enter sendet an den Server (↑↓ Verlauf)\n: oder /  Befehlszeile (was nach saba-chan-cli käme, Tab vervollständigt, ↑↓ Verlauf)\nF2  Ausgabe öffnen/schließen,  PgUp/PgDn, Mausrad  blättern\nF9  zur GUI wechseln (wenn sie öffnen kann)\nCtrl+C  laufenden Befehl stoppen,  Esc  einen Schritt zurück\nq  beenden (Daemon und Server laufen weiter)",
+    "help": "Tab / Umschalt+Tab  nächster und vorheriger Bereich (Seiten → Liste → Reiter → Knöpfe → Inhalt)\n←→↑↓  so bewegen, wie der Bildschirm aufgebaut ist,  Esc  immer einen Schritt zurück\n1-5  zu einer Seite,  Strg+K  alles finden (Ansichten, Einstellungen, Befehle)\ns  gewählten Server starten oder stoppen,  r  neu starten,  n  neuer Server\nEinstellungen  ←→ ändern · Leertaste umschalten · Enter eingeben · / suchen · Strg+S speichern · Esc zurücksetzen\nServerkonsole  schlägt beim Tippen Spielbefehle vor (Tab ergänzt), Enter sendet, ↑↓ Verlauf\n:  Befehlszeile (was nach saba-chan-cli käme, Tab ergänzt). Knöpfe und Speichern nutzen dieselben Befehle\nF2  Ausgabe öffnen oder schließen,  Bild↑/Bild↓, Mausrad  blättern,  F9  zur GUI wechseln\nStrg+C  laufenden Befehl stoppen,  q  beenden (Daemon und Server laufen weiter)",
     "brand": "Saba-chan {{version}}",
     "memory_of": "Speicher {{used}} / {{total}}",
     "discord_on": "Discord ● verbunden",
@@ -1519,7 +1524,8 @@
       "extensions": "Erweiterungen",
       "discord": "Discord",
       "updates": "Updates",
-      "daemon": "Daemon"
+      "addons": "Module & Erweiterungen",
+      "settings": "App-Einstellungen"
     },
     "btn": {
       "status": "Gesamtstatus",
@@ -1574,7 +1580,11 @@
       "daemon_restart": "Daemon neu starten",
       "daemon_stop": "Daemon stoppen",
       "clients": "App-Fenster",
-      "more": "Mehr"
+      "more": "Mehr",
+      "address": "Adresse",
+      "port_check": "Port prüfen",
+      "module_update": "Aktualisieren",
+      "module_new_server": "Neuer Server mit diesem Spiel"
     },
     "col": {
       "name": "Name",
@@ -1583,9 +1593,13 @@
       "port": "Port",
       "uptime": "Laufzeit",
       "about": "Beschreibung",
-      "enabled": "Aktiv"
+      "enabled": "Aktiv",
+      "created": "Erstellt",
+      "kind": "Art",
+      "size": "Größe",
+      "used_by": "Verwendet von"
     },
-    "no_servers": "Noch keine Server. Drücke [Neuer Server] oder : und tippe server add",
+    "no_servers": "Noch keine Server. Drück n, um einen zu erstellen.",
     "empty": "(keine)",
     "detail": "Details",
     "server_console": "Konsole",
@@ -1603,7 +1617,7 @@
       "port": "Daemon-Port",
       "language": "Sprache"
     },
-    "keys_console": "Enter an den Server senden · ↑↓ Verlauf · PgUp/PgDn blättern · Esc zu den Schaltflächen",
+    "keys_console": "Enter an den Server senden · ↑↓ Verlauf · Tab Befehl ergänzen · Bild↑/Bild↓ blättern · Esc zurück",
     "keys_running": "Befehl läuft · Ctrl+C stoppen · F2 Ausgabe · andere Seiten bleiben nutzbar",
     "choose": "Auswählen",
     "enter_text": "Eingabe",
@@ -1615,10 +1629,149 @@
     "daemon_log": "Daemon-Log",
     "use_switch": "Drücke hier F9 (Zur GUI wechseln).",
     "console_input_hint": "Hier einen Serverbefehl eingeben · Enter sendet",
-    "keys_tabs": "←→ Seiten · ↓ hinein · 1-6 Seite · : Befehl · F2 Ausgabe · ? Hilfe · q Beenden",
-    "keys_list": "↑↓ wählen · → Schaltflächen · : Befehl · F2 Ausgabe · ? Hilfe · q Beenden",
-    "keys_actions": "←→ Schaltfläche wählen · Enter drücken · ↓ Konsole · Esc Liste · F2 Ausgabe · ? Hilfe · q Beenden",
-    "keys_command": "Enter ausführen · Tab vervollständigen · ↑↓ Verlauf · Esc schließen"
+    "keys_tabs": "←→ Seiten · ↓ hinein · 1-5 Seite · Strg+K suchen · : Befehl · ? Hilfe · q beenden",
+    "keys_list": "↑↓ wählen · → Details · Tab weiter · s starten/stoppen · n neuer Server · Strg+K suchen · ? Hilfe · q beenden",
+    "keys_actions": "←→ Knopf wählen · Enter drücken · ↓ Inhalt · Esc zurück · F2 Ausgabe · ? Hilfe · q beenden",
+    "keys_command": "Enter ausführen · Tab vervollständigen · ↑↓ Verlauf · Esc schließen",
+    "tab": {
+      "console": "Konsole",
+      "settings": "Einstellungen",
+      "players": "Spieler",
+      "backups": "Backups",
+      "schedule": "Zeitplan",
+      "log": "Protokoll"
+    },
+    "dtab": {
+      "perm": "Berechtigungen",
+      "ladder": "Stufen",
+      "words": "Befehlswörter",
+      "music": "Musik",
+      "tts": "Vorlesen",
+      "moderation": "Server-Werkzeuge",
+      "notice": "Hinweise",
+      "chatbot": "Sprechende Saba-chan"
+    },
+    "stab": {
+      "app": "App-Einstellungen",
+      "daemon_log": "Daemon-Protokoll"
+    },
+    "back": {
+      "servers": "Server",
+      "guilds": "Discord-Server",
+      "list": "Liste"
+    },
+    "find": {
+      "title": "Alles finden",
+      "about": "Ansichten, Einstellungen und Befehle an einem Ort",
+      "screen": "Ansicht",
+      "setting": "Einstellung",
+      "command": "Befehl",
+      "none": "Nichts gefunden.",
+      "keys": "Enter öffnen · Tab in die Befehlszeile · ↑↓ wählen · Esc schließen"
+    },
+    "form": {
+      "changed": "● {{count}} geändert",
+      "default": "(Standard)",
+      "find": "Suchen: Feldname oder Schlüssel",
+      "folded": "eingeklappt · Enter zum Öffnen",
+      "keys": "k Schlüssel zeigen",
+      "restart": "Gilt ab dem nächsten Start.",
+      "revert": "Esc zurücksetzen",
+      "save": "Strg+S speichern",
+      "group": {
+        "basic": "Allgemein",
+        "saba-chan": "Saba-chan",
+        "advanced": "Erweitert",
+        "members": "Mitgliederstufen",
+        "common": "Alle Server",
+        "app": "App",
+        "cli": "CLI",
+        "connection": "Verbindung",
+        "servers": "Spielserver",
+        "console": "Konsole",
+        "storage": "Speicher"
+      }
+    },
+    "guilds": "Discord-Server",
+    "keys_detail": "←→ Reiter · ↓ hinein · Esc zurück · s starten/stoppen · r neu starten · Strg+K suchen · ? Hilfe · q beenden",
+    "keys_form": "↑↓ Felder · ←→ ändern · Leertaste umschalten · Enter eingeben · / suchen · Strg+S speichern · Esc zurück",
+    "keys_content": "↑↓ blättern · Esc zurück · s starten/stoppen · Strg+K suchen · ? Hilfe · q beenden",
+    "keys_backups": "c jetzt sichern · Enter wiederherstellen · d löschen",
+    "keys_players": "Enter füllt einen Kick-Befehl ein",
+    "keys_edit": "e ändern (füllt die Befehlszeile)",
+    "keys_wizard": "↑↓ wählen · Enter weiter · Esc vorheriger Schritt · Strg+C abbrechen",
+    "list": {
+      "players": "{{count}} online"
+    },
+    "pane": {
+      "loading": "Wird geladen…",
+      "not_running": "Der Server ist aus. Spieler erscheinen, sobald er läuft."
+    },
+    "risk_danger": "gefährlich",
+    "same_command": "Gleicher Befehl:",
+    "suggest_keys": "Tab ergänzen · ↑↓ wählen · Enter senden",
+    "wiz": {
+      "title": "Neuer Server",
+      "step": {
+        "method": "Art",
+        "game": "Spiel",
+        "name": "Name & Ordner",
+        "preset": "Vorlage",
+        "confirm": "Bestätigen"
+      },
+      "ask_method": "Wie soll er entstehen?",
+      "method_new": "Neu installieren",
+      "method_new_about": "Saba-chan lädt den Server herunter und installiert ihn",
+      "method_import": "Server übernehmen",
+      "method_import_about": "Einen vorhandenen Serverordner weiter nutzen",
+      "ask_game": "Welches Spiel?",
+      "no_modules": "Noch keine Spielmodule. Hol dir eines auf der Seite Module & Erweiterungen.",
+      "ask_name": "Gib ihm einen Namen",
+      "name": "Name",
+      "folder": "Ordner",
+      "folder_hint": "Vollständiger Pfad des Serverordners · Tab wechselt das Feld",
+      "need_name": "Gib zuerst einen Namen ein.",
+      "need_folder": "Gib den Ordner zum Übernehmen ein.",
+      "ask_preset": "Mit einer Vorlage beginnen?",
+      "no_preset": "Keine (Standardwerte)",
+      "ask_confirm": "So erstellen?",
+      "confirm_hint": "Enter auf einer Zeile springt zu diesem Schritt",
+      "fix": "ändern",
+      "agree": "{{id}} gelesen und akzeptiert",
+      "need_agree": "Lies und akzeptiere zuerst die Vereinbarung (Leertaste zum Ankreuzen).",
+      "start_now": "Starten, sobald bereit",
+      "create": "Erstellen",
+      "back": "Zurück"
+    },
+    "cfg": {
+      "language": "Sprache",
+      "ipcPort": "IPC-Port",
+      "newServerAutoRestart": "Nach einem Absturz automatisch neu starten",
+      "newServerBackupKeep": "Aufzubewahrende Backups",
+      "autoGeneratePasswords": "Passwörter automatisch generieren",
+      "portConflictCheck": "Portkonflikterkennung",
+      "consoleTimestamps": "Konsolen-Zeitstempel",
+      "consoleTimestampDate": "Datum ebenfalls anzeigen",
+      "auditKeepDays": "Aufbewahrung des Aktivitätsprotokolls",
+      "stamp_off": "Aus",
+      "stamp_24h": "24-Stunden",
+      "stamp_12h": "12-Stunden"
+    },
+    "cfg_about": {
+      "ipcPort": "Portnummer, über die App und CLI den Core Daemon erreichen (1024–65535). Die meisten müssen sie nicht ändern.",
+      "autoGeneratePasswords": "Ist das REST-Passwort eines Servers leer, wird es beim Start zufällig gesetzt. Vorhandene Passwörter werden nie geändert.",
+      "portConflictCheck": "Zeigt Warnungen an, wenn mehrere Serverinstanzen denselben Port verwenden.",
+      "consoleTimestamps": "Zeigt vor jeder Konsolenzeile die Empfangszeit.",
+      "auditKeepDays": "Ältere Aktivitätseinträge löscht Saba-chan automatisch. 0 bedeutet keine Zeitbegrenzung.",
+      "newServerBackupKeep": "Werte, die beim Erstellen eines Servers eingetragen werden. Danach lassen sie sich pro Server ändern."
+    },
+    "none": "Keine",
+    "newer": "neu {{version}}",
+    "trust_about": {
+      "verified": "Genau wie aus dem offiziellen Katalog geladen",
+      "unverified": "Nicht aus dem offiziellen Katalog. Prüfe, ob die Quelle vertrauenswürdig ist",
+      "modified": "Dateien wurden nach der Installation geändert. Neu installieren, falls du sie nicht selbst bearbeitet hast"
+    }
   },
   "install": {
     "fetching": "Prüfe die neueste Version…",

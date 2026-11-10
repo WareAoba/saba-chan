@@ -1,11 +1,14 @@
-//! 그리기. 위에서 아래로 머리줄, 쪽 탭(오른쪽 끝에 GUI로 전환), 쪽, 작업 줄, 출력 창(열렸을 때), 맨 아래 줄
+//! 그리기. 위에서 아래로 머리줄, 쪽 탭(오른쪽 끝에 찾기 안내·GUI로 전환), 쪽, 작업 줄, 출력 창(열렸을 때), 맨 아래 줄
 //!
-//! 서버 쪽은 왼쪽 서버 목록, 오른쪽 고른 서버(정보 한 줄 → 버튼 → 큰 콘솔 → 콘솔 입력 줄)다.
-//! 맨 아래 줄은 평소에는 키 안내와 방금 결과 한 줄, `:`를 누르면 명령 줄이 된다. 60칸보다 좁으면 넓혀 달라는 안내만.
+//! 서버 쪽은 왼쪽 서버 목록, 오른쪽 고른 서버(상세 탭과 버튼 → 정보 한 줄 → 탭 내용)다. 탭 내용 맨 아래 줄에 같은 뜻의 CLI 명령을 보인다.
+//! 100칸보다 좁으면 목록과 상세를 한 번에 하나씩 보이고, 60칸보다 좁으면 넓혀 달라는 안내만.
+//! 묻는 창·찾기 창이 뜨면 뒤를 어둡게 한다.
 
-use super::app::{App, AskKind, Button, Focus, Page};
+use super::app::{App, AskKind, Button, Focus, Page, PaneState};
 use super::data::s;
+use super::form::{Form, Kind, Row};
 use super::highlight::{console_line, daemon_line, wrap_spans};
+use super::wizard::ConfirmRow;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -15,6 +18,8 @@ use serde_json::Value;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const MIN_WIDTH: u16 = 60;
+/// 이보다 좁으면 목록과 상세를 한 번에 하나씩
+const NARROW: u16 = 100;
 
 const ACCENT: Color = Color::Cyan;
 
@@ -30,13 +35,23 @@ fn highlight(focused: bool) -> Style {
     }
 }
 
+/// 고른 탭: 화살표가 여기 있으면 채운 칸, 아니면 강조색 밑줄 (쪽 탭과 같다)
+fn selected_tab(focused: bool) -> Style {
+    if focused {
+        highlight(true)
+    } else {
+        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+    }
+}
+
 fn panel(title: impl Into<String>, focused: bool) -> Block<'static> {
     let style = if focused { Style::default().fg(ACCENT) } else { dim() };
-    Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(style)
-        .title(Span::styled(format!(" {} ", title.into()), if focused { style.add_modifier(Modifier::BOLD) } else { Style::default() }))
+    let title = title.into();
+    let block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).border_style(style);
+    if title.is_empty() {
+        return block;
+    }
+    block.title(Span::styled(format!(" {title} "), if focused { style.add_modifier(Modifier::BOLD) } else { Style::default() }))
 }
 
 /// 표시 폭으로 줄을 접는다 (한글은 두 칸)
@@ -166,48 +181,6 @@ fn header(app: &App, width: u16) -> Line<'static> {
     Line::from(spans)
 }
 
-/// 쪽 탭 한 줄. 오른쪽 끝에 GUI로 전환 (GUI를 쓸 수 있을 때만). 지금 쪽이 보이게 앞을 자른다
-fn draw_tabs(f: &mut Frame, app: &mut App, area: Rect) {
-    let mut area = area;
-    if app.can_switch_to_gui() {
-        let label = format!(" ⇄ {} F9 ", t!("tui.gui_switch"));
-        let w = (label.width() as u16).min(area.width / 2);
-        let r = Rect { x: area.x + area.width - w, y: area.y, width: w, height: 1 };
-        f.render_widget(Paragraph::new(Span::styled(label, Style::default().fg(Color::Black).bg(Color::Magenta).add_modifier(Modifier::BOLD))), r);
-        app.areas.gui = r;
-        area.width -= w + 1;
-    }
-    let focused = app.focus == Focus::Tabs;
-    let mut spans = Vec::new();
-    for (i, p) in Page::ALL.iter().enumerate() {
-        let text = format!(" {} {} ", i + 1, p.title());
-        spans.push(if *p == app.page {
-            Span::styled(text, if focused { highlight(true) } else { Style::default().fg(ACCENT).add_modifier(Modifier::BOLD | Modifier::UNDERLINED) })
-        } else {
-            Span::styled(text, dim())
-        });
-        spans.push(Span::raw(" "));
-    }
-    let at = Page::ALL.iter().position(|p| *p == app.page).unwrap_or(0) * 2;
-    let before: usize = spans[..at].iter().map(|s| s.content.width()).sum();
-    let mine = spans[at].content.width();
-    let skip = (before + mine).saturating_sub(area.width as usize);
-    // 앞을 자른 만큼 밀어서 보이는 부분만 클릭 자리로 남긴다
-    let mut x = 0usize;
-    let mut rects = Vec::new();
-    for (i, s) in spans.iter().enumerate() {
-        let (start, end) = (x, x + s.content.width());
-        x = end;
-        if i % 2 == 1 {
-            continue;
-        }
-        let (l, r) = (start.max(skip) - skip, (end.saturating_sub(skip)).min(area.width as usize));
-        rects.push(if r <= l { Rect::default() } else { Rect { x: area.x + l as u16, y: area.y, width: (r - l) as u16, height: 1 } });
-    }
-    app.areas.tabs = rects;
-    f.render_widget(Paragraph::new(Line::from(spans)).scroll((0, skip as u16)), area);
-}
-
 /// 버튼을 폭에 맞춰 여러 줄로 놓는다. (줄 수, 버튼 자리)
 fn layout_buttons(buttons: &[Button], area: Rect) -> (u16, Vec<Rect>) {
     let mut rects = Vec::new();
@@ -226,6 +199,9 @@ fn layout_buttons(buttons: &[Button], area: Rect) -> (u16, Vec<Rect>) {
 }
 
 fn button_text(b: &Button) -> String {
+    if let Some(k) = b.key {
+        return format!("{} {k}", b.label);
+    }
     if b.more {
         format!("{} ▾", b.label)
     } else if b.fill {
@@ -233,37 +209,6 @@ fn button_text(b: &Button) -> String {
     } else {
         b.label.clone()
     }
-}
-
-/// 버튼 줄을 그리고 그 아래 나머지(한 줄 띄우고)를 돌려준다
-fn with_buttons(f: &mut Frame, app: &mut App, area: Rect) -> Rect {
-    let buttons = app.buttons();
-    if buttons.is_empty() || area.height == 0 {
-        app.areas.buttons.clear();
-        return area;
-    }
-    let (rows, rects) = layout_buttons(&buttons, area);
-    let focused = app.focus == Focus::Actions;
-    for (i, (b, r)) in buttons.iter().zip(&rects).enumerate() {
-        if r.y >= area.y + area.height {
-            break;
-        }
-        let style = if focused && i == app.button {
-            highlight(true)
-        } else if !b.enabled {
-            dim()
-        } else {
-            Style::default().fg(Color::White).bg(Color::DarkGray)
-        };
-        // format!의 폭은 글자 수라서 한글이 넘친다: 화면 폭으로 직접 가운데 맞춤
-        let label = button_text(b);
-        let pad = (r.width as usize).saturating_sub(label.width());
-        let label = format!("{}{label}{}", " ".repeat(pad / 2), " ".repeat(pad - pad / 2));
-        f.render_widget(Paragraph::new(Span::styled(label, style)), *r);
-    }
-    app.areas.buttons = clickable(rects, area);
-    let used = (rows + 1).min(area.height);
-    Rect { y: area.y + used, height: area.height - used, ..area }
 }
 
 /// 넘쳐 그리지 못한 버튼은 누를 자리도 없다 (아래 칸 위에 겹쳐 눌리지 않게). 순서는 버튼 번호라 빈 자리로 남긴다
@@ -326,106 +271,40 @@ fn draw_lines(f: &mut Frame, area: Rect, lines: Vec<Line<'static>>, scroll: &mut
     f.render_widget(Paragraph::new(lines[start..end].to_vec()), area);
 }
 
-fn draw_servers(f: &mut Frame, app: &mut App, area: Rect) {
-    let (left, right) = split_list(area, list_width(area, 28, 22, 34));
-    let inner_w = left.width.saturating_sub(2) as usize;
-    let items = app
-        .snap
-        .servers
-        .iter()
-        .map(|v| {
-            let (dot, color) = status_dot(s(v, "status"));
-            let players = crate::output::players(v).unwrap_or_default();
-            let name = head_fit(s(v, "name"), inner_w.saturating_sub(players.width() + 3));
-            let pad = " ".repeat(inner_w.saturating_sub(2 + name.width() + players.width()));
-            ListItem::new(Line::from(vec![Span::styled(format!("{dot} "), Style::default().fg(color)), Span::raw(name), Span::raw(pad), Span::styled(players, dim())]))
-        })
-        .collect();
-    let title = format!("{} {}", t!("tui.page.servers"), app.snap.servers.len());
-    draw_list(f, app, left, title, items, t!("tui.no_servers"));
-
-    let focused = matches!(app.focus, Focus::Actions | Focus::Console);
-    let Some(v) = app.selected_server().cloned() else {
-        let block = panel(t!("tui.detail"), focused);
-        let inner = block.inner(right);
-        f.render_widget(block, right);
-        let rest = with_buttons(f, app, inner);
-        f.render_widget(Paragraph::new(Span::styled(t!("tui.no_servers"), dim())).wrap(Wrap { trim: false }), rest);
-        return;
-    };
-    let (dot, color) = status_dot(s(&v, "status"));
-    let block = panel(format!("{dot} {}  {}", s(&v, "name"), status_label(s(&v, "status"))), focused).title_style(Style::default().fg(color));
-    let inner = block.inner(right);
-    f.render_widget(block, right);
-    if inner.height < 3 {
-        return;
+/// 판: 지금 판, 새 판이 있으면 그것도
+fn version_cell(v: &Value, newer: Option<String>) -> String {
+    match newer {
+        Some(latest) => format!("{}  →  {}", s(v, "version"), t!("tui.newer", version = latest)),
+        None => s(v, "version").to_string(),
     }
-    let info = [
-        (t!("tui.col.game"), s(&v, "module").to_string()),
-        (t!("tui.col.port"), v.get("port").map(|p| p.to_string()).unwrap_or_default()),
-        (t!("tui.col.players"), crate::output::players(&v).unwrap_or_default()),
-        (t!("tui.col.uptime"), uptime(&v)),
-    ];
-    f.render_widget(Paragraph::new(inline_kv(&info)), Rect { height: 1, ..inner });
-    let rest = with_buttons(f, app, Rect { y: inner.y + 1, height: inner.height - 1, ..inner });
-    if rest.height < 2 {
-        return;
-    }
-    // 콘솔 제목 줄 (가는 선)
-    let rule = format!("─ {} {}", t!("tui.server_console"), "─".repeat(rest.width as usize));
-    f.render_widget(Paragraph::new(Span::styled(head_fit(&rule, rest.width as usize), dim())), Rect { height: 1, ..rest });
-    let body = Rect { y: rest.y + 1, height: rest.height - 1, ..rest };
-    app.areas.view = body;
-    let out = Rect { height: body.height.saturating_sub(1), ..body };
-    let id = s(&v, "id");
-    let lines: Vec<Line<'static>> = match &app.snap.console {
-        Some((cid, lines)) if cid == id && !lines.is_empty() => lines.iter().flat_map(|l| wrap_spans(console_line(l), out.width as usize)).collect(),
-        _ => vec![Line::from(Span::styled(t!("tui.console_empty"), dim()))],
-    };
-    draw_lines(f, out, lines, &mut app.view_scroll);
-    // 입력 줄
-    let input_row = Rect { y: body.y + body.height - 1, height: 1, ..body };
-    let typing = app.focus == Focus::Console;
-    let prompt = Span::styled(format!("{}› ", s(&v, "name")), Style::default().fg(if typing { ACCENT } else { Color::DarkGray }).add_modifier(Modifier::BOLD));
-    let line = if typing {
-        let room = (input_row.width as usize).saturating_sub(prompt.width() + 1);
-        Line::from(vec![prompt, Span::raw(tail_fit(&app.server_input.text, room)), Span::styled("▏", Style::default().fg(ACCENT))])
-    } else {
-        Line::from(vec![prompt, Span::styled(t!("tui.console_input_hint"), dim())])
-    };
-    f.render_widget(Paragraph::new(line), input_row);
 }
 
-fn draw_named(f: &mut Frame, app: &mut App, area: Rect, list: Vec<Value>, title: String, id_key: &str, detail: impl Fn(&Value) -> Vec<(String, String)>) {
-    let (left, right) = split_list(area, list_width(area, 32, 22, 40));
-    let items = list
-        .iter()
-        .map(|v| {
-            let on = v.get("enabled").and_then(Value::as_bool);
-            let mark = match on {
-                Some(true) => Span::styled("● ", Style::default().fg(Color::Green)),
-                Some(false) => Span::styled("○ ", dim()),
-                None => Span::raw(""),
-            };
-            ListItem::new(Line::from(vec![mark, Span::raw(s(v, id_key).to_string()), Span::styled(format!("  {}", s(v, "version")), dim())]))
-        })
-        .collect();
-    draw_list(f, app, left, title, items, t!("tui.empty"));
-    let picked = list.get(app.selected_index());
-    let (name, rows) = match picked {
-        Some(v) => (s(v, id_key).to_string(), detail(v)),
-        None => (t!("tui.detail"), Vec::new()),
-    };
-    let block = panel(name, app.focus == Focus::Actions);
-    let inner = block.inner(right);
-    f.render_widget(block, right);
-    let rest = with_buttons(f, app, inner);
-    f.render_widget(Paragraph::new(kv_lines(&rows)).wrap(Wrap { trim: false }), rest);
+/// 출처: 확인됨·확인 안 됨·바뀜과 그 뜻
+fn trust_cell(v: &Value) -> Option<String> {
+    let trust = s(v, "trust");
+    if trust.is_empty() {
+        return None;
+    }
+    let label = crate::i18n::try_t(&format!("trust.{trust}")).unwrap_or_else(|| trust.to_string());
+    Some(match crate::i18n::try_t(&format!("tui.trust_about.{trust}")) {
+        Some(about) => format!("{label} · {about}"),
+        None => label,
+    })
 }
 
-fn module_rows(v: &Value) -> Vec<(String, String)> {
-    let mut rows = vec![(t!("col.version"), s(v, "version").to_string())];
-    for (k, label) in [("game_name", "col.game"), ("description", "tui.col.about"), ("trust", "col.trust"), ("author", "col.author")] {
+fn module_rows(app: &App, v: &Value) -> Vec<(String, String)> {
+    let name = s(v, "name");
+    let mut rows = Vec::new();
+    if !s(v, "game_name").is_empty() {
+        rows.push((t!("col.game"), s(v, "game_name").to_string()));
+    }
+    rows.push((t!("col.version"), version_cell(v, app.newer_version())));
+    let used: Vec<&str> = app.snap.servers.iter().filter(|sv| s(sv, "module") == name).map(|sv| s(sv, "name")).collect();
+    rows.push((t!("tui.col.used_by"), if used.is_empty() { t!("tui.none") } else { used.join(", ") }));
+    if let Some(trust) = trust_cell(v) {
+        rows.push((t!("col.trust"), trust));
+    }
+    for (k, label) in [("description", "tui.col.about"), ("author", "col.author")] {
         if !s(v, k).is_empty() {
             rows.push((t!(label), s(v, k).to_string()));
         }
@@ -433,55 +312,24 @@ fn module_rows(v: &Value) -> Vec<(String, String)> {
     rows
 }
 
-fn extension_rows(v: &Value) -> Vec<(String, String)> {
-    let mut rows = vec![
-        (t!("col.version"), s(v, "version").to_string()),
-        (t!("tui.col.enabled"), crate::output::yes_no(v.get("enabled").and_then(Value::as_bool) == Some(true))),
-    ];
-    for (k, label) in [("name", "tui.col.name"), ("description", "tui.col.about"), ("trust", "col.trust"), ("author", "col.author")] {
+fn extension_rows(app: &App, v: &Value) -> Vec<(String, String)> {
+    let mut rows = Vec::new();
+    if !s(v, "name").is_empty() {
+        rows.push((t!("tui.col.name"), s(v, "name").to_string()));
+    }
+    rows.push((t!("tui.col.enabled"), crate::output::yes_no(v.get("enabled").and_then(Value::as_bool) == Some(true))));
+    rows.push((t!("col.version"), version_cell(v, app.newer_version())));
+    if let Some(trust) = trust_cell(v) {
+        rows.push((t!("col.trust"), trust));
+    }
+    for (k, label) in [("description", "tui.col.about"), ("author", "col.author")] {
         if !s(v, k).is_empty() {
             rows.push((t!(label), s(v, k).to_string()));
         }
     }
-    let hooks: Vec<&str> = v.get("hooks").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
-    if !hooks.is_empty() {
-        rows.push(("hooks".into(), hooks.join(", ")));
-    }
     rows
 }
 
-/// 목록 없는 쪽: 한 칸 안에 버튼, 그 아래 내용
-fn draw_plain(f: &mut Frame, app: &mut App, area: Rect, title: String, lines: Vec<Line<'static>>) {
-    let block = panel(title, app.focus == Focus::Actions);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    let rest = with_buttons(f, app, inner);
-    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), rest);
-}
-
-fn discord_lines(app: &App) -> Vec<Line<'static>> {
-    let a = app.snap.agent.clone().unwrap_or(Value::Null);
-    let running = a.get("running").and_then(Value::as_bool) == Some(true);
-    let mut rows = vec![
-        (t!("tui.discord.relay"), if running { t!("tui.discord_on") } else { t!("tui.discord_off") }),
-        (t!("tui.discord.paired"), crate::output::yes_no(a.get("hasToken").and_then(Value::as_bool) == Some(true))),
-        (t!("tui.discord.handled"), a.get("commandsHandled").map(|v| v.to_string()).unwrap_or_else(|| "-".into())),
-    ];
-    if let Some(at) = a.get("lastHeartbeatAt").and_then(Value::as_u64) {
-        rows.push((t!("tui.discord.heartbeat"), super::data::clock(at)));
-    }
-    if !s(&a, "lastError").is_empty() {
-        rows.push((t!("tui.discord.error"), s(&a, "lastError").to_string()));
-    }
-    let mut lines = kv_lines(&rows);
-    if a.get("hasToken").and_then(Value::as_bool) != Some(true) {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(t!("tui.discord.pair_hint"), Style::default().fg(Color::Yellow))));
-    }
-    lines
-}
-
-/// 데몬이 업데이트를 한 번이라도 확인했는가 (`last_check`가 없으면 결과가 비어 있어도 최신이라는 뜻이 아니다)
 fn update_checked(u: &Value) -> bool {
     !s(u, "last_check").is_empty()
 }
@@ -518,60 +366,6 @@ fn update_lines(app: &App) -> Vec<Line<'static>> {
     lines
 }
 
-/// 데몬 쪽: 정보 한 줄, 버튼, 그 아래 데몬 로그(구문 강조)
-fn draw_daemon(f: &mut Frame, app: &mut App, area: Rect) {
-    let block = panel(t!("tui.page.daemon"), app.focus == Focus::Actions);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    if inner.height < 2 {
-        return;
-    }
-    let h = app.snap.health.clone().unwrap_or(Value::Null);
-    let info = [
-        (t!("tui.settings.daemon"), if h.is_null() { t!("tui.daemon_down") } else { format!("v{} · pid {}", s(&h, "version"), h.get("pid").map(|p| p.to_string()).unwrap_or_default()) }),
-        (t!("tui.settings.port"), app.port.to_string()),
-        (t!("tui.settings.language"), crate::i18n::lang().to_string()),
-    ];
-    f.render_widget(Paragraph::new(inline_kv(&info)), Rect { height: 1, ..inner });
-    let rest = with_buttons(f, app, Rect { y: inner.y + 1, height: inner.height - 1, ..inner });
-    if rest.height < 2 {
-        return;
-    }
-    let rule = format!("─ {} {}", t!("tui.daemon_log"), "─".repeat(rest.width as usize));
-    f.render_widget(Paragraph::new(Span::styled(head_fit(&rule, rest.width as usize), dim())), Rect { height: 1, ..rest });
-    let body = Rect { y: rest.y + 1, height: rest.height - 1, ..rest };
-    app.areas.view = body;
-    let lines: Vec<Line<'static>> = if app.snap.daemon_log.is_empty() {
-        vec![Line::from(Span::styled(t!("tui.console_empty"), dim()))]
-    } else {
-        app.snap.daemon_log.iter().flat_map(|l| wrap_spans(daemon_line(l), body.width as usize)).collect()
-    };
-    draw_lines(f, body, lines, &mut app.view_scroll);
-}
-
-fn draw_page(f: &mut Frame, app: &mut App, area: Rect) {
-    match app.page {
-        Page::Servers => draw_servers(f, app, area),
-        Page::Modules => {
-            let list = app.snap.modules.clone();
-            draw_named(f, app, area, list, t!("tui.page.modules"), "name", module_rows)
-        }
-        Page::Extensions => {
-            let list = app.snap.extensions.clone();
-            draw_named(f, app, area, list, t!("tui.page.extensions"), "id", extension_rows)
-        }
-        Page::Discord => {
-            let lines = discord_lines(app);
-            draw_plain(f, app, area, t!("tui.page.discord"), lines)
-        }
-        Page::Updates => {
-            let lines = update_lines(app);
-            draw_plain(f, app, area, t!("tui.page.updates"), lines)
-        }
-        Page::Daemon => draw_daemon(f, app, area),
-    }
-}
-
 /// 출력 창: 명령 결과(접어서, 끝에서부터)
 fn draw_output(f: &mut Frame, app: &mut App, area: Rect) {
     let title = match &app.last_command {
@@ -604,31 +398,6 @@ fn draw_output(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
     draw_lines(f, inner, lines, &mut app.output.scroll);
-}
-
-/// 키 안내: 지금 칸에서 쓸 수 있는 키. 폭이 모자라면 끝(나가기)은 두고 그 앞 안내부터 통째로 뺀다
-fn key_hint(app: &App, room: usize) -> String {
-    let text = if app.running {
-        t!("tui.keys_running")
-    } else {
-        match app.focus {
-            Focus::Tabs => t!("tui.keys_tabs"),
-            Focus::List => t!("tui.keys_list"),
-            Focus::Actions => t!("tui.keys_actions"),
-            Focus::Console => t!("tui.keys_console"),
-            Focus::Command => t!("tui.keys_command"),
-        }
-    };
-    let mut parts: Vec<&str> = text.split(" · ").collect();
-    while parts.len() > 2 && parts.join(" · ").width() > room {
-        parts.remove(parts.len() - 2);
-    }
-    let joined = parts.join(" · ");
-    if joined.width() > room {
-        head_fit(&joined, room)
-    } else {
-        joined
-    }
 }
 
 /// 맨 아래 한 줄: 명령 줄(열었을 때), 아니면 방금 결과와 키 안내
@@ -728,8 +497,971 @@ fn draw_more(f: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
+/// 쪽 탭 한 줄. 오른쪽 끝에 무엇이든 찾기 안내와 GUI로 전환 (GUI를 쓸 수 있을 때만). 지금 쪽이 보이게 앞을 자른다
+fn draw_tabs(f: &mut Frame, app: &mut App, area: Rect) {
+    let mut area = area;
+    if app.can_switch_to_gui() {
+        let label = format!(" ⇄ {} F9 ", t!("tui.gui_switch"));
+        let w = (label.width() as u16).min(area.width / 2);
+        let r = Rect { x: area.x + area.width - w, y: area.y, width: w, height: 1 };
+        f.render_widget(Paragraph::new(Span::styled(label, Style::default().fg(Color::Black).bg(Color::Magenta).add_modifier(Modifier::BOLD))), r);
+        app.areas.gui = r;
+        area.width -= w + 1;
+    }
+    let find = format!("Ctrl+K {}", t!("tui.find.title"));
+    let mut spans = Vec::new();
+    let focused = app.focus == Focus::Tabs;
+    for p in Page::ALL.iter() {
+        let text = format!(" {} ", p.title());
+        spans.push(if *p == app.page {
+            Span::styled(text, if focused { highlight(true) } else { Style::default().fg(ACCENT).add_modifier(Modifier::BOLD | Modifier::UNDERLINED) })
+        } else {
+            Span::styled(text, dim())
+        });
+        spans.push(Span::raw(" "));
+    }
+    let tabs_w: usize = spans.iter().map(|s| s.content.width()).sum();
+    if tabs_w + find.width() + 2 <= area.width as usize {
+        let r = Rect { x: area.x + area.width - find.width() as u16, width: find.width() as u16, ..area };
+        f.render_widget(Paragraph::new(Span::styled(find, dim())), r);
+    }
+    let at = app.page.slot() * 2;
+    let before: usize = spans[..at].iter().map(|s| s.content.width()).sum();
+    let mine = spans[at].content.width();
+    let skip = (before + mine).saturating_sub(area.width as usize);
+    // 앞을 자른 만큼 밀어서 보이는 부분만 클릭 자리로 남긴다
+    let mut x = 0usize;
+    let mut rects = Vec::new();
+    for (i, s) in spans.iter().enumerate() {
+        let (start, end) = (x, x + s.content.width());
+        x = end;
+        if i % 2 == 1 {
+            continue;
+        }
+        let (l, r) = (start.max(skip) - skip, (end.saturating_sub(skip)).min(area.width as usize));
+        rects.push(if r <= l { Rect::default() } else { Rect { x: area.x + l as u16, y: area.y, width: (r - l) as u16, height: 1 } });
+    }
+    app.areas.tabs = rects;
+    let w = (tabs_w as u16).min(area.width);
+    f.render_widget(Paragraph::new(Line::from(spans)).scroll((0, skip as u16)), Rect { width: w, ..area });
+}
+
+/// 상세 탭 줄과 (오른쪽에 들어가면) 버튼. 남은 자리를 돌려준다
+fn tab_row(f: &mut Frame, app: &mut App, area: Rect) -> Rect {
+    if area.height == 0 {
+        return area;
+    }
+    let tabs = app.page.tabs();
+    let focused = app.focus == Focus::Detail;
+    let mut x = area.x;
+    app.areas.detail.clear();
+    for (i, key) in tabs.iter().enumerate() {
+        let mut label = format!(" {} ", app.page.tab_label(key));
+        // 접속자 수는 탭 이름에
+        if *key == "players" {
+            if let Some(n) = app.selected_server().and_then(|v| v.pointer("/players/online")).and_then(Value::as_u64).filter(|n| *n > 0) {
+                label = format!(" {} {n} ", app.page.tab_label(key));
+            }
+        }
+        let w = label.width() as u16;
+        if x + w > area.x + area.width {
+            app.areas.detail.push(Rect::default());
+            continue;
+        }
+        let style = if i == app.tab_index() {
+            // 채운 칸은 지금 화살표가 움직이는 곳 하나뿐: 고른 탭은 밑줄로만
+            selected_tab(focused)
+        } else {
+            Style::default()
+        };
+        let r = Rect { x, y: area.y, width: w, height: 1 };
+        f.render_widget(Paragraph::new(Span::styled(label, style)), r);
+        app.areas.detail.push(r);
+        x += w + 1;
+    }
+    // 버튼은 탭 오른쪽에 들어가면 같은 줄, 아니면 다음 줄
+    let buttons = app.buttons();
+    if buttons.is_empty() {
+        app.areas.buttons.clear();
+        return Rect { y: area.y + 1, height: area.height - 1, ..area };
+    }
+    let need: u16 = buttons.iter().map(|b| button_text(b).width() as u16 + 3).sum();
+    let used = x - area.x;
+    if tabs.is_empty() || used + need < area.width {
+        let bx = if tabs.is_empty() { area.x } else { area.x + area.width.saturating_sub(need) };
+        draw_buttons(f, app, &buttons, Rect { x: bx, y: area.y, width: area.x + area.width - bx, height: 1 });
+        Rect { y: area.y + 1, height: area.height - 1, ..area }
+    } else {
+        let below = Rect { y: area.y + 1, height: area.height - 1, ..area };
+        let rows = draw_buttons(f, app, &buttons, below);
+        Rect { y: below.y + rows, height: below.height.saturating_sub(rows), ..below }
+    }
+}
+
+/// 버튼을 그리고 쓴 줄 수를 돌려준다
+fn draw_buttons(f: &mut Frame, app: &mut App, buttons: &[Button], area: Rect) -> u16 {
+    if area.height == 0 {
+        app.areas.buttons.clear();
+        return 0;
+    }
+    let (rows, rects) = layout_buttons(buttons, area);
+    let focused = app.focus == Focus::Actions;
+    for (i, (b, r)) in buttons.iter().zip(&rects).enumerate() {
+        if r.y >= area.y + area.height {
+            break;
+        }
+        let style = if focused && i == app.button {
+            highlight(true)
+        } else if !b.enabled {
+            dim()
+        } else {
+            match b.line.split(' ').next() {
+                Some("stop") => Style::default().fg(Color::Red).bg(Color::Rgb(63, 29, 29)),
+                Some("start") => Style::default().fg(Color::Green).bg(Color::Rgb(5, 46, 22)),
+                _ => Style::default().fg(Color::White).bg(Color::DarkGray),
+            }
+        };
+        // format!의 폭은 글자 수라서 한글이 넘친다: 화면 폭으로 직접 가운데 맞춤
+        let label = button_text(b);
+        let pad = (r.width as usize).saturating_sub(label.width());
+        let label = format!("{}{label}{}", " ".repeat(pad / 2), " ".repeat(pad - pad / 2));
+        f.render_widget(Paragraph::new(Span::styled(label, style)), *r);
+    }
+    app.areas.buttons = clickable(rects, area);
+    rows.min(area.height)
+}
+
+fn rule(f: &mut Frame, area: Rect) {
+    f.render_widget(Paragraph::new(Span::styled("─".repeat(area.width as usize), dim())), Rect { height: 1, ..area });
+}
+
+/// 좁은 화면에서 목록 대신 상세를 볼 때 맨 위 한 줄
+fn back_line(app: &App) -> Line<'static> {
+    let (what, name) = match app.page {
+        Page::Servers => (t!("tui.back.servers"), app.selected_server().map(|v| s(v, "name").to_string())),
+        Page::Discord => (t!("tui.back.guilds"), app.selected_guild().map(|g| s(g, "guildName").to_string())),
+        _ => (t!("tui.back.list"), app.selected()),
+    };
+    Line::from(vec![Span::styled(format!("‹ {what}  Esc"), dim()), Span::raw("   "), Span::styled(name.unwrap_or_default(), Style::default().add_modifier(Modifier::BOLD))])
+}
+
+/// 목록과 상세를 나눈다. 좁으면 지금 칸에 따라 하나만 (목록 → 상세로 한 칸씩)
+fn split_or_stack(app: &mut App, area: Rect, width: u16) -> (Option<Rect>, Option<Rect>) {
+    if app.narrow {
+        if matches!(app.focus, Focus::Tabs | Focus::List) || (app.focus == Focus::Command && matches!(app.command_back(), Focus::Tabs | Focus::List)) {
+            return (Some(area), None);
+        }
+        return (None, Some(area));
+    }
+    let (l, r) = split_list(area, width);
+    (Some(l), Some(r))
+}
+
+fn draw_servers(f: &mut Frame, app: &mut App, area: Rect) {
+    let (left, right) = split_or_stack(app, area, list_width(area, 28, 24, 34));
+    if let Some(left) = left {
+        let inner_w = left.width.saturating_sub(2) as usize;
+        let items: Vec<ListItem<'static>> = app
+            .snap
+            .servers
+            .iter()
+            .map(|v| {
+                let (dot, color) = status_dot(s(v, "status"));
+                let name = head_fit(s(v, "name"), inner_w.saturating_sub(4));
+                let game = head_fit(s(v, "module"), inner_w.saturating_sub(name.width() + 6));
+                let pad = " ".repeat(inner_w.saturating_sub(3 + name.width() + game.width()));
+                let mut sub: Vec<String> = Vec::new();
+                if matches!(s(v, "status"), "running" | "starting") {
+                    if let Some(p) = crate::output::players(v) {
+                        sub.push(t!("tui.list.players", count = p));
+                    }
+                    let up = uptime(v);
+                    if !up.is_empty() {
+                        sub.push(up);
+                    }
+                } else {
+                    sub.push(status_label(s(v, "status")));
+                }
+                if let Some(p) = v.get("port").filter(|p| !p.is_null()) {
+                    sub.push(format!("{} {p}", t!("tui.col.port")));
+                }
+                ListItem::new(vec![
+                    Line::from(vec![Span::styled(format!("{dot} "), Style::default().fg(color)), Span::styled(name, Style::default().add_modifier(Modifier::BOLD)), Span::raw(pad), Span::styled(game, dim())]),
+                    Line::from(Span::styled(format!("  {}", head_fit(&sub.join(" · "), inner_w.saturating_sub(2))), dim())),
+                    Line::from(""),
+                ])
+            })
+            .collect();
+        let title = format!("{} {}", t!("tui.page.servers"), app.snap.servers.len());
+        draw_list(f, app, left, title, items, t!("tui.no_servers"));
+        // 목록 아래 테두리에 [+ 새 서버]
+        let label = format!(" + {}  n ", t!("tui.btn.server_add"));
+        let add = Rect { x: left.x + 1, y: left.y + left.height.saturating_sub(1), width: (label.width() as u16).min(left.width.saturating_sub(2)), height: 1 };
+        f.render_widget(Paragraph::new(Span::styled(label, Style::default().fg(ACCENT))), add);
+        app.areas.add = add;
+    }
+    let Some(right) = right else { return };
+    let focused = matches!(app.focus, Focus::Detail | Focus::Actions | Focus::Content);
+    let Some(v) = app.selected_server().cloned() else {
+        let block = panel(t!("tui.detail"), focused);
+        let inner = block.inner(right);
+        f.render_widget(block, right);
+        f.render_widget(Paragraph::new(Span::styled(t!("tui.no_servers"), dim())).wrap(Wrap { trim: false }), inner);
+        return;
+    };
+    let (dot, color) = status_dot(s(&v, "status"));
+    let block = panel(format!("{dot} {}  {}", s(&v, "name"), status_label(s(&v, "status"))), focused).title_style(Style::default().fg(color).add_modifier(Modifier::BOLD));
+    let mut inner = block.inner(right);
+    f.render_widget(block, right);
+    if app.narrow && inner.height > 4 {
+        f.render_widget(Paragraph::new(back_line(app)), Rect { height: 1, ..inner });
+        inner = Rect { y: inner.y + 1, height: inner.height - 1, ..inner };
+    }
+    if inner.height < 4 {
+        return;
+    }
+    let rest = tab_row(f, app, inner);
+    if rest.height < 3 {
+        return;
+    }
+    let info = [
+        (String::new(), s(&v, "module").to_string()),
+        (t!("tui.col.port"), v.get("port").filter(|p| !p.is_null()).map(|p| p.to_string()).unwrap_or_default()),
+        (t!("tui.col.uptime"), uptime(&v)),
+    ];
+    f.render_widget(Paragraph::new(inline_kv(&info)), Rect { height: 1, ..rest });
+    rule(f, Rect { y: rest.y + 1, ..rest });
+    let body = Rect { y: rest.y + 2, height: rest.height - 2, ..rest };
+    draw_content(f, app, body);
+}
+
+fn draw_discord(f: &mut Frame, app: &mut App, area: Rect) {
+    let linked = app.snap.agent.as_ref().and_then(|a| a.get("running")).and_then(Value::as_bool) == Some(true);
+    let (left, right) = split_or_stack(app, area, list_width(area, 28, 24, 34));
+    if let Some(left) = left {
+        let inner_w = left.width.saturating_sub(2) as usize;
+        let items: Vec<ListItem<'static>> = app
+            .snap
+            .guilds
+            .iter()
+            .map(|g| {
+                let name = if s(g, "guildName").is_empty() { s(g, "guildId") } else { s(g, "guildName") };
+                ListItem::new(vec![
+                    Line::from(Span::styled(head_fit(name, inner_w), Style::default().add_modifier(Modifier::BOLD))),
+                    Line::from(Span::styled(head_fit(&format!(" {}", s(g, "guildId")), inner_w), dim())),
+                    Line::from(""),
+                ])
+            })
+            .collect();
+        let title = format!("{} {}", t!("tui.guilds"), app.snap.guilds.len());
+        draw_list(f, app, left, title, items, t!("tui.empty"));
+        // 목록 아래 테두리에 연결 상태
+        let state = if linked { t!("tui.discord_on") } else { t!("tui.discord_off") };
+        let label = format!(" {state} ");
+        let r = Rect { x: left.x + 1, y: left.y + left.height.saturating_sub(1), width: (label.width() as u16).min(left.width.saturating_sub(2)), height: 1 };
+        f.render_widget(Paragraph::new(Span::styled(label, Style::default().fg(if linked { Color::Green } else { Color::DarkGray }))), r);
+    }
+    let Some(right) = right else { return };
+    let focused = matches!(app.focus, Focus::Detail | Focus::Actions | Focus::Content);
+    let Some(g) = app.selected_guild().cloned() else {
+        // 디스코드 서버가 없으면 연결 상태와 버튼만
+        let block = panel(t!("tui.page.discord"), focused);
+        let inner = block.inner(right);
+        f.render_widget(block, right);
+        let rest = tab_row_buttons_only(f, app, inner);
+        f.render_widget(Paragraph::new(discord_lines(app)).wrap(Wrap { trim: false }), rest);
+        return;
+    };
+    let name = if s(&g, "guildName").is_empty() { s(&g, "guildId") } else { s(&g, "guildName") };
+    let block = panel(name.to_string(), focused);
+    let mut inner = block.inner(right);
+    f.render_widget(block, right);
+    if app.narrow && inner.height > 4 {
+        f.render_widget(Paragraph::new(back_line(app)), Rect { height: 1, ..inner });
+        inner = Rect { y: inner.y + 1, height: inner.height - 1, ..inner };
+    }
+    let rest = tab_row(f, app, inner);
+    if rest.height < 2 {
+        return;
+    }
+    rule(f, rest);
+    draw_content(f, app, Rect { y: rest.y + 1, height: rest.height - 1, ..rest });
+}
+
+/// 탭 없는 칸의 버튼 줄
+fn tab_row_buttons_only(f: &mut Frame, app: &mut App, area: Rect) -> Rect {
+    let buttons = app.buttons();
+    app.areas.detail.clear();
+    let rows = draw_buttons(f, app, &buttons, area);
+    let used = (rows + 1).min(area.height);
+    Rect { y: area.y + used, height: area.height - used, ..area }
+}
+
+fn discord_lines(app: &App) -> Vec<Line<'static>> {
+    let a = app.snap.agent.clone().unwrap_or(Value::Null);
+    let running = a.get("running").and_then(Value::as_bool) == Some(true);
+    let mut rows = vec![
+        (t!("tui.discord.relay"), if running { t!("tui.discord_on") } else { t!("tui.discord_off") }),
+        (t!("tui.discord.paired"), crate::output::yes_no(a.get("hasToken").and_then(Value::as_bool) == Some(true))),
+        (t!("tui.discord.handled"), a.get("commandsHandled").map(|v| v.to_string()).unwrap_or_else(|| "-".into())),
+    ];
+    if let Some(at) = a.get("lastHeartbeatAt").and_then(Value::as_u64) {
+        rows.push((t!("tui.discord.heartbeat"), super::data::clock(at)));
+    }
+    if !s(&a, "lastError").is_empty() {
+        rows.push((t!("tui.discord.error"), s(&a, "lastError").to_string()));
+    }
+    let mut lines = kv_lines(&rows);
+    if a.get("hasToken").and_then(Value::as_bool) != Some(true) {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(t!("tui.discord.pair_hint"), Style::default().fg(Color::Yellow))));
+    }
+    lines
+}
+
+fn draw_addons(f: &mut Frame, app: &mut App, area: Rect) {
+    let top = Rect { height: 1, ..area };
+    let modules = app.tab_index() == 0;
+    // 탭은 목록 위 (모듈 ↔ 익스텐션)
+    let saved_buttons = std::mem::take(&mut app.areas.buttons);
+    {
+        let tabs = app.page.tabs();
+        let focused = app.focus == Focus::Detail;
+        let mut x = top.x + 1;
+        app.areas.detail.clear();
+        for (i, key) in tabs.iter().enumerate() {
+            let label = format!(" {} ", app.page.tab_label(key));
+            let w = label.width() as u16;
+            let style = if i == app.tab_index() {
+                selected_tab(focused)
+            } else {
+                Style::default()
+            };
+            let r = Rect { x, y: top.y, width: w.min(top.width), height: 1 };
+            f.render_widget(Paragraph::new(Span::styled(label, style)), r);
+            app.areas.detail.push(r);
+            x += w + 1;
+        }
+    }
+    app.areas.buttons = saved_buttons;
+    let body = Rect { y: area.y + 1, height: area.height.saturating_sub(1), ..area };
+    let list = if modules { app.snap.modules.clone() } else { app.snap.extensions.clone() };
+    let id_key = if modules { "name" } else { "id" };
+    let (left, right) = split_or_stack(app, body, list_width(body, 32, 22, 40));
+    if let Some(left) = left {
+        let items = list
+            .iter()
+            .map(|v| {
+                let on = v.get("enabled").and_then(Value::as_bool);
+                let mark = match on {
+                    Some(true) => Span::styled("● ", Style::default().fg(Color::Green)),
+                    Some(false) => Span::styled("○ ", dim()),
+                    None => Span::raw(""),
+                };
+                ListItem::new(Line::from(vec![mark, Span::raw(s(v, id_key).to_string()), Span::styled(format!("  {}", s(v, "version")), dim())]))
+            })
+            .collect();
+        let title = if modules { t!("tui.page.modules") } else { t!("tui.page.extensions") };
+        draw_list(f, app, left, title, items, t!("tui.empty"));
+    }
+    let Some(right) = right else { return };
+    let picked = list.get(app.selected_index());
+    let (name, rows) = match picked {
+        Some(v) => (s(v, id_key).to_string(), if modules { module_rows(app, v) } else { extension_rows(app, v) }),
+        None => (t!("tui.detail"), Vec::new()),
+    };
+    let block = panel(name, app.focus == Focus::Actions);
+    let inner = block.inner(right);
+    f.render_widget(block, right);
+    // 탭 자리는 위에서 그렸다: 버튼 줄이 지우지 않게 맡겨 둔다
+    let tabs = std::mem::take(&mut app.areas.detail);
+    let rest = tab_row_buttons_only(f, app, inner);
+    app.areas.detail = tabs;
+    f.render_widget(Paragraph::new(kv_lines(&rows)).wrap(Wrap { trim: false }), rest);
+}
+
+fn draw_updates(f: &mut Frame, app: &mut App, area: Rect) {
+    let block = panel(t!("tui.page.updates"), app.focus == Focus::Actions);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    let rest = tab_row_buttons_only(f, app, inner);
+    let lines = update_lines(app);
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), rest);
+}
+
+fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
+    let focused = matches!(app.focus, Focus::Detail | Focus::Actions | Focus::Content);
+    let block = panel(t!("tui.page.settings"), focused);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    if inner.height < 4 {
+        return;
+    }
+    let rest = tab_row(f, app, inner);
+    let h = app.snap.health.clone().unwrap_or(Value::Null);
+    let info = [
+        (t!("tui.settings.daemon"), if h.is_null() { t!("tui.daemon_down") } else { format!("v{} · pid {}", s(&h, "version"), h.get("pid").map(|p| p.to_string()).unwrap_or_default()) }),
+        (t!("tui.settings.port"), app.port.to_string()),
+        (t!("tui.settings.language"), crate::i18n::lang().to_string()),
+    ];
+    f.render_widget(Paragraph::new(inline_kv(&info)), Rect { height: 1, ..rest });
+    if rest.height < 3 {
+        return;
+    }
+    rule(f, Rect { y: rest.y + 1, ..rest });
+    draw_content(f, app, Rect { y: rest.y + 2, height: rest.height - 2, ..rest });
+}
+
+/// 상세 탭의 내용. 맨 아래 줄은 같은 뜻의 CLI 명령(폼은 바뀐 칸이 있으면 저장 줄)
+fn draw_content(f: &mut Frame, app: &mut App, area: Rect) {
+    if area.height == 0 {
+        return;
+    }
+    app.areas.view = area;
+    let focused = app.focus == Focus::Content;
+    let tab = app.tab_key();
+    if app.page == Page::Servers && tab == "console" {
+        draw_console(f, app, area);
+        return;
+    }
+    if app.page == Page::Settings && tab == "daemon_log" {
+        let lines: Vec<Line<'static>> = if app.snap.daemon_log.is_empty() {
+            vec![Line::from(Span::styled(t!("tui.console_empty"), dim()))]
+        } else {
+            app.snap.daemon_log.iter().flat_map(|l| wrap_spans(daemon_line(l), area.width as usize)).collect()
+        };
+        draw_lines(f, area, lines, &mut app.view_scroll);
+        return;
+    }
+    let body = Rect { height: area.height.saturating_sub(1), ..area };
+    let bottom = Rect { y: area.y + area.height - 1, height: 1, ..area };
+    let same = app.same_command().map(|c| format!("{} saba-chan {c}", t!("tui.same_command")));
+    if !app.pane_is_current() {
+        f.render_widget(Paragraph::new(Span::styled(t!("tui.pane.loading"), dim())), body);
+        f.render_widget(Paragraph::new(Span::styled(head_fit(&same.unwrap_or_default(), bottom.width as usize), dim())), bottom);
+        return;
+    }
+    let edit = app.edit_prefix().is_some();
+    let pane_scroll = app.pane.scroll;
+    let cursor = app.pane.cursor;
+    match &mut app.pane.state {
+        PaneState::Loading => f.render_widget(Paragraph::new(Span::styled(t!("tui.pane.loading"), dim())), body),
+        PaneState::Failed(why) => f.render_widget(Paragraph::new(Span::styled(format!("! {why}"), Style::default().fg(Color::Yellow))).wrap(Wrap { trim: false }), body),
+        PaneState::Form(form, _) => {
+            let dirty = form.fields.iter().filter(|x| x.dirty()).count();
+            draw_form(f, form, body, focused);
+            let line = if dirty > 0 {
+                Line::from(vec![
+                    Span::styled(t!("tui.form.changed", count = dirty), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                    Span::styled("  ·  ", dim()),
+                    Span::styled(format!(" {} ", t!("tui.form.save")), Style::default().fg(Color::Black).bg(ACCENT).add_modifier(Modifier::BOLD)),
+                    Span::raw("  "),
+                    Span::styled(format!(" {} ", t!("tui.form.revert")), Style::default().fg(Color::White).bg(Color::DarkGray)),
+                    Span::styled(format!("   {}", t!("tui.form.keys")), dim()),
+                ])
+            } else {
+                Line::from(Span::styled(same.unwrap_or_default(), dim()))
+            };
+            f.render_widget(Paragraph::new(line), bottom);
+            return;
+        }
+        PaneState::Rows(rows) => {
+            let mut lines = table_lines(tab, rows, cursor, focused, body.width as usize);
+            let empty = lines.len() <= 1;
+            // 고른 줄이 늘 보이게 넘긴다 (머리줄은 남긴다)
+            let room = (body.height as usize).saturating_sub(1).max(1);
+            if cursor >= room && lines.len() > 1 {
+                lines.drain(1..=cursor + 1 - room);
+            }
+            f.render_widget(Paragraph::new(lines), body);
+            if empty {
+                let r = Rect { y: body.y + 1, height: 1, ..body };
+                f.render_widget(Paragraph::new(Span::styled(t!("tui.empty"), dim())), r);
+            }
+        }
+        PaneState::Text(lines) => {
+            let shown: Vec<Line<'static>> = if lines.is_empty() {
+                vec![Line::from(Span::styled(if app.capture.is_some() { t!("tui.pane.loading") } else { t!("tui.empty") }, dim()))]
+            } else {
+                lines.iter().flat_map(|l| wrap(l, body.width as usize)).map(|l| Line::from(output_span(l))).collect()
+            };
+            if tab == "log" {
+                let mut scroll = pane_scroll;
+                draw_lines(f, body, shown, &mut scroll);
+                app.pane.scroll = scroll;
+            } else {
+                let start = pane_scroll.min(shown.len().saturating_sub(body.height as usize));
+                app.pane.scroll = start;
+                f.render_widget(Paragraph::new(shown[start..].to_vec()), body);
+            }
+        }
+    }
+    let mut hint = same.unwrap_or_default();
+    let keys = match (app.page, tab) {
+        (Page::Servers, "backups") => t!("tui.keys_backups"),
+        (Page::Servers, "players") => t!("tui.keys_players"),
+        _ if edit => t!("tui.keys_edit"),
+        _ => String::new(),
+    };
+    if !keys.is_empty() {
+        hint = format!("{keys}   {hint}");
+    }
+    f.render_widget(Paragraph::new(Span::styled(head_fit(&hint, bottom.width as usize), dim())), bottom);
+}
+
+/// 명령 출력 한 줄의 색 (✓ ✗ !)
+fn output_span(l: String) -> Span<'static> {
+    let style = if l.starts_with("› ") {
+        Style::default().fg(ACCENT)
+    } else if l.starts_with('✗') {
+        Style::default().fg(Color::Red)
+    } else if l.starts_with('✓') {
+        Style::default().fg(Color::Green)
+    } else if l.starts_with('!') {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    Span::styled(l, style)
+}
+
+/// 표의 칸: (머리, 값 꺼내기)
+type Column = (String, Box<dyn Fn(&Value) -> String>);
+
+/// 접속자·백업 표
+fn table_lines(tab: &str, rows: &[Value], cursor: usize, focused: bool, width: usize) -> Vec<Line<'static>> {
+    let cols: Vec<Column> = if tab == "backups" {
+        vec![
+            (t!("col.name"), Box::new(|v: &Value| s(v, "name").to_string())),
+            (t!("tui.col.kind"), Box::new(|v: &Value| s(v, "kind").to_string())),
+            (t!("tui.col.created"), Box::new(|v: &Value| v.get("created").and_then(Value::as_u64).map(|t| super::data::clock_fmt(t, "%m-%d %H:%M")).unwrap_or_else(|| s(v, "created").to_string()))),
+            (t!("tui.col.size"), Box::new(|v: &Value| v.get("size").and_then(Value::as_f64).map(crate::cmd::monitor::bytes).unwrap_or_default())),
+        ]
+    } else {
+        vec![(t!("col.name"), Box::new(|v: &Value| s(v, "name").to_string()))]
+    };
+    let cells: Vec<Vec<String>> = rows.iter().map(|r| cols.iter().map(|(_, c)| c(r)).collect()).collect();
+    let widths: Vec<usize> = cols.iter().enumerate().map(|(i, (h, _))| cells.iter().map(|r| r[i].width()).chain([h.width()]).max().unwrap_or(0) + 2).collect();
+    let line = |vals: Vec<String>| -> String {
+        let mut out = String::new();
+        for (v, w) in vals.iter().zip(&widths) {
+            out.push_str(v);
+            out.push_str(&" ".repeat(w.saturating_sub(v.width())));
+        }
+        head_fit(&out, width)
+    };
+    let mut out = vec![Line::from(Span::styled(line(cols.iter().map(|(h, _)| h.clone()).collect()), dim().add_modifier(Modifier::BOLD)))];
+    for (i, r) in cells.into_iter().enumerate() {
+        let text = line(r);
+        let pad = " ".repeat(width.saturating_sub(text.width()));
+        out.push(Line::from(Span::styled(format!("{text}{pad}"), if i == cursor && focused { highlight(true) } else { Style::default() })));
+    }
+    out
+}
+
+/// 서버 콘솔: 큰 출력, 입력 줄, 치는 동안 게임 명령 제안
+fn draw_console(f: &mut Frame, app: &mut App, body: Rect) {
+    if body.height < 2 {
+        return;
+    }
+    let out = Rect { height: body.height.saturating_sub(1), ..body };
+    let Some(v) = app.selected_server().cloned() else { return };
+    let id = s(&v, "id");
+    let lines: Vec<Line<'static>> = match &app.snap.console {
+        Some((cid, lines)) if cid == id && !lines.is_empty() => lines.iter().flat_map(|l| wrap_spans(console_line(l), out.width as usize)).collect(),
+        _ => vec![Line::from(Span::styled(t!("tui.console_empty"), dim()))],
+    };
+    draw_lines(f, out, lines, &mut app.view_scroll);
+    // 입력 줄
+    let input_row = Rect { y: body.y + body.height - 1, height: 1, ..body };
+    let typing = app.focus == Focus::Content;
+    let prompt = Span::styled(format!("{} › ", s(&v, "name")), Style::default().fg(if typing { ACCENT } else { Color::DarkGray }).add_modifier(Modifier::BOLD));
+    let line = if typing {
+        let room = (input_row.width as usize).saturating_sub(prompt.width() + 1);
+        let mut spans = vec![prompt, Span::raw(tail_fit(&app.server_input.text, room)), Span::styled("▏", Style::default().fg(ACCENT))];
+        if !app.suggestions().is_empty() {
+            spans.push(Span::styled(format!("   {}", t!("tui.suggest_keys")), dim()));
+        }
+        Line::from(spans)
+    } else {
+        Line::from(vec![prompt, Span::styled(t!("tui.console_input_hint"), dim())])
+    };
+    f.render_widget(Paragraph::new(line), input_row);
+    // 제안: 입력 줄 바로 위 작은 창
+    let found = app.suggestions();
+    if typing && !found.is_empty() {
+        let w = (body.width.saturating_sub(2)).min(64);
+        let h = found.len() as u16 + 2;
+        if out.height < h {
+            return;
+        }
+        let r = Rect { x: body.x + 1, y: input_row.y - h, width: w, height: h };
+        f.render_widget(Clear, r);
+        clear_wide_edge(f, r);
+        let block = panel(String::new(), false);
+        let inner = block.inner(r);
+        f.render_widget(block, r);
+        let pick = app.suggest.min(found.len() - 1);
+        for (i, (name, usage, about, risk)) in found.iter().enumerate() {
+            let row = Rect { y: inner.y + i as u16, height: 1, ..inner };
+            let left = head_fit(&format!(" {name}{usage}"), (inner.width as usize) * 3 / 5);
+            let about = if *risk == crate::catalog::Risk::Danger { format!("{about} · {}", t!("tui.risk_danger")) } else { about.clone() };
+            let pad = " ".repeat((inner.width as usize * 3 / 5 + 1).saturating_sub(left.width()));
+            let right = head_fit(&about, (inner.width as usize).saturating_sub(left.width() + pad.width()));
+            let base = if i == pick { Style::default().bg(Color::Rgb(30, 58, 95)).add_modifier(Modifier::BOLD) } else { Style::default() };
+            let about_style = if *risk == crate::catalog::Risk::Danger { base.fg(Color::Red) } else { base.fg(Color::DarkGray) };
+            let fill = " ".repeat((inner.width as usize).saturating_sub(left.width() + pad.width() + right.width()));
+            f.render_widget(Paragraph::new(Line::from(vec![Span::styled(left, base), Span::styled(pad, base), Span::styled(right, about_style), Span::styled(fill, base)])), row);
+        }
+    }
+}
+
+/// 설정 폼 그리기: 찾기 줄, 묶음 머리줄, 칸(이름 · 값 · 바뀐 것), 고른 칸의 설명
+fn draw_form(f: &mut Frame, form: &mut Form, area: Rect, focused: bool) {
+    if area.height < 2 {
+        return;
+    }
+    // 찾기 줄
+    let groups = form.groups().iter().map(|g| group_label(g)).collect::<Vec<_>>().join(" · ");
+    let find = if form.filtering || !form.filter.is_empty() {
+        Line::from(vec![Span::styled("/ ", Style::default().fg(ACCENT)), Span::raw(form.filter.clone()), Span::styled(if form.filtering { "▏" } else { "" }, Style::default().fg(ACCENT))])
+    } else {
+        Line::from(vec![Span::styled("/ ", dim()), Span::styled(t!("tui.form.find"), dim()), Span::styled(format!("     {groups}"), dim())])
+    };
+    f.render_widget(Paragraph::new(find), Rect { height: 1, ..area });
+    let rows = form.rows();
+    let desc_h: u16 = 1;
+    let list_h = area.height.saturating_sub(2 + desc_h) as usize;
+    if list_h == 0 {
+        return;
+    }
+    // 고른 줄이 보이게
+    if form.cursor < form.scroll {
+        form.scroll = form.cursor;
+    } else if form.cursor >= form.scroll + list_h {
+        form.scroll = form.cursor + 1 - list_h;
+    }
+    let label_w = form.fields.iter().map(|x| x.label.width()).max().unwrap_or(10).clamp(10, 22);
+    let w = area.width as usize;
+    for (n, row) in rows.iter().enumerate().skip(form.scroll).take(list_h) {
+        let y = area.y + 2 + (n - form.scroll) as u16;
+        let r = Rect { y, height: 1, ..area };
+        let selected = focused && n == form.cursor;
+        let line = match row {
+            Row::Group(g) => {
+                let open = form.open.contains(g) || !form.filter.is_empty();
+                let title = if g == "advanced" { format!("{} ({})", group_label(g), form.group_len(g)) } else { group_label(g) };
+                let tail = if open { String::new() } else { format!("  ▸ {}", t!("tui.form.folded")) };
+                let bar = "─".repeat(w.saturating_sub(title.width() + tail.width() + 3));
+                let style = if selected { highlight(true) } else { Style::default().fg(ACCENT).add_modifier(Modifier::BOLD) };
+                Line::from(vec![Span::styled(title, style), Span::styled(tail, dim()), Span::styled(format!("  {bar}"), dim())])
+            }
+            Row::Field(i) => field_line(&form.fields[*i], form, selected, label_w, w),
+        };
+        f.render_widget(Paragraph::new(line), r);
+    }
+    // 고른 칸의 설명 (재시작이 필요하면 덧붙인다)
+    if let Some(cur) = form.current() {
+        let mut text = cur.description.clone();
+        if cur.restart && cur.dirty() {
+            text = format!("{} {}", text, t!("tui.form.restart")).trim().to_string();
+        }
+        if form.show_keys && text.is_empty() {
+            text = cur.key.clone();
+        }
+        if !text.is_empty() {
+            let r = Rect { y: area.y + area.height - 1, height: 1, ..area };
+            f.render_widget(Paragraph::new(Span::styled(head_fit(&format!("└ {text}"), w), dim())), r);
+        }
+    }
+}
+
+fn group_label(g: &str) -> String {
+    crate::i18n::try_t(&format!("tui.form.group.{g}")).unwrap_or_else(|| g.to_string())
+}
+
+/// 폼의 칸 한 줄: `▌ 이름  값            ● 원래 → 새`
+fn field_line(x: &super::form::Field, form: &Form, selected: bool, label_w: usize, width: usize) -> Line<'static> {
+    let base = if selected { Style::default().bg(Color::Rgb(30, 58, 95)) } else { Style::default() };
+    let mark = if x.dirty() { Span::styled("▌", base.fg(Color::Yellow)) } else { Span::styled(" ", base) };
+    let mut label = x.label.clone();
+    if form.show_keys {
+        label = format!("{label} [{}]", x.key);
+    }
+    let label_shown = head_fit(&label, label_w.max(if form.show_keys { 30 } else { 0 }));
+    let pad = " ".repeat((label_w + 1).saturating_sub(label_shown.width()));
+    let editing = selected && form.editing.is_some();
+    let unset = x.value.is_empty();
+    let val_style = if unset { base.fg(Color::DarkGray) } else { base.add_modifier(Modifier::BOLD) };
+    let mut spans = vec![mark, Span::styled(" ", base), Span::styled(label_shown, if selected { base.add_modifier(Modifier::BOLD) } else { base }), Span::styled(pad, base)];
+    match &x.kind {
+        _ if editing => {
+            let text = form.editing.clone().unwrap_or_default();
+            // 비밀번호는 고칠 때도 가린다
+            let text = if matches!(x.kind, Kind::Text { secret: true }) { "•".repeat(text.chars().count()) } else { text };
+            spans.push(Span::styled(format!(" {text}"), Style::default().bg(Color::Rgb(31, 41, 55))));
+            spans.push(Span::styled("▏", Style::default().fg(ACCENT)));
+        }
+        Kind::Bool => {
+            let on = x.shown(&x.value) == crate::output::yes_no(true);
+            spans.push(Span::styled(if on { "[■] " } else { "[ ] " }, base.fg(if on { Color::Green } else { Color::DarkGray })));
+            spans.push(Span::styled(x.shown(&x.value), val_style));
+        }
+        Kind::Choice(_) => {
+            spans.push(Span::styled("‹ ", base.fg(Color::DarkGray)));
+            spans.push(Span::styled(x.shown(&x.value), val_style));
+            spans.push(Span::styled(" ›", base.fg(Color::DarkGray)));
+        }
+        Kind::Number { min, max } => {
+            spans.push(Span::styled(format!(" {} ", x.shown(&x.value)), val_style.bg(Color::Rgb(31, 41, 55))));
+            if let (Some(a), Some(b)) = (min, max) {
+                spans.push(Span::styled(format!("  {a}–{b}"), base.fg(Color::DarkGray)));
+            }
+        }
+        Kind::Text { .. } => spans.push(Span::styled(format!(" {} ", head_fit(&x.shown(&x.value), 40)), val_style.bg(Color::Rgb(31, 41, 55)))),
+        Kind::ReadOnly => spans.push(Span::styled(head_fit(&x.shown(&x.value), 40), base.fg(Color::DarkGray))),
+    }
+    if unset && !editing && !x.default.is_empty() {
+        spans.push(Span::styled(format!("  {}", t!("tui.form.default")), base.fg(Color::DarkGray)));
+    }
+    if x.dirty() {
+        let from = if x.original.is_empty() { t!("tui.form.default") } else { x.shown(&x.original) };
+        spans.push(Span::styled(format!("   ● {} → {}", head_fit(&from, 16), head_fit(&x.shown(&x.value), 16)), base.fg(Color::Yellow)));
+    }
+    let used: usize = spans.iter().map(|s| s.width()).sum();
+    if selected && used < width {
+        spans.push(Span::styled(" ".repeat(width - used), base));
+    }
+    Line::from(spans)
+}
+
+/// 새 서버 마법사: 왼쪽 단계, 오른쪽 지금 단계
+fn draw_wizard(f: &mut Frame, app: &mut App, area: Rect) {
+    let Some(w) = app.wizard.clone() else { return };
+    let modules = app.snap.modules.clone();
+    let block = panel(t!("tui.wiz.title"), true);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    if inner.height < 6 {
+        return;
+    }
+    let side = if app.narrow { 0 } else { 26u16.min(inner.width / 3) };
+    if side > 0 {
+        for (i, key) in super::wizard::STEPS.iter().enumerate() {
+            let y = inner.y + 1 + i as u16 * 2;
+            if y + 1 >= inner.y + inner.height {
+                break;
+            }
+            let (mark, color) = if i < w.step {
+                ("✓", Color::Green)
+            } else if i == w.step {
+                ("▶", ACCENT)
+            } else {
+                ("○", Color::DarkGray)
+            };
+            let title = format!("{mark} {}. {}", i + 1, t!(&format!("tui.wiz.step.{key}")));
+            let style = if i == w.step { Style::default().fg(color).add_modifier(Modifier::BOLD) } else { Style::default().fg(color) };
+            f.render_widget(Paragraph::new(Span::styled(title, style)), Rect { x: inner.x + 1, y, width: side - 1, height: 1 });
+            let value = match i {
+                0 if w.step > 0 => if w.method == 0 { t!("tui.wiz.method_new") } else { t!("tui.wiz.method_import") },
+                1 if w.step > 1 => w.module(&modules).map(super::wizard::Wizard::game_name).unwrap_or_default(),
+                2 if w.step > 2 => w.name.clone(),
+                3 if w.step > 3 => w.preset_label(&modules),
+                _ => String::new(),
+            };
+            if !value.is_empty() {
+                f.render_widget(Paragraph::new(Span::styled(head_fit(&format!("   {value}"), side as usize - 1), dim())), Rect { x: inner.x + 1, y: y + 1, width: side - 1, height: 1 });
+            }
+        }
+        for y in inner.y..inner.y + inner.height {
+            f.render_widget(Paragraph::new(Span::styled("│", dim())), Rect { x: inner.x + side, y, width: 1, height: 1 });
+        }
+    }
+    let body = Rect { x: inner.x + side + 2, y: inner.y + 1, width: inner.width.saturating_sub(side + 3), height: inner.height.saturating_sub(1) };
+    let bw = body.width as usize;
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let pick = |i: usize, text: String, about: String| -> Line<'static> {
+        let sel = i == w.cursor;
+        let style = if sel { highlight(true) } else { Style::default() };
+        let mut spans = vec![Span::styled(format!(" {} ", if sel { "›" } else { " " }), style), Span::styled(text, style)];
+        if !about.is_empty() {
+            spans.push(Span::styled(format!("   {}", head_fit(&about, bw / 2)), dim()));
+        }
+        Line::from(spans)
+    };
+    let title = |key: &str| Line::from(Span::styled(t!(key), Style::default().add_modifier(Modifier::BOLD)));
+    match w.step {
+        0 => {
+            lines.push(title("tui.wiz.ask_method"));
+            lines.push(Line::from(""));
+            lines.push(pick(0, t!("tui.wiz.method_new"), t!("tui.wiz.method_new_about")));
+            lines.push(pick(1, t!("tui.wiz.method_import"), t!("tui.wiz.method_import_about")));
+        }
+        1 => {
+            lines.push(title("tui.wiz.ask_game"));
+            lines.push(Line::from(""));
+            if modules.is_empty() {
+                lines.push(Line::from(Span::styled(t!("tui.wiz.no_modules"), dim())));
+            }
+            for (i, m) in modules.iter().enumerate() {
+                lines.push(pick(i, super::wizard::Wizard::game_name(m), s(m, "description").to_string()));
+            }
+        }
+        2 => {
+            lines.push(title("tui.wiz.ask_name"));
+            lines.push(Line::from(""));
+            let input = |label: String, text: &str, on: bool| -> Line<'static> {
+                Line::from(vec![
+                    Span::styled(format!("{label}  "), if on { Style::default().fg(ACCENT).add_modifier(Modifier::BOLD) } else { dim() }),
+                    Span::styled(format!(" {text}"), Style::default().bg(Color::Rgb(31, 41, 55))),
+                    Span::styled(if on { "▏" } else { " " }, Style::default().fg(ACCENT)),
+                ])
+            };
+            lines.push(input(t!("tui.wiz.name"), &w.name, !w.on_dir));
+            if w.method == 1 {
+                lines.push(Line::from(""));
+                lines.push(input(t!("tui.wiz.folder"), &w.dir, w.on_dir));
+                lines.push(Line::from(Span::styled(t!("tui.wiz.folder_hint"), dim())));
+            }
+        }
+        3 => {
+            lines.push(title("tui.wiz.ask_preset"));
+            lines.push(Line::from(""));
+            lines.push(pick(0, t!("tui.wiz.no_preset"), String::new()));
+            for (i, p) in w.presets(&modules).iter().enumerate() {
+                let label = if s(p, "label").is_empty() { s(p, "id") } else { s(p, "label") };
+                lines.push(pick(i + 1, label.to_string(), s(p, "description").to_string()));
+            }
+        }
+        _ => {
+            lines.push(Line::from(vec![Span::styled(t!("tui.wiz.ask_confirm"), Style::default().add_modifier(Modifier::BOLD)), Span::styled(format!("   {}", t!("tui.wiz.confirm_hint")), dim())]));
+            lines.push(Line::from(""));
+            for (i, row) in w.confirm_rows(&modules).iter().enumerate() {
+                let sel = i == w.cursor;
+                let base = if sel { Style::default().bg(Color::Rgb(30, 58, 95)) } else { Style::default() };
+                let check = |on: bool| Span::styled(if on { "[■] " } else { "[ ] " }, base.fg(if on { Color::Green } else { Color::DarkGray }));
+                let line = match row {
+                    ConfirmRow::Summary(_, key, value) => {
+                        let label = t!(key);
+                        let pad = " ".repeat(12usize.saturating_sub(label.width()));
+                        let mut spans = vec![Span::styled(format!(" {label}{pad}"), base.fg(Color::DarkGray)), Span::styled(value.clone(), base.add_modifier(Modifier::BOLD))];
+                        if sel {
+                            spans.push(Span::styled(format!("   {} ↵", t!("tui.wiz.fix")), base.fg(ACCENT)));
+                        }
+                        Line::from(spans)
+                    }
+                    ConfirmRow::Agreement(id, url) => Line::from(vec![
+                        Span::styled(" ! ", base.fg(Color::Yellow)),
+                        check(w.accepted.contains(id)),
+                        Span::styled(t!("tui.wiz.agree", id = id.to_uppercase()), base),
+                        Span::styled(format!("  {url}"), base.fg(Color::DarkGray)),
+                    ]),
+                    ConfirmRow::Start => Line::from(vec![Span::styled("   ", base), check(w.start), Span::styled(t!("tui.wiz.start_now"), base)]),
+                    ConfirmRow::Create => {
+                        lines.push(Line::from(""));
+                        Line::from(vec![
+                            Span::styled(format!("  {}  Enter  ", t!("tui.wiz.create")), if sel { Style::default().fg(Color::Black).bg(ACCENT).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::White).bg(Color::DarkGray) }),
+                            Span::raw("   "),
+                            Span::styled(format!("  {}  Esc  ", t!("tui.wiz.back")), Style::default().fg(Color::White).bg(Color::DarkGray)),
+                        ])
+                    }
+                };
+                lines.push(line);
+            }
+        }
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(format!("{} saba-chan {}", t!("tui.same_command"), w.command(&modules)), dim())));
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), body);
+}
+
+/// 무엇이든 찾기 창
+fn draw_palette(f: &mut Frame, app: &mut App, area: Rect) {
+    let Some(p) = &app.palette else { return };
+    let results = p.results();
+    let width = (area.width * 4 / 5).clamp(40.min(area.width), 96);
+    let height = ((super::palette::SHOWN as u16) * 2 + 6).min(area.height);
+    let r = Rect { x: area.x + (area.width - width) / 2, y: area.y + 2.min(area.height.saturating_sub(height)), width, height };
+    f.render_widget(Clear, r);
+    clear_wide_edge(f, r);
+    let block = panel(t!("tui.find.title"), true);
+    let inner = block.inner(r);
+    f.render_widget(block, r);
+    let w = inner.width as usize;
+    let mut lines = vec![
+        Line::from(vec![
+            Span::styled("› ", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)),
+            Span::styled(p.query.clone(), Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled("▏", Style::default().fg(ACCENT)),
+            Span::styled(format!("   {}", t!("tui.find.about")), dim()),
+        ]),
+        Line::from(Span::styled("─".repeat(w), dim())),
+    ];
+    let room = (inner.height as usize).saturating_sub(5);
+    let start = p.cursor.saturating_sub(room.saturating_sub(1));
+    for (i, e) in results.iter().enumerate().skip(start).take(room) {
+        let sel = i == p.cursor;
+        let base = if sel { Style::default().bg(Color::Rgb(30, 58, 95)) } else { Style::default() };
+        let kind_color = match e.kind {
+            super::palette::EntryKind::Screen => ACCENT,
+            super::palette::EntryKind::Setting => Color::Yellow,
+            super::palette::EntryKind::Command => Color::Magenta,
+        };
+        let kind = e.kind.label();
+        let kind_pad = " ".repeat(5usize.saturating_sub(kind.width()));
+        let title = head_fit(&e.title, w * 2 / 5);
+        let title_pad = " ".repeat((w * 2 / 5 + 1).saturating_sub(title.width()));
+        let rest_w = w.saturating_sub(7 + w * 2 / 5 + 1);
+        let place = head_fit(&e.path, rest_w / 2);
+        let place_pad = " ".repeat((rest_w / 2 + 1).saturating_sub(place.width()));
+        let cmd = head_fit(&e.cmd, rest_w.saturating_sub(rest_w / 2 + 1));
+        let mut spans = vec![
+            Span::styled(" ", base),
+            Span::styled(format!("{kind}{kind_pad}"), base.fg(kind_color)),
+            Span::styled(" ", base),
+            Span::styled(title, base.add_modifier(Modifier::BOLD)),
+            Span::styled(title_pad, base),
+            Span::styled(place, base.fg(Color::DarkGray)),
+            Span::styled(place_pad, base),
+            Span::styled(cmd, base.fg(Color::DarkGray)),
+        ];
+        let used: usize = spans.iter().map(|s| s.width()).sum();
+        if sel && used < w {
+            spans.push(Span::styled(" ".repeat(w - used), base));
+        }
+        lines.push(Line::from(spans));
+    }
+    if results.is_empty() {
+        lines.push(Line::from(Span::styled(t!("tui.find.none"), dim())));
+    }
+    let body_h = inner.height.saturating_sub(3);
+    f.render_widget(Paragraph::new(lines), Rect { height: body_h, ..inner });
+    let foot = Rect { y: inner.y + body_h, height: inner.height - body_h, ..inner };
+    let same = p.selected().filter(|e| !e.cmd.is_empty()).map(|e| format!("{} saba-chan {}", t!("tui.same_command"), e.cmd)).unwrap_or_default();
+    f.render_widget(
+        Paragraph::new(vec![Line::from(Span::styled("─".repeat(w), dim())), Line::from(Span::styled(t!("tui.find.keys"), dim())), Line::from(Span::styled(head_fit(&same, w), dim()))]),
+        foot,
+    );
+}
+
+/// 창 뒤를 어둡게 한다 (창에 눈이 가게)
+fn dim_behind(f: &mut Frame) {
+    let area = f.area();
+    let buf = f.buffer_mut();
+    for y in area.y..area.y + area.height {
+        for x in area.x..area.x + area.width {
+            let cell = &mut buf[(x, y)];
+            cell.set_style(Style::default().fg(Color::DarkGray).bg(Color::Reset).remove_modifier(Modifier::BOLD | Modifier::REVERSED | Modifier::UNDERLINED));
+        }
+    }
+}
+
 fn draw_overlays(f: &mut Frame, app: &mut App, area: Rect) {
+    if app.dialog.is_some() || app.palette.is_some() || app.show_help || app.more.is_some() {
+        dim_behind(f);
+    }
     draw_more(f, app, area);
+    draw_palette(f, app, area);
     if let Some(d) = &app.dialog {
         let mut lines = vec![Line::from(d.question.clone()), Line::from("")];
         let title = match &d.kind {
@@ -761,6 +1493,54 @@ fn draw_overlays(f: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
+/// 키 안내: 지금 칸에서 쓸 수 있는 키. 폭이 모자라면 끝(나가기)은 두고 그 앞 안내부터 통째로 뺀다
+fn key_hint(app: &App, room: usize) -> String {
+    let text = if app.running && app.capture.is_none() {
+        t!("tui.keys_running")
+    } else if app.palette.is_some() {
+        t!("tui.find.keys")
+    } else if app.wizard.is_some() && app.focus != Focus::Command {
+        t!("tui.keys_wizard")
+    } else {
+        match app.focus {
+            Focus::Tabs => t!("tui.keys_tabs"),
+            Focus::List => t!("tui.keys_list"),
+            Focus::Detail => t!("tui.keys_detail"),
+            Focus::Actions => t!("tui.keys_actions"),
+            Focus::Content => match (&app.pane.state, app.tab_key()) {
+                (_, "console") if app.page == Page::Servers => t!("tui.keys_console"),
+                (PaneState::Form(..), _) if app.pane_is_current() => t!("tui.keys_form"),
+                _ => t!("tui.keys_content"),
+            },
+            Focus::Command => t!("tui.keys_command"),
+        }
+    };
+    let mut parts: Vec<&str> = text.split(" · ").collect();
+    while parts.len() > 2 && parts.join(" · ").width() > room {
+        parts.remove(parts.len() - 2);
+    }
+    let joined = parts.join(" · ");
+    if joined.width() > room {
+        head_fit(&joined, room)
+    } else {
+        joined
+    }
+}
+
+fn draw_page(f: &mut Frame, app: &mut App, area: Rect) {
+    if app.wizard.is_some() {
+        draw_wizard(f, app, area);
+        return;
+    }
+    match app.page {
+        Page::Servers => draw_servers(f, app, area),
+        Page::Discord => draw_discord(f, app, area),
+        Page::Addons => draw_addons(f, app, area),
+        Page::Updates => draw_updates(f, app, area),
+        Page::Settings => draw_settings(f, app, area),
+    }
+}
+
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
     app.areas.clear();
@@ -775,6 +1555,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         app.areas.clear();
         return;
     }
+    app.narrow = area.width < NARROW;
     let job_lines = jobs(app);
     let output_h = if app.output.open { (area.height * 2 / 5).max(6).min(area.height.saturating_sub(12)) } else { 0 };
     let rows = Layout::default()
@@ -802,9 +1583,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
 #[cfg(test)]
 mod tests {
-    use super::super::app::{App, Page};
+    use super::super::app::{Action, App, Page};
     use super::*;
     use ratatui::backend::TestBackend;
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
     use ratatui::Terminal;
     use serde_json::json;
 
@@ -826,54 +1608,117 @@ mod tests {
         (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().replace(' ', "")).collect::<Vec<_>>().join("\n")
     }
 
-    fn screen(app: &mut App, width: u16, height: u16) -> String {
+    fn render(app: &mut App, width: u16, height: u16) -> Terminal<TestBackend> {
         let mut term = Terminal::new(TestBackend::new(width, height)).unwrap();
         term.draw(|f| draw(f, app)).unwrap();
-        text(&term)
+        term
     }
 
-    /// 폭마다 상태·서버·고른 서버의 콘솔과 입력 줄이 보이고, 좁으면 넓혀 달라는 안내만
+    fn screen(app: &mut App, width: u16, height: u16) -> String {
+        text(&render(app, width, height))
+    }
+
+    fn nospace(s: String) -> String {
+        s.replace(' ', "")
+    }
+
+    /// 폭마다 상태·서버·고른 서버의 콘솔이 보이고, 너무 좁으면 넓혀 달라는 안내만
     #[test]
     fn the_screen_fits_each_width() {
-        for width in [60u16, 80, 100, 140] {
+        for width in [100u16, 140] {
             let mut app = app_with_data();
             app.snap.console = Some(("a".into(), vec![json!({ "content": "Done (3.2s)!" })]));
             let t = screen(&mut app, width, 30);
             assert!(t.contains("0.1.10"), "{width}: {t}");
             assert!(t.contains("pal-1") && t.contains("3/32"), "{width}: {t}");
             assert!(t.contains("Done(3.2s)!"), "{width}: {t}");
-            assert!(t.contains("pal-1›"), "{width}: {t}");
+            assert!(t.contains(&nospace(t!("tui.tab.console"))), "{width}: {t}");
         }
         let mut app = app_with_data();
         let narrow = screen(&mut app, 50, 20);
         assert!(!narrow.contains("pal-1"));
     }
 
-    /// 서버 쪽은 목록 → 버튼 → 콘솔 순서로 위에서 아래로: 버튼이 콘솔 위, 콘솔이 화면 대부분
+    /// 좁으면 목록과 상세를 한 번에 하나씩: 목록에 있으면 목록만, 상세로 가면 `‹ 서버 목록 Esc` 줄과 상세만
     #[test]
-    fn the_server_console_sits_under_the_buttons_and_takes_most_of_the_height() {
+    fn a_narrow_screen_stacks_the_list_and_the_detail() {
         let mut app = app_with_data();
-        app.snap.console = Some(("a".into(), (0..40).map(|i| json!({ "content": format!("line-{i}") })).collect()));
-        let t = screen(&mut app, 120, 40);
-        let rows: Vec<&str> = t.lines().collect();
-        let stop = rows.iter().position(|r| r.contains(&t!("tui.btn.stop").replace(' ', ""))).expect("stop button");
-        let first = rows.iter().position(|r| r.contains("line-")).expect("console lines");
-        assert!(stop < first, "buttons above the console");
-        let shown = rows.iter().filter(|r| r.contains("line-")).count();
-        assert!(shown >= 25, "console shows {shown} of 40 rows on a 40-row screen");
-        assert!(t.contains("line-39"), "the newest line is visible");
+        app.snap.console = Some(("a".into(), vec![json!({ "content": "Done (3.2s)!" })]));
+        let t = screen(&mut app, 80, 24);
+        assert!(t.contains("mc-2") && !t.contains("Done(3.2s)!"), "{t}");
+        app.on_key(KeyEvent::from(KeyCode::Right));
+        let t = screen(&mut app, 80, 24);
+        assert!(t.contains(&format!("‹{}Esc", nospace(t!("tui.back.servers")))), "{t}");
+        assert!(t.contains("Done(3.2s)!") && !t.contains("mc-2"), "{t}");
+        // 넓으면 둘 다
+        let t = screen(&mut app, 120, 24);
+        assert!(t.contains("mc-2") && t.contains("Done(3.2s)!") && !t.contains(&nospace(t!("tui.back.servers"))), "{t}");
+    }
+
+    /// 쪽마다 그려지고 (상세 탭 이름까지) 버튼 자리가 마우스용으로 남는다
+    #[test]
+    fn every_page_draws_with_its_tabs_and_buttons() {
+        for page in Page::ALL {
+            let mut app = app_with_data();
+            app.snap.guilds = vec![json!({ "guildId": "1", "guildName": "길드" })];
+            app.go(page);
+            let t = screen(&mut app, 140, 40);
+            assert!(t.contains(&nospace(page.title())), "{page:?}: {t}");
+            if let Some(tab) = page.tabs().first() {
+                assert!(t.contains(&nospace(page.tab_label(tab))), "{page:?}: {t}");
+            }
+            assert_eq!(app.areas.buttons.len(), app.buttons().len(), "{page:?}");
+        }
+    }
+
+    /// 상세 탭 아래에 같은 일을 하는 CLI 명령이 보인다 (CLI를 배우는 길)
+    #[test]
+    fn the_detail_shows_the_same_cli_command() {
+        let mut app = app_with_data();
+        app.tab[Page::Servers.slot()] = 3;
+        let t = screen(&mut app, 120, 30);
+        assert!(t.contains("saba-chanbackuplistpal-1"), "{t}");
+    }
+
+    /// 채운 칸은 화살표가 움직일 곳 하나뿐: 버튼에 있으면 고른 상세 탭은 채우지 않는다
+    #[test]
+    fn only_the_focused_place_is_filled() {
+        let mut app = app_with_data();
+        app.go(Page::Addons);
+        app.tab[Page::Addons.slot()] = 1;
+        app.snap.extensions = vec![json!({ "id": "steamcmd", "enabled": true })];
+        app.focus = super::super::app::Focus::Actions;
+        let term = render(&mut app, 120, 30);
+        let tab = app.areas.detail[1];
+        assert_ne!(term.backend().buffer()[(tab.x + 1, tab.y)].bg, ACCENT, "the selected tab is not filled");
+        app.focus = super::super::app::Focus::Detail;
+        let term = render(&mut app, 120, 30);
+        assert_eq!(term.backend().buffer()[(tab.x + 1, tab.y)].bg, ACCENT);
+    }
+
+    /// 창(찾기·묻기·더 보기·도움말)이 뜨면 뒤를 어둡게 한다
+    #[test]
+    fn overlays_dim_what_is_behind() {
+        let mut app = app_with_data();
+        let before = render(&mut app, 120, 30);
+        let title = |t: &Terminal<TestBackend>| t.backend().buffer()[(1, 0)].fg;
+        assert_ne!(title(&before), Color::DarkGray);
+        app.on_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL));
+        let term = render(&mut app, 120, 30);
+        assert_eq!(title(&term), Color::DarkGray);
+        assert!(text(&term).contains(&nospace(t!("tui.find.title"))), "{}", text(&term));
     }
 
     /// 데몬 로그는 시각·레벨·태그와 함께 그려지고, 레벨마다 색이 다르다
     #[test]
-    fn the_daemon_page_highlights_its_log() {
+    fn the_daemon_log_tab_highlights_its_log() {
         let mut app = app_with_data();
-        app.page = Page::Daemon;
+        app.go(Page::Settings);
+        app.tab[Page::Settings.slot()] = 1;
         app.snap.daemon_log = vec![
             json!({ "timestamp": 1_700_000_000_000u64, "level": "error", "target": "saba_core::ipc", "message": "[Launch] Could not start", "spans": [[0, 8, "keyword"]] }),
         ];
-        let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
-        term.draw(|f| draw(f, &mut app)).unwrap();
+        let term = render(&mut app, 120, 30);
         let t = text(&term);
         assert!(t.contains("ERROR[Launch]Couldnotstart"), "{t}");
         let buf = term.backend().buffer().clone();
@@ -882,11 +1727,18 @@ mod tests {
             .find(|&(x, y)| (0..5).map(|i| buf[(x + i, y)].symbol()).collect::<String>() == "ERROR")
             .unwrap();
         assert_eq!(buf[(x, y)].fg, Color::Red);
-        let tag = (x..buf.area.width).find(|&cx| buf[(cx, y)].symbol() == "[").unwrap();
-        assert_eq!(buf[(tag, y)].fg, Color::Magenta);
     }
 
-    /// 머리줄·키 안내가 폭을 넘으면 덜 중요한 칸을 통째로 뺀다: 숫자 중간에서 잘리지 않는다
+    /// 앱 설정 쪽에 지금 붙은 데몬의 포트가 보인다
+    #[test]
+    fn the_settings_page_shows_the_port_in_use() {
+        let mut app = app_with_data();
+        app.port = 41234;
+        app.go(Page::Settings);
+        assert!(screen(&mut app, 140, 34).contains("41234"));
+    }
+
+    /// 머리줄·키 안내가 폭을 넘으면 덜 중요한 칸을 통째로 뺀다
     #[test]
     fn header_and_footer_drop_whole_items_when_narrow() {
         for width in [60u16, 80] {
@@ -896,25 +1748,51 @@ mod tests {
             let lines: Vec<&str> = t.lines().collect();
             assert!(!lines[0].contains("메모리") || lines[0].contains("16GB"), "{width}: {}", lines[0]);
             assert!(lines[0].contains("서버1/2실행"), "{width}: {}", lines[0]);
-            assert!(lines.last().unwrap().ends_with("q나가기"), "{width}: {}", lines.last().unwrap());
         }
     }
 
     /// GUI로 전환 버튼은 GUI를 쓸 수 있을 때만 보이고, 누르면 전환한다
     #[test]
     fn the_gui_switch_shows_only_when_the_gui_can_open() {
-        use ratatui::crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
         let mut app = app_with_data();
-        let label = t!("tui.gui_switch").replace(' ', "");
+        let label = nospace(t!("tui.gui_switch"));
         assert!(!screen(&mut app, 120, 30).contains(&label));
         app.snap.launchable = Some(json!({ "gui": true, "cli": true }));
         assert!(screen(&mut app, 120, 30).contains(&label));
         let r = app.areas.gui;
         let click = MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE };
-        assert_eq!(app.on_mouse(click), Some(super::super::app::Action::SwitchToGui));
+        assert_eq!(app.on_mouse(click), Some(Action::SwitchToGui));
     }
 
-    /// 창 왼쪽 테두리에 걸친 두 칸 글자는 지운다: 남아 있으면 터미널이 테두리 칸을 덮어 창이 깨져 보인다
+    /// 보이는 쪽 탭을 누르면 그 쪽으로 간다 (80칸에서도 모두 보인다)
+    #[test]
+    fn a_visible_tab_can_be_clicked() {
+        let mut app = app_with_data();
+        screen(&mut app, 80, 24);
+        let r = app.areas.tabs[Page::Settings.slot()];
+        assert!(r.width > 0, "the settings tab is visible at 80 columns");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: r.x, row: r.y, modifiers: KeyModifiers::NONE });
+        assert_eq!(app.page, Page::Settings);
+    }
+
+    /// 좁아져 안내만 보일 때 예전 버튼 자리가 클릭되지 않게 지운다
+    #[test]
+    fn a_too_narrow_screen_forgets_old_click_areas() {
+        let mut app = app_with_data();
+        screen(&mut app, 140, 34);
+        assert!(!app.areas.buttons.is_empty() && !app.areas.tabs.is_empty());
+        screen(&mut app, 50, 20);
+        assert!(app.areas.buttons.is_empty() && app.areas.list == Rect::default() && app.areas.view == Rect::default() && app.areas.tabs.is_empty());
+    }
+
+    #[test]
+    fn buttons_that_do_not_fit_cannot_be_clicked() {
+        let area = Rect::new(0, 2, 60, 1);
+        let rects = vec![Rect::new(0, 2, 6, 1), Rect::new(0, 3, 6, 1)];
+        assert_eq!(clickable(rects, area), vec![Rect::new(0, 2, 6, 1), Rect::default()]);
+    }
+
+    /// 창 왼쪽 테두리에 걸친 두 칸 글자는 지운다
     #[test]
     fn popup_edge_does_not_sit_under_a_wide_character() {
         let mut term = Terminal::new(TestBackend::new(80, 12)).unwrap();
@@ -933,77 +1811,19 @@ mod tests {
         }
     }
 
-    /// 업데이트 상태를 아직 못 받았으면 "최신"이라고 하지 않고, 구성요소는 데몬이 주는 이름으로 보인다
+    /// 업데이트 상태를 아직 못 받았으면 "최신"이라고 하지 않는다
     #[test]
     fn updates_are_not_up_to_date_before_the_daemon_answers() {
         let mut app = app_with_data();
-        assert!(!screen(&mut app, 140, 34).lines().next().unwrap().contains("최신"));
-        app.page = Page::Updates;
+        app.go(Page::Updates);
         assert!(!screen(&mut app, 140, 34).contains("최신"));
-        // Codex 리뷰 #548: 데몬의 첫 상태(아직 확인 전, last_check 없음)를 받은 것만으로 "최신"이라고 했다
         app.snap.updates = Some(json!({ "updates_available": 0, "components": [], "error": null, "last_check": null }));
         assert!(!screen(&mut app, 140, 34).contains("최신"));
-        app.page = Page::Servers;
-        assert!(!screen(&mut app, 140, 34).lines().next().unwrap().contains("최신"));
-        app.page = Page::Updates;
         app.snap.updates = Some(json!({ "updates_available": 0, "components": [], "last_check": "2026-10-24T00:00:00Z" }));
         assert!(screen(&mut app, 140, 34).contains("최신"));
-        app.snap.updates = Some(json!({ "updates_available": 1, "components": [{ "component": "saba-core", "display_name": "SabaCore", "current_version": "0.1.9", "latest_version": "0.1.10", "update_available": true }] }));
-        assert!(screen(&mut app, 140, 34).contains("SabaCore"));
     }
 
-    /// 데몬 쪽의 포트는 지금 붙은 데몬의 포트다
-    #[test]
-    fn the_daemon_page_shows_the_port_in_use() {
-        let mut app = app_with_data();
-        app.port = 41234;
-        app.page = Page::Daemon;
-        assert!(screen(&mut app, 140, 34).contains("41234"));
-    }
-
-    /// 좁아져 안내만 보일 때 예전 버튼 자리가 클릭되지 않게 지운다
-    #[test]
-    fn a_too_narrow_screen_forgets_old_click_areas() {
-        let mut app = app_with_data();
-        screen(&mut app, 140, 34);
-        assert!(!app.areas.buttons.is_empty() && !app.areas.tabs.is_empty());
-        screen(&mut app, 50, 20);
-        assert!(app.areas.buttons.is_empty() && app.areas.list == Rect::default() && app.areas.view == Rect::default() && app.areas.tabs.is_empty());
-    }
-
-    /// 넘쳐 그리지 못한 버튼은 누를 자리도 없다 (아래 칸 위에 겹치지 않는다). 버튼 번호는 그대로다
-    #[test]
-    fn buttons_that_do_not_fit_cannot_be_clicked() {
-        let area = Rect::new(0, 2, 60, 1);
-        let rects = vec![Rect::new(0, 2, 6, 1), Rect::new(0, 3, 6, 1)];
-        assert_eq!(clickable(rects, area), vec![Rect::new(0, 2, 6, 1), Rect::default()]);
-    }
-
-    /// 80칸에서도 보이는 탭을 누르면 그 쪽으로 간다
-    #[test]
-    fn a_visible_tab_can_be_clicked() {
-        use ratatui::crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-        let mut app = app_with_data();
-        screen(&mut app, 80, 24);
-        let r = app.areas.tabs[5];
-        assert!(r.width > 0, "the daemon tab is visible at 80 columns");
-        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: r.x, row: r.y, modifiers: KeyModifiers::NONE });
-        assert_eq!(app.page, Page::Daemon);
-    }
-
-    /// 쪽마다 그려지고 버튼 자리가 마우스용으로 남는다
-    #[test]
-    fn every_page_draws_with_its_buttons() {
-        for page in Page::ALL {
-            let mut app = app_with_data();
-            app.page = page;
-            let t = screen(&mut app, 140, 40);
-            assert!(t.contains(&page.title().replace(' ', "")), "{page:?}: {t}");
-            assert_eq!(app.areas.buttons.len(), app.buttons().len(), "{page:?}");
-        }
-    }
-
-    /// 출력 창은 긴 줄을 접는다: 잘리지 않고 끝까지 보인다. 명령 줄을 열면 맨 아래가 입력 줄이 된다
+    /// 출력 창은 긴 줄을 접는다. 명령 줄을 열면 맨 아래가 입력 줄이 된다
     #[test]
     fn the_output_wraps_long_lines_and_the_command_line_takes_the_bottom_row() {
         let mut app = app_with_data();
@@ -1012,7 +1832,7 @@ mod tests {
         app.command_output("두 번째 줄");
         let t = screen(&mut app, 100, 34);
         assert!(t.matches('x').count() >= 150, "{t}");
-        app.on_key(ratatui::crossterm::event::KeyEvent::from(ratatui::crossterm::event::KeyCode::Char(':')));
+        app.on_key(KeyEvent::from(KeyCode::Char(':')));
         let t = screen(&mut app, 100, 34);
         assert!(t.lines().last().unwrap().starts_with("saba›"), "{t}");
     }
@@ -1039,7 +1859,7 @@ mod tests {
             });
             let t = screen(&mut app, width, 30);
             assert!(t.contains("동의할까요"), "{t}");
-            assert!(t.contains(&t!("tui.dialog_keys").replace(' ', "")), "{width}: {t}");
+            assert!(t.contains(&nospace(t!("tui.dialog_keys"))), "{width}: {t}");
         }
     }
 }

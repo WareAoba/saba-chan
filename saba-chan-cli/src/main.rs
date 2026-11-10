@@ -98,16 +98,7 @@ async fn run() {
 
     let cmd = match parsed.cmd {
         Some(c) => c,
-        // 인자 없이 터미널에서 열면 셸, 아니면 상태 한 번
-        // 터미널이면 전체 화면 메뉴. `SABA_NO_TUI=1`이면 예전 셸
-        None if ctx.ask.enabled && std::io::stdout().is_terminal() => {
-            if std::env::var_os("SABA_NO_TUI").is_some_and(|v| !v.is_empty() && v != "0") {
-                cli::Cmd::Shell
-            } else {
-                cli::Cmd::Tui { server: None }
-            }
-        }
-        None => cli::Cmd::Status,
+        None => default_cmd(ctx.ask.enabled, std::io::stdout().is_terminal(), std::env::var_os("SABA_NO_TUI").as_deref()),
     };
     let result = cmd::dispatch(&ctx, cmd).await;
     if let Err(e) = &result {
@@ -116,5 +107,36 @@ async fn run() {
     output::flush();
     if let Err(e) = result {
         std::process::exit(error::classify(&e).exit_code());
+    }
+}
+
+/// 인자 없이 불렀을 때: 사람이 터미널에서 열면 전체 화면 메뉴(`SABA_NO_TUI=1`이면 예전 셸),
+/// `--json`·파이프처럼 묻고 답할 사람이 없으면 상태를 한 번 찍고 끝낸다 (에이전트·스크립트 경로)
+fn default_cmd(interactive: bool, stdout_tty: bool, no_tui: Option<&std::ffi::OsStr>) -> cli::Cmd {
+    if !interactive || !stdout_tty {
+        return cli::Cmd::Status;
+    }
+    if no_tui.is_some_and(|v| !v.is_empty() && v != "0") {
+        cli::Cmd::Shell
+    } else {
+        cli::Cmd::Tui { server: None }
+    }
+}
+
+#[cfg(test)]
+mod entry_tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    /// 에이전트·스크립트 경로는 전체 화면을 열지 않는다: `--json`(묻기 꺼짐)·파이프(터미널 아님)는 상태 한 번
+    #[test]
+    fn only_a_person_at_a_terminal_gets_the_full_screen() {
+        assert!(matches!(default_cmd(true, true, None), cli::Cmd::Tui { server: None }));
+        assert!(matches!(default_cmd(false, true, None), cli::Cmd::Status), "--json or no tty on stdin");
+        assert!(matches!(default_cmd(true, false, None), cli::Cmd::Status), "stdout piped");
+        assert!(matches!(default_cmd(false, false, Some(OsStr::new("1"))), cli::Cmd::Status));
+        assert!(matches!(default_cmd(true, true, Some(OsStr::new("1"))), cli::Cmd::Shell));
+        assert!(matches!(default_cmd(true, true, Some(OsStr::new("0"))), cli::Cmd::Tui { .. }));
+        assert!(matches!(default_cmd(true, true, Some(OsStr::new(""))), cli::Cmd::Tui { .. }));
     }
 }

@@ -123,23 +123,15 @@ fn print_status(r: &Value) {
         t!("col.state"),
     ]);
     for c in &comps {
-        let flag = |k: &str| c.get(k).and_then(Value::as_bool) == Some(true);
-        let state = if flag("downloaded") {
-            console::style(t!("update.ready")).cyan().to_string()
-        } else if flag("update_available") {
-            console::style(t!("common.update_available")).yellow().to_string()
-        } else if !flag("installed") {
-            output::dim(&t!("update.not_installed"))
-        } else {
-            output::dim(&t!("update.up_to_date"))
-        };
-        let name = if s(c, "display_name").is_empty() {
-            s(c, "component")
-        } else {
-            s(c, "display_name")
+        let state = match component_state(c) {
+            ComponentState::Ready => console::style(t!("update.ready")).cyan().to_string(),
+            ComponentState::Update => console::style(t!("common.update_available")).yellow().to_string(),
+            ComponentState::Reinstall => console::style(t!("update.reinstall_official")).yellow().to_string(),
+            ComponentState::NotInstalled => output::dim(&t!("update.not_installed")),
+            ComponentState::Latest => output::dim(&t!("update.up_to_date")),
         };
         t.add_row(vec![
-            name.to_string(),
+            component_name(c),
             output::show(c.get("current_version").unwrap_or(&Value::Null)),
             output::show(c.get("latest_version").unwrap_or(&Value::Null)),
             state,
@@ -153,8 +145,52 @@ fn print_status(r: &Value) {
         tell!("{} {}", console::style("!").yellow().bold(), err);
     }
     if let Some(at) = r.get("last_check").and_then(Value::as_str).filter(|s| !s.is_empty()) {
-        say!("{}", output::dim(&t!("update.last_check", at = at)));
+        say!("{}", output::dim(&t!("update.last_check", at = local_time(at))));
     }
+}
+
+#[derive(Debug, PartialEq)]
+enum ComponentState {
+    Ready,
+    Update,
+    /// 버전은 같지만 공식 카탈로그 판이 아니라 다시 받는다 (업데이터 `reinstall_from_catalog`)
+    Reinstall,
+    NotInstalled,
+    Latest,
+}
+
+fn component_state(c: &Value) -> ComponentState {
+    let flag = |k: &str| c.get(k).and_then(Value::as_bool) == Some(true);
+    if flag("downloaded") {
+        ComponentState::Ready
+    } else if !flag("installed") {
+        ComponentState::NotInstalled
+    } else if flag("update_available") && !s(c, "current_version").is_empty() && s(c, "current_version") == s(c, "latest_version") {
+        ComponentState::Reinstall
+    } else if flag("update_available") {
+        ComponentState::Update
+    } else {
+        ComponentState::Latest
+    }
+}
+
+/// 모듈·익스텐션은 사용자 언어로 "palworld 모듈", 나머지는 데몬이 준 이름
+fn component_name(c: &Value) -> String {
+    let key = s(c, "component");
+    if let Some(id) = key.strip_prefix("module-") {
+        return t!("update.name_module", name = id);
+    }
+    if let Some(id) = key.strip_prefix("ext-") {
+        return t!("update.name_extension", name = id);
+    }
+    if s(c, "display_name").is_empty() { key } else { s(c, "display_name") }.to_string()
+}
+
+/// RFC 3339 시각을 이 PC 시간대의 `2026-11-08 18:03`으로. 읽지 못하면 그대로
+fn local_time(at: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(at)
+        .map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|_| at.to_string())
 }
 
 /// 받기 결과의 실패들. 구성요소를 고르지 않은 받기는 실패해도 `errors` 없이 `{ok:false, error}`만 온다
@@ -468,6 +504,27 @@ mod tests {
             download_errors(&json!({ "ok": false, "errors": [{ "component": "gui", "error": "x" }] })),
             vec!["gui: x".to_string()]
         );
+    }
+
+    #[test]
+    fn same_version_updates_read_as_official_reinstall_and_missing_parts_as_not_installed() {
+        let c = |installed: bool, avail: bool, cur: &str, latest: &str| {
+            json!({"installed": installed, "update_available": avail, "current_version": cur, "latest_version": latest})
+        };
+        assert_eq!(component_state(&c(true, true, "0.1.12", "0.1.12")), ComponentState::Reinstall);
+        assert_eq!(component_state(&c(true, true, "0.1.11", "0.1.12")), ComponentState::Update);
+        assert_eq!(component_state(&c(false, true, "", "0.1.13")), ComponentState::NotInstalled);
+        assert_eq!(component_state(&c(true, false, "0.1.13", "0.1.13")), ComponentState::Latest);
+        assert_eq!(local_time("not a time"), "not a time");
+        assert!(!local_time("2026-11-08T09:03:53Z").contains('T'));
+    }
+
+    #[test]
+    fn modules_and_extensions_are_named_in_the_users_language() {
+        crate::i18n::init("en");
+        assert!(component_name(&json!({"component": "module-palworld", "display_name": "Module: palworld"})).contains("palworld"));
+        assert!(!component_name(&json!({"component": "module-palworld", "display_name": "Module: palworld"})).contains("Module:"));
+        assert_eq!(component_name(&json!({"component": "cli", "display_name": "CLI"})), "CLI");
     }
 
     /// 데몬이 오류를 돌려준 적용은 "적용할 게 없어요"로 성공 처리하지 않는다 (cloud-review-300 P3-4)
