@@ -293,7 +293,7 @@ function Card({
         <section className={clsx('dc-card ss-card', className)}>
             {head ?? (
                 <div className="dc-card-head">
-                    <h2 className="ss-card-title">
+                    <h2 className="ss-card-title" data-find="name">
                         <Icon name={icon} size="sm" /> {title}
                     </h2>
                 </div>
@@ -606,7 +606,7 @@ function GeneralTab({
                             aria-controls={advancedId}
                             onClick={() => setAdvancedExpanded(!advancedExpanded)}
                         >
-                            <h2 className="ss-card-title">
+                            <h2 className="ss-card-title" data-find="name">
                                 <Icon name="tool" size="sm" />{' '}
                                 {t('server_settings.advanced_group', { defaultValue: 'Advanced Settings' })}
                                 <span className="ss-count">{advancedFields.length}</span>

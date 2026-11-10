@@ -121,6 +121,14 @@ describe('설정 찾기 (Ctrl+F)', () => {
         expect(toggle.getAttribute('aria-expanded')).toBe('true');
     });
 
+    it('카드 제목도 찾는다 (PC 실측 11-10: "자동 재시작" 카드가 안 찾아졌다)', async () => {
+        render(<Harness />);
+        ctrlF();
+        type('advanced settings');
+        await settle();
+        expect(count()).toBe('1/1');
+    });
+
     it('찾는 것이 없으면 "결과 없음"', async () => {
         render(<Harness />);
         ctrlF();

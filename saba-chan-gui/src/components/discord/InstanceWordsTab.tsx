@@ -92,7 +92,7 @@ function InstanceCard({ inst, onSaved }: InstanceCardProps) {
         <section className="dc-card">
             {/* 다른 서버 탭(설정·유지보수)과 같은 카드: 제목·설명이 카드 안에 (사용자 11-07) */}
             <div className="dc-card-head">
-                <h2 className="ss-card-title">
+                <h2 className="ss-card-title" data-find="name">
                     <Icon name="discord" size="sm" /> {t('discord.iw_title')}
                 </h2>
             </div>
