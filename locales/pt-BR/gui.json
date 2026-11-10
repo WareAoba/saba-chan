@@ -172,6 +172,7 @@
     "sound_crash": "Parada inesperada",
     "sound_install": "Resultado da instalação",
     "sound_update": "Atualização encontrada",
+    "sound_startup": "Início do app",
     "close_action_label": "Botão fechar",
     "close_action_description": "O que o botão de fechar da janela faz.",
     "close_action_ask": "Perguntar sempre",

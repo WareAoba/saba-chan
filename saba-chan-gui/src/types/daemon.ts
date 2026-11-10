@@ -360,6 +360,7 @@ export interface SoundSettings {
     crash: boolean;
     install: boolean;
     update: boolean;
+    startup: boolean;
 }
 
 /** config_store::ConsoleFonts: 글자 종류마다 글꼴 id */

@@ -924,6 +924,7 @@ const impl: Record<string, MockFn> = {
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),
     languageGet: () => ok('ko'),
+    playSound: () => undefined,
     languageSet: () => ok(),
     shellOpenExternal: () => ok(),
     // spans를 달라고 하면(하이라이트 켬) 데몬처럼 조각 토큰을 붙인다: 시각·스레드/레벨·따옴표·숫자·플레이어

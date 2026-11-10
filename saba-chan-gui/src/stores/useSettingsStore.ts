@@ -38,6 +38,7 @@ export const DEFAULT_SOUNDS: Readonly<SoundSettings> = Object.freeze({
     crash: true,
     install: true,
     update: true,
+    startup: true,
 });
 
 // 앱 동작 옵션 (사용자 10-27). 기본값은 데몬 GuiSettings와 같다: 지금까지의 동작 그대로

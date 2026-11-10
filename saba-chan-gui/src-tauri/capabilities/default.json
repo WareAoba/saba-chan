@@ -32,6 +32,7 @@
     "allow-logs-open-folder",
     "allow-app-get-version",
     "allow-notify",
+    "allow-sound-play",
     "allow-console-popout",
     "allow-console-popout-list",
     "allow-console-popin",

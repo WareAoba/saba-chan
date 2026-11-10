@@ -41,6 +41,7 @@ import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
+import { openingGate, RELAY_WAIT_MS } from './utils/opening';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
 import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
@@ -152,6 +153,8 @@ function App() {
     const discordBotStatus = useDiscordStore((s) => s.discordBotStatus);
     const relayConnected = useDiscordStore((s) => s.relayConnected);
     const relayConnecting = useDiscordStore((s) => s.relayConnecting);
+    const relayChecked = useDiscordStore((s) => s.relayChecked);
+    const discordConfigLoaded = useDiscordStore((s) => s._settingsReady);
 
     // ══════════════════════════════════════════════════════════
     // ── Custom Hooks ─────────────────────────────────────────
@@ -629,21 +632,47 @@ function App() {
         />
     );
 
+    const [openedWithoutDaemon, setOpenedWithoutDaemon] = useState(false);
     // 데몬 없이 메인 화면으로 (서버 화면이 데몬 연결 안내를 보인다)
     const enterWithoutDaemon = () => {
+        setOpenedWithoutDaemon(true);
         setInitFailed(null);
         setDaemonReady(true);
         setServersInitializing(false);
     };
 
+    // 데몬 준비 뒤 릴레이 첫 확인을 기다린다: 기동음과 오프닝이 같이 시작하게 (utils/opening.ts)
+    const daemonDone = daemonReady && !serversInitializing;
+    const [relayWaitOver, setRelayWaitOver] = useState(false);
+    useEffect(() => {
+        if (!daemonDone) return undefined;
+        const timer = setTimeout(() => setRelayWaitOver(true), RELAY_WAIT_MS);
+        return () => clearTimeout(timer);
+    }, [daemonDone]);
+    const opening = openingGate({
+        daemonOk: !openedWithoutDaemon,
+        configLoaded: discordConfigLoaded,
+        relayConfigured: !!discordCloudHostId,
+        relayChecked,
+        relayConnected,
+        waitedMs: relayWaitOver ? RELAY_WAIT_MS : 0,
+    });
+    const chimeRef = useRef({ chime: false, played: false });
+    chimeRef.current.chime = opening.chime;
+
     // 로딩이 끝나면 로딩 화면을 바로 지우지 않고 메인 화면 위에서 잠깐 사라지게 둔다
-    const showLoading = !daemonReady || serversInitializing;
+    const showLoading = !daemonDone || opening.hold;
     const [loadingLeaving, setLoadingLeaving] = useState(false);
     const wasLoadingRef = useRef(showLoading);
     useEffect(() => {
         const was = wasLoadingRef.current;
         wasLoadingRef.current = showLoading;
         if (!was || showLoading) return undefined;
+        // 정상 기동음은 첫 오프닝과 함께 한 번 (셸이 낸다, 설정 sounds.startup)
+        if (chimeRef.current.chime && !chimeRef.current.played) {
+            chimeRef.current.played = true;
+            window.api?.playSound?.('startup');
+        }
         setLoadingLeaving(true);
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);

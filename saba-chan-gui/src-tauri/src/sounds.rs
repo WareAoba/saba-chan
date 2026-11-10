@@ -22,6 +22,10 @@ pub enum Cue {
     /// 이 GUI가 띄운 데몬(사바쨩 본체)이 정상 종료가 아니게 끝났다
     DaemonDown,
     UpdateAvailable,
+    /// 정상 기동음: 데몬과 릴레이가 붙어 오프닝이 시작될 때 (화면이 `sound_play`로 부른다)
+    Startup,
+    /// 처음 사용자 가이드를 열 때 (화면이 `sound_play`로 부른다)
+    GuideOpen,
 }
 
 impl Cue {
@@ -35,6 +39,8 @@ impl Cue {
             Cue::StartFailed => "instance-start-failed.wav",
             Cue::DaemonDown => "daemon-down.wav",
             Cue::UpdateAvailable => "update-available.wav",
+            Cue::Startup => "app-startup.wav",
+            Cue::GuideOpen => "guide-open.wav",
         }
     }
 
@@ -46,6 +52,9 @@ impl Cue {
             Cue::Crashed | Cue::StartFailed | Cue::DaemonDown => "crash",
             Cue::InstallSuccess | Cue::InstallFailed => "install",
             Cue::UpdateAvailable => "update",
+            Cue::Startup => "startup",
+            // 가이드는 사람이 연 순간이라 종류 스위치 없이 전체 스위치만 따른다
+            Cue::GuideOpen => "enabled",
         }
     }
 
@@ -59,7 +68,27 @@ impl Cue {
             Cue::StartFailed => include_bytes!("../sounds/instance-start-failed.wav"),
             Cue::DaemonDown => include_bytes!("../sounds/daemon-down.wav"),
             Cue::UpdateAvailable => include_bytes!("../sounds/update-available.wav"),
+            Cue::Startup => include_bytes!("../sounds/app-startup.wav"),
+            Cue::GuideOpen => include_bytes!("../sounds/guide-open.wav"),
         }
+    }
+}
+
+/// 화면이 직접 고를 수 있는 소리. 이벤트로 내는 소리(크래시 등)는 셸만 낸다
+pub fn gui_cue(name: &str) -> Option<Cue> {
+    match name {
+        "startup" => Some(Cue::Startup),
+        "guideOpen" => Some(Cue::GuideOpen),
+        _ => None,
+    }
+}
+
+/// 화면이 고른 때 소리를 낸다 (정상 기동음·가이드 열림). 모르는 이름은 무시한다
+#[tauri::command]
+pub fn sound_play(app: AppHandle, name: String) {
+    match gui_cue(&name) {
+        Some(cue) => play(&app, cue),
+        None => tracing::warn!("[Sound] Unknown sound from the window: {}", name),
     }
 }
 
@@ -322,6 +351,25 @@ mod tests {
     }
 
     #[test]
+    fn the_window_may_only_play_its_own_moments() {
+        assert_eq!(gui_cue("startup"), Some(Cue::Startup));
+        assert_eq!(gui_cue("guideOpen"), Some(Cue::GuideOpen));
+        // 이벤트로 내는 소리(크래시 등)를 화면이 대신 울릴 수는 없다
+        assert_eq!(gui_cue("crash"), None);
+        assert_eq!(gui_cue("instance-crashed.wav"), None);
+    }
+
+    #[test]
+    fn startup_chime_has_its_own_switch() {
+        assert!(enabled(&json!({}), Cue::Startup));
+        let off = json!({"sounds": {"startup": false}});
+        assert!(!enabled(&off, Cue::Startup));
+        assert!(enabled(&off, Cue::Crashed));
+        assert!(!enabled(&json!({"sounds": {"enabled": false}}), Cue::GuideOpen));
+        assert!(enabled(&json!({}), Cue::GuideOpen));
+    }
+
+    #[test]
     fn os_notification_is_silent_only_when_our_sound_plays_with_it() {
         let on = json!({});
         assert!(toast_silent(&on, Some(Cue::Crashed)), "앱 효과음과 겹치면 OS 알림음은 끈다");
@@ -341,6 +389,8 @@ mod tests {
             Cue::StartFailed,
             Cue::DaemonDown,
             Cue::UpdateAvailable,
+            Cue::Startup,
+            Cue::GuideOpen,
         ] {
             let b = cue.bytes();
             assert!(b.starts_with(b"RIFF") && &b[8..12] == b"WAVE", "{}", cue.file_name());

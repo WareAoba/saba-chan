@@ -38,6 +38,7 @@ const COMMANDS: &[&str] = &[
     "sandbox_consent_allow",
     "tray_action",
     "tray_popup_fit",
+    "sound_play",
 ];
 
 /// 자리표시 index.html에만 있는 문구

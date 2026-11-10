@@ -172,6 +172,7 @@
     "sound_crash": "Unerwarteter Stopp",
     "sound_install": "Installationsergebnis",
     "sound_update": "Update gefunden",
+    "sound_startup": "App-Start",
     "close_action_label": "Schließen-Schaltfläche",
     "close_action_description": "Was die Schließen-Schaltfläche des Fensters tut.",
     "close_action_ask": "Jedes Mal fragen",
