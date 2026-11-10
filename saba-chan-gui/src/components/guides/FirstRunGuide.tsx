@@ -4,7 +4,6 @@ import { useServerStore } from '../../stores/useServerStore';
 import { localizedDescription, localizedName } from '../../utils/localizedText';
 import { openScreen } from '../../utils/openScreen';
 import { Icon } from '../Icon';
-import { SabaArt } from '../ui/SabaArt';
 import { SabaSpinner } from '../ui/SabaUI';
 import { closeGuide, type GuideStep, openAddServer, startAddServer, useGuideStore } from './guides';
 
@@ -34,12 +33,15 @@ export function FirstRunGuide({ step }: { step: GuideStep }) {
     return (
         <div className="page page-empty guide-page">
             <section className="guide-card" aria-label={t('guides.first_run')}>
-                <button type="button" className="icon-btn guide-close" onClick={close} aria-label={t('guides.close')}>
+                <button type="button" className={`icon-btn guide-close${step === 'welcome' ? ' on-hero' : ''}`} onClick={close} aria-label={t('guides.close')}>
                     <Icon name="close" size="sm" />
                 </button>
                 {step === 'welcome' && (
                     <div className="guide-welcome">
-                        <SabaArt kind="cleaning" size={200} />
+                        {/* 시그니처 그라데이션 띠 위에 사바쨩 프로필 (사용자 11-10) */}
+                        <div className="guide-hero" aria-hidden="true">
+                            <img src="./icon.png" alt="" className="guide-avatar" />
+                        </div>
                         <h2>{t('guides.welcome_title')}</h2>
                         <p>{t('guides.welcome_body')}</p>
                         <div className="guide-actions">

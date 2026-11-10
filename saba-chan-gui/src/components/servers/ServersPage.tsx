@@ -138,8 +138,8 @@ export function ServersPage({
                     <button type="button" className="btn btn-primary btn-lg" onClick={onAddServer}>
                         <Icon name="plus" size="sm" /> {t('shell.add_server')}
                     </button>
-                    <OnboardingCard />
                 </div>
+                <OnboardingCard />
                 {/* 고른 데몬에 서버가 없어도 다른 데몬의 서버는 보인다 */}
                 {unified && daemonTarget !== undefined && <OtherDaemons currentTarget={daemonTarget} />}
             </div>

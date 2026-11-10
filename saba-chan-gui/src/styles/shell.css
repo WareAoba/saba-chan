@@ -4899,9 +4899,32 @@ button.appbar-pill:focus-visible {
     background: var(--bg-2);
     text-align: left;
 }
+/* 빈 화면에서는 안내를 밀어내지 않고 오른쪽 아래에 떠오르는 카드로 (사용자 11-10) */
+.page-empty {
+    position: relative;
+}
 .page-empty .onboarding-card {
-    width: 100%;
-    margin: var(--sp-4) 0 0;
+    position: absolute;
+    right: var(--sp-4);
+    bottom: var(--sp-4);
+    z-index: 3;
+    width: min(320px, calc(100% - var(--sp-8)));
+    margin: 0;
+    border: 1px solid var(--line);
+    background: var(--bg-1);
+    box-shadow: var(--shadow-float);
+    animation: guide-float-in var(--dur) var(--ease) backwards;
+}
+@keyframes guide-float-in {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .page-empty .onboarding-card {
+        animation: none;
+    }
 }
 .onboarding-head {
     display: flex;
@@ -5030,6 +5053,33 @@ button.appbar-pill:focus-visible {
     display: flex;
     flex-direction: column;
     align-items: center;
+}
+/* 첫 화면 머리: 시그니처 그라데이션 띠 + 프로필 (카드 위쪽 끝까지 채운다) */
+.guide-card {
+    overflow: hidden;
+}
+.guide-hero {
+    position: relative;
+    align-self: stretch;
+    height: 120px;
+    margin: calc(var(--sp-6) * -1) calc(var(--sp-6) * -1) calc(var(--sp-8) * 2);
+    background: linear-gradient(in oklch 135deg, var(--brand-from), var(--brand-grad-mid), var(--brand-to));
+}
+.guide-avatar {
+    position: absolute;
+    left: 50%;
+    bottom: -56px;
+    width: 112px;
+    height: 112px;
+    border: 4px solid var(--bg-1);
+    border-radius: 50%;
+    background: var(--bg-1);
+    box-shadow: var(--shadow-raised);
+    transform: translateX(-50%);
+}
+.guide-card > .guide-close.on-hero {
+    z-index: 1;
+    color: #fff;
 }
 .guide-actions {
     display: flex;
