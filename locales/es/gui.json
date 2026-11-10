@@ -3,6 +3,7 @@
   "title_bar": {
     "minimize": "Minimizar",
     "maximize": "Maximizar",
+    "restore": "Restaurar",
     "close": "Cerrar"
   },
   "modals": {
@@ -128,6 +129,8 @@
     "console_wrap_description": "Ajusta las líneas largas al ancho de la ventana. Si está desactivado, desplaza en horizontal",
     "console_auto_scroll_label": "Seguir nuevas líneas",
     "console_auto_scroll_description": "Desplaza con las nuevas líneas mientras estás al final",
+    "console_glass_label": "Consola translúcida",
+    "console_glass_description": "Cuando la ventana es translúcida, el fondo de la consola también deja ver lo de atrás. Desactívalo para que solo la consola sea opaca.",
     "console_syntax_label": "Resaltado de sintaxis",
     "console_syntax_description": "Colorear la salida de registros en la consola del servidor",
     "console_token_colors_label": "Colores de sintaxis",
@@ -596,7 +599,8 @@
     "input_placeholder": "Ingrese comando...",
     "stdin_disabled": "Solo registros anteriores porque saba-chan se reinició. Reinicia el servidor para reconectar.",
     "send": "Enviar",
-    "popout": "Abrir en ventana separada",
+    "popout": "Abrir en PIP",
+    "popout_kind": "Consola",
     "popout_failed": "No se pudo abrir la consola en una ventana aparte.",
     "minimize": "Minimizar al dock",
     "dock_restore": "Restaurar: {{name}}",
@@ -811,7 +815,9 @@
     "console_offline_input": "Inicia el servidor para enviar comandos",
     "console_offline_history": "El servidor está detenido. Se muestra el último registro.",
     "console_read_only": "Este servidor no acepta entrada de consola. Envía comandos desde la pestaña Comandos",
-    "console_popped_out": "La consola está abierta en una ventana aparte.",
+    "console_popped_out": "Viéndose en la ventana PIP",
+    "console_popped_out_desc": "Cierra la ventana PIP o detén el servidor y la consola volverá aquí.",
+    "console_popout_show": "Mostrar ventana PIP",
     "console_popin": "Traerla de vuelta aquí",
     "commands_offline": "Inicia el servidor para enviar comandos.",
     "info_module": "Juego",

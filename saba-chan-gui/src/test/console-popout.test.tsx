@@ -36,8 +36,30 @@ describe('PopoutConsole', () => {
         expect(setConsoleInput).toHaveBeenCalledWith('mc-1', 'list');
         expect(document.querySelector('.term-popout')).toBeNull();
 
-        fireEvent.click(document.querySelector('.console-popout-titlebar-btn') as HTMLElement);
+        fireEvent.click(screen.getByRole('button', { name: 'Bring back: Survival' }));
         expect(window.api.consolePopin).toHaveBeenCalledWith('mc-1');
+    });
+
+    it('상단 바는 서버 이름 알약을 보이고, 닫기는 다시 띄우지 않도록 기억하며 닫는다', () => {
+        const close = vi.fn(async () => ({ ok: true }));
+        Object.assign(window.api, { consolePopoutClose: close });
+        render(
+            <PopoutConsole
+                popoutParams={{ instanceId: 'mc-1', name: 'Survival' }}
+                server={server}
+                state={state}
+                openConsole={vi.fn()}
+                setConsoleInput={vi.fn()}
+                sendConsoleCommand={vi.fn()}
+            />,
+        );
+        expect(document.querySelector('.pip-title .pip-name')?.textContent).toBe('Survival');
+        expect(document.querySelector('.pip-title .pip-dot')?.getAttribute('data-status')).toBe('running');
+        // 되돌리기와 고정은 따로 있는 버튼이다
+        expect(document.querySelectorAll('.pip-tools .pip-tool')).toHaveLength(2);
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+        expect(close).toHaveBeenCalledWith('mc-1', false);
+        delete (window.api as unknown as Record<string, unknown>).consolePopoutClose;
     });
 });
 

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-console-popout-close"
+description = "Enables the console_popout_close command without any pre-configured scope."
+commands.allow = ["console_popout_close"]
+
+[[permission]]
+identifier = "deny-console-popout-close"
+description = "Denies the console_popout_close command without any pre-configured scope."
+commands.deny = ["console_popout_close"]

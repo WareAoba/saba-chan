@@ -3,6 +3,7 @@
   "title_bar": {
     "minimize": "Minimize",
     "maximize": "Maximize",
+    "restore": "Restore",
     "close": "Close"
   },
   "modals": {
@@ -128,6 +129,8 @@
     "console_wrap_description": "Wrap long lines at the window width. When off, scroll sideways",
     "console_auto_scroll_label": "Follow new lines",
     "console_auto_scroll_description": "Scroll with new lines while you are at the bottom",
+    "console_glass_label": "Translucent console",
+    "console_glass_description": "When the window is translucent, let the console background show through too. Turn off to keep only the console solid.",
     "console_syntax_label": "Syntax Highlighting",
     "console_syntax_description": "Color-code log output in the server console",
     "console_token_colors_label": "Syntax colors",
@@ -596,7 +599,8 @@
     "input_placeholder": "Enter command...",
     "stdin_disabled": "Showing past logs only because saba-chan restarted. Restart the server to reconnect.",
     "send": "Send",
-    "popout": "Pop out to separate window",
+    "popout": "Pop out (PIP)",
+    "popout_kind": "Console",
     "popout_failed": "Couldn't open the console in a separate window.",
     "minimize": "Minimize to dock",
     "dock_restore": "Restore: {{name}}",
@@ -811,7 +815,9 @@
     "console_offline_input": "Start the server to send commands",
     "console_offline_history": "The server is stopped. Showing the last log.",
     "console_read_only": "This server doesn't take console input. Send commands from the Commands tab",
-    "console_popped_out": "The console is open in a separate window.",
+    "console_popped_out": "Watching in the PIP window",
+    "console_popped_out_desc": "Close the PIP window or stop the server and the console comes back here.",
+    "console_popout_show": "Show PIP window",
     "console_popin": "Bring it back here",
     "commands_offline": "Start the server to send commands.",
     "info_module": "Game",

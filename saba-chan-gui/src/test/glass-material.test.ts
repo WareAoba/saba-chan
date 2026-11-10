@@ -101,3 +101,12 @@ describe('dropdown is a value holder', () => {
         expect(css).not.toMatch(/\.custom-dropdown-trigger:hover\s*\{[^}]*--neu-up/);
     });
 });
+
+describe('콘솔 유리', () => {
+    it('반투명일 때 콘솔 바탕은 유리이고, 설정에서 끄면(data-console-glass="off") 단단하게 남는다', () => {
+        const css = read('styles/backdrop.css');
+        const body = bodyFor(css, ':root[data-backdrop="on"]:not([data-console-glass="off"]) .term');
+        expect(body).toMatch(/--glass-face/);
+        expect(body).toMatch(/--console-custom-bg/);
+    });
+});

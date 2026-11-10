@@ -52,7 +52,8 @@
 :root[data-backdrop="on"] .palette,
 :root[data-backdrop="on"] .saba-popover:not(.bare),
 :root[data-backdrop="on"] .saba-dialog,
-:root[data-backdrop="on"] .saba-savebar {
+:root[data-backdrop="on"] .saba-savebar,
+:root[data-backdrop="on"] .term-popped-card {
     -webkit-backdrop-filter: var(--glass-blur);
     backdrop-filter: var(--glass-blur);
 }
@@ -103,10 +104,14 @@
     }
 }
 
-/* 따로 띄운 콘솔 창은 콘솔 색을 같은 진하기로 덮는다 */
+/* 따로 띄운 콘솔 창: 틀은 앱 창과 같은 반투명 바탕 */
 :root[data-backdrop="on"] .App.console-popout-app {
-    --console-backdrop-base: color-mix(in oklch, var(--console-custom-bg), var(--backdrop-mix, white) var(--backdrop-mix-amount, 0%));
-    background: color-mix(in oklch, var(--console-backdrop-base) var(--backdrop-opacity, 60%), transparent);
+    background: var(--window-bg);
+}
+
+/* 콘솔 바탕 유리: 인앱 콘솔과 PIP 창 모두. 설정 → 콘솔 → 콘솔 반투명을 끄면(data-console-glass="off") 단단하게 둔다 */
+:root[data-backdrop="on"]:not([data-console-glass="off"]) .term {
+    background: color-mix(in oklch, var(--console-custom-bg) var(--glass-face), transparent);
 }
 
 .backdrop-slider {

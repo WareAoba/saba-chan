@@ -12,11 +12,14 @@ export type Consoles = Record<string, ConsoleEntry>;
 
 interface ConsoleState {
     consoles: Consoles;
+    /** PIP로 띄울 때 남겨 둔 마지막 줄 글자 (메인 창 콘솔 자리에 흐리게 깐다) */
+    ghosts: Record<string, string[]>;
     setConsoles: (consolesOrUpdater: Consoles | ((prev: Consoles) => Consoles)) => void;
 }
 
 export const useConsoleStore = create<ConsoleState>()((set) => ({
     consoles: {},
+    ghosts: {},
     setConsoles: (consolesOrUpdater) =>
         set((state) => ({
             consoles: typeof consolesOrUpdater === 'function' ? consolesOrUpdater(state.consoles) : consolesOrUpdater,

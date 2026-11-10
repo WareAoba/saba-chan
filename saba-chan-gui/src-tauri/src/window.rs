@@ -4,6 +4,7 @@
 
 use crate::{emit_main, AppState};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -224,7 +225,7 @@ fn frame<'a>(
 
 /// 렌더러 상단바 높이 (`tokens.css` `--appbar-h`, `.console-popout-titlebar`)
 const APPBAR_HEIGHT: f64 = 48.0;
-const POPOUT_BAR_HEIGHT: f64 = 36.0;
+const POPOUT_BAR_HEIGHT: f64 = 42.0;
 
 // ── 메인 창 ──
 
@@ -513,6 +514,7 @@ fn popout(app: &AppHandle, instance_id: &str) -> Option<WebviewWindow> {
 
 pub fn open_popout(app: &AppHandle, instance_id: &str, server_name: &str) -> tauri::Result<Value> {
     if let Some(existing) = popout(app, instance_id) {
+        let _ = existing.unminimize();
         let _ = existing.set_focus();
         return Ok(json!({ "ok": true, "message": "Focused existing window" }));
     }
@@ -521,27 +523,147 @@ pub fn open_popout(app: &AppHandle, instance_id: &str, server_name: &str) -> tau
         encode_component(instance_id),
         encode_component(server_name)
     );
+    let saved = popout_saved(&app.state::<AppState>().settings(), instance_id);
+    let (width, height) = popout_size(&saved);
     let background = background_for(app, app.get_webview_window(MAIN).and_then(|w| w.theme().ok()));
-    let builder = WebviewWindowBuilder::new(app, popout_label(instance_id), WebviewUrl::App(PathBuf::from(query)))
+    let mut builder = WebviewWindowBuilder::new(app, popout_label(instance_id), WebviewUrl::App(PathBuf::from(query)))
         .title(format!("Console — {server_name}"))
-        .inner_size(700.0, 450.0)
-        .min_inner_size(400.0, 250.0)
+        .inner_size(width, height)
+        .min_inner_size(POPOUT_MIN.0, POPOUT_MIN.1)
         .background_color(background)
         .always_on_top(true);
+    if let (Some(x), Some(y)) = (saved["x"].as_f64(), saved["y"].as_f64()) {
+        builder = builder.position(x, y);
+    }
     let builder = crate::backdrop::prepare(app, &popout_label(instance_id), builder);
     let win = lock_navigation(app, frame(builder, POPOUT_BAR_HEIGHT)).build()?;
     crate::backdrop::apply(&win, &crate::backdrop::current(app), background);
     apply_icon(&win);
+    if saved["maximized"].as_bool() == Some(true) {
+        let _ = win.maximize();
+    }
+    // 앱을 껐다 켜도 다시 띄운다 (사용자가 직접 닫거나 되돌리면 지운다)
+    save_popout(app, instance_id, json!({ "reopen": true }));
 
     // 메인 창에 팝아웃 열림/닫힘 알림 → 임베디드 콘솔 숨김 제어
     emit_main(app, "console:popoutOpened", instance_id);
     let (handle, id) = (app.clone(), instance_id.to_string());
-    win.on_window_event(move |event| {
-        if matches!(event, WindowEvent::Destroyed) {
-            emit_main(&handle, "console:popoutClosed", &id);
-        }
+    win.on_window_event(move |event| match event {
+        WindowEvent::Destroyed => emit_main(&handle, "console:popoutClosed", &id),
+        WindowEvent::Moved(_) | WindowEvent::Resized(_) => schedule_save_popout(&handle, &id),
+        _ => {}
     });
     Ok(json!({ "ok": true }))
+}
+
+// ── PIP 기억 (설정 `consolePopouts.<instanceId>`: 크기·위치·최대화, 다시 띄울지) ──
+
+/// PIP 처음 크기와 최소 크기
+const POPOUT_SIZE: (f64, f64) = (700.0, 450.0);
+const POPOUT_MIN: (f64, f64) = (400.0, 250.0);
+const POPOUTS_KEY: &str = "consolePopouts";
+
+/// 이동·크기 저장 디바운스: 창 라벨마다 세대 번호
+static POPOUT_GEN: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
+/// 저장은 설정을 읽고 고쳐 쓰므로 한 번에 하나씩
+static POPOUT_SAVE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+fn popout_saved(settings: &Value, instance_id: &str) -> Value {
+    settings[POPOUTS_KEY][instance_id].clone()
+}
+
+/// 저장한 크기 (없거나 최소보다 작으면 처음 크기)
+fn popout_size(saved: &Value) -> (f64, f64) {
+    let width = saved["width"].as_f64().filter(|w| *w >= POPOUT_MIN.0).unwrap_or(POPOUT_SIZE.0);
+    let height = saved["height"].as_f64().filter(|h| *h >= POPOUT_MIN.1).unwrap_or(POPOUT_SIZE.1);
+    (width, height)
+}
+
+/// 한 PIP의 기억을 `change`로 고친 `consolePopouts` 전체 (데몬이 응답하지 않으면 셸이 맨 위 키를 통째로 바꾸므로 전체를 보낸다)
+fn popout_patch(settings: &Value, instance_id: &str, change: &Value) -> Value {
+    let mut all = settings[POPOUTS_KEY].as_object().cloned().unwrap_or_default();
+    let mut entry = all.get(instance_id).and_then(Value::as_object).cloned().unwrap_or_default();
+    if let Value::Object(c) = change {
+        entry.extend(c.clone());
+    }
+    all.insert(instance_id.to_string(), Value::Object(entry));
+    json!({ POPOUTS_KEY: all })
+}
+
+/// 다시 띄울 PIP의 instanceId (서버가 켜져 있으면 메인 창이 띄운다)
+pub fn popouts_to_reopen(settings: &Value) -> Vec<String> {
+    settings[POPOUTS_KEY]
+        .as_object()
+        .map(|all| {
+            all.iter()
+                .filter(|(_, v)| v["reopen"].as_bool() == Some(true))
+                .map(|(k, _)| k.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+async fn save_popout_now(app: &AppHandle, instance_id: &str, change: Value) {
+    let _guard = POPOUT_SAVE.lock().await;
+    let state = app.state::<AppState>();
+    let patch = popout_patch(&state.settings(), instance_id, &change);
+    crate::native::save_settings(&state, &patch).await;
+}
+
+fn save_popout(app: &AppHandle, instance_id: &str, change: Value) {
+    let (app, id) = (app.clone(), instance_id.to_string());
+    tauri::async_runtime::spawn(async move { save_popout_now(&app, &id, change).await });
+}
+
+/// 이동·크기 변경이 멈추면 저장. 최대화 중이면 그 사실만 남기고 원래 크기는 두며, 최소화 중에는 저장하지 않는다
+fn schedule_save_popout(app: &AppHandle, instance_id: &str) {
+    let label = popout_label(instance_id);
+    let seq = {
+        let mut map = POPOUT_GEN.lock().unwrap_or_else(|e| e.into_inner());
+        let n = map.get_or_insert_with(HashMap::new).entry(label.clone()).or_insert(0);
+        *n += 1;
+        *n
+    };
+    let (app, id) = (app.clone(), instance_id.to_string());
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(BOUNDS_DEBOUNCE_MS)).await;
+        let latest = POPOUT_GEN.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&label).copied());
+        if latest != Some(seq) {
+            return;
+        }
+        let Some(win) = app.get_webview_window(&label) else {
+            return;
+        };
+        if win.is_minimized().unwrap_or(false) || !win.is_visible().unwrap_or(false) {
+            return;
+        }
+        let change = if win.is_maximized().unwrap_or(false) {
+            json!({ "maximized": true })
+        } else {
+            let (Ok(pos), Ok(size), Ok(scale)) = (win.outer_position(), win.inner_size(), win.scale_factor()) else {
+                return;
+            };
+            let (pos, size) = (pos.to_logical::<f64>(scale), size.to_logical::<f64>(scale));
+            json!({
+                "maximized": false,
+                "width": size.width.round() as i64, "height": size.height.round() as i64,
+                "x": pos.x.round() as i64, "y": pos.y.round() as i64,
+            })
+        };
+        save_popout_now(&app, &id, change).await;
+    });
+}
+
+/// PIP를 닫는다. `reopen`: 다음에 다시 띄울지 (사용자가 닫으면 false, 서버가 꺼져 닫히면 true)
+pub async fn close_popout(app: &AppHandle, instance_id: &str, reopen: bool) -> Value {
+    save_popout_now(app, instance_id, json!({ "reopen": reopen })).await;
+    match popout(app, instance_id) {
+        Some(win) => {
+            let _ = win.close();
+            json!({ "ok": true })
+        }
+        None => json!({ "ok": false }),
+    }
 }
 
 /// 열린 팝아웃의 instanceId (메인 창을 다시 불러오면 renderer가 이것으로 상태를 맞춘다)
@@ -572,6 +694,8 @@ pub fn popin(app: &AppHandle, instance_id: &str) -> Value {
         .and_then(|u| u.query_pairs().find(|(k, _)| k == "name").map(|(_, v)| v.into_owned()))
         .or_else(|| win.title().ok().map(|t| t.trim_start_matches("Console — ").to_string()))
         .unwrap_or_default();
+    // 되돌리면 다음에 다시 띄우지 않는다
+    save_popout(app, instance_id, json!({ "reopen": false }));
     // 창을 닫기 전에 메인 창에 인앱 콘솔 열기를 요청한다 (닫히면 popoutClosed가 간다)
     emit_main(
         app,
@@ -598,6 +722,35 @@ pub fn toggle_always_on_top(app: &AppHandle, instance_id: &str, pinned: bool) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_popout_patch_keeps_other_servers_and_earlier_fields() {
+        let settings = json!({ "consolePopouts": {
+            "a": { "width": 800, "height": 500, "reopen": true },
+            "b": { "reopen": true },
+        }});
+        let patch = popout_patch(&settings, "a", &json!({ "reopen": false }));
+        assert_eq!(patch["consolePopouts"]["a"], json!({ "width": 800, "height": 500, "reopen": false }));
+        assert_eq!(patch["consolePopouts"]["b"], json!({ "reopen": true }));
+        let fresh = popout_patch(&json!({}), "c", &json!({ "maximized": true }));
+        assert_eq!(fresh, json!({ "consolePopouts": { "c": { "maximized": true } } }));
+    }
+
+    #[test]
+    fn only_popouts_the_user_did_not_close_reopen() {
+        let settings = json!({ "consolePopouts": {
+            "a": { "reopen": true }, "b": { "reopen": false }, "c": { "width": 700 },
+        }});
+        assert_eq!(popouts_to_reopen(&settings), vec!["a".to_string()]);
+        assert!(popouts_to_reopen(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn a_saved_size_below_the_minimum_falls_back_to_the_default() {
+        assert_eq!(popout_size(&json!({ "width": 900, "height": 600 })), (900.0, 600.0));
+        assert_eq!(popout_size(&json!({ "width": 100, "height": 600 })), (POPOUT_SIZE.0, 600.0));
+        assert_eq!(popout_size(&Value::Null), POPOUT_SIZE);
+    }
 
     #[test]
     fn the_window_background_follows_the_reported_color_then_the_theme() {

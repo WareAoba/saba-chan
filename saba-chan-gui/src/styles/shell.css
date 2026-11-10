@@ -170,16 +170,20 @@
         background-position: 8px 0;
     }
 }
+/* 창 버튼: 둥근 사각형 칸 (사용자 11-11 W2). 닫기는 옅은 빨강 칸에 빨간 X */
 .appbar-window {
     display: flex;
+    align-items: center;
+    gap: var(--sp-0-5);
     height: 100%;
     margin-left: var(--sp-2);
+    padding-right: var(--sp-1-5);
 }
 .win-btn {
-    --btn-height: 100%;
-    width: 44px;
+    --btn-height: 30px;
+    width: 34px;
     padding: 0;
-    border-radius: 0;
+    border-radius: 9px;
     color: var(--text-2);
 }
 .win-btn:hover {
@@ -187,21 +191,16 @@
     color: var(--text-1);
 }
 .win-btn.win-close:hover {
-    background: var(--stop);
-    color: var(--text-on-dark);
+    background: color-mix(in oklch, var(--stop) 18%, transparent);
+    color: var(--stop);
 }
 /* 맥: 신호등이 상단바 왼쪽 위에 겹친다 (window.rs `frame`). 앱 창 버튼은 숨기고 그 자리를 비운다 */
-:root[data-platform='mac'] .appbar-window,
-:root[data-platform='mac'] .console-popout-window-btn {
+:root[data-platform='mac'] .appbar-window {
     display: none;
 }
 :root[data-platform='mac'] .appbar {
     padding-left: var(--mac-traffic-lights-w);
     padding-right: var(--sp-4);
-}
-:root[data-platform='mac'] .console-popout-titlebar {
-    min-height: 36px;
-    padding-left: var(--mac-traffic-lights-w);
 }
 
 /* 상단바에서 펼쳐지는 패널(데몬·알림): 버튼 아래에 붙는다 */
@@ -782,23 +781,96 @@
     color: color-mix(in oklch, var(--console-custom-text) 45%, transparent);
     opacity: 1;
 }
-.term-divider {
-    width: 1px;
-    height: 20px;
-    background: color-mix(in oklch, var(--console-custom-text) 14%, transparent);
+/* PIP로 띄운 동안 메인 창 콘솔 자리: 지난 줄을 흐리게 깔고 가운데에 안내 창 (사용자 11-11 N1) */
+.term-popped {
+    position: relative;
 }
-.term-popout {
-    color: color-mix(in oklch, var(--console-custom-text) 60%, transparent);
+.term-popped-ghost {
+    filter: blur(6px);
+    opacity: 0.6;
+    pointer-events: none;
+    user-select: none;
 }
-.term-popout:hover {
-    color: var(--console-custom-text);
-    background: color-mix(in oklch, var(--console-custom-text) 10%, transparent);
-}
-.term-placeholder {
+.term-popped-veil {
+    position: absolute;
+    inset: 0;
+    display: flex;
     align-items: center;
     justify-content: center;
+    padding: var(--sp-4);
+    background: color-mix(in oklch, var(--console-custom-bg) 35%, transparent);
+}
+.term-popped-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: var(--sp-3);
+    max-width: 380px;
+    padding: var(--sp-6) var(--sp-8) var(--sp-5);
+    border-radius: var(--r-lg);
+    border: 1px solid var(--line);
+    background: var(--bg-2);
+    color: var(--text-1);
+    text-align: center;
+    box-shadow: var(--shadow-float);
+}
+.term-popped-art {
+    position: relative;
+    width: 132px;
+    height: 84px;
+    margin-bottom: var(--sp-3);
+    border-radius: 10px;
+    border: 1.5px solid color-mix(in oklch, var(--text-1) 22%, transparent);
+}
+.term-popped-art::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 14px;
+    border-bottom: 1.5px solid color-mix(in oklch, var(--text-1) 22%, transparent);
+}
+.term-popped-art i {
+    position: absolute;
+    right: -16px;
+    bottom: -12px;
+    width: 74px;
+    height: 50px;
+    border-radius: 8px;
+    background: var(--accent);
+    box-shadow: 0 8px 20px color-mix(in oklch, black 30%, transparent);
+}
+.term-popped-art i::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 10px;
+    border-bottom: 1.5px solid color-mix(in oklch, white 55%, transparent);
+}
+.term-popped-title {
+    font-size: var(--fs-lg);
+}
+.term-popped-desc {
+    margin: 0;
+    font-size: var(--fs-sm);
     color: var(--text-2);
+}
+.term-popped-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-1);
+}
+.term-popped-actions .btn,
+.detail-pip-btn {
+    --btn-height: 32px;
+    --btn-padding: 0 14px;
+    --btn-font-size: var(--fs-sm);
+    --btn-radius: var(--r-pill);
+}
+/* 탭 줄 오른쪽 끝 */
+.detail-pip-btn {
+    margin-left: auto;
 }
 
 /* 줄 앞 시각 (설정에서 켤 때만). 줄 색과 상관없이 흐리게 */
@@ -886,60 +958,93 @@
     flex-direction: column;
     height: 100vh;
     padding: 0;
-    background: var(--console-custom-bg);
+    background: var(--bg-0);
     color: var(--console-custom-text);
     overflow: hidden;
 }
-.console-popout-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+/* 제목줄은 앱 상단바(.appbar)를 그대로 쓰고 높이만 줄인다. 이름·도구는 앱 상단바의 알약(.conn-rail)과 같은 모양 */
+.appbar.console-popout-titlebar {
+    height: 42px;
     gap: var(--sp-2);
-    padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
-    border-bottom: 1px solid color-mix(in oklch, var(--console-custom-text) 10%, transparent);
-    -webkit-app-region: drag;
-    flex-shrink: 0;
-    user-select: none;
+    padding-left: var(--sp-2);
 }
-.console-popout-titlebar-title {
-    display: flex;
+.pip-pill {
+    display: inline-flex;
     align-items: center;
-    gap: var(--sp-2);
+    height: 28px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: var(--inset);
     min-width: 0;
+}
+.pip-title {
+    gap: var(--sp-2);
+    padding: 0 var(--sp-3) 0 var(--sp-2-5);
     font-size: var(--fs-sm);
-    font-weight: 600;
+}
+.pip-dot {
+    --chip-color: var(--text-3);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+    background: var(--chip-color);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--chip-color) 18%, transparent);
+}
+.pip-dot[data-status='running'] {
+    --chip-color: var(--ok);
+}
+.pip-dot[data-status='starting'],
+.pip-dot[data-status='stopping'] {
+    --chip-color: var(--warn);
+}
+.pip-name {
+    min-width: 0;
+    font-weight: 700;
+    color: var(--text-1);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.console-popout-titlebar-controls {
+.pip-kind {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding-left: var(--sp-2);
+    border-left: 1px solid var(--line);
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+}
+.pip-tools {
     display: flex;
     gap: var(--sp-0-5);
     -webkit-app-region: no-drag;
 }
-.console-popout-titlebar-btn {
+.pip-tool {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
+    width: 32px;
     height: 28px;
+    padding: 0;
     border: none;
-    border-radius: var(--r-sm);
+    border-radius: var(--r-pill);
     background: none;
-    color: color-mix(in oklch, var(--console-custom-text) 60%, transparent);
+    color: var(--text-2);
     cursor: pointer;
 }
-.console-popout-titlebar-btn:hover {
-    color: var(--console-custom-text);
-    background: color-mix(in oklch, var(--console-custom-text) 10%, transparent);
+.pip-tool:hover {
+    color: var(--text-1);
+    background: var(--bg-3);
 }
-.console-popout-titlebar-pinned {
-    color: var(--console-info);
-    background: color-mix(in oklch, var(--console-info) 15%, transparent);
+.pip-tool.active {
+    color: var(--accent);
+    background: var(--accent-soft);
 }
-.console-popout-titlebar-close:hover {
-    color: var(--console-error);
-    background: color-mix(in oklch, var(--console-error) 15%, transparent);
+.console-popout-titlebar .appbar-window {
+    margin-left: 0;
+    -webkit-app-region: no-drag;
 }
 .console-popout-body {
     display: flex;

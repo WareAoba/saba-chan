@@ -164,6 +164,20 @@ export function ServerDetail({
     const activeExtTab = extTabs.find((p) => p.id === activeTab);
     // Ctrl+F 찾기는 칸이 많은 설정·사바쨩·디스코드 탭에서만 (사용자 11-10)
     const findable = ['settings', 'saba', 'discord'].includes(activeTab);
+    const poppedOut = consoleProps.consolePopoutIds.includes(server.id);
+    // 콘솔을 PIP 창으로 띄운다 (이미 떠 있으면 그 창을 앞으로). 창이 열리면 셸이 console:popoutOpened로 알려 준다. 못 열면 알린다 (G-C5)
+    const popoutConsole = async () => {
+        try {
+            const res = await window.api.consolePopout(server.id, server.name);
+            if (res?.ok === false) {
+                console.error('[ServerDetail] popout failed:', res.error);
+                safeShowToast(t('console.popout_failed'), 'error');
+            }
+        } catch (err) {
+            console.error('[ServerDetail] popout failed:', err);
+            safeShowToast(t('console.popout_failed'), 'error');
+        }
+    };
     const bodyRef = useRef<HTMLDivElement>(null);
     const tabRowRef = useRef<HTMLDivElement>(null);
 
@@ -342,6 +356,12 @@ export function ServerDetail({
                     <div className="detail-tabrow" ref={tabRowRef}>
                         <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} />
                         {findable && <PageFindButton />}
+                        {activeTab === 'console' && !poppedOut && typeof window.api?.consolePopout === 'function' && (
+                            <button type="button" className="btn btn-secondary detail-pip-btn" onClick={popoutConsole}>
+                                <Icon name="pictureInPicture" size={15} />
+                                {t('console.popout')}
+                            </button>
+                        )}
                     </div>
                     <PageFind
                         rootRef={bodyRef}
@@ -359,20 +379,8 @@ export function ServerDetail({
                                 openConsole={consoleProps.openConsole}
                                 setConsoleInput={consoleProps.setConsoleInput}
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}
-                                poppedOut={consoleProps.consolePopoutIds.includes(server.id)}
-                                onPopout={async () => {
-                                    // 창이 열리면 셸이 console:popoutOpened로 알려 준다. 못 열면 알린다 (G-C5)
-                                    try {
-                                        const res = await window.api.consolePopout(server.id, server.name);
-                                        if (res?.ok === false) {
-                                            console.error('[ServerDetail] popout failed:', res.error);
-                                            safeShowToast(t('console.popout_failed'), 'error');
-                                        }
-                                    } catch (err) {
-                                        console.error('[ServerDetail] popout failed:', err);
-                                        safeShowToast(t('console.popout_failed'), 'error');
-                                    }
-                                }}
+                                poppedOut={poppedOut}
+                                onPopout={popoutConsole}
                                 onPopin={() => consoleProps.popinConsole(server.id)}
                             />
                         )}

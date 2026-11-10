@@ -3,6 +3,7 @@
   "title_bar": {
     "minimize": "Réduire",
     "maximize": "Maximiser",
+    "restore": "Restaurer",
     "close": "Fermer"
   },
   "modals": {
@@ -128,6 +129,8 @@
     "console_wrap_description": "Renvoie les longues lignes à la largeur de la fenêtre. Désactivé : défilement horizontal",
     "console_auto_scroll_label": "Suivre les nouvelles lignes",
     "console_auto_scroll_description": "Défile avec les nouvelles lignes quand vous êtes en bas",
+    "console_glass_label": "Console translucide",
+    "console_glass_description": "Quand la fenêtre est translucide, le fond de la console laisse aussi voir l'arrière-plan. Désactivez pour garder seulement la console opaque.",
     "console_syntax_label": "Coloration syntaxique",
     "console_syntax_description": "Coloriser la sortie des journaux dans la console du serveur",
     "console_token_colors_label": "Couleurs de syntaxe",
@@ -596,7 +599,8 @@
     "input_placeholder": "Entrez la commande...",
     "stdin_disabled": "Anciens journaux uniquement, car saba-chan a redémarré. Redémarrez le serveur pour vous reconnecter.",
     "send": "Envoyer",
-    "popout": "Ouvrir dans une fenêtre séparée",
+    "popout": "Ouvrir en PIP",
+    "popout_kind": "Console",
     "popout_failed": "Impossible d'ouvrir la console dans une fenêtre séparée.",
     "minimize": "Réduire dans le dock",
     "dock_restore": "Restaurer : {{name}}",
@@ -811,7 +815,9 @@
     "console_offline_input": "Démarrez le serveur pour envoyer des commandes",
     "console_offline_history": "Le serveur est arrêté. Voici le dernier journal.",
     "console_read_only": "Ce serveur n'accepte pas la saisie console. Envoyez les commandes depuis l'onglet Commandes",
-    "console_popped_out": "La console est ouverte dans une fenêtre séparée.",
+    "console_popped_out": "Affichée dans la fenêtre PIP",
+    "console_popped_out_desc": "Fermez la fenêtre PIP ou arrêtez le serveur et la console reviendra ici.",
+    "console_popout_show": "Afficher la fenêtre PIP",
     "console_popin": "La ramener ici",
     "commands_offline": "Démarrez le serveur pour envoyer des commandes.",
     "info_module": "Jeu",

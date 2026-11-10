@@ -3,6 +3,7 @@
   "title_bar": {
     "minimize": "最小化",
     "maximize": "最大化",
+    "restore": "還原",
     "close": "關閉"
   },
   "modals": {
@@ -128,6 +129,8 @@
     "console_wrap_description": "依視窗寬度折行顯示長行。關閉後橫向捲動",
     "console_auto_scroll_label": "跟隨新行",
     "console_auto_scroll_description": "停留在底部時隨新行捲動",
+    "console_glass_label": "主控台半透明",
+    "console_glass_description": "視窗半透明開啟時，主控台背景也會透出後方內容。關閉後只有主控台保持不透明。",
     "console_syntax_label": "語法醒目標示",
     "console_syntax_description": "在伺服器主控台中對日誌輸出進行色彩編碼",
     "console_token_colors_label": "語法顏色",
@@ -596,7 +599,8 @@
     "input_placeholder": "輸入命令...",
     "stdin_disabled": "僅顯示過去的日誌，因為 saba-chan 已重新啟動。重新啟動伺服器即可重新連接。",
     "send": "發送",
-    "popout": "在單獨視窗中開啟",
+    "popout": "以子母畫面開啟",
+    "popout_kind": "主控台",
     "popout_failed": "無法在獨立視窗中開啟主控台。",
     "minimize": "最小化到停駐列",
     "dock_restore": "還原：{{name}}",
@@ -811,7 +815,9 @@
     "console_offline_input": "啟動伺服器後即可傳送命令",
     "console_offline_history": "伺服器已停止。顯示的是上次的記錄。",
     "console_read_only": "此伺服器不接受主控台輸入。請在命令分頁傳送命令",
-    "console_popped_out": "主控台已在獨立視窗中開啟。",
+    "console_popped_out": "正在子母畫面視窗中檢視",
+    "console_popped_out_desc": "關閉子母畫面視窗或停止伺服器後，主控台會回到這裡。",
+    "console_popout_show": "顯示子母畫面視窗",
     "console_popin": "移回這裡",
     "commands_offline": "啟動伺服器後即可傳送命令。",
     "info_module": "遊戲",
