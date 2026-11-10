@@ -237,3 +237,19 @@
 .ss-row:not(.ss-stack):not(:has(> .ss-desc)) > .ss-control {
     grid-row: 1;
 }
+
+/* 접는 묶음의 본문: 접혀 있어도 그려 두고 숨긴다 (Ctrl+F가 안을 센다) */
+.ss-fold {
+    display: flex;
+    flex-direction: column;
+}
+.ss-fold[hidden],
+.ss-rows:has(> .ss-fold[hidden]:only-child) {
+    display: none;
+}
+.ss-fold > .ss-row:first-child {
+    padding-top: 0;
+}
+.ss-fold > .ss-row:last-child {
+    padding-bottom: 0;
+}

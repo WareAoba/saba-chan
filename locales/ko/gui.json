@@ -2496,5 +2496,16 @@
     "unknown": "아직 이 PC의 공인 주소를 몰라요. 서버쨩에 연결되면 보여요.",
     "stopped": "서버를 시작해야 친구가 들어올 수 있어요",
     "checked_at": "{{time}} 확인"
+  },
+  "find": {
+    "label": "이 탭에서 찾기",
+    "placeholder": "이 탭에서 찾기",
+    "button": "찾기",
+    "count": "{{cur}}/{{total}}",
+    "none": "결과 없음",
+    "prev": "이전 결과 (Shift+Enter)",
+    "next": "다음 결과 (Enter)",
+    "close": "닫기 (Esc)",
+    "fold_hits": "{{count}}개 일치"
   }
 }

@@ -1,4 +1,4 @@
-import { type ComponentProps, type ReactNode, useEffect, useState } from 'react';
+import { type ComponentProps, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     applyInstanceUpdate,
@@ -32,6 +32,7 @@ import {
 import { dataStatusRows } from '../DataSlots';
 import ExtensionSlot, { SlotView, useSlotPages } from '../ExtensionSlot';
 import { Icon } from '../Icon';
+import { PageFind, PageFindButton } from './PageFind';
 import { PortCheck, PortCheckNotice } from './PortCheck';
 import { ServerAddress } from './ServerAddress';
 import { ServerCheck } from './ServerCheck';
@@ -161,6 +162,10 @@ export function ServerDetail({
     const defaultTab = defaultServerTab(interaction, server.status);
     const activeTab = tabs.some((x) => x.id === tab) ? (tab as string) : defaultTab;
     const activeExtTab = extTabs.find((p) => p.id === activeTab);
+    // Ctrl+F 찾기는 칸이 많은 설정·사바쨩·디스코드 탭에서만 (사용자 11-10)
+    const findable = ['settings', 'saba', 'discord'].includes(activeTab);
+    const bodyRef = useRef<HTMLDivElement>(null);
+    const tabRowRef = useRef<HTMLDivElement>(null);
 
     const conflicts = portConflictCheck ? server.port_conflicts || [] : [];
     const uptime = status === 'running' && server.start_time ? <Uptime startTime={server.start_time} /> : null;
@@ -334,8 +339,17 @@ export function ServerDetail({
 
             {status !== 'missing' && !server.provisioning && (
                 <>
-                    <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} />
-                    <div className="detail-body" key={`${server.id}-${activeTab}`}>
+                    <div className="detail-tabrow" ref={tabRowRef}>
+                        <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} />
+                        {findable && <PageFindButton />}
+                    </div>
+                    <PageFind
+                        rootRef={bodyRef}
+                        anchorRef={tabRowRef}
+                        enabled={findable}
+                        pageKey={`${server.id}-${activeTab}`}
+                    />
+                    <div className="detail-body" key={`${server.id}-${activeTab}`} ref={bodyRef}>
                         {activeTab === 'console' && (
                             <LiveServerConsole
                                 server={server}

@@ -44,7 +44,7 @@ export function TagInput({ value, onChange, placeholder, ariaLabel, invalid = []
         // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: 빈 곳을 눌러도 입력칸에 커서가 가게 하는 보조 동작 (키보드는 input이 직접 받는다)
         <div className="word-input" onClick={(e) => e.currentTarget.querySelector('input')?.focus()}>
             {value.map((word) => (
-                <span key={word} className={clsx('word-chip', { bad: bad.has(word.toLowerCase()) })}>
+                <span key={word} className={clsx('word-chip', { bad: bad.has(word.toLowerCase()) })} data-find="value">
                     {word}
                     <button
                         type="button"

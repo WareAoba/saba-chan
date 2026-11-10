@@ -2496,5 +2496,16 @@
     "unknown": "このPCのグローバルアドレスはまだ分かりません。サーバーちゃんにつながると表示されます。",
     "stopped": "サーバーを起動すると友だちが入れます",
     "checked_at": "{{time}} に確認"
+  },
+  "find": {
+    "label": "このタブ内を検索",
+    "placeholder": "このタブ内を検索",
+    "button": "検索",
+    "count": "{{cur}}/{{total}}",
+    "none": "見つかりません",
+    "prev": "前へ (Shift+Enter)",
+    "next": "次へ (Enter)",
+    "close": "閉じる (Esc)",
+    "fold_hits": "{{count}}件一致"
   }
 }

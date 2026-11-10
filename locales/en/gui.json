@@ -2496,5 +2496,16 @@
     "unknown": "This PC's public address is not known yet. It appears once connected to Server-chan.",
     "stopped": "Start the server so friends can join",
     "checked_at": "Checked {{time}}"
+  },
+  "find": {
+    "label": "Find in this tab",
+    "placeholder": "Find in this tab",
+    "button": "Find",
+    "count": "{{cur}}/{{total}}",
+    "none": "No results",
+    "prev": "Previous (Shift+Enter)",
+    "next": "Next (Enter)",
+    "close": "Close (Esc)",
+    "fold_hits": "Matches: {{count}}"
   }
 }
