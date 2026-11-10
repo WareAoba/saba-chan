@@ -9,6 +9,8 @@ vi.mock('../components/ExtensionSlot', () => ({
         slotRenders.count++;
         return null;
     },
+    SlotView: () => null,
+    useSlotPages: () => [],
 }));
 vi.mock('../components/servers/ServerConsole', () => ({ ServerConsole: () => null }));
 vi.mock('../components/Modals/CommandModal', () => ({ default: () => null }));

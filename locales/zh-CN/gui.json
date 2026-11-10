@@ -769,6 +769,7 @@
     "nav_discord": "Discord",
     "nav_activity": "操作记录",
     "nav_settings": "设置",
+    "nav_more": "更多",
     "daemon_running": "守护进程运行中",
     "daemon_stopped": "守护进程已停止",
     "daemon_checking": "正在检查守护进程",
@@ -1405,7 +1406,8 @@
     "backups_desc": "将世界和存档文件压缩保存。手动创建的备份不会被自动清理。",
     "backups_empty": "还没有备份。",
     "backup_now": "立即备份",
-    "backup_size_stored": "{{size}} · 新存储 {{stored}}",
+    "backup_total": "备份总计 {{size}} · {{count}}个",
+    "backup_pre_restore_hint": "恢复前的状态 · 服务器启动 15 分钟后自动删除",
     "backup_created": "已创建备份。",
     "backup_nothing": "还没有可备份的文件。",
     "restore": "恢复",
@@ -1416,6 +1418,7 @@
     "restored_links_missed": "已恢复，但文件夹中有 {{count}} 个链接未能重建（例如 Windows 权限）。路径见守护进程日志。",
     "err_restore_outside": "此备份是为另一个服务器文件夹创建的，无法恢复到当前文件夹。如果你移动过服务器文件夹，请把它移回原处后再试。",
     "err_backup_busy": "此服务器正在进行其他任务（备份、恢复、更新等）。请在完成后重试。",
+    "err_backups_unreadable": "无法读取备份文件夹。请检查文件夹权限和磁盘状态后重试。",
     "err_schedule_changed": "计划任务已在别处被修改，因此未保存。请重新读取后再修改。",
     "delete": "删除",
     "delete_confirm": "点击删除",
@@ -2109,6 +2112,7 @@
     "no_problems": "最近没有警告或错误。"
   },
   "extension_config": {
+    "none": "此扩展没有可设置的项目。",
     "toggle": "设置",
     "save": "保存",
     "saved": "已保存",

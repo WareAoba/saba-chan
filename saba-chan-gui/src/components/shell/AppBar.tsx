@@ -8,6 +8,7 @@ import { Icon } from '../Icon';
 import { auditAvailable } from '../servers/AuditTab';
 import { ConnectionRail } from './ConnectionRail';
 import { DaemonSwitcher } from './DaemonSwitcher';
+import { ExtensionAppBarActions, ExtensionPageTabs } from './ExtensionAppBar';
 import { ParentJobNotice } from './ParentJobNotice';
 import { RuntimePreflight } from './RuntimePreflight';
 import { SwitchToCliButton } from './SwitchToCli';
@@ -26,7 +27,7 @@ export function wordmarkFor(lang?: string | null) {
     return WORDMARKS.en;
 }
 
-/** 상단 탭 = 큰 기능 한 개 = 한 페이지 (A7). 새 페이지는 여기에 한 줄 추가한다. available이 있으면 그 IPC가 있을 때만 보인다 */
+/** 상단 탭 = 큰 기능 한 개 = 한 페이지 (A7). 새 페이지는 여기에 한 줄 추가한다(익스텐션 화면은 `App.page` slot, ExtensionPageTabs). available이 있으면 그 IPC가 있을 때만 보인다 */
 export const APP_PAGES = [
     { id: 'servers', icon: 'server', labelKey: 'shell.nav_servers' },
     { id: 'discord', icon: 'discord', labelKey: 'shell.nav_discord' },
@@ -101,6 +102,7 @@ export function AppBar({
                         <span>{t(p.labelKey)}</span>
                     </button>
                 ))}
+                <ExtensionPageTabs page={page} onNavigate={onNavigate} />
             </nav>
 
             <div className="appbar-spacer" data-tauri-drag-region />
@@ -140,6 +142,7 @@ export function AppBar({
                     </button>
                     <NoticeModal {...noticeProps} isOpen={showNotice} />
                 </div>
+                <ExtensionAppBarActions />
                 <SwitchToCliButton />
             </div>
 

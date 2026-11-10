@@ -1328,6 +1328,8 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
         return instance_not_found(key);
     };
     let id = id.as_str();
+    // 정지가 끝날 때까지 복원 전 백업 정리를 붙잡아 둔다 (정리가 "돌고 있다"고 본 서버를 지우는 동안 멈추지 않게, 반대로 멈추는 중에는 지우지 않게)
+    let _stopping = super::backup::stop_gate(id).await;
     // API 경유 정지 기록 (GUI 외부 정지 감지용)
     state.api_actions.record(&name);
     // 익스텐션 상태 캐시 무효화 — 정지 직후 fresh 상태 반영

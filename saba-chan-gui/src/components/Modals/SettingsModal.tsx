@@ -24,6 +24,7 @@ import {
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { OklchPicker } from '../ui/OklchPicker';
 import { TOKENS } from '../../utils/syntaxHighlight';
+import { useSlotPages } from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
 import { LANGUAGE_OPTIONS } from '../../utils/languages';
@@ -40,6 +41,7 @@ import { AgentLink, agentLinkAvailable } from '../discord/AgentLink';
 import { PrivacyErase, privacyEraseAvailable } from '../discord/PrivacyErase';
 import { useDiscordStore } from '../../stores/useDiscordStore';
 import { ExtensionGuiSection, extensionGuiAvailable } from './ExtensionGuiSection';
+import { ExtensionSettingsPanel } from './ExtensionSettingsPanel';
 import { UnisolatedSection, unisolatedAvailable } from './UnisolatedSection';
 import SabaStorage from './SabaStorage';
 import { AboutPage } from './AboutPage';
@@ -121,7 +123,12 @@ function SettingsModal({
 }: SettingsModalProps) {
     const { t, i18n } = useTranslation(['gui', 'common']);
     const daemonTarget = useDaemonTarget();
-    const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+    const [chosenTab, setActiveTab] = useState<SettingsTab | `ext:${string}`>('general');
+    // 익스텐션 설정 탭 (`Settings.tab` slot): "정보" 바로 위. 그 익스텐션이 꺼지면 일반 탭으로
+    const extTabs = useSlotPages('Settings.tab');
+    const tabOrder: string[] = [...TABS.filter((id) => id !== 'about'), ...extTabs.map((p) => p.id), 'about'];
+    const activeTab = tabOrder.includes(chosenTab) ? chosenTab : 'general';
+    const activeExtTab = extTabs.find((p) => p.id === activeTab);
     // 사바 스토리지를 열 때 처음 보일 탭 (설정을 '익스텐션'으로 열면 익스텐션 탭)
     const [storageTab, setStorageTab] = useState('components');
     const [localRefreshInterval, setLocalRefreshInterval] = useState(refreshInterval);
@@ -167,8 +174,8 @@ function SettingsModal({
         if (isOpen && (initialView === 'update' || initialView === 'extensions' || initialView === 'modules')) {
             setStorageTab(initialView === 'update' ? 'components' : initialView);
             setActiveTab('sabaStorage');
-        } else if (isOpen && (TABS as readonly string[]).includes(initialView ?? '')) {
-            setActiveTab(initialView as SettingsTab);
+        } else if (isOpen && ((TABS as readonly string[]).includes(initialView ?? '') || initialView?.startsWith('ext:'))) {
+            setActiveTab(initialView as SettingsTab | `ext:${string}`);
         }
     }, [isOpen, initialView]);
 
@@ -185,9 +192,9 @@ function SettingsModal({
     }, [isOpen]);
 
     // 탭 전환 핸들러
-    const handleTabChange = (newTab: SettingsTab) => {
-        const oldIndex = TABS.indexOf(activeTab as SettingsTab);
-        const newIndex = TABS.indexOf(newTab as SettingsTab);
+    const handleTabChange = (newTab: SettingsTab | `ext:${string}`) => {
+        const oldIndex = tabOrder.indexOf(activeTab);
+        const newIndex = tabOrder.indexOf(newTab);
         if (newTab === activeTab) return;
         // 세로 탭: 아래 탭이면 아래에서, 위 탭이면 위에서 들어온다
         setSlideDirection(newIndex > oldIndex ? 'slide-up' : 'slide-down');
@@ -359,38 +366,43 @@ function SettingsModal({
             aria-orientation="vertical"
             aria-label={t('gui:settings_modal.title')}
         >
-            {TABS.map((id) => (
-                <button
-                    key={id}
-                    type="button"
-                    role="tab"
-                    id={`settings-tab-${id}`}
-                    aria-selected={activeTab === id}
-                    aria-controls={`settings-panel-${id}`}
-                    className={
-                        isPage
-                            ? clsx('server-row dc-nav-row', { selected: activeTab === id })
-                            : clsx('settings-tab', { active: activeTab === id })
-                    }
-                    onClick={() => handleTabChange(id)}
-                >
-                    {isPage ? (
-                        <>
-                            <span className="server-row-icon">
-                                <Icon name={TAB_ICONS[id]} size="sm" />
-                            </span>
-                            <span className="server-row-text">
-                                <span className="server-row-name">{t(TAB_LABELS[id])}</span>
-                            </span>
-                        </>
-                    ) : (
-                        <>
-                            <Icon name={TAB_ICONS[id]} size="sm" />
-                            <span>{t(TAB_LABELS[id])}</span>
-                        </>
-                    )}
-                </button>
-            ))}
+            {tabOrder.map((id) => {
+                const ext = extTabs.find((p) => p.id === id);
+                const label = ext ? ext.label : t(TAB_LABELS[id as SettingsTab]);
+                const icon = ext ? ext.icon : TAB_ICONS[id as SettingsTab];
+                return (
+                    <button
+                        key={id}
+                        type="button"
+                        role="tab"
+                        id={`settings-tab-${id}`}
+                        aria-selected={activeTab === id}
+                        aria-controls={`settings-panel-${id}`}
+                        className={
+                            isPage
+                                ? clsx('server-row dc-nav-row', { selected: activeTab === id })
+                                : clsx('settings-tab', { active: activeTab === id })
+                        }
+                        onClick={() => handleTabChange(id as SettingsTab | `ext:${string}`)}
+                    >
+                        {isPage ? (
+                            <>
+                                <span className="server-row-icon">
+                                    <Icon name={icon} size="sm" />
+                                </span>
+                                <span className="server-row-text">
+                                    <span className="server-row-name">{label}</span>
+                                </span>
+                            </>
+                        ) : (
+                            <>
+                                <Icon name={icon} size="sm" />
+                                <span>{label}</span>
+                            </>
+                        )}
+                    </button>
+                );
+            })}
         </div>
     );
 
@@ -1517,6 +1529,20 @@ function SettingsModal({
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {activeExtTab && (
+                        <div
+                            className={clsx('settings-tab-content', slideDirection)}
+                            key={activeExtTab.id}
+                            id={`settings-panel-${activeExtTab.id}`}
+                            role="tabpanel"
+                            aria-labelledby={`settings-tab-${activeExtTab.id}`}
+                            onAnimationEnd={() => setSlideDirection('')}
+                        >
+                            <h3>{activeExtTab.label}</h3>
+                            <ExtensionSettingsPanel entry={activeExtTab.entry} />
                         </div>
                     )}
 

@@ -769,6 +769,7 @@
     "nav_discord": "Discord",
     "nav_activity": "Actividad",
     "nav_settings": "Ajustes",
+    "nav_more": "Más",
     "daemon_running": "Daemon en ejecución",
     "daemon_stopped": "Daemon detenido",
     "daemon_checking": "Comprobando daemon",
@@ -1405,7 +1406,8 @@
     "backups_desc": "Comprime el mundo y los archivos de guardado. Las copias que hagas tú nunca se eliminan automáticamente.",
     "backups_empty": "Aún no hay copias de seguridad.",
     "backup_now": "Copiar ahora",
-    "backup_size_stored": "{{size}} · {{stored}} nuevos",
+    "backup_total": "Copias en total {{size}} · {{count}}",
+    "backup_pre_restore_hint": "Estado justo antes de restaurar · se elimina automáticamente 15 minutos después de iniciar el servidor",
     "backup_created": "Copia de seguridad creada.",
     "backup_nothing": "Todavía no hay archivos que copiar.",
     "restore": "Restaurar",
@@ -1416,6 +1418,7 @@
     "restored_links_missed": "Restaurado, pero no se pudieron recrear {{count}} enlace(s) dentro de la carpeta (por ejemplo, permisos de Windows). Las rutas están en el registro del daemon.",
     "err_restore_outside": "Esta copia de seguridad se creó para otra carpeta del servidor, así que no se puede restaurar en la actual. Si moviste la carpeta del servidor, devuélvela a su lugar e inténtalo de nuevo.",
     "err_backup_busy": "Hay otra tarea en curso para este servidor (copia de seguridad, restauración, actualización…). Inténtalo de nuevo cuando termine.",
+    "err_backups_unreadable": "No se pudo leer la carpeta de copias de seguridad. Revisa los permisos de la carpeta y el disco e inténtalo de nuevo.",
     "err_schedule_changed": "La programación se cambió en otro lugar, así que no se guardó. Vuelve a cargarla y haz tus cambios de nuevo.",
     "delete": "Eliminar",
     "delete_confirm": "Haz clic para eliminar",
@@ -2109,6 +2112,7 @@
     "no_problems": "No hay advertencias ni errores recientes."
   },
   "extension_config": {
+    "none": "Esta extensión no tiene ajustes.",
     "toggle": "Ajustes",
     "save": "Guardar",
     "saved": "Guardado",

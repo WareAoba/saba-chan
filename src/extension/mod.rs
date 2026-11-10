@@ -329,8 +329,10 @@ pub struct GuiManifest {
     pub styles: Option<String>,
     #[serde(default)]
     pub builtin: Option<bool>,
+    /// slot id → 표시 정보 `{label?, icon?, description?}` (옛 모양: 컴포넌트 이름 문자열).
+    /// 데몬은 그대로 넘기고, GUI가 자기 slot 표와 대조하고 이 창에 읽을 번들을 고른다 (03 §4.2)
     #[serde(default)]
-    pub slots: HashMap<String, String>, // slot_id → component_name
+    pub slots: HashMap<String, Value>,
 }
 
 /// CLI 매니페스트 — GUI의 GuiManifest에 대응하는 TUI 슬롯 선언
@@ -3362,6 +3364,22 @@ mod tests {
 
         // i18n_dir
         assert_eq!(manifest.i18n_dir.as_deref(), Some("i18n/"));
+    }
+
+    /// gui.slots: slot id → 표시 정보 객체 (탭 이름·아이콘). 옛 문자열 모양도 받는다. GUI가 slot 표와 대조한다
+    #[test]
+    fn gui_slots_take_display_objects() {
+        let json = r#"{
+          "id": "pet", "name": "Pet", "version": "0.1.0",
+          "gui": { "bundle": "gui/dist/pet.umd.js", "slots": {
+            "App.page": { "label": "page.title", "icon": "globe" },
+            "ServerCard.badge": "Badge"
+          } }
+        }"#;
+        let manifest: ExtensionManifest = serde_json::from_str(json).unwrap();
+        let gui = manifest.gui.unwrap();
+        assert_eq!(gui.slots["App.page"]["label"], "page.title");
+        assert_eq!(gui.slots["ServerCard.badge"], "Badge");
     }
 
     /// music manifest — gui.builtin, dependencies: [], i18n_dir: null

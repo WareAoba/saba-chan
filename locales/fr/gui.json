@@ -769,6 +769,7 @@
     "nav_discord": "Discord",
     "nav_activity": "Activité",
     "nav_settings": "Paramètres",
+    "nav_more": "Plus",
     "daemon_running": "Démon actif",
     "daemon_stopped": "Démon arrêté",
     "daemon_checking": "Vérification du démon",
@@ -1405,7 +1406,8 @@
     "backups_desc": "Compresse le monde et les fichiers de sauvegarde. Les sauvegardes que vous créez vous-même ne sont jamais supprimées automatiquement.",
     "backups_empty": "Aucune sauvegarde pour le moment.",
     "backup_now": "Sauvegarder",
-    "backup_size_stored": "{{size}} · {{stored}} nouveaux",
+    "backup_total": "Sauvegardes au total {{size}} · {{count}}",
+    "backup_pre_restore_hint": "État juste avant la restauration · supprimé automatiquement 15 minutes après le démarrage du serveur",
     "backup_created": "Sauvegarde créée.",
     "backup_nothing": "Il n'y a encore aucun fichier à sauvegarder.",
     "restore": "Restaurer",
@@ -1416,6 +1418,7 @@
     "restored_links_missed": "Restauration effectuée, mais {{count}} lien(s) du dossier n'ont pas pu être recréés (droits Windows, par exemple). Les chemins figurent dans le journal du daemon.",
     "err_restore_outside": "Cette sauvegarde a été créée pour un autre dossier de serveur et ne peut pas être restaurée dans le dossier actuel. Si vous avez déplacé le dossier du serveur, remettez-le à son emplacement et réessayez.",
     "err_backup_busy": "Une autre tâche est en cours pour ce serveur (sauvegarde, restauration, mise à jour…). Réessayez une fois terminée.",
+    "err_backups_unreadable": "Impossible de lire le dossier de sauvegarde. Vérifiez les permissions du dossier et le disque, puis réessayez.",
     "err_schedule_changed": "La planification a été modifiée ailleurs, elle n'a donc pas été enregistrée. Rechargez-la puis refaites vos modifications.",
     "delete": "Supprimer",
     "delete_confirm": "Cliquez pour supprimer",
@@ -2109,6 +2112,7 @@
     "no_problems": "Aucun avertissement ni erreur récent."
   },
   "extension_config": {
+    "none": "Cette extension n'a aucun paramètre.",
     "toggle": "Paramètres",
     "save": "Enregistrer",
     "saved": "Enregistré",

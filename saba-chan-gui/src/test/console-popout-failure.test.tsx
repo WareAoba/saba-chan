@@ -5,7 +5,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import i18n from 'i18next';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../components/ExtensionSlot', () => ({ default: () => null }));
+vi.mock('../components/ExtensionSlot', () => ({ default: () => null, SlotView: () => null, useSlotPages: () => [] }));
 vi.mock('../components/Modals/CommandModal', () => ({ default: () => null }));
 vi.mock('../components/servers/ServerConsole', () => ({
     ServerConsole: ({ onPopout }: { onPopout: () => void }) => (

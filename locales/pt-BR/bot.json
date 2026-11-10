@@ -477,6 +477,7 @@
     "nothing_to_back_up": "Ainda não há mundo para fazer backup",
     "backup_limit": "O limite de backups remotos está cheio. Apague backups antigos no PC",
     "backup_busy": "Outro backup ou restauração está em andamento",
+    "backups_unreadable": "Não foi possível ler a pasta de backups. Verifique as permissões da pasta e o disco no PC",
     "server_running": "O servidor está ligado. Desligue-o primeiro",
     "no_command_path": "O servidor foi iniciado fora do Saba-chan e não pode receber comandos",
     "autosave_not_resumed": "O backup foi feito, mas não foi possível religar o salvamento automático do servidor. Reinicie o servidor",

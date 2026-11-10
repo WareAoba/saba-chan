@@ -376,12 +376,8 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         return Ok(None);
     }
     let remote = crate::audit::current().is_relay();
-    if remote && backup::list(&plan.dir).iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP {
-        return Err(error(
-            StatusCode::CONFLICT,
-            "backup_limit",
-            format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP),
-        ));
+    if remote && remote_cap_reached(&plan.dir, kind).await? {
+        return Err(backup_limit());
     }
     // 켜진 서버: 자동 저장을 멈추고(pause) 저장한 뒤 묶고, 끝나면(실패해도) 자동 저장을 되돌린다(resume)
     let live = (plan.spec.save_command.is_some() || plan.spec.pause_command.is_some()) && is_running(state, id).await;
@@ -525,12 +521,17 @@ pub async fn list_backups(Path(id): Path<String>, State(state): State<IPCServer>
         Ok(dir) => {
             // 게임이 만든 자동 백업도 함께 (새것부터 사바쨩 백업 뒤에)
             // 백업 파일마다 열어 읽는다: 느린 저장장치에서 Tokio 작업 스레드를 붙잡지 않게
-            let listed = tokio::task::spawn_blocking(move || backup::list(&dir)).await.unwrap_or_default();
+            // 읽지 못한 것을 "백업 없음"으로 보이지 않는다
+            let (listed, total) = match tokio::task::spawn_blocking(move || backup::list_checked(&dir).map(|l| (l, backup::total_bytes(&dir)))).await {
+                Ok(Ok(found)) => found,
+                Ok(Err(e)) => return error(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", format!("Could not read the backup folder: {}", e)),
+                Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", e.to_string()),
+            };
             let mut items: Vec<Value> = listed.into_iter().map(|b| json!(b)).collect();
             let snapshots = snapshot_items(&state, &id).await;
             let snapshots_supported = has_snapshots(&state, &id).await;
             items.extend(snapshots);
-            Json(json!({ "success": true, "backups": items, "snapshots_supported": snapshots_supported })).into_response()
+            Json(json!({ "success": true, "backups": items, "total_bytes": total, "snapshots_supported": snapshots_supported })).into_response()
         }
         Err(r) => r,
     }
@@ -654,8 +655,8 @@ async fn find_snapshot(state: &IPCServer, id: &str, which: Option<&str>) -> Resu
 /// 스냅샷을 사바쨩 백업으로 적는다 (작업 잠금을 쥔 채). 없는 경로는 뺀다
 async fn keep_snapshot_locked(state: &IPCServer, id: &str, snapshot: GameSnapshot, kind: BackupKind) -> Result<BackupInfo, Response> {
     let dir = backups_dir(state, id).await?;
-    if kind == BackupKind::Snapshot && crate::audit::current().is_relay() && backup::list(&dir).iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP {
-        return Err(error(StatusCode::CONFLICT, "backup_limit", format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP)));
+    if kind == BackupKind::Snapshot && crate::audit::current().is_relay() && remote_cap_reached(&dir, kind).await? {
+        return Err(backup_limit());
     }
     if snapshot.archive.as_ref().is_some_and(|a| !a.is_file()) || (snapshot.archive.is_none() && !snapshot.paths.iter().any(|(from, _)| from.exists())) {
         return Err(error(StatusCode::NOT_FOUND, "snapshot_not_found", "The game's automatic backup has no files"));
@@ -1088,11 +1089,14 @@ pub fn spawn_scheduler(state: IPCServer) {
     tokio::spawn(async move {
         let started = chrono::Local::now().naive_local();
         let clock = RUNNER.get_or_init(|| (started, std::sync::Arc::new(Mutex::new(Clock::default())))).1.clone();
+        // 복원 전 백업을 이미 살핀 (인스턴스, 켠 시각). 한 번 켠 뒤로 한 번만 살핀다
+        let mut swept: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
         loop {
             tokio::select! {
                 _ = state.shutdown_token.cancelled() => break,
                 _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {}
             }
+            sweep_restore_safeties(&state, &mut swept).await;
             let now = chrono::Local::now().naive_local();
             let tasks: Vec<(String, ScheduledTask)> = {
                 let supervisor = state.supervisor.read().await;
@@ -1125,6 +1129,103 @@ pub fn spawn_scheduler(state: IPCServer) {
             }
         }
     });
+}
+
+fn backup_limit() -> Response {
+    error(StatusCode::CONFLICT, "backup_limit", format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP))
+}
+
+/// 원격 요청이 만들 수 있는 이 종류의 백업이 상한에 닿았는가. 목록을 읽지 못하면 세지 못한 채 통과시키지 않고 오류로 거절한다
+async fn remote_cap_reached(dir: &FsPath, kind: BackupKind) -> Result<bool, Response> {
+    let dir = dir.to_path_buf();
+    match tokio::task::spawn_blocking(move || backup::list_checked(&dir)).await {
+        Ok(Ok(list)) => Ok(list.iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP),
+        Ok(Err(e)) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", format!("Could not read the backup folder: {}", e))),
+        Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", e.to_string())),
+    }
+}
+
+/// 인스턴스마다 하나: 정지가 쥐는 동안 복원 전 백업 정리는 들어오지 않고(다음 차례로 미룬다),
+/// 정리가 쥐는 동안 정지는 끝나기를 기다린다. 그래서 정리가 "돌고 있다"고 확인한 뒤 지우는 동안 서버가 멈추지 않는다
+static STOP_GATES: std::sync::LazyLock<Mutex<std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>>> = std::sync::LazyLock::new(Default::default);
+
+fn stop_gate_of(id: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    STOP_GATES.lock().unwrap_or_else(|e| e.into_inner()).entry(id.to_string()).or_default().clone()
+}
+
+/// 정지 경로가 정지가 끝날 때까지 쥔다
+pub(crate) async fn stop_gate(id: &str) -> tokio::sync::OwnedMutexGuard<()> {
+    stop_gate_of(id).lock_owned().await
+}
+
+/// 복원 전 백업 정리가 쥔다. 정지가 진행 중이면 `None`
+fn sweep_gate(id: &str) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+    stop_gate_of(id).try_lock_owned().ok()
+}
+
+/// 복원한 뒤 켠 서버가 15분 넘게 돌면 복원 직전 안전 백업을 치운다 (그동안 접속해 확인한다고 본다).
+/// 서버를 켜기 전이나 켠 지 15분 안에는 남겨 둔다. 켠 시각은 데몬이 다시 떠도 그대로라 상태를 따로 저장하지 않는다
+async fn sweep_restore_safeties(state: &IPCServer, swept: &mut std::collections::HashMap<String, u64>) {
+    // 지금 도는 서버가 켠 시각(초). 켜져 있지 않거나 켠 지 15분이 안 됐으면 None
+    async fn long_running(state: &IPCServer, id: &str, now: u64) -> Option<u64> {
+        let supervisor = state.supervisor.read().await;
+        if !supervisor.is_running(id).await {
+            return None;
+        }
+        let started = supervisor.tracker.get_start_time(id).ok()?;
+        (now >= started.saturating_add(backup::RESTORE_SAFETY_GRACE_SECS)).then_some(started)
+    }
+    let now = saba_runner::now();
+    let ids: Vec<String> = state.supervisor.read().await.instance_store.list().iter().map(|i| i.id.clone()).collect();
+    for id in ids {
+        match long_running(state, &id, now).await {
+            Some(started) if swept.get(&id) != Some(&started) => {}
+            _ => continue,
+        }
+        // 복원·백업·업데이트가 잡고 있으면 다음 차례에 다시 본다
+        let Some(_guard) = InstanceLock::take(&id) else { continue };
+        // 정지가 진행 중이면 다음 차례로 미루고, 지우는 동안에는 정지를 붙잡아 둔다
+        let Some(_stopping) = sweep_gate(&id) else { continue };
+        let Some(started) = long_running(state, &id, saba_runner::now()).await else { continue };
+        let Ok(dir) = backups_dir(state, &id).await else { continue };
+        // 폴더를 읽지 못하거나 작업이 실패하면 빈 목록으로 보지 않고 다음 차례에 다시 시도한다
+        let listing = {
+            let dir = dir.clone();
+            tokio::task::spawn_blocking(move || backup::list_checked(&dir)).await
+        };
+        let list = match listing {
+            Ok(Ok(list)) => list,
+            Ok(Err(e)) => {
+                tracing::warn!("Could not list backups of '{}' to clear restore safety backups; will retry: {}", id, e);
+                continue;
+            }
+            Err(e) => {
+                tracing::warn!("Listing backups of '{}' failed; will retry: {}", id, e);
+                continue;
+            }
+        };
+        let expired = backup::expired_restore_safeties(&list, started, saba_runner::now());
+        let mut removed = 0;
+        for name in &expired {
+            // 하나씩 지우기 직전에 서버가 그대로 같은 실행인지 다시 본다: 그 사이 멈추거나 다시 켜졌으면 남긴다
+            if long_running(state, &id, saba_runner::now()).await != Some(started) {
+                break;
+            }
+            let (dir, name) = (dir.clone(), name.clone());
+            if matches!(tokio::task::spawn_blocking(move || backup::delete(&dir, &name)).await, Ok(Ok(()))) {
+                removed += 1;
+            }
+        }
+        if removed > 0 {
+            tracing::info!("Removed {} restore safety backup(s) of '{}' after the server ran {} minutes", removed, id, backup::RESTORE_SAFETY_GRACE_SECS / 60);
+        }
+        // 못 지운 것(파일 잠금, 도중에 멈춤 등)이 있으면 처리한 것으로 적지 않아 다음 차례(30초 뒤)에 다시 본다
+        if removed == expired.len() {
+            swept.insert(id, started);
+        } else {
+            tracing::warn!("Could not remove all restore safety backups of '{}'; will retry", id);
+        }
+    }
 }
 
 async fn announce(state: &IPCServer, id: &str, message: &str) -> bool {
@@ -2650,5 +2751,30 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert_eq!(body["error_code"], "backup_failed_autosave_off", "{body}");
         assert_eq!(body["cause"], "backup_save_rejected", "{body}");
         assert_eq!(body["command"], "save-on", "{body}");
+    }
+
+    /// 정리가 쥐는 동안 정지는 기다리고, 정지가 쥐는 동안 정리는 들어오지 않는다
+    #[tokio::test]
+    async fn the_stop_gate_keeps_the_sweep_and_a_stop_apart() {
+        let id = "gate-test";
+        let stopping = stop_gate(id).await;
+        assert!(sweep_gate(id).is_none(), "a stop in progress keeps the sweep out");
+        drop(stopping);
+        let sweeping = sweep_gate(id).expect("free once the stop is done");
+        let waiting = tokio::time::timeout(std::time::Duration::from_millis(50), stop_gate(id)).await;
+        assert!(waiting.is_err(), "a stop waits while the sweep deletes");
+        drop(sweeping);
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(500), stop_gate(id)).await.is_ok());
+    }
+
+    /// 원격 백업 상한 검사는 목록을 읽지 못하면 세지 못한 채 통과시키지 않고 오류로 거절한다
+    #[tokio::test]
+    async fn the_remote_cap_check_fails_closed_when_the_backups_cannot_be_listed() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(!remote_cap_reached(&tmp.path().join("missing"), BackupKind::Manual).await.unwrap(), "no folder yet means no backups");
+        let file = tmp.path().join("not-a-folder");
+        std::fs::write(&file, b"x").unwrap();
+        let refused = remote_cap_reached(&file, BackupKind::Manual).await.err().expect("an unreadable folder is an error");
+        assert_eq!(refused.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

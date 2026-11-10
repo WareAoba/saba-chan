@@ -769,6 +769,7 @@
     "nav_discord": "Discord",
     "nav_activity": "Atividade",
     "nav_settings": "Configurações",
+    "nav_more": "Mais",
     "daemon_running": "Daemon em execução",
     "daemon_stopped": "Daemon parado",
     "daemon_checking": "Verificando daemon",
@@ -1405,7 +1406,8 @@
     "backups_desc": "Compacta o mundo e os arquivos de salvamento. Backups feitos por você nunca são apagados automaticamente.",
     "backups_empty": "Ainda não há backups.",
     "backup_now": "Fazer backup agora",
-    "backup_size_stored": "{{size}} · {{stored}} novos",
+    "backup_total": "Backups no total {{size}} · {{count}}",
+    "backup_pre_restore_hint": "Estado logo antes da restauração · apagado automaticamente 15 minutos após o servidor iniciar",
     "backup_created": "Backup criado.",
     "backup_nothing": "Ainda não há arquivos para fazer backup.",
     "restore": "Restaurar",
@@ -1416,6 +1418,7 @@
     "restored_links_missed": "Restaurado, mas {{count}} link(s) dentro da pasta não puderam ser recriados (por exemplo, permissões do Windows). Os caminhos estão no log do daemon.",
     "err_restore_outside": "Este backup foi feito para outra pasta do servidor, então não pode ser restaurado na atual. Se você moveu a pasta do servidor, devolva-a ao lugar original e tente de novo.",
     "err_backup_busy": "Outra tarefa está em andamento para este servidor (backup, restauração, atualização…). Tente de novo quando terminar.",
+    "err_backups_unreadable": "Não foi possível ler a pasta de backups. Verifique as permissões da pasta e o disco e tente de novo.",
     "err_schedule_changed": "A programação foi alterada em outro lugar, então não foi salva. Recarregue e faça suas alterações de novo.",
     "delete": "Excluir",
     "delete_confirm": "Clique para excluir",
@@ -2109,6 +2112,7 @@
     "no_problems": "Nenhum aviso ou erro recente."
   },
   "extension_config": {
+    "none": "Esta extensão não tem configurações.",
     "toggle": "Configurações",
     "save": "Salvar",
     "saved": "Salvo",

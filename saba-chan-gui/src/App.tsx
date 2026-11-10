@@ -22,11 +22,13 @@ import { CommandPalette, paletteAvailable } from './components/shell/CommandPale
 import { DaemonEvents } from './components/shell/DaemonEvents';
 import { LinkRequests, linkRequestsAvailable } from './components/discord/LinkRequests';
 import { AppBar } from './components/shell/AppBar';
+import { ExtensionAppPage } from './components/shell/ExtensionAppPage';
 import RemotePathPicker from './components/shell/RemotePathPicker';
 import { daemonStateOf } from './components/servers/DaemonDown';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
 import { ExtensionProvider } from './contexts/ExtensionContext';
+import { type HostWindow, HostWindowContext, isAppRoute } from './extensions/host';
 import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
@@ -186,6 +188,30 @@ function App() {
                 useUIStore.getState().openSettings('extensions');
             },
         });
+
+    // 익스텐션 화면의 host가 쓰는 이 창의 동작 (extensions/host). 손잡이는 바뀌어도 host는 그대로 둔다
+    const serverActionsRef = useRef({ handleStart, handleStop, handleRestart });
+    serverActionsRef.current = { handleStart, handleStop, handleRestart };
+    const hostWindow = useMemo<HostWindow>(
+        () => ({
+            servers: () => useServerStore.getState().servers,
+            run: async (instanceId, action) => {
+                const server = useServerStore.getState().servers.find((x) => x.id === instanceId);
+                if (!server) return false;
+                const { handleStart: start, handleStop: stop, handleRestart: restart } = serverActionsRef.current;
+                if (action === 'start') await start(server.name, server.module);
+                else if (action === 'stop') await stop(server.name);
+                else if (action === 'restart') await restart(server.name);
+                else return false;
+                return true;
+            },
+            openApp: (route) => {
+                if (isAppRoute(route)) useUIStore.getState().setActiveTab(route as ActiveTab);
+            },
+        }),
+        [],
+    );
+    const leaveExtensionPage = useCallback(() => useUIStore.getState().setActiveTab('servers'), []);
 
     // Store-based fetchModules
     const fetchModules = useServerStore((s) => s.fetchModules);
@@ -777,6 +803,7 @@ function App() {
 
     return (
         <ExtensionProvider>
+            <HostWindowContext.Provider value={hostWindow}>
             <TooltipProvider>
                 <div className="App">
                     {anyPopoverOpen && (
@@ -852,6 +879,7 @@ function App() {
                         )}
                         {page === 'discord' && <DiscordPage {...discordPageProps} />}
                         {(page as string) === 'activity' && <ActivityPage />}
+                        {page.startsWith('ext:') && <ExtensionAppPage page={page} onMissing={leaveExtensionPage} />}
                         {page === 'settings' && (
                             <div className="page page-scroll page-settings">
                                 <SettingsModal
@@ -928,6 +956,7 @@ function App() {
                     <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={100} leaving />
                 )}
             </TooltipProvider>
+            </HostWindowContext.Provider>
         </ExtensionProvider>
     );
 }
