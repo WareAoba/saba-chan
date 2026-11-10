@@ -33,6 +33,16 @@ describe('처음 시작하기 가이드', () => {
         expect(screen.getByText('Do you already run a game server?')).toBeInTheDocument();
     });
 
+    it('가이드가 열릴 때 가이드 열림음을 한 번 내고, 단계를 넘길 때는 다시 내지 않는다', async () => {
+        const playSound = vi.fn();
+        (window.api as unknown as Record<string, unknown>).playSound = playSound;
+        render(page());
+        await act(async () => {});
+        fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+        expect(playSound).toHaveBeenCalledTimes(1);
+        expect(playSound).toHaveBeenCalledWith('guideOpen');
+    });
+
     it('디스코드 연결하기는 디스코드 화면으로 보내고, 돌아오면 갈림길이다', async () => {
         render(page());
         await act(async () => {});

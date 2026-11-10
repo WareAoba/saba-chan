@@ -27,6 +27,10 @@ export function FirstRunGuide({ step }: { step: GuideStep }) {
     const discordDone = useGuideStore((s) => s.onboarding?.steps.find((x) => x.id === 'discord')?.done);
     const setStep = useGuideStore((s) => s.setStep);
     const hasModules = modules.length > 0;
+    // 가이드가 열릴 때 한 번 가이드 열림음 (셸 `sound_play`, 설정 sounds를 따른다). 단계를 넘길 때는 내지 않는다
+    useEffect(() => {
+        (window.api as { playSound?: (name: 'guideOpen') => unknown } | undefined)?.playSound?.('guideOpen');
+    }, []);
     // 모듈 받기 화면의 ✕는 그 화면만 닫는다 (처음 시작하기 전체는 welcome·fork의 ✕)
     const close = () => (step === 'modules' ? setStep(null) : closeGuide('firstRun'));
 
