@@ -1530,7 +1530,9 @@ async fn port_check(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             say!("  {}/{}  {}", port, s(p, "protocol").to_uppercase(), status);
         }
         if matches!(verdict, "firewall" | "router" | "closed" | "cgnat" | "unknown") {
-            say!("{}", output::dim(&t!(&format!("port_check.hint.{}", verdict))));
+            // 고칠 곳은 데몬이 OS에 맞춰 고른다 (옛 데몬은 `hint`가 없다)
+            let hint = Some(s(r, "hint")).filter(|h| !h.is_empty()).unwrap_or(verdict);
+            say!("{}", output::dim(&t!(&format!("port_check.hint.{}", hint))));
         }
     });
     Ok(())

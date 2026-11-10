@@ -402,8 +402,7 @@ mod tests {
             id: id.into(),
             name: id.into(),
             description: String::new(),
-            icon: String::new(),
-            required_extensions: Vec::new(),
+            ..Default::default()
         };
         let available = vec![m("minecraft"), m("palworld")];
         assert_eq!(

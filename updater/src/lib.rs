@@ -23,6 +23,7 @@ pub mod python_pin;
 pub mod launch_ticket;
 pub mod integrity;
 pub mod marker;
+pub mod module_support;
 pub mod notify_app_id;
 pub mod process;
 pub mod profile;

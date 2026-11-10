@@ -229,7 +229,7 @@
     "server_name": "服务器名称",
     "server_name_placeholder": "例如：my-server-1",
     "provision_hint": "该模块将嵌入到实例中，服务器二进制文件将自动下载。",
-    "no_modules": "未找到模块。请在 <link/> 的 Saba 存储中获取游戏模块。",
+    "no_modules": "未找到模块。请在 <link/> 中获取游戏模块。",
     "add_server": "添加服务器",
     "provisioning": "正在安装…",
     "step_compose": "创建配置",
@@ -290,7 +290,7 @@
     "new_server_desc": "选择游戏模块并从头创建新的服务器实例。",
     "migrate_title": "迁移现有服务器",
     "migrate_desc": "将现有游戏服务器目录导入到 saba-chan 实例中。",
-    "no_modules_hint": "请先添加一个模块。可在 <link/> 的 Saba 存储中获取。"
+    "no_modules_hint": "请先添加一个模块。可在 <link/> 中获取。"
   },
   "migration_modal": {
     "title": "服务器迁移",
@@ -696,8 +696,8 @@
     "installed_modules": "已安装的模块",
     "no_installed_modules": "没有已安装的模块。",
     "refresh_modules": "刷新模块",
-    "available_modules": "可用模块",
-    "show_more_modules": "显示更多模块",
+    "available_modules": "可添加的游戏",
+    "unsupported_here": "无法在此设备上运行 · {{count}}",
     "show_more_extensions": "显示更多扩展插件",
     "refresh_manifest": "刷新注册表",
     "loading_manifest": "正在加载注册表...",
@@ -778,7 +778,7 @@
     "search_placeholder": "查找服务器",
     "no_match": "没有匹配的服务器",
     "empty_title": "还没有服务器",
-    "empty_no_modules": "尚未安装游戏模块。请在 <link/> 的 Saba 存储中获取。",
+    "empty_no_modules": "尚未安装游戏模块。请在 <link/> 中获取。",
     "empty_body": "选择一个游戏，Saba-chan 会帮你准备好服务器。",
     "start": "启动",
     "stop": "停止",
@@ -2419,6 +2419,7 @@
     "hint": {
       "closed": "请确认路由器已将此端口转发到这台电脑，并且电脑防火墙已放行。",
       "firewall": "Windows 防火墙正在阻止此端口的入站连接。请针对当前连接的网络（专用或公用），在 Windows 防火墙设置中允许 saba-core（服务器已停止时）或游戏服务器程序（服务器运行时），然后再检查。",
+      "firewall_macos": "macOS 防火墙正在阻止此服务器程序的传入连接。请在“系统设置 › 网络 › 防火墙 › 选项”中，将 saba-core（服务器已停止时）或游戏服务器程序（如 java，运行中时）设为“允许传入连接”，然后再检查一次。",
       "router": "电脑防火墙已允许此端口。请在路由器设置中把此端口转发到这台电脑，然后再检查。",
       "cgnat": "运营商让多户共用一个公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
       "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。"

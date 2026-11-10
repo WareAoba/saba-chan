@@ -112,7 +112,7 @@ export function ServersPage({
                     {modules.length === 0 && (
                         // 모듈이 하나도 없으면 서버를 만들 수 없다: 모듈을 받는 사바 스토리지로 안내한다
                         <p className="empty-no-modules">
-                            <LinkedText i18nKey="shell.empty_no_modules" to="settings/storage" />
+                            <LinkedText i18nKey="shell.empty_no_modules" to="settings/sabaStorage/modules" />
                         </p>
                     )}
                     <button type="button" className="btn btn-primary btn-lg" onClick={onAddServer}>

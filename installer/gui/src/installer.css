@@ -242,3 +242,15 @@
 .menu-item:hover { background: var(--bg-3); }
 .menu-item.active { color: var(--brand-primary); font-weight: 700; }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* 준비 모드(맥 앱을 처음 켤 때): 설치 위치·바로가기 칸 대신 할 일 칸 */
+.setup-only { display: none; }
+body.setup .setup-only { display: block; }
+body.setup .install-only { display: none; }
+body.setup #setup-card { display: flex; }
+.cb.fixed { cursor: default; }
+.cb.fixed input:disabled + .box { opacity: 1; }
+
+/* 이 OS·CPU에서 돌지 않는 모듈: 고를 수 없고 이유를 붙인다 */
+.module-card.unsupported { opacity: .55; cursor: default; }
+.module-why { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 600; line-height: 18px; padding: 0 8px; border-radius: 999px; background: var(--stop-soft); color: var(--stop); }

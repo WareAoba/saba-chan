@@ -285,7 +285,7 @@ function InstanceChooser({ t, hasModules, onSelectNew, onSelectMigrate, extMetho
                         <p className="ai-no-modules-hint">
                             <Icon name="alertCircle" size="sm" />
                             <span onClickCapture={onClose}>
-                                <LinkedText i18nKey="add_instance_modal.no_modules_hint" to="settings/storage" />
+                                <LinkedText i18nKey="add_instance_modal.no_modules_hint" to="settings/sabaStorage/modules" />
                             </span>
                         </p>
                     )}

@@ -77,6 +77,14 @@ fn the_verdict_puts_cgnat_and_closed_first() {
     assert_eq!(verdict(Nat::Cgnat, &[p(PortStatus::Router)]), "cgnat");
 }
 
+/// 방화벽을 고치는 곳은 OS마다 다르다: 맥은 앱마다 허용하는 안내를 고른다
+#[test]
+fn the_firewall_hint_follows_the_os() {
+    assert_eq!(hint("firewall", "windows"), "firewall");
+    assert_eq!(hint("firewall", "macos"), "firewall_macos");
+    assert_eq!(hint("router", "macos"), "router");
+}
+
 // ── 릴레이 흉내: 실제 릴레이처럼 요청이 온 주소(루프백)의 그 포트로 확인값을 보낸다 ──
 
 #[derive(Clone, Copy)]

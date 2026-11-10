@@ -6,7 +6,7 @@
  *   discord/<디스코드 서버 id | *>[/<탭>[/<안 화면>]]
  *                                               디스코드 서버의 탭 (instances·members·moderation·bot·chatbot·music·tts)과
  *                                               그 안 화면 (moderation/channels·members). *는 연결된 디스코드 서버가 하나일 때 그 서버
- *   settings[/<탭>]                             설정의 탭
+ *   settings[/<탭>[/<안 탭>]]                   설정의 탭과 그 안 탭 (sabaStorage/components·modules·extensions)
  *   activity                                    작업 기록
  *
  * 읽기만 한다. 화면을 여는 일은 앱(utils/openScreen)과 웹이 각자 한다.
@@ -15,7 +15,7 @@ export type ScreenAddress =
     | { page: 'server'; id: string; tab?: string }
     | { page: 'discord'; view: 'connection' | 'saba' }
     | { page: 'discord'; view: 'node'; id: string; tab?: string; sub?: string }
-    | { page: 'settings'; tab?: string }
+    | { page: 'settings'; tab?: string; sub?: string }
     | { page: 'activity' };
 
 // id·탭 이름에 쓰는 글자만 받는다 (빈 칸·공백·주소 조각이 섞인 것은 주소가 아니다)
@@ -38,8 +38,8 @@ export function parseScreen(address: string): ScreenAddress | null {
             if (parts.length > 4) return null;
             return { page: 'discord', view: 'node', id: a, ...opt('tab', b), ...opt('sub', c) };
         case 'settings':
-            if (parts.length > 2) return null;
-            return { page: 'settings', ...opt('tab', a) };
+            if (parts.length > 3) return null;
+            return { page: 'settings', ...opt('tab', a), ...opt('sub', b) };
         case 'activity':
             return parts.length === 1 ? { page: 'activity' } : null;
         default:

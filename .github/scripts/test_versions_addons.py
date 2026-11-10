@@ -90,5 +90,41 @@ class ZipFolderSkipsDevFiles(unittest.TestCase):
                 self.assertEqual(sorted(zf.namelist()), ["lifecycle.py", "locales/test_en.json", "module.toml"])
 
 
+class ModuleCatalogMeta(unittest.TestCase):
+    """받기 전 목록에서도 앱 언어의 이름·설명과 돌아가는 OS·CPU를 보이도록 모듈 정보를 meta에 싣는다"""
+
+    def meta(self, toml, locales=None):
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d) / "modules"
+            game = repo / "game"
+            (game / "locales").mkdir(parents=True)
+            (game / "module.toml").write_text(toml, encoding="utf-8")
+            for lang, body in (locales or {}).items():
+                (game / "locales" / f"{lang}.json").write_text(body, encoding="utf-8")
+            args = type("Args", (), {"modules_repo": str(repo), "extensions_repo": None, "addons_ref": None})()
+            assets = Path(d) / "assets"
+            assets.mkdir()
+            return versions.addon_components(args, assets)["module-game"]["meta"]
+
+    def test_declared_platforms_architectures_and_translations_go_into_meta(self):
+        meta = self.meta(
+            '[module]\nname = "game"\nversion = "1.0.0"\ndescription = "Game server"\ndisplay_name = "Game"\n'
+            '[extensions.saba-core]\nplatforms = ["windows", "linux"]\narchitectures = ["x86_64"]\n',
+            {"ko": '{"module": {"display_name": "게임", "description": "게임 서버"}}',
+             "ja": '{"module": {"description": "ゲームサーバー"}}',
+             "broken": "{not json"},
+        )
+        self.assertEqual(meta["platforms"], ["windows", "linux"])
+        self.assertEqual(meta["architectures"], ["x86_64"])
+        self.assertEqual(meta["display_names"], {"ko": "게임"})
+        self.assertEqual(meta["descriptions"], {"ko": "게임 서버", "ja": "ゲームサーバー"})
+        self.assertEqual(meta["description"], "Game server")
+
+    def test_undeclared_values_are_left_out(self):
+        meta = self.meta('[module]\nname = "game"\nversion = "1.0.0"\n[extensions.saba-core]\nplatforms = "linux"\n')
+        for key in ("platforms", "architectures", "display_names", "descriptions"):
+            self.assertNotIn(key, meta)
+
+
 if __name__ == "__main__":
     unittest.main()

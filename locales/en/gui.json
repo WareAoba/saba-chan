@@ -229,7 +229,7 @@
     "server_name": "Server Name",
     "server_name_placeholder": "e.g., my-server-1",
     "provision_hint": "Server files are downloaded automatically when you add it.",
-    "no_modules": "No modules found. Get game modules from Saba Storage in <link/>.",
+    "no_modules": "No modules found. Get game modules in <link/>.",
     "add_server": "Add Server",
     "provisioning": "Installing…",
     "step_compose": "Configuration",
@@ -290,7 +290,7 @@
     "new_server_desc": "Pick a game and the server files are downloaded for you.",
     "migrate_title": "Import Existing Server",
     "migrate_desc": "Bring in a game server folder you already use. Link it where it is, or move it into saba-chan.",
-    "no_modules_hint": "Add a module first. You can get one from Saba Storage in <link/>."
+    "no_modules_hint": "Add a module first. You can get one in <link/>."
   },
   "migration_modal": {
     "title": "Import Existing Server",
@@ -696,8 +696,8 @@
     "installed_modules": "Installed Modules",
     "no_installed_modules": "No modules installed.",
     "refresh_modules": "Refresh Modules",
-    "available_modules": "Available Modules",
-    "show_more_modules": "Show More Modules",
+    "available_modules": "Games you can add",
+    "unsupported_here": "Can't run on this device · {{count}}",
     "show_more_extensions": "Show More Extensions",
     "refresh_manifest": "Refresh registry",
     "loading_manifest": "Loading registry...",
@@ -778,7 +778,7 @@
     "search_placeholder": "Find a server",
     "no_match": "No matching servers",
     "empty_title": "No servers yet",
-    "empty_no_modules": "No game modules are installed. Get them from Saba Storage in <link/>.",
+    "empty_no_modules": "No game modules are installed. Get them in <link/>.",
     "empty_body": "Pick a game and Saba-chan will set up the server for you.",
     "start": "Start",
     "stop": "Stop",
@@ -2419,6 +2419,7 @@
     "hint": {
       "closed": "Check that your router forwards this port to this PC and that the PC firewall allows it.",
       "firewall": "Windows Firewall is blocking incoming connections on this port. For the network you are connected to now (private or public), allow saba-core if the server is stopped, or the game server program if it is running, in Windows Firewall settings, then check again.",
+      "firewall_macos": "The macOS firewall is blocking incoming connections for this server's program. In System Settings › Network › Firewall › Options, set saba-core (if the server is stopped) or the game server program such as java (if it is running) to Allow incoming connections, then check again.",
       "router": "The PC firewall allows this port. Forward this port to this PC in your router settings, then check again.",
       "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
       "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
