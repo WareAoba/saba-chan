@@ -37,13 +37,16 @@ export function FirstRunGuide({ step }: { step: GuideStep }) {
     return (
         <div className="page page-empty guide-page">
             <section className="guide-card" aria-label={t('guides.first_run')}>
-                <button type="button" className={`icon-btn guide-close${step === 'welcome' ? ' on-hero' : ''}`} onClick={close} aria-label={t('guides.close')}>
+                <button type="button" className="icon-btn guide-close" onClick={close} aria-label={t('guides.close')}>
                     <Icon name="close" size="sm" />
                 </button>
                 {step === 'welcome' && (
                     <div className="guide-welcome">
-                        {/* 시그니처 그라데이션 띠 위에 사바쨩 프로필 (사용자 11-10) */}
+                        {/* 로딩 화면과 같은 빛 번지는 그라데이션 링 안의 사바쨩 프로필 (사용자 11-10) */}
                         <div className="guide-hero" aria-hidden="true">
+                            <span className="guide-hero-glow" />
+                            <span className="guide-hero-ring" />
+                            <span className="guide-hero-mask" />
                             <img src="./icon.png" alt="" className="guide-avatar" />
                         </div>
                         <h2>{t('guides.welcome_title')}</h2>
