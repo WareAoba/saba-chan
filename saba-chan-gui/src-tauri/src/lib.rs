@@ -84,8 +84,12 @@ fn install_root() -> PathBuf {
 
 /// 맥 앱 묶음을 켤 때 설치기에 넘길 일: (인자, GUI가 여기서 끝나는가). 준비가 끝난 자리면 None
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-fn first_run_handoff(launch: saba_chan_updater_lib::app_bundle::Launch) -> Option<(&'static [&'static str], bool)> {
+fn first_run_handoff(launch: saba_chan_updater_lib::app_bundle::Launch, tray: bool) -> Option<(&'static [&'static str], bool)> {
     use saba_chan_updater_lib::app_bundle::Launch;
+    // 데몬이 띄운 상주 트레이(`--tray`)는 넘기지 않는다: 끝나면 데몬이 다시 띄워 준비 창이 거듭 뜬다
+    if tray {
+        return None;
+    }
     match launch {
         Launch::Ready => None,
         // 옮긴 앱·예전 판: 창 없이 명령어 링크만 고치고 앱은 그대로 연다
@@ -103,7 +107,7 @@ fn hand_over_first_run(install_root: &std::path::Path) -> bool {
         return false;
     }
     let launch = app_bundle::launch_for(install_root, &uninstall_entry::installs_file(), &constants::resolve_modules_dir());
-    let Some((args, exits)) = first_run_handoff(launch) else { return false };
+    let Some((args, exits)) = first_run_handoff(launch, lifecycle::tray_arg(std::env::args())) else { return false };
     tracing::info!("[Setup] {:?}: launching the installer with {:?}", launch, args);
     use std::os::unix::process::CommandExt;
     let spawned = std::process::Command::new(install_root.join("saba-chan-installer"))
@@ -252,9 +256,11 @@ mod tests {
     /// 처음 켤 때만 앱 대신 준비 창이 뜬다. 링크만 고칠 때는 앱이 그대로 열린다
     #[test]
     fn only_a_first_run_hands_the_app_over_to_the_setup_window() {
-        assert_eq!(first_run_handoff(Launch::Ready), None);
-        assert_eq!(first_run_handoff(Launch::Relink), Some((&["--setup", "--quiet"][..], false)));
-        assert_eq!(first_run_handoff(Launch::Setup), Some((&["--setup"][..], true)));
-        assert_eq!(first_run_handoff(Launch::MoveFirst), Some((&["--setup"][..], true)));
+        assert_eq!(first_run_handoff(Launch::Ready, false), None);
+        assert_eq!(first_run_handoff(Launch::Relink, false), Some((&["--setup", "--quiet"][..], false)));
+        assert_eq!(first_run_handoff(Launch::Setup, false), Some((&["--setup"][..], true)));
+        assert_eq!(first_run_handoff(Launch::MoveFirst, false), Some((&["--setup"][..], true)));
+        // 데몬이 띄운 트레이는 끝나면 다시 뜨므로 준비 창을 띄우지 않는다
+        assert_eq!(first_run_handoff(Launch::Setup, true), None);
     }
 }

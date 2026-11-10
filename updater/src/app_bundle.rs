@@ -76,10 +76,30 @@ pub enum Launch {
     MoveFirst,
 }
 
-/// 디스크 이미지(`/Volumes`)나 macOS가 격리해 연 임시 자리(App Translocation)에서 열렸는가.
-/// 이런 자리는 다음에 열면 없거나 바뀌어 명령어 링크가 끊긴다
+/// 디스크 이미지나 macOS가 격리해 연 임시 자리(App Translocation)에서 열렸는가.
+/// 이런 자리는 다음에 열면 없거나 바뀌어 명령어 링크가 끊긴다. `/Volumes`에는 외장 디스크도 붙으므로
+/// 읽기 전용으로 붙은 볼륨(디스크 이미지)만 임시 자리로 본다
 pub fn in_temporary_place(install_dir: &Path) -> bool {
-    install_dir.starts_with("/Volumes") || install_dir.components().any(|c| c.as_os_str() == "AppTranslocation")
+    temporary_place(install_dir, || read_only_mount(install_dir))
+}
+
+fn temporary_place(install_dir: &Path, read_only: impl FnOnce() -> bool) -> bool {
+    install_dir.components().any(|c| c.as_os_str() == "AppTranslocation") || (install_dir.starts_with("/Volumes") && read_only())
+}
+
+/// 그 폴더가 읽기 전용으로 붙은 볼륨에 있는가 (`.dmg`는 읽기 전용으로 붙는다)
+#[cfg(target_os = "macos")]
+fn read_only_mount(dir: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(path) = std::ffi::CString::new(dir.as_os_str().as_bytes()) else { return false };
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    // SAFETY: path는 NUL로 끝나는 C 문자열이고 stat은 쓸 수 있는 statvfs다
+    (unsafe { libc::statvfs(path.as_ptr(), &mut stat) } == 0) && (stat.f_flag & libc::ST_RDONLY) != 0
+}
+
+#[cfg(not(target_os = "macos"))]
+fn read_only_mount(_dir: &Path) -> bool {
+    false
 }
 
 /// 준비는 설치기가 마칠 때 설치 목록(`installs.json`)에 이 자리를 적는 것으로 끝난다. 파일이 있는지만 보지 않는 것은
@@ -186,8 +206,10 @@ mod tests {
         crate::uninstall_entry::remember_install(&installs, &app).unwrap();
         assert_eq!(launch_for(&app, &installs, &modules), Launch::Ready);
 
+        // 디스크 이미지(읽기 전용 볼륨)만 임시 자리다. 외장 디스크에 둔 앱은 그대로 쓴다
         let dmg = Path::new("/Volumes/Saba-chan/Saba-chan.app/Contents/MacOS");
-        assert_eq!(launch_for(dmg, &installs, &modules), Launch::MoveFirst);
+        assert!(temporary_place(dmg, || true));
+        assert!(!temporary_place(Path::new("/Volumes/External/Applications/Saba-chan.app/Contents/MacOS"), || false));
         let translocated = Path::new("/private/var/folders/x/T/AppTranslocation/ABC/d/Saba-chan.app/Contents/MacOS");
         assert_eq!(launch_for(translocated, &installs, &modules), Launch::MoveFirst);
     }
