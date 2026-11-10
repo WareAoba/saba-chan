@@ -152,7 +152,12 @@ pub fn link_commands(home: &Path, install_dir: &Path) -> std::io::Result<bool> {
         changed = true;
     }
     let profile = home.join(PROFILE);
-    let text = std::fs::read_to_string(&profile).unwrap_or_default();
+    // 읽지 못한 파일(UTF-8이 아님·권한)을 빈 파일로 보고 덮어쓰면 사용자의 설정이 사라진다: 없을 때만 새로 만든다
+    let text = match std::fs::read_to_string(&profile) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e),
+    };
     if let Some(next) = with_profile_line(&text) {
         std::fs::write(&profile, next)?;
         changed = true;
@@ -301,6 +306,18 @@ mod tests {
     }
 
     /// 링크가 아닌 같은 이름의 파일은 사용자 것이라 덮지 않는다
+    #[cfg(unix)]
+    #[test]
+    fn mac_never_overwrites_a_profile_it_cannot_read() {
+        let home = tempfile::tempdir().unwrap();
+        let app = tempfile::tempdir().unwrap();
+        std::fs::write(app.path().join("saba-chan-cli"), "").unwrap();
+        let profile = home.path().join(PROFILE);
+        std::fs::write(&profile, b"export A=1 # \xff\n").unwrap();
+        assert!(link_commands(home.path(), app.path()).is_err());
+        assert_eq!(std::fs::read(&profile).unwrap(), b"export A=1 # \xff\n");
+    }
+
     #[cfg(unix)]
     #[test]
     fn mac_keeps_a_users_own_file() {
