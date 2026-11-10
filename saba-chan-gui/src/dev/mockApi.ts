@@ -1,5 +1,5 @@
 /**
- * 개발용 가짜 window.api — Electron 없이 `npm run dev`로 브라우저에서 화면을 볼 때만 쓴다.
+ * 개발용 가짜 window.api — Tauri 셸 없이 `npm run dev`로 브라우저에서 화면을 볼 때만 쓴다.
  * index.js가 DEV 빌드이고 window.api가 없을 때만 설치한다. 프로덕션 번들에는 들어가지 않는다.
  */
 import type { SabaApi } from '../api/createApi';
@@ -892,23 +892,8 @@ const impl: Record<string, MockFn> = {
                       },
         }),
     extensionList: () => ok({ extensions: [] }),
-    // 디스코드에서 코드 없이 연결 요청 (J1-b)
-    relayLinkRequests: () =>
-        ok({
-            requests: [
-                {
-                    requestId: 'lr-1',
-                    guildId: '900',
-                    guildName: '마크 친구들',
-                    userName: 'aoba',
-                    expiresAt: new Date(Date.now() + 600_000).toISOString(),
-                },
-            ],
-        }),
-    relayLinkRequestRespond: (_id, accept) =>
-        ok(accept ? { ok: true, guildId: '900', guildName: '마크 친구들' } : { ok: true, declined: true }),
-    relayMcpGrant: () => ok({ grant: { clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' }, url: 'https://saba-chan.online/mcp' }),
-    relayMcpGrantRevoke: () => ok(''),
+    relayMcpGrant: () => ok({ grants: [{ id: 'mock-1', clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' }], url: 'https://saba-chan.online/mcp' }),
+    relayMcpGrantRevoke: () => ok({ ok: true }),
     relayPrivacyErase: () => ok({ url: 'https://saba-chan.online/legal/erase#mock.secret' }),
     relayPrivacyEraseStatus: () => ok({ status: 'pending' }),
     onboarding: () =>
@@ -923,6 +908,9 @@ const impl: Record<string, MockFn> = {
         }),
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),
+    languageGet: () => ok('ko'),
+    languageSet: () => ok(),
+    shellOpenExternal: () => ok(),
     // spans를 달라고 하면(하이라이트 켬) 데몬처럼 조각 토큰을 붙인다: 시각·스레드/레벨·따옴표·숫자·플레이어
     managedConsole: (_id, since = 0, _count, opts) =>
         ok({
@@ -957,12 +945,4 @@ export function installMockApi() {
             return noop;
         },
     }) as unknown as SabaApi;
-    window.electron = {
-        minimizeWindow() {},
-        maximizeWindow() {},
-        closeWindow() {},
-        getLanguage: () => ok('ko'),
-        setLanguage: () => ok(),
-        shell: { openExternal: () => ok() },
-    };
 }

@@ -6,8 +6,6 @@ import type { TFunction } from 'i18next';
  */
 export const PREFIX_MAX = 10;
 export const PREFIX_MAX_LEN = 32;
-/** 0.1.5까지의 기본값. 옛 설정에 남아 있으면 기본값을 쓰는 것으로 본다 */
-const LEGACY_DEFAULT = '!saba';
 
 /** 릴레이 노드 중 접두사 칸 */
 interface PrefixNode {
@@ -15,12 +13,10 @@ interface PrefixNode {
     prefixes?: string[];
 }
 
-/** bot-config → 저장된 접두사 목록 (옛 `prefix` 문자열도 읽는다) */
+/** bot-config → 저장된 접두사 목록 (옛 `prefix`는 데몬이 읽을 때 `prefixes`로 옮긴다) */
 export function readPrefixes(botCfg: Record<string, unknown> | null | undefined): string[] {
-    if (Array.isArray(botCfg?.prefixes))
-        return botCfg.prefixes.filter((p): p is string => typeof p === 'string' && !!p);
-    const old = typeof botCfg?.prefix === 'string' ? botCfg.prefix.trim() : '';
-    return old && old !== LEGACY_DEFAULT ? [old] : [];
+    if (!Array.isArray(botCfg?.prefixes)) return [];
+    return botCfg.prefixes.filter((p): p is string => typeof p === 'string' && !!p);
 }
 
 /** 저장할 수 없는 접두사를 이유와 함께 돌려준다 */

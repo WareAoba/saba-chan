@@ -441,12 +441,6 @@
       "NO_CLEAR_JOB": "此频道没有正在进行的清理。",
       "generic": "无法更改。请稍后再试。"
     },
-    "dur": {
-      "seconds": "{{count}} 秒",
-      "minutes": "{{count}} 分钟",
-      "hours": "{{count}} 小时",
-      "days": "{{count}} 天"
-    },
     "mod": {
       "title": "服务器管理",
       "locked": "已锁定",

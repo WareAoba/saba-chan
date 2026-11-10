@@ -156,10 +156,10 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `name` | String ✔ | |
 | `label` | String | 없으면 `name` |
 | `description` | String | |
-| `method` | String | `console`(템플릿을 채워 콘솔 stdin으로. 예전 이름 `rcon`은 읽을 때 `console`로 바뀐다, `D:src/supervisor/module_loader.rs:1067`) / `rest` / `module`(lifecycle `command()`, 예전 이름 `dual`·`both`도 받음) / 생략(=`module`). 해석은 데몬 `crate::commands`가 한다 (`D:src/commands/mod.rs:167-191`) |
+| `method` | String | `console`(템플릿을 채워 콘솔 stdin으로) / `rest` / `module`(lifecycle `command()`) / 생략(=`module`). 그 밖의 값(옛 이름 `rcon`·`dual`·`both` 포함)은 400 `unsupported_method`다. 해석은 데몬 `crate::commands`가 한다 (`D:src/commands/mod.rs:167-191`) |
 | `http_method` | String | REST 전용. 기본 `GET` |
 | `endpoint_template` | String | REST 전용. 없으면 `/<name>` |
-| `console_template` | String | 예: `"kick {player}"`. 예전 이름 `rcon_template`도 별칭으로 읽는다 (`D:src/supervisor/module_loader.rs:362-363, 941`). 인자에 `\r`·`\n`·NUL이 있으면 400 `invalid_argument`로 거부하고, stdin 전송(`ManagedProcess::send_command`)도 여러 줄 명령을 거부한다. 값 하나가 콘솔 명령 두 줄이 되지 않게 한다. 값은 자기 자리만 채운다(`commands::console_place_problem`): 뒤에 템플릿 글자가 더 있는 자리의 값은 공백이 있으면 400 `invalid_argument`(`must be one word`), 따옴표로 감싼 자리(`"{player}"`)는 공백을 받되 따옴표가 있으면 400(`must not contain quotes`). 마지막 자리는 남은 말을 모두 받는다. 템플릿은 한 번만 채운다(`commands::render_template`): 값 안의 `{key}`는 다시 채우지 않는다. 중간 자리에 여러 단어가 필요하면 템플릿에서 따옴표로 감싼다 |
+| `console_template` | String | 예: `"kick {player}"`. 인자에 `\r`·`\n`·NUL이 있으면 400 `invalid_argument`로 거부하고, stdin 전송(`ManagedProcess::send_command`)도 여러 줄 명령을 거부한다. 값 하나가 콘솔 명령 두 줄이 되지 않게 한다. 값은 자기 자리만 채운다(`commands::console_place_problem`): 뒤에 템플릿 글자가 더 있는 자리의 값은 공백이 있으면 400 `invalid_argument`(`must be one word`), 따옴표로 감싼 자리(`"{player}"`)는 공백을 받되 따옴표가 있으면 400(`must not contain quotes`). 마지막 자리는 남은 말을 모두 받는다. 템플릿은 한 번만 채운다(`commands::render_template`): 값 안의 `{key}`는 다시 채우지 않는다. 중간 자리에 여러 단어가 필요하면 템플릿에서 따옴표로 감싼다 |
 | `risk` | String | `safe` / `caution` / `danger`, 없으면 caution |
 | `inputs` | Vec<CommandInput> | |
 | `remote` | bool | 기본 true. false면 heartbeat 명령 목록에 싣지 않고 디스코드·챗봇 채팅 명령에서 없는 명령(`UNKNOWN_COMMAND`)이다. 데몬 기능이 같은 일을 하는 명령용(접속자 목록은 채팅 `players`) |
@@ -473,6 +473,11 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   - 정지: `graceful_stop(config, request, i18n, module_dir=)`가 모듈 `stop()`의 절차(§3.4: force면 그 PID만 강제 종료 → 아니면 `request()` → 요청할 길이 없으면 `graceful_stop_unavailable` → managed면 바로 반환 → `stop_timeout`만큼 기다린 뒤에만 강제 종료)다. 모듈은 저장 후 종료를 요청하는 방법만 넘긴다: `request_console(config, command)`(데몬 `/stdin`), `request_terminate(pid)`(POSIX SIGTERM), REST 등. `stop_timeout(config, module_dir)`는 인스턴스 값 → module.toml `[config] stop_timeout` → 30초, 상한은 `stop_call_limit - 30`(없으면 90).
   - 로그 진단: `load_diagnose_rules(module_dir)`, `diagnose_lines(lines, rules, i18n, message=, solution=)`, `tail_lines(path, limit)`(데몬이 `log_lines`를 주지 않는 non-managed용).
   - 설치: `progress(percent, message)`(stderr `PROGRESS:` 줄), `download(url, dest, on_progress=, timeout=, checksums=)`(sha1·sha256을 늘 계산하고 주어진 값과 다르면 `ChecksumMismatch`, `Content-Length`보다 적게 받고 끝나면 `IOError`. 받을 수 있는 만큼씩 읽어 조금씩 오는 응답도 전체 한도(timeout×10)에서 끊는다. `dest.part`에 받고 성공해야 dest로 바꾸므로 실패해도 dest에 있던 파일은 그대로다), `safe_extract(archive, dest, prefix=, strip_top=, keep_existing=)`(zip·tar. 모든 항목을 먼저 `safe_join`으로 검사해(`./` 같은 표기는 정규화해 `keep_existing`과 비교한다) 하나라도 밖으로 나가면 아무것도 풀지 않는다. 장치 항목은 풀지 않는다. 심볼릭 링크는 상대 경로로 dest 안을 가리킬 때만 POSIX에서 파일을 다 쓴 뒤 만들고, 다 만든 뒤 실제 경로가 dest 밖이면 지운다. tar 하드 링크는 푼 대상을 복사한다. zip은 CRC를 먼저 본다).
+- 0.1.14 공용 도우미 (세 모듈이 따로 갖던 것, `SINCE` `0.1.14-0`):
+  - `setting_defaults_to_file(module_dir, true=, false=)`: 새 서버의 설정 파일 값. `[[settings.fields]]` 중 `file_key`와 `default`가 둘 다 있는 칸을 파일 표기로 바꾼다(`settings_to_file`과 같은 규칙). 기본값은 module.toml 한 곳에만 둔다.
+  - `stop_command(module_dir)`: 콘솔 정지 명령. module.toml `[config] stop_command`, 없으면 데몬과 같은 `stop`.
+  - `delete_paths(paths, root=)`: 초기화로 지울 파일·폴더를 지우고 `(지운 것, ["이름: 오류"])`를 돌려준다. 심볼릭 링크는 링크만 지운다(Windows 정션은 `rmtree`가 거절해 오류로 센다). 없는 것은 건너뛰고, 읽을 수 없는 것(`lstat` 권한 오류)은 '없음'이 아니라 오류로 센다.
+  - `chat_reply(send, i18n)`: 모듈 `send_chat()`의 답. `send()`가 예외를 내거나 `success:false`를 주면 모듈 문구 `errors.chat_failed`(`{{error}}`)로 실패를 돌려준다. `PathOutside`는 그대로 올린다.
 - 배포: 데몬 실행 파일에 공용 파일이 들어 있다. 첫 lifecycle 실행 때 데몬 전용 `<data_dir>/python-shared/`에 쓴다. 이 경로만 공용 유틸리티의 import 경로로 쓴다. 모듈 폴더는 `PYTHONPATH`에 넣지 않는다. 적합성 키트의 `--shared-libs`에는 `<data_dir>/python-shared/`를 지정한다.
 
 **경로 도우미와 SDK 버전 (0.1.10)**
@@ -493,6 +498,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `daemon_rest` | `0.1.10` |
 | `daemon_rcon_command` | `0.1.12` |
 | `setting_file_keys`, `format_setting`, `settings_to_file`, `settings_from_file`, `read_key_values`, `update_key_values`, `stop_timeout`, `request_console`, `request_terminate`, `graceful_stop`, `load_diagnose_rules`, `diagnose_lines`, `tail_lines`, `progress`, `download`, `ChecksumMismatch`, `safe_extract` | `0.1.11-0` (0.1.11 미리보기부터 받도록 `-0`) |
+| `setting_defaults_to_file`, `stop_command`, `delete_paths`, `chat_reply` | `0.1.14-0` |
 
 이력 근거: 공개 태그 `test23`(`f493b78e`, 코어 `0.1.1`)에 `i18n.I18n`이 있다. 기존 통신·설정·프로세스 함수는 `97db8a0e`(`0.1.2` 릴리스 커밋)에 있다. 루프백 함수는 `1862c5c0`(`0.1.7` 릴리스 커밋)에는 없고 `77333cab`(`0.1.8` 릴리스 커밋)에 있다. 공개 origin에는 `test`~`test23` 태그만 있다. 따라서 `0.1.2`·`0.1.8` 값은 릴리스 커밋에 근거한 보수적 값이며 최초 공개 배포 태그로 확정한 값은 아니다. 이 미확정 부분은 07 §4에 남긴다.
 
@@ -691,7 +697,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   2. manifest의 `module-<id>`가 없으면 실패한다.
   - 설치된 모듈 버전이 manifest 버전보다 높으면 받지 않는다(`version::is_downgrade`). 릴레이가 예전 서명 manifest를 다시 보내 옛 버전을 깔게 하는 것을 막는다.
   3. R2 URL에서 `<modules>/.tmp-module-<id>.zip`로 받으며 SHA-256을 확인한다(`download_verified`).
-  4. `.staging-<id>`에 풀고 데몬과 같은 규칙(`load_module_dir`: `module.toml` 파싱, 진입 파일, `saba-core` 요구 버전)으로 읽힐 때만 기존 `<modules>/<id>`와 바꾼다(`install_staged_module`). 기존 폴더는 `.old-<id>`로 옮겨 두었다가 새 폴더가 자리를 잡으면 지우고, 옮기다 실패하면 되돌린다. 모듈 탐색은 점으로 시작하는 항목을 건너뛰고, 데몬은 기동할 때 모듈·익스텐션 폴더의 `.staging-*`·`.old-*`·`.tmp-*`를 지운다(`utils::remove_install_leftovers`, 설치 도중 끝났을 때 남은 것). 단일 실행 잠금을 못 잡고 계속 가는 경우에는 정리하지 않는다. 또 `.old-<id>`가 있는데 `<id>`가 없으면(옛 폴더를 옮긴 뒤 새 폴더를 두기 전에 끝났다) 지우지 않고 `<id>`로 되돌린다. 그래서 업데이트해도 지워진 파일이 남지 않는다.
+  4. `.staging-<id>`에 풀고 데몬과 같은 규칙(`load_module_dir`: `module.toml` 파싱, 진입 파일, `saba-core` 요구 버전)으로 읽힐 때만 기존 `<modules>/<id>`와 바꾼다(`install_staged_module`). 기존 폴더는 `.old-<id>`로 옮겨 두었다가 새 폴더가 자리를 잡으면 지우고, 옮기다 실패하면 되돌린다. 모듈 탐색은 점으로 시작하는 항목을 건너뛰고, 데몬은 기동할 때 모듈·익스텐션 폴더의 `.staging-*`·`.old-*`·`.tmp-*`를 지운다(`utils::remove_install_leftovers`, 설치 도중 끝났을 때 남은 것). 단일 실행 잠금을 못 잡고 계속 가는 경우에는 정리하지 않는다. 또 `.old-<id>`가 있는데 `<id>`가 없으면(옛 폴더를 옮긴 뒤 새 폴더를 두기 전에 끝났다) 지우지 않고 `<id>`로 되돌린다. 그래서 업데이트해도 지워진 파일이 남지 않는다. 묻지 않는 자동 교체(05 §확인, `swap_dir_untouched`)가 남긴 것도 같이 본다: `.<id>.saba-new`는 지우고, `.<id>.saba-old`는 `<id>`가 없으면 되돌리며(지문은 새 판을 넣은 뒤에 적으므로, 지문이 있으면 교체를 마친 뒤 사용자가 지운 것이라 되돌리지 않는다) 있으면 남기고 옮기지 못한 맨 위 점 항목(.env·.git)만 `<id>`로 옮긴다(지문이 없으면 그때 내용으로 적는다)(다음 교체가 지문으로 정리).
   - manifest의 `requires`(예: `{"saba-core": ">=0.1.10"}`)를 못 맞추면 받지 않고 `{ok:false, error, error_code:"module_dependency_unsatisfied", module, missing_dependencies:["saba-core >=0.1.10 (installed 0.1.9)"]}`로 답한다(로드 실패·시작 응답과 같은 꼴, `unmet_requires_body`).
   5. 새 모듈이 `[install] requires_extensions`로 요구하는 익스텐션을 맞춘다(`handlers/extension.rs` `prepare_for_module`). 디스크에 없으면 카탈로그에서 의존 익스텐션과 함께 받고(`POST /api/extensions/:id/install`과 같은 경로), 의존 익스텐션부터 켠다(`ExtensionManager::enable_for_module`). 설치 전 판도 요구하던 익스텐션은 사용자가 일부러 껐을 수 있으므로 다시 켜지 않는다(이번에 새로 받은 것은 켠다). 처음 설치면 요구하는 것을 모두 켜고, 업데이트면 새로 필요해진 것만 켠다. 켠 것마다 그 익스텐션의 `daemon.startup`을 돌린다. 결과는 응답의 `extensions:{installed:[id], enabled:[id], failed:[{id, error, error_code, related}]}`다. 모듈 설치는 이미 끝났으므로 익스텐션 실패는 `ok:true`인 채 `failed`로만 알린다. GUI는 켠 것을 알림으로, 실패를 경고로 보이고 익스텐션 목록을 새로 받는다. CLI `module install`도 같은 문구를 낸다.
   - 실패도 HTTP 200 `{ok:false, error}`로 돌려준다.
@@ -719,7 +725,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 1. ~~`[module].entry`가 쓰이지 않는다~~ 해결됨: 데몬이 `entry_path()`로 쓰고 로드 때 파일 존재를 확인한다 (§1.1).
 2. ~~command `inputs`의 `options`, `min`, `max`가 버려진다~~ → 해결: `CommandInputToml`·`CommandInput`이 받고 데몬이 입력 검사에 쓴다 (`module_loader.rs:373-390, 953-972`).
 3. ~~`[detection.linux]`, `install.beta_branch`, `detection.common_paths`, `config.*` 추가 키, `[errors]`, `game_name`, `display_name`이 무시된다~~ → 해결: schema v1이 모르는 키를 로드 오류로 내고, 모듈에서 그 키들이 지워졌다. `[errors]`·`game_name`·`display_name`은 메타데이터에 실린다 (`module_loader.rs:1193-1246`).
-4. ~~`CommandField.method` 주석은 `both`인데 인터페이스 분기는 `dual`이다~~ → 해결: 데몬 `crate::commands`가 `console`/`rest`/`module`(`rcon`·`dual`·`both` 별칭)을 해석하고 인터페이스는 분기하지 않는다 (`D:src/commands/mod.rs:167-191`).
+4. ~~`CommandField.method` 주석은 `both`인데 인터페이스 분기는 `dual`이다~~ → 해결: 데몬 `crate::commands`가 `console`/`rest`/`module`을 해석하고 인터페이스는 분기하지 않는다 (`D:src/commands/mod.rs:167-191`).
 5. ~~`/api/modules` 응답에 `game_name`과 `display_name`이 없다~~ → 해결: `ExtensionInfo`에 둘 다 있다 (`D:src/ipc/mod.rs:246-249`).
 6. ~~ZIP 로딩에서 `ends_with("module.toml")`로 첫 엔트리를 고른다~~ → 해결: 이름이 정확히 `module.toml`인 가장 얕은 엔트리를 고른다 (`module_loader.rs:1559-1570`). `.extracted` 재추출 문제와, locales·설치 경로가 `<modules>/<name>`을 가정하는 문제는 남았다 (§1.1, §4.6).
 

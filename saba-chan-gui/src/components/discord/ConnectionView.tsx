@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type BackupNotice, type DmNoticeKind, useDiscordStore } from '../../stores/useDiscordStore';
 import { useUIStore } from '../../stores/useUIStore';
-import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { CliText } from '../CliLine';
 import { Icon } from '../Icon';
@@ -12,11 +11,9 @@ import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import type { DiscordNode } from './types';
 import type { usePairing } from './usePairing';
+import { failed } from '../../utils/apiResult';
 
 type Pairing = ReturnType<typeof usePairing>;
-
-const failedRes = (res: ApiBody | null | undefined) =>
-    !res || res.success === false || Boolean(res.error_code) || Boolean(res.error);
 
 interface SleepAllButtonProps {
     nodes?: DiscordNode[];
@@ -43,7 +40,7 @@ function SleepAllButton({ nodes, onAsleepChange }: SleepAllButtonProps) {
         if (!list.length || !window.api?.discordSettingsGet) return setAsleep(false);
         const res = await Promise.all(list.map((g) => window.api.discordSettingsGet(g).catch(() => null)));
         if (gen !== generation.current) return;
-        const sleepingCount = res.filter((r) => !failedRes(r) && r?.sleeping === true).length;
+        const sleepingCount = res.filter((r) => !failed(r) && r?.sleeping === true).length;
         if (sleepingCount === list.length) setAsleep(true);
         else if (sleepingCount === 0) setAsleep(false);
         else setAsleep(lastAttempt.current === 'wake');
@@ -66,7 +63,7 @@ function SleepAllButton({ nodes, onAsleepChange }: SleepAllButtonProps) {
                 window.api.discordSettingsSet(g, { sleeping }).catch((e) => ({ error: (e as Error).message })),
             ),
         );
-        const bad = res.filter(failedRes).length;
+        const bad = res.filter(failed).length;
         if (bad) safeShowToast(t('discord.sleep_failed', { count: bad }), 'error', 6000);
         await load();
         setBusy(false);

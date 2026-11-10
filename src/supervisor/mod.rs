@@ -173,6 +173,66 @@ fn setting_flag(instance: &crate::instance::ServerInstance, key: &str, default: 
     }
 }
 
+/// 모듈이 돌려준 REST 자격 증명을 인스턴스에 옮긴다: `get_launch_command`의 `rest_credentials`, 없으면 `[credential_map]`으로
+/// 게임 설정 키(`module_settings` 또는 최상위)에서 읽는다. 바뀐 것이 있으면 true
+fn sync_rest_credentials(
+    instance: &mut crate::instance::ServerInstance,
+    launch_result: &Value,
+    credential_map: &std::collections::HashMap<String, String>,
+) -> bool {
+    // 1) 명시적 rest_credentials (모듈이 직접 반환한 경우)
+    // 2) 없으면 credential_map 기반 (module.toml에 선언된 매핑): launch_result의 module_settings 또는 최상위에서 게임 키 값을 찾는다
+    let given: Vec<(&str, &str)> = match launch_result.get("rest_credentials").and_then(|v| v.as_object()) {
+        Some(rest_creds) => ["rest_username", "rest_password"]
+            .into_iter()
+            .filter_map(|key| rest_creds.get(key).and_then(|v| v.as_str()).map(|value| (key, value)))
+            .collect(),
+        None => credential_map
+            .iter()
+            .filter_map(|(daemon_key, game_key)| {
+                let value = launch_result.get("module_settings")
+                    .and_then(|ms| ms.get(game_key))
+                    .and_then(|v| v.as_str())
+                    .or_else(|| launch_result.get(game_key).and_then(|v| v.as_str()))?;
+                Some((daemon_key.as_str(), value))
+            })
+            .collect(),
+    };
+    let mut creds_changed = false;
+    for (key, value) in given {
+        let slot = match key {
+            "rest_username" => &mut instance.rest_username,
+            "rest_password" => &mut instance.rest_password,
+            _ => {
+                tracing::debug!("credential_map: unknown daemon key '{}', skipping", key);
+                continue;
+            }
+        };
+        if slot.as_deref() != Some(value) {
+            *slot = Some(value.to_string());
+            creds_changed = true;
+            tracing::info!("Synced {} from module for instance '{}'", key, instance.id);
+        }
+    }
+    creds_changed
+}
+
+/// `get_launch_command`가 돌려준 실행 명령 (실행 검사를 거친 프로그램)
+struct LaunchSpec {
+    program: String,
+    args: Vec<String>,
+    working_dir: String,
+    env_vars: Vec<(String, String)>,
+}
+
+/// 모듈·익스텐션이 준 `env_vars` 객체를 (이름, 값) 쌍으로. 문자열이 아닌 값은 버린다
+fn env_pairs(source: &Value) -> Vec<(String, String)> {
+    source.get("env_vars")
+        .and_then(|e| e.as_object())
+        .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
+        .unwrap_or_default()
+}
+
 /// `get_launch_command` 결과의 실행 인자. 모듈이 추가 인자를 넣지 않았으면 끝에 붙인다
 pub(crate) fn launch_args(launch_result: &Value, instance: &crate::instance::ServerInstance) -> Vec<String> {
     let mut args: Vec<String> = launch_result
@@ -277,6 +337,9 @@ fn same_file_path(a: &std::path::Path, b: &std::path::Path) -> bool {
         _ => a == b,
     }
 }
+
+/// 서버 시작·설치와 모듈·익스텐션 자동 교체가 겹치지 않게 하는 문 (`Supervisor::try_hold_starts`)
+static ADDON_SWAP_GATE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
 
 impl Supervisor {
     pub(crate) fn host_context(&self, id: &str) -> Option<crate::plugin::host::Context> {
@@ -912,11 +975,12 @@ impl Supervisor {
     ///
     /// managed 시작과 같이, 익스텐션 hook과 `get_launch_command`는 데몬 락 밖에서 부른다 (C12).
     pub async fn start_server(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
+        let _swap = ADDON_SWAP_GATE.read().await;
         tracing::info!("Starting server '{}' with module '{}'", server_name, module_name);
 
         let moved = {
             let mut s = sup.write().await;
-            let id = s.instance_store.get(server_name).or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name)).map(|i| i.id.clone());
+            let id = s.instance_store.find(server_name).map(|i| i.id.clone());
             id.and_then(|id| s.move_reserved_default_rest_port(&id))
         };
         let result = Self::start_server_inner(sup, server_name, module_name, config).await;
@@ -928,7 +992,7 @@ impl Supervisor {
     async fn announce_ready(sup: &tokio::sync::RwLock<Self>, key: &str, result: &Result<Value>) {
         let (id, name, console, patterns, timeout, join, leave, chat) = {
             let s = sup.read().await;
-            let Some(instance) = s.instance_store.get(key).or_else(|| s.instance_store.list().iter().find(|i| i.name == key)) else { return };
+            let Some(instance) = s.instance_store.find(key) else { return };
             let module = s.module_loader.get_module(&instance.module_name).ok();
             let meta = module.as_ref().map(|m| &m.metadata);
             let patterns = meta.map(|m| m.ready_patterns.clone()).unwrap_or_default();
@@ -944,14 +1008,225 @@ impl Supervisor {
         ready::after_start(&id, &name, result, console, &patterns, timeout);
     }
 
+    /// `server.pre_start` hook을 부른다 (락 밖). 익스텐션이 시작을 맡았으면(handled) 그 결과를 돌려주고, 맡은 곳이 없으면 `None`.
+    /// 맡아 띄웠으면 익스텐션이 준 `log_follower`를 붙인다. `ctx`는 부르는 쪽이 만든다 (관리형은 비밀 값을 가린 인스턴스·설정을 싣는다)
+    async fn run_pre_start_hook(
+        sup: &tokio::sync::RwLock<Self>,
+        instance: &crate::instance::ServerInstance,
+        module_name: &str,
+        starting: &StartGuard,
+        hook: Option<(std::sync::Arc<tokio::sync::RwLock<crate::extension::ExtensionManager>>, Value)>,
+        managed: bool,
+    ) -> Option<Value> {
+        let (ext_mgr, ctx) = hook?;
+        let hook_label = if managed { "server.pre_start' (managed)" } else { "server.pre_start'" };
+        let server_name = instance.name.as_str();
+        let host_context = sup.read().await.host_context(&instance.id);
+        let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.pre_start", ctx)).await;
+        for (ext_id, result) in &results {
+            if let Ok(val) = result {
+                if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
+                    // Extension handled but failed → ensure error/message fields exist
+                    if val.get("success").and_then(|s| s.as_bool()) != Some(true) {
+                        let mut fail_val = val.clone();
+                        if let Some(obj) = fail_val.as_object_mut() {
+                            obj.entry("error".to_string())
+                                .or_insert_with(|| json!("Extension failed to start server"));
+                            obj.entry("message".to_string())
+                                .or_insert_with(|| json!("Extension handled the start request but reported failure"));
+                        }
+                        let err_detail = fail_val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
+                        tracing::warn!(
+                            ext = ext_id,
+                            error = err_detail,
+                            "Extension hook '{} handled but failed for '{}'",
+                            hook_label,
+                            server_name
+                        );
+                        return Some(fail_val);
+                    }
+                    // 익스텐션이 띄우는 사이 정지가 들어왔으면 그 정지(server.stop)는 이미 끝났다: 다시 꺼서 되돌린다
+                    if starting.stop_requested(&*sup.read().await) {
+                        Self::undo_extension_start(sup, &instance.id, module_name).await;
+                        return Some(start_cancelled(&instance.name));
+                    }
+                    // Extension이 시작 성공 → log_follower가 있으면 로그 스트리머 등록
+                    if let Some(log_cfg) = val.get("log_follower") {
+                        if let Err(blocked) = Self::attach_log_follower(sup, instance, module_name, ext_id, log_cfg).await {
+                            return Some(blocked);
+                        }
+                    }
+                    announce_started(&instance.id, &instance.name, &crate::audit::current(), false);
+                    return Some(val.clone());
+                }
+            }
+        }
+        None
+    }
+
+    /// 시작을 맡은 익스텐션이 준 `log_follower`(콘솔 다리)를 띄워 managed 저장소에 둔다. 실행 검사에서 막히면 그 응답을 `Err`로
+    async fn attach_log_follower(
+        sup: &tokio::sync::RwLock<Self>,
+        instance: &crate::instance::ServerInstance,
+        module_name: &str,
+        ext_id: &str,
+        log_cfg: &Value,
+    ) -> std::result::Result<(), Value> {
+        let server_name = instance.name.as_str();
+        let instance_dir = sup.read().await.instance_store.instance_dir(&instance.id);
+        let program = log_cfg.get("program").and_then(|p| p.as_str()).unwrap_or_default();
+        let args: Vec<String> = log_cfg.get("args")
+            .and_then(|a| a.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let work_dir = log_cfg.get("working_dir")
+            .and_then(|w| w.as_str())
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| instance_dir.clone());
+        let desc = log_cfg.get("description")
+            .and_then(|d| d.as_str())
+            .unwrap_or("Extension log follower");
+        let interactive = log_cfg.get("interactive")
+            .and_then(|i| i.as_bool())
+            .unwrap_or(false);
+        let strip_prefix = log_cfg.get("strip_prefix").and_then(|s| s.as_str());
+        let log_pattern = sup.read().await.module_loader.get_module(module_name)
+            .ok()
+            .and_then(|m| m.metadata.log_pattern.clone());
+
+        // interactive=true → spawn() (bidirectional stdin/stdout)
+        // interactive=false → spawn_log_follower() (read-only stdout)
+        let mut env_vars = env_pairs(log_cfg);
+        // 확인되지 않은 익스텐션이 띄우는 프로그램도 모듈과 같은 검사를 받는다
+        let roots = crate::sandbox::LaunchRoots {
+            dirs: std::iter::once(instance_dir.clone()).chain(instance.working_dir.iter().map(std::path::PathBuf::from)).collect(),
+            runtimes: Vec::new(),
+        };
+        let (program, gate) = match crate::sandbox::guard_launch_for(|| crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
+            Ok(launch) => launch,
+            Err(blocked) => {
+                tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
+                return Err(blocked.to_json(crate::sandbox::message(&blocked)));
+            }
+        };
+        let program = program.as_str();
+        let spawn_result = if interactive {
+            tracing::info!("Spawning interactive IO bridge for '{}'", server_name);
+            managed_process::ManagedProcess::spawn(
+                program,
+                &args,
+                work_dir.to_str().unwrap_or("."),
+                env_vars,
+                log_pattern.as_deref(),
+                Some(&instance_dir),
+            ).await
+        } else {
+            managed_process::ManagedProcess::spawn_log_follower(
+                program,
+                &args,
+                &work_dir,
+                desc,
+                log_pattern.as_deref(),
+                strip_prefix,
+                Some(&instance_dir),
+            ).await
+        };
+        drop(gate);
+        match spawn_result {
+            Ok(mut follower) => {
+                // 익스텐션이 붙인 다리라 서버 종료 판정(A1) 대상이 아니다
+                follower.log_follower = true;
+                sup.read().await.managed_store.insert(&instance.id, follower).await;
+                tracing::info!(
+                    "{} registered for '{}'",
+                    if interactive { "Interactive IO bridge" } else { "Log follower" },
+                    server_name
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to start {} for '{}': {}",
+                    if interactive { "IO bridge" } else { "log follower" },
+                    server_name, e
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// `get_launch_command` 호출을 만든다: 시작 설정에 실행 파일·포트·인스턴스 값을 더하고 실행 방식(`managed`)을 알린다
+    fn launch_command_call(
+        &self,
+        config: &Value,
+        instance: &crate::instance::ServerInstance,
+        module_name: &str,
+        managed: bool,
+    ) -> Result<(crate::plugin::PluginCall, crate::supervisor::module_loader::LoadedModule)> {
+        // 실행 파일은 모듈 정의에서 자동 해석
+        let mut cfg = config.as_object().cloned().unwrap_or_default();
+        self.insert_resolved_exe(&mut cfg, instance, module_name);
+        if let Some(port) = instance.port {
+            cfg.insert("port".to_string(), json!(port));
+        }
+        self.ensure_rcon_access(instance)?;
+        Self::insert_instance_fields(&mut cfg, instance, &self.instance_store.instance_dir(&instance.id));
+        // 모듈이 실행 방식을 구분
+        cfg.insert("managed".to_string(), json!(managed));
+        let final_config = Value::Object(cfg);
+
+        let module = self.module_loader.get_module(module_name)?;
+        if managed {
+            // 비밀번호류 설정값과 REST 비밀번호는 가려서 남긴다
+            let (_, logged) = crate::audit::redact(Some(&module.metadata), Some(instance), None, Some(&final_config));
+            tracing::info!("get_launch_command config: {}", logged.unwrap_or_default());
+        }
+        let call = crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", final_config).in_instance(self.host_context(&instance.id));
+        Ok((call, module))
+    }
+
+    /// `get_launch_command` 결과를 실행 명령으로 풀고 실행 검사(`guard_launch`)를 거친다.
+    /// 사용자 조치가 필요하거나(`action_required`) 실행 검사에서 막히면 돌려줄 응답을 `Ok(Err(..))`로
+    async fn prepare_launch(
+        sup: &tokio::sync::RwLock<Self>,
+        instance: &crate::instance::ServerInstance,
+        module_name: &str,
+        launch_result: &Value,
+    ) -> Result<std::result::Result<(LaunchSpec, crate::sandbox::LaunchGate), Value>> {
+        // action_required (e.g. server jar not found) → pass through to caller
+        if launch_result.get("action_required").is_some() {
+            tracing::warn!("Module requires user action: {:?}", launch_result.get("action_required"));
+            return Ok(Err(launch_result.clone()));
+        }
+
+        if launch_result.get("success").and_then(|s| s.as_bool()) != Some(true) {
+            return Err(module_failure(launch_result, module_name, "get_launch_command"));
+        }
+
+        let program = launch_result.get("program")
+            .and_then(|p| p.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Module did not return program"))?;
+
+        let args = launch_args(launch_result, instance);
+
+        let working_dir = launch_result.get("working_dir")
+            .and_then(|w| w.as_str())
+            .unwrap_or(".");
+
+        let mut env_vars = env_pairs(launch_result);
+
+        Ok(match Self::guard_launch(sup, instance, module_name, program, &args, working_dir, &mut env_vars).await {
+            Ok((program, gate)) => Ok((LaunchSpec { program, args, working_dir: working_dir.to_string(), env_vars }, gate)),
+            Err(blocked) => Err(blocked),
+        })
+    }
+
     async fn start_server_inner(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
 
         // ── 검사 (읽기 락) ──
         let (instance, starting, hook) = {
             let s = sup.read().await;
             // Find instance to get executable_path and working_dir
-            let instance = s.instance_store.get(server_name)
-                .or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name))
+            let instance = s.instance_store.find(server_name)
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
@@ -980,38 +1255,13 @@ impl Supervisor {
 
             // ── 인스턴스 필수 익스텐션 검증 ──
             // 기존 인스턴스의 required_extensions가 비어있으면 모듈의 install.requires_extensions에서 보충
-            let effective_required: Vec<String> = if instance.required_extensions.is_empty() {
-                if let Ok(loaded_module) = s.module_loader.get_module(module_name) {
-                    let mut reqs = Vec::new();
-                    if let Some(ref install) = loaded_module.metadata.install {
-                        for ext_id in &install.requires_extensions {
-                            reqs.push(ext_id.clone());
-                        }
-                    }
-                    reqs
-                } else {
-                    Vec::new()
-                }
-            } else {
-                instance.required_extensions.clone()
-            };
+            let effective_required = s.effective_required_extensions(&instance);
 
             if !effective_required.is_empty() {
                 if let Some(ref ext_mgr) = s.extension_manager {
-                    let ext_mgr_guard = ext_mgr.read().await;
-                    let ready = ext_mgr_guard.installed_and_enabled_set();
-                    let enabled_not_installed = ext_mgr_guard.enabled_but_not_installed();
-                    drop(ext_mgr_guard);
-                    // missing: 활성화되지 않았거나 디스크에 설치되지 않은 익스텐션
-                    let missing: Vec<String> = effective_required.iter()
-                        .filter(|ext_id| !ready.contains(ext_id.as_str()))
-                        .cloned()
-                        .collect();
+                    let crate::extension::MissingExtensions { missing, not_installed } = ext_mgr.read().await.missing_required(&effective_required);
                     if !missing.is_empty() {
                         // 활성화되었지만 설치되지 않은 항목 구분
-                        let not_installed: Vec<&String> = missing.iter()
-                            .filter(|id| enabled_not_installed.contains(id))
-                            .collect();
                         if !not_installed.is_empty() {
                             tracing::error!(
                                 "Instance '{}' requires extensions {:?} which are enabled but not installed on disk",
@@ -1065,126 +1315,8 @@ impl Supervisor {
         // 받은 키가 id여도 메시지·응답에는 이름을 쓴다
         let server_name = instance.name.as_str();
 
-        if let Some((ext_mgr, ctx)) = hook {
-            let host_context = sup.read().await.host_context(&instance.id);
-            let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.pre_start", ctx)).await;
-            for (ext_id, result) in &results {
-                if let Ok(val) = result {
-                    if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
-                        // Extension handled but failed → ensure error/message fields exist
-                        if val.get("success").and_then(|s| s.as_bool()) != Some(true) {
-                            let mut fail_val = val.clone();
-                            if let Some(obj) = fail_val.as_object_mut() {
-                                obj.entry("error".to_string())
-                                    .or_insert_with(|| json!("Extension failed to start server"));
-                                obj.entry("message".to_string())
-                                    .or_insert_with(|| json!("Extension handled the start request but reported failure"));
-                            }
-                            let err_detail = fail_val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
-                            tracing::warn!(
-                                ext = ext_id,
-                                error = err_detail,
-                                "Extension hook 'server.pre_start' handled but failed for '{}'",
-                                server_name
-                            );
-                            return Ok(fail_val);
-                        }
-                        // 익스텐션이 띄우는 사이 정지가 들어왔으면 그 정지(server.stop)는 이미 끝났다: 다시 꺼서 되돌린다
-                        if starting.stop_requested(&*sup.read().await) {
-                            Self::undo_extension_start(sup, &instance.id, module_name).await;
-                            return Ok(start_cancelled(&instance.name));
-                        }
-                        // Extension이 시작 성공 → log_follower가 있으면 로그 스트리머 등록
-                        if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
-                            if let Some(log_cfg) = val.get("log_follower") {
-                                let instance_dir = sup.read().await.instance_store.instance_dir(&instance.id);
-                                let program = log_cfg.get("program").and_then(|p| p.as_str()).unwrap_or_default();
-                                let args: Vec<String> = log_cfg.get("args")
-                                    .and_then(|a| a.as_array())
-                                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                                    .unwrap_or_default();
-                                let work_dir = log_cfg.get("working_dir")
-                                    .and_then(|w| w.as_str())
-                                    .map(std::path::PathBuf::from)
-                                    .unwrap_or_else(|| instance_dir.clone());
-                                let desc = log_cfg.get("description")
-                                    .and_then(|d| d.as_str())
-                                    .unwrap_or("Extension log follower");
-                                let interactive = log_cfg.get("interactive")
-                                    .and_then(|i| i.as_bool())
-                                    .unwrap_or(false);
-                                let strip_prefix = log_cfg.get("strip_prefix").and_then(|s| s.as_str());
-                                let log_pattern = sup.read().await.module_loader.get_module(module_name)
-                                    .ok()
-                                    .and_then(|m| m.metadata.log_pattern.clone());
-
-                                // interactive=true → spawn() (bidirectional stdin/stdout)
-                                // interactive=false → spawn_log_follower() (read-only stdout)
-                                let mut env_vars: Vec<(String, String)> = log_cfg.get("env_vars")
-                                    .and_then(|e| e.as_object())
-                                    .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
-                                    .unwrap_or_default();
-                                // 확인되지 않은 익스텐션이 띄우는 프로그램도 모듈과 같은 검사를 받는다
-                                let roots = crate::sandbox::LaunchRoots {
-                                    dirs: std::iter::once(instance_dir.clone()).chain(instance.working_dir.iter().map(std::path::PathBuf::from)).collect(),
-                                    runtimes: Vec::new(),
-                                };
-                                let (program, gate) = match crate::sandbox::guard_launch_for(|| crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
-                                    Ok(launch) => launch,
-                                    Err(blocked) => {
-                                        tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
-                                        return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
-                                    }
-                                };
-                                let program = program.as_str();
-                                let spawn_result = if interactive {
-                                    tracing::info!("Spawning interactive IO bridge for '{}'", server_name);
-                                    managed_process::ManagedProcess::spawn(
-                                        program,
-                                        &args,
-                                        work_dir.to_str().unwrap_or("."),
-                                        env_vars,
-                                        log_pattern.as_deref(),
-                                        Some(&instance_dir),
-                                    ).await
-                                } else {
-                                    managed_process::ManagedProcess::spawn_log_follower(
-                                        program,
-                                        &args,
-                                        &work_dir,
-                                        desc,
-                                        log_pattern.as_deref(),
-                                        strip_prefix,
-                                        Some(&instance_dir),
-                                    ).await
-                                };
-                                drop(gate);
-                                match spawn_result {
-                                    Ok(mut follower) => {
-                                        // 익스텐션이 붙인 다리라 서버 종료 판정(A1) 대상이 아니다
-                                        follower.log_follower = true;
-                                        sup.read().await.managed_store.insert(&instance.id, follower).await;
-                                        tracing::info!(
-                                            "{} registered for '{}'",
-                                            if interactive { "Interactive IO bridge" } else { "Log follower" },
-                                            server_name
-                                        );
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            "Failed to start {} for '{}': {}",
-                                            if interactive { "IO bridge" } else { "log follower" },
-                                            server_name, e
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        announce_started(&instance.id, &instance.name, &crate::audit::current(), false);
-                        return Ok(val.clone());
-                    }
-                }
-            }
+        if let Some(handled) = Self::run_pre_start_hook(sup, &instance, module_name, &starting, hook, false).await {
+            return Ok(handled);
         }
 
         let call = {
@@ -1193,53 +1325,14 @@ impl Supervisor {
 
             tracing::info!("Starting non-managed server for instance '{}' (module: {})", server_name, module_name);
 
-            // Build config — managed start와 동일한 병합 로직
-            let mut cfg = config.as_object().cloned().unwrap_or_default();
-            s.insert_resolved_exe(&mut cfg, &instance, module_name);
-            if let Some(port) = instance.port {
-                cfg.insert("port".to_string(), json!(port));
-            }
-            s.ensure_rcon_access(&instance)?;
-            Self::insert_instance_fields(&mut cfg, &instance, &s.instance_store.instance_dir(&instance.id));
-            // Non-managed → managed=false로 명시 (모듈이 실행 방식을 구분)
-            cfg.insert("managed".to_string(), json!(false));
-            let final_config = Value::Object(cfg);
-
-            let module = s.module_loader.get_module(module_name)?;
-            crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", final_config).in_instance(s.host_context(&instance.id))
+            s.launch_command_call(&config, &instance, module_name, false)?.0
         };
         let launch_result = call.run().await?;
-
-        // action_required (e.g. server jar not found) → pass through to caller
-        if launch_result.get("action_required").is_some() {
-            tracing::warn!("Module requires user action: {:?}", launch_result.get("action_required"));
-            return Ok(launch_result);
-        }
-
-        if launch_result.get("success").and_then(|s| s.as_bool()) != Some(true) {
-            return Err(module_failure(&launch_result, module_name, "get_launch_command"));
-        }
-
-        let program = launch_result.get("program")
-            .and_then(|p| p.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Module did not return program"))?;
-
-        let args = launch_args(&launch_result, &instance);
-
-        let working_dir = launch_result.get("working_dir")
-            .and_then(|w| w.as_str())
-            .unwrap_or(".");
-
-        let mut env_vars: Vec<(String, String)> = launch_result.get("env_vars")
-            .and_then(|e| e.as_object())
-            .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
-            .unwrap_or_default();
-
-        let (program, gate) = match Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
+        let (LaunchSpec { program, args, working_dir, env_vars }, gate) = match Self::prepare_launch(sup, &instance, module_name, &launch_result).await? {
             Ok(launch) => launch,
-            Err(blocked) => return Ok(blocked),
+            Err(response) => return Ok(response),
         };
-        let program = program.as_str();
+        let (program, working_dir) = (program.as_str(), working_dir.as_str());
         if starting.stop_requested(&*sup.read().await) {
             return Ok(start_cancelled(server_name));
         }
@@ -1346,8 +1439,7 @@ impl Supervisor {
         };
         if failed {
             let mut s = sup.write().await;
-            let id = s.instance_store.get(server_name)
-                .or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name))
+            let id = s.instance_store.find(server_name)
                 .map(|i| i.id.clone());
             if let Some(id) = id {
                 s.stop_requested.remove(&id);
@@ -1362,8 +1454,7 @@ impl Supervisor {
         // ── 1) 준비 (쓰기 락: 정지 표시를 남긴다) ──
         let (instance, hook, managed) = {
             let mut s = sup.write().await;
-            let instance = s.instance_store.get(server_name)
-                .or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name))
+            let instance = s.instance_store.find(server_name)
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
             s.stop_requested.insert(instance.id.clone(), crate::audit::current());
@@ -1836,6 +1927,7 @@ impl Supervisor {
         module_name: &str,
         config: Value,
     ) -> Result<Value> {
+        let _swap = ADDON_SWAP_GATE.read().await;
         let moved = sup.write().await.move_reserved_default_rest_port(instance_id);
         let result = Self::start_managed_server_inner(sup, instance_id, module_name, config).await;
         Self::announce_ready(sup, instance_id, &result).await;
@@ -1934,126 +2026,8 @@ impl Supervisor {
         };
 
         // ── 2) 익스텐션 hook (락 밖) ──
-        if let Some((ext_mgr, ctx)) = hook {
-            let host_context = sup.read().await.host_context(&instance.id);
-            let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.pre_start", ctx)).await;
-            for (ext_id, result) in &results {
-                if let Ok(val) = result {
-                    if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
-                        // Extension handled but failed → ensure error/message fields exist
-                        if val.get("success").and_then(|s| s.as_bool()) != Some(true) {
-                            let mut fail_val = val.clone();
-                            if let Some(obj) = fail_val.as_object_mut() {
-                                obj.entry("error".to_string())
-                                    .or_insert_with(|| json!("Extension failed to start server"));
-                                obj.entry("message".to_string())
-                                    .or_insert_with(|| json!("Extension handled the start request but reported failure"));
-                            }
-                            let err_detail = fail_val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
-                            tracing::warn!(
-                                ext = ext_id,
-                                error = err_detail,
-                                "Extension hook 'server.pre_start' (managed) handled but failed for '{}'",
-                                instance.name
-                            );
-                            return Ok(fail_val);
-                        }
-                        // 익스텐션이 띄우는 사이 정지가 들어왔으면 그 정지(server.stop)는 이미 끝났다: 다시 꺼서 되돌린다
-                        if starting.stop_requested(&*sup.read().await) {
-                            Self::undo_extension_start(sup, &instance.id, module_name).await;
-                            return Ok(start_cancelled(&instance.name));
-                        }
-                        // Extension이 시작 성공 → log_follower가 있으면 로그 스트리머 등록
-                        if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
-                            if let Some(log_cfg) = val.get("log_follower") {
-                                let inst_dir = sup.read().await.instance_store.instance_dir(&instance.id);
-                                let program = log_cfg.get("program").and_then(|p| p.as_str()).unwrap_or_default();
-                                let args: Vec<String> = log_cfg.get("args")
-                                    .and_then(|a| a.as_array())
-                                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                                    .unwrap_or_default();
-                                let work_dir = log_cfg.get("working_dir")
-                                    .and_then(|w| w.as_str())
-                                    .map(std::path::PathBuf::from)
-                                    .unwrap_or_else(|| inst_dir.clone());
-                                let desc = log_cfg.get("description")
-                                    .and_then(|d| d.as_str())
-                                    .unwrap_or("Extension log follower");
-                                let interactive = log_cfg.get("interactive")
-                                    .and_then(|i| i.as_bool())
-                                    .unwrap_or(false);
-                                let strip_prefix = log_cfg.get("strip_prefix").and_then(|s| s.as_str());
-                                let log_pattern = sup.read().await.module_loader.get_module(module_name)
-                                    .ok()
-                                    .and_then(|m| m.metadata.log_pattern.clone());
-
-                                // interactive=true → spawn() (bidirectional stdin/stdout)
-                                // interactive=false → spawn_log_follower() (read-only stdout)
-                                let mut env_vars: Vec<(String, String)> = log_cfg.get("env_vars")
-                                    .and_then(|e| e.as_object())
-                                    .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
-                                    .unwrap_or_default();
-                                // 확인되지 않은 익스텐션이 띄우는 프로그램도 모듈과 같은 검사를 받는다
-                                let roots = crate::sandbox::LaunchRoots {
-                                    dirs: std::iter::once(inst_dir.clone()).chain(instance.working_dir.iter().map(std::path::PathBuf::from)).collect(),
-                                    runtimes: Vec::new(),
-                                };
-                                let (program, gate) = match crate::sandbox::guard_launch_for(|| crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
-                                    Ok(launch) => launch,
-                                    Err(blocked) => {
-                                        tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
-                                        return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
-                                    }
-                                };
-                                let program = program.as_str();
-                                let spawn_result = if interactive {
-                                    tracing::info!("Spawning interactive IO bridge for '{}'", instance.name);
-                                    managed_process::ManagedProcess::spawn(
-                                        program,
-                                        &args,
-                                        work_dir.to_str().unwrap_or("."),
-                                        env_vars,
-                                        log_pattern.as_deref(),
-                                        Some(&inst_dir),
-                                    ).await
-                                } else {
-                                    managed_process::ManagedProcess::spawn_log_follower(
-                                        program,
-                                        &args,
-                                        &work_dir,
-                                        desc,
-                                        log_pattern.as_deref(),
-                                        strip_prefix,
-                                        Some(&inst_dir),
-                                    ).await
-                                };
-                                drop(gate);
-                                match spawn_result {
-                                    Ok(mut follower) => {
-                                        // 익스텐션이 붙인 다리라 서버 종료 판정(A1) 대상이 아니다
-                                        follower.log_follower = true;
-                                        sup.read().await.managed_store.insert(instance_id, follower).await;
-                                        tracing::info!(
-                                            "{} registered for '{}'",
-                                            if interactive { "Interactive IO bridge" } else { "Log follower" },
-                                            instance.name
-                                        );
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            "Failed to start {} for '{}': {}",
-                                            if interactive { "IO bridge" } else { "log follower" },
-                                            instance.name, e
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        announce_started(&instance.id, &instance.name, &crate::audit::current(), false);
-                        return Ok(val.clone());
-                    }
-                }
-            }
+        if let Some(handled) = Self::run_pre_start_hook(sup, &instance, module_name, &starting, hook, true).await {
+            return Ok(handled);
         }
 
         // ── 3) 실행 명령 받기: 준비는 읽기 락, 모듈 호출은 락 밖 ──
@@ -2061,122 +2035,24 @@ impl Supervisor {
             let s = sup.read().await;
             tracing::info!("Starting managed server for instance '{}' (module: {})", instance.name, module_name);
 
-            // Build config for the module — 실행 파일은 모듈 정의에서 자동 해석
-            let mut cfg = config.as_object().cloned().unwrap_or_default();
-            s.insert_resolved_exe(&mut cfg, &instance, module_name);
-            if let Some(port) = instance.port {
-                cfg.insert("port".to_string(), json!(port));
-            }
-            s.ensure_rcon_access(&instance)?;
-            Self::insert_instance_fields(&mut cfg, &instance, &s.instance_store.instance_dir(&instance.id));
-            // Managed mode indicator → 모듈이 실행 방식을 구분
-            cfg.insert("managed".to_string(), json!(true));
-            let final_config = Value::Object(cfg);
-
-            // Get module and call get_launch_command
-            let module = s.module_loader.get_module(module_name)?;
-            // 비밀번호류 설정값과 REST 비밀번호는 가려서 남긴다
-            let (_, logged) = crate::audit::redact(Some(&module.metadata), Some(&instance), None, Some(&final_config));
-            tracing::info!("get_launch_command config: {}", logged.unwrap_or_default());
-            (crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", final_config).in_instance(s.host_context(&instance.id)), module)
+            s.launch_command_call(&config, &instance, module_name, true)?
         };
         let launch_result = call.run().await?;
-
-        // If the module requires user action (e.g. server jar not found), pass through to GUI
-        if launch_result.get("action_required").is_some() {
-            tracing::warn!("Module requires user action: {:?}", launch_result.get("action_required"));
-            return Ok(launch_result);
-        }
-
-        if launch_result.get("success").and_then(|s| s.as_bool()) != Some(true) {
-            return Err(module_failure(&launch_result, module_name, "get_launch_command"));
-        }
-
-        let program = launch_result.get("program")
-            .and_then(|p| p.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Module did not return program"))?;
-
-        let args = launch_args(&launch_result, &instance);
-
-        let working_dir = launch_result.get("working_dir")
-            .and_then(|w| w.as_str())
-            .unwrap_or(".");
-
-        let mut env_vars: Vec<(String, String)> = launch_result.get("env_vars")
-            .and_then(|e| e.as_object())
-            .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
-            .unwrap_or_default();
-
-        let (program, gate) = match Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
+        let (LaunchSpec { program, args, working_dir, env_vars }, gate) = match Self::prepare_launch(sup, &instance, module_name, &launch_result).await? {
             Ok(launch) => launch,
-            Err(blocked) => return Ok(blocked),
+            Err(response) => return Ok(response),
         };
-        let program = program.as_str();
+        let (program, working_dir) = (program.as_str(), working_dir.as_str());
 
-        // Sync REST credentials from module via credential_map or rest_credentials
-        {
-            let mut creds_changed = false;
-
-            // 1) 명시적 rest_credentials (모듈이 직접 반환한 경우)
-            if let Some(rest_creds) = launch_result.get("rest_credentials").and_then(|v| v.as_object()) {
-                if let Some(ru) = rest_creds.get("rest_username").and_then(|v| v.as_str()) {
-                    if instance.rest_username.as_deref() != Some(ru) {
-                        instance.rest_username = Some(ru.to_string());
-                        creds_changed = true;
-                        tracing::info!("Synced rest_username='{}' from module for instance '{}'", ru, instance.id);
-                    }
-                }
-                if let Some(rp) = rest_creds.get("rest_password").and_then(|v| v.as_str()) {
-                    if instance.rest_password.as_deref() != Some(rp) {
-                        instance.rest_password = Some(rp.to_string());
-                        creds_changed = true;
-                        tracing::info!("Synced rest_password from module for instance '{}'", instance.id);
-                    }
-                }
-            }
-            // 2) credential_map 기반 자동 동기화 (module.toml에 선언된 매핑)
-            //    get_launch_command가 module_settings를 반환하면 그 값을 읽어서 매핑
-            else if !module.metadata.credential_map.is_empty() {
-                for (daemon_key, game_key) in &module.metadata.credential_map {
-                    // launch_result의 module_settings 또는 최상위에서 게임 키 값을 찾는다
-                    let game_value = launch_result.get("module_settings")
-                        .and_then(|ms| ms.get(game_key))
-                        .and_then(|v| v.as_str())
-                        .or_else(|| launch_result.get(game_key).and_then(|v| v.as_str()));
-
-                    if let Some(val) = game_value {
-                        match daemon_key.as_str() {
-                            "rest_password" => {
-                                if instance.rest_password.as_deref() != Some(val) {
-                                    instance.rest_password = Some(val.to_string());
-                                    creds_changed = true;
-                                    tracing::info!("credential_map: synced {} -> {} for '{}'", game_key, daemon_key, instance.id);
-                                }
-                            }
-                            "rest_username" => {
-                                if instance.rest_username.as_deref() != Some(val) {
-                                    instance.rest_username = Some(val.to_string());
-                                    creds_changed = true;
-                                    tracing::info!("credential_map: synced {} -> {} for '{}'", game_key, daemon_key, instance.id);
-                                }
-                            }
-                            _ => {
-                                tracing::debug!("credential_map: unknown daemon key '{}', skipping", daemon_key);
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 시작하는 동안 다른 설정이 바뀌었을 수 있으니 지금 값에 자격 증명만 덮는다
-            if creds_changed {
-                let mut s = sup.write().await;
-                if let Some(mut current) = s.instance_store.get(&instance.id).cloned() {
-                    current.rest_username = instance.rest_username.clone();
-                    current.rest_password = instance.rest_password.clone();
-                    if let Err(e) = s.instance_store.update(&instance.id, current) {
-                        tracing::warn!("Failed to persist synced credentials: {}", e);
-                    }
+        // Sync REST credentials from module via credential_map or rest_credentials.
+        // 시작하는 동안 다른 설정이 바뀌었을 수 있으니 지금 값에 자격 증명만 덮는다
+        if sync_rest_credentials(&mut instance, &launch_result, &module.metadata.credential_map) {
+            let mut s = sup.write().await;
+            if let Some(mut current) = s.instance_store.get(&instance.id).cloned() {
+                current.rest_username = instance.rest_username.clone();
+                current.rest_password = instance.rest_password.clone();
+                if let Err(e) = s.instance_store.update(&instance.id, current) {
+                    tracing::warn!("Failed to persist synced credentials: {}", e);
                 }
             }
         }
@@ -2291,6 +2167,29 @@ impl Supervisor {
     /// "켜져 있으면 거절" 판정은 모두 이것을 쓴다 (재부착 때 추적표 등록이 실패해 managed에만 남은 경우도 켜진 것이다)
     pub async fn is_running(&self, instance_id: &str) -> bool {
         self.tracker.get_pid(instance_id).is_ok() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
+    }
+
+    /// 서버 시작·설치를 막는다: 모듈·익스텐션 자동 교체가 사용 확인부터 교체까지 쥔다.
+    /// 시작(`start_server`·`start_managed_server`)과 서버 설치·업데이트(`hold_addons`)가 진행 중이면 기다리지 않고 None:
+    /// 기다리면 그 뒤로 새 시작이 줄 서고, 시작 안에서 다시 읽기를 잡는 경로가 멈춘다. 교체는 다음 차례에 다시 본다
+    pub fn try_hold_starts() -> Option<tokio::sync::RwLockWriteGuard<'static, ()>> {
+        ADDON_SWAP_GATE.try_write().ok()
+    }
+
+    /// 모듈·익스텐션을 오래 쓰는 작업(서버 설치·업데이트)이 끝날 때까지 자동 교체를 막는다. 시작과 같이 읽기로 잡는다
+    pub async fn hold_addons() -> tokio::sync::RwLockReadGuard<'static, ()> {
+        ADDON_SWAP_GATE.read().await
+    }
+
+    /// 인스턴스가 쓰는 익스텐션: 인스턴스의 목록, 비어 있으면(옛 인스턴스) 모듈의 `[install] requires_extensions`
+    pub fn effective_required_extensions(&self, instance: &crate::instance::ServerInstance) -> Vec<String> {
+        if !instance.required_extensions.is_empty() {
+            return instance.required_extensions.clone();
+        }
+        self.module_loader
+            .get_module(&instance.module_name)
+            .map(|m| crate::ipc::handlers::server::required_extensions(&m))
+            .unwrap_or_default()
     }
 
     /// 켜져 있는 서버 인스턴스 id (`is_running` 판정)
@@ -2769,6 +2668,8 @@ impl Supervisor {
         keep_executable: Option<&str>,
         commit: Option<&InstallCommit<'_>>,
     ) -> Result<Value> {
+        // 설치가 끝날 때까지 모듈·익스텐션 자동 교체를 막는다
+        let _addons = Self::hold_addons().await;
         let module = sup.read().await.module_loader.get_module(module_name)?;
         let module_path = module.entry_path();
 
@@ -3684,6 +3585,42 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// 모듈이 준 REST 자격 증명: `rest_credentials`가 있으면 그것만, 없으면 `[credential_map]`으로 `module_settings`·최상위에서 읽는다
+    #[test]
+    fn rest_credentials_come_from_the_module_reply_or_its_credential_map() {
+        let map: std::collections::HashMap<String, String> = [
+            ("rest_password".to_string(), "AdminPassword".to_string()),
+            ("rest_username".to_string(), "AdminName".to_string()),
+            ("rcon_password".to_string(), "RconPassword".to_string()),
+        ]
+        .into();
+        let fresh = || crate::instance::ServerInstance::new("s", "m");
+
+        // rest_credentials가 있으면 credential_map은 보지 않는다
+        let mut inst = fresh();
+        let reply = json!({ "rest_credentials": { "rest_username": "admin", "rest_password": "pw" }, "AdminName": "other" });
+        assert!(sync_rest_credentials(&mut inst, &reply, &map));
+        assert_eq!((inst.rest_username.as_deref(), inst.rest_password.as_deref()), (Some("admin"), Some("pw")));
+        assert!(!sync_rest_credentials(&mut inst, &reply, &map), "same values change nothing");
+
+        let mut inst = fresh();
+        inst.rest_password = Some("kept".into());
+        assert!(sync_rest_credentials(&mut inst, &json!({ "rest_credentials": { "rest_username": "admin" }, "AdminPassword": "x" }), &map));
+        assert_eq!(inst.rest_password.as_deref(), Some("kept"));
+
+        // credential_map: module_settings가 최상위보다 먼저, 문자열만, 모르는 데몬 키는 건너뛴다
+        let mut inst = fresh();
+        let reply = json!({ "module_settings": { "AdminPassword": "inner", "AdminName": 5 }, "AdminPassword": "outer", "AdminName": "top", "RconPassword": "r" });
+        assert!(sync_rest_credentials(&mut inst, &reply, &map));
+        assert_eq!((inst.rest_username.as_deref(), inst.rest_password.as_deref()), (Some("top"), Some("inner")));
+
+        // 둘 다 없으면 그대로
+        let mut inst = fresh();
+        assert!(!sync_rest_credentials(&mut inst, &json!({ "AdminPassword": "x" }), &Default::default()));
+        assert!(!sync_rest_credentials(&mut inst, &json!({}), &map));
+        assert_eq!((inst.rest_username, inst.rest_password), (None, None));
+    }
+
     /// R39 준비 알림을 기다린다 (그 인스턴스의 것만)
     async fn ready_event(sub: &mut crate::events::Subscription, id: &str) -> Value {
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
@@ -4464,6 +4401,66 @@ mod tests {
     }
 
     /// 크래시 직후(모니터가 치우기 전) 들어온 정지는 크래시로 기록하되 다시 켜지 않는다 (D-S6)
+    /// 모듈·익스텐션 자동 교체가 문을 쥔 동안 서버 시작은 기다린다: 교체 직전의 사용 확인과 교체 사이에 서버가 켜지지 않는다
+    #[tokio::test]
+    async fn starts_wait_while_addons_are_being_swapped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        supervisor.initialize().await.unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(supervisor));
+        let gate = loop {
+            // 다른 테스트의 시작이 문을 읽기로 쥐고 있을 수 있다
+            match Supervisor::try_hold_starts() {
+                Some(gate) => break gate,
+                None => tokio::time::sleep(Duration::from_millis(10)).await,
+            }
+        };
+        let managed = tokio::spawn({
+            let sup = sup.clone();
+            async move { Supervisor::start_managed_server(&sup, "none", "game", json!({})).await }
+        });
+        let plain = tokio::spawn({
+            let sup = sup.clone();
+            async move { Supervisor::start_server(&sup, "none", "game", json!({})).await }
+        });
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(!managed.is_finished() && !plain.is_finished(), "starts must wait for the swap");
+        drop(gate);
+        assert!(managed.await.unwrap().is_err(), "then it runs (no such instance here)");
+        let _ = plain.await.unwrap();
+    }
+
+    /// 시작·설치가 문을 읽기로 쥔 동안 자동 교체는 기다리지 않고 미룬다: 기다리는 교체 뒤에 다른 시작·설치가 줄 서지 않는다
+    #[tokio::test]
+    async fn an_addon_swap_gives_up_instead_of_queueing_ahead_of_starts() {
+        let install = Supervisor::hold_addons().await;
+        assert!(Supervisor::try_hold_starts().is_none(), "a swap does not run under an install");
+        let another = tokio::time::timeout(Duration::from_millis(500), Supervisor::hold_addons()).await;
+        assert!(another.is_ok(), "nothing waits behind a swap that gave up");
+        drop((install, another));
+    }
+
+    /// 필수 익스텐션 목록이 빈 옛 인스턴스는 모듈의 `[install] requires_extensions`를 쓴다 (시작 검사와 자동 교체 보류가 같은 답)
+    #[tokio::test]
+    async fn an_instance_without_its_own_list_uses_the_module_requirements() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let dir = modules_dir.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nrequires_extensions = [\"steamcmd\"]\n",
+        )
+        .unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(modules_dir.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        supervisor.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        assert_eq!(supervisor.effective_required_extensions(&inst), vec!["steamcmd".to_string()]);
+        inst.required_extensions = vec!["docker".into()];
+        assert_eq!(supervisor.effective_required_extensions(&inst), vec!["docker".to_string()]);
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn a_stop_right_after_a_crash_does_not_restart_the_server() {

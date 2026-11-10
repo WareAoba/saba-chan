@@ -59,40 +59,23 @@ impl RestClient {
     }
 
     /// 연결 검증
-    pub fn verify_connection(&self, _timeout: Duration) -> Result<(), ProtocolError> {
-        // 기본적인 유효성 검사만 수행 (실제 HTTP는 비동기에서 처리)
+    pub fn verify_connection(&self) -> Result<(), ProtocolError> {
+        // 기본적인 유효성 검사만 수행 (실제 HTTP는 request에서 처리)
         if self.host.is_empty() || self.port == 0 {
             return Err(ProtocolError::ConnectionError("Invalid REST endpoint".to_string()));
         }
         Ok(())
     }
 
-    /// GET 요청
-    pub fn get(&self, endpoint: &str) -> Result<ServerResponse, ProtocolError> {
+    /// 엔드포인트로 요청을 보낸다
+    pub fn request(&self, method: reqwest::Method, endpoint: &str, body: Option<Value>) -> Result<ServerResponse, ProtocolError> {
         let url = self.url_for(endpoint)?;
-        self.send_http_request(&url, "GET", None)
-    }
-
-    /// POST 요청
-    pub fn post(&self, endpoint: &str, body: Option<Value>) -> Result<ServerResponse, ProtocolError> {
-        let url = self.url_for(endpoint)?;
-        self.send_http_request(&url, "POST", body)
-    }
-
-    /// PUT 요청
-    pub fn put(&self, endpoint: &str, body: Option<Value>) -> Result<ServerResponse, ProtocolError> {
-        let url = self.url_for(endpoint)?;
-        self.send_http_request(&url, "PUT", body)
-    }
-
-    /// DELETE 요청
-    pub fn delete(&self, endpoint: &str) -> Result<ServerResponse, ProtocolError> {
-        let url = self.url_for(endpoint)?;
-        self.send_http_request(&url, "DELETE", None)
+        self.send_http_request(&url, method, body)
     }
 
     /// HTTP 요청 전송 (실제 요청 수행)
-    fn send_http_request(&self, url: &str, method: &str, body: Option<Value>) -> Result<ServerResponse, ProtocolError> {
+    fn send_http_request(&self, url: &str, http_method: reqwest::Method, body: Option<Value>) -> Result<ServerResponse, ProtocolError> {
+        let method = http_method.as_str().to_string();
         tracing::debug!("REST {} {}", method, url);
 
         // 게임 서버는 이 PC나 같은 망에 있다: 시스템 프록시를 거치지 않는다.
@@ -106,9 +89,6 @@ impl RestClient {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| ProtocolError::Protocol(format!("TLS 초기화 실패: {}", e)))?;
-        let http_method = reqwest::Method::from_bytes(method.as_bytes())
-            .map_err(|e| ProtocolError::Protocol(e.to_string()))?;
-
         let mut req = agent.request(http_method, url).header("Content-Type", "application/json");
 
         if let (Some(user), Some(pass)) = (&self.username, &self.password) {
@@ -270,7 +250,7 @@ mod tests {
             // 응답 없이 닫는다
         });
         let client = RestClient::new("127.0.0.1".to_string(), port, false);
-        let resp = client.post("/v1/api/shutdown", Some(json!({ "waittime": 1 }))).expect("an unknown result, not a transport error");
+        let resp = client.request(reqwest::Method::POST, "/v1/api/shutdown", Some(json!({ "waittime": 1 }))).expect("an unknown result, not a transport error");
         server.join().unwrap();
         assert!(!resp.success);
         assert_eq!(resp.data.as_ref().unwrap()["outcome"], "unknown");
@@ -289,7 +269,7 @@ mod tests {
             let _ = std::io::Write::write_all(&mut sock, b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 12\r\nConnection: close\r\n\r\nUnauthorized");
         });
         let client = RestClient::new("127.0.0.1".to_string(), port, false);
-        let err = client.get("/v1/api/info").expect_err("a 401 is a failure");
+        let err = client.request(reqwest::Method::GET, "/v1/api/info", None).expect_err("a 401 is a failure");
         server.join().unwrap();
         assert!(matches!(err, ProtocolError::HttpStatus(401, _)), "{err:?}");
     }
@@ -312,7 +292,7 @@ mod tests {
         let other_port = other.local_addr().unwrap().port();
         let mut client = RestClient::new("127.0.0.1".to_string(), 1, false);
         client.set_basic_auth("admin".to_string(), "secret".to_string());
-        assert!(client.get(&format!("@127.0.0.1:{other_port}/")).is_err());
+        assert!(client.request(reqwest::Method::GET, &format!("@127.0.0.1:{other_port}/"), None).is_err());
         assert!(other.accept().is_err(), "the other address was contacted");
     }
 
@@ -332,7 +312,7 @@ mod tests {
             let _ = std::io::Write::write_all(&mut sock, answer.as_bytes());
         });
         let client = RestClient::new("127.0.0.1".to_string(), port, false);
-        let resp = client.post("/v1/api/save", None);
+        let resp = client.request(reqwest::Method::POST, "/v1/api/save", None);
         server.join().unwrap();
         assert!(!resp.is_ok_and(|r| r.success), "a redirect is not a success");
         assert!(other.accept().is_err(), "the redirect target was not contacted");

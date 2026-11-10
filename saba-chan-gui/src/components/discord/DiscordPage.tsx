@@ -19,7 +19,7 @@ import { ConnectionView } from './ConnectionView';
 import { Avatar, NodeView } from './NodeView';
 import * as P from './nodePermissions';
 import type { DiscordNode, MembersByGuild } from './types';
-import { claimSavedToken, usePairing } from './usePairing';
+import { pairingTokenSaved, usePairing } from './usePairing';
 
 export const DEFAULT_RELAY_URL = 'https://saba-chan.online';
 
@@ -210,14 +210,6 @@ export function DiscordPage({
     useEffect(() => {
         if (discordCloudHostId && relayConnected) loadNodes();
     }, [discordCloudHostId, relayConnected, loadNodes]);
-    // 연결 요청을 수락하는 등 다른 곳에서 길드가 늘면 다시 읽는다
-    useEffect(
-        () =>
-            useDiscordStore.subscribe((s, prev) => {
-                if (s.cloudNodesStale !== prev.cloudNodesStale) loadNodes();
-            }),
-        [loadNodes],
-    );
 
     const loadMembers = useCallback(
         async (guildId: string) => {
@@ -311,7 +303,7 @@ export function DiscordPage({
         beforeStart: saveRelayUrlForPairing,
         onClaimed: async (s: ApiBody) => {
             // 토큰을 저장하지 못했으면 호스트도 바꾸지 않는다 (토큰 없는 호스트가 저장되지 않게)
-            if (!(await claimSavedToken(s))) return false;
+            if (!pairingTokenSaved(s)) return false;
             if (s.hostId) setDiscordCloudHostId(s.hostId);
             await saveCurrentSettings();
             loadNodes();
@@ -358,8 +350,7 @@ export function DiscordPage({
                   const res = await window.api.relayBotInvite(relayUrl);
                   const url = res?.url || res?.inviteUrl || res?.invite_url;
                   if (!url) throw new Error(res?.error || 'no invite url');
-                  // 외부 주소 열기는 셸 브리지(window.electron)에 있다
-                  const openExternal = window.electron?.shell?.openExternal;
+                  const openExternal = window.api?.shellOpenExternal;
                   if (!openExternal) throw new Error('shell bridge unavailable');
                   const opened = await openExternal(url);
                   if (opened?.error) throw new Error(opened.error);

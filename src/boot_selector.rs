@@ -23,7 +23,6 @@ use std::time::Duration;
 pub enum BootMode {
     Gui,
     Cli,
-    #[serde(alias = "daemon_only")]
     DaemonOnly,
 }
 
@@ -777,11 +776,6 @@ mod tests {
         assert_eq!(config.last_mode, BootMode::Cli);
 
         let json = r#"{"last_mode":"daemononly"}"#;
-        let config: BootConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.last_mode, BootMode::DaemonOnly);
-
-        // alias 지원 확인
-        let json = r#"{"last_mode":"daemon_only"}"#;
         let config: BootConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.last_mode, BootMode::DaemonOnly);
     }

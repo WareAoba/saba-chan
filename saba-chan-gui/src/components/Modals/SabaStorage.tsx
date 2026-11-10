@@ -17,6 +17,8 @@ import { SabaEmpty, SabaFail } from '../ui/SabaArt';
 import { TrustBadge } from '../ui/TrustBadge';
 import { createTranslateError, safeShowToast } from '../../utils/helpers';
 import type { ApiBody, ModuleInfo } from '../../types/daemon';
+import { failed } from '../../utils/apiResult';
+import { useInstallingIds } from './useStoreInstall';
 
 // ─────────────────────────────────────────────────────────────
 // 사바 스토리지 (구 업데이트 센터)
@@ -29,9 +31,9 @@ import type { ApiBody, ModuleInfo } from '../../types/daemon';
 // @param {boolean}  devMode   - 개발자 모드
 // @param {string}   initialTab - 처음 보일 탭 (components | modules | extensions)
 // ─────────────────────────────────────────────────────────────
-/** updaterCall은 던지지 않고 {ok:false, error}로 실패를 알린다 */
+/** 브리지는 던지지 않고 실패 본문으로 알린다 */
 function throwIfRejected(res: ApiBody | null | undefined) {
-    if (res?.ok === false || res?.error) throw new Error(res.error || 'failed');
+    if (failed(res)) throw new Error(res?.error || 'failed');
 }
 
 interface SabaStorageProps {
@@ -319,7 +321,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
                             const launchRes = await window.api?.updaterLaunchApply?.(res.needs_updater);
                             if (launchRes?.ok === false)
                                 setError(`${key}: ${launchRes?.error || t('saba_storage.updater_launch_failed')}`);
-                        } else if (res?.ok === false) {
+                        } else if (failed(res)) {
                             setError(
                                 `${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`,
                             );
@@ -338,7 +340,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
             try {
                 const res = await window.api?.updaterApply?.([key]);
                 clearModuleAuditCache();
-                if (res?.ok === false) {
+                if (failed(res)) {
                     setError(`${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`);
                 } else {
                     if (res?.requires_updater && res?.needs_updater?.length > 0) {
@@ -396,7 +398,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
             clearModuleAuditCache();
             // 일부만 적용돼도(ok:false) 적용된 것은 알린다 (G-U9b)
             daemonApplied = res?.applied || [];
-            if (res?.ok === false) {
+            if (failed(res)) {
                 hadError = true;
                 setError(
                     (prev) =>
@@ -788,7 +790,7 @@ function ModulesTab() {
     const [manifestModules, setManifestModules] = useState<CatalogModule[] | null>(null); // null = 미로드, [] = 로드됨
     const [manifestLoading, setManifestLoading] = useState(false);
     const [manifestError, setManifestError] = useState<string | null>(null);
-    const [installingIds, setInstallingIds] = useState<Set<string>>(new Set());
+    const { installingIds, run: runInstall } = useInstallingIds();
     const [installResults, setInstallResults] = useState<Record<string, string | null>>({}); // { id: 'ok'|'error' }
     const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
     const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
@@ -853,8 +855,7 @@ function ModulesTab() {
         loadManifest();
     }, [loadManifest]);
 
-    const handleInstallModule = useCallback(async (moduleId: string) => {
-        setInstallingIds((prev) => new Set(prev).add(moduleId));
+    const handleInstallModule = useCallback(async (moduleId: string) => runInstall(moduleId, async () => {
         setInstallResults((prev) => ({ ...prev, [moduleId]: null }));
         try {
             const res = await window.api?.moduleInstallFromManifest?.(moduleId);
@@ -883,12 +884,7 @@ function ModulesTab() {
         } catch (_) {
             setInstallResults((prev) => ({ ...prev, [moduleId]: 'error' }));
         }
-        setInstallingIds((prev) => {
-            const n = new Set(prev);
-            n.delete(moduleId);
-            return n;
-        });
-    }, [t, refreshExtensions]);
+    }), [t, refreshExtensions, runInstall]);
 
     const handleConfirmRemove = useCallback(async () => {
         const id = confirmRemoveId;
@@ -1183,7 +1179,7 @@ function ExtensionsTab() {
             return;
         }
         setShowStore(true);
-        await fetchManifest?.();
+        await fetchManifest();
     }, [manifestExtensions, fetchManifest]);
 
     const handleConfirmRemove = useCallback(async () => {

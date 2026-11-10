@@ -17,11 +17,6 @@ beforeEach(() => {
         extensions: [],
         loading: true,
         refreshExtensions: vi.fn(),
-        manifestExtensions: [],
-        availableUpdates: [],
-        installingIds: new Set(),
-        fetchManifest: vi.fn(),
-        installExtension: vi.fn(),
         removeExtension: vi.fn(),
         toggleExtension: vi.fn(),
     };

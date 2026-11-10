@@ -216,27 +216,27 @@ fn test_component_apply_priority_categories() {
 
     // 모듈, 익스텐션, Locales는 동일 우선순위
     assert_eq!(
-        UpdateManager::component_apply_priority_for_test(&module),
-        UpdateManager::component_apply_priority_for_test(&extension),
+        UpdateManager::component_apply_priority(&module),
+        UpdateManager::component_apply_priority(&extension),
         "모듈과 익스텐션은 동일 우선순위"
     );
     assert_eq!(
-        UpdateManager::component_apply_priority_for_test(&module),
-        UpdateManager::component_apply_priority_for_test(&locales),
+        UpdateManager::component_apply_priority(&module),
+        UpdateManager::component_apply_priority(&locales),
         "모듈과 Locales는 동일 우선순위"
     );
 
     // Updater는 최우선
     assert!(
-        UpdateManager::component_apply_priority_for_test(&updater) <
-        UpdateManager::component_apply_priority_for_test(&module),
+        UpdateManager::component_apply_priority(&updater) <
+        UpdateManager::component_apply_priority(&module),
         "Updater가 모듈보다 먼저 적용"
     );
 
     // 모듈은 새 코어를 요구할 수 있다(`requires`): CoreDaemon이 모듈/익스텐션보다 먼저
     assert!(
-        UpdateManager::component_apply_priority_for_test(&core_daemon) <
-        UpdateManager::component_apply_priority_for_test(&module),
+        UpdateManager::component_apply_priority(&core_daemon) <
+        UpdateManager::component_apply_priority(&module),
         "CoreDaemon은 모듈보다 먼저 적용"
     );
 
@@ -347,8 +347,209 @@ fn replace_dir_restores_backup_when_extract_fails() {
     let bad = manager.staging_dir.join("module-game.zip");
     std::fs::write(&bad, b"not a zip").unwrap();
 
-    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "game_backup").is_err());
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
+}
+
+/// 묻지 않는 교체에 쓸 새 판 zip (`module.toml` 하나)
+fn new_module_zip(dir: &std::path::Path) -> std::path::PathBuf {
+    use std::io::Write;
+    std::fs::create_dir_all(dir).unwrap();
+    let path = dir.join("module-game.zip");
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+    zip.start_file("module.toml", zip::write::SimpleFileOptions::default()).unwrap();
+    zip.write_all(b"new").unwrap();
+    zip.finish().unwrap();
+    path
+}
+
+fn old_module(target: &std::path::Path) {
+    std::fs::create_dir_all(target.join(".git")).unwrap();
+    std::fs::write(target.join("module.toml"), "old").unwrap();
+    std::fs::write(target.join(".git/HEAD"), "ref").unwrap();
+}
+
+fn names_in(dir: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+    names.sort();
+    names
+}
+
+// 묻지 않는 교체(Codex #926 재리뷰): 원래 폴더는 옆으로 옮긴 뒤 그 순간의 지문으로 검사하고, 바꿔 넣은 뒤에도 바로 지우지 않는다.
+// 옮긴 폴더는 다음 교체 때 지문이 그대로일 때만 지운다
+#[test]
+fn an_untouched_swap_puts_the_new_version_in_and_keeps_the_old_folder_until_the_next_swap() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let target = modules.join("game");
+    old_module(&target);
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    let mut checked = None;
+    let files = crate::swap_dir_untouched(&target, &staged, |fp| {
+        checked = Some(fp.keys().cloned().collect::<Vec<_>>());
+        assert!(!target.exists(), "the original is moved away before it is checked");
+        true
+    })
+    .unwrap();
+    assert_eq!(checked, Some(vec!["module.toml".to_string()]), "dot entries are not part of the check");
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
+    assert_eq!(std::fs::read_to_string(target.join(".git/HEAD")).unwrap(), "ref", "dot entries come along");
+    assert_eq!(files, vec![target.join("module.toml")]);
+    assert_eq!(names_in(&modules), [".game.saba-old", "game"], "the old folder stays until the next swap");
+
+    // 다음 교체: 옮긴 폴더가 그대로면 그때 지운다
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    crate::swap_dir_untouched(&target, &staged, |_| true).unwrap();
+    assert_eq!(names_in(&modules), [".game.saba-old", "game"]);
+    assert_eq!(std::fs::read_to_string(modules.join(".game.saba-old/module.toml")).unwrap(), "new", "only the last old folder is kept");
+}
+
+#[test]
+fn an_untouched_swap_puts_a_changed_folder_back_as_it_was() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let target = modules.join("game");
+    old_module(&target);
+    std::fs::write(target.join("server.properties"), "mine").unwrap();
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    assert!(crate::swap_dir_untouched(&target, &staged, |_| false).is_err());
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
+    assert_eq!(std::fs::read_to_string(target.join("server.properties")).unwrap(), "mine");
+    assert_eq!(names_in(&target), [".git", "module.toml", "server.properties"], "no bookkeeping file is left in the folder");
+    assert_eq!(names_in(&modules), ["game"]);
+}
+
+/// 원래 폴더를 옮긴 뒤 같은 경로에 사용자가 파일을 만들면 아무것도 지우지 않고 멈춘다: 그 파일도, 옮긴 원래 폴더도 남는다
+#[test]
+fn a_file_written_after_the_move_is_never_deleted() {
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("modules").join("game");
+    old_module(&target);
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    let err = crate::swap_dir_untouched(&target, &staged, |_| {
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("late.cfg"), "late").unwrap();
+        true
+    })
+    .unwrap_err();
+    assert_eq!(std::fs::read_to_string(target.join("late.cfg")).unwrap(), "late");
+    let aside = tmp.path().join("modules").join(".game.saba-old");
+    assert_eq!(std::fs::read_to_string(aside.join("module.toml")).unwrap(), "old", "the original is kept");
+    assert!(err.to_string().contains(".game.saba-old"), "the error names where the original is: {err}");
+}
+
+/// 교체 전에 열어 둔 파일에 교체 뒤 저장해도(유닉스에서는 옮긴 폴더의 파일에 써진다) 지우지 않는다:
+/// 다음 교체가 옮긴 폴더의 지문이 달라진 것을 보고 남긴다 (Codex #926 5차 재리뷰)
+#[cfg(unix)]
+#[test]
+fn a_save_through_a_handle_opened_before_the_swap_is_kept() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let target = modules.join("game");
+    old_module(&target);
+    let mut editor = std::fs::OpenOptions::new().write(true).open(target.join("module.toml")).unwrap();
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    crate::swap_dir_untouched(&target, &staged, |_| true).unwrap();
+    editor.write_all(b"edited").unwrap();
+    drop(editor);
+
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    let err = crate::swap_dir_untouched(&target, &staged, |_| true).unwrap_err();
+    assert!(err.to_string().contains(".game.saba-old"), "{err}");
+    assert_eq!(std::fs::read_to_string(modules.join(".game.saba-old/module.toml")).unwrap(), "edited");
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new", "the new version stays in place");
+}
+
+/// 옮긴 뒤 꺼졌으면(원래 경로가 비었다) 다음 교체가 먼저 원래 폴더를 돌려놓는다
+#[test]
+fn an_interrupted_swap_is_put_back_first() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let aside = modules.join(".game.saba-old");
+    old_module(&aside);
+    std::fs::create_dir_all(modules.join(".game.saba-new")).unwrap();
+    std::fs::write(modules.join(".game.saba-new/half"), "x").unwrap();
+    let target = modules.join("game");
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    assert!(crate::swap_dir_untouched(&target, &staged, |_| false).is_err());
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
+    assert_eq!(names_in(&target), [".git", "module.toml"]);
+    assert_eq!(names_in(&modules), ["game"]);
+}
+
+// 새 판을 넣지 못하고 되돌리지도 못했으면 옮긴 폴더는 아직 끝나지 않은 교체다: 지문(끝난 표시)을 남기지 않아 기동이 되돌린다
+#[test]
+fn a_swap_that_could_not_put_anything_back_is_not_marked_finished() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let target = modules.join("game");
+    old_module(&target);
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    let blocker = target.clone();
+    // 검사하는 사이 제자리에 비지 않은 폴더가 생겨 새 판도 원래 폴더도 들어가지 못한다 (파일이면 Windows rename이 덮어쓴다)
+    let result = crate::swap_dir_untouched(&target, &staged, |_| {
+        std::fs::create_dir_all(&blocker).unwrap();
+        std::fs::write(blocker.join("user.txt"), "x").unwrap();
+        true
+    });
+    assert!(result.is_err());
+    let aside = modules.join(".game.saba-old");
+    assert_eq!(names_in(&aside), [".git", "module.toml"], "no finished mark on a swap that did not finish");
+}
+
+// 새 판을 넣은 직후 꺼져 점 항목을 옮기지 못했으면 다음 교체가 먼저 옮겨 준다
+#[test]
+fn dot_entries_left_by_a_cut_off_swap_are_carried_first() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let aside = modules.join(".game.saba-old");
+    std::fs::create_dir_all(&aside).unwrap();
+    std::fs::write(aside.join("module.toml"), "old").unwrap();
+    let fingerprint = crate::integrity::dir_fingerprint(&aside).unwrap();
+    std::fs::write(aside.join(crate::SWAP_FINGERPRINT), serde_json::to_string(&fingerprint).unwrap()).unwrap();
+    std::fs::write(aside.join(".env"), "secret").unwrap();
+    let target = modules.join("game");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("module.toml"), "mid").unwrap();
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    crate::swap_dir_untouched(&target, &staged, |_| true).unwrap();
+    assert_eq!(std::fs::read_to_string(target.join(".env")).unwrap(), "secret");
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
+}
+
+// 새 판을 넣은 직후, 지문을 적기 전에 꺼졌다: 다음 교체가 점 항목을 옮기고 옛 폴더를 정리한다
+#[test]
+fn a_swap_cut_off_before_its_mark_is_finished_by_the_next_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let aside = modules.join(".game.saba-old");
+    std::fs::create_dir_all(&aside).unwrap();
+    std::fs::write(aside.join("module.toml"), "old").unwrap();
+    std::fs::write(aside.join(".env"), "secret").unwrap();
+    let target = modules.join("game");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("module.toml"), "mid").unwrap();
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    crate::swap_dir_untouched(&target, &staged, |_| true).unwrap();
+    assert_eq!(std::fs::read_to_string(target.join(".env")).unwrap(), "secret");
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
+}
+
+// 지난 교체를 마친 뒤 사용자가 지운 모듈은 되살리지도, 새 판으로 깔지도 않는다
+#[test]
+fn a_folder_removed_after_a_finished_swap_is_not_brought_back() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let aside = modules.join(".game.saba-old");
+    std::fs::create_dir_all(&aside).unwrap();
+    std::fs::write(aside.join("module.toml"), "old").unwrap();
+    let fingerprint = crate::integrity::dir_fingerprint(&aside).unwrap();
+    std::fs::write(aside.join(crate::SWAP_FINGERPRINT), serde_json::to_string(&fingerprint).unwrap()).unwrap();
+    let target = modules.join("game");
+    let staged = new_module_zip(&tmp.path().join("staging"));
+    assert!(crate::swap_dir_untouched(&target, &staged, |_| true).is_err());
+    assert!(names_in(&modules).is_empty(), "nothing comes back: {:?}", names_in(&modules));
 }
 
 // 교체 도중 꺼졌으면 남은 백업이 원래 내용이다: 다음 시도가 반쯤 바뀐 폴더로 백업을 덮지 않는다
@@ -368,7 +569,7 @@ fn replace_dir_keeps_the_backup_left_by_an_interrupted_replace() {
     let bad = manager.staging_dir.join("module-game.zip");
     std::fs::write(&bad, b"not a zip").unwrap();
 
-    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "game_backup").is_err());
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
     assert!(!target.join("half.py").exists());
 }
@@ -385,13 +586,13 @@ fn replace_dir_drops_the_backup_after_a_clean_rollback() {
     std::fs::write(target.join("module.toml"), "v1").unwrap();
     let bad = manager.staging_dir.join("module-game.zip");
     std::fs::write(&bad, b"not a zip").unwrap();
-    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "game_backup").is_err());
     assert!(!manager.staging_dir.join("game_backup").exists());
 
     // 설치기가 v2를 깔았다. 다음 교체가 또 실패해도 v2로 남아야 한다
     std::fs::write(target.join("module.toml"), "v2").unwrap();
     std::fs::write(&bad, b"not a zip").unwrap();
-    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "game_backup").is_err());
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "v2");
 }
 
@@ -412,7 +613,7 @@ fn replace_dir_ignores_a_backup_that_was_cut_off_while_copying() {
     let bad = manager.staging_dir.join("module-game.zip");
     std::fs::write(&bad, b"not a zip").unwrap();
 
-    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "game_backup").is_err());
     assert_eq!(std::fs::read_to_string(target.join("lifecycle.py")).unwrap(), "old");
 }
 
@@ -708,7 +909,8 @@ fn staged(component: Component, path: &std::path::Path) -> crate::ComponentVersi
     }
 }
 
-// L3(a): 여러 컴포넌트를 적용하다 실패해도 먼저 적용한 것은 버전을 기록한다 (그대로 두면 다시 받으라고 뜬다)
+// L3(a)·U-9: 여러 컴포넌트를 적용하다 실패해도 먼저 적용한 것은 버전을 기록하고 적용한 것으로 돌려준다
+// (그대로 두면 다시 받으라고 뜬다. 업데이터는 완료 마커에 싣고 pending을 지운다)
 #[tokio::test]
 async fn components_applied_before_a_failure_are_recorded() {
     use std::io::Write;
@@ -727,8 +929,11 @@ async fn components_applied_before_a_failure_are_recorded() {
     }
     manager.status.components = vec![staged(ext.clone(), &ext_zip), staged(Component::Cli, &tmp.path().join("missing.zip"))];
 
-    assert!(manager.apply_components(&[]).await.is_err());
+    let keys = manager.pending_keys_in_apply_order();
+    let (applied, failed) = manager.apply_target_keys(&keys, |_, _, _| {}).await;
 
+    assert_eq!(applied, vec![ext.manifest_key()]);
+    assert!(!failed.is_empty());
     let recorded = UpdateManager::load_installed_manifest_at(&manager.installed_manifest_file);
     assert_eq!(recorded.get(&ext.manifest_key()).map(String::as_str), Some("0.2.0"));
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&format!("l3-{}", std::process::id())));
@@ -754,7 +959,7 @@ fn a_failed_new_install_leaves_no_folder() {
         zw.finish().unwrap();
     }
 
-    assert!(manager.replace_dir(&target, &bad, "fresh_backup").is_err());
+    assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "fresh_backup").is_err());
     assert!(!target.exists());
 }
 
@@ -1218,24 +1423,6 @@ fn pending_keys_come_in_apply_order() {
     assert_eq!(manager.pending_keys_in_apply_order(), vec!["saba-core".to_string(), ext.manifest_key()]);
 }
 
-// U-9: 목록 없는 적용이 실패해도 그 전에 적용한 것을 돌려준다 (업데이터가 완료 마커에 싣고 pending을 지운다)
-#[tokio::test]
-async fn a_failed_apply_reports_what_it_applied_before() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
-    manager.install_root = tmp.path().join("install");
-    std::fs::create_dir_all(&manager.install_root).unwrap();
-    let name = format!("u9-{}", std::process::id());
-    let ext = Component::Extension(name.clone());
-    manager.status.components = vec![staged(ext.clone(), &extension_zip(tmp.path())), staged(Component::Cli, &tmp.path().join("missing.zip"))];
-
-    let (applied, failure) = manager.apply_components_report(&[]).await;
-
-    assert!(failure.is_some());
-    assert_eq!(applied, vec![ext.display_name()]);
-    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
-}
-
 // U-5: locales도 모듈처럼 백업 뒤 통째로 바꾼다. 새 판에 없는 옛 파일은 남지 않고, 풀다 실패하면 되돌린다
 #[tokio::test]
 async fn locales_are_replaced_with_a_backup() {
@@ -1336,33 +1523,13 @@ fn a_dependency_in_the_same_batch_is_applied_first() {
     assert_eq!(manager.pending_keys_in_apply_order(), vec!["saba-core".to_string(), b.manifest_key(), a.manifest_key()]);
 }
 
-// 목록 없는 적용(`apply_components_report`)도 requires를 지킨다
-#[tokio::test]
-async fn an_unlisted_apply_also_refuses_unmet_requires() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
-    manager.install_root = tmp.path().join("install");
-    std::fs::create_dir_all(&manager.install_root).unwrap();
-    let name = format!("unlisted-needs-core-{}", std::process::id());
-    let ext = Component::Extension(name.clone());
-    manager.status.components = vec![crate::ComponentVersion {
-        requires: Some([("saba-core".to_string(), ">=99.0.0".to_string())].into_iter().collect()),
-        ..staged(ext.clone(), &extension_zip(tmp.path()))
-    }];
-
-    let (applied, failure) = manager.apply_components_report(&[]).await;
-
-    assert!(applied.is_empty(), "{:?}", applied);
-    assert!(format!("{:#}", failure.unwrap()).contains("saba-core >=99.0.0"));
-    assert!(!manager.resolve_ext_dir(&name).exists());
-}
-
-// 같은 묶음에서 먼저 적용한 것은 기록 전이어도 뒤의 requires를 채운다
+// 같은 묶음에서 먼저 적용한 것은 뒤의 requires를 채운다
 #[tokio::test]
 async fn an_unlisted_apply_counts_what_it_applied_earlier() {
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.install_root = tmp.path().join("install");
+    manager.installed_manifest_file = tmp.path().join("installed-manifest.json");
     std::fs::create_dir_all(&manager.install_root).unwrap();
     let (first, second) = (format!("first-{}", std::process::id()), format!("second-{}", std::process::id()));
     let (a, b) = (Component::Extension(first.clone()), Component::Extension(second.clone()));
@@ -1371,18 +1538,28 @@ async fn an_unlisted_apply_counts_what_it_applied_earlier() {
         std::fs::create_dir_all(&dir).unwrap();
         dir
     };
+    // 먼저 적용한 익스텐션은 디스크의 manifest 버전으로 센다
+    let a_zip = zip_dir("a").join("ext.zip");
+    {
+        use std::io::Write;
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&a_zip).unwrap());
+        zw.start_file("manifest.json", zip::write::SimpleFileOptions::default()).unwrap();
+        zw.write_all(format!(r#"{{"id":"{first}","version":"9.9.9"}}"#).as_bytes()).unwrap();
+        zw.finish().unwrap();
+    }
     manager.status.components = vec![
         crate::ComponentVersion {
             requires: Some([(a.manifest_key(), ">=9.9.9".to_string())].into_iter().collect()),
             ..staged(b.clone(), &extension_zip(&zip_dir("b")))
         },
-        crate::ComponentVersion { latest_version: Some("9.9.9".into()), ..staged(a.clone(), &extension_zip(&zip_dir("a"))) },
+        crate::ComponentVersion { latest_version: Some("9.9.9".into()), ..staged(a.clone(), &a_zip) },
     ];
 
-    let (applied, failure) = manager.apply_components_report(&[]).await;
+    let keys = manager.pending_keys_in_apply_order();
+    let (applied, failed) = manager.apply_target_keys(&keys, |_, _, _| {}).await;
 
-    assert!(failure.is_none(), "{:?}", failure);
-    assert_eq!(applied, vec![a.display_name(), b.display_name()]);
+    assert!(failed.is_empty(), "{:?}", failed);
+    assert_eq!(applied, vec![a.manifest_key(), b.manifest_key()]);
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&first));
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&second));
 }

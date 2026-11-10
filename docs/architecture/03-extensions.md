@@ -49,9 +49,9 @@
 | `description` / `descriptions` | `String` / `HashMap` | `""` / `{}` | 목록. `GET /api/extensions?lang=`이 GUI 언어에 맞는 `descriptions` 항목으로 바꿔 준다(`handlers/extension.rs:67-91`). |
 | `author` | `String` | `""` | 목록 |
 | `min_app_version` | `Option<String>` | `None` | enable(`ext/:929-933`), 패키지 설치(`ext/:1405`)에서 강제하고, 목록·원격 목록에 `incompatible`로 표시한다(`ext/:1108,1289`). |
-| `dependencies` | `HashMap<String,String>` | `{}` | 커스텀 디시리얼라이저 `deserialize_dependencies` (`ext/:56-97`): 배열 `["a"]` → `{"a":"*"}`, 맵은 그대로 받는다. enable/disable/unmount 검증에 쓰인다(아래 3.3). |
+| `dependencies` | `HashMap<String,String>` | `{}` | 커스텀 디시리얼라이저 `deserialize_dependencies` (`ext/:56-97`): 배열 `["a"]` → `{"a":"*"}`, 맵은 그대로 받는다. 공식 manifest는 맵(`{}`)을 쓰고, 배열은 0.1.13까지 배포한 공식 익스텐션의 설치된 사본(`[]`)을 읽으려고 남긴다. enable/disable/unmount 검증에 쓰인다(아래 3.3). |
 | `python_modules` | `HashMap<String,String>` | `{}` | 모듈 키 → 익스텐션 디렉토리 기준 상대경로. hook 바인딩과 명령이 참조한다(`ext/:1165,1240`). 값은 폴더 안 상대 경로만 받는다(모듈 `entry`와 같은 `utils::is_inner_relative_path`): 빈 값, 절대 경로, `..`·`.`가 든 경로는 `schema_version`과 무관하게 manifest 오류다. 신뢰 판정(`sandbox::component_in`)도 `..`·`.`가 든 진입점은 어느 구성요소에도 넣지 않는다. |
-| `hooks` | `HashMap<String, HookBinding>` | `{}` | hook 이름 → 바인딩. 옛 이름 `server.post_stop`은 `server.stop`으로 바꿔 읽는다(`ext/:15-17,40-51`). |
+| `hooks` | `HashMap<String, HookBinding>` | `{}` | hook 이름 → 바인딩. |
 | `gui` | `Option<GuiManifest>` | `None` | 번들/스타일 서빙에 쓰인다(`handlers/extension.rs:240-334`). `gui.slots`는 GUI가 읽는다(4.2). |
 | `cli` | `Option<CliManifest>` | `None` | `/api/extensions` 응답에 그대로 실린다. `cli.slots`는 데이터 slot 선언이다(4.3). 인터페이스는 이 원본 대신 정규화된 `slots`를 읽는다. |
 | `module_config_section` | `Option<String>` | `None` | **읽는 코드가 없다(dead 필드)**. module.toml의 익스텐션별 설정은 범용 `[extensions.<id>]` 섹션으로 받아 그대로 넘긴다(`supervisor/module_loader.rs:618-622,1139-1144`). |
@@ -79,7 +79,7 @@
 
 | 키 / 값 | 위치 | 상태 |
 |---|---|---|
-| `min_app_version: "0.1.0"` | 2개 manifest 전부 | ~~강제하지 않음~~ → 해결: enable·설치에서 강제한다(`ext/:929-933,1405`). |
+| `min_app_version` | steamcmd·xna `"0.1.11"`, ue4_ini `"0.1.0"` | ~~강제하지 않음~~ → 해결: enable·설치에서 강제한다(`ext/:929-933,1405`). |
 | `instance_fields.ue4_ini_enabled`, `ue4_ini_section` | `EXT/ue4_ini/manifest.json` | 이 값을 설정하는 코드가 어디에도 없다. "사용 중" 판정에만 쓰이므로 사실상 항상 미사용이다. |
 | ~~docker의 `"async": true`, `gui.slots`, `module_config_section: "docker"`, music의 `gui.builtin`, `config_fields.discord_token` 등~~ | — | → 해결: docker·music 익스텐션이 저장소에서 제거되었다. |
 | ~~발화되지 않는 hook 이름(`server.pre_create`, `server.stats`, `server.logs`, `server.install`, `server.update`, `module.parse_settings`, `module.write_settings`)~~ | — | → 해결: 현재 manifest에는 없다. 이런 이름을 쓰면 `parse_manifest`가 schema v1에서 거부한다(`ext/:387-390`). |
@@ -94,9 +94,9 @@
 ### 1.5 원격 목록 항목 (`RemoteExtensionInfo`, `ext/:476-518`)
 
 ```
-릴리즈 manifest 컴포넌트 "ext-<id>": { version, url, sha256, filename, install_dir?,
+릴리즈 manifest 컴포넌트 "ext-<id>": { version, url, sha256, asset, install_dir?,
   meta: { name, description, author, min_app_version?, dependencies(배열|맵), has_gui, has_i18n } }
-→ RemoteExtensionInfo { id, name, version, description, author, download_url(=url), sha256, asset(=filename),
+→ RemoteExtensionInfo { id, name, version, description, author, download_url(=url), sha256, asset,
                         install_dir?, min_app_version?, incompatible?, dependencies, has_gui, has_i18n, tags[], homepage? }
 ```
 
@@ -148,7 +148,7 @@
 | `daemon.startup` (재발화) | `handlers/extension.rs:108-145` | `POST /api/extensions/:id/enable` 성공 후 | spawn, 120s | `{}` | ~~모든 익스텐션의 startup을 다시 실행~~ → 해결: `run_hook_to`로 **방금 켠 익스텐션에만** 보낸다(`:122-123`). |
 | `daemon.shutdown` | `src/main.rs:525-567` | 종료 경로(Ctrl-C/SIGTERM, 종료 API, 워치독) | 동기(await), hook 120s, 전체 30s 상한(`:545-554`) | `instances[] {id,name,module,extension_data,instance_dir}` | `handled` 여부를 로그로만 남긴다 |
 | `server.pre_start` | `supervisor/mod.rs:643-660` (non-managed start), `:1368-1387` (managed start) | 서버 시작 | 동기, 120s | `instance_id, instance_dir, module, extension_data` (+managed 쪽에 `instance, config, managed:true`. `instance`와 `config`의 비밀 값은 `server.post_create`와 같이 `***`로 가린다(D-E2)) | `handled:true` + `success!=true` → 에러를 반환한다. `success:true`이면 `log_follower{program,args,working_dir,description,interactive,strip_prefix,env_vars}`로 `ManagedProcess::spawn`(interactive) 또는 `spawn_log_follower`를 실행한다(`:682-753`, `:1409-1480`). 그 결과를 그대로 반환하고 기본 시작 로직을 건너뛴다. |
-| `server.stop` (옛 이름 `server.post_stop`) | `supervisor/mod.rs:908-932` | `stop_server` 진입 직후, 정지 전 | 동기, 120s | 위와 동일 | `handled:true`이면 cooldown을 기록하고 그대로 반환한다. 익스텐션이 Err이거나 `success:false`이면 실패를 반환한다 |
+| `server.stop` | `supervisor/mod.rs:908-932` | `stop_server` 진입 직후, 정지 전 | 동기, 120s | 위와 동일 | `handled:true`이면 cooldown을 기록하고 그대로 반환한다. 익스텐션이 Err이거나 `success:false`이면 실패를 반환한다 |
 | `server.status` | `supervisor/mod.rs:1131-1142` | `GET /api/instance/:id/status` | 동기, 120s | + `process_patterns` | `handled:true`이면 그대로 반환한다 |
 | `server.list_enrich` | `handlers/server.rs:100-153` | `GET /api/servers`, `extension_data`가 비어 있지 않은 인스턴스마다 **순차** 실행 | 동기, **10s**, 결과를 30s TTL 캐시(`ipc/mod.rs:617`) | `instance_id, instance_name, module, extension_data, instance_dir, process_patterns` | `handled`와 무관하게 첫 번째 Ok를 캐시한다(실패는 캐시하지 않음). `handled:true`이면 `status`와 `extension_status[<res.extension_id or "default">]`를 채운다. `handled:true` 결과의 `status_line`(짧은 한 줄, 경로·비밀값 금지)은 디스코드 `/사바쨩 상태`에 나간다(05 §4 heartbeat `statusLine`) |
 | `server.post_create` | `handlers/instance.rs:357-370` | 인스턴스 생성(`POST /api/instances`), `instance_store.add` 성공 직후 | `tokio::spawn` 백그라운드, 120s. 결과를 기다리지 않고 바로 네이티브 프로비저닝으로 넘어간다 | `instance_id, instance_dir, instance, module, migration`. `instance`의 REST 비밀번호와 비밀 설정 값(모듈이 password로 선언했거나 이름에 pass·token·secret 같은 낱말이 든 것)은 `***`로 가린다(D-E2) | 결과를 버린다. 프로비저닝과 동시에 돈다 |
@@ -195,7 +195,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 - `discover()`(`ext/:623-648`): 루트에 있는 `*.zip`을 먼저 푼 뒤 `scan()`을 실행한다. 다운로드와 ZIP 파일은 128 MiB, 항목은 10,000개, 누적 해제 크기는 512 MiB로 제한한다. 모듈 ZIP과 익스텐션 패키지는 같은 해제기(`src/archive.rs`)로 푼다: 폴더 밖을 가리키는 경로와 링크 항목은 거부하고, 권한 비트(SUID 등)는 옮기지 않는다. zip은 `.staging-<id>`에 풀어 manifest를 검사하고, 기존 폴더가 있으면 **새 내용으로 바꿔 끼운 뒤** zip을 삭제한다(`ext/:652-721`).
 - `scan()`(`ext/:737-783`): 하위 디렉토리 중 `manifest.json`이 있는 것(`.`으로 시작하는 임시 폴더 제외)을 등록한다. **폴더 이름이 manifest.id(또는 하이픈→밑줄)와 다르면 건너뛰고**, 로드 실패와 함께 `load_errors`에 남긴다. 이 목록은 `GET /api/extensions`의 `failed`로 나간다(`handlers/extension.rs:85-90`).
 - `rescan()`(`ext/:792-796`): `scan()`과 같다. 기존 항목의 manifest를 다시 읽고 새 항목을 추가한다. 디스크에서 사라진 항목은 그대로 남긴다.
-- `mount(id)`(`ext/:800-821`): `ext_dir_on_disk`(discovered → id 그대로 → 하이픈을 언더스코어로 바꾼 이름)로 디렉토리를 찾고, `manifest.id == id`를 검사한다.
+- `mount(id)`(`ext/:800-821`): `ext_dir_on_disk`(discovered → `extension_dir`: 하이픈을 언더스코어로 바꾼 이름 → id 그대로. 둘 다 있으면 언더스코어 폴더로, `scan`·신뢰 판정(`sandbox`)도 같은 폴더를 쓴다)로 디렉토리를 찾고, `manifest.id == id`를 검사한다.
 - `IPCServer::new`(`src/ipc/mod.rs:590-598`)에서 discover를 한 번 실행한다. 상태에 enabled로 되어 있지만 디스크에 없는 익스텐션은 `enabled_but_not_installed()`로 구분한다(`ext/:1076`).
 
 ### 3.3 enable / disable / remove / unmount
@@ -222,7 +222,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 3.5 의존성 처리
 
-- 익스텐션 간 의존성: 현재 두 manifest 모두 `dependencies: []`다. ~~docker → steamcmd 의존성과 `compose_manager`의 파일 경로 import~~ → 해결: docker 익스텐션 제거.
+- 익스텐션 간 의존성: 현재 세 manifest 모두 `dependencies: {}`다. ~~docker → steamcmd 의존성과 `compose_manager`의 파일 경로 import~~ → 해결: docker 익스텐션 제거.
 - ~~music: `daemon.startup`에서 npm install, 실제 기능은 `discord_bot/extensions/music.js`~~ → 해결: music 익스텐션과 로컬 Discord 봇이 제거되었다.
 - node: 데몬에는 Node 런타임 관리가 없다(L1에서 `node_env` 삭제). 익스텐션 manifest에도 node 의존성을 선언할 방법이 없다.
 - Python 의존성: 익스텐션별 requirements 선언이 없다. 공용 venv를 쓴다.
@@ -244,7 +244,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
    - 버전이 바뀌면 전역을 삭제하고 style 태그를 제거한 뒤 다시 로드한다(핫로드, `:289-309`). 로드됨으로 기억했는데 전역이 없어도 다시 로드한다.
    - 실행이 실패한 번들은 자기가 남긴 전역만 되돌린다. 같은 확장을 겹쳐 읽은 다른 로드가 성공해 등록한 전역은 지우지 않는다.
 3. React 공유: 호스트가 `window.React`와 `window.ReactDOM`을 전역으로 노출하고(`src/index.tsx:20-21`), 번들은 `window.React`를 참조한다(external 처리). 호스트는 React 19다: 번들은 JSX를 `window.React.createElement`(classic 런타임)로 만들거나 React 19의 `jsx-runtime`을 쓴다. React 18의 `jsx-runtime`을 번들에 넣으면 요소 모양이 달라 React 19가 그리지 못한다. 그 밖의 호스트 API(토스트, 데몬 API, 스토어 등)는 노출하지 않는다. 확장 컴포넌트는 props만으로 동작해야 한다.
-4. 보안: 번들은 렌더러 컨텍스트에서 **그대로 eval**되므로 `window.api`·`window.electron`(브리지의 모든 메서드)과 `window.__TAURI__`(`withGlobalTauri`)에 접근할 수 있다. 즉 번들은 AppContainer 밖에서 데몬 API 전체를 부른다. 셸 쪽 경계는 `daemon_request`의 경로 제한(`/api/…`·`/health`만, 셸이 직접 정하는 `/api/updates/launch-updater`·`/api/client/*`·`/api/daemon/shutdown`은 거부, 04 문서 §1.1)과 capability가 연 명령 목록(`src-tauri/capabilities/default.json`)뿐이다.
+4. 보안: 번들은 렌더러 컨텍스트에서 **그대로 eval**되므로 `window.api`(브리지의 모든 메서드)과 `window.__TAURI__`(`withGlobalTauri`)에 접근할 수 있다. 즉 번들은 AppContainer 밖에서 데몬 API 전체를 부른다. 셸 쪽 경계는 `daemon_request`의 경로 제한(`/api/…`·`/health`만, 셸이 직접 정하는 `/api/updates/launch-updater`·`/api/client/*`·`/api/daemon/shutdown`은 거부, 04 문서 §1.1)과 capability가 연 명령 목록(`src-tauri/capabilities/default.json`)뿐이다.
    - 그래서 데몬은 번들(`/gui`)과 스타일(`/gui/styles`)을 **확인된(`verified`) 익스텐션이거나 사용자가 이 PC에서 허락한 익스텐션에만** 서빙한다(`extension::gui_allowed`, 플랫폼과 무관). 아니면 403 `{error_code:"extension_gui_unapproved", component:"ext-<id>"}`. manifest의 `gui.bundle`·`gui.styles`는 익스텐션 폴더 기준 상대 경로(`..`·절대 경로 없음)이고, 링크를 거치지 않는 일반 파일이어야 한다. 아니면 404(허락은 폴더 안 파일의 지문에 묶이기 때문이다).
    - `GET /api/extensions` 항목에 GUI 번들이 있으면 `gui_allowed: bool`이 실린다. false면 GUI는 번들을 요청하지 말고 사용자에게 물은 뒤 `POST /api/sandbox/extension-gui/ext-<id>`로 기록한다(원격 출처는 403 `consent_local_only`). 동의는 `config.json` `sandbox.extension_gui`에 익스텐션 폴더 전체의 파일 지문으로 남아, 파일이 하나라도 바뀌면 다시 묻는다. 철회는 `DELETE` 같은 경로.
    - 웹뷰 CSP(04 §1)는 스크립트를 앱 자신과 `blob:`으로만 열고 `unsafe-eval`이 없으므로, 번들 안에서 `eval`·`new Function`을 쓰면 실행되지 않는다.
@@ -382,7 +382,7 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 4. ~~enable할 때 모든 익스텐션의 `daemon.startup`이 재실행된다.~~ → 해결: `run_hook_to`로 해당 익스텐션만(`handlers/extension.rs:122-123`).
 5. ~~긴 hook 동안 `extension_manager` read 락을 유지한다.~~ → 해결: 계획만 락 안에서, 실행은 락 밖에서(`ext/:1603-1617`).
 6. `daemon.startup` 120초 타임아웃(`main.rs:388` → `run_hook`)이 긴 설치 작업에는 짧을 수 있다.
-7. ~~`server.post_stop`이라는 이름과 실제 의미가 다르다.~~ → 해결: `server.stop`으로 바꾸고 옛 이름은 별칭으로 읽는다(`ext/:15-17`, `supervisor/mod.rs:908-911`).
+7. ~~`server.post_stop`이라는 이름과 실제 의미가 다르다.~~ → 해결: `server.stop`으로 바꿨다(`supervisor/mod.rs:908-911`). 옛 이름은 더 읽지 않는다.
 8. `server.list_enrich`는 인스턴스마다 순차로 Python을 실행한다(10초 × N). TTL 30초 캐시에 `handled:false`도 캐싱한다(`handlers/server.rs:119-128`).
 9. ~~`instances_using_ext`가 숫자 0, 빈 문자열도 "사용 중"으로 판정하고, 정지된 인스턴스가 있어도 remove할 수 있다.~~ → 해결: 빈 값은 미사용으로 보고(`ext/:891-898`), remove는 정지된 인스턴스까지 검사한다(`handlers/extension.rs:494-495`). disable은 여전히 실행 중인 인스턴스만 보므로, 정지된 인스턴스가 쓰는 익스텐션을 끈 뒤 시작하면 `extension_required` 에러가 난다.
 10. ~~`save_extension_config` 주석은 "null을 전달하면 키 제거"라고 하지만, 실제로는 null 값을 저장한다.~~ → 해결: null인 키는 지워 기본값으로 돌린다(`ext/:1590-1606`). `get_extension_config` 핸들러 주석은 아직 `extensionConfig.json`이라고 적혀 있다(`:573`).

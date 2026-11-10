@@ -159,7 +159,7 @@ export function WindowControls() {
             <button
                 type="button"
                 className="win-btn"
-                onClick={() => window.electron?.minimizeWindow()}
+                onClick={() => window.api?.minimizeWindow()}
                 data-tooltip={t('title_bar.minimize')}
                 aria-label={t('title_bar.minimize')}
             >
@@ -168,7 +168,7 @@ export function WindowControls() {
             <button
                 type="button"
                 className="win-btn"
-                onClick={() => window.electron?.maximizeWindow()}
+                onClick={() => window.api?.maximizeWindow()}
                 data-tooltip={t('title_bar.maximize')}
                 aria-label={t('title_bar.maximize')}
             >
@@ -177,7 +177,7 @@ export function WindowControls() {
             <button
                 type="button"
                 className="win-btn win-close"
-                onClick={() => window.electron?.closeWindow()}
+                onClick={() => window.api?.closeWindow()}
                 data-tooltip={t('title_bar.close')}
                 aria-label={t('title_bar.close')}
             >

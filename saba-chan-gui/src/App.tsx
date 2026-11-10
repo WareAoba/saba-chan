@@ -20,7 +20,6 @@ import { ActivityPage } from './components/servers/AuditTab';
 import { SabaBubble } from './components/shell/SabaBubble';
 import { CommandPalette, paletteAvailable } from './components/shell/CommandPalette';
 import { DaemonEvents } from './components/shell/DaemonEvents';
-import { LinkRequests, linkRequestsAvailable } from './components/discord/LinkRequests';
 import { AppBar } from './components/shell/AppBar';
 import { ExtensionAppPage } from './components/shell/ExtensionAppPage';
 import RemotePathPicker from './components/shell/RemotePathPicker';
@@ -137,7 +136,9 @@ function App() {
     const refreshInterval = useSettingsStore((s) => s.refreshInterval);
     const ipcPort = useSettingsStore((s) => s.ipcPort);
     const consoleBufferSize = useSettingsStore((s) => s.consoleBufferSize);
-    const consoleBufferRef = useRef(2000);
+    // 콘솔 줄 수 한도: 콘솔 이벤트 처리기가 지금 값을 읽는다
+    const consoleBufferRef = useRef(consoleBufferSize);
+    consoleBufferRef.current = consoleBufferSize;
     const _settingsReady = useSettingsStore((s) => s.settingsReady);
 
     // ── Discord Store (Zustand) ──────────────────────────────
@@ -407,10 +408,7 @@ function App() {
         useServerStore.getState().startUptimeClock();
 
         const loadSettings = async () => {
-            const settings = await useSettingsStore.getState().load();
-            if (settings) {
-                consoleBufferRef.current = settings.consoleBufferSize ?? 2000;
-            }
+            await useSettingsStore.getState().load();
 
             // Load bot config into discord store
             await useDiscordStore.getState().loadConfig();
@@ -883,20 +881,6 @@ function App() {
                         {page === 'settings' && (
                             <div className="page page-scroll page-settings">
                                 <SettingsModal
-                                    variant="page"
-                                    isOpen
-                                    onClose={() => setPage('servers')}
-                                    refreshInterval={refreshInterval}
-                                    onRefreshIntervalChange={(val: number) =>
-                                        useSettingsStore.getState().update({ refreshInterval: val })
-                                    }
-                                    ipcPort={ipcPort}
-                                    onIpcPortChange={(val: number) => useSettingsStore.getState().update({ ipcPort: val })}
-                                    consoleBufferSize={consoleBufferSize}
-                                    onConsoleBufferSizeChange={(val: number) => {
-                                        useSettingsStore.getState().update({ consoleBufferSize: val });
-                                        consoleBufferRef.current = val;
-                                    }}
                                     discordCloudRelayUrl={discordCloudRelayUrl}
                                     onDiscordCloudRelayUrlChange={(val: string) =>
                                         useDiscordStore.getState().update({ discordCloudRelayUrl: val })
@@ -918,7 +902,6 @@ function App() {
                     <SabaBubble />
                     {paletteAvailable() && <CommandPalette />}
                     {eventsAvailable() && <DaemonEvents onServersChanged={fetchServers} />}
-                    {linkRequestsAvailable() && <LinkRequests />}
 
                     {/* 모달 렌더링 */}
                     {patchNotes && <PatchNotesModal data={patchNotes} onClose={() => setPatchNotes(null)} />}

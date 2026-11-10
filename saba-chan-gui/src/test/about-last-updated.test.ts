@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatLastUpdated } from '../components/Modals/SettingsModal';
+import { formatLastUpdated } from '../components/Modals/settings/AboutTab';
 
 describe('정보 페이지의 마지막 업데이트 날짜', () => {
     it('데몬이 문자열로 준 unix 초를 날짜로 읽는다', () => {

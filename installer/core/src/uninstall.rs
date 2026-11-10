@@ -147,7 +147,8 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
     let mut left = Vec::new();
     let mut warnings = Vec::new();
     if let Some(dir) = &install_dir {
-        warnings = stop_saba_processes(dir).await;
+        // 제거할 때는 실패하지 않는다 (모르는 데몬도 그대로 두고 진행한다)
+        warnings = stop_saba_processes(dir, Scope::Uninstall).await.unwrap_or_default();
     }
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
@@ -227,7 +228,7 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
     // 이 창 제거기의 WebView 폴더는 끝날 때까지 잠겨 있어 정리 스크립트가 지운다
     emit("temp", "Cleaning temporary files...", 70);
     let roots = crate::traces::Roots::current();
-    let running: Option<Vec<u32>> = list_all().map(|l| proc_rows(&l).iter().map(|r| r.pid).collect());
+    let running: Option<Vec<u32>> = list_all().map(|l| l.iter().map(|r| r.pid).collect());
     left.extend(crate::traces::remove(&roots, running.as_deref(), cfg!(windows)));
 
     // Step 8: 레지스트리 삭제
@@ -363,72 +364,98 @@ const KILL_EXIT_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 /// 프로세스 목록 조회(PowerShell)·taskkill 한 번의 상한. WMI가 멈춰도 제거기는 멈추지 않는다
 const COMMAND_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// 이 설치 폴더의 실행 파일로 떠 있는 사바쨩 프로세스만 끝낸다 (다른 설치본의 데몬·서버는 그대로).
-/// 정상 종료하지 못하고 강제로 끊은 서버를 돌려준다 (완료 화면에 따로 보인다)
-async fn stop_saba_processes(install_dir: &Path) -> Vec<StopWarning> {
-    // 데몬을 끄기 전에 데몬에 등록된 이 설치의 GUI를 물어 둔다 (임시 폴더에 풀린 포터블 GUI도 여기 있다)
-    let dirs = [install_dir.to_path_buf(), comparable_dir(install_dir)];
-    let delay = std::time::Duration::from_millis(500);
-    let api = DaemonApi::from_config();
-    let mut registered = Vec::new();
-    let mut orphans: Vec<Found> = Vec::new();
-    let mut not_stopped = Vec::new();
-    let mut asked = false;
-    if let Some(api) = &api {
-        // 프로세스를 끊기 전에 이 설치의 데몬에게 켜진 서버를 정상 종료시킨다 (강제 종료는 저장 없이 끈다)
-        let ours = api.daemon_is_in(&dirs).await;
-        if ours.is_some() {
-            asked = true;
-            not_stopped = api.stop_running_servers().await;
-        }
-        registered = api.registered_guis(&dirs).await;
-        // 데몬도 정상 종료시킨다: 강제로 끊으면 끝나는 사이에 설정·토큰 파일을 다시 쓸 수 있다
-        if let Some(health_pid) = ours {
-            let mut daemons: Vec<(u32, String)> = processes_in(install_dir, &["saba-core"]);
-            if daemons.is_empty() {
-                daemons.push((health_pid, "saba-core".to_string()));
-            }
-            let pids: Vec<u32> = daemons.iter().map(|(pid, _)| *pid).collect();
-            // 러너 없이 띄운 서버는 데몬의 자식이다: 데몬이 먼저 끝나면 트리 종료가 닿지 않으므로 지금 찾아 둔다.
-            // 목록을 못 읽으면 자식을 모르므로 정상 종료 대신 예전처럼 트리째 끊는다
-            match list_all() {
-                Some(listing) => {
-                    orphans = tree_of(&listing, &pids, std::process::id());
-                    let daemons = identify(Some(&listing), &daemons);
-                    if api.shutdown("[Uninstall]").await {
-                        let left = wait_for_exit(&daemons, list_all, DAEMON_EXIT_WAIT, delay).await;
-                        if !left.is_empty() {
-                            tracing::warn!("[Uninstall] saba-core {:?} did not stop after the shutdown request", left);
-                        }
-                    }
-                }
-                None => {
-                    tracing::warn!("[Uninstall] Cannot list the daemon's children; stopping the daemon {:?} with its tree", pids);
-                    for pid in pids {
-                        kill_pid(pid, true);
-                    }
-                }
-            }
+/// 이 설치 폴더에서 끌 실행 파일 (확장자 없이)
+struct Target {
+    name: &'static str,
+    /// 제거할 때 트리째 끊는다: saba-runner가 게임 서버를 잡(Job Object)에 묶고 있어 데몬·러너를 트리째 끝내
+    /// 서버도 끝낸다. GUI·CLI는 트리 없이: GUI가 이 제거기를 자식으로 띄우므로 트리째 끝내면 제거기도 죽는다
+    tree: bool,
+    /// 다시 설치하기 전에도 끈다 (트리 없이). 데몬은 데몬 단계에서만 끄고, 러너(게임 서버)·업데이터는 그대로 둔다
+    before_install: bool,
+    /// GUI 실행 파일: 데몬에 등록된 GUI와 포터블 실행기가 풀어 놓은 GUI를 이 이름으로 확인한다
+    gui: bool,
+}
+
+const TARGETS: [Target; 6] = [
+    Target { name: "saba-core", tree: true, before_install: false, gui: false },
+    Target { name: "saba-runner", tree: true, before_install: false, gui: false },
+    Target { name: "saba-chan-cli", tree: false, before_install: true, gui: false },
+    Target { name: "saba-chan-gui", tree: false, before_install: true, gui: true },
+    Target { name: "Saba-chan", tree: false, before_install: true, gui: true }, // 0.1.1 Electron GUI (옛 설치본)
+    Target { name: "saba-chan-updater", tree: false, before_install: false, gui: false },
+];
+
+/// GUI 실행 파일 이름 (확장자 없이)
+fn gui_names() -> Vec<&'static str> {
+    TARGETS.iter().filter(|t| t.gui).map(|t| t.name).collect()
+}
+
+/// 프로세스를 끄는 때
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Scope {
+    /// 제거: 이 설치의 모든 프로세스. 켜진 서버를 먼저 정상 종료시키고, 끈 프로세스가 끝날 때까지 기다린다
+    Uninstall,
+    /// 다시 설치·덮어쓰기 전: 파일을 잠그는 데몬·GUI·CLI만 (os error 32 방지)
+    Install,
+}
+
+impl Scope {
+    fn tag(self) -> &'static str {
+        match self {
+            Scope::Uninstall => "[Uninstall]",
+            Scope::Install => "[Install]",
         }
     }
-    // saba-runner가 게임 서버를 잡(Job Object)에 묶고 있다: 데몬·러너는 트리째 끝내 서버도 끝낸다.
-    // GUI·CLI는 트리 없이: GUI가 이 제거기를 자식으로 띄우므로 트리째 끝내면 제거기도 죽는다.
-    const TARGETS: [(&str, bool); 6] = [
-        ("saba-core", true),
-        ("saba-runner", true),
-        ("saba-chan-cli", false),
-        ("saba-chan-gui", false),
-        ("Saba-chan", false), // 0.1.1 Electron GUI
-        ("saba-chan-updater", false),
-    ];
+
+    /// 데몬 단계 뒤에 끌 이름과 트리째 끊는지
+    fn targets(self) -> Vec<(&'static str, bool)> {
+        let uninstall = self == Scope::Uninstall;
+        TARGETS.iter().filter(|t| uninstall || t.before_install).map(|t| (t.name, uninstall && t.tree)).collect()
+    }
+}
+
+/// 데몬 단계의 결과
+#[derive(Default)]
+struct DaemonStop {
+    /// 이 설치의 데몬에게 서버 종료를 부탁했는지
+    asked: bool,
+    /// 정상 종료하지 못한 서버 (제거 때만)
+    not_stopped: Vec<StopWarning>,
+    /// 데몬 아래에서 찾아 둔 서버 (제거 때만)
+    orphans: Vec<Found>,
+}
+
+/// 이 설치 폴더의 실행 파일로 떠 있는 사바쨩 프로세스만 끝낸다 (다른 설치본의 데몬·서버는 그대로).
+/// 데몬은 먼저 `/api/daemon/shutdown`으로 정상 종료를 부탁한다. 단계마다 로그를 남긴다 (`%TEMP%\saba-chan-installer.log`).
+/// 제거할 때는 정상 종료하지 못하고 강제로 끊은 서버를 돌려준다 (완료 화면에 따로 보인다).
+/// 설치 전에 포트에 답하는 데몬이 어느 설치의 것인지 모르면 끄지 않고, 사용자가 먼저 끄도록 이유를 돌려준다
+pub(crate) async fn stop_saba_processes(install_dir: &Path, scope: Scope) -> Result<Vec<StopWarning>, String> {
+    let tag = scope.tag();
+    // 받은 경로와 실제 경로 둘 다로 찾는다 (실행 파일 경로는 띄운 경로 그대로 보인다)
+    let dirs = [install_dir.to_path_buf(), comparable_dir(install_dir)];
+    tracing::info!("{} Checking for running Saba-chan processes in {} (real path {})", tag, dirs[0].display(), dirs[1].display());
+    let delay = std::time::Duration::from_millis(500);
+    let mut registered = Vec::new();
+    let mut daemon = DaemonStop::default();
+    if let Some(api) = &DaemonApi::from_config() {
+        // 데몬을 끄기 전에 데몬에 등록된 이 설치의 GUI를 물어 둔다 (임시 폴더에 풀린 포터블 GUI도 여기 있다)
+        registered = api.registered_guis(&dirs).await;
+        daemon = stop_daemon(api, &dirs, scope).await?;
+    }
+
+    let me = std::process::id();
     // 명령창 제거(`saba-chan-cli uninstall`)는 이 설치의 CLI 자신이 돌린다: 자기는 끄지 않는다.
     // `saba-chan uninstall`이면 CLI를 띄운 실행기(`bin\saba-chan.exe`, 이름이 0.1.1 GUI와 같다)도 끄지 않는다
-    let me = std::process::id();
     let launcher = std::env::var("SABA_LAUNCHER_PID").ok().and_then(|p| p.parse::<u32>().ok());
-    let found: Vec<(u32, String)> =
-        processes_in(install_dir, &TARGETS.map(|(n, _)| n)).into_iter().filter(|(pid, _)| *pid != me && Some(*pid) != launcher).collect();
+    let targets = scope.targets();
+    let names: Vec<&str> = targets.iter().map(|(n, _)| *n).collect();
+    let found: Vec<(u32, String)> = filter_in(&list_named(&names).unwrap_or_default(), &dirs, &names)
+        .into_iter()
+        .filter(|(pid, _)| *pid != me && Some(*pid) != launcher)
+        .collect();
+    let mut not_stopped = daemon.not_stopped;
     // 이 설치의 데몬에게 서버 종료를 부탁하지 못했는데 러너가 떠 있으면 그 서버는 저장 없이 끊긴다
-    if !asked && found.iter().any(|(_, n)| n.eq_ignore_ascii_case("saba-runner")) {
+    if scope == Scope::Uninstall && !daemon.asked && found.iter().any(|(_, n)| n.eq_ignore_ascii_case("saba-runner")) {
         not_stopped.push(StopWarning::DaemonUnanswered);
     }
     // 포터블 GUI(saba-chan-gui.exe)는 실행기일 뿐이고 실제 GUI는 임시 폴더에 풀려 그 자식으로 돈다.
@@ -437,66 +464,147 @@ async fn stop_saba_processes(install_dir: &Path) -> Vec<StopWarning> {
         found.iter().filter(|(_, n)| n.eq_ignore_ascii_case("saba-chan-gui")).map(|(pid, _)| *pid).collect();
     let unpacked = descendants_of(&launchers, install_dir);
     // 끈 프로세스를 PID·이름·시작 시각으로 적어 둔다: 끝나기를 기다리는 사이에 PID가 다른 프로그램에 다시 쓰일 수 있다
-    let before = list_all();
+    let before = if scope == Scope::Uninstall { list_all() } else { None };
     let mut stopped: Vec<(u32, bool)> = Vec::new();
-    let mut names: Vec<(u32, String)> = Vec::new();
+    let mut killed: Vec<(u32, String)> = Vec::new();
     for (pid, name) in found {
-        names.push((pid, name.clone()));
-        let tree = TARGETS.iter().any(|(n, t)| *t && n.eq_ignore_ascii_case(&name));
-        tracing::info!("[Uninstall] Stopping {} (PID {})", name, pid);
+        let tree = targets.iter().any(|(n, t)| *t && n.eq_ignore_ascii_case(&name));
+        tracing::info!("{} Stopping {} (PID {})", tag, name, pid);
         kill_pid(pid, tree);
         stopped.push((pid, tree));
+        killed.push((pid, name));
     }
     // 데몬 아래에 남은 서버: 같은 PID가 아직 같은 이름일 때만 (PID 재사용 대비)
-    let orphans = if orphans.is_empty() { Vec::new() } else { list_all().map(|l| still_listed(&l, &orphans)).unwrap_or_default() };
+    let orphans = if daemon.orphans.is_empty() {
+        Vec::new()
+    } else {
+        list_all().map(|l| still_listed(&l, &daemon.orphans)).unwrap_or_default()
+    };
     for (pid, name, _) in orphans {
         if stopped.iter().any(|(p, _)| *p == pid) {
             continue;
         }
-        tracing::info!("[Uninstall] Stopping {} left under the daemon (PID {})", name, pid);
+        tracing::info!("{} Stopping {} left under the daemon (PID {})", tag, name, pid);
         kill_pid(pid, true);
         stopped.push((pid, true));
-        names.push((pid, name));
+        killed.push((pid, name));
     }
     for pid in unpacked {
-        tracing::info!("[Uninstall] Stopping unpacked GUI process (PID {})", pid);
+        tracing::info!("{} Stopping unpacked GUI process (PID {})", tag, pid);
         kill_pid(pid, false);
         stopped.push((pid, false));
-        names.push((pid, String::new()));
+        killed.push((pid, String::new()));
     }
-    for pid in stop_registered_guis(&registered, "[Uninstall]") {
+    for pid in stop_registered_guis(&registered, tag) {
         if !stopped.iter().any(|(p, _)| *p == pid) {
             stopped.push((pid, false));
-            names.push((pid, String::new()));
+            killed.push((pid, String::new()));
         }
+    }
+    if scope == Scope::Install {
+        return Ok(not_stopped);
     }
 
     // 강제 종료는 바로 끝나지 않는다. 끝나기 전에 데이터를 지우면 그 프로세스가 파일을 다시 쓴다.
     // 끝날 때까지 기다리고, 아직 같은 프로세스로 남은 것만 한 번 더 끊는다
-    let procs = identify(before.as_deref(), &names);
+    let procs = identify(before.as_deref(), &killed);
     let mut left = wait_for_exit(&procs, list_all, KILL_EXIT_WAIT, delay).await;
     if !left.is_empty() {
         let again = list_all().map(|l| still_listed(&l, &left)).unwrap_or_default();
         for (pid, tree) in stopped.iter().filter(|(pid, _)| again.iter().any(|(p, ..)| p == pid)) {
-            tracing::warn!("[Uninstall] PID {} is still running; stopping it again", pid);
+            tracing::warn!("{} PID {} is still running; stopping it again", tag, pid);
             kill_pid(*pid, *tree);
         }
         left = wait_for_exit(&left, list_all, KILL_EXIT_WAIT, delay).await;
     }
     let left: Vec<u32> = left.into_iter().map(|(pid, ..)| pid).collect();
     if left.is_empty() {
-        tracing::info!("[Uninstall] All stopped processes have exited");
+        tracing::info!("{} All stopped processes have exited", tag);
     } else {
-        tracing::warn!("[Uninstall] Still running after stop: {:?}", left);
+        tracing::warn!("{} Still running after stop: {:?}", tag, left);
     }
-    not_stopped
+    Ok(not_stopped)
 }
 
-/// `procs` 중 `within` 동안 `list`(`list_all` 줄)에 같은 프로세스로 남아 있는 것. 다 끝나면 바로 돌아온다.
+/// 이 설치의 데몬을 찾아 정상 종료를 부탁하고 20초 기다린다. 실행 파일 경로로 못 찾았으면 (경로를 못 읽는
+/// 프로세스 등) 설정된 포트의 데몬에게 PID를 묻는다. 설정된 포트(데이터 폴더 기준)에 다른 설치의 데몬이 답할 수
+/// 있다: 찾은 데몬이 답할 때만 부탁한다.
+/// 제거할 때는 그 전에 켜진 서버를 정상 종료시키고 데몬 아래의 서버를 찾아 둔다. 끝나지 않은 데몬은 뒤에서
+/// 트리째 끊는다. 설치 전에는 끝나지 않은 데몬을 그 PID만 강제 종료한다 (게임 서버는 러너가 쥐고 있다)
+async fn stop_daemon(api: &DaemonApi, dirs: &[PathBuf], scope: Scope) -> Result<DaemonStop, String> {
+    let tag = scope.tag();
+    let core = list_named(&["saba-core"]).unwrap_or_default();
+    for p in &core {
+        tracing::info!("{} saba-core process: {}|{}|{}", tag, p.pid, p.name, p.exe);
+    }
+    let mut daemons: Vec<u32> = filter_in(&core, dirs, &["saba-core"]).into_iter().map(|(pid, _)| pid).collect();
+    let answering = api.health_pid().await;
+    if let Some(pid) = answering.filter(|_| daemons.is_empty()) {
+        let owner = daemon_owner(&core, pid, dirs);
+        tracing::info!("{} Daemon PID {} on port {}: {:?}", tag, pid, api.port, owner);
+        match port_daemon_to_stop(owner, pid) {
+            Ok(ours) => daemons.extend(ours),
+            Err(why) if scope == Scope::Install => return Err(why),
+            Err(_) => {}
+        }
+    }
+    let mut stop = DaemonStop::default();
+    if daemons.is_empty() {
+        tracing::info!("{} No daemon from this install is running", tag);
+        return Ok(stop);
+    }
+    tracing::info!("{} A daemon from this install is running (PID {:?})", tag, daemons);
+    let mut left = daemons.clone();
+    if asks_to_shut_down(&daemons, answering) {
+        let listing = list_all();
+        if scope == Scope::Uninstall {
+            // 프로세스를 끊기 전에 켜진 서버를 정상 종료시킨다 (강제 종료는 저장 없이 끈다)
+            stop.asked = true;
+            stop.not_stopped = api.stop_running_servers().await;
+            // 러너 없이 띄운 서버는 데몬의 자식이다: 데몬이 먼저 끝나면 트리 종료가 닿지 않으므로 지금 찾아 둔다.
+            // 목록을 못 읽으면 자식을 모르므로 정상 종료 대신 예전처럼 트리째 끊는다
+            match &listing {
+                Some(listing) => stop.orphans = tree_of(listing, &daemons, std::process::id()),
+                None => {
+                    tracing::warn!("{} Cannot list the daemon's children; stopping the daemon {:?} with its tree", tag, daemons);
+                    for pid in daemons {
+                        kill_pid(pid, true);
+                    }
+                    return Ok(stop);
+                }
+            }
+        }
+        // 데몬도 정상 종료시킨다: 강제로 끊으면 끝나는 사이에 설정·토큰 파일을 다시 쓸 수 있다
+        if api.shutdown(tag).await {
+            let named: Vec<(u32, String)> = daemons.iter().map(|pid| (*pid, "saba-core".to_string())).collect();
+            let procs = identify(listing.as_deref(), &named);
+            let waited = wait_for_exit(&procs, list_all, DAEMON_EXIT_WAIT, std::time::Duration::from_millis(500)).await;
+            // 기다리는 사이에 PID가 다른 프로그램에 다시 쓰였을 수 있다: 아직 같은 프로세스인 것만 남긴다
+            let waited = if waited.is_empty() { waited } else { list_all().map(|l| still_listed(&l, &waited)).unwrap_or_default() };
+            left = waited.into_iter().map(|(pid, ..)| pid).collect();
+        }
+    } else {
+        tracing::info!("{} Port {} is answered by PID {:?}, not this install's daemon; not asking it to shut down", tag, api.port, answering);
+    }
+    if left.is_empty() {
+        tracing::info!("{} Daemon stopped", tag);
+    } else if scope == Scope::Uninstall {
+        // 남은 데몬은 뒤에서 이 설치의 다른 프로세스와 함께 트리째 끊는다
+        tracing::warn!("{} saba-core {:?} is still running; stopping it with its tree", tag, left);
+    } else {
+        for pid in left {
+            tracing::warn!("{} saba-core (PID {}) did not stop; killing it", tag, pid);
+            kill_pid(pid, false);
+        }
+    }
+    Ok(stop)
+}
+
+/// `procs` 중 `within` 동안 `list`(`list_all`)에 같은 프로세스로 남아 있는 것. 다 끝나면 바로 돌아온다.
 /// 목록을 못 읽은 회차(`None`)는 아무것도 끝나지 않은 것으로 센다
 async fn wait_for_exit(
     procs: &[Found],
-    mut list: impl FnMut() -> Option<String>,
+    mut list: impl FnMut() -> Option<Vec<Proc>>,
     within: std::time::Duration,
     delay: std::time::Duration,
 ) -> Vec<Found> {
@@ -514,27 +622,63 @@ async fn wait_for_exit(
     left
 }
 
-/// `list_all`의 한 줄: `pid|ppid|start|name|exe`. start는 시작 시각(모르면 0)
-struct ProcRow<'a> {
+/// 프로세스 목록의 한 항목. start는 시작 시각(모르면 0), exe는 실행 파일 경로(못 읽으면 빈칸).
+/// 이름으로 거른 Windows 목록(`list_named`)에는 부모·시작 시각이 없다(0)
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Proc {
     pid: u32,
     ppid: u32,
     start: u64,
-    name: &'a str,
-    exe: &'a str,
+    name: String,
+    exe: String,
 }
 
-fn proc_rows(listing: &str) -> Vec<ProcRow<'_>> {
-    listing
-        .lines()
+/// PowerShell `list_all` 출력: `pid|ppid|start|name|exe` 줄
+#[cfg(any(target_os = "windows", test))]
+fn parse_all(text: &str) -> Vec<Proc> {
+    text.lines()
         .filter_map(|line| {
             let mut parts = line.trim().splitn(5, '|');
             let pid = parts.next()?.trim().parse().ok()?;
             let ppid = parts.next()?.trim().parse().ok()?;
             let start = parts.next()?.trim().parse().unwrap_or(0);
-            let name = parts.next()?.trim();
-            Some(ProcRow { pid, ppid, start, name, exe: parts.next().unwrap_or("").trim() })
+            let name = parts.next()?.trim().to_string();
+            Some(Proc { pid, ppid, start, name, exe: parts.next().unwrap_or("").trim().to_string() })
         })
         .collect()
+}
+
+/// PowerShell `list_named` 출력: `pid|name|exe` 줄
+#[cfg(any(target_os = "windows", test))]
+fn parse_named(text: &str) -> Vec<Proc> {
+    text.lines()
+        .filter_map(|line| {
+            let mut parts = line.trim().splitn(3, '|');
+            let pid = parts.next()?.trim().parse().ok()?;
+            let name = parts.next()?.trim().to_string();
+            Some(Proc { pid, name, exe: parts.next().unwrap_or("").trim().to_string(), ..Proc::default() })
+        })
+        .collect()
+}
+
+/// 확장자 뗀 실행 파일 이름
+fn stem(name: &str) -> &str {
+    name.strip_suffix(".exe").unwrap_or(name)
+}
+
+/// 이름(확장자 무시)이 `names` 중 하나인지 (대소문자 무시)
+fn named_as(name: &str, names: &[&str]) -> bool {
+    names.iter().any(|n| n.eq_ignore_ascii_case(stem(name)))
+}
+
+/// 경로 비교용 표기: `\`를 `/`로, 끝의 `/` 없이, 소문자로
+fn norm_path(p: &str) -> String {
+    p.replace('\\', "/").trim_end_matches('/').to_lowercase()
+}
+
+/// `exe`가 `dir` 아래에 있는지 (표기 차이 무시)
+fn is_inside(exe: &str, dir: &str) -> bool {
+    norm_path(exe).strip_prefix(&norm_path(dir)).is_some_and(|rest| rest.starts_with('/'))
 }
 
 /// 데몬 아래에서 찾아 둔 프로세스 (PID, 이름, 시작 시각)
@@ -542,8 +686,7 @@ type Found = (u32, String, u64);
 
 /// `roots`의 자손 전부. 제거기 자신(`me`)과 그 아래, 그 위(제거기를 띄운 프로세스)는 뺀다.
 /// 부모보다 먼저 시작한 프로세스는 자식으로 치지 않는다: 부모 PID는 이미 끝난 프로세스의 것이 다시 쓰였을 수 있다
-fn tree_of(listing: &str, roots: &[u32], me: u32) -> Vec<Found> {
-    let procs = proc_rows(listing);
+fn tree_of(procs: &[Proc], roots: &[u32], me: u32) -> Vec<Found> {
     let mut mine = vec![me];
     let mut cur = me;
     while let Some(row) = procs.iter().find(|r| r.pid == cur) {
@@ -557,10 +700,10 @@ fn tree_of(listing: &str, roots: &[u32], me: u32) -> Vec<Found> {
     let mut frontier: Vec<(u32, u64)> =
         procs.iter().filter(|r| roots.contains(&r.pid)).map(|r| (r.pid, r.start)).collect();
     while let Some((parent, since)) = frontier.pop() {
-        for r in &procs {
+        for r in procs {
             let child = r.ppid == parent && r.pid != parent && since > 0 && r.start >= since;
             if child && !mine.contains(&r.pid) && !roots.contains(&r.pid) && !found.iter().any(|(p, ..)| *p == r.pid) {
-                found.push((r.pid, r.name.to_string(), r.start));
+                found.push((r.pid, r.name.clone(), r.start));
                 frontier.push((r.pid, r.start));
             }
         }
@@ -570,14 +713,12 @@ fn tree_of(listing: &str, roots: &[u32], me: u32) -> Vec<Found> {
 
 /// `procs` 중 `listing`에 같은 PID·이름·시작 시각으로 아직 있는 것 (PID가 다른 프로그램에 다시 쓰였으면 뺀다).
 /// 이름이 빈칸이거나 시작 시각이 0이면 (적어 둘 때 몰랐으면) 그 항목은 비교하지 않는다
-fn still_listed(listing: &str, procs: &[Found]) -> Vec<Found> {
-    let stem = |n: &str| n.strip_suffix(".exe").unwrap_or(n).to_ascii_lowercase();
-    let rows = proc_rows(listing);
+fn still_listed(listing: &[Proc], procs: &[Found]) -> Vec<Found> {
     procs
         .iter()
         .filter(|(pid, name, start)| {
-            rows.iter().any(|r| {
-                r.pid == *pid && (*start == 0 || r.start == *start) && (name.is_empty() || stem(r.name) == stem(name))
+            listing.iter().any(|r| {
+                r.pid == *pid && (*start == 0 || r.start == *start) && (name.is_empty() || stem(&r.name).eq_ignore_ascii_case(stem(name)))
             })
         })
         .cloned()
@@ -585,12 +726,11 @@ fn still_listed(listing: &str, procs: &[Found]) -> Vec<Found> {
 }
 
 /// 끌 프로세스(PID, 이름)를 `listing`(`list_all`)에서 찾아 시작 시각까지 적는다. 목록에 없으면 시작 시각 0
-fn identify(listing: Option<&str>, procs: &[(u32, String)]) -> Vec<Found> {
-    let rows = listing.map(proc_rows).unwrap_or_default();
+fn identify(listing: Option<&[Proc]>, procs: &[(u32, String)]) -> Vec<Found> {
     procs
         .iter()
-        .map(|(pid, name)| match rows.iter().find(|r| r.pid == *pid) {
-            Some(r) => (*pid, r.name.to_string(), r.start),
+        .map(|(pid, name)| match listing.unwrap_or(&[]).iter().find(|r| r.pid == *pid) {
+            Some(r) => (*pid, r.name.clone(), r.start),
             None => (*pid, name.clone(), 0),
         })
         .collect()
@@ -686,13 +826,6 @@ impl DaemonApi {
         let r = health.map_err(|e| tracing::info!("No daemon answers on port {} ({})", self.port, e)).ok()?;
         let pid = r.json::<serde_json::Value>().await.ok().and_then(|v| v.get("pid").and_then(|p| p.as_u64()));
         pid.and_then(|p| u32::try_from(p).ok())
-    }
-
-    /// 설정된 포트의 데몬이 이 설치 폴더의 것이면 그 PID (경로를 모르면 아니라고 본다)
-    async fn daemon_is_in(&self, dirs: &[PathBuf]) -> Option<u32> {
-        self.health_pid()
-            .await
-            .filter(|pid| daemon_owner(&list_named(&["saba-core"]).unwrap_or_default(), *pid, dirs) == Owner::Here)
     }
 
     /// 데몬에 정상 종료를 요청한다. 받아들였는지만 돌려준다 (끝났는지는 부른 쪽이 프로세스로 확인한다)
@@ -805,8 +938,7 @@ impl DaemonApi {
 
 /// `GET /api/clients` 응답에서 이 설치 폴더(`installRoot`)에서 띄운 GUI의 PID
 fn guis_of(clients: &serde_json::Value, dirs: &[PathBuf]) -> Vec<u32> {
-    let norm = |p: &str| p.replace('\\', "/").trim_end_matches('/').to_lowercase();
-    let mut wanted: Vec<String> = dirs.iter().map(|d| norm(&d.to_string_lossy())).collect();
+    let mut wanted: Vec<String> = dirs.iter().map(|d| norm_path(&d.to_string_lossy())).collect();
     wanted.dedup();
     let mut pids: Vec<u32> = clients
         .get("clients")
@@ -816,7 +948,7 @@ fn guis_of(clients: &serde_json::Value, dirs: &[PathBuf]) -> Vec<u32> {
         .filter(|c| c.get("kind").and_then(|k| k.as_str()) == Some("gui"))
         .filter_map(|c| {
             let root = c.get("installRoot")?.as_str()?;
-            let roots = [norm(root), norm(&comparable_dir(Path::new(root)).to_string_lossy())];
+            let roots = [norm_path(root), norm_path(&comparable_dir(Path::new(root)).to_string_lossy())];
             let pid = u32::try_from(c.get("pid")?.as_u64()?).ok()?;
             roots.iter().any(|r| wanted.contains(r)).then_some(pid)
         })
@@ -832,16 +964,12 @@ fn stop_registered_guis(pids: &[u32], tag: &str) -> Vec<u32> {
     if pids.is_empty() {
         return stopped;
     }
-    let mut names: Vec<&str> = saba_chan_updater_lib::GUI_EXE_NAMES.iter().map(|n| n.trim_end_matches(".exe")).collect();
-    if !names.iter().any(|n| n.eq_ignore_ascii_case("Saba-chan")) {
-        names.push("Saba-chan");
-    }
-    let listing = list_named(&names).unwrap_or_default();
+    let listing = list_named(&gui_names()).unwrap_or_default();
     for &pid in pids {
         if pid == std::process::id() {
             continue;
         }
-        if pid_listed(&listing, pid) {
+        if listing.iter().any(|p| p.pid == pid) {
             tracing::info!("{} Closing GUI registered with the daemon (PID {})", tag, pid);
             kill_pid(pid, false);
             stopped.push(pid);
@@ -856,19 +984,10 @@ fn stop_registered_guis(pids: &[u32], tag: &str) -> Vec<u32> {
 /// 같은 이름)이고 실행 파일이 `places`(이 설치 폴더, 실행기가 풀어 놓는 임시 폴더) 아래인 것만 고른다.
 /// GUI가 띄운 브라우저 같은 남의 프로그램과 그 아래로는 내려가지 않는다. 제거기 자신(`me`)도 뺀다
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))] // 포터블 실행기는 Windows에만 있다
-fn descendants_in(listing: &str, roots: &[u32], me: u32, places: &[&Path]) -> Vec<u32> {
-    let norm = |p: &str| p.replace('\\', "/").trim_end_matches('/').to_lowercase();
-    let places: Vec<String> = places.iter().map(|p| norm(&p.to_string_lossy())).collect();
-    let ours = |name: &str, exe: &str| {
-        let name = name.strip_suffix(".exe").unwrap_or(name);
-        let exe = norm(exe);
-        saba_chan_updater_lib::GUI_EXE_NAMES
-            .iter()
-            .chain(["Saba-chan.exe"].iter())
-            .any(|g| g.trim_end_matches(".exe").eq_ignore_ascii_case(name))
-            && places.iter().any(|p| exe.strip_prefix(p.as_str()).is_some_and(|rest| rest.starts_with('/')))
-    };
-    let procs: Vec<(u32, u32, bool)> = proc_rows(listing).into_iter().map(|r| (r.pid, r.ppid, ours(r.name, r.exe))).collect();
+fn descendants_in(listing: &[Proc], roots: &[u32], me: u32, places: &[&Path]) -> Vec<u32> {
+    let gui = gui_names();
+    let ours = |p: &Proc| named_as(&p.name, &gui) && places.iter().any(|d| is_inside(&p.exe, &d.to_string_lossy()));
+    let procs: Vec<(u32, u32, bool)> = listing.iter().map(|r| (r.pid, r.ppid, ours(r))).collect();
     let mut found: Vec<u32> = Vec::new();
     let mut frontier: Vec<u32> = roots.to_vec();
     while let Some(parent) = frontier.pop() {
@@ -907,90 +1026,6 @@ fn descendants_of(_roots: &[u32], _install_dir: &Path) -> Vec<u32> {
     Vec::new()
 }
 
-/// 다시 설치·덮어쓰기 전에 이 설치 폴더의 데몬·GUI·CLI를 끈다. 데몬은 인터페이스가 없어도 남아 있으므로
-/// 파일이 잠겨 설치가 실패하지 않게 한다 (os error 32). 데몬은 먼저 `/api/daemon/shutdown`으로 정상 종료를
-/// 부탁하고, 20초 안에 안 끝나면 그 PID만 강제 종료한다 (트리째가 아니다: 게임 서버는 러너가 쥐고 있다).
-/// 단계마다 로그를 남긴다 (`%TEMP%\saba-chan-installer.log`).
-/// 포트에 답하는 데몬이 어느 설치의 것인지 모르면 끄지 않고, 사용자가 먼저 끄도록 이유를 돌려준다
-pub async fn stop_daemon_before_install(install_dir: &Path) -> Result<(), String> {
-    // 받은 경로와 실제 경로 둘 다로 찾는다 (실행 파일 경로는 띄운 경로 그대로 보인다)
-    let dir = comparable_dir(install_dir);
-    let dirs = [install_dir.to_path_buf(), dir.clone()];
-    tracing::info!("[Install] Checking for running Saba-chan processes in {} (real path {})", install_dir.display(), dir.display());
-    let listing = list_named(&["saba-core"]).unwrap_or_default();
-    for line in listing.lines().filter(|l| !l.trim().is_empty()) {
-        tracing::info!("[Install] saba-core process: {}", line.trim());
-    }
-    let mut daemons: Vec<u32> = filter_in(&listing, &dirs, &["saba-core"]).into_iter().map(|(pid, _)| pid).collect();
-
-    let Some(api) = DaemonApi::from_config() else {
-        return Ok(());
-    };
-    let port = api.port;
-    // 데몬을 끄기 전에 이 설치에서 띄운 GUI를 물어 둔다 (임시 폴더에 풀린 포터블 GUI도 여기 있다)
-    let registered = api.registered_guis(&dirs).await;
-
-    // 실행 파일 경로로 못 찾았으면 (경로를 못 읽는 프로세스 등) 설정된 포트의 데몬에게 PID를 묻는다
-    if daemons.is_empty() {
-        if let Some(pid) = api.health_pid().await {
-            let owner = daemon_owner(&listing, pid, &dirs);
-            tracing::info!("[Install] Daemon PID {} on port {}: {:?}", pid, port, owner);
-            daemons.extend(port_daemon_to_stop(owner, pid)?);
-        }
-    }
-
-    if daemons.is_empty() {
-        tracing::info!("[Install] No daemon from this install is running");
-    } else {
-        tracing::info!("[Install] A daemon from this install is running (PID {:?}); asking it to shut down", daemons);
-        // 설정된 포트(이 설치기의 데이터 폴더 기준)에 다른 설치의 데몬이 답할 수 있다: 찾은 데몬이 답할 때만 부탁한다
-        let answering = api.health_pid().await;
-        if !asks_to_shut_down(&daemons, answering) {
-            tracing::info!("[Install] Port {} is answered by PID {:?}, not this install's daemon; not asking it to shut down", port, answering);
-        }
-        let left = if asks_to_shut_down(&daemons, answering) && api.shutdown("[Install]").await {
-            let named: Vec<(u32, String)> = daemons.iter().map(|pid| (*pid, "saba-core".to_string())).collect();
-            let procs = identify(list_all().as_deref(), &named);
-            let left = wait_for_exit(&procs, list_all, DAEMON_EXIT_WAIT, std::time::Duration::from_millis(500)).await;
-            // 기다리는 사이에 PID가 다른 프로그램에 다시 쓰였을 수 있다: 아직 같은 프로세스인 것만 끊는다
-            let left = if left.is_empty() { left } else { list_all().map(|l| still_listed(&l, &left)).unwrap_or_default() };
-            left.into_iter().map(|(pid, ..)| pid).collect()
-        } else {
-            daemons
-        };
-        if left.is_empty() {
-            tracing::info!("[Install] Daemon stopped");
-        }
-        for pid in left {
-            tracing::warn!("[Install] saba-core (PID {}) did not stop; killing it", pid);
-            kill_pid(pid, false);
-        }
-    }
-
-    // GUI·CLI에는 종료 API가 없다: 이 설치의 것만 끈다. 트리째가 아니다: 데몬이 남아 있으면
-    // GUI 아래에 데몬·게임 서버가 있을 수 있다 (Electron 렌더러는 본 프로세스가 끝나면 따라 끝난다)
-    // 포터블 실행기(saba-chan-gui.exe)의 자손은 실행기를 끄기 전에 찾아 둔다: 실제 GUI는 임시 폴더에 풀려 돈다
-    let gui: Vec<&str> = saba_chan_updater_lib::GUI_EXE_NAMES.iter().map(|n| n.trim_end_matches(".exe")).collect();
-    let found = filter_in(&list_named(&gui).unwrap_or_default(), &dirs, &gui);
-    let launchers: Vec<u32> =
-        found.iter().filter(|(_, n)| n.eq_ignore_ascii_case("saba-chan-gui")).map(|(pid, _)| *pid).collect();
-    let unpacked = descendants_of(&launchers, install_dir);
-    for (pid, name) in found {
-        tracing::info!("[Install] Closing {} (PID {})", name, pid);
-        kill_pid(pid, false);
-    }
-    for pid in unpacked {
-        tracing::info!("[Install] Closing unpacked GUI process (PID {})", pid);
-        kill_pid(pid, false);
-    }
-    stop_registered_guis(&registered, "[Install]");
-    for (pid, name) in filter_in(&list_named(&["saba-chan-cli"]).unwrap_or_default(), &dirs, &["saba-chan-cli"]) {
-        tracing::info!("[Install] Closing {} (PID {})", name, pid);
-        kill_pid(pid, false);
-    }
-    Ok(())
-}
-
 /// 포트에 답하는 데몬 중 설치기가 끌 것: 이 설치의 것만. 다른 설치의 것은 둔다.
 /// 어느 설치의 것인지 모르면(실행 파일 경로를 못 읽음) 끄지 않고 사용자가 먼저 끄도록 이유를 돌려준다
 fn port_daemon_to_stop(owner: Owner, pid: u32) -> Result<Option<u32>, String> {
@@ -1025,23 +1060,19 @@ enum Owner {
     Elsewhere(String),
 }
 
-/// `pid|name|exe` 목록에서 그 PID의 실행 파일이 이 설치 폴더 안인지
-fn daemon_owner(listing: &str, pid: u32, dirs: &[std::path::PathBuf]) -> Owner {
+/// 프로세스 목록에서 그 PID의 실행 파일이 이 설치 폴더 안인지
+fn daemon_owner(listing: &[Proc], pid: u32, dirs: &[std::path::PathBuf]) -> Owner {
     if filter_in(listing, dirs, &["saba-core"]).iter().any(|(p, _)| *p == pid) {
         return Owner::Here;
     }
-    let exe = listing.lines().find_map(|line| {
-        let mut parts = line.trim().splitn(3, '|');
-        (parts.next()?.trim().parse::<u32>().ok()? == pid).then(|| parts.nth(1).unwrap_or("").trim().to_string())
-    });
-    match exe {
-        Some(exe) if !exe.is_empty() => Owner::Elsewhere(exe),
+    match listing.iter().find(|p| p.pid == pid) {
+        Some(p) if !p.exe.is_empty() => Owner::Elsewhere(p.exe.clone()),
         _ => Owner::Unknown,
     }
 }
 
 /// 여러 경로 표기 중 하나라도 맞는 프로세스 (PID 중복 없이)
-fn filter_in(listing: &str, dirs: &[std::path::PathBuf], names: &[&str]) -> Vec<(u32, String)> {
+fn filter_in(listing: &[Proc], dirs: &[std::path::PathBuf], names: &[&str]) -> Vec<(u32, String)> {
     let mut found: Vec<(u32, String)> = Vec::new();
     for dir in dirs {
         for hit in filter_processes(listing, dir, names) {
@@ -1053,48 +1084,40 @@ fn filter_in(listing: &str, dirs: &[std::path::PathBuf], names: &[&str]) -> Vec<
     found
 }
 
-fn pid_listed(listing: &str, pid: u32) -> bool {
-    listing.lines().any(|l| l.trim().split('|').next().and_then(|p| p.trim().parse::<u32>().ok()) == Some(pid))
-}
-
-/// `pid|name|exe` 줄들에서 `install_dir` 안의 실행 파일만 고른다. name은 확장자 뗀 이름
-fn filter_processes(listing: &str, install_dir: &Path, names: &[&str]) -> Vec<(u32, String)> {
-    let norm = |p: &str| p.replace('\\', "/").trim_end_matches('/').to_lowercase();
-    let root = norm(&install_dir.to_string_lossy());
+/// `install_dir` 안의 실행 파일로 도는 `names` 프로세스만 고른다. name은 확장자 뗀 이름
+fn filter_processes(listing: &[Proc], install_dir: &Path, names: &[&str]) -> Vec<(u32, String)> {
+    let root = install_dir.to_string_lossy();
     listing
-        .lines()
-        .filter_map(|line| {
-            let mut parts = line.trim().splitn(3, '|');
-            let pid = parts.next()?.trim().parse::<u32>().ok()?;
-            let name = parts.next()?.trim();
-            let name = name.strip_suffix(".exe").unwrap_or(name).to_string();
-            let exe = norm(parts.next()?.trim());
-            let inside = exe.strip_prefix(&root).is_some_and(|rest| rest.starts_with('/'));
-            (inside && names.iter().any(|n| n.eq_ignore_ascii_case(&name))).then_some((pid, name))
-        })
+        .iter()
+        .filter(|p| named_as(&p.name, names) && is_inside(&p.exe, &root))
+        .map(|p| (p.pid, stem(&p.name).to_string()))
         .collect()
 }
 
-fn processes_in(install_dir: &Path, names: &[&str]) -> Vec<(u32, String)> {
-    filter_processes(&list_named(names).unwrap_or_default(), install_dir, names)
-}
-
-/// 이름이 `names`인 프로세스 목록 (`pid|name|exe` 줄). 경로를 못 읽으면 exe는 빈칸. 목록을 못 읽으면 None
+/// 이름이 `names`인 프로세스 목록 (부모·시작 시각 없이). 경로를 못 읽으면 exe는 빈칸. 목록을 못 읽으면 None
 #[cfg(target_os = "windows")]
-fn list_named(names: &[&str]) -> Option<String> {
+fn list_named(names: &[&str]) -> Option<Vec<Proc>> {
     let filter = names.iter().map(|n| format!("Name='{}.exe'", n)).collect::<Vec<_>>().join(" OR ");
     powershell_lines(&format!(
         "Get-CimInstance Win32_Process -Filter \"{}\" | ForEach-Object {{ \"$($_.ProcessId)|$($_.Name)|$($_.ExecutablePath)\" }}",
         filter
     ))
+    .map(|text| parse_named(&text))
 }
 
-/// 모든 프로세스 목록 (`pid|ppid|start|name|exe` 줄, start는 생성 시각 FILETIME). 목록을 못 읽으면 None
+/// 모든 프로세스 목록 (start는 생성 시각 FILETIME). 목록을 못 읽으면 None
 #[cfg(target_os = "windows")]
-fn list_all() -> Option<String> {
+fn list_all() -> Option<Vec<Proc>> {
     powershell_lines(
         "Get-CimInstance Win32_Process | ForEach-Object { $s = if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc() } else { 0 }; \"$($_.ProcessId)|$($_.ParentProcessId)|$s|$($_.Name)|$($_.ExecutablePath)\" }",
     )
+    .map(|text| parse_all(&text))
+}
+
+/// 이름이 `names`이고 실행 파일 경로를 읽을 수 있는 프로세스. 목록을 못 읽으면 None
+#[cfg(not(target_os = "windows"))]
+fn list_named(names: &[&str]) -> Option<Vec<Proc>> {
+    Some(list_all()?.into_iter().filter(|p| !p.exe.is_empty() && named_as(&p.name, names)).collect())
 }
 
 #[cfg(target_os = "windows")]
@@ -1123,30 +1146,16 @@ fn proc_exe(proc_dir: &Path) -> Option<PathBuf> {
     })
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-fn list_named(names: &[&str]) -> Option<String> {
-    let mut listing = String::new();
-    for entry in std::fs::read_dir("/proc").ok()?.flatten() {
-        let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else { continue };
-        let Some(exe) = proc_exe(&entry.path()) else { continue };
-        let name = exe.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let stem = name.strip_suffix(".exe").unwrap_or(&name);
-        if names.iter().any(|n| n.eq_ignore_ascii_case(stem)) {
-            listing.push_str(&format!("{}|{}|{}\n", pid, name, exe.display()));
-        }
-    }
-    Some(listing)
-}
-
-// 맥에는 /proc가 없다: 커널 프로세스 목록(sysinfo, libproc)에서 같은 줄을 만든다
+// 맥에는 /proc가 없다: 커널 프로세스 목록(sysinfo, libproc)에서 읽는다
 #[cfg(target_os = "macos")]
-fn mac_processes() -> Vec<(u32, u32, u64, String, String)> {
+fn list_all() -> Option<Vec<Proc>> {
     use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, UpdateKind};
     let Ok(mut sys) = sysinfo::System::new() else {
-        return Vec::new();
+        return Some(Vec::new());
     };
     sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing().with_exe(UpdateKind::Always));
-    sys.processes()
+    let procs = sys
+        .processes()
         .iter()
         .map(|(pid, p)| {
             let exe = p.exe().map(|e| e.display().to_string()).unwrap_or_default();
@@ -1155,34 +1164,15 @@ fn mac_processes() -> Vec<(u32, u32, u64, String, String)> {
                 .and_then(|e| e.file_name())
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| p.name().to_string_lossy().into_owned());
-            (pid.as_u32(), p.parent().map(|pp| pp.as_u32()).unwrap_or(0), p.start_time(), name, exe)
+            Proc { pid: pid.as_u32(), ppid: p.parent().map(|pp| pp.as_u32()).unwrap_or(0), start: p.start_time(), name, exe }
         })
-        .collect()
-}
-
-#[cfg(target_os = "macos")]
-fn list_named(names: &[&str]) -> Option<String> {
-    let mut listing = String::new();
-    for (pid, _, _, name, exe) in mac_processes() {
-        if !exe.is_empty() && names.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
-            listing.push_str(&format!("{}|{}|{}\n", pid, name, exe));
-        }
-    }
-    Some(listing)
-}
-
-#[cfg(target_os = "macos")]
-fn list_all() -> Option<String> {
-    let mut listing = String::new();
-    for (pid, ppid, start, name, exe) in mac_processes() {
-        listing.push_str(&format!("{}|{}|{}|{}|{}\n", pid, ppid, start, name, exe));
-    }
-    Some(listing)
+        .collect();
+    Some(procs)
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-fn list_all() -> Option<String> {
-    let mut listing = String::new();
+fn list_all() -> Option<Vec<Proc>> {
+    let mut listing = Vec::new();
     for entry in std::fs::read_dir("/proc").ok()?.flatten() {
         let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else { continue };
         let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) else { continue };
@@ -1195,7 +1185,7 @@ fn list_all() -> Option<String> {
         let exe = proc_exe(&entry.path());
         let name = exe.as_ref().and_then(|e| e.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| comm.to_string());
         let exe = exe.map(|e| e.display().to_string()).unwrap_or_default();
-        listing.push_str(&format!("{}|{}|{}|{}|{}\n", pid, ppid, start, name, exe));
+        listing.push(Proc { pid, ppid, start, name, exe });
     }
     Some(listing)
 }
@@ -1789,18 +1779,18 @@ mod tests {
         let procs = [(10, "saba-core.exe".to_string(), 5), (20, "saba-runner.exe".to_string(), 5)];
         let left = wait_for_exit(&procs, || {
             calls += 1;
-            Some(if calls < 3 { "10|1|5|saba-core.exe|C:/x/saba-core.exe\n20|1|5|saba-runner.exe|C:/x/saba-runner.exe".into() } else { String::new() })
+            Some(parse_all(if calls < 3 { "10|1|5|saba-core.exe|C:/x/saba-core.exe\n20|1|5|saba-runner.exe|C:/x/saba-runner.exe" } else { "" }))
         }, Duration::from_secs(5), Duration::ZERO)
         .await;
         assert!(left.is_empty());
         assert_eq!(calls, 3);
 
         let started = Instant::now();
-        let left = wait_for_exit(&procs, || Some("20|1|5|saba-runner.exe|C:/x/saba-runner.exe".to_string()), Duration::from_millis(50), Duration::from_millis(5)).await;
+        let left = wait_for_exit(&procs, || Some(parse_all("20|1|5|saba-runner.exe|C:/x/saba-runner.exe")), Duration::from_millis(50), Duration::from_millis(5)).await;
         assert_eq!(left, vec![procs[1].clone()], "one still running until the deadline");
 
         // 리뷰 288: 기다리는 사이 PID가 다른 프로그램에 다시 쓰였으면 끝난 것으로 본다 (다시 끊지 않는다)
-        let reused = wait_for_exit(&procs[1..], || Some("20|1|9|explorer.exe|C:/Windows/explorer.exe".to_string()), Duration::from_secs(5), Duration::ZERO).await;
+        let reused = wait_for_exit(&procs[1..], || Some(parse_all("20|1|9|explorer.exe|C:/Windows/explorer.exe")), Duration::from_secs(5), Duration::ZERO).await;
         assert!(reused.is_empty());
         assert!(started.elapsed() < Duration::from_secs(2));
     }
@@ -1841,7 +1831,8 @@ mod tests {
                        301|300|81|cmd.exe|C:\\Windows\\cmd.exe\n\
                        400|1|10|notepad.exe|C:\\Windows\\notepad.exe\n\
                        500|100|20|explorer.exe|C:\\Windows\\explorer.exe\n";
-        let mut found = tree_of(listing, &[100], 300);
+        let listing = parse_all(listing);
+        let mut found = tree_of(&listing, &[100], 300);
         found.sort();
         let pids: Vec<u32> = found.iter().map(|(p, ..)| *p).collect();
         assert_eq!(pids, vec![110, 111, 120, 121]);
@@ -1850,12 +1841,12 @@ mod tests {
         let later = "110|100|60|java.exe|C:\\Java\\java.exe\n\
                      111|5|99|conhost.exe|C:\\Windows\\conhost.exe\n\
                      121|5|99|explorer.exe|C:\\Windows\\explorer.exe\n";
-        assert_eq!(still_listed(later, &found), vec![(110, "java.exe".to_string(), 60)]);
+        assert_eq!(still_listed(&parse_all(later), &found), vec![(110, "java.exe".to_string(), 60)]);
 
         // 끌 때 적는 정보: 목록에 있으면 그 이름·시작 시각, 없으면(목록 실패) 아는 이름에 시작 시각 0
         let named = [(110, String::new()), (999, "saba-core".to_string())];
-        assert_eq!(identify(Some(listing), &named), vec![(110, "java.exe".to_string(), 60), (999, "saba-core".to_string(), 0)]);
-        assert_eq!(still_listed("999|1|42|saba-core.exe|C:\\Saba\\saba-core.exe\n", &identify(None, &named[1..])).len(), 1);
+        assert_eq!(identify(Some(&listing), &named), vec![(110, "java.exe".to_string(), 60), (999, "saba-core".to_string(), 0)]);
+        assert_eq!(still_listed(&parse_all("999|1|42|saba-core.exe|C:\\Saba\\saba-core.exe\n"), &identify(None, &named[1..])).len(), 1);
     }
 
     // 업데이트가 실행 파일을 갈아 끼운 뒤에도 옛 파일로 도는 프로세스를 찾는다
@@ -1885,9 +1876,9 @@ mod tests {
         let all = list_all().unwrap();
         let _ = child.kill();
         let _ = child.wait();
-        let line = format!("{}|saba-replaced-test|{}", child.id(), exe.display());
-        assert!(named.lines().any(|l| l == line), "{named}");
-        assert!(all.lines().any(|l| l.starts_with(&format!("{}|", child.id())) && l.ends_with(&format!("|saba-replaced-test|{}", exe.display()))), "{all}");
+        let found = |p: &Proc| p.pid == child.id() && p.name == "saba-replaced-test" && p.exe == exe.display().to_string();
+        assert!(named.iter().any(found), "{named:?}");
+        assert!(all.iter().any(found), "{all:?}");
     }
 
     // 실제 프로세스 목록으로: 데몬 자리의 셸 아래 자식을 찾고, 끈 뒤 끝날 때까지 기다린다
@@ -2007,10 +1998,11 @@ mod tests {
                        51|50|5|Saba-chan.exe|C:\\Temp\\2abc\\Saba-chan.exe\n\
                        60|10|5|Saba-chan.exe|D:\\Other\\Saba-chan.exe\n";
         let places = [Path::new("C:\\Saba"), Path::new("C:\\Temp")];
-        let mut found = descendants_in(listing, &[10], 30, &places);
+        let listing = parse_all(listing);
+        let mut found = descendants_in(&listing, &[10], 30, &places);
         found.sort();
         assert_eq!(found, vec![20, 21, 22]);
-        assert!(descendants_in(listing, &[], 30, &places).is_empty());
+        assert!(descendants_in(&listing, &[], 30, &places).is_empty());
     }
 
     #[test]
@@ -2230,15 +2222,33 @@ mod tests {
 
     #[test]
     fn the_daemon_on_the_port_is_stopped_only_when_it_is_ours_or_unknown() {
-        let listing = "10|saba-core.exe|C:\\Saba\\saba-core.exe\n20|saba-core.exe|D:\\Other\\saba-core.exe\n30|saba-core.exe|\n";
+        let listing = &parse_named("10|saba-core.exe|C:\\Saba\\saba-core.exe\n20|saba-core.exe|D:\\Other\\saba-core.exe\n30|saba-core.exe|\n");
         let dirs = [std::path::PathBuf::from("c:/saba")];
         assert_eq!(daemon_owner(listing, 10, &dirs), Owner::Here);
         assert_eq!(daemon_owner(listing, 20, &dirs), Owner::Elsewhere("D:\\Other\\saba-core.exe".into()));
         assert_eq!(daemon_owner(listing, 30, &dirs), Owner::Unknown);
         assert_eq!(daemon_owner(listing, 99, &dirs), Owner::Unknown);
-        assert!(pid_listed(listing, 20) && !pid_listed(listing, 99));
         let two = [std::path::PathBuf::from("C:\\Saba"), std::path::PathBuf::from("c:/SABA/")];
         assert_eq!(filter_in(listing, &two, &["saba-core"]).len(), 1);
+    }
+
+    /// 제거는 이 설치의 모든 프로세스를(데몬·러너는 트리째), 다시 설치하기 전에는 파일을 잠그는 GUI·CLI만 끈다.
+    /// 0.1.1 Electron GUI(Saba-chan)는 어느 쪽이든 끈다 (옛 설치본)
+    #[test]
+    fn what_is_stopped_depends_on_uninstall_or_install() {
+        assert_eq!(
+            Scope::Uninstall.targets(),
+            vec![
+                ("saba-core", true),
+                ("saba-runner", true),
+                ("saba-chan-cli", false),
+                ("saba-chan-gui", false),
+                ("Saba-chan", false),
+                ("saba-chan-updater", false),
+            ]
+        );
+        assert_eq!(Scope::Install.targets(), vec![("saba-chan-cli", false), ("saba-chan-gui", false), ("Saba-chan", false)]);
+        assert_eq!(gui_names(), vec!["saba-chan-gui", "Saba-chan"]);
     }
 
     #[test]
@@ -2248,7 +2258,7 @@ mod tests {
                        12|saba-runner.exe|c:\\saba\\saba-runner.exe\n\
                        13|saba-core.exe|C:\\Saba-old\\saba-core.exe\n\
                        14|notepad.exe|C:\\Saba\\notepad.exe\n";
-        let found = filter_processes(listing, Path::new("C:\\Saba"), &["saba-core", "saba-runner"]);
+        let found = filter_processes(&parse_named(listing), Path::new("C:\\Saba"), &["saba-core", "saba-runner"]);
         assert_eq!(found, vec![(10, "saba-core".to_string()), (12, "saba-runner".to_string())]);
     }
 }

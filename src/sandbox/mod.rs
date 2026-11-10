@@ -300,10 +300,9 @@ pub fn extension_unisolated_allowed(ext_id: &str) -> bool {
     unisolated_allowed(&format!("{}{}", saba_chan_updater_lib::relay::EXTENSION_PREFIX, ext_id), &dir)
 }
 
-/// 익스텐션 폴더: 설치는 id의 '-'를 '_'로 바꾼 이름에 한다. 그 폴더가 없으면 id 그대로 (예전 설치)
+/// 익스텐션 폴더 (`extension::extension_dir`). 없으면 id 그대로
 fn extension_dir_in(extensions: &Path, ext_id: &str) -> PathBuf {
-    let safe = extensions.join(ext_id.replace('-', "_"));
-    if safe.is_dir() { safe } else { extensions.join(ext_id) }
+    crate::extension::extension_dir(extensions, ext_id).unwrap_or_else(|| extensions.join(ext_id))
 }
 
 /// 실행 대상을 찾을 때 쓰는 변수. 확인되지 않은 구성요소가 준 값은 버린다
@@ -1203,7 +1202,7 @@ pub fn component_dir(key: &str) -> Option<PathBuf> {
         return None;
     }
     // 익스텐션 폴더는 id의 `-`를 `_`로 바꾼 이름일 수 있다 (Python 패키지 이름)
-    [root.join(name), root.join(name.replace('-', "_"))].into_iter().find(|d| d.is_dir())
+    crate::extension::extension_dir(&root, name)
 }
 
 /// 동의를 기록하거나 지운다. 기록하면 지금 파일의 지문을 돌려준다

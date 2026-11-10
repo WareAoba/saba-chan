@@ -9,6 +9,7 @@ import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { REMOTE_DAEMONS_CHANGED, reloadWindow, useDaemonTarget } from '../shell/DaemonSwitcher';
 import { InstallDialog, RemoveDialog } from './RemotePcDialogs';
+import { failed } from '../../utils/apiResult';
 
 export const remoteDaemonAvailable = () => typeof window.api?.remoteSettings === 'function';
 
@@ -50,8 +51,6 @@ const ERRORS = [
 
 /** 화면에 보일 PC 이름: 데몬이 정한 `디스코드 이름(PC 이름)`, 옛 데몬이면 PC 이름 */
 export const pcName = (pc?: ApiBody | null) => pc?.label || pc?.name || pc?.hostId || '';
-
-const failed = (res: ApiBody | null | undefined) => !res || res.ok === false || res.success === false || Boolean(res.error_code);
 
 /** 실패 → 한 줄 (아는 코드는 번역, 나머지는 데몬 문구) */
 export function remoteErrorText(res: ApiBody | null | undefined, t: TFunction) {

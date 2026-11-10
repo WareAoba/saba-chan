@@ -1251,12 +1251,6 @@ pub enum BotCmd {
     },
     /// Link to invite the Saba-chan bot to a Discord server
     Invite,
-    /// Connection requests sent from Discord with `/사바쨩 연결` and no code. No id: show. ID: accept, `--decline`: refuse
-    Link {
-        id: Option<String>,
-        #[arg(long, requires = "id")]
-        decline: bool,
-    },
     /// Servers a Discord server can see and run. No servers: show. `--all`: every server
     Allow {
         guild: String,

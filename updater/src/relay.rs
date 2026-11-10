@@ -85,19 +85,19 @@ pub struct PlatformComponents {
 }
 
 /// manifest 컴포넌트 항목. 필드 이름은 운영 중인 manifest(0.1.1~)를 따른다:
-/// `asset`, `size_bytes`, `install_dir`. 예전 초안 이름(`filename` 등)도 읽는다.
+/// `asset`, `size_bytes`, `install_dir`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManifestComponent {
     pub version: String,
-    #[serde(rename = "asset", alias = "filename")]
+    #[serde(rename = "asset")]
     pub filename: String,
-    #[serde(default, rename = "size_bytes", alias = "sizeBytes", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "size_bytes", skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
     pub sha256: String,
     /// R2 공개 URL
     pub url: String,
     /// install_root 기준 설치 폴더
-    #[serde(default, rename = "install_dir", alias = "installDir", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "install_dir", skip_serializing_if = "Option::is_none")]
     pub install_dir: Option<String>,
     /// 이 컴포넌트가 요구하는 다른 컴포넌트의 최소 버전 (예: `{"saba-core": ">=0.3.0"}`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -172,7 +172,16 @@ pub async fn latest_catalog(relay_url: Option<&str>, channel: &str) -> Result<Op
     let release = client
         .fetch_verified_catalog(channel, &current_platform(), &crate::versions::bundled().release, &anon_client_id())
         .await?;
-    Ok(release.map(|r| r.manifest))
+    // 모듈·익스텐션은 이 코어로 돌아가는 판 목록에서 (가장 새 릴리즈의 판은 더 새 코어를 요구할 수 있다).
+    // 목록 API가 없는 릴레이면 릴리즈 manifest의 판을 그대로 두고, 목록을 읽지 못하면 내린 판일 수 있어 모듈·익스텐션을 내지 않는다
+    let Some(release) = release else { return Ok(None) };
+    let catalog = client.fetch_addon_catalog(&core_version(), channel).await;
+    Ok(merge_addon_catalog(Some(release), catalog, &core_version(), channel, &current_platform()).map(|r| r.manifest))
+}
+
+/// 이 빌드의 코어(데몬) 버전 — 모듈·익스텐션 목록을 고르는 기준
+pub fn core_version() -> String {
+    crate::versions::component("saba-core").unwrap_or(&crate::versions::bundled().release).to_string()
 }
 
 /// 릴레이는 `current`가 semver가 아니면 400 INVALID_CURRENT_VERSION 이다. 아무것도 안 깔린 상태(설치기, 카탈로그)는 0.0.0
@@ -185,6 +194,52 @@ fn current_param(current: &str) -> &str {
 pub struct VerifiedRelease {
     pub latest: LatestRelease,
     pub manifest: ReleaseManifest,
+}
+
+/// 업데이트 확인의 앱 릴리즈와 모듈·익스텐션 판 목록을 합친다.
+/// - 목록이 있으면 그 판으로 바꾼다(내린 판은 뺀다). 앱 릴리즈가 없어도 목록만으로 확인한다
+/// - 목록 API가 없거나 올린 판이 없으면(`Ok(None)`) 릴리즈 manifest 그대로
+/// - 목록을 읽지 못하면 이번 확인에서는 모듈·익스텐션을 내지 않는다: 릴리즈 manifest의 판은 그 뒤 내린 판일 수 있다
+pub fn merge_addon_catalog(
+    release: Option<VerifiedRelease>,
+    catalog: Result<Option<AddonCatalog>, RelayError>,
+    core: &str,
+    channel: &str,
+    platform: &str,
+) -> Option<VerifiedRelease> {
+    match (release, catalog) {
+        (Some(mut release), Ok(Some(catalog))) => {
+            catalog.overlay(&mut release.manifest);
+            Some(release)
+        }
+        (None, Ok(Some(catalog))) => Some(VerifiedRelease::addons_only(core, channel, platform, &catalog)),
+        (release, Ok(None)) => release,
+        (release, Err(e)) => {
+            tracing::warn!("[Updater] Addon catalog unavailable; not offering module or extension updates this time: {}", e);
+            release.map(|mut r| {
+                r.manifest.components.retain(|key, _| !key.starts_with(MODULE_PREFIX) && !key.starts_with(EXTENSION_PREFIX));
+                r
+            })
+        }
+    }
+}
+
+impl VerifiedRelease {
+    /// 앱 릴리즈 없이 모듈·익스텐션 목록만 있을 때의 확인 결과 (앱 컴포넌트는 비교하지 않는다)
+    pub fn addons_only(core: &str, channel: &str, platform: &str, catalog: &AddonCatalog) -> Self {
+        Self {
+            latest: LatestRelease { version: core.to_string(), ..Default::default() },
+            manifest: ReleaseManifest {
+                version: core.to_string(),
+                channel: channel.to_string(),
+                platform: platform.to_string(),
+                released_at: None,
+                is_critical: false,
+                components: catalog.components.clone(),
+                platforms: HashMap::new(),
+            },
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -306,11 +361,126 @@ impl RelayClient {
         bind_release(latest, manifest).map(Some)
     }
 
+    /// 이 코어 버전으로 돌아가는 모듈·익스텐션 판 목록 (`GET /v1/addons/catalog`). 판마다 번들 공개키로 서명을 확인하고,
+    /// 서명·경로가 틀린 판은 빼고 남긴다. 이 API가 없는 릴레이(404)이거나 올린 판이 하나도 없으면 None:
+    /// 그때는 릴리즈 manifest의 모듈·익스텐션을 그대로 쓴다
+    pub async fn fetch_addon_catalog(&self, core: &str, channel: &str) -> Result<Option<AddonCatalog>, RelayError> {
+        let url = format!("{}/v1/addons/catalog", self.base_url);
+        let resp = self
+            .http
+            .get(&url)
+            .query(&[("core", core), ("channel", channel)])
+            .send()
+            .await
+            .map_err(|e| RelayError::Http(e.to_string()))?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let body: AddonCatalogResponse = Self::json(resp).await?;
+        let catalog = AddonCatalog::from_signed(body.addons, body.yanked);
+        // 판이 하나도 없어도 내린 판은 알아야 한다: 릴리즈 manifest의 그 판을 다시 받지 않게
+        Ok((!catalog.components.is_empty() || !catalog.yanked.is_empty()).then_some(catalog))
+    }
+
     async fn json<T: for<'de> Deserialize<'de>>(resp: reqwest::Response) -> Result<T, RelayError> {
         if !resp.status().is_success() {
             return Err(RelayError::Status(resp.status().as_u16()));
         }
         resp.json::<T>().await.map_err(|e| RelayError::Parse(e.to_string()))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct AddonCatalogResponse {
+    #[serde(default)]
+    addons: Vec<SignedManifest>,
+    /// 서명된 내림 기록 `{manifest:{key, version, yanked:true}, signature, keyId}`
+    #[serde(default)]
+    yanked: Vec<SignedManifest>,
+}
+
+/// 코어 버전에 맞는 모듈·익스텐션 판 (앱 릴리즈와 따로 내는 판, 릴레이 `/v1/addons/catalog`)
+#[derive(Debug, Clone, Default)]
+pub struct AddonCatalog {
+    /// 키(`module-<이름>`, `ext-<id>`) → 판. 릴리즈 manifest의 컴포넌트와 같은 모양
+    pub components: HashMap<String, ManifestComponent>,
+    /// 내린 판 (CI가 서명한 기록만): 이 판을 깐 데몬은 목록의 판으로 되돌린다
+    pub yanked: HashMap<String, Vec<String>>,
+}
+
+impl AddonCatalog {
+    /// 서명된 판 기록(`{manifest:{key, version, asset, sha256, url, requires?, meta?}, signature, keyId}`)을 확인해 모은다.
+    /// 서명이 틀렸거나, 키가 모듈·익스텐션이 아니거나, 경로가 폴더 밖을 가리키는 판은 버린다
+    pub fn from_signed(entries: Vec<SignedManifest>, yanked: Vec<SignedManifest>) -> Self {
+        Self::from_signed_with(entries, yanked, signature::verify)
+    }
+
+    fn from_signed_with(
+        entries: Vec<SignedManifest>,
+        yanks: Vec<SignedManifest>,
+        verify: impl Fn(&SignedManifest) -> Result<(), signature::SignatureError>,
+    ) -> Self {
+        // 내림 기록: 서명이 맞고 `yanked: true`인 모듈·익스텐션 판만. 릴레이가 붙인 서명 없는 표시는 믿지 않는다
+        let mut yanked: HashMap<String, Vec<String>> = HashMap::new();
+        for signed in yanks {
+            let m = &signed.manifest;
+            let (Some(key), Some(version)) = (m.get("key").and_then(|v| v.as_str()), m.get("version").and_then(|v| v.as_str())) else {
+                continue;
+            };
+            let addon = key.starts_with(MODULE_PREFIX) || key.starts_with(EXTENSION_PREFIX);
+            if m.get("yanked") != Some(&serde_json::Value::Bool(true)) || !addon || verify(&signed).is_err() {
+                tracing::warn!("[Updater] Ignoring a yank record for '{}' {}: not a signed addon yank", key, version);
+                continue;
+            }
+            yanked.entry(key.to_string()).or_default().push(version.to_string());
+        }
+        let mut components = HashMap::new();
+        for signed in entries {
+            let key = signed.manifest.get("key").and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
+            if let Err(e) = verify(&signed) {
+                tracing::warn!("[Updater] Dropping addon '{}' from the catalog: {}", key, e);
+                continue;
+            }
+            if !key.starts_with(MODULE_PREFIX) && !key.starts_with(EXTENSION_PREFIX) {
+                tracing::warn!("[Updater] Dropping catalog entry '{}': not a module or extension", key);
+                continue;
+            }
+            let component: ManifestComponent = match serde_json::from_value(signed.manifest.clone()) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!("[Updater] Dropping addon '{}' from the catalog: {}", key, e);
+                    continue;
+                }
+            };
+            let single = ReleaseManifest {
+                version: component.version.clone(),
+                channel: String::new(),
+                platform: String::new(),
+                released_at: None,
+                is_critical: false,
+                components: HashMap::from([(key.clone(), component.clone())]),
+                platforms: HashMap::new(),
+            };
+            if let Err(e) = check_manifest_paths(&single) {
+                tracing::warn!("[Updater] Dropping addon '{}' from the catalog: {}", key, e);
+                continue;
+            }
+            components.insert(key, component);
+        }
+        Self { components, yanked }
+    }
+
+    /// 이 판이 내린 판인가
+    pub fn is_yanked(&self, key: &str, version: &str) -> bool {
+        self.yanked.get(key).is_some_and(|v| v.iter().any(|y| y == version))
+    }
+
+    /// 릴리즈 manifest의 모듈·익스텐션 중 이 목록에 있는 것을 목록의 판으로 바꾼다.
+    /// 목록에 없는 것(아직 따로 올리지 않은 판)은 릴리즈 manifest 그대로 둔다: 받을 때 requires 검사가 맞지 않는 판을 막는다.
+    /// 다만 내린 판이면 빼서 다시 받지 않게 한다
+    pub fn overlay(&self, manifest: &mut ReleaseManifest) {
+        manifest.components.extend(self.components.clone());
+        manifest.components.retain(|key, c| !self.is_yanked(key, &c.version));
     }
 }
 
@@ -576,7 +746,7 @@ mod tests {
             "components": {
                 "saba-core": {
                     "version": version,
-                    "filename": "saba-core.zip",
+                    "asset": "saba-core.zip",
                     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
                     "url": "https://cdn.example/saba-core.zip"
                 }
@@ -595,6 +765,75 @@ mod tests {
         ));
     }
 
+    /// 판 목록을 읽지 못하면(네트워크·서버 오류) 이번 확인에서는 모듈·익스텐션을 내지 않는다: 릴리즈 manifest의 판은
+    /// 그 뒤 내린 판일 수 있고, 내림 기록은 목록에만 있다. 목록 API가 없는 옛 릴레이(`Ok(None)`)는 릴리즈 manifest 그대로
+    #[test]
+    fn an_unreadable_addon_catalog_offers_no_addons() {
+        let mut v = manifest("0.1.13", "windows-x64");
+        v["components"]["module-palworld"] = json!({ "version": "0.1.6", "asset": "m.zip", "sha256": "a".repeat(64), "url": "https://cdn.example/m.zip" });
+        let release = || Some(VerifiedRelease { latest: LatestRelease::default(), manifest: serde_json::from_value(v.clone()).unwrap() });
+        let keys = |r: Option<VerifiedRelease>| {
+            let mut k: Vec<String> = r.unwrap().manifest.components.into_keys().collect();
+            k.sort();
+            k
+        };
+        let failed = merge_addon_catalog(release(), Err(RelayError::Http("timeout".into())), "0.1.13", "stable", "windows-x64");
+        assert_eq!(keys(failed), ["saba-core"]);
+        let old_relay = merge_addon_catalog(release(), Ok(None), "0.1.13", "stable", "windows-x64");
+        assert_eq!(keys(old_relay), ["module-palworld", "saba-core"]);
+        assert!(merge_addon_catalog(None, Err(RelayError::Http("x".into())), "0.1.13", "stable", "windows-x64").is_none());
+    }
+
+    /// 모듈·익스텐션 판 목록: 서명이 맞고 경로가 안전한 모듈·익스텐션 판만 남기고, 릴리즈 manifest의 판을 바꾼다
+    #[test]
+    fn the_addon_catalog_keeps_only_signed_addon_entries_and_replaces_the_release_ones() {
+        let (private, public) = signature::generate_key_pair().unwrap();
+        let entry = |key: &str, version: &str, asset: &str| {
+            json!({ "key": key, "version": version, "asset": asset, "sha256": "a".repeat(64),
+                    "url": format!("https://cdn.example/{asset}"), "requires": { "saba-core": ">=0.1.12" } })
+        };
+        let signed = |m: serde_json::Value| signature::sign(m, "k", &private).unwrap();
+        let mut tampered = signed(entry("module-zomboid", "0.1.6", "module-zomboid.zip"));
+        tampered.manifest["url"] = json!("https://evil.example/x.zip");
+        let entries = vec![
+            signed(entry("module-palworld", "0.1.5", "module-palworld.zip")),
+            signed(entry("ext-steamcmd", "0.1.4", "ext-steamcmd.zip")),
+            tampered,
+            signed(entry("saba-core", "9.9.9", "saba-core.zip")),
+            signed(entry("module-minecraft", "0.1.7", "../evil.zip")),
+        ];
+        // 내림 기록도 CI가 서명한다: 릴레이가 마음대로 되돌리게 하지 못한다
+        let yank = |key: &str, version: &str| signed(json!({ "key": key, "version": version, "yanked": true }));
+        let mut forged = yank("module-palworld", "0.1.5");
+        forged.manifest["version"] = json!("0.1.4");
+        let yanked = vec![
+            yank("module-palworld", "0.1.6"),
+            yank("module-zomboid", "0.1.6"),
+            forged,
+            signed(json!({ "key": "module-palworld", "version": "0.1.3" })),
+        ];
+        let catalog = AddonCatalog::from_signed_with(entries, yanked, |s| signature::verify_with(s, &[("k", public.as_str())]));
+        let mut keys: Vec<_> = catalog.components.keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["ext-steamcmd", "module-palworld"]);
+        assert_eq!(catalog.components["module-palworld"].requires.as_ref().unwrap()["saba-core"], ">=0.1.12");
+        assert!(catalog.is_yanked("module-palworld", "0.1.6"));
+        assert!(!catalog.is_yanked("module-palworld", "0.1.5"));
+        assert!(!catalog.is_yanked("module-palworld", "0.1.4"), "a tampered yank record is ignored");
+        assert!(!catalog.is_yanked("module-palworld", "0.1.3"), "a signed entry without yanked:true is not a yank");
+
+        let mut v = manifest("0.1.13", "windows-x64");
+        v["components"]["module-palworld"] = entry("module-palworld", "0.1.6", "module-palworld.zip");
+        v["components"]["module-zomboid"] = entry("module-zomboid", "0.1.6", "module-zomboid.zip");
+        v["components"]["module-terraria"] = entry("module-terraria", "0.1.5", "module-terraria.zip");
+        let mut release: ReleaseManifest = serde_json::from_value(v).unwrap();
+        catalog.overlay(&mut release);
+        assert_eq!(release.components["module-palworld"].version, "0.1.5", "the catalog's version for this core wins");
+        assert_eq!(release.components["module-terraria"].version, "0.1.5", "a module not in the catalog keeps the release's version");
+        assert!(!release.components.contains_key("module-zomboid"), "a yanked release version is not offered again");
+        assert!(release.components.contains_key("saba-core"), "app components stay");
+    }
+
     // L16: 키·파일 이름·install_dir가 폴더 밖을 가리키면 서명이 맞아도 manifest를 받지 않는다
     #[test]
     fn manifest_paths_must_stay_inside_their_folders() {
@@ -607,15 +846,15 @@ mod tests {
         };
         assert!(check_manifest_paths(&with("saba-core", "install_dir", ".")).is_ok());
         assert!(check_manifest_paths(&with("locales", "install_dir", "locales")).is_ok());
-        assert!(check_manifest_paths(&with("module-palworld", "filename", "module-palworld.zip")).is_ok());
+        assert!(check_manifest_paths(&with("module-palworld", "asset", "module-palworld.zip")).is_ok());
         for (key, field, value) in [
-            ("module-../evil", "filename", "a.zip"),
-            ("module-..", "filename", "a.zip"),
-            ("module-.", "filename", "a.zip"),
-            ("ext-", "filename", "a.zip"),
-            ("ext-a\\b", "filename", "a.zip"),
-            ("saba-core", "filename", "../saba-core.zip"),
-            ("saba-core", "filename", "C:saba-core.zip"),
+            ("module-../evil", "asset", "a.zip"),
+            ("module-..", "asset", "a.zip"),
+            ("module-.", "asset", "a.zip"),
+            ("ext-", "asset", "a.zip"),
+            ("ext-a\\b", "asset", "a.zip"),
+            ("saba-core", "asset", "../saba-core.zip"),
+            ("saba-core", "asset", "C:saba-core.zip"),
             ("saba-core", "install_dir", "../.."),
             ("saba-core", "install_dir", "C:\\Windows"),
             ("saba-core", "install_dir", "/etc"),

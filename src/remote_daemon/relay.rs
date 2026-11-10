@@ -1,6 +1,6 @@
 //! 원격 데몬이 릴레이에 하는 일 (05 §4.4 (j)): 주소 올리기·내리기, 받은 연결표 확인. 노드 토큰으로 서명한다
 
-use crate::ipc::handlers::relay::{relay_client, signed_headers_with};
+use crate::ipc::handlers::relay::{relay_client, signed_request};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -24,7 +24,7 @@ impl Target {
 pub struct Redeemed {
     pub from_host_id: String,
     pub from_host_name: String,
-    /// 그 PC 주인의 디스코드 이름. 옛 릴레이는 보내지 않는다
+    /// 그 PC 주인의 디스코드 이름 (모르면 빈 값)
     #[serde(default)]
     pub from_owner_name: String,
 }
@@ -44,13 +44,7 @@ async fn send(target: &Target, method: reqwest::Method, path: &str, body: Option
     }
     let client = relay_client().map_err(|_| Failure::Unreachable)?;
     let text = body.map(Value::to_string);
-    let mut req = client.request(method.clone(), format!("{}{}", target.base, path));
-    for (k, v) in signed_headers_with(&target.token, method.as_str(), path, text.as_deref()).ok_or(Failure::Unreachable)? {
-        req = req.header(k, v);
-    }
-    if let Some(text) = text {
-        req = req.header("Content-Type", "application/json").body(text);
-    }
+    let req = signed_request(&client, method, &target.base, path, &target.token, text).ok_or(Failure::Unreachable)?;
     let res = req.send().await.map_err(|_| Failure::Unreachable)?;
     let status = res.status().as_u16();
     let data = res.json::<Value>().await.unwrap_or(Value::Null);
@@ -77,7 +71,7 @@ pub async fn redeem(target: &Target, ticket_id: &str, secret: &str) -> Result<Re
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Published {
     Done,
-    /// 릴레이가 받지 않는다 (주소 없는 endpoint를 모르는 예전 릴레이): 다시 보내지 않는다
+    /// 릴레이가 본문을 받지 않는다 (400): 같은 본문으로는 다시 보내지 않는다
     Refused,
     /// 릴레이가 이 노드 토큰을 받지 않는다 (401·403: 토큰이 대체되거나 지워짐): 같은 토큰으로는 다시 보내지 않는다
     Unauthorized,
@@ -124,7 +118,7 @@ pub struct Peer {
     #[serde(default)]
     pub status: String,
     pub endpoint: Option<Endpoint>,
-    /// OS·CPU·배포판 `{os, distro:{id, version, name}}` (heartbeat). 옛 릴레이·아직 heartbeat 전이면 없다
+    /// OS·CPU·배포판 `{os, distro:{id, version, name}}` (heartbeat). 아직 heartbeat 전이면 없다
     #[serde(default)]
     pub platform: Option<Value>,
     #[serde(default)]
@@ -209,7 +203,7 @@ pub struct Ticket {
 pub enum TicketFailure {
     /// 같은 주인의 다른 PC가 아니다 (없음·남의 것·자기 자신)
     NotFound,
-    /// 그 PC가 원격 포트를 올리지 않았다 (꺼졌거나, 공인 주소가 없는데 예전 릴레이다)
+    /// 그 PC가 원격 포트를 올리지 않았다 (꺼져 있다)
     NoEndpoint,
     Unreachable,
 }

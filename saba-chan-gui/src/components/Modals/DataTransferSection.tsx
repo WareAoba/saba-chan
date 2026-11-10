@@ -4,13 +4,12 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { failed } from '../../utils/apiResult';
 
 export const dataTransferAvailable = () => typeof window.api?.dataExport === 'function' && typeof window.api?.dataImport === 'function';
 
 const KNOWN_ERRORS = ['INVALID_PATH', 'INVALID_ARCHIVE', 'INVALID_CONFIG', 'WRITE_FAILED'];
 const SKIP_REASONS = ['exists', 'running', 'working_dir_in_use', 'invalid_id', 'save_failed', 'name_taken', 'busy'];
-
-const failed = (res: ApiBody | null | undefined) => !res || res.success === false || Boolean(res.error_code) || (res.error && !res.success);
 
 /** 데몬 오류({success:false, error, error_code}) → 한 줄 */
 export function dataTransferErrorText(res: ApiBody | null | undefined, t: TFunction) {

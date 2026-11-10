@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import type { TFunction } from 'i18next';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, PointerEvent as ReactPointerEvent, RefObject } from 'react';
+import type { CSSProperties, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
@@ -16,11 +16,11 @@ import { LadderTab } from './LadderTab';
 import * as L from './levels';
 import { usePointerDrag } from './pointerDrag';
 import type { DiscordMember, DiscordNode } from './types';
+import { useMemberSearch } from './useMemberSearch';
+import { useStairsDraft } from './useStairsDraft';
+import { failed } from '../../utils/apiResult';
 
 export const OWNER_CONFIRM_MS = 5000;
-
-const failed = (res: ApiBody | null | undefined) =>
-    !res || res.success === false || Boolean(res.error || res.error_code);
 
 export function permissionsErrorText(res: ApiBody | null | undefined, t: TFunction) {
     switch (res?.error_code || res?.code) {
@@ -108,7 +108,6 @@ export function usePermissions(guildId: string) {
 export type PermissionsState = ReturnType<typeof usePermissions>;
 
 const memberName = (m: DiscordMember | undefined) => m?.displayName || m?.globalName || m?.username;
-const isId = (v: string) => /^\d{17,20}$/.test(v); // 디스코드 snowflake
 
 interface LevelSelectProps {
     value: number;
@@ -151,47 +150,6 @@ function PermState({ loading, error, onRetry }: PermStateProps) {
     return <SabaFail message={permissionsErrorText(error, t)} onRetry={onRetry} retryLabel={t('discord.reload')} />;
 }
 
-/** 레벨마다 그 레벨에서 새로 쓸 수 있게 되는 명령 수 (큰 칩만, help·list 제외) */
-function gainsByLevel(board: L.CommandBoard, view?: string) {
-    const gains: Record<number, number> = {};
-    for (const chip of L.stairChips(board, view).filter((c) => !c.instance))
-        gains[chip.level] = (gains[chip.level] || 0) + 1;
-    return gains;
-}
-
-/** "Lv 1의 모든 명령 + 5개" 같은 한 줄. 계단을 못 읽었으면 없다 */
-function levelSummary(
-    t: TFunction,
-    perm: L.GuildPermissions,
-    board: L.CommandBoard | null,
-    id: number | undefined,
-    view?: string,
-) {
-    if (id === L.OWNER) return t('discord.perm_level_all');
-    if (id === L.BANNED) return t('discord.perm_level_none');
-    if (!board) return null;
-    const up = L.ascending(perm);
-    const at = up.indexOf(id as number);
-    const below = up[at - 1];
-    const gain = gainsByLevel(board, view)[id as number] || 0;
-    // 금지 바로 위 레벨은 help·list부터 쓴다
-    if (below === L.BANNED) return t('discord.perm_level_base', { count: gain + 1 });
-    return t('discord.perm_level_gain', { below: L.levelTitle(t, perm, below), count: gain });
-}
-
-/** 검색 결과를 한 번에 보이는 수. 목록 끝까지 내리면 이만큼 더 보인다 (사용자 지정 2026-11-07) */
-export const MEMBER_PAGE = 10;
-
-/** 서버 닉네임(표시 이름)·전역 이름·사용자 이름으로 찾는다. 아이디로는 찾지 않는다 */
-export function searchMembers(members: DiscordMember[], query: string, name: (m: DiscordMember) => string) {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    const hit = members.filter((m) =>
-        [m.displayName, m.globalName, m.username].some((v) => typeof v === 'string' && v.toLowerCase().includes(q)),
-    );
-    return L.sortByName(hit, name);
-}
-
 interface MemberSearchProps {
     members: DiscordMember[];
     label: string;
@@ -222,26 +180,8 @@ function MemberSearch({
     autoFocus,
 }: MemberSearchProps) {
     const { t } = useTranslation('gui');
-    const [query, setQuery] = useState('');
-    const [shown, setShown] = useState(MEMBER_PAGE);
-    // 끄는 결과 칩은 팝업(스크롤 칸) 밖으로 띄워야 잘리지 않는다: 누른 자리를 적어 두고 끄는 동안 fixed로 그 자리에 둔다
-    const [origin, setOrigin] = useState<{ id: string; left: number; top: number; width: number } | null>(null);
-    const results = useMemo(
-        () => searchMembers(members, query, (m) => nameOf(String(m.id))),
-        [members, query, nameOf],
-    );
-    const withOrigin = (mid: string, props: Record<string, unknown>) => ({
-        ...props,
-        onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
-            const box = e.currentTarget.getBoundingClientRect();
-            setOrigin({ id: mid, left: box.left, top: box.top, width: box.width });
-            (props.onPointerDown as ((ev: ReactPointerEvent<HTMLElement>) => void) | undefined)?.(e);
-        },
-    });
-    const id = query.trim();
-    // 멤버 목록에 없는 사람은 디스코드 ID를 그대로 적어 더한다
-    const byId = onPick && isId(id) && !members.some((m) => String(m.id) === id);
-    const open = !!id;
+    const search = useMemberSearch(members, nameOf, onPick, dragging);
+    const { query, id, results, open } = search;
     return (
         <div className={clsx('dc-member-search', { 'is-dragging': !!dragging })}>
             <input
@@ -254,12 +194,9 @@ function MemberSearch({
                 disabled={disabled}
                 // biome-ignore lint/a11y/noAutofocus: 사람 추가를 누르면 바로 찾게 한다
                 autoFocus={autoFocus}
-                onChange={(e) => {
-                    setQuery(e.target.value);
-                    setShown(MEMBER_PAGE);
-                }}
+                onChange={(e) => search.change(e.target.value)}
                 onKeyDown={(e) => {
-                    if (e.key === 'Escape') setQuery('');
+                    if (e.key === 'Escape') search.clear();
                 }}
             />
             {query && (
@@ -268,7 +205,7 @@ function MemberSearch({
                     className="icon-btn dc-member-clear"
                     aria-label={t('discord.perm_member_search_clear')}
                     data-tooltip={t('discord.perm_member_search_clear')}
-                    onClick={() => setQuery('')}
+                    onClick={search.clear}
                 >
                     <Icon name="close" size={12} />
                 </button>
@@ -278,14 +215,11 @@ function MemberSearch({
                     className="dc-member-results"
                     role="listbox"
                     aria-label={label}
-                    onScroll={(e) => {
-                        const el = e.currentTarget;
-                        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 24 && shown < results.length)
-                            setShown((n) => n + MEMBER_PAGE);
-                    }}
+                    onScroll={(e) => search.scroll(e.currentTarget)}
                 >
-                    {results.slice(0, shown).map((m) => {
+                    {search.shown.map((m) => {
                         const mid = String(m.id);
+                        const floating = search.floatStyle(mid);
                         return (
                             <div key={mid} className="dc-member-result" role="none">
                                 <button
@@ -295,20 +229,12 @@ function MemberSearch({
                                     aria-label={nameOf(mid)}
                                     className={clsx('dc-chip', {
                                         'is-dragging': dragging === mid,
-                                        'is-floating': dragging === mid && origin?.id === mid,
+                                        'is-floating': !!floating,
                                     })}
-                                    style={
-                                        dragging === mid && origin?.id === mid
-                                            ? { left: origin.left, top: origin.top, width: origin.width }
-                                            : undefined
-                                    }
+                                    style={floating}
                                     disabled={disabled}
-                                    {...(dragProps ? withOrigin(mid, dragProps(mid)) : {})}
-                                    onClick={() => {
-                                        if (!onPick) return;
-                                        onPick(mid);
-                                        setQuery('');
-                                    }}
+                                    {...(dragProps ? search.withOrigin(mid, dragProps(mid)) : {})}
+                                    onClick={() => search.pick(mid)}
                                 >
                                     <Avatar name={nameOf(mid)} url={avatarOf(mid)} size={18} />
                                     <span>{nameOf(mid)}</span>
@@ -319,7 +245,7 @@ function MemberSearch({
                             </div>
                         );
                     })}
-                    {byId && (
+                    {search.byId && (
                         <div className="dc-member-result" role="none">
                             <button
                                 type="button"
@@ -327,16 +253,13 @@ function MemberSearch({
                                 aria-selected={false}
                                 className="dc-chip is-add"
                                 disabled={disabled}
-                                onClick={() => {
-                                    onPick?.(id);
-                                    setQuery('');
-                                }}
+                                onClick={() => search.pick(id)}
                             >
                                 <Icon name="plus" size="xs" /> {t('discord.perm_add_by_id', { id })}
                             </button>
                         </div>
                     )}
-                    {results.length === 0 && !byId && (
+                    {results.length === 0 && !search.byId && (
                         <div className="muted dc-member-empty" role="none">{t('discord.perm_member_search_empty')}</div>
                     )}
                 </div>
@@ -573,7 +496,7 @@ export function PeopleView({
                 {L.ladderOf(perm).map(({ id: levelId }) => {
                     const level = levelId as number;
                     const ids = L.sortByName(groups.get(level) || [], nameOf);
-                    const summary = levelSummary(t, perm, board, level, instance);
+                    const summary = L.levelSummary(t, perm, board, level, instance);
                     const isDefault = level === defaultLevel;
                     // 소유자는 따로 정하고, 같은 레벨에 놓으면 바꿀 것이 없다
                     const droppable = !!dragging && level !== L.OWNER && level !== dragging.level;
@@ -632,7 +555,7 @@ export function PeopleView({
                                                 type="button"
                                                 className="btn btn-primary btn-sm"
                                                 disabled={
-                                                    busy || !isId(ownerDraft.trim()) || ownerDraft.trim() === owner
+                                                    busy || !L.isSnowflake(ownerDraft.trim()) || ownerDraft.trim() === owner
                                                 }
                                                 onClick={() => saveOwner(ownerDraft.trim())}
                                             >
@@ -762,8 +685,6 @@ export function PeopleView({
     );
 }
 
-const RISK_TONE: Record<string, string> = { safe: 'ok', caution: 'warn', danger: 'stop' };
-
 // ── 명령: 계단. 칩은 "이 레벨부터 쓸 수 있다"는 자리에 있고, 위 계단은 아래 계단의 명령을 모두 쓴다 ──
 /**
  * 레벨 칸이 화면에 남은 높이만 채우게 한다: 페이지는 스크롤되지 않고, 넘치는 칩은 칸 안에서 스크롤된다.
@@ -799,38 +720,6 @@ function useFillHeight(ref: RefObject<HTMLElement | null>, min = 220) {
     }, []);
 }
 
-/**
- * 칩이 다른 계단으로 옮겨지면 옛 자리에서 새 자리로 미끄러지게 한다 (FLIP).
- * 칩마다 `data-chip` 으로 찾고, 움직임 줄이기 설정이면 건너뛴다.
- * 자리는 그릴 때마다 다시 재고(보기·스크롤·알림 줄이 바뀌어도 옛 값이 남지 않게), 움직임은 `dep`(계단 값)이 바뀔 때만 준다
- */
-function useChipFlip(ref: RefObject<HTMLElement | null>, dep: unknown) {
-    const last = useRef(new Map<string, DOMRect>());
-    const prevDep = useRef(dep);
-    useLayoutEffect(() => {
-        const root = ref.current;
-        if (!root) return;
-        const changed = prevDep.current !== dep;
-        prevDep.current = dep;
-        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-        const next = new Map<string, DOMRect>();
-        for (const el of root.querySelectorAll<HTMLElement>('[data-chip]')) {
-            const box = el.getBoundingClientRect();
-            next.set(el.dataset.chip as string, box);
-            const prev = last.current.get(el.dataset.chip as string);
-            if (!changed || reduce || !prev || !el.animate) continue;
-            const dx = prev.left - box.left;
-            const dy = prev.top - box.top;
-            if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-            el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
-                duration: 260,
-                easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
-            });
-        }
-        last.current = next;
-    });
-}
-
 interface CommandStairsProps {
     node: DiscordNode;
     permissions: PermissionsState;
@@ -842,21 +731,22 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
     const { perm, board, loading, error, busy, load, write } = permissions;
     const [view, setView] = useState(instance);
     const [selected, setSelected] = useState<string | null>(null); // 칩 id
-    // 칩 끌기: 놓으면 dropRef가 옮긴다 (아래에서 계단 값을 읽은 뒤 채운다)
-    const dropRef = useRef<(id: string, level: number) => void>(() => {});
-    const chipDrag = usePointerDrag((id: string, to: string) => dropRef.current(id, Number(to)));
-    const dragging = chipDrag.dragging;
-    const over = chipDrag.over === null ? null : Number(chipDrag.over);
     const [presetDraft, setPresetDraft] = useState<string | null>(null); // 명령별 레벨을 덮을 프리셋 (확인 전)
-    // 옮긴 레벨은 초안이다 (사용자 지정 2026-11-07): 저장 막대에서 저장한다. 명령 키 → 레벨
-    const [moves, setMoves] = useState<Record<string, number>>({});
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 데몬 값을 다시 읽으면(저장 뒤) 초안을 비운다
-    useEffect(() => setMoves({}), [board]);
-    const stairsRef = useRef<HTMLOListElement>(null);
-    // 칩은 저장된 값이 바뀔 때도, 초안에서 옮길 때도 미끄러진다
-    // biome-ignore lint/correctness/useExhaustiveDependencies: board·moves 가 바뀔 때마다 새 표지
-    const flipToken = useMemo(() => ({}), [board, moves]);
-    useChipFlip(stairsRef, flipToken);
+    // 옮긴 레벨은 초안이다 (사용자 지정 2026-11-07): 저장 막대에서 저장한다
+    const {
+        ref: stairsRef,
+        dropRef,
+        chipDrag,
+        dragging,
+        over,
+        setMoves,
+        shownBoard,
+        patch,
+        dirty,
+        unsaved,
+        draftTo,
+        move,
+    } = useStairsDraft<HTMLOListElement>(board, busy);
     useFillHeight(stairsRef);
     if (!perm) return <PermState loading={loading} error={error} onRetry={load} />;
     if (!board)
@@ -864,21 +754,6 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
 
     const guildId = node.guildId;
     const update = (patch: ApiBody) => write(() => window.api.permissionsUpdate(guildId, patch));
-    const items = board.items || [];
-    const draftLevels = items.map((it) =>
-        !it.fixed && moves[it.key as string] !== undefined ? moves[it.key as string] : it.level,
-    );
-    const shownBoard = L.draftBoard(board, draftLevels);
-    const patch = L.boardPatch(board, draftLevels);
-    const dirty = Object.keys(patch).length > 0;
-    // 노란 테두리는 저장하지 않은 변경: 저장된 레벨과 초안 레벨이 다른 명령
-    const savedLevel = new Map(items.map((it) => [it.key as string, it.level]));
-    const unsaved = (c: L.StairChip) => c.items.some((it) => savedLevel.get(it.key as string) !== it.level);
-    const draftTo = (list: L.CommandItem[], level: (it: L.CommandItem) => number) =>
-        setMoves((m) => ({
-            ...m,
-            ...Object.fromEntries(list.filter((it) => !it.fixed).map((it) => [it.key as string, level(it)])),
-        }));
     const preset = L.PRESETS.includes(perm.preset as string) ? (perm.preset as string) : 'default';
     // 프리셋은 한 번 적용하는 틀이다: 명령별 레벨이 있으면 다시 맞춘다고 먼저 묻는다 (지금 프리셋을 다시 눌러도)
     const overrides = Object.keys(perm.commandLevels || {}).length;
@@ -911,11 +786,6 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
               ...groupControl(L.stairChips(shownBoard, shownView)),
           ];
     const current = chips.find((c) => c.id === selected);
-    const move = (chip: L.StairChip, level: number) => {
-        // 대표 레벨이 같아도 다른 레벨인 인스턴스가 있으면 맞춘다
-        if (busy || chip.fixed || level === L.BANNED || chip.items.every((i) => i.fixed || i.level === level)) return;
-        draftTo(chip.items, () => level);
-    };
     // 기본값으로 초기화: 보이는 명령을 프리셋 레벨로 (초안, 저장해야 반영)
     const resetToDefault = () => draftTo(chips.flatMap((c) => c.items), (it) => it.preset as number);
     dropRef.current = (id, level) => {
@@ -1069,14 +939,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
                                             onClick={() => setSelected(selected === c.id ? null : c.id)}
                                         >
                                             <span
-                                                className={clsx(
-                                                    'dc-dot',
-                                                    c.kind === 'control'
-                                                        ? 'tone-control'
-                                                        : c.kind === 'admin'
-                                                          ? 'tone-info'
-                                                        : `tone-${RISK_TONE[c.confirmRisk as string] || 'ok'}`,
-                                                )}
+                                                className={clsx('dc-dot', `tone-${L.chipTone(c)}`)}
                                                 aria-hidden="true"
                                             />
                                             {c.fixed && <Icon name="pin" size="xs" />}
@@ -1100,7 +963,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
                         <strong>{label(current)}</strong>
                         {current.risk && (
                             <span
-                                className={clsx('dc-badge', `tone-${RISK_TONE[current.confirmRisk as string] || 'ok'}`)}
+                                className={clsx('dc-badge', `tone-${L.RISK_TONE[current.confirmRisk as string] || 'ok'}`)}
                             >
                                 {current.kind === 'admin'
                                     ? t('discord.kind_admin')

@@ -48,7 +48,7 @@ function HelpLink() {
     const { t, i18n } = useTranslation('gui');
     const url = portHelpUrl(i18n.language);
     const open = (e: MouseEvent<HTMLAnchorElement>) => {
-        const openExternal = window.electron?.shell?.openExternal;
+        const openExternal = window.api?.shellOpenExternal;
         if (!openExternal) return;
         e.preventDefault();
         openExternal(url);

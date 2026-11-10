@@ -1,0 +1,281 @@
+# 모듈·익스텐션 판을 앱 릴리즈와 따로 낸다 (2026-11-09 사용자 결정, docs 05 §3.3).
+# 데몬은 릴레이 `/v1/addons/catalog`에서 자기 코어로 돌아가는 가장 새 판을 받아 묻지 않고 바꿔 끼우므로,
+# 아래 관문을 모두 통과한 판만 올린다. 새 판은 `beta`로 나가고, 주인이 `promote`로 `stable`에 올린다.
+#
+# action
+#   publish  두 저장소 main에서 릴레이에 아직 없는 판을 관문 → 서명 → R2 → 릴레이 등록 (beta)
+#   promote  target(`<키>@<버전>`, 예: module-palworld@0.1.6)을 stable로
+#   yank     target을 내린다: 목록에서 빠지고, 그 판을 깐 데몬은 목록의 판으로 되돌린다
+#   seed     target(앱 릴리즈 버전, 예: 0.1.13)에 실려 나간 판을 그대로 stable 판으로 옮겨 담는다 (처음 한 번).
+#            릴리즈 manifest 서명을 번들 공개키로 확인한 뒤 판마다 다시 서명한다. 파일은 그 릴리즈의 R2 파일을 쓴다
+#
+# environment `release`: secrets UPDATER_SIGNING_KEY, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, RELAY_INTERNAL_SECRET
+#                        variables R2_ENDPOINT, R2_BUCKET, R2_PUBLIC_BASE, RELAY_URL
+name: Publish modules and extensions
+
+on:
+  schedule:
+    - cron: '30 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [publish, promote, yank, seed]
+        default: publish
+      target:
+        description: 'promote·yank 대상 (<키>@<버전>), seed는 앱 릴리즈 버전'
+        required: false
+      dry_run:
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-addons
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # 검사한 커밋과 서명하는 커밋이 같도록 세 저장소의 main을 한 번만 정한다
+  refs:
+    if: ${{ github.event_name == 'schedule' || inputs.action == 'publish' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      core: ${{ steps.refs.outputs.core }}
+      modules: ${{ steps.refs.outputs.modules }}
+      extensions: ${{ steps.refs.outputs.extensions }}
+    steps:
+      - id: refs
+        run: |
+          sha() { git ls-remote "https://github.com/$1" refs/heads/main | cut -f1; }
+          echo "core=$(sha ${{ github.repository }})" >> "$GITHUB_OUTPUT"
+          echo "modules=$(sha WareAoba/saba-chan-modules)" >> "$GITHUB_OUTPUT"
+          echo "extensions=$(sha WareAoba/saba-chan-extensions)" >> "$GITHUB_OUTPUT"
+
+  # 관문 1: 두 저장소의 검사 (Windows·Ubuntu)
+  tests:
+    needs: refs
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.refs.outputs.core }}
+          sparse-checkout: modules
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: WareAoba/saba-chan-modules
+          ref: ${{ needs.refs.outputs.modules }}
+          path: addons/modules
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: WareAoba/saba-chan-extensions
+          ref: ${{ needs.refs.outputs.extensions }}
+          path: addons/extensions
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Extensions (ruff 치명 규칙, pytest)
+        working-directory: addons/extensions
+        run: |
+          python -m pip install pytest ruff
+          python -m ruff check . --select E9,F63,F7,F82
+          python -m pytest -q
+      - name: Modules (conformance, pytest)
+        working-directory: addons/modules
+        shell: bash
+        env:
+          SABA_RUNTIME_DIR: ${{ github.workspace }}/modules
+          SABA_EXTENSIONS_DIR: ${{ github.workspace }}/addons/extensions
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python -m pytest conformance -q --shared-libs "$SABA_RUNTIME_DIR"
+          python -m pytest -q
+
+  # 관문 2: 선언하지 않은 능력을 쓰지 않는가 (main 데몬으로 본다) → 서명 → R2 → 릴레이
+  publish:
+    needs: [refs, tests]
+    runs-on: ubuntu-22.04
+    environment: release
+    timeout-minutes: 40
+    env:
+      DRY_RUN: ${{ inputs.dry_run || false }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.refs.outputs.core }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: WareAoba/saba-chan-modules
+          ref: ${{ needs.refs.outputs.modules }}
+          path: addons/modules
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: WareAoba/saba-chan-extensions
+          ref: ${{ needs.refs.outputs.extensions }}
+          path: addons/extensions
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      # 서명 도구는 키 없이 먼저 빌드한다: 의존성 빌드 스크립트가 키를 환경에서 읽지 못하게
+      - name: Build daemon and signing tool
+        # `--example`을 주면 그 예제만 빌드한다: 감사에 쓰는 데몬은 따로 빌드한다
+        run: |
+          cargo build --quiet --locked -p saba-core --bin saba-core
+          cargo build --quiet --locked -p saba-chan-updater-lib --example release_signing
+
+      - name: Audit modules and extensions
+        run: |
+          mods=$(for d in addons/modules/*/; do [ -f "$d/module.toml" ] && echo "$d"; done)
+          exts=$(for d in addons/extensions/*/; do [ -f "$d/manifest.json" ] && echo "$d"; done)
+          ./target/debug/saba-core module audit $mods
+          ./target/debug/saba-core extension audit $exts
+
+      # 릴레이에 올라간 키마다의 가장 새 판(모든 채널, 코어 제한 없음)과 내린 판
+      - name: Pick new versions
+        id: pick
+        run: |
+          curl -fsS -H 'X-Saba-Client: 1' \
+            "${{ vars.RELAY_URL }}/v1/addons/catalog?core=999.0.0&channel=nightly" > published.json
+          python scripts/versions.py addons --assets addon-assets \
+            --base-url "${{ vars.R2_PUBLIC_BASE }}" --published published.json \
+            --modules-repo addons/modules --extensions-repo addons/extensions \
+            --addons-ref "$(git -C addons/modules rev-parse HEAD)" --out addon-entries.json
+          count=$(python -c "import json;print(len(json.load(open('addon-entries.json'))))")
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          python -c "import json;[print(e['key'], e['version']) for e in json.load(open('addon-entries.json'))]" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Sign
+        if: steps.pick.outputs.count != '0'
+        env:
+          UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
+        run: |
+          ./target/debug/examples/release_signing sign-each addon-entries.json saba-updater-v1 > addon-entries.signed.json
+          python scripts/versions.py addon-registration --signed addon-entries.signed.json --channel beta --out addon-registration.jsonl
+
+      # 같은 파일이 이미 있으면(앞 실행이 올리고 등록 전에 멈춤) 건너뛰고, 다른 파일이면 멈춘다
+      - name: Upload to R2 (never overwrite)
+        if: steps.pick.outputs.count != '0' && env.DRY_RUN != 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          python -c "import json;[print(e['asset'], 'addons/%s/%s/%s' % (e['key'], e['version'], e['asset'])) for e in json.load(open('addon-entries.json'))]" > r2-uploads.txt
+          while read -r file key; do
+            # 없음(404)만 "올려도 된다"로 본다. 권한·네트워크 오류를 없음으로 읽으면 있는 파일을 덮어쓴다
+            if head=$(aws s3api head-object --bucket "${{ vars.R2_BUCKET }}" --key "$key" --endpoint-url "${{ vars.R2_ENDPOINT }}" 2>&1); then
+              aws s3 cp "s3://${{ vars.R2_BUCKET }}/$key" existing.zip --endpoint-url "${{ vars.R2_ENDPOINT }}" --no-progress
+              if [ "$(sha256sum < existing.zip)" = "$(sha256sum < "addon-assets/$file")" ]; then
+                echo "R2 $key already holds this file"; continue
+              fi
+              echo "::error::R2 $key already exists with different contents"; exit 1
+            elif ! printf '%s' "$head" | grep -q '(404)'; then
+              echo "::error::Could not check R2 $key: $head"; exit 1
+            fi
+            aws s3 cp "addon-assets/$file" "s3://${{ vars.R2_BUCKET }}/$key" --endpoint-url "${{ vars.R2_ENDPOINT }}" --no-progress
+          done < r2-uploads.txt
+
+      - name: Register with relay
+        if: steps.pick.outputs.count != '0' && env.DRY_RUN != 'true'
+        env:
+          RELAY_INTERNAL_SECRET: ${{ secrets.RELAY_INTERNAL_SECRET }}
+        run: |
+          while read -r line; do
+            printf '%s' "$line" | curl -fsS -X POST "${{ vars.RELAY_URL }}/admin/addons" \
+              -H "x-internal-secret: $RELAY_INTERNAL_SECRET" \
+              -H "Content-Type: application/json; charset=utf-8" --data-binary @- > /dev/null
+          done < addon-registration.jsonl
+          echo "### Published to beta" >> "$GITHUB_STEP_SUMMARY"
+
+  seed:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.action == 'seed' }}
+    runs-on: ubuntu-22.04
+    environment: release
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - name: Build signing tool
+        run: cargo build --quiet --locked -p saba-chan-updater-lib --example release_signing
+      - name: Sign the release's modules and extensions
+        env:
+          UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          case "$TARGET" in [0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::target must be a release version"; exit 1 ;; esac
+          curl -fsS -H 'X-Saba-Client: 1' "${{ vars.RELAY_URL }}/v1/updates/manifest/$TARGET" > release.signed.json
+          ./target/debug/examples/release_signing verify release.signed.json
+          python scripts/versions.py addon-seed --release release.signed.json --out addon-entries.json
+          ./target/debug/examples/release_signing sign-each addon-entries.json saba-updater-v1 > addon-entries.signed.json
+          python scripts/versions.py addon-registration --signed addon-entries.signed.json --channel stable --out addon-registration.jsonl
+          python -c "import json;[print(e['key'], e['version']) for e in json.load(open('addon-entries.json'))]" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Register with relay
+        if: ${{ !inputs.dry_run }}
+        env:
+          RELAY_INTERNAL_SECRET: ${{ secrets.RELAY_INTERNAL_SECRET }}
+        run: |
+          while read -r line; do
+            printf '%s' "$line" | curl -fsS -X POST "${{ vars.RELAY_URL }}/admin/addons" \
+              -H "x-internal-secret: $RELAY_INTERNAL_SECRET" \
+              -H "Content-Type: application/json; charset=utf-8" --data-binary @- > /dev/null
+          done < addon-registration.jsonl
+
+  # promote·yank: 판 하나의 채널·내림 표시만 바꾼다 (판 파일·서명은 그대로). 내림은 데몬이 판을 되돌리게 하므로
+  # 내림 기록 `{key, version, yanked:true}`를 서명해 보낸다: 데몬은 서명된 내림만 믿는다
+  change:
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.action == 'promote' || inputs.action == 'yank') }}
+    runs-on: ubuntu-22.04
+    environment: release
+    timeout-minutes: 30
+    steps:
+      - name: Check target
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          echo "$TARGET" | grep -Eq '^(module|ext)-[a-z0-9][a-z0-9_-]{0,63}@[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
+            || { echo "::error::target must look like module-<name>@<version>"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ inputs.action == 'yank' }}
+        with:
+          ref: main
+      - name: Install Rust toolchain
+        if: ${{ inputs.action == 'yank' }}
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - name: Sign the yank record
+        if: ${{ inputs.action == 'yank' }}
+        env:
+          UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          cargo build --quiet --locked -p saba-chan-updater-lib --example release_signing
+          python3 -c "import json,os;k,v=os.environ['TARGET'].split('@');json.dump({'key':k,'version':v,'yanked':True},open('yank.json','w'))"
+          ./target/debug/examples/release_signing sign yank.json saba-updater-v1 > yank.signed.json
+      - name: Update the relay
+        env:
+          RELAY_INTERNAL_SECRET: ${{ secrets.RELAY_INTERNAL_SECRET }}
+          ACTION: ${{ inputs.action }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          key="${TARGET%@*}"; version="${TARGET#*@}"
+          if [ "$ACTION" = promote ]; then body='{"channel":"stable"}'
+          else body=$(python3 -c "import json;print(json.dumps({'yanked':True,'signedYank':json.dumps(json.load(open('yank.signed.json')),separators=(',',':'))}))"); fi
+          curl -fsS -X PATCH "${{ vars.RELAY_URL }}/admin/addons/$key/$version" \
+            -H "x-internal-secret: $RELAY_INTERNAL_SECRET" -H "Content-Type: application/json" -d "$body"
+          echo "### $ACTION $key@$version" >> "$GITHUB_STEP_SUMMARY"

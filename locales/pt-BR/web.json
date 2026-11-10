@@ -441,12 +441,6 @@
       "NO_CLEAR_JOB": "Nada está sendo limpo neste canal.",
       "generic": "Não foi possível alterar. Tente de novo daqui a pouco."
     },
-    "dur": {
-      "seconds": "{{count}} s",
-      "minutes": "{{count}} min",
-      "hours": "{{count}} h",
-      "days": "{{count}} d"
-    },
     "mod": {
       "title": "Gerenciamento do servidor",
       "locked": "Trancado",

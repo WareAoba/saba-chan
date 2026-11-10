@@ -166,14 +166,6 @@ describe('ModerationTab', () => {
         expect(window.api.relayModClear).not.toHaveBeenCalled();
     });
 
-    it('검사 경로를 모르는 옛 릴레이면 지우지 않고 확인 창만 띄운다', async () => {
-        window.api.relayModClearCheck = vi.fn().mockResolvedValue({ error: 'NOT_FOUND' }) as never;
-        render(<ModerationTab node={node} members={members} />);
-        fireEvent.click(await screen.findByRole('button', { name: /Clear…/ }));
-        expect(await screen.findByRole('alertdialog')).toBeTruthy();
-        expect(window.api.relayModClear).not.toHaveBeenCalled();
-    });
-
     it('멤버 화면은 남은 시간 순으로 음소거된 사람을 보이고, 새로 음소거·해제한다', async () => {
         render(<ModerationTab node={node} members={members} />);
         fireEvent.click(await screen.findByRole('tab', { name: /Members/ }));

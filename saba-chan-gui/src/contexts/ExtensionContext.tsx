@@ -2,7 +2,7 @@
  * ExtensionContext — 범용 익스텐션 시스템 컨텍스트
  *
  * 역할:
- * 1. window.api.extensionList() (Electron IPC) → 활성 익스텐션 목록
+ * 1. window.api.extensionList() (데몬 API) → 활성 익스텐션 목록
  * 2. 활성 익스텐션의 GUI 번들을 IPC를 통해 동적 로드
  * 3. 이름 규칙: window.SabaExt{Id} (예: id가 my-ext면 window.SabaExtMyExt)
  * 4. 슬롯 레지스트리 관리: slotId → [Component, ...]
@@ -27,6 +27,8 @@ import type { ApiBody, ExtensionListItem } from '../types/daemon';
 import { safeShowToast } from '../utils/helpers';
 import { showTrustWarnings } from '../utils/trustNotice';
 import { updateRequiredText } from '../utils/updateRequired';
+import { failed } from '../utils/apiResult';
+import { useInstallingIds } from '../components/Modals/useStoreInstall';
 
 // 슬롯에 들어가는 컴포넌트: props는 슬롯마다 다르다
 // biome-ignore lint/suspicious/noExplicitAny: 슬롯마다 컴포넌트 props가 다르다
@@ -47,7 +49,6 @@ interface ExtensionBundle {
 
 export interface ExtensionContextValue {
     extensions: ExtensionListItem[];
-    enabledExtensions: ExtensionListItem[];
     slots: SlotRegistry;
     loading: boolean;
     toggleExtension: (extId: string, enable: boolean) => Promise<boolean> | undefined;
@@ -61,7 +62,6 @@ export interface ExtensionContextValue {
     installingIds: Set<string>;
     fetchManifest: () => Promise<ApiBody | null | undefined>;
     installExtension: (extId: string, opts?: Record<string, unknown>) => Promise<boolean>;
-    checkUpdates: () => Promise<ApiBody | null | undefined>;
 }
 
 const ExtensionContext = createContext<ExtensionContextValue | null>(null);
@@ -203,7 +203,6 @@ async function loadExtensionI18n(ext: ExtensionListItem, lang: string) {
 export function ExtensionProvider({ children, surface = 'main' }: { children: ReactNode; surface?: SlotSurface }) {
     const { t } = useTranslation();
     const [extensions, setExtensions] = useState<ExtensionListItem[]>([]);
-    const [enabledExtensions, setEnabledExtensions] = useState<ExtensionListItem[]>([]);
     const [slots, setSlots] = useState<SlotRegistry>({});
     const [loading, setLoading] = useState(true);
     const loadedRef = useRef(new Set<string>());
@@ -228,15 +227,14 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
     const askedGuiRef = useRef(new Set<string>());
     const modalOpen = useUIStore((s) => Boolean(s.modal));
 
-    // ── 매니페스트 / 버전관리 상태 ──────────────────────────────
+    // ── 익스텐션 스토어 (사바 스토리지 익스텐션 탭) ─────────────────
+    // 화면을 떠났다 돌아와도 설치 중 표시와 받아 둔 매니페스트가 남도록 Provider에 둔다
     /** 원격 매니페스트에서 받아온 가용 익스텐션 목록 */
     const [manifestExtensions, setManifestExtensions] = useState<ApiBody[]>([]);
     /** 업데이트 가능한 익스텐션 목록 */
     const [availableUpdates, setAvailableUpdates] = useState<ApiBody[]>([]);
-    /** 매니페스트 페치 중 여부 */
     const [manifestLoading, setManifestLoading] = useState(false);
-    /** 현재 설치 진행 중인 익스텐션 ID 집합 */
-    const [installingIds, setInstallingIds] = useState(new Set<string>());
+    const { installingIds, run } = useInstallingIds();
 
     // 익스텐션 목록 가져오기
     // 받지 못하면 받아 둔 목록을 그대로 두고 false를 돌려준다
@@ -274,7 +272,6 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
     // 활성 익스텐션 변경 시 GUI 번들 로드 & 슬롯 등록
     useEffect(() => {
         const enabled = extensions.filter((ext) => ext.enabled);
-        setEnabledExtensions(enabled);
         // 꺼졌거나 지운 확장은 번들을 내린다: 스타일이 다른 화면에 남지 않게, 다시 켜면 스타일까지 새로 읽게
         const enabledIds = new Set(enabled.map((ext) => ext.id));
         enabledIdsRef.current = enabledIds;
@@ -416,7 +413,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
                     result = await window.api.extensionDisable(extId);
                 }
 
-                if (result && result.success === false) {
+                if (result && failed(result)) {
                     // 구조화된 에러 응답 처리
                     const code = result.error_code || 'unknown';
                     const related = (result.related || []).join(', ');
@@ -535,7 +532,6 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         });
     }, [surface, guiPending, modalOpen, approveExtensionGui, t]);
 
-    // ── 매니페스트 페치 ──────────────────────────────────────────────
     /** 원격 매니페스트에서 가용 익스텐션 목록을 가져옵니다. */
     const fetchManifest = useCallback(async () => {
         setManifestLoading(true);
@@ -554,68 +550,46 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         }
     }, []);
 
-    // ── 원클릭 설치 ──────────────────────────────────────────────
-    /** 매니페스트에서 익스텐션을 다운로드·설치합니다. */
+    /** 매니페스트에서 익스텐션을 다운로드·설치합니다. 설치하면 목록과 매니페스트를 다시 받는다 */
     const installExtension = useCallback(
         async (extId: string, opts: Record<string, unknown> = {}) => {
             if (!extId) return false;
-            setInstallingIds((prev) => new Set(prev).add(extId));
-            try {
-                const result = await window.api.extensionInstall?.(extId, opts);
-                if (result?.success === false) {
-                    const msg =
-                        // 함께 받는 의존 익스텐션이 거절되면 그 이름(result.extension)으로
-                        updateRequiredText(t, result, result.extension || extId) ||
-                        t('extensions.install_failed', {
-                            id: extId,
-                            error: result.error,
-                            defaultValue: `Failed to install '${extId}': ${result.error}`,
-                        });
-                    safeShowToast(msg, 'error', 5000);
+            return run(extId, async () => {
+                try {
+                    const result = await window.api.extensionInstall?.(extId, opts);
+                    if (result && failed(result)) {
+                        const msg =
+                            // 함께 받는 의존 익스텐션이 거절되면 그 이름(result.extension)으로
+                            updateRequiredText(t, result, result.extension || extId) ||
+                            t('extensions.install_failed', {
+                                id: extId,
+                                error: result.error,
+                                defaultValue: `Failed to install '${extId}': ${result.error}`,
+                            });
+                        safeShowToast(msg, 'error', 5000);
+                        return false;
+                    }
+                    await fetchExtensions();
+                    await fetchManifest();
+                    safeShowToast(
+                        t('extensions.installed', { id: extId, defaultValue: `Extension '${extId}' installed.` }),
+                        'success',
+                        3000,
+                    );
+                    return true;
+                } catch (e) {
+                    safeShowToast(
+                        t('extensions.install_error', { id: extId, defaultValue: `Failed to install '${extId}'.` }),
+                        'error',
+                        4000,
+                    );
+                    console.warn(`[Extension] Failed to install '${extId}':`, e);
                     return false;
                 }
-                // 설치 후 목록 새로고침
-                await fetchExtensions();
-                await fetchManifest();
-                safeShowToast(
-                    t('extensions.installed', { id: extId, defaultValue: `Extension '${extId}' installed.` }),
-                    'success',
-                    3000,
-                );
-                return true;
-            } catch (e) {
-                safeShowToast(
-                    t('extensions.install_error', { id: extId, defaultValue: `Failed to install '${extId}'.` }),
-                    'error',
-                    4000,
-                );
-                console.warn(`[Extension] Failed to install '${extId}':`, e);
-                return false;
-            } finally {
-                setInstallingIds((prev) => {
-                    const n = new Set(prev);
-                    n.delete(extId);
-                    return n;
-                });
-            }
+            });
         },
-        [fetchExtensions, fetchManifest, t],
+        [fetchExtensions, fetchManifest, run, t],
     );
-
-    // ── 업데이트 체크 ────────────────────────────────────────────
-    /** 설치된 익스텐션의 업데이트 가용 여부를 확인합니다. */
-    const checkUpdates = useCallback(async () => {
-        try {
-            const data = await window.api.extensionCheckUpdates?.();
-            if (data?.updates) {
-                setAvailableUpdates(data.updates);
-            }
-            return data;
-        } catch (e) {
-            console.warn('[Extension] Failed to check updates:', e);
-            return null;
-        }
-    }, []);
 
     // 익스텐션 제거
     const removeExtension = useCallback(
@@ -623,7 +597,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
             if (!extId) return false;
             try {
                 const result = await window.api?.extensionRemove?.(extId);
-                if (result?.success === false) {
+                if (result && failed(result)) {
                     const code = result.error_code || 'unknown';
                     const related = (result.related || []).join(', ');
                     let msg: string | undefined;
@@ -670,7 +644,6 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
 
     const value: ExtensionContextValue = {
         extensions,
-        enabledExtensions,
         slots,
         loading,
         toggleExtension,
@@ -679,14 +652,12 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         // 확인되지 않은 익스텐션의 GUI 허락
         guiPending,
         approveExtensionGui,
-        // 매니페스트 & 버전관리
         manifestExtensions,
         availableUpdates,
         manifestLoading,
         installingIds,
         fetchManifest,
         installExtension,
-        checkUpdates,
     };
 
     return <ExtensionContext.Provider value={value}>{children}</ExtensionContext.Provider>;
@@ -698,7 +669,6 @@ export function useExtensions(): ExtensionContextValue {
         // Context 없이 사용되는 경우 (단독 테스트 등) 기본값 반환
         return {
             extensions: [],
-            enabledExtensions: [],
             slots: {},
             loading: false,
             toggleExtension: () => {},
@@ -710,9 +680,8 @@ export function useExtensions(): ExtensionContextValue {
             availableUpdates: [],
             manifestLoading: false,
             installingIds: new Set(),
-            fetchManifest: async () => {},
+            fetchManifest: async () => null,
             installExtension: async () => false,
-            checkUpdates: async () => {},
         };
     }
     return ctx;

@@ -18,11 +18,6 @@ const PACKAGE_LIMITS: crate::archive::Limits = crate::archive::Limits {
     expanded: 512 * 1024 * 1024,
 };
 
-/// npm package.json 스타일 dependencies 디시리얼라이저.
-/// 예전 hook 이름 → 지금 이름. `server.post_stop`은 실제로는 정지 **전에** 불려
-/// 익스텐션이 정지를 대신 처리하는 hook이었으므로 `server.stop`으로 바뀌었다.
-const HOOK_ALIASES: &[(&str, &str)] = &[("server.post_stop", "server.stop")];
-
 /// 이 데몬이 아는 manifest.json 스키마 버전 (`schema_version`)
 pub const EXTENSION_SCHEMA_VERSION: u32 = 1;
 
@@ -43,21 +38,7 @@ pub const FIRED_HOOKS: &[&str] = &[
 /// 지금 데몬 버전 (`min_app_version`, `dependencies."saba-core"` 비교용)
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// hook 맵을 읽으며 예전 이름을 지금 이름으로 바꾼다 (둘 다 있으면 지금 이름이 이긴다).
-fn deserialize_hooks<'de, D>(deserializer: D) -> Result<HashMap<String, HookBinding>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let mut hooks = HashMap::<String, HookBinding>::deserialize(deserializer)?;
-    for (old, new) in HOOK_ALIASES {
-        if let Some(binding) = hooks.remove(*old) {
-            hooks.entry(new.to_string()).or_insert(binding);
-        }
-    }
-    Ok(hooks)
-}
-
-/// 배열 형식과 맵 형식 모두 지원:
+/// 배열 형식과 맵 형식 모두 지원 (0.1.13까지 배포한 공식 익스텐션은 `[]`를 쓰고, 설치된 사본은 그 익스텐션이 업데이트될 때까지 남는다):
 /// - `["steamcmd", "ue4-ini"]` → `{"steamcmd": "*", "ue4-ini": "*"}`
 /// - `{"steamcmd": ">=0.1.0", "saba-core": ">=0.3.0"}` → 그대로
 fn deserialize_dependencies<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
@@ -253,12 +234,12 @@ pub struct ExtensionManifest {
     /// npm package.json 스타일 의존성 선언.
     /// 익스텐션·컴포넌트 ID를 키로, 버전 요구사항을 값으로 사용.
     /// 예: `{ "steamcmd": ">=0.1.0", "saba-core": ">=0.3.0" }`
-    /// 배열 형식(`["steamcmd"]`)도 하위 호환으로 지원 → `{ "steamcmd": "*" }`로 변환.
+    /// 배열 형식(`["steamcmd"]`)도 받는다 → `{ "steamcmd": "*" }` (`deserialize_dependencies`)
     #[serde(default, deserialize_with = "deserialize_dependencies")]
     pub dependencies: HashMap<String, String>,
     #[serde(default)]
     pub python_modules: HashMap<String, String>, // name → relative path
-    #[serde(default, deserialize_with = "deserialize_hooks")]
+    #[serde(default)]
     pub hooks: HashMap<String, HookBinding>, // hook_name → binding
     #[serde(default)]
     pub gui: Option<GuiManifest>,
@@ -479,7 +460,6 @@ pub fn parse_manifest(content: &str) -> Result<(ExtensionManifest, Vec<String>)>
     }
 }
 
-/// `">=1.2.0"` 또는 `"1.2.0"` 요구를 `have`가 만족하는가
 /// `min_app_version`을 이 데몬이 만족하지 않으면 사용자에게 보일 이유
 fn app_version_problem(min_app_version: Option<&str>) -> Option<String> {
     min_app_version
@@ -487,6 +467,44 @@ fn app_version_problem(min_app_version: Option<&str>) -> Option<String> {
         .map(|v| format!("requires saba-chan {} or newer (this is {})", v, APP_VERSION))
 }
 
+/// 익스텐션 폴더: 설치는 id의 '-'를 '_'로 바꾼 이름(Python import 호환)에 한다. 그 폴더가 없으면 id 그대로 (예전 설치).
+/// 둘 다 있으면 '_' 이름이다 (발견 `scan`도 그 폴더를 쓴다). 둘 다 없으면 None
+pub fn extension_dir(root: &std::path::Path, ext_id: &str) -> Option<PathBuf> {
+    [root.join(ExtensionManager::python_safe_dir_name(ext_id)), root.join(ext_id)].into_iter().find(|d| d.is_dir())
+}
+
+/// 익스텐션 zip을 `staging`에 풀고 맨 위 manifest.json을 읽어 `check`로 확인한다. 실패하면 `staging`을 지운다
+fn unpack_package(
+    bytes: &[u8],
+    staging: &std::path::Path,
+    check: impl FnOnce(&ExtensionManifest) -> Result<()>,
+) -> Result<ExtensionManifest> {
+    let result = (|| -> Result<ExtensionManifest> {
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+            .context("Failed to read downloaded zip archive")?;
+        crate::archive::check(&mut archive, &PACKAGE_LIMITS)?;
+        crate::archive::extract(archive, staging, &PACKAGE_LIMITS).context("Failed to extract extension zip")?;
+        let content = std::fs::read_to_string(staging.join("manifest.json"))
+            .context("Package has no manifest.json at its root")?;
+        let (manifest, _) = parse_manifest(&content)?;
+        check(&manifest)?;
+        Ok(manifest)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(staging);
+    }
+    result
+}
+
+/// `min_app_version`을 이 데몬이 만족하지 않으면 켜거나 설치하지 않는다
+fn require_app_version(ext_id: &str, min_app_version: Option<&str>) -> Result<()> {
+    match min_app_version.filter(|v| !version_satisfies(APP_VERSION, v)) {
+        Some(required) => Err(ExtensionError::app_too_old(ext_id, required).into()),
+        None => Ok(()),
+    }
+}
+
+/// `">=1.2.0"` 또는 `"1.2.0"` 요구를 `have`가 만족하는가
 fn version_satisfies(have: &str, required: &str) -> bool {
     let min = required.trim_start_matches(">=").trim();
     matches!((SemVer::parse(have), SemVer::parse(min)), (Some(h), Some(m)) if h >= m)
@@ -622,6 +640,15 @@ pub struct ExtensionManager {
     load_errors: Vec<ExtensionLoadError>,
 }
 
+/// 필수 익스텐션 검사 결과 (`ExtensionManager::missing_required`)
+#[derive(Debug, Default, PartialEq)]
+pub struct MissingExtensions {
+    /// 켜지지 않았거나 디스크에 설치되지 않은 것
+    pub missing: Vec<String>,
+    /// `missing` 중 켜져 있지만 디스크에 설치되지 않은 것
+    pub not_installed: Vec<String>,
+}
+
 impl ExtensionManager {
     /// 새 ExtensionManager 생성. `extensions_dir`은 `extensions/` 디렉토리 경로.
     pub fn new(extensions_dir: &str) -> Self {
@@ -666,28 +693,14 @@ impl ExtensionManager {
     ///
     /// 탐색 순서:
     /// 1. discovered에 등록되어 있으면 해당 `dir` 경로 반환
-    /// 2. `extensions_dir/ext_id` (원본 ID)
-    /// 3. `extensions_dir/python_safe_dir_name(ext_id)` (하이픈→언더스코어)
+    /// 2. `extension_dir` (하이픈→언더스코어 이름, 없으면 원본 ID)
+    /// 3. 없으면 Python-safe 디렉토리명 (신규 설치 시 사용)
     fn ext_dir_on_disk(&self, ext_id: &str) -> PathBuf {
-        // 1. 이미 discover된 익스텐션이면 실제 경로 반환
         if let Some(ext) = self.discovered.get(ext_id) {
             return ext.dir.clone();
         }
-        // 2. ext_id 그대로
-        let path_exact = self.extensions_dir.join(ext_id);
-        if path_exact.exists() {
-            return path_exact;
-        }
-        // 3. 하이픈→언더스코어 변환 (Python import 호환)
-        let safe_name = Self::python_safe_dir_name(ext_id);
-        if safe_name != ext_id {
-            let path_safe = self.extensions_dir.join(&safe_name);
-            if path_safe.exists() {
-                return path_safe;
-            }
-        }
-        // 없으면 Python-safe 디렉토리명 반환 (신규 설치 시 사용)
-        self.extensions_dir.join(&safe_name)
+        extension_dir(&self.extensions_dir, ext_id)
+            .unwrap_or_else(|| self.extensions_dir.join(Self::python_safe_dir_name(ext_id)))
     }
 
     /// 설치로 바꿀 폴더가 다른 익스텐션의 것이 아닌가. `a-b`와 `a_b`처럼 다른 id가 같은 폴더 이름이 될 수 있어,
@@ -748,21 +761,7 @@ impl ExtensionManager {
         if staging.exists() {
             std::fs::remove_dir_all(&staging)?;
         }
-        let ext_id = (|| -> Result<String> {
-            let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes))?;
-            crate::archive::check(&mut archive, &PACKAGE_LIMITS)?;
-            crate::archive::extract(archive, &staging, &PACKAGE_LIMITS)?;
-            let content = std::fs::read_to_string(staging.join("manifest.json"))
-                .context("zip has no manifest.json at its root")?;
-            Ok(parse_manifest(&content)?.0.id)
-        })();
-        let ext_id = match ext_id {
-            Ok(id) => id,
-            Err(e) => {
-                let _ = std::fs::remove_dir_all(&staging);
-                return Err(e);
-            }
-        };
+        let ext_id = unpack_package(&bytes, &staging, |_| Ok(()))?.id;
         let dest = self.extensions_dir.join(Self::python_safe_dir_name(&ext_id));
         if let Err(e) = Self::ensure_folder_is_free_for(&dest, &ext_id) {
             let _ = std::fs::remove_dir_all(&staging);
@@ -888,6 +887,20 @@ impl ExtensionManager {
         Ok(())
     }
 
+    /// 끄거나 내리기 전 검사: 다른 활성 익스텐션이 이 익스텐션을 dependency로 선언했거나(역의존성),
+    /// 인스턴스가 이 익스텐션을 쓰면 실패
+    fn ensure_unused(&self, ext_id: &str, active_ext_data: &[(&str, &HashMap<String, Value>)]) -> Result<()> {
+        let dependents = self.dependents_of(ext_id);
+        if !dependents.is_empty() {
+            return Err(ExtensionError::has_dependents(ext_id, &dependents).into());
+        }
+        let using = self.instances_using_ext(ext_id, active_ext_data);
+        if !using.is_empty() {
+            return Err(ExtensionError::in_use(ext_id, &using).into());
+        }
+        Ok(())
+    }
+
     /// 익스텐션 언마운트 (discovered + enabled에서 제거).
     /// 다른 활성 익스텐션이 이 익스텐션에 의존하면 실패.
     /// `active_ext_data`는 현재 존재하는 인스턴스들의 extension_data 목록 —
@@ -901,17 +914,7 @@ impl ExtensionManager {
             return Err(ExtensionError::not_mounted(ext_id).into());
         }
 
-        // 역의존성 검사: 다른 활성 익스텐션이 이 익스텐션을 dependency로 선언했는지
-        let dependents = self.dependents_of(ext_id);
-        if !dependents.is_empty() {
-            return Err(ExtensionError::has_dependents(ext_id, &dependents).into());
-        }
-
-        // 인스턴스 사용 여부 검사
-        let using = self.instances_using_ext(ext_id, active_ext_data);
-        if !using.is_empty() {
-            return Err(ExtensionError::in_use(ext_id, &using).into());
-        }
+        self.ensure_unused(ext_id, active_ext_data)?;
 
         let was_enabled = self.enabled.remove(ext_id);
         let mounted = self.discovered.remove(ext_id);
@@ -946,6 +949,11 @@ impl ExtensionManager {
 
     /// 인스턴스의 extension_data에서 이 익스텐션이 선언한 instance_fields를
     /// 하나라도 truthy 값으로 사용하는 인스턴스 이름 목록.
+    /// 주어진 인스턴스 값(`extension_data`)이 쓰는 익스텐션 id: 필수 목록에 없어도 인스턴스 칸(`instance_fields`)에 값이 있으면 쓴다
+    pub fn extensions_in_use(&self, ext_data: &[(&str, &HashMap<String, Value>)]) -> std::collections::HashSet<String> {
+        self.discovered.keys().filter(|id| !self.instances_using_ext(id, ext_data).is_empty()).cloned().collect()
+    }
+
     fn instances_using_ext(
         &self,
         ext_id: &str,
@@ -1002,11 +1010,7 @@ impl ExtensionManager {
             return Err(ExtensionError::not_found(ext_id).into());
         }
 
-        if let Some(required) = &self.discovered[ext_id].manifest.min_app_version {
-            if !version_satisfies(APP_VERSION, required) {
-                return Err(ExtensionError::app_too_old(ext_id, required).into());
-            }
-        }
+        require_app_version(ext_id, self.discovered[ext_id].manifest.min_app_version.as_deref())?;
 
         let deps = self.discovered[ext_id].manifest.dependencies.clone();
         for (dep_key, version_req) in &deps {
@@ -1018,20 +1022,13 @@ impl ExtensionManager {
                     );
                 }
                 // 버전 검증 ("*"면 스킵)
-                if version_req != "*" {
-                    let min_clean = version_req.trim_start_matches(">=").trim();
-                    let satisfied = match (SemVer::parse(&dep_ext.manifest.version), SemVer::parse(min_clean)) {
-                        (Some(iv), Some(rv)) => iv >= rv,
-                        _ => false,
-                    };
-                    if !satisfied {
-                        return Err(
-                            ExtensionError::component_version_unsatisfied(
-                                ext_id, dep_key, version_req,
-                                Some(&dep_ext.manifest.version),
-                            ).into()
-                        );
-                    }
+                if version_req != "*" && !version_satisfies(&dep_ext.manifest.version, version_req) {
+                    return Err(
+                        ExtensionError::component_version_unsatisfied(
+                            ext_id, dep_key, version_req,
+                            Some(&dep_ext.manifest.version),
+                        ).into()
+                    );
                 }
             } else {
                 // ── 비-익스텐션 컴포넌트 의존성 ──
@@ -1041,14 +1038,8 @@ impl ExtensionManager {
                         ExtensionError::dependency_missing(ext_id, dep_key).into()
                     );
                 }
-                let min_clean = version_req.trim_start_matches(">=").trim();
                 let installed = installed_versions.get(dep_key);
-                let satisfied = installed.is_some_and(|v| {
-                    match (SemVer::parse(v), SemVer::parse(min_clean)) {
-                        (Some(iv), Some(rv)) => iv >= rv,
-                        _ => false,
-                    }
-                });
+                let satisfied = installed.is_some_and(|v| version_satisfies(v, version_req));
                 if !satisfied {
                     return Err(
                         ExtensionError::component_version_unsatisfied(
@@ -1121,17 +1112,7 @@ impl ExtensionManager {
             return Ok(());
         }
 
-        // 역의존성 검사
-        let dependents = self.dependents_of(ext_id);
-        if !dependents.is_empty() {
-            return Err(ExtensionError::has_dependents(ext_id, &dependents).into());
-        }
-
-        // 인스턴스 사용 여부 검사
-        let using = self.instances_using_ext(ext_id, active_ext_data);
-        if !using.is_empty() {
-            return Err(ExtensionError::in_use(ext_id, &using).into());
-        }
+        self.ensure_unused(ext_id, active_ext_data)?;
 
         self.enabled.remove(ext_id);
         if let Err(e) = self.save_state() {
@@ -1207,6 +1188,15 @@ impl ExtensionManager {
             .filter(|ext_id| !self.discovered.contains_key(ext_id.as_str()))
             .cloned()
             .collect()
+    }
+
+    /// `required` 중 쓸 수 없는 익스텐션 (켜지지 않았거나 디스크에 없음). 순서는 `required`를 따른다
+    pub fn missing_required(&self, required: &[String]) -> MissingExtensions {
+        let ready = self.installed_and_enabled_set();
+        let enabled_not_installed = self.enabled_but_not_installed();
+        let missing: Vec<String> = required.iter().filter(|ext_id| !ready.contains(ext_id.as_str())).cloned().collect();
+        let not_installed = missing.iter().filter(|id| enabled_not_installed.contains(id)).cloned().collect();
+        MissingExtensions { missing, not_installed }
     }
 
     /// 발견된 전체 익스텐션 목록 (활성 상태 포함)
@@ -1604,26 +1594,12 @@ impl ExtensionManager {
             Self::python_safe_dir_name(ext_id),
             uuid::Uuid::new_v4().simple()
         ));
-        let result = (|| -> Result<()> {
-            let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-                .context("Failed to read downloaded zip archive")?;
-            crate::archive::check(&mut archive, &PACKAGE_LIMITS)?;
-            crate::archive::extract(archive, &staging, &PACKAGE_LIMITS).context("Failed to extract extension zip")?;
-            let content = std::fs::read_to_string(staging.join("manifest.json"))
-                .context("Package has no manifest.json at its root")?;
-            let (manifest, _) = parse_manifest(&content)?;
+        unpack_package(bytes, &staging, |manifest| {
             if manifest.id != ext_id {
                 return Err(ExtensionError::id_mismatch(&manifest.id, ext_id).into());
             }
-            if let Some(required) = manifest.min_app_version.as_deref().filter(|v| !version_satisfies(APP_VERSION, v)) {
-                return Err(ExtensionError::app_too_old(ext_id, required).into());
-            }
-            Ok(())
-        })();
-        if let Err(e) = result {
-            let _ = std::fs::remove_dir_all(&staging);
-            return Err(e);
-        }
+            require_app_version(ext_id, manifest.min_app_version.as_deref())
+        })?;
         Ok(staging)
     }
 
@@ -2055,6 +2031,47 @@ mod tests {
         assert!(!mgr.is_enabled("test_ext"));
     }
 
+    /// id 그대로인 폴더(예전 설치)와 '_' 폴더가 함께 있으면 발견·폴더 찾기·신뢰 판정이 모두 '_' 폴더를 쓴다
+    #[test]
+    fn both_extension_folders_resolve_to_the_underscore_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        for (folder, version) in [("ue4-ini", "1.0.0"), ("ue4_ini", "2.0.0")] {
+            std::fs::create_dir_all(tmp.path().join(folder)).unwrap();
+            std::fs::write(tmp.path().join(folder).join("manifest.json"), format!(r#"{{"id":"ue4-ini","name":"U","version":"{version}"}}"#)).unwrap();
+        }
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+        let underscore = tmp.path().join("ue4_ini");
+        assert_eq!(mgr.discovered["ue4-ini"].dir, underscore);
+        assert_eq!(mgr.discovered["ue4-ini"].manifest.version, "2.0.0");
+        assert_eq!(extension_dir(tmp.path(), "ue4-ini"), Some(underscore.clone()));
+        let fresh = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        assert_eq!(fresh.ext_dir_on_disk("ue4-ini"), underscore, "before discovery too");
+        std::fs::remove_dir_all(&underscore).unwrap();
+        assert_eq!(extension_dir(tmp.path(), "ue4-ini"), Some(tmp.path().join("ue4-ini")), "an old install by id");
+        assert_eq!(extension_dir(tmp.path(), "missing"), None);
+    }
+
+    /// 필수 익스텐션은 켜지고 디스크에 있어야 쓸 수 있다. 켜졌지만 디스크에 없는 것은 따로 알린다
+    #[test]
+    fn missing_required_extensions_tell_disabled_from_not_installed() {
+        let tmp = tempfile::tempdir().unwrap();
+        for id in ["ready", "off"] {
+            std::fs::create_dir_all(tmp.path().join(id)).unwrap();
+            std::fs::write(tmp.path().join(id).join("manifest.json"), format!(r#"{{"id":"{id}","name":"T","version":"0.1.0"}}"#)).unwrap();
+        }
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+        mgr.enabled.insert("ready".to_string());
+        mgr.enabled.insert("gone".to_string());
+
+        let required: Vec<String> = ["gone", "ready", "off", "unknown"].iter().map(|s| s.to_string()).collect();
+        let found = mgr.missing_required(&required);
+        assert_eq!(found.missing, vec!["gone", "off", "unknown"]);
+        assert_eq!(found.not_installed, vec!["gone"]);
+        assert_eq!(mgr.missing_required(&["ready".to_string()]), MissingExtensions::default());
+    }
+
     /// 설정 파일을 쓸 수 없으면 켜기·끄기·설정 저장이 실패로 답하고 메모리 상태도 그대로 둔다
     #[test]
     fn unsaved_state_is_reported_and_not_kept() {
@@ -2230,6 +2247,8 @@ mod tests {
         let zero: HashMap<String, Value> = [("box_enabled".to_string(), json!(0))].into_iter().collect();
         let used: HashMap<String, Value> = [("box_enabled".to_string(), json!(true))].into_iter().collect();
         assert!(mgr.instances_using_ext("box", &[("a", &unused), ("b", &zero)]).is_empty());
+        assert!(mgr.extensions_in_use(&[("a", &unused)]).is_empty());
+        assert_eq!(mgr.extensions_in_use(&[("a", &unused), ("b", &used)]), ["box".to_string()].into_iter().collect());
         let err = mgr.remove("box", &[("stopped", &used)]).unwrap_err();
         assert_eq!(err.downcast_ref::<ExtensionError>().unwrap().error_code, "in_use");
         assert!(tmp.path().join("box").exists());
@@ -2676,7 +2695,7 @@ mod tests {
                     "function": "pre_start",
                     "condition": "instance.ext_data.docker_enabled"
                 },
-                "server.post_stop": {
+                "server.stop": {
                     "module": "compose_manager",
                     "function": "post_stop"
                 }
@@ -2705,9 +2724,7 @@ mod tests {
         assert_eq!(manifest.dependencies.get("steamcmd").unwrap(), "*");
         assert_eq!(manifest.hooks.len(), 2);
         assert!(manifest.hooks.contains_key("server.pre_start"));
-        // 예전 이름은 읽을 때 지금 이름으로 바뀐다
         assert!(manifest.hooks.contains_key("server.stop"));
-        assert!(!manifest.hooks.contains_key("server.post_stop"));
         assert_eq!(manifest.python_modules.len(), 2);
         assert_eq!(manifest.instance_fields.len(), 2);
         assert!(manifest.gui.is_some());

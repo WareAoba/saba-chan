@@ -204,15 +204,6 @@ impl ServerInstance {
         self.extension_data.get(key).and_then(|v| v.as_str())
     }
 
-    /// 이 인스턴스가 요구하는 익스텐션 중 `enabled_extensions`에 포함되지 않은 것을 반환합니다.
-    /// 빈 Vec이면 모든 의존성이 충족된 것입니다.
-    pub fn missing_required_extensions(&self, enabled_extensions: &std::collections::HashSet<String>) -> Vec<String> {
-        self.required_extensions.iter()
-            .filter(|ext_id| !enabled_extensions.contains(ext_id.as_str()))
-            .cloned()
-            .collect()
-    }
-
     /// 모듈 `[install]` 설정을 설치 방식 익스텐션이 읽는 extension_data로 옮긴다.
     ///
     /// `manual`·`download`(데몬이 직접 처리) 밖의 방식은 같은 이름의 익스텐션이 맡는다.
@@ -411,6 +402,11 @@ impl InstanceStore {
 
     pub fn get(&self, id: &str) -> Option<&ServerInstance> {
         self.instances.iter().find(|i| i.id == id)
+    }
+
+    /// id로, 없으면 이름으로 찾는다 (API는 둘 다 받는다)
+    pub fn find(&self, key: &str) -> Option<&ServerInstance> {
+        self.get(key).or_else(|| self.instances.iter().find(|i| i.name == key))
     }
 
     pub fn add(&mut self, instance: ServerInstance) -> Result<()> {
@@ -1283,55 +1279,6 @@ mod tests {
     }
 
     // ── 인스턴스→익스텐션 명시적 의존성(required_extensions) 테스트 ──
-
-    #[test]
-    fn test_required_extensions_all_satisfied() {
-        let mut inst = ServerInstance::new("test", "minecraft");
-        inst.required_extensions = vec!["docker".to_string(), "steamcmd".to_string()];
-
-        let mut enabled = std::collections::HashSet::new();
-        enabled.insert("docker".to_string());
-        enabled.insert("steamcmd".to_string());
-        enabled.insert("extra".to_string());
-
-        let missing = inst.missing_required_extensions(&enabled);
-        assert!(missing.is_empty(), "All required extensions are enabled");
-    }
-
-    #[test]
-    fn test_required_extensions_some_missing() {
-        let mut inst = ServerInstance::new("test", "minecraft");
-        inst.required_extensions = vec!["docker".to_string(), "steamcmd".to_string()];
-
-        let mut enabled = std::collections::HashSet::new();
-        enabled.insert("docker".to_string());
-        // steamcmd not enabled
-
-        let missing = inst.missing_required_extensions(&enabled);
-        assert_eq!(missing, vec!["steamcmd"]);
-    }
-
-    #[test]
-    fn test_required_extensions_none_enabled() {
-        let mut inst = ServerInstance::new("test", "minecraft");
-        inst.required_extensions = vec!["docker".to_string(), "steamcmd".to_string()];
-
-        let enabled = std::collections::HashSet::new();
-        let missing = inst.missing_required_extensions(&enabled);
-        assert_eq!(missing.len(), 2);
-        assert!(missing.contains(&"docker".to_string()));
-        assert!(missing.contains(&"steamcmd".to_string()));
-    }
-
-    #[test]
-    fn test_required_extensions_empty() {
-        let inst = ServerInstance::new("test", "minecraft");
-        // No required_extensions → always satisfied
-
-        let enabled = std::collections::HashSet::new();
-        let missing = inst.missing_required_extensions(&enabled);
-        assert!(missing.is_empty());
-    }
 
     #[test]
     fn test_required_extensions_serialization() {

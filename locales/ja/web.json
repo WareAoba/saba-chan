@@ -441,12 +441,6 @@
       "NO_CLEAR_JOB": "このチャンネルで削除中の作業はありません。",
       "generic": "変更できませんでした。少し待ってからもう一度お試しください。"
     },
-    "dur": {
-      "seconds": "{{count}}秒",
-      "minutes": "{{count}}分",
-      "hours": "{{count}}時間",
-      "days": "{{count}}日"
-    },
     "mod": {
       "title": "サーバー管理",
       "locked": "ロック中",

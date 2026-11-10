@@ -343,29 +343,19 @@ fn known_files(dir: &Path) -> std::collections::HashMap<PathBuf, (u64, u64, Stri
 /// 이미 있는 파일이 크기가 다르거나 풀어 본 내용의 해시가 맞지 않으면 망가진 것으로 보고 바꿔 넣는다 (망가진 내용을 다음 백업이 물려받지 않게).
 /// 디스크에 내리는 일(fsync)은 부른 쪽이 백업을 마치기 전에 한꺼번에 한다
 fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathBuf>)> {
-    use sha2::Digest;
-    use std::io::{Read, Write};
     let objects = dir.join(OBJECTS);
     fs::create_dir_all(&objects)?;
     let tmp = objects.join(format!(".tmp-{}", uuid::Uuid::new_v4().simple()));
     let written = (|| -> Result<(String, u64)> {
         // 서버가 쓰는 중이라 잠긴 파일(Windows)은 건너뛰지 않고 실패로 알린다: 반쪽 백업을 믿지 않게
-        let mut src = File::open(path).map_err(|e| read_error(e, path))?;
+        let src = File::open(path).map_err(|e| read_error(e, path))?;
         let mut out = flate2::write::DeflateEncoder::new(File::create(&tmp)?, flate2::Compression::default());
-        let mut hasher = sha2::Sha256::new();
-        let mut buf = vec![0u8; 64 * 1024];
-        let mut read = 0u64;
-        loop {
-            let n = src.read(&mut buf).map_err(|e| read_error(e, path))?;
-            if n == 0 {
-                break;
-            }
-            hasher.update(&buf[..n]);
-            out.write_all(&buf[..n])?;
-            read += n as u64;
+        let mut src = Hashing::new(src);
+        if let Err(e) = src.copy_to(&mut out) {
+            return Err(if src.read_failed { read_error(e, path) } else { e.into() });
         }
         out.finish()?;
-        Ok((hex::encode(hasher.finalize()), read))
+        Ok(src.finish())
     })();
     let (hash, read) = match written {
         Ok(v) => v,
@@ -437,24 +427,48 @@ fn object_intact(object: &Path, hash: &str, size: u64) -> bool {
 }
 
 fn object_unpacks_to(object: &Path, hash: &str, size: u64) -> bool {
-    use sha2::Digest;
-    use std::io::Read;
     let Ok(file) = File::open(object) else { return false };
-    let mut src = flate2::read::DeflateDecoder::new(file);
-    let mut hasher = sha2::Sha256::new();
-    let mut buf = vec![0u8; 64 * 1024];
-    let mut read = 0u64;
-    loop {
-        match src.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                hasher.update(&buf[..n]);
-                read += n as u64;
-            }
-            Err(_) => return false,
-        }
+    let mut src = Hashing::new(flate2::read::DeflateDecoder::new(file));
+    if src.copy_to(&mut io::sink()).is_err() {
+        return false;
     }
-    read == size && hex::encode(hasher.finalize()) == hash
+    src.finish() == (hash.to_string(), size)
+}
+
+/// 읽는 내용의 SHA-256과 바이트 수를 함께 센다. 실패가 읽기에서 났는지(`read_failed`)도 적는다 (쓰기 실패와 가르려고)
+struct Hashing<R> {
+    inner: R,
+    hasher: sha2::Sha256,
+    read: u64,
+    read_failed: bool,
+}
+
+impl<R: io::Read> Hashing<R> {
+    fn new(inner: R) -> Self {
+        use sha2::Digest;
+        Self { inner, hasher: sha2::Sha256::new(), read: 0, read_failed: false }
+    }
+
+    /// 끝까지 읽어 `out`에 쓴다 (64 KiB씩)
+    fn copy_to(&mut self, out: &mut impl io::Write) -> io::Result<u64> {
+        io::copy(&mut io::BufReader::with_capacity(64 * 1024, self), out)
+    }
+
+    /// (해시 hex, 읽은 바이트)
+    fn finish(self) -> (String, u64) {
+        use sha2::Digest;
+        (hex::encode(self.hasher.finalize()), self.read)
+    }
+}
+
+impl<R: io::Read> io::Read for Hashing<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        use sha2::Digest;
+        let n = self.inner.read(buf).inspect_err(|e| self.read_failed = e.kind() != io::ErrorKind::Interrupted)?;
+        self.hasher.update(&buf[..n]);
+        self.read += n as u64;
+        Ok(n)
+    }
 }
 
 /// 판 2 백업 쓰기 중의 상태
@@ -911,11 +925,6 @@ fn open(dir: &Path, name: &str) -> Result<Opened> {
     Ok(Opened::V1(zip, manifest))
 }
 
-/// 링크를 통과하지 않고 실제 경로가 허용 루트 안에 있는가. 없는 대상은 기존 조상부터 확인한다
-pub fn is_inside(path: &Path, roots: &[PathBuf]) -> bool {
-    crate::module_paths::is_inside(path, roots)
-}
-
 /// 복원 결과
 #[derive(Debug)]
 pub struct Restored {
@@ -976,7 +985,7 @@ pub fn restore(dir: &Path, name: &str) -> Result<Restored> {
     // 아카이브의 파일을 모두 쓴 뒤 링크를 만든다. 앞선 링크가 다음 파일의 출력 경로를 바꾸지 못한다.
     for link in links.iter().filter(|l| touched.iter().any(|(path, _)| {
         let root = PathBuf::from(path);
-        !root.is_file() && is_inside(&l.path, std::slice::from_ref(&root))
+        !root.is_file() && crate::module_paths::is_inside(&l.path, std::slice::from_ref(&root))
     })) {
         if let Err(e) = make_link(link) {
             tracing::warn!("Could not restore link {} -> {}: {}", link.path.display(), link.target.display(), e);
@@ -1031,24 +1040,13 @@ fn remove_any(path: &Path) {
 
 /// 저장소의 내용 하나를 `out`에 쓴다. 해시·크기가 맞지 않으면(망가진 내용) 실패한다
 fn write_object(dir: &Path, file: &StoredFile, out: &Path) -> Result<()> {
-    use sha2::Digest;
-    use std::io::{Read, Write};
     let object = object_path(dir, &file.hash)?;
-    let mut src = flate2::read::DeflateDecoder::new(File::open(&object).context("backup content is missing")?);
+    let mut src = Hashing::new(flate2::read::DeflateDecoder::new(File::open(&object).context("backup content is missing")?));
     let mut dst = File::create(out)?;
-    let mut hasher = sha2::Sha256::new();
-    let mut buf = vec![0u8; 64 * 1024];
-    let mut written = 0u64;
-    loop {
-        let n = src.read(&mut buf).context("backup content is damaged")?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-        dst.write_all(&buf[..n])?;
-        written += n as u64;
+    if let Err(e) = src.copy_to(&mut dst) {
+        return Err(if src.read_failed { anyhow::Error::new(e).context("backup content is damaged") } else { e.into() });
     }
-    if written != file.size || hex::encode(hasher.finalize()) != file.hash {
+    if src.finish() != (file.hash.clone(), file.size) {
         bail!("backup content is damaged");
     }
     Ok(())
@@ -1121,8 +1119,8 @@ mod tests {
         assert!(std::process::Command::new("cmd").args(["/c", "mklink", "/J"]).arg(&link).arg(&real).output().unwrap().status.success());
         #[cfg(unix)]
         std::os::unix::fs::symlink(&real, &link).unwrap();
-        assert!(is_inside(&root.join("new/deleted/world"), std::slice::from_ref(&root)));
-        assert!(!is_inside(&link.join("deleted/world"), &[root]));
+        assert!(crate::module_paths::is_inside(&root.join("new/deleted/world"), std::slice::from_ref(&root)));
+        assert!(!crate::module_paths::is_inside(&link.join("deleted/world"), &[root]));
     }
 
     /// 0.1.8까지 만든 모양(판 1)의 백업

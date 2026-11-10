@@ -6,10 +6,6 @@
 const { invoke } = window.__TAURI__.core;
 const { getCurrentWindow } = window.__TAURI__.window;
 
-// SSOT: updater/src/constants.rs 와 동일 목록
-// Tauri 웹뷰 환경이므로 CJS/ESM import 불가 → 인라인 선언 유지
-const SUPPORTED_LANGUAGES = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
-
 const TRANSLATIONS = {
     en: {
         modeUpdate: 'Update',
@@ -175,31 +171,8 @@ const TRANSLATIONS = {
 
 let currentLanguage = 'en';
 
-function normalizeLanguageTag(input) {
-    if (!input || typeof input !== 'string') return 'en';
-    const canonical = input.trim().replace('_', '-');
-    const exact = SUPPORTED_LANGUAGES.find((lang) => lang.toLowerCase() === canonical.toLowerCase());
-    if (exact) return exact;
-
-    const lower = canonical.toLowerCase();
-    if (lower.startsWith('pt')) return 'pt-BR';
-    if (lower.startsWith('zh-cn') || lower.startsWith('zh-hans')) return 'zh-CN';
-    if (lower.startsWith('zh-tw') || lower.startsWith('zh-hant')) return 'zh-TW';
-
-    const base = lower.split('-')[0];
-    if (base === 'ko') return 'ko';
-    if (base === 'ja') return 'ja';
-    if (base === 'es') return 'es';
-    if (base === 'ru') return 'ru';
-    if (base === 'de') return 'de';
-    if (base === 'fr') return 'fr';
-    return 'en';
-}
-
 function tr(key, vars = {}) {
-    const langBundle = TRANSLATIONS[currentLanguage] || TRANSLATIONS.en;
-    const template = langBundle[key] || TRANSLATIONS.en[key] || key;
-    return template.replace(/\{\{(\w+)\}\}/g, (_, name) => String(vars[name] ?? ''));
+    return SabaUI.translate(TRANSLATIONS, currentLanguage, key, vars);
 }
 
 // ─── DOM ────────────────────────────────────────────────
@@ -238,12 +211,10 @@ function applyStaticTranslations() {
 }
 
 async function initLocalization() {
+    // Rust가 앱 설정 → OS 언어 → 영어 순으로 골라 지원 언어 태그로 준다
     try {
-        const preferredLanguage = await invoke('get_preferred_language');
-        currentLanguage = normalizeLanguageTag(preferredLanguage);
-    } catch (_) {
-        currentLanguage = normalizeLanguageTag(navigator.language || 'en');
-    }
+        currentLanguage = await invoke('get_preferred_language');
+    } catch (_) {}
     applyStaticTranslations();
 }
 

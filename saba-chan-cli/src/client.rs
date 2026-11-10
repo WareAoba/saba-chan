@@ -1205,15 +1205,6 @@ impl Api {
         ))
         .await
     }
-    /// GET /api/relay/link-requests — 디스코드에서 코드 없이 온 연결 요청 (J1-b)
-    pub async fn link_requests(&self, relay_url: Option<&str>) -> Result<Value> {
-        self.get(&with_query("/api/relay/link-requests", &[("relayUrl", relay_url.map(str::to_string))])).await
-    }
-    /// POST /api/relay/link-requests/:id — 수락·거절
-    pub async fn answer_link_request(&self, id: &str, accept: bool, relay_url: Option<&str>) -> Result<Value> {
-        let path = format!("/api/relay/link-requests/{}", seg(id));
-        self.post(&with_query(&path, &[("relayUrl", relay_url.map(str::to_string))]), json!({ "accept": accept })).await
-    }
     /// POST /api/chat/command — 디스코드와 같은 텍스트 명령 처리 (`{reply}`)
     pub async fn chat(&self, text: &str) -> Result<Value> {
         self.post("/api/chat/command", json!({ "text": text })).await
@@ -1276,8 +1267,7 @@ fn remember_notices(seen: &std::sync::atomic::AtomicU64, body: &mut Value) {
     };
     let newest = list.iter().filter_map(|n| n.get("id").and_then(Value::as_u64)).max().unwrap_or(0);
     let before = seen.fetch_max(newest, std::sync::atomic::Ordering::Relaxed);
-    // id가 없는 알림(옛 데몬)은 그대로 둔다
-    list.retain(|n| n.get("id").and_then(Value::as_u64).is_none_or(|id| id > before));
+    list.retain(|n| n.get("id").and_then(Value::as_u64).is_some_and(|id| id > before));
 }
 
 /// `update last`는 다른 클라이언트(GUI)가 이미 확인한 결과도 다시 본다: 패치노트를 CLI로 다시 읽는 길 (L70)
@@ -1737,7 +1727,6 @@ mod route_coverage {
     const NOT_FOR_CLI: &[(&str, &str)] = &[
         ("/api/client/register", "GUI 창 수명 (CLI는 한 번 돌고 끝난다)"),
         ("/api/system/uninstall", "짝 맺은 PC가 원격으로 부르는 제거 (CLI는 `remote remove --uninstall`이 그 PC에 보내고, 이 PC는 `uninstall`)"),
-        ("/api/relay/pair/{code}/status", "이전 GUI·CLI가 쓰던 페어링 상태 (지금은 `POST /api/relay/pair/status`, 다음 판에서 뺀다)"),
         ("/api/chatbot/common", "원격(디스코드 `/설정` 사바쨩 전체)용 모델·키만 바꾸기 (CLI는 `PUT /api/chatbot`으로 같은 값을 바꾼다)"),
         ("/api/updates/install", "원격(디스코드 `/사바쨩 업데이트`)용 한 번에 받고 적용 (CLI `update`는 단계마다 진행을 보인다)"),
         ("/api/updates/apply-on-launch", "GUI가 열릴 때 '받고 다음 실행 때 적용' (CLI는 `update apply`로 바로 적용한다)"),

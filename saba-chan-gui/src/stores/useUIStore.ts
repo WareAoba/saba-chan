@@ -47,7 +47,6 @@ interface UIState {
     progressBar: ProgressBarConfig | null;
     showWaitingImage: boolean;
     showModuleManager: boolean;
-    showGuiSettingsModal: boolean;
     settingsInitialView: string | null;
     showCommandModal: boolean;
     // biome-ignore lint/suspicious/noExplicitAny: 명령 창이 다루는 서버 (서버 목록 항목에 화면 칸을 더한 것)
@@ -109,7 +108,6 @@ export const useUIStore = create<UIState>()((set, _get) => ({
 
     // ── Panel visibility ──
     showModuleManager: false,
-    showGuiSettingsModal: false,
     settingsInitialView: null,
     showCommandModal: false,
     commandServer: null,
@@ -141,13 +139,11 @@ export const useUIStore = create<UIState>()((set, _get) => ({
     openSettings: (initialView = null) =>
         set({
             activeTab: 'settings',
-            showGuiSettingsModal: true,
             settingsInitialView: initialView,
         }),
     closeSettings: () =>
         set({
             activeTab: 'servers',
-            showGuiSettingsModal: false,
             settingsInitialView: null,
         }),
 
@@ -207,7 +203,6 @@ export const useUIStore = create<UIState>()((set, _get) => ({
             progressBar: null,
             showWaitingImage: false,
             showModuleManager: false,
-            showGuiSettingsModal: false,
             settingsInitialView: null,
             showCommandModal: false,
             commandServer: null,

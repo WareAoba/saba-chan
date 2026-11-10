@@ -357,7 +357,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     };
 
     // 덮어쓰기 설치: 이 폴더의 데몬이 떠 있으면 먼저 끈다 (파일 잠금 방지)
-    if let Err(e) = uninstall::stop_daemon_before_install(&install_dir).await {
+    if let Err(e) = uninstall::stop_saba_processes(&install_dir, uninstall::Scope::Install).await {
         return fail("daemon_running", &e);
     }
     // 깨진 기록은 사본으로 옮겨 두고 새로 쓴다 (빈 표로 읽어 덮어쓰면 그 내용이 흔적 없이 사라진다)
@@ -410,7 +410,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
 
     // Step 7: 설정 파일 생성 (85-88%)
     emit("config", "Setting up configuration...", 86);
-    setup_config(&install_dir, &config);
+    setup_config(&install_dir);
 
     // Step 8: 언어 설정 저장 (88-90%)
     emit("config-lang", "Saving language settings...", 89);
@@ -896,8 +896,8 @@ pub fn default_install_path() -> String {
 /// 설치 화면의 처음 언어: 앱에서 고른 언어, 없으면 OS 언어, 그것도 없으면 영어
 pub fn preferred_language() -> String {
     load_main_app_language()
-        .and_then(|lang| normalize_language_tag(&lang))
-        .or_else(|| sys_locale::get_locale().and_then(|locale| normalize_language_tag(&locale)))
+        .and_then(|lang| constants::resolve_locale(&lang))
+        .or_else(|| sys_locale::get_locale().and_then(|locale| constants::resolve_locale(&locale)))
         .unwrap_or_else(|| "en".to_string())
 }
 
@@ -926,32 +926,6 @@ fn load_main_app_language() -> Option<String> {
         .get("language")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-}
-
-fn normalize_language_tag(input: &str) -> Option<String> {
-    let result = constants::resolve_locale(input);
-    if result == "en" && !input.trim().is_empty() {
-        // resolve_locale always returns a value; check if input was explicitly "en"
-        let trimmed = input.trim();
-        let canonical = trimmed.replace('_', "-");
-        if canonical.eq_ignore_ascii_case("en") || canonical.to_lowercase().starts_with("en") {
-            return Some("en".to_string());
-        }
-        // If resolve_locale fell back to "en" for an unknown input, return None
-        // to let the caller decide
-        for supported in constants::SUPPORTED_LANGUAGES {
-            if supported.eq_ignore_ascii_case(&canonical) {
-                return Some(supported.to_string());
-            }
-        }
-        let base = canonical.to_lowercase();
-        let base = base.split('-').next().unwrap_or("");
-        if ["ko", "ja", "zh", "es", "pt", "ru", "de", "fr"].contains(&base) {
-            return Some(result);
-        }
-        return None;
-    }
-    Some(result)
 }
 
 /// 컴포넌트를 모두 `temp_dir`에 받고(`fetch`가 SHA-256까지 확인) 빈 폴더에 한 번 풀어 본다.
@@ -1036,14 +1010,11 @@ fn install_shared_modules(install_dir: &Path) -> Vec<String> {
     failures
 }
 
-fn setup_config(install_dir: &Path, config: &InstallOptions) {
+fn setup_config(install_dir: &Path) {
     // 설정은 코드에 내장되므로 config 파일 생성 불필요
-    // 필수 디렉터리만 생성
+    // 필수 디렉터리만 생성 (언어 설정은 다음 단계 `save_language_setting`이 저장한다)
     let _ = std::fs::create_dir_all(install_dir.join("locales"));
     let _ = std::fs::create_dir_all(constants::resolve_modules_dir());
-
-    // 언어 설정만 별도 저장
-    save_language_setting(&config.language);
 }
 
 /// 설치 시 고른 언어를 GUI 설정(`config.json`의 `gui.language`)에 넣는다. 다른 키는 보존.

@@ -274,7 +274,7 @@ pub async fn apply(server: &IPCServer) -> Status {
         let published = relay::publish(t, address, settings.port, sha).await;
         status.published = published == relay::Published::Done;
         if published == relay::Published::Refused {
-            tracing::warn!("The relay does not take a remote daemon without a public address yet");
+            tracing::warn!("The relay refused the remote daemon endpoint");
         }
         if published == relay::Published::Unauthorized {
             tracing::warn!("The relay rejected the node token; not publishing the remote daemon address");
@@ -338,9 +338,9 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 3);
     }
 
-    /// 공인 주소가 없으면 주소 없이 올린다. 그것을 모르는 예전 릴레이(400)에는 다시 보내지 않는다
+    /// 릴레이가 본문을 받지 않으면(400) 같은 본문을 다시 보내지 않는다
     #[tokio::test]
-    async fn an_old_relay_that_refuses_an_address_less_endpoint_is_not_asked_again() {
+    async fn a_relay_that_refuses_the_endpoint_is_not_asked_again() {
         let calls = super::Arc::new(AtomicUsize::new(0));
         let seen = calls.clone();
         let app = axum::Router::new().route(
@@ -358,7 +358,6 @@ mod tests {
         let published = super::publish_with_retry(&relay, None, 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
         assert!(!published);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert!(super::publish_with_retry(&relay, Some("saba.example.com"), 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await);
     }
 
     /// 릴레이가 이 노드 토큰을 받지 않으면(401, 같은 계정의 다른 PC가 페어링해 토큰이 대체됨 등) 다시 보내지 않는다.

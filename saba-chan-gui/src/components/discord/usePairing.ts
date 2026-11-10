@@ -4,27 +4,11 @@ import type { ApiBody } from '../../types/daemon';
 const POLL_MS = 3000;
 const SUCCESS_HOLD_MS = 2000;
 
-/** 짝지어 받은 노드 토큰을 데몬에 저장한다. 실패하면 한 번 더 시도하고, 그래도 안 되면 false */
-export async function persistNodeToken(token: string) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-            if ((await window.api.saveNodeToken(token)) !== false) return true;
-        } catch (e) {
-            console.error('[Pairing] node token save failed:', e);
-        }
-    }
-    return false;
-}
-
 /**
- * 짝짓기가 끝났을 때 이 PC에 노드 토큰이 저장됐는지. 데몬은 저장한 결과를 `tokenSaved`로 알려 준다
- * (수령 기한이 지나 토큰이 오지 않았거나 쓰지 못하면 false). 예전 데몬은 이 값이 없어 받은 토큰을 직접 저장한다
+ * 짝짓기가 끝났을 때 이 PC에 노드 토큰이 저장됐는지. 데몬이 저장하고 그 결과를 `tokenSaved`로 알려 준다
+ * (수령 기한이 지나 토큰이 오지 않았거나 쓰지 못하면 false)
  */
-export async function claimSavedToken(s: ApiBody | null | undefined) {
-    if (typeof s?.tokenSaved === 'boolean') return s.tokenSaved;
-    if (!s?.nodeToken) return false;
-    return typeof window.api?.saveNodeToken === 'function' ? persistNodeToken(s.nodeToken) : true;
-}
+export const pairingTokenSaved = (s: ApiBody | null | undefined) => s?.tokenSaved === true;
 
 interface UsePairingOptions {
     relayUrl: string;

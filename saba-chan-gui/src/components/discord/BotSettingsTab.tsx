@@ -15,6 +15,7 @@ import { DEFAULT_BEDTIME, HALF_HOURS, SLEEP_FEATURES } from './sleep';
 export { SLEEP_FEATURES };
 import { TagInput } from './TagInput';
 import type { DiscordNode } from './types';
+import { failed } from '../../utils/apiResult';
 
 export const botSettingsAvailable = () =>
     typeof window.api?.discordSettingsGet === 'function' && typeof window.api?.discordSettingsSet === 'function';
@@ -39,8 +40,6 @@ export const CONFIRM_LEVELS = ['all', 'caution', 'danger', 'none'];
 
 /** 켜고 끄는 한 줄 (BotSettingsTab 안에서 만들어 카드에 넘긴다) */
 type ToggleRow = (label: string, hint: ReactNode, checked: unknown, onChange: (checked: boolean) => void) => ReactNode;
-
-const failed = (res: ApiBody | null | undefined) => !res || res.success === false || Boolean(res.error_code);
 
 /** 데몬 오류 → 한 줄 */
 export function botSettingsErrorText(res: ApiBody | null | undefined, t: TFunction) {
@@ -363,7 +362,7 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }:
                         </section>
                     )}
 
-                    {/* 코코낸내: 옛 데몬은 값을 주지 않는다 — 그때는 카드를 두지 않는다 */}
+                    {/* 코코낸내: 원격의 0.1.11 데몬은 값을 주지 않는다 — 그때는 카드를 두지 않는다 */}
                     {Array.isArray(settings.sleepBlocks) && (
                         <SleepCard settings={settings} locked={locked} save={save} toggleRow={toggleRow} />
                     )}

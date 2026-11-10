@@ -253,12 +253,11 @@ impl GuildSettings {
     fn from_relay(body: &Value) -> Self {
         let mut out = Self::default();
         let mut patch = Map::new();
+        // 릴레이는 `auto`나 언어 태그를 준다
         if let Some(l) = body.get("locale").and_then(Value::as_str) {
-            // 릴레이는 `auto`나 언어 태그를 준다 (예전 릴레이는 태그와 `localeSource`)
-            let auto = body.get("localeSource").and_then(Value::as_str) == Some("auto");
-            patch.insert("locale".into(), json!(if auto { AUTO_LOCALE } else { l }));
+            patch.insert("locale".into(), json!(l));
         }
-        if let Some(s) = body.get("sleeping").or_else(|| body.get("isSleep")) {
+        if let Some(s) = body.get("sleeping") {
             patch.insert("sleeping".into(), s.clone());
         }
         let mut music = Map::new();
@@ -904,7 +903,7 @@ mod tests {
     #[test]
     fn relay_values_are_kept_once_when_the_daemon_has_none() {
         let s = GuildSettings::from_relay(&json!({
-            "guildId": "1", "locale": "ja", "localeSource": "manual",
+            "guildId": "1", "locale": "ja",
             "musicEnabled": false, "musicUIEnabled": true,
             "musicSettings": { "queueLines": 99, "refreshInterval": 3000, "normalize": false },
         }));
@@ -914,8 +913,6 @@ mod tests {
         assert_eq!(s.music.queue_lines, Music::default().queue_lines);
         assert_eq!(s.music.refresh_interval, 3000);
         assert!(!s.music.normalize);
-        // 자동으로 정해진 언어는 auto로
-        assert_eq!(GuildSettings::from_relay(&json!({ "locale": "ko", "localeSource": "auto" })).locale, AUTO_LOCALE);
         assert_eq!(GuildSettings::from_relay(&json!({ "locale": "auto" })).locale, AUTO_LOCALE);
         assert_eq!(GuildSettings::from_relay(&json!({ "locale": "ko", "sleeping": true })).locale, "ko");
         assert!(GuildSettings::from_relay(&json!({ "sleeping": true })).sleeping);
@@ -929,7 +926,7 @@ mod tests {
         assert!(changed(&relay, &s.relay_body()).is_empty());
         s.apply(&patch(json!({ "music": { "queueLines": 9 } }))).unwrap();
         assert_eq!(Value::Object(changed(&relay, &s.relay_body())), json!({ "musicSettings": { "queueLines": 9 } }));
-        // 릴레이에 없는 키(예전 릴레이)는 보낸다
+        // 릴레이 응답에 없는 키는 보낸다
         let old_relay = json!({ "musicEnabled": true, "musicUIEnabled": true, "musicSettings": { "queueLines": 9, "refreshInterval": 4000, "normalize": true } });
         assert_eq!(
             Value::Object(changed(&old_relay, &s.relay_body())),

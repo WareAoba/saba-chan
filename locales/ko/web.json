@@ -441,12 +441,6 @@
       "NO_CLEAR_JOB": "이 채널에서 지우는 중인 일이 없어요.",
       "generic": "바꾸지 못했어요. 잠시 뒤에 다시 해 주세요."
     },
-    "dur": {
-      "seconds": "{{count}}초",
-      "minutes": "{{count}}분",
-      "hours": "{{count}}시간",
-      "days": "{{count}}일"
-    },
     "mod": {
       "title": "서버 관리",
       "locked": "잠김",

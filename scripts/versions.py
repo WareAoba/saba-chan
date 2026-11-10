@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 import io
+import os
 import re
 import shutil
 import struct
@@ -209,16 +210,18 @@ SKIP_PARTS = {"__pycache__", ".git", ".pytest_cache", "tests"}
 
 
 def is_dev_file(rel: str) -> bool:
-    """zip에 싣지 않는 개발용 파일: 폴더 바로 아래의 `test_*.py`·`conftest.py`, 캐시·테스트 폴더, .pyc"""
+    """zip에 싣지 않는 개발용 파일: 폴더 바로 아래의 `test_*.py`·`conftest.py`, 캐시·테스트 폴더, .pyc,
+    맨 위 점 항목(.git·.gitignore 등: 교체가 깐 폴더의 것을 새 폴더로 옮겨 주므로 패키지에 있으면 부딪힌다)"""
     parts = rel.split("/")
     name = parts[-1]
-    return bool(SKIP_PARTS & set(parts)) or name.endswith(".pyc") or (
+    return bool(SKIP_PARTS & set(parts)) or parts[0].startswith(".") or name.endswith(".pyc") or (
         len(parts) == 1 and (name == "conftest.py" or (name.startswith("test_") and name.endswith(".py")))
     )
 
 
 def zip_folder(src: Path, dest: Path) -> None:
-    """폴더 안 파일을 zip 루트에 넣는다 (캐시·테스트 제외, 순서 고정)."""
+    """폴더 안 파일을 zip 루트에 넣는다 (캐시·테스트 제외, 순서 고정).
+    파일 시각은 싣지 않는다: 같은 내용이면 다시 checkout해도 같은 바이트다 (R2에 올린 zip과 해시를 맞춰 등록을 다시 한다)"""
     import zipfile
 
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -226,7 +229,11 @@ def zip_folder(src: Path, dest: Path) -> None:
             rel = path.relative_to(src)
             if path.is_dir() or is_dev_file(rel.as_posix()):
                 continue
-            zf.write(path, rel.as_posix())
+            info = zipfile.ZipInfo(rel.as_posix(), date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            # 실행 권한만 남긴다 (git이 기록하는 것은 실행 비트뿐이다)
+            info.external_attr = (0o100755 if os.access(path, os.X_OK) else 0o100644) << 16
+            zf.writestr(info, path.read_bytes())
 
 
 def raw_url(repo: str, ref: str | None, rel: str) -> str | None:
@@ -346,6 +353,82 @@ def addon_version_problems(components: dict, assets: Path, previous: dict, fetch
         elif new_v == old_v and zip_contents((assets / comp["asset"]).read_bytes()) != zip_contents(fetch(old["url"])):
             problems.append(f"{key} changed since {previous.get('version')} but keeps version {comp['version']}; raise it")
     return problems
+
+
+def addon_r2_key(key: str, version: str, asset: str) -> str:
+    """모듈·익스텐션 판 파일 자리. 판마다 따로라 덮어쓰지 않는다"""
+    return f"addons/{key}/{version}/{asset}"
+
+
+def addon_publish_entries(addons: dict, assets: Path, published: dict, base: str, fetch) -> tuple[list[dict], list[str]]:
+    """릴레이에 아직 없는 모듈·익스텐션 판의 기록(서명 전)과 막는 까닭.
+    `published`는 릴레이 `/v1/addons/catalog` 답(키마다 올라간 가장 새 판, 내린 판 목록).
+    버전을 올리지 않고 바꿨거나, 올라간 판보다 낮거나, 내린 판 번호를 다시 쓰면 막는다"""
+    latest = {e["manifest"]["key"]: e["manifest"] for e in published.get("addons", [])}
+    yanked: dict[str, list[str]] = {}
+    for e in published.get("yanked", []):  # 서명된 내림 기록
+        yanked.setdefault(e["manifest"]["key"], []).append(e["manifest"]["version"])
+    problems = addon_version_problems(addons, assets, {"version": "the relay catalog", "components": latest}, fetch)
+    entries = []
+    for key, comp in sorted(addons.items()):
+        old = latest.get(key)
+        if old and old["version"] == comp["version"]:
+            continue
+        if comp["version"] in yanked.get(key, []):
+            problems.append(f"{key} {comp['version']} was yanked; publish a new version")
+            continue
+        blob = (assets / comp["asset"]).read_bytes()
+        entries.append({
+            "key": key,
+            **comp,
+            "sha256": hashlib.sha256(blob).hexdigest(),
+            "size_bytes": len(blob),
+            "url": f"{base.rstrip('/')}/{addon_r2_key(key, comp['version'], comp['asset'])}",
+        })
+    return entries, problems
+
+
+def cmd_addons(args: argparse.Namespace) -> int:
+    """`publish-addons.yml`: 모듈·익스텐션 저장소를 묶고, 릴레이에 아직 없는 판만 기록으로 낸다 (서명은 release_signing)"""
+    assets = Path(args.assets)
+    assets.mkdir(parents=True, exist_ok=True)
+    addons = addon_components(args, assets)
+    published = json.loads(Path(args.published).read_text(encoding="utf-8"))
+    entries, problems = addon_publish_entries(addons, assets, published, args.base_url, fetch_url)
+    if problems:
+        sys.exit("modules/extensions:\n  " + "\n  ".join(problems))
+    write_json(entries, args.out)
+    return 0
+
+
+def addon_seed_entries(signed_release: dict) -> list[dict]:
+    """앱 릴리즈 manifest에 실려 나간 모듈·익스텐션 판을 판 기록으로 (파일·sha256·주소는 그 릴리즈 그대로).
+    따로 내기 전에 나간 판을 릴레이 판 목록에 처음 한 번 옮겨 담는다"""
+    manifest = signed_release.get("manifest", signed_release)
+    return [{"key": key, **comp}
+            for key, comp in sorted(manifest.get("components", {}).items())
+            if key.startswith(("module-", "ext-"))]
+
+
+def cmd_addon_seed(args: argparse.Namespace) -> int:
+    signed = json.loads(Path(args.release).read_text(encoding="utf-8"))
+    write_json(addon_seed_entries(signed), args.out)
+    return 0
+
+
+def cmd_addon_registration(args: argparse.Namespace) -> int:
+    """`POST /admin/addons` 본문들 (한 줄에 하나). signedEntry는 서명 봉투 전체를 JSON 문자열로 넣는다"""
+    signed = json.loads(Path(args.signed).read_text(encoding="utf-8"))
+    lines = [json.dumps({"channel": args.channel,
+                         "signedEntry": json.dumps(e, ensure_ascii=True, separators=(",", ":"), sort_keys=True)},
+                        ensure_ascii=True)
+             for e in signed]
+    text = "\n".join(lines) + ("\n" if lines else "")
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+    else:
+        sys.stdout.write(text)
+    return 0
 
 
 def versions_semver(version: str) -> tuple:
@@ -694,10 +777,31 @@ def main() -> int:
     r.add_argument("--critical", action="store_true")
     r.add_argument("--notes", help="릴리즈 노트 JSON (기본: release-notes/<version>.json)")
     r.add_argument("--out")
+    a = sub.add_parser("addons")
+    a.add_argument("--assets", required=True, help="zip을 둘 폴더")
+    a.add_argument("--base-url", required=True, help="R2 공개 URL 접두사 (<base>/addons/<키>/<버전>/<파일>)")
+    a.add_argument("--published", required=True, help="릴레이 /v1/addons/catalog?core=999.0.0&channel=nightly 답")
+    a.add_argument("--modules-repo")
+    a.add_argument("--extensions-repo")
+    a.add_argument("--addons-ref", help="아이콘 URL에 쓸 모듈 저장소 커밋")
+    a.add_argument("--out")
+    ar = sub.add_parser("addon-registration")
+    ar.add_argument("--signed", required=True, help="release_signing sign-each 출력 (서명 봉투 배열)")
+    ar.add_argument("--channel", default="beta")
+    ar.add_argument("--out")
+    sd = sub.add_parser("addon-seed")
+    sd.add_argument("--release", required=True, help="릴레이 /v1/updates/manifest/<버전> 답 (서명된 릴리즈 manifest)")
+    sd.add_argument("--out")
     args = parser.parse_args()
 
+    if args.cmd == "addon-seed":
+        return cmd_addon_seed(args)
     if args.cmd == "registration":
         return cmd_registration(args)
+    if args.cmd == "addons":
+        return cmd_addons(args)
+    if args.cmd == "addon-registration":
+        return cmd_addon_registration(args)
 
     data = load()
     if args.cmd == "check":

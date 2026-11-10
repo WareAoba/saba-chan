@@ -60,7 +60,7 @@ pub(crate) async fn audited(
     }
     let (id, name, command, args) = {
         let sup = state.supervisor.read().await;
-        let instance = sup.instance_store.get(key).or_else(|| sup.instance_store.list().iter().find(|i| i.name == key));
+        let instance = sup.instance_store.find(key);
         let module = instance.and_then(|i| sup.module_loader.get_module(&i.module_name).ok()).map(|m| m.metadata);
         // 비밀 인자·설정값은 가려서 남긴다
         let (command, args) = crate::audit::redact(module.as_ref(), instance, command, args);

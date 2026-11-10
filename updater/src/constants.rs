@@ -284,50 +284,58 @@ pub fn generate_random_password() -> String {
 //  로케일 해석
 // ══════════════════════════════════════════════════════
 
-/// 시스템 로케일 문자열을 지원 언어로 정규화
+/// 앱 설정·시스템 로케일 문자열을 지원 언어로 정규화한다 (대소문자, `_`·`-` 구분 없이). 지원하지 않으면 None
 ///
 /// `"ko-KR"` → `"ko"`, `"zh-Hans"` → `"zh-CN"`, `"en-US"` → `"en"` 등
-pub fn resolve_locale(locale: &str) -> String {
-    let trimmed = locale.trim();
+pub fn resolve_locale(locale: &str) -> Option<String> {
+    let lower = locale.trim().replace('_', "-").to_lowercase();
+    let supported = |tag: &str| SUPPORTED_LANGUAGES.iter().find(|s| s.eq_ignore_ascii_case(tag)).map(|s| s.to_string());
 
     // 정확한 매칭
-    if SUPPORTED_LANGUAGES.contains(&trimmed) {
-        return trimmed.to_string();
-    }
-
-    // 하이픈/언더스코어 정규화
-    let normalized = trimmed.replace('_', "-");
-    if SUPPORTED_LANGUAGES.contains(&normalized.as_str()) {
-        return normalized;
+    if let Some(exact) = supported(&lower) {
+        return Some(exact);
     }
 
     // zh-Hans / zh-Hant 특수 처리
-    let lower = normalized.to_lowercase();
     if lower.starts_with("zh-cn") || lower.starts_with("zh-hans") {
-        return "zh-CN".to_string();
+        return supported("zh-CN");
     }
     if lower.starts_with("zh-tw") || lower.starts_with("zh-hant") {
-        return "zh-TW".to_string();
+        return supported("zh-TW");
     }
     if lower.starts_with("pt-br") {
-        return "pt-BR".to_string();
+        return supported("pt-BR");
     }
 
     // 기본 언어 코드로 매칭
-    let base = trimmed
-        .split(&['-', '_', '.'][..])
-        .next()
-        .unwrap_or("en");
+    let base = lower.split(['-', '.']).next().unwrap_or("");
     SUPPORTED_LANGUAGES
         .iter()
-        .find(|&&s| s == base || s.starts_with(&format!("{}-", base)))
+        .find(|s| {
+            let s = s.to_lowercase();
+            s == base || s.starts_with(&format!("{}-", base))
+        })
         .map(|s| s.to_string())
-        .unwrap_or_else(|| "en".to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// GUI 설정 창(`useServerSettings.ts` `TOP_LEVEL_FIELDS`)은 저장된 값을 이 표대로 고른다: 둘이 어긋나면 화면이 낡은 값을 보인다.
+    /// 표에서 빠지는 칸은 GUI가 따로 읽는 칸뿐이다 (메모리 상한·게임 채팅·사용 모드)
+    #[test]
+    fn the_gui_reads_saved_values_by_the_same_instance_fields() {
+        let hook = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../saba-chan-gui/src/hooks/useServerSettings.ts");
+        let text = std::fs::read_to_string(hook).unwrap();
+        let start = text.find("const TOP_LEVEL_FIELDS = new Set([").expect("TOP_LEVEL_FIELDS");
+        let body = &text[start..start + text[start..].find("]);").unwrap()];
+        let gui: std::collections::BTreeSet<&str> = body.split('\'').skip(1).step_by(2).collect();
+        let read_apart = ["memory_limit_mb", "game_chat", "game_chat_keyword", "access", "controllers_only"];
+        let daemon: std::collections::BTreeSet<&str> =
+            INSTANCE_FIELDS.iter().map(|(k, _)| *k).filter(|k| !read_apart.contains(k)).collect();
+        assert_eq!(gui, daemon);
+    }
 
     #[test]
     fn test_resolve_data_dir_returns_path() {
@@ -343,23 +351,30 @@ mod tests {
 
     #[test]
     fn test_resolve_locale_exact() {
-        assert_eq!(resolve_locale("ko"), "ko");
-        assert_eq!(resolve_locale("zh-CN"), "zh-CN");
-        assert_eq!(resolve_locale("pt-BR"), "pt-BR");
+        assert_eq!(resolve_locale("ko").as_deref(), Some("ko"));
+        assert_eq!(resolve_locale("zh-CN").as_deref(), Some("zh-CN"));
+        assert_eq!(resolve_locale("pt-BR").as_deref(), Some("pt-BR"));
+        assert_eq!(resolve_locale("en").as_deref(), Some("en"));
     }
 
     #[test]
     fn test_resolve_locale_normalize() {
-        assert_eq!(resolve_locale("ko-KR"), "ko");
-        assert_eq!(resolve_locale("en-US"), "en");
-        assert_eq!(resolve_locale("zh-Hans"), "zh-CN");
-        assert_eq!(resolve_locale("zh-Hant"), "zh-TW");
-        assert_eq!(resolve_locale("pt_BR"), "pt-BR");
+        assert_eq!(resolve_locale("ko-KR").as_deref(), Some("ko"));
+        assert_eq!(resolve_locale("en-US").as_deref(), Some("en"));
+        assert_eq!(resolve_locale("zh-Hans").as_deref(), Some("zh-CN"));
+        assert_eq!(resolve_locale("zh-Hant").as_deref(), Some("zh-TW"));
+        assert_eq!(resolve_locale("pt_BR").as_deref(), Some("pt-BR"));
+        assert_eq!(resolve_locale("zh").as_deref(), Some("zh-CN"));
+        assert_eq!(resolve_locale(" KO ").as_deref(), Some("ko"));
+        assert_eq!(resolve_locale("de_DE.UTF-8").as_deref(), Some("de"));
     }
 
+    /// 지원하지 않는 언어는 None: 부른 쪽이 다음 후보(앱 설정 → 시스템 로케일 → 영어)로 넘어간다
     #[test]
-    fn test_resolve_locale_fallback() {
-        assert_eq!(resolve_locale("xyz"), "en");
+    fn test_resolve_locale_unsupported() {
+        assert_eq!(resolve_locale("xyz"), None);
+        assert_eq!(resolve_locale("C"), None);
+        assert_eq!(resolve_locale(""), None);
     }
 
     #[test]

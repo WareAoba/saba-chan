@@ -430,8 +430,6 @@ mod launch_tests {
         );
         assert_eq!(line(json!({ "kind": "gui" })), (Interface::Gui, vec![], None));
         assert_eq!(line(json!({ "kind": "gui", "instance": "abc" })), (Interface::Gui, vec!["--open-server=abc".to_string()], Some("abc".to_string())));
-        // 예전 본문(`view`)도 받는다: 더는 콘솔 창 하나만 띄우지 않고 메뉴를 연다
-        assert_eq!(line(json!({ "kind": "cli", "view": "console", "instance": "abc" })).1, vec!["tui".to_string(), "--server=abc".to_string()]);
 
         let field = |b| launch_args(&b).unwrap_err().0;
         assert_eq!(field(json!({ "kind": "web" })), "kind");

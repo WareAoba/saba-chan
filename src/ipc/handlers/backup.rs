@@ -842,7 +842,7 @@ pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard
         Ok(t) => t,
         Err(e) => return Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
     };
-    if targets.iter().any(|t| boundary.resolve(t).is_none() || !backup::is_inside(t, &roots)) {
+    if targets.iter().any(|t| boundary.resolve(t).is_none() || !crate::module_paths::is_inside(t, &roots)) {
         return Err(error(
             StatusCode::BAD_REQUEST,
             "restore_outside",

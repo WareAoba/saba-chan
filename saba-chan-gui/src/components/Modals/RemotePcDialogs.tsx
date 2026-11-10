@@ -3,11 +3,10 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { Icon } from '../Icon';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
+import { failed } from '../../utils/apiResult';
 
 /** 리눅스 한 줄 설치 (install.sh 맨 위와 같다). SSH가 안 될 때 그 PC에 붙여 넣는다 */
 export const INSTALL_ONE_LINER = 'curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh -s -- --pair';
-
-const failed = (res: ApiBody | null | undefined) => !res || res.ok === false || res.success === false || Boolean(res.error_code);
 
 interface RemoveDialogProps {
     name: string;

@@ -1,5 +1,5 @@
 /**
- * Tauri 브리지: window.__TAURI__ 위에 preload와 같은 window.api·window.electron을 만든다.
+ * Tauri 브리지: window.__TAURI__ 위에 window.api를 만든다.
  * 데몬 요청은 daemon_request 명령으로, 네이티브 작업은 Rust 명령으로 간다.
  */
 import { describe, expect, it, vi } from 'vitest';
@@ -56,29 +56,13 @@ describe('Tauri 브리지 설치', () => {
 
         const { tauri, target } = await install({});
         expect(typeof target.api.serverList).toBe('function');
-        expect(typeof target.electron.shell.openExternal).toBe('function');
+        expect(typeof target.api.shellOpenExternal).toBe('function');
         // 리스너를 단 뒤에 app_ready
         expect(tauri.invoke).toHaveBeenLastCalledWith('app_ready', undefined);
     });
 });
 
 describe('데몬 응답 가공', () => {
-    it('daemonCall 계열은 HTTP 오류면 데몬 본문을, 연결 실패면 {ok:false, error, error_code}를 돌려준다', async () => {
-        const body = { ok: false, error: 'busy', error_code: 'instance_busy' };
-        const { api } = await install({
-            daemon_request: daemon({
-                'POST /api/instance/a/stop': { status: 409, data: body },
-                'POST /api/instance/b/stop': { status: 0, error: 'connect refused', code: 'ECONNREFUSED' },
-            }),
-        });
-        expect(await api.instanceStop('a')).toEqual(body);
-        expect(await api.instanceStop('b')).toEqual({
-            ok: false,
-            error: 'connect refused',
-            error_code: 'ECONNREFUSED',
-        });
-    });
-
     it('bot-config를 못 읽으면 기본값을 꾸며 내지 않고 실패한다 (저장이 디스크 값을 덮지 않게)', async () => {
         const { api } = await install({
             daemon_request: daemon({ 'GET /api/config/bot': { status: 0, error: 'timeout', code: 'ETIMEDOUT' } }),

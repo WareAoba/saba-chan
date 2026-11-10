@@ -518,7 +518,7 @@ describe('useDiscordStore', () => {
     it('loadConfig() — bot-config에서 모든 필드 로드', async () => {
         mockApi({
             botConfigLoad: vi.fn().mockResolvedValue({
-                prefix: '!bot',
+                prefixes: ['!bot'],
                 cloud: { relayUrl: 'https://relay.example.com', hostId: 'h123' },
                 moduleAliases: { palworld: 'pw' },
                 commandAliases: { palworld: { start: '시작' } },

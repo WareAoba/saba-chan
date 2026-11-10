@@ -111,7 +111,7 @@ export function ModuleMakerCard() {
                     <button
                         type="button"
                         className="btn btn-ghost btn-sm"
-                        onClick={() => window.electron?.shell?.openExternal?.(info.guide as string)}
+                        onClick={() => window.api?.shellOpenExternal?.(info.guide as string)}
                     >
                         <Icon name="externalLink" size="sm" />
                         {t('saba_storage.maker_guide')}

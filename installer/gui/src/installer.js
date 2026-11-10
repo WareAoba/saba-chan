@@ -1237,9 +1237,7 @@ const T = {
 let lang = 'en';
 
 function tr(key, vars = {}) {
-    const b = T[lang] || T.en;
-    const t = b[key] || T.en[key] || key;
-    return t.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? ''));
+    return SabaUI.translate(T, lang, key, vars);
 }
 
 // Step → i18n key mappings for progress messages
@@ -1981,19 +1979,9 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
     // 테마 감지 (OS 설정 기본값)
     SabaUI.setTheme(SabaUI.systemTheme());
 
-    // 언어 감지
+    // 언어: Rust가 앱 설정 → OS 언어 → 영어 순으로 골라 지원 언어 태그로 준다
     try {
-        const pref = await invoke('get_preferred_language');
-        const supported = ['en','ko','ja','zh-CN','zh-TW','es','pt-BR','ru','de','fr'];
-        const norm = pref.trim().replace('_', '-');
-        const exact = supported.find(l => l.toLowerCase() === norm.toLowerCase());
-        if (exact) lang = exact;
-        else {
-            const base = norm.toLowerCase().split('-')[0];
-            if (base.startsWith('pt')) lang = 'pt-BR';
-            else if (base.startsWith('zh')) lang = 'zh-CN';
-            else lang = { ko:'ko', ja:'ja', es:'es', ru:'ru', de:'de', fr:'fr' }[base] || 'en';
-        }
+        lang = await invoke('get_preferred_language');
     } catch (_) {}
 
     applyTranslations();
