@@ -800,9 +800,10 @@ mod tests {
         assert_eq!(payload["stop"], true);
         assert_eq!(payload["exes"][0]["from"], "/opt/saba/saba-core.old");
         assert_eq!(payload["exes"][0]["to"], "/opt/saba/saba-core");
-        assert_eq!(payload["data"], "/data/update-snapshot/0.1.13-1/data");
+        // 기대값도 코드와 같은 방식(join)으로 만들어 Windows 경로 구분자 차이를 피한다
+        assert_eq!(payload["data"], recovery.copy.dir.join("data").display().to_string());
         assert_eq!(payload["dataDir"], "/data");
-        assert_eq!(payload["instances"], "/data/update-snapshot/0.1.13-1/instances");
+        assert_eq!(payload["instances"], recovery.copy.dir.join("instances").display().to_string());
         assert_eq!(payload["instancesDir"], "/srv/instances");
     }
 
