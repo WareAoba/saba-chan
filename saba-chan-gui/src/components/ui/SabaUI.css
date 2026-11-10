@@ -467,3 +467,123 @@
         animation: none;
     }
 }
+
+/* ── Dialog: 공통 대화상자 (Dialog.tsx, Radix가 포커스·닫기를 맡는다) ── */
+.saba-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    /* 뒤 화면을 살짝 흐리고 옅게 덮는다 (아크릴) */
+    background-color: var(--glass-scrim);
+    -webkit-backdrop-filter: var(--scrim-blur);
+    backdrop-filter: var(--scrim-blur);
+    animation: sabaFadeIn 0.2s var(--ease);
+}
+.saba-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 9001;
+    display: flex;
+    flex-direction: column;
+    width: min(var(--dialog-w, 480px), calc(100vw - 2 * var(--sp-4)));
+    max-height: calc(100vh - 2 * var(--sp-6));
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-float);
+    color: var(--text-1);
+    transform: translate(-50%, -50%);
+    animation: sabaDialogIn var(--dur) var(--ease);
+}
+.saba-dialog.sm {
+    --dialog-w: 380px;
+}
+.saba-dialog.lg {
+    --dialog-w: 720px;
+}
+.saba-dialog:focus-visible {
+    outline: none;
+}
+.saba-dialog-head {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    padding: var(--sp-5) var(--sp-5) var(--sp-3);
+}
+.saba-dialog-media {
+    flex-shrink: 0;
+}
+.saba-dialog-heading {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--sp-1);
+    min-width: 0;
+}
+.saba-dialog-title {
+    margin: 0;
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    text-wrap: balance;
+}
+.saba-dialog-desc {
+    margin: 0;
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+}
+.saba-dialog-x {
+    flex-shrink: 0;
+    margin: calc(-1 * var(--sp-1)) calc(-1 * var(--sp-1)) 0 0;
+}
+.saba-dialog-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 var(--sp-5) var(--sp-4);
+}
+.saba-dialog-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-5) var(--sp-5);
+}
+.saba-dialog-head:last-child {
+    padding-bottom: var(--sp-5);
+}
+.saba-dialog-overlay[data-state='closed'] {
+    animation: sabaFadeOut 0.18s ease-in forwards;
+}
+.saba-dialog[data-state='closed'] {
+    animation: sabaDialogOut 0.18s ease-in forwards;
+}
+@keyframes sabaFadeIn {
+    from {
+        opacity: 0;
+    }
+}
+@keyframes sabaFadeOut {
+    to {
+        opacity: 0;
+    }
+}
+@keyframes sabaDialogIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, calc(-50% + 16px));
+    }
+}
+@keyframes sabaDialogOut {
+    to {
+        opacity: 0;
+        transform: translate(-50%, calc(-50% + 8px)) scale(0.98);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .saba-dialog,
+    .saba-dialog-overlay {
+        animation: none;
+    }
+}

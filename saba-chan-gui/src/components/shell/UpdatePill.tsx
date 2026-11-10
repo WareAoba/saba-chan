@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
+import { Dialog } from '../ui/Dialog';
 import { Popover } from '../ui/Popover';
 import { AppBarPill } from './AppBarPill';
 
@@ -269,34 +269,28 @@ export function UpdatePill() {
         </Popover>
     );
 
-    const dialog =
-        asking &&
-        createPortal(
-            <div className="modal-overlay" onClick={() => setAsking(false)}>
-                <div
-                    className="update-pill-dialog"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="update-pill-dialog-title"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <p className="update-pill-title" id="update-pill-dialog-title">
-                        {t('update_pill.restart_title', { version })}
-                    </p>
-                    {notesList(lines)}
-                    <p className="update-pill-note">{t('update_pill.restart_note')}</p>
-                    <div className="update-pill-buttons">
-                        <button type="button" className="btn" onClick={() => setAsking(false)}>
-                            {t('update_pill.later')}
-                        </button>
-                        <button type="button" className="btn btn-primary" onClick={restartNow}>
-                            {t('update_pill.restart_now')}
-                        </button>
-                    </div>
-                </div>
-            </div>,
-            document.body,
-        );
+    const dialog = (
+        <Dialog
+            open={asking}
+            onOpenChange={setAsking}
+            size="sm"
+            className="update-pill-dialog"
+            title={t('update_pill.restart_title', { version })}
+            footer={
+                <>
+                    <button type="button" className="btn" onClick={() => setAsking(false)}>
+                        {t('update_pill.later')}
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={restartNow}>
+                        {t('update_pill.restart_now')}
+                    </button>
+                </>
+            }
+        >
+            {notesList(lines)}
+            <p className="update-pill-note">{t('update_pill.restart_note')}</p>
+        </Dialog>
+    );
 
     return (
         <>

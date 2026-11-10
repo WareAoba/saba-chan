@@ -3336,8 +3336,7 @@ button.appbar-pill:focus-visible {
 .update-pill-pop p {
     margin: 0;
 }
-.update-pill-pop .update-pill-version,
-.update-pill-dialog .update-pill-title {
+.update-pill-pop .update-pill-version {
     font-weight: 700;
 }
 .update-pill-pop .update-pill-sub {
@@ -3363,23 +3362,14 @@ button.appbar-pill:focus-visible {
     font-size: 12px;
     cursor: pointer;
 }
-/* '준비됨': 다시 시작할지 묻는 창 */
-.update-pill-dialog {
-    width: min(380px, calc(100vw - 32px));
-    background: var(--bg-3);
-    border-radius: 14px;
-    padding: calc(var(--sp-4) + var(--sp-0-5));
+/* '준비됨': 다시 시작할지 묻는 창 (Dialog 본문) */
+.update-pill-dialog .saba-dialog-body {
     display: grid;
     gap: var(--sp-2-5);
-    box-shadow: var(--shadow-float);
     font-size: 13px;
-    color: var(--text-1);
 }
 .update-pill-dialog p {
     margin: 0;
-}
-.update-pill-dialog .update-pill-title {
-    font-size: 15px;
 }
 .update-pill-note {
     font-size: 12px;
@@ -3387,12 +3377,6 @@ button.appbar-pill:focus-visible {
     background: var(--bg-1);
     border-radius: 9px;
     padding: var(--sp-2) var(--sp-2-5);
-}
-.update-pill-buttons {
-    display: flex;
-    gap: var(--sp-2);
-    justify-content: flex-end;
-    flex-wrap: wrap;
 }
 .dc-hero-actions {
     display: flex;
