@@ -55,8 +55,9 @@ async fn save_reply(state: &IPCServer, id: &str, name: &str) -> Option<String> {
 /// 이름 하나로 게임 명령 실행. 성공하면 서버의 콘솔 답(없으면 빈 글자)
 async fn command_reply(state: &IPCServer, id: &str, name: &str, args: Value) -> Option<String> {
     let req = CommandRequest { command: name.to_string(), args };
+    // 명령 실행 future는 크다: 백업 안에서 겹겹이 품지 않게 힙에 둔다 (디버그 빌드 스택 넘침)
     let resp = crate::ipc::internal::into_internal(
-        super::command::execute_command(Path(id.to_string()), State(state.clone()), Json(req)).await,
+        Box::pin(super::command::execute_command(Path(id.to_string()), State(state.clone()), Json(req))).await,
     )
     .await;
     let ok = resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false);
