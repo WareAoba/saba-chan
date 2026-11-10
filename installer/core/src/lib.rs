@@ -1514,6 +1514,7 @@ mod tests {
             install_dir: None,
             requires: (!requires.is_empty()).then(|| requires.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()),
             meta: None,
+            reads_runner_formats: None,
         };
         let manifest = ReleaseManifest {
             version: "0.2.0".into(),
