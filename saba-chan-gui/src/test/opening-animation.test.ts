@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-    burstPoint,
+    FALL_END_MS,
+    fallFrame,
+    fallPoint,
     OPENING_CHORD_MS,
     OPENING_END_MS,
     openingFrame,
+    openingShake,
     pullPoint,
+    scatterPoint,
     whenOpeningReady,
 } from '../utils/opening';
 
@@ -39,19 +43,55 @@ describe('오프닝 애니메이션 (콘솔 글자를 끌어모아 화음에 팟
         expect(openingFrame(OPENING_END_MS).done).toBe(true);
     });
 
-    it('글자는 제자리에서 가운데로 끌려 오고, 터질 때는 온 방향으로 다시 튀어 나간다', () => {
+    it('낱말은 모두 같은 규칙의 경로로 제자리에서 가운데로 끌려 온다 (경로에 무작위가 없다)', () => {
         const center = { x: 100, y: 100 };
         const from = { x: 160, y: 20 };
         expect(pullPoint(from, center, 0)).toEqual(from);
         expect(pullPoint(from, center, 1)).toEqual(center);
         const mid = pullPoint(from, center, 0.5);
         expect(Math.hypot(mid.x - 100, mid.y - 100)).toBeLessThan(100);
+        expect(pullPoint(from, center, 0.5)).toEqual(mid);
+    });
 
-        expect(burstPoint(from, center, 0)).toEqual(center);
-        const out = burstPoint(from, center, 1);
-        const dir = Math.atan2(from.y - 100, from.x - 100);
-        expect(Math.atan2(out.y - 100, out.x - 100)).toBeCloseTo(dir, 5);
-        expect(Math.hypot(out.x - 100, out.y - 100)).toBeGreaterThan(100);
+    it('터질 때는 낱말마다 정해 준 방향·거리로 흩뿌린다', () => {
+        const center = { x: 100, y: 100 };
+        expect(scatterPoint(center, 1, 200, 0)).toEqual(center);
+        const end = scatterPoint(center, Math.PI / 2, 200, 1);
+        expect(end.x).toBeCloseTo(100, 5);
+        expect(end.y).toBeCloseTo(300, 5);
+        const half = scatterPoint(center, Math.PI / 2, 200, 0.5);
+        expect(half.y).toBeGreaterThan(200);
+    });
+
+    it('화음 순간 화면을 한 번 흔들고 곧 멈춘다', () => {
+        expect(openingShake(OPENING_CHORD_MS - 1)).toBe(0);
+        expect(openingShake(OPENING_CHORD_MS)).toBe(1);
+        expect(openingShake(OPENING_CHORD_MS + 400)).toBeLessThan(0.02);
+    });
+});
+
+describe('비정상 기동 (후두둑)', () => {
+    it('섬광 없이 로딩 화면을 걷으며 메인 화면을 드러내고, 끝나면 마친다', () => {
+        const start = fallFrame(0);
+        expect(start.cover).toBe(1);
+        let prev = 1;
+        for (let ms = 0; ms < FALL_END_MS; ms += 50) {
+            const f = fallFrame(ms);
+            expect(f.cover).toBeLessThanOrEqual(prev);
+            prev = f.cover;
+            expect(f.done).toBe(false);
+        }
+        expect(fallFrame(FALL_END_MS)).toMatchObject({ cover: 0, done: true });
+    });
+
+    it('글자는 제자리에서 아래로 점점 빨리 떨어진다', () => {
+        const from = { x: 40, y: 50 };
+        expect(fallPoint(from, 0, 0, 600)).toEqual(from);
+        const a = fallPoint(from, 200, 0, 600);
+        const b = fallPoint(from, 400, 0, 600);
+        expect(a.x).toBe(40);
+        expect(a.y).toBeGreaterThan(50);
+        expect(b.y - a.y).toBeGreaterThan(a.y - 50);
     });
 });
 

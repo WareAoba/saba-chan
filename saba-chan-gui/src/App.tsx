@@ -42,7 +42,13 @@ import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
 import { motionAllowed } from './hooks/useSwapAnimation';
-import { OPENING_READY_WAIT_MS, openingGate, RELAY_WAIT_MS, whenOpeningReady } from './utils/opening';
+import {
+    OPENING_READY_WAIT_MS,
+    type OpeningKind,
+    openingGate,
+    RELAY_WAIT_MS,
+    whenOpeningReady,
+} from './utils/opening';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
 import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
@@ -676,6 +682,8 @@ function App() {
     const [openingPhase, setOpeningPhase] = useState<'loading' | 'prepare' | 'play' | 'done'>(() =>
         showLoading ? 'loading' : 'done',
     );
+    const [openingKind, setOpeningKind] = useState<OpeningKind>('burst');
+    const appRef = useRef<HTMLDivElement>(null);
     const [loadingLeaving, setLoadingLeaving] = useState(false);
     const wasLoadingRef = useRef(showLoading);
     useEffect(() => {
@@ -710,6 +718,8 @@ function App() {
             (cb) => requestAnimationFrame(() => cb()),
         ).then(() => {
             if (!alive) return;
+            // 데몬·릴레이가 정상이면 기동음과 함께 터뜨리고, 아니면 소리 없이 후두둑
+            setOpeningKind(chimeRef.current.chime ? 'burst' : 'fall');
             playChime();
             setOpeningPhase('play');
         });
@@ -863,7 +873,11 @@ function App() {
                 initStatus={initStatus}
                 initProgress={100}
                 opening={openingPhase === 'play' ? 'play' : 'prepare'}
+                openingKind={openingKind}
                 onOpened={() => setOpeningPhase('done')}
+                onShake={(dx, dy) => {
+                    if (appRef.current) appRef.current.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : '';
+                }}
             />
         ) : loadingLeaving ? (
             <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={100} leaving />
@@ -874,7 +888,7 @@ function App() {
         <ExtensionProvider>
             <HostWindowContext.Provider value={hostWindow}>
             <TooltipProvider>
-                <div className="App">
+                <div className="App" ref={appRef}>
                     {anyPopoverOpen && (
                         <div
                             className="popover-backdrop"

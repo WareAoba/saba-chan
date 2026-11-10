@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from './Icon';
 import { WindowControls } from './shell/AppBar';
 import { logTokens, MatrixRain, type MatrixPull } from './shell/MatrixRain';
-import { openingFrame } from '../utils/opening';
+import { fallFrame, type OpeningKind, openingFrame, openingShake } from '../utils/opening';
 
 /**
  * LoadingScreen — displayed while daemon is initializing.
@@ -73,17 +73,26 @@ interface LoadingScreenProps {
     leaving?: boolean;
     /**
      * 오프닝 (utils/opening.ts). prepare: 메인 화면을 아래에 그리는 동안 로딩 화면 그대로 덮어 둔다.
-     * play: 떠 있던 콘솔 글자를 끌어모아 화음에 섬광과 함께 메인 화면을 연다. 끝나면 onOpened
+     * play: openingKind대로 메인 화면을 연다 (burst: 기동음과 함께 끌어모아 터뜨림, fall: 후두둑). 끝나면 onOpened
      */
     opening?: 'prepare' | 'play' | null;
+    openingKind?: OpeningKind;
     onOpened?: () => void;
+    /** 화음 순간 메인 화면을 흔들 만큼 (px). 끝나면 0, 0 */
+    onShake?: (dx: number, dy: number) => void;
 }
 
 /**
- * 오프닝 재생: 시작 시각과 로고 가운데를 정해 매트릭스에 넘기고, 같은 시계로 가운데 묶음·섬광을 움직인다.
- * 화음(메인 화면이 열리는 때)부터는 로딩 화면 바탕을 걷어 글자만 메인 화면 위에 흩어지게 둔다
+ * 오프닝 재생: 시작 시각과 로고 가운데를 정해 매트릭스에 넘기고, 같은 시계로 가운데 묶음·섬광·바탕을 움직인다.
+ * burst: 화음(메인 화면이 열리는 때)부터 바탕을 걷어 글자만 메인 화면 위에 흩어지게 두고, 화면을 한 번 흔든다(onShake).
+ * fall: 섬광 없이 바탕을 서서히 걷으며 가운데 묶음을 가라앉힌다
  */
-function useOpeningPlayback(playing: boolean, onOpened?: () => void) {
+function useOpeningPlayback(
+    playing: boolean,
+    kind: OpeningKind,
+    onOpened?: () => void,
+    onShake?: (dx: number, dy: number) => void,
+) {
     const rootRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
     const logoRef = useRef<HTMLDivElement>(null);
@@ -91,6 +100,8 @@ function useOpeningPlayback(playing: boolean, onOpened?: () => void) {
     const [target, setTarget] = useState<MatrixPull | null>(null);
     const onOpenedRef = useRef(onOpened);
     onOpenedRef.current = onOpened;
+    const onShakeRef = useRef(onShake);
+    onShakeRef.current = onShake;
 
     useEffect(() => {
         if (!playing) return undefined;
@@ -100,26 +111,62 @@ function useOpeningPlayback(playing: boolean, onOpened?: () => void) {
             start,
             x: box ? box.left + box.width / 2 : window.innerWidth / 2,
             y: box ? box.top + box.height / 2 : window.innerHeight / 2,
+            kind,
         });
         let raf = 0;
-        const tick = (now: number) => {
-            const f = openingFrame(now - start);
+        const finish = () => {
+            onShakeRef.current?.(0, 0);
+            onOpenedRef.current?.();
+        };
+        const tickBurst = (ms: number) => {
+            const f = openingFrame(ms);
             const content = contentRef.current;
             if (content) {
-                content.style.transform = `scale(${0.2 + 0.8 * f.content})`;
-                content.style.opacity = String(f.opened ? 0 : 0.1 + 0.9 * f.content);
+                content.style.transform = `scale(${0.15 + 0.85 * f.content})`;
+                content.style.opacity = String(f.opened ? 0 : 0.05 + 0.95 * f.content);
             }
             if (flashRef.current) flashRef.current.style.opacity = String(0.95 * f.flash);
-            rootRef.current?.classList.toggle('opened', f.opened);
-            if (f.done) {
-                onOpenedRef.current?.();
+            const root = rootRef.current;
+            root?.classList.toggle('opened', f.opened);
+            // 뒤에 흐리게 깔려 있던 콘솔이 끌려 오면서 또렷해진다 (--loading-matrix-opacity → 1)
+            const matrix = root?.querySelector<HTMLElement>('.loading-matrix');
+            if (matrix) matrix.style.opacity = f.opened ? '1' : `calc(var(--loading-matrix-opacity) + (1 - var(--loading-matrix-opacity)) * ${Math.min(1, f.pull * 3)})`;
+            const shake = openingShake(ms) * 6;
+            onShakeRef.current?.((Math.random() - 0.5) * 2 * shake, (Math.random() - 0.5) * 2 * shake);
+            return f.done;
+        };
+        const tickFall = (ms: number) => {
+            const f = fallFrame(ms);
+            const content = contentRef.current;
+            if (content) {
+                content.style.transform = `translateY(${f.sink * window.innerHeight * 0.06}px) scale(${1 - 0.04 * f.sink})`;
+                content.style.opacity = String(1 - f.sink);
+            }
+            const root = rootRef.current;
+            if (root) {
+                // 떨어지는 글자가 보이게 콘솔을 또렷하게 하고, 바탕·비네트·창 버튼은 함께 옅어진다 (App.css .loading-screen.falling)
+                const matrix = root.querySelector<HTMLElement>('.loading-matrix');
+                if (matrix) matrix.style.opacity = `calc(var(--loading-matrix-opacity) + (1 - var(--loading-matrix-opacity)) * ${0.8 * Math.min(1, ms / 150)})`;
+                root.classList.add('falling');
+                root.style.setProperty('--opening-cover', String(f.cover));
+                root.style.pointerEvents = f.cover < 0.5 ? 'none' : '';
+            }
+            return f.done;
+        };
+        const tick = (now: number) => {
+            const done = kind === 'fall' ? tickFall(now - start) : tickBurst(now - start);
+            if (done) {
+                finish();
                 return;
             }
             raf = requestAnimationFrame(tick);
         };
         raf = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(raf);
-    }, [playing]);
+        return () => {
+            cancelAnimationFrame(raf);
+            onShakeRef.current?.(0, 0);
+        };
+    }, [playing, kind]);
 
     return { rootRef, contentRef, logoRef, flashRef, target: playing ? target : null };
 }
@@ -133,12 +180,14 @@ export function LoadingScreen({
     onContinue,
     leaving = false,
     opening = null,
+    openingKind = 'burst',
     onOpened,
+    onShake,
 }: LoadingScreenProps) {
     const { t } = useTranslation('gui');
     const [retrying, setRetrying] = useState(false);
     const { line: log, tokens } = useDaemonLog(!failed && !leaving && !opening);
-    const pull = useOpeningPlayback(opening === 'play', onOpened);
+    const pull = useOpeningPlayback(opening === 'play', openingKind, onOpened, onShake);
 
     return (
         <div

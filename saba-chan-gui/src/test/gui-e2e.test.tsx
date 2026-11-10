@@ -332,6 +332,31 @@ describe('로딩 스크린 상태 머신', () => {
         });
     });
 
+    it('데몬 없이 열면 기동음 없이 후두둑 오프닝으로 메인 화면을 드러낸다', async () => {
+        const playSound = vi.fn();
+        window.api = createApiMock({
+            daemonStatus: vi.fn().mockRejectedValue(new Error('not running')),
+            onStatusUpdate: vi.fn((cb) => {
+                statusCallback = cb;
+            }),
+            playSound,
+        });
+        const { container } = await act(async () => render(<App />));
+        await act(async () => {
+            statusCallback!({ step: 'daemon_failed', message: '데몬 시작 실패' });
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /Open anyway/i }));
+        });
+        await waitFor(() => expect(container.querySelector('.loading-screen.falling')).toBeInTheDocument(), {
+            timeout: 3000,
+        });
+        await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
+            timeout: 3000,
+        });
+        expect(playSound).not.toHaveBeenCalled();
+    });
+
     it('데몬 기동 실패 → [다시 시도]가 실패하면 그 이유를, 성공하면 ready를 기다려 메인 UI', async () => {
         const daemonRestart = vi
             .fn()
@@ -451,7 +476,8 @@ describe('로딩 스크린 상태 머신', () => {
     });
 
     it('로딩이 끝나면 메인 화면을 로딩 화면 아래에 먼저 그리고, 오프닝을 재생한 뒤 로딩 화면을 걷는다', async () => {
-        window.api = createApiMock({ playSound: vi.fn() });
+        const playSound = vi.fn();
+        window.api = createApiMock({ playSound });
         const { container } = await act(async () => render(<App />));
         // 메인 화면이 이미 그려진 채로 로딩 화면이 덮고 있다
         await waitFor(
@@ -464,6 +490,8 @@ describe('로딩 스크린 상태 머신', () => {
         await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
             timeout: 5000,
         });
+        // 릴레이를 아직 안 붙였으면 실패한 것이 없으니 기동음과 함께 터뜨리는 쪽이다
+        expect(playSound).toHaveBeenCalledWith('startup');
     });
 });
 

@@ -1,6 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { motionAllowed } from '../../hooks/useSwapAnimation';
-import { burstPoint, openingFrame, pullPoint } from '../../utils/opening';
+import {
+    fallFrame,
+    fallPoint,
+    OPENING_CHORD_MS,
+    type OpeningKind,
+    openingFrame,
+    pullPoint,
+    scatterPoint,
+} from '../../utils/opening';
 
 // 서버 콘솔에서 흘러갈 법한 조각들: 짧은 로그 낱말과 16진수
 const WORDS = [
@@ -48,12 +56,34 @@ interface Glyph {
     age: number;
 }
 
-/** 오프닝 재생: 시작 시각(performance.now)과 글자를 끌어모을 가운데 (캔버스 기준) */
+/** 오프닝 재생: 시작 시각(performance.now)과 글자를 끌어모을 가운데 (캔버스 기준), 정상(burst)·비정상(fall) */
 export interface MatrixPull {
     start: number;
     x: number;
     y: number;
+    kind: OpeningKind;
 }
+
+/** 오프닝에서 움직이는 낱말 하나: 떠 있던 자리·밝기는 그대로, 회전·흩뿌릴 방향·떨어지는 빠르기만 무작위 */
+interface Word {
+    text: string;
+    /** 낱말 가운데 */
+    x: number;
+    y: number;
+    width: number;
+    color: string;
+    seen: number;
+    spin: number;
+    angle: number;
+    dist: number;
+    v0: number;
+    delay: number;
+}
+
+const smooth = (x: number, a: number, b: number) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+};
 
 /** 줄기 하나 */
 interface Column {
@@ -122,6 +152,9 @@ export function MatrixRain({
 
         let cols: Column[] = [];
         let glyphs: Glyph[] = [];
+        let words: Word[] = [];
+        let wordsFor = -1;
+        let mono = 'monospace';
         let rows = 0;
         let w = 0;
         let h = 0;
@@ -143,7 +176,8 @@ export function MatrixRain({
             canvas.width = Math.round(w * dpr);
             canvas.height = Math.round(h * dpr);
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            ctx.font = `${FONT_PX}px ${readColor(canvas, '--font-mono', 'monospace')}`;
+            mono = readColor(canvas, '--font-mono', 'monospace');
+            ctx.font = `${FONT_PX}px ${mono}`;
             ctx.textBaseline = 'top';
             const gap = FONT_PX * 4.2;
             rows = Math.ceil(h / LINE);
@@ -188,27 +222,144 @@ export function MatrixRain({
             }
         };
 
-        // 오프닝: 떠 있던 글자를 그 밝기 그대로 가운데로 끌어모으고, 화음에 온 방향으로 흩뿌린다
-        const drawPull = (p: MatrixPull, now: number) => {
-            const f = openingFrame(now - p.start);
+        // 오프닝을 시작할 때 화면에 떠 있던 글자를 낱말 단위로 붙잡는다
+        const takeWords = (p: MatrixPull) => {
+            ctx.font = `${FONT_PX}px ${mono}`;
+            const reach = Math.hypot(w, h) * 0.6;
+            words = glyphs.map((g) => {
+                const width = ctx.measureText(g.text).width;
+                return {
+                    text: g.text,
+                    x: g.x + width / 2,
+                    y: g.y + FONT_PX / 2,
+                    width,
+                    color: g.color,
+                    seen: KEEP ** g.age,
+                    spin: (Math.random() < 0.5 ? -1 : 1) * (0.6 + Math.random() * 2.4),
+                    angle: Math.random() * Math.PI * 2,
+                    dist: (0.25 + Math.random() * 0.85) * reach,
+                    v0: Math.random() * h * 0.15,
+                    delay: Math.random() * 120 * (1 - g.y / Math.max(1, h)),
+                };
+            });
+            wordsFor = p.start;
+        };
+
+        const drawWord = (word: Word, x: number, y: number, angle: number, scale: number, font: string) => {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            if (scale !== 1) ctx.scale(scale, scale);
+            ctx.font = font;
+            ctx.fillText(word.text, 0, 0);
+            ctx.restore();
+        };
+
+        const glow = (x: number, y: number, r: number, alpha: number) => {
+            if (alpha <= 0.003) return;
+            const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+            g.addColorStop(0, head);
+            g.addColorStop(1, 'transparent');
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = g;
+            ctx.fillRect(x - r, y - r, r * 2, r * 2);
+        };
+
+        // 정상 기동: 같은 규칙의 곡선으로 끌어모아 먼지로 합치고, 화음에 충격파와 함께 무작위로 흩뿌린다
+        const drawBurst = (p: MatrixPull, ms: number) => {
+            const f = openingFrame(ms);
             const center = { x: p.x, y: p.y };
+            const small = Math.min(w, h);
+            const font = `${FONT_PX}px ${mono}`;
+            if (!f.opened) {
+                glow(p.x, p.y, small * (0.1 + 0.2 * f.pull), 0.8 * f.pull);
+                glow(p.x, p.y, small * 0.06, 0.9 * f.pull * f.pull);
+                const u = ms / OPENING_CHORD_MS;
+                for (const word of words) {
+                    const e = f.pull;
+                    const at = pullPoint(word, center, e);
+                    const angle = word.spin * Math.PI * e;
+                    const wordAlpha = (word.seen + (1 - word.seen) * u) * (1 - smooth(e, 0.45, 0.75));
+                    if (wordAlpha > 0.02) {
+                        ctx.globalAlpha = wordAlpha;
+                        ctx.fillStyle = e > 0.15 ? head : word.color;
+                        drawWord(word, at.x, at.y, angle, 1 - 0.35 * e, font);
+                    }
+                    // 가운데 가까이에서 낱말이 먼지로 부서진다 (낱말 길이만큼 늘어선 점이 함께 줄어든다)
+                    const dust = smooth(e, 0.3, 0.6) * (1 - smooth(e, 0.97, 1));
+                    if (dust > 0.02) {
+                        ctx.globalAlpha = dust;
+                        ctx.fillStyle = head;
+                        const n = Math.max(2, Math.min(6, word.text.length + 1));
+                        const span = word.width * (1 - e);
+                        for (let i = 0; i < n; i++) {
+                            const o = (i / (n - 1) - 0.5) * span;
+                            ctx.fillRect(at.x + Math.cos(angle) * o - 0.8, at.y + Math.sin(angle) * o - 0.8, 1.6, 1.6);
+                        }
+                    }
+                }
+                return;
+            }
+            const b = f.burst;
+            const bold = `600 ${FONT_PX * (1.2 - 0.25 * b)}px ${mono}`;
+            const alpha = (1 - b) ** 1.4;
+            ctx.strokeStyle = head;
+            ctx.lineWidth = 1;
+            for (const word of words) {
+                const at = scatterPoint(center, word.angle, word.dist, b);
+                const tail = scatterPoint(center, word.angle, word.dist, Math.max(0, b - 0.06));
+                ctx.globalAlpha = alpha * 0.4;
+                ctx.beginPath();
+                ctx.moveTo(tail.x, tail.y);
+                ctx.lineTo(at.x, at.y);
+                ctx.stroke();
+                ctx.globalAlpha = alpha * Math.max(word.seen, 0.55);
+                ctx.fillStyle = head;
+                drawWord(word, at.x, at.y, word.spin * Math.PI * (1 + 1.5 * b), 1, bold);
+            }
+            // 충격파 두 겹
+            const wave = (ms - OPENING_CHORD_MS) / 550;
+            if (wave < 1) {
+                const r = (1 - (1 - wave) ** 3) * Math.hypot(w, h) * 0.7;
+                for (const [scale, width, a, color] of [
+                    [1, 10, 1, head],
+                    [0.9, 18, 0.5, ink],
+                ] as const) {
+                    ctx.globalAlpha = a * (1 - wave) ** 1.3;
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = Math.max(0.5, (1 - wave) * width);
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, r * scale, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+        };
+
+        // 비정상 기동: 낱말이 제자리에서 후두둑 떨어진다
+        const drawFall = (ms: number) => {
+            const f = fallFrame(ms);
+            const font = `${FONT_PX}px ${mono}`;
+            for (const word of words) {
+                const t = ms - word.delay;
+                const at = fallPoint(word, t, word.v0, h);
+                if (at.y > h + 20) continue;
+                ctx.globalAlpha = word.seen * f.glyphs;
+                ctx.fillStyle = word.color;
+                drawWord(word, at.x, at.y, (word.spin * 0.4 * Math.max(0, t)) / 1000, 1, font);
+            }
+        };
+
+        const drawPull = (p: MatrixPull, now: number) => {
+            if (wordsFor !== p.start) takeWords(p);
             ctx.clearRect(0, 0, w, h);
-            if (!f.opened && f.pull > 0) {
-                const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, Math.max(40, Math.min(w, h) * 0.22));
-                g.addColorStop(0, head);
-                g.addColorStop(1, 'transparent');
-                ctx.globalAlpha = 0.55 * f.pull * f.pull;
-                ctx.fillStyle = g;
-                ctx.fillRect(0, 0, w, h);
-            }
-            for (const glyph of glyphs) {
-                const seen = KEEP ** glyph.age;
-                const at = f.opened ? burstPoint(glyph, center, f.burst) : pullPoint(glyph, center, f.pull);
-                ctx.globalAlpha = f.opened ? (1 - f.burst) ** 1.6 * Math.max(seen, 0.5) : seen + (1 - seen) * f.pull;
-                ctx.fillStyle = f.opened || f.pull > 0.35 ? head : glyph.color;
-                ctx.fillText(glyph.text, at.x, at.y);
-            }
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            if (p.kind === 'fall') drawFall(now - p.start);
+            else drawBurst(p, now - p.start);
             ctx.globalAlpha = 1;
+            ctx.textAlign = 'start';
+            ctx.textBaseline = 'top';
+            ctx.font = `${FONT_PX}px ${mono}`;
         };
 
         const loop = (now: number) => {

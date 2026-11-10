@@ -29,9 +29,13 @@ export function openingGate(s: OpeningInput): { hold: boolean; chime: boolean } 
 }
 
 /*
- * 오프닝 애니메이션: 로딩 화면에 실제로 떠 있던 콘솔 글자를 가운데로 쭉 끌어모으다가, 기동음의 마지막 음(화음)에
- * 섬광과 함께 메인 화면을 열고 글자를 온 방향으로 다시 흩뿌린다. 메인 화면은 재생 전에 로딩 화면 아래에 다 그려 둔다.
+ * 오프닝 애니메이션. 메인 화면은 재생 전에 로딩 화면 아래에 다 그려 둔다.
+ * - 정상 기동(burst, 기동음과 함께): 로딩 화면에 실제로 떠 있던 콘솔 낱말을 모두 같은 규칙의 곡선으로 가운데로 쭉
+ *   끌어모으고(낱말마다 회전만 무작위), 가운데에서 먼지로 부서져 합쳐진다. 기동음의 마지막 음(화음)에 섬광·충격파·
+ *   화면 흔들림과 함께 메인 화면을 열고 낱말을 무작위 방향·거리로 흩뿌린다.
+ * - 비정상 기동(fall, 소리 없음): 낱말이 제자리에서 후두둑 떨어지고 로고가 가라앉으며 메인 화면이 드러난다.
  */
+export type OpeningKind = 'burst' | 'fall';
 
 /** 기동음의 마지막 음(도·라·도 화음)이 울리는 때. 248 BPM 네 번째 박 (app-startup.wav) */
 export const OPENING_CHORD_MS = 726;
@@ -92,10 +96,48 @@ export function pullPoint(from: Point, center: Point, pull: number): Point {
     return { x: center.x + Math.cos(a) * r, y: center.y + Math.sin(a) * r };
 }
 
-/** 터져 나가는 글자의 자리: 끌려 온 방향 그대로, 처음 자리보다 멀리 */
-export function burstPoint(from: Point, center: Point, burst: number): Point {
-    const k = 1.4 * (1 - (1 - clamp01(burst)) ** 3);
-    return { x: center.x + (from.x - center.x) * k, y: center.y + (from.y - center.y) * k };
+/** 흩뿌려지는 낱말의 자리: 낱말마다 정해 준 방향(angle)·거리(dist)로, 처음엔 빠르고 끝에서 느려진다 */
+export function scatterPoint(center: Point, angle: number, dist: number, burst: number): Point {
+    const k = dist * (1 - (1 - clamp01(burst)) ** 3);
+    return { x: center.x + Math.cos(angle) * k, y: center.y + Math.sin(angle) * k };
+}
+
+/** 화음 순간 화면 흔들림 세기 0..1 (곧 잦아든다) */
+export function openingShake(ms: number): number {
+    if (ms < OPENING_CHORD_MS) return 0;
+    return Math.exp(-(ms - OPENING_CHORD_MS) / 90);
+}
+
+/** 후두둑: 로딩 화면이 걷히는 길이 */
+export const FALL_END_MS = 900;
+
+export interface FallFrame {
+    /** 로딩 화면 바탕이 덮는 정도 1..0 */
+    cover: number;
+    /** 가운데 묶음이 가라앉은 정도 0..1 */
+    sink: number;
+    /** 떨어지는 글자의 불투명도 */
+    glyphs: number;
+    done: boolean;
+}
+
+export function fallFrame(ms: number): FallFrame {
+    const smooth = (a: number, b: number) => {
+        const x = clamp01((ms - a) / (b - a));
+        return x * x * (3 - 2 * x);
+    };
+    return {
+        cover: 1 - smooth(100, 550),
+        sink: smooth(50, 450),
+        glyphs: 1 - smooth(550, FALL_END_MS),
+        done: ms >= FALL_END_MS,
+    };
+}
+
+/** 떨어지는 글자의 자리: 제자리에서 처음 빠르기 v0(px/s)로 시작해 화면 높이에 맞춘 중력으로 떨어진다 */
+export function fallPoint(from: Point, ms: number, v0: number, height: number): Point {
+    const s = Math.max(0, ms) / 1000;
+    return { x: from.x, y: from.y + v0 * s + 0.5 * 2.6 * height * s * s };
 }
 
 /**
