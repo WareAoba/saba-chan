@@ -16,6 +16,8 @@ import { SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor'
 import { useDaemonTarget } from '../shell/DaemonSwitcher';
 import { OtherDaemons } from '../shell/OtherDaemons';
 import { DaemonDownNotice, DaemonDownState, daemonDown } from './DaemonDown';
+import { FirstRunGuide } from '../guides/FirstRunGuide';
+import { useGuideStore } from '../guides/guides';
 import { OnboardingCard } from './OnboardingCard';
 import type { ServerConsoleProps, ServerSettingsProps } from './ServerDetail';
 import { ServerDetail } from './ServerDetail';
@@ -81,6 +83,18 @@ export function ServersPage({
         if (revealServerCount > 0) setShowDetailNarrow(true);
     }, [revealServerCount]);
 
+    // 처음 시작하기: 서버 수·켜진 서버 수가 바뀌면 다음 할 일을 다시 묻는다 (첫 시작·디스코드 연결을 반영)
+    const runningCount = servers.filter((s) => s.status === 'running').length;
+    const activeTab = useUIStore((s) => s.activeTab);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 서버 수·켜진 수가 바뀔 때 다시 묻는 것이 목적이다
+    useEffect(() => {
+        if (activeTab === 'servers') useGuideStore.getState().refreshOnboarding();
+    }, [servers.length, runningCount, activeTab]);
+    const guideStep = useGuideStore((s) => s.step);
+    const firstRunClosed = useSettingsStore((s) => s.closedGuides.includes('firstRun'));
+    const settingsReady = useSettingsStore((s) => s.settingsReady);
+    const discordDone = useGuideStore((s) => s.onboarding?.steps.find((x) => x.id === 'discord')?.done);
+
     // 선택이 비었거나 사라졌으면 첫 서버를 고른다
     useEffect(() => {
         if (servers.length === 0) return;
@@ -102,6 +116,12 @@ export function ServersPage({
     // 데몬이 꺼져 있으면 목록이 비어 보여도 서버가 없는 게 아니다
     if (servers.length === 0 && isDaemonDown) return <DaemonDownState />;
 
+    // 가이드를 열었거나, 서버가 없고 처음 시작하기를 닫지 않았으면 가이드 화면
+    if (guideStep) return <FirstRunGuide step={guideStep} />;
+    if (servers.length === 0 && settingsReady && !firstRunClosed) {
+        return <FirstRunGuide step={discordDone ? 'fork' : 'welcome'} />;
+    }
+
     if (servers.length === 0) {
         return (
             <div className={clsx('page page-empty', { 'with-other-daemons': unified })}>
@@ -118,6 +138,7 @@ export function ServersPage({
                     <button type="button" className="btn btn-primary btn-lg" onClick={onAddServer}>
                         <Icon name="plus" size="sm" /> {t('shell.add_server')}
                     </button>
+                    <OnboardingCard />
                 </div>
                 {/* 고른 데몬에 서버가 없어도 다른 데몬의 서버는 보인다 */}
                 {unified && daemonTarget !== undefined && <OtherDaemons currentTarget={daemonTarget} />}
@@ -148,7 +169,7 @@ export function ServersPage({
                         )}
                     </div>
                     {isDaemonDown && <DaemonDownNotice />}
-                    <OnboardingCard onAddServer={onAddServer} refreshKey={servers.length} />
+                    <OnboardingCard />
                     {failedModules.length > 0 && (
                         // 모듈이 목록에서 사라진 이유를 알려준다 (module.toml 오류 등)
                         <details className="notice tone-warn module-failures">

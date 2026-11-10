@@ -563,6 +563,17 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                     if !notices.is_empty() {
                         response["notices"] = json!(notices);
                     }
+                    // 가져온 시점을 백업으로 남긴다 (사용자 결정 2026-11-08): 어긋나면 이때로 되돌린다.
+                    // 수동 백업이라 정리에서 빠진다. 기다리지 않고, 실패해도 가져오기는 그대로다
+                    let backup_state = state.clone();
+                    let backup_id = id.clone();
+                    tokio::spawn(async move {
+                        match super::backup::take_backup(&backup_state, &backup_id, crate::backup::BackupKind::Manual).await {
+                            Ok(Some(b)) => tracing::info!("Migration: first backup '{}' of '{}'", b.name, backup_id),
+                            Ok(None) => tracing::info!("Migration: nothing to back up for '{}'", backup_id),
+                            Err(_) => tracing::warn!("Migration: first backup of '{}' failed", backup_id),
+                        }
+                    });
                     created(response)
                 }
             }
@@ -2864,6 +2875,40 @@ mod tests {
         assert!(state.supervisor.read().await.instance_store.list().is_empty());
         let left: Vec<_> = std::fs::read_dir(tmp.path().join("instances")).unwrap().flatten().map(|e| e.file_name()).filter(|n| n != "order.json" && n != crate::instance::STATE_DIR).collect();
         assert!(left.is_empty(), "instance folders left: {:?}", left);
+    }
+
+    /// 가져오면 그 시점을 수동 백업으로 남긴다 (모듈 `[backup] paths`의 월드)
+    #[tokio::test]
+    async fn an_imported_server_gets_a_first_backup() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(server.join("world")).unwrap();
+        std::fs::write(server.join("world").join("level.dat"), "world").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[backup]\npaths = ['world']\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import sys\nprint('{\"success\":true,\"functions\":[]}' if sys.argv[1] == 'functions' else '{\"success\":true}')\n").unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let response = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game", "migration_source":server}))).await).await;
+        assert_eq!(response.status.as_u16(), 201, "{}", response.body);
+        let id = response.body["id"].as_str().unwrap().to_string();
+        let backups = tmp.path().join("instances").join(&id).join("backups");
+        let mut made = Vec::new();
+        for _ in 0..100 {
+            made = crate::backup::list(&backups);
+            if !made.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert_eq!(made.len(), 1, "one backup right after the import");
+        assert_eq!(made[0].kind, crate::backup::BackupKind::Manual, "kept out of pruning");
     }
 
     /// 가져온 서버를 지우면(연결 해제) 서버 폴더는 남고, 사바쨩이 고친 게임 설정 파일은 가져오기 전 내용으로 돌아간다.

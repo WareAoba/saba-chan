@@ -127,18 +127,48 @@ pub async fn onboarding(State(state): State<IPCServer>) -> impl IntoResponse {
 
 /// 지금의 온보딩 단계 (`GET /api/onboarding`과 relay 하트비트가 같이 쓴다)
 pub(crate) async fn onboarding_now(state: &IPCServer) -> serde_json::Value {
-    let (modules, servers) = {
+    let (modules, servers, running) = {
         let sup = state.supervisor.read().await;
-        (sup.list_modules().map(|m| m.len()).unwrap_or(0), sup.instance_store.list().len())
+        let servers = sup.instance_store.list();
+        let mut running = false;
+        for i in servers {
+            if sup.is_running(&i.id).await {
+                running = true;
+                break;
+            }
+        }
+        (sup.list_modules().map(|m| m.len()).unwrap_or(0), servers.len(), running)
     };
-    let paired = state.relay_agent.status().has_token;
-    let chatbot = state.config_store.get_chatbot().api_key.is_some_and(|k| !k.trim().is_empty());
-    onboarding_steps(modules, servers, paired, chatbot)
+    onboarding_steps(&Progress {
+        paired: state.relay_agent.status().has_token,
+        modules,
+        servers,
+        started: running || started_before(&state.config_store),
+        chatbot: state.config_store.get_chatbot().api_key.is_some_and(|k| !k.trim().is_empty()),
+    })
 }
 
-/// `{steps:[{id, done, optional}], next}`: `next`는 아직 안 한 첫 필수 단계 (다 했으면 null)
-fn onboarding_steps(modules: usize, servers: usize, paired: bool, chatbot: bool) -> serde_json::Value {
-    let steps = [("module", modules > 0, false), ("server", servers > 0, false), ("discord", paired, false), ("chatbot", chatbot, true)];
+/// 온보딩 단계를 가르는 지금 상태
+#[derive(Default)]
+struct Progress {
+    paired: bool,
+    modules: usize,
+    servers: usize,
+    /// 서버를 한 번이라도 켰다 (지금 켜져 있거나 `onboarding.started`)
+    started: bool,
+    chatbot: bool,
+}
+
+/// `{steps:[{id, done, optional}], next}`: `next`는 아직 안 한 첫 필수 단계 (다 했으면 null).
+/// 디스코드 연결이 먼저다 (사용자 결정 2026-11-09): 연결하면 친구 접속 주소·포트 확인도 바로 쓴다
+fn onboarding_steps(p: &Progress) -> serde_json::Value {
+    let steps = [
+        ("discord", p.paired, false),
+        ("module", p.modules > 0, false),
+        ("server", p.servers > 0, false),
+        ("start", p.started, false),
+        ("chatbot", p.chatbot, true),
+    ];
     let next = steps.iter().find(|(_, done, optional)| !done && !optional).map(|(id, _, _)| *id);
     json!({
         "steps": steps.iter().map(|(id, done, optional)| json!({ "id": id, "done": done, "optional": optional })).collect::<Vec<_>>(),
@@ -146,17 +176,66 @@ fn onboarding_steps(modules: usize, servers: usize, paired: bool, chatbot: bool)
     })
 }
 
+/// 첫 시작을 남기는 config.json 칸 (`onboarding.started`). 서버를 지우거나 꺼 둬도 단계가 되돌아가지 않게 남긴다
+const ONBOARDING_SECTION: &str = "onboarding";
+
+fn started_before(store: &crate::config_store::ConfigStore) -> bool {
+    store.get_client_section(ONBOARDING_SECTION).ok().and_then(|v| v.get("started").and_then(|s| s.as_bool())).unwrap_or(false)
+}
+
+fn note_started(store: &crate::config_store::ConfigStore) {
+    if started_before(store) {
+        return;
+    }
+    if let Err(e) = store.merge_client_section(ONBOARDING_SECTION, json!({ "started": true })) {
+        tracing::warn!("Could not remember the first server start: {}", e);
+    }
+}
+
+/// 서버가 처음 켜지면(`instance.started`) 온보딩 "서버 시작해 보기"를 끝낸 것으로 남긴다. 이미 남겼으면 듣지 않는다
+pub(crate) async fn watch_first_start(state: IPCServer) {
+    if started_before(&state.config_store) {
+        return;
+    }
+    let mut sub = crate::events::bus().subscribe(None);
+    loop {
+        match sub.rx.recv().await {
+            Ok(event) if event.kind == "instance.started" => {
+                note_started(&state.config_store);
+                return;
+            }
+            Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn onboarding_points_at_the_first_required_step_left() {
-        assert_eq!(onboarding_steps(0, 0, false, false)["next"], "module");
-        assert_eq!(onboarding_steps(2, 0, true, true)["next"], "server");
-        assert_eq!(onboarding_steps(2, 1, false, true)["next"], "discord");
-        let done = onboarding_steps(2, 1, true, false);
+    fn onboarding_starts_with_discord_and_ends_with_a_first_start() {
+        let ids: Vec<_> = onboarding_steps(&Progress::default())["steps"].as_array().unwrap().iter().map(|s| s["id"].clone()).collect();
+        assert_eq!(ids, ["discord", "module", "server", "start", "chatbot"]);
+        assert_eq!(onboarding_steps(&Progress::default())["next"], "discord");
+        let p = |paired, modules, servers, started| Progress { paired, modules, servers, started, chatbot: false };
+        assert_eq!(onboarding_steps(&p(true, 0, 0, false))["next"], "module");
+        assert_eq!(onboarding_steps(&p(true, 2, 0, false))["next"], "server");
+        assert_eq!(onboarding_steps(&p(true, 2, 1, false))["next"], "start");
+        assert_eq!(onboarding_steps(&p(false, 2, 1, true))["next"], "discord", "skipping discord in the app does not finish the step");
+        let done = onboarding_steps(&p(true, 2, 1, true));
         assert!(done["next"].is_null(), "the chatbot is optional");
-        assert_eq!(done["steps"][3], json!({ "id": "chatbot", "done": false, "optional": true }));
+        assert_eq!(done["steps"][4], json!({ "id": "chatbot", "done": false, "optional": true }));
+    }
+
+    #[test]
+    fn a_first_start_is_remembered_once_and_survives_without_running_servers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = crate::config_store::ConfigStore::new(tmp.path());
+        assert!(!started_before(&store));
+        note_started(&store);
+        note_started(&store);
+        assert!(started_before(&crate::config_store::ConfigStore::new(tmp.path())), "kept in config.json");
     }
 }

@@ -140,6 +140,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             Some("module") => Some((t!("status.next_module"), "saba-chan-cli module install <module>")),
             Some("server") => Some((t!("status.next_server"), "saba-chan-cli server add")),
             Some("discord") => Some((t!("status.next_discord"), "saba-chan-cli bot pair")),
+            Some("start") => Some((t!("status.next_start"), "saba-chan-cli server start <server>")),
             _ => None,
         };
         if let Some((text, cmd)) = step {

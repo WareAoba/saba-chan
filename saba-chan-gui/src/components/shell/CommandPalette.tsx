@@ -9,6 +9,7 @@ import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { failed } from '../../utils/apiResult';
+import { GUIDE_ENTRIES, openGuide } from '../guides/guides';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -37,6 +38,8 @@ interface PaletteAction {
     kind?: string;
     risk?: string;
     input?: InputSchema;
+    /** 앱 안에서만 하는 일 (가이드 열기). 데몬에 묻지 않고 부른 뒤 팔레트를 닫는다 */
+    open?: () => void;
 }
 
 interface InputField {
@@ -247,7 +250,12 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
         };
     }, [server?.id, t, i18n.language]);
 
-    const shown = useMemo(() => filterActions(actions || [], query), [actions, query]);
+    // 가이드 다시 열기 (사용자 11-10): 데몬 액션 뒤에 붙인다
+    const guideActions = useMemo<PaletteAction[]>(
+        () => GUIDE_ENTRIES.map((g) => ({ id: `guide.${g.id}`, title: t('guides.palette', { name: t(`guides.entry_${g.id}`) }), open: () => openGuide(g.id) })),
+        [t],
+    );
+    const shown = useMemo(() => filterActions([...(actions || []), ...guideActions], query), [actions, guideActions, query]);
     const fields = useMemo(() => inputFields(chosen?.input), [chosen]);
     const instanceOf = (a?: PaletteAction | null) => (a?.scope === 'instance' ? server?.id : undefined);
 
@@ -297,6 +305,11 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
 
     const choose = (action?: PaletteAction) => {
         if (!action || busy) return;
+        if (action.open) {
+            action.open();
+            onClose();
+            return;
+        }
         if (action.scope === 'instance' && !server) {
             setError(t('palette.need_server'));
             return;
