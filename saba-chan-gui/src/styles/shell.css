@@ -209,16 +209,8 @@
     position: relative;
     display: flex;
 }
-.popover-anchor .background-modal-container,
-.popover-anchor .notice-modal-container {
-    position: absolute;
-    top: calc(100% + 10px);
-    right: 0;
-    left: auto;
-    z-index: 1100;
-}
 /* 알림 말풍선 꼬리: 종 버튼(32px) 가운데 아래 (패널 오른쪽 끝 = 버튼 오른쪽 끝) */
-.popover-anchor .notice-modal-container::before {
+.saba-popover .notice-modal-container::before {
     right: calc(16px - 8px);
 }
 /* 익스텐션 아이콘 버튼(`AppBar.actions`)과 그 작은 창 */
@@ -229,11 +221,6 @@
 }
 .saba-popover.ext-popover {
     width: min(360px, calc(100vw - 32px));
-}
-.popover-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 999;
 }
 
 /* ── 본문 ── */
@@ -1421,7 +1408,7 @@ button.activity-line:hover {
 }
 
 /* ── 데몬(백그라운드 서비스) 팝업: 상태 → 할 일 → 연결 정보 → 보조 동작 순 ── */
-.popover-anchor .bg-pop {
+.saba-popover .bg-pop {
     width: 340px;
     padding: var(--sp-4);
     gap: var(--sp-3);

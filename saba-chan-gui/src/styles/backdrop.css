@@ -52,7 +52,7 @@
 :root[data-backdrop="on"] .palette,
 :root[data-backdrop="on"] .saba-popover,
 :root[data-backdrop="on"] .saba-dialog,
-:root[data-backdrop="on"] .popover-anchor .bg-pop,
+:root[data-backdrop="on"] .saba-popover .bg-pop,
 :root[data-backdrop="on"] .update-pill-pop,
 :root[data-backdrop="on"] .activity-console-pop,
 :root[data-backdrop="on"] .dc-savebar {

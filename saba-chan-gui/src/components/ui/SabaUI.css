@@ -453,6 +453,21 @@
     transform-origin: var(--radix-popover-content-transform-origin);
     animation: sabaPopIn 0.22s var(--ease-spring);
 }
+/* 안 내용이 자기 창 모양을 그릴 때: 자리·여닫기만 맡는다 */
+.saba-popover.bare {
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+/* 안 창이 예전처럼 단추 기준 absolute로 놓이려 해도 Popover 자리에 그대로 둔다 */
+.saba-popover.bare > * {
+    position: relative;
+    inset: auto;
+    margin: 0;
+}
 .saba-popover:focus-visible {
     outline: none;
 }
