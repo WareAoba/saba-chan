@@ -141,26 +141,18 @@ const SLIDE_MS = 360;
 
 /** 내용이 바뀔 때 위로 밀려 올라가며 바뀌고, 새 글자 위로 빛이 한 번 지나간다 */
 function Ticker({ id, children }: { id: string; children: ReactNode }) {
-    const [items, setItems] = useState<{ id: string; node: ReactNode; state: string }[]>([
-        { id, node: children, state: 'still' },
-    ]);
+    const [items, setItems] = useState<{ id: string; node: ReactNode; state: string }[]>([{ id, node: children, state: 'still' }]);
     useEffect(() => {
         setItems((prev) => {
             const cur = prev[prev.length - 1];
             if (cur.id === id) return [...prev.slice(0, -1), { ...cur, node: children }];
-            return [
-                { ...cur, state: 'leaving' },
-                { id, node: children, state: 'entering' },
-            ];
+            return [{ ...cur, state: 'leaving' }, { id, node: children, state: 'entering' }];
         });
     }, [id, children]);
     useEffect(() => {
         if (!items.some((it) => it.state !== 'still')) return;
         const timer = setTimeout(
-            () =>
-                setItems((prev) =>
-                    prev.filter((it) => it.state !== 'leaving').map((it) => ({ ...it, state: 'still' })),
-                ),
+            () => setItems((prev) => prev.filter((it) => it.state !== 'leaving').map((it) => ({ ...it, state: 'still' }))),
             SLIDE_MS,
         );
         return () => clearTimeout(timer);

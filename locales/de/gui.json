@@ -2233,7 +2233,6 @@
     "enabled": "Remote-Verbindungen erlauben",
     "enabled_description": "Deine anderen PCs verbinden sich direkt über eine verschlüsselte Verbindung mit diesem Daemon.",
     "port": "Port",
-    "save": "Speichern",
     "status_off": "Aus",
     "status_listening": "Wartet auf Port {{port}}",
     "status_published": "Deine anderen PCs kennen diesen PC jetzt",

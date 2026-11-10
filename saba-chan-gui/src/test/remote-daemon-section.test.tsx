@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { olderVersion, RemoteDaemonSection } from '../components/Modals/RemoteDaemonSection';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { pickOption } from './dropdown';
+import { SaveBarHost } from '../components/ui/SaveBar';
 
 const settings = {
     enabled: true,
@@ -281,15 +282,30 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
     });
 
     // 주소는 내 PC 카드의 게임 서버 주소 줄 한 칸에서 정한다 (PublicAddress, 사용자 결정 2026-11-10): 여기서는 켬·포트만
-    it('이 PC를 열면 켬·포트를 저장하고 데몬이 준 상태를 보인다', async () => {
+    // 켬은 바로 저장한다. 포트는 다 친 뒤 저장 막대로 묻는다 (사용자 11-11: 즉시 저장 + 어쩔 수 없는 것만 아래 막대)
+    it('켜면 바로 저장하고 데몬이 준 상태를 보인다', async () => {
         vi.mocked(window.api.remoteSettings).mockResolvedValue({ ...settings, enabled: false, status: { listening: false, published: false } });
         vi.mocked(window.api.remoteSettingsSet).mockResolvedValue({ ...settings });
         await act(async () => render(<RemoteDaemonSection />));
-        fireEvent.click(screen.getByRole('checkbox', { name: 'Allow remote connections' }));
-        expect(screen.queryByRole('textbox', { name: 'Address' })).toBeNull();
-        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save' })));
+        await act(async () => fireEvent.click(screen.getByRole('checkbox', { name: 'Allow remote connections' })));
         expect(window.api.remoteSettingsSet).toHaveBeenCalledWith({ enabled: true, port: 57480 });
+        expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
         expect(screen.getByText('Your other PCs know about this PC')).toBeInTheDocument();
+    });
+
+    it('포트를 바꾸면 저장 막대가 올라오고, 저장하면 켬 상태 그대로 새 포트를 보낸다', async () => {
+        vi.mocked(window.api.remoteSettingsSet).mockResolvedValue({ ...settings, port: 57490 });
+        await act(async () =>
+            render(
+                <SaveBarHost>
+                    <RemoteDaemonSection />
+                </SaveBarHost>,
+            ),
+        );
+        expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Port' }), { target: { value: '57490' } });
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save' })));
+        expect(window.api.remoteSettingsSet).toHaveBeenCalledWith({ enabled: true, port: 57490 });
     });
 
     it('포트를 열지 못하면 이유를 번역해 보인다', async () => {

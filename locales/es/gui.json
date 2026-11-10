@@ -2233,7 +2233,6 @@
     "enabled": "Permitir conexiones remotas",
     "enabled_description": "Tus otros PC se conectan directamente a este daemon con una conexión cifrada.",
     "port": "Puerto",
-    "save": "Guardar",
     "status_off": "Apagado",
     "status_listening": "Escuchando en el puerto {{port}}",
     "status_published": "Tus otros PC ya conocen este PC",

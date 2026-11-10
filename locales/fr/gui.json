@@ -2233,7 +2233,6 @@
     "enabled": "Autoriser les connexions distantes",
     "enabled_description": "Vos autres PC se connectent directement à ce daemon par une connexion chiffrée.",
     "port": "Port",
-    "save": "Enregistrer",
     "status_off": "Désactivé",
     "status_listening": "À l'écoute sur le port {{port}}",
     "status_published": "Vos autres PC connaissent maintenant ce PC",

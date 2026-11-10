@@ -2233,7 +2233,6 @@
     "enabled": "允许远程连接",
     "enabled_description": "你的其他电脑通过加密连接直接连到本守护进程。",
     "port": "端口",
-    "save": "保存",
     "status_off": "关闭",
     "status_listening": "正在端口 {{port}} 监听",
     "status_published": "已把本机告诉你的其他电脑",

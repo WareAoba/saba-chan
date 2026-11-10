@@ -160,11 +160,13 @@ function App() {
     // ── Custom Hooks ─────────────────────────────────────────
     // ══════════════════════════════════════════════════════════
 
-    const { consolePopoutIds, openConsole, popinConsole, setConsoleInput, sendConsoleCommand } = useMultiConsole({
-        isPopoutMode,
-        popoutParams,
-        consoleBufferRef,
-    });
+    const {
+        consolePopoutIds,
+        openConsole,
+        popinConsole,
+        setConsoleInput,
+        sendConsoleCommand,
+    } = useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef });
 
     const { draggedName, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
 
@@ -369,9 +371,7 @@ function App() {
                         ? data.message
                         : t(`loading.step_${data.step}`, { defaultValue: data.message || '' }),
                 );
-                setInitProgress((prev) =>
-                    Math.max(prev, progressValues[data.step as keyof typeof progressValues] || prev),
-                );
+                setInitProgress((prev) => Math.max(prev, progressValues[data.step as keyof typeof progressValues] || prev));
 
                 if (data.step === 'ready') {
                     window.__sabaReadyReceived = true;
@@ -509,8 +509,7 @@ function App() {
     // ── Main initialization + auto-refresh ──────────────────
     // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers/t/setModal are intentionally omitted — adding them would cause interval re-registration on every action
     useEffect(() => {
-        const isTest =
-            process.env.NODE_ENV === 'test' || typeof (globalThis as { jest?: unknown }).jest !== 'undefined';
+        const isTest = process.env.NODE_ENV === 'test' || typeof (globalThis as { jest?: unknown }).jest !== 'undefined';
         if (!isTest) console.log('App mounted, fetching initial data...');
         fetchServers();
 
@@ -736,14 +735,10 @@ function App() {
         moduleAliasesPerModule,
         discordModuleAliases,
         discordCommandAliases,
-        setDiscordModuleAliases: (val: DiscordData['discordModuleAliases']) =>
-            useDiscordStore.getState().update({ discordModuleAliases: val }),
-        setDiscordCommandAliases: (val: DiscordData['discordCommandAliases']) =>
-            useDiscordStore.getState().update({ discordCommandAliases: val }),
+        setDiscordModuleAliases: (val: DiscordData['discordModuleAliases']) => useDiscordStore.getState().update({ discordModuleAliases: val }),
+        setDiscordCommandAliases: (val: DiscordData['discordCommandAliases']) => useDiscordStore.getState().update({ discordCommandAliases: val }),
         nodeSettings: nodeSettings as DiscordProps['nodeSettings'],
-        setNodeSettings: (
-            valOrFn: DiscordData['nodeSettings'] | ((prev: DiscordData['nodeSettings']) => DiscordData['nodeSettings']),
-        ) => {
+        setNodeSettings: (valOrFn: DiscordData['nodeSettings'] | ((prev: DiscordData['nodeSettings']) => DiscordData['nodeSettings'])) => {
             const prev = useDiscordStore.getState().nodeSettings;
             const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
             useDiscordStore.getState().update({ nodeSettings: next });
@@ -751,9 +746,7 @@ function App() {
         cloudNodes,
         setCloudNodes: (val: DiscordData['cloudNodes']) => useDiscordStore.getState().update({ cloudNodes: val }),
         cloudMembers,
-        setCloudMembers: (
-            valOrFn: DiscordData['cloudMembers'] | ((prev: DiscordData['cloudMembers']) => DiscordData['cloudMembers']),
-        ) => {
+        setCloudMembers: (valOrFn: DiscordData['cloudMembers'] | ((prev: DiscordData['cloudMembers']) => DiscordData['cloudMembers'])) => {
             const prev = useDiscordStore.getState().cloudMembers;
             const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
             useDiscordStore.getState().update({ cloudMembers: next });
@@ -822,138 +815,134 @@ function App() {
     return (
         <ExtensionProvider>
             <HostWindowContext.Provider value={hostWindow}>
-                <TooltipProvider>
-                    <div className="App">
-                        <Toast />
-                        <RemotePathPicker />
-                        <AppBar
-                            page={page}
-                            onNavigate={(next: string) => {
-                                // 팝오버는 그 자리의 상태라 페이지를 옮기면 닫는다
-                                if (showBackgroundSection) requestBackgroundClose();
-                                if (showNoticeSection) requestNoticeClose();
-                                setPage(next as ActiveTab);
-                            }}
-                            daemonStatus={backgroundDaemonStatus}
-                            daemonInParentJob={daemonInParentJob}
-                            discordStatus={discordBotStatus}
-                            unreadCount={unreadNoticeCount}
-                            extInitializing={extInitializing}
-                            extInitLabel={Object.values(extInitInProgress).join(', ') || t('common:init.extensions')}
-                            showNotice={showNoticeSection}
-                            onToggleNotice={() =>
-                                showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true)
-                            }
-                            noticeProps={{
-                                onClose: requestNoticeClose,
-                                isClosing: isNoticeClosing,
-                                onOpenUpdateModal: () => useUIStore.getState().openSettings('update'),
-                                onOpenPatchNotes: (data: unknown) =>
-                                    setPatchNotes(data as Record<string, unknown> | null),
-                            }}
-                            showDaemon={showBackgroundSection}
-                            onToggleDaemon={() =>
-                                showBackgroundSection ? requestBackgroundClose() : setShowBackgroundSection(true)
-                            }
-                            daemonProps={{ onClose: requestBackgroundClose, isClosing: isBackgroundClosing, ipcPort }}
-                        />
+            <TooltipProvider>
+                <div className="App">
+                    <Toast />
+                    <RemotePathPicker />
+                    <AppBar
+                        page={page}
+                        onNavigate={(next: string) => {
+                            // 팝오버는 그 자리의 상태라 페이지를 옮기면 닫는다
+                            if (showBackgroundSection) requestBackgroundClose();
+                            if (showNoticeSection) requestNoticeClose();
+                            setPage(next as ActiveTab);
+                        }}
+                        daemonStatus={backgroundDaemonStatus}
+                        daemonInParentJob={daemonInParentJob}
+                        discordStatus={discordBotStatus}
+                        unreadCount={unreadNoticeCount}
+                        extInitializing={extInitializing}
+                        extInitLabel={
+                            Object.values(extInitInProgress).join(', ') ||
+                            t('common:init.extensions')
+                        }
+                        showNotice={showNoticeSection}
+                        onToggleNotice={() => (showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true))}
+                        noticeProps={{
+                            onClose: requestNoticeClose,
+                            isClosing: isNoticeClosing,
+                            onOpenUpdateModal: () => useUIStore.getState().openSettings('update'),
+                            onOpenPatchNotes: (data: unknown) => setPatchNotes(data as Record<string, unknown> | null),
+                        }}
+                        showDaemon={showBackgroundSection}
+                        onToggleDaemon={() =>
+                            showBackgroundSection ? requestBackgroundClose() : setShowBackgroundSection(true)
+                        }
+                        daemonProps={{ onClose: requestBackgroundClose, isClosing: isBackgroundClosing, ipcPort }}
+                    />
 
-                        {/* AddInstanceModal — 새 서버 / 마이그레이션 선택 */}
-                        <AddInstanceModal
-                            isOpen={showModuleManager}
-                            onClose={() => setShowModuleManager(false)}
-                            extensions={modules}
-                            servers={servers}
-                            onRefreshextensions={fetchModules}
-                            onAddServer={handleAddServer}
-                        />
+                    {/* AddInstanceModal — 새 서버 / 마이그레이션 선택 */}
+                    <AddInstanceModal
+                        isOpen={showModuleManager}
+                        onClose={() => setShowModuleManager(false)}
+                        extensions={modules}
+                        servers={servers}
+                        onRefreshextensions={fetchModules}
+                        onAddServer={handleAddServer}
+                    />
 
-                        <div className="app-body" data-page={page}>
-                            {page === 'servers' && (
-                                <ServersPage
-                                    servers={servers}
-                                    setServers={setServers}
-                                    modules={modules}
-                                    onAddServer={() => setShowModuleManager(true)}
-                                    onStart={handleStart}
-                                    onStop={handleStop}
-                                    onRestart={handleRestart}
-                                    onRename={handleRename}
-                                    onDelete={handleDeleteServer}
-                                    setModal={setModal}
-                                    drag={{ draggedName, cardRefs, skipNextClick, handleCardPointerDown }}
-                                    consoleProps={consoleProps}
-                                    settingsProps={settingsProps}
+                    <div className="app-body" data-page={page}>
+                        {page === 'servers' && (
+                            <ServersPage
+                                servers={servers}
+                                setServers={setServers}
+                                modules={modules}
+                                onAddServer={() => setShowModuleManager(true)}
+                                onStart={handleStart}
+                                onStop={handleStop}
+                                onRestart={handleRestart}
+                                onRename={handleRename}
+                                onDelete={handleDeleteServer}
+                                setModal={setModal}
+                                drag={{ draggedName, cardRefs, skipNextClick, handleCardPointerDown }}
+                                consoleProps={consoleProps}
+                                settingsProps={settingsProps}
+                            />
+                        )}
+                        {page === 'discord' && <DiscordPage {...discordPageProps} />}
+                        {(page as string) === 'activity' && <ActivityPage />}
+                        {page.startsWith('ext:') && <ExtensionAppPage page={page} onMissing={leaveExtensionPage} />}
+                        {page === 'settings' && (
+                            <div className="page page-scroll page-settings">
+                                <SettingsModal
+                                    discordCloudRelayUrl={discordCloudRelayUrl}
+                                    onDiscordCloudRelayUrlChange={(val: string) =>
+                                        useDiscordStore.getState().update({ discordCloudRelayUrl: val })
+                                    }
+                                    onTestModal={setModal}
+                                    onTestProgressBar={setProgressBar}
+                                    initialView={settingsInitialView}
+                                    onTestWaitingImage={() => {
+                                        setShowWaitingImage(true);
+                                        setTimeout(() => setShowWaitingImage(false), 4000);
+                                    }}
+                                    onTestLoadingScreen={runLoadingScreenTest}
                                 />
-                            )}
-                            {page === 'discord' && <DiscordPage {...discordPageProps} />}
-                            {(page as string) === 'activity' && <ActivityPage />}
-                            {page.startsWith('ext:') && <ExtensionAppPage page={page} onMissing={leaveExtensionPage} />}
-                            {page === 'settings' && (
-                                <div className="page page-scroll page-settings">
-                                    <SettingsModal
-                                        discordCloudRelayUrl={discordCloudRelayUrl}
-                                        onDiscordCloudRelayUrlChange={(val: string) =>
-                                            useDiscordStore.getState().update({ discordCloudRelayUrl: val })
-                                        }
-                                        onTestModal={setModal}
-                                        onTestProgressBar={setProgressBar}
-                                        initialView={settingsInitialView}
-                                        onTestWaitingImage={() => {
-                                            setShowWaitingImage(true);
-                                            setTimeout(() => setShowWaitingImage(false), 4000);
-                                        }}
-                                        onTestLoadingScreen={runLoadingScreenTest}
-                                    />
-                                </div>
-                            )}
-                        </div>
-
-                        {activityAvailable() && <ActivityBar />}
-                        <SabaBubble />
-                        {paletteAvailable() && <CommandPalette />}
-                        {eventsAvailable() && <DaemonEvents onServersChanged={fetchServers} />}
-
-                        {/* 모달 렌더링 */}
-                        {patchNotes && <PatchNotesModal data={patchNotes} onClose={() => setPatchNotes(null)} />}
-                        {modal && modal.type === 'success' && (
-                            <SuccessModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
-                        )}
-                        {modal && modal.type === 'failure' && (
-                            <FailureModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
-                        )}
-                        {modal && modal.type === 'notification' && (
-                            <NotificationModal
-                                title={modal.title}
-                                message={modal.message}
-                                onClose={() => setModal(null)}
-                            />
-                        )}
-                        {questionModal}
-                        {modal && modal.type === 'agreements' && (
-                            <AgreementDialog
-                                title={modal.title ?? ''}
-                                message={modal.message ?? ''}
-                                module={modal.module}
-                                agreements={modal.agreements}
-                                onAccept={modal.onAccept}
-                                onCancel={() => setModal(null)}
-                            />
-                        )}
-
-                        {/* waiting.png (느린 진행 감지) */}
-                        {showWaitingImage && (
-                            <div className="waiting-image-overlay" onClick={() => setShowWaitingImage(false)}>
-                                <img src="./waiting.png" alt="waiting" className="waiting-image" />
                             </div>
                         )}
-
-                        {/* 작업 진행은 상단 바(TaskIndicator)가 보여 준다 */}
                     </div>
-                    {loadingLeaving && (
-                        <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={100} leaving />
+
+                    {activityAvailable() && <ActivityBar />}
+                    <SabaBubble />
+                    {paletteAvailable() && <CommandPalette />}
+                    {eventsAvailable() && <DaemonEvents onServersChanged={fetchServers} />}
+
+                    {/* 모달 렌더링 */}
+                    {patchNotes && <PatchNotesModal data={patchNotes} onClose={() => setPatchNotes(null)} />}
+                    {modal && modal.type === 'success' && (
+                        <SuccessModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
                     )}
-                </TooltipProvider>
+                    {modal && modal.type === 'failure' && (
+                        <FailureModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
+                    )}
+                    {modal && modal.type === 'notification' && (
+                        <NotificationModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
+                    )}
+                    {questionModal}
+                    {modal && modal.type === 'agreements' && (
+                        <AgreementDialog
+                            title={modal.title ?? ''}
+                            message={modal.message ?? ''}
+                            module={modal.module}
+                            agreements={modal.agreements}
+                            onAccept={modal.onAccept}
+                            onCancel={() => setModal(null)}
+                        />
+                    )}
+
+                    {/* waiting.png (느린 진행 감지) */}
+                    {showWaitingImage && (
+                        <div className="waiting-image-overlay" onClick={() => setShowWaitingImage(false)}>
+                            <img src="./waiting.png" alt="waiting" className="waiting-image" />
+                        </div>
+                    )}
+
+                    {/* 작업 진행은 상단 바(TaskIndicator)가 보여 준다 */}
+                </div>
+                {loadingLeaving && (
+                    <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={100} leaving />
+                )}
+            </TooltipProvider>
             </HostWindowContext.Provider>
         </ExtensionProvider>
     );

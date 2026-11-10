@@ -2233,7 +2233,6 @@
     "enabled": "원격 연결 받기",
     "enabled_description": "내 다른 PC가 암호화한 연결로 이 데몬에 바로 붙어요.",
     "port": "포트",
-    "save": "저장",
     "status_off": "꺼짐",
     "status_listening": "{{port}} 포트에서 받는 중",
     "status_published": "내 다른 PC에 이 PC를 알렸어요",

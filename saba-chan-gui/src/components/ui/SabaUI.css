@@ -602,3 +602,66 @@
         animation: none;
     }
 }
+
+/* ── SaveBar: 바뀐 게 있을 때 아래에서 올라오는 저장 막대 (SaveBar.tsx) ── */
+.saba-savebar {
+    position: sticky;
+    bottom: var(--sp-4);
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-3);
+    width: fit-content;
+    max-width: 100%;
+    margin: var(--sp-4) auto 0;
+    padding: var(--sp-1-5) var(--sp-1-5) var(--sp-1-5) var(--sp-4);
+    border: 1px solid color-mix(in oklch, var(--accent) 45%, var(--line));
+    border-radius: 999px;
+    background: var(--bg-2);
+    box-shadow: var(--shadow-float);
+    animation: sabaSavebarUp 0.34s var(--ease-spring) both;
+}
+.saba-savebar.leaving {
+    animation: sabaSavebarDown 0.2s ease-in both;
+    pointer-events: none;
+}
+.saba-savebar-dot {
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent) 22%, transparent);
+}
+.saba-savebar-text {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-1);
+}
+.saba-savebar-actions {
+    display: flex;
+    gap: var(--sp-1-5);
+    margin-left: auto;
+}
+.saba-savebar-actions .btn {
+    border-radius: 999px;
+}
+@keyframes sabaSavebarUp {
+    from {
+        opacity: 0;
+        transform: translateY(calc(100% + var(--sp-4)));
+    }
+}
+@keyframes sabaSavebarDown {
+    to {
+        opacity: 0;
+        transform: translateY(calc(100% + var(--sp-4)));
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .saba-savebar,
+    .saba-savebar.leaving {
+        animation: none;
+    }
+}

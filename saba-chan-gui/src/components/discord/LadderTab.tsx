@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
-import { SaveBar } from './ChatbotView';
+import { SaveBar } from '../ui/SaveBar';
 import * as L from './levels';
 import type { PermissionsState } from './PermissionsTab';
 import type { DiscordNode } from './types';

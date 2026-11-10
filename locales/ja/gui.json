@@ -2233,7 +2233,6 @@
     "enabled": "リモート接続を受け付ける",
     "enabled_description": "他のPCが暗号化された接続でこのデーモンに直接つなぎます。",
     "port": "ポート",
-    "save": "保存",
     "status_off": "オフ",
     "status_listening": "ポート {{port}} で受付中",
     "status_published": "他のPCにこのPCを知らせました",

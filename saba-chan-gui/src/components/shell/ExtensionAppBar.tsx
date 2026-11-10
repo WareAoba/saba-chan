@@ -42,12 +42,7 @@ export function ExtensionPageTabs({ page, onNavigate }: { page: string; onNaviga
                     onClick={(e) =>
                         openMenu(
                             e,
-                            more.map((p) => ({
-                                id: p.id,
-                                label: p.label,
-                                icon: p.icon,
-                                onSelect: () => onNavigate(p.id),
-                            })),
+                            more.map((p) => ({ id: p.id, label: p.label, icon: p.icon, onSelect: () => onNavigate(p.id) })),
                         )
                     }
                 >

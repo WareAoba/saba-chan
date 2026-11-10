@@ -2233,7 +2233,6 @@
     "enabled": "Allow remote connections",
     "enabled_description": "Your other PCs connect to this daemon directly over an encrypted connection.",
     "port": "Port",
-    "save": "Save",
     "status_off": "Off",
     "status_listening": "Listening on port {{port}}",
     "status_published": "Your other PCs know about this PC",
