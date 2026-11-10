@@ -38,7 +38,7 @@ export function TroubleshootTab({
                     <div className="setting-item setting-item-stack">
                         <label className="setting-label">
                             <span className="setting-title">
-                                <Icon name="tool" size="sm" /> {t('gui:diagnostics.title')}
+                                {t('gui:diagnostics.title')}
                             </span>
                             <span className="setting-description">{t('gui:diagnostics.description')}</span>
                         </label>
@@ -257,7 +257,7 @@ function ResetGuiSettings() {
         <div className="setting-item">
             <label className="setting-label">
                 <span className="setting-title">
-                    <Icon name="refresh" size="sm" /> {t('gui:settings_modal.reset_gui_label')}
+                    {t('gui:settings_modal.reset_gui_label')}
                 </span>
                 <span className="setting-description">{t('gui:settings_modal.reset_gui_description')}</span>
             </label>

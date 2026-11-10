@@ -64,7 +64,7 @@ export function NetTraceSetting() {
             <div className="setting-item-row">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="globe" size="sm" /> {t('net_trace.label')}
+                        {t('net_trace.label')}
                     </span>
                     <span className="setting-description">{t('net_trace.description')}</span>
                 </label>

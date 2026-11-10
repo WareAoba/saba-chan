@@ -76,7 +76,7 @@ export function ConnectionTab({
                 <div className="setting-item">
                     <label className="setting-label">
                         <span className="setting-title">
-                            <Icon name="hash" size="sm" /> {t('gui:settings_modal.ipc_port_label')}
+                            {t('gui:settings_modal.ipc_port_label')}
                         </span>
                         <span className="setting-description">{t('gui:settings_modal.ipc_port_description')}</span>
                     </label>
@@ -105,7 +105,7 @@ export function ConnectionTab({
                 <div className="setting-item">
                     <label className="setting-label">
                         <span className="setting-title">
-                            <Icon name="globe" size="sm" /> {t('gui:settings_modal.relay_url_label', '릴레이 서버 URL')}
+                            {t('gui:settings_modal.relay_url_label', '릴레이 서버 URL')}
                         </span>
                         <span className="setting-description">
                             {t(

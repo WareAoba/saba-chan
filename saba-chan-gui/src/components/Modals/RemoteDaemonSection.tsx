@@ -465,7 +465,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     <div className="setting-item">
                         <label className="setting-label" htmlFor="remote-daemon-enabled">
                             <span className="setting-title">
-                                <Icon name="network" size="sm" /> {t('remote_daemon.enabled')}
+                                {t('remote_daemon.enabled')}
                             </span>
                             <span className="setting-description">{t('remote_daemon.enabled_description')}</span>
                             <span className="setting-description remote-daemon-status" role="status">
@@ -490,7 +490,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     <div className="setting-item">
                         <label className="setting-label" htmlFor="remote-daemon-port">
                             <span className="setting-title">
-                                <Icon name="hash" size="sm" /> {t('remote_daemon.port')}
+                                {t('remote_daemon.port')}
                             </span>
                         </label>
                         <SabaNumberInput
@@ -581,7 +581,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                 <div className="setting-item">
                     <span className="setting-label">
                         <span className="setting-title">
-                            <Icon name="server" size="sm" /> {t('remote_daemon.view')}
+                            {t('remote_daemon.view')}
                         </span>
                         <span className="setting-description">{t('remote_daemon.view_description')}</span>
                     </span>

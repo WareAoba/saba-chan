@@ -1300,9 +1300,6 @@ button.activity-line:hover {
     overflow: visible;
     padding: 0;
 }
-.settings-page .settings-modal-header {
-    padding: 0 0 var(--sp-4);
-}
 
 /* ── 좁은 창 ── */
 @media (max-width: 899px) {

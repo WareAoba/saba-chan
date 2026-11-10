@@ -166,16 +166,9 @@
     overflow: hidden;
 }
 
-.settings-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--sp-6);
-    border-bottom: none;
-}
-
-.settings-modal-header h2 {
-    margin: 0;
+/* 설정 화면 큰 제목: 고른 탭 이름 하나 */
+.settings-tab-title {
+    margin: 0 0 var(--sp-4);
     font-size: calc(22px * var(--font-scale));
     color: var(--text-1);
 }
@@ -1440,7 +1433,10 @@
 }
 
 @keyframes download-ring-spin {
-    to { transform: rotate(270deg); transform-origin: center; }
+    to {
+        transform: rotate(270deg);
+        transform-origin: center;
+    }
 }
 
 /* transform-origin이 SVG에서 제대로 작동하려면 */
@@ -1450,8 +1446,12 @@
 }
 
 @keyframes download-ring-spin {
-    from { transform: rotate(-90deg); }
-    to   { transform: rotate(270deg); }
+    from {
+        transform: rotate(-90deg);
+    }
+    to {
+        transform: rotate(270deg);
+    }
 }
 
 .download-ring-label {
@@ -1602,7 +1602,7 @@
 }
 
 .ss-unsupported > summary::before {
-    content: '›';
+    content: "›";
     font-size: 16px;
     line-height: 1;
     transition: transform var(--dur-fast) var(--ease);
@@ -1753,7 +1753,10 @@
     border-radius: 50%;
     border: 2px solid transparent;
     cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    transition:
+        transform 0.15s ease,
+        box-shadow 0.15s ease,
+        border-color 0.15s ease;
     position: relative;
     padding: 0;
 }
@@ -1765,7 +1768,9 @@
 
 .accent-preset-btn.active {
     border-color: var(--text-1);
-    box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 4px var(--text-1);
+    box-shadow:
+        0 0 0 2px var(--bg-2),
+        0 0 0 4px var(--text-1);
 }
 
 .accent-preset-custom {
@@ -1773,9 +1778,15 @@
     align-items: center;
     justify-content: center;
     /* 색상환 견본: 테마와 무관한 고정 무지개라 토큰 규칙의 예외다 */
-    background: conic-gradient(in oklch
-        from 0deg,
-        #f38ba8, #fab387, #f9e2af, #a6e3a1, #89b4fa, #cba6f7, #f38ba8
+    background: conic-gradient(
+        in oklch from 0deg,
+        #f38ba8,
+        #fab387,
+        #f9e2af,
+        #a6e3a1,
+        #89b4fa,
+        #cba6f7,
+        #f38ba8
     ) !important;
     cursor: pointer;
     position: relative;

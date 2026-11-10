@@ -2,7 +2,6 @@ import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../../stores/useSettingsStore';
 import { LANGUAGE_OPTIONS } from '../../../utils/languages';
 import CustomDropdown from '../../CustomDropdown/CustomDropdown';
-import { Icon } from '../../Icon';
 import { SabaToggle } from '../../ui/SabaUI';
 import { AutostartSetting, autostartAvailable } from '../AutostartSetting';
 import { setOption } from './options';
@@ -23,7 +22,7 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="globe" size="sm" /> {t('gui:settings_modal.language_label')}
+                        {t('gui:settings_modal.language_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.language_description')}</span>
                 </label>
@@ -38,7 +37,7 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="refresh" size="sm" /> {t('gui:settings_modal.auto_refresh_label')}
+                        {t('gui:settings_modal.auto_refresh_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.auto_refresh_description')}</span>
                 </label>
@@ -52,7 +51,7 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
                 <div className="setting-item">
                     <label className="setting-label">
                         <span className="setting-title">
-                            <Icon name="refresh" size="sm" /> {t('gui:settings_modal.refresh_interval_label')}
+                            {t('gui:settings_modal.refresh_interval_label')}
                         </span>
                         <span className="setting-description">
                             {t('gui:settings_modal.refresh_interval_description')}
@@ -77,7 +76,7 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="close" size="sm" /> {t('gui:settings_modal.close_action_label')}
+                        {t('gui:settings_modal.close_action_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.close_action_description')}</span>
                 </label>
