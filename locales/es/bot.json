@@ -477,6 +477,7 @@
     "nothing_to_back_up": "Todavía no hay mundo que guardar",
     "backup_limit": "El límite de copias remotas está lleno. Borra copias antiguas en el PC",
     "backup_busy": "Hay otra copia o restauración en curso",
+    "backups_unreadable": "No se pudo leer la carpeta de copias de seguridad. Revisa los permisos de la carpeta y el disco en el PC",
     "server_running": "El servidor está encendido. Detenlo primero",
     "no_command_path": "El servidor se inició fuera de Saba-chan y no puede recibir comandos",
     "autosave_not_resumed": "La copia se hizo, pero no se pudo reactivar el autoguardado del servidor. Reinicia el servidor",

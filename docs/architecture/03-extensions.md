@@ -52,7 +52,7 @@
 | `dependencies` | `HashMap<String,String>` | `{}` | 커스텀 디시리얼라이저 `deserialize_dependencies` (`ext/:56-97`): 배열 `["a"]` → `{"a":"*"}`, 맵은 그대로 받는다. 공식 manifest는 맵(`{}`)을 쓰고, 배열은 0.1.13까지 배포한 공식 익스텐션의 설치된 사본(`[]`)을 읽으려고 남긴다. enable/disable/unmount 검증에 쓰인다(아래 3.3). |
 | `python_modules` | `HashMap<String,String>` | `{}` | 모듈 키 → 익스텐션 디렉토리 기준 상대경로. hook 바인딩과 명령이 참조한다(`ext/:1165,1240`). 값은 폴더 안 상대 경로만 받는다(모듈 `entry`와 같은 `utils::is_inner_relative_path`): 빈 값, 절대 경로, `..`·`.`가 든 경로는 `schema_version`과 무관하게 manifest 오류다. 신뢰 판정(`sandbox::component_in`)도 `..`·`.`가 든 진입점은 어느 구성요소에도 넣지 않는다. |
 | `hooks` | `HashMap<String, HookBinding>` | `{}` | hook 이름 → 바인딩. |
-| `gui` | `Option<GuiManifest>` | `None` | 번들/스타일 서빙에 쓰인다(`handlers/extension.rs:240-334`). |
+| `gui` | `Option<GuiManifest>` | `None` | 번들/스타일 서빙에 쓰인다(`handlers/extension.rs:240-334`). `gui.slots`는 GUI가 읽는다(4.2). |
 | `cli` | `Option<CliManifest>` | `None` | `/api/extensions` 응답에 그대로 실린다. `cli.slots`는 데이터 slot 선언이다(4.3). 인터페이스는 이 원본 대신 정규화된 `slots`를 읽는다. |
 | `module_config_section` | `Option<String>` | `None` | **읽는 코드가 없다(dead 필드)**. module.toml의 익스텐션별 설정은 범용 `[extensions.<id>]` 섹션으로 받아 그대로 넘긴다(`supervisor/module_loader.rs:618-622,1139-1144`). |
 | `instance_fields` | `HashMap<String, FieldDef>` | `{}` | (a) disable/remove/unmount/install 시 "사용 중" 판정(`ext/:873-902`), (b) ~~목록 응답 → CLI가 자동 설정 슬롯을 만든다~~(PR #6 CLI는 쓰지 않는다). **default 값을 인스턴스에 주입하는 코드는 없다.** |
@@ -66,9 +66,9 @@
 
 - **`HookBinding`** (`ext/:299-305`): `module: String`(필수, `python_modules`의 키), `function: String`(필수), `condition: Option<String>`.
   - ~~`async`(→`is_async`)는 읽는 코드가 0건이다.~~ → 해결: 필드가 없어졌다. schema v1 manifest에 `async`를 쓰면 모르는 키 오류다.
-- **`GuiManifest`** (`ext/:307-317`): `bundle`, `styles`, `builtin: Option<bool>`, `slots: HashMap<String,String>`.
+- **`GuiManifest`** (`ext/:325-336`): `bundle`, `styles`, `builtin: Option<bool>`, `slots: HashMap<String, Value>`.
   - `builtin`은 daemon에서 읽지 않는다.
-  - `slots`도 **GUI에서 읽지 않는다.** GUI는 번들의 `registerSlots()` 반환값만 쓴다(4절).
+  - `slots`는 slot id → 표시 정보 `{label?, icon?, description?}`이다(옛 모양인 컴포넌트 이름 문자열도 받고 빈 표시 정보로 본다). 데몬은 검사하지 않고 `/api/extensions`의 `gui`에 그대로 싣는다. GUI가 slot 표와 대조하고, 창마다 읽을 번들을 고르고, 탭·버튼·카드 이름을 정한다(4.2). `bundle` 없이 `slots`만 써도 된다(설정 탭 자동 폼).
 - **`CliManifest`** (`ext/:320-326`): `slots: HashMap<String, Value>`. 데이터 slot 선언(4.3). 값은 항목 하나 또는 배열이다.
 - **`FieldDef`** (`ext/:328-336`): `type`(필수), `default: Option<Value>`, `optional: Option<bool>`.
 - **`ExtensionCommand`** (`ext/:275-293`): `name`, `label?`, `description?`, `risk?`(safe/caution/danger), `inputs[]`(모듈 명령과 같은 `CommandInput`), `module`, `function`, `condition?`.
@@ -239,7 +239,8 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
    - 확인되지 않았고 이 PC에서 허락하지 않은 익스텐션(목록의 `gui_allowed:false`, 또는 번들 요청이 403 `extension_gui_unapproved`)은 번들·스타일을 요청하지 않고 한 번 묻는다. 허락하면 `POST /api/sandbox/extension-gui/ext-<id>` 뒤 목록을 다시 받아 로드한다. 거절하면 그 실행에서는 다시 묻지 않고, 설정 > 보안 `ExtensionGuiSection`에서 허락하거나 지운다.
    - 전역 이름 규칙: `window["SabaExt" + PascalCase(id)]`. `-`와 `_` 구분자를 제거하고 다음 글자를 대문자로 바꾼다(`:174-176`). steamcmd → `SabaExtSteamcmd`. 번들이 정확히 이 전역을 만들어야 한다.
    - 스타일: `GET …/gui/styles`가 있으면 `<style data-extension=id>`로 넣는다(`:146-153`).
-   - 모듈의 **`registerSlots(): { [slotId]: Component | Component[] }`**를 호출해 슬롯 레지스트리에 병합한다. manifest의 `gui.slots`는 쓰지 않는다.
+   - 모듈의 **`registerSlots(): { [slotId]: Component | Component[] }`**를 호출해 슬롯 레지스트리에 병합한다. 레지스트리의 한 칸은 `{ext, Component?, meta}`(`SlotEntry`)이고 `meta`는 manifest `gui.slots[slotId]`다. 선언과 어긋나면(모르는 slot 이름, 선언하지 않고 등록) 콘솔에 경고만 남기고 등록은 그대로 한다(`extensions/slotTable.ts` `slotProblems`). 번들 없이 `Settings.tab`만 선언했으면 컴포넌트 없는 칸을 넣어 `config_fields` 자동 폼을 그린다.
+   - 창(`ExtensionProvider surface`)마다 읽을 번들을 고른다(`loadsOn`): 메인 창은 메인 slot을 선언했거나 아무 slot도 선언하지 않은 것, 트레이 팝업(`surface="tray"`)은 `TrayPopup.section`을 선언한 것만 읽는다. 트레이 팝업은 허락되지 않은 번들을 묻지 않고 건너뛴다(묻는 것은 메인 창).
    - 버전이 바뀌면 전역을 삭제하고 style 태그를 제거한 뒤 다시 로드한다(핫로드, `:289-309`). 로드됨으로 기억했는데 전역이 없어도 다시 로드한다.
    - 실행이 실패한 번들은 자기가 남긴 전역만 되돌린다. 같은 확장을 겹쳐 읽은 다른 로드가 성공해 등록한 전역은 지우지 않는다.
 3. React 공유: 호스트가 `window.React`와 `window.ReactDOM`을 전역으로 노출하고(`src/index.tsx:20-21`), 번들은 `window.React`를 참조한다(external 처리). 호스트는 React 19다: 번들은 JSX를 `window.React.createElement`(classic 런타임)로 만들거나 React 19의 `jsx-runtime`을 쓴다. React 18의 `jsx-runtime`을 번들에 넣으면 요소 모양이 달라 React 19가 그리지 못한다. 그 밖의 호스트 API(토스트, 데몬 API, 스토어 등)는 노출하지 않는다. 확장 컴포넌트는 props만으로 동작해야 한다.
@@ -251,19 +252,30 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 현재 `gui`를 가진 익스텐션은 없으므로 이 경로는 실제로 쓰이지 않는다.
 
-### 4.2 슬롯과 props (호스트 `<ExtensionSlot slotId … {...props}>`, `components/ExtensionSlot.tsx`)
+### 4.2 슬롯과 props (slot 표 `saba-chan-gui/src/extensions/slotTable.ts`, 그리는 곳 `components/ExtensionSlot.tsx`)
 
-| slotId | 호스트 위치 | 전달 props | 구현 익스텐션 |
+slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 그 자리에 등록된 칸을 모두 그린다(`<ExtensionSlot>`). `page`·`button`·`card`는 익스텐션마다 첫 칸 하나가 탭·목록 한 줄·아이콘 버튼·선택 카드가 되고(`useSlotPages`), 그 id는 `ext:<익스텐션 id>`, 이름은 manifest `gui.slots[slotId].label`(익스텐션 i18n 키, 없으면 그 글자) → 익스텐션 `name`, 아이콘은 `icon`(GUI `Icon` 이름, 없으면 `extension`), 카드·디스코드 목록의 둘째 줄은 `description`이다. 모든 컴포넌트는 아래 props와 함께 `host`(4.5)를 받는다.
+
+| slotId | 창·종류 | 호스트 위치 | 전달 props |
 |---|---|---|---|
-| `ServerCard.badge` | `servers/ServerRow.tsx:139` | `server` | 없음 |
-| `ServerCard.headerGauge` | `servers/ServerDetail.tsx:248` | `server` | 없음 |
-| `ServerCard.provision` | `servers/ServerDetail.tsx:304` (`server.provisioning`일 때) | `server, provisionProgress, onDismiss, t` | 없음 |
-| `ServerCard.expandedStats` | `servers/ServerDetail.tsx:583` | `server, t` | 없음 |
-| `ServerSettings.tab` | `ServerSettingsModal.tsx` (서버 상세 사바쨩 탭에만) | `server, activeTab, setActiveTab, settings, onSettingsChange, t` | 없음 |
-| `AddServer.options` | `AddInstanceNewServer.tsx:627` | `t` | 없음 |
+| `AppBar.status` | main · inline | `shell/AppBar.tsx` 상태 칸 | (없음) |
+| `AppBar.actions` | main · button | `shell/ExtensionAppBar.tsx` 알림 버튼 옆. 누르면 버튼 아래 작은 창(`.ext-popover`), 바깥 클릭·Esc로 닫힘 | `close` |
+| `App.page` | main · page | 맨 위 탭 줄(`ExtensionPageTabs`). 두 개까지 탭, 넘치면 "더보기" 메뉴. 화면은 `shell/ExtensionAppPage.tsx`, 익스텐션이 꺼지면 서버 화면으로 | (없음) |
+| `Settings.tab` | main · page | 설정 왼쪽 목록 "정보" 바로 위(`Modals/SettingsModal.tsx`, `ExtensionSettingsPanel.tsx`). 컴포넌트가 없으면 `config_fields` 폼을 펼친 채로 | `t, getConfig(), setConfig(config)`(`GET/PUT /api/extensions/:id/config`) |
+| `Discord.nav` | main · page | 디스코드 화면 왼쪽 목록, 사바쨩 설정 아래(`discord/DiscordPage.tsx`, view `{kind:'ext', id}`). 익스텐션이 꺼지면 연결 화면 | `guilds`(연결된 디스코드 서버), `t` |
+| `ServerCard.badge` | main · inline | `servers/ServerRow.tsx` | `server` |
+| `ServerCard.headerGauge` | main · inline | `servers/ServerDetail.tsx` 머리 | `server` |
+| `ServerCard.provision` | main · inline | `servers/ServerDetail.tsx` (`server.provisioning`일 때) | `server, provisionProgress, onDismiss, t` |
+| `ServerCard.expandedStats` | main · inline | `servers/ServerDetail.tsx` | `server, t` |
+| `ServerDetail.section` | main · inline | `servers/ServerDetail.tsx` 상세 아래 | `server, t` |
+| `ServerDetail.tab` | main · page | 서버 상세 탭 줄 "정보" 바로 앞(`servers/ServerDetail.tsx`) | `server, t` |
+| `ServerSettings.tab` | main · inline | `ServerSettingsModal.tsx` (서버 상세 사바쨩 탭에만) | `server, activeTab, setActiveTab, settings, onSettingsChange, t` |
+| `AddServer.options` | main · inline | `AddInstanceNewServer.tsx` | `t` |
+| `AddServer.method` | main · card | 서버 추가 창의 "새로 만들기·가져오기" 아래 한 줄 카드(`Modals/AddInstanceModal.tsx`). 누르면 그 화면. 서버 만들기는 화면이 데몬 API로 한다 | `t, onBack, onClose` |
+| `TrayPopup.section` | tray · inline | 트레이 팝업 서버 목록 아래(`shell/TrayPopup.tsx`, 최대 높이 160px, 데몬이 켜져 있을 때만) | `servers, t` |
 
 - `server` 객체는 `/api/servers`의 `ServerInfo`다. 여기서 `extension_data`와 `extension_status[<extension_id>]`(list_enrich 결과)를 컴포넌트가 읽는다.
-- 슬롯 이름은 호스트에 하드코딩되어 있고 검증하는 장치는 없다. 번들 없이 데이터만 선언하는 slot은 4.3이다.
+- 구현 익스텐션은 아직 없다. 번들 없이 데이터만 선언하는 slot은 4.3이다.
 
 ### 4.3 데이터 slot (manifest `cli.slots`, GUI·CLI 공통)
 
@@ -288,8 +300,25 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 4.4 GUI에서 노출되지 않는 API
 
-- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 `window.api` 메서드(`createApi.ts`)가 **없다**. CLI `saba-chan-cli/src/client.rs:470-476`에만 있다(`extension config`, PR #6 기준).
+- ~~`GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 `window.api` 메서드가 없다~~ → 해결: `extensionConfigGet`·`extensionConfigSet`(`createApi.ts`)이 있고, 사바 스토리지의 익스텐션 카드(`ExtensionConfigForm`)와 설정 탭 `Settings.tab`(4.2)이 쓴다.
 - `extension:icon` → SabaStorage(`SabaStorage.tsx:1168`), `extension:initStatus` → `hooks/useExtensionInitStatus.ts`.
+
+
+### 4.5 `host` (익스텐션 화면의 공식 통로, `src/extensions/host.ts`)
+
+모든 slot 컴포넌트가 `host` prop으로 받는다. 창마다 할 수 있는 일은 그 창이 `HostWindowContext`로 넣는다(메인 창 `App.tsx`, 트레이 팝업 `TrayPopup.tsx`, 없으면 아무것도 하지 않는 기본값).
+
+| 칸 | 뜻 |
+|---|---|
+| `version` | 통로 버전 `1` |
+| `extension` | 이 host를 받은 익스텐션 id |
+| `t` | 익스텐션 자기 번역(`ext_<id>` 네임스페이스) |
+| `servers()` | 그 창이 지금 아는 서버 목록(`ServerInfo[]`) |
+| `run(instanceId, 'start'\|'stop'\|'restart')` | 넘겼으면 `true`, 하지 않았으면 `false`. 메인 창은 앱 버튼과 같은 `useServerActions` 손잡이를 거친다: 정지·재시작은 확인 창을 띄우고 `true`를 돌려주므로, 사용자가 취소해도 `true`다(결과는 `on`으로 받는다). 트레이 팝업은 `instanceStart`·`instanceStop`·`instanceRestart`를 바로 부르고 데몬 답으로 `true`/`false`를 정한다. 이 PC 데몬이라고 확인한 때만 정지·재시작을 보내고, 원격 데몬이거나 아직 모르면 `false`(그 창은 원격 정지를 두 번 눌러 확정한다) |
+| `openApp(route?)` | 메인 창: 상단 페이지(`servers`·`discord`·`activity`·`settings`·`ext:<id>`)로 옮긴다. 그 밖의 값은 무시한다. 트레이 팝업: 메인 창을 연다 |
+| `on(type, fn)` | 데몬 이벤트(`/api/events`, 01 문서) 구독. `type` `*`는 전부. 끊는 함수를 돌려준다. 트레이 팝업은 이벤트를 받지 않아 부르지 않는다 |
+
+- 번들은 여전히 `window.api`에 손이 닿는다(4.1 보안). `host`는 그것을 쓰지 않아도 되게 하는 정해진 통로이고, 막는 장치는 아니다.
 
 ---
 
@@ -394,5 +423,5 @@ daemon을 우회하는 interface 동작:
 
 ### 7.4 GUI/CLI 슬롯 체계 비대칭
 
-- GUI: 번들의 `registerSlots()`가 기준이고 manifest의 `gui.slots`는 무시한다.
+- GUI: 번들의 `registerSlots()`가 칸을 만들고 manifest `gui.slots`가 표시 정보와 읽을 창을 정한다(4.1·4.2). 선언과 다르면 경고만 한다.
 - ~~CLI: manifest의 `cli.slots`만 읽고 이름이 GUI와 다르며, `condition` 판정을 CLI `condition_holds`가 따로 한다~~ → 해결(Q-7): 데이터 slot은 GUI 이름으로 통일했고 판정은 데몬이 한 번만 한다(4.3). 예전 `InstanceSettings.fields` 자동 파생과 `EXT_SLOTS_INIT` 라인 프로토콜은 없다.

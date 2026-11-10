@@ -90,6 +90,8 @@ const CODE_TEXT: Record<string, string> = {
     // 켜진 서버를 묶는 사이 서버가 꺼져 그 백업을 지웠다
     backup_server_stopped: 'maintenance.err_backup_server_stopped',
     snapshot_not_found: 'maintenance.err_snapshot_not_found',
+    // 백업 폴더나 그 안의 백업 파일을 읽지 못했다
+    backups_unreadable: 'maintenance.err_backups_unreadable',
     schedule_changed: 'maintenance.err_schedule_changed',
     server_running: 'maintenance.restore_stop_first',
 };
@@ -162,6 +164,10 @@ function BackupsCard({ server }: { server: Server }) {
     const { t, i18n } = useTranslation('gui');
     const openMenu = useContextMenu();
     const [backups, setBackups] = useState<Backup[] | null>(null);
+    // 백업 폴더가 디스크에 차지하는 크기 (데몬이 계산. 같은 내용은 한 번만 센다)
+    const [totalBytes, setTotalBytes] = useState<number | null>(null);
+    // 목록을 읽지 못한 이유. 빈 목록("백업 없음")과 구별해 보인다
+    const [loadError, setLoadError] = useState<string | null>(null);
     // 모듈이 게임 자동 백업을 알려 주는가 (`[backup] snapshots`)
     const [snapshots, setSnapshots] = useState(false);
     const [busy, setBusy] = useState<string | null>(null); // 'create' | `restore:${name}` | `delete:${name}`
@@ -178,12 +184,18 @@ function BackupsCard({ server }: { server: Server }) {
         try {
             const res = await window.api.instanceBackups(server.id);
             if (!alive.current) return;
-            setBackups(Array.isArray(res?.backups) ? res.backups : []);
+            if (res?.success === false || (res && !Array.isArray(res.backups))) {
+                setLoadError(errorText(res, t('maintenance.load_failed'), t));
+                return;
+            }
+            setLoadError(null);
+            setBackups(res.backups);
+            setTotalBytes(typeof res?.total_bytes === 'number' ? res.total_bytes : null);
             setSnapshots(res?.snapshots_supported === true);
-        } catch {
-            if (alive.current) setBackups([]);
+        } catch (e) {
+            if (alive.current) setLoadError(e instanceof Error && e.message ? e.message : t('maintenance.load_failed'));
         }
-    }, [server.id]);
+    }, [server.id, t]);
 
     useEffect(() => {
         refresh();
@@ -270,11 +282,19 @@ function BackupsCard({ server }: { server: Server }) {
                     <Icon name="info" size="xs" /> {t('maintenance.restore_stop_first')}
                 </p>
             )}
-            {backups === null ? (
+            {loadError ? (
+                <SabaFail message={loadError} onRetry={refresh} retryLabel={t('maintenance.retry')} />
+            ) : backups === null ? (
                 <SabaSpinner />
             ) : list.length === 0 ? (
                 <p className="muted">{t('maintenance.backups_empty')}</p>
             ) : (
+                <>
+                {totalBytes !== null && (
+                    <p className="dc-card-desc">
+                        {t('maintenance.backup_total', { size: formatBytes(totalBytes), count: list.length })}
+                    </p>
+                )}
                 <ul className="dc-list">
                     {list.map((b) => {
                         const restoreKey = `restore:${b.name}`;
@@ -309,17 +329,18 @@ function BackupsCard({ server }: { server: Server }) {
                                         className={clsx('dc-list-sub', unreadable && 'warn')}
                                         data-tooltip={unreadable ? t('maintenance.backup_unreadable_hint') : b.name}
                                     >
-                                        {unreadable
-                                            ? t('maintenance.backup_unreadable')
-                                            : game
-                                              ? t('maintenance.backup_game_snapshot')
-                                              : typeof b.stored === 'number' && b.stored !== b.size
-                                                ? t('maintenance.backup_size_stored', {
-                                                      size: formatBytes(b.size),
-                                                      stored: formatBytes(b.stored),
-                                                  })
-                                                : formatBytes(b.size)}{' '}
-                                        · {b.name}
+                                        {[
+                                            unreadable
+                                                ? t('maintenance.backup_unreadable')
+                                                : game
+                                                  ? t('maintenance.backup_game_snapshot')
+                                                  : b.kind === 'pre-restore'
+                                                    ? t('maintenance.backup_pre_restore_hint')
+                                                    : null,
+                                            b.name,
+                                        ]
+                                            .filter(Boolean)
+                                            .join(' · ')}
                                     </span>
                                 </span>
                                 <StatusChip
@@ -380,6 +401,7 @@ function BackupsCard({ server }: { server: Server }) {
                         );
                     })}
                 </ul>
+                </>
             )}
         </section>
     );

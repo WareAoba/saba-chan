@@ -1630,6 +1630,17 @@ span[style*="--icon-loader"] svg {
     border: 1px solid color-mix(in oklch, var(--warn) 30%, transparent);
 }
 
+.ai-choice-icon--ext {
+    background: color-mix(in oklch, var(--brand-primary) 14%, transparent);
+    color: var(--brand-primary);
+    border: 1px solid color-mix(in oklch, var(--brand-primary) 30%, transparent);
+}
+
+/* 익스텐션이 더한 방법 카드는 한 줄을 다 쓴다 (두 칸 격자에 혼자 남지 않게) */
+.ai-choice-col--ext {
+    grid-column: 1 / -1;
+}
+
 .ai-choice-text {
     display: flex;
     flex-direction: column;

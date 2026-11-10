@@ -68,7 +68,7 @@ describe('익스텐션 GUI 번들 실행이 실패했을 때', () => {
         expect(result.current.slots['test.slot']).toBeUndefined();
         await act(async () => result.current.refreshExtensions());
         await waitFor(() => expect(window.api.extensionGuiBundle).toHaveBeenCalledTimes(2));
-        await waitFor(() => expect(result.current.slots['test.slot']).toEqual([Slot]));
+        await waitFor(() => expect(result.current.slots['test.slot']?.map((e) => e.Component)).toEqual([Slot]));
     }
 
     it('전역을 만들지 못한 번들은 같은 버전이라도 다음 목록에서 다시 요청한다', async () => {
@@ -107,7 +107,7 @@ describe('익스텐션 GUI 번들 실행이 실패했을 때', () => {
         const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
         await waitFor(() => expect(window.api.extensionGuiBundle).toHaveBeenCalledTimes(1));
         await act(async () => result.current.refreshExtensions());
-        await waitFor(() => expect(result.current.slots['test.slot']).toEqual([Slot]));
+        await waitFor(() => expect(result.current.slots['test.slot']?.map((e) => e.Component)).toEqual([Slot]));
         const loaded = window.SabaExtDocker;
         await act(async () => {
             releaseFirst();
@@ -119,7 +119,7 @@ describe('익스텐션 GUI 번들 실행이 실패했을 때', () => {
         await waitFor(() => expect(window.api.extensionList).toHaveBeenCalledTimes(3));
         await act(async () => new Promise((r) => setTimeout(r, 0)));
         expect(window.api.extensionGuiBundle).toHaveBeenCalledTimes(2);
-        expect(result.current.slots['test.slot']).toEqual([Slot]);
+        expect(result.current.slots['test.slot']?.map((e) => e.Component)).toEqual([Slot]);
     });
 
     // Codex 리뷰 #549: 등록하기 전에 throw한 앞 로드가 그때 있던 겹친 로드의 전역을 자기 것으로 보고 지웠다
@@ -135,7 +135,7 @@ describe('익스텐션 GUI 번들 실행이 실패했을 때', () => {
         const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
         await waitFor(() => expect(runFirst).toBeDefined());
         await act(async () => result.current.refreshExtensions());
-        await waitFor(() => expect(result.current.slots['test.slot']).toEqual([Slot]));
+        await waitFor(() => expect(result.current.slots['test.slot']?.map((e) => e.Component)).toEqual([Slot]));
         const loaded = window.SabaExtDocker;
         await act(async () => {
             runFirst();
@@ -157,7 +157,7 @@ describe('익스텐션 GUI 번들 실행이 실패했을 때', () => {
         const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
         await waitFor(() => expect(runFirst).toBeDefined());
         await act(async () => result.current.refreshExtensions());
-        await waitFor(() => expect(result.current.slots['test.slot']).toEqual([Slot]));
+        await waitFor(() => expect(result.current.slots['test.slot']?.map((e) => e.Component)).toEqual([Slot]));
         const loaded = window.SabaExtDocker;
         await act(async () => {
             runFirst();
@@ -169,7 +169,7 @@ describe('익스텐션 GUI 번들 실행이 실패했을 때', () => {
     it('로드됨으로 기억했는데 전역이 사라졌으면 다음 목록에서 다시 읽는다', async () => {
         runs.push(ok, ok);
         const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
-        await waitFor(() => expect(result.current.slots['test.slot']).toEqual([Slot]));
+        await waitFor(() => expect(result.current.slots['test.slot']?.map((e) => e.Component)).toEqual([Slot]));
         delete window.SabaExtDocker;
         await act(async () => result.current.refreshExtensions());
         await waitFor(() => expect(window.api.extensionGuiBundle).toHaveBeenCalledTimes(2));

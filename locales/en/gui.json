@@ -756,6 +756,7 @@
     "nav_discord": "Discord",
     "nav_activity": "Activity",
     "nav_settings": "Settings",
+    "nav_more": "More",
     "daemon_running": "Daemon running",
     "daemon_stopped": "Daemon stopped",
     "daemon_checking": "Checking daemon",
@@ -1392,7 +1393,8 @@
     "backups_desc": "Zips up the world and save files. Backups you make yourself are never pruned.",
     "backups_empty": "No backups yet.",
     "backup_now": "Back up now",
-    "backup_size_stored": "{{size}} · {{stored}} new",
+    "backup_total": "Backups total {{size}} · {{count}}",
+    "backup_pre_restore_hint": "State right before the restore · removed automatically 15 minutes after the server starts",
     "backup_created": "Backup created.",
     "backup_nothing": "There are no files to back up yet.",
     "restore": "Restore",
@@ -1403,6 +1405,7 @@
     "restored_links_missed": "Restored, but {{count}} link(s) inside the folder couldn't be recreated (Windows permissions, for example). The daemon log lists the paths.",
     "err_restore_outside": "This backup was made for a different server folder, so it can't be restored into the current one. If you moved the server folder, move it back and try again.",
     "err_backup_busy": "Another task (backup, restore, update, ...) is running for this server. Try again when it finishes.",
+    "err_backups_unreadable": "Couldn't read the backup folder. Check the folder permissions and the disk, then try again.",
     "err_schedule_changed": "The schedule was changed elsewhere, so it wasn't saved. Reload it and make your changes again.",
     "delete": "Delete",
     "delete_confirm": "Click to delete",
@@ -2096,6 +2099,7 @@
     "no_problems": "No recent warnings or errors."
   },
   "extension_config": {
+    "none": "This extension has no settings.",
     "toggle": "Settings",
     "save": "Save",
     "saved": "Saved",

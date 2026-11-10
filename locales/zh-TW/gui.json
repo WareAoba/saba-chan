@@ -756,6 +756,7 @@
     "nav_discord": "Discord",
     "nav_activity": "操作紀錄",
     "nav_settings": "設定",
+    "nav_more": "更多",
     "daemon_running": "守護程序執行中",
     "daemon_stopped": "守護程序已停止",
     "daemon_checking": "正在檢查守護程序",
@@ -1392,7 +1393,8 @@
     "backups_desc": "將世界與存檔檔案壓縮保存。手動建立的備份不會被自動清理。",
     "backups_empty": "還沒有備份。",
     "backup_now": "立即備份",
-    "backup_size_stored": "{{size}} · 新儲存 {{stored}}",
+    "backup_total": "備份總計 {{size}} · {{count}}個",
+    "backup_pre_restore_hint": "還原前的狀態 · 伺服器啟動 15 分鐘後自動刪除",
     "backup_created": "已建立備份。",
     "backup_nothing": "還沒有可備份的檔案。",
     "restore": "還原",
@@ -1403,6 +1405,7 @@
     "restored_links_missed": "已還原，但資料夾中有 {{count}} 個連結未能重建（例如 Windows 權限）。路徑見守護程式日誌。",
     "err_restore_outside": "此備份是為另一個伺服器資料夾建立的，無法還原到目前的資料夾。如果你移動過伺服器資料夾，請把它移回原處後再試。",
     "err_backup_busy": "此伺服器正在進行其他工作（備份、還原、更新等）。請在完成後重試。",
+    "err_backups_unreadable": "無法讀取備份資料夾。請檢查資料夾權限和磁碟狀態後再試一次。",
     "err_schedule_changed": "排程工作已在別處被修改，因此未儲存。請重新讀取後再修改。",
     "delete": "刪除",
     "delete_confirm": "點擊刪除",
@@ -2096,6 +2099,7 @@
     "no_problems": "最近沒有警告或錯誤。"
   },
   "extension_config": {
+    "none": "此擴充功能沒有可設定的項目。",
     "toggle": "設定",
     "save": "儲存",
     "saved": "已儲存",
