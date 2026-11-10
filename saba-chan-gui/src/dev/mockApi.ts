@@ -582,13 +582,20 @@ const impl: Record<string, MockFn> = {
         const mod = modules.find((m) => m.name === srv?.module);
         return ok({
             commands: [
-                ...(mod?.commands?.fields || []).map((f) => ({ ...f, risk: f.risk || 'caution', source: 'module' })),
+                // ready: 데몬처럼 켜진 서버의 모듈 명령만 지금 보낼 수 있다 (익스텐션 명령은 늘)
+                ...(mod?.commands?.fields || []).map((f) => ({
+                    ...f,
+                    risk: f.risk || 'caution',
+                    source: 'module',
+                    ready: srv?.status === 'running',
+                })),
                 {
                     name: 'backup-now',
                     label: '지금 백업',
                     risk: 'caution',
                     source: 'extension',
                     extension: 'world-backup',
+                    ready: true,
                 },
             ],
         });

@@ -42,6 +42,10 @@ interface UIState {
     activeServerId: string | null;
     requestedServerTab: string | null;
     requestedDiscordView: DiscordViewRequest | null;
+    /** 디스코드 페이지에 지금 열린 디스코드 서버 (명령 팔레트가 빈 검색의 기준으로 쓴다) */
+    openDiscordNodeId: string | null;
+    /** 명령 팔레트가 연 화면에서 찾아 줄 서버 설정 칸 (고급 묶음이면 펼친다). seq가 바뀌면 다시 */
+    findSettingField: { name: string; seq: number } | null;
     revealServerCount: number;
     modal: ModalConfig | null;
     progressBar: ProgressBarConfig | null;
@@ -72,6 +76,8 @@ interface UIState {
     showDiscordView: (view: Omit<DiscordViewRequest, 'seq'>) => void;
     clearRequestedDiscordView: () => void;
     revealServer: (serverId: string) => void;
+    setOpenDiscordNodeId: (id: string | null) => void;
+    requestFindSettingField: (name: string) => void;
     setShowCommandModal: (val: boolean) => void;
     setCommandServer: (server: UIState['commandServer']) => void;
     getCommandHistory: (serverId: string) => CommandHistoryEntry[];
@@ -98,6 +104,8 @@ export const useUIStore = create<UIState>()((set, _get) => ({
     requestedServerTab: null,
     // 디스코드 페이지에 "이 화면을 열어 달라"는 요청 (화면 주소 링크). 페이지가 읽고 비운다.
     requestedDiscordView: null,
+    openDiscordNodeId: null,
+    findSettingField: null,
     // 바깥(CLI의 `gui`)에서 서버를 연 횟수. 좁은 창에서도 목록 대신 그 서버 상세를 보인다
     revealServerCount: 0,
 
@@ -162,6 +170,10 @@ export const useUIStore = create<UIState>()((set, _get) => ({
             revealServerCount: state.revealServerCount + 1,
         })),
 
+    setOpenDiscordNodeId: (id) => set({ openDiscordNodeId: id }),
+    requestFindSettingField: (name) =>
+        set((state) => ({ findSettingField: { name, seq: (state.findSettingField?.seq ?? 0) + 1 } })),
+
     setShowCommandModal: (val) => set({ showCommandModal: val }),
     setCommandServer: (server) => set({ commandServer: server }),
 
@@ -199,6 +211,8 @@ export const useUIStore = create<UIState>()((set, _get) => ({
             revealServerCount: 0,
             requestedServerTab: null,
             requestedDiscordView: null,
+            openDiscordNodeId: null,
+            findSettingField: null,
             modal: null,
             progressBar: null,
             showWaitingImage: false,

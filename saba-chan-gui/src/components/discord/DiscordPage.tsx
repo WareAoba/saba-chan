@@ -159,6 +159,13 @@ export function DiscordPage({
         setShowMainNarrow(true);
     };
 
+    // 명령 팔레트의 빈 검색 기준: 지금 연 디스코드 서버 (페이지를 떠나면 없음)
+    const openNodeId = view.kind === 'node' ? view.id ?? null : null;
+    useEffect(() => {
+        useUIStore.getState().setOpenDiscordNodeId(openNodeId);
+        return () => useUIStore.getState().setOpenDiscordNodeId(null);
+    }, [openNodeId]);
+
     // 화면 주소 링크 (사용자 11-06 #19): 없는 디스코드 서버면 연결 화면을 열고 이유를 알린다
     const requested = useUIStore((s) => s.requestedDiscordView);
     // biome-ignore lint/correctness/useExhaustiveDependencies: 요청이 올 때만 그때의 목록으로 판단한다

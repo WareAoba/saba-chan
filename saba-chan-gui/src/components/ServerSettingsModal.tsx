@@ -1,9 +1,10 @@
 import clsx from 'clsx';
-import React, { type ReactNode, useId, useRef } from 'react';
+import React, { type ReactNode, useEffect, useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { RestartPending } from '../hooks/useServerSettings';
 import type { Server } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { useUIStore } from '../stores/useUIStore';
 import type { ModuleInfo, SettingField } from '../types/daemon';
 import { moduleSupports } from '../utils/helpers';
 import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/validation';
@@ -371,6 +372,15 @@ function GeneralTab({
         moduleSupports(module, 'list_versions') &&
         moduleSupports(module, 'install_server');
     const crashOff = String(settingsValues.auto_restart) === 'false';
+    // 명령 팔레트가 고급 묶음의 칸을 찾아 달라고 하면 펼친다 (칸을 찾아 반짝이는 일은 팔레트가 한다)
+    const findField = useUIStore((s) => s.findSettingField);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 찾기 요청이 올 때만
+    useEffect(() => {
+        if (findField && advancedFields.some((f) => f.name === findField.name)) {
+            setAdvancedExpanded(true);
+            useUIStore.setState({ findSettingField: null }); // 한 번만 (다음에 이 탭을 열 때 다시 펼치지 않게)
+        }
+    }, [findField?.seq]);
     const fieldRows = (list: SettingField[]) =>
         list.map((f) => (
             <SettingsField
