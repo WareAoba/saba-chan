@@ -795,6 +795,7 @@
     "update": "업데이트",
     "updating": "업데이트 중…",
     "update_available": "게임 서버 업데이트가 있어요",
+    "update_check_failed": "게임 서버 업데이트를 확인하지 못했어요: {{reason}}",
     "status_running": "실행 중",
     "status_stopped": "정지됨",
     "status_starting": "시작하는 중",

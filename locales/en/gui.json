@@ -795,6 +795,7 @@
     "update": "Update",
     "updating": "Updating…",
     "update_available": "A game server update is available",
+    "update_check_failed": "Couldn't check for a game server update: {{reason}}",
     "status_running": "Running",
     "status_stopped": "Stopped",
     "status_starting": "Starting",

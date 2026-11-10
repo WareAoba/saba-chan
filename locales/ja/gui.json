@@ -795,6 +795,7 @@
     "update": "アップデート",
     "updating": "アップデート中…",
     "update_available": "ゲームサーバーのアップデートがあります",
+    "update_check_failed": "ゲームサーバーの更新を確認できませんでした: {{reason}}",
     "status_running": "実行中",
     "status_stopped": "停止中",
     "status_starting": "起動中",

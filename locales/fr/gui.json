@@ -795,6 +795,7 @@
     "update": "Mettre à jour",
     "updating": "Mise à jour…",
     "update_available": "Une mise à jour du serveur de jeu est disponible",
+    "update_check_failed": "Impossible de vérifier la mise à jour du serveur de jeu : {{reason}}",
     "status_running": "En marche",
     "status_stopped": "Arrêté",
     "status_starting": "Démarrage",

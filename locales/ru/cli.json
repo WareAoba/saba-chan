@@ -680,6 +680,7 @@
     "port_conflict_with": "Порт {{port}} также использует {{name}}.",
     "update_available": "Для {{name}} доступно обновление.",
     "update_none": "{{name}} актуален.",
+    "update_check_failed": "Не удалось проверить обновления {{name}}: {{error}}",
     "update_reason": {
       "no_extension_data": "(способ установки не записан)",
       "no_hook_handled": "(ни одно расширение не обрабатывает его обновления)"

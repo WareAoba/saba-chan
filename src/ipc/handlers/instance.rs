@@ -2457,21 +2457,26 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
     });
 
     let results = crate::plugin::with_instance(Some(state.host_context(id)), crate::extension::run_hook(&state.extension_manager, "server.check_update", ctx)).await;
+    Some(update_status_from_hooks(results))
+}
 
-    // 첫 번째 성공 결과를 클라이언트로 전달
+/// `server.check_update` hook 결과를 확인 답으로: 첫 성공 결과, 모두 실패했으면 확인 실패(`check_failed`),
+/// hook이 없거나 모두 condition 불일치면 `no_hook_handled`
+fn update_status_from_hooks(results: Vec<(String, anyhow::Result<Value>)>) -> Value {
     if let Some(val) = results.iter().find_map(|(_, result)| result.as_ref().ok()) {
-        return Some(val.clone());
+        return val.clone();
     }
-    // 모두 실패했으면 그 오류를 구조화해 돌려준다
+    // 모두 실패했으면 그 오류를 구조화해 돌려준다. 화면이 "업데이트 없음"과 구분하도록 이유를 붙인다
     if let Some(error) = results.iter().find_map(|(_, result)| result.as_ref().err()) {
-        return Some(crate::plugin::error_response(error));
+        let mut failure = crate::plugin::error_response(error);
+        failure["update_available"] = json!(false);
+        failure["reason"] = json!("check_failed");
+        return failure;
     }
-
-    // hook이 등록되지 않았거나 모두 condition 불일치
-    Some(json!({
+    json!({
         "update_available": false,
         "reason": "no_hook_handled",
-    }))
+    })
 }
 
 /// 설치 방식 익스텐션(`install_method_<방식>`)으로 설치한 인스턴스인가. 이런 서버만 사바쨩이 업데이트를 확인·적용한다
@@ -4818,5 +4823,20 @@ mod tests {
         assert_eq!(reason(imported).await, json!("update_unsupported"), "not installed through the extension");
         assert_eq!(reason(steam).await, json!("no_hook_handled"), "no steamcmd extension in this test");
         assert_eq!(reason(gone).await, json!("no_extension_data"), "a module that did not load is not called un-updatable");
+    }
+
+    /// 확인 hook이 실패하면(시간 초과·예외) "업데이트 없음"이 아니라 확인 실패로 답한다. 성공한 답이 있으면 그것을 쓴다
+    #[test]
+    fn a_failed_update_check_is_not_reported_as_up_to_date() {
+        let failed = super::update_status_from_hooks(vec![("steamcmd".into(), Err(anyhow::anyhow!("timed out")))]);
+        assert_eq!(failed["update_available"], json!(false));
+        assert_eq!(failed["reason"], json!("check_failed"));
+        assert_eq!(failed["error"], json!("timed out"));
+        let answered = super::update_status_from_hooks(vec![
+            ("a".into(), Err(anyhow::anyhow!("boom"))),
+            ("steamcmd".into(), Ok(json!({"update_available": true}))),
+        ]);
+        assert_eq!(answered, json!({"update_available": true}));
+        assert_eq!(super::update_status_from_hooks(vec![])["reason"], json!("no_hook_handled"));
     }
 }

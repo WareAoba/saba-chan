@@ -795,6 +795,7 @@
     "update": "Actualizar",
     "updating": "Actualizando…",
     "update_available": "Hay una actualización del servidor de juego disponible",
+    "update_check_failed": "No se pudo comprobar si hay una actualización del servidor de juego: {{reason}}",
     "status_running": "En ejecución",
     "status_stopped": "Detenido",
     "status_starting": "Iniciando",

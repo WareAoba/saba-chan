@@ -2129,6 +2129,9 @@ async fn update(ctx: &Ctx, query: Option<&str>, check_only: bool) -> Result<()> 
                 say!("{}", t!("server.update_available", name = sv.name));
                 ctx.out
                     .hint(&format!("saba-chan-cli server update {}", shell_word(&sv.name)));
+            } else if s(r, "reason") == "check_failed" {
+                // 확인하지 못했다: "최신"이라고 말하지 않는다
+                say!("{}", t!("server.update_check_failed", name = sv.name, error = s(r, "error")));
             } else if s(r, "reason") == "update_unsupported" {
                 // 다운로드·수동 설치 서버: 최신인지 알 수 없다
                 say!("{}", t!("err.hint.update_unsupported"));

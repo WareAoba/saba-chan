@@ -795,6 +795,7 @@
     "update": "Aktualisieren",
     "updating": "Wird aktualisiert…",
     "update_available": "Ein Gameserver-Update ist verfügbar",
+    "update_check_failed": "Update für den Gameserver konnte nicht geprüft werden: {{reason}}",
     "status_running": "Läuft",
     "status_stopped": "Gestoppt",
     "status_starting": "Startet",

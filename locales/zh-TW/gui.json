@@ -795,6 +795,7 @@
     "update": "更新",
     "updating": "正在更新…",
     "update_available": "遊戲伺服器有可用的更新",
+    "update_check_failed": "無法檢查遊戲伺服器更新：{{reason}}",
     "status_running": "執行中",
     "status_stopped": "已停止",
     "status_starting": "啟動中",

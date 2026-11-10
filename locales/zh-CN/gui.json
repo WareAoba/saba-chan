@@ -795,6 +795,7 @@
     "update": "更新",
     "updating": "正在更新…",
     "update_available": "游戏服务器有可用更新",
+    "update_check_failed": "无法检查游戏服务器更新：{{reason}}",
     "status_running": "运行中",
     "status_stopped": "已停止",
     "status_starting": "启动中",

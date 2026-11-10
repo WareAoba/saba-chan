@@ -795,6 +795,7 @@
     "update": "Обновить",
     "updating": "Обновление…",
     "update_available": "Доступно обновление игрового сервера",
+    "update_check_failed": "Не удалось проверить обновление игрового сервера: {{reason}}",
     "status_running": "Работает",
     "status_stopped": "Остановлен",
     "status_starting": "Запуск",

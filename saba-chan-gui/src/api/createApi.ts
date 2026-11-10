@@ -411,12 +411,12 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         instanceDismissProvision: (name: string) => call('delete', `/api/provision-progress/${encodeURIComponent(name)}`, undefined, 3000),
         instanceCheckUpdate: async (id: string) => {
             try {
-                // SteamCMD app_info_print는 느릴 수 있다
-                return (await get(`/api/instance/${encodeURIComponent(id)}/check-update`, { timeout: 30000 })).data;
+                // SteamCMD app_info_print는 느릴 수 있다: 데몬의 hook 한도(120초)보다 조금 더 기다린다
+                return (await get(`/api/instance/${encodeURIComponent(id)}/check-update`, { timeout: 150000 })).data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 console.error('instance:checkUpdate error:', error.message);
-                return { update_available: false, error: error.message };
+                return { update_available: false, reason: 'check_failed', error: error.message };
             }
         },
         instanceApplyUpdate: (id: string) => call('post', `/api/instance/${encodeURIComponent(id)}/apply-update`, {}, 10000),

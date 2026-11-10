@@ -680,6 +680,7 @@
     "port_conflict_with": "ポート {{port}} は {{name}} も使っています。",
     "update_available": "{{name}} のアップデートがあります。",
     "update_none": "{{name}} は最新です。",
+    "update_check_failed": "{{name}} の更新を確認できませんでした: {{error}}",
     "update_reason": {
       "no_extension_data": "（インストール方法が記録されていません）",
       "no_hook_handled": "（更新を扱う拡張機能がありません）"

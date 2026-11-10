@@ -1422,6 +1422,9 @@ async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chr
     )
     .await;
     if check.body.get("update_available").and_then(Value::as_bool) != Some(true) {
+        if check.body.get("reason").and_then(Value::as_str) == Some("check_failed") {
+            tracing::warn!("Scheduled update of '{}': update check failed: {}", id, check.body["error"]);
+        }
         return;
     }
     let running_now = is_running(state, id).await;
