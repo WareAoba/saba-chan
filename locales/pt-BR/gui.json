@@ -2497,5 +2497,16 @@
     "unknown": "O endereço público deste PC ainda não é conhecido. Ele aparece quando conectar ao Server-chan.",
     "stopped": "Inicie o servidor para os amigos poderem entrar",
     "checked_at": "Verificado {{time}}"
+  },
+  "find": {
+    "label": "Buscar nesta aba",
+    "placeholder": "Buscar nesta aba",
+    "button": "Buscar",
+    "count": "{{cur}}/{{total}}",
+    "none": "Nenhum resultado",
+    "prev": "Anterior (Shift+Enter)",
+    "next": "Próximo (Enter)",
+    "close": "Fechar (Esc)",
+    "fold_hits": "Correspondências: {{count}}"
   }
 }

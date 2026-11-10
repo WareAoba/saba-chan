@@ -2497,5 +2497,16 @@
     "unknown": "还不知道这台电脑的公网地址。连接到 Server-chan 后会显示。",
     "stopped": "启动服务器后朋友才能进入",
     "checked_at": "{{time}} 检查"
+  },
+  "find": {
+    "label": "在此标签页中查找",
+    "placeholder": "在此标签页中查找",
+    "button": "查找",
+    "count": "{{cur}}/{{total}}",
+    "none": "无结果",
+    "prev": "上一个 (Shift+Enter)",
+    "next": "下一个 (Enter)",
+    "close": "关闭 (Esc)",
+    "fold_hits": "{{count}} 个匹配"
   }
 }

@@ -2497,5 +2497,16 @@
     "unknown": "Aún no se conoce la dirección pública de este PC. Aparecerá al conectarse a Server-chan.",
     "stopped": "Inicia el servidor para que tus amigos puedan unirse",
     "checked_at": "Comprobado {{time}}"
+  },
+  "find": {
+    "label": "Buscar en esta pestaña",
+    "placeholder": "Buscar en esta pestaña",
+    "button": "Buscar",
+    "count": "{{cur}}/{{total}}",
+    "none": "Sin resultados",
+    "prev": "Anterior (Shift+Enter)",
+    "next": "Siguiente (Enter)",
+    "close": "Cerrar (Esc)",
+    "fold_hits": "Coincidencias: {{count}}"
   }
 }

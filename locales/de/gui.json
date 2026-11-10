@@ -2497,5 +2497,16 @@
     "unknown": "Die öffentliche Adresse dieses PCs ist noch unbekannt. Sie erscheint nach der Verbindung mit Server-chan.",
     "stopped": "Starte den Server, damit Freunde beitreten können",
     "checked_at": "Geprüft {{time}}"
+  },
+  "find": {
+    "label": "In diesem Tab suchen",
+    "placeholder": "In diesem Tab suchen",
+    "button": "Suchen",
+    "count": "{{cur}}/{{total}}",
+    "none": "Keine Treffer",
+    "prev": "Vorheriger (Shift+Enter)",
+    "next": "Nächster (Enter)",
+    "close": "Schließen (Esc)",
+    "fold_hits": "Treffer: {{count}}"
   }
 }
