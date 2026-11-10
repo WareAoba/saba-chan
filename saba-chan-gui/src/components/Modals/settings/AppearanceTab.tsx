@@ -26,16 +26,14 @@ export function AppearanceTab({
 }: AppearanceTabProps) {
     const { t } = useTranslation(['gui', 'common']);
     return (
-        <>
+        <section className="saba-card">
             {/* ── 1. 라이트/다크 테마 ── */}
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
                         <Icon name="palette" size="sm" /> {t('gui:settings_modal.theme_label')}
                     </span>
-                    <span className="setting-description">
-                        {t('gui:settings_modal.theme_description')}
-                    </span>
+                    <span className="setting-description">{t('gui:settings_modal.theme_description')}</span>
                 </label>
                 <CustomDropdown
                     className="setting-select"
@@ -56,7 +54,10 @@ export function AppearanceTab({
                         <Icon name="palette" size="sm" /> {t('gui:settings_modal.accent_color_label', 'Accent Color')}
                     </span>
                     <span className="setting-description">
-                        {t('gui:settings_modal.accent_color_description', 'Choose a brand color for buttons, highlights, and accents')}
+                        {t(
+                            'gui:settings_modal.accent_color_description',
+                            'Choose a brand color for buttons, highlights, and accents',
+                        )}
                     </span>
                 </label>
                 <div className="accent-preset-grid">
@@ -84,9 +85,7 @@ export function AppearanceTab({
                         className="accent-preset-btn accent-preset-custom"
                         label={t('gui:settings_modal.accent_custom', 'Custom')}
                         value={customTheme.accentColor}
-                        onChange={(hex) =>
-                            handleCustomThemeChange({ accentColor: hex, accentSecondary: hex })
-                        }
+                        onChange={(hex) => handleCustomThemeChange({ accentColor: hex, accentSecondary: hex })}
                     />
                 </div>
             </div>
@@ -98,7 +97,10 @@ export function AppearanceTab({
                         <Icon name="palette" size="sm" /> {t('gui:settings_modal.gradient_label', 'Gradient Effect')}
                     </span>
                     <span className="setting-description">
-                        {t('gui:settings_modal.gradient_description', 'Apply gradient effect to buttons and app background')}
+                        {t(
+                            'gui:settings_modal.gradient_description',
+                            'Apply gradient effect to buttons and app background',
+                        )}
                     </span>
                 </label>
                 <SabaToggle
@@ -157,9 +159,7 @@ export function AppearanceTab({
                     <span className="setting-title">
                         <Icon name="server" size="sm" /> {t('gui:settings_modal.sidebar_compact_label')}
                     </span>
-                    <span className="setting-description">
-                        {t('gui:settings_modal.sidebar_compact_description')}
-                    </span>
+                    <span className="setting-description">{t('gui:settings_modal.sidebar_compact_description')}</span>
                 </label>
                 <SabaToggle
                     checked={!!customTheme.sidebarCompact}
@@ -167,18 +167,18 @@ export function AppearanceTab({
                 />
             </div>
 
-
             {/* ── 초기화 버튼 ── */}
             <div className="setting-item setting-item-clickable" onClick={handleResetTheme} style={{ marginTop: 8 }}>
                 <label className="setting-label" style={{ cursor: 'pointer' }}>
                     <span className="setting-title">
-                        <Icon name="refresh" size="sm" /> {t('gui:settings_modal.reset_theme_label', 'Reset to Default')}
+                        <Icon name="refresh" size="sm" />{' '}
+                        {t('gui:settings_modal.reset_theme_label', 'Reset to Default')}
                     </span>
                     <span className="setting-description">
                         {t('gui:settings_modal.reset_theme_description', 'Restore all appearance settings to defaults')}
                     </span>
                 </label>
             </div>
-        </>
+        </section>
     );
 }

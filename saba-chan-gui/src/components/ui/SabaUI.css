@@ -665,3 +665,48 @@
         animation: none;
     }
 }
+
+/* ── Card: 절 하나 = 카드 하나 (사용자 11-11 A안) ──
+ * 제목(.saba-card-title)·설명·줄(.setting-item)·단추 줄(.saba-card-actions)을 한 장에 담고, 줄 사이는 가는 선으로 나눈다.
+ * 반투명이면 면·입체가 backdrop.css 재질 층을 따라 유리가 된다 */
+.saba-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2-5);
+    padding: var(--sp-4);
+    background: var(--surface-gradient);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--neu-up);
+}
+.saba-card + .saba-card,
+.saba-card + :not(.saba-card),
+:not(.saba-card) + .saba-card {
+    margin-top: var(--sp-5);
+}
+.saba-card-title {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    margin: 0;
+}
+.saba-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    justify-content: flex-end;
+}
+/* 카드 안의 설정 줄: 따로 카드가 되지 않고 가는 선으로만 나뉜다 */
+.saba-card > .setting-item {
+    margin: 0;
+    padding: var(--sp-3) 0 0;
+    background: none;
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    box-shadow: none;
+}
+.saba-card > .setting-item:first-child {
+    padding-top: 0;
+    border-top: 0;
+}

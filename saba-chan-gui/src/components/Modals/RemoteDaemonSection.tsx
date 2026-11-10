@@ -358,8 +358,9 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const removingFamily = osFamily(removing?.peer?.platform);
 
     return (
-        <div className="data-transfer">
-            <h4 className="data-transfer-title">
+        <>
+        <section className="saba-card">
+            <h4 className="saba-card-title">
                 <Icon name="cloud" size="sm" /> {t('remote_daemon.title')}
             </h4>
             <p className="setting-description">{t('remote_daemon.description')}</p>
@@ -415,6 +416,9 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                 </>
             )}
 
+        </section>
+
+            {/* 내 PC 카드들은 카드 안의 카드가 되지 않게 따로 둔다 */}
             <h5 className="remote-daemon-subtitle">{t('remote_daemon.my_pcs')}</h5>
             <p className="setting-description">{t('remote_daemon.my_pcs_description')}</p>
             {peersError && <p className="setting-description">{peersError}</p>}
@@ -524,6 +528,6 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
             {installing && (
                 <InstallDialog onClose={() => setInstalling(false)} onPaired={reloadPcs} errorText={(res) => remoteErrorText(res, t)} />
             )}
-        </div>
+        </>
     );
 }

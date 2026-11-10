@@ -2099,30 +2099,7 @@
     font-size: var(--fs-xs);
 }
 
-/* 설정 > 저장 공간: 데이터 내보내기·가져오기 */
-.data-transfer {
-    margin-top: var(--sp-5);
-    padding-top: var(--sp-4);
-    border-top: 1px solid var(--line);
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-2-5);
-}
-/* 구역 뒤에 설정 항목이 이어지면 (연결 탭의 원격 데몬) 마지막 줄이 다음 카드에 붙지 않게 띄운다 */
-.data-transfer + .setting-item {
-    margin-top: var(--sp-5);
-}
-.data-transfer-title {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-1-5);
-    margin: 0;
-}
-.data-transfer-actions {
-    display: flex;
-    gap: var(--sp-2);
-    justify-content: flex-end;
-}
+/* 설정 > 저장 공간: 데이터 내보내기·가져오기 (카드 모양은 .saba-card) */
 .data-transfer-summary {
     display: flex;
     flex-direction: column;

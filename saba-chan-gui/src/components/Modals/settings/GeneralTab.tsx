@@ -19,15 +19,13 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
     const closeAction = useSettingsStore((s) => s.closeAction);
     const autoRefresh = useSettingsStore((s) => s.autoRefresh);
     return (
-        <>
+        <section className="saba-card">
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
                         <Icon name="globe" size="sm" /> {t('gui:settings_modal.language_label')}
                     </span>
-                    <span className="setting-description">
-                        {t('gui:settings_modal.language_description')}
-                    </span>
+                    <span className="setting-description">{t('gui:settings_modal.language_description')}</span>
                 </label>
                 <CustomDropdown
                     className="setting-select"
@@ -42,9 +40,7 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
                     <span className="setting-title">
                         <Icon name="refresh" size="sm" /> {t('gui:settings_modal.auto_refresh_label')}
                     </span>
-                    <span className="setting-description">
-                        {t('gui:settings_modal.auto_refresh_description')}
-                    </span>
+                    <span className="setting-description">{t('gui:settings_modal.auto_refresh_description')}</span>
                 </label>
                 <SabaToggle
                     checked={autoRefresh}
@@ -53,29 +49,28 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
             </div>
 
             {autoRefresh && (
-            <div className="setting-item">
-                <label className="setting-label">
-                    <span className="setting-title">
-                        <Icon name="refresh" size="sm" />{' '}
-                        {t('gui:settings_modal.refresh_interval_label')}
-                    </span>
-                    <span className="setting-description">
-                        {t('gui:settings_modal.refresh_interval_description')}
-                    </span>
-                </label>
-                <CustomDropdown
-                    className="setting-select"
-                    value={refreshInterval}
-                    onChange={(val) => setOption({ refreshInterval: Number(val) })}
-                    options={[
-                        { value: 1000, label: t('gui:settings_modal.refresh_1s') },
-                        { value: 2000, label: t('gui:settings_modal.refresh_2s') },
-                        { value: 3000, label: t('gui:settings_modal.refresh_3s') },
-                        { value: 5000, label: t('gui:settings_modal.refresh_5s') },
-                        { value: 10000, label: t('gui:settings_modal.refresh_10s') },
-                    ]}
-                />
-            </div>
+                <div className="setting-item">
+                    <label className="setting-label">
+                        <span className="setting-title">
+                            <Icon name="refresh" size="sm" /> {t('gui:settings_modal.refresh_interval_label')}
+                        </span>
+                        <span className="setting-description">
+                            {t('gui:settings_modal.refresh_interval_description')}
+                        </span>
+                    </label>
+                    <CustomDropdown
+                        className="setting-select"
+                        value={refreshInterval}
+                        onChange={(val) => setOption({ refreshInterval: Number(val) })}
+                        options={[
+                            { value: 1000, label: t('gui:settings_modal.refresh_1s') },
+                            { value: 2000, label: t('gui:settings_modal.refresh_2s') },
+                            { value: 3000, label: t('gui:settings_modal.refresh_3s') },
+                            { value: 5000, label: t('gui:settings_modal.refresh_5s') },
+                            { value: 10000, label: t('gui:settings_modal.refresh_10s') },
+                        ]}
+                    />
+                </div>
             )}
 
             {/* 창 닫기 버튼: 매번 묻기 / 트레이로 / 사바쨩까지 끄기 */}
@@ -84,9 +79,7 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
                     <span className="setting-title">
                         <Icon name="close" size="sm" /> {t('gui:settings_modal.close_action_label')}
                     </span>
-                    <span className="setting-description">
-                        {t('gui:settings_modal.close_action_description')}
-                    </span>
+                    <span className="setting-description">{t('gui:settings_modal.close_action_description')}</span>
                 </label>
                 <CustomDropdown
                     className="setting-select"
@@ -100,6 +93,6 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
             </div>
 
             {autostartAvailable() && <AutostartSetting />}
-        </>
+        </section>
     );
 }

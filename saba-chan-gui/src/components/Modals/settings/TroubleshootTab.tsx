@@ -32,45 +32,41 @@ export function TroubleshootTab({
     const { t } = useTranslation(['gui', 'common']);
     return (
         <>
-            {/* 데몬 진단 정보 (GET /api/diagnostics) */}
-            {diagnosticsAvailable() && (
-                <div className="setting-item setting-item-stack">
-                    <label className="setting-label">
-                        <span className="setting-title">
-                            <Icon name="tool" size="sm" /> {t('gui:diagnostics.title')}
+            <section className="saba-card">
+                {/* 데몬 진단 정보 (GET /api/diagnostics) */}
+                {diagnosticsAvailable() && (
+                    <div className="setting-item setting-item-stack">
+                        <label className="setting-label">
+                            <span className="setting-title">
+                                <Icon name="tool" size="sm" /> {t('gui:diagnostics.title')}
+                            </span>
+                            <span className="setting-description">{t('gui:diagnostics.description')}</span>
+                        </label>
+                        <DiagnosticsPanel />
+                    </div>
+                )}
+
+                {/* GUI 설정 기본값으로 (데몬 /api/config/gui/reset) */}
+                {typeof window.api?.configReset === 'function' && <ResetGuiSettings />}
+
+                {/* 사바쨩 삭제 */}
+                <div className="setting-item setting-item-danger" onClick={handleUninstall}>
+                    <label className="setting-label" style={{ cursor: 'pointer' }}>
+                        <span className="setting-title setting-title-danger">
+                            <Icon name="trash" size="sm" /> {t('gui:settings_modal.uninstall_label')}
                         </span>
-                        <span className="setting-description">{t('gui:diagnostics.description')}</span>
+                        <span className="setting-description">{t('gui:settings_modal.uninstall_description')}</span>
                     </label>
-                    <DiagnosticsPanel />
+                    <Icon name="chevronRight" size="sm" color="var(--stop)" />
                 </div>
-            )}
-
-            {/* GUI 설정 기본값으로 (데몬 /api/config/gui/reset) */}
-            {typeof window.api?.configReset === 'function' && <ResetGuiSettings />}
-
-            {/* 사바쨩 삭제 */}
-            <div className="setting-item setting-item-danger" onClick={handleUninstall}>
-                <label className="setting-label" style={{ cursor: 'pointer' }}>
-                    <span className="setting-title setting-title-danger">
-                        <Icon name="trash" size="sm" /> {t('gui:settings_modal.uninstall_label')}
-                    </span>
-                    <span className="setting-description">
-                        {t('gui:settings_modal.uninstall_description')}
-                    </span>
-                </label>
-                <Icon name="chevronRight" size="sm" color="var(--stop)" />
-            </div>
+            </section>
 
             {/* GUI 컴포넌트 테스트 섹션 (개발자 모드 전용) */}
             {devMode && (
                 <div className={clsx('gui-test-section', { open: guiTestOpen })}>
                     <h4 className="gui-test-title" onClick={() => setGuiTestOpen(!guiTestOpen)}>
                         <Icon name="tool" size="sm" /> GUI Test
-                        <Icon
-                            name={guiTestOpen ? 'chevronUp' : 'chevronDown'}
-                            size="sm"
-                            className="gui-test-chevron"
-                        />
+                        <Icon name={guiTestOpen ? 'chevronUp' : 'chevronDown'} size="sm" className="gui-test-chevron" />
                     </h4>
                     <div className="gui-test-grid">
                         <button
@@ -130,8 +126,7 @@ export function TroubleshootTab({
                         <button
                             className="gui-test-btn gui-test-toast-info"
                             onClick={() => {
-                                window.showToast &&
-                                    window.showToast('ℹ️ Info toast message.', 'info', 3000);
+                                window.showToast && window.showToast('ℹ️ Info toast message.', 'info', 3000);
                             }}
                         >
                             <Icon name="info" size="sm" /> Toast (Info)
@@ -139,8 +134,7 @@ export function TroubleshootTab({
                         <button
                             className="gui-test-btn gui-test-toast-success"
                             onClick={() => {
-                                window.showToast &&
-                                    window.showToast('✅ Success toast message.', 'success', 3000);
+                                window.showToast && window.showToast('✅ Success toast message.', 'success', 3000);
                             }}
                         >
                             <Icon name="check" size="sm" /> Toast (Success)
@@ -148,8 +142,7 @@ export function TroubleshootTab({
                         <button
                             className="gui-test-btn gui-test-toast-warning"
                             onClick={() => {
-                                window.showToast &&
-                                    window.showToast('⚠️ Warning toast message.', 'warning', 3000);
+                                window.showToast && window.showToast('⚠️ Warning toast message.', 'warning', 3000);
                             }}
                         >
                             <Icon name="alertCircle" size="sm" /> Toast (Warning)
@@ -157,8 +150,7 @@ export function TroubleshootTab({
                         <button
                             className="gui-test-btn gui-test-toast-error"
                             onClick={() => {
-                                window.showToast &&
-                                    window.showToast('❌ Error toast message.', 'error', 4000);
+                                window.showToast && window.showToast('❌ Error toast message.', 'error', 4000);
                             }}
                         >
                             <Icon name="x" size="sm" /> Toast (Error)

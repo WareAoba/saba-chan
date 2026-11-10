@@ -71,56 +71,58 @@ export function ConnectionTab({
             {/* AI 에이전트(MCP) 연결: PC 카드와 같은 카드로 보인다 */}
             {discordHostId && agentLinkAvailable() && <AgentLink />}
 
-            {/* IPC 포트 설정 */}
-            <div className="setting-item">
-                <label className="setting-label">
-                    <span className="setting-title">
-                        <Icon name="hash" size="sm" /> {t('gui:settings_modal.ipc_port_label')}
-                    </span>
-                    <span className="setting-description">{t('gui:settings_modal.ipc_port_description')}</span>
-                </label>
-                <SabaNumberInput
-                    className="input setting-num"
-                    aria-invalid={!!ipcPortError || undefined}
-                    value={portDraft}
-                    onChange={(e) => setPortDraft(e.target.value)}
-                    min={1024}
-                    max={65535}
-                    placeholder={String(DEFAULT_IPC_PORT)}
-                />
-            </div>
-            {ipcPortError && (
-                <div className="setting-validation-error">
-                    <Icon name="alertCircle" size="sm" /> {ipcPortError}
+            <section className="saba-card">
+                {/* IPC 포트 설정 */}
+                <div className="setting-item">
+                    <label className="setting-label">
+                        <span className="setting-title">
+                            <Icon name="hash" size="sm" /> {t('gui:settings_modal.ipc_port_label')}
+                        </span>
+                        <span className="setting-description">{t('gui:settings_modal.ipc_port_description')}</span>
+                    </label>
+                    <SabaNumberInput
+                        className="input setting-num"
+                        aria-invalid={!!ipcPortError || undefined}
+                        value={portDraft}
+                        onChange={(e) => setPortDraft(e.target.value)}
+                        min={1024}
+                        max={65535}
+                        placeholder={String(DEFAULT_IPC_PORT)}
+                    />
                 </div>
-            )}
-            {ipcPortChanged && !ipcPortError && (
-                <div className="setting-restart-notice">
-                    <Icon name="info" size="sm" /> {t('gui:settings_modal.ipc_port_restart_notice')}
-                </div>
-            )}
+                {ipcPortError && (
+                    <div className="setting-validation-error">
+                        <Icon name="alertCircle" size="sm" /> {ipcPortError}
+                    </div>
+                )}
+                {ipcPortChanged && !ipcPortError && (
+                    <div className="setting-restart-notice">
+                        <Icon name="info" size="sm" /> {t('gui:settings_modal.ipc_port_restart_notice')}
+                    </div>
+                )}
 
-            {/* 커스텀 릴레이 서버 URL */}
-            <div className="setting-item">
-                <label className="setting-label">
-                    <span className="setting-title">
-                        <Icon name="globe" size="sm" /> {t('gui:settings_modal.relay_url_label', '릴레이 서버 URL')}
-                    </span>
-                    <span className="setting-description">
-                        {t(
-                            'gui:settings_modal.relay_url_description',
-                            '클라우드 모드에서 사용할 릴레이 서버의 URL입니다. 비어있으면 기본 서버를 사용합니다.',
-                        )}
-                    </span>
-                </label>
-                <input
-                    type="text"
-                    className="input setting-field"
-                    value={relayDraft}
-                    onChange={(e) => setRelayDraft(e.target.value)}
-                    placeholder="https://relay.saba-chan.app"
-                />
-            </div>
+                {/* 커스텀 릴레이 서버 URL */}
+                <div className="setting-item">
+                    <label className="setting-label">
+                        <span className="setting-title">
+                            <Icon name="globe" size="sm" /> {t('gui:settings_modal.relay_url_label', '릴레이 서버 URL')}
+                        </span>
+                        <span className="setting-description">
+                            {t(
+                                'gui:settings_modal.relay_url_description',
+                                '클라우드 모드에서 사용할 릴레이 서버의 URL입니다. 비어있으면 기본 서버를 사용합니다.',
+                            )}
+                        </span>
+                    </label>
+                    <input
+                        type="text"
+                        className="input setting-field"
+                        value={relayDraft}
+                        onChange={(e) => setRelayDraft(e.target.value)}
+                        placeholder="https://relay.saba-chan.app"
+                    />
+                </div>
+            </section>
         </>
     );
 }
