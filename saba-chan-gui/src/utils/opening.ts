@@ -37,8 +37,14 @@ export function openingGate(s: OpeningInput): { hold: boolean; chime: boolean } 
  */
 export type OpeningKind = 'burst' | 'fall';
 
-/** 기동음의 마지막 음(도·라·도 화음)이 울리는 때. 248 BPM 네 번째 박 (app-startup.wav) */
-export const OPENING_CHORD_MS = 726;
+/** 기동음 안에서 마지막 음(도·라·도 화음)이 울리는 때. 248 BPM 네 번째 박 (app-startup.wav) */
+export const CHIME_CHORD_MS = 726;
+/** 낱말을 하나씩 떼어 올 틈을 두려고 기동음을 오프닝보다 이만큼 늦게 튼다 */
+export const OPENING_CHIME_LEAD_MS = 500;
+/** 오프닝에서 화음이 울리는 때 */
+export const OPENING_CHORD_MS = OPENING_CHIME_LEAD_MS + CHIME_CHORD_MS;
+/** 낱말 하나가 제자리에서 가운데까지 날아오는 길이 */
+const WORD_FLIGHT_MS = 480;
 /** 메인 화면 준비(글꼴·그림)를 이보다 오래 기다리지 않는다 */
 export const OPENING_READY_WAIT_MS = 1500;
 /** 화음 뒤 글자가 흩어지는 길이 */
@@ -62,12 +68,25 @@ export interface OpeningFrame {
 }
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+const smooth01 = (x: number) => {
+    const t = clamp01(x);
+    return t * t * (3 - 2 * t);
+};
+
+/**
+ * 낱말 하나의 끌려오기 진행 0..1. order(0..1)는 떼어 오는 차례로, 0이 맨 처음·1이 맨 나중이다.
+ * 낱말마다 같은 길이로 부드럽게 날아오고, 마지막 낱말이 화음에 가운데 닿는다.
+ */
+export function wordPull(ms: number, order: number): number {
+    const start = clamp01(order) * (OPENING_CHORD_MS - WORD_FLIGHT_MS);
+    return smooth01((ms - start) / WORD_FLIGHT_MS);
+}
 
 export function openingFrame(ms: number): OpeningFrame {
     if (ms < OPENING_CHORD_MS) {
         const p = clamp01(ms / OPENING_CHORD_MS);
-        // 처음엔 천천히, 화음에 가까울수록 빨라진다 (박자에 끊지 않고 한 번에 쭉)
-        return { pull: p * p * p, burst: 0, opened: false, flash: 0, content: 1 - clamp01(p * 1.6), done: false };
+        // 가운데 빛은 낱말이 모일수록 커지고, 로고는 제 크기로 있다가 화음 무렵에 옅어진다
+        return { pull: p * p, burst: 0, opened: false, flash: 0, content: 1 - smooth01((p - 0.7) / 0.3), done: false };
     }
     const after = ms - OPENING_CHORD_MS;
     return {

@@ -8,6 +8,7 @@ import {
     openingFrame,
     pullPoint,
     scatterPoint,
+    wordPull,
 } from '../../utils/opening';
 
 // 서버 콘솔에서 흘러갈 법한 조각들: 짧은 로그 낱말과 16진수
@@ -78,6 +79,8 @@ interface Word {
     dist: number;
     v0: number;
     delay: number;
+    /** 떼어 오는 차례 0..1 (가운데에서 먼 낱말부터) */
+    order: number;
 }
 
 const smooth = (x: number, a: number, b: number) => {
@@ -240,7 +243,14 @@ export function MatrixRain({
                     dist: (0.25 + Math.random() * 0.85) * reach,
                     v0: Math.random() * h * 0.15,
                     delay: Math.random() * 120 * (1 - g.y / Math.max(1, h)),
+                    order: 0,
                 };
+            });
+            // 가운데에서 먼 낱말부터 하나씩 떼어 온다
+            const far = (word: Word) => Math.hypot(word.x - p.x, word.y - p.y);
+            const ranked = [...words].sort((a, b) => far(b) - far(a));
+            ranked.forEach((word, i) => {
+                word.order = ranked.length > 1 ? i / (ranked.length - 1) : 1;
             });
             wordsFor = p.start;
         };
@@ -276,17 +286,19 @@ export function MatrixRain({
                 glow(p.x, p.y, small * 0.06, 0.9 * f.pull * f.pull);
                 const u = ms / OPENING_CHORD_MS;
                 for (const word of words) {
-                    const e = f.pull;
+                    const e = wordPull(ms, word.order);
                     const at = pullPoint(word, center, e);
                     const angle = word.spin * Math.PI * e;
-                    const wordAlpha = (word.seen + (1 - word.seen) * u) * (1 - smooth(e, 0.45, 0.75));
+                    // 떨어져 나오는 순간 살짝 부풀었다가, 가운데로 갈수록 작아진다
+                    const lift = 1 + 0.35 * Math.sin(Math.PI * smooth(e, 0, 0.35)) - 0.35 * e;
+                    const wordAlpha = (word.seen + (1 - word.seen) * u) * (1 - smooth(e, 0.55, 0.85));
                     if (wordAlpha > 0.02) {
                         ctx.globalAlpha = wordAlpha;
-                        ctx.fillStyle = e > 0.15 ? head : word.color;
-                        drawWord(word, at.x, at.y, angle, 1 - 0.35 * e, font);
+                        ctx.fillStyle = e > 0.02 ? head : word.color;
+                        drawWord(word, at.x, at.y, angle, lift, font);
                     }
                     // 가운데 가까이에서 낱말이 먼지로 부서진다 (낱말 길이만큼 늘어선 점이 함께 줄어든다)
-                    const dust = smooth(e, 0.3, 0.6) * (1 - smooth(e, 0.97, 1));
+                    const dust = smooth(e, 0.4, 0.7) * (1 - smooth(e, 0.97, 1));
                     if (dust > 0.02) {
                         ctx.globalAlpha = dust;
                         ctx.fillStyle = head;

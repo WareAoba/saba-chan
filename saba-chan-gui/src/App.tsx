@@ -43,6 +43,7 @@ import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStor
 import { eventsAvailable } from './utils/daemonEvents';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
+    OPENING_CHIME_LEAD_MS,
     OPENING_READY_WAIT_MS,
     type OpeningKind,
     openingGate,
@@ -719,8 +720,9 @@ function App() {
         ).then(() => {
             if (!alive) return;
             // 데몬·릴레이가 정상이면 기동음과 함께 터뜨리고, 아니면 소리 없이 후두둑
+            // 기동음은 낱말을 떼어 오기 시작한 뒤에 틀어, 그 화음이 오프닝의 화음 순간에 맞게 한다
             setOpeningKind(chimeRef.current.chime ? 'burst' : 'fall');
-            playChime();
+            setTimeout(playChime, OPENING_CHIME_LEAD_MS);
             setOpeningPhase('play');
         });
         return () => {

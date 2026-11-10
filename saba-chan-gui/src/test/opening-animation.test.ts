@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+    CHIME_CHORD_MS,
     FALL_END_MS,
     fallFrame,
     fallPoint,
+    OPENING_CHIME_LEAD_MS,
     OPENING_CHORD_MS,
     OPENING_END_MS,
     openingFrame,
@@ -10,6 +12,7 @@ import {
     pullPoint,
     scatterPoint,
     whenOpeningReady,
+    wordPull,
 } from '../utils/opening';
 
 describe('오프닝 애니메이션 (콘솔 글자를 끌어모아 화음에 팟)', () => {
@@ -36,6 +39,32 @@ describe('오프닝 애니메이션 (콘솔 글자를 끌어모아 화음에 팟
         const later = openingFrame(OPENING_CHORD_MS + 300);
         expect(later.flash).toBeLessThan(0.2);
         expect(later.burst).toBeGreaterThan(0);
+    });
+
+    it('기동음을 오프닝보다 조금 늦게 틀어, 그 화음이 오프닝의 화음 순간에 맞는다', () => {
+        expect(OPENING_CHIME_LEAD_MS).toBeGreaterThan(0);
+        expect(OPENING_CHORD_MS).toBe(OPENING_CHIME_LEAD_MS + CHIME_CHORD_MS);
+    });
+
+    it('낱말은 정한 차례대로 하나씩 떨어져 나와, 마지막 낱말이 화음에 가운데 닿는다', () => {
+        // 첫 낱말은 곧바로 떠나 화음 전에 닿는다
+        expect(wordPull(0, 0)).toBe(0);
+        expect(wordPull(OPENING_CHORD_MS * 0.2, 0)).toBeGreaterThan(0);
+        expect(wordPull(OPENING_CHORD_MS * 0.7, 0)).toBe(1);
+        // 마지막 낱말은 한참 제자리에 있다가 화음에 닿는다
+        expect(wordPull(OPENING_CHORD_MS * 0.4, 1)).toBe(0);
+        expect(wordPull(OPENING_CHORD_MS - 1, 1)).toBeLessThan(1);
+        expect(wordPull(OPENING_CHORD_MS, 1)).toBe(1);
+        // 어느 때든 먼저 떠난 낱말이 더 많이 와 있고, 낱말마다 끊김 없이 다가온다
+        for (let ms = 0; ms <= OPENING_CHORD_MS; ms += 20) {
+            expect(wordPull(ms, 0.3)).toBeGreaterThanOrEqual(wordPull(ms, 0.6));
+            expect(wordPull(ms + 20, 0.5)).toBeGreaterThanOrEqual(wordPull(ms, 0.5));
+        }
+    });
+
+    it('로고는 작게 쪼그라들지 않고 제 크기로 있다가 화음 무렵에 옅어진다', () => {
+        expect(openingFrame(OPENING_CHORD_MS * 0.5).content).toBe(1);
+        expect(openingFrame(OPENING_CHORD_MS - 1).content).toBeLessThan(0.2);
     });
 
     it('흩어짐이 끝나면 오프닝을 마친다', () => {

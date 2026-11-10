@@ -122,7 +122,7 @@ function useOpeningPlayback(
             const f = openingFrame(ms);
             const content = contentRef.current;
             if (content) {
-                content.style.transform = `scale(${0.15 + 0.85 * f.content})`;
+                content.style.transform = `scale(${0.96 + 0.04 * f.content})`;
                 content.style.opacity = String(f.opened ? 0 : 0.05 + 0.95 * f.content);
             }
             if (flashRef.current) flashRef.current.style.opacity = String(0.95 * f.flash);
