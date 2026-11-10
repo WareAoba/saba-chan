@@ -172,6 +172,7 @@
     "sound_crash": "Arrêt inattendu",
     "sound_install": "Résultat de l'installation",
     "sound_update": "Mise à jour trouvée",
+    "sound_startup": "Démarrage de l’app",
     "close_action_label": "Bouton Fermer",
     "close_action_description": "Action du bouton de fermeture de la fenêtre.",
     "close_action_ask": "Demander à chaque fois",

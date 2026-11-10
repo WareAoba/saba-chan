@@ -172,6 +172,7 @@
     "sound_crash": "Неожиданная остановка",
     "sound_install": "Результат установки",
     "sound_update": "Найдено обновление",
+    "sound_startup": "Запуск приложения",
     "close_action_label": "Кнопка закрытия",
     "close_action_description": "Что делает кнопка закрытия окна.",
     "close_action_ask": "Спрашивать каждый раз",

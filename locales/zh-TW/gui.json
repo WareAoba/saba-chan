@@ -172,6 +172,7 @@
     "sound_crash": "意外停止",
     "sound_install": "安裝結果",
     "sound_update": "發現更新",
+    "sound_startup": "正常啟動",
     "close_action_label": "關閉按鈕",
     "close_action_description": "點擊視窗關閉按鈕時的動作。",
     "close_action_ask": "每次詢問",

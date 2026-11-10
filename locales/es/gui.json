@@ -172,6 +172,7 @@
     "sound_crash": "Detención inesperada",
     "sound_install": "Resultado de la instalación",
     "sound_update": "Actualización encontrada",
+    "sound_startup": "Inicio de la app",
     "close_action_label": "Botón de cerrar",
     "close_action_description": "Qué hace el botón de cerrar de la ventana.",
     "close_action_ask": "Preguntar siempre",
