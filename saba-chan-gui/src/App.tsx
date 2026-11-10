@@ -703,6 +703,8 @@ function App() {
         const was = wasLoadingRef.current;
         wasLoadingRef.current = showLoading;
         if (showLoading) {
+            // 메인 화면이 처음 그려질 때 열리는 화면(처음 사용자 가이드)은 이 효과보다 먼저 돌므로, 로딩 중부터 소리를 맡을 수 있게 한다
+            beginOpeningSound();
             setOpeningPhase('loading');
             return undefined;
         }
@@ -711,16 +713,19 @@ function App() {
             setOpeningPhase('prepare');
             return undefined;
         }
+        // 움직임을 줄였으면 오프닝 없이 열되, 맡은 소리가 있으면 기동음 대신 그것을 낸다
+        const claimed = takeOpeningSound();
         setOpeningPhase('done');
-        if (!isPopoutMode) playChime();
+        if (!isPopoutMode) {
+            if (claimed) playOpeningSound(claimed);
+            else playChime();
+        }
         setLoadingLeaving(true);
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);
     }, [showLoading]);
     useEffect(() => {
         if (openingPhase !== 'prepare') return undefined;
-        // 메인 화면을 덮어 두고 그리는 동안 열린 화면(처음 사용자 가이드)이 소리를 오프닝에 맡길 수 있다
-        beginOpeningSound();
         let alive = true;
         const decode = (src: string) => {
             const img = new Image();

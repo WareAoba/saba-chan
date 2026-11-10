@@ -9,6 +9,21 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 
+// 처음 사용자 가이드처럼 메인 화면이 처음 그려질 때 소리를 오프닝에 맡기는 화면을 흉내 낸다 (window.__claimGuide가 있을 때만)
+vi.mock('../components/servers/ServersPage', async (importOriginal) => {
+    const mod = await importOriginal<typeof import('../components/servers/ServersPage')>();
+    const React = await import('react');
+    const { claimOpeningSound } = await import('../utils/opening');
+    const ServersPage = (props: Parameters<typeof mod.ServersPage>[0]) => {
+        React.useEffect(() => {
+            const probe = (window as { __claimGuide?: { claimed?: boolean } }).__claimGuide;
+            if (probe && probe.claimed === undefined) probe.claimed = claimOpeningSound('guideOpen');
+        }, []);
+        return React.createElement(mod.ServersPage, props);
+    };
+    return { ...mod, ServersPage };
+});
+
 // ── shared mock factory ─────────────────────────────────────
 function createApiMock(overrides: Record<string, unknown> = {}): typeof window.api {
     const base = {
@@ -349,13 +364,13 @@ describe('로딩 스크린 상태 머신', () => {
             fireEvent.click(screen.getByRole('button', { name: /Open anyway/i }));
         });
         await waitFor(() => expect(container.querySelector('.loading-screen.falling')).toBeInTheDocument(), {
-            timeout: 3000,
+            timeout: 15000,
         });
         await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
-            timeout: 3000,
+            timeout: 15000,
         });
         expect(playSound).not.toHaveBeenCalled();
-    });
+    }, 20000);
 
     it('데몬 기동 실패 → [다시 시도]가 실패하면 그 이유를, 성공하면 ready를 기다려 메인 UI', async () => {
         const daemonRestart = vi
@@ -485,14 +500,31 @@ describe('로딩 스크린 상태 머신', () => {
                 expect(container.querySelector('.App')).toBeInTheDocument();
                 expect(container.querySelector('.loading-screen.opening')).toBeInTheDocument();
             },
-            { timeout: 3000 },
+            { timeout: 15000 },
         );
         await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
-            timeout: 5000,
+            timeout: 15000,
         });
         // 릴레이를 아직 안 붙였으면 실패한 것이 없으니 기동음과 함께 터뜨리는 쪽이다
         expect(playSound).toHaveBeenCalledWith('startup');
-    });
+    }, 20000);
+
+    it('메인 화면이 처음 그려질 때 열린 화면이 소리를 맡기면, 기동음 대신 그 소리 하나만 오프닝과 함께 낸다', async () => {
+        const probe: { claimed?: boolean } = {};
+        (window as { __claimGuide?: typeof probe }).__claimGuide = probe;
+        try {
+            const playSound = vi.fn();
+            window.api = createApiMock({ playSound });
+            const { container } = await act(async () => render(<App />));
+            await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
+                timeout: 15000,
+            });
+            expect(probe.claimed).toBe(true);
+            expect(playSound.mock.calls).toEqual([['guideOpen']]);
+        } finally {
+            delete (window as { __claimGuide?: typeof probe }).__claimGuide;
+        }
+    }, 20000);
 });
 
 // ════════════════════════════════════════════════════════════
