@@ -16,7 +16,7 @@
 }
 
 .toast {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     color: var(--text-primary);
     padding: var(--sp-1-5) var(--sp-3);
     min-height: 32px;
@@ -57,23 +57,23 @@
 }
 
 .toast.toast-success {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 .toast.toast-error {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 .toast.toast-warning {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 .toast.toast-info {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 .toast.toast-discord {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 /* 상태 토스트 (StatusBar 대체) */
@@ -90,16 +90,16 @@
 }
 
 .toast.toast-status-init {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 .toast.toast-status-ready {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     font-weight: 600;
 }
 
 .toast.toast-status-ui {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 .toast-message {

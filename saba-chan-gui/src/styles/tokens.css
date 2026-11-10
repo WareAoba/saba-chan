@@ -17,16 +17,16 @@
     color-scheme: dark;
     /* 회색 계단 (A1): 깊을수록 어둡다 */
     --bg-0: #0d0e10;
-    --bg-1: #141518;
-    --bg-2: #1b1c20;
-    --bg-3: #24262b;
-    --bg-4: #2e3036;
-    --inset: #0a0b0d;
+    --bg-1-solid: #141518;
+    --bg-2-solid: #1b1c20;
+    --bg-3-solid: #24262b;
+    --bg-4-solid: #2e3036;
+    --inset-solid: #0a0b0d;
     /* 입력 칸·드롭다운 면: 카드(bg-2)보다 한 단 밝게 */
-    --field: #222429;
+    --field-solid: #222429;
     /* 면은 단색이 기본이다. 그라데이션 변수 이름은 슬롯으로 남겨 둔다 */
-    --surface-gradient: #191a1e;
-    --surface-gradient-hover: #1f2025;
+    --surface-gradient-solid: #191a1e;
+    --surface-gradient-hover-solid: #1f2025;
     --panel-gradient: #141518;
     --appbar-gradient: #111214;
     --sheen: linear-gradient(in oklch, transparent, transparent);
@@ -63,7 +63,7 @@
     --shadow-ink: #000000;
     /* 뉴모피즘: 왼쪽 위 빛, 오른쪽 아래 그림자 (체크박스·버튼) */
     --neu-dark: rgba(0, 0, 0, 0.55);
-    --neu-light: rgba(255, 255, 255, 0.05);
+    --neu-light-solid: rgba(255, 255, 255, 0.05);
     --neu-hl: rgba(255, 255, 255, 0.06);
 
     --console-bg: #0a0b0d;
@@ -97,14 +97,14 @@
 [data-theme="light"] {
     color-scheme: light;
     --bg-0: #e6e8ed;
-    --bg-1: #eef0f4;
-    --bg-2: #f7f8fa;
-    --bg-3: #ffffff;
-    --bg-4: #ffffff;
-    --inset: #e2e5eb;
-    --field: #e2e5eb;
-    --surface-gradient: #ffffff;
-    --surface-gradient-hover: #fafbfc;
+    --bg-1-solid: #eef0f4;
+    --bg-2-solid: #f7f8fa;
+    --bg-3-solid: #ffffff;
+    --bg-4-solid: #ffffff;
+    --inset-solid: #e2e5eb;
+    --field-solid: #e2e5eb;
+    --surface-gradient-solid: #ffffff;
+    --surface-gradient-hover-solid: #fafbfc;
     --panel-gradient: #f3f4f7;
     --appbar-gradient: #eef0f3;
     --sheen: linear-gradient(in oklch, transparent, transparent);
@@ -134,7 +134,7 @@
     --scrim: rgba(30, 34, 44, 0.35);
     --shadow-ink: #141824;
     --neu-dark: rgba(150, 160, 185, 0.55);
-    --neu-light: #ffffff;
+    --neu-light-solid: #ffffff;
     --neu-hl: rgba(255, 255, 255, 0.7);
 
     --console-bg: #15161a;
@@ -166,14 +166,14 @@
     [data-theme="auto"] {
         color-scheme: light;
         --bg-0: #e6e8ed;
-        --bg-1: #eef0f4;
-        --bg-2: #f7f8fa;
-        --bg-3: #ffffff;
-        --bg-4: #ffffff;
-        --inset: #e2e5eb;
-        --field: #e2e5eb;
-        --surface-gradient: #ffffff;
-        --surface-gradient-hover: #fafbfc;
+        --bg-1-solid: #eef0f4;
+        --bg-2-solid: #f7f8fa;
+        --bg-3-solid: #ffffff;
+        --bg-4-solid: #ffffff;
+        --inset-solid: #e2e5eb;
+        --field-solid: #e2e5eb;
+        --surface-gradient-solid: #ffffff;
+        --surface-gradient-hover-solid: #fafbfc;
         --panel-gradient: #f3f4f7;
         --appbar-gradient: #eef0f3;
         --sheen: linear-gradient(in oklch, transparent, transparent);
@@ -199,7 +199,7 @@
         --scrim: rgba(30, 34, 44, 0.35);
         --shadow-ink: #141824;
         --neu-dark: rgba(150, 160, 185, 0.55);
-        --neu-light: #ffffff;
+        --neu-light-solid: #ffffff;
         --neu-hl: rgba(255, 255, 255, 0.7);
         --console-bg: #15161a;
         --console-text: #d6d8e0;
@@ -241,9 +241,23 @@
     --brand-neu-from: color-mix(in oklch, var(--brand-primary), #ffffff 18%);
     --brand-neu-to: color-mix(in oklch, var(--brand-primary), #000000 14%);
     /* 뉴모피즘 그림자: 솟음 / 더 솟음(마우스 올림) / 파임(누름·값 담는 칸) */
-    --neu-up: 3px 3px 7px var(--neu-dark), -3px -3px 7px var(--neu-light), inset 0 1px 0 var(--neu-hl);
-    --neu-up-hi: 5px 5px 12px var(--neu-dark), -4px -4px 10px var(--neu-light), inset 0 1px 0 var(--neu-hl);
-    --neu-in: inset 2px 2px 5px var(--neu-dark), inset -2px -2px 5px var(--neu-light);
+    --neu-up-solid: 3px 3px 7px var(--neu-dark), -3px -3px 7px var(--neu-light-solid), inset 0 1px 0 var(--neu-hl);
+    --neu-up-hi-solid: 5px 5px 12px var(--neu-dark), -4px -4px 10px var(--neu-light-solid), inset 0 1px 0 var(--neu-hl);
+    --neu-in-solid: inset 2px 2px 5px var(--neu-dark), inset -2px -2px 5px var(--neu-light-solid);
+    /* 재질 층: 테마는 *-solid(단단한 면)만 정하고, 화면은 아래 이름을 칠한다.
+     * 창 바탕 반투명이 켜지면 backdrop.css가 같은 이름을 유리(비치는 면)로 바꾼다 */
+    --bg-1: var(--bg-1-solid);
+    --bg-2: var(--bg-2-solid);
+    --bg-3: var(--bg-3-solid);
+    --bg-4: var(--bg-4-solid);
+    --surface-gradient: var(--surface-gradient-solid);
+    --surface-gradient-hover: var(--surface-gradient-hover-solid);
+    --inset: var(--inset-solid);
+    --field: var(--field-solid);
+    --neu-light: var(--neu-light-solid);
+    --neu-up: var(--neu-up-solid);
+    --neu-up-hi: var(--neu-up-hi-solid);
+    --neu-in: var(--neu-in-solid);
     /* 색 버튼 위에 얹는 빛: 왼쪽 위 밝게, 오른쪽 아래 어둡게 */
     --neu-sheen: linear-gradient(in oklch 160deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 45%, rgba(0, 0, 0, 0.12));
     --neu-press-color: inset 2.5px 2.5px 5px rgba(0, 0, 0, 0.35), inset -2px -2px 5px rgba(255, 255, 255, 0.15);
@@ -337,20 +351,12 @@
 :root,
 [data-theme] {
     --bg-app: var(--bg-0);
-    --bg-surface: var(--bg-2);
-    --bg-surface-hover: var(--bg-3);
-    --bg-surface-alt: var(--bg-2);
-    --bg-surface-secondary: var(--bg-1);
-    --bg-surface-tertiary: var(--bg-3);
-    --bg-surface-input: var(--field);
-    --bg-surface-input-focus: var(--field);
     --bg-overlay: var(--scrim);
     --bg-initializing-overlay: var(--scrim);
 
     --loading-bg: var(--bg-0);
     --loading-text: var(--text-1);
     --loading-logo-filter: none;
-    --loading-bar-bg: var(--inset);
 
     --text-primary: var(--text-1);
     --text-secondary: var(--text-2);
@@ -382,18 +388,13 @@
     --brand-bg-info: var(--accent-soft);
     --brand-border-light: var(--brand-shadow-medium);
 
-    --btn-secondary-bg: var(--bg-2);
     --btn-secondary-text: var(--text-1);
     --btn-secondary-border: var(--line-strong);
-    --btn-secondary-hover-bg: var(--bg-3);
     --btn-secondary-hover-border: var(--line-strong);
 
-    --card-bg: var(--bg-2);
     --card-shadow: var(--shadow-raised);
     --card-hover-shadow: var(--shadow-raised-hover);
-    --card-expanded-bg: var(--bg-2);
 
-    --scrollbar-thumb: var(--bg-4);
     --scrollbar-thumb-hover: var(--text-3);
     --scrollbar-thumb-active: var(--text-2);
     --scrollbar-track: transparent;
@@ -404,10 +405,7 @@
     --info-bg-alt: var(--info-soft);
     --info-bg-gradient: var(--info-soft);
 
-    --tab-bg: var(--inset);
     --tab-text: var(--text-2);
-    --tab-hover-bg: var(--bg-3);
-    --tab-active-bg: var(--bg-3);
     --tab-active-text: var(--text-1);
     --tab-active-border: var(--brand-primary);
 
@@ -415,38 +413,27 @@
     --badge-primary-text: var(--brand-text);
     --badge-subtle-bg: var(--accent-soft);
     --badge-subtle-text: var(--brand-primary);
-    --badge-default-bg: var(--bg-3);
     --badge-default-text: var(--text-2);
 
-    --tooltip-bg: var(--bg-4);
     --tooltip-text: var(--text-1);
 
     --icon-default: var(--text-3);
     --icon-secondary: var(--text-2);
     --icon-hover: var(--text-1);
 
-    --protocol-section-bg: var(--bg-1);
     --protocol-section-border: var(--line);
-    --protocol-info-bg: var(--bg-2);
     --protocol-info-border: var(--line);
 
-    --settings-tab-bg: var(--inset);
-    --settings-tab-active-bg: var(--bg-3);
-    --settings-item-bg: var(--bg-2);
 
-    --input-bg: var(--field);
     --input-border: var(--line-strong);
     --input-focus-border: var(--brand-primary);
     --input-focus-shadow: var(--brand-shadow-light);
 
-    --empty-bg: var(--bg-1);
     --toast-shadow: rgba(0, 0, 0, 0.4);
 
     --cli-bg: var(--console-bg);
     --cli-border: var(--line);
-    --cli-suggestion-bg: var(--bg-2);
     --cli-suggestion-border: var(--line);
-    --cli-suggestion-hover: var(--bg-3);
     --cli-text: var(--ok);
 
     --success-badge-bg: var(--ok-soft);
@@ -465,17 +452,11 @@
     --status-error-badge-bg: var(--warn-soft);
     --status-error-badge-text: var(--warn);
 
-    --command-inputs-bg: var(--inset);
-    --command-info-bg: var(--bg-1);
     --command-info-border: var(--brand-primary);
-    --command-disabled-bg: var(--bg-3);
 
-    --modal-footer-bg: var(--bg-1);
-    --modal-detail-bg: var(--bg-1);
 
     --bg-modal-info-bg: var(--info-soft);
     --bg-modal-info-border: var(--brand-primary);
-    --bg-modal-info-row-bg: var(--bg-2);
 
     --img-brightness: none;
     --img-logo-brightness: none;
@@ -485,12 +466,6 @@
     --accent-primary: var(--brand-primary);
     --accent-blue: var(--info);
     --brand-primary-faded: var(--brand-shadow-light);
-    --bg-primary: var(--bg-1);
-    --bg-secondary: var(--bg-2);
-    --bg-tertiary: var(--bg-3);
-    --bg-hover: var(--bg-3);
-    --hover-bg: var(--bg-3);
-    --bg-input: var(--field);
     --bg-success-subtle: var(--ok-soft);
     --bg-warning-subtle: var(--warn-soft);
     --border-color: var(--line);

@@ -2,14 +2,72 @@
  * 창 바탕 반투명 (설정 → 외관, themeManager.applyWindowBackdrop)
  * 셸이 창 뒤에 OS 효과(Mica·아크릴·리퀴드 글래스·KWin 흐림)를 깔았을 때만 data-backdrop="on"이다.
  * 창 바닥 한 겹만 테마 바탕을 고른 진하기·밝기로 덮고, 그 위의 큰 판(목록·상세·상단바)은 비워 겹쳐 진해지지 않게 한다.
- * 카드·입력·콘솔·모달은 그대로 단단하다
+ * 카드·버튼·입력칸은 유리 재질이 된다: 면 토큰(tokens.css 재질 층)을 단단한 색의 비치는 섞임으로 바꾸고,
+ * 뉴모피즘의 밝은 쪽 그림자는 비치는 바탕 위에서 얼룩이 되므로 빼고 위쪽 빛 테두리와 아래 그림자만 남긴다.
+ * 떠 있는 창(모달·팝오버·알림·메뉴)은 뒤의 화면 위에서 읽혀야 하므로 단단한 재질로 되돌린다
  * ════════════════════════════════════════════════════════════════ */
 
 :root[data-backdrop="on"] {
     --backdrop-base: color-mix(in oklch, var(--bg-0), var(--backdrop-mix, white) var(--backdrop-mix-amount, 0%));
     --window-bg: color-mix(in oklch, var(--backdrop-base) var(--backdrop-opacity, 60%), transparent);
     --appbar-gradient: transparent;
-    --panel-gradient: color-mix(in oklch, var(--bg-1) 30%, transparent);
+    --panel-gradient: color-mix(in oklch, var(--bg-1-solid) 30%, transparent);
+
+    /* 유리 진하기: 면(카드·버튼)과 홈(입력칸·파인 칸) */
+    --glass-face: 80%;
+    --glass-well: 55%;
+    --bg-1: color-mix(in oklch, var(--bg-1-solid) var(--glass-face), transparent);
+    --bg-2: color-mix(in oklch, var(--bg-2-solid) var(--glass-face), transparent);
+    --bg-3: color-mix(in oklch, var(--bg-3-solid) var(--glass-face), transparent);
+    --bg-4: color-mix(in oklch, var(--bg-4-solid) var(--glass-face), transparent);
+    --surface-gradient: color-mix(in oklch, var(--surface-gradient-solid) var(--glass-face), transparent);
+    --surface-gradient-hover: color-mix(in oklch, var(--surface-gradient-hover-solid) var(--glass-face), transparent);
+    --inset: color-mix(in oklch, var(--inset-solid) var(--glass-well), transparent);
+    --field: color-mix(in oklch, var(--field-solid) var(--glass-well), transparent);
+
+    /* 유리 입체: 솟음 = 위쪽 빛 테두리 + 아래로 떨어지는 그림자, 파임 = 위쪽 안 그림자 + 가는 테두리 */
+    --neu-up:
+        inset 0 1px 0 var(--neu-hl), 0 1px 2px color-mix(in oklch, var(--neu-dark) 60%, transparent),
+        0 4px 12px color-mix(in oklch, var(--neu-dark) 40%, transparent);
+    --neu-up-hi:
+        inset 0 1px 0 var(--neu-hl), 0 2px 4px color-mix(in oklch, var(--neu-dark) 60%, transparent),
+        0 10px 24px color-mix(in oklch, var(--neu-dark) 45%, transparent);
+    --neu-in: inset 0 1px 2px color-mix(in oklch, var(--neu-dark) 70%, transparent), inset 0 0 0 1px var(--line);
+    --neu-light: transparent;
+}
+
+/* 떠 있는 창은 단단한 재질 (test/glass-material.test.ts가 --shadow-float를 쓰는 창이 모두 여기 있는지 본다) */
+:root[data-backdrop="on"] .modal,
+:root[data-backdrop="on"] .modal-content,
+:root[data-backdrop="on"] .background-modal-container,
+:root[data-backdrop="on"] .notice-modal-container,
+:root[data-backdrop="on"] .context-menu,
+:root[data-backdrop="on"] .custom-dropdown-menu,
+:root[data-backdrop="on"] .dtp-panel,
+:root[data-backdrop="on"] .oklch-pop,
+:root[data-backdrop="on"] .toast,
+:root[data-backdrop="on"] .saba-bubble-body,
+:root[data-backdrop="on"] .saba-tooltip,
+:root[data-backdrop="on"] .page-find,
+:root[data-backdrop="on"] .palette,
+:root[data-backdrop="on"] .popover-anchor .ext-popover,
+:root[data-backdrop="on"] .popover-anchor .bg-pop,
+:root[data-backdrop="on"] .update-pill-pop,
+:root[data-backdrop="on"] .update-pill-dialog,
+:root[data-backdrop="on"] .activity-console-pop,
+:root[data-backdrop="on"] .dc-savebar {
+    --bg-1: var(--bg-1-solid);
+    --bg-2: var(--bg-2-solid);
+    --bg-3: var(--bg-3-solid);
+    --bg-4: var(--bg-4-solid);
+    --surface-gradient: var(--surface-gradient-solid);
+    --surface-gradient-hover: var(--surface-gradient-hover-solid);
+    --inset: var(--inset-solid);
+    --field: var(--field-solid);
+    --neu-light: var(--neu-light-solid);
+    --neu-up: var(--neu-up-solid);
+    --neu-up-hi: var(--neu-up-hi-solid);
+    --neu-in: var(--neu-in-solid);
 }
 
 :root[data-backdrop="on"],

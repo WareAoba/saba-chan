@@ -273,7 +273,7 @@ span[style*="--icon-loader"] svg {
 .loading-progress-bar {
     flex: 1;
     height: 4px;
-    background: var(--loading-bar-bg);
+    background: var(--inset);
     border-radius: var(--r-pill);
     overflow: hidden;
 }
@@ -545,7 +545,7 @@ span[style*="--icon-loader"] svg {
 /* Discord Bot Section */
 
 .btn-discord {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     color: var(--text-primary);
     border: 1px solid var(--border-separator);
     padding: 0 var(--sp-4);
@@ -562,24 +562,24 @@ span[style*="--icon-loader"] svg {
 }
 
 .btn-discord:hover {
-    background: var(--bg-surface-secondary);
+    background: var(--bg-1);
     border-color: var(--border-medium);
     box-shadow: 0 4px 8px var(--shadow-md);
     transform: translateY(-1px);
 }
 
 .btn-discord-active {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     border-color: var(--ok);
 }
 
 .btn-discord-active:hover {
-    background: var(--bg-surface-secondary);
+    background: var(--bg-1);
     border-color: var(--ok);
 }
 
 .btn-background {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     color: var(--text-primary);
     border: 1px solid var(--border-separator);
     padding: 0 var(--sp-4);
@@ -596,19 +596,19 @@ span[style*="--icon-loader"] svg {
 }
 
 .btn-background:hover {
-    background: var(--bg-surface-secondary);
+    background: var(--bg-1);
     border-color: var(--border-medium);
     box-shadow: 0 4px 8px var(--shadow-md);
     transform: translateY(-1px);
 }
 
 .btn-background-active {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     border-color: var(--ok);
 }
 
 .btn-background-active:hover {
-    background: var(--bg-surface-secondary);
+    background: var(--bg-1);
     border-color: var(--ok);
 }
 
@@ -619,7 +619,7 @@ span[style*="--icon-loader"] svg {
     font-weight: 600;
     border-radius: 8px;
     border: 1px solid var(--border-medium);
-    background: var(--bg-surface);
+    background: var(--bg-2);
     color: var(--text-primary);
     cursor: pointer;
     display: flex;
@@ -711,7 +711,7 @@ span[style*="--icon-loader"] svg {
     font-size: calc(14px * var(--font-scale));
     font-family: "Courier New", monospace;
     margin-bottom: var(--sp-2-5);
-    background-color: var(--input-bg);
+    background-color: var(--field);
     color: var(--text-primary);
 }
 
@@ -771,7 +771,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .as-grid-wrap {
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     border: 1px solid var(--border-default);
     border-radius: 10px;
     padding: var(--sp-3);
@@ -796,7 +796,7 @@ span[style*="--icon-loader"] svg {
     padding: var(--sp-5) var(--sp-3) var(--sp-4);
     border-radius: 10px;
     border: 1.5px solid var(--border-default);
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     cursor: pointer;
     transition: all 0.15s;
     font-family: inherit;
@@ -807,7 +807,7 @@ span[style*="--icon-loader"] svg {
 
 .as-game-card:hover {
     border-color: var(--brand-primary);
-    background: var(--bg-surface-hover);
+    background: var(--bg-3);
     box-shadow: 0 2px 10px color-mix(in oklch, var(--shadow-ink) 12%, transparent);
     transform: translateY(-1px);
 }
@@ -825,7 +825,7 @@ span[style*="--icon-loader"] svg {
 
 .as-game-card.unsupported:hover {
     border-color: var(--border-default);
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     box-shadow: none;
     transform: none;
 }
@@ -889,7 +889,7 @@ span[style*="--icon-loader"] svg {
     gap: var(--sp-3);
     padding: var(--sp-3) var(--sp-4);
     border-radius: 10px;
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     margin-bottom: var(--sp-4);
 }
 
@@ -957,7 +957,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .as-section-card {
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     border: 1px solid var(--border-default);
     border-radius: 10px;
     padding: var(--sp-3);
@@ -1006,7 +1006,7 @@ span[style*="--icon-loader"] svg {
     border: 1.5px solid var(--border-default);
     border-radius: 8px;
     font-size: calc(14px * var(--font-scale));
-    background: var(--input-bg);
+    background: var(--field);
     color: var(--text-primary);
     transition:
         border-color 0.15s,
@@ -1075,7 +1075,7 @@ span[style*="--icon-loader"] svg {
     gap: var(--sp-3);
     padding: var(--sp-3) var(--sp-4);
     border-radius: 8px;
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     transition: background 0.15s;
 }
 
@@ -1174,7 +1174,7 @@ span[style*="--icon-loader"] svg {
 .as-provision-progress {
     margin: 0 0 var(--sp-3);
     padding: var(--sp-3);
-    background: var(--bg-secondary);
+    background: var(--bg-2);
     border-radius: 8px;
     border: 1px solid var(--border-light);
 }
@@ -1206,7 +1206,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .as-step.pending .as-step-icon {
-    background: var(--bg-tertiary);
+    background: var(--bg-3);
     color: var(--text-muted);
     border: 2px solid var(--border-light);
 }
@@ -1285,7 +1285,7 @@ span[style*="--icon-loader"] svg {
 .as-advanced-panel {
     padding: var(--sp-4);
     border-radius: 8px;
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     margin-bottom: var(--sp-3);
     animation: as-slide-in 0.15s ease-out;
 }
@@ -1320,7 +1320,7 @@ span[style*="--icon-loader"] svg {
     height: 38px;
     border-radius: 8px;
     border: 1.5px solid var(--border-default);
-    background: var(--input-bg);
+    background: var(--field);
     color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.15s;
@@ -1330,7 +1330,7 @@ span[style*="--icon-loader"] svg {
 .as-btn-icon:hover {
     border-color: var(--brand-primary);
     color: var(--brand-primary);
-    background: var(--bg-surface-hover);
+    background: var(--bg-3);
 }
 
 .as-btn-icon:disabled {
@@ -1435,7 +1435,7 @@ span[style*="--icon-loader"] svg {
     width: 100%;
     height: 6px;
     border-radius: 999px;
-    background: color-mix(in oklch, var(--bg-surface-tertiary) 85%, transparent);
+    background: color-mix(in oklch, var(--bg-3) 85%, transparent);
     overflow: hidden;
 }
 
@@ -1521,7 +1521,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .add-instance-surface {
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     border: 1px solid var(--border-default);
     border-radius: 12px;
     padding: var(--sp-3);
@@ -1544,7 +1544,7 @@ span[style*="--icon-loader"] svg {
     padding: var(--sp-6) var(--sp-5);
     border-radius: 12px;
     border: 1.5px solid var(--border-default);
-    background: var(--bg-surface);
+    background: var(--bg-2);
     cursor: pointer;
     transition: all 0.2s ease;
     text-align: left;
@@ -1570,7 +1570,7 @@ span[style*="--icon-loader"] svg {
 
 .ai-choice-card:hover {
     border-color: var(--brand-primary);
-    background: var(--bg-surface-hover);
+    background: var(--bg-3);
     box-shadow: 0 8px 24px color-mix(in oklch, var(--shadow-ink) 15%, transparent), 0 0 0 1px var(--brand-primary);
     transform: translateY(-2px);
 }
@@ -1590,7 +1590,7 @@ span[style*="--icon-loader"] svg {
 
 .ai-choice-card:hover {
     border-color: var(--brand-primary);
-    background: var(--bg-surface-hover);
+    background: var(--bg-3);
     box-shadow: 0 4px 16px var(--shadow-xl);
 }
 
@@ -1776,7 +1776,7 @@ span[style*="--icon-loader"] svg {
 
 .ai-back-btn:hover {
     color: var(--brand-primary);
-    background: var(--bg-surface-hover);
+    background: var(--bg-3);
 }
 
 .ai-back-btn:disabled {
@@ -1820,7 +1820,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .mg-status--scanning {
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     color: var(--text-secondary);
 }
 
@@ -1837,7 +1837,7 @@ span[style*="--icon-loader"] svg {
     padding: var(--sp-4) var(--sp-4);
     border-radius: 10px;
     border: 1.5px solid var(--brand-primary);
-    background: color-mix(in oklch, var(--brand-primary) 8%, var(--bg-surface-tertiary));
+    background: color-mix(in oklch, var(--brand-primary) 8%, var(--bg-3));
     margin-bottom: var(--sp-3);
 }
 
@@ -1909,7 +1909,7 @@ span[style*="--icon-loader"] svg {
     padding: var(--sp-2-5) var(--sp-3);
     border-radius: 8px;
     border: 1.5px solid var(--border-default);
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     cursor: pointer;
     font-family: inherit;
     color: inherit;
@@ -1920,12 +1920,12 @@ span[style*="--icon-loader"] svg {
 
 .mg-module-item:hover {
     border-color: var(--brand-primary);
-    background: var(--bg-surface-hover);
+    background: var(--bg-3);
 }
 
 .mg-module-item--selected {
     border-color: var(--brand-primary);
-    background: color-mix(in oklch, var(--brand-primary) 10%, var(--bg-surface-tertiary));
+    background: color-mix(in oklch, var(--brand-primary) 10%, var(--bg-3));
 }
 
 .mg-module-item-icon {
@@ -1996,7 +1996,7 @@ span[style*="--icon-loader"] svg {
     border-radius: 6px;
     font-size: calc(14px * var(--font-scale));
     transition: border-color 0.2s;
-    background-color: var(--input-bg);
+    background-color: var(--field);
     color: var(--text-primary);
 }
 
@@ -2110,7 +2110,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .modal-content {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     border-radius: 8px;
     box-shadow: 0 4px 16px var(--shadow-xl);
     width: 90%;
@@ -2164,7 +2164,7 @@ span[style*="--icon-loader"] svg {
 
 
 .app-footer {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     padding: var(--sp-4);
     text-align: center;
     border-top: 1px solid var(--border-light);
@@ -2188,7 +2188,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .extension-tab {
-    background: var(--tab-bg);
+    background: var(--inset);
     border: none;
     padding: var(--sp-2-5) var(--sp-4);
     border-radius: 4px;
@@ -2200,7 +2200,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .extension-tab:hover {
-    background: var(--tab-hover-bg);
+    background: var(--bg-3);
 }
 
 .extension-tab.active {
@@ -2210,7 +2210,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .cmd-name {
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     padding: var(--sp-1) var(--sp-2);
     border-radius: 3px;
     font-weight: 600;
@@ -2224,7 +2224,7 @@ span[style*="--icon-loader"] svg {
 .placeholder-hint {
     margin-top: var(--sp-2);
     padding: var(--sp-2-5);
-    background: var(--bg-surface-secondary);
+    background: var(--bg-1);
     border-radius: 4px;
     color: var(--text-disabled);
 }
@@ -2263,7 +2263,7 @@ span[style*="--icon-loader"] svg {
     justify-content: center;
     width: 20px;
     height: 20px;
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     border: 1px solid var(--border-default);
     border-radius: 50%;
     cursor: help;
@@ -2275,7 +2275,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .cmd-help:hover {
-    background: var(--tab-hover-bg);
+    background: var(--bg-3);
     border-color: var(--line-strong);
 }
 
@@ -2283,7 +2283,7 @@ span[style*="--icon-loader"] svg {
     position: absolute;
     bottom: 125%;
     left: 0;
-    background: var(--tooltip-bg);
+    background: var(--bg-4);
     color: var(--tooltip-text);
     padding: var(--sp-2) var(--sp-3);
     border-radius: 4px;
@@ -2302,7 +2302,7 @@ span[style*="--icon-loader"] svg {
     top: 100%;
     left: 8px;
     border: 5px solid transparent;
-    border-top-color: var(--tooltip-bg);
+    border-top-color: var(--bg-4);
 }
 
 .cmd-help:hover ~ .cmd-tooltip,
@@ -2326,7 +2326,7 @@ span[style*="--icon-loader"] svg {
     border-radius: 8px;
     position: relative;
     margin: var(--sp-3) var(--sp-5) 0;
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     height: 42px;
     min-height: 42px;
     max-height: 42px;
@@ -2386,7 +2386,7 @@ span[style*="--icon-loader"] svg {
 
 /* ========== Protocol Mode Toggle ========== */
 .protocol-mode-section {
-    background: var(--protocol-section-bg);
+    background: var(--bg-1);
     border: 1px solid var(--protocol-section-border);
     border-radius: 12px;
     padding: var(--sp-4) var(--sp-5);
@@ -2432,7 +2432,7 @@ span[style*="--icon-loader"] svg {
 
 /* 프로토콜 정보 표시 (토글이 없는 경우) */
 .protocol-mode-info {
-    background: var(--protocol-info-bg);
+    background: var(--bg-2);
     border: 1px solid var(--protocol-info-border);
 }
 
@@ -2506,7 +2506,7 @@ span[style*="--icon-loader"] svg {
     left: 0;
     right: 0;
     z-index: 9999;
-    background: var(--bg-surface);
+    background: var(--bg-2);
     border-top: 1px solid var(--border-light);
     box-shadow: 0 -2px 12px color-mix(in oklch, var(--shadow-ink) 8%, transparent);
     padding: var(--sp-2) var(--sp-4) var(--sp-1-5);
@@ -2551,7 +2551,7 @@ span[style*="--icon-loader"] svg {
 .global-progress-track {
     width: 100%;
     height: 4px;
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     border-radius: 2px;
     overflow: hidden;
 }
@@ -2884,7 +2884,7 @@ span[style*="--icon-loader"] svg {
     font-size: calc(12px * var(--font-scale));
     font-weight: 600;
     color: var(--text-tertiary);
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     transition: all 0.3s ease;
 }
 
@@ -2953,7 +2953,7 @@ span[style*="--icon-loader"] svg {
     display: flex;
     gap: var(--sp-4);
     padding: var(--sp-2-5) var(--sp-4);
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     border-radius: 8px;
     margin-bottom: var(--sp-3);
     font-size: calc(12px * var(--font-scale));
@@ -2993,7 +2993,7 @@ span[style*="--icon-loader"] svg {
     align-items: center;
     gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-3);
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     cursor: pointer;
     font-size: calc(13px * var(--font-scale));
     font-weight: 600;
@@ -3006,7 +3006,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .migration-category-header:hover {
-    background: var(--bg-surface-hover);
+    background: var(--bg-3);
 }
 
 .migration-category-header .category-count {
@@ -3032,7 +3032,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .migration-item:hover {
-    background: var(--bg-surface-hover);
+    background: var(--bg-3);
 }
 
 .migration-item .item-path {
@@ -3068,7 +3068,7 @@ span[style*="--icon-loader"] svg {
     align-items: center;
     gap: var(--sp-4);
     padding: var(--sp-2-5) var(--sp-4);
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     border-radius: 8px;
     margin-top: var(--sp-2);
 }
@@ -3151,7 +3151,7 @@ span[style*="--icon-loader"] svg {
 
 /* Migration footer buttons */
 .btn-secondary {
-    background: var(--bg-surface-tertiary);
+    background: var(--bg-3);
     color: var(--text-primary);
     border: 1px solid var(--border-default);
     padding: 0 var(--sp-5);
@@ -3169,7 +3169,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .btn-secondary:hover {
-    background: var(--bg-surface-hover);
+    background: var(--bg-3);
     border-color: var(--brand-primary);
 }
 
@@ -3189,7 +3189,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .error-fallback-content {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     border-radius: 16px;
     padding: 2.5rem;
     max-width: 480px;
@@ -3205,7 +3205,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .error-fallback-details {
-    background: var(--bg-surface-alt);
+    background: var(--bg-2);
     color: var(--status-error);
     padding: 1rem;
     border-radius: 8px;

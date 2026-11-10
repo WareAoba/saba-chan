@@ -79,7 +79,7 @@
 }
 .appbar-tab.active {
     color: var(--text-1);
-    background: var(--bg-surface);
+    background: var(--bg-2);
     border-color: transparent;
     box-shadow: var(--neu-up);
     animation: saba-seg-pop 0.22s var(--ease-spring);
@@ -248,7 +248,7 @@
     max-height: min(480px, calc(100vh - 160px));
     overflow: auto;
     padding: var(--sp-4);
-    background: var(--bg-surface);
+    background: var(--bg-2);
     border: 1px solid var(--border-separator);
     border-radius: 12px;
     box-shadow: 0 8px 32px var(--shadow-lg);
@@ -426,7 +426,7 @@
 }
 /* 누르는 카드: 올리면 솟고, 누르면 파이고, 고른 줄은 솟은 채로 (뉴모피즘) */
 .server-row:hover {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     box-shadow: var(--neu-up);
 }
 .server-row:active:not(:has(button:active, input:active, label:active)) {
@@ -438,7 +438,7 @@
     border-color: var(--accent);
 }
 .server-row.selected {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     border-color: transparent;
     box-shadow: var(--neu-up-hi);
 }
@@ -2199,7 +2199,7 @@ button.activity-line:hover {
     transition: opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
 .dc-list-row.is-openable:hover {
-    background: var(--bg-hover, color-mix(in oklch, var(--accent) 6%, transparent));
+    background: var(--bg-3);
 }
 .dc-notice-btn.active {
     color: var(--accent);
@@ -4385,7 +4385,7 @@ button.appbar-pill:focus-visible {
 }
 .audit-row:hover,
 .audit-item.expanded > .audit-row {
-    background: var(--bg-hover, color-mix(in oklch, var(--accent) 6%, transparent));
+    background: var(--bg-3);
 }
 .audit-row > .icon,
 .audit-row > svg {
@@ -5473,7 +5473,7 @@ button.appbar-pill:focus-visible {
     padding: var(--sp-3) var(--sp-4);
     border: 1px solid var(--border-default);
     border-radius: var(--r-md);
-    background: var(--bg-surface-secondary);
+    background: var(--bg-1);
 }
 .server-address-head {
     display: flex;

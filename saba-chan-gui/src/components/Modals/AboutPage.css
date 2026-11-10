@@ -30,7 +30,7 @@
     align-items: center;
     gap: var(--sp-5);
     padding: var(--sp-5);
-    background: var(--settings-item-bg);
+    background: var(--bg-2);
     border: 1px solid var(--line);
     color: var(--text-primary);
 }
@@ -69,8 +69,8 @@
     border-radius: 50%;
     object-fit: cover;
     box-sizing: border-box;
-    border: 3px solid var(--settings-item-bg);
-    background: var(--bg-surface);
+    border: 3px solid var(--bg-2);
+    background: var(--bg-2);
 }
 .about-version-badge {
     position: absolute;
@@ -121,7 +121,7 @@
     min-width: 0;
     padding: var(--sp-2) var(--sp-2-5);
     border-radius: 11px;
-    background: var(--bg-surface);
+    background: var(--bg-2);
     border: 1px solid var(--line);
 }
 .about-component-icon {

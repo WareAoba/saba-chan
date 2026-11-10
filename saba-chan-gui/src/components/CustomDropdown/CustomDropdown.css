@@ -16,44 +16,32 @@
     gap: var(--sp-2);
     width: 100%;
     padding: var(--sp-2) var(--sp-3);
-    border: 0;
+    border: 1px solid var(--line);
     border-radius: var(--r-sm);
-    /* 닫혀 있을 땐 누를 수 있는 솟은 면, 열면 눌린 채로 (뉴모피즘) */
-    background: var(--bg-surface);
-    box-shadow: var(--neu-up);
+    /* 값을 담는 칸이라 입력칸(.input)과 같은 파인 면 */
+    background: var(--field);
+    box-shadow: var(--neu-in);
     color: var(--text-primary);
     font: inherit;
     font-size: var(--fs-md);
     cursor: pointer;
     transition:
-        box-shadow 0.22s var(--ease),
-        transform 0.18s var(--ease-spring),
-        filter 0.2s var(--ease);
+        border-color 0.25s var(--ease),
+        box-shadow 0.25s var(--ease);
     height: auto;
     min-height: 36px;
     text-align: left;
 }
 
 .custom-dropdown-trigger:hover {
-    box-shadow: var(--neu-up-hi);
-    filter: brightness(1.04);
+    border-color: var(--line-strong);
 }
 
-.custom-dropdown-trigger:active {
-    transform: scale(0.98);
-    filter: brightness(0.96);
-    box-shadow: var(--neu-in);
-    transition-duration: 0.08s;
-}
-
-.custom-dropdown-trigger:focus-visible {
-    outline: none;
-    box-shadow: var(--neu-up), var(--accent-ring);
-}
-
+.custom-dropdown-trigger:focus-visible,
 .custom-dropdown.open .custom-dropdown-trigger {
-    box-shadow: var(--neu-in);
-    filter: none;
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--neu-in), var(--accent-ring);
 }
 
 .custom-dropdown-value {
@@ -94,7 +82,7 @@
 
 /* --- 팝업 메뉴 (Portal로 body에 그린다) --- */
 .custom-dropdown-menu {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     border: 1px solid var(--line);
     border-radius: var(--r-sm);
     box-shadow:
@@ -155,7 +143,7 @@
 }
 
 .custom-dropdown-scroll::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
+    background: var(--bg-4);
     border-radius: 3px;
 }
 
