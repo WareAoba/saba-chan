@@ -50,7 +50,8 @@
 :root[data-backdrop="on"] .palette,
 :root[data-backdrop="on"] .saba-popover:not(.bare),
 :root[data-backdrop="on"] .saba-dialog,
-:root[data-backdrop="on"] .saba-savebar {
+:root[data-backdrop="on"] .saba-savebar,
+:root[data-backdrop="on"] .monitor-float {
     -webkit-backdrop-filter: var(--glass-blur);
     backdrop-filter: var(--glass-blur);
 }
