@@ -50,9 +50,9 @@ import {
     type OpeningKind,
     type OpeningSound,
     openingChordMs,
-    takeOpeningSound,
     openingGate,
     RELAY_WAIT_MS,
+    takeOpeningSound,
     whenOpeningReady,
 } from './utils/opening';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
