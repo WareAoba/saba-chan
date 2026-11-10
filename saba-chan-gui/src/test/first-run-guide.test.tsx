@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ComponentType } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useGuideStore, openGuide } from '../components/guides/guides';
@@ -6,6 +6,9 @@ import { ServersPage as ServersPageImpl } from '../components/servers/ServersPag
 import { useServerStore } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
+
+// 서버가 생긴 뒤의 상세는 이 테스트의 관심 밖이다
+vi.mock('../components/servers/ServerDetail', () => ({ ServerDetail: () => null }));
 
 const ServersPage = ServersPageImpl as unknown as ComponentType<Record<string, unknown>>;
 const page = (modules: { name: string }[] = []) => (
@@ -66,6 +69,29 @@ describe('처음 시작하기 가이드', () => {
         fireEvent.click(screen.getByRole('button', { name: /Import an existing server/ }));
         expect(useUIStore.getState().showModuleManager).toBe(true);
         expect(useGuideStore.getState().addServerMode).toBe('migrate');
+    });
+
+    it('모듈을 받으면 체크리스트의 다음 할 일도 다시 묻는다', async () => {
+        const api = window.api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+        api.moduleInstallFromManifest = vi.fn().mockResolvedValue({ ok: true });
+        useServerStore.setState({ fetchModules: vi.fn().mockResolvedValue(undefined) });
+        useGuideStore.setState({ step: 'modules', after: null });
+        render(page());
+        await act(async () => {});
+        const before = api.onboarding.mock.calls.length;
+        fireEvent.click(await screen.findByRole('button', { name: 'Get' }));
+        await waitFor(() => expect(api.onboarding.mock.calls.length).toBe(before + 1));
+    });
+
+    it('갈림길에 머문 채 서버가 생기면 가이드를 접고 서버 목록을 보인다', async () => {
+        useGuideStore.setState({ step: 'fork' });
+        const { rerender } = render(page());
+        expect(screen.getByText('Do you already run a game server?')).toBeInTheDocument();
+        const server = { id: 's1', name: 'Alpha', module: 'minecraft', status: 'stopped' };
+        rerender(<ServersPage servers={[server]} modules={[]} onAddServer={vi.fn()} drag={{ cardRefs: { current: {} } }} />);
+        await act(async () => {});
+        expect(useGuideStore.getState().step).toBeNull();
+        expect(screen.queryByText('Do you already run a game server?')).toBeNull();
     });
 
     it('✕로 닫으면 빈 화면으로 돌아가고, 설정에서 다시 열 수 있다', async () => {

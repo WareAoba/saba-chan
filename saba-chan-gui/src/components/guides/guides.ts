@@ -74,7 +74,6 @@ export const useGuideStore = create<GuideState>()((set, get) => ({
     },
 }));
 
-export const isGuideClosed = (id: GuideId) => useSettingsStore.getState().closedGuides.includes(id);
 
 /** ✕: 닫힌 것으로 남기고, 처음 닫을 때 다시 여는 곳을 알린다 */
 export function closeGuide(id: GuideId) {

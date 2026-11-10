@@ -127,23 +127,18 @@ pub async fn onboarding(State(state): State<IPCServer>) -> impl IntoResponse {
 
 /// 지금의 온보딩 단계 (`GET /api/onboarding`과 relay 하트비트가 같이 쓴다)
 pub(crate) async fn onboarding_now(state: &IPCServer) -> serde_json::Value {
+    let started_before = started_before(&state.config_store);
     let (modules, servers, running) = {
         let sup = state.supervisor.read().await;
-        let servers = sup.instance_store.list();
-        let mut running = false;
-        for i in servers {
-            if sup.is_running(&i.id).await {
-                running = true;
-                break;
-            }
-        }
-        (sup.list_modules().map(|m| m.len()).unwrap_or(0), servers.len(), running)
+        // 이미 켜 본 적이 있으면 지금 켜진 서버를 셀 필요가 없다
+        let running = !started_before && !sup.running_instances().await.is_empty();
+        (sup.list_modules().map(|m| m.len()).unwrap_or(0), sup.instance_store.list().len(), running)
     };
     onboarding_steps(&Progress {
         paired: state.relay_agent.status().has_token,
         modules,
         servers,
-        started: running || started_before(&state.config_store),
+        started: running || started_before,
         chatbot: state.config_store.get_chatbot().api_key.is_some_and(|k| !k.trim().is_empty()),
     })
 }
@@ -183,26 +178,51 @@ fn started_before(store: &crate::config_store::ConfigStore) -> bool {
     store.get_client_section(ONBOARDING_SECTION).ok().and_then(|v| v.get("started").and_then(|s| s.as_bool())).unwrap_or(false)
 }
 
-fn note_started(store: &crate::config_store::ConfigStore) {
+/// 첫 시작을 남긴다. 남겼거나 이미 있으면 true
+fn note_started(store: &crate::config_store::ConfigStore) -> bool {
     if started_before(store) {
+        return true;
+    }
+    match store.merge_client_section(ONBOARDING_SECTION, json!({ "started": true })) {
+        Ok(_) => true,
+        Err(e) => {
+            tracing::warn!("Could not remember the first server start: {}", e);
+            false
+        }
+    }
+}
+
+/// 이 단계를 처음 보는 설치(`onboarding` 칸이 없다)라면, 그때 서버가 있으면 이 단계가 생기기 전부터 쓰던 사람이라 켜 본 것으로 친다.
+/// 칸을 한 번 만들어 두므로 그 뒤에 가져온 서버는 실제로 켜야 끝난다
+fn adopt_existing_install(store: &crate::config_store::ConfigStore, servers: usize) {
+    let seen = store.get_client_section(ONBOARDING_SECTION).ok().and_then(|v| v.as_object().map(|o| o.contains_key("started"))).unwrap_or(false);
+    if seen {
         return;
     }
-    if let Err(e) = store.merge_client_section(ONBOARDING_SECTION, json!({ "started": true })) {
-        tracing::warn!("Could not remember the first server start: {}", e);
+    if let Err(e) = store.merge_client_section(ONBOARDING_SECTION, json!({ "started": servers > 0 })) {
+        tracing::warn!("Could not set up the onboarding state: {}", e);
     }
 }
 
 /// 서버가 처음 켜지면(`instance.started`) 온보딩 "서버 시작해 보기"를 끝낸 것으로 남긴다. 이미 남겼으면 듣지 않는다
 pub(crate) async fn watch_first_start(state: IPCServer) {
-    if started_before(&state.config_store) {
+    let mut sub = crate::events::bus().subscribe(None);
+    let running = {
+        let sup = state.supervisor.read().await;
+        adopt_existing_install(&state.config_store, sup.instance_store.list().len());
+        !sup.running_instances().await.is_empty()
+    };
+    // 듣기 전에 켜진 서버(부팅 때 자동 시작)도 놓치지 않는다
+    if started_before(&state.config_store) || (running && note_started(&state.config_store)) {
         return;
     }
-    let mut sub = crate::events::bus().subscribe(None);
     loop {
         match sub.rx.recv().await {
+            // 남기지 못했으면 다음 시작 때 다시 남긴다
             Ok(event) if event.kind == "instance.started" => {
-                note_started(&state.config_store);
-                return;
+                if note_started(&state.config_store) {
+                    return;
+                }
             }
             Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
             Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
@@ -237,5 +257,21 @@ mod tests {
         note_started(&store);
         note_started(&store);
         assert!(started_before(&crate::config_store::ConfigStore::new(tmp.path())), "kept in config.json");
+    }
+
+    #[test]
+    fn an_upgraded_install_with_servers_does_not_go_back_to_the_start_step() {
+        // 이 단계가 생기기 전부터 쓰던 사람: 서버가 이미 있으면 켜 본 것으로 친다
+        let tmp = tempfile::tempdir().unwrap();
+        let store = crate::config_store::ConfigStore::new(tmp.path());
+        adopt_existing_install(&store, 2);
+        assert!(started_before(&store));
+
+        // 새로 설치한 사람: 처음 본 때 서버가 없으면 그 뒤에 가져온 서버는 켜 봐야 끝난다
+        let fresh = tempfile::tempdir().unwrap();
+        let store = crate::config_store::ConfigStore::new(fresh.path());
+        adopt_existing_install(&store, 0);
+        adopt_existing_install(&store, 1);
+        assert!(!started_before(&store), "only the first look counts");
     }
 }

@@ -143,6 +143,8 @@ function ModuleGuide() {
                 return;
             }
             await useServerStore.getState().fetchModules();
+            // 체크리스트의 "게임 받기"도 바로 끝난 것으로 보이게
+            void useGuideStore.getState().refreshOnboarding();
             if (after) openAddServer(after);
         } catch {
             setError(t('guides.module_failed'));

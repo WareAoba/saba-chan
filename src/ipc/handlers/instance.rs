@@ -564,16 +564,21 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                         response["notices"] = json!(notices);
                     }
                     // 가져온 시점을 백업으로 남긴다 (사용자 결정 2026-11-08): 어긋나면 이때로 되돌린다.
-                    // 수동 백업이라 정리에서 빠진다. 기다리지 않고, 실패해도 가져오기는 그대로다
-                    let backup_state = state.clone();
-                    let backup_id = id.clone();
-                    tokio::spawn(async move {
-                        match super::backup::take_backup(&backup_state, &backup_id, crate::backup::BackupKind::Manual).await {
-                            Ok(Some(b)) => tracing::info!("Migration: first backup '{}' of '{}'", b.name, backup_id),
-                            Ok(None) => tracing::info!("Migration: nothing to back up for '{}'", backup_id),
-                            Err(_) => tracing::warn!("Migration: first backup of '{}' failed", backup_id),
-                        }
-                    });
+                    // 수동 백업이라 정리에서 빠진다. 기다리지 않고, 실패해도 가져오기는 그대로다.
+                    // 사바쨩 밖에서 켜 둔 서버는 쓰는 중인 월드를 반쯤 베낄 수 있어 건너뛴다 (끈 뒤 직접 백업한다)
+                    if notices.contains(&"server_running") {
+                        tracing::info!("Migration: '{}' is running outside saba-chan, skipping the first backup", id);
+                    } else {
+                        let backup_state = state.clone();
+                        let backup_id = id.clone();
+                        tokio::spawn(async move {
+                            match super::backup::take_backup(&backup_state, &backup_id, crate::backup::BackupKind::Manual).await {
+                                Ok(Some(b)) => tracing::info!("Migration: first backup '{}' of '{}'", b.name, backup_id),
+                                Ok(None) => tracing::info!("Migration: nothing to back up for '{}'", backup_id),
+                                Err(resp) => tracing::warn!("Migration: first backup of '{}' failed ({})", backup_id, resp.status()),
+                            }
+                        });
+                    }
                     created(response)
                 }
             }

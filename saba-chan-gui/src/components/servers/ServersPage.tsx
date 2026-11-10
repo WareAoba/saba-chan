@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { useDragReorder } from '../../hooks/useDragReorder';
 import { useSwapAnimation } from '../../hooks/useSwapAnimation';
@@ -91,6 +91,14 @@ export function ServersPage({
         if (activeTab === 'servers') useGuideStore.getState().refreshOnboarding();
     }, [servers.length, runningCount, activeTab]);
     const guideStep = useGuideStore((s) => s.step);
+    // 가이드를 연 채(갈림길 등) 다른 곳에서 서버가 생기면 가이드를 접는다 (모듈 받기는 원래 하던 곳으로 이어 가므로 둔다)
+    const serverCount = useRef(servers.length);
+    useEffect(() => {
+        const grew = servers.length > serverCount.current;
+        serverCount.current = servers.length;
+        const step = useGuideStore.getState().step;
+        if (grew && step && step !== 'modules') useGuideStore.getState().setStep(null);
+    }, [servers.length]);
     const firstRunClosed = useSettingsStore((s) => s.closedGuides.includes('firstRun'));
     const settingsReady = useSettingsStore((s) => s.settingsReady);
     const discordDone = useGuideStore((s) => s.onboarding?.steps.find((x) => x.id === 'discord')?.done);
