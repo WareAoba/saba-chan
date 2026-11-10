@@ -21,6 +21,15 @@ import { createDaemonClient, failureBody, type Invoke, queryString } from './dae
 import type { EventHub, Listener } from './events';
 import { hasRemotePathPicker, pickRemotePath } from './remotePathPicker';
 
+/** 오버레이 우클릭 메뉴 한 칸 (셸 overlay.rs `MenuSpec`): 구분선, id가 있는 항목, 하위 메뉴(items) 두 단계까지 */
+export interface OverlayMenuItem {
+    id?: string;
+    label?: string;
+    enabled?: boolean;
+    separator?: boolean;
+    items?: OverlayMenuItem[];
+}
+
 // 저장 파일 이름의 날짜는 이 PC 시간대로 (toISOString은 UTC라 한국 오전 9시 전에는 어제가 된다)
 const localDate = (d = new Date()) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -1247,6 +1256,22 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         trayAction: (action: string) => invoke('tray_action', { action }),
         // 잰 내용 높이(px)에 맞춰 셸이 팝업을 아이콘 옆에 놓고 보인다
         trayPopupFit: (height: number) => invoke('tray_popup_fit', { height }),
+
+        // ── 바탕화면 오버레이 (익스텐션 slot Desktop.overlay, 셸 overlay.rs) ──
+        // 잰 내용 크기(px)에 맞춰 셸이 아래 가운데 점을 지키며 창 크기를 맞추고 보인다
+        overlayFit: (width: number, height: number) => invoke('overlay_fit', { width, height }),
+        // 우클릭 메뉴를 OS 메뉴로 띄운다. 고른 항목 id는 onOverlayMenu로 온다
+        overlayMenu: (items: OverlayMenuItem[]) => invoke('overlay_menu', { items }),
+        onOverlayMenu: (callback: Listener) => hub.on('overlay:menu', callback),
+        // open_app | hide
+        overlayAction: (action: string) => invoke('overlay_action', { action }),
+        // 오버레이 창을 끌어 옮긴다 (누른 채 움직이기 시작했을 때)
+        overlayStartDrag: () => invoke('plugin:window|start_dragging', { label: 'desktop-overlay' }),
+        // 설정 화면: {enabled, available, supported}와 켜기 스위치
+        overlayState: () => invoke('overlay_state'),
+        overlaySetEnabled: (enabled: boolean) => invoke('overlay_set_enabled', { enabled }),
+        // 익스텐션을 켜고 끄거나 설치·삭제한 뒤: 오버레이를 띄울지 셸이 다시 본다
+        overlaySync: () => invoke('overlay_sync'),
 
         // ── 창 제어 (호출한 창에 적용) ──
         minimizeWindow,

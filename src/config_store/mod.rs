@@ -91,6 +91,8 @@ pub struct GuiSettings {
     pub monitor_items: Option<Vec<String>>,
     /// 사용자가 ✕로 닫은 가이드 id (`firstRun`·`checklist` 등, GUI `guides.ts`). 설정 → 일반의 가이드 목록에서 다시 연다
     pub closed_guides: Vec<String>,
+    /// 바탕화면 오버레이 창 (익스텐션 slot `Desktop.overlay`, GUI 셸이 띄운다): 켜기와 마지막 자리
+    pub desktop_overlay: DesktopOverlaySettings,
 
     // Window state (GUI가 저장하지만 데몬이 중개)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -103,6 +105,24 @@ pub struct GuiSettings {
     /// 서버 목록 보기 (G1c): "switch"(고른 데몬만) | "unified"(다른 데몬의 서버도 데몬별로). 없으면 switch
     #[serde(skip_serializing_if = "Option::is_none")]
     pub daemon_view: Option<String>,
+}
+
+/// 바탕화면 오버레이 창. 자리는 창 아래 가운데 점(물리 px)이고, 처음에는 셸이 작업 영역 오른쪽 아래에 놓는다
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DesktopOverlaySettings {
+    /// 끄면 `Desktop.overlay` slot을 선언한 익스텐션이 켜져 있어도 창을 띄우지 않는다
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<i32>,
+}
+
+impl Default for DesktopOverlaySettings {
+    fn default() -> Self {
+        Self { enabled: true, x: None, y: None }
+    }
 }
 
 /// 효과음 — 전체 스위치와 종류별 스위치. 둘 다 켜져 있어야 울린다
@@ -244,6 +264,7 @@ impl Default for GuiSettings {
             system_monitor_net_trace: false,
             monitor_items: None,
             closed_guides: Vec::new(),
+            desktop_overlay: DesktopOverlaySettings::default(),
             window_bounds: None,
             language: None,
             main_daemon: None,
@@ -1963,6 +1984,21 @@ mod tests {
         // 빠진 종류는 기본(켬)으로 채운다
         assert_eq!(saved["sounds"]["crash"], false);
         assert_eq!(saved["sounds"]["update"], true);
+    }
+
+    /// 바탕화면 오버레이 창(Desktop.overlay slot): 기본은 켬·자리 없음. 셸이 저장한 스위치와 자리가 남는다
+    #[tokio::test]
+    async fn the_desktop_overlay_switch_and_place_survive_a_save() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        let defaults = serde_json::to_value(store.get_gui_settings().await).unwrap();
+        assert_eq!(defaults["desktopOverlay"], serde_json::json!({ "enabled": true }));
+        store
+            .set_gui_settings_from_json(serde_json::json!({ "desktopOverlay": { "enabled": false, "x": 1500, "y": -20 } }))
+            .await
+            .unwrap();
+        let saved = serde_json::to_value(ConfigStore::new(tmp.path()).get_gui_settings().await).unwrap();
+        assert_eq!(saved["desktopOverlay"], serde_json::json!({ "enabled": false, "x": 1500, "y": -20 }));
     }
 
     #[tokio::test]

@@ -153,6 +153,8 @@ async fn finish_background_init(app: &AppHandle) {
     start_heartbeat(app);
     start_events(app);
     start_update_checker(app);
+    // 바탕화면 오버레이를 쓸 익스텐션이 켜져 있으면 띄운다
+    crate::overlay::sync(app).await;
 
     status_t(app, "ready", "init.ready");
 
@@ -894,7 +896,8 @@ fn start_events(app: &AppHandle) {
                     tauri::async_runtime::spawn(async move { check_for_updates(&app3).await });
                 }
                 if feed == Feed::Chosen {
-                    emit_main(&app2, "events:message", &ev)
+                    emit_main(&app2, "events:message", &ev);
+                    crate::overlay::emit(&app2, "events:message", &ev);
                 }
             },
         )

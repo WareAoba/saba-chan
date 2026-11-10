@@ -6,6 +6,7 @@ import { Icon } from '../../Icon';
 import { SabaToggle } from '../../ui/SabaUI';
 import { GUIDE_ENTRIES, openGuide } from '../../guides/guides';
 import { AutostartSetting, autostartAvailable } from '../AutostartSetting';
+import { DesktopOverlaySetting } from '../DesktopOverlaySetting';
 import { setOption } from './options';
 
 interface GeneralTabProps {
@@ -13,7 +14,7 @@ interface GeneralTabProps {
     handleLanguageChange: (lng: string) => void;
 }
 
-/** 설정 › 일반: 가이드 다시 열기·언어·자동 새로고침·창 닫기·자동 시작 */
+/** 설정 › 일반: 가이드 다시 열기·언어·자동 새로고침·창 닫기·자동 시작·바탕화면 오버레이 */
 export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTabProps) {
     const { t } = useTranslation(['gui', 'common']);
     const refreshInterval = useSettingsStore((s) => s.refreshInterval);
@@ -124,6 +125,9 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
             </div>
 
             {autostartAvailable() && <AutostartSetting />}
+
+            {/* 바탕화면 오버레이: 그 slot을 쓰는 익스텐션이 켜져 있을 때만 */}
+            <DesktopOverlaySetting />
         </>
     );
 }

@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-overlay",
+  "description": "바탕화면 오버레이(익스텐션 slot Desktop.overlay): 데몬 상태·고른 데몬·서버 목록 읽기와 시작·정지, 이벤트 수신, 창 끌기, 크기 맞춤·우클릭 메뉴·앱 열기·숨기기. 알림은 보내지 않고 설정을 직접 쓰지 않는다",
+  "windows": [
+    "desktop-overlay"
+  ],
+  "permissions": [
+    "core:event:default",
+    "core:window:allow-start-dragging",
+    "allow-daemon-request",
+    "allow-daemon-status",
+    "allow-daemon-target-get",
+    "allow-language-get",
+    "allow-overlay-fit",
+    "allow-overlay-menu",
+    "allow-overlay-action"
+  ]
+}

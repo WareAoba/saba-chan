@@ -269,6 +269,21 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         };
     }, [fetchExtensions]);
 
+    // 바탕화면 오버레이(셸 overlay.rs)는 `Desktop.overlay`를 선언한 익스텐션이 켜져 있을 때만 뜬다.
+    // 메인 창이 그 익스텐션을 켜고 끄거나 설치·삭제·허락하면 셸에 다시 보게 한다 (처음 목록은 셸이 데몬에 붙을 때 이미 봤다)
+    const overlayKey = extensions
+        .filter((ext) => ext.enabled && ext.gui?.bundle && Object.hasOwn(ext.gui?.slots ?? {}, 'Desktop.overlay'))
+        .map((ext) => `${ext.id}:${ext.gui_allowed !== false}`)
+        .join(',');
+    const overlaySeen = useRef<string | null>(null);
+    useEffect(() => {
+        if (surface !== 'main' || loading) return;
+        const first = overlaySeen.current === null;
+        if (overlaySeen.current === overlayKey) return;
+        overlaySeen.current = overlayKey;
+        if (!first) window.api?.overlaySync?.();
+    }, [surface, loading, overlayKey]);
+
     // 활성 익스텐션 변경 시 GUI 번들 로드 & 슬롯 등록
     useEffect(() => {
         const enabled = extensions.filter((ext) => ext.enabled);
@@ -320,8 +335,12 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
             // 확장 하나가 throw해도 나머지 확장의 슬롯과 허락 대기 목록은 갱신한다
             const loadOne = async (ext: ExtensionListItem) => {
                 const globalName: `SabaExt${string}` = `SabaExt${pascalCase(ext.id)}`;
-                // 이 창에 둘 slot이 없는 익스텐션은 번들·번역을 읽지 않는다 (GUI 선언이 없는 익스텐션은 메인 창만)
-                if (!(ext.gui ? loadsOn(ext, surface) : surface === 'main')) return;
+                // 이 창에 둘 slot이 없는 익스텐션은 번들·번역을 읽지 않는다 (GUI 선언이 없는 익스텐션은 메인 창만).
+                // 다른 창(트레이 팝업·바탕화면 오버레이)에만 그리는 번들도 허락은 메인 창이 묻는다
+                if (!(ext.gui ? loadsOn(ext, surface) : surface === 'main')) {
+                    if (surface === 'main' && ext.gui?.bundle && ext.gui_allowed === false) pending.push(ext);
+                    return;
+                }
                 // 번들 없이 manifest 선언만 있는 익스텐션 (설정 탭 자동 폼 등)
                 if (ext.gui && !ext.gui.bundle) {
                     mergeSlots(ext);

@@ -2330,6 +2330,20 @@
     "stop_confirm": "停止しますか？",
     "stop_confirm_aria": "{{name}} の停止を確認"
   },
+  "desktop_overlay": {
+    "menu_server": "{{name}} · {{status}}",
+    "menu_start": "起動",
+    "menu_stop": "停止",
+    "menu_stop_confirm": "停止する",
+    "menu_restart": "再起動",
+    "menu_restart_confirm": "再起動する",
+    "menu_no_servers": "まだサーバーがありません",
+    "menu_open_app": "サバちゃんを開く",
+    "menu_hide": "デスクトップから隠す",
+    "setting_label": "デスクトップオーバーレイ",
+    "setting_description": "拡張機能がデスクトップの隅に出す小さなウィンドウ（デスクトップペットなど）を表示します。ドラッグで移動できます。",
+    "setting_unsupported": "このデスクトップ（Wayland）では表示できません。"
+  },
   "autostart": {
     "label": "サインイン時に自動起動",
     "description": "PCにサインインするとSaba-chanを起動します。デーモンのみはウィンドウなしでトレイで動きます。",

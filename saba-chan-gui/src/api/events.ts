@@ -17,6 +17,7 @@ export const EVENT_CHANNELS = [
     'console:popoutClosed',
     'console:popinRequest',
     'app:openServer',
+    'overlay:menu',
 ] as const;
 
 export type EventHub = ReturnType<typeof createEventHub>;

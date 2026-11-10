@@ -2330,6 +2330,20 @@
     "stop_confirm": "정지할까요?",
     "stop_confirm_aria": "{{name}} 정지 확인"
   },
+  "desktop_overlay": {
+    "menu_server": "{{name}} · {{status}}",
+    "menu_start": "시작",
+    "menu_stop": "정지",
+    "menu_stop_confirm": "정지하기",
+    "menu_restart": "재시작",
+    "menu_restart_confirm": "재시작하기",
+    "menu_no_servers": "아직 서버가 없어요",
+    "menu_open_app": "사바쨩 열기",
+    "menu_hide": "바탕화면에서 숨기기",
+    "setting_label": "바탕화면 오버레이",
+    "setting_description": "익스텐션이 바탕화면 구석에 띄우는 작은 창(데스크톱 펫 등)을 보입니다. 끌어서 옮길 수 있어요.",
+    "setting_unsupported": "이 데스크톱(Wayland)에서는 띄울 수 없어요."
+  },
   "autostart": {
     "label": "로그인할 때 자동 실행",
     "description": "PC에 로그인하면 사바쨩을 켜요. 데몬만 켜면 창 없이 트레이에서 돌아요.",
