@@ -653,10 +653,14 @@ impl DaemonApi {
         format!("http://127.0.0.1:{}{}", self.port, path)
     }
 
-    /// 이미 떠 있는 데몬에게 받은 모듈·익스텐션을 다시 읽게 한다 (모듈 목록은 데몬이 기억해 둔다). 데몬이 없으면 아무 일도 없다
-    pub(crate) async fn reload_addons(&self) {
-        for path in ["/api/modules/refresh", "/api/extensions/rescan"] {
-            if let Err(e) = self.client.post(self.url(path)).header("X-Saba-Token", &self.token).send().await {
+    /// 이미 떠 있는 데몬에게 받은 모듈·익스텐션을 다시 읽게 하고, 받은 익스텐션은 데몬의 경로로 켠다
+    /// (설정 파일에 적은 활성 목록은 떠 있는 데몬이 다시 읽지 않는다). 데몬이 없으면 아무 일도 없다
+    pub(crate) async fn reload_addons(&self, extensions: &[String]) {
+        let paths = ["/api/modules/refresh".to_string(), "/api/extensions/rescan".to_string()]
+            .into_iter()
+            .chain(extensions.iter().map(|id| format!("/api/extensions/{id}/enable")));
+        for path in paths {
+            if let Err(e) = self.client.post(self.url(&path)).header("X-Saba-Token", &self.token).send().await {
                 tracing::info!("No daemon to reload addons ({}): {}", path, e);
                 return;
             }

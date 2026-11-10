@@ -690,7 +690,8 @@ pub async fn setup(config: SetupOptions, hooks: &dyn InstallHooks) -> InstallPro
     // 앱보다 먼저 CLI로 데몬을 띄워 두었으면 그 데몬은 빈 모듈 목록을 기억하고 있다
     if installed.iter().any(|c| c.starts_with("module:") || c.starts_with("extension:")) {
         if let Some(api) = uninstall::DaemonApi::from_config() {
-            api.reload_addons().await;
+            let extensions: Vec<String> = installed.iter().filter_map(|c| c.strip_prefix("extension:")).map(str::to_string).collect();
+            api.reload_addons(&extensions).await;
         }
     }
 
