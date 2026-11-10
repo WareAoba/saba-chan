@@ -78,3 +78,8 @@
     width: 100%;
     margin-top: var(--sp-3);
 }
+.remote-picker-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+}

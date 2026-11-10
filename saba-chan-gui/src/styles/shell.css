@@ -4233,12 +4233,8 @@ button.appbar-pill:focus-visible {
     flex-shrink: 0;
 }
 .agreement-modal .agreement-list {
-    margin: var(--sp-1) 0 var(--sp-4);
+    margin: 0;
     width: 100%;
-}
-.modal-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 /* 서버 점검 (validate·diagnose) 결과: 정보 탭 */

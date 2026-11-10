@@ -51,15 +51,6 @@
     }
 }
 
-.modal-illustration {
-    width: 168px;
-    height: auto;
-    margin-bottom: var(--sp-1);
-    object-fit: contain;
-    pointer-events: none;
-    user-select: none;
-}
-
 .modal-title {
     font-size: calc(17px * var(--font-scale));
     font-weight: 600;
@@ -86,94 +77,6 @@
     padding: var(--sp-2-5);
     border-radius: 6px;
     border-left: 3px solid var(--line);
-}
-
-/* 유리 위의 버튼: 채운 버튼은 색 한 겹 + 위쪽 빛줄, 올리면 같은 색으로 은은히 빛난다 */
-.modal-button {
-    --btn-tone: var(--accent);
-    padding: 0 var(--sp-5);
-    border: 1px solid color-mix(in oklch, var(--btn-tone) 70%, white);
-    height: 40px;
-    border-radius: var(--r-md);
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    cursor: pointer;
-    background-color: var(--btn-tone);
-    color: var(--text-on-dark);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.22),
-        0 2px 8px color-mix(in oklch, var(--btn-tone) 22%, transparent);
-    transition:
-        transform var(--dur-fast) var(--ease),
-        filter var(--dur-fast) var(--ease),
-        box-shadow var(--dur-fast) var(--ease),
-        background-color var(--dur-fast) var(--ease);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.modal-button:hover {
-    filter: brightness(1.07);
-    transform: translateY(-1px);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.26),
-        0 6px 18px color-mix(in oklch, var(--btn-tone) 38%, transparent);
-}
-
-.modal-button:active {
-    transform: translateY(0) scale(0.98);
-    filter: brightness(0.97);
-}
-
-.modal-button:focus-visible {
-    outline: none;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.22),
-        0 0 0 3px color-mix(in oklch, var(--btn-tone) 40%, transparent);
-}
-
-.failure-button {
-    --btn-tone: var(--stop);
-}
-
-.notification-button {
-    --btn-tone: var(--info);
-}
-
-.modal-buttons-group {
-    display: flex;
-    gap: var(--sp-2-5);
-    margin-top: var(--sp-4);
-    justify-content: center;
-}
-
-.modal-buttons-group.stacked {
-    flex-direction: column;
-}
-
-.modal-buttons-group.stacked > .modal-button {
-    flex: none;
-}
-
-.question-confirm {
-    flex: 1;
-}
-
-/* 취소는 색 없는 유리 버튼: 테두리와 옅은 면만 */
-.question-cancel {
-    --btn-tone: transparent;
-    flex: 1;
-    color: var(--text-1);
-    background-color: color-mix(in oklch, var(--text-1) 7%, transparent);
-    border-color: var(--glass-border);
-    box-shadow: var(--glass-highlight);
-}
-
-.question-cancel:hover {
-    background-color: color-mix(in oklch, var(--text-1) 12%, transparent);
-    box-shadow: var(--glass-highlight);
 }
 
 /* ===== Context Menu (components/ui/ContextMenu.js) ===== */
@@ -2475,4 +2378,32 @@
 }
 .public-address-private {
     font-size: var(--fs-xs);
+}
+
+/* 확인창 (Modals.tsx, AgreementDialog): 공통 Dialog의 그림 자리에 상태 아이콘 */
+.saba-confirm-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    border-radius: var(--r-lg);
+    color: var(--tone, var(--accent));
+    background: color-mix(in oklch, var(--tone, var(--accent)) 14%, transparent);
+}
+.saba-confirm-icon.tone-ok {
+    --tone: var(--ok);
+}
+.saba-confirm-icon.tone-stop {
+    --tone: var(--stop);
+}
+.saba-confirm-icon.tone-warn {
+    --tone: var(--warn);
+}
+.saba-confirm-icon.tone-info {
+    --tone: var(--info);
+}
+.saba-confirm.stacked .saba-dialog-footer {
+    flex-direction: column;
+    align-items: stretch;
 }

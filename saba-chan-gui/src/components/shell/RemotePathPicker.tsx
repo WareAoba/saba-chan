@@ -8,7 +8,11 @@ import { Icon } from '../Icon';
 import '../Modals/Modals.css';
 import './RemotePathPicker.css';
 
-const TITLES: Record<RemotePathRequest['kind'], string> = { file: 'title_file', folder: 'title_folder', save: 'title_save' };
+const TITLES: Record<RemotePathRequest['kind'], string> = {
+    file: 'title_file',
+    folder: 'title_folder',
+    save: 'title_save',
+};
 
 /**
  * 원격 데몬 쪽 경로 고르기 (D2). 원격 데몬을 다루는 동안 대화상자를 여는 브리지 메서드
@@ -145,7 +149,10 @@ function RemotePathPicker() {
     const up = () => (listing?.parent ? open(listing.parent) : open(''));
 
     return (
-        <div className={clsx('modal-overlay', 'remote-picker-overlay', { closing: isClosing })} onClick={() => requestClose()}>
+        <div
+            className={clsx('modal-overlay', 'remote-picker-overlay', { closing: isClosing })}
+            onClick={() => requestClose()}
+        >
             <div
                 className="modal remote-picker"
                 role="dialog"
@@ -242,14 +249,14 @@ function RemotePathPicker() {
                         }}
                     />
                 )}
-                <div className="modal-buttons-group">
-                    <button type="button" className="modal-button question-confirm" onClick={choose} disabled={!ready}>
+                <div className="remote-picker-actions">
+                    <button type="button" className="btn btn-ghost" onClick={() => requestClose()}>
+                        {t('remote_picker.cancel')}
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={choose} disabled={!ready}>
                         {t(
                             `remote_picker.${kind === 'folder' ? 'choose_folder' : kind === 'save' ? (replacing ? 'replace' : 'save') : 'choose'}`,
                         )}
-                    </button>
-                    <button type="button" className="modal-button question-cancel" onClick={() => requestClose()}>
-                        {t('remote_picker.cancel')}
                     </button>
                 </div>
             </div>
