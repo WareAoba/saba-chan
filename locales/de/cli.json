@@ -339,6 +339,13 @@
       "access_needs_relogin": "erteilt, nach erneuter Windows-Anmeldung nutzbar",
       "access_unsupported": "auf diesem Betriebssystem nicht verfügbar (nur Windows)",
       "enable_hint": "Zum Einschalten: saba-chan-cli config set systemMonitorNetTrace=on"
+    },
+    "public_address": {
+      "current": "Öffentliche Adresse: {{address}} · Discord /address: {{share}}",
+      "auto": "Öffentliche IP (automatisch)",
+      "auto_ip": "Öffentliche IP (automatisch, {{ip}})",
+      "share_on": "geteilt",
+      "share_off": "nicht geteilt"
     }
   },
   "console": {
@@ -1030,7 +1037,8 @@
       "remote.claim": "Kopplungscode eines anderen PCs übernehmen und dich mit ihm verbinden (z. B. nach der Linux-Einzeilen-Installation)",
       "remote.install": "Saba-chan über das ssh dieses PCs auf einem Linux-PC installieren und verbinden (`benutzer@host`)",
       "remote.remove": "Einen deiner PCs entfernen: hier vergessen und optional Saba-chan dort deinstallieren und aus der Relay-Liste nehmen",
-      "remote.update": "Einen Remote-Daemon jetzt aktualisieren oder automatische Updates ein-/ausschalten (`--auto on|off`)"
+      "remote.update": "Einen Remote-Daemon jetzt aktualisieren oder automatische Updates ein-/ausschalten (`--auto on|off`)",
+      "config.public-address": "Öffentliche Adresse dieses PCs (für Spielserver-Adressen und Remote-Daemon-Verbindungen): ohne Wert anzeigen, Domain oder IP speichern, auto nutzt die von Server-chan gesehene öffentliche IP"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -1269,7 +1277,9 @@
       "remote.remove.remove_instances": "Mit --uninstall: auch Spielserver löschen",
       "remote.remove.from_relay": "Auch aus deiner PC-Liste im Relay entfernen",
       "remote.update.host_id": "PC-ID des Remote-Daemons (siehe `remote daemons`)",
-      "remote.update.auto": "Automatische Updates ein (on) oder aus (off). Ohne: jetzt aktualisieren"
+      "remote.update.auto": "Automatische Updates ein (on) oder aus (off). Ohne: jetzt aktualisieren",
+      "config.public-address.address": "Domain oder IP (auto für die öffentliche IP)",
+      "config.public-address.share": "Mit /<Server> address auf Discord zeigen (on|off)"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
@@ -1819,7 +1829,9 @@
       "closed": "Aus dem Internet nicht erreichbar",
       "cgnat": "Dein Router hat keine öffentliche IP (CGNAT)",
       "unknown": "Einige Ports konnten nicht geprüft werden",
-      "no_ports": "Dieses Spiel gibt keine zu prüfenden Ports an"
+      "no_ports": "Dieses Spiel gibt keine zu prüfenden Ports an",
+      "host_mismatch": "Die öffentliche Adresse zeigt nicht auf diesen PC",
+      "host_unresolved": "Die öffentliche Adresse wurde nicht gefunden"
     },
     "status": {
       "open": "Offen",
@@ -1835,8 +1847,11 @@
       "firewall_macos": "Die macOS-Firewall blockiert eingehende Verbindungen für das Programm dieses Servers. Stelle in Systemeinstellungen › Netzwerk › Firewall › Optionen saba-core (wenn der Server gestoppt ist) oder das Spielserver-Programm wie java (wenn er läuft) auf „Eingehende Verbindungen erlauben“ und prüfe dann erneut.",
       "router": "Die PC-Firewall lässt diesen Port zu. Leite diesen Port in den Router-Einstellungen an diesen PC weiter und prüfe erneut.",
       "cgnat": "Dein Anbieter teilt eine öffentliche IP unter vielen Haushalten, daher lässt sie sich nicht per Portweiterleitung öffnen. Frag deinen Anbieter nach einer öffentlichen IP oder nutze ein VPN wie Tailscale.",
-      "unknown": "UDP-Ports eines laufenden Servers und Ports, die ein anderes Programm belegt, lassen sich nicht prüfen. Stoppe den Server und prüfe erneut."
-    }
+      "unknown": "UDP-Ports eines laufenden Servers und Ports, die ein anderes Programm belegt, lassen sich nicht prüfen. Stoppe den Server und prüfe erneut.",
+      "host_mismatch": "Richte in deiner Domainverwaltung den A-Eintrag auf die öffentliche IP dieses PCs. Bei DDNS prüfe, ob das Update-Programm läuft. Ist ein CDN-Proxy aktiv, schalte ihn aus: Spielverbindungen gehen nicht durch ihn.",
+      "host_unresolved": "Prüfe die Schreibweise der öffentlichen Adresse und die DNS-Einstellungen der Domain. Ist die Domain neu, prüfe etwas später noch einmal."
+    },
+    "host": "Öffentliche Adresse {{host}} → {{resolved}} · dieser PC {{address}}"
   },
   "agent": {
     "linked": "✓ Saba-chan zu {{agent}} hinzugefügt",

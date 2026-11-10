@@ -64,6 +64,7 @@ pub async fn run(ctx: &Ctx, cmd: ConfigCmd) -> Result<()> {
         ConfigCmd::Browse { path, files } => browse(ctx, path.as_deref().unwrap_or(""), files.as_deref()).await,
         ConfigCmd::Autostart { mode } => autostart(ctx, mode).await,
         ConfigCmd::NetTrace { action } => net_trace(ctx, action).await,
+        ConfigCmd::PublicAddress { address, share } => public_address(ctx, address.as_deref(), share).await,
     }
 }
 
@@ -159,6 +160,41 @@ async fn net_trace(ctx: &Ctx, action: Option<crate::cli::NetTraceAction>) -> Res
     }
     if access != "unsupported" && r["enabled"] != true {
         ctx.out.hint(&t!("config.net_trace.enable_hint"));
+    }
+    Ok(())
+}
+
+/// 이 PC의 공개 주소 (GUI 설정 > 연결 > 내 PC 카드와 같은 값). `auto`는 지워서 릴레이가 본 공인 IP를 쓴다
+async fn public_address(ctx: &Ctx, address: Option<&str>, share: Option<bool>) -> Result<()> {
+    let changing = address.is_some() || share.is_some();
+    let r = if changing {
+        let mut body = serde_json::Map::new();
+        if let Some(a) = address {
+            body.insert("address".into(), json!(if a.eq_ignore_ascii_case("auto") { "" } else { a }));
+        }
+        if let Some(share) = share {
+            body.insert("shareAddress".into(), json!(share));
+        }
+        ctx.api.set_public_address(Value::Object(body)).await?
+    } else {
+        ctx.api.public_address().await?
+    };
+    let shown = match r["address"].as_str().filter(|a| !a.is_empty()) {
+        Some(a) => a.to_string(),
+        None => match r["publicIp"].as_str() {
+            Some(ip) => t!("config.public_address.auto_ip", ip = ip),
+            None => t!("config.public_address.auto"),
+        },
+    };
+    let line = t!(
+        "config.public_address.current",
+        address = shown,
+        share = t!(if r["shareAddress"] == false { "config.public_address.share_off" } else { "config.public_address.share_on" })
+    );
+    if changing {
+        ctx.out.done(&line, &r);
+    } else {
+        ctx.out.data(&r, |_| say!("{}", line));
     }
     Ok(())
 }

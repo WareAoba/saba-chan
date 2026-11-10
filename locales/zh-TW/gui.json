@@ -2232,9 +2232,6 @@
     "enabled": "允許遠端連線",
     "enabled_description": "你的其他電腦透過加密連線直接連到本常駐程式。",
     "port": "連接埠",
-    "address": "位址",
-    "address_description": "你的其他電腦可以連到的公網 IP 或主機名稱。留空則透過中繼連線（稍慢）。",
-    "address_placeholder": "公用 IP 或主機名稱",
     "save": "儲存",
     "status_off": "關閉",
     "status_listening": "正在連接埠 {{port}} 接收",
@@ -2407,7 +2404,9 @@
       "closed": "無法從外部連線",
       "cgnat": "路由器沒有取得公用 IP（CGNAT）",
       "unknown": "部分連接埠無法檢查",
-      "no_ports": "此遊戲沒有標示要檢查的連接埠"
+      "no_ports": "此遊戲沒有標示要檢查的連接埠",
+      "host_mismatch": "公開位址沒有指向這台電腦",
+      "host_unresolved": "找不到公開位址"
     },
     "status": {
       "open": "開放",
@@ -2423,7 +2422,9 @@
       "firewall_macos": "macOS 防火牆正在阻擋此伺服器程式的傳入連線。請在「系統設定 › 網路 › 防火牆 › 選項」中，將 saba-core（伺服器已停止時）或遊戲伺服器程式（如 java，執行中時）設為「允許傳入連線」，然後再檢查一次。",
       "router": "電腦防火牆已允許此連接埠。請在路由器設定中把此連接埠轉發到這台電腦，然後再檢查。",
       "cgnat": "電信業者讓多戶共用一個公用 IP，無法透過連接埠轉發開放。請向業者申請公用 IP，或使用 Tailscale 等 VPN。",
-      "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。"
+      "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。",
+      "host_mismatch": "請在網域管理頁面把 A 記錄指向這台電腦的公用 IP。使用 DDNS 時請確認更新程式正在執行；若開啟了 CDN 代理請關閉，遊戲連線無法通過代理。",
+      "host_unresolved": "請檢查公開位址的拼寫與網域的 DNS 設定。如果是剛建立的網域，請稍後再檢查。"
     },
     "error": {
       "node_token_missing": "請先連結 Discord（配對）。檢查由中繼完成。",
@@ -2431,7 +2432,8 @@
       "rate_limited": "檢查太頻繁，請一分鐘後再試。",
       "relay_unreachable": "無法連線到中繼，請檢查網路連線。",
       "failed": "檢查失敗。"
-    }
+    },
+    "host": "公開位址 {{host}} · 這台電腦 {{address}}"
   },
   "picker": {
     "today": "今天",
@@ -2465,5 +2467,34 @@
     "not_option": "{{label}}必須是 {{options}} 之一。收到的值：{{value}}",
     "not_boolean": "{{label}}必須是 true 或 false。收到的值：{{value}}",
     "too_many": "此指令後面不接受任何內容。多餘的部分：{{value}}"
+  },
+  "public_address": {
+    "label": "遊戲伺服器位址",
+    "auto": "公用 IP（自動）",
+    "change": "變更",
+    "share_off": "不在 Discord 公開",
+    "title": "遊戲伺服器位址 · {{name}}",
+    "auto_title": "使用公用 IP",
+    "auto_desc": "使用 Server-chan 看到的這台電腦的 IP。家用網路的 IP 偶爾會變。",
+    "auto_desc_ip": "使用 Server-chan 看到的這台電腦的 IP，目前為 {{ip}}。家用網路的 IP 偶爾會變。",
+    "custom_title": "自訂公開位址",
+    "custom_desc": "填寫網域（DDNS 也可以）或固定 IP。每個伺服器會加上自己的連接埠。遠端常駐程式的連線也使用這個位址。",
+    "preview": "朋友會看到 {{example}} 這樣的位址。儲存時會去掉 https:// 和 :連接埠。",
+    "share_title": "透過 Discord 的 /address 告知",
+    "share_desc": "關閉後，在 Discord 使用 /address 也不會告知這台電腦上伺服器的位址。應用程式、CLI 和 Saba-chan 網頁照常顯示。",
+    "save": "儲存",
+    "err_invalid": "只能填寫網域或 IP 位址",
+    "err_failed": "無法儲存"
+  },
+  "server_address": {
+    "title": "連線位址",
+    "copy": "複製",
+    "copied": "已複製",
+    "hide": "隱藏",
+    "show": "顯示",
+    "hidden": "已隱藏的位址",
+    "unknown": "還不知道這台電腦的公用位址。連上 Server-chan 後會顯示。",
+    "stopped": "啟動伺服器後朋友才能進入",
+    "checked_at": "{{time}} 檢查"
   }
 }

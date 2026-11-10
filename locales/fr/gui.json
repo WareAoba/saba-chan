@@ -2232,9 +2232,6 @@
     "enabled": "Autoriser les connexions distantes",
     "enabled_description": "Vos autres PC se connectent directement à ce daemon par une connexion chiffrée.",
     "port": "Port",
-    "address": "Adresse",
-    "address_description": "IP publique ou nom d'hôte que vos autres PC peuvent joindre. Laissez vide pour passer par le relais (un peu plus lent).",
-    "address_placeholder": "IP publique ou nom d'hôte",
     "save": "Enregistrer",
     "status_off": "Désactivé",
     "status_listening": "À l'écoute sur le port {{port}}",
@@ -2407,7 +2404,9 @@
       "closed": "Inaccessible depuis Internet",
       "cgnat": "Votre routeur n’a pas d’IP publique (CGNAT)",
       "unknown": "Certains ports n’ont pas pu être vérifiés",
-      "no_ports": "Ce jeu n’indique pas quels ports vérifier"
+      "no_ports": "Ce jeu n’indique pas quels ports vérifier",
+      "host_mismatch": "L'adresse publique ne pointe pas vers ce PC",
+      "host_unresolved": "L'adresse publique est introuvable"
     },
     "status": {
       "open": "Ouvert",
@@ -2423,7 +2422,9 @@
       "firewall_macos": "Le coupe-feu de macOS bloque les connexions entrantes du programme de ce serveur. Dans Réglages Système › Réseau › Coupe-feu › Options, réglez saba-core (si le serveur est arrêté) ou le programme du serveur de jeu, comme java (s’il tourne), sur Autoriser les connexions entrantes, puis vérifiez à nouveau.",
       "router": "Le pare-feu du PC autorise ce port. Redirigez ce port vers ce PC dans les paramètres du routeur, puis vérifiez à nouveau.",
       "cgnat": "Votre fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l’ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
-      "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau."
+      "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau.",
+      "host_mismatch": "Dans la gestion de ton domaine, fais pointer l'enregistrement A vers l'IP publique de ce PC. Avec un DDNS, vérifie que son programme de mise à jour tourne. Si un proxy CDN est activé, désactive-le : les connexions de jeu ne le traversent pas.",
+      "host_unresolved": "Vérifie l'orthographe de l'adresse publique et les réglages DNS du domaine. Si le domaine est récent, revérifie un peu plus tard."
     },
     "error": {
       "node_token_missing": "Connectez d’abord Discord (appairage). C’est le relais qui vérifie.",
@@ -2431,7 +2432,8 @@
       "rate_limited": "Trop de vérifications. Réessayez dans une minute.",
       "relay_unreachable": "Impossible de joindre le relais. Vérifiez votre connexion Internet.",
       "failed": "La vérification a échoué."
-    }
+    },
+    "host": "Adresse publique {{host}} · ce PC {{address}}"
   },
   "picker": {
     "today": "Aujourd'hui",
@@ -2465,5 +2467,34 @@
     "not_option": "{{label}} doit être l'une de ces valeurs : {{options}}. Reçu : {{value}}",
     "not_boolean": "{{label}} doit être true ou false. Reçu : {{value}}",
     "too_many": "Cette commande n'accepte rien après. En trop : {{value}}"
+  },
+  "public_address": {
+    "label": "Adresse du serveur de jeu",
+    "auto": "IP publique (automatique)",
+    "change": "Modifier",
+    "share_off": "Non partagée sur Discord",
+    "title": "Adresse du serveur de jeu · {{name}}",
+    "auto_title": "Utiliser l'IP publique",
+    "auto_desc": "Utilise l'IP que Server-chan voit pour ce PC. Les IP domestiques changent de temps en temps.",
+    "auto_desc_ip": "Utilise l'IP que Server-chan voit pour ce PC, actuellement {{ip}}. Les IP domestiques changent de temps en temps.",
+    "custom_title": "Définir une adresse publique",
+    "custom_desc": "Saisis un domaine (DDNS aussi) ou une IP fixe. Chaque serveur ajoute son port. Les connexions de daemon distant utilisent aussi cette adresse.",
+    "preview": "Tes amis la verront ainsi : {{example}}. https:// et :port sont retirés à l'enregistrement.",
+    "share_title": "Partager avec /address sur Discord",
+    "share_desc": "Désactivé, /address sur Discord n'affiche pas les adresses des serveurs de ce PC. L'app, la CLI et le web Saba-chan les affichent toujours.",
+    "save": "Enregistrer",
+    "err_invalid": "Saisis seulement un domaine ou une adresse IP",
+    "err_failed": "Enregistrement impossible"
+  },
+  "server_address": {
+    "title": "Adresse de connexion",
+    "copy": "Copier",
+    "copied": "Copié",
+    "hide": "Masquer",
+    "show": "Afficher",
+    "hidden": "Adresse masquée",
+    "unknown": "L'adresse publique de ce PC n'est pas encore connue. Elle apparaît une fois connecté à Server-chan.",
+    "stopped": "Démarre le serveur pour que tes amis puissent rejoindre",
+    "checked_at": "Vérifié {{time}}"
   }
 }

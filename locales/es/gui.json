@@ -2232,9 +2232,6 @@
     "enabled": "Permitir conexiones remotas",
     "enabled_description": "Tus otros PC se conectan directamente a este daemon con una conexión cifrada.",
     "port": "Puerto",
-    "address": "Dirección",
-    "address_description": "IP pública o nombre de host que tus otros PC pueden alcanzar. Déjalo vacío para conectar a través del relay (algo más lento).",
-    "address_placeholder": "IP pública o nombre de host",
     "save": "Guardar",
     "status_off": "Apagado",
     "status_listening": "Escuchando en el puerto {{port}}",
@@ -2407,7 +2404,9 @@
       "closed": "No accesible desde internet",
       "cgnat": "Tu router no tiene IP pública (CGNAT)",
       "unknown": "Algunos puertos no se pudieron comprobar",
-      "no_ports": "Este juego no indica qué puertos comprobar"
+      "no_ports": "Este juego no indica qué puertos comprobar",
+      "host_mismatch": "La dirección pública no apunta a este PC",
+      "host_unresolved": "No se encontró la dirección pública"
     },
     "status": {
       "open": "Abierto",
@@ -2423,7 +2422,9 @@
       "firewall_macos": "El firewall de macOS está bloqueando las conexiones entrantes del programa de este servidor. En Ajustes del Sistema › Red › Firewall › Opciones, pon saba-core (si el servidor está detenido) o el programa del servidor de juego, como java (si está en marcha), en Permitir conexiones entrantes y vuelve a comprobar.",
       "router": "El firewall del PC permite este puerto. Reenvía este puerto a este PC en la configuración del router y vuelve a comprobar.",
       "cgnat": "Tu proveedor comparte una IP pública entre muchos hogares, así que el reenvío de puertos no puede abrirlo. Pide una IP pública a tu proveedor o usa una VPN como Tailscale.",
-      "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar."
+      "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar.",
+      "host_mismatch": "En la configuración de tu dominio, apunta el registro A a la IP pública de este PC. Si usas DDNS, comprueba que su actualizador esté funcionando. Si tienes un proxy CDN activo, desactívalo: las conexiones del juego no pasan por él.",
+      "host_unresolved": "Revisa cómo está escrita la dirección pública y la configuración DNS del dominio. Si el dominio es nuevo, vuelve a comprobar en un rato."
     },
     "error": {
       "node_token_missing": "Conecta primero con Discord (emparejamiento). La comprobación la hace el relé.",
@@ -2431,7 +2432,8 @@
       "rate_limited": "Demasiadas comprobaciones. Inténtalo de nuevo en un minuto.",
       "relay_unreachable": "No se pudo conectar con el relé. Revisa tu conexión a internet.",
       "failed": "No se pudo comprobar."
-    }
+    },
+    "host": "Dirección pública {{host}} · este PC {{address}}"
   },
   "picker": {
     "today": "Hoy",
@@ -2465,5 +2467,34 @@
     "not_option": "{{label}} debe ser uno de {{options}}. Recibido: {{value}}",
     "not_boolean": "{{label}} debe ser true o false. Recibido: {{value}}",
     "too_many": "Este comando no admite nada después. Sobra: {{value}}"
+  },
+  "public_address": {
+    "label": "Dirección del servidor",
+    "auto": "IP pública (automática)",
+    "change": "Cambiar",
+    "share_off": "No se comparte en Discord",
+    "title": "Dirección del servidor · {{name}}",
+    "auto_title": "Usar la IP pública",
+    "auto_desc": "Usa la IP que Server-chan ve para este PC. Las IP domésticas cambian de vez en cuando.",
+    "auto_desc_ip": "Usa la IP que Server-chan ve para este PC, ahora {{ip}}. Las IP domésticas cambian de vez en cuando.",
+    "custom_title": "Establecer una dirección pública",
+    "custom_desc": "Escribe un dominio (también DDNS) o una IP fija. Cada servidor añade su puerto. Las conexiones de daemon remoto también usan esta dirección.",
+    "preview": "Tus amigos la verán así: {{example}}. https:// y :puerto se quitan al guardar.",
+    "share_title": "Compartir con /address en Discord",
+    "share_desc": "Si está desactivado, /address en Discord no muestra las direcciones de los servidores de este PC. La app, la CLI y la web de Saba-chan las siguen mostrando.",
+    "save": "Guardar",
+    "err_invalid": "Escribe solo un dominio o una dirección IP",
+    "err_failed": "No se pudo guardar"
+  },
+  "server_address": {
+    "title": "Dirección para unirse",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "hide": "Ocultar",
+    "show": "Mostrar",
+    "hidden": "Dirección oculta",
+    "unknown": "Aún no se conoce la dirección pública de este PC. Aparecerá al conectarse a Server-chan.",
+    "stopped": "Inicia el servidor para que tus amigos puedan unirse",
+    "checked_at": "Comprobado {{time}}"
   }
 }

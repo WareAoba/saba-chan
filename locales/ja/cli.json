@@ -339,6 +339,13 @@
       "access_needs_relogin": "付与済み、Windowsにサインインし直すと使えます",
       "access_unsupported": "このOSでは使えません (Windowsのみ)",
       "enable_hint": "オンにするには: saba-chan-cli config set systemMonitorNetTrace=on"
+    },
+    "public_address": {
+      "current": "公開アドレス: {{address}} · Discord /address: {{share}}",
+      "auto": "グローバルIP(自動)",
+      "auto_ip": "グローバルIP(自動、{{ip}})",
+      "share_on": "教える",
+      "share_off": "教えない"
     }
   },
   "console": {
@@ -1030,7 +1037,8 @@
       "remote.claim": "別のPCが表示したペアリングコードを受け取ってそのPCに接続（Linuxワンライン導入の後など）",
       "remote.install": "このPCのsshでLinux PCにサバちゃんをインストールして接続（`ユーザー@ホスト`）",
       "remote.remove": "自分のPCを削除：ここで忘れ、必要ならそのPCからサバちゃんを削除しサーバーちゃんの一覧からも外す",
-      "remote.update": "リモートデーモンを今すぐ更新、または自動更新のオン/オフ（`--auto on|off`）"
+      "remote.update": "リモートデーモンを今すぐ更新、または自動更新のオン/オフ（`--auto on|off`）",
+      "config.public-address": "このPCの公開アドレス(ゲームサーバーのアドレスとリモートデーモンの接続が共通で使います): 値なしで今の値、ドメインかIPで保存、autoでサーバーちゃんが見たグローバルIP"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -1269,7 +1277,9 @@
       "remote.remove.remove_instances": "--uninstallと一緒に：ゲームサーバーも削除",
       "remote.remove.from_relay": "サーバーちゃんの自分のPC一覧からも外す",
       "remote.update.host_id": "リモートデーモンのPC id（`remote daemons`に表示）",
-      "remote.update.auto": "自動更新のオン(on)/オフ(off)。省略すると今すぐ更新"
+      "remote.update.auto": "自動更新のオン(on)/オフ(off)。省略すると今すぐ更新",
+      "config.public-address.address": "ドメインかIP(autoでグローバルIP自動)",
+      "config.public-address.share": "Discordの/<サーバー> addressで教えるか (on|off)"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },
@@ -1819,7 +1829,9 @@
       "closed": "外部から接続できません",
       "cgnat": "ルーターがグローバルIPを受け取っていません（CGNAT）",
       "unknown": "一部のポートは確認できませんでした",
-      "no_ports": "このゲームは確認するポートを示していません"
+      "no_ports": "このゲームは確認するポートを示していません",
+      "host_mismatch": "公開アドレスがこのPCを指していません",
+      "host_unresolved": "公開アドレスが見つかりません"
     },
     "status": {
       "open": "開放",
@@ -1835,8 +1847,11 @@
       "firewall_macos": "macOSのファイアウォールがこのサーバーのプログラムへの接続をブロックしています。システム設定 › ネットワーク › ファイアウォール › オプションで、サーバーが停止中ならsaba-coreを、実行中ならゲームサーバーのプログラム（javaなど）を「外部からの接続を許可」にしてから、もう一度確認してください。",
       "router": "PCのファイアウォールはこのポートを許可しています。ルーターの設定でこのポートをこのPCに転送してから、もう一度確認してください。",
       "cgnat": "プロバイダーが1つのグローバルIPを複数の家庭で共有しているため、ポート開放では開けません。プロバイダーにグローバルIPを依頼するか、TailscaleなどのVPNを使ってください。",
-      "unknown": "起動中のサーバーのUDPポートと、他のプログラムが使っているポートは確認できません。サーバーを停止してからもう一度確認してください。"
-    }
+      "unknown": "起動中のサーバーのUDPポートと、他のプログラムが使っているポートは確認できません。サーバーを停止してからもう一度確認してください。",
+      "host_mismatch": "ドメインの管理画面でAレコードをこのPCのグローバルIPにしてください。DDNSなら更新プログラムが動いているか確認し、CDNプロキシをオンにしているならオフにしてください。ゲームの接続はプロキシを通れません。",
+      "host_unresolved": "公開アドレスのつづりとドメインのDNS設定を確認してください。作ったばかりのドメインなら、少し後でもう一度確認してください。"
+    },
+    "host": "公開アドレス {{host}} → {{resolved}} · このPC {{address}}"
   },
   "agent": {
     "linked": "✓ {{agent}}にサバちゃんを追加しました",

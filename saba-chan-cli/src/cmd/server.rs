@@ -1539,21 +1539,29 @@ async fn players(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// 서버 주소: 릴레이가 본 이 PC의 공인 주소 + 밖에 여는 포트마다 `주소:포트`
+/// `주소:포트` (IPv6는 `[주소]:포트`). 호스트 이름이면 그대로 붙인다
+fn host_port(host: &str, port: u16) -> String {
+    match host.parse::<std::net::IpAddr>() {
+        Ok(ip) => std::net::SocketAddr::new(ip, port).to_string(),
+        Err(_) => format!("{host}:{port}"),
+    }
+}
+
+/// 서버 주소: 이 PC의 공개 주소(정한 도메인·IP, 없으면 릴레이가 본 공인 IP) + 밖에 여는 포트마다 `주소:포트`
 async fn address(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
     let r = ctx.api.address(&sv.id).await?;
     ctx.out.data(&r, |r| {
         output::heading(&t!("address.title", server = sv.name));
         let ports: Vec<&Value> = r.get("ports").and_then(Value::as_array).into_iter().flatten().collect();
-        let ip = r.get("address").and_then(Value::as_str).and_then(|a| a.parse::<std::net::IpAddr>().ok());
-        match ip {
+        let host = r.get("address").and_then(Value::as_str).filter(|a| !a.is_empty());
+        match host {
             _ if ports.is_empty() => say!("{}", t!("address.no_ports")),
             None => say!("{}", t!("address.unknown")),
-            Some(ip) => {
+            Some(host) => {
                 for p in ports {
                     let port = p.get("port").and_then(Value::as_u64).and_then(|v| u16::try_from(v).ok()).unwrap_or(0);
-                    say!("  {}  {}", std::net::SocketAddr::new(ip, port), output::dim(s(p, "label")));
+                    say!("  {}  {}", host_port(host, port), output::dim(s(p, "label")));
                 }
             }
         }
@@ -1572,7 +1580,10 @@ async fn port_check(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         output::heading(&t!("port_check.title", server = sv.name));
         let verdict = s(r, "verdict");
         say!("{}", t!(&format!("port_check.verdict.{}", verdict)));
-        if !s(r, "address").is_empty() {
+        if !s(r, "host").is_empty() {
+            let resolved: Vec<&str> = r.get("resolved").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+            say!("{}", output::dim(&t!("port_check.host", host = s(r, "host"), resolved = resolved.join(", "), address = s(r, "address"))));
+        } else if !s(r, "address").is_empty() {
             say!("{}", output::dim(&t!("port_check.address", address = s(r, "address"))));
         }
         for p in r.get("ports").and_then(Value::as_array).into_iter().flatten() {
@@ -1580,7 +1591,7 @@ async fn port_check(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             let status = t!(&format!("port_check.status.{}", s(p, "status")));
             say!("  {}/{}  {}", port, s(p, "protocol").to_uppercase(), status);
         }
-        if matches!(verdict, "firewall" | "router" | "closed" | "cgnat" | "unknown") {
+        if matches!(verdict, "firewall" | "router" | "closed" | "cgnat" | "unknown" | "host_mismatch" | "host_unresolved") {
             // 고칠 곳은 데몬이 OS에 맞춰 고른다 (옛 데몬은 `hint`가 없다)
             let hint = Some(s(r, "hint")).filter(|h| !h.is_empty()).unwrap_or(verdict);
             say!("{}", output::dim(&t!(&format!("port_check.hint.{}", hint))));

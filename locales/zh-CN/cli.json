@@ -339,6 +339,13 @@
       "access_needs_relogin": "已授予，重新登录 Windows 后可用",
       "access_unsupported": "此系统不可用（仅 Windows）",
       "enable_hint": "开启方法：saba-chan-cli config set systemMonitorNetTrace=on"
+    },
+    "public_address": {
+      "current": "公开地址：{{address}} · Discord /address：{{share}}",
+      "auto": "公网 IP（自动）",
+      "auto_ip": "公网 IP（自动，{{ip}}）",
+      "share_on": "告知",
+      "share_off": "不告知"
     }
   },
   "console": {
@@ -1030,7 +1037,8 @@
       "remote.claim": "领取其他电脑显示的配对码并连接到那台电脑（例如 Linux 一行安装之后）",
       "remote.install": "通过本机 ssh 在 Linux 电脑上安装 Saba-chan 并连接（`用户@主机`）",
       "remote.remove": "移除一台电脑：在这里忘记它，可选在那台电脑上卸载 Saba-chan 并从 Server-chan 列表中移除",
-      "remote.update": "立即更新远程守护进程，或开关自动更新（`--auto on|off`）"
+      "remote.update": "立即更新远程守护进程，或开关自动更新（`--auto on|off`）",
+      "config.public-address": "这台电脑的公开地址（游戏服务器地址和远程守护进程连接共用）：不带值显示当前值，给出域名或 IP 则保存，auto 使用 Server-chan 看到的公网 IP"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -1269,7 +1277,9 @@
       "remote.remove.remove_instances": "与 --uninstall 一起：同时删除游戏服务器",
       "remote.remove.from_relay": "同时从 Server-chan 的电脑列表中移除",
       "remote.update.host_id": "远程守护进程的电脑 id（见 `remote daemons`）",
-      "remote.update.auto": "开启(on)或关闭(off)自动更新。省略则立即更新"
+      "remote.update.auto": "开启(on)或关闭(off)自动更新。省略则立即更新",
+      "config.public-address.address": "域名或 IP（auto 为公网 IP）",
+      "config.public-address.share": "是否通过 Discord 的 /<服务器> address 告知 (on|off)"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
@@ -1819,7 +1829,9 @@
       "closed": "无法从外网连接",
       "cgnat": "路由器没有获得公网 IP（CGNAT）",
       "unknown": "部分端口无法检查",
-      "no_ports": "此游戏没有声明要检查的端口"
+      "no_ports": "此游戏没有声明要检查的端口",
+      "host_mismatch": "公开地址没有指向这台电脑",
+      "host_unresolved": "找不到公开地址"
     },
     "status": {
       "open": "开放",
@@ -1835,8 +1847,11 @@
       "firewall_macos": "macOS 防火墙正在阻止此服务器程序的传入连接。请在“系统设置 › 网络 › 防火墙 › 选项”中，将 saba-core（服务器已停止时）或游戏服务器程序（如 java，运行中时）设为“允许传入连接”，然后再检查一次。",
       "router": "电脑防火墙已允许此端口。请在路由器设置中把此端口转发到这台电脑，然后再检查。",
       "cgnat": "运营商让多户共用一个公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
-      "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。"
-    }
+      "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。",
+      "host_mismatch": "请在域名管理页面把 A 记录指向这台电脑的公网 IP。使用 DDNS 时请确认更新程序在运行；如果开启了 CDN 代理请关闭，游戏连接无法通过代理。",
+      "host_unresolved": "请检查公开地址的拼写和域名的 DNS 设置。如果是刚创建的域名，请稍后再检查。"
+    },
+    "host": "公开地址 {{host}} → {{resolved}} · 这台电脑 {{address}}"
   },
   "agent": {
     "linked": "✓ 已将 Saba-chan 添加到 {{agent}}",

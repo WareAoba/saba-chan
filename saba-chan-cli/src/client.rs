@@ -258,6 +258,14 @@ impl Api {
     pub async fn set_autostart(&self, mode: &str) -> Result<Value> {
         self.put("/api/system/autostart", json!({ "mode": mode })).await
     }
+    /// GET /api/public-address — 이 PC의 공개 주소 `{address, shareAddress, publicIp}`
+    pub async fn public_address(&self) -> Result<Value> {
+        self.get("/api/public-address").await
+    }
+    /// PUT /api/public-address `{address?, shareAddress?}` (빈 주소는 공인 IP 자동)
+    pub async fn set_public_address(&self, body: Value) -> Result<Value> {
+        self.put("/api/public-address", body).await
+    }
     /// GET /api/system/net-trace — 포트·서버별 네트워크 권한 `{access, enabled}`
     pub async fn net_trace(&self) -> Result<Value> {
         self.get("/api/system/net-trace").await

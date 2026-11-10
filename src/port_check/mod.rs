@@ -3,6 +3,8 @@
 //! 확인할 포트는 모듈이 `[[settings.fields]] public = "tcp" | "udp" | "both"`로 선언한 것뿐이다 (게임 이름으로 나누지 않는다).
 //! 1. 서버가 꺼져 있으면 그 포트에 잠깐 시험 리스너를 연다. 켜져 있으면 게임이 연 포트를 그대로 쓴다.
 //! 2. 릴레이 `POST /api/port-check`에 일회용 확인값(nonce)과 포트를 보낸다. 릴레이는 요청이 온 공인 주소의 그 포트로만 보낸다.
+//!    PC의 공개 주소(도메인·IP, `remote_daemon::configured_address`)를 정했으면 `host`로 싣는다. 릴레이는 그 주소가 이 PC를 가리킬 때만 보내고,
+//!    아니면 `hostResult`(mismatch·unresolved)만 답한다 → 판정 `host_mismatch`·`host_unresolved` (사용자 결정 2026-11-10)
 //! 3. 시험 리스너가 확인값을 받았으면 열림. 켜진 서버의 TCP는 릴레이의 접속 결과로, 켜진 서버의 UDP는 알 수 없음(서버를 끄면 확인된다).
 //!
 //! 공유기가 공인 주소를 받지 못한 경우(CGNAT)는 UPnP로 공유기가 아는 바깥 주소를 물어 릴레이가 본 주소와 견준다.
@@ -173,11 +175,18 @@ pub struct Report {
     /// 릴레이가 본 이 PC의 공인 주소
     pub address: Option<String>,
     pub public_address: bool,
+    /// 확인한 공개 주소(정했을 때만)와 릴레이가 찾아 본 결과 `match`·`mismatch`·`unresolved`, 그 주소가 가리키는 곳
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_result: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub resolved: Vec<String>,
     pub nat: Nat,
     pub running: bool,
     /// open: 모두 열림, firewall: 이 PC 방화벽이 막는 포트가 있다, router: 방화벽은 허용하는데 공유기가 넘겨주지 않는다,
     /// closed: 닫힌 포트가 있다 (방화벽을 읽지 못해 원인을 가리지 못했다), cgnat: 공유기에 공인 주소가 없다, unknown: 닫힌 것은 없지만 모두 확인하지 못했다,
-    /// no_ports: 모듈이 밖에 여는 포트를 선언하지 않았다
+    /// no_ports: 모듈이 밖에 여는 포트를 선언하지 않았다, host_mismatch·host_unresolved: 공개 주소가 이 PC를 가리키지 않는다·찾을 수 없다 (확인하지 않았다)
     pub verdict: &'static str,
     /// 고칠 방법 안내 문구 키 (`port_check.hint.<hint>`). 보통 `verdict`와 같고, 방화벽은 OS마다 고치는 곳이 달라 맥은 `firewall_macos`
     pub hint: &'static str,
@@ -188,6 +197,16 @@ fn hint(verdict: &'static str, os: &str) -> &'static str {
     match (verdict, os) {
         ("firewall", "macos") => "firewall_macos",
         _ => verdict,
+    }
+}
+
+/// 공개 주소가 이 PC를 가리키지 않아 확인하지 못했으면 그 판정 (포트가 없으면 없다)
+fn host_verdict(host_result: Option<&str>, ports: &[PortResult]) -> Option<&'static str> {
+    match host_result {
+        _ if ports.is_empty() => None,
+        Some("mismatch") => Some("host_mismatch"),
+        Some("unresolved") => Some("host_unresolved"),
+        _ => None,
     }
 }
 
@@ -239,6 +258,8 @@ impl CheckError {
 pub struct Relay {
     pub base: String,
     pub token: String,
+    /// 이 PC가 정한 공개 주소 (없으면 릴레이가 본 주소로 확인한다)
+    pub host: Option<String>,
 }
 
 // ── 시험 리스너를 여는 동안: 같은 인스턴스의 시작을 기다리게 한다 ──
@@ -424,6 +445,13 @@ struct RelayAnswer {
     address: String,
     public_address: bool,
     probes: Vec<RelayProbe>,
+    /// 공개 주소를 실었을 때만 (옛 릴레이는 `host`를 모르고 본 주소로 확인한다)
+    #[serde(default)]
+    host: Option<String>,
+    #[serde(default)]
+    host_result: Option<String>,
+    #[serde(default)]
+    resolved: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -445,11 +473,14 @@ fn relay_client() -> Result<reqwest::Client, CheckError> {
 
 async fn ask_relay(relay: &Relay, nonce: &str, ports: &[(u16, Protocol)]) -> Result<RelayAnswer, CheckError> {
     let path = "/api/port-check";
-    let body = json!({
+    let mut body = json!({
         "nonce": nonce,
         "ports": ports.iter().map(|(port, protocol)| json!({ "port": port, "protocol": protocol })).collect::<Vec<_>>(),
-    })
-    .to_string();
+    });
+    if let Some(host) = &relay.host {
+        body["host"] = json!(host);
+    }
+    let body = body.to_string();
     let req = crate::ipc::handlers::relay::signed_request(&relay_client()?, reqwest::Method::POST, &relay.base, path, &relay.token, Some(body))
         .ok_or(CheckError::NotPaired)?;
     let res = req.header("X-Saba-Client", "1").send().await.map_err(|e| CheckError::Relay(e.to_string()))?;
@@ -554,6 +585,9 @@ async fn run_with(
         answer.iter().flat_map(|a| &a.probes).map(|p| ((p.port, p.protocol), p.result.as_str())).collect();
     let observed = answer.as_ref().and_then(|a| a.address.parse::<IpAddr>().ok());
     let public_address = answer.as_ref().is_some_and(|a| a.public_address);
+    // 공개 주소가 이 PC를 가리키지 않으면 릴레이가 아무 데도 보내지 않았다: 닫힘이 아니라 모름
+    let host_result = answer.as_ref().and_then(|a| a.host_result.clone());
+    let probed = matches!(host_result.as_deref(), None | Some("match"));
     let nat = observed.filter(|_| public_address).map(|o| classify_nat(o, route_local(o), gateway)).unwrap_or(Nat::Unknown);
 
     // 닿지 않은 포트의 원인. 이 PC에 공인 주소가 바로 있으면 공유기 탓이 아니다
@@ -580,7 +614,7 @@ async fn run_with(
                             Some(firewall::Verdict::Blocked) => PortStatus::Firewall,
                             _ => PortStatus::Unknown,
                         }
-                    } else if !public_address || !asked.contains(&key) {
+                    } else if !public_address || !probed || !asked.contains(&key) {
                         PortStatus::Unknown
                     } else if !t.running {
                         if seen.contains(&key) {
@@ -598,15 +632,19 @@ async fn run_with(
                     PortResult { field: p.field.clone(), port: p.port, protocol: p.protocol, status }
                 })
                 .collect();
+            let verdict = host_verdict(host_result.as_deref(), &ports).unwrap_or_else(|| verdict(nat, &ports));
             Report {
                 instance_id: t.instance_id.clone(),
                 checked_at: checked_at.clone(),
                 address: answer.as_ref().map(|a| a.address.clone()),
                 public_address,
+                host: answer.as_ref().and_then(|a| a.host.clone()),
+                host_result: host_result.clone(),
+                resolved: answer.as_ref().map(|a| a.resolved.clone()).unwrap_or_default(),
                 nat,
                 running: t.running,
-                verdict: verdict(nat, &ports),
-                hint: hint(verdict(nat, &ports), std::env::consts::OS),
+                verdict,
+                hint: hint(verdict, std::env::consts::OS),
                 ports,
             }
         })
@@ -665,7 +703,8 @@ pub async fn targets(state: &crate::ipc::IPCServer, ids: &[String]) -> Vec<Targe
 async fn relay_target(state: &crate::ipc::IPCServer) -> Result<Relay, CheckError> {
     let token = crate::ipc::handlers::relay::load_node_token().ok_or(CheckError::NotPaired)?;
     let configured = state.config_store.get_bot_config().await.cloud.relay_url;
-    Ok(Relay { base: crate::ipc::handlers::relay::signed_relay_url(&configured, None), token })
+    let host = crate::remote_daemon::configured_address(&crate::remote_daemon::config::settings_in(&saba_chan_updater_lib::config_file::ConfigFile::default_location()));
+    Ok(Relay { base: crate::ipc::handlers::relay::signed_relay_url(&configured, None), token, host })
 }
 
 fn bind_ip() -> IpAddr {
@@ -685,6 +724,9 @@ pub async fn check(state: &crate::ipc::IPCServer, ids: &[String]) -> Result<Vec<
         checked_at: checked_at.clone(),
         address: None,
         public_address: false,
+        host: None,
+        host_result: None,
+        resolved: Vec::new(),
         nat: Nat::Unknown,
         running: t.running,
         verdict: "no_ports",

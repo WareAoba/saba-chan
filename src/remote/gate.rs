@@ -188,6 +188,9 @@ pub static ROUTES: &[Route] = &[
     // 원격 데몬 포트와 짝 맺은 PC (D1)
     deny("GET", "/api/remote/settings"),
     deny("PUT", "/api/remote/settings"),
+    // 이 PC의 공개 주소: 짝 맺은 PC의 GUI(내 PC 카드)가 원격 데몬 것도 고친다. 웹에는 칸이 없다
+    not_on_web("GET", "/api/public-address"),
+    not_on_web("PUT", "/api/public-address"),
     deny("GET", "/api/remote/clients"),
     deny("DELETE", "/api/remote/clients/{host_id}"),
     deny("GET", "/api/remote/peers"),

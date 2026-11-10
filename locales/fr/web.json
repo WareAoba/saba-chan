@@ -325,7 +325,9 @@
       "closed": "Inaccessible depuis Internet",
       "cgnat": "Votre routeur n’a pas d’IP publique (CGNAT)",
       "unknown": "Certains ports n’ont pas pu être vérifiés",
-      "no_ports": "Ce jeu n’indique pas quels ports vérifier"
+      "no_ports": "Ce jeu n’indique pas quels ports vérifier",
+      "host_mismatch": "L'adresse publique ne pointe pas vers ce PC",
+      "host_unresolved": "L'adresse publique est introuvable"
     },
     "status": {
       "open": "Ouvert",
@@ -341,7 +343,9 @@
       "firewall_macos": "Le coupe-feu de macOS bloque les connexions entrantes du programme de ce serveur. Dans Réglages Système › Réseau › Coupe-feu › Options, réglez saba-core (si le serveur est arrêté) ou le programme du serveur de jeu, comme java (s’il tourne), sur Autoriser les connexions entrantes, puis vérifiez à nouveau.",
       "router": "Le pare-feu du PC autorise ce port. Redirigez ce port vers ce PC dans les paramètres du routeur, puis vérifiez à nouveau.",
       "cgnat": "Votre fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l’ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
-      "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau."
+      "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau.",
+      "host_mismatch": "Dans la gestion de ton domaine, fais pointer l'enregistrement A vers l'IP publique de ce PC. Avec un DDNS, vérifie que son programme de mise à jour tourne. Si un proxy CDN est activé, désactive-le : les connexions de jeu ne le traversent pas.",
+      "host_unresolved": "Vérifie l'orthographe de l'adresse publique et les réglages DNS du domaine. Si le domaine est récent, revérifie un peu plus tard."
     },
     "error": {
       "node_token_missing": "Connectez d’abord Discord (appairage). C’est le relais qui vérifie.",
@@ -349,7 +353,8 @@
       "rate_limited": "Trop de vérifications. Réessayez dans une minute.",
       "relay_unreachable": "Impossible de joindre le relais. Vérifiez votre connexion Internet.",
       "failed": "La vérification a échoué."
-    }
+    },
+    "host": "Adresse publique {{host}} · ce PC {{address}}"
   },
   "commands": {
     "run": "Envoyer",

@@ -2,7 +2,15 @@ import clsx from 'clsx';
 import { type MouseEvent, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { subscribeDaemonEvents } from '../../utils/daemonEvents';
-import { type PortCheckReport, portCheckHintKey, portCheckNeedsAttention, portCheckShown, portHelpUrl, portLabel } from '../../utils/portCheck';
+import {
+    type PortCheckReport,
+    portCheckHintKey,
+    portCheckHost,
+    portCheckNeedsAttention,
+    portCheckShown,
+    portHelpUrl,
+    portLabel,
+} from '../../utils/portCheck';
 import type { Server } from '../../stores/useServerStore';
 import { Icon } from '../Icon';
 
@@ -26,8 +34,8 @@ const STATUS_ICON: Record<string, string> = {
     router: 'alertCircle',
 };
 
-/** 마지막 확인 결과. 자동 확인이 끝나면(`instance.port_check`) 다시 읽는다 */
-function useLastPortCheck(serverId: string): [PortCheckResult | null, SetReport] {
+/** 마지막 확인 결과. 자동 확인이 끝나면(`instance.port_check`) 다시 읽는다 (접속 주소 상자도 쓴다) */
+export function useLastPortCheck(serverId: string): [PortCheckResult | null, SetReport] {
     const [report, setReport] = useState<PortCheckResult | null>(null);
     const reload = useCallback(async () => {
         if (typeof window.api?.instancePortCheckLast !== 'function') return;
@@ -117,7 +125,10 @@ export function PortCheck({ server }: { server: Server }) {
                         <Icon name={report.verdict === 'open' ? 'checkCircle' : 'alertTriangle'} size="sm" />{' '}
                         {t(`port_check.verdict.${report.verdict}`)}
                     </p>
-                    {report.address && (
+                    {portCheckHost(report) && (
+                        <p className="muted">{t('port_check.host', { host: portCheckHost(report), address: report.address || '-' })}</p>
+                    )}
+                    {!portCheckHost(report) && report.address && (
                         <p className="muted">{t('port_check.address', { address: report.address })}</p>
                     )}
                     <ul className="server-check-issues">
