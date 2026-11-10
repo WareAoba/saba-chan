@@ -13,6 +13,7 @@ const SOUND_KINDS: [Exclude<keyof SoundSettings, 'enabled'>, string][] = [
     ['crash', 'gui:settings_modal.sound_crash'],
     ['install', 'gui:settings_modal.sound_install'],
     ['update', 'gui:settings_modal.sound_update'],
+    ['startup', 'gui:settings_modal.sound_startup'],
 ];
 
 /** 설정 › 알림: 토스트 시간·OS 알림·효과음 */

@@ -14,6 +14,7 @@ import { CustomDropdown, ExtensionSlot, Icon, SabaCheckbox, SabaToggle } from '.
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
 import { SabaNumberInput } from './ui/SabaUI';
 import { LinkedText } from './ui/ScreenLink';
+import { FindKeyTag } from './servers/PageFind';
 import './ServerSettings.css';
 
 /*
@@ -88,6 +89,8 @@ function SettingRow({
     disabled,
     error,
     className,
+    findKey,
+    findLabel,
 }: {
     label: ReactNode;
     labelId?: string;
@@ -98,11 +101,16 @@ function SettingRow({
     disabled?: boolean;
     error?: ReactNode;
     className?: string;
+    /** 원문 키 (Ctrl+F 찾기가 이 키로도 찾는다: 설정 이름, 데몬 설정 키) */
+    findKey?: string;
+    /** 이름표 글자 (label이 글자가 아닐 때). 이름에 이미 맞으면 키 꼬리표를 띄우지 않는다 */
+    findLabel?: string;
 }) {
     return (
         <div className={clsx('ss-row', className, { 'ss-stack': stack, 'ss-disabled': disabled })}>
-            <label className="ss-name" id={labelId} htmlFor={htmlFor}>
+            <label className="ss-name" id={labelId} htmlFor={htmlFor} data-find="name">
                 {label}
+                <FindKeyTag findKey={findKey} label={findLabel ?? (typeof label === 'string' ? label : '')} />
             </label>
             {desc && <p className="ss-desc">{desc}</p>}
             <div className="ss-control">{control}</div>
@@ -238,6 +246,8 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
                 </>
             }
             labelId={labelId}
+            findKey={field.name}
+            findLabel={fieldLabel}
             htmlFor={fieldType === 'list' && (field.options?.length ?? 0) > 0 ? undefined : inputId}
             desc={fieldDesc}
             control={control}
@@ -284,7 +294,7 @@ function Card({
         <section className={clsx('dc-card ss-card', className)}>
             {head ?? (
                 <div className="dc-card-head">
-                    <h2 className="ss-card-title">
+                    <h2 className="ss-card-title" data-find="name">
                         <Icon name={icon} size="sm" /> {title}
                     </h2>
                 </div>
@@ -343,6 +353,7 @@ function GeneralTab({
     const { t } = useTranslation('gui');
     const versionId = useId();
     const rowId = useId();
+    const advancedId = useId();
     // section: 'server' = 게임 서버 설정만, 'saba' = 사바쨩이 서버를 다루는 설정만, 없으면 모두
     const showSaba = section !== 'server';
     const showServer = section !== 'saba';
@@ -446,6 +457,7 @@ function GeneralTab({
                 <Card icon="refresh" title={t('shell.restart_title')} desc={t('shell.restart_desc')} className="ss-restart">
                     <SettingRow
                         label={t('shell.restart_on_crash')}
+                        findKey="auto_restart"
                         htmlFor={`${rowId}-crash`}
                         desc={t('shell.restart_on_crash_hint')}
                         control={
@@ -458,6 +470,7 @@ function GeneralTab({
                     />
                     <SettingRow
                         label={t('shell.restart_on_unknown')}
+                        findKey="restart_on_unknown_exit"
                         htmlFor={`${rowId}-unknown`}
                         desc={t('shell.restart_on_unknown_hint')}
                         disabled={crashOff}
@@ -478,6 +491,7 @@ function GeneralTab({
                 <Card icon="monitor" title={t('memory_limit.title')} desc={t('memory_limit.desc')} className="ss-memory">
                     <SettingRow
                         label={t('memory_limit.label')}
+                        findKey="memory_limit_mb"
                         htmlFor={`${rowId}-mem`}
                         desc={t('memory_limit.hint')}
                         control={
@@ -506,6 +520,7 @@ function GeneralTab({
                 <Card icon="messageSquare" title={t('game_chat.title')} desc={t('game_chat.desc')} className="ss-game-chat">
                     <SettingRow
                         label={t('game_chat.mode_label')}
+                        findKey="game_chat"
                         control={
                             <CustomDropdown
                                 className="ss-select"
@@ -519,6 +534,7 @@ function GeneralTab({
                     {settingsValues.game_chat === 'keyword' && (
                         <SettingRow
                             label={t('game_chat.keyword_label')}
+                            findKey="game_chat_keyword"
                             htmlFor={`${rowId}-keyword`}
                             desc={t('game_chat.keyword_hint')}
                             control={
@@ -547,6 +563,7 @@ function GeneralTab({
                 <Card icon="power" title={t('stop_timeout.title')} desc={t('stop_timeout.desc')} className="ss-stop-timeout">
                     <SettingRow
                         label={t('stop_timeout.label')}
+                        findKey="stop_timeout"
                         htmlFor={`${rowId}-stop`}
                         desc={t('stop_timeout.hint')}
                         control={
@@ -596,9 +613,10 @@ function GeneralTab({
                             type="button"
                             className="ss-card-toggle"
                             aria-expanded={advancedExpanded}
+                            aria-controls={advancedId}
                             onClick={() => setAdvancedExpanded(!advancedExpanded)}
                         >
-                            <h2 className="ss-card-title">
+                            <h2 className="ss-card-title" data-find="name">
                                 <Icon name="tool" size="sm" />{' '}
                                 {t('server_settings.advanced_group', { defaultValue: 'Advanced Settings' })}
                                 <span className="ss-count">{advancedFields.length}</span>
@@ -607,7 +625,10 @@ function GeneralTab({
                         </button>
                     }
                 >
-                    {advancedExpanded ? fieldRows(advancedFields) : null}
+                    {/* 접혀 있어도 그려 둔다: Ctrl+F가 안을 세고, 그 결과로 가면 편다 */}
+                    <div id={advancedId} className="ss-fold" data-find-fold hidden={!advancedExpanded}>
+                        {fieldRows(advancedFields)}
+                    </div>
                 </Card>
             )}
 

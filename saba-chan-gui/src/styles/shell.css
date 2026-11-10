@@ -666,7 +666,15 @@
 .detail-back {
     margin-right: calc(-1 * var(--sp-1));
 }
-.server-detail > .segmented {
+.detail-tabrow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+}
+.server-detail > .segmented,
+.detail-tabrow > .segmented {
     align-self: flex-start;
     /* 좁은 창에서는 줄을 바꾼다 (가로 스크롤 없이) */
     flex-wrap: wrap;

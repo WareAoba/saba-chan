@@ -250,7 +250,9 @@ function CustomDropdown({
                             {selectedOption.icon && <Icon name={selectedOption.icon} size="sm" />}
                             {/* 보이지 않는 모든 이름을 같은 칸에 겹쳐, 폭을 내용에 맞출 때 가장 긴 이름에 맞춘다 (고를 때 폭이 튀지 않게) */}
                             <span className="custom-dropdown-sizer">
-                                <span className="custom-dropdown-label">{selectedOption.label}</span>
+                                <span className="custom-dropdown-label" data-find="value">
+                                    {selectedOption.label}
+                                </span>
                                 {/* 글자는 CSS attr()로만 그려 DOM 글자·읽기에 섞이지 않는다 */}
                                 {options.map((o) =>
                                     typeof o.label === 'string' ? (

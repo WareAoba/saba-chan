@@ -172,6 +172,7 @@
     "sound_crash": "意外停止",
     "sound_install": "安裝結果",
     "sound_update": "發現更新",
+    "sound_startup": "正常啟動",
     "close_action_label": "關閉按鈕",
     "close_action_description": "點擊視窗關閉按鈕時的動作。",
     "close_action_ask": "每次詢問",
@@ -2586,5 +2587,16 @@
     "unknown": "還不知道這台電腦的公用位址。連上 Server-chan 後會顯示。",
     "stopped": "啟動伺服器後朋友才能進入",
     "checked_at": "{{time}} 檢查"
+  },
+  "find": {
+    "label": "在此分頁中尋找",
+    "placeholder": "在此分頁中尋找",
+    "button": "尋找",
+    "count": "{{cur}}/{{total}}",
+    "none": "沒有結果",
+    "prev": "上一個 (Shift+Enter)",
+    "next": "下一個 (Enter)",
+    "close": "關閉 (Esc)",
+    "fold_hits": "{{count}} 個相符"
   }
 }

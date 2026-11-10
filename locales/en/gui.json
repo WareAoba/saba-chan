@@ -166,12 +166,13 @@
     "os_notifications_label": "System notifications",
     "os_notifications_description": "Also send important events, such as crashes and unexpected starts or stops, as Windows or macOS notifications. While the app window is in front, they show only in the app.",
     "sound_effects_label": "Sound effects",
-    "sound_effects_description": "Play a sound when a server is started or stopped from outside the app (Discord, web, and so on), stops unexpectedly or fails to start, when Saba-chan itself stops unexpectedly, when an install finishes, or when an update is found. Starting or stopping from the app itself makes no sound.",
+    "sound_effects_description": "Play a sound when a server is started or stopped from outside the app (Discord, web, and so on), stops unexpectedly or fails to start, when Saba-chan itself stops unexpectedly, when an install finishes, when an update is found, or when the app starts up normally (with the opening). Starting or stopping from the app itself makes no sound.",
     "sound_server_start": "Server started",
     "sound_server_stop": "Server stopped",
     "sound_crash": "Unexpected stop",
     "sound_install": "Install result",
     "sound_update": "Update found",
+    "sound_startup": "App startup",
     "close_action_label": "Close Button",
     "close_action_description": "What the window close button does.",
     "close_action_ask": "Ask every time",
@@ -2586,5 +2587,16 @@
     "unknown": "This PC's public address is not known yet. It appears once connected to Server-chan.",
     "stopped": "Start the server so friends can join",
     "checked_at": "Checked {{time}}"
+  },
+  "find": {
+    "label": "Find in this tab",
+    "placeholder": "Find in this tab",
+    "button": "Find",
+    "count": "{{cur}}/{{total}}",
+    "none": "No results",
+    "prev": "Previous (Shift+Enter)",
+    "next": "Next (Enter)",
+    "close": "Close (Esc)",
+    "fold_hits": "Matches: {{count}}"
   }
 }

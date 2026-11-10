@@ -172,6 +172,7 @@
     "sound_crash": "予期しない停止",
     "sound_install": "インストール結果",
     "sound_update": "アップデート発見",
+    "sound_startup": "正常起動",
     "close_action_label": "閉じるボタン",
     "close_action_description": "ウィンドウの閉じるボタンを押したときの動作です。",
     "close_action_ask": "毎回確認",
@@ -2586,5 +2587,16 @@
     "unknown": "このPCのグローバルアドレスはまだ分かりません。サーバーちゃんにつながると表示されます。",
     "stopped": "サーバーを起動すると友だちが入れます",
     "checked_at": "{{time}} に確認"
+  },
+  "find": {
+    "label": "このタブ内を検索",
+    "placeholder": "このタブ内を検索",
+    "button": "検索",
+    "count": "{{cur}}/{{total}}",
+    "none": "見つかりません",
+    "prev": "前へ (Shift+Enter)",
+    "next": "次へ (Enter)",
+    "close": "閉じる (Esc)",
+    "fold_hits": "{{count}}件一致"
   }
 }

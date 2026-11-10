@@ -10,6 +10,8 @@ const FOUND_CLASS = 'palette-found';
 function findRow(label: string) {
     const want = label.trim();
     for (const row of Array.from(document.querySelectorAll<HTMLElement>(ROWS))) {
+        // 접힌 묶음(hidden, Ctrl+F가 그려 두고 숨긴 고급 설정) 안의 칸은 펼쳐질 때까지 기다린다
+        if (row.closest('[hidden]')) continue;
         const name = row.querySelector(NAMES)?.textContent?.trim() ?? '';
         if (name.startsWith(want)) return row;
     }

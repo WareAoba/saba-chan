@@ -172,6 +172,7 @@
     "sound_crash": "Arrêt inattendu",
     "sound_install": "Résultat de l'installation",
     "sound_update": "Mise à jour trouvée",
+    "sound_startup": "Démarrage de l’app",
     "close_action_label": "Bouton Fermer",
     "close_action_description": "Action du bouton de fermeture de la fenêtre.",
     "close_action_ask": "Demander à chaque fois",
@@ -2586,5 +2587,16 @@
     "unknown": "L'adresse publique de ce PC n'est pas encore connue. Elle apparaît une fois connecté à Server-chan.",
     "stopped": "Démarre le serveur pour que tes amis puissent rejoindre",
     "checked_at": "Vérifié {{time}}"
+  },
+  "find": {
+    "label": "Rechercher dans cet onglet",
+    "placeholder": "Rechercher dans cet onglet",
+    "button": "Rechercher",
+    "count": "{{cur}}/{{total}}",
+    "none": "Aucun résultat",
+    "prev": "Précédent (Shift+Enter)",
+    "next": "Suivant (Entrée)",
+    "close": "Fermer (Échap)",
+    "fold_hits": "Correspondances : {{count}}"
   }
 }

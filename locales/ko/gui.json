@@ -166,12 +166,13 @@
     "os_notifications_label": "OS 알림",
     "os_notifications_description": "크래시, 예기치 않은 시작·종료처럼 꼭 알아야 할 일을 Windows·macOS 알림으로도 보내요. 앱 창이 앞에 있으면 앱 안에서만 알려요.",
     "sound_effects_label": "효과음",
-    "sound_effects_description": "밖(디스코드·웹 등)에서 시작·정지한 일, 예기치 않은 종료와 켜기 실패, 사바쨩 본체가 갑자기 꺼진 일, 설치 결과, 업데이트 발견을 소리로 알려요. 앱에서 직접 시작·정지한 것은 울리지 않아요.",
+    "sound_effects_description": "밖(디스코드·웹 등)에서 시작·정지한 일, 예기치 않은 종료와 켜기 실패, 사바쨩 본체가 갑자기 꺼진 일, 설치 결과, 업데이트 발견, 정상 기동(오프닝과 함께)을 소리로 알려요. 앱에서 직접 시작·정지한 것은 울리지 않아요.",
     "sound_server_start": "서버 시작",
     "sound_server_stop": "서버 정지",
     "sound_crash": "예기치 않은 종료",
     "sound_install": "설치 결과",
     "sound_update": "업데이트 발견",
+    "sound_startup": "정상 기동",
     "close_action_label": "창 닫기 버튼",
     "close_action_description": "창의 닫기 버튼을 눌렀을 때 할 일이에요.",
     "close_action_ask": "매번 묻기",
@@ -2586,5 +2587,16 @@
     "unknown": "아직 이 PC의 공인 주소를 몰라요. 서버쨩에 연결되면 보여요.",
     "stopped": "서버를 시작해야 친구가 들어올 수 있어요",
     "checked_at": "{{time}} 확인"
+  },
+  "find": {
+    "label": "이 탭에서 찾기",
+    "placeholder": "이 탭에서 찾기",
+    "button": "찾기",
+    "count": "{{cur}}/{{total}}",
+    "none": "결과 없음",
+    "prev": "이전 결과 (Shift+Enter)",
+    "next": "다음 결과 (Enter)",
+    "close": "닫기 (Esc)",
+    "fold_hits": "{{count}}개 일치"
   }
 }
