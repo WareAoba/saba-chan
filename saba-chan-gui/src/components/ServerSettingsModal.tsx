@@ -6,6 +6,7 @@ import type { Server } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import type { ModuleInfo, SettingField } from '../types/daemon';
 import { moduleSupports } from '../utils/helpers';
+import { extensionInstallMethod } from '../utils/installMethod';
 import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/validation';
 import { useExtensions } from '../contexts/ExtensionContext';
 import { CliLine, changedForCli } from './CliLine';
@@ -360,6 +361,7 @@ function GeneralTab({
         moduleSupports(module, 'list_versions') &&
         moduleSupports(module, 'install_server');
     const crashOff = String(settingsValues.auto_restart) === 'false';
+    const autoUpdatable = extensionInstallMethod(settingsServer, module) !== null;
     const fieldRows = (list: SettingField[]) =>
         list.map((f) => (
             <SettingsField
@@ -457,6 +459,24 @@ function GeneralTab({
                                 checked={String(settingsValues.restart_on_unknown_exit) === 'true'}
                                 disabled={crashOff}
                                 onChange={(checked) => handleSettingChange('restart_on_unknown_exit', checked)}
+                            />
+                        }
+                    />
+                </Card>
+            )}
+
+            {/* 게임 서버 자동 업데이트 (데몬 인스턴스 auto_update): 설치 방식 익스텐션으로 설치한 서버만 새 빌드를 확인할 수 있다 */}
+            {showSaba && autoUpdatable && (
+                <Card icon="download" title={t('server_settings.auto_update_title')} className="ss-auto-update">
+                    <SettingRow
+                        label={t('server_settings.auto_update_label')}
+                        htmlFor={`${rowId}-auto-update`}
+                        desc={t('server_settings.auto_update_hint')}
+                        control={
+                            <SabaToggle
+                                id={`${rowId}-auto-update`}
+                                checked={String(settingsValues.auto_update) === 'true'}
+                                onChange={(checked) => handleSettingChange('auto_update', checked)}
                             />
                         }
                     />

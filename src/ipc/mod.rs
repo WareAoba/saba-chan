@@ -245,6 +245,9 @@ pub struct ServerInfo {
     /// 메모리 상한 MiB (`ServerInstance::memory_limit_mb`)
     #[serde(default)]
     pub memory_limit_mb: Option<u64>,
+    /// 게임 서버 자동 업데이트 (`ServerInstance::auto_update`)
+    #[serde(default)]
+    pub auto_update: bool,
     /// 게임 채팅 전달 (`ServerInstance::game_chat`·`game_chat_keyword`)
     #[serde(default)]
     pub game_chat: crate::supervisor::game_chat::Mode,

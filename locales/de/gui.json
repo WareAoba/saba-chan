@@ -417,6 +417,9 @@
     "restart_badge": "Wirkt nach Neustart",
     "toggle_on": "An",
     "toggle_off": "Aus",
+    "auto_update_title": "Automatisches Update",
+    "auto_update_label": "Spielserver automatisch aktualisieren",
+    "auto_update_hint": "Wenn eine neue Version da ist und niemand online ist, stoppt saba-chan den Server, sichert ihn, aktualisiert ihn und startet ihn neu. Sind Spieler online, gibt es nur eine Benachrichtigung.",
     "restart_now": "Jetzt neu starten",
     "restart_later": "Später",
     "install_backup_failed": "{{file}} konnte vor der Installation nicht gesichert werden, daher wurde nichts installiert. Prüfe den freien Speicherplatz und die .bak-Dateien in diesem Ordner.",
@@ -614,7 +617,8 @@
     "just_now": "gerade eben",
     "minutes_ago": "vor {{count}} Min.",
     "yesterday": "Gestern",
-    "click_to_open": "zum Öffnen klicken"
+    "click_to_open": "zum Öffnen klicken",
+    "click_to_update": "zum Aktualisieren klicken"
   },
   "updates": {
     "available_title": "Updates verfügbar",
@@ -1980,6 +1984,11 @@
     "schedule_update": "{{name}} wird planmäßig in {{minutes}} Min. aktualisiert.",
     "module_update": "{{name}}: Version {{version}} des Moduls {{module}} ist verfügbar.",
     "server_update": "{{name}}: Eine neue Spielserver-Version ist verfügbar. Wenn niemand beitreten kann, aktualisiere den Server.",
+    "server_update_waiting": "{{name}}: Eine neue Spielserver-Version ist da, aber {{count}} Spieler sind online, daher wartet das automatische Update.",
+    "server_update_failed": "{{name}}: Der Spielserver konnte nicht aktualisiert werden. {{error}}",
+    "server_update_apply_failed": "{{name}}: Das Update konnte nicht gestartet werden. {{error}}",
+    "server_update_scheduled": "{{name}}: Die Spieler wurden im Spiel gewarnt. Das Update startet in {{minutes}} Min.",
+    "server_update_started": "{{name}}: Das Update des Spielservers hat begonnen.",
     "instance_started": "{{name}} wurde gestartet ({{source}}).",
     "instance_stopped": "{{name}} wurde beendet ({{source}}).",
     "instance_stopped_in_game": "{{name}} wurde im Spiel beendet.",

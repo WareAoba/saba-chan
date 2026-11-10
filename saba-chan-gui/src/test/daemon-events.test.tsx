@@ -4,6 +4,7 @@ import { ActivityBar } from '../components/shell/ActivityBar';
 import { DaemonEvents } from '../components/shell/DaemonEvents';
 import i18n from '../i18n';
 import { eventToast, normalizeEvent, subscribeDaemonEvents } from '../utils/daemonEvents';
+import { applyServerUpdateFromNotice, SERVER_UPDATE_ACTION } from '../utils/serverUpdateNotice';
 
 const t = i18n.getFixedT('en', 'gui');
 const flush = () => act(async () => {});
@@ -229,6 +230,51 @@ describe('데몬 이벤트 스트림', () => {
         );
         delete window.__sabaNotice;
         unmount();
+    });
+
+    it('게임 서버 새 빌드·자동 업데이트 대기 알림은 누르면 업데이트하고, 실패도 알림으로 남긴다', async () => {
+        const stream = fakeStream();
+        window.__sabaNotice = { addNotice: vi.fn() } as unknown as typeof window.__sabaNotice;
+        const { unmount } = render(<DaemonEvents onServersChanged={vi.fn()} />);
+        await stream.emit({ id: 1, type: 'instance.update_notice', data: { instanceId: 'i', instance: 'Pal', kind: 'server' } });
+        expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
+            expect.objectContaining({ action: SERVER_UPDATE_ACTION, source: 'Pal', data: { instanceId: 'i', name: 'Pal' } }),
+        );
+        await stream.emit({ id: 2, type: 'instance.update_waiting', data: { instanceId: 'i', instance: 'Pal', players: 2 } });
+        expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                message: '🔔 Pal: a new game server version is out, but 2 player(s) are online, so auto-update is waiting.',
+                action: SERVER_UPDATE_ACTION,
+                dedup: true,
+            }),
+        );
+        await stream.emit({ id: 3, type: 'instance.update_failed', data: { instanceId: 'i', instance: 'Pal', error: 'disk full' } });
+        expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
+            expect.objectContaining({ message: "⚠️ Pal: couldn't update the game server. disk full", type: 'error' }),
+        );
+        delete window.__sabaNotice;
+        unmount();
+    });
+
+    it('업데이트 알림을 누르면 데몬에 업데이트를 시키고 결과를 토스트로 알린다', async () => {
+        const removeNotice = vi.fn();
+        window.__sabaNotice = { addNotice: vi.fn(), removeNotice } as unknown as typeof window.__sabaNotice;
+        window.showToast = vi.fn() as never;
+        window.api.instanceApplyUpdate = vi.fn().mockResolvedValue({ success: true, scheduled: true, warn_minutes: 5, players: 2 }) as never;
+        const notice = { id: 7, action: SERVER_UPDATE_ACTION, data: { instanceId: 'i', name: 'Pal' } } as never;
+        await applyServerUpdateFromNotice(notice, t);
+        expect(window.api.instanceApplyUpdate).toHaveBeenCalledWith('i');
+        expect(removeNotice).toHaveBeenCalledWith(7);
+        expect(window.showToast).toHaveBeenLastCalledWith(
+            'Pal: warned players in game. The update starts in 5 min.',
+            'info',
+            5000,
+            undefined,
+        );
+        window.api.instanceApplyUpdate = vi.fn().mockResolvedValue({ success: false, error: 'already updating' }) as never;
+        await applyServerUpdateFromNotice(notice, t);
+        expect(window.showToast).toHaveBeenLastCalledWith("Pal: couldn't start the update. already updating", 'error', 5000, undefined);
+        delete window.__sabaNotice;
     });
 
     it('활동 줄은 action.run을 받으면 폴링을 기다리지 않고 바뀐다', async () => {

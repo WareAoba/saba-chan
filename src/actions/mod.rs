@@ -267,8 +267,9 @@ pub static ACTIONS: &[Def] = &[
     // 공식 목록에서만 받는다 (주소·해시를 받지 않는다)
     Def { fields: &[path_field("extension")], ..def("extension.install", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/install") },
     // 게임 서버 업데이트 (사바쨩 앱 업데이트 `update.*`와 다르다)
-    def("server.update.check", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id/check-update"),
-    def("server.update.apply", Kind::Admin, "caution", LOCAL, true, "POST", "/api/instance/:id/apply-update"),
+    // 디스코드는 관리자(Lv2) 이상이 기본 (길드가 옮길 수 있다). 켜진 서버는 5분 예고 → 정지 → 업데이트 → 다시 켜기 (`server_update.rs`)
+    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, private: true, ..def("server.update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "GET", "/api/instance/:id/check-update") },
+    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.update.apply", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/apply-update") },
     // 게임 설정 파일 원문 (관리자 비밀번호가 들어 있다). 원격 MCP에는 비밀값째 준다 (`MCP_UNLOCKED`, `strips_secrets`)
     def("instance.properties.get", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id/properties"),
     Def { fields: &[field("settings", "object", true)], ..def("instance.properties.set", Kind::Admin, "caution", LOCAL, true, "PUT", "/api/instance/:id/properties") },
@@ -331,6 +332,8 @@ const LAUNCH_KEYS: &[&str] = &[
     "controllers",
     "controllers_only",
     "kick_players",
+    // 게임 서버 자동 업데이트: 예약 업데이트처럼 이 PC에서만 켠다
+    "auto_update",
 ];
 
 /// 모듈 설정 필드 중 원격에서 다루지 않는 것들

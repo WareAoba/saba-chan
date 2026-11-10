@@ -417,6 +417,9 @@
     "restart_badge": "Appliqué au redémarrage",
     "toggle_on": "Activé",
     "toggle_off": "Désactivé",
+    "auto_update_title": "Mise à jour automatique",
+    "auto_update_label": "Mettre à jour automatiquement le serveur de jeu",
+    "auto_update_hint": "Quand une nouvelle version sort et que personne n'est connecté, saba-chan arrête, sauvegarde, met à jour et redémarre le serveur. Si des joueurs sont connectés, vous êtes seulement prévenu.",
     "restart_now": "Redémarrer maintenant",
     "restart_later": "Plus tard",
     "install_backup_failed": "Impossible de sauvegarder {{file}} avant l'installation, rien n'a donc été installé. Vérifiez l'espace disque libre et les fichiers .bak de ce dossier.",
@@ -614,7 +617,8 @@
     "just_now": "il y a un instant",
     "minutes_ago": "il y a {{count}} min",
     "yesterday": "Hier",
-    "click_to_open": "cliquer pour ouvrir"
+    "click_to_open": "cliquer pour ouvrir",
+    "click_to_update": "cliquez pour mettre à jour"
   },
   "updates": {
     "available_title": "Mises à jour disponibles",
@@ -1980,6 +1984,11 @@
     "schedule_update": "{{name}} sera mis à jour comme prévu dans {{minutes}} min.",
     "module_update": "{{name}} : la version {{version}} du module {{module}} est disponible.",
     "server_update": "{{name}} : une nouvelle version du serveur de jeu est disponible. Si personne ne peut se connecter, mettez le serveur à jour.",
+    "server_update_waiting": "{{name}} : une nouvelle version du serveur de jeu est sortie, mais {{count}} joueur(s) sont connectés, la mise à jour automatique attend donc.",
+    "server_update_failed": "{{name}} : impossible de mettre à jour le serveur de jeu. {{error}}",
+    "server_update_apply_failed": "{{name}} : impossible de lancer la mise à jour. {{error}}",
+    "server_update_scheduled": "{{name}} : les joueurs ont été prévenus en jeu. La mise à jour commence dans {{minutes}} min.",
+    "server_update_started": "{{name}} : la mise à jour du serveur de jeu a commencé.",
     "instance_started": "{{name}} a démarré ({{source}}).",
     "instance_stopped": "{{name}} s'est arrêté ({{source}}).",
     "instance_stopped_in_game": "{{name}} a été arrêté depuis le jeu.",

@@ -3,9 +3,21 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { useServerStore } from '../../stores/useServerStore';
 import { useUIStore } from '../../stores/useUIStore';
+import { SERVER_UPDATE_ACTION } from '../../utils/serverUpdateNotice';
 import { historyEntryOf, SERVER_CHANGING, showEventToast, showPortMoved, subscribeDaemonEvents } from '../../utils/daemonEvents';
 
 const REFETCH_DEBOUNCE_MS = 300;
+
+/** 누르면 그 게임 서버를 업데이트하는 알림. 서버마다 하나만 둔다 (출처=서버 이름) */
+const serverUpdateNotice = (text: string, instanceId: string, name: string) => ({
+    message: `🔔 ${text}`,
+    type: 'info' as const,
+    source: name,
+    instanceId,
+    action: SERVER_UPDATE_ACTION,
+    data: { instanceId, name },
+    dedup: true,
+});
 
 /**
  * 데몬 이벤트를 받아 토스트·알림을 띄우고, 서버 상태가 바뀌었을 만한 이벤트면 목록을 다시 읽는다.
@@ -41,16 +53,36 @@ export function DaemonEvents({ onServersChanged }: { onServersChanged?: () => vo
                 const name = d.instance || nameOf(d.instanceId);
                 const module = d.kind === 'module';
                 if (!module && d.kind !== 'server') return;
+                window.__sabaNotice?.addNotice(
+                    module
+                        ? {
+                              message: `🔔 ${tr('events.module_update', { name, module: d.module, version: d.latest })}`,
+                              type: 'info',
+                              source: 'Updater',
+                              action: 'openUpdateModal',
+                              dedup: true,
+                          }
+                        : serverUpdateNotice(tr('events.server_update', { name }), d.instanceId, name),
+                );
+                return;
+            }
+            if (ev.type === 'instance.update_waiting') {
+                // 자동 업데이트가 접속자 때문에 기다린다 — 누르면 5분 예고 뒤 업데이트
+                const d = ev.data;
+                const name = d.instance || nameOf(d.instanceId);
+                window.__sabaNotice?.addNotice(
+                    serverUpdateNotice(tr('events.server_update_waiting', { name, count: d.players }), d.instanceId, name),
+                );
+                return;
+            }
+            if (ev.type === 'instance.update_failed') {
+                const d = ev.data;
+                const name = d.instance || nameOf(d.instanceId);
                 window.__sabaNotice?.addNotice({
-                    message: `🔔 ${
-                        module
-                            ? tr('events.module_update', { name, module: d.module, version: d.latest })
-                            : tr('events.server_update', { name })
-                    }`,
-                    type: 'info',
-                    source: 'Updater',
-                    ...(module ? { action: 'openUpdateModal' } : {}),
-                    dedup: true,
+                    message: `⚠️ ${tr('events.server_update_failed', { name, error: d.error || '' }).trim()}`,
+                    type: 'error',
+                    source: name,
+                    instanceId: d.instanceId,
                 });
                 return;
             }

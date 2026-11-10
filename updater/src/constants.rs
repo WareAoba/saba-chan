@@ -61,6 +61,8 @@ pub const INSTANCE_FIELDS: &[(&str, &str)] = &[
     ("access", "text"),
     // 전용 멤버 모드: 명단에 없는 닉네임이 접속하면 내보낸다 (명단·자동 강퇴 닉네임은 목록이라 `server set`으로 바꾸지 않는다)
     ("controllers_only", "boolean"),
+    // 게임 서버 자동 업데이트 (설치 방식 익스텐션으로 설치한 서버만). 원격·디스코드에서는 바꾸지 않는다 (`actions::LAUNCH_KEYS`)
+    ("auto_update", "boolean"),
 ];
 
 /// `INSTANCE_FIELDS` 중 비울 수 없는 칸: 데몬 PATCH가 null을 받아도 지금 값을 둔다.

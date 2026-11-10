@@ -41,6 +41,9 @@ const gameChatOf = (server: Server | null | undefined) => ({
     controllers_only: server?.controllers_only === true,
 });
 
+/** 게임 서버 자동 업데이트 (데몬 인스턴스 최상위 auto_update, 꺼져 있으면 없다) */
+const autoUpdateOf = (server: Server | null | undefined) => server?.auto_update === true;
+
 /** 정지 대기 칸 값 (초, 비면 모듈 값): 데몬 MK14 module_settings.stop_timeout */
 const stopTimeoutOf = (server: Server | null | undefined) =>
     server?.module_settings?.stop_timeout == null ? '' : String(server.module_settings.stop_timeout);
@@ -221,6 +224,7 @@ export function useServerSettings({
             Object.assign(initial, restartFlagsOf(latestServer));
             initial.memory_limit_mb = memoryLimitOf(latestServer);
             initial.stop_timeout = stopTimeoutOf(latestServer);
+            initial.auto_update = autoUpdateOf(latestServer);
             Object.assign(initial, gameChatOf(latestServer));
             setSettingsValues(initial);
         } else {
@@ -242,6 +246,7 @@ export function useServerSettings({
                 ...restartFlagsOf(latestServer),
                 memory_limit_mb: memoryLimitOf(latestServer),
                 stop_timeout: stopTimeoutOf(latestServer),
+                auto_update: autoUpdateOf(latestServer),
                 ...gameChatOf(latestServer),
             });
         }
@@ -521,6 +526,7 @@ export function useServerSettings({
                                                     ...restartFlagsOf(updated),
                                                     memory_limit_mb: memoryLimitOf(updated),
                                                     stop_timeout: stopTimeoutOf(updated),
+                                                    auto_update: autoUpdateOf(updated),
                                                     ...gameChatOf(updated),
                                                 }));
                                             }
@@ -632,6 +638,10 @@ export function useServerSettings({
             if (settingsValues.stop_timeout !== undefined && stopTimeout !== stopTimeoutOf(settingsServer)) {
                 convertedSettings.stop_timeout = stopTimeout === '' ? null : stopTimeout;
             }
+
+            // 자동 업데이트: 바꿨을 때만 보낸다
+            const autoUpdate = asFlag(settingsValues.auto_update, null);
+            if (autoUpdate !== null && autoUpdate !== autoUpdateOf(settingsServer)) convertedSettings.auto_update = autoUpdate;
 
             // 게임 채팅 전달: 바꾼 칸만 보낸다. 감지 단어 모드에 단어가 있는지는 데몬이 본다 (invalid_format)
             const openedChat = gameChatOf(settingsServer);

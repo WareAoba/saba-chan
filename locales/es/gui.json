@@ -417,6 +417,9 @@
     "restart_badge": "Se aplica al reiniciar",
     "toggle_on": "Activado",
     "toggle_off": "Desactivado",
+    "auto_update_title": "Actualización automática",
+    "auto_update_label": "Actualizar automáticamente el servidor de juego",
+    "auto_update_hint": "Cuando sale una nueva versión y no hay nadie conectado, saba-chan detiene, respalda, actualiza y reinicia el servidor. Si hay jugadores conectados, solo te avisa.",
     "restart_now": "Reiniciar ahora",
     "restart_later": "Más tarde",
     "install_backup_failed": "No se pudo hacer copia de {{file}} antes de instalar, así que no se instaló nada. Revisa el espacio libre en disco y los archivos .bak de esa carpeta.",
@@ -614,7 +617,8 @@
     "just_now": "ahora mismo",
     "minutes_ago": "hace {{count}} min",
     "yesterday": "Ayer",
-    "click_to_open": "clic para abrir"
+    "click_to_open": "clic para abrir",
+    "click_to_update": "haz clic para actualizar"
   },
   "updates": {
     "available_title": "Actualizaciones disponibles",
@@ -1980,6 +1984,11 @@
     "schedule_update": "{{name}} se actualizará según lo programado en {{minutes}} min.",
     "module_update": "{{name}}: ya está disponible la versión {{version}} del módulo {{module}}.",
     "server_update": "{{name}}: hay una nueva versión del servidor de juego. Si no se puede entrar, actualiza el servidor.",
+    "server_update_waiting": "{{name}}: hay una nueva versión del servidor de juego, pero hay {{count}} jugador(es) conectados, así que la actualización automática está esperando.",
+    "server_update_failed": "{{name}}: no se pudo actualizar el servidor de juego. {{error}}",
+    "server_update_apply_failed": "{{name}}: no se pudo iniciar la actualización. {{error}}",
+    "server_update_scheduled": "{{name}}: se avisó a los jugadores en el juego. La actualización empieza en {{minutes}} min.",
+    "server_update_started": "{{name}}: se empezó a actualizar el servidor de juego.",
     "instance_started": "{{name}} se inició ({{source}}).",
     "instance_stopped": "{{name}} se detuvo ({{source}}).",
     "instance_stopped_in_game": "{{name}} se detuvo desde dentro del juego.",

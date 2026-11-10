@@ -86,6 +86,16 @@ describe('서버 설정 저장은 바뀐 것만 보낸다', () => {
         expect(sent).not.toHaveProperty('extension_data');
     });
 
+    it('자동 업데이트는 바꿨을 때만 싣는다', async () => {
+        const result = await open();
+        expect(result.current.settingsValues.auto_update).toBe(false);
+        await act(async () => result.current.handleSaveSettings());
+        expect(vi.mocked(window.api.instanceUpdateSettings).mock.calls[0][1]).not.toHaveProperty('auto_update');
+        act(() => result.current.handleSettingChange('auto_update', true));
+        await act(async () => result.current.handleSaveSettings());
+        expect(vi.mocked(window.api.instanceUpdateSettings).mock.calls.at(-1)![1].auto_update).toBe(true);
+    });
+
     it('서버를 초기화한 뒤 저장하면 보이는 값을 게임 설정 파일에 다시 쓴다', async () => {
         window.api.serverList = vi.fn().mockResolvedValue({ servers: [srv] });
         window.api.instanceResetServer = vi.fn().mockResolvedValue({ success: true, deleted: ['PalWorldSettings.ini'] });

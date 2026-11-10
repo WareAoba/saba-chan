@@ -2729,6 +2729,7 @@ mod tests {
         assert!(typed_setting(&fields, &inst, "difficulty", "insane").is_err());
         assert_eq!(typed_setting(&fields, &inst, "memory_limit_mb", "6144").unwrap().1, json!(6144));
         assert_eq!(typed_setting(&fields, &inst, "memory_limit_mb", "").unwrap().1, Value::Null);
+        assert_eq!(typed_setting(&fields, &inst, "auto_update", "on").unwrap().1, json!(true));
         let (k, v) = typed_setting(&fields, &inst, "ext.box", "").unwrap();
         assert_eq!((k.as_str(), v), ("extension_data.box", Value::Null));
     }

@@ -2107,6 +2107,13 @@ pub async fn update_instance_settings(
             Err(e) => return game_chat_error(e, "controllers"),
         }
     }
+    // 게임 서버 자동 업데이트 (원격에서는 바꾸지 못한다: actions LAUNCH_KEYS)
+    if let Some(auto) = settings.get("auto_update") {
+        match auto.as_bool() {
+            Some(auto) => updated.auto_update = auto,
+            None => return game_chat_error("auto_update must be true or false", "auto_update"),
+        }
+    }
     if let Some(only) = settings.get("controllers_only") {
         match only.as_bool() {
             Some(only) => updated.controllers_only = only,
@@ -2277,7 +2284,7 @@ pub async fn update_instance_settings(
     // 모듈이 사바쨩 설정으로 선언한 값은 뺀다
     const DAEMON_FIELDS: &[&str] = &[
         "protocol_mode", "executable_path", "working_dir", "server_version", "extension_data", "extra_args", "memory_limit_mb",
-        "game_chat", "game_chat_keyword", "access", "controllers", "controllers_only", "kick_players", "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon",
+        "game_chat", "game_chat_keyword", "access", "controllers", "controllers_only", "kick_players", "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon", "auto_update",
     ];
     let saba_fields: Vec<String> = supervisor.module_loader.get_module(&updated.module_name).ok()
         .and_then(|m| m.metadata.settings.as_ref().map(|s| s.saba_fields().into_iter().map(str::to_string).collect()))
@@ -2487,11 +2494,20 @@ fn installed_by_extension(instance: &crate::instance::ServerInstance, method: &s
 /// POST /api/instance/:id/apply-update - 게임 서버 업데이트 적용
 ///
 /// SteamCMD install (== update)을 재실행하여 서버를 최신 빌드로 업데이트합니다.
-/// 서버가 실행 중이면 업데이트할 수 없습니다.
+/// 서버가 켜져 있으면 본문 `warn_minutes`(기본 5)분 동안 게임 안에 예고한 뒤 정지 → 업데이트 → 다시 켜기를 뒤에서 하고
+/// `{success, scheduled: true, warn_minutes, players}`로 바로 답합니다 (`server_update.rs`).
 pub async fn apply_server_update(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
+    super::LooseJson(body): super::LooseJson<super::server_update::ApplyBody>,
 ) -> impl IntoResponse {
+    // 켜져 있으면 게임 안에 예고(기본 5분) → 저장하고 정지 → 업데이트 → 다시 켜기를 뒤에서 건다
+    if state.supervisor.read().await.is_running(&id).await {
+        return super::server_update::apply_to_running(&state, &id, &body.map(|b| b.0).unwrap_or_default()).await;
+    }
+    if super::server_update::is_pending(&id) {
+        return (StatusCode::CONFLICT, Json(json!({ "success": false, "error": "An update of this server is already under way", "error_code": "update_pending" }))).into_response();
+    }
     match begin_server_update(&state, &id).await {
         Ok(_) => (
             StatusCode::OK,
@@ -2504,6 +2520,12 @@ pub async fn apply_server_update(
             .into_response(),
         Err(r) => r,
     }
+}
+
+/// 게임 서버 업데이트가 실패했다 `instance.update_failed {instanceId, instance, error}` (어디서 시켰든: 앱·예약·디스코드·자동)
+pub(crate) async fn emit_update_failed(state: &IPCServer, id: &str, error: &str) {
+    let name = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
+    crate::events::emit("instance.update_failed", json!({ "instanceId": id, "instance": name, "error": error }));
 }
 
 /// 업데이트를 백그라운드로 시작한다. 작업은 성공 여부를 돌려준다 (예약 업데이트가 기다린다)
@@ -2627,6 +2649,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
             let failure = crate::ipc::internal::into_internal(r).await.body;
             let reason = failure["error"].as_str().unwrap_or("backup failed").to_string();
             tracing::error!("Pre-update backup failed for '{}': {}", name_done, reason);
+            emit_update_failed(&backup_state, &backup_id, &reason).await;
             tracker_done.update(
                 &name_done,
                 crate::ipc::ProvisionProgress {
@@ -2644,11 +2667,12 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
         }
 
         // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
+        let lifecycle_path = supervisor_arc.read().await.module_loader.get_module(&module_name_owned).map(|m| m.entry_path());
         let lifecycle_path = {
-            let sup = supervisor_arc.read().await;
-            match sup.module_loader.get_module(&module_name_owned) {
-                Ok(m) => m.entry_path(),
+            match lifecycle_path {
+                Ok(path) => path,
                 Err(e) => {
+                    emit_update_failed(&backup_state, &backup_id, &e.to_string()).await;
                     tracker_done.update(
                         &name_done,
                         crate::ipc::ProvisionProgress {
@@ -2740,6 +2764,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                         .map(str::to_string)
                         .unwrap_or_else(|| text.t("provision.update_failed", &[]));
                     tracing::error!("Server update failed for '{}': {}", name_done, err_msg);
+                    emit_update_failed(&backup_state, &backup_id, &err_msg).await;
                     tracker_done.update(
                         &name_done,
                         crate::ipc::ProvisionProgress {
@@ -2758,6 +2783,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
             }
             Err(e) => {
                 tracing::error!("Server update error for '{}': {}", name_done, e);
+                emit_update_failed(&backup_state, &backup_id, &text.t("provision.script_failed", &[])).await;
                 tracker_done.update(
                     &name_done,
                     crate::ipc::ProvisionProgress {

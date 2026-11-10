@@ -417,6 +417,9 @@
     "restart_badge": "重启后生效",
     "toggle_on": "开",
     "toggle_off": "关",
+    "auto_update_title": "自动更新",
+    "auto_update_label": "自动更新游戏服务器",
+    "auto_update_hint": "有新版本且无人在线时，会停止、备份、更新并重新启动服务器。有人在线时只发送通知。",
     "restart_now": "立即重启",
     "restart_later": "稍后",
     "install_backup_failed": "安装前无法备份 {{file}}，因此没有安装。请检查磁盘可用空间以及该文件夹中的 .bak 文件。",
@@ -614,7 +617,8 @@
     "just_now": "刚刚",
     "minutes_ago": "{{count}}分钟前",
     "yesterday": "昨天",
-    "click_to_open": "点击打开"
+    "click_to_open": "点击打开",
+    "click_to_update": "点击更新"
   },
   "updates": {
     "available_title": "有可用更新",
@@ -1980,6 +1984,11 @@
     "schedule_update": "{{name}} 将在 {{minutes}} 分钟后按计划更新。",
     "module_update": "{{name}}：{{module}} 模块的新版本 {{version}} 已发布。",
     "server_update": "{{name}}：游戏服务器有新版本。如果玩家无法连接，请更新服务器。",
+    "server_update_waiting": "{{name}}：游戏服务器有新版本，但有 {{count}} 人在线，自动更新正在等待。",
+    "server_update_failed": "{{name}}：无法更新游戏服务器。{{error}}",
+    "server_update_apply_failed": "{{name}}：无法开始更新。{{error}}",
+    "server_update_scheduled": "{{name}}：已在游戏内预告，{{minutes}} 分钟后更新。",
+    "server_update_started": "{{name}}：已开始更新游戏服务器。",
     "instance_started": "{{name}} 已启动（{{source}}）。",
     "instance_stopped": "{{name}} 已停止（{{source}}）。",
     "instance_stopped_in_game": "{{name}} 已在游戏内停止。",

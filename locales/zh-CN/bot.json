@@ -256,10 +256,14 @@
       },
       "update": {
         "check": {
-          "title": "检查游戏服务器更新"
+          "title": "检查游戏服务器更新",
+          "name": "检查更新",
+          "description": "检查 Steam 上是否有新的游戏服务器版本"
         },
         "apply": {
-          "title": "更新游戏服务器"
+          "title": "更新游戏服务器",
+          "name": "更新",
+          "description": "更新游戏服务器。运行中时会在游戏内提前 5 分钟通知，停止、更新后再启动"
         }
       },
       "diagnose": {
@@ -462,6 +466,15 @@
         "router": "电脑防火墙已允许此端口。请在路由器设置中把此端口转发到这台电脑，然后再检查。",
         "cgnat": "运营商让多户共用一个公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
         "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。"
+      },
+      "server_update": {
+        "available": "有新版本（版本 {{local}} → {{remote}}）。",
+        "latest": "已是最新（版本 {{build}}）。",
+        "check_failed": "无法检查更新：{{error}}",
+        "unsupported": "Saba-chan 不会更新此服务器（手动安装的服务器）。",
+        "started": "已开始更新，完成后会通知你。",
+        "scheduled": "将在游戏内提前 {{minutes}} 分钟通知，然后保存、停止、更新并重新启动。",
+        "players": "当前有 {{count}} 人在线。"
       }
     }
   },

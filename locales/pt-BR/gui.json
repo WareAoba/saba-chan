@@ -417,6 +417,9 @@
     "restart_badge": "Aplicado ao reiniciar",
     "toggle_on": "Ativado",
     "toggle_off": "Desativado",
+    "auto_update_title": "Atualização automática",
+    "auto_update_label": "Atualizar o servidor de jogo automaticamente",
+    "auto_update_hint": "Quando sai uma nova versão e ninguém está online, o saba-chan para, faz backup, atualiza e reinicia o servidor. Se houver jogadores online, ele só avisa.",
     "restart_now": "Reiniciar agora",
     "restart_later": "Depois",
     "install_backup_failed": "Não foi possível fazer backup de {{file}} antes de instalar, então nada foi instalado. Verifique o espaço livre em disco e os arquivos .bak dessa pasta.",
@@ -614,7 +617,8 @@
     "just_now": "agora mesmo",
     "minutes_ago": "há {{count}} min",
     "yesterday": "Ontem",
-    "click_to_open": "clique para abrir"
+    "click_to_open": "clique para abrir",
+    "click_to_update": "clique para atualizar"
   },
   "updates": {
     "available_title": "Atualizações disponíveis",
@@ -1980,6 +1984,11 @@
     "schedule_update": "{{name}} vai atualizar conforme agendado em {{minutes}} min.",
     "module_update": "{{name}}: saiu a versão {{version}} do módulo {{module}}.",
     "server_update": "{{name}}: saiu uma nova versão do servidor do jogo. Se não der para entrar, atualize o servidor.",
+    "server_update_waiting": "{{name}}: há uma nova versão do servidor de jogo, mas {{count}} jogador(es) estão online, então a atualização automática está aguardando.",
+    "server_update_failed": "{{name}}: não foi possível atualizar o servidor de jogo. {{error}}",
+    "server_update_apply_failed": "{{name}}: não foi possível iniciar a atualização. {{error}}",
+    "server_update_scheduled": "{{name}}: os jogadores foram avisados no jogo. A atualização começa em {{minutes}} min.",
+    "server_update_started": "{{name}}: a atualização do servidor de jogo começou.",
     "instance_started": "{{name}} foi iniciado ({{source}}).",
     "instance_stopped": "{{name}} foi parado ({{source}}).",
     "instance_stopped_in_game": "{{name}} foi parado de dentro do jogo.",

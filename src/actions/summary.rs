@@ -17,6 +17,8 @@ pub(crate) fn text(id: &str, result: &Value, cat: &Catalog) -> Option<String> {
         "monitor.summary" => monitor(result, cat),
         "server.port_check" => Some(port_check(result, cat)),
         "server.address" => Some(address(result, cat)),
+        "server.update.check" => Some(server_update_check(result, cat)),
+        "server.update.apply" => Some(server_update_apply(result, cat)),
         // 모듈 조회(접속자 목록 등)는 모양이 모듈마다 달라 채팅 명령 결과와 같은 범용 포맷으로
         _ if id.starts_with(super::QUERY_PREFIX) => {
             let mut shown = result.clone();
@@ -250,5 +252,56 @@ fn bytes(n: u64) -> String {
         format!("{:.1} GB", n / GB)
     } else {
         format!("{:.0} MB", n / MB)
+    }
+}
+
+/// 게임 서버 업데이트 확인: 새 빌드(빌드 번호), 최신, 확인 실패(이유), 사바쨩이 업데이트하지 않는 서버
+fn server_update_check(result: &Value, cat: &Catalog) -> String {
+    let build = |key: &str| result.get(key).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())).filter(|b| b != "null").unwrap_or_default();
+    if result.get("update_available").and_then(Value::as_bool) == Some(true) {
+        return cat.t("actions.summary.server_update.available", &[("local", &build("local_buildid")), ("remote", &build("remote_buildid"))]);
+    }
+    match str_of(result, "reason") {
+        "check_failed" => cat.t("actions.summary.server_update.check_failed", &[("error", str_of(result, "error"))]),
+        "update_unsupported" => cat.t("actions.summary.server_update.unsupported", &[]),
+        _ => cat.t("actions.summary.server_update.latest", &[("build", &build("local_buildid"))]),
+    }
+}
+
+/// 게임 서버 업데이트를 걸었다: 켜진 서버는 예고 시간(과 지금 접속자), 꺼진 서버는 시작만
+fn server_update_apply(result: &Value, cat: &Catalog) -> String {
+    let minutes = result.get("warn_minutes").and_then(Value::as_u64).unwrap_or(0);
+    // 아무도 없는 켜진 서버는 예고 없이 바로 끄고 업데이트한다
+    if result.get("scheduled").and_then(Value::as_bool) != Some(true) || minutes == 0 {
+        return cat.t("actions.summary.server_update.started", &[]);
+    }
+    let minutes = minutes.to_string();
+    let mut out = cat.t("actions.summary.server_update.scheduled", &[("minutes", &minutes)]);
+    if let Some(players) = result.get("players").and_then(Value::as_u64).filter(|p| *p > 0) {
+        out.push('\n');
+        out.push_str(&cat.t("actions.summary.server_update.players", &[("count", &players.to_string())]));
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// 확인 실패는 "최신"이 아니라 그 이유로, 켜진 서버의 업데이트는 예고 시간과 접속자로 요약한다
+    #[test]
+    fn game_server_update_results_read_as_sentences() {
+        let cat = Catalog::for_language("ko");
+        let failed = text("server.update.check", &json!({"update_available": false, "reason": "check_failed", "error": "boom"}), &cat).unwrap();
+        assert!(failed.contains("boom") && !failed.contains("최신"), "{failed}");
+        let newer = text("server.update.check", &json!({"update_available": true, "local_buildid": "1", "remote_buildid": "2"}), &cat).unwrap();
+        assert!(newer.contains('1') && newer.contains('2'), "{newer}");
+        let now = text("server.update.apply", &json!({"success": true, "scheduled": true, "warn_minutes": 0, "players": 0}), &cat).unwrap();
+        assert!(!now.contains('0'), "{now}");
+        let scheduled = text("server.update.apply", &json!({"success": true, "scheduled": true, "warn_minutes": 5, "players": 2}), &cat).unwrap();
+        assert!(scheduled.contains('5') && scheduled.contains('2'), "{scheduled}");
+        let started = text("server.update.apply", &json!({"success": true, "provisioning": true}), &cat).unwrap();
+        assert!(!started.contains('5'), "{started}");
     }
 }
