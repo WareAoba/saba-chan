@@ -3736,6 +3736,7 @@
 }
 .mg-benefits svg {
     color: var(--ok);
+}
 
 /* 내 PC 카드의 게임 서버 주소 줄과 바꾸기 창 (PublicAddress.tsx) */
 .public-address-value {
