@@ -691,7 +691,9 @@ pub async fn setup(config: SetupOptions, hooks: &dyn InstallHooks) -> InstallPro
     if installed.iter().any(|c| c.starts_with("module:") || c.starts_with("extension:")) {
         if let Some(api) = uninstall::DaemonApi::from_config() {
             let extensions: Vec<String> = installed.iter().filter_map(|c| c.strip_prefix("extension:")).map(str::to_string).collect();
-            api.reload_addons(&extensions).await;
+            for id in api.reload_addons(&extensions).await {
+                warn(format!("Extension '{}' was not turned on in the running Saba-chan; restart the app", id));
+            }
         }
     }
 

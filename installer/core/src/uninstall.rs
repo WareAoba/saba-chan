@@ -654,15 +654,28 @@ impl DaemonApi {
     }
 
     /// 이미 떠 있는 데몬에게 받은 모듈·익스텐션을 다시 읽게 하고, 받은 익스텐션은 데몬의 경로로 켠다
-    /// (설정 파일에 적은 활성 목록은 떠 있는 데몬이 다시 읽지 않는다). 데몬이 없으면 아무 일도 없다
-    pub(crate) async fn reload_addons(&self, extensions: &[String]) {
-        let paths = ["/api/modules/refresh".to_string(), "/api/extensions/rescan".to_string()]
-            .into_iter()
-            .chain(extensions.iter().map(|id| format!("/api/extensions/{id}/enable")));
-        for path in paths {
-            if let Err(e) = self.client.post(self.url(&path)).header("X-Saba-Token", &self.token).send().await {
+    /// (설정 파일에 적은 활성 목록은 떠 있는 데몬이 다시 읽지 않는다). 데몬은 의존하는 익스텐션이 먼저 켜져 있어야
+    /// 켜 주므로, 더 켜지는 것이 없을 때까지 남은 것을 다시 시도한다. 켜지 못한 익스텐션을 돌려준다. 데몬이 없으면 빈 목록
+    pub(crate) async fn reload_addons(&self, extensions: &[String]) -> Vec<String> {
+        for path in ["/api/modules/refresh", "/api/extensions/rescan"] {
+            if let Err(e) = self.client.post(self.url(path)).header("X-Saba-Token", &self.token).send().await {
                 tracing::info!("No daemon to reload addons ({}): {}", path, e);
-                return;
+                return Vec::new();
+            }
+        }
+        let mut left = extensions.to_vec();
+        loop {
+            let before = left.len();
+            let mut still = Vec::new();
+            for id in left {
+                let sent = self.client.post(self.url(&format!("/api/extensions/{id}/enable"))).header("X-Saba-Token", &self.token).send().await;
+                if !sent.is_ok_and(|r| r.status().is_success()) {
+                    still.push(id);
+                }
+            }
+            left = still;
+            if left.is_empty() || left.len() == before {
+                return left;
             }
         }
     }
@@ -2147,6 +2160,29 @@ mod tests {
             }
         });
         port
+    }
+
+    // 떠 있는 데몬은 의존하는 익스텐션이 먼저 켜져야 켜 준다: 받은 순서와 상관없이 다 켜고, 끝내 못 켠 것만 돌려준다
+    #[tokio::test]
+    async fn extensions_are_turned_on_in_whatever_order_the_daemon_accepts() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static BASE_ON: AtomicBool = AtomicBool::new(false);
+        let port = fake_daemon(|req| {
+            if req.contains("/api/extensions/base/enable") {
+                BASE_ON.store(true, Ordering::SeqCst);
+                (200, r#"{"success":true}"#.into())
+            } else if req.contains("/api/extensions/needs-base/enable") {
+                if BASE_ON.load(Ordering::SeqCst) { (200, r#"{"success":true}"#.into()) } else { (409, r#"{"error_code":"dependency_not_enabled"}"#.into()) }
+            } else if req.contains("/api/extensions/broken/enable") {
+                (500, "{}".into())
+            } else {
+                (200, "{}".into())
+            }
+        });
+        let api = DaemonApi { client: saba_chan_updater_lib::tls::http_client_builder().build().unwrap(), port, token: String::new() };
+        let ids: Vec<String> = ["needs-base", "broken", "base"].map(String::from).to_vec();
+        assert_eq!(api.reload_addons(&ids).await, ["broken"]);
+        assert!(BASE_ON.load(Ordering::SeqCst));
     }
 
     // 감사 15: 켜진 서버를 정상 종료하지 못하면(목록 실패·종료 실패) 강제 종료 전에 그 사실을 돌려준다
