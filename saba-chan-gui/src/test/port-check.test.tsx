@@ -49,6 +49,29 @@ describe('포트포워딩 확인', () => {
         expect(screen.getByRole('link', { name: /Port forwarding guide/ })).toHaveAttribute('href', portHelpUrl('en'));
     });
 
+    it('공개 주소가 이 PC를 가리키지 않으면 그 주소가 가리키는 곳과 고칠 곳을 보이고 상세 위에도 알린다', async () => {
+        const report = {
+            instanceId: 'a',
+            verdict: 'host_mismatch',
+            address: '8.8.4.4',
+            host: 'mc.example.com',
+            hostResult: 'mismatch',
+            resolved: ['104.21.0.1'],
+            ports: [{ field: 'port', port: 25565, protocol: 'tcp', status: 'unknown' }],
+        };
+        window.api.instancePortCheckLast = vi.fn().mockResolvedValue(report);
+        window.api.instancePortCheck = vi.fn();
+        await act(async () => {
+            render(<PortCheck server={server} />);
+        });
+        expect(screen.getByText(/does not point to this PC/)).toBeInTheDocument();
+        expect(screen.getByText(/mc\.example\.com → 104\.21\.0\.1/)).toBeInTheDocument();
+        expect(screen.getByText(/8\.8\.4\.4/)).toBeInTheDocument();
+        expect(screen.getByText(/A record/)).toBeInTheDocument();
+        const { portCheckNeedsAttention } = await import('../utils/portCheck');
+        expect(portCheckNeedsAttention(report)).toBe(true);
+    });
+
     it('실패하면 오류 코드의 안내를 보인다', async () => {
         window.api.instancePortCheck = vi.fn().mockResolvedValue({ success: false, error_code: 'node_token_missing' });
         render(<PortCheck server={server} />);

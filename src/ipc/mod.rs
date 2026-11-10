@@ -1029,6 +1029,7 @@ impl IPCServer {
             .route("/api/chatbot/guilds/{guild}", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
             // ── 원격 데몬 (D1): 원격 포트 설정과 짝 맺은 PC (로컬 전용, 원격 포트에서는 막는다) ──
             .route("/api/remote/settings", get(handlers::remote_daemon::get_settings).put(handlers::remote_daemon::put_settings))
+            .route("/api/public-address", get(handlers::remote_daemon::get_public_address).put(handlers::remote_daemon::put_public_address))
             .route("/api/remote/clients", get(handlers::remote_daemon::list_clients))
             .route("/api/remote/clients/{host_id}", delete(handlers::remote_daemon::revoke_client))
             .route("/api/remote/peers", get(handlers::remote_daemon::list_peers))

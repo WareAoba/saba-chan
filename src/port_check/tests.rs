@@ -94,11 +94,18 @@ enum Mode {
     /// 보내지 않는다 (공유기가 막는다): TCP는 timeout
     Drop,
     RateLimited,
+    /// 공개 주소가 이 PC가 아닌 곳을 가리킨다: 아무 데도 보내지 않는다
+    Elsewhere,
 }
 
 async fn relay_handler(State(mode): State<Mode>, Json(body): Json<Value>) -> (StatusCode, Json<Value>) {
     if let Mode::RateLimited = mode {
         return (StatusCode::TOO_MANY_REQUESTS, Json(json!({ "error": "RATE_LIMITED" })));
+    }
+    let host = body.get("host").cloned();
+    if let Mode::Elsewhere = mode {
+        let answer = json!({ "address": "8.8.4.4", "publicAddress": true, "host": host, "hostResult": "mismatch", "resolved": ["198.51.100.9"], "probes": [] });
+        return (StatusCode::OK, Json(answer));
     }
     let nonce = body["nonce"].as_str().unwrap().to_string();
     let line = format!("saba-chan-port-check {}\n", nonce);
@@ -127,7 +134,13 @@ async fn relay_handler(State(mode): State<Mode>, Json(body): Json<Value>) -> (St
         };
         probes.push(json!({ "port": port, "protocol": protocol, "result": result }));
     }
-    (StatusCode::OK, Json(json!({ "address": "8.8.4.4", "publicAddress": true, "probes": probes })))
+    let mut answer = json!({ "address": "8.8.4.4", "publicAddress": true, "probes": probes });
+    if let Some(host) = host {
+        answer["host"] = host;
+        answer["hostResult"] = json!("match");
+        answer["resolved"] = json!(["8.8.4.4"]);
+    }
+    (StatusCode::OK, Json(answer))
 }
 
 async fn mock_relay(mode: Mode) -> Relay {
@@ -135,7 +148,11 @@ async fn mock_relay(mode: Mode) -> Relay {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    Relay { base: format!("http://{}", addr), token: "sbn_host1.secret".into() }
+    Relay { base: format!("http://{}", addr), token: "sbn_host1.secret".into(), host: None }
+}
+
+async fn mock_relay_for(mode: Mode, host: &str) -> Relay {
+    Relay { host: Some(host.into()), ..mock_relay(mode).await }
 }
 
 fn free_port() -> u16 {
@@ -181,6 +198,31 @@ async fn a_stopped_server_is_open_when_the_probe_reaches_the_test_listener() {
     // 확인이 끝나면 리스너를 닫는다 (서버가 그 포트를 열 수 있다)
     std::net::TcpListener::bind(("127.0.0.1", tcp)).expect("tcp port released");
     std::net::UdpSocket::bind(("127.0.0.1", udp)).expect("udp port released");
+}
+
+/// 공개 주소를 정했으면 릴레이에 실어 보내고, 그 주소가 이 PC를 가리키면 평소처럼 확인한다 (사용자 결정 2026-11-10)
+#[tokio::test]
+async fn a_public_name_is_sent_and_checked_when_it_points_here() {
+    let relay = mock_relay_for(Mode::Deliver, "mc.example.com").await;
+    let tcp = free_port();
+    let reports = run(&relay, &[target("pc-named", false, &[(tcp, Protocol::Tcp)])], LOOPBACK).await.unwrap();
+    assert_eq!(reports[0].verdict, "open");
+    assert_eq!((reports[0].host.as_deref(), reports[0].host_result.as_deref()), (Some("mc.example.com"), Some("match")));
+}
+
+/// 공개 주소가 다른 곳을 가리키면 릴레이는 보내지 않는다: 닫힘이 아니라 그 사실을 판정으로 낸다
+#[tokio::test]
+async fn a_public_name_pointing_elsewhere_is_its_own_verdict() {
+    let relay = mock_relay_for(Mode::Elsewhere, "mc.example.com").await;
+    let tcp = free_port();
+    let reports = run(&relay, &[target("pc-elsewhere", false, &[(tcp, Protocol::Tcp)])], LOOPBACK).await.unwrap();
+    assert_eq!(statuses(&reports[0]), vec![PortStatus::Unknown]);
+    assert_eq!(reports[0].verdict, "host_mismatch");
+    assert_eq!(reports[0].resolved, vec!["198.51.100.9".to_string()]);
+    let p = |status| PortResult { field: "port".into(), port: 1, protocol: Protocol::Tcp, status };
+    assert_eq!(host_verdict(Some("unresolved"), &[p(PortStatus::Unknown)]), Some("host_unresolved"));
+    assert_eq!(host_verdict(Some("match"), &[p(PortStatus::Unknown)]), None);
+    assert_eq!(host_verdict(None, &[p(PortStatus::Unknown)]), None, "an older relay checks the IP it sees");
 }
 
 #[tokio::test]

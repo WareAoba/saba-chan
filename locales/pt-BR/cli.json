@@ -340,6 +340,13 @@
       "access_needs_relogin": "concedida, entre no Windows novamente para usar",
       "access_unsupported": "indisponível neste sistema (só Windows)",
       "enable_hint": "Para ligar: saba-chan-cli config set systemMonitorNetTrace=on"
+    },
+    "public_address": {
+      "current": "Endereço público: {{address}} · /address do Discord: {{share}}",
+      "auto": "IP público (automático)",
+      "auto_ip": "IP público (automático, {{ip}})",
+      "share_on": "compartilhado",
+      "share_off": "não compartilhado"
     }
   },
   "console": {
@@ -1035,7 +1042,8 @@
       "remote.claim": "Usar o código de pareamento que outro PC mostrou e conectar a ele (por exemplo, após a instalação em uma linha no Linux)",
       "remote.install": "Instalar o Saba-chan em um PC Linux pelo ssh deste PC e conectar (`usuário@host`)",
       "remote.remove": "Remover um dos seus PCs: esquecê-lo aqui e, se quiser, desinstalar o Saba-chan nele e tirá-lo da lista do relay",
-      "remote.update": "Atualizar agora um daemon remoto ou ligar/desligar as atualizações automáticas (`--auto on|off`)"
+      "remote.update": "Atualizar agora um daemon remoto ou ligar/desligar as atualizações automáticas (`--auto on|off`)",
+      "config.public-address": "Endereço público deste PC (usado nos endereços de servidores e nas conexões de daemon remoto): sem valor mostra, domínio ou IP salva, auto usa o IP público que o Server-chan vê"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -1274,7 +1282,9 @@
       "remote.remove.remove_instances": "Com --uninstall: apagar também os servidores de jogo",
       "remote.remove.from_relay": "Tirar também da sua lista de PCs no relay",
       "remote.update.host_id": "Id do PC do daemon remoto (veja `remote daemons`)",
-      "remote.update.auto": "Ligar (on) ou desligar (off) as atualizações automáticas. Sem ele: atualizar agora"
+      "remote.update.auto": "Ligar (on) ou desligar (off) as atualizações automáticas. Sem ele: atualizar agora",
+      "config.public-address.address": "Domínio ou IP (auto para o IP público)",
+      "config.public-address.share": "Mostrar com /<servidor> address no Discord (on|off)"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },
@@ -1972,7 +1982,9 @@
       "closed": "Não acessível pela internet",
       "cgnat": "Seu roteador não tem IP público (CGNAT)",
       "unknown": "Algumas portas não puderam ser verificadas",
-      "no_ports": "Este jogo não informa quais portas verificar"
+      "no_ports": "Este jogo não informa quais portas verificar",
+      "host_mismatch": "O endereço público não aponta para este PC",
+      "host_unresolved": "O endereço público não foi encontrado"
     },
     "status": {
       "open": "Aberta",
@@ -1988,8 +2000,11 @@
       "firewall_macos": "O firewall do macOS está bloqueando conexões de entrada para o programa deste servidor. Em Ajustes do Sistema › Rede › Firewall › Opções, defina saba-core (se o servidor estiver parado) ou o programa do servidor de jogo, como java (se estiver rodando), como Permitir conexões de entrada e verifique de novo.",
       "router": "O firewall do PC permite esta porta. Redirecione esta porta para este PC nas configurações do roteador e verifique novamente.",
       "cgnat": "Sua operadora divide um IP público entre várias casas, então o redirecionamento de portas não consegue abri-lo. Peça um IP público à operadora ou use uma VPN como o Tailscale.",
-      "unknown": "Não é possível verificar portas UDP de um servidor ligado nem portas usadas por outro programa. Pare o servidor e verifique de novo."
-    }
+      "unknown": "Não é possível verificar portas UDP de um servidor ligado nem portas usadas por outro programa. Pare o servidor e verifique de novo.",
+      "host_mismatch": "Nas configurações do seu domínio, aponte o registro A para o IP público deste PC. Se usa DDNS, verifique se o atualizador está rodando. Se um proxy de CDN estiver ligado, desligue-o: as conexões do jogo não passam por ele.",
+      "host_unresolved": "Confira a grafia do endereço público e as configurações de DNS do domínio. Se o domínio for novo, confira de novo daqui a pouco."
+    },
+    "host": "Endereço público {{host}} → {{resolved}} · este PC {{address}}"
   },
   "agent": {
     "linked": "✓ Saba-chan adicionado ao {{agent}}",

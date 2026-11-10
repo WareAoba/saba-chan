@@ -433,7 +433,8 @@
         "item_named": "• {{label}} `{{address}}`",
         "stopped": "💤 服务器已关闭。启动后才能连接",
         "unknown": "❔ 服务器酱还不知道这台电脑的公网地址。请稍后再试",
-        "no_ports": "📭 此游戏没有提供连接端口"
+        "no_ports": "📭 此游戏没有提供连接端口",
+        "hidden": "🔒 服务器主人设置为不在 Discord 上公开地址，请直接询问主人"
       },
       "port_check": {
         "open": "✅ 可以从外网连接",
@@ -442,7 +443,9 @@
         "closed": "🚫 无法从外网连接",
         "cgnat": "⚠️ 路由器没有获得公网 IP（CGNAT）",
         "unknown": "❔ 部分端口无法检查",
-        "no_ports": "📭 此游戏没有声明要检查的端口"
+        "no_ports": "📭 此游戏没有声明要检查的端口",
+        "host_mismatch": "🌐 公开地址没有指向这台电脑",
+        "host_unresolved": "🌐 找不到公开地址"
       },
       "port_status": {
         "open": "开放",

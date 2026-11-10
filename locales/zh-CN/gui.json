@@ -2232,9 +2232,6 @@
     "enabled": "允许远程连接",
     "enabled_description": "你的其他电脑通过加密连接直接连到本守护进程。",
     "port": "端口",
-    "address": "地址",
-    "address_description": "你的其他电脑可以访问的公网 IP 或主机名。留空则通过中继连接（稍慢）。",
-    "address_placeholder": "公网 IP 或主机名",
     "save": "保存",
     "status_off": "关闭",
     "status_listening": "正在端口 {{port}} 监听",
@@ -2407,7 +2404,9 @@
       "closed": "无法从外网连接",
       "cgnat": "路由器没有获得公网 IP（CGNAT）",
       "unknown": "部分端口无法检查",
-      "no_ports": "此游戏没有声明要检查的端口"
+      "no_ports": "此游戏没有声明要检查的端口",
+      "host_mismatch": "公开地址没有指向这台电脑",
+      "host_unresolved": "找不到公开地址"
     },
     "status": {
       "open": "开放",
@@ -2423,7 +2422,9 @@
       "firewall_macos": "macOS 防火墙正在阻止此服务器程序的传入连接。请在“系统设置 › 网络 › 防火墙 › 选项”中，将 saba-core（服务器已停止时）或游戏服务器程序（如 java，运行中时）设为“允许传入连接”，然后再检查一次。",
       "router": "电脑防火墙已允许此端口。请在路由器设置中把此端口转发到这台电脑，然后再检查。",
       "cgnat": "运营商让多户共用一个公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
-      "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。"
+      "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。",
+      "host_mismatch": "请在域名管理页面把 A 记录指向这台电脑的公网 IP。使用 DDNS 时请确认更新程序在运行；如果开启了 CDN 代理请关闭，游戏连接无法通过代理。",
+      "host_unresolved": "请检查公开地址的拼写和域名的 DNS 设置。如果是刚创建的域名，请稍后再检查。"
     },
     "error": {
       "node_token_missing": "请先连接 Discord（配对）。检查由中继完成。",
@@ -2431,7 +2432,8 @@
       "rate_limited": "检查过于频繁，请一分钟后再试。",
       "relay_unreachable": "无法连接中继，请检查网络连接。",
       "failed": "检查失败。"
-    }
+    },
+    "host": "公开地址 {{host}} · 这台电脑 {{address}}"
   },
   "picker": {
     "today": "今天",
@@ -2465,5 +2467,34 @@
     "not_option": "{{label}}必须是 {{options}} 之一。收到的值：{{value}}",
     "not_boolean": "{{label}}必须是 true 或 false。收到的值：{{value}}",
     "too_many": "此命令后面不接受任何内容。多余的部分：{{value}}"
+  },
+  "public_address": {
+    "label": "游戏服务器地址",
+    "auto": "公网 IP（自动）",
+    "change": "更改",
+    "share_off": "不在 Discord 公开",
+    "title": "游戏服务器地址 · {{name}}",
+    "auto_title": "使用公网 IP",
+    "auto_desc": "使用 Server-chan 看到的这台电脑的 IP。家庭宽带的 IP 会不时变化。",
+    "auto_desc_ip": "使用 Server-chan 看到的这台电脑的 IP，当前为 {{ip}}。家庭宽带的 IP 会不时变化。",
+    "custom_title": "自定义公开地址",
+    "custom_desc": "填写域名（也可以是 DDNS）或固定 IP。每个服务器会加上自己的端口。远程守护进程的连接也使用这个地址。",
+    "preview": "朋友会看到 {{example}} 这样的地址。保存时会去掉 https:// 和 :端口。",
+    "share_title": "通过 Discord 的 /address 告知",
+    "share_desc": "关闭后，在 Discord 使用 /address 也不会告知这台电脑上服务器的地址。应用、CLI 和 Saba-chan 网页照常显示。",
+    "save": "保存",
+    "err_invalid": "只能填写域名或 IP 地址",
+    "err_failed": "保存失败"
+  },
+  "server_address": {
+    "title": "连接地址",
+    "copy": "复制",
+    "copied": "已复制",
+    "hide": "隐藏",
+    "show": "显示",
+    "hidden": "已隐藏的地址",
+    "unknown": "还不知道这台电脑的公网地址。连接到 Server-chan 后会显示。",
+    "stopped": "启动服务器后朋友才能进入",
+    "checked_at": "{{time}} 检查"
   }
 }

@@ -3622,3 +3622,36 @@
 .folder-paths-dir code {
     word-break: break-all;
 }
+
+/* 내 PC 카드의 게임 서버 주소 줄과 바꾸기 창 (PublicAddress.tsx) */
+.public-address-value {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1) var(--sp-2);
+}
+.public-address-private {
+    font-size: var(--fs-xs);
+}
+.public-address-option {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: flex-start;
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+}
+.public-address-option.on {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+.public-address-option input {
+    margin-top: var(--sp-0-5);
+    accent-color: var(--accent);
+}
+.public-address-option > span {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-0-5);
+}

@@ -2,8 +2,9 @@
 //!
 //!   POST /api/instance/:id/port-check   → 확인 결과 (`port_check::Report`). 릴레이에 연결하지 않았으면 409 `node_token_missing`
 //!   GET  /api/instance/:id/port-check   → 마지막 결과, 확인한 적 없으면 `{instanceId, verdict:"not_checked"}`
-//!   GET  /api/instance/:id/address      → `{instanceId, address, running, ports:[{field, label, port, protocols}]}` 서버 주소.
-//!        `address`는 릴레이가 본 이 PC의 공인 주소(연결돼 있지 않거나 모르면 null), 포트는 확인할 포트와 같다 (같은 포트의 TCP·UDP는 하나로)
+//!   GET  /api/instance/:id/address      → `{instanceId, address, custom, shareAddress, running, ports:[{field, label, port, protocols}]}` 서버 주소.
+//!        `address`는 이 PC의 공개 주소(`remote_daemon::public_address`): 정한 도메인·IP(`custom:true`), 없으면 릴레이가 본 공인 IP
+//!        (연결돼 있지 않거나 모르면 null). `shareAddress`는 디스코드에 알려 줄지(`/api/public-address`). 포트는 확인할 포트와 같다 (같은 포트의 TCP·UDP는 하나로)
 //!
 //! `:id`는 인스턴스 id, 없으면 이름으로 찾는다 (CLI·채팅처럼 이름만 아는 쪽)
 
@@ -70,5 +71,8 @@ pub async fn address(Path(id): Path<String>, State(state): State<IPCServer>) -> 
             None => ports.push(json!({ "field": p.field, "label": labels.get(&p.field).cloned().unwrap_or_else(|| p.field.clone()), "port": p.port, "protocols": [protocol] })),
         }
     }
-    Json(json!({ "instanceId": id, "address": state.relay_agent.seen_address(), "running": target.running, "ports": ports })).into_response()
+    let settings = crate::remote_daemon::config::settings_in(&saba_chan_updater_lib::config_file::ConfigFile::default_location());
+    let (address, custom) = crate::remote_daemon::public_address(&settings, state.relay_agent.seen_address());
+    Json(json!({ "instanceId": id, "address": address, "custom": custom, "shareAddress": settings.share_address, "running": target.running, "ports": ports }))
+        .into_response()
 }

@@ -4761,7 +4761,9 @@ button.appbar-pill:focus-visible {
 .port-check-verdict.verdict-firewall,
 .port-check-verdict.verdict-router,
 .port-check-verdict.verdict-closed,
-.port-check-verdict.verdict-cgnat {
+.port-check-verdict.verdict-cgnat,
+.port-check-verdict.verdict-host_mismatch,
+.port-check-verdict.verdict-host_unresolved {
     color: var(--warning);
 }
 .server-check-issue.port-open {
@@ -5453,4 +5455,73 @@ button.appbar-pill:focus-visible {
     grid-column: 2;
     grid-row: 1 / span 2;
     align-self: center;
+}
+
+/* 서버 상세 머리 아래 접속 주소 (ServerAddress, 사용자 결정 2026-11-10): 친구에게 알려 줄 주소를 크게 */
+.server-address {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
+    border: 1px solid var(--border-default);
+    border-radius: var(--r-md);
+    background: var(--bg-surface-secondary);
+}
+.server-address-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.server-address-title {
+    flex: 1;
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text-2);
+}
+.server-address-line {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+}
+.server-address-label {
+    min-width: 84px;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+}
+.server-address-value {
+    flex: 1 1 220px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-size: var(--fs-xl);
+    font-weight: 600;
+    user-select: text;
+}
+.server-address-line.many .server-address-value {
+    font-size: var(--fs-lg);
+}
+.server-address-value.dim,
+.server-address-value.masked {
+    color: var(--text-2);
+}
+.server-address-sub {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    font-size: var(--fs-sm);
+}
+.server-address-sub:empty {
+    display: none;
+}
+.server-address-check {
+    padding: 1px var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--warn-soft);
+    color: var(--warning);
+}
+.server-address-check.verdict-open {
+    background: var(--ok-soft);
+    color: var(--success);
 }

@@ -340,6 +340,13 @@
       "access_needs_relogin": "granted, sign in to Windows again to use it",
       "access_unsupported": "not available on this OS (Windows only)",
       "enable_hint": "To turn it on: saba-chan-cli config set systemMonitorNetTrace=on"
+    },
+    "public_address": {
+      "current": "Public address: {{address}} · Discord /address: {{share}}",
+      "auto": "Public IP (automatic)",
+      "auto_ip": "Public IP (automatic, {{ip}})",
+      "share_on": "shared",
+      "share_off": "not shared"
     }
   },
   "console": {
@@ -874,7 +881,8 @@
       "agent": "Register the local MCP server (`mcp`) with AI agents on this PC",
       "agent.link": "Add Saba-chan to Claude Code and Codex on this PC (both unless you pick one)",
       "agent.unlink": "Remove Saba-chan from Claude Code and Codex on this PC",
-      "agent.status": "Which agents on this PC have Saba-chan"
+      "agent.status": "Which agents on this PC have Saba-chan",
+      "config.public-address": "This PC's public address (used by game server addresses and remote daemon connections): no value shows it, a domain or IP saves it, auto uses the public IP Server-chan sees"
     },
     "arg": {
       "module.maker.game": "Game to put in the first prompt",
@@ -981,7 +989,9 @@
       "agent.link.claude": "Only Claude Code",
       "agent.link.codex": "Only Codex",
       "agent.unlink.claude": "Only Claude Code",
-      "agent.unlink.codex": "Only Codex"
+      "agent.unlink.codex": "Only Codex",
+      "config.public-address.address": "Domain or IP (auto for the public IP)",
+      "config.public-address.share": "Show it with /<server> address on Discord (on|off)"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
@@ -1679,7 +1689,9 @@
       "closed": "Not reachable from the internet",
       "cgnat": "Your router has no public IP (CGNAT)",
       "unknown": "Some ports could not be checked",
-      "no_ports": "This game does not say which ports to check"
+      "no_ports": "This game does not say which ports to check",
+      "host_mismatch": "The public address does not point to this PC",
+      "host_unresolved": "The public address could not be found"
     },
     "status": {
       "open": "Open",
@@ -1695,8 +1707,11 @@
       "firewall_macos": "The macOS firewall is blocking incoming connections for this server's program. In System Settings › Network › Firewall › Options, set saba-core (if the server is stopped) or the game server program such as java (if it is running) to Allow incoming connections, then check again.",
       "router": "The PC firewall allows this port. Forward this port to this PC in your router settings, then check again.",
       "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
-      "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
-    }
+      "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again.",
+      "host_mismatch": "In your domain settings, point the A record to this PC's public IP. If you use DDNS, check that its updater is running. If a CDN proxy is on, turn it off: game connections cannot pass through it.",
+      "host_unresolved": "Check the spelling of the public address and your domain's DNS settings. If the domain is new, check again in a little while."
+    },
+    "host": "Public address {{host}} → {{resolved}} · this PC {{address}}"
   },
   "agent": {
     "linked": "✓ Added Saba-chan to {{agent}}",

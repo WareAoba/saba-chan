@@ -340,6 +340,13 @@
       "access_needs_relogin": "已授予，重新登入 Windows 後可用",
       "access_unsupported": "此系統無法使用（僅 Windows）",
       "enable_hint": "開啟方法：saba-chan-cli config set systemMonitorNetTrace=on"
+    },
+    "public_address": {
+      "current": "公開位址：{{address}} · Discord /address：{{share}}",
+      "auto": "公用 IP（自動）",
+      "auto_ip": "公用 IP（自動，{{ip}}）",
+      "share_on": "告知",
+      "share_off": "不告知"
     }
   },
   "console": {
@@ -1035,7 +1042,8 @@
       "remote.claim": "領取其他電腦顯示的配對碼並連線到那台電腦（例如 Linux 一行安裝之後）",
       "remote.install": "透過本機 ssh 在 Linux 電腦上安裝 Saba-chan 並連線（`使用者@主機`）",
       "remote.remove": "移除一台電腦：在這裡忘記它，可選在那台電腦上解除安裝 Saba-chan 並從 Server-chan 清單中移除",
-      "remote.update": "立即更新遠端常駐程式，或開關自動更新（`--auto on|off`）"
+      "remote.update": "立即更新遠端常駐程式，或開關自動更新（`--auto on|off`）",
+      "config.public-address": "這台電腦的公開位址（遊戲伺服器位址與遠端常駐程式連線共用）：不帶值顯示目前值，給網域或 IP 則儲存，auto 使用 Server-chan 看到的公用 IP"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -1274,7 +1282,9 @@
       "remote.remove.remove_instances": "與 --uninstall 一起：同時刪除遊戲伺服器",
       "remote.remove.from_relay": "同時從 Server-chan 的電腦清單中移除",
       "remote.update.host_id": "遠端常駐程式的電腦 id（見 `remote daemons`）",
-      "remote.update.auto": "開啟(on)或關閉(off)自動更新。省略則立即更新"
+      "remote.update.auto": "開啟(on)或關閉(off)自動更新。省略則立即更新",
+      "config.public-address.address": "網域或 IP（auto 為公用 IP）",
+      "config.public-address.share": "是否透過 Discord 的 /<伺服器> address 告知 (on|off)"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
@@ -1972,7 +1982,9 @@
       "closed": "無法從外部連線",
       "cgnat": "路由器沒有取得公用 IP（CGNAT）",
       "unknown": "部分連接埠無法檢查",
-      "no_ports": "此遊戲沒有標示要檢查的連接埠"
+      "no_ports": "此遊戲沒有標示要檢查的連接埠",
+      "host_mismatch": "公開位址沒有指向這台電腦",
+      "host_unresolved": "找不到公開位址"
     },
     "status": {
       "open": "開放",
@@ -1988,8 +2000,11 @@
       "firewall_macos": "macOS 防火牆正在阻擋此伺服器程式的傳入連線。請在「系統設定 › 網路 › 防火牆 › 選項」中，將 saba-core（伺服器已停止時）或遊戲伺服器程式（如 java，執行中時）設為「允許傳入連線」，然後再檢查一次。",
       "router": "電腦防火牆已允許此連接埠。請在路由器設定中把此連接埠轉發到這台電腦，然後再檢查。",
       "cgnat": "電信業者讓多戶共用一個公用 IP，無法透過連接埠轉發開放。請向業者申請公用 IP，或使用 Tailscale 等 VPN。",
-      "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。"
-    }
+      "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。",
+      "host_mismatch": "請在網域管理頁面把 A 記錄指向這台電腦的公用 IP。使用 DDNS 時請確認更新程式正在執行；若開啟了 CDN 代理請關閉，遊戲連線無法通過代理。",
+      "host_unresolved": "請檢查公開位址的拼寫與網域的 DNS 設定。如果是剛建立的網域，請稍後再檢查。"
+    },
+    "host": "公開位址 {{host}} → {{resolved}} · 這台電腦 {{address}}"
   },
   "agent": {
     "linked": "✓ 已將 Saba-chan 加入 {{agent}}",
