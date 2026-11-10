@@ -12,6 +12,7 @@ import { CliLine, changedForCli } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon, SabaCheckbox, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
 import { SabaNumberInput } from './ui/SabaUI';
+import { SaveBar } from './ui/SaveBar';
 import { LinkedText } from './ui/ScreenLink';
 import { FindKeyTag } from './servers/PageFind';
 import './ServerSettings.css';
@@ -751,6 +752,12 @@ export function ServerSettingsModal({
     // ── Validation: 설정값 타입 검증 ──
     const module = modules.find((m) => m.name === settingsServer.module);
     const changedSettings = changedForCli(settingsValues, openedWith.current.values, module?.settings?.fields);
+    // 저장 막대: 연 때와 다른 키 (`_`로 시작하는 GUI 값도 저장되므로 함께 본다)
+    const differs = (k: string) =>
+        JSON.stringify(settingsValues[k] ?? '') !== JSON.stringify(openedWith.current.values[k] ?? '');
+    const revertKeys = [...new Set([...Object.keys(settingsValues), ...Object.keys(openedWith.current.values)])].filter(
+        (k) => (k.startsWith('_') ? differs(k) : k in changedSettings),
+    );
     const { errors: validationErrors } = React.useMemo(() => {
         if (!module?.settings?.fields) return { valid: true, errors: {} };
         return validateAllSettings(module.settings.fields, settingsValues, unsetSettings) as {
@@ -804,7 +811,11 @@ export function ServerSettingsModal({
                     values={settingsValues}
                     extraArgs={settingsValues._launch_extra_args}
                     onExtraArgsChange={(v: unknown) => handleSettingChange('_launch_extra_args', v)}
-                    onExtraArgsLoaded={(v: unknown) => handleSettingChange('_launch_extra_args', v)}
+                    onExtraArgsLoaded={(v: unknown) => {
+                        // 읽어 온 값은 바꾼 게 아니다: 저장 막대의 기준에도 넣는다
+                        openedWith.current.values = { ...openedWith.current.values, _launch_extra_args: v };
+                        handleSettingChange('_launch_extra_args', v);
+                    }}
                     onSettingsFromArgs={(found: Record<string, unknown>) => {
                         for (const [k, v] of Object.entries(found)) handleSettingChange(k, v);
                     }}
@@ -855,12 +866,17 @@ export function ServerSettingsModal({
                 {restartNow && dismissRestart && (
                     <RestartNotice pending={restartPending} server={liveServer} onRestart={restartNow} onDismiss={dismissRestart} />
                 )}
-                <div className="dc-savebar ss-savebar">
-                    <CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />
-                    <button type="button" className="btn btn-primary" onClick={handleSaveSettings} disabled={savingSettings}>
-                        <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
-                    </button>
-                </div>
+                <SaveBar
+                    className="ss-savebar"
+                    dirty={revertKeys.length > 0}
+                    saving={!!savingSettings}
+                    onSave={handleSaveSettings}
+                    onRevert={() => {
+                        for (const k of revertKeys) handleSettingChange(k, openedWith.current.values[k]);
+                    }}
+                    saveLabel={t('server_settings.save_settings')}
+                    extra={<CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />}
+                />
             </div>
         </div>
     );

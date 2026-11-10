@@ -2901,27 +2901,6 @@ button.dc-ladder-chip.is-fixed {
     font-size: var(--fs-xs);
     color: var(--text-3);
 }
-.dc-savebar {
-    position: sticky;
-    bottom: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    padding: var(--sp-3) var(--sp-4);
-    border-radius: var(--r-md);
-    background: var(--bg-1);
-    border: 1px solid var(--line);
-    box-shadow: var(--shadow-float);
-}
-.dc-savebar.dirty {
-    border-color: color-mix(in oklch, var(--accent) 50%, var(--line));
-}
-.dc-savebar-text {
-    flex: 1;
-    font-size: var(--fs-sm);
-    color: var(--text-2);
-    text-align: right;
-}
 
 /* 단어 칩 입력 */
 /* 낱말 칸: 겉모양은 다른 입력칸(base.css .input)과 같다 (사용자 11-07) */
@@ -3082,10 +3061,6 @@ button.dc-ladder-chip.is-fixed {
 .server-detail > .dc-view:first-child > .dc-view-top {
     margin-top: calc(-1 * var(--sp-6));
     padding-top: var(--sp-6);
-}
-.dc-savebar:not(.dirty) {
-    position: static;
-    box-shadow: none;
 }
 /* 세로 flex 안에서 줄어들어 겹치지 않게 */
 .dc-nav-row,

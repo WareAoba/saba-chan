@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// 반투명(data-backdrop="on")일 때 카드·컴포넌트 재질이 유리로 바뀌는지, 떠 있는 창은 단단하게 남는지 지킨다.
+// 반투명(data-backdrop="on")일 때 카드·컴포넌트 재질이 유리로 바뀌는지, 떠 있는 창도 유리이면서 뒤를 흐리는지 지킨다.
 const SRC = path.resolve(__dirname, '..');
 const read = (p: string) => fs.readFileSync(path.join(SRC, p), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
@@ -73,23 +73,22 @@ describe('glass material when the window backdrop is on', () => {
         }
     });
 
-    it('every floating window (popover, modal, toast) keeps the solid material', () => {
-        const islands = new Set(
-            rules(backdrop)
-                .filter((r) => r.body.includes('--bg-2: var(--bg-2-solid)'))
-                .flatMap((r) => r.sel)
-                .map((s) => s.replace(':root[data-backdrop="on"] ', '')),
-        );
-        const floating = cssFiles(SRC)
+    it('floating windows stay glass and blur what is behind them (user 11-11)', () => {
+        // 떠 있는 창도 단단한 재질로 되돌리지 않는다
+        expect(backdrop).not.toMatch(/--bg-2:\s*var\(--bg-2-solid\)/);
+        const blur = /backdrop-filter:\s*var\(--glass-blur\)/;
+        const plain = (s: string) => s.replace(':root[data-backdrop="on"] ', '').replace(/:not\([^)]*\)/g, '');
+        const files = cssFiles(SRC)
             .filter((f) => !f.endsWith('tokens.css'))
-            .flatMap((f) => rules(fs.readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')))
+            .flatMap((f) => rules(fs.readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')));
+        const frosted = new Set(files.filter((r) => blur.test(r.body)).flatMap((r) => r.sel.map(plain)));
+        const floating = files
             .filter((r) => /box-shadow:[^;]*var\(--shadow-float\)/.test(r.body))
             .flatMap((r) => r.sel)
-            .filter((s) => !s.includes(':') && !s.includes('.dragging'));
-        expect(floating.filter((s) => !islands.has(s))).toEqual([]);
-        // 떠 있는 창 안에서는 입체도 원래 뉴모피즘으로 돌아온다
-        const island = rules(backdrop).find((r) => r.body.includes('--bg-2: var(--bg-2-solid)'));
-        for (const t of DEPTH) expect(island?.body).toContain(`${t}: var(${t}-solid)`);
+            .filter((s) => !s.includes(':') && !s.includes('.dragging'))
+            // 흐림을 준 판 안에 든 판은 바깥 판의 흐림을 쓴다
+            .filter((s) => ![...frosted].some((f) => s !== f && s.startsWith(`${f} `)));
+        expect(floating.filter((s) => !frosted.has(s))).toEqual([]);
     });
 });
 

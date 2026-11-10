@@ -123,8 +123,3 @@ button:not([class*="btn"]),
         opacity: 0;
     }
 }
-
-/* 저장 줄이 생기면 아래에서 올라온다 */
-.dc-savebar.dirty {
-    animation: motion-rise var(--dur) var(--ease) backwards;
-}
