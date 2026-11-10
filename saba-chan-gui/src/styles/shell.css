@@ -4516,8 +4516,8 @@ button.appbar-pill:focus-visible {
     background:
         radial-gradient(in oklch 1200px 600px at 50% 0%, var(--accent-soft), transparent 60%),
         var(--glass-scrim);
-    backdrop-filter: var(--scrim-blur);
     -webkit-backdrop-filter: var(--scrim-blur);
+    backdrop-filter: var(--scrim-blur);
     animation: palette-fade var(--dur) var(--ease);
 }
 @keyframes palette-fade {
@@ -4533,8 +4533,8 @@ button.appbar-pill:focus-visible {
 }
 .palette-glass {
     background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-highlight), var(--shadow-float);
 }
