@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import { localizedDescription, localizedName } from '../../utils/localizedText';
+import { claimOpeningSound } from '../../utils/opening';
 import { openScreen } from '../../utils/openScreen';
 import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
@@ -29,7 +30,10 @@ export function FirstRunGuide({ step }: { step: GuideStep }) {
     const hasModules = modules.length > 0;
     // 가이드가 열릴 때 한 번 가이드 열림음 (셸 `sound_play`, 설정 sounds를 따른다). 단계를 넘길 때는 내지 않는다
     useEffect(() => {
-        (window.api as { playSound?: (name: 'guideOpen') => unknown } | undefined)?.playSound?.('guideOpen');
+        // 앱을 막 연 참이면 오프닝이 이 소리를 맡아 기동음 대신 화음에 맞춰 낸다 (utils/opening.ts)
+        if (!claimOpeningSound('guideOpen')) {
+            (window.api as { playSound?: (name: 'guideOpen') => unknown } | undefined)?.playSound?.('guideOpen');
+        }
     }, []);
     // 모듈 받기 화면의 ✕는 그 화면만 닫는다 (처음 시작하기 전체는 welcome·fork의 ✕)
     const close = () => (step === 'modules' ? setStep(null) : closeGuide('firstRun'));

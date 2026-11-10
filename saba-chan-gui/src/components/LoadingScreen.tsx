@@ -1,9 +1,10 @@
 import clsx from 'clsx';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { fallFrame, OPENING_CHORD_MS, type OpeningKind, openingFrame, openingShake } from '../utils/opening';
 import { Icon } from './Icon';
 import { WindowControls } from './shell/AppBar';
-import { logTokens, MatrixRain } from './shell/MatrixRain';
+import { logTokens, type MatrixPull, MatrixRain } from './shell/MatrixRain';
 
 /**
  * LoadingScreen — displayed while daemon is initializing.
@@ -70,6 +71,112 @@ interface LoadingScreenProps {
     onRetry?: () => void | Promise<void>;
     onContinue?: () => void;
     leaving?: boolean;
+    /**
+     * 오프닝 (utils/opening.ts). prepare: 메인 화면을 아래에 그리는 동안 로딩 화면 그대로 덮어 둔다.
+     * play: openingKind대로 메인 화면을 연다 (burst: 기동음과 함께 끌어모아 터뜨림, fall: 후두둑). 끝나면 onOpened
+     */
+    opening?: 'prepare' | 'play' | null;
+    openingKind?: OpeningKind;
+    /** burst에서 화음이 울리는 때 (opening.ts openingChordMs, 함께 내는 소리에 따라 다르다) */
+    openingChord?: number;
+    onOpened?: () => void;
+    /** 화음 순간 메인 화면을 흔들 만큼 (px). 끝나면 0, 0 */
+    onShake?: (dx: number, dy: number) => void;
+}
+
+/**
+ * 오프닝 재생: 시작 시각과 로고 가운데를 정해 매트릭스에 넘기고, 같은 시계로 가운데 묶음·섬광·바탕을 움직인다.
+ * burst: 화음(메인 화면이 열리는 때)부터 바탕을 걷어 글자만 메인 화면 위에 흩어지게 두고, 화면을 한 번 흔든다(onShake).
+ * fall: 섬광 없이 바탕을 서서히 걷으며 가운데 묶음을 가라앉힌다
+ */
+function useOpeningPlayback(
+    playing: boolean,
+    kind: OpeningKind,
+    chord: number,
+    onOpened?: () => void,
+    onShake?: (dx: number, dy: number) => void,
+) {
+    const rootRef = useRef<HTMLDivElement>(null);
+    const contentRef = useRef<HTMLDivElement>(null);
+    const logoRef = useRef<HTMLDivElement>(null);
+    const flashRef = useRef<HTMLElement>(null);
+    const [target, setTarget] = useState<MatrixPull | null>(null);
+    const onOpenedRef = useRef(onOpened);
+    onOpenedRef.current = onOpened;
+    const onShakeRef = useRef(onShake);
+    onShakeRef.current = onShake;
+
+    useEffect(() => {
+        if (!playing) return undefined;
+        const box = logoRef.current?.getBoundingClientRect();
+        const start = performance.now();
+        setTarget({
+            start,
+            x: box ? box.left + box.width / 2 : window.innerWidth / 2,
+            y: box ? box.top + box.height / 2 : window.innerHeight / 2,
+            kind,
+            chord,
+        });
+        let raf = 0;
+        const finish = () => {
+            onShakeRef.current?.(0, 0);
+            onOpenedRef.current?.();
+        };
+        const tickBurst = (ms: number) => {
+            const f = openingFrame(ms, chord);
+            const content = contentRef.current;
+            if (content) {
+                content.style.transform = `scale(${0.96 + 0.04 * f.content})`;
+                content.style.opacity = String(f.opened ? 0 : 0.05 + 0.95 * f.content);
+            }
+            if (flashRef.current) flashRef.current.style.opacity = String(0.95 * f.flash);
+            const root = rootRef.current;
+            root?.classList.toggle('opened', f.opened);
+            // 뒤에 흐리게 깔려 있던 콘솔이 끌려 오면서 또렷해진다 (--loading-matrix-opacity → 1)
+            const matrix = root?.querySelector<HTMLElement>('.loading-matrix');
+            if (matrix)
+                matrix.style.opacity = f.opened
+                    ? '1'
+                    : `calc(var(--loading-matrix-opacity) + (1 - var(--loading-matrix-opacity)) * ${Math.min(1, f.pull * 3)})`;
+            const shake = openingShake(ms, chord) * 6;
+            onShakeRef.current?.((Math.random() - 0.5) * 2 * shake, (Math.random() - 0.5) * 2 * shake);
+            return f.done;
+        };
+        const tickFall = (ms: number) => {
+            const f = fallFrame(ms);
+            const content = contentRef.current;
+            if (content) {
+                content.style.transform = `translateY(${f.sink * window.innerHeight * 0.06}px) scale(${1 - 0.04 * f.sink})`;
+                content.style.opacity = String(1 - f.sink);
+            }
+            const root = rootRef.current;
+            if (root) {
+                // 떨어지는 글자가 보이게 콘솔을 또렷하게 하고, 바탕·비네트·창 버튼은 함께 옅어진다 (App.css .loading-screen.falling)
+                const matrix = root.querySelector<HTMLElement>('.loading-matrix');
+                if (matrix)
+                    matrix.style.opacity = `calc(var(--loading-matrix-opacity) + (1 - var(--loading-matrix-opacity)) * ${0.8 * Math.min(1, ms / 150)})`;
+                root.classList.add('falling');
+                root.style.setProperty('--opening-cover', String(f.cover));
+                root.style.pointerEvents = f.cover < 0.5 ? 'none' : '';
+            }
+            return f.done;
+        };
+        const tick = (now: number) => {
+            const done = kind === 'fall' ? tickFall(now - start) : tickBurst(now - start);
+            if (done) {
+                finish();
+                return;
+            }
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => {
+            cancelAnimationFrame(raf);
+            onShakeRef.current?.(0, 0);
+        };
+    }, [playing, kind, chord]);
+
+    return { rootRef, contentRef, logoRef, flashRef, target: playing ? target : null };
 }
 
 export function LoadingScreen({
@@ -80,22 +187,33 @@ export function LoadingScreen({
     onRetry,
     onContinue,
     leaving = false,
+    opening = null,
+    openingKind = 'burst',
+    openingChord = OPENING_CHORD_MS,
+    onOpened,
+    onShake,
 }: LoadingScreenProps) {
     const { t } = useTranslation('gui');
     const [retrying, setRetrying] = useState(false);
-    const { line: log, tokens } = useDaemonLog(!failed && !leaving);
+    const { line: log, tokens } = useDaemonLog(!failed && !leaving && !opening);
+    const pull = useOpeningPlayback(opening === 'play', openingKind, openingChord, onOpened, onShake);
 
     return (
-        <div className={clsx('loading-screen', { leaving })} aria-hidden={leaving || undefined}>
+        <div
+            ref={pull.rootRef}
+            className={clsx('loading-screen', { leaving, opening: !!opening })}
+            aria-hidden={leaving || opening === 'play' || undefined}
+        >
+            <i ref={pull.flashRef} className="loading-flash" aria-hidden="true" />
             {/* 뒤에서 흐르는 서버 콘솔 (가운데는 비워 둔다) */}
-            <MatrixRain className="loading-matrix" tokens={tokens} />
+            <MatrixRain className="loading-matrix" tokens={tokens} pull={pull.target} />
             <div className="loading-vignette" aria-hidden="true" />
             <div className="appbar appbar-bare" data-tauri-drag-region>
                 <div className="appbar-spacer" data-tauri-drag-region />
                 <WindowControls />
             </div>
-            <div className="loading-content">
-                <div className="loading-logo-container">
+            <div ref={pull.contentRef} className="loading-content">
+                <div ref={pull.logoRef} className="loading-logo-container">
                     <i className="glow-blur"></i>
                     <i className="glow-ring"></i>
                     <i className="glow-mask"></i>
