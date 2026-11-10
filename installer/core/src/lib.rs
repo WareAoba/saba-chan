@@ -621,6 +621,21 @@ async fn prepare_python(install_dir: &Path, installed: &mut Vec<String>, warn: &
 // 맥 앱 묶음: 처음 켤 때 준비 (`--setup`)
 // ═══════════════════════════════════════════════════════
 
+/// 고른 모듈을 앱 묶음에 든 코어(`core_version`, 실행 파일은 모두 같은 판)로 돌 수 있는 것과 아닌 것으로 나눈다.
+/// 모듈·익스텐션끼리의 요구는 받는 쪽이 맞추므로 실행 파일 컴포넌트에 대한 요구만 본다
+fn modules_for_bundled_core(manifest: &ReleaseManifest, selected: &[String], core_version: &str) -> (Vec<String>, Vec<String>) {
+    let is_addon = |k: &str| k.starts_with(relay::MODULE_PREFIX) || k.starts_with(relay::EXTENSION_PREFIX);
+    let bundled: HashMap<String, String> =
+        manifest.components.keys().filter(|k| !is_addon(k)).map(|k| (k.clone(), core_version.to_string())).collect();
+    selected.iter().cloned().partition(|id| {
+        let key = format!("{}{}", relay::MODULE_PREFIX, id);
+        let Some(requires) = manifest.components.get(&key).and_then(|c| c.requires.as_ref()) else { return true };
+        let on_core: HashMap<String, String> =
+            requires.iter().filter(|(k, _)| !is_addon(k)).map(|(k, v)| (k.clone(), v.clone())).collect();
+        saba_chan_updater_lib::unmet_requires(&key, &on_core, &bundled).is_empty()
+    })
+}
+
 /// 준비 설정. 앱 묶음(.dmg에서 끌어 넣은 앱)은 실행 파일이 이미 있으니 받지 않고, 고른 모듈·익스텐션과 Python만 준비한다
 #[derive(Debug, Clone)]
 pub struct SetupOptions {
@@ -654,7 +669,12 @@ pub async fn setup(config: SetupOptions, hooks: &dyn InstallHooks) -> InstallPro
         match manifest {
             Ok(m) => {
                 let manifest = m.for_profile(Profile::Desktop);
-                install_modules(hooks, &manifest, &config.selected_modules, &config.module_metadata, &mut installed, &warn).await;
+                // 앱 묶음의 코어는 이번에 바뀌지 않는다: 그보다 새 코어가 필요한 모듈은 받아도 데몬이 거절한다
+                let (runnable, too_new) = modules_for_bundled_core(&manifest, &config.selected_modules, env!("CARGO_PKG_VERSION"));
+                for id in too_new {
+                    warn(format!("Game module '{}' needs a newer Saba-chan; update the app, then get it in Saba Storage", id));
+                }
+                install_modules(hooks, &manifest, &runnable, &config.module_metadata, &mut installed, &warn).await;
             }
             // 모듈은 앱의 사바 스토리지에서도 받을 수 있다: 준비는 계속한다
             Err(e) => warn(format!("Game modules were not downloaded ({}); get them in Saba Storage", e)),
@@ -666,6 +686,13 @@ pub async fn setup(config: SetupOptions, hooks: &dyn InstallHooks) -> InstallPro
 
     emit_step(hooks, "config-lang", "Saving language settings...", 89);
     save_language_setting(&config.language);
+
+    // 앱보다 먼저 CLI로 데몬을 띄워 두었으면 그 데몬은 빈 모듈 목록을 기억하고 있다
+    if installed.iter().any(|c| c.starts_with("module:") || c.starts_with("extension:")) {
+        if let Some(api) = uninstall::DaemonApi::from_config() {
+            api.reload_addons().await;
+        }
+    }
 
     emit_step(hooks, "command", "Registering the saba-chan command...", 94);
     if let Err(e) = finish_setup(&config.install_path, &installs_file()) {
@@ -1500,6 +1527,42 @@ mod tests {
     }
 
     /// 준비를 마치면 이 자리가 설치 목록에 남아, 앱이 다음부터 준비 화면 없이 열린다
+    /// 앱 묶음의 코어보다 새 코어가 필요한 모듈은 준비에서 받지 않는다 (받아도 데몬이 거절한다)
+    #[test]
+    fn setup_skips_modules_that_need_a_newer_core() {
+        let comp = |requires: &[(&str, &str)]| relay::ManifestComponent {
+            version: "1.0.0".into(),
+            filename: "m.zip".into(),
+            size_bytes: None,
+            sha256: "0".repeat(64),
+            url: "https://example.invalid/m.zip".into(),
+            install_dir: None,
+            requires: (!requires.is_empty()).then(|| requires.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()),
+            meta: None,
+        };
+        let manifest = ReleaseManifest {
+            version: "0.2.0".into(),
+            channel: "stable".into(),
+            platform: "macos-arm64".into(),
+            released_at: None,
+            is_critical: false,
+            components: [
+                ("saba-core".to_string(), comp(&[])),
+                ("module-old".to_string(), comp(&[("saba-core", ">=0.1.0")])),
+                ("module-new".to_string(), comp(&[("saba-core", ">=0.2.0")])),
+                ("module-ext".to_string(), comp(&[("ext-steamcmd", ">=9.0.0")])),
+                ("module-plain".to_string(), comp(&[])),
+            ]
+            .into_iter()
+            .collect(),
+            platforms: Default::default(),
+        };
+        let picked: Vec<String> = ["old", "new", "ext", "plain"].map(String::from).to_vec();
+        let (ok, too_new) = modules_for_bundled_core(&manifest, &picked, "0.1.13");
+        assert_eq!(ok, ["old", "ext", "plain"]);
+        assert_eq!(too_new, ["new"]);
+    }
+
     #[test]
     fn finishing_setup_marks_the_app_as_ready() {
         use saba_chan_updater_lib::app_bundle::{launch_for, Launch};

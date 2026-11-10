@@ -630,14 +630,14 @@ fn output_within(cmd: &mut std::process::Command, limit: std::time::Duration) ->
 }
 
 /// 데몬 API (설정된 포트·토큰 파일)
-struct DaemonApi {
+pub(crate) struct DaemonApi {
     client: reqwest::Client,
     port: u16,
     token: String,
 }
 
 impl DaemonApi {
-    fn from_config() -> Option<Self> {
+    pub(crate) fn from_config() -> Option<Self> {
         let port = saba_chan_updater_lib::config_file::ConfigFile::default_location()
             .section("gui")
             .get("ipcPort")
@@ -651,6 +651,16 @@ impl DaemonApi {
 
     fn url(&self, path: &str) -> String {
         format!("http://127.0.0.1:{}{}", self.port, path)
+    }
+
+    /// 이미 떠 있는 데몬에게 받은 모듈·익스텐션을 다시 읽게 한다 (모듈 목록은 데몬이 기억해 둔다). 데몬이 없으면 아무 일도 없다
+    pub(crate) async fn reload_addons(&self) {
+        for path in ["/api/modules/refresh", "/api/extensions/rescan"] {
+            if let Err(e) = self.client.post(self.url(path)).header("X-Saba-Token", &self.token).send().await {
+                tracing::info!("No daemon to reload addons ({}): {}", path, e);
+                return;
+            }
+        }
     }
 
     /// 설정된 포트에 답하는 데몬의 PID. 답이 없거나 PID를 모르면 None
