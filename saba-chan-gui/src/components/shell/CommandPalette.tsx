@@ -17,6 +17,7 @@ import { botSettingsAvailable } from '../discord/BotSettingsTab';
 import { chatbotAvailable } from '../discord/ChatbotView';
 import { instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import { moderationAvailable } from '../discord/ModerationTab';
+import { openGuide } from '../guides/guides';
 import { Icon } from '../Icon';
 import { maintenanceAvailable } from '../servers/MaintenanceTab';
 import {
@@ -473,6 +474,10 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
             useUIStore.getState().setShowModuleManager(true);
             return;
         }
+        if (item.action === 'guide' && item.guide) {
+            openGuide(item.guide);
+            return;
+        }
         if (!item.address) return;
         openScreen(item.address);
         if (item.findField) useUIStore.getState().requestFindSettingField(item.findField);
@@ -645,7 +650,7 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
             default:
                 return (
                     <span className={cls(it.serverId || it.guildId ? 'jump' : 'app')}>
-                        <Icon name={it.action === 'newServer' ? 'plus' : 'externalLink'} size="sm" />
+                        <Icon name={it.icon ?? (it.action === 'newServer' ? 'plus' : 'externalLink')} size="sm" />
                     </span>
                 );
         }

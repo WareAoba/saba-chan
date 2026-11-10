@@ -9,6 +9,7 @@
  */
 import type { CommandInput } from '../../types/daemon';
 import { matchScore } from '../../utils/hangul';
+import { GUIDE_ENTRIES, type GuideEntryId } from '../guides/guides';
 import { SETTINGS_TAB_LABELS, SETTINGS_TABS } from '../Modals/settingsTabs';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -76,7 +77,11 @@ export interface PaletteItem {
     find?: string;
     /** 서버 설정 칸 이름 (고급 묶음이면 펼친다) */
     findField?: string;
-    action?: 'newServer';
+    action?: 'newServer' | 'guide';
+    /** 다시 열 가이드 (action 'guide') */
+    guide?: GuideEntryId;
+    /** 줄 아이콘 (가이드: 설정의 가이드 목록과 같은 그림) */
+    icon?: string;
     /** 빈 검색에도 보이는 앱 바로 가기 */
     featured?: boolean;
 }
@@ -268,6 +273,19 @@ function appItems(t: Translate): PaletteItem[] {
             hay: `${storage} ${label}`,
             address: `settings/sabaStorage/${sub}`,
             path: [settings, storage, label],
+        });
+    }
+    // 가이드 다시 열기 (사용자 11-10, 설정 → 일반의 가이드 목록과 같은 순서)
+    for (const g of GUIDE_ENTRIES) {
+        const title = t('guides.palette', { name: t(`guides.entry_${g.id}`) });
+        out.push({
+            group: 'jump',
+            key: `app:guide:${g.id}`,
+            title,
+            hay: title,
+            action: 'guide',
+            guide: g.id,
+            icon: g.icon,
         });
     }
     for (const [tab, key] of APP_SETTINGS) {

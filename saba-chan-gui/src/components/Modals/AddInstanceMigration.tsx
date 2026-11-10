@@ -5,7 +5,6 @@ import type { ApiBody, ModuleInfo } from '../../types/daemon';
 import { AgreementList, allChecked } from '../AgreementList';
 import Icon from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
-import { Segmented } from '../ui/StatusChip';
 import { TrustCreateNotice } from '../ui/TrustBadge';
 import type { AddServerPayload } from '../../hooks/useServerActions';
 
@@ -46,6 +45,8 @@ export function AddInstanceMigration({
     const [scanError, setScanError] = useState<string | null>(null);
     const [detectedModule, setDetectedModule] = useState<ApiBody | null>(null); // { name, displayName, icon, ... }
     const [noMatch, setNoMatch] = useState(false);
+    // 그 폴더에서 미리 알릴 것 (데몬 detect `notices`: server_running·folder_not_writable)
+    const [notices, setNotices] = useState<string[]>([]);
 
     // -- manifest fallback state --
     const [manifestModules, setManifestModules] = useState<ApiBody[] | null>(null);
@@ -79,6 +80,7 @@ export function AddInstanceMigration({
             setDetectedModule(null);
             setNoMatch(false);
             setManualModule(null);
+            setNotices([]);
 
             try {
                 const result = await window.api?.migrationScanDir?.(path);
@@ -96,6 +98,7 @@ export function AddInstanceMigration({
                 });
 
                 // scanDir가 곧 POST /api/modules/detect다: 데몬이 module.toml [detection].dir_signatures 로 판정한 결과
+                setNotices(Array.isArray(result.notices) ? result.notices.filter((n: unknown) => typeof n === 'string') : []);
                 const names = (result.matches || []).map((m: ApiBody) => m.name);
                 const ext = names.map((n: string) => extensions.find((e) => e.name === n)).find(Boolean);
                 const matched = ext ? withName(ext) : null;
@@ -203,6 +206,29 @@ export function AddInstanceMigration({
         : '';
 
     const canSubmit = instanceName.trim() && activeModule && !submitting && allChecked(agreements, agreed);
+
+    // 켜져 있음·쓸 수 없음: 불러오기를 누르기 전에 보인다
+    const noticeBlock = notices.length > 0 && (
+        <div className="mg-notices">
+            {notices.includes('server_running') && (
+                <div className="notice tone-warn mg-notice">
+                    <Icon name="alertTriangle" size="sm" />
+                    <div>
+                        <strong>{t('migration_modal.running_title')}</strong>
+                        <p>{t('migration_modal.running_body')}</p>
+                    </div>
+                </div>
+            )}
+            {notices.includes('folder_not_writable') && (
+                <div className="notice tone-warn mg-notice">
+                    <Icon name="alertTriangle" size="sm" />
+                    <div>
+                        <p>{t('server_actions.migrate_notice_folder_not_writable')}</p>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 
     // ══════════════════════════════════════════
     //  Step 1: 디렉토리 선택 + 스캔
@@ -315,6 +341,8 @@ export function AddInstanceMigration({
                                 </button>
                             </div>
                         )}
+
+                        {(detectedModule || noMatch) && noticeBlock}
 
                         {/* ── 감지 실패: 레지스트리 모듈 목록 ── */}
                         {noMatch && (
@@ -468,21 +496,66 @@ export function AddInstanceMigration({
                         />
                     </div>
 
+                    {noticeBlock}
+
                     {/* 서버 폴더를 다루는 방식 */}
                     <div className="as-section as-section-card">
                         <span className="as-label">
                             <Icon name="folder" size="sm" />
                             {t('migration_modal.mode_label')}
                         </span>
-                        <Segmented
-                            ariaLabel={t('migration_modal.mode_label')}
-                            items={[
-                                { id: 'link', label: t('migration_modal.mode_link') },
-                                { id: 'move', label: t('migration_modal.mode_move') },
-                            ]}
-                            value={mode}
-                            onChange={(id) => !submitting && setMode(id)}
-                        />
+                        <div className="mg-modes" role="radiogroup" aria-label={t('migration_modal.mode_label')}>
+                            {(['link', 'move'] as const).map((id) => (
+                                <button
+                                    key={id}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={mode === id}
+                                    className={`mg-mode ${mode === id ? 'mg-mode--selected' : ''}`}
+                                    onClick={() => !submitting && setMode(id)}
+                                >
+                                    <span className="mg-mode-title">
+                                        {t(`migration_modal.mode_${id}`)}
+                                        {id === 'link' && <span className="mg-mode-tag">{t('migration_modal.recommended')}</span>}
+                                    </span>
+                                    <span className="mg-mode-desc">{t(`migration_modal.mode_${id}_desc`)}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* 불러오면 바뀌는 것: 되돌릴 수 있는지까지 */}
+                    <div className="as-section as-section-card">
+                        <span className="as-label">
+                            <Icon name="info" size="sm" />
+                            {t('migration_modal.changes_title')}
+                        </span>
+                        <dl className="mg-changes">
+                            {['start', 'settings', 'access', 'backup'].map((row) => (
+                                <div key={row} className="mg-change">
+                                    <dt>{t(`migration_modal.change_${row}`)}</dt>
+                                    <dd>
+                                        {t(`migration_modal.change_${row}_desc`)}
+                                        <span className={`mg-change-undo${row === 'backup' ? ' mg-change-undo--warn' : ''}`}>{t(`migration_modal.change_${row}_undo`)}</span>
+                                    </dd>
+                                </div>
+                            ))}
+                        </dl>
+                    </div>
+
+                    {/* 편해지는 점 */}
+                    <div className="as-section as-section-card">
+                        <span className="as-label">
+                            <Icon name="star" size="sm" />
+                            {t('migration_modal.benefits_title')}
+                        </span>
+                        <ul className="mg-benefits">
+                            {['console', 'discord', 'settings', 'backup'].map((b) => (
+                                <li key={b}>
+                                    <Icon name="check" size="xs" /> {t(`migration_modal.benefit_${b}`)}
+                                </li>
+                            ))}
+                        </ul>
                     </div>
 
                     {/* 확인 안 된·바뀐 모듈: 게임 서버는 격리되지 않는다 */}
@@ -505,11 +578,6 @@ export function AddInstanceMigration({
                         </div>
                     )}
 
-                    {/* 마이그레이션 안내 */}
-                    <p className="as-provision-hint">
-                        <Icon name="info" size="sm" />
-                        {t(mode === 'move' ? 'migration_modal.migrate_hint_move' : 'migration_modal.migrate_hint')}
-                    </p>
                 </div>
             </div>
 

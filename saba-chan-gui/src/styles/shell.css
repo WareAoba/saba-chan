@@ -5495,34 +5495,430 @@ button.appbar-pill:focus-visible {
 .onboarding-card {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: var(--sp-1-5);
+    gap: var(--sp-2);
     margin: 0 var(--sp-3) var(--sp-3);
     padding: var(--sp-3);
     border-radius: var(--r-md);
     background: var(--bg-2);
+    text-align: left;
+}
+/* 빈 화면에서는 안내를 밀어내지 않고 오른쪽 아래에 떠오르는 카드로 (사용자 11-10) */
+.page-empty {
+    position: relative;
+}
+.page-empty .onboarding-card {
+    position: absolute;
+    right: var(--sp-4);
+    bottom: var(--sp-4);
+    z-index: 3;
+    width: min(320px, calc(100% - var(--sp-8)));
+    margin: 0;
+    border: 1px solid var(--line);
+    background: var(--bg-1);
+    box-shadow: var(--shadow-float);
+    animation: guide-float-in var(--dur) var(--ease) backwards;
+}
+@keyframes guide-float-in {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .page-empty .onboarding-card {
+        animation: none;
+    }
 }
 .onboarding-head {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: var(--sp-2);
     width: 100%;
 }
 .onboarding-title {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-1-5);
-    font-size: 12px;
-    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text-1);
 }
 .onboarding-progress {
-    font-size: 12px;
-    color: var(--text-secondary);
+    margin-left: auto;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
     font-variant-numeric: tabular-nums;
 }
+.onboarding-close {
+    width: 22px;
+    height: 22px;
+}
+.onboarding-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.onboarding-step {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-2);
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+}
+.onboarding-step.current,
+.onboarding-step.done {
+    color: var(--text-1);
+}
+.onboarding-mark {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid var(--line-strong);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.onboarding-step.done .onboarding-mark {
+    border-color: var(--ok);
+    background: var(--ok);
+    color: var(--bg-0);
+}
+.onboarding-step.current .onboarding-mark {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.onboarding-step.done strong {
+    font-weight: 500;
+    color: var(--text-2);
+}
+.onboarding-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-1);
+    min-width: 0;
+    padding-top: 1px;
+}
 .onboarding-desc {
-    font-size: 12px;
-    color: var(--text-secondary);
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+}
+.onboarding-step.optional {
+    margin-top: var(--sp-1);
+    padding-top: var(--sp-2);
+    border-top: 1px solid var(--line);
+}
+.onboarding-step.optional .onboarding-text {
+    flex-direction: row;
+    align-items: center;
+}
+.onboarding-optional {
+    padding: 0 var(--sp-1-5);
+    border-radius: var(--r-pill);
+    background: var(--bg-3);
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+
+/* 처음 시작하기 가이드 (사용자 11-08~10): 서버가 없을 때 서버 화면 */
+.guide-page {
+    overflow-y: auto;
+}
+.guide-card {
+    position: relative;
+    width: min(600px, 100%);
+    padding: var(--sp-6);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--bg-1);
+    box-shadow: var(--shadow-raised);
+    text-align: center;
+}
+.guide-card > .guide-close {
+    position: absolute;
+    top: var(--sp-2);
+    right: var(--sp-2);
+}
+.guide-card h2 {
+    font-size: var(--fs-xl);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+.guide-card > div > p {
+    margin-top: var(--sp-1-5);
+    color: var(--text-2);
+}
+.guide-welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+/* 첫 화면 머리: 로딩 화면과 같은 회전 그라데이션 링 + 빛 번짐 안의 사바쨩 프로필 */
+.guide-hero {
+    position: relative;
+    width: 128px;
+    height: 128px;
+    margin: var(--sp-5) auto var(--sp-6);
+}
+.guide-hero-ring,
+.guide-hero-glow {
+    position: absolute;
+    border-radius: 50%;
+    background: conic-gradient(in oklch from 0deg, var(--brand-primary), var(--brand-secondary), var(--brand-primary));
+    animation: spin-glow 3s linear infinite;
+}
+.guide-hero-ring {
+    inset: 0;
+}
+.guide-hero-glow {
+    inset: calc(var(--sp-3) * -1);
+    filter: blur(24px);
+    opacity: 0.6;
+}
+.guide-hero-mask {
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--bg-1);
+}
+.guide-avatar {
+    position: absolute;
+    inset: var(--sp-1);
+    width: calc(100% - var(--sp-1) * 2);
+    height: calc(100% - var(--sp-1) * 2);
+    border-radius: 50%;
+    object-fit: contain;
+}
+@media (prefers-reduced-motion: reduce) {
+    .guide-hero-ring,
+    .guide-hero-glow { animation: none; }
+}
+.guide-actions {
+    display: flex;
+    justify-content: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-5);
+}
+.guide-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    margin-bottom: var(--sp-3);
+    padding: var(--sp-0-5) var(--sp-2);
+    border-radius: var(--r-pill);
+    background: color-mix(in oklch, var(--ok) 16%, transparent);
+    color: var(--ok);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+}
+.guide-choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--sp-3);
+    margin-top: var(--sp-5);
+    text-align: left;
+}
+.guide-choice {
+    height: auto;
+    min-width: 0;
+    white-space: normal;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-1-5);
+    padding: var(--sp-4);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--bg-1);
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    text-align: left;
+    cursor: pointer;
+    transition:
+        border-color var(--dur-fast) var(--ease),
+        transform var(--dur-fast) var(--ease);
+}
+.guide-choice:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+.guide-choice > svg {
+    color: var(--accent);
+}
+.guide-choice strong {
+    color: var(--text-1);
+    font-size: var(--fs-md);
+}
+.guide-choice-go {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-0-5);
+    margin-top: auto;
+    padding-top: var(--sp-2);
+    color: var(--accent);
+    font-weight: 600;
+}
+.guide-note {
+    margin-top: var(--sp-4);
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.guide-modules {
+    text-align: left;
+}
+.guide-modules h2,
+.guide-modules > p:first-of-type {
+    text-align: center;
+}
+.guide-loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--sp-4);
+}
+.guide-module-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    margin: var(--sp-4) 0 0;
+    padding: 0;
+    list-style: none;
+}
+.guide-module {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2-5) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+}
+.guide-module img {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--r-sm);
+    object-fit: cover;
+}
+.guide-module-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    font-size: var(--fs-sm);
+}
+.guide-module-text span {
+    overflow: hidden;
+    color: var(--text-3);
+    font-size: var(--fs-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.guide-module-done {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    color: var(--ok);
+    font-size: var(--fs-xs);
+}
+.guide-error {
+    margin-top: var(--sp-3);
+    color: var(--stop);
+    font-size: var(--fs-sm);
+}
+.guide-modules .guide-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+}
+.guide-link {
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+}
+.guide-link:hover {
+    text-decoration: underline;
+}
+
+/* 시작 버튼 말풍선: 체크리스트의 다음 단계가 첫 시작일 때 */
+.start-anchor {
+    position: relative;
+    display: inline-flex;
+}
+.start-coach {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--accent);
+    box-shadow: var(--shadow-float);
+    color: #fff;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    animation: motion-rise var(--dur) var(--ease) backwards;
+}
+.start-coach::before {
+    position: absolute;
+    top: -6px;
+    right: 24px;
+    width: 12px;
+    height: 12px;
+    background: var(--accent);
+    transform: rotate(45deg);
+    content: '';
+}
+.start-coach .guide-link {
+    color: inherit;
+    font-weight: 500;
+    opacity: 0.85;
+}
+
+/* 설정 → 일반 맨 위: 가이드 다시 열기 */
+.setting-guides {
+    flex-direction: column;
+    align-items: stretch;
+}
+.guide-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+    margin: var(--sp-2) 0 0;
+    padding: 0;
+    list-style: none;
+}
+.guide-list li {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--bg-2);
+}
+.guide-list li > svg {
+    color: var(--accent);
+}
+.guide-list-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    font-size: var(--fs-sm);
+}
+.guide-list-text span {
+    color: var(--text-3);
+    font-size: var(--fs-xs);
 }
 
 /* CLI로 보기 (I4-c): 같은 일을 하는 CLI 한 줄. '명령줄로 하기'를 펼치면 보인다 */
