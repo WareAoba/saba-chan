@@ -1213,6 +1213,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             }
         },
         logsOpenFolder: () => invoke('logs_open_folder'),
+        // 화면이 고른 때 내는 효과음 (정상 기동음 'startup'·가이드 열림 'guideOpen'). 셸이 설정 sounds를 따른다
+        playSound: (name: 'startup' | 'guideOpen') => send('sound_play', { name }),
         launchUninstaller: () => invoke('launch_uninstaller'),
         getAppVersion: () => invoke('app_get_version'),
         getComponentInfo: async () => {

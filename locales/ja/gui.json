@@ -172,6 +172,7 @@
     "sound_crash": "予期しない停止",
     "sound_install": "インストール結果",
     "sound_update": "アップデート発見",
+    "sound_startup": "正常起動",
     "close_action_label": "閉じるボタン",
     "close_action_description": "ウィンドウの閉じるボタンを押したときの動作です。",
     "close_action_ask": "毎回確認",

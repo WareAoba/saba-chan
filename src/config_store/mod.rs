@@ -113,6 +113,8 @@ pub struct SoundSettings {
     pub crash: bool,
     pub install: bool,
     pub update: bool,
+    /// 정상 기동음 (데몬·릴레이가 붙어 오프닝이 시작될 때)
+    pub startup: bool,
 }
 
 impl Default for SoundSettings {
@@ -124,6 +126,7 @@ impl Default for SoundSettings {
             crash: true,
             install: true,
             update: true,
+            startup: true,
         }
     }
 }
@@ -1925,7 +1928,7 @@ mod tests {
         assert_eq!(defaults["osNotifications"], true);
         assert_eq!(
             defaults["sounds"],
-            serde_json::json!({ "enabled": true, "serverStart": true, "serverStop": true, "crash": true, "install": true, "update": true })
+            serde_json::json!({ "enabled": true, "serverStart": true, "serverStop": true, "crash": true, "install": true, "update": true, "startup": true })
         );
         store
             .set_gui_settings_from_json(
