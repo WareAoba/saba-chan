@@ -119,21 +119,33 @@ fn port_check(result: &Value, cat: &Catalog) -> String {
     out.join("\n")
 }
 
+/// `주소:포트` (IPv6는 `[주소]:포트`). 호스트 이름·IP가 아니면 없다
+pub(crate) fn host_port(host: &str, port: u16) -> Option<String> {
+    match host.parse::<std::net::IpAddr>() {
+        Ok(ip) => Some(std::net::SocketAddr::new(ip, port).to_string()),
+        Err(_) => crate::remote_daemon::valid_address(host).then(|| format!("{host}:{port}")),
+    }
+}
+
 /// 포트마다 `주소:포트` 한 줄 (포트가 여럿이면 칸 이름을 앞에). 서버가 꺼져 있으면 그 말을 덧붙인다.
-/// 릴레이가 주소를 알려 주지 않았거나 밖에 여는 포트가 없으면 그 이유만
+/// 주소는 PC의 공개 주소(도메인·IP)이고, 모르거나 밖에 여는 포트가 없으면 그 이유만
 fn address(result: &Value, cat: &Catalog) -> String {
+    // PC 주인이 디스코드에 알려 주지 않게 해 두었다 (`actions::hide_address`)
+    if result.get("hidden").and_then(Value::as_bool) == Some(true) {
+        return cat.t("actions.summary.address.hidden", &[]);
+    }
     let ports = items(result, "ports");
     if ports.is_empty() {
         return cat.t("actions.summary.address.no_ports", &[]);
     }
-    let Some(ip) = result.get("address").and_then(Value::as_str).and_then(|a| a.parse::<std::net::IpAddr>().ok()) else {
+    let Some(host) = result.get("address").and_then(Value::as_str).filter(|a| host_port(a, 1).is_some()) else {
         return cat.t("actions.summary.address.unknown", &[]);
     };
     let mut out: Vec<String> = ports
         .iter()
         .filter_map(|p| {
             let port = u16::try_from(p.get("port").and_then(Value::as_u64)?).ok()?;
-            let shown = std::net::SocketAddr::new(ip, port).to_string();
+            let shown = host_port(host, port)?;
             Some(if ports.len() == 1 {
                 cat.t("actions.summary.address.item", &[("address", &shown)])
             } else {

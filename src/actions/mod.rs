@@ -1901,6 +1901,13 @@ async fn localize_port_labels(server: &IPCServer, instance: &str, result: &mut V
     }
 }
 
+/// PC 주인이 디스코드에 주소를 알려 주지 않게 했으면(`shareAddress:false`, 사용자 결정 2026-11-10) 디스코드에는 주소·포트를 빼고 `hidden`만 준다
+fn hide_address(surface: Surface, result: &mut Value) {
+    if surface == Discord && result.get("shareAddress").and_then(Value::as_bool) == Some(false) {
+        *result = json!({ "instanceId": result.get("instanceId").cloned().unwrap_or(Value::Null), "hidden": true });
+    }
+}
+
 /// 결과를 챗봇에 IP·비밀처럼 보이는 값을 가려 보내는 액션: 콘솔, 모듈 조회(접속자 목록 등), 모듈 명령의 답
 fn chatbot_masked(id: &str) -> bool {
     matches!(id, "server.console.tail" | "server.players" | "server.logs.read" | "server.logs.export") || id.starts_with(QUERY_PREFIX) || id.starts_with(COMMAND_PREFIX)
@@ -1940,6 +1947,7 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
     // 서버 주소의 포트 이름은 요청 언어의 모듈 문구로 (모듈 locales `settings.<칸>.label`, 없으면 module.toml)
     if let (true, "server.address", Some(instance)) = (ok, r.id.as_str(), &r.instance) {
         localize_port_labels(server, instance, &mut result, &caller.locale).await;
+        hide_address(caller.surface, &mut result);
     }
     // 백업 목록 항목에 사람이 읽을 이름을 붙인다 (복원 칸에서 고를 때 보인다)
     if ok && r.id == "backup.list" {

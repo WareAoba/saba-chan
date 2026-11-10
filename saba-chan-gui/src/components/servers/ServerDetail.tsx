@@ -33,6 +33,7 @@ import { dataStatusRows } from '../DataSlots';
 import ExtensionSlot, { SlotView, useSlotPages } from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { PortCheck, PortCheckNotice } from './PortCheck';
+import { ServerAddress } from './ServerAddress';
 import { ServerCheck } from './ServerCheck';
 import CommandModal from '../Modals/CommandModal';
 import { NativeProvision } from '../NativeProvision';
@@ -292,6 +293,8 @@ export function ServerDetail({
                     <span>{t('server_status.unresponsive', { reason: server.unresponsive })}</span>
                 </div>
             )}
+
+            {status !== 'missing' && <ServerAddress server={server} />}
 
             {status !== 'missing' && <PortCheckNotice server={server} />}
 

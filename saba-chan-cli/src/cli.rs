@@ -1398,6 +1398,14 @@ pub enum ConfigCmd {
         #[arg(value_enum)]
         action: Option<NetTraceAction>,
     },
+    /// This PC's public address for game servers and remote daemons: no value shows it, a domain or IP sets it, `auto` uses the public IP the relay sees
+    PublicAddress {
+        /// Domain or IP (`auto` to use the public IP)
+        address: Option<String>,
+        /// Show the address with `/<server> address` on Discord
+        #[arg(long, value_name = "on|off", value_parser = on_off)]
+        share: Option<bool>,
+    },
     /// Bring in settings and servers from an export zip
     Import {
         file: std::path::PathBuf,

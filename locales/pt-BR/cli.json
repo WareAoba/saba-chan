@@ -87,6 +87,7 @@
     "pair_token_not_saved": "O Discord aceitou o código, mas não foi possível salvar a conexão neste PC. Execute bot pair novamente.",
     "pair_no_code": "O relay não retornou um código de pareamento.",
     "pair_polling": "Aguardando o Discord...",
+    "pair_copied": "Código copiado para a área de transferência (cole com Ctrl+V).",
     "pair_waiting": "Pressione Ctrl+C para cancelar.",
     "paired": "Pareado com o Discord.",
     "prefix": "Prefixo",
@@ -339,6 +340,13 @@
       "access_needs_relogin": "concedida, entre no Windows novamente para usar",
       "access_unsupported": "indisponível neste sistema (só Windows)",
       "enable_hint": "Para ligar: saba-chan-cli config set systemMonitorNetTrace=on"
+    },
+    "public_address": {
+      "current": "Endereço público: {{address}} · /address do Discord: {{share}}",
+      "auto": "IP público (automático)",
+      "auto_ip": "IP público (automático, {{ip}})",
+      "share_on": "compartilhado",
+      "share_off": "não compartilhado"
     }
   },
   "console": {
@@ -498,7 +506,8 @@
       "move_failed": "Não foi possível mover a pasta. Importe-a com \"Deixar onde está\".",
       "port_check_busy": "Já há uma verificação em andamento. Tente de novo em instantes",
       "net_trace_elevation_failed": "Não foi possível obter a confirmação de administrador no PC do daemon. Tente novamente diante desse PC.",
-      "net_trace_failed": "Não foi possível alterar a permissão."
+      "net_trace_failed": "Não foi possível alterar a permissão.",
+      "sandbox_allow": "Para executar sem isolamento, dê seu consentimento: saba-chan-cli sandbox allow {{component}}"
     },
     "not_a_bool": "\"{{value}}\" não é sim/não (use true ou false).",
     "not_a_number": "\"{{value}}\" não é um número.",
@@ -805,7 +814,10 @@
     "int_missing": "arquivo ausente",
     "int_changed": "alterado",
     "int_error": "ilegível",
-    "not_checked": "Ainda sem informações de atualização. Verifique agora: saba-chan-cli update check"
+    "not_checked": "Ainda sem informações de atualização. Verifique agora: saba-chan-cli update check",
+    "reinstall_official": "Reinstalar versão oficial",
+    "name_module": "Módulo {{name}}",
+    "name_extension": "Extensão {{name}}"
   },
   "validate": {
     "blocked": "O servidor não pode iniciar até que estes itens sejam corrigidos.",
@@ -1031,7 +1043,8 @@
       "remote.claim": "Usar o código de pareamento que outro PC mostrou e conectar a ele (por exemplo, após a instalação em uma linha no Linux)",
       "remote.install": "Instalar o Saba-chan em um PC Linux pelo ssh deste PC e conectar (`usuário@host`)",
       "remote.remove": "Remover um dos seus PCs: esquecê-lo aqui e, se quiser, desinstalar o Saba-chan nele e tirá-lo da lista do relay",
-      "remote.update": "Atualizar agora um daemon remoto ou ligar/desligar as atualizações automáticas (`--auto on|off`)"
+      "remote.update": "Atualizar agora um daemon remoto ou ligar/desligar as atualizações automáticas (`--auto on|off`)",
+      "config.public-address": "Endereço público deste PC (usado nos endereços de servidores e nas conexões de daemon remoto): sem valor mostra, domínio ou IP salva, auto usa o IP público que o Server-chan vê"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -1270,7 +1283,9 @@
       "remote.remove.remove_instances": "Com --uninstall: apagar também os servidores de jogo",
       "remote.remove.from_relay": "Tirar também da sua lista de PCs no relay",
       "remote.update.host_id": "Id do PC do daemon remoto (veja `remote daemons`)",
-      "remote.update.auto": "Ligar (on) ou desligar (off) as atualizações automáticas. Sem ele: atualizar agora"
+      "remote.update.auto": "Ligar (on) ou desligar (off) as atualizações automáticas. Sem ele: atualizar agora",
+      "config.public-address.address": "Domínio ou IP (auto para o IP público)",
+      "config.public-address.share": "Mostrar com /<servidor> address no Discord (on|off)"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },
@@ -1505,7 +1520,7 @@
     "daemon_up": "● daemon v{{version}}",
     "daemon_down": "○ daemon desligado · digite daemon start",
     "servers_running": "{{running}}/{{total}} servidores rodando",
-    "help": "←→↑↓  mover conforme a disposição da tela (abas → lista → botões → console)\nTab / Shift+Tab  próxima / anterior área\nEnter  pressionar um botão (… preenche a linha de comando, ▾ abre mais)\n1-6  ir para uma página\nConsole do servidor  entre com ↓, digite, Enter envia ao servidor (↑↓ histórico)\n: ou /  linha de comando (o que você escreveria após saba-chan-cli, Tab completa, ↑↓ histórico)\nF2  abrir ou fechar a saída,  PgUp/PgDn, roda do mouse  rolar\nF9  mudar para a GUI (quando puder abrir)\nCtrl+C  parar o comando em execução,  Esc  voltar um passo\nq  sair (o daemon e os servidores continuam rodando)",
+    "help": "Tab / Shift+Tab  próxima e anterior área (páginas → lista → abas → botões → conteúdo)\n←→↑↓  mover como a tela está organizada,  Esc  sempre um passo atrás\n1-5  ir para uma página,  Ctrl+K  encontrar qualquer coisa (telas, configurações, comandos)\ns  iniciar ou parar o servidor escolhido,  r  reiniciar,  n  novo servidor\nAba Configurações  ←→ mudar · Espaço ligar/desligar · Enter digitar · / buscar · Ctrl+S salvar · Esc desfazer\nConsole do servidor  sugere comandos do jogo ao digitar (Tab completa), Enter envia, ↑↓ histórico\n:  linha de comando (o que vem depois de saba-chan-cli, Tab completa). Botões e salvamentos usam os mesmos comandos\nF2  abrir ou fechar a saída,  PgUp/PgDn, roda do mouse  rolar,  F9  mudar para a GUI\nCtrl+C  parar o comando em execução,  q  sair (o daemon e os servidores continuam rodando)",
     "brand": "Saba-chan {{version}}",
     "memory_of": "memória {{used}} / {{total}}",
     "discord_on": "Discord ● conectado",
@@ -1520,7 +1535,8 @@
       "extensions": "Extensões",
       "discord": "Discord",
       "updates": "Atualizações",
-      "daemon": "Daemon"
+      "addons": "Módulos e extensões",
+      "settings": "Configurações do app"
     },
     "btn": {
       "status": "Visão geral",
@@ -1575,7 +1591,11 @@
       "daemon_restart": "Reiniciar daemon",
       "daemon_stop": "Parar daemon",
       "clients": "Janelas do app",
-      "more": "Mais"
+      "more": "Mais",
+      "address": "Endereço",
+      "port_check": "Testar porta",
+      "module_update": "Atualizar",
+      "module_new_server": "Novo servidor com este jogo"
     },
     "col": {
       "name": "Nome",
@@ -1584,9 +1604,13 @@
       "port": "Porta",
       "uptime": "Ativo",
       "about": "Descrição",
-      "enabled": "Ativo"
+      "enabled": "Ativo",
+      "created": "Criado",
+      "kind": "Tipo",
+      "size": "Tamanho",
+      "used_by": "Usado por"
     },
-    "no_servers": "Ainda não há servidores. Pressione [Novo servidor] ou pressione : e digite server add",
+    "no_servers": "Ainda não há servidores. Aperte n para criar um.",
     "empty": "(nenhum)",
     "detail": "Detalhes",
     "server_console": "Console",
@@ -1604,7 +1628,7 @@
       "port": "Porta do daemon",
       "language": "Idioma"
     },
-    "keys_console": "Enter enviar ao servidor · ↑↓ histórico · PgUp/PgDn rolar · Esc voltar aos botões",
+    "keys_console": "Enter enviar ao servidor · ↑↓ histórico · Tab completar · PgUp/PgDn rolar · Esc voltar",
     "keys_running": "Comando em execução · Ctrl+C parar · F2 saída · as outras páginas continuam disponíveis",
     "choose": "Escolher",
     "enter_text": "Digitar",
@@ -1616,10 +1640,149 @@
     "daemon_log": "Log do daemon",
     "use_switch": "Aqui, pressione F9 (Mudar para a GUI).",
     "console_input_hint": "Digite aqui um comando do servidor · Enter para enviar",
-    "keys_tabs": "←→ páginas · ↓ entrar · 1-6 página · : comando · F2 saída · ? ajuda · q sair",
-    "keys_list": "↑↓ escolher · → botões · : comando · F2 saída · ? ajuda · q sair",
-    "keys_actions": "←→ escolher botão · Enter pressionar · ↓ console · Esc lista · F2 saída · ? ajuda · q sair",
-    "keys_command": "Enter executar · Tab completar · ↑↓ histórico · Esc fechar"
+    "keys_tabs": "←→ páginas · ↓ entrar · 1-5 página · Ctrl+K buscar · : comando · ? ajuda · q sair",
+    "keys_list": "↑↓ escolher · → detalhes · Tab próximo · s iniciar/parar · n novo servidor · Ctrl+K buscar · ? ajuda · q sair",
+    "keys_actions": "←→ escolher botão · Enter apertar · ↓ conteúdo · Esc voltar · F2 saída · ? ajuda · q sair",
+    "keys_command": "Enter executar · Tab completar · ↑↓ histórico · Esc fechar",
+    "tab": {
+      "console": "Console",
+      "settings": "Configurações",
+      "players": "Jogadores",
+      "backups": "Backups",
+      "schedule": "Agenda",
+      "log": "Registro"
+    },
+    "dtab": {
+      "perm": "Permissões",
+      "ladder": "Níveis",
+      "words": "Palavras dos comandos",
+      "music": "Música",
+      "tts": "Leitura",
+      "moderation": "Ferramentas",
+      "notice": "Avisos",
+      "chatbot": "Saba-chan falante"
+    },
+    "stab": {
+      "app": "Configurações do app",
+      "daemon_log": "Registro do daemon"
+    },
+    "back": {
+      "servers": "Servidores",
+      "guilds": "Servidores do Discord",
+      "list": "Lista"
+    },
+    "find": {
+      "title": "Encontrar qualquer coisa",
+      "about": "Telas, configurações e comandos num só lugar",
+      "screen": "Tela",
+      "setting": "Ajuste",
+      "command": "Comando",
+      "none": "Nada encontrado.",
+      "keys": "Enter abrir · Tab pôr na linha de comando · ↑↓ escolher · Esc fechar"
+    },
+    "form": {
+      "changed": "● {{count}} alterados",
+      "default": "(padrão)",
+      "find": "Buscar: nome do campo ou chave",
+      "folded": "recolhido · Enter para abrir",
+      "keys": "k mostrar chaves",
+      "restart": "Vale a partir do próximo início.",
+      "revert": "Esc desfazer",
+      "save": "Ctrl+S salvar",
+      "group": {
+        "basic": "Básico",
+        "saba-chan": "Saba-chan",
+        "advanced": "Avançado",
+        "members": "Níveis dos membros",
+        "common": "Todos os servidores",
+        "app": "App",
+        "cli": "CLI",
+        "connection": "Conexão",
+        "servers": "Servidores de jogo",
+        "console": "Console",
+        "storage": "Armazenamento"
+      }
+    },
+    "guilds": "Servidores do Discord",
+    "keys_detail": "←→ abas · ↓ entrar · Esc voltar · s iniciar/parar · r reiniciar · Ctrl+K buscar · ? ajuda · q sair",
+    "keys_form": "↑↓ campos · ←→ mudar · Espaço ligar/desligar · Enter digitar · / buscar · Ctrl+S salvar · Esc voltar",
+    "keys_content": "↑↓ rolar · Esc voltar · s iniciar/parar · Ctrl+K buscar · ? ajuda · q sair",
+    "keys_backups": "c fazer backup agora · Enter restaurar · d apagar",
+    "keys_players": "Enter prepara um comando de expulsão",
+    "keys_edit": "e mudar (preenche a linha de comando)",
+    "keys_wizard": "↑↓ escolher · Enter próximo · Esc etapa anterior · Ctrl+C desistir",
+    "list": {
+      "players": "{{count}} online"
+    },
+    "pane": {
+      "loading": "Carregando…",
+      "not_running": "O servidor está desligado. Os jogadores aparecem quando ele rodar."
+    },
+    "risk_danger": "perigoso",
+    "same_command": "Mesmo comando:",
+    "suggest_keys": "Tab completar · ↑↓ escolher · Enter enviar",
+    "wiz": {
+      "title": "Novo servidor",
+      "step": {
+        "method": "Como",
+        "game": "Jogo",
+        "name": "Nome e pasta",
+        "preset": "Predefinição",
+        "confirm": "Confirmar"
+      },
+      "ask_method": "Como vamos criar?",
+      "method_new": "Instalar novo",
+      "method_new_about": "A Saba-chan baixa e instala o servidor",
+      "method_import": "Importar um servidor",
+      "method_import_about": "Continuar usando uma pasta de servidor que você já tem",
+      "ask_game": "Qual jogo?",
+      "no_modules": "Ainda não há módulos de jogo. Pegue um na página Módulos e extensões.",
+      "ask_name": "Dê um nome",
+      "name": "Nome",
+      "folder": "Pasta",
+      "folder_hint": "Caminho completo da pasta a importar · Tab troca de campo",
+      "need_name": "Digite um nome primeiro.",
+      "need_folder": "Digite a pasta a importar.",
+      "ask_preset": "Começar de uma predefinição?",
+      "no_preset": "Nenhuma (padrões)",
+      "ask_confirm": "Criar assim?",
+      "confirm_hint": "Enter numa linha volta para essa etapa",
+      "fix": "mudar",
+      "agree": "Li e aceito: {{id}}",
+      "need_agree": "Leia e aceite o acordo primeiro (Espaço para marcar).",
+      "start_now": "Iniciar quando estiver pronto",
+      "create": "Criar",
+      "back": "Voltar"
+    },
+    "cfg": {
+      "language": "Idioma",
+      "ipcPort": "Porta IPC",
+      "newServerAutoRestart": "Reiniciar automaticamente após uma falha",
+      "newServerBackupKeep": "Backups a manter",
+      "autoGeneratePasswords": "Gerar senhas automaticamente",
+      "portConflictCheck": "Detecção de conflito de porta",
+      "consoleTimestamps": "Horário no console",
+      "consoleTimestampDate": "Mostrar também a data",
+      "auditKeepDays": "Retenção do registro de atividades",
+      "stamp_off": "Desligado",
+      "stamp_24h": "24 horas",
+      "stamp_12h": "12 horas"
+    },
+    "cfg_about": {
+      "ipcPort": "Porta que o app e a CLI usam para acessar o daemon principal (1024–65535). A maioria dos usuários não precisa alterá-la.",
+      "autoGeneratePasswords": "Se a senha REST de um servidor estiver vazia, ela é preenchida com uma aleatória ao iniciar. Senhas existentes nunca são alteradas.",
+      "portConflictCheck": "Mostra avisos quando várias instâncias de servidor usam a mesma porta.",
+      "consoleTimestamps": "Mostra a hora de recebimento antes de cada linha do console.",
+      "auditKeepDays": "O Saba-chan apaga registros de atividade mais antigos. 0 significa sem limite de tempo.",
+      "newServerBackupKeep": "Valores preenchidos ao criar um servidor. Depois você pode alterá-los em cada servidor."
+    },
+    "none": "Nenhum",
+    "newer": "nova {{version}}",
+    "trust_about": {
+      "verified": "Exatamente como baixado do catálogo oficial",
+      "unverified": "Não veio do catálogo oficial. Confirme que a fonte é confiável",
+      "modified": "Os arquivos mudaram após a instalação. Reinstale se não foi você que editou"
+    }
   },
   "install": {
     "fetching": "Verificando a versão mais recente…",
@@ -1820,7 +1983,9 @@
       "closed": "Não acessível pela internet",
       "cgnat": "Seu roteador não tem IP público (CGNAT)",
       "unknown": "Algumas portas não puderam ser verificadas",
-      "no_ports": "Este jogo não informa quais portas verificar"
+      "no_ports": "Este jogo não informa quais portas verificar",
+      "host_mismatch": "O endereço público não aponta para este PC",
+      "host_unresolved": "O endereço público não foi encontrado"
     },
     "status": {
       "open": "Aberta",
@@ -1836,8 +2001,11 @@
       "firewall_macos": "O firewall do macOS está bloqueando conexões de entrada para o programa deste servidor. Em Ajustes do Sistema › Rede › Firewall › Opções, defina saba-core (se o servidor estiver parado) ou o programa do servidor de jogo, como java (se estiver rodando), como Permitir conexões de entrada e verifique de novo.",
       "router": "O firewall do PC permite esta porta. Redirecione esta porta para este PC nas configurações do roteador e verifique novamente.",
       "cgnat": "Sua operadora divide um IP público entre várias casas, então o redirecionamento de portas não consegue abri-lo. Peça um IP público à operadora ou use uma VPN como o Tailscale.",
-      "unknown": "Não é possível verificar portas UDP de um servidor ligado nem portas usadas por outro programa. Pare o servidor e verifique de novo."
-    }
+      "unknown": "Não é possível verificar portas UDP de um servidor ligado nem portas usadas por outro programa. Pare o servidor e verifique de novo.",
+      "host_mismatch": "Nas configurações do seu domínio, aponte o registro A para o IP público deste PC. Se usa DDNS, verifique se o atualizador está rodando. Se um proxy de CDN estiver ligado, desligue-o: as conexões do jogo não passam por ele.",
+      "host_unresolved": "Confira a grafia do endereço público e as configurações de DNS do domínio. Se o domínio for novo, confira de novo daqui a pouco."
+    },
+    "host": "Endereço público {{host}} → {{resolved}} · este PC {{address}}"
   },
   "agent": {
     "linked": "✓ Saba-chan adicionado ao {{agent}}",

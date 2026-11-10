@@ -1745,6 +1745,30 @@ async fn server_address_joins_the_relay_address_with_the_public_ports() {
     assert!(text.contains("`203.0.113.5:8211`") && text.contains("`203.0.113.5:27015`"), "{text}");
 }
 
+/// 공개 주소를 정했으면 그 도메인으로, 디스코드에 알려 주지 않게 했으면 디스코드에만 주소·포트를 빼고 알린다 (사용자 결정 2026-11-10)
+#[test]
+fn server_address_uses_the_public_name_and_hides_it_from_discord_when_turned_off() {
+    let ko = crate::chat::i18n::Catalog::for_language("ko");
+    let ports = json!([{ "field": "port", "label": "Port", "port": 25565, "protocols": ["tcp"] }]);
+    let named = json!({ "address": "mc.example.com", "custom": true, "running": true, "ports": ports });
+    assert_eq!(summary::text("server.address", &named, &ko).unwrap(), "• `mc.example.com:25565`");
+
+    let hidden_result = json!({ "instanceId": "i1", "address": "mc.example.com", "shareAddress": false, "running": true, "ports": ports });
+    for surface in [Gui, Cli] {
+        let mut r = hidden_result.clone();
+        hide_address(surface, &mut r);
+        assert_eq!(r, hidden_result, "the owner's own app still sees it");
+    }
+    let mut r = hidden_result.clone();
+    hide_address(Discord, &mut r);
+    assert_eq!(r, json!({ "instanceId": "i1", "hidden": true }));
+    let text = summary::text("server.address", &r, &ko).unwrap();
+    assert!(!text.contains("mc.example.com") && !text.contains('`') && text.contains("주인"), "{text}");
+    let mut shared = json!({ "shareAddress": true, "address": "mc.example.com", "ports": ports });
+    hide_address(Discord, &mut shared);
+    assert_eq!(shared["address"], "mc.example.com");
+}
+
 #[test]
 fn server_address_reads_as_address_and_port() {
     let ko = crate::chat::i18n::Catalog::for_language("ko");

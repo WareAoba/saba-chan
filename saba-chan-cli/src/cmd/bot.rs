@@ -437,9 +437,13 @@ async fn wait_for_claim(ctx: &Ctx, relay: Option<&str>) -> Result<Option<Value>>
     tell!();
     tell!("      {}", console::style(&code).bold().cyan());
     tell!();
-    // 다른 PC의 앱이 ssh로 설치하며 이 줄을 읽고 코드를 대신 받는다 (install.sh `--pair`, 데몬 `remote_daemon::onboard`)
+    // 다른 PC의 앱이 ssh로 설치하며 이 줄을 읽고 코드를 대신 받는다 (install.sh `--pair`, 데몬 `remote_daemon::onboard`).
+    // 그때는 클립보드 순서열을 내지 않는다 (읽는 쪽 줄에 섞인다)
     if std::env::var_os("SABA_PAIR_MARKER").is_some() {
         say!("SABA_PAIR_CODE={code}");
+    } else if output::copy_to_clipboard(&code) {
+        // 전체 화면 메뉴는 마우스를 잡아 드래그로 고를 수 없다: 코드를 클립보드에도 넣는다
+        tell!("  {}", output::dim(&t!("bot.pair_copied")));
     }
     tell!("  {}", output::dim(&t!("bot.pair_waiting")));
     let spin = crate::progress::spinner(&t!("bot.pair_polling"));

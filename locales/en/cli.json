@@ -87,6 +87,7 @@
     "pair_token_not_saved": "Discord accepted the code, but the connection could not be saved on this PC. Run bot pair again.",
     "pair_no_code": "Server-chan did not return a pairing code.",
     "pair_polling": "Waiting for Discord...",
+    "pair_copied": "Copied the code to the clipboard (paste with Ctrl+V).",
     "pair_waiting": "Press Ctrl+C to cancel.",
     "paired": "Paired with Discord.",
     "prefix": "Prefix",
@@ -339,6 +340,13 @@
       "access_needs_relogin": "granted, sign in to Windows again to use it",
       "access_unsupported": "not available on this OS (Windows only)",
       "enable_hint": "To turn it on: saba-chan-cli config set systemMonitorNetTrace=on"
+    },
+    "public_address": {
+      "current": "Public address: {{address}} · Discord /address: {{share}}",
+      "auto": "Public IP (automatic)",
+      "auto_ip": "Public IP (automatic, {{ip}})",
+      "share_on": "shared",
+      "share_off": "not shared"
     }
   },
   "console": {
@@ -498,7 +506,8 @@
       "move_failed": "The folder could not be moved. Import it with \"Keep it where it is\" instead.",
       "port_check_busy": "A check is already running. Try again in a moment",
       "net_trace_elevation_failed": "Couldn't get administrator confirmation on the daemon PC. Try again in front of that PC.",
-      "net_trace_failed": "Couldn't change the permission."
+      "net_trace_failed": "Couldn't change the permission.",
+      "sandbox_allow": "To run it without isolation, give consent: saba-chan-cli sandbox allow {{component}}"
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -805,7 +814,10 @@
     "int_missing": "file missing",
     "int_changed": "changed",
     "int_error": "unreadable",
-    "not_checked": "No update information yet. Check now: saba-chan-cli update check"
+    "not_checked": "No update information yet. Check now: saba-chan-cli update check",
+    "reinstall_official": "Reinstall official build",
+    "name_module": "{{name}} module",
+    "name_extension": "{{name}} extension"
   },
   "validate": {
     "blocked": "The server can't start until these are fixed.",
@@ -870,7 +882,8 @@
       "agent": "Register the local MCP server (`mcp`) with AI agents on this PC",
       "agent.link": "Add Saba-chan to Claude Code and Codex on this PC (both unless you pick one)",
       "agent.unlink": "Remove Saba-chan from Claude Code and Codex on this PC",
-      "agent.status": "Which agents on this PC have Saba-chan"
+      "agent.status": "Which agents on this PC have Saba-chan",
+      "config.public-address": "This PC's public address (used by game server addresses and remote daemon connections): no value shows it, a domain or IP saves it, auto uses the public IP Server-chan sees"
     },
     "arg": {
       "module.maker.game": "Game to put in the first prompt",
@@ -977,7 +990,9 @@
       "agent.link.claude": "Only Claude Code",
       "agent.link.codex": "Only Codex",
       "agent.unlink.claude": "Only Claude Code",
-      "agent.unlink.codex": "Only Codex"
+      "agent.unlink.codex": "Only Codex",
+      "config.public-address.address": "Domain or IP (auto for the public IP)",
+      "config.public-address.share": "Show it with /<server> address on Discord (on|off)"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
@@ -1254,7 +1269,7 @@
     "question": "Confirm",
     "dialog_keys": "Enter choose · Esc cancel",
     "help_title": "Keys",
-    "help": "←→↑↓  move the way the screen is laid out (tabs → list → buttons → console)\nTab / Shift+Tab  next / previous area\nEnter  press a button (… fills the command line for you, ▾ opens more)\n1-6  jump to a page\nServer console  press ↓ to get there, type, Enter sends it to the server (↑↓ history)\n: or /  command line (what you'd write after saba-chan-cli, Tab completes, ↑↓ history)\nF2  open or close the output,  PgUp/PgDn, mouse wheel  scroll\nF9  switch to the GUI (when it can open)\nCtrl+C  stop the running command,  Esc  step back\nq  quit (the daemon and servers keep running)",
+    "help": "Tab / Shift+Tab  next and previous area (pages → list → detail tabs → buttons → content)\n←→↑↓  move the way the screen is laid out,  Esc  always one step back\n1-5  jump to a page,  Ctrl+K  find anything (screens, settings, commands)\ns  start or stop the selected server,  r  restart,  n  new server\nSettings tab  ←→ change · Space toggle · Enter type · / find · Ctrl+S save · Esc revert\nServer console  suggests game commands as you type (Tab fills), Enter sends, ↑↓ history\n:  command line (what you type after saba-chan-cli, Tab completes). Buttons and saves run the same commands\nF2  open or close the output,  PgUp/PgDn, mouse wheel  scroll,  F9  switch to the GUI\nCtrl+C  stop the running command,  q  quit (the daemon and servers keep running)",
     "too_narrow": "Make the window at least 60 columns wide.",
     "not_here": "This command can't run inside the full-screen menu. Quit with q and run it in the terminal.",
     "cancelled": "Stopped.",
@@ -1274,7 +1289,8 @@
       "extensions": "Extensions",
       "discord": "Discord",
       "updates": "Updates",
-      "daemon": "Daemon"
+      "addons": "Modules & extensions",
+      "settings": "App settings"
     },
     "btn": {
       "status": "Overview",
@@ -1329,7 +1345,11 @@
       "daemon_restart": "Restart daemon",
       "daemon_stop": "Stop daemon",
       "clients": "App windows",
-      "more": "More"
+      "more": "More",
+      "address": "Address",
+      "port_check": "Port check",
+      "module_update": "Update",
+      "module_new_server": "New server with this game"
     },
     "col": {
       "name": "Name",
@@ -1338,9 +1358,13 @@
       "port": "Port",
       "uptime": "Up",
       "about": "About",
-      "enabled": "Enabled"
+      "enabled": "Enabled",
+      "created": "Created",
+      "kind": "Kind",
+      "size": "Size",
+      "used_by": "Used by"
     },
-    "no_servers": "No servers yet. Press [New server] or press : and type server add",
+    "no_servers": "No servers yet. Press n to make one.",
     "empty": "(none)",
     "detail": "Details",
     "server_console": "Console",
@@ -1358,7 +1382,7 @@
       "port": "Daemon port",
       "language": "Language"
     },
-    "keys_console": "Enter send to the server · ↑↓ history · PgUp/PgDn scroll · Esc back to buttons",
+    "keys_console": "Enter send to the server · ↑↓ history · Tab fill command · PgUp/PgDn scroll · Esc back",
     "keys_running": "Command running · Ctrl+C stop · F2 output · other pages still work",
     "choose": "Choose",
     "enter_text": "Enter",
@@ -1369,10 +1393,149 @@
     "daemon_log": "Daemon log",
     "use_switch": "Here, press F9 (Switch to GUI).",
     "console_input_hint": "Type a server command here · Enter to send",
-    "keys_tabs": "←→ pages · ↓ enter · 1-6 page · : command · F2 output · ? help · q quit",
-    "keys_list": "↑↓ pick · → buttons · : command · F2 output · ? help · q quit",
-    "keys_actions": "←→ pick a button · Enter press · ↓ console · Esc list · F2 output · ? help · q quit",
-    "keys_command": "Enter run · Tab complete · ↑↓ history · Esc close"
+    "keys_tabs": "←→ pages · ↓ enter · 1-5 page · Ctrl+K find · : command · ? help · q quit",
+    "keys_list": "↑↓ pick · → details · Tab next · s start/stop · n new server · Ctrl+K find · ? help · q quit",
+    "keys_actions": "←→ pick a button · Enter press · ↓ content · Esc back · F2 output · ? help · q quit",
+    "keys_command": "Enter run · Tab complete · ↑↓ history · Esc close",
+    "tab": {
+      "console": "Console",
+      "settings": "Settings",
+      "players": "Players",
+      "backups": "Backups",
+      "schedule": "Schedule",
+      "log": "Log"
+    },
+    "dtab": {
+      "perm": "Permissions",
+      "ladder": "Levels",
+      "words": "Command words",
+      "music": "Music",
+      "tts": "Reading",
+      "moderation": "Server tools",
+      "notice": "Alerts",
+      "chatbot": "Talking Saba-chan"
+    },
+    "stab": {
+      "app": "App settings",
+      "daemon_log": "Daemon log"
+    },
+    "back": {
+      "servers": "Servers",
+      "guilds": "Discord servers",
+      "list": "List"
+    },
+    "find": {
+      "title": "Find anything",
+      "about": "Screens, settings and commands in one place",
+      "screen": "Screen",
+      "setting": "Setting",
+      "command": "Command",
+      "none": "Nothing matches.",
+      "keys": "Enter open · Tab put in the command line · ↑↓ pick · Esc close"
+    },
+    "form": {
+      "changed": "● {{count}} changed",
+      "default": "(default)",
+      "find": "Find: field name or key",
+      "folded": "folded · Enter to open",
+      "keys": "k show keys",
+      "restart": "Takes effect from the next start.",
+      "revert": "Esc revert",
+      "save": "Ctrl+S save",
+      "group": {
+        "basic": "Basic",
+        "saba-chan": "Saba-chan",
+        "advanced": "Advanced",
+        "members": "Member levels",
+        "common": "All servers",
+        "app": "App",
+        "cli": "CLI",
+        "connection": "Connection",
+        "servers": "Game servers",
+        "console": "Console",
+        "storage": "Storage"
+      }
+    },
+    "guilds": "Discord servers",
+    "keys_detail": "←→ tabs · ↓ enter · Esc back · s start/stop · r restart · Ctrl+K find · ? help · q quit",
+    "keys_form": "↑↓ fields · ←→ change · Space toggle · Enter type · / find · Ctrl+S save · Esc back",
+    "keys_content": "↑↓ scroll · Esc back · s start/stop · Ctrl+K find · ? help · q quit",
+    "keys_backups": "c back up now · Enter restore · d delete",
+    "keys_players": "Enter fills a kick command",
+    "keys_edit": "e change (fills the command line)",
+    "keys_wizard": "↑↓ pick · Enter next · Esc previous step · Ctrl+C give up",
+    "list": {
+      "players": "{{count}} online"
+    },
+    "pane": {
+      "loading": "Loading…",
+      "not_running": "The server is off. Players show up once it runs."
+    },
+    "risk_danger": "danger",
+    "same_command": "Same command:",
+    "suggest_keys": "Tab fill · ↑↓ pick · Enter send",
+    "wiz": {
+      "title": "New server",
+      "step": {
+        "method": "How",
+        "game": "Game",
+        "name": "Name & folder",
+        "preset": "Preset",
+        "confirm": "Confirm"
+      },
+      "ask_method": "How should it be made?",
+      "method_new": "Install new",
+      "method_new_about": "Saba-chan downloads and installs the server",
+      "method_import": "Import a server",
+      "method_import_about": "Keep using a server folder you already have",
+      "ask_game": "Which game?",
+      "no_modules": "No game modules yet. Get one on the Modules & extensions page.",
+      "ask_name": "Give it a name",
+      "name": "Name",
+      "folder": "Folder",
+      "folder_hint": "Full path of the server folder to import · Tab switches fields",
+      "need_name": "Type a name first.",
+      "need_folder": "Type the folder to import.",
+      "ask_preset": "Start from a preset?",
+      "no_preset": "None (defaults)",
+      "ask_confirm": "Make it like this?",
+      "confirm_hint": "Enter on a line goes back to that step",
+      "fix": "change",
+      "agree": "I read and accept the {{id}}",
+      "need_agree": "Read and accept the agreement first (Space to check).",
+      "start_now": "Start it when ready",
+      "create": "Create",
+      "back": "Back"
+    },
+    "cfg": {
+      "language": "Language",
+      "ipcPort": "IPC Port",
+      "newServerAutoRestart": "Restart automatically after a crash",
+      "newServerBackupKeep": "Backups to keep",
+      "autoGeneratePasswords": "Auto-generate Passwords",
+      "portConflictCheck": "Port Conflict Detection",
+      "consoleTimestamps": "Console Timestamps",
+      "consoleTimestampDate": "Show date too",
+      "auditKeepDays": "Activity Log Retention",
+      "stamp_off": "Off",
+      "stamp_24h": "24-hour",
+      "stamp_12h": "12-hour"
+    },
+    "cfg_about": {
+      "ipcPort": "Port number the app and CLI use to reach the core daemon (1024–65535). Most users do not need to change it.",
+      "autoGeneratePasswords": "If a server's REST password is empty, fill it with a random one when the server starts. Existing passwords are never changed.",
+      "portConflictCheck": "Shows a warning when several servers use the same port.",
+      "consoleTimestamps": "Show the time each console line was received.",
+      "auditKeepDays": "Saba-chan deletes activity records older than this. 0 means no time limit.",
+      "newServerBackupKeep": "Values filled in when you create a server. You can change them per server afterward."
+    },
+    "none": "None",
+    "newer": "new {{version}}",
+    "trust_about": {
+      "verified": "Exactly as downloaded from the official catalog",
+      "unverified": "Not from the official catalog. Make sure you got it from a source you trust",
+      "modified": "Its files changed after install. Reinstall it unless you edited them yourself"
+    }
   },
   "install": {
     "fetching": "Checking the latest release…",
@@ -1527,7 +1690,9 @@
       "closed": "Not reachable from the internet",
       "cgnat": "Your router has no public IP (CGNAT)",
       "unknown": "Some ports could not be checked",
-      "no_ports": "This game does not say which ports to check"
+      "no_ports": "This game does not say which ports to check",
+      "host_mismatch": "The public address does not point to this PC",
+      "host_unresolved": "The public address could not be found"
     },
     "status": {
       "open": "Open",
@@ -1543,8 +1708,11 @@
       "firewall_macos": "The macOS firewall is blocking incoming connections for this server's program. In System Settings › Network › Firewall › Options, set saba-core (if the server is stopped) or the game server program such as java (if it is running) to Allow incoming connections, then check again.",
       "router": "The PC firewall allows this port. Forward this port to this PC in your router settings, then check again.",
       "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
-      "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
-    }
+      "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again.",
+      "host_mismatch": "In your domain settings, point the A record to this PC's public IP. If you use DDNS, check that its updater is running. If a CDN proxy is on, turn it off: game connections cannot pass through it.",
+      "host_unresolved": "Check the spelling of the public address and your domain's DNS settings. If the domain is new, check again in a little while."
+    },
+    "host": "Public address {{host}} → {{resolved}} · this PC {{address}}"
   },
   "agent": {
     "linked": "✓ Added Saba-chan to {{agent}}",

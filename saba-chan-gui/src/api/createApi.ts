@@ -590,6 +590,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 접속해 본다 (몇 초). 마지막 결과는 자동 확인 것도 같이 본다
         instancePortCheck: (id: string) => call('post', `/api/instance/${encodeURIComponent(id)}/port-check`, {}, 30000),
         instancePortCheckLast: (id: string) => call('get', `/api/instance/${encodeURIComponent(id)}/port-check`),
+        // 친구가 접속할 주소: `{address, custom, shareAddress, running, ports:[{field, label, port, protocols}]}` (PC의 공개 주소 + 밖에 여는 포트)
+        instanceAddress: (id: string) => call('get', `/api/instance/${encodeURIComponent(id)}/address`),
         // 설정 화면용: 디스크의 실제 설정 (실패하면 success:false)
         instanceReadLiveSettings: (id: string) =>
             call('get', `/api/instance/${encodeURIComponent(id)}/settings/live`, undefined, 60000),
@@ -1106,6 +1108,23 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                         target: hostId || 'local',
                     })
                 ).data;
+            } catch (caught) {
+                const error = caught as DaemonError;
+                return error.response ? failureBody(error) : connectionError(error);
+            }
+        },
+        // PC의 공개 주소 `{address, shareAddress, publicIp}` (내 PC 카드). hostId가 없으면 이 PC (고른 데몬과 상관없이)
+        publicAddress: async (hostId: string | null): Promise<ApiBody> => {
+            try {
+                return (await request('get', '/api/public-address', undefined, { target: hostId || 'local' })).data;
+            } catch (caught) {
+                const error = caught as DaemonError;
+                return error.response ? failureBody(error) : connectionError(error);
+            }
+        },
+        publicAddressSet: async (hostId: string | null, patch: { address?: string; shareAddress?: boolean }): Promise<ApiBody> => {
+            try {
+                return (await request('put', '/api/public-address', patch, { target: hostId || 'local' })).data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 return error.response ? failureBody(error) : connectionError(error);

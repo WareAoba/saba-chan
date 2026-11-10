@@ -1,6 +1,7 @@
 /**
  * 포트포워딩 확인 결과 보기 (GUI·사바쨩 웹이 같이 쓴다). 판정·상태 이름은 데몬 값 그대로 (`port_check::Report`):
- * verdict open | firewall | router | closed | cgnat | unknown | no_ports | not_checked, 포트 status open | closed | unknown | in_use | firewall | router
+ * verdict open | firewall | router | closed | cgnat | unknown | no_ports | not_checked | host_mismatch | host_unresolved, 포트 status open | closed | unknown | in_use | firewall | router
+ * host_*: PC가 정한 공개 주소(`host`)가 이 PC(`address`)를 가리키지 않거나(`resolved`가 가리키는 곳) 찾을 수 없어 확인하지 않았다
  */
 
 /** 포트 확인 결과 (port_check::Report)의 쓰는 칸 */
@@ -8,6 +9,9 @@ export interface PortCheckReport {
     verdict?: string;
     /** 고칠 방법 안내 키 (`port_check.hint.<hint>`). 옛 데몬은 없으므로 verdict로 대신한다 */
     hint?: string;
+    checkedAt?: string;
+    host?: string;
+    resolved?: string[];
 }
 
 /** 고칠 방법 안내 문구 키 */
@@ -25,7 +29,18 @@ export function portHelpUrl(language?: string | null) {
 }
 
 /** 닫혔거나 공유기에 공인 주소가 없어 알려야 하는 결과인가 (확인 결과를 상세 위에 띄운다) */
-export const portCheckNeedsAttention = (report?: PortCheckReport | null) => ['closed', 'cgnat', 'firewall', 'router'].includes(report?.verdict as string);
+export const portCheckNeedsAttention = (report?: PortCheckReport | null) => [
+    'closed',
+    'cgnat',
+    'firewall',
+    'router',
+    'host_mismatch',
+    'host_unresolved',
+].includes(report?.verdict as string);
+
+/** 공개 주소로 확인했으면 `mc.example.com → 203.0.113.7` (찾은 곳이 없으면 이름만) */
+export const portCheckHost = (report?: PortCheckReport | null) =>
+    report?.host ? [report.host, (report.resolved || []).join(', ')].filter(Boolean).join(' → ') : null;
 
 /** 확인한 결과가 있는가 (확인 전·포트 없음은 보일 것이 없다) */
 export const portCheckShown = (report?: PortCheckReport | null) =>

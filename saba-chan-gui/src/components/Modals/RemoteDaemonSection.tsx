@@ -8,6 +8,7 @@ import { OsLogo, osFamily, type Platform } from '../OsLogo';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { REMOTE_DAEMONS_CHANGED, reloadWindow, useDaemonTarget } from '../shell/DaemonSwitcher';
+import { PublicAddressRow } from './PublicAddress';
 import { InstallDialog, RemoveDialog } from './RemotePcDialogs';
 import { failed } from '../../utils/apiResult';
 
@@ -92,7 +93,7 @@ interface RemoteDaemonSectionProps {
 export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = reloadWindow }: RemoteDaemonSectionProps) {
     const { t, i18n } = useTranslation('gui');
     const [settings, setSettings] = useState<ApiBody | null>(null);
-    const [draft, setDraft] = useState<{ enabled: boolean; port: string; address: string } | null>(null); // {enabled, port, address}
+    const [draft, setDraft] = useState<{ enabled: boolean; port: string } | null>(null); // {enabled, port}. 주소는 카드의 게임 서버 주소 줄에서 (PublicAddress)
     const [clients, setClients] = useState<ApiBody[]>([]);
     const [peers, setPeers] = useState<ApiBody[] | null>(null); // null = 못 읽음
     const [peersError, setPeersError] = useState<string | null>(null);
@@ -113,7 +114,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         const res = await window.api.remoteSettings();
         if (failed(res)) return;
         setSettings(res);
-        setDraft({ enabled: Boolean(res.enabled), port: String(res.port ?? ''), address: res.address || '' });
+        setDraft({ enabled: Boolean(res.enabled), port: String(res.port ?? '') });
     }, []);
     const loadClients = useCallback(async () => {
         const res = await window.api.remoteClients();
@@ -176,11 +177,11 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
             return;
         }
         const res = await run('save', () =>
-            window.api.remoteSettingsSet({ enabled: draft!.enabled, port, address: draft!.address.trim() }),
+            window.api.remoteSettingsSet({ enabled: draft!.enabled, port }),
         );
         if (res && !failed(res)) {
             setSettings((old) => ({ ...res, thisPc: res.thisPc || old?.thisPc }));
-            setDraft({ enabled: Boolean(res.enabled), port: String(res.port ?? port), address: res.address || '' });
+            setDraft({ enabled: Boolean(res.enabled), port: String(res.port ?? port) });
         }
     };
 
@@ -323,6 +324,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     <dd>{lastSeen || '-'}</dd>
                     <dt>{t('remote_daemon.public_ip')}</dt>
                     <dd>{peer?.publicIp ? <code>{peer.publicIp}</code> : <span className="muted">{t('remote_daemon.ip_unknown')}</span>}</dd>
+                    {daemon && state === null && online && <PublicAddressRow hostId={card.hostId} name={name} />}
                     <dt>{t('remote_daemon.route')}</dt>
                     <dd>
                         {route === 'direct' && t('remote_daemon.route_direct', { port: daemon?.port })}
@@ -388,23 +390,6 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                             onChange={(e) => setDraft({ ...draft, port: e.target.value })}
                         />
                     </div>
-                    <div className="setting-item">
-                        <label className="setting-label" htmlFor="remote-daemon-address">
-                            <span className="setting-title">
-                                <Icon name="globe" size="sm" /> {t('remote_daemon.address')}
-                            </span>
-                            <span className="setting-description">{t('remote_daemon.address_description')}</span>
-                        </label>
-                        <input
-                            id="remote-daemon-address"
-                            aria-label={t('remote_daemon.address')}
-                            type="text"
-                            className="setting-input-text"
-                            value={draft.address}
-                            placeholder={t('remote_daemon.address_placeholder')}
-                            onChange={(e) => setDraft({ ...draft, address: e.target.value })}
-                        />
-                    </div>
                     <div className="data-transfer-actions remote-daemon-actions">
                         <span className="muted" role="status">
                             {!settings!.enabled && t('remote_daemon.status_off')}
@@ -447,6 +432,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     <dl className="remote-pc-kv">
                         <dt>{t('remote_daemon.public_ip')}</dt>
                         <dd>{thisPc.publicIp ? <code>{thisPc.publicIp}</code> : <span className="muted">{t('remote_daemon.ip_unknown')}</span>}</dd>
+                        <PublicAddressRow hostId={null} name={t('daemon_switcher.local')} />
                         <dt>{t('remote_daemon.route')}</dt>
                         <dd>
                             {settings?.enabled && status.listening

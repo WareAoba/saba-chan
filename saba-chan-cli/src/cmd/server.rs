@@ -1539,21 +1539,29 @@ async fn players(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// 서버 주소: 릴레이가 본 이 PC의 공인 주소 + 밖에 여는 포트마다 `주소:포트`
+/// `주소:포트` (IPv6는 `[주소]:포트`). 호스트 이름이면 그대로 붙인다
+fn host_port(host: &str, port: u16) -> String {
+    match host.parse::<std::net::IpAddr>() {
+        Ok(ip) => std::net::SocketAddr::new(ip, port).to_string(),
+        Err(_) => format!("{host}:{port}"),
+    }
+}
+
+/// 서버 주소: 이 PC의 공개 주소(정한 도메인·IP, 없으면 릴레이가 본 공인 IP) + 밖에 여는 포트마다 `주소:포트`
 async fn address(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
     let r = ctx.api.address(&sv.id).await?;
     ctx.out.data(&r, |r| {
         output::heading(&t!("address.title", server = sv.name));
         let ports: Vec<&Value> = r.get("ports").and_then(Value::as_array).into_iter().flatten().collect();
-        let ip = r.get("address").and_then(Value::as_str).and_then(|a| a.parse::<std::net::IpAddr>().ok());
-        match ip {
+        let host = r.get("address").and_then(Value::as_str).filter(|a| !a.is_empty());
+        match host {
             _ if ports.is_empty() => say!("{}", t!("address.no_ports")),
             None => say!("{}", t!("address.unknown")),
-            Some(ip) => {
+            Some(host) => {
                 for p in ports {
                     let port = p.get("port").and_then(Value::as_u64).and_then(|v| u16::try_from(v).ok()).unwrap_or(0);
-                    say!("  {}  {}", std::net::SocketAddr::new(ip, port), output::dim(s(p, "label")));
+                    say!("  {}  {}", host_port(host, port), output::dim(s(p, "label")));
                 }
             }
         }
@@ -1572,7 +1580,10 @@ async fn port_check(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         output::heading(&t!("port_check.title", server = sv.name));
         let verdict = s(r, "verdict");
         say!("{}", t!(&format!("port_check.verdict.{}", verdict)));
-        if !s(r, "address").is_empty() {
+        if !s(r, "host").is_empty() {
+            let resolved: Vec<&str> = r.get("resolved").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+            say!("{}", output::dim(&t!("port_check.host", host = s(r, "host"), resolved = resolved.join(", "), address = s(r, "address"))));
+        } else if !s(r, "address").is_empty() {
             say!("{}", output::dim(&t!("port_check.address", address = s(r, "address"))));
         }
         for p in r.get("ports").and_then(Value::as_array).into_iter().flatten() {
@@ -1580,7 +1591,7 @@ async fn port_check(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             let status = t!(&format!("port_check.status.{}", s(p, "status")));
             say!("  {}/{}  {}", port, s(p, "protocol").to_uppercase(), status);
         }
-        if matches!(verdict, "firewall" | "router" | "closed" | "cgnat" | "unknown") {
+        if matches!(verdict, "firewall" | "router" | "closed" | "cgnat" | "unknown" | "host_mismatch" | "host_unresolved") {
             // 고칠 곳은 데몬이 OS에 맞춰 고른다 (옛 데몬은 `hint`가 없다)
             let hint = Some(s(r, "hint")).filter(|h| !h.is_empty()).unwrap_or(verdict);
             say!("{}", output::dim(&t!(&format!("port_check.hint.{}", hint))));
@@ -1812,7 +1823,83 @@ fn insert_patch(patch: &mut Map<String, Value>, key: &str, value: Value) {
     }
 }
 
-async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
+/// 서버 설정 화면에 쓰는 것을 한 번에 읽은 것 (`server settings`와 TUI 설정 탭이 같이 쓴다)
+pub struct SettingsData {
+    pub sv: Server,
+    fields: Vec<Value>,
+    hidden: Vec<String>,
+    live: Option<Value>,
+    locales: Option<Value>,
+    ms: Value,
+}
+
+impl SettingsData {
+    fn locale(&self, f: &Value, part: &str) -> Option<String> {
+        self.locales
+            .as_ref()
+            .and_then(|l| l.pointer(&format!("/settings/{}/{part}", s(f, "name"))))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    }
+
+    fn label(&self, f: &Value) -> String {
+        self.locale(f, "label").unwrap_or_else(|| {
+            if s(f, "label").is_empty() {
+                s(f, "name").to_string()
+            } else {
+                s(f, "label").to_string()
+            }
+        })
+    }
+
+    fn current(&self, name: &str) -> Value {
+        self.live
+            .as_ref()
+            .and_then(|l| l.get(name))
+            .filter(|v| !v.is_null())
+            .or_else(|| self.sv.raw.get(name).filter(|v| !v.is_null()))
+            .or_else(|| self.ms.get(name))
+            .cloned()
+            .unwrap_or(Value::Null)
+    }
+
+    /// `--json` 문서: 칸마다 이름·종류·묶음·지금 값·기본값·선택지(번역된 이름도)·설명·범위
+    pub fn doc(&self) -> Value {
+        let out_fields: Vec<Value> = self
+            .fields
+            .iter()
+            .map(|f| {
+                let name = s(f, "name");
+                let option_labels: Map<String, Value> = f
+                    .get("options")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .filter_map(|o| {
+                        self.locales
+                            .as_ref()
+                            .and_then(|l| l.pointer(&format!("/settings/{name}/options/{o}")))
+                            .and_then(Value::as_str)
+                            .map(|t| (o.to_string(), json!(t)))
+                    })
+                    .collect();
+                json!({
+                    "key": name, "label": self.label(f), "type": s(f, "field_type"), "group": f.get("group"),
+                    "value": self.current(name), "default": f.get("default"), "options": f.get("options"),
+                    "option_labels": option_labels,
+                    "description": self.locale(f, "description").or_else(|| f.get("description").and_then(Value::as_str).map(str::to_string)),
+                    "min": f.get("min"), "max": f.get("max"),
+                    "hidden": self.hidden.iter().any(|h| h == name),
+                    "restart_required": f.get("restart_required").and_then(Value::as_bool).unwrap_or(false),
+                })
+            })
+            .collect();
+        json!({ "server": self.sv.name, "live": self.live.is_some(), "fields": out_fields, "instance": self.sv.raw })
+    }
+}
+
+pub async fn load_settings(ctx: &Ctx, query: Option<&str>) -> Result<SettingsData> {
     let sv = resolve::server(ctx, query).await?;
     let (module, locales, live) = tokio::join!(
         module_info(ctx, &sv.module),
@@ -1840,42 +1927,18 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         Some(_) => resolve::server(ctx, Some(&sv.id)).await.unwrap_or(sv),
         None => sv,
     };
-    let label = |f: &Value| {
-        locales
-            .as_ref()
-            .and_then(|l| l.pointer(&format!("/settings/{}/label", s(f, "name"))))
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .unwrap_or_else(|| {
-                if s(f, "label").is_empty() {
-                    s(f, "name").to_string()
-                } else {
-                    s(f, "label").to_string()
-                }
-            })
-    };
     let ms = sv.raw.get("module_settings").cloned().unwrap_or(json!({}));
-    let current = |name: &str| {
-        live.as_ref()
-            .and_then(|l| l.get(name))
-            .filter(|v| !v.is_null())
-            .or_else(|| sv.raw.get(name).filter(|v| !v.is_null()))
-            .or_else(|| ms.get(name))
-            .cloned()
-            .unwrap_or(Value::Null)
-    };
+    Ok(SettingsData { sv, fields, hidden, live, locales, ms })
+}
 
-    let mut out_fields = Vec::new();
-    for f in &fields {
-        let name = s(f, "name");
-        out_fields.push(json!({
-            "key": name, "label": label(f), "type": s(f, "field_type"), "group": f.get("group"),
-            "value": current(name), "default": f.get("default"), "options": f.get("options"),
-            "hidden": hidden.iter().any(|h| h == name),
-            "restart_required": f.get("restart_required").and_then(Value::as_bool).unwrap_or(false),
-        }));
-    }
-    let v = json!({ "server": sv.name, "live": live.is_some(), "fields": out_fields, "instance": sv.raw });
+async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
+    let data = load_settings(ctx, query).await?;
+    let (sv, fields, hidden, ms) = (&data.sv, &data.fields, &data.hidden, &data.ms);
+    let label = |f: &Value| data.label(f);
+    let current = |name: &str| data.current(name);
+    // 꺼진 서버는 다시 켤 일이 없다: "바꾸면 다시 시작" 표시는 켜져 있을 때만
+    let running = matches!(s(&sv.raw, "status"), "running" | "starting");
+    let v = data.doc();
     ctx.out.data(&v, |_| {
         let mut groups: Vec<(String, Vec<(String, String)>)> = Vec::new();
         let mut push = |group: &str, k: String, v: String| match groups.iter_mut().find(|(g, _)| g == group) {
@@ -1883,7 +1946,7 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             None => groups.push((group.to_string(), vec![(k, v)])),
         };
         let mut seen: Vec<String> = Vec::new();
-        for f in &fields {
+        for f in fields {
             let name = s(f, "name");
             if hidden.iter().any(|h| h == name) {
                 seen.push(name.to_string());
@@ -1900,7 +1963,7 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             if let Some(line) = options_line(f) {
                 shown = format!("{}  {}", shown, output::dim(&format!("({})", line)));
             }
-            let marks = setting_marks(f);
+            let marks = if running { setting_marks(f) } else { String::new() };
             if !marks.is_empty() {
                 shown = format!("{}  {}", shown, marks);
             }

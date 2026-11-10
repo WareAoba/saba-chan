@@ -2256,9 +2256,6 @@
     "enabled": "원격 연결 받기",
     "enabled_description": "내 다른 PC가 암호화한 연결로 이 데몬에 바로 붙어요.",
     "port": "포트",
-    "address": "주소",
-    "address_description": "내 다른 PC가 닿을 수 있는 공인 IP나 호스트 이름이에요. 비워 두면 서버쨩을 거쳐 붙어요(조금 느려요).",
-    "address_placeholder": "공인 IP 또는 호스트 이름",
     "save": "저장",
     "status_off": "꺼짐",
     "status_listening": "{{port}} 포트에서 받는 중",
@@ -2431,7 +2428,9 @@
       "closed": "밖에서 접속할 수 없어요",
       "cgnat": "공유기가 공인 IP를 받지 못했어요 (CGNAT)",
       "unknown": "일부 포트는 확인하지 못했어요",
-      "no_ports": "이 게임은 확인할 포트를 알려 주지 않았어요"
+      "no_ports": "이 게임은 확인할 포트를 알려 주지 않았어요",
+      "host_mismatch": "공개 주소가 이 PC를 가리키지 않아요",
+      "host_unresolved": "공개 주소를 찾을 수 없어요"
     },
     "status": {
       "open": "열림",
@@ -2447,7 +2446,9 @@
       "firewall_macos": "macOS 방화벽이 이 서버 프로그램이 받는 연결을 막고 있어요. 시스템 설정 › 네트워크 › 방화벽 › 옵션에서, 서버가 정지돼 있으면 saba-core를, 실행 중이면 게임 서버 프로그램(예: java)을 '들어오는 연결 허용'으로 바꾼 뒤 다시 확인해 주세요.",
       "router": "PC 방화벽은 이 포트를 허용하고 있어요. 공유기 설정에서 이 포트를 이 PC로 포트포워딩한 뒤 다시 확인해 주세요.",
       "cgnat": "통신사가 공인 IP를 여러 집이 나눠 쓰게 해서 포트포워딩으로는 열 수 없어요. 통신사에 공인 IP를 요청하거나 Tailscale 같은 VPN을 써 주세요.",
-      "unknown": "실행 중인 서버의 UDP 포트와 다른 프로그램이 쓰는 포트는 확인할 수 없어요. 서버를 정지하고 다시 확인해 주세요."
+      "unknown": "실행 중인 서버의 UDP 포트와 다른 프로그램이 쓰는 포트는 확인할 수 없어요. 서버를 정지하고 다시 확인해 주세요.",
+      "host_mismatch": "도메인 관리 화면에서 A 기록을 이 PC의 공인 IP로 바꿔 주세요. DDNS라면 갱신 프로그램이 돌고 있는지, CDN 프록시를 켜 두었다면 꺼 주세요. 게임 접속은 프록시를 지나지 못해요.",
+      "host_unresolved": "공개 주소의 철자와 도메인의 DNS 설정을 확인해 주세요. 막 만든 도메인이면 조금 뒤에 다시 확인해 주세요."
     },
     "error": {
       "node_token_missing": "먼저 디스코드 연결(페어링)을 해 주세요. 확인은 서버쨩이 해요.",
@@ -2455,7 +2456,8 @@
       "rate_limited": "확인을 너무 자주 했어요. 1분 뒤에 다시 해 주세요.",
       "relay_unreachable": "서버쨩에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.",
       "failed": "확인하지 못했어요."
-    }
+    },
+    "host": "공개 주소 {{host}} · 이 PC {{address}}"
   },
   "picker": {
     "today": "오늘",
@@ -2526,5 +2528,34 @@
     "entry_modules": "게임 모듈 받기",
     "entry_modules_desc": "서버로 돌릴 게임 받기",
     "palette": "가이드: {{name}}"
+  },
+  "public_address": {
+    "label": "게임 서버 주소",
+    "auto": "공인 IP 자동",
+    "change": "바꾸기",
+    "share_off": "디스코드에 안 알림",
+    "title": "게임 서버 주소 · {{name}}",
+    "auto_title": "공인 IP 그대로",
+    "auto_desc": "서버쨩이 본 이 PC의 IP를 써요. 집 인터넷은 IP가 가끔 바뀌어요.",
+    "auto_desc_ip": "서버쨩이 본 이 PC의 IP를 써요. 지금 {{ip}}. 집 인터넷은 IP가 가끔 바뀌어요.",
+    "custom_title": "공개 주소 직접 정하기",
+    "custom_desc": "도메인(DDNS 포함)이나 고정 IP를 적어요. 포트는 서버마다 붙어요. 원격 데몬 연결도 이 주소를 써요.",
+    "preview": "친구에게는 {{example}}처럼 보여요. https://나 :포트를 적으면 떼고 저장해요.",
+    "share_title": "디스코드 /주소로 알려 주기",
+    "share_desc": "끄면 디스코드에서 /주소를 불러도 이 PC 서버의 주소를 알려 주지 않아요. 앱·CLI·사바쨩 웹에서는 그대로 보여요.",
+    "save": "저장",
+    "err_invalid": "도메인이나 IP 주소만 적을 수 있어요",
+    "err_failed": "저장하지 못했어요"
+  },
+  "server_address": {
+    "title": "접속 주소",
+    "copy": "복사",
+    "copied": "복사했어요",
+    "hide": "가리기",
+    "show": "보이기",
+    "hidden": "가려진 주소",
+    "unknown": "아직 이 PC의 공인 주소를 몰라요. 서버쨩에 연결되면 보여요.",
+    "stopped": "서버를 시작해야 친구가 들어올 수 있어요",
+    "checked_at": "{{time}} 확인"
   }
 }

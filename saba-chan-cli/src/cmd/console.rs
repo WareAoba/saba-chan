@@ -427,16 +427,20 @@ async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
             }
         }
     });
+    // 친 명령을 보내는 동안은 뒤 폴링을 멈추고, 끝나면 그 답을 직접 찍는다.
+    // 입력 줄이 닫혔다 다시 열리는 사이에 외부 프린터로 보낸 줄은 화면에 나오지 않는다 (rustyline)
+    let cursor = std::sync::Arc::new(tokio::sync::Mutex::new(cur));
     let poll_ctx = ctx.clone();
     let poll_sv = sv.clone();
+    let poll_cursor = cursor.clone();
     let poller = tokio::spawn(async move {
-        let mut cur = cur;
         let emit = |line: String| {
             let _ = tx.send(line);
         };
         loop {
             tokio::time::sleep(POLL).await;
-            cur = poll_once(&poll_ctx, &poll_sv, cur, &emit).await;
+            let mut cur = poll_cursor.lock().await;
+            *cur = poll_once(&poll_ctx, &poll_sv, cur.clone(), &emit).await;
         }
     });
 
@@ -492,7 +496,11 @@ async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
             }
             continue;
         }
+        let mut cur = cursor.lock().await;
         report(ctx, crate::cmd::server::exec_line(ctx, sv, &cat, text).await);
+        // 답이 버퍼에 들어올 틈을 조금 주고, 입력 줄을 다시 열기 전에 직접 찍는다
+        tokio::time::sleep(POLL).await;
+        *cur = poll_once(ctx, sv, cur.clone(), &|line: String| say!("{}", line)).await;
     }
     poller.abort();
     drop(rl);

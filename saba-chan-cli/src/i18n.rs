@@ -7,6 +7,20 @@
 use serde_json::Value;
 use std::sync::{OnceLock, RwLock};
 
+/// 고를 수 있는 언어 (코드, 그 언어로 쓴 이름)
+pub const LANGUAGES: &[(&str, &str)] = &[
+    ("ko", "한국어"),
+    ("en", "English"),
+    ("ja", "日本語"),
+    ("zh-CN", "简体中文"),
+    ("zh-TW", "繁體中文"),
+    ("es", "Español"),
+    ("fr", "Français"),
+    ("de", "Deutsch"),
+    ("ru", "Русский"),
+    ("pt-BR", "Português (Brasil)"),
+];
+
 const EMBEDDED: &[(&str, &str)] = &[
     ("en", include_str!("../../locales/en/cli.json")),
     ("ko", include_str!("../../locales/ko/cli.json")),
@@ -111,10 +125,37 @@ pub fn try_t_in(lang: &str, key: &str) -> Option<String> {
     lookup(&embedded(lang)?, key).map(str::to_string)
 }
 
-/// `{{name}}` 자리를 채운다
+/// `{{name}}` 자리를 채운다. 한국어 조사 꼴(`{{name}}이(가)`)은 채운 값의 받침에 맞는 하나로 고른다
 pub fn fill(template: &str, vars: &[(&str, String)]) -> String {
     vars.iter().fold(template.to_string(), |s, (k, v)| {
-        s.replace(&format!("{{{{{}}}}}", k), v)
+        let slot = format!("{{{{{}}}}}", k);
+        let s = JOSA.iter().fold(s, |s, (pair, with, without, rieul)| {
+            let Some(batchim) = final_consonant(v) else { return s };
+            let pick = if batchim == Some(8) { rieul } else if batchim.is_some() { with } else { without };
+            s.replace(&format!("{slot}{pair}"), &format!("{v}{pick}"))
+        });
+        s.replace(&slot, v)
+    })
+}
+
+/// (꼴, 받침 있을 때, 없을 때, ㄹ 받침일 때)
+const JOSA: [(&str, &str, &str, &str); 6] = [
+    ("이(가)", "이", "가", "이"),
+    ("을(를)", "을", "를", "을"),
+    ("은(는)", "은", "는", "은"),
+    ("과(와)", "과", "와", "과"),
+    ("와(과)", "과", "와", "과"),
+    ("(으)로", "으로", "로", "로"),
+];
+
+/// 값의 마지막 한글 글자 받침 (끝의 따옴표·괄호는 건너뛴다). 한글로 끝나지 않으면 None (조사 꼴을 그대로 둔다).
+/// 받침이 없으면 Some(None), 있으면 Some(Some(종성 번호)): ㄹ은 8
+fn final_consonant(value: &str) -> Option<Option<u32>> {
+    let last = value.chars().rev().find(|c| !matches!(c, '"' | '\'' | '”' | '’' | '」' | '』' | ')' | ']' | ' '))?;
+    let code = last as u32;
+    (0xAC00..=0xD7A3).contains(&code).then(|| match (code - 0xAC00) % 28 {
+        0 => None,
+        n => Some(n),
     })
 }
 
@@ -154,6 +195,19 @@ mod tests {
         assert_eq!(lang(), before);
         assert_ne!(t("update_required.title"), "update_required.title");
         assert!(try_t("no.such.key").is_none());
+    }
+
+    #[test]
+    fn korean_particles_follow_the_last_syllable() {
+        let f = |v: &str, t: &str| fill(t, &[("name", v.to_string())]);
+        assert_eq!(f("데모서버", "{{name}}이(가) 시작됐어요."), "데모서버가 시작됐어요.");
+        assert_eq!(f("마크야생", "{{name}}이(가) 시작됐어요."), "마크야생이 시작됐어요.");
+        assert_eq!(f("팰월드", "{{name}}을(를) 지울까요?"), "팰월드를 지울까요?");
+        assert_eq!(f("서울", "{{name}}(으)로 옮겨요"), "서울로 옮겨요");
+        assert_eq!(f("집", "{{name}}(으)로 옮겨요"), "집으로 옮겨요");
+        assert_eq!(f("“야생”", "{{name}}은(는) 꺼져 있어요"), "“야생”은 꺼져 있어요");
+        // 한글로 끝나지 않으면 꼴을 그대로 둔다
+        assert_eq!(f("pal", "{{name}}이(가) 시작됐어요."), "pal이(가) 시작됐어요.");
     }
 
     #[test]

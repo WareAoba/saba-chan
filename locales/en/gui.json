@@ -2256,9 +2256,6 @@
     "enabled": "Allow remote connections",
     "enabled_description": "Your other PCs connect to this daemon directly over an encrypted connection.",
     "port": "Port",
-    "address": "Address",
-    "address_description": "Public IP or host name your other PCs can reach. Leave empty to connect through Server-chan (a little slower).",
-    "address_placeholder": "Public IP or host name",
     "save": "Save",
     "status_off": "Off",
     "status_listening": "Listening on port {{port}}",
@@ -2431,7 +2428,9 @@
       "closed": "Not reachable from the internet",
       "cgnat": "Your router has no public IP (CGNAT)",
       "unknown": "Some ports could not be checked",
-      "no_ports": "This game does not say which ports to check"
+      "no_ports": "This game does not say which ports to check",
+      "host_mismatch": "The public address does not point to this PC",
+      "host_unresolved": "The public address could not be found"
     },
     "status": {
       "open": "Open",
@@ -2447,7 +2446,9 @@
       "firewall_macos": "The macOS firewall is blocking incoming connections for this server's program. In System Settings › Network › Firewall › Options, set saba-core (if the server is stopped) or the game server program such as java (if it is running) to Allow incoming connections, then check again.",
       "router": "The PC firewall allows this port. Forward this port to this PC in your router settings, then check again.",
       "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
-      "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
+      "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again.",
+      "host_mismatch": "In your domain settings, point the A record to this PC's public IP. If you use DDNS, check that its updater is running. If a CDN proxy is on, turn it off: game connections cannot pass through it.",
+      "host_unresolved": "Check the spelling of the public address and your domain's DNS settings. If the domain is new, check again in a little while."
     },
     "error": {
       "node_token_missing": "Connect to Discord (pairing) first. Server-chan does the check.",
@@ -2455,7 +2456,8 @@
       "rate_limited": "Too many checks. Try again in a minute.",
       "relay_unreachable": "Could not reach Server-chan. Check your internet connection.",
       "failed": "The check failed."
-    }
+    },
+    "host": "Public address {{host}} · this PC {{address}}"
   },
   "picker": {
     "today": "Today",
@@ -2526,5 +2528,34 @@
     "entry_modules": "Get game modules",
     "entry_modules_desc": "Get the games you want to host",
     "palette": "Guide: {{name}}"
+  },
+  "public_address": {
+    "label": "Game server address",
+    "auto": "Public IP (automatic)",
+    "change": "Change",
+    "share_off": "Not shared on Discord",
+    "title": "Game server address · {{name}}",
+    "auto_title": "Use the public IP",
+    "auto_desc": "Uses the IP Server-chan sees for this PC. Home internet IPs change from time to time.",
+    "auto_desc_ip": "Uses the IP Server-chan sees for this PC, now {{ip}}. Home internet IPs change from time to time.",
+    "custom_title": "Set a public address",
+    "custom_desc": "Enter a domain (DDNS works too) or a fixed IP. Each server adds its own port. Remote daemon connections use this address too.",
+    "preview": "Friends see it like {{example}}. https:// and :port are removed when saved.",
+    "share_title": "Share with /address on Discord",
+    "share_desc": "When off, /address on Discord does not show this PC's server addresses. The app, CLI and Saba-chan web still show them.",
+    "save": "Save",
+    "err_invalid": "Enter only a domain or an IP address",
+    "err_failed": "Could not save"
+  },
+  "server_address": {
+    "title": "Join address",
+    "copy": "Copy",
+    "copied": "Copied",
+    "hide": "Hide",
+    "show": "Show",
+    "hidden": "Hidden address",
+    "unknown": "This PC's public address is not known yet. It appears once connected to Server-chan.",
+    "stopped": "Start the server so friends can join",
+    "checked_at": "Checked {{time}}"
   }
 }

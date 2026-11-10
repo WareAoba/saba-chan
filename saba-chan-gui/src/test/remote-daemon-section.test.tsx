@@ -280,14 +280,15 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(useSettingsStore.getState().daemonView).toBe('unified');
     });
 
-    it('이 PC를 열면 켬·포트·주소를 함께 저장하고 데몬이 준 상태를 보인다', async () => {
+    // 주소는 내 PC 카드의 게임 서버 주소 줄 한 칸에서 정한다 (PublicAddress, 사용자 결정 2026-11-10): 여기서는 켬·포트만
+    it('이 PC를 열면 켬·포트를 저장하고 데몬이 준 상태를 보인다', async () => {
         vi.mocked(window.api.remoteSettings).mockResolvedValue({ ...settings, enabled: false, status: { listening: false, published: false } });
-        vi.mocked(window.api.remoteSettingsSet).mockResolvedValue({ ...settings, address: 'saba.example.com' });
+        vi.mocked(window.api.remoteSettingsSet).mockResolvedValue({ ...settings });
         await act(async () => render(<RemoteDaemonSection />));
         fireEvent.click(screen.getByRole('checkbox', { name: 'Allow remote connections' }));
-        fireEvent.change(screen.getByRole('textbox', { name: 'Address' }), { target: { value: ' saba.example.com ' } });
+        expect(screen.queryByRole('textbox', { name: 'Address' })).toBeNull();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save' })));
-        expect(window.api.remoteSettingsSet).toHaveBeenCalledWith({ enabled: true, port: 57480, address: 'saba.example.com' });
+        expect(window.api.remoteSettingsSet).toHaveBeenCalledWith({ enabled: true, port: 57480 });
         expect(screen.getByText('Your other PCs know about this PC')).toBeInTheDocument();
     });
 

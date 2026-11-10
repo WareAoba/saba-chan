@@ -433,7 +433,8 @@
         "item_named": "• {{label}} `{{address}}`",
         "stopped": "💤 O servidor está desligado. Ligue-o para que outros possam entrar",
         "unknown": "❔ O Server-chan ainda não sabe o endereço público deste PC. Tente de novo em instantes",
-        "no_ports": "📭 Este jogo não informa a porta de conexão"
+        "no_ports": "📭 Este jogo não informa a porta de conexão",
+        "hidden": "🔒 O dono do servidor escolheu não compartilhar o endereço no Discord. Pergunte diretamente a ele"
       },
       "port_check": {
         "open": "✅ Acessível pela internet",
@@ -442,7 +443,9 @@
         "closed": "🚫 Não acessível pela internet",
         "cgnat": "⚠️ Seu roteador não tem IP público (CGNAT)",
         "unknown": "❔ Algumas portas não puderam ser verificadas",
-        "no_ports": "📭 Este jogo não informa quais portas verificar"
+        "no_ports": "📭 Este jogo não informa quais portas verificar",
+        "host_mismatch": "🌐 O endereço público não aponta para este PC",
+        "host_unresolved": "🌐 O endereço público não foi encontrado"
       },
       "port_status": {
         "open": "Aberta",
