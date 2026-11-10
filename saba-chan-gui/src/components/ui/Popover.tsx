@@ -17,6 +17,8 @@ interface PopoverProps {
     sideOffset?: number;
     /** 열 때 창 안으로 포커스를 옮길지 (기본: 옮긴다) */
     autoFocus?: boolean;
+    /** 창이 처음 그려질 때 (안의 요소에 직접 포커스를 줄 때: 이벤트를 막고 옮긴다) */
+    onOpenAutoFocus?: (e: Event) => void;
     children: ReactNode;
 }
 
@@ -35,6 +37,7 @@ export function Popover({
     side = 'bottom',
     sideOffset = 10,
     autoFocus = true,
+    onOpenAutoFocus,
     children,
 }: PopoverProps) {
     return (
@@ -52,7 +55,7 @@ export function Popover({
                     align={align}
                     sideOffset={sideOffset}
                     collisionPadding={8}
-                    onOpenAutoFocus={autoFocus ? undefined : (e) => e.preventDefault()}
+                    onOpenAutoFocus={onOpenAutoFocus ?? (autoFocus ? undefined : (e) => e.preventDefault())}
                     onInteractOutside={(e) => {
                         if (anchorRef?.current?.contains(e.target as Node)) e.preventDefault();
                     }}

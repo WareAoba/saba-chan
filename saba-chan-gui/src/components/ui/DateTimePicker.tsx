@@ -1,22 +1,11 @@
 import clsx from 'clsx';
-import {
-    type CSSProperties,
-    type KeyboardEvent,
-    type ReactNode,
-    useCallback,
-    useEffect,
-    useId,
-    useLayoutEffect,
-    useRef,
-    useState,
-} from 'react';
-import ReactDOM from 'react-dom';
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
+import { Popover } from './Popover';
 import './DateTimePicker.css';
 
 const GAP = 4;
-const CLOSE_MS = 120;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 /** 로컬 날짜 → "YYYY-MM-DD" (input type=date와 같은 형식) */
@@ -45,97 +34,8 @@ function firstWeekday(lang: string) {
     return 0;
 }
 
-/**
- * 트리거 아래(자리가 없으면 위)에 띄우는 팝업. CustomDropdown과 같은 열고 닫기·바깥 클릭 규칙.
- * 열 때 onOpen, 닫힌 뒤 트리거로 포커스를 돌린다.
- */
-export function usePopover(onOpen?: () => void) {
-    const [isOpen, setIsOpen] = useState(false);
-    const [isClosing, setIsClosing] = useState(false);
-    const [style, setStyle] = useState<CSSProperties>({});
-    const [placement, setPlacement] = useState('bottom');
-    const triggerRef = useRef<HTMLButtonElement>(null);
-    const panelRef = useRef<HTMLDivElement>(null);
-    const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-    const place = useCallback(() => {
-        if (!triggerRef.current) return;
-        const rect = triggerRef.current.getBoundingClientRect();
-        const height = panelRef.current?.offsetHeight || 320;
-        const below = window.innerHeight - rect.bottom - GAP;
-        const up = below < height && rect.top - GAP > below;
-        const alignRight = rect.left + rect.width / 2 > window.innerWidth / 2;
-        setPlacement(up ? 'top' : 'bottom');
-        setStyle({
-            position: 'fixed',
-            zIndex: 10000,
-            ...(alignRight ? { right: window.innerWidth - rect.right } : { left: rect.left }),
-            ...(up ? { bottom: window.innerHeight - rect.top + GAP } : { top: rect.bottom + GAP }),
-        });
-    }, []);
-
-    const open = () => {
-        clearTimeout(closeTimer.current);
-        setIsClosing(false);
-        onOpen?.();
-        setIsOpen(true);
-    };
-    const close = useCallback((refocus = true) => {
-        setIsClosing(true);
-        clearTimeout(closeTimer.current);
-        closeTimer.current = setTimeout(() => {
-            setIsOpen(false);
-            setIsClosing(false);
-        }, CLOSE_MS);
-        if (refocus) triggerRef.current?.focus();
-    }, []);
-
-    useEffect(() => () => clearTimeout(closeTimer.current), []);
-
-    useLayoutEffect(() => {
-        if (!isOpen) return;
-        place();
-        window.addEventListener('scroll', place, true);
-        window.addEventListener('resize', place);
-        return () => {
-            window.removeEventListener('scroll', place, true);
-            window.removeEventListener('resize', place);
-        };
-    }, [isOpen, place]);
-
-    useEffect(() => {
-        if (!isOpen || isClosing) return;
-        const outside = (e: MouseEvent) => {
-            if (triggerRef.current?.contains(e.target as Node) || panelRef.current?.contains(e.target as Node)) return;
-            close(false);
-        };
-        document.addEventListener('mousedown', outside);
-        return () => document.removeEventListener('mousedown', outside);
-    }, [isOpen, isClosing, close]);
-
-    const shown = isOpen && !isClosing;
-    const onPanelKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopPropagation();
-            close();
-        } else if (e.key === 'Tab') {
-            close(false);
-        }
-    };
-    const panelProps = {
-        ref: panelRef,
-        style,
-        className: clsx('dtp-panel', `placement-${placement}`, { closing: isClosing }),
-        onKeyDown: onPanelKeyDown,
-    };
-    return { isOpen, shown, open, close, triggerRef, panelProps };
-}
-
 interface TriggerProps {
-    id?: string;
-    controls: string;
-    popover: ReturnType<typeof usePopover>;
+    open: boolean;
     ariaLabel?: string;
     title?: string;
     disabled?: boolean;
@@ -144,19 +44,14 @@ interface TriggerProps {
     children?: ReactNode;
 }
 
-function Trigger({ id, controls, popover, ariaLabel, title, disabled, className, icon, children }: TriggerProps) {
+/** 값 칸처럼 보이는 여닫기 단추 (Popover의 trigger로 넘긴다) */
+function trigger({ open, ariaLabel, title, disabled, className, icon, children }: TriggerProps) {
     return (
         <button
-            id={id}
-            ref={popover.triggerRef}
             type="button"
-            className={clsx('input dtp-trigger', className, { open: popover.shown })}
-            onClick={() => (popover.shown ? popover.close() : popover.open())}
+            className={clsx('input dtp-trigger', className, { open })}
             aria-label={ariaLabel}
             data-tooltip={title}
-            aria-haspopup="dialog"
-            aria-expanded={popover.shown}
-            aria-controls={controls}
             disabled={disabled}
         >
             <span className="dtp-value">{children}</span>
@@ -201,27 +96,29 @@ export function DateField({
     const [view, setView] = useState(() => selected || new Date());
     const [cursor, setCursor] = useState(() => selected || new Date());
     const gridRef = useRef<HTMLDivElement>(null);
-    const autoId = useId();
-    const panelId = `date-${autoId}`;
-
-    const popover = usePopover(() => {
-        const start = parse(value) || new Date();
-        setView(start);
-        setCursor(start);
-    });
+    const [open, setOpen] = useState(false);
+    const onOpenChange = (next: boolean) => {
+        if (next) {
+            const start = parse(value) || new Date();
+            setView(start);
+            setCursor(start);
+        }
+        setOpen(next);
+    };
+    const focusCursor = () => gridRef.current?.querySelector<HTMLElement>(`[data-date="${iso(cursor)}"]`)?.focus();
 
     const outOfRange = (d: Date) => (min && iso(d) < min) || (max && iso(d) > max);
 
-    // 열리거나 커서가 움직이면 그 날짜에 포커스
+    // 커서가 움직이면 그 날짜에 포커스 (열 때는 창이 그려질 때 onOpenAutoFocus에서)
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 커서가 바뀔 때만
     useEffect(() => {
-        if (!popover.shown) return;
-        gridRef.current?.querySelector<HTMLElement>(`[data-date="${iso(cursor)}"]`)?.focus();
-    }, [popover.shown, cursor]);
+        if (open) focusCursor();
+    }, [cursor]);
 
     const pick = (d: Date) => {
         if (outOfRange(d)) return;
         if (iso(d) !== value) onChange(iso(d));
-        popover.close();
+        setOpen(false);
     };
 
     const moveCursor = (d: Date) => {
@@ -260,106 +157,106 @@ export function DateField({
         : null;
 
     return (
-        <>
-            <Trigger
-                controls={panelId}
-                popover={popover}
-                ariaLabel={ariaLabel}
-                title={title}
-                disabled={disabled}
-                className={className}
-                icon="calendar"
-            >
-                {label || <span className="dtp-placeholder">{t('picker.pick_date')}</span>}
-            </Trigger>
-            {popover.isOpen &&
-                ReactDOM.createPortal(
-                    <div {...popover.panelProps} id={panelId} role="dialog" aria-label={ariaLabel}>
-                        <div className="dtp-head">
-                            <span className="dtp-title">
-                                {new Intl.DateTimeFormat(lang, { year: 'numeric', month: 'long' }).format(view)}
-                            </span>
-                            <button
-                                type="button"
-                                className="icon-btn"
-                                aria-label={t('picker.prev_month')}
-                                onClick={() => shiftView(-1)}
-                            >
-                                <Icon name="chevronLeft" size="sm" />
-                            </button>
-                            <button
-                                type="button"
-                                className="icon-btn"
-                                aria-label={t('picker.next_month')}
-                                onClick={() => shiftView(1)}
-                            >
-                                <Icon name="chevronRight" size="sm" />
-                            </button>
-                        </div>
-                        <div className="dtp-weekdays" aria-hidden="true">
-                            {days.slice(0, 7).map((d) => (
-                                <span
-                                    key={d.getDay()}
-                                    className={clsx({ sun: d.getDay() === 0, sat: d.getDay() === 6 })}
-                                >
-                                    {weekdayFmt.format(d)}
-                                </span>
-                            ))}
-                        </div>
-                        {/* biome-ignore lint/a11y/useSemanticElements: 날짜 버튼 묶음, 방향키는 여기서 받는다 */}
-                        <div className="dtp-days" role="group" ref={gridRef} onKeyDown={onGridKeyDown}>
-                            {days.map((d) => {
-                                const key = iso(d);
-                                return (
-                                    <button
-                                        key={key}
-                                        type="button"
-                                        data-date={key}
-                                        tabIndex={key === iso(cursor) ? 0 : -1}
-                                        aria-label={longFmt.format(d)}
-                                        aria-pressed={key === value}
-                                        aria-current={key === todayIso ? 'date' : undefined}
-                                        disabled={!!outOfRange(d)}
-                                        className={clsx('dtp-day', {
-                                            other: d.getMonth() !== view.getMonth(),
-                                            selected: key === value,
-                                            today: key === todayIso,
-                                            sun: d.getDay() === 0,
-                                            sat: d.getDay() === 6,
-                                        })}
-                                        onClick={() => pick(d)}
-                                    >
-                                        {d.getDate()}
-                                    </button>
-                                );
+        <Popover
+            open={open}
+            onOpenChange={onOpenChange}
+            trigger={trigger({
+                open,
+                ariaLabel,
+                title,
+                disabled,
+                className,
+                icon: 'calendar',
+                children: label || <span className="dtp-placeholder">{t('picker.pick_date')}</span>,
+            })}
+            label={ariaLabel || t('picker.pick_date')}
+            className="dtp-panel"
+            align="start"
+            sideOffset={GAP}
+            onOpenAutoFocus={(e) => {
+                e.preventDefault();
+                focusCursor();
+            }}
+        >
+            <div className="dtp-head">
+                <span className="dtp-title">
+                    {new Intl.DateTimeFormat(lang, { year: 'numeric', month: 'long' }).format(view)}
+                </span>
+                <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label={t('picker.prev_month')}
+                    onClick={() => shiftView(-1)}
+                >
+                    <Icon name="chevronLeft" size="sm" />
+                </button>
+                <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label={t('picker.next_month')}
+                    onClick={() => shiftView(1)}
+                >
+                    <Icon name="chevronRight" size="sm" />
+                </button>
+            </div>
+            <div className="dtp-weekdays" aria-hidden="true">
+                {days.slice(0, 7).map((d) => (
+                    <span key={d.getDay()} className={clsx({ sun: d.getDay() === 0, sat: d.getDay() === 6 })}>
+                        {weekdayFmt.format(d)}
+                    </span>
+                ))}
+            </div>
+            {/* biome-ignore lint/a11y/useSemanticElements: 날짜 버튼 묶음, 방향키는 여기서 받는다 */}
+            <div className="dtp-days" role="group" ref={gridRef} onKeyDown={onGridKeyDown}>
+                {days.map((d) => {
+                    const key = iso(d);
+                    return (
+                        <button
+                            key={key}
+                            type="button"
+                            data-date={key}
+                            tabIndex={key === iso(cursor) ? 0 : -1}
+                            aria-label={longFmt.format(d)}
+                            aria-pressed={key === value}
+                            aria-current={key === todayIso ? 'date' : undefined}
+                            disabled={!!outOfRange(d)}
+                            className={clsx('dtp-day', {
+                                other: d.getMonth() !== view.getMonth(),
+                                selected: key === value,
+                                today: key === todayIso,
+                                sun: d.getDay() === 0,
+                                sat: d.getDay() === 6,
                             })}
-                        </div>
-                        <div className="dtp-foot">
-                            {clearable && (
-                                <button
-                                    type="button"
-                                    className="btn btn-sm btn-ghost"
-                                    onClick={() => {
-                                        if (value) onChange('');
-                                        popover.close();
-                                    }}
-                                >
-                                    {t('picker.clear')}
-                                </button>
-                            )}
-                            <button
-                                type="button"
-                                className="btn btn-sm btn-ghost dtp-today"
-                                disabled={!!outOfRange(new Date())}
-                                onClick={() => pick(new Date())}
-                            >
-                                {t('picker.today')}
-                            </button>
-                        </div>
-                    </div>,
-                    document.body,
+                            onClick={() => pick(d)}
+                        >
+                            {d.getDate()}
+                        </button>
+                    );
+                })}
+            </div>
+            <div className="dtp-foot">
+                {clearable && (
+                    <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        onClick={() => {
+                            if (value) onChange('');
+                            setOpen(false);
+                        }}
+                    >
+                        {t('picker.clear')}
+                    </button>
                 )}
-        </>
+                <button
+                    type="button"
+                    className="btn btn-sm btn-ghost dtp-today"
+                    disabled={!!outOfRange(new Date())}
+                    onClick={() => pick(new Date())}
+                >
+                    {t('picker.today')}
+                </button>
+            </div>
+        </Popover>
     );
 }
 
@@ -376,20 +273,17 @@ export function TimeField({ value, onChange, ariaLabel, title, disabled, classNa
     const hour = m?.[1];
     const minute = m?.[2];
     const panelRef = useRef<HTMLDivElement>(null);
-    const autoId = useId();
-    const panelId = `time-${autoId}`;
-    const popover = usePopover();
+    const [open, setOpen] = useState(false);
 
     // 열리면 고른 시·분을 보이게 하고 시 칸에 포커스
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 열릴 때 한 번만
-    useEffect(() => {
-        if (!popover.shown) return;
-        const root = document.getElementById(panelId);
+    const onOpened = (e: Event) => {
+        e.preventDefault();
+        const root = panelRef.current;
         for (const sel of [`[data-hour="${hour}"]`, `[data-minute="${minute}"]`]) {
             root?.querySelector(sel)?.scrollIntoView?.({ block: 'center' });
         }
         ((root?.querySelector(`[data-hour="${hour}"]`) || root?.querySelector('[data-hour]')) as HTMLElement | null)?.focus();
-    }, [popover.shown]);
+    };
 
     const set = (h: string, mm: string) => {
         const next = `${h}:${mm}`;
@@ -415,66 +309,60 @@ export function TimeField({ value, onChange, ariaLabel, title, disabled, classNa
     };
 
     return (
-        <>
-            <Trigger
-                controls={panelId}
-                popover={popover}
-                ariaLabel={ariaLabel}
-                title={title}
-                disabled={disabled}
-                className={className}
-                icon="clock"
-            >
-                {m ? `${hour}:${minute}` : <span className="dtp-placeholder">{t('picker.pick_time')}</span>}
-            </Trigger>
-            {popover.isOpen &&
-                ReactDOM.createPortal(
-                    <div
-                        {...popover.panelProps}
-                        className={clsx(popover.panelProps.className, 'dtp-time')}
-                        id={panelId}
-                        role="dialog"
-                        aria-label={ariaLabel}
-                    >
-                        {/* biome-ignore lint/a11y/noStaticElementInteractions: 방향키를 두 칸에서 함께 받는다 */}
-                        <div className="dtp-cols" ref={panelRef} onKeyDown={onKeyDown}>
-                            <div className="dtp-col" role="listbox" aria-label={t('picker.hour')}>
-                                {HOURS.map((h) => (
-                                    <button
-                                        key={h}
-                                        type="button"
-                                        role="option"
-                                        data-hour={h}
-                                        aria-selected={h === hour}
-                                        className={clsx('dtp-cell', { selected: h === hour })}
-                                        onClick={() => set(h, minute || '00')}
-                                    >
-                                        {h}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="dtp-col" role="listbox" aria-label={t('picker.minute')}>
-                                {MINUTES.map((mm) => (
-                                    <button
-                                        key={mm}
-                                        type="button"
-                                        role="option"
-                                        data-minute={mm}
-                                        aria-selected={mm === minute}
-                                        className={clsx('dtp-cell', { selected: mm === minute })}
-                                        onClick={() => {
-                                            set(hour || '00', mm);
-                                            popover.close();
-                                        }}
-                                    >
-                                        {mm}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>,
-                    document.body,
-                )}
-        </>
+        <Popover
+            open={open}
+            onOpenChange={setOpen}
+            trigger={trigger({
+                open,
+                ariaLabel,
+                title,
+                disabled,
+                className,
+                icon: 'clock',
+                children: m ? `${hour}:${minute}` : <span className="dtp-placeholder">{t('picker.pick_time')}</span>,
+            })}
+            label={ariaLabel || t('picker.pick_time')}
+            className="dtp-panel dtp-time"
+            align="start"
+            sideOffset={GAP}
+            onOpenAutoFocus={onOpened}
+        >
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: 방향키를 두 칸에서 함께 받는다 */}
+            <div className="dtp-cols" ref={panelRef} onKeyDown={onKeyDown}>
+                <div className="dtp-col" role="listbox" aria-label={t('picker.hour')}>
+                    {HOURS.map((h) => (
+                        <button
+                            key={h}
+                            type="button"
+                            role="option"
+                            data-hour={h}
+                            aria-selected={h === hour}
+                            className={clsx('dtp-cell', { selected: h === hour })}
+                            onClick={() => set(h, minute || '00')}
+                        >
+                            {h}
+                        </button>
+                    ))}
+                </div>
+                <div className="dtp-col" role="listbox" aria-label={t('picker.minute')}>
+                    {MINUTES.map((mm) => (
+                        <button
+                            key={mm}
+                            type="button"
+                            role="option"
+                            data-minute={mm}
+                            aria-selected={mm === minute}
+                            className={clsx('dtp-cell', { selected: mm === minute })}
+                            onClick={() => {
+                                set(hour || '00', mm);
+                                setOpen(false);
+                            }}
+                        >
+                            {mm}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        </Popover>
     );
 }

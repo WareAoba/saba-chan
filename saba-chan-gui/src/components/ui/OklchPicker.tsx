@@ -4,21 +4,18 @@ import {
     type PointerEvent as ReactPointerEvent,
     useCallback,
     useEffect,
-    useLayoutEffect,
     useRef,
     useState,
 } from 'react';
-import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { hexToOklch, inGamut, MAX_CHROMA, maxChroma, oklchToHex, oklchToRgb } from '../../utils/oklch';
 import { Icon } from '../Icon';
+import { Popover } from './Popover';
 import './OklchPicker.css';
 
 const AREA_W = 240;
 const AREA_H = 152;
 const GAP = 8;
-const POP_W = 272;
-const CLOSE_MS = 140;
 
 interface Lch {
     l: number;
@@ -243,108 +240,34 @@ interface OklchPickerProps {
 
 export function OklchPicker({ value, onChange, variant = 'field', label, className }: OklchPickerProps) {
     const [open, setOpen] = useState(false);
-    const [closing, setClosing] = useState(false);
-    const [pos, setPos] = useState<{ left?: number; top?: number; bottom?: number; up?: boolean }>({});
-    const triggerRef = useRef<HTMLButtonElement>(null);
-    const popRef = useRef<HTMLDivElement>(null);
-    const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-    const place = useCallback(() => {
-        const r = triggerRef.current?.getBoundingClientRect();
-        if (!r) return;
-        const popH = popRef.current?.offsetHeight || 260;
-        const below = window.innerHeight - r.bottom;
-        const up = below < popH + GAP * 2 && r.top > below;
-        const left = Math.min(Math.max(GAP, r.right - POP_W), window.innerWidth - POP_W - GAP);
-        setPos({ left, ...(up ? { bottom: window.innerHeight - r.top + GAP } : { top: r.bottom + GAP }), up });
-    }, []);
-
-    const close = useCallback(() => {
-        setClosing(true);
-        clearTimeout(timer.current);
-        timer.current = setTimeout(() => {
-            setOpen(false);
-            setClosing(false);
-        }, CLOSE_MS);
-    }, []);
-
-    useEffect(() => () => clearTimeout(timer.current), []);
-
-    useLayoutEffect(() => {
-        if (!open) return;
-        place();
-        window.addEventListener('resize', place);
-        window.addEventListener('scroll', place, true);
-        return () => {
-            window.removeEventListener('resize', place);
-            window.removeEventListener('scroll', place, true);
-        };
-    }, [open, place]);
-
-    useEffect(() => {
-        if (!open || closing) return;
-        const down = (e: MouseEvent) => {
-            if (triggerRef.current?.contains(e.target as Node) || popRef.current?.contains(e.target as Node)) return;
-            close();
-        };
-        const key = (e: globalThis.KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                e.stopPropagation();
-                close();
-                triggerRef.current?.focus();
-            }
-        };
-        document.addEventListener('mousedown', down);
-        document.addEventListener('keydown', key, true);
-        return () => {
-            document.removeEventListener('mousedown', down);
-            document.removeEventListener('keydown', key, true);
-        };
-    }, [open, closing, close]);
-
-    const shown = open && !closing;
-    const { up, ...style } = pos;
-
     return (
-        <>
-            <button
-                type="button"
-                ref={triggerRef}
-                className={clsx('oklch-trigger', `oklch-trigger-${variant}`, className, { open: shown })}
-                aria-label={label}
-                data-tooltip={label}
-                aria-haspopup="dialog"
-                aria-expanded={shown}
-                onClick={() => {
-                    if (shown) return close();
-                    clearTimeout(timer.current);
-                    setClosing(false);
-                    setOpen(true);
-                }}
-            >
-                {variant === 'swatch' ? (
-                    <Icon name="edit" size="sm" />
-                ) : (
-                    <>
-                        <span className="color-input-preview" style={{ background: value }} />
-                        <span className="color-input-hex">{value}</span>
-                    </>
-                )}
-            </button>
-            {open &&
-                ReactDOM.createPortal(
-                    <div
-                        ref={popRef}
-                        className={clsx('oklch-pop', { closing, up })}
-                        style={{ position: 'fixed', zIndex: 10000, width: POP_W, ...style }}
-                        role="dialog"
-                        aria-label={label}
-                    >
-                        <PickerPanel value={value} onChange={onChange} />
-                    </div>,
-                    document.body,
-                )}
-        </>
+        <Popover
+            open={open}
+            onOpenChange={setOpen}
+            trigger={
+                <button
+                    type="button"
+                    className={clsx('oklch-trigger', `oklch-trigger-${variant}`, className, { open })}
+                    aria-label={label}
+                    data-tooltip={label}
+                >
+                    {variant === 'swatch' ? (
+                        <Icon name="edit" size="sm" />
+                    ) : (
+                        <>
+                            <span className="color-input-preview" style={{ background: value }} />
+                            <span className="color-input-hex">{value}</span>
+                        </>
+                    )}
+                </button>
+            }
+            label={label || ''}
+            className="oklch-pop"
+            sideOffset={GAP}
+            autoFocus={false}
+        >
+            <PickerPanel value={value} onChange={onChange} />
+        </Popover>
     );
 }
 
