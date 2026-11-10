@@ -210,10 +210,11 @@ SKIP_PARTS = {"__pycache__", ".git", ".pytest_cache", "tests"}
 
 
 def is_dev_file(rel: str) -> bool:
-    """zip에 싣지 않는 개발용 파일: 폴더 바로 아래의 `test_*.py`·`conftest.py`, 캐시·테스트 폴더, .pyc"""
+    """zip에 싣지 않는 개발용 파일: 폴더 바로 아래의 `test_*.py`·`conftest.py`, 캐시·테스트 폴더, .pyc,
+    맨 위 점 항목(.git·.gitignore 등: 교체가 깐 폴더의 것을 새 폴더로 옮겨 주므로 패키지에 있으면 부딪힌다)"""
     parts = rel.split("/")
     name = parts[-1]
-    return bool(SKIP_PARTS & set(parts)) or name.endswith(".pyc") or (
+    return bool(SKIP_PARTS & set(parts)) or parts[0].startswith(".") or name.endswith(".pyc") or (
         len(parts) == 1 and (name == "conftest.py" or (name.startswith("test_") and name.endswith(".py")))
     )
 

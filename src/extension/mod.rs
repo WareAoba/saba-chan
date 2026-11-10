@@ -947,6 +947,11 @@ impl ExtensionManager {
 
     /// 인스턴스의 extension_data에서 이 익스텐션이 선언한 instance_fields를
     /// 하나라도 truthy 값으로 사용하는 인스턴스 이름 목록.
+    /// 주어진 인스턴스 값(`extension_data`)이 쓰는 익스텐션 id: 필수 목록에 없어도 인스턴스 칸(`instance_fields`)에 값이 있으면 쓴다
+    pub fn extensions_in_use(&self, ext_data: &[(&str, &HashMap<String, Value>)]) -> std::collections::HashSet<String> {
+        self.discovered.keys().filter(|id| !self.instances_using_ext(id, ext_data).is_empty()).cloned().collect()
+    }
+
     fn instances_using_ext(
         &self,
         ext_id: &str,
@@ -2240,6 +2245,8 @@ mod tests {
         let zero: HashMap<String, Value> = [("box_enabled".to_string(), json!(0))].into_iter().collect();
         let used: HashMap<String, Value> = [("box_enabled".to_string(), json!(true))].into_iter().collect();
         assert!(mgr.instances_using_ext("box", &[("a", &unused), ("b", &zero)]).is_empty());
+        assert!(mgr.extensions_in_use(&[("a", &unused)]).is_empty());
+        assert_eq!(mgr.extensions_in_use(&[("a", &unused), ("b", &used)]), ["box".to_string()].into_iter().collect());
         let err = mgr.remove("box", &[("stopped", &used)]).unwrap_err();
         assert_eq!(err.downcast_ref::<ExtensionError>().unwrap().error_code, "in_use");
         assert!(tmp.path().join("box").exists());

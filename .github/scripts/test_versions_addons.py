@@ -104,6 +104,21 @@ class ZipFolderSkipsDevFiles(unittest.TestCase):
             versions.zip_folder(src, second)
             self.assertEqual(first.read_bytes(), second.read_bytes())
 
+    def test_top_level_dot_entries_are_not_packaged(self):
+        """교체는 깐 폴더의 맨 위 점 항목(.git·.env)을 새 폴더로 옮겨 준다: 패키지에 같은 이름이 있으면 부딪힌다"""
+        import zipfile
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "game"
+            (src / ".github").mkdir(parents=True)
+            (src / ".github" / "x.yml").write_text("x")
+            (src / ".gitignore").write_text("x")
+            (src / "sub").mkdir()
+            (src / "sub" / ".keep").write_text("x")
+            (src / "module.toml").write_text("x")
+            out = Path(d) / "a.zip"
+            versions.zip_folder(src, out)
+            self.assertEqual(sorted(zipfile.ZipFile(out).namelist()), ["module.toml", "sub/.keep"])
+
 
 if __name__ == "__main__":
     unittest.main()
