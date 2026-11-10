@@ -2276,7 +2276,6 @@
     "state_unreachable": "つながりません",
     "my_pcs": "自分のPC",
     "my_pcs_description": "同じDiscordアカウントに接続したPCです。星を付けたPCがアプリを開いたときに最初に表示されます。",
-    "this_pc_tag": "このPC",
     "this_pc_here": "このアプリを開いているPC",
     "star_set": "メインデーモンにする",
     "star_on": "メインデーモン",
@@ -2471,9 +2470,7 @@
   "public_address": {
     "label": "ゲームサーバーのアドレス",
     "auto": "グローバルIP(自動)",
-    "change": "変更",
     "share_off": "Discordでは教えない",
-    "title": "ゲームサーバーのアドレス · {{name}}",
     "auto_title": "グローバルIPのまま",
     "auto_desc": "サーバーちゃんが見たこのPCのIPを使います。家庭のIPはときどき変わります。",
     "auto_desc_ip": "サーバーちゃんが見たこのPCのIPを使います。今は {{ip}}。家庭のIPはときどき変わります。",
@@ -2507,5 +2504,16 @@
     "next": "次へ (Enter)",
     "close": "閉じる (Esc)",
     "fold_hits": "{{count}}件一致"
+  },
+  "pc_settings": {
+    "edit": "編集",
+    "title": "{{name}} の設定",
+    "address_unavailable": "そのPCが起動して接続されているときに変更できます。",
+    "main_title": "アプリを開いたら最初に表示",
+    "main_desc": "オンにすると、次にアプリを開いたときこのPCのサーバーから表示します。",
+    "main_on_desc": "このPCが最初に表示されます。変えるには別のPCを選んでください。",
+    "update_desc": "そのPCのサバちゃんをこのPCと同じバージョンに更新します。",
+    "remove_title": "マイPCから外す",
+    "remove_desc": "接続を切って一覧から外します。何を消すかは次の画面で選びます。"
   }
 }

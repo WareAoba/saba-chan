@@ -2276,7 +2276,6 @@
     "state_unreachable": "無法連線",
     "my_pcs": "我的電腦",
     "my_pcs_description": "連線到同一 Discord 帳號的電腦。開啟應用程式時先顯示加星的電腦。",
-    "this_pc_tag": "本機",
     "this_pc_here": "正在執行此應用程式的電腦",
     "star_set": "設為主常駐程式",
     "star_on": "主常駐程式",
@@ -2471,9 +2470,7 @@
   "public_address": {
     "label": "遊戲伺服器位址",
     "auto": "公用 IP（自動）",
-    "change": "變更",
     "share_off": "不在 Discord 公開",
-    "title": "遊戲伺服器位址 · {{name}}",
     "auto_title": "使用公用 IP",
     "auto_desc": "使用 Server-chan 看到的這台電腦的 IP。家用網路的 IP 偶爾會變。",
     "auto_desc_ip": "使用 Server-chan 看到的這台電腦的 IP，目前為 {{ip}}。家用網路的 IP 偶爾會變。",
@@ -2507,5 +2504,16 @@
     "next": "下一個 (Enter)",
     "close": "關閉 (Esc)",
     "fold_hits": "{{count}} 個相符"
+  },
+  "pc_settings": {
+    "edit": "編輯",
+    "title": "{{name}} 設定",
+    "address_unavailable": "該電腦開機並連線時才能修改。",
+    "main_title": "開啟應用程式時優先顯示",
+    "main_desc": "開啟後，下次開啟應用程式時先顯示這台電腦的伺服器。",
+    "main_on_desc": "這台電腦已優先顯示。選擇其他電腦即可變更。",
+    "update_desc": "將那台電腦上的 Saba-chan 更新為與本機相同的版本。",
+    "remove_title": "從我的電腦中移除",
+    "remove_desc": "中斷連線並從清單中移除。下一步再選擇要刪除的內容。"
   }
 }

@@ -2276,7 +2276,6 @@
     "state_unreachable": "Inacessível",
     "my_pcs": "Meus PCs",
     "my_pcs_description": "PCs conectados à mesma conta do Discord. O app abre primeiro o PC com estrela.",
-    "this_pc_tag": "Este PC",
     "this_pc_here": "O PC que está rodando este app",
     "star_set": "Tornar daemon principal",
     "star_on": "Daemon principal",
@@ -2471,9 +2470,7 @@
   "public_address": {
     "label": "Endereço do servidor",
     "auto": "IP público (automático)",
-    "change": "Alterar",
     "share_off": "Não compartilhado no Discord",
-    "title": "Endereço do servidor · {{name}}",
     "auto_title": "Usar o IP público",
     "auto_desc": "Usa o IP que o Server-chan vê para este PC. IPs residenciais mudam de vez em quando.",
     "auto_desc_ip": "Usa o IP que o Server-chan vê para este PC, agora {{ip}}. IPs residenciais mudam de vez em quando.",
@@ -2507,5 +2504,16 @@
     "next": "Próximo (Enter)",
     "close": "Fechar (Esc)",
     "fold_hits": "Correspondências: {{count}}"
+  },
+  "pc_settings": {
+    "edit": "Editar",
+    "title": "Configurações de {{name}}",
+    "address_unavailable": "Você pode mudar isso quando esse PC estiver ligado e conectado.",
+    "main_title": "Mostrar primeiro ao abrir o app",
+    "main_desc": "Ative para mostrar primeiro os servidores deste PC na próxima vez que abrir o app.",
+    "main_on_desc": "Este PC é mostrado primeiro. Escolha outro PC para mudar.",
+    "update_desc": "Atualiza o Saba-chan nesse PC para a mesma versão deste PC.",
+    "remove_title": "Remover de Meus PCs",
+    "remove_desc": "Desconecta e remove da lista. Você escolhe o que apagar na próxima etapa."
   }
 }

@@ -2276,7 +2276,6 @@
     "state_unreachable": "닿지 않음",
     "my_pcs": "내 PC",
     "my_pcs_description": "같은 디스코드 계정에 연결한 PC예요. 별을 누른 PC가 앱을 열면 먼저 보여요.",
-    "this_pc_tag": "이 PC",
     "this_pc_here": "지금 앱을 띄운 PC",
     "star_set": "메인 데몬으로",
     "star_on": "메인 데몬",
@@ -2291,9 +2290,9 @@
     "route": "원격 연결",
     "route_direct": "직접 ({{port}} 포트)",
     "route_open": "열려 있음",
-    "os_windows": "윈도우",
-    "os_linux": "리눅스",
-    "os_macos": "맥",
+    "os_windows": "Windows",
+    "os_linux": "Linux",
+    "os_macos": "macOS",
     "update_needed": "{{version}}(으)로 업데이트 필요",
     "update": "업데이트",
     "update_started": "업데이트를 시작했어요. 끝나면 그 PC의 데몬이 다시 켜져요.",
@@ -2471,9 +2470,7 @@
   "public_address": {
     "label": "게임 서버 주소",
     "auto": "공인 IP 자동",
-    "change": "바꾸기",
     "share_off": "디스코드에 안 알림",
-    "title": "게임 서버 주소 · {{name}}",
     "auto_title": "공인 IP 그대로",
     "auto_desc": "서버쨩이 본 이 PC의 IP를 써요. 집 인터넷은 IP가 가끔 바뀌어요.",
     "auto_desc_ip": "서버쨩이 본 이 PC의 IP를 써요. 지금 {{ip}}. 집 인터넷은 IP가 가끔 바뀌어요.",
@@ -2507,5 +2504,16 @@
     "next": "다음 결과 (Enter)",
     "close": "닫기 (Esc)",
     "fold_hits": "{{count}}개 일치"
+  },
+  "pc_settings": {
+    "edit": "수정",
+    "title": "{{name}} 설정",
+    "address_unavailable": "이 PC가 켜져 있고 연결돼 있을 때 바꿀 수 있어요.",
+    "main_title": "앱을 열면 먼저 보이는 PC",
+    "main_desc": "켜면 다음에 앱을 열 때 이 PC의 서버부터 보여요.",
+    "main_on_desc": "지금 이 PC가 먼저 보여요. 다른 PC를 고르면 바뀌어요.",
+    "update_desc": "그 PC의 사바쨩을 이 PC와 같은 판으로 올려요.",
+    "remove_title": "내 PC에서 지우기",
+    "remove_desc": "연결을 끊고 목록에서 빼요. 무엇을 지울지는 다음 창에서 골라요."
   }
 }
