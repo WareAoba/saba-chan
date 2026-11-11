@@ -89,6 +89,35 @@ describe('SaveBarHost', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Revert' }));
         expect((screen.getByLabelText('port') as HTMLInputElement).value).toBe('a');
     });
+
+    // 리뷰 #9: 칸이 든 탭을 떠나도 저장하지 않은 바뀜은 막대에 남아 저장하거나 되돌릴 수 있다
+    it('바뀐 칸이 사라져도 막대가 남고, 저장하면 그 값을 저장하고 내려간다', async () => {
+        const onSave = vi.fn();
+        const Page = ({ show }: { show: boolean }) => (
+            <SaveBarHost>{show && <Field id="port" onSave={onSave} />}</SaveBarHost>
+        );
+        const { rerender } = render(<Page show />);
+        fireEvent.change(screen.getByLabelText('port'), { target: { value: 'b' } });
+        rerender(<Page show={false} />);
+        expect(document.querySelector('.saba-savebar.dirty')).not.toBeNull();
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save' })));
+        expect(onSave).toHaveBeenCalledWith('b');
+        expect(document.querySelector('.saba-savebar.dirty')).toBeNull();
+    });
+
+    it('사라진 칸을 되돌리면 막대가 내려가고, 바뀌지 않은 칸은 사라질 때 막대에서 빠진다', () => {
+        const Page = ({ show }: { show: boolean }) => (
+            <SaveBarHost>{show && <Field id="port" onSave={vi.fn()} />}</SaveBarHost>
+        );
+        const { rerender } = render(<Page show />);
+        fireEvent.change(screen.getByLabelText('port'), { target: { value: 'b' } });
+        rerender(<Page show={false} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Revert' }));
+        expect(document.querySelector('.saba-savebar.dirty')).toBeNull();
+        rerender(<Page show />);
+        rerender(<Page show={false} />);
+        expect(document.querySelector('.saba-savebar.dirty')).toBeNull();
+    });
 });
 
 describe('useHostDraft', () => {

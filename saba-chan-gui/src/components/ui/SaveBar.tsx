@@ -162,7 +162,26 @@ export function usePendingChange(id: string, change: PendingChange) {
             revert: () => latest.current.revert(),
         });
     }, [register, id, change.dirty, change.blocked]);
-    useEffect(() => () => register?.(id, null), [register, id]);
+    // 칸이 사라져도(설정 탭 전환) 저장하지 않은 바뀜은 막대에 남긴다. 저장하거나 되돌리면 그때 뺀다
+    useEffect(
+        () => () => {
+            const last = latest.current;
+            if (!last.dirty) return register?.(id, null);
+            register?.(id, {
+                dirty: true,
+                blocked: last.blocked,
+                save: async () => {
+                    await last.save();
+                    register(id, null);
+                },
+                revert: () => {
+                    last.revert();
+                    register(id, null);
+                },
+            });
+        },
+        [register, id],
+    );
 }
 
 /**

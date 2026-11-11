@@ -308,6 +308,16 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(window.api.remoteSettingsSet).toHaveBeenCalledWith({ enabled: true, port: 57490 });
     });
 
+    it('포트를 친 채로 연결 탭을 떠났다 와도 친 포트와 저장 막대가 남는다', async () => {
+        const Page = ({ show }: { show: boolean }) => <SaveBarHost>{show && <RemoteDaemonSection />}</SaveBarHost>;
+        const { rerender } = await act(async () => render(<Page show />));
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Port' }), { target: { value: '57490' } });
+        rerender(<Page show={false} />);
+        expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+        await act(async () => rerender(<Page show />));
+        expect(screen.getByRole<HTMLInputElement>('spinbutton', { name: 'Port' }).value).toBe('57490');
+    });
+
     it('포트를 친 채로 켬을 바꿔도 친 포트는 남아 저장 막대에서 저장한다', async () => {
         vi.mocked(window.api.remoteSettingsSet).mockResolvedValue({ ...settings, enabled: false });
         await act(async () =>
