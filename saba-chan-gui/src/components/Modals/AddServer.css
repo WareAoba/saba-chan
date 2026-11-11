@@ -156,10 +156,6 @@
     top: calc(var(--sp-5) + 52px);
     right: var(--sp-5);
 }
-/* 입력 칸 값의 강조 층은 body에 그려지므로 창 위로 올린다 */
-body:has(.saba-dialog.add-server) .page-find-layer {
-    z-index: 9002;
-}
 
 /* ── 가져오기 ── */
 .as-status {

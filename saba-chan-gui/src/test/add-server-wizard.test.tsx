@@ -308,6 +308,8 @@ describe('새 서버 만들기 — 상세 설정', () => {
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Detailed settings/ })));
         await act(async () => fireEvent.keyDown(window, { key: 'f', ctrlKey: true }));
         expect(screen.getByRole('search')).toBeTruthy();
+        // 칠하는 층은 body에 그려진다: 창(Dialog) 위에 오도록 창 안 찾기 표시를 단다 (Codex 리뷰 #13)
+        expect(document.querySelector('.page-find-layer.modal')).toBeTruthy();
     });
 
     it('미리 정할 칸이 없는 모듈은 상세 설정 단추가 없다', async () => {

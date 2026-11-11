@@ -356,7 +356,7 @@ export function PageFind({ rootRef, enabled, pageKey, anchorRef, modal = false }
         <>
             <span ref={measureRef} className="page-find-measure" aria-hidden="true" />
             {createPortal(
-                <div className="page-find-layer" aria-hidden="true">
+                <div className={`page-find-layer${modal ? ' modal' : ''}`} aria-hidden="true">
                     {rects.map((r, i) => (
                         <i
                             // biome-ignore lint/suspicious/noArrayIndexKey: 자리만 그리는 칸이라 순서가 곧 정체다
