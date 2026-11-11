@@ -1567,7 +1567,7 @@
     "effort_high": "High",
     "seconds": "seconds",
     "memory": "Long-term memory",
-    "memory_hint": "Remembers what it learns for later conversations.",
+    "memory_hint": "Remembers what it learns for later conversations. What it remembers about people is shared by every chatbot channel in this server.",
     "moderation_title": "AI moderation",
     "moderation": "Alert on spam and scams",
     "moderation_desc": "When someone floods the chat or posts what looks like a scam (crypto or stock \"leading\" rooms, illegal content), the AI takes a second look. If it judges the post harmful, it DMs only the server owner or admins among the people who connected a PC to this server, with that person and a link to the message. Messages are not deleted and nobody is punished.",

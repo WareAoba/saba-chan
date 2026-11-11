@@ -1567,7 +1567,7 @@
     "effort_high": "Élevé",
     "seconds": "secondes",
     "memory": "Mémoire à long terme",
-    "memory_hint": "Retient ce qu'elle apprend pour les conversations suivantes.",
+    "memory_hint": "Retient ce qu'elle apprend pour les conversations suivantes. Ce qu'elle retient sur les personnes est partagé par tous les salons du chatbot de ce serveur.",
     "moderation_title": "Modération par IA",
     "moderation": "Alerter en cas de spam et d'arnaque",
     "moderation_desc": "Quand quelqu'un inonde le chat ou publie ce qui ressemble à une arnaque (groupes de « signaux » crypto ou boursiers, contenu illégal), l'IA y jette un second regard. Si elle le juge nuisible, elle prévient par MP Discord seulement le propriétaire ou les admins du serveur parmi ceux qui ont connecté un PC à ce serveur, avec cette personne et un lien vers le message. Aucun message n'est supprimé et personne n'est sanctionné.",

@@ -1567,7 +1567,7 @@
     "effort_high": "Alto",
     "seconds": "segundos",
     "memory": "Memória de longo prazo",
-    "memory_hint": "Lembra o que aprende para usar em conversas futuras.",
+    "memory_hint": "Lembra o que aprende para usar em conversas futuras. O que lembra sobre as pessoas é compartilhado por todos os canais do chatbot deste servidor.",
     "moderation_title": "Moderação por IA",
     "moderation": "Avisar sobre spam e golpes",
     "moderation_desc": "Quando alguém inunda o chat ou posta algo que parece golpe (grupos de \"sinais\" de cripto ou ações, conteúdo ilegal), a IA dá uma segunda olhada. Se julgar nocivo, avisa por DM do Discord só o dono ou os administradores do servidor entre quem conectou um PC a este servidor, com essa pessoa e um link para a mensagem. Nenhuma mensagem é apagada e ninguém é punido.",
