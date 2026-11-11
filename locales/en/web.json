@@ -325,7 +325,9 @@
       "closed": "Not reachable from the internet",
       "cgnat": "Your router has no public IP (CGNAT)",
       "unknown": "Some ports could not be checked",
-      "no_ports": "This game does not say which ports to check"
+      "no_ports": "This game does not say which ports to check",
+      "host_mismatch": "The public address does not point to this PC",
+      "host_unresolved": "The public address could not be found"
     },
     "status": {
       "open": "Open",
@@ -338,9 +340,12 @@
     "hint": {
       "closed": "Check that your router forwards this port to this PC and that the PC firewall allows it.",
       "firewall": "Windows Firewall is blocking incoming connections on this port. For the network you are connected to now (private or public), allow saba-core if the server is stopped, or the game server program if it is running, in Windows Firewall settings, then check again.",
+      "firewall_macos": "The macOS firewall is blocking incoming connections for this server's program. In System Settings › Network › Firewall › Options, set saba-core (if the server is stopped) or the game server program such as java (if it is running) to Allow incoming connections, then check again.",
       "router": "The PC firewall allows this port. Forward this port to this PC in your router settings, then check again.",
       "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
-      "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
+      "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again.",
+      "host_mismatch": "In your domain settings, point the A record to this PC's public IP. If you use DDNS, check that its updater is running. If a CDN proxy is on, turn it off: game connections cannot pass through it.",
+      "host_unresolved": "Check the spelling of the public address and your domain's DNS settings. If the domain is new, check again in a little while."
     },
     "error": {
       "node_token_missing": "Connect to Discord (pairing) first. Server-chan does the check.",
@@ -348,7 +353,8 @@
       "rate_limited": "Too many checks. Try again in a minute.",
       "relay_unreachable": "Could not reach Server-chan. Check your internet connection.",
       "failed": "The check failed."
-    }
+    },
+    "host": "Public address {{host}} · this PC {{address}}"
   },
   "commands": {
     "run": "Send",
@@ -439,12 +445,6 @@
       "CLEAR_RUNNING": "This channel is already being cleared.",
       "NO_CLEAR_JOB": "Nothing is being cleared in this channel.",
       "generic": "Couldn't change it. Try again in a moment."
-    },
-    "dur": {
-      "seconds": "{{count}}s",
-      "minutes": "{{count}} min",
-      "hours": "{{count}} h",
-      "days": "{{count}} d"
     },
     "mod": {
       "title": "Server management",

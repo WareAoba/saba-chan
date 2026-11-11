@@ -1,4 +1,4 @@
-import { type ComponentProps, type ReactNode, useEffect, useState } from 'react';
+import { type ComponentProps, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     applyInstanceUpdate,
@@ -30,9 +30,11 @@ import {
     viewStatus,
 } from '../../utils/serverView';
 import { dataStatusRows } from '../DataSlots';
-import ExtensionSlot from '../ExtensionSlot';
+import ExtensionSlot, { SlotView, useSlotPages } from '../ExtensionSlot';
 import { Icon } from '../Icon';
+import { PageFind, PageFindButton } from './PageFind';
 import { PortCheck, PortCheckNotice } from './PortCheck';
+import { ServerAddress } from './ServerAddress';
 import { ServerCheck } from './ServerCheck';
 import CommandModal from '../Modals/CommandModal';
 import { NativeProvision } from '../NativeProvision';
@@ -43,6 +45,7 @@ import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceW
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
 import { ServerConsole } from './ServerConsole';
+import { StartCoach } from './OnboardingCard';
 
 type ServerSetter = (updater: (prev: Server[]) => Server[]) => void;
 
@@ -112,6 +115,7 @@ export function ServerDetail({
     const interaction = interactionOf(server, moduleData);
     const gameName = gameNameOf(t, server.module, moduleData);
 
+    const extTabs = useSlotPages('ServerDetail.tab');
     const tabs = [
         interaction.console && {
             id: 'console',
@@ -135,6 +139,8 @@ export function ServerDetail({
             label: t('shell.tab_discord'),
             icon: <Icon name="discord" size="sm" />,
         },
+        // 익스텐션 탭 (`ServerDetail.tab` slot): "정보" 바로 앞
+        ...extTabs.map((p) => ({ id: p.id, label: p.label, icon: <Icon name={p.icon} size="sm" /> })),
         { id: 'info', label: t('shell.tab_info'), icon: <Icon name="info" size="sm" /> },
     ].filter(Boolean) as { id: string; label: string; icon: ReactNode }[];
 
@@ -156,6 +162,11 @@ export function ServerDetail({
     }, [requestedTab]);
     const defaultTab = defaultServerTab(interaction, server.status);
     const activeTab = tabs.some((x) => x.id === tab) ? (tab as string) : defaultTab;
+    const activeExtTab = extTabs.find((p) => p.id === activeTab);
+    // Ctrl+F 찾기는 칸이 많은 설정·사바쨩·디스코드 탭에서만 (사용자 11-10)
+    const findable = ['settings', 'saba', 'discord'].includes(activeTab);
+    const bodyRef = useRef<HTMLDivElement>(null);
+    const tabRowRef = useRef<HTMLDivElement>(null);
 
     const conflicts = portConflictCheck ? server.port_conflicts || [] : [];
     const uptime = status === 'running' && server.start_time ? <Uptime startTime={server.start_time} /> : null;
@@ -201,13 +212,16 @@ export function ServerDetail({
                 </button>
             </>
         ) : (
-            <button
-                type="button"
-                className="btn btn-primary btn-lg"
-                onClick={() => onStart(server.name, server.module)}
-            >
-                <Icon name="play" size="sm" /> {t('shell.start')}
-            </button>
+            <span className="start-anchor">
+                <button
+                    type="button"
+                    className="btn btn-primary btn-lg"
+                    onClick={() => onStart(server.name, server.module)}
+                >
+                    <Icon name="play" size="sm" /> {t('shell.start')}
+                </button>
+                <StartCoach />
+            </span>
         );
     })();
 
@@ -285,6 +299,8 @@ export function ServerDetail({
                 </div>
             )}
 
+            {status !== 'missing' && <ServerAddress server={server} />}
+
             {status !== 'missing' && <PortCheckNotice server={server} />}
 
             {conflicts.length > 0 && (
@@ -327,8 +343,17 @@ export function ServerDetail({
 
             {status !== 'missing' && !server.provisioning && (
                 <>
-                    <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} />
-                    <div className="detail-body" key={`${server.id}-${activeTab}`}>
+                    <div className="detail-tabrow" ref={tabRowRef}>
+                        <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} />
+                        {findable && <PageFindButton />}
+                    </div>
+                    <PageFind
+                        rootRef={bodyRef}
+                        anchorRef={tabRowRef}
+                        enabled={findable}
+                        pageKey={`${server.id}-${activeTab}`}
+                    />
+                    <div className="detail-body" key={`${server.id}-${activeTab}`} ref={bodyRef}>
                         {activeTab === 'console' && (
                             <LiveServerConsole
                                 server={server}
@@ -383,6 +408,9 @@ export function ServerDetail({
                             />
                         )}
                         {activeTab === 'discord' && <InstanceDiscordTab server={server} />}
+                        {activeExtTab && (
+                            <SlotView entry={activeExtTab.entry} slotId="ServerDetail.tab" server={server} t={t} />
+                        )}
                         {activeTab === 'info' && (
                             <InfoTab
                                 server={server}

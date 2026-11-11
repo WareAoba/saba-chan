@@ -13,12 +13,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../contexts/ExtensionContext', () => ({
     useExtensions: () => ({
         extensions: [],
-        manifestExtensions: [],
-        availableUpdates: [],
-        installingIds: new Set(),
         loading: false,
         refresh: vi.fn(),
-        installExtension: vi.fn(),
         toggleExtension: vi.fn(),
     }),
 }));

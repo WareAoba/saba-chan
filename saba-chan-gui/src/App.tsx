@@ -20,13 +20,14 @@ import { ActivityPage } from './components/servers/AuditTab';
 import { SabaBubble } from './components/shell/SabaBubble';
 import { CommandPalette, paletteAvailable } from './components/shell/CommandPalette';
 import { DaemonEvents } from './components/shell/DaemonEvents';
-import { LinkRequests, linkRequestsAvailable } from './components/discord/LinkRequests';
 import { AppBar } from './components/shell/AppBar';
+import { ExtensionAppPage } from './components/shell/ExtensionAppPage';
 import RemotePathPicker from './components/shell/RemotePathPicker';
 import { daemonStateOf } from './components/servers/DaemonDown';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
 import { ExtensionProvider } from './contexts/ExtensionContext';
+import { type HostWindow, HostWindowContext, isAppRoute } from './extensions/host';
 import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
@@ -40,6 +41,20 @@ import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
+import { motionAllowed } from './hooks/useSwapAnimation';
+import {
+    beginOpeningSound,
+    OPENING_CHIME_LEAD_MS,
+    OPENING_CHORD_MS,
+    OPENING_READY_WAIT_MS,
+    type OpeningKind,
+    type OpeningSound,
+    openingChordMs,
+    openingGate,
+    RELAY_WAIT_MS,
+    takeOpeningSound,
+    whenOpeningReady,
+} from './utils/opening';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
 import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
@@ -135,7 +150,9 @@ function App() {
     const refreshInterval = useSettingsStore((s) => s.refreshInterval);
     const ipcPort = useSettingsStore((s) => s.ipcPort);
     const consoleBufferSize = useSettingsStore((s) => s.consoleBufferSize);
-    const consoleBufferRef = useRef(2000);
+    // 콘솔 줄 수 한도: 콘솔 이벤트 처리기가 지금 값을 읽는다
+    const consoleBufferRef = useRef(consoleBufferSize);
+    consoleBufferRef.current = consoleBufferSize;
     const _settingsReady = useSettingsStore((s) => s.settingsReady);
 
     // ── Discord Store (Zustand) ──────────────────────────────
@@ -149,6 +166,8 @@ function App() {
     const discordBotStatus = useDiscordStore((s) => s.discordBotStatus);
     const relayConnected = useDiscordStore((s) => s.relayConnected);
     const relayConnecting = useDiscordStore((s) => s.relayConnecting);
+    const relayChecked = useDiscordStore((s) => s.relayChecked);
+    const discordConfigLoaded = useDiscordStore((s) => s._settingsReady);
 
     // ══════════════════════════════════════════════════════════
     // ── Custom Hooks ─────────────────────────────────────────
@@ -186,6 +205,30 @@ function App() {
                 useUIStore.getState().openSettings('extensions');
             },
         });
+
+    // 익스텐션 화면의 host가 쓰는 이 창의 동작 (extensions/host). 손잡이는 바뀌어도 host는 그대로 둔다
+    const serverActionsRef = useRef({ handleStart, handleStop, handleRestart });
+    serverActionsRef.current = { handleStart, handleStop, handleRestart };
+    const hostWindow = useMemo<HostWindow>(
+        () => ({
+            servers: () => useServerStore.getState().servers,
+            run: async (instanceId, action) => {
+                const server = useServerStore.getState().servers.find((x) => x.id === instanceId);
+                if (!server) return false;
+                const { handleStart: start, handleStop: stop, handleRestart: restart } = serverActionsRef.current;
+                if (action === 'start') await start(server.name, server.module);
+                else if (action === 'stop') await stop(server.name);
+                else if (action === 'restart') await restart(server.name);
+                else return false;
+                return true;
+            },
+            openApp: (route) => {
+                if (isAppRoute(route)) useUIStore.getState().setActiveTab(route as ActiveTab);
+            },
+        }),
+        [],
+    );
+    const leaveExtensionPage = useCallback(() => useUIStore.getState().setActiveTab('servers'), []);
 
     // Store-based fetchModules
     const fetchModules = useServerStore((s) => s.fetchModules);
@@ -381,10 +424,7 @@ function App() {
         useServerStore.getState().startUptimeClock();
 
         const loadSettings = async () => {
-            const settings = await useSettingsStore.getState().load();
-            if (settings) {
-                consoleBufferRef.current = settings.consoleBufferSize ?? 2000;
-            }
+            await useSettingsStore.getState().load();
 
             // Load bot config into discord store
             await useDiscordStore.getState().loadConfig();
@@ -427,20 +467,6 @@ function App() {
         }, INIT_STALL_MS);
         return () => clearTimeout(timer);
     }, [daemonReady, initFailed, initSeen, t]);
-
-    // '받고 다음 실행 때 적용': 앱을 열 때 한 번 데몬에 맡긴다. 무엇을 적용할지(켜진 서버가 있으면 재시작이 필요한 것은 미룸)는 데몬이 고른다.
-    // 콘솔 팝아웃 창은 앱을 새로 연 것이 아니다
-    const applyOnLaunchDone = useRef(false);
-    useEffect(() => {
-        if (isPopoutMode || !daemonReady || applyOnLaunchDone.current || !window.api?.updaterApplyOnLaunch) return;
-        applyOnLaunchDone.current = true;
-        (async () => {
-            const res = await window.api.updaterApplyOnLaunch();
-            if (res?.requires_updater && res.needs_updater?.length > 0) {
-                await window.api.updaterLaunchApply?.(res.needs_updater);
-            }
-        })();
-    }, [daemonReady, isPopoutMode]);
 
     // Background Daemon status polling
     // biome-ignore lint/correctness/useExhaustiveDependencies: setter is stable
@@ -619,30 +645,123 @@ function App() {
         />
     );
 
+    const [openedWithoutDaemon, setOpenedWithoutDaemon] = useState(false);
     // 데몬 없이 메인 화면으로 (서버 화면이 데몬 연결 안내를 보인다)
     const enterWithoutDaemon = () => {
+        setOpenedWithoutDaemon(true);
         setInitFailed(null);
         setDaemonReady(true);
         setServersInitializing(false);
     };
 
-    // 로딩이 끝나면 로딩 화면을 바로 지우지 않고 메인 화면 위에서 잠깐 사라지게 둔다
-    const showLoading = !daemonReady || serversInitializing;
+    // 데몬 준비 뒤 릴레이 첫 확인을 기다린다: 기동음과 오프닝이 같이 시작하게 (utils/opening.ts)
+    const daemonDone = daemonReady && !serversInitializing;
+    const [relayWaitOver, setRelayWaitOver] = useState(false);
+    useEffect(() => {
+        if (!daemonDone) return undefined;
+        const timer = setTimeout(() => setRelayWaitOver(true), RELAY_WAIT_MS);
+        return () => clearTimeout(timer);
+    }, [daemonDone]);
+    const opening = openingGate({
+        daemonOk: !openedWithoutDaemon,
+        configLoaded: discordConfigLoaded,
+        relayConfigured: !!discordCloudHostId,
+        relayChecked,
+        relayConnected,
+        waitedMs: relayWaitOver ? RELAY_WAIT_MS : 0,
+    });
+    const chimeRef = useRef({ chime: false, played: false });
+    chimeRef.current.chime = opening.chime;
+
+    // 정상 기동음은 첫 오프닝과 함께 한 번 (셸이 낸다, 설정 sounds.startup)
+    const playChime = () => {
+        if (chimeRef.current.chime && !chimeRef.current.played) {
+            chimeRef.current.played = true;
+            window.api?.playSound?.('startup');
+        }
+    };
+    // 오프닝이 내는 소리: 정상이면 기동음 자리에 맡은 소리(처음 사용자 가이드 열림음)가 있으면 그것을 낸다
+    const playOpeningSound = (sound: OpeningSound) => {
+        if (sound === 'startup') playChime();
+        else window.api?.playSound?.(sound);
+    };
+
+    // 로딩이 끝나면 로딩 화면을 그대로 덮어 둔 채 메인 화면을 아래에 다 그리고(prepare),
+    // 글꼴·그림까지 준비되면 기동음과 함께 오프닝을 재생한다(play). 움직임을 줄였으면 예전처럼 잠깐 사라지게만 둔다
+    const showLoading = !daemonDone || opening.hold;
+    // 처음부터 로딩할 것이 없으면(HMR로 데몬이 이미 떠 있으면) 오프닝 없이 바로 연다
+    const [openingPhase, setOpeningPhase] = useState<'loading' | 'prepare' | 'play' | 'done'>(() =>
+        showLoading ? 'loading' : 'done',
+    );
+    const [openingKind, setOpeningKind] = useState<OpeningKind>('burst');
+    const [openingChord, setOpeningChord] = useState(OPENING_CHORD_MS);
+    const openingAfterRef = useRef<OpeningSound | null>(null);
+    const appRef = useRef<HTMLDivElement>(null);
     const [loadingLeaving, setLoadingLeaving] = useState(false);
     const wasLoadingRef = useRef(showLoading);
     useEffect(() => {
         const was = wasLoadingRef.current;
         wasLoadingRef.current = showLoading;
-        if (!was || showLoading) return undefined;
+        if (showLoading) {
+            // 메인 화면이 처음 그려질 때 열리는 화면(처음 사용자 가이드)은 이 효과보다 먼저 돌므로, 로딩 중부터 소리를 맡을 수 있게 한다
+            beginOpeningSound();
+            setOpeningPhase('loading');
+            return undefined;
+        }
+        if (!was) return undefined;
+        if (!isPopoutMode && motionAllowed()) {
+            setOpeningPhase('prepare');
+            return undefined;
+        }
+        // 움직임을 줄였으면 오프닝 없이 열되, 맡은 소리가 있으면 기동음 대신 그것을 낸다
+        const claimed = takeOpeningSound();
+        setOpeningPhase('done');
+        if (!isPopoutMode) {
+            if (claimed) playOpeningSound(claimed);
+            else playChime();
+        }
         setLoadingLeaving(true);
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);
     }, [showLoading]);
+    useEffect(() => {
+        if (openingPhase !== 'prepare') return undefined;
+        let alive = true;
+        const decode = (src: string) => {
+            const img = new Image();
+            img.src = src;
+            return img.decode ? img.decode() : Promise.resolve();
+        };
+        whenOpeningReady(
+            [document.fonts?.ready, decode('./title.png'), decode(logoSrc)].filter(Boolean),
+            OPENING_READY_WAIT_MS,
+            (cb) => requestAnimationFrame(() => cb()),
+        ).then(() => {
+            if (!alive) return;
+            // 데몬·릴레이가 정상이면 기동음과 함께 터뜨리고, 아니면 소리 없이 후두둑
+            // 소리는 낱말을 떼어 오기 시작한 뒤에 틀어, 그 화음이 오프닝의 화음 순간에 맞게 한다.
+            // 맡은 소리가 길면(가이드 열림음) 그 화음까지 오프닝을 길게 끌어온다
+            const claimed = takeOpeningSound();
+            const burst = chimeRef.current.chime;
+            const sound = claimed ?? 'startup';
+            setOpeningKind(burst ? 'burst' : 'fall');
+            setOpeningChord(openingChordMs(sound));
+            // 후두둑(비정상)은 기동음을 내지 않고, 맡은 소리는 화면이 드러난 뒤에 낸다
+            openingAfterRef.current = burst ? null : claimed;
+            if (burst) setTimeout(() => playOpeningSound(sound), OPENING_CHIME_LEAD_MS);
+            setOpeningPhase('play');
+        });
+        return () => {
+            alive = false;
+        };
+    }, [openingPhase]);
 
     // Loading screen (daemon not ready or servers still initializing)
     if (showLoading) {
+        // 메인 화면을 그릴 때도 로딩 화면이 같은 자리(둘째)에 남아 이어지게 한다 (매트릭스가 다시 시작하지 않게)
         return (
             <>
+                {null}
                 <LoadingScreen
                     logoSrc={logoSrc}
                     initStatus={initStatus}
@@ -775,10 +894,35 @@ function App() {
 
     const anyPopoverOpen = showBackgroundSection || showNoticeSection;
 
+    const openingOverlay =
+        openingPhase === 'loading' || openingPhase === 'prepare' || openingPhase === 'play' ? (
+            <LoadingScreen
+                logoSrc={logoSrc}
+                initStatus={initStatus}
+                initProgress={100}
+                opening={openingPhase === 'play' ? 'play' : 'prepare'}
+                openingKind={openingKind}
+                openingChord={openingChord}
+                onOpened={() => {
+                    const after = openingAfterRef.current;
+                    openingAfterRef.current = null;
+                    if (after) playOpeningSound(after);
+                    setOpeningPhase('done');
+                }}
+                onShake={(dx, dy) => {
+                    if (appRef.current) appRef.current.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : '';
+                }}
+            />
+        ) : loadingLeaving ? (
+            <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={100} leaving />
+        ) : null;
+
     return (
+        <>
         <ExtensionProvider>
+            <HostWindowContext.Provider value={hostWindow}>
             <TooltipProvider>
-                <div className="App">
+                <div className="App" ref={appRef}>
                     {anyPopoverOpen && (
                         <div
                             className="popover-backdrop"
@@ -852,23 +996,10 @@ function App() {
                         )}
                         {page === 'discord' && <DiscordPage {...discordPageProps} />}
                         {(page as string) === 'activity' && <ActivityPage />}
+                        {page.startsWith('ext:') && <ExtensionAppPage page={page} onMissing={leaveExtensionPage} />}
                         {page === 'settings' && (
                             <div className="page page-scroll page-settings">
                                 <SettingsModal
-                                    variant="page"
-                                    isOpen
-                                    onClose={() => setPage('servers')}
-                                    refreshInterval={refreshInterval}
-                                    onRefreshIntervalChange={(val: number) =>
-                                        useSettingsStore.getState().update({ refreshInterval: val })
-                                    }
-                                    ipcPort={ipcPort}
-                                    onIpcPortChange={(val: number) => useSettingsStore.getState().update({ ipcPort: val })}
-                                    consoleBufferSize={consoleBufferSize}
-                                    onConsoleBufferSizeChange={(val: number) => {
-                                        useSettingsStore.getState().update({ consoleBufferSize: val });
-                                        consoleBufferRef.current = val;
-                                    }}
                                     discordCloudRelayUrl={discordCloudRelayUrl}
                                     onDiscordCloudRelayUrlChange={(val: string) =>
                                         useDiscordStore.getState().update({ discordCloudRelayUrl: val })
@@ -890,7 +1021,6 @@ function App() {
                     <SabaBubble />
                     {paletteAvailable() && <CommandPalette />}
                     {eventsAvailable() && <DaemonEvents onServersChanged={fetchServers} />}
-                    {linkRequestsAvailable() && <LinkRequests />}
 
                     {/* 모달 렌더링 */}
                     {patchNotes && <PatchNotesModal data={patchNotes} onClose={() => setPatchNotes(null)} />}
@@ -924,11 +1054,11 @@ function App() {
 
                     {/* 작업 진행은 상단 바(TaskIndicator)가 보여 준다 */}
                 </div>
-                {loadingLeaving && (
-                    <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={100} leaving />
-                )}
             </TooltipProvider>
+            </HostWindowContext.Provider>
         </ExtensionProvider>
+        {openingOverlay}
+        </>
     );
 }
 

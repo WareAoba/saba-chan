@@ -473,3 +473,52 @@ export function ownerMismatch(perm: GuildPermissions | null | undefined) {
     if (!relay) return null;
     return String(relay) === String(perm?.ownerDiscordId ?? '') ? null : String(relay);
 }
+
+/** 레벨마다 그 레벨에서 새로 쓸 수 있게 되는 명령 수 (큰 칩만, help·list 제외) */
+function gainsByLevel(board: CommandBoard, view?: string) {
+    const gains: Record<number, number> = {};
+    for (const chip of stairChips(board, view).filter((c) => !c.instance))
+        gains[chip.level] = (gains[chip.level] || 0) + 1;
+    return gains;
+}
+
+/** "Lv 1의 모든 명령 + 5개" 같은 한 줄 (앱 문구, 웹은 gui 이름공간 t를 준다). 계단을 못 읽었으면 없다 */
+export function levelSummary(
+    t: TFunction,
+    perm: GuildPermissions,
+    board: CommandBoard | null,
+    id: number | undefined,
+    view?: string,
+) {
+    if (id === OWNER) return t('discord.perm_level_all');
+    if (id === BANNED) return t('discord.perm_level_none');
+    if (!board) return null;
+    const up = ascending(perm);
+    const at = up.indexOf(id as number);
+    const below = up[at - 1];
+    const gain = gainsByLevel(board, view)[id as number] || 0;
+    // 금지 바로 위 레벨은 help·list부터 쓴다
+    if (below === BANNED) return t('discord.perm_level_base', { count: gain + 1 });
+    return t('discord.perm_level_gain', { below: levelTitle(t, perm, below), count: gain });
+}
+
+/** 명령 칩 점의 색: 서버 조작·관리 명령은 고정 색, 나머지는 디스코드 되묻기 단계 */
+export const RISK_TONE: Record<string, string> = { safe: 'ok', caution: 'warn', danger: 'stop' };
+export const chipTone = (c: StairChip) =>
+    c.kind === 'control' ? 'control' : c.kind === 'admin' ? 'info' : RISK_TONE[c.confirmRisk as string] || 'ok';
+
+/** 멤버 찾기 결과를 한 번에 보이는 수. 목록 끝까지 내리면 이만큼 더 보인다 (사용자 지정 2026-11-07) */
+export const MEMBER_PAGE = 10;
+
+/** 디스코드 ID (snowflake) */
+export const isSnowflake = (v: string) => /^\d{17,20}$/.test(v);
+
+/** 서버 닉네임(표시 이름)·전역 이름·사용자 이름으로 찾는다. 아이디로는 찾지 않는다 */
+export function searchMembers(members: DiscordMember[], query: string, name: (m: DiscordMember) => string) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const hit = members.filter((m) =>
+        [m.displayName, m.globalName, m.username].some((v) => typeof v === 'string' && v.toLowerCase().includes(q)),
+    );
+    return sortByName(hit, name);
+}

@@ -89,6 +89,8 @@ pub struct GuiSettings {
     /// 없으면 GUI 기본 항목
     #[serde(skip_serializing_if = "Option::is_none")]
     pub monitor_items: Option<Vec<String>>,
+    /// 사용자가 ✕로 닫은 가이드 id (`firstRun`·`checklist` 등, GUI `guides.ts`). 설정 → 일반의 가이드 목록에서 다시 연다
+    pub closed_guides: Vec<String>,
 
     // Window state (GUI가 저장하지만 데몬이 중개)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -113,6 +115,8 @@ pub struct SoundSettings {
     pub crash: bool,
     pub install: bool,
     pub update: bool,
+    /// 정상 기동음 (데몬·릴레이가 붙어 오프닝이 시작될 때)
+    pub startup: bool,
 }
 
 impl Default for SoundSettings {
@@ -124,6 +128,7 @@ impl Default for SoundSettings {
             crash: true,
             install: true,
             update: true,
+            startup: true,
         }
     }
 }
@@ -238,6 +243,7 @@ impl Default for GuiSettings {
             system_monitor_expanded: false,
             system_monitor_net_trace: false,
             monitor_items: None,
+            closed_guides: Vec::new(),
             window_bounds: None,
             language: None,
             main_daemon: None,
@@ -284,6 +290,9 @@ impl GuiSettings {
         if self.monitor_items.as_ref().is_some_and(|items| !monitor_items_ok(items)) {
             return Err(format!("monitorItems must be at most {MONITOR_ITEMS_MAX} ids of 1..={MONITOR_ITEM_MAX_LEN} characters"));
         }
+        if !monitor_items_ok(&self.closed_guides) {
+            return Err(format!("closedGuides must be at most {MONITOR_ITEMS_MAX} ids of 1..={MONITOR_ITEM_MAX_LEN} characters"));
+        }
         Ok(())
     }
 
@@ -308,6 +317,9 @@ impl GuiSettings {
         }
         if self.monitor_items.as_ref().is_some_and(|items| !monitor_items_ok(items)) {
             self.monitor_items = None;
+        }
+        if !monitor_items_ok(&self.closed_guides) {
+            self.closed_guides.clear();
         }
         self.window_backdrop.sanitize();
     }
@@ -1875,6 +1887,19 @@ mod tests {
         assert!(ConfigStore::new(tmp.path()).get_gui_settings().await.monitor_items.is_none());
     }
 
+    /// 사용자 11-09: 닫은 가이드는 앱을 다시 켜도 닫힌 채로 있고, 비우면 다시 보인다
+    #[tokio::test]
+    async fn closed_guides_are_remembered_and_can_be_reopened() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        assert!(store.get_gui_settings().await.closed_guides.is_empty());
+        store.write_gui(serde_json::json!({ "closedGuides": ["firstRun", "checklist"] }), Apply::MergePatch, None).await.unwrap();
+        assert_eq!(ConfigStore::new(tmp.path()).get_gui_settings().await.closed_guides, ["firstRun", "checklist"]);
+        assert!(store.write_gui(serde_json::json!({ "closedGuides": ["a\nb"] }), Apply::MergePatch, None).await.is_err());
+        store.write_gui(serde_json::json!({ "closedGuides": [] }), Apply::MergePatch, None).await.unwrap();
+        assert!(ConfigStore::new(tmp.path()).get_gui_settings().await.closed_guides.is_empty());
+    }
+
     /// 사용자 11-02: 콘솔 글꼴을 글자(영문·한글·일본어·중국어)마다 고른다. 기본 Cascadia·D2Coding·HackGen·Sarasa SC, 그 글자의 후보 밖은 거절
     #[tokio::test]
     async fn console_fonts_are_chosen_per_script() {
@@ -1925,7 +1950,7 @@ mod tests {
         assert_eq!(defaults["osNotifications"], true);
         assert_eq!(
             defaults["sounds"],
-            serde_json::json!({ "enabled": true, "serverStart": true, "serverStop": true, "crash": true, "install": true, "update": true })
+            serde_json::json!({ "enabled": true, "serverStart": true, "serverStop": true, "crash": true, "install": true, "update": true, "startup": true })
         );
         store
             .set_gui_settings_from_json(

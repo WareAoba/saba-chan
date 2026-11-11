@@ -273,11 +273,11 @@ async fn instance_commands(
 
 /// GET /api/instance/:id/commands — 이 인스턴스에서 쓸 수 있는 명령 전체 (모듈 + 인스턴스별 + 활성 익스텐션)
 ///
-/// `{commands: [{name, label, description, risk, inputs, source: "module"|"extension", group?, extension?, aliases?}],
+/// `{commands: [{name, label, description, risk, inputs, source: "module"|"extension", ready, group?, extension?, aliases?}],
 ///   components?}` — 인스턴스별 명령(`[commands] hook`)은 source "module"에 `group`(예: 플러그인 이름)이 붙고,
 /// `components`는 모듈이 판정한 구성요소(설치된 플러그인·모드 등)를 그대로 넘긴 것이다.
 pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<IPCServer>) -> axum::response::Response {
-    let (instance, metadata) = {
+    let (instance, metadata, route) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(&id).cloned() else {
             return (
@@ -287,8 +287,13 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 .into_response();
         };
         let metadata = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
-        (instance, metadata)
+        let running = supervisor.is_running(&instance.id).await;
+        let stdin_route = supervisor.routes_commands_to_stdin(&instance.id).await;
+        let rcon_route = !stdin_route && supervisor.rcon_route(&instance.id).is_some();
+        (instance, metadata, (running, stdin_route, rcon_route))
     };
+    let (running, stdin_route, rcon_route) = route;
+    let ready = |method: Option<&str>| command_ready(method, running, stdin_route, rcon_route);
     let mut commands = Vec::new();
     if let Some(meta) = &metadata {
         for field in meta.commands.as_ref().map(|c| c.fields.as_slice()).unwrap_or(&[]) {
@@ -301,6 +306,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 "inputs": field.inputs,
                 "source": "module",
                 "aliases": aliases,
+                "ready": ready(field.method.as_deref()),
                 // false면 디스코드·챗봇 액션으로 부를 수 없다 (`actions::command_view`)
                 "remote": field.remote,
             }));
@@ -323,6 +329,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 "inputs": field.inputs,
                 "source": "module",
                 "group": extra.groups.get(&field.name),
+                "ready": ready(field.method.as_deref()),
                 "remote": field.remote,
             }));
         }
@@ -340,6 +347,8 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
             "inputs": cmd.inputs,
             "source": "extension",
             "extension": ext_id,
+            // 익스텐션 명령은 서버가 꺼져 있어도 부를 수 있다 (`run_command`)
+            "ready": true,
         }));
     }
     let mut body = json!({ "commands": commands });
@@ -347,6 +356,18 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
         body["components"] = extra.components;
     }
     Json(body).into_response()
+}
+
+/// 지금 이 명령을 보낼 수 있는가: `run_command`의 경로 판정과 같다. 콘솔이 붙어 있으면(stdin) 무엇이든,
+/// 아니면 서버가 켜져 있어야 하고 콘솔·RCON 명령은 RCON 경로도 있어야 한다
+fn command_ready(method: Option<&str>, running: bool, stdin_route: bool, rcon_route: bool) -> bool {
+    if stdin_route {
+        return true;
+    }
+    if !running {
+        return false;
+    }
+    !matches!(method, Some("console" | "rcon")) || rcon_route
 }
 
 /// 모듈 lifecycle.py `command()` 실행
@@ -680,18 +701,14 @@ pub(crate) async fn rest_for(
     );
 
     // REST 클라이언트 생성
-    let mut client = crate::protocol::client::ProtocolClient::new_rest(
-        rest_host.to_string(),
-        rest_port,
-        use_https,
-    );
-    if let Some(limit) = response_limit { client = client.with_response_limit(limit); }
+    let mut client = crate::protocol::rest::RestClient::new(rest_host.to_string(), rest_port, use_https);
+    if let Some(limit) = response_limit { client.set_response_limit(limit); }
 
     // Basic Auth — 게임 설정 파일에서만 읽음
     if let Some(ref creds) = file_credentials {
         let username = creds.get("rest_username").and_then(|v| v.as_str()).unwrap_or("admin");
         if let Some(pass) = creds.get("rest_password").and_then(|v| v.as_str()) {
-            client = client.with_basic_auth(username.to_string(), pass.to_string());
+            client.set_basic_auth(username.to_string(), pass.to_string());
         }
     }
 
@@ -701,22 +718,15 @@ pub(crate) async fn rest_for(
         .and_then(|v| v.as_str())
         .unwrap_or("GET");
 
-    let http_method = match method.to_uppercase().as_str() {
-        "POST" => crate::protocol::HttpMethod::Post,
-        "PUT" => crate::protocol::HttpMethod::Put,
-        "DELETE" => crate::protocol::HttpMethod::Delete,
-        _ => crate::protocol::HttpMethod::Get,
+    // 모르는 메서드는 GET으로 보낸다. 본문은 POST·PUT에만 싣는다
+    let (http_method, body) = match method.to_uppercase().as_str() {
+        "POST" => (reqwest::Method::POST, payload.get("body").cloned()),
+        "PUT" => (reqwest::Method::PUT, payload.get("body").cloned()),
+        "DELETE" => (reqwest::Method::DELETE, None),
+        _ => (reqwest::Method::GET, None),
     };
-
-    // 명령어 구성 - endpoint는 모듈에서 완전한 형식으로 전달됨
-    let cmd = crate::protocol::ServerCommand {
-        command_type: crate::protocol::CommandType::Rest,
-        command: None,
-        endpoint: Some(endpoint.to_string()),
-        method: Some(http_method),
-        body: payload.get("body").cloned(),
-        timeout_secs: payload.get("timeout").and_then(|v| v.as_u64()),
-    };
+    // endpoint는 모듈에서 완전한 형식으로 전달됨
+    let endpoint_path = endpoint.to_string();
 
     // 연결 확인과 요청은 블로킹 I/O라 async 런타임 밖에서 실행한다
     enum RestFailure {
@@ -725,9 +735,9 @@ pub(crate) async fn rest_for(
     }
     let outcome = tokio::task::spawn_blocking(move || {
         client
-            .connect_rest(std::time::Duration::from_secs(5))
+            .verify_connection()
             .map_err(|e| RestFailure::Connect(e.to_string()))?;
-        client.execute(cmd).map_err(RestFailure::Execute)
+        client.request(http_method, &endpoint_path, body).map_err(RestFailure::Execute)
     })
     .await
     .unwrap_or_else(|e| Err(RestFailure::Execute(crate::protocol::ProtocolError::Protocol(format!("task failed: {}", e)))));
@@ -968,6 +978,52 @@ mod tests {
         // 다음 시작 준비에서 접속 정보를 지운다
         state.supervisor.read().await.ensure_rcon_access(&inst).unwrap();
         assert!(crate::protocol::rcon::load(&dir).is_none());
+    }
+
+    /// 팔레트는 지금 보낼 수 있는 명령만 보여준다: 목록의 `ready`가 실제 실행 경로(`run_command`)와 같은 판정이어야 한다
+    #[test]
+    fn a_command_is_ready_only_when_its_route_can_take_it_now() {
+        // 콘솔이 붙어 있으면(stdin) 어떤 방식이든 보낼 수 있다
+        assert!(command_ready(Some("console"), true, true, false));
+        // 꺼진 서버: 모듈·REST·콘솔 명령 모두 못 보낸다
+        for method in [None, Some("module"), Some("rest"), Some("console"), Some("rcon")] {
+            assert!(!command_ready(method, false, false, true), "{method:?}");
+        }
+        // 켜져 있어도 콘솔 명령은 RCON 경로가 있어야 한다 (없으면 no_command_path)
+        assert!(command_ready(Some("console"), true, false, true));
+        assert!(!command_ready(Some("console"), true, false, false));
+        assert!(!command_ready(Some("rcon"), true, false, false));
+        // REST·모듈 명령은 켜져 있으면 된다
+        assert!(command_ready(Some("rest"), true, false, false));
+        assert!(command_ready(None, true, false, false));
+    }
+
+    /// 꺼진 서버의 명령 목록: 모듈 명령은 ready=false
+    #[tokio::test]
+    async fn the_command_list_marks_module_commands_of_a_stopped_server_not_ready() {
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("plain");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n[[commands.fields]]\nname = \"say\"\nlabel = \"Say\"\nmethod = \"rest\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let instances = tmp.path().join("instances");
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let inst = crate::instance::ServerInstance::new("srv", "plain");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let r = list_instance_commands(Path(id.clone()), State(state.clone())).await;
+        let body: Value = serde_json::from_slice(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap();
+        let say = body["commands"].as_array().unwrap().iter().find(|c| c["name"] == "say").expect("say listed").clone();
+        assert_eq!(say["ready"], json!(false), "{body}");
     }
 
     #[test]

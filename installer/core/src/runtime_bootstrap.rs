@@ -314,6 +314,11 @@ async fn run_pip(python_exe: &Path, args: &[&str]) -> Result<(), String> {
 ///
 /// 설치 디렉토리가 쓰기 가능하면 그곳에, 아니면 `%APPDATA%/saba-chan`에 설치합니다.
 pub fn resolve_runtime_data_dir(install_dir: &Path) -> PathBuf {
+    // 맥 앱 묶음(`*.app/Contents/MacOS`) 안은 쓰지 않는다: 묶음에 파일을 더하면 서명이 깨진다.
+    // 데몬(`python_env::runtime_root`)도 묶음이면 데이터 폴더에서 찾는다
+    if saba_chan_updater_lib::app_bundle::bundle_of(install_dir).is_some() {
+        return constants::resolve_data_dir();
+    }
     // 1) install_dir에 쓰기 가능한가 확인
     let probe = install_dir.join(".saba-write-test");
     if std::fs::write(&probe, b"test").is_ok() {
@@ -356,4 +361,18 @@ fn apply_creation_flags(cmd: &mut Command) {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
     let _ = cmd; // unused on non-Windows
+}
+
+#[cfg(test)]
+mod runtime_dir_tests {
+    use super::*;
+
+    #[test]
+    fn python_never_goes_inside_a_mac_app_bundle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let macos = tmp.path().join("Saba-chan.app/Contents/MacOS");
+        std::fs::create_dir_all(&macos).unwrap();
+        assert_eq!(resolve_runtime_data_dir(&macos), constants::resolve_data_dir());
+        assert_eq!(resolve_runtime_data_dir(tmp.path()), tmp.path());
+    }
 }

@@ -390,6 +390,12 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }: IconProps) =
                 <path d="M4 5h16l-6 7.5V19l-4-2v-4.5Z" />
             </svg>
         ),
+        search: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+            </svg>
+        ),
         refresh: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M20 11a8 8 0 0 0-14.3-4.9L4 8" />

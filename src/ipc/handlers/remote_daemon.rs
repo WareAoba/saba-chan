@@ -3,6 +3,9 @@
 //!   GET    /api/remote/settings            {enabled, port, address, transport, status, hostId, thisPc} hostId = 이 PC의 릴레이 PC id (없으면 "")
 //!                                          thisPc = {platform, agentVersion, publicIp} 이 PC 카드 (publicIp: 릴레이가 본 공인 IP, 모르면 null)
 //!   PUT    /api/remote/settings            {enabled?, port?, address?} → 저장하고 원격 포트를 다시 맞춘다
+//!   GET    /api/public-address             {address, shareAddress, publicIp} 이 PC의 공개 주소(게임 서버·원격 데몬이 함께 쓴다, 빈 값이면 릴레이가 본 공인 IP)와
+//!                                          디스코드 `/<서버> 주소`로 알려 줄지. 원격 설정과 달리 짝 맺은 PC(원격 데몬 카드)도 부른다
+//!   PUT    /api/public-address             {address?, shareAddress?} → 같은 모양. 주소는 `https://`·`:포트`·경로를 떼고 저장하고, 바뀌면 릴레이에 다시 올린다
 //!   GET    /api/remote/clients             {clients:[{hostId, name, ownerName, label, pairedAt}]}
 //!   DELETE /api/remote/clients/:hostId     짝을 푼다 (그 PC의 토큰이 더는 통하지 않는다)
 //!
@@ -81,10 +84,9 @@ pub async fn put_settings(State(state): State<IPCServer>, Json(patch): Json<Sett
         settings.port = port;
     }
     if let Some(address) = patch.address {
-        let address = address.trim().to_string();
-        if !address.is_empty() && !remote_daemon::valid_address(&address) {
+        let Some(address) = normalize_public_address(&address) else {
             return bad("invalid_address", "Address must be a host name or an IP address");
-        }
+        };
         settings.address = address;
     }
     if let Some(enabled) = patch.enabled {
@@ -95,6 +97,75 @@ pub async fn put_settings(State(state): State<IPCServer>, Json(patch): Json<Sett
     }
     let status = remote_daemon::apply(&state).await;
     Json(view(&settings, &status)).into_response()
+}
+
+fn public_address_view(settings: &config::Settings, state: &IPCServer) -> Value {
+    json!({ "address": settings.address, "shareAddress": settings.share_address, "publicIp": state.relay_agent.seen_address() })
+}
+
+pub async fn get_public_address(State(state): State<IPCServer>) -> Json<Value> {
+    Json(public_address_view(&config::settings_in(&ConfigFile::default_location()), &state))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct PublicAddressPatch {
+    address: Option<String>,
+    share_address: Option<bool>,
+}
+
+/// 사람이 적은 공개 주소에서 호스트만 남긴다: `https://mc.example.com:25565/x` → `mc.example.com`, `[2001:db8::1]:25565` → `2001:db8::1`.
+/// 빈 값은 지우기(`Some("")`), 호스트 이름·IP가 아니면 없다
+pub(crate) fn normalize_public_address(input: &str) -> Option<String> {
+    let mut s = input.trim();
+    if let Some((_, rest)) = s.split_once("://") {
+        s = rest;
+    }
+    s = s.split(['/', '?', '#']).next().unwrap_or_default();
+    if let Some(inner) = s.strip_prefix('[') {
+        s = inner.split(']').next().unwrap_or_default();
+    } else if s.matches(':').count() == 1 {
+        s = s.split(':').next().unwrap_or_default();
+    }
+    let s = s.trim_end_matches('.').to_ascii_lowercase();
+    (s.is_empty() || remote_daemon::valid_address(&s)).then_some(s)
+}
+
+#[derive(Debug)]
+pub(crate) enum PublicAddressError {
+    Invalid,
+    Save(std::io::Error),
+}
+
+/// 저장만 한다 (테스트는 임시 파일로). 둘째 값은 주소가 바뀌었는가. 바뀐 주소를 올리는 것은 부른 쪽이 한다
+pub(crate) fn save_public_address_in(file: &ConfigFile, patch: PublicAddressPatch) -> Result<(config::Settings, bool), PublicAddressError> {
+    let mut settings = config::settings_in(file);
+    let before = settings.address.clone();
+    if let Some(address) = patch.address {
+        settings.address = normalize_public_address(&address).ok_or(PublicAddressError::Invalid)?;
+    }
+    if let Some(share) = patch.share_address {
+        settings.share_address = share;
+    }
+    config::save_settings_in(file, &settings).map_err(PublicAddressError::Save)?;
+    let changed = settings.address != before;
+    Ok((settings, changed))
+}
+
+pub async fn put_public_address(State(state): State<IPCServer>, Json(patch): Json<PublicAddressPatch>) -> Response {
+    match save_public_address_in(&ConfigFile::default_location(), patch) {
+        Ok((settings, changed)) => {
+            if changed {
+                // 원격 포트가 열려 있으면 새 주소를 릴레이에 올린다 (포트는 다시 열지 않는다)
+                remote_daemon::on_seen_address(&state).await;
+            }
+            Json(public_address_view(&settings, &state)).into_response()
+        }
+        Err(PublicAddressError::Invalid) => bad("invalid_address", "Address must be a host name or an IP address"),
+        Err(PublicAddressError::Save(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string(), "error_code": "save_failed" }))).into_response()
+        }
+    }
 }
 
 pub async fn list_clients() -> Json<Value> {
@@ -436,6 +507,40 @@ pub async fn proxy(State(state): State<IPCServer>, Path((host_id, _)): Path<(Str
 mod tests {
     use saba_chan_updater_lib::config_file::ConfigFile;
     use serde_json::{json, Value};
+
+    #[test]
+    fn a_public_address_keeps_only_the_host() {
+        use super::normalize_public_address as n;
+        assert_eq!(n("  mc.example.com ").as_deref(), Some("mc.example.com"));
+        assert_eq!(n("https://MC.Example.com:25565/join?x=1").as_deref(), Some("mc.example.com"));
+        assert_eq!(n("mc.example.com:25565").as_deref(), Some("mc.example.com"));
+        assert_eq!(n("203.0.113.7").as_deref(), Some("203.0.113.7"));
+        assert_eq!(n("[2001:db8::1]:25565").as_deref(), Some("2001:db8::1"));
+        assert_eq!(n("2001:db8::1").as_deref(), Some("2001:db8::1"));
+        assert_eq!(n("").as_deref(), Some(""), "empty clears it");
+        for bad in ["mc example.com", "user@mc.example.com", "-bad-.example.com", "mc.exa_mple.com"] {
+            assert_eq!(n(bad), None, "{bad}");
+        }
+    }
+
+    /// 공개 주소와 디스코드에 알려 주기는 원격 설정 한 곳(`remote`)에 저장되고, 주소가 바뀌었는지 알린다
+    #[test]
+    fn the_public_address_is_saved_with_the_remote_settings() {
+        use super::PublicAddressPatch;
+        use crate::remote_daemon::config;
+        let tmp = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(tmp.path());
+        let patch = |v: Value| serde_json::from_value::<PublicAddressPatch>(v).unwrap();
+        let (s, changed) = super::save_public_address_in(&file, patch(json!({ "address": "https://mc.example.com:25565" }))).unwrap();
+        assert_eq!((s.address.as_str(), s.share_address, changed), ("mc.example.com", true, true));
+        let (s, changed) = super::save_public_address_in(&file, patch(json!({ "shareAddress": false }))).unwrap();
+        assert_eq!((s.address.as_str(), s.share_address, changed), ("mc.example.com", false, false));
+        assert_eq!(config::settings_in(&file), s);
+        assert!(super::save_public_address_in(&file, patch(json!({ "address": "not a host" }))).is_err());
+        assert!(serde_json::from_value::<PublicAddressPatch>(json!({ "port": 1 })).is_err(), "only the two fields");
+        let (s, changed) = super::save_public_address_in(&file, patch(json!({ "address": "" }))).unwrap();
+        assert_eq!((s.address.as_str(), changed), ("", true));
+    }
 
     #[test]
     fn only_daemon_api_paths_are_forwarded() {

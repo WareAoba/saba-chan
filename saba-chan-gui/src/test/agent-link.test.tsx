@@ -8,10 +8,10 @@ describe('AI 에이전트 연결', () => {
         window.showToast = vi.fn();
         window.api = {
             relayMcpGrant: vi.fn().mockResolvedValue({
-                grant: { clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' },
+                grants: [{ id: 'aaaa', clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' }],
                 url: 'https://relay.test/mcp',
             }),
-            relayMcpGrantRevoke: vi.fn().mockResolvedValue(''),
+            relayMcpGrantRevoke: vi.fn().mockResolvedValue({ ok: true }),
         } as unknown as typeof window.api;
     });
 
@@ -22,7 +22,7 @@ describe('AI 에이전트 연결', () => {
         expect(screen.queryByText(i18n.t('gui:discord.agent_revoke'))).not.toBeInTheDocument();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Claude/ })));
         await act(async () => fireEvent.click(screen.getByText(i18n.t('gui:discord.agent_revoke'))));
-        expect(window.api.relayMcpGrantRevoke).toHaveBeenCalledTimes(1);
+        expect(window.api.relayMcpGrantRevoke).toHaveBeenCalledWith('aaaa');
         expect(screen.queryByRole('button')).not.toBeInTheDocument();
         expect(screen.getByText(/relay\.test\/mcp/)).toBeInTheDocument();
     });

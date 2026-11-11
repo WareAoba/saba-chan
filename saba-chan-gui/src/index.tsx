@@ -6,6 +6,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import App from './App';
 import { ErrorFallback } from './components/ErrorFallback';
 import { TrayPopup } from './components/shell/TrayPopup';
+import { ExtensionProvider } from './contexts/ExtensionContext';
 import { ContextMenuProvider } from './components/ui/ContextMenu';
 import { installMockApi } from './dev/mockApi';
 import { i18nReady } from './i18n'; // Initialize i18n
@@ -20,7 +21,7 @@ import { initTheme } from './utils/themeManager';
 window.React = React;
 window.ReactDOM = ReactDOM as typeof window.ReactDOM;
 
-// 브라우저 미리보기(`npm run dev`, Electron 없이)용 가짜 API
+// 브라우저 미리보기(`npm run dev`, Tauri 셸 없이)용 가짜 API
 if (import.meta.env?.DEV && !window.api) installMockApi();
 
 // 트레이 아이콘을 눌러 뜬 작은 창은 앱 전체가 아니라 팝업만 그린다
@@ -47,7 +48,13 @@ i18nReady.finally(() => {
         // 우클릭은 크래시 화면·트레이 창까지 앱 전체가 같은 규칙을 따른다
         <ContextMenuProvider>
             <ErrorBoundary FallbackComponent={ErrorFallback} onError={handleGlobalError}>
-                {trayPopup ? <TrayPopup /> : <App />}
+                {trayPopup ? (
+                    <ExtensionProvider surface="tray">
+                        <TrayPopup />
+                    </ExtensionProvider>
+                ) : (
+                    <App />
+                )}
             </ErrorBoundary>
         </ContextMenuProvider>,
     );

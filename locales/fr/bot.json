@@ -433,7 +433,8 @@
         "item_named": "• {{label}} `{{address}}`",
         "stopped": "💤 Le serveur est éteint. Démarrez-le pour que d'autres puissent se connecter",
         "unknown": "❔ Server-chan ne connaît pas encore l'adresse publique de ce PC. Réessayez dans un instant",
-        "no_ports": "📭 Ce jeu n'indique pas de port de connexion"
+        "no_ports": "📭 Ce jeu n'indique pas de port de connexion",
+        "hidden": "🔒 Le propriétaire du serveur a choisi de ne pas partager l'adresse sur Discord. Demande-la-lui directement"
       },
       "port_check": {
         "open": "✅ Accessible depuis Internet",
@@ -442,7 +443,9 @@
         "closed": "🚫 Inaccessible depuis Internet",
         "cgnat": "⚠️ Votre routeur n’a pas d’IP publique (CGNAT)",
         "unknown": "❔ Certains ports n’ont pas pu être vérifiés",
-        "no_ports": "📭 Ce jeu n’indique pas quels ports vérifier"
+        "no_ports": "📭 Ce jeu n’indique pas quels ports vérifier",
+        "host_mismatch": "🌐 L'adresse publique ne pointe pas vers ce PC",
+        "host_unresolved": "🌐 L'adresse publique est introuvable"
       },
       "port_status": {
         "open": "Ouvert",
@@ -477,6 +480,7 @@
     "nothing_to_back_up": "Il n’y a pas encore de monde à sauvegarder",
     "backup_limit": "La limite de sauvegardes à distance est atteinte. Supprimez d’anciennes sauvegardes sur le PC",
     "backup_busy": "Une autre sauvegarde ou restauration est en cours",
+    "backups_unreadable": "Impossible de lire le dossier de sauvegarde. Vérifiez les permissions du dossier et le disque sur le PC",
     "server_running": "Le serveur est allumé. Arrêtez-le d’abord",
     "no_command_path": "Le serveur a été lancé hors de Saba-chan et ne peut pas recevoir de commandes",
     "autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur",

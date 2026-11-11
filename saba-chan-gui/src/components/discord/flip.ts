@@ -45,3 +45,35 @@ export function useFlip<T extends HTMLElement>(ref: RefObject<T | null>, duratio
         );
     };
 }
+
+/**
+ * 칩이 다른 계단으로 옮겨지면 옛 자리에서 새 자리로 미끄러지게 한다 (FLIP, 앱·웹 명령 계단).
+ * 칩마다 `data-chip` 으로 찾고, 움직임 줄이기 설정이면 건너뛴다.
+ * 자리는 그릴 때마다 다시 재고(보기·스크롤·알림 줄이 바뀌어도 옛 값이 남지 않게), 움직임은 `dep`(계단 값)이 바뀔 때만 준다
+ */
+export function useChipFlip(ref: RefObject<HTMLElement | null>, dep: unknown) {
+    const last = useRef(new Map<string, DOMRect>());
+    const prevDep = useRef(dep);
+    useLayoutEffect(() => {
+        const root = ref.current;
+        if (!root) return;
+        const changed = prevDep.current !== dep;
+        prevDep.current = dep;
+        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        const next = new Map<string, DOMRect>();
+        for (const el of root.querySelectorAll<HTMLElement>('[data-chip]')) {
+            const box = el.getBoundingClientRect();
+            next.set(el.dataset.chip as string, box);
+            const prev = last.current.get(el.dataset.chip as string);
+            if (!changed || reduce || !prev || !el.animate) continue;
+            const dx = prev.left - box.left;
+            const dy = prev.top - box.top;
+            if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+            el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
+                duration: 260,
+                easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+            });
+        }
+        last.current = next;
+    });
+}

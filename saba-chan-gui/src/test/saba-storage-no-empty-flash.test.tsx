@@ -17,16 +17,15 @@ beforeEach(() => {
         extensions: [],
         loading: true,
         refreshExtensions: vi.fn(),
-        manifestExtensions: [],
-        availableUpdates: [],
-        installingIds: new Set(),
-        fetchManifest: vi.fn(),
-        installExtension: vi.fn(),
         removeExtension: vi.fn(),
         toggleExtension: vi.fn(),
     };
     window.api = new Proxy<Record<string | symbol, unknown>>(
-        { moduleList: vi.fn(() => new Promise((r) => (resolveModules = r))) },
+        {
+            moduleList: vi.fn(() => new Promise((r) => (resolveModules = r))),
+            // 받을 수 있는 모듈 목록은 탭을 열면 바로 받는다: 이 시험에서는 받는 중으로 둔다
+            moduleManifest: vi.fn(() => new Promise(() => {})),
+        },
         {
             get(target, prop) {
                 if (typeof prop === 'symbol') return target[prop];
@@ -40,7 +39,7 @@ afterEach(() => {
     delete (window as { api?: unknown }).api;
 });
 
-const empty = () => document.querySelector('.saba-art, .saba-empty');
+const empty = () => document.querySelector('.saba-art, .saba-empty, .ss-installed-empty');
 
 describe('받기 전에는 없음 그림을 띄우지 않는다', () => {
     it('모듈 탭', async () => {

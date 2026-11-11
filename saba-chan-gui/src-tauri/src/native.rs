@@ -173,12 +173,23 @@ pub fn tray_popup_fit(app: AppHandle, height: f64) {
 /// 업데이트 적용 — 업데이터는 데몬이 띄운다 (U7). GUI는 다시 띄울 자기 경로만 알려 주고 종료한다
 #[tauri::command]
 pub async fn updater_launch_apply(app: AppHandle) -> Value {
+    launch_updater_via(&app, "/api/updates/launch-updater").await
+}
+
+/// 상단 바 업데이트 알약 '준비됨'의 지금 다시 시작 — 데몬이 실패한 판 표시를 지우고 받아 둔 것으로 같은 길을 탄다
+#[tauri::command]
+pub async fn updater_restart(app: AppHandle) -> Value {
+    launch_updater_via(&app, "/api/updates/restart").await
+}
+
+/// 업데이터를 띄우는 데몬 경로(`launch-updater`·`restart`, 둘 다 응답이 같다)에 다시 띄울 자기 경로를 실어 보낸다
+async fn launch_updater_via(app: &AppHandle, path: &str) -> Value {
     let relaunch: Vec<String> = std::env::current_exe()
         .map(|p| vec![p.to_string_lossy().into_owned()])
         .unwrap_or_default();
     let client = app.state::<AppState>().client.clone();
     match client
-        .post("/api/updates/launch-updater", &json!({ "relaunch": relaunch, "gui_stays": true }), 10000)
+        .post(path, &json!({ "relaunch": relaunch, "gui_stays": true }), 10000)
         .await
     {
         Ok(data) if data["ok"].as_bool() == Some(true) => {
@@ -188,7 +199,7 @@ pub async fn updater_launch_apply(app: AppHandle) -> Value {
                 return json!({ "ok": true, "gui_restart": false });
             }
             tracing::info!("[Updater] Daemon launched the updater; quitting GUI");
-            lifecycle::spawn_clean_quit(&app, 500);
+            lifecycle::spawn_clean_quit(app, 500);
             json!({ "ok": true, "gui_restart": true })
         }
         Ok(data) => {

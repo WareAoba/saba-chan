@@ -325,7 +325,9 @@
       "closed": "No accesible desde internet",
       "cgnat": "Tu router no tiene IP pública (CGNAT)",
       "unknown": "Algunos puertos no se pudieron comprobar",
-      "no_ports": "Este juego no indica qué puertos comprobar"
+      "no_ports": "Este juego no indica qué puertos comprobar",
+      "host_mismatch": "La dirección pública no apunta a este PC",
+      "host_unresolved": "No se encontró la dirección pública"
     },
     "status": {
       "open": "Abierto",
@@ -338,9 +340,12 @@
     "hint": {
       "closed": "Comprueba que el router reenvía este puerto a este PC y que el cortafuegos del PC lo permite.",
       "firewall": "El Firewall de Windows está bloqueando las conexiones entrantes en este puerto. Para la red a la que estás conectado ahora (privada o pública), permite saba-core si el servidor está detenido, o el programa del servidor del juego si está en marcha, en la configuración del Firewall de Windows y vuelve a comprobar.",
+      "firewall_macos": "El firewall de macOS está bloqueando las conexiones entrantes del programa de este servidor. En Ajustes del Sistema › Red › Firewall › Opciones, pon saba-core (si el servidor está detenido) o el programa del servidor de juego, como java (si está en marcha), en Permitir conexiones entrantes y vuelve a comprobar.",
       "router": "El firewall del PC permite este puerto. Reenvía este puerto a este PC en la configuración del router y vuelve a comprobar.",
       "cgnat": "Tu proveedor comparte una IP pública entre muchos hogares, así que el reenvío de puertos no puede abrirlo. Pide una IP pública a tu proveedor o usa una VPN como Tailscale.",
-      "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar."
+      "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar.",
+      "host_mismatch": "En la configuración de tu dominio, apunta el registro A a la IP pública de este PC. Si usas DDNS, comprueba que su actualizador esté funcionando. Si tienes un proxy CDN activo, desactívalo: las conexiones del juego no pasan por él.",
+      "host_unresolved": "Revisa cómo está escrita la dirección pública y la configuración DNS del dominio. Si el dominio es nuevo, vuelve a comprobar en un rato."
     },
     "error": {
       "node_token_missing": "Conecta primero con Discord (emparejamiento). La comprobación la hace el relé.",
@@ -348,7 +353,8 @@
       "rate_limited": "Demasiadas comprobaciones. Inténtalo de nuevo en un minuto.",
       "relay_unreachable": "No se pudo conectar con el relé. Revisa tu conexión a internet.",
       "failed": "No se pudo comprobar."
-    }
+    },
+    "host": "Dirección pública {{host}} · este PC {{address}}"
   },
   "commands": {
     "run": "Enviar",
@@ -439,12 +445,6 @@
       "CLEAR_RUNNING": "Este canal ya se está limpiando.",
       "NO_CLEAR_JOB": "No se está limpiando nada en este canal.",
       "generic": "No se pudo cambiar. Vuelve a intentarlo en un momento."
-    },
-    "dur": {
-      "seconds": "{{count}} s",
-      "minutes": "{{count}} min",
-      "hours": "{{count}} h",
-      "days": "{{count}} d"
     },
     "mod": {
       "title": "Gestión del servidor",

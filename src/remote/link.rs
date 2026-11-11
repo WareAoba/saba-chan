@@ -287,9 +287,8 @@ mod tests {
             Some(json!({ "t": "event", "id": 9, "kind": "instance.exit", "data": { "instanceId": "i1" } }))
         );
         assert!(web_event(&event("module.installed", json!({ "path": "C:/x" }))).is_some());
-        // 화면이 쓰지 않는 이벤트는 보내지 않는다 (백업 오류 원문, 디스코드 연결 요청 등)
+        // 화면이 쓰지 않는 이벤트는 보내지 않는다 (백업 오류 원문 등)
         assert_eq!(web_event(&event("backup.done", json!({ "error": "C:/x" }))), None);
-        assert_eq!(web_event(&event("relay.link_request", json!({}))), None);
     }
 
     #[test]

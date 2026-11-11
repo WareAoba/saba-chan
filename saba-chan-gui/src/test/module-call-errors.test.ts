@@ -31,7 +31,7 @@ describe('모듈 호출 실패 안내', () => {
             stderr_tail: ['traceback line'],
         };
         const client = createDaemonClient(vi.fn().mockResolvedValue({ status: 500, data: body }));
-        const result = await client.daemonCall('post', '/api/instance/id/install');
+        const result = await client.call('post', '/api/instance/id/install');
         expect(result.error).toContain('The module raised an exception.');
         expect(result.error).toContain('plain.install_server');
         expect(result.error).toContain('traceback line');
@@ -48,14 +48,14 @@ describe('모듈 호출 실패 안내', () => {
     it('HTTP 200의 모듈 실패도 안내하고 모듈의 고유 오류는 그대로 둔다', async () => {
         const own = { success: false, error_code: 'game_not_ready', message: 'Wait for the game' };
         const client = createDaemonClient(vi.fn().mockResolvedValue({ status: 200, data: own }));
-        expect(await client.daemonJson('post', '/api/instance/id/query')).toEqual(own);
+        expect(await client.call('post', '/api/instance/id/query')).toEqual(own);
         const timeout = createDaemonClient(
             vi.fn().mockResolvedValue({
                 status: 200,
                 data: { success: false, error_code: 'module_timeout', module: 'plain', function: 'query' },
             }),
         );
-        expect((await timeout.daemonJson('post', '/api/instance/id/query')).error).toContain(
+        expect((await timeout.call('post', '/api/instance/id/query')).error).toContain(
             'The module call timed out.',
         );
     });

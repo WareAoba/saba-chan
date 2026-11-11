@@ -433,7 +433,8 @@
         "item_named": "• {{label}} `{{address}}`",
         "stopped": "💤 The server is off. Start it so others can connect",
         "unknown": "❔ Server-chan does not know this PC's public address yet. Try again in a moment",
-        "no_ports": "📭 This game does not say which port to connect to"
+        "no_ports": "📭 This game does not say which port to connect to",
+        "hidden": "🔒 The server owner chose not to share the address on Discord. Please ask them directly"
       },
       "port_check": {
         "open": "✅ Reachable from the internet",
@@ -442,7 +443,9 @@
         "closed": "🚫 Not reachable from the internet",
         "cgnat": "⚠️ Your router has no public IP (CGNAT)",
         "unknown": "❔ Some ports could not be checked",
-        "no_ports": "📭 This game does not say which ports to check"
+        "no_ports": "📭 This game does not say which ports to check",
+        "host_mismatch": "🌐 The public address does not point to this PC",
+        "host_unresolved": "🌐 The public address could not be found"
       },
       "port_status": {
         "open": "Open",
@@ -477,6 +480,7 @@
     "nothing_to_back_up": "There is no world to back up yet",
     "backup_limit": "The remote backup limit is full. Delete old backups on the PC",
     "backup_busy": "Another backup or restore is in progress",
+    "backups_unreadable": "Couldn't read the backup folder. Check the folder permissions and the disk on the PC",
     "server_running": "The server is on. Stop it first",
     "no_command_path": "The server was started outside Saba-chan, so it cannot take commands",
     "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server",

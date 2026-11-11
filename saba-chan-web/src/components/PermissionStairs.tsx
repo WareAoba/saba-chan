@@ -1,8 +1,8 @@
 import type { CommandBoard, GuildPermissions, StairChip } from '@gui/components/discord/levels';
 import * as L from '@gui/components/discord/levels';
-import { usePointerDrag } from '@gui/components/discord/pointerDrag';
+import { useStairsDraft } from '@gui/components/discord/useStairsDraft';
 import type { CSSProperties, RefObject } from 'react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import type { ApiBody, WebApi } from '../types';
@@ -11,41 +11,6 @@ import { Button, Segments } from './ui';
 
 /** 저장 한 번을 맡기는 함수: 알림·다시 읽기는 부르는 쪽이 한다 */
 export type PermissionWriter = (fn: () => Promise<ApiBody>) => Promise<void>;
-
-const RISK_TONE: Record<string, string> = { safe: 'ok', caution: 'warn', danger: 'stop' };
-const toneOf = (c: StairChip) =>
-    c.kind === 'control' ? 'control' : c.kind === 'admin' ? 'info' : RISK_TONE[c.confirmRisk as string] || 'ok';
-
-/**
- * 칩이 다른 칸으로 옮겨지면 옛 자리에서 새 자리로 미끄러지게 한다 (FLIP, 앱 계단과 같다).
- * 자리는 그릴 때마다 다시 재고, 움직임은 `dep`(계단 값)이 바뀔 때만 준다
- */
-function useChipFlip(ref: RefObject<HTMLElement | null>, dep: unknown) {
-    const last = useRef(new Map<string, DOMRect>());
-    const prevDep = useRef(dep);
-    useLayoutEffect(() => {
-        const root = ref.current;
-        if (!root) return;
-        const changed = prevDep.current !== dep;
-        prevDep.current = dep;
-        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-        const next = new Map<string, DOMRect>();
-        for (const el of root.querySelectorAll<HTMLElement>('[data-chip]')) {
-            const box = el.getBoundingClientRect();
-            next.set(el.dataset.chip as string, box);
-            const prev = last.current.get(el.dataset.chip as string);
-            if (!changed || reduce || !prev || !el.animate) continue;
-            const dx = prev.left - box.left;
-            const dy = prev.top - box.top;
-            if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-            el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
-                duration: 260,
-                easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
-            });
-        }
-        last.current = next;
-    });
-}
 
 /**
  * 레벨 칸이 창에 남은 높이를 채우게 한다 (앱 `useFillHeight`와 같은 생각): 넘치는 칩은 칸 안에서 세로로 스크롤된다.
@@ -91,46 +56,13 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
     const { t: tg } = useTranslation('gui');
     const ask = useApp((s) => s.ask);
     const [selected, setSelected] = useState<string | null>(null);
-    const ref = useRef<HTMLOListElement>(null);
-    // 칩 끌기: 놓으면 dropRef가 옮긴다 (아래에서 계단 값을 읽은 뒤 채운다)
-    const dropRef = useRef<(id: string, level: number) => void>(() => {});
-    const chipDrag = usePointerDrag((id: string, to: string) => dropRef.current(id, Number(to)));
-    const dragging = chipDrag.dragging;
-    const over = chipDrag.over === null ? null : Number(chipDrag.over);
-    // 옮긴 레벨은 초안이다 (사용자 지정 2026-11-07, 앱과 같다): 저장 막대에서 저장한다. 명령 키 → 레벨
-    const [moves, setMoves] = useState<Record<string, number>>({});
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 데몬 값을 다시 읽으면(저장 뒤) 초안을 비운다
-    useEffect(() => setMoves({}), [board]);
-    // 칩은 저장된 값이 바뀔 때도, 초안에서 옮길 때도 미끄러진다
-    // biome-ignore lint/correctness/useExhaustiveDependencies: board·moves 가 바뀔 때마다 새 표지
-    const flipToken = useMemo(() => ({}), [board, moves]);
-    useChipFlip(ref, flipToken);
+    const { ref, dropRef, chipDrag, dragging, over, setMoves, shownBoard, patch, dirty, unsaved, draftTo, move } =
+        useStairsDraft<HTMLOListElement>(board, busy);
     useFillHeight(ref);
 
     const levelName = (id: number) => L.ladderOf(perm).find((l) => l.id === id)?.name || t(`perm.level.${id}`);
     const levelTitle = (id: number) => t('perm.level_numbered', { n: L.levelNumber(perm, id), name: levelName(id) });
     const update = (patch: ApiBody) => write(() => api.permissionsUpdate(guildId, patch));
-    const items = board?.items || [];
-    const draftLevels = items.map((it) =>
-        !it.fixed && moves[it.key as string] !== undefined ? moves[it.key as string] : it.level,
-    );
-    const shownBoard = L.draftBoard(board, draftLevels);
-    const patch = L.boardPatch(board, draftLevels);
-    const dirty = Object.keys(patch).length > 0;
-    // 노란 테두리는 저장하지 않은 변경: 저장된 레벨과 초안 레벨이 다른 명령 (제자리로 돌려 놓으면 사라진다)
-    const savedLevel = new Map(items.map((it) => [it.key as string, it.level]));
-    const unsaved = (c: StairChip) => c.items.some((it) => savedLevel.get(it.key as string) !== it.level);
-    const draftTo = (list: L.CommandItem[], level: (it: L.CommandItem) => number) =>
-        setMoves((m) => ({
-            ...m,
-            ...Object.fromEntries(list.filter((it) => !it.fixed).map((it) => [it.key as string, level(it)])),
-        }));
-    const move = (chip: StairChip, level: number) => {
-        // 대표 레벨이 같아도 다른 레벨인 인스턴스가 있으면 맞춘다
-        if (busy || chip.fixed || level === L.BANNED || chip.items.every((i) => i.fixed || i.level === level)) return;
-        draftTo(chip.items, () => level);
-    };
-
     const instances = board?.instances || [];
     const instanceName = (id: string) => instances.find((i) => i.id === id)?.name || id;
     const levels = L.ascending(perm);
@@ -254,7 +186,7 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
                                         {...chipDrag.bind(c.id, !c.fixed)}
                                         onClick={() => setSelected(selected === c.id ? null : c.id)}
                                     >
-                                        <span className={`dot tone-${toneOf(c)}`} aria-hidden="true" />
+                                        <span className={`dot tone-${L.chipTone(c)}`} aria-hidden="true" />
                                         <span className="cmd-chip-text">{chipText(c)}</span>
                                     </button>
                                 ))}
@@ -336,7 +268,7 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
             <div className="stair-legend">
                 {['safe', 'caution', 'danger'].map((r) => (
                     <span key={r}>
-                        <span className={`dot tone-${RISK_TONE[r]}`} /> {t(`perm.risk_${r}`)}
+                        <span className={`dot tone-${L.RISK_TONE[r]}`} /> {t(`perm.risk_${r}`)}
                     </span>
                 ))}
                 <span>

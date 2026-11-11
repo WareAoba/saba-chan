@@ -433,7 +433,8 @@
         "item_named": "• {{label}} `{{address}}`",
         "stopped": "💤 El servidor está apagado. Enciéndelo para que otros puedan conectarse",
         "unknown": "❔ Server-chan aún no conoce la dirección pública de este PC. Inténtalo de nuevo en un momento",
-        "no_ports": "📭 Este juego no indica el puerto de conexión"
+        "no_ports": "📭 Este juego no indica el puerto de conexión",
+        "hidden": "🔒 El dueño del servidor eligió no compartir la dirección en Discord. Pregúntale directamente"
       },
       "port_check": {
         "open": "✅ Accesible desde internet",
@@ -442,7 +443,9 @@
         "closed": "🚫 No accesible desde internet",
         "cgnat": "⚠️ Tu router no tiene IP pública (CGNAT)",
         "unknown": "❔ Algunos puertos no se pudieron comprobar",
-        "no_ports": "📭 Este juego no indica qué puertos comprobar"
+        "no_ports": "📭 Este juego no indica qué puertos comprobar",
+        "host_mismatch": "🌐 La dirección pública no apunta a este PC",
+        "host_unresolved": "🌐 No se encontró la dirección pública"
       },
       "port_status": {
         "open": "Abierto",
@@ -477,6 +480,7 @@
     "nothing_to_back_up": "Todavía no hay mundo que guardar",
     "backup_limit": "El límite de copias remotas está lleno. Borra copias antiguas en el PC",
     "backup_busy": "Hay otra copia o restauración en curso",
+    "backups_unreadable": "No se pudo leer la carpeta de copias de seguridad. Revisa los permisos de la carpeta y el disco en el PC",
     "server_running": "El servidor está encendido. Detenlo primero",
     "no_command_path": "El servidor se inició fuera de Saba-chan y no puede recibir comandos",
     "autosave_not_resumed": "La copia se hizo, pero no se pudo reactivar el autoguardado del servidor. Reinicia el servidor",

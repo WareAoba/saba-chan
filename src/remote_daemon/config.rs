@@ -1,6 +1,9 @@
 //! 원격 데몬 설정과 짝 맺은 PC (config.json `remote` 한 곳).
 //!
-//!   enabled·port·address·transport   원격 포트를 열지, 어느 포트로, 릴레이에 알릴 공인 주소, 연결 방식
+//!   enabled·port·address·transport   원격 포트를 열지, 어느 포트로, 이 PC의 공개 주소, 연결 방식
+//!   address                          이 PC의 공개 주소(도메인·IP) 한 칸: 원격 데몬 직접 연결과 게임 서버 주소가 함께 쓴다 (사용자 결정 2026-11-10).
+//!                                    비면 릴레이가 본 공인 IP
+//!   shareAddress 기본 켬              디스코드 `/<서버> 주소`로 이 PC 서버의 주소를 알려 줄지 (사용자 결정 2026-11-10)
 //!   enabled 기본 켬                   디스코드 계정과 PC를 함께 빼앗기지 않는 한 짝을 맺을 수 없다 (사용자 확정 2026-10-30)
 //!   clients[]                        이 PC에 붙도록 짝 맺은 같은 주인의 PC. 토큰은 SHA-256만 둔다
 //!   daemons[]                        이 PC가 붙는 원격 데몬(D1b): 주소·고정한 지문·받은 토큰
@@ -25,6 +28,7 @@ pub struct Settings {
     pub port: u16,
     pub address: String,
     pub transport: Transport,
+    pub share_address: bool,
 }
 
 impl Default for Settings {
@@ -34,6 +38,7 @@ impl Default for Settings {
             port: saba_chan_updater_lib::constants::DEFAULT_REMOTE_PORT,
             address: String::new(),
             transport: Transport::Direct,
+            share_address: true,
         }
     }
 }
@@ -221,7 +226,7 @@ pub fn forget_daemon_in(file: &ConfigFile, host_id: &str) -> std::io::Result<boo
 }
 
 /// 릴레이가 알려 준 PC 이름·주인 이름(`(hostId, name, ownerName)`)으로 짝 맺은 PC와 원격 데몬의 이름을 맞춘다.
-/// 바뀐 것이 없으면 쓰지 않는다. 주인 이름을 모르는 옛 릴레이면(빈 값) 주인 이름은 그대로 둔다
+/// 바뀐 것이 없으면 쓰지 않는다. 주인 이름이 빈 값이면 주인 이름은 그대로 둔다
 pub fn refresh_names_in(file: &ConfigFile, known: &[(String, String, String)]) -> std::io::Result<()> {
     let fresh = |host_id: &str, name: &mut String, owner: &mut String| {
         let Some((_, n, o)) = known.iter().find(|(h, ..)| h == host_id) else { return false };
@@ -279,7 +284,8 @@ mod tests {
         save_settings_in(&f, &Settings { enabled: false, ..Settings::default() }).unwrap();
         assert!(!settings_in(&f).enabled, "a saved off stays off");
         assert_eq!(Settings::default().port, saba_chan_updater_lib::constants::DEFAULT_REMOTE_PORT);
-        let s = Settings { enabled: true, port: 7443, address: "saba.example.com".into(), transport: Transport::Direct };
+        assert!(settings_in(&f).share_address, "the address is shared unless turned off");
+        let s = Settings { enabled: true, port: 7443, address: "saba.example.com".into(), transport: Transport::Direct, share_address: false };
         save_settings_in(&f, &s).unwrap();
         assert_eq!(settings_in(&f), s);
         assert_eq!(f.section("node")["token"], "sbn_x.y");
@@ -363,7 +369,7 @@ mod tests {
     #[test]
     fn a_pc_is_shown_as_its_owners_discord_name_and_its_own_name() {
         assert_eq!(label("김마무", "DESKTOP-1"), "김마무(DESKTOP-1)");
-        assert_eq!(label("", "DESKTOP-1"), "DESKTOP-1", "old relays do not send the owner");
+        assert_eq!(label("", "DESKTOP-1"), "DESKTOP-1", "an unknown owner is left out");
         assert_eq!(label("김마무", "김마무"), "김마무", "a PC named after its owner is not doubled");
         assert_eq!(label("김마무", ""), "김마무");
     }

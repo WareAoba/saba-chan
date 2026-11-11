@@ -97,8 +97,9 @@ export interface DiscordData {
     botStatusReady: boolean;
     relayConnected: boolean;
     relayConnecting: boolean;
+    /** 지금 호스트로 릴레이 확인이 한 번이라도 답했는가 (오프닝이 기동음을 낼지 정할 때 기다린다) */
+    relayChecked: boolean;
     relayError: string;
-    cloudNodesStale: number;
     _relayFailures: number;
     _agentFailures: number;
     _saveErrorCode: string | null;
@@ -114,7 +115,6 @@ interface DiscordState extends DiscordData {
     saveConfig: () => Promise<unknown>;
     _saveNow: () => Promise<unknown>;
     applySavedNodeValue: (guildId: string, key: string, value: Json | undefined) => void;
-    markCloudNodesStale: () => void;
     startBot: () => Promise<unknown>;
     stopBot: () => Promise<unknown>;
     checkStatus: () => Promise<void>;
@@ -155,10 +155,9 @@ const initialState = (): DiscordData => ({
     botStatusReady: false,
     relayConnected: false,
     relayConnecting: false,
+    relayChecked: false,
     // 릴레이 확인이 연달아 실패한 이유. 비어 있지 않으면 화면이 '연결 중' 대신 실패를 보인다
     relayError: '',
-    // 길드 목록을 다시 읽어야 할 때 올린다 (연결 요청 수락 등). 디스코드 화면이 보고 다시 읽는다
-    cloudNodesStale: 0,
 
     // ── Internal ──
     // 연달아 실패한 릴레이 확인 수. 한 번 놓친 것으로 끊김·실패를 보이지 않는다
@@ -184,7 +183,14 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         if (!targetChanged) return set(partial);
         // 연결 대상이 바뀌면 옛 호스트의 확인 결과는 무효 (다음 폴링까지 잘못된 상태를 보이지 않게)
         statusGeneration += 1;
-        set({ ...partial, relayConnected: false, relayConnecting: false, relayError: '', _relayFailures: 0 });
+        set({
+            ...partial,
+            relayConnected: false,
+            relayConnecting: false,
+            relayChecked: false,
+            relayError: '',
+            _relayFailures: 0,
+        });
         if (get()._statusInterval) get().checkStatus();
     },
 
@@ -311,7 +317,6 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         set({ nodeSettings: put(get().nodeSettings) });
     },
 
-    markCloudNodesStale: () => set({ cloudNodesStale: get().cloudNodesStale + 1 }),
 
     startBot: async () => {
         try {
@@ -415,6 +420,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         set({
             relayConnecting: false,
             relayConnected: relayOk,
+            relayChecked: !!state.discordCloudHostId,
             relayError: settled ? relayFailure : get().relayError,
             _relayFailures: failures,
             _agentFailures: agentFailures,

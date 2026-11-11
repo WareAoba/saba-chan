@@ -619,8 +619,6 @@ mod tests {
     fn a_save_carries_the_revision_it_read() {
         let read = json!({ "schedule": [], "backup_keep": 10, "revision": "ab12" });
         assert_eq!(save_body(Some(&read), vec![], Some(3)), json!({ "schedule": [], "backup_keep": 3, "revision": "ab12" }));
-        // 옛 데몬은 revision을 주지 않는다: 예전처럼 보낸다
-        assert_eq!(save_body(Some(&json!({ "schedule": [] })), vec![], None), json!({ "schedule": [] }));
     }
 
     /// 이미 지난 날의 한 번 작업은 저장되지만 돌지 않는다: 데몬의 `warnings`를 1부터 센 번호로 알린다. 옛 데몬은 싣지 않는다

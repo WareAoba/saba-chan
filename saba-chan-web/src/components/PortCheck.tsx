@@ -1,4 +1,4 @@
-import { portCheckShown, portHelpUrl, portLabel } from '@gui/utils/portCheck';
+import { portCheckHintKey, portCheckHost, portCheckShown, portHelpUrl, portLabel } from '@gui/utils/portCheck';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, failed } from './ui';
@@ -63,7 +63,10 @@ export function PortCheck({ api, server }: { api: WebApi; server: Pick<Server, '
             {report && portCheckShown(report) && (
                 <div className={`port-check-result verdict-${report.verdict}`}>
                     <p className="port-check-verdict">{t(`port_check.verdict.${report.verdict}`)}</p>
-                    {report.address && <p className="hint">{t('port_check.address', { address: report.address })}</p>}
+                    {portCheckHost(report) && (
+                        <p className="hint">{t('port_check.host', { host: portCheckHost(report), address: report.address || '-' })}</p>
+                    )}
+                    {!portCheckHost(report) && report.address && <p className="hint">{t('port_check.address', { address: report.address })}</p>}
                     <ul className="port-check-ports">
                         {(report.ports || []).map((p) => (
                             <li key={`${p.protocol}-${p.port}-${p.field}`} className={`port-${p.status}`}>
@@ -73,7 +76,7 @@ export function PortCheck({ api, server }: { api: WebApi; server: Pick<Server, '
                     </ul>
                     {report.verdict !== 'open' && (
                         <p className="hint">
-                            {t(`port_check.hint.${report.verdict}`)}{' '}
+                            {t(portCheckHintKey(report))}{' '}
                             <a href={portHelpUrl(i18n.language)} target="_blank" rel="noreferrer">
                                 {t('port_check.help')}
                             </a>

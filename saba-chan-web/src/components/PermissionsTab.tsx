@@ -1,10 +1,10 @@
 import * as L from '@gui/components/discord/levels';
 import type { CommandBoard, GuildPermissions as PermData, LadderLevel } from '@gui/components/discord/levels';
-import { useFlip } from '@gui/components/discord/flip';
 import { usePointerDrag } from '@gui/components/discord/pointerDrag';
 import * as P from '@gui/components/discord/nodePermissions';
 import type { DiscordMember } from '@gui/components/discord/types';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ladderKeyOf as keyOf, useLadderDraft } from '@gui/components/discord/useLadderDraft';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
@@ -70,95 +70,15 @@ interface LadderEditorProps {
     }) => void;
 }
 
-const keyOf = (l: LadderLevel) => String(l.id !== undefined ? `id-${l.id}` : l.key);
 
 export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
-    const saved = L.ladderOf(perm);
-    const [draft, setDraft] = useState(saved);
+    const ladder = useLadderDraft<HTMLUListElement>(perm, board, '.ladder-chip');
+    const { draft, setDraft, editing, setEditing, choosing, picked, blockDrag, chipDrag, dragging, over, chipOver } =
+        ladder;
+    const { chips, hidden, expanded, lastSwap, removed, valid, changed } = ladder;
     const [name, setName] = useState('');
-    const [editing, setEditing] = useState<number | null>(null); // 이름을 고치는 칸
-    const line = L.controllerLine(board);
-    // 권한 맞바꾸기: 아래 버튼을 누르고 칸 두 개를 고르면 두 레벨의 명령이 자리를 바꾼다. 명령 옮긴 차례
-    const [steps, setSteps] = useState<L.CommandStep[]>([]);
-    const [choosing, setChoosing] = useState(false);
-    const [picked, setPicked] = useState<number | null>(null);
-    // 칩 끌기로 옮긴 명령: 명령 키 → 레벨 (맞바꾸기 뒤에 덮는다)
-    const [moves, setMoves] = useState<Record<string, number>>({});
-    const listRef = useRef<HTMLUListElement>(null);
-    const flip = useFlip(listRef);
-    // 카드 끌기: key·칸 값은 사다리 자리(위에서부터 0). 놓으면 카드들이 새 자리로 미끄러진다
-    const blockDrag = usePointerDrag((from: string, to: string) => {
-        flip();
-        setDraft((d) => L.moveLevel(d, Number(from), Number(to)));
-    });
-    const chipDropRef = useRef<(id: string, at: number) => void>(() => {});
-    const chipDrag = usePointerDrag((id: string, to: string) => chipDropRef.current(id, Number(to)));
-    const dragging = blockDrag.dragging === null ? null : Number(blockDrag.dragging);
-    const over = blockDrag.over === null ? null : Number(blockDrag.over);
-    const chipOver = chipDrag.over === null ? null : Number(chipDrag.over);
-    useEffect(() => setDraft(L.ladderOf(perm)), [perm]);
-    // 데몬 값을 다시 읽으면(저장 뒤) 초안을 비운다
-    // biome-ignore lint/correctness/useExhaustiveDependencies: board 가 바뀔 때만 비운다
-    useEffect(() => {
-        setSteps([]);
-        setMoves({});
-    }, [board]);
-    const patch = L.ladderPatch(draft);
-    const ladderChanged = JSON.stringify(patch) !== JSON.stringify(L.ladderPatch(saved));
-    const lineLevel = L.draftLine(line, draft, steps);
-    const lineAt = line && lineLevel !== null ? L.lineAt(saved, draft, lineLevel) : null;
-    const lineTarget = lineAt === null ? null : (draft[lineAt].id as number);
-    const items = board?.items || [];
-    const levels = L.draftLevels(board, draft, steps, line, lineTarget).map((level, i) =>
-        items[i] && !items[i].fixed && moves[items[i].key as string] !== undefined
-            ? moves[items[i].key as string]
-            : level,
-    );
-    const commandLevels = L.boardPatch(board, levels);
-    const commandsChanged = Object.keys(commandLevels).length > 0;
-    const changed = ladderChanged || commandsChanged;
-    // 사바쨩 기능만 보인다: 게임(모듈) 명령과 조작 가능(서버 조작)은 인스턴스 권한 화면에서 정한다. 맞바꾸기는 모든 명령을 옮긴다
-    const chips = L.stairChips(L.draftBoard(board, levels)).filter((c) => !c.module && !c.controllers);
-    const savedLevel = new Map(items.map((it) => [it.key as string, it.level]));
-    const unsaved = (c: L.StairChip) => c.items.some((it) => savedLevel.get(it.key as string) !== it.level);
-    chipDropRef.current = (id, at) => {
-        const chip = chips.find((c) => c.id === id);
-        const target = draft[at];
-        if (!chip || chip.fixed || !target || !L.swappable(target)) return;
-        const level = target.id as number;
-        flip();
-        setMoves((m) => ({
-            ...m,
-            ...Object.fromEntries(chip.items.filter((i) => !i.fixed).map((i) => [i.key as string, level])),
-        }));
-    };
-    // 칩은 숨기지 않는다. 카드가 칩 세 줄을 넘을 때만 접고 "+N"을 누르면 그 카드의 칩을 모두 편다
-    const chipBoxes = useRef(new Map<string, HTMLElement>());
-    const [hidden, setHidden] = useState<Record<string, number>>({});
-    const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-    useLayoutEffect(() => {
-        // 끄는 동안은 세지 않는다: 손을 따라 나간 칩을 접힌 칩으로 세지 않게
-        if (chipDrag.dragging !== null) return;
-        const next: Record<string, number> = {};
-        for (const [k, box] of chipBoxes.current) {
-            if (expanded[k]) continue;
-            const top = box.getBoundingClientRect().top;
-            const limit = box.clientHeight;
-            const n = [...box.querySelectorAll<HTMLElement>('.ladder-chip')].filter(
-                (el) => el.getBoundingClientRect().top - top >= limit,
-            ).length;
-            if (n > 0) next[k] = n;
-        }
-        if (JSON.stringify(next) !== JSON.stringify(hidden)) setHidden(next);
-    });
-    const instanceName = (id?: string) => board?.instances?.find((i) => i.id === id)?.name || id;
-    const chipLabel = (c: L.StairChip) => (c.instance ? `${c.title} · ${instanceName(c.instance)}` : c.title || c.name);
-    // 마지막 맞바꾸기 (두 칸이 아직 초안에 있을 때만 알린다)
-    const lastSwap = L.activeSwaps(steps, draft).at(-1) ?? null;
-    const removed = saved.some((s) => !draft.some((d) => d.id === s.id));
-    const valid = L.ladderValid(draft);
     const localeName = (l: LadderLevel) => levelName(t, null, l.id);
     const label = (l: LadderLevel) => l.name?.trim() || (L.isCustomLevel(l) ? '' : localeName(l));
     const last = draft.length - 1;
@@ -166,39 +86,11 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
         const l = draft.find((x) => x.id === id);
         return l ? label(l) : '';
     };
-    const pick = (id: number) => {
-        if (picked === null || picked === id) return setPicked(picked === id ? null : id);
-        flip();
-        setSteps((s) => [...s, [picked, id]]);
-        setPicked(null);
-        setChoosing(false);
-    };
-    const save = () =>
-        onSave({
-            ...(ladderChanged ? { ladder: patch } : {}),
-            ...(commandsChanged ? { commandLevels } : {}),
-        });
-    const revert = () => {
-        setDraft(saved);
-        setSteps([]);
-        setMoves({});
-        setChoosing(false);
-        setPicked(null);
-    };
-    // 기본값으로 초기화: 기본 사다리와 프리셋 레벨 (초안, 저장해야 반영)
-    const resetToDefault = () => {
-        flip();
-        setDraft(L.ladderOf(null));
-        setSteps([]);
-        setChoosing(false);
-        setPicked(null);
-        setMoves(Object.fromEntries(items.filter((it) => !it.fixed).map((it) => [it.key as string, it.preset as number])));
-    };
     return (
         <div className="field">
             <span>{tg('discord.perm_edit_levels')}</span>
             <small className="hint">{tg('discord.perm_ladder_hint')}</small>
-            <ul ref={listRef} className="rows ladder" aria-label={tg('discord.perm_edit_levels')}>
+            <ul ref={ladder.listRef} className="rows ladder" aria-label={tg('discord.perm_edit_levels')}>
                 {draft.map((l, i) => {
                     const fixed = i === 0 || i === last;
                     const k = keyOf(l);
@@ -229,7 +121,7 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
                                     className="ladder-pick"
                                     aria-pressed={picked === l.id}
                                     aria-label={tg('discord.perm_swap_choose', { name: label(l) })}
-                                    onClick={() => pick(l.id as number)}
+                                    onClick={() => ladder.pick(l.id as number)}
                                 />
                             )}
                             <div className="row-main">
@@ -285,24 +177,21 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
                                 {L.swappable(l) && (
                                     <div
                                         className={`ladder-chips${expanded[k] ? ' is-expanded' : ''}`}
-                                        ref={(el) => {
-                                            if (el) chipBoxes.current.set(k, el);
-                                            else chipBoxes.current.delete(k);
-                                        }}
+                                        ref={ladder.chipBox(k)}
                                     >
                                         {own.map((c) => (
                                             <button
                                                 type="button"
                                                 key={c.id}
                                                 data-flip={c.id}
-                                                aria-label={chipLabel(c)}
+                                                aria-label={ladder.chipLabel(c)}
                                                 className={`pill ladder-chip${c.fixed ? ' is-fixed' : ''}${
-                                                    unsaved(c) ? ' is-changed' : ''
+                                                    ladder.unsaved(c) ? ' is-changed' : ''
                                                 }${chipDrag.dragging === c.id ? ' is-dragging' : ''}`}
                                                 disabled={choosing}
                                                 {...chipDrag.bind(c.id, !c.fixed && !choosing)}
                                             >
-                                                {chipLabel(c)}
+                                                {ladder.chipLabel(c)}
                                             </button>
                                         ))}
                                         {own.length === 0 && (
@@ -314,7 +203,7 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
                                     <button
                                         type="button"
                                         className="pill ladder-more"
-                                        onClick={() => setExpanded((x) => ({ ...x, [k]: true }))}
+                                        onClick={() => ladder.expand(k)}
                                     >
                                         {tg('discord.perm_swap_more', { count: hidden[k] })}
                                     </button>
@@ -325,15 +214,12 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
                 })}
             </ul>
             <div className="field-row">
-                <Button disabled={busy} onClick={resetToDefault}>
+                <Button disabled={busy} onClick={ladder.resetToDefault}>
                     <Icon name="undo" size={16} /> {tg('discord.perm_ladder_reset')}
                 </Button>
                 <Button
                     aria-pressed={choosing}
-                    onClick={() => {
-                        setChoosing((c) => !c);
-                        setPicked(null);
-                    }}
+                    onClick={ladder.toggleChoosing}
                 >
                     <Icon name={choosing ? 'close' : 'swap'} size={16} />{' '}
                     {choosing ? tg('discord.perm_swap_cancel') : tg('discord.perm_swap')}
@@ -368,10 +254,10 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
             {removed && <small className="hint">{t('perm.ladder_removed')}</small>}
             {!valid && <small className="hint">{t('perm.ladder_invalid')}</small>}
             <div className="field-row">
-                <Button disabled={busy || !changed} onClick={revert}>
+                <Button disabled={busy || !changed} onClick={ladder.revert}>
                     {t('perm.ladder_revert')}
                 </Button>
-                <Button tone="accent" busy={busy} disabled={!changed || !valid} onClick={save}>
+                <Button tone="accent" busy={busy} disabled={!changed || !valid} onClick={() => onSave(ladder.body())}>
                     {t('perm.ladder_save')}
                 </Button>
             </div>
@@ -623,18 +509,6 @@ interface MemberLevelsProps {
     reload: () => void;
 }
 
-/** 레벨마다 그 레벨에서 새로 쓸 수 있게 되는 명령 수 (큰 칩만, help·list 제외) — 앱 `levelSummary`와 같다 */
-function levelSummary(tg: TFn, perm: PermData, board: CommandBoard | null, id: number) {
-    if (id === L.OWNER) return tg('discord.perm_level_all');
-    if (id === L.BANNED) return tg('discord.perm_level_none');
-    if (!board) return null;
-    const up = L.ascending(perm);
-    const below = up[up.indexOf(id) - 1];
-    const gain = L.stairChips(board).filter((c) => !c.instance && c.level === id).length;
-    if (below === L.BANNED) return tg('discord.perm_level_base', { count: gain + 1 });
-    return tg('discord.perm_level_gain', { below: L.levelTitle(tg, perm, below), count: gain });
-}
-
 function MemberLevels({ api, guildId, perm, board, members, busy, write, reload }: MemberLevelsProps) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
@@ -758,7 +632,7 @@ function MemberLevels({ api, guildId, perm, board, members, busy, write, reload 
                 {L.ladderOf(perm).map(({ id: levelId }) => {
                     const level = levelId as number;
                     const ids = L.sortByName(groups.get(level) || [], memberName);
-                    const summary = levelSummary(tg, perm, board, level);
+                    const summary = L.levelSummary(tg, perm, board, level);
                     const isDefault = level === defaultLevel;
                     const droppable = !!dragging && level !== L.OWNER && level !== dragging.level;
                     return (

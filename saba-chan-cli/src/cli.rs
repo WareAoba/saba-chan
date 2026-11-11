@@ -1251,12 +1251,6 @@ pub enum BotCmd {
     },
     /// Link to invite the Saba-chan bot to a Discord server
     Invite,
-    /// Connection requests sent from Discord with `/사바쨩 연결` and no code. No id: show. ID: accept, `--decline`: refuse
-    Link {
-        id: Option<String>,
-        #[arg(long, requires = "id")]
-        decline: bool,
-    },
     /// Servers a Discord server can see and run. No servers: show. `--all`: every server
     Allow {
         guild: String,
@@ -1403,6 +1397,14 @@ pub enum ConfigCmd {
     NetTrace {
         #[arg(value_enum)]
         action: Option<NetTraceAction>,
+    },
+    /// This PC's public address for game servers and remote daemons: no value shows it, a domain or IP sets it, `auto` uses the public IP the relay sees
+    PublicAddress {
+        /// Domain or IP (`auto` to use the public IP)
+        address: Option<String>,
+        /// Show the address with `/<server> address` on Discord
+        #[arg(long, value_name = "on|off", value_parser = on_off)]
+        share: Option<bool>,
     },
     /// Bring in settings and servers from an export zip
     Import {

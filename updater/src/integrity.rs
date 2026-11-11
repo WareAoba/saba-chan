@@ -252,8 +252,108 @@ fn trust_at(records: &Path, official: &Path, component_key: &str, dir: &Path) ->
     Trust::Verified
 }
 
+/// 묻지 않고 폴더를 통째로 바꿔도 되는가: 카탈로그 그대로(Verified)이고, 설치 기록에 없는 파일이 하나도 없다.
+/// 신뢰 표시는 코드가 아닌 파일을 보지 않지만, 교체는 폴더를 비우므로 사용자가 넣은 설정·데이터 파일도 지운다.
+/// 교체가 남기는 것(맨 위의 점 항목, `__pycache__`, `replace_dir`)은 세지 않는다
+pub fn replaceable_in_place(component_key: &str, dir: &Path) -> bool {
+    replaceable_at(&records_path(), &official_path(), component_key, dir)
+}
+
+fn replaceable_at(records: &Path, official: &Path, component_key: &str, dir: &Path) -> bool {
+    if trust_at(records, official, component_key, dir) != Trust::Verified {
+        return false;
+    }
+    let records = load_records(records);
+    records.get(component_key).is_some_and(|files| !has_unrecorded(dir, files, Unrecorded::AnyFile))
+}
+
+/// 폴더의 지문: 상대 경로(`/` 구분) → sha256. 맨 위의 점 항목과 `__pycache__` 폴더는 뺀다(교체가 옮겨 주거나 버려도 되는 것).
+/// 링크나 읽지 못한 항목이 있으면 오류: 무엇이 있는지 모르는 폴더는 그대로라고 말할 수 없다
+pub fn dir_fingerprint(dir: &Path) -> Result<BTreeMap<String, String>, String> {
+    fn walk(root: &Path, dir: &Path, top: bool, out: &mut BTreeMap<String, String>) -> Result<(), String> {
+        for entry in std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
+            let entry = entry.map_err(|e| format!("{}: {e}", dir.display()))?;
+            let kind = entry.file_type().map_err(|e| format!("{}: {e}", entry.path().display()))?;
+            let name = entry.file_name();
+            if (top && name.to_string_lossy().starts_with('.')) || (kind.is_dir() && name == "__pycache__") {
+                continue;
+            }
+            let path = entry.path();
+            if kind.is_dir() {
+                walk(root, &path, false, out)?;
+            } else if kind.is_file() {
+                let rel = path.strip_prefix(root).map_err(|e| e.to_string())?;
+                out.insert(rel_key(rel).to_string_lossy().to_string(), compute_sha256(&path)?);
+            } else {
+                return Err(format!("{} is a link or a special file", path.display()));
+            }
+        }
+        Ok(())
+    }
+    let mut out = BTreeMap::new();
+    walk(dir, dir, true, &mut out)?;
+    Ok(out)
+}
+
+/// 지문(`dir`에 설치됐던 폴더를 옮겨 뜬 것)이 카탈로그에서 깐 그대로인가: 카탈로그에서 받았고, 설치 기록의 파일이
+/// 모두 같은 내용으로 있고, 기록에 없는 파일이 없다. 묻지 않는 교체가 옮긴 원래 폴더를 보고 멈추는 데 쓴다 (`swap_dir_untouched`)
+pub fn matches_install_record(component_key: &str, dir: &Path, fingerprint: &BTreeMap<String, String>) -> bool {
+    matches_install_record_at(&records_path(), &official_path(), component_key, dir, fingerprint)
+}
+
+fn matches_install_record_at(records: &Path, official: &Path, component_key: &str, dir: &Path, fingerprint: &BTreeMap<String, String>) -> bool {
+    if !load_official(official).contains(component_key) {
+        return false;
+    }
+    let records = load_records(records);
+    let Some(recorded) = records.get(component_key) else { return false };
+    // 기록의 경로(원래 폴더 기준)를 폴더 기준 상대 경로로
+    let Some(base) = path_key(dir) else { return false };
+    let mut expected: BTreeMap<String, String> = BTreeMap::new();
+    for (file, hash) in recorded {
+        let Some(rel) = path_key(Path::new(file)).and_then(|k| relative_key(&k, &base)) else { return false };
+        let rel = rel.to_string_lossy().to_string();
+        // 지문과 같은 규칙: 맨 위 점 항목과 `__pycache__` 아래는 비교하지 않는다
+        if rel.starts_with('.') || rel.split('/').any(|part| part == "__pycache__") {
+            continue;
+        }
+        expected.insert(rel, hash.to_ascii_lowercase());
+    }
+    expected.len() == fingerprint.len()
+        && fingerprint.iter().all(|(rel, hash)| expected.get(rel).is_some_and(|h| h.eq_ignore_ascii_case(hash)))
+}
+
+/// 비교용 상대 경로: `path_key`로 맞춘 절대 경로 글자에서 `base` 아래 부분 (Windows는 `\` 구분)
+fn relative_key(key: &str, base: &str) -> Option<PathBuf> {
+    let rest = key.strip_prefix(base)?;
+    // `.../game`이 `.../gamefoo/...`의 앞부분으로 맞지 않게: 바로 뒤가 구분자여야 한다
+    if !rest.starts_with(['/', '\\']) {
+        return None;
+    }
+    let rest = rest.trim_start_matches(['/', '\\']);
+    (!rest.is_empty()).then(|| rel_key(Path::new(rest)))
+}
+
+/// 상대 경로를 비교용으로 (구분자를 `/` 하나로)
+fn rel_key(rel: &Path) -> PathBuf {
+    PathBuf::from(rel.to_string_lossy().replace('\\', "/"))
+}
+
 /// 설치 기록에 없는 코드 파일이 폴더에 있나 (`__pycache__`는 데몬이 읽지 않으므로 뺀다)
 fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool {
+    has_unrecorded(dir, recorded, Unrecorded::Code)
+}
+
+/// 기록에 없는 것 중 무엇을 셀까
+#[derive(Clone, Copy, PartialEq)]
+enum Unrecorded {
+    /// Python이 불러올 수 있는 파일만
+    Code,
+    /// 모든 파일 (폴더 교체가 남기는 맨 위의 점 항목은 빼고)
+    AnyFile,
+}
+
+fn has_unrecorded(dir: &Path, recorded: &BTreeMap<String, String>, what: Unrecorded) -> bool {
     // 기록의 경로와 폴더 경로가 다른 모양(상대 경로, `\\?\` 접두사, `/`, 드라이브 글자)일 수 있다.
     // 글자로 맞춘 모양과 실제 위치(canonicalize) 둘 다로 비교한다. 실제 위치만 쓰면 파일과 폴더가
     // 다른 곳으로 풀리는 환경(Windows 앱 패키지의 AppData 가상화)에서 모든 코드가 기록에 없는 것으로 보인다
@@ -263,17 +363,20 @@ fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool 
         known.extend(path_key(file));
         known.extend(std::fs::canonicalize(file).ok().and_then(|p| path_key(&p)));
     }
-    fn walk(dir: &Path, known: &BTreeSet<String>) -> bool {
+    fn walk(dir: &Path, known: &BTreeSet<String>, what: Unrecorded, top: bool) -> bool {
         let Ok(entries) = std::fs::read_dir(dir) else { return false };
         entries.flatten().any(|entry| {
             let path = entry.path();
             let Ok(kind) = entry.file_type() else { return false };
+            if what == Unrecorded::AnyFile && top && entry.file_name().to_string_lossy().starts_with('.') {
+                return false;
+            }
             // 설치 기록은 링크를 적지 않는다. 링크는 폴더 밖 코드를 끌어올 수 있으니 바뀐 것으로 본다
             if kind.is_symlink() {
                 return true;
             }
             if kind.is_dir() {
-                return entry.file_name() != "__pycache__" && walk(&path, known);
+                return entry.file_name() != "__pycache__" && walk(&path, known, what, false);
             }
             let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
             let code = path
@@ -285,10 +388,10 @@ fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool 
                 path_key(&path).is_some_and(|k| known.contains(&k))
                     || std::fs::canonicalize(&path).ok().and_then(|p| path_key(&p)).is_some_and(|k| known.contains(&k))
             };
-            code && !is_known()
+            (code || what == Unrecorded::AnyFile) && !is_known()
         })
     }
-    walk(dir, &known)
+    walk(dir, &known, what, true)
 }
 
 /// 경로를 비교용 글자로 (절대 경로, `\\?\` 접두사 제거, Windows는 `\`와 드라이브 글자만 대문자로).
@@ -596,6 +699,93 @@ mod tests {
         assert_eq!(trust("module-x"), Trust::Unverified);
         assert_eq!(trust("ext-none"), Trust::Unverified);
         assert_eq!(serde_json::to_value(Trust::Modified).unwrap(), "modified");
+    }
+
+    /// Codex #926: 자동 교체는 폴더를 통째로 바꾼다. 사용자가 넣은 파일(설정 등)이 있으면 코드가 아니어도 바꾸지 않는다.
+    /// 교체가 남기는 것(맨 위의 점 항목, `__pycache__`)은 상관없다
+    #[test]
+    fn a_folder_with_user_files_is_not_replaced_in_place() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (records, official) = (tmp.path().join("installed-files.json"), tmp.path().join("official.json"));
+        let dir = tmp.path().join("x");
+        std::fs::create_dir(&dir).unwrap();
+        let a = dir.join("lifecycle.py");
+        std::fs::write(&a, b"one").unwrap();
+        record_install_at(&records, "module-x", std::slice::from_ref(&a)).unwrap();
+        set_official_at(&official, "module-x", true).unwrap();
+        let replaceable = || replaceable_at(&records, &official, "module-x", &dir);
+        assert!(replaceable());
+        std::fs::create_dir(dir.join("__pycache__")).unwrap();
+        std::fs::write(dir.join("__pycache__/lifecycle.cpython-312.pyc"), b"x").unwrap();
+        std::fs::create_dir(dir.join(".git")).unwrap();
+        std::fs::write(dir.join(".git/HEAD"), b"x").unwrap();
+        assert!(replaceable());
+        std::fs::write(dir.join("server.properties"), b"x").unwrap();
+        assert_eq!(trust_at(&records, &official, "module-x", &dir), Trust::Verified);
+        assert!(!replaceable());
+        std::fs::remove_file(dir.join("server.properties")).unwrap();
+        std::fs::create_dir(dir.join("data")).unwrap();
+        std::fs::write(dir.join("data/.keep"), b"x").unwrap();
+        assert!(!replaceable());
+        std::fs::remove_dir_all(dir.join("data")).unwrap();
+        assert!(replaceable());
+        std::fs::write(&a, b"changed").unwrap();
+        assert!(!replaceable());
+    }
+
+    /// 옮긴 원래 폴더의 지문을 설치 기록과 맞춘다: 기록한 파일이 모두 그대로 있고 다른 파일이 없어야 한다
+    /// (맨 위의 점 항목·`__pycache__`는 교체가 옮기거나 버리므로 지문에 넣지 않는다)
+    #[test]
+    fn a_moved_folder_is_checked_against_the_install_record() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (records, official) = (tmp.path().join("installed-files.json"), tmp.path().join("official.json"));
+        let dir = tmp.path().join("x");
+        std::fs::create_dir_all(dir.join("locales")).unwrap();
+        let files = [dir.join("lifecycle.py"), dir.join("locales/en.json")];
+        for f in &files {
+            std::fs::write(f, b"one").unwrap();
+        }
+        record_install_at(&records, "module-x", &files).unwrap();
+        let moved = tmp.path().join(".x.saba-old");
+        std::fs::rename(&dir, &moved).unwrap();
+        let untouched = || matches_install_record_at(&records, &official, "module-x", &dir, &dir_fingerprint(&moved).unwrap());
+        assert!(!untouched(), "not from the catalog");
+        set_official_at(&official, "module-x", true).unwrap();
+        assert!(untouched());
+        std::fs::create_dir_all(moved.join(".git")).unwrap();
+        std::fs::write(moved.join(".git/HEAD"), b"x").unwrap();
+        std::fs::create_dir_all(moved.join("locales/__pycache__")).unwrap();
+        std::fs::write(moved.join("locales/__pycache__/a.pyc"), b"x").unwrap();
+        assert!(untouched());
+        std::fs::write(moved.join("server.properties"), b"mine").unwrap();
+        assert!(!untouched(), "a file the user added");
+        std::fs::remove_file(moved.join("server.properties")).unwrap();
+        std::fs::write(moved.join("locales/en.json"), b"edited").unwrap();
+        assert!(!untouched(), "a file the user changed");
+        std::fs::write(moved.join("locales/en.json"), b"one").unwrap();
+        std::fs::remove_file(moved.join("lifecycle.py")).unwrap();
+        assert!(!untouched(), "a file the user removed");
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(tmp.path(), moved.join("link")).unwrap();
+            assert!(dir_fingerprint(&moved).is_err(), "a link is not something we can vouch for");
+        }
+    }
+
+    /// 패키지에 맨 위 점 파일(.gitignore)이 있어도 지문과 같은 규칙으로 빼고 비교한다
+    #[test]
+    fn a_packaged_top_level_dot_file_does_not_block_the_swap() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (records, official) = (tmp.path().join("installed-files.json"), tmp.path().join("official.json"));
+        let dir = tmp.path().join("x");
+        std::fs::create_dir_all(&dir).unwrap();
+        let files = [dir.join("lifecycle.py"), dir.join(".gitignore")];
+        for f in &files {
+            std::fs::write(f, b"one").unwrap();
+        }
+        record_install_at(&records, "module-x", &files).unwrap();
+        set_official_at(&official, "module-x", true).unwrap();
+        assert!(matches_install_record_at(&records, &official, "module-x", &dir, &dir_fingerprint(&dir).unwrap()));
     }
 
     #[test]

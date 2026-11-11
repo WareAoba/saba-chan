@@ -258,6 +258,14 @@ impl Api {
     pub async fn set_autostart(&self, mode: &str) -> Result<Value> {
         self.put("/api/system/autostart", json!({ "mode": mode })).await
     }
+    /// GET /api/public-address — 이 PC의 공개 주소 `{address, shareAddress, publicIp}`
+    pub async fn public_address(&self) -> Result<Value> {
+        self.get("/api/public-address").await
+    }
+    /// PUT /api/public-address `{address?, shareAddress?}` (빈 주소는 공인 IP 자동)
+    pub async fn set_public_address(&self, body: Value) -> Result<Value> {
+        self.put("/api/public-address", body).await
+    }
     /// GET /api/system/net-trace — 포트·서버별 네트워크 권한 `{access, enabled}`
     pub async fn net_trace(&self) -> Result<Value> {
         self.get("/api/system/net-trace").await
@@ -1205,15 +1213,6 @@ impl Api {
         ))
         .await
     }
-    /// GET /api/relay/link-requests — 디스코드에서 코드 없이 온 연결 요청 (J1-b)
-    pub async fn link_requests(&self, relay_url: Option<&str>) -> Result<Value> {
-        self.get(&with_query("/api/relay/link-requests", &[("relayUrl", relay_url.map(str::to_string))])).await
-    }
-    /// POST /api/relay/link-requests/:id — 수락·거절
-    pub async fn answer_link_request(&self, id: &str, accept: bool, relay_url: Option<&str>) -> Result<Value> {
-        let path = format!("/api/relay/link-requests/{}", seg(id));
-        self.post(&with_query(&path, &[("relayUrl", relay_url.map(str::to_string))]), json!({ "accept": accept })).await
-    }
     /// POST /api/chat/command — 디스코드와 같은 텍스트 명령 처리 (`{reply}`)
     pub async fn chat(&self, text: &str) -> Result<Value> {
         self.post("/api/chat/command", json!({ "text": text })).await
@@ -1276,8 +1275,7 @@ fn remember_notices(seen: &std::sync::atomic::AtomicU64, body: &mut Value) {
     };
     let newest = list.iter().filter_map(|n| n.get("id").and_then(Value::as_u64)).max().unwrap_or(0);
     let before = seen.fetch_max(newest, std::sync::atomic::Ordering::Relaxed);
-    // id가 없는 알림(옛 데몬)은 그대로 둔다
-    list.retain(|n| n.get("id").and_then(Value::as_u64).is_none_or(|id| id > before));
+    list.retain(|n| n.get("id").and_then(Value::as_u64).is_some_and(|id| id > before));
 }
 
 /// `update last`는 다른 클라이언트(GUI)가 이미 확인한 결과도 다시 본다: 패치노트를 CLI로 다시 읽는 길 (L70)
@@ -1737,9 +1735,11 @@ mod route_coverage {
     const NOT_FOR_CLI: &[(&str, &str)] = &[
         ("/api/client/register", "GUI 창 수명 (CLI는 한 번 돌고 끝난다)"),
         ("/api/system/uninstall", "짝 맺은 PC가 원격으로 부르는 제거 (CLI는 `remote remove --uninstall`이 그 PC에 보내고, 이 PC는 `uninstall`)"),
-        ("/api/relay/pair/{code}/status", "이전 GUI·CLI가 쓰던 페어링 상태 (지금은 `POST /api/relay/pair/status`, 다음 판에서 뺀다)"),
         ("/api/chatbot/common", "원격(디스코드 `/설정` 사바쨩 전체)용 모델·키만 바꾸기 (CLI는 `PUT /api/chatbot`으로 같은 값을 바꾼다)"),
         ("/api/updates/install", "원격(디스코드 `/사바쨩 업데이트`)용 한 번에 받고 적용 (CLI `update`는 단계마다 진행을 보인다)"),
+        ("/api/updates/phase/ack", "GUI 상단 바 알약의 '업데이트 완료'를 지운다 (CLI는 `update status`로 상태만 본다)"),
+        ("/api/updates/restart", "GUI 알약 '업데이트 준비됨'의 다시 시작 (CLI는 `update apply`로 받아 둔 것을 바로 적용한다)"),
+        ("/api/updates/gui-window", "GUI 창이 열려 있는지 알린다 (GUI 교체를 미룰지 정하는 값)"),
         ("/api/updates/apply-on-launch", "GUI가 열릴 때 '받고 다음 실행 때 적용' (CLI는 `update apply`로 바로 적용한다)"),
         ("/api/client/{id}/heartbeat", "GUI 창 수명"),
         ("/api/client/{id}/unregister", "GUI 창 수명"),
@@ -1747,6 +1747,7 @@ mod route_coverage {
         ("/api/extensions/{id}/gui/styles", "GUI 번들"),
         ("/api/extensions/{id}/icon", "GUI 그림"),
         ("/api/extensions/{id}/i18n/{locale}", "GUI 번들 문구"),
+        ("/api/locales/{lang}/{ns}", "GUI 번역 (CLI는 설치 폴더 cli.json을 직접 읽고, TUI는 `locales_version`이 바뀌면 다시 읽는다)"),
         ("/api/instance/{id}/status", "GUI가 시작·정지가 끝났는지 묻는 길 (CLI `server info`·`list`는 /api/servers 상태를 쓴다)"),
         ("/api/instance/{id}/chat-link/{guild}", "디스코드 채널과 게임 채팅을 잇는 원격(디스코드 `/채팅연동`) 전용 (잇는 채널이 디스코드에만 있다)"),
         ("/api/remote/daemons/{host_id}/proxy/{*rest}", "원격 데몬 중계: 데몬 API 전체를 그 데몬으로 넘기는 길 (원격 데몬 고르기는 G1)"),

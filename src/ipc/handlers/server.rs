@@ -22,8 +22,12 @@ pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
     let token = super::super::auth::token_status(&headers);
     let challenge = headers.get("X-Saba-Challenge").and_then(|v| v.to_str().ok());
     let proof = challenge.and_then(crate::ipc::auth::identity_proof);
-    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "token": token, "proof": proof, "stops_with_launcher": stops_with_launcher() })))
+    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "started_at_ms": *STARTED_AT_MS, "token": token, "proof": proof, "stops_with_launcher": stops_with_launcher() })))
 }
+
+/// 데몬이 시작한 시각 (Unix ms). `main`이 맨 먼저 잰다. 업데이터가 서비스 관리자·GUI가 다시 띄운 데몬을
+/// PID 대신 판과 이 시각으로 새 데몬인지 가린다 (`live_apply::HealthRule::StartedAfter`)
+pub static STARTED_AT_MS: std::sync::LazyLock<u64> = std::sync::LazyLock::new(saba_chan_updater_lib::live_apply::now_ms);
 
 /// 데몬이 닫히면 함께 끝내는 job 안에 있는가 (L46). GUI가 job breakaway를 거절당해 그대로 띄우면, GUI를 띄운 프로그램이
 /// 끝날 때 데몬도 끝날 수 있다. 시작 뒤 바뀌지 않으므로 한 번만 본다. 바로 위 job만 본다 (중첩 job의 바깥 job은 알 수 없다)
@@ -93,40 +97,11 @@ pub async fn list_servers_internal(state: &IPCServer) -> axum::response::Respons
 async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Response {
     let state = state.clone();
     // ── Phase 1: supervisor lock을 최소 시간만 잡고 필요한 데이터 복사 ──
+    /// 목록 한 줄의 기본 모습(native 상태)과 hook·폴더 판정에 쓰는 값
     struct InstanceSnapshot {
-        id: String,
-        name: String,
-        module_name: String,
-        executable_path: Option<String>,
-        working_dir: Option<String>,
-        port: Option<u16>,
-        rest_host: Option<String>,
-        rest_port: Option<u16>,
-        rest_username: Option<String>,
-        rest_password: Option<String>,
-        protocol_mode: String,
-        module_settings: std::collections::HashMap<String, serde_json::Value>,
-        server_version: Option<String>,
-        extension_data: std::collections::HashMap<String, serde_json::Value>,
-        extra_args: Vec<String>,
-        memory_limit_mb: Option<u64>,
-        game_chat: crate::supervisor::game_chat::Mode,
-        game_chat_keyword: String,
-        access: crate::controllers::Access,
-        controllers: Vec<crate::controllers::Controller>,
-        controllers_only: bool,
-        kick_players: Vec<String>,
-        chat_patterns: bool,
-        kick_on_join: bool,
-        revision: String,
+        info: ServerInfo,
         instance_dir: String,
-        linked_folder: Option<String>,
-        restorable_settings: bool,
         process_patterns: Vec<String>,
-        // Native 모드 데이터
-        pid: Option<u32>,
-        start_time: Option<u64>,
-        managed: bool,
     }
 
     let (snapshots, all_instances, module_protocols): (Vec<InstanceSnapshot>, Vec<_>, _) = {
@@ -146,40 +121,52 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
             let process_patterns = module.as_ref().map(|m| m.metadata.process_patterns.clone()).unwrap_or_default();
             let chat_patterns = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
             let kick_on_join = module.as_ref().is_some_and(|m| m.metadata.kick_command.is_some() && !m.metadata.player_join_patterns.is_empty());
+            let managed = supervisor.uses_managed_start(instance);
             InstanceSnapshot {
-                id: instance.id.clone(),
-                name: instance.name.clone(),
-                module_name: instance.module_name.clone(),
-                executable_path: instance.executable_path.clone(),
-                working_dir: instance.working_dir.clone(),
-                port: instance.port,
-                rest_host: instance.rest_host.clone(),
-                rest_port: instance.rest_port,
-                rest_username: instance.rest_username.clone(),
-                rest_password: instance.rest_password.clone(),
-                protocol_mode: instance.protocol_mode.clone(),
-                module_settings: instance.module_settings.clone(),
-                server_version: instance.server_version.clone(),
-                extension_data: instance.extension_data.clone(),
-                extra_args: instance.extra_args.clone(),
-                memory_limit_mb: instance.memory_limit_mb,
-                game_chat: instance.game_chat,
-                game_chat_keyword: instance.game_chat_keyword.clone(),
-                access: instance.access,
-                controllers: instance.controllers.clone(),
-                controllers_only: instance.controllers_only,
-                kick_players: instance.kick_players.clone(),
-                chat_patterns,
-                kick_on_join,
-                revision: instance.settings_revision(),
+                info: ServerInfo {
+                    id: instance.id.clone(),
+                    name: instance.name.clone(),
+                    module: instance.module_name.clone(),
+                    // Native 모드: 스냅샷의 PID 및 시작 시간
+                    status: if pid.is_some() { "running" } else { "stopped" }.to_string(),
+                    pid,
+                    start_time,
+                    executable_path: instance.executable_path.clone(),
+                    working_dir: instance.working_dir.clone(),
+                    port: instance.port,
+                    rest_host: instance.rest_host.clone(),
+                    rest_port: instance.rest_port,
+                    rest_username: instance.rest_username.clone(),
+                    rest_password: instance.rest_password.clone(),
+                    protocol_mode: instance.protocol_mode.clone(),
+                    module_settings: instance.module_settings.clone(),
+                    server_version: instance.server_version.clone(),
+                    last_api_action: None,
+                    provisioning: false,
+                    managed,
+                    extension_status: std::collections::HashMap::new(),
+                    extension_data: instance.extension_data.clone(),
+                    extra_args: instance.extra_args.clone(),
+                    memory_limit_mb: instance.memory_limit_mb,
+                    game_chat: instance.game_chat,
+                    game_chat_keyword: instance.game_chat_keyword.clone(),
+                    access: instance.access,
+                    controllers: instance.controllers.clone(),
+                    controllers_only: instance.controllers_only,
+                    kick_players: instance.kick_players.clone(),
+                    game_chat_supported: chat_patterns && managed,
+                    controllers_only_supported: kick_on_join && managed,
+                    revision: instance.settings_revision(),
+                    port_conflicts: vec![],
+                    slots: Default::default(),
+                    players: None,
+                    unresponsive: None,
+                    // 폴더 판정은 아래 락 밖에서
+                    linked_folder: None,
+                    restorable_settings: false,
+                },
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
-                // 폴더 판정은 아래 락 밖에서
-                linked_folder: None,
-                restorable_settings: false,
                 process_patterns,
-                managed: supervisor.uses_managed_start(instance),
-                pid,
-                start_time,
             }
         }).collect();
         (snapshots, all_instances, module_protocols)
@@ -192,8 +179,8 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         let mut snapshots = snapshots;
         for s in &mut snapshots {
             let instance_dir = std::path::Path::new(&s.instance_dir);
-            s.linked_folder = crate::instance::migration::linked_folder(s.working_dir.as_deref(), instance_dir);
-            s.restorable_settings = crate::instance::migration::saved(instance_dir);
+            s.info.linked_folder = crate::instance::migration::linked_folder(s.info.working_dir.as_deref(), instance_dir);
+            s.info.restorable_settings = crate::instance::migration::saved(instance_dir);
         }
         snapshots
     })
@@ -209,168 +196,66 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
     // ── Phase 2: Extension hooks (lock 없이 실행) ──
     let mut servers = Vec::new();
 
-    for instance in &snapshots {
+    for InstanceSnapshot { info: mut server, instance_dir, process_patterns } in snapshots {
         // ── Extension hook: server.list_enrich ──
         // Extension이 런타임 상태/통계를 제공할 수 있음 (TTL 캐시 적용)
-        let mut ext_handled = false;
-        let has_ext_hooks = !instance.extension_data.is_empty();
-        if has_ext_hooks {
+        if !server.extension_data.is_empty() {
             // 캐시 확인 — TTL 내 결과가 있으면 Python 프로세스 스폰 생략
-            let enrich_result = if let Some(cached_val) = state.extension_status_cache.get(&instance.id) {
+            let enrich_result = if let Some(cached_val) = state.extension_status_cache.get(&server.id) {
                 cached_val
             } else {
                 let ext_mgr = state.extension_manager.clone();
                 let ctx = serde_json::json!({
-                    "instance_id": &instance.id,
-                    "instance_name": &instance.name,
-                    "module": &instance.module_name,
-                    "extension_data": &instance.extension_data,
-                    "instance_dir": &instance.instance_dir,
-                    "process_patterns": &instance.process_patterns,
+                    "instance_id": &server.id,
+                    "instance_name": &server.name,
+                    "module": &server.module,
+                    "extension_data": &server.extension_data,
+                    "instance_dir": &instance_dir,
+                    "process_patterns": &process_patterns,
                 });
                 let results = crate::extension::run_hook_timed(&ext_mgr, "server.list_enrich", ctx, 10).await;
                 // 첫 번째 성공 응답만 캐시한다 (실패는 다음 목록 요청에서 다시 시도)
                 match results.into_iter().find_map(|(_id, r)| r.ok()) {
                     Some(result) => {
-                        state.extension_status_cache.set(&instance.id, result.clone());
+                        state.extension_status_cache.set(&server.id, result.clone());
                         result
                     }
                     None => json!({"handled": false}),
                 }
             };
 
-            // handled: true인 경우만 Extension이 서버 정보를 제공
+            // handled: true인 경우만 Extension이 서버 정보를 제공: 상태·PID·시작 시간·extension_status만 바꾼다
             let is_handled = enrich_result.get("handled")
                 .and_then(|h| h.as_bool()) == Some(true);
 
             if is_handled {
-                let res = &enrich_result;
-                let ext_status = res.get("status").and_then(|s| s.as_str())
+                server.status = enrich_result.get("status").and_then(|s| s.as_str())
                     .unwrap_or("stopped").to_string();
-                let provision_entry = state.provision_tracker.get(&instance.name);
-                let provisioning = provision_entry.is_some();
-                let actively_provisioning = provision_entry.as_ref().map(|p| !p.done).unwrap_or(false);
-                let status = if actively_provisioning { "provisioning".to_string() } else { ext_status };
-                let last_api = state.api_actions.get(&instance.name)
-                    .or_else(|| state.api_actions.get(&instance.id));
-
-                // Extension 런타임 상태를 extension_status에 저장
-                let mut extension_status = std::collections::HashMap::new();
+                server.pid = None;
+                server.start_time = None;
                 // hook 응답에서 extension_id 필드가 있으면 해당 키로, 아니면 "default"
-                let ext_key = res.get("extension_id")
+                let ext_key = enrich_result.get("extension_id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("default")
                     .to_string();
-                extension_status.insert(ext_key, enrich_result.clone());
-
-                servers.push(ServerInfo {
-                    id: instance.id.clone(),
-                    name: instance.name.clone(),
-                    module: instance.module_name.clone(),
-                    status,
-                    pid: None,
-                    start_time: None,
-                    executable_path: instance.executable_path.clone(),
-                    working_dir: instance.working_dir.clone(),
-                    port: instance.port,
-                    rest_host: instance.rest_host.clone(),
-                    rest_port: instance.rest_port,
-                    rest_username: instance.rest_username.clone(),
-                    rest_password: instance.rest_password.clone(),
-                    protocol_mode: instance.protocol_mode.clone(),
-                    module_settings: instance.module_settings.clone(),
-                    server_version: instance.server_version.clone(),
-                    last_api_action: last_api,
-                    provisioning,
-                    managed: instance.managed,
-                    extension_status,
-                    extension_data: instance.extension_data.clone(),
-                    extra_args: instance.extra_args.clone(),
-                    memory_limit_mb: instance.memory_limit_mb,
-                    game_chat: instance.game_chat,
-                    game_chat_keyword: instance.game_chat_keyword.clone(),
-                    access: instance.access,
-                    controllers: instance.controllers.clone(),
-                    controllers_only: instance.controllers_only,
-                    kick_players: instance.kick_players.clone(),
-                    game_chat_supported: instance.chat_patterns && instance.managed,
-                    controllers_only_supported: instance.kick_on_join && instance.managed,
-                    revision: instance.revision.clone(),
-                    port_conflicts: vec![],
-                    slots: Default::default(),
-                    players: None,
-                    unresponsive: None,
-                    linked_folder: instance.linked_folder.clone(),
-                    restorable_settings: instance.restorable_settings,
-                });
-                ext_handled = true;
+                server.extension_status.insert(ext_key, enrich_result);
             }
         }
-        if ext_handled {
-            continue;
-        }
-
-        // Native 모드: 스냅샷에서 PID 및 시작 시간 사용
-        let (status, start_time) = if instance.pid.is_some() {
-            ("running".to_string(), instance.start_time)
-        } else {
-            ("stopped".to_string(), None)
-        };
 
         // API(CLI/Discord)를 통한 마지막 시작/정지 타임스탬프 조회
-        let last_api = state.api_actions.get(&instance.name)
-            .or_else(|| state.api_actions.get(&instance.id));
+        server.last_api_action = state.api_actions.get(&server.name)
+            .or_else(|| state.api_actions.get(&server.id));
 
         // 프로비저닝 진행 여부 확인 (tracker entry 존재 = provisioning UI 표시)
-        let provision_entry = state.provision_tracker.get(&instance.name);
-        let provisioning = provision_entry.is_some();
-        let actively_provisioning = provision_entry.as_ref().map(|p| !p.done).unwrap_or(false);
-
+        let provision_entry = state.provision_tracker.get(&server.name);
+        server.provisioning = provision_entry.is_some();
         // 프로비저닝 중이면 상태를 "provisioning"으로 오버라이드
-        let status = if actively_provisioning { "provisioning".to_string() } else { status };
+        if provision_entry.as_ref().is_some_and(|p| !p.done) {
+            server.status = "provisioning".to_string();
+        }
 
-        servers.push(ServerInfo {
-            id: instance.id.clone(),
-            name: instance.name.clone(),
-            module: instance.module_name.clone(),
-            status,
-            pid: instance.pid,
-            start_time,
-            executable_path: instance.executable_path.clone(),
-            working_dir: instance.working_dir.clone(),
-            port: instance.port,
-            rest_host: instance.rest_host.clone(),
-            rest_port: instance.rest_port,
-            rest_username: instance.rest_username.clone(),
-            rest_password: instance.rest_password.clone(),
-            protocol_mode: instance.protocol_mode.clone(),
-            module_settings: instance.module_settings.clone(),
-            server_version: instance.server_version.clone(),
-            last_api_action: last_api,
-            provisioning,
-            managed: instance.managed,
-            extension_status: std::collections::HashMap::new(),
-            extension_data: instance.extension_data.clone(),
-            extra_args: instance.extra_args.clone(),
-            memory_limit_mb: instance.memory_limit_mb,
-            game_chat: instance.game_chat,
-            game_chat_keyword: instance.game_chat_keyword.clone(),
-            access: instance.access,
-            controllers: instance.controllers.clone(),
-            controllers_only: instance.controllers_only,
-            kick_players: instance.kick_players.clone(),
-            game_chat_supported: instance.chat_patterns && instance.managed,
-                    controllers_only_supported: instance.kick_on_join && instance.managed,
-            revision: instance.revision.clone(),
-            port_conflicts: vec![],
-            slots: Default::default(),
-            players: None,
-            unresponsive: None,
-            linked_folder: instance.linked_folder.clone(),
-            restorable_settings: instance.restorable_settings,
-        });
+        servers.push(server);
     }
-
     // ── 데이터 slot (Q-7): 조건 판정과 값 찾기는 여기서 한 번만 ──
     {
         let ext_mgr = state.extension_manager.read().await;
@@ -603,14 +488,20 @@ pub async fn detect_module_dir(
     if !dir.is_dir() {
         return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("not a folder: {}", path) }))).into_response();
     }
-    let supervisor = state.supervisor.read().await;
-    let modules = supervisor.list_modules().unwrap_or_default();
-    let matches: Vec<_> = modules
-        .iter()
-        .filter(|m| m.matches_dir(dir))
-        .map(|m| json!({ "name": m.metadata.name, "display_name": m.metadata.display_name }))
-        .collect();
-    (StatusCode::OK, Json(json!({ "matches": matches }))).into_response()
+    let matches: Vec<_> = {
+        let supervisor = state.supervisor.read().await;
+        let modules = supervisor.list_modules().unwrap_or_default();
+        modules
+            .iter()
+            .filter(|m| m.matches_dir(dir))
+            .map(|m| json!({ "name": m.metadata.name, "display_name": m.metadata.display_name }))
+            .collect()
+    };
+    // 가져오기 전에 알릴 것 (만들 때와 같은 `migration::notices`): 사바쨩 밖에서 켜 둔 서버, 쓸 수 없는 폴더.
+    // 프로세스 목록 읽기는 막는 호출이라 런타임 밖에서
+    let folder = dir.to_path_buf();
+    let notices = tokio::task::spawn_blocking(move || crate::instance::migration::notices(&folder)).await.unwrap_or_default();
+    (StatusCode::OK, Json(json!({ "matches": matches, "notices": notices }))).into_response()
 }
 
 /// GET /api/module/:name - 모듈 메타데이터 조회 (별명 포함)
@@ -675,20 +566,31 @@ pub async fn fetch_module_manifest() -> impl IntoResponse {
             let mut modules = serde_json::Map::new();
             if let Some(manifest) = &catalog {
                 for (name, comp) in manifest.addons(saba_chan_updater_lib::relay::MODULE_PREFIX) {
-                    let mut info = match &comp.meta {
-                        Some(serde_json::Value::Object(meta)) => meta.clone(),
-                        _ => serde_json::Map::new(),
-                    };
-                    info.insert("version".into(), json!(comp.version));
-                    info.insert("sha256".into(), json!(comp.sha256));
-                    info.insert("size_bytes".into(), json!(comp.size_bytes));
-                    modules.insert(name.to_string(), serde_json::Value::Object(info));
+                    modules.insert(name.to_string(), catalog_module_info(comp, std::env::consts::OS, std::env::consts::ARCH));
                 }
             }
             (StatusCode::OK, Json(json!({ "ok": true, "manifest": { "modules": modules } }))).into_response()
         }
         Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
     }
+}
+
+/// 카탈로그 모듈 하나의 목록 정보: meta에 버전·해시·크기와, 이 OS·CPU에서 도는지(`platform_supported`,
+/// 아니면 `unsupported_reason` `os`·`arch`)를 더한다. 설치된 모듈 목록과 같은 이름이다
+fn catalog_module_info(comp: &saba_chan_updater_lib::relay::ManifestComponent, os: &str, arch: &str) -> Value {
+    let mut info = match &comp.meta {
+        Some(Value::Object(meta)) => meta.clone(),
+        _ => serde_json::Map::new(),
+    };
+    let reason = crate::supervisor::module_loader::catalog_unsupported_on(&Value::Object(info.clone()), os, arch);
+    info.insert("version".into(), json!(comp.version));
+    info.insert("sha256".into(), json!(comp.sha256));
+    info.insert("size_bytes".into(), json!(comp.size_bytes));
+    info.insert("platform_supported".into(), json!(reason.is_none()));
+    if let Some(reason) = reason {
+        info.insert("unsupported_reason".into(), json!(reason));
+    }
+    Value::Object(info)
 }
 
 /// POST /api/modules/manifest/:id/install - 최신 릴리즈에서 모듈을 받아 설치한다 (SHA-256 검증)
@@ -810,7 +712,7 @@ pub(crate) fn required_extensions(module: &crate::supervisor::module_loader::Loa
 /// 모듈 하나의 설치·제거는 한 번에 하나만 (같은 모듈을 GUI·CLI가 동시에 설치하면 서로의 파일을 지운다).
 /// 키는 소문자로: Windows에서는 대소문자만 다른 id가 같은 폴더다
 pub(crate) fn module_install_guard(module_id: &str) -> Option<super::backup::InstanceLock> {
-    super::backup::InstanceLock::take(&format!("module-install:{}", module_id.to_lowercase()))
+    super::backup::InstanceLock::take(&format!("module-install:{}", module_id.to_lowercase())).map(|g| g.purpose(super::backup::Purpose::Provision))
 }
 
 pub(crate) fn module_busy(module_id: &str) -> axum::response::Response {
@@ -901,8 +803,7 @@ pub async fn get_instance_status(
         let supervisor = state.supervisor.read().await;
         supervisor
             .instance_store
-            .get(&id)
-            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+            .find(&id)
             .map(|i| (i.name.clone(), i.module_name.clone()))
     };
     if let Some((name, module_name)) = instance {
@@ -943,8 +844,7 @@ async fn start_instance(
         let supervisor = state.supervisor.read().await;
         supervisor
             .instance_store
-            .get(&id)
-            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+            .find(&id)
             .cloned()
             .map(|inst| {
                 let managed = supervisor.uses_managed_start(&inst);
@@ -1054,8 +954,7 @@ async fn instance_key_of(state: &IPCServer, key: &str) -> Option<(String, String
     let supervisor = state.supervisor.read().await;
     supervisor
         .instance_store
-        .get(key)
-        .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == key))
+        .find(key)
         .map(|i| (i.id.clone(), i.name.clone()))
 }
 
@@ -1098,8 +997,7 @@ async fn restart_instance(
         let supervisor = state.supervisor.read().await;
         supervisor
             .instance_store
-            .get(&id)
-            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+            .find(&id)
             .map(|i| i.id.clone())
     };
     let Some(inst_id) = picked else {
@@ -1217,7 +1115,7 @@ async fn start_server_handler(
     // 익스텐션 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
     let inst_id = {
         let sup = state.supervisor.read().await;
-        let id = sup.instance_store.get(&name).or_else(|| sup.instance_store.list().iter().find(|i| i.name == name)).map(|i| i.id.clone());
+        let id = sup.instance_store.find(&name).map(|i| i.id.clone());
         if let Some(id) = &id {
             state.extension_status_cache.invalidate(id);
         }
@@ -1317,6 +1215,8 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
         return instance_not_found(key);
     };
     let id = id.as_str();
+    // 정지가 끝날 때까지 복원 전 백업 정리를 붙잡아 둔다 (정리가 "돌고 있다"고 본 서버를 지우는 동안 멈추지 않게, 반대로 멈추는 중에는 지우지 않게)
+    let _stopping = super::backup::stop_gate(id).await;
     // API 경유 정지 기록 (GUI 외부 정지 감지용)
     state.api_actions.record(&name);
     // 익스텐션 상태 캐시 무효화 — 정지 직후 fresh 상태 반영
@@ -1388,7 +1288,7 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
 pub(super) async fn fill_passwords(state: &IPCServer, key: &str) {
     let generate = state.config_store.get_gui_settings().await.auto_generate_passwords;
     let mut supervisor = state.supervisor.write().await;
-    let found = supervisor.instance_store.get(key).or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == key)).cloned();
+    let found = supervisor.instance_store.find(key).cloned();
     let Some(mut inst) = found else { return };
     let changed = match supervisor.module_loader.get_module(&inst.module_name).map(|m| m.metadata.supports_protocol("rest")) {
         Ok(true) => inst.ensure_passwords(generate),
@@ -1414,10 +1314,29 @@ mod tests {
     use tokio::sync::RwLock;
 
     /// L46: 데몬이 자기를 띄운 프로그램과 함께 끝나는 job 안에 있는지 /health에 싣는다 (GUI·CLI가 알린다)
+    /// 받기 전 목록도 이 OS·CPU에서 도는지 싣는다 (맥에서 x86_64 전용 모듈을 받은 뒤에야 막히지 않게)
+    #[test]
+    fn catalog_modules_say_whether_they_run_here() {
+        let comp = |meta: Value| -> saba_chan_updater_lib::relay::ManifestComponent {
+            serde_json::from_value(json!({"version": "1.0.0", "asset": "module-g.zip", "sha256": "ab", "url": "https://r2/g.zip", "size_bytes": 7, "meta": meta})).unwrap()
+        };
+        let x86 = catalog_module_info(&comp(json!({"display_name": "G", "architectures": ["x86_64"]})), "macos", "aarch64");
+        assert_eq!((x86["platform_supported"].clone(), x86["unsupported_reason"].clone()), (json!(false), json!("arch")));
+        assert_eq!((x86["display_name"].clone(), x86["version"].clone(), x86["size_bytes"].clone()), (json!("G"), json!("1.0.0"), json!(7)));
+        let win = catalog_module_info(&comp(json!({"platforms": ["windows", "linux"]})), "macos", "aarch64");
+        assert_eq!(win["unsupported_reason"], "os");
+        let any = catalog_module_info(&comp(json!({})), "macos", "aarch64");
+        assert_eq!(any["platform_supported"], true);
+        assert!(any.get("unsupported_reason").is_none());
+    }
+
     #[tokio::test]
     async fn health_says_whether_the_daemon_stops_with_its_launcher() {
         let done = crate::ipc::internal::into_internal(health_check(axum::http::HeaderMap::new()).await.into_response()).await;
         assert!(done.body["stops_with_launcher"].is_boolean(), "{}", done.body);
+        // 업데이터가 새 데몬인지 가리는 기동 시각 (Unix ms, 지금보다 앞)
+        let started = done.body["started_at_ms"].as_u64().expect("started_at_ms");
+        assert!(started > 0 && started <= saba_chan_updater_lib::live_apply::now_ms(), "{}", done.body);
         #[cfg(not(windows))]
         assert_eq!(done.body["stops_with_launcher"], false);
         // job 밖이면 false, kill-on-close job 안이면 breakaway를 허용하든 말든 true (BREAKAWAY_OK 0x800, SILENT_BREAKAWAY_OK 0x1000)
@@ -1969,6 +1888,55 @@ mod tests {
         assert_eq!(managed("direct"), json!(false));
     }
 
+    /// 익스텐션이 맡았다고 답한 서버(`server.list_enrich`의 handled)는 상태·PID·시작 시간·extension_status만 익스텐션 답을 따르고
+    /// 나머지 칸은 맡지 않은 서버와 같다
+    #[tokio::test]
+    async fn server_list_takes_only_the_runtime_state_from_an_extension_that_handles_the_server() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let mut handled = crate::instance::ServerInstance::new("handled", "plain");
+        handled.port = Some(25565);
+        handled.extension_data.insert("docker_enabled".into(), json!(true));
+        let mut declined = crate::instance::ServerInstance::new("declined", "plain");
+        declined.port = Some(25566);
+        declined.extension_data.insert("docker_enabled".into(), json!(true));
+        let (handled_id, declined_id) = (handled.id.clone(), declined.id.clone());
+        sup.instance_store.add(handled).unwrap();
+        sup.instance_store.add(declined).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        // 캐시에 둔 답을 쓰므로 hook을 실제로 부르지 않는다
+        state.extension_status_cache.set(&handled_id, json!({ "handled": true, "status": "starting", "extension_id": "docker", "memory_percent": 25.5 }));
+        state.extension_status_cache.set(&declined_id, json!({ "handled": false }));
+
+        let body = crate::ipc::internal::into_internal(list_servers(State(state), Query(ListServersQuery::default())).await).await.body;
+        let server = |name: &str| body["servers"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap().clone();
+        let handled = server("handled");
+        assert_eq!(handled["status"], json!("starting"));
+        assert_eq!(handled["pid"], Value::Null);
+        assert_eq!(handled["extension_status"]["docker"]["memory_percent"], json!(25.5));
+        assert_eq!(handled["port"], json!(25565));
+        assert_eq!(handled["module"], json!("plain"));
+        assert_eq!(handled["extension_data"]["docker_enabled"], json!(true));
+        assert_eq!(handled["provisioning"], json!(false));
+        let declined = server("declined");
+        assert_eq!(declined["status"], json!("stopped"));
+        assert!(declined.get("extension_status").is_none());
+        assert_eq!(declined["port"], json!(25566));
+        let without_status: Vec<&str> = ["status", "extension_status", "id", "name", "port", "revision", "pid", "start_time"].to_vec();
+        let rest = |v: &Value| {
+            let mut v = v.clone();
+            for k in &without_status {
+                v.as_object_mut().unwrap().remove(*k);
+            }
+            v
+        };
+        assert_eq!(rest(&handled), rest(&declined), "the other fields come from the same place");
+    }
+
     /// 목록은 인스턴스 폴더 밖 서버 폴더(가져온 서버)와 되돌릴 원래 설정이 있는지를 알린다
     #[tokio::test]
     async fn server_list_reports_linked_folders() {
@@ -2219,5 +2187,30 @@ mod tests {
         assert_eq!(std::fs::read_to_string(target.join("lifecycle.py")).unwrap(), "new");
         assert!(!staging.exists());
         assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 1, "the old folder is removed after the swap");
+    }
+
+    /// 가져오기 전 폴더 검사에서 사바쨩 밖에서 켜 둔 서버를 미리 알린다 (가져오기를 누르기 전에 끄라고 보인다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn detecting_a_folder_warns_about_a_server_already_running_from_it() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&server).unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let detect = |state: crate::ipc::IPCServer, path: std::path::PathBuf| async move {
+            crate::ipc::internal::into_internal(super::detect_module_dir(State(state), Json(json!({ "path": path }))).await.into_response()).await
+        };
+        let quiet = detect(state.clone(), server.clone()).await;
+        assert_eq!(quiet.body["notices"], json!([]), "{}", quiet.body);
+        let mut outside = std::process::Command::new("sleep").arg("30").current_dir(&server).spawn().unwrap();
+        // 링크를 거친 경로로 골라도 알아본다 (macOS 임시 폴더 /var는 /private/var의 링크라 프로세스 경로와 다르다)
+        let linked = tmp.path().join("linked");
+        std::os::unix::fs::symlink(&server, &linked).unwrap();
+        let busy = detect(state, linked).await;
+        outside.kill().ok();
+        outside.wait().ok();
+        assert_eq!(busy.body["notices"], json!(["server_running"]), "{}", busy.body);
     }
 }

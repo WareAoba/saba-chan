@@ -153,13 +153,13 @@ export interface RelayChannels {
     voiceChannels: RelayAssignableChannel[];
 }
 
-/** PUT /relay/guilds/:g/channels 본문 (nodeChannelsSchema): 준 키만 바꾼다. 예전 앱은 게임 채팅·상황판을 하나로 준다 */
+/** PUT /relay/guilds/:g/channels 본문 (nodeChannelsSchema): 준 키만 바꾼다 */
 export interface RelayChannelsChange {
     chatbot?: string[];
     music?: string | null;
     notify?: string | null;
-    gameChat?: string[] | string | null;
-    board?: string[] | string | null;
+    gameChat?: string[];
+    board?: string[];
 }
 
 /** GET /relay/guilds/:g/chatbot 의 settings (publicSettings 에서 channelIds·hasApiKey 를 뺀 것) */

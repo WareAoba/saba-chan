@@ -23,16 +23,19 @@ version = "0.1.0"
 
 [config]
 stop_timeout = 75
+stop_command = "quit"
 
 [[settings.fields]]
 name = "max_players"
 type = "number"
 file_key = "max-players"
+default = 10.0
 
 [[settings.fields]]
 name = "pvp"
 type = "boolean"
 file_key = "pvp"
+default = true
 
 [[settings.fields]]
 name = "motd"
@@ -68,7 +71,8 @@ class ModuleDirTest(unittest.TestCase):
         (self.dir / "locales").mkdir()
         (self.dir / "locales" / "en.json").write_text(json.dumps({
             "messages": {"graceful_stop": "module wording"},
-            "errors": {"detect": {"port_in_use": "port busy"}, "solutions": {"port_in_use": "change port"}},
+            "errors": {"detect": {"port_in_use": "port busy"}, "solutions": {"port_in_use": "change port"},
+                       "chat_failed": "chat failed: {{error}}"},
         }), encoding="utf-8")
         self.i18n = I18n(str(self.dir))
 
@@ -84,6 +88,11 @@ class SettingKeyTests(ModuleDirTest):
         out = daemon_rcon.settings_to_file(self.dir, {"max_players": 20.0, "pvp": True, "ram": "4G", "motd": None})
         self.assertEqual(out, {"max-players": "20", "pvp": "true"})
         self.assertEqual(daemon_rcon.settings_to_file(self.dir, {"pvp": False}, true="1", false="0"), {"pvp": "0"})
+
+    def test_defaults_in_file_form_come_from_module_toml(self):
+        # 새 서버의 설정 파일 값: 기본값이 있는 file_key 칸만, 파일 표기로
+        self.assertEqual(daemon_rcon.setting_defaults_to_file(self.dir), {"max-players": "10", "pvp": "true"})
+        self.assertEqual(daemon_rcon.setting_defaults_to_file(self.dir, true="True"), {"max-players": "10", "pvp": "True"})
 
     def test_a_line_break_in_a_value_is_refused(self):
         # 줄바꿈이 든 값은 파일에 다른 키를 만든다 (enable-rcon=true 같은)
@@ -209,6 +218,12 @@ class StopTests(ModuleDirTest):
         self.assertEqual(calls, [])
         self.assertTrue(result["success"])
 
+    def test_the_stop_command_comes_from_module_toml(self):
+        # 데몬과 같은 값: [config] stop_command, 없으면 stop
+        self.assertEqual(daemon_rcon.stop_command(self.dir), "quit")
+        with tempfile.TemporaryDirectory() as empty:
+            self.assertEqual(daemon_rcon.stop_command(empty), "stop")
+
     def test_console_request_needs_an_instance(self):
         self.assertFalse(daemon_rcon.request_console({}, "stop"))
         with patch.object(daemon_rcon, "daemon_stdin_command", side_effect=ConnectionError("409")):
@@ -216,6 +231,51 @@ class StopTests(ModuleDirTest):
         with patch.object(daemon_rcon, "daemon_stdin_command") as send:
             self.assertTrue(daemon_rcon.request_console({"instance_id": "i"}, "stop"))
         send.assert_called_once_with("i", "stop", timeout=10)
+
+
+class DeleteTests(unittest.TestCase):
+    def test_deletes_files_folders_and_links_and_skips_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "world").mkdir()
+            (root / "world" / "level.dat").write_text("x")
+            (root / "ops.json").write_text("[]")
+            (root / "kept").mkdir()
+            (root / "kept" / "keep.txt").write_text("k")
+            try:
+                os.symlink(root / "kept", root / "link", target_is_directory=True)
+                link = ["link"]
+            except OSError:
+                link = []
+            deleted, errors = daemon_rcon.delete_paths(["world", "ops.json", "missing"] + link, root=root)
+            self.assertEqual((deleted, errors), (["world", "ops.json"] + link, []))
+            # 링크는 링크만 지운다
+            self.assertTrue((root / "kept" / "keep.txt").is_file())
+
+    def test_an_unreadable_path_is_an_error_not_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(daemon_rcon.os, "lstat", side_effect=PermissionError("denied")):
+                deleted, errors = daemon_rcon.delete_paths([os.path.join(tmp, "Saves")])
+            self.assertEqual(deleted, [])
+            self.assertEqual(len(errors), 1)
+            self.assertIn("denied", errors[0])
+
+
+class ChatTests(ModuleDirTest):
+    def test_chat_reply(self):
+        self.assertEqual(daemon_rcon.chat_reply(lambda: {"ok": 1}, self.i18n), {"success": True})
+        self.assertEqual(daemon_rcon.chat_reply(lambda: None, self.i18n), {"success": True})
+        self.assertEqual(daemon_rcon.chat_reply(lambda: {"success": False, "error": "busy"}, self.i18n),
+                         {"success": False, "message": "chat failed: busy"})
+
+        def down():
+            raise ConnectionError("no daemon")
+        self.assertEqual(daemon_rcon.chat_reply(down, self.i18n), {"success": False, "message": "chat failed: no daemon"})
+
+        def outside():
+            raise daemon_rcon.PathOutside("x")
+        with self.assertRaises(daemon_rcon.PathOutside):
+            daemon_rcon.chat_reply(outside, self.i18n)
 
 
 class DiagnoseTests(ModuleDirTest):

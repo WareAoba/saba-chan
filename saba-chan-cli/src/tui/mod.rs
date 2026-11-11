@@ -8,8 +8,12 @@
 
 mod app;
 mod data;
+mod form;
 mod highlight;
+mod palette;
+mod search;
 mod view;
+mod wizard;
 
 use crate::ctx::Ctx;
 use crate::error::{classify, Result};
@@ -37,6 +41,8 @@ enum Msg {
     Ask(Dialog),
     Refreshed(Box<data::Fetched>),
     ViewRefreshed(Option<data::View>),
+    /// 상세 탭 내용 (탭 키, 읽은 것)
+    PaneLoaded(String, data::PaneData),
     /// 데몬 이벤트 (종류)
     Event(String),
     /// 몇 번째로 시작한 명령이 끝났는지 (취소 뒤 늦게 온 끝 소식이 새 명령을 끝내지 않게)
@@ -203,6 +209,8 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
     let mut seq = 0u64;
     let mut refreshing = false;
     let mut viewing = false;
+    // 읽고 있는 상세 탭 (같은 것을 겹쳐 읽지 않게)
+    let mut pane_loading: Option<String> = None;
     let mut ticks = 0u32;
     // 끝날 때 터미널에 남길 말 (GUI로 전환)
     let mut farewell: Option<String> = None;
@@ -219,6 +227,7 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                     Flow::Refresh => {
                         refreshing = refresh(&ctx, &app, tx.clone(), false);
                         viewing = refresh_view(&ctx, &app, tx.clone(), false);
+                        refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, false);
                     }
                     Flow::Stay => {}
                 }
@@ -233,6 +242,7 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                     Flow::Refresh => {
                         refreshing = refresh(&ctx, &app, tx.clone(), false);
                         viewing = refresh_view(&ctx, &app, tx.clone(), false);
+                        refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, false);
                     }
                     Flow::Stay => {}
                 }
@@ -272,10 +282,17 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                 }
                 task = None;
                 app.running = false;
+                // 페어링·연결 해제 같은 명령이 디스코드 서버 목록을 바꿨을 수 있다
+                app.guilds_at = None;
+                // 상세 탭으로 받던 명령이면 그것으로 끝. 아니면 명령이 바꿨을 수 있는 상세 탭도 다시 읽는다
+                let captured = app.capture.take().is_some() | std::mem::take(&mut app.cancelled);
                 // 명령이 상태를 바꿨을 수 있으니(데몬 포트까지) 곧바로 다시 읽는다
                 ctx.follow_daemon_port();
                 app.port = ctx.api.port;
                 refreshing = refresh(&ctx, &app, tx.clone(), refreshing);
+                if !captured {
+                    refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, true);
+                }
             }
             Msg::Panicked => {
                 app.command_output(&t!("tui.command_panicked"));
@@ -287,6 +304,9 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                     refreshing = refresh(&ctx, &app, tx.clone(), refreshing);
                 }
                 viewing = refresh_view(&ctx, &app, tx.clone(), viewing);
+                // 접속자는 몇 초마다 새로, 다른 탭은 아직 못 읽었을 때만
+                let live = ticks % REFRESH_EVERY == 1 && app.page == app::Page::Servers && app.tab_key() == "players";
+                refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, live);
             }
             Msg::Event(kind) => {
                 if kind != "provision.progress" {
@@ -295,8 +315,21 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
             }
             Msg::Refreshed(f) => {
                 refreshing = false;
-                app.snap.apply(*f);
+                if f.guilds.is_some() {
+                    app.guilds_at = Some(std::time::Instant::now());
+                }
+                // 업데이터가 번역을 바꿨으면 cli.json을 다시 읽는다 (다음 그리기부터 새 문구)
+                if app.snap.apply(*f) {
+                    crate::i18n::reload();
+                }
                 app.apply_open_server();
+                refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, false);
+            }
+            Msg::PaneLoaded(key, data) => {
+                if pane_loading.as_deref() == Some(key.as_str()) {
+                    pane_loading = None;
+                }
+                app.apply_pane(key, data);
             }
             Msg::ViewRefreshed(v) => {
                 viewing = false;
@@ -350,11 +383,20 @@ async fn act(
                 t.abort();
             }
             app.running = false;
+            app.capture = None;
+            app.cancelled = true;
             app.jobs.clear();
             app.notify(&t!("tui.cancelled"));
             Flow::Stay
         }
         Some(Action::Refresh) => Flow::Refresh,
+        Some(Action::RunAll(lines)) => {
+            ctx.follow_daemon_port();
+            app.port = ctx.api.port;
+            *seq += 1;
+            *task = start_all(ctx, app, lines, *seq, tx.clone()).or(task.take());
+            Flow::Stay
+        }
         Some(Action::Run(line)) => {
             // 셸처럼 줄마다 포트를 다시 찾는다: 설정 포트를 바꾸거나 데몬을 다시 켰을 수 있다 (L62)
             ctx.follow_daemon_port();
@@ -386,10 +428,14 @@ fn refresh(ctx: &Ctx, app: &App, tx: UnboundedSender<Msg>, busy: bool) -> bool {
     if busy {
         return true;
     }
+    let addons = app.page == app::Page::Addons;
     let want = data::Want {
-        modules: app.page == app::Page::Modules,
-        extensions: app.page == app::Page::Extensions,
+        // 새 서버 마법사는 게임 목록이 필요하다
+        modules: (addons && app.tab_index() == 0) || app.wizard.is_some(),
+        extensions: addons && app.tab_index() == 1,
         launchable: app.snap.launchable.is_none(),
+        // 릴레이에 묻는 것이라 30초에 한 번 (명령이 끝나면 곧바로)
+        guilds: app.page == app::Page::Discord && app.guilds_at.is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(30)),
     };
     let ctx = ctx.clone();
     tokio::spawn(async move {
@@ -405,11 +451,11 @@ fn refresh_view(ctx: &Ctx, app: &App, tx: UnboundedSender<Msg>, busy: bool) -> b
         return true;
     }
     let want = match app.page {
-        app::Page::Servers => match app.selected_server() {
+        app::Page::Servers if app.tab_key() == "console" && app.wizard.is_none() => match app.selected_server() {
             Some(v) => data::ViewWant::Console(data::s(v, "id").to_string()),
             None => return false,
         },
-        app::Page::Daemon if app.snap.health.is_some() => data::ViewWant::DaemonLog,
+        app::Page::Settings if app.tab_key() == "daemon_log" && app.snap.health.is_some() => data::ViewWant::DaemonLog,
         _ => return false,
     };
     let ctx = ctx.clone();
@@ -418,6 +464,93 @@ fn refresh_view(ctx: &Ctx, app: &App, tx: UnboundedSender<Msg>, busy: bool) -> b
         let _ = tx.send(Msg::ViewRefreshed(view));
     });
     true
+}
+
+/// 지금 상세 탭의 내용을 읽는다: 아직 없거나 다른 탭 것이면, `force`면 같은 탭도 다시.
+/// 명령 출력으로 보이는 탭은 다른 명령이 돌지 않을 때 그 명령을 실행해 받는다
+fn refresh_pane(
+    ctx: &Ctx,
+    app: &mut App,
+    tx: &UnboundedSender<Msg>,
+    loading: &mut Option<String>,
+    seq: &mut u64,
+    task: &mut Option<tokio::task::AbortHandle>,
+    force: bool,
+) {
+    if app.snap.health.is_none() || app.wizard.is_some() {
+        return;
+    }
+    let Some((key, load)) = app.pane_want() else { return };
+    let fresh = app.pane.key != key;
+    if !fresh && !force {
+        return;
+    }
+    match load {
+        app::Load::Nothing => {
+            if fresh {
+                app.pane = app::Pane { key, state: app::PaneState::Text(Vec::new()), ..app::Pane::default() };
+            }
+        }
+        app::Load::Fetch(want) => {
+            if loading.as_deref() == Some(key.as_str()) {
+                return;
+            }
+            if fresh {
+                app.pane = app::Pane { key: key.clone(), ..app::Pane::default() };
+            }
+            *loading = Some(key.clone());
+            let (ctx, tx) = (ctx.clone(), tx.clone());
+            tokio::spawn(async move {
+                let data = data::fetch_pane(&ctx, &want).await;
+                let _ = tx.send(Msg::PaneLoaded(key, data));
+            });
+        }
+        app::Load::Capture(lines) => {
+            if app.running {
+                // 지금 명령이 끝나면 다시 읽는다
+                if fresh {
+                    app.pane = app::Pane { key: String::new(), ..app::Pane::default() };
+                }
+                return;
+            }
+            *seq += 1;
+            app.begin_capture(key);
+            let (ctx, id) = (ctx.clone(), *seq);
+            *task = Some(spawn_job(id, tx.clone(), async move {
+                for line in lines {
+                    let Some(words) = shlex::split(&line) else { continue };
+                    if let Err(e) = one(&ctx, &words).await {
+                        ctx.out.error(&classify(&e));
+                    }
+                }
+                crate::output::flush();
+            }));
+        }
+    }
+}
+
+/// 여러 줄을 차례로 실행한다 (폼 저장). 하나가 실패해도 나머지는 계속하고, 출력 창 제목은 첫 줄
+fn start_all(ctx: &Ctx, app: &mut App, lines: Vec<String>, id: u64, tx: UnboundedSender<Msg>) -> Option<tokio::task::AbortHandle> {
+    if app.running {
+        app.notify(&t!("tui.busy"));
+        return None;
+    }
+    let shown = match lines.len() {
+        0 => return None,
+        1 => app.masked(&lines[0]),
+        n => format!("{} (+{})", app.masked(&lines[0]), n - 1),
+    };
+    app.begin_command(&shown);
+    let ctx = ctx.clone();
+    Some(spawn_job(id, tx, async move {
+        for line in lines {
+            let Some(words) = shlex::split(&line) else { continue };
+            if let Err(e) = one(&ctx, &words).await {
+                ctx.out.error(&classify(&e));
+            }
+        }
+        crate::output::flush();
+    }))
 }
 
 /// 명령 작업 하나를 띄운다. 패닉해도 결과 창에 알리고 "실행 중"을 푼다
@@ -473,7 +606,7 @@ fn start(ctx: &Ctx, app: &mut App, line: &str, id: u64, tx: UnboundedSender<Msg>
         return None;
     }
     let words = app::adapt(words);
-    let shown = shlex::try_join(words.iter().map(String::as_str)).unwrap_or_else(|_| line.to_string());
+    let shown = app.masked(&words.iter().map(|w| form::quote(w)).collect::<Vec<_>>().join(" "));
     app.begin_command(&shown);
     let ctx = ctx.clone();
     Some(spawn_job(id, tx, async move {

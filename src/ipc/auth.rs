@@ -197,8 +197,8 @@ mod tests {
 
     #[test]
     fn a_failed_request_is_logged_without_its_query() {
-        let uri: axum::http::Uri = "/api/relay/pair/AB12/status?secret=s3cr3t".parse().unwrap();
-        assert_eq!(super::logged_target(&uri), "/api/relay/pair/AB12/status");
+        let uri: axum::http::Uri = "/api/relay/pair/status?secret=s3cr3t".parse().unwrap();
+        assert_eq!(super::logged_target(&uri), "/api/relay/pair/status");
     }
 
     #[test]

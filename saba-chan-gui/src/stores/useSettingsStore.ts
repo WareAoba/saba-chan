@@ -14,6 +14,7 @@ import {
     setTheme,
 } from '../utils/themeManager';
 import { CONSOLE_FONT_DEFAULTS } from '../utils/consoleFonts';
+import { failed } from '../utils/apiResult';
 
 // i18n translate function — set after store creation
 let _t = (key: string): string => key;
@@ -37,6 +38,7 @@ export const DEFAULT_SOUNDS: Readonly<SoundSettings> = Object.freeze({
     crash: true,
     install: true,
     update: true,
+    startup: true,
 });
 
 // 앱 동작 옵션 (사용자 10-27). 기본값은 데몬 GuiSettings와 같다: 지금까지의 동작 그대로
@@ -97,6 +99,8 @@ export interface SettingsValues extends AppOptions {
     systemMonitorExpanded: boolean;
     /** 시스템 모니터에 띄울 항목 id (monitor/systemMetrics.ts). null이면 기본 항목 */
     monitorItems: string[] | null;
+    /** ✕로 닫은 가이드 id (components/guides/guides.ts) */
+    closedGuides: string[];
     /** switch: 고른 데몬만 · unified: 다른 데몬의 서버도 데몬별로 */
     daemonView: 'switch' | 'unified';
     /** 앱을 열면 먼저 볼 원격 데몬 hostId, null이면 이 PC */
@@ -153,6 +157,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     systemMonitorExpanded: false,
     // 시스템 모니터에 띄울 항목 (null이면 기본)
     monitorItems: null,
+    // 닫은 가이드 (설정 → 일반에서 다시 연다)
+    closedGuides: [],
     // 서버 목록 보기 (G1c): 'switch' 고른 데몬만 | 'unified' 다른 데몬의 서버도 데몬별로
     daemonView: 'switch',
     // 앱을 열면 먼저 볼 데몬: 원격 데몬 hostId, null이면 이 PC
@@ -196,6 +202,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                 patch.monitorItems = Array.isArray(settings.monitorItems)
                     ? settings.monitorItems.filter((i): i is string => typeof i === 'string')
                     : null;
+                patch.closedGuides = Array.isArray(settings.closedGuides)
+                    ? settings.closedGuides.filter((i): i is string => typeof i === 'string')
+                    : [];
                 patch.daemonView = settings.daemonView === 'unified' ? 'unified' : 'switch';
                 patch.mainDaemon =
                     typeof settings.mainDaemon === 'string' && settings.mainDaemon ? settings.mainDaemon : null;
@@ -230,11 +239,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                     consoleTokenColors: patch.consoleTokenColors,
                     sidebarCompact: patch.sidebarCompact,
                 });
-                // 예전 버전은 테마 모드를 브라우저 저장소에만 뒀다 — 한 번 config.json으로 옮긴다
-                if (settings.theme == null && !isTest) {
-                    dirtyKeys.add('theme');
-                    get().save();
-                }
             }
             if (!isTest) console.log('[Settings] Ready flag set to true');
             return settings; // Return raw settings for discord token etc.
@@ -250,7 +254,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         if (!window.api?.configReset) return false;
         try {
             const res = await window.api.configReset('gui');
-            if (res?.ok === false) return false;
+            if (failed(res)) return false;
             // 데몬 기본값에는 theme이 없다 → 브라우저 캐시를 지워야 load()가 예전 값 대신 'auto'를 쓴다
             clearStoredTheme();
             resetCustomTheme();
@@ -318,6 +322,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
             windowBackdrop: WINDOW_BACKDROP_DEFAULTS,
             systemMonitorExpanded: false,
             monitorItems: null,
+            closedGuides: [],
             daemonView: 'switch',
             mainDaemon: null,
         });
@@ -358,6 +363,7 @@ const _settingsKeys: SettingKey[] = [
     'windowBackdrop',
     'systemMonitorExpanded',
     'monitorItems',
+    'closedGuides',
     'daemonView',
     'mainDaemon',
 ];

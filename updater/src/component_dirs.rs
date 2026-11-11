@@ -393,7 +393,7 @@ fn relocate_inner(
     let copied = std::fs::create_dir_all(&staging)
         .and_then(|_| std::fs::write(staging.join(STAGING_MARKER), b""))
         .map_err(|e| PathError::new("not_writable", format!("{}: {}", staging.display(), e)))
-        .and_then(|_| copy_tree(src, &staging))
+        .and_then(|_| crate::apply::copy_tree(src, &staging).map_err(|e| PathError::new("copy_failed", e.to_string())))
         .and_then(|_| verify_copy(src, &staging))
         .and_then(|_| {
             std::fs::remove_file(staging.join(STAGING_MARKER))
@@ -496,21 +496,6 @@ fn is_junction(meta: &std::fs::Metadata) -> bool {
 #[cfg(not(windows))]
 fn is_junction(_meta: &std::fs::Metadata) -> bool {
     false
-}
-
-fn copy_tree(src: &Path, dst: &Path) -> Result<(), PathError> {
-    let fail = |p: &Path, e: std::io::Error| PathError::new("copy_failed", format!("{}: {}", p.display(), e));
-    std::fs::create_dir_all(dst).map_err(|e| fail(dst, e))?;
-    for entry in std::fs::read_dir(src).map_err(|e| fail(src, e))? {
-        let entry = entry.map_err(|e| fail(src, e))?;
-        let (from, to) = (entry.path(), dst.join(entry.file_name()));
-        if entry.file_type().map_err(|e| fail(&from, e))?.is_dir() {
-            copy_tree(&from, &to)?;
-        } else {
-            std::fs::copy(&from, &to).map_err(|e| fail(&from, e))?;
-        }
-    }
-    Ok(())
 }
 
 /// 원본의 모든 파일이 사본에 같은 크기·SHA-256으로 있고, 사본에 다른 파일이 없는가
@@ -839,7 +824,7 @@ mod tests {
         tree(&src);
         let staging = staging_dir(&dst);
         std::fs::create_dir_all(&staging).unwrap();
-        copy_tree(&src, &staging).unwrap();
+        crate::apply::copy_tree(&src, &staging).unwrap();
         assert_eq!(verify_copy(&src, &staging), Ok(()));
         std::fs::write(staging.join("i18n.py"), "x = 2\n").unwrap();
         assert_eq!(verify_copy(&src, &staging).unwrap_err().code, "verify_failed");

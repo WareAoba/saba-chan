@@ -86,7 +86,7 @@ export function PopoutConsole({
                     <button
                         type="button"
                         className="console-popout-titlebar-btn console-popout-window-btn"
-                        onClick={() => window.electron?.minimizeWindow()}
+                        onClick={() => window.api?.minimizeWindow()}
                         data-tooltip={t('title_bar.minimize')}
                         aria-label={t('title_bar.minimize')}
                     >
@@ -95,7 +95,7 @@ export function PopoutConsole({
                     <button
                         type="button"
                         className="console-popout-titlebar-btn console-popout-titlebar-close console-popout-window-btn"
-                        onClick={() => window.electron?.closeWindow()}
+                        onClick={() => window.api?.closeWindow()}
                         data-tooltip={t('title_bar.close')}
                         aria-label={t('title_bar.close')}
                     >

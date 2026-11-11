@@ -221,12 +221,9 @@ fn server_rows(v: &Value) -> Vec<[String; 4]> {
     rows
 }
 
-/// 화면에 보일 PC 이름: 데몬이 정한 `디스코드 이름(PC 이름)`, 옛 데몬이면 PC 이름
+/// 화면에 보일 PC 이름: 데몬이 정한 `디스코드 이름(PC 이름)`
 fn pc_name(v: &Value) -> String {
-    match s(v, "label") {
-        "" => s(v, "name").to_string(),
-        label => label.to_string(),
-    }
+    s(v, "label").to_string()
 }
 
 fn yes_no(v: &Value, key: &str) -> String {

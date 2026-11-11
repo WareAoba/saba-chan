@@ -123,6 +123,23 @@ fn locale_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// 설치 폴더 `locales/` (디스크 탐색 순서에서 처음 있는 폴더). 없으면 None
+pub fn installed_dir() -> Option<PathBuf> {
+    locale_dirs().into_iter().find(|d| d.is_dir())
+}
+
+/// 설치된 번역의 판 번호 (`locales/version`, 업데이터가 바꿀 때 쓴다). GUI·TUI가 이 값이 바뀌면 다시 읽는다
+pub fn installed_version() -> Option<String> {
+    installed_dir().and_then(|d| version_in(&d))
+}
+
+/// `dir/version`의 판 번호 (앞뒤 공백 제외, 비었으면 None)
+pub fn version_in(dir: &std::path::Path) -> Option<String> {
+    let text = std::fs::read_to_string(dir.join("version")).ok()?;
+    let v = text.trim();
+    (!v.is_empty()).then(|| v.to_string())
+}
+
 fn lookup<'a>(bundle: &'a Value, key: &str) -> Option<&'a str> {
     let mut node = bundle;
     for part in key.split('.') {
@@ -164,6 +181,16 @@ mod tests {
         assert_eq!(normalize_language("zh-Hans-HK"), "zh-CN");
         assert_eq!(normalize_language("pt"), "pt-BR");
         assert_eq!(normalize_language("xx"), "en");
+    }
+
+    #[test]
+    fn version_file_is_trimmed_and_empty_is_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(version_in(tmp.path()), None);
+        std::fs::write(tmp.path().join("version"), " \n").unwrap();
+        assert_eq!(version_in(tmp.path()), None);
+        std::fs::write(tmp.path().join("version"), "0.1.14\n").unwrap();
+        assert_eq!(version_in(tmp.path()).as_deref(), Some("0.1.14"));
     }
 
     #[test]

@@ -33,22 +33,8 @@ export function DaemonEvents({ onServersChanged }: { onServersChanged?: () => vo
                 const entry = historyEntryOf(ev.data, tr);
                 if (entry) useUIStore.getState().pushCommandHistory(ev.data.instanceId, entry);
             }
-            if (ev.type === 'update.available') {
-                // 이름 문자열 또는 {name|id, ...} 객체를 모두 받는다
-                const names = (Array.isArray(ev.data.components) ? ev.data.components : [])
-                    .map((c: string | { name?: string; id?: string } | null) => (typeof c === 'string' ? c : c?.name || c?.id))
-                    .filter(Boolean);
-                if (names.length && window.__sabaNotice) {
-                    window.__sabaNotice.addNotice({
-                        message: `📦 ${tr('updates.found', { count: names.length, names: names.join(', ') })}`,
-                        type: 'info',
-                        source: 'Updater',
-                        action: 'openUpdateModal',
-                        dedup: true,
-                    });
-                }
-                return;
-            }
+            // 새 판은 데몬이 묻지 않고 적용하고 상단 바 업데이트 알약이 보인다: "N개 발견" 알림은 만들지 않는다
+            if (ev.type === 'update.available') return;
             if (ev.type === 'instance.update_notice') {
                 // 켠 서버의 모듈 새 버전(업데이트 화면으로)·게임 서버 새 빌드 — 어디서 켰든 앱에도 남긴다
                 const d = ev.data;

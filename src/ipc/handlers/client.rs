@@ -252,7 +252,7 @@ pub(crate) fn configured_gui_port() -> u16 {
         .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT)
 }
 
-/// CLI는 새 콘솔 창이 있어야 한다: Windows, 또는 화면과 터미널 프로그램이 있는 리눅스. GUI는 데스크톱 화면이 있어야 한다
+/// CLI는 새 콘솔 창이 있어야 한다: Windows·맥, 또는 화면과 터미널 프로그램이 있는 리눅스. GUI는 데스크톱 화면이 있어야 한다
 fn has_screen(kind: Interface) -> bool {
     match kind {
         Interface::Cli => cli_terminal_available(),
@@ -330,7 +330,10 @@ fn cli_terminal_available() -> bool {
     return true;
     #[cfg(target_os = "linux")]
     return crate::tray_host::has_desktop() && crate::boot_selector::has_terminal();
-    #[cfg(not(any(windows, target_os = "linux")))]
+    // 맥은 터미널 앱이 늘 있다
+    #[cfg(target_os = "macos")]
+    return crate::tray_host::has_desktop();
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     return false;
 }
 
@@ -375,7 +378,38 @@ async fn spawn_in_new_console(cli: &std::path::Path, args: &[String], registry: 
     }
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+/// 맥: 터미널 앱이 스크립트를 열어 CLI가 자기 pid를 적어야 성공이다 (리눅스처럼 기다린다). 그 pid를 기록해 완전히 종료할 때 닫는다
+#[cfg(target_os = "macos")]
+async fn spawn_in_new_console(cli: &std::path::Path, args: &[String], registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
+    let tag = uuid::Uuid::new_v4().to_string();
+    // 데이터 폴더의 temp(제거기가 늘 지우는 자리)에 둔다. 쓴 뒤 바로 지운다
+    let dir = saba_chan_updater_lib::constants::resolve_data_dir().join("temp");
+    std::fs::create_dir_all(&dir)?;
+    let script = dir.join(format!("cli-{tag}.command"));
+    let pid_file = dir.join(format!("cli-{tag}.pid"));
+    let opened = crate::boot_selector::spawn_cli_in_terminal_app(cli, args, &script, &pid_file);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let pid = match opened {
+        Ok(()) => loop {
+            if let Some(pid) = std::fs::read_to_string(&pid_file).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
+                break Some(pid);
+            }
+            if std::time::Instant::now() >= deadline {
+                break None;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        },
+        Err(_) => None,
+    };
+    let _ = std::fs::remove_file(&script);
+    let _ = std::fs::remove_file(&pid_file);
+    opened?;
+    let pid = pid.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::TimedOut, "Terminal did not open the CLI"))?;
+    registry.note_launched_cli(pid);
+    Ok(pid)
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 async fn spawn_in_new_console(_cli: &std::path::Path, _args: &[String], _registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
     Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "not supported on this OS"))
 }
@@ -396,8 +430,6 @@ mod launch_tests {
         );
         assert_eq!(line(json!({ "kind": "gui" })), (Interface::Gui, vec![], None));
         assert_eq!(line(json!({ "kind": "gui", "instance": "abc" })), (Interface::Gui, vec!["--open-server=abc".to_string()], Some("abc".to_string())));
-        // 예전 본문(`view`)도 받는다: 더는 콘솔 창 하나만 띄우지 않고 메뉴를 연다
-        assert_eq!(line(json!({ "kind": "cli", "view": "console", "instance": "abc" })).1, vec!["tui".to_string(), "--server=abc".to_string()]);
 
         let field = |b| launch_args(&b).unwrap_err().0;
         assert_eq!(field(json!({ "kind": "web" })), "kind");

@@ -70,10 +70,7 @@
     "relay_check": "中繼檢查",
     "relay_ok": "有回應",
     "relay_failed": "沒有回應：{{error}}",
-    "expired": "已過期",
-    "expires_in": "剩餘時間",
     "members_partial": "無法取得完整的 Discord 成員清單，只顯示已設定等級的成員。",
-    "requested_by": "請求者",
     "username": "使用者名稱",
     "config_saved": "機器人設定已儲存。",
     "config_ignored": "機器人設定不會變更權限鍵，它們保留了原本的值：{{keys}}。其餘已儲存。請用 saba-chan-cli perm 變更權限",
@@ -90,6 +87,7 @@
     "pair_token_not_saved": "Discord 已接受配對代碼，但無法在此電腦上儲存連線資訊。請重新執行 bot pair。",
     "pair_no_code": "中繼站沒有回傳配對代碼。",
     "pair_polling": "正在等待 Discord...",
+    "pair_copied": "已將代碼複製到剪貼簿 (按 Ctrl+V 貼上)。",
     "pair_waiting": "按 Ctrl+C 取消。",
     "paired": "已與 Discord 配對。",
     "prefix": "前綴",
@@ -145,8 +143,6 @@
     "allow_none": "沒有開放的伺服器。",
     "allow_all_saved": "{{guild}} 現在可以看到所有伺服器。",
     "allow_saved": "{{guild}} 現在只能看到：{{servers}}",
-    "link_accepted": "已將 {{guild}} 連接到這台電腦。",
-    "link_declined": "已拒絕連接請求。",
     "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。",
     "words": "稱呼",
     "command_words": "命令稱呼",
@@ -344,6 +340,13 @@
       "access_needs_relogin": "已授予，重新登入 Windows 後可用",
       "access_unsupported": "此系統無法使用（僅 Windows）",
       "enable_hint": "開啟方法：saba-chan-cli config set systemMonitorNetTrace=on"
+    },
+    "public_address": {
+      "current": "公開位址：{{address}} · Discord /address：{{share}}",
+      "auto": "公用 IP（自動）",
+      "auto_ip": "公用 IP（自動，{{ip}}）",
+      "share_on": "告知",
+      "share_off": "不告知"
     }
   },
   "console": {
@@ -503,7 +506,8 @@
       "move_failed": "無法移動資料夾。請改用「保留在原位置」匯入。",
       "port_check_busy": "已經在檢查中，請稍後再試",
       "net_trace_elevation_failed": "未在常駐程式電腦上取得系統管理員確認。請在那台電腦前再試一次。",
-      "net_trace_failed": "無法變更權限。"
+      "net_trace_failed": "無法變更權限。",
+      "sandbox_allow": "如需不隔離執行，請先同意：saba-chan-cli sandbox allow {{component}}"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
@@ -749,6 +753,7 @@
     "preflight_running": "正在為遊戲模組準備執行環境（{{percent}}%）。伺服器操作可能需要等到完成。",
     "next_module": "下一步：安裝一個遊戲模組。",
     "next_server": "下一步：建立你的第一個伺服器。",
+    "next_start": "下一步：啟動你的伺服器。",
     "next_discord": "下一步：將這台電腦連接到 Discord 伺服器。",
     "preflight_failed": "遊戲模組執行環境準備失敗：{{error}}。將在下次伺服器操作時重試。"
   },
@@ -809,7 +814,10 @@
     "int_missing": "檔案遺失",
     "int_changed": "已變更",
     "int_error": "無法讀取",
-    "not_checked": "尚無更新資訊。立即檢查：saba-chan-cli update check"
+    "not_checked": "尚無更新資訊。立即檢查：saba-chan-cli update check",
+    "reinstall_official": "重新取得官方版本",
+    "name_module": "{{name}} 模組",
+    "name_extension": "{{name}} 擴充功能"
   },
   "validate": {
     "blocked": "修正這些問題之前伺服器無法啟動。",
@@ -1035,7 +1043,8 @@
       "remote.claim": "領取其他電腦顯示的配對碼並連線到那台電腦（例如 Linux 一行安裝之後）",
       "remote.install": "透過本機 ssh 在 Linux 電腦上安裝 Saba-chan 並連線（`使用者@主機`）",
       "remote.remove": "移除一台電腦：在這裡忘記它，可選在那台電腦上解除安裝 Saba-chan 並從 Server-chan 清單中移除",
-      "remote.update": "立即更新遠端常駐程式，或開關自動更新（`--auto on|off`）"
+      "remote.update": "立即更新遠端常駐程式，或開關自動更新（`--auto on|off`）",
+      "config.public-address": "這台電腦的公開位址（遊戲伺服器位址與遠端常駐程式連線共用）：不帶值顯示目前值，給網域或 IP 則儲存，auto 使用 Server-chan 看到的公用 IP"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -1274,7 +1283,9 @@
       "remote.remove.remove_instances": "與 --uninstall 一起：同時刪除遊戲伺服器",
       "remote.remove.from_relay": "同時從 Server-chan 的電腦清單中移除",
       "remote.update.host_id": "遠端常駐程式的電腦 id（見 `remote daemons`）",
-      "remote.update.auto": "開啟(on)或關閉(off)自動更新。省略則立即更新"
+      "remote.update.auto": "開啟(on)或關閉(off)自動更新。省略則立即更新",
+      "config.public-address.address": "網域或 IP（auto 為公用 IP）",
+      "config.public-address.share": "是否透過 Discord 的 /<伺服器> address 告知 (on|off)"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
@@ -1505,7 +1516,7 @@
     "question": "確認",
     "dialog_keys": "Enter 選擇 · Esc 取消",
     "help_title": "快速鍵",
-    "help": "←→↑↓  依畫面配置移動 (分頁 → 清單 → 按鈕 → 主控台)\nTab / Shift+Tab  下一個 / 上一個區域\nEnter  按下按鈕 (… 會填好指令列,▾ 開啟更多)\n1-6  跳到頁面\n伺服器主控台  按 ↓ 進入,輸入後 Enter 送到伺服器 (↑↓ 歷史)\n: 或 /  指令列 (saba-chan-cli 後面要寫的內容,Tab 補全,↑↓ 歷史)\nF2  開啟或關閉輸出,  PgUp/PgDn、滑鼠滾輪  捲動\nF9  切換到 GUI (可以開啟時)\nCtrl+C  停止正在執行的指令,  Esc  返回一步\nq  離開 (背景服務和伺服器會繼續執行)",
+    "help": "Tab / Shift+Tab  下一欄/上一欄 (頁面 → 列表 → 詳細分頁 → 按鈕 → 內容)\n←→↑↓  依畫面配置移動,  Esc  永遠返回一步\n1-5  跳到頁面,  Ctrl+K  搜尋一切 (畫面、設定、指令)\ns  啟動或停止所選伺服器,  r  重新啟動,  n  建立新伺服器\n設定分頁  ←→ 變更值 · Space 開/關 · Enter 輸入 · / 搜尋 · Ctrl+S 儲存 · Esc 還原\n伺服器主控台  輸入時會建議遊戲指令 (Tab 補全), Enter 送出, ↑↓ 歷史\n:  指令列 (與 saba-chan-cli 後面寫的一樣, Tab 補全)。按鈕和儲存也以相同指令執行\nF2  開啟/關閉輸出,  PgUp/PgDn、滑鼠滾輪  捲動,  F9  切換到 GUI\nCtrl+C  停止執行中的指令,  q  離開 (常駐程式與伺服器會繼續執行)",
     "too_narrow": "請將視窗加寬到至少 60 欄。",
     "not_here": "此指令無法在全螢幕選單中執行。按 q 離開後在終端機中執行。",
     "cancelled": "已停止。",
@@ -1525,7 +1536,8 @@
       "extensions": "擴充功能",
       "discord": "Discord",
       "updates": "更新",
-      "daemon": "背景服務"
+      "addons": "模組與擴充",
+      "settings": "應用程式設定"
     },
     "btn": {
       "status": "整體狀態",
@@ -1580,7 +1592,11 @@
       "daemon_restart": "重新啟動常駐程式",
       "daemon_stop": "停止常駐程式",
       "clients": "應用程式視窗",
-      "more": "更多"
+      "more": "更多",
+      "address": "連線位址",
+      "port_check": "連接埠檢查",
+      "module_update": "更新",
+      "module_new_server": "用這個遊戲新建伺服器"
     },
     "col": {
       "name": "名稱",
@@ -1589,9 +1605,13 @@
       "port": "連接埠",
       "uptime": "運作",
       "about": "說明",
-      "enabled": "啟用"
+      "enabled": "啟用",
+      "created": "建立時間",
+      "kind": "種類",
+      "size": "大小",
+      "used_by": "使用的伺服器"
     },
-    "no_servers": "還沒有伺服器。按 [新伺服器] 或按 : 輸入 server add",
+    "no_servers": "還沒有伺服器。按 n 建立一個。",
     "empty": "（無）",
     "detail": "詳細資料",
     "server_console": "主控台",
@@ -1609,7 +1629,7 @@
       "port": "常駐程式連接埠",
       "language": "語言"
     },
-    "keys_console": "Enter 送到伺服器 · ↑↓ 歷史 · PgUp/PgDn 捲動 · Esc 回到按鈕",
+    "keys_console": "Enter 送到伺服器 · ↑↓ 歷史 · Tab 補全指令 · PgUp/PgDn 捲動 · Esc 返回",
     "keys_running": "指令執行中 · Ctrl+C 停止 · F2 輸出 · 其他頁面仍可查看",
     "choose": "選擇",
     "enter_text": "輸入",
@@ -1620,10 +1640,149 @@
     "daemon_log": "背景服務日誌",
     "use_switch": "在這裡請按 F9(切換到 GUI)。",
     "console_input_hint": "在此輸入伺服器指令 · Enter 送出",
-    "keys_tabs": "←→ 切換頁面 · ↓ 進入 · 1-6 頁面 · : 指令 · F2 輸出 · ? 說明 · q 離開",
-    "keys_list": "↑↓ 選擇 · → 按鈕 · : 指令 · F2 輸出 · ? 說明 · q 離開",
-    "keys_actions": "←→ 選擇按鈕 · Enter 按下 · ↓ 主控台 · Esc 清單 · F2 輸出 · ? 說明 · q 離開",
-    "keys_command": "Enter 執行 · Tab 補全 · ↑↓ 歷史 · Esc 關閉"
+    "keys_tabs": "←→ 切換頁面 · ↓ 進入 · 1-5 頁面 · Ctrl+K 搜尋 · : 指令 · ? 說明 · q 離開",
+    "keys_list": "↑↓ 選擇 · → 詳細 · Tab 下一欄 · s 啟動/停止 · n 新伺服器 · Ctrl+K 搜尋 · ? 說明 · q 離開",
+    "keys_actions": "←→ 選擇按鈕 · Enter 按下 · ↓ 內容 · Esc 返回 · F2 輸出 · ? 說明 · q 離開",
+    "keys_command": "Enter 執行 · Tab 補全 · ↑↓ 歷史 · Esc 關閉",
+    "tab": {
+      "console": "主控台",
+      "settings": "設定",
+      "players": "線上玩家",
+      "backups": "備份",
+      "schedule": "排程",
+      "log": "紀錄"
+    },
+    "dtab": {
+      "perm": "權限",
+      "ladder": "等級",
+      "words": "指令別名",
+      "music": "音樂",
+      "tts": "朗讀",
+      "moderation": "伺服器管理",
+      "notice": "通知",
+      "chatbot": "會說話的 Saba-chan"
+    },
+    "stab": {
+      "app": "應用程式設定",
+      "daemon_log": "常駐程式紀錄"
+    },
+    "back": {
+      "servers": "伺服器列表",
+      "guilds": "Discord 伺服器列表",
+      "list": "列表"
+    },
+    "find": {
+      "title": "搜尋一切",
+      "about": "一次搜尋畫面、設定與指令",
+      "screen": "畫面",
+      "setting": "設定",
+      "command": "指令",
+      "none": "沒有符合的項目。",
+      "keys": "Enter 開啟 · Tab 放入指令列 · ↑↓ 選擇 · Esc 關閉"
+    },
+    "form": {
+      "changed": "● 已變更 {{count}} 項",
+      "default": "(預設值)",
+      "find": "搜尋:項目名稱或鍵",
+      "folded": "已摺疊 · Enter 展開",
+      "keys": "k 顯示鍵名",
+      "restart": "儲存後從下次啟動起生效。",
+      "revert": "Esc 還原",
+      "save": "Ctrl+S 儲存",
+      "group": {
+        "basic": "基本",
+        "saba-chan": "Saba-chan",
+        "advanced": "進階",
+        "members": "成員等級",
+        "common": "所有伺服器",
+        "app": "應用程式",
+        "cli": "CLI",
+        "connection": "連線",
+        "servers": "遊戲伺服器",
+        "console": "主控台",
+        "storage": "儲存空間"
+      }
+    },
+    "guilds": "Discord 伺服器",
+    "keys_detail": "←→ 分頁 · ↓ 進入 · Esc 返回 · s 啟動/停止 · r 重新啟動 · Ctrl+K 搜尋 · ? 說明 · q 離開",
+    "keys_form": "↑↓ 項目 · ←→ 變更值 · Space 開/關 · Enter 輸入 · / 搜尋 · Ctrl+S 儲存 · Esc 返回",
+    "keys_content": "↑↓ 捲動 · Esc 返回 · s 啟動/停止 · Ctrl+K 搜尋 · ? 說明 · q 離開",
+    "keys_backups": "c 立即備份 · Enter 還原 · d 刪除",
+    "keys_players": "Enter 填入踢出指令",
+    "keys_edit": "e 變更(填入指令列)",
+    "keys_wizard": "↑↓ 選擇 · Enter 下一步 · Esc 上一步 · Ctrl+C 放棄",
+    "list": {
+      "players": "{{count}} 人在線"
+    },
+    "pane": {
+      "loading": "載入中…",
+      "not_running": "伺服器已關閉。啟動後會顯示線上玩家。"
+    },
+    "risk_danger": "危險",
+    "same_command": "相同指令:",
+    "suggest_keys": "Tab 補全 · ↑↓ 選擇 · Enter 送出",
+    "wiz": {
+      "title": "建立新伺服器",
+      "step": {
+        "method": "方式",
+        "game": "遊戲",
+        "name": "名稱與資料夾",
+        "preset": "建議設定",
+        "confirm": "確認"
+      },
+      "ask_method": "要怎麼建立?",
+      "method_new": "全新安裝",
+      "method_new_about": "由Saba-chan下載並安裝伺服器",
+      "method_import": "匯入現有伺服器",
+      "method_import_about": "繼續使用現有的伺服器資料夾",
+      "ask_game": "是哪個遊戲?",
+      "no_modules": "還沒有遊戲模組。請在「模組與擴充」頁面取得。",
+      "ask_name": "請取個名字",
+      "name": "名稱",
+      "folder": "資料夾",
+      "folder_hint": "要匯入的伺服器資料夾完整路徑 · Tab 切換欄位",
+      "need_name": "請先輸入名稱。",
+      "need_folder": "請輸入要匯入的資料夾。",
+      "ask_preset": "要從建議設定開始嗎?",
+      "no_preset": "不選擇(預設值)",
+      "ask_confirm": "就這樣建立嗎?",
+      "confirm_hint": "在要修改的行按 Enter 可回到該步驟",
+      "fix": "修改",
+      "agree": "已閱讀並同意 {{id}}",
+      "need_agree": "請先閱讀並同意條款(按 Space 勾選)。",
+      "start_now": "完成後立即啟動",
+      "create": "建立",
+      "back": "上一步"
+    },
+    "cfg": {
+      "language": "語言",
+      "ipcPort": "IPC 連接埠",
+      "newServerAutoRestart": "當機後自動重新啟動",
+      "newServerBackupKeep": "保留備份數",
+      "autoGeneratePasswords": "自動生成密碼",
+      "portConflictCheck": "連接埠衝突偵測",
+      "consoleTimestamps": "主控台時間戳記",
+      "consoleTimestampDate": "同時顯示日期",
+      "auditKeepDays": "活動紀錄保留期限",
+      "stamp_off": "不顯示",
+      "stamp_24h": "24 小時制",
+      "stamp_12h": "12 小時制"
+    },
+    "cfg_about": {
+      "ipcPort": "應用程式和 CLI 連線到核心守護程序所用的連接埠（1024–65535）。大多數使用者不需要變更。",
+      "autoGeneratePasswords": "伺服器的 REST 密碼為空時，啟動時隨機填入。已有的密碼不會變更。",
+      "portConflictCheck": "當多個伺服器實例使用相同連接埠時顯示警告。",
+      "consoleTimestamps": "在每行主控台輸出前顯示接收時間。",
+      "auditKeepDays": "超過此期限的活動紀錄將由 Saba-chan 刪除。 0 表示不限期限。",
+      "newServerBackupKeep": "建立伺服器時填入的值。建立後可以依伺服器個別修改。"
+    },
+    "none": "無",
+    "newer": "新版本 {{version}}",
+    "trust_about": {
+      "verified": "與官方目錄下載的完全一致",
+      "unverified": "不是從官方目錄取得的。請確認來源可信",
+      "modified": "安裝後檔案被改動。若不是你自己修改的，請重新安裝"
+    }
   },
   "install": {
     "fetching": "正在檢查最新版本…",
@@ -1824,7 +1983,9 @@
       "closed": "無法從外部連線",
       "cgnat": "路由器沒有取得公用 IP（CGNAT）",
       "unknown": "部分連接埠無法檢查",
-      "no_ports": "此遊戲沒有標示要檢查的連接埠"
+      "no_ports": "此遊戲沒有標示要檢查的連接埠",
+      "host_mismatch": "公開位址沒有指向這台電腦",
+      "host_unresolved": "找不到公開位址"
     },
     "status": {
       "open": "開放",
@@ -1837,10 +1998,14 @@
     "hint": {
       "closed": "請確認路由器已將此連接埠轉發到這台電腦，且電腦防火牆已允許。",
       "firewall": "Windows 防火牆正在封鎖此連接埠的連入連線。請針對目前連線的網路（私人或公用），在 Windows 防火牆設定中允許 saba-core（伺服器已停止時）或遊戲伺服器程式（伺服器執行時），然後再檢查。",
+      "firewall_macos": "macOS 防火牆正在阻擋此伺服器程式的傳入連線。請在「系統設定 › 網路 › 防火牆 › 選項」中，將 saba-core（伺服器已停止時）或遊戲伺服器程式（如 java，執行中時）設為「允許傳入連線」，然後再檢查一次。",
       "router": "電腦防火牆已允許此連接埠。請在路由器設定中把此連接埠轉發到這台電腦，然後再檢查。",
       "cgnat": "電信業者讓多戶共用一個公用 IP，無法透過連接埠轉發開放。請向業者申請公用 IP，或使用 Tailscale 等 VPN。",
-      "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。"
-    }
+      "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。",
+      "host_mismatch": "請在網域管理頁面把 A 記錄指向這台電腦的公用 IP。使用 DDNS 時請確認更新程式正在執行；若開啟了 CDN 代理請關閉，遊戲連線無法通過代理。",
+      "host_unresolved": "請檢查公開位址的拼寫與網域的 DNS 設定。如果是剛建立的網域，請稍後再檢查。"
+    },
+    "host": "公開位址 {{host}} → {{resolved}} · 這台電腦 {{address}}"
   },
   "agent": {
     "linked": "✓ 已將 Saba-chan 加入 {{agent}}",

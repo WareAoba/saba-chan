@@ -118,7 +118,7 @@ pub struct Def {
     /// 서버 상태·접속자처럼 다 같이 보는 조회는 false
     pub private: bool,
     /// 길드 설정과 상관없이 늘 부른 사람에게만 보이는 조회 (서버 주소처럼 채널에 남으면 안 되는 값). 문장 명령은 답이 채널에
-    /// 그대로 보이므로 이름으로 찾지 않는다 (`named_action`). 옛 릴레이를 위해 `private`도 함께 켠다
+    /// 그대로 보이므로 이름으로 찾지 않는다 (`named_action`)
     pub secret: bool,
 }
 
@@ -159,7 +159,7 @@ pub static ACTIONS: &[Def] = &[
     // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 접속해 본다. 공인 주소가 결과에 있어 챗봇에는 열지 않는다 (디스코드는 요약만 보인다)
     // 서버 주소 (사용자 요청 2026-11-05): 릴레이가 본 이 PC의 접속 주소 + 밖에 여는 포트. 공인 주소라 부른 사람에게만 보이고 챗봇에는 열지 않는다.
     // 기본은 유저(Lv1) 이상이고 길드가 명령별로 옮길 수 있다 (사용자 결정 2026-11-07: 게스트에게 PC 공인 IP를 보이지 않는다)
-    Def { private: true, secret: true, discord_level: Some(crate::chat::permissions::USER), level_movable: true, ..def("server.address", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "GET", "/api/instance/:id/address") },
+    Def { secret: true, discord_level: Some(crate::chat::permissions::USER), level_movable: true, ..def("server.address", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "GET", "/api/instance/:id/address") },
     Def { private: true, ..def("server.port_check", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/port-check") },
     // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)
     def("instance.events", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/events"),
@@ -1901,6 +1901,13 @@ async fn localize_port_labels(server: &IPCServer, instance: &str, result: &mut V
     }
 }
 
+/// PC 주인이 디스코드에 주소를 알려 주지 않게 했으면(`shareAddress:false`, 사용자 결정 2026-11-10) 디스코드에는 주소·포트를 빼고 `hidden`만 준다
+fn hide_address(surface: Surface, result: &mut Value) {
+    if surface == Discord && result.get("shareAddress").and_then(Value::as_bool) == Some(false) {
+        *result = json!({ "instanceId": result.get("instanceId").cloned().unwrap_or(Value::Null), "hidden": true });
+    }
+}
+
 /// 결과를 챗봇에 IP·비밀처럼 보이는 값을 가려 보내는 액션: 콘솔, 모듈 조회(접속자 목록 등), 모듈 명령의 답
 fn chatbot_masked(id: &str) -> bool {
     matches!(id, "server.console.tail" | "server.players" | "server.logs.read" | "server.logs.export") || id.starts_with(QUERY_PREFIX) || id.starts_with(COMMAND_PREFIX)
@@ -1940,6 +1947,7 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
     // 서버 주소의 포트 이름은 요청 언어의 모듈 문구로 (모듈 locales `settings.<칸>.label`, 없으면 module.toml)
     if let (true, "server.address", Some(instance)) = (ok, r.id.as_str(), &r.instance) {
         localize_port_labels(server, instance, &mut result, &caller.locale).await;
+        hide_address(caller.surface, &mut result);
     }
     // 백업 목록 항목에 사람이 읽을 이름을 붙인다 (복원 칸에서 고를 때 보인다)
     if ok && r.id == "backup.list" {

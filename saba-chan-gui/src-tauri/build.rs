@@ -8,6 +8,7 @@ const COMMANDS: &[&str] = &[
     "daemon_restart",
     "app_close_response",
     "updater_launch_apply",
+    "updater_restart",
     "launch_uninstaller",
     "settings_local_load",
     "settings_local_save",
@@ -37,6 +38,7 @@ const COMMANDS: &[&str] = &[
     "sandbox_consent_allow",
     "tray_action",
     "tray_popup_fit",
+    "sound_play",
 ];
 
 /// 자리표시 index.html에만 있는 문구

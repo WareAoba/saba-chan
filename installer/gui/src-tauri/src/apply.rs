@@ -11,7 +11,9 @@
 //! 설치된 GUI를 찾아 띄우는 예비 동작은 쓰지 않는다. 종료 코드는 적용이 다 됐으면 0, 아니면 1이다.
 //!
 //! 보통 데몬이 띄운다(`POST /api/updates/launch-updater`, U7). `--wait-pid`는 데몬 PID로,
-//! 데몬이 끝날 때까지(최대 30초) 기다린 뒤 적용한다. 결과는 성공·실패 모두
+//! 데몬이 끝날 때까지(최대 30초) 기다린 뒤 적용한다. 30초 뒤에도 살아 있으면 파일을 바꾸지 않고 `deferred`로 끝낸다.
+//! 코어를 바꿨으면 다시 띄운 새 데몬의 `/health`를 지켜보고, 건강하지 않으면 이번 묶음과 데이터 스냅샷을 되돌린 뒤
+//! 이전 데몬을 띄운다 (`saba_chan_updater_lib::live_apply`). 결과는 성공·실패 모두
 //! 완료 마커(`update-complete.json`)에 남고, 다음 데몬이 `/api/updates/last-result`로 보여준다.
 //! 0.1.12 전에는 이 일을 따로 있던 `saba-chan-updater`가 했다. 적용하고 나면 남은 그 파일을 걷는다
 //!
@@ -25,6 +27,7 @@
 //! - 적용 대상은 apply-targets.json에서 읽음 (CLI 인자 불필요)
 //! - 테마는 CSS `data-theme="auto"` + `prefers-color-scheme` 미디어 쿼리로 자동 처리
 
+use saba_chan_updater_lib::live_apply::{self, LiveApply};
 use saba_chan_updater_lib::{UpdateManager, UpdateCompletionMarker};
 use std::path::{Path, PathBuf};
 #[cfg(feature = "window")]
@@ -48,6 +51,8 @@ type ManagerState = Arc<RwLock<UpdateManager>>;
 struct ApplyConfig {
     relaunch_exe: Option<String>,
     relaunch_extra: Vec<String>,
+    /// `--wait-pid`로 받은 예전 데몬 (새 데몬과 가리는 데 쓴다)
+    wait_pid: Option<u32>,
 }
 
 // ═══════════════════════════════════════════════════════
@@ -74,22 +79,31 @@ async fn start_apply(
     apply_config: tauri::State<'_, ApplyConfig>,
     manager: tauri::State<'_, ManagerState>,
 ) -> Result<Vec<String>, String> {
-    let result = {
+    let (result, live) = {
         let mut mgr = manager.write().await;
-        mgr.apply_staged(|p| {
-            app.emit("apply:progress", p).ok();
-        })
-        .await
+        match prepare_live_apply(&mut mgr) {
+            Ok(live) => {
+                let result = mgr
+                    .apply_staged(|p| {
+                        app.emit("apply:progress", p).ok();
+                    })
+                    .await;
+                (result, live)
+            }
+            Err(e) => (Err(e), None),
+        }
     };
+    let core_applied = core_was_applied(&result);
+    let watch = Watch { live, core_applied, manager: manager.inner().clone() };
     match result {
         Err(msg) => {
-            relaunch(&app, &apply_config, false);
+            relaunch(&app, &apply_config, false, watch);
             Err(msg)
         }
         Ok((applied, failed)) => {
             after_apply();
             // GUI 재실행 → 업데이터 종료 (하나라도 실패했으면 완료 알림 없이 띄우고 오류 화면을 남긴다)
-            relaunch(&app, &apply_config, failed.is_empty());
+            relaunch(&app, &apply_config, failed.is_empty(), watch);
             Ok(applied)
         }
     }
@@ -100,9 +114,11 @@ async fn start_apply(
 /// 업데이터가 뜰 때 데몬·GUI는 이미 끝났으니 그대로 두면 아무것도 남지 않는다.
 /// `applied`면 `--after-update`를 붙이고(받는 쪽이 완료 알림을 띄운다) 띄운 뒤 업데이터를 닫는다.
 /// 실패면 플래그 없이 띄우고, 오류 화면을 닫을 때까지 맨 앞에 남겨 둔다
-fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool) {
+/// 코어를 바꿨으면 다시 띄운 뒤 새 데몬을 지켜보는 동안 창을 숨기고, 건강하지 않으면 되돌린 뒤 이전 판을 다시 띄운다
+fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool, watch: Watch) {
     let relaunch_exe = apply_config.relaunch_exe.clone();
     let relaunch_extra = apply_config.relaunch_extra.clone();
+    let wait_pid = apply_config.wait_pid;
     let app_handle = app.clone();
 
     tauri::async_runtime::spawn(async move {
@@ -110,16 +126,39 @@ fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool) {
 
         let gui = resolve_gui_exe();
         let has_target = relaunch_exe.is_some() || gui.is_some();
-        let relaunched = relaunch_now(relaunch_exe, relaunch_extra, gui, applied).await;
-
-        if applied && (relaunched || !has_target) {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            app_handle.exit(0);
-        } else if applied {
-            // 파일은 바꿨지만 앱(데몬·GUI)이 꺼진 채 남는다: 창을 닫지 않고 직접 실행하라고 알린다
-            tracing::error!("[Apply] Update applied but the app could not be relaunched");
-            app_handle.emit("apply:relaunch-failed", ()).ok();
+        let since_ms = live_apply::now_ms();
+        let launched = relaunch_now(relaunch_exe.clone(), relaunch_extra.clone(), gui.clone(), applied).await;
+        let relaunched = launched.is_some();
+        if watch.live.is_some() && launched.is_some() {
             if let Some(win) = app_handle.get_webview_window("main") {
+                win.hide().ok();
+            }
+        }
+        let Watch { live, core_applied, manager } = watch;
+        let manager = manager.read().await;
+        let target = Relaunch { exe: relaunch_exe, extra: relaunch_extra, gui };
+        let end = watch_new_daemon(live, &manager, core_applied, launched, wait_pid, since_ms, target).await;
+
+        let failure = match window_end(&end, applied, relaunched, has_target) {
+            WindowEnd::Exit => {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                app_handle.exit(0);
+                return;
+            }
+            WindowEnd::StayOnError => None,
+            // 파일은 바꿨지만 앱(데몬·GUI)이 꺼진 채 남는다: 창을 닫지 않고 직접 실행하라고 알린다
+            WindowEnd::RelaunchFailed => {
+                tracing::error!("[Apply] Update applied but the app could not be relaunched");
+                Some(("apply:relaunch-failed", serde_json::Value::Null))
+            }
+            WindowEnd::RollbackRelaunchFailed => Some(("apply:rollback-relaunch-failed", serde_json::Value::Null)),
+            WindowEnd::RestoreFailed(recovery) => Some(("apply:restore-failed", recovery_payload(&recovery))),
+            WindowEnd::LeftInPlace(recovery) => Some(("apply:left-in-place", recovery_payload(&recovery))),
+        };
+        if let Some((event, payload)) = failure {
+            app_handle.emit(event, payload).ok();
+            if let Some(win) = app_handle.get_webview_window("main") {
+                win.show().ok();
                 win.set_always_on_top(true).ok();
                 win.set_focus().ok();
             }
@@ -144,18 +183,235 @@ async fn get_theme() -> Result<String, String> {
 // 헬퍼
 // ═══════════════════════════════════════════════════════
 
+/// 다시 띄운 프로그램
+#[derive(Debug, Clone, PartialEq)]
+struct Launched {
+    cmd: String,
+    pid: u32,
+}
+
+/// 다시 띄울 것 (되돌린 뒤 이전 판을 다시 띄울 때도 쓴다)
+struct Relaunch {
+    exe: Option<String>,
+    extra: Vec<String>,
+    gui: Option<PathBuf>,
+}
+
 /// 다시 띄운다: `--relaunch`로 받은 것, 없으면 `installed_gui`(헤드리스는 `None`을 넘겨 아무것도 띄우지 않는다)
-/// 다시 띄웠으면 true (띄울 것이 없거나 모두 실패하면 false)
-async fn relaunch_now(relaunch_exe: Option<String>, relaunch_extra: Vec<String>, installed_gui: Option<PathBuf>, applied: bool) -> bool {
+/// 다시 띄웠으면 그 프로그램 (띄울 것이 없거나 모두 실패하면 None)
+async fn relaunch_now(relaunch_exe: Option<String>, relaunch_extra: Vec<String>, installed_gui: Option<PathBuf>, applied: bool) -> Option<Launched> {
     let requested = relaunch_exe.is_some();
-    let Some(cmd) = relaunch_command(relaunch_exe, installed_gui) else {
-        return false;
-    };
+    let cmd = relaunch_command(relaunch_exe, installed_gui)?;
     // 받은 인자는 받은 프로그램의 것이다. --relaunch 없이 찾은 GUI에는 넘기지 않는다
     let extra: &[String] = if requested { &relaunch_extra } else { &[] };
     wait_for_exe(&cmd).await;
     let after_update = applied && marks_update(&cmd, resolve_install_root_from_exe().as_deref());
-    launch_with_retry(&cmd, extra, after_update).await
+    let pid = launch_with_retry(&cmd, extra, after_update).await?;
+    Some(Launched { cmd, pid })
+}
+
+/// 코어 적용을 지켜볼 준비 (데이터 스냅샷·`.old` 목록·감시 표시). 코어가 바뀌지 않는 묶음이면 None
+/// 스냅샷을 뜨지 못하면 적용하지 않고 마커에 `deferred`(`snapshot_failed`)를 남긴 뒤 `Err` (다시 시작할 때 다시 시도한다)
+fn prepare_live_apply(manager: &mut UpdateManager) -> Result<Option<LiveApply>, String> {
+    LiveApply::prepare(manager, &constants::resolve_data_dir(), &constants::resolve_instances_dir()).inspect_err(|e| {
+        tracing::error!("[Apply] {}; leaving the files as they are", e);
+        if let Err(e) = UpdateCompletionMarker::deferred("snapshot_failed").save() {
+            tracing::warn!("[Apply] Cannot record the deferred update: {}", e);
+        }
+    })
+}
+
+fn core_was_applied(result: &Result<(Vec<String>, Vec<String>), String>) -> bool {
+    matches!(result, Ok((applied, _)) if applied.iter().any(|k| k == "saba-core"))
+}
+
+#[cfg(feature = "window")]
+/// 창 업데이터가 적용한 뒤 넘기는 감시 준비
+struct Watch {
+    live: Option<LiveApply>,
+    core_applied: bool,
+    manager: ManagerState,
+}
+
+/// 새 데몬으로 보는 규칙: 데몬을 직접 띄웠으면 그 PID, GUI·서비스 관리자가 띄우면 다시 띄운 뒤 시작한 데몬
+fn health_rule(launched: &Launched, old_pid: Option<u32>, since_ms: u64) -> live_apply::HealthRule {
+    if is_daemon_exe(&launched.cmd) {
+        live_apply::HealthRule::SpawnedPid(launched.pid)
+    } else {
+        live_apply::HealthRule::StartedAfter { since_ms, old_pid }
+    }
+}
+
+fn is_daemon_exe(cmd: &str) -> bool {
+    let name = cmd.rsplit(['/', '\\']).next().unwrap_or(cmd);
+    name.eq_ignore_ascii_case("saba-core") || name.eq_ignore_ascii_case("saba-core.exe")
+}
+
+/// 되돌린 뒤 이전 판을 띄우는 명령. 서비스는 이미 떠 있을 수 있으니(관리자가 새 판을 다시 띄움) 다시 시작한다:
+/// `systemctl --user start` → `restart`, `launchctl kickstart` → `kickstart -k`
+fn rollback_relaunch(exe: Option<String>, mut extra: Vec<String>) -> (Option<String>, Vec<String>) {
+    let name = exe.as_deref().and_then(|e| Path::new(e).file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if name == "systemctl" {
+        extra.iter_mut().filter(|a| *a == "start").for_each(|a| *a = "restart".into());
+    } else if name == "launchctl" && extra.first().is_some_and(|a| a == "kickstart") && !extra.iter().any(|a| a == "-k") {
+        extra.insert(1, "-k".into());
+    }
+    (exe, extra)
+}
+
+/// 코어를 바꿨으면 새 데몬을 지켜본다. 건강하면 스냅샷과 `.old`를 지운다. 건강하지 않으면 새 데몬(과 함께 띄운 GUI)을
+/// 끝내고 되돌린 뒤 릴레이에 한 번 알리고 이전 판을 다시 띄운다 (데이터를 되돌리지 못했으면 띄우지 않는다)
+async fn watch_new_daemon(
+    live: Option<LiveApply>,
+    manager: &UpdateManager,
+    core_applied: bool,
+    launched: Option<Launched>,
+    old_pid: Option<u32>,
+    since_ms: u64,
+    target: Relaunch,
+) -> WatchEnd {
+    let Some(live) = live else { return WatchEnd::Healthy };
+    let has_target = target.exe.is_some() || target.gui.is_some();
+    let launched = match watch_plan(core_applied, launched, has_target) {
+        WatchPlan::Skip => {
+            live.skip();
+            return WatchEnd::Healthy;
+        }
+        WatchPlan::Watch(launched) => launched,
+        WatchPlan::RollBack => {
+            tracing::error!("[Apply] The new daemon {} could not be launched; rolling back", live.target_version);
+            return roll_back_and_relaunch(live, manager, "launch_failed", target).await;
+        }
+    };
+    let rule = health_rule(&launched, old_pid, since_ms);
+    tracing::info!("[Apply] Watching the new daemon {} ({:?})", live.target_version, rule);
+    let reason = match live_apply::watch(&live_apply::HttpProbe::local(), &live.target_version, &rule, live_apply::WatchLimits::default()).await {
+        live_apply::WatchOutcome::Healthy { pid } => {
+            tracing::info!("[Apply] The new daemon is healthy (PID {})", pid);
+            live.healthy(manager);
+            return WatchEnd::Healthy;
+        }
+        live_apply::WatchOutcome::Unhealthy { pid, reason } => {
+            // 직접 띄운 사바쨩 프로그램(데몬·GUI)만 끝낸다. 서비스 관리자 명령은 이미 끝났고 그 PID는 다른 프로세스일 수 있다
+            if resolve_install_root_from_exe().is_some_and(|root| Path::new(&launched.cmd).starts_with(root)) {
+                live_apply::stop_process(launched.pid);
+            }
+            // GUI·서비스 관리자가 띄운 새 데몬은 PID를 모를 수 있다: 데몬 잠금을 쥔 것까지 끝낸 뒤에만 되돌린다
+            let data_dir = constants::resolve_data_dir();
+            if !live_apply::stop_new_daemons(pid, old_pid, || live_apply::daemon_lock_holder(&data_dir), live_apply::stop_process) {
+                tracing::error!("[Apply] A new daemon still holds the daemon lock; leaving {} in place instead of rolling back", live.target_version);
+                // 새 데몬이 이미 데이터를 바꿨을 수 있다: 사본은 남긴다
+                let recovery = live.leave_in_place(manager, &UpdateCompletionMarker::path(), reason);
+                return WatchEnd::LeftInPlace { recovery };
+            }
+            reason
+        }
+    };
+    roll_back_and_relaunch(live, manager, reason, target).await
+}
+
+/// 새 데몬을 어떻게 다룰까
+#[derive(Debug, PartialEq)]
+enum WatchPlan {
+    /// 지켜볼 것이 없다: 코어를 바꾸지 않았거나 다시 띄울 것이 원래 없다
+    Skip,
+    Watch(Launched),
+    /// 코어를 바꿨는데 다시 띄우지 못했다: 이전 데몬은 꺼졌고 새 판은 뜨지 않으니 되돌린다
+    RollBack,
+}
+
+fn watch_plan(core_applied: bool, launched: Option<Launched>, has_target: bool) -> WatchPlan {
+    match (core_applied, launched) {
+        (false, _) => WatchPlan::Skip,
+        (true, Some(launched)) => WatchPlan::Watch(launched),
+        (true, None) if has_target => WatchPlan::RollBack,
+        (true, None) => WatchPlan::Skip,
+    }
+}
+
+/// 지켜본 끝
+#[derive(Debug, PartialEq)]
+enum WatchEnd {
+    /// 새 데몬이 건강하거나 지켜볼 것이 없다
+    Healthy,
+    /// 되돌렸다. 이전 판을 다시 띄웠는가
+    RolledBack { relaunched: bool },
+    /// 실행 파일이나 데이터를 다 되돌리지 못했다: 섞인 판을 띄우지 않았고 되살리는 법을 남겼다
+    RestoreFailed { recovery: live_apply::Recovery },
+    /// 새 데몬을 끝내지 못해 새 판을 그대로 뒀다 (사본은 남겼다)
+    LeftInPlace { recovery: live_apply::Recovery },
+}
+
+/// 창 업데이터가 끝에 할 일
+#[derive(Debug, PartialEq)]
+#[cfg_attr(not(feature = "window"), allow(dead_code))]
+enum WindowEnd {
+    Exit,
+    /// 적용은 됐지만 아무것도 다시 띄우지 못했다
+    RelaunchFailed,
+    /// 되돌렸지만 이전 판을 다시 띄우지 못했다
+    RollbackRelaunchFailed,
+    /// 데이터를 되돌리지 못했다 (사본 자리)
+    RestoreFailed(live_apply::Recovery),
+    /// 새 데몬이 건강하지 않은데 끝내지 못해 그대로 뒀다 (사본 자리)
+    LeftInPlace(live_apply::Recovery),
+    /// 적용 실패 화면을 남긴다
+    StayOnError,
+}
+
+#[cfg_attr(not(feature = "window"), allow(dead_code))]
+fn window_end(end: &WatchEnd, applied: bool, relaunched: bool, has_target: bool) -> WindowEnd {
+    match end {
+        WatchEnd::RestoreFailed { recovery } => WindowEnd::RestoreFailed(recovery.clone()),
+        WatchEnd::RolledBack { relaunched: false } => WindowEnd::RollbackRelaunchFailed,
+        WatchEnd::LeftInPlace { recovery } => WindowEnd::LeftInPlace(recovery.clone()),
+        WatchEnd::RolledBack { relaunched: true } => WindowEnd::Exit,
+        WatchEnd::Healthy if !applied => WindowEnd::StayOnError,
+        WatchEnd::Healthy if relaunched || !has_target => WindowEnd::Exit,
+        WatchEnd::Healthy => WindowEnd::RelaunchFailed,
+    }
+}
+
+/// 되살리는 법을 화면에 넘기는 모양. 화면은 이 차례로 안내한다: (새 데몬 끝내기 `stop`) → 실행 파일(`exes`의 `from` → `to`,
+/// 코어 백업이 없으면 `missingCore`) → 데이터(사본의 `data`→`dataDir`, `instances`→`instancesDir`)
+#[cfg_attr(not(feature = "window"), allow(dead_code))]
+fn recovery_payload(r: &live_apply::Recovery) -> serde_json::Value {
+    let exes: Vec<_> = r
+        .exes
+        .iter()
+        .map(|(from, to)| serde_json::json!({ "from": from.display().to_string(), "to": to.display().to_string() }))
+        .collect();
+    serde_json::json!({
+        "stop": r.stop_first,
+        "exes": exes,
+        "missingCore": r.missing_core,
+        "installDir": r.install_dir.display().to_string(),
+        "data": r.copy.dir.join("data").display().to_string(),
+        "dataDir": r.copy.data_dir.display().to_string(),
+        "instances": r.copy.dir.join("instances").display().to_string(),
+        "instancesDir": r.copy.instances_dir.display().to_string(),
+    })
+}
+
+/// 되돌리고 릴레이에 한 번 알린 뒤 이전 판을 다시 띄운다. 데이터를 되돌리지 못했으면 일부만 되돌린 데이터를
+/// 이전 판이 읽지 않게 띄우지 않는다
+async fn roll_back_and_relaunch(live: LiveApply, manager: &UpdateManager, reason: &str, target: Relaunch) -> WatchEnd {
+    let config = saba_chan_updater_lib::config_file::ConfigFile::default_location();
+    // 릴레이는 되돌림을 릴리즈마다 센다 (부분 릴리즈의 코어 판은 릴리즈 판과 다르다)
+    let version = live.report_version().to_string();
+    let recovery = live.roll_back(manager, &config, &UpdateCompletionMarker::path(), reason);
+    let saved = live_apply::saved_update_config(&config);
+    live_apply::report_rolled_back(saved.relay_url.as_deref(), &version, &saved.channel).await;
+    if let Some(recovery) = recovery {
+        tracing::error!("[Apply] Not relaunching the previous version: the rollback is incomplete ({})", recovery.restore_hint());
+        return WatchEnd::RestoreFailed { recovery };
+    }
+    let (exe, extra) = rollback_relaunch(target.exe, target.extra);
+    let relaunched = relaunch_now(exe, extra, target.gui, false).await.is_some();
+    if !relaunched {
+        tracing::error!("[Apply] The previous version could not be relaunched after the rollback");
+    }
+    WatchEnd::RolledBack { relaunched }
 }
 
 /// 다시 띄우는 것에 `--after-update`를 붙이는가: 설치 폴더의 사바쨩 프로그램만. 서비스 관리자(`systemctl`) 같은
@@ -221,13 +477,13 @@ async fn wait_for_exe(cmd: &str) {
     }
 }
 
-/// 프로세스 재실행 (최대 3회 재시도)
-async fn launch_with_retry(cmd: &str, extra_args: &[String], after_update: bool) -> bool {
+/// 프로세스 재실행 (최대 3회 재시도). 띄운 프로세스의 PID
+async fn launch_with_retry(cmd: &str, extra_args: &[String], after_update: bool) -> Option<u32> {
     for attempt in 0..3 {
         match spawn_detached(cmd, extra_args, after_update) {
-            Ok(()) => {
-                tracing::info!("[Apply] Relaunch succeeded (attempt {})", attempt + 1);
-                return true;
+            Ok(pid) => {
+                tracing::info!("[Apply] Relaunch succeeded (attempt {}, PID {})", attempt + 1, pid);
+                return Some(pid);
             }
             Err(e) => {
                 tracing::warn!("[Apply] Relaunch attempt {} failed: {}", attempt + 1, e);
@@ -236,11 +492,11 @@ async fn launch_with_retry(cmd: &str, extra_args: &[String], after_update: bool)
         }
     }
     tracing::error!("[Apply] All relaunch attempts failed for: {}", cmd);
-    false
+    None
 }
 
-/// 완전히 분리된 자식 프로세스 생성
-fn spawn_detached(cmd: &str, extra_args: &[String], after_update: bool) -> Result<(), String> {
+/// 완전히 분리된 자식 프로세스 생성. 그 PID를 돌려준다
+fn spawn_detached(cmd: &str, extra_args: &[String], after_update: bool) -> Result<u32, String> {
     tracing::info!("[Apply] Spawning: {} {:?}", cmd, extra_args);
 
     let mut command = std::process::Command::new(cmd);
@@ -268,14 +524,15 @@ fn spawn_detached(cmd: &str, extra_args: &[String], after_update: bool) -> Resul
             Err(e) if e.raw_os_error() == Some(5) => {
                 tracing::warn!("[Apply] Job breakaway denied; spawning inside the job");
                 command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
-                command.spawn().map(|_| ()).map_err(|e| format!("Failed to spawn: {}", e))
+                command.spawn().map(|c| c.id()).map_err(|e| format!("Failed to spawn: {}", e))
             }
-            other => other.map(|_| ()).map_err(|e| format!("Failed to spawn: {}", e)),
+            other => other.map(|c| c.id()).map_err(|e| format!("Failed to spawn: {}", e)),
         }
     }
     #[cfg(not(target_os = "windows"))]
     {
-        command.spawn().map(|_| ()).map_err(|e| format!("Failed to spawn: {}", e))
+        // 손잡이를 맡겨 둔다: 끝난 자식은 거두기 전까지 좀비로 남아 감시가 살아 있다고 볼 수 있다
+        command.spawn().map(live_apply::keep_child).map_err(|e| format!("Failed to spawn: {}", e))
     }
 }
 
@@ -347,29 +604,23 @@ pub(crate) fn run(args: &[String]) {
         std::process::exit(1);
     }
 
-    // 띄운 쪽(데몬) 종료 대기. PID를 모르면 예전처럼 잠깐만 기다린다.
-    let wait_pid = after_apply
-        .iter()
-        .position(|a| a == "--wait-pid")
-        .and_then(|i| after_apply.get(i + 1))
-        .and_then(|p| p.parse::<u32>().ok());
-    match wait_pid {
-        Some(pid) => {
-            for _ in 0..60 {
-                if !saba_chan_updater_lib::ProcessChecker::is_pid_running(pid) {
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(500));
-            }
-            tracing::info!("[Apply] Waited for PID {} to exit", pid);
-        }
-        None => std::thread::sleep(std::time::Duration::from_millis(500)),
-    }
-
     // --relaunch 앞의 인자만 업데이터의 것이다
     // 창 없이 빌드한 업데이터(`window` 기능 없음)는 늘 창 없이 적용한다
     let headless = cfg!(not(feature = "window"))
         || after_apply.iter().take(relaunch_pos.unwrap_or(after_apply.len())).any(|a| a == "--headless");
+
+    // 띄운 쪽(데몬) 종료 대기. PID를 모르면 예전처럼 잠깐만 기다린다.
+    // 30초 뒤에도 살아 있으면 파일을 바꾸지 않는다: 받아 둔 것은 그대로 두고, 예전 데몬이 마저 끝나면 다시 띄울 것만 띄운다
+    // (예전 데몬이 아직 있을 때 띄우면 새로 띄운 데몬은 단일 인스턴스 잠금에 막혀 끝나고, 그 뒤 예전 데몬도 끝난다)
+    let wait_pid = after_apply
+        .iter()
+        .position(|a| a == "--wait-pid")
+        .filter(|&i| relaunch_pos.is_none_or(|r| i < r))
+        .and_then(|i| after_apply.get(i + 1))
+        .and_then(|p| p.parse::<u32>().ok());
+    if !live_apply::wait_for_previous(wait_pid, live_apply::WAIT_PID_TIMEOUT, saba_chan_updater_lib::ProcessChecker::is_pid_running, &UpdateCompletionMarker::path()) {
+        std::process::exit(relaunch_unchanged(headless, relaunch_exe, relaunch_extra, wait_pid));
+    }
 
     // install_root: exe 위치에서 자동 추론
     let mut cfg = saba_chan_updater_lib::UpdateConfig::default();
@@ -381,12 +632,12 @@ pub(crate) fn run(args: &[String]) {
     let modules_dir = resolve_modules_dir();
 
     if headless {
-        std::process::exit(run_headless(UpdateManager::new(cfg, &modules_dir), relaunch_exe, relaunch_extra));
+        std::process::exit(run_headless(UpdateManager::new(cfg, &modules_dir), relaunch_exe, relaunch_extra, wait_pid));
     }
 
     #[cfg(feature = "window")]
     {
-        let apply_config = ApplyConfig { relaunch_exe, relaunch_extra };
+        let apply_config = ApplyConfig { relaunch_exe, relaunch_extra, wait_pid };
 
         let manager: ManagerState = Arc::new(RwLock::new(UpdateManager::new(cfg, &modules_dir)));
 
@@ -417,7 +668,7 @@ pub(crate) fn run(args: &[String]) {
                 get_theme,
                 crate::backdrop::get_window_backdrop,
             ])
-            .run(tauri::generate_context!())
+            .run(crate::context())
             .expect("error while running tauri application");
     }
 }
@@ -450,8 +701,30 @@ fn after_apply() {
     }
 }
 
+/// 파일을 바꾸지 않고 끝낼 때: 다시 띄울 것만 띄운다 (창 업데이터는 설치된 GUI도 찾는다). 종료 코드 1
+/// 예전 데몬이 늦게라도 끝나야 다시 띄운다 (끝나지 않으면 그 데몬이 계속 돈다, `live_apply::may_relaunch_unchanged`)
+fn relaunch_unchanged(headless: bool, relaunch_exe: Option<String>, relaunch_extra: Vec<String>, wait_pid: Option<u32>) -> i32 {
+    if !live_apply::may_relaunch_unchanged(wait_pid, live_apply::LATE_EXIT_TIMEOUT, saba_chan_updater_lib::ProcessChecker::is_pid_running) {
+        return 1;
+    }
+    #[cfg(feature = "window")]
+    let gui = if headless { None } else { resolve_gui_exe() };
+    #[cfg(not(feature = "window"))]
+    let gui = {
+        let _ = headless;
+        None
+    };
+    match tokio::runtime::Runtime::new() {
+        Ok(rt) => {
+            rt.block_on(relaunch_now(relaunch_exe, relaunch_extra, gui, false));
+        }
+        Err(e) => tracing::error!("[Apply] Cannot start the runtime: {}", e),
+    }
+    1
+}
+
 /// 창 없이 적용한다 (Tauri를 시작하지 않는다). 결과는 창 업데이터와 같은 완료 마커에 남는다
-fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaunch_extra: Vec<String>) -> i32 {
+fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaunch_extra: Vec<String>, wait_pid: Option<u32>) -> i32 {
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
@@ -461,8 +734,19 @@ fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaun
         }
     };
     rt.block_on(async {
+        let live = match prepare_live_apply(&mut manager) {
+            Ok(live) => live,
+            Err(_) => {
+                // 파일을 바꾸지 않았다: 이전 판을 그대로 다시 띄운다
+                if relaunch_exe.is_some() {
+                    relaunch_now(relaunch_exe, relaunch_extra, None, false).await;
+                }
+                return 1;
+            }
+        };
         let result = manager.apply_staged(|p| tracing::info!("[Apply] {} {}% {}", p.step, p.percent, p.message)).await;
         let applied = matches!(&result, Ok((_, failed)) if failed.is_empty());
+        let core_applied = core_was_applied(&result);
         if result.is_ok() {
             after_apply();
         }
@@ -471,14 +755,68 @@ fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaun
             tracing::warn!("[Apply] --headless without --relaunch: nothing is restarted");
         }
         // 데몬을 다시 띄우지 못하면 적용이 성공해도 실패로 끝낸다 (데몬이 내려간 채 남는다)
-        let relaunched = relaunch_exe.is_none() || relaunch_now(relaunch_exe, relaunch_extra, None, applied).await;
-        if applied && relaunched { 0 } else { 1 }
+        let since_ms = live_apply::now_ms();
+        let launched = match relaunch_exe {
+            Some(_) => relaunch_now(relaunch_exe.clone(), relaunch_extra.clone(), None, applied).await,
+            None => None,
+        };
+        let relaunched = relaunch_exe.is_none() || launched.is_some();
+        let target = Relaunch { exe: relaunch_exe, extra: relaunch_extra, gui: None };
+        let end = watch_new_daemon(live, &manager, core_applied, launched, wait_pid, since_ms, target).await;
+        if applied && relaunched && end == WatchEnd::Healthy { 0 } else { 1 }
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Codex 재리뷰: 되돌린 이전 판까지 띄우지 못했거나 데이터를 되돌리지 못했으면 창을 닫지 않고 알린다
+    #[test]
+    fn the_window_stays_open_when_the_rollback_cannot_finish() {
+        let ok = WatchEnd::Healthy;
+        assert_eq!(window_end(&ok, true, true, true), WindowEnd::Exit);
+        assert_eq!(window_end(&ok, true, false, true), WindowEnd::RelaunchFailed, "applied but nothing came back up");
+        assert_eq!(window_end(&ok, true, false, false), WindowEnd::Exit, "nothing was meant to be relaunched");
+        assert_eq!(window_end(&ok, false, true, true), WindowEnd::StayOnError);
+        assert_eq!(window_end(&WatchEnd::RolledBack { relaunched: true }, true, true, true), WindowEnd::Exit);
+        assert_eq!(window_end(&WatchEnd::RolledBack { relaunched: false }, true, false, true), WindowEnd::RollbackRelaunchFailed);
+        let recovery = live_apply::Recovery {
+            stop_first: true,
+            exes: vec![("/opt/saba/saba-core.old".into(), "/opt/saba/saba-core".into())],
+            missing_core: false,
+            copy: live_apply::KeptCopy {
+                dir: "/data/update-snapshot/0.1.13-1".into(),
+                data_dir: "/data".into(),
+                instances_dir: "/srv/instances".into(),
+            },
+            install_dir: "/opt/saba".into(),
+        };
+        assert_eq!(window_end(&WatchEnd::RestoreFailed { recovery: recovery.clone() }, true, true, true), WindowEnd::RestoreFailed(recovery.clone()));
+        // Codex 3차 리뷰: 새 데몬을 끝내지 못해 새 판을 둔 것도 성공처럼 닫지 않고 알린다
+        assert_eq!(window_end(&WatchEnd::LeftInPlace { recovery: recovery.clone() }, true, true, true), WindowEnd::LeftInPlace(recovery.clone()));
+        // 화면에는 끝내기 → 실행 파일 → 데이터(두 갈래와 각각 되살릴 곳, 따로 둔 인스턴스 폴더 포함)를 싣는다
+        let payload = recovery_payload(&recovery);
+        assert_eq!(payload["stop"], true);
+        assert_eq!(payload["exes"][0]["from"], "/opt/saba/saba-core.old");
+        assert_eq!(payload["exes"][0]["to"], "/opt/saba/saba-core");
+        // 기대값도 코드와 같은 방식(join)으로 만들어 Windows 경로 구분자 차이를 피한다
+        assert_eq!(payload["data"], recovery.copy.dir.join("data").display().to_string());
+        assert_eq!(payload["dataDir"], "/data");
+        assert_eq!(payload["instances"], recovery.copy.dir.join("instances").display().to_string());
+        assert_eq!(payload["instancesDir"], "/srv/instances");
+    }
+
+    // Codex 리뷰: 코어를 바꾼 뒤 다시 띄우지 못하면(권한 오류 등) 성공으로 끝내지 않고 되돌린다
+    #[test]
+    fn a_failed_relaunch_after_the_core_swap_rolls_back() {
+        let launched = Launched { cmd: "saba-core".into(), pid: 7 };
+        assert_eq!(watch_plan(true, None, true), WatchPlan::RollBack);
+        assert_eq!(watch_plan(true, Some(launched.clone()), true), WatchPlan::Watch(launched.clone()));
+        assert_eq!(watch_plan(false, None, true), WatchPlan::Skip, "the core was not swapped");
+        assert_eq!(watch_plan(false, Some(launched), true), WatchPlan::Skip);
+        assert_eq!(watch_plan(true, None, false), WatchPlan::Skip, "nothing was meant to be relaunched");
+    }
 
     // M3: 받은 GUI 경로(0.1.1의 `Saba-chan.exe`)가 업데이트로 비켜났으면 지금 설치된 GUI를 띄운다
     #[test]
@@ -499,6 +837,33 @@ mod tests {
         assert_eq!(relaunch_command(Some(cli.clone()), Some(installed.clone())), Some(cli));
         assert_eq!(relaunch_command(None, Some(installed.clone())).as_deref(), Some(installed.to_string_lossy().as_ref()));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // ★ 13절: 데몬을 직접 띄웠으면 그 PID로만, GUI·서비스 관리자가 띄우면 판과 기동 시각으로 새 데몬을 가린다
+    #[test]
+    fn the_new_daemon_is_told_apart_by_how_it_was_relaunched() {
+        let launched = |cmd: &str| Launched { cmd: cmd.into(), pid: 4321 };
+        assert_eq!(health_rule(&launched("/opt/saba/saba-core"), Some(10), 99), live_apply::HealthRule::SpawnedPid(4321));
+        assert_eq!(health_rule(&launched(r"C:\Saba-chan\saba-core.exe"), Some(10), 99), live_apply::HealthRule::SpawnedPid(4321));
+        for other in ["/opt/saba/saba-chan-gui", "/usr/bin/systemctl", "/bin/launchctl"] {
+            assert_eq!(
+                health_rule(&launched(other), Some(10), 99),
+                live_apply::HealthRule::StartedAfter { since_ms: 99, old_pid: Some(10) },
+                "{other}"
+            );
+        }
+    }
+
+    /// 되돌린 뒤 서비스는 다시 시작한다 (관리자가 새 판을 이미 다시 띄웠을 수 있다). 그 밖의 명령은 그대로
+    #[test]
+    fn a_service_is_restarted_after_a_rollback() {
+        let s = |v: &[&str]| v.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+        let (exe, extra) = rollback_relaunch(Some("/usr/bin/systemctl".into()), s(&["--user", "start", "saba-chan.service"]));
+        assert_eq!((exe.as_deref(), extra), (Some("/usr/bin/systemctl"), s(&["--user", "restart", "saba-chan.service"])));
+        let (_, extra) = rollback_relaunch(Some("/bin/launchctl".into()), s(&["kickstart", "gui/501/online.saba-chan.core"]));
+        assert_eq!(extra, s(&["kickstart", "-k", "gui/501/online.saba-chan.core"]));
+        let (_, extra) = rollback_relaunch(Some("/opt/saba/saba-core".into()), s(&["--spawned"]));
+        assert_eq!(extra, s(&["--spawned"]));
     }
 
     /// `--after-update`는 사바쨩 프로그램에만 붙인다 (서비스로 돈 데몬은 `systemctl --user start`로 다시 띄운다)

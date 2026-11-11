@@ -1,0 +1,215 @@
+/* 서버 상세 탭 안 찾기 (Ctrl+F): 오른쪽 위 작은 유리 창 + 그 자리 강조 */
+
+.page-find {
+    position: fixed;
+    top: calc(var(--appbar-h, 46px) + 120px);
+    right: var(--sp-4);
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-0-5);
+    width: min(340px, calc(100vw - 2 * var(--sp-4)));
+    height: 44px;
+    padding: 0 var(--sp-1) 0 var(--sp-3);
+    border-radius: var(--r-sm);
+    background-color: var(--glass-bg);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-highlight), var(--shadow-float);
+    color: var(--text-2);
+    transform-origin: 100% 0;
+    animation: page-find-in 0.38s var(--ease-spring);
+}
+@keyframes page-find-in {
+    from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.6, 0.8);
+    }
+}
+.page-find > svg {
+    flex: none;
+    color: var(--text-3);
+    margin-right: var(--sp-1-5);
+}
+.page-find input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    outline: none;
+    background: none;
+    color: var(--text-1);
+    font-size: var(--fs-md);
+}
+.page-find input::-webkit-search-cancel-button {
+    display: none;
+}
+.page-find input::placeholder {
+    color: var(--text-3);
+}
+.page-find-count {
+    flex: none;
+    padding: 0 var(--sp-2);
+    color: var(--text-3);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.page-find.none {
+    border-color: var(--danger);
+}
+.page-find.none .page-find-count {
+    color: var(--danger);
+}
+.page-find-sep {
+    width: 1px;
+    height: 20px;
+    margin: 0 var(--sp-0-5);
+    background: var(--line);
+}
+.page-find button {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: var(--r-xs);
+    background: none;
+    color: var(--text-2);
+    cursor: pointer;
+}
+.page-find button:hover:not(:disabled) {
+    background: var(--hover-bg);
+    color: var(--text-1);
+}
+.page-find button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+.page-find.shake {
+    animation: page-find-shake 0.34s var(--ease);
+}
+@keyframes page-find-shake {
+    20%,
+    60% {
+        transform: translateX(-5px);
+    }
+    40%,
+    80% {
+        transform: translateX(5px);
+    }
+}
+
+/* 강조: 글자는 하이라이트 API, 입력 칸 값은 위에 얹은 층 */
+::highlight(saba-find) {
+    background-color: rgba(245, 165, 36, 0.28);
+    color: var(--text-1);
+}
+::highlight(saba-find-current) {
+    background-color: var(--warn);
+    color: #1a1205;
+}
+.page-find-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 59;
+    pointer-events: none;
+}
+.page-find-layer i {
+    position: fixed;
+    border-radius: 3px;
+    background: rgba(245, 165, 36, 0.28);
+}
+.page-find-layer i.cur {
+    background: rgba(245, 165, 36, 0.5);
+    box-shadow: 0 0 0 2px var(--warn);
+}
+.page-find-measure {
+    position: fixed;
+    top: -1000px;
+    left: -1000px;
+    visibility: hidden;
+    white-space: pre;
+    pointer-events: none;
+}
+
+/* 원문 키 꼬리표 (원문 키로 찾을 때만) */
+.find-keytag {
+    display: inline-block;
+    margin-left: var(--sp-2);
+    padding: 0 var(--sp-1-5);
+    border: 1px solid var(--warn);
+    border-radius: var(--r-xs);
+    background: var(--warn-soft);
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    font-weight: 400;
+    animation: find-keytag-in 0.3s var(--ease-spring);
+}
+@keyframes find-keytag-in {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+}
+
+/* 접힌 묶음 안의 결과 수: 머리 단추 제목 뒤, 열고 닫는 화살표 앞 */
+[data-find-badge]::after {
+    content: attr(data-find-badge);
+    order: 1;
+    padding: 0 var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--warn-soft);
+    color: var(--warn);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    white-space: nowrap;
+}
+[data-find-badge] > :last-child {
+    order: 2;
+}
+
+/* 탭 줄의 "찾기" 단추 */
+.page-find-btn {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    height: 30px;
+    padding: 0 var(--sp-2) 0 var(--sp-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-pill);
+    background: var(--bg-2);
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    cursor: pointer;
+    transition: color var(--dur-fast), border-color var(--dur-fast);
+}
+.page-find-btn:hover {
+    color: var(--text-1);
+    border-color: var(--line-strong);
+}
+.page-find-btn kbd {
+    padding: 0 var(--sp-1);
+    border-radius: 4px;
+    background: var(--inset);
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+}
+@media (max-width: 640px) {
+    .page-find-btn kbd {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .page-find,
+    .find-keytag {
+        animation: none;
+    }
+}

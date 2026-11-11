@@ -58,7 +58,21 @@ static RUNTIME: tokio::sync::Mutex<Runtime> = tokio::sync::Mutex::const_new(Runt
 /// (사용자 결정 2026-10-25·2026-11-08: 릴레이 터널은 처음 짝 맺을 때와 직접 닿지 않을 때만 쓴다).
 /// 직접 닿는지는 붙는 PC가 붙어 보고 정한다 (`peer::send_to`)
 fn published_address(settings: &config::Settings, server: &IPCServer) -> Option<String> {
-    Some(settings.address.trim().to_string()).filter(|a| !a.is_empty()).or_else(|| server.relay_agent.seen_address())
+    public_address(settings, server.relay_agent.seen_address()).0
+}
+
+/// 이 PC의 공개 주소: 정한 주소(도메인·IP)가 먼저이고, 비었으면 `seen`(릴레이가 본 공인 IP). 둘째 값은 정한 주소인가.
+/// 원격 데몬 직접 연결과 게임 서버 주소(`/api/instance/:id/address`, 포트 확인)가 함께 쓴다 (사용자 결정 2026-11-10)
+pub fn public_address(settings: &config::Settings, seen: Option<String>) -> (Option<String>, bool) {
+    match configured_address(settings) {
+        Some(a) => (Some(a), true),
+        None => (seen, false),
+    }
+}
+
+/// 정한 공개 주소 (비었으면 없다)
+pub fn configured_address(settings: &config::Settings) -> Option<String> {
+    Some(settings.address.trim().to_string()).filter(|a| !a.is_empty())
 }
 
 /// 릴레이가 본 공인 IP가 바뀌었을 때(첫 하트비트 포함, `relay_agent`): 설정한 주소가 없고 원격 포트가 열려 있으면 새 IP를 올린다
@@ -274,7 +288,7 @@ pub async fn apply(server: &IPCServer) -> Status {
         let published = relay::publish(t, address, settings.port, sha).await;
         status.published = published == relay::Published::Done;
         if published == relay::Published::Refused {
-            tracing::warn!("The relay does not take a remote daemon without a public address yet");
+            tracing::warn!("The relay refused the remote daemon endpoint");
         }
         if published == relay::Published::Unauthorized {
             tracing::warn!("The relay rejected the node token; not publishing the remote daemon address");
@@ -338,9 +352,9 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 3);
     }
 
-    /// 공인 주소가 없으면 주소 없이 올린다. 그것을 모르는 예전 릴레이(400)에는 다시 보내지 않는다
+    /// 릴레이가 본문을 받지 않으면(400) 같은 본문을 다시 보내지 않는다
     #[tokio::test]
-    async fn an_old_relay_that_refuses_an_address_less_endpoint_is_not_asked_again() {
+    async fn a_relay_that_refuses_the_endpoint_is_not_asked_again() {
         let calls = super::Arc::new(AtomicUsize::new(0));
         let seen = calls.clone();
         let app = axum::Router::new().route(
@@ -358,7 +372,6 @@ mod tests {
         let published = super::publish_with_retry(&relay, None, 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
         assert!(!published);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert!(super::publish_with_retry(&relay, Some("saba.example.com"), 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await);
     }
 
     /// 릴레이가 이 노드 토큰을 받지 않으면(401, 같은 계정의 다른 PC가 페어링해 토큰이 대체됨 등) 다시 보내지 않는다.

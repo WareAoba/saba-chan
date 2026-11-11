@@ -4,11 +4,10 @@ import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
+import { failed } from '../../utils/apiResult';
 
 export const unisolatedAvailable = () =>
     typeof window.api?.sandboxListUnisolated === 'function' && typeof window.api?.sandboxRevokeUnisolated === 'function';
-
-const failed = (res: ApiBody | null | undefined) => !res || res.success === false || Boolean(res.error || res.error_code);
 
 /**
  * 설정 > 보안: 격리 없이 돌리기로 동의한 구성요소 (데몬 config.json sandbox.unisolated).

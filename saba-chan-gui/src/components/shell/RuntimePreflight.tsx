@@ -1,9 +1,10 @@
 import clsx from 'clsx';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
+import { AppBarPill } from './AppBarPill';
 
 const POLL_MS = 1000;
 const FAILED_POLL_MS = 5000; // 실패는 저장되지 않아 다음 모듈 호출이 다시 시도한다. 그 결과를 따라간다
@@ -41,12 +42,17 @@ export function RuntimePreflight({ daemonStatus }: { daemonStatus?: string }) {
         };
     }, [daemonStatus]);
 
-    if (!state || state.phase === 'preflight-done' || state.phase === 'preflight-idle') return null;
+    const active = !!state && state.phase !== 'preflight-done' && state.phase !== 'preflight-idle';
+    // 사라지는 움직임 동안에는 마지막 진행을 그대로 그린다
+    const last = useRef<ApiBody | null>(null);
+    if (active) last.current = state;
+    const shown = active ? state : last.current;
+    if (!shown) return null;
 
-    const failed = state.phase === 'preflight-failed';
-    const percent = Math.max(0, Math.min(100, Number(state.percent) || 0));
+    const failed = shown.phase === 'preflight-failed';
+    const percent = Math.max(0, Math.min(100, Number(shown.percent) || 0));
     const label = failed
-        ? t('shell.preflight_failed', { error: state.error || '-' })
+        ? t('shell.preflight_failed', { error: shown.error || '-' })
         : t('shell.preflight_python', { percent });
     const r = 7;
     const c = 2 * Math.PI * r;
@@ -70,28 +76,26 @@ export function RuntimePreflight({ daemonStatus }: { daemonStatus?: string }) {
     );
 
     // 실패는 이유를 봐야 하므로 누를 수 있는 버튼 (키보드 포커스로도 말풍선이 뜨고, 누르면 알림으로 전문을 보여 준다)
-    if (failed) {
-        return (
-            <button
-                type="button"
-                className="appbar-preflight failed"
-                data-tooltip={label}
-                aria-label={label}
-                onClick={() => safeShowToast(label, 'error', 8000)}
-            >
-                <Icon name="alertTriangle" size="sm" />
-                <span className="appbar-preflight-text">{t('shell.preflight_failed_short')}</span>
-            </button>
-        );
-    }
-
     // 진행 중엔 퍼센트를 글자로도 보여 준다 (말풍선에만 두지 않는다)
     return (
-        <output className="appbar-preflight" data-tooltip={label} aria-label={label}>
-            {ring}
-            <span className="appbar-preflight-text">
-                {t('shell.preflight_short')} {percent > 0 && <span className="appbar-preflight-pct">{percent}%</span>}
-            </span>
-        </output>
+        <AppBarPill
+            visible={active}
+            as={failed ? 'button' : 'output'}
+            className={clsx({ failed })}
+            changeKey={failed}
+            data-tooltip={label}
+            aria-label={label}
+            onClick={failed ? () => safeShowToast(label, 'error', 8000) : undefined}
+            icon={failed ? <Icon name="alertTriangle" size="sm" /> : ring}
+            label={
+                failed ? (
+                    t('shell.preflight_failed_short')
+                ) : (
+                    <>
+                        {t('shell.preflight_short')} {percent > 0 && <span className="appbar-preflight-pct">{percent}%</span>}
+                    </>
+                )
+            }
+        />
     );
 }

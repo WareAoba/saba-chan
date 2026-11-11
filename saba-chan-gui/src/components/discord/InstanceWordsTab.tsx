@@ -2,14 +2,15 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Server } from '../../stores/useServerStore';
-import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
+import { FindKeyTag } from '../servers/PageFind';
 import { SabaSpinner } from '../ui/SabaUI';
 import { SaveBar } from './ChatbotView';
 import type { InstanceWordsCommand, InstanceWordsDraft, InstanceWordsEntry, ValidationDetail } from './instanceWords';
 import { draftOf, errorsByField, isDraftDirty, wordsCommandName } from './instanceWords';
 import { TagInput } from './TagInput';
+import { failed } from '../../utils/apiResult';
 
 export { draftOf, errorsByField, isDraftDirty };
 
@@ -24,8 +25,6 @@ interface InstanceWords extends InstanceWordsEntry {
     defaultWords?: string[];
 }
 
-const failed = (res: ApiBody | null | undefined) =>
-    !res || res.success === false || Boolean(res.error_code) || Boolean(res.error);
 function ErrorLines({ details }: { details?: ValidationDetail[] }) {
     const { t } = useTranslation('gui');
     if (!details?.length) return null;
@@ -93,15 +92,17 @@ function InstanceCard({ inst, onSaved }: InstanceCardProps) {
         <section className="dc-card">
             {/* 다른 서버 탭(설정·유지보수)과 같은 카드: 제목·설명이 카드 안에 (사용자 11-07) */}
             <div className="dc-card-head">
-                <h2 className="ss-card-title">
+                <h2 className="ss-card-title" data-find="name">
                     <Icon name="discord" size="sm" /> {t('discord.iw_title')}
                 </h2>
             </div>
             <p className="dc-card-desc">{t('discord.iw_desc')}</p>
             <div className="dc-word-table">
-                <div className="dc-word-row">
+                <div className="dc-word-row" data-find-row>
                     <div className="dc-word-cmd">
-                        <span className="dc-list-name">{t('discord.iw_server_words')}</span>
+                        <span className="dc-list-name" data-find="name">
+                            {t('discord.iw_server_words')}
+                        </span>
                         <span className="muted">
                             {t('discord.iw_default', { words: (inst.defaultWords || [inst.name]).join(', ') })}
                         </span>
@@ -123,10 +124,12 @@ function InstanceCard({ inst, onSaved }: InstanceCardProps) {
                     const defaults = [c.name, ...(c.moduleAliases || [])].join(', ');
                     return (
                         <div key={c.name}>
-                            <div className="dc-word-row">
+                            <div className="dc-word-row" data-find-row>
                                 <div className="dc-word-cmd">
-                                    <span className={clsx('dc-list-name', { danger: c.risk === 'danger' })}>
+                                    <span className={clsx('dc-list-name', { danger: c.risk === 'danger' })} data-find="name">
                                         {nameOf(c)}
+                                        {/* 명령 원문(kick)으로 찾을 때만 보인다 */}
+                                        <FindKeyTag findKey={c.name} label={nameOf(c)} />
                                     </span>
                                     <span className="muted">{t('discord.iw_default', { words: defaults })}</span>
                                 </div>

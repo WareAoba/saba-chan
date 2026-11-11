@@ -6,8 +6,8 @@ import { useApp } from '../store';
 import { Icon } from './icons';
 import type { ApiBody, TFn } from '../types';
 
-/** 결과가 실패인지 (GUI 브리지는 실패를 {error} 또는 {success:false}·{ok:false}로 돌려준다) */
-export const failed = (res: ApiBody | null | undefined) => !res || !!res.error || res.success === false || res.ok === false;
+/** 결과가 실패인지 (GUI와 같은 판정) */
+export { failed } from '@gui/utils/apiResult';
 
 /** 실패 결과 → 사람이 읽을 한 줄. 문지기·중계가 막은 것은 이유를 번역해 보인다 */
 export function errorText(t: TFn, res: ApiBody | null | undefined) {

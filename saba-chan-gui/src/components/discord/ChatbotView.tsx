@@ -10,6 +10,7 @@ import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
 import { PROVIDER_BRANDS } from './providerBrands';
 import type { DiscordNode } from './types';
+import { failed } from '../../utils/apiResult';
 
 /**
  * 사바쨩 설정(공통)에 두는 값: 모델만 (데몬 `commonKeys`). 나머지는 서버마다 정한다 (ChatbotGuildTab).
@@ -243,7 +244,7 @@ export function ChatbotView({ nodes = [] }: ChatbotViewProps) {
         setLoadError(null);
         try {
             const res = await window.api.chatbotGet();
-            if (res?.success === false) throw new Error(res.error || t('chatbot.load_failed'));
+            if (failed(res)) throw new Error(res.error || t('chatbot.load_failed'));
             setData(res);
         } catch (err) {
             setLoadError((err as Error).message || String(err));
@@ -319,7 +320,7 @@ function ApiKeyCard({ hasApiKey, onChanged, nameOf }: ApiKeyCardProps) {
         setArmed(false);
         try {
             const res = await window.api.chatbotSave({ apiKey });
-            if (res?.success === false) {
+            if (failed(res)) {
                 safeShowToast(relayErrorLines(res, nameOf).join('\n') || t('chatbot.save_failed'), 'error', 6000);
                 return;
             }
@@ -409,7 +410,7 @@ function ModelCard({ data, guildIds, nameOf, onSaved, keyVersion }: ModelCardPro
         const model = String(draft ?? '').trim() || def;
         try {
             const res = await window.api.chatbotSave({ settings: { model: model === def ? null : model } });
-            if (res?.success === false) {
+            if (failed(res)) {
                 setErrors(
                     relayErrorLines(res, nameOf).concat(res.guildId || res.error ? [] : [t('chatbot.save_failed')]),
                 );

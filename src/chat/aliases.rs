@@ -33,10 +33,10 @@ impl ModuleAliases {
     }
 
     fn register(&mut self, alias: &str, module: &str) {
-        if let Some((_, owner)) = self.entries.iter().find(|(a, _)| a.eq_ignore_ascii_case_unicode(alias)) {
+        if let Some((_, owner)) = self.entries.iter().find(|(a, _)| super::words::same(a, alias)) {
             if owner != module {
                 let owner = owner.clone();
-                match self.conflicts.iter_mut().find(|(a, _)| a.eq_ignore_ascii_case_unicode(alias)) {
+                match self.conflicts.iter_mut().find(|(a, _)| super::words::same(a, alias)) {
                     Some((_, mods)) => {
                         if !mods.iter().any(|m| m == module) {
                             mods.push(module.to_string());
@@ -54,20 +54,20 @@ impl ModuleAliases {
     pub fn resolve(&self, input: &str) -> String {
         self.entries
             .iter()
-            .find(|(a, _)| a.eq_ignore_ascii_case_unicode(input))
+            .find(|(a, _)| super::words::same(a, input))
             .map(|(_, m)| m.clone())
             .unwrap_or_else(|| input.to_string())
     }
 
     pub fn is_known(&self, input: &str) -> bool {
-        self.entries.iter().any(|(a, _)| a.eq_ignore_ascii_case_unicode(input))
+        self.entries.iter().any(|(a, _)| super::words::same(a, input))
     }
 
     /// 충돌한 별명이면 관련 모듈 목록
     pub fn conflict(&self, input: &str) -> Option<&[String]> {
         self.conflicts
             .iter()
-            .find(|(a, _)| a.eq_ignore_ascii_case_unicode(input))
+            .find(|(a, _)| super::words::same(a, input))
             .map(|(_, mods)| mods.as_slice())
     }
 
@@ -113,17 +113,6 @@ pub fn find_command(module: Option<&ModuleView>, input: &str) -> Option<String> 
         table.push((b.to_string(), b.to_string()));
     }
     table.into_iter().find(|(alias, _)| super::words::same(alias, input)).map(|(_, cmd)| cmd)
-}
-
-/// 대소문자 무시 비교 (ASCII 밖 문자도 소문자화). 한글 별명은 그대로 비교된다.
-trait CaseInsensitive {
-    fn eq_ignore_ascii_case_unicode(&self, other: &str) -> bool;
-}
-
-impl CaseInsensitive for String {
-    fn eq_ignore_ascii_case_unicode(&self, other: &str) -> bool {
-        super::words::same(self, other)
-    }
 }
 
 #[cfg(test)]

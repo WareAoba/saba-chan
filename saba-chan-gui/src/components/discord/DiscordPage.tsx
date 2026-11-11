@@ -12,13 +12,14 @@ import { safeShowToast } from '../../utils/helpers';
 import { screenFallbackNotice } from '../../utils/openScreen';
 import { Icon } from '../Icon';
 import { SINGLE_COLUMN_MAX_WIDTH } from '../servers/ServersPage';
+import { SlotView, useSlotPages } from '../ExtensionSlot';
 import { StatusChip } from '../ui/StatusChip';
 import { ChatbotView, chatbotAvailable } from './ChatbotView';
 import { ConnectionView } from './ConnectionView';
 import { Avatar, NodeView } from './NodeView';
 import * as P from './nodePermissions';
 import type { DiscordNode, MembersByGuild } from './types';
-import { claimSavedToken, usePairing } from './usePairing';
+import { pairingTokenSaved, usePairing } from './usePairing';
 
 export const DEFAULT_RELAY_URL = 'https://saba-chan.online';
 
@@ -49,7 +50,8 @@ export function cloudStateOf({ hostId, connected, connecting, error, loaded }: C
 
 /** 오른쪽에 보이는 화면: 연결 / 사바쨩 설정 / 디스코드 서버(노드) 하나 */
 interface DiscordView {
-    kind: 'connection' | 'saba' | 'node';
+    /** ext = 익스텐션 화면 (`Discord.nav` slot), id = `ext:<익스텐션 id>` */
+    kind: 'connection' | 'saba' | 'node' | 'ext';
     id?: string;
     /** 화면 주소 링크로 열 때 디스코드 서버의 탭·안 화면. seq가 바뀌면 다시 연다 */
     tab?: string;
@@ -149,10 +151,20 @@ export function DiscordPage({
         loaded: botConfigLoaded,
     });
 
+    // 익스텐션 화면 (`Discord.nav`): 그 익스텐션이 꺼지면 연결 화면으로
+    const extNav = useSlotPages('Discord.nav');
+    const extView = view.kind === 'ext' ? extNav.find((p) => p.id === view.id) : undefined;
     const go = (next: DiscordView) => {
         setView(next);
         setShowMainNarrow(true);
     };
+
+    // 명령 팔레트의 빈 검색 기준: 지금 연 디스코드 서버 (페이지를 떠나면 없음)
+    const openNodeId = view.kind === 'node' ? view.id ?? null : null;
+    useEffect(() => {
+        useUIStore.getState().setOpenDiscordNodeId(openNodeId);
+        return () => useUIStore.getState().setOpenDiscordNodeId(null);
+    }, [openNodeId]);
 
     // 화면 주소 링크 (사용자 11-06 #19): 없는 디스코드 서버면 연결 화면을 열고 이유를 알린다
     const requested = useUIStore((s) => s.requestedDiscordView);
@@ -205,14 +217,6 @@ export function DiscordPage({
     useEffect(() => {
         if (discordCloudHostId && relayConnected) loadNodes();
     }, [discordCloudHostId, relayConnected, loadNodes]);
-    // 연결 요청을 수락하는 등 다른 곳에서 길드가 늘면 다시 읽는다
-    useEffect(
-        () =>
-            useDiscordStore.subscribe((s, prev) => {
-                if (s.cloudNodesStale !== prev.cloudNodesStale) loadNodes();
-            }),
-        [loadNodes],
-    );
 
     const loadMembers = useCallback(
         async (guildId: string) => {
@@ -306,7 +310,7 @@ export function DiscordPage({
         beforeStart: saveRelayUrlForPairing,
         onClaimed: async (s: ApiBody) => {
             // 토큰을 저장하지 못했으면 호스트도 바꾸지 않는다 (토큰 없는 호스트가 저장되지 않게)
-            if (!(await claimSavedToken(s))) return false;
+            if (!pairingTokenSaved(s)) return false;
             if (s.hostId) setDiscordCloudHostId(s.hostId);
             await saveCurrentSettings();
             loadNodes();
@@ -353,8 +357,7 @@ export function DiscordPage({
                   const res = await window.api.relayBotInvite(relayUrl);
                   const url = res?.url || res?.inviteUrl || res?.invite_url;
                   if (!url) throw new Error(res?.error || 'no invite url');
-                  // 외부 주소 열기는 셸 브리지(window.electron)에 있다
-                  const openExternal = window.electron?.shell?.openExternal;
+                  const openExternal = window.api?.shellOpenExternal;
                   if (!openExternal) throw new Error('shell bridge unavailable');
                   const opened = await openExternal(url);
                   if (opened?.error) throw new Error(opened.error);
@@ -442,6 +445,16 @@ export function DiscordPage({
                                 t('discord.nav_saba'),
                                 <span>{t('discord.nav_saba_sub')}</span>,
                             )}
+                        {extNav.map((p) =>
+                            navItem(
+                                p.id,
+                                view.kind === 'ext' && view.id === p.id,
+                                () => go({ kind: 'ext', id: p.id }),
+                                <Icon name={p.icon} size="sm" />,
+                                p.label,
+                                p.description ? <span>{p.description}</span> : undefined,
+                            ),
+                        )}
                         <div className="dc-nav-group">
                             <span>{t('discord.nav_nodes')}</span>
                             {cloudState === 'connected' && (
@@ -500,7 +513,7 @@ export function DiscordPage({
                                 <Icon name="chevronLeft" size="sm" /> {t('discord.back_to_menu')}
                             </button>
                         )}
-                        {view.kind === 'connection' && (
+                        {(view.kind === 'connection' || (view.kind === 'ext' && !extView)) && (
                             <ConnectionView
                                 cloudState={cloudState}
                                 hostId={discordCloudHostId}
@@ -543,6 +556,7 @@ export function DiscordPage({
                             />
                         )}
                         {view.kind === 'saba' && chatbotAvailable() && <ChatbotView nodes={cloudNodes} />}
+                        {extView && <SlotView entry={extView.entry} slotId="Discord.nav" guilds={cloudNodes} t={t} />}
                     </div>
                 </main>
             )}

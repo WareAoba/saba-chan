@@ -133,8 +133,13 @@ pub fn is_allowed_request(method: &reqwest::Method, path: &str) -> bool {
 /// 확인되지 않은 구성요소 동의 기록 (native::sandbox_consent_allow가 확인 창을 띄운 뒤 보낸다)
 const CONSENT_ROUTES: &[&str] = &["/api/sandbox/unisolated", "/api/sandbox/extension-gui"];
 
-/// 업데이터 실행(relaunch 대상), 클라이언트 등록, 데몬 종료는 셸 명령으로만 부른다
-const RESERVED_ROUTES: &[&str] = &["/api/updates/launch-updater", "/api/client", "/api/daemon/shutdown"];
+/// 업데이터 실행(relaunch 대상: launch-updater·restart), 클라이언트 등록, 데몬 종료는 셸 명령으로만 부른다
+const RESERVED_ROUTES: &[&str] = &[
+    "/api/updates/launch-updater",
+    "/api/updates/restart",
+    "/api/client",
+    "/api/daemon/shutdown",
+];
 
 /// 머리에 실을 수 있게 퍼센트 인코딩 (이름은 한국어일 수 있다)
 fn encode_target(s: &str) -> String {
@@ -466,6 +471,7 @@ mod tests {
             "/healthz",
             "/api/x#frag",
             "/api/updates/launch-updater",
+            "/api/updates/restart",
             "/api/client/register",
             "/api/Client/heartbeat",
             "/api/daemon/shutdown",

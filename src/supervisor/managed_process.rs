@@ -21,6 +21,8 @@ mod runner;
 pub use runner::{clear_run_dir, run_dir, runner_server_pid};
 pub use runner::{MemoryLimitAtStart, RunnerLaunch, RunnerMissing};
 pub use runner::{latest_session_log, runner_binary, sessions_dir, DEFAULT_LOG_SESSIONS};
+#[allow(unused_imports)] // 바이너리에서는 아직 코어 교체 판정을 부르는 곳이 없다
+pub use runner::READS_RUNNER_FORMATS;
 
 /// Console log file name within the instance's logs directory.
 const CONSOLE_LOG_FILENAME: &str = "console.log";
@@ -267,6 +269,8 @@ pub struct ManagedProcess {
     pub log_follower: bool,
     /// saba-runner가 띄웠으면 러너 PID. 러너를 죽이면 러너의 Job Object가 서버 트리 전체를 끝낸다
     pub runner_pid: Option<u32>,
+    /// saba-runner가 runner.json에 적은 형식 번호 (`saba_runner::RUNNER_FORMAT`). 러너가 없으면 None
+    pub runner_format: Option<u32>,
     /// saba-runner의 stdin 포트와 토큰. 인터럽트(Ctrl+C)를 부탁할 때 쓴다 (`interrupt`)
     runner_control: Option<(u16, String)>,
 }
@@ -409,63 +413,24 @@ impl ManagedProcess {
         let (stdin_tx, stdin_rx) = mpsc::channel::<StdinLine>(256);
         let (running_tx, running_rx) = watch::channel(true);
 
-        let mut buf = LogBuffer::new();
-        // Attach disk writer if instance_dir is provided
-        if let Some(dir) = instance_dir {
-            let log_path = console_log_path(dir);
-            buf.file_tx = Some(spawn_disk_writer(log_path));
-        }
-        let log_buffer = Arc::new(Mutex::new(buf));
+        let log_buffer = console_buffer(instance_dir);
         let running_tx = Arc::new(running_tx);
 
         // Compile log pattern regex (shared across stdout/stderr readers)
-        let log_regex = log_pattern.and_then(|pat| {
-            match Regex::new(pat) {
-                Ok(re) => Some(Arc::new(re)),
-                Err(e) => {
-                    tracing::warn!("Invalid log_pattern '{}': {}, falling back to default", pat, e);
-                    None
-                }
-            }
-        });
+        let log_regex = log_level_regex(log_pattern).map(Arc::new);
 
         // Take ownership of stdio handles
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let stdin = child.stdin.take();
 
-        // ── stdout reader ────────────────────────────────────
+        // ── stdout·stderr reader ─────────────────────────────
         let mut readers = Vec::new();
         if let Some(stdout) = stdout {
-            let buf = log_buffer.clone();
-            let re = log_regex.clone();
-            readers.push(tokio::spawn(async move {
-                let mut reader = BufReader::new(stdout);
-                let mut lines = saba_runner::Lines::default();
-                while let Some(line) = next_line(&mut reader, &mut lines).await {
-                    let level = parse_log_level(&line, re.as_deref());
-                    let mut buf = buf.lock().await;
-                    if !buf.take_echo(&line) {
-                        buf.push(LogSource::Stdout, line, level);
-                    }
-                }
-            }));
+            readers.push(spawn_console_reader(stdout, LogSource::Stdout, log_buffer.clone(), log_regex.clone(), None, true));
         }
-
-        // ── stderr reader ────────────────────────────────────
         if let Some(stderr) = stderr {
-            let buf = log_buffer.clone();
-            let re = log_regex.clone();
-            readers.push(tokio::spawn(async move {
-                let mut reader = BufReader::new(stderr);
-                let mut lines = saba_runner::Lines::default();
-                while let Some(line) = next_line(&mut reader, &mut lines).await {
-                    let level = parse_log_level(&line, re.as_deref());
-                    // stderr lines default to at least Warn
-                    let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
-                    buf.lock().await.push(LogSource::Stderr, line, effective);
-                }
-            }));
+            readers.push(spawn_console_reader(stderr, LogSource::Stderr, log_buffer.clone(), log_regex.clone(), None, true));
         }
 
         // ── stdin writer ─────────────────────────────────────
@@ -528,6 +493,7 @@ impl ManagedProcess {
             working_dir: Some(PathBuf::from(working_dir)),
             log_follower: false,
             runner_pid: None,
+            runner_format: None,
             runner_control: None,
         })
     }
@@ -611,74 +577,20 @@ impl ManagedProcess {
         let (stdin_tx, _stdin_rx) = mpsc::channel::<StdinLine>(1);
         let (running_tx, running_rx) = watch::channel(true);
 
-        let mut buf = LogBuffer::new();
-        if let Some(dir) = instance_dir {
-            let log_path = console_log_path(dir);
-            buf.file_tx = Some(spawn_disk_writer(log_path));
-        }
-        let log_buffer = Arc::new(Mutex::new(buf));
+        let log_buffer = console_buffer(instance_dir);
         let running_tx = Arc::new(running_tx);
 
-        let log_regex = log_pattern.and_then(|pat| {
-            match regex::Regex::new(pat) {
-                Ok(re) => Some(Arc::new(re)),
-                Err(e) => {
-                    tracing::warn!("Invalid log_pattern '{}': {}", pat, e);
-                    None
-                }
-            }
-        });
+        let log_regex = log_level_regex(log_pattern).map(Arc::new);
 
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
-        // ── stdout reader ──
+        // ── stdout·stderr reader ──
         if let Some(stdout) = stdout {
-            let buf = log_buffer.clone();
-            let re = log_regex.clone();
-            let prefix = strip_prefix.map(String::from);
-            tokio::spawn(async move {
-                let mut reader = BufReader::new(stdout);
-                let mut lines = saba_runner::Lines::default();
-                while let Some(line) = next_line(&mut reader, &mut lines).await {
-                    let content = if let Some(ref sep) = prefix {
-                        if let Some(pos) = line.find(sep.as_str()) {
-                            line[pos + sep.len()..].to_string()
-                        } else {
-                            line
-                        }
-                    } else {
-                        line
-                    };
-                    let level = parse_log_level(&content, re.as_deref());
-                    buf.lock().await.push(LogSource::Stdout, content, level);
-                }
-            });
+            spawn_console_reader(stdout, LogSource::Stdout, log_buffer.clone(), log_regex.clone(), strip_prefix.map(String::from), false);
         }
-
-        // ── stderr reader ──
         if let Some(stderr) = stderr {
-            let buf = log_buffer.clone();
-            let re = log_regex;
-            let prefix = strip_prefix.map(String::from);
-            tokio::spawn(async move {
-                let mut reader = BufReader::new(stderr);
-                let mut lines = saba_runner::Lines::default();
-                while let Some(line) = next_line(&mut reader, &mut lines).await {
-                    let content = if let Some(ref sep) = prefix {
-                        if let Some(pos) = line.find(sep.as_str()) {
-                            line[pos + sep.len()..].to_string()
-                        } else {
-                            line
-                        }
-                    } else {
-                        line
-                    };
-                    let level = parse_log_level(&content, re.as_deref());
-                    let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
-                    buf.lock().await.push(LogSource::Stderr, content, effective);
-                }
-            });
+            spawn_console_reader(stderr, LogSource::Stderr, log_buffer.clone(), log_regex, strip_prefix.map(String::from), false);
         }
 
         // ── process waiter ──
@@ -717,6 +629,7 @@ impl ManagedProcess {
             working_dir: Some(working_dir.to_path_buf()),
             log_follower: true,
             runner_pid: None,
+            runner_format: None,
             runner_control: None,
         })
     }
@@ -836,6 +749,7 @@ impl ManagedProcess {
             working_dir: None,
             log_follower: false,
             runner_pid: None,
+            runner_format: None,
             runner_control: None,
         }
     }
@@ -880,6 +794,12 @@ impl ManagedProcessStore {
             .filter(|(_, proc)| proc.is_running())
             .map(|(id, _)| id.clone())
             .collect()
+    }
+
+    /// 등록된 프로세스 전부 (인스턴스 ID와 함께). 락은 복사하는 동안만 쥔다
+    pub async fn snapshot(&self) -> Vec<(String, Arc<ManagedProcess>)> {
+        let map = self.processes.lock().await;
+        map.iter().map(|(id, proc)| (id.clone(), proc.clone())).collect()
     }
 
     /// Clean up processes that are no longer running.
@@ -1027,6 +947,59 @@ pub fn latest_console_log(instance_dir: &Path) -> PathBuf {
         Some(session) if modified(&session) >= modified(&direct) => session,
         _ => direct,
     }
+}
+
+/// 콘솔 버퍼. 인스턴스 폴더가 있으면 모든 줄을 디스크(`console_log_path`)에도 쓴다
+fn console_buffer(instance_dir: Option<&Path>) -> Arc<Mutex<LogBuffer>> {
+    let mut buf = LogBuffer::new();
+    if let Some(dir) = instance_dir {
+        buf.file_tx = Some(spawn_disk_writer(console_log_path(dir)));
+    }
+    Arc::new(Mutex::new(buf))
+}
+
+/// 모듈 `log_pattern`(줄의 로그 수준을 읽는 정규식). 잘못된 패턴이면 기본 수준을 쓴다
+fn log_level_regex(pattern: Option<&str>) -> Option<Regex> {
+    let pattern = pattern?;
+    match Regex::new(pattern) {
+        Ok(re) => Some(re),
+        Err(e) => {
+            tracing::warn!("Invalid log_pattern '{}': {}, falling back to default", pattern, e);
+            None
+        }
+    }
+}
+
+/// 프로세스 출력을 한 줄씩 콘솔 버퍼로 옮긴다. stderr는 Info를 Warn으로 올린다.
+/// `echo`면 stdout에서 방금 보낸 명령의 되풀이를 거른다 (stdin이 없는 로그 follower는 거르지 않는다).
+/// `strip_prefix`가 있으면 줄에서 그 구분자까지를 뗀다 (예: compose 로그의 " | ")
+fn spawn_console_reader<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
+    stream: R,
+    source: LogSource,
+    buf: Arc<Mutex<LogBuffer>>,
+    re: Option<Arc<Regex>>,
+    strip_prefix: Option<String>,
+    echo: bool,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut reader = BufReader::new(stream);
+        let mut lines = saba_runner::Lines::default();
+        while let Some(line) = next_line(&mut reader, &mut lines).await {
+            let content = match strip_prefix.as_deref().and_then(|sep| line.find(sep).map(|pos| pos + sep.len())) {
+                Some(start) => line[start..].to_string(),
+                None => line,
+            };
+            let level = parse_log_level(&content, re.as_deref());
+            let mut buf = buf.lock().await;
+            if source == LogSource::Stderr {
+                // stderr lines default to at least Warn
+                let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
+                buf.push(LogSource::Stderr, content, effective);
+            } else if !(echo && buf.take_echo(&content)) {
+                buf.push(source, content, level);
+            }
+        }
+    })
 }
 
 /// Spawn a background task that writes log lines to a file.

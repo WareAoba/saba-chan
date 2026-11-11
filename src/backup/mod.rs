@@ -343,29 +343,19 @@ fn known_files(dir: &Path) -> std::collections::HashMap<PathBuf, (u64, u64, Stri
 /// 이미 있는 파일이 크기가 다르거나 풀어 본 내용의 해시가 맞지 않으면 망가진 것으로 보고 바꿔 넣는다 (망가진 내용을 다음 백업이 물려받지 않게).
 /// 디스크에 내리는 일(fsync)은 부른 쪽이 백업을 마치기 전에 한꺼번에 한다
 fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathBuf>)> {
-    use sha2::Digest;
-    use std::io::{Read, Write};
     let objects = dir.join(OBJECTS);
     fs::create_dir_all(&objects)?;
     let tmp = objects.join(format!(".tmp-{}", uuid::Uuid::new_v4().simple()));
     let written = (|| -> Result<(String, u64)> {
         // 서버가 쓰는 중이라 잠긴 파일(Windows)은 건너뛰지 않고 실패로 알린다: 반쪽 백업을 믿지 않게
-        let mut src = File::open(path).map_err(|e| read_error(e, path))?;
+        let src = File::open(path).map_err(|e| read_error(e, path))?;
         let mut out = flate2::write::DeflateEncoder::new(File::create(&tmp)?, flate2::Compression::default());
-        let mut hasher = sha2::Sha256::new();
-        let mut buf = vec![0u8; 64 * 1024];
-        let mut read = 0u64;
-        loop {
-            let n = src.read(&mut buf).map_err(|e| read_error(e, path))?;
-            if n == 0 {
-                break;
-            }
-            hasher.update(&buf[..n]);
-            out.write_all(&buf[..n])?;
-            read += n as u64;
+        let mut src = Hashing::new(src);
+        if let Err(e) = src.copy_to(&mut out) {
+            return Err(if src.read_failed { read_error(e, path) } else { e.into() });
         }
         out.finish()?;
-        Ok((hex::encode(hasher.finalize()), read))
+        Ok(src.finish())
     })();
     let (hash, read) = match written {
         Ok(v) => v,
@@ -437,24 +427,48 @@ fn object_intact(object: &Path, hash: &str, size: u64) -> bool {
 }
 
 fn object_unpacks_to(object: &Path, hash: &str, size: u64) -> bool {
-    use sha2::Digest;
-    use std::io::Read;
     let Ok(file) = File::open(object) else { return false };
-    let mut src = flate2::read::DeflateDecoder::new(file);
-    let mut hasher = sha2::Sha256::new();
-    let mut buf = vec![0u8; 64 * 1024];
-    let mut read = 0u64;
-    loop {
-        match src.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                hasher.update(&buf[..n]);
-                read += n as u64;
-            }
-            Err(_) => return false,
-        }
+    let mut src = Hashing::new(flate2::read::DeflateDecoder::new(file));
+    if src.copy_to(&mut io::sink()).is_err() {
+        return false;
     }
-    read == size && hex::encode(hasher.finalize()) == hash
+    src.finish() == (hash.to_string(), size)
+}
+
+/// 읽는 내용의 SHA-256과 바이트 수를 함께 센다. 실패가 읽기에서 났는지(`read_failed`)도 적는다 (쓰기 실패와 가르려고)
+struct Hashing<R> {
+    inner: R,
+    hasher: sha2::Sha256,
+    read: u64,
+    read_failed: bool,
+}
+
+impl<R: io::Read> Hashing<R> {
+    fn new(inner: R) -> Self {
+        use sha2::Digest;
+        Self { inner, hasher: sha2::Sha256::new(), read: 0, read_failed: false }
+    }
+
+    /// 끝까지 읽어 `out`에 쓴다 (64 KiB씩)
+    fn copy_to(&mut self, out: &mut impl io::Write) -> io::Result<u64> {
+        io::copy(&mut io::BufReader::with_capacity(64 * 1024, self), out)
+    }
+
+    /// (해시 hex, 읽은 바이트)
+    fn finish(self) -> (String, u64) {
+        use sha2::Digest;
+        (hex::encode(self.hasher.finalize()), self.read)
+    }
+}
+
+impl<R: io::Read> io::Read for Hashing<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        use sha2::Digest;
+        let n = self.inner.read(buf).inspect_err(|e| self.read_failed = e.kind() != io::ErrorKind::Interrupted)?;
+        self.hasher.update(&buf[..n]);
+        self.read += n as u64;
+        Ok(n)
+    }
 }
 
 /// 판 2 백업 쓰기 중의 상태
@@ -709,17 +723,26 @@ fn add_dir(zip: &mut zip::ZipWriter<File>, dir: &Path, prefix: &str, opts: zip::
 }
 
 fn info(path: &Path) -> Option<BackupInfo> {
-    let name = path.file_name()?.to_str()?.to_string();
-    let kind = BackupKind::from_name(&name)?;
+    info_checked(path).ok().flatten()
+}
+
+/// `info`와 같지만 파일의 메타데이터를 읽지 못한 것(권한·입출력 오류)을 오류로 돌려준다. 이름이 맞지 않거나 그사이 지워진 항목은 `Ok(None)`
+fn info_checked(path: &Path) -> io::Result<Option<BackupInfo>> {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()).map(str::to_string) else { return Ok(None) };
+    let Some(kind) = BackupKind::from_name(&name) else { return Ok(None) };
     let meta = match fs::metadata(path) {
         Ok(meta) if meta.is_file() => meta,
-        Ok(_) => return None,
+        Ok(_) => return Ok(None),
         // 대상이 없는 링크: 정리를 멈추니 열 수 없는 백업으로 보인다
-        Err(_) => {
-            fs::symlink_metadata(path).ok()?;
-            let made = name_time_ns(&name).unwrap_or(0);
-            return Some(BackupInfo { name, kind, created: made / 1_000_000_000, size: 0, stored: 0, readable: false, made });
-        }
+        Err(first) => match fs::symlink_metadata(path) {
+            Ok(_) => {
+                let made = name_time_ns(&name).unwrap_or(0);
+                return Ok(Some(BackupInfo { name, kind, created: made / 1_000_000_000, size: 0, stored: 0, readable: false, made }));
+            }
+            // 그사이 지워졌다
+            Err(e) if e.kind() == io::ErrorKind::NotFound && first.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e),
+        },
     };
     let modified = mtime_ns(&meta);
     // 판 2는 요약을 읽는다. 판 1(요약 없음)이나 읽지 못하면 zip 크기.
@@ -730,7 +753,7 @@ fn info(path: &Path) -> Option<BackupInfo> {
     // 판 1은 0.1.8까지 만든 것이다: 수정 시각이 새로 찍힌 사본(옮겼다 되돌린 것)도 이름의 시각보다 새것으로 보지 않는다
     let v1_made = name_time_ns(&name).map_or(modified, |named| named.min(modified));
     let (size, stored, made) = summary.map_or((meta.len(), meta.len(), v1_made), |s| (s.size, s.stored, if s.started > 0 { s.started } else { modified }));
-    Some(BackupInfo { name, kind, created: made / 1_000_000_000, size, stored, readable, made })
+    Ok(Some(BackupInfo { name, kind, created: made / 1_000_000_000, size, stored, readable, made }))
 }
 
 /// 이름 앞의 지역 시각(`YYYYMMDD-HHMMSS`)을 유닉스 나노초로
@@ -740,16 +763,58 @@ fn name_time_ns(name: &str) -> Option<u64> {
     u64::try_from(local.timestamp_nanos_opt()?).ok()
 }
 
+/// 복원 전 안전 백업을 서버를 켠 뒤 이만큼 지나면 치운다 (복원 뒤 접속해 확인할 시간)
+pub const RESTORE_SAFETY_GRACE_SECS: u64 = 15 * 60;
+
+/// 지금 돌고 있는 서버(`started_at`에 켬, 유닉스 초)가 `RESTORE_SAFETY_GRACE_SECS` 넘게 돌았으면,
+/// 그 전에 만든 복원 전 백업의 이름. 아직 켜지 않은 서버의 복원 전 백업은 대상이 아니다 (호출자가 돌고 있을 때만 부른다)
+pub fn expired_restore_safeties(list: &[BackupInfo], started_at: u64, now: u64) -> Vec<String> {
+    if now < started_at.saturating_add(RESTORE_SAFETY_GRACE_SECS) {
+        return Vec::new();
+    }
+    list.iter()
+        // 켠 시각은 초 단위라 그 초가 끝나기 전에 만든 백업까지 켜기 전의 것으로 본다 (복원은 서버가 꺼진 동안만 한다)
+        .filter(|b| b.kind == BackupKind::PreRestore && b.made < started_at.saturating_add(1).saturating_mul(1_000_000_000))
+        .map(|b| b.name.clone())
+        .collect()
+}
+
+/// 백업 폴더가 디스크에 차지하는 크기 (백업 파일과 내용 저장소). 줄마다의 `size`와 달리 같은 내용을 한 번만 센다
+pub fn total_bytes(dir: &Path) -> u64 {
+    fn walk(path: &Path) -> u64 {
+        fs::read_dir(path)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| match e.metadata() {
+                Ok(m) if m.is_dir() => walk(&e.path()),
+                Ok(m) => m.len(),
+                Err(_) => 0,
+            })
+            .sum()
+    }
+    walk(dir)
+}
+
 /// 새것부터
 pub fn list(dir: &Path) -> Vec<BackupInfo> {
-    let mut out: Vec<BackupInfo> = fs::read_dir(dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| info(&e.path()))
-        .collect();
+    list_checked(dir).unwrap_or_default()
+}
+
+/// `list`와 같지만 폴더를 읽지 못한 것(권한·입출력 오류)을 빈 목록과 구별한다. 폴더가 아직 없으면 빈 목록이다
+pub fn list_checked(dir: &Path) -> io::Result<Vec<BackupInfo>> {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    // 항목 하나를 읽지 못한 것도 오류다: 일부만 담은 목록을 전체로 보면 빠진 백업을 다시 살피지 않는다
+    let mut out: Vec<BackupInfo> = Vec::new();
+    for entry in entries {
+        out.extend(info_checked(&entry?.path())?);
+    }
     out.sort_by(|a, b| b.made.cmp(&a.made).then_with(|| b.name.cmp(&a.name)));
-    out
+    Ok(out)
 }
 
 /// API로 받은 백업 이름이 잘못됐거나(`Invalid`) 그 백업이 없다(`Missing`). 호출자는 400·404로 알린다
@@ -797,7 +862,15 @@ pub fn prune(dir: &Path, keep: usize, protect: &[&str]) -> Vec<String> {
     let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     // 종류마다 따로 센다: 업데이트 전·복원 전 안전 백업이 예약 백업을 밀어내지 않게
     let mut seen: std::collections::HashMap<BackupKind, usize> = std::collections::HashMap::new();
-    let removed: Vec<String> = list(dir)
+    // 목록을 읽지 못하면 아무것도 지우지 않고 알린다 (일부만 본 목록으로 정리하면 보호할 것을 잘못 셀 수 있다)
+    let listed = match list_checked(dir) {
+        Ok(listed) => listed,
+        Err(e) => {
+            tracing::warn!("Not pruning backups: could not list {}: {}", dir.display(), e);
+            return Vec::new();
+        }
+    };
+    let removed: Vec<String> = listed
         .into_iter()
         .filter(|b| !matches!(b.kind, BackupKind::Manual | BackupKind::Snapshot))
         .filter(|b| {
@@ -850,11 +923,6 @@ fn open(dir: &Path, name: &str) -> Result<Opened> {
     let mut zip = zip::ZipArchive::new(File::open(&path)?)?;
     let manifest: Manifest = serde_json::from_reader(zip.by_name(MANIFEST).context("not a saba-chan backup")?)?;
     Ok(Opened::V1(zip, manifest))
-}
-
-/// 링크를 통과하지 않고 실제 경로가 허용 루트 안에 있는가. 없는 대상은 기존 조상부터 확인한다
-pub fn is_inside(path: &Path, roots: &[PathBuf]) -> bool {
-    crate::module_paths::is_inside(path, roots)
 }
 
 /// 복원 결과
@@ -917,7 +985,7 @@ pub fn restore(dir: &Path, name: &str) -> Result<Restored> {
     // 아카이브의 파일을 모두 쓴 뒤 링크를 만든다. 앞선 링크가 다음 파일의 출력 경로를 바꾸지 못한다.
     for link in links.iter().filter(|l| touched.iter().any(|(path, _)| {
         let root = PathBuf::from(path);
-        !root.is_file() && is_inside(&l.path, std::slice::from_ref(&root))
+        !root.is_file() && crate::module_paths::is_inside(&l.path, std::slice::from_ref(&root))
     })) {
         if let Err(e) = make_link(link) {
             tracing::warn!("Could not restore link {} -> {}: {}", link.path.display(), link.target.display(), e);
@@ -972,24 +1040,13 @@ fn remove_any(path: &Path) {
 
 /// 저장소의 내용 하나를 `out`에 쓴다. 해시·크기가 맞지 않으면(망가진 내용) 실패한다
 fn write_object(dir: &Path, file: &StoredFile, out: &Path) -> Result<()> {
-    use sha2::Digest;
-    use std::io::{Read, Write};
     let object = object_path(dir, &file.hash)?;
-    let mut src = flate2::read::DeflateDecoder::new(File::open(&object).context("backup content is missing")?);
+    let mut src = Hashing::new(flate2::read::DeflateDecoder::new(File::open(&object).context("backup content is missing")?));
     let mut dst = File::create(out)?;
-    let mut hasher = sha2::Sha256::new();
-    let mut buf = vec![0u8; 64 * 1024];
-    let mut written = 0u64;
-    loop {
-        let n = src.read(&mut buf).context("backup content is damaged")?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-        dst.write_all(&buf[..n])?;
-        written += n as u64;
+    if let Err(e) = src.copy_to(&mut dst) {
+        return Err(if src.read_failed { anyhow::Error::new(e).context("backup content is damaged") } else { e.into() });
     }
-    if written != file.size || hex::encode(hasher.finalize()) != file.hash {
+    if src.finish() != (file.hash.clone(), file.size) {
         bail!("backup content is damaged");
     }
     Ok(())
@@ -1062,8 +1119,8 @@ mod tests {
         assert!(std::process::Command::new("cmd").args(["/c", "mklink", "/J"]).arg(&link).arg(&real).output().unwrap().status.success());
         #[cfg(unix)]
         std::os::unix::fs::symlink(&real, &link).unwrap();
-        assert!(is_inside(&root.join("new/deleted/world"), std::slice::from_ref(&root)));
-        assert!(!is_inside(&link.join("deleted/world"), &[root]));
+        assert!(crate::module_paths::is_inside(&root.join("new/deleted/world"), std::slice::from_ref(&root)));
+        assert!(!crate::module_paths::is_inside(&link.join("deleted/world"), &[root]));
     }
 
     /// 0.1.8까지 만든 모양(판 1)의 백업
@@ -1394,6 +1451,74 @@ mod tests {
         restore(&dir, &made).unwrap();
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
         assert_eq!(fs::read(leftover.join("kept.txt")).unwrap(), b"original");
+    }
+
+    /// 복원 전 백업은 그 뒤에 켠 서버가 15분을 버텼을 때만 치운다: 아직 안 켰거나 켠 지 얼마 안 됐으면 그대로 둔다
+    #[test]
+    fn restore_safety_backups_expire_after_the_server_has_run_a_while() {
+        let info = |name: &str, kind, made_ns: u64| BackupInfo { name: name.into(), kind, created: made_ns / 1_000_000_000, size: 0, stored: 0, readable: true, made: made_ns };
+        let all = vec![
+            info("before-start-pre-restore.zip", BackupKind::PreRestore, 100 * 1_000_000_000),
+            // 켠 시각은 초 단위로 내려 적히므로, 같은 초 안에 만든 백업도 켜기 전의 것이다 (복원과 시작이 같은 초에 끝난 경우)
+            info("same-second-pre-restore.zip", BackupKind::PreRestore, 1000 * 1_000_000_000 + 900_000_000),
+            info("after-start-pre-restore.zip", BackupKind::PreRestore, 1001 * 1_000_000_000),
+            info("old-manual.zip", BackupKind::Manual, 100 * 1_000_000_000),
+            info("old-update.zip", BackupKind::PreUpdate, 100 * 1_000_000_000),
+        ];
+        let start = 1000;
+        assert!(expired_restore_safeties(&all, start, start + RESTORE_SAFETY_GRACE_SECS - 1).is_empty(), "not yet 15 minutes");
+        assert_eq!(
+            expired_restore_safeties(&all, start, start + RESTORE_SAFETY_GRACE_SECS),
+            vec!["before-start-pre-restore.zip".to_string(), "same-second-pre-restore.zip".to_string()]
+        );
+    }
+
+    /// 백업 전체 용량은 디스크에 실제로 있는 크기다: 같은 내용을 가진 두 백업이 내용 저장소를 나눠 쓰므로 줄 크기의 합보다 작다
+    #[test]
+    fn total_bytes_counts_shared_content_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        assert_eq!(total_bytes(&dir), 0);
+        let first = create(&dir, BackupKind::Manual, &[w.clone()]).unwrap();
+        let one = total_bytes(&dir);
+        assert!(one > 0);
+        let second = create(&dir, BackupKind::Manual, &[w.clone()]).unwrap();
+        assert_eq!(second.stored, 0);
+        let two = total_bytes(&dir);
+        assert!(two > one && two < one * 2, "{one} -> {two}: only the small manifest is added");
+        delete(&dir, &first.name).unwrap();
+        delete(&dir, &second.name).unwrap();
+        assert_eq!(total_bytes(&dir), 0, "unused content is cleared with the last backup");
+    }
+
+    /// 폴더를 읽지 못한 것은 빈 목록이 아니다: 없는 폴더만 빈 목록이다
+    #[test]
+    fn list_checked_tells_an_unreadable_folder_from_an_empty_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(list_checked(&tmp.path().join("missing")).unwrap().is_empty());
+        let file = tmp.path().join("not-a-folder");
+        fs::write(&file, b"x").unwrap();
+        assert!(list_checked(&file).is_err());
+        assert!(list(&file).is_empty());
+    }
+
+    /// 백업 파일의 메타데이터를 읽지 못한 것은 목록에서 빠지는 것이 아니라 오류다 (루트로 돌면 권한이 막지 못해 건너뛴다)
+    #[cfg(unix)]
+    #[test]
+    fn list_checked_reports_an_entry_it_cannot_stat() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("backups");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("20000101-000001-000-manual.zip"), b"x").unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o444)).unwrap();
+        let blocked = fs::metadata(dir.join("20000101-000001-000-manual.zip")).is_err();
+        let listed = list_checked(&dir);
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        if blocked {
+            assert!(listed.is_err(), "an entry that cannot be stat'ed must fail the whole listing");
+        }
     }
 
     #[test]

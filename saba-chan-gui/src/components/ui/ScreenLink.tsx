@@ -32,6 +32,7 @@ export function screenPath(screen: ScreenAddress, t: TFunction): string[] {
             steps.push(t('shell.nav_settings'));
             if (screen.tab && screen.tab in SETTINGS_TAB_LABELS) {
                 steps.push(t(SETTINGS_TAB_LABELS[screen.tab as keyof typeof SETTINGS_TAB_LABELS]));
+                if (screen.tab === 'sabaStorage' && screen.sub) steps.push(known(`saba_storage.tab_${screen.sub}`));
             }
             break;
         case 'activity':

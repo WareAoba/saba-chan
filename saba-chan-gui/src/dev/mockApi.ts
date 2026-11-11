@@ -1,5 +1,5 @@
 /**
- * 개발용 가짜 window.api — Electron 없이 `npm run dev`로 브라우저에서 화면을 볼 때만 쓴다.
+ * 개발용 가짜 window.api — Tauri 셸 없이 `npm run dev`로 브라우저에서 화면을 볼 때만 쓴다.
  * index.js가 DEV 빌드이고 window.api가 없을 때만 설치한다. 프로덕션 번들에는 들어가지 않는다.
  */
 import type { SabaApi } from '../api/createApi';
@@ -297,14 +297,40 @@ const mockNoServers = params.get('servers') === '0'; // 빈 화면 보기
 const mockFailed = params.get('failed') // 불러오지 못한 모듈 보기
     ? [{ path: 'modules/terraria', error: "module.toml: unknown field 'protocl' (did you mean 'protocol'?)" }]
     : [];
+const mockMac = params.get('mac') === '1'; // 모듈 없이 처음 연 맥(Apple 실리콘) 보기
+// 처음 시작하기 가이드 보기: ?discord=1 연결됨, ?started=0 아직 한 번도 안 켬, ?running=1 불러올 폴더의 서버가 켜져 있음
+const mockDiscord = params.get('discord') === '1';
+const mockStarted = params.get('started') !== '0';
+const mockRunningFolder = params.get('running') === '1';
+let mockModulesInstalled = !mockMac && params.get('modules') !== '0'; // ?modules=0 모듈 없이 처음 연 PC
 const settings = {};
+// 받을 수 있는 모듈 (릴레이 0.1.13 카탈로그 모양). 맥 보기에서는 데몬처럼 OS·CPU를 판정해 싣는다
+const ICON = (m: string) => `https://raw.githubusercontent.com/WareAoba/saba-chan-modules/7c3454c70064459b8f4f82c1cd492e590e29e6cc/${m}/icon.png`;
+const catalog: Record<string, Record<string, unknown>> = {
+    minecraft: { display_name: 'Minecraft', display_names: { ko: '마인크래프트' }, description: 'Minecraft server management module with full lifecycle control', descriptions: { ko: '마인크래프트 서버 관리 모듈 (전체 수명주기 제어)' }, icon: ICON('minecraft'), version: '0.1.12', size_bytes: 713031, architectures: ['x86_64', 'aarch64'] },
+    palworld: { display_name: 'Palworld', display_names: { ko: '팰월드' }, description: 'Palworld server management module', descriptions: { ko: '팰월드 서버 관리 모듈' }, icon: ICON('palworld'), version: '0.1.12', size_bytes: 220201, architectures: ['x86_64'] },
+    terraria: { display_name: 'Terraria', display_names: { ko: '테라리아' }, description: 'Terraria dedicated server', descriptions: { ko: '테라리아 데디케이티드 서버' }, icon: ICON('terraria'), version: '0.1.5', size_bytes: 73400, platforms: ['windows', 'linux'], architectures: ['x86_64'] },
+    zomboid: { display_name: 'Project Zomboid', display_names: { ko: '프로젝트 좀보이드' }, description: 'Project Zomboid dedicated server management module', descriptions: { ko: '프로젝트 좀보이드 전용 서버 관리 모듈 (전체 수명주기 제어)' }, icon: ICON('zomboid'), version: '0.1.11', size_bytes: 618659, architectures: ['x86_64'] },
+};
+const judged = (info: Record<string, unknown>) => {
+    if (!mockMac) return { ...info, platform_supported: true };
+    const os = Array.isArray(info.platforms) && !info.platforms.includes('macos');
+    const arch = Array.isArray(info.architectures) && !info.architectures.includes('aarch64');
+    return { ...info, platform_supported: !os && !arch, ...(os ? { unsupported_reason: 'os' } : arch ? { unsupported_reason: 'arch' } : {}) };
+};
 
 // biome-ignore lint/suspicious/noExplicitAny: 인자 모양이 호출마다 다른 가짜 api 함수
 type MockFn = (...args: any[]) => unknown;
 
 const impl: Record<string, MockFn> = {
     serverList: () => ok({ servers: mockNoServers ? [] : servers.map((s) => ({ ...s })) }),
-    moduleList: () => ok({ modules, failed: mockFailed }),
+    moduleList: () => ok({ modules: mockModulesInstalled ? modules : [], failed: mockFailed }),
+    moduleInstallFromManifest: () => {
+        mockModulesInstalled = true;
+        return new Promise((r) => setTimeout(() => r({ ok: true }), 600));
+    },
+    moduleManifest: () =>
+        ok({ ok: true, manifest: { modules: Object.fromEntries(Object.entries(catalog).map(([id, info]) => [id, judged(info)])) } }),
     instanceEvents: () =>
         ok({
             events: [
@@ -417,7 +443,13 @@ const impl: Record<string, MockFn> = {
                 },
             ],
         }),
-    migrationScanDir: () => ok({ ok: true, matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
+    migrationScanDir: () =>
+        ok({
+            ok: true,
+            matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }],
+            notices: mockRunningFolder ? ['server_running'] : [],
+        }),
+    openFolderDialog: () => ok('D:\\Servers\\survival'),
     settingsLoad: () => ok(settings),
     settingsSave: (s) => {
         Object.assign(settings, s);
@@ -550,13 +582,20 @@ const impl: Record<string, MockFn> = {
         const mod = modules.find((m) => m.name === srv?.module);
         return ok({
             commands: [
-                ...(mod?.commands?.fields || []).map((f) => ({ ...f, risk: f.risk || 'caution', source: 'module' })),
+                // ready: 데몬처럼 켜진 서버의 모듈 명령만 지금 보낼 수 있다 (익스텐션 명령은 늘)
+                ...(mod?.commands?.fields || []).map((f) => ({
+                    ...f,
+                    risk: f.risk || 'caution',
+                    source: 'module',
+                    ready: srv?.status === 'running',
+                })),
                 {
                     name: 'backup-now',
                     label: '지금 백업',
                     risk: 'caution',
                     source: 'extension',
                     extension: 'world-backup',
+                    ready: true,
                 },
             ],
         });
@@ -875,37 +914,26 @@ const impl: Record<string, MockFn> = {
                       },
         }),
     extensionList: () => ok({ extensions: [] }),
-    // 디스코드에서 코드 없이 연결 요청 (J1-b)
-    relayLinkRequests: () =>
-        ok({
-            requests: [
-                {
-                    requestId: 'lr-1',
-                    guildId: '900',
-                    guildName: '마크 친구들',
-                    userName: 'aoba',
-                    expiresAt: new Date(Date.now() + 600_000).toISOString(),
-                },
-            ],
-        }),
-    relayLinkRequestRespond: (_id, accept) =>
-        ok(accept ? { ok: true, guildId: '900', guildName: '마크 친구들' } : { ok: true, declined: true }),
-    relayMcpGrant: () => ok({ grant: { clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' }, url: 'https://saba-chan.online/mcp' }),
-    relayMcpGrantRevoke: () => ok(''),
+    relayMcpGrant: () => ok({ grants: [{ id: 'mock-1', clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' }], url: 'https://saba-chan.online/mcp' }),
+    relayMcpGrantRevoke: () => ok({ ok: true }),
     relayPrivacyErase: () => ok({ url: 'https://saba-chan.online/legal/erase#mock.secret' }),
     relayPrivacyEraseStatus: () => ok({ status: 'pending' }),
-    onboarding: () =>
-        ok({
-            steps: [
-                { id: 'module', done: true, optional: false },
-                { id: 'server', done: true, optional: false },
-                { id: 'discord', done: false, optional: false },
-                { id: 'chatbot', done: false, optional: true },
-            ],
-            next: 'discord',
-        }),
+    onboarding: () => {
+        const steps = [
+            { id: 'discord', done: mockDiscord, optional: false },
+            { id: 'module', done: mockModulesInstalled, optional: false },
+            { id: 'server', done: !mockNoServers, optional: false },
+            { id: 'start', done: !mockNoServers && mockStarted, optional: false },
+            { id: 'chatbot', done: false, optional: true },
+        ];
+        return ok({ steps, next: steps.find((st) => !st.optional && !st.done)?.id ?? null });
+    },
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),
+    languageGet: () => ok('ko'),
+    playSound: () => undefined,
+    languageSet: () => ok(),
+    shellOpenExternal: () => ok(),
     // spans를 달라고 하면(하이라이트 켬) 데몬처럼 조각 토큰을 붙인다: 시각·스레드/레벨·따옴표·숫자·플레이어
     managedConsole: (_id, since = 0, _count, opts) =>
         ok({
@@ -940,12 +968,4 @@ export function installMockApi() {
             return noop;
         },
     }) as unknown as SabaApi;
-    window.electron = {
-        minimizeWindow() {},
-        maximizeWindow() {},
-        closeWindow() {},
-        getLanguage: () => ok('ko'),
-        setLanguage: () => ok(),
-        shell: { openExternal: () => ok() },
-    };
 }

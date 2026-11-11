@@ -2,7 +2,7 @@ import type { ComponentProps, ComponentType } from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../components/ExtensionSlot', () => ({ default: () => null }));
+vi.mock('../components/ExtensionSlot', () => ({ default: () => null, SlotView: () => null, useSlotPages: () => [] }));
 
 import { ServerRow as ServerRowFull } from '../components/servers/ServerRow';
 import { useServerStore } from '../stores/useServerStore';

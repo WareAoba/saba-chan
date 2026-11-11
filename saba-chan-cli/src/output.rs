@@ -162,15 +162,19 @@ impl Out {
             emit(err.to_json());
             return;
         }
-        tell!("{} {}", style("✗").red().bold(), err);
+        tell!("{} {}", style("✗").red().bold(), err.headline());
         if let crate::error::CliError::Api { body, .. } = err {
             for line in validation_lines(body) {
                 tell!("  {}", line);
             }
-            if let (Some(module), Some(function)) = (body.get("module").and_then(Value::as_str), body.get("function").and_then(Value::as_str)) {
-                tell!("  {}.{}", module, function);
+            // 모듈 함수 이름은 모듈이 남긴 오류 출력이 있을 때만 그 출처로 보인다
+            let tail: Vec<&str> = body.get("stderr_tail").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+            if !tail.is_empty()
+                && let (Some(module), Some(function)) = (body.get("module").and_then(Value::as_str), body.get("function").and_then(Value::as_str))
+            {
+                tell!("  {}", style(format!("{module}.{function}")).dim());
             }
-            for line in body.get("stderr_tail").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
+            for line in tail {
                 tell!("  {}", line);
             }
         }
@@ -191,6 +195,30 @@ fn validation_lines(body: &Value) -> Vec<String> {
 }
 
 // ── 표·값 도우미 ──
+
+/// 터미널 클립보드에 글을 넣는 OSC 52 순서열 (터미널이 받아 복사한다. 전체 화면 메뉴가 마우스를 잡아 드래그로 고를 수 없을 때)
+pub fn osc52(text: &str) -> String {
+    const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut b64 = String::new();
+    for chunk in text.as_bytes().chunks(3) {
+        let n = chunk.iter().enumerate().fold(0u32, |n, (i, b)| n | (u32::from(*b) << (16 - 8 * i)));
+        for i in 0..4 {
+            b64.push(if i <= chunk.len() { ABC[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' });
+        }
+    }
+    format!("\x1b]52;c;{b64}\x07")
+}
+
+/// stdout이 터미널이면 글을 클립보드에 넣는다 (파이프면 하지 않는다, `--json`은 부르는 쪽이 거른다). 넣으려 했으면 true
+pub fn copy_to_clipboard(text: &str) -> bool {
+    use std::io::{IsTerminal, Write};
+    let mut out = std::io::stdout();
+    if !out.is_terminal() {
+        return false;
+    }
+    let _ = out.write_all(osc52(text).as_bytes());
+    out.flush().is_ok()
+}
 
 pub fn table(headers: &[String]) -> Table {
     let mut t = Table::new();
@@ -318,22 +346,6 @@ pub fn ago(epoch_secs: u64) -> String {
     t!(&format!("time.{}_ago", unit), n = n)
 }
 
-/// UTC ISO-8601 시각(`2026-10-19T17:02:57.000Z`) → epoch 초. 다른 모양이면 None
-pub fn iso_epoch(iso: &str) -> Option<u64> {
-    let (date, time) = iso.trim().strip_suffix('Z')?.split_once('T')?;
-    let mut d = date.splitn(3, '-').map(|p| p.parse::<i64>().ok());
-    let (y, mo, day) = (d.next()??, d.next()??, d.next()??);
-    let mut t = time.split('.').next()?.splitn(3, ':').map(|p| p.parse::<i64>().ok());
-    let (h, mi, s) = (t.next()??, t.next()??, t.next()??);
-    // 그레고리력 날짜 → 1970-01-01부터의 일수
-    let (y, m) = if mo <= 2 { (y - 1, mo + 9) } else { (y, mo - 3) };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let doy = (153 * m + 2) / 5 + day - 1;
-    let days = era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
-    u64::try_from(days * 86400 + h * 3600 + mi * 60 + s).ok()
-}
-
 /// 초 → "1시간 3분"
 pub fn duration(secs: u64) -> String {
     let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
@@ -358,6 +370,15 @@ pub fn players(server: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// OSC 52는 base64로 싣는다 (터미널이 클립보드에 넣는 형식)
+    #[test]
+    fn osc52_carries_base64() {
+        assert_eq!(osc52("ABC-123"), "\x1b]52;c;QUJDLTEyMw==\x07");
+        assert_eq!(osc52("AB"), "\x1b]52;c;QUI=\x07");
+        assert_eq!(osc52("ABC"), "\x1b]52;c;QUJD\x07");
+    }
+
     use super::*;
     use serde_json::json;
 
@@ -467,14 +488,6 @@ mod tests {
     fn a_connected_badge_has_a_filled_dot() {
         assert!(console::strip_ansi_codes(&status_badge("connected")).starts_with('●'));
         assert!(console::strip_ansi_codes(&status_badge("disconnected")).starts_with('○'));
-    }
-
-    #[test]
-    fn iso_times_from_the_relay_become_epoch_seconds() {
-        assert_eq!(iso_epoch("1970-01-02T00:00:00.000Z"), Some(86400));
-        assert_eq!(iso_epoch("2026-10-19T17:02:57.000Z"), Some(1792429377));
-        assert_eq!(iso_epoch("2026-10-19T17:02:57Z"), Some(1792429377));
-        assert_eq!(iso_epoch("2026-10-19 17:02"), None);
     }
 
     #[test]

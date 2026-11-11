@@ -167,6 +167,8 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/extensions/{id}/icon"),
     allow("GET", "/api/extensions/{id}/audit"),
     allow("GET", "/api/extensions/{id}/i18n/{locale}"),
+    // 설치 폴더 번역: GUI는 늘 이 PC 데몬에서 받는다 (`target:'local'`). 웹은 자기 번역을 들고 있다
+    deny("GET", "/api/locales/{lang}/{ns}"),
     // ── 데몬·앱 설정, 토큰, 경로 ──
     // 비밀값이 없다 (접두사·릴레이 주소·길드 설정). 바꾸기는 릴레이 주소가 들어 PC에서만
     not_on_web("GET", "/api/config/bot"),
@@ -186,6 +188,9 @@ pub static ROUTES: &[Route] = &[
     // 원격 데몬 포트와 짝 맺은 PC (D1)
     deny("GET", "/api/remote/settings"),
     deny("PUT", "/api/remote/settings"),
+    // 이 PC의 공개 주소: 짝 맺은 PC의 GUI(내 PC 카드)가 원격 데몬 것도 고친다. 웹에는 칸이 없다
+    not_on_web("GET", "/api/public-address"),
+    not_on_web("PUT", "/api/public-address"),
     deny("GET", "/api/remote/clients"),
     deny("DELETE", "/api/remote/clients/{host_id}"),
     deny("GET", "/api/remote/peers"),
@@ -265,12 +270,9 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/relay/bot-invite"),
     deny("POST", "/api/relay/pair/initiate"),
     deny("POST", "/api/relay/pair/status"),
-    deny("GET", "/api/relay/pair/{code}/status"),
     // 계정의 에이전트 연결은 PC에서만 보고 끊는다
     deny("GET", "/api/relay/mcp/grant"),
     deny("DELETE", "/api/relay/mcp/grant"),
-    deny("GET", "/api/relay/link-requests"),
-    deny("POST", "/api/relay/link-requests/{request_id}"),
     deny("GET", "/api/relay/privacy/erase"),
     deny("POST", "/api/relay/privacy/erase"),
     deny("GET", "/api/relay/agent"),
@@ -313,6 +315,9 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/updates/integrity"),
     deny("GET", "/api/updates/config"),
     deny("PUT", "/api/updates/config"),
+    deny("POST", "/api/updates/phase/ack"),
+    deny("POST", "/api/updates/restart"),
+    deny("PUT", "/api/updates/gui-window"),
     // 이 데몬 자신의 업데이트: 짝 맺은 PC의 앱 카드가 원격 데몬을 고르고 부른다 (자동 업데이트·업데이트 단추)
     not_on_web("GET", "/api/daemon/update"),
     not_on_web("POST", "/api/daemon/update"),

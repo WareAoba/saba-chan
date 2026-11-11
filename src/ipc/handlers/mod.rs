@@ -28,6 +28,7 @@ pub mod maker;
 pub mod permissions;
 pub mod sandbox;
 pub mod actions;
+pub mod locales;
 
 /// 본문이 없거나 JSON으로 읽히지 않으면 None인 본문. axum 0.7의 `Option<Json<T>>`와 같다
 /// (0.8의 `Option<Json<T>>`는 Content-Type이 있는데 본문이 비었거나 틀리면 400으로 거절한다)
@@ -60,7 +61,7 @@ pub(crate) async fn audited(
     }
     let (id, name, command, args) = {
         let sup = state.supervisor.read().await;
-        let instance = sup.instance_store.get(key).or_else(|| sup.instance_store.list().iter().find(|i| i.name == key));
+        let instance = sup.instance_store.find(key);
         let module = instance.and_then(|i| sup.module_loader.get_module(&i.module_name).ok()).map(|m| m.metadata);
         // 비밀 인자·설정값은 가려서 남긴다
         let (command, args) = crate::audit::redact(module.as_ref(), instance, command, args);

@@ -21,8 +21,10 @@ pub mod constants;
 pub mod download;
 pub mod python_pin;
 pub mod launch_ticket;
+pub mod live_apply;
 pub mod integrity;
 pub mod marker;
+pub mod module_support;
 pub mod notify_app_id;
 pub mod process;
 pub mod profile;
@@ -48,6 +50,10 @@ pub use process::ProcessChecker;
 pub use relay::{ReleaseManifest, ManifestComponent};
 pub use integrity::{IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity};
 pub use marker::UpdateCompletionMarker;
+pub(crate) use apply::swap_dir_untouched;
+#[cfg(test)]
+pub(crate) use apply::replace_dir;
+pub use apply::{carry_swap_dot_entries, SWAP_FINGERPRINT};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -214,6 +220,9 @@ pub struct UpdateStatus {
     pub components: Vec<ComponentVersion>,
     pub checking: bool,
     pub error: Option<String>,
+    /// 같은 판 베타 규칙으로 기다리는 정식 판 `X.Y.Z` (정식 채널인데 지금 판이 그 판의 프리릴리스). 정식을 받으면 사라진다
+    #[serde(default)]
+    pub stable_wait: Option<String>,
 }
 
 /// 버전 의존성 확인 결과
@@ -294,6 +303,9 @@ pub struct ApplyComponentResult {
     pub restart_needed: bool,
 }
 
+/// 주기 확인 간격 (시간). 연결 여부와 상관없는 안전망이다
+pub const CHECK_EVERY_HOURS: u32 = 24;
+
 /// 업데이트 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -303,8 +315,13 @@ pub struct UpdateConfig {
     pub check_interval_hours: u32,
     /// 확인 뒤 새 버전을 미리 내려받아 둘지
     pub auto_download: bool,
-    /// 받아 둔 업데이트를 앱을 열 때 적용할지 (켜면 내려받기도 한다). 끄면 적용은 사용자가 고른다
+    /// 앱 업데이트를 묻지 않고 적용할지 (켜면 내려받기도 한다). 끄면 받아 두거나(`auto_download`) 알리기만 하고,
+    /// 적용은 사용자가 다시 시작을 누를 때 한다
     pub auto_apply: bool,
+    /// 묻지 않는 자동 적용으로 바꾸는 한 번의 이전을 했다 (데몬 `load_updater_config`). 이 키가 없는 옛 설정은
+    /// 한 번 `auto_apply`·`auto_download`를 켠다. 그 뒤 사용자가 고른 값은 그대로 둔다
+    #[serde(default)]
+    pub live_update_migrated: bool,
     /// 스테이징 디렉터리 (다운로드와 임시 파일 저장, 기본값: 실행파일 경로 기준)
     pub install_root: Option<String>,
     /// 릴레이 주소 (None이면 relay::DEFAULT_RELAY_URL). 모의 릴레이 시험은 여기에
@@ -313,6 +330,9 @@ pub struct UpdateConfig {
     pub relay_url: Option<String>,
     /// 릴레이 업데이트 채널 (stable | rc | beta | nightly). 기본은 이 빌드의 채널
     pub channel: String,
+    /// 적용했다가 되돌린 판 (버전 문자열). 이 판은 자동 적용하지 않는다. 더 새 판이 나오거나 사용자가 다시 시작을 누르면 지운다
+    #[serde(default)]
+    pub failed_release: Option<String>,
 }
 
 /// 빈 주소는 "설정 안 함" (0.1.1은 비워 두면 `""`로 저장했다)
@@ -326,12 +346,15 @@ impl Default for UpdateConfig {
         Self {
             enabled: true,
             check_interval_hours: 3,
-            auto_download: false,
-            auto_apply: false,
+            // 앱 업데이트는 묻지 않고 적용한다 (사용자 결정 2026-11-09)
+            auto_download: true,
+            auto_apply: true,
+            live_update_migrated: true,
             install_root: None,
             relay_url: None,
             // 고르지 않았으면 이 빌드의 채널(`versions.toml` `[release] channel`): 베타 빌드가 정식의 옛 판을 내림으로 거절하지 않게
             channel: crate::versions::bundled().channel.clone(),
+            failed_release: None,
         }
     }
 }
@@ -594,6 +617,7 @@ impl UpdateManager {
                 components: Vec::new(),
                 checking: false,
                 error: None,
+                stable_wait: None,
             },
             modules_dir: PathBuf::from(modules_dir),
             extensions_dir,
@@ -631,21 +655,14 @@ impl UpdateManager {
     /// 익스텐션 ID에서 디스크 상의 디렉토리 경로를 해석합니다.
     /// Python import 호환을 위해 하이픈→언더스코어 변환도 시도합니다.
     fn resolve_ext_dir(&self, ext_name: &str) -> PathBuf {
-        // 1. 원본 이름
+        // 데몬(`extension::extension_dir`)과 같은 순서: Python-safe 이름(하이픈→언더스코어) 먼저, 다음 원본 이름.
+        // 둘 다 없으면 Python-safe 이름 (신규 설치용)
+        let safe = self.extensions_dir.join(ext_name.replace('-', "_"));
         let exact = self.extensions_dir.join(ext_name);
-        if exact.exists() {
+        if !safe.exists() && exact.exists() {
             return exact;
         }
-        // 2. Python-safe 이름 (하이픈→언더스코어)
-        let safe_name = ext_name.replace('-', "_");
-        if safe_name != ext_name {
-            let safe = self.extensions_dir.join(&safe_name);
-            if safe.exists() {
-                return safe;
-            }
-        }
-        // 없으면 Python-safe 이름으로 반환 (신규 설치용)
-        self.extensions_dir.join(&safe_name)
+        safe
     }
 
     /// 현재 업데이트 상태를 반환
@@ -681,17 +698,34 @@ impl UpdateManager {
 
     fn relay_client(&self) -> relay::RelayClient {
         relay::RelayClient::new(self.config.relay_url.as_deref().unwrap_or(relay::DEFAULT_RELAY_URL))
+            .with_manifest_cache(self.staging_dir.join("manifests"))
+    }
+
+    /// 받을 코어(manifest `saba-core`)가 다시 붙을 수 있는 러너 형식 범위. 확인 전이거나 코어가 없는 manifest면 None
+    pub fn core_reads_runner_formats(&self) -> Option<(u32, u32)> {
+        self.cached_manifest.as_ref()?.components.get("saba-core").map(relay::ManifestComponent::runner_formats)
+    }
+
+    /// 지금 적용하는(받아 둔) 릴리즈 버전
+    pub fn applying_version(&self) -> Option<String> {
+        self.applying_release().map(|r| r.version)
     }
 
     // ─── 업데이트 확인 ────────────────────────────────────────────────────────
 
     /// 릴레이의 서명된 manifest 하나로 모든 컴포넌트의 최신 버전과 R2 URL을 얻는다.
     pub async fn check_for_updates(&mut self) -> Result<UpdateStatus> {
+        self.check_for_updates_hinted(None).await.map(|(status, _)| status)
+    }
+
+    /// `check_for_updates`에 heartbeat가 알린 릴리즈 id(`hint`)를 캐시 키로 붙인다. 확인 결과와,
+    /// 릴레이 `/latest` 응답에 담긴 가장 큰 릴리즈 id(옛 릴레이면 None)를 준다
+    pub async fn check_for_updates_hinted(&mut self, hint: Option<u64>) -> Result<(UpdateStatus, Option<u64>)> {
         self.status.checking = true;
         self.status.error = None;
 
         let local_versions = self.collect_local_versions();
-        let client = self.relay_client();
+        let client = self.relay_client().with_release_hint(hint);
         let platform = relay::current_platform();
         let current = local_versions.get("saba-core").cloned().unwrap_or_default();
 
@@ -708,6 +742,15 @@ impl UpdateManager {
             }
         };
 
+        // 모듈·익스텐션은 앱 릴리즈와 따로 내는 판 목록에서, 지금 코어로 돌아가는 가장 새 판으로 고른다 (릴레이 `/v1/addons/catalog`).
+        // 목록이 없으면(옛 릴레이, 아직 올린 판 없음) 릴리즈 manifest의 판을 그대로 쓰고, 읽지 못하면 이번에는 모듈·익스텐션을 내지 않는다
+        let core = if current.is_empty() { relay::core_version() } else { current.clone() };
+        let catalog = client.fetch_addon_catalog(&core, &self.config.channel).await;
+        // 깐 판이 내린 판인지는 목록의 서명된 내림 기록으로 안다
+        let addons = catalog.as_ref().ok().and_then(Option::as_ref).map(|c| relay::AddonCatalog { components: HashMap::new(), yanked: c.yanked.clone() });
+        let release = relay::merge_addon_catalog(release, catalog, &core, &self.config.channel, &platform);
+
+        let offered = release.as_ref().map(|r| r.latest.version.clone());
         let previous = std::mem::take(&mut self.status.components);
         let mut components = Vec::new();
         // 헤드리스 설치는 GUI처럼 그 구성에 들지 않는 컴포넌트를 받지 않는다
@@ -738,6 +781,9 @@ impl UpdateManager {
                 } else if installed && current.is_empty() {
                     let _ = Self::update_installed_version(key, &info.version);
                     false
+                } else if addons.as_ref().is_some_and(|c| c.is_yanked(key, &current)) && info.version != current {
+                    // 깐 판을 내렸다: 목록의 판으로 되돌린다 (더 낮은 판이어도)
+                    true
                 } else {
                     self.compare_versions(&info.version, &current)
                 };
@@ -764,15 +810,20 @@ impl UpdateManager {
         }
 
         let now = time::now_iso();
-        let next = time::iso_after_hours(self.config.check_interval_hours);
+        // 주기 확인은 24시간마다다 (연결된 데몬은 heartbeat의 판 번호로 안다). `check_interval_hours`는 읽기만 한다
+        let next = time::iso_after_hours(CHECK_EVERY_HOURS);
+        // 같은 판 베타를 받는 동안 기다리는 정식 판. 정식(그 판 이상)을 받으면 사라진다
+        let stable_wait = relay::stable_wait_base(&self.config.channel, &current)
+            .filter(|_| offered.as_deref().and_then(SemVer::parse).is_none_or(|v| v.is_prerelease()));
         self.status = UpdateStatus {
             last_check: Some(now),
             next_check: Some(next),
             components,
             checking: false,
             error: None,
+            stable_wait,
         };
-        Ok(self.status.clone())
+        Ok((self.status.clone(), client.latest_seen_id()))
     }
 
     /// 상태에 싣는 패치노트: 적용 뒤 결과 마커와 같은 규칙(`ReleaseSummary::notes_for`)으로 고른다
@@ -1054,122 +1105,7 @@ impl UpdateManager {
 
     // ─────── 적용 ────────────────────────────────────────────────────────────────────────
 
-    /// 다운로드 완료된 업데이트를 적용
-    ///
-    /// ## 주요 동작
-    /// - **모듈**: 기존 파일을 백업하고 다운로드된 zip 압축 해제
-    /// - **GUI/CLI**: 직접 교체 (별도 프로세스 실행으로 처리)
-    /// - **코어 데몬**: 실행 중이면 교체가 불가하므로 재시작 후 업데이트를 예약
-    pub async fn apply_updates(&mut self) -> Result<Vec<String>> {
-        let all_keys: Vec<String> = self.status.components.iter()
-            .filter(|c| c.downloaded && c.update_available)
-            .map(|c| c.component.manifest_key())
-            .collect();
-        self.apply_components(&all_keys).await
-    }
-
-    /// 지정한 컴포넌트만 적용 (빈 목록이면 전체 적용)
-    ///
-    /// ## 적용 순서
-    /// 1. **Updater** — 업데이터 자체를 먼저 교체 (데몬이 수행)
-    /// 2. **비-인터페이스**: 사용하지 않는 인터페이스(GUI 사용 중이면 CLI),
-    ///    CoreDaemon, 모듈, 익스텐션, Locales를 비동기 적용
-    /// 3. **현재 인터페이스**: 마지막에 GUI 또는 CLI를 적용 (재시작 필요)
-    ///
-    /// 이 순서를 지키면 업데이트 도중 프로세스 충돌이 방지됩니다.
-    pub async fn apply_components(&mut self, keys: &[String]) -> Result<Vec<String>> {
-        match self.apply_components_report(keys).await {
-            (applied, None) => Ok(applied),
-            (_, Some(e)) => Err(e),
-        }
-    }
-
-    /// `apply_components`와 같지만 실패해도 그 전에 적용한 목록을 돌려준다 (업데이터가 완료 마커에 싣는다)
-    pub async fn apply_components_report(&mut self, keys: &[String]) -> (Vec<String>, Option<anyhow::Error>) {
-        let mut applied = Vec::new();
-        self.settle_interrupted_updates();
-
-        let mut components: Vec<ComponentVersion> = self.status.components.iter()
-            .filter(|c| c.downloaded && c.update_available)
-            .filter(|c| keys.is_empty() || keys.contains(&c.component.manifest_key()))
-            .cloned()
-            .collect();
-
-        // 적용 우선순위와 같은 묶음의 requires에 따라 정렬
-        let order = self.apply_order(&components.iter().map(|c| c.component.manifest_key()).collect::<Vec<_>>());
-        components.sort_by_key(|c| order.iter().position(|k| *k == c.component.manifest_key()));
-
-        // 실패하면 거기서 멈추되, 먼저 적용한 것은 아래에서 버전을 기록한 뒤 오류를 돌려준다
-        let mut failure = None;
-        // 설치 기록은 끝에 한 번에 적으므로, 이 묶음에서 앞서 적용한 버전을 여기서 더해 requires를 본다
-        let mut installed = self.dependency_versions();
-        for comp in &components {
-            let key = comp.component.manifest_key();
-            let issues = self.requires_of(&key).map(|r| unmet_requires(&key, r, &installed)).unwrap_or_default();
-            let result = if !issues.is_empty() {
-                Err(anyhow::anyhow!("{}", issues.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; ")))
-            } else {
-                match Self::verified_staged_path(comp) {
-                    Ok(staged_path) => self.apply_one(&comp.component, staged_path).await,
-                    Err(e) => Err(e),
-                }
-            };
-            match result {
-                Ok(files) => {
-                    Self::record_files(&comp.component, &files);
-                    if let Some(version) = &comp.latest_version {
-                        installed.insert(key, version.clone());
-                    }
-                    applied.push(comp.component.display_name());
-                }
-                Err(e) => {
-                    failure = Some(e.context(format!("Applying {} failed", comp.component.display_name())));
-                    break;
-                }
-            }
-        }
-
-        // 적용 완료된 컴포넌트의 상태 업데이트
-        for comp in &mut self.status.components {
-            if applied.contains(&comp.component.display_name()) {
-                comp.update_available = false;
-                comp.downloaded = false;
-                comp.downloaded_path = None;
-                if let Some(ref latest) = comp.latest_version {
-                    comp.current_version = latest.clone();
-                }
-            }
-        }
-
-        // 적용 성공한 컴포넌트들의 버전을 로컬 매니페스트에 기록
-        if !applied.is_empty() {
-            if let Err(e) = self.update_installed_versions_batch(&applied) {
-                tracing::warn!("[UpdateManager] Failed to update installed manifest: {}", e);
-            }
-        }
-
-        // 코어 컴포넌트가 업데이트된 경우, 레지스트리의 DisplayVersion을 코어 버전으로 갱신
-        if let Some(core_comp) = self.status.components.iter()
-            .find(|c| matches!(c.component, Component::CoreDaemon))
-        {
-            let core_version = &core_comp.current_version;
-            if let Err(e) = self.update_registry_display_version(core_version) {
-                tracing::warn!("[UpdateManager] Failed to update registry DisplayVersion: {}", e);
-            }
-        }
-
-        // 적용 완료 후 .old 백업 파일 정리
-        if !applied.is_empty() {
-            self.cleanup_old_files();
-        }
-
-        if failure.is_some() && !applied.is_empty() {
-            tracing::warn!("[UpdateManager] Applied before the failure: {:?}", applied);
-        }
-        (applied, failure)
-    }
-
-    /// 데몬이 정한 키 목록(apply-targets)을 차례로 적용한다. 목록 없는 적용처럼 첫 실패에서 멈춘다:
+    /// 데몬이 정한 키 목록(apply-targets)을 차례로 적용한다. 첫 실패에서 멈춘다:
     /// 데몬·업데이터가 실패했는데 인터페이스만 새것으로 바뀌면 서로 맞지 않는다.
     /// `(적용한 키, 실패·건너뛴 키와 이유)`. `on_progress(순번, 키, 지금까지 적용한 키)`
     pub async fn apply_target_keys(
@@ -1205,6 +1141,19 @@ impl UpdateManager {
         (applied, failed)
     }
 
+    /// 모듈·익스텐션 폴더를 바꾸되, 원래 폴더를 옮긴 뒤 설치 기록 그대로가 아니면 되돌리고 멈춘다 (`swap_dir_untouched`)
+    fn replace_untouched_addon(&self, component: &Component, staged_path: &str) -> Result<Vec<PathBuf>> {
+        let target = match component {
+            Component::Module(name) => self.modules_dir.join(name),
+            Component::Extension(name) => self.resolve_ext_dir(name),
+            other => anyhow::bail!("{} is not a module or an extension", other.manifest_key()),
+        };
+        let key = component.manifest_key();
+        let files = swap_dir_untouched(&target, Path::new(staged_path), |fingerprint| integrity::matches_install_record(&key, &target, fingerprint))?;
+        std::fs::remove_file(staged_path).ok();
+        Ok(files)
+    }
+
     /// 컴포넌트 하나를 적용하고 쓴 파일을 돌려준다
     async fn apply_one(&self, component: &Component, staged_path: &str) -> Result<Vec<PathBuf>> {
         match component {
@@ -1216,8 +1165,11 @@ impl UpdateManager {
             Component::CoreDaemon => self.apply_binary_update("saba-core", staged_path).await,
             Component::Gui => self.apply_gui_update(staged_path).await,
             Component::Installer => self.apply_installer_update(staged_path),
-            // 모듈처럼 백업 뒤 통째로 바꾼다: 새 판에 없는 옛 파일이 남지 않고, 실패하면 되돌린다
-            Component::Locales => self.replace_dir(&self.install_root.join("locales"), Path::new(staged_path), "locales_backup"),
+            // 옆 폴더에 다 푼 뒤 이름 바꾸기로 통째로 바꾸고 판 번호(`locales/version`)를 적는다: 읽는 쪽이 반쯤 바뀐 묶음을 보지 않는다
+            Component::Locales => {
+                let version = self.status.components.iter().find(|c| c.component == Component::Locales).and_then(|c| c.latest_version.clone());
+                apply::replace_locales(&self.install_root.join("locales"), Path::new(staged_path), version.as_deref())
+            }
         }
     }
 
@@ -1279,18 +1231,13 @@ impl UpdateManager {
         }
     }
 
-    /// 테스트 전용: 컴포넌트 적용 우선순위 조회
-    #[cfg(test)]
-    pub fn component_apply_priority_for_test(component: &Component) -> u8 {
-        Self::component_apply_priority(component)
-    }
-
     // ─────── 2-flow 아키텍처: 개별 컴포넌트 적용 ────────────────────────────────────────────────────────────────────────
 
     /// 적용 중 꺼져 남은 파일을 정리한다 (설치 폴더 바로 안만). 적용하는 프로세스만 적용 직전에 부른다:
     /// 다른 프로세스(데몬 시작 등)가 적용 도중에 부르면 비켜 둔 백업을 되돌리고 쓰는 중인 파일을 지운다
     pub fn settle_interrupted_updates(&self) {
         self.restore_moved_aside_exes();
+        apply::settle_locales(&self.install_root.join("locales"));
         let Ok(entries) = std::fs::read_dir(&self.install_root) else { return };
         for path in entries.flatten().map(|e| e.path()) {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
@@ -1317,9 +1264,18 @@ impl UpdateManager {
     /// Unix는 확장자 없는 바이너리를 비켜 둔 `<이름>.old` (`move_aside`).
     /// (경로, 실행 파일 이름, 번호(`.old`는 0), GUI인가)
     fn old_exe_backups(&self) -> Vec<(PathBuf, String, u32, bool)> {
-        let Ok(entries) = std::fs::read_dir(&self.install_root) else { return Vec::new() };
+        self.try_old_exe_backups().unwrap_or_else(|e| {
+            tracing::warn!("[Updater] Cannot list {}: {}", self.install_root.display(), e);
+            Vec::new()
+        })
+    }
+
+    /// `old_exe_backups`와 같되 설치 폴더(와 그 항목)를 읽지 못하면 오류
+    pub(crate) fn try_old_exe_backups(&self) -> std::io::Result<Vec<(PathBuf, String, u32, bool)>> {
+        let entries = std::fs::read_dir(&self.install_root)?;
         let mut found = Vec::new();
-        for path in entries.flatten().map(|e| e.path()) {
+        for entry in entries {
+            let path = entry?.path();
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
             if let Some(exe) = name.strip_suffix(".old").filter(|_| cfg!(unix)).filter(|exe| Self::is_known_binary(Path::new(exe))) {
                 found.push((path.clone(), exe.to_string(), 0, GUI_EXE_NAMES.contains(&exe)));
@@ -1336,7 +1292,7 @@ impl UpdateManager {
                 found.push((path.clone(), format!("{stem}.exe"), number, gui));
             }
         }
-        found
+        Ok(found)
     }
 
     /// 실행 파일이 아예 없는 것: 비켜 둔 뒤 새 판을 두기 전에 적용이 끊겼다. 가장 최근 사본(번호가 가장 큰 것)을 되돌린다.
@@ -1361,9 +1317,77 @@ impl UpdateManager {
         }
     }
 
+    /// 새 데몬이 건강하지 않을 때: `before`(적용 전 목록)에 없던 백업, 곧 이번 적용이 비켜 둔 실행 파일을 모두 되돌린다
+    /// (`restore_moved_aside_exes`를 넓힌 것. 그쪽은 실행 파일이 아예 없을 때만 되돌린다).
+    /// 새 파일은 `<exe>.rolled-back`으로 비켜 두고 지운다(아직 쥐고 있으면 남는다). 되돌린 실행 파일 경로를 돌려준다
+    pub fn roll_back_exes_since(&self, before: &live_apply::ExeBackups) -> std::io::Result<live_apply::ExeRollback> {
+        let mut rollback = live_apply::ExeRollback::default();
+        for (backup, target) in self.exe_rollbacks_since(before)? {
+            // 새 판은 비켜 두기만 하고, 백업을 제자리에 놓은 뒤에 지운다: 어느 단계가 실패해도 실행 파일이 없어지지 않는다
+            let mut name = target.file_name().unwrap_or_default().to_os_string();
+            name.push(".rolled-back");
+            let aside = target.with_file_name(name);
+            let moved = if target.exists() {
+                let _ = std::fs::remove_file(&aside);
+                match std::fs::rename(&target, &aside) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        tracing::error!("[Updater] Cannot move {} aside to roll back: {}", target.display(), e);
+                        rollback.pending.push((backup, target));
+                        continue;
+                    }
+                }
+            } else {
+                false
+            };
+            match std::fs::rename(&backup, &target) {
+                Ok(()) => {
+                    tracing::warn!("[Updater] Rolled back {} from {}", target.display(), backup.display());
+                    if moved {
+                        let _ = std::fs::remove_file(&aside);
+                    }
+                    rollback.restored.push(target);
+                }
+                Err(e) => {
+                    tracing::error!("[Updater] Cannot roll back {} from {}: {}", target.display(), backup.display(), e);
+                    if moved {
+                        // 새 판을 제자리에 돌려 둔다 (실행 파일이 없는 것보다 낫다)
+                        if let Err(e) = std::fs::rename(&aside, &target) {
+                            tracing::error!("[Updater] Cannot put {} back from {}: {}", target.display(), aside.display(), e);
+                        }
+                    }
+                    rollback.pending.push((backup, target));
+                }
+            }
+        }
+        Ok(rollback)
+    }
+
+    /// 이번 적용이 비켜 둔 실행 파일마다 (가장 최근 백업, 제자리). 적용 전 목록(`before`)에 있던 백업은 고르지 않는다.
+    /// 설치 폴더를 읽지 못하면 오류 (빈 목록으로 보고 되돌림을 건너뛰지 않는다)
+    pub fn exe_rollbacks_since(&self, before: &live_apply::ExeBackups) -> std::io::Result<Vec<(PathBuf, PathBuf)>> {
+        let mut latest: HashMap<String, (PathBuf, u32)> = HashMap::new();
+        for (path, exe, number, _) in self.try_old_exe_backups()? {
+            if before.contains(&path, live_apply::backup_id(&path)) {
+                continue;
+            }
+            if latest.get(&exe).is_none_or(|(_, n)| number > *n) {
+                latest.insert(exe, (path, number));
+            }
+        }
+        let mut pairs: Vec<(PathBuf, PathBuf)> = latest.into_iter().map(|(exe, (backup, _))| (backup, self.install_root.join(exe))).collect();
+        pairs.sort();
+        Ok(pairs)
+    }
+
     /// 업데이트가 남긴 사바쨩 실행 파일 백업(`old_exe_backups`)을 지운다 (설치 폴더 바로 안만).
     /// Windows는 실행 중인 exe를 이름만 바꿔 두므로, 아직 쥐고 있는 파일은 다음 번에 지운다.
+    /// 업데이터가 새 데몬을 지켜보는 동안(`live_apply::watch_in_progress`)은 지우지 않는다: 건강하지 않으면 되돌림에 쓴다
     pub fn cleanup_old_files(&self) {
+        if live_apply::watch_in_progress(&self.staging_dir) {
+            tracing::info!("[Updater] An update is still being checked; keeping the .old backups");
+            return;
+        }
         for (path, exe, _, gui) in self.old_exe_backups() {
             // 실행 파일이 없으면 되돌리지 못한 유일한 사본이다. 예전 이름의 GUI는 새 이름의 GUI가 있으면 지운다 (`retire_other_gui_exes`)
             let replaced = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(&exe).exists() };
@@ -1425,6 +1449,19 @@ impl UpdateManager {
     /// Flow 1 (백그라운드 워커): IPC 커맨드를 통해 데몬이 직접 적용한 후 재시작
     /// Flow 2 (GUI/CLI): 직접 적용, self-update flow로 전환
     pub async fn apply_single_component(&mut self, component: &Component) -> Result<ApplyComponentResult> {
+        self.apply_single_component_with(component, false).await
+    }
+
+    /// 묻지 않는 모듈·익스텐션 교체: 교체 순간의 폴더가 카탈로그에서 깐 그대로일 때만 바꾼다 (`integrity::matches_install_record`).
+    /// 사용자가 넣거나 고친 파일이 있으면 폴더를 건드리지 않고 실패로 돌려준다
+    pub async fn apply_untouched_addon(&mut self, component: &Component) -> Result<ApplyComponentResult> {
+        if !matches!(component, Component::Module(_) | Component::Extension(_)) {
+            anyhow::bail!("{} is not a module or an extension", component.manifest_key());
+        }
+        self.apply_single_component_with(component, true).await
+    }
+
+    async fn apply_single_component_with(&mut self, component: &Component, untouched_only: bool) -> Result<ApplyComponentResult> {
         // 업데이터·데몬의 개별 적용도 지난 적용이 남긴 것부터 정리한다 (같은 프로세스가 적용하므로 안전하다)
         self.settle_interrupted_updates();
         let comp = self.status.components.iter()
@@ -1438,7 +1475,7 @@ impl UpdateManager {
             anyhow::bail!("{}", deps.issues.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "));
         }
         let staged_path = Self::verified_staged_path(&comp)?;
-        let files = self.apply_one(component, staged_path).await?;
+        let files = if untouched_only { self.replace_untouched_addon(component, staged_path)? } else { self.apply_one(component, staged_path).await? };
         Self::record_files(component, &files);
 
         let message = match component {
