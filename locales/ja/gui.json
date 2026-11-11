@@ -281,7 +281,8 @@
     "detail_heading": "{{game}} サーバー · 詳細設定",
     "detail_subtitle": "作成後もサーバー設定で変更できます。",
     "detail_revert": "元に戻す",
-    "back_to_summary": "概要"
+    "back_to_summary": "概要",
+    "detail_invalid": "詳細設定に使えない値があります"
   },
   "command_modal": {
     "command_label": "コマンド",
@@ -781,7 +782,8 @@
     "duplicate_item": "{{field}}: '{{value}}' が重複しています",
     "list_hint": "1行に1つずつ",
     "item_count": "{{field}}は{{min}}～{{max}}個にしてください",
-    "too_long": "{{field}}は{{max}}文字までです"
+    "too_long": "{{field}}は{{max}}文字までです",
+    "invalid": "{{field}}の値は使えません"
   },
   "context_menu": {
     "settings": "サーバー設定",

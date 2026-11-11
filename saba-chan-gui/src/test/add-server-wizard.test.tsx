@@ -277,6 +277,23 @@ describe('새 서버 만들기 — 상세 설정', () => {
         expect(onAddServer.mock.calls[0][0]).toMatchObject({ preset: 'friends', module_settings: {} });
     });
 
+    // 리뷰 #944: 데몬 확인이 설정 값을 거절하면 그 줄에 알리고 만들기를 막는다
+    it('데몬이 받지 않는 설정 값은 그 줄에 알리고 만들기를 막는다', async () => {
+        await openDetail();
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: /Detailed settings/ })));
+        window.api.instanceCheck = vi.fn(async (body) =>
+            body.module_settings?.max_players === 99999
+                ? ({ success: false, error_code: 'invalid_format', fields: [{ field: 'max_players' }] } as never)
+                : ({ success: true, name: { value: body.name, taken: false }, folder: {}, ports: [] } as never),
+        );
+        await act(async () => fireEvent.change(screen.getByLabelText(/Max Players/), { target: { value: '99999' } }));
+        await waitFor(() => expect(screen.getByText(/Max Players.*(not|can't|cannot)/i)).toBeTruthy());
+        expect(createButton()).toBeDisabled();
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Summary' })));
+        expect(createButton()).toBeDisabled();
+        expect(document.querySelector('.as-detail-invalid')).toBeTruthy();
+    });
+
     it('되돌리기는 바꾼 칸을 모두 처음 값으로 돌린다', async () => {
         await openDetail();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Detailed settings/ })));

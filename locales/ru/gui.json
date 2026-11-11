@@ -281,7 +281,8 @@
     "detail_heading": "Сервер {{game}} · Подробные настройки",
     "detail_subtitle": "Их можно изменить позже в настройках сервера.",
     "detail_revert": "Отменить изменения",
-    "back_to_summary": "Сводка"
+    "back_to_summary": "Сводка",
+    "detail_invalid": "В подробных настройках есть недопустимые значения"
   },
   "add_instance_modal": {
     "title": "Добавить экземпляр"
@@ -781,7 +782,8 @@
     "duplicate_item": "{{field}}: «{{value}}» встречается несколько раз",
     "list_hint": "По одному в строке",
     "item_count": "{{field}}: нужно от {{min}} до {{max}} элементов",
-    "too_long": "{{field}}: не больше {{max}} символов"
+    "too_long": "{{field}}: не больше {{max}} символов",
+    "invalid": "Значение поля «{{field}}» нельзя использовать"
   },
   "context_menu": {
     "settings": "Настройки сервера",

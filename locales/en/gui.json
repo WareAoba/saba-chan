@@ -281,7 +281,8 @@
     "detail_heading": "{{game}} server · Detailed settings",
     "detail_subtitle": "You can still change these in the server settings later.",
     "detail_revert": "Revert",
-    "back_to_summary": "Summary"
+    "back_to_summary": "Summary",
+    "detail_invalid": "Some detailed settings have values that can't be used"
   },
   "add_instance_modal": {
     "title": "Add Server"
@@ -781,7 +782,8 @@
     "duplicate_item": "{{field}}: '{{value}}' appears more than once",
     "list_hint": "One per line",
     "item_count": "{{field}} needs {{min}} to {{max}} items",
-    "too_long": "{{field}} can be at most {{max}} characters"
+    "too_long": "{{field}} can be at most {{max}} characters",
+    "invalid": "{{field}} has a value that can't be used"
   },
   "context_menu": {
     "settings": "Settings",

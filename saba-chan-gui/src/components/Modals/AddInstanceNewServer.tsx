@@ -230,6 +230,11 @@ export function AddInstanceNewServer({
         check?.failed &&
         check.error_code === 'invalid_format' &&
         (check.fields || []).some((f: ApiBody) => f.field === 'working_dir');
+    // 데몬이 받지 않은 상세 설정 값 (폴더 경로 말고): 그 줄에 알리고 만들기를 막는다
+    const invalidSettings: string[] =
+        check?.failed && check.error_code === 'invalid_format'
+            ? (check.fields || []).map((f: ApiBody) => f.field).filter((f: unknown) => typeof f === 'string' && f !== 'working_dir')
+            : [];
     // 고친 포트는 1~65535의 정수만 (빈 칸은 데몬이 고른 포트)
     const portInvalid =
         port != null && port !== '' && !(Number.isInteger(Number(port)) && Number(port) >= 1 && Number(port) <= 65535);
@@ -240,6 +245,7 @@ export function AddInstanceNewServer({
         !blockers.length &&
         !portInvalid &&
         !folderNotAbsolute &&
+        !invalidSettings.length &&
         (folderMode === 'default' || !!customFolder);
     const canSubmit = formReady && selectedExtension && !submitting && allChecked(agreements, agreed);
 
@@ -409,6 +415,7 @@ export function AddInstanceNewServer({
                     value={detailValues[f.name]}
                     modNs={modNs}
                     onChange={(name, value) => setEdits((prev) => ({ ...prev, [name]: value }))}
+                    validationError={invalidSettings.includes(f.name) ? { errorType: 'invalid' } : undefined}
                     className={f.name in detailChanged ? 'as-changed' : undefined}
                 />
             ));
@@ -768,8 +775,15 @@ function CheckNotes({ t, check, checking }: { t: TFunction; check: ApiBody | nul
     if (checking && !check) return <p className="dc-hint">{t('add_server_modal.checking')}</p>;
     if (!check) return null;
     if (check.failed) {
-        // 폴더 경로가 틀린 것은 그 줄에서 알린다
-        if (check.error_code === 'invalid_format') return null;
+        // 폴더 경로가 틀린 것은 그 줄에서, 상세 설정 값이 틀린 것은 상세 설정에서 알린다 (요약에는 한 줄로)
+        if (check.error_code === 'invalid_format') {
+            const settings = (check.fields || []).some((f: ApiBody) => f.field && f.field !== 'working_dir');
+            return settings ? (
+                <p className="dc-field-error as-detail-invalid" role="alert">
+                    <Icon name="alertTriangle" size="sm" /> {t('add_server_modal.detail_invalid')}
+                </p>
+            ) : null;
+        }
         return <p className="dc-hint">{t('add_server_modal.check_failed')}</p>;
     }
     const notes: string[][] = [];

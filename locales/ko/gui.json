@@ -281,7 +281,8 @@
     "detail_heading": "{{game}} 서버 · 상세 설정",
     "detail_subtitle": "만든 뒤에도 서버 설정에서 바꿀 수 있어요.",
     "detail_revert": "되돌리기",
-    "back_to_summary": "요약"
+    "back_to_summary": "요약",
+    "detail_invalid": "상세 설정에 쓸 수 없는 값이 있어요"
   },
   "add_instance_modal": {
     "title": "서버 추가"
@@ -781,7 +782,8 @@
     "duplicate_item": "{{field}}: '{{value}}'이(가) 두 번 들어 있어요",
     "list_hint": "한 줄에 하나씩",
     "item_count": "{{field}}은(는) {{min}}~{{max}}개여야 해요",
-    "too_long": "{{field}}은(는) {{max}}자까지 쓸 수 있어요"
+    "too_long": "{{field}}은(는) {{max}}자까지 쓸 수 있어요",
+    "invalid": "{{field}} 값은 쓸 수 없어요"
   },
   "context_menu": {
     "settings": "서버 설정",

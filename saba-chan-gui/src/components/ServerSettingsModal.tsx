@@ -74,6 +74,8 @@ function validationText(t: ReturnType<typeof useTranslation>['t'], fieldLabel: s
                 value: e.value,
                 defaultValue: `${fieldLabel}: '${e.value}' is not a valid option`,
             });
+        case 'invalid':
+            return t('validation.invalid', { field: fieldLabel });
         default:
             return null;
     }

@@ -281,7 +281,8 @@
     "detail_heading": "{{game}} 服务器 · 详细设置",
     "detail_subtitle": "创建后也可以在服务器设置中修改。",
     "detail_revert": "还原",
-    "back_to_summary": "概要"
+    "back_to_summary": "概要",
+    "detail_invalid": "详细设置中有无法使用的值"
   },
   "add_instance_modal": {
     "title": "添加实例"
@@ -781,7 +782,8 @@
     "duplicate_item": "{{field}}：'{{value}}' 重复出现",
     "list_hint": "每行一个",
     "item_count": "{{field}} 需要 {{min}}~{{max}} 项",
-    "too_long": "{{field}} 最多 {{max}} 个字符"
+    "too_long": "{{field}} 最多 {{max}} 个字符",
+    "invalid": "{{field}} 的值无法使用"
   },
   "context_menu": {
     "settings": "服务器设置",

@@ -281,7 +281,8 @@
     "detail_heading": "{{game}} 伺服器 · 詳細設定",
     "detail_subtitle": "建立後也能在伺服器設定中修改。",
     "detail_revert": "還原",
-    "back_to_summary": "概要"
+    "back_to_summary": "概要",
+    "detail_invalid": "詳細設定中有無法使用的值"
   },
   "add_instance_modal": {
     "title": "新增實例"
@@ -781,7 +782,8 @@
     "duplicate_item": "{{field}}：'{{value}}' 重複出現",
     "list_hint": "每行一個",
     "item_count": "{{field}} 需要 {{min}}~{{max}} 項",
-    "too_long": "{{field}} 最多 {{max}} 個字元"
+    "too_long": "{{field}} 最多 {{max}} 個字元",
+    "invalid": "{{field}} 的值無法使用"
   },
   "context_menu": {
     "settings": "伺服器設定",

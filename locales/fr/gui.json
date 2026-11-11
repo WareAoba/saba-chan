@@ -281,7 +281,8 @@
     "detail_heading": "Serveur {{game}} · Réglages détaillés",
     "detail_subtitle": "Vous pourrez encore les changer dans les réglages du serveur.",
     "detail_revert": "Annuler les changements",
-    "back_to_summary": "Résumé"
+    "back_to_summary": "Résumé",
+    "detail_invalid": "Certains paramètres détaillés ont des valeurs inutilisables"
   },
   "add_instance_modal": {
     "title": "Ajouter une instance"
@@ -781,7 +782,8 @@
     "duplicate_item": "{{field}} : '{{value}}' apparaît plusieurs fois",
     "list_hint": "Un par ligne",
     "item_count": "{{field}} doit contenir entre {{min}} et {{max}} éléments",
-    "too_long": "{{field}} ne peut pas dépasser {{max}} caractères"
+    "too_long": "{{field}} ne peut pas dépasser {{max}} caractères",
+    "invalid": "{{field}} a une valeur qui ne peut pas être utilisée"
   },
   "context_menu": {
     "settings": "Paramètres du serveur",

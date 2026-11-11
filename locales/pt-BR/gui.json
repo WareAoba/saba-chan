@@ -281,7 +281,8 @@
     "detail_heading": "Servidor de {{game}} · Configurações detalhadas",
     "detail_subtitle": "Você ainda pode mudá-las depois nas configurações do servidor.",
     "detail_revert": "Reverter",
-    "back_to_summary": "Resumo"
+    "back_to_summary": "Resumo",
+    "detail_invalid": "Algumas configurações detalhadas têm valores que não podem ser usados"
   },
   "add_instance_modal": {
     "title": "Adicionar instância"
@@ -781,7 +782,8 @@
     "duplicate_item": "{{field}}: '{{value}}' aparece mais de uma vez",
     "list_hint": "Um por linha",
     "item_count": "{{field}} precisa de {{min}} a {{max}} itens",
-    "too_long": "{{field}} pode ter no máximo {{max}} caracteres"
+    "too_long": "{{field}} pode ter no máximo {{max}} caracteres",
+    "invalid": "{{field}} tem um valor que não pode ser usado"
   },
   "context_menu": {
     "settings": "Configurações do servidor",

@@ -441,6 +441,7 @@ function ModelCard({ data, guildIds, nameOf, onSaved, keyVersion }: ModelCardPro
                 value={draft}
                 saved={savedModel}
                 onChange={(m) => m !== draft && save(m)}
+                onFallback={setDraft}
                 guildId={guildIds[0]}
                 hasApiKey={!!data.hasApiKey}
                 keyVersion={keyVersion}
@@ -604,6 +605,8 @@ interface ModelFieldProps {
     value: string;
     saved: string;
     onChange: (value: string) => void;
+    /** 대신 쓰는 모델을 자동으로 고를 때 (없으면 onChange). 사용자가 고른 것이 아니므로 저장하지 않는 쪽에 쓴다 */
+    onFallback?: (value: string) => void;
     guildId?: string;
     hasApiKey: boolean;
     keyVersion?: number;
@@ -614,7 +617,7 @@ interface ModelFieldProps {
  * 고른 모델을 쓸 수 없어 릴레이가 다른 모델로 대신 쓰고 있으면 알리고, 그 모델을 고른 상태로 둔다
  * (저장하면 그 모델이 새 설정이 된다).
  */
-export function ModelField({ value, saved, onChange, guildId, hasApiKey, keyVersion = 0 }: ModelFieldProps) {
+export function ModelField({ value, saved, onChange, onFallback, guildId, hasApiKey, keyVersion = 0 }: ModelFieldProps) {
     const { t } = useTranslation('gui');
     const [res, setRes] = useState<ApiBody | null>(null);
     const canAsk = !!(guildId && hasApiKey && window.api?.chatbotModels);
@@ -638,10 +641,10 @@ export function ModelField({ value, saved, onChange, guildId, hasApiKey, keyVers
     }, [load]);
 
     const fallback = res?.effectiveModel && res.effectiveModel !== saved ? res.effectiveModel : null;
-    // 대신 쓰는 모델이 있으면 처음 한 번 그쪽을 고른다 (저장 전까지는 되돌릴 수 있다)
+    // 대신 쓰는 모델이 있으면 처음 한 번 그쪽을 보인다 (onFallback이 있으면 저장하지 않고 보이기만 한다)
     // biome-ignore lint/correctness/useExhaustiveDependencies: 목록을 새로 받았을 때만
     useEffect(() => {
-        if (fallback && value === saved) onChange(fallback);
+        if (fallback && value === saved) (onFallback ?? onChange)(fallback);
     }, [fallback]);
 
     const models = res?.models || [];

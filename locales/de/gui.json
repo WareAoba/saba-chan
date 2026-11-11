@@ -281,7 +281,8 @@
     "detail_heading": "{{game}}-Server · Detaillierte Einstellungen",
     "detail_subtitle": "Du kannst sie später in den Servereinstellungen ändern.",
     "detail_revert": "Zurücksetzen",
-    "back_to_summary": "Übersicht"
+    "back_to_summary": "Übersicht",
+    "detail_invalid": "Einige Detaileinstellungen haben Werte, die nicht verwendet werden können"
   },
   "add_instance_modal": {
     "title": "Instanz hinzufügen"
@@ -781,7 +782,8 @@
     "duplicate_item": "{{field}}: '{{value}}' kommt mehrfach vor",
     "list_hint": "Ein Eintrag pro Zeile",
     "item_count": "{{field}} braucht {{min}} bis {{max}} Einträge",
-    "too_long": "{{field}} darf höchstens {{max}} Zeichen lang sein"
+    "too_long": "{{field}} darf höchstens {{max}} Zeichen lang sein",
+    "invalid": "{{field}} hat einen Wert, der nicht verwendet werden kann"
   },
   "context_menu": {
     "settings": "Server-Einstellungen",
