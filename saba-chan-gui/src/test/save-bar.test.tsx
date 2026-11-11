@@ -105,6 +105,30 @@ describe('SaveBarHost', () => {
         expect(document.querySelector('.saba-savebar.dirty')).toBeNull();
     });
 
+    // 리뷰 3차 #5: 사라진 칸의 저장이 끝나기 전에 칸이 돌아와 다시 바뀌면, 앞 저장의 끝이 새 바뀜을 지우지 않는다
+    it('앞 저장이 늦게 끝나도 다시 그린 칸의 새 바뀜은 막대에 남는다', async () => {
+        let finish = () => {};
+        const onSave = vi.fn(() => new Promise<void>((r) => (finish = r)));
+        function Slow() {
+            const [draft, setDraft] = useHostDraft('port', 'a');
+            usePendingChange('port', {
+                dirty: draft !== 'a',
+                save: () => onSave(),
+                revert: () => setDraft('a'),
+            });
+            return <input aria-label="port" value={draft} onChange={(e) => setDraft(e.target.value)} />;
+        }
+        const Page = ({ show }: { show: boolean }) => <SaveBarHost>{show && <Slow />}</SaveBarHost>;
+        const { rerender } = render(<Page show />);
+        fireEvent.change(screen.getByLabelText('port'), { target: { value: 'b' } });
+        rerender(<Page show={false} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        rerender(<Page show />);
+        fireEvent.change(screen.getByLabelText('port'), { target: { value: 'c' } });
+        await act(async () => finish());
+        expect(document.querySelector('.saba-savebar.dirty')).not.toBeNull();
+    });
+
     it('사라진 칸을 되돌리면 막대가 내려가고, 바뀌지 않은 칸은 사라질 때 막대에서 빠진다', () => {
         const Page = ({ show }: { show: boolean }) => (
             <SaveBarHost>{show && <Field id="port" onSave={vi.fn()} />}</SaveBarHost>
