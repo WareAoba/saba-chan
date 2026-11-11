@@ -32,6 +32,11 @@ const vpsDaemon = { hostId: 'host-b', name: 'vps', label: '김마무(vps)', addr
 
 const cards = () => screen.getByRole('list', { name: 'My PCs' });
 const card = (name: string) => within(cards()).getByText(name).closest('li')!;
+// 카드마다 수정 버튼 하나: 업데이트·지우기는 그 창 안에 있다 (사용자 결정 2026-11-11)
+const openEdit = async (name: string) => {
+    await act(async () => fireEvent.click(within(card(name)).getByRole('button', { name: 'Edit' })));
+    return screen.getByRole('dialog', { name: `${name} settings` });
+};
 
 describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
     beforeEach(() => {
@@ -63,10 +68,12 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         await act(async () => render(<RemoteDaemonSection />));
         const first = within(cards()).getAllByRole('listitem')[0];
         expect(first).toHaveClass('me');
-        expect(within(first).getByText('This PC', { selector: '.remote-pc-me' })).toBeInTheDocument();
+        expect(within(first).getByText('This PC', { selector: '.remote-pc-name' })).toBeInTheDocument();
         expect(within(first).getByText('125.180.44.17')).toBeInTheDocument();
         expect(within(first).getByText('Listening on port 57480')).toBeInTheDocument();
-        expect(within(first).getByText('Windows · x86_64 · 0.1.13')).toBeInTheDocument();
+        // OS 줄은 OS 이름만 (x86_64는 적지 않는다), 사바쨩 판은 이름 옆에
+        expect(within(first).getByText('Windows', { selector: '.remote-pc-sub' })).toBeInTheDocument();
+        expect(within(first).getByText('v0.1.13')).toBeInTheDocument();
     });
 
     it('연결한 PC 카드는 배포판 로고, 연결한 날, 공인 IP, 직접 연결을 보인다', async () => {
@@ -75,11 +82,24 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         await act(async () => render(<RemoteDaemonSection />));
         const c = card('김마무(vps)');
         expect(within(c).getByRole('img', { name: 'Ubuntu' })).toBeInTheDocument();
-        expect(within(c).getByText('Ubuntu 24.04 LTS · x86_64 · 0.1.13')).toBeInTheDocument();
+        expect(within(c).getByText('Ubuntu 24.04 LTS', { selector: '.remote-pc-sub' })).toBeInTheDocument();
+        expect(within(c).getByText('v0.1.13')).toBeInTheDocument();
         expect(within(c).getByText('203.0.113.24')).toBeInTheDocument();
         expect(within(c).getByText('Direct (port 57480)')).toBeInTheDocument();
         expect(within(c).getByText('Online')).toBeInTheDocument();
         expect(within(c).queryByText('Not connected yet')).toBeNull();
+    });
+
+    it('CPU는 ARM일 때만 OS 이름 뒤에 (ARM)으로 붙인다', async () => {
+        vi.mocked(window.api.remotePeers).mockResolvedValue({
+            peers: [
+                { ...vps, platform: { ...vps.platform, os: 'linux aarch64' } },
+                { hostId: 'host-m', name: '맥북', status: 'online', hasEndpoint: false, saved: false, platform: { os: 'macos aarch64' } },
+            ],
+        });
+        await act(async () => render(<RemoteDaemonSection />));
+        expect(within(card('김마무(vps)')).getByText('Ubuntu 24.04 LTS (ARM)')).toBeInTheDocument();
+        expect(within(card('맥북')).getByText('macOS (ARM)')).toBeInTheDocument();
     });
 
     it('별을 누른 PC가 메인 데몬이 되고, 이 PC의 별을 누르면 이 PC로 돌아간다', async () => {
@@ -120,7 +140,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [vpsDaemon] });
         window.api.daemonTarget = vi.fn().mockResolvedValue({ target: null });
         await act(async () => render(<RemoteDaemonSection />));
-        await act(async () => fireEvent.click(within(card('김마무(vps)')).getByRole('button', { name: 'Delete' })));
+        await act(async () => fireEvent.click(within(await openEdit('김마무(vps)')).getByRole('button', { name: 'Delete' })));
         const dialog = screen.getByRole('dialog', { name: 'Remove 김마무(vps)?' });
         const uninstall = within(dialog).getByRole('checkbox', { name: 'Also uninstall Saba-chan on that PC' });
         expect(uninstall).not.toBeDisabled();
@@ -142,7 +162,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         vi.mocked(window.api.remotePeers).mockResolvedValue({ peers: [{ ...vps, platform: { os: 'windows x86_64' } }] });
         vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [vpsDaemon] });
         await act(async () => render(<RemoteDaemonSection />));
-        await act(async () => fireEvent.click(within(card('김마무(vps)')).getByRole('button', { name: 'Delete' })));
+        await act(async () => fireEvent.click(within(await openEdit('김마무(vps)')).getByRole('button', { name: 'Delete' })));
         expect(screen.getByRole('checkbox', { name: 'Also uninstall Saba-chan on that PC' })).toBeDisabled();
     });
 
@@ -153,7 +173,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         window.api.daemonTargetSet = vi.fn().mockResolvedValue({ success: true, target: null });
         const reload = vi.fn();
         await act(async () => render(<RemoteDaemonSection onTargetGone={reload} />));
-        await act(async () => fireEvent.click(within(card('김마무(vps)')).getByRole('button', { name: 'Delete' })));
+        await act(async () => fireEvent.click(within(await openEdit('김마무(vps)')).getByRole('button', { name: 'Delete' })));
         await act(async () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' })));
         expect(window.api.daemonTargetSet).toHaveBeenCalledWith(null);
         expect(reload).toHaveBeenCalled();
@@ -163,9 +183,13 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         vi.mocked(window.api.remotePeers).mockResolvedValue({ peers: [{ ...vps, agentVersion: '0.1.12' }] });
         vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [vpsDaemon] });
         await act(async () => render(<RemoteDaemonSection />));
-        const c = card('김마무(vps)');
-        expect(within(c).getByText('Needs update to 0.1.13')).toBeInTheDocument();
-        await act(async () => fireEvent.click(within(c).getByRole('button', { name: 'Update' })));
+        // 카드에는 판 옆 표시만, 업데이트는 수정 창에서
+        expect(within(card('김마무(vps)')).getByText('v0.1.12')).toHaveAttribute('data-tooltip', 'Needs update to 0.1.13');
+        expect(within(card('김마무(vps)')).queryByRole('button', { name: 'Update' })).toBeNull();
+        const dialog = await openEdit('김마무(vps)');
+        expect(within(dialog).getByText('Needs update to 0.1.13')).toBeInTheDocument();
+        await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Update' })));
+        expect(screen.queryByRole('dialog')).toBeNull();
         expect(window.api.remoteDaemonUpdate).toHaveBeenCalledWith('host-b');
         expect(screen.getByText(/Update started/)).toBeInTheDocument();
         expect(olderVersion('0.1.9', '0.1.13')).toBe(true);

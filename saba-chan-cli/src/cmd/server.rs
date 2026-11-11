@@ -2129,6 +2129,9 @@ async fn update(ctx: &Ctx, query: Option<&str>, check_only: bool) -> Result<()> 
                 say!("{}", t!("server.update_available", name = sv.name));
                 ctx.out
                     .hint(&format!("saba-chan-cli server update {}", shell_word(&sv.name)));
+            } else if s(r, "reason") == "check_failed" {
+                // 확인하지 못했다: "최신"이라고 말하지 않는다
+                say!("{}", t!("server.update_check_failed", name = sv.name, error = s(r, "error")));
             } else if s(r, "reason") == "update_unsupported" {
                 // 다운로드·수동 설치 서버: 최신인지 알 수 없다
                 say!("{}", t!("err.hint.update_unsupported"));
@@ -2726,6 +2729,7 @@ mod tests {
         assert!(typed_setting(&fields, &inst, "difficulty", "insane").is_err());
         assert_eq!(typed_setting(&fields, &inst, "memory_limit_mb", "6144").unwrap().1, json!(6144));
         assert_eq!(typed_setting(&fields, &inst, "memory_limit_mb", "").unwrap().1, Value::Null);
+        assert_eq!(typed_setting(&fields, &inst, "auto_update", "on").unwrap().1, json!(true));
         let (k, v) = typed_setting(&fields, &inst, "ext.box", "").unwrap();
         assert_eq!((k.as_str(), v), ("extension_data.box", Value::Null));
     }

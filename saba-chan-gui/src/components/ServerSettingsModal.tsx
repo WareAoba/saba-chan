@@ -7,6 +7,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
 import type { ModuleInfo, SettingField } from '../types/daemon';
 import { moduleSupports } from '../utils/helpers';
+import { extensionInstallMethod } from '../utils/installMethod';
 import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/validation';
 import { useExtensions } from '../contexts/ExtensionContext';
 import { CliLine, changedForCli } from './CliLine';
@@ -74,13 +75,15 @@ function validationText(t: ReturnType<typeof useTranslation>['t'], fieldLabel: s
                 value: e.value,
                 defaultValue: `${fieldLabel}: '${e.value}' is not a valid option`,
             });
+        case 'invalid':
+            return t('validation.invalid', { field: fieldLabel });
         default:
             return null;
     }
 }
 
-/** 설정 한 줄: 이름·설명 왼쪽, 입력은 오른쪽 끝(또는 stack이면 아래 전체 폭) */
-function SettingRow({
+/** 설정 한 줄: 이름·설명 왼쪽, 입력은 오른쪽 끝(또는 stack이면 아래 전체 폭). 서버 추가 창도 쓴다 */
+export function SettingRow({
     label,
     labelId,
     htmlFor,
@@ -134,10 +137,12 @@ interface SettingsFieldProps {
     validationError?: SettingValidationError;
     /** 화면을 연 뒤 값이 바뀌었는가 (다시 시작해야 적용되는 칸이면 그렇다고 표시한다) */
     changed?: boolean;
+    /** 줄에 더할 class (서버 추가 창은 바꾼 줄을 표시한다) */
+    className?: string;
 }
 
 /** 모듈이 선언한 설정 칸 하나 (field_type에 맞는 입력) */
-export function SettingsField({ field, value, modNs, onChange, validationError, changed }: SettingsFieldProps) {
+export function SettingsField({ field, value, modNs, onChange, validationError, changed, className }: SettingsFieldProps) {
     const { t } = useTranslation('gui');
     // 이름표를 입력 칸에 잇는다 (화면 낭독기, 이름표 눌러 칸으로 가기)
     const inputId = useId();
@@ -258,6 +263,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
             control={control}
             stack={STACKED_TYPES.includes(fieldType)}
             error={validationError ? validationText(t, fieldLabel, validationError) : null}
+            className={className}
         />
     );
 }
@@ -278,8 +284,8 @@ export function ProtocolNotice({ protocol }: { protocol: string }) {
     );
 }
 
-/** 설정 묶음 카드 */
-function Card({
+/** 설정 묶음 카드. 서버 추가 창도 쓴다 */
+export function Card({
     icon,
     title,
     desc,
@@ -380,6 +386,7 @@ function GeneralTab({
         moduleSupports(module, 'list_versions') &&
         moduleSupports(module, 'install_server');
     const crashOff = String(settingsValues.auto_restart) === 'false';
+    const autoUpdatable = extensionInstallMethod(settingsServer, module) !== null;
     // 명령 팔레트가 고급 묶음의 칸을 찾아 달라고 하면 펼친다 (칸을 찾아 반짝이는 일은 팔레트가 한다)
     const findField = useUIStore((s) => s.findSettingField);
     // biome-ignore lint/correctness/useExhaustiveDependencies: 찾기 요청이 올 때만
@@ -488,6 +495,24 @@ function GeneralTab({
                                 checked={String(settingsValues.restart_on_unknown_exit) === 'true'}
                                 disabled={crashOff}
                                 onChange={(checked) => handleSettingChange('restart_on_unknown_exit', checked)}
+                            />
+                        }
+                    />
+                </Card>
+            )}
+
+            {/* 게임 서버 자동 업데이트 (데몬 인스턴스 auto_update): 설치 방식 익스텐션으로 설치한 서버만 새 빌드를 확인할 수 있다 */}
+            {showSaba && autoUpdatable && (
+                <Card icon="download" title={t('server_settings.auto_update_title')} className="ss-auto-update">
+                    <SettingRow
+                        label={t('server_settings.auto_update_label')}
+                        htmlFor={`${rowId}-auto-update`}
+                        desc={t('server_settings.auto_update_hint')}
+                        control={
+                            <SabaToggle
+                                id={`${rowId}-auto-update`}
+                                checked={String(settingsValues.auto_update) === 'true'}
+                                onChange={(checked) => handleSettingChange('auto_update', checked)}
                             />
                         }
                     />

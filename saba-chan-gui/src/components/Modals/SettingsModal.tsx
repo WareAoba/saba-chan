@@ -239,16 +239,11 @@ function SettingsModal({
                 aria-labelledby={`settings-tab-${id}`}
                 onAnimationEnd={() => setSlideDirection('')}
             >
-                <h3>{t(TAB_LABELS[id])}</h3>
+                <h2 className="settings-tab-title">{t(TAB_LABELS[id])}</h2>
                 {body}
             </div>
         );
 
-    const header = (
-        <div className="settings-modal-header">
-            <h2 style={{ fontSize: '1.3rem' }}>{t('gui:settings_modal.title')}</h2>
-        </div>
-    );
     // 서버·디스코드·작업 기록 화면의 왼쪽 목록과 같은 줄 모양을 쓴다
     const tabList = (
         <div
@@ -295,7 +290,6 @@ function SettingsModal({
                 <div className={'settings-modal-content'}>
                     {/* 즉시 저장할 수 없는 칸(포트·주소)의 바뀜을 모아 아래에서 올라오는 막대로 묻는다 */}
                     <SaveBarHost>
-                    {header}
 
                     {panel(
                         'general',
@@ -372,7 +366,7 @@ function SettingsModal({
                             aria-labelledby={`settings-tab-${activeExtTab.id}`}
                             onAnimationEnd={() => setSlideDirection('')}
                         >
-                            <h3>{activeExtTab.label}</h3>
+                            <h2 className="settings-tab-title">{activeExtTab.label}</h2>
                             <ExtensionSettingsPanel entry={activeExtTab.entry} />
                         </div>
                     )}
@@ -401,7 +395,7 @@ function SettingsModal({
                         aria-labelledby="settings-tab-sabaStorage"
                         onAnimationEnd={() => setSlideDirection('')}
                     >
-                        <h3>{t(TAB_LABELS.sabaStorage)}</h3>
+                        <h2 className="settings-tab-title">{t(TAB_LABELS.sabaStorage)}</h2>
                         <SabaStorage
                             key={storageTab}
                             devMode={devMode}

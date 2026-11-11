@@ -148,6 +148,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     extension_data: instance.extension_data.clone(),
                     extra_args: instance.extra_args.clone(),
                     memory_limit_mb: instance.memory_limit_mb,
+                    auto_update: instance.auto_update,
                     game_chat: instance.game_chat,
                     game_chat_keyword: instance.game_chat_keyword.clone(),
                     access: instance.access,

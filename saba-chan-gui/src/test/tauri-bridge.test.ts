@@ -259,7 +259,10 @@ describe('데몬 응답 가공', () => {
         });
         expect(seen).toEqual([]);
         await api.sandboxRevokeExtensionGui('ext-y');
-        expect(seen[0]).toMatchObject({ method: 'DELETE', path: '/api/sandbox/extension-gui/ext-y' });
+        await api.sandboxListExtensionGui();
+        // GUI 동의는 번들을 주는 이 PC 데몬의 것: 원격 데몬을 고른 동안에도 이 PC에서 보고 철회한다
+        expect(seen[0]).toMatchObject({ method: 'DELETE', path: '/api/sandbox/extension-gui/ext-y', target: 'local' });
+        expect(seen[1]).toMatchObject({ method: 'GET', path: '/api/sandbox/extension-gui', target: 'local' });
     });
 
     it('instanceDelete가 시간 안에 답을 못 받으면 error_code ETIMEDOUT을 함께 돌려준다', async () => {

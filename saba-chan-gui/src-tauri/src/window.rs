@@ -169,7 +169,7 @@ pub fn set_backdrop(win: &WebviewWindow, config: Value) -> Value {
 }
 
 /// 창이 앱 화면 밖으로 이동하거나 새 창을 열지 못하게 한다. 웹 링크는 바깥 브라우저로
-fn lock_navigation<'a>(
+pub(crate) fn lock_navigation<'a>(
     app: &AppHandle,
     builder: WebviewWindowBuilder<'a, tauri::Wry, AppHandle>,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
@@ -318,7 +318,7 @@ pub fn show_main(app: &AppHandle) {
     }
 }
 
-/// 사용자가 보는 창이 없고 트레이만 들었는가 (트레이 팝업은 창으로 세지 않는다)
+/// 사용자가 보는 창이 없고 트레이만 들었는가 (트레이 팝업·바탕화면 오버레이는 창으로 세지 않는다)
 pub fn tray_only_now(app: &AppHandle) -> bool {
     tray_only_without(app, None)
 }
@@ -330,12 +330,16 @@ fn tray_only_without(app: &AppHandle, gone: Option<&str>) -> bool {
 }
 
 fn tray_only<'a>(mut labels: impl Iterator<Item = &'a str>) -> bool {
-    labels.all(|l| l == TRAY_POPUP)
+    labels.all(|l| l == TRAY_POPUP || l == crate::overlay::OVERLAY)
 }
 
-/// 창을 모두 없앤다 (닫기 확인을 거치지 않는다). 웹뷰가 내려가고 트레이만 남는다
+/// 창을 모두 없앤다 (닫기 확인을 거치지 않는다). 웹뷰가 내려가고 트레이만 남는다.
+/// 바탕화면 오버레이는 트레이처럼 남는다 (끄는 것은 그 창의 메뉴나 설정)
 pub fn close_all(app: &AppHandle) {
     for (_, w) in app.webview_windows() {
+        if w.label() == crate::overlay::OVERLAY {
+            continue;
+        }
         if let Err(e) = w.destroy() {
             tracing::warn!("[Window] Failed to close {}: {}", w.label(), e);
         }
@@ -668,6 +672,10 @@ mod tests {
     fn only_the_tray_popup_left_means_tray_only() {
         assert!(tray_only([].into_iter()));
         assert!(tray_only([TRAY_POPUP].into_iter()));
+        assert!(
+            tray_only([crate::overlay::OVERLAY, TRAY_POPUP].into_iter()),
+            "the desktop overlay stays like the tray"
+        );
         assert!(!tray_only([MAIN].into_iter()));
         assert!(
             !tray_only(["popout-abc"].into_iter()),

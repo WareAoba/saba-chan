@@ -399,7 +399,8 @@ impl Api {
     }
     /// GET /api/instance/:id/check-update
     pub async fn check_server_update(&self, id: &str) -> Result<Value> {
-        self.get_slow(&format!("/api/instance/{}/check-update", seg(id))).await
+        // SteamCMD 확인은 데몬의 hook 한도(120초)까지 걸릴 수 있다: 그 한도는 데몬이 지킨다
+        self.call(Method::GET, &format!("/api/instance/{}/check-update", seg(id)), None, LONG).await
     }
     /// POST /api/instance/:id/apply-update
     pub async fn apply_server_update(&self, id: &str) -> Result<Value> {

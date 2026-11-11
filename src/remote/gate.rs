@@ -116,6 +116,7 @@ pub static ROUTES: &[Route] = &[
     allow("DELETE", "/api/provision-progress/{name}"),
     allow("GET", "/api/instance/{id}/check-update"),
     allow("POST", "/api/instance/{id}/apply-update"),
+    allow("DELETE", "/api/instance/{id}/apply-update"),
     allow("GET", "/api/instance/{id}/installed-version"),
     // 게임 설정 원문 (관리자 비밀번호가 들어 있다). 웹은 인스턴스 설정(비밀값을 뺀다)으로 고친다.
     // 짝 맺은 PC의 GUI는 이것으로 게임 설정을 고친다 (원격 포트는 인스턴스 설정도 비밀값째 보인다)

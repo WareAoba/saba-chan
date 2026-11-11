@@ -75,7 +75,7 @@ function SleepAllButton({ nodes, onAsleepChange }: SleepAllButtonProps) {
             <Icon name="sun" size="sm" /> {t('discord.agent_wake')}
         </button>
     ) : (
-        <button type="button" className="btn btn-secondary" onClick={toggle} disabled={disabled}>
+        <button type="button" className="btn btn-ghost" onClick={toggle} disabled={disabled}>
             <Icon name="zzz" size="sm" /> {t('discord.agent_stop')}
         </button>
     );
@@ -87,7 +87,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     return (
         <button
             type="button"
-            className="btn btn-secondary btn-sm"
+            className="btn btn-ghost btn-sm"
             onClick={() =>
                 navigator.clipboard?.writeText(text).then(() => {
                     setCopied(true);
@@ -306,7 +306,7 @@ export function ConnectionView({
                     {!pairing.active && (
                         <div className="dc-hero-actions">
                             {onInviteBot && (
-                                <button data-spot="discord.invite" type="button" className="btn btn-secondary btn-lg" onClick={onInviteBot}>
+                                <button data-spot="discord.invite" type="button" className="btn btn-ghost btn-lg" onClick={onInviteBot}>
                                     <Icon name="externalLink" size="sm" /> {t('discord.invite_bot')}
                                 </button>
                             )}
@@ -469,7 +469,7 @@ export function ConnectionView({
                                 <Icon name="externalLink" size="sm" /> {t('discord.invite_bot')}
                             </button>
                         )}
-                        <button type="button" className="btn btn-secondary" onClick={onStartPairing}>
+                        <button type="button" className="btn btn-ghost" onClick={onStartPairing}>
                             <Icon name="plus" size="sm" /> {t('discord.pair_start')}
                         </button>
                     </div>

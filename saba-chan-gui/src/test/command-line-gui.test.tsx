@@ -61,7 +61,7 @@ describe('명령 입력 안내', () => {
             'tok-ok',
             'tok-bad',
         ]);
-        expect(screen.getByRole('status').textContent).toBe('✕ amount takes 1–64. Got: 99');
+        expect(screen.getByRole('status').textContent).toBe('amount takes 1–64. Got: 99');
     });
 
     it('빠진 칸을 알리고, 다 채우면 보낼 수 있다고 알린다', () => {
@@ -70,7 +70,7 @@ describe('명령 입력 안내', () => {
         fireEvent.change(line, { target: { value: 'give Steve ' } });
         expect(screen.getByRole('status').textContent).toBe('Add item too.');
         fireEvent.change(line, { target: { value: 'give Steve diamond 3' } });
-        expect(screen.getByRole('status').textContent).toBe('✓ Ready. Press Enter to send.');
+        expect(screen.getByRole('status').textContent).toBe('Ready. Press Enter to send.');
     });
 
     it('목록에 없는 명령도 막지 않고 그대로 보낸다', async () => {

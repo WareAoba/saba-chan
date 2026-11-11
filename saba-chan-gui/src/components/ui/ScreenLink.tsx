@@ -4,6 +4,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { openScreen } from '../../utils/openScreen';
 import { type ScreenAddress, parseScreen } from '../../utils/screenAddress';
 import { SETTINGS_TAB_LABELS } from '../Modals/settingsTabs';
+import { Icon } from '../Icon';
 
 // 디스코드 서버 탭 중 이름 키가 discord.tab_<탭>이 아닌 것
 const NODE_TAB_LABELS: Record<string, string> = {
@@ -69,7 +70,7 @@ export function ScreenLink({ to }: { to: string }) {
                 </Fragment>
             ))}
             <span className="screen-link-arrow" aria-hidden="true">
-                ↗
+                <Icon name="externalLink" size="xs" />
             </span>
         </button>
     );

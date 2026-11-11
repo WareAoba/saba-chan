@@ -224,7 +224,6 @@
     "server_name": "サーバー名",
     "server_name_placeholder": "例: my-server-1",
     "no_modules": "モジュールが見つかりません。<link/>からゲームモジュールを入手してください。",
-    "add_server": "サーバーを追加",
     "provisioning": "インストール中…",
     "step_compose": "設定生成",
     "select_game_subtitle": "新しいサーバーを設定するゲームを選択してください。",
@@ -238,19 +237,7 @@
     "platform_unsupported_detail": "このゲームモジュールは {{platforms}} でのみ動きます",
     "arch_unsupported": "このCPUは非対応",
     "arch_unsupported_detail": "このゲームモジュールは {{architectures}} CPUでのみ動きます",
-    "next": "次へ",
     "prev": "戻る",
-    "step_counter": "ステップ {{current}}/{{total}}",
-    "server_step_title": "サーバーの種類とバージョン",
-    "server_step_subtitle": "インストールするサーバーの種類とバージョンを選んでください。",
-    "location_step_title": "サーバーファイルの場所",
-    "location_step_subtitle": "サーバーファイルを置く場所を選んでください。",
-    "run_step_title": "実行方法",
-    "run_step_subtitle": "サーバーの起動方法を選んでください。",
-    "name_step_title": "名前とポート",
-    "name_step_subtitle": "ほかのサーバーと重ならないか確認します。",
-    "confirm_step_title": "確認",
-    "confirm_step_subtitle": "選んだ内容を確認してサーバーを追加してください。",
     "version": "サーバーのバージョン",
     "version_latest": "最新バージョン",
     "version_latest_of": "{{version}}（最新）",
@@ -276,9 +263,26 @@
     "port_reserved": "{{port}} 番ポートは Windows が予約しているため開けません。ほかのポートを選んでください。",
     "checking": "ほかのサーバーと重ならないか確認中…",
     "check_failed": "重なりを確認できませんでした。追加するときにもう一度確認します。",
-    "summary_game": "ゲーム",
     "port_invalid": "ポートは 1 から 65535 までの数字で入力してください。",
-    "folder_unavailable": "このフォルダーを作成できませんでした。パスと権限を確認してください。"
+    "folder_unavailable": "このフォルダーを作成できませんでした。パスと権限を確認してください。",
+    "pick_subtitle": "どのゲームサーバーを立てますか？",
+    "search_games": "ゲームを探す",
+    "import_tile": "使っていたサーバーを取り込む",
+    "maker_tile": "自分で作る",
+    "maker_tile_sub": "一覧にないゲーム",
+    "summary_title": "{{game}} サーバー",
+    "summary_subtitle": "おすすめの値のまま作成できます。",
+    "back_to_games": "ゲームを選び直す",
+    "create": "作成",
+    "detail_title": "詳細設定",
+    "detail_desc": "難易度・最大人数・ホワイトリストなどのサーバー設定を先に決めます。",
+    "detail_open": "詳細設定",
+    "detail_changed": "{{count}}件変更",
+    "detail_heading": "{{game}} サーバー · 詳細設定",
+    "detail_subtitle": "作成後もサーバー設定で変更できます。",
+    "detail_revert": "元に戻す",
+    "back_to_summary": "概要",
+    "detail_invalid": "詳細設定に使えない値があります"
   },
   "command_modal": {
     "command_label": "コマンド",
@@ -383,6 +387,9 @@
     "restart_badge": "再起動で反映",
     "toggle_on": "オン",
     "toggle_off": "オフ",
+    "auto_update_title": "自動更新",
+    "auto_update_label": "ゲームサーバーの自動更新",
+    "auto_update_hint": "新しいバージョンが出たら、接続者がいないときに停止・バックアップ・更新して再起動します。接続者がいるときは通知だけ送ります。",
     "restart_now": "今すぐ再起動",
     "restart_later": "あとで",
     "install_backup_failed": "インストール前に {{file}} をバックアップできなかったため、インストールしませんでした。ディスクの空き容量と同じフォルダーの .bak ファイルを確認してください。",
@@ -402,7 +409,7 @@
     "confirm_detail": "インターフェースのみ終了: ウィンドウを閉じます。デーモンは実行を続け、次回起動時に自動で再接続します。\n全て終了: デーモンを停止して完全に終了します。",
     "exit_interface_label": "インターフェースのみ終了",
     "quit_all_label": "全て終了",
-    "managed_warning_title": "⚠️ マネージドサーバーが実行中",
+    "managed_warning_title": "マネージドサーバーが実行中",
     "managed_warning_message": "{{count}}個のマネージドサーバーが実行中です: {{names}}",
     "managed_warning_detail": "これらのサーバーは動き続けます。サバちゃんを再び起動すると、コンソールに再接続します。終了している間は、コマンド・自動再起動・Discord通知を使えません。\n本当に終了しますか？"
   },
@@ -414,22 +421,22 @@
     "schema_invalid": "module.tomlが形式に合っていません: {{problems}}"
   },
   "servers": {
-    "fetch_failed_toast": "⚠️ {{error}}",
-    "fetch_update_failed_toast": "⚠️ サーバーリスト更新失敗: {{error}}",
-    "start_failed_toast": "❌ サーバー起動失敗: {{error}}",
+    "fetch_failed_toast": "{{error}}",
+    "fetch_update_failed_toast": "サーバーリスト更新失敗: {{error}}",
+    "start_failed_toast": "サーバー起動失敗: {{error}}",
     "starting_toast": "⏳ 「{{name}}」サーバーを起動中...",
-    "start_completed_toast": "✅ 「{{name}}」サーバーが起動しました!",
-    "start_timeout_toast": "⚠️ 「{{name}}」サーバーを起動しています。時間がかかる場合があります。",
+    "start_completed_toast": "「{{name}}」サーバーが起動しました!",
+    "start_timeout_toast": "「{{name}}」サーバーを起動しています。時間がかかる場合があります。",
     "stop_confirm_title": "サーバーを停止",
     "stop_confirm_message": "「{{name}}」サーバーを停止してもよろしいですか?",
     "force_stop_title": "保存せずに停止しますか？",
     "force_stop_message": "{{name}} に保存して終了するよう頼む手段（コンソール）がありません。強制停止すると、最後の保存以降の進行が失われることがあります。",
     "force_stop_confirm": "保存せずに停止",
-    "stop_failed_toast": "❌ サーバー停止失敗: {{error}}",
+    "stop_failed_toast": "サーバー停止失敗: {{error}}",
     "stopping_toast": "⏳ 「{{name}}」サーバーを停止中...",
-    "stop_completed_toast": "✅ 「{{name}}」サーバーが停止しました!",
-    "stop_timeout_toast": "⚠️ 「{{name}}」サーバーを停止しています。時間がかかる場合があります。",
-    "unexpected_stop_toast": "⚠️ 「{{name}}」サーバーが予期せず停止しました！",
+    "stop_completed_toast": "「{{name}}」サーバーが停止しました!",
+    "stop_timeout_toast": "「{{name}}」サーバーを停止しています。時間がかかる場合があります。",
+    "unexpected_stop_toast": "「{{name}}」サーバーが予期せず停止しました！",
     "external_start_toast": "ℹ️ 「{{name}}」サーバーはサバちゃんの外で起動されました",
     "already_running_toast": "ℹ️ 「{{name}}」はすでに起動しています",
     "add_server_name_empty_title": "入力エラー",
@@ -447,9 +454,9 @@
     "jar_action_update_path": "パスを変更",
     "jar_action_install_new": "新規インストール",
     "select_server_jar": "サーバー実行ファイルを選択",
-    "jar_path_updated": "✅ サーバーパスが更新されました",
+    "jar_path_updated": "サーバーパスが更新されました",
     "installing_server": "⏳ サーバーをインストール中...",
-    "install_completed": "✅ {{game}} {{version}} サーバーのインストール完了！",
+    "install_completed": "{{game}} {{version}} サーバーのインストール完了！",
     "progress_installing": "最新バージョンをダウンロードしてインストールしています...",
     "version_unknown": "インストールする最新バージョンを決められませんでした: {{error}}",
     "progress_downloading": "{{game}} {{version}} をダウンロード中...",
@@ -535,7 +542,7 @@
     "generic_error": "予期しないエラーが発生しました。",
     "port_conflict": "ポート競合",
     "port_conflict_detail": "ポート {{port}} はインスタンス '{{name}}' で既に使用されています",
-    "port_conflict_force_stop_toast": "🚫 {{stopped}} が強制停止されました。ポート {{port}} が {{existing}} と競合しています",
+    "port_conflict_force_stop_toast": "{{stopped}} が強制停止されました。ポート {{port}} が {{existing}} と競合しています",
     "unexpected_crash": "問題が発生して画面を表示できませんでした",
     "retry": "再試行"
   },
@@ -580,7 +587,8 @@
     "just_now": "たった今",
     "minutes_ago": "{{count}}分前",
     "yesterday": "昨日",
-    "click_to_open": "クリックで開く"
+    "click_to_open": "クリックで開く",
+    "click_to_update": "クリックして更新"
   },
   "updates": {
     "available_title": "アップデートが利用可能",
@@ -716,13 +724,7 @@
     "remove_failed": "モジュールを削除できませんでした: {{error}}"
   },
   "add_instance_modal": {
-    "title": "インスタンスを追加",
-    "subtitle": "新しいサーバーインスタンスの追加方法を選択してください。",
-    "new_server_title": "新しいサーバーとして追加",
-    "new_server_desc": "ゲームモジュールを選択し、新しいサーバーインスタンスを最初から作成します。",
-    "migrate_title": "既存サーバーの移行",
-    "migrate_desc": "既存のゲームサーバーディレクトリをsaba-chanインスタンスとして取り込みます。",
-    "no_modules_hint": "先にモジュールを追加してください。<link/>から入手できます。"
+    "title": "インスタンスを追加"
   },
   "migration_modal": {
     "title": "サーバー移行",
@@ -784,7 +786,8 @@
     "duplicate_item": "{{field}}: '{{value}}' が重複しています",
     "list_hint": "1行に1つずつ",
     "item_count": "{{field}}は{{min}}～{{max}}個にしてください",
-    "too_long": "{{field}}は{{max}}文字までです"
+    "too_long": "{{field}}は{{max}}文字までです",
+    "invalid": "{{field}}の値は使えません"
   },
   "context_menu": {
     "settings": "サーバー設定",
@@ -822,6 +825,7 @@
     "update": "アップデート",
     "updating": "アップデート中…",
     "update_available": "ゲームサーバーのアップデートがあります",
+    "update_check_failed": "ゲームサーバーの更新を確認できませんでした: {{reason}}",
     "status_running": "実行中",
     "status_stopped": "停止中",
     "status_starting": "起動中",
@@ -929,7 +933,12 @@
     "logs_empty": "まだログがありません。サーバーを一度起動すると表示されます。",
     "logs_failed": "ログを読み込めませんでした: {{error}}",
     "logs_saved": "ログを保存しました: {{path}}",
-    "logs_saved_truncated": "ログが長すぎるため、最近の部分だけを保存しました: {{path}}"
+    "logs_saved_truncated": "ログが長すぎるため、最近の部分だけを保存しました: {{path}}",
+    "info_title": "サーバー情報",
+    "info_check_title": "点検",
+    "info_check_desc": "起動前に設定とファイルを確認し、ログから既知の問題を探し、外部から接続できるか確かめます。",
+    "delete_desc": "サーバーファイルも一緒に削除します。削除前にもう一度確認します。",
+    "delete_desc_linked": "一覧から外すだけです。サーバーフォルダーはそのまま残ります。"
   },
   "discord": {
     "nav_connection": "接続",
@@ -1489,7 +1498,7 @@
     "err_every": "間隔は1分以上の整数で入力してください。",
     "err_at": "時刻は HH:MM 形式で入力してください。",
     "err_message": "お知らせ内容を入力してください。",
-    "backup_unreadable": "⚠ 開けません",
+    "backup_unreadable": "開けません",
     "backup_unreadable_hint": "開けないバックアップのため、復元できません。削除するまで、使われていないバックアップ内容は整理されません。削除してください。",
     "err_backup_file_locked": "サーバーが使用中のファイル({{file}})があるためバックアップできませんでした。サーバーを停止してからやり直してください。",
     "err_autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください.",
@@ -1947,7 +1956,8 @@
     "cooking": "サーバー調理中…",
     "cooked": "完成！",
     "cook_failed": "失敗…",
-    "settings_first": "先に設定を見る"
+    "settings_first": "先に設定を見る",
+    "slow_progress": "少し時間がかかっています。止まってはいませんよ！"
   },
   "activity": {
     "idle": "クリックしてデーモンコンソールの記録を見る",
@@ -2099,6 +2109,12 @@
     "schedule_update": "{{name}} は{{minutes}}分後に予約どおりアップデートします。",
     "module_update": "{{name}}: {{module}} モジュールの新しいバージョン {{version}} が出ました。",
     "server_update": "{{name}}: ゲームサーバーの新しいバージョンが出ました。接続できない場合はサーバーをアップデートしてください。",
+    "server_update_waiting": "{{name}}: ゲームサーバーの新しいバージョンが出ましたが、{{count}}人が接続中のため自動更新を待っています。",
+    "server_update_waiting_unknown": "{{name}}: ゲームサーバーの新しいバージョンが出ましたが、接続者がいるため自動更新を待っています。",
+    "server_update_failed": "{{name}}: ゲームサーバーを更新できませんでした。{{error}}",
+    "server_update_apply_failed": "{{name}}: 更新を開始できませんでした。{{error}}",
+    "server_update_scheduled": "{{name}}: ゲーム内に予告しました。{{minutes}}分後に更新します。",
+    "server_update_started": "{{name}}: ゲームサーバーの更新を開始しました。",
     "instance_started": "{{name}} を起動しました（{{source}}）。",
     "instance_stopped": "{{name}} を停止しました（{{source}}）。",
     "instance_stopped_in_game": "{{name}} はゲーム内で停止されました。",
@@ -2338,6 +2354,20 @@
     "stop_confirm": "停止しますか？",
     "stop_confirm_aria": "{{name}} の停止を確認"
   },
+  "desktop_overlay": {
+    "menu_server": "{{name}} · {{status}}",
+    "menu_start": "起動",
+    "menu_stop": "停止",
+    "menu_stop_confirm": "停止する",
+    "menu_restart": "再起動",
+    "menu_restart_confirm": "再起動する",
+    "menu_no_servers": "まだサーバーがありません",
+    "menu_open_app": "サバちゃんを開く",
+    "menu_hide": "デスクトップから隠す",
+    "setting_label": "デスクトップオーバーレイ",
+    "setting_description": "拡張機能がデスクトップの隅に出す小さなウィンドウ（デスクトップペットなど）を表示します。ドラッグで移動できます。",
+    "setting_unsupported": "このデスクトップ（Wayland）では表示できません。"
+  },
   "autostart": {
     "label": "サインイン時に自動起動",
     "description": "PCにサインインするとSaba-chanを起動します。デーモンのみはウィンドウなしでトレイで動きます。",
@@ -2398,7 +2428,6 @@
     "state_unreachable": "つながりません",
     "my_pcs": "自分のPC",
     "my_pcs_description": "同じDiscordアカウントに接続したPCです。星を付けたPCがアプリを開いたときに最初に表示されます。",
-    "this_pc_tag": "このPC",
     "this_pc_here": "このアプリを開いているPC",
     "star_set": "メインデーモンにする",
     "star_on": "メインデーモン",
@@ -2634,9 +2663,7 @@
   "public_address": {
     "label": "ゲームサーバーのアドレス",
     "auto": "グローバルIP(自動)",
-    "change": "変更",
     "share_off": "Discordでは教えない",
-    "title": "ゲームサーバーのアドレス · {{name}}",
     "auto_title": "グローバルIPのまま",
     "auto_desc": "サーバーちゃんが見たこのPCのIPを使います。家庭のIPはときどき変わります。",
     "auto_desc_ip": "サーバーちゃんが見たこのPCのIPを使います。今は {{ip}}。家庭のIPはときどき変わります。",
@@ -2670,5 +2697,16 @@
     "next": "次へ (Enter)",
     "close": "閉じる (Esc)",
     "fold_hits": "{{count}}件一致"
+  },
+  "pc_settings": {
+    "edit": "編集",
+    "title": "{{name}} の設定",
+    "address_unavailable": "そのPCが起動して接続されているときに変更できます。",
+    "main_title": "アプリを開いたら最初に表示",
+    "main_desc": "オンにすると、次にアプリを開いたときこのPCのサーバーから表示します。",
+    "main_on_desc": "このPCが最初に表示されます。変えるには別のPCを選んでください。",
+    "update_desc": "そのPCのサバちゃんをこのPCと同じバージョンに更新します。",
+    "remove_title": "マイPCから外す",
+    "remove_desc": "接続を切って一覧から外します。何を消すかは次の画面で選びます。"
   }
 }

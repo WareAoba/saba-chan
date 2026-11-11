@@ -5,6 +5,7 @@ import { useExtensions } from '../../contexts/ExtensionContext';
 import { ExtensionConfigForm } from '../ExtensionConfigForm';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
+import { Disclosure } from '../ui/Disclosure';
 import { ModuleMakerCard } from '../ModuleMakerCard';
 import { useContextMenu } from '../ui/ContextMenu';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
@@ -1073,13 +1074,13 @@ function ModulesTab() {
                 </div>
             )}
             {unrunnableModules.length > 0 && (
-                <details className="ss-unsupported">
-                    <summary>
-                        {t('saba_storage.unsupported_here', {
-                            count: unrunnableModules.length,
-                            defaultValue: '이 기기에서는 실행할 수 없어요 · {{count}}',
-                        })}
-                    </summary>
+                <Disclosure
+                    className="ss-unsupported"
+                    summary={t('saba_storage.unsupported_here', {
+                        count: unrunnableModules.length,
+                        defaultValue: '이 기기에서는 실행할 수 없어요 · {{count}}',
+                    })}
+                >
                     {unrunnableModules.map((m) => {
                         const why = unsupportedText(t, m);
                         return (
@@ -1093,7 +1094,7 @@ function ModulesTab() {
                             </div>
                         );
                     })}
-                </details>
+                </Disclosure>
             )}
 
             <ModuleMakerCard />

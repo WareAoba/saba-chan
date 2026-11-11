@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { Server } from '../../stores/useServerStore';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
+import { SabaFail } from '../ui/SabaArt';
 import { FindKeyTag } from '../servers/PageFind';
 import { SabaSpinner } from '../ui/SabaUI';
 import { SaveBar } from '../ui/SaveBar';
@@ -196,7 +197,7 @@ export function InstanceDiscordTab({ server }: InstanceDiscordTabProps) {
         try {
             const res = await window.api.instanceWords(id);
             if (current.current !== id) return; // 그사이 다른 서버로 바뀌었다
-            if (failed(res) || !Array.isArray(res?.commands)) throw new Error(res?.error || '-');
+            if (failed(res) || !Array.isArray(res?.commands)) throw new Error(res?.error || '');
             setInst(res as InstanceWords);
         } catch (e) {
             if (current.current === id) setError((e as Error).message);
@@ -206,15 +207,15 @@ export function InstanceDiscordTab({ server }: InstanceDiscordTabProps) {
         load();
     }, [load]);
 
-    if (error) {
+    if (error !== null) {
         return (
             <div className="dc-tab">
-                <p className="dc-field-error">
-                    <Icon name="alertTriangle" size="xs" /> {t('discord.iw_load_failed', { error })}
-                </p>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={load}>
-                    {t('maintenance.retry')}
-                </button>
+                <SabaFail
+                    message={error ? t('discord.iw_load_failed', { error }) : undefined}
+                    onRetry={load}
+                    retryLabel={t('maintenance.retry')}
+                    size={140}
+                />
             </div>
         );
     }

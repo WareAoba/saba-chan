@@ -26,7 +26,7 @@ import { Segmented, StatusChip } from '../ui/StatusChip';
 
 export { auditRange, auditResult, auditWhat, auditWho };
 
-/** 이 화면을 띄울 IPC가 있는지 (로드맵 쪽 preload가 먼저 들어와야 한다) */
+/** 이 화면을 띄울 IPC가 있는지 (구버전 브리지에는 없다) */
 export const auditAvailable = () => !!window.api?.auditList;
 
 /** 감사 로그 한 줄: 서버를 가리키는 칸은 데몬 버전에 따라 instance 또는 instanceId */

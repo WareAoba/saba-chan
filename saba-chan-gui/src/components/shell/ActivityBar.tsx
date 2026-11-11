@@ -25,7 +25,7 @@ interface AuditEntry extends AuditRecord {
 
 /** 맨 아래 줄을 띄울 IPC가 있는지 (감사 로그) */
 export const activityAvailable = () => !!window.api?.auditList;
-/** 펼쳐서 데몬 콘솔을 볼 IPC가 있는지 (로드맵 쪽 preload가 먼저 들어와야 한다) */
+/** 펼쳐서 데몬 콘솔을 볼 IPC가 있는지 (구버전 브리지에는 없다) */
 export const daemonConsoleAvailable = () => !!window.api?.daemonConsole;
 
 export const ACTIVITY_POLL_MS = 3000;
