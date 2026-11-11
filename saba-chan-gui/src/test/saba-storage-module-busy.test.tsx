@@ -51,7 +51,7 @@ describe('모듈 설치·제거가 겹쳐 거절될 때', () => {
     it('제거가 거절되면 이유를 알린다', async () => {
         await openModules();
         await act(async () => fireEvent.click(document.querySelector('.ss-icon-btn.danger')!));
-        await act(async () => fireEvent.click(document.querySelector('.question-confirm')!));
+        await act(async () => fireEvent.click(document.querySelector('.saba-dialog .btn-primary')!));
         await waitFor(() => expect(window.showToast).toHaveBeenCalledWith(busyText(), 'warning', 4000, undefined));
         expect(busyText()).not.toBe('saba_storage.module_busy');
     });
@@ -69,7 +69,7 @@ describe('모듈 설치·제거가 겹쳐 거절될 때', () => {
         vi.mocked(window.api.moduleRemove).mockResolvedValue({ ok: false, error: 'Permission denied (os error 13)' });
         await openModules();
         await act(async () => fireEvent.click(document.querySelector('.ss-icon-btn.danger')!));
-        await act(async () => fireEvent.click(document.querySelector('.question-confirm')!));
+        await act(async () => fireEvent.click(document.querySelector('.saba-dialog .btn-primary')!));
         const expected = i18n.t('gui:saba_storage.remove_failed', { error: i18n.t('gui:errors.permission_denied') });
         await waitFor(() => expect(window.showToast).toHaveBeenCalledWith(expected, 'error', 5000, undefined));
     });

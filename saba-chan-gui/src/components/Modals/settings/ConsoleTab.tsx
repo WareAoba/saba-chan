@@ -46,7 +46,6 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" />{' '}
                         {t('gui:settings_modal.console_syntax_label', 'Syntax Highlighting')}
                     </span>
                     <span className="setting-description">
@@ -68,7 +67,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
                     <div className="setting-label-row">
                         <label className="setting-label">
                             <span className="setting-title">
-                                <Icon name="palette" size="sm" /> {t('gui:settings_modal.console_token_colors_label')}
+                                {t('gui:settings_modal.console_token_colors_label')}
                             </span>
                             <span className="setting-description">
                                 {t('gui:settings_modal.console_token_colors_description')}
@@ -110,7 +109,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="clock" size="sm" /> {t('gui:settings_modal.console_timestamps_label')}
+                        {t('gui:settings_modal.console_timestamps_label')}
                     </span>
                     <span className="setting-description">
                         {t('gui:settings_modal.console_timestamps_description')}
@@ -130,7 +129,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
                 <div className="setting-item">
                     <label className="setting-label">
                         <span className="setting-title">
-                            <Icon name="clock" size="sm" /> {t('gui:settings_modal.console_timestamp_date_label')}
+                            {t('gui:settings_modal.console_timestamp_date_label')}
                         </span>
                     </label>
                     <SabaToggle
@@ -144,7 +143,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_wrap_label')}
+                        {t('gui:settings_modal.console_wrap_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.console_wrap_description')}</span>
                 </label>
@@ -153,7 +152,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_auto_scroll_label')}
+                        {t('gui:settings_modal.console_auto_scroll_label')}
                     </span>
                     <span className="setting-description">
                         {t('gui:settings_modal.console_auto_scroll_description')}
@@ -169,7 +168,6 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" />{' '}
                         {t('gui:settings_modal.console_bg_label', 'Console Background')}
                     </span>
                     <span className="setting-description">
@@ -187,7 +185,6 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" />{' '}
                         {t('gui:settings_modal.console_text_label', 'Console Text Color')}
                     </span>
                     <span className="setting-description">
@@ -205,7 +202,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item setting-item-vertical">
                 <div className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_fonts_label')}
+                        {t('gui:settings_modal.console_fonts_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.console_fonts_description')}</span>
                 </div>
@@ -234,7 +231,6 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item setting-item-vertical">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" />{' '}
                         {t('gui:settings_modal.console_font_scale_label', 'Console Text Size')}
                     </span>
                     <span className="setting-description">
@@ -297,7 +293,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_buffer_label')}
+                        {t('gui:settings_modal.console_buffer_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.console_buffer_description')}</span>
                 </label>

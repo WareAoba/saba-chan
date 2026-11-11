@@ -11,7 +11,6 @@ import { StatusChip } from '../ui/StatusChip';
 import { PROVIDER_BRANDS } from './providerBrands';
 import type { DiscordNode } from './types';
 import { failed } from '../../utils/apiResult';
-import { SaveBar } from '../ui/SaveBar';
 
 /**
  * 사바쨩 설정(공통)에 두는 값: 모델만 (데몬 `commonKeys`). 나머지는 서버마다 정한다 (ChatbotGuildTab).
@@ -159,15 +158,15 @@ export function ToolGroups({ catalog, reload, isOn, onToggle }: ToolGroupsProps)
     if (!catalog) return <SabaSpinner size="sm" />;
     if (catalog.error)
         return (
-            <p className="dc-field-error">
-                <Icon name="info" size="xs" />{' '}
-                {catalog.error === 'NO_GUILD' ? t('chatbot.tools_need_guild') : t('chatbot.tools_failed')}
+            <output className={clsx('notice', catalog.error === 'NO_GUILD' ? 'tone-info' : 'tone-warn')}>
+                <Icon name={catalog.error === 'NO_GUILD' ? 'info' : 'alertTriangle'} size="sm" />
+                <span>{catalog.error === 'NO_GUILD' ? t('chatbot.tools_need_guild') : t('chatbot.tools_failed')}</span>
                 {catalog.error !== 'NO_GUILD' && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={reload}>
                         {t('maintenance.retry')}
                     </button>
                 )}
-            </p>
+            </output>
         );
     return (catalog.categories || []).map((category) => {
         const tools = (catalog.tools as ChatbotTool[]).filter((tool) => tool.category === category);
@@ -343,6 +342,16 @@ function ApiKeyCard({ hasApiKey, onChanged, nameOf }: ApiKeyCardProps) {
                     tone={hasApiKey ? 'ok' : 'idle'}
                     label={hasApiKey ? t('chatbot.key_set') : t('chatbot.key_none')}
                 />
+                {hasApiKey && (
+                    <button
+                        type="button"
+                        className={clsx('btn btn-sm', armed ? 'btn-danger' : 'btn-ghost btn-danger-text')}
+                        disabled={busy}
+                        onClick={() => (armed ? send(null) : setArmed(true))}
+                    >
+                        <Icon name="trash" size="sm" /> {armed ? t('chatbot.key_remove_confirm') : t('chatbot.key_remove')}
+                    </button>
+                )}
             </div>
             <p className="dc-card-desc">{t('chatbot.key_desc')}</p>
             <p className="dc-hint">{t('chatbot.key_providers')}</p>
@@ -366,16 +375,6 @@ function ApiKeyCard({ hasApiKey, onChanged, nameOf }: ApiKeyCardProps) {
                 <button type="submit" className="btn btn-primary" disabled={busy || !value.trim()}>
                     <Icon name="key" size="sm" /> {hasApiKey ? t('chatbot.key_replace') : t('chatbot.key_save')}
                 </button>
-                {hasApiKey && (
-                    <button
-                        type="button"
-                        className={clsx('btn', armed ? 'btn-danger' : 'btn-ghost btn-danger-text')}
-                        disabled={busy}
-                        onClick={() => (armed ? send(null) : setArmed(true))}
-                    >
-                        {armed ? t('chatbot.key_remove_confirm') : t('chatbot.key_remove')}
-                    </button>
-                )}
             </form>
             {!hasApiKey && (
                 <p className="dc-field-error">
@@ -405,13 +404,16 @@ function ModelCard({ data, guildIds, nameOf, onSaved, keyVersion }: ModelCardPro
     const [errors, setErrors] = useState<string[]>([]);
     const [syncWarn, setSyncWarn] = useState(false);
 
-    const save = async () => {
+    // 고르면 바로 저장한다 (저장 막대는 즉시 저장할 수 없는 칸에만 쓴다)
+    const save = async (picked: string) => {
+        setDraft(picked);
         setSaving(true);
         setErrors([]);
-        const model = String(draft ?? '').trim() || def;
+        const model = String(picked ?? '').trim() || def;
         try {
             const res = await window.api.chatbotSave({ settings: { model: model === def ? null : model } });
             if (failed(res)) {
+                setDraft(savedModel);
                 setErrors(
                     relayErrorLines(res, nameOf).concat(res.guildId || res.error ? [] : [t('chatbot.save_failed')]),
                 );
@@ -421,6 +423,7 @@ function ModelCard({ data, guildIds, nameOf, onSaved, keyVersion }: ModelCardPro
             onSaved(res);
             safeShowToast(t('chatbot.saved'), 'success', 3000);
         } catch (err) {
+            setDraft(savedModel);
             setErrors([(err as Error).message || String(err)]);
         } finally {
             setSaving(false);
@@ -431,12 +434,14 @@ function ModelCard({ data, guildIds, nameOf, onSaved, keyVersion }: ModelCardPro
         <section className="dc-card">
             <div className="dc-card-head">
                 <h2>{t('chatbot.model_title')}</h2>
+                {saving && <SabaSpinner size="sm" />}
             </div>
             <p className="dc-card-desc">{t('chatbot.model_desc')}</p>
             <ModelField
                 value={draft}
                 saved={savedModel}
-                onChange={setDraft}
+                onChange={(m) => m !== draft && save(m)}
+                onFallback={setDraft}
                 guildId={guildIds[0]}
                 hasApiKey={!!data.hasApiKey}
                 keyVersion={keyVersion}
@@ -453,15 +458,6 @@ function ModelCard({ data, guildIds, nameOf, onSaved, keyVersion }: ModelCardPro
                     <span>{t('chatbot.sync_pending')}</span>
                 </div>
             )}
-            <SaveBar
-                dirty={draft !== savedModel}
-                saving={saving}
-                onRevert={() => {
-                    setDraft(savedModel);
-                    setErrors([]);
-                }}
-                onSave={save}
-            />
         </section>
     );
 }
@@ -609,6 +605,8 @@ interface ModelFieldProps {
     value: string;
     saved: string;
     onChange: (value: string) => void;
+    /** 대신 쓰는 모델을 자동으로 고를 때 (없으면 onChange). 사용자가 고른 것이 아니므로 저장하지 않는 쪽에 쓴다 */
+    onFallback?: (value: string) => void;
     guildId?: string;
     hasApiKey: boolean;
     keyVersion?: number;
@@ -619,7 +617,7 @@ interface ModelFieldProps {
  * 고른 모델을 쓸 수 없어 릴레이가 다른 모델로 대신 쓰고 있으면 알리고, 그 모델을 고른 상태로 둔다
  * (저장하면 그 모델이 새 설정이 된다).
  */
-export function ModelField({ value, saved, onChange, guildId, hasApiKey, keyVersion = 0 }: ModelFieldProps) {
+export function ModelField({ value, saved, onChange, onFallback, guildId, hasApiKey, keyVersion = 0 }: ModelFieldProps) {
     const { t } = useTranslation('gui');
     const [res, setRes] = useState<ApiBody | null>(null);
     const canAsk = !!(guildId && hasApiKey && window.api?.chatbotModels);
@@ -643,10 +641,10 @@ export function ModelField({ value, saved, onChange, guildId, hasApiKey, keyVers
     }, [load]);
 
     const fallback = res?.effectiveModel && res.effectiveModel !== saved ? res.effectiveModel : null;
-    // 대신 쓰는 모델이 있으면 처음 한 번 그쪽을 고른다 (저장 전까지는 되돌릴 수 있다)
+    // 대신 쓰는 모델이 있으면 처음 한 번 그쪽을 보인다 (onFallback이 있으면 저장하지 않고 보이기만 한다)
     // biome-ignore lint/correctness/useExhaustiveDependencies: 목록을 새로 받았을 때만
     useEffect(() => {
-        if (fallback && value === saved) onChange(fallback);
+        if (fallback && value === saved) (onFallback ?? onChange)(fallback);
     }, [fallback]);
 
     const models = res?.models || [];

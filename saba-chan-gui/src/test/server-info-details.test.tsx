@@ -40,13 +40,16 @@ describe('서버 정보 탭', () => {
                 settingsProps={{} as never}
             />,
         );
-        const more = container.querySelector('details.info-more') as HTMLDetailsElement;
-        expect(more).toBeTruthy();
-        expect(more.open).toBe(false);
-        expect(more.querySelector('summary')!.textContent).toBe('Details');
+        // 서버 정보 카드 안의 공통 펼치기 (사용자 11-11)
+        const head = screen.getByRole('button', { name: 'Details' });
+        expect(head.getAttribute('aria-expanded')).toBe('false');
+        const more = container.querySelector('.info-tab .saba-disclosure-body') as HTMLElement;
+        expect(more.hidden).toBe(true);
         const hidden = [...more.querySelectorAll('dt')].map((d) => d.textContent);
         expect(hidden).toEqual(['PID', 'REST', 'Protocol']);
-        const shown = [...container.querySelectorAll('.info-tab > .info-grid dt')].map((d) => d.textContent);
+        const shown = [...container.querySelectorAll('.info-tab > .ss-card:first-child .ss-rows > .info-facts dt')].map(
+            (d) => d.textContent,
+        );
         expect(shown).toContain('Instance ID');
         expect(shown).toContain('Port');
         expect(shown).not.toContain('Protocol');

@@ -2,7 +2,6 @@ import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../../stores/useSettingsStore';
 import type { SoundSettings } from '../../../types/daemon';
 import CustomDropdown from '../../CustomDropdown/CustomDropdown';
-import { Icon } from '../../Icon';
 import { SabaToggle } from '../../ui/SabaUI';
 import { setOption } from './options';
 
@@ -29,7 +28,7 @@ export function NotifyTab() {
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="messageSquare" size="sm" /> {t('gui:settings_modal.toast_duration_label')}
+                        {t('gui:settings_modal.toast_duration_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.toast_duration_description')}</span>
                 </label>
@@ -48,7 +47,7 @@ export function NotifyTab() {
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="bell" size="sm" /> {t('gui:settings_modal.os_notifications_label')}
+                        {t('gui:settings_modal.os_notifications_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.os_notifications_description')}</span>
                 </label>
@@ -63,7 +62,7 @@ export function NotifyTab() {
                 <div className="setting-item-row">
                     <label className="setting-label">
                         <span className="setting-title">
-                            <Icon name="volume" size="sm" /> {t('gui:settings_modal.sound_effects_label')}
+                            {t('gui:settings_modal.sound_effects_label')}
                         </span>
                         <span className="setting-description">{t('gui:settings_modal.sound_effects_description')}</span>
                     </label>

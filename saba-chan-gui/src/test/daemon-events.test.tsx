@@ -213,7 +213,7 @@ describe('데몬 이벤트 스트림', () => {
         });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
             expect.objectContaining({
-                message: '🔔 Pal: a new version 1.1.0 of the palworld module is out.',
+                message: 'Pal: a new version 1.1.0 of the palworld module is out.',
                 action: 'openUpdateModal',
             }),
         );
@@ -224,7 +224,7 @@ describe('데몬 이벤트 스트림', () => {
         });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
             expect.objectContaining({
-                message: "🔔 Pal: a new game server version is out. If players can't join, update the server.",
+                message: "Pal: a new game server version is out. If players can't join, update the server.",
             }),
         );
         delete window.__sabaNotice;

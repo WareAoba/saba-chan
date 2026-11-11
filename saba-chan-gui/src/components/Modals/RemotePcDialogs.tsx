@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { Icon } from '../Icon';
-import { SabaCheckbox, SabaNumberInput, SabaSpinner } from '../ui/SabaUI';
+import { Dialog } from '../ui/Dialog';
+import { SabaCheckbox, SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { SettingRow } from '../ServerSettingsModal';
+import { ConfirmIcon } from './Modals';
 import { failed } from '../../utils/apiResult';
 
 /** 리눅스 한 줄 설치 (install.sh 맨 위와 같다). SSH가 안 될 때 그 PC에 붙여 넣는다 */
@@ -28,51 +31,27 @@ export function RemoveDialog({ name, saved, canUninstall, summary, busy, onCance
     const [keepInstances, setKeepInstances] = useState(true);
     const [removePc, setRemovePc] = useState(!saved);
     const nothing = !saved && !removePc;
+    const row = (label: string, desc: string, control: ReactNode, opts: { sub?: boolean; disabled?: boolean } = {}) => (
+        <SettingRow
+            label={label}
+            desc={desc}
+            disabled={opts.disabled}
+            className={opts.sub ? 'remote-pc-subrow' : undefined}
+            control={control}
+        />
+    );
     return (
-        <div className="modal-overlay" role="presentation">
-            <div className="modal remote-pc-dialog" role="dialog" aria-modal="true" aria-label={t('remote_daemon.remove_title', { name })}>
-                <h3 className="remote-pc-dialog-title">{t('remote_daemon.remove_title', { name })}</h3>
-                <p className="setting-description">{summary}</p>
-                {saved && (
-                    <div className="remote-pc-choice">
-                        <SabaCheckbox checked disabled onChange={() => {}}>
-                            {t('remote_daemon.remove_forget')}
-                        </SabaCheckbox>
-                        <span className="setting-description">{t('remote_daemon.remove_forget_desc')}</span>
-                    </div>
-                )}
-                {saved && (
-                    <div className="remote-pc-choice">
-                        <SabaCheckbox
-                            checked={uninstall}
-                            disabled={!canUninstall || busy}
-                            onChange={setUninstall}
-                            title={canUninstall ? undefined : t('remote_daemon.remove_uninstall_unavailable')}
-                        >
-                            {t('remote_daemon.remove_uninstall')}
-                        </SabaCheckbox>
-                        <span className="setting-description">
-                            {canUninstall ? t('remote_daemon.remove_uninstall_desc') : t('remote_daemon.remove_uninstall_unavailable')}
-                        </span>
-                        {uninstall && (
-                            <div className="remote-pc-subchoice">
-                                <SabaCheckbox checked={keepSettings} disabled={busy} onChange={setKeepSettings}>
-                                    {t('remote_daemon.remove_keep_settings')}
-                                </SabaCheckbox>
-                                <SabaCheckbox checked={keepInstances} disabled={busy} onChange={setKeepInstances}>
-                                    {t('remote_daemon.remove_keep_instances')}
-                                </SabaCheckbox>
-                            </div>
-                        )}
-                    </div>
-                )}
-                <div className="remote-pc-choice">
-                    <SabaCheckbox checked={removePc} disabled={busy} onChange={setRemovePc}>
-                        {t('remote_daemon.remove_relay')}
-                    </SabaCheckbox>
-                    <span className="setting-description">{t('remote_daemon.remove_relay_desc')}</span>
-                </div>
-                <div className="remote-pc-dialog-actions">
+        <Dialog
+            open
+            onOpenChange={(o) => !o && !busy && onCancel()}
+            dismissible={!busy}
+            size="md"
+            className="remote-pc-remove"
+            media={<ConfirmIcon icon="trash" tone="stop" />}
+            title={t('remote_daemon.remove_title', { name })}
+            description={summary}
+            footer={
+                <>
                     <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>
                         {t('remote_daemon.cancel')}
                     </button>
@@ -84,9 +63,52 @@ export function RemoveDialog({ name, saved, canUninstall, summary, busy, onCance
                     >
                         {busy ? <SabaSpinner size="xs" /> : <Icon name="trash" size="sm" />} {t('remote_daemon.remove_go')}
                     </button>
-                </div>
+                </>
+            }
+        >
+            <div className="ss-panel">
+                <section className="dc-card ss-card">
+                    {saved &&
+                        row(
+                            t('remote_daemon.remove_forget'),
+                            t('remote_daemon.remove_forget_desc'),
+                            <SabaToggle checked disabled onChange={() => {}} aria-label={t('remote_daemon.remove_forget')} />,
+                        )}
+                    {saved &&
+                        row(
+                            t('remote_daemon.remove_uninstall'),
+                            canUninstall ? t('remote_daemon.remove_uninstall_desc') : t('remote_daemon.remove_uninstall_unavailable'),
+                            <SabaToggle
+                                checked={uninstall}
+                                disabled={!canUninstall || busy}
+                                onChange={setUninstall}
+                                aria-label={t('remote_daemon.remove_uninstall')}
+                            />,
+                            { disabled: !canUninstall },
+                        )}
+                    {saved && uninstall && (
+                        <div className="remote-pc-subchoice">
+                            <SabaCheckbox checked={keepSettings} disabled={busy} onChange={setKeepSettings}>
+                                {t('remote_daemon.remove_keep_settings')}
+                            </SabaCheckbox>
+                            <SabaCheckbox checked={keepInstances} disabled={busy} onChange={setKeepInstances}>
+                                {t('remote_daemon.remove_keep_instances')}
+                            </SabaCheckbox>
+                        </div>
+                    )}
+                    {row(
+                        t('remote_daemon.remove_relay'),
+                        t('remote_daemon.remove_relay_desc'),
+                        <SabaToggle
+                            checked={removePc}
+                            disabled={busy}
+                            onChange={setRemovePc}
+                            aria-label={t('remote_daemon.remove_relay')}
+                        />,
+                    )}
+                </section>
             </div>
-        </div>
+        </Dialog>
     );
 }
 
@@ -219,14 +241,36 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
     const failText = phase === 'failed' ? errorText({ error_code: view?.error_code || 'install_failed' }) : null;
 
     return (
-        <div className="modal-overlay" role="presentation">
-            <div className="modal remote-pc-dialog remote-install" role="dialog" aria-modal="true" aria-label={t('remote_daemon.install_title')}>
-                <h3 className="remote-pc-dialog-title">
-                    <Icon name="linux" size="sm" /> {t('remote_daemon.install_title')}
-                </h3>
+        <Dialog
+            open
+            onOpenChange={(o) => !o && close()}
+            dismissible={!running}
+            size="md"
+            className="remote-install"
+            media={<ConfirmIcon icon="linux" tone="info" />}
+            title={t('remote_daemon.install_title')}
+            description={!id && !fallback ? t('remote_daemon.install_description') : undefined}
+            footer={
+                <>
+                    {!id && !fallback && (
+                        <button type="button" className="btn btn-ghost as-foot-back" onClick={() => setFallback(true)}>
+                            {t('remote_daemon.install_no_ssh')}
+                        </button>
+                    )}
+                    <button type="button" className="btn btn-ghost" onClick={close}>
+                        {running ? t('remote_daemon.install_cancel') : t('remote_daemon.install_close')}
+                    </button>
+                    {!id && !fallback && (
+                        <button type="button" className="btn btn-primary" onClick={start} disabled={busy}>
+                            {busy ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />} {t('remote_daemon.install_start')}
+                        </button>
+                    )}
+                </>
+            }
+        >
+            <div className="remote-install-body">
                 {!id && !fallback && (
                     <>
-                        <p className="setting-description">{t('remote_daemon.install_description')}</p>
                         <div className="remote-install-grid">
                             <label>
                                 <span>{t('remote_daemon.install_host')}</span>
@@ -261,12 +305,30 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                                 />
                             </label>
                         </div>
-                        <SabaCheckbox checked={form.linger} onChange={(linger) => setForm({ ...form, linger })}>
-                            {t('remote_daemon.install_linger')}
-                        </SabaCheckbox>
-                        <SabaCheckbox checked={form.steamLibs} onChange={(steamLibs) => setForm({ ...form, steamLibs })}>
-                            {t('remote_daemon.install_steam')}
-                        </SabaCheckbox>
+                        <div className="ss-panel">
+                            <section className="dc-card ss-card">
+                                <SettingRow
+                                    label={t('remote_daemon.install_linger')}
+                                    control={
+                                        <SabaToggle
+                                            checked={form.linger}
+                                            onChange={(linger) => setForm({ ...form, linger })}
+                                            aria-label={t('remote_daemon.install_linger')}
+                                        />
+                                    }
+                                />
+                                <SettingRow
+                                    label={t('remote_daemon.install_steam')}
+                                    control={
+                                        <SabaToggle
+                                            checked={form.steamLibs}
+                                            onChange={(steamLibs) => setForm({ ...form, steamLibs })}
+                                            aria-label={t('remote_daemon.install_steam')}
+                                        />
+                                    }
+                                />
+                            </section>
+                        </div>
                     </>
                 )}
 
@@ -287,7 +349,7 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                                     <>
                                         <p>{t('remote_daemon.prompt_host_key')}</p>
                                         <pre className="remote-install-fingerprint">{prompt.text}</pre>
-                                        <div className="remote-pc-dialog-actions">
+                                        <div className="remote-install-prompt-actions">
                                             <button type="button" className="btn btn-ghost" onClick={() => reply('no')}>
                                                 {t('remote_daemon.prompt_no')}
                                             </button>
@@ -362,22 +424,7 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                     </div>
                 )}
 
-                <div className="remote-pc-dialog-actions">
-                    {!id && !fallback && (
-                        <button type="button" className="btn btn-ghost" onClick={() => setFallback(true)}>
-                            {t('remote_daemon.install_no_ssh')}
-                        </button>
-                    )}
-                    <button type="button" className="btn btn-ghost" onClick={close}>
-                        {running ? t('remote_daemon.install_cancel') : t('remote_daemon.install_close')}
-                    </button>
-                    {!id && !fallback && (
-                        <button type="button" className="btn btn-primary" onClick={start} disabled={busy}>
-                            {busy ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />} {t('remote_daemon.install_start')}
-                        </button>
-                    )}
-                </div>
             </div>
-        </div>
+        </Dialog>
     );
 }

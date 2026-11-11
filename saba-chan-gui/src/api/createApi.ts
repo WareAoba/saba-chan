@@ -64,7 +64,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         return invoke(cmd, args);
     };
 
-    // ipcRenderer.send처럼 기다리지 않는 호출
+    // 결과를 기다리지 않는 호출 (실패는 경고만 남긴다)
     const send = (cmd: string, args?: Record<string, unknown>) => {
         try {
             Promise.resolve(invoke(cmd, args)).catch((e) => console.warn(`[Bridge] ${cmd} failed:`, e));
