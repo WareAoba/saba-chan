@@ -94,7 +94,7 @@ describe('링크', () => {
     it('지금 화면에서 가는 길을 보이고, 누르면 그 화면을 연다', () => {
         render(<ScreenLink to="discord/123/moderation/channels" />);
         const link = screen.getByRole('button', { name: 'Open Discord › Server tools › Channels' });
-        expect(link.textContent).toBe('Discord›Server tools›Channels↗');
+        expect(link.textContent).toBe('Discord›Server tools›Channels');
         fireEvent.click(link);
         expect(useUIStore.getState().requestedDiscordView).toMatchObject({ id: '123', tab: 'moderation' });
     });
@@ -106,7 +106,7 @@ describe('링크', () => {
             </p>,
         );
         const p = document.querySelector('p') as HTMLElement;
-        expect(p.textContent).toMatch(/Pick the alert channel in Discord›Server tools›Channels↗\.$/);
+        expect(p.textContent).toMatch(/Pick the alert channel in Discord›Server tools›Channels\.$/);
         expect(p.textContent).not.toContain('<link');
     });
 

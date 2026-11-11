@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { CommandField, SettingField } from '../types/daemon';
 import { listItems } from '../utils/validation';
 import { Icon } from './Icon';
+import { Disclosure } from './ui/Disclosure';
 
 /**
  * "CLI로 보기" (I4-c): 이 화면과 같은 일을 하는 CLI 한 줄. 데몬 카탈로그(GET /api/actions)의
@@ -149,11 +150,15 @@ export function CliText({ line }: { line: string }) {
     const { t } = useTranslation('gui');
     const [copied, setCopied] = useState(false);
     return (
-        <details className="cli-line">
-            <summary>
-                <Icon name="terminal" size="sm" />
-                {t('cli_line.summary')}
-            </summary>
+        <Disclosure
+            className="cli-line"
+            summary={
+                <>
+                    <Icon name="terminal" size="sm" />
+                    {t('cli_line.summary')}
+                </>
+            }
+        >
             <code data-tooltip={line}>{line}</code>
             <button
                 type="button"
@@ -168,7 +173,7 @@ export function CliText({ line }: { line: string }) {
             >
                 <Icon name={copied ? 'check' : 'copy'} size="sm" />
             </button>
-        </details>
+        </Disclosure>
     );
 }
 

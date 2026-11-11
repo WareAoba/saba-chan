@@ -193,7 +193,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                     </button>
                     <button
                         type="button"
-                        className={clsx('btn btn-sm', choosing ? 'btn-ghost' : 'btn-secondary')}
+                        className={clsx('btn btn-sm', choosing ? 'btn-ghost' : 'btn-ghost')}
                         aria-pressed={choosing}
                         onClick={ladder.toggleChoosing}
                     >
@@ -220,7 +220,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                     />
                     <button
                         type="button"
-                        className="btn btn-secondary"
+                        className="btn btn-ghost"
                         disabled={!name || !L.canAddLevel(draft)}
                         onClick={() => {
                             setDraft((d) => L.addLevel(d, name));

@@ -61,7 +61,7 @@ export function AutostartSetting() {
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="power" size="sm" /> {t('autostart.label')}
+                        {t('autostart.label')}
                     </span>
                     <span className="setting-description">{t('autostart.description')}</span>
                 </label>

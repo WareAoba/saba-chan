@@ -52,9 +52,9 @@ export function useDevMode() {
                     setDevMode((prev) => {
                         const next = !prev;
                         if (next) {
-                            window.showToast?.('🔧 Developer Mode ON', 'info', 2000);
+                            window.showToast?.('Developer Mode ON', 'info', 2000);
                         } else {
-                            window.showToast?.('🔧 Developer Mode OFF', 'info', 2000);
+                            window.showToast?.('Developer Mode OFF', 'info', 2000);
                         }
                         return next;
                     });

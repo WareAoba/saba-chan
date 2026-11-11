@@ -233,12 +233,12 @@ export function TrayPopup() {
             )}
 
             <div className="tray-popup-actions">
-                <button type="button" className="btn-primary btn-sm" onClick={() => act('open_window')}>
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => act('open_window')}>
                     <Icon name="monitor" size={14} />
                     {t('tray_popup.open_window')}
                 </button>
                 {canCli && (
-                    <button type="button" className="btn-secondary btn-sm" onClick={() => act('switch_to_cli')}>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => act('switch_to_cli')}>
                         <Icon name="terminal" size={14} />
                         {t('tray_popup.switch_to_cli')}
                     </button>

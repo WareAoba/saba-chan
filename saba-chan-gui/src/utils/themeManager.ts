@@ -91,14 +91,17 @@ function applyTheme(theme: ThemeMode) {
     syncWindowBackground();
 }
 
+/** 원래 투명한 셸 창 (트레이 팝업·바탕화면 오버레이): 바탕을 칠하거나 반투명을 깔지 않는다 */
+const transparentWindow = (root: HTMLElement) => root.dataset.trayPopup !== undefined || root.dataset.desktopOverlay !== undefined;
+
 /**
  * 셸 창의 바탕을 테마 바탕색(--bg-0)으로 칠한다.
  * 창 크기를 바꾸는 사이 웹뷰가 아직 못 그린 자리가 흰색 대신 이 색으로 보인다.
- * 트레이 팝업은 투명 창이라 칠하지 않는다.
+ * 트레이 팝업·바탕화면 오버레이는 투명 창이라 칠하지 않는다.
  */
 function syncWindowBackground() {
     const root = document.documentElement;
-    if (root.dataset.trayPopup !== undefined) return;
+    if (transparentWindow(root)) return;
     const color = getComputedStyle(root).getPropertyValue('--bg-0').trim();
     if (color) window.api?.windowSetBackground?.(color);
 }
@@ -124,6 +127,11 @@ export function initTheme() {
     applyTheme(theme);
     // "시스템 따라"면 시스템 테마가 바뀔 때 창 바탕도 따라 바꾼다
     window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', syncWindowBackground);
+    // 다른 창(메인 창 설정)에서 바꾸면 이 창(바탕화면 펫·트레이 팝업)도 따른다
+    window.addEventListener('storage', (e) => {
+        if (e.key === THEME_KEY) applyTheme(getTheme());
+        else if (e.key === CUSTOM_THEME_KEY) applyCustomTheme(getCustomTheme());
+    });
     // Apply saved customizations
     const custom = getCustomTheme();
     applyCustomTheme(custom);
@@ -441,11 +449,11 @@ export function subscribeBackdropSupport(listener: () => void) {
 
 /**
  * 이 창에 반투명을 적용한다. 셸이 효과를 깔았다고 답했을 때만 바탕을 비운다 (data-backdrop="on", styles/backdrop.css).
- * 트레이 팝업은 원래 투명 창이라 건드리지 않는다
+ * 트레이 팝업·바탕화면 오버레이는 원래 투명 창이라 건드리지 않는다
  */
 export async function applyWindowBackdrop(config: WindowBackdropConfig) {
     const root = document.documentElement;
-    if (root.dataset.trayPopup !== undefined) return;
+    if (transparentWindow(root)) return;
     let info: BackdropSupport | null = null;
     try {
         info = (await window.api?.windowSetBackdrop?.(config)) ?? null;

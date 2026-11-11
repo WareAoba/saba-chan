@@ -69,6 +69,7 @@ describe('CLI로 보기 (P2 후속 §5)', () => {
         render(<CliLine actionId="instance.settings.set" server="mc" extra={{ port: 25566 }} />);
         await act(async () => {});
         expect(screen.getByText('saba do instance.settings.set --server mc port=25566')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Use the command line' }));
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Copy/i })));
         expect(writeText).toHaveBeenCalledWith('saba do instance.settings.set --server mc port=25566');
     });
@@ -80,11 +81,15 @@ describe('CLI로 보기 (P2 후속 §5)', () => {
         }) as never;
         const { container } = render(<CliLine actionId="instance.settings.set" server="mc" />);
         await act(async () => {});
-        const fold = container.querySelector('details.cli-line') as HTMLDetailsElement;
-        expect(fold).toBeTruthy();
-        expect(fold.open).toBe(false);
-        expect(fold.querySelector('summary')!.textContent).toBe('Use the command line');
-        expect(fold.querySelector('code')!.textContent).toBe('saba do instance.settings.set --server mc');
+        // 브라우저 기본 <details>가 아니라 공통 펼치기 (사용자 11-11)
+        expect(container.querySelector('details')).toBeNull();
+        const head = screen.getByRole('button', { name: 'Use the command line' });
+        expect(head.getAttribute('aria-expanded')).toBe('false');
+        const body = container.querySelector('.cli-line .saba-disclosure-body') as HTMLElement;
+        expect(body.hidden).toBe(true);
+        expect(body.querySelector('code')!.textContent).toBe('saba do instance.settings.set --server mc');
+        fireEvent.click(head);
+        expect(body.hidden).toBe(false);
     });
 
     // 데몬이 아직 안 떠서 카탈로그를 못 받은 실패는 기억하지 않는다: 다음에 다시 묻는다

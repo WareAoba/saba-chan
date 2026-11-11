@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AddInstanceNewServer } from '../components/Modals/AddInstanceNewServer';
 import type { Server } from '../stores/useServerStore';
 import type { ModuleInfo } from '../types/daemon';
-import { submitWizard, toNameStep } from './addServerWizard';
+import { createButton, submitWizard, toNameStep } from './addServerWizard';
 
 const minecraft = {
     name: 'minecraft',
@@ -33,7 +33,6 @@ describe('새 서버 만들기 — 만들 때 고르는 모듈 설정', () => {
                 extensions={[minecraft] as unknown as ModuleInfo[]}
                 servers={[]}
                 onAddServer={onAddServer}
-                onBack={undefined as never}
                 onClose={undefined as never}
             />,
         );
@@ -60,16 +59,15 @@ describe('새 서버 만들기 — 만들지 못했을 때', () => {
                 extensions={[minecraft] as unknown as ModuleInfo[]}
                 servers={[]}
                 onAddServer={onAddServer}
-                onBack={undefined as never}
                 onClose={undefined as never}
             />,
         );
         fireEvent.click(screen.getByText('Minecraft'));
         await submitWizard();
         expect(onAddServer).toHaveBeenCalled();
-        // 확인 단계에 그대로 남아 고른 이름을 보인다
-        expect(screen.getByRole('button', { name: /Add Server/i })).toBeTruthy();
-        expect(screen.getByText('minecraft', { selector: 'dd' })).toBeTruthy();
+        // 요약에 그대로 남아 고른 이름을 보인다
+        expect(createButton()).toBeTruthy();
+        expect((document.getElementById('as-server-name') as HTMLInputElement).value).toBe('minecraft');
     });
 });
 
@@ -102,7 +100,6 @@ const openConfigure = (
             extensions={[ext] as unknown as ModuleInfo[]}
             servers={servers}
             onAddServer={onAddServer}
-            onBack={undefined as never}
             onClose={undefined as never}
         />,
     );
@@ -160,12 +157,12 @@ describe('새 서버 만들기 — 이름', () => {
         expect(nameInput().value).toBe('minecraft-3');
     });
 
-    it('이미 있는 이름이면 바로 알려 주고 다음 단계로 넘어가지 않는다', async () => {
+    it('이미 있는 이름이면 바로 알려 주고 만들기를 막는다', async () => {
         openConfigure([{ name: 'lobby', module: 'minecraft' }] as Server[]);
         await toNameStep();
         fireEvent.change(nameInput(), { target: { value: 'Lobby ' } });
         expect(screen.getByRole('alert')).toBeTruthy();
-        expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+        expect(createButton()).toBeDisabled();
     });
 });
 

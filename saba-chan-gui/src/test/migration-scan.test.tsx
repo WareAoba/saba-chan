@@ -19,9 +19,7 @@ describe('AddInstanceMigration 폴더 스캔', () => {
                 extensions={[{ name: 'minecraft', display_name: 'Minecraft Java' }] as ModuleInfo[]}
                 servers={[]}
                 onAddServer={vi.fn()}
-                onStepChange={vi.fn()}
                 onBack={vi.fn()}
-                onClose={vi.fn()}
             />,
         );
         fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
@@ -38,9 +36,7 @@ describe('AddInstanceMigration 폴더 스캔', () => {
                 extensions={[{ name: 'minecraft', display_name: 'Minecraft Java' }] as ModuleInfo[]}
                 servers={[]}
                 onAddServer={vi.fn()}
-                onStepChange={vi.fn()}
                 onBack={vi.fn()}
-                onClose={vi.fn()}
             />,
         );
         fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
@@ -58,9 +54,7 @@ describe('AddInstanceMigration 폴더 스캔', () => {
                 extensions={[{ name: 'minecraft', display_name: 'Minecraft Java' }] as ModuleInfo[]}
                 servers={[]}
                 onAddServer={onAddServer}
-                onStepChange={vi.fn()}
                 onBack={vi.fn()}
-                onClose={vi.fn()}
             />,
         );
         fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
@@ -84,9 +78,7 @@ describe('AddInstanceMigration 폴더 스캔', () => {
                 extensions={[{ name: 'minecraft', display_name: 'Minecraft Java' }] as ModuleInfo[]}
                 servers={[]}
                 onAddServer={vi.fn()}
-                onStepChange={vi.fn()}
                 onBack={vi.fn()}
-                onClose={vi.fn()}
             />,
         );
         fireEvent.click(screen.getByRole('button', { name: 'Browse' }));

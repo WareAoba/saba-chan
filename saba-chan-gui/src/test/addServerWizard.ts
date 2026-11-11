@@ -1,26 +1,23 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
-/** 새 서버 만들기 마법사의 "다음" (확인을 기다리는 단계는 확인이 끝난 뒤 누른다) */
-export const next = async () => {
-    const button = screen.getByRole('button', { name: 'Next' });
-    await waitFor(() => expect(button).not.toBeDisabled());
-    await act(async () => fireEvent.click(button));
-};
+/*
+ * 새 서버 만들기 (한 장 요약, 사용자 11-11). 게임을 고르면 이름·버전·포트·위치·실행 방식이 한 장에 있다.
+ * 옛 마법사 시험이 쓰던 도우미 이름은 남겨 둔다: 이제 단계가 없어 "다음"은 없다
+ */
 
-/** 이름 칸이 있는 단계까지 */
+/** 요약 한 장까지 (게임을 고르면 바로 거기다) */
 export const toNameStep = async () => {
-    while (!document.getElementById('as-server-name')) await next();
+    await waitFor(() => expect(document.getElementById('as-server-name')).toBeTruthy());
 };
+export const toConfirmStep = toNameStep;
 
-/** 확인 단계(서버 추가 버튼)까지 */
-export const toConfirmStep = async () => {
-    while (!screen.queryByRole('button', { name: /Add Server/i })) await next();
-};
+/** 만들기 버튼 */
+export const createButton = () => screen.getByRole('button', { name: /^Create$/ });
 
-/** 확인 단계까지 가서 서버 추가를 누른다 */
+/** 요약에서 만들기를 누른다 (겹치는지 확인이 끝나 버튼이 풀린 뒤) */
 export const submitWizard = async () => {
-    await toConfirmStep();
-    const create = screen.getByRole('button', { name: /Add Server/i });
+    await toNameStep();
+    const create = createButton();
     await waitFor(() => expect(create).not.toBeDisabled());
     await act(async () => fireEvent.click(create));
 };

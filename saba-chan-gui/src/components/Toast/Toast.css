@@ -48,6 +48,19 @@
     flex-shrink: 0;
 }
 
+.toast-icon.tone-success {
+    color: var(--ok);
+}
+.toast-icon.tone-error {
+    color: var(--stop);
+}
+.toast-icon.tone-warning {
+    color: var(--warn);
+}
+.toast-icon.tone-info {
+    color: var(--info);
+}
+
 .toast-message {
     flex: 1;
 }

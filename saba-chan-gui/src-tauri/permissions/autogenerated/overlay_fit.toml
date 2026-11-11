@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-overlay-fit"
+description = "Enables the overlay_fit command without any pre-configured scope."
+commands.allow = ["overlay_fit"]
+
+[[permission]]
+identifier = "deny-overlay-fit"
+description = "Denies the overlay_fit command without any pre-configured scope."
+commands.deny = ["overlay_fit"]

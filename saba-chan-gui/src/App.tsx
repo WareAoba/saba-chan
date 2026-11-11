@@ -18,6 +18,7 @@ import { DiscordPage } from './components/discord/DiscordPage';
 import { ActivityBar, activityAvailable } from './components/shell/ActivityBar';
 import { ActivityPage } from './components/servers/AuditTab';
 import { SabaBubble } from './components/shell/SabaBubble';
+import { useSabaBubble } from './stores/useSabaBubble';
 import { CommandPalette, paletteAvailable } from './components/shell/CommandPalette';
 import { DaemonEvents } from './components/shell/DaemonEvents';
 import { AppBar } from './components/shell/AppBar';
@@ -27,7 +28,7 @@ import { daemonStateOf } from './components/servers/DaemonDown';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
 import { ExtensionProvider } from './contexts/ExtensionContext';
-import { type HostWindow, HostWindowContext, isAppRoute } from './extensions/host';
+import { type HostWindow, HostWindowContext, isAppRoute, serverRoute } from './extensions/host';
 import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
@@ -70,10 +71,16 @@ const INIT_STALL_MS = 60_000;
 interface ProgressSnapshot {
     percent: number;
     timestamp: number;
+    /** 이번 멈춤에 말풍선을 이미 띄웠다 */
+    shown: boolean;
 }
+/** 느린 진행 말풍선의 holdKey */
+const SLOW_PROGRESS_BUBBLE = 'slow-progress';
 
 function App() {
     const { t, i18n } = useTranslation('gui');
+    const tRef = useRef(t);
+    tRef.current = t;
 
     // ── Console Popout Mode Detection ──────────────────────
     const popoutParams = useMemo(() => {
@@ -142,8 +149,6 @@ function App() {
     const setBackgroundDaemonStatus = useUIStore((s) => s.setBackgroundDaemonStatus);
     // 데몬이 GUI를 띄운 프로그램의 job 안에서 돈다 (그 프로그램이 꺼지면 함께 꺼질 수 있다)
     const [daemonInParentJob, setDaemonInParentJob] = useState(false);
-    const showWaitingImage = useUIStore((s) => s.showWaitingImage);
-    const setShowWaitingImage = useUIStore((s) => s.setShowWaitingImage);
 
     // ── Settings Store (Zustand) ──────────────────────────
     const autoRefresh = useSettingsStore((s) => s.autoRefresh);
@@ -224,7 +229,10 @@ function App() {
                 return true;
             },
             openApp: (route) => {
-                if (isAppRoute(route)) useUIStore.getState().setActiveTab(route as ActiveTab);
+                if (!isAppRoute(route)) return;
+                const server = serverRoute(route);
+                if (server) useUIStore.getState().revealServer(server);
+                else useUIStore.getState().setActiveTab(route as ActiveTab);
             },
         }),
         [],
@@ -283,46 +291,46 @@ function App() {
     // ── Effects ──────────────────────────────────────────────
     // ══════════════════════════════════════════════════════════
 
-    // Waiting image monitoring (progress stall detection)
-    const waitingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // 진행이 5초 넘게 멈춰 보이면 사바쨩 말풍선으로 "멈춘 게 아니에요"를 알린다 (다시 움직이거나 끝나면 내린다)
+    const stallTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const progressSnapshotRef = useRef<ProgressSnapshot | null>(null);
     useEffect(() => {
-        if (!progressBar) {
-            setShowWaitingImage(false);
-            if (waitingTimerRef.current) clearInterval(waitingTimerRef.current);
+        const settle = () => {
+            useSabaBubble.getState().release(SLOW_PROGRESS_BUBBLE);
+            if (stallTimerRef.current) clearInterval(stallTimerRef.current);
+            stallTimerRef.current = null;
             progressSnapshotRef.current = null;
-            return;
-        }
-        if (progressBar.percent === 100) {
-            setShowWaitingImage(false);
-            if (waitingTimerRef.current) clearInterval(waitingTimerRef.current);
-            progressSnapshotRef.current = null;
+        };
+        if (!progressBar || progressBar.percent === 100) {
+            settle();
             return;
         }
         if (!progressSnapshotRef.current) {
-            progressSnapshotRef.current = { percent: progressBar.percent || 0, timestamp: Date.now() };
+            progressSnapshotRef.current = { percent: progressBar.percent || 0, timestamp: Date.now(), shown: false };
         }
-        if (!waitingTimerRef.current) {
-            waitingTimerRef.current = setInterval(() => {
+        if (!stallTimerRef.current) {
+            stallTimerRef.current = setInterval(() => {
                 const snap = progressSnapshotRef.current;
-                if (!snap) return;
-                const elapsed = (Date.now() - snap.timestamp) / 1000;
-                if (elapsed >= 5) setShowWaitingImage(true);
+                if (!snap || snap.shown || (Date.now() - snap.timestamp) / 1000 < 5) return;
+                snap.shown = true;
+                useSabaBubble
+                    .getState()
+                    .show({ kind: 'cooking', text: tRef.current('saba.slow_progress'), holdKey: SLOW_PROGRESS_BUBBLE });
             }, 1000);
         }
         const currentPercent = progressBar.percent || 0;
         const snap = progressSnapshotRef.current;
         if (snap && currentPercent - snap.percent > 5) {
-            progressSnapshotRef.current = { percent: currentPercent, timestamp: Date.now() };
-            setShowWaitingImage(false);
+            progressSnapshotRef.current = { percent: currentPercent, timestamp: Date.now(), shown: false };
+            useSabaBubble.getState().release(SLOW_PROGRESS_BUBBLE);
         }
-        return () => {
-            if (waitingTimerRef.current) {
-                clearInterval(waitingTimerRef.current);
-                waitingTimerRef.current = null;
-            }
-        };
-    }, [progressBar, setShowWaitingImage]);
+    }, [progressBar]);
+    useEffect(
+        () => () => {
+            if (stallTimerRef.current) clearInterval(stallTimerRef.current);
+        },
+        [],
+    );
 
     // Unread notice count tracking
     // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only event listener — setter is stable
@@ -534,6 +542,11 @@ function App() {
         const offOpenServer = window.api.onOpenServer?.((p) => {
             if (p?.instanceId) useUIStore.getState().revealServer(p.instanceId);
         });
+        // 바탕화면 펫이 고른 탭 (서버는 위 openServer로 온다)
+        const offOpenRoute = window.api.onOpenRoute?.((p) => {
+            const route = p?.route;
+            if (isAppRoute(route) && !serverRoute(route)) useUIStore.getState().setActiveTab(route as ActiveTab);
+        });
 
         // App close request handler
         let offClose: (() => void) | undefined;
@@ -630,6 +643,7 @@ function App() {
             clearInterval(interval);
             if (typeof offClose === 'function') offClose();
             if (typeof offOpenServer === 'function') offOpenServer();
+            if (typeof offOpenRoute === 'function') offOpenRoute();
         };
     }, [autoRefresh, refreshInterval, daemonReady]);
 
@@ -1004,10 +1018,9 @@ function App() {
                                     onTestModal={setModal}
                                     onTestProgressBar={setProgressBar}
                                     initialView={settingsInitialView}
-                                    onTestWaitingImage={() => {
-                                        setShowWaitingImage(true);
-                                        setTimeout(() => setShowWaitingImage(false), 4000);
-                                    }}
+                                    onTestWaitingImage={() =>
+                                        useSabaBubble.getState().show({ kind: 'cooking', text: t('saba.slow_progress') })
+                                    }
                                     onTestLoadingScreen={runLoadingScreenTest}
                                 />
                             </div>
@@ -1040,13 +1053,6 @@ function App() {
                             onAccept={modal.onAccept}
                             onCancel={() => setModal(null)}
                         />
-                    )}
-
-                    {/* waiting.png (느린 진행 감지) */}
-                    {showWaitingImage && (
-                        <div className="waiting-image-overlay" onClick={() => setShowWaitingImage(false)}>
-                            <img src="./waiting.png" alt="waiting" className="waiting-image" />
-                        </div>
                     )}
 
                     {/* 작업 진행은 상단 바(TaskIndicator)가 보여 준다 */}

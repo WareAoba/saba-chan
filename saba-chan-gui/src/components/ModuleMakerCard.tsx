@@ -27,9 +27,10 @@ interface MakerInfo {
     error?: string;
 }
 
-export function ModuleMakerCard() {
+/** defaultOpen: 펼친 채로 시작 (서버 추가 창의 "직접 만들기" 칸) */
+export function ModuleMakerCard({ defaultOpen = false }: { defaultOpen?: boolean } = {}) {
     const { t } = useTranslation('gui');
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(defaultOpen);
     const [info, setInfo] = useState<MakerInfo | null>(null);
     const [agent, setAgent] = useState('claude');
     const [game, setGame] = useState('');
