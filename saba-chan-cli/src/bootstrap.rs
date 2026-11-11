@@ -154,6 +154,9 @@ pub fn spawn_daemon(port: u16) -> Result<std::process::Child> {
 fn spawn_detached(cmd: &mut Command) -> std::io::Result<std::process::Child> {
     #[cfg(windows)]
     let _no_inherit = StdNoInherit::new();
+    // 터미널의 Ctrl+C는 전면 프로세스 그룹 전체에 간다: 데몬을 띄운 명령(`events`, `console`)을 끝낼 때 데몬까지 꺼지지 않게 그룹을 나눈다
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(cmd, 0);
     cmd.spawn()
 }
 
@@ -321,5 +324,22 @@ mod port_tests {
         assert_eq!(health_pid("HTTP/1.1 200 OK\r\n\r\n<html>hello</html>"), None);
         assert_eq!(health_pid("HTTP/1.1 200 OK\r\n\r\n{\"ok\":false,\"pid\":42}"), None);
         assert_eq!(health_pid(""), None);
+    }
+}
+
+#[cfg(all(test, unix))]
+mod unix_tests {
+    use super::*;
+
+    /// 터미널의 Ctrl+C는 전면 프로세스 그룹 전체에 간다: 데몬이 CLI의 그룹에 있으면 `events`·`console`을 끝낼 때 같이 꺼진다
+    #[test]
+    fn a_detached_child_is_outside_our_process_group() {
+        let mut cmd = Command::new("sleep");
+        cmd.arg("5").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        let mut child = spawn_detached(&mut cmd).expect("sleep starts");
+        let (ours, theirs) = unsafe { (libc::getpgrp(), libc::getpgid(child.id() as libc::pid_t)) };
+        let _ = child.kill();
+        let _ = child.wait();
+        assert_ne!(theirs, ours);
     }
 }
