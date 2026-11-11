@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { SaveBar, SaveBarHost, usePendingChange } from '../components/ui/SaveBar';
+import { SaveBar, SaveBarHost, useHostDraft, usePendingChange } from '../components/ui/SaveBar';
 
 // 바뀐 게 있을 때만 아래에서 올라와 저장·되돌리기를 묻는 막대 (사용자 11-11)
 describe('SaveBar', () => {
@@ -88,5 +88,37 @@ describe('SaveBarHost', () => {
         expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
         fireEvent.click(screen.getByRole('button', { name: 'Revert' }));
         expect((screen.getByLabelText('port') as HTMLInputElement).value).toBe('a');
+    });
+});
+
+describe('useHostDraft', () => {
+    function Field({ saved }: { saved: string }) {
+        const [draft, setDraft] = useHostDraft('f', saved);
+        return <input aria-label="F" value={draft} onChange={(e) => setDraft(e.target.value)} />;
+    }
+
+    it('칸이 사라졌다 다시 그려져도(설정 탭 전환) 저장하지 않은 값이 남는다', () => {
+        function Page({ show }: { show: boolean }) {
+            return <SaveBarHost>{show && <Field saved="a" />}</SaveBarHost>;
+        }
+        const { rerender } = render(<Page show />);
+        fireEvent.change(screen.getByRole('textbox', { name: 'F' }), { target: { value: 'b' } });
+        rerender(<Page show={false} />);
+        rerender(<Page show />);
+        expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'F' }).value).toBe('b');
+    });
+
+    it('손대지 않았으면 저장된 값을 따라간다', () => {
+        const { rerender } = render(
+            <SaveBarHost>
+                <Field saved="a" />
+            </SaveBarHost>,
+        );
+        rerender(
+            <SaveBarHost>
+                <Field saved="z" />
+            </SaveBarHost>,
+        );
+        expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'F' }).value).toBe('z');
     });
 });

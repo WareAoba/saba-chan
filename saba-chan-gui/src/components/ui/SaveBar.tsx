@@ -92,6 +92,12 @@ export interface PendingChange {
 
 type Register = (id: string, change: PendingChange | null) => void;
 const PendingContext = createContext<Register | null>(null);
+/** 저장하지 않은 입력 초안: 칸이 사라졌다 다시 그려져도(탭 전환) 남도록 막대 자리가 쥔다 */
+interface Drafts {
+    values: Record<string, string>;
+    set: (id: string, value: string | undefined) => void;
+}
+const DraftContext = createContext<Drafts | null>(null);
 
 /**
  * 화면 하나(예: 설정)의 저장 막대 자리. 안쪽 칸들이 usePendingChange로 알린 바뀜을 모아
@@ -99,6 +105,15 @@ const PendingContext = createContext<Register | null>(null);
  */
 export function SaveBarHost({ children, className }: { children: ReactNode; className?: string }) {
     const [items, setItems] = useState<Record<string, PendingChange>>({});
+    const [draftValues, setDraftValues] = useState<Record<string, string>>({});
+    const setDraft = useCallback((id: string, value: string | undefined) => {
+        setDraftValues((prev) => {
+            if (value !== undefined) return { ...prev, [id]: value };
+            if (!(id in prev)) return prev;
+            const { [id]: _gone, ...rest } = prev;
+            return rest;
+        });
+    }, []);
     const [saving, setSaving] = useState(false);
     const register = useCallback<Register>((id, change) => {
         setItems((prev) => {
@@ -119,7 +134,7 @@ export function SaveBarHost({ children, className }: { children: ReactNode; clas
     };
     return (
         <PendingContext.Provider value={register}>
-            {children}
+            <DraftContext.Provider value={{ values: draftValues, set: setDraft }}>{children}</DraftContext.Provider>
             <SaveBar
                 className={className}
                 dirty={pending.length > 0}
@@ -148,4 +163,30 @@ export function usePendingChange(id: string, change: PendingChange) {
         });
     }, [register, id, change.dirty, change.blocked]);
     useEffect(() => () => register?.(id, null), [register, id]);
+}
+
+/**
+ * 저장 막대로 묻는 입력칸의 초안. 손대지 않은 동안은 저장된 값을 따라가고, 고친 값은 SaveBarHost가 쥐어
+ * 칸이 사라졌다 다시 그려져도 남는다. 저장된 값과 같아지면 초안을 지운다.
+ */
+export function useHostDraft(id: string, saved: string) {
+    const host = useContext(DraftContext);
+    const [local, setLocal] = useState<string | undefined>(undefined);
+    const stored = host ? host.values[id] : local;
+    const set = useCallback(
+        (value: string) => {
+            const next = value === saved ? undefined : value;
+            if (host) host.set(id, next);
+            else setLocal(next);
+        },
+        [host, id, saved],
+    );
+    // 저장해서 저장된 값이 초안과 같아졌으면 초안을 내려놓는다 (그 뒤로는 다시 저장된 값을 따라간다)
+    useEffect(() => {
+        if (stored !== undefined && stored === saved) {
+            if (host) host.set(id, undefined);
+            else setLocal(undefined);
+        }
+    }, [stored, saved, host, id]);
+    return [stored ?? saved, set] as const;
 }
