@@ -308,6 +308,22 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(window.api.remoteSettingsSet).toHaveBeenCalledWith({ enabled: true, port: 57490 });
     });
 
+    it('포트를 친 채로 켬을 바꿔도 친 포트는 남아 저장 막대에서 저장한다', async () => {
+        vi.mocked(window.api.remoteSettingsSet).mockResolvedValue({ ...settings, enabled: false });
+        await act(async () =>
+            render(
+                <SaveBarHost>
+                    <RemoteDaemonSection />
+                </SaveBarHost>,
+            ),
+        );
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Port' }), { target: { value: '57490' } });
+        await act(async () => fireEvent.click(screen.getByRole('checkbox', { name: 'Allow remote connections' })));
+        expect(window.api.remoteSettingsSet).toHaveBeenCalledWith({ enabled: false, port: 57480 });
+        expect(screen.getByRole<HTMLInputElement>('spinbutton', { name: 'Port' }).value).toBe('57490');
+        expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    });
+
     it('포트를 열지 못하면 이유를 번역해 보인다', async () => {
         vi.mocked(window.api.remoteSettings).mockResolvedValue({ ...settings, status: { listening: false, published: false, error: 'port_in_use' } });
         await act(async () => render(<RemoteDaemonSection />));

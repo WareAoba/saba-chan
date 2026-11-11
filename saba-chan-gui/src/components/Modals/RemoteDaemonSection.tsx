@@ -181,7 +181,11 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         const res = await run('save', () => window.api.remoteSettingsSet({ enabled: next.enabled, port }));
         if (res && !failed(res)) {
             setSettings((old) => ({ ...res, thisPc: res.thisPc || old?.thisPc }));
-            setDraft({ enabled: Boolean(res.enabled), port: String(res.port ?? port) });
+            // 켬만 바꿨으면 아직 저장하지 않은 친 포트는 그대로 둔다
+            setDraft((d) => ({
+                enabled: Boolean(res.enabled),
+                port: d && d.port !== next.port ? d.port : String(res.port ?? port),
+            }));
         }
     };
     const savedPort = String(settings?.port ?? '');
