@@ -114,9 +114,11 @@ describe('번들 읽기와 slot 등록', () => {
 });
 
 describe('host 통로', () => {
-    it('openApp은 메인 창의 정해진 화면과 ext:<id>만 받는다', () => {
-        for (const ok of ['servers', 'discord', 'activity', 'settings', 'ext:pet', 'ext:my_ext-2']) expect(isAppRoute(ok)).toBe(true);
-        for (const bad of [undefined, '', 'nowhere', 'ext:', 'ext:a b', 'ext:a.b', 42]) expect(isAppRoute(bad)).toBe(false);
+    it('openApp은 메인 창의 정해진 화면, ext:<id>, server:<인스턴스 id>만 받는다', () => {
+        for (const ok of ['servers', 'discord', 'activity', 'settings', 'ext:pet', 'ext:my_ext-2', 'server:inst-1'])
+            expect(isAppRoute(ok)).toBe(true);
+        for (const bad of [undefined, '', 'nowhere', 'ext:', 'ext:a b', 'ext:a.b', 'server:', 'server:a/b', 42])
+            expect(isAppRoute(bad)).toBe(false);
     });
 
     it('slot 컴포넌트는 자기 익스텐션 id가 붙은 host와 창의 동작을 받는다', async () => {

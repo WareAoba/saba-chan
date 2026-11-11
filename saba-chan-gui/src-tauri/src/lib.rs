@@ -9,6 +9,8 @@
 //! - `--open-server=<id>`  CLI의 `gui`가 띄웠다 → 그 서버를 연다 (`app:openServer`). 이미 떠 있으면 그 창이 받는다
 //! - `--tray`              데몬이 띄운 상주 GUI: 창 없이 트레이만 든다 (`tray_host.rs`). 이미 떠 있으면 아무것도 하지 않는다
 //!
+//! 바탕화면 오버레이(익스텐션 slot `Desktop.overlay`)는 셸이 데몬에 붙은 뒤 띄운다 (`overlay.rs`).
+//!
 //! 창을 모두 닫아도 프로세스는 트레이로 남는다. 끝나는 것은 완전히 종료·업데이트·데몬이 밖에서 꺼졌을 때뿐이다.
 
 pub mod backdrop;
@@ -18,6 +20,7 @@ pub mod i18n;
 pub mod lifecycle;
 pub mod logging;
 pub mod native;
+pub mod overlay;
 pub mod settings;
 pub mod sounds;
 pub mod tray;
@@ -221,6 +224,12 @@ pub fn run() {
             native::sandbox_consent_allow,
             native::tray_action,
             native::tray_popup_fit,
+            native::overlay_fit,
+            native::overlay_menu,
+            native::overlay_action,
+            native::overlay_state,
+            native::overlay_set_enabled,
+            native::overlay_sync,
         ])
         .setup(|app| {
             let handle = app.handle();

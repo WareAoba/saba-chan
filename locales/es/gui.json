@@ -2349,6 +2349,20 @@
     "stop_confirm": "¿Detener?",
     "stop_confirm_aria": "Confirmar detener {{name}}"
   },
+  "desktop_overlay": {
+    "menu_server": "{{name}} · {{status}}",
+    "menu_start": "Iniciar",
+    "menu_stop": "Detener",
+    "menu_stop_confirm": "Detener ahora",
+    "menu_restart": "Reiniciar",
+    "menu_restart_confirm": "Reiniciar ahora",
+    "menu_no_servers": "Aún no hay servidores",
+    "menu_open_app": "Abrir Saba-chan",
+    "menu_hide": "Ocultar del escritorio",
+    "setting_label": "Superposición de escritorio",
+    "setting_description": "Muestra la pequeña ventana que las extensiones colocan en una esquina del escritorio (como una mascota). Arrástrala para moverla.",
+    "setting_unsupported": "No se puede mostrar en este escritorio (Wayland)."
+  },
   "autostart": {
     "label": "Iniciar al iniciar sesión",
     "description": "Inicia Saba-chan al iniciar sesión en este PC. Solo el daemon se ejecuta en la bandeja sin ventana.",

@@ -2349,6 +2349,20 @@
     "stop_confirm": "Остановить?",
     "stop_confirm_aria": "Подтвердить остановку {{name}}"
   },
+  "desktop_overlay": {
+    "menu_server": "{{name}} · {{status}}",
+    "menu_start": "Запустить",
+    "menu_stop": "Остановить",
+    "menu_stop_confirm": "Остановить сейчас",
+    "menu_restart": "Перезапустить",
+    "menu_restart_confirm": "Перезапустить сейчас",
+    "menu_no_servers": "Серверов пока нет",
+    "menu_open_app": "Открыть Saba-chan",
+    "menu_hide": "Скрыть с рабочего стола",
+    "setting_label": "Оверлей рабочего стола",
+    "setting_description": "Показывает маленькое окно, которое расширения размещают в углу рабочего стола (например, питомца). Перетащите, чтобы переместить.",
+    "setting_unsupported": "На этом рабочем столе (Wayland) недоступно."
+  },
   "autostart": {
     "label": "Запуск при входе",
     "description": "Запускает Saba-chan при входе в этот ПК. «Только демон» работает в трее без окна.",

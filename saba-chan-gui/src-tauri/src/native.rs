@@ -17,6 +17,7 @@ use tauri_plugin_opener::OpenerExt;
 #[tauri::command(rename_all = "camelCase")]
 pub async fn daemon_request(
     app: AppHandle,
+    window: WebviewWindow,
     method: String,
     path: String,
     body: Option<Value>,
@@ -24,7 +25,10 @@ pub async fn daemon_request(
     response_type: Option<String>,
     target: Option<String>,
 ) -> Value {
-    let Some(method) = parse_method(&method).filter(|m| is_allowed_request(m, &path)) else {
+    // 바탕화면 오버레이는 읽기와 서버 켜고 끄기만 (overlay::allows_request)
+    let overlay = window.label() == crate::overlay::OVERLAY;
+    let allowed = |m: &reqwest::Method| is_allowed_request(m, &path) && (!overlay || crate::overlay::allows_request(m, &path));
+    let Some(method) = parse_method(&method).filter(allowed) else {
         return json!({ "status": 0, "error": format!("Invalid daemon request: {path}"), "code": "EINVAL" });
     };
     let client = app.state::<AppState>().client.clone();
@@ -51,6 +55,11 @@ fn consent_kind(kind: &str) -> Option<(&'static str, &'static str)> {
         "extension-gui" => Some(("/api/sandbox/extension-gui", "consent.extension_gui")),
         _ => None,
     }
+}
+
+/// 동의를 기록할 데몬: 익스텐션 GUI는 번들을 주는 이 PC 데몬(`local`), 모듈 격리 해제는 고른 데몬(서버를 돌리는 곳)
+fn consent_target(kind: &str) -> Option<&'static str> {
+    (kind == "extension-gui").then_some("local")
 }
 
 /// 구성요소 이름은 `module-<이름>`·`ext-<id>` 꼴만 받는다 (경로·창 문구에 그대로 넣는다)
@@ -89,7 +98,7 @@ pub async fn sandbox_consent_allow(app: AppHandle, window: WebviewWindow, kind: 
     if !rx.await.unwrap_or(false) {
         return json!({ "success": false, "error_code": "canceled" });
     }
-    match state.client.post(&path, &json!({}), 10000).await {
+    match state.client.call_to(reqwest::Method::POST, &path, Some(&json!({})), 10000, consent_target(&kind)).await {
         Ok(data) => data,
         Err(e) => e.error_body(json!({ "success": false })),
     }
@@ -168,6 +177,44 @@ pub async fn tray_action(app: AppHandle, action: String) -> Value {
 #[tauri::command]
 pub fn tray_popup_fit(app: AppHandle, height: f64) {
     window::fit_tray_popup(&app, height);
+}
+
+// ── 바탕화면 오버레이 (`overlay.rs`) ──
+
+/// 오버레이 렌더러가 잰 내용 크기(논리 px). 아래 가운데 점을 지키며 크기를 맞추고 보인다
+#[tauri::command]
+pub fn overlay_fit(app: AppHandle, width: f64, height: f64) {
+    crate::overlay::fit(&app, width, height);
+}
+
+/// 오버레이 우클릭 메뉴를 OS 메뉴로 띄운다. 고른 항목 id는 `overlay:menu` 이벤트로 간다
+#[tauri::command]
+pub fn overlay_menu(app: AppHandle, items: Vec<crate::overlay::MenuSpec>) -> bool {
+    crate::overlay::popup_menu(&app, items)
+}
+
+/// 오버레이의 셸 동작: open_app(+ `route` `server:<id>`면 그 서버) | hide. async: 메인 창을 새로 만들 수 있다
+#[tauri::command]
+pub async fn overlay_action(app: AppHandle, action: String, route: Option<String>) -> Value {
+    json!({ "ok": crate::overlay::action(&app, &action, route.as_deref()).await })
+}
+
+/// 설정 화면: {enabled, available, supported}
+#[tauri::command]
+pub async fn overlay_state(app: AppHandle) -> Value {
+    crate::overlay::state(&app).await
+}
+
+/// 설정 화면의 켜기 스위치
+#[tauri::command]
+pub async fn overlay_set_enabled(app: AppHandle, enabled: bool) -> Value {
+    json!({ "ok": crate::overlay::set_enabled(&app, enabled).await })
+}
+
+/// 익스텐션을 켜고 끄거나 설치·삭제한 뒤 메인 창이 부른다: 오버레이 창을 띄울지 다시 본다
+#[tauri::command]
+pub async fn overlay_sync(app: AppHandle) {
+    crate::overlay::sync(&app).await;
 }
 
 /// 업데이트 적용 — 업데이터는 데몬이 띄운다 (U7). GUI는 다시 띄울 자기 경로만 알려 주고 종료한다
@@ -398,6 +445,10 @@ pub async fn daemon_target_set(app: AppHandle, target: Option<String>) -> Value 
         // 팝아웃 콘솔은 메인 창처럼 다시 읽히지 않으니 닫는다 (남기면 이전 데몬의 instanceId로 새 데몬에 명령한다)
         window::close_popouts(&app);
         state.client.set_target(target.clone());
+        // 오버레이도 고른 데몬을 따른다: 새 데몬의 익스텐션·서버로 다시 띄운다
+        crate::overlay::close(&app);
+        let app2 = app.clone();
+        tauri::async_runtime::spawn(async move { crate::overlay::sync(&app2).await });
     }
     json!({ "success": true, "target": state.client.target() })
 }
@@ -628,6 +679,13 @@ pub fn window_close(window: WebviewWindow) {
 
 #[cfg(test)]
 mod tests {
+
+    /// 익스텐션 GUI 허락은 번들을 주는 이 PC 데몬에 기록한다 (원격 데몬을 고른 동안에도)
+    #[test]
+    fn gui_consent_goes_to_this_pcs_daemon() {
+        assert_eq!(super::consent_target("extension-gui"), Some("local"));
+        assert_eq!(super::consent_target("unisolated"), None);
+    }
 
     #[test]
     fn a_failed_open_reports_the_translated_message_not_success() {

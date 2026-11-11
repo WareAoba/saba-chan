@@ -28,7 +28,7 @@ import { daemonStateOf } from './components/servers/DaemonDown';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
 import { ExtensionProvider } from './contexts/ExtensionContext';
-import { type HostWindow, HostWindowContext, isAppRoute } from './extensions/host';
+import { type HostWindow, HostWindowContext, isAppRoute, serverRoute } from './extensions/host';
 import { usePopoutLifecycle } from './hooks/usePopoutLifecycle';
 import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
@@ -231,7 +231,10 @@ function App() {
                 return true;
             },
             openApp: (route) => {
-                if (isAppRoute(route)) useUIStore.getState().setActiveTab(route as ActiveTab);
+                if (!isAppRoute(route)) return;
+                const server = serverRoute(route);
+                if (server) useUIStore.getState().revealServer(server);
+                else useUIStore.getState().setActiveTab(route as ActiveTab);
             },
         }),
         [],
@@ -547,6 +550,11 @@ function App() {
         const offOpenServer = window.api.onOpenServer?.((p) => {
             if (p?.instanceId) useUIStore.getState().revealServer(p.instanceId);
         });
+        // 바탕화면 펫이 고른 탭 (서버는 위 openServer로 온다)
+        const offOpenRoute = window.api.onOpenRoute?.((p) => {
+            const route = p?.route;
+            if (isAppRoute(route) && !serverRoute(route)) useUIStore.getState().setActiveTab(route as ActiveTab);
+        });
 
         // App close request handler
         let offClose: (() => void) | undefined;
@@ -643,6 +651,7 @@ function App() {
             clearInterval(interval);
             if (typeof offClose === 'function') offClose();
             if (typeof offOpenServer === 'function') offOpenServer();
+            if (typeof offOpenRoute === 'function') offOpenRoute();
         };
     }, [autoRefresh, refreshInterval, daemonReady]);
 

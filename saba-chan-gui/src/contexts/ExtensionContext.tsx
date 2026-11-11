@@ -15,6 +15,7 @@ import {
     useCallback,
     useContext,
     useEffect,
+    useMemo,
     useRef,
     useState,
 } from 'react';
@@ -196,6 +197,25 @@ async function loadExtensionI18n(ext: ExtensionListItem, lang: string) {
     }
 }
 
+/** 원격 데몬을 골랐으면, 이 PC 데몬에서 허락을 기다리는 바탕화면·트레이 번들 (메인 slot도 함께 선언했어도. 그 창들은 이 PC 데몬을 본다) */
+async function localWindowPending(): Promise<ExtensionListItem[]> {
+    try {
+        const current = await window.api.daemonTarget?.();
+        if (!current?.target) return [];
+        const local = await window.api.extensionList({ local: true });
+        if (!Array.isArray(local?.extensions)) return [];
+        return local.extensions.filter(
+            (ext) =>
+                ext.enabled &&
+                ext.gui?.bundle &&
+                ext.gui_allowed === false &&
+                (loadsOn(ext, 'desktop') || loadsOn(ext, 'tray')),
+        );
+    } catch {
+        return [];
+    }
+}
+
 /**
  * surface: 이 Provider가 놓인 창 (extensions/slotTable). 트레이 팝업은 그 창 slot을 선언한 번들만,
  * 이미 허락된 것만 읽고 허락을 묻지 않는다
@@ -223,6 +243,8 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
     };
     /** GUI 번들을 허락받아야 하는 활성 익스텐션 (확인 안 됨, 이 PC에서 허락 안 함) */
     const [guiPending, setGuiPending] = useState<ExtensionListItem[]>([]);
+    /** 원격 데몬을 고른 동안, 이 PC 데몬에서 허락을 기다리는 다른 창(바탕화면·트레이) 번들. 그 창들은 이 PC 데몬을 본다 */
+    const [localPending, setLocalPending] = useState<ExtensionListItem[]>([]);
     /** 이번 실행에서 이미 물어본 익스텐션 (거절하면 다시 묻지 않고 설정 화면에서 허락하게 둔다) */
     const askedGuiRef = useRef(new Set<string>());
     const modalOpen = useUIStore((s) => Boolean(s.modal));
@@ -240,19 +262,20 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
     // 받지 못하면 받아 둔 목록을 그대로 두고 false를 돌려준다
     const fetchExtensions = useCallback(async () => {
         try {
-            const data = await window.api.extensionList();
+            const data = await window.api.extensionList(surface === 'desktop' ? { local: true } : undefined);
             if (!data || data.error || !Array.isArray(data.extensions)) {
                 throw new Error(data?.error || 'extension list unavailable');
             }
             // 설치·업데이트·삭제·재검색 뒤 목록이 바뀌면 코드 검사도 다시 한다
             clearModuleAuditCache();
             setExtensions(data.extensions);
+            if (surface === 'main') setLocalPending(await localWindowPending());
             return true;
         } catch (e) {
             console.warn('[Extension] Failed to fetch extensions:', e);
             return false;
         }
-    }, []);
+    }, [surface]);
 
     // 초기 로드. 데몬이 아직 안 떴거나 잠깐 닿지 않으면 받을 때까지 간격을 늘려 다시 묻는다
     useEffect(() => {
@@ -268,6 +291,21 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
             clearTimeout(timer);
         };
     }, [fetchExtensions]);
+
+    // 바탕화면 오버레이(셸 overlay.rs)는 `Desktop.overlay`를 선언한 익스텐션이 켜져 있을 때만 뜬다.
+    // 메인 창이 그 익스텐션을 켜고 끄거나 설치·삭제·허락하면 셸에 다시 보게 한다 (처음 목록은 셸이 데몬에 붙을 때 이미 봤다)
+    const overlayKey = extensions
+        .filter((ext) => ext.enabled && ext.gui?.bundle && Object.hasOwn(ext.gui?.slots ?? {}, 'Desktop.overlay'))
+        .map((ext) => `${ext.id}:${ext.gui_allowed !== false}`)
+        .join(',');
+    const overlaySeen = useRef<string | null>(null);
+    useEffect(() => {
+        if (surface !== 'main' || loading) return;
+        const first = overlaySeen.current === null;
+        if (overlaySeen.current === overlayKey) return;
+        overlaySeen.current = overlayKey;
+        if (!first) window.api?.overlaySync?.();
+    }, [surface, loading, overlayKey]);
 
     // 활성 익스텐션 변경 시 GUI 번들 로드 & 슬롯 등록
     useEffect(() => {
@@ -320,8 +358,12 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
             // 확장 하나가 throw해도 나머지 확장의 슬롯과 허락 대기 목록은 갱신한다
             const loadOne = async (ext: ExtensionListItem) => {
                 const globalName: `SabaExt${string}` = `SabaExt${pascalCase(ext.id)}`;
-                // 이 창에 둘 slot이 없는 익스텐션은 번들·번역을 읽지 않는다 (GUI 선언이 없는 익스텐션은 메인 창만)
-                if (!(ext.gui ? loadsOn(ext, surface) : surface === 'main')) return;
+                // 이 창에 둘 slot이 없는 익스텐션은 번들·번역을 읽지 않는다 (GUI 선언이 없는 익스텐션은 메인 창만).
+                // 다른 창(트레이 팝업·바탕화면 오버레이)에만 그리는 번들도 허락은 메인 창이 묻는다
+                if (!(ext.gui ? loadsOn(ext, surface) : surface === 'main')) {
+                    if (surface === 'main' && ext.gui?.bundle && ext.gui_allowed === false) pending.push(ext);
+                    return;
+                }
                 // 번들 없이 manifest 선언만 있는 익스텐션 (설정 탭 자동 폼 등)
                 if (ext.gui && !ext.gui.bundle) {
                     mergeSlots(ext);
@@ -499,6 +541,8 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
                 }
                 safeShowToast(t('trust.extension_gui.allowed', { id: extId }), 'info', 4000);
                 await fetchExtensions();
+                // 이 PC의 바탕화면 번들이면 셸이 오버레이를 다시 보게 (원격 데몬을 고른 동안엔 위 목록에 없다)
+                window.api?.overlaySync?.();
                 return true;
             } catch (e) {
                 safeShowToast(t('trust.extension_gui.allow_failed', { error: (e as Error).message }), 'error', 5000);
@@ -508,10 +552,15 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         [fetchExtensions, t],
     );
 
+    const allPending = useMemo(
+        () => [...guiPending, ...localPending.filter((ext) => !guiPending.some((p) => p.id === ext.id))],
+        [guiPending, localPending],
+    );
+
     // 허락을 기다리는 익스텐션을 하나씩 묻는다. 다른 창이 떠 있으면 닫힌 뒤에 묻는다
     useEffect(() => {
         if (surface !== 'main' || modalOpen || !window.api?.sandboxAllowExtensionGui) return;
-        const next = guiPending.find((ext) => !askedGuiRef.current.has(ext.id));
+        const next = allPending.find((ext) => !askedGuiRef.current.has(ext.id));
         if (!next) return;
         askedGuiRef.current.add(next.id);
         const { openModal, closeModal } = useUIStore.getState();
@@ -530,7 +579,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
                 { label: t('trust.extension_gui.deny'), action: () => closeModal() },
             ],
         });
-    }, [surface, guiPending, modalOpen, approveExtensionGui, t]);
+    }, [surface, allPending, modalOpen, approveExtensionGui, t]);
 
     /** 원격 매니페스트에서 가용 익스텐션 목록을 가져옵니다. */
     const fetchManifest = useCallback(async () => {
@@ -650,7 +699,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         refreshExtensions: fetchExtensions,
         removeExtension,
         // 확인되지 않은 익스텐션의 GUI 허락
-        guiPending,
+        guiPending: allPending,
         approveExtensionGui,
         manifestExtensions,
         availableUpdates,

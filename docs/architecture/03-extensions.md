@@ -240,7 +240,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
    - 전역 이름 규칙: `window["SabaExt" + PascalCase(id)]`. `-`와 `_` 구분자를 제거하고 다음 글자를 대문자로 바꾼다(`:174-176`). steamcmd → `SabaExtSteamcmd`. 번들이 정확히 이 전역을 만들어야 한다.
    - 스타일: `GET …/gui/styles`가 있으면 `<style data-extension=id>`로 넣는다(`:146-153`).
    - 모듈의 **`registerSlots(): { [slotId]: Component | Component[] }`**를 호출해 슬롯 레지스트리에 병합한다. 레지스트리의 한 칸은 `{ext, Component?, meta}`(`SlotEntry`)이고 `meta`는 manifest `gui.slots[slotId]`다. 선언과 어긋나면(모르는 slot 이름, 선언하지 않고 등록) 콘솔에 경고만 남기고 등록은 그대로 한다(`extensions/slotTable.ts` `slotProblems`). 번들 없이 `Settings.tab`만 선언했으면 컴포넌트 없는 칸을 넣어 `config_fields` 자동 폼을 그린다.
-   - 창(`ExtensionProvider surface`)마다 읽을 번들을 고른다(`loadsOn`): 메인 창은 메인 slot을 선언했거나 아무 slot도 선언하지 않은 것, 트레이 팝업(`surface="tray"`)은 `TrayPopup.section`을 선언한 것만 읽는다. 트레이 팝업은 허락되지 않은 번들을 묻지 않고 건너뛴다(묻는 것은 메인 창).
+   - 창(`ExtensionProvider surface`)마다 읽을 번들을 고른다(`loadsOn`): 메인 창은 메인 slot을 선언했거나 아무 slot도 선언하지 않은 것, 트레이 팝업(`surface="tray"`)은 `TrayPopup.section`을, 바탕화면 오버레이(`surface="desktop"`)는 `Desktop.overlay`를 선언한 것만 읽는다. 이 두 창은 허락되지 않은 번들을 묻지 않고 건너뛴다(묻는 것은 메인 창).
    - 버전이 바뀌면 전역을 삭제하고 style 태그를 제거한 뒤 다시 로드한다(핫로드, `:289-309`). 로드됨으로 기억했는데 전역이 없어도 다시 로드한다.
    - 실행이 실패한 번들은 자기가 남긴 전역만 되돌린다. 같은 확장을 겹쳐 읽은 다른 로드가 성공해 등록한 전역은 지우지 않는다.
 3. React 공유: 호스트가 `window.React`와 `window.ReactDOM`을 전역으로 노출하고(`src/index.tsx:20-21`), 번들은 `window.React`를 참조한다(external 처리). 호스트는 React 19다: 번들은 JSX를 `window.React.createElement`(classic 런타임)로 만들거나 React 19의 `jsx-runtime`을 쓴다. React 18의 `jsx-runtime`을 번들에 넣으면 요소 모양이 달라 React 19가 그리지 못한다. 그 밖의 호스트 API(토스트, 데몬 API, 스토어 등)는 노출하지 않는다. 확장 컴포넌트는 props만으로 동작해야 한다.
@@ -250,7 +250,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
    - 웹뷰 CSP(04 §1)는 스크립트를 앱 자신과 `blob:`으로만 열고 `unsafe-eval`이 없으므로, 번들 안에서 `eval`·`new Function`을 쓰면 실행되지 않는다.
    - 받아들인 위험: 허락한 번들은 데몬 API 전체(동의 라우트 포함)를 부를 수 있다. 허락은 그 익스텐션을 GUI에서 믿는다는 뜻이다.
 
-현재 `gui`를 가진 익스텐션은 없으므로 이 경로는 실제로 쓰이지 않는다.
+`gui`를 가진 익스텐션은 `desktop-pet`(saba-chan-extensions, `Desktop.overlay`) 하나다.
 
 ### 4.2 슬롯과 props (slot 표 `saba-chan-gui/src/extensions/slotTable.ts`, 그리는 곳 `components/ExtensionSlot.tsx`)
 
@@ -273,9 +273,10 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 | `AddServer.options` | main · inline | `AddInstanceNewServer.tsx` | `t` |
 | `AddServer.method` | main · card | 서버 추가 창의 "새로 만들기·가져오기" 아래 한 줄 카드(`Modals/AddInstanceModal.tsx`). 누르면 그 화면. 서버 만들기는 화면이 데몬 API로 한다 | `t, onBack, onClose` |
 | `TrayPopup.section` | tray · inline | 트레이 팝업 서버 목록 아래(`shell/TrayPopup.tsx`, 최대 높이 160px, 데몬이 켜져 있을 때만) | `servers, t` |
+| `Desktop.overlay` | desktop · inline | 바탕화면 오버레이 창(`shell/DesktopOverlay.tsx`, 셸 `overlay.rs`, 4.6). 창 크기는 그린 내용 크기에 맞춘다(가로 48–360, 세로 48–420 논리 px) | (없음) |
 
 - `server` 객체는 `/api/servers`의 `ServerInfo`다. 여기서 `extension_data`와 `extension_status[<extension_id>]`(list_enrich 결과)를 컴포넌트가 읽는다.
-- 구현 익스텐션은 아직 없다. 번들 없이 데이터만 선언하는 slot은 4.3이다.
+- 구현 익스텐션은 `desktop-pet`(`Desktop.overlay`) 하나다. 번들 없이 데이터만 선언하는 slot은 4.3이다.
 
 ### 4.3 데이터 slot (manifest `cli.slots`, GUI·CLI 공통)
 
@@ -306,7 +307,7 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 
 ### 4.5 `host` (익스텐션 화면의 공식 통로, `src/extensions/host.ts`)
 
-모든 slot 컴포넌트가 `host` prop으로 받는다. 창마다 할 수 있는 일은 그 창이 `HostWindowContext`로 넣는다(메인 창 `App.tsx`, 트레이 팝업 `TrayPopup.tsx`, 없으면 아무것도 하지 않는 기본값).
+모든 slot 컴포넌트가 `host` prop으로 받는다. 창마다 할 수 있는 일은 그 창이 `HostWindowContext`로 넣는다(메인 창 `App.tsx`, 트레이 팝업 `TrayPopup.tsx`, 바탕화면 오버레이 `DesktopOverlay.tsx`, 없으면 아무것도 하지 않는 기본값).
 
 | 칸 | 뜻 |
 |---|---|
@@ -314,11 +315,20 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 | `extension` | 이 host를 받은 익스텐션 id |
 | `t` | 익스텐션 자기 번역(`ext_<id>` 네임스페이스) |
 | `servers()` | 그 창이 지금 아는 서버 목록(`ServerInfo[]`) |
-| `run(instanceId, 'start'\|'stop'\|'restart')` | 넘겼으면 `true`, 하지 않았으면 `false`. 메인 창은 앱 버튼과 같은 `useServerActions` 손잡이를 거친다: 정지·재시작은 확인 창을 띄우고 `true`를 돌려주므로, 사용자가 취소해도 `true`다(결과는 `on`으로 받는다). 트레이 팝업은 `instanceStart`·`instanceStop`·`instanceRestart`를 바로 부르고 데몬 답으로 `true`/`false`를 정한다. 이 PC 데몬이라고 확인한 때만 정지·재시작을 보내고, 원격 데몬이거나 아직 모르면 `false`(그 창은 원격 정지를 두 번 눌러 확정한다) |
-| `openApp(route?)` | 메인 창: 상단 페이지(`servers`·`discord`·`activity`·`settings`·`ext:<id>`)로 옮긴다. 그 밖의 값은 무시한다. 트레이 팝업: 메인 창을 연다 |
+| `run(instanceId, 'start'\|'stop'\|'restart')` | 넘겼으면 `true`, 하지 않았으면 `false`. 메인 창은 앱 버튼과 같은 `useServerActions` 손잡이를 거친다: 정지·재시작은 확인 창을 띄우고 `true`를 돌려주므로, 사용자가 취소해도 `true`다(결과는 `on`으로 받는다). 트레이 팝업과 바탕화면 오버레이는 `instanceStart`·`instanceStop`·`instanceRestart`를 바로 부르고 데몬 답으로 `true`/`false`를 정한다. 이 PC 데몬이라고 확인한 때만 정지·재시작을 보내고, 원격 데몬이거나 아직 모르면 `false`(그 창들은 원격 정지를 두 번 눌러 확정한다) |
+| `openApp(route?)` | 메인 창: 상단 페이지(`servers`·`discord`·`activity`·`settings`·`ext:<id>`)로 옮기거나, `server:<인스턴스 id>`(영문·숫자·`-`·`_` 128자까지)면 그 서버를 연다. 그 밖의 값은 무시한다. 트레이 팝업: 메인 창을 연다. 바탕화면 오버레이: 메인 창을 열고, `server:<id>`면 셸이 그 서버를 연다(`app:openServer`, 메인 창이 막 뜨는 중이면 준비된 뒤). 앱 탭이면 그 탭을 연다(`app:openRoute`) |
 | `on(type, fn)` | 데몬 이벤트(`/api/events`, 01 문서) 구독. `type` `*`는 전부. 끊는 함수를 돌려준다. 트레이 팝업은 이벤트를 받지 않아 부르지 않는다 |
 
 - 번들은 여전히 `window.api`에 손이 닿는다(4.1 보안). `host`는 그것을 쓰지 않아도 되게 하는 정해진 통로이고, 막는 장치는 아니다.
+
+### 4.6 바탕화면 오버레이 창 (`Desktop.overlay`, 셸 `src-tauri/src/overlay.rs`)
+
+- 셸이 띄우는 투명·틀 없음·항상 위·작업 표시줄에 없는 창 `desktop-overlay`(`index.html?desktop-overlay=1`)다. 켜진 익스텐션 중 번들이 있고 이 PC가 번들을 받을 수 있고(`gui_allowed`가 false가 아님) `gui.slots`에 `Desktop.overlay`를 선언한 것이 있고, GUI 설정 `desktopOverlay.enabled`(기본 켬)가 켜져 있을 때만 띄운다(`overlay::wanted_by`). 리눅스 Wayland 세션은 창 자리·항상 위를 앱이 정할 수 없어 띄우지 않는다.
+- 다시 보는 때(`overlay::sync`): 셸이 데몬에 붙은 뒤(`finish_background_init`), 다룰 데몬을 바꾼 뒤(창을 내리고 새 데몬 기준으로), 메인 창이 그 slot을 쓰는 익스텐션의 켜기·허락이 바뀐 것을 본 뒤(`overlaySync`), 설정 스위치(`overlaySetEnabled`). 데몬에 닿지 않으면 지금 상태를 그대로 둔다. 익스텐션 목록은 이 PC 데몬의 것이다(`target: local`): 오버레이 번들은 원격 데몬을 고른 동안에도 이 PC 데몬에서 받는다. 오버레이 창의 렌더러도 같은 목록을 읽는다(`extensionList({local:true})`).
+- 자리: 창 아래 가운데 점(물리 px)을 붙박이로 둔다. 처음에는 작업 영역 오른쪽 아래에서 16 논리 px 띄운다. 렌더러가 잰 내용 크기(`overlayFit`)로 그 점을 지키며 크기를 맞추고, 작업 영역 밖으로 나가지 않게 당긴 뒤 보인다(`overlay::place`). 지키는 점은 당기기 전의 점이다(`overlay::settle`): 말풍선으로 넓어져 가장자리에서 안쪽으로 당겨져도 좁아지면 원래 자리로 돌아온다. 잰 크기가 0이면(slot에 그릴 것이 없다, 번들을 못 읽었다) 창을 숨긴다. 사용자가 끌어 옮기면 멈춘 뒤 그 점을 `desktopOverlay.{x,y}`에 저장한다. 저장한 점이 어느 모니터의 작업 영역에도 없으면 처음 자리로 놓는다.
+- 창 일은 오버레이 화면(`DesktopOverlay.tsx`)이 한다: 누르면 메인 창(`overlayAction('open_app')`), 누른 채 4px 넘게 움직이면 OS 창 끌기(`overlayStartDrag`, 그 누르기는 클릭이 아니다), 우클릭은 셸이 OS 메뉴로 띄운다(`overlayMenu`, 작은 창 안에 그리면 잘린다). 메뉴는 서버마다 하위 메뉴(꺼져 있으면 시작, 켜져 있으면 정지·재시작을 한 단계 더 골라 확정, 켜고 끄는 중이면 고를 것 없음, 12개까지), 앱 열기, 바탕화면에서 숨기기(`desktopOverlay.enabled`를 끈다)다. 서버 이름은 40자에서 줄인다. 셸은 항목 80개·글자 80자·하위 메뉴 두 단계를 넘는 메뉴를 받지 않고, 고른 항목 id를 `overlay:menu` 이벤트로 그 창에만 돌려준다(옛 메뉴의 늦은 선택은 버린다).
+- 데몬 이벤트(`events:message`)는 메인 창과 함께 이 창에도 보낸다(고른 데몬 스트림만). 창 권한은 `capabilities/desktop-overlay.json`: 데몬 요청·상태·고른 데몬·언어 읽기, 이벤트 수신(`listen`·`unlisten`만, 보내기 없음), 창 끌기, `overlay_fit`·`overlay_menu`·`overlay_action`. 알림·설정 쓰기·데몬 바꾸기는 없다. 이 창의 `daemon_request`는 읽기(GET)와 `POST /api/instance/{id}/{start|stop|restart}`만 보내고 나머지는 셸이 거절한다(`overlay::allows_request`). 테마·언어는 메인 창이 바꾸면 `storage` 이벤트로 따라간다.
+- 사용자가 보는 창으로 세지 않는다: 트레이만 남은 판단(`window::tray_only`)에서 빠지고, 인터페이스만 종료(`close_all`)해도 트레이처럼 남는다. 완전히 종료하면 함께 끝난다.
 
 ---
 

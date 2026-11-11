@@ -41,6 +41,12 @@ const COMMANDS: &[&str] = &[
     "sandbox_consent_allow",
     "tray_action",
     "tray_popup_fit",
+    "overlay_fit",
+    "overlay_menu",
+    "overlay_action",
+    "overlay_state",
+    "overlay_set_enabled",
+    "overlay_sync",
     "sound_play",
 ];
 
