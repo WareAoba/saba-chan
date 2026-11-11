@@ -1,6 +1,6 @@
 /**
  * Rust 이벤트(계약 §3)를 설치 때 한 번만 구독하고 렌더러 콜백으로 나눠 준다.
- * preload의 ipcRenderer.on / removeAllListeners 의미를 따른다.
+ * 채널마다 콜백을 등록(on)하고 한꺼번에 해제(removeAllListeners)한다.
  */
 import type { Listen } from './tauri';
 
