@@ -127,6 +127,11 @@ export function initTheme() {
     applyTheme(theme);
     // "시스템 따라"면 시스템 테마가 바뀔 때 창 바탕도 따라 바꾼다
     window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', syncWindowBackground);
+    // 다른 창(메인 창 설정)에서 바꾸면 이 창(바탕화면 펫·트레이 팝업)도 따른다
+    window.addEventListener('storage', (e) => {
+        if (e.key === THEME_KEY) applyTheme(getTheme());
+        else if (e.key === CUSTOM_THEME_KEY) applyCustomTheme(getCustomTheme());
+    });
     // Apply saved customizations
     const custom = getCustomTheme();
     applyCustomTheme(custom);
