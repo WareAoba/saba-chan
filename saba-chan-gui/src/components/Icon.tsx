@@ -868,7 +868,8 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }: IconProps) =
     const normalizedName = name.includes('-')
         ? name.replace(/-([a-z])/g, (_: string, c: string) => c.toUpperCase())
         : name;
-    const svgIcon = icons[normalizedName];
+    // 받은 가이드의 아이콘 이름도 여기로 온다: 알려진 이름만 (toString 같은 기본 속성 제외)
+    const svgIcon = Object.hasOwn(icons, normalizedName) ? icons[normalizedName] : undefined;
     if (!svgIcon) {
         return <span>?</span>;
     }

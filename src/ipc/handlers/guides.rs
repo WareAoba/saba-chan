@@ -60,18 +60,47 @@ async fn facts(state: &IPCServer) -> crate::guides::Facts {
 
 /// 서버에서 가이드를 다시 받는 간격 (목록을 볼 때 이만큼 지났으면 뒤에서 받는다)
 const SYNC_EVERY: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
+/// 받기에 실패했으면 이만큼 뒤에 다시 받는다
+const RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 /// 받는 응답 크기 상한
 const SYNC_MAX_BYTES: usize = 2 * 1024 * 1024;
-static LAST_SYNC: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+/// 다음에 받아도 되는 때 (받는 중에는 SYNC_EVERY 뒤로 잡아 겹쳐 받지 않는다)
+static NEXT_SYNC: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
 
-/// 앱을 낸 뒤 생긴 가이드를 릴레이(`GET /v1/guides`)에서 받아 받은 가이드 폴더를 맞춘다. 실패하면 있던 것을 그대로 둔다
-fn spawn_sync(state: &IPCServer) {
-    {
-        let mut last = LAST_SYNC.lock().unwrap_or_else(|e| e.into_inner());
-        if last.is_some_and(|t| t.elapsed() < SYNC_EVERY) {
-            return;
+/// 받을 차례면 다음 차례를 SYNC_EVERY 뒤로 잡고 true
+fn claim_sync(next: &std::sync::Mutex<Option<std::time::Instant>>, now: std::time::Instant) -> bool {
+    let mut next = next.lock().unwrap_or_else(|e| e.into_inner());
+    if next.is_some_and(|t| now < t) {
+        return false;
+    }
+    *next = Some(now + SYNC_EVERY);
+    true
+}
+
+/// 받기에 실패하면 RETRY_AFTER 뒤에 다시
+fn sync_failed(next: &std::sync::Mutex<Option<std::time::Instant>>, now: std::time::Instant) {
+    *next.lock().unwrap_or_else(|e| e.into_inner()) = Some(now + RETRY_AFTER);
+}
+
+/// 응답을 읽으면서 상한을 넘으면 끊는다
+async fn read_capped(mut res: reqwest::Response, max: usize) -> Option<Vec<u8>> {
+    if res.content_length().is_some_and(|n| n > max as u64) {
+        return None;
+    }
+    let mut buf = Vec::new();
+    while let Some(chunk) = res.chunk().await.ok()? {
+        if buf.len() + chunk.len() > max {
+            return None;
         }
-        *last = Some(std::time::Instant::now());
+        buf.extend_from_slice(&chunk);
+    }
+    Some(buf)
+}
+
+/// 앱을 낸 뒤 생긴 가이드를 릴레이(`GET /v1/guides`)에서 받아 받은 가이드 폴더를 맞춘다. 실패하면 있던 것을 그대로 두고 조금 뒤 다시 받는다
+fn spawn_sync(state: &IPCServer) {
+    if !claim_sync(&NEXT_SYNC, std::time::Instant::now()) {
+        return;
     }
     let state = state.clone();
     tokio::spawn(async move {
@@ -80,21 +109,21 @@ fn spawn_sync(state: &IPCServer) {
             guides: Vec<crate::guides::Served>,
         }
         let base = super::chatbot::relay_base(&state).await;
-        let Ok(http) = super::relay::client() else { return };
+        let failed = || sync_failed(&NEXT_SYNC, std::time::Instant::now());
+        let Ok(http) = super::relay::client() else { return failed() };
         let url = format!("{}/v1/guides?core={}", base, env!("CARGO_PKG_VERSION"));
         let res = match http.get(url).timeout(std::time::Duration::from_secs(15)).send().await {
             Ok(r) if r.status().is_success() => r,
-            // 옛 릴레이(404)·끊김: 다음에 다시
-            _ => return,
+            // 옛 릴레이(404)·끊김: 조금 뒤 다시
+            _ => return failed(),
         };
-        let Ok(bytes) = res.bytes().await else { return };
-        if bytes.len() > SYNC_MAX_BYTES {
-            tracing::warn!("Served guides are too large ({} bytes); keeping the current ones", bytes.len());
-            return;
-        }
+        let Some(bytes) = read_capped(res, SYNC_MAX_BYTES).await else {
+            tracing::warn!("Served guides are too large or were cut off; keeping the current ones");
+            return failed();
+        };
         let Ok(body) = serde_json::from_slice::<Body>(&bytes) else {
             tracing::warn!("Could not read the served guides; keeping the current ones");
-            return;
+            return failed();
         };
         let dir = crate::guides::installed_dir();
         match tokio::task::spawn_blocking(move || crate::guides::install(&dir, &body.guides)).await {
@@ -105,7 +134,7 @@ fn spawn_sync(state: &IPCServer) {
     });
 }
 
-/// GET /api/guides?locale — 가이드 목록 (문구는 그 언어, 없으면 영어). 받은 가이드는 6시간마다 뒤에서 다시 받는다
+/// GET /api/guides?locale — 가이드 목록 (문구는 그 언어, 없으면 영어). 받은 가이드는 6시간마다 뒤에서 다시 받는다 (실패하면 10분 뒤)
 pub async fn list(State(state): State<IPCServer>, Query(q): Query<ListQuery>) -> Response {
     spawn_sync(&state);
     let lang = super::actions::locale(&state, q.locale).await;
@@ -135,5 +164,23 @@ pub async fn update(State(state): State<IPCServer>, Path(id): Path<String>, Loos
     match state.config_store.merge_client_section(crate::guides::SECTION, patch) {
         Ok(_) => Json(json!({ "ok": true })).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+    }
+}
+
+#[cfg(test)]
+mod sync_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_failed_sync_retries_soon_not_after_six_hours() {
+        let next = std::sync::Mutex::new(None);
+        let t0 = Instant::now();
+        assert!(claim_sync(&next, t0));
+        // 받는 중이거나 막 받았으면 다시 받지 않는다
+        assert!(!claim_sync(&next, t0 + Duration::from_secs(60)));
+        sync_failed(&next, t0);
+        assert!(!claim_sync(&next, t0 + RETRY_AFTER - Duration::from_secs(1)));
+        assert!(claim_sync(&next, t0 + RETRY_AFTER));
     }
 }

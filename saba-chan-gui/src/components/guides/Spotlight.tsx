@@ -1,8 +1,8 @@
-import { type CSSProperties, useEffect, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
-import { advanceGuide, closeSpotlight, GUIDE_ACTIONS, goToStep, useGuideStore } from './guides';
+import { advanceGuide, closeSpotlight, goToStep, guideAction, useGuideStore } from './guides';
 
 /** 짚을 자리가 화면에 나타나길 기다리는 시간 (화면을 연 직후 그려지는 동안) */
 const WAIT_MS = 2000;
@@ -65,6 +65,14 @@ export function Spotlight() {
     const guide = useGuideStore((s) => (s.active ? s.guides?.find((g) => g.id === s.active?.id) : undefined));
     const step = active && guide ? guide.steps[active.step] : undefined;
     const box = useSpotBox(step?.spot, active ? `${active.id}:${active.step}` : '');
+    const primary = useRef<HTMLButtonElement>(null);
+    const shown = !!active && !!step && box !== 'wait';
+
+    // 말풍선이 뜨거나 단계가 바뀌면 주 버튼으로 포커스 (가려진 화면을 Tab으로 지나 누르지 않게)
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 단계가 바뀔 때마다
+    useEffect(() => {
+        if (shown) primary.current?.focus();
+    }, [shown, active?.id, active?.step]);
 
     useEffect(() => {
         if (!active) return;
@@ -81,7 +89,7 @@ export function Spotlight() {
     if (!active || !guide || !step) return null;
     const k = active.step + 1;
     // 화면을 넘겨받는 단계: 버튼이 그 화면을 연다
-    const handoff = !!(step.action && GUIDE_ACTIONS[step.action]?.handoff);
+    const handoff = !!guideAction(step.action)?.handoff;
     const n = guide.steps.length;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -152,6 +160,7 @@ export function Spotlight() {
                             </button>
                         )}
                         <button
+                            ref={primary}
                             type="button"
                             className="btn btn-primary btn-sm"
                             onClick={() => advanceGuide(guide.id, active.step)}

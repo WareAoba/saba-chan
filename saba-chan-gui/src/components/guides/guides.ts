@@ -184,6 +184,11 @@ export function startGuide(id: string) {
     goToStep(id, guide.step);
 }
 
+/** 단계의 action 이름으로 앱이 할 일을 찾는다. 받은 가이드의 자유 문자열이라 알려진 이름만 (toString 같은 기본 속성 제외) */
+export function guideAction(name: string | undefined) {
+    return name && Object.hasOwn(GUIDE_ACTIONS, name) ? GUIDE_ACTIONS[name] : undefined;
+}
+
 /** 단계로 간다: 화면을 열고 앱이 할 일을 한다 (화면을 넘겨받는 일은 advanceGuide에서) */
 export function goToStep(id: string, step: number) {
     const guide = useGuideStore.getState().guides?.find((g) => g.id === id);
@@ -191,7 +196,7 @@ export function goToStep(id: string, step: number) {
     if (!guide || !s) return;
     const address = s.go ? resolveAddress(s.go) : null;
     if (address) openScreen(address);
-    const action = s.action ? GUIDE_ACTIONS[s.action] : undefined;
+    const action = guideAction(s.action);
     // 화면을 넘겨받는 일은 말풍선을 보인 뒤 "다음"에서 한다 (advanceGuide)
     if (!action?.handoff) action?.run();
     useGuideStore.setState({ active: { id, step } });
@@ -205,7 +210,7 @@ export function goToStep(id: string, step: number) {
 export function advanceGuide(id: string, step: number) {
     const guide = useGuideStore.getState().guides?.find((g) => g.id === id);
     if (!guide) return;
-    const action = guide.steps[step]?.action ? GUIDE_ACTIONS[guide.steps[step].action as string] : undefined;
+    const action = guideAction(guide.steps[step]?.action);
     if (action?.handoff) {
         finishGuide(id);
         action.run();

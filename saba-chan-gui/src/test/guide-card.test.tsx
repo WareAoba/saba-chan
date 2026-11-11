@@ -123,6 +123,31 @@ describe('화면 강조', () => {
         window.removeEventListener('saba:open-sonar', open);
     });
 
+    it('말풍선이 뜨면 주 버튼에 포커스가 간다 (가려진 화면을 Tab으로 지나지 않게)', async () => {
+        const target = document.createElement('button');
+        target.dataset.spot = 'here';
+        document.body.appendChild(target);
+        target.focus();
+        render(<Spotlight />);
+        act(() => startGuide('b'));
+        await act(async () => {});
+        expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Next' }));
+        target.remove();
+    });
+
+    it('받은 가이드의 action·icon이 객체 기본 속성 이름이어도 그 일로 여기지 않는다', async () => {
+        useGuideStore.setState({
+            guides: [guide('p', { icon: 'constructor', steps: [{ action: 'toString', text: 'proto' }] })],
+            active: null,
+        });
+        render(<Spotlight />);
+        act(() => startGuide('p'));
+        await act(async () => {});
+        expect(screen.getByText('proto')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+        expect(useGuideStore.getState().active).toBeNull();
+    });
+
     it('Esc로도 닫힌다', async () => {
         render(<Spotlight />);
         act(() => startGuide('b'));
