@@ -1,0 +1,8 @@
+{
+    "title": "Saba-chan web",
+    "summary": "Manage servers from your phone browser",
+    "steps": [
+        "Saba-chan web works with a PC linked to Discord. If you haven't linked yet, start with Connect a Discord server.",
+        "Use the web command on Discord to get a link you can open once within 5 minutes. Open it in your phone browser to start and stop servers and use the console, settings and backups."
+    ]
+}

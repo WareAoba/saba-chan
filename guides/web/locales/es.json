@@ -1,0 +1,8 @@
+{
+    "title": "Web de Saba-chan",
+    "summary": "Gestiona servidores desde el navegador del móvil",
+    "steps": [
+        "La web de Saba-chan funciona con un PC vinculado a Discord. Si aún no lo has hecho, empieza por Conectar un servidor de Discord.",
+        "Usa el comando web en Discord para recibir un enlace que se abre una sola vez en 5 minutos. Ábrelo en el navegador del móvil para iniciar y detener servidores y usar la consola, la configuración y las copias de seguridad."
+    ]
+}

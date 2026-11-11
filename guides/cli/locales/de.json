@@ -1,0 +1,8 @@
+{
+    "title": "CLI",
+    "summary": "Dasselbe im Terminal",
+    "steps": [
+        "Nachdem du Einstellungen geändert hast, klappe Über die Befehlszeile auf, um den CLI-Befehl für dasselbe zu sehen und zu kopieren.",
+        "Zur CLI wechseln öffnet die CLI mit dem gewählten Server in einem neuen Terminal; dieses Fenster schließt sich. Die Server laufen weiter."
+    ]
+}

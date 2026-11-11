@@ -1,0 +1,8 @@
+{
+    "title": "Spielchat weiterleiten",
+    "summary": "Spielchat an Discord senden",
+    "steps": [
+        "Wähle unter Zu sendender Chat entweder Gesamter Chat oder Nur Chat, der mit dem Stichwort beginnt, und speichere. Das erscheint nur bei Spielen, deren Chat Saba-chan lesen kann.",
+        "Wähle den Kanal für den Spielchat und tippe unter Saba-chans Aufgaben auf Spielchat."
+    ]
+}

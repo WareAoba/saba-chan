@@ -1,0 +1,8 @@
+{
+    "title": "Spielserver-Adresse · Portweiterleitung prüfen",
+    "summary": "Damit deine Freunde beitreten können",
+    "steps": [
+        "Gib deinen Freunden die Beitrittsadresse, damit sie beitreten können. Mit „Kopieren“ kopierst du sie.",
+        "Klicke auf „Portweiterleitung prüfen“, und Saba-chan prüft, ob der Server von außen erreichbar ist. Ist er blockiert, richte am Router eine Portweiterleitung ein."
+    ]
+}

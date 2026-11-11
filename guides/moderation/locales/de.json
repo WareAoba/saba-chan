@@ -1,0 +1,8 @@
+{
+    "title": "Serververwaltung",
+    "summary": "Kanäle aufräumen und Mitglieder stummschalten",
+    "steps": [
+        "Wähle einen Kanal für Slowmode, Sperren, Auto-Leeren und Jetzt leeren, und lege unter Saba-chans Aufgaben fest, was Saba-chan dort macht.",
+        "Unter Mitglieder wählst du jemanden zum Stummschalten oder hebst eine Stummschaltung auf."
+    ]
+}

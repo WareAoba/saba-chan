@@ -1,0 +1,8 @@
+{
+    "title": "Adresse du serveur de jeu · Vérifier la redirection de ports",
+    "summary": "Pour que vos amis puissent rejoindre",
+    "steps": [
+        "Donnez l'Adresse de connexion à vos amis pour qu'ils puissent rejoindre. Cliquez sur Copier pour la copier.",
+        "Cliquez sur Vérifier la redirection de ports et Saba-chan vérifie si le serveur est joignable depuis l'extérieur. S'il est bloqué, configurez la redirection de ports sur votre routeur."
+    ]
+}

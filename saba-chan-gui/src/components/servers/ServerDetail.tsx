@@ -229,7 +229,7 @@ export function ServerDetail({
             </>
         ) : (
             <span className="start-anchor">
-                <button
+                <button data-spot="server.start"
                     type="button"
                     className="btn btn-primary btn-lg"
                     onClick={() => onStart(server.name, server.module)}
@@ -360,10 +360,15 @@ export function ServerDetail({
             {status !== 'missing' && !server.provisioning && (
                 <>
                     <div className="detail-tabrow" ref={tabRowRef}>
-                        <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} />
+                        <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} spot="server.tab" />
                         {findable && <PageFindButton />}
                         {activeTab === 'console' && !poppedOut && typeof window.api?.consolePopout === 'function' && (
-                            <button type="button" className="btn btn-ghost detail-pip-btn" onClick={popoutConsole}>
+                            <button
+                                type="button"
+                                data-spot="console.popout"
+                                className="btn btn-ghost detail-pip-btn"
+                                onClick={popoutConsole}
+                            >
                                 <Icon name="pictureInPicture" size={15} />
                                 {t('console.popout')}
                             </button>

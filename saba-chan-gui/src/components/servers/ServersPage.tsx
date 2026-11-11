@@ -18,6 +18,7 @@ import { useDaemonTarget } from '../shell/DaemonSwitcher';
 import { OtherDaemons } from '../shell/OtherDaemons';
 import { DaemonDownNotice, DaemonDownState, daemonDown } from './DaemonDown';
 import { FirstRunGuide } from '../guides/FirstRunGuide';
+import { GuideCard } from '../guides/GuideCard';
 import { useGuideStore } from '../guides/guides';
 import { OnboardingCard } from './OnboardingCard';
 import type { ServerConsoleProps, ServerSettingsProps } from './ServerDetail';
@@ -62,7 +63,7 @@ export function ServersPage({
     consoleProps,
     settingsProps,
 }: ServersPageProps) {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
     const failedModules = useServerStore((st) => st.failedModules) || [];
     const { width } = useWindowSize();
     const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
@@ -91,6 +92,11 @@ export function ServersPage({
     useEffect(() => {
         if (activeTab === 'servers') useGuideStore.getState().refreshOnboarding();
     }, [servers.length, runningCount, activeTab]);
+    // 가이드 카드: 완료(서버·모듈·켜짐)와 언어가 바뀌면 다시 묻는다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 바뀔 때 다시 묻는 것이 목적이다
+    useEffect(() => {
+        if (activeTab === 'servers') useGuideStore.getState().refreshGuides();
+    }, [servers.length, runningCount, modules.length, activeTab, i18n.language]);
     const guideStep = useGuideStore((s) => s.step);
     // 가이드를 연 채(갈림길 등) 다른 곳에서 서버가 생기면 가이드를 접는다 (모듈 받기는 원래 하던 곳으로 이어 가므로 둔다)
     const serverCount = useRef(servers.length);
@@ -144,11 +150,12 @@ export function ServersPage({
                             <LinkedText i18nKey="shell.empty_no_modules" to="settings/sabaStorage/modules" />
                         </p>
                     )}
-                    <button type="button" className="btn btn-primary btn-lg" onClick={onAddServer}>
+                    <button type="button" data-spot="server.add" className="btn btn-primary btn-lg" onClick={onAddServer}>
                         <Icon name="plus" size="sm" /> {t('shell.add_server')}
                     </button>
                 </div>
                 <OnboardingCard />
+                <GuideCard />
                 {/* 고른 데몬에 서버가 없어도 다른 데몬의 서버는 보인다 */}
                 {unified && daemonTarget !== undefined && <OtherDaemons currentTarget={daemonTarget} />}
             </div>
@@ -163,7 +170,7 @@ export function ServersPage({
             {!listHidden && (
                 <aside className="server-list-pane" aria-label={t('shell.nav_servers')}>
                     <div className="server-list-head">
-                        <button type="button" className="btn btn-primary btn-block" onClick={onAddServer}>
+                        <button type="button" data-spot="server.add" className="btn btn-primary btn-block" onClick={onAddServer}>
                             <Icon name="plus" size="sm" /> {t('shell.add_server')}
                         </button>
                         {servers.length >= SEARCH_MIN_SERVERS && (
@@ -178,7 +185,6 @@ export function ServersPage({
                         )}
                     </div>
                     {isDaemonDown && <DaemonDownNotice />}
-                    <OnboardingCard />
                     {failedModules.length > 0 && (
                         // 모듈이 목록에서 사라진 이유를 알려준다 (module.toml 오류 등)
                         <div className="notice tone-warn module-failures">
@@ -228,6 +234,7 @@ export function ServersPage({
                         ))}
                     </div>
                     {unified && daemonTarget !== undefined && <OtherDaemons currentTarget={daemonTarget} />}
+                    <GuideCard />
                 </aside>
             )}
             {!detailHidden && selected && (

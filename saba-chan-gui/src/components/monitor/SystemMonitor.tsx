@@ -190,6 +190,7 @@ export function SystemMonitor({ layout = 'top', servers = [], float }: SystemMon
     const toggle = (
         <button
             type="button"
+            data-spot="monitor.toggle"
             className="icon-btn monitor-toggle"
             onClick={() => update({ systemMonitorExpanded: !open })}
             aria-expanded={open}
@@ -240,6 +241,7 @@ export function SystemMonitor({ layout = 'top', servers = [], float }: SystemMon
     if (!open) {
         return (
             <section
+                data-spot="monitor"
                 className={clsx('monitor monitor-summary', floatClass)}
                 aria-label={t('monitor.title')}
                 {...floatProps}
@@ -279,6 +281,7 @@ export function SystemMonitor({ layout = 'top', servers = [], float }: SystemMon
 
     return (
         <section
+            data-spot="monitor"
             className={clsx('monitor', !float && `monitor-${layout}`, floatClass)}
             aria-label={t('monitor.title')}
             {...floatProps}

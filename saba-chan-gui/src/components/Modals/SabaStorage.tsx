@@ -70,6 +70,7 @@ function SabaStorage({ devMode, initialTab = 'components' }: SabaStorageProps) {
                 {['components', 'modules', 'extensions'].map((tab) => (
                     <button
                         key={tab}
+                        data-spot={`storage.tab.${tab}`}
                         className={clsx('saba-storage-tab', { active: activeTab === tab })}
                         onClick={() => setActiveTab(tab)}
                     >
@@ -941,7 +942,7 @@ function ModulesTab() {
     return (
         <div className="saba-storage-tab-content">
             {/* 설치된 모듈 */}
-            <div className="ss-store-header">
+            <div data-spot="storage.installed" className="ss-store-header">
                 <div className="ss-section-label" style={{ margin: 0 }}>
                     {t('saba_storage.installed_modules', '설치된 모듈')}
                 </div>
@@ -1029,7 +1030,7 @@ function ModulesTab() {
                 </p>
             )}
             {runnableModules.length > 0 && (
-                <div className="ss-catalog">
+                <div data-spot="storage.catalog" className="ss-catalog">
                     {runnableModules.map((m) => {
                         const isInstalling = installingIds.has(m.id);
                         const result = installResults[m.id];
@@ -1225,7 +1226,7 @@ function ExtensionsTab() {
     return (
         <div className="saba-storage-tab-content">
             {/* 설치됨 */}
-            <div className="ss-store-header">
+            <div data-spot="extensions.installed" className="ss-store-header">
                 <div className="ss-section-label" style={{ margin: 0 }}>
                     {t('extensions.installed_section', '설치됨')}
                 </div>
@@ -1350,7 +1351,7 @@ function ExtensionsTab() {
             )}
 
             {/* 스토어 */}
-            <div className="ss-store-header">
+            <div data-spot="extensions.store" className="ss-store-header">
                 <div className="ss-section-label" style={{ margin: 0 }}>
                     {t('extensions.store_section', '스토어')}
                 </div>

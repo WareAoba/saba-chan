@@ -1,0 +1,8 @@
+{
+    "title": "Monitor del sistema",
+    "summary": "Los recursos de tu PC de un vistazo",
+    "steps": [
+        "El uso de CPU, memoria, disco y red está siempre a la vista en la pantalla de servidores.",
+        "Pulsa Expandir monitor para ver lo que usa cada servidor con su propio color. Tras expandirlo, elige qué mostrar con el engranaje."
+    ]
+}

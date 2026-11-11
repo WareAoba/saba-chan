@@ -469,7 +469,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
 
     return (
         <>
-        <section className="saba-card">
+        <section data-spot="settings.remote" className="saba-card">
             <h4 className="saba-card-title">
                 <Icon name="cloud" size="sm" /> {t('remote_daemon.title')}
             </h4>
@@ -477,7 +477,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
 
             {draft && (
                 <>
-                    <div className="setting-item">
+                    <div data-spot="remote.accept" className="setting-item">
                         <label className="setting-label" htmlFor="remote-daemon-enabled">
                             <span className="setting-title">
                                 {t('remote_daemon.enabled')}
@@ -532,7 +532,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
             <h5 className="remote-daemon-subtitle">{t('remote_daemon.my_pcs')}</h5>
             <p className="setting-description">{t('remote_daemon.my_pcs_description')}</p>
             {peersError && <p className="setting-description">{peersError}</p>}
-            <ul className="remote-pc-cards remote-pc-cards-even" aria-label={t('remote_daemon.my_pcs')}>
+            <ul data-spot="remote.pcs" className="remote-pc-cards remote-pc-cards-even" aria-label={t('remote_daemon.my_pcs')}>
                 <li className="remote-pc-card me">
                     <div className="remote-pc-top">
                         <span className="remote-pc-os">
@@ -572,7 +572,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     </div>
                 </li>
                 {cards.map(renderCard)}
-                <li className="remote-pc-add">
+                <li data-spot="remote.install" className="remote-pc-add">
                     <button type="button" className="btn btn-ghost" onClick={() => setInstalling(true)}>
                         <Icon name="plus" size="lg" />
                         <span>{t('remote_daemon.install_linux')}</span>

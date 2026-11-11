@@ -121,14 +121,20 @@ describe('명령 팔레트 항목', () => {
         expect(jump.map((i) => i.group)).toEqual(['setting']);
     });
 
-    it('가이드 다시 열기도 앱 바로 가기로 찾는다 (빈 검색에는 없다)', () => {
+    it('가이드도 앱 바로 가기로 찾는다 (데몬이 준 제목, 빈 검색에는 없다)', () => {
         const ko = (key: string, o?: Record<string, unknown>) =>
             key === 'guides.palette' ? `가이드: ${o?.name}` : key;
-        const items = visibleItems({ scope: null, context: null, query: '가이드', category: null }, data(), ko);
-        expect(items.filter((i) => i.action === 'guide').map((i) => [i.group, i.guide, i.title])).toEqual([
-            ['jump', 'firstRun', '가이드: guides.entry_firstRun'],
-            ['jump', 'import', '가이드: guides.entry_import'],
-            ['jump', 'modules', '가이드: guides.entry_modules'],
+        const withGuides = {
+            ...data(),
+            guides: [
+                { id: 'backup', title: '백업 만들기', icon: 'archive' },
+                { id: 'sonar', title: '소나', icon: 'sonar' },
+            ],
+        };
+        const items = visibleItems({ scope: null, context: null, query: '가이드', category: null }, withGuides, ko);
+        expect(items.filter((i) => i.action === 'guide').map((i) => [i.group, i.guide, i.title, i.icon])).toEqual([
+            ['jump', 'backup', '가이드: 백업 만들기', 'archive'],
+            ['jump', 'sonar', '가이드: 소나', 'sonar'],
         ]);
         expect(view({}).some((i) => i.action === 'guide')).toBe(false);
     });

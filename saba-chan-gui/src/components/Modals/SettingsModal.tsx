@@ -259,6 +259,7 @@ function SettingsModal({
                 return (
                     <button
                         key={id}
+                        data-spot={`settings.tab.${id}`}
                         type="button"
                         role="tab"
                         id={`settings-tab-${id}`}

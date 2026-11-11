@@ -1,0 +1,8 @@
+{
+    "title": "消息翻译",
+    "summary": "右键翻译成我的语言",
+    "steps": [
+        "在 Discord 右键点击消息，选择 应用 › Translate with Saba-chan，即可只给你看译成你 Discord 语言的内容。",
+        "在 Saba-chan 设置命令的翻译中打开旗帜反应翻译后，给消息加上国旗表情，Saba-chan 就会译成那个国家的语言回复。"
+    ]
+}

@@ -1,0 +1,8 @@
+{
+    "title": "Reenvío del chat del juego",
+    "summary": "Envía el chat del juego a Discord",
+    "steps": [
+        "En Chat que se envía, elige Todo el chat o Solo el chat que empieza con la palabra clave y guarda. Solo aparece en juegos cuyo chat Saba-chan puede leer.",
+        "Elige el canal que recibirá el chat del juego y pulsa Chat del juego en Tareas de Saba-chan."
+    ]
+}

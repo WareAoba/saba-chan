@@ -1975,7 +1975,7 @@
     "console_failed": "Não foi possível carregar os logs do daemon."
   },
   "palette": {
-    "title": "Paleta de comandos",
+    "title": "Sonar",
     "placeholder": "O que você quer fazer? Nomes de servidor também funcionam",
     "placeholder_scope": "Buscar em {{name}}",
     "placeholder_entities": "Onde focar a busca?",
@@ -2628,7 +2628,7 @@
   "guides": {
     "title": "Guias",
     "close": "Fechar",
-    "closed_toast": "Guia fechado. Você pode reabrir em Configurações → Geral.",
+    "closed_toast": "Guia fechado. Você pode reabri-lo no cartão de guias.",
     "first_run": "Primeiros passos",
     "welcome_title": "Oi, eu sou a Saba-chan!",
     "welcome_body": "Primeiro, vamos conectar o Discord.",
@@ -2653,14 +2653,18 @@
     "modules_more": "Encontre mais jogos no Loja Saba.",
     "open_storage": "Abrir Loja Saba",
     "start_coach": "Aperte Iniciar para ligar o servidor",
-    "open": "Abrir",
-    "entry_firstRun": "Primeiros passos",
-    "entry_firstRun_desc": "Conectar Discord → preparar servidor → iniciar",
-    "entry_import": "Importar um servidor existente",
-    "entry_import_desc": "O que muda e com o que tomar cuidado",
-    "entry_modules": "Obter módulos de jogo",
-    "entry_modules_desc": "Obtenha os jogos que quer hospedar",
-    "palette": "Guia: {{name}}"
+    "palette": "Guia: {{name}}",
+    "more": "Ver mais",
+    "group_start": "Primeiros passos",
+    "group_care": "Cuidar do servidor",
+    "group_discord": "Extras do Discord",
+    "group_more": "Indo além",
+    "step_of": "Passo {{step}} de {{total}}",
+    "new": "new!",
+    "prev": "Voltar",
+    "next": "Próximo",
+    "finish": "Entendi",
+    "go": "Abrir"
   },
   "public_address": {
     "label": "Endereço do servidor",

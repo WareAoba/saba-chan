@@ -1,0 +1,8 @@
+{
+    "title": "Message translation",
+    "summary": "Right-click to read it in your language",
+    "steps": [
+        "Right-click a message on Discord and choose Apps › Translate with Saba-chan to see it in your Discord language, just for you.",
+        "Turn on flag reaction translation under translation in Saba-chan’s settings command. React to a message with a flag and Saba-chan replies with a translation into that country’s language."
+    ]
+}

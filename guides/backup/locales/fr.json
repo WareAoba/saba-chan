@@ -1,0 +1,9 @@
+{
+    "title": "Sauvegardes · Restaurer une sauvegarde",
+    "summary": "Sauvegarder l’état actuel et revenir en arrière à tout moment",
+    "steps": [
+        "Chaque serveur range ses sauvegardes dans l'onglet Sauvegardes.",
+        "Cliquez sur Sauvegarder pour archiver tout de suite le monde et les fichiers de sauvegarde.",
+        "Cliquez sur Restaurer puis sur Cliquez pour restaurer pour revenir à cette sauvegarde. C'est possible une fois le serveur arrêté, et l'état actuel est sauvegardé avant."
+    ]
+}

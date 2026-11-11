@@ -1,0 +1,15 @@
+[guide]
+group = "care"
+icon = "save"
+order = 10
+done = "backup.any"
+
+[[steps]]
+go = "server/:first/maintenance"
+spot = "server.tab.maintenance"
+
+[[steps]]
+spot = "backup.create"
+
+[[steps]]
+spot = "backup.restore"

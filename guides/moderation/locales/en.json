@@ -1,0 +1,8 @@
+{
+    "title": "Server tools",
+    "summary": "Tidy channels and mute members",
+    "steps": [
+        "Pick a channel to use slow mode, lock, auto clear and clear now, and set what Saba-chan does there under Saba-chan jobs.",
+        "In Members, pick someone to mute, or lift a mute for someone who is muted."
+    ]
+}

@@ -1,0 +1,8 @@
+{
+    "title": "Salas de voz temporales",
+    "summary": "Tu propia sala de voz, creada al entrar",
+    "steps": [
+        "Entra en el canal creador de salas y aparecerá tu propia sala de voz. Desaparece cuando todos se van.",
+        "Abre el comando de ajustes de Saba-chan en Discord y elige el canal creador de salas en salas de voz temporales para activarlo. El nombre y el estado inicial de la sala también se eligen ahí."
+    ]
+}

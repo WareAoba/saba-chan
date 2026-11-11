@@ -1,0 +1,10 @@
+{
+    "title": "Erste Schritte",
+    "summary": "Vom Verbinden mit Discord bis zum ersten Serverstart",
+    "steps": [
+        "Klicke auf „Discord-Server verbinden“, um Spielserver aus Discord zu starten und zu stoppen. Das geht auch später.",
+        "Um einen Server zu erstellen, hol dir zuerst das Modul deines Spiels.",
+        "Unter „Server hinzufügen“ erstellst du einen neuen Server oder migrierst einen vorhandenen.",
+        "Klicke auf „Starten“, um den Server einzuschalten."
+    ]
+}

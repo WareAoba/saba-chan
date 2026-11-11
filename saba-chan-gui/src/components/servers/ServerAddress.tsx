@@ -78,7 +78,7 @@ export function ServerAddress({ server }: { server: Server }) {
     const checkedAt = report?.checkedAt ? new Date(report.checkedAt) : null;
 
     return (
-        <section className="server-address" aria-label={t('server_address.title')}>
+        <section data-spot="server.address" className="server-address" aria-label={t('server_address.title')}>
             <div className="server-address-head">
                 <span className="server-address-title">{t('server_address.title')}</span>
                 {maskable && (

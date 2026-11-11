@@ -1,0 +1,9 @@
+{
+    "title": "Backups · Restore backup",
+    "summary": "Save the current state and roll back any time",
+    "steps": [
+        "Each server keeps its backups in the Backups tab.",
+        "Press Back up now to pack up the world and save files right away.",
+        "Press Restore, then Click to restore, to roll back to that backup. It works once the server is stopped, and Saba-chan backs up the current state first."
+    ]
+}

@@ -1,0 +1,9 @@
+{
+    "title": "Saba-chan qui lit",
+    "summary": "Entendre le chat à voix haute",
+    "steps": [
+        "Réglez le volume, la vitesse, la hauteur et Dire les noms de la voix de lecture.",
+        "Choisissez des salons vocaux toujours lus. Dès que deux personnes ou plus y sont, Saba-chan les rejoint et lit tout le chat du salon.",
+        "Dans les autres salons vocaux, utilisez la commande de lecture sur Discord et Saba-chan lit ce que vous écrivez ensuite. Utilisez-la à nouveau pour l’arrêter."
+    ]
+}

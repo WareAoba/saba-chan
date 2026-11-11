@@ -1,0 +1,9 @@
+{
+    "title": "Reading Saba-chan",
+    "summary": "Hear the chat out loud",
+    "steps": [
+        "Set the volume, speed, pitch and name call for the reading voice.",
+        "Pick always-read voice channels. When two or more people are in one, Saba-chan joins and reads all of that channel’s chat.",
+        "In other voice channels, use the read-aloud command on Discord and Saba-chan reads what you write next. Use it again to turn it off."
+    ]
+}

@@ -60,7 +60,7 @@ export function AgentLink({ className }: { className?: string } = {}) {
     if (grants === undefined) return null;
     const when = (iso: unknown) => (typeof iso === 'string' && iso ? new Date(iso).toLocaleString(i18n.language) : '-');
     return (
-        <section className={clsx('saba-card', className)}>
+        <section data-spot="discord.agent" className={clsx('saba-card', className)}>
             <h4 className="saba-card-title">
                 <Icon name="plug" size="sm" /> {t('discord.agent_title')}
             </h4>

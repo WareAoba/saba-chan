@@ -375,7 +375,12 @@ function ChannelsView({ guildId, mod, setMod, assignRes, saveAssign, assignSavin
                 })}
             </div>
             <div className="dc-mod-split">
-                <div className="dc-mod-list" role="listbox" aria-label={t('discord.mod.view_channels')}>
+                <div
+                    data-spot="mod.channels"
+                    className="dc-mod-list"
+                    role="listbox"
+                    aria-label={t('discord.mod.view_channels')}
+                >
                     {groups.map((g) => (
                         <div key={g.key || '_'} className="dc-channel-group">
                             {g.key && <div className="dc-channel-cat">{g.key}</div>}
@@ -646,7 +651,11 @@ function ChannelPanel({
                 {!assignable && kind === null ? (
                     <p className="dc-hint">{t('discord.mod.assign_unavailable')}</p>
                 ) : (
-                    <fieldset className="dc-mod-chips" aria-label={t('discord.mod.assign_title')}>
+                    <fieldset
+                        data-spot="mod.assign"
+                        className="dc-mod-chips"
+                        aria-label={t('discord.mod.assign_title')}
+                    >
                         {ASSIGN_KINDS.filter((k) => k === 'chatbot' || (assignRes && k in assignRes)).map((k) => {
                             const elsewhere = !isList(k) && assign[k] && assign[k] !== channel.id ? assign[k] : null;
                             return (
@@ -927,7 +936,7 @@ function MembersView({ guildId, mod, reload, members, membersLoading, onRefreshM
             .then(done);
 
     return (
-        <div className="dc-mod-members">
+        <div data-spot="mod.members" className="dc-mod-members">
             <Section
                 icon="bellOff"
                 title={t('discord.mod.mute_title')}

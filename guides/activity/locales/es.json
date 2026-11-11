@@ -1,0 +1,9 @@
+{
+    "title": "Registro de actividad",
+    "summary": "Quién hizo qué",
+    "steps": [
+        "Aquí queda quién inició, detuvo o cambió un servidor y cuándo, ya sea desde la app, Discord, la CLI o una tarea programada. Elige un servidor a la izquierda para ver solo sus registros.",
+        "Pulsa una fila para ver de dónde vino, quién lo hizo y el resultado.",
+        "Usa Filtro para ver solo registros como fallos o errores, y Exportar para guardarlos en un archivo."
+    ]
+}

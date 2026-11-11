@@ -1,0 +1,16 @@
+[guide]
+group = "more"
+icon = "file"
+order = 60
+
+[[steps]]
+action = "page.activity"
+spot = "nav.activity"
+
+[[steps]]
+go = "activity"
+spot = "activity.list"
+
+[[steps]]
+go = "activity"
+spot = "activity.filter"
