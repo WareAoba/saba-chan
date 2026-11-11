@@ -549,7 +549,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   - non-managed: 모듈 `status()`가 돌려준 문자열을 그대로 쓴다. Python이 실패하면 `"unknown"`이다.
   - extension hook `server.status`가 `handled: true`를 돌려주면 그 결과가 우선한다.
 - managed 서버가 끝나면 `judge_exit`가 `user_stop` / `crash` / `start_failed` / `in_game_stop` / `unknown_exit`로 가르고 기록한다 (`D:src/supervisor/crash.rs`). 이력은 `GET /api/instance/:id/events`로 본다. 이력은 인스턴스 폴더의 `exit-events.json`에도 저장해서 데몬을 다시 켜도 남는다.
-- `ProcessTracker`(`D:src/supervisor/process.rs`)는 PID와 시작 시각만 기록한다(`track`, `track_since`, `replace_pid`, `untrack`). 예전의 `ProcessStatus`, `get_status`, `mark_crashed`, `terminate`는 지워졌다. 강제 종료는 `ManagedProcess::force_kill`(서버는 `force_kill_tree`, runner는 `force_kill_pid`, `managed_process.rs:234-239`)이다. Windows의 `force_kill_tree`는 `taskkill /F /T`로 자식까지 끝낸다: runner 없이 띄운 런처형 서버(PalServer.exe)도 실제 서버가 남지 않는다. `force_kill_pid`는 그 PID 하나만 끝낸다(업데이트 때 GUI를 닫는 `close_guis`는 GUI가 띄운 데몬·업데이터를 남겨야 한다).
+- `ProcessTracker`(`D:src/supervisor/process.rs`)는 PID와 시작 시각만 기록한다(`track`, `track_since`, `replace_pid`, `untrack`). 예전의 `ProcessStatus`, `get_status`, `mark_crashed`, `terminate`는 지워졌다. 강제 종료는 `ManagedProcess::force_kill`(서버는 `force_kill_tree`, runner는 `force_kill_pid`, `managed_process.rs:234-239`)이다. Windows의 `force_kill_tree`는 `taskkill /F /T`로 자식까지 끝낸다: runner 없이 띄운 런처형 서버(PalServer.exe)도 실제 서버가 남지 않는다. Unix에서는 러너로 띄운 서버를 서버·러너의 프로세스 그룹째 끝낸다(`process::force_kill_group`): 런처 스크립트(PalServer.sh)가 띄운 실제 서버도 남지 않는다. 러너 없이 띄운 프로세스는 그 PID 하나만 끝낸다. `force_kill_pid`는 그 PID 하나만 끝낸다(업데이트 때 GUI를 닫는 `close_guis`는 GUI가 띄운 데몬·업데이터를 남겨야 한다).
 
 ### 3.3 콘솔 캡처와 로그 파싱 (`managed_process.rs`)
 
