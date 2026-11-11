@@ -10,9 +10,11 @@ use objc2_user_notifications::{
     UNUserNotificationCenter,
 };
 
-/// 알림을 낸다. 앱 묶음 밖(번들 ID가 없는 개발 실행)이면 false: `currentNotificationCenter`가 예외를 던지므로 부르지 않는다
+/// 알림을 낸다. 앱 묶음 밖(번들 ID가 없는 개발 실행)이면 false: `currentNotificationCenter`가 예외를 던지므로 부르지 않는다.
+/// 번들 유무는 처음 한 번만 본다: 폴백한 알림 플러그인(mac-notification-sys)이 `bundleIdentifier`를 가짜 ID로 바꿔 끼우기 때문이다
 pub fn show(title: &str, body: &str, silent: bool) -> bool {
-    if NSBundle::mainBundle().bundleIdentifier().is_none() {
+    static BUNDLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if !*BUNDLED.get_or_init(|| NSBundle::mainBundle().bundleIdentifier().is_some()) {
         return false;
     }
     let content = UNMutableNotificationContent::new();
