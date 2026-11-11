@@ -33,6 +33,7 @@ describe('확인되지 않은 익스텐션의 GUI 번들 (gui_allowed)', () => {
             'extensionGuiStyles',
             'extensionI18n',
             'sandboxAllowExtensionGui',
+            'daemonTarget',
         ]) {
             delete (window.api as unknown as Record<string, unknown>)[k];
         }
@@ -89,6 +90,28 @@ describe('확인되지 않은 익스텐션의 GUI 번들 (gui_allowed)', () => {
         mount();
         await waitFor(() => expect(modal()?.type).toBe('question'));
         expect(window.api.extensionGuiStyles).not.toHaveBeenCalled();
+    });
+
+    it('원격 PC를 고른 동안에는 이 PC 데몬의 허락으로 번들을 읽는다 (원격 목록의 gui_allowed는 그 PC의 것이다)', async () => {
+        window.api.daemonTarget = vi.fn().mockResolvedValue({ target: 'host-b' });
+        // 원격 PC는 허락하지 않았고 이 PC는 허락했다
+        window.api.extensionList = vi.fn(async (opts?: { local?: boolean }) => ({
+            extensions: [docker(Boolean(opts?.local))],
+        })) as never;
+        const { result } = mount();
+        await waitFor(() => expect(window.api.extensionGuiBundle).toHaveBeenCalledWith('docker'));
+        expect(modal()).toBeNull();
+        expect(result.current.guiPending).toEqual([]);
+    });
+
+    it('원격 PC는 허락했어도 이 PC에서 허락하지 않았으면 번들을 요청하지 않고 묻는다', async () => {
+        window.api.daemonTarget = vi.fn().mockResolvedValue({ target: 'host-b' });
+        window.api.extensionList = vi.fn(async (opts?: { local?: boolean }) => ({
+            extensions: [docker(!opts?.local)],
+        })) as never;
+        mount();
+        await waitFor(() => expect(modal()?.type).toBe('question'));
+        expect(window.api.extensionGuiBundle).not.toHaveBeenCalled();
     });
 
     it('확인된 익스텐션(gui_allowed:true)은 묻지 않고 로드한다', async () => {
