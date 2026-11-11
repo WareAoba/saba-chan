@@ -104,6 +104,32 @@ describe('확인되지 않은 익스텐션의 GUI 번들 (gui_allowed)', () => {
         expect(result.current.guiPending).toEqual([]);
     });
 
+    it('원격 PC를 고른 동안 이 PC 목록을 잠깐 받지 못하면 원격 값으로 판단하지 않고 다시 받아 로드한다', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            window.api.daemonTarget = vi.fn().mockResolvedValue({ target: 'host-b' });
+            let localCalls = 0;
+            window.api.extensionList = vi.fn(async (opts?: { local?: boolean }) => {
+                if (!opts?.local) return { extensions: [docker(false)] };
+                // 첫 조회만 실패한다 (브리지는 실패를 빈 목록과 error로 돌려준다)
+                return ++localCalls === 1 ? { extensions: [], error: 'timeout' } : { extensions: [docker(true)] };
+            }) as never;
+            mount();
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(100);
+            });
+            expect(modal()).toBeNull();
+            expect(window.api.extensionGuiBundle).not.toHaveBeenCalled();
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(2100);
+            });
+            await waitFor(() => expect(window.api.extensionGuiBundle).toHaveBeenCalledWith('docker'));
+            expect(modal()).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('원격 PC는 허락했어도 이 PC에서 허락하지 않았으면 번들을 요청하지 않고 묻는다', async () => {
         window.api.daemonTarget = vi.fn().mockResolvedValue({ target: 'host-b' });
         window.api.extensionList = vi.fn(async (opts?: { local?: boolean }) => ({

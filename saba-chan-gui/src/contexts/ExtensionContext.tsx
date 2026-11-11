@@ -197,16 +197,18 @@ async function loadExtensionI18n(ext: ExtensionListItem, lang: string) {
     }
 }
 
-/** 원격 데몬을 골랐으면 이 PC 데몬의 익스텐션 목록 (번들은 이 PC 데몬에서 받아 이 웹뷰에서 실행한다: 허락도 이 PC의 것을 본다) */
+/**
+ * 원격 데몬을 골랐으면 이 PC 데몬의 익스텐션 목록 (번들은 이 PC 데몬에서 받아 이 웹뷰에서 실행한다: 허락도 이 PC의 것을 본다).
+ * 고르지 않았으면 null. 받지 못하면 throw한다: 빈 목록으로 보면 원격 PC의 허락으로 판단한 채 다시 묻지 않는다
+ */
 async function localExtensions(): Promise<ExtensionListItem[] | null> {
-    try {
-        const current = await window.api.daemonTarget?.();
-        if (!current?.target) return null;
-        const local = await window.api.extensionList({ local: true });
-        return Array.isArray(local?.extensions) ? local.extensions : null;
-    } catch {
-        return null;
+    const current = await window.api.daemonTarget?.();
+    if (!current?.target) return null;
+    const local = await window.api.extensionList({ local: true });
+    if (!local || local.error || !Array.isArray(local.extensions)) {
+        throw new Error(local?.error || 'local extension list unavailable');
     }
+    return local.extensions;
 }
 
 /** 이 PC 데몬에서 허락을 기다리는 바탕화면·트레이 번들 (메인 slot도 함께 선언했어도. 그 창들은 이 PC 데몬을 본다) */
@@ -270,10 +272,11 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
             if (!data || data.error || !Array.isArray(data.extensions)) {
                 throw new Error(data?.error || 'extension list unavailable');
             }
+            // 원격 데몬 목록의 gui_allowed는 그 PC의 허락이다: 이 PC에 있는 익스텐션은 이 PC의 허락으로 바꿔 둔다.
+            // 이 PC 목록을 받지 못하면 받지 못한 것으로 본다 (false: 처음 로드는 다시 묻는다)
+            const local = surface === 'desktop' ? null : await localExtensions();
             // 설치·업데이트·삭제·재검색 뒤 목록이 바뀌면 코드 검사도 다시 한다
             clearModuleAuditCache();
-            // 원격 데몬 목록의 gui_allowed는 그 PC의 허락이다: 이 PC에 있는 익스텐션은 이 PC의 허락으로 바꿔 둔다
-            const local = surface === 'desktop' ? null : await localExtensions();
             const allowedHere = new Map(local?.map((ext) => [ext.id, ext.gui_allowed]));
             setExtensions(
                 data.extensions.map((ext) =>
