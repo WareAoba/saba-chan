@@ -69,7 +69,7 @@ describe('web.json', () => {
 
 /** 언어마다 그대로 쓰는 이름·기술 낱말 (지우고 나서 남은 영어 낱말만 본다) */
 const PROPER =
-    /Saba-chan|Server-chan|saba-chan|Discord|GitHub|WareAoba|Zomboid|localhost|HTTP|UUID|CPU|GPU|API|URL|CLI|PC|IP|AI|ID|OK|Lv|\/saba(?: \w+)?(?: code:)?/g;
+    /Saba-chan|Server-chan|saba-chan|Discord|GitHub|WareAoba|Zomboid|Windows|Linux|macOS|Mica|Liquid Glass|localhost|HTTP|UUID|CPU|GPU|API|URL|CLI|PC|IP|AI|ID|OK|Lv|\/saba(?: \w+)?(?: code:)?/g;
 
 /** 봇이 알아듣는 명령 낱말이라 모든 언어가 영어 그대로 쓰는 키 (릴레이 DAEMON_TOP_LEVEL_WORDS) */
 const COMMAND_WORDS = [
@@ -104,6 +104,8 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:audit.source_daemon',
         'gui.json:audit.source_web',
         'gui.json:daemon_switcher.label',
+        'gui.json:settings_modal.backdrop_material_label',
+        'gui.json:remote_daemon.prompt_no',
     ],
     'pt-BR': [
         'gui.json:discord.iw_cmd_status',
@@ -136,6 +138,12 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:audit.source_daemon',
         'gui.json:audit.source_web',
         'gui.json:daemon_switcher.label',
+        'gui.json:settings_modal.backdrop_material_label',
+        'gui.json:migration_modal.change_backup',
+        'gui.json:console.popout_kind',
+        'gui.json:palette.status',
+        'gui.json:remote_daemon.online',
+        'gui.json:remote_daemon.offline',
     ],
     de: [
         'gui.json:audit.filter',
@@ -174,6 +182,12 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:remote_daemon.port',
         'gui.json:daemon_switcher.label',
         'gui.json:picker.minute',
+        'gui.json:settings_modal.backdrop_material_label',
+        'gui.json:palette.status',
+        'gui.json:palette.optional',
+        'gui.json:onboarding.optional',
+        'gui.json:remote_daemon.online',
+        'gui.json:remote_daemon.offline',
     ],
     fr: [
         'gui.json:audit.detail_action',
@@ -229,6 +243,10 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:folder_paths.extensions',
         'gui.json:remote_daemon.port',
         'gui.json:picker.minute',
+        'gui.json:console.popout_kind',
+        'gui.json:palette.risk.danger',
+        'gui.json:remote_daemon.install_prompt',
+        'gui.json:guides.title',
     ],
     ru: ['gui.json:discord.bot_settings.tts_speed_unit'],
 };

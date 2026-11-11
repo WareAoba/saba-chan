@@ -47,7 +47,10 @@ describe('웹 명령 입력', () => {
             'tok-ok',
             'tok-bad',
         ]);
-        expect(screen.getByRole('status').textContent).toBe('✕ amount takes 1–64. Got: 99');
+        // 틀린 칸은 글자 기호 대신 x 아이콘(tone-bad)으로 알린다 (#944)
+        const status = screen.getByRole('status');
+        expect(status.textContent).toBe('amount takes 1–64. Got: 99');
+        expect(status.classList.contains('tone-bad')).toBe(true);
         fireEvent.change(line, { target: { value: 'give Steve diamond 3' } });
         await act(async () => fireEvent.submit(line.closest('form') as HTMLFormElement));
         expect(exec).toHaveBeenCalledWith('s1', { command: 'give Steve diamond 3' });
