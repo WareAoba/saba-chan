@@ -222,6 +222,7 @@ const withSettings = {
             { name: 'rcon_password', field_type: 'password', label: 'RCON Password', default: '', group: 'advanced' },
             { name: 'world_dir', field_type: 'file', label: 'World Folder', default: '{instance_dir}/world', group: 'advanced' },
             { name: 'rcon_port', field_type: 'number', label: 'RCON Port', default: 25575, group: 'advanced', port: true },
+            { name: 'managed_start', field_type: 'boolean', label: 'Managed Start', default: true, group: 'saba-chan' },
         ],
     },
 };
@@ -246,7 +247,7 @@ describe('새 서버 만들기 — 상세 설정', () => {
         const fold = document.querySelector('[data-find-fold]') as HTMLElement;
         expect(fold.hidden).toBe(true);
         expect(fold.textContent).toMatch(/View Distance/);
-        for (const gone of ['Server Type', 'RCON Password', 'World Folder', 'RCON Port']) {
+        for (const gone of ['Server Type', 'RCON Password', 'World Folder', 'RCON Port', 'Managed Start']) {
             expect(screen.queryByText(gone)).toBeNull();
         }
     });

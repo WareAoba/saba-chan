@@ -84,6 +84,8 @@ export const presetFields = (module?: Pick<ModuleInfo, 'settings'> | null): Sett
             !f.port &&
             f.format !== 'port' &&
             !CORE_PORT_FIELDS.includes(f.name) &&
+            // 실행 방식은 요약에서 고른다 (같은 값을 두 곳에서 고치지 않게)
+            f.name !== 'managed_start' &&
             !NOT_PRESET_TYPES.includes(f.field_type) &&
             !(typeof f.default === 'string' && f.default.includes('{instance_dir}')),
     );
