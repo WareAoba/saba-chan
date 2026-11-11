@@ -204,21 +204,28 @@ def relay():
 
 
 def test_status_points_at_the_next_setup_step(cli, sandbox, relay, daemon_factory, fake_server):
-    """처음 쓰는 사람에게 `status`가 다음 할 일 하나를 알려 주고, 하면 다음 단계로 넘어간다 (J1-a, #87)."""
+    """처음 쓰는 사람에게 `status`가 다음 할 일 하나를 알려 주고, 하면 다음 단계로 넘어간다 (J1-a, #87).
+    순서는 디스코드 연결 → 모듈 → 서버 → 첫 시작 (사용자 결정 2026-11-09). 격리 폴더에는 모듈이 이미 깔려 있다"""
     def next_step():
         return cli.run("status", check=0).json()["onboarding"]["next"]
 
     # 토큰을 저장하면 에이전트가 바로 붙으므로 운영 relay가 아닌 가짜 relay를 가리킨다
     sandbox.write_config({"relay": {"cloud": {"relayUrl": relay.url}}})
     daemon = daemon_factory()
-    assert next_step() == "server"
+    assert next_step() == "discord"
+    assert "bot pair" in cli.run("status", json_out=False, check=0).stderr
+    # 페어링 토큰을 저장하면 데몬 재시작 없이 다음 단계로 간다
+    daemon.api.ok("PUT", "/api/config/node-token", {"token": relay.node_token})
+    wait_until(lambda: next_step() == "server", 30, "페어링 뒤 다음 할 일은 서버 추가")
+    wait_until(lambda: relay.heartbeats, 30, "가짜 relay로 heartbeat")
     assert "server add" in cli.run("status", json_out=False, check=0).stderr
     folder, _ = fake_server("ob1")
-    daemon.import_server("ob1", folder, module_settings={"ram": "256M"})
-    assert next_step() == "discord"
-    # 페어링 토큰을 저장하면 데몬 재시작 없이 끝난다. 챗봇 키는 선택이라 남아도 다음 할 일이 없다
-    daemon.api.ok("PUT", "/api/config/node-token", {"token": relay.node_token})
-    wait_until(lambda: next_step() is None, 30, "페어링 뒤 다음 할 일 없음")
-    wait_until(lambda: relay.heartbeats, 30, "가짜 relay로 heartbeat")
+    iid = daemon.import_server("ob1", folder, module_settings={"ram": "256M"})
+    assert next_step() == "start"
+    # 한 번 켜면 끝난다. 챗봇 키는 선택이라 남아도 다음 할 일이 없다
+    daemon.start_instance(iid)
+    daemon.wait_status(iid, "running")
+    wait_until(lambda: next_step() is None, 30, "첫 시작 뒤 다음 할 일 없음")
+    daemon.stop_instance(iid)
     human = cli.run("status", json_out=False, check=0)
     assert "bot pair" not in human.stderr and "server add" not in human.stderr, human
