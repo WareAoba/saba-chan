@@ -1527,7 +1527,7 @@
     "effort_high": "Hoch",
     "seconds": "Sekunden",
     "memory": "Langzeitgedächtnis",
-    "memory_hint": "Merkt sich Gelerntes für spätere Gespräche.",
+    "memory_hint": "Merkt sich Gelerntes für spätere Gespräche. Was sie sich über Personen merkt, teilen alle Chatbot-Kanäle dieses Servers.",
     "moderation_title": "KI-Moderation",
     "moderation": "Bei Spam und Betrug warnen",
     "moderation_desc": "Wenn jemand den Chat flutet oder etwas postet, das nach Betrug aussieht (Krypto- oder Aktien-„Signal“-Gruppen, illegale Inhalte), schaut die KI ein zweites Mal hin. Hält sie es für schädlich, schickt sie nur dem Servereigentümer oder den Admins unter denen, die einen PC mit diesem Server verbunden haben, eine Discord-DM mit der Person und einem Link zur Nachricht. Es werden keine Nachrichten gelöscht und niemand wird bestraft.",
