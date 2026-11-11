@@ -398,6 +398,7 @@ export interface GuiSettings {
     consoleTimestampDate: boolean;
     /** 콘솔 긴 줄 접기 */
     consoleWrap: boolean;
+    consoleGlass: boolean;
     /** 맨 아래를 볼 때 새 줄 따라가기 */
     consoleAutoScroll: boolean;
     /** auto · light · dark. 예전 버전은 저장하지 않았다 */

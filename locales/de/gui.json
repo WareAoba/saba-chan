@@ -3,6 +3,7 @@
   "title_bar": {
     "minimize": "Minimieren",
     "maximize": "Maximieren",
+    "restore": "Wiederherstellen",
     "close": "Schließen"
   },
   "modals": {
@@ -128,6 +129,8 @@
     "console_wrap_description": "Lange Zeilen an der Fensterbreite umbrechen. Aus: seitlich scrollen",
     "console_auto_scroll_label": "Neuen Zeilen folgen",
     "console_auto_scroll_description": "Am Ende mit neuen Zeilen mitscrollen",
+    "console_glass_label": "Transparente Konsole",
+    "console_glass_description": "Wenn das Fenster transparent ist, scheint auch der Konsolenhintergrund durch. Ausgeschaltet bleibt nur die Konsole deckend.",
     "console_syntax_label": "Syntaxhervorhebung",
     "console_syntax_description": "Logausgabe in der Serverkonsole farblich hervorheben",
     "console_token_colors_label": "Syntaxfarben",
@@ -623,7 +626,8 @@
     "input_placeholder": "Befehl eingeben...",
     "stdin_disabled": "Nur vergangene Protokolle, da saba-chan neu gestartet wurde. Starte den Server neu, um die Verbindung wiederherzustellen.",
     "send": "Senden",
-    "popout": "In separatem Fenster öffnen",
+    "popout": "Als PIP öffnen",
+    "popout_kind": "Konsole",
     "popout_failed": "Die Konsole konnte nicht in einem eigenen Fenster geöffnet werden.",
     "minimize": "Ins Dock minimieren",
     "dock_restore": "Wiederherstellen: {{name}}",
@@ -841,7 +845,9 @@
     "console_offline_input": "Starte den Server, um Befehle zu senden",
     "console_offline_history": "Der Server ist gestoppt. Hier ist das letzte Protokoll.",
     "console_read_only": "Dieser Server nimmt keine Konsoleneingabe an. Sende Befehle über den Tab „Befehle“",
-    "console_popped_out": "Die Konsole ist in einem separaten Fenster geöffnet.",
+    "console_popped_out": "Wird im PIP-Fenster angezeigt",
+    "console_popped_out_desc": "Schließe das PIP-Fenster oder stoppe den Server, dann kehrt die Konsole hierher zurück.",
+    "console_popout_show": "PIP-Fenster zeigen",
     "console_popin": "Hierher zurückholen",
     "commands_offline": "Starte den Server, um Befehle zu senden.",
     "info_module": "Spiel",

@@ -596,20 +596,33 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }: IconProps) =
                 <path d="M20 4v7a4 4 0 0 1-4 4H4" />
             </svg>
         ),
+        // 콘솔을 작은 창(PIP)으로 띄우기
+        pictureInPicture: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+                <rect x="3" y="5" width="18" height="14" rx="2.5" />
+                <rect x="12" y="11" width="7" height="6" rx="1.2" fill="currentColor" stroke="none" />
+            </svg>
+        ),
+        // 창 버튼 (최소화·최대화·복원·닫기): 끝과 모서리가 둥근 1.6px 선 (사용자 11-11 W2)
         minimize: (
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-                <path
-                    fill="currentColor"
-                    d="M0 416c0-17.7 14.3-32 32-32l448 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 448c-17.7 0-32-14.3-32-32z"
-                />
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                <path d="M2 6h8" />
             </svg>
         ),
         maximize: (
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512">
-                <path
-                    fill="currentColor"
-                    d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32S0 334.3 0 352l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"
-                />
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <rect x="2" y="2" width="8" height="8" rx="2.2" />
+            </svg>
+        ),
+        restore: (
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <rect x="1.5" y="3.8" width="6.7" height="6.7" rx="1.8" />
+                <path d="M4 2h4.5A1.5 1.5 0 0 1 10 3.5V8" />
+            </svg>
+        ),
+        windowClose: (
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                <path d="M2.6 2.6l6.8 6.8M9.4 2.6l-6.8 6.8" />
             </svg>
         ),
         bell: (
@@ -670,10 +683,9 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }: IconProps) =
             </svg>
         ),
         externalLinkIn: (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="16 14 10 14 10 8" />
-                <line x1="21" y1="3" x2="10" y2="14" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 13v4.5a2.5 2.5 0 0 1-2.5 2.5h-10A2.5 2.5 0 0 1 4 17.5v-10A2.5 2.5 0 0 1 6.5 5H11" />
+                <path d="M20.5 3.5L8.5 15.5M8.5 9.5v6h6" />
             </svg>
         ),
         tool: (

@@ -621,6 +621,18 @@ pub fn console_popin(app: AppHandle, instance_id: String) -> Value {
     window::popin(&app, &instance_id)
 }
 
+/// PIP를 닫는다. `reopen`: 다음에 다시 띄울지 (PIP의 닫기 버튼은 false, 서버가 꺼져 메인 창이 닫으면 true)
+#[tauri::command(rename_all = "camelCase")]
+pub async fn console_popout_close(app: AppHandle, instance_id: String, reopen: bool) -> Value {
+    window::close_popout(&app, &instance_id, reopen).await
+}
+
+/// 다시 띄울 PIP의 instanceId (닫힐 때 기억해 둔 것)
+#[tauri::command]
+pub fn console_popout_saved(app: AppHandle) -> Vec<String> {
+    window::popouts_to_reopen(&app.state::<AppState>().settings())
+}
+
 #[tauri::command(rename_all = "camelCase")]
 pub fn console_toggle_always_on_top(app: AppHandle, instance_id: String, pinned: bool) -> Value {
     window::toggle_always_on_top(&app, &instance_id, pinned)
@@ -640,6 +652,11 @@ pub fn window_maximize(window: WebviewWindow) {
     } else {
         let _ = window.maximize();
     }
+}
+
+#[tauri::command]
+pub fn window_is_maximized(window: WebviewWindow) -> bool {
+    window.is_maximized().unwrap_or(false)
 }
 
 /// 테마 바탕색(`#rrggbb`)을 창과 웹뷰 바탕에 칠한다 (크기를 바꾸는 중 흰 바탕이 비치지 않게)
