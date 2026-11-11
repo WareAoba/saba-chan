@@ -7,7 +7,7 @@ import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { OsLogo, osFamily, type Platform } from '../OsLogo';
 import { Icon } from '../Icon';
 import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
-import { usePendingChange } from '../ui/SaveBar';
+import { useHostDraft, usePendingChange } from '../ui/SaveBar';
 import { StatusChip } from '../ui/StatusChip';
 import { REMOTE_DAEMONS_CHANGED, reloadWindow, useDaemonTarget } from '../shell/DaemonSwitcher';
 import { PcSettingsDialog } from './PcSettingsDialog';
@@ -96,7 +96,7 @@ interface RemoteDaemonSectionProps {
 export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = reloadWindow }: RemoteDaemonSectionProps) {
     const { t, i18n } = useTranslation('gui');
     const [settings, setSettings] = useState<ApiBody | null>(null);
-    const [draft, setDraft] = useState<{ enabled: boolean; port: string } | null>(null); // {enabled, port}. 주소는 카드의 게임 서버 주소 줄에서 (PublicAddress)
+    const [draft, setDraft] = useState<{ enabled: boolean } | null>(null); // 주소는 카드의 게임 서버 주소 줄에서 (PublicAddress)
     const [clients, setClients] = useState<ApiBody[]>([]);
     const [peers, setPeers] = useState<ApiBody[] | null>(null); // null = 못 읽음
     const [peersError, setPeersError] = useState<string | null>(null);
@@ -119,7 +119,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         const res = await window.api.remoteSettings();
         if (failed(res)) return;
         setSettings(res);
-        setDraft({ enabled: Boolean(res.enabled), port: String(res.port ?? '') });
+        setDraft({ enabled: Boolean(res.enabled) });
     }, []);
     const loadClients = useCallback(async () => {
         const res = await window.api.remoteClients();
@@ -185,16 +185,19 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         const res = await run('save', () => window.api.remoteSettingsSet({ enabled: next.enabled, port }));
         if (res && !failed(res)) {
             setSettings((old) => ({ ...res, thisPc: res.thisPc || old?.thisPc }));
-            setDraft({ enabled: Boolean(res.enabled), port: String(res.port ?? port) });
+            // 친 포트 초안은 막대 자리가 쥐므로 켬만 바꿔도 그대로 남는다
+            setDraft({ enabled: Boolean(res.enabled) });
         }
     };
     const savedPort = String(settings?.port ?? '');
-    const draftPort = Number(draft?.port);
+    // 친 포트는 막대 자리가 쥐어 연결 탭을 떠났다 와도 남는다
+    const [portDraft, setPortDraft] = useHostDraft('remote-port', savedPort);
+    const draftPort = Number(portDraft);
     usePendingChange('remote-port', {
-        dirty: !!draft && draft.port !== savedPort,
+        dirty: !!settings && portDraft !== savedPort,
         blocked: !Number.isInteger(draftPort) || draftPort < 1 || draftPort > 65535,
-        save: () => draft && save({ enabled: Boolean(settings?.enabled), port: draft.port }),
-        revert: () => draft && setDraft({ ...draft, port: savedPort }),
+        save: () => save({ enabled: Boolean(settings?.enabled), port: portDraft }),
+        revert: () => setPortDraft(savedPort),
     });
 
     const connect = async (hostId: string) => {
@@ -497,10 +500,10 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                             id="remote-daemon-port"
                             aria-label={t('remote_daemon.port')}
                             className="input setting-num"
-                            value={draft.port}
+                            value={portDraft}
                             min={1}
                             max={65535}
-                            onChange={(e) => setDraft({ ...draft, port: e.target.value })}
+                            onChange={(e) => setPortDraft(e.target.value)}
                         />
                     </div>
                     {statusError && (

@@ -204,7 +204,7 @@ span[style*="--icon-loader"] svg {
 }
 /* 후두둑(비정상 기동): 바탕을 서서히 걷는다 (--opening-cover 1 → 0) */
 .loading-screen.falling {
-    background: color-mix(in oklch, var(--loading-bg) calc(var(--opening-cover, 1) * 100%), transparent);
+    background: color-mix(in oklch, var(--bg-0) calc(var(--opening-cover, 1) * 100%), transparent);
 }
 .loading-screen.falling > .loading-vignette,
 .loading-screen.falling > .appbar {

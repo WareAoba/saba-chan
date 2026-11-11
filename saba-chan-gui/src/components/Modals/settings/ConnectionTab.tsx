@@ -1,11 +1,10 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDiscordStore } from '../../../stores/useDiscordStore';
 import { DEFAULT_IPC_PORT } from '../../../stores/useSettingsStore';
 import { AgentLink, agentLinkAvailable } from '../../discord/AgentLink';
 import { Icon } from '../../Icon';
 import { SabaNumberInput } from '../../ui/SabaUI';
-import { usePendingChange } from '../../ui/SaveBar';
+import { useHostDraft, usePendingChange } from '../../ui/SaveBar';
 import { RemoteDaemonSection, remoteDaemonAvailable } from '../RemoteDaemonSection';
 
 interface ConnectionTabProps {
@@ -15,17 +14,6 @@ interface ConnectionTabProps {
     onIpcPortSave: (port: number) => void;
     discordCloudRelayUrl?: string;
     onDiscordCloudRelayUrlChange?: (value: string) => void;
-}
-
-/** 저장된 값을 따라가는 입력 초안: 손대지 않은 동안 저장된 값이 바뀌면(늦게 읽힘·저장) 초안도 바뀐다 */
-function useFollowingDraft(saved: string) {
-    const [draft, setDraft] = useState(saved);
-    const [base, setBase] = useState(saved);
-    if (base !== saved) {
-        setBase(saved);
-        if (draft === base) setDraft(saved);
-    }
-    return [draft, setDraft] as const;
 }
 
 /** 받을 수 있는 IPC 포트면 숫자, 아니면 null */
@@ -46,7 +34,7 @@ export function ConnectionTab({
     const discordHostId = useDiscordStore((s) => s.discordCloudHostId);
 
     // 포트·주소는 다 친 뒤에 적용해야 하므로 즉시 저장하지 않고 저장 막대로 묻는다
-    const [portDraft, setPortDraft] = useFollowingDraft(String(ipcPort));
+    const [portDraft, setPortDraft] = useHostDraft('ipc-port', String(ipcPort));
     const draftPort = ipcPortOf(portDraft);
     const ipcPortError = draftPort === null ? t('gui:settings_modal.ipc_port_invalid') : '';
     usePendingChange('ipc-port', {
@@ -58,7 +46,7 @@ export function ConnectionTab({
     const ipcPortChanged = ipcPort !== runningIpcPort && portDraft === String(ipcPort);
 
     const savedRelay = discordCloudRelayUrl || '';
-    const [relayDraft, setRelayDraft] = useFollowingDraft(savedRelay);
+    const [relayDraft, setRelayDraft] = useHostDraft('relay-url', savedRelay);
     usePendingChange('relay-url', {
         dirty: relayDraft.trim() !== savedRelay,
         save: () => onDiscordCloudRelayUrlChange?.(relayDraft.trim()),
