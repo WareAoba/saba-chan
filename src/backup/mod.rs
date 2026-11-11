@@ -484,6 +484,12 @@ struct V2Writer<'a> {
     summary: SummaryV2,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// 시험용: 폴더를 걷다가 이 이름의 항목에 닿으면 읽기 직전에 지운다 (걷는 사이 서버가 지운 파일·폴더)
+    static VANISH_WHEN_REACHED: std::cell::RefCell<Vec<std::ffi::OsString>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 impl V2Writer<'_> {
     fn add_file(&mut self, path: &Path, entry: &str, rel: &str) -> Result<()> {
         let meta = fs::metadata(path).with_context(|| format!("read {}", path.display()))?;
@@ -516,24 +522,46 @@ impl V2Writer<'_> {
     fn add_dir(&mut self, dir: &Path, entry: &str, rel: &str) -> Result<()> {
         for item in fs::read_dir(dir)? {
             let item = item?;
+            #[cfg(test)]
+            if VANISH_WHEN_REACHED.with_borrow(|names| names.contains(&item.file_name())) {
+                let path = item.path();
+                if path.is_dir() { fs::remove_dir_all(&path)? } else { fs::remove_file(&path)? }
+            }
             let name = item.file_name().to_string_lossy().into_owned();
             let child = if rel.is_empty() { name } else { format!("{}/{}", rel, name) };
-            let kind = item.file_type()?;
-            if kind.is_dir() {
-                if self.own_dir.is_some() && fs::canonicalize(item.path()).ok() == self.own_dir {
-                    continue;
-                }
-                self.manifest.dirs.push(StoredDir { entry: entry.to_string(), rel: child.clone() });
-                self.add_dir(&item.path(), entry, &child)?;
-            } else if kind.is_symlink() {
-                let path = item.path();
-                self.manifest.links.push(LinkEntry { target: fs::read_link(&path)?, dir: path.is_dir(), path });
-            } else if kind.is_file() {
-                if self.exclude.iter().any(|p| p.matches(&item.file_name().to_string_lossy())) {
-                    continue;
-                }
-                self.add_file(&item.path(), entry, &child)?;
+            let before = (self.manifest.files.len(), self.manifest.dirs.len(), self.manifest.links.len(), self.summary.size);
+            let Err(e) = self.add_child(&item, entry, &child) else { continue };
+            // 켜진 서버는 걷는 사이에도 임시 파일을 지운다. 원본이 정말 사라졌을 때만 없던 것으로 본다
+            // (오류 종류만 보면 저장소 쪽의 NotFound와 구분하지 못한다)
+            if !matches!(fs::symlink_metadata(item.path()), Err(gone) if gone.kind() == io::ErrorKind::NotFound) {
+                return Err(e);
             }
+            tracing::warn!("Leaving {} out of the backup: it was removed while the folder was being read", item.path().display());
+            // 사라진 폴더에서 이미 담은 것도 뺀다 (복원 때 빈 폴더·반쪽 폴더가 생기지 않게)
+            self.manifest.files.truncate(before.0);
+            self.manifest.dirs.truncate(before.1);
+            self.manifest.links.truncate(before.2);
+            self.summary.size = before.3;
+        }
+        Ok(())
+    }
+
+    fn add_child(&mut self, item: &fs::DirEntry, entry: &str, child: &str) -> Result<()> {
+        let kind = item.file_type()?;
+        if kind.is_dir() {
+            if self.own_dir.is_some() && fs::canonicalize(item.path()).ok() == self.own_dir {
+                return Ok(());
+            }
+            self.manifest.dirs.push(StoredDir { entry: entry.to_string(), rel: child.to_string() });
+            self.add_dir(&item.path(), entry, child)?;
+        } else if kind.is_symlink() {
+            let path = item.path();
+            self.manifest.links.push(LinkEntry { target: fs::read_link(&path)?, dir: path.is_dir(), path });
+        } else if kind.is_file() {
+            if self.exclude.iter().any(|p| p.matches(&item.file_name().to_string_lossy())) {
+                return Ok(());
+            }
+            self.add_file(&item.path(), entry, child)?;
         }
         Ok(())
     }
@@ -1147,6 +1175,27 @@ mod tests {
         fs::write(w.join("level.dat"), b"level").unwrap();
         fs::write(w.join("region/r.0.0.mca"), b"chunks").unwrap();
         w
+    }
+
+    /// 켜진 서버는 백업이 폴더를 걷는 동안에도 임시 파일(SQLite journal 등)을 지운다.
+    /// 목록에는 있었지만 읽기 전에 사라진 파일·폴더는 건너뛰고, 남은 것으로 백업을 만든다
+    #[test]
+    fn files_that_vanish_while_the_folder_is_walked_are_left_out() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        fs::write(w.join("players.db-journal"), b"journal").unwrap();
+        fs::create_dir_all(w.join("tmp-chunks")).unwrap();
+        fs::write(w.join("tmp-chunks/c.tmp"), b"chunk").unwrap();
+        VANISH_WHEN_REACHED.with_borrow_mut(|names| *names = vec!["players.db-journal".into(), "tmp-chunks".into()]);
+        let dir = tmp.path().join("backups");
+        let made = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+        let mut files = backed_up_files(&dir, &made.name);
+        files.sort();
+        assert_eq!(files, ["level.dat", "region/r.0.0.mca"]);
+        fs::remove_dir_all(&w).unwrap();
+        restore(&dir, &made.name).unwrap();
+        assert!(w.join("region/r.0.0.mca").exists());
+        assert!(!w.join("tmp-chunks").exists(), "a folder that was gone is not brought back empty");
     }
 
     #[test]
