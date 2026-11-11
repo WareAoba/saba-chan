@@ -8,6 +8,7 @@ import type { ModuleInfo } from '../../types/daemon';
 import { openWithNotice } from '../../utils/helpers';
 import {
     STATUS_TONE,
+    isTransitional,
     gameNameOf,
     initials,
     interactionOf,
@@ -135,7 +136,10 @@ export function ServerRow({
         >
             <div className="server-row-icon">
                 {moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>}
-                <span className={clsx('server-row-dot', `tone-${STATUS_TONE[status]}`)} aria-hidden="true" />
+                <span
+                    className={clsx('server-row-dot', `tone-${STATUS_TONE[status]}`, { pulse: isTransitional(status) })}
+                    aria-hidden="true"
+                />
                 <ExtensionSlot slotId="ServerCard.badge" server={server} />
             </div>
             <div className="server-row-text">
@@ -158,7 +162,12 @@ export function ServerRow({
                             {players}
                         </span>
                     ) : (
-                        <StatusChip tone={STATUS_TONE[status]} label={statusLabel} className="bare" />
+                        <StatusChip
+                            tone={STATUS_TONE[status]}
+                            pulse={isTransitional(status)}
+                            label={statusLabel}
+                            className="bare"
+                        />
                     )}
                 </div>
             </div>

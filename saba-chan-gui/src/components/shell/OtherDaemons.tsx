@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
-import { STATUS_TONE, primaryAction } from '../../utils/serverView';
+import { isTransitional, STATUS_TONE, primaryAction } from '../../utils/serverView';
 import { Icon } from '../Icon';
 import { remoteErrorText } from '../Modals/RemoteDaemonSection';
 import { StatusChip } from '../ui/StatusChip';
@@ -102,7 +102,12 @@ export function OtherDaemons({
                                         <div className="server-row-sub">
                                             <span>{s.module}</span>
                                             <span className="sep">·</span>
-                                            <StatusChip tone={STATUS_TONE[s.status]} label={label} className="bare" />
+                                            <StatusChip
+                                                tone={STATUS_TONE[s.status]}
+                                                pulse={isTransitional(s.status)}
+                                                label={label}
+                                                className="bare"
+                                            />
                                         </div>
                                     </div>
                                     <button

@@ -91,6 +91,8 @@ export interface DiscordData {
     discordDmNotice: DmNotice;
     /** stopped · connecting · running */
     discordBotStatus: string;
+    /** 실행 중이던 봇이 릴레이와 끊겨 다시 붙는 중 — 화면은 노랑(복구 중), 처음 붙는 중은 회색 */
+    discordReconnecting: boolean;
     discordAgentReplaced: boolean;
     discordAgentRelayUrlInvalid: boolean;
     discordAgentMinVersion: string | null;
@@ -147,6 +149,7 @@ const initialState = (): DiscordData => ({
     // ── Runtime status ──
     // stopped: 에이전트 정지 / connecting: 에이전트 실행 중, 릴레이 미확인 / running: 둘 다 OK
     discordBotStatus: 'stopped',
+    discordReconnecting: false,
     // 다른 PC가 같은 계정으로 페어링해서 이 PC의 에이전트가 멈췄다
     discordAgentReplaced: false,
     discordAgentRelayUrlInvalid: false,
@@ -328,7 +331,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
                     4000,
                 );
             } else {
-                set({ discordBotStatus: 'connecting' });
+                set({ discordBotStatus: 'connecting', discordReconnecting: false });
                 safeShowToast(_t('discord_bot.started_toast'), 'discord', 3000);
                 get().checkStatus();
             }
@@ -347,7 +350,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
                     4000,
                 );
             } else {
-                set({ discordBotStatus: 'stopped', relayConnected: false, relayError: '', _relayFailures: 0 });
+                set({ discordBotStatus: 'stopped', discordReconnecting: false, relayConnected: false, relayError: '', _relayFailures: 0 });
                 safeShowToast(_t('discord_bot.stopped_toast'), 'discord', 3000);
             }
         } catch (e) {
@@ -417,6 +420,9 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         const settled = !relayFailure || failures >= 2;
         if (!settled) relayOk = get().relayConnected;
 
+        // 릴레이가 거절하는 동안은 명령이 흐르지 않으니 '실행 중'으로 보이지 않는다
+        const nextStatus =
+            agentRunning && relayOk && !agentMinVersion ? 'running' : agentRunning ? 'connecting' : 'stopped';
         set({
             relayConnecting: false,
             relayConnected: relayOk,
@@ -427,9 +433,12 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             discordAgentReplaced: agentReplaced,
             discordAgentRelayUrlInvalid: agentRelayUrlInvalid,
             discordAgentMinVersion: agentMinVersion,
-            // 릴레이가 거절하는 동안은 명령이 흐르지 않으니 '실행 중'으로 보이지 않는다
-            discordBotStatus:
-                agentRunning && relayOk && !agentMinVersion ? 'running' : agentRunning ? 'connecting' : 'stopped',
+            discordBotStatus: nextStatus,
+            discordReconnecting:
+                // 릴레이가 이 버전을 거절하면 다시 붙을 일이 없다 — 복구 중이 아니라 거절로 보인다
+                nextStatus === 'connecting' &&
+                !agentMinVersion &&
+                (prev.discordBotStatus === 'running' || prev.discordReconnecting),
         });
     },
 

@@ -281,7 +281,7 @@ fn progress_line(p: &Value) -> String {
         .unwrap_or_default();
     match p.get("error").and_then(Value::as_str) {
         Some(err) => format!("{} {}", console::style("✗").red(), err),
-        None => format!("{} {}{}", console::style("◐").yellow(), pct, s(p, "message")),
+        None => format!("{} {}{}", console::style("◐").dim(), pct, s(p, "message")),
     }
 }
 

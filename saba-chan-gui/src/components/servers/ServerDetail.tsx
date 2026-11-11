@@ -19,6 +19,7 @@ import type { ModuleInfo } from '../../types/daemon';
 import { withCommandAliases } from '../../utils/commandRisk';
 import {
     STATUS_TONE,
+    isTransitional,
     consoleQuickCommands,
     defaultServerTab,
     gameNameOf,
@@ -282,7 +283,7 @@ export function ServerDetail({
                         tone={STATUS_TONE[status]}
                         label={t(`shell.status_${status}`)}
                         detail={uptime}
-                        pulse={status === 'starting' || status === 'stopping'}
+                        pulse={isTransitional(status)}
                     />
                     {primaryButton}
                 </div>

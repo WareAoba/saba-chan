@@ -442,6 +442,9 @@
     background: var(--chip-color);
     box-shadow: 0 0 0 3px var(--bg-1);
 }
+.server-row-dot.pulse {
+    animation: chip-pulse 1.2s var(--ease) infinite;
+}
 .server-row-text {
     flex: 1;
     min-width: 0;
@@ -4277,9 +4280,30 @@ button.appbar-pill:focus-visible {
     background: var(--ok);
     box-shadow: 0 0 0 3px var(--ok-soft);
 }
+/* 켜는 중은 꺼짐 회색, 끄는 중은 켜짐 초록으로 깜빡인다 (사용자 11-11) */
+.palette-dot.stopping {
+    background: var(--ok);
+}
 .palette-dot.starting,
 .palette-dot.stopping {
-    background: var(--warn);
+    animation: chip-pulse 1.2s var(--ease) infinite;
+}
+/* 움직임이 꺼지면 깜빡이지 않으니 속 빈 고리로 진행 중을 구분한다 (base.css 의 상태 점과 같이) */
+@media (prefers-reduced-motion: reduce) {
+    .palette-dot:is(.starting, .stopping) {
+        background: transparent;
+        box-shadow: inset 0 0 0 2px var(--text-3);
+    }
+    .palette-dot.stopping {
+        box-shadow: inset 0 0 0 2px var(--ok);
+    }
+}
+[data-no-transitions='true'] .palette-dot:is(.starting, .stopping) {
+    background: transparent;
+    box-shadow: inset 0 0 0 2px var(--text-3);
+}
+[data-no-transitions='true'] .palette-dot.stopping {
+    box-shadow: inset 0 0 0 2px var(--ok);
 }
 .palette-gmark {
     width: 16px;

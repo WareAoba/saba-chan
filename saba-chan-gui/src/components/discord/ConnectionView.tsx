@@ -276,6 +276,7 @@ export function ConnectionView({
     const { t } = useTranslation('gui');
     const [confirmDisconnect, setConfirmDisconnect] = useState(false);
     const newGuildInstances = useDiscordStore((s) => s.discordNewGuildInstances);
+    const reconnecting = useDiscordStore((s) => s.discordReconnecting);
     // SleepAllButton이 알려 주는 "모든 서버를 재웠는지"
     const [asleep, setAsleep] = useState(false);
 
@@ -353,7 +354,11 @@ export function ConnectionView({
                         <div className="dc-conn-state">
                             {connected && <StatusChip tone="ok" label={t('discord.relay_connected')} />}
                             {cloudState === 'connecting' && (
-                                <StatusChip tone="warn" pulse label={t('discord.relay_connecting')} />
+                                <StatusChip
+                                    tone={reconnecting ? 'warn' : 'idle'}
+                                    pulse
+                                    label={t('discord.relay_connecting')}
+                                />
                             )}
                             {cloudState === 'error' && <StatusChip tone="stop" label={t('discord.relay_failed')} />}
                         </div>

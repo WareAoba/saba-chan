@@ -38,6 +38,8 @@ describe('nodePermissions (데몬 src/chat/mod.rs 해석과 같다)', () => {
         expect(cloudStateOf({ hostId: 'h', connected: true })).toBe('connected');
         expect(cloudStateOf({ hostId: 'h', error: 'x' })).toBe('error');
         expect(cloudStateOf({ hostId: 'h' })).toBe('connecting');
+        // 붙어 있다가 끊겨 에이전트가 다시 붙는 중이면 실패가 아니라 (노랑) 연결 중이다 (사용자 11-11)
+        expect(cloudStateOf({ hostId: 'h', error: 'x', reconnecting: true })).toBe('connecting');
         // 데몬에서 설정을 아직 못 읽었으면 호스트가 비어도 연결 전이라고 단정하지 않는다
         expect(cloudStateOf({ hostId: '', loaded: false })).toBe('checking');
         expect(cloudStateOf({ hostId: '', loaded: true })).toBe('no_host');

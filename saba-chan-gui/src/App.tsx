@@ -170,6 +170,7 @@ function App() {
     const cloudNodes = useDiscordStore((s) => s.cloudNodes);
     const cloudMembers = useDiscordStore((s) => s.cloudMembers);
     const discordBotStatus = useDiscordStore((s) => s.discordBotStatus);
+    const discordReconnecting = useDiscordStore((s) => s.discordReconnecting);
     const relayConnected = useDiscordStore((s) => s.relayConnected);
     const relayConnecting = useDiscordStore((s) => s.relayConnecting);
     const relayChecked = useDiscordStore((s) => s.relayChecked);
@@ -963,6 +964,7 @@ function App() {
                         daemonStatus={backgroundDaemonStatus}
                         daemonInParentJob={daemonInParentJob}
                         discordStatus={discordBotStatus}
+                        discordReconnecting={discordReconnecting}
                         unreadCount={unreadNoticeCount}
                         extInitializing={extInitializing}
                         extInitLabel={

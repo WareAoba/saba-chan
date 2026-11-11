@@ -378,6 +378,22 @@ button:disabled {
     }
 }
 
+/*
+ * 움직임 줄이기·전환 끄기면 깜빡이지 않는다. 진행 중은 떠나온 상태의 색이라(켜는 중 = 꺼짐 회색, 끄는 중 = 켜짐 초록)
+ * 글자 없는 점에서 구분이 사라지므로, 그때만 속 빈 고리로 그린다 (CLI ◐와 같은 생각)
+ */
+@media (prefers-reduced-motion: reduce) {
+    :is(.status-chip.pulse .status-chip-dot, .conn-node.pulse .conn-dot, .server-row-dot.pulse, .tray-popup-dot.pulse) {
+        background: var(--bg-1);
+        box-shadow: inset 0 0 0 2px var(--chip-color, var(--text-3));
+    }
+}
+[data-no-transitions='true']
+    :is(.status-chip.pulse .status-chip-dot, .conn-node.pulse .conn-dot, .server-row-dot.pulse, .tray-popup-dot.pulse) {
+    background: var(--bg-1);
+    box-shadow: inset 0 0 0 2px var(--chip-color, var(--text-3));
+}
+
 /* 세그먼트 탭: 파인 홈 안에서 고른 칸만 솟음. 누르는 즉시 바뀐다(글자색 지연 없음) */
 .segmented {
     display: inline-flex;

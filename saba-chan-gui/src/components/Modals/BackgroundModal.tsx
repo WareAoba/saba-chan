@@ -110,7 +110,8 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }: BackgroundModa
             ? 'ok'
             : daemonStatus === 'stopped' || daemonStatus === 'error' || daemonStatus === 'token_invalid'
               ? 'stop'
-              : 'warn';
+              : // 확인 중은 꺼짐에서 출발한 진행 — 회색으로 깜빡인다 (사용자 11-11)
+                'idle';
     const port = ipcPort || DEFAULT_IPC_PORT;
     const address = `${t('background_modal.ipc_host_value')}:${port}`;
 
@@ -123,7 +124,7 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }: BackgroundModa
         >
             {/* 1. 지금 상태 한 줄 + 이게 뭔지 한 줄 */}
             <div className={clsx('bg-pop-head', `tone-${tone}`)}>
-                <span className={clsx('bg-pop-orb', { pulse: tone === 'warn' })} aria-hidden="true">
+                <span className={clsx('bg-pop-orb', { pulse: tone === 'idle' })} aria-hidden="true">
                     <Icon name="server" size="sm" />
                 </span>
                 <div className="bg-pop-title">

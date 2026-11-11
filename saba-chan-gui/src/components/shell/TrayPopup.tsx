@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ServerInfo } from '../../types/daemon';
-import { playersText, primaryAction, STATUS_TONE, viewStatus } from '../../utils/serverView';
+import { isTransitional, playersText, primaryAction, STATUS_TONE, viewStatus } from '../../utils/serverView';
 import { type HostWindow, HostWindowContext } from '../../extensions/host';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
@@ -184,7 +184,7 @@ export function TrayPopup() {
                             return (
                                 <li key={server.id} className="tray-popup-server" data-status={status}>
                                     <span
-                                        className={clsx('tray-popup-dot', `tone-${STATUS_TONE[status]}`)}
+                                        className={clsx('tray-popup-dot', `tone-${STATUS_TONE[status]}`, { pulse: isTransitional(status) })}
                                         aria-hidden="true"
                                     />
                                     <span className="tray-popup-server-name">{server.name}</span>
