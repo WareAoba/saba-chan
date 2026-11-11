@@ -334,13 +334,26 @@ fn server_of(route: Option<&str>) -> Option<String> {
     is_instance_id(id).then(|| id.to_string())
 }
 
-/// 오버레이 창의 셸 동작: open_app(메인 창, `route`가 `server:<id>`면 그 서버를 연다) | hide(설정에서 끄고 창을 내린다)
+/// 펫이 고른 앱 탭: `servers`·`discord`·`activity`·`settings`, 익스텐션 탭 `ext:<id>`
+fn tab_of(route: Option<&str>) -> Option<String> {
+    let route = route?;
+    let ok = match route.strip_prefix("ext:") {
+        Some(id) => is_instance_id(id),
+        None => matches!(route, "servers" | "discord" | "activity" | "settings"),
+    };
+    ok.then(|| route.to_string())
+}
+
+/// 오버레이 창의 셸 동작: open_app(메인 창. `route`가 `server:<id>`면 그 서버를, 앱 탭이면 그 탭을 연다) |
+/// hide(설정에서 끄고 창을 내린다)
 pub async fn action(app: &AppHandle, action: &str, route: Option<&str>) -> bool {
     match action {
         "open_app" => {
             crate::window::show_main(app);
             if let Some(id) = server_of(route) {
                 crate::lifecycle::open_server(app, id);
+            } else if let Some(tab) = tab_of(route) {
+                crate::emit_main(app, "app:openRoute", json!({ "route": tab }));
             }
         }
         "hide" => {
@@ -450,6 +463,18 @@ pub fn popup_menu(app: &AppHandle, items: Vec<MenuSpec>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 펫이 고른 앱 화면(탭): 정해진 탭과 `ext:<id>`만
+    #[test]
+    fn only_known_tabs_are_opened() {
+        for tab in ["servers", "discord", "activity", "settings", "ext:desktop_pet"] {
+            assert_eq!(tab_of(Some(tab)).as_deref(), Some(tab));
+        }
+        for bad in ["server:abc", "ext:", "ext:../x", "admin", ""] {
+            assert_eq!(tab_of(Some(bad)), None, "{bad}");
+        }
+        assert_eq!(tab_of(None), None);
+    }
 
     /// 오버레이 창은 읽기와 서버 켜고 끄기만 한다
     #[test]

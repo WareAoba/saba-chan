@@ -159,6 +159,11 @@ describe('오버레이 화면', () => {
         expect(window.api.overlayFit).toHaveBeenCalled();
     });
 
+    it('원격 데몬을 골라도 번들을 주는 이 PC 데몬의 익스텐션 목록을 읽는다', async () => {
+        await mount();
+        expect(window.api.extensionList).toHaveBeenCalledWith({ local: true });
+    });
+
     it('누르면 앱을 열고, 누른 채 움직이면 창을 끌 뿐 앱을 열지 않는다', async () => {
         const root = await mount();
         fireEvent.pointerDown(root, { button: 0, screenX: 10, screenY: 10 });
@@ -186,6 +191,9 @@ describe('오버레이 화면', () => {
         await mount();
         got.host?.openApp('server:b');
         expect(window.api.overlayAction).toHaveBeenLastCalledWith('open_app', 'server:b');
+        vi.mocked(window.api.overlayAction).mockClear();
+        got.host?.openApp('settings');
+        expect(window.api.overlayAction).toHaveBeenLastCalledWith('open_app', 'settings');
         vi.mocked(window.api.overlayAction).mockClear();
         got.host?.openApp('../../etc');
         expect(window.api.overlayAction).toHaveBeenCalledWith('open_app');

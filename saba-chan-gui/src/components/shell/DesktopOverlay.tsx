@@ -138,9 +138,9 @@ export function DesktopOverlay() {
                 if (action !== 'start' && targetRef.current !== null) return false;
                 return runServer(instanceId, action);
             },
-            // 그 서버 화면은 셸이 메인 창에 바로 연다. 그 밖의 화면은 앱만 연다
+            // 고른 화면(서버·탭)은 셸이 메인 창에 바로 연다. 모르는 화면은 앱만 연다
             openApp: (route) =>
-                isAppRoute(route) && route.startsWith('server:')
+                isAppRoute(route)
                     ? window.api?.overlayAction?.('open_app', route)
                     : window.api?.overlayAction?.('open_app'),
         }),

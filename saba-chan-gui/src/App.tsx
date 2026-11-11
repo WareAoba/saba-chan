@@ -533,6 +533,11 @@ function App() {
         const offOpenServer = window.api.onOpenServer?.((p) => {
             if (p?.instanceId) useUIStore.getState().revealServer(p.instanceId);
         });
+        // 바탕화면 펫이 고른 탭 (서버는 위 openServer로 온다)
+        const offOpenRoute = window.api.onOpenRoute?.((p) => {
+            const route = p?.route;
+            if (isAppRoute(route) && !serverRoute(route)) useUIStore.getState().setActiveTab(route as ActiveTab);
+        });
 
         // App close request handler
         let offClose: (() => void) | undefined;
@@ -629,6 +634,7 @@ function App() {
             clearInterval(interval);
             if (typeof offClose === 'function') offClose();
             if (typeof offOpenServer === 'function') offOpenServer();
+            if (typeof offOpenRoute === 'function') offOpenRoute();
         };
     }, [autoRefresh, refreshInterval, daemonReady]);
 

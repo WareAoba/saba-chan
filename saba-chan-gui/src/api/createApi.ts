@@ -615,9 +615,11 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             call('post', `/api/config/${encodeURIComponent(kind)}/reset`, keys ? { keys } : {}),
 
         // ── 익스텐션 ──
-        extensionList: async (): Promise<ApiResult<ExtensionListResponse>> => {
+        // local: 고른 데몬과 상관없이 이 PC 데몬의 목록 (번들을 이 PC 데몬에서 받는 바탕화면 오버레이)
+        extensionList: async (opts: { local?: boolean } = {}): Promise<ApiResult<ExtensionListResponse>> => {
             try {
-                return (await get<ExtensionListResponse>('/api/extensions')).data;
+                return (await get<ExtensionListResponse>('/api/extensions', opts.local ? { target: 'local' } : undefined))
+                    .data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 console.warn('[Extension] Failed to list extensions:', error.message);
@@ -636,8 +638,12 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             call('put', `/api/extensions/${encodeURIComponent(extId)}/config`, config),
         extensionI18n: async (extId: string, locale: string) => {
             try {
-                return (await get(`/api/extensions/${encodeURIComponent(extId)}/i18n/${encodeURIComponent(locale)}`))
-                    .data;
+                // 번들과 같은 곳(이 PC 데몬)에서 받는다
+                return (
+                    await get(`/api/extensions/${encodeURIComponent(extId)}/i18n/${encodeURIComponent(locale)}`, {
+                        target: 'local',
+                    })
+                ).data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 // 404는 해당 로케일이 없는 것이므로 경고 없이 null
@@ -1246,6 +1252,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         onCloseRequest: (callback: Listener) => hub.on('app:closeRequest', callback),
         // 다른 인터페이스가 이 GUI를 띄우며 고른 서버 `{instanceId}`
         onOpenServer: (callback: Listener) => hub.on('app:openServer', callback),
+        // 바탕화면 오버레이가 고른 앱 탭 `{route}` (overlay_action open_app)
+        onOpenRoute: (callback: Listener) => hub.on('app:openRoute', callback),
         closeResponse: (choice: string) => send('app_close_response', { choice }),
         onStatusUpdate: (callback: Listener) => hub.on('status:update', callback),
         daemonStatus: () => invoke('daemon_status'),

@@ -17,6 +17,7 @@ export const EVENT_CHANNELS = [
     'console:popoutClosed',
     'console:popinRequest',
     'app:openServer',
+    'app:openRoute',
     'overlay:menu',
 ] as const;
 

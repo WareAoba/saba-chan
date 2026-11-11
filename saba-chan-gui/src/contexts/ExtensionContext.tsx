@@ -240,7 +240,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
     // 받지 못하면 받아 둔 목록을 그대로 두고 false를 돌려준다
     const fetchExtensions = useCallback(async () => {
         try {
-            const data = await window.api.extensionList();
+            const data = await window.api.extensionList(surface === 'desktop' ? { local: true } : undefined);
             if (!data || data.error || !Array.isArray(data.extensions)) {
                 throw new Error(data?.error || 'extension list unavailable');
             }
@@ -252,7 +252,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
             console.warn('[Extension] Failed to fetch extensions:', e);
             return false;
         }
-    }, []);
+    }, [surface]);
 
     // 초기 로드. 데몬이 아직 안 떴거나 잠깐 닿지 않으면 받을 때까지 간격을 늘려 다시 묻는다
     useEffect(() => {
