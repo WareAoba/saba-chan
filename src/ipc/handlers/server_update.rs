@@ -173,13 +173,22 @@ pub(crate) async fn stop_update_start(state: &IPCServer, id: &str) -> bool {
 /// 지금 접속자 수를 보고, 켜져 있는데 0명으로 확인되지 않으면 끄지 않고 None (잠금이 잡혀 있어도 None)
 async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool) -> Option<bool> {
     // 시작은 이 잠금을 잡고 켠다(`server::start_instance`): 잡고 있는 동안에는 확인한 뒤 새로 켜지지 않는다
-    let start_lock = if only_if_empty { Some(super::backup::InstanceLock::take_for_writes(id).await?) } else { None };
+    let start_lock = if only_if_empty {
+        let Some(lock) = super::backup::InstanceLock::take_for_writes(id).await else {
+            postpone(id, false);
+            return None;
+        };
+        Some(lock)
+    } else {
+        None
+    };
     let was_running = super::backup::is_running(state, id).await;
     if was_running && only_if_empty {
         let players = crate::supervisor::players::fresh(&state.supervisor, id).await;
         if players != Some(0) {
             tracing::info!("Auto update of '{}': not stopping, players {:?}", id, players);
             emit_waiting(state, id, players).await;
+            postpone(id, true);
             return None;
         }
     }
@@ -205,11 +214,10 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
     }
-    // 업데이트가 같은 잠금을 다시 잡는다. 그 사이 켜지면 업데이트가 `server_running`으로 거절한다 (끄지 않는다)
-    drop(start_lock);
     tracing::info!("Updating '{}' (was running: {})", id, was_running);
     let generation = state.supervisor.read().await.run_generation_of(id);
-    let updated = match super::instance::begin_server_update(state, id).await {
+    // 잡은 잠금은 업데이트에 넘긴다: 놓았다 다시 잡는 틈에 다른 작업이 끼어 업데이트를 못 하는 일이 없게
+    let updated = match super::instance::begin_server_update_holding(state, id, start_lock).await {
         Ok(job) => job.await.unwrap_or(false),
         Err(r) => {
             let body = crate::ipc::internal::into_internal(r).await.body;
@@ -238,6 +246,24 @@ fn error(status: StatusCode, code: &str, message: &str) -> Response {
         Json(json!({ "success": false, "error": message, "error_code": code })),
     )
         .into_response()
+}
+
+/// 끄기 직전에 미룬 자동 업데이트 (값: 기다림을 이미 알렸다). 다음 틱에 기다림으로 되돌려 1분마다 다시 본다
+fn postponed() -> &'static Mutex<HashMap<String, bool>> {
+    static POSTPONED: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
+    POSTPONED.get_or_init(Default::default)
+}
+
+fn postpone(id: &str, notified: bool) {
+    postponed().lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), notified);
+}
+
+/// 미뤘으면 기다림으로 되돌린다 (확인 간격 3시간을 다시 기다리지 않게)
+fn resume_postponed(id: &str, watch: &mut Watch) {
+    if let Some(notified) = postponed().lock().unwrap_or_else(|e| e.into_inner()).remove(id) {
+        watch.waiting = true;
+        watch.notified = notified;
+    }
 }
 
 /// 자동 업데이트가 인스턴스마다 기억하는 것 (메모리에만: 데몬이 다시 켜지면 처음부터 확인한다)
@@ -313,6 +339,7 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
     if is_pending(id) || super::backup::InstanceLock::held(id) {
         return;
     }
+    resume_postponed(id, watch);
     let fresh = !watch.waiting;
     if fresh {
         if watch.checked.is_some_and(|at| at.elapsed() < CHECK_EVERY) {
@@ -348,7 +375,7 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
             let _mark = mark;
             match stop_update_start_when(&state, &id, true).await {
                 Some(updated) => record_auto_result(&id, remote.as_deref(), updated),
-                // 끄기 직전에 누가 들어왔거나(셀 수 없거나, 기다림을 알렸다) 다른 작업 중: 다음 확인에서 다시 본다
+                // 끄기 직전에 누가 들어왔거나(셀 수 없거나, 기다림을 알렸다) 다른 작업 중: 다음 틱부터 1분마다 다시 본다 (`postponed`)
                 None => tracing::info!("Auto update of '{}' postponed", id),
             }
         });
@@ -423,7 +450,8 @@ pub async fn apply_to_running(state: &IPCServer, id: &str, body: &ApplyBody) -> 
     if let Err(r) = super::instance::updatable(&*state.supervisor.read().await, id) {
         return r;
     }
-    let players = crate::supervisor::players::get(id).map(|c| c.online);
+    // 예고 없이 끌지(0명)는 기억한 수(최대 1분 전)가 아니라 지금 수로 정한다 (모르면 예고한다)
+    let players = crate::supervisor::players::fresh(&state.supervisor, id).await;
     let minutes = warn_minutes_for(body.warn_minutes, players);
     match begin_restart_update(state, id, minutes).await {
         Ok(()) => (
@@ -459,6 +487,13 @@ mod tests {
             .expect("does not wait for the lock");
         assert_eq!(decided, None);
         drop(held);
+        // 미룬 업데이트는 3시간 뒤가 아니라 다음 틱부터 기다림으로 다시 본다
+        let mut watch = Watch::default();
+        resume_postponed(id, &mut watch);
+        assert!(watch.waiting && !watch.notified);
+        let mut again = Watch::default();
+        resume_postponed(id, &mut again);
+        assert!(!again.waiting, "resumed once");
     }
 
     /// 꺼져 있으면 받기만, 켜져 있고 아무도 없으면 다시 켜며 업데이트, 접속자가 있거나 셀 수 없으면 기다린다

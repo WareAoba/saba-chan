@@ -2616,8 +2616,22 @@ pub(crate) fn updatable(
 /// 업데이트를 백그라운드로 시작한다. 작업은 성공 여부를 돌려준다 (예약 업데이트가 기다린다)
 #[allow(clippy::result_large_err)]
 pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
+    begin_server_update_holding(state, id, None).await
+}
+
+/// `begin_server_update`. `held`: 부르는 쪽이 이미 잡은 작업 잠금 (자동 업데이트가 끄기부터 잡고 있다: 놓았다 다시 잡는 틈이 없게)
+#[allow(clippy::result_large_err)]
+pub(crate) async fn begin_server_update_holding(
+    state: &IPCServer,
+    id: &str,
+    held: Option<super::backup::InstanceLock>,
+) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
     // 업데이트가 끝날 때까지 시작·복원·삭제를 막는다 (작업 안으로 넘긴다)
-    let Some(guard) = super::backup::InstanceLock::take_for_writes(id).await.map(|g| g.purpose(super::backup::Purpose::ServerUpdate)) else {
+    let held = match held {
+        Some(lock) => Some(lock),
+        None => super::backup::InstanceLock::take_for_writes(id).await,
+    };
+    let Some(guard) = held.map(|g| g.purpose(super::backup::Purpose::ServerUpdate)) else {
         return Err(super::backup::instance_busy());
     };
     let supervisor = state.supervisor.read().await;
