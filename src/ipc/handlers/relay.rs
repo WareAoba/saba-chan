@@ -541,8 +541,21 @@ pub async fn get_node_chatbot_models(
     State(state): State<IPCServer>,
 ) -> Response {
     let base = signed_base(&state, params.relay_url.as_deref()).await;
-    signed_get(&base, &format!("/api/nodes/{}/chatbot/models", encode_path_segment(&guild_id)), invalid_response).await
+    let client = match client() {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    // 릴레이가 제공사에 목록을 묻는 시간(15초)보다 길게 기다린다 (기본 5초면 캐시가 빈 첫 시도가 느린 제공사에서 실패한다)
+    let api_path = format!("/api/nodes/{}/chatbot/models", encode_path_segment(&guild_id));
+    let req = client.get(format!("{}{}", base, api_path)).timeout(MODELS_TIMEOUT);
+    match send(apply_signed_headers(req, "GET", &api_path, None)).await {
+        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, None)) => invalid_response(code),
+        Err(r) => r,
+    }
 }
+
+const MODELS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(18);
 
 // ── GET /api/relay/node/:guild_id/chatbot/tools ──
 // 말하는 사바쨩이 고를 수 있는 도구 목록 (`{categories, tools: [{name, category, available, unavailable?}]}`). 도구 목록의 원본은 릴레이다
@@ -1043,6 +1056,30 @@ mod tests {
         let request: PairStatusBody = serde_json::from_value(json!({ "code": "AB/12", "secret": "s3", "relayUrl": base })).unwrap();
         let (code, data) = body(pairing_status(State(state), Json(request)).await).await;
         assert_eq!((code, data), (StatusCode::OK, json!({ "status": "pending", "code": "AB/12", "secret": "s3" })));
+    }
+
+    /// 릴레이는 제공사의 모델 목록을 15초까지 기다린다. 데몬이 먼저 끊으면 첫 시도에 목록이 안 보인다
+    #[tokio::test]
+    async fn the_model_list_outlasts_a_provider_slower_than_the_default_relay_wait() {
+        let app = Router::new().route(
+            "/api/nodes/g1/chatbot/models",
+            get(|| async {
+                tokio::time::sleep(std::time::Duration::from_millis(5500)).await;
+                Json(json!({ "models": ["m1"] }))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let params: RelayQueryParams = serde_json::from_value(json!({ "relayUrl": base })).unwrap();
+        let (code, data) = body(get_node_chatbot_models(Path("g1".into()), Query(params), State(state)).await).await;
+        assert_eq!((code, data), (StatusCode::OK, json!({ "models": ["m1"] })));
     }
 
     /// 에이전트 연결 끊기: 릴레이가 지웠으면 204, 아니면 릴레이 답 그대로
