@@ -361,7 +361,7 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
         if watch.checked.is_some_and(|at| at.elapsed() < CHECK_EVERY) {
             return;
         }
-        if !update_available(state, id, watch).await {
+        if update_check(state, id, watch).await != Checked::Available {
             return;
         }
         watch.waiting = true;
@@ -376,9 +376,16 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
     let mut step = auto_step(running, players);
     if step != AutoStep::Wait {
         // 기다리는 동안 알림 버튼·앱·예약으로 이미 업데이트했을 수 있다: 끄기 전에 한 번 더 본다
-        if !fresh && !update_available(state, id, watch).await {
-            watch.waiting = false;
-            return;
+        if !fresh {
+            match update_check(state, id, watch).await {
+                Checked::Available => {}
+                Checked::UpToDate => {
+                    watch.waiting = false;
+                    return;
+                }
+                // 확인하지 못했다(잠깐의 장애): 기다림을 풀지 않고 다음 틱에 다시 본다 (풀면 다음 확인까지 3시간을 기다린다)
+                Checked::Unknown => return,
+            }
         }
         // 기억한 접속자 수는 최대 1분 전이고 확인하는 동안 들어왔을 수 있다: 끄기 바로 전에 지금 수를 묻는다 (모르면 기다린다)
         let running = super::backup::is_running(state, id).await;
@@ -424,17 +431,34 @@ async fn emit_waiting(state: &IPCServer, id: &str, players: Option<u32>) {
     );
 }
 
+/// 업데이트 확인 결과
+#[derive(Debug, PartialEq, Eq)]
+enum Checked {
+    /// 새 빌드가 있다
+    Available,
+    /// 새 빌드가 없다 (자동 업데이트가 실패했던 빌드뿐일 때도)
+    UpToDate,
+    /// 확인하지 못했다 (`check_failed`, 확인 hook이 답하지 않은 `no_hook_handled`)
+    Unknown,
+}
+
 /// 새 빌드가 있는지 확인한다 (확인 시각을 남기고, 확인하지 못했으면 경고 로그)
-async fn update_available(state: &IPCServer, id: &str, watch: &mut Watch) -> bool {
+async fn update_check(state: &IPCServer, id: &str, watch: &mut Watch) -> Checked {
     watch.checked = Some(std::time::Instant::now());
     let Some(status) = super::instance::server_update_status(state, id).await else {
-        return false;
+        return Checked::Unknown;
     };
-    if status.get("reason").and_then(Value::as_str) == Some("check_failed") {
-        tracing::warn!("Auto update of '{}': update check failed: {}", id, status["error"]);
+    match status.get("reason").and_then(Value::as_str) {
+        Some("check_failed") => {
+            tracing::warn!("Auto update of '{}': update check failed: {}", id, status["error"]);
+            return Checked::Unknown;
+        }
+        // 확인 hook을 가진 익스텐션이 답하지 않았다 (꺼졌거나 다시 읽는 중)
+        Some("no_hook_handled") => return Checked::Unknown,
+        _ => {}
     }
     if status.get("update_available").and_then(Value::as_bool) != Some(true) {
-        return false;
+        return Checked::UpToDate;
     }
     watch.remote = match status.get("remote_buildid") {
         Some(Value::String(b)) => Some(b.clone()),
@@ -443,9 +467,9 @@ async fn update_available(state: &IPCServer, id: &str, watch: &mut Watch) -> boo
     };
     if watch.remote.as_deref().is_some_and(|remote| failed_before(id, remote)) {
         tracing::info!("Auto update of '{}': build {:?} failed before; waiting for a newer build", id, watch.remote);
-        return false;
+        return Checked::UpToDate;
     }
-    true
+    Checked::Available
 }
 
 /// `apply-update`의 본문 (`warn_minutes`: 켜진 서버면 게임 안에 예고할 시간, 기본 5분)
@@ -565,6 +589,44 @@ mod tests {
         drop(other);
         assert!(!super::super::instance::update_blocked_by_shared_folder(&state, &ids[0]).await);
         assert!(super::super::backup::InstanceLock::take(&ids[0]).is_some(), "a postponed update does not keep its lock");
+    }
+
+    /// 새 빌드를 보고 기다리던 중 끄기 전 재확인을 하지 못하면(잠깐의 장애) 기다림을 풀지 않는다: 다음 틱에 다시 본다
+    #[tokio::test]
+    async fn a_failed_recheck_keeps_waiting_for_the_update() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"steamcmd\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        for module in sup.module_loader.discover_modules().unwrap() {
+            crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path()));
+        }
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "game");
+        inst.extension_data.insert(crate::instance::install_method_key("steamcmd"), json!(true));
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(
+            std::sync::Arc::new(tokio::sync::RwLock::new(sup)),
+            "127.0.0.1:0",
+            crate::daemon_log::DaemonLogBuffer::new(),
+        );
+        // 확인 hook을 가진 익스텐션이 없어 확인하지 못한다
+        let mut watch = Watch { waiting: true, notified: true, ..Watch::default() };
+        assert_eq!(update_check(&state, &id, &mut watch).await, Checked::Unknown);
+        auto_tick(&state, &id, &mut watch).await;
+        assert!(watch.waiting, "an unknown recheck is not 'up to date'");
+        assert!(!is_pending(&id), "nothing is started on an unknown recheck");
     }
 
     /// 꺼져 있으면 받기만, 켜져 있고 아무도 없으면 다시 켜며 업데이트, 접속자가 있거나 셀 수 없으면 기다린다
