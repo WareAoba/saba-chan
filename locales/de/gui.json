@@ -2343,6 +2343,20 @@
     "stop_confirm": "Stoppen?",
     "stop_confirm_aria": "Stoppen von {{name}} bestätigen"
   },
+  "desktop_overlay": {
+    "menu_server": "{{name}} · {{status}}",
+    "menu_start": "Starten",
+    "menu_stop": "Stoppen",
+    "menu_stop_confirm": "Jetzt stoppen",
+    "menu_restart": "Neu starten",
+    "menu_restart_confirm": "Jetzt neu starten",
+    "menu_no_servers": "Noch keine Server",
+    "menu_open_app": "Saba-chan öffnen",
+    "menu_hide": "Vom Desktop ausblenden",
+    "setting_label": "Desktop-Overlay",
+    "setting_description": "Zeigt das kleine Fenster, das Erweiterungen in eine Desktop-Ecke setzen (z. B. ein Desktop-Haustier). Zum Verschieben ziehen.",
+    "setting_unsupported": "Auf diesem Desktop (Wayland) nicht möglich."
+  },
   "autostart": {
     "label": "Beim Anmelden starten",
     "description": "Startet Saba-chan, wenn du dich an diesem PC anmeldest. Nur Daemon läuft ohne Fenster im Tray.",

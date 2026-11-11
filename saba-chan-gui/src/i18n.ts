@@ -124,4 +124,10 @@ getInitialLanguage().then((lang) => {
     console.warn('[i18n] Language initialization failed:', (err as Error).message);
 });
 
+// 다른 창(메인 창 설정)에서 언어를 바꾸면 이 창(바탕화면 펫·트레이)도 따라간다. 저장은 storage 이벤트로만 온다
+window.addEventListener('storage', (e) => {
+    if (e.key !== 'i18nextLng' || !e.newValue || !SUPPORTED_LANGUAGES.includes(e.newValue)) return;
+    if (e.newValue !== i18n.language) i18n.changeLanguage(e.newValue);
+});
+
 export default i18n;

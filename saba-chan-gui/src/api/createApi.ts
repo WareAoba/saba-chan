@@ -21,6 +21,15 @@ import { createDaemonClient, failureBody, type Invoke, queryString } from './dae
 import type { EventHub, Listener } from './events';
 import { hasRemotePathPicker, pickRemotePath } from './remotePathPicker';
 
+/** 오버레이 우클릭 메뉴 한 칸 (셸 overlay.rs `MenuSpec`): 구분선, id가 있는 항목, 하위 메뉴(items) 두 단계까지 */
+export interface OverlayMenuItem {
+    id?: string;
+    label?: string;
+    enabled?: boolean;
+    separator?: boolean;
+    items?: OverlayMenuItem[];
+}
+
 // 저장 파일 이름의 날짜는 이 PC 시간대로 (toISOString은 UTC라 한국 오전 9시 전에는 어제가 된다)
 const localDate = (d = new Date()) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -47,6 +56,14 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
     const post = (path: string, body?: unknown, opts?: RequestOptions) => request('post', path, body, opts);
     const put = (path: string, body?: unknown, opts?: RequestOptions) => request('put', path, body, opts);
     const del = (path: string, opts?: RequestOptions) => request('delete', path, undefined, opts);
+    /** `call`과 같고, 고른 데몬과 상관없이 이 PC 데몬에 보낸다 */
+    const callLocal = async (method: 'get' | 'delete', path: string): Promise<ApiBody> => {
+        try {
+            return (await request(method, path, undefined, { target: 'local' })).data;
+        } catch (e) {
+            return failureBody(e as DaemonError);
+        }
+    };
 
     // 경로 고르기. 원격 데몬을 다루는 중이면 이 PC의 대화상자 대신 그 데몬의 폴더에서 고른다:
     // 이 PC의 경로는 그 PC 데몬에 가면 엉뚱한 곳을 가리킨다 (G1, D2)
@@ -606,9 +623,11 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             call('post', `/api/config/${encodeURIComponent(kind)}/reset`, keys ? { keys } : {}),
 
         // ── 익스텐션 ──
-        extensionList: async (): Promise<ApiResult<ExtensionListResponse>> => {
+        // local: 고른 데몬과 상관없이 이 PC 데몬의 목록 (번들을 이 PC 데몬에서 받는 바탕화면 오버레이)
+        extensionList: async (opts: { local?: boolean } = {}): Promise<ApiResult<ExtensionListResponse>> => {
             try {
-                return (await get<ExtensionListResponse>('/api/extensions')).data;
+                return (await get<ExtensionListResponse>('/api/extensions', opts.local ? { target: 'local' } : undefined))
+                    .data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 console.warn('[Extension] Failed to list extensions:', error.message);
@@ -627,8 +646,12 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             call('put', `/api/extensions/${encodeURIComponent(extId)}/config`, config),
         extensionI18n: async (extId: string, locale: string) => {
             try {
-                return (await get(`/api/extensions/${encodeURIComponent(extId)}/i18n/${encodeURIComponent(locale)}`))
-                    .data;
+                // 번들과 같은 곳(이 PC 데몬)에서 받는다
+                return (
+                    await get(`/api/extensions/${encodeURIComponent(extId)}/i18n/${encodeURIComponent(locale)}`, {
+                        target: 'local',
+                    })
+                ).data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 // 404는 해당 로케일이 없는 것이므로 경고 없이 null
@@ -931,9 +954,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 동의 기록은 셸이 네이티브 확인 창을 띄운 뒤에 보낸다. 취소하면 {success:false, error_code:'canceled'}
         sandboxAllowUnisolated: (component: string) => invoke('sandbox_consent_allow', { kind: 'unisolated', component }),
         sandboxRevokeUnisolated: (component: string) => call('delete', unisolatedPath(component)),
-        sandboxListExtensionGui: () => call('get', '/api/sandbox/extension-gui'),
+        // GUI 동의는 번들을 주는 이 PC 데몬에 있다 (sandbox_consent_allow도 이 PC에 기록한다): 원격 데몬을 고른 동안에도 이 PC에서 보고 철회한다
+        sandboxListExtensionGui: () => callLocal('get', '/api/sandbox/extension-gui'),
         sandboxAllowExtensionGui: (component: string) => invoke('sandbox_consent_allow', { kind: 'extension-gui', component }),
-        sandboxRevokeExtensionGui: (component: string) => call('delete', extensionGuiPath(component)),
+        sandboxRevokeExtensionGui: (component: string) => callLocal('delete', extensionGuiPath(component)),
         actionsList: (opts?: { surface?: string; instance?: string; locale?: string }) => {
             const { surface = 'gui', instance, locale } = opts || {};
             const qs = queryString({ surface, instance: instance || undefined, locale: locale || undefined });
@@ -1237,6 +1261,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         onCloseRequest: (callback: Listener) => hub.on('app:closeRequest', callback),
         // 다른 인터페이스가 이 GUI를 띄우며 고른 서버 `{instanceId}`
         onOpenServer: (callback: Listener) => hub.on('app:openServer', callback),
+        // 바탕화면 오버레이가 고른 앱 탭 `{route}` (overlay_action open_app)
+        onOpenRoute: (callback: Listener) => hub.on('app:openRoute', callback),
         closeResponse: (choice: string) => send('app_close_response', { choice }),
         onStatusUpdate: (callback: Listener) => hub.on('status:update', callback),
         daemonStatus: () => invoke('daemon_status'),
@@ -1247,6 +1273,23 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         trayAction: (action: string) => invoke('tray_action', { action }),
         // 잰 내용 높이(px)에 맞춰 셸이 팝업을 아이콘 옆에 놓고 보인다
         trayPopupFit: (height: number) => invoke('tray_popup_fit', { height }),
+
+        // ── 바탕화면 오버레이 (익스텐션 slot Desktop.overlay, 셸 overlay.rs) ──
+        // 잰 내용 크기(px)에 맞춰 셸이 아래 가운데 점을 지키며 창 크기를 맞추고 보인다
+        overlayFit: (width: number, height: number) => invoke('overlay_fit', { width, height }),
+        // 우클릭 메뉴를 OS 메뉴로 띄운다. 고른 항목 id는 onOverlayMenu로 온다
+        overlayMenu: (items: OverlayMenuItem[]) => invoke('overlay_menu', { items }),
+        onOverlayMenu: (callback: Listener) => hub.on('overlay:menu', callback),
+        // open_app | hide
+        overlayAction: (action: string, route?: string) =>
+            invoke('overlay_action', route ? { action, route } : { action }),
+        // 오버레이 창을 끌어 옮긴다 (누른 채 움직이기 시작했을 때)
+        overlayStartDrag: () => invoke('plugin:window|start_dragging', { label: 'desktop-overlay' }),
+        // 설정 화면: {enabled, available, supported}와 켜기 스위치
+        overlayState: () => invoke('overlay_state'),
+        overlaySetEnabled: (enabled: boolean) => invoke('overlay_set_enabled', { enabled }),
+        // 익스텐션을 켜고 끄거나 설치·삭제한 뒤: 오버레이를 띄울지 셸이 다시 본다
+        overlaySync: () => invoke('overlay_sync'),
 
         // ── 창 제어 (호출한 창에 적용) ──
         minimizeWindow,

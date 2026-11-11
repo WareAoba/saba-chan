@@ -44,6 +44,9 @@
     "allow-window-close",
     "allow-window-set-background",
     "allow-window-set-backdrop",
-    "allow-sandbox-consent-allow"
+    "allow-sandbox-consent-allow",
+    "allow-overlay-state",
+    "allow-overlay-set-enabled",
+    "allow-overlay-sync"
   ]
 }

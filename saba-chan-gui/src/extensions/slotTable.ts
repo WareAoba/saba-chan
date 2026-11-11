@@ -7,7 +7,7 @@
  */
 import type { ExtensionListItem } from '../types/daemon';
 
-export type SlotSurface = 'main' | 'tray';
+export type SlotSurface = 'main' | 'tray' | 'desktop';
 export type SlotKind = 'inline' | 'page' | 'button' | 'card';
 
 export const SLOT_TABLE = {
@@ -26,6 +26,8 @@ export const SLOT_TABLE = {
     'AddServer.options': { surface: 'main', kind: 'inline' },
     'AddServer.method': { surface: 'main', kind: 'card' },
     'TrayPopup.section': { surface: 'tray', kind: 'inline' },
+    // 바탕화면 오버레이 창 (셸 overlay.rs): 이 slot을 선언한 익스텐션이 켜져 있으면 셸이 투명 창을 띄운다
+    'Desktop.overlay': { surface: 'desktop', kind: 'inline' },
 } as const satisfies Record<string, { surface: SlotSurface; kind: SlotKind }>;
 
 export type SlotId = keyof typeof SLOT_TABLE;
@@ -57,7 +59,7 @@ export function declaredSlots(ext: Pick<ExtensionListItem, 'gui'>): Record<strin
 }
 
 /**
- * 이 창에서 번들을 읽을 익스텐션인가. 트레이 팝업은 그 창의 slot을 선언한 것만 읽는다(열 때마다 새로 뜨는 창이라 빨라야 한다).
+ * 이 창에서 번들을 읽을 익스텐션인가. 트레이 팝업·바탕화면 오버레이는 그 창의 slot을 선언한 것만 읽는다(작은 창이라 가벼워야 한다).
  * 메인 창은 메인 slot을 선언했거나 아무 slot도 선언하지 않은 것을 읽는다(선언 없는 번들도 예전처럼 읽고 경고만 남긴다)
  */
 export function loadsOn(ext: Pick<ExtensionListItem, 'gui'>, surface: SlotSurface): boolean {
