@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useSettingsStore } from '../../stores/useSettingsStore';
-import type { ToastType } from '../../types/global';
+import type { ToastOptions, ToastType } from '../../types/global';
 import './Toast.css';
 
 // 알림 표시 시간 설정 (toastDuration)에 따른 배율. 사라지지 않는 토스트(0)는 그대로
@@ -15,6 +15,7 @@ interface ToastItem {
     type: ToastType;
     isStatus: boolean;
     icon?: ReactNode;
+    action?: ToastOptions['action'];
 }
 
 function Toast() {
@@ -77,7 +78,7 @@ function Toast() {
         // options.source = 'saba-chan' | 서버 모듈 이름
         window.showToast = (message, type = 'info', duration = 3000, options = {}) => {
             const id = Date.now() + Math.random();
-            const newToast = { id, message, type, isStatus: false };
+            const newToast = { id, message, type, isStatus: false, action: options.action };
             setToasts((prev) => [...prev, newToast]);
 
             // isNotice가 true이면 알림 저장소에도 추가
@@ -136,6 +137,19 @@ function Toast() {
                 >
                     {toast.icon && <span className="toast-icon">{toast.icon}</span>}
                     <span className="toast-message">{toast.message}</span>
+                    {toast.action && (
+                        <button
+                            type="button"
+                            className="btn btn-sm btn-ghost toast-action"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                toast.action?.onClick();
+                                removeToast(toast.id);
+                            }}
+                        >
+                            {toast.action.label}
+                        </button>
+                    )}
                 </div>
             ))}
         </div>

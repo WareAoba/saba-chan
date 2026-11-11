@@ -15,6 +15,8 @@ export interface ToastOptions {
     source?: string;
     /** 알림 모음에 남길 때 토스트 문구 대신 쓸 칸 (서버별로 묶을 짧은 줄·이유·서버 id) */
     notice?: Partial<NoticeInput>;
+    /** 알림 안의 버튼 하나 (예: 되돌리기). 누르면 실행하고 알림을 닫는다 */
+    action?: { label: string; onClick: () => void };
 }
 
 /** 알림 모음 한 칸 (components/Modals/NoticeModal) */

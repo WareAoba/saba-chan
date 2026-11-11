@@ -90,8 +90,8 @@ export function DataTransferSection() {
     const inst: ApiBody = summary?.instances || {};
 
     return (
-        <div className="data-transfer">
-            <h4 className="data-transfer-title">
+        <section className="saba-card">
+            <h4 className="saba-card-title">
                 <Icon name="package" size="sm" /> {t('data_transfer.title')}
             </h4>
             <p className="setting-description">{t('data_transfer.description')}</p>
@@ -104,7 +104,7 @@ export function DataTransferSection() {
                 <SabaToggle checked={secrets} onChange={setSecrets} aria-label={t('data_transfer.secrets_label')} />
             </div>
 
-            <div className="data-transfer-actions">
+            <div className="saba-card-actions">
                 <button type="button" className="btn btn-primary" onClick={doExport} disabled={busy !== null}>
                     {busy === 'export' ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}{' '}
                     {t('data_transfer.export')}
@@ -196,7 +196,7 @@ export function DataTransferSection() {
                                     aria-label={t('data_transfer.overwrite_label')}
                                 />
                             </div>
-                            <div className="data-transfer-actions">
+                            <div className="saba-card-actions">
                                 <button
                                     type="button"
                                     className="btn btn-ghost"
@@ -225,6 +225,6 @@ export function DataTransferSection() {
                     <Icon name="alertCircle" size="sm" /> {error}
                 </div>
             )}
-        </div>
+        </section>
     );
 }

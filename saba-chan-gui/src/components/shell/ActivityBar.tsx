@@ -6,6 +6,7 @@ import type { ApiBody } from '../../types/daemon';
 import { type AuditEntry as AuditRecord, auditWhat } from '../../utils/audit';
 import { auditEntryOf, eventsAvailable, subscribeDaemonEvents } from '../../utils/daemonEvents';
 import { Icon } from '../Icon';
+import { Popover } from '../ui/Popover';
 
 /** GET /api/daemon/console 한 줄 */
 interface ConsoleLine {
@@ -137,7 +138,6 @@ function DaemonConsole() {
 /** 방금 실행된 명령을 줄에 보여 주는 시간. 지나면 기본 문구로 돌아간다 */
 export const RECENT_SHOW_MS = 6000;
 const SLIDE_MS = 360;
-const CONSOLE_CLOSE_MS = 180;
 
 /** 내용이 바뀔 때 위로 밀려 올라가며 바뀌고, 새 글자 위로 빛이 한 번 지나간다 */
 function Ticker({ id, children }: { id: string; children: ReactNode }) {
@@ -178,7 +178,6 @@ export function ActivityBar() {
     const [last, setLast] = useState<AuditEntry | null | undefined>(undefined); // undefined = 아직 모름, null = 기록 없음
     const [now, setNow] = useState(() => Date.now());
     const [open, setOpen] = useState(false);
-    const [closing, setClosing] = useState(false);
     const [recent, setRecent] = useState(false);
     const canExpand = daemonConsoleAvailable();
     const barRef = useRef<HTMLElement>(null);
@@ -234,28 +233,7 @@ export function ActivityBar() {
         return () => clearTimeout(timer);
     }, [lastKey]);
 
-    const closeConsole = () => {
-        setClosing(true);
-        setTimeout(() => {
-            setOpen(false);
-            setClosing(false);
-        }, CONSOLE_CLOSE_MS);
-    };
-    const toggle = () => (open && !closing ? closeConsole() : setOpen(true));
-
-    // 콘솔이 떠 있으면 Esc나 바깥 누르기로 닫는다
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 열림 상태가 바뀔 때만 건다
-    useEffect(() => {
-        if (!open || closing) return;
-        const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeConsole();
-        const onDown = (e: MouseEvent) => barRef.current && !barRef.current.contains(e.target as Node) && closeConsole();
-        document.addEventListener('keydown', onKey);
-        document.addEventListener('mousedown', onDown);
-        return () => {
-            document.removeEventListener('keydown', onKey);
-            document.removeEventListener('mousedown', onDown);
-        };
-    }, [open, closing]);
+    const toggle = () => setOpen(!open);
 
     if (last === undefined) return null;
 
@@ -277,15 +255,24 @@ export function ActivityBar() {
         </Ticker>
     );
 
-    const shown = open && !closing;
+    const shown = open;
 
     return (
         <footer className={clsx('activity-bar', shown && 'open')} ref={barRef}>
-            {open && (
-                <div className={clsx('activity-console-pop', { closing })}>
-                    <DaemonConsole />
-                </div>
-            )}
+            {/* 바 전체 폭에 맞춰 위로 띄운다. Esc·바깥 누르기·닫힘 움직임은 Popover(Radix)가 맡는다 */}
+            <Popover
+                open={open}
+                onOpenChange={setOpen}
+                anchorRef={barRef}
+                side="top"
+                align="center"
+                sideOffset={8}
+                label={t('activity.expand')}
+                className="activity-console-pop"
+                autoFocus={false}
+            >
+                <DaemonConsole />
+            </Popover>
             {canExpand ? (
                 <button
                     type="button"

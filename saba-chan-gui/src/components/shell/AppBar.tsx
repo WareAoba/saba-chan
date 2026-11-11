@@ -1,10 +1,11 @@
 import clsx from 'clsx';
-import type { ComponentProps, CSSProperties } from 'react';
+import { type ComponentProps, type CSSProperties, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import BackgroundModal from '../Modals/BackgroundModal';
 import NoticeModal from '../Modals/NoticeModal';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
+import { Popover } from '../ui/Popover';
 import { auditAvailable } from '../servers/AuditTab';
 import { ConnectionRail } from './ConnectionRail';
 import { DaemonSwitcher } from './DaemonSwitcher';
@@ -75,6 +76,8 @@ export function AppBar({
 }: AppBarProps) {
     const { t, i18n } = useTranslation('gui');
     const wordmark = wordmarkFor(i18n.language);
+    const railRef = useRef<HTMLDivElement>(null);
+    const bellRef = useRef<HTMLDivElement>(null);
 
     return (
         <header className="appbar" data-tauri-drag-region>
@@ -121,7 +124,7 @@ export function AppBar({
                     </span>
                 )}
                 {typeof window.api?.daemonTarget === 'function' && <DaemonSwitcher />}
-                <div className="popover-anchor">
+                <div className="popover-anchor" ref={railRef}>
                     <ConnectionRail
                         daemonStatus={daemonStatus}
                         botStatus={discordStatus}
@@ -129,9 +132,18 @@ export function AppBar({
                         daemonExpanded={showDaemon}
                         onBotClick={() => onNavigate('discord')}
                     />
-                    <BackgroundModal {...daemonProps} isOpen={showDaemon} />
+                    <Popover
+                        open={showDaemon}
+                        onOpenChange={(o) => !o && daemonProps.onClose()}
+                        anchorRef={railRef}
+                        label={t('background_modal.title')}
+                        className="bare"
+                        autoFocus={false}
+                    >
+                        <BackgroundModal {...daemonProps} isOpen />
+                    </Popover>
                 </div>
-                <div className="popover-anchor">
+                <div className="popover-anchor" ref={bellRef}>
                     <button
                         type="button"
                         className="icon-btn"
@@ -143,7 +155,16 @@ export function AppBar({
                         <Icon name="bell" size="sm" />
                         {unreadCount > 0 && <span className="badge-count">{unreadCount > 9 ? '9+' : unreadCount}</span>}
                     </button>
-                    <NoticeModal {...noticeProps} isOpen={showNotice} />
+                    <Popover
+                        open={showNotice}
+                        onOpenChange={(o) => !o && noticeProps.onClose()}
+                        anchorRef={bellRef}
+                        label={t('notice_modal.tooltip')}
+                        className="bare"
+                        autoFocus={false}
+                    >
+                        <NoticeModal {...noticeProps} isOpen />
+                    </Popover>
                 </div>
                 <ExtensionAppBarActions />
                 <SwitchToCliButton />

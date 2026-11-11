@@ -178,6 +178,11 @@
     "close_action_ask": "每次询问",
     "close_action_tray": "仅退出界面（守护进程继续运行）",
     "close_action_quit": "完全退出",
+    "system_monitor_label": "系统监视器",
+    "system_monitor_description": "服务器页面的电脑占用图表。关闭后不再获取数据。浮动窗口可在应用内拖动",
+    "system_monitor_off": "关闭",
+    "system_monitor_docked": "固定",
+    "system_monitor_floating": "浮动",
     "toast_duration_label": "通知显示时长",
     "toast_duration_description": "应用内通知在屏幕上停留的时间。",
     "toast_duration_short": "短",
@@ -1808,7 +1813,10 @@
     "ports_server": "服务器",
     "ports_port": "端口",
     "ports_rx": "接收",
-    "ports_tx": "发送"
+    "ports_tx": "发送",
+    "hide": "隐藏监视器",
+    "hidden_toast": "已隐藏系统监视器。可在 设置 → 常规 中重新开启",
+    "undo": "撤销"
   },
   "net_trace": {
     "label": "按服务器·端口统计网络",
@@ -2358,7 +2366,6 @@
     "enabled": "允许远程连接",
     "enabled_description": "你的其他电脑通过加密连接直接连到本守护进程。",
     "port": "端口",
-    "save": "保存",
     "status_off": "关闭",
     "status_listening": "正在端口 {{port}} 监听",
     "status_published": "已把本机告诉你的其他电脑",

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
+import { Dialog } from '../ui/Dialog';
+import { Popover } from '../ui/Popover';
 import { AppBarPill } from './AppBarPill';
 
 /** 업데이트가 진행 중이면 자주, 할 일이 없으면 드물게 읽는다 (이 PC 데몬에 묻는 로컬 요청) */
@@ -173,22 +174,6 @@ export function UpdatePill() {
         if (acked.current && stateRef.current === 'done') setDismissed(true);
     };
 
-    // 팝오버 밖을 누르거나 Esc면 닫는다
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 열려 있는 동안만 듣는다
-    useEffect(() => {
-        if (!open) return undefined;
-        const onClick = (e: MouseEvent) => {
-            if (!anchor.current?.contains(e.target as Node)) close();
-        };
-        const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-        document.addEventListener('click', onClick);
-        document.addEventListener('keydown', onKey);
-        return () => {
-            document.removeEventListener('click', onClick);
-            document.removeEventListener('keydown', onKey);
-        };
-    }, [open]);
-
     // 사라진 뒤에는 열린 것도 닫는다
     useEffect(() => {
         if (!visible) {
@@ -257,8 +242,15 @@ export function UpdatePill() {
         );
     }
 
-    const popover = open && state !== 'ready' && (
-        <div className="update-pill-pop" role="dialog" aria-label={t(LABEL_KEYS[state] || 'update_pill.applying')}>
+    const popover = (
+        <Popover
+            open={open && state !== 'ready'}
+            onOpenChange={(o) => !o && close()}
+            anchorRef={anchor}
+            label={t(LABEL_KEYS[state] || 'update_pill.applying')}
+            className="update-pill-pop"
+            autoFocus={false}
+        >
             <div>
                 <p className="update-pill-version">{title}</p>
                 {subs.map((s, i) => (
@@ -274,37 +266,31 @@ export function UpdatePill() {
                     {t('update_pill.notes_more')}
                 </button>
             )}
-        </div>
+        </Popover>
     );
 
-    const dialog =
-        asking &&
-        createPortal(
-            <div className="modal-overlay" onClick={() => setAsking(false)}>
-                <div
-                    className="update-pill-dialog"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="update-pill-dialog-title"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <p className="update-pill-title" id="update-pill-dialog-title">
-                        {t('update_pill.restart_title', { version })}
-                    </p>
-                    {notesList(lines)}
-                    <p className="update-pill-note">{t('update_pill.restart_note')}</p>
-                    <div className="update-pill-buttons">
-                        <button type="button" className="btn" onClick={() => setAsking(false)}>
-                            {t('update_pill.later')}
-                        </button>
-                        <button type="button" className="btn btn-primary" onClick={restartNow}>
-                            {t('update_pill.restart_now')}
-                        </button>
-                    </div>
-                </div>
-            </div>,
-            document.body,
-        );
+    const dialog = (
+        <Dialog
+            open={asking}
+            onOpenChange={setAsking}
+            size="sm"
+            className="update-pill-dialog"
+            title={t('update_pill.restart_title', { version })}
+            footer={
+                <>
+                    <button type="button" className="btn" onClick={() => setAsking(false)}>
+                        {t('update_pill.later')}
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={restartNow}>
+                        {t('update_pill.restart_now')}
+                    </button>
+                </>
+            }
+        >
+            {notesList(lines)}
+            <p className="update-pill-note">{t('update_pill.restart_note')}</p>
+        </Dialog>
+    );
 
     return (
         <>

@@ -178,6 +178,11 @@
     "close_action_ask": "Demander à chaque fois",
     "close_action_tray": "Quitter l’interface seulement (le daemon continue)",
     "close_action_quit": "Quitter complètement",
+    "system_monitor_label": "Moniteur système",
+    "system_monitor_description": "Graphiques d'utilisation du PC sur la page des serveurs. Désactivé, rien n'est interrogé. La fenêtre flottante se déplace dans l'app",
+    "system_monitor_off": "Désactivé",
+    "system_monitor_docked": "Ancré",
+    "system_monitor_floating": "Flottant",
     "toast_duration_label": "Durée des notifications",
     "toast_duration_description": "Durée d’affichage des notifications dans l’application.",
     "toast_duration_short": "Courte",
@@ -1808,7 +1813,10 @@
     "ports_server": "Serveur",
     "ports_port": "Port",
     "ports_rx": "Reçu",
-    "ports_tx": "Envoyé"
+    "ports_tx": "Envoyé",
+    "hide": "Masquer le moniteur",
+    "hidden_toast": "Moniteur système masqué. Réactivez-le dans Paramètres → Général",
+    "undo": "Annuler"
   },
   "net_trace": {
     "label": "Réseau par serveur et par port",
@@ -2358,7 +2366,6 @@
     "enabled": "Autoriser les connexions distantes",
     "enabled_description": "Vos autres PC se connectent directement à ce daemon par une connexion chiffrée.",
     "port": "Port",
-    "save": "Enregistrer",
     "status_off": "Désactivé",
     "status_listening": "À l'écoute sur le port {{port}}",
     "status_published": "Vos autres PC connaissent maintenant ce PC",

@@ -128,3 +128,8 @@ if (typeof window !== 'undefined') {
     global.window.showToast = vi.fn();
     global.window.showStatus = vi.fn();
 }
+
+// jsdom에 없는 요소 메서드 (Radix Select가 연 목록에서 고른 항목으로 스크롤하고 포인터를 잡는다)
+Element.prototype.scrollIntoView ??= () => {};
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.releasePointerCapture ??= () => {};

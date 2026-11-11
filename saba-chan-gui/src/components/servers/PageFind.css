@@ -82,7 +82,7 @@
     cursor: pointer;
 }
 .page-find button:hover:not(:disabled) {
-    background: var(--hover-bg);
+    background: var(--bg-3);
     color: var(--text-1);
 }
 .page-find button:disabled {
