@@ -167,6 +167,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
     const minimizeWindow = () => send('window_minimize');
     const maximizeWindow = () => send('window_maximize');
     const closeWindow = () => send('window_close');
+    // 이 창이 최대화되어 있는지 (창 버튼이 최대화·복원 아이콘을 고른다)
+    const windowIsMaximized = () => Promise.resolve(invoke('window_is_maximized')).then((v) => v === true);
     // 테마 바탕색(#rrggbb)을 창 바탕에 칠한다 (크기를 바꾸는 중 흰 바탕이 비치지 않게)
     const windowSetBackground = (color: string) => send('window_set_background', { color });
     // 창 바탕 반투명을 이 창에 적용하고, 이 컴퓨터에서 쓸 수 있는 것과 켜졌는지를 받는다
@@ -428,12 +430,12 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         instanceDismissProvision: (name: string) => call('delete', `/api/provision-progress/${encodeURIComponent(name)}`, undefined, 3000),
         instanceCheckUpdate: async (id: string) => {
             try {
-                // SteamCMD app_info_print는 느릴 수 있다
-                return (await get(`/api/instance/${encodeURIComponent(id)}/check-update`, { timeout: 30000 })).data;
+                // SteamCMD app_info_print는 느릴 수 있다: 데몬의 hook 한도(120초)보다 조금 더 기다린다
+                return (await get(`/api/instance/${encodeURIComponent(id)}/check-update`, { timeout: 150000 })).data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 console.error('instance:checkUpdate error:', error.message);
-                return { update_available: false, error: error.message };
+                return { update_available: false, reason: 'check_failed', error: error.message };
             }
         },
         instanceApplyUpdate: (id: string) => call('post', `/api/instance/${encodeURIComponent(id)}/apply-update`, {}, 10000),
@@ -768,6 +770,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             return call('get', `/api/daemon/console${qs}`, undefined, 10000);
         },
         consolePopin: (instanceId: string) => invoke('console_popin', { instanceId }),
+        // PIP를 닫는다. reopen: 다음에 다시 띄울지 (사용자가 닫으면 false, 서버가 꺼져 닫으면 true)
+        consolePopoutClose: (instanceId: string, reopen: boolean) => invoke('console_popout_close', { instanceId, reopen }),
+        // 다시 띄울 PIP의 instanceId (서버가 켜지면 메인 창이 띄운다)
+        consolePopoutSaved: () => invoke('console_popout_saved'),
         consoleToggleAlwaysOnTop: (instanceId: string, pinned: boolean) =>
             invoke('console_toggle_always_on_top', { instanceId, pinned }),
         // 셸 이벤트 구독은 그 구독만 떼는 함수를 돌려준다 (다른 화면의 구독은 남는다)
@@ -1295,6 +1301,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         minimizeWindow,
         maximizeWindow,
         closeWindow,
+        windowIsMaximized,
         windowSetBackground,
         windowSetBackdrop,
     };

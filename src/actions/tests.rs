@@ -1604,13 +1604,15 @@ async fn an_mcp_owner_reaches_what_the_app_screens_do() {
         "extension.install",
         "server.update.check",
         "server.update.apply",
+        "server.update.cancel",
         "server.diagnose",
         "server.console.send",
         "backup.delete",
     ] {
         assert!(ids.contains(&want), "{want} missing from the app catalog");
-        // 디스코드·챗봇 표면은 넓히지 않는다
-        assert!(!find(want).unwrap().surfaces.iter().any(|s| matches!(s, Discord | Chatbot)), "{want}");
+        // 디스코드·챗봇 표면은 넓히지 않는다. 게임 서버 업데이트만 디스코드에도 연다 (사용자 결정 2026-11-10, 챗봇은 아니다)
+        let discord_ok = want.starts_with("server.update.");
+        assert!(!find(want).unwrap().surfaces.iter().any(|s| matches!(s, Chatbot) || (matches!(s, Discord) && !discord_ok)), "{want}");
     }
 
     let got = query(&state, "instance.get", Some(&id), &json!({}), &owner).await.unwrap();

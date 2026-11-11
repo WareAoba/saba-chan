@@ -1,10 +1,13 @@
+import clsx from 'clsx';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ConsoleEntry } from '../../stores/useConsoleStore';
 import type { Server } from '../../stores/useServerStore';
 import type { HighlightRule } from '../../types/daemon';
 import type { CommandField } from '../../utils/commandRisk';
+import { STATUS_TONE } from '../../utils/serverView';
 import { Icon } from '../Icon';
+import { WindowControls } from '../shell/AppBar';
 import { ServerConsole } from './ServerConsole';
 
 interface PopoutConsoleProps {
@@ -56,53 +59,60 @@ export function PopoutConsole({
         }
     }, [pinned, popoutParams.instanceId]);
 
+    // 사용자가 닫으면 다음에 다시 띄우지 않는다 (서버가 꺼져 닫힐 때·앱을 끌 때는 기억한다)
+    const handleClose = useCallback(() => {
+        const close = window.api?.consolePopoutClose;
+        if (typeof close !== 'function') return window.api?.closeWindow();
+        Promise.resolve(close(popoutParams.instanceId, false)).catch(() => window.api?.closeWindow());
+    }, [popoutParams.instanceId]);
+
+    const name = server?.name || popoutParams.name;
+    const status = server?.status || 'stopped';
+
     return (
         <div className="App console-popout-app">
-            <div className="console-popout-titlebar" data-tauri-drag-region>
-                <span className="console-popout-titlebar-title" data-tauri-drag-region>
-                    <Icon name="terminal" size="sm" />
-                    {server?.name || popoutParams.name}
-                </span>
-                <div className="console-popout-titlebar-controls">
+            <header className="appbar console-popout-titlebar" data-tauri-drag-region>
+                <div className="pip-pill pip-title" data-tauri-drag-region>
+                    <span
+                        className={clsx('pip-dot', `tone-${STATUS_TONE[status] ?? 'idle'}`, {
+                            pulse: status === 'starting' || status === 'stopping',
+                        })}
+                        data-status={status}
+                        aria-hidden="true"
+                        data-tauri-drag-region
+                    />
+                    <span className="pip-name" data-tauri-drag-region>
+                        {name}
+                    </span>
+                    <span className="pip-kind" data-tauri-drag-region>
+                        <Icon name="terminal" size={12} />
+                        {t('console.popout_kind')}
+                    </span>
+                </div>
+                <div className="appbar-spacer" data-tauri-drag-region />
+                <div className="pip-tools">
                     <button
                         type="button"
-                        className="console-popout-titlebar-btn"
+                        className="pip-tool"
                         onClick={handlePopin}
-                        data-tooltip={t('console.popin')}
-                        aria-label={t('console.popin')}
+                        data-tooltip={t('console.popin', { name })}
+                        aria-label={t('console.popin', { name })}
                     >
-                        <Icon name="externalLinkIn" size="sm" />
+                        <Icon name="externalLinkIn" size={14} />
                     </button>
                     <button
                         type="button"
-                        className={`console-popout-titlebar-btn${pinned ? ' console-popout-titlebar-pinned' : ''}`}
+                        className={`pip-tool${pinned ? ' active' : ''}`}
                         onClick={handleTogglePin}
                         data-tooltip={pinned ? t('console.unpin') : t('console.pin')}
                         aria-label={pinned ? t('console.unpin') : t('console.pin')}
                         aria-pressed={pinned}
                     >
-                        <Icon name="pin" size="sm" />
-                    </button>
-                    <button
-                        type="button"
-                        className="console-popout-titlebar-btn console-popout-window-btn"
-                        onClick={() => window.api?.minimizeWindow()}
-                        data-tooltip={t('title_bar.minimize')}
-                        aria-label={t('title_bar.minimize')}
-                    >
-                        <Icon name="minus" size="sm" />
-                    </button>
-                    <button
-                        type="button"
-                        className="console-popout-titlebar-btn console-popout-titlebar-close console-popout-window-btn"
-                        onClick={() => window.api?.closeWindow()}
-                        data-tooltip={t('title_bar.close')}
-                        aria-label={t('title_bar.close')}
-                    >
-                        <Icon name="close" size="sm" />
+                        <Icon name="pin" size={14} />
                     </button>
                 </div>
-            </div>
+                <WindowControls onClose={handleClose} />
+            </header>
             <div className="console-popout-body">
                 <ServerConsole
                     server={server || ({ id: popoutParams.instanceId, name: popoutParams.name } as Server)}

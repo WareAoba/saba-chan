@@ -121,6 +121,7 @@
   "schedule": {
     "restart_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動。",
     "update_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動以進行更新。",
+    "update_cancelled": "已取消預定的更新，伺服器繼續運行。",
     "stop_warning": "伺服器將在 {{minutes}} 分鐘後停止。"
   },
   "provision": {
@@ -256,10 +257,19 @@
       },
       "update": {
         "check": {
-          "title": "檢查遊戲伺服器更新"
+          "title": "檢查遊戲伺服器更新",
+          "name": "檢查更新",
+          "description": "檢查 Steam 上是否有新的遊戲伺服器版本"
         },
         "apply": {
-          "title": "更新遊戲伺服器"
+          "title": "更新遊戲伺服器",
+          "name": "更新",
+          "description": "更新遊戲伺服器。執行中時會在遊戲內提前 5 分鐘通知，停止、更新後再啟動"
+        },
+        "cancel": {
+          "title": "取消預告中的更新",
+          "name": "取消更新",
+          "description": "取消仍在預告中的遊戲伺服器更新（停止伺服器之前）"
         }
       },
       "diagnose": {
@@ -462,6 +472,17 @@
         "router": "電腦防火牆已允許此連接埠。請在路由器設定中把此連接埠轉發到這台電腦，然後再檢查。",
         "cgnat": "電信業者讓多戶共用一個公用 IP，無法透過連接埠轉發開放。請向業者申請公用 IP，或使用 Tailscale 等 VPN。",
         "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。"
+      },
+      "server_update": {
+        "available": "有新版本（版本 {{local}} → {{remote}}）。",
+        "latest": "已是最新（版本 {{build}}）。",
+        "check_failed": "無法檢查更新：{{error}}",
+        "unsupported": "Saba-chan 不會更新此伺服器（手動安裝的伺服器）。",
+        "unchecked": "無法檢查此伺服器的更新。",
+        "started": "已開始更新，完成後會通知你。",
+        "cancelled": "已取消預告中的更新，伺服器繼續運行。",
+        "scheduled": "將在遊戲內提前 {{minutes}} 分鐘通知，然後儲存、停止、更新並重新啟動。",
+        "players": "目前有 {{count}} 人在線。"
       }
     }
   },

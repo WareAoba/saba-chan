@@ -375,10 +375,22 @@
           "markdownDescription": "Enables the console_popout command without any pre-configured scope."
         },
         {
+          "description": "Enables the console_popout_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-console-popout-close",
+          "markdownDescription": "Enables the console_popout_close command without any pre-configured scope."
+        },
+        {
           "description": "Enables the console_popout_list command without any pre-configured scope.",
           "type": "string",
           "const": "allow-console-popout-list",
           "markdownDescription": "Enables the console_popout_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the console_popout_saved command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-console-popout-saved",
+          "markdownDescription": "Enables the console_popout_saved command without any pre-configured scope."
         },
         {
           "description": "Enables the console_toggle_always_on_top command without any pre-configured scope.",
@@ -579,6 +591,12 @@
           "markdownDescription": "Enables the window_close command without any pre-configured scope."
         },
         {
+          "description": "Enables the window_is_maximized command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-window-is-maximized",
+          "markdownDescription": "Enables the window_is_maximized command without any pre-configured scope."
+        },
+        {
           "description": "Enables the window_maximize command without any pre-configured scope.",
           "type": "string",
           "const": "allow-window-maximize",
@@ -633,10 +651,22 @@
           "markdownDescription": "Denies the console_popout command without any pre-configured scope."
         },
         {
+          "description": "Denies the console_popout_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-console-popout-close",
+          "markdownDescription": "Denies the console_popout_close command without any pre-configured scope."
+        },
+        {
           "description": "Denies the console_popout_list command without any pre-configured scope.",
           "type": "string",
           "const": "deny-console-popout-list",
           "markdownDescription": "Denies the console_popout_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the console_popout_saved command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-console-popout-saved",
+          "markdownDescription": "Denies the console_popout_saved command without any pre-configured scope."
         },
         {
           "description": "Denies the console_toggle_always_on_top command without any pre-configured scope.",
@@ -835,6 +865,12 @@
           "type": "string",
           "const": "deny-window-close",
           "markdownDescription": "Denies the window_close command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the window_is_maximized command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-window-is-maximized",
+          "markdownDescription": "Denies the window_is_maximized command without any pre-configured scope."
         },
         {
           "description": "Denies the window_maximize command without any pre-configured scope.",

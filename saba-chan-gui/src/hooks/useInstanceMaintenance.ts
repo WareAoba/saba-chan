@@ -15,6 +15,8 @@ interface Maintenance {
     provisionProgress: ApiBody | null;
     cooked: boolean;
     updateInfo: ApiBody | null;
+    /** 마지막 업데이트 확인이 실패한 이유 (`reason: check_failed`). 성공하면 null */
+    updateCheckError: string | null;
     updatingServer: boolean;
 }
 
@@ -30,7 +32,7 @@ export const useMaintenanceStore = create<MaintenanceState>()((set) => ({
     patch: (id, partial) => set((state) => ({ byId: { ...state.byId, [id]: { ...state.byId[id], ...partial } } })),
 }));
 
-const EMPTY: Maintenance = { provisionProgress: null, cooked: false, updateInfo: null, updatingServer: false };
+const EMPTY: Maintenance = { provisionProgress: null, cooked: false, updateInfo: null, updateCheckError: null, updatingServer: false };
 
 /** 읽기 전용: 한 인스턴스의 관리 상태 */
 export function useMaintenanceOf(id: string) {
@@ -53,7 +55,12 @@ export function useInstanceMaintenance(server: Server, module: ModuleInfo | unde
             try {
                 const result = await window.api.instanceCheckUpdate(server.id);
                 if (cancelled || !result) return;
-                patch(server.id, { updateInfo: result.update_available ? result : null });
+                // 확인 실패는 "업데이트 없음"과 다르다: 줄에 경고로 보인다 (예전에 찾은 업데이트 표시는 그대로 둔다)
+                if (result.reason === 'check_failed') {
+                    patch(server.id, { updateCheckError: String(result.error || '') });
+                    return;
+                }
+                patch(server.id, { updateInfo: result.update_available ? result : null, updateCheckError: null });
             } catch {
                 // 백그라운드 확인 — 실패는 무시
             }

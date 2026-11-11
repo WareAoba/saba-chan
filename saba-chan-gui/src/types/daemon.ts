@@ -81,6 +81,8 @@ export interface ServerInfo {
     extra_args: string[];
     revision: string;
     memory_limit_mb: number | null;
+    /** 게임 서버 자동 업데이트 (설치 방식 익스텐션으로 설치한 서버만, PC에서만 바꾼다) */
+    auto_update?: boolean;
     game_chat: GameChatMode;
     game_chat_keyword: string;
     game_chat_supported: boolean;
@@ -396,6 +398,7 @@ export interface GuiSettings {
     consoleTimestampDate: boolean;
     /** 콘솔 긴 줄 접기 */
     consoleWrap: boolean;
+    consoleGlass: boolean;
     /** 맨 아래를 볼 때 새 줄 따라가기 */
     consoleAutoScroll: boolean;
     /** auto · light · dark. 예전 버전은 저장하지 않았다 */
