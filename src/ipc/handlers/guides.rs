@@ -128,7 +128,7 @@ fn spawn_sync(state: &IPCServer) {
         let dir = crate::guides::installed_dir();
         match tokio::task::spawn_blocking(move || crate::guides::install(&dir, &body.guides)).await {
             Ok(Ok(n)) if n > 0 => {
-                tracing::info!("Received {} new or updated guide(s)", n);
+                tracing::info!("Guides changed: {} added, updated or removed", n);
                 // 열린 앱이 목록을 다시 읽게 (웹 원격에는 보내지 않는 종류)
                 crate::events::emit("guides.updated", json!({ "count": n }));
             }

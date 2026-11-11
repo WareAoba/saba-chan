@@ -189,7 +189,7 @@ fn valid_lang(lang: &str) -> bool {
 }
 
 /// 받은 가이드로 `dir`(받은 가이드 폴더)을 서버와 같게 맞춘다: 맞는 가이드만 쓰고(잘못된 판이면 있던 사본을 둔다. 이 앱 판에 아직 없는 화면을 짚는 것도
-/// 앱을 올리면 보이게 둔다), 서버가 더는 주지 않는 것은 지운다. 쓴 수를 돌려준다
+/// 앱을 올리면 보이게 둔다), 서버가 더는 주지 않는 것은 지운다. 바뀐 수(쓰거나 지운 가이드)를 돌려준다
 pub fn install(dir: &Path, served: &[Served]) -> std::io::Result<usize> {
     std::fs::create_dir_all(dir)?;
     let core = env!("CARGO_PKG_VERSION");
@@ -230,7 +230,10 @@ pub fn install(dir: &Path, served: &[Served]) -> std::io::Result<usize> {
     for entry in std::fs::read_dir(dir)?.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         if entry.path().is_dir() && !keep.contains(&name) {
-            let _ = std::fs::remove_dir_all(entry.path());
+            // 쓰다 남은 임시 폴더(`.이름.tmp`)는 지우기만 한다
+            if std::fs::remove_dir_all(entry.path()).is_ok() && !name.starts_with('.') {
+                written += 1;
+            }
         }
     }
     Ok(written)
@@ -490,9 +493,9 @@ spot = "backup.create"
         let ids: Vec<String> = load(Some(dir.path())).into_iter().map(|g| g.id).collect();
         assert!(ids.contains(&"new-thing".to_string()));
         assert!(!dir.path().join("broken").exists() && !dir.path().join("lang").exists());
-        // 같은 것을 다시 받으면 쓰지 않고, 서버가 빼면 지운다
+        // 같은 것을 다시 받으면 쓰지 않고, 서버가 빼면 지운다 (지운 것도 바뀐 수에 센다: 열린 목록이 다시 읽게)
         assert_eq!(install(dir.path(), &first).unwrap(), 0);
-        assert_eq!(install(dir.path(), &[]).unwrap(), 0);
+        assert_eq!(install(dir.path(), &[]).unwrap(), 1);
         assert!(!dir.path().join("new-thing").exists());
     }
 
