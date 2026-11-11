@@ -132,6 +132,8 @@ pub fn emit<S: serde::Serialize + Clone>(app: &AppHandle, event: &str, payload: 
 }
 
 pub fn close(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    mac_panel::release(app);
     if let Some(w) = app.get_webview_window(OVERLAY) {
         let _ = w.destroy();
     }
@@ -154,6 +156,8 @@ fn open(app: &AppHandle) {
         .skip_taskbar(true)
         .always_on_top(true)
         .focused(false)
+        // 맥: 패널은 키 창이 되지 않으므로(아래 mac_panel) 앞에 없는 창의 첫 클릭도 웹뷰가 받게 한다
+        .accept_first_mouse(true)
         .visible(false);
     let win = match crate::window::lock_navigation(app, builder).build() {
         Ok(w) => w,
@@ -162,6 +166,8 @@ fn open(app: &AppHandle) {
             return;
         }
     };
+    #[cfg(target_os = "macos")]
+    mac_panel::adopt(&win);
     *ANCHOR.lock().unwrap() = None;
     *PLACED.lock().unwrap() = None;
     let handle = app.clone();
@@ -177,6 +183,53 @@ fn open(app: &AppHandle) {
             let _ = handle.emit_to(OVERLAY, "overlay:menu", choice);
         }
     });
+}
+
+/// 맥에서는 창을 NSPanel로 바꾼다(tauri-nspanel): 눌러도 사바쨩 앱이 앞으로 오지 않고(nonactivating),
+/// 키 입력을 가져가지 않으며(게임 중 키가 펫으로 가지 않게), 모든 데스크톱과 전체 화면 앱의 Space에도 보인다.
+/// 일반 창의 "항상 위"(NSFloatingWindowLevel)만으로는 한 Space에만 있고 누르면 앱이 활성화된다
+#[cfg(target_os = "macos")]
+mod mac_panel {
+    use tauri::{AppHandle, WebviewWindow};
+    use tauri_nspanel::{tauri_panel, CollectionBehavior, ManagerExt, Panel, PanelLevel, StyleMask, WebviewWindowExt};
+
+    tauri_panel! {
+        panel!(OverlayPanel {
+            config: {
+                can_become_key_window: false,
+                can_become_main_window: false,
+                is_floating_panel: true
+            }
+        })
+    }
+
+    pub fn adopt(win: &WebviewWindow) {
+        let panel = match win.to_panel::<OverlayPanel<tauri::Wry>>() {
+            Ok(p) => p,
+            Err(e) => return tracing::warn!("[Overlay] Could not make the overlay a panel: {}", e),
+        };
+        // 창은 Tauri가 닫으며 놓는다. AppKit이 따로 놓지 않게 한다
+        panel.set_released_when_closed(false);
+        panel.set_level(PanelLevel::Floating.value());
+        panel.set_collection_behavior(
+            CollectionBehavior::new()
+                .can_join_all_spaces()
+                .full_screen_auxiliary()
+                .stationary()
+                .ignores_cycle()
+                .value(),
+        );
+        if let Err(e) = panel.add_style_mask(StyleMask::empty().nonactivating_panel().value()) {
+            tracing::warn!("[Overlay] Could not make the overlay non-activating: {}", e);
+        }
+    }
+
+    /// 닫기 전에 원래 창으로 되돌린다 (Tauri가 자기 창으로 닫는다)
+    pub fn release(app: &AppHandle) {
+        if let Ok(panel) = app.get_webview_panel(super::OVERLAY) {
+            let _ = panel.to_window();
+        }
+    }
 }
 
 /// 그릴 것이 있는 크기인가. slot이 비면(번들을 못 읽었다 등) 내용 크기가 0이다
