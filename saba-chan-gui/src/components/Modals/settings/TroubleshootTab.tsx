@@ -134,7 +134,7 @@ export function TroubleshootTab({
                         <button
                             className="gui-test-btn gui-test-toast-success"
                             onClick={() => {
-                                window.showToast && window.showToast('✅ Success toast message.', 'success', 3000);
+                                window.showToast && window.showToast('Success toast message.', 'success', 3000);
                             }}
                         >
                             <Icon name="check" size="sm" /> Toast (Success)
@@ -142,7 +142,7 @@ export function TroubleshootTab({
                         <button
                             className="gui-test-btn gui-test-toast-warning"
                             onClick={() => {
-                                window.showToast && window.showToast('⚠️ Warning toast message.', 'warning', 3000);
+                                window.showToast && window.showToast('Warning toast message.', 'warning', 3000);
                             }}
                         >
                             <Icon name="alertCircle" size="sm" /> Toast (Warning)
@@ -150,7 +150,7 @@ export function TroubleshootTab({
                         <button
                             className="gui-test-btn gui-test-toast-error"
                             onClick={() => {
-                                window.showToast && window.showToast('❌ Error toast message.', 'error', 4000);
+                                window.showToast && window.showToast('Error toast message.', 'error', 4000);
                             }}
                         >
                             <Icon name="x" size="sm" /> Toast (Error)
@@ -263,7 +263,7 @@ function ResetGuiSettings() {
             </label>
             <button
                 type="button"
-                className={clsx('btn', armed ? 'btn-danger' : 'btn-secondary')}
+                className={clsx('btn', armed ? 'btn-danger' : 'btn-ghost')}
                 disabled={busy}
                 onBlur={() => setArmed(false)}
                 onClick={async () => {

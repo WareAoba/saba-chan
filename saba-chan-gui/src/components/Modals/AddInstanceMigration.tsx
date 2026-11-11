@@ -288,7 +288,7 @@ export function AddInstanceMigration({
                                         </button>
                                         {/* 경로를 직접 적었으면 찾기 */}
                                         {dirPath && !scanning && !detectedModule && !noMatch && (
-                                            <button type="button" className="btn btn-secondary" onClick={() => performScan(dirPath)}>
+                                            <button type="button" className="btn btn-ghost" onClick={() => performScan(dirPath)}>
                                                 <Icon name="search" size="sm" />
                                                 {t('migration_modal.scan_button')}
                                             </button>

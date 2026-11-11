@@ -1585,36 +1585,15 @@
     margin-bottom: var(--sp-4);
 }
 
-.ss-unsupported > summary {
+.ss-unsupported > .saba-disclosure-head {
     display: flex;
-    align-items: center;
-    gap: var(--sp-2);
+    width: 100%;
+    margin: 0;
     padding: var(--sp-3) var(--sp-4);
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    color: var(--text-2);
-    cursor: pointer;
-    list-style: none;
+    border-radius: 0;
 }
-
-.ss-unsupported > summary::-webkit-details-marker {
-    display: none;
-}
-
-.ss-unsupported > summary::before {
-    content: "›";
-    font-size: 16px;
-    line-height: 1;
-    transition: transform var(--dur-fast) var(--ease);
-}
-
-.ss-unsupported[open] > summary::before {
-    transform: rotate(90deg);
-}
-
-.ss-unsupported > summary:focus-visible {
-    outline: 2px solid var(--brand-primary);
-    outline-offset: -2px;
+.ss-unsupported > .saba-disclosure-body {
+    padding-top: 0;
 }
 
 .ss-unsupported-row {
@@ -1942,10 +1921,9 @@
 }
 
 /* 패치노트 */
-.patch-notes-modal {
-    max-width: 560px;
-    width: 100%;
-    text-align: left;
+.saba-dialog.patch-notes .saba-dialog-body {
+    display: flex;
+    flex-direction: column;
     gap: var(--sp-3);
 }
 .patch-notes-body {
@@ -2212,38 +2190,23 @@
     text-align: left;
     cursor: pointer;
 }
-/* 지우기·리눅스에 설치 창 */
-.modal.remote-pc-dialog {
-    max-width: 480px;
-    text-align: left;
+/* 지우기·리눅스에 설치 창 (공통 Dialog) */
+.saba-dialog.remote-install {
+    --dialog-w: 620px;
+}
+.remote-install-body {
     display: flex;
     flex-direction: column;
     gap: var(--sp-3);
 }
-.modal.remote-install {
-    max-width: 620px;
-}
-.remote-pc-dialog-title {
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-}
-.remote-pc-choice {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-0-5);
-}
-.remote-pc-choice > .setting-description {
-    padding-left: var(--sp-6);
-}
+/* 지우기를 고르면 그 아래 줄로 남길 것을 고른다 */
 .remote-pc-subchoice {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-1);
-    padding: var(--sp-1) 0 0 var(--sp-6);
+    gap: var(--sp-1-5);
+    padding: var(--sp-2) var(--sp-4) var(--sp-3) var(--sp-6);
 }
-.remote-pc-dialog-actions {
+.remote-install-prompt-actions {
     display: flex;
     justify-content: flex-end;
     gap: var(--sp-2);

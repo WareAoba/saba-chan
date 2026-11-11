@@ -358,7 +358,8 @@ describe('ChatbotView', () => {
         expect(screen.queryByLabelText('Reasoning effort')).toBeNull();
         expect(screen.queryByLabelText('Join in uninvited')).toBeNull();
         expect(screen.queryByLabelText('Image generation')).toBeNull();
-        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        // 고르면 바로 저장한다 (저장 막대 없음, 사용자 11-11)
+        expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
         await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalledWith({ settings: { model: 'gpt-y' } }));
         delete (window.api as Partial<typeof window.api>).chatbotModels;
     });

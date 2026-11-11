@@ -1,19 +1,8 @@
-/* 원격 경로 고르기 (D2): 대화상자 위, 설정 창보다 위에 뜬다 */
-.remote-picker-overlay {
-    z-index: 9500;
-}
-
-.modal.remote-picker {
-    max-width: 520px;
-    width: calc(100vw - var(--sp-8));
-    text-align: left;
-}
-
+/* 원격 경로 고르기 (D2): 공통 Dialog 안. 목록은 파인 우물 */
 .remote-picker-bar {
     display: flex;
     gap: var(--sp-2);
     align-items: center;
-    margin-top: var(--sp-3);
 }
 
 .remote-picker-bar .remote-picker-path {
@@ -27,8 +16,9 @@
     padding: var(--sp-1);
     height: 280px;
     overflow-y: auto;
-    border: 1px solid var(--glass-border);
     border-radius: var(--r-md);
+    background: var(--inset);
+    box-shadow: var(--neu-in);
 }
 
 .remote-picker-entry {
@@ -77,9 +67,4 @@
 .remote-picker-name {
     width: 100%;
     margin-top: var(--sp-3);
-}
-.remote-picker-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--sp-2);
 }

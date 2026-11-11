@@ -803,47 +803,6 @@ span[style*="--icon-loader"] svg {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Waiting Image Overlay (slow progress indicator)
-   ═══════════════════════════════════════════════════════════ */
-
-.waiting-image-overlay {
-    position: fixed;
-    bottom: 60px;
-    right: 24px;
-    z-index: 9998;
-    cursor: pointer;
-    animation: waiting-bounce-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.waiting-image {
-    width: 120px;
-    height: auto;
-    filter: drop-shadow(0 4px 12px color-mix(in oklch, var(--shadow-ink) 20%, transparent));
-    animation: waiting-float 2s ease-in-out infinite;
-}
-
-@keyframes waiting-bounce-in {
-    from {
-        opacity: 0;
-        transform: scale(0.5) translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-    }
-}
-
-@keyframes waiting-float {
-    0%,
-    100% {
-        transform: translateY(0);
-    }
-    50% {
-        transform: translateY(-8px);
-    }
-}
-
-/* ═══════════════════════════════════════════════════════════
    Console Panel
    ═══════════════════════════════════════════════════════════ */
 
@@ -1088,35 +1047,6 @@ span[style*="--icon-loader"] svg {
     to {
         transform: rotate(360deg);
     }
-}
-
-/* 보조 버튼 */
-.btn-secondary {
-    background: var(--bg-3);
-    color: var(--text-1);
-    border: 1px solid var(--line);
-    padding: 0 var(--sp-5);
-    height: var(--btn-height);
-    border-radius: var(--btn-radius);
-    cursor: pointer;
-    font-weight: 600;
-    font-size: calc(13px * var(--font-scale));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--sp-1-5);
-    transition: all 0.2s ease;
-    font-family: inherit;
-}
-
-.btn-secondary:hover {
-    background: var(--bg-3);
-    border-color: var(--brand-primary);
-}
-
-.btn-secondary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 /* ========== Error Boundary Fallback ========== */

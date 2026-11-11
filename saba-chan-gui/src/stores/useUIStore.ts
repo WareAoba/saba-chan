@@ -49,7 +49,6 @@ interface UIState {
     revealServerCount: number;
     modal: ModalConfig | null;
     progressBar: ProgressBarConfig | null;
-    showWaitingImage: boolean;
     showModuleManager: boolean;
     settingsInitialView: string | null;
     showCommandModal: boolean;
@@ -67,7 +66,6 @@ interface UIState {
     closeModal: () => void;
     setProgressBar: (config: ProgressBarConfig | null) => void;
     clearProgressBar: () => void;
-    setShowWaitingImage: (val: boolean) => void;
     setShowModuleManager: (val: boolean) => void;
     openSettings: (initialView?: string | null) => void;
     closeSettings: () => void;
@@ -112,7 +110,6 @@ export const useUIStore = create<UIState>()((set, _get) => ({
     // ── Modal ──
     modal: null,
     progressBar: null,
-    showWaitingImage: false,
 
     // ── Panel visibility ──
     showModuleManager: false,
@@ -139,7 +136,6 @@ export const useUIStore = create<UIState>()((set, _get) => ({
     setProgressBar: (config) => set({ progressBar: config }),
     clearProgressBar: () => set({ progressBar: null }),
 
-    setShowWaitingImage: (val) => set({ showWaitingImage: val }),
 
     setShowModuleManager: (val) => set({ showModuleManager: val }),
 
@@ -215,7 +211,6 @@ export const useUIStore = create<UIState>()((set, _get) => ({
             findSettingField: null,
             modal: null,
             progressBar: null,
-            showWaitingImage: false,
             showModuleManager: false,
             settingsInitialView: null,
             showCommandModal: false,

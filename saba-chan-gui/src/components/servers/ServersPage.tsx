@@ -10,6 +10,7 @@ import { type ModalConfig, useUIStore } from '../../stores/useUIStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { failedModuleName, failedModuleReason } from '../../utils/failedModules';
 import { Icon } from '../Icon';
+import { Disclosure } from '../ui/Disclosure';
 import { LinkedText } from '../ui/ScreenLink';
 import { SabaArt } from '../ui/SabaArt';
 import { FloatingMonitor, monitorPlacement, SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
@@ -180,11 +181,15 @@ export function ServersPage({
                     <OnboardingCard />
                     {failedModules.length > 0 && (
                         // 모듈이 목록에서 사라진 이유를 알려준다 (module.toml 오류 등)
-                        <details className="notice tone-warn module-failures">
-                            <summary>
-                                <Icon name="alertTriangle" size="sm" />
-                                {t('shell.modules_failed', { count: failedModules.length })}
-                            </summary>
+                        <div className="notice tone-warn module-failures">
+                            <Disclosure
+                                summary={
+                                    <>
+                                        <Icon name="alertTriangle" size="sm" />
+                                        {t('shell.modules_failed', { count: failedModules.length })}
+                                    </>
+                                }
+                            >
                             <ul>
                                 {failedModules.map((f) => (
                                     <li key={f.path}>
@@ -193,7 +198,8 @@ export function ServersPage({
                                     </li>
                                 ))}
                             </ul>
-                        </details>
+                            </Disclosure>
+                        </div>
                     )}
                     <div className="server-list" role="listbox" aria-label={t('shell.nav_servers')}>
                         {visible.length === 0 && <p className="muted pad">{t('shell.no_match')}</p>}

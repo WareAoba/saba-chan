@@ -711,7 +711,7 @@ export function AddInstanceNewServer({
                                 label={t('add_server_modal.detail_title')}
                                 desc={t('add_server_modal.detail_desc')}
                                 control={
-                                    <button type="button" className="btn btn-secondary" onClick={() => setStep('detail')}>
+                                    <button type="button" className="btn btn-ghost" onClick={() => setStep('detail')}>
                                         <Icon name="settings" size="sm" />
                                         {t('add_server_modal.detail_open')}
                                         {changedCount > 0 && ` · ${t('add_server_modal.detail_changed', { count: changedCount })}`}

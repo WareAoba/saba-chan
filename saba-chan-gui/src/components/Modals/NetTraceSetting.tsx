@@ -81,7 +81,7 @@ export function NetTraceSetting() {
                         {access === 'needs_grant' ? (
                             <button
                                 type="button"
-                                className="btn btn-secondary btn-sm"
+                                className="btn btn-ghost btn-sm"
                                 disabled={busy}
                                 onClick={() => change(true)}
                             >
