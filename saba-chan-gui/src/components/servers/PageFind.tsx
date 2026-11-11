@@ -96,11 +96,18 @@ interface PageFindProps {
     pageKey: string;
     /** 찾기 창을 붙일 곳 (탭 줄). 없으면 화면 오른쪽 위 */
     anchorRef?: RefObject<HTMLElement | null>;
+    /** 창(대화상자) 안의 찾기: 떠 있는 동안 뒤 화면의 찾기는 Ctrl+F를 받지 않고 칠하지 않는다 */
+    modal?: boolean;
 }
 
-export function PageFind({ rootRef, enabled, pageKey, anchorRef }: PageFindProps) {
+export function PageFind({ rootRef, enabled, pageKey, anchorRef, modal = false }: PageFindProps) {
     const { t } = useTranslation('gui');
-    const open = usePageFindStore((s) => s.open);
+    const storeOpen = usePageFindStore((s) => s.open);
+    const modalActive = usePageFindStore((s) => s.modal);
+    const setModal = usePageFindStore((s) => s.setModal);
+    // 창 안의 찾기가 떠 있으면 뒤 화면의 찾기는 쉰다 (같은 칠하기 이름을 함께 쓰므로)
+    const live = enabled && (modal || !modalActive);
+    const open = storeOpen && live;
     const query = usePageFindStore((s) => s.query);
     const setOpen = usePageFindStore((s) => s.setOpen);
     const setQuery = usePageFindStore((s) => s.setQuery);
@@ -233,7 +240,7 @@ export function PageFind({ rootRef, enabled, pageKey, anchorRef }: PageFindProps
     // Ctrl+F (macOS ⌘F): 이 탭이면 웹뷰 찾기 대신 연다
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if (!enabled || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'f') return;
+            if (!live || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'f') return;
             e.preventDefault();
             setOpen(true);
             requestAnimationFrame(() => {
@@ -243,12 +250,19 @@ export function PageFind({ rootRef, enabled, pageKey, anchorRef }: PageFindProps
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [enabled, setOpen]);
+    }, [live, setOpen]);
 
-    // 찾기를 쓰지 않는 탭으로 가면 닫는다
+    // 찾기를 쓰지 않는 탭으로 가면 닫는다 (창 안의 찾기가 떠 있으면 그 찾기의 것이라 두다)
     useEffect(() => {
-        if (!enabled && open) setOpen(false);
-    }, [enabled, open, setOpen]);
+        if (!enabled && storeOpen && !modalActive) setOpen(false);
+    }, [enabled, storeOpen, modalActive, setOpen]);
+
+    // 창 안의 찾기: 떠 있는 동안 뒤 화면의 찾기를 쉬게 한다
+    useEffect(() => {
+        if (!modal) return;
+        setModal(true);
+        return () => setModal(false);
+    }, [modal, setModal]);
 
     // 글자·탭이 바뀌면 다시 찾는다 (꼬리표가 그려진 뒤)
     // biome-ignore lint/correctness/useExhaustiveDependencies: pageKey가 바뀌면 새 탭 본문에서 찾는다
@@ -288,9 +302,10 @@ export function PageFind({ rootRef, enabled, pageKey, anchorRef }: PageFindProps
         };
     }, [open, pageKey, research, schedulePaint, rootRef]);
 
-    // 닫으면 칠한 것을 지운다
+    // 닫으면 칠한 것을 지운다 (쉬는 찾기는 칠한 게 있을 때만: 창 안 찾기가 칠한 것을 지우지 않게)
     useEffect(() => {
         if (open) return;
+        if (!live && !matchesRef.current.length) return;
         const api = highlightApi();
         api?.registry.delete(HL);
         api?.registry.delete(HL_CUR);
@@ -299,7 +314,7 @@ export function PageFind({ rootRef, enabled, pageKey, anchorRef }: PageFindProps
         matchesRef.current = [];
         setRects([]);
         setTotal(0);
-    }, [open, rootRef]);
+    }, [open, live, rootRef]);
     useEffect(
         () => () => {
             const api = highlightApi();
@@ -341,7 +356,7 @@ export function PageFind({ rootRef, enabled, pageKey, anchorRef }: PageFindProps
         <>
             <span ref={measureRef} className="page-find-measure" aria-hidden="true" />
             {createPortal(
-                <div className="page-find-layer" aria-hidden="true">
+                <div className={`page-find-layer${modal ? ' page-find-layer--modal' : ''}`} aria-hidden="true">
                     {rects.map((r, i) => (
                         <i
                             // biome-ignore lint/suspicious/noArrayIndexKey: 자리만 그리는 칸이라 순서가 곧 정체다

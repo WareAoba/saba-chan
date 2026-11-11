@@ -463,6 +463,7 @@ describe('권한 화면', () => {
         window.api.relayListLegacyMembers = vi.fn(async () => relayMembers);
         await openPeople({ members: relayMembers.map(({ level, ...m }) => m) });
         expect(window.api.relayListLegacyMembers).toHaveBeenCalledWith('g1');
+        fireEvent.click(screen.getByRole('button', { name: /Import levels given earlier/ }));
         fireEvent.click(screen.getByRole('checkbox', { name: 'Newbie' }));
         fireEvent.click(screen.getByRole('button', { name: 'Import 1' }));
         await flush();
@@ -472,6 +473,7 @@ describe('권한 화면', () => {
     it('새로고침하면 릴레이에 남은 부여값도 다시 읽는다', async () => {
         window.api.relayListLegacyMembers = vi.fn(async () => relayMembers);
         await openPeople({ members: relayMembers.map(({ level, ...m }) => m), onRefreshMembers: vi.fn() });
+        fireEvent.click(screen.getByRole('button', { name: /Import levels given earlier/ }));
         expect(screen.getByRole('checkbox', { name: 'Newbie' })).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('checkbox', { name: 'Newbie' }));
@@ -484,6 +486,8 @@ describe('권한 화면', () => {
         await flush();
         expect(screen.queryByRole('button', { name: /^Import \d/ })).toBeNull();
         await act(async () => release(relayMembers));
+        // 후보가 비었다 다시 생기면 묶음은 접힌 채로 다시 그린다
+        fireEvent.click(screen.getByRole('button', { name: /Import levels given earlier/ }));
         expect(screen.getByRole('checkbox', { name: 'Newbie' })).not.toBeChecked();
 
         vi.mocked(window.api.relayListLegacyMembers).mockResolvedValue([]);

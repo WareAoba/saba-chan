@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import type { ExtensionListItem, Json, ServerInfo } from '../types/daemon';
 import { useExtensions } from '../contexts/ExtensionContext';
-import { SabaCheckbox } from './ui/SabaUI';
+import { SabaToggle } from './ui/SabaUI';
 
 /**
  * 데이터 slot — 익스텐션 manifest가 선언한 값을 그린다 (코드 실행 없음, CLI와 같은 어휘).
@@ -79,37 +79,42 @@ export function AddServerOptions({ values, onChange, disabled }: AddServerOption
     const fields = addServerFields(extensions);
     if (fields.length === 0) return null;
 
-    return fields.map((f) => {
-        const label = t(`ext_${f.ext}:options.${f.field}`, { defaultValue: f.label || f.field });
-        const value = values[f.field] ?? f.default;
-        const id = `add-opt-${f.ext}-${f.field}`;
-        return (
-            <div className="as-section as-section-card" key={id}>
-                {f.type === 'boolean' ? (
-                    <SabaCheckbox
-                        id={id}
-                        checked={!!value}
-                        onChange={(on) => onChange(f.field, on)}
-                        disabled={disabled}
-                    >
-                        {label}
-                    </SabaCheckbox>
-                ) : (
-                    <>
-                        <label className="as-label" htmlFor={id}>
-                            {label}
-                        </label>
-                        <input
-                            id={id}
-                            className="as-input"
-                            type="text"
-                            value={(value as string | number | undefined) ?? ''}
-                            onChange={(e) => onChange(f.field, e.target.value)}
-                            disabled={disabled}
-                        />
-                    </>
-                )}
+    // 서버 추가 창의 다른 칸과 같은 줄 모양 (설정 이름 왼쪽, 입력 오른쪽)
+    return (
+        <section className="dc-card ss-card">
+            <div className="ss-rows">
+                {fields.map((f) => {
+                    const label = t(`ext_${f.ext}:options.${f.field}`, { defaultValue: f.label || f.field });
+                    const value = values[f.field] ?? f.default;
+                    const id = `add-opt-${f.ext}-${f.field}`;
+                    return (
+                        <div className="ss-row" key={id}>
+                            <label className="ss-name" htmlFor={id}>
+                                {label}
+                            </label>
+                            <div className="ss-control">
+                                {f.type === 'boolean' ? (
+                                    <SabaToggle
+                                        id={id}
+                                        checked={!!value}
+                                        onChange={(on) => onChange(f.field, on)}
+                                        disabled={disabled}
+                                    />
+                                ) : (
+                                    <input
+                                        id={id}
+                                        className="input ss-text"
+                                        type="text"
+                                        value={(value as string | number | undefined) ?? ''}
+                                        onChange={(e) => onChange(f.field, e.target.value)}
+                                        disabled={disabled}
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
-        );
-    });
+        </section>
+    );
 }

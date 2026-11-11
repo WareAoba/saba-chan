@@ -42,11 +42,9 @@ export function DaemonEvents({ onServersChanged }: { onServersChanged?: () => vo
                 const module = d.kind === 'module';
                 if (!module && d.kind !== 'server') return;
                 window.__sabaNotice?.addNotice({
-                    message: `🔔 ${
-                        module
-                            ? tr('events.module_update', { name, module: d.module, version: d.latest })
-                            : tr('events.server_update', { name })
-                    }`,
+                    message: module
+                        ? tr('events.module_update', { name, module: d.module, version: d.latest })
+                        : tr('events.server_update', { name }),
                     type: 'info',
                     source: 'Updater',
                     ...(module ? { action: 'openUpdateModal' } : {}),

@@ -25,7 +25,6 @@ describe('새 서버 만들기 — 모듈 추천 프리셋', () => {
                 extensions={[minecraft]}
                 servers={[]}
                 onAddServer={onAddServer}
-                onBack={undefined as never}
                 onClose={undefined as never}
             />,
         );
@@ -50,7 +49,6 @@ describe('새 서버 만들기 — 모듈 추천 프리셋', () => {
                 extensions={[minecraft]}
                 servers={[]}
                 onAddServer={onAddServer}
-                onBack={undefined as never}
                 onClose={undefined as never}
             />,
         );
@@ -65,7 +63,6 @@ describe('새 서버 만들기 — 모듈 추천 프리셋', () => {
                 extensions={[{ ...minecraft, presets: undefined }]}
                 servers={[]}
                 onAddServer={vi.fn()}
-                onBack={undefined as never}
                 onClose={undefined as never}
             />,
         );

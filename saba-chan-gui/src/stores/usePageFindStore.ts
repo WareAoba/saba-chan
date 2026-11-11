@@ -10,6 +10,9 @@ interface PageFindState {
     query: string;
     setOpen: (open: boolean) => void;
     setQuery: (query: string) => void;
+    /** 창(대화상자) 안의 찾기가 떠 있다: 뒤 화면의 찾기는 쉰다 (서버 추가 창의 상세 설정) */
+    modal: boolean;
+    setModal: (modal: boolean) => void;
 }
 
 export const usePageFindStore = create<PageFindState>()((set) => ({
@@ -17,4 +20,6 @@ export const usePageFindStore = create<PageFindState>()((set) => ({
     query: '',
     setOpen: (open) => set({ open }),
     setQuery: (query) => set({ query }),
+    modal: false,
+    setModal: (modal) => set({ modal }),
 }));

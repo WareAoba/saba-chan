@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { CommandInput } from '../../types/daemon';
 import { applySuggestion, type LineProblem, type LineState } from '../../utils/commandSyntax';
 import { commandInputLabel, commandText } from '../../utils/serverView';
+import { Icon } from '../Icon';
 import './CommandLine.css';
 
 /**
@@ -96,7 +97,7 @@ export function CommandLineHelp({ text, state, moduleName, onPick }: HelpProps) 
     if (!command) message = t(suggestions ? 'command_syntax.more_commands' : 'command_syntax.unknown');
     else if (problem) {
         tone = 'bad';
-        message = `✕ ${problemText(problem, problem.input ? labelOf(problem.input) : '', t)}`;
+        message = problemText(problem, problem.input ? labelOf(problem.input) : '', t);
     } else if (state.picking) {
         // 고를 값을 아직 치는 중: 아래 값 중에서 고르게 한다
         tone = 'need';
@@ -106,7 +107,7 @@ export function CommandLineHelp({ text, state, moduleName, onPick }: HelpProps) 
         message = t('command_syntax.missing', { label: labelOf(missing) });
     } else {
         tone = 'ok';
-        message = `✓ ${t('command_syntax.ready')}`;
+        message = t('command_syntax.ready');
     }
 
     return (
@@ -130,6 +131,8 @@ export function CommandLineHelp({ text, state, moduleName, onPick }: HelpProps) 
                 </div>
             )}
             <div className={`cmdline-msg tone-${tone}`} role="status">
+                {tone === 'ok' && <Icon name="check" size="xs" />}
+                {tone === 'bad' && <Icon name="x" size="xs" />}
                 {message}
             </div>
             {suggestions && (
