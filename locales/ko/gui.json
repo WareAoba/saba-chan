@@ -178,6 +178,11 @@
     "close_action_ask": "매번 묻기",
     "close_action_tray": "인터페이스만 종료 (데몬은 계속)",
     "close_action_quit": "완전히 종료",
+    "system_monitor_label": "시스템 모니터",
+    "system_monitor_description": "서버 화면의 PC 사용량 그래프. 끄면 값을 묻지도 않아요. 떠 있는 창은 앱 안에서 끌어 옮길 수 있어요",
+    "system_monitor_off": "끔",
+    "system_monitor_docked": "고정",
+    "system_monitor_floating": "떠 있는 창",
     "toast_duration_label": "알림 표시 시간",
     "toast_duration_description": "앱 안 알림이 화면에 남아 있는 시간이에요.",
     "toast_duration_short": "짧게",
@@ -1803,7 +1808,10 @@
     "ports_server": "서버",
     "ports_port": "포트",
     "ports_rx": "받기",
-    "ports_tx": "보내기"
+    "ports_tx": "보내기",
+    "hide": "모니터 끄기",
+    "hidden_toast": "시스템 모니터를 껐어요. 설정 → 일반에서 다시 켤 수 있어요",
+    "undo": "되돌리기"
   },
   "net_trace": {
     "label": "포트·서버별 네트워크",
@@ -2347,7 +2355,6 @@
     "enabled": "원격 연결 받기",
     "enabled_description": "내 다른 PC가 암호화한 연결로 이 데몬에 바로 붙어요.",
     "port": "포트",
-    "save": "저장",
     "status_off": "꺼짐",
     "status_listening": "{{port}} 포트에서 받는 중",
     "status_published": "내 다른 PC에 이 PC를 알렸어요",

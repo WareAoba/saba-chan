@@ -5,11 +5,20 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UpdatePill } from '../components/shell/UpdatePill';
+import { clickOutside } from './outside';
 
 const phase = (state: string, extra: Record<string, unknown> = {}) => ({
     ok: true,
     components: [{ component: 'saba-core', current_version: '0.1.13' }],
-    phase: { state, version: '0.1.14', since: null, waiting_for: [], reason: null, notes: { ko: '- 첫째\n- 둘째', en: '- first\n- second' }, ...extra },
+    phase: {
+        state,
+        version: '0.1.14',
+        since: null,
+        waiting_for: [],
+        reason: null,
+        notes: { ko: '- 첫째\n- 둘째', en: '- first\n- second' },
+        ...extra,
+    },
     stable_wait: null,
 });
 
@@ -22,7 +31,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-    for (const k of ['updaterStatus', 'updaterPhaseAck', 'updaterRestart']) delete (window.api as unknown as Record<string, unknown>)[k];
+    for (const k of ['updaterStatus', 'updaterPhaseAck', 'updaterRestart'])
+        delete (window.api as unknown as Record<string, unknown>)[k];
     vi.useRealTimers();
 });
 
@@ -70,7 +80,7 @@ describe('업데이트 알약', () => {
         fireEvent.click(await screen.findByText('Update complete'));
         expect(window.api.updaterPhaseAck).toHaveBeenCalledTimes(1);
         expect(screen.getByText('Updated to 0.1.14')).toBeTruthy();
-        fireEvent.click(document.body);
+        await clickOutside();
         await waitFor(() => expect(container.querySelector('.appbar-pill')).toBeNull());
     });
 
@@ -112,7 +122,9 @@ describe('업데이트 알약', () => {
         });
         expect(screen.getByText('Applying update...')).toBeTruthy();
         // 되돌린 데몬이 새로 정한 준비됨
-        status.mockResolvedValue(phase('ready', { reason: 'rolled_back', since: new Date(Date.now() + 1000).toISOString() }));
+        status.mockResolvedValue(
+            phase('ready', { reason: 'rolled_back', since: new Date(Date.now() + 1000).toISOString() }),
+        );
         await act(async () => {
             await vi.advanceTimersByTimeAsync(5000);
         });

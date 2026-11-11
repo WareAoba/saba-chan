@@ -178,6 +178,11 @@
     "close_action_ask": "毎回確認",
     "close_action_tray": "インターフェースのみ終了（デーモンは継続）",
     "close_action_quit": "完全に終了",
+    "system_monitor_label": "システムモニター",
+    "system_monitor_description": "サーバー画面のPC使用量グラフ。オフにすると値も取得しません。フローティングはアプリ内でドラッグして動かせます",
+    "system_monitor_off": "オフ",
+    "system_monitor_docked": "固定",
+    "system_monitor_floating": "フローティング",
     "toast_duration_label": "通知の表示時間",
     "toast_duration_description": "アプリ内通知が画面に残る時間です。",
     "toast_duration_short": "短く",
@@ -1803,7 +1808,10 @@
     "ports_server": "サーバー",
     "ports_port": "ポート",
     "ports_rx": "受信",
-    "ports_tx": "送信"
+    "ports_tx": "送信",
+    "hide": "モニターを隠す",
+    "hidden_toast": "システムモニターを非表示にしました。設定 → 一般で再表示できます",
+    "undo": "元に戻す"
   },
   "net_trace": {
     "label": "ポート・サーバー別ネットワーク",
@@ -2347,7 +2355,6 @@
     "enabled": "リモート接続を受け付ける",
     "enabled_description": "他のPCが暗号化された接続でこのデーモンに直接つなぎます。",
     "port": "ポート",
-    "save": "保存",
     "status_off": "オフ",
     "status_listening": "ポート {{port}} で受付中",
     "status_published": "他のPCにこのPCを知らせました",

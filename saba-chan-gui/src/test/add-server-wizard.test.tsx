@@ -136,6 +136,7 @@ describe('새 서버 만들기 마법사', () => {
         // 앞 종류의 목록에서 다시 고를 수도 없다
         fireEvent.click(screen.getByText('Latest version', { selector: '.custom-dropdown-label' }));
         expect(screen.queryByText('1.21.1')).toBeNull();
+        fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
         await submitWizard();
         expect(onAddServer.mock.calls[0][0]).toEqual({
             name: 'minecraft',
@@ -241,6 +242,7 @@ describe('새 서버 만들기 마법사', () => {
         fireEvent.click(screen.getByText('26.3 (latest)', { selector: '.custom-dropdown-label' }));
         expect(screen.queryByText('26.3')).toBeNull();
         expect(screen.getByText('26.2')).toBeTruthy();
+        fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
         await toNameStep();
         expect(screen.getByLabelText('Server Name')).toBeTruthy();
         await toConfirmStep();

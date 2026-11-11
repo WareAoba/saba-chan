@@ -32,6 +32,7 @@ import { SabaFail } from '../ui/SabaArt';
 import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import { failed } from '../../utils/apiResult';
+import { SaveBar } from '../ui/SaveBar';
 
 /** 백업 목록 한 줄 (GET /api/instance/:id/backups) */
 interface Backup {
@@ -821,34 +822,21 @@ function ScheduleCard({
                 </div>
             )}
 
-            <div className={clsx('dc-savebar', { dirty })}>
-                <span className="dc-savebar-text">
-                    {armed ? t('maintenance.danger_confirm') : dirty ? t('discord.unsaved') : ''}
-                </span>
-                {dirty && (
-                    <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={saving}
-                        onClick={() => {
-                            setDrafts(info.schedule.map(toDraft));
-                            setKeep(String(info.backupKeep));
-                            setServerErrors([]);
-                            setArmed(false);
-                        }}
-                    >
-                        {t('discord.revert')}
-                    </button>
-                )}
-                <button
-                    type="button"
-                    className={clsx('btn', armed ? 'btn-danger' : 'btn-primary')}
-                    disabled={!dirty || saving || blocked}
-                    onClick={save}
-                >
-                    <Icon name="save" size="sm" /> {armed ? t('maintenance.danger_save') : t('discord.save')}
-                </button>
-            </div>
+            <SaveBar
+                dirty={dirty}
+                saving={saving}
+                blocked={blocked}
+                danger={armed}
+                message={armed ? t('maintenance.danger_confirm') : undefined}
+                saveLabel={armed ? t('maintenance.danger_save') : undefined}
+                onSave={save}
+                onRevert={() => {
+                    setDrafts(info.schedule.map(toDraft));
+                    setKeep(String(info.backupKeep));
+                    setServerErrors([]);
+                    setArmed(false);
+                }}
+            />
             {pickingDraft && (
                 <CommandPicker
                     commands={commands}

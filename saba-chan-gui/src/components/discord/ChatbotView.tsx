@@ -11,6 +11,7 @@ import { StatusChip } from '../ui/StatusChip';
 import { PROVIDER_BRANDS } from './providerBrands';
 import type { DiscordNode } from './types';
 import { failed } from '../../utils/apiResult';
+import { SaveBar } from '../ui/SaveBar';
 
 /**
  * 사바쨩 설정(공통)에 두는 값: 모델만 (데몬 `commonKeys`). 나머지는 서버마다 정한다 (ChatbotGuildTab).
@@ -462,32 +463,6 @@ function ModelCard({ data, guildIds, nameOf, onSaved, keyVersion }: ModelCardPro
                 onSave={save}
             />
         </section>
-    );
-}
-
-interface SaveBarProps {
-    dirty: boolean;
-    saving: boolean;
-    blocked?: boolean;
-    onRevert: () => void;
-    onSave: () => void;
-}
-
-/** 저장 막대 — 공통 메뉴와 서버 탭이 같이 쓴다 */
-export function SaveBar({ dirty, saving, blocked = false, onRevert, onSave }: SaveBarProps) {
-    const { t } = useTranslation('gui');
-    return (
-        <div className={clsx('dc-savebar', { dirty })}>
-            <span className="dc-savebar-text">{dirty ? t('discord.unsaved') : ''}</span>
-            {dirty && (
-                <button type="button" className="btn btn-ghost" disabled={saving} onClick={onRevert}>
-                    {t('discord.revert')}
-                </button>
-            )}
-            <button type="button" className="btn btn-primary" disabled={!dirty || saving || blocked} onClick={onSave}>
-                <Icon name="save" size="sm" /> {t('discord.save')}
-            </button>
-        </div>
     );
 }
 

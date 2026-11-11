@@ -11,7 +11,7 @@ import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { SabaFail } from '../ui/SabaArt';
 import { Segmented } from '../ui/StatusChip';
 import { Avatar } from './Avatar';
-import { SaveBar } from './ChatbotView';
+import { SaveBar } from '../ui/SaveBar';
 import { LadderTab } from './LadderTab';
 import * as L from './levels';
 import { usePointerDrag } from './pointerDrag';

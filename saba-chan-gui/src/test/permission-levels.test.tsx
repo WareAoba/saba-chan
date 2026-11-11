@@ -597,7 +597,7 @@ describe('권한 화면', () => {
         expect(within(step('Lv 2 · Admin')).getByRole('button', { name: /^Say$/ })).toHaveClass('is-changed');
         dragTo(within(step('Lv 2 · Admin')).getByRole('button', { name: /^Say$/ }), step('Lv 0 · Guest'));
         expect(within(step('Lv 0 · Guest')).getByRole('button', { name: /^Say$/ })).not.toHaveClass('is-changed');
-        expect(document.querySelector('.dc-savebar.dirty')).toBeNull();
+        expect(document.querySelector('.saba-savebar.dirty')).toBeNull();
         dragTo(within(step('Lv 0 · Guest')).getByRole('button', { name: /^Say$/ }), step('Lv 2 · Admin'));
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await flush();
@@ -719,7 +719,7 @@ describe('권한 화면', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Add' }));
         dragTo(block('Mod'), block('VIP'));
         // 사용자 11-06 #9: 저장은 화면 아래에 붙는 막대에서
-        expect(document.querySelector('.dc-savebar.dirty')).not.toBeNull();
+        expect(document.querySelector('.saba-savebar.dirty')).not.toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {

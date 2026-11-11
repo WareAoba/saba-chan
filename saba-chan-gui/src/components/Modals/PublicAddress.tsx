@@ -60,7 +60,7 @@ export function PublicAddressDialog({ name, current, busy, error, onCancel, onSa
                     <input
                         id="public-address-input"
                         type="text"
-                        className="setting-input-text"
+                        className="input setting-field"
                         aria-label={t('public_address.custom_title')}
                         placeholder="mc.example.com"
                         value={draft.address}

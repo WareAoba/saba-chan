@@ -180,7 +180,7 @@ function RemotePathPicker() {
                         </button>
                     )}
                     <input
-                        className="setting-input-text remote-picker-path mono"
+                        className="input setting-field remote-picker-path mono"
                         aria-label={t('remote_picker.path')}
                         value={typed}
                         placeholder={t('remote_picker.roots')}
@@ -230,7 +230,7 @@ function RemotePathPicker() {
                 {listing?.truncated && <p className="setting-description">{t('remote_picker.truncated')}</p>}
                 {kind === 'save' && (
                     <input
-                        className="setting-input-text remote-picker-name"
+                        className="input setting-field remote-picker-name"
                         aria-label={t('remote_picker.file_name')}
                         value={name}
                         onChange={(e) => {

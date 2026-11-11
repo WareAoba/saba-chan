@@ -178,6 +178,11 @@
     "close_action_ask": "Ask every time",
     "close_action_tray": "Exit interface only (daemon keeps running)",
     "close_action_quit": "Quit completely",
+    "system_monitor_label": "System monitor",
+    "system_monitor_description": "PC usage graphs on the server page. When off, nothing is polled. The floating window can be dragged anywhere in the app",
+    "system_monitor_off": "Off",
+    "system_monitor_docked": "Docked",
+    "system_monitor_floating": "Floating",
     "toast_duration_label": "Notification Duration",
     "toast_duration_description": "How long in-app notifications stay on screen.",
     "toast_duration_short": "Short",
@@ -1803,7 +1808,10 @@
     "ports_server": "Server",
     "ports_port": "Port",
     "ports_rx": "Received",
-    "ports_tx": "Sent"
+    "ports_tx": "Sent",
+    "hide": "Hide monitor",
+    "hidden_toast": "System monitor hidden. Turn it back on in Settings → General",
+    "undo": "Undo"
   },
   "net_trace": {
     "label": "Per-server and per-port network",
@@ -2347,7 +2355,6 @@
     "enabled": "Allow remote connections",
     "enabled_description": "Your other PCs connect to this daemon directly over an encrypted connection.",
     "port": "Port",
-    "save": "Save",
     "status_off": "Off",
     "status_listening": "Listening on port {{port}}",
     "status_published": "Your other PCs know about this PC",

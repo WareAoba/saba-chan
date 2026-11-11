@@ -178,6 +178,11 @@
     "close_action_ask": "Jedes Mal fragen",
     "close_action_tray": "Nur Oberfläche beenden (Daemon läuft weiter)",
     "close_action_quit": "Vollständig beenden",
+    "system_monitor_label": "Systemmonitor",
+    "system_monitor_description": "PC-Auslastung auf der Serverseite. Aus = keine Abfragen. Das schwebende Fenster lässt sich in der App verschieben",
+    "system_monitor_off": "Aus",
+    "system_monitor_docked": "Angedockt",
+    "system_monitor_floating": "Schwebend",
     "toast_duration_label": "Anzeigedauer von Benachrichtigungen",
     "toast_duration_description": "Wie lange In-App-Benachrichtigungen sichtbar bleiben.",
     "toast_duration_short": "Kurz",
@@ -1803,7 +1808,10 @@
     "ports_server": "Server",
     "ports_port": "Port",
     "ports_rx": "Empfangen",
-    "ports_tx": "Gesendet"
+    "ports_tx": "Gesendet",
+    "hide": "Monitor ausblenden",
+    "hidden_toast": "Systemmonitor ausgeblendet. Unter Einstellungen → Allgemein wieder einschalten",
+    "undo": "Rückgängig"
   },
   "net_trace": {
     "label": "Netzwerk pro Server und Port",
@@ -2347,7 +2355,6 @@
     "enabled": "Remote-Verbindungen erlauben",
     "enabled_description": "Deine anderen PCs verbinden sich direkt über eine verschlüsselte Verbindung mit diesem Daemon.",
     "port": "Port",
-    "save": "Speichern",
     "status_off": "Aus",
     "status_listening": "Wartet auf Port {{port}}",
     "status_published": "Deine anderen PCs kennen diesen PC jetzt",
