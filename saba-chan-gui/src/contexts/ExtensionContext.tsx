@@ -197,23 +197,27 @@ async function loadExtensionI18n(ext: ExtensionListItem, lang: string) {
     }
 }
 
-/** 원격 데몬을 골랐으면, 이 PC 데몬에서 허락을 기다리는 바탕화면·트레이 번들 (메인 slot도 함께 선언했어도. 그 창들은 이 PC 데몬을 본다) */
-async function localWindowPending(): Promise<ExtensionListItem[]> {
+/** 원격 데몬을 골랐으면 이 PC 데몬의 익스텐션 목록 (번들은 이 PC 데몬에서 받아 이 웹뷰에서 실행한다: 허락도 이 PC의 것을 본다) */
+async function localExtensions(): Promise<ExtensionListItem[] | null> {
     try {
         const current = await window.api.daemonTarget?.();
-        if (!current?.target) return [];
+        if (!current?.target) return null;
         const local = await window.api.extensionList({ local: true });
-        if (!Array.isArray(local?.extensions)) return [];
-        return local.extensions.filter(
-            (ext) =>
-                ext.enabled &&
-                ext.gui?.bundle &&
-                ext.gui_allowed === false &&
-                (loadsOn(ext, 'desktop') || loadsOn(ext, 'tray')),
-        );
+        return Array.isArray(local?.extensions) ? local.extensions : null;
     } catch {
-        return [];
+        return null;
     }
+}
+
+/** 이 PC 데몬에서 허락을 기다리는 바탕화면·트레이 번들 (메인 slot도 함께 선언했어도. 그 창들은 이 PC 데몬을 본다) */
+function localWindowPending(local: ExtensionListItem[]): ExtensionListItem[] {
+    return local.filter(
+        (ext) =>
+            ext.enabled &&
+            ext.gui?.bundle &&
+            ext.gui_allowed === false &&
+            (loadsOn(ext, 'desktop') || loadsOn(ext, 'tray')),
+    );
 }
 
 /**
@@ -268,8 +272,15 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
             }
             // 설치·업데이트·삭제·재검색 뒤 목록이 바뀌면 코드 검사도 다시 한다
             clearModuleAuditCache();
-            setExtensions(data.extensions);
-            if (surface === 'main') setLocalPending(await localWindowPending());
+            // 원격 데몬 목록의 gui_allowed는 그 PC의 허락이다: 이 PC에 있는 익스텐션은 이 PC의 허락으로 바꿔 둔다
+            const local = surface === 'desktop' ? null : await localExtensions();
+            const allowedHere = new Map(local?.map((ext) => [ext.id, ext.gui_allowed]));
+            setExtensions(
+                data.extensions.map((ext) =>
+                    allowedHere.has(ext.id) ? { ...ext, gui_allowed: allowedHere.get(ext.id) } : ext,
+                ),
+            );
+            if (surface === 'main') setLocalPending(localWindowPending(local ?? []));
             return true;
         } catch (e) {
             console.warn('[Extension] Failed to fetch extensions:', e);

@@ -2613,6 +2613,19 @@ pub(crate) fn updatable(
     Ok((instance, install_config))
 }
 
+/// 같은 서버 폴더를 쓰는 다른 인스턴스가 켜져 있거나 작업 중이라 지금은 업데이트를 시작하지 못한다
+/// (`begin_server_update`가 409 `instance_busy`·`server_running`으로 거절한다). 자동 업데이트가 끄기 전에 본다
+pub(crate) async fn update_blocked_by_shared_folder(state: &IPCServer, id: &str) -> bool {
+    let install_dir = {
+        let supervisor = state.supervisor.read().await;
+        let Ok((instance, install_config)) = updatable(&supervisor, id) else {
+            return false;
+        };
+        install_dir_of(&instance, &supervisor.instance_store.instance_dir(id), Some(&install_config))
+    };
+    super::managed::other_instances_busy(state, &install_dir.to_string_lossy(), Some(id)).await
+}
+
 /// 업데이트를 백그라운드로 시작한다. 작업은 성공 여부를 돌려준다 (예약 업데이트가 기다린다)
 #[allow(clippy::result_large_err)]
 pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
