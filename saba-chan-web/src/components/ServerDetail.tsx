@@ -30,9 +30,12 @@ interface ConsoleLine {
     source?: string;
     content: string;
     by?: { source?: string; userName?: string };
+    /** 화면 key. 줄 id는 실행마다 0부터 다시 세어 겹친다 */
+    key?: number;
 }
 
 const MAX_LINES = 500;
+let lineSeq = 0;
 
 function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'running'>) {
     const { t } = useTranslation();
@@ -43,19 +46,50 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
     const since = useRef(0);
+    const pid = useRef(server.pid);
+    pid.current = server.pid;
     const box = useStickToBottom<HTMLPreElement>(lines);
 
     useEffect(() => {
         let stopped = false;
         since.current = 0;
         setLines([]);
-        const poll = async () => {
+        // 마지막으로 본 콘솔 버퍼 세대와 PID. 세대가 바뀌면 줄 번호가 0부터 다시 시작한다 (앱 useMultiConsole과 같은 규칙)
+        let seenEpoch: number | null = null;
+        let seenPid: number | null = null;
+        let replace = false;
+        let diskLoaded = false;
+        const poll = async (): Promise<void> => {
             const res = await api.managedConsole(server.id, since.current, 200);
             if (stopped || !Array.isArray(res?.lines)) return;
+            const pidChanged = pid.current != null && seenPid !== null && pid.current !== seenPid;
+            if (pid.current != null && pid.current > 0) seenPid = pid.current;
+            if (typeof res.epoch === 'number') {
+                const epochChanged = seenEpoch !== null && res.epoch !== seenEpoch;
+                seenEpoch = res.epoch;
+                // 옛 번호로 받은 줄은 버리고 처음부터 다시 받는다. 새 프로세스면 이어 붙이고, 같은 프로세스에 다시 붙었으면 그 버퍼로 바꾼다
+                if (epochChanged) {
+                    since.current = 0;
+                    replace = !pidChanged && !diskLoaded;
+                    return poll();
+                }
+            }
             setStdin(!!res.stdin_available);
-            if (res.lines.length) {
+            const received: ConsoleLine[] = res.lines.map((l: ConsoleLine) => ({ ...l, key: ++lineSeq }));
+            if (res.source === 'disk') {
+                // 꺼진 서버의 지난 로그는 since와 상관없이 매번 같은 꼬리가 온다: 한 번만 보이고, 줄 번호(0부터)로 since를 올리지 않는다
+                if (!diskLoaded && received.length) {
+                    diskLoaded = true;
+                    setLines(received);
+                }
+                return;
+            }
+            if (received.length) {
+                diskLoaded = false;
+                const swap = replace;
+                replace = false;
                 since.current = res.lines[res.lines.length - 1].id + 1;
-                setLines((prev) => [...prev, ...res.lines].slice(-MAX_LINES));
+                setLines((prev) => (swap ? received : [...prev, ...received]).slice(-MAX_LINES));
             }
         };
         const stop = startPoll(poll, 1500);
@@ -95,12 +129,12 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
                     lines.map((l) =>
                         l.source === 'input' ? (
                             // 보낸 명령 (#18): "› list · 디스코드 · jace"
-                            <div key={l.id} className="line line-input">
+                            <div key={l.key} className="line line-input">
                                 <span className="echo">› {l.content}</span>
                                 {l.by?.source && <span className="echo-by"> · {sourceText(l.by, tg)}</span>}
                             </div>
                         ) : (
-                            <div key={l.id} className={`line line-${l.level || 'info'}`}>
+                            <div key={l.key} className={`line line-${l.level || 'info'}`}>
                                 {l.content}
                             </div>
                         ),
