@@ -256,7 +256,7 @@ fn bytes(n: u64) -> String {
     }
 }
 
-/// 게임 서버 업데이트 확인: 새 빌드(빌드 번호), 최신, 확인 실패(이유), 사바쨩이 업데이트하지 않는 서버
+/// 게임 서버 업데이트 확인: 새 빌드(빌드 번호), 최신, 확인 실패(이유), 사바쨩이 업데이트하지 않는 서버, 확인하지 않음
 fn server_update_check(result: &Value, cat: &Catalog) -> String {
     let build = |key: &str| result.get(key).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())).filter(|b| b != "null").unwrap_or_default();
     if result.get("update_available").and_then(Value::as_bool) == Some(true) {
@@ -265,6 +265,8 @@ fn server_update_check(result: &Value, cat: &Catalog) -> String {
     match str_of(result, "reason") {
         "check_failed" => cat.t("actions.summary.server_update.check_failed", &[("error", str_of(result, "error"))]),
         "update_unsupported" => cat.t("actions.summary.server_update.unsupported", &[]),
+        // 확인할 hook·데이터가 없어 확인하지 않았다 (no_hook_handled·no_extension_data 등): 최신이라고 하지 않는다
+        r if !r.is_empty() => cat.t("actions.summary.server_update.unchecked", &[]),
         _ => cat.t("actions.summary.server_update.latest", &[("build", &build("local_buildid"))]),
     }
 }
@@ -296,6 +298,11 @@ mod tests {
         let cat = Catalog::for_language("ko");
         let failed = text("server.update.check", &json!({"update_available": false, "reason": "check_failed", "error": "boom"}), &cat).unwrap();
         assert!(failed.contains("boom") && !failed.contains("최신"), "{failed}");
+        // 확인할 hook·데이터가 없어 확인하지 않은 것도 "최신"이 아니다
+        for reason in ["no_hook_handled", "no_extension_data"] {
+            let unchecked = text("server.update.check", &json!({"update_available": false, "reason": reason}), &cat).unwrap();
+            assert!(!unchecked.contains("최신"), "{reason}: {unchecked}");
+        }
         let newer = text("server.update.check", &json!({"update_available": true, "local_buildid": "1", "remote_buildid": "2"}), &cat).unwrap();
         assert!(newer.contains('1') && newer.contains('2'), "{newer}");
         let now = text("server.update.apply", &json!({"success": true, "scheduled": true, "warn_minutes": 0, "players": 0}), &cat).unwrap();

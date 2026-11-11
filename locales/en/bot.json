@@ -478,6 +478,7 @@
         "latest": "Up to date (build {{build}}).",
         "check_failed": "Couldn't check for an update: {{error}}",
         "unsupported": "Saba-chan doesn't update this server (installed by hand).",
+        "unchecked": "Couldn't check this server for updates.",
         "started": "The update has started. I'll let you know when it's done.",
         "cancelled": "Cancelled the planned update. The server stays on.",
         "scheduled": "I'll warn in game {{minutes}} minutes ahead, then save, stop, update and start it again.",

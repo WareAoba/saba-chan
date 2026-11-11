@@ -93,9 +93,14 @@ pub async fn begin_restart_update(state: &IPCServer, id: &str, warn_minutes: u32
             go = warn(&state, &id, warn_minutes) => go,
             _ = token.cancelled() => false,
         };
-        // 여기부터는 취소할 수 없다 (끄기 시작)
-        warnings().lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
-        if token.is_cancelled() {
+        // 여기부터는 취소할 수 없다 (끄기 시작). 취소 요청과 같은 잠금 안에서 정한다:
+        // 취소가 먼저면 끄지 않고, 이것이 먼저면 취소 요청은 409를 받는다
+        let cancelled = {
+            let mut warnings = warnings().lock().unwrap_or_else(|e| e.into_inner());
+            warnings.remove(&id);
+            token.is_cancelled()
+        };
+        if cancelled {
             let catalog = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
             if super::backup::is_running(&state, &id).await {
                 super::backup::announce(&state, &id, &catalog.t("schedule.update_cancelled", &[])).await;
@@ -122,10 +127,10 @@ pub async fn cancel_server_update(
     axum::extract::Path(id): axum::extract::Path<String>,
     axum::extract::State(_state): axum::extract::State<IPCServer>,
 ) -> Response {
-    let token = warnings().lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
-    match token {
-        Some(token) => {
-            token.cancel();
+    // 예고 작업이 끄기로 넘어가는 결정과 같은 잠금 안에서 취소한다
+    let cancelled = warnings().lock().unwrap_or_else(|e| e.into_inner()).remove(&id).map(|token| token.cancel());
+    match cancelled {
+        Some(()) => {
             (StatusCode::OK, Json(json!({ "success": true, "id": id, "cancelled": true }))).into_response()
         }
         None if is_pending(&id) => error(
@@ -302,42 +307,48 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
         watch.notified = false;
     }
     let running = super::backup::is_running(state, id).await;
-    let players = crate::supervisor::players::get(id).map(|c| c.online);
-    match auto_step(running, players) {
-        AutoStep::Update | AutoStep::Restart => {
-            // 기다리는 동안 알림 버튼·앱·예약으로 이미 업데이트했을 수 있다: 끄기 전에 한 번 더 본다
-            if !fresh && !update_available(state, id, watch).await {
-                watch.waiting = false;
-                return;
-            }
-            let Some(mark) = Pending::take(id) else { return };
+    let mut players = crate::supervisor::players::get(id).map(|c| c.online);
+    let mut step = auto_step(running, players);
+    if step != AutoStep::Wait {
+        // 기다리는 동안 알림 버튼·앱·예약으로 이미 업데이트했을 수 있다: 끄기 전에 한 번 더 본다
+        if !fresh && !update_available(state, id, watch).await {
             watch.waiting = false;
-            let (state, id, remote) = (state.clone(), id.to_string(), watch.remote.clone());
-            crate::audit::spawn(async move {
-                let _mark = mark;
-                let updated = stop_update_start(&state, &id).await;
-                record_auto_result(&id, remote.as_deref(), updated);
-            });
+            return;
         }
-        AutoStep::Wait => {
-            if watch.notified {
-                return;
-            }
-            watch.notified = true;
-            let name = state
-                .supervisor
-                .read()
-                .await
-                .instance_store
-                .get(id)
-                .map(|i| i.name.clone())
-                .unwrap_or_default();
-            crate::events::emit(
-                "instance.update_waiting",
-                json!({ "instanceId": id, "instance": name, "players": players }),
-            );
+        // 기억한 접속자 수는 최대 1분 전이고 확인하는 동안 들어왔을 수 있다: 끄기 바로 전에 지금 수를 묻는다 (모르면 기다린다)
+        let running = super::backup::is_running(state, id).await;
+        if running {
+            players = crate::supervisor::players::fresh(&state.supervisor, id).await;
         }
+        step = auto_step(running, players);
     }
+    if step != AutoStep::Wait {
+        let Some(mark) = Pending::take(id) else { return };
+        watch.waiting = false;
+        let (state, id, remote) = (state.clone(), id.to_string(), watch.remote.clone());
+        crate::audit::spawn(async move {
+            let _mark = mark;
+            let updated = stop_update_start(&state, &id).await;
+            record_auto_result(&id, remote.as_deref(), updated);
+        });
+        return;
+    }
+    if watch.notified {
+        return;
+    }
+    watch.notified = true;
+    let name = state
+        .supervisor
+        .read()
+        .await
+        .instance_store
+        .get(id)
+        .map(|i| i.name.clone())
+        .unwrap_or_default();
+    crate::events::emit(
+        "instance.update_waiting",
+        json!({ "instanceId": id, "instance": name, "players": players }),
+    );
 }
 
 /// 새 빌드가 있는지 확인한다 (확인 시각을 남기고, 확인하지 못했으면 경고 로그)

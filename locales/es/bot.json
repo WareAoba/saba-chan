@@ -478,6 +478,7 @@
         "latest": "Está al día (build {{build}}).",
         "check_failed": "No se pudo comprobar la actualización: {{error}}",
         "unsupported": "Saba-chan no actualiza este servidor (instalado a mano).",
+        "unchecked": "No se pueden buscar actualizaciones para este servidor.",
         "started": "La actualización ha empezado. Te aviso cuando termine.",
         "cancelled": "Se canceló la actualización anunciada. El servidor sigue encendido.",
         "scheduled": "Avisaré en el juego {{minutes}} minutos antes; luego guardaré, detendré, actualizaré y volveré a iniciarlo.",

@@ -478,6 +478,7 @@
         "latest": "已是最新（版本 {{build}}）。",
         "check_failed": "无法检查更新：{{error}}",
         "unsupported": "Saba-chan 不会更新此服务器（手动安装的服务器）。",
+        "unchecked": "无法检查此服务器的更新。",
         "started": "已开始更新，完成后会通知你。",
         "cancelled": "已取消预告中的更新，服务器继续运行。",
         "scheduled": "将在游戏内提前 {{minutes}} 分钟通知，然后保存、停止、更新并重新启动。",

@@ -478,6 +478,7 @@
         "latest": "À jour (build {{build}}).",
         "check_failed": "Impossible de vérifier la mise à jour : {{error}}",
         "unsupported": "Saba-chan ne met pas à jour ce serveur (installé à la main).",
+        "unchecked": "Impossible de vérifier les mises à jour de ce serveur.",
         "started": "La mise à jour a commencé. Je vous préviens quand c'est fini.",
         "cancelled": "La mise à jour annoncée a été annulée. Le serveur reste allumé.",
         "scheduled": "Je préviens en jeu {{minutes}} minutes avant, puis j'enregistre, j'arrête, je mets à jour et je relance.",

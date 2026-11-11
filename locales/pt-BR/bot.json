@@ -478,6 +478,7 @@
         "latest": "Está atualizado (build {{build}}).",
         "check_failed": "Não foi possível verificar a atualização: {{error}}",
         "unsupported": "O Saba-chan não atualiza este servidor (instalado manualmente).",
+        "unchecked": "Não é possível verificar atualizações deste servidor.",
         "started": "A atualização começou. Aviso quando terminar.",
         "cancelled": "A atualização anunciada foi cancelada. O servidor continua ligado.",
         "scheduled": "Vou avisar no jogo {{minutes}} minutos antes; depois salvo, paro, atualizo e ligo de novo.",
