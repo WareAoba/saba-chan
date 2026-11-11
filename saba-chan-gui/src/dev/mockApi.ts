@@ -298,6 +298,11 @@ const mockFailed = params.get('failed') // 불러오지 못한 모듈 보기
     ? [{ path: 'modules/terraria', error: "module.toml: unknown field 'protocl' (did you mean 'protocol'?)" }]
     : [];
 const mockMac = params.get('mac') === '1'; // 모듈 없이 처음 연 맥(Apple 실리콘) 보기
+// 처음 시작하기 가이드 보기: ?discord=1 연결됨, ?started=0 아직 한 번도 안 켬, ?running=1 불러올 폴더의 서버가 켜져 있음
+const mockDiscord = params.get('discord') === '1';
+const mockStarted = params.get('started') !== '0';
+const mockRunningFolder = params.get('running') === '1';
+let mockModulesInstalled = !mockMac && params.get('modules') !== '0'; // ?modules=0 모듈 없이 처음 연 PC
 const settings = {};
 // 받을 수 있는 모듈 (릴레이 0.1.13 카탈로그 모양). 맥 보기에서는 데몬처럼 OS·CPU를 판정해 싣는다
 const ICON = (m: string) => `https://raw.githubusercontent.com/WareAoba/saba-chan-modules/7c3454c70064459b8f4f82c1cd492e590e29e6cc/${m}/icon.png`;
@@ -319,7 +324,11 @@ type MockFn = (...args: any[]) => unknown;
 
 const impl: Record<string, MockFn> = {
     serverList: () => ok({ servers: mockNoServers ? [] : servers.map((s) => ({ ...s })) }),
-    moduleList: () => ok({ modules: mockMac ? [] : modules, failed: mockFailed }),
+    moduleList: () => ok({ modules: mockModulesInstalled ? modules : [], failed: mockFailed }),
+    moduleInstallFromManifest: () => {
+        mockModulesInstalled = true;
+        return new Promise((r) => setTimeout(() => r({ ok: true }), 600));
+    },
     moduleManifest: () =>
         ok({ ok: true, manifest: { modules: Object.fromEntries(Object.entries(catalog).map(([id, info]) => [id, judged(info)])) } }),
     instanceEvents: () =>
@@ -434,7 +443,13 @@ const impl: Record<string, MockFn> = {
                 },
             ],
         }),
-    migrationScanDir: () => ok({ ok: true, matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
+    migrationScanDir: () =>
+        ok({
+            ok: true,
+            matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }],
+            notices: mockRunningFolder ? ['server_running'] : [],
+        }),
+    openFolderDialog: () => ok('D:\\Servers\\survival'),
     settingsLoad: () => ok(settings),
     settingsSave: (s) => {
         Object.assign(settings, s);
@@ -567,13 +582,20 @@ const impl: Record<string, MockFn> = {
         const mod = modules.find((m) => m.name === srv?.module);
         return ok({
             commands: [
-                ...(mod?.commands?.fields || []).map((f) => ({ ...f, risk: f.risk || 'caution', source: 'module' })),
+                // ready: 데몬처럼 켜진 서버의 모듈 명령만 지금 보낼 수 있다 (익스텐션 명령은 늘)
+                ...(mod?.commands?.fields || []).map((f) => ({
+                    ...f,
+                    risk: f.risk || 'caution',
+                    source: 'module',
+                    ready: srv?.status === 'running',
+                })),
                 {
                     name: 'backup-now',
                     label: '지금 백업',
                     risk: 'caution',
                     source: 'extension',
                     extension: 'world-backup',
+                    ready: true,
                 },
             ],
         });
@@ -896,16 +918,16 @@ const impl: Record<string, MockFn> = {
     relayMcpGrantRevoke: () => ok({ ok: true }),
     relayPrivacyErase: () => ok({ url: 'https://saba-chan.online/legal/erase#mock.secret' }),
     relayPrivacyEraseStatus: () => ok({ status: 'pending' }),
-    onboarding: () =>
-        ok({
-            steps: [
-                { id: 'module', done: true, optional: false },
-                { id: 'server', done: true, optional: false },
-                { id: 'discord', done: false, optional: false },
-                { id: 'chatbot', done: false, optional: true },
-            ],
-            next: 'discord',
-        }),
+    onboarding: () => {
+        const steps = [
+            { id: 'discord', done: mockDiscord, optional: false },
+            { id: 'module', done: mockModulesInstalled, optional: false },
+            { id: 'server', done: !mockNoServers, optional: false },
+            { id: 'start', done: !mockNoServers && mockStarted, optional: false },
+            { id: 'chatbot', done: false, optional: true },
+        ];
+        return ok({ steps, next: steps.find((st) => !st.optional && !st.done)?.id ?? null });
+    },
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),
     languageGet: () => ok('ko'),

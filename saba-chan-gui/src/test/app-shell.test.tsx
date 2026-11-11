@@ -235,8 +235,10 @@ describe('서버 페이지', () => {
         expect(document.querySelector('.server-list-pane')).toBeNull();
     }, 20000);
 
-    it('서버가 없으면 빈 화면 안내와 서버 추가 버튼을 보여준다', async () => {
+    it('서버가 없으면 처음 시작하기 가이드를, 닫으면 빈 화면 안내와 서버 추가 버튼을 보여준다', async () => {
         await boot();
+        await waitFor(() => expect(document.querySelector('.guide-card')).not.toBeNull(), { timeout: 8000 });
+        await act(async () => fireEvent.click(document.querySelector('.guide-close') as HTMLElement));
         await waitFor(() => expect(document.querySelector('.empty-state')).not.toBeNull(), { timeout: 8000 });
         await act(async () => fireEvent.click(document.querySelector('.empty-state .btn-primary') as HTMLElement));
         expect(useUIStore.getState().showModuleManager).toBe(true);

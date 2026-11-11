@@ -180,6 +180,42 @@ span[style*="--icon-loader"] svg {
     text-overflow: ellipsis;
 }
 
+/* 오프닝 (utils/opening.ts): 메인 화면을 아래에 다 그려 두는 동안 덮고 있다가,
+ * 떠 있던 콘솔 글자를 끌어모아 화음에 섬광과 함께 걷힌다. 걷힌 뒤에는 흩어지는 글자만 메인 화면 위에 남는다 */
+.loading-screen.opening {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+}
+.loading-screen.opening .loading-content {
+    transform-origin: 50% 50%;
+    will-change: transform, opacity;
+}
+.loading-flash {
+    position: absolute;
+    inset: 0;
+    background: #eef1ff;
+    opacity: 0;
+    pointer-events: none;
+}
+.loading-screen.opened {
+    background: transparent;
+    pointer-events: none;
+}
+/* 후두둑(비정상 기동): 바탕을 서서히 걷는다 (--opening-cover 1 → 0) */
+.loading-screen.falling {
+    background: color-mix(in oklch, var(--loading-bg) calc(var(--opening-cover, 1) * 100%), transparent);
+}
+.loading-screen.falling > .loading-vignette,
+.loading-screen.falling > .appbar {
+    opacity: var(--opening-cover, 1);
+}
+.loading-screen.opened > .loading-vignette,
+.loading-screen.opened > .appbar,
+.loading-screen.opened > .loading-content {
+    visibility: hidden;
+}
+
 /* 로딩이 끝나면: 메인 화면 위에서 로고가 살짝 커지며 화면 전체가 걷힌다 */
 .loading-screen.leaving {
     position: fixed;

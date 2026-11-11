@@ -60,10 +60,32 @@ describe('AddInstanceMigration 폴더 스캔', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
         fireEvent.click(await screen.findByText('Next'));
         // 기본은 그 자리에 연결
-        expect(screen.getByRole('tab', { name: 'Keep it where it is' }).getAttribute('aria-selected')).toBe('true');
-        fireEvent.click(screen.getByRole('tab', { name: 'Move into saba-chan' }));
+        expect(screen.getByRole('radio', { name: /Keep current folder/ }).getAttribute('aria-checked')).toBe('true');
+        fireEvent.click(screen.getByRole('radio', { name: /Move into Saba-chan folder/ }));
         fireEvent.click(screen.getByText('Import'));
         await vi.waitFor(() => expect(onAddServer).toHaveBeenCalled());
         expect(onAddServer.mock.calls[0][0]).toMatchObject({ migration_source: '/srv/old', migration_mode: 'move' });
+    });
+
+    // 사용자 11-08: 켜져 있는 서버는 불러오기를 누르기 전에 끄라고 보인다 (데몬 detect `notices`)
+    it('폴더의 서버가 켜져 있으면 다음으로 가기 전에 경고하고, 불러오기 화면에서 바뀌는 것을 보인다', async () => {
+        window.api.openFolderDialog = vi.fn().mockResolvedValue('/srv/old');
+        window.api.migrationScanDir = vi
+            .fn()
+            .mockResolvedValue({ ok: true, matches: [{ name: 'minecraft' }], notices: ['server_running'] });
+        render(
+            <AddInstanceMigration
+                extensions={[{ name: 'minecraft', display_name: 'Minecraft Java' }] as ModuleInfo[]}
+                servers={[]}
+                onAddServer={vi.fn()}
+                onBack={vi.fn()}
+            />,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+        expect(await screen.findByText('This server is running right now')).toBeTruthy();
+        fireEvent.click(screen.getByText('Next'));
+        expect(screen.getByText('This server is running right now')).toBeTruthy();
+        expect(screen.getByText('What changes when you import')).toBeTruthy();
+        expect(screen.getByText('Removing it from Saba-chan also deletes its backups')).toBeTruthy();
     });
 });

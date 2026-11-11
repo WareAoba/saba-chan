@@ -8,6 +8,7 @@ import type { ModuleInfo } from '../../types/daemon';
 import { AddInstanceNewServer } from './AddInstanceNewServer';
 import { AddInstanceMigration } from './AddInstanceMigration';
 import { AddServerFrame, AddServerFrameContext } from './AddServerFrame';
+import { useGuideStore } from '../guides/guides';
 import type { AddServerPayload } from '../../hooks/useServerActions';
 import './AddServer.css';
 
@@ -64,6 +65,13 @@ export function AddInstanceModal({
             onRefreshextensions();
         }
     }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // 가이드에서 "쓰던 서버 불러오기"·"새 서버 만들기"로 열었으면 그 화면으로 바로 연다
+    useEffect(() => {
+        if (!isOpen) return;
+        const requested = useGuideStore.getState().takeAddServerMode();
+        if (requested) setMode(requested);
+    }, [isOpen]);
 
     return (
         <Dialog

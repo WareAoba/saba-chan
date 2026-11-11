@@ -2380,7 +2380,122 @@
     color: var(--stop);
 }
 
-/* 내 PC 카드의 게임 서버 주소 줄 (PublicAddress.tsx) */
+/* 불러오기 설명 (사용자 11-08~10): 켜져 있음 경고, 파일 둘 곳, 바뀌는 것, 편해지는 점 */
+.mg-notices {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+.mg-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    background: color-mix(in oklch, var(--warn) 12%, transparent);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+}
+.mg-notice > svg {
+    flex: none;
+    margin-top: var(--sp-0-5);
+    color: var(--warn);
+}
+.mg-notice p {
+    margin: var(--sp-0-5) 0 0;
+    color: var(--text-2);
+}
+.mg-modes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-2);
+}
+.mg-mode {
+    height: auto;
+    min-width: 0;
+    white-space: normal;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-1);
+    padding: var(--sp-2-5) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    text-align: left;
+    cursor: pointer;
+}
+.mg-mode--selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+.mg-mode-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+}
+.mg-mode-tag {
+    padding: 0 var(--sp-1-5);
+    border-radius: var(--r-pill);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+}
+.mg-changes {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+}
+.mg-change {
+    display: grid;
+    grid-template-columns: 88px 1fr;
+    gap: var(--sp-3);
+    padding: var(--sp-2) 0;
+    border-top: 1px solid var(--line);
+    font-size: var(--fs-sm);
+}
+.mg-change:first-child {
+    border-top: 0;
+}
+.mg-change dt {
+    color: var(--text-1);
+    font-weight: 700;
+}
+.mg-change dd {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-0-5);
+    margin: 0;
+    color: var(--text-2);
+}
+.mg-change-undo {
+    color: var(--ok);
+    font-size: var(--fs-xs);
+}
+.mg-change-undo--warn {
+    color: var(--warn);
+}
+.mg-benefits {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+}
+.mg-benefits svg {
+    color: var(--ok);
+}
+
+/* 내 PC 카드의 게임 서버 주소 줄과 바꾸기 창 (PublicAddress.tsx) */
 .public-address-value {
     display: flex;
     flex-wrap: wrap;
