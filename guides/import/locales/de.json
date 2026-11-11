@@ -2,6 +2,7 @@
     "title": "Vorhandenen Server importieren",
     "summary": "Einen bestehenden Spielserver übernehmen",
     "steps": [
-        "Wähle den Ordner deines Servers, und Saba-chan liest ihn ein. Die Dateien können bleiben, wo sie sind."
+        "Einen Spielserver, den du schon betreibst, holst du über „Server hinzufügen“ › „Vorhandenen Server migrieren“. Welten und Einstellungen bleiben erhalten, und die Dateien können bleiben, wo sie sind.",
+        "Wähle den Quellordner und klicke auf „Scan starten“, dann liest Saba-chan ihn ein."
     ]
 }

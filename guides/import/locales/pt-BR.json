@@ -2,6 +2,7 @@
     "title": "Importar um servidor existente",
     "summary": "Traga um servidor de jogo que você já usa",
     "steps": [
-        "Escolha a pasta do seu servidor e a Saba-chan lê tudo. Os arquivos podem ficar onde estão."
+        "Traga um servidor de jogo que você já usa em Adicionar servidor › Migrar servidor existente. Mundos e configurações continuam iguais, e os arquivos podem ficar onde estão.",
+        "Escolha a Pasta de origem e clique em Iniciar varredura; a Saba-chan vai lê-la."
     ]
 }

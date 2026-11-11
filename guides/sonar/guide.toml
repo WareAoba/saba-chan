@@ -6,4 +6,6 @@ order = 50
 [[steps]]
 
 [[steps]]
+
+[[steps]]
 action = "sonar"

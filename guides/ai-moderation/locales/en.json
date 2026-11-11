@@ -2,6 +2,7 @@
     "title": "AI moderation",
     "summary": "Alerts for spam and scam promotion",
     "steps": [
-        "The AI takes a second look at messages that look like spam or scam promotion and sends a DM to the server owner and admins if it finds them harmful. It does not delete messages."
+        "AI moderation uses the API key registered for Talking Saba-chan. Add a key first if there isn’t one.",
+        "Turn on Alert on spam and scams and save. If a message looks harmful, the server owner and admins get a DM. Messages are not deleted."
     ]
 }

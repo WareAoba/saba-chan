@@ -2,6 +2,7 @@
     "title": "Monitor do sistema",
     "summary": "Os recursos do seu PC num relance",
     "steps": [
-        "Veja num relance o uso de CPU, memória, disco e rede."
+        "O uso de CPU, memória, disco e rede fica sempre à vista na tela de servidores.",
+        "Clique em Expandir monitor para ver o uso de cada servidor com sua própria cor. Depois de expandir, escolha o que mostrar na engrenagem."
     ]
 }

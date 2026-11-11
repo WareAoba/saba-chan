@@ -6,3 +6,6 @@ order = 30
 [[steps]]
 go = "discord/*/instances"
 spot = "discord.start_notice"
+
+[[steps]]
+go = "discord/*/moderation/channels"

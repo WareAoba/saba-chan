@@ -2,6 +2,7 @@
     "title": "Moniteur système",
     "summary": "Les ressources de votre PC en un coup d’œil",
     "steps": [
-        "Voyez en un coup d’œil l’utilisation du processeur, de la mémoire, du disque et du réseau."
+        "L'utilisation du CPU, de la mémoire, du disque et du réseau reste visible sur l'écran des serveurs.",
+        "Cliquez sur Déplier le moniteur pour voir la part de chaque serveur dans sa propre couleur. Une fois déplié, choisissez quoi afficher avec l'engrenage."
     ]
 }

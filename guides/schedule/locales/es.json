@@ -2,6 +2,8 @@
     "title": "Tareas programadas",
     "summary": "Reinicios automáticos y copias periódicas",
     "steps": [
-        "Saba-chan inicia, detiene, reinicia o hace copias del servidor a las horas que elijas."
+        "Pulsa Añadir tarea para crear una tarea programada.",
+        "Elige qué hacer (iniciar, detener, reiniciar, copia, aviso, actualizar o un comando del juego) y cuándo. El interruptor pausa la tarea.",
+        "Pulsa Guardar para que la programación se aplique."
     ]
 }

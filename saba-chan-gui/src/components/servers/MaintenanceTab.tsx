@@ -609,7 +609,7 @@ function ScheduleCard({
                         const command = d.action === COMMAND ? findCommand(commands, d.command) : null;
                         const next = d.enabled ? nextRunOf(d) : null;
                         return (
-                            <li key={d.key} className={clsx('mt-task', { off: !d.enabled })}>
+                            <li key={d.key} data-spot="schedule.task" className={clsx('mt-task', { off: !d.enabled })}>
                                 <div className="mt-task-head">
                                     <Segmented
                                         items={items}
@@ -842,6 +842,7 @@ function ScheduleCard({
                 )}
                 <button
                     type="button"
+                    data-spot="schedule.save"
                     className={clsx('btn', armed ? 'btn-danger' : 'btn-primary')}
                     disabled={!dirty || saving || blocked}
                     onClick={save}

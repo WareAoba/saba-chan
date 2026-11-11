@@ -7,3 +7,9 @@ done = "schedule.any"
 [[steps]]
 go = "server/:first/maintenance"
 spot = "schedule.add"
+
+[[steps]]
+spot = "schedule.task"
+
+[[steps]]
+spot = "schedule.save"

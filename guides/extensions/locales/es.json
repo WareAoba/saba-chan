@@ -2,6 +2,8 @@
     "title": "Extensiones",
     "summary": "Añade funciones",
     "steps": [
-        "Consigue extensiones para añadir funciones nuevas a Saba-chan."
+        "Las extensiones añaden funciones a Saba-chan. Consíguelas y gestiónalas en esta pestaña del Almacén Saba.",
+        "Despliega Tienda y pulsa Instalar en la extensión que quieras.",
+        "Las extensiones que consigas aparecen en Instalados. Actívalas y desactívalas con el interruptor y actualízalas aquí cuando salga una versión nueva."
     ]
 }

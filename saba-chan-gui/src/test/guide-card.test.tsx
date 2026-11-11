@@ -108,6 +108,21 @@ describe('화면 강조', () => {
         expect(useGuideStore.getState().guides?.[0].step).toBe(1);
     });
 
+    it('화면을 넘겨받는 단계는 말풍선을 먼저 보이고, 열기를 눌러야 그 화면으로 넘기며 끝난다', async () => {
+        const open = vi.fn();
+        window.addEventListener('saba:open-sonar', open);
+        useGuideStore.setState({ guides: [guide('s', { steps: [{ action: 'sonar', text: 'press ctrl k' }] })], active: null });
+        render(<Spotlight />);
+        act(() => startGuide('s'));
+        await act(async () => {});
+        expect(screen.getByText('press ctrl k')).toBeInTheDocument();
+        expect(open).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+        expect(open).toHaveBeenCalledTimes(1);
+        expect(useGuideStore.getState().active).toBeNull();
+        window.removeEventListener('saba:open-sonar', open);
+    });
+
     it('Esc로도 닫힌다', async () => {
         render(<Spotlight />);
         act(() => startGuide('b'));

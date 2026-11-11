@@ -2,8 +2,8 @@
     "title": "Backups · Restaurar backup",
     "summary": "Guarde o estado atual e volte quando quiser",
     "steps": [
-        "Cada servidor tem seus backups e tarefas agendadas nesta aba.",
-        "Clique para guardar o estado atual do servidor como backup.",
-        "Você pode voltar a um backup guardado quando quiser. Antes de restaurar, a Saba-chan guarda mais uma vez o estado atual."
+        "Cada servidor guarda seus backups na aba Backups e agendamentos.",
+        "Clique em Fazer backup agora para compactar o mundo e os arquivos de save na hora.",
+        "Clique em Restaurar e depois em Clique para restaurar para voltar a esse backup. Funciona com o servidor parado, e o estado atual é salvo antes."
     ]
 }

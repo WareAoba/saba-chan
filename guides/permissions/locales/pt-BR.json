@@ -2,6 +2,8 @@
     "title": "Permissões",
     "summary": "Decida quem pode fazer o quê",
     "steps": [
-        "Dê um nível a cada membro para decidir quem pode gerenciar seus servidores."
+        "Na aba Membros, defina um nível para cada pessoa do seu servidor do Discord. Quanto maior o nível, mais comandos ela pode usar.",
+        "Use Adicionar pessoa ao lado de um nível para colocar alguém nele. Quem você não definiu fica no Nível padrão.",
+        "Em Editar níveis, mude os nomes dos níveis, a ordem e os comandos que cada nível pode usar."
     ]
 }

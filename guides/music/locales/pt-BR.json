@@ -2,6 +2,8 @@
     "title": "Saba-chan cantora",
     "summary": "Música no seu canal de voz",
     "steps": [
-        "A Saba-chan toca música no seu canal de voz. Configure aqui."
+        "Ligue a Saba-chan cantora. O painel do player e o nivelamento de volume também ficam aqui.",
+        "Escolha um canal para música e toque em Saba-chan cantora em Tarefas da Saba-chan. Nesse canal fica só o player; mensagens comuns são apagadas.",
+        "Entre num canal de voz e escreva o nome de uma música ou um link no canal da Saba-chan cantora. A Saba-chan entra e toca."
     ]
 }

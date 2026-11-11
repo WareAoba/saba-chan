@@ -2,7 +2,8 @@
     "title": "Saba-chan qui parle",
     "summary": "Discuter avec Saba-chan sur Discord",
     "steps": [
-        "Ajoutez une clé d’API OpenAI pour discuter avec Saba-chan sur Discord.",
-        "Activez-la ou désactivez-la et choisissez ses outils pour chaque serveur Discord."
+        "Ajoutez une clé API d’un fournisseur d’IA. Tous les serveurs Discord partagent cette clé.",
+        "Activez Utiliser Saba-chan qui parle sur ce serveur et enregistrez. Les serveurs nouvellement connectés démarrent désactivés.",
+        "Choisissez un salon de discussion et touchez Discussion avec Saba-chan qui parle dans Tâches de Saba-chan. Parlez-lui dans ce salon et elle répond."
     ]
 }

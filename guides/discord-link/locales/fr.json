@@ -2,7 +2,8 @@
     "title": "Connexion Discord",
     "summary": "Démarrer et arrêter les serveurs depuis Discord",
     "steps": [
-        "Obtenez un code d’association et saisissez-le sur votre serveur Discord.",
-        "Une fois lié, vous démarrez et arrêtez les serveurs et voyez leur état avec les commandes Discord."
+        "Si le bot Saba-chan n'est pas encore sur votre serveur Discord, ajoutez-le d'abord avec Inviter le bot.",
+        "Cliquez sur Connecter un serveur Discord pour obtenir un code d'appairage et la commande à saisir. Tapez cette commande dans un salon Discord et c'est connecté.",
+        "Une fois connecté, vous pouvez démarrer et arrêter vos serveurs de jeu et voir leur état depuis ce serveur Discord."
     ]
 }

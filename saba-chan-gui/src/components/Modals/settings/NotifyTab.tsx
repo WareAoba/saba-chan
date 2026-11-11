@@ -64,7 +64,7 @@ export function NotifyTab() {
             </div>
 
             {/* 밖에서 켜고 끈 것·크래시·설치 결과·업데이트 효과음: 전체 스위치 + 종류별 */}
-            <div className="setting-item setting-item-group">
+            <div data-spot="settings.sound" className="setting-item setting-item-group">
                 <div className="setting-item-row">
                     <label className="setting-label">
                         <span className="setting-title">

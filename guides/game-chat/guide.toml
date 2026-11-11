@@ -5,5 +5,9 @@ order = 80
 done = "game_chat.on"
 
 [[steps]]
-go = "server/:first/settings"
+go = "server/:first/saba"
 spot = "game_chat"
+
+[[steps]]
+go = "discord/*/moderation/channels"
+spot = "mod.assign"

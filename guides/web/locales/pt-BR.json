@@ -1,7 +1,8 @@
 {
-    "title": "Saba-chan Web",
+    "title": "Saba-chan web",
     "summary": "Gerencie servidores pelo navegador do celular",
     "steps": [
-        "Use o comando web no Discord para receber um link de uso único. Abra no navegador do celular para iniciar e parar servidores e usar o console, as configurações e os backups."
+        "A Saba-chan web funciona com um PC vinculado ao Discord. Se ainda não vinculou, comece por Conectar um servidor do Discord.",
+        "Use o comando web no Discord para receber um link que abre uma única vez em até 5 minutos. Abra no navegador do celular para iniciar e parar servidores e usar o console, as configurações e os backups."
     ]
 }

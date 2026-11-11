@@ -2,6 +2,8 @@
     "title": "Journal d'activité",
     "summary": "Qui a fait quoi",
     "steps": [
-        "Voyez qui a démarré, arrêté ou modifié un serveur, quand et d’où."
+        "Ici reste qui a démarré, arrêté ou modifié un serveur et quand, depuis l’app, Discord, la CLI ou une tâche planifiée. Choisissez un serveur à gauche pour ne voir que ses entrées.",
+        "Cliquez sur une ligne pour voir l’origine, l’utilisateur et le résultat.",
+        "Filtre n’affiche que les entrées comme les plantages ou les échecs, et Exporter les enregistre dans un fichier."
     ]
 }

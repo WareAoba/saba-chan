@@ -2,6 +2,7 @@
     "title": "KI-Moderation",
     "summary": "Hinweise auf Spam und Betrugswerbung",
     "steps": [
-        "Die KI prüft Nachrichten, die nach Spam oder Betrugswerbung aussehen, ein zweites Mal und meldet schädliche per DM an Serverbesitzer und Admins. Nachrichten löscht sie nicht."
+        "Die KI-Moderation nutzt den API-Schlüssel der Sprechenden Saba-chan. Ohne Schlüssel hinterlege zuerst einen.",
+        "Schalte Bei Spam und Betrug warnen ein und speichere. Wirkt eine Nachricht schädlich, bekommen Serverbesitzer und Admins eine DM. Nachrichten werden nicht gelöscht."
     ]
 }

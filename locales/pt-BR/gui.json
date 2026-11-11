@@ -2621,7 +2621,8 @@
     "new": "new!",
     "prev": "Voltar",
     "next": "Próximo",
-    "finish": "Entendi"
+    "finish": "Entendi",
+    "go": "Abrir"
   },
   "public_address": {
     "label": "Endereço do servidor",

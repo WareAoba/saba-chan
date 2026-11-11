@@ -2621,7 +2621,8 @@
     "new": "new!",
     "prev": "戻る",
     "next": "次へ",
-    "finish": "わかった"
+    "finish": "わかった",
+    "go": "開く"
   },
   "public_address": {
     "label": "ゲームサーバーのアドレス",

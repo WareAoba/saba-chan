@@ -2,6 +2,7 @@
     "title": "Agents IA (MCP)",
     "summary": "Laissez votre agent IA gérer les serveurs",
     "steps": [
-        "Connectez votre propre agent IA et il pourra gérer vos serveurs Saba-chan. Voyez et déconnectez les agents connectés ici."
+        "Ajoutez l’adresse affichée ici comme serveur MCP dans un agent IA comme ChatGPT ou Claude, puis connectez-vous avec votre compte Discord. Elle n’apparaît que sur un PC lié à Discord.",
+        "Un agent connecté peut gérer les serveurs de tous les PC de votre compte Discord. Cliquez sur sa carte pour afficher Délier l’agent."
     ]
 }

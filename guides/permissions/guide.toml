@@ -6,3 +6,11 @@ order = 60
 [[steps]]
 go = "discord/*/members"
 spot = "discord.tab.members"
+
+[[steps]]
+go = "discord/*/members"
+spot = "perm.add_person"
+
+[[steps]]
+go = "discord/*/members"
+spot = "perm.edit_levels"

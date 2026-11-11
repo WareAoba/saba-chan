@@ -2,6 +2,8 @@
     "title": "Remote daemon",
     "summary": "Saba-chan on other PCs, in this app",
     "steps": [
-        "Pair an always-on server PC or a Linux server and manage it from this app."
+        "To let another PC manage this one, turn on Allow remote connections on this PC and save.",
+        "Your PCs linked to the same Discord account appear here. Press Connect on a PC that allows remote connections to pair it, then Open to manage its servers from this app.",
+        "For a Linux server you can reach over SSH, use Install on Linux to install Saba-chan and pair it right away."
     ]
 }

@@ -1,7 +1,8 @@
 {
-    "title": "Start alert",
+    "title": "Start/stop alert",
     "summary": "Hear about starts and stops on Discord",
     "steps": [
-        "Turn on the bell and Saba-chan posts in the alert channel of this Discord server when the server starts or stops outside Discord."
+        "In the Discord server's Instances tab, turn on the bell next to a server. Saba-chan posts when that server starts or stops outside Discord.",
+        "To pick the alert channel, choose a channel in Server tools › Channels and set Saba-chan jobs to Alerts."
     ]
 }

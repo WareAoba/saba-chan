@@ -2,7 +2,8 @@
     "title": "Conexión con Discord",
     "summary": "Inicia y detén servidores desde Discord",
     "steps": [
-        "Obtén un código de vinculación e introdúcelo en tu servidor de Discord.",
-        "Una vez vinculado, puedes iniciar y detener servidores y ver su estado con comandos de Discord."
+        "Si el bot de Saba-chan aún no está en tu servidor de Discord, añádelo primero con Invitar al bot.",
+        "Pulsa Conectar un servidor de Discord para obtener un código de emparejamiento y el comando que debes escribir. Escribe ese comando en un chat de Discord y quedará conectado.",
+        "Una vez conectado, puedes iniciar y detener servidores de juego y ver su estado desde ese servidor de Discord."
     ]
 }

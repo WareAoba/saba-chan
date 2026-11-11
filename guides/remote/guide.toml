@@ -5,4 +5,12 @@ order = 10
 
 [[steps]]
 go = "settings/connection"
-spot = "settings.remote"
+spot = "remote.accept"
+
+[[steps]]
+go = "settings/connection"
+spot = "remote.pcs"
+
+[[steps]]
+go = "settings/connection"
+spot = "remote.install"

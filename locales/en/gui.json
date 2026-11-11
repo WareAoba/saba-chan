@@ -2621,7 +2621,8 @@
     "new": "new!",
     "prev": "Back",
     "next": "Next",
-    "finish": "Got it"
+    "finish": "Got it",
+    "go": "Open"
   },
   "public_address": {
     "label": "Game server address",

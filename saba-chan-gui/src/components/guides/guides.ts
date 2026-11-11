@@ -184,7 +184,7 @@ export function startGuide(id: string) {
     goToStep(id, guide.step);
 }
 
-/** 단계로 간다: 화면을 열고 앱이 할 일을 한다. 화면을 넘겨받는 일이면 가이드를 마친다 */
+/** 단계로 간다: 화면을 열고 앱이 할 일을 한다 (화면을 넘겨받는 일은 advanceGuide에서) */
 export function goToStep(id: string, step: number) {
     const guide = useGuideStore.getState().guides?.find((g) => g.id === id);
     const s = guide?.steps[step];
@@ -192,17 +192,27 @@ export function goToStep(id: string, step: number) {
     const address = s.go ? resolveAddress(s.go) : null;
     if (address) openScreen(address);
     const action = s.action ? GUIDE_ACTIONS[s.action] : undefined;
-    if (action?.handoff) {
-        useGuideStore.setState({ active: null });
-        finishGuide(id);
-        action.run();
-        return;
-    }
-    action?.run();
+    // 화면을 넘겨받는 일은 말풍선을 보인 뒤 "다음"에서 한다 (advanceGuide)
+    if (!action?.handoff) action?.run();
     useGuideStore.setState({ active: { id, step } });
     if (step !== guide.step) {
         useGuideStore.setState((st) => ({ guides: st.guides?.map((g) => (g.id === id ? { ...g, step } : g)) ?? null }));
         report(id, { step });
+    }
+}
+
+/** 말풍선의 "다음"·"다 봤어요": 화면을 넘겨받는 단계면 그 일을 하고 가이드를 마친다 */
+export function advanceGuide(id: string, step: number) {
+    const guide = useGuideStore.getState().guides?.find((g) => g.id === id);
+    if (!guide) return;
+    const action = guide.steps[step]?.action ? GUIDE_ACTIONS[guide.steps[step].action as string] : undefined;
+    if (action?.handoff) {
+        finishGuide(id);
+        action.run();
+    } else if (step + 1 < guide.steps.length) {
+        goToStep(id, step + 1);
+    } else {
+        finishGuide(id);
     }
 }
 

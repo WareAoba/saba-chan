@@ -28,7 +28,7 @@ export function AppearanceTab({
     return (
         <>
             {/* ── 1. 라이트/다크 테마 ── */}
-            <div className="setting-item">
+            <div data-spot="settings.theme" className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
                         <Icon name="palette" size="sm" /> {t('gui:settings_modal.theme_label')}
@@ -50,7 +50,7 @@ export function AppearanceTab({
             </div>
 
             {/* ── 2. 강조색 프리셋 ── */}
-            <div className="setting-item setting-item-vertical">
+            <div data-spot="settings.accent" className="setting-item setting-item-vertical">
                 <label className="setting-label">
                     <span className="setting-title">
                         <Icon name="palette" size="sm" /> {t('gui:settings_modal.accent_color_label', 'Accent Color')}

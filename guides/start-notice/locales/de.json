@@ -1,7 +1,8 @@
 {
-    "title": "Start-Hinweis",
+    "title": "Start-/Stopp-Hinweis",
     "summary": "Start- und Stopp-Meldungen in Discord",
     "steps": [
-        "Schalte die Glocke ein, dann meldet Saba-chan im Benachrichtigungskanal dieses Discord-Servers, wenn der Server außerhalb von Discord startet oder stoppt."
+        "Schalte im Tab Instanzen des Discord-Servers die Glocke neben einem Server ein. Saba-chan meldet sich, wenn dieser Server außerhalb von Discord startet oder stoppt.",
+        "Den Kanal für Hinweise legst du unter Serververwaltung › Kanäle fest: Kanal wählen und bei Saba-chans Aufgaben Benachrichtigungen setzen."
     ]
 }

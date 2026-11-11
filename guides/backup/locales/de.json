@@ -2,8 +2,8 @@
     "title": "Backups · Backup wiederherstellen",
     "summary": "Den aktuellen Stand sichern und jederzeit zurückgehen",
     "steps": [
-        "Backups und geplante Aufgaben jedes Servers findest du in diesem Tab.",
-        "Hier sicherst du den aktuellen Stand des Servers als Backup.",
-        "Du kannst jederzeit zu einem gesicherten Backup zurückkehren. Vor dem Wiederherstellen sichert Saba-chan den aktuellen Stand noch einmal."
+        "Jeder Server hat seine Backups im Tab Backups und Zeitpläne.",
+        "Mit Jetzt sichern packst du Welt und Speicherdateien sofort in ein Backup.",
+        "Klicke auf Wiederherstellen und dann auf Zum Wiederherstellen klicken, um zu diesem Backup zurückzugehen. Das geht bei gestopptem Server, und der aktuelle Stand wird vorher gesichert."
     ]
 }

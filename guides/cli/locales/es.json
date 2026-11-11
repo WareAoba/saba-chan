@@ -2,6 +2,7 @@
     "title": "CLI",
     "summary": "Lo mismo, en una terminal",
     "steps": [
-        "Todo lo que haces en la app también funciona en la CLI. Pulsa este botón para cambiar a la CLI."
+        "Tras cambiar la configuración, abre Hacerlo por línea de comandos para ver y copiar el comando CLI que hace lo mismo.",
+        "Pulsa Cambiar a la CLI para abrir la CLI en una terminal nueva con el servidor elegido; esta ventana se cierra. Los servidores siguen funcionando."
     ]
 }

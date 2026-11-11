@@ -2621,7 +2621,8 @@
     "new": "new!",
     "prev": "이전",
     "next": "다음",
-    "finish": "다 봤어요"
+    "finish": "다 봤어요",
+    "go": "열기"
   },
   "public_address": {
     "label": "게임 서버 주소",

@@ -4,5 +4,9 @@ icon = "network"
 order = 40
 
 [[steps]]
-go = "discord/connection"
+go = "settings/connection"
+spot = "discord.agent"
+
+[[steps]]
+go = "settings/connection"
 spot = "discord.agent"

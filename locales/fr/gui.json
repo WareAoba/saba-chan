@@ -2621,7 +2621,8 @@
     "new": "new!",
     "prev": "Retour",
     "next": "Suivant",
-    "finish": "Compris"
+    "finish": "Compris",
+    "go": "Ouvrir"
   },
   "public_address": {
     "label": "Adresse du serveur de jeu",

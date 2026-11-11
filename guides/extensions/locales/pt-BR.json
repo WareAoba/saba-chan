@@ -2,6 +2,8 @@
     "title": "Extensões",
     "summary": "Adicione recursos",
     "steps": [
-        "Baixe extensões para adicionar novos recursos à Saba-chan."
+        "Extensões adicionam recursos à Saba-chan. Obtenha e gerencie-as nesta aba da Loja Saba.",
+        "Abra Loja e clique em Instalar na extensão que quiser.",
+        "As extensões obtidas aparecem em Instalados. Ligue e desligue com o interruptor e atualize aqui quando sair uma versão nova."
     ]
 }

@@ -2,6 +2,8 @@
     "title": "Singing Saba-chan",
     "summary": "Music in your voice channel",
     "steps": [
-        "Saba-chan plays music in your voice channel. Set it up here."
+        "Turn on Singing Saba-chan. You can also set the player panel and volume levelling here.",
+        "Pick a channel for music and choose Singing Saba-chan under Saba-chan jobs. Only the player stays there; regular messages are deleted.",
+        "Join a voice channel, then type a song name or link in the Singing Saba-chan channel. Saba-chan joins and plays it."
     ]
 }

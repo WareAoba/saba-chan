@@ -2,6 +2,8 @@
     "title": "Tarefas agendadas",
     "summary": "Reinícios automáticos e backups regulares",
     "steps": [
-        "A Saba-chan inicia, para, reinicia ou faz backup do servidor nos horários que você definir."
+        "Clique em Adicionar tarefa para criar uma tarefa agendada.",
+        "Escolha o que fazer (iniciar, parar, reiniciar, backup, aviso, atualizar ou um comando do jogo) e quando. O interruptor pausa a tarefa.",
+        "Clique em Salvar para o agendamento valer."
     ]
 }

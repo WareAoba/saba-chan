@@ -4,4 +4,8 @@ icon = "terminal"
 order = 30
 
 [[steps]]
+go = "server/:first/settings"
+spot = "cli.line"
+
+[[steps]]
 spot = "cli.switch"

@@ -2,6 +2,8 @@
     "title": "Registro de atividades",
     "summary": "Quem fez o quê",
     "steps": [
-        "Veja quem iniciou, parou ou mudou um servidor, quando e de onde."
+        "Aqui fica quem iniciou, parou ou mudou um servidor e quando, seja pelo app, Discord, CLI ou tarefa agendada. Escolha um servidor à esquerda para ver só os registros dele.",
+        "Clique numa linha para ver de onde veio, quem fez e o resultado.",
+        "Use Filtro para ver só registros como travamentos ou falhas, e Exportar para salvá-los num arquivo."
     ]
 }

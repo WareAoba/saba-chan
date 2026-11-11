@@ -6,3 +6,6 @@ order = 60
 [[steps]]
 action = "page.servers"
 spot = "monitor"
+
+[[steps]]
+spot = "monitor.toggle"

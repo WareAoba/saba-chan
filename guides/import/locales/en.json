@@ -2,6 +2,7 @@
     "title": "Import an existing server",
     "summary": "Bring in a game server you already run",
     "steps": [
-        "Pick the folder of your server and Saba-chan reads it. The files can stay where they are."
+        "Bring in a game server you already run with Add server › Import Existing Server. Worlds and settings stay as they are, and the files can stay where they are.",
+        "Pick the Source Folder and press Start Scan, and Saba-chan reads it."
     ]
 }

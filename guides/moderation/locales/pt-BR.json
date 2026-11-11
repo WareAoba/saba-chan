@@ -2,6 +2,7 @@
     "title": "Gerenciamento do servidor",
     "summary": "Organize canais e silencie membros",
     "steps": [
-        "Use modo lento, bloqueio, limpeza e silenciamento direto do app e escolha o que a Saba-chan faz em cada canal."
+        "Escolha um canal para usar Modo Lento, Trancar, Limpeza automática e Limpar agora, e defina em Tarefas da Saba-chan o que ela faz ali.",
+        "Em Membros, escolha alguém para silenciar ou tire o silêncio de quem está silenciado."
     ]
 }

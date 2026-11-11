@@ -2,6 +2,7 @@
     "title": "System monitor",
     "summary": "Your PC resources at a glance",
     "steps": [
-        "See CPU, memory, disk and network use at a glance."
+        "CPU, memory, disk and network use stay in view on the Servers screen.",
+        "Press Expand monitor to see each server's share in its own color. After expanding, pick what to show with the gear."
     ]
 }

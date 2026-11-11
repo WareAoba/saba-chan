@@ -2,6 +2,7 @@
     "title": "Systemmonitor",
     "summary": "Die Ressourcen deines PCs auf einen Blick",
     "steps": [
-        "CPU-, Speicher-, Datenträger- und Netzwerkauslastung auf einen Blick."
+        "CPU-, Speicher-, Datenträger- und Netzwerkauslastung siehst du immer in der Serveransicht.",
+        "Mit Monitor ausklappen siehst du den Anteil jedes Servers in eigener Farbe. Danach wählst du über das Zahnrad, was angezeigt wird."
     ]
 }

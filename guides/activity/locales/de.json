@@ -2,6 +2,8 @@
     "title": "Aktivitätsprotokoll",
     "summary": "Wer hat was getan",
     "steps": [
-        "Sieh, wer einen Server wann und von wo gestartet, gestoppt oder geändert hat."
+        "Hier steht, wer einen Server wann gestartet, gestoppt oder geändert hat – ob über die App, Discord, die CLI oder eine geplante Aufgabe. Wähle links einen Server, um nur seine Einträge zu sehen.",
+        "Klicke auf eine Zeile, um Herkunft, Benutzer und Ergebnis zu sehen.",
+        "Mit Filter zeigst du nur Einträge wie Abstürze oder Fehler, mit Exportieren speicherst du sie in eine Datei."
     ]
 }

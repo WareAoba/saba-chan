@@ -2,7 +2,8 @@
     "title": "Discord connection",
     "summary": "Start and stop servers from Discord",
     "steps": [
-        "Get a pairing code and enter it in your Discord server to link.",
-        "Once linked, you can start and stop servers and check their status with Discord commands."
+        "If the Saba-chan bot is not in your Discord server yet, add it first with Invite the bot.",
+        "Press Connect a Discord server to get a pairing code and the command to enter. Type that command in a Discord chat and you are linked.",
+        "Once linked, you can start and stop game servers and check their status from that Discord server."
     ]
 }

@@ -1,7 +1,8 @@
 {
-    "title": "Saba-chan Web",
+    "title": "Web Saba-chan",
     "summary": "Gérer les serveurs depuis le navigateur du téléphone",
     "steps": [
-        "Utilisez la commande web sur Discord pour recevoir un lien à usage unique. Ouvrez-le dans le navigateur du téléphone pour démarrer et arrêter les serveurs et utiliser la console, les réglages et les sauvegardes."
+        "Le Web Saba-chan fonctionne avec un PC lié à Discord. Si ce n’est pas encore fait, commencez par Connecter un serveur Discord.",
+        "La commande web sur Discord vous envoie un lien à ouvrir une seule fois dans les 5 minutes. Ouvrez-le dans le navigateur du téléphone pour démarrer et arrêter les serveurs et utiliser la console, les paramètres et les sauvegardes."
     ]
 }

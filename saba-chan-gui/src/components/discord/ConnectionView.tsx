@@ -306,7 +306,7 @@ export function ConnectionView({
                     {!pairing.active && (
                         <div className="dc-hero-actions">
                             {onInviteBot && (
-                                <button type="button" className="btn btn-secondary btn-lg" onClick={onInviteBot}>
+                                <button data-spot="discord.invite" type="button" className="btn btn-secondary btn-lg" onClick={onInviteBot}>
                                     <Icon name="externalLink" size="sm" /> {t('discord.invite_bot')}
                                 </button>
                             )}

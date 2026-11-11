@@ -2621,7 +2621,8 @@
     "new": "new!",
     "prev": "上一步",
     "next": "下一步",
-    "finish": "看完了"
+    "finish": "看完了",
+    "go": "打开"
   },
   "public_address": {
     "label": "游戏服务器地址",

@@ -2,6 +2,8 @@
     "title": "Singende Saba-chan",
     "summary": "Musik im Sprachkanal",
     "steps": [
-        "Saba-chan spielt Musik in deinem Sprachkanal. Richte es hier ein."
+        "Schalte die Singende Saba-chan ein. Player-Anzeige und Lautstärkeausgleich stellst du auch hier ein.",
+        "Wähle einen Kanal für Musik und tippe unter Saba-chans Aufgaben auf Singende Saba-chan. Dort bleibt nur der Player; normale Nachrichten werden gelöscht.",
+        "Geh in einen Sprachkanal und schreib einen Songtitel oder Link in den Kanal der Singenden Saba-chan. Saba-chan kommt dazu und spielt ihn ab."
     ]
 }

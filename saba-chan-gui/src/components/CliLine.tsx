@@ -149,7 +149,7 @@ export function CliText({ line }: { line: string }) {
     const { t } = useTranslation('gui');
     const [copied, setCopied] = useState(false);
     return (
-        <details className="cli-line">
+        <details data-spot="cli.line" className="cli-line">
             <summary>
                 <Icon name="terminal" size="sm" />
                 {t('cli_line.summary')}

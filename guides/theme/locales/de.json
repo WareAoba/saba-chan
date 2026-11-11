@@ -2,7 +2,8 @@
     "title": "Design · Soundeffekte",
     "summary": "Ganz nach deinem Geschmack",
     "steps": [
-        "Ändere Design, Akzentfarbe und Fensterhintergrund.",
-        "Wähle Benachrichtigungen und Soundeffekte."
+        "Wähle unter Design Hell oder Dunkel. Automatisch folgt der Einstellung deines Computers.",
+        "Die Akzentfarbe gilt für Schaltflächen und Hervorhebungen. Mit Benutzerdefiniert wählst du eine beliebige Farbe.",
+        "Mit Soundeffekten ertönt ein Ton bei Starts und Stopps von außen, etwa über Discord oder das Web, und bei unerwartetem Beenden. Unten schaltest du jeden Ton einzeln."
     ]
 }

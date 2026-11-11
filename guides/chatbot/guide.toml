@@ -10,4 +10,8 @@ spot = "chatbot.key"
 
 [[steps]]
 go = "discord/*/chatbot"
-spot = "discord.tab.chatbot"
+spot = "chatbot.guild"
+
+[[steps]]
+go = "discord/*/moderation/channels"
+spot = "mod.assign"

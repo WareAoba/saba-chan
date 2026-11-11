@@ -1,7 +1,8 @@
 {
-    "title": "Alerta de início",
+    "title": "Alerta de início/parada",
     "summary": "Avisos de início e parada no Discord",
     "steps": [
-        "Ligue o sino e a Saba-chan avisa no canal de avisos deste servidor do Discord quando o servidor inicia ou para fora do Discord."
+        "Na aba Instâncias do servidor do Discord, ligue o sino ao lado de um servidor. A Saba-chan avisa quando ele inicia ou para fora do Discord.",
+        "Para escolher o canal de avisos, selecione um canal em Gerenciamento do servidor › Canais e defina Tarefas da Saba-chan como Avisos."
     ]
 }

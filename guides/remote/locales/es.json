@@ -2,6 +2,8 @@
     "title": "Daemon remoto",
     "summary": "Saba-chan en otros PC, desde esta app",
     "steps": [
-        "Vincula un PC servidor siempre encendido o un servidor Linux y gestiónalo desde esta app."
+        "Para que otro PC gestione este, activa Permitir conexiones remotas en este PC y guarda.",
+        "Aquí aparecen tus PC vinculados a la misma cuenta de Discord. Pulsa Conectar en un PC que permita conexiones remotas para emparejarlo y Abrir para gestionar sus servidores desde esta app.",
+        "Si es un servidor Linux al que llegas por SSH, usa Instalar en Linux para instalar Saba-chan y emparejarlo al momento."
     ]
 }

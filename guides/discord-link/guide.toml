@@ -6,6 +6,10 @@ done = "discord.linked"
 
 [[steps]]
 go = "discord/connection"
+spot = "discord.invite"
+
+[[steps]]
+go = "discord/connection"
 spot = "discord.pair"
 
 [[steps]]

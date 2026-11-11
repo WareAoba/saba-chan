@@ -2,7 +2,8 @@
     "title": "Theme · Sound effects",
     "summary": "Make it yours",
     "steps": [
-        "Change the theme, accent color and window background.",
-        "Choose notifications and sound effects."
+        "Choose Light or Dark under Theme. Auto follows your computer's setting.",
+        "Accent Color is the color used for buttons and highlights. Use Custom to pick any color you like.",
+        "With Sound effects on, starts and stops from outside the app, such as Discord or the web, and unexpected shutdowns play a sound. Turn each sound on or off below."
     ]
 }

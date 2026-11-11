@@ -2,7 +2,8 @@
     "title": "Tema · Efeitos sonoros",
     "summary": "Do seu jeito",
     "steps": [
-        "Mude o tema, a cor de destaque e o fundo da janela.",
-        "Escolha as notificações e os efeitos sonoros."
+        "Escolha Claro ou Escuro em Tema. Automático segue a configuração do computador.",
+        "A Cor de destaque é usada em botões e destaques. Com Personalizado você escolhe a cor que quiser.",
+        "Com Efeitos sonoros ligado, inícios e paradas vindos de fora, como Discord ou web, e encerramentos inesperados tocam um som. Ligue ou desligue cada som abaixo."
     ]
 }

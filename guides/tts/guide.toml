@@ -5,4 +5,10 @@ order = 20
 
 [[steps]]
 go = "discord/*/tts"
-spot = "discord.tab.tts"
+spot = "tts.settings"
+
+[[steps]]
+go = "discord/*/tts"
+spot = "tts.auto_channels"
+
+[[steps]]

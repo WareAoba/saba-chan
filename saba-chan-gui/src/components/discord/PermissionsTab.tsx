@@ -483,7 +483,7 @@ export function PeopleView({
                     >
                         <Icon name="refresh" size="sm" />
                     </button>
-                    <button type="button" className="btn btn-secondary" onClick={onEditLevels}>
+                    <button data-spot="perm.edit_levels" type="button" className="btn btn-secondary" onClick={onEditLevels}>
                         <Icon name="key" size="sm" /> {t('discord.perm_edit_levels')}
                     </button>
                 </span>
@@ -588,6 +588,7 @@ export function PeopleView({
                                         <li>
                                             <button
                                                 type="button"
+                                                data-spot="perm.add_person"
                                                 className={clsx('dc-chip is-add', { 'is-active': adding === level })}
                                                 aria-expanded={adding === level}
                                                 aria-label={t('discord.perm_add_person_to', {

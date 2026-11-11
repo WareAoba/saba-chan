@@ -2,6 +2,8 @@
     "title": "Permisos",
     "summary": "Decide quién puede hacer qué",
     "steps": [
-        "Asigna un nivel a cada miembro para decidir quién puede gestionar tus servidores."
+        "En la pestaña Miembros, asigna un nivel a cada persona de tu servidor de Discord. Cuanto más alto el nivel, más comandos puede usar.",
+        "Usa Añadir persona junto a un nivel para poner a alguien en él. Quien no tenga nivel asignado está en el Nivel predeterminado.",
+        "En Editar niveles, cambia los nombres de los niveles, su orden y los comandos que puede usar cada uno."
     ]
 }

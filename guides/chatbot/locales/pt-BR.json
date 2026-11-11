@@ -2,7 +2,8 @@
     "title": "Saba-chan falante",
     "summary": "Converse com a Saba-chan no Discord",
     "steps": [
-        "Adicione uma chave de API da OpenAI para conversar com a Saba-chan no Discord.",
-        "Ligue ou desligue e escolha as ferramentas para cada servidor do Discord."
+        "Cadastre uma chave de API de uma empresa de IA. Todos os servidores do Discord usam essa mesma chave.",
+        "Ligue Usar a Saba-chan falante neste servidor e salve. Servidores recém-conectados começam desligados.",
+        "Escolha um canal para conversar e toque em Conversa da Saba-chan falante em Tarefas da Saba-chan. Fale com ela nesse canal e ela responde."
     ]
 }

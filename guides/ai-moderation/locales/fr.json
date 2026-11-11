@@ -2,6 +2,7 @@
     "title": "Modération par IA",
     "summary": "Alertes de spam et de promotion frauduleuse",
     "steps": [
-        "L’IA relit les messages qui ressemblent à du spam ou à une promotion frauduleuse et, s’ils sont nuisibles, prévient le propriétaire et les admins du serveur en MP. Elle ne supprime pas les messages."
+        "La modération par IA utilise la clé API enregistrée pour Saba-chan qui parle. S’il n’y en a pas, ajoutez-en une d’abord.",
+        "Activez Alerter en cas de spam et d'arnaque et enregistrez. Si un message semble nuisible, le propriétaire et les admins du serveur reçoivent un MP. Les messages ne sont pas supprimés."
     ]
 }

@@ -2,6 +2,7 @@
     "title": "Game chat relay",
     "summary": "Send game chat to Discord",
     "steps": [
-        "Send in-game chat to a Discord channel. Choose all chat or only chat that starts with a keyword."
+        "Under Chat to send, choose All chat or Only chat starting with the keyword, then save. This shows only for games whose chat Saba-chan can read.",
+        "Pick the channel that should get game chat and choose Game chat under Saba-chan jobs."
     ]
 }

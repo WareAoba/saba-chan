@@ -3,6 +3,6 @@
     "summary": "Sua própria sala de voz, criada ao entrar",
     "steps": [
         "Entre no canal criador de salas e sua própria sala de voz aparece. Ela some quando todos saem.",
-        "Escolha o canal criador de salas em salas de voz temporárias, no comando de configurações da Saba-chan no Discord, para ligar."
+        "Abra o comando de configurações da Saba-chan no Discord e escolha o canal criador de salas em salas de voz temporárias para ligar. O nome e o estado inicial da sala também ficam ali."
     ]
 }

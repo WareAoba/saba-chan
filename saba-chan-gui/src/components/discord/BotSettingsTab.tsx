@@ -463,7 +463,7 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }:
                 </>
             )}
             {section === 'music' && (
-                <section className="dc-card">
+                <section data-spot="music.settings" className="dc-card">
                     {toggleRow(t('discord.bot_settings.music_enabled'), null, music.enabled, (enabled) =>
                         save({ music: { enabled } }),
                     )}
@@ -500,7 +500,7 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }:
                 </section>
             )}
             {section === 'tts' && (
-                <section className="dc-card">
+                <section data-spot="tts.settings" className="dc-card">
                     <div className="cb-fields">
                         <NumberField
                             label={t('discord.bot_settings.tts_volume')}
@@ -602,7 +602,7 @@ function AutoChannelsField({ guildId, value, locked, onChange }: AutoChannelsFie
     const toggle = (id: string) =>
         onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id].slice(0, TTS_AUTO_CHANNELS_MAX));
     return (
-        <div className="mt-field">
+        <div data-spot="tts.auto_channels" className="mt-field">
             <span>{t('discord.bot_settings.tts_auto_channels')}</span>
             {channels && !shown.length ? (
                 <p className="dc-hint">{t('discord.bot_settings.tts_auto_channels_none')}</p>

@@ -4,5 +4,9 @@ icon = "alertTriangle"
 order = 40
 
 [[steps]]
+go = "discord/saba"
+spot = "chatbot.key"
+
+[[steps]]
 go = "discord/*/chatbot"
 spot = "chatbot.moderation"

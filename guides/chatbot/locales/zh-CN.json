@@ -2,7 +2,8 @@
     "title": "会说话的 Saba-chan",
     "summary": "在 Discord 和 Saba-chan 聊天",
     "steps": [
-        "填入 OpenAI API 密钥后，就能在 Discord 和 Saba-chan 聊天。",
-        "为每个 Discord 服务器开关它，并选择可用的工具。"
+        "登记一家 AI 公司的 API 密钥。所有 Discord 服务器共用这一个密钥。",
+        "打开在此服务器使用会说话的 Saba-chan 并保存。新连接的服务器默认关闭。",
+        "选一个聊天频道，在 Saba-chan 的工作里点会说话的 Saba-chan 聊天。在那个频道跟她说话，她就会回答。"
     ]
 }

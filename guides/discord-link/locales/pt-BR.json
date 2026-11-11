@@ -2,7 +2,8 @@
     "title": "Conexão com o Discord",
     "summary": "Inicie e pare servidores pelo Discord",
     "steps": [
-        "Pegue um código de pareamento e digite no seu servidor do Discord.",
-        "Depois de vincular, você inicia e para servidores e vê o status com comandos do Discord."
+        "Se o bot da Saba-chan ainda não está no seu servidor do Discord, adicione-o primeiro com Convidar o bot.",
+        "Clique em Conectar um servidor do Discord para receber um código de pareamento e o comando a digitar. Digite esse comando em um chat do Discord e pronto.",
+        "Depois de conectar, você pode iniciar e parar servidores de jogo e ver o status deles por esse servidor do Discord."
     ]
 }

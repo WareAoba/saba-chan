@@ -2,7 +2,7 @@
     "title": "Endereço do servidor · Verificar redirecionamento de portas",
     "summary": "Deixe seus amigos entrarem",
     "steps": [
-        "Passe este endereço para seus amigos entrarem.",
-        "A Saba-chan verifica se dá para acessar o servidor de fora. Se estiver bloqueado, configure o redirecionamento de portas no roteador."
+        "Passe o Endereço para entrar aos seus amigos para que eles possam entrar. Clique em Copiar para copiá-lo.",
+        "Clique em Verificar redirecionamento de portas e a Saba-chan verifica se o servidor pode ser acessado de fora. Se estiver bloqueado, configure o redirecionamento de portas no roteador."
     ]
 }

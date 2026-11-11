@@ -4,5 +4,9 @@ icon = "tool"
 order = 50
 
 [[steps]]
-go = "discord/*/moderation"
-spot = "discord.tab.moderation"
+go = "discord/*/moderation/channels"
+spot = "mod.channels"
+
+[[steps]]
+go = "discord/*/moderation/members"
+spot = "mod.members"

@@ -1,7 +1,8 @@
 {
-    "title": "Aviso de inicio",
+    "title": "Aviso de inicio/parada",
     "summary": "Avisos de inicio y parada en Discord",
     "steps": [
-        "Activa la campana y Saba-chan avisará en el canal de avisos de este servidor de Discord cuando el servidor se inicie o se detenga fuera de Discord."
+        "En la pestaña Instancias del servidor de Discord, activa la campana junto a un servidor. Saba-chan avisa cuando ese servidor se inicia o se detiene fuera de Discord.",
+        "Para elegir el canal de avisos, escoge un canal en Gestión del servidor › Canales y pon Tareas de Saba-chan en Avisos."
     ]
 }

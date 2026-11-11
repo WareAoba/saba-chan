@@ -4,4 +4,8 @@ icon = "folder"
 order = 20
 
 [[steps]]
+action = "page.servers"
+spot = "server.add"
+
+[[steps]]
 action = "addServer.migrate"

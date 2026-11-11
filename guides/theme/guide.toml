@@ -5,8 +5,12 @@ order = 70
 
 [[steps]]
 go = "settings/appearance"
-spot = "settings.tab.appearance"
+spot = "settings.theme"
+
+[[steps]]
+go = "settings/appearance"
+spot = "settings.accent"
 
 [[steps]]
 go = "settings/notify"
-spot = "settings.tab.notify"
+spot = "settings.sound"

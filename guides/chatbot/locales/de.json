@@ -2,7 +2,8 @@
     "title": "Sprechende Saba-chan",
     "summary": "Mit Saba-chan auf Discord plaudern",
     "steps": [
-        "Füge einen OpenAI-API-Schlüssel hinzu, um auf Discord mit Saba-chan zu plaudern.",
-        "Schalte sie für jeden Discord-Server ein oder aus und wähle ihre Werkzeuge."
+        "Hinterlege einen API-Schlüssel eines KI-Anbieters. Alle Discord-Server teilen sich diesen einen Schlüssel.",
+        "Schalte „Sprechende Saba-chan“ auf diesem Server nutzen ein und speichere. Neu verbundene Server sind aus.",
+        "Wähle einen Kanal zum Plaudern und tippe unter Saba-chans Aufgaben auf Unterhaltung mit der sprechenden Saba-chan. Sprich sie dort an, dann antwortet sie."
     ]
 }

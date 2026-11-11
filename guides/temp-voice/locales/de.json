@@ -3,6 +3,6 @@
     "summary": "Dein eigener Sprachraum beim Betreten",
     "steps": [
         "Betritt den Raumersteller-Kanal, und dein eigener Sprachraum entsteht. Er verschwindet, wenn alle gegangen sind.",
-        "Wähle den Raumersteller-Kanal unter temporäre Sprachräume im Einstellungsbefehl von Saba-chan auf Discord, um es einzuschalten."
+        "Öffne auf Discord den Einstellungsbefehl von Saba-chan und wähle unter temporäre Sprachräume den Raumersteller-Kanal, um es einzuschalten. Raumname und Startzustand stellst du dort auch ein."
     ]
 }

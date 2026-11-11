@@ -531,7 +531,7 @@ requires = ">=0.1.15"   # 선택. 이보다 낮은 앱에서는 보이지 않는
 [[steps]]
 go = "server/:first/maintenance"   # 열 화면 주소(04 화면 주소). :first = 고른 서버, 없으면 첫 서버
 spot = "server.tab.maintenance"    # 짚을 화면 요소의 data-spot
-# action = "sonar"                 # 앱이 하는 일(GUI GUIDE_ACTIONS). 화면을 넘겨받는 일이면 그 단계에서 가이드가 끝난다
+# action = "sonar"                 # 앱이 하는 일(GUI GUIDE_ACTIONS). 화면을 넘겨받는 일이면 말풍선을 먼저 보이고, "열기"를 누를 때 그 화면을 열며 가이드가 끝난다
 # id = "start"                     # 처음 시작하기: 체크리스트 단계 id
 ```
 

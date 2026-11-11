@@ -149,6 +149,7 @@ export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorPro
     const toggle = (
         <button
             type="button"
+            data-spot="monitor.toggle"
             className="icon-btn monitor-toggle"
             onClick={() => update({ systemMonitorExpanded: !open })}
             aria-expanded={open}

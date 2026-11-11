@@ -2,7 +2,7 @@ import { type CSSProperties, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
-import { closeSpotlight, finishGuide, goToStep, useGuideStore } from './guides';
+import { advanceGuide, closeSpotlight, GUIDE_ACTIONS, goToStep, useGuideStore } from './guides';
 
 /** 짚을 자리가 화면에 나타나길 기다리는 시간 (화면을 연 직후 그려지는 동안) */
 const WAIT_MS = 2000;
@@ -80,6 +80,8 @@ export function Spotlight() {
 
     if (!active || !guide || !step) return null;
     const k = active.step + 1;
+    // 화면을 넘겨받는 단계: 버튼이 그 화면을 연다
+    const handoff = !!(step.action && GUIDE_ACTIONS[step.action]?.handoff);
     const n = guide.steps.length;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -152,9 +154,9 @@ export function Spotlight() {
                         <button
                             type="button"
                             className="btn btn-primary btn-sm"
-                            onClick={() => (k < n ? goToStep(guide.id, active.step + 1) : finishGuide(guide.id))}
+                            onClick={() => advanceGuide(guide.id, active.step)}
                         >
-                            {k < n ? t('guides.next') : t('guides.finish')}
+                            {k < n && !handoff ? t('guides.next') : handoff ? t('guides.go') : t('guides.finish')}
                         </button>
                     </div>
                 </div>

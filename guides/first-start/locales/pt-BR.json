@@ -2,9 +2,9 @@
     "title": "Primeiros passos",
     "summary": "De vincular o Discord ao primeiro início do servidor",
     "steps": [
-        "Vincule o Discord para seus amigos iniciarem e pararem servidores pelo Discord. Dá para fazer isso depois.",
-        "Para criar um servidor, primeiro baixe o módulo do jogo.",
-        "Crie aqui um servidor novo ou importe um que você já usa.",
-        "Quando estiver pronto, inicie o servidor."
+        "Clique em Conectar um servidor do Discord para iniciar e parar servidores de jogo pelo Discord. Você pode fazer isso depois.",
+        "Para criar um servidor, primeiro obtenha o módulo do seu jogo.",
+        "Em Adicionar servidor, crie um servidor novo ou migre um existente.",
+        "Clique em Iniciar para ligar o servidor."
     ]
 }

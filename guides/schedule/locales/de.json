@@ -2,6 +2,8 @@
     "title": "Geplante Aufgaben",
     "summary": "Automatische Neustarts und regelmäßige Backups",
     "steps": [
-        "Saba-chan startet, stoppt, startet neu oder sichert den Server zu den Zeiten, die du festlegst."
+        "Mit Aufgabe hinzufügen legst du eine geplante Aufgabe an.",
+        "Wähle, was passieren soll (Start, Stopp, Neustart, Backup, Ankündigung, Update oder ein Spielbefehl) und wann. Mit dem Schalter pausierst du eine Aufgabe.",
+        "Erst mit Speichern gilt der Zeitplan."
     ]
 }

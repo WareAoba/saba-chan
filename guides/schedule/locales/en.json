@@ -2,6 +2,8 @@
     "title": "Scheduled tasks",
     "summary": "Automatic restarts and regular backups",
     "steps": [
-        "Saba-chan starts, stops, restarts or backs up the server at the times you set."
+        "Press Add task to create a scheduled task.",
+        "Pick what to do (start, stop, restart, backup, announce, update or a game command) and when. The switch pauses a task.",
+        "Press Save to put the schedule into effect."
     ]
 }

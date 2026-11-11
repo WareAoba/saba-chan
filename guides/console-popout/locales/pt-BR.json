@@ -2,6 +2,7 @@
     "title": "Console · Abrir em janela separada",
     "summary": "O console sempre à vista",
     "steps": [
-        "Separe o console em outra janela para acompanhar o servidor enquanto usa outras telas."
+        "A aba Console de cada servidor mostra o log e recebe comandos.",
+        "Clique em Abrir em janela separada para manter o console aberto enquanto usa outras telas."
     ]
 }

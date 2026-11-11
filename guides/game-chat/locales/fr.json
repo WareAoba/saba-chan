@@ -2,6 +2,7 @@
     "title": "Relais du chat du jeu",
     "summary": "Envoyer le chat du jeu sur Discord",
     "steps": [
-        "Envoyez le chat du jeu dans un salon Discord. Choisissez tout le chat ou seulement les messages qui commencent par un mot-clé."
+        "Dans Chat à envoyer, choisissez Tout le chat ou Seulement le chat qui commence par le mot-clé, puis enregistrez. N’apparaît que pour les jeux dont Saba-chan peut lire le chat.",
+        "Choisissez le salon qui recevra le chat du jeu et touchez Chat du jeu dans Tâches de Saba-chan."
     ]
 }

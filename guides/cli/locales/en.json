@@ -2,6 +2,7 @@
     "title": "CLI",
     "summary": "The same, in a terminal",
     "steps": [
-        "Everything you do in the app also works in the CLI. Press this button to switch to the CLI."
+        "After changing settings, open Use the command line to see and copy the CLI command that does the same thing.",
+        "Press Switch to CLI to open the CLI in a new terminal on the selected server; this window closes. Your servers keep running."
     ]
 }

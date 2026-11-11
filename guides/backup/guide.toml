@@ -9,7 +9,6 @@ go = "server/:first/maintenance"
 spot = "server.tab.maintenance"
 
 [[steps]]
-go = "server/:first/maintenance"
 spot = "backup.create"
 
 [[steps]]

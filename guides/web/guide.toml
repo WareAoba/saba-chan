@@ -4,3 +4,7 @@ icon = "externalLink"
 order = 20
 
 [[steps]]
+go = "discord/connection"
+spot = "discord.pair"
+
+[[steps]]

@@ -116,6 +116,8 @@ export function DiscordPage({
     const mainRef = useSwapAnimation(`${view.kind}:${view.id ?? ''}`);
     const [showMainNarrow, setShowMainNarrow] = useState(!!initialView);
     const [cloudError, setCloudError] = useState('');
+    // 서버 목록을 한 번이라도 받았는가 (화면 주소 요청은 그 뒤에 판단한다)
+    const [nodesLoaded, setNodesLoaded] = useState(false);
     // 릴레이 확인이 연달아 실패한 이유 (노드 목록은 연결됐을 때만 읽으므로 그 오류만으로는 실패를 알 수 없다)
     const relayError = useDiscordStore((s) => s.relayError);
     // 끊긴 동안은 릴레이 실패가 이유다 (연결됐을 때 남은 노드 목록 오류는 지난 일)
@@ -168,23 +170,28 @@ export function DiscordPage({
 
     // 화면 주소 링크 (사용자 11-06 #19): 없는 디스코드 서버면 연결 화면을 열고 이유를 알린다
     const requested = useUIStore((s) => s.requestedDiscordView);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 요청이 올 때만 그때의 목록으로 판단한다
+    // 처음 열 때는 서버 목록을 받을 때까지 기다린다 (빈 목록으로 판단해 연결 화면으로 빠지지 않게)
+    const waitNodes = !!discordCloudHostId && relayConnected && !nodesLoaded;
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 요청이 올 때(또는 목록을 처음 받을 때)만 그때의 목록으로 판단한다
     useEffect(() => {
         if (!requested) return;
+        if (requested.kind === 'node' && waitNodes) return;
         useUIStore.getState().clearRequestedDiscordView();
         if (requested.kind !== 'node') {
             go({ kind: requested.kind });
             return;
         }
+        // `*`는 지금 연 디스코드 서버, 없으면 하나뿐인 서버
         const only = cloudNodes.length === 1 ? cloudNodes[0].guildId : null;
-        const id = requested.id === '*' ? only : requested.id;
+        const current = openNodeId && cloudNodes.some((n) => n.guildId === openNodeId) ? openNodeId : null;
+        const id = requested.id === '*' ? current ?? only : requested.id;
         if (!id || !cloudNodes.some((n) => n.guildId === id)) {
             go({ kind: 'connection' });
             screenFallbackNotice(requested.id === '*' && cloudNodes.length > 1 ? 'pick_guild' : 'guild_missing');
             return;
         }
         go({ kind: 'node', id, tab: requested.tab, sub: requested.sub, seq: requested.seq });
-    }, [requested]);
+    }, [requested, waitNodes]);
 
     // App이 넘기는 setter는 렌더마다 새 함수라 effect 의존성에 넣으면 무한 반복된다 → ref로 든다
     const setters = useRef({ setCloudNodes, setCloudMembers });
@@ -212,6 +219,7 @@ export function DiscordPage({
             if (key !== relayKeyRef.current) return;
             setCloudError((e as Error).message || t('errors.network_error'));
         }
+        setNodesLoaded(true);
     }, [discordCloudHostId, relayUrl, t]);
 
     useEffect(() => {

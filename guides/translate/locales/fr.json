@@ -2,6 +2,7 @@
     "title": "Traduction des messages",
     "summary": "Clic droit pour lire dans votre langue",
     "steps": [
-        "Faites un clic droit sur un message Discord et choisissez Applications › Translate with Saba-chan pour le voir dans votre langue Discord, rien que pour vous."
+        "Faites un clic droit sur un message Discord et choisissez Applications › Translate with Saba-chan pour le voir dans votre langue Discord, rien que pour vous.",
+        "Activez la traduction par réaction drapeau dans la traduction de la commande de réglages de Saba-chan. Réagissez à un message avec un drapeau et Saba-chan répond avec la traduction dans la langue de ce pays."
     ]
 }
