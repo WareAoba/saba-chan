@@ -37,14 +37,16 @@ interface CloudStateInput {
     connecting?: boolean;
     error?: string;
     loaded?: boolean;
+    /** 붙어 있던 에이전트가 끊겨 다시 붙는 중 — 실패로 보이지 않는다 */
+    reconnecting?: boolean;
 }
 
 /** 연결 상태 머신: (checking →) no_host → connecting → connected | error */
-export function cloudStateOf({ hostId, connected, connecting, error, loaded }: CloudStateInput) {
+export function cloudStateOf({ hostId, connected, connecting, error, loaded, reconnecting }: CloudStateInput) {
     // 데몬에서 설정을 아직 못 읽었으면 호스트가 비어 있어도 연결 전인지 알 수 없다
     if (!hostId) return loaded === false ? 'checking' : 'no_host';
     if (connected) return 'connected';
-    if (error && !connecting) return 'error';
+    if (error && !connecting && !reconnecting) return 'error';
     return 'connecting';
 }
 
@@ -150,6 +152,7 @@ export function DiscordPage({
         connecting: relayConnecting,
         error: connectionError,
         loaded: botConfigLoaded,
+        reconnecting,
     });
 
     // 익스텐션 화면 (`Discord.nav`): 그 익스텐션이 꺼지면 연결 화면으로

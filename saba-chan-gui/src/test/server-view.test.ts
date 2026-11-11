@@ -64,3 +64,19 @@ describe('진행 중 색', () => {
         expect(isTransitional('running')).toBe(false);
     });
 });
+
+// 움직임 줄이기·전환 끄기면 깜빡이지 않으니 진행 중 점은 속 빈 고리로 구분한다 (리뷰 #949)
+describe('움직임이 꺼졌을 때의 진행 중 점', () => {
+    it('reduced-motion 과 전환 끄기 둘 다 속 빈 고리 규칙이 있다', async () => {
+        const { readFileSync } = await import('node:fs');
+        const { join } = await import('node:path');
+        const base = readFileSync(join(__dirname, '../styles/base.css'), 'utf8');
+        const shell = readFileSync(join(__dirname, '../styles/shell.css'), 'utf8');
+        for (const css of [base, shell]) {
+            const blocks = css.split('@media (prefers-reduced-motion: reduce)').slice(1);
+            expect(blocks.some((b) => /^[^@]*inset 0 0 0 2px/.test(b))).toBe(true);
+        }
+        expect(base).toMatch(/\[data-no-transitions='true'\][\s\S]*server-row-dot\.pulse[\s\S]*inset 0 0 0 2px/);
+        expect(shell).toMatch(/\[data-no-transitions='true'\] \.palette-dot:is\(\.starting, \.stopping\)/);
+    });
+});

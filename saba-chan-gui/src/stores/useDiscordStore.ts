@@ -435,7 +435,10 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             discordAgentMinVersion: agentMinVersion,
             discordBotStatus: nextStatus,
             discordReconnecting:
-                nextStatus === 'connecting' && (prev.discordBotStatus === 'running' || prev.discordReconnecting),
+                // 릴레이가 이 버전을 거절하면 다시 붙을 일이 없다 — 복구 중이 아니라 거절로 보인다
+                nextStatus === 'connecting' &&
+                !agentMinVersion &&
+                (prev.discordBotStatus === 'running' || prev.discordReconnecting),
         });
     },
 

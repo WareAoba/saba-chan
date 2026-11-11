@@ -4236,6 +4236,23 @@ button.appbar-pill:focus-visible {
 .palette-dot.stopping {
     animation: chip-pulse 1.2s var(--ease) infinite;
 }
+/* 움직임이 꺼지면 깜빡이지 않으니 속 빈 고리로 진행 중을 구분한다 (base.css 의 상태 점과 같이) */
+@media (prefers-reduced-motion: reduce) {
+    .palette-dot:is(.starting, .stopping) {
+        background: transparent;
+        box-shadow: inset 0 0 0 2px var(--text-3);
+    }
+    .palette-dot.stopping {
+        box-shadow: inset 0 0 0 2px var(--ok);
+    }
+}
+[data-no-transitions='true'] .palette-dot:is(.starting, .stopping) {
+    background: transparent;
+    box-shadow: inset 0 0 0 2px var(--text-3);
+}
+[data-no-transitions='true'] .palette-dot.stopping {
+    box-shadow: inset 0 0 0 2px var(--ok);
+}
 .palette-gmark {
     width: 16px;
     height: 16px;
