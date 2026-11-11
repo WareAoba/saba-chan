@@ -67,18 +67,57 @@ export const latestRelease = (res?: ApiBody | null): string => {
     return typeof v === 'string' ? v : '';
 };
 
+/** 데몬이 인스턴스 포트로 다루는 칸 (module_loader CORE_PORT_FIELDS) */
+const CORE_PORT_FIELDS = ['port', 'rest_port'];
+
+/** 상세 설정에서 뺄 칸 종류: 비밀번호(데몬이 정한다)·파일 경로는 만든 뒤 서버 설정에서 */
+const NOT_PRESET_TYPES = ['password', 'file'];
+
 /**
- * 새 서버 만들기 단계. 서버 종류·버전 단계는 고를 것이 있을 때만 (설치 칸, 추천 설정, 버전).
- * 다음 단계: 파일 위치 → 실행 방식 → 이름·포트 확인 → 확인(약관·익스텐션 칸)
+ * 만들기 화면의 "상세 설정"에서 미리 정할 수 있는 칸 (사용자 11-11).
+ * 설치 칸은 요약에서 고르고, 포트는 다른 서버와 겹치지 않게 데몬이 고르며, 인스턴스 폴더를 쓰는 칸은 폴더가 정해진 뒤에 뜻이 있다
  */
-export const wizardSteps = (module?: Pick<ModuleInfo, 'settings' | 'presets' | 'install'> | null) => [
-    'select-game',
-    ...(installFields(module).length || module?.presets?.length || choosesVersion(module) ? ['server'] : []),
-    'location',
-    'run',
-    'name',
-    'confirm',
-];
+export const presetFields = (module?: Pick<ModuleInfo, 'settings'> | null): SettingField[] =>
+    (module?.settings?.fields || []).filter(
+        (f) =>
+            !f.install &&
+            !f.port &&
+            f.format !== 'port' &&
+            !CORE_PORT_FIELDS.includes(f.name) &&
+            !NOT_PRESET_TYPES.includes(f.field_type) &&
+            !(typeof f.default === 'string' && f.default.includes('{instance_dir}')),
+    );
+
+/** 상세 설정의 처음 값: 모듈 기본값 위에 고른 추천 설정 (데몬 만들기가 합치는 순서와 같다) */
+export const presetBaseline = (module?: Pick<ModuleInfo, 'settings' | 'presets'> | null, preset?: string) => {
+    const chosen = module?.presets?.find((p) => p.id === preset)?.settings || {};
+    return Object.fromEntries(
+        presetFields(module).map((f) => [f.name, f.name in chosen ? (chosen as Record<string, unknown>)[f.name] : f.default]),
+    ) as Record<string, unknown>;
+};
+
+/** 비교용 글자 (목록은 빈 항목을 빼고, 불리언·숫자는 글자로) */
+const settingKey = (v: unknown) =>
+    Array.isArray(v) ? JSON.stringify(v.map(String).filter((x) => x.trim())) : v == null ? '' : String(v);
+
+/**
+ * 상세 설정에서 바꾼 칸만 보낼 값으로: 숫자 칸은 숫자로, 목록은 빈 항목을 빼고. 비운 숫자 칸은 바꾸지 않은 것으로 본다
+ */
+export const changedSettings = (fields: SettingField[], values: Record<string, unknown>, baseline: Record<string, unknown>) => {
+    const out: Record<string, unknown> = {};
+    for (const f of fields) {
+        if (!(f.name in values)) continue;
+        let v = values[f.name];
+        if (f.field_type === 'number') {
+            if (v === '' || v == null) continue;
+            v = Number(v);
+        } else if (Array.isArray(v)) {
+            v = v.map(String).filter((x) => x.trim());
+        }
+        if (settingKey(v) !== settingKey(baseline[f.name])) out[f.name] = v;
+    }
+    return out;
+};
 
 /**
  * 만들기(`POST /api/instances`)와 그 확인(`/check`)에 보낼 몸체. 고르지 않은 것은 보내지 않아 데몬이 기본값을 쓴다:
@@ -93,12 +132,14 @@ export interface CreateBodyInput {
     folder?: string;
     managed?: boolean;
     port?: number | string | null;
+    /** 상세 설정에서 바꾼 칸 (`changedSettings`) */
+    settings?: Record<string, unknown> | null;
 }
 
-export const createBody = ({ name, module, installValues, preset, version, folder, managed, port }: CreateBodyInput) => ({
+export const createBody = ({ name, module, installValues, preset, version, folder, managed, port, settings }: CreateBodyInput) => ({
     name: String(name || '').trim(),
     module_name: module,
-    module_settings: installSettings(installValues),
+    module_settings: { ...(settings || {}), ...installSettings(installValues) },
     ...(preset ? { preset } : {}),
     ...(version ? { version } : {}),
     ...(folder ? { working_dir: folder } : {}),

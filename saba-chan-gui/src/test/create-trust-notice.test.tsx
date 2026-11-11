@@ -19,7 +19,7 @@ const renderNew = async (trust: string) => {
             onAddServer={vi.fn()}
         />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /game/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^game/ }));
     await toConfirmStep();
 };
 
@@ -49,7 +49,6 @@ describe('서버 만들 때 신뢰 안내', () => {
                 extensions={[{ name: 'game', trust: 'unverified' }]}
                 servers={[]}
                 onAddServer={vi.fn()}
-                onStepChange={vi.fn()}
             />,
         );
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Browse' })));

@@ -1,29 +1,23 @@
-import clsx from 'clsx';
-import { useState, useCallback, useRef, useLayoutEffect, useEffect } from 'react';
-import type { TFunction } from 'i18next';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import Icon from '../Icon';
-import { type SlotPage, SlotView, useSlotPages } from '../ExtensionSlot';
-import { LinkedText } from '../ui/ScreenLink';
-import { useModalClose } from '../../hooks/useModalClose';
+import { SlotView, useSlotPages } from '../ExtensionSlot';
+import { Dialog } from '../ui/Dialog';
+import { usePageFindStore } from '../../stores/usePageFindStore';
 import type { Server } from '../../stores/useServerStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { AddInstanceNewServer } from './AddInstanceNewServer';
 import { AddInstanceMigration } from './AddInstanceMigration';
-import './Modals.css';
+import { AddServerFrame, AddServerFrameContext } from './AddServerFrame';
 import type { AddServerPayload } from '../../hooks/useServerActions';
+import './AddServer.css';
 
 /**
- * AddInstanceModal — 인스턴스 추가 진입점.
+ * AddInstanceModal — 서버 추가 창 (사용자 11-11 A안).
  *
- * 두 가지 경로를 제공한다:
- *   1. "새 서버로 추가"     → AddInstanceNewServer
- *   2. "기존 서버 마이그레이션" → AddInstanceMigration
+ * 고르기 화면 없이 게임 목록부터 보인다. 쓰던 서버 가져오기·익스텐션이 더한 방법(`AddServer.method`)은
+ * 그 목록의 칸이고, 고르면 같은 창에서 그 화면으로 바뀐다. 창은 공통 Dialog(반투명 모드에서 유리)다.
  *
- * mode 상태:
- *   null      — 선택 화면 (두 카드)
- *   'new'     — 새 서버 생성 흐름
- *   'migrate' — 마이그레이션 흐름
+ * mode: 'new' — 게임 목록·요약·상세 설정 / 'migrate' — 가져오기 / 'ext:<id>' — 익스텐션 화면
  */
 interface AddInstanceModalProps {
     isOpen: boolean;
@@ -34,311 +28,96 @@ interface AddInstanceModalProps {
     onAddServer: (payload: AddServerPayload) => Promise<unknown>;
 }
 
+type Mode = 'new' | 'migrate' | `ext:${string}`;
+
 export function AddInstanceModal({
     isOpen,
     onClose,
-    // -- new-server props --
     extensions,
     servers,
     onRefreshextensions,
     onAddServer,
-    // -- migration props (향후 확장) --
 }: AddInstanceModalProps) {
     const { t } = useTranslation('gui');
-    // null | 'new' | 'migrate' | 'ext:<id>' (익스텐션이 더한 방법, `AddServer.method` slot)
-    const [mode, setMode] = useState<'new' | 'migrate' | `ext:${string}` | null>(null);
-    const [newFlowStep, setNewFlowStep] = useState('select-game');
-    const [newFlowProgress, setNewFlowProgress] = useState(0);
-    const [migrationFlowStep, setMigrationFlowStep] = useState('pick-dir');
+    const [mode, setMode] = useState<Mode>('new');
+    const [wide, setWide] = useState(false);
+    const [title, setTitle] = useState<HTMLElement | null>(null);
+    const [description, setDescription] = useState<HTMLElement | null>(null);
+    const [media, setMedia] = useState<HTMLElement | null>(null);
+    const [footer, setFooter] = useState<HTMLElement | null>(null);
+    const slots = useMemo(() => ({ title, description, media, footer, setWide }), [title, description, media, footer]);
+
+    const extMethods = useSlotPages('AddServer.method');
+    const extMethod = mode.startsWith('ext:') ? extMethods.find((p) => p.id === mode) : undefined;
+    // 그 화면을 보는 사이 익스텐션이 빠지면 게임 목록으로 (빈 창으로 남지 않게)
+    const shownMode: Mode = mode.startsWith('ext:') && !extMethod ? 'new' : mode;
 
     const handleClose = useCallback(() => {
-        setMode(null); // 모달이 닫힐 때 선택 화면으로 리셋
-        setNewFlowStep('select-game');
-        setNewFlowProgress(0);
-        setMigrationFlowStep('pick-dir');
+        setMode('new'); // 다시 열면 게임 목록부터
         onClose();
     }, [onClose]);
+    const goBack = useCallback(() => setMode('new'), []);
 
-    const { isClosing, requestClose } = useModalClose(handleClose);
-    const extMethods = useSlotPages('AddServer.method');
-    const extMethod = mode?.startsWith('ext:') ? extMethods.find((p) => p.id === mode) : undefined;
-    // 그 화면을 보는 사이 익스텐션이 빠지면 고르기 화면으로 (빈 창으로 남지 않게)
-    const shownMode = mode?.startsWith('ext:') && !extMethod ? null : mode;
-
-    // ── 모달 열릴 때 모듈 목록 새로고침 ──
+    // ── 창이 열릴 때 모듈 목록 새로고침 ──
     useEffect(() => {
         if (isOpen && onRefreshextensions) {
             onRefreshextensions();
         }
     }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // ── 높이 애니메이션 ──
-    const contentRef = useRef<HTMLDivElement>(null);
-    const snapshotHeightRef = useRef<number | null>(null);
-    const animatingRef = useRef(false);
-
-    // 상태 변경 직전에 현재 높이를 캡처하는 래퍼
-    const captureAndSetMode = useCallback((newMode: 'new' | 'migrate' | `ext:${string}` | null) => {
-        const el = contentRef.current;
-        if (el) snapshotHeightRef.current = el.getBoundingClientRect().height;
-        setMode(newMode);
-        setNewFlowProgress(0); // 새 서버 마법사는 다시 열면 게임 고르기부터 시작한다
-    }, []);
-
-    const goBack = useCallback(() => captureAndSetMode(null), [captureAndSetMode]);
-
-    // step 변경도 캡처
-    const handleNewFlowStep = useCallback((step: string, progress = 0) => {
-        const el = contentRef.current;
-        if (el) snapshotHeightRef.current = el.getBoundingClientRect().height;
-        setNewFlowStep(step);
-        setNewFlowProgress(progress);
-    }, []);
-    const handleMigrationFlowStep = useCallback((step: string) => {
-        const el = contentRef.current;
-        if (el) snapshotHeightRef.current = el.getBoundingClientRect().height;
-        setMigrationFlowStep(step);
-    }, []);
-
-    // DOM이 업데이트된 직후, 페인트 전에 실행
-    useLayoutEffect(() => {
-        const el = contentRef.current;
-        if (!el) return;
-
-        const prevHeight = snapshotHeightRef.current;
-        snapshotHeightRef.current = null;
-
-        if (prevHeight == null) return;
-
-        // 새 높이 측정 (인라인 height가 없으므로 CSS 자연 높이)
-        const newHeight = el.getBoundingClientRect().height;
-
-        if (Math.abs(prevHeight - newHeight) < 2) return;
-
-        // 트랜지션 끄고, 이전 높이로 즉시 설정
-        animatingRef.current = true;
-        el.style.transition = 'none';
-        el.style.height = prevHeight + 'px';
-        // 강제 레이아웃 — 브라우저가 이전 높이를 인식
-        void el.offsetWidth;
-
-        // 트랜지션 켜고, 새 높이로 전환
-        el.style.transition = 'height 0.28s cubic-bezier(0.4, 0, 0.2, 1)';
-        el.style.height = newHeight + 'px';
-
-        const cleanup = () => {
-            el.style.transition = '';
-            el.style.height = '';
-            animatingRef.current = false;
-        };
-
-        const onEnd = (e: TransitionEvent) => {
-            if (e.propertyName !== 'height') return;
-            el.removeEventListener('transitionend', onEnd);
-            cleanup();
-        };
-        el.addEventListener('transitionend', onEnd);
-
-        // 안전장치
-        const timer = setTimeout(cleanup, 350);
-        return () => {
-            clearTimeout(timer);
-            el.removeEventListener('transitionend', onEnd);
-        };
-    }, [mode, newFlowStep, migrationFlowStep]);
-
-    const progressPercent = (() => {
-        if (shownMode === null) return 20;
-        // 새 서버 마법사는 단계 수가 모듈마다 다르다: 마법사가 알린 비율로 20%~100%를 채운다
-        if (mode === 'new') return 20 + 80 * newFlowProgress;
-        if (mode === 'migrate') return migrationFlowStep === 'configure' ? 78 : 50;
-        if (mode) return 50;
-        return 20;
-    })();
-
-    if (!isOpen) return null;
-
     return (
-        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
-            <div
-                ref={contentRef}
-                className={clsx('modal-content', 'add-instance-modal', {
-                    'add-instance-modal--chooser': shownMode === null,
-                    'add-instance-modal--flow': mode !== null,
-                })}
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="add-instance-progress-wrap" aria-hidden="true">
-                    <div className="add-instance-progress-track">
-                        <div
-                            className="add-instance-progress-fill"
-                            style={{ width: `${progressPercent}%` }}
-                        />
-                    </div>
-                </div>
-
-                {/* ── 선택 화면 ── */}
-                {shownMode === null && (
-                    <InstanceChooser
-                        t={t}
-                        hasModules={extensions && extensions.length > 0}
-                        onSelectNew={() => captureAndSetMode('new')}
-                        onSelectMigrate={() => captureAndSetMode('migrate')}
-                        extMethods={extMethods}
-                        onSelectExt={(id) => captureAndSetMode(id)}
-                        onClose={requestClose}
-                    />
-                )}
-
-                {/* ── 새 서버 흐름 ── */}
-                {mode === 'new' && (
+        <Dialog
+            open={isOpen}
+            onOpenChange={(open) => !open && handleClose()}
+            // 상세 설정의 찾기 창이 떠 있으면 Esc는 찾기 창만 닫는다
+            onEscapeKeyDown={(e) => {
+                const find = usePageFindStore.getState();
+                if (!find.open || !find.modal) return;
+                e.preventDefault();
+                find.setOpen(false);
+            }}
+            className={wide ? 'add-server wide' : 'add-server'}
+            size="lg"
+            title={<span ref={setTitle} className="as-slot" />}
+            description={<span ref={setDescription} className="as-slot" />}
+            media={<span ref={setMedia} className="as-slot" />}
+            footer={<div ref={setFooter} className="as-slot" />}
+        >
+            <AddServerFrameContext.Provider value={slots}>
+                {shownMode === 'new' && (
                     <AddInstanceNewServer
                         extensions={extensions}
                         servers={servers}
-                        onRefreshextensions={onRefreshextensions}
                         onAddServer={onAddServer}
-                        onStepChange={handleNewFlowStep}
-                        onBack={goBack}
-                        onClose={requestClose}
+                        onMigrate={() => setMode('migrate')}
+                        extMethods={extMethods}
+                        onSelectExt={(id: `ext:${string}`) => setMode(id)}
+                        onClose={handleClose}
                     />
                 )}
 
                 {/* ── 익스텐션이 더한 방법: 만들기는 그 화면이 데몬 API로 한다 ── */}
                 {extMethod && (
-                    <div className="add-instance-stage add-instance-ext" key={extMethod.id}>
-                        <SlotView entry={extMethod.entry} slotId="AddServer.method" t={t} onBack={goBack} onClose={requestClose} />
-                    </div>
+                    <AddServerFrame title={extMethod.label} description={extMethod.description}>
+                        <SlotView
+                            entry={extMethod.entry}
+                            slotId="AddServer.method"
+                            t={t}
+                            onBack={goBack}
+                            onClose={handleClose}
+                        />
+                    </AddServerFrame>
                 )}
 
-                {/* ── 마이그레이션 흐름 ── */}
-                {mode === 'migrate' && (
+                {shownMode === 'migrate' && (
                     <AddInstanceMigration
                         extensions={extensions}
                         servers={servers}
                         onAddServer={onAddServer}
-                        onStepChange={handleMigrationFlowStep}
                         onBack={goBack}
-                        onClose={requestClose}
                     />
                 )}
-            </div>
-        </div>
-    );
-}
-
-/* ─────────────────────────────────────────────
- *  InstanceChooser — 두 경로를 선택하는 카드 UI
- * ───────────────────────────────────────────── */
-interface InstanceChooserProps {
-    t: TFunction;
-    hasModules: boolean;
-    onSelectNew: () => void;
-    onSelectMigrate: () => void;
-    extMethods: SlotPage[];
-    onSelectExt: (id: `ext:${string}`) => void;
-    onClose: () => void;
-}
-
-function InstanceChooser({ t, hasModules, onSelectNew, onSelectMigrate, extMethods, onSelectExt, onClose }: InstanceChooserProps) {
-    return (
-        <div className="add-instance-stage" key="chooser">
-            {/* Header */}
-            <div className="modal-header add-instance-header">
-                <div className="add-instance-title-wrap">
-                    <div className="add-instance-header-icon">
-                        <Icon name="server" size="lg" />
-                    </div>
-                    <h3>{t('add_instance_modal.title')}</h3>
-                    <p className="add-instance-subtitle">
-                        {t('add_instance_modal.subtitle')}
-                    </p>
-                </div>
-            </div>
-
-            {/* Body — 두 개의 선택 카드 */}
-            <div className="modal-body add-instance-chooser-body">
-                <div className="add-instance-chooser-grid" role="group" aria-label={t('add_instance_modal.title')}>
-                {/* 새 서버 */}
-                <div className="ai-choice-col">
-                    <button
-                        className={clsx('ai-choice-card', { 'ai-choice-card--disabled': !hasModules })}
-                        type="button"
-                        onClick={hasModules ? onSelectNew : undefined}
-                        disabled={!hasModules}
-                        aria-disabled={!hasModules}
-                    >
-                        <div className="ai-choice-main">
-                            <div className="ai-choice-icon ai-choice-icon--new">
-                                <Icon name="plus" size="xl" />
-                            </div>
-                            <div className="ai-choice-text">
-                                <span className="ai-choice-title">
-                                    {t('add_instance_modal.new_server_title')}
-                                </span>
-                                <span className="ai-choice-desc">
-                                    {t('add_instance_modal.new_server_desc')}
-                                </span>
-                            </div>
-                        </div>
-                    </button>
-                    {!hasModules && (
-                        <p className="ai-no-modules-hint">
-                            <Icon name="alertCircle" size="sm" />
-                            <span onClickCapture={onClose}>
-                                <LinkedText i18nKey="add_instance_modal.no_modules_hint" to="settings/sabaStorage/modules" />
-                            </span>
-                        </p>
-                    )}
-                </div>
-
-                {/* 기존 서버 마이그레이션 */}
-                <div className="ai-choice-col">
-                <button
-                    className="ai-choice-card"
-                    type="button"
-                    onClick={onSelectMigrate}
-                >
-                    <div className="ai-choice-main">
-                        <div className="ai-choice-icon ai-choice-icon--migrate">
-                            <Icon name="download" size="xl" />
-                        </div>
-                        <div className="ai-choice-text">
-                            <span className="ai-choice-title">
-                                {t('add_instance_modal.migrate_title')}
-                            </span>
-                            <span className="ai-choice-desc">
-                                {t('add_instance_modal.migrate_desc')}
-                            </span>
-                        </div>
-                    </div>
-                </button>
-                </div>
-
-                {/* 익스텐션이 더한 방법: 한 줄을 다 쓴다 */}
-                {extMethods.map((m) => (
-                    <div key={m.id} className="ai-choice-col ai-choice-col--ext">
-                        <button className="ai-choice-card" type="button" onClick={() => onSelectExt(m.id as `ext:${string}`)}>
-                            <div className="ai-choice-main">
-                                <div className="ai-choice-icon ai-choice-icon--ext">
-                                    <Icon name={m.icon} size="xl" />
-                                </div>
-                                <div className="ai-choice-text">
-                                    <span className="ai-choice-title">{m.label}</span>
-                                    {m.description && <span className="ai-choice-desc">{m.description}</span>}
-                                </div>
-                            </div>
-                        </button>
-                    </div>
-                ))}
-                </div>
-            </div>
-
-            {/* Footer */}
-            <div className="modal-footer add-instance-footer">
-                <button className="btn btn-cancel ai-cancel-btn" onClick={onClose}>
-                    {t('modals.cancel')}
-                </button>
-            </div>
-        </div>
+            </AddServerFrameContext.Provider>
+        </Dialog>
     );
 }

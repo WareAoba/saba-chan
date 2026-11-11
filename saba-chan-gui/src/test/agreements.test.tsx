@@ -4,7 +4,7 @@ import { AgreementDialog } from '../components/AgreementList';
 import { AddInstanceMigration as AddInstanceMigrationImpl } from '../components/Modals/AddInstanceMigration';
 import { AddInstanceNewServer as AddInstanceNewServerImpl } from '../components/Modals/AddInstanceNewServer';
 import { useServerActions } from '../hooks/useServerActions';
-import { submitWizard, toConfirmStep } from './addServerWizard';
+import { createButton, submitWizard, toConfirmStep } from './addServerWizard';
 import type { ComponentType } from 'react';
 import type { Server } from '../stores/useServerStore';
 
@@ -26,9 +26,9 @@ describe('약관 동의: 서버 만들기', () => {
                 onAddServer={onAddServer}
             />,
         );
-        fireEvent.click(screen.getByRole('button', { name: /game/ }));
+        fireEvent.click(screen.getByRole('button', { name: /^game/ }));
         await toConfirmStep();
-        const create = screen.getByRole('button', { name: /Add Server/i });
+        const create = createButton();
         expect(create).toBeDisabled();
 
         fireEvent.click(screen.getByRole('checkbox'));
@@ -48,7 +48,7 @@ describe('약관 동의: 서버 만들기', () => {
                 onAddServer={onAddServer}
             />,
         );
-        fireEvent.click(screen.getByRole('button', { name: /game/ }));
+        fireEvent.click(screen.getByRole('button', { name: /^game/ }));
         await toConfirmStep();
         expect(screen.queryByRole('checkbox')).toBeNull();
         await submitWizard();
@@ -66,13 +66,12 @@ describe('약관 동의: 기존 서버 가져오기', () => {
                 extensions={[{ name: 'game', agreements: [eula] }]}
                 servers={[]}
                 onAddServer={onAddServer}
-                onStepChange={vi.fn()}
             />,
         );
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Browse' })));
         await act(async () => fireEvent.click(await screen.findByRole('button', { name: /Next/i })));
         fireEvent.change(screen.getByRole('textbox'), { target: { value: 'old' } });
-        const submit = document.querySelector('.modal-footer .btn-confirm') as HTMLElement;
+        const submit = screen.getByRole('button', { name: 'Import' });
         expect(submit).toBeDisabled();
         fireEvent.click(screen.getByRole('checkbox'));
         await act(async () => fireEvent.click(submit));

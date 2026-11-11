@@ -17,6 +17,8 @@ interface DialogProps {
     size?: 'sm' | 'md' | 'lg';
     /** false면 Esc·바깥 누르기로 닫지 않고 닫기(×) 단추를 감춘다 (진행 중 작업, 꼭 답해야 하는 질문) */
     dismissible?: boolean;
+    /** Esc를 창보다 먼저 받을 것이 있을 때 (창 안 찾기 창 닫기). preventDefault하면 창은 닫히지 않는다 */
+    onEscapeKeyDown?: (e: KeyboardEvent) => void;
     className?: string;
     children?: ReactNode;
 }
@@ -34,6 +36,7 @@ export function Dialog({
     media,
     size = 'md',
     dismissible = true,
+    onEscapeKeyDown,
     className,
     children,
 }: DialogProps) {
@@ -52,7 +55,10 @@ export function Dialog({
                         e.preventDefault();
                         (e.currentTarget as HTMLElement | null)?.focus();
                     }}
-                    onEscapeKeyDown={guard}
+                    onEscapeKeyDown={(e) => {
+                        onEscapeKeyDown?.(e);
+                        guard(e);
+                    }}
                     onPointerDownOutside={guard}
                     onInteractOutside={guard}
                     {...(description ? {} : { 'aria-describedby': undefined })}
