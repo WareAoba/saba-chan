@@ -4174,7 +4174,7 @@ button.appbar-pill:focus-visible {
     font: inherit;
     font-size: 13px;
     font-weight: 600;
-    background: var(--bg-hover);
+    background: var(--bg-3);
     border-color: var(--line-strong);
     transition:
         transform 0.25s var(--ease-spring),
@@ -4196,7 +4196,7 @@ button.appbar-pill:focus-visible {
     animation: palette-tok-out 0.16s var(--ease) forwards;
 }
 .palette-tok.arg {
-    background: var(--bg-hover);
+    background: var(--bg-3);
     border-color: var(--line);
     font-weight: 500;
 }
@@ -4501,14 +4501,14 @@ button.appbar-pill:focus-visible {
     font-size: 11px;
     padding: var(--sp-0-5) var(--sp-2);
     border-radius: 999px;
-    background: var(--bg-hover);
+    background: var(--bg-3);
     color: var(--text-2);
 }
 .palette-pill.warn {
     color: var(--warn);
 }
 .palette-pill.danger {
-    background: var(--danger-bg);
+    background: var(--stop-soft);
     color: var(--danger);
 }
 .palette-pill.ok {
@@ -4535,7 +4535,7 @@ button.appbar-pill:focus-visible {
     padding: var(--sp-2-5) var(--sp-3);
     margin: var(--sp-1) var(--sp-2);
     border-radius: 12px;
-    background: var(--bg-hover);
+    background: var(--bg-3);
     color: var(--text-2);
     font-size: 12.5px;
     line-height: 1.6;
@@ -4616,7 +4616,7 @@ button.appbar-pill:focus-visible {
     color: var(--text-2);
 }
 .palette-crumb span {
-    background: var(--bg-hover);
+    background: var(--bg-3);
     padding: var(--sp-0-5) var(--sp-2);
     border-radius: 6px;
 }
@@ -4660,7 +4660,7 @@ button.appbar-pill:focus-visible {
     display: flex;
     gap: var(--sp-2-5);
     align-items: center;
-    background: var(--danger-bg);
+    background: var(--stop-soft);
     color: var(--danger);
     border-radius: 12px;
     padding: var(--sp-2-5) var(--sp-3);
@@ -4676,7 +4676,7 @@ button.appbar-pill:focus-visible {
     padding: 0 var(--sp-4);
     border-radius: 18px;
     border: 1px solid var(--line-strong);
-    background: var(--bg-hover);
+    background: var(--bg-3);
     color: var(--text-1);
     cursor: pointer;
     font: inherit;
@@ -4697,7 +4697,7 @@ button.appbar-pill:focus-visible {
 }
 @keyframes palette-armed {
     50% {
-        box-shadow: 0 0 0 6px var(--danger-bg);
+        box-shadow: 0 0 0 6px var(--stop-soft);
     }
 }
 .palette-done {
@@ -4760,7 +4760,7 @@ button.appbar-pill:focus-visible {
 .palette-foot kbd {
     font-family: var(--font-mono);
     font-size: 10.5px;
-    background: var(--bg-hover);
+    background: var(--bg-3);
     padding: 1px var(--sp-1);
     border-radius: 4px;
     color: var(--text-2);
