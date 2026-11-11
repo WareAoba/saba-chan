@@ -10,8 +10,12 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
-/// 앱에 함께 싣는 가이드: (이름, guide.toml, [(언어, 문구 json)])
-const BUILTIN: &[(&str, &str, &[(&str, &str)])] = include!(concat!(env!("OUT_DIR"), "/builtin_guides.rs"));
+/// 앱에 함께 싣는 가이드 하나: (이름, guide.toml, [(언어, 문구 json)])
+type Builtin = (&'static str, &'static str, &'static [(&'static str, &'static str)]);
+/// 폴더에서 읽은 가이드 하나: (이름, guide.toml, [(언어, 문구 json)])
+type Folder = (String, String, Vec<(String, String)>);
+
+const BUILTIN: &[Builtin] = include!(concat!(env!("OUT_DIR"), "/builtin_guides.rs"));
 
 /// 카드·목록의 무리 (보이는 순서)
 pub const GROUPS: &[&str] = &["start", "care", "discord", "more"];
@@ -117,7 +121,7 @@ fn parse(id: &str, toml_text: &str, locales: &[(String, String)], core: &str) ->
     }))
 }
 
-fn read_dir_guide(dir: &Path) -> Option<(String, String, Vec<(String, String)>)> {
+fn read_dir_guide(dir: &Path) -> Option<Folder> {
     let id = dir.file_name()?.to_str()?.to_string();
     let toml_text = std::fs::read_to_string(dir.join("guide.toml")).ok()?;
     let mut locales = Vec::new();
