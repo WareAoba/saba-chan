@@ -71,6 +71,15 @@ describe('우클릭 메뉴', () => {
         expect(ids).toContain('hide');
     });
 
+    it('이름이 아주 길어도 메뉴가 셸의 글자 수 제한(80자)을 넘지 않는다', () => {
+        const long = [{ id: 'l', name: '가'.repeat(200), status: 'running' }] as ServerInfo[];
+        const walk = (items: ReturnType<typeof overlayMenuItems>): number[] =>
+            items.flatMap((i) => [(i.label ?? '').length, ...walk(i.items ?? [])]);
+        const [first] = overlayMenuItems(long, t);
+        expect(first.label).toContain('…');
+        expect(Math.max(...walk(overlayMenuItems(long, t)))).toBeLessThanOrEqual(80);
+    });
+
     it('서버가 없으면 고를 수 없는 한 줄', () => {
         const [first] = overlayMenuItems([], t);
         expect(first).toMatchObject({ enabled: false });

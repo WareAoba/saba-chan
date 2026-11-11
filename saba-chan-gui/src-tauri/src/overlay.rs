@@ -35,8 +35,10 @@ const SAVE_DEBOUNCE_MS: u64 = 600;
 const MENU_MAX_ITEMS: usize = 80;
 const MENU_MAX_LABEL: usize = 80;
 
-/// 지금 창의 아래 가운데 점 (물리 px). 크기가 바뀌어도 이 점을 지킨다
+/// 지킬 아래 가운데 점 (물리 px). 크기가 바뀌어도 이 점을 지킨다 (가장자리에서 당겨도 바꾸지 않는다)
 static ANCHOR: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+/// 셸이 마지막으로 놓은 창의 아래 가운데 점: 이와 다른 자리로 옮겨졌으면 사용자가 끈 것이다
+static PLACED: Mutex<Option<(f64, f64)>> = Mutex::new(None);
 /// 셸이 창을 옮기고 크기를 바꾸는 중: 그 사이의 이동 알림은 사용자가 끈 것이 아니다
 static PLACING: AtomicBool = AtomicBool::new(false);
 static SAVE_GEN: AtomicU64 = AtomicU64::new(0);
@@ -85,6 +87,14 @@ pub fn place(anchor: Option<(f64, f64)>, size: (f64, f64), work: PxRect, margin:
     )
 }
 
+/// 놓을 자리와, 앞으로 지킬 아래 가운데 점. 지킬 점은 당기기 전의 점이다: 말풍선으로 넓어져 가장자리에서 안쪽으로
+/// 당겨져도 좁아지면 원래 자리로 돌아온다. 처음(점 없음)이면 이 크기로 잡은 오른쪽 아래 점
+pub fn settle(anchor: Option<(f64, f64)>, size: (f64, f64), work: PxRect, margin: f64) -> ((f64, f64), (f64, f64)) {
+    let intended = anchor.unwrap_or((work.x + work.w - margin - size.0 / 2.0, work.y + work.h - margin));
+    let (x, y) = place(Some(intended), size, work, margin);
+    ((x.round(), y.round()), intended)
+}
+
 /// 설정과 익스텐션 목록을 보고 창을 띄우거나 내린다. 데몬에 닿지 않으면 지금 상태를 그대로 둔다
 pub async fn sync(app: &AppHandle) {
     let state = app.state::<AppState>();
@@ -92,17 +102,33 @@ pub async fn sync(app: &AppHandle) {
     if !enabled || !supported() {
         return close(app);
     }
-    let list = match state.client.get("/api/extensions", 5000).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::debug!("[Overlay] Extension list unavailable: {}", e.message);
-            return;
-        }
+    let Some(list) = local_extensions(&state).await else {
+        return;
     };
     if wanted_by(&list) {
         open(app);
     } else {
         close(app);
+    }
+}
+
+/// 이 PC 데몬의 익스텐션 목록. 오버레이는 번들을 늘 이 PC 데몬에서 받으므로(`target: 'local'`),
+/// 원격 데몬을 고른 동안에도 띄울지는 이 목록으로 정한다
+async fn local_extensions(state: &AppState) -> Option<Value> {
+    let res = state
+        .client
+        .send_to(reqwest::Method::GET, "/api/extensions", None, std::time::Duration::from_millis(5000), Some("local"))
+        .await;
+    match res {
+        Ok(r) if r.is_success() => Some(r.data()),
+        Ok(r) => {
+            tracing::debug!("[Overlay] Extension list unavailable: status {}", r.status);
+            None
+        }
+        Err(e) => {
+            tracing::debug!("[Overlay] Extension list unavailable: {}", e.message);
+            None
+        }
     }
 }
 
@@ -145,6 +171,7 @@ fn open(app: &AppHandle) {
         }
     };
     *ANCHOR.lock().unwrap() = None;
+    *PLACED.lock().unwrap() = None;
     let handle = app.clone();
     win.on_window_event(move |event| {
         // 셸이 놓은 자리(`fit`)도 Moved로 온다: 놓는 중이거나 기억한 점과 같으면 remember_moved가 거른다
@@ -160,11 +187,21 @@ fn open(app: &AppHandle) {
     });
 }
 
-/// 렌더러가 잰 내용 크기(논리 px)에 맞춰 크기와 자리를 정하고 보인다
+/// 그릴 것이 있는 크기인가. slot이 비면(번들을 못 읽었다 등) 내용 크기가 0이다
+fn has_content(width: f64, height: f64) -> bool {
+    width >= 1.0 && height >= 1.0
+}
+
+/// 렌더러가 잰 내용 크기(논리 px)에 맞춰 크기와 자리를 정하고 보인다. 그릴 것이 없으면 숨긴다:
+/// 보이지 않는 항상-위 창이 바탕화면 클릭을 가로채지 않게
 pub fn fit(app: &AppHandle, width: f64, height: f64) {
     let Some(win) = app.get_webview_window(OVERLAY) else {
         return;
     };
+    if !has_content(width, height) {
+        let _ = win.hide();
+        return;
+    }
     let anchor = *ANCHOR.lock().unwrap();
     let anchor = anchor.or_else(|| saved(&app.state::<AppState>().settings()).1);
     let monitor = anchor
@@ -189,9 +226,9 @@ pub fn fit(app: &AppHandle, width: f64, height: f64) {
     };
     // 다른 모니터에 남은 자리(모니터를 뺐다 등)는 버리고 처음 자리로
     let anchor = anchor.filter(|&(x, y)| x >= work.x && x <= work.x + work.w && y > work.y && y <= work.y + work.h);
-    let (x, y) = place(anchor, size, work, MARGIN * scale);
-    let (x, y) = (x.round(), y.round());
-    *ANCHOR.lock().unwrap() = Some((x + size.0 / 2.0, y + size.1));
+    let ((x, y), intended) = settle(anchor, size, work, MARGIN * scale);
+    *ANCHOR.lock().unwrap() = Some(intended);
+    *PLACED.lock().unwrap() = Some((x + size.0 / 2.0, y + size.1));
     PLACING.store(true, Ordering::SeqCst);
     // 먼저 옮기고 크기를 준다: 배율이 다른 모니터로 옮기면 창 크기가 그 배율로 다시 잡힌다
     let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
@@ -215,14 +252,15 @@ fn remember_moved(app: &AppHandle) {
         return;
     };
     {
-        let mut current = ANCHOR.lock().unwrap();
+        let mut placed = PLACED.lock().unwrap();
         // 셸이 놓은 자리 그대로면(보이기·크기 맞춤) 저장하지 않는다. 아직 놓기 전이면 기억할 것도 없다
-        match *current {
+        match *placed {
             None => return,
             Some((x, y)) if (x - anchor.0).abs() <= 1.0 && (y - anchor.1).abs() <= 1.0 => return,
             _ => {}
         }
-        *current = Some(anchor);
+        *placed = Some(anchor);
+        *ANCHOR.lock().unwrap() = Some(anchor);
     }
     let generation = SAVE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     let app = app.clone();
@@ -236,6 +274,7 @@ fn remember_moved(app: &AppHandle) {
             return;
         };
         *ANCHOR.lock().unwrap() = Some(anchor);
+        *PLACED.lock().unwrap() = Some(anchor);
         let state = app.state::<AppState>();
         let (enabled, _) = saved(&state.settings());
         let patch = json!({ "desktopOverlay": { "enabled": enabled, "x": anchor.0.round() as i64, "y": anchor.1.round() as i64 } });
@@ -261,18 +300,38 @@ pub async fn set_enabled(app: &AppHandle, enabled: bool) -> bool {
 pub async fn state(app: &AppHandle) -> Value {
     let state = app.state::<AppState>();
     let (enabled, _) = saved(&state.settings());
-    let wanted = match state.client.get("/api/extensions", 5000).await {
-        Ok(list) => wanted_by(&list),
-        Err(_) => false,
-    };
+    let wanted = local_extensions(&state).await.is_some_and(|list| wanted_by(&list));
     json!({ "enabled": enabled, "available": wanted, "supported": supported() })
+}
+
+/// 오버레이 창이 보낼 수 있는 데몬 요청: 읽기(GET)와 서버 시작·정지·재시작뿐이다.
+/// 익스텐션 번들이 이 창에서 돌아도 설정·서버 구성을 바꾸지 못하게 한다
+pub fn allows_request(method: &reqwest::Method, path: &str) -> bool {
+    if *method == reqwest::Method::GET {
+        return true;
+    }
+    if *method != reqwest::Method::POST {
+        return false;
+    }
+    let route = path.split('?').next().unwrap_or("");
+    let Some(rest) = route.strip_prefix("/api/instance/") else {
+        return false;
+    };
+    match rest.split_once('/') {
+        Some((id, action)) => is_instance_id(id) && matches!(action, "start" | "stop" | "restart"),
+        None => false,
+    }
+}
+
+/// 인스턴스 id: 영문·숫자·`-`·`_` 128자까지
+fn is_instance_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 128 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 /// 펫이 고른 화면 `server:<인스턴스 id>`의 id (그 밖의 화면은 앱만 연다)
 fn server_of(route: Option<&str>) -> Option<String> {
     let id = route?.strip_prefix("server:")?;
-    let ok = !id.is_empty() && id.len() <= 128 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    ok.then(|| id.to_string())
+    is_instance_id(id).then(|| id.to_string())
 }
 
 /// 오버레이 창의 셸 동작: open_app(메인 창, `route`가 `server:<id>`면 그 서버를 연다) | hide(설정에서 끄고 창을 내린다)
@@ -392,6 +451,33 @@ pub fn popup_menu(app: &AppHandle, items: Vec<MenuSpec>) -> bool {
 mod tests {
     use super::*;
 
+    /// 오버레이 창은 읽기와 서버 켜고 끄기만 한다
+    #[test]
+    fn the_overlay_only_reads_and_starts_or_stops_servers() {
+        use reqwest::Method;
+        assert!(allows_request(&Method::GET, "/api/servers?notices_after=0"));
+        assert!(allows_request(&Method::GET, "/api/extensions/desktop_pet/gui"));
+        for action in ["start", "stop", "restart"] {
+            assert!(allows_request(&Method::POST, &format!("/api/instance/abc-1/{action}")));
+        }
+        assert!(!allows_request(&Method::POST, "/api/instance/abc-1/rename"));
+        assert!(!allows_request(&Method::POST, "/api/instance/abc-1/start/../rename"));
+        assert!(!allows_request(&Method::POST, "/api/instance//start"));
+        assert!(!allows_request(&Method::POST, "/api/instance/../start"));
+        assert!(!allows_request(&Method::PUT, "/api/config/gui"));
+        assert!(!allows_request(&Method::DELETE, "/api/instance/abc-1"));
+        assert!(!allows_request(&Method::POST, "/api/extensions/desktop_pet/disable"));
+    }
+
+    /// slot이 비면 창을 숨긴다 (48×48 최소 크기로 띄우지 않는다)
+    #[test]
+    fn an_empty_slot_is_not_shown() {
+        assert!(!has_content(0.0, 0.0));
+        assert!(!has_content(120.0, 0.0));
+        assert!(!has_content(f64::NAN, 40.0));
+        assert!(has_content(120.0, 140.0));
+    }
+
     /// 펫이 고른 서버: `server:<인스턴스 id>`만, id는 영문·숫자·`-`·`_` 128자까지
     #[test]
     fn only_a_plain_server_route_opens_a_server() {
@@ -436,6 +522,20 @@ mod tests {
         assert_eq!(place(Some((500.0, 900.0)), (200.0, 260.0), WORK, 16.0), (400.0, 640.0));
         // 작업 영역 밖으로 나가지 않는다
         assert_eq!(place(Some((10.0, 5000.0)), (200.0, 160.0), WORK, 16.0), (0.0, 880.0));
+    }
+
+    /// 말풍선으로 넓어져 가장자리에서 당겨져도, 좁아지면 원래 자리로 돌아온다 (당긴 자리를 기억하지 않는다)
+    #[test]
+    fn widening_at_the_edge_does_not_move_the_remembered_place() {
+        let mut anchor = None;
+        let mut xs = vec![];
+        for w in [144.0, 300.0, 144.0] {
+            let (pos, intended) = settle(anchor, (w, 200.0), WORK, 16.0);
+            anchor = Some(intended);
+            xs.push(pos.0);
+        }
+        assert_eq!(xs[0], xs[2], "{xs:?}");
+        assert_eq!(xs[1], 1920.0 - 300.0, "pulled inside while wide");
     }
 
     #[test]
@@ -510,12 +610,13 @@ mod tests {
             "allow-overlay-fit",
             "allow-overlay-menu",
             "allow-overlay-action",
-            "core:event:default",
+            "core:event:allow-listen",
+            "core:event:allow-unlisten",
             "core:window:allow-start-dragging",
         ] {
             assert!(granted.iter().any(|g| g == need), "the overlay cannot call {need}");
         }
-        for never in ["allow-notify", "allow-overlay-set-enabled", "allow-daemon-target-set", "allow-settings-local-save"] {
+        for never in ["core:event:default", "core:event:allow-emit", "core:event:allow-emit-to", "allow-notify", "allow-overlay-set-enabled", "allow-daemon-target-set", "allow-settings-local-save"] {
             assert!(!granted.iter().any(|g| g == never), "the overlay must not call {never}");
         }
         let build = include_str!("../build.rs");

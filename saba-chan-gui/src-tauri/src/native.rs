@@ -17,6 +17,7 @@ use tauri_plugin_opener::OpenerExt;
 #[tauri::command(rename_all = "camelCase")]
 pub async fn daemon_request(
     app: AppHandle,
+    window: WebviewWindow,
     method: String,
     path: String,
     body: Option<Value>,
@@ -24,7 +25,10 @@ pub async fn daemon_request(
     response_type: Option<String>,
     target: Option<String>,
 ) -> Value {
-    let Some(method) = parse_method(&method).filter(|m| is_allowed_request(m, &path)) else {
+    // 바탕화면 오버레이는 읽기와 서버 켜고 끄기만 (overlay::allows_request)
+    let overlay = window.label() == crate::overlay::OVERLAY;
+    let allowed = |m: &reqwest::Method| is_allowed_request(m, &path) && (!overlay || crate::overlay::allows_request(m, &path));
+    let Some(method) = parse_method(&method).filter(allowed) else {
         return json!({ "status": 0, "error": format!("Invalid daemon request: {path}"), "code": "EINVAL" });
     };
     let client = app.state::<AppState>().client.clone();

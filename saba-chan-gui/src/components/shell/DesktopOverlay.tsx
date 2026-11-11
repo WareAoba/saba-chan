@@ -16,6 +16,13 @@ const DRAG_THRESHOLD = 4;
 /** 메뉴에 넣는 서버 수 */
 const MENU_SERVERS = 12;
 const ACTIONS: ServerAction[] = ['start', 'stop', 'restart'];
+/** 메뉴에 쓰는 서버 이름 글자 수: 셸은 80자가 넘는 항목이 있으면 메뉴를 통째로 거절한다 */
+const MENU_NAME_MAX = 40;
+
+const shortName = (name: string) => {
+    const chars = Array.from(name);
+    return chars.length > MENU_NAME_MAX ? `${chars.slice(0, MENU_NAME_MAX - 1).join('')}…` : name;
+};
 
 /**
  * 우클릭 메뉴 항목 (셸이 OS 메뉴로 띄운다). 서버마다 하위 메뉴: 꺼져 있으면 시작, 켜져 있으면 정지·재시작을
@@ -32,7 +39,10 @@ export function overlayMenuItems(servers: ServerInfo[], t: TFunction): OverlayMe
             items: [{ id: `server:${server.id}:${what}`, label: t(`desktop_overlay.menu_${what}_confirm`) }],
         });
         return {
-            label: t('desktop_overlay.menu_server', { name: server.name, status: t(`shell.status_${status}`) }),
+            label: t('desktop_overlay.menu_server', {
+                name: shortName(server.name),
+                status: t(`shell.status_${status}`),
+            }),
             items: [
                 {
                     id: `server:${server.id}:start`,
