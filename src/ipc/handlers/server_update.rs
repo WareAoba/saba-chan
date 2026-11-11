@@ -171,6 +171,7 @@ pub(crate) async fn stop_update_start(state: &IPCServer, id: &str) -> bool {
 
 /// `stop_update_start`. `only_if_empty`(자동 업데이트)면 작업 잠금을 잡아 다른 경로의 시작을 막은 채로 켜져 있는지와
 /// 지금 접속자 수를 보고, 켜져 있는데 0명으로 확인되지 않으면 끄지 않고 None (잠금이 잡혀 있어도 None)
+/// 같은 서버 폴더를 쓰는 다른 인스턴스가 켜져 있거나 작업 중이어도 None (미룬다)
 async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool) -> Option<bool> {
     // 시작은 이 잠금을 잡고 켠다(`server::start_instance`): 잡고 있는 동안에는 확인한 뒤 새로 켜지지 않는다
     let start_lock = if only_if_empty {
@@ -182,6 +183,11 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
     } else {
         None
     };
+    // 같은 서버 폴더를 쓰는 다른 인스턴스가 켜져 있거나 작업 중이면 업데이트를 시작하지 못한다: 끄지 않고 미룬다
+    if only_if_empty && super::instance::update_blocked_by_shared_folder(state, id).await {
+        postpone(id, false);
+        return None;
+    }
     let was_running = super::backup::is_running(state, id).await;
     if was_running && only_if_empty {
         let players = crate::supervisor::players::fresh(&state.supervisor, id).await;
@@ -218,26 +224,36 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
     let generation = state.supervisor.read().await.run_generation_of(id);
     // 잡은 잠금은 업데이트에 넘긴다: 놓았다 다시 잡는 틈에 다른 작업이 끼어 업데이트를 못 하는 일이 없게
     let updated = match super::instance::begin_server_update_holding(state, id, start_lock).await {
-        Ok(job) => job.await.unwrap_or(false),
+        Ok(job) => Some(job.await.unwrap_or(false)),
         Err(r) => {
             let body = crate::ipc::internal::into_internal(r).await.body;
             tracing::warn!("Update of '{}' could not start: {}", id, body);
-            super::instance::emit_update_failed(
-                state,
-                id,
-                body.get("error").and_then(Value::as_str).unwrap_or("update failed"),
-            )
-            .await;
-            false
+            // 위에서 본 뒤 끄는 사이에 같은 폴더의 다른 인스턴스가 켜졌거나 작업을 시작했다: 자동 업데이트는 실패로 남기지 않고 미룬다
+            let in_use = matches!(
+                body.get("error_code").and_then(Value::as_str),
+                Some("instance_busy" | "server_running")
+            );
+            if only_if_empty && in_use {
+                postpone(id, false);
+                None
+            } else {
+                super::instance::emit_update_failed(
+                    state,
+                    id,
+                    body.get("error").and_then(Value::as_str).unwrap_or("update failed"),
+                )
+                .await;
+                Some(false)
+            }
         }
     };
     if was_running {
-        if !updated {
-            tracing::warn!("Update of '{}' failed; starting the old version again", id);
+        if updated != Some(true) {
+            tracing::warn!("Update of '{}' did not finish; starting the old version again", id);
         }
         super::backup::start_after_update(state, id, generation).await;
     }
-    Some(updated)
+    updated
 }
 
 fn error(status: StatusCode, code: &str, message: &str) -> Response {
@@ -350,6 +366,10 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
         }
         watch.waiting = true;
         watch.notified = false;
+    }
+    // 같은 서버 폴더를 쓰는 다른 인스턴스가 켜져 있거나 작업 중이면 기다린다 (풀리면 다음 틱에 이어 간다)
+    if super::instance::update_blocked_by_shared_folder(state, id).await {
+        return;
     }
     let running = super::backup::is_running(state, id).await;
     let mut players = crate::supervisor::players::get(id).map(|c| c.online);
@@ -494,6 +514,57 @@ mod tests {
         let mut again = Watch::default();
         resume_postponed(id, &mut again);
         assert!(!again.waiting, "resumed once");
+    }
+
+    /// 같은 서버 폴더를 쓰는 다른 인스턴스가 작업 중이거나 켜져 있어 시작하지 못한 자동 업데이트는 실패가 아니다:
+    /// 그 빌드를 실패로 기억하지 않고 미뤘다가, 풀리면 다시 시도한다
+    #[tokio::test]
+    async fn auto_update_blocked_by_an_instance_sharing_the_folder_is_postponed_not_failed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"steamcmd\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        for module in sup.module_loader.discover_modules().unwrap() {
+            crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path()));
+        }
+        sup.initialize().await.unwrap();
+        let shared = tmp.path().join("PalServer").to_string_lossy().to_string();
+        let mut ids = Vec::new();
+        for name in ["a", "b"] {
+            let mut inst = crate::instance::ServerInstance::new(name, "game");
+            inst.working_dir = Some(shared.clone());
+            inst.extension_data.insert(crate::instance::install_method_key("steamcmd"), json!(true));
+            ids.push(inst.id.clone());
+            sup.instance_store.add(inst).unwrap();
+        }
+        let state = IPCServer::new(
+            std::sync::Arc::new(tokio::sync::RwLock::new(sup)),
+            "127.0.0.1:0",
+            crate::daemon_log::DaemonLogBuffer::new(),
+        );
+        let other = super::super::backup::InstanceLock::take(&ids[1]).expect("free");
+        assert!(super::super::instance::update_blocked_by_shared_folder(&state, &ids[0]).await);
+        let decided =
+            tokio::time::timeout(std::time::Duration::from_secs(5), stop_update_start_when(&state, &ids[0], true))
+                .await
+                .expect("does not wait for the other instance");
+        assert_eq!(decided, None, "a folder in use is not a failed build");
+        let mut watch = Watch::default();
+        resume_postponed(&ids[0], &mut watch);
+        assert!(watch.waiting, "tried again from the next tick");
+        drop(other);
+        assert!(!super::super::instance::update_blocked_by_shared_folder(&state, &ids[0]).await);
+        assert!(super::super::backup::InstanceLock::take(&ids[0]).is_some(), "a postponed update does not keep its lock");
     }
 
     /// 꺼져 있으면 받기만, 켜져 있고 아무도 없으면 다시 켜며 업데이트, 접속자가 있거나 셀 수 없으면 기다린다
