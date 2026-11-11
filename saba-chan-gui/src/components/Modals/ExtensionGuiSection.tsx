@@ -60,8 +60,8 @@ export function ExtensionGuiSection() {
     };
 
     return (
-        <div className="data-transfer">
-            <h4 className="data-transfer-title">
+        <section className="saba-card">
+            <h4 className="saba-card-title">
                 <Icon name="key" size="sm" /> {t('extension_gui_consent.title')}
             </h4>
             <p className="setting-description">{t('extension_gui_consent.description')}</p>
@@ -113,6 +113,6 @@ export function ExtensionGuiSection() {
                     </button>
                 </div>
             ))}
-        </div>
+        </section>
     );
 }

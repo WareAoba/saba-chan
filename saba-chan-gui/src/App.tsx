@@ -252,6 +252,9 @@ function App() {
         isSettingsClosing,
         handleOpenSettings,
         handleSettingChange,
+        handleSettingLoaded,
+        revertSettings,
+        openedSettings,
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,
@@ -882,6 +885,9 @@ function App() {
         versionsLoading,
         versionInstalling,
         handleSettingChange,
+        handleSettingLoaded,
+        revertSettings,
+        openedSettings,
         handleInstallVersion,
         handleSaveSettings,
         handleResetServer,
@@ -892,8 +898,6 @@ function App() {
         restartNow,
         dismissRestart,
     };
-
-    const anyPopoverOpen = showBackgroundSection || showNoticeSection;
 
     const openingOverlay =
         openingPhase === 'loading' || openingPhase === 'prepare' || openingPhase === 'play' ? (
@@ -924,15 +928,6 @@ function App() {
             <HostWindowContext.Provider value={hostWindow}>
             <TooltipProvider>
                 <div className="App" ref={appRef}>
-                    {anyPopoverOpen && (
-                        <div
-                            className="popover-backdrop"
-                            onClick={() => {
-                                if (showBackgroundSection) requestBackgroundClose();
-                                if (showNoticeSection) requestNoticeClose();
-                            }}
-                        />
-                    )}
                     <Toast />
                     <RemotePathPicker />
                     <AppBar

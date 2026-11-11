@@ -211,12 +211,10 @@
     gap: var(--sp-2);
     padding-bottom: var(--sp-2);
 }
+/* 칸 아래 붙는 .ss-footer가 이미 따라오므로 막대는 그 안에 그대로 둔다 */
 .ss-savebar {
     position: static;
-    justify-content: flex-end;
-}
-.ss-savebar .cli-line {
-    margin-right: auto;
+    margin-top: 0;
 }
 .ss-panel .launch-preview {
     margin-bottom: 0;

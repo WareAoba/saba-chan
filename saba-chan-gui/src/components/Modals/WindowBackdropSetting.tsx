@@ -1,4 +1,4 @@
-import { type CSSProperties, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import {
@@ -9,13 +9,10 @@ import {
 } from '../../utils/themeManager';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
-import { SabaToggle } from '../ui/SabaUI';
+import { SabaSlider, SabaToggle } from '../ui/SabaUI';
 
 const WINDOWS_CHOICES = ['tabbed', 'mica', 'acrylic'];
 const MAC_CHOICES = ['regular', 'clear'];
-
-/** 0–100을 슬라이더 채움 비율로 */
-const fill = (value: number, min: number, max: number) => ({ '--fill': `${((value - min) / (max - min)) * 100}%` }) as CSSProperties;
 
 /**
  * 설정 > 외관: 창 바탕 반투명 (사용자 11-08). 켜고 끄기, 재질(Windows·macOS), 덮는 바탕의 진하기·밝기.
@@ -91,16 +88,13 @@ export function WindowBackdropSetting() {
                     <div className="setting-subitem">
                         <span>{t('settings_modal.backdrop_opacity_label')}</span>
                         <div className="font-scale-row backdrop-slider">
-                            <input
-                                type="range"
-                                className="font-scale-slider"
+                            <SabaSlider
                                 min={0}
                                 max={100}
                                 step={5}
                                 value={backdrop.opacity}
                                 aria-label={t('settings_modal.backdrop_opacity_label')}
-                                onChange={(e) => change({ opacity: Number(e.target.value) })}
-                                style={fill(backdrop.opacity, 0, 100)}
+                                onChange={(v) => change({ opacity: v })}
                             />
                             <span className="font-scale-value">{Math.max(backdrop.opacity, minOpacity)}%</span>
                         </div>
@@ -111,16 +105,13 @@ export function WindowBackdropSetting() {
                     <div className="setting-subitem">
                         <span>{t('settings_modal.backdrop_brightness_label')}</span>
                         <div className="font-scale-row backdrop-slider">
-                            <input
-                                type="range"
-                                className="font-scale-slider"
+                            <SabaSlider
                                 min={-50}
                                 max={50}
                                 step={5}
                                 value={backdrop.brightness}
                                 aria-label={t('settings_modal.backdrop_brightness_label')}
-                                onChange={(e) => change({ brightness: Number(e.target.value) })}
-                                style={fill(backdrop.brightness, -50, 50)}
+                                onChange={(v) => change({ brightness: v })}
                             />
                             <span className="font-scale-value">
                                 {backdrop.brightness > 0 ? `+${backdrop.brightness}` : backdrop.brightness}

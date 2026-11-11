@@ -643,6 +643,25 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }: IconProps) =
                 <line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
         ),
+        // 숨기기 (시스템 모니터 끄기)
+        eyeOff: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9.9 5.2A9.6 9.6 0 0 1 12 5c6 0 9.5 5.6 10 7-.3.8-1.2 2.5-2.7 4M6.2 6.6C3.9 8 2.4 10.4 2 12c.5 1.4 4 7 10 7 1.7 0 3.2-.4 4.4-1.1" />
+                <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+                <line x1="3" y1="3" x2="21" y2="21" />
+            </svg>
+        ),
+        // 끌어 옮기는 손잡이 (떠 있는 창)
+        grip: (
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="9" cy="6" r="1.6" />
+                <circle cx="15" cy="6" r="1.6" />
+                <circle cx="9" cy="12" r="1.6" />
+                <circle cx="15" cy="12" r="1.6" />
+                <circle cx="9" cy="18" r="1.6" />
+                <circle cx="15" cy="18" r="1.6" />
+            </svg>
+        ),
         externalLink: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />

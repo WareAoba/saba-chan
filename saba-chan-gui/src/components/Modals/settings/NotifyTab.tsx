@@ -22,18 +22,16 @@ export function NotifyTab() {
     const osNotifications = useSettingsStore((s) => s.osNotifications);
     const sounds = useSettingsStore((s) => s.sounds);
     const toastDuration = useSettingsStore((s) => s.toastDuration);
-    const setSound = (key: keyof SoundSettings, on: boolean) => useSettingsStore.getState().update({ sounds: { ...sounds, [key]: on } });
+    const setSound = (key: keyof SoundSettings, on: boolean) =>
+        useSettingsStore.getState().update({ sounds: { ...sounds, [key]: on } });
     return (
-        <>
+        <section className="saba-card">
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="messageSquare" size="sm" />{' '}
-                        {t('gui:settings_modal.toast_duration_label')}
+                        <Icon name="messageSquare" size="sm" /> {t('gui:settings_modal.toast_duration_label')}
                     </span>
-                    <span className="setting-description">
-                        {t('gui:settings_modal.toast_duration_description')}
-                    </span>
+                    <span className="setting-description">{t('gui:settings_modal.toast_duration_description')}</span>
                 </label>
                 <CustomDropdown
                     className="setting-select"
@@ -50,12 +48,9 @@ export function NotifyTab() {
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="bell" size="sm" />{' '}
-                        {t('gui:settings_modal.os_notifications_label')}
+                        <Icon name="bell" size="sm" /> {t('gui:settings_modal.os_notifications_label')}
                     </span>
-                    <span className="setting-description">
-                        {t('gui:settings_modal.os_notifications_description')}
-                    </span>
+                    <span className="setting-description">{t('gui:settings_modal.os_notifications_description')}</span>
                 </label>
                 <SabaToggle
                     checked={osNotifications}
@@ -70,9 +65,7 @@ export function NotifyTab() {
                         <span className="setting-title">
                             <Icon name="volume" size="sm" /> {t('gui:settings_modal.sound_effects_label')}
                         </span>
-                        <span className="setting-description">
-                            {t('gui:settings_modal.sound_effects_description')}
-                        </span>
+                        <span className="setting-description">{t('gui:settings_modal.sound_effects_description')}</span>
                     </label>
                     <SabaToggle checked={sounds.enabled} onChange={(on) => setSound('enabled', on)} />
                 </div>
@@ -81,16 +74,12 @@ export function NotifyTab() {
                         {SOUND_KINDS.map(([key, label]) => (
                             <div className="setting-subitem" key={key}>
                                 <span>{t(label)}</span>
-                                <SabaToggle
-                                    size="sm"
-                                    checked={sounds[key]}
-                                    onChange={(on) => setSound(key, on)}
-                                />
+                                <SabaToggle size="sm" checked={sounds[key]} onChange={(on) => setSound(key, on)} />
                             </div>
                         ))}
                     </div>
                 )}
             </div>
-        </>
+        </section>
     );
 }

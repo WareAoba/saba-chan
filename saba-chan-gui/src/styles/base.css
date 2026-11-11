@@ -11,7 +11,7 @@
     -webkit-user-select: none;
     user-select: none;
     scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb) transparent;
+    scrollbar-color: var(--bg-4) transparent;
 }
 
 /* 화면에는 안 보이고 읽기 프로그램에만 읽히는 글자 */
@@ -109,7 +109,7 @@ kbd {
     background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
+    background: var(--bg-4);
     border-radius: var(--r-pill);
     border: 2px solid transparent;
     background-clip: padding-box;
@@ -233,7 +233,7 @@ button:disabled {
 /* 보조 버튼: 테두리 없이 바탕색으로 솟은 면 */
 .btn-ghost,
 .btn-secondary {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     color: var(--text-1);
     border: 0;
     box-shadow: var(--neu-up);
@@ -303,11 +303,11 @@ button:disabled {
 }
 .icon-btn:hover:not(:disabled) {
     color: var(--text-1);
-    background: var(--bg-surface);
+    background: var(--bg-2);
     box-shadow: var(--neu-up);
 }
 .icon-btn:active:not(:disabled) {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     box-shadow: var(--neu-in);
     transform: scale(0.92);
     transition-duration: 0.08s;
@@ -339,13 +339,8 @@ button:disabled {
     border-color: var(--accent);
     box-shadow: var(--neu-in), var(--accent-ring);
 }
-
-/* 카드 (N1 + N3 + A2) */
-.card {
-    background: var(--surface-gradient);
-    border: 1px solid var(--line);
-    border-radius: var(--r-md);
-    box-shadow: var(--shadow-raised);
+.input[aria-invalid='true'] {
+    border-color: var(--stop);
 }
 
 /* 상태 칩 (N4: 점 + 글자 + 색) */
@@ -442,7 +437,7 @@ button:disabled {
 }
 .segmented-item.active {
     color: var(--text-1);
-    background: var(--bg-surface);
+    background: var(--bg-2);
     box-shadow: var(--neu-up);
     animation: saba-seg-pop 0.22s var(--ease-spring);
 }

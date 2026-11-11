@@ -77,9 +77,9 @@ describe('InstanceDiscordTab', () => {
         await screen.findByLabelText('Names for 야생');
         const names = [...document.querySelectorAll('.dc-word-cmd .dc-list-name')].map((n) => n.textContent);
         expect(names).toEqual(['Names for the server', 'Start', 'Status', 'Kick player']);
-        expect(document.querySelector('.dc-savebar')).toBeNull();
+        expect(document.querySelector('.saba-savebar')).toBeNull();
         await addChip('Names for 야생', '야섭');
-        expect(document.querySelector('.dc-savebar.dirty')).not.toBeNull();
+        expect(document.querySelector('.saba-savebar.dirty')).not.toBeNull();
         i18n.removeResourceBundle('en', 'mod_minecraft');
     });
 

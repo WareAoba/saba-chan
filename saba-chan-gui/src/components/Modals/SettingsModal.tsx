@@ -36,6 +36,7 @@ import { SecurityTab } from './settings/SecurityTab';
 import { ServersTab } from './settings/ServersTab';
 import { StorageTab } from './settings/StorageTab';
 import { TroubleshootTab } from './settings/TroubleshootTab';
+import { SaveBarHost } from '../ui/SaveBar';
 
 const TAB_ICONS: Record<SettingsTab, string> = {
     general: 'settings',
@@ -90,8 +91,6 @@ function SettingsModal({
     // 지금 데몬이 쓰는 포트(화면을 열 때 값). 바꾸면 다시 시작해야 적용된다
     const [runningIpcPort] = useState(ipcPort);
     // 받을 수 없는 포트를 쓰는 중이면 그 글자 (저장하지 않는다)
-    const [ipcPortDraft, setIpcPortDraft] = useState<string | null>(null);
-    const [ipcPortError, setIpcPortError] = useState('');
     // 받기 전에는 모른다: 지어낸 버전을 보이지 않는다
     const [appVersion, setAppVersion] = useState<string | null>(null);
     const [componentInfo, setComponentInfo] = useState<ApiBody | null>(null);
@@ -228,19 +227,6 @@ function SettingsModal({
         void applyWindowBackdrop(WINDOW_BACKDROP_DEFAULTS);
     };
 
-    // IPC 포트: 받을 수 있는 값만 저장한다
-    const handleIpcPortChange = (value: string) => {
-        const port = parseInt(value, 10);
-        if (Number.isNaN(port) || port < 1024 || port > 65535) {
-            setIpcPortDraft(value);
-            setIpcPortError(t('gui:settings_modal.ipc_port_invalid'));
-            return;
-        }
-        setIpcPortDraft(null);
-        setIpcPortError('');
-        setOption({ ipcPort: port });
-    };
-    const ipcPortChanged = ipcPortDraft === null && ipcPort !== runningIpcPort;
 
     // 탭 한 칸: 고른 탭만 그리고, 들어올 때 탭 순서에 따라 위·아래에서 미끄러진다
     const panel = (id: SettingsTab, body: ReactNode) =>
@@ -307,6 +293,8 @@ function SettingsModal({
 
                 <div className="settings-viewport">
                 <div className={'settings-modal-content'}>
+                    {/* 즉시 저장할 수 없는 칸(포트·주소)의 바뀜을 모아 아래에서 올라오는 막대로 묻는다 */}
+                    <SaveBarHost>
                     {header}
 
                     {panel(
@@ -344,10 +332,8 @@ function SettingsModal({
                         'connection',
                         <ConnectionTab
                             ipcPort={ipcPort}
-                            ipcPortDraft={ipcPortDraft}
-                            ipcPortError={ipcPortError}
-                            ipcPortChanged={ipcPortChanged}
-                            handleIpcPortChange={handleIpcPortChange}
+                            runningIpcPort={runningIpcPort}
+                            onIpcPortSave={(port) => setOption({ ipcPort: port })}
                             discordCloudRelayUrl={discordCloudRelayUrl}
                             onDiscordCloudRelayUrlChange={onDiscordCloudRelayUrlChange}
                         />,
@@ -422,6 +408,7 @@ function SettingsModal({
                             initialTab={storageTab}
                         />
                     </div>
+                    </SaveBarHost>
                 </div>
                 </div>
                 </div>

@@ -60,8 +60,8 @@ export function AgentLink({ className }: { className?: string } = {}) {
     if (grants === undefined) return null;
     const when = (iso: unknown) => (typeof iso === 'string' && iso ? new Date(iso).toLocaleString(i18n.language) : '-');
     return (
-        <div data-spot="discord.agent" className={clsx('data-transfer', className)}>
-            <h4 className="data-transfer-title">
+        <section data-spot="discord.agent" className={clsx('saba-card', className)}>
+            <h4 className="saba-card-title">
                 <Icon name="plug" size="sm" /> {t('discord.agent_title')}
             </h4>
             <p className="setting-description">{grants.length === 0 ? t('discord.agent_none', { url }) : t('discord.agent_list_desc')}</p>
@@ -104,6 +104,6 @@ export function AgentLink({ className }: { className?: string } = {}) {
                     })}
                 </ul>
             )}
-        </div>
+        </section>
     );
 }

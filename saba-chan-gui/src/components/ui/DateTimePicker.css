@@ -35,27 +35,11 @@
     color: var(--text-3);
 }
 
-/* --- 팝업 (Portal로 body에 그린다) --- */
-.dtp-panel {
+/* --- 팝업: 공통 Popover(.saba-popover)에 그린다. 여기서는 안쪽 여백·글자만 --- */
+.saba-popover.dtp-panel {
     padding: var(--sp-3);
-    background: var(--bg-3);
-    border: 1px solid var(--line-strong);
-    border-radius: var(--r-md);
-    box-shadow: var(--shadow-float);
     color: var(--text-1);
     font-size: var(--fs-sm);
-    transform-origin: top center;
-    animation: dropdownPopIn var(--dur) var(--ease);
-}
-.dtp-panel.placement-top {
-    transform-origin: bottom center;
-}
-.dtp-panel.placement-top:not(.closing) {
-    animation-name: dropdownPopInUp;
-}
-.dtp-panel.closing {
-    animation: dropdownPopOut 120ms ease-in forwards;
-    pointer-events: none;
 }
 .dtp-panel button:focus-visible {
     outline: 2px solid var(--accent);

@@ -56,3 +56,25 @@ export function Segmented({ items, value, onChange, ariaLabel, spot }: Segmented
         </div>
     );
 }
+
+/** 세그먼트 모양으로 설정 값 하나를 고른다 (화면을 바꾸는 탭이 아니다) */
+export function SegmentedChoice({ items, value, onChange, ariaLabel }: SegmentedProps) {
+    return (
+        <div className="segmented" role="radiogroup" aria-label={ariaLabel}>
+            {items.map((item) => (
+                // biome-ignore lint/a11y/useSemanticElements: 세그먼트 칸은 버튼 모양(.segmented-item)을 그대로 쓴다
+                <button
+                    key={item.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={value === item.id}
+                    className={clsx('segmented-item', { active: value === item.id })}
+                    onClick={() => onChange(item.id)}
+                >
+                    {item.icon}
+                    <span>{item.label}</span>
+                </button>
+            ))}
+        </div>
+    );
+}

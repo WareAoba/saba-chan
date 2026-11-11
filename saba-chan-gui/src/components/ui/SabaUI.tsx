@@ -5,9 +5,10 @@
  * <SabaCheckbox> — styled checkbox with animated checkmark
  * <SabaSpinner>  — consistent loading ring (xs | sm | md | lg | xl)
  * <SabaNumberInput> — number input with app-styled step buttons
+ * <SabaSlider>   — range slider (sunken track filled with accent, raised knob)
  */
 
-import { type InputHTMLAttributes, type ReactNode, useRef } from 'react';
+import { type CSSProperties, type InputHTMLAttributes, type ReactNode, useRef } from 'react';
 import { Icon } from '../Icon';
 import './SabaUI.css';
 
@@ -148,5 +149,31 @@ export function SabaNumberInput({ className, disabled, ...rest }: Omit<InputHTML
                 </button>
             </span>
         </span>
+    );
+}
+
+/* ── Slider ───────────────────────────────────────────────── */
+
+interface SabaSliderProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'value' | 'onChange' | 'min' | 'max'> {
+    value: number;
+    min: number;
+    max: number;
+    onChange: (value: number) => void;
+}
+
+/** 막대 칸: 파인 홈에 강조색이 값만큼 차고(--fill), 볼록한 손잡이를 잡는다 */
+export function SabaSlider({ value, min, max, onChange, className, style, ...rest }: SabaSliderProps) {
+    const fill = max > min ? ((value - min) / (max - min)) * 100 : 0;
+    return (
+        <input
+            type="range"
+            className={['saba-slider', className].filter(Boolean).join(' ')}
+            min={min}
+            max={max}
+            value={value}
+            onChange={(e) => onChange(Number(e.target.value))}
+            style={{ ...style, '--fill': `${fill}%` } as CSSProperties}
+            {...rest}
+        />
     );
 }

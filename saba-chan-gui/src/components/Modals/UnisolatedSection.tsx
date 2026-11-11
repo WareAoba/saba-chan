@@ -50,8 +50,8 @@ export function UnisolatedSection() {
     };
 
     return (
-        <div className="data-transfer">
-            <h4 className="data-transfer-title">
+        <section className="saba-card">
+            <h4 className="saba-card-title">
                 <Icon name="key" size="sm" /> {t('unisolated.title')}
             </h4>
             <p className="setting-description">{t('unisolated.description')}</p>
@@ -82,6 +82,6 @@ export function UnisolatedSection() {
                     </button>
                 </div>
             ))}
-        </div>
+        </section>
     );
 }

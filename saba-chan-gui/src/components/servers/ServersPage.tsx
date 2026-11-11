@@ -12,7 +12,7 @@ import { failedModuleName, failedModuleReason } from '../../utils/failedModules'
 import { Icon } from '../Icon';
 import { LinkedText } from '../ui/ScreenLink';
 import { SabaArt } from '../ui/SabaArt';
-import { SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
+import { FloatingMonitor, monitorPlacement, SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
 import { useDaemonTarget } from '../shell/DaemonSwitcher';
 import { OtherDaemons } from '../shell/OtherDaemons';
 import { DaemonDownNotice, DaemonDownState, daemonDown } from './DaemonDown';
@@ -26,8 +26,6 @@ import { ServerRow } from './ServerRow';
 
 /** 이 너비보다 좁으면 목록/상세를 한 열로 (gui-design-reference §3) */
 export const SINGLE_COLUMN_MAX_WIDTH = 900;
-/** 이 너비 이상이면 시스템 모니터를 상세 오른쪽 열로, 아니면 상세 위에 둔다 */
-export const MONITOR_SIDE_MIN_WIDTH = 1500;
 const SEARCH_MIN_SERVERS = 6;
 
 interface ServersPageProps {
@@ -69,7 +67,9 @@ export function ServersPage({
     const { width } = useWindowSize();
     const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
     const monitorOpen = useSettingsStore((s) => s.systemMonitorExpanded);
-    const monitorSide = monitorOpen && width >= MONITOR_SIDE_MIN_WIDTH;
+    const monitorMode = useSettingsStore((s) => s.systemMonitorMode);
+    // 끔이면 그리지 않아 데몬에 값도 묻지 않는다
+    const monitorAt = systemMonitorAvailable() ? monitorPlacement(monitorMode, monitorOpen, width) : 'none';
     // 합쳐 보기 (G1c): 다른 데몬의 서버를 목록 아래에 데몬별로
     const unified = useSettingsStore((s) => s.daemonView) === 'unified' && typeof window.api?.remoteServers === 'function';
     const daemonTarget = useDaemonTarget();
@@ -234,7 +234,7 @@ export function ServersPage({
             {!detailHidden && selected && (
                 <main className="server-detail-pane server-detail-flex">
                     {isDaemonDown && listHidden && <DaemonDownNotice />}
-                    {!monitorSide && systemMonitorAvailable() && (
+                    {monitorAt === 'top' && (
                         <div className="monitor-top-slot">
                             <SystemMonitor layout="top" servers={servers} />
                         </div>
@@ -259,11 +259,12 @@ export function ServersPage({
                     </div>
                 </main>
             )}
-            {!detailHidden && selected && monitorSide && (
+            {!detailHidden && selected && monitorAt === 'side' && (
                 <aside className="monitor-pane">
                     <SystemMonitor layout="side" servers={servers} />
                 </aside>
             )}
+            {selected && monitorAt === 'float' && <FloatingMonitor servers={servers} />}
         </div>
     );
 }

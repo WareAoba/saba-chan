@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { type ReactNode, useEffect, useId, useRef } from 'react';
+import React, { type ReactNode, useEffect, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { RestartPending } from '../hooks/useServerSettings';
 import type { Server } from '../stores/useServerStore';
@@ -13,6 +13,7 @@ import { CliLine, changedForCli } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon, SabaCheckbox, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
 import { SabaNumberInput } from './ui/SabaUI';
+import { SaveBar } from './ui/SaveBar';
 import { LinkedText } from './ui/ScreenLink';
 import { FindKeyTag } from './servers/PageFind';
 import './ServerSettings.css';
@@ -150,7 +151,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
     // 값에 `:`가 있어도(`minecraft:normal`) 네임스페이스로 읽지 않게 네임스페이스를 따로 넘긴다
     const optionText = (opt: string) =>
         t(`settings.${field.name}.options.${opt}`, { ns: modNs, nsSeparator: false, defaultValue: String(opt) });
-    const textClass = clsx('input', { 'setting-input-error': invalid });
+    const textClass = 'input';
 
     let control: ReactNode = null;
     if (fieldType === 'text' || fieldType === 'file' || fieldType === 'password') {
@@ -159,6 +160,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
                 id={inputId}
                 type={fieldType === 'password' ? 'password' : 'text'}
                 className={clsx(textClass, 'ss-text')}
+                aria-invalid={invalid || undefined}
                 value={String(value || '')}
                 onChange={(e) => onChange(field.name, e.target.value)}
             />
@@ -168,6 +170,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
             <SabaNumberInput
                 id={inputId}
                 className={clsx(textClass, 'ss-num')}
+                aria-invalid={invalid || undefined}
                 value={String(value || '')}
                 onChange={(e) => onChange(field.name, e.target.value)}
                 min={field.min ?? undefined}
@@ -200,6 +203,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
             <textarea
                 id={inputId}
                 className={clsx(textClass, 'ss-textarea')}
+                aria-invalid={invalid || undefined}
                 value={String(value ?? '')}
                 onChange={(e) => onChange(field.name, e.target.value)}
                 rows={4}
@@ -227,6 +231,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
             <textarea
                 id={inputId}
                 className={clsx(textClass, 'ss-textarea')}
+                aria-invalid={invalid || undefined}
                 value={picked.join('\n')}
                 onChange={(e) => onChange(field.name, e.target.value.split('\n'))}
                 rows={4}
@@ -713,6 +718,12 @@ interface ServerSettingsModalProps extends Omit<GeneralTabProps, 'portConflicts'
     restartPending?: RestartPending | null;
     restartNow?: () => void;
     dismissRestart?: () => void;
+    /** 저장 막대의 기준: 이 서버를 연 때의 값 (useServerSettings) */
+    openedSettings?: SettingValues;
+    /** 기준 값으로 되돌린다 */
+    revertSettings?: () => void;
+    /** 화면이 읽어 온 값을 넣는다 (바꾼 것으로 치지 않는다) */
+    handleSettingLoaded?: (key: string, value: unknown) => void;
 }
 
 export function ServerSettingsModal({
@@ -737,6 +748,10 @@ export function ServerSettingsModal({
     restartPending,
     restartNow,
     dismissRestart,
+    // 기준을 받지 못했으면(이 화면만 따로 그릴 때) 지금 값이 기준이다
+    openedSettings = settingsValues,
+    revertSettings,
+    handleSettingLoaded,
     // 서버 상세에 나눠 보이기: 'server' | 'saba' (GeneralTab 참고)
     section,
     // validation props
@@ -747,19 +762,19 @@ export function ServerSettingsModal({
     const { slots } = useExtensions();
     const extensionTabs = ((slots as Record<string, unknown[]>)['ServerSettings.tab'] || []).length;
 
-    // "CLI로 보기"에 덧붙일 값의 기준: 이 화면을 열었을 때의 설정
-    const openedWith = useRef<{ id: string | null; values: SettingValues }>({ id: null, values: {} });
-    if (openedWith.current.id !== settingsServer.id && Object.keys(settingsValues).length) {
-        openedWith.current = { id: settingsServer.id, values: settingsValues };
-    }
-
     // 화면을 연 뒤에 켜질 수 있으니 지금 상태는 servers 목록에서 본다 (데몬도 켜진 서버의 설치·초기화를 거절한다)
     const liveServer = (servers || []).find((s) => s.id === settingsServer.id) ?? settingsServer;
     const serverRunning = ['running', 'starting', 'stopping'].includes(liveServer.status);
 
     // ── Validation: 설정값 타입 검증 ──
     const module = modules.find((m) => m.name === settingsServer.module);
-    const changedSettings = changedForCli(settingsValues, openedWith.current.values, module?.settings?.fields);
+    const changedSettings = changedForCli(settingsValues, openedSettings, module?.settings?.fields);
+    // 저장 막대·"CLI로 보기"의 기준은 이 서버를 연 때의 설정. 저장 막대: 연 때와 다른 키 (`_`로 시작하는 GUI 값도 저장되므로 함께 본다)
+    const differs = (k: string) =>
+        JSON.stringify(settingsValues[k] ?? '') !== JSON.stringify(openedSettings[k] ?? '');
+    const revertKeys = [...new Set([...Object.keys(settingsValues), ...Object.keys(openedSettings)])].filter(
+        (k) => (k.startsWith('_') ? differs(k) : k in changedSettings),
+    );
     const { errors: validationErrors } = React.useMemo(() => {
         if (!module?.settings?.fields) return { valid: true, errors: {} };
         return validateAllSettings(module.settings.fields, settingsValues, unsetSettings) as {
@@ -813,7 +828,7 @@ export function ServerSettingsModal({
                     values={settingsValues}
                     extraArgs={settingsValues._launch_extra_args}
                     onExtraArgsChange={(v: unknown) => handleSettingChange('_launch_extra_args', v)}
-                    onExtraArgsLoaded={(v: unknown) => handleSettingChange('_launch_extra_args', v)}
+                    onExtraArgsLoaded={(v: unknown) => handleSettingLoaded?.('_launch_extra_args', v)}
                     onSettingsFromArgs={(found: Record<string, unknown>) => {
                         for (const [k, v] of Object.entries(found)) handleSettingChange(k, v);
                     }}
@@ -842,7 +857,7 @@ export function ServerSettingsModal({
                     handleResetServer={handleResetServer}
                     resettingServer={resettingServer}
                     validationErrors={validationErrors}
-                    openedValues={openedWith.current.values}
+                    openedValues={openedSettings}
                     portConflicts={portConflicts}
                     serverRunning={serverRunning}
                 />
@@ -864,12 +879,15 @@ export function ServerSettingsModal({
                 {restartNow && dismissRestart && (
                     <RestartNotice pending={restartPending} server={liveServer} onRestart={restartNow} onDismiss={dismissRestart} />
                 )}
-                <div className="dc-savebar ss-savebar">
-                    <CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />
-                    <button type="button" className="btn btn-primary" onClick={handleSaveSettings} disabled={savingSettings}>
-                        <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
-                    </button>
-                </div>
+                <SaveBar
+                    className="ss-savebar"
+                    dirty={revertKeys.length > 0}
+                    saving={!!savingSettings}
+                    onSave={handleSaveSettings}
+                    onRevert={() => revertSettings?.()}
+                    saveLabel={t('server_settings.save_settings')}
+                    extra={<CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />}
+                />
             </div>
         </div>
     );
