@@ -46,9 +46,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             {/* ── 5-0. 콘솔 반투명: 창 반투명일 때 콘솔 바탕도 유리 (사용자 11-11, 기본 켜짐) ── */}
             <div className="setting-item">
                 <label className="setting-label">
-                    <span className="setting-title">
-                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_glass_label')}
-                    </span>
+                    <span className="setting-title">{t('gui:settings_modal.console_glass_label')}</span>
                     <span className="setting-description">{t('gui:settings_modal.console_glass_description')}</span>
                 </label>
                 <SabaToggle checked={consoleGlass} onChange={(checked) => setOption({ consoleGlass: checked })} />
