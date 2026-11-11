@@ -306,6 +306,16 @@ fn dir_size(path: &Path) -> u64 {
     total
 }
 
+/// PC 전체 물리 메모리(바이트). 실행 중에 바뀌지 않으므로 한 번만 잰다. 읽지 못하면 None
+pub fn host_memory_bytes() -> Option<u64> {
+    static TOTAL: std::sync::OnceLock<Option<u64>> = std::sync::OnceLock::new();
+    *TOTAL.get_or_init(|| {
+        let mut sys = System::new().ok()?;
+        sys.refresh_memory();
+        Some(sys.total_memory()).filter(|&total| total > 0)
+    })
+}
+
 fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
@@ -786,6 +796,14 @@ mod tests {
 
     fn p(parent: Option<u32>, cpu: f32, memory: u64, read: u64) -> ProcSample {
         ProcSample { parent, cpu, memory, read, written: 0 }
+    }
+
+    #[test]
+    fn host_memory_is_the_physical_total_in_bytes() {
+        // 모듈이 힙 기본값을 PC에 맞춰 정할 때 쓰는 값: 0이 아니고, 테스트 머신이 가진 최소 크기(64MB)보다 크다
+        let total = host_memory_bytes().expect("total memory");
+        assert!(total > 64 * 1024 * 1024, "{total}");
+        assert_eq!(host_memory_bytes(), Some(total), "한 번 잰 값을 다시 쓴다");
     }
 
     #[test]
