@@ -184,10 +184,10 @@ pub fn overlay_menu(app: AppHandle, items: Vec<crate::overlay::MenuSpec>) -> boo
     crate::overlay::popup_menu(&app, items)
 }
 
-/// 오버레이의 셸 동작: open_app | hide. async: 메인 창을 새로 만들 수 있다
+/// 오버레이의 셸 동작: open_app(+ `route` `server:<id>`면 그 서버) | hide. async: 메인 창을 새로 만들 수 있다
 #[tauri::command]
-pub async fn overlay_action(app: AppHandle, action: String) -> Value {
-    json!({ "ok": crate::overlay::action(&app, &action).await })
+pub async fn overlay_action(app: AppHandle, action: String, route: Option<String>) -> Value {
+    json!({ "ok": crate::overlay::action(&app, &action, route.as_deref()).await })
 }
 
 /// 설정 화면: {enabled, available, supported}

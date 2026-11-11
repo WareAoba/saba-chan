@@ -1264,7 +1264,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         overlayMenu: (items: OverlayMenuItem[]) => invoke('overlay_menu', { items }),
         onOverlayMenu: (callback: Listener) => hub.on('overlay:menu', callback),
         // open_app | hide
-        overlayAction: (action: string) => invoke('overlay_action', { action }),
+        overlayAction: (action: string, route?: string) =>
+            invoke('overlay_action', route ? { action, route } : { action }),
         // 오버레이 창을 끌어 옮긴다 (누른 채 움직이기 시작했을 때)
         overlayStartDrag: () => invoke('plugin:window|start_dragging', { label: 'desktop-overlay' }),
         // 설정 화면: {enabled, available, supported}와 켜기 스위치

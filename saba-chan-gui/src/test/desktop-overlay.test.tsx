@@ -36,6 +36,8 @@ describe('오버레이 브리지', () => {
         expect(invoke).toHaveBeenLastCalledWith('overlay_menu', { items: [{ id: 'open_app', label: '열기' }] });
         await api.overlayAction('hide');
         expect(invoke).toHaveBeenLastCalledWith('overlay_action', { action: 'hide' });
+        await api.overlayAction('open_app', 'server:b');
+        expect(invoke).toHaveBeenLastCalledWith('overlay_action', { action: 'open_app', route: 'server:b' });
         await api.overlayStartDrag();
         expect(invoke).toHaveBeenLastCalledWith('plugin:window|start_dragging', { label: 'desktop-overlay' });
         await api.overlaySetEnabled(false);
@@ -160,6 +162,24 @@ describe('오버레이 화면', () => {
         fireEvent.pointerUp(root, { button: 0, screenX: 30, screenY: 10 });
         expect(window.api.overlayStartDrag).toHaveBeenCalledTimes(1);
         expect(window.api.overlayAction).not.toHaveBeenCalled();
+    });
+
+    it('익스텐션이 고른 화면(서버)을 앱에서 바로 연다. 모르는 화면은 넘기지 않는다', async () => {
+        const got: { host?: { openApp: (route?: string) => void } } = {};
+        window.SabaExtPet = {
+            registerSlots: () => ({
+                'Desktop.overlay': (props: { host: { openApp: (route?: string) => void } }) => {
+                    got.host = props.host;
+                    return <div>펫이다</div>;
+                },
+            }),
+        };
+        await mount();
+        got.host?.openApp('server:b');
+        expect(window.api.overlayAction).toHaveBeenLastCalledWith('open_app', 'server:b');
+        vi.mocked(window.api.overlayAction).mockClear();
+        got.host?.openApp('../../etc');
+        expect(window.api.overlayAction).toHaveBeenCalledWith('open_app');
     });
 
     it('우클릭은 OS 메뉴를 띄우고, 고른 것을 한다', async () => {

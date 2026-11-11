@@ -2,7 +2,7 @@ import type { TFunction } from 'i18next';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OverlayMenuItem } from '../../api/createApi';
-import { type HostWindow, HostWindowContext, type ServerAction } from '../../extensions/host';
+import { type HostWindow, HostWindowContext, isAppRoute, type ServerAction } from '../../extensions/host';
 import type { ServerInfo } from '../../types/daemon';
 import { SERVER_CHANGING, subscribeDaemonEvents } from '../../utils/daemonEvents';
 import { primaryAction, viewStatus } from '../../utils/serverView';
@@ -128,7 +128,11 @@ export function DesktopOverlay() {
                 if (action !== 'start' && targetRef.current !== null) return false;
                 return runServer(instanceId, action);
             },
-            openApp: () => window.api?.overlayAction?.('open_app'),
+            // 그 서버 화면은 셸이 메인 창에 바로 연다. 그 밖의 화면은 앱만 연다
+            openApp: (route) =>
+                isAppRoute(route) && route.startsWith('server:')
+                    ? window.api?.overlayAction?.('open_app', route)
+                    : window.api?.overlayAction?.('open_app'),
         }),
         [runServer],
     );

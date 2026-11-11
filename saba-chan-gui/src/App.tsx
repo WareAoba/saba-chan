@@ -27,7 +27,7 @@ import { daemonStateOf } from './components/servers/DaemonDown';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
 import { ExtensionProvider } from './contexts/ExtensionContext';
-import { type HostWindow, HostWindowContext, isAppRoute } from './extensions/host';
+import { type HostWindow, HostWindowContext, isAppRoute, serverRoute } from './extensions/host';
 import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
@@ -223,7 +223,10 @@ function App() {
                 return true;
             },
             openApp: (route) => {
-                if (isAppRoute(route)) useUIStore.getState().setActiveTab(route as ActiveTab);
+                if (!isAppRoute(route)) return;
+                const server = serverRoute(route);
+                if (server) useUIStore.getState().revealServer(server);
+                else useUIStore.getState().setActiveTab(route as ActiveTab);
             },
         }),
         [],

@@ -268,10 +268,22 @@ pub async fn state(app: &AppHandle) -> Value {
     json!({ "enabled": enabled, "available": wanted, "supported": supported() })
 }
 
-/// 오버레이 창의 셸 동작: open_app(메인 창) | hide(설정에서 끄고 창을 내린다)
-pub async fn action(app: &AppHandle, action: &str) -> bool {
+/// 펫이 고른 화면 `server:<인스턴스 id>`의 id (그 밖의 화면은 앱만 연다)
+fn server_of(route: Option<&str>) -> Option<String> {
+    let id = route?.strip_prefix("server:")?;
+    let ok = !id.is_empty() && id.len() <= 128 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    ok.then(|| id.to_string())
+}
+
+/// 오버레이 창의 셸 동작: open_app(메인 창, `route`가 `server:<id>`면 그 서버를 연다) | hide(설정에서 끄고 창을 내린다)
+pub async fn action(app: &AppHandle, action: &str, route: Option<&str>) -> bool {
     match action {
-        "open_app" => crate::window::show_main(app),
+        "open_app" => {
+            crate::window::show_main(app);
+            if let Some(id) = server_of(route) {
+                crate::lifecycle::open_server(app, id);
+            }
+        }
         "hide" => {
             set_enabled(app, false).await;
         }
@@ -379,6 +391,16 @@ pub fn popup_menu(app: &AppHandle, items: Vec<MenuSpec>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 펫이 고른 서버: `server:<인스턴스 id>`만, id는 영문·숫자·`-`·`_` 128자까지
+    #[test]
+    fn only_a_plain_server_route_opens_a_server() {
+        assert_eq!(server_of(Some("server:inst-1_a")), Some("inst-1_a".to_string()));
+        for bad in [None, Some(""), Some("server:"), Some("settings"), Some("server:a/b"), Some("server:a b")] {
+            assert_eq!(server_of(bad), None, "{bad:?}");
+        }
+        assert_eq!(server_of(Some(&format!("server:{}", "a".repeat(129)))), None);
+    }
 
     const WORK: PxRect = PxRect {
         x: 0.0,
