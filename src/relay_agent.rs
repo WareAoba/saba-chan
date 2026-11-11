@@ -1312,6 +1312,10 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "instance.update_notice" => pick(&["at", "instanceId", "instance", "kind", "module", "latest"]),
         // 게임 서버 업데이트가 끝났다 (예약·앱·디스코드 어디서 시켰든)
         "instance.updated" => pick(&["at", "instanceId", "instance"]),
+        // 자동 업데이트가 접속자 때문에 기다린다 (마지막으로 디스코드에서 켠 사람에게 알린다)
+        "instance.update_waiting" => pick(&["at", "instanceId", "instance", "players"]),
+        // 게임 서버 업데이트 실패. 오류 원문에는 로컬 경로가 섞이므로 싣지 않는다
+        "instance.update_failed" => pick(&["at", "instanceId", "instance"]),
         // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
         "plan.done" if d.get("guildId").is_some() => pick(&["at", "runId", "guildId", "ok", "steps", "stoppedAt"]),
         // 게임 채팅 전달: 사용자가 켠 서버의 채팅만 데몬이 다 만든 문장(`text`)으로 낸다 (`supervisor::game_chat`)
@@ -2996,6 +3000,11 @@ mod tests {
         assert_eq!(relay_event(&ev("instance.updated", json!({"at": 1, "instanceId": "i", "instance": "pal"}))).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "pal"}));
         let notice = ev("instance.update_notice", json!({"at": 1, "instanceId": "i", "instance": "pal", "kind": "module", "module": "palworld", "latest": "1.1.0", "path": "C:\\x"}));
         assert_eq!(relay_event(&notice).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "pal", "kind": "module", "module": "palworld", "latest": "1.1.0"}));
+        // 자동 업데이트 대기는 접속자 수만, 실패는 오류 원문(로컬 경로가 섞인다) 없이
+        let waiting = ev("instance.update_waiting", json!({"at": 1, "instanceId": "i", "instance": "pal", "players": 2}));
+        assert_eq!(relay_event(&waiting).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "pal", "players": 2}));
+        let failed_update = ev("instance.update_failed", json!({"at": 1, "instanceId": "i", "instance": "pal", "error": "C:\\x locked"}));
+        assert_eq!(relay_event(&failed_update).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "pal"}));
         // 게임 채팅은 데몬이 만든 문장만 (채팅 원문·이름 칸은 따로 싣지 않는다)
         let chat = ev("instance.chat", json!({"at": 1, "instanceId": "i", "instance": "mc1", "text": "\\[mc1\\] **Steve**: hi", "player": "Steve", "message": "hi"}));
         assert_eq!(relay_event(&chat).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "text": "\\[mc1\\] **Steve**: hi"}));

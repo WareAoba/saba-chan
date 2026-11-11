@@ -195,7 +195,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `beta` | String | — |
 | `requires_extensions` | Vec<String> | `[]`. 인스턴스 생성·non-managed 시작·`/api/module/:name/install` 때 필수 익스텐션 검증에 사용 (`instance.rs:233-252`, `mod.rs:572-629`, `managed.rs:526-`) |
 
-zomboid의 `beta_branch` 키는 지워졌다. lifecycle에는 `use_beta`를 보고 베타를 받는 분기가 남아 있지만(`M:zomboid/lifecycle.py:1342`), module.toml에 그 설정이 없고 데몬은 `install_server`에 설정을 최상위로 펼치지 않아(`settings{}`로 준다) 지금은 쓰이지 않는다.
+zomboid의 `beta_branch` 키와 lifecycle의 `use_beta` 분기는 지워졌다. 받을 브랜치는 module.toml `[install].beta` 한 곳에 둔다: 설치·업데이트(`install_for_module`)와 업데이트 확인(`extension_data.steamcmd_beta`)이 같은 값을 쓴다.
 
 #### `[extensions.<익스텐션 id>]`
 익스텐션이 읽는 모듈별 설정. 데몬은 내용을 보지 않고 `ModuleMetadata.extensions`에 그대로 넘긴다 (`:618-622, 1139-1145`). 예전 `[docker]` 섹션(`ContainerSectionToml`)은 Docker 익스텐션과 함께 지워졌다.
@@ -650,7 +650,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 항목 | 내용 |
 |---|---|
 | protocols | `supported=["stdin"]`, console, `stop_command="quit"`. `RCONPassword`를 비워 RCON을 끈다 |
-| 설치 | `steamcmd`, app_id 380870. steamcmd 익스텐션의 `install_for_module`로 설치하고(`use_beta`면 `beta="unstable"`), 익스텐션을 불러올 수 없으면 `extension_required`를 돌려준다 |
+| 설치 | `steamcmd`, app_id 380870. steamcmd 익스텐션의 `install_for_module`로 설치하고(브랜치는 `[install].beta`, 지금은 없음 = public), 익스텐션을 불러올 수 없으면 `extension_required`를 돌려준다 |
 | 실행 | `StartServer64.bat`나 `start-server.sh`를 **파싱**해서(`_parse_bat`, `_parse_sh`, `_parse_java_cmdline` `:607-741`) 번들 Java, classpath, native lib을 찾는다. 그다음 `java ... zombie.network.GameServer -servername <name> -cachedir=...`를 직접 구성한다 |
 | 설정 | `IniManager`가 공용 `read_key_values`·`update_key_values`로 `Zomboid/Server/<servername>.ini`를 다룬다. saba 키 → INI 키는 settings 필드의 `file_key`이다. 로그 진단은 `[[diagnose]]` 규칙으로 `server-console.txt`를 본다. settings 117개. `[backup] hook = true`라 `backup_paths()`가 세이브 위치를 계산한다 |
 | 명령 | 23개, 전부 `console`(콘솔 stdin): servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |

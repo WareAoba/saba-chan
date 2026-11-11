@@ -680,6 +680,7 @@
     "port_conflict_with": "連接埠 {{port}} 也被 {{name}} 使用。",
     "update_available": "{{name}} 有可用的更新。",
     "update_none": "{{name}} 已是最新版本。",
+    "update_check_failed": "無法檢查 {{name}} 的更新：{{error}}",
     "update_reason": {
       "no_extension_data": "（未記錄安裝方式）",
       "no_hook_handled": "（沒有擴充功能負責它的更新）"
