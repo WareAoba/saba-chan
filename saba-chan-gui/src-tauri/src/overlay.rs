@@ -191,7 +191,7 @@ fn open(app: &AppHandle) {
 #[cfg(target_os = "macos")]
 mod mac_panel {
     use tauri::{AppHandle, WebviewWindow};
-    use tauri_nspanel::{tauri_panel, CollectionBehavior, ManagerExt, Panel, PanelLevel, StyleMask, WebviewWindowExt};
+    use tauri_nspanel::{tauri_panel, CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt};
 
     tauri_panel! {
         panel!(OverlayPanel {
