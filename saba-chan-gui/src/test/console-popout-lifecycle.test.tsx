@@ -66,4 +66,17 @@ describe('usePopoutLifecycle (PIP 기억)', () => {
         await new Promise((r) => setTimeout(r, 20));
         expect(popout).not.toHaveBeenCalled();
     });
+
+    it('닫는 중에 서버가 다시 켜지면, 닫기가 끝난 뒤 PIP를 다시 띄운다', async () => {
+        let finish: (v: unknown) => void = () => {};
+        close.mockImplementation(() => new Promise((r) => (finish = r)));
+        saved = ['a'];
+        const h = run([{ id: 'a', name: 'A', status: 'running' }], ['a']);
+        h.rerender({ servers: [{ id: 'a', name: 'A', status: 'stopped' }], popoutIds: ['a'] });
+        h.rerender({ servers: [{ id: 'a', name: 'A', status: 'starting' }], popoutIds: ['a'] });
+        h.rerender({ servers: [{ id: 'a', name: 'A', status: 'running' }], popoutIds: ['a'] });
+        expect(popout).not.toHaveBeenCalled();
+        finish({ ok: true });
+        await waitFor(() => expect(popout).toHaveBeenCalledWith('a', 'A'));
+    });
 });

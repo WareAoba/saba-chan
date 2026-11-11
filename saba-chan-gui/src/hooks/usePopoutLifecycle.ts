@@ -23,6 +23,8 @@ export function usePopoutLifecycle({ enabled, servers, popoutIds }: UsePopoutLif
     const prevRef = useRef<Map<string, string>>(new Map());
     const openRef = useRef(popoutIds);
     openRef.current = popoutIds;
+    const serversRef = useRef(servers);
+    serversRef.current = servers;
 
     useEffect(() => {
         if (!enabled) return;
@@ -35,7 +37,13 @@ export function usePopoutLifecycle({ enabled, servers, popoutIds }: UsePopoutLif
             if (before === s.status) continue;
             if (!LIVE.has(s.status) && openRef.current.includes(s.id)) {
                 if (typeof api?.consolePopoutClose === 'function') {
-                    Promise.resolve(api.consolePopoutClose(s.id, true)).catch(() => {});
+                    // 닫는 동안 서버가 다시 켜졌으면 닫기가 끝난 뒤 다시 띄운다
+                    Promise.resolve(api.consolePopoutClose(s.id, true))
+                        .then(() => {
+                            const now = serversRef.current.find((x) => x.id === s.id);
+                            if (now && STARTED.has(now.status)) return api.consolePopout?.(s.id, now.name);
+                        })
+                        .catch(() => {});
                 }
             } else if (STARTED.has(s.status) && (before === undefined || !STARTED.has(before))) {
                 started.push(s);
