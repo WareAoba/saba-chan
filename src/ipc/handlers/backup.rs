@@ -47,9 +47,14 @@ pub(crate) async fn run_command(state: &IPCServer, id: &str, name: &str, args: V
     command_reply(state, id, name, args).await.is_some()
 }
 
-/// 백업이 안에서 보내는 저장 명령: 작업 기록에는 백업 한 줄만 남긴다
-async fn save_reply(state: &IPCServer, id: &str, name: &str) -> Option<String> {
-    crate::audit::quietly(command_reply(state, id, name, json!({}))).await
+/// 백업이 안에서 보내는 저장 명령: 작업 기록에는 백업 한 줄만 남긴다.
+/// `rcon_wait`는 RCON으로 갈 때 답을 기다리는 시간이다 (없으면 보통 명령과 같다)
+async fn save_reply(state: &IPCServer, id: &str, name: &str, rcon_wait: Option<std::time::Duration>) -> Option<String> {
+    let reply = crate::audit::quietly(command_reply(state, id, name, json!({})));
+    match rcon_wait {
+        Some(wait) => crate::protocol::rcon::waiting_up_to(wait, reply).await,
+        None => reply.await,
+    }
 }
 
 /// 이름 하나로 게임 명령 실행. 성공하면 서버의 콘솔 답(없으면 빈 글자)
@@ -118,7 +123,8 @@ async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::supervisor::
             Some(p) => Some(p.console_cursor().await),
             None => None,
         };
-        let Some(reply) = save_reply(state, id, cmd).await else {
+        // 콘솔이 없는 서버는 RCON으로 보낸다. 서버는 저장을 마친 뒤에야 답하므로 콘솔의 저장 완료 줄만큼 기다린다
+        let Some(reply) = save_reply(state, id, cmd, is_save.then_some(SAVE_WAIT)).await else {
             tracing::warn!("Command '{}' failed before backing up '{}'", cmd, id);
             // 자동 저장 중지나 저장을 보내지도 못했다: 저장 안 된(또는 쓰는 중인) 월드를 묶지 않는다
             return Err(SaveNotDone::Unconfirmed { command: cmd.to_string() });
@@ -454,7 +460,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     if let Some(cmd) = resume.as_deref().filter(|_| !stopped) {
         // 저장 명령처럼 답의 첫 줄이 모듈의 실패 모양이면 서버가 재개를 거절한 것이다
         let failures: Vec<regex::Regex> = failures.iter().filter_map(|p| regex::Regex::new(p).ok()).collect();
-        let resumed = save_reply(state, id, cmd).await.is_some_and(|reply| {
+        let resumed = save_reply(state, id, cmd, None).await.is_some_and(|reply| {
             let first = reply.lines().find(|l| !l.trim().is_empty()).unwrap_or_default();
             rejected(first, &failures).is_none()
         });
@@ -2585,6 +2591,37 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert!(restore["code"].as_str().is_some_and(|c| !c.is_empty()), "{restore}");
         let backup = &entries[1];
         assert_eq!((backup["action"].as_str(), backup["code"].as_str()), (Some("backup"), Some("backup_unsupported")), "{entries:?}");
+    }
+
+    /// 콘솔이 없는(관리형 시작을 끈) 서버는 저장 명령이 RCON으로 간다. 서버는 저장을 마친 뒤에야 답하므로,
+    /// 저장이 보통 명령의 RCON 대기(5초)보다 길어도 답을 받아 백업을 만든다
+    #[tokio::test]
+    async fn a_live_backup_over_rcon_outlasts_a_save_slower_than_a_plain_command() {
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = probe.local_addr().unwrap().port();
+        drop(probe);
+        let toml = format!(
+            "{NO_BACKUP}\n[protocols]\nsupported = [\"stdin\", \"rcon\"]\nrcon_port = {port}\n\n\
+             [[commands.fields]]\nname = \"save-all\"\nmethod = \"console\"\nconsole_template = \"save-all\"\n\n\
+             [backup]\npaths = [\"world\"]\nsave_command = \"save-all\"\nsave_done_pattern = '^ran: save-all$'\n"
+        );
+        let (state, id, tmp) = server_with(&toml, None).await;
+        let world = tmp.path().join("server/world");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::write(world.join("level.dat"), b"x").unwrap();
+        let access = {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("managed_start".into(), json!(false));
+            sup.instance_store.update(&id, inst.clone()).unwrap();
+            sup.tracker.track(&id, std::process::id()).unwrap();
+            sup.ensure_rcon_access(&inst).unwrap();
+            crate::protocol::rcon::load(&sup.instance_store.instance_dir(&id)).unwrap()
+        };
+        let seen = crate::protocol::rcon::slow_server_on(port, &access.password, std::time::Duration::from_millis(5500)).await;
+        let made = take_backup(&state, &id, BackupKind::Manual).await;
+        assert_eq!(seen.lock().unwrap().as_slice(), ["save-all"]);
+        assert!(matches!(made, Ok(Some(_))), "{:?}", made.err());
     }
 
     /// 저장 완료 줄(`save_done_pattern`)이 있으면 고정 대기 대신 그 줄이 나올 때까지 기다린 뒤 묶는다.
