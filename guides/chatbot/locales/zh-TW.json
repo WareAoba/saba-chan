@@ -1,0 +1,8 @@
+{
+    "title": "會說話的 Saba-chan",
+    "summary": "在 Discord 和 Saba-chan 聊天",
+    "steps": [
+        "填入 OpenAI API 金鑰後，就能在 Discord 和 Saba-chan 聊天。",
+        "為每個 Discord 伺服器開關它，並選擇可用的工具。"
+    ]
+}

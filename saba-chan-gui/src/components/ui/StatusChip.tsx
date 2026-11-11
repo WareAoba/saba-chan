@@ -32,14 +32,17 @@ interface SegmentedProps {
     value: string;
     onChange: (id: string) => void;
     ariaLabel?: string;
+    /** 가이드가 짚는 자리 이름의 앞부분: 탭마다 `data-spot="<앞부분>.<id>"` (화면 강조, guides/Spotlight) */
+    spot?: string;
 }
 
-export function Segmented({ items, value, onChange, ariaLabel }: SegmentedProps) {
+export function Segmented({ items, value, onChange, ariaLabel, spot }: SegmentedProps) {
     return (
         <div className="segmented" role="tablist" aria-label={ariaLabel}>
             {items.map((item) => (
                 <button
                     key={item.id}
+                    data-spot={spot ? `${spot}.${item.id}` : undefined}
                     type="button"
                     role="tab"
                     aria-selected={value === item.id}

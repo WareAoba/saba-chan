@@ -1,0 +1,8 @@
+{
+    "title": "Conexão com o Discord",
+    "summary": "Inicie e pare servidores pelo Discord",
+    "steps": [
+        "Pegue um código de pareamento e digite no seu servidor do Discord.",
+        "Depois de vincular, você inicia e para servidores e vê o status com comandos do Discord."
+    ]
+}

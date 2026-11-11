@@ -1,0 +1,7 @@
+{
+    "title": "Scheduled tasks",
+    "summary": "Automatic restarts and regular backups",
+    "steps": [
+        "Saba-chan starts, stops, restarts or backs up the server at the times you set."
+    ]
+}

@@ -1951,7 +1951,7 @@
     "console_failed": "Impossible de charger les journaux du démon."
   },
   "palette": {
-    "title": "Palette de commandes",
+    "title": "Sonar",
     "placeholder": "Que voulez-vous faire ? Les noms de serveur marchent aussi",
     "placeholder_scope": "Rechercher dans {{name}}",
     "placeholder_entities": "Sur quoi centrer la recherche ?",
@@ -2586,7 +2586,7 @@
   "guides": {
     "title": "Guides",
     "close": "Fermer",
-    "closed_toast": "Guide fermé. Vous pouvez le rouvrir dans Paramètres → Général.",
+    "closed_toast": "Guide fermé. Vous pouvez le rouvrir depuis la carte des guides.",
     "first_run": "Premiers pas",
     "welcome_title": "Bonjour, je suis Saba-chan !",
     "welcome_body": "Commençons par connecter Discord.",
@@ -2611,14 +2611,17 @@
     "modules_more": "Trouvez d'autres jeux dans Stockage Saba.",
     "open_storage": "Ouvrir Stockage Saba",
     "start_coach": "Appuyez sur Démarrer pour lancer le serveur",
-    "open": "Ouvrir",
-    "entry_firstRun": "Premiers pas",
-    "entry_firstRun_desc": "Connecter Discord → préparer un serveur → démarrer",
-    "entry_import": "Importer un serveur existant",
-    "entry_import_desc": "Ce qui change et à quoi faire attention",
-    "entry_modules": "Obtenir des modules de jeu",
-    "entry_modules_desc": "Obtenez les jeux à héberger",
-    "palette": "Guide : {{name}}"
+    "palette": "Guide : {{name}}",
+    "more": "Voir plus",
+    "group_start": "Premiers pas",
+    "group_care": "Entretien du serveur",
+    "group_discord": "Extras Discord",
+    "group_more": "Aller plus loin",
+    "step_of": "Étape {{step}} sur {{total}}",
+    "new": "new!",
+    "prev": "Retour",
+    "next": "Suivant",
+    "finish": "Compris"
   },
   "public_address": {
     "label": "Adresse du serveur de jeu",

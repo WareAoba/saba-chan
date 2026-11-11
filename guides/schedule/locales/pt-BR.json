@@ -1,0 +1,7 @@
+{
+    "title": "Tarefas agendadas",
+    "summary": "Reinícios automáticos e backups regulares",
+    "steps": [
+        "A Saba-chan inicia, para, reinicia ou faz backup do servidor nos horários que você definir."
+    ]
+}

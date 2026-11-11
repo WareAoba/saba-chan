@@ -1,0 +1,13 @@
+[guide]
+group = "discord"
+icon = "sabaTalking"
+order = 30
+done = "chatbot.key"
+
+[[steps]]
+go = "discord/saba"
+spot = "chatbot.key"
+
+[[steps]]
+go = "discord/*/chatbot"
+spot = "discord.tab.chatbot"

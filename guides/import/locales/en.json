@@ -1,0 +1,7 @@
+{
+    "title": "Import an existing server",
+    "summary": "Bring in a game server you already run",
+    "steps": [
+        "Pick the folder of your server and Saba-chan reads it. The files can stay where they are."
+    ]
+}

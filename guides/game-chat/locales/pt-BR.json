@@ -1,0 +1,7 @@
+{
+    "title": "Encaminhar chat do jogo",
+    "summary": "Envie o chat do jogo para o Discord",
+    "steps": [
+        "Envie o chat do jogo para um canal do Discord. Escolha todo o chat ou só o que começa com uma palavra-chave."
+    ]
+}

@@ -1,0 +1,7 @@
+{
+    "title": "Geplante Aufgaben",
+    "summary": "Automatische Neustarts und regelmäßige Backups",
+    "steps": [
+        "Saba-chan startet, stoppt, startet neu oder sichert den Server zu den Zeiten, die du festlegst."
+    ]
+}

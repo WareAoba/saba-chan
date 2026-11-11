@@ -1,0 +1,7 @@
+{
+    "title": "Game chat relay",
+    "summary": "Send game chat to Discord",
+    "steps": [
+        "Send in-game chat to a Discord channel. Choose all chat or only chat that starts with a keyword."
+    ]
+}

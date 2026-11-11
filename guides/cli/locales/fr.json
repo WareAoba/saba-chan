@@ -1,0 +1,7 @@
+{
+    "title": "CLI",
+    "summary": "Pareil, dans un terminal",
+    "steps": [
+        "Tout ce que vous faites dans l’app fonctionne aussi dans la CLI. Ce bouton bascule vers la CLI."
+    ]
+}

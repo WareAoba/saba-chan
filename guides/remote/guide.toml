@@ -1,0 +1,8 @@
+[guide]
+group = "more"
+icon = "desktop"
+order = 10
+
+[[steps]]
+go = "settings/connection"
+spot = "settings.remote"

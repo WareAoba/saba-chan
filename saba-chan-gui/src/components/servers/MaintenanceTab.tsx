@@ -260,7 +260,7 @@ function BackupsCard({ server }: { server: Server }) {
                         {busy === 'keep' && <SabaSpinner size="sm" />} {t('maintenance.backup_keep_snapshot')}
                     </button>
                 )}
-                <button
+                <button data-spot="backup.create"
                     type="button"
                     className="btn btn-primary btn-sm"
                     disabled={!!busy}
@@ -347,7 +347,7 @@ function BackupsCard({ server }: { server: Server }) {
                                     tone={KIND_TONE[b.kind] || 'idle'}
                                     label={t(`maintenance.kind_${b.kind}`, { defaultValue: b.kind })}
                                 />
-                                <button
+                                <button data-spot="backup.restore"
                                     type="button"
                                     className={clsx('btn btn-sm', armed === restoreKey ? 'btn-primary' : 'btn-ghost')}
                                     disabled={!stopped || !!busy || unreadable}
@@ -574,7 +574,7 @@ function ScheduleCard({
         <section className="dc-card" aria-label={t('maintenance.schedule_title')}>
             <div className="dc-card-head">
                 <h2>{t('maintenance.schedule_title')}</h2>
-                <button
+                <button data-spot="schedule.add"
                     type="button"
                     className="btn btn-ghost btn-sm"
                     onClick={() =>

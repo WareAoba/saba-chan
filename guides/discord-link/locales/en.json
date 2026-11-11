@@ -1,0 +1,8 @@
+{
+    "title": "Discord connection",
+    "summary": "Start and stop servers from Discord",
+    "steps": [
+        "Get a pairing code and enter it in your Discord server to link.",
+        "Once linked, you can start and stop servers and check their status with Discord commands."
+    ]
+}

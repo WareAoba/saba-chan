@@ -1,0 +1,7 @@
+{
+    "title": "Vorhandenen Server importieren",
+    "summary": "Einen bestehenden Spielserver übernehmen",
+    "steps": [
+        "Wähle den Ordner deines Servers, und Saba-chan liest ihn ein. Die Dateien können bleiben, wo sie sind."
+    ]
+}

@@ -1,0 +1,9 @@
+[guide]
+group = "discord"
+icon = "messageSquare"
+order = 80
+done = "game_chat.on"
+
+[[steps]]
+go = "server/:first/settings"
+spot = "game_chat"

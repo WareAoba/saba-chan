@@ -1,0 +1,8 @@
+{
+    "title": "Temporary voice rooms",
+    "summary": "Your own voice room, made when you join",
+    "steps": [
+        "Join the room-maker channel and your own voice room appears. It disappears when everyone leaves.",
+        "Choose the room-maker channel under temporary voice rooms in Saba-chan's settings command on Discord to turn it on."
+    ]
+}

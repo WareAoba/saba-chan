@@ -543,6 +543,13 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }: IconProps) =
                 <path d="M12 14v7" />
             </svg>
         ),
+        // 소나 (Ctrl+K): 원 안에 전파 한 줄 (사용자 11-11 시안 A)
+        sonar: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M5 12h3.5l1.5-3 2.2 7.5L14.5 6l1.7 6H19" />
+            </svg>
+        ),
         lightbulb: (
             <svg xmlns="http://www.w3.org/2000/svg" className="ionicon" viewBox="0 0 512 512">
                 <path

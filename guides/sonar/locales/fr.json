@@ -1,0 +1,8 @@
+{
+    "title": "Sonar",
+    "summary": "Ctrl+K · trouver, ouvrir, exécuter",
+    "steps": [
+        "Appuyez sur Ctrl+K n’importe où pour ouvrir Sonar. Trouvez serveurs, réglages et commandes, puis ouvrez-les ou exécutez-les tout de suite.",
+        "Ouvrons-le maintenant."
+    ]
+}

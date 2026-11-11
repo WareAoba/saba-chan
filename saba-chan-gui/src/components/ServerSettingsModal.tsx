@@ -281,6 +281,7 @@ function Card({
     className,
     children,
     head,
+    spot,
 }: {
     icon: string;
     title: ReactNode;
@@ -289,9 +290,11 @@ function Card({
     children?: ReactNode;
     /** 머리를 직접 그릴 때 (접는 묶음) */
     head?: ReactNode;
+    /** 가이드가 짚는 자리 이름 (화면 강조) */
+    spot?: string;
 }) {
     return (
-        <section className={clsx('dc-card ss-card', className)}>
+        <section className={clsx('dc-card ss-card', className)} data-spot={spot}>
             {head ?? (
                 <div className="dc-card-head">
                     <h2 className="ss-card-title" data-find="name">
@@ -517,7 +520,7 @@ function GeneralTab({
 
             {/* 게임 채팅 전달 (데몬 인스턴스 game_chat·game_chat_keyword). 모듈이 채팅 줄을 알려 주고 데몬이 콘솔을 읽을 때만 */}
             {showSaba && settingsServer.game_chat_supported && (
-                <Card icon="messageSquare" title={t('game_chat.title')} desc={t('game_chat.desc')} className="ss-game-chat">
+                <Card icon="messageSquare" title={t('game_chat.title')} desc={t('game_chat.desc')} className="ss-game-chat" spot="game_chat">
                     <SettingRow
                         label={t('game_chat.mode_label')}
                         findKey="game_chat"

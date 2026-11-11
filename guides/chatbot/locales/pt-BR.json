@@ -1,0 +1,8 @@
+{
+    "title": "Saba-chan falante",
+    "summary": "Converse com a Saba-chan no Discord",
+    "steps": [
+        "Adicione uma chave de API da OpenAI para conversar com a Saba-chan no Discord.",
+        "Ligue ou desligue e escolha as ferramentas para cada servidor do Discord."
+    ]
+}

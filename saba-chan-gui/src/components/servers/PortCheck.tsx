@@ -94,7 +94,7 @@ function PortCheckButton({ run, running, checked }: { run: () => void; running: 
     const { t } = useTranslation('gui');
     const label = running ? t('port_check.running') : checked ? t('port_check.retry') : t('port_check.button');
     return (
-        <button type="button" className="btn btn-ghost" disabled={running} onClick={run}>
+        <button data-spot="port.check" type="button" className="btn btn-ghost" disabled={running} onClick={run}>
             <Icon name={running || checked ? 'refresh' : 'globe'} size="sm" className={running ? 'spin' : undefined} /> {label}
         </button>
     );

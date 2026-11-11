@@ -69,6 +69,7 @@ function SabaStorage({ devMode, initialTab = 'components' }: SabaStorageProps) {
                 {['components', 'modules', 'extensions'].map((tab) => (
                     <button
                         key={tab}
+                        data-spot={`storage.tab.${tab}`}
                         className={clsx('saba-storage-tab', { active: activeTab === tab })}
                         onClick={() => setActiveTab(tab)}
                     >

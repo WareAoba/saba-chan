@@ -1,0 +1,7 @@
+{
+    "title": "KI-Moderation",
+    "summary": "Hinweise auf Spam und Betrugswerbung",
+    "steps": [
+        "Die KI prüft Nachrichten, die nach Spam oder Betrugswerbung aussehen, ein zweites Mal und meldet schädliche per DM an Serverbesitzer und Admins. Nachrichten löscht sie nicht."
+    ]
+}

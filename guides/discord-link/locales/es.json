@@ -1,0 +1,8 @@
+{
+    "title": "Conexión con Discord",
+    "summary": "Inicia y detén servidores desde Discord",
+    "steps": [
+        "Obtén un código de vinculación e introdúcelo en tu servidor de Discord.",
+        "Una vez vinculado, puedes iniciar y detener servidores y ver su estado con comandos de Discord."
+    ]
+}

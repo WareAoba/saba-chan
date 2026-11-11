@@ -213,7 +213,7 @@ export function ServerDetail({
             </>
         ) : (
             <span className="start-anchor">
-                <button
+                <button data-spot="server.start"
                     type="button"
                     className="btn btn-primary btn-lg"
                     onClick={() => onStart(server.name, server.module)}
@@ -344,7 +344,7 @@ export function ServerDetail({
             {status !== 'missing' && !server.provisioning && (
                 <>
                     <div className="detail-tabrow" ref={tabRowRef}>
-                        <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} />
+                        <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} spot="server.tab" />
                         {findable && <PageFindButton />}
                     </div>
                     <PageFind

@@ -1,0 +1,7 @@
+{
+    "title": "Spielchat weiterleiten",
+    "summary": "Spielchat an Discord senden",
+    "steps": [
+        "Sende den Spielchat an einen Discord-Kanal. Wähle den ganzen Chat oder nur Nachrichten, die mit einem Stichwort beginnen."
+    ]
+}

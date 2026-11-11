@@ -1,0 +1,9 @@
+{
+    "title": "Backups · Restaurar backup",
+    "summary": "Guarde o estado atual e volte quando quiser",
+    "steps": [
+        "Cada servidor tem seus backups e tarefas agendadas nesta aba.",
+        "Clique para guardar o estado atual do servidor como backup.",
+        "Você pode voltar a um backup guardado quando quiser. Antes de restaurar, a Saba-chan guarda mais uma vez o estado atual."
+    ]
+}

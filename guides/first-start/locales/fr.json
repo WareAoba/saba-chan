@@ -1,0 +1,10 @@
+{
+    "title": "Premiers pas",
+    "summary": "De la liaison à Discord au premier démarrage du serveur",
+    "steps": [
+        "Liez Discord pour que vos amis puissent démarrer et arrêter les serveurs depuis Discord. Vous pouvez le faire plus tard.",
+        "Pour créer un serveur, récupérez d’abord le module du jeu.",
+        "Créez ici un nouveau serveur ou importez celui que vous utilisez déjà.",
+        "Quand tout est prêt, démarrez le serveur."
+    ]
+}

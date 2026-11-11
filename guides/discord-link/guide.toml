@@ -1,0 +1,12 @@
+[guide]
+group = "start"
+icon = "discord"
+order = 50
+done = "discord.linked"
+
+[[steps]]
+go = "discord/connection"
+spot = "discord.pair"
+
+[[steps]]
+go = "discord/connection"

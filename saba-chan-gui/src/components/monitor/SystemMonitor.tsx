@@ -161,7 +161,7 @@ export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorPro
 
     if (!open) {
         return (
-            <section className="monitor monitor-summary" aria-label={t('monitor.title')}>
+            <section data-spot="monitor" className="monitor monitor-summary" aria-label={t('monitor.title')}>
                 <Icon name="monitor" size="sm" />
                 <span className="monitor-summary-title">{t('monitor.title')}</span>
                 <div className="monitor-chips">
@@ -188,7 +188,7 @@ export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorPro
     const hasMore = shown.has('__more');
 
     return (
-        <section className={clsx('monitor', `monitor-${layout}`)} aria-label={t('monitor.title')}>
+        <section data-spot="monitor" className={clsx('monitor', `monitor-${layout}`)} aria-label={t('monitor.title')}>
             <header className="monitor-head">
                 <Icon name="monitor" size="sm" />
                 <h3>{t('monitor.title')}</h3>

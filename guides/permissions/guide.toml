@@ -1,0 +1,8 @@
+[guide]
+group = "start"
+icon = "user"
+order = 60
+
+[[steps]]
+go = "discord/*/members"
+spot = "discord.tab.members"

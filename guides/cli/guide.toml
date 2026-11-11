@@ -1,0 +1,7 @@
+[guide]
+group = "more"
+icon = "terminal"
+order = 30
+
+[[steps]]
+spot = "cli.switch"

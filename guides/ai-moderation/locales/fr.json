@@ -1,0 +1,7 @@
+{
+    "title": "Modération par IA",
+    "summary": "Alertes de spam et de promotion frauduleuse",
+    "steps": [
+        "L’IA relit les messages qui ressemblent à du spam ou à une promotion frauduleuse et, s’ils sont nuisibles, prévient le propriétaire et les admins du serveur en MP. Elle ne supprime pas les messages."
+    ]
+}

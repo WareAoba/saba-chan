@@ -1,0 +1,8 @@
+{
+    "title": "Salas de voz temporárias",
+    "summary": "Sua própria sala de voz, criada ao entrar",
+    "steps": [
+        "Entre no canal criador de salas e sua própria sala de voz aparece. Ela some quando todos saem.",
+        "Escolha o canal criador de salas em salas de voz temporárias, no comando de configurações da Saba-chan no Discord, para ligar."
+    ]
+}

@@ -1,0 +1,9 @@
+{
+    "title": "Backups · Backup wiederherstellen",
+    "summary": "Den aktuellen Stand sichern und jederzeit zurückgehen",
+    "steps": [
+        "Backups und geplante Aufgaben jedes Servers findest du in diesem Tab.",
+        "Hier sicherst du den aktuellen Stand des Servers als Backup.",
+        "Du kannst jederzeit zu einem gesicherten Backup zurückkehren. Vor dem Wiederherstellen sichert Saba-chan den aktuellen Stand noch einmal."
+    ]
+}

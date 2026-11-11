@@ -17,7 +17,7 @@ import { botSettingsAvailable } from '../discord/BotSettingsTab';
 import { chatbotAvailable } from '../discord/ChatbotView';
 import { instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import { moderationAvailable } from '../discord/ModerationTab';
-import { openGuide } from '../guides/guides';
+import { OPEN_SONAR_EVENT, startGuide, useGuideStore } from '../guides/guides';
 import { Icon } from '../Icon';
 import { maintenanceAvailable } from '../servers/MaintenanceTab';
 import {
@@ -228,6 +228,7 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
 
     // 옛 데몬·브리지라 명령 목록 API가 없으면 모듈 명령만 쓴다 (켜져 있으면 보낼 수 있다고 본다)
     const hasCatalog = !!window.api?.instanceCommands;
+    const guides = useGuideStore((s) => s.guides);
     const data: PaletteData = useMemo(
         () => ({
             servers: servers.map((s) => {
@@ -249,8 +250,9 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
                 };
             }),
             guilds: cloudNodes.map((n) => ({ id: n.guildId, name: n.guildName || n.guildId, tabs: guildTabs() })),
+            guides: (guides ?? []).map((g) => ({ id: g.id, title: g.title, icon: g.icon })),
         }),
-        [servers, modules, commandLists, cloudNodes, tr, hasCatalog],
+        [servers, modules, commandLists, cloudNodes, tr, hasCatalog, guides],
     );
 
     // 지금 열린 화면 (칩이 없을 때 빈 검색의 기준)
@@ -475,7 +477,7 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
             return;
         }
         if (item.action === 'guide' && item.guide) {
-            openGuide(item.guide);
+            startGuide(item.guide);
             return;
         }
         if (!item.address) return;
@@ -1202,8 +1204,14 @@ export function CommandPalette() {
                 setOpen((o) => (o && busyRef.current ? o : !o));
             }
         };
+        // 가이드가 소나를 연다
+        const onOpen = () => setOpen(true);
         window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
+        window.addEventListener(OPEN_SONAR_EVENT, onOpen);
+        return () => {
+            window.removeEventListener('keydown', onKey);
+            window.removeEventListener(OPEN_SONAR_EVENT, onOpen);
+        };
     }, []);
 
     return open ? (

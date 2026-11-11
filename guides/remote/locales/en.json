@@ -1,0 +1,7 @@
+{
+    "title": "Remote daemon",
+    "summary": "Saba-chan on other PCs, in this app",
+    "steps": [
+        "Pair an always-on server PC or a Linux server and manage it from this app."
+    ]
+}

@@ -1,0 +1,9 @@
+{
+    "title": "Sauvegardes · Restaurer une sauvegarde",
+    "summary": "Sauvegarder l’état actuel et revenir en arrière à tout moment",
+    "steps": [
+        "Les sauvegardes et les tâches planifiées de chaque serveur se trouvent dans cet onglet.",
+        "Appuyez ici pour sauvegarder l’état actuel du serveur.",
+        "Vous pouvez revenir à une sauvegarde à tout moment. Avant de restaurer, Saba-chan sauvegarde encore une fois l’état actuel."
+    ]
+}

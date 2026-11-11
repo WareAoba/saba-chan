@@ -1,0 +1,8 @@
+{
+    "title": "Endereço do servidor · Verificar redirecionamento de portas",
+    "summary": "Deixe seus amigos entrarem",
+    "steps": [
+        "Passe este endereço para seus amigos entrarem.",
+        "A Saba-chan verifica se dá para acessar o servidor de fora. Se estiver bloqueado, configure o redirecionamento de portas no roteador."
+    ]
+}

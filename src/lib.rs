@@ -30,4 +30,5 @@ pub mod remote;  // 사바쨩 웹: 릴레이 웹소켓으로 받는 원격 요�
 pub mod remote_daemon;  // 원격 데몬 (D1): 같은 주인의 PC가 TLS로 직접 붙는 원격 포트
 pub mod tray_host;  // 상주 GUI(트레이) 감독: 화면이 있을 때만 띄우고 죽으면 되살린다
 pub mod controllers;  // 조작 가능: 인스턴스를 조작하는 사람 명단과 명단 밖 접속 내보내기
+pub mod guides;  // 가이드: 폴더 하나 = 가이드 하나, 완료·new!는 데몬이 판단
 pub mod port_check;  // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 닿는지 본다

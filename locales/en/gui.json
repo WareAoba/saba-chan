@@ -1951,7 +1951,7 @@
     "console_failed": "Couldn't load daemon logs."
   },
   "palette": {
-    "title": "Command palette",
+    "title": "Sonar",
     "placeholder": "What do you want to do? Server names work too",
     "placeholder_scope": "Search in {{name}}",
     "placeholder_entities": "Which one should the search focus on?",
@@ -2586,7 +2586,7 @@
   "guides": {
     "title": "Guides",
     "close": "Close",
-    "closed_toast": "Guide closed. You can reopen it in Settings → General.",
+    "closed_toast": "Guide closed. You can reopen it from the Guides card.",
     "first_run": "Getting started",
     "welcome_title": "Hi, I'm Saba-chan!",
     "welcome_body": "Let's connect Discord first.",
@@ -2611,14 +2611,17 @@
     "modules_more": "Find more games in Saba Storage.",
     "open_storage": "Open Saba Storage",
     "start_coach": "Press Start to run your server",
-    "open": "Open",
-    "entry_firstRun": "Getting started",
-    "entry_firstRun_desc": "Connect Discord → set up a server → start",
-    "entry_import": "Import an existing server",
-    "entry_import_desc": "What changes and what to watch out for",
-    "entry_modules": "Get game modules",
-    "entry_modules_desc": "Get the games you want to host",
-    "palette": "Guide: {{name}}"
+    "palette": "Guide: {{name}}",
+    "more": "More",
+    "group_start": "Getting started",
+    "group_care": "Server care",
+    "group_discord": "Discord extras",
+    "group_more": "Going further",
+    "step_of": "Step {{step}} of {{total}}",
+    "new": "new!",
+    "prev": "Back",
+    "next": "Next",
+    "finish": "Got it"
   },
   "public_address": {
     "label": "Game server address",

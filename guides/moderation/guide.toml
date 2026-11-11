@@ -1,0 +1,8 @@
+[guide]
+group = "discord"
+icon = "tool"
+order = 50
+
+[[steps]]
+go = "discord/*/moderation"
+spot = "discord.tab.moderation"

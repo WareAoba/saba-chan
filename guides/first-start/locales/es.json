@@ -1,0 +1,10 @@
+{
+    "title": "Primeros pasos",
+    "summary": "De vincular Discord al primer arranque del servidor",
+    "steps": [
+        "Vincula Discord para que tus amigos puedan iniciar y detener servidores desde Discord. Puedes hacerlo más tarde.",
+        "Para crear un servidor, primero consigue el módulo del juego.",
+        "Crea aquí un servidor nuevo o importa uno que ya uses.",
+        "Cuando estés listo, inicia el servidor."
+    ]
+}

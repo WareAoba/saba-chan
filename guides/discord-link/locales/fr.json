@@ -1,0 +1,8 @@
+{
+    "title": "Connexion Discord",
+    "summary": "Démarrer et arrêter les serveurs depuis Discord",
+    "steps": [
+        "Obtenez un code d’association et saisissez-le sur votre serveur Discord.",
+        "Une fois lié, vous démarrez et arrêtez les serveurs et voyez leur état avec les commandes Discord."
+    ]
+}

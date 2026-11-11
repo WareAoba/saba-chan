@@ -350,7 +350,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const removingFamily = osFamily(removing?.peer?.platform);
 
     return (
-        <div className="data-transfer">
+        <div data-spot="settings.remote" className="data-transfer">
             <h4 className="data-transfer-title">
                 <Icon name="cloud" size="sm" /> {t('remote_daemon.title')}
             </h4>

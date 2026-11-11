@@ -1050,6 +1050,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // ── 동의·온보딩·백업·예약·챗봇 ──
         instanceAgreements: (id: string, accept: boolean | string[]) => call('post', instancePath(id, '/agreements'), { accept }),
         onboarding: () => call('get', '/api/onboarding'),
+        // 기능 가이드: 목록(제목·단계·완료·new!)과 본 기록 (opened·step·finished)
+        guides: (locale?: string) => call('get', `/api/guides${queryString({ locale })}`),
+        guideUpdate: (id: string, body: { opened?: boolean; step?: number; finished?: boolean }) =>
+            call('post', `/api/guides/${encodeURIComponent(id)}`, body),
         // 문제를 물어볼 때 붙여 넣는 데몬 진단 (비밀은 데몬이 싣지 않는다)
         daemonDiagnostics: () => call('get', '/api/diagnostics'),
         // 폴더 위치: 데이터·프로그램·인스턴스·모듈·익스텐션 폴더와 기본값

@@ -1,0 +1,7 @@
+{
+    "title": "Alerte de démarrage",
+    "summary": "Alertes de démarrage et d’arrêt sur Discord",
+    "steps": [
+        "Activez la cloche et Saba-chan prévient dans le salon d’alertes de ce serveur Discord quand le serveur démarre ou s’arrête en dehors de Discord."
+    ]
+}

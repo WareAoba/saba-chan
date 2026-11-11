@@ -1,0 +1,8 @@
+[guide]
+group = "discord"
+icon = "sabaReading"
+order = 20
+
+[[steps]]
+go = "discord/*/tts"
+spot = "discord.tab.tts"

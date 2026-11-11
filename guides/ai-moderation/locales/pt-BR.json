@@ -1,0 +1,7 @@
+{
+    "title": "Moderação por IA",
+    "summary": "Avisos de spam e divulgação de golpes",
+    "steps": [
+        "A IA dá uma segunda olhada em mensagens que parecem spam ou divulgação de golpes e, se achar que são nocivas, avisa por DM o dono e os administradores do servidor. Ela não apaga mensagens."
+    ]
+}

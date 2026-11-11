@@ -5624,6 +5624,237 @@ button.appbar-pill:focus-visible {
     color: var(--text-3);
 }
 
+/* 가이드 카드 (사용자 11-11 시안 v4): 서버 목록 아래 얇은 카드. 누르면 안 끝낸 가이드 세 개까지 */
+.guide-dock {
+    flex: none;
+    margin: auto var(--sp-3) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--bg-1);
+    box-shadow: var(--shadow-raised);
+    overflow: hidden;
+}
+.guide-dock-head {
+    display: flex;
+    justify-content: flex-start;
+    color: var(--accent);
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    padding: var(--sp-2-5) var(--sp-3);
+    border: none;
+    background: none;
+    font: inherit;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+.guide-dock-label {
+    flex: 1;
+    color: var(--text-1);
+}
+.guide-dock-head > :last-child {
+    color: var(--text-3);
+}
+.guide-dock-body {
+    display: flex;
+    flex-direction: column;
+    padding: var(--sp-1-5);
+    border-top: 1px solid var(--line);
+}
+.guide-dock-more {
+    align-self: flex-start;
+    padding: var(--sp-2) var(--sp-2) var(--sp-1);
+    border: none;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    cursor: pointer;
+}
+.guide-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2-5);
+    width: 100%;
+    padding: var(--sp-2);
+    border: none;
+    border-radius: var(--r-md);
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.guide-row:hover {
+    background: var(--bg-2);
+}
+.guide-row.current {
+    background: color-mix(in oklch, var(--accent) 12%, transparent);
+}
+.guide-row.done {
+    opacity: 0.55;
+}
+.guide-row-icon {
+    display: flex;
+    color: var(--accent);
+}
+.guide-row.done .guide-row-icon {
+    color: var(--ok);
+}
+.guide-row-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.3;
+}
+.guide-row-title {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+}
+.guide-row-sub {
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+/* new!: 알약 없이 글자만 (사용자 11-11) */
+.guide-new {
+    margin-left: var(--sp-1-5);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 800;
+    vertical-align: 1px;
+}
+.modal.guide-sheet {
+    width: min(760px, 92vw);
+    max-width: none;
+    max-height: 84vh;
+    overflow: auto;
+    padding: var(--sp-5);
+    text-align: left;
+}
+.guide-sheet-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2-5);
+    margin-bottom: var(--sp-1-5);
+}
+.guide-sheet-head > svg {
+    color: var(--accent);
+}
+.guide-sheet-head strong {
+    flex: 1;
+    font-size: var(--fs-lg);
+}
+.guide-sheet-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--sp-1-5) var(--sp-5);
+}
+.guide-sheet-groups h3 {
+    margin: 0;
+    padding: var(--sp-3) var(--sp-2-5) var(--sp-1);
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+}
+
+/* 빈 화면에서는 왼쪽 아래에 떠 있다 (처음 시작하기 카드는 오른쪽 아래) */
+.page-empty .guide-dock {
+    position: absolute;
+    left: var(--sp-4);
+    bottom: var(--sp-4);
+    z-index: 3;
+    width: min(280px, calc(100% - var(--sp-8)));
+    margin: 0;
+}
+
+/* 화면 강조 (사용자 11-11): 짚을 자리만 밝게, 바깥을 누르면 닫힌다 */
+.spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 9600;
+    pointer-events: none;
+}
+.spotlight-catch {
+    position: fixed;
+    pointer-events: auto;
+}
+.spotlight-hole {
+    position: fixed;
+    border-radius: 12px;
+    box-shadow: 0 0 0 9999px color-mix(in oklch, black 58%, transparent);
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    transition: left var(--dur) var(--ease), top var(--dur) var(--ease), width var(--dur) var(--ease), height var(--dur) var(--ease);
+}
+.spotlight-dim {
+    position: fixed;
+    inset: 0;
+    background: color-mix(in oklch, black 58%, transparent);
+}
+.spotlight-bubble {
+    position: fixed;
+    padding: var(--sp-3) var(--sp-4);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--bg-1);
+    box-shadow: var(--shadow-float);
+    pointer-events: auto;
+}
+.spotlight-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+}
+.spotlight-head > svg {
+    color: var(--accent);
+}
+.spotlight-title {
+    flex: 1;
+}
+.spotlight-count {
+    font-variant-numeric: tabular-nums;
+}
+.spotlight-text {
+    margin: var(--sp-2) 0 var(--sp-3);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+}
+.spotlight-foot {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
+.spotlight-dots {
+    display: flex;
+    flex: 1;
+    gap: var(--sp-1);
+}
+.spotlight-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--line);
+}
+.spotlight-dots span.on {
+    background: var(--accent);
+}
+@media (prefers-reduced-motion: reduce) {
+    .spotlight-hole {
+        transition: none;
+    }
+}
+
 /* 처음 시작하기 가이드 (사용자 11-08~10): 서버가 없을 때 서버 화면 */
 .guide-page {
     overflow-y: auto;
@@ -5884,41 +6115,6 @@ button.appbar-pill:focus-visible {
     color: inherit;
     font-weight: 500;
     opacity: 0.85;
-}
-
-/* 설정 → 일반 맨 위: 가이드 다시 열기 */
-.setting-guides {
-    flex-direction: column;
-    align-items: stretch;
-}
-.guide-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-1-5);
-    margin: var(--sp-2) 0 0;
-    padding: 0;
-    list-style: none;
-}
-.guide-list li {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    padding: var(--sp-2) var(--sp-3);
-    border-radius: var(--r-md);
-    background: var(--bg-2);
-}
-.guide-list li > svg {
-    color: var(--accent);
-}
-.guide-list-text {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    font-size: var(--fs-sm);
-}
-.guide-list-text span {
-    color: var(--text-3);
-    font-size: var(--fs-xs);
 }
 
 /* CLI로 보기 (I4-c): 같은 일을 하는 CLI 한 줄. '명령줄로 하기'를 펼치면 보인다 */

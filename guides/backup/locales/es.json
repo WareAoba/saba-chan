@@ -1,0 +1,9 @@
+{
+    "title": "Copias de seguridad · Restaurar copia de seguridad",
+    "summary": "Guarda el estado actual y vuelve atrás cuando quieras",
+    "steps": [
+        "Cada servidor tiene sus copias de seguridad y tareas programadas en esta pestaña.",
+        "Pulsa aquí para guardar el estado actual del servidor como copia de seguridad.",
+        "Puedes volver a una copia guardada cuando quieras. Antes de restaurar, Saba-chan guarda una vez más el estado actual."
+    ]
+}

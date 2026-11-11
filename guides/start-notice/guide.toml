@@ -1,0 +1,8 @@
+[guide]
+group = "care"
+icon = "bell"
+order = 30
+
+[[steps]]
+go = "discord/*/instances"
+spot = "discord.start_notice"

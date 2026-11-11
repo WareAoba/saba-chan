@@ -1,0 +1,8 @@
+{
+    "title": "Dirección del servidor · Comprobar reenvío de puertos",
+    "summary": "Que tus amigos puedan entrar",
+    "steps": [
+        "Comparte esta dirección con tus amigos para que puedan entrar.",
+        "Saba-chan comprueba si se puede llegar al servidor desde fuera. Si está bloqueado, configura la redirección de puertos en tu router."
+    ]
+}

@@ -1,0 +1,7 @@
+{
+    "title": "Start alert",
+    "summary": "Hear about starts and stops on Discord",
+    "steps": [
+        "Turn on the bell and Saba-chan posts in the alert channel of this Discord server when the server starts or stops outside Discord."
+    ]
+}

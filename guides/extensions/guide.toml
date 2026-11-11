@@ -1,0 +1,8 @@
+[guide]
+group = "more"
+icon = "extension"
+order = 50
+
+[[steps]]
+go = "settings/sabaStorage/extensions"
+spot = "storage.tab.extensions"

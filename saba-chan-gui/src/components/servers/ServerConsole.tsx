@@ -394,7 +394,7 @@ export function ServerConsole({
                 {onPopout && (
                     <>
                         <span className="term-divider" aria-hidden="true" />
-                        <button
+                        <button data-spot="console.popout"
                             type="button"
                             className="icon-btn term-popout"
                             onClick={onPopout}

@@ -1,0 +1,7 @@
+{
+    "title": "Start-Hinweis",
+    "summary": "Start- und Stopp-Meldungen in Discord",
+    "steps": [
+        "Schalte die Glocke ein, dann meldet Saba-chan im Benachrichtigungskanal dieses Discord-Servers, wenn der Server außerhalb von Discord startet oder stoppt."
+    ]
+}

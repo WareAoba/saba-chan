@@ -1,0 +1,7 @@
+{
+    "title": "Importer un serveur existant",
+    "summary": "Reprendre un serveur de jeu existant",
+    "steps": [
+        "Choisissez le dossier de votre serveur et Saba-chan le lit. Les fichiers peuvent rester où ils sont."
+    ]
+}

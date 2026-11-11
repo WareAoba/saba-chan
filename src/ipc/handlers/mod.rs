@@ -20,6 +20,7 @@ pub mod start_notice;
 pub mod events;
 pub mod migration;
 pub mod diagnostics;
+pub mod guides;
 pub mod system;
 pub mod uninstall;
 pub mod paths;

@@ -1,0 +1,7 @@
+{
+    "title": "CLI",
+    "summary": "The same, in a terminal",
+    "steps": [
+        "Everything you do in the app also works in the CLI. Press this button to switch to the CLI."
+    ]
+}

@@ -1,0 +1,7 @@
+{
+    "title": "Permisos",
+    "summary": "Decide quién puede hacer qué",
+    "steps": [
+        "Asigna un nivel a cada miembro para decidir quién puede gestionar tus servidores."
+    ]
+}

@@ -172,7 +172,7 @@ function InstancesTab({
                                         )}
                                     </span>
                                 </span>
-                                <button
+                                <button data-spot="discord.start_notice"
                                     type="button"
                                     className={clsx('icon-btn dc-notice-btn', { active: notice })}
                                     aria-pressed={notice}
@@ -376,6 +376,7 @@ export function NodeView({
                 </header>
 
                 <Segmented
+                    spot="discord.tab"
                     ariaLabel={node.guildName}
                     value={tab}
                     onChange={(v) => {

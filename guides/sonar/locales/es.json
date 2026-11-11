@@ -1,0 +1,8 @@
+{
+    "title": "Sonar",
+    "summary": "Ctrl+K · busca, abre y ejecuta",
+    "steps": [
+        "Pulsa Ctrl+K en cualquier lugar para abrir Sonar. Busca servidores, ajustes y comandos y ábrelos o ejecútalos al instante.",
+        "Vamos a abrirlo ahora."
+    ]
+}

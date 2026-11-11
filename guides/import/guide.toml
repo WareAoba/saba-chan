@@ -1,0 +1,7 @@
+[guide]
+group = "start"
+icon = "folder"
+order = 20
+
+[[steps]]
+action = "addServer.migrate"

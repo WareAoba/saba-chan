@@ -19,6 +19,7 @@ import { ActivityBar, activityAvailable } from './components/shell/ActivityBar';
 import { ActivityPage } from './components/servers/AuditTab';
 import { SabaBubble } from './components/shell/SabaBubble';
 import { CommandPalette, paletteAvailable } from './components/shell/CommandPalette';
+import { Spotlight } from './components/guides/Spotlight';
 import { DaemonEvents } from './components/shell/DaemonEvents';
 import { AppBar } from './components/shell/AppBar';
 import { ExtensionAppPage } from './components/shell/ExtensionAppPage';
@@ -1020,6 +1021,7 @@ function App() {
                     {activityAvailable() && <ActivityBar />}
                     <SabaBubble />
                     {paletteAvailable() && <CommandPalette />}
+                    <Spotlight />
                     {eventsAvailable() && <DaemonEvents onServersChanged={fetchServers} />}
 
                     {/* 모달 렌더링 */}

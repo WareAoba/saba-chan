@@ -1951,7 +1951,7 @@
     "console_failed": "Daemon-Logs konnten nicht geladen werden."
   },
   "palette": {
-    "title": "Befehlspalette",
+    "title": "Sonar",
     "placeholder": "Was möchtest du tun? Servernamen gehen auch",
     "placeholder_scope": "In {{name}} suchen",
     "placeholder_entities": "Worauf soll sich die Suche beschränken?",
@@ -2586,7 +2586,7 @@
   "guides": {
     "title": "Anleitungen",
     "close": "Schließen",
-    "closed_toast": "Anleitung geschlossen. Unter Einstellungen → Allgemein kannst du sie wieder öffnen.",
+    "closed_toast": "Anleitung geschlossen. Du kannst sie über die Anleitungskarte wieder öffnen.",
     "first_run": "Erste Schritte",
     "welcome_title": "Hallo, ich bin Saba-chan!",
     "welcome_body": "Verbinden wir zuerst Discord.",
@@ -2611,14 +2611,17 @@
     "modules_more": "Weitere Spiele findest du im Saba-Speicher.",
     "open_storage": "Saba-Speicher öffnen",
     "start_coach": "Drücke Starten, um den Server zu starten",
-    "open": "Öffnen",
-    "entry_firstRun": "Erste Schritte",
-    "entry_firstRun_desc": "Discord verbinden → Server einrichten → starten",
-    "entry_import": "Vorhandenen Server importieren",
-    "entry_import_desc": "Was sich ändert und worauf du achten solltest",
-    "entry_modules": "Spielmodule holen",
-    "entry_modules_desc": "Spiele für deinen Server holen",
-    "palette": "Anleitung: {{name}}"
+    "palette": "Anleitung: {{name}}",
+    "more": "Mehr",
+    "group_start": "Erste Schritte",
+    "group_care": "Serverpflege",
+    "group_discord": "Discord-Extras",
+    "group_more": "Weiter gehen",
+    "step_of": "Schritt {{step}} von {{total}}",
+    "new": "new!",
+    "prev": "Zurück",
+    "next": "Weiter",
+    "finish": "Verstanden"
   },
   "public_address": {
     "label": "Spielserver-Adresse",

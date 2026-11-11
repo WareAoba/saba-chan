@@ -1,0 +1,8 @@
+[guide]
+group = "discord"
+icon = "musicNote"
+order = 10
+
+[[steps]]
+go = "discord/*/music"
+spot = "discord.tab.music"

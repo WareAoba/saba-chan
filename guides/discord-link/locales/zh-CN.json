@@ -1,0 +1,8 @@
+{
+    "title": "Discord 连接",
+    "summary": "在 Discord 启动和停止服务器",
+    "steps": [
+        "获取配对码并在 Discord 服务器中输入即可连接。",
+        "连接后，可以用 Discord 命令启动、停止服务器并查看状态。"
+    ]
+}

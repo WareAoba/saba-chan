@@ -1,0 +1,9 @@
+{
+    "title": "Backups · Restore backup",
+    "summary": "Save the current state and roll back any time",
+    "steps": [
+        "Each server keeps its backups and scheduled tasks in this tab.",
+        "Press this to save the current state of the server as a backup.",
+        "You can roll back to a saved backup any time. Saba-chan saves the current state once more before it restores."
+    ]
+}

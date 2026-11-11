@@ -1,0 +1,8 @@
+{
+    "title": "Discord-Verbindung",
+    "summary": "Server aus Discord starten und stoppen",
+    "steps": [
+        "Hol dir einen Kopplungscode und gib ihn auf deinem Discord-Server ein.",
+        "Danach kannst du Server mit Discord-Befehlen starten, stoppen und ihren Status sehen."
+    ]
+}

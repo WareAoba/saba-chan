@@ -1,0 +1,8 @@
+[guide]
+group = "discord"
+icon = "alertTriangle"
+order = 40
+
+[[steps]]
+go = "discord/*/chatbot"
+spot = "chatbot.moderation"

@@ -1951,7 +1951,7 @@
     "console_failed": "デーモンのログを読み込めませんでした。"
   },
   "palette": {
-    "title": "コマンドパレット",
+    "title": "ソナー",
     "placeholder": "何をしますか? サーバー名でも探せます",
     "placeholder_scope": "{{name}} で検索",
     "placeholder_entities": "どこに絞り込みますか?",
@@ -2586,7 +2586,7 @@
   "guides": {
     "title": "ガイド",
     "close": "閉じる",
-    "closed_toast": "ガイドを閉じました。設定 → 一般 からもう一度開けます。",
+    "closed_toast": "ガイドを閉じました。ガイドカードからまた開けます。",
     "first_run": "はじめに",
     "welcome_title": "こんにちは、サバちゃんです！",
     "welcome_body": "まずDiscordと連携しましょう。",
@@ -2611,14 +2611,17 @@
     "modules_more": "ほかのゲームはサバ ストレージで探せます。",
     "open_storage": "サバ ストレージを開く",
     "start_coach": "「起動」を押してサーバーを起動",
-    "open": "開く",
-    "entry_firstRun": "はじめに",
-    "entry_firstRun_desc": "Discord連携 → サーバー準備 → 開始",
-    "entry_import": "既存のサーバーを取り込む",
-    "entry_import_desc": "取り込むと変わることと注意点",
-    "entry_modules": "ゲームモジュールを入手",
-    "entry_modules_desc": "サーバーで動かすゲームを入手",
-    "palette": "ガイド: {{name}}"
+    "palette": "ガイド: {{name}}",
+    "more": "もっと見る",
+    "group_start": "はじめに",
+    "group_care": "サーバーのお手入れ",
+    "group_discord": "Discordの追加機能",
+    "group_more": "さらに広く",
+    "step_of": "{{total}}ステップ中 {{step}}",
+    "new": "new!",
+    "prev": "戻る",
+    "next": "次へ",
+    "finish": "わかった"
   },
   "public_address": {
     "label": "ゲームサーバーのアドレス",

@@ -240,7 +240,7 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
                 <div className="cb-toggles">{toggleRow('memory', t('chatbot.memory'), t('chatbot.memory_hint'))}</div>
             </section>
 
-            <section className="dc-card">
+            <section data-spot="chatbot.moderation" className="dc-card">
                 <div className="dc-card-head">
                     <h2>{t('chatbot.moderation_title')}</h2>
                 </div>
