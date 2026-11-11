@@ -1260,9 +1260,9 @@ impl UpdateManager {
         }
     }
 
-    /// 설치 폴더의 사바쨩 실행 파일 백업 `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`),
+    /// 설치 폴더와 그 안 `bin`(CLI zip의 명령 실행기 `bin/saba-chan.exe`)의 사바쨩 실행 파일 백업 `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`),
     /// Unix는 확장자 없는 바이너리를 비켜 둔 `<이름>.old` (`move_aside`).
-    /// (경로, 실행 파일 이름, 번호(`.old`는 0), GUI인가)
+    /// (경로, 실행 파일 이름, 번호(`.old`는 0), GUI인가). 제자리는 백업과 같은 폴더다 (`backup_home`)
     fn old_exe_backups(&self) -> Vec<(PathBuf, String, u32, bool)> {
         self.try_old_exe_backups().unwrap_or_else(|e| {
             tracing::warn!("[Updater] Cannot list {}: {}", self.install_root.display(), e);
@@ -1272,7 +1272,12 @@ impl UpdateManager {
 
     /// `old_exe_backups`와 같되 설치 폴더(와 그 항목)를 읽지 못하면 오류
     pub(crate) fn try_old_exe_backups(&self) -> std::io::Result<Vec<(PathBuf, String, u32, bool)>> {
-        let entries = std::fs::read_dir(&self.install_root)?;
+        let mut entries: Vec<std::io::Result<std::fs::DirEntry>> = std::fs::read_dir(&self.install_root)?.collect();
+        match std::fs::read_dir(self.install_root.join("bin")) {
+            Ok(bin) => entries.extend(bin),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
         let mut found = Vec::new();
         for entry in entries {
             let path = entry?.path();
@@ -1295,12 +1300,18 @@ impl UpdateManager {
         Ok(found)
     }
 
+    /// 백업을 되돌릴 자리: 백업과 같은 폴더의 실행 파일
+    fn backup_home(backup: &Path, exe: &str) -> PathBuf {
+        backup.with_file_name(exe)
+    }
+
     /// 실행 파일이 아예 없는 것: 비켜 둔 뒤 새 판을 두기 전에 적용이 끊겼다. 가장 최근 사본(번호가 가장 큰 것)을 되돌린다.
     /// (낮은 번호가 남아 있는 것은 그때 아직 쥐고 있어 지우지 못한 더 옛 사본이다)
     fn restore_moved_aside_exes(&self) {
-        let mut latest: HashMap<String, (PathBuf, u32)> = HashMap::new();
+        let mut latest: HashMap<PathBuf, (PathBuf, u32)> = HashMap::new();
         for (path, exe, number, gui) in self.old_exe_backups() {
-            let present = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(&exe).exists() };
+            let exe = Self::backup_home(&path, &exe);
+            let present = if gui { find_gui_exe(&self.install_root).is_some() } else { exe.exists() };
             if present {
                 continue;
             }
@@ -1309,7 +1320,6 @@ impl UpdateManager {
             }
         }
         for (exe, (path, _)) in latest {
-            let exe = self.install_root.join(exe);
             match std::fs::rename(&path, &exe) {
                 Ok(()) => tracing::warn!("[Updater] Restored {} from {} (an earlier apply was interrupted)", exe.display(), path.display()),
                 Err(e) => tracing::warn!("[Updater] Cannot restore {} from {}: {}", exe.display(), path.display(), e),
@@ -1366,21 +1376,22 @@ impl UpdateManager {
     /// 이번 적용이 비켜 둔 실행 파일마다 (가장 최근 백업, 제자리). 적용 전 목록(`before`)에 있던 백업은 고르지 않는다.
     /// 설치 폴더를 읽지 못하면 오류 (빈 목록으로 보고 되돌림을 건너뛰지 않는다)
     pub fn exe_rollbacks_since(&self, before: &live_apply::ExeBackups) -> std::io::Result<Vec<(PathBuf, PathBuf)>> {
-        let mut latest: HashMap<String, (PathBuf, u32)> = HashMap::new();
+        let mut latest: HashMap<PathBuf, (PathBuf, u32)> = HashMap::new();
         for (path, exe, number, _) in self.try_old_exe_backups()? {
             if before.contains(&path, live_apply::backup_id(&path)) {
                 continue;
             }
+            let exe = Self::backup_home(&path, &exe);
             if latest.get(&exe).is_none_or(|(_, n)| number > *n) {
                 latest.insert(exe, (path, number));
             }
         }
-        let mut pairs: Vec<(PathBuf, PathBuf)> = latest.into_iter().map(|(exe, (backup, _))| (backup, self.install_root.join(exe))).collect();
+        let mut pairs: Vec<(PathBuf, PathBuf)> = latest.into_iter().map(|(exe, (backup, _))| (backup, exe)).collect();
         pairs.sort();
         Ok(pairs)
     }
 
-    /// 업데이트가 남긴 사바쨩 실행 파일 백업(`old_exe_backups`)을 지운다 (설치 폴더 바로 안만).
+    /// 업데이트가 남긴 사바쨩 실행 파일 백업(`old_exe_backups`)을 지운다 (설치 폴더 바로 안과 `bin`만).
     /// Windows는 실행 중인 exe를 이름만 바꿔 두므로, 아직 쥐고 있는 파일은 다음 번에 지운다.
     /// 업데이터가 새 데몬을 지켜보는 동안(`live_apply::watch_in_progress`)은 지우지 않는다: 건강하지 않으면 되돌림에 쓴다
     pub fn cleanup_old_files(&self) {
@@ -1390,7 +1401,7 @@ impl UpdateManager {
         }
         for (path, exe, _, gui) in self.old_exe_backups() {
             // 실행 파일이 없으면 되돌리지 못한 유일한 사본이다. 예전 이름의 GUI는 새 이름의 GUI가 있으면 지운다 (`retire_other_gui_exes`)
-            let replaced = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(&exe).exists() };
+            let replaced = if gui { find_gui_exe(&self.install_root).is_some() } else { Self::backup_home(&path, &exe).exists() };
             if !replaced {
                 tracing::warn!("[Updater] Keeping {}: {} is missing", path.display(), exe);
                 continue;

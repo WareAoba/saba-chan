@@ -1974,3 +1974,33 @@ fn old_backups_are_kept_while_the_updater_watches_the_new_daemon() {
     manager.cleanup_old_files();
     assert!(!manager.install_root.join(&core_old).exists());
 }
+
+// CLI zip은 명령 실행기를 `bin/saba-chan.exe`에 둔다: 그 백업도 설치 폴더 바로 안의 exe와 같게 되돌리고 지운다
+#[test]
+fn a_launcher_backup_inside_bin_is_rolled_back_and_cleaned_up_too() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    let bin = manager.install_root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let (launcher, backup) = (bin.join("saba-chan.exe"), bin.join("saba-chan.exe.old"));
+
+    let before = manager.exe_backups();
+    std::fs::write(&backup, b"old").unwrap();
+    std::fs::write(&launcher, b"new").unwrap();
+    let rollback = manager.roll_back_exes_since(&before).unwrap();
+    assert_eq!(rollback.restored, vec![launcher.clone()]);
+    assert_eq!(std::fs::read(&launcher).unwrap(), b"old");
+
+    // 적용이 끊겨 실행기가 없으면 되살린다
+    std::fs::rename(&launcher, &backup).unwrap();
+    manager.restore_moved_aside_exes();
+    assert_eq!(std::fs::read(&launcher).unwrap(), b"old");
+
+    std::fs::write(&backup, b"older").unwrap();
+    manager.cleanup_old_files();
+    assert!(!backup.exists());
+    assert!(launcher.exists());
+}
