@@ -86,6 +86,7 @@ export interface PendingChange {
     dirty: boolean;
     /** 값이 틀려 저장할 수 없을 때 */
     blocked?: boolean;
+    /** false를 돌려주면 저장하지 못한 것이다 (칸이 사라진 뒤에도 막대에 남긴다) */
     save: () => unknown;
     revert: () => void;
 }
@@ -171,8 +172,7 @@ export function usePendingChange(id: string, change: PendingChange) {
                 dirty: true,
                 blocked: last.blocked,
                 save: async () => {
-                    await last.save();
-                    register(id, null);
+                    if ((await last.save()) !== false) register(id, null);
                 },
                 revert: () => {
                     last.revert();

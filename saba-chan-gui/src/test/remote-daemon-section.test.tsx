@@ -318,6 +318,19 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(screen.getByRole<HTMLInputElement>('spinbutton', { name: 'Port' }).value).toBe('57490');
     });
 
+    // 리뷰 재검토 #3: 다른 탭에서 저장했다 실패하면 막대를 내리지 않고 실패를 알린다
+    it('연결 탭을 떠난 뒤 저장이 실패하면 막대가 남고 이유를 알린다', async () => {
+        window.showToast = vi.fn();
+        vi.mocked(window.api.remoteSettingsSet).mockResolvedValue({ success: false, error_code: 'port_in_use' });
+        const Page = ({ show }: { show: boolean }) => <SaveBarHost>{show && <RemoteDaemonSection />}</SaveBarHost>;
+        const { rerender } = await act(async () => render(<Page show />));
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Port' }), { target: { value: '57490' } });
+        rerender(<Page show={false} />);
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save' })));
+        expect(window.showToast).toHaveBeenCalledWith('The port is already in use', 'error');
+        expect(document.querySelector('.saba-savebar.dirty')).not.toBeNull();
+    });
+
     it('포트를 친 채로 켬을 바꿔도 친 포트는 남아 저장 막대에서 저장한다', async () => {
         vi.mocked(window.api.remoteSettingsSet).mockResolvedValue({ ...settings, enabled: false });
         await act(async () =>

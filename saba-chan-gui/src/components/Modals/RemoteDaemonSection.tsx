@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
@@ -171,19 +171,31 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         window.dispatchEvent(new Event(REMOTE_DAEMONS_CHANGED));
     }, [loadPeers, loadDaemons]);
 
-    // 켬은 바로 저장하고, 포트는 다 친 뒤 저장 막대로 묻는다 (사용자 11-11)
+    const mounted = useRef(true);
+    useEffect(() => {
+        mounted.current = true;
+        return () => {
+            mounted.current = false;
+        };
+    }, []);
+
+    // 켬은 바로 저장하고, 포트는 다 친 뒤 저장 막대로 묻는다 (사용자 11-11). 저장하지 못하면 false
     const save = async (next: { enabled: boolean; port: string }) => {
         const port = Number(next.port);
         if (!Number.isInteger(port) || port < 1 || port > 65535) {
             setError(t('remote_daemon.err_invalid_port'));
-            return;
+            return false;
         }
         const res = await run('save', () => window.api.remoteSettingsSet({ enabled: next.enabled, port }));
-        if (res && !failed(res)) {
-            setSettings((old) => ({ ...res, thisPc: res.thisPc || old?.thisPc }));
-            // 친 포트 초안은 막대 자리가 쥐므로 켬만 바꿔도 그대로 남는다
-            setDraft({ enabled: Boolean(res.enabled) });
+        if (!res || failed(res)) {
+            // 오류 줄은 run이 채운다. 칸이 사라졌으면(다른 탭) 보이지 않으니 알림으로도 알린다
+            if (!mounted.current) window.showToast?.(remoteErrorText(res, t), 'error');
+            return false;
         }
+        setSettings((old) => ({ ...res, thisPc: res.thisPc || old?.thisPc }));
+        // 친 포트 초안은 막대 자리가 쥐므로 켬만 바꿔도 그대로 남는다
+        setDraft({ enabled: Boolean(res.enabled) });
+        return true;
     };
     const savedPort = String(settings?.port ?? '');
     // 친 포트는 막대 자리가 쥐어 연결 탭을 떠났다 와도 남는다
