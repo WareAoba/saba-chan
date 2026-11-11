@@ -631,46 +631,6 @@ span[style*="--icon-loader"] svg {
     color: var(--accent);
 }
 
-.status-indicator {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    display: inline-block;
-    animation: pulse 2s ease-in-out infinite;
-}
-
-.status-online {
-    background: var(--ok);
-    box-shadow: 0 0 0 2px color-mix(in oklch, var(--ok) 20%, transparent);
-}
-
-.status-offline {
-    background: var(--stop);
-    box-shadow: 0 0 0 2px color-mix(in oklch, var(--stop) 20%, transparent);
-}
-
-.status-checking {
-    background: var(--warn);
-    box-shadow: 0 0 0 2px color-mix(in oklch, var(--warn) 20%, transparent);
-    animation: pulse 1s ease-in-out infinite;
-}
-
-.status-connecting {
-    background: var(--warn);
-    box-shadow: 0 0 0 2px color-mix(in oklch, var(--warn) 20%, transparent);
-    animation: pulse 1s ease-in-out infinite;
-}
-
-@keyframes pulse {
-    0%,
-    100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.5;
-    }
-}
-
 .btn-small {
     padding: var(--sp-1-5) var(--sp-3);
     font-size: calc(12px * var(--font-scale));

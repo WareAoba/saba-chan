@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { playersText, reuseUnchanged, STATUS_TONE, viewStatus } from '../utils/serverView';
+import { isTransitional, playersText, reuseUnchanged, STATUS_TONE, viewStatus } from '../utils/serverView';
 
 describe('모듈 없음 표시', () => {
     const server = { id: 'a', module: 'minecraft', status: 'running' };
@@ -56,5 +56,11 @@ describe('진행 중 색', () => {
     it('켜는 중은 꺼짐과 같은 회색, 끄는 중은 켜짐과 같은 초록', () => {
         expect(STATUS_TONE.starting).toBe(STATUS_TONE.stopped);
         expect(STATUS_TONE.stopping).toBe(STATUS_TONE.running);
+    });
+
+    it('설치·업데이트 중도 진행 중이다 — 꺼짐 회색으로 깜빡인다', () => {
+        expect(STATUS_TONE.provisioning).toBe(STATUS_TONE.stopped);
+        expect(isTransitional('provisioning')).toBe(true);
+        expect(isTransitional('running')).toBe(false);
     });
 });

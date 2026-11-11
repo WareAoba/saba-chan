@@ -37,3 +37,14 @@ describe('배경 팝오버의 다루는 데몬', () => {
         expect(screen.queryByText(i18n.t('gui:shell.daemon_target'))).toBeNull();
     });
 });
+
+// 사용자 11-11: 확인 중은 꺼짐에서 출발한 진행 — 노랑이 아니라 회색으로 깜빡인다
+describe('배경 팝오버의 상태 표시', () => {
+    it('데몬을 확인하는 동안은 회색으로 깜빡인다', () => {
+        window.api.daemonStatus = vi.fn(() => new Promise(() => {})) as never;
+        window.api.daemonTarget = vi.fn().mockResolvedValue({ target: null }) as never;
+        const { container } = render(<BackgroundModal isOpen onClose={vi.fn()} />);
+        expect(container.querySelector('.bg-pop-head.tone-idle')).not.toBeNull();
+        expect(container.querySelector('.bg-pop-orb.pulse')).not.toBeNull();
+    });
+});

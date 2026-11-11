@@ -263,7 +263,9 @@ pub fn status_badge(status: &str) -> String {
     let label = crate::i18n::try_t(&format!("status.{}", status)).unwrap_or_else(|| status.to_string());
     let dot: StyledObject<&str> = match status {
         "running" | "connected" => style("●").green(),
-        "starting" | "provisioning" | "stopping" => style("◐").yellow(),
+        // 진행 중은 떠나온 상태의 색 (사용자 11-11): 켜는 중·설치 중은 꺼짐 회색, 끄는 중은 켜짐 초록
+        "starting" | "provisioning" => style("◐").dim(),
+        "stopping" => style("◐").green(),
         "crashed" | "error" => style("●").red(),
         _ => style("○").dim(),
     };
@@ -381,6 +383,15 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    /// 진행 중 표시는 떠나온 상태의 색 (켜는 중·설치 중 회색, 끄는 중 초록)
+    #[test]
+    fn transitional_badge_takes_the_color_it_left() {
+        console::set_colors_enabled(true);
+        let dot = |status: &str| status_badge(status).split(' ').next().unwrap_or("").to_string();
+        assert_eq!(dot("starting").replace('◐', "○"), dot("stopped"));
+        assert_eq!(dot("stopping").replace('◐', "●"), dot("running"));
+    }
 
     static SINK_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 

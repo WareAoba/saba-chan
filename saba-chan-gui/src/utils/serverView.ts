@@ -45,15 +45,16 @@ export function viewStatus(server: Partial<ServerInfo>, moduleData?: unknown, mo
  */
 export type StatusTone = 'ok' | 'stop' | 'warn' | 'info' | 'idle';
 
-/** 깜빡이는(진행 중) 상태 */
-export const isTransitional = (status: string | undefined) => status === 'starting' || status === 'stopping';
+/** 깜빡이는(진행 중) 상태 — 설치·업데이트 중(provisioning)도 꺼짐에서 출발한 진행이다 */
+export const isTransitional = (status: string | undefined) =>
+    status === 'starting' || status === 'stopping' || status === 'provisioning';
 
 export const STATUS_TONE: Record<string, StatusTone> = {
     running: 'ok',
     stopped: 'idle',
     starting: 'idle',
     stopping: 'ok',
-    provisioning: 'info',
+    provisioning: 'idle',
     missing: 'warn',
 };
 
