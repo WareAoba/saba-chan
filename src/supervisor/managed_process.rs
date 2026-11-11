@@ -334,12 +334,19 @@ impl std::fmt::Display for StdinFull {
 impl std::error::Error for StdinFull {}
 
 impl ManagedProcess {
-    /// 강제 종료. 러너가 있으면 러너도 죽여, 런처가 띄운 손자 프로세스까지 Job Object로 끝낸다.
+    /// 강제 종료. 러너가 있으면 러너도 죽여, 런처가 띄운 손자 프로세스까지 끝낸다 (Windows는 Job Object, Unix는 프로세스 그룹).
     /// 종료 요청이 거부되면 오류 (끝났는지는 `is_running`으로 확인한다).
     /// Windows는 taskkill을 띄워 끝나기를 기다리므로 async 작업자 밖에서 한다
     pub async fn force_kill(&self) -> Result<()> {
         let (pid, runner_pid) = (self.pid, self.runner_pid);
         tokio::task::spawn_blocking(move || {
+            // Unix: 러너는 자기 그룹의 리더이고 서버와 그 자식이 그 그룹에 든다 (의사 콘솔이면 서버가 제 그룹의 리더다).
+            // PID만 죽이면 런처 스크립트가 띄운 실제 서버가 남으므로 그룹째 끝낸다
+            #[cfg(unix)]
+            if let Some(runner_pid) = runner_pid {
+                super::process::force_kill_group(pid);
+                super::process::force_kill_group(runner_pid);
+            }
             let server = super::process::force_kill_tree(pid);
             let runner = runner_pid.map_or(Ok(()), super::process::force_kill_pid);
             server.and(runner)

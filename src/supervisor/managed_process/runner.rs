@@ -783,6 +783,47 @@ mod tests {
         let _ = proc.force_kill().await;
     }
 
+    /// 강제 종료는 런처 스크립트가 띄운 실제 서버까지 끝낸다 (HUP을 무시하는 자식도, 파이프·의사 콘솔 모두)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn force_kill_ends_what_the_launcher_script_started() {
+        let Some(runner) = runner_binary() else {
+            eprintln!("SKIP: saba-runner binary not built (cargo build -p saba-runner)");
+            return;
+        };
+        for console in [ConsoleMode::Pipe, ConsoleMode::Pty] {
+            let tmp = tempfile::tempdir().unwrap();
+            let inst = tmp.path();
+            let script = "(trap '' HUP; exec sleep 600) & echo \"child $!\"; echo ready; wait".to_string();
+            let proc = ManagedProcess::spawn_with_runner(
+                &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, inst, 3,
+                RunnerLaunch { console, ..Default::default() },
+            )
+            .await
+            .unwrap();
+            assert!(wait_for(&proc, "ready").await);
+            let lines = proc.get_recent_console(100).await;
+            let child: u32 = lines.iter().find_map(|l| l.content.trim().strip_prefix("child ")?.parse().ok()).expect("child pid");
+            proc.force_kill().await.unwrap();
+            // 거둬 주는 부모가 없는 환경에서는 죽은 프로세스가 좀비로 남는다
+            let gone = || {
+                let zombie = std::fs::read_to_string(format!("/proc/{child}/stat")).is_ok_and(|s| s.rsplit(')').next().is_some_and(|r| r.trim_start().starts_with('Z')));
+                zombie || !crate::supervisor::process::is_process_alive(child)
+            };
+            for _ in 0..30 {
+                if gone() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            let left = !gone();
+            if left {
+                unsafe { nix::libc::kill(child as i32, nix::libc::SIGKILL) };
+            }
+            assert!(!left, "the server behind the launcher (pid {child}) outlived a force kill");
+        }
+    }
+
     #[test]
     fn old_session_logs_are_pruned() {
         let tmp = tempfile::tempdir().unwrap();
