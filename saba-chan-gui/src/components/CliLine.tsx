@@ -151,6 +151,7 @@ export function CliText({ line }: { line: string }) {
     const [copied, setCopied] = useState(false);
     return (
         <Disclosure
+            spot="cli.line"
             className="cli-line"
             summary={
                 <>

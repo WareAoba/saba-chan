@@ -1,0 +1,8 @@
+{
+    "title": "Game server address · Port forwarding check",
+    "summary": "Let your friends join",
+    "steps": [
+        "Give your friends the Join address so they can join. Press Copy to copy it.",
+        "Press Check port forwarding and Saba-chan checks whether the server can be reached from outside. If it is blocked, set up port forwarding on your router."
+    ]
+}

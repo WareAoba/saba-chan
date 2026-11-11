@@ -1,0 +1,9 @@
+{
+    "title": "Rechte",
+    "summary": "Festlegen, wer was darf",
+    "steps": [
+        "Im Tab „Mitglieder“ gibst du jeder Person auf deinem Discord-Server eine Stufe. Je höher die Stufe, desto mehr Befehle sind erlaubt.",
+        "Mit „Person hinzufügen“ neben einer Stufe setzt du jemanden auf diese Stufe. Wer nicht eigens eingestuft ist, hat die Standardstufe.",
+        "Unter „Stufen bearbeiten“ änderst du Namen und Reihenfolge der Stufen und die Befehle, die jede Stufe nutzen darf."
+    ]
+}

@@ -1975,7 +1975,7 @@
     "console_failed": "無法載入常駐程式日誌。"
   },
   "palette": {
-    "title": "命令面板",
+    "title": "聲納",
     "placeholder": "想做什麼?也可以搜尋伺服器名稱",
     "placeholder_scope": "在 {{name}} 中搜尋",
     "placeholder_entities": "要聚焦到哪裡?",
@@ -2628,7 +2628,7 @@
   "guides": {
     "title": "指南",
     "close": "關閉",
-    "closed_toast": "已關閉指南。可在 設定 → 一般 中重新開啟。",
+    "closed_toast": "已關閉指南。可在指南卡片中重新開啟。",
     "first_run": "快速開始",
     "welcome_title": "你好，我是 Saba-chan！",
     "welcome_body": "先連結 Discord 吧。",
@@ -2653,14 +2653,18 @@
     "modules_more": "更多遊戲可在Saba 儲存中尋找。",
     "open_storage": "開啟Saba 儲存",
     "start_coach": "按下「啟動」執行伺服器",
-    "open": "開啟",
-    "entry_firstRun": "快速開始",
-    "entry_firstRun_desc": "連結 Discord → 準備伺服器 → 啟動",
-    "entry_import": "匯入現有伺服器",
-    "entry_import_desc": "匯入後會改變什麼、需要注意什麼",
-    "entry_modules": "取得遊戲模組",
-    "entry_modules_desc": "取得要執行的遊戲",
-    "palette": "指南：{{name}}"
+    "palette": "指南：{{name}}",
+    "more": "更多",
+    "group_start": "入門",
+    "group_care": "伺服器維護",
+    "group_discord": "Discord 附加功能",
+    "group_more": "更進一步",
+    "step_of": "第 {{step}} 步，共 {{total}} 步",
+    "new": "new!",
+    "prev": "上一步",
+    "next": "下一步",
+    "finish": "看完了",
+    "go": "開啟"
   },
   "public_address": {
     "label": "遊戲伺服器位址",

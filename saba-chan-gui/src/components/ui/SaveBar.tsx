@@ -21,6 +21,8 @@ interface SaveBarProps {
     danger?: boolean;
     /** 안내 글 옆에 붙일 것 (예: 같은 일을 하는 CLI 줄) */
     extra?: ReactNode;
+    /** 저장 단추에 붙일 가이드 자리 이름 (`data-spot`, guides/Spotlight) */
+    saveSpot?: string;
     className?: string;
 }
 
@@ -38,6 +40,7 @@ export function SaveBar({
     saveLabel,
     danger,
     extra,
+    saveSpot,
     className,
 }: SaveBarProps) {
     const { t } = useTranslation('gui');
@@ -70,6 +73,7 @@ export function SaveBar({
                 </button>
                 <button
                     type="button"
+                    data-spot={saveSpot}
                     className={clsx('btn', danger ? 'btn-danger' : 'btn-primary')}
                     disabled={!dirty || saving || blocked}
                     onClick={onSave}

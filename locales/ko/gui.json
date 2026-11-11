@@ -1975,7 +1975,7 @@
     "console_failed": "데몬 로그를 불러오지 못했어요."
   },
   "palette": {
-    "title": "명령 팔레트",
+    "title": "소나",
     "placeholder": "무엇을 할까요? 서버 이름으로도 찾습니다",
     "placeholder_scope": "{{name}}에서 찾기",
     "placeholder_entities": "어디를 범위로 잡을까요?",
@@ -2628,7 +2628,7 @@
   "guides": {
     "title": "가이드",
     "close": "닫기",
-    "closed_toast": "가이드를 닫았어요. 설정 → 일반에서 다시 열 수 있어요.",
+    "closed_toast": "가이드를 닫았어요. 가이드 카드에서 다시 열 수 있어요.",
     "first_run": "처음 시작하기",
     "welcome_title": "반가워요, 사바쨩이에요!",
     "welcome_body": "먼저 디스코드와 연결해요.",
@@ -2653,14 +2653,18 @@
     "modules_more": "다른 게임은 사바 스토리지에서 더 찾아볼 수 있어요.",
     "open_storage": "사바 스토리지 열기",
     "start_coach": "시작을 눌러 서버를 켜요",
-    "open": "열기",
-    "entry_firstRun": "처음 시작하기",
-    "entry_firstRun_desc": "디스코드 연결 → 서버 준비 → 시작",
-    "entry_import": "쓰던 서버 불러오기",
-    "entry_import_desc": "불러오면 바뀌는 것과 주의할 점",
-    "entry_modules": "게임 모듈 받기",
-    "entry_modules_desc": "서버로 돌릴 게임 받기",
-    "palette": "가이드: {{name}}"
+    "palette": "가이드: {{name}}",
+    "more": "더 보기",
+    "group_start": "시작하기",
+    "group_care": "서버 돌보기",
+    "group_discord": "디스코드 부가 기능",
+    "group_more": "더 넓게",
+    "step_of": "{{total}}단계 중 {{step}}단계",
+    "new": "new!",
+    "prev": "이전",
+    "next": "다음",
+    "finish": "다 봤어요",
+    "go": "열기"
   },
   "public_address": {
     "label": "게임 서버 주소",

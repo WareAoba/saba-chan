@@ -212,7 +212,7 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
                     <span>{error}</span>
                 </div>
             )}
-            <div className="audit-scroll" ref={scrollRef}>
+            <div data-spot="activity.list" className="audit-scroll" ref={scrollRef}>
                 {shown === null ? (
                     !error && <SabaSpinner />
                 ) : shown.length === 0 && !more ? (
@@ -282,6 +282,7 @@ function AuditFilter({ value, onChange }: { value: string[]; onChange: (next: st
             trigger={
                 <button
                     type="button"
+                    data-spot="activity.filter"
                     className={clsx('btn btn-ghost btn-sm audit-filter-btn', { active: value.length > 0 })}
                 >
                     <Icon name="filter" size="sm" /> {t('audit.filter')}

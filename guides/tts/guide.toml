@@ -1,0 +1,14 @@
+[guide]
+group = "discord"
+icon = "sabaReading"
+order = 20
+
+[[steps]]
+go = "discord/*/tts"
+spot = "tts.settings"
+
+[[steps]]
+go = "discord/*/tts"
+spot = "tts.auto_channels"
+
+[[steps]]

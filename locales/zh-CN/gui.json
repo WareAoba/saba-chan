@@ -1975,7 +1975,7 @@
     "console_failed": "无法加载守护进程日志。"
   },
   "palette": {
-    "title": "命令面板",
+    "title": "声呐",
     "placeholder": "想做什么?也可以搜索服务器名称",
     "placeholder_scope": "在 {{name}} 中搜索",
     "placeholder_entities": "要聚焦到哪里?",
@@ -2628,7 +2628,7 @@
   "guides": {
     "title": "指南",
     "close": "关闭",
-    "closed_toast": "已关闭指南。可在 设置 → 常规 中重新打开。",
+    "closed_toast": "已关闭指南。可在指南卡片中重新打开。",
     "first_run": "快速开始",
     "welcome_title": "你好，我是 Saba-chan！",
     "welcome_body": "先连接 Discord 吧。",
@@ -2653,14 +2653,18 @@
     "modules_more": "更多游戏可在Saba 存储中查找。",
     "open_storage": "打开Saba 存储",
     "start_coach": "点击“启动”运行服务器",
-    "open": "打开",
-    "entry_firstRun": "快速开始",
-    "entry_firstRun_desc": "连接 Discord → 准备服务器 → 启动",
-    "entry_import": "导入现有服务器",
-    "entry_import_desc": "导入后会改变什么、需要注意什么",
-    "entry_modules": "获取游戏模块",
-    "entry_modules_desc": "获取要运行的游戏",
-    "palette": "指南：{{name}}"
+    "palette": "指南：{{name}}",
+    "more": "更多",
+    "group_start": "入门",
+    "group_care": "服务器维护",
+    "group_discord": "Discord 附加功能",
+    "group_more": "更进一步",
+    "step_of": "第 {{step}} 步，共 {{total}} 步",
+    "new": "new!",
+    "prev": "上一步",
+    "next": "下一步",
+    "finish": "看完了",
+    "go": "打开"
   },
   "public_address": {
     "label": "游戏服务器地址",

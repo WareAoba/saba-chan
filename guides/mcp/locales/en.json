@@ -1,0 +1,8 @@
+{
+    "title": "AI agents (MCP)",
+    "summary": "Let your AI agent manage servers",
+    "steps": [
+        "Add the address shown here as an MCP server in an AI agent such as ChatGPT or Claude, then sign in with your Discord account to connect. It only appears on a PC linked to Discord.",
+        "A connected agent can manage servers on every PC of your Discord account. Click its card to show Unlink agent."
+    ]
+}

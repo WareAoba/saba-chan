@@ -1,0 +1,10 @@
+{
+    "title": "Getting started",
+    "summary": "From linking Discord to your first server start",
+    "steps": [
+        "Press Connect a Discord server to start and stop game servers from Discord. You can do this later.",
+        "To make a server, first get the module for your game.",
+        "Use Add server to make a new server or import an existing one.",
+        "Press Start to turn the server on."
+    ]
+}

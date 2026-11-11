@@ -100,6 +100,7 @@ export function AppBar({
                 {APP_PAGES.filter((p) => !p.available || p.available()).map((p) => (
                     <button
                         key={p.id}
+                        data-spot={`nav.${p.id}`}
                         type="button"
                         className={clsx('appbar-tab', { active: page === p.id })}
                         aria-current={page === p.id ? 'page' : undefined}

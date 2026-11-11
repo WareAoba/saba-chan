@@ -1,0 +1,8 @@
+{
+    "title": "Nachrichten übersetzen",
+    "summary": "Rechtsklick zum Übersetzen",
+    "steps": [
+        "Klicke in Discord mit rechts auf eine Nachricht und wähle Apps › Translate with Saba-chan, um sie in deiner Discord-Sprache zu sehen – nur für dich.",
+        "Schalte die Flaggen-Reaktionsübersetzung unter Übersetzung im Einstellungsbefehl von Saba-chan ein. Reagierst du mit einer Flagge auf eine Nachricht, antwortet Saba-chan mit einer Übersetzung in die Sprache dieses Landes."
+    ]
+}

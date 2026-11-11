@@ -1,0 +1,9 @@
+{
+    "title": "Saba-chan parlante",
+    "summary": "Habla con Saba-chan en Discord",
+    "steps": [
+        "Añade una clave de API de un proveedor de IA. Todos los servidores de Discord comparten esta clave.",
+        "Activa Usar Saba-chan parlante en este servidor y guarda. Los servidores recién conectados empiezan apagados.",
+        "Elige un canal para conversar y pulsa Conversación de Saba-chan parlante en Tareas de Saba-chan. Háblale ahí y te responderá."
+    ]
+}

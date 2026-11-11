@@ -335,7 +335,7 @@ function ApiKeyCard({ hasApiKey, onChanged, nameOf }: ApiKeyCardProps) {
     };
 
     return (
-        <section className="dc-card">
+        <section data-spot="chatbot.key" className="dc-card">
             <div className="dc-card-head">
                 <h2>{t('chatbot.key_title')}</h2>
                 <StatusChip

@@ -1,0 +1,9 @@
+{
+    "title": "Tâches planifiées",
+    "summary": "Redémarrages automatiques et sauvegardes régulières",
+    "steps": [
+        "Cliquez sur Ajouter une tâche pour créer une tâche planifiée.",
+        "Choisissez quoi faire (démarrer, arrêter, redémarrer, sauvegarder, annoncer, mettre à jour ou une commande de jeu) et quand. L'interrupteur met une tâche en pause.",
+        "Cliquez sur Enregistrer pour appliquer la planification."
+    ]
+}

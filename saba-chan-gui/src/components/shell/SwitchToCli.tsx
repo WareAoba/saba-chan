@@ -49,7 +49,7 @@ export function SwitchToCliButton() {
     };
 
     return (
-        <button
+        <button data-spot="cli.switch"
             type="button"
             className="icon-btn"
             onClick={switchToCli}

@@ -1,0 +1,8 @@
+{
+    "title": "Gestion du serveur",
+    "summary": "Ranger les salons et rendre muet",
+    "steps": [
+        "Choisissez un salon pour utiliser Mode lent, Verrouiller, Nettoyage auto et Nettoyer maintenant, et définissez dans Tâches de Saba-chan ce qu’elle y fait.",
+        "Dans Membres, choisissez quelqu’un à rendre muet, ou levez le mode muet d’un membre."
+    ]
+}

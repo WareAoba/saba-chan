@@ -55,6 +55,8 @@
 :root[data-backdrop="on"] .monitor-float,
 :root[data-backdrop="on"] .page-empty .onboarding-card,
 :root[data-backdrop="on"] .start-coach,
+:root[data-backdrop="on"] .page-empty .guide-dock,
+:root[data-backdrop="on"] .spotlight-bubble,
 :root[data-backdrop="on"] .term-popped-card,
 :root[data-backdrop="on"] .dc-member-results {
     -webkit-backdrop-filter: var(--glass-blur);

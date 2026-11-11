@@ -1,0 +1,16 @@
+[guide]
+group = "more"
+icon = "desktop"
+order = 10
+
+[[steps]]
+go = "settings/connection"
+spot = "remote.accept"
+
+[[steps]]
+go = "settings/connection"
+spot = "remote.pcs"
+
+[[steps]]
+go = "settings/connection"
+spot = "remote.install"

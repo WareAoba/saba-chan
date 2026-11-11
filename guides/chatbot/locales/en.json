@@ -1,0 +1,9 @@
+{
+    "title": "Talking Saba-chan",
+    "summary": "Chat with Saba-chan on Discord",
+    "steps": [
+        "Add an API key from an AI provider. Every Discord server shares this one key.",
+        "Turn on Use Talking Saba-chan in this server and save. Newly connected servers start with it off.",
+        "Pick a channel to chat in and choose Talking Saba-chan chat under Saba-chan jobs. Talk to Saba-chan there and she answers."
+    ]
+}

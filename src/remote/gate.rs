@@ -64,6 +64,9 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/diagnostics"),
     // 다음 할 일 단계만 담는다
     not_on_web("GET", "/api/onboarding"),
+    // 앱 가이드 카드·화면 강조 (웹은 그리지 않는다)
+    not_on_web("GET", "/api/guides"),
+    not_on_web("POST", "/api/guides/{id}"),
     without_paths("GET", "/api/audit"),
     // PC의 파일에 쓴다
     deny("POST", "/api/audit/export"),

@@ -1,0 +1,8 @@
+{
+    "title": "Saba-chan Web",
+    "summary": "Server im Handy-Browser verwalten",
+    "steps": [
+        "Saba-chan Web funktioniert mit einem PC, der mit Discord verbunden ist. Falls noch nicht geschehen, beginne mit Discord-Server verbinden.",
+        "Mit dem Web-Befehl in Discord bekommst du einen Link, den du innerhalb von 5 Minuten einmal öffnen kannst. Öffne ihn im Handy-Browser, um Server zu starten und zu stoppen und Konsole, Einstellungen und Backups zu nutzen."
+    ]
+}

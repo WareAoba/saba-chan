@@ -8,17 +8,19 @@ interface DisclosureProps {
     children?: ReactNode;
     defaultOpen?: boolean;
     className?: string;
+    /** 가이드가 짚는 자리 이름 (`data-spot`, guides/Spotlight) */
+    spot?: string;
 }
 
 /**
  * 공통 펼치기. 브라우저 기본 <details>의 ▶ 대신 앱 아이콘 화살표가 돌고, 머리는 단추라 키보드로 연다.
  * 접혀 있어도 내용을 그려 둔다 (Ctrl+F가 안을 센다).
  */
-export function Disclosure({ summary, children, defaultOpen = false, className }: DisclosureProps) {
+export function Disclosure({ summary, children, defaultOpen = false, className, spot }: DisclosureProps) {
     const [open, setOpen] = useState(defaultOpen);
     const id = useId();
     return (
-        <div className={clsx('saba-disclosure', className, { open })}>
+        <div data-spot={spot} className={clsx('saba-disclosure', className, { open })}>
             <button
                 type="button"
                 className="saba-disclosure-head"

@@ -1,0 +1,8 @@
+{
+    "title": "Moderação por IA",
+    "summary": "Avisos de spam e divulgação de golpes",
+    "steps": [
+        "A moderação por IA usa a chave de API cadastrada para a Saba-chan falante. Se não houver chave, cadastre uma primeiro.",
+        "Ligue Avisar sobre spam e golpes e salve. Se uma mensagem parecer nociva, o dono e os administradores do servidor recebem uma DM. Mensagens não são apagadas."
+    ]
+}

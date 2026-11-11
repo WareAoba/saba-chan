@@ -1,0 +1,8 @@
+{
+    "title": "Importer un serveur existant",
+    "summary": "Reprendre un serveur de jeu existant",
+    "steps": [
+        "Récupérez un serveur de jeu existant via Ajouter un serveur › Migration d'un serveur existant. Les mondes et réglages restent inchangés, et les fichiers peuvent rester à leur place.",
+        "Choisissez le Dossier source et cliquez sur Démarrer l'analyse : Saba-chan le lira."
+    ]
+}

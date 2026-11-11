@@ -543,6 +543,13 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }: IconProps) =
                 <path d="M12 14v7" />
             </svg>
         ),
+        // 소나 (Ctrl+K): 원 안에 전파 한 줄 (사용자 11-11 시안 B)
+        sonar: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M5 12h2l1.5-1.5L10 14l2-7 2 10 1.5-6 1 2H19" />
+            </svg>
+        ),
         lightbulb: (
             <svg xmlns="http://www.w3.org/2000/svg" className="ionicon" viewBox="0 0 512 512">
                 <path
@@ -892,7 +899,8 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }: IconProps) =
     const normalizedName = name.includes('-')
         ? name.replace(/-([a-z])/g, (_: string, c: string) => c.toUpperCase())
         : name;
-    const svgIcon = icons[normalizedName];
+    // 받은 가이드의 아이콘 이름도 여기로 온다: 알려진 이름만 (toString 같은 기본 속성 제외)
+    const svgIcon = Object.hasOwn(icons, normalizedName) ? icons[normalizedName] : undefined;
     if (!svgIcon) {
         return <span>?</span>;
     }

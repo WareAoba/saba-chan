@@ -1,0 +1,8 @@
+{
+    "title": "Dirección del servidor · Comprobar reenvío de puertos",
+    "summary": "Que tus amigos puedan entrar",
+    "steps": [
+        "Comparte la Dirección para unirse con tus amigos para que puedan entrar. Pulsa Copiar para copiarla.",
+        "Pulsa Comprobar reenvío de puertos y Saba-chan comprobará si se puede llegar al servidor desde fuera. Si está bloqueado, configura el reenvío de puertos en tu router."
+    ]
+}

@@ -1975,7 +1975,7 @@
     "console_failed": "Не удалось загрузить логи демона."
   },
   "palette": {
-    "title": "Палитра команд",
+    "title": "Сонар",
     "placeholder": "Что сделать? Можно искать и по имени сервера",
     "placeholder_scope": "Искать в {{name}}",
     "placeholder_entities": "На чём сосредоточить поиск?",
@@ -2628,7 +2628,7 @@
   "guides": {
     "title": "Подсказки",
     "close": "Закрыть",
-    "closed_toast": "Подсказка закрыта. Открыть снова можно в Настройки → Общие.",
+    "closed_toast": "Гид закрыт. Его можно снова открыть в карточке гидов.",
     "first_run": "Начало работы",
     "welcome_title": "Привет, я Saba-chan!",
     "welcome_body": "Сначала подключим Discord.",
@@ -2653,14 +2653,18 @@
     "modules_more": "Другие игры можно найти в Saba Хранилище.",
     "open_storage": "Открыть Saba Хранилище",
     "start_coach": "Нажмите «Запустить», чтобы включить сервер",
-    "open": "Открыть",
-    "entry_firstRun": "Начало работы",
-    "entry_firstRun_desc": "Подключить Discord → подготовить сервер → запустить",
-    "entry_import": "Импортировать существующий сервер",
-    "entry_import_desc": "Что изменится и на что обратить внимание",
-    "entry_modules": "Получить игровые модули",
-    "entry_modules_desc": "Игры для вашего сервера",
-    "palette": "Подсказка: {{name}}"
+    "palette": "Подсказка: {{name}}",
+    "more": "Ещё",
+    "group_start": "Начало",
+    "group_care": "Уход за сервером",
+    "group_discord": "Дополнения Discord",
+    "group_more": "Дальше",
+    "step_of": "Шаг {{step}} из {{total}}",
+    "new": "new!",
+    "prev": "Назад",
+    "next": "Далее",
+    "finish": "Понятно",
+    "go": "Открыть"
   },
   "public_address": {
     "label": "Адрес игрового сервера",

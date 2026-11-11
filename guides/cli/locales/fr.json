@@ -1,0 +1,8 @@
+{
+    "title": "CLI",
+    "summary": "Pareil, dans un terminal",
+    "steps": [
+        "Après avoir modifié les paramètres, ouvrez En ligne de commande pour voir et copier la commande CLI qui fait la même chose.",
+        "Passer à la CLI ouvre la CLI dans un nouveau terminal sur le serveur choisi ; cette fenêtre se ferme. Les serveurs continuent de tourner."
+    ]
+}

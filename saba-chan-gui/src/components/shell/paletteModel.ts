@@ -9,7 +9,6 @@
  */
 import type { CommandInput } from '../../types/daemon';
 import { matchScore } from '../../utils/hangul';
-import { GUIDE_ENTRIES, type GuideEntryId } from '../guides/guides';
 import { SETTINGS_TAB_LABELS, SETTINGS_TABS } from '../Modals/settingsTabs';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -57,6 +56,8 @@ export interface PaletteGuild {
 export interface PaletteData {
     servers: PaletteServer[];
     guilds: PaletteGuild[];
+    /** 데몬 가이드 (제목은 이미 번역됨) */
+    guides?: { id: string; title: string; icon: string }[];
 }
 
 export interface PaletteItem {
@@ -78,9 +79,9 @@ export interface PaletteItem {
     /** 서버 설정 칸 이름 (고급 묶음이면 펼친다) */
     findField?: string;
     action?: 'newServer' | 'guide';
-    /** 다시 열 가이드 (action 'guide') */
-    guide?: GuideEntryId;
-    /** 줄 아이콘 (가이드: 설정의 가이드 목록과 같은 그림) */
+    /** 열 가이드 (action 'guide') */
+    guide?: string;
+    /** 줄 아이콘 (가이드: 가이드 카드와 같은 그림) */
     icon?: string;
     /** 빈 검색에도 보이는 앱 바로 가기 */
     featured?: boolean;
@@ -224,7 +225,7 @@ function guildItems(g: PaletteGuild, t: Translate): PaletteItem[] {
     });
 }
 
-function appItems(t: Translate): PaletteItem[] {
+function appItems(t: Translate, guides: PaletteData['guides'] = []): PaletteItem[] {
     const settings = t('shell.nav_settings');
     const out: PaletteItem[] = [
         {
@@ -275,9 +276,9 @@ function appItems(t: Translate): PaletteItem[] {
             path: [settings, storage, label],
         });
     }
-    // 가이드 다시 열기 (사용자 11-10, 설정 → 일반의 가이드 목록과 같은 순서)
-    for (const g of GUIDE_ENTRIES) {
-        const title = t('guides.palette', { name: t(`guides.entry_${g.id}`) });
+    // 가이드 (데몬 순서, 가이드 카드의 "더 보기"와 같은 목록)
+    for (const g of guides) {
+        const title = t('guides.palette', { name: g.title });
         out.push({
             group: 'jump',
             key: `app:guide:${g.id}`,
@@ -344,7 +345,7 @@ export interface PaletteState {
 /** 범위(없으면 지금 화면 + 앱)에서 고를 수 있는 기능 */
 function baseItems(state: Pick<PaletteState, 'scope' | 'context'>, data: PaletteData, t: Translate) {
     if (state.scope) return entityItems(state.scope, data, t);
-    return [...(state.context ? entityItems(state.context, data, t) : []), ...appItems(t)];
+    return [...(state.context ? entityItems(state.context, data, t) : []), ...appItems(t, data.guides)];
 }
 
 /** 보일 카테고리 버튼: 지금 범위(없으면 지금 화면)에 그 카테고리 기능이 있는 것만 (꺼진 서버면 명령이 빠진다) */
@@ -374,7 +375,7 @@ export function visibleItems(state: PaletteState, data: PaletteData, t: Translat
     if (!q) {
         // 빈 검색: 지금 열린 화면 기준 추천 (설정 칸은 검색할 때만)
         const own = context ? entityItems(context, data, t).filter((i) => i.group !== 'setting') : [];
-        const app = appItems(t).filter((i) => i.group === 'jump' && (state.category || i.featured));
+        const app = appItems(t, data.guides).filter((i) => i.group === 'jump' && (state.category || i.featured));
         return [...own, ...app].filter(inCategory);
     }
     // 검색: 1) 쓸 수 있는 기능 (+ 같은 명령을 지금 보낼 수 있는 다른 서버) 2) 범위로 고를 게임 서버·디스코드 서버

@@ -307,11 +307,11 @@ export function ConnectionView({
                     {!pairing.active && (
                         <div className="dc-hero-actions">
                             {onInviteBot && (
-                                <button type="button" className="btn btn-ghost btn-lg" onClick={onInviteBot}>
+                                <button data-spot="discord.invite" type="button" className="btn btn-ghost btn-lg" onClick={onInviteBot}>
                                     <Icon name="externalLink" size="sm" /> {t('discord.invite_bot')}
                                 </button>
                             )}
-                            <button type="button" className="btn btn-primary btn-lg" onClick={onStartPairing}>
+                            <button data-spot="discord.pair" type="button" className="btn btn-primary btn-lg" onClick={onStartPairing}>
                                 <Icon name="plug" size="sm" /> {t('discord.pair_start')}
                             </button>
                         </div>

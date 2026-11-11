@@ -1,0 +1,8 @@
+{
+    "title": "AI moderation",
+    "summary": "Alerts for spam and scam promotion",
+    "steps": [
+        "AI moderation uses the API key registered for Talking Saba-chan. Add a key first if there isn’t one.",
+        "Turn on Alert on spam and scams and save. If a message looks harmful, the server owner and admins get a DM. Messages are not deleted."
+    ]
+}

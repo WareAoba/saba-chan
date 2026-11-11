@@ -1,0 +1,8 @@
+{
+    "title": "Encaminhar chat do jogo",
+    "summary": "Envie o chat do jogo para o Discord",
+    "steps": [
+        "Em Chat a enviar, escolha Todo o chat ou Só chat que começa com a palavra-chave e salve. Só aparece em jogos cujo chat a Saba-chan consegue ler.",
+        "Escolha o canal que vai receber o chat do jogo e toque em Chat do jogo em Tarefas da Saba-chan."
+    ]
+}

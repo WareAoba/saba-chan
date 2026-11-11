@@ -1,0 +1,16 @@
+[guide]
+group = "more"
+icon = "palette"
+order = 70
+
+[[steps]]
+go = "settings/appearance"
+spot = "settings.theme"
+
+[[steps]]
+go = "settings/appearance"
+spot = "settings.accent"
+
+[[steps]]
+go = "settings/notify"
+spot = "settings.sound"

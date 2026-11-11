@@ -1,0 +1,9 @@
+{
+    "title": "Discord-Verbindung",
+    "summary": "Server aus Discord starten und stoppen",
+    "steps": [
+        "Ist der Saba-chan-Bot noch nicht auf deinem Discord-Server, lade ihn zuerst mit „Bot einladen“ ein.",
+        "Klicke auf „Discord-Server verbinden“, dann erscheinen ein Kopplungscode und der einzugebende Befehl. Gib diesen Befehl in einem Discord-Chat ein, und die Verbindung steht.",
+        "Danach kannst du von diesem Discord-Server aus Spielserver starten und stoppen und ihren Status sehen."
+    ]
+}

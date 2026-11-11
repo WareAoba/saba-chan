@@ -1,0 +1,8 @@
+{
+    "title": "Importar un servidor existente",
+    "summary": "Trae un servidor de juego que ya usas",
+    "steps": [
+        "Trae un servidor de juego que ya usas con Añadir servidor › Migrar servidor existente. Los mundos y ajustes se mantienen, y los archivos pueden quedarse donde están.",
+        "Elige la Carpeta de origen y pulsa Iniciar escaneo; Saba-chan la leerá."
+    ]
+}

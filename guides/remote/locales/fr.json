@@ -1,0 +1,9 @@
+{
+    "title": "Daemon distant",
+    "summary": "Saba-chan sur d’autres PC, dans cette app",
+    "steps": [
+        "Pour qu’un autre PC gère celui-ci, activez Autoriser les connexions distantes sur ce PC et enregistrez.",
+        "Vos PC liés au même compte Discord apparaissent ici. Cliquez sur Connecter pour un PC qui autorise les connexions distantes afin de l’associer, puis sur Ouvrir pour gérer ses serveurs depuis cette app.",
+        "Pour un serveur Linux accessible en SSH, Installer sur Linux installe Saba-chan et l’associe tout de suite."
+    ]
+}
