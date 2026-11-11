@@ -1,7 +1,8 @@
 import clsx from 'clsx';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useModalClose } from '../../hooks/useModalClose';
+import { subscribeDaemonEvents } from '../../utils/daemonEvents';
 import { Icon } from '../Icon';
 import { type GuideItem, pendingGuides, startGuide, useGuideStore } from './guides';
 
@@ -90,11 +91,24 @@ export function GuideCard() {
     const guides = useGuideStore((s) => s.guides);
     const [open, setOpen] = useState(false);
     const [all, setAll] = useState(false);
+    // 데몬이 새 가이드를 받으면 다시 읽는다 (받기는 목록을 부를 때 뒤에서 한다)
+    useEffect(
+        () =>
+            subscribeDaemonEvents((ev) => {
+                if (ev.type === 'guides.updated') useGuideStore.getState().refreshGuides();
+            }),
+        [],
+    );
     if (!guides?.length) return null;
     const pending = pendingGuides(guides).slice(0, SHOWN);
+    // 펼칠 때 완료를 다시 묻는다 (백업·예약처럼 서버 목록이 바뀌지 않는 완료도 보이게)
+    const toggle = () => {
+        if (!open) useGuideStore.getState().refreshGuides();
+        setOpen(!open);
+    };
     return (
         <section className="guide-dock">
-            <button type="button" className="guide-dock-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+            <button type="button" className="guide-dock-head" aria-expanded={open} onClick={toggle}>
                 <Icon name="lightbulb" size="sm" />
                 <span className="guide-dock-label">{t('guides.title')}</span>
                 <Icon name={open ? 'chevronDown' : 'chevronUp'} size="xs" />
@@ -109,7 +123,14 @@ export function GuideCard() {
                             onPick={() => startGuide(g.id)}
                         />
                     ))}
-                    <button type="button" className="guide-dock-more" onClick={() => setAll(true)}>
+                    <button
+                        type="button"
+                        className="guide-dock-more"
+                        onClick={() => {
+                            useGuideStore.getState().refreshGuides();
+                            setAll(true);
+                        }}
+                    >
                         {t('guides.more')}
                     </button>
                 </div>

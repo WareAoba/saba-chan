@@ -188,7 +188,7 @@ fn valid_lang(lang: &str) -> bool {
     (2..=10).contains(&lang.len()) && lang.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-/// 받은 가이드로 `dir`(받은 가이드 폴더)을 서버와 같게 맞춘다: 맞는 가이드만 쓰고(이 앱 판에 아직 없는 화면을 짚는 것도
+/// 받은 가이드로 `dir`(받은 가이드 폴더)을 서버와 같게 맞춘다: 맞는 가이드만 쓰고(잘못된 판이면 있던 사본을 둔다. 이 앱 판에 아직 없는 화면을 짚는 것도
 /// 앱을 올리면 보이게 둔다), 서버가 더는 주지 않는 것은 지운다. 쓴 수를 돌려준다
 pub fn install(dir: &Path, served: &[Served]) -> std::io::Result<usize> {
     std::fs::create_dir_all(dir)?;
@@ -196,6 +196,8 @@ pub fn install(dir: &Path, served: &[Served]) -> std::io::Result<usize> {
     let mut keep = std::collections::HashSet::new();
     let mut written = 0;
     for g in served.iter().take(MAX_SERVED) {
+        // 서버가 아직 주는 가이드는 이번 판이 잘못됐어도 있던 사본을 지우지 않는다 (맞는 판만 덮어쓴다)
+        keep.insert(g.id.clone());
         if !g.locales.keys().all(|l| valid_lang(l)) {
             tracing::warn!("Skipping served guide '{}': bad language name", g.id);
             continue;
@@ -205,7 +207,6 @@ pub fn install(dir: &Path, served: &[Served]) -> std::io::Result<usize> {
             tracing::warn!("Skipping served guide '{}': {}", g.id, e);
             continue;
         }
-        keep.insert(g.id.clone());
         let target = dir.join(&g.id);
         let same = read_dir_guide(&target).is_some_and(|(_, toml_text, mut have)| {
             have.sort();
@@ -493,5 +494,15 @@ spot = "backup.create"
         assert_eq!(install(dir.path(), &first).unwrap(), 0);
         assert_eq!(install(dir.path(), &[]).unwrap(), 0);
         assert!(!dir.path().join("new-thing").exists());
+    }
+
+    #[test]
+    fn a_broken_update_of_a_served_guide_keeps_the_copy_already_there() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(install(dir.path(), &[served("new-thing", TOML, 2)]).unwrap(), 1);
+        // 서버가 같은 가이드를 잘못된 문구로 보내도 있던 것을 지우지 않는다
+        assert_eq!(install(dir.path(), &[served("new-thing", TOML, 1)]).unwrap(), 0);
+        let ids: Vec<String> = load(Some(dir.path())).into_iter().map(|g| g.id).collect();
+        assert!(ids.contains(&"new-thing".to_string()));
     }
 }

@@ -46,6 +46,20 @@ describe('가이드 카드 (사용자 11-11)', () => {
         expect(screen.getByText('new!').tagName).toBe('SPAN');
     });
 
+    it('펼칠 때와 새 가이드를 받았을 때 목록을 다시 묻는다 (완료·new!가 늦게 보이지 않게)', async () => {
+        let push: (raw: unknown) => void = () => {};
+        window.api.onDaemonEvent = vi.fn((cb: (raw: unknown) => void) => {
+            push = cb;
+            return () => {};
+        }) as never;
+        window.api.guides = vi.fn().mockResolvedValue({ guides: list() }) as never;
+        render(<GuideCard />);
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: /Guides/ })));
+        expect(window.api.guides).toHaveBeenCalledTimes(1);
+        await act(async () => push({ type: 'guides.updated', data: { count: 1 } }));
+        expect(window.api.guides).toHaveBeenCalledTimes(2);
+    });
+
     it('더 보기: 끝낸 것까지 묶음별 전체 목록, 고르면 그 가이드를 연다', () => {
         render(<GuideCard />);
         fireEvent.click(screen.getByRole('button', { name: /Guides/ }));
