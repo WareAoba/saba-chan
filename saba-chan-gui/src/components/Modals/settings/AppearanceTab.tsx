@@ -1,11 +1,10 @@
 import clsx from 'clsx';
-import type { CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ACCENT_PRESETS, type ThemeConfig, type ThemeMode } from '../../../utils/themeManager';
 import CustomDropdown from '../../CustomDropdown/CustomDropdown';
 import { Icon } from '../../Icon';
 import { OklchPicker } from '../../ui/OklchPicker';
-import { SabaToggle } from '../../ui/SabaUI';
+import { SabaSlider, SabaToggle } from '../../ui/SabaUI';
 import { WindowBackdropSetting } from '../WindowBackdropSetting';
 
 interface AppearanceTabProps {
@@ -123,15 +122,13 @@ export function AppearanceTab({
                     </span>
                 </label>
                 <div className="font-scale-row">
-                    <input
-                        type="range"
-                        className="font-scale-slider"
+                    <SabaSlider
+                        aria-label={t('gui:settings_modal.font_scale_label', 'Font Size')}
                         min={50}
                         max={200}
                         step={5}
                         value={customTheme.fontScale}
-                        onChange={(e) => handleCustomThemeChange({ fontScale: Number(e.target.value) })}
-                        style={{ '--fill': `${((customTheme.fontScale - 50) / 150) * 100}%` } as CSSProperties}
+                        onChange={(v) => handleCustomThemeChange({ fontScale: v })}
                     />
                     <span className="font-scale-value">{customTheme.fontScale}%</span>
                 </div>

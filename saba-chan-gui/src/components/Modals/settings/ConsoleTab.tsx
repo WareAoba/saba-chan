@@ -1,5 +1,4 @@
 import clsx from 'clsx';
-import type { CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../../stores/useSettingsStore';
 import {
@@ -13,7 +12,7 @@ import type { ThemeConfig } from '../../../utils/themeManager';
 import CustomDropdown from '../../CustomDropdown/CustomDropdown';
 import { Icon } from '../../Icon';
 import { OklchPicker } from '../../ui/OklchPicker';
-import { SabaToggle } from '../../ui/SabaUI';
+import { SabaSlider, SabaToggle } from '../../ui/SabaUI';
 import { clearedTokenColors, setOption } from './options';
 
 /** 지금 테마가 정한 토큰 기본색 (사용자 색을 걷어낸 값) */
@@ -258,15 +257,13 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
                     </span>
                 </label>
                 <div className="font-scale-row">
-                    <input
-                        type="range"
-                        className="font-scale-slider"
+                    <SabaSlider
+                        aria-label={t('gui:settings_modal.console_font_scale_label', 'Console Text Size')}
                         min={50}
                         max={200}
                         step={5}
                         value={customTheme.consoleFontScale}
-                        onChange={(e) => handleCustomThemeChange({ consoleFontScale: Number(e.target.value) })}
-                        style={{ '--fill': `${((customTheme.consoleFontScale - 50) / 150) * 100}%` } as CSSProperties}
+                        onChange={(v) => handleCustomThemeChange({ consoleFontScale: v })}
                     />
                     <span className="font-scale-value">{customTheme.consoleFontScale}%</span>
                 </div>

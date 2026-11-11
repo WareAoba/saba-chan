@@ -259,7 +259,7 @@ export function ServerConsole({
                                     {t('shell.console_popout_show')}
                                 </button>
                             )}
-                            <button type="button" className="btn btn-secondary" onClick={onPopin}>
+                            <button type="button" className="btn btn-ghost" onClick={onPopin}>
                                 {t('shell.console_popin')}
                             </button>
                         </div>

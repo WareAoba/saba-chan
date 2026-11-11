@@ -93,6 +93,13 @@ pub struct GuiSettings {
     /// 없으면 GUI 기본 항목
     #[serde(skip_serializing_if = "Option::is_none")]
     pub monitor_items: Option<Vec<String>>,
+    /// 서버 페이지 시스템 모니터 표시 방식: "off"(끔, 값도 묻지 않는다) | "docked"(상세 위·오른쪽 열에 고정) | "floating"(앱 안에서 끌어 옮기는 떠 있는 창)
+    pub system_monitor_mode: String,
+    /// 떠 있는 창 자리. 없으면 오른쪽 위
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_monitor_float: Option<MonitorFloat>,
+    /// 사용자가 ✕로 닫은 가이드 id (`firstRun`·`checklist` 등, GUI `guides.ts`). 설정 → 일반의 가이드 목록에서 다시 연다
+    pub closed_guides: Vec<String>,
 
     // Window state (GUI가 저장하지만 데몬이 중개)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -201,6 +208,27 @@ impl Default for ConsoleFonts {
     }
 }
 
+/// 시스템 모니터 떠 있는 창 자리: 가까운 모서리와 그 모서리 두 변에서의 거리(px). 창 크기가 바뀌어도 그 모서리를 따라간다
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MonitorFloat {
+    /// "top-left" | "top-right" | "bottom-left" | "bottom-right"
+    pub corner: String,
+    pub x: u32,
+    pub y: u32,
+}
+
+const MONITOR_FLOAT_CORNERS: [&str; 4] = ["top-left", "top-right", "bottom-left", "bottom-right"];
+/// 떠 있는 창 거리 한도 (화면 밖 값은 GUI가 안으로 되돌리지만, 터무니없는 값은 받지 않는다)
+const MONITOR_FLOAT_MAX: u32 = 100_000;
+
+impl MonitorFloat {
+    fn ok(&self) -> bool {
+        MONITOR_FLOAT_CORNERS.contains(&self.corner.as_str())
+            && self.x <= MONITOR_FLOAT_MAX
+            && self.y <= MONITOR_FLOAT_MAX
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct WindowBounds {
@@ -264,6 +292,9 @@ impl Default for GuiSettings {
             system_monitor_expanded: false,
             system_monitor_net_trace: false,
             monitor_items: None,
+            system_monitor_mode: "docked".into(),
+            system_monitor_float: None,
+            closed_guides: Vec::new(),
             window_bounds: None,
             language: None,
             main_daemon: None,
@@ -281,6 +312,7 @@ fn token_color_ok(key: &str, value: &str) -> bool {
 
 const MONITOR_ITEMS_MAX: usize = 64;
 const MONITOR_ITEM_MAX_LEN: usize = 128;
+const SYSTEM_MONITOR_MODES: [&str; 3] = ["off", "docked", "floating"];
 
 /// 모니터 항목 id 목록: 개수·길이 한도 안이고 제어 문자가 없다 (디스크·어댑터 이름이 들어가 글자는 가리지 않는다)
 fn monitor_items_ok(items: &[String]) -> bool {
@@ -297,6 +329,13 @@ impl GuiSettings {
         choice("closeAction", &self.close_action, &["ask", "tray", "quit"])?;
         choice("toastDuration", &self.toast_duration, &["short", "normal", "long"])?;
         choice("consoleTimestamps", &self.console_timestamps, &["off", "24h", "12h"])?;
+        choice("systemMonitorMode", &self.system_monitor_mode, &SYSTEM_MONITOR_MODES)?;
+        if self.system_monitor_float.as_ref().is_some_and(|f| !f.ok()) {
+            return Err(format!(
+                "systemMonitorFloat.corner must be one of {} and x, y at most {MONITOR_FLOAT_MAX}",
+                MONITOR_FLOAT_CORNERS.join(", ")
+            ));
+        }
         if self.new_server_backup_keep == 0 {
             return Err("newServerBackupKeep must be 1 or more".into());
         }
@@ -309,6 +348,9 @@ impl GuiSettings {
         self.window_backdrop.validate()?;
         if self.monitor_items.as_ref().is_some_and(|items| !monitor_items_ok(items)) {
             return Err(format!("monitorItems must be at most {MONITOR_ITEMS_MAX} ids of 1..={MONITOR_ITEM_MAX_LEN} characters"));
+        }
+        if !monitor_items_ok(&self.closed_guides) {
+            return Err(format!("closedGuides must be at most {MONITOR_ITEMS_MAX} ids of 1..={MONITOR_ITEM_MAX_LEN} characters"));
         }
         Ok(())
     }
@@ -324,6 +366,10 @@ impl GuiSettings {
         fix(&mut self.close_action, &["ask", "tray", "quit"], &default.close_action);
         fix(&mut self.toast_duration, &["short", "normal", "long"], &default.toast_duration);
         fix(&mut self.console_timestamps, &["off", "24h", "12h"], &default.console_timestamps);
+        fix(&mut self.system_monitor_mode, &SYSTEM_MONITOR_MODES, &default.system_monitor_mode);
+        if self.system_monitor_float.as_ref().is_some_and(|f| !f.ok()) {
+            self.system_monitor_float = None;
+        }
         self.console_token_colors.retain(|k, v| token_color_ok(k, v));
         let mut fallback = default.console_fonts.clone();
         for ((_, value, allowed), (_, fallback, _)) in self.console_fonts.slots().into_iter().zip(fallback.slots()) {
@@ -334,6 +380,9 @@ impl GuiSettings {
         }
         if self.monitor_items.as_ref().is_some_and(|items| !monitor_items_ok(items)) {
             self.monitor_items = None;
+        }
+        if !monitor_items_ok(&self.closed_guides) {
+            self.closed_guides.clear();
         }
         self.window_backdrop.sanitize();
     }
@@ -1351,6 +1400,31 @@ mod tests {
         assert!(saved.system_monitor_expanded);
     }
 
+    /// 사용자 11-11: 시스템 모니터는 끔·고정·떠 있는 창 중 하나(기본 고정 = 지금 모습). 떠 있는 창 자리는 모서리와 그 모서리에서의 거리
+    #[test]
+    fn system_monitor_mode_and_float_are_validated() {
+        let d = GuiSettings::default();
+        assert_eq!(d.system_monitor_mode, "docked");
+        assert!(d.system_monitor_float.is_none());
+        let ok: GuiSettings = serde_json::from_value(serde_json::json!({
+            "systemMonitorMode": "floating",
+            "systemMonitorFloat": {"corner": "bottom-left", "x": 40, "y": 12}
+        }))
+        .unwrap();
+        assert!(ok.validate().is_ok());
+        assert_eq!(ok.system_monitor_float.as_ref().map(|f| (f.corner.as_str(), f.x, f.y)), Some(("bottom-left", 40, 12)));
+        for bad in [
+            serde_json::json!({"systemMonitorMode": "hidden"}),
+            serde_json::json!({"systemMonitorFloat": {"corner": "middle", "x": 0, "y": 0}}),
+            serde_json::json!({"systemMonitorFloat": {"corner": "top-left", "x": 100_001, "y": 0}}),
+        ] {
+            let mut s: GuiSettings = serde_json::from_value(bad.clone()).unwrap();
+            assert!(s.validate().is_err(), "{bad}");
+            s.sanitize();
+            assert!(s.validate().is_ok(), "{bad}");
+        }
+    }
+
     /// 사용자 11-08: 창 바탕 반투명은 기본으로 켜져 있고, 고를 수 없는 재질은 거절한 뒤 파일에서는 기본값으로 읽는다
     #[test]
     fn window_backdrop_is_validated_and_sanitized() {
@@ -1914,6 +1988,19 @@ mod tests {
         }
         store.write_gui(serde_json::json!({ "monitorItems": null }), Apply::MergePatch, None).await.unwrap();
         assert!(ConfigStore::new(tmp.path()).get_gui_settings().await.monitor_items.is_none());
+    }
+
+    /// 사용자 11-09: 닫은 가이드는 앱을 다시 켜도 닫힌 채로 있고, 비우면 다시 보인다
+    #[tokio::test]
+    async fn closed_guides_are_remembered_and_can_be_reopened() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        assert!(store.get_gui_settings().await.closed_guides.is_empty());
+        store.write_gui(serde_json::json!({ "closedGuides": ["firstRun", "checklist"] }), Apply::MergePatch, None).await.unwrap();
+        assert_eq!(ConfigStore::new(tmp.path()).get_gui_settings().await.closed_guides, ["firstRun", "checklist"]);
+        assert!(store.write_gui(serde_json::json!({ "closedGuides": ["a\nb"] }), Apply::MergePatch, None).await.is_err());
+        store.write_gui(serde_json::json!({ "closedGuides": [] }), Apply::MergePatch, None).await.unwrap();
+        assert!(ConfigStore::new(tmp.path()).get_gui_settings().await.closed_guides.is_empty());
     }
 
     /// 사용자 11-02: 콘솔 글꼴을 글자(영문·한글·일본어·중국어)마다 고른다. 기본 Cascadia·D2Coding·HackGen·Sarasa SC, 그 글자의 후보 밖은 거절

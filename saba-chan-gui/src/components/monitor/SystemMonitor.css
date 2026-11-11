@@ -191,3 +191,75 @@
     align-items: center;
     gap: var(--sp-1);
 }
+
+/* 접기·끄기 버튼 묶음 */
+.monitor-actions {
+    display: flex;
+    flex: none;
+}
+
+/* ── 떠 있는 창 (사용자 11-11): 서버 페이지 위에 겹쳐 끌어 옮긴다. 자리는 FloatingMonitor가 left·top으로 준다 ── */
+.servers-page {
+    position: relative;
+}
+.monitor-float-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 20;
+}
+.monitor-float {
+    position: absolute;
+    width: 288px;
+    max-width: calc(100% - 2 * var(--sp-3));
+    max-height: calc(100% - 2 * var(--sp-3));
+    overflow-y: auto;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+    box-shadow: var(--shadow-float);
+    cursor: grab;
+    transition:
+        left var(--dur) var(--ease),
+        top var(--dur) var(--ease);
+}
+.monitor-float.dragging {
+    cursor: grabbing;
+    transition: none;
+}
+.monitor-float button,
+.monitor-float .monitor-pick-panel {
+    cursor: auto;
+}
+.monitor-grip {
+    display: inline-flex;
+    flex: none;
+    color: var(--text-3);
+}
+.monitor-float .monitor-rings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.monitor-float .monitor-picker {
+    grid-template-columns: 1fr;
+}
+/* 접은 떠 있는 창: 손잡이 · 작은 원 두 줄 격자 · 끄기·펼치기. 아주 좁으면 한 줄에 하나 */
+.monitor-float.monitor-summary {
+    width: max-content;
+    padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-2);
+    min-height: 0;
+}
+.monitor-chips.grid {
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(2, max-content);
+    gap: var(--sp-1) var(--sp-3);
+}
+.monitor-float.tight .monitor-chips.grid {
+    grid-template-columns: max-content;
+}
+.monitor-float.monitor-summary .monitor-actions {
+    flex-direction: column;
+}
+.monitor-chip {
+    white-space: nowrap;
+}

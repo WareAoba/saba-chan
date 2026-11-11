@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PopoutConsole as PopoutConsoleImpl } from '../components/servers/PopoutConsole';
 import { useMultiConsole } from '../hooks/useMultiConsole';
 import { useConsoleStore } from '../stores/useConsoleStore';
+import { STATUS_TONE } from '../utils/serverView';
 import type { ComponentType } from 'react';
 
 /** 시험에 필요한 props만 넘기려고 느슨하게 받는다 */
@@ -54,12 +55,29 @@ describe('PopoutConsole', () => {
             />,
         );
         expect(document.querySelector('.pip-title .pip-name')?.textContent).toBe('Survival');
-        expect(document.querySelector('.pip-title .pip-dot')?.getAttribute('data-status')).toBe('running');
+        // 상태 점은 앱의 다른 표시등과 같은 표(STATUS_TONE)를 쓴다
+        expect(document.querySelector('.pip-title .pip-dot')?.className).toContain(`tone-${STATUS_TONE.running}`);
         // 되돌리기와 고정은 따로 있는 버튼이다
         expect(document.querySelectorAll('.pip-tools .pip-tool')).toHaveLength(2);
         fireEvent.click(screen.getByRole('button', { name: 'Close' }));
         expect(close).toHaveBeenCalledWith('mc-1', false);
         delete (window.api as unknown as Record<string, unknown>).consolePopoutClose;
+    });
+
+    it('켜는 중·끄는 중에는 상태 점이 그 상태의 색으로 깜빡인다', () => {
+        render(
+            <PopoutConsole
+                popoutParams={{ instanceId: 'mc-1', name: 'Survival' }}
+                server={{ ...server, status: 'stopping' }}
+                state={state}
+                openConsole={vi.fn()}
+                setConsoleInput={vi.fn()}
+                sendConsoleCommand={vi.fn()}
+            />,
+        );
+        const dot = document.querySelector('.pip-title .pip-dot') as HTMLElement;
+        expect(dot.classList.contains(`tone-${STATUS_TONE.stopping}`)).toBe(true);
+        expect(dot.classList.contains('pulse')).toBe(true);
     });
 });
 

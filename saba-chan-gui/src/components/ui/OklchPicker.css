@@ -25,36 +25,13 @@
     border-color: var(--accent);
 }
 
-.oklch-pop {
+/* 공통 Popover(.saba-popover)에 그린다. 여기서는 폭·안쪽 배치만 */
+.saba-popover.oklch-pop {
     display: flex;
     flex-direction: column;
     gap: var(--sp-2-5);
+    width: 272px;
     padding: var(--sp-3) var(--sp-4);
-    background: var(--bg-3);
-    border: 1px solid var(--line-strong);
-    border-radius: var(--r-md);
-    box-shadow: var(--shadow-float);
-    transform-origin: top right;
-    animation: oklch-pop-in var(--dur) var(--ease);
-}
-.oklch-pop.up {
-    transform-origin: bottom right;
-}
-.oklch-pop.closing {
-    animation: oklch-pop-out 140ms ease-in forwards;
-    pointer-events: none;
-}
-@keyframes oklch-pop-in {
-    from {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-}
-@keyframes oklch-pop-out {
-    to {
-        opacity: 0;
-        transform: scale(0.97);
-    }
 }
 
 .oklch-area-wrap,

@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { useDragReorder } from '../../hooks/useDragReorder';
 import { useSwapAnimation } from '../../hooks/useSwapAnimation';
@@ -12,10 +12,12 @@ import { failedModuleName, failedModuleReason } from '../../utils/failedModules'
 import { Icon } from '../Icon';
 import { LinkedText } from '../ui/ScreenLink';
 import { SabaArt } from '../ui/SabaArt';
-import { SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
+import { FloatingMonitor, monitorPlacement, SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
 import { useDaemonTarget } from '../shell/DaemonSwitcher';
 import { OtherDaemons } from '../shell/OtherDaemons';
 import { DaemonDownNotice, DaemonDownState, daemonDown } from './DaemonDown';
+import { FirstRunGuide } from '../guides/FirstRunGuide';
+import { useGuideStore } from '../guides/guides';
 import { OnboardingCard } from './OnboardingCard';
 import type { ServerConsoleProps, ServerSettingsProps } from './ServerDetail';
 import { ServerDetail } from './ServerDetail';
@@ -23,8 +25,6 @@ import { ServerRow } from './ServerRow';
 
 /** 이 너비보다 좁으면 목록/상세를 한 열로 (gui-design-reference §3) */
 export const SINGLE_COLUMN_MAX_WIDTH = 900;
-/** 이 너비 이상이면 시스템 모니터를 상세 오른쪽 열로, 아니면 상세 위에 둔다 */
-export const MONITOR_SIDE_MIN_WIDTH = 1500;
 const SEARCH_MIN_SERVERS = 6;
 
 interface ServersPageProps {
@@ -66,7 +66,9 @@ export function ServersPage({
     const { width } = useWindowSize();
     const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
     const monitorOpen = useSettingsStore((s) => s.systemMonitorExpanded);
-    const monitorSide = monitorOpen && width >= MONITOR_SIDE_MIN_WIDTH;
+    const monitorMode = useSettingsStore((s) => s.systemMonitorMode);
+    // 끔이면 그리지 않아 데몬에 값도 묻지 않는다
+    const monitorAt = systemMonitorAvailable() ? monitorPlacement(monitorMode, monitorOpen, width) : 'none';
     // 합쳐 보기 (G1c): 다른 데몬의 서버를 목록 아래에 데몬별로
     const unified = useSettingsStore((s) => s.daemonView) === 'unified' && typeof window.api?.remoteServers === 'function';
     const daemonTarget = useDaemonTarget();
@@ -80,6 +82,26 @@ export function ServersPage({
     useEffect(() => {
         if (revealServerCount > 0) setShowDetailNarrow(true);
     }, [revealServerCount]);
+
+    // 처음 시작하기: 서버 수·켜진 서버 수가 바뀌면 다음 할 일을 다시 묻는다 (첫 시작·디스코드 연결을 반영)
+    const runningCount = servers.filter((s) => s.status === 'running').length;
+    const activeTab = useUIStore((s) => s.activeTab);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 서버 수·켜진 수가 바뀔 때 다시 묻는 것이 목적이다
+    useEffect(() => {
+        if (activeTab === 'servers') useGuideStore.getState().refreshOnboarding();
+    }, [servers.length, runningCount, activeTab]);
+    const guideStep = useGuideStore((s) => s.step);
+    // 가이드를 연 채(갈림길 등) 다른 곳에서 서버가 생기면 가이드를 접는다 (모듈 받기는 원래 하던 곳으로 이어 가므로 둔다)
+    const serverCount = useRef(servers.length);
+    useEffect(() => {
+        const grew = servers.length > serverCount.current;
+        serverCount.current = servers.length;
+        const step = useGuideStore.getState().step;
+        if (grew && step && step !== 'modules') useGuideStore.getState().setStep(null);
+    }, [servers.length]);
+    const firstRunClosed = useSettingsStore((s) => s.closedGuides.includes('firstRun'));
+    const settingsReady = useSettingsStore((s) => s.settingsReady);
+    const discordDone = useGuideStore((s) => s.onboarding?.steps.find((x) => x.id === 'discord')?.done);
 
     // 선택이 비었거나 사라졌으면 첫 서버를 고른다
     useEffect(() => {
@@ -102,6 +124,12 @@ export function ServersPage({
     // 데몬이 꺼져 있으면 목록이 비어 보여도 서버가 없는 게 아니다
     if (servers.length === 0 && isDaemonDown) return <DaemonDownState />;
 
+    // 가이드를 열었거나, 서버가 없고 처음 시작하기를 닫지 않았으면 가이드 화면
+    if (guideStep) return <FirstRunGuide step={guideStep} />;
+    if (servers.length === 0 && settingsReady && !firstRunClosed) {
+        return <FirstRunGuide step={discordDone ? 'fork' : 'welcome'} />;
+    }
+
     if (servers.length === 0) {
         return (
             <div className={clsx('page page-empty', { 'with-other-daemons': unified })}>
@@ -119,6 +147,7 @@ export function ServersPage({
                         <Icon name="plus" size="sm" /> {t('shell.add_server')}
                     </button>
                 </div>
+                <OnboardingCard />
                 {/* 고른 데몬에 서버가 없어도 다른 데몬의 서버는 보인다 */}
                 {unified && daemonTarget !== undefined && <OtherDaemons currentTarget={daemonTarget} />}
             </div>
@@ -148,7 +177,7 @@ export function ServersPage({
                         )}
                     </div>
                     {isDaemonDown && <DaemonDownNotice />}
-                    <OnboardingCard onAddServer={onAddServer} refreshKey={servers.length} />
+                    <OnboardingCard />
                     {failedModules.length > 0 && (
                         // 모듈이 목록에서 사라진 이유를 알려준다 (module.toml 오류 등)
                         <details className="notice tone-warn module-failures">
@@ -198,7 +227,7 @@ export function ServersPage({
             {!detailHidden && selected && (
                 <main className="server-detail-pane server-detail-flex">
                     {isDaemonDown && listHidden && <DaemonDownNotice />}
-                    {!monitorSide && systemMonitorAvailable() && (
+                    {monitorAt === 'top' && (
                         <div className="monitor-top-slot">
                             <SystemMonitor layout="top" servers={servers} />
                         </div>
@@ -223,11 +252,12 @@ export function ServersPage({
                     </div>
                 </main>
             )}
-            {!detailHidden && selected && monitorSide && (
+            {!detailHidden && selected && monitorAt === 'side' && (
                 <aside className="monitor-pane">
                     <SystemMonitor layout="side" servers={servers} />
                 </aside>
             )}
+            {selected && monitorAt === 'float' && <FloatingMonitor servers={servers} />}
         </div>
     );
 }

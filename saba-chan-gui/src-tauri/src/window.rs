@@ -515,6 +515,16 @@ fn popout(app: &AppHandle, instance_id: &str) -> Option<WebviewWindow> {
 pub fn open_popout(app: &AppHandle, instance_id: &str, server_name: &str) -> tauri::Result<Value> {
     if let Some(existing) = popout(app, instance_id) {
         let _ = existing.unminimize();
+        // 창이 있던 화면을 뽑았으면 보이는 곳으로 데려온다
+        let off_screen = existing
+            .outer_position()
+            .ok()
+            .zip(existing.scale_factor().ok())
+            .map(|(p, s)| p.to_logical::<f64>(s))
+            .is_some_and(|p| !grabbable_on(p.x, p.y, &screen_areas(app)));
+        if off_screen {
+            let _ = existing.center();
+        }
         let _ = existing.set_focus();
         return Ok(json!({ "ok": true, "message": "Focused existing window" }));
     }
@@ -532,8 +542,11 @@ pub fn open_popout(app: &AppHandle, instance_id: &str, server_name: &str) -> tau
         .min_inner_size(POPOUT_MIN.0, POPOUT_MIN.1)
         .background_color(background)
         .always_on_top(true);
+    // 기억한 자리가 지금 없는 화면(뽑은 보조 모니터)이면 쓰지 않고 OS 기본 자리에 연다
     if let (Some(x), Some(y)) = (saved["x"].as_f64(), saved["y"].as_f64()) {
-        builder = builder.position(x, y);
+        if grabbable_on(x, y, &screen_areas(app)) {
+            builder = builder.position(x, y);
+        }
     }
     let builder = crate::backdrop::prepare(app, &popout_label(instance_id), builder);
     let win = lock_navigation(app, frame(builder, POPOUT_BAR_HEIGHT)).build()?;
@@ -573,6 +586,25 @@ static POPOUT_SAVE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn popout_saved(settings: &Value, instance_id: &str) -> Value {
     settings[POPOUTS_KEY][instance_id].clone()
+}
+
+/// 화면마다 작업 영역 (논리 px: x, y, w, h)
+fn screen_areas(app: &AppHandle) -> Vec<(f64, f64, f64, f64)> {
+    app.available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| {
+            let (a, s) = (m.work_area(), m.scale_factor());
+            (a.position.x as f64 / s, a.position.y as f64 / s, a.size.width as f64 / s, a.size.height as f64 / s)
+        })
+        .collect()
+}
+
+/// 왼쪽 위가 (x, y)인 창의 상단바를 잡을 수 있는지: 상단바 안쪽 한 점이 어느 화면 작업 영역 안에 있으면 된다.
+/// 화면 목록을 못 읽었으면 막지 않는다
+fn grabbable_on(x: f64, y: f64, areas: &[(f64, f64, f64, f64)]) -> bool {
+    let (px, py) = (x + 48.0, y + 16.0);
+    areas.is_empty() || areas.iter().any(|&(ax, ay, aw, ah)| px >= ax && px < ax + aw && py >= ay && py < ay + ah)
 }
 
 /// 저장한 크기 (없거나 최소보다 작으면 처음 크기)
@@ -746,6 +778,16 @@ mod tests {
         }});
         assert_eq!(popouts_to_reopen(&settings), vec!["a".to_string()]);
         assert!(popouts_to_reopen(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn a_saved_spot_on_an_unplugged_screen_is_not_used() {
+        let screens = [(0.0, 0.0, 1920.0, 1040.0), (1920.0, 0.0, 2560.0, 1400.0)];
+        assert!(grabbable_on(100.0, 100.0, &screens));
+        assert!(grabbable_on(2500.0, 300.0, &screens), "보조 화면");
+        assert!(!grabbable_on(5000.0, 300.0, &screens), "뽑은 화면");
+        assert!(!grabbable_on(1900.0, -200.0, &screens), "상단바가 화면 위로 나감");
+        assert!(grabbable_on(5000.0, 300.0, &[]), "화면을 못 읽으면 막지 않는다");
     }
 
     #[test]

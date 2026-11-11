@@ -1,9 +1,11 @@
+import clsx from 'clsx';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ConsoleEntry } from '../../stores/useConsoleStore';
 import type { Server } from '../../stores/useServerStore';
 import type { HighlightRule } from '../../types/daemon';
 import type { CommandField } from '../../utils/commandRisk';
+import { STATUS_TONE } from '../../utils/serverView';
 import { Icon } from '../Icon';
 import { WindowControls } from '../shell/AppBar';
 import { ServerConsole } from './ServerConsole';
@@ -65,14 +67,17 @@ export function PopoutConsole({
     }, [popoutParams.instanceId]);
 
     const name = server?.name || popoutParams.name;
+    const status = server?.status || 'stopped';
 
     return (
         <div className="App console-popout-app">
             <header className="appbar console-popout-titlebar" data-tauri-drag-region>
                 <div className="pip-pill pip-title" data-tauri-drag-region>
                     <span
-                        className="pip-dot"
-                        data-status={server?.status || 'stopped'}
+                        className={clsx('pip-dot', `tone-${STATUS_TONE[status] ?? 'idle'}`, {
+                            pulse: status === 'starting' || status === 'stopping',
+                        })}
+                        data-status={status}
                         aria-hidden="true"
                         data-tauri-drag-region
                     />

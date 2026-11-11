@@ -1,13 +1,11 @@
-import clsx from 'clsx';
 import type { TFunction } from 'i18next';
 import type { ReactNode } from 'react';
-import { useEffect, useId, useState } from 'react';
-import ReactDOM from 'react-dom';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type Server, useServerStore } from '../../stores/useServerStore';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
-import { usePopover } from '../ui/DateTimePicker';
+import { Popover } from '../ui/Popover';
 import { SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
 
@@ -72,8 +70,7 @@ export function AccessMode({ server, children }: { server: Server; children?: Re
 /** 서버 공용의 자동 강퇴: 작은 단추(적은 수)를 누르면 팝업에서 닉네임을 넣고 뺀다. 적은 닉네임이 들어오면 내보낸다 */
 export function KickButton({ server }: { server: Server }) {
     const { t } = useTranslation('gui');
-    const popover = usePopover();
-    const panelId = useId();
+    const [open, setOpen] = useState(false);
     const [list, setList] = useState<string[]>(server.kick_players || []);
     const [name, setName] = useState('');
     const [busy, setBusy] = useState(false);
@@ -96,75 +93,64 @@ export function KickButton({ server }: { server: Server }) {
         if (await save([...list, trimmed])) setName('');
     };
     return (
-        <>
-            <button
-                ref={popover.triggerRef}
-                type="button"
-                className="btn btn-ghost btn-sm kick-btn"
-                onClick={() => (popover.shown ? popover.close() : popover.open())}
-                aria-haspopup="dialog"
-                aria-expanded={popover.shown}
-                aria-controls={popover.isOpen ? panelId : undefined}
-            >
-                <Icon name="x" size="sm" /> {t('kick.title')}
-                {list.length > 0 && <span className="kick-count">{list.length}</span>}
-            </button>
-            {popover.isOpen &&
-                ReactDOM.createPortal(
-                    <div
-                        {...popover.panelProps}
-                        className={clsx(popover.panelProps.className, 'kick-panel')}
-                        id={panelId}
-                        role="dialog"
-                        aria-label={t('kick.title')}
-                    >
-                        <p className="kick-panel-desc">{t('kick.desc')}</p>
-                        {!server.controllers_only_supported && <p className="kick-panel-desc">{t('kick.unsupported')}</p>}
-                        {list.length === 0 ? (
-                            <p className="muted">{t('kick.empty')}</p>
-                        ) : (
-                            <ul className="kick-panel-list">
-                                {list.map((n) => (
-                                    <li key={n}>
-                                        <strong>{n}</strong>
-                                        <button
-                                            type="button"
-                                            className="btn btn-ghost btn-sm"
-                                            disabled={busy}
-                                            aria-label={t('controllers.remove_named', { name: n })}
-                                            onClick={() => save(list.filter((x) => x !== n))}
-                                        >
-                                            {t('controllers.remove')}
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                        <form
-                            className="kick-panel-add"
-                            onSubmit={(e) => {
-                                e.preventDefault();
-                                add();
-                            }}
-                        >
-                            <input
-                                type="text"
-                                className="input"
-                                value={name}
-                                maxLength={64}
-                                placeholder={t('controllers.name_placeholder')}
-                                aria-label={t('kick.placeholder')}
-                                onChange={(e) => setName(e.target.value)}
-                            />
-                            <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !name.trim()}>
-                                {t('kick.add')}
+        <Popover
+            open={open}
+            onOpenChange={setOpen}
+            trigger={
+                <button type="button" className="btn btn-ghost btn-sm kick-btn">
+                    <Icon name="x" size="sm" /> {t('kick.title')}
+                    {list.length > 0 && <span className="kick-count">{list.length}</span>}
+                </button>
+            }
+            label={t('kick.title')}
+            className="kick-panel"
+            align="start"
+            sideOffset={4}
+        >
+            <p className="kick-panel-desc">{t('kick.desc')}</p>
+            {!server.controllers_only_supported && <p className="kick-panel-desc">{t('kick.unsupported')}</p>}
+            {list.length === 0 ? (
+                <p className="muted">{t('kick.empty')}</p>
+            ) : (
+                <ul className="kick-panel-list">
+                    {list.map((n) => (
+                        <li key={n}>
+                            <strong>{n}</strong>
+                            <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                disabled={busy}
+                                aria-label={t('controllers.remove_named', { name: n })}
+                                onClick={() => save(list.filter((x) => x !== n))}
+                            >
+                                {t('controllers.remove')}
                             </button>
-                        </form>
-                        <p className="kick-panel-desc muted">{t('controllers_only.hint')}</p>
-                    </div>,
-                    document.body,
-                )}
-        </>
+                        </li>
+                    ))}
+                </ul>
+            )}
+            <form
+                className="kick-panel-add"
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    add();
+                }}
+            >
+                <input
+                    type="text"
+                    className="input"
+                    value={name}
+                    maxLength={64}
+                    placeholder={t('controllers.name_placeholder')}
+                    aria-label={t('kick.placeholder')}
+                    onChange={(e) => setName(e.target.value)}
+                />
+                <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !name.trim()}>
+                    {t('kick.add')}
+                </button>
+            </form>
+            <p className="kick-panel-desc muted">{t('controllers_only.hint')}</p>
+        </Popover>
     );
 }
 

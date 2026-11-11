@@ -45,6 +45,7 @@ import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceW
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
 import { ServerConsole } from './ServerConsole';
+import { StartCoach } from './OnboardingCard';
 
 type ServerSetter = (updater: (prev: Server[]) => Server[]) => void;
 
@@ -225,13 +226,16 @@ export function ServerDetail({
                 </button>
             </>
         ) : (
-            <button
-                type="button"
-                className="btn btn-primary btn-lg"
-                onClick={() => onStart(server.name, server.module)}
-            >
-                <Icon name="play" size="sm" /> {t('shell.start')}
-            </button>
+            <span className="start-anchor">
+                <button
+                    type="button"
+                    className="btn btn-primary btn-lg"
+                    onClick={() => onStart(server.name, server.module)}
+                >
+                    <Icon name="play" size="sm" /> {t('shell.start')}
+                </button>
+                <StartCoach />
+            </span>
         );
     })();
 
@@ -357,7 +361,7 @@ export function ServerDetail({
                         <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} />
                         {findable && <PageFindButton />}
                         {activeTab === 'console' && !poppedOut && typeof window.api?.consolePopout === 'function' && (
-                            <button type="button" className="btn btn-secondary detail-pip-btn" onClick={popoutConsole}>
+                            <button type="button" className="btn btn-ghost detail-pip-btn" onClick={popoutConsole}>
                                 <Icon name="pictureInPicture" size={15} />
                                 {t('console.popout')}
                             </button>

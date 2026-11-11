@@ -10,6 +10,7 @@ import type { Server } from '../../stores/useServerStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { AddInstanceNewServer } from './AddInstanceNewServer';
 import { AddInstanceMigration } from './AddInstanceMigration';
+import { useGuideStore } from '../guides/guides';
 import './Modals.css';
 import type { AddServerPayload } from '../../hooks/useServerActions';
 
@@ -71,6 +72,13 @@ export function AddInstanceModal({
             onRefreshextensions();
         }
     }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // 가이드에서 "쓰던 서버 불러오기"·"새 서버 만들기"로 열었으면 고르기 화면을 건너뛴다
+    useEffect(() => {
+        if (!isOpen) return;
+        const requested = useGuideStore.getState().takeAddServerMode();
+        if (requested) setMode(requested);
+    }, [isOpen]);
 
     // ── 높이 애니메이션 ──
     const contentRef = useRef<HTMLDivElement>(null);

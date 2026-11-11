@@ -186,7 +186,10 @@ pub fn notices(folder: &Path) -> Vec<&'static str> {
         out.push("folder_not_writable");
     }
     let me = std::process::id();
-    if crate::process_monitor::get_running_processes().iter().any(|p| p.pid != me && crate::process_monitor::runs_from(p, folder)) {
+    // 프로세스 경로는 실제 경로로 온다 (macOS의 /var → /private/var 같은 링크): 고른 경로와 실제 경로를 둘 다 본다
+    let real = folder.canonicalize().ok();
+    let roots: Vec<&Path> = std::iter::once(folder).chain(real.as_deref()).collect();
+    if crate::process_monitor::get_running_processes().iter().any(|p| p.pid != me && roots.iter().any(|r| crate::process_monitor::runs_from(p, r))) {
         out.push("server_running");
     }
     out

@@ -44,8 +44,6 @@
 :root[data-backdrop="on"] .notice-modal-container,
 :root[data-backdrop="on"] .context-menu,
 :root[data-backdrop="on"] .custom-dropdown-menu,
-:root[data-backdrop="on"] .dtp-panel,
-:root[data-backdrop="on"] .oklch-pop,
 :root[data-backdrop="on"] .toast,
 :root[data-backdrop="on"] .saba-bubble-body,
 :root[data-backdrop="on"] .saba-tooltip,
@@ -53,6 +51,9 @@
 :root[data-backdrop="on"] .saba-popover:not(.bare),
 :root[data-backdrop="on"] .saba-dialog,
 :root[data-backdrop="on"] .saba-savebar,
+:root[data-backdrop="on"] .monitor-float,
+:root[data-backdrop="on"] .page-empty .onboarding-card,
+:root[data-backdrop="on"] .start-coach,
 :root[data-backdrop="on"] .term-popped-card {
     -webkit-backdrop-filter: var(--glass-blur);
     backdrop-filter: var(--glass-blur);
