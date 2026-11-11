@@ -91,7 +91,8 @@ export interface PendingChange {
     revert: () => void;
 }
 
-type Register = (id: string, change: PendingChange | null) => void;
+/** change가 null이면 뺀다. only를 주면 그 항목이 아직 등록돼 있을 때만 뺀다 */
+type Register = (id: string, change: PendingChange | null, only?: PendingChange) => void;
 const PendingContext = createContext<Register | null>(null);
 /** 저장하지 않은 입력 초안: 칸이 사라졌다 다시 그려져도(탭 전환) 남도록 막대 자리가 쥔다 */
 interface Drafts {
@@ -116,10 +117,10 @@ export function SaveBarHost({ children, className }: { children: ReactNode; clas
         });
     }, []);
     const [saving, setSaving] = useState(false);
-    const register = useCallback<Register>((id, change) => {
+    const register = useCallback<Register>((id, change, only) => {
         setItems((prev) => {
             if (change) return { ...prev, [id]: change };
-            if (!(id in prev)) return prev;
+            if (!(id in prev) || (only && prev[id] !== only)) return prev;
             const { [id]: _gone, ...rest } = prev;
             return rest;
         });
@@ -167,18 +168,21 @@ export function usePendingChange(id: string, change: PendingChange) {
     useEffect(
         () => () => {
             const last = latest.current;
-            if (!last.dirty) return register?.(id, null);
-            register?.(id, {
+            if (!register) return;
+            if (!last.dirty) return register(id, null);
+            // 그 사이 칸이 다시 그려져 새로 등록했으면 그 등록은 두고 이 항목만 뺀다
+            const orphan: PendingChange = {
                 dirty: true,
                 blocked: last.blocked,
                 save: async () => {
-                    if ((await last.save()) !== false) register(id, null);
+                    if ((await last.save()) !== false) register(id, null, orphan);
                 },
                 revert: () => {
                     last.revert();
-                    register(id, null);
+                    register(id, null, orphan);
                 },
-            });
+            };
+            register(id, orphan);
         },
         [register, id],
     );
