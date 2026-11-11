@@ -79,4 +79,17 @@ describe('usePopoutLifecycle (PIP 기억)', () => {
         finish({ ok: true });
         await waitFor(() => expect(popout).toHaveBeenCalledWith('a', 'A'));
     });
+
+    it('기억 목록을 받는 사이 서버 시작이 실패하면 PIP를 띄우지 않는다', async () => {
+        let answer: (v: string[]) => void = () => {};
+        (window.api as unknown as Record<string, unknown>).consolePopoutSaved = vi.fn(
+            () => new Promise<string[]>((r) => (answer = r)),
+        );
+        const h = run([{ id: 'a', name: 'A', status: 'stopped' }], []);
+        h.rerender({ servers: [{ id: 'a', name: 'A', status: 'starting' }], popoutIds: [] });
+        h.rerender({ servers: [{ id: 'a', name: 'A', status: 'stopped' }], popoutIds: [] });
+        answer(['a']);
+        await new Promise((r) => setTimeout(r, 20));
+        expect(popout).not.toHaveBeenCalled();
+    });
 });
