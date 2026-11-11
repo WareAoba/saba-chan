@@ -174,7 +174,7 @@ pub(crate) fn judge(
         }
     }
     // 이름으로 서버를 찾는 클라이언트가 있어 같은 이름은 둘 두지 않는다
-    if existing.iter().any(|e| e.id != incoming.id && e.name == incoming.name) {
+    if existing.iter().any(|e| e.id != incoming.id && crate::chat::words::same(&e.name, &incoming.name)) {
         return Verdict::Skip("name_taken");
     }
     match same {
@@ -632,5 +632,7 @@ mod tests {
         let mut same_name = inst("d", Some("/srv/d"));
         same_name.name = "a".into();
         assert_eq!(judge(&same_name, &existing, &running, false), Verdict::Skip("name_taken"), "two servers with one name are told apart by name");
+        same_name.name = "A".into();
+        assert_eq!(judge(&same_name, &existing, &running, false), Verdict::Skip("name_taken"), "chat finds servers by name ignoring case");
     }
 }
