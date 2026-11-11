@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { type MouseEvent, useCallback, useEffect, useState } from 'react';
+import { type MouseEvent, useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { subscribeDaemonEvents } from '../../utils/daemonEvents';
 import {
@@ -154,30 +154,49 @@ export function PortCheck({ server }: { server: Server }) {
     );
 }
 
+// 닫기 (사용자 11-07): 같은 결과는 이번 실행 동안 다시 띄우지 않는다. 결과가 바뀌면 다시 뜬다.
+// 접속 주소 상자도 이 값을 본다: 안내가 떠 있는 동안은 상자에 같은 판정을 다시 쓰지 않는다 (사용자 11-12)
+const dismissListeners = new Set<() => void>();
+const dismissKey = (serverId: string) => `saba.portNoticeDismissed.${serverId}`;
+const readDismissed = (serverId: string) => {
+    try {
+        return sessionStorage.getItem(dismissKey(serverId)) || '';
+    } catch {
+        return '';
+    }
+};
+const noticeReportKey = (report: PortCheckResult | null) =>
+    report ? JSON.stringify([report.verdict, report.address, report.ports]) : '';
+
+/** 상단 안내가 이 결과를 보이고 있는가 (닫지 않았고 손볼 것이 있다) */
+export function usePortNoticeShown(serverId: string, report: PortCheckResult | null) {
+    const dismissed = useSyncExternalStore(
+        (cb) => {
+            dismissListeners.add(cb);
+            return () => dismissListeners.delete(cb);
+        },
+        () => readDismissed(serverId),
+    );
+    const shown =
+        !!report && portCheckAvailable() && portCheckNeedsAttention(report) && dismissed !== noticeReportKey(report);
+    const dismiss = () => {
+        try {
+            sessionStorage.setItem(dismissKey(serverId), noticeReportKey(report));
+        } catch {
+            // 저장 못 하면 닫히지 않는다
+        }
+        for (const cb of dismissListeners) cb();
+    };
+    return [shown, dismiss] as const;
+}
+
 /** 상세 머리 아래: 확인에서 닿지 않는다고 나왔으면 알린다. 고친 뒤 바로 다시 확인할 수 있다 */
 export function PortCheckNotice({ server }: { server: Server }) {
     const { t } = useTranslation('gui');
     const [report, setReport] = useLastPortCheck(server.id);
     const { run, running, error } = usePortCheckRun(server.id, setReport);
-    // 닫기 (사용자 11-07): 같은 결과는 이번 실행 동안 다시 띄우지 않는다. 결과가 바뀌면 다시 뜬다
-    const storeKey = `saba.portNoticeDismissed.${server.id}`;
-    const reportKey = report ? JSON.stringify([report.verdict, report.address, report.ports]) : '';
-    const [dismissed, setDismissed] = useState(() => {
-        try {
-            return sessionStorage.getItem(storeKey) || '';
-        } catch {
-            return '';
-        }
-    });
-    if (!report || !portCheckAvailable() || !portCheckNeedsAttention(report) || dismissed === reportKey) return null;
-    const dismiss = () => {
-        setDismissed(reportKey);
-        try {
-            sessionStorage.setItem(storeKey, reportKey);
-        } catch {
-            // 저장 못 해도 지금 화면에서는 닫힌다
-        }
-    };
+    const [shown, dismiss] = usePortNoticeShown(server.id, report);
+    if (!report || !shown) return null;
     return (
         <div className="notice tone-warn port-check-notice" role="status">
             <Icon name="globe" size="sm" />

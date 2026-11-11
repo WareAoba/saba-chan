@@ -6,7 +6,7 @@ import { subscribeDaemonEvents } from '../../utils/daemonEvents';
 import { portCheckShown } from '../../utils/portCheck';
 import type { Server } from '../../stores/useServerStore';
 import { Icon } from '../Icon';
-import { useLastPortCheck } from './PortCheck';
+import { useLastPortCheck, usePortNoticeShown } from './PortCheck';
 
 /** 공인 IP 가리기 (방송 화면용, 이 PC의 이 앱에서만 기억한다) */
 const HIDE_KEY = 'saba.hideServerIp';
@@ -34,6 +34,8 @@ export function ServerAddress({ server }: { server: Server }) {
     const [hidden, setHidden] = useState(readHidden);
     const [copied, setCopied] = useState<string | null>(null);
     const [report] = useLastPortCheck(server.id);
+    // 상단 안내가 같은 판정을 말하고 있으면 여기서는 쓰지 않는다
+    const [noticeShown] = usePortNoticeShown(server.id, report);
 
     const load = useCallback(async () => {
         if (typeof window.api?.instanceAddress !== 'function') return;
@@ -109,7 +111,7 @@ export function ServerAddress({ server }: { server: Server }) {
                     );
                 })}
             <div className="server-address-sub">
-                {report && portCheckShown(report) && (
+                {report && portCheckShown(report) && !noticeShown && (
                     <span className={clsx('server-address-check', `verdict-${report.verdict}`)}>
                         {t(`port_check.verdict.${report.verdict}`)}
                     </span>

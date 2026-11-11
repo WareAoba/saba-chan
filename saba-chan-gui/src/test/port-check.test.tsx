@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';
 import { PortCheck, PortCheckNotice } from '../components/servers/PortCheck';
+import { ServerAddress } from '../components/servers/ServerAddress';
 import type { Server } from '../stores/useServerStore';
 import { portHelpUrl } from '../utils/portCheck';
 
@@ -144,6 +145,31 @@ describe('포트포워딩 안내 닫기', () => {
         window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'firewall' });
         render(<PortCheckNotice server={server} />);
         expect(await screen.findByRole('status')).toBeInTheDocument();
+        sessionStorage.clear();
+    });
+});
+
+// 접속 주소 상자와 상단 안내가 같은 판정을 두 번 말하지 않는다 (사용자 11-12). 안내를 닫으면 상자에 판정이 남는다
+describe('접속 주소 상자의 판정 표시', () => {
+    it('상단 안내가 떠 있으면 상자에는 판정을 다시 쓰지 않고, 닫으면 상자에 남긴다', async () => {
+        sessionStorage.clear();
+        window.api = {
+            instancePortCheck: vi.fn(),
+            instancePortCheckLast: vi.fn().mockResolvedValue({ ...closedReport, verdict: 'router', checkedAt: '2026-11-12T00:00:00Z' }),
+            instanceAddress: vi.fn().mockResolvedValue({ address: '8.8.4.4', running: false, ports: [{ field: 'port', port: 7777 }] }),
+        } as never;
+        render(
+            <>
+                <ServerAddress server={server} />
+                <PortCheckNotice server={server} />
+            </>,
+        );
+        await screen.findByRole('status');
+        const verdict = /Port forwarding is not set up on the router/;
+        expect(screen.getAllByText(verdict)).toHaveLength(1);
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Close' })));
+        expect(screen.queryByRole('status')).toBeNull();
+        expect(screen.getAllByText(verdict)).toHaveLength(1);
         sessionStorage.clear();
     });
 });
