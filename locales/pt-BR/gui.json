@@ -2097,6 +2097,7 @@
     "module_update": "{{name}}: saiu a versão {{version}} do módulo {{module}}.",
     "server_update": "{{name}}: saiu uma nova versão do servidor do jogo. Se não der para entrar, atualize o servidor.",
     "server_update_waiting": "{{name}}: há uma nova versão do servidor de jogo, mas {{count}} jogador(es) estão online, então a atualização automática está aguardando.",
+    "server_update_waiting_unknown": "{{name}}: há uma nova versão do servidor de jogo, mas há jogadores online, então a atualização automática está aguardando.",
     "server_update_failed": "{{name}}: não foi possível atualizar o servidor de jogo. {{error}}",
     "server_update_apply_failed": "{{name}}: não foi possível iniciar a atualização. {{error}}",
     "server_update_scheduled": "{{name}}: os jogadores foram avisados no jogo. A atualização começa em {{minutes}} min.",

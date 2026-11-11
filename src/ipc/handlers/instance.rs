@@ -2486,8 +2486,19 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
 /// `server.check_update` hook 결과를 확인 답으로: 첫 성공 결과, 모두 실패했으면 확인 실패(`check_failed`),
 /// hook이 없거나 모두 condition 불일치면 `no_hook_handled`
 fn update_status_from_hooks(results: Vec<(String, anyhow::Result<Value>)>) -> Value {
-    if let Some(val) = results.iter().find_map(|(_, result)| result.as_ref().ok()) {
+    // 익스텐션의 정식 실패(`{success:false}`, 예외·격리 실행 실패도 이 모양으로 온다)는 답이 아니라 실패다
+    let refused = |v: &Value| v.get("success").and_then(Value::as_bool) == Some(false);
+    if let Some(val) = results.iter().find_map(|(_, result)| result.as_ref().ok().filter(|v| !refused(v))) {
         return val.clone();
+    }
+    if let Some(val) = results.iter().find_map(|(_, result)| result.as_ref().ok()) {
+        let mut failure = val.clone();
+        failure["update_available"] = json!(false);
+        failure["reason"] = json!("check_failed");
+        if failure.get("error").and_then(Value::as_str).is_none() {
+            failure["error"] = json!("update check failed");
+        }
+        return failure;
     }
     // 모두 실패했으면 그 오류를 구조화해 돌려준다. 화면이 "업데이트 없음"과 구분하도록 이유를 붙인다
     if let Some(error) = results.iter().find_map(|(_, result)| result.as_ref().err()) {
@@ -2544,15 +2555,13 @@ pub(crate) async fn emit_update_failed(state: &IPCServer, id: &str, error: &str)
     crate::events::emit("instance.update_failed", json!({ "instanceId": id, "instance": name, "error": error }));
 }
 
-/// 업데이트를 백그라운드로 시작한다. 작업은 성공 여부를 돌려준다 (예약 업데이트가 기다린다)
+/// 이 인스턴스를 `apply-update`로 업데이트할 수 있는가: 있고, 모듈에 설치 설정이 있고, 설치 방식 익스텐션이 설치했다.
+/// 켜진 서버의 업데이트는 예고·정지 전에 이것부터 본다 (업데이트할 수 없는 서버를 끄지 않게)
 #[allow(clippy::result_large_err)]
-pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
-    // 업데이트가 끝날 때까지 시작·복원·삭제를 막는다 (작업 안으로 넘긴다)
-    let Some(guard) = super::backup::InstanceLock::take_for_writes(id).await.map(|g| g.purpose(super::backup::Purpose::ServerUpdate)) else {
-        return Err(super::backup::instance_busy());
-    };
-    let supervisor = state.supervisor.read().await;
-
+pub(crate) fn updatable(
+    supervisor: &crate::supervisor::Supervisor,
+    id: &str,
+) -> Result<(crate::instance::ServerInstance, crate::supervisor::module_loader::ModuleInstallConfig), axum::response::Response> {
     let instance = match supervisor.instance_store.get(id) {
         Some(inst) => inst.clone(),
         None => {
@@ -2566,18 +2575,6 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                 .into_response());
         }
     };
-
-    // 실행 중이면 업데이트 불가
-    if supervisor.is_running(id).await {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({
-                "error": "Cannot update while server is running. Stop the server first.",
-                "error_code": "server_running",
-            })),
-        )
-            .into_response());
-    }
 
     // 모듈에서 install config 가져오기
     let module_info = supervisor
@@ -2608,6 +2605,33 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
             Json(json!({
                 "error": "Only instances installed by an install-method extension can be updated this way.",
                 "error_code": "update_unsupported",
+            })),
+        )
+            .into_response());
+    }
+
+    Ok((instance, install_config))
+}
+
+/// 업데이트를 백그라운드로 시작한다. 작업은 성공 여부를 돌려준다 (예약 업데이트가 기다린다)
+#[allow(clippy::result_large_err)]
+pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
+    // 업데이트가 끝날 때까지 시작·복원·삭제를 막는다 (작업 안으로 넘긴다)
+    let Some(guard) = super::backup::InstanceLock::take_for_writes(id).await.map(|g| g.purpose(super::backup::Purpose::ServerUpdate)) else {
+        return Err(super::backup::instance_busy());
+    };
+    let supervisor = state.supervisor.read().await;
+
+    let (instance, install_config) = updatable(&supervisor, id)?;
+    let method = install_config.method.clone();
+
+    // 실행 중이면 업데이트 불가
+    if supervisor.is_running(id).await {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "Cannot update while server is running. Stop the server first.",
+                "error_code": "server_running",
             })),
         )
             .into_response());
@@ -4914,5 +4938,15 @@ mod tests {
         ]);
         assert_eq!(answered, json!({"update_available": true}));
         assert_eq!(super::update_status_from_hooks(vec![])["reason"], json!("no_hook_handled"));
+        // 익스텐션이 정식 실패 형식({success:false})으로 답해도 확인 실패다. 다른 hook의 성공한 답이 우선
+        let refused = super::update_status_from_hooks(vec![("steamcmd".into(), Ok(json!({"success": false, "error": "sandbox blocked"})))]);
+        assert_eq!(refused["reason"], json!("check_failed"));
+        assert_eq!(refused["update_available"], json!(false));
+        assert_eq!(refused["error"], json!("sandbox blocked"));
+        let mixed = super::update_status_from_hooks(vec![
+            ("a".into(), Ok(json!({"success": false, "error": "x"}))),
+            ("steamcmd".into(), Ok(json!({"update_available": false, "local_buildid": "1"}))),
+        ]);
+        assert_eq!(mixed, json!({"update_available": false, "local_buildid": "1"}));
     }
 }

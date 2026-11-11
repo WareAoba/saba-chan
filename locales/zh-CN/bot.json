@@ -121,6 +121,7 @@
   "schedule": {
     "restart_warning": "服务器将在 {{minutes}} 分钟后重启。",
     "update_warning": "服务器将在 {{minutes}} 分钟后重启以进行更新。",
+    "update_cancelled": "已取消计划的更新，服务器继续运行。",
     "stop_warning": "服务器将在 {{minutes}} 分钟后停止。"
   },
   "provision": {
@@ -264,6 +265,11 @@
           "title": "更新游戏服务器",
           "name": "更新",
           "description": "更新游戏服务器。运行中时会在游戏内提前 5 分钟通知，停止、更新后再启动"
+        },
+        "cancel": {
+          "title": "取消预告中的更新",
+          "name": "取消更新",
+          "description": "取消仍在预告中的游戏服务器更新（停止服务器之前）"
         }
       },
       "diagnose": {
@@ -473,6 +479,7 @@
         "check_failed": "无法检查更新：{{error}}",
         "unsupported": "Saba-chan 不会更新此服务器（手动安装的服务器）。",
         "started": "已开始更新，完成后会通知你。",
+        "cancelled": "已取消预告中的更新，服务器继续运行。",
         "scheduled": "将在游戏内提前 {{minutes}} 分钟通知，然后保存、停止、更新并重新启动。",
         "players": "当前有 {{count}} 人在线。"
       }

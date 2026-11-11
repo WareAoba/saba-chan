@@ -2097,6 +2097,7 @@
     "module_update": "{{name}}：{{module}} 模块的新版本 {{version}} 已发布。",
     "server_update": "{{name}}：游戏服务器有新版本。如果玩家无法连接，请更新服务器。",
     "server_update_waiting": "{{name}}：游戏服务器有新版本，但有 {{count}} 人在线，自动更新正在等待。",
+    "server_update_waiting_unknown": "{{name}}：游戏服务器有新版本，但有人在线，自动更新正在等待。",
     "server_update_failed": "{{name}}：无法更新游戏服务器。{{error}}",
     "server_update_apply_failed": "{{name}}：无法开始更新。{{error}}",
     "server_update_scheduled": "{{name}}：已在游戏内预告，{{minutes}} 分钟后更新。",

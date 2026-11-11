@@ -121,6 +121,7 @@
   "schedule": {
     "restart_warning": "El servidor se reiniciará en {{minutes}} min.",
     "update_warning": "El servidor se reiniciará para actualizarse en {{minutes}} min.",
+    "update_cancelled": "Se canceló la actualización prevista. El servidor sigue encendido.",
     "stop_warning": "El servidor se detendrá en {{minutes}} min."
   },
   "provision": {
@@ -264,6 +265,11 @@
           "title": "Actualizar servidor de juego",
           "name": "Actualizar",
           "description": "Actualiza el servidor de juego. Si está encendido, avisa en el juego 5 minutos antes, lo detiene, lo actualiza y lo vuelve a iniciar"
+        },
+        "cancel": {
+          "title": "Cancelar la actualización prevista",
+          "name": "cancelar-actualizacion",
+          "description": "Cancela una actualización del servidor de juego que aún está en aviso (antes de detenerlo)"
         }
       },
       "diagnose": {
@@ -473,6 +479,7 @@
         "check_failed": "No se pudo comprobar la actualización: {{error}}",
         "unsupported": "Saba-chan no actualiza este servidor (instalado a mano).",
         "started": "La actualización ha empezado. Te aviso cuando termine.",
+        "cancelled": "Se canceló la actualización anunciada. El servidor sigue encendido.",
         "scheduled": "Avisaré en el juego {{minutes}} minutos antes; luego guardaré, detendré, actualizaré y volveré a iniciarlo.",
         "players": "Ahora hay {{count}} jugadores conectados."
       }

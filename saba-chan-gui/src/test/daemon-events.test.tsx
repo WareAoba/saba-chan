@@ -248,6 +248,13 @@ describe('데몬 이벤트 스트림', () => {
                 dedup: true,
             }),
         );
+        // 접속자를 셀 수 없으면(players: null) 수 없이
+        await stream.emit({ id: 4, type: 'instance.update_waiting', data: { instanceId: 'i', instance: 'Pal', players: null } });
+        expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                message: '🔔 Pal: a new game server version is out, but players are online, so auto-update is waiting.',
+            }),
+        );
         await stream.emit({ id: 3, type: 'instance.update_failed', data: { instanceId: 'i', instance: 'Pal', error: 'disk full' } });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
             expect.objectContaining({ message: "⚠️ Pal: couldn't update the game server. disk full", type: 'error' }),

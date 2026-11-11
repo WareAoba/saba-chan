@@ -121,6 +121,7 @@
   "schedule": {
     "restart_warning": "The server restarts in {{minutes}} min.",
     "update_warning": "The server restarts for an update in {{minutes}} min.",
+    "update_cancelled": "The planned update was cancelled. The server stays on.",
     "stop_warning": "The server stops in {{minutes}} min."
   },
   "provision": {
@@ -264,6 +265,11 @@
           "title": "Update game server",
           "name": "Update",
           "description": "Updates the game server. If it is running, warns in game 5 minutes ahead, stops, updates and starts it again"
+        },
+        "cancel": {
+          "title": "Cancel the planned update",
+          "name": "update-cancel",
+          "description": "Cancel a game server update that is still in its warning (before the server stops)"
         }
       },
       "diagnose": {
@@ -473,6 +479,7 @@
         "check_failed": "Couldn't check for an update: {{error}}",
         "unsupported": "Saba-chan doesn't update this server (installed by hand).",
         "started": "The update has started. I'll let you know when it's done.",
+        "cancelled": "Cancelled the planned update. The server stays on.",
         "scheduled": "I'll warn in game {{minutes}} minutes ahead, then save, stop, update and start it again.",
         "players": "{{count}} players are online now."
       }

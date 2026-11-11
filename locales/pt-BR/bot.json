@@ -121,6 +121,7 @@
   "schedule": {
     "restart_warning": "O servidor será reiniciado em {{minutes}} min.",
     "update_warning": "O servidor será reiniciado para atualização em {{minutes}} min.",
+    "update_cancelled": "A atualização prevista foi cancelada. O servidor continua ligado.",
     "stop_warning": "O servidor será desligado em {{minutes}} min."
   },
   "provision": {
@@ -264,6 +265,11 @@
           "title": "Atualizar servidor de jogo",
           "name": "Atualizar",
           "description": "Atualiza o servidor de jogo. Se estiver ligado, avisa no jogo 5 minutos antes, para, atualiza e liga de novo"
+        },
+        "cancel": {
+          "title": "Cancelar a atualização prevista",
+          "name": "cancelar-atualizacao",
+          "description": "Cancela uma atualização do servidor de jogo que ainda está no aviso (antes de desligar)"
         }
       },
       "diagnose": {
@@ -473,6 +479,7 @@
         "check_failed": "Não foi possível verificar a atualização: {{error}}",
         "unsupported": "O Saba-chan não atualiza este servidor (instalado manualmente).",
         "started": "A atualização começou. Aviso quando terminar.",
+        "cancelled": "A atualização anunciada foi cancelada. O servidor continua ligado.",
         "scheduled": "Vou avisar no jogo {{minutes}} minutos antes; depois salvo, paro, atualizo e ligo de novo.",
         "players": "{{count}} jogadores estão online agora."
       }

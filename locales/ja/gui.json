@@ -2097,6 +2097,7 @@
     "module_update": "{{name}}: {{module}} モジュールの新しいバージョン {{version}} が出ました。",
     "server_update": "{{name}}: ゲームサーバーの新しいバージョンが出ました。接続できない場合はサーバーをアップデートしてください。",
     "server_update_waiting": "{{name}}: ゲームサーバーの新しいバージョンが出ましたが、{{count}}人が接続中のため自動更新を待っています。",
+    "server_update_waiting_unknown": "{{name}}: ゲームサーバーの新しいバージョンが出ましたが、接続者がいるため自動更新を待っています。",
     "server_update_failed": "{{name}}: ゲームサーバーを更新できませんでした。{{error}}",
     "server_update_apply_failed": "{{name}}: 更新を開始できませんでした。{{error}}",
     "server_update_scheduled": "{{name}}: ゲーム内に予告しました。{{minutes}}分後に更新します。",

@@ -2097,6 +2097,7 @@
     "module_update": "{{name}}: {{module}} 모듈의 새 버전 {{version}}이(가) 나왔어요.",
     "server_update": "{{name}}: 게임 서버의 새 버전이 나왔어요. 접속이 막히면 서버를 업데이트해 주세요.",
     "server_update_waiting": "{{name}}: 게임 서버의 새 버전이 나왔지만 {{count}}명이 접속해 있어 자동 업데이트를 기다리고 있어요.",
+    "server_update_waiting_unknown": "{{name}}: 게임 서버의 새 버전이 나왔지만 접속자가 있어 자동 업데이트를 기다리고 있어요.",
     "server_update_failed": "{{name}}: 게임 서버를 업데이트하지 못했어요. {{error}}",
     "server_update_apply_failed": "{{name}}: 업데이트를 시작하지 못했어요. {{error}}",
     "server_update_scheduled": "{{name}}: 게임 안에 예고했어요. {{minutes}}분 뒤 업데이트해요.",

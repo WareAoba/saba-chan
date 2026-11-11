@@ -1604,6 +1604,7 @@ async fn an_mcp_owner_reaches_what_the_app_screens_do() {
         "extension.install",
         "server.update.check",
         "server.update.apply",
+        "server.update.cancel",
         "server.diagnose",
         "server.console.send",
         "backup.delete",

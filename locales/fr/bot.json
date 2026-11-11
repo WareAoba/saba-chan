@@ -121,6 +121,7 @@
   "schedule": {
     "restart_warning": "Le serveur redémarre dans {{minutes}} min.",
     "update_warning": "Le serveur redémarre pour une mise à jour dans {{minutes}} min.",
+    "update_cancelled": "La mise à jour prévue a été annulée. Le serveur reste allumé.",
     "stop_warning": "Le serveur s'arrête dans {{minutes}} min."
   },
   "provision": {
@@ -264,6 +265,11 @@
           "title": "Mettre à jour le serveur de jeu",
           "name": "Mettre à jour",
           "description": "Met à jour le serveur de jeu. S’il tourne, prévient en jeu 5 minutes avant, l’arrête, le met à jour et le relance"
+        },
+        "cancel": {
+          "title": "Annuler la mise à jour prévue",
+          "name": "annuler-mise-a-jour",
+          "description": "Annule une mise à jour du serveur de jeu encore en préavis (avant l'arrêt du serveur)"
         }
       },
       "diagnose": {
@@ -473,6 +479,7 @@
         "check_failed": "Impossible de vérifier la mise à jour : {{error}}",
         "unsupported": "Saba-chan ne met pas à jour ce serveur (installé à la main).",
         "started": "La mise à jour a commencé. Je vous préviens quand c'est fini.",
+        "cancelled": "La mise à jour annoncée a été annulée. Le serveur reste allumé.",
         "scheduled": "Je préviens en jeu {{minutes}} minutes avant, puis j'enregistre, j'arrête, je mets à jour et je relance.",
         "players": "{{count}} joueurs sont connectés."
       }

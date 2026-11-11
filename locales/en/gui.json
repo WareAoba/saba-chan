@@ -2097,6 +2097,7 @@
     "module_update": "{{name}}: a new version {{version}} of the {{module}} module is out.",
     "server_update": "{{name}}: a new game server version is out. If players can't join, update the server.",
     "server_update_waiting": "{{name}}: a new game server version is out, but {{count}} player(s) are online, so auto-update is waiting.",
+    "server_update_waiting_unknown": "{{name}}: a new game server version is out, but players are online, so auto-update is waiting.",
     "server_update_failed": "{{name}}: couldn't update the game server. {{error}}",
     "server_update_apply_failed": "{{name}}: couldn't start the update. {{error}}",
     "server_update_scheduled": "{{name}}: warned players in game. The update starts in {{minutes}} min.",

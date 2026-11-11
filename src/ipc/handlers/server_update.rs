@@ -84,15 +84,57 @@ pub async fn begin_restart_update(state: &IPCServer, id: &str, warn_minutes: u32
             "An update of this server is already under way",
         ));
     };
+    let token = tokio_util::sync::CancellationToken::new();
+    warnings().lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), token.clone());
     let (state, id) = (state.clone(), id.to_string());
     crate::audit::spawn(async move {
         let _mark = mark;
-        if !warn(&state, &id, warn_minutes).await {
+        let go = tokio::select! {
+            go = warn(&state, &id, warn_minutes) => go,
+            _ = token.cancelled() => false,
+        };
+        // 여기부터는 취소할 수 없다 (끄기 시작)
+        warnings().lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+        if token.is_cancelled() {
+            let catalog = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
+            if super::backup::is_running(&state, &id).await {
+                super::backup::announce(&state, &id, &catalog.t("schedule.update_cancelled", &[])).await;
+            }
+            tracing::info!("Update of '{}' was cancelled during the warning", id);
             return;
         }
-        stop_update_start(&state, &id).await;
+        if go {
+            stop_update_start(&state, &id).await;
+        }
     });
     Ok(())
+}
+
+/// 예고 중인 켜진 서버 업데이트 (취소할 수 있는 동안만 있다)
+fn warnings() -> &'static Mutex<HashMap<String, tokio_util::sync::CancellationToken>> {
+    static WARNINGS: OnceLock<Mutex<HashMap<String, tokio_util::sync::CancellationToken>>> = OnceLock::new();
+    WARNINGS.get_or_init(Default::default)
+}
+
+/// `DELETE /api/instance/:id/apply-update`: 예고 중인 업데이트를 취소한다. 서버는 그대로 둔다(게임 안에 취소를 알린다).
+/// 이미 끄기·업데이트를 시작했으면 409 `update_not_cancellable`, 걸린 업데이트가 없으면 404 `no_pending_update`
+pub async fn cancel_server_update(
+    axum::extract::Path(id): axum::extract::Path<String>,
+    axum::extract::State(_state): axum::extract::State<IPCServer>,
+) -> Response {
+    let token = warnings().lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+    match token {
+        Some(token) => {
+            token.cancel();
+            (StatusCode::OK, Json(json!({ "success": true, "id": id, "cancelled": true }))).into_response()
+        }
+        None if is_pending(&id) => error(
+            StatusCode::CONFLICT,
+            "update_not_cancellable",
+            "The update is already stopping or updating the server",
+        ),
+        None => error(StatusCode::NOT_FOUND, "no_pending_update", "No update of this server is waiting"),
+    }
 }
 
 /// 예고 시각마다 게임 안에 알린다. 그 사이 서버가 꺼졌어도 업데이트는 이어 간다(다시 켜지는 않는다). 인스턴스가 지워졌으면 false
@@ -183,6 +225,32 @@ struct Watch {
     waiting: bool,
     /// 기다린다고 알렸다. 기다림 하나에 한 번만 알린다
     notified: bool,
+    /// 마지막 확인에서 본 새 빌드 (`remote_buildid`)
+    remote: Option<String>,
+}
+
+/// 자동 업데이트가 실패한 새 빌드 (인스턴스별). 같은 빌드는 다시 시도하지 않는다:
+/// 3시간마다 끄기 → 실패 → 다시 켜기와 실패 알림이 되풀이되지 않게. 더 새 빌드가 나오거나 데몬이 다시 켜지면 다시 시도한다
+fn failed_builds() -> &'static Mutex<HashMap<String, String>> {
+    static FAILED: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    FAILED.get_or_init(Default::default)
+}
+
+fn failed_before(id: &str, remote: &str) -> bool {
+    failed_builds().lock().unwrap_or_else(|e| e.into_inner()).get(id).is_some_and(|b| b == remote)
+}
+
+/// 자동 업데이트 결과를 남긴다: 실패면 그 빌드를 기억하고, 성공이면 지운다
+fn record_auto_result(id: &str, remote: Option<&str>, updated: bool) {
+    let mut failed = failed_builds().lock().unwrap_or_else(|e| e.into_inner());
+    match (updated, remote) {
+        (false, Some(remote)) => {
+            failed.insert(id.to_string(), remote.to_string());
+        }
+        _ => {
+            failed.remove(id);
+        }
+    }
 }
 
 /// 인스턴스별 자동 업데이트 (`auto_update`). 1분마다 돌며, 확인은 서버마다 3시간에 한 번
@@ -244,10 +312,11 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
             }
             let Some(mark) = Pending::take(id) else { return };
             watch.waiting = false;
-            let (state, id) = (state.clone(), id.to_string());
+            let (state, id, remote) = (state.clone(), id.to_string(), watch.remote.clone());
             crate::audit::spawn(async move {
                 let _mark = mark;
-                stop_update_start(&state, &id).await;
+                let updated = stop_update_start(&state, &id).await;
+                record_auto_result(&id, remote.as_deref(), updated);
             });
         }
         AutoStep::Wait => {
@@ -280,7 +349,19 @@ async fn update_available(state: &IPCServer, id: &str, watch: &mut Watch) -> boo
     if status.get("reason").and_then(Value::as_str) == Some("check_failed") {
         tracing::warn!("Auto update of '{}': update check failed: {}", id, status["error"]);
     }
-    status.get("update_available").and_then(Value::as_bool) == Some(true)
+    if status.get("update_available").and_then(Value::as_bool) != Some(true) {
+        return false;
+    }
+    watch.remote = match status.get("remote_buildid") {
+        Some(Value::String(b)) => Some(b.clone()),
+        Some(v @ Value::Number(_)) => Some(v.to_string()),
+        _ => None,
+    };
+    if watch.remote.as_deref().is_some_and(|remote| failed_before(id, remote)) {
+        tracing::info!("Auto update of '{}': build {:?} failed before; waiting for a newer build", id, watch.remote);
+        return false;
+    }
+    true
 }
 
 /// `apply-update`의 본문 (`warn_minutes`: 켜진 서버면 게임 안에 예고할 시간, 기본 5분)
@@ -301,6 +382,10 @@ fn warn_minutes_for(requested: Option<u32>, players: Option<u32>) -> u32 {
 
 /// 켜진 서버의 `apply-update`: 예고 뒤 업데이트를 걸고 바로 답한다
 pub async fn apply_to_running(state: &IPCServer, id: &str, body: &ApplyBody) -> Response {
+    // 업데이트할 수 없는 서버(직접 설치 등)는 예고하거나 끄기 전에 거절한다 (꺼진 서버와 같은 400)
+    if let Err(r) = super::instance::updatable(&*state.supervisor.read().await, id) {
+        return r;
+    }
     let players = crate::supervisor::players::get(id).map(|c| c.online);
     let minutes = warn_minutes_for(body.warn_minutes, players);
     match begin_restart_update(state, id, minutes).await {
@@ -329,6 +414,17 @@ mod tests {
             AutoStep::Wait,
             "a server that cannot count players is not restarted under them"
         );
+    }
+
+    /// 자동 업데이트가 실패한 빌드는 다시 시도하지 않고, 더 새 빌드나 성공하면 다시 시도한다
+    #[test]
+    fn a_build_that_failed_to_auto_update_is_not_retried() {
+        let id = "srv-failed-build-test";
+        record_auto_result(id, Some("100"), false);
+        assert!(failed_before(id, "100"));
+        assert!(!failed_before(id, "101"), "a newer build is tried");
+        record_auto_result(id, Some("101"), true);
+        assert!(!failed_before(id, "100"));
     }
 
     /// 아무도 없다고 확인된 서버는 기다리지 않고, 접속자가 있거나 셀 수 없으면 5분 예고

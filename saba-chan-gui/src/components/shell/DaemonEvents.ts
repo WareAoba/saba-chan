@@ -71,7 +71,13 @@ export function DaemonEvents({ onServersChanged }: { onServersChanged?: () => vo
                 const d = ev.data;
                 const name = d.instance || nameOf(d.instanceId);
                 window.__sabaNotice?.addNotice(
-                    serverUpdateNotice(tr('events.server_update_waiting', { name, count: d.players }), d.instanceId, name),
+                    serverUpdateNotice(
+                        typeof d.players === 'number'
+                            ? tr('events.server_update_waiting', { name, count: d.players })
+                            : tr('events.server_update_waiting_unknown', { name }),
+                        d.instanceId,
+                        name,
+                    ),
                 );
                 return;
             }

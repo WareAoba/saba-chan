@@ -270,6 +270,8 @@ pub static ACTIONS: &[Def] = &[
     // 디스코드는 관리자(Lv2) 이상이 기본 (길드가 옮길 수 있다). 켜진 서버는 5분 예고 → 정지 → 업데이트 → 다시 켜기 (`server_update.rs`)
     Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, private: true, ..def("server.update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "GET", "/api/instance/:id/check-update") },
     Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.update.apply", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/apply-update") },
+    // 예고 중인 업데이트 취소 (끄기 시작 전까지)
+    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.update.cancel", Kind::Admin, "safe", LOCAL_AND_DISCORD, true, "DELETE", "/api/instance/:id/apply-update") },
     // 게임 설정 파일 원문 (관리자 비밀번호가 들어 있다). 원격 MCP에는 비밀값째 준다 (`MCP_UNLOCKED`, `strips_secrets`)
     def("instance.properties.get", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id/properties"),
     Def { fields: &[field("settings", "object", true)], ..def("instance.properties.set", Kind::Admin, "caution", LOCAL, true, "PUT", "/api/instance/:id/properties") },
