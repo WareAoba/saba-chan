@@ -482,6 +482,8 @@
     "fetch_failed_toast": "{{error}}",
     "fetch_update_failed_toast": "Ошибка обновления списка серверов: {{error}}",
     "start_failed_toast": "Ошибка запуска сервера: {{error}}",
+    "start_exited_immediately": "Сервер завершился сразу после запуска. Проверьте журнал консоли.",
+    "start_not_in_list": "Сервера больше нет в списке.",
     "starting_toast": "⏳ Запуск сервера {{name}}...",
     "start_completed_toast": "Сервер {{name}} запущен!",
     "start_timeout_toast": "Запуск сервера {{name}}. Это может занять некоторое время.",

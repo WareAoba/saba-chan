@@ -340,7 +340,7 @@ export function useServerActions({
         try {
             const srv = servers.find((s) => s.name === name);
             if (!srv) {
-                safeShowToast(t('servers.start_failed_toast', { error: 'Instance not found' }), 'error', 4000);
+                safeShowToast(t('servers.start_failed_toast', { error: t('servers.start_not_in_list') }), 'error', 4000);
                 return;
             }
 
@@ -654,8 +654,7 @@ export function useServerActions({
             // ── success=false without specific action_required ──
             if (result.success === false) {
                 revertOptimistic(name);
-                const msg = moduleFailureText(t, result) || 'Unknown error';
-                safeShowToast(translateError(msg), 'error', 5000);
+                safeShowToast(translateError(moduleFailureText(t, result)), 'error', 5000);
                 return;
             }
 
@@ -690,7 +689,7 @@ export function useServerActions({
                                 setProgressBar(null);
                                 revertOptimistic(name);
                                 safeShowToast(
-                                    t('servers.start_failed_toast', { error: 'Process exited immediately' }),
+                                    t('servers.start_failed_toast', { error: t('servers.start_exited_immediately') }),
                                     'error',
                                     4000,
                                 );

@@ -482,6 +482,8 @@
     "fetch_failed_toast": "{{error}}",
     "fetch_update_failed_toast": "Échec de la mise à jour de la liste des serveurs: {{error}}",
     "start_failed_toast": "Échec du démarrage du serveur: {{error}}",
+    "start_exited_immediately": "Le serveur s'est arrêté juste après son démarrage. Consultez le journal de la console.",
+    "start_not_in_list": "Le serveur n'est plus dans la liste.",
     "starting_toast": "⏳ Démarrage du serveur {{name}}...",
     "start_completed_toast": "Serveur {{name}} démarré!",
     "start_timeout_toast": "Démarrage du serveur {{name}}. Cela peut prendre un certain temps.",

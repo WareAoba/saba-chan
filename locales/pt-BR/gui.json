@@ -482,6 +482,8 @@
     "fetch_failed_toast": "{{error}}",
     "fetch_update_failed_toast": "Falha na atualização da lista de servidores: {{error}}",
     "start_failed_toast": "Falha ao iniciar servidor: {{error}}",
+    "start_exited_immediately": "O servidor encerrou logo após iniciar. Verifique o log do console.",
+    "start_not_in_list": "O servidor não está mais na lista.",
     "starting_toast": "⏳ Iniciando servidor {{name}}...",
     "start_completed_toast": "Servidor {{name}} iniciado!",
     "start_timeout_toast": "Iniciando o servidor {{name}}. Isso pode levar algum tempo.",

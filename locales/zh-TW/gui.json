@@ -482,6 +482,8 @@
     "fetch_failed_toast": "{{error}}",
     "fetch_update_failed_toast": "伺服器清單更新失敗：{{error}}",
     "start_failed_toast": "伺服器啟動失敗：{{error}}",
+    "start_exited_immediately": "伺服器剛啟動就結束了。請查看主控台記錄。",
+    "start_not_in_list": "在清單中找不到該伺服器。",
     "starting_toast": "⏳ 正在啟動 「{{name}}」伺服器...",
     "start_completed_toast": "「{{name}}」伺服器已啟動！",
     "start_timeout_toast": "正在啟動 「{{name}}」伺服器。這可能需要一些時間。",

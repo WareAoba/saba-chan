@@ -482,6 +482,8 @@
     "fetch_failed_toast": "{{error}}",
     "fetch_update_failed_toast": "서버 목록 업데이트 실패: {{error}}",
     "start_failed_toast": "서버 시작 실패: {{error}}",
+    "start_exited_immediately": "서버가 켜지자마자 꺼졌어요. 콘솔 로그를 확인해 주세요.",
+    "start_not_in_list": "서버를 목록에서 찾지 못했어요.",
     "starting_toast": "⏳ “{{name}}” 서버를 시작하는 중...",
     "start_completed_toast": "“{{name}}” 서버 시작 완료!",
     "start_timeout_toast": "“{{name}}” 서버를 시작하는 중이에요. 시간이 걸릴 수 있어요.",

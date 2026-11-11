@@ -427,6 +427,8 @@
     "fetch_failed_toast": "{{error}}",
     "fetch_update_failed_toast": "サーバーリスト更新失敗: {{error}}",
     "start_failed_toast": "サーバー起動失敗: {{error}}",
+    "start_exited_immediately": "サーバーが起動直後に終了しました。コンソールログを確認してください。",
+    "start_not_in_list": "サーバーが一覧に見つかりません。",
     "starting_toast": "⏳ 「{{name}}」サーバーを起動中...",
     "start_completed_toast": "「{{name}}」サーバーが起動しました!",
     "start_timeout_toast": "「{{name}}」サーバーを起動しています。時間がかかる場合があります。",
