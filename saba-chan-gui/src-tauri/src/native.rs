@@ -57,6 +57,11 @@ fn consent_kind(kind: &str) -> Option<(&'static str, &'static str)> {
     }
 }
 
+/// 동의를 기록할 데몬: 익스텐션 GUI는 번들을 주는 이 PC 데몬(`local`), 모듈 격리 해제는 고른 데몬(서버를 돌리는 곳)
+fn consent_target(kind: &str) -> Option<&'static str> {
+    (kind == "extension-gui").then_some("local")
+}
+
 /// 구성요소 이름은 `module-<이름>`·`ext-<id>` 꼴만 받는다 (경로·창 문구에 그대로 넣는다)
 fn consent_path(kind: &str, component: &str) -> Option<(String, &'static str)> {
     let (base, key) = consent_kind(kind)?;
@@ -93,7 +98,7 @@ pub async fn sandbox_consent_allow(app: AppHandle, window: WebviewWindow, kind: 
     if !rx.await.unwrap_or(false) {
         return json!({ "success": false, "error_code": "canceled" });
     }
-    match state.client.post(&path, &json!({}), 10000).await {
+    match state.client.call_to(reqwest::Method::POST, &path, Some(&json!({})), 10000, consent_target(&kind)).await {
         Ok(data) => data,
         Err(e) => e.error_body(json!({ "success": false })),
     }
@@ -657,6 +662,13 @@ pub fn window_close(window: WebviewWindow) {
 
 #[cfg(test)]
 mod tests {
+
+    /// 익스텐션 GUI 허락은 번들을 주는 이 PC 데몬에 기록한다 (원격 데몬을 고른 동안에도)
+    #[test]
+    fn gui_consent_goes_to_this_pcs_daemon() {
+        assert_eq!(super::consent_target("extension-gui"), Some("local"));
+        assert_eq!(super::consent_target("unisolated"), None);
+    }
 
     #[test]
     fn a_failed_open_reports_the_translated_message_not_success() {

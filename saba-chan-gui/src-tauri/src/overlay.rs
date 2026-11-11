@@ -115,16 +115,8 @@ pub async fn sync(app: &AppHandle) {
 /// 이 PC 데몬의 익스텐션 목록. 오버레이는 번들을 늘 이 PC 데몬에서 받으므로(`target: 'local'`),
 /// 원격 데몬을 고른 동안에도 띄울지는 이 목록으로 정한다
 async fn local_extensions(state: &AppState) -> Option<Value> {
-    let res = state
-        .client
-        .send_to(reqwest::Method::GET, "/api/extensions", None, std::time::Duration::from_millis(5000), Some("local"))
-        .await;
-    match res {
-        Ok(r) if r.is_success() => Some(r.data()),
-        Ok(r) => {
-            tracing::debug!("[Overlay] Extension list unavailable: status {}", r.status);
-            None
-        }
+    match state.client.call_to(reqwest::Method::GET, "/api/extensions", None, 5000, Some("local")).await {
+        Ok(list) => Some(list),
         Err(e) => {
             tracing::debug!("[Overlay] Extension list unavailable: {}", e.message);
             None

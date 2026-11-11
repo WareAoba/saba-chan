@@ -268,7 +268,7 @@ describe('메인 창과 셸', () => {
 
 describe('허락', () => {
     afterEach(() => {
-        for (const k of ['extensionList', 'extensionI18n', 'extensionGuiBundle', 'overlaySync'])
+        for (const k of ['extensionList', 'extensionI18n', 'extensionGuiBundle', 'overlaySync', 'daemonTarget'])
             delete (window.api as unknown as Record<string, unknown>)[k];
         vi.restoreAllMocks();
     });
@@ -287,6 +287,30 @@ describe('허락', () => {
                 },
             ],
         });
+        window.api.extensionI18n = vi.fn().mockResolvedValue(null);
+        window.api.extensionGuiBundle = vi.fn().mockResolvedValue(null);
+        const { useExtensions } = await import('../contexts/ExtensionContext');
+        const { renderHook } = await import('@testing-library/react');
+        const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
+        await waitFor(() => expect(result.current.guiPending.map((e) => e.id)).toEqual(['pet']));
+        expect(window.api.extensionGuiBundle).not.toHaveBeenCalled();
+    });
+
+    it('원격 데몬을 고른 동안에도 이 PC 데몬의 바탕화면 번들 허락을 묻는다', async () => {
+        const pet = {
+            id: 'pet',
+            name: 'pet',
+            enabled: true,
+            version: '1.0.0',
+            gui: { bundle: 'x.js', styles: null, builtin: null, slots: { 'Desktop.overlay': {} } },
+            gui_allowed: false,
+            config_fields: {},
+        };
+        // 고른 원격 데몬에는 펫이 없고, 이 PC 데몬에만 있다
+        window.api.extensionList = vi.fn((opts?: { local?: boolean }) =>
+            Promise.resolve({ extensions: opts?.local ? [pet] : [] }),
+        ) as unknown as typeof window.api.extensionList;
+        window.api.daemonTarget = vi.fn().mockResolvedValue({ target: 'remote-pc' });
         window.api.extensionI18n = vi.fn().mockResolvedValue(null);
         window.api.extensionGuiBundle = vi.fn().mockResolvedValue(null);
         const { useExtensions } = await import('../contexts/ExtensionContext');

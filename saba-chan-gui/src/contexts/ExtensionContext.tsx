@@ -15,6 +15,7 @@ import {
     useCallback,
     useContext,
     useEffect,
+    useMemo,
     useRef,
     useState,
 } from 'react';
@@ -196,6 +197,21 @@ async function loadExtensionI18n(ext: ExtensionListItem, lang: string) {
     }
 }
 
+/** 원격 데몬을 골랐으면, 이 PC 데몬에서 허락을 기다리는 다른 창 전용 번들 (이 PC면 위 목록이 이미 그것이다) */
+async function localWindowPending(): Promise<ExtensionListItem[]> {
+    try {
+        const current = await window.api.daemonTarget?.();
+        if (!current?.target) return [];
+        const local = await window.api.extensionList({ local: true });
+        if (!Array.isArray(local?.extensions)) return [];
+        return local.extensions.filter(
+            (ext) => ext.enabled && ext.gui?.bundle && ext.gui_allowed === false && !loadsOn(ext, 'main'),
+        );
+    } catch {
+        return [];
+    }
+}
+
 /**
  * surface: 이 Provider가 놓인 창 (extensions/slotTable). 트레이 팝업은 그 창 slot을 선언한 번들만,
  * 이미 허락된 것만 읽고 허락을 묻지 않는다
@@ -223,6 +239,8 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
     };
     /** GUI 번들을 허락받아야 하는 활성 익스텐션 (확인 안 됨, 이 PC에서 허락 안 함) */
     const [guiPending, setGuiPending] = useState<ExtensionListItem[]>([]);
+    /** 원격 데몬을 고른 동안, 이 PC 데몬에서 허락을 기다리는 다른 창(바탕화면·트레이) 번들. 그 창들은 이 PC 데몬을 본다 */
+    const [localPending, setLocalPending] = useState<ExtensionListItem[]>([]);
     /** 이번 실행에서 이미 물어본 익스텐션 (거절하면 다시 묻지 않고 설정 화면에서 허락하게 둔다) */
     const askedGuiRef = useRef(new Set<string>());
     const modalOpen = useUIStore((s) => Boolean(s.modal));
@@ -247,6 +265,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
             // 설치·업데이트·삭제·재검색 뒤 목록이 바뀌면 코드 검사도 다시 한다
             clearModuleAuditCache();
             setExtensions(data.extensions);
+            if (surface === 'main') setLocalPending(await localWindowPending());
             return true;
         } catch (e) {
             console.warn('[Extension] Failed to fetch extensions:', e);
@@ -518,6 +537,8 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
                 }
                 safeShowToast(t('trust.extension_gui.allowed', { id: extId }), 'info', 4000);
                 await fetchExtensions();
+                // 이 PC의 바탕화면 번들이면 셸이 오버레이를 다시 보게 (원격 데몬을 고른 동안엔 위 목록에 없다)
+                window.api?.overlaySync?.();
                 return true;
             } catch (e) {
                 safeShowToast(t('trust.extension_gui.allow_failed', { error: (e as Error).message }), 'error', 5000);
@@ -527,10 +548,15 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         [fetchExtensions, t],
     );
 
+    const allPending = useMemo(
+        () => [...guiPending, ...localPending.filter((ext) => !guiPending.some((p) => p.id === ext.id))],
+        [guiPending, localPending],
+    );
+
     // 허락을 기다리는 익스텐션을 하나씩 묻는다. 다른 창이 떠 있으면 닫힌 뒤에 묻는다
     useEffect(() => {
         if (surface !== 'main' || modalOpen || !window.api?.sandboxAllowExtensionGui) return;
-        const next = guiPending.find((ext) => !askedGuiRef.current.has(ext.id));
+        const next = allPending.find((ext) => !askedGuiRef.current.has(ext.id));
         if (!next) return;
         askedGuiRef.current.add(next.id);
         const { openModal, closeModal } = useUIStore.getState();
@@ -549,7 +575,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
                 { label: t('trust.extension_gui.deny'), action: () => closeModal() },
             ],
         });
-    }, [surface, guiPending, modalOpen, approveExtensionGui, t]);
+    }, [surface, allPending, modalOpen, approveExtensionGui, t]);
 
     /** 원격 매니페스트에서 가용 익스텐션 목록을 가져옵니다. */
     const fetchManifest = useCallback(async () => {
@@ -669,7 +695,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         refreshExtensions: fetchExtensions,
         removeExtension,
         // 확인되지 않은 익스텐션의 GUI 허락
-        guiPending,
+        guiPending: allPending,
         approveExtensionGui,
         manifestExtensions,
         availableUpdates,
