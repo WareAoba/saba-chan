@@ -6,6 +6,7 @@ import { Icon } from '../../Icon';
 import { SabaToggle } from '../../ui/SabaUI';
 import { SegmentedChoice } from '../../ui/StatusChip';
 import { SYSTEM_MONITOR_MODES } from '../../../stores/useSettingsStore';
+import { GUIDE_ENTRIES, openGuide } from '../../guides/guides';
 import { AutostartSetting, autostartAvailable } from '../AutostartSetting';
 import { setOption } from './options';
 
@@ -14,7 +15,7 @@ interface GeneralTabProps {
     handleLanguageChange: (lng: string) => void;
 }
 
-/** 설정 › 일반: 언어·자동 새로고침·창 닫기·시스템 모니터·자동 시작 */
+/** 설정 › 일반: 가이드 다시 열기·언어·자동 새로고침·창 닫기·시스템 모니터·자동 시작 */
 export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTabProps) {
     const { t } = useTranslation(['gui', 'common']);
     const refreshInterval = useSettingsStore((s) => s.refreshInterval);
@@ -22,6 +23,32 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
     const autoRefresh = useSettingsStore((s) => s.autoRefresh);
     const monitorMode = useSettingsStore((s) => s.systemMonitorMode);
     return (
+        <>
+            {/* 닫은 가이드를 다시 여는 곳 (사용자 11-10: 상단 바 대신 여기와 명령 팔레트) */}
+            <section className="saba-card">
+            <div className="setting-item setting-guides">
+                <label className="setting-label">
+                    <span className="setting-title">
+                        <Icon name="lightbulb" size="sm" /> {t('gui:guides.title')}
+                    </span>
+                </label>
+                <ul className="guide-list">
+                    {GUIDE_ENTRIES.map((g) => (
+                        <li key={g.id}>
+                            <Icon name={g.icon} size="sm" />
+                            <span className="guide-list-text">
+                                <strong>{t(`gui:guides.entry_${g.id}`)}</strong>
+                                <span>{t(`gui:guides.entry_${g.id}_desc`)}</span>
+                            </span>
+                            <button type="button" className="btn btn-sm" onClick={() => openGuide(g.id)}>
+                                {t('gui:guides.open')}
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+            </section>
+
         <section className="saba-card">
             <div className="setting-item">
                 <label className="setting-label">
@@ -116,5 +143,6 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
 
             {autostartAvailable() && <AutostartSetting />}
         </section>
+        </>
     );
 }

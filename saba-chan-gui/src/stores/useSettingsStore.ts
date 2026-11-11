@@ -107,6 +107,8 @@ export interface SettingsValues extends AppOptions {
     systemMonitorMode: SystemMonitorMode;
     /** 떠 있는 시스템 모니터 자리. null이면 오른쪽 위 */
     systemMonitorFloat: MonitorFloat | null;
+    /** ✕로 닫은 가이드 id (components/guides/guides.ts) */
+    closedGuides: string[];
     /** switch: 고른 데몬만 · unified: 다른 데몬의 서버도 데몬별로 */
     daemonView: 'switch' | 'unified';
     /** 앱을 열면 먼저 볼 원격 데몬 hostId, null이면 이 PC */
@@ -166,6 +168,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     // 시스템 모니터: 끔 · 상세 위·오른쪽 열에 고정(기본) · 앱 안에서 옮기는 떠 있는 창
     systemMonitorMode: 'docked',
     systemMonitorFloat: null,
+    // 닫은 가이드 (설정 → 일반에서 다시 연다)
+    closedGuides: [],
     // 서버 목록 보기 (G1c): 'switch' 고른 데몬만 | 'unified' 다른 데몬의 서버도 데몬별로
     daemonView: 'switch',
     // 앱을 열면 먼저 볼 데몬: 원격 데몬 hostId, null이면 이 PC
@@ -213,6 +217,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                     ? (settings.systemMonitorMode as SystemMonitorMode)
                     : 'docked';
                 patch.systemMonitorFloat = isMonitorFloat(settings.systemMonitorFloat) ? settings.systemMonitorFloat : null;
+                patch.closedGuides = Array.isArray(settings.closedGuides)
+                    ? settings.closedGuides.filter((i): i is string => typeof i === 'string')
+                    : [];
                 patch.daemonView = settings.daemonView === 'unified' ? 'unified' : 'switch';
                 patch.mainDaemon =
                     typeof settings.mainDaemon === 'string' && settings.mainDaemon ? settings.mainDaemon : null;
@@ -332,6 +339,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
             monitorItems: null,
             systemMonitorMode: 'docked',
             systemMonitorFloat: null,
+            closedGuides: [],
             daemonView: 'switch',
             mainDaemon: null,
         });
@@ -374,6 +382,7 @@ const _settingsKeys: SettingKey[] = [
     'monitorItems',
     'systemMonitorMode',
     'systemMonitorFloat',
+    'closedGuides',
     'daemonView',
     'mainDaemon',
 ];

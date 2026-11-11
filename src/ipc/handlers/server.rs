@@ -488,14 +488,20 @@ pub async fn detect_module_dir(
     if !dir.is_dir() {
         return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("not a folder: {}", path) }))).into_response();
     }
-    let supervisor = state.supervisor.read().await;
-    let modules = supervisor.list_modules().unwrap_or_default();
-    let matches: Vec<_> = modules
-        .iter()
-        .filter(|m| m.matches_dir(dir))
-        .map(|m| json!({ "name": m.metadata.name, "display_name": m.metadata.display_name }))
-        .collect();
-    (StatusCode::OK, Json(json!({ "matches": matches }))).into_response()
+    let matches: Vec<_> = {
+        let supervisor = state.supervisor.read().await;
+        let modules = supervisor.list_modules().unwrap_or_default();
+        modules
+            .iter()
+            .filter(|m| m.matches_dir(dir))
+            .map(|m| json!({ "name": m.metadata.name, "display_name": m.metadata.display_name }))
+            .collect()
+    };
+    // 가져오기 전에 알릴 것 (만들 때와 같은 `migration::notices`): 사바쨩 밖에서 켜 둔 서버, 쓸 수 없는 폴더.
+    // 프로세스 목록 읽기는 막는 호출이라 런타임 밖에서
+    let folder = dir.to_path_buf();
+    let notices = tokio::task::spawn_blocking(move || crate::instance::migration::notices(&folder)).await.unwrap_or_default();
+    (StatusCode::OK, Json(json!({ "matches": matches, "notices": notices }))).into_response()
 }
 
 /// GET /api/module/:name - 모듈 메타데이터 조회 (별명 포함)
@@ -2181,5 +2187,30 @@ mod tests {
         assert_eq!(std::fs::read_to_string(target.join("lifecycle.py")).unwrap(), "new");
         assert!(!staging.exists());
         assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 1, "the old folder is removed after the swap");
+    }
+
+    /// 가져오기 전 폴더 검사에서 사바쨩 밖에서 켜 둔 서버를 미리 알린다 (가져오기를 누르기 전에 끄라고 보인다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn detecting_a_folder_warns_about_a_server_already_running_from_it() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&server).unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let detect = |state: crate::ipc::IPCServer, path: std::path::PathBuf| async move {
+            crate::ipc::internal::into_internal(super::detect_module_dir(State(state), Json(json!({ "path": path }))).await.into_response()).await
+        };
+        let quiet = detect(state.clone(), server.clone()).await;
+        assert_eq!(quiet.body["notices"], json!([]), "{}", quiet.body);
+        let mut outside = std::process::Command::new("sleep").arg("30").current_dir(&server).spawn().unwrap();
+        // 링크를 거친 경로로 골라도 알아본다 (macOS 임시 폴더 /var는 /private/var의 링크라 프로세스 경로와 다르다)
+        let linked = tmp.path().join("linked");
+        std::os::unix::fs::symlink(&server, &linked).unwrap();
+        let busy = detect(state, linked).await;
+        outside.kill().ok();
+        outside.wait().ok();
+        assert_eq!(busy.body["notices"], json!(["server_running"]), "{}", busy.body);
     }
 }

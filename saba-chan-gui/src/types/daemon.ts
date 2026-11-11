@@ -423,6 +423,8 @@ export interface GuiSettings {
     systemMonitorMode?: SystemMonitorMode;
     /** 떠 있는 시스템 모니터 자리 (components/monitor/floatPosition.ts) */
     systemMonitorFloat?: import('../components/monitor/floatPosition').MonitorFloat | null;
+    /** ✕로 닫은 가이드 id */
+    closedGuides?: string[];
     windowBounds?: { width: number; height: number; x?: number; y?: number };
     language?: string;
     /** 앱을 열면 먼저 볼 원격 데몬 hostId */
