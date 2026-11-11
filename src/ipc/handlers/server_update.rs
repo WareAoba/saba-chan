@@ -166,7 +166,23 @@ async fn warn(state: &IPCServer, id: &str, minutes: u32) -> bool {
 /// 켜져 있으면 저장하고 정지 → 업데이트 → 켜져 있었으면 다시 켠다. 정지하지 못하면 업데이트하지 않는다.
 /// 예약 업데이트(`backup::run_update`)와 켜진 서버의 업데이트가 함께 쓴다. 업데이트가 됐으면 true
 pub(crate) async fn stop_update_start(state: &IPCServer, id: &str) -> bool {
+    stop_update_start_when(state, id, false).await.unwrap_or(false)
+}
+
+/// `stop_update_start`. `only_if_empty`(자동 업데이트)면 작업 잠금을 잡아 다른 경로의 시작을 막은 채로 켜져 있는지와
+/// 지금 접속자 수를 보고, 켜져 있는데 0명으로 확인되지 않으면 끄지 않고 None (잠금이 잡혀 있어도 None)
+async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool) -> Option<bool> {
+    // 시작은 이 잠금을 잡고 켠다(`server::start_instance`): 잡고 있는 동안에는 확인한 뒤 새로 켜지지 않는다
+    let start_lock = if only_if_empty { Some(super::backup::InstanceLock::take_for_writes(id).await?) } else { None };
     let was_running = super::backup::is_running(state, id).await;
+    if was_running && only_if_empty {
+        let players = crate::supervisor::players::fresh(&state.supervisor, id).await;
+        if players != Some(0) {
+            tracing::info!("Auto update of '{}': not stopping, players {:?}", id, players);
+            emit_waiting(state, id, players).await;
+            return None;
+        }
+    }
     if was_running {
         let stop =
             crate::ipc::internal::into_internal(super::server::stop_instance(state.clone(), id, false).await).await;
@@ -180,7 +196,7 @@ pub(crate) async fn stop_update_start(state: &IPCServer, id: &str) -> bool {
                 .unwrap_or("stop failed")
                 .to_string();
             super::instance::emit_update_failed(state, id, &error).await;
-            return false;
+            return Some(false);
         }
         for _ in 0..STOP_POLLS {
             if !super::backup::is_running(state, id).await {
@@ -189,6 +205,8 @@ pub(crate) async fn stop_update_start(state: &IPCServer, id: &str) -> bool {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
     }
+    // 업데이트가 같은 잠금을 다시 잡는다. 그 사이 켜지면 업데이트가 `server_running`으로 거절한다 (끄지 않는다)
+    drop(start_lock);
     tracing::info!("Updating '{}' (was running: {})", id, was_running);
     let generation = state.supervisor.read().await.run_generation_of(id);
     let updated = match super::instance::begin_server_update(state, id).await {
@@ -211,7 +229,7 @@ pub(crate) async fn stop_update_start(state: &IPCServer, id: &str) -> bool {
         }
         super::backup::start_after_update(state, id, generation).await;
     }
-    updated
+    Some(updated)
 }
 
 fn error(status: StatusCode, code: &str, message: &str) -> Response {
@@ -328,8 +346,11 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
         let (state, id, remote) = (state.clone(), id.to_string(), watch.remote.clone());
         crate::audit::spawn(async move {
             let _mark = mark;
-            let updated = stop_update_start(&state, &id).await;
-            record_auto_result(&id, remote.as_deref(), updated);
+            match stop_update_start_when(&state, &id, true).await {
+                Some(updated) => record_auto_result(&id, remote.as_deref(), updated),
+                // 끄기 직전에 누가 들어왔거나(셀 수 없거나, 기다림을 알렸다) 다른 작업 중: 다음 확인에서 다시 본다
+                None => tracing::info!("Auto update of '{}' postponed", id),
+            }
         });
         return;
     }
@@ -337,6 +358,11 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
         return;
     }
     watch.notified = true;
+    emit_waiting(state, id, players).await;
+}
+
+/// 자동 업데이트가 접속자 때문에 기다린다고 알린다 (`instance.update_waiting`)
+async fn emit_waiting(state: &IPCServer, id: &str, players: Option<u32>) {
     let name = state
         .supervisor
         .read()
@@ -412,6 +438,28 @@ pub async fn apply_to_running(state: &IPCServer, id: &str, body: &ApplyBody) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 자동 업데이트는 작업 잠금(시작도 잡는다)을 잡은 채로만 끄기를 정한다: 다른 작업·시작이 잡고 있으면 끄지 않고 미룬다
+    #[tokio::test]
+    async fn auto_update_does_not_stop_while_another_job_holds_the_instance() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let state = IPCServer::new(
+            std::sync::Arc::new(tokio::sync::RwLock::new(sup)),
+            "127.0.0.1:0",
+            crate::daemon_log::DaemonLogBuffer::new(),
+        );
+        let id = "auto-update-lock-test";
+        let held = super::super::backup::InstanceLock::take(id).expect("free");
+        let decided = tokio::time::timeout(std::time::Duration::from_secs(5), stop_update_start_when(&state, id, true))
+            .await
+            .expect("does not wait for the lock");
+        assert_eq!(decided, None);
+        drop(held);
+    }
 
     /// 꺼져 있으면 받기만, 켜져 있고 아무도 없으면 다시 켜며 업데이트, 접속자가 있거나 셀 수 없으면 기다린다
     #[test]
