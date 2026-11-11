@@ -1,7 +1,7 @@
 import { fireEvent, render, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildRings, colorSlots, defaultItems, type MetricsSnapshot, nextPeaks, pickerGroups, portRows } from '../components/monitor/systemMetrics';
-import { SystemMonitor, useSystemMetrics } from '../components/monitor/SystemMonitor';
+import { FloatingMonitor, monitorPlacement, SystemMonitor, useSystemMetrics } from '../components/monitor/SystemMonitor';
 import { useSettingsStore } from '../stores/useSettingsStore';
 
 const GB = 1024 ** 3;
@@ -311,5 +311,64 @@ describe('SystemMonitor', () => {
         window.api.systemMetrics = undefined as never;
         render(<SystemMonitor servers={[]} />);
         expect(document.querySelector('.monitor')).toBeNull();
+    });
+});
+
+describe('시스템 모니터 표시 방식 (사용자 11-11: 끔·고정·떠 있는 창)', () => {
+    beforeEach(() => {
+        window.api.systemMetrics = vi.fn().mockResolvedValue(snapshot());
+        window.showToast = vi.fn();
+        useSettingsStore.setState({ systemMonitorExpanded: true, systemMonitorMode: 'docked', systemMonitorFloat: null });
+    });
+    afterEach(() => {
+        delete (window.api as unknown as Record<string, unknown>).systemMetrics;
+        useSettingsStore.setState({ systemMonitorMode: 'docked', systemMonitorFloat: null });
+    });
+
+    it('서버 페이지의 자리: 끄면 어디에도 없고, 떠 있는 창이면 고정 칸을 쓰지 않는다', () => {
+        expect(monitorPlacement('off', true, 2000)).toBe('none');
+        expect(monitorPlacement('docked', true, 2000)).toBe('side');
+        expect(monitorPlacement('docked', true, 1200)).toBe('top');
+        expect(monitorPlacement('docked', false, 2000)).toBe('top');
+        expect(monitorPlacement('floating', true, 2000)).toBe('float');
+    });
+
+    it('끄기 버튼은 끔으로 두고, 알림의 되돌리기로 원래 방식으로 돌아간다', async () => {
+        render(<SystemMonitor servers={[{ id: 'a', name: 'A' }]} />);
+        await waitFor(() => expect(document.querySelector('.monitor-ring')).not.toBeNull());
+        fireEvent.click(document.querySelector('.monitor-hide')!);
+        expect(useSettingsStore.getState().systemMonitorMode).toBe('off');
+        const options = vi.mocked(window.showToast!).mock.calls[0][3]!;
+        expect(options.action?.label).toBeTruthy();
+        options.action!.onClick();
+        expect(useSettingsStore.getState().systemMonitorMode).toBe('docked');
+    });
+
+    it('떠 있는 창은 손잡이가 있고, 접으면 요약을 두 줄 격자로 보인다', async () => {
+        useSettingsStore.setState({ systemMonitorMode: 'floating' });
+        render(<FloatingMonitor servers={[{ id: 'a', name: 'A' }]} />);
+        await waitFor(() => expect(document.querySelector('.monitor-float .monitor-ring')).not.toBeNull());
+        expect(document.querySelector('.monitor-float .monitor-grip')).not.toBeNull();
+        fireEvent.click(document.querySelector('.monitor-float .monitor-toggle')!);
+        const pill = document.querySelector('.monitor-float.monitor-summary')!;
+        expect(pill.querySelector('.monitor-grip')).not.toBeNull();
+        expect(pill.querySelector('.monitor-chips.grid')).not.toBeNull();
+        expect(pill.querySelector('.monitor-hide')).not.toBeNull();
+    });
+
+    it('떠 있는 창을 끌어 놓으면 가까운 모서리 기준 자리를 설정에 남긴다', async () => {
+        useSettingsStore.setState({ systemMonitorMode: 'floating' });
+        render(<FloatingMonitor servers={[{ id: 'a', name: 'A' }]} />);
+        await waitFor(() => expect(document.querySelector('.monitor-float .monitor-ring')).not.toBeNull());
+        const layer = document.querySelector('.monitor-float-layer') as HTMLElement;
+        const box = document.querySelector('.monitor-float') as HTMLElement;
+        Object.defineProperties(layer, { clientWidth: { value: 1000 }, clientHeight: { value: 600 } });
+        Object.defineProperties(box, { offsetWidth: { value: 200 }, offsetHeight: { value: 100 } });
+        const head = box.querySelector('.monitor-head')!;
+        // 기본 자리(오른쪽 위 = left 788, top 12)에서 왼쪽 가운데쯤으로 끌어 놓는다
+        fireEvent.pointerDown(head, { clientX: 800, clientY: 20, pointerId: 1, button: 0 });
+        fireEvent.pointerMove(head, { clientX: 300, clientY: 200, pointerId: 1 });
+        fireEvent.pointerUp(head, { clientX: 300, clientY: 200, pointerId: 1 });
+        expect(useSettingsStore.getState().systemMonitorFloat).toEqual({ corner: 'top-left', x: 288, y: 192 });
     });
 });

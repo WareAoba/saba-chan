@@ -106,7 +106,7 @@ export function ExtensionConfigForm({ ext, inline = false }: { ext: ExtensionLis
                                 ) : (
                                     <input
                                         id={id}
-                                        className="setting-input-text"
+                                        className="input setting-field"
                                         type={NUMBER_TYPES.has(def.type) ? 'number' : 'text'}
                                         value={(values[key] as string | number | undefined) ?? ''}
                                         onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}

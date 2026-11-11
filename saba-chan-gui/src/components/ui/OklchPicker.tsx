@@ -4,21 +4,18 @@ import {
     type PointerEvent as ReactPointerEvent,
     useCallback,
     useEffect,
-    useLayoutEffect,
     useRef,
     useState,
 } from 'react';
-import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { hexToOklch, inGamut, MAX_CHROMA, maxChroma, oklchToHex, oklchToRgb } from '../../utils/oklch';
+import { hexToOklch, maxChroma, oklchToHex, oklchToRgb } from '../../utils/oklch';
 import { Icon } from '../Icon';
+import { Popover } from './Popover';
 import './OklchPicker.css';
 
 const AREA_W = 240;
 const AREA_H = 152;
 const GAP = 8;
-const POP_W = 272;
-const CLOSE_MS = 140;
 
 interface Lch {
     l: number;
@@ -31,22 +28,32 @@ const fromHex = (hex: string, prevHue = 270): Lch => {
     return { l: v.l, c: v.c, h: v.h ?? prevHue };
 };
 
-/** 밝기(세로) × 채도(가로) 평면. sRGB 밖은 비워 둔다 */
+/**
+ * 판 위 자리(0~1) → 색. 세로 = 밝기, 가로 = 그 밝기에서 화면(sRGB)이 낼 수 있는 채도 중 몇 %인지.
+ * 그래서 판은 빈칸 없이 꽉 찬 사각형이고 어느 점이든 낼 수 있는 색이다
+ */
+export function areaToLch(x: number, y: number, h: number): Lch {
+    const l = 1 - y;
+    return { l, c: x * maxChroma(l, h), h };
+}
+
+/** 색 → 판 위 자리 (areaToLch의 반대) */
+export function lchToArea({ l, c, h }: Lch) {
+    const max = maxChroma(l, h);
+    return { x: max > 0 ? Math.min(1, c / max) : 0, y: 1 - l };
+}
+
+/** 밝기(세로) × 상대 채도(가로) 평면 */
 function drawArea(canvas: HTMLCanvasElement, h: number) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const img = ctx.createImageData(AREA_W, AREA_H);
     for (let y = 0; y < AREA_H; y++) {
         const L = 1 - y / (AREA_H - 1);
+        const max = maxChroma(L, h);
         for (let x = 0; x < AREA_W; x++) {
-            const rgb = oklchToRgb(L, (x / (AREA_W - 1)) * MAX_CHROMA, h);
-            const i = (y * AREA_W + x) * 4;
-            if (inGamut(rgb)) {
-                img.data[i] = rgb[0] * 255;
-                img.data[i + 1] = rgb[1] * 255;
-                img.data[i + 2] = rgb[2] * 255;
-                img.data[i + 3] = 255;
-            }
+            const rgb = oklchToRgb(L, (x / (AREA_W - 1)) * max, h);
+            img.data.set([rgb[0] * 255, rgb[1] * 255, rgb[2] * 255, 255], (y * AREA_W + x) * 4);
         }
     }
     ctx.putImageData(img, 0, 0);
@@ -127,14 +134,15 @@ function PickerPanel({ value, onChange }: { value: string; onChange: (hex: strin
         [onChange],
     );
 
-    const onArea = useDrag((x, y) => emit({ h: lch.h, l: 1 - y, c: x * MAX_CHROMA }));
+    const onArea = useDrag((x, y) => emit(areaToLch(x, y, lch.h)));
+    const at = lchToArea(lch);
     const onHue = useDrag((x) => emit({ ...lch, h: x * 360 }));
 
     const nudge = (e: KeyboardEvent, key: string) => {
         const step = e.shiftKey ? 10 : 1;
         const map: Record<string, Record<string, number>> = {
             l: { ArrowUp: 0.01, ArrowDown: -0.01 },
-            c: { ArrowRight: 0.005, ArrowLeft: -0.005 },
+            c: { ArrowRight: 0.01, ArrowLeft: -0.01 },
             h: { ArrowRight: 1, ArrowLeft: -1, ArrowUp: 1, ArrowDown: -1 },
         };
         if (key === 'area') {
@@ -142,11 +150,9 @@ function PickerPanel({ value, onChange }: { value: string; onChange: (hex: strin
             const dc = map.c[e.key];
             if (dl === undefined && dc === undefined) return;
             e.preventDefault();
-            emit({
-                ...lch,
-                l: Math.min(1, Math.max(0, lch.l + (dl || 0) * step)),
-                c: Math.min(MAX_CHROMA, Math.max(0, lch.c + (dc || 0) * step)),
-            });
+            // 방향키는 판 위 자리를 옮긴다 (가로 1칸 = 그 밝기 최대 채도의 1%)
+            const clamp = (v: number) => Math.min(1, Math.max(0, v));
+            emit(areaToLch(clamp(at.x + (dc || 0) * step), clamp(at.y - (dl || 0) * step), lch.h));
         } else {
             const dh = map.h[e.key];
             if (dh === undefined) return;
@@ -187,8 +193,8 @@ function PickerPanel({ value, onChange }: { value: string; onChange: (hex: strin
                 <span
                     className="oklch-thumb"
                     style={{
-                        left: `${(lch.c / MAX_CHROMA) * 100}%`,
-                        top: `${(1 - lch.l) * 100}%`,
+                        left: `${at.x * 100}%`,
+                        top: `${at.y * 100}%`,
                         background: oklchToHex(lch.l, lch.c, lch.h),
                     }}
                 />
@@ -243,108 +249,34 @@ interface OklchPickerProps {
 
 export function OklchPicker({ value, onChange, variant = 'field', label, className }: OklchPickerProps) {
     const [open, setOpen] = useState(false);
-    const [closing, setClosing] = useState(false);
-    const [pos, setPos] = useState<{ left?: number; top?: number; bottom?: number; up?: boolean }>({});
-    const triggerRef = useRef<HTMLButtonElement>(null);
-    const popRef = useRef<HTMLDivElement>(null);
-    const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-    const place = useCallback(() => {
-        const r = triggerRef.current?.getBoundingClientRect();
-        if (!r) return;
-        const popH = popRef.current?.offsetHeight || 260;
-        const below = window.innerHeight - r.bottom;
-        const up = below < popH + GAP * 2 && r.top > below;
-        const left = Math.min(Math.max(GAP, r.right - POP_W), window.innerWidth - POP_W - GAP);
-        setPos({ left, ...(up ? { bottom: window.innerHeight - r.top + GAP } : { top: r.bottom + GAP }), up });
-    }, []);
-
-    const close = useCallback(() => {
-        setClosing(true);
-        clearTimeout(timer.current);
-        timer.current = setTimeout(() => {
-            setOpen(false);
-            setClosing(false);
-        }, CLOSE_MS);
-    }, []);
-
-    useEffect(() => () => clearTimeout(timer.current), []);
-
-    useLayoutEffect(() => {
-        if (!open) return;
-        place();
-        window.addEventListener('resize', place);
-        window.addEventListener('scroll', place, true);
-        return () => {
-            window.removeEventListener('resize', place);
-            window.removeEventListener('scroll', place, true);
-        };
-    }, [open, place]);
-
-    useEffect(() => {
-        if (!open || closing) return;
-        const down = (e: MouseEvent) => {
-            if (triggerRef.current?.contains(e.target as Node) || popRef.current?.contains(e.target as Node)) return;
-            close();
-        };
-        const key = (e: globalThis.KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                e.stopPropagation();
-                close();
-                triggerRef.current?.focus();
-            }
-        };
-        document.addEventListener('mousedown', down);
-        document.addEventListener('keydown', key, true);
-        return () => {
-            document.removeEventListener('mousedown', down);
-            document.removeEventListener('keydown', key, true);
-        };
-    }, [open, closing, close]);
-
-    const shown = open && !closing;
-    const { up, ...style } = pos;
-
     return (
-        <>
-            <button
-                type="button"
-                ref={triggerRef}
-                className={clsx('oklch-trigger', `oklch-trigger-${variant}`, className, { open: shown })}
-                aria-label={label}
-                data-tooltip={label}
-                aria-haspopup="dialog"
-                aria-expanded={shown}
-                onClick={() => {
-                    if (shown) return close();
-                    clearTimeout(timer.current);
-                    setClosing(false);
-                    setOpen(true);
-                }}
-            >
-                {variant === 'swatch' ? (
-                    <Icon name="edit" size="sm" />
-                ) : (
-                    <>
-                        <span className="color-input-preview" style={{ background: value }} />
-                        <span className="color-input-hex">{value}</span>
-                    </>
-                )}
-            </button>
-            {open &&
-                ReactDOM.createPortal(
-                    <div
-                        ref={popRef}
-                        className={clsx('oklch-pop', { closing, up })}
-                        style={{ position: 'fixed', zIndex: 10000, width: POP_W, ...style }}
-                        role="dialog"
-                        aria-label={label}
-                    >
-                        <PickerPanel value={value} onChange={onChange} />
-                    </div>,
-                    document.body,
-                )}
-        </>
+        <Popover
+            open={open}
+            onOpenChange={setOpen}
+            trigger={
+                <button
+                    type="button"
+                    className={clsx('oklch-trigger', `oklch-trigger-${variant}`, className, { open })}
+                    aria-label={label}
+                    data-tooltip={label}
+                >
+                    {variant === 'swatch' ? (
+                        <Icon name="edit" size="sm" />
+                    ) : (
+                        <>
+                            <span className="color-input-preview" style={{ background: value }} />
+                            <span className="color-input-hex">{value}</span>
+                        </>
+                    )}
+                </button>
+            }
+            label={label || ''}
+            className="oklch-pop"
+            sideOffset={GAP}
+            autoFocus={false}
+        >
+            <PickerPanel value={value} onChange={onChange} />
+        </Popover>
     );
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { Icon } from '../Icon';
-import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
+import { SabaCheckbox, SabaNumberInput, SabaSpinner } from '../ui/SabaUI';
 import { failed } from '../../utils/apiResult';
 
 /** 리눅스 한 줄 설치 (install.sh 맨 위와 같다). SSH가 안 될 때 그 PC에 붙여 넣는다 */
@@ -232,7 +232,7 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                                 <span>{t('remote_daemon.install_host')}</span>
                                 <input
                                     type="text"
-                                    className="setting-input-text"
+                                    className="input setting-field"
                                     aria-label={t('remote_daemon.install_host')}
                                     placeholder={t('remote_daemon.install_host_placeholder')}
                                     value={form.host}
@@ -243,7 +243,7 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                                 <span>{t('remote_daemon.install_user')}</span>
                                 <input
                                     type="text"
-                                    className="setting-input-text"
+                                    className="input setting-field"
                                     aria-label={t('remote_daemon.install_user')}
                                     value={form.user}
                                     onChange={(e) => setForm({ ...form, user: e.target.value })}
@@ -251,9 +251,8 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                             </label>
                             <label>
                                 <span>{t('remote_daemon.install_port')}</span>
-                                <input
-                                    type="number"
-                                    className="setting-input-number"
+                                <SabaNumberInput
+                                    className="input setting-num"
                                     aria-label={t('remote_daemon.install_port')}
                                     min={1}
                                     max={65535}
@@ -309,7 +308,7 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                                             <span className="muted">{prompt.text}</span>
                                             <input
                                                 type="password"
-                                                className="setting-input-text"
+                                                className="input setting-field"
                                                 aria-label={t(PROMPT_LABELS[prompt.kind] || 'remote_daemon.prompt_password')}
                                                 autoComplete="off"
                                                 value={answer}
@@ -345,7 +344,7 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                             <span>{t('remote_daemon.claim_code')}</span>
                             <input
                                 type="text"
-                                className="setting-input-text"
+                                className="input setting-field"
                                 aria-label={t('remote_daemon.claim_code')}
                                 value={code}
                                 onChange={(e) => setCode(e.target.value)}

@@ -12,7 +12,6 @@ button:not([class*="btn"]),
 .dc-list-row,
 .dc-nav-row,
 .appbar-tab,
-.settings-tab,
 .saba-storage-tab,
 .status-chip,
 .notice-card {
@@ -27,8 +26,7 @@ button:not([class*="btn"]),
 }
 
 /* 누르는 순간 살짝 눌린다 */
-.appbar-tab:active,
-.settings-tab:active {
+.appbar-tab:active {
     transform: scale(0.97);
 }
 
@@ -124,9 +122,4 @@ button:not([class*="btn"]),
         transform: scaleY(0.3);
         opacity: 0;
     }
-}
-
-/* 저장 줄이 생기면 아래에서 올라온다 */
-.dc-savebar.dirty {
-    animation: motion-rise var(--dur) var(--ease) backwards;
 }

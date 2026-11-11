@@ -178,6 +178,11 @@
     "close_action_ask": "Perguntar sempre",
     "close_action_tray": "Sair só da interface (o daemon continua)",
     "close_action_quit": "Sair completamente",
+    "system_monitor_label": "Monitor do sistema",
+    "system_monitor_description": "Gráficos de uso do PC na página de servidores. Desligado não consulta nada. A janela flutuante pode ser arrastada dentro do app",
+    "system_monitor_off": "Desligado",
+    "system_monitor_docked": "Fixo",
+    "system_monitor_floating": "Flutuante",
     "toast_duration_label": "Duração das notificações",
     "toast_duration_description": "Por quanto tempo as notificações do app ficam na tela.",
     "toast_duration_short": "Curta",
@@ -1803,7 +1808,10 @@
     "ports_server": "Servidor",
     "ports_port": "Porta",
     "ports_rx": "Recebido",
-    "ports_tx": "Enviado"
+    "ports_tx": "Enviado",
+    "hide": "Ocultar monitor",
+    "hidden_toast": "Monitor do sistema oculto. Ative de novo em Configurações → Geral",
+    "undo": "Desfazer"
   },
   "net_trace": {
     "label": "Rede por servidor e porta",
@@ -2361,7 +2369,6 @@
     "enabled": "Permitir conexões remotas",
     "enabled_description": "Seus outros PCs se conectam direto a este daemon por uma conexão criptografada.",
     "port": "Porta",
-    "save": "Salvar",
     "status_off": "Desligado",
     "status_listening": "Ouvindo na porta {{port}}",
     "status_published": "Seus outros PCs já conhecem este PC",

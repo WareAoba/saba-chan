@@ -153,7 +153,7 @@ export function LaunchPreview({
                     <span>{t('launch_preview.extra_label')}</span>
                     <input
                         type="text"
-                        className="setting-input-text launch-preview-input"
+                        className="input setting-field launch-preview-input"
                         value={extraArgs ?? ''}
                         spellCheck={false}
                         placeholder={t('launch_preview.extra_placeholder')}

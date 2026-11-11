@@ -119,8 +119,8 @@ export function FolderPathsSection() {
     );
 
     return (
-        <div className="data-transfer">
-            <h4 className="data-transfer-title">
+        <section className="saba-card">
+            <h4 className="saba-card-title">
                 <Icon name="folder" size="sm" /> {t('folder_paths.title')}
             </h4>
             <p className="setting-description">{t('folder_paths.description')}</p>
@@ -137,7 +137,7 @@ export function FolderPathsSection() {
             {pending && (
                 <div className="data-transfer-summary" role="group">
                     <div>{t(`folder_paths.confirm_${pending.kind}`, { dir: pending.target })}</div>
-                    <div className="data-transfer-actions">
+                    <div className="saba-card-actions">
                         <button type="button" className="btn btn-ghost" onClick={() => setPending(null)} disabled={busy}>
                             {t('folder_paths.cancel')}
                         </button>
@@ -165,6 +165,6 @@ export function FolderPathsSection() {
                     <Icon name="alertCircle" size="sm" /> {error}
                 </div>
             )}
-        </div>
+        </section>
     );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
@@ -6,7 +6,8 @@ import type { ApiBody } from '../../types/daemon';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { OsLogo, osFamily, type Platform } from '../OsLogo';
 import { Icon } from '../Icon';
-import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { useHostDraft, usePendingChange } from '../ui/SaveBar';
 import { REMOTE_DAEMONS_CHANGED, reloadWindow, useDaemonTarget } from '../shell/DaemonSwitcher';
 import { PublicAddressRow } from './PublicAddress';
 import { InstallDialog, RemoveDialog } from './RemotePcDialogs';
@@ -93,7 +94,7 @@ interface RemoteDaemonSectionProps {
 export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = reloadWindow }: RemoteDaemonSectionProps) {
     const { t, i18n } = useTranslation('gui');
     const [settings, setSettings] = useState<ApiBody | null>(null);
-    const [draft, setDraft] = useState<{ enabled: boolean; port: string } | null>(null); // {enabled, port}. 주소는 카드의 게임 서버 주소 줄에서 (PublicAddress)
+    const [draft, setDraft] = useState<{ enabled: boolean } | null>(null); // 주소는 카드의 게임 서버 주소 줄에서 (PublicAddress)
     const [clients, setClients] = useState<ApiBody[]>([]);
     const [peers, setPeers] = useState<ApiBody[] | null>(null); // null = 못 읽음
     const [peersError, setPeersError] = useState<string | null>(null);
@@ -114,7 +115,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         const res = await window.api.remoteSettings();
         if (failed(res)) return;
         setSettings(res);
-        setDraft({ enabled: Boolean(res.enabled), port: String(res.port ?? '') });
+        setDraft({ enabled: Boolean(res.enabled) });
     }, []);
     const loadClients = useCallback(async () => {
         const res = await window.api.remoteClients();
@@ -170,20 +171,42 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         window.dispatchEvent(new Event(REMOTE_DAEMONS_CHANGED));
     }, [loadPeers, loadDaemons]);
 
-    const save = async () => {
-        const port = Number(draft!.port);
+    const mounted = useRef(true);
+    useEffect(() => {
+        mounted.current = true;
+        return () => {
+            mounted.current = false;
+        };
+    }, []);
+
+    // 켬은 바로 저장하고, 포트는 다 친 뒤 저장 막대로 묻는다 (사용자 11-11). 저장하지 못하면 false
+    const save = async (next: { enabled: boolean; port: string }) => {
+        const port = Number(next.port);
         if (!Number.isInteger(port) || port < 1 || port > 65535) {
             setError(t('remote_daemon.err_invalid_port'));
-            return;
+            return false;
         }
-        const res = await run('save', () =>
-            window.api.remoteSettingsSet({ enabled: draft!.enabled, port }),
-        );
-        if (res && !failed(res)) {
-            setSettings((old) => ({ ...res, thisPc: res.thisPc || old?.thisPc }));
-            setDraft({ enabled: Boolean(res.enabled), port: String(res.port ?? port) });
+        const res = await run('save', () => window.api.remoteSettingsSet({ enabled: next.enabled, port }));
+        if (!res || failed(res)) {
+            // 오류 줄은 run이 채운다. 칸이 사라졌으면(다른 탭) 보이지 않으니 알림으로도 알린다
+            if (!mounted.current) window.showToast?.(remoteErrorText(res, t), 'error');
+            return false;
         }
+        setSettings((old) => ({ ...res, thisPc: res.thisPc || old?.thisPc }));
+        // 친 포트 초안은 막대 자리가 쥐므로 켬만 바꿔도 그대로 남는다
+        setDraft({ enabled: Boolean(res.enabled) });
+        return true;
     };
+    const savedPort = String(settings?.port ?? '');
+    // 친 포트는 막대 자리가 쥐어 연결 탭을 떠났다 와도 남는다
+    const [portDraft, setPortDraft] = useHostDraft('remote-port', savedPort);
+    const draftPort = Number(portDraft);
+    usePendingChange('remote-port', {
+        dirty: !!settings && portDraft !== savedPort,
+        blocked: !Number.isInteger(draftPort) || draftPort < 1 || draftPort > 65535,
+        save: () => save({ enabled: Boolean(settings?.enabled), port: portDraft }),
+        revert: () => setPortDraft(savedPort),
+    });
 
     const connect = async (hostId: string) => {
         const res = await run(`connect:${hostId}`, () => window.api.remoteConnect(hostId));
@@ -350,8 +373,9 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const removingFamily = osFamily(removing?.peer?.platform);
 
     return (
-        <div className="data-transfer">
-            <h4 className="data-transfer-title">
+        <>
+        <section className="saba-card">
+            <h4 className="saba-card-title">
                 <Icon name="cloud" size="sm" /> {t('remote_daemon.title')}
             </h4>
             <p className="setting-description">{t('remote_daemon.description')}</p>
@@ -364,13 +388,23 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                                 <Icon name="network" size="sm" /> {t('remote_daemon.enabled')}
                             </span>
                             <span className="setting-description">{t('remote_daemon.enabled_description')}</span>
+                            <span className="setting-description remote-daemon-status" role="status">
+                                {busy === 'save' && <SabaSpinner size="xs" />}
+                                {!settings!.enabled && t('remote_daemon.status_off')}
+                                {settings!.enabled &&
+                                    status.listening &&
+                                    t('remote_daemon.status_listening', { port: settings!.port })}
+                            </span>
+                            {settings!.enabled && status.published && (
+                                <span className="setting-description">{t('remote_daemon.status_published')}</span>
+                            )}
                         </label>
                         <SabaToggle
                             id="remote-daemon-enabled"
                             aria-label={t('remote_daemon.enabled')}
                             checked={draft.enabled}
                             disabled={busy !== null}
-                            onChange={(enabled) => setDraft({ ...draft, enabled })}
+                            onChange={(enabled) => save({ enabled, port: savedPort })}
                         />
                     </div>
                     <div className="setting-item">
@@ -379,29 +413,15 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                                 <Icon name="hash" size="sm" /> {t('remote_daemon.port')}
                             </span>
                         </label>
-                        <input
+                        <SabaNumberInput
                             id="remote-daemon-port"
                             aria-label={t('remote_daemon.port')}
-                            type="number"
-                            className="setting-input-number"
-                            value={draft.port}
+                            className="input setting-num"
+                            value={portDraft}
                             min={1}
                             max={65535}
-                            onChange={(e) => setDraft({ ...draft, port: e.target.value })}
+                            onChange={(e) => setPortDraft(e.target.value)}
                         />
-                    </div>
-                    <div className="data-transfer-actions remote-daemon-actions">
-                        <span className="muted" role="status">
-                            {!settings!.enabled && t('remote_daemon.status_off')}
-                            {settings!.enabled && status.listening && t('remote_daemon.status_listening', { port: settings!.port })}
-                        </span>
-                        {settings!.enabled && status.published && (
-                            <span className="muted">{t('remote_daemon.status_published')}</span>
-                        )}
-                        <button type="button" className="btn btn-primary" onClick={save} disabled={busy !== null}>
-                            {busy === 'save' ? <SabaSpinner size="xs" /> : <Icon name="save" size="sm" />}{' '}
-                            {t('remote_daemon.save')}
-                        </button>
                     </div>
                     {statusError && (
                         <div className="setting-validation-error" role="alert">
@@ -411,6 +431,9 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                 </>
             )}
 
+        </section>
+
+            {/* 내 PC 카드들은 카드 안의 카드가 되지 않게 따로 둔다 */}
             <h5 className="remote-daemon-subtitle">{t('remote_daemon.my_pcs')}</h5>
             <p className="setting-description">{t('remote_daemon.my_pcs_description')}</p>
             {peersError && <p className="setting-description">{peersError}</p>}
@@ -520,6 +543,6 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
             {installing && (
                 <InstallDialog onClose={() => setInstalling(false)} onPaired={reloadPcs} errorText={(res) => remoteErrorText(res, t)} />
             )}
-        </div>
+        </>
     );
 }

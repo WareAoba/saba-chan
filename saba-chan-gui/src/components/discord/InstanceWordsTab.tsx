@@ -6,7 +6,7 @@ import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { FindKeyTag } from '../servers/PageFind';
 import { SabaSpinner } from '../ui/SabaUI';
-import { SaveBar } from './ChatbotView';
+import { SaveBar } from '../ui/SaveBar';
 import type { InstanceWordsCommand, InstanceWordsDraft, InstanceWordsEntry, ValidationDetail } from './instanceWords';
 import { draftOf, errorsByField, isDraftDirty, wordsCommandName } from './instanceWords';
 import { TagInput } from './TagInput';
