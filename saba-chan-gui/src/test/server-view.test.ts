@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { playersText, reuseUnchanged, viewStatus } from '../utils/serverView';
+import { playersText, reuseUnchanged, STATUS_TONE, viewStatus } from '../utils/serverView';
 
 describe('모듈 없음 표시', () => {
     const server = { id: 'a', module: 'minecraft', status: 'running' };
@@ -48,5 +48,13 @@ describe('접속자 수', () => {
     it('키가 없거나 꺼져 있으면 아무것도 보이지 않는다 (모름을 0으로 보이지 않는다)', () => {
         expect(playersText({ status: 'running' })).toBeNull();
         expect(playersText({ status: 'stopped', players: { online: 2, max: 8 } })).toBeNull();
+    });
+});
+
+// 사용자 11-11: 진행 중 깜빡이는 떠나온 상태의 색 — 켜는 중은 꺼짐 회색, 끄는 중은 켜짐 초록 (노랑은 복구 중만)
+describe('진행 중 색', () => {
+    it('켜는 중은 꺼짐과 같은 회색, 끄는 중은 켜짐과 같은 초록', () => {
+        expect(STATUS_TONE.starting).toBe(STATUS_TONE.stopped);
+        expect(STATUS_TONE.stopping).toBe(STATUS_TONE.running);
     });
 });

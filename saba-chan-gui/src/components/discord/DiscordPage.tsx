@@ -124,6 +124,7 @@ export function DiscordPage({
     const agentRelayUrlInvalid = useDiscordStore((s) => s.discordAgentRelayUrlInvalid);
     const agentMinVersion = useDiscordStore((s) => s.discordAgentMinVersion);
     const botConfigLoaded = useDiscordStore((s) => s._botConfigLoaded);
+    const reconnecting = useDiscordStore((s) => s.discordReconnecting);
     const [membersLoading, setMembersLoading] = useState<string | null>(null);
     const [membersFailed, setMembersFailed] = useState<Record<string, boolean>>({});
     // 길드별 일부 목록 사유 (권한을 등록한 멤버만 받았을 때)
@@ -383,9 +384,13 @@ export function DiscordPage({
         }
     }, [view, cloudNodes]);
 
-    const connTone = (
-        { connected: 'ok', connecting: 'warn', checking: 'warn', error: 'stop', no_host: 'idle' } as const
-    )[cloudState];
+    // 붙는 중은 꺼짐 회색으로 깜빡이고, 붙어 있다가 끊겨 다시 붙는 중만 노랑 (사용자 11-11)
+    const connTone =
+        cloudState === 'connecting' && reconnecting
+            ? 'warn'
+            : ({ connected: 'ok', connecting: 'idle', checking: 'idle', error: 'stop', no_host: 'idle' } as const)[
+                  cloudState
+              ];
     const connLabel = t(`discord.state_${cloudState}`);
 
     const navHidden = singleColumn && showMainNarrow;

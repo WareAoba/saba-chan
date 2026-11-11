@@ -443,6 +443,9 @@
     background: var(--chip-color);
     box-shadow: 0 0 0 3px var(--bg-1);
 }
+.server-row-dot.pulse {
+    animation: chip-pulse 1.2s var(--ease) infinite;
+}
 .server-row-text {
     flex: 1;
     min-width: 0;
@@ -4225,9 +4228,13 @@ button.appbar-pill:focus-visible {
     background: var(--ok);
     box-shadow: 0 0 0 3px var(--ok-soft);
 }
+/* 켜는 중은 꺼짐 회색, 끄는 중은 켜짐 초록으로 깜빡인다 (사용자 11-11) */
+.palette-dot.stopping {
+    background: var(--ok);
+}
 .palette-dot.starting,
 .palette-dot.stopping {
-    background: var(--warn);
+    animation: chip-pulse 1.2s var(--ease) infinite;
 }
 .palette-gmark {
     width: 16px;

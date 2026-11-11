@@ -43,6 +43,8 @@ interface AppBarProps {
     daemonStatus: string;
     daemonInParentJob?: boolean;
     discordStatus: string;
+    /** 실행 중이던 봇이 끊겨 다시 붙는 중 */
+    discordReconnecting?: boolean;
     unreadCount: number;
     extInitializing?: boolean;
     extInitLabel?: string;
@@ -64,6 +66,7 @@ export function AppBar({
     daemonStatus,
     daemonInParentJob,
     discordStatus,
+    discordReconnecting,
     unreadCount,
     extInitializing,
     extInitLabel,
@@ -128,6 +131,7 @@ export function AppBar({
                     <ConnectionRail
                         daemonStatus={daemonStatus}
                         botStatus={discordStatus}
+                        botReconnecting={discordReconnecting}
                         onDaemonClick={onToggleDaemon}
                         daemonExpanded={showDaemon}
                         onBotClick={() => onNavigate('discord')}

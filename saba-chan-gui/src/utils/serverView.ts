@@ -39,15 +39,20 @@ export function viewStatus(server: Partial<ServerInfo>, moduleData?: unknown, mo
     return 'stopped';
 }
 
-/** 상태 → 상태 칩 색 이름 (tokens.css의 --ok/--stop/--warn/--info) */
-/** 상태 → StatusChip 색 */
+/**
+ * 상태 → StatusChip 색 (tokens.css의 --ok/--stop/--warn/--info).
+ * 켜는 중·끄는 중은 떠나온 상태의 색으로 깜빡인다 (사용자 11-11): 켜는 중 = 꺼짐 회색, 끄는 중 = 켜짐 초록. 노랑은 복구 중만
+ */
 export type StatusTone = 'ok' | 'stop' | 'warn' | 'info' | 'idle';
+
+/** 깜빡이는(진행 중) 상태 */
+export const isTransitional = (status: string | undefined) => status === 'starting' || status === 'stopping';
 
 export const STATUS_TONE: Record<string, StatusTone> = {
     running: 'ok',
     stopped: 'idle',
-    starting: 'warn',
-    stopping: 'warn',
+    starting: 'idle',
+    stopping: 'ok',
     provisioning: 'info',
     missing: 'warn',
 };
