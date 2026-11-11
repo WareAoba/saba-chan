@@ -308,6 +308,45 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(window.api.remoteSettingsSet).toHaveBeenCalledWith({ enabled: true, port: 57490 });
     });
 
+    it('포트를 친 채로 연결 탭을 떠났다 와도 친 포트와 저장 막대가 남는다', async () => {
+        const Page = ({ show }: { show: boolean }) => <SaveBarHost>{show && <RemoteDaemonSection />}</SaveBarHost>;
+        const { rerender } = await act(async () => render(<Page show />));
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Port' }), { target: { value: '57490' } });
+        rerender(<Page show={false} />);
+        expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+        await act(async () => rerender(<Page show />));
+        expect(screen.getByRole<HTMLInputElement>('spinbutton', { name: 'Port' }).value).toBe('57490');
+    });
+
+    // 리뷰 재검토 #3: 다른 탭에서 저장했다 실패하면 막대를 내리지 않고 실패를 알린다
+    it('연결 탭을 떠난 뒤 저장이 실패하면 막대가 남고 이유를 알린다', async () => {
+        window.showToast = vi.fn();
+        vi.mocked(window.api.remoteSettingsSet).mockResolvedValue({ success: false, error_code: 'port_in_use' });
+        const Page = ({ show }: { show: boolean }) => <SaveBarHost>{show && <RemoteDaemonSection />}</SaveBarHost>;
+        const { rerender } = await act(async () => render(<Page show />));
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Port' }), { target: { value: '57490' } });
+        rerender(<Page show={false} />);
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save' })));
+        expect(window.showToast).toHaveBeenCalledWith('The port is already in use', 'error');
+        expect(document.querySelector('.saba-savebar.dirty')).not.toBeNull();
+    });
+
+    it('포트를 친 채로 켬을 바꿔도 친 포트는 남아 저장 막대에서 저장한다', async () => {
+        vi.mocked(window.api.remoteSettingsSet).mockResolvedValue({ ...settings, enabled: false });
+        await act(async () =>
+            render(
+                <SaveBarHost>
+                    <RemoteDaemonSection />
+                </SaveBarHost>,
+            ),
+        );
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Port' }), { target: { value: '57490' } });
+        await act(async () => fireEvent.click(screen.getByRole('checkbox', { name: 'Allow remote connections' })));
+        expect(window.api.remoteSettingsSet).toHaveBeenCalledWith({ enabled: false, port: 57480 });
+        expect(screen.getByRole<HTMLInputElement>('spinbutton', { name: 'Port' }).value).toBe('57490');
+        expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    });
+
     it('포트를 열지 못하면 이유를 번역해 보인다', async () => {
         vi.mocked(window.api.remoteSettings).mockResolvedValue({ ...settings, status: { listening: false, published: false, error: 'port_in_use' } });
         await act(async () => render(<RemoteDaemonSection />));

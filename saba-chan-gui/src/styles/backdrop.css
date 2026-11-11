@@ -15,6 +15,8 @@
 
     /* 유리 진하기: 면(카드·버튼)과 홈(입력칸·파인 칸) */
     --glass-face: 70%;
+    /* 떠 있는 창의 면: 평소엔 카드와 같고, 흐림을 끄면 100% */
+    --glass-float: var(--glass-face);
     --glass-well: 55%;
     --bg-1: color-mix(in oklch, var(--bg-1-solid) var(--glass-face), transparent);
     --bg-2: color-mix(in oklch, var(--bg-2-solid) var(--glass-face), transparent);
@@ -47,16 +49,31 @@
 :root[data-backdrop="on"] .toast,
 :root[data-backdrop="on"] .saba-bubble-body,
 :root[data-backdrop="on"] .saba-tooltip,
-:root[data-backdrop="on"] .palette,
 :root[data-backdrop="on"] .saba-popover:not(.bare),
 :root[data-backdrop="on"] .saba-dialog,
 :root[data-backdrop="on"] .saba-savebar,
 :root[data-backdrop="on"] .monitor-float,
 :root[data-backdrop="on"] .page-empty .onboarding-card,
 :root[data-backdrop="on"] .start-coach,
-:root[data-backdrop="on"] .term-popped-card {
+:root[data-backdrop="on"] .term-popped-card,
+:root[data-backdrop="on"] .dc-member-results {
     -webkit-backdrop-filter: var(--glass-blur);
     backdrop-filter: var(--glass-blur);
+    /* 흐림을 끈 때(투명 효과 줄이기·애니메이션 끔)는 뒤가 그대로 비치지 않게 단단한 면으로 (--glass-float 100%) */
+    --bg-1: color-mix(in oklch, var(--bg-1-solid) var(--glass-float), transparent);
+    --bg-2: color-mix(in oklch, var(--bg-2-solid) var(--glass-float), transparent);
+    --bg-3: color-mix(in oklch, var(--bg-3-solid) var(--glass-float), transparent);
+    --bg-4: color-mix(in oklch, var(--bg-4-solid) var(--glass-float), transparent);
+    --surface-gradient: color-mix(in oklch, var(--surface-gradient-solid) var(--glass-float), transparent);
+    --surface-gradient-hover: color-mix(in oklch, var(--surface-gradient-hover-solid) var(--glass-float), transparent);
+}
+@media (prefers-reduced-transparency: reduce) {
+    :root[data-backdrop="on"] {
+        --glass-float: 100%;
+    }
+}
+:root[data-backdrop="on"][data-no-transitions="true"] {
+    --glass-float: 100%;
 }
 
 :root[data-backdrop="on"],

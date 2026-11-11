@@ -27,6 +27,9 @@ const make = (settingsValues: Record<string, unknown>, extra: Record<string, unk
         versionsLoading: false,
         versionInstalling: false,
         handleSettingChange: vi.fn(),
+        handleSettingLoaded: vi.fn(),
+        revertSettings: vi.fn(),
+        openedSettings: { motd: 'a' },
         handleInstallVersion: vi.fn(),
         handleSaveSettings: vi.fn(),
         handleResetServer: vi.fn(),
@@ -42,23 +45,26 @@ describe('서버 설정 저장 막대', () => {
         expect(screen.queryByRole('button', { name: /Save Settings/ })).toBeNull();
     });
 
-    it('값을 바꾸면 막대가 올라와 저장하고, 되돌리면 연 때 값으로 돌린다', () => {
-        const handleSettingChange = vi.fn();
+    it('연 때 값과 다르면 막대가 올라와 저장하고, 되돌리기는 설정 훅에 맡긴다', () => {
+        const revertSettings = vi.fn();
         const handleSaveSettings = vi.fn();
-        const extra = { handleSettingChange, handleSaveSettings };
-        const { rerender } = render(<ServerSettingsModal {...make({ motd: 'a' }, extra)} />);
-        rerender(<ServerSettingsModal {...make({ motd: 'b' }, extra)} />);
-        const bar = document.querySelector('.saba-savebar');
-        expect(bar).not.toBeNull();
+        render(<ServerSettingsModal {...make({ motd: 'b' }, { revertSettings, handleSaveSettings })} />);
+        expect(document.querySelector('.saba-savebar')).not.toBeNull();
         fireEvent.click(screen.getByRole('button', { name: /Save Settings/ }));
         expect(handleSaveSettings).toHaveBeenCalledTimes(1);
         fireEvent.click(screen.getByRole('button', { name: 'Revert' }));
-        expect(handleSettingChange).toHaveBeenCalledWith('motd', 'a');
+        expect(revertSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it('다시 그려져도(탭 전환) 기준은 그대로라 막대가 남는다', () => {
+        const { unmount } = render(<ServerSettingsModal {...make({ motd: 'b' })} />);
+        unmount();
+        render(<ServerSettingsModal {...make({ motd: 'b' })} />);
+        expect(document.querySelector('.saba-savebar')).not.toBeNull();
     });
 
     it('추가 실행 인자만 바꿔도 막대가 올라온다', () => {
-        const { rerender } = render(<ServerSettingsModal {...make({ motd: 'a' })} />);
-        rerender(<ServerSettingsModal {...make({ motd: 'a', _launch_extra_args: '-x' })} />);
+        render(<ServerSettingsModal {...make({ motd: 'a', _launch_extra_args: '-x' })} />);
         expect(document.querySelector('.saba-savebar')).not.toBeNull();
     });
 });

@@ -90,6 +90,14 @@ describe('glass material when the window backdrop is on', () => {
             .filter((s) => ![...frosted].some((f) => s !== f && s.startsWith(`${f} `)));
         expect(floating.filter((s) => !frosted.has(s))).toEqual([]);
     });
+
+    it('when blur is off (reduced transparency, no animations) floating windows turn solid instead of 70% see-through', () => {
+        const raw = fs.readFileSync(path.join(SRC, 'styles/backdrop.css'), 'utf8');
+        expect(raw).toMatch(/prefers-reduced-transparency: reduce\)\s*\{\s*:root\[data-backdrop="on"\]\s*\{\s*--glass-float: 100%/);
+        expect(raw).toMatch(/\[data-no-transitions="true"\]\s*\{\s*--glass-float: 100%/);
+        const float = rules(backdrop).find((r) => /backdrop-filter:\s*var\(--glass-blur\)/.test(r.body));
+        expect(float?.body).toMatch(/--bg-2:\s*color-mix\(in oklch, var\(--bg-2-solid\) var\(--glass-float\)/);
+    });
 });
 
 describe('dropdown is a value holder', () => {
