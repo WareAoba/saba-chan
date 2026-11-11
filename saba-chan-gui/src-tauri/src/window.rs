@@ -549,6 +549,9 @@ pub fn open_popout(app: &AppHandle, instance_id: &str, server_name: &str) -> tau
     emit_main(app, "console:popoutOpened", instance_id);
     let (handle, id) = (app.clone(), instance_id.to_string());
     win.on_window_event(move |event| match event {
+        // 사용자가 OS 닫기(맥 신호등·Alt+F4)로 닫으면 다시 띄우지 않는다.
+        // 셸이 닫을 때(서버 정지·되돌리기·데몬 전환)는 destroy를 써서 이 요청이 오지 않는다
+        WindowEvent::CloseRequested { .. } => save_popout(&handle, &id, json!({ "reopen": false })),
         WindowEvent::Destroyed => emit_main(&handle, "console:popoutClosed", &id),
         WindowEvent::Moved(_) | WindowEvent::Resized(_) => schedule_save_popout(&handle, &id),
         _ => {}
@@ -659,7 +662,7 @@ pub async fn close_popout(app: &AppHandle, instance_id: &str, reopen: bool) -> V
     save_popout_now(app, instance_id, json!({ "reopen": reopen })).await;
     match popout(app, instance_id) {
         Some(win) => {
-            let _ = win.close();
+            let _ = win.destroy();
             json!({ "ok": true })
         }
         None => json!({ "ok": false }),
@@ -678,7 +681,7 @@ pub fn popout_list(app: &AppHandle) -> Vec<String> {
 pub fn close_popouts(app: &AppHandle) {
     for (label, win) in app.webview_windows() {
         if popout_instance_id(&label).is_some() {
-            let _ = win.close();
+            let _ = win.destroy();
         }
     }
 }
@@ -702,7 +705,7 @@ pub fn popin(app: &AppHandle, instance_id: &str) -> Value {
         "console:popinRequest",
         json!({ "instanceId": instance_id, "serverName": server_name }),
     );
-    let _ = win.close();
+    let _ = win.destroy();
     json!({ "ok": true })
 }
 
