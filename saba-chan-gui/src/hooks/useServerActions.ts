@@ -455,7 +455,7 @@ export function useServerActions({
                                         version: installResult.version || '',
                                     });
                                     const msg = installResult.java_warning
-                                        ? `${done}\n⚠️ ${installResult.java_warning}`
+                                        ? `${done}\n${installResult.java_warning}`
                                         : done;
                                     safeShowToast(msg, 'success', 5000);
                                     await fetchServers();

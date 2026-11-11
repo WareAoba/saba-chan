@@ -2,7 +2,6 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { ACCENT_PRESETS, type ThemeConfig, type ThemeMode } from '../../../utils/themeManager';
 import CustomDropdown from '../../CustomDropdown/CustomDropdown';
-import { Icon } from '../../Icon';
 import { OklchPicker } from '../../ui/OklchPicker';
 import { SabaSlider, SabaToggle } from '../../ui/SabaUI';
 import { WindowBackdropSetting } from '../WindowBackdropSetting';
@@ -30,7 +29,7 @@ export function AppearanceTab({
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="palette" size="sm" /> {t('gui:settings_modal.theme_label')}
+                        {t('gui:settings_modal.theme_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.theme_description')}</span>
                 </label>
@@ -50,7 +49,7 @@ export function AppearanceTab({
             <div className="setting-item setting-item-vertical">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="palette" size="sm" /> {t('gui:settings_modal.accent_color_label', 'Accent Color')}
+                        {t('gui:settings_modal.accent_color_label', 'Accent Color')}
                     </span>
                     <span className="setting-description">
                         {t(
@@ -93,7 +92,7 @@ export function AppearanceTab({
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="palette" size="sm" /> {t('gui:settings_modal.gradient_label', 'Gradient Effect')}
+                        {t('gui:settings_modal.gradient_label', 'Gradient Effect')}
                     </span>
                     <span className="setting-description">
                         {t(
@@ -115,7 +114,7 @@ export function AppearanceTab({
             <div className="setting-item setting-item-vertical">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="settings" size="sm" /> {t('gui:settings_modal.font_scale_label', 'Font Size')}
+                        {t('gui:settings_modal.font_scale_label', 'Font Size')}
                     </span>
                     <span className="setting-description">
                         {t('gui:settings_modal.font_scale_description', 'Adjust the overall text size (50%–200%)')}
@@ -138,7 +137,7 @@ export function AppearanceTab({
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="settings" size="sm" /> {t('gui:settings_modal.transitions_label', 'Animations')}
+                        {t('gui:settings_modal.transitions_label', 'Animations')}
                     </span>
                     <span className="setting-description">
                         {t('gui:settings_modal.transitions_description', 'Enable or disable UI transition animations')}
@@ -154,7 +153,7 @@ export function AppearanceTab({
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="server" size="sm" /> {t('gui:settings_modal.sidebar_compact_label')}
+                        {t('gui:settings_modal.sidebar_compact_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.sidebar_compact_description')}</span>
                 </label>
@@ -168,7 +167,6 @@ export function AppearanceTab({
             <div className="setting-item setting-item-clickable" onClick={handleResetTheme} style={{ marginTop: 8 }}>
                 <label className="setting-label" style={{ cursor: 'pointer' }}>
                     <span className="setting-title">
-                        <Icon name="refresh" size="sm" />{' '}
                         {t('gui:settings_modal.reset_theme_label', 'Reset to Default')}
                     </span>
                     <span className="setting-description">

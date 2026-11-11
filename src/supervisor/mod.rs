@@ -3531,6 +3531,9 @@ fn origin_fields(origin: &crate::audit::Origin) -> serde_json::Map<String, Value
     if let Some(name) = &origin.user_name {
         fields.insert("userName".into(), json!(name));
     }
+    if let Some(guild) = &origin.guild_name {
+        fields.insert("guildName".into(), json!(guild));
+    }
     if let Some(host) = origin.user.as_ref().filter(|_| source == "remote") {
         fields.insert("remoteHost".into(), json!(host));
     }
@@ -3585,6 +3588,23 @@ fn announce_stopped(instance_id: &str, name: &str, kind: crash::ExitKind, origin
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 켜고 끈 쪽: 디스코드에서 시켰으면 그 디스코드 서버 이름도 싣는다 (id는 싣지 않는다)
+    #[test]
+    fn origin_fields_carry_the_discord_server_name_but_no_ids() {
+        let origin = crate::audit::Origin {
+            user: Some("111".into()),
+            guild: Some("222".into()),
+            user_name: Some("주인님".into()),
+            guild_name: Some("사바쨩 서버".into()),
+            ..crate::audit::Origin::new("discord")
+        };
+        assert_eq!(
+            Value::Object(origin_fields(&origin)),
+            json!({"source": "discord", "userName": "주인님", "guildName": "사바쨩 서버"})
+        );
+        assert_eq!(Value::Object(origin_fields(&crate::audit::Origin::new("gui"))), json!({"source": "gui"}));
+    }
 
     /// 모듈이 준 REST 자격 증명: `rest_credentials`가 있으면 그것만, 없으면 `[credential_map]`으로 `module_settings`·최상위에서 읽는다
     #[test]

@@ -10,7 +10,7 @@ const REFETCH_DEBOUNCE_MS = 300;
 
 /** 누르면 그 게임 서버를 업데이트하는 알림. 서버마다 하나만 둔다 (출처=서버 이름) */
 const serverUpdateNotice = (text: string, instanceId: string, name: string) => ({
-    message: `🔔 ${text}`,
+    message: text,
     type: 'info' as const,
     source: name,
     instanceId,
@@ -56,7 +56,7 @@ export function DaemonEvents({ onServersChanged }: { onServersChanged?: () => vo
                 window.__sabaNotice?.addNotice(
                     module
                         ? {
-                              message: `🔔 ${tr('events.module_update', { name, module: d.module, version: d.latest })}`,
+                              message: tr('events.module_update', { name, module: d.module, version: d.latest }),
                               type: 'info',
                               source: 'Updater',
                               action: 'openUpdateModal',
@@ -85,7 +85,7 @@ export function DaemonEvents({ onServersChanged }: { onServersChanged?: () => vo
                 const d = ev.data;
                 const name = d.instance || nameOf(d.instanceId);
                 window.__sabaNotice?.addNotice({
-                    message: `⚠️ ${tr('events.server_update_failed', { name, error: d.error || '' }).trim()}`,
+                    message: tr('events.server_update_failed', { name, error: d.error || '' }).trim(),
                     type: 'error',
                     source: name,
                     instanceId: d.instanceId,

@@ -214,7 +214,7 @@ describe('데몬 이벤트 스트림', () => {
         });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
             expect.objectContaining({
-                message: '🔔 Pal: a new version 1.1.0 of the palworld module is out.',
+                message: 'Pal: a new version 1.1.0 of the palworld module is out.',
                 action: 'openUpdateModal',
             }),
         );
@@ -225,7 +225,7 @@ describe('데몬 이벤트 스트림', () => {
         });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
             expect.objectContaining({
-                message: "🔔 Pal: a new game server version is out. If players can't join, update the server.",
+                message: "Pal: a new game server version is out. If players can't join, update the server.",
             }),
         );
         delete window.__sabaNotice;
@@ -243,7 +243,7 @@ describe('데몬 이벤트 스트림', () => {
         await stream.emit({ id: 2, type: 'instance.update_waiting', data: { instanceId: 'i', instance: 'Pal', players: 2 } });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
             expect.objectContaining({
-                message: '🔔 Pal: a new game server version is out, but 2 player(s) are online, so auto-update is waiting.',
+                message: 'Pal: a new game server version is out, but 2 player(s) are online, so auto-update is waiting.',
                 action: SERVER_UPDATE_ACTION,
                 dedup: true,
             }),
@@ -252,12 +252,12 @@ describe('데몬 이벤트 스트림', () => {
         await stream.emit({ id: 4, type: 'instance.update_waiting', data: { instanceId: 'i', instance: 'Pal', players: null } });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
             expect.objectContaining({
-                message: '🔔 Pal: a new game server version is out, but players are online, so auto-update is waiting.',
+                message: 'Pal: a new game server version is out, but players are online, so auto-update is waiting.',
             }),
         );
         await stream.emit({ id: 3, type: 'instance.update_failed', data: { instanceId: 'i', instance: 'Pal', error: 'disk full' } });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
-            expect.objectContaining({ message: "⚠️ Pal: couldn't update the game server. disk full", type: 'error' }),
+            expect.objectContaining({ message: "Pal: couldn't update the game server. disk full", type: 'error' }),
         );
         delete window.__sabaNotice;
         unmount();

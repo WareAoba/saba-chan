@@ -83,10 +83,11 @@ describe('받을 수 있는 모듈 목록', () => {
     it('이 기기에서 돌지 않는 모듈은 설치 버튼 없이 접힌 묶음에 이유와 함께 둔다', async () => {
         await openModules();
         expect(document.querySelectorAll('.ss-catalog-card')).toHaveLength(1);
-        const group = document.querySelector('details.ss-unsupported') as HTMLDetailsElement;
+        // 공통 펼치기 (사용자 11-11), 접혀 있다
+        const group = document.querySelector('.ss-unsupported') as HTMLElement;
         expect(group).not.toBeNull();
-        expect(group.open).toBe(false);
-        expect(group.querySelector('summary')).toHaveTextContent('2');
+        expect(group.querySelector('.saba-disclosure-body')).toHaveProperty('hidden', true);
+        expect(group.querySelector('.saba-disclosure-head')).toHaveTextContent('2');
         expect(group.querySelector('.ss-install-btn')).toBeNull();
         const rows = group.querySelectorAll('.ss-unsupported-row');
         expect(rows[0]).toHaveTextContent('Palworld');

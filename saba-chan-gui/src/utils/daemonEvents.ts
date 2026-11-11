@@ -29,7 +29,7 @@ export const eventsAvailable = () => typeof window.api?.onDaemonEvent === 'funct
 /** 서버 목록을 다시 읽어야 하는 이벤트 (상태는 이벤트로 오지 않는다) */
 export const SERVER_CHANGING = ['action.run', 'instance.exit', 'instance.started', 'instance.stopped', 'resync'];
 
-/** preload가 넘긴 한 건 → {id, type, data}. data는 문자열(JSON)이어도 받는다 */
+/** 브리지가 넘긴 한 건 → {id, type, data}. data는 문자열(JSON)이어도 받는다 */
 export function normalizeEvent(raw: unknown): DaemonEvent | null {
     if (!raw || typeof raw !== 'object') return null;
     const ev = raw as ApiBody;

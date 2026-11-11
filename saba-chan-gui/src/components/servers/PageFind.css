@@ -118,6 +118,10 @@
     z-index: 59;
     pointer-events: none;
 }
+/* 창(Dialog, z 9000·9001) 안에서 찾을 때는 창 위에 칠한다 */
+.page-find-layer--modal {
+    z-index: 9002;
+}
 .page-find-layer i {
     position: fixed;
     border-radius: 3px;

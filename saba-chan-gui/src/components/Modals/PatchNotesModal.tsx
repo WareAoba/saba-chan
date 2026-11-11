@@ -1,9 +1,9 @@
-import clsx from 'clsx';
 import { useEffect } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
-import { useModalClose } from '../../hooks/useModalClose';
 import { Icon } from '../Icon';
+import { Dialog } from '../ui/Dialog';
+import { ConfirmIcon } from './Modals';
 import { PATCH_NOTES_ACTION, updateResultMessage } from './NoticeModal';
 
 export { updateResultMessage };
@@ -45,7 +45,6 @@ interface PatchNotesModalProps {
 
 export function PatchNotesModal({ data, onClose }: PatchNotesModalProps) {
     const { t } = useTranslation('gui');
-    const { isClosing, requestClose } = useModalClose(onClose);
     const result = data?.result || {};
     const failed = result.failed || [];
 
@@ -54,16 +53,25 @@ export function PatchNotesModal({ data, onClose }: PatchNotesModalProps) {
     }, []);
 
     return (
-        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
-            <div
-                className="modal patch-notes-modal"
-                role="dialog"
-                aria-label={t('patch_notes.title')}
-                onClick={(e) => e.stopPropagation()}
-            >
-                <h2 className="modal-title">
-                    {data?.version ? t('patch_notes.title_version', { version: data.version }) : t('patch_notes.title')}
-                </h2>
+        <Dialog
+            open
+            onOpenChange={(o) => !o && onClose()}
+            size="md"
+            className="patch-notes"
+            media={
+                result.success === false ? (
+                    <ConfirmIcon icon="alertTriangle" tone="warn" />
+                ) : (
+                    <ConfirmIcon icon="rocket" tone="info" />
+                )
+            }
+            title={data?.version ? t('patch_notes.title_version', { version: data.version }) : t('patch_notes.title')}
+            footer={
+                <button type="button" className="btn btn-primary" onClick={onClose}>
+                    {t('modals.confirm')}
+                </button>
+            }
+        >
                 {result.success === false && (
                     <div className="notice tone-warn" role="alert">
                         <Icon name="alertTriangle" size="sm" />
@@ -96,12 +104,8 @@ export function PatchNotesModal({ data, onClose }: PatchNotesModalProps) {
                 {data?.notes ? (
                     <div className="patch-notes-body">{data.notes}</div>
                 ) : (
-                    <p className="modal-message">{t('patch_notes.no_notes')}</p>
+                    <p className="muted">{t('patch_notes.no_notes')}</p>
                 )}
-                <button type="button" className="btn btn-primary" onClick={requestClose}>
-                    {t('modals.confirm')}
-                </button>
-            </div>
-        </div>
+        </Dialog>
     );
 }

@@ -46,7 +46,7 @@ export function blockedText(result: ApiBody | null | undefined, t: TFunction) {
     );
 }
 
-/** 격리를 준비하지 못해 막혔고, 격리 없이 돌리기 동의를 받을 수 있는지 (#43 preload가 있어야 한다) */
+/** 격리를 준비하지 못해 막혔고, 격리 없이 돌리기 동의를 받을 수 있는지 (브리지에 동의 채널이 있어야 한다) */
 export const canAskUnisolated = (result?: ApiBody | null) =>
     result?.action_required === 'sandbox_unavailable' &&
     typeof result.component === 'string' &&

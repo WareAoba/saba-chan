@@ -75,13 +75,15 @@ function validationText(t: ReturnType<typeof useTranslation>['t'], fieldLabel: s
                 value: e.value,
                 defaultValue: `${fieldLabel}: '${e.value}' is not a valid option`,
             });
+        case 'invalid':
+            return t('validation.invalid', { field: fieldLabel });
         default:
             return null;
     }
 }
 
-/** 설정 한 줄: 이름·설명 왼쪽, 입력은 오른쪽 끝(또는 stack이면 아래 전체 폭) */
-function SettingRow({
+/** 설정 한 줄: 이름·설명 왼쪽, 입력은 오른쪽 끝(또는 stack이면 아래 전체 폭). 서버 추가 창도 쓴다 */
+export function SettingRow({
     label,
     labelId,
     htmlFor,
@@ -135,10 +137,12 @@ interface SettingsFieldProps {
     validationError?: SettingValidationError;
     /** 화면을 연 뒤 값이 바뀌었는가 (다시 시작해야 적용되는 칸이면 그렇다고 표시한다) */
     changed?: boolean;
+    /** 줄에 더할 class (서버 추가 창은 바꾼 줄을 표시한다) */
+    className?: string;
 }
 
 /** 모듈이 선언한 설정 칸 하나 (field_type에 맞는 입력) */
-export function SettingsField({ field, value, modNs, onChange, validationError, changed }: SettingsFieldProps) {
+export function SettingsField({ field, value, modNs, onChange, validationError, changed, className }: SettingsFieldProps) {
     const { t } = useTranslation('gui');
     // 이름표를 입력 칸에 잇는다 (화면 낭독기, 이름표 눌러 칸으로 가기)
     const inputId = useId();
@@ -259,6 +263,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
             control={control}
             stack={STACKED_TYPES.includes(fieldType)}
             error={validationError ? validationText(t, fieldLabel, validationError) : null}
+            className={className}
         />
     );
 }
@@ -279,8 +284,8 @@ export function ProtocolNotice({ protocol }: { protocol: string }) {
     );
 }
 
-/** 설정 묶음 카드 */
-function Card({
+/** 설정 묶음 카드. 서버 추가 창도 쓴다 */
+export function Card({
     icon,
     title,
     desc,

@@ -1153,56 +1153,65 @@ button.activity-line:hover {
     flex-direction: column;
     gap: var(--sp-4);
 }
-.info-grid {
+/* 서버 정보 카드: 이름·값을 줄 맞춘 표로 */
+.info-facts {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0 var(--sp-6);
+    margin: 0;
+}
+.info-fact {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
     gap: var(--sp-3);
+    padding: var(--sp-2) 0;
+    border-bottom: 1px solid var(--line);
 }
-.info-cell {
-    padding: var(--sp-3) var(--sp-4);
-    border-radius: var(--r-md);
-    background: var(--surface-gradient);
-    border: 1px solid var(--line);
-    box-shadow: var(--shadow-raised);
+.info-fact dt {
+    color: var(--text-2);
+    font-size: var(--fs-sm);
 }
-.info-cell dt {
-    font-size: var(--fs-xs);
-    color: var(--text-3);
+.info-fact dd {
+    margin: 0;
     font-weight: 600;
-    margin-bottom: var(--sp-0-5);
-}
-.info-cell dd {
-    font-size: var(--fs-lg);
-    font-weight: 700;
     font-variant-numeric: tabular-nums;
+    text-align: right;
     overflow-wrap: anywhere;
     -webkit-user-select: text;
     user-select: text;
 }
-.info-cell dd code {
+.info-fact dd code {
     font-size: var(--fs-sm);
 }
-/* 개발 용어(PID·REST·통신 방식)는 접어 둔다 */
-.info-more > summary {
-    cursor: pointer;
-    width: fit-content;
-    font-size: var(--fs-sm);
-    color: var(--text-3);
-    user-select: none;
-}
-.info-more > summary:hover,
-.info-more > summary:focus-visible {
-    color: var(--text-2);
-}
-.info-more[open] > summary {
-    margin-bottom: var(--sp-2);
-}
-.info-actions {
+.info-folder {
     display: flex;
+    align-items: center;
     gap: var(--sp-2);
-    flex-wrap: wrap;
-    padding-top: var(--sp-2);
-    border-top: 1px solid var(--line);
+    margin: var(--sp-3) 0 var(--sp-1);
+}
+.info-folder code {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* 점검 카드: 단추는 한 줄, 결과는 그 아래 */
+.info-check > .ss-rows {
+    display: flex;
+    flex-flow: row wrap;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.info-check .server-check {
+    display: contents;
+}
+.info-check .server-check > :not(.server-check-actions) {
+    flex-basis: 100%;
+    order: 1;
 }
 
 /* ── 박아 넣은 옛 화면들 (서버 설정·설정·디스코드) ── */
@@ -1300,9 +1309,6 @@ button.activity-line:hover {
     overflow: visible;
     padding: 0;
 }
-.settings-page .settings-modal-header {
-    padding: 0 0 var(--sp-4);
-}
 
 /* ── 좁은 창 ── */
 @media (max-width: 899px) {
@@ -1394,17 +1400,6 @@ button.activity-line:hover {
     .settings-tab-content.slide-down {
         animation: none;
     }
-}
-.btn.btn-confirm {
-    background: var(--brand-gradient);
-    color: var(--brand-text);
-    border: none;
-    box-shadow: var(--shadow-raised);
-}
-.btn.btn-cancel {
-    background: transparent;
-    color: var(--text-1);
-    border: 1px solid var(--line-strong);
 }
 
 /* ── 데몬(백그라운드 서비스) 팝업: 상태 → 할 일 → 연결 정보 → 보조 동작 순 ── */
@@ -1526,13 +1521,8 @@ button.activity-line:hover {
 .server-detail-pane > .daemon-down-notice {
     margin: var(--sp-4) var(--sp-4) 0;
 }
-.module-failures summary {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    cursor: pointer;
-    font-weight: 600;
-    list-style: none;
+.module-failures .saba-disclosure-head {
+    color: inherit;
 }
 .module-failures ul {
     margin: var(--sp-2) 0 0;
@@ -1973,9 +1963,10 @@ button.activity-line:hover {
     color: var(--text-3);
     align-self: flex-start;
 }
-.dc-save-state.saved::before {
-    content: '✓ ';
-    color: var(--ok);
+.dc-save-state {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
 }
 
 .dc-tab {
@@ -1999,7 +1990,8 @@ button.activity-line:hover {
     padding: var(--sp-3) var(--sp-4);
     border-radius: var(--r-md);
     border: 1px solid var(--line);
-    background: var(--bg-1);
+    background: var(--surface-gradient);
+    box-shadow: var(--neu-up);
     color: inherit;
     font: inherit;
     text-align: left;
@@ -2009,11 +2001,13 @@ button.activity-line:hover {
         background var(--dur-fast) var(--ease);
 }
 .dc-choice-item:hover {
-    background: var(--bg-2);
+    border-color: var(--brand-primary);
 }
+/* 고른 카드는 파인 면 (서버 추가의 고르기 목록과 같다) */
 .dc-choice-item.active {
-    border-color: var(--accent);
-    background: color-mix(in oklch, var(--accent) 8%, var(--bg-1));
+    border-color: var(--brand-primary);
+    background: var(--inset);
+    box-shadow: var(--neu-in);
 }
 /* 라디오: 체크박스와 같은 파인 홈, 고르면 가운데 볼록한 점이 튀어나온다 */
 .dc-radio {
@@ -2223,7 +2217,7 @@ button.activity-line:hover {
     font-weight: 400;
 }
 .screen-link-arrow {
-    font-size: 0.9em;
+    display: inline-flex;
 }
 
 /* 권한 레벨 (P1) */
@@ -2489,10 +2483,6 @@ button.activity-line:hover {
     position: fixed;
     z-index: 60;
     pointer-events: none;
-}
-.dc-import summary {
-    font-weight: 600;
-    cursor: pointer;
 }
 .dc-dot {
     display: inline-block;
@@ -3475,40 +3465,10 @@ button.appbar-pill:focus-visible {
 .mt-next {
     font-size: var(--fs-xs);
 }
-.modal.mt-picker {
-    max-width: 520px;
-    width: calc(100vw - var(--sp-8));
-    text-align: left;
+.mt-picker-body {
     display: flex;
     flex-direction: column;
     gap: var(--sp-3);
-}
-.mt-picker-list {
-    list-style: none;
-    margin: 0;
-    padding: var(--sp-1);
-    max-height: 320px;
-    overflow-y: auto;
-    border: 1px solid var(--line);
-    border-radius: var(--r-md);
-}
-.mt-picker-item {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--sp-1) var(--sp-2);
-    width: 100%;
-    padding: var(--sp-2) var(--sp-3);
-    border: 0;
-    border-radius: var(--r-sm);
-    background: transparent;
-    color: var(--text-1);
-    text-align: left;
-    cursor: pointer;
-}
-.mt-picker-item:hover,
-.mt-picker-item.selected {
-    background: var(--bg-2);
 }
 .mt-picker-name {
     display: flex;
@@ -3517,13 +3477,9 @@ button.appbar-pill:focus-visible {
     font-weight: 600;
     margin-right: auto;
 }
-.mt-picker-item > .muted {
+.saba-pick-item > .muted {
     flex-basis: 100%;
     font-size: var(--fs-xs);
-}
-.mt-picker .modal-actions {
-    display: flex;
-    justify-content: flex-end;
 }
 .mt-keep {
     padding-top: var(--sp-3);
@@ -3653,16 +3609,11 @@ button.appbar-pill:focus-visible {
     flex: 1;
     min-width: 0;
 }
-.module-audit .btn-link {
-    margin-left: var(--sp-1-5);
-    padding: 0;
-    height: auto;
-    border: none;
-    background: none;
-    color: var(--accent);
-    font: inherit;
-    cursor: pointer;
-    text-decoration: underline;
+.module-audit .saba-disclosure {
+    margin-top: var(--sp-1);
+}
+.module-audit .saba-disclosure-head {
+    color: inherit;
 }
 .module-audit-list {
     list-style: none;
@@ -4826,12 +4777,8 @@ button.appbar-pill:focus-visible {
     flex-shrink: 0;
 }
 .agreement-modal .agreement-list {
-    margin: var(--sp-1) 0 var(--sp-4);
+    margin: 0;
     width: 100%;
-}
-.modal-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 /* 서버 점검 (validate·diagnose) 결과: 정보 탭 */
@@ -4839,7 +4786,6 @@ button.appbar-pill:focus-visible {
     display: flex;
     flex-direction: column;
     gap: var(--sp-2);
-    margin-top: var(--sp-3);
 }
 .server-check-actions {
     display: flex;
@@ -4866,8 +4812,8 @@ button.appbar-pill:focus-visible {
     gap: var(--sp-2);
     align-items: flex-start;
     padding: var(--sp-2) var(--sp-2-5);
-    border-radius: 8px;
-    background: var(--bg-2);
+    border-radius: var(--r-md);
+    background: var(--inset);
 }
 .server-check-issue.sev-critical,
 .server-check-issue.sev-error {
@@ -5474,24 +5420,17 @@ button.appbar-pill:focus-visible {
     margin-right: auto;
     color: var(--text-2);
 }
-.cli-line > summary {
-    display: inline-flex;
+.cli-line .saba-disclosure-head {
+    font-size: 12px;
+    font-weight: 500;
+}
+.cli-line .saba-disclosure-body:not([hidden]) {
+    display: flex;
+    flex: 1;
     align-items: center;
     gap: var(--sp-1-5);
-    cursor: pointer;
-    font-size: 12px;
-    list-style: none;
-    user-select: none;
-}
-.cli-line > summary::-webkit-details-marker {
-    display: none;
-}
-.cli-line > summary:hover,
-.cli-line > summary:focus-visible {
-    color: var(--text-1);
-}
-.cli-line:not([open]) > :not(summary) {
-    display: none;
+    min-width: 0;
+    padding-top: 0;
 }
 .cli-line code {
     overflow: hidden;
@@ -5864,12 +5803,8 @@ button.appbar-pill:focus-visible {
     gap: var(--sp-2);
     margin: 0 0 var(--sp-2);
 }
-.server-logs-head h3 {
-    margin: 0;
+.server-logs-head .ss-card-title {
     flex: 1;
-    font-size: var(--fs-sm);
-    color: var(--text-2);
-    font-weight: 600;
 }
 .server-logs-run {
     min-width: 160px;
@@ -5879,9 +5814,9 @@ button.appbar-pill:focus-visible {
     max-height: 320px;
     overflow: auto;
     padding: var(--sp-2) var(--sp-3);
-    border: 1px solid var(--line);
     border-radius: var(--r-md);
-    background: var(--bg-2);
+    background: var(--inset);
+    box-shadow: var(--neu-in);
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 12px;
     line-height: 1.5;
