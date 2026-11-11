@@ -3,6 +3,7 @@
   "title_bar": {
     "minimize": "最小化",
     "maximize": "最大化",
+    "restore": "元のサイズに戻す",
     "close": "閉じる"
   },
   "modals": {
@@ -128,6 +129,8 @@
     "console_wrap_description": "長い行をウィンドウ幅で折り返します。オフにすると横にスクロールします",
     "console_auto_scroll_label": "新しい行に追従",
     "console_auto_scroll_description": "一番下を見ているとき、新しい行に合わせてスクロールします",
+    "console_glass_label": "コンソールの半透明",
+    "console_glass_description": "ウィンドウの半透明がオンのとき、コンソールの背景も透けて見えるようにします。オフにするとコンソールだけ不透明になります。",
     "console_syntax_label": "シンタックスハイライト",
     "console_syntax_description": "サーバーコンソールのログ出力を色分け表示します",
     "console_token_colors_label": "構文の色",
@@ -568,7 +571,8 @@
     "input_placeholder": "コマンドを入力...",
     "stdin_disabled": "サバちゃんが再起動したため、過去のログのみ表示しています。サーバーを再起動すると再接続されます。",
     "send": "送信",
-    "popout": "別ウィンドウで分離",
+    "popout": "PIPで表示",
+    "popout_kind": "コンソール",
     "popout_failed": "コンソールを別ウィンドウで開けませんでした。",
     "minimize": "ドックに最小化",
     "dock_restore": "復元: {{name}}",
@@ -841,7 +845,9 @@
     "console_offline_input": "サーバーを起動するとコマンドを送信できます",
     "console_offline_history": "サーバーは停止しています。前回のログを表示しています。",
     "console_read_only": "このサーバーはコンソール入力を受け付けません。コマンドはコマンドタブから送信してください",
-    "console_popped_out": "コンソールは別ウィンドウで開いています。",
+    "console_popped_out": "PIPウィンドウで表示中です",
+    "console_popped_out_desc": "PIPウィンドウを閉じるかサーバーを停止すると、コンソールはここに戻ります。",
+    "console_popout_show": "PIPウィンドウを表示",
     "console_popin": "この画面に戻す",
     "commands_offline": "サーバーを起動するとコマンドを送信できます。",
     "info_module": "ゲーム",

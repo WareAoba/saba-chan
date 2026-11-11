@@ -56,6 +56,10 @@ pub struct GuiSettings {
     pub console_wrap: bool,
     /// 맨 아래를 보고 있을 때 새 줄을 따라 내려간다
     pub console_auto_scroll: bool,
+    /// 창 반투명이 켜져 있을 때 콘솔 바탕(인앱·PIP)도 유리처럼 비치게 한다
+    pub console_glass: bool,
+    /// 서버별 콘솔 PIP 창 기억 (GUI 셸 `window.rs`가 쓴다): 크기·위치·최대화, 서버가 다시 켜지면 띄울지
+    pub console_popouts: HashMap<String, ConsolePopout>,
 
     // Theme customization
     /// "dark" | "light" | "auto". 없으면 GUI가 정한다(예전 브라우저 저장값 이전, 기본 auto)
@@ -110,6 +114,23 @@ pub struct GuiSettings {
     /// 서버 목록 보기 (G1c): "switch"(고른 데몬만) | "unified"(다른 데몬의 서버도 데몬별로). 없으면 switch
     #[serde(skip_serializing_if = "Option::is_none")]
     pub daemon_view: Option<String>,
+}
+
+/// 콘솔 PIP 창 하나의 기억. 위치·크기는 논리 픽셀, 최대화 중에는 그 전 크기를 둔다
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ConsolePopout {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<f64>,
+    pub maximized: bool,
+    /// 사용자가 직접 닫지 않았다 → 서버가 다시 켜지거나 앱을 다시 열면 띄운다
+    pub reopen: bool,
 }
 
 /// 바탕화면 오버레이 창. 자리는 창 아래 가운데 점(물리 px)이고, 처음에는 셸이 작업 영역 오른쪽 아래에 놓는다
@@ -271,6 +292,8 @@ impl Default for GuiSettings {
             console_timestamp_date: false,
             console_wrap: true,
             console_auto_scroll: true,
+            console_glass: true,
+            console_popouts: HashMap::new(),
             theme: None,
             accent_color: "#667eea".to_string(),
             accent_secondary: "#764ba2".to_string(),
@@ -1441,6 +1464,21 @@ mod tests {
         let json_str = serde_json::to_string_pretty(&settings).unwrap();
         let loaded: GuiSettings = serde_json::from_str(&json_str).unwrap();
         assert_eq!(settings, loaded);
+    }
+
+    #[test]
+    fn console_popouts_survive_a_typed_save() {
+        // 셸이 보내는 PIP 기억이 데몬의 타입을 거쳐도 남아야 다음에 다시 띄운다
+        let json = serde_json::json!({
+            "consolePopouts": { "srv-1": { "width": 820, "height": 500, "x": 40, "y": 60, "maximized": true, "reopen": true } }
+        });
+        let s: GuiSettings = serde_json::from_value(json).unwrap();
+        let p = &s.console_popouts["srv-1"];
+        assert_eq!((p.width, p.height, p.x, p.y), (Some(820.0), Some(500.0), Some(40.0), Some(60.0)));
+        assert!(p.maximized && p.reopen);
+        let back = serde_json::to_value(&s).unwrap();
+        assert_eq!(back["consolePopouts"]["srv-1"]["reopen"], true);
+        assert!(GuiSettings::default().console_glass, "콘솔 반투명은 기본 켜짐");
     }
 
     #[test]

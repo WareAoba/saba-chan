@@ -29,6 +29,7 @@ import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
 import { ExtensionProvider } from './contexts/ExtensionContext';
 import { type HostWindow, HostWindowContext, isAppRoute, serverRoute } from './extensions/host';
+import { usePopoutLifecycle } from './hooks/usePopoutLifecycle';
 import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
@@ -185,6 +186,8 @@ function App() {
         setConsoleInput,
         sendConsoleCommand,
     } = useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef });
+    // 서버를 끄면 PIP를 닫고, 다시 켜거나 앱을 다시 열면 기억된 PIP를 띄운다
+    usePopoutLifecycle({ enabled: !isPopoutMode, servers, popoutIds: consolePopoutIds });
 
     const { draggedName, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
 
@@ -427,6 +430,12 @@ function App() {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // 콘솔 바탕 유리 (설정 → 콘솔 → 콘솔 반투명). 창 반투명일 때만 보인다 (styles/backdrop.css)
+    const consoleGlass = useSettingsStore((s) => s.consoleGlass);
+    useEffect(() => {
+        document.documentElement.dataset.consoleGlass = consoleGlass === false ? 'off' : 'on';
+    }, [consoleGlass]);
 
     // Settings load
     // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only initialization — store.getState() is stable

@@ -3,6 +3,7 @@
   "title_bar": {
     "minimize": "Minimizar",
     "maximize": "Maximizar",
+    "restore": "Restaurar",
     "close": "Fechar"
   },
   "modals": {
@@ -128,6 +129,8 @@
     "console_wrap_description": "Quebra linhas longas na largura da janela. Desligado, rola na horizontal",
     "console_auto_scroll_label": "Seguir novas linhas",
     "console_auto_scroll_description": "Rola com as novas linhas enquanto você está no fim",
+    "console_glass_label": "Console translúcido",
+    "console_glass_description": "Quando a janela está translúcida, o fundo do console também fica transparente. Desligue para manter só o console opaco.",
     "console_syntax_label": "Destaque de sintaxe",
     "console_syntax_description": "Colorir a saída de logs no console do servidor",
     "console_token_colors_label": "Cores de sintaxe",
@@ -623,7 +626,8 @@
     "input_placeholder": "Digite o comando...",
     "stdin_disabled": "Mostrando apenas registros anteriores porque o saba-chan reiniciou. Reinicie o servidor para reconectar.",
     "send": "Enviar",
-    "popout": "Abrir em janela separada",
+    "popout": "Abrir em PIP",
+    "popout_kind": "Console",
     "popout_failed": "Não foi possível abrir o console em uma janela separada.",
     "minimize": "Minimizar para o dock",
     "dock_restore": "Restaurar: {{name}}",
@@ -841,7 +845,9 @@
     "console_offline_input": "Inicie o servidor para enviar comandos",
     "console_offline_history": "O servidor está parado. Mostrando o último log.",
     "console_read_only": "Este servidor não aceita entrada de console. Envie comandos pela aba Comandos",
-    "console_popped_out": "O console está aberto em uma janela separada.",
+    "console_popped_out": "Aberto na janela PIP",
+    "console_popped_out_desc": "Feche a janela PIP ou pare o servidor e o console volta para cá.",
+    "console_popout_show": "Mostrar janela PIP",
     "console_popin": "Trazer de volta para cá",
     "commands_offline": "Inicie o servidor para enviar comandos.",
     "info_module": "Jogo",

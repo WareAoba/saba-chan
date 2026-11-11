@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { type ComponentProps, type CSSProperties, useRef } from 'react';
+import { type ComponentProps, type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import BackgroundModal from '../Modals/BackgroundModal';
 import NoticeModal from '../Modals/NoticeModal';
@@ -175,9 +175,30 @@ export function AppBar({
     );
 }
 
-/** 창 최소화·최대화·닫기 (프레임 없는 창). 로딩 화면에서도 쓴다. 맥은 신호등을 쓰므로 CSS가 숨긴다 */
-export function WindowControls() {
+/**
+ * 창 최소화·최대화(복원)·닫기 (프레임 없는 창). 메인 창·PIP 창·로딩 화면이 함께 쓴다. 맥은 신호등을 쓰므로 CSS가 숨긴다.
+ * 최대화된 창이면 가운데 버튼이 복원 아이콘이 된다 (창 크기가 바뀔 때마다 셸에 묻는다)
+ */
+export function WindowControls({ onClose }: { onClose?: () => void } = {}) {
     const { t } = useTranslation('gui');
+    const [maximized, setMaximized] = useState(false);
+    useEffect(() => {
+        const ask = window.api?.windowIsMaximized;
+        if (typeof ask !== 'function') return;
+        let alive = true;
+        const sync = () => {
+            Promise.resolve(ask())
+                .then((v) => alive && setMaximized(v === true))
+                .catch(() => {});
+        };
+        sync();
+        window.addEventListener('resize', sync);
+        return () => {
+            alive = false;
+            window.removeEventListener('resize', sync);
+        };
+    }, []);
+    const middle = maximized ? 'restore' : 'maximize';
     return (
         <div className="appbar-window">
             <button
@@ -193,19 +214,19 @@ export function WindowControls() {
                 type="button"
                 className="win-btn"
                 onClick={() => window.api?.maximizeWindow()}
-                data-tooltip={t('title_bar.maximize')}
-                aria-label={t('title_bar.maximize')}
+                data-tooltip={t(`title_bar.${middle}`)}
+                aria-label={t(`title_bar.${middle}`)}
             >
-                <Icon name="maximize" size={12} />
+                <Icon name={middle} size={12} />
             </button>
             <button
                 type="button"
                 className="win-btn win-close"
-                onClick={() => window.api?.closeWindow()}
+                onClick={() => (onClose ? onClose() : window.api?.closeWindow())}
                 data-tooltip={t('title_bar.close')}
                 aria-label={t('title_bar.close')}
             >
-                <Icon name="close" size={12} />
+                <Icon name="windowClose" size={12} />
             </button>
         </div>
     );

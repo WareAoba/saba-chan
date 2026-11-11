@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-console-popout-saved"
+description = "Enables the console_popout_saved command without any pre-configured scope."
+commands.allow = ["console_popout_saved"]
+
+[[permission]]
+identifier = "deny-console-popout-saved"
+description = "Denies the console_popout_saved command without any pre-configured scope."
+commands.deny = ["console_popout_saved"]
