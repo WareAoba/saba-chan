@@ -4,7 +4,7 @@ import { AddServerSheet } from '../components/ServersTab';
 import { initI18n } from '../i18n';
 import { useApp, useData } from '../store';
 import type { Server } from '../types';
-import { asModules, asServers, mockApi } from './mocks';
+import { asModules, asServers, mockApi, openDropdown, pickOption } from './mocks';
 
 // 웹 원격의 서버 만들기는 GUI 새 서버 화면과 같은 것을 묻는다 (사용자 지정 2026-10-28: GUI 기준)
 const minecraft = {
@@ -71,9 +71,9 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
     it('설치할 수 있는 서버 종류만 보이고, 약관에 동의해야 만들며, 고른 것을 보낸다', async () => {
         const api = mount();
         expect(screen.queryByText('MOTD')).toBeNull();
-        fireEvent.click(screen.getByText('vanilla'));
-        expect(screen.queryByText('spigot')).toBeNull();
-        fireEvent.click(screen.getByText('paper'));
+        openDropdown('vanilla');
+        expect(screen.queryByRole('option', { name: 'spigot' })).toBeNull();
+        fireEvent.click(screen.getByRole('option', { name: 'paper' }));
         expect(create().disabled).toBe(true);
         fireEvent.click(screen.getByRole('checkbox', { name: /Minecraft EULA/ }));
         fireEvent.click(create());
@@ -123,12 +123,10 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
         await waitFor(() =>
             expect(api.moduleListVersions).toHaveBeenCalledWith('minecraft', { per_page: 50, settings: {} }),
         );
-        await waitFor(() => expect(screen.getByText('Latest version (recommended)')).toBeTruthy());
-        fireEvent.click(screen.getByText('Latest version (recommended)'));
-        expect(screen.queryByText('24w10a')).toBeNull();
-        fireEvent.click(screen.getByText('1.20.6'));
-        fireEvent.click(screen.getByText('Managed by saba-chan (recommended)'));
-        fireEvent.click(screen.getByText('Manage it yourself'));
+        await waitFor(() => openDropdown('Latest version (recommended)'));
+        expect(screen.queryByRole('option', { name: '24w10a' })).toBeNull();
+        fireEvent.click(screen.getByRole('option', { name: '1.20.6' }));
+        pickOption('Managed by saba-chan (recommended)', 'Manage it yourself');
         fireEvent.click(create());
         await flush();
         expect(api.instanceCreate).toHaveBeenCalledWith({
@@ -141,12 +139,10 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
 
     it('서버 종류를 바꾸면 앞 목록을 바로 비우고, 새 목록을 못 받으면 고른 버전을 비운다', async () => {
         const api = wizard();
-        await waitFor(() => expect(screen.getByText('Latest version (recommended)')).toBeTruthy());
-        fireEvent.click(screen.getByText('Latest version (recommended)'));
-        fireEvent.click(screen.getByText('1.20.6'));
+        await waitFor(() => openDropdown('Latest version (recommended)'));
+        fireEvent.click(screen.getByRole('option', { name: '1.20.6' }));
         api.moduleListVersions.mockRejectedValueOnce(new Error('offline'));
-        fireEvent.click(screen.getByText('vanilla'));
-        fireEvent.click(screen.getByText('paper'));
+        pickOption('vanilla', 'paper');
         await waitFor(() =>
             expect(api.moduleListVersions).toHaveBeenCalledWith('minecraft', {
                 per_page: 50,
@@ -184,7 +180,7 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
 
     it('이 OS에서 돌지 않는 게임은 고를 수 없다', () => {
         mount();
-        fireEvent.click(screen.getByText('Minecraft'));
+        openDropdown('Minecraft');
         const option = screen.getByRole('option', { name: /Palworld/ });
         expect(option.getAttribute('aria-disabled')).toBe('true');
     });
