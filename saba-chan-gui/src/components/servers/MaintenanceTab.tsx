@@ -32,6 +32,8 @@ import { SabaFail } from '../ui/SabaArt';
 import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import { failed } from '../../utils/apiResult';
+import { SaveBar } from '../ui/SaveBar';
+import { Dialog } from '../ui/Dialog';
 
 /** 백업 목록 한 줄 (GET /api/instance/:id/backups) */
 interface Backup {
@@ -71,7 +73,7 @@ const GAME_SNAPSHOT = 'game-snapshot';
 // 예전 경로로 가져오는 곳(시험)을 위해 다시 내보낸다
 export { draftProblems, formatBytes, fromDraft, toDraft, WEEKDAYS };
 
-/** 이 화면을 띄울 IPC가 있는지 (로드맵 쪽 preload가 먼저 들어와야 한다) */
+/** 이 화면을 띄울 IPC가 있는지 (구버전 브리지에는 없다) */
 export const maintenanceAvailable = () => !!window.api?.instanceScheduleGet;
 
 // 데몬 원문(영어) 대신 보일 문구가 있는 거절 코드
@@ -821,34 +823,21 @@ function ScheduleCard({
                 </div>
             )}
 
-            <div className={clsx('dc-savebar', { dirty })}>
-                <span className="dc-savebar-text">
-                    {armed ? t('maintenance.danger_confirm') : dirty ? t('discord.unsaved') : ''}
-                </span>
-                {dirty && (
-                    <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={saving}
-                        onClick={() => {
-                            setDrafts(info.schedule.map(toDraft));
-                            setKeep(String(info.backupKeep));
-                            setServerErrors([]);
-                            setArmed(false);
-                        }}
-                    >
-                        {t('discord.revert')}
-                    </button>
-                )}
-                <button
-                    type="button"
-                    className={clsx('btn', armed ? 'btn-danger' : 'btn-primary')}
-                    disabled={!dirty || saving || blocked}
-                    onClick={save}
-                >
-                    <Icon name="save" size="sm" /> {armed ? t('maintenance.danger_save') : t('discord.save')}
-                </button>
-            </div>
+            <SaveBar
+                dirty={dirty}
+                saving={saving}
+                blocked={blocked}
+                danger={armed}
+                message={armed ? t('maintenance.danger_confirm') : undefined}
+                saveLabel={armed ? t('maintenance.danger_save') : undefined}
+                onSave={save}
+                onRevert={() => {
+                    setDrafts(info.schedule.map(toDraft));
+                    setKeep(String(info.backupKeep));
+                    setServerErrors([]);
+                    setArmed(false);
+                }}
+            />
             {pickingDraft && (
                 <CommandPicker
                     commands={commands}
@@ -957,17 +946,19 @@ function CommandPicker({
                 .includes(q),
     );
     return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div
-                className="modal mt-picker"
-                role="dialog"
-                aria-label={t('maintenance.command_pick')}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                    if (e.key === 'Escape') onClose();
-                }}
-            >
-                <h2 className="modal-title">{t('maintenance.command_pick')}</h2>
+        <Dialog
+            open
+            onOpenChange={(o) => !o && onClose()}
+            size="md"
+            className="mt-picker"
+            title={t('maintenance.command_pick')}
+            footer={
+                <button type="button" className="btn btn-ghost" onClick={onClose}>
+                    {t('maintenance.close')}
+                </button>
+            }
+        >
+            <div className="mt-picker-body">
                 <input
                     className="input"
                     value={filter}
@@ -978,12 +969,12 @@ function CommandPicker({
                 {list.length === 0 ? (
                     <p className="muted">{t('maintenance.command_none')}</p>
                 ) : (
-                    <ul className="mt-picker-list">
+                    <ul className="saba-pick-list">
                         {list.map((c) => (
                             <li key={c.name}>
                                 <button
                                     type="button"
-                                    className={clsx('mt-picker-item', { selected: c.name === current })}
+                                    className={clsx('saba-pick-item', { selected: c.name === current })}
                                     onClick={() => onPick(c)}
                                 >
                                     <span className="mt-picker-name">
@@ -999,12 +990,7 @@ function CommandPicker({
                         ))}
                     </ul>
                 )}
-                <div className="modal-actions">
-                    <button type="button" className="btn btn-ghost" onClick={onClose}>
-                        {t('maintenance.close')}
-                    </button>
-                </div>
             </div>
-        </div>
+        </Dialog>
     );
 }

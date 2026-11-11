@@ -4,6 +4,7 @@
 
 use crate::{emit_main, AppState};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -169,7 +170,7 @@ pub fn set_backdrop(win: &WebviewWindow, config: Value) -> Value {
 }
 
 /// 창이 앱 화면 밖으로 이동하거나 새 창을 열지 못하게 한다. 웹 링크는 바깥 브라우저로
-fn lock_navigation<'a>(
+pub(crate) fn lock_navigation<'a>(
     app: &AppHandle,
     builder: WebviewWindowBuilder<'a, tauri::Wry, AppHandle>,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
@@ -224,7 +225,7 @@ fn frame<'a>(
 
 /// 렌더러 상단바 높이 (`tokens.css` `--appbar-h`, `.console-popout-titlebar`)
 const APPBAR_HEIGHT: f64 = 48.0;
-const POPOUT_BAR_HEIGHT: f64 = 36.0;
+const POPOUT_BAR_HEIGHT: f64 = 42.0;
 
 // ── 메인 창 ──
 
@@ -318,7 +319,7 @@ pub fn show_main(app: &AppHandle) {
     }
 }
 
-/// 사용자가 보는 창이 없고 트레이만 들었는가 (트레이 팝업은 창으로 세지 않는다)
+/// 사용자가 보는 창이 없고 트레이만 들었는가 (트레이 팝업·바탕화면 오버레이는 창으로 세지 않는다)
 pub fn tray_only_now(app: &AppHandle) -> bool {
     tray_only_without(app, None)
 }
@@ -330,12 +331,16 @@ fn tray_only_without(app: &AppHandle, gone: Option<&str>) -> bool {
 }
 
 fn tray_only<'a>(mut labels: impl Iterator<Item = &'a str>) -> bool {
-    labels.all(|l| l == TRAY_POPUP)
+    labels.all(|l| l == TRAY_POPUP || l == crate::overlay::OVERLAY)
 }
 
-/// 창을 모두 없앤다 (닫기 확인을 거치지 않는다). 웹뷰가 내려가고 트레이만 남는다
+/// 창을 모두 없앤다 (닫기 확인을 거치지 않는다). 웹뷰가 내려가고 트레이만 남는다.
+/// 바탕화면 오버레이는 트레이처럼 남는다 (끄는 것은 그 창의 메뉴나 설정)
 pub fn close_all(app: &AppHandle) {
     for (_, w) in app.webview_windows() {
+        if w.label() == crate::overlay::OVERLAY {
+            continue;
+        }
         if let Err(e) = w.destroy() {
             tracing::warn!("[Window] Failed to close {}: {}", w.label(), e);
         }
@@ -513,6 +518,17 @@ fn popout(app: &AppHandle, instance_id: &str) -> Option<WebviewWindow> {
 
 pub fn open_popout(app: &AppHandle, instance_id: &str, server_name: &str) -> tauri::Result<Value> {
     if let Some(existing) = popout(app, instance_id) {
+        let _ = existing.unminimize();
+        // 창이 있던 화면을 뽑았으면 보이는 곳으로 데려온다
+        let off_screen = existing
+            .outer_position()
+            .ok()
+            .zip(existing.scale_factor().ok())
+            .map(|(p, s)| p.to_logical::<f64>(s))
+            .is_some_and(|p| !grabbable_on(p.x, p.y, &screen_areas(app)));
+        if off_screen {
+            let _ = existing.center();
+        }
         let _ = existing.set_focus();
         return Ok(json!({ "ok": true, "message": "Focused existing window" }));
     }
@@ -521,27 +537,172 @@ pub fn open_popout(app: &AppHandle, instance_id: &str, server_name: &str) -> tau
         encode_component(instance_id),
         encode_component(server_name)
     );
+    let saved = popout_saved(&app.state::<AppState>().settings(), instance_id);
+    let (width, height) = popout_size(&saved);
     let background = background_for(app, app.get_webview_window(MAIN).and_then(|w| w.theme().ok()));
-    let builder = WebviewWindowBuilder::new(app, popout_label(instance_id), WebviewUrl::App(PathBuf::from(query)))
+    let mut builder = WebviewWindowBuilder::new(app, popout_label(instance_id), WebviewUrl::App(PathBuf::from(query)))
         .title(format!("Console — {server_name}"))
-        .inner_size(700.0, 450.0)
-        .min_inner_size(400.0, 250.0)
+        .inner_size(width, height)
+        .min_inner_size(POPOUT_MIN.0, POPOUT_MIN.1)
         .background_color(background)
         .always_on_top(true);
+    // 기억한 자리가 지금 없는 화면(뽑은 보조 모니터)이면 쓰지 않고 OS 기본 자리에 연다
+    if let (Some(x), Some(y)) = (saved["x"].as_f64(), saved["y"].as_f64()) {
+        if grabbable_on(x, y, &screen_areas(app)) {
+            builder = builder.position(x, y);
+        }
+    }
     let builder = crate::backdrop::prepare(app, &popout_label(instance_id), builder);
     let win = lock_navigation(app, frame(builder, POPOUT_BAR_HEIGHT)).build()?;
     crate::backdrop::apply(&win, &crate::backdrop::current(app), background);
     apply_icon(&win);
+    if saved["maximized"].as_bool() == Some(true) {
+        let _ = win.maximize();
+    }
+    // 앱을 껐다 켜도 다시 띄운다 (사용자가 직접 닫거나 되돌리면 지운다)
+    save_popout(app, instance_id, json!({ "reopen": true }));
 
     // 메인 창에 팝아웃 열림/닫힘 알림 → 임베디드 콘솔 숨김 제어
     emit_main(app, "console:popoutOpened", instance_id);
     let (handle, id) = (app.clone(), instance_id.to_string());
-    win.on_window_event(move |event| {
-        if matches!(event, WindowEvent::Destroyed) {
-            emit_main(&handle, "console:popoutClosed", &id);
-        }
+    win.on_window_event(move |event| match event {
+        // 사용자가 OS 닫기(맥 신호등·Alt+F4)로 닫으면 다시 띄우지 않는다.
+        // 셸이 닫을 때(서버 정지·되돌리기·데몬 전환)는 destroy를 써서 이 요청이 오지 않는다
+        WindowEvent::CloseRequested { .. } => save_popout(&handle, &id, json!({ "reopen": false })),
+        WindowEvent::Destroyed => emit_main(&handle, "console:popoutClosed", &id),
+        WindowEvent::Moved(_) | WindowEvent::Resized(_) => schedule_save_popout(&handle, &id),
+        _ => {}
     });
     Ok(json!({ "ok": true }))
+}
+
+// ── PIP 기억 (설정 `consolePopouts.<instanceId>`: 크기·위치·최대화, 다시 띄울지) ──
+
+/// PIP 처음 크기와 최소 크기
+const POPOUT_SIZE: (f64, f64) = (700.0, 450.0);
+const POPOUT_MIN: (f64, f64) = (400.0, 250.0);
+const POPOUTS_KEY: &str = "consolePopouts";
+
+/// 이동·크기 저장 디바운스: 창 라벨마다 세대 번호
+static POPOUT_GEN: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
+/// 저장은 설정을 읽고 고쳐 쓰므로 한 번에 하나씩
+static POPOUT_SAVE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+fn popout_saved(settings: &Value, instance_id: &str) -> Value {
+    settings[POPOUTS_KEY][instance_id].clone()
+}
+
+/// 화면마다 작업 영역 (논리 px: x, y, w, h)
+fn screen_areas(app: &AppHandle) -> Vec<(f64, f64, f64, f64)> {
+    app.available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| {
+            let (a, s) = (m.work_area(), m.scale_factor());
+            (a.position.x as f64 / s, a.position.y as f64 / s, a.size.width as f64 / s, a.size.height as f64 / s)
+        })
+        .collect()
+}
+
+/// 왼쪽 위가 (x, y)인 창의 상단바를 잡을 수 있는지: 상단바 안쪽 한 점이 어느 화면 작업 영역 안에 있으면 된다.
+/// 화면 목록을 못 읽었으면 막지 않는다
+fn grabbable_on(x: f64, y: f64, areas: &[(f64, f64, f64, f64)]) -> bool {
+    let (px, py) = (x + 48.0, y + 16.0);
+    areas.is_empty() || areas.iter().any(|&(ax, ay, aw, ah)| px >= ax && px < ax + aw && py >= ay && py < ay + ah)
+}
+
+/// 저장한 크기 (없거나 최소보다 작으면 처음 크기)
+fn popout_size(saved: &Value) -> (f64, f64) {
+    let width = saved["width"].as_f64().filter(|w| *w >= POPOUT_MIN.0).unwrap_or(POPOUT_SIZE.0);
+    let height = saved["height"].as_f64().filter(|h| *h >= POPOUT_MIN.1).unwrap_or(POPOUT_SIZE.1);
+    (width, height)
+}
+
+/// 한 PIP의 기억을 `change`로 고친 `consolePopouts` 전체 (데몬이 응답하지 않으면 셸이 맨 위 키를 통째로 바꾸므로 전체를 보낸다)
+fn popout_patch(settings: &Value, instance_id: &str, change: &Value) -> Value {
+    let mut all = settings[POPOUTS_KEY].as_object().cloned().unwrap_or_default();
+    let mut entry = all.get(instance_id).and_then(Value::as_object).cloned().unwrap_or_default();
+    if let Value::Object(c) = change {
+        entry.extend(c.clone());
+    }
+    all.insert(instance_id.to_string(), Value::Object(entry));
+    json!({ POPOUTS_KEY: all })
+}
+
+/// 다시 띄울 PIP의 instanceId (서버가 켜져 있으면 메인 창이 띄운다)
+pub fn popouts_to_reopen(settings: &Value) -> Vec<String> {
+    settings[POPOUTS_KEY]
+        .as_object()
+        .map(|all| {
+            all.iter()
+                .filter(|(_, v)| v["reopen"].as_bool() == Some(true))
+                .map(|(k, _)| k.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+async fn save_popout_now(app: &AppHandle, instance_id: &str, change: Value) {
+    let _guard = POPOUT_SAVE.lock().await;
+    let state = app.state::<AppState>();
+    let patch = popout_patch(&state.settings(), instance_id, &change);
+    crate::native::save_settings(&state, &patch).await;
+}
+
+fn save_popout(app: &AppHandle, instance_id: &str, change: Value) {
+    let (app, id) = (app.clone(), instance_id.to_string());
+    tauri::async_runtime::spawn(async move { save_popout_now(&app, &id, change).await });
+}
+
+/// 이동·크기 변경이 멈추면 저장. 최대화 중이면 그 사실만 남기고 원래 크기는 두며, 최소화 중에는 저장하지 않는다
+fn schedule_save_popout(app: &AppHandle, instance_id: &str) {
+    let label = popout_label(instance_id);
+    let seq = {
+        let mut map = POPOUT_GEN.lock().unwrap_or_else(|e| e.into_inner());
+        let n = map.get_or_insert_with(HashMap::new).entry(label.clone()).or_insert(0);
+        *n += 1;
+        *n
+    };
+    let (app, id) = (app.clone(), instance_id.to_string());
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(BOUNDS_DEBOUNCE_MS)).await;
+        let latest = POPOUT_GEN.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&label).copied());
+        if latest != Some(seq) {
+            return;
+        }
+        let Some(win) = app.get_webview_window(&label) else {
+            return;
+        };
+        if win.is_minimized().unwrap_or(false) || !win.is_visible().unwrap_or(false) {
+            return;
+        }
+        let change = if win.is_maximized().unwrap_or(false) {
+            json!({ "maximized": true })
+        } else {
+            let (Ok(pos), Ok(size), Ok(scale)) = (win.outer_position(), win.inner_size(), win.scale_factor()) else {
+                return;
+            };
+            let (pos, size) = (pos.to_logical::<f64>(scale), size.to_logical::<f64>(scale));
+            json!({
+                "maximized": false,
+                "width": size.width.round() as i64, "height": size.height.round() as i64,
+                "x": pos.x.round() as i64, "y": pos.y.round() as i64,
+            })
+        };
+        save_popout_now(&app, &id, change).await;
+    });
+}
+
+/// PIP를 닫는다. `reopen`: 다음에 다시 띄울지 (사용자가 닫으면 false, 서버가 꺼져 닫히면 true)
+pub async fn close_popout(app: &AppHandle, instance_id: &str, reopen: bool) -> Value {
+    save_popout_now(app, instance_id, json!({ "reopen": reopen })).await;
+    match popout(app, instance_id) {
+        Some(win) => {
+            let _ = win.destroy();
+            json!({ "ok": true })
+        }
+        None => json!({ "ok": false }),
+    }
 }
 
 /// 열린 팝아웃의 instanceId (메인 창을 다시 불러오면 renderer가 이것으로 상태를 맞춘다)
@@ -556,7 +717,7 @@ pub fn popout_list(app: &AppHandle) -> Vec<String> {
 pub fn close_popouts(app: &AppHandle) {
     for (label, win) in app.webview_windows() {
         if popout_instance_id(&label).is_some() {
-            let _ = win.close();
+            let _ = win.destroy();
         }
     }
 }
@@ -572,13 +733,15 @@ pub fn popin(app: &AppHandle, instance_id: &str) -> Value {
         .and_then(|u| u.query_pairs().find(|(k, _)| k == "name").map(|(_, v)| v.into_owned()))
         .or_else(|| win.title().ok().map(|t| t.trim_start_matches("Console — ").to_string()))
         .unwrap_or_default();
+    // 되돌리면 다음에 다시 띄우지 않는다
+    save_popout(app, instance_id, json!({ "reopen": false }));
     // 창을 닫기 전에 메인 창에 인앱 콘솔 열기를 요청한다 (닫히면 popoutClosed가 간다)
     emit_main(
         app,
         "console:popinRequest",
         json!({ "instanceId": instance_id, "serverName": server_name }),
     );
-    let _ = win.close();
+    let _ = win.destroy();
     json!({ "ok": true })
 }
 
@@ -598,6 +761,45 @@ pub fn toggle_always_on_top(app: &AppHandle, instance_id: &str, pinned: bool) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_popout_patch_keeps_other_servers_and_earlier_fields() {
+        let settings = json!({ "consolePopouts": {
+            "a": { "width": 800, "height": 500, "reopen": true },
+            "b": { "reopen": true },
+        }});
+        let patch = popout_patch(&settings, "a", &json!({ "reopen": false }));
+        assert_eq!(patch["consolePopouts"]["a"], json!({ "width": 800, "height": 500, "reopen": false }));
+        assert_eq!(patch["consolePopouts"]["b"], json!({ "reopen": true }));
+        let fresh = popout_patch(&json!({}), "c", &json!({ "maximized": true }));
+        assert_eq!(fresh, json!({ "consolePopouts": { "c": { "maximized": true } } }));
+    }
+
+    #[test]
+    fn only_popouts_the_user_did_not_close_reopen() {
+        let settings = json!({ "consolePopouts": {
+            "a": { "reopen": true }, "b": { "reopen": false }, "c": { "width": 700 },
+        }});
+        assert_eq!(popouts_to_reopen(&settings), vec!["a".to_string()]);
+        assert!(popouts_to_reopen(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn a_saved_spot_on_an_unplugged_screen_is_not_used() {
+        let screens = [(0.0, 0.0, 1920.0, 1040.0), (1920.0, 0.0, 2560.0, 1400.0)];
+        assert!(grabbable_on(100.0, 100.0, &screens));
+        assert!(grabbable_on(2500.0, 300.0, &screens), "보조 화면");
+        assert!(!grabbable_on(5000.0, 300.0, &screens), "뽑은 화면");
+        assert!(!grabbable_on(1900.0, -200.0, &screens), "상단바가 화면 위로 나감");
+        assert!(grabbable_on(5000.0, 300.0, &[]), "화면을 못 읽으면 막지 않는다");
+    }
+
+    #[test]
+    fn a_saved_size_below_the_minimum_falls_back_to_the_default() {
+        assert_eq!(popout_size(&json!({ "width": 900, "height": 600 })), (900.0, 600.0));
+        assert_eq!(popout_size(&json!({ "width": 100, "height": 600 })), (POPOUT_SIZE.0, 600.0));
+        assert_eq!(popout_size(&Value::Null), POPOUT_SIZE);
+    }
 
     #[test]
     fn the_window_background_follows_the_reported_color_then_the_theme() {
@@ -668,6 +870,10 @@ mod tests {
     fn only_the_tray_popup_left_means_tray_only() {
         assert!(tray_only([].into_iter()));
         assert!(tray_only([TRAY_POPUP].into_iter()));
+        assert!(
+            tray_only([crate::overlay::OVERLAY, TRAY_POPUP].into_iter()),
+            "the desktop overlay stays like the tray"
+        );
         assert!(!tray_only([MAIN].into_iter()));
         assert!(
             !tray_only(["popout-abc"].into_iter()),

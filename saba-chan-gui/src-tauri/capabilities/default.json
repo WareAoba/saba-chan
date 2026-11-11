@@ -36,14 +36,20 @@
     "allow-console-popout",
     "allow-console-popout-list",
     "allow-console-popin",
+    "allow-console-popout-close",
+    "allow-console-popout-saved",
     "allow-console-toggle-always-on-top",
     "core:window:allow-start-dragging",
     "core:window:allow-internal-toggle-maximize",
     "allow-window-minimize",
     "allow-window-maximize",
+    "allow-window-is-maximized",
     "allow-window-close",
     "allow-window-set-background",
     "allow-window-set-backdrop",
-    "allow-sandbox-consent-allow"
+    "allow-sandbox-consent-allow",
+    "allow-overlay-state",
+    "allow-overlay-set-enabled",
+    "allow-overlay-sync"
   ]
 }

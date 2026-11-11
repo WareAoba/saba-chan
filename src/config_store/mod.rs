@@ -56,6 +56,10 @@ pub struct GuiSettings {
     pub console_wrap: bool,
     /// 맨 아래를 보고 있을 때 새 줄을 따라 내려간다
     pub console_auto_scroll: bool,
+    /// 창 반투명이 켜져 있을 때 콘솔 바탕(인앱·PIP)도 유리처럼 비치게 한다
+    pub console_glass: bool,
+    /// 서버별 콘솔 PIP 창 기억 (GUI 셸 `window.rs`가 쓴다): 크기·위치·최대화, 서버가 다시 켜지면 띄울지
+    pub console_popouts: HashMap<String, ConsolePopout>,
 
     // Theme customization
     /// "dark" | "light" | "auto". 없으면 GUI가 정한다(예전 브라우저 저장값 이전, 기본 auto)
@@ -89,8 +93,15 @@ pub struct GuiSettings {
     /// 없으면 GUI 기본 항목
     #[serde(skip_serializing_if = "Option::is_none")]
     pub monitor_items: Option<Vec<String>>,
+    /// 서버 페이지 시스템 모니터 표시 방식: "off"(끔, 값도 묻지 않는다) | "docked"(상세 위·오른쪽 열에 고정) | "floating"(앱 안에서 끌어 옮기는 떠 있는 창)
+    pub system_monitor_mode: String,
+    /// 떠 있는 창 자리. 없으면 오른쪽 위
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_monitor_float: Option<MonitorFloat>,
     /// 사용자가 ✕로 닫은 가이드 id (`firstRun`·`checklist` 등, GUI `guides.ts`). 설정 → 일반의 가이드 목록에서 다시 연다
     pub closed_guides: Vec<String>,
+    /// 바탕화면 오버레이 창 (익스텐션 slot `Desktop.overlay`, GUI 셸이 띄운다): 켜기와 마지막 자리
+    pub desktop_overlay: DesktopOverlaySettings,
 
     // Window state (GUI가 저장하지만 데몬이 중개)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -103,6 +114,41 @@ pub struct GuiSettings {
     /// 서버 목록 보기 (G1c): "switch"(고른 데몬만) | "unified"(다른 데몬의 서버도 데몬별로). 없으면 switch
     #[serde(skip_serializing_if = "Option::is_none")]
     pub daemon_view: Option<String>,
+}
+
+/// 콘솔 PIP 창 하나의 기억. 위치·크기는 논리 픽셀, 최대화 중에는 그 전 크기를 둔다
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ConsolePopout {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<f64>,
+    pub maximized: bool,
+    /// 사용자가 직접 닫지 않았다 → 서버가 다시 켜지거나 앱을 다시 열면 띄운다
+    pub reopen: bool,
+}
+
+/// 바탕화면 오버레이 창. 자리는 창 아래 가운데 점(물리 px)이고, 처음에는 셸이 작업 영역 오른쪽 아래에 놓는다
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DesktopOverlaySettings {
+    /// 끄면 `Desktop.overlay` slot을 선언한 익스텐션이 켜져 있어도 창을 띄우지 않는다
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<i32>,
+}
+
+impl Default for DesktopOverlaySettings {
+    fn default() -> Self {
+        Self { enabled: true, x: None, y: None }
+    }
 }
 
 /// 효과음 — 전체 스위치와 종류별 스위치. 둘 다 켜져 있어야 울린다
@@ -182,6 +228,27 @@ impl Default for ConsoleFonts {
     }
 }
 
+/// 시스템 모니터 떠 있는 창 자리: 가까운 모서리와 그 모서리 두 변에서의 거리(px). 창 크기가 바뀌어도 그 모서리를 따라간다
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MonitorFloat {
+    /// "top-left" | "top-right" | "bottom-left" | "bottom-right"
+    pub corner: String,
+    pub x: u32,
+    pub y: u32,
+}
+
+const MONITOR_FLOAT_CORNERS: [&str; 4] = ["top-left", "top-right", "bottom-left", "bottom-right"];
+/// 떠 있는 창 거리 한도 (화면 밖 값은 GUI가 안으로 되돌리지만, 터무니없는 값은 받지 않는다)
+const MONITOR_FLOAT_MAX: u32 = 100_000;
+
+impl MonitorFloat {
+    fn ok(&self) -> bool {
+        MONITOR_FLOAT_CORNERS.contains(&self.corner.as_str())
+            && self.x <= MONITOR_FLOAT_MAX
+            && self.y <= MONITOR_FLOAT_MAX
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct WindowBounds {
@@ -225,6 +292,8 @@ impl Default for GuiSettings {
             console_timestamp_date: false,
             console_wrap: true,
             console_auto_scroll: true,
+            console_glass: true,
+            console_popouts: HashMap::new(),
             theme: None,
             accent_color: "#667eea".to_string(),
             accent_secondary: "#764ba2".to_string(),
@@ -243,7 +312,10 @@ impl Default for GuiSettings {
             system_monitor_expanded: false,
             system_monitor_net_trace: false,
             monitor_items: None,
+            system_monitor_mode: "docked".into(),
+            system_monitor_float: None,
             closed_guides: Vec::new(),
+            desktop_overlay: DesktopOverlaySettings::default(),
             window_bounds: None,
             language: None,
             main_daemon: None,
@@ -261,6 +333,7 @@ fn token_color_ok(key: &str, value: &str) -> bool {
 
 const MONITOR_ITEMS_MAX: usize = 64;
 const MONITOR_ITEM_MAX_LEN: usize = 128;
+const SYSTEM_MONITOR_MODES: [&str; 3] = ["off", "docked", "floating"];
 
 /// 모니터 항목 id 목록: 개수·길이 한도 안이고 제어 문자가 없다 (디스크·어댑터 이름이 들어가 글자는 가리지 않는다)
 fn monitor_items_ok(items: &[String]) -> bool {
@@ -277,6 +350,13 @@ impl GuiSettings {
         choice("closeAction", &self.close_action, &["ask", "tray", "quit"])?;
         choice("toastDuration", &self.toast_duration, &["short", "normal", "long"])?;
         choice("consoleTimestamps", &self.console_timestamps, &["off", "24h", "12h"])?;
+        choice("systemMonitorMode", &self.system_monitor_mode, &SYSTEM_MONITOR_MODES)?;
+        if self.system_monitor_float.as_ref().is_some_and(|f| !f.ok()) {
+            return Err(format!(
+                "systemMonitorFloat.corner must be one of {} and x, y at most {MONITOR_FLOAT_MAX}",
+                MONITOR_FLOAT_CORNERS.join(", ")
+            ));
+        }
         if self.new_server_backup_keep == 0 {
             return Err("newServerBackupKeep must be 1 or more".into());
         }
@@ -307,6 +387,10 @@ impl GuiSettings {
         fix(&mut self.close_action, &["ask", "tray", "quit"], &default.close_action);
         fix(&mut self.toast_duration, &["short", "normal", "long"], &default.toast_duration);
         fix(&mut self.console_timestamps, &["off", "24h", "12h"], &default.console_timestamps);
+        fix(&mut self.system_monitor_mode, &SYSTEM_MONITOR_MODES, &default.system_monitor_mode);
+        if self.system_monitor_float.as_ref().is_some_and(|f| !f.ok()) {
+            self.system_monitor_float = None;
+        }
         self.console_token_colors.retain(|k, v| token_color_ok(k, v));
         let mut fallback = default.console_fonts.clone();
         for ((_, value, allowed), (_, fallback, _)) in self.console_fonts.slots().into_iter().zip(fallback.slots()) {
@@ -1337,6 +1421,31 @@ mod tests {
         assert!(saved.system_monitor_expanded);
     }
 
+    /// 사용자 11-11: 시스템 모니터는 끔·고정·떠 있는 창 중 하나(기본 고정 = 지금 모습). 떠 있는 창 자리는 모서리와 그 모서리에서의 거리
+    #[test]
+    fn system_monitor_mode_and_float_are_validated() {
+        let d = GuiSettings::default();
+        assert_eq!(d.system_monitor_mode, "docked");
+        assert!(d.system_monitor_float.is_none());
+        let ok: GuiSettings = serde_json::from_value(serde_json::json!({
+            "systemMonitorMode": "floating",
+            "systemMonitorFloat": {"corner": "bottom-left", "x": 40, "y": 12}
+        }))
+        .unwrap();
+        assert!(ok.validate().is_ok());
+        assert_eq!(ok.system_monitor_float.as_ref().map(|f| (f.corner.as_str(), f.x, f.y)), Some(("bottom-left", 40, 12)));
+        for bad in [
+            serde_json::json!({"systemMonitorMode": "hidden"}),
+            serde_json::json!({"systemMonitorFloat": {"corner": "middle", "x": 0, "y": 0}}),
+            serde_json::json!({"systemMonitorFloat": {"corner": "top-left", "x": 100_001, "y": 0}}),
+        ] {
+            let mut s: GuiSettings = serde_json::from_value(bad.clone()).unwrap();
+            assert!(s.validate().is_err(), "{bad}");
+            s.sanitize();
+            assert!(s.validate().is_ok(), "{bad}");
+        }
+    }
+
     /// 사용자 11-08: 창 바탕 반투명은 기본으로 켜져 있고, 고를 수 없는 재질은 거절한 뒤 파일에서는 기본값으로 읽는다
     #[test]
     fn window_backdrop_is_validated_and_sanitized() {
@@ -1355,6 +1464,21 @@ mod tests {
         let json_str = serde_json::to_string_pretty(&settings).unwrap();
         let loaded: GuiSettings = serde_json::from_str(&json_str).unwrap();
         assert_eq!(settings, loaded);
+    }
+
+    #[test]
+    fn console_popouts_survive_a_typed_save() {
+        // 셸이 보내는 PIP 기억이 데몬의 타입을 거쳐도 남아야 다음에 다시 띄운다
+        let json = serde_json::json!({
+            "consolePopouts": { "srv-1": { "width": 820, "height": 500, "x": 40, "y": 60, "maximized": true, "reopen": true } }
+        });
+        let s: GuiSettings = serde_json::from_value(json).unwrap();
+        let p = &s.console_popouts["srv-1"];
+        assert_eq!((p.width, p.height, p.x, p.y), (Some(820.0), Some(500.0), Some(40.0), Some(60.0)));
+        assert!(p.maximized && p.reopen);
+        let back = serde_json::to_value(&s).unwrap();
+        assert_eq!(back["consolePopouts"]["srv-1"]["reopen"], true);
+        assert!(GuiSettings::default().console_glass, "콘솔 반투명은 기본 켜짐");
     }
 
     #[test]
@@ -1963,6 +2087,21 @@ mod tests {
         // 빠진 종류는 기본(켬)으로 채운다
         assert_eq!(saved["sounds"]["crash"], false);
         assert_eq!(saved["sounds"]["update"], true);
+    }
+
+    /// 바탕화면 오버레이 창(Desktop.overlay slot): 기본은 켬·자리 없음. 셸이 저장한 스위치와 자리가 남는다
+    #[tokio::test]
+    async fn the_desktop_overlay_switch_and_place_survive_a_save() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        let defaults = serde_json::to_value(store.get_gui_settings().await).unwrap();
+        assert_eq!(defaults["desktopOverlay"], serde_json::json!({ "enabled": true }));
+        store
+            .set_gui_settings_from_json(serde_json::json!({ "desktopOverlay": { "enabled": false, "x": 1500, "y": -20 } }))
+            .await
+            .unwrap();
+        let saved = serde_json::to_value(ConfigStore::new(tmp.path()).get_gui_settings().await).unwrap();
+        assert_eq!(saved["desktopOverlay"], serde_json::json!({ "enabled": false, "x": 1500, "y": -20 }));
     }
 
     #[tokio::test]

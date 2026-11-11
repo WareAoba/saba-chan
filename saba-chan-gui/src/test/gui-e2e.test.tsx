@@ -933,7 +933,7 @@ describe('게임 서버 업데이트 배지', () => {
         // 상세 화면 머리에 켜기 대신 업데이트 버튼
         await waitFor(
             () => {
-                const updateBtn = document.querySelector('.detail-actions .btn-info');
+                const updateBtn = document.querySelector('.detail-actions .btn-primary');
                 expect(updateBtn).toBeInTheDocument();
             },
             { timeout: 3000 },
@@ -983,14 +983,14 @@ describe('게임 서버 업데이트 배지', () => {
         // 업데이트 버튼 대기 후 클릭
         await waitFor(
             () => {
-                const updateBtn = document.querySelector('.detail-actions .btn-info');
+                const updateBtn = document.querySelector('.detail-actions .btn-primary');
                 expect(updateBtn).toBeInTheDocument();
             },
             { timeout: 5000 },
         );
 
         await act(async () => {
-            const updateBtn = document.querySelector<HTMLElement>('.detail-actions .btn-info');
+            const updateBtn = document.querySelector<HTMLElement>('.detail-actions .btn-primary');
             updateBtn!.click();
         });
 

@@ -556,6 +556,8 @@ async fn main() -> anyhow::Result<()> {
     audit::spawn_retention(ipc_server.config_store.clone(), shutdown_token.clone());
     // 인스턴스 예약 작업: 백업·재시작·공지·업데이트 (A3)
     ipc::handlers::backup::spawn_scheduler(ipc_server.clone());
+    // 인스턴스별 게임 서버 자동 업데이트 (auto_update)
+    ipc::handlers::server_update::spawn_auto_updater(ipc_server.clone());
     controllers::spawn_gate(ipc_server.clone());
 
     // 접속자 수 (Q-5): 모듈이 `[status] players`를 선언한 켜진 서버만 1분마다 묻는다

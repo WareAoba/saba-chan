@@ -156,6 +156,7 @@ export function ServerConsole({
     const stampDate = useSettingsStore((s) => s.consoleTimestampDate);
     const consoleWrap = useSettingsStore((s) => s.consoleWrap);
     const consoleAutoScroll = useSettingsStore((s) => s.consoleAutoScroll);
+    const ghost = useConsoleStore((s) => (poppedOut ? s.ghosts[server.id] : undefined));
     const stamp = useMemo(
         () => consoleStamper(stampMode, stampDate, i18n.language),
         [stampMode, stampDate, i18n.language],
@@ -232,14 +233,38 @@ export function ServerConsole({
         if (el && stickRef.current && consoleAutoScroll) el.scrollTop = el.scrollHeight;
     }, [lines.length]);
 
+    // PIP로 띄운 동안: 지난 줄을 흐리게 깔고 그 위에 안내 창을 띄운다
     if (poppedOut) {
         return (
-            <div className="term term-placeholder">
-                <Icon name="externalLink" size="lg" />
-                <p>{t('shell.console_popped_out')}</p>
-                <button type="button" className="btn btn-ghost" onClick={onPopin}>
-                    {t('shell.console_popin')}
-                </button>
+            <div className="term term-popped">
+                <div className="term-output term-popped-ghost" aria-hidden="true">
+                    {ghost?.map((text, i) => (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: 흐린 그림일 뿐인 고정 목록
+                        <div key={i} className="console-line">
+                            {text}
+                        </div>
+                    ))}
+                </div>
+                <div className="term-popped-veil">
+                    <div className="term-popped-card" role="status">
+                        <div className="term-popped-art" aria-hidden="true">
+                            <i />
+                        </div>
+                        <strong className="term-popped-title">{t('shell.console_popped_out')}</strong>
+                        <p className="term-popped-desc">{t('shell.console_popped_out_desc')}</p>
+                        <div className="term-popped-actions">
+                            {onPopout && (
+                                <button type="button" className="btn btn-primary" onClick={onPopout}>
+                                    <Icon name="pictureInPicture" size={14} />
+                                    {t('shell.console_popout_show')}
+                                </button>
+                            )}
+                            <button type="button" className="btn btn-ghost" onClick={onPopin}>
+                                {t('shell.console_popin')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -391,20 +416,6 @@ export function ServerConsole({
                 >
                     <Icon name="arrowUp" size="sm" />
                 </button>
-                {onPopout && (
-                    <>
-                        <span className="term-divider" aria-hidden="true" />
-                        <button
-                            type="button"
-                            className="icon-btn term-popout"
-                            onClick={onPopout}
-                            data-tooltip={t('console.popout')}
-                            aria-label={t('console.popout')}
-                        >
-                            <Icon name="externalLink" size="sm" />
-                        </button>
-                    </>
-                )}
             </form>
         </div>
     );

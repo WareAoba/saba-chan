@@ -1,14 +1,18 @@
 import clsx from 'clsx';
-import type { CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../../stores/useSettingsStore';
-import { CONSOLE_FONT_CHOICES, CONSOLE_FONT_NAMES, CONSOLE_FONT_SAMPLE, CONSOLE_FONT_SLOTS } from '../../../utils/consoleFonts';
+import {
+    CONSOLE_FONT_CHOICES,
+    CONSOLE_FONT_NAMES,
+    CONSOLE_FONT_SAMPLE,
+    CONSOLE_FONT_SLOTS,
+} from '../../../utils/consoleFonts';
 import { TOKENS } from '../../../utils/syntaxHighlight';
 import type { ThemeConfig } from '../../../utils/themeManager';
 import CustomDropdown from '../../CustomDropdown/CustomDropdown';
 import { Icon } from '../../Icon';
 import { OklchPicker } from '../../ui/OklchPicker';
-import { SabaToggle } from '../../ui/SabaUI';
+import { SabaSlider, SabaToggle } from '../../ui/SabaUI';
 import { clearedTokenColors, setOption } from './options';
 
 /** 지금 테마가 정한 토큰 기본색 (사용자 색을 걷어낸 값) */
@@ -36,16 +40,29 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
     const consoleTimestampDate = useSettingsStore((s) => s.consoleTimestampDate);
     const consoleWrap = useSettingsStore((s) => s.consoleWrap);
     const consoleAutoScroll = useSettingsStore((s) => s.consoleAutoScroll);
+    const consoleGlass = useSettingsStore((s) => s.consoleGlass);
     return (
-        <>
+        <section className="saba-card">
+            {/* ── 5-0. 콘솔 반투명: 창 반투명일 때 콘솔 바탕도 유리 (사용자 11-11, 기본 켜짐) ── */}
+            <div className="setting-item">
+                <label className="setting-label">
+                    <span className="setting-title">{t('gui:settings_modal.console_glass_label')}</span>
+                    <span className="setting-description">{t('gui:settings_modal.console_glass_description')}</span>
+                </label>
+                <SabaToggle checked={consoleGlass} onChange={(checked) => setOption({ consoleGlass: checked })} />
+            </div>
+
             {/* ── 5-1. 콘솔 구문강조 토글 ── */}
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_syntax_label', 'Syntax Highlighting')}
+                        {t('gui:settings_modal.console_syntax_label', 'Syntax Highlighting')}
                     </span>
                     <span className="setting-description">
-                        {t('gui:settings_modal.console_syntax_description', 'Color-code log output in the server console')}
+                        {t(
+                            'gui:settings_modal.console_syntax_description',
+                            'Color-code log output in the server console',
+                        )}
                     </span>
                 </label>
                 <SabaToggle
@@ -60,7 +77,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
                     <div className="setting-label-row">
                         <label className="setting-label">
                             <span className="setting-title">
-                                <Icon name="palette" size="sm" /> {t('gui:settings_modal.console_token_colors_label')}
+                                {t('gui:settings_modal.console_token_colors_label')}
                             </span>
                             <span className="setting-description">
                                 {t('gui:settings_modal.console_token_colors_description')}
@@ -102,7 +119,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="clock" size="sm" /> {t('gui:settings_modal.console_timestamps_label')}
+                        {t('gui:settings_modal.console_timestamps_label')}
                     </span>
                     <span className="setting-description">
                         {t('gui:settings_modal.console_timestamps_description')}
@@ -122,7 +139,6 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
                 <div className="setting-item">
                     <label className="setting-label">
                         <span className="setting-title">
-                            <Icon name="clock" size="sm" />{' '}
                             {t('gui:settings_modal.console_timestamp_date_label')}
                         </span>
                     </label>
@@ -137,7 +153,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_wrap_label')}
+                        {t('gui:settings_modal.console_wrap_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.console_wrap_description')}</span>
                 </label>
@@ -146,7 +162,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_auto_scroll_label')}
+                        {t('gui:settings_modal.console_auto_scroll_label')}
                     </span>
                     <span className="setting-description">
                         {t('gui:settings_modal.console_auto_scroll_description')}
@@ -162,7 +178,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_bg_label', 'Console Background')}
+                        {t('gui:settings_modal.console_bg_label', 'Console Background')}
                     </span>
                     <span className="setting-description">
                         {t('gui:settings_modal.console_bg_description', 'Background color of the console panel')}
@@ -179,7 +195,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_text_label', 'Console Text Color')}
+                        {t('gui:settings_modal.console_text_label', 'Console Text Color')}
                     </span>
                     <span className="setting-description">
                         {t('gui:settings_modal.console_text_description', 'Default text color in the console output')}
@@ -196,11 +212,9 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item setting-item-vertical">
                 <div className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_fonts_label')}
+                        {t('gui:settings_modal.console_fonts_label')}
                     </span>
-                    <span className="setting-description">
-                        {t('gui:settings_modal.console_fonts_description')}
-                    </span>
+                    <span className="setting-description">{t('gui:settings_modal.console_fonts_description')}</span>
                 </div>
                 <div className="console-font-grid">
                     {CONSOLE_FONT_SLOTS.map((slot) => (
@@ -227,22 +241,23 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item setting-item-vertical">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_font_scale_label', 'Console Text Size')}
+                        {t('gui:settings_modal.console_font_scale_label', 'Console Text Size')}
                     </span>
                     <span className="setting-description">
-                        {t('gui:settings_modal.console_font_scale_description', 'Adjust the console text size (50%–200%)')}
+                        {t(
+                            'gui:settings_modal.console_font_scale_description',
+                            'Adjust the console text size (50%–200%)',
+                        )}
                     </span>
                 </label>
                 <div className="font-scale-row">
-                    <input
-                        type="range"
-                        className="font-scale-slider"
+                    <SabaSlider
+                        aria-label={t('gui:settings_modal.console_font_scale_label', 'Console Text Size')}
                         min={50}
                         max={200}
                         step={5}
                         value={customTheme.consoleFontScale}
-                        onChange={(e) => handleCustomThemeChange({ consoleFontScale: Number(e.target.value) })}
-                        style={{ '--fill': `${((customTheme.consoleFontScale - 50) / 150) * 100}%` } as CSSProperties}
+                        onChange={(v) => handleCustomThemeChange({ consoleFontScale: v })}
                     />
                     <span className="font-scale-value">{customTheme.consoleFontScale}%</span>
                 </div>
@@ -288,12 +303,9 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="terminal" size="sm" />{' '}
                         {t('gui:settings_modal.console_buffer_label')}
                     </span>
-                    <span className="setting-description">
-                        {t('gui:settings_modal.console_buffer_description')}
-                    </span>
+                    <span className="setting-description">{t('gui:settings_modal.console_buffer_description')}</span>
                 </label>
                 <CustomDropdown
                     className="setting-select"
@@ -308,6 +320,6 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
                     ]}
                 />
             </div>
-        </>
+        </section>
     );
 }

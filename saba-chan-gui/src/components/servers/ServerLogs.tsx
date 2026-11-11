@@ -77,9 +77,11 @@ export function ServerLogs({ server }: { server: Server }) {
     };
 
     return (
-        <section className="server-logs" aria-label={t('shell.logs_title')}>
-            <div className="server-logs-head">
-                <h3>{t('shell.logs_title')}</h3>
+        <section className="dc-card ss-card server-logs" aria-label={t('shell.logs_title')}>
+            <div className="dc-card-head server-logs-head">
+                <h2 className="ss-card-title">
+                    <Icon name="file" size="sm" /> {t('shell.logs_title')}
+                </h2>
                 {view.sources.length > 0 && (
                     <>
                         <CustomDropdown

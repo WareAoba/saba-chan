@@ -177,6 +177,22 @@ pub fn parse(result: &Value) -> Option<PlayerCount> {
     Some(PlayerCount { online, max: max_of(result) })
 }
 
+/// 지금 접속자 수 — 끄기 직전 판단(자동 업데이트)용. 접속·퇴장 줄로 세는 서버는 그 수(실시간),
+/// 아니면 모듈 접속자 함수를 한 번 불러 묻는다(기억한 값은 최대 1분 전이다). 묻지 못하면 None. 주기 호출이 아니다
+pub async fn fresh(sup: &tokio::sync::RwLock<Supervisor>, instance_id: &str) -> Option<u32> {
+    if let Some(n) = counted(instance_id) {
+        return Some(n);
+    }
+    let call = {
+        let s = sup.read().await;
+        let module_name = s.instance_store.get(instance_id)?.module_name.clone();
+        let function = s.module_loader.get_module(&module_name).ok()?.metadata.players_function.clone()?;
+        s.instance_call(instance_id, &function).ok()?
+    };
+    let value = call.timeout(CALL_TIMEOUT_SECS).try_run().await.ok()??;
+    parse(&value).map(|c| c.online)
+}
+
 /// 답의 `max`. 0이거나 정수가 아니면 모른다
 fn max_of(result: &Value) -> Option<u32> {
     result.get("max").and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok()).filter(|m| *m > 0)

@@ -1,151 +1,136 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
-import { Icon } from '../Icon';
-import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { Segmented } from '../ui/StatusChip';
+import { SabaToggle } from '../ui/SabaUI';
 
 const failed = (res: ApiBody | null | undefined) => !res || res.success === false || Boolean(res.error_code);
 
 /** 고칠 값: 공개 주소(빈 값이면 공인 IP 그대로)와 디스코드 `/<서버> 주소`로 알려 주기 */
-interface Draft {
+export interface AddressDraft {
     custom: boolean;
     address: string;
     shareAddress: boolean;
 }
 
-interface DialogProps {
-    name: string;
-    current: ApiBody;
-    busy: boolean;
-    error: string | null;
-    onCancel: () => void;
-    onSave: (patch: { address: string; shareAddress: boolean }) => void;
-}
+export const addressDraft = (current: ApiBody): AddressDraft => ({
+    custom: Boolean(current.address),
+    address: current.address || '',
+    shareAddress: current.shareAddress !== false,
+});
 
-/** 게임 서버 주소 바꾸기 창: 공인 IP 그대로 / 공개 주소 직접 정하기, 디스코드에 알려 주기 */
-export function PublicAddressDialog({ name, current, busy, error, onCancel, onSave }: DialogProps) {
-    const { t } = useTranslation('gui');
-    const [draft, setDraft] = useState<Draft>({
-        custom: Boolean(current.address),
-        address: current.address || '',
-        shareAddress: current.shareAddress !== false,
-    });
-    const example = `${draft.custom && draft.address.trim() ? draft.address.trim() : current.publicIp || 'mc.example.com'}:25565`;
-    const option = (custom: boolean, title: string, description: string) => (
-        <label className={`public-address-option${draft.custom === custom ? ' on' : ''}`}>
-            <input
-                type="radio"
-                name="public-address-mode"
-                checked={draft.custom === custom}
-                disabled={busy}
-                onChange={() => setDraft({ ...draft, custom })}
-            />
-            <span>
-                <b>{title}</b>
-                <span className="setting-description">{description}</span>
-            </span>
-        </label>
-    );
-    return (
-        <div className="modal-overlay" role="presentation">
-            <div className="modal remote-pc-dialog" role="dialog" aria-modal="true" aria-label={t('public_address.title', { name })}>
-                <h3 className="remote-pc-dialog-title">{t('public_address.title', { name })}</h3>
-                {option(
-                    false,
-                    t('public_address.auto_title'),
-                    current.publicIp ? t('public_address.auto_desc_ip', { ip: current.publicIp }) : t('public_address.auto_desc'),
-                )}
-                {option(true, t('public_address.custom_title'), t('public_address.custom_desc'))}
-                {draft.custom && (
-                    <input
-                        id="public-address-input"
-                        type="text"
-                        className="setting-input-text"
-                        aria-label={t('public_address.custom_title')}
-                        placeholder="mc.example.com"
-                        value={draft.address}
-                        disabled={busy}
-                        onChange={(e) => setDraft({ ...draft, address: e.target.value })}
-                    />
-                )}
-                <p className="setting-description">{t('public_address.preview', { example })}</p>
-                <div className="setting-item">
-                    <label className="setting-label" htmlFor="public-address-share">
-                        <span className="setting-title">{t('public_address.share_title')}</span>
-                        <span className="setting-description">{t('public_address.share_desc')}</span>
-                    </label>
-                    <SabaToggle
-                        id="public-address-share"
-                        role="switch"
-                        aria-label={t('public_address.share_title')}
-                        checked={draft.shareAddress}
-                        disabled={busy}
-                        onChange={(shareAddress) => setDraft({ ...draft, shareAddress })}
-                    />
-                </div>
-                {error && (
-                    <div className="setting-validation-error" role="alert">
-                        <Icon name="alertCircle" size="sm" /> {error}
-                    </div>
-                )}
-                <div className="remote-pc-dialog-actions">
-                    <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>
-                        {t('remote_daemon.cancel')}
-                    </button>
-                    <button
-                        type="button"
-                        className="btn btn-primary"
-                        disabled={busy || (draft.custom && !draft.address.trim())}
-                        onClick={() => onSave({ address: draft.custom ? draft.address.trim() : '', shareAddress: draft.shareAddress })}
-                    >
-                        {busy ? <SabaSpinner size="xs" /> : null} {t('public_address.save')}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
+/** 저장할 값. 직접 정하기인데 비어 있으면 null (저장할 수 없다) */
+export const addressPatch = (draft: AddressDraft) =>
+    draft.custom && !draft.address.trim() ? null : { address: draft.custom ? draft.address.trim() : '', shareAddress: draft.shareAddress };
 
 /**
- * 내 PC 카드의 "게임 서버 주소" 줄 (`<dl>` 안). `hostId`가 없으면 이 PC, 있으면 그 원격 데몬의 `/api/public-address`.
- * 읽지 못하면(예전 데몬·닿지 않음) 그리지 않는다
+ * 그 데몬의 `/api/public-address`. `hostId`가 없으면 이 PC.
+ * 읽지 못하면(예전 데몬·닿지 않음) current는 null
  */
-export function PublicAddressRow({ hostId, name }: { hostId: string | null; name: string }) {
+export function usePublicAddress(hostId: string | null, enabled = true) {
     const { t } = useTranslation('gui');
     const [current, setCurrent] = useState<ApiBody | null>(null);
-    const [editing, setEditing] = useState(false);
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
+    const [loaded, setLoaded] = useState(false);
     const load = useCallback(async () => {
-        if (typeof window.api?.publicAddress !== 'function') return;
+        if (!enabled || typeof window.api?.publicAddress !== 'function') {
+            setLoaded(true);
+            return;
+        }
         const res = await window.api.publicAddress(hostId).catch(() => null);
         setCurrent(failed(res) ? null : res);
-    }, [hostId]);
+        setLoaded(true);
+    }, [hostId, enabled]);
     useEffect(() => {
         load();
     }, [load]);
 
-    if (!current) return null;
-
-    const save = async (patch: { address: string; shareAddress: boolean }) => {
-        setBusy(true);
-        setError(null);
+    /** 저장하고 실패 문구를 돌려준다 (성공이면 null) */
+    const save = async (patch: { address: string; shareAddress: boolean }): Promise<string | null> => {
         try {
             const res = await window.api.publicAddressSet(hostId, patch);
             if (failed(res)) {
-                setError(res?.error_code === 'invalid_address' ? t('public_address.err_invalid') : res?.error || t('public_address.err_failed'));
-                return;
+                return res?.error_code === 'invalid_address' ? t('public_address.err_invalid') : res?.error || t('public_address.err_failed');
             }
             setCurrent(res);
-            setEditing(false);
+            return null;
         } catch (e) {
-            setError((e as Error).message);
-        } finally {
-            setBusy(false);
+            return (e as Error).message;
         }
     };
+    return { current, loaded, save };
+}
 
+/** PC 설정 창의 게임 서버 주소 절: 공인 IP 그대로 / 직접 정하기, 디스코드에 알려 주기 */
+export function PublicAddressFields({
+    current,
+    draft,
+    busy,
+    onChange,
+}: {
+    current: ApiBody;
+    draft: AddressDraft;
+    busy: boolean;
+    onChange: (draft: AddressDraft) => void;
+}) {
+    const { t } = useTranslation('gui');
+    const example = `${draft.custom && draft.address.trim() ? draft.address.trim() : current.publicIp || 'mc.example.com'}:25565`;
+    return (
+        <>
+            <Segmented
+                ariaLabel={t('public_address.label')}
+                value={draft.custom ? 'custom' : 'auto'}
+                onChange={(id) => !busy && onChange({ ...draft, custom: id === 'custom' })}
+                items={[
+                    { id: 'auto', label: t('public_address.auto_title') },
+                    { id: 'custom', label: t('public_address.custom_title') },
+                ]}
+            />
+            <p className="setting-description">
+                {draft.custom
+                    ? t('public_address.custom_desc')
+                    : current.publicIp
+                      ? t('public_address.auto_desc_ip', { ip: current.publicIp })
+                      : t('public_address.auto_desc')}
+            </p>
+            {draft.custom && (
+                <input
+                    id="public-address-input"
+                    type="text"
+                    className="input setting-field"
+                    aria-label={t('public_address.custom_title')}
+                    placeholder="mc.example.com"
+                    value={draft.address}
+                    disabled={busy}
+                    onChange={(e) => onChange({ ...draft, address: e.target.value })}
+                />
+            )}
+            <p className="setting-description">{t('public_address.preview', { example })}</p>
+            <div className="pc-settings-row">
+                <label className="setting-label" htmlFor="public-address-share">
+                    <span className="setting-title">{t('public_address.share_title')}</span>
+                    <span className="setting-description">{t('public_address.share_desc')}</span>
+                </label>
+                <SabaToggle
+                    id="public-address-share"
+                    role="switch"
+                    aria-label={t('public_address.share_title')}
+                    checked={draft.shareAddress}
+                    disabled={busy}
+                    onChange={(shareAddress) => onChange({ ...draft, shareAddress })}
+                />
+            </div>
+        </>
+    );
+}
+
+/**
+ * 내 PC 카드의 "게임 서버 주소" 줄 (`<dl>` 안). 바꾸기는 카드의 수정 창에서 한다.
+ * 읽지 못하면(예전 데몬·닿지 않음) 그리지 않는다
+ */
+export function PublicAddressRow({ hostId }: { hostId: string | null }) {
+    const { t } = useTranslation('gui');
+    const { current } = usePublicAddress(hostId);
+    if (!current) return null;
     return (
         <>
             <dt>{t('public_address.label')}</dt>
@@ -153,34 +138,10 @@ export function PublicAddressRow({ hostId, name }: { hostId: string | null; name
                 {current.address ? (
                     <code>{current.address}</code>
                 ) : (
-                    <span>
-                        {t('public_address.auto')}
-                        {current.publicIp && (
-                            <>
-                                {' · '}
-                                <code>{current.publicIp}</code>
-                            </>
-                        )}
-                    </span>
+                    <span>{t('public_address.auto')}</span>
                 )}
                 {current.shareAddress === false && <span className="public-address-private muted">{t('public_address.share_off')}</span>}
-                <button type="button" className="btn btn-ghost btn-sm public-address-change" onClick={() => setEditing(true)}>
-                    {t('public_address.change')}
-                </button>
             </dd>
-            {editing && (
-                <PublicAddressDialog
-                    name={name}
-                    current={current}
-                    busy={busy}
-                    error={error}
-                    onCancel={() => {
-                        setEditing(false);
-                        setError(null);
-                    }}
-                    onSave={save}
-                />
-            )}
         </>
     );
 }

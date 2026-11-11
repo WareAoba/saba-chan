@@ -6,6 +6,7 @@ import { useServerStore } from '../../stores/useServerStore';
 import type { ApiBody } from '../../types/daemon';
 import type { Notice, NoticeInput } from '../../types/global';
 import { initials } from '../../utils/serverView';
+import { applyServerUpdateFromNotice, SERVER_UPDATE_ACTION } from '../../utils/serverUpdateNotice';
 import './Modals.css';
 import { Icon } from '../Icon';
 
@@ -201,7 +202,12 @@ function NoticeCard({ notice, onDismiss, onAction, t }: NoticeCardProps) {
                 {notice.detail && <p className="notice-card-detail">{notice.detail}</p>}
                 <span className="notice-card-time">
                     {timeStr}
-                    {clickable && <span className="notice-action-hint"> {t('notice_modal.click_to_open')}</span>}
+                    {clickable && (
+                        <span className="notice-action-hint">
+                            {' '}
+                            {t(notice.action === SERVER_UPDATE_ACTION ? 'notice_modal.click_to_update' : 'notice_modal.click_to_open')}
+                        </span>
+                    )}
                 </span>
             </div>
             <button
@@ -360,6 +366,8 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatc
                                         } else if (action === PATCH_NOTES_ACTION && onOpenPatchNotes) {
                                             onClose();
                                             onOpenPatchNotes(n.data);
+                                        } else if (action === SERVER_UPDATE_ACTION) {
+                                            void applyServerUpdateFromNotice(n, t);
                                         }
                                     }}
                                     t={t}

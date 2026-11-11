@@ -3,12 +3,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type RemotePathRequest, setRemotePathPicker } from '../../api/remotePathPicker';
 import type { ApiBody } from '../../types/daemon';
-import { useModalClose } from '../../hooks/useModalClose';
 import { Icon } from '../Icon';
-import '../Modals/Modals.css';
+import { Dialog } from '../ui/Dialog';
 import './RemotePathPicker.css';
 
-const TITLES: Record<RemotePathRequest['kind'], string> = { file: 'title_file', folder: 'title_folder', save: 'title_save' };
+const TITLES: Record<RemotePathRequest['kind'], string> = {
+    file: 'title_file',
+    folder: 'title_folder',
+    save: 'title_save',
+};
 
 /**
  * 원격 데몬 쪽 경로 고르기 (D2). 원격 데몬을 다루는 동안 대화상자를 여는 브리지 메서드
@@ -40,7 +43,7 @@ function RemotePathPicker() {
         requestRef.current = null;
         setRequest(null);
     }, []);
-    const { isClosing, requestClose } = useModalClose(() => finish(null));
+    const requestClose = () => finish(null);
 
     const open = useCallback(
         async (path: string) => {
@@ -145,17 +148,25 @@ function RemotePathPicker() {
     const up = () => (listing?.parent ? open(listing.parent) : open(''));
 
     return (
-        <div className={clsx('modal-overlay', 'remote-picker-overlay', { closing: isClosing })} onClick={() => requestClose()}>
-            <div
-                className="modal remote-picker"
-                role="dialog"
-                aria-label={t(`remote_picker.${TITLES[kind]}`)}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                    if (e.key === 'Escape') requestClose();
-                }}
-            >
-                <h2 className="modal-title">{t(`remote_picker.${TITLES[kind]}`)}</h2>
+        <Dialog
+            open
+            onOpenChange={(o) => !o && requestClose()}
+            size="md"
+            className="remote-picker"
+            title={t(`remote_picker.${TITLES[kind]}`)}
+            footer={
+                <>
+                    <button type="button" className="btn btn-ghost" onClick={() => requestClose()}>
+                        {t('remote_picker.cancel')}
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={choose} disabled={!ready}>
+                        {t(
+                            `remote_picker.${kind === 'folder' ? 'choose_folder' : kind === 'save' ? (replacing ? 'replace' : 'save') : 'choose'}`,
+                        )}
+                    </button>
+                </>
+            }
+        >
                 <div className="remote-picker-bar">
                     <button
                         type="button"
@@ -180,7 +191,7 @@ function RemotePathPicker() {
                         </button>
                     )}
                     <input
-                        className="setting-input-text remote-picker-path mono"
+                        className="input setting-field remote-picker-path mono"
                         aria-label={t('remote_picker.path')}
                         value={typed}
                         placeholder={t('remote_picker.roots')}
@@ -230,7 +241,7 @@ function RemotePathPicker() {
                 {listing?.truncated && <p className="setting-description">{t('remote_picker.truncated')}</p>}
                 {kind === 'save' && (
                     <input
-                        className="setting-input-text remote-picker-name"
+                        className="input setting-field remote-picker-name"
                         aria-label={t('remote_picker.file_name')}
                         value={name}
                         onChange={(e) => {
@@ -242,18 +253,7 @@ function RemotePathPicker() {
                         }}
                     />
                 )}
-                <div className="modal-buttons-group">
-                    <button type="button" className="modal-button question-confirm" onClick={choose} disabled={!ready}>
-                        {t(
-                            `remote_picker.${kind === 'folder' ? 'choose_folder' : kind === 'save' ? (replacing ? 'replace' : 'save') : 'choose'}`,
-                        )}
-                    </button>
-                    <button type="button" className="modal-button question-cancel" onClick={() => requestClose()}>
-                        {t('remote_picker.cancel')}
-                    </button>
-                </div>
-            </div>
-        </div>
+        </Dialog>
     );
 }
 

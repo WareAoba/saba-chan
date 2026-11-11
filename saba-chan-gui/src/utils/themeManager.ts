@@ -91,14 +91,17 @@ function applyTheme(theme: ThemeMode) {
     syncWindowBackground();
 }
 
+/** 원래 투명한 셸 창 (트레이 팝업·바탕화면 오버레이): 바탕을 칠하거나 반투명을 깔지 않는다 */
+const transparentWindow = (root: HTMLElement) => root.dataset.trayPopup !== undefined || root.dataset.desktopOverlay !== undefined;
+
 /**
  * 셸 창의 바탕을 테마 바탕색(--bg-0)으로 칠한다.
  * 창 크기를 바꾸는 사이 웹뷰가 아직 못 그린 자리가 흰색 대신 이 색으로 보인다.
- * 트레이 팝업은 투명 창이라 칠하지 않는다.
+ * 트레이 팝업·바탕화면 오버레이는 투명 창이라 칠하지 않는다.
  */
 function syncWindowBackground() {
     const root = document.documentElement;
-    if (root.dataset.trayPopup !== undefined) return;
+    if (transparentWindow(root)) return;
     const color = getComputedStyle(root).getPropertyValue('--bg-0').trim();
     if (color) window.api?.windowSetBackground?.(color);
 }
@@ -124,6 +127,11 @@ export function initTheme() {
     applyTheme(theme);
     // "시스템 따라"면 시스템 테마가 바뀔 때 창 바탕도 따라 바꾼다
     window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', syncWindowBackground);
+    // 다른 창(메인 창 설정)에서 바꾸면 이 창(바탕화면 펫·트레이 팝업)도 따른다
+    window.addEventListener('storage', (e) => {
+        if (e.key === THEME_KEY) applyTheme(getTheme());
+        else if (e.key === CUSTOM_THEME_KEY) applyCustomTheme(getCustomTheme());
+    });
     // Apply saved customizations
     const custom = getCustomTheme();
     applyCustomTheme(custom);
@@ -212,18 +220,6 @@ function lightenHex(hex: string, factor: number) {
     const nr = Math.round(r + (255 - r) * factor);
     const ng = Math.round(g + (255 - g) * factor);
     const nb = Math.round(b + (255 - b) * factor);
-    return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
-}
-
-/**
- * Desaturate a hex color by a factor (0-1). Mixes toward gray of equal luminance.
- */
-function desaturateHex(hex: string, factor: number) {
-    const { r, g, b } = hexToRgb(hex);
-    const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-    const nr = Math.round(r + (gray - r) * factor);
-    const ng = Math.round(g + (gray - g) * factor);
-    const nb = Math.round(b + (gray - b) * factor);
     return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
 }
 
@@ -329,18 +325,9 @@ export function applyCustomTheme(config: ThemeConfig) {
     root.style.setProperty('--brand-shadow-medium', `rgba(${r}, ${g}, ${b}, 0.3)`);
     root.style.setProperty('--brand-shadow-strong', `rgba(${r}, ${g}, ${b}, 0.45)`);
 
-    // Light accent backgrounds (adaptive for light/dark)
+    // 다크 모드는 강조색을 조금 밝혀서 다시 칠한다
     const effectiveTheme = getEffectiveTheme();
-    if (effectiveTheme === 'light') {
-        // Desaturate + lighten for soft pastel tints that blend with white backgrounds
-        const softAccent = desaturateHex(accentColor, 0.4);
-        root.style.setProperty('--brand-bg-light', lightenHex(softAccent, 0.95));
-        root.style.setProperty('--brand-bg-subtle', lightenHex(softAccent, 0.92));
-        root.style.setProperty('--brand-bg-muted', lightenHex(softAccent, 0.86));
-        root.style.setProperty('--brand-bg-info', lightenHex(softAccent, 0.90));
-        root.style.setProperty('--brand-border-light', lightenHex(softAccent, 0.86));
-        root.style.setProperty('--input-focus-shadow', `rgba(${r}, ${g}, ${b}, 0.1)`);
-    } else {
+    if (effectiveTheme !== 'light') {
         const darkAccent = lightenHex(accentColor, 0.15);
         const { r: dr, g: dg, b: db } = hexToRgb(darkAccent);
         root.style.setProperty('--brand-primary', darkAccent);
@@ -353,7 +340,6 @@ export function applyCustomTheme(config: ThemeConfig) {
         root.style.setProperty('--brand-shadow-subtle', `rgba(${dr}, ${dg}, ${db}, 0.08)`);
         root.style.setProperty('--brand-shadow-medium', `rgba(${dr}, ${dg}, ${db}, 0.22)`);
         root.style.setProperty('--brand-shadow-strong', `rgba(${dr}, ${dg}, ${db}, 0.35)`);
-        root.style.setProperty('--input-focus-shadow', `rgba(${dr}, ${dg}, ${db}, 0.12)`);
         if (useGradient) {
             const darkSecondary = lightenHex(accentSecondary, 0.12);
             root.style.setProperty('--brand-from', darkAccent);
@@ -463,11 +449,11 @@ export function subscribeBackdropSupport(listener: () => void) {
 
 /**
  * 이 창에 반투명을 적용한다. 셸이 효과를 깔았다고 답했을 때만 바탕을 비운다 (data-backdrop="on", styles/backdrop.css).
- * 트레이 팝업은 원래 투명 창이라 건드리지 않는다
+ * 트레이 팝업·바탕화면 오버레이는 원래 투명 창이라 건드리지 않는다
  */
 export async function applyWindowBackdrop(config: WindowBackdropConfig) {
     const root = document.documentElement;
-    if (root.dataset.trayPopup !== undefined) return;
+    if (transparentWindow(root)) return;
     let info: BackdropSupport | null = null;
     try {
         info = (await window.api?.windowSetBackdrop?.(config)) ?? null;

@@ -16,8 +16,8 @@
 }
 
 .toast {
-    background: var(--bg-surface);
-    color: var(--text-primary);
+    background: var(--bg-2);
+    color: var(--text-1);
     padding: var(--sp-1-5) var(--sp-3);
     min-height: 32px;
     height: auto;
@@ -48,8 +48,27 @@
     flex-shrink: 0;
 }
 
+.toast-icon.tone-success {
+    color: var(--ok);
+}
+.toast-icon.tone-error {
+    color: var(--stop);
+}
+.toast-icon.tone-warning {
+    color: var(--warn);
+}
+.toast-icon.tone-info {
+    color: var(--info);
+}
+
 .toast-message {
     flex: 1;
+}
+
+/* 알림 안의 버튼 (되돌리기 등) */
+.toast-action {
+    flex: none;
+    color: var(--accent);
 }
 
 .toast:hover {
@@ -57,23 +76,23 @@
 }
 
 .toast.toast-success {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 .toast.toast-error {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 .toast.toast-warning {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 .toast.toast-info {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 .toast.toast-discord {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 /* 상태 토스트 (StatusBar 대체) */
@@ -90,16 +109,16 @@
 }
 
 .toast.toast-status-init {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 .toast.toast-status-ready {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     font-weight: 600;
 }
 
 .toast.toast-status-ui {
-    background: var(--bg-surface);
+    background: var(--bg-2);
 }
 
 .toast-message {
@@ -113,7 +132,7 @@
 .toast-close {
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--text-3);
     font-size: 16px;
     cursor: pointer;
     padding: var(--sp-1) var(--sp-2);
@@ -122,7 +141,7 @@
 }
 
 .toast-close:hover {
-    color: var(--text-secondary);
+    color: var(--text-2);
 }
 
 @keyframes toastSlideIn {

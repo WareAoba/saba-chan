@@ -101,9 +101,18 @@ fn head_fit(text: &str, room: usize) -> String {
 }
 
 fn status_dot(status: &str) -> (&'static str, Color) {
+    // 화면은 1초마다 다시 그린다 (VIEW_REFRESH) — 초마다 꽉 찬 원·빈 원을 오가 깜빡인다
+    let on = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(true, |d| d.as_secs() % 2 == 0);
+    status_dot_at(status, on)
+}
+
+fn status_dot_at(status: &str, on: bool) -> (&'static str, Color) {
+    let blink = if on { "●" } else { "○" };
     match status {
         "running" => ("●", Color::Green),
-        "starting" | "provisioning" | "stopping" => ("◐", Color::Yellow),
+        // 진행 중은 떠나온 상태의 색으로 깜빡인다 (사용자 11-11): 켜는 중·설치 중은 꺼짐 회색, 끄는 중은 켜짐 초록
+        "starting" | "provisioning" => (blink, Color::DarkGray),
+        "stopping" => (blink, Color::Green),
         "crashed" | "error" => ("●", Color::Red),
         _ => ("○", Color::DarkGray),
     }
@@ -1589,6 +1598,24 @@ mod tests {
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
     use ratatui::Terminal;
     use serde_json::json;
+
+    /// 사용자 11-11: 진행 중 표시는 떠나온 상태의 색 — 켜는 중·설치 중은 꺼짐 회색, 끄는 중은 켜짐 초록
+    #[test]
+    fn transitional_dot_takes_the_color_it_left() {
+        assert_eq!(status_dot("starting").1, status_dot("stopped").1);
+        assert_eq!(status_dot("provisioning").1, status_dot("stopped").1);
+        assert_eq!(status_dot("stopping").1, status_dot("running").1);
+    }
+
+    /// 진행 중 점은 꽉 찬 원·빈 원을 오가며 깜빡이고, 멈춘 상태는 그대로다
+    #[test]
+    fn transitional_dot_blinks_between_full_and_empty() {
+        assert_eq!(status_dot_at("starting", true).0, "●");
+        assert_eq!(status_dot_at("starting", false).0, "○");
+        assert_eq!(status_dot_at("stopping", false).0, "○");
+        assert_eq!(status_dot_at("running", false).0, "●");
+        assert_eq!(status_dot_at("stopped", true).0, "○");
+    }
 
     fn app_with_data() -> App {
         crate::i18n::init("ko");

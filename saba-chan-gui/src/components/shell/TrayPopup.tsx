@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ServerInfo } from '../../types/daemon';
-import { playersText, primaryAction, STATUS_TONE, viewStatus } from '../../utils/serverView';
+import { isTransitional, playersText, primaryAction, STATUS_TONE, viewStatus } from '../../utils/serverView';
 import { type HostWindow, HostWindowContext } from '../../extensions/host';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
@@ -184,7 +184,7 @@ export function TrayPopup() {
                             return (
                                 <li key={server.id} className="tray-popup-server" data-status={status}>
                                     <span
-                                        className={clsx('tray-popup-dot', `tone-${STATUS_TONE[status]}`)}
+                                        className={clsx('tray-popup-dot', `tone-${STATUS_TONE[status]}`, { pulse: isTransitional(status) })}
                                         aria-hidden="true"
                                     />
                                     <span className="tray-popup-server-name">{server.name}</span>
@@ -233,12 +233,12 @@ export function TrayPopup() {
             )}
 
             <div className="tray-popup-actions">
-                <button type="button" className="btn-primary btn-sm" onClick={() => act('open_window')}>
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => act('open_window')}>
                     <Icon name="monitor" size={14} />
                     {t('tray_popup.open_window')}
                 </button>
                 {canCli && (
-                    <button type="button" className="btn-secondary btn-sm" onClick={() => act('switch_to_cli')}>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => act('switch_to_cli')}>
                         <Icon name="terminal" size={14} />
                         {t('tray_popup.switch_to_cli')}
                     </button>

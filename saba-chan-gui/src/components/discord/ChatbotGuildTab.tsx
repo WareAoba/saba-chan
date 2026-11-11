@@ -10,6 +10,7 @@ import { SabaFail } from '../ui/SabaArt';
 import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { LinkedText } from '../ui/ScreenLink';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
+import { SaveBar } from '../ui/SaveBar';
 import {
     AMBIENT_MINUTES,
     EFFORTS,
@@ -18,7 +19,6 @@ import {
     guildPatch,
     MEMO_MAX,
     relayErrorLines,
-    SaveBar,
     ToolGroups,
     useChatbotTools,
 } from './ChatbotView';

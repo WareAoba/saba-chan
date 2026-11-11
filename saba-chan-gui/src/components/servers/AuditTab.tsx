@@ -1,7 +1,6 @@
 import clsx from 'clsx';
 import type { ComponentProps, ReactNode } from 'react';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import {
@@ -20,13 +19,14 @@ import {
 import { safeShowToast } from '../../utils/helpers';
 import { gameNameOf, initials } from '../../utils/serverView';
 import { Icon } from '../Icon';
-import { DateField, usePopover } from '../ui/DateTimePicker';
+import { DateField } from '../ui/DateTimePicker';
+import { Popover } from '../ui/Popover';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 
 export { auditRange, auditResult, auditWhat, auditWho };
 
-/** 이 화면을 띄울 IPC가 있는지 (로드맵 쪽 preload가 먼저 들어와야 한다) */
+/** 이 화면을 띄울 IPC가 있는지 (구버전 브리지에는 없다) */
 export const auditAvailable = () => !!window.api?.auditList;
 
 /** 감사 로그 한 줄: 서버를 가리키는 칸은 데몬 버전에 따라 instance 또는 instanceId */
@@ -273,49 +273,40 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
 /** 거르기 단추: 깔때기 아이콘을 누르면 항목을 체크해 고른다 (여럿 고르면 하나라도 드는 기록). 고른 수를 단추에 적는다 */
 function AuditFilter({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
     const { t } = useTranslation('gui');
-    const popover = usePopover();
-    const panelId = useId();
+    const [open, setOpen] = useState(false);
     const toggle = (id: string, on: boolean) => onChange(on ? [...value, id] : value.filter((v) => v !== id));
     return (
-        <>
+        <Popover
+            open={open}
+            onOpenChange={setOpen}
+            trigger={
+                <button
+                    type="button"
+                    className={clsx('btn btn-ghost btn-sm audit-filter-btn', { active: value.length > 0 })}
+                >
+                    <Icon name="filter" size="sm" /> {t('audit.filter')}
+                    {value.length > 0 && <span className="audit-filter-count">{value.length}</span>}
+                </button>
+            }
+            label={t('audit.filter')}
+            className="audit-filter-panel"
+            align="start"
+            sideOffset={4}
+        >
+            {FILTERS.map((id) => (
+                <SabaCheckbox key={id} checked={value.includes(id)} onChange={(on) => toggle(id, on)}>
+                    {t(`audit.filter_${id}`)}
+                </SabaCheckbox>
+            ))}
             <button
-                ref={popover.triggerRef}
                 type="button"
-                className={clsx('btn btn-ghost btn-sm audit-filter-btn', { active: value.length > 0 })}
-                onClick={() => (popover.shown ? popover.close() : popover.open())}
-                aria-haspopup="dialog"
-                aria-expanded={popover.shown}
-                aria-controls={popover.isOpen ? panelId : undefined}
+                className="btn btn-ghost btn-sm"
+                onClick={() => onChange([])}
+                disabled={value.length === 0}
             >
-                <Icon name="filter" size="sm" /> {t('audit.filter')}
-                {value.length > 0 && <span className="audit-filter-count">{value.length}</span>}
+                {t('audit.filter_all')}
             </button>
-            {popover.isOpen &&
-                ReactDOM.createPortal(
-                    <div
-                        {...popover.panelProps}
-                        className={clsx(popover.panelProps.className, 'audit-filter-panel')}
-                        id={panelId}
-                        role="dialog"
-                        aria-label={t('audit.filter')}
-                    >
-                        {FILTERS.map((id) => (
-                            <SabaCheckbox key={id} checked={value.includes(id)} onChange={(on) => toggle(id, on)}>
-                                {t(`audit.filter_${id}`)}
-                            </SabaCheckbox>
-                        ))}
-                        <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            onClick={() => onChange([])}
-                            disabled={value.length === 0}
-                        >
-                            {t('audit.filter_all')}
-                        </button>
-                    </div>,
-                    document.body,
-                )}
-        </>
+        </Popover>
     );
 }
 

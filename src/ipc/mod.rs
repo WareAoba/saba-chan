@@ -245,6 +245,9 @@ pub struct ServerInfo {
     /// 메모리 상한 MiB (`ServerInstance::memory_limit_mb`)
     #[serde(default)]
     pub memory_limit_mb: Option<u64>,
+    /// 게임 서버 자동 업데이트 (`ServerInstance::auto_update`)
+    #[serde(default)]
+    pub auto_update: bool,
     /// 게임 채팅 전달 (`ServerInstance::game_chat`·`game_chat_keyword`)
     #[serde(default)]
     pub game_chat: crate::supervisor::game_chat::Mode,
@@ -850,7 +853,7 @@ impl IPCServer {
             .route("/api/provision-progress/{name}", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
             // ── Server update ──
             .route("/api/instance/{id}/check-update", get(handlers::instance::check_server_update))
-            .route("/api/instance/{id}/apply-update", post(handlers::instance::apply_server_update))
+            .route("/api/instance/{id}/apply-update", post(handlers::instance::apply_server_update).delete(handlers::server_update::cancel_server_update))
             // ── Command execution ──
             .route("/api/instance/{id}/command", post(handlers::command::execute_command))
             .route("/api/instance/{id}/commands", get(handlers::command::list_instance_commands))

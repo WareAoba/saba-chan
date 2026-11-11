@@ -124,6 +124,10 @@ pub struct ServerInstance {
     /// 서버 공용 모드의 자동 강퇴: 이 닉네임들이 들어오면 내보낸다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub kick_players: Vec<String>,
+    /// 게임 서버 자동 업데이트: 새 빌드가 나오면 꺼져 있거나 접속자가 없을 때 업데이트한다 (`ipc::handlers::server_update`).
+    /// 이 PC(앱·CLI)에서만 바꾼다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub auto_update: bool,
 }
 
 fn default_protocol_mode() -> String {
@@ -182,6 +186,7 @@ impl ServerInstance {
             controllers: Vec::new(),
             controllers_only: false,
             kick_players: Vec::new(),
+            auto_update: false,
         }
     }
 

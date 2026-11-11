@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { Icon } from '../Icon';
+import { Disclosure } from '../ui/Disclosure';
 
 // 모듈 코드는 바뀔 때만 다시 검사하면 된다: 이 창이 떠 있는 동안 모듈 이름별로 한 번
 // 설치·업데이트·삭제 뒤에는 비우고, 떠 있는 경고도 다시 묻게 세대를 올린다
@@ -71,12 +72,10 @@ function AuditNotice({ kind, id, name }: { kind: AuditKind; id: string; name: st
     const source = SOURCES[kind];
     const gen = useSyncExternalStore(subscribe, () => generation);
     const [undeclared, setUndeclared] = useState<UndeclaredFinding[]>([]);
-    const [open, setOpen] = useState(false);
     const [failed, setFailed] = useState(false);
 
     useEffect(() => {
         setUndeclared([]);
-        setOpen(false);
         setFailed(false);
         if (!id || !window.api?.[source.api]) return;
         let alive = true;
@@ -109,10 +108,8 @@ function AuditNotice({ kind, id, name }: { kind: AuditKind; id: string; name: st
             <span className="module-audit-body">
                 <strong>{t(source.title, { module: name, name })}</strong>{' '}
                 {t(source.summary, { perms: kinds.map(label).join(', ') })}
-                <button type="button" className="btn-link" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-                    {open ? t('module_audit.hide') : t('module_audit.show', { count: undeclared.length })}
-                </button>
-                {open && (
+                {/* 모듈이 바뀌면 다시 접는다 */}
+                <Disclosure key={`${kind}:${id}`} summary={t('module_audit.show', { count: undeclared.length })}>
                     <ul className="module-audit-list">
                         {undeclared.map((f) => (
                             <li key={`${f.file}:${f.line}:${f.permission}`}>
@@ -122,7 +119,7 @@ function AuditNotice({ kind, id, name }: { kind: AuditKind; id: string; name: st
                             </li>
                         ))}
                     </ul>
-                )}
+                </Disclosure>
             </span>
         </div>
     );

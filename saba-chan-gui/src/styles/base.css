@@ -11,7 +11,7 @@
     -webkit-user-select: none;
     user-select: none;
     scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb) transparent;
+    scrollbar-color: var(--bg-4) transparent;
 }
 
 /* 화면에는 안 보이고 읽기 프로그램에만 읽히는 글자 */
@@ -109,7 +109,7 @@ kbd {
     background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
+    background: var(--bg-4);
     border-radius: var(--r-pill);
     border: 2px solid transparent;
     background-clip: padding-box;
@@ -166,10 +166,7 @@ button:disabled {
  * 밝기·그림자·크기가 같은 곡선으로 함께 움직인다. */
 .btn-primary,
 .btn-ghost,
-.btn-secondary,
-.btn-danger,
-.btn-success,
-.btn-info {
+.btn-danger {
     transition:
         box-shadow 0.22s var(--ease),
         transform 0.18s var(--ease-spring),
@@ -179,20 +176,14 @@ button:disabled {
 }
 .btn-primary:hover:not(:disabled),
 .btn-ghost:hover:not(:disabled),
-.btn-secondary:hover:not(:disabled),
-.btn-danger:hover:not(:disabled),
-.btn-success:hover:not(:disabled),
-.btn-info:hover:not(:disabled) {
+.btn-danger:hover:not(:disabled) {
     box-shadow: var(--neu-up-hi);
     transform: translateY(-1px);
     filter: brightness(1.05);
 }
 .btn-primary:active:not(:disabled),
 .btn-ghost:active:not(:disabled),
-.btn-secondary:active:not(:disabled),
-.btn-danger:active:not(:disabled),
-.btn-success:active:not(:disabled),
-.btn-info:active:not(:disabled) {
+.btn-danger:active:not(:disabled) {
     transform: scale(0.96);
     filter: brightness(0.92);
     box-shadow: var(--neu-in);
@@ -200,19 +191,13 @@ button:disabled {
 }
 .btn-primary:focus-visible,
 .btn-ghost:focus-visible,
-.btn-secondary:focus-visible,
-.btn-danger:focus-visible,
-.btn-success:focus-visible,
-.btn-info:focus-visible {
+.btn-danger:focus-visible {
     outline: none;
     box-shadow: var(--neu-up), var(--accent-ring);
 }
 .btn-primary:disabled,
 .btn-ghost:disabled,
-.btn-secondary:disabled,
-.btn-danger:disabled,
-.btn-success:disabled,
-.btn-info:disabled {
+.btn-danger:disabled {
     box-shadow: inset 0 0 0 1px var(--line-strong);
     filter: saturate(0.5);
 }
@@ -224,16 +209,13 @@ button:disabled {
     box-shadow: var(--neu-up);
 }
 .btn-primary:active:not(:disabled),
-.btn-danger:active:not(:disabled),
-.btn-success:active:not(:disabled),
-.btn-info:active:not(:disabled) {
+.btn-danger:active:not(:disabled) {
     box-shadow: var(--neu-press-color);
 }
 
 /* 보조 버튼: 테두리 없이 바탕색으로 솟은 면 */
-.btn-ghost,
-.btn-secondary {
-    background: var(--bg-surface);
+.btn-ghost {
+    background: var(--bg-2);
     color: var(--text-1);
     border: 0;
     box-shadow: var(--neu-up);
@@ -241,18 +223,6 @@ button:disabled {
 
 .btn-danger {
     background: var(--neu-sheen), var(--stop);
-    color: var(--text-on-dark);
-    box-shadow: var(--neu-up);
-}
-
-.btn-success {
-    background: var(--neu-sheen), var(--ok);
-    color: var(--text-on-dark);
-    box-shadow: var(--neu-up);
-}
-
-.btn-info {
-    background: var(--neu-sheen), var(--info);
     color: var(--text-on-dark);
     box-shadow: var(--neu-up);
 }
@@ -303,11 +273,11 @@ button:disabled {
 }
 .icon-btn:hover:not(:disabled) {
     color: var(--text-1);
-    background: var(--bg-surface);
+    background: var(--bg-2);
     box-shadow: var(--neu-up);
 }
 .icon-btn:active:not(:disabled) {
-    background: var(--bg-surface);
+    background: var(--bg-2);
     box-shadow: var(--neu-in);
     transform: scale(0.92);
     transition-duration: 0.08s;
@@ -339,13 +309,8 @@ button:disabled {
     border-color: var(--accent);
     box-shadow: var(--neu-in), var(--accent-ring);
 }
-
-/* 카드 (N1 + N3 + A2) */
-.card {
-    background: var(--surface-gradient);
-    border: 1px solid var(--line);
-    border-radius: var(--r-md);
-    box-shadow: var(--shadow-raised);
+.input[aria-invalid='true'] {
+    border-color: var(--stop);
 }
 
 /* 상태 칩 (N4: 점 + 글자 + 색) */
@@ -413,6 +378,22 @@ button:disabled {
     }
 }
 
+/*
+ * 움직임 줄이기·전환 끄기면 깜빡이지 않는다. 진행 중은 떠나온 상태의 색이라(켜는 중 = 꺼짐 회색, 끄는 중 = 켜짐 초록)
+ * 글자 없는 점에서 구분이 사라지므로, 그때만 속 빈 고리로 그린다 (CLI ◐와 같은 생각)
+ */
+@media (prefers-reduced-motion: reduce) {
+    :is(.status-chip.pulse .status-chip-dot, .conn-node.pulse .conn-dot, .server-row-dot.pulse, .tray-popup-dot.pulse) {
+        background: var(--bg-1);
+        box-shadow: inset 0 0 0 2px var(--chip-color, var(--text-3));
+    }
+}
+[data-no-transitions='true']
+    :is(.status-chip.pulse .status-chip-dot, .conn-node.pulse .conn-dot, .server-row-dot.pulse, .tray-popup-dot.pulse) {
+    background: var(--bg-1);
+    box-shadow: inset 0 0 0 2px var(--chip-color, var(--text-3));
+}
+
 /* 세그먼트 탭: 파인 홈 안에서 고른 칸만 솟음. 누르는 즉시 바뀐다(글자색 지연 없음) */
 .segmented {
     display: inline-flex;
@@ -442,7 +423,7 @@ button:disabled {
 }
 .segmented-item.active {
     color: var(--text-1);
-    background: var(--bg-surface);
+    background: var(--bg-2);
     box-shadow: var(--neu-up);
     animation: saba-seg-pop 0.22s var(--ease-spring);
 }

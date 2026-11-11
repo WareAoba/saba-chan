@@ -23,7 +23,6 @@ describe('새 서버 만들기 — 지원 OS', () => {
                 extensions={[palworld] as unknown as ModuleInfo[]}
                 servers={[]}
                 onAddServer={vi.fn()}
-                onBack={undefined as never}
                 onClose={undefined as never}
             />,
         );
@@ -41,7 +40,6 @@ describe('새 서버 만들기 — 지원 OS', () => {
                 extensions={[arch] as unknown as ModuleInfo[]}
                 servers={[]}
                 onAddServer={vi.fn()}
-                onBack={undefined as never}
                 onClose={undefined as never}
             />,
         );

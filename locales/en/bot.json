@@ -121,6 +121,7 @@
   "schedule": {
     "restart_warning": "The server restarts in {{minutes}} min.",
     "update_warning": "The server restarts for an update in {{minutes}} min.",
+    "update_cancelled": "The planned update was cancelled. The server stays on.",
     "stop_warning": "The server stops in {{minutes}} min."
   },
   "provision": {
@@ -256,10 +257,19 @@
       },
       "update": {
         "check": {
-          "title": "Check game server update"
+          "title": "Check game server update",
+          "name": "Update check",
+          "description": "Checks Steam for a new game server build"
         },
         "apply": {
-          "title": "Update game server"
+          "title": "Update game server",
+          "name": "Update",
+          "description": "Updates the game server. If it is running, warns in game 5 minutes ahead, stops, updates and starts it again"
+        },
+        "cancel": {
+          "title": "Cancel the planned update",
+          "name": "update-cancel",
+          "description": "Cancel a game server update that is still in its warning (before the server stops)"
         }
       },
       "diagnose": {
@@ -462,6 +472,17 @@
         "router": "The PC firewall allows this port. Forward this port to this PC in your router settings, then check again.",
         "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
         "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
+      },
+      "server_update": {
+        "available": "A new version is available (build {{local}} → {{remote}}).",
+        "latest": "Up to date (build {{build}}).",
+        "check_failed": "Couldn't check for an update: {{error}}",
+        "unsupported": "Saba-chan doesn't update this server (installed by hand).",
+        "unchecked": "Couldn't check this server for updates.",
+        "started": "The update has started. I'll let you know when it's done.",
+        "cancelled": "Cancelled the planned update. The server stays on.",
+        "scheduled": "I'll warn in game {{minutes}} minutes ahead, then save, stop, update and start it again.",
+        "players": "{{count}} players are online now."
       }
     }
   },

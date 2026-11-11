@@ -5,6 +5,7 @@ import ReactDOM from 'react-dom/client';
 import { ErrorBoundary } from 'react-error-boundary';
 import App from './App';
 import { ErrorFallback } from './components/ErrorFallback';
+import { DesktopOverlay } from './components/shell/DesktopOverlay';
 import { TrayPopup } from './components/shell/TrayPopup';
 import { ExtensionProvider } from './contexts/ExtensionContext';
 import { ContextMenuProvider } from './components/ui/ContextMenu';
@@ -25,8 +26,12 @@ window.ReactDOM = ReactDOM as typeof window.ReactDOM;
 if (import.meta.env?.DEV && !window.api) installMockApi();
 
 // 트레이 아이콘을 눌러 뜬 작은 창은 앱 전체가 아니라 팝업만 그린다
-const trayPopup = new URLSearchParams(window.location.search).has('tray-popup');
+const query = new URLSearchParams(window.location.search);
+const trayPopup = query.has('tray-popup');
 if (trayPopup) document.documentElement.dataset.trayPopup = '';
+// 바탕화면 오버레이 창(셸 overlay.rs)은 익스텐션 slot `Desktop.overlay`만 그린다
+const desktopOverlay = query.has('desktop-overlay');
+if (desktopOverlay) document.documentElement.dataset.desktopOverlay = '';
 // 맥 창은 왼쪽 위 신호등을 쓴다 (window.rs `frame`): CSS가 앱 창 버튼을 숨기고 그 자리를 비운다
 if (/Mac/.test(navigator.platform || navigator.userAgent)) document.documentElement.dataset.platform = 'mac';
 
@@ -51,6 +56,10 @@ i18nReady.finally(() => {
                 {trayPopup ? (
                     <ExtensionProvider surface="tray">
                         <TrayPopup />
+                    </ExtensionProvider>
+                ) : desktopOverlay ? (
+                    <ExtensionProvider surface="desktop">
+                        <DesktopOverlay />
                     </ExtensionProvider>
                 ) : (
                     <App />

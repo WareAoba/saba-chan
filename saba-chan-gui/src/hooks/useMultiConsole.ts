@@ -12,6 +12,8 @@ import { createTranslateError, safeShowToast } from '../utils/helpers';
 const POLL_ACTIVE_MS = 500;
 /** @constant 서버 비활성 시 polling 간격 (ms) */
 const POLL_IDLE_MS = 5000;
+/** PIP로 띄울 때 메인 창 콘솔 자리에 흐리게 남기는 줄 수 */
+const GHOST_LINES = 40;
 
 // Map of instanceId -> console state. 이 훅을 쓰는 App이 줄마다 다시 그려지지 않도록 구독하지 않고 쓰기만 한다
 type ConsolesOrUpdater = Consoles | ((prev: Consoles) => Consoles);
@@ -525,6 +527,12 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         if (isPopoutMode) return;
         const handlePopoutOpened = (instanceId: string) => {
             setConsolePopoutIds((prev) => (prev.includes(instanceId) ? prev : [...prev, instanceId]));
+            // 메인 창 콘솔 자리에 흐리게 깔 마지막 줄을 남긴다
+            const lines = useConsoleStore.getState().consoles[instanceId]?.lines;
+            if (Array.isArray(lines) && lines.length) {
+                const ghost = lines.slice(-GHOST_LINES).map((l: { content?: string }) => String(l?.content ?? ''));
+                useConsoleStore.setState((st) => ({ ghosts: { ...st.ghosts, [instanceId]: ghost } }));
+            }
             // 띄운 창이 따로 읽으니 이 창은 읽기를 멈춘다. 돌아오면 상세 화면이 다시 연다
             closeConsole(instanceId);
         };

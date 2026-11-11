@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 import { create } from 'zustand';
-import type { ConsoleFonts, GuiSettings, SoundSettings } from '../types/daemon';
+import { isMonitorFloat, type MonitorFloat } from '../components/monitor/floatPosition';
+import type { ConsoleFonts, GuiSettings, SoundSettings, SystemMonitorMode } from '../types/daemon';
 import { safeShowToast } from '../utils/helpers';
 import {
     THEME_DEFAULTS,
@@ -15,6 +16,9 @@ import {
 } from '../utils/themeManager';
 import { CONSOLE_FONT_DEFAULTS } from '../utils/consoleFonts';
 import { failed } from '../utils/apiResult';
+
+/** 시스템 모니터 표시 방식 (데몬 GuiSettings.systemMonitorMode와 같다) */
+export const SYSTEM_MONITOR_MODES: readonly SystemMonitorMode[] = ['off', 'docked', 'floating'];
 
 // i18n translate function — set after store creation
 let _t = (key: string): string => key;
@@ -52,6 +56,7 @@ export const APP_OPTION_DEFAULTS: Readonly<AppOptions> = Object.freeze({
     consoleTimestampDate: false,
     consoleWrap: true, // 콘솔 긴 줄 접기 (끄면 가로 스크롤)
     consoleAutoScroll: true, // 맨 아래를 볼 때 새 줄 따라가기
+    consoleGlass: true, // 창 반투명일 때 콘솔 바탕도 유리 (인앱·PIP)
     consoleFonts: CONSOLE_FONT_DEFAULTS, // 콘솔 글꼴: 글자마다 하나 (utils/consoleFonts.js)
     systemMonitorNetTrace: false, // 고급: 포트·서버별 네트워크 (모니터를 펼쳐 둔 동안 데몬이 센다)
 });
@@ -67,6 +72,7 @@ type AppOptionKey =
     | 'consoleTimestampDate'
     | 'consoleWrap'
     | 'consoleAutoScroll'
+    | 'consoleGlass'
     | 'consoleFonts'
     | 'systemMonitorNetTrace';
 type AppOptions = Pick<GuiSettings, AppOptionKey> & { consoleFonts: Readonly<ConsoleFonts> };
@@ -99,6 +105,10 @@ export interface SettingsValues extends AppOptions {
     systemMonitorExpanded: boolean;
     /** 시스템 모니터에 띄울 항목 id (monitor/systemMetrics.ts). null이면 기본 항목 */
     monitorItems: string[] | null;
+    /** 시스템 모니터 표시 방식 (끔·고정·떠 있는 창) */
+    systemMonitorMode: SystemMonitorMode;
+    /** 떠 있는 시스템 모니터 자리. null이면 오른쪽 위 */
+    systemMonitorFloat: MonitorFloat | null;
     /** ✕로 닫은 가이드 id (components/guides/guides.ts) */
     closedGuides: string[];
     /** switch: 고른 데몬만 · unified: 다른 데몬의 서버도 데몬별로 */
@@ -157,6 +167,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     systemMonitorExpanded: false,
     // 시스템 모니터에 띄울 항목 (null이면 기본)
     monitorItems: null,
+    // 시스템 모니터: 끔 · 상세 위·오른쪽 열에 고정(기본) · 앱 안에서 옮기는 떠 있는 창
+    systemMonitorMode: 'docked',
+    systemMonitorFloat: null,
     // 닫은 가이드 (설정 → 일반에서 다시 연다)
     closedGuides: [],
     // 서버 목록 보기 (G1c): 'switch' 고른 데몬만 | 'unified' 다른 데몬의 서버도 데몬별로
@@ -202,6 +215,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                 patch.monitorItems = Array.isArray(settings.monitorItems)
                     ? settings.monitorItems.filter((i): i is string => typeof i === 'string')
                     : null;
+                patch.systemMonitorMode = SYSTEM_MONITOR_MODES.includes(settings.systemMonitorMode as SystemMonitorMode)
+                    ? (settings.systemMonitorMode as SystemMonitorMode)
+                    : 'docked';
+                patch.systemMonitorFloat = isMonitorFloat(settings.systemMonitorFloat) ? settings.systemMonitorFloat : null;
                 patch.closedGuides = Array.isArray(settings.closedGuides)
                     ? settings.closedGuides.filter((i): i is string => typeof i === 'string')
                     : [];
@@ -322,6 +339,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
             windowBackdrop: WINDOW_BACKDROP_DEFAULTS,
             systemMonitorExpanded: false,
             monitorItems: null,
+            systemMonitorMode: 'docked',
+            systemMonitorFloat: null,
             closedGuides: [],
             daemonView: 'switch',
             mainDaemon: null,
@@ -363,6 +382,8 @@ const _settingsKeys: SettingKey[] = [
     'windowBackdrop',
     'systemMonitorExpanded',
     'monitorItems',
+    'systemMonitorMode',
+    'systemMonitorFloat',
     'closedGuides',
     'daemonView',
     'mainDaemon',

@@ -1,6 +1,6 @@
-import { act, render } from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
+import { act, render } from '@testing-library/react';
 import { useRef } from 'react';
 import { describe, expect, it } from 'vitest';
 import { useStickyClip } from '../hooks/useStickyClip';
@@ -28,8 +28,9 @@ function windowBgSelectors(): string[] {
     return out;
 }
 
-// 작은 칩처럼 창 바탕 위의 작은 조각은 칠해도 된다
-const SMALL = new Set(['html', 'body', '.dc-cmd-chip']);
+// 작은 칩처럼 창 바탕 위의 작은 조각은 칠해도 된다.
+// 로딩 화면은 링 안쪽 마스크와 같은 색이어야 하고, 오류 화면은 일부러 가린다
+const SMALL = new Set(['html', 'body', '.dc-cmd-chip', '.loading-screen', '.glow-mask', '.error-fallback']);
 
 describe('window backdrop coverage', () => {
     it('every large surface painted with the window colour is cleared when the backdrop is on', () => {

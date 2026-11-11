@@ -41,6 +41,9 @@ const gameChatOf = (server: Server | null | undefined) => ({
     controllers_only: server?.controllers_only === true,
 });
 
+/** 게임 서버 자동 업데이트 (데몬 인스턴스 최상위 auto_update, 꺼져 있으면 없다) */
+const autoUpdateOf = (server: Server | null | undefined) => server?.auto_update === true;
+
 /** 정지 대기 칸 값 (초, 비면 모듈 값): 데몬 MK14 module_settings.stop_timeout */
 const stopTimeoutOf = (server: Server | null | undefined) =>
     server?.module_settings?.stop_timeout == null ? '' : String(server.module_settings.stop_timeout);
@@ -114,6 +117,8 @@ export function useServerSettings({
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [settingsServer, setSettingsServer] = useState<Server | null>(null);
     const [settingsValues, setSettingsValues] = useState<SettingsValues>({});
+    // 저장 막대의 기준: 이 서버를 연 때의 값. 늦게 오는 실제 파일 값·감지한 버전·읽어 온 추가 인자도 기준에 든다
+    const [openedSettings, setOpenedSettings] = useState<SettingsValues>({});
 
     const [settingsActiveTab, setSettingsActiveTab] = useState('general');
     const [advancedExpanded, setAdvancedExpanded] = useState(false);
@@ -135,6 +140,8 @@ export function useServerSettings({
     const touchedFields = useRef(new Set<string>());
     // 저장 값이 없어 기본값('' 포함)으로 연 뒤 실제 값도 사용자 입력도 없는 칸 (visible_when 비교에서 값 없음)
     const unsetFields = useRef(new Set<string>());
+    // 기준 값에서 값이 없던 칸 (되돌리면 다시 값 없음으로)
+    const openedUnset = useRef(new Set<string>());
     // 열 때 게임 설정 파일에서 읽은 칸: 저장값과 같으면 파일과 캐시가 이미 맞는다
     const liveFields = useRef(new Set<string>());
     // 저장에 실을 revision: 연 때의 값에서, 창이 연 뒤 데몬이 인스턴스를 고친 응답(실제 값 읽기·버전 감지·설치)이 오면 그 값으로
@@ -221,13 +228,15 @@ export function useServerSettings({
             Object.assign(initial, restartFlagsOf(latestServer));
             initial.memory_limit_mb = memoryLimitOf(latestServer);
             initial.stop_timeout = stopTimeoutOf(latestServer);
+            initial.auto_update = autoUpdateOf(latestServer);
             Object.assign(initial, gameChatOf(latestServer));
             setSettingsValues(initial);
+            setOpenedSettings(initial);
         } else {
             const protocols: Partial<NonNullable<ModuleInfo['protocols']>> = module?.protocols || {};
             const defaultProto =
                 protocols.default || ((protocols.supported?.length ?? 0) > 0 ? protocols.supported?.[0] : null);
-            setSettingsValues({
+            const initial: SettingsValues = {
                 protocol_mode:
                     latestServer.protocol_mode &&
                     latestServer.protocol_mode !== 'auto' &&
@@ -242,9 +251,13 @@ export function useServerSettings({
                 ...restartFlagsOf(latestServer),
                 memory_limit_mb: memoryLimitOf(latestServer),
                 stop_timeout: stopTimeoutOf(latestServer),
+                auto_update: autoUpdateOf(latestServer),
                 ...gameChatOf(latestServer),
-            });
+            };
+            setSettingsValues(initial);
+            setOpenedSettings(initial);
         }
+        openedUnset.current = new Set(unsetFields.current);
 
         setSettingsActiveTab('general');
         setAdvancedExpanded(false);
@@ -262,6 +275,7 @@ export function useServerSettings({
                 if (live?.revision) revision.current = live.revision;
                 if (live?.success && live.settings && typeof live.settings === 'object') {
                     const patch: SettingsValues = {};
+                    const base: SettingsValues = {};
                     for (const field of module.settings.fields) {
                         const v = liveFieldValue(
                             field,
@@ -271,11 +285,16 @@ export function useServerSettings({
                         // 읽기에 성공하면 데몬이 캐시도 맞춘다: 실제 값이 없는 칸은 캐시가 확인된 값이다 (기본값만 아니면)
                         if (v !== null || !defaulted.has(field.name)) unconfirmedFields.current.delete(field.name);
                         if (v !== null) liveFields.current.add(field.name);
+                        if (v !== null) {
+                            base[field.name] = v;
+                            openedUnset.current.delete(field.name);
+                        }
                         if (v === null || touchedFields.current.has(field.name)) continue;
                         unsetFields.current.delete(field.name);
                         patch[field.name] = v;
                     }
                     setSettingsValues((prev) => ({ ...prev, ...patch }));
+                    setOpenedSettings((prev) => ({ ...prev, ...base }));
                     setSettingsSource('live');
                 } else {
                     // 켜진 익스텐션 파일이 바뀌어 확인되지 않아 모듈이 읽지 못했다
@@ -327,6 +346,7 @@ export function useServerSettings({
                             ...prev,
                             server_version: detected.version,
                         }));
+                        setOpenedSettings((prev) => ({ ...prev, server_version: detected.version }));
                         // 데몬 핸들러가 감지한 버전을 자동 저장하므로,
                         // 서버 리스트를 갱신해 카드 배지에도 반영
                         fetchServers?.();
@@ -343,6 +363,20 @@ export function useServerSettings({
         touchedFields.current.add(fieldName);
         unsetFields.current.delete(fieldName);
         setSettingsValues((prev) => ({ ...prev, [fieldName]: Array.isArray(value) ? value : String(value) }));
+    };
+
+    /** 화면이 읽어 온 값 (추가 실행 인자 등): 사용자가 바꾼 것이 아니므로 기준에도 넣는다 */
+    const handleSettingLoaded = (fieldName: string, value: unknown) => {
+        const v = Array.isArray(value) ? value : String(value);
+        setSettingsValues((prev) => ({ ...prev, [fieldName]: v }));
+        setOpenedSettings((prev) => ({ ...prev, [fieldName]: v }));
+    };
+
+    /** 저장 막대의 되돌리기: 기준 값으로 돌리고 고친 칸 표시를 지운다 (되돌린 값을 고친 값으로 저장하지 않게) */
+    const revertSettings = () => {
+        setSettingsValues({ ...openedSettings });
+        touchedFields.current = new Set();
+        unsetFields.current = new Set(openedUnset.current);
     };
 
     // ── handleInstallVersion ────────────────────────────────
@@ -521,6 +555,7 @@ export function useServerSettings({
                                                     ...restartFlagsOf(updated),
                                                     memory_limit_mb: memoryLimitOf(updated),
                                                     stop_timeout: stopTimeoutOf(updated),
+                                                    auto_update: autoUpdateOf(updated),
                                                     ...gameChatOf(updated),
                                                 }));
                                             }
@@ -632,6 +667,10 @@ export function useServerSettings({
             if (settingsValues.stop_timeout !== undefined && stopTimeout !== stopTimeoutOf(settingsServer)) {
                 convertedSettings.stop_timeout = stopTimeout === '' ? null : stopTimeout;
             }
+
+            // 자동 업데이트: 바꿨을 때만 보낸다
+            const autoUpdate = asFlag(settingsValues.auto_update, null);
+            if (autoUpdate !== null && autoUpdate !== autoUpdateOf(settingsServer)) convertedSettings.auto_update = autoUpdate;
 
             // 게임 채팅 전달: 바꾼 칸만 보낸다. 감지 단어 모드에 단어가 있는지는 데몬이 본다 (invalid_format)
             const openedChat = gameChatOf(settingsServer);
@@ -779,6 +818,7 @@ export function useServerSettings({
         settingsServer,
         settingsValues,
         unsetSettings: unsetFields.current,
+        openedSettings,
         settingsSource,
         settingsActiveTab,
         setSettingsActiveTab,
@@ -795,6 +835,8 @@ export function useServerSettings({
         // Handlers
         handleOpenSettings,
         handleSettingChange,
+        handleSettingLoaded,
+        revertSettings,
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,

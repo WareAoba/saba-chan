@@ -6,7 +6,7 @@ import { moduleSupports } from '../../utils/helpers';
 import { type CheckIssue, checkIssueText } from '../../utils/settingIssue';
 import { Icon } from '../Icon';
 
-/** 데몬에 점검 채널이 있을 때만 (예전 preload면 버튼을 숨긴다) */
+/** 데몬에 점검 채널이 있을 때만 (구버전 브리지면 버튼을 숨긴다) */
 export const checkAvailable = () =>
     typeof window.api?.instanceValidate === 'function' || typeof window.api?.instanceDiagnose === 'function';
 

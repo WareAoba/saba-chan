@@ -19,6 +19,7 @@ import type { ModuleInfo } from '../../types/daemon';
 import { withCommandAliases } from '../../utils/commandRisk';
 import {
     STATUS_TONE,
+    isTransitional,
     consoleQuickCommands,
     defaultServerTab,
     gameNameOf,
@@ -38,7 +39,8 @@ import { ServerAddress } from './ServerAddress';
 import { ServerCheck } from './ServerCheck';
 import CommandModal from '../Modals/CommandModal';
 import { NativeProvision } from '../NativeProvision';
-import { ServerSettingsModal } from '../ServerSettingsModal';
+import { Card, ServerSettingsModal, SettingRow } from '../ServerSettingsModal';
+import { Disclosure } from '../ui/Disclosure';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import { ServerLogs } from './ServerLogs';
 import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
@@ -165,6 +167,20 @@ export function ServerDetail({
     const activeExtTab = extTabs.find((p) => p.id === activeTab);
     // Ctrl+F 찾기는 칸이 많은 설정·사바쨩·디스코드 탭에서만 (사용자 11-10)
     const findable = ['settings', 'saba', 'discord'].includes(activeTab);
+    const poppedOut = consoleProps.consolePopoutIds.includes(server.id);
+    // 콘솔을 PIP 창으로 띄운다 (이미 떠 있으면 그 창을 앞으로). 창이 열리면 셸이 console:popoutOpened로 알려 준다. 못 열면 알린다 (G-C5)
+    const popoutConsole = async () => {
+        try {
+            const res = await window.api.consolePopout(server.id, server.name);
+            if (res?.ok === false) {
+                console.error('[ServerDetail] popout failed:', res.error);
+                safeShowToast(t('console.popout_failed'), 'error');
+            }
+        } catch (err) {
+            console.error('[ServerDetail] popout failed:', err);
+            safeShowToast(t('console.popout_failed'), 'error');
+        }
+    };
     const bodyRef = useRef<HTMLDivElement>(null);
     const tabRowRef = useRef<HTMLDivElement>(null);
 
@@ -178,7 +194,7 @@ export function ServerDetail({
             return (
                 <button
                     type="button"
-                    className="btn btn-info"
+                    className="btn btn-primary"
                     disabled={updatingServer}
                     onClick={() => applyInstanceUpdate(server, setServers)}
                     data-tooltip={`${updateInfo.local_buildid} → ${updateInfo.remote_buildid}`}
@@ -267,7 +283,7 @@ export function ServerDetail({
                         tone={STATUS_TONE[status]}
                         label={t(`shell.status_${status}`)}
                         detail={uptime}
-                        pulse={status === 'starting' || status === 'stopping'}
+                        pulse={isTransitional(status)}
                     />
                     {primaryButton}
                 </div>
@@ -346,6 +362,12 @@ export function ServerDetail({
                     <div className="detail-tabrow" ref={tabRowRef}>
                         <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} />
                         {findable && <PageFindButton />}
+                        {activeTab === 'console' && !poppedOut && typeof window.api?.consolePopout === 'function' && (
+                            <button type="button" className="btn btn-ghost detail-pip-btn" onClick={popoutConsole}>
+                                <Icon name="pictureInPicture" size={15} />
+                                {t('console.popout')}
+                            </button>
+                        )}
                     </div>
                     <PageFind
                         rootRef={bodyRef}
@@ -363,20 +385,8 @@ export function ServerDetail({
                                 openConsole={consoleProps.openConsole}
                                 setConsoleInput={consoleProps.setConsoleInput}
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}
-                                poppedOut={consoleProps.consolePopoutIds.includes(server.id)}
-                                onPopout={async () => {
-                                    // 창이 열리면 셸이 console:popoutOpened로 알려 준다. 못 열면 알린다 (G-C5)
-                                    try {
-                                        const res = await window.api.consolePopout(server.id, server.name);
-                                        if (res?.ok === false) {
-                                            console.error('[ServerDetail] popout failed:', res.error);
-                                            safeShowToast(t('console.popout_failed'), 'error');
-                                        }
-                                    } catch (err) {
-                                        console.error('[ServerDetail] popout failed:', err);
-                                        safeShowToast(t('console.popout_failed'), 'error');
-                                    }
-                                }}
+                                poppedOut={poppedOut}
+                                onPopout={popoutConsole}
                                 onPopin={() => consoleProps.popinConsole(server.id)}
                             />
                         )}
@@ -597,54 +607,62 @@ function InfoTab({
     ].filter(Boolean) as [string, ReactNode][];
     const busy = server.status === 'running' || server.status === 'starting' || server.status === 'stopping';
 
+    const facts = (list: [string, ReactNode][]) => (
+        <dl className="info-facts">
+            {list.map(([k, v]) => (
+                <div className="info-fact" key={k}>
+                    <dt>{k}</dt>
+                    <dd>{v}</dd>
+                </div>
+            ))}
+        </dl>
+    );
+
     return (
-        <div className="info-tab">
-            <dl className="info-grid">
-                {rows.map(([k, v]) => (
-                    <div className="info-cell" key={k}>
-                        <dt>{k}</dt>
-                        <dd>{v}</dd>
+        <div className="info-tab ss-panel">
+            <Card icon="info" title={t('shell.info_title')}>
+                {facts(rows)}
+                {workingDir && (
+                    <div className="info-folder">
+                        <code data-tooltip={workingDir}>{workingDir}</code>
+                        <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => openWithNotice(() => window.api.shellOpenPath(workingDir))}
+                        >
+                            <Icon name="folder" size="sm" /> {t('shell.open_folder')}
+                        </button>
                     </div>
-                ))}
-            </dl>
-            {moreRows.length > 0 && (
-                <details className="info-more">
-                    <summary>{t('shell.info_more')}</summary>
-                    <dl className="info-grid">
-                        {moreRows.map(([k, v]) => (
-                            <div className="info-cell" key={k}>
-                                <dt>{k}</dt>
-                                <dd>{v}</dd>
-                            </div>
-                        ))}
-                    </dl>
-                </details>
-            )}
+                )}
+                {moreRows.length > 0 && <Disclosure summary={t('shell.info_more')}>{facts(moreRows)}</Disclosure>}
+            </Card>
             <ServerLogs server={server} />
             <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
             <ExtensionSlot slotId="ServerDetail.section" server={server} t={t} />
-            <ServerCheck server={server} />
-            <PortCheck server={server} />
-            <div className="info-actions">
-                {workingDir && (
-                    <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => openWithNotice(() => window.api.shellOpenPath(workingDir))}
-                    >
-                        <Icon name="folder" size="sm" /> {t('shell.open_folder')}
-                    </button>
-                )}
-                <button
-                    type="button"
-                    className="btn btn-ghost btn-danger-text"
-                    onClick={() => onDelete(server)}
-                    disabled={busy}
-                    data-tooltip={busy ? t('shell.delete_stop_first') : undefined}
-                >
-                    <Icon name="trash" size="sm" /> {t('shell.delete')}
-                </button>
-            </div>
+            <Card icon="tool" title={t('shell.info_check_title')} desc={t('shell.info_check_desc')} className="info-check">
+                <ServerCheck server={server} />
+                <PortCheck server={server} />
+            </Card>
+            <Card icon="alertTriangle" title={t('server_settings.danger_zone')} className="ss-danger">
+                <SettingRow
+                    label={server.linked_folder ? t('server_actions.unlink_confirm_title') : t('shell.delete')}
+                    desc={
+                        busy
+                            ? t('shell.delete_stop_first')
+                            : t(server.linked_folder ? 'shell.delete_desc_linked' : 'shell.delete_desc')
+                    }
+                    control={
+                        <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            onClick={() => onDelete(server)}
+                            disabled={busy}
+                        >
+                            <Icon name="trash" size="sm" /> {t('shell.delete')}
+                        </button>
+                    }
+                />
+            </Card>
         </div>
     );
 }

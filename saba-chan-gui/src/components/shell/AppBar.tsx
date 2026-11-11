@@ -1,10 +1,11 @@
 import clsx from 'clsx';
-import type { ComponentProps, CSSProperties } from 'react';
+import { type ComponentProps, type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import BackgroundModal from '../Modals/BackgroundModal';
 import NoticeModal from '../Modals/NoticeModal';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
+import { Popover } from '../ui/Popover';
 import { auditAvailable } from '../servers/AuditTab';
 import { ConnectionRail } from './ConnectionRail';
 import { DaemonSwitcher } from './DaemonSwitcher';
@@ -42,6 +43,8 @@ interface AppBarProps {
     daemonStatus: string;
     daemonInParentJob?: boolean;
     discordStatus: string;
+    /** 실행 중이던 봇이 끊겨 다시 붙는 중 */
+    discordReconnecting?: boolean;
     unreadCount: number;
     extInitializing?: boolean;
     extInitLabel?: string;
@@ -63,6 +66,7 @@ export function AppBar({
     daemonStatus,
     daemonInParentJob,
     discordStatus,
+    discordReconnecting,
     unreadCount,
     extInitializing,
     extInitLabel,
@@ -75,6 +79,8 @@ export function AppBar({
 }: AppBarProps) {
     const { t, i18n } = useTranslation('gui');
     const wordmark = wordmarkFor(i18n.language);
+    const railRef = useRef<HTMLDivElement>(null);
+    const bellRef = useRef<HTMLDivElement>(null);
 
     return (
         <header className="appbar" data-tauri-drag-region>
@@ -121,17 +127,27 @@ export function AppBar({
                     </span>
                 )}
                 {typeof window.api?.daemonTarget === 'function' && <DaemonSwitcher />}
-                <div className="popover-anchor">
+                <div className="popover-anchor" ref={railRef}>
                     <ConnectionRail
                         daemonStatus={daemonStatus}
                         botStatus={discordStatus}
+                        botReconnecting={discordReconnecting}
                         onDaemonClick={onToggleDaemon}
                         daemonExpanded={showDaemon}
                         onBotClick={() => onNavigate('discord')}
                     />
-                    <BackgroundModal {...daemonProps} isOpen={showDaemon} />
+                    <Popover
+                        open={showDaemon}
+                        onOpenChange={(o) => !o && daemonProps.onClose()}
+                        anchorRef={railRef}
+                        label={t('background_modal.title')}
+                        className="bare"
+                        autoFocus={false}
+                    >
+                        <BackgroundModal {...daemonProps} isOpen />
+                    </Popover>
                 </div>
-                <div className="popover-anchor">
+                <div className="popover-anchor" ref={bellRef}>
                     <button
                         type="button"
                         className="icon-btn"
@@ -143,7 +159,16 @@ export function AppBar({
                         <Icon name="bell" size="sm" />
                         {unreadCount > 0 && <span className="badge-count">{unreadCount > 9 ? '9+' : unreadCount}</span>}
                     </button>
-                    <NoticeModal {...noticeProps} isOpen={showNotice} />
+                    <Popover
+                        open={showNotice}
+                        onOpenChange={(o) => !o && noticeProps.onClose()}
+                        anchorRef={bellRef}
+                        label={t('notice_modal.tooltip')}
+                        className="bare"
+                        autoFocus={false}
+                    >
+                        <NoticeModal {...noticeProps} isOpen />
+                    </Popover>
                 </div>
                 <ExtensionAppBarActions />
                 <SwitchToCliButton />
@@ -154,9 +179,30 @@ export function AppBar({
     );
 }
 
-/** 창 최소화·최대화·닫기 (프레임 없는 창). 로딩 화면에서도 쓴다. 맥은 신호등을 쓰므로 CSS가 숨긴다 */
-export function WindowControls() {
+/**
+ * 창 최소화·최대화(복원)·닫기 (프레임 없는 창). 메인 창·PIP 창·로딩 화면이 함께 쓴다. 맥은 신호등을 쓰므로 CSS가 숨긴다.
+ * 최대화된 창이면 가운데 버튼이 복원 아이콘이 된다 (창 크기가 바뀔 때마다 셸에 묻는다)
+ */
+export function WindowControls({ onClose }: { onClose?: () => void } = {}) {
     const { t } = useTranslation('gui');
+    const [maximized, setMaximized] = useState(false);
+    useEffect(() => {
+        const ask = window.api?.windowIsMaximized;
+        if (typeof ask !== 'function') return;
+        let alive = true;
+        const sync = () => {
+            Promise.resolve(ask())
+                .then((v) => alive && setMaximized(v === true))
+                .catch(() => {});
+        };
+        sync();
+        window.addEventListener('resize', sync);
+        return () => {
+            alive = false;
+            window.removeEventListener('resize', sync);
+        };
+    }, []);
+    const middle = maximized ? 'restore' : 'maximize';
     return (
         <div className="appbar-window">
             <button
@@ -172,19 +218,19 @@ export function WindowControls() {
                 type="button"
                 className="win-btn"
                 onClick={() => window.api?.maximizeWindow()}
-                data-tooltip={t('title_bar.maximize')}
-                aria-label={t('title_bar.maximize')}
+                data-tooltip={t(`title_bar.${middle}`)}
+                aria-label={t(`title_bar.${middle}`)}
             >
-                <Icon name="maximize" size={12} />
+                <Icon name={middle} size={12} />
             </button>
             <button
                 type="button"
                 className="win-btn win-close"
-                onClick={() => window.api?.closeWindow()}
+                onClick={() => (onClose ? onClose() : window.api?.closeWindow())}
                 data-tooltip={t('title_bar.close')}
                 aria-label={t('title_bar.close')}
             >
-                <Icon name="close" size={12} />
+                <Icon name="windowClose" size={12} />
             </button>
         </div>
     );

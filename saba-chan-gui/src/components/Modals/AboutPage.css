@@ -30,9 +30,9 @@
     align-items: center;
     gap: var(--sp-5);
     padding: var(--sp-5);
-    background: var(--settings-item-bg);
+    background: var(--bg-2);
     border: 1px solid var(--line);
-    color: var(--text-primary);
+    color: var(--text-1);
 }
 
 /* 사바쨩 얼굴 링: 강조색 두 색이 쉬지 않고 흐른다 (grad-cycle.css 와 같은 5정지점 그림) */
@@ -69,8 +69,8 @@
     border-radius: 50%;
     object-fit: cover;
     box-sizing: border-box;
-    border: 3px solid var(--settings-item-bg);
-    background: var(--bg-surface);
+    border: 3px solid var(--bg-2);
+    background: var(--bg-2);
 }
 .about-version-badge {
     position: absolute;
@@ -107,7 +107,7 @@
 }
 .about-app-name span {
     font-size: var(--fs-xs);
-    color: var(--text-tertiary);
+    color: var(--text-2);
 }
 .about-component-list {
     display: grid;
@@ -121,7 +121,7 @@
     min-width: 0;
     padding: var(--sp-2) var(--sp-2-5);
     border-radius: 11px;
-    background: var(--bg-surface);
+    background: var(--bg-2);
     border: 1px solid var(--line);
 }
 .about-component-icon {
@@ -148,7 +148,7 @@
 .about-component-ver {
     font-family: var(--font-mono);
     font-size: calc(11.5px * var(--font-scale));
-    color: var(--text-secondary);
+    color: var(--text-2);
 }
 .about-app-footer {
     display: flex;
@@ -160,7 +160,7 @@
     align-items: center;
     gap: var(--sp-1);
     font-size: var(--fs-xs);
-    color: var(--text-tertiary);
+    color: var(--text-2);
 }
 
 /* ═══ 2. 사바쨩 자기소개 ═══ */

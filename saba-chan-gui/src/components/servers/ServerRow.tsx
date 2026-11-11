@@ -8,6 +8,7 @@ import type { ModuleInfo } from '../../types/daemon';
 import { openWithNotice } from '../../utils/helpers';
 import {
     STATUS_TONE,
+    isTransitional,
     gameNameOf,
     initials,
     interactionOf,
@@ -57,7 +58,7 @@ export function ServerRow({
 }: ServerRowProps) {
     const { t } = useTranslation('gui');
     useInstanceMaintenance(server, moduleData);
-    const { updateInfo } = useMaintenanceOf(server.id);
+    const { updateInfo, updateCheckError } = useMaintenanceOf(server.id);
     const modulesLoaded = useServerStore((s) => s.modulesLoaded);
     const status = viewStatus(server, moduleData, modulesLoaded);
     const action = primaryAction(status);
@@ -135,7 +136,10 @@ export function ServerRow({
         >
             <div className="server-row-icon">
                 {moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>}
-                <span className={clsx('server-row-dot', `tone-${STATUS_TONE[status]}`)} aria-hidden="true" />
+                <span
+                    className={clsx('server-row-dot', `tone-${STATUS_TONE[status]}`, { pulse: isTransitional(status) })}
+                    aria-hidden="true"
+                />
                 <ExtensionSlot slotId="ServerCard.badge" server={server} />
             </div>
             <div className="server-row-text">
@@ -158,7 +162,12 @@ export function ServerRow({
                             {players}
                         </span>
                     ) : (
-                        <StatusChip tone={STATUS_TONE[status]} label={statusLabel} className="bare" />
+                        <StatusChip
+                            tone={STATUS_TONE[status]}
+                            pulse={isTransitional(status)}
+                            label={statusLabel}
+                            className="bare"
+                        />
                     )}
                 </div>
             </div>
@@ -169,6 +178,17 @@ export function ServerRow({
                     data-tooltip={t('server_status.unresponsive', { reason: server.unresponsive })}
                     role="img"
                     aria-label={t('server_status.unresponsive', { reason: server.unresponsive })}
+                >
+                    <Icon name="alertTriangle" size={14} />
+                </span>
+            )}
+            {/* 게임 서버 업데이트를 확인하지 못했다 (SteamCMD 실패 등): "최신"으로 오해하지 않게 */}
+            {updateCheckError != null && (
+                <span
+                    className="server-row-flag tone-warn"
+                    data-tooltip={t('shell.update_check_failed', { reason: updateCheckError })}
+                    role="img"
+                    aria-label={t('shell.update_check_failed', { reason: updateCheckError })}
                 >
                     <Icon name="alertTriangle" size={14} />
                 </span>

@@ -680,6 +680,7 @@
     "port_conflict_with": "Port {{port}} wird auch von {{name}} verwendet.",
     "update_available": "Für {{name}} ist ein Update verfügbar.",
     "update_none": "{{name}} ist aktuell.",
+    "update_check_failed": "Updates für {{name}} konnten nicht geprüft werden: {{error}}",
     "update_reason": {
       "no_extension_data": "(keine Installationsmethode gespeichert)",
       "no_hook_handled": "(keine Erweiterung übernimmt Updates dafür)"

@@ -148,7 +148,7 @@
     min-height: 24px;
     padding-block: var(--sp-0-5);
     line-height: 20px;
-    color: var(--text-primary);
+    color: var(--text-1);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
 }
@@ -174,7 +174,7 @@
     height: 16px;
     margin-top: var(--sp-0-5);
     border-radius: 5px;
-    background: var(--bg-surface);
+    background: var(--bg-2);
     box-shadow:
         inset 0 0 0 1px var(--line-strong),
         inset 1.5px 1.5px 3px var(--neu-dark),
@@ -420,7 +420,7 @@
     padding: 0;
     border: 0;
     border-radius: 4px;
-    background: var(--bg-surface);
+    background: var(--bg-2);
     box-shadow: 1px 1px 3px var(--neu-dark), -1px -1px 2px var(--neu-light), inset 0 1px 0 var(--neu-hl);
     color: var(--text-3);
     cursor: pointer;
@@ -438,4 +438,411 @@
 .saba-number-steps button:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+/* ── Popover: 단추 옆에 뜨는 작은 창 (Popover.tsx, Radix가 자리·여닫기를 맡는다) ── */
+.saba-popover {
+    z-index: 1100;
+    max-height: min(480px, calc(var(--radix-popover-content-available-height, 100vh) - var(--sp-4)));
+    overflow: auto;
+    padding: var(--sp-4);
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow-float);
+    transform-origin: var(--radix-popover-content-transform-origin);
+    animation: sabaPopIn 0.22s var(--ease-spring);
+}
+/* 안 내용이 자기 창 모양을 그릴 때: 자리·여닫기만 맡는다 */
+.saba-popover.bare {
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+/* 안 창이 예전처럼 단추 기준 absolute로 놓이려 해도 Popover 자리에 그대로 둔다 */
+.saba-popover.bare > * {
+    position: relative;
+    inset: auto;
+    margin: 0;
+}
+.saba-popover:focus-visible {
+    outline: none;
+}
+@keyframes sabaPopIn {
+    from {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .saba-popover {
+        animation: none;
+    }
+}
+
+/* ── Dialog: 공통 대화상자 (Dialog.tsx, Radix가 포커스·닫기를 맡는다) ── */
+.saba-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    /* 뒤 화면을 살짝 흐리고 옅게 덮는다 (아크릴) */
+    background-color: var(--glass-scrim);
+    -webkit-backdrop-filter: var(--scrim-blur);
+    backdrop-filter: var(--scrim-blur);
+    animation: sabaFadeIn 0.2s var(--ease);
+}
+.saba-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 9001;
+    display: flex;
+    flex-direction: column;
+    width: min(var(--dialog-w, 480px), calc(100vw - 2 * var(--sp-4)));
+    max-height: calc(100vh - 2 * var(--sp-6));
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-float);
+    color: var(--text-1);
+    transform: translate(-50%, -50%);
+    animation: sabaDialogIn var(--dur) var(--ease);
+}
+.saba-dialog.sm {
+    --dialog-w: 380px;
+}
+.saba-dialog.lg {
+    --dialog-w: 720px;
+}
+.saba-dialog:focus-visible {
+    outline: none;
+}
+.saba-dialog-head {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    padding: var(--sp-5) var(--sp-5) var(--sp-3);
+}
+.saba-dialog-media {
+    flex-shrink: 0;
+}
+.saba-dialog-heading {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--sp-1);
+    min-width: 0;
+}
+.saba-dialog-title {
+    margin: 0;
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    text-wrap: balance;
+}
+.saba-dialog-desc {
+    margin: 0;
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+}
+.saba-dialog-x {
+    flex-shrink: 0;
+    margin: calc(-1 * var(--sp-1)) calc(-1 * var(--sp-1)) 0 0;
+}
+.saba-dialog-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 var(--sp-5) var(--sp-4);
+}
+.saba-dialog-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-5) var(--sp-5);
+}
+.saba-dialog-head:last-child {
+    padding-bottom: var(--sp-5);
+}
+.saba-dialog-overlay[data-state='closed'] {
+    animation: sabaFadeOut 0.18s ease-in forwards;
+}
+.saba-dialog[data-state='closed'] {
+    animation: sabaDialogOut 0.18s ease-in forwards;
+}
+@keyframes sabaFadeIn {
+    from {
+        opacity: 0;
+    }
+}
+@keyframes sabaFadeOut {
+    to {
+        opacity: 0;
+    }
+}
+@keyframes sabaDialogIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, calc(-50% + 16px));
+    }
+}
+@keyframes sabaDialogOut {
+    to {
+        opacity: 0;
+        transform: translate(-50%, calc(-50% + 8px)) scale(0.98);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .saba-dialog,
+    .saba-dialog-overlay {
+        animation: none;
+    }
+}
+
+/* ── SaveBar: 바뀐 게 있을 때 아래에서 올라오는 저장 막대 (SaveBar.tsx) ── */
+.saba-savebar {
+    position: sticky;
+    bottom: var(--sp-4);
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-3);
+    width: fit-content;
+    max-width: 100%;
+    margin: var(--sp-4) auto 0;
+    padding: var(--sp-1-5) var(--sp-1-5) var(--sp-1-5) var(--sp-4);
+    border: 1px solid color-mix(in oklch, var(--accent) 45%, var(--line));
+    border-radius: 999px;
+    background: var(--bg-2);
+    box-shadow: var(--shadow-float);
+    animation: sabaSavebarUp 0.34s var(--ease-spring) both;
+}
+.saba-savebar.leaving {
+    animation: sabaSavebarDown 0.2s ease-in both;
+    pointer-events: none;
+}
+.saba-savebar-dot {
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent) 22%, transparent);
+}
+.saba-savebar-text {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-1);
+}
+.saba-savebar-actions {
+    display: flex;
+    gap: var(--sp-1-5);
+    margin-left: auto;
+}
+.saba-savebar-actions .btn {
+    border-radius: 999px;
+}
+@keyframes sabaSavebarUp {
+    from {
+        opacity: 0;
+        transform: translateY(calc(100% + var(--sp-4)));
+    }
+}
+@keyframes sabaSavebarDown {
+    to {
+        opacity: 0;
+        transform: translateY(calc(100% + var(--sp-4)));
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .saba-savebar,
+    .saba-savebar.leaving {
+        animation: none;
+    }
+}
+
+/* ── Card: 절 하나 = 카드 하나 (사용자 11-11 A안) ──
+ * 제목(.saba-card-title)·설명·줄(.setting-item)·단추 줄(.saba-card-actions)을 한 장에 담고, 줄 사이는 가는 선으로 나눈다.
+ * 반투명이면 면·입체가 backdrop.css 재질 층을 따라 유리가 된다 */
+.saba-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2-5);
+    padding: var(--sp-4);
+    background: var(--surface-gradient);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--neu-up);
+}
+.saba-card + .saba-card,
+.saba-card + :not(.saba-card),
+:not(.saba-card) + .saba-card {
+    margin-top: var(--sp-5);
+}
+.saba-card-title {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    margin: 0;
+}
+.saba-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    justify-content: flex-end;
+}
+/* 카드 안의 설정 줄: 따로 카드가 되지 않고 가는 선으로만 나뉜다 */
+.saba-card > .setting-item {
+    margin: 0;
+    padding: var(--sp-3) 0 0;
+    background: none;
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    box-shadow: none;
+}
+.saba-card > .setting-item:first-child {
+    padding-top: 0;
+    border-top: 0;
+}
+
+/* ── Slider: 파인 홈에 강조색이 차고(--fill), 볼록한 손잡이를 잡으면 가운데 점이 켜진다 (SabaSlider) ── */
+.saba-slider {
+    --fill: 50%;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 8px;
+    border-radius: 4px;
+    background:
+        linear-gradient(in oklch, var(--brand-primary), var(--brand-primary)) 0 0 / var(--fill) 100% no-repeat,
+        var(--inset);
+    box-shadow:
+        inset 0 0 0 1px var(--line),
+        inset 1.5px 1.5px 3px var(--neu-dark),
+        inset -1px -1px 2px var(--neu-light);
+    outline: none;
+    cursor: pointer;
+}
+
+.saba-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background:
+        radial-gradient(in oklch circle, var(--brand-primary) 0 3px, transparent 3.5px) center / 0 0 no-repeat,
+        linear-gradient(in oklch 145deg, var(--knob), color-mix(in oklch, var(--knob), #8a93a8 22%));
+    cursor: pointer;
+    box-shadow:
+        2px 2px 5px rgba(0, 0, 0, 0.3),
+        -1px -1px 3px rgba(255, 255, 255, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    transition:
+        transform 0.2s var(--ease-spring),
+        background-size 0.25s var(--ease-spring);
+}
+
+.saba-slider:hover::-webkit-slider-thumb {
+    transform: scale(1.08);
+}
+
+.saba-slider:active::-webkit-slider-thumb,
+.saba-slider:focus-visible::-webkit-slider-thumb {
+    transform: scale(0.92);
+    background-size:
+        100% 100%,
+        100% 100%;
+}
+
+/* 고르기 목록 (명령 고르기·가져올 서버 고르기): 줄마다 테두리, 고르면 파인 면 */
+.saba-pick-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+    max-height: 320px;
+    margin: 0;
+    padding: var(--sp-0-5);
+    overflow-y: auto;
+    list-style: none;
+}
+.saba-pick-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1) var(--sp-2);
+    width: 100%;
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color var(--dur) var(--ease);
+}
+.saba-pick-item:hover {
+    border-color: var(--brand-primary);
+}
+.saba-pick-item:focus-visible {
+    outline: 2px solid var(--brand-primary);
+    outline-offset: 2px;
+}
+.saba-pick-item.selected {
+    border-color: var(--brand-primary);
+    box-shadow: var(--neu-in);
+}
+
+/* 공통 펼치기 (Disclosure): 화살표가 돌고 머리는 흐린 글자 */
+.saba-disclosure-head {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    padding: var(--sp-1) var(--sp-1-5);
+    margin-left: calc(-1 * var(--sp-1-5));
+    border: 0;
+    border-radius: var(--r-sm);
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        color var(--dur) var(--ease),
+        background-color var(--dur) var(--ease);
+}
+.saba-disclosure-head:hover {
+    color: var(--text-1);
+    background: var(--bg-3);
+}
+.saba-disclosure-head:focus-visible {
+    outline: 2px solid var(--brand-primary);
+    outline-offset: 2px;
+}
+.saba-disclosure-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
+.saba-disclosure-chevron {
+    display: inline-flex;
+    flex-shrink: 0;
+    transition: transform var(--dur) var(--ease);
+}
+.saba-disclosure.open > .saba-disclosure-head .saba-disclosure-chevron {
+    transform: rotate(90deg);
+}
+.saba-disclosure-body {
+    padding-top: var(--sp-2);
+}
+.saba-disclosure-body[hidden] {
+    display: none;
 }

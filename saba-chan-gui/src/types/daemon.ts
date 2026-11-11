@@ -81,6 +81,8 @@ export interface ServerInfo {
     extra_args: string[];
     revision: string;
     memory_limit_mb: number | null;
+    /** 게임 서버 자동 업데이트 (설치 방식 익스텐션으로 설치한 서버만, PC에서만 바꾼다) */
+    auto_update?: boolean;
     game_chat: GameChatMode;
     game_chat_keyword: string;
     game_chat_supported: boolean;
@@ -372,6 +374,8 @@ export interface ConsoleFonts {
 }
 
 /** GET /api/config/gui (config_store::GuiSettings). 데몬이 없으면 셸의 로컬 사본이라 칸이 빠질 수 있다 */
+export type SystemMonitorMode = 'off' | 'docked' | 'floating';
+
 export interface GuiSettings {
     autoRefresh: boolean;
     refreshInterval: number;
@@ -394,6 +398,7 @@ export interface GuiSettings {
     consoleTimestampDate: boolean;
     /** 콘솔 긴 줄 접기 */
     consoleWrap: boolean;
+    consoleGlass: boolean;
     /** 맨 아래를 볼 때 새 줄 따라가기 */
     consoleAutoScroll: boolean;
     /** auto · light · dark. 예전 버전은 저장하지 않았다 */
@@ -417,6 +422,10 @@ export interface GuiSettings {
     /** 고급: 포트·서버별 네트워크 (기본 꺼짐, 데몬 `system_monitor_net_trace`) */
     systemMonitorNetTrace: boolean;
     monitorItems?: string[] | null;
+    /** 시스템 모니터 표시 방식: off · docked(기본) · floating */
+    systemMonitorMode?: SystemMonitorMode;
+    /** 떠 있는 시스템 모니터 자리 (components/monitor/floatPosition.ts) */
+    systemMonitorFloat?: import('../components/monitor/floatPosition').MonitorFloat | null;
     /** ✕로 닫은 가이드 id */
     closedGuides?: string[];
     windowBounds?: { width: number; height: number; x?: number; y?: number };

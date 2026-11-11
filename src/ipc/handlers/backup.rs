@@ -1234,7 +1234,7 @@ async fn sweep_restore_safeties(state: &IPCServer, swept: &mut std::collections:
     }
 }
 
-async fn announce(state: &IPCServer, id: &str, message: &str) -> bool {
+pub(crate) async fn announce(state: &IPCServer, id: &str, message: &str) -> bool {
     let cmd = {
         let supervisor = state.supervisor.read().await;
         supervisor
@@ -1422,47 +1422,27 @@ async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chr
     )
     .await;
     if check.body.get("update_available").and_then(Value::as_bool) != Some(true) {
+        if check.body.get("reason").and_then(Value::as_str) == Some("check_failed") {
+            tracing::warn!("Scheduled update of '{}': update check failed: {}", id, check.body["error"]);
+        }
         return;
     }
     let running_now = is_running(state, id).await;
     if !count_down(state, id, task, fire, key, "schedule.update_warning", running_now).await {
         return;
     }
-    let was_running = is_running(state, id).await;
-    if was_running {
-        let stop = crate::ipc::internal::into_internal(super::server::stop_instance(state.clone(), id, false).await).await;
-        // 콘솔이 없어 저장 후 종료를 못 하는 서버(`graceful_stop_unavailable`)도 여기서 멈춘다: 예약 작업은 강제 종료하지 않는다
-        if !stop.status.is_success() || stop.body.get("success").and_then(Value::as_bool) == Some(false) {
-            tracing::warn!("Scheduled update of '{}': stop failed: {}", id, stop.body);
-            return;
-        }
-        for _ in 0..240 {
-            if !is_running(state, id).await {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        }
-    }
     tracing::info!("Scheduled update of '{}'", id);
-    let generation = state.supervisor.read().await.run_generation_of(id);
-    let updated = match super::instance::begin_server_update(state, id).await {
-        Ok(job) => job.await.unwrap_or(false),
-        Err(r) => {
-            tracing::warn!("Scheduled update of '{}' failed: {}", id, crate::ipc::internal::into_internal(r).await.body);
-            false
-        }
+    // 디스코드·자동 업데이트가 같은 서버에 걸어 둔 업데이트와 겹치지 않게 한다
+    let Some(_mark) = super::server_update::Pending::take(id) else {
+        tracing::info!("Scheduled update of '{}': another update is already under way", id);
+        return;
     };
-    if was_running {
-        if !updated {
-            tracing::warn!("Scheduled update of '{}' failed; starting the old version again", id);
-        }
-        start_after_update(state, id, generation).await;
-    }
+    super::server_update::stop_update_start(state, id).await;
 }
 
 /// 예약 업데이트가 끈 서버를 다시 켠다. 그 순간 다른 작업(백업·복원)이 잠금을 쥐고 있으면 끝나기를 기다린다.
 /// 그사이 사용자가 켜거나 끄거나 인스턴스를 지우면(`generation`이 바뀌면) 그만둔다
-async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
+pub(crate) async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
     let wanted = || async {
         let supervisor = state.supervisor.read().await;
         supervisor.instance_store.get(id).is_some() && supervisor.run_generation_of(id) == generation

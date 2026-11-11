@@ -680,6 +680,7 @@
     "port_conflict_with": "포트 {{port}}를 {{name}}도 써요.",
     "update_available": "{{name}}에 업데이트가 있어요.",
     "update_none": "{{name}}은(는) 최신이에요.",
+    "update_check_failed": "{{name}}의 업데이트를 확인하지 못했어요: {{error}}",
     "update_reason": {
       "no_extension_data": "(설치 방법 기록이 없어요)",
       "no_hook_handled": "(업데이트를 맡는 익스텐션이 없어요)"
