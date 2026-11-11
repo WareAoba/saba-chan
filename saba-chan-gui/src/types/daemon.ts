@@ -362,6 +362,7 @@ export interface SoundSettings {
     crash: boolean;
     install: boolean;
     update: boolean;
+    startup: boolean;
 }
 
 /** config_store::ConsoleFonts: 글자 종류마다 글꼴 id */
@@ -418,6 +419,8 @@ export interface GuiSettings {
     /** 고급: 포트·서버별 네트워크 (기본 꺼짐, 데몬 `system_monitor_net_trace`) */
     systemMonitorNetTrace: boolean;
     monitorItems?: string[] | null;
+    /** ✕로 닫은 가이드 id */
+    closedGuides?: string[];
     windowBounds?: { width: number; height: number; x?: number; y?: number };
     language?: string;
     /** 앱을 열면 먼저 볼 원격 데몬 hostId */

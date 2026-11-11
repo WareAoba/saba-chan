@@ -182,6 +182,7 @@ pub fn run() {
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             native::daemon_request,
+            sounds::sound_play,
             native::app_ready,
             native::daemon_status,
             native::daemon_restart,
