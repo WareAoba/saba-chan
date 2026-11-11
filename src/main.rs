@@ -1,37 +1,6 @@
-mod supervisor;
-mod plugin;
-mod protocol;
-mod ipc;
-mod config_store;
-mod instance;
-mod backup;
-mod module_paths;
-mod scheduler;
-mod process_monitor;
-mod system_monitor;
-mod python_env;
-mod utils;
-mod archive;
-mod extension;
-mod validator;
-mod boot_selector;
-mod daemon_log;
-mod instance_lock;
-mod chat;
-mod commands;
-mod module_audit;
-mod audit;
-mod events;
-mod sandbox;
-mod actions;
-mod launch_args;
-mod relay_agent;
-mod remote;
-mod remote_daemon;
-mod guides;
-mod port_check;
-mod controllers;
-mod tray_host;
+// 데몬 모듈은 lib(saba_core) 하나로만 컴파일한다. 바이너리가 같은 모듈을 다시 `mod`로 선언하면
+// 데몬 전체가 두 번 컴파일되고 단위 시험도 두 번 돈다
+use saba_core::{supervisor, plugin, ipc, process_monitor, system_monitor, python_env, utils, extension, boot_selector, daemon_log, instance_lock, module_audit, audit, sandbox, controllers, tray_host};
 
 use std::sync::Arc;
 use std::io::IsTerminal;
@@ -515,7 +484,7 @@ async fn main() -> anyhow::Result<()> {
             let taken_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
             // 인스턴스가 없으면 맞춰 볼 대상이 없다: 전체 프로세스 조회를 건너뛴다 (죽은 프로세스 정리는 그대로 한다)
             let has_instances = !supervisor_monitor.read().await.instance_store.list().is_empty();
-            let process_snapshot = if has_instances { crate::process_monitor::get_running_processes_async().await } else { Vec::new() };
+            let process_snapshot = if has_instances { process_monitor::get_running_processes_async().await } else { Vec::new() };
             
             // Phase 2: write lock 안에서는 snapshot 기반 매칭만 수행 (시스템 콜 없음)
             let mut sup = supervisor_monitor.write().await;
