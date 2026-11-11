@@ -52,6 +52,12 @@
     flex: 1;
 }
 
+/* 알림 안의 버튼 (되돌리기 등) */
+.toast-action {
+    flex: none;
+    color: var(--accent);
+}
+
 .toast:hover {
     box-shadow: 0 4px 12px var(--toast-shadow);
 }

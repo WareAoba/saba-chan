@@ -178,6 +178,11 @@
     "close_action_ask": "Preguntar siempre",
     "close_action_tray": "Salir solo de la interfaz (el daemon sigue)",
     "close_action_quit": "Salir por completo",
+    "system_monitor_label": "Monitor del sistema",
+    "system_monitor_description": "Gráficos de uso del PC en la página de servidores. Apagado no consulta nada. La ventana flotante se puede arrastrar dentro de la app",
+    "system_monitor_off": "Apagado",
+    "system_monitor_docked": "Fijo",
+    "system_monitor_floating": "Flotante",
     "toast_duration_label": "Duración de las notificaciones",
     "toast_duration_description": "Cuánto tiempo permanecen en pantalla las notificaciones de la app.",
     "toast_duration_short": "Corta",
@@ -1782,7 +1787,10 @@
     "ports_server": "Servidor",
     "ports_port": "Puerto",
     "ports_rx": "Recibido",
-    "ports_tx": "Enviado"
+    "ports_tx": "Enviado",
+    "hide": "Ocultar monitor",
+    "hidden_toast": "Monitor del sistema oculto. Actívalo de nuevo en Ajustes → General",
+    "undo": "Deshacer"
   },
   "net_trace": {
     "label": "Red por servidor y puerto",
