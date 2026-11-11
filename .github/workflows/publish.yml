@@ -514,13 +514,17 @@ jobs:
         run: cargo test --locked --test updater_relay_e2e --test updater_integration
 
       # 실제 데몬·러너·CLI를 띄우는 E2E를 이 조합의 실행 파일로 (외부망·SteamCMD·느린 시험 제외)
+      # 가짜 마인크래프트 서버는 `javac --release 17`로 빌드한다. ubuntu-22.04 기본 JDK는 11이라 17을 앞에 둔다
       - name: Combination E2E
         env:
           SABA_E2E_ROOT: ${{ runner.temp }}/saba-e2e
           SABA_E2E_BIN_DIR: ${{ github.workspace }}/combo/bin
           SABA_E2E_MODULES_REPO: ${{ github.workspace }}/addons/modules
           SABA_E2E_EXTENSIONS_REPO: ${{ github.workspace }}/addons/extensions
-        run: bash tests/e2e/run-cloud.sh
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64" PATH="$JAVA_HOME_17_X64/bin:$PATH"
+          javac -version
+          bash tests/e2e/run-cloud.sh
 
       - name: Upload E2E report
         if: always()
