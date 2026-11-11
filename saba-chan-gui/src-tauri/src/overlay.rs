@@ -132,8 +132,18 @@ pub fn emit<S: serde::Serialize + Clone>(app: &AppHandle, event: &str, payload: 
 }
 
 pub fn close(app: &AppHandle) {
+    // 맥은 패널을 원래 창으로 되돌린 뒤 없앤다. 둘 다 메인 스레드에서 차례로 한다
     #[cfg(target_os = "macos")]
-    mac_panel::release(app);
+    {
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            mac_panel::release(&handle);
+            if let Some(w) = handle.get_webview_window(OVERLAY) {
+                let _ = w.destroy();
+            }
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
     if let Some(w) = app.get_webview_window(OVERLAY) {
         let _ = w.destroy();
     }
@@ -166,8 +176,14 @@ fn open(app: &AppHandle) {
             return;
         }
     };
+    // AppKit 창 속성은 메인 스레드에서만 바꾼다 (open은 비동기 작업 스레드에서 불린다. 밖에서 바꾸면 macOS 26이 단언으로 멈춘다)
     #[cfg(target_os = "macos")]
-    mac_panel::adopt(&win);
+    {
+        let panel_win = win.clone();
+        if let Err(e) = app.run_on_main_thread(move || mac_panel::adopt(&panel_win)) {
+            tracing::warn!("[Overlay] Could not make the overlay a panel: {}", e);
+        }
+    }
     *ANCHOR.lock().unwrap() = None;
     *PLACED.lock().unwrap() = None;
     let handle = app.clone();

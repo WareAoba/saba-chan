@@ -225,7 +225,12 @@ fn player_loop(rx: std::sync::mpsc::Receiver<Cue>) {
     use std::sync::mpsc::RecvTimeoutError;
     use std::time::Duration;
     while let Ok(first) = rx.recv() {
-        let mut device = match rodio::DeviceSinkBuilder::open_default_sink() {
+        // 스트림 오류(장치를 놓을 때의 버퍼 부족 등)는 소리에 지장이 없어 디버그로만 남긴다
+        let opened = rodio::DeviceSinkBuilder::from_default_device().and_then(|b| {
+            b.with_error_callback(|e| tracing::debug!("[Sound] Audio stream: {}", e))
+                .open_sink_or_fallback()
+        });
+        let mut device = match opened {
             Ok(d) => d,
             Err(e) => {
                 tracing::warn!("[Sound] No audio output for {}: {}", first.file_name(), e);
