@@ -197,7 +197,7 @@ async function loadExtensionI18n(ext: ExtensionListItem, lang: string) {
     }
 }
 
-/** 원격 데몬을 골랐으면, 이 PC 데몬에서 허락을 기다리는 다른 창 전용 번들 (이 PC면 위 목록이 이미 그것이다) */
+/** 원격 데몬을 골랐으면, 이 PC 데몬에서 허락을 기다리는 바탕화면·트레이 번들 (메인 slot도 함께 선언했어도. 그 창들은 이 PC 데몬을 본다) */
 async function localWindowPending(): Promise<ExtensionListItem[]> {
     try {
         const current = await window.api.daemonTarget?.();
@@ -205,7 +205,11 @@ async function localWindowPending(): Promise<ExtensionListItem[]> {
         const local = await window.api.extensionList({ local: true });
         if (!Array.isArray(local?.extensions)) return [];
         return local.extensions.filter(
-            (ext) => ext.enabled && ext.gui?.bundle && ext.gui_allowed === false && !loadsOn(ext, 'main'),
+            (ext) =>
+                ext.enabled &&
+                ext.gui?.bundle &&
+                ext.gui_allowed === false &&
+                (loadsOn(ext, 'desktop') || loadsOn(ext, 'tray')),
         );
     } catch {
         return [];

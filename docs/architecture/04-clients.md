@@ -147,7 +147,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | sandboxListUnisolated (1107) | GET /api/sandbox/unisolated `{components:[{component, fingerprint, current}]}` | ✓ 737 |
 | sandboxAllowUnisolated (1109) | Rust `sandbox_consent_allow {kind:'unisolated'}` → 확인 창 → POST /api/sandbox/unisolated/:component. `sandbox_unavailable` 응답의 `component`를 넘긴다. 취소는 `error_code:'canceled'` | ✓ 738-741 |
 | sandboxRevokeUnisolated (1110) | DELETE /api/sandbox/unisolated/:component | ✓ 738-741 |
-| sandboxListExtensionGui / sandboxAllowExtensionGui / sandboxRevokeExtensionGui | GET /api/sandbox/extension-gui, POST(Rust `sandbox_consent_allow {kind:'extension-gui'}` → 확인 창)·DELETE /api/sandbox/extension-gui/ext-<id>. 확인되지 않은 익스텐션의 GUI 번들 허락(묻는 창은 `ExtensionContext`. 원격 데몬을 고른 동안에는 이 PC 데몬의 바탕화면·트레이 전용 번들도 함께 묻는다. 목록·철회는 설정 > 보안 `ExtensionGuiSection`) | 데몬 #148 |
+| sandboxListExtensionGui / sandboxAllowExtensionGui / sandboxRevokeExtensionGui | GET /api/sandbox/extension-gui, POST(Rust `sandbox_consent_allow {kind:'extension-gui'}` → 확인 창)·DELETE /api/sandbox/extension-gui/ext-<id>. 셋 다 이 PC 데몬에 보낸다(`target:'local'`, 번들을 주는 곳). 확인되지 않은 익스텐션의 GUI 번들 허락(묻는 창은 `ExtensionContext`. 원격 데몬을 고른 동안에는 이 PC 데몬의 바탕화면·트레이 slot을 선언한 번들도(메인 slot을 함께 선언했어도) 함께 묻는다. 목록·철회는 설정 > 보안 `ExtensionGuiSection`) | 데몬 #148 |
 | actionsList (1114) | GET /api/actions?surface=gui&instance?&locale? (P2) | ✓ 743 |
 | actionsPlan (1119) | POST /api/actions/:id/plan `{input, instance?}` | ✓ 746 |
 | actionsRun (1120) | POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}` | ✓ 747 |

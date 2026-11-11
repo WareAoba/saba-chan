@@ -296,13 +296,13 @@ describe('허락', () => {
         expect(window.api.extensionGuiBundle).not.toHaveBeenCalled();
     });
 
-    it('원격 데몬을 고른 동안에도 이 PC 데몬의 바탕화면 번들 허락을 묻는다', async () => {
+    it('원격 데몬을 고른 동안에도 이 PC 데몬의 바탕화면 번들 허락을 묻는다 (메인 화면 slot도 함께 선언해도)', async () => {
         const pet = {
             id: 'pet',
             name: 'pet',
             enabled: true,
             version: '1.0.0',
-            gui: { bundle: 'x.js', styles: null, builtin: null, slots: { 'Desktop.overlay': {} } },
+            gui: { bundle: 'x.js', styles: null, builtin: null, slots: { 'Desktop.overlay': {}, 'App.page': {} } },
             gui_allowed: false,
             config_fields: {},
         };

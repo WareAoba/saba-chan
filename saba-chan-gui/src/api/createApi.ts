@@ -56,6 +56,14 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
     const post = (path: string, body?: unknown, opts?: RequestOptions) => request('post', path, body, opts);
     const put = (path: string, body?: unknown, opts?: RequestOptions) => request('put', path, body, opts);
     const del = (path: string, opts?: RequestOptions) => request('delete', path, undefined, opts);
+    /** `call`과 같고, 고른 데몬과 상관없이 이 PC 데몬에 보낸다 */
+    const callLocal = async (method: 'get' | 'delete', path: string): Promise<ApiBody> => {
+        try {
+            return (await request(method, path, undefined, { target: 'local' })).data;
+        } catch (e) {
+            return failureBody(e as DaemonError);
+        }
+    };
 
     // 경로 고르기. 원격 데몬을 다루는 중이면 이 PC의 대화상자 대신 그 데몬의 폴더에서 고른다:
     // 이 PC의 경로는 그 PC 데몬에 가면 엉뚱한 곳을 가리킨다 (G1, D2)
@@ -946,9 +954,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 동의 기록은 셸이 네이티브 확인 창을 띄운 뒤에 보낸다. 취소하면 {success:false, error_code:'canceled'}
         sandboxAllowUnisolated: (component: string) => invoke('sandbox_consent_allow', { kind: 'unisolated', component }),
         sandboxRevokeUnisolated: (component: string) => call('delete', unisolatedPath(component)),
-        sandboxListExtensionGui: () => call('get', '/api/sandbox/extension-gui'),
+        // GUI 동의는 번들을 주는 이 PC 데몬에 있다 (sandbox_consent_allow도 이 PC에 기록한다): 원격 데몬을 고른 동안에도 이 PC에서 보고 철회한다
+        sandboxListExtensionGui: () => callLocal('get', '/api/sandbox/extension-gui'),
         sandboxAllowExtensionGui: (component: string) => invoke('sandbox_consent_allow', { kind: 'extension-gui', component }),
-        sandboxRevokeExtensionGui: (component: string) => call('delete', extensionGuiPath(component)),
+        sandboxRevokeExtensionGui: (component: string) => callLocal('delete', extensionGuiPath(component)),
         actionsList: (opts?: { surface?: string; instance?: string; locale?: string }) => {
             const { surface = 'gui', instance, locale } = opts || {};
             const qs = queryString({ surface, instance: instance || undefined, locale: locale || undefined });
