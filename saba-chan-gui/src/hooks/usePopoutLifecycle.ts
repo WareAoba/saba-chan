@@ -27,6 +27,17 @@ export function usePopoutLifecycle({ enabled, servers, popoutIds }: UsePopoutLif
     serversRef.current = servers;
     /** 비동기 응답이 온 뒤 쓸 최신 상태: 아직 켜져 있으면 그 서버 */
     const startedNow = (id: string) => serversRef.current.find((x) => x.id === id && STARTED.has(x.status));
+    /** 다시 띄우고, 창이 생기는 사이 서버가 꺼졌으면 곧바로 닫는다 (다음에 켜면 다시 띄우도록 기억은 남긴다) */
+    const reopen = (id: string, name: string) => {
+        const api = window.api;
+        Promise.resolve(api?.consolePopout?.(id, name))
+            .then(() => {
+                if (!startedNow(id) && typeof api?.consolePopoutClose === 'function') {
+                    return api.consolePopoutClose(id, true);
+                }
+            })
+            .catch(() => {});
+    };
 
     useEffect(() => {
         if (!enabled) return;
@@ -43,7 +54,7 @@ export function usePopoutLifecycle({ enabled, servers, popoutIds }: UsePopoutLif
                     Promise.resolve(api.consolePopoutClose(s.id, true))
                         .then(() => {
                             const now = startedNow(s.id);
-                            if (now) return api.consolePopout?.(s.id, now.name);
+                            if (now) reopen(s.id, now.name);
                         })
                         .catch(() => {});
                 }
@@ -58,7 +69,7 @@ export function usePopoutLifecycle({ enabled, servers, popoutIds }: UsePopoutLif
                 for (const s of started) {
                     const now = startedNow(s.id);
                     if (now && saved.includes(s.id) && !openRef.current.includes(s.id)) {
-                        Promise.resolve(api.consolePopout?.(s.id, now.name)).catch(() => {});
+                        reopen(s.id, now.name);
                     }
                 }
             },

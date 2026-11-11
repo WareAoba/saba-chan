@@ -92,4 +92,15 @@ describe('usePopoutLifecycle (PIP 기억)', () => {
         await new Promise((r) => setTimeout(r, 20));
         expect(popout).not.toHaveBeenCalled();
     });
+
+    it('다시 띄우는 창이 생기는 사이 서버가 꺼지면 생긴 창을 닫는다', async () => {
+        let created: (v: unknown) => void = () => {};
+        popout.mockImplementation(() => new Promise((r) => (created = r)));
+        saved = ['a'];
+        const h = run([{ id: 'a', name: 'A', status: 'running' }], []);
+        await waitFor(() => expect(popout).toHaveBeenCalledWith('a', 'A'));
+        h.rerender({ servers: [{ id: 'a', name: 'A', status: 'stopped' }], popoutIds: [] });
+        created({ ok: true });
+        await waitFor(() => expect(close).toHaveBeenCalledWith('a', true));
+    });
 });
