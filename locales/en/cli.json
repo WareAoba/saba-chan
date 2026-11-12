@@ -839,7 +839,7 @@
     "name_module": "{{name}} module",
     "name_extension": "{{name}} extension",
     "rollback_available": "Version you can go back to: {{version}} (now {{current}}, updated {{at}})",
-    "rollback_confirm": "Going back to {{version}} restarts Saba-chan. Continue?",
+    "rollback_confirm": "Going back to {{version}} restarts Saba-chan, and settings changed since the update go back to what they were before it. Continue?",
     "rollback_addons": "Modules and extensions stay at their current versions after the rollback. These cannot be used on {{version}} (they need a newer Saba-chan): {{list}}",
     "rolling_back": "Rolling back...",
     "rollback_launched": "Updater started. The daemon is shutting down to roll back.",

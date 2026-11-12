@@ -839,7 +839,7 @@
     "name_module": "{{name}} モジュール",
     "name_extension": "{{name}} 拡張機能",
     "rollback_available": "戻せるバージョン: {{version}}（現在 {{current}}、{{at}} に更新）",
-    "rollback_confirm": "{{version}} に戻すとサバちゃんが再起動します。続けますか？",
+    "rollback_confirm": "{{version}} に戻すとサバちゃんが再起動し、アップデート後に変更した設定はアップデート前の状態に戻ります。続けますか？",
     "rollback_addons": "戻してもモジュールと拡張機能は今のバージョンのままです。次は {{version}} では使えません（より新しいサバちゃんが必要です）: {{list}}",
     "rolling_back": "元に戻しています...",
     "rollback_launched": "アップデーターを起動しました。元に戻すためデーモンを終了しています。",
