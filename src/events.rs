@@ -49,8 +49,15 @@ impl Default for Bus {
 }
 
 impl Bus {
+    /// 번호는 켜진 시각(µs, JS 숫자로도 정확하다)부터 센다: 실행마다 구간이 겹치지 않아,
+    /// 앞 실행의 번호로 다시 붙은 클라이언트가 새 실행의 앞쪽 이벤트를 조용히 건너뛰지 않는다
     pub fn new() -> Self {
-        Self { inner: Mutex::new(Inner { next: 1, recent: VecDeque::new() }), tx: broadcast::channel(CHANNEL).0 }
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros() as u64).unwrap_or(0);
+        Self::starting_at(now.max(1))
+    }
+
+    fn starting_at(first: u64) -> Self {
+        Self { inner: Mutex::new(Inner { next: first, recent: VecDeque::new() }), tx: broadcast::channel(CHANNEL).0 }
     }
 
     /// 한 건 낸다. `data`가 객체이면 `at`(unix 초)을 붙인다
@@ -92,7 +99,7 @@ impl Bus {
         };
         let last = inner.next - 1;
         if since > last {
-            // 데몬이 다시 켜져 번호가 처음부터다
+            // 다른 실행의 번호다 (시계가 뒤로 간 뒤 다시 켜졌다)
             return Subscription { resync: true, backlog: inner.recent.iter().cloned().collect(), rx };
         }
         let oldest = inner.recent.front().map_or(inner.next, |e| e.id);
@@ -132,7 +139,7 @@ mod tests {
 
     #[test]
     fn a_client_that_comes_back_gets_what_it_missed_in_order() {
-        let bus = Bus::new();
+        let bus = Bus::starting_at(1);
         for n in 0..5 {
             bus.emit("action.run", json!({ "n": n }));
         }
@@ -148,7 +155,7 @@ mod tests {
 
     #[test]
     fn a_gap_tells_the_client_to_reload() {
-        let bus = Bus::new();
+        let bus = Bus::starting_at(1);
         for _ in 0..KEPT + 10 {
             bus.emit("action.run", json!({}));
         }
@@ -157,7 +164,7 @@ mod tests {
         assert_eq!(old.backlog.len(), KEPT);
         assert!(!bus.subscribe(Some(10)).resync, "11 is the oldest kept, so nothing was missed");
 
-        let restarted = Bus::new();
+        let restarted = Bus::starting_at(1);
         restarted.emit("action.run", json!({}));
         let sub = restarted.subscribe(Some(50));
         assert!(sub.resync, "a number from before a daemon restart");
@@ -166,7 +173,7 @@ mod tests {
 
     #[tokio::test]
     async fn live_only_events_never_push_records_out_of_the_buffer() {
-        let bus = Bus::new();
+        let bus = Bus::starting_at(1);
         bus.emit("action.run", json!({}));
         let mut sub = bus.subscribe(Some(0));
         for _ in 0..KEPT + 5 {
@@ -181,12 +188,31 @@ mod tests {
 
     #[tokio::test]
     async fn events_after_subscribing_arrive_on_the_channel() {
-        let bus = Bus::new();
+        let bus = Bus::starting_at(1);
         bus.emit("action.run", json!({ "n": 1 }));
         let mut sub = bus.subscribe(Some(0));
         bus.emit("instance.exit", json!({ "n": 2 }));
         assert_eq!(ids(&sub.backlog), vec![1]);
         let next = sub.rx.recv().await.unwrap();
         assert_eq!((next.id, next.kind.as_str()), (2, "instance.exit"));
+    }
+
+    /// 다시 켠 데몬이 앞 실행만큼 이벤트를 냈어도, 앞 실행의 번호로 붙은 클라이언트는 다시 읽으라는 말을 듣는다
+    #[test]
+    fn a_number_from_an_earlier_run_always_reloads() {
+        let before = Bus::new();
+        for _ in 0..5 {
+            before.emit("action.run", json!({}));
+        }
+        let seen = before.subscribe(Some(0)).backlog.last().unwrap().id;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+
+        let restarted = Bus::new();
+        for _ in 0..8 {
+            restarted.emit("action.run", json!({}));
+        }
+        let sub = restarted.subscribe(Some(seen));
+        assert!(sub.resync, "the new run's first events must not be skipped silently");
+        assert_eq!(sub.backlog.len(), 8);
     }
 }

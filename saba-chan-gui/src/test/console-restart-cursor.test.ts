@@ -20,7 +20,10 @@ describe('서버를 다시 켠 뒤 콘솔', () => {
         const { result } = renderHook(() =>
             useMultiConsole({ isPopoutMode: false, popoutParams: null, consoleBufferRef: { current: 2000 } }),
         );
-        act(() => result.current.openConsole('a', 'A'));
+        act(() => {
+            result.current.openConsole('a', 'A');
+            result.current.watchConsole('a'); // 화면에 떠 있는 콘솔
+        });
         await act(async () => vi.advanceTimersByTimeAsync(600));
         expect(useConsoleStore.getState().consoles.a.lines.map((l: { content: string; key?: unknown }) => l.content)).toEqual(['old']);
 
@@ -48,7 +51,10 @@ describe('서버를 다시 켠 뒤 콘솔', () => {
         const { result } = renderHook(() =>
             useMultiConsole({ isPopoutMode: false, popoutParams: null, consoleBufferRef: { current: 2000 } }),
         );
-        act(() => result.current.openConsole('a', 'A'));
+        act(() => {
+            result.current.openConsole('a', 'A');
+            result.current.watchConsole('a'); // 화면에 떠 있는 콘솔
+        });
         await act(async () => vi.advanceTimersByTimeAsync(600));
         expect(useConsoleStore.getState().consoles.a.lines).toHaveLength(3);
 
@@ -78,7 +84,10 @@ describe('서버를 다시 켠 뒤 콘솔', () => {
         const { result } = renderHook(() =>
             useMultiConsole({ isPopoutMode: false, popoutParams: null, consoleBufferRef: { current: 2000 } }),
         );
-        act(() => result.current.openConsole('a', 'A'));
+        act(() => {
+            result.current.openConsole('a', 'A');
+            result.current.watchConsole('a'); // 화면에 떠 있는 콘솔
+        });
         await act(async () => vi.advanceTimersByTimeAsync(600));
 
         useServerStore.setState({ servers: [{ id: 'a', name: 'A', pid: 20 }] as Server[] });

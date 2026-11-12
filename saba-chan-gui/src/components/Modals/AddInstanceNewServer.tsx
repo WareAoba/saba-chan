@@ -39,6 +39,7 @@ import { Segmented } from '../ui/StatusChip';
 import { TrustCreateNotice } from '../ui/TrustBadge';
 import type { AddServerPayload } from '../../hooks/useServerActions';
 import { AddServerFrame } from './AddServerFrame';
+import { isImeKey } from '../../utils/ime';
 
 /**
  * AddInstanceNewServer — 새 서버 만들기 (사용자 11-11 A안).
@@ -539,7 +540,7 @@ export function AddInstanceNewServer({
                                     onChange={(e) => setNewServerName(e.target.value)}
                                     disabled={submitting}
                                     onKeyDown={(e) => {
-                                        if (e.key === 'Enter') handleSubmit();
+                                        if (e.key === 'Enter' && !isImeKey(e)) handleSubmit();
                                     }}
                                     aria-invalid={duplicateName || nameComma || undefined}
                                 />

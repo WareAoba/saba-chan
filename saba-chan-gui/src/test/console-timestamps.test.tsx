@@ -5,10 +5,11 @@ import { render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ServerConsole } from '../components/servers/ServerConsole';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import type { ConsoleEntry } from '../stores/useConsoleStore';
 import type { Server } from '../stores/useServerStore';
 
 const at = new Date(2026, 9, 27, 15, 4, 5).getTime() / 1000;
-const state = { lines: [{ id: 0, timestamp: at, content: 'Done (3.2s)!', level: 'info' }], input: '' };
+const state = { lines: [{ id: 0, timestamp: at, content: 'Done (3.2s)!', level: 'info' }], input: '' } as ConsoleEntry;
 
 const stampText = () => {
     render(

@@ -8,12 +8,13 @@ import { DaemonEvents } from '../components/shell/DaemonEvents';
 import '../i18n';
 import type { Server } from '../stores/useServerStore';
 import { useUIStore } from '../stores/useUIStore';
+import type { ConsoleEntry } from '../stores/useConsoleStore';
 
 const consoleOf = (lines: object[]) =>
     render(
         <ServerConsole
             server={{ id: 'm', name: 'MC', status: 'running' } as Server}
-            state={{ lines, input: '' }}
+            state={{ lines, input: '' } as ConsoleEntry}
             openConsole={() => {}}
             setConsoleInput={() => {}}
             sendConsoleCommand={() => {}}

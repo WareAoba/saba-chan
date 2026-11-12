@@ -303,12 +303,14 @@
   },
   "errors": {
     "start_cancelled": "시작하는 동안 정지 요청이 들어와 서버를 시작하지 않았어요.",
+    "still_stopping": "서버가 아직 꺼지는 중이라 다시 켜지 않았어요. 완전히 꺼진 뒤에 시작해 주세요.",
     "generic": "요청을 처리하지 못했어요.",
     "remote_not_allowed": "이 작업은 PC의 사바쨩 앱에서만 할 수 있어요.",
     "remote_field_blocked": "이 설정은 PC에서만 바꿀 수 있어요: {{fields}}",
     "remote_bad_path": "받을 수 없는 요청이에요.",
     "remote_bad_request": "받을 수 없는 요청이에요.",
     "remote_timeout": "2분 안에 끝나지 않아 실패로 처리했어요. PC에서 결과를 확인해 주세요.",
+    "still_working": "2분 안에 끝나지 않았어요. PC에서는 아직 진행 중일 수 있으니 잠시 뒤 다시 확인해 주세요.",
     "remote_host_gone": "PC와 연결이 끊겨 요청을 끝내지 못했어요.",
     "remote_busy": "요청이 너무 많아요. 잠시 뒤 다시 해 주세요."
   },

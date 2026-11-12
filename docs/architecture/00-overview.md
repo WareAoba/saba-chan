@@ -123,7 +123,7 @@
 
 ### 구조 정리 대상
 - ~~단일 인스턴스 보장 없음~~, ~~긴 Python 호출 동안 락 점유~~, ~~hook 순서 비결정~~, ~~발화되지 않는 hook·읽히지 않는 manifest 필드 대부분~~, ~~릴리즈 CI가 이전 릴리즈 삭제~~ → 해결.
-- manifest의 `module_config_section`은 여전히 읽히지 않는다(03 §7.1). `server.list_enrich`는 인스턴스마다 순차로 돈다(03 §7.2).
+- manifest의 `module_config_section`은 여전히 읽히지 않는다(03 §7.1).
 
 ## 6. 문서 유지 규칙
 

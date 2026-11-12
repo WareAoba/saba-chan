@@ -548,7 +548,9 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
             [] => {}
         }
         let module = self.aliases.resolve(alias);
-        let matched: Vec<&ServerView> = servers.iter().filter(|s| s.module == module || s.name.contains(&module)).collect();
+        // 이름에 모듈 이름이 든 서버는 모듈을 부르는 말일 때만 찾는다: 모르는 말이 이름의 일부라고 그 서버를 부르지 않는다
+        let known = self.aliases.is_known(alias);
+        let matched: Vec<&ServerView> = servers.iter().filter(|s| s.module == module || (known && s.name.contains(&module))).collect();
         match matched.as_slice() {
             [one] => Ok((one, false)),
             [] => Err(Reply::unrecognized(

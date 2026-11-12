@@ -915,3 +915,14 @@ async fn top_level_words_follow_the_reply_language() {
     assert_ne!(ask("ja", "!saba 도움말").await, ask("ja", "!saba help").await);
     assert_ne!(ask("ja", "!saba 목록").await, ask("ja", "!saba list").await);
 }
+
+/// 모르는 말은 서버 이름의 일부여도 그 서버를 부르지 않는다 (오타가 서버를 켜고 끄지 않게)
+#[tokio::test]
+async fn an_unknown_word_inside_a_server_name_calls_no_server() {
+    let s = settings();
+    let api = fixture();
+    let req = ChatRequest { text: "viv start".into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), ..Default::default() };
+    let r = process(&api, &s, &Catalog::for_language("en"), &req).await;
+    assert_eq!((r.code, r.args["name"].as_str()), (Some("INSTANCE_NOT_FOUND"), Some("viv")));
+    assert!(api.calls().is_empty(), "{:?}", api.calls());
+}

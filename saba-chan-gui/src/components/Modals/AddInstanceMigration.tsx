@@ -10,6 +10,7 @@ import { SabaSpinner } from '../ui/SabaUI';
 import { TrustCreateNotice } from '../ui/TrustBadge';
 import type { AddServerPayload } from '../../hooks/useServerActions';
 import { AddServerFrame } from './AddServerFrame';
+import { isImeKey } from '../../utils/ime';
 
 /**
  * AddInstanceMigration — "기존 서버 마이그레이션" 흐름.
@@ -442,7 +443,7 @@ export function AddInstanceMigration({
                                     onChange={(e) => setInstanceName(e.target.value)}
                                     disabled={submitting}
                                     onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && canSubmit) handleSubmit();
+                                        if (e.key === 'Enter' && !isImeKey(e) && canSubmit) handleSubmit();
                                     }}
                                 />
                             }

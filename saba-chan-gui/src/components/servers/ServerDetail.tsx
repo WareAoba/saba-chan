@@ -13,6 +13,7 @@ import { type Server, useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
 import { openWithNotice, safeShowToast } from '../../utils/helpers';
+import { isImeKey } from '../../utils/ime';
 import { screenFallbackNotice } from '../../utils/openScreen';
 import { type ModalConfig, useUIStore } from '../../stores/useUIStore';
 import type { ModuleInfo } from '../../types/daemon';
@@ -71,7 +72,7 @@ interface ServerDetailProps {
 /** App이 서버 화면에 넘기는 콘솔 묶음 */
 export type ServerConsoleProps = Pick<
     ReturnType<typeof useMultiConsole>,
-    'openConsole' | 'setConsoleInput' | 'sendConsoleCommand' | 'consolePopoutIds' | 'popinConsole'
+    'openConsole' | 'watchConsole' | 'setConsoleInput' | 'sendConsoleCommand' | 'consolePopoutIds' | 'popinConsole'
 >;
 
 /** App이 서버 화면에 넘기는 설정 묶음: 닫기 상태는 isClosing 하나로 넘긴다 */
@@ -388,6 +389,7 @@ export function ServerDetail({
                                 highlightRules={moduleData?.syntax_highlight?.rules || null}
                                 quickCommands={consoleQuickCommands(moduleData?.commands?.fields, moduleData?.command_aliases)}
                                 openConsole={consoleProps.openConsole}
+                                watchConsole={consoleProps.watchConsole}
                                 setConsoleInput={consoleProps.setConsoleInput}
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}
                                 poppedOut={poppedOut}
@@ -516,7 +518,7 @@ function ServerName({
             onChange={(e) => setValue(e.target.value)}
             onBlur={commit}
             onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Enter' && !isImeKey(e)) e.currentTarget.blur();
                 if (e.key === 'Escape') {
                     setValue(server.name);
                     setEditing(false);
@@ -544,7 +546,7 @@ function SettingsTab({
     const { showSettingsModal, settingsServer, handleOpenSettings } = settingsProps;
     const ready = showSettingsModal && settingsServer?.id === server.id;
 
-    // 탭을 열거나 저장 뒤 닫히면 최신 값으로 다시 연다
+    // 탭을 열거나 설정 창이 닫히면(버전 설치 등) 최신 값으로 다시 연다
     // biome-ignore lint/correctness/useExhaustiveDependencies: handleOpenSettings는 매 렌더 새로 만들어진다
     useEffect(() => {
         if (!ready) handleOpenSettings(server);

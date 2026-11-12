@@ -6,6 +6,7 @@ import type { ApiBody } from '../../types/daemon';
 import { Icon } from '../Icon';
 import { Dialog } from '../ui/Dialog';
 import './RemotePathPicker.css';
+import { isImeKey } from '../../utils/ime';
 
 const TITLES: Record<RemotePathRequest['kind'], string> = {
     file: 'title_file',
@@ -197,7 +198,7 @@ function RemotePathPicker() {
                         placeholder={t('remote_picker.roots')}
                         onChange={(e) => setTyped(e.target.value)}
                         onKeyDown={(e) => {
-                            if (e.key === 'Enter') open(typed.trim());
+                            if (e.key === 'Enter' && !isImeKey(e)) open(typed.trim());
                         }}
                     />
                 </div>
@@ -249,7 +250,7 @@ function RemotePathPicker() {
                             setReplacing(null);
                         }}
                         onKeyDown={(e) => {
-                            if (e.key === 'Enter') choose();
+                            if (e.key === 'Enter' && !isImeKey(e)) choose();
                         }}
                     />
                 )}

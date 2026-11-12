@@ -303,12 +303,14 @@
   },
   "errors": {
     "start_cancelled": "Der Server wurde während des Startens gestoppt und daher nicht gestartet.",
+    "still_stopping": "Der Server fährt noch herunter und wurde daher nicht wieder gestartet. Starte ihn, sobald er vollständig gestoppt ist.",
     "generic": "Die Anfrage konnte nicht abgeschlossen werden.",
     "remote_not_allowed": "Das geht nur in der Saba-chan-App auf dem PC.",
     "remote_field_blocked": "Diese Einstellungen lassen sich nur am PC ändern: {{fields}}",
     "remote_bad_path": "Diese Anfrage wird nicht angenommen.",
     "remote_bad_request": "Diese Anfrage wird nicht angenommen.",
     "remote_timeout": "Es wurde nicht innerhalb von 2 Minuten fertig und gilt daher als fehlgeschlagen. Prüfe das Ergebnis am PC.",
+    "still_working": "Es wurde nicht innerhalb von 2 Minuten fertig. Der PC arbeitet eventuell noch daran; prüfe es gleich noch einmal.",
     "remote_host_gone": "Die Verbindung zum PC brach ab, bevor die Anfrage fertig war.",
     "remote_busy": "Zu viele Anfragen. Versuch es gleich noch einmal."
   },

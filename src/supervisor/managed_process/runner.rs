@@ -23,6 +23,8 @@ const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
 /// 세션 로그 기본 보관 개수
 pub const DEFAULT_LOG_SESSIONS: usize = 20;
+/// 인스턴스 하나의 지난 세션 로그를 모두 합친 크기 상한. 서버를 켤 때 오래된 세션부터 지워 맞춘다
+pub const SESSION_LOGS_MAX_BYTES: u64 = 512 * 1024 * 1024;
 
 /// 이 데몬이 붙을 수 있는 러너 형식(`saba_runner::RunnerInfo::format`) 범위, 양 끝 포함.
 /// 발행 때 manifest `saba-core.reads_runner_formats`로 실린다. 켜진 러너가 새 코어의 범위 밖이면 코어를 바꾸지 않는다 (`core_swap`)
@@ -108,17 +110,37 @@ pub fn runner_binary() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-/// 세션 로그를 최근 `keep`개만 남긴다 (이름이 시작 시각이라 이름 순이 시간 순).
-pub fn prune_sessions(instance_dir: &Path, keep: usize) {
+/// 세션 파일 이름(`<시각>.log` 또는 앞 조각 `<시각>.log.<n>`)에서 세션 이름 `<시각>`
+fn session_of(file_name: &str) -> Option<&str> {
+    let (session, rest) = file_name.split_once(".log")?;
+    let piece = rest.strip_prefix('.').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+    (rest.is_empty() || piece).then_some(session)
+}
+
+/// 세션 로그를 최근 `keep`개만, 모두 합쳐 `max_bytes`까지만 남긴다 (이름이 시작 시각이라 이름 순이 시간 순).
+/// 세션은 앞 조각(`<시각>.log.<n>`)까지 한 묶음으로 지운다
+/// 가장 최근 세션은 크기 때문에 지우지 않는다 (개수로만 지운다): 방금 끝난 실행의 로그는 다시 켠 뒤에도 볼 수 있어야 한다
+pub fn prune_sessions(instance_dir: &Path, keep: usize, max_bytes: u64) {
     let Ok(entries) = std::fs::read_dir(sessions_dir(instance_dir)) else { return };
-    let mut logs: Vec<PathBuf> = entries
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|x| x == "log"))
-        .collect();
-    logs.sort();
-    let excess = logs.len().saturating_sub(keep);
-    for old in &logs[..excess] {
-        let _ = std::fs::remove_file(old);
+    let mut sessions: std::collections::BTreeMap<String, (Vec<PathBuf>, u64)> = Default::default();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(session) = name.to_str().and_then(session_of) else { continue };
+        let slot = sessions.entry(session.to_string()).or_default();
+        slot.0.push(entry.path());
+        slot.1 += entry.metadata().map(|m| m.len()).unwrap_or(0);
+    }
+    let mut total: u64 = sessions.values().map(|(_, size)| size).sum();
+    let mut left = sessions.len();
+    for (files, size) in sessions.into_values() {
+        if left <= keep && (total <= max_bytes || left == 1) {
+            break;
+        }
+        for file in &files {
+            let _ = std::fs::remove_file(file);
+        }
+        left -= 1;
+        total -= size;
     }
 }
 
@@ -168,7 +190,7 @@ impl ManagedProcess {
 
         let log = sessions_dir(instance_dir).join(format!("{}.log", saba_runner::session_stamp(current_timestamp())));
         std::fs::create_dir_all(sessions_dir(instance_dir))?;
-        prune_sessions(instance_dir, keep_sessions.saturating_sub(1));
+        prune_sessions(instance_dir, keep_sessions.saturating_sub(1), SESSION_LOGS_MAX_BYTES);
 
         let mut cmd = TokioCommand::new(runner);
         cmd.arg("--run-dir").arg(&run)
@@ -291,6 +313,8 @@ impl ManagedProcess {
         if let Some(msg) = notice {
             buf.push(LogSource::System, msg, LogLevel::Info);
         }
+        // 다시 붙었다는 안내는 남기지 않는다 (데몬을 켤 때마다 쌓인다). 이 뒤로 데몬이 넣는 줄만 세션 로그에 덧붙인다
+        buf.session_log = Some(info.log.clone());
         let log_buffer = Arc::new(Mutex::new(buf));
         let (running_tx, running_rx) = watch::channel(true);
         // 러너가 끝났다는 신호. 로그 따라 읽기를 마저 끝낸 뒤에 running을 내린다.
@@ -304,31 +328,34 @@ impl ManagedProcess {
             let path = info.log.clone();
             let ended = ended_rx;
             tokio::spawn(async move {
-                let mut pos = offset;
                 let mut partial: Vec<u8> = Vec::new();
-                // 연 파일을 계속 쓴다: 서버마다 100ms마다 파일을 다시 열지 않게 (러너는 한 세션에 파일 하나만 쓴다)
-                let mut file: Option<std::fs::File> = None;
+                // 연 파일을 계속 쓴다: 서버마다 100ms마다 파일을 다시 열지 않게
+                let mut follow = Some(Follow { path, file: None, pos: offset });
                 loop {
                     let stopped = *ended.borrow();
-                    let path = path.clone();
-                    let opened = file.take();
-                    let (kept, chunk) = tokio::task::spawn_blocking(move || {
-                        let mut file = opened.or_else(|| std::fs::File::open(&path).ok());
-                        let bytes = file.as_mut().and_then(|f| read_from(f, pos));
-                        (file, bytes)
+                    let Some(mut reading) = follow.take() else { break };
+                    let chunk = tokio::task::spawn_blocking(move || {
+                        let bytes = reading.read_new();
+                        (reading, bytes)
                     })
                     .await
-                    .unwrap_or((None, None));
-                    file = kept;
+                    .ok();
+                    let chunk = chunk.and_then(|(kept, bytes)| {
+                        follow = Some(kept);
+                        bytes
+                    });
                     if let Some(bytes) = chunk {
-                        pos += bytes.len() as u64;
                         partial.extend_from_slice(&bytes);
                         // 줄마다 버퍼를 앞으로 당기지 않는다: 위치만 옮기며 자르고, 남은 꼬리는 끝에서 한 번만 정리한다
                         let mut start = 0;
                         while let Some(nl) = partial[start..].iter().position(|b| *b == b'\n') {
                             let raw = String::from_utf8_lossy(&partial[start..start + nl + 1]);
                             start += nl + 1;
-                            let mut line = parse_disk_log_line(0, raw.trim_end_matches(['\r', '\n']));
+                            let raw = raw.trim_end_matches(['\r', '\n']);
+                            if buf.lock().await.take_own(raw) {
+                                continue;
+                            }
+                            let mut line = parse_disk_log_line(0, raw);
                             line.level = match line.source {
                                 LogSource::System => line.level,
                                 source => {
@@ -460,6 +487,32 @@ async fn connect_stdin(port: u16, token: &str) -> Option<tokio::net::TcpStream> 
     Some(stream)
 }
 
+/// 따라 읽는 세션 로그와 다음에 읽을 자리
+struct Follow {
+    path: PathBuf,
+    file: Option<std::fs::File>,
+    pos: u64,
+}
+
+impl Follow {
+    /// 지난번 뒤로 쓴 바이트. 없으면 None.
+    /// 러너가 파일을 앞 조각으로 넘겼으면(`saba_runner::session_log_piece`) 쥐고 있던 파일을 끝까지 읽은 다음 새 파일을 처음부터 읽는다
+    fn read_new(&mut self) -> Option<Vec<u8>> {
+        if self.file.is_none() {
+            self.file = std::fs::File::open(&self.path).ok();
+        }
+        let mut bytes = self.file.as_mut().and_then(|f| read_from(f, self.pos));
+        // 넘긴 뒤의 새 파일은 읽던 자리보다 짧다 (새 파일이 0.1초 안에 상한만큼 자라지는 않는다)
+        if bytes.is_none() && std::fs::metadata(&self.path).is_ok_and(|m| m.len() < self.pos) {
+            self.file = std::fs::File::open(&self.path).ok();
+            self.pos = 0;
+            bytes = self.file.as_mut().and_then(|f| read_from(f, 0));
+        }
+        self.pos += bytes.as_ref().map_or(0, |b| b.len() as u64);
+        bytes
+    }
+}
+
 /// `pos`부터 파일 끝까지. 새 내용이 없으면 None.
 fn read_from(file: &mut std::fs::File, pos: u64) -> Option<Vec<u8>> {
     if file.metadata().ok()?.len() <= pos {
@@ -508,6 +561,38 @@ mod tests {
         assert!(wait_for(&proc, "old news").await);
         let line = proc.get_recent_console(100).await.into_iter().find(|l| l.content == "old news").unwrap();
         assert_eq!(line.timestamp, written);
+    }
+
+    /// 데몬이 콘솔에 넣는 줄(보낸 명령, 크래시 안내)은 메모리에만 있어, 서버가 꺼지거나 데몬이 다시 붙으면 사라졌다.
+    /// 크래시 안내는 프로세스가 이미 목록에서 빠진 뒤에 쓰여 한 번도 보이지 않았다. 세션 로그에도 남아야 한다
+    #[tokio::test]
+    async fn lines_the_daemon_adds_to_the_console_stay_in_the_session_log() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        let run = run_dir(inst);
+        std::fs::create_dir_all(&run).unwrap();
+        let log = inst.join("session.log");
+        std::fs::write(&log, "").unwrap();
+        std::fs::write(run.join(TOKEN_FILE), "tok").unwrap();
+        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: 1, log: log.clone(), started_at: saba_runner::now(), cwd: None, format: saba_runner::RUNNER_FORMAT };
+        saba_runner::write_json(&runner_file(&run), &info).unwrap();
+        let proc = ManagedProcess::attach_runner(inst, None).await.expect("attached");
+
+        // 받는 러너가 없어 전달은 실패하지만 보낸 줄은 콘솔에 남는다
+        let _ = proc.send_command("say hi").await;
+        proc.push_system_line("── Crash detected (signal 6). Restarting in 5s. ──".into(), LogLevel::Warn).await;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+        std::io::Write::write_all(&mut f, format!("{}\n", saba_runner::format_line(saba_runner::now(), saba_runner::Stream::Stdout, "server said hi")).as_bytes()).unwrap();
+        assert!(wait_for(&proc, "server said hi").await);
+        let seen = |lines: &[LogLine], source: LogSource, text: &str| lines.iter().filter(|l| l.source == source && l.content.contains(text)).count();
+        let live = proc.get_recent_console(100).await;
+        assert_eq!((seen(&live, LogSource::Input, "say hi"), seen(&live, LogSource::System, "Crash detected")), (1, 1), "shown once while running: {live:?}");
+
+        // 데몬이 다시 붙거나 서버가 꺼진 뒤에는 세션 로그에서 읽는다
+        drop(proc);
+        let again = ManagedProcess::attach_runner(inst, None).await.expect("attached again");
+        let restored = again.get_recent_console(100).await;
+        assert_eq!((seen(&restored, LogSource::Input, "say hi"), seen(&restored, LogSource::System, "Crash detected")), (1, 1), "{restored:?}");
     }
 
     /// 한 번에 여러 줄과 끝나지 않은 줄이 들어와도 줄마다 한 번씩, 순서대로 콘솔에 붙는다
@@ -783,6 +868,47 @@ mod tests {
         let _ = proc.force_kill().await;
     }
 
+    /// 강제 종료는 런처 스크립트가 띄운 실제 서버까지 끝낸다 (HUP을 무시하는 자식도, 파이프·의사 콘솔 모두)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn force_kill_ends_what_the_launcher_script_started() {
+        let Some(runner) = runner_binary() else {
+            eprintln!("SKIP: saba-runner binary not built (cargo build -p saba-runner)");
+            return;
+        };
+        for console in [ConsoleMode::Pipe, ConsoleMode::Pty] {
+            let tmp = tempfile::tempdir().unwrap();
+            let inst = tmp.path();
+            let script = "(trap '' HUP; exec sleep 600) & echo \"child $!\"; echo ready; wait".to_string();
+            let proc = ManagedProcess::spawn_with_runner(
+                &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, inst, 3,
+                RunnerLaunch { console, ..Default::default() },
+            )
+            .await
+            .unwrap();
+            assert!(wait_for(&proc, "ready").await);
+            let lines = proc.get_recent_console(100).await;
+            let child: u32 = lines.iter().find_map(|l| l.content.trim().strip_prefix("child ")?.parse().ok()).expect("child pid");
+            proc.force_kill().await.unwrap();
+            // 거둬 주는 부모가 없는 환경에서는 죽은 프로세스가 좀비로 남는다
+            let gone = || {
+                let zombie = std::fs::read_to_string(format!("/proc/{child}/stat")).is_ok_and(|s| s.rsplit(')').next().is_some_and(|r| r.trim_start().starts_with('Z')));
+                zombie || !crate::supervisor::process::is_process_alive(child)
+            };
+            for _ in 0..30 {
+                if gone() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            let left = !gone();
+            if left {
+                unsafe { nix::libc::kill(child as i32, nix::libc::SIGKILL) };
+            }
+            assert!(!left, "the server behind the launcher (pid {child}) outlived a force kill");
+        }
+    }
+
     #[test]
     fn old_session_logs_are_pruned() {
         let tmp = tempfile::tempdir().unwrap();
@@ -791,11 +917,71 @@ mod tests {
         for name in ["20260101-000000.log", "20260102-000000.log", "20260103-000000.log"] {
             std::fs::write(dir.join(name), "").unwrap();
         }
-        prune_sessions(tmp.path(), 2);
+        prune_sessions(tmp.path(), 2, u64::MAX);
         let mut left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
         left.sort();
         assert_eq!(left, ["20260102-000000.log", "20260103-000000.log"]);
         assert_eq!(latest_session_log(tmp.path()), Some(dir.join("20260103-000000.log")));
+    }
+
+    // 세션 하나가 수 GB까지 자라던 것을 러너가 조각으로 나눈다: 조각은 그 세션과 같이 지우고, 합친 크기도 상한을 지킨다
+    #[test]
+    fn session_logs_are_pruned_with_their_pieces_and_to_a_total_size() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = sessions_dir(tmp.path());
+        std::fs::create_dir_all(&dir).unwrap();
+        let names = || {
+            let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+            left.sort();
+            left
+        };
+        for name in ["20260101-000000.log", "20260101-000000.log.1", "20260102-000000.log", "20260102-000000.log.1", "20260103-000000.log", "notes.txt"] {
+            std::fs::write(dir.join(name), [b'x'; 100]).unwrap();
+        }
+
+        prune_sessions(tmp.path(), 2, u64::MAX);
+        assert_eq!(names(), ["20260102-000000.log", "20260102-000000.log.1", "20260103-000000.log", "notes.txt"]);
+
+        prune_sessions(tmp.path(), 2, 250);
+        assert_eq!(names(), ["20260103-000000.log", "notes.txt"]);
+    }
+
+    // 회전이 없던 때의 큰 로그가 가장 최근 세션이어도 크기 때문에 지우지 않는다: 크래시 뒤 다시 켰을 때 그 로그가 남아 있어야 한다
+    #[test]
+    fn the_latest_session_log_survives_the_size_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = sessions_dir(tmp.path());
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("20260101-000000.log"), [b'x'; 10]).unwrap();
+        std::fs::write(dir.join("20260102-000000.log"), [b'x'; 500]).unwrap();
+        prune_sessions(tmp.path(), 2, 250);
+        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, ["20260102-000000.log"]);
+    }
+
+    // 러너가 세션 로그를 앞 조각으로 넘겨도 콘솔은 넘기기 전의 마지막 줄과 새 파일의 줄을 빠짐없이 차례로 받는다
+    #[test]
+    fn following_continues_across_a_rotated_session_log() {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("session.log");
+        let mut follow = Follow { path: path.clone(), file: None, pos: 0 };
+        let mut seen = Vec::new();
+        let mut read = |follow: &mut Follow| {
+            while let Some(bytes) = follow.read_new() {
+                seen.extend(bytes);
+            }
+        };
+
+        let mut old = std::fs::File::create(&path).unwrap();
+        old.write_all(b"one\ntwo\n").unwrap();
+        read(&mut follow);
+        old.write_all(b"three\n").unwrap();
+        std::fs::rename(&path, saba_runner::session_log_piece(&path, 1)).unwrap();
+        std::fs::write(&path, b"four\n").unwrap();
+        read(&mut follow);
+
+        assert_eq!(String::from_utf8(seen).unwrap(), "one\ntwo\nthree\nfour\n");
     }
 }
 

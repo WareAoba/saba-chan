@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
-import { Button, Empty, errorText, failed, Loading, Section } from './ui';
+import { Button, Empty, errorText, failed, Loading, Section, timedOut } from './ui';
 import type { ApiBody, Server, WebApi } from '../types';
 
 /** 백업 한 개 (GET /api/instance/:id/backups) */
@@ -46,6 +46,10 @@ export function BackupsPanel({ api, server, running }: { api: WebApi; server: Pi
         setBusy(true);
         const res = await fn();
         setBusy(false);
+        if (timedOut(res)) {
+            toast(t('errors.still_working'), 'info');
+            return load();
+        }
         if (failed(res)) return toast(errorText(t, res), 'error');
         toast(okText, 'ok');
         load();

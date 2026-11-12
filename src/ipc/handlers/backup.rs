@@ -47,9 +47,14 @@ pub(crate) async fn run_command(state: &IPCServer, id: &str, name: &str, args: V
     command_reply(state, id, name, args).await.is_some()
 }
 
-/// 백업이 안에서 보내는 저장 명령: 작업 기록에는 백업 한 줄만 남긴다
-async fn save_reply(state: &IPCServer, id: &str, name: &str) -> Option<String> {
-    crate::audit::quietly(command_reply(state, id, name, json!({}))).await
+/// 백업이 안에서 보내는 저장 명령: 작업 기록에는 백업 한 줄만 남긴다.
+/// `rcon_wait`는 RCON으로 갈 때 답을 기다리는 시간이다 (없으면 보통 명령과 같다)
+async fn save_reply(state: &IPCServer, id: &str, name: &str, rcon_wait: Option<std::time::Duration>) -> Option<String> {
+    let reply = crate::audit::quietly(command_reply(state, id, name, json!({})));
+    match rcon_wait {
+        Some(wait) => crate::protocol::rcon::waiting_up_to(wait, reply).await,
+        None => reply.await,
+    }
 }
 
 /// 이름 하나로 게임 명령 실행. 성공하면 서버의 콘솔 답(없으면 빈 글자)
@@ -118,7 +123,8 @@ async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::supervisor::
             Some(p) => Some(p.console_cursor().await),
             None => None,
         };
-        let Some(reply) = save_reply(state, id, cmd).await else {
+        // 콘솔이 없는 서버는 RCON으로 보낸다. 서버는 저장을 마친 뒤에야 답하므로 콘솔의 저장 완료 줄만큼 기다린다
+        let Some(reply) = save_reply(state, id, cmd, is_save.then_some(SAVE_WAIT)).await else {
             tracing::warn!("Command '{}' failed before backing up '{}'", cmd, id);
             // 자동 저장 중지나 저장을 보내지도 못했다: 저장 안 된(또는 쓰는 중인) 월드를 묶지 않는다
             return Err(SaveNotDone::Unconfirmed { command: cmd.to_string() });
@@ -454,7 +460,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     if let Some(cmd) = resume.as_deref().filter(|_| !stopped) {
         // 저장 명령처럼 답의 첫 줄이 모듈의 실패 모양이면 서버가 재개를 거절한 것이다
         let failures: Vec<regex::Regex> = failures.iter().filter_map(|p| regex::Regex::new(p).ok()).collect();
-        let resumed = save_reply(state, id, cmd).await.is_some_and(|reply| {
+        let resumed = save_reply(state, id, cmd, None).await.is_some_and(|reply| {
             let first = reply.lines().find(|l| !l.trim().is_empty()).unwrap_or_default();
             rejected(first, &failures).is_none()
         });
@@ -1090,6 +1096,12 @@ pub fn spawn_scheduler(state: IPCServer) {
     tokio::spawn(async move {
         let started = chrono::Local::now().naive_local();
         let clock = RUNNER.get_or_init(|| (started, std::sync::Arc::new(Mutex::new(Clock::default())))).1.clone();
+        {
+            let supervisor = state.supervisor.read().await;
+            let store = &supervisor.instance_store;
+            let saved = store.list().iter().flat_map(|i| crate::scheduler::read_runs(&store.instance_dir(&i.id).join(crate::scheduler::RUNS_FILE))).collect();
+            clock.lock().unwrap_or_else(|e| e.into_inner()).restore(saved);
+        }
         // 복원 전 백업을 이미 살핀 (인스턴스, 켠 시각). 한 번 켠 뒤로 한 번만 살핀다
         let mut swept: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
         loop {
@@ -1125,16 +1137,42 @@ pub fn spawn_scheduler(state: IPCServer) {
                     }
                 }
             }
+            save_runs(&state, &clock).await;
             for (key, id, task, fire) in due {
                 let state = state.clone();
                 let clock = clock.clone();
                 tokio::spawn(async move {
                     run_task(&state, &id, &task, fire, &key).await;
                     clock.lock().unwrap_or_else(|e| e.into_inner()).finish(&key, fire);
+                    save_runs(&state, &clock).await;
                 });
             }
         }
     });
+}
+
+/// 마지막 실행 시각이 바뀌었으면 인스턴스 폴더마다 남긴다: 데몬을 다시 켜도 주기 작업이 이어 센다
+async fn save_runs(state: &IPCServer, clock: &Mutex<Clock>) {
+    let Some(runs) = clock.lock().unwrap_or_else(|e| e.into_inner()).take_changed() else { return };
+    let supervisor = state.supervisor.read().await;
+    let store = &supervisor.instance_store;
+    for instance in store.list() {
+        let dir = store.instance_dir(&instance.id);
+        let file = dir.join(crate::scheduler::RUNS_FILE);
+        let of_instance: std::collections::HashMap<_, _> = instance
+            .schedule
+            .iter()
+            .map(|t| crate::scheduler::task_key(&instance.id, t))
+            .filter_map(|k| runs.get(&k).map(|at| (k, *at)))
+            .collect();
+        // 예약이 없는 인스턴스에는 파일을 만들지 않고, 지워진 인스턴스의 폴더를 되살리지 않는다
+        if (of_instance.is_empty() && !file.exists()) || !dir.is_dir() {
+            continue;
+        }
+        if let Err(e) = crate::scheduler::write_runs(&file, &of_instance) {
+            tracing::warn!("Could not save the schedule state of '{}': {}", instance.name, e);
+        }
+    }
 }
 
 fn backup_limit() -> Response {
@@ -1301,6 +1339,18 @@ async fn count_down(
     alive
 }
 
+/// 꺼진 서버가 가장 새 백업 뒤에 돈 적이 있는가: 가장 최근 세션 로그가 그 백업보다 뒤에 쓰였으면.
+/// 세션 로그가 없으면(돈 적이 없다) false. 꺼진 PC에서 밀린 예약 백업이 데몬이 켜진 직후에 지난 실행을 담게 한다
+async fn ran_since_last_backup(state: &IPCServer, id: &str) -> bool {
+    let instance_dir = state.supervisor.read().await.instance_store.instance_dir(id);
+    let check = move || {
+        let wrote = crate::supervisor::managed_process::latest_session_log(&instance_dir)?.metadata().ok()?.modified().ok()?;
+        let wrote = wrote.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        Some(backup::list(&backup::backups_dir(&instance_dir)).iter().map(|b| b.created).max().is_none_or(|made| wrote > made))
+    };
+    tokio::task::spawn_blocking(check).await.ok().flatten().unwrap_or(false)
+}
+
 async fn run_task(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
     // 감사 로그 (A10): 예약 작업이 한 일은 출처 schedule
     // 갈래마다 큰 핸들러 future를 품으므로 힙에 둔다 (디버그 빌드 스택 넘침)
@@ -1311,9 +1361,9 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
     let running = is_running(state, id).await;
     match task.action {
         TaskAction::Backup => {
-            // 꺼져 있으면 바뀐 게 없으니 건너뛰되, 건너뛴 것도 감사 로그에 남긴다
-            let (status, code) = if !running {
-                tracing::info!("Scheduled backup of '{}' skipped: the server is not running", id);
+            // 꺼져 있고 마지막 백업 뒤로 돈 적도 없으면 바뀐 게 없으니 건너뛰되, 건너뛴 것도 감사 로그에 남긴다
+            let (status, code) = if !running && !ran_since_last_backup(state, id).await {
+                tracing::info!("Scheduled backup of '{}' skipped: the server is not running and has not run since the last backup", id);
                 (409, None)
             } else {
                 match take_backup(state, id, BackupKind::Scheduled).await {
@@ -1775,6 +1825,29 @@ else:
         assert_eq!(entry["source"], "schedule");
         assert_eq!(entry["ok"], false);
         assert_eq!(entry["status"], 409);
+    }
+
+    // 꺼진 PC에서 밀린 주기 백업은 데몬이 켜진 직후(서버는 아직 꺼져 있다)에 돈다: 지난 실행이 바꾼 것을 그때 담아야 한다
+    #[tokio::test]
+    async fn a_scheduled_backup_of_a_stopped_server_runs_once_when_it_ran_since_the_last_backup() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        std::fs::create_dir_all(tmp.path().join("server/world")).unwrap();
+        std::fs::write(tmp.path().join("server/world/level.dat"), b"played").unwrap();
+        let instance_dir = state.supervisor.read().await.instance_store.instance_dir(&id);
+        let sessions = crate::supervisor::managed_process::sessions_dir(&instance_dir);
+        std::fs::create_dir_all(&sessions).unwrap();
+        std::fs::write(sessions.join("20260101-000000.log"), "Server stopped\n").unwrap();
+        let task: ScheduledTask = serde_json::from_value(json!({"action": "backup", "every_minutes": 720})).unwrap();
+        let last_status = || crate::audit::log().recent(10, Some(&id)).first().map(|e| e["status"].clone());
+
+        run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
+        assert_eq!(last_status(), Some(json!(200)), "the last run's changes were never backed up");
+        let made = backup::list(&backup::backups_dir(&instance_dir));
+        assert_eq!(made.iter().map(|b| b.kind).collect::<Vec<_>>(), [BackupKind::Scheduled]);
+
+        run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
+        assert_eq!(last_status(), Some(json!(409)), "nothing ran since that backup");
+        assert_eq!(backup::list(&backup::backups_dir(&instance_dir)).len(), 1);
     }
 
     /// 예약 재시작은 예고를 시작할 때 꺼져 있었어도 실행 시각에 켜져 있으면 다시 시작한다 (예약 정지와 같다)
@@ -2585,6 +2658,37 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert!(restore["code"].as_str().is_some_and(|c| !c.is_empty()), "{restore}");
         let backup = &entries[1];
         assert_eq!((backup["action"].as_str(), backup["code"].as_str()), (Some("backup"), Some("backup_unsupported")), "{entries:?}");
+    }
+
+    /// 콘솔이 없는(관리형 시작을 끈) 서버는 저장 명령이 RCON으로 간다. 서버는 저장을 마친 뒤에야 답하므로,
+    /// 저장이 보통 명령의 RCON 대기(5초)보다 길어도 답을 받아 백업을 만든다
+    #[tokio::test]
+    async fn a_live_backup_over_rcon_outlasts_a_save_slower_than_a_plain_command() {
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = probe.local_addr().unwrap().port();
+        drop(probe);
+        let toml = format!(
+            "{NO_BACKUP}\n[protocols]\nsupported = [\"stdin\", \"rcon\"]\nrcon_port = {port}\n\n\
+             [[commands.fields]]\nname = \"save-all\"\nmethod = \"console\"\nconsole_template = \"save-all\"\n\n\
+             [backup]\npaths = [\"world\"]\nsave_command = \"save-all\"\nsave_done_pattern = '^ran: save-all$'\n"
+        );
+        let (state, id, tmp) = server_with(&toml, None).await;
+        let world = tmp.path().join("server/world");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::write(world.join("level.dat"), b"x").unwrap();
+        let access = {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("managed_start".into(), json!(false));
+            sup.instance_store.update(&id, inst.clone()).unwrap();
+            sup.tracker.track(&id, std::process::id()).unwrap();
+            sup.ensure_rcon_access(&inst).unwrap();
+            crate::protocol::rcon::load(&sup.instance_store.instance_dir(&id)).unwrap()
+        };
+        let seen = crate::protocol::rcon::slow_server_on(port, &access.password, std::time::Duration::from_millis(5500)).await;
+        let made = take_backup(&state, &id, BackupKind::Manual).await;
+        assert_eq!(seen.lock().unwrap().as_slice(), ["save-all"]);
+        assert!(matches!(made, Ok(Some(_))), "{:?}", made.err());
     }
 
     /// 저장 완료 줄(`save_done_pattern`)이 있으면 고정 대기 대신 그 줄이 나올 때까지 기다린 뒤 묶는다.

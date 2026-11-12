@@ -234,8 +234,40 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
     const loadedRef = useRef(new Set<string>());
     /** 로드된 익스텐션의 버전 추적 (핫로드 시 번들 무효화 판단용) */
     const loadedVersionsRef = useRef<Record<string, string>>({});
-    /** 이 창에서 번역을 읽은 익스텐션 (`id@version`) */
+    /** 이 창에서 읽은 익스텐션 번역 (`id@version@lang`) */
     const i18nLoadedRef = useRef(new Set<string>());
+    /** 이 창에서 번역을 쓰는 익스텐션 (언어를 바꾸면 그 언어로 다시 받는다) */
+    const i18nExtsRef = useRef(new Map<string, ExtensionListItem>());
+    /** 아직 읽지 않은 언어만 받는다. 새로 받은 것이 있으면 true */
+    const loadI18nOnce = async (ext: ExtensionListItem, lang = i18n.language || 'en') => {
+        i18nExtsRef.current.set(ext.id, ext);
+        let loaded = false;
+        for (const l of new Set([lang, 'en'])) {
+            const key = `${ext.id}@${ext.version}@${l}`;
+            if (i18nLoadedRef.current.has(key)) continue;
+            i18nLoadedRef.current.add(key);
+            await loadExtensionI18n(ext, l);
+            loaded = true;
+        }
+        return loaded;
+    };
+    const loadI18nOnceRef = useRef(loadI18nOnce);
+    loadI18nOnceRef.current = loadI18nOnce;
+    useEffect(() => {
+        let announcing = false;
+        const onLanguage = async (lng: string) => {
+            if (announcing) return;
+            const exts = [...i18nExtsRef.current.values()].filter((ext) => enabledIdsRef.current.has(ext.id));
+            const loaded = await Promise.all(exts.map((ext) => loadI18nOnceRef.current(ext, lng)));
+            if (!loaded.includes(true) || i18n.language !== lng) return;
+            // 화면은 언어가 바뀔 때만 다시 그려진다(번역이 늦게 들어온 것은 모른다): 받은 뒤 한 번 더 알린다
+            announcing = true;
+            i18n.emit('languageChanged', lng);
+            announcing = false;
+        };
+        i18n.on('languageChanged', onLanguage);
+        return () => i18n.off('languageChanged', onLanguage);
+    }, []);
     /** 지금 켜진 확장 id (늦게 끝난 번들 읽기가 그 사이 꺼졌는지 본다) */
     const enabledIdsRef = useRef(new Set<string>());
     const unloadBundle = (id: string) => {
@@ -334,14 +366,6 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         let cancelled = false;
 
         const loadBundles = async () => {
-            const loadI18nOnce = async (ext: ExtensionListItem) => {
-                const key = `${ext.id}@${ext.version}`;
-                if (i18nLoadedRef.current.has(key)) return;
-                i18nLoadedRef.current.add(key);
-                const currentLang = i18n.language || 'en';
-                await loadExtensionI18n(ext, currentLang);
-                if (currentLang !== 'en') await loadExtensionI18n(ext, 'en');
-            };
             const newSlots: SlotRegistry = {};
             const pending: ExtensionListItem[] = [];
 

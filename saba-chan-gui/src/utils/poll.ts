@@ -1,8 +1,9 @@
 /**
  * `fn`을 `ms`마다 부른다. 앞 요청이 끝난 뒤에야 다음을 잡아서 느린 연결에 요청이 쌓이지 않고,
- * 탭이 숨어 있는 동안은 쉬었다가 다시 보이면 바로 읽는다. 멈추는 함수를 돌려준다
+ * 창·탭이 숨어 있는 동안은 쉬었다가 다시 보이면 바로 읽는다. 멈추는 함수를 돌려준다.
+ * `immediate: false`면 처음 읽기를 `ms` 뒤로 미룬다 (앱·웹 공용)
  */
-export function startPoll(fn: () => unknown, ms: number) {
+export function startPoll(fn: () => unknown, ms: number, { immediate = true }: { immediate?: boolean } = {}) {
     let stopped = false;
     let running = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -24,7 +25,8 @@ export function startPoll(fn: () => unknown, ms: number) {
         tick();
     };
     document.addEventListener('visibilitychange', onVisible);
-    tick();
+    if (immediate) tick();
+    else if (!document.hidden) timer = setTimeout(tick, ms);
     return () => {
         stopped = true;
         if (timer) clearTimeout(timer);

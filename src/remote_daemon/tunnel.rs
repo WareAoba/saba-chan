@@ -284,10 +284,15 @@ pub fn is_open(relay: Option<&Target>, host_id: &str) -> bool {
     })
 }
 
-/// 원격 데몬을 잊으면 그 PC까지 열어 둔 터널을 놓는다 (연결을 쥔 것이 없어지면 HTTP/2 연결과 터널이 닫힌다.
-/// 릴레이는 한 PC가 여는 터널 수를 묶는다)
+/// 원격 데몬을 잊으면 그 PC까지 열어 둔 터널을 놓는다 (연결을 쥔 것과 그 위의 요청·스트림이 없어지면
+/// HTTP/2 연결과 터널이 닫힌다. 릴레이는 한 PC가 여는 터널 수를 묶는다)
 pub fn close(host_id: &str) {
     OPEN.lock().unwrap_or_else(|e| e.into_inner()).retain(|(_, h), _| h != host_id);
+}
+
+/// 그 PC에 직접 닿게 되면 이 릴레이로 열어 둔 터널을 놓는다 (그 위에서 받던 스트림은 끝날 때까지 간다)
+pub fn release(relay: &Target, host_id: &str) {
+    OPEN.lock().unwrap_or_else(|e| e.into_inner()).remove(&(relay.base.clone(), host_id.to_string()));
 }
 
 /// 열린 터널을 쓰고, 없거나 끊겼으면 새로 연다

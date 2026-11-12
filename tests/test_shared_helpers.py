@@ -476,7 +476,7 @@ class DownloadTests(unittest.TestCase):
 
         clock = iter(range(0, 10_000))
         with tempfile.TemporaryDirectory() as d, \
-                patch.object(daemon_rcon.urllib.request, "urlopen", return_value=Trickle()), \
+                patch("urllib.request.urlopen", return_value=Trickle()), \
                 patch.object(daemon_rcon.time, "monotonic", lambda: next(clock)):
             with self.assertRaises(TimeoutError):
                 daemon_rcon.download("https://example.invalid/x", Path(d) / "dest.bin", timeout=1)
@@ -492,7 +492,7 @@ class DownloadTests(unittest.TestCase):
                 return False
 
         with tempfile.TemporaryDirectory() as d, \
-                patch.object(daemon_rcon.urllib.request, "urlopen", return_value=Short(b"abc")):
+                patch("urllib.request.urlopen", return_value=Short(b"abc")):
             dest = Path(d) / "dest.bin"
             with self.assertRaises(IOError):
                 daemon_rcon.download("https://example.invalid/x", dest)
@@ -522,6 +522,16 @@ class ProgressAndLocaleTests(ModuleDirTest):
     def test_new_helpers_are_listed_with_their_version(self):
         for name in ("graceful_stop", "update_key_values", "settings_to_file", "diagnose_lines", "safe_extract", "download", "progress"):
             self.assertEqual(daemon_rcon.SINCE[name], "0.1.11-0", name)
+
+
+class ImportCostTests(unittest.TestCase):
+    def test_importing_the_helpers_does_not_load_the_http_client(self):
+        """lifecycle 호출마다 새 프로세스라, 받기(download)에만 쓰는 urllib.request를 미리 읽지 않는다"""
+        import subprocess
+        code = "import sys, daemon_rcon; print('urllib.request' in sys.modules)"
+        out = subprocess.run([sys.executable, "-c", code], cwd=os.path.dirname(daemon_rcon.__file__),
+                             capture_output=True, text=True, check=True)
+        self.assertEqual(out.stdout.strip(), "False")
 
 
 if __name__ == "__main__":

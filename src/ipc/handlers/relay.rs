@@ -90,6 +90,34 @@ pub(crate) fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
     cached_relay_client(&CLIENT, std::time::Instant::now())
 }
 
+/// 릴레이 답을 기다리는 기본 시간
+const RELAY_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// 기본보다 오래 기다리는 릴레이 경로: (GET인가, `/api/nodes/:guild/` 뒤 경로, 초). `/`로 끝나면 그 아래 경로 모두.
+/// 릴레이가 그 경로에서 바깥(제공사·디스코드)을 기다리는 시간보다 길게 잡는다. 릴레이 쪽 시간을 바꾸면 여기도 맞춘다
+const RELAY_WAITS: &[(bool, &str, u64)] = &[
+    // 릴레이가 제공사에 잔액을 8초까지 묻는다 (기본 5초면 느린 제공사 때 사용량까지 못 받는다)
+    (true, "chatbot/credit", 12),
+    // 릴레이가 제공사에 모델 목록을 15초까지 묻는다 (캐시가 빈 첫 시도)
+    (true, "chatbot/models", 18),
+    // 길드 전체 멤버: 릴레이는 디스코드에 8초까지 기다린다 (그 뒤에는 캐시로 답한다)
+    (true, "discord-members", 15),
+    // 음소거 목록을 위해 릴레이가 길드 멤버를 디스코드에서 읽을 수 있다 (8초까지)
+    (true, "moderation", 15),
+    // 디스코드 쪽 일 (청소는 메시지를 쪽마다 읽는다)
+    (false, "moderation/", 60),
+];
+
+/// 이 릴레이 요청을 기다릴 시간 (`RELAY_WAITS`, 없으면 `RELAY_WAIT`)
+fn relay_wait(method: &reqwest::Method, api_path: &str) -> std::time::Duration {
+    let rest = api_path.strip_prefix("/api/nodes/").and_then(|p| p.split_once('/')).map_or("", |(_, rest)| rest);
+    let get = method == reqwest::Method::GET;
+    RELAY_WAITS
+        .iter()
+        .find(|(g, tail, _)| *g == get && if tail.ends_with('/') { rest.starts_with(tail) } else { rest == *tail })
+        .map_or(RELAY_WAIT, |(_, _, secs)| std::time::Duration::from_secs(*secs))
+}
+
 /// 함께 쓰는 릴레이 클라이언트를 이만큼 쓰면 새로 만든다
 const RELAY_CLIENT_LIFETIME: std::time::Duration = std::time::Duration::from_secs(600);
 
@@ -115,7 +143,7 @@ fn build_relay_client() -> Result<reqwest::Client, reqwest::Error> {
         reqwest::header::HeaderValue::from_static("1"),
     );
     saba_chan_updater_lib::tls::http_client_builder()
-        .timeout(std::time::Duration::from_secs(5))
+        .timeout(RELAY_WAIT)
         .default_headers(headers)
         .build()
 }
@@ -338,8 +366,8 @@ async fn signed_get(base: &str, api_path: &str, fallback: impl FnOnce(StatusCode
         Ok(c) => c,
         Err(r) => return r,
     };
-    let url = format!("{}{}", base, api_path);
-    match send(apply_signed_headers(client.get(&url), "GET", api_path, None)).await {
+    let req = client.get(format!("{}{}", base, api_path)).timeout(relay_wait(&reqwest::Method::GET, api_path));
+    match send(apply_signed_headers(req, "GET", api_path, None)).await {
         Ok((code, Some(data))) => (code, Json(data)).into_response(),
         Ok((code, None)) => fallback(code),
         Err(r) => r,
@@ -427,27 +455,13 @@ pub async fn get_node_channels(
 // 앱의 서버 관리 화면: 채널 상태(주제·슬로우·잠금·자동 청소)와 음소거 목록, 채널 정보 수정, 청소, 음소거.
 // 디스코드 서버 상태라 원본은 릴레이다. 본문과 응답은 릴레이 것을 그대로 전달한다 (오류는 `{error: CODE, …}`)
 
-/// 디스코드 쪽 일(청소는 메시지를 쪽마다 읽는다)을 기다리는 시간
-const MODERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-
 pub async fn get_node_moderation(
     Path(guild_id): Path<String>,
     Query(params): Query<RelayQueryParams>,
     State(state): State<IPCServer>,
 ) -> Response {
     let base = signed_base(&state, params.relay_url.as_deref()).await;
-    let client = match client() {
-        Ok(c) => c,
-        Err(r) => return r,
-    };
-    // 음소거 목록을 위해 릴레이가 길드 멤버를 디스코드에서 읽을 수 있다(8초까지): 기본 시간보다 길게 기다린다
-    let api_path = format!("/api/nodes/{}/moderation", encode_path_segment(&guild_id));
-    let req = client.get(format!("{}{}", base, api_path)).timeout(DISCORD_MEMBERS_TIMEOUT);
-    match send(apply_signed_headers(req, "GET", &api_path, None)).await {
-        Ok((code, Some(data))) => (code, Json(data)).into_response(),
-        Ok((code, None)) => invalid_response(code),
-        Err(r) => r,
-    }
+    signed_get(&base, &format!("/api/nodes/{}/moderation", encode_path_segment(&guild_id)), invalid_response).await
 }
 
 pub async fn patch_node_moderation_channel(
@@ -521,7 +535,7 @@ async fn signed_json(base: &str, method: reqwest::Method, api_path: &str, body: 
         Err(r) => return r,
     };
     let text = body.to_string();
-    let req = client.request(method.clone(), format!("{}{}", base, api_path)).timeout(MODERATION_TIMEOUT);
+    let req = client.request(method.clone(), format!("{}{}", base, api_path)).timeout(relay_wait(&method, api_path));
     let req = apply_signed_headers(req, method.as_str(), api_path, Some(&text))
         .header("Content-Type", "application/json")
         .body(text);
@@ -565,21 +579,8 @@ pub async fn get_node_chatbot_credit(
     State(state): State<IPCServer>,
 ) -> Response {
     let base = signed_base(&state, params.relay_url.as_deref()).await;
-    let client = match client() {
-        Ok(c) => c,
-        Err(r) => return r,
-    };
-    // 릴레이가 제공사에 잔액을 묻는 시간(8초)보다 길게 기다린다 (기본 5초면 느린 제공사 때 사용량까지 못 받는다)
-    let api_path = format!("/api/nodes/{}/chatbot/credit", encode_path_segment(&guild_id));
-    let req = client.get(format!("{}{}", base, api_path)).timeout(CREDIT_TIMEOUT);
-    match send(apply_signed_headers(req, "GET", &api_path, None)).await {
-        Ok((code, Some(data))) => (code, Json(data)).into_response(),
-        Ok((code, None)) => invalid_response(code),
-        Err(r) => r,
-    }
+    signed_get(&base, &format!("/api/nodes/{}/chatbot/credit", encode_path_segment(&guild_id)), invalid_response).await
 }
-
-const CREDIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(12);
 
 pub async fn put_node_channels(
     Path(guild_id): Path<String>,
@@ -667,9 +668,6 @@ pub struct MembersQuery {
     pub with_status: Option<String>,
 }
 
-/// 길드 전체 멤버 요청: 릴레이는 디스코드에 8초까지 기다린다(그 뒤에는 캐시로 답한다)
-const DISCORD_MEMBERS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
-
 pub async fn list_node_members(
     Path(guild_id): Path<String>,
     Query(params): Query<MembersQuery>,
@@ -686,7 +684,7 @@ pub async fn list_node_members(
     // Primary: real-time discord members
     let discord_path = format!("/api/nodes/{}/discord-members", encoded);
     let discord_url = format!("{}{}", base, discord_path);
-    let reason = match send(apply_signed_headers(client.get(&discord_url).timeout(DISCORD_MEMBERS_TIMEOUT), "GET", &discord_path, None)).await {
+    let reason = match send(apply_signed_headers(client.get(&discord_url).timeout(relay_wait(&reqwest::Method::GET, &discord_path)), "GET", &discord_path, None)).await {
         Ok((code, Some(data))) if code.is_success() => {
             let body = if with_status { json!({ "members": data, "partial": false }) } else { data };
             return (StatusCode::OK, Json(body)).into_response();
@@ -1043,6 +1041,46 @@ mod tests {
         let request: PairStatusBody = serde_json::from_value(json!({ "code": "AB/12", "secret": "s3", "relayUrl": base })).unwrap();
         let (code, data) = body(pairing_status(State(state), Json(request)).await).await;
         assert_eq!((code, data), (StatusCode::OK, json!({ "status": "pending", "code": "AB/12", "secret": "s3" })));
+    }
+
+    /// 릴레이 경로마다 기다리는 시간은 표 하나에서 읽는다: 읽기와 쓰기가 다른 경로, 표에 없는 경로, 길드 id가 경로 낱말과 같은 경우
+    #[test]
+    fn each_relay_path_waits_as_the_table_says() {
+        use reqwest::Method;
+        let secs = |m: Method, path: &str| relay_wait(&m, path).as_secs();
+        assert_eq!(secs(Method::GET, "/api/nodes/g1/chatbot/models"), 18);
+        assert_eq!(secs(Method::GET, "/api/nodes/g1/chatbot/credit"), 12);
+        assert_eq!(secs(Method::GET, "/api/nodes/g1/discord-members"), 15);
+        assert_eq!(secs(Method::GET, "/api/nodes/g1/moderation"), 15);
+        assert_eq!(secs(Method::POST, "/api/nodes/g1/moderation/channels/c1/clear"), 60);
+        assert_eq!(secs(Method::PUT, "/api/nodes/g1/moderation/mutes/u1"), 60);
+        for (m, path) in [(Method::GET, "/api/nodes/g1/channels"), (Method::PUT, "/api/nodes/g1/channels"), (Method::GET, "/api/nodes/moderation/members"), (Method::GET, "/api/hosts/h1"), (Method::DELETE, "/api/mcp/grant")] {
+            assert_eq!(relay_wait(&m, path), RELAY_WAIT, "{path}");
+        }
+    }
+
+    /// 릴레이는 제공사의 모델 목록을 15초까지 기다린다. 데몬이 먼저 끊으면 첫 시도에 목록이 안 보인다
+    #[tokio::test]
+    async fn the_model_list_outlasts_a_provider_slower_than_the_default_relay_wait() {
+        let app = Router::new().route(
+            "/api/nodes/g1/chatbot/models",
+            get(|| async {
+                tokio::time::sleep(std::time::Duration::from_millis(5500)).await;
+                Json(json!({ "models": ["m1"] }))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let params: RelayQueryParams = serde_json::from_value(json!({ "relayUrl": base })).unwrap();
+        let (code, data) = body(get_node_chatbot_models(Path("g1".into()), Query(params), State(state)).await).await;
+        assert_eq!((code, data), (StatusCode::OK, json!({ "models": ["m1"] })));
     }
 
     /// 에이전트 연결 끊기: 릴레이가 지웠으면 204, 아니면 릴레이 답 그대로

@@ -103,7 +103,7 @@ return (j.latest || {}).manifestUrl || "";
 JS
 )
 else
-    MANIFEST_URL=$(python3 -I -c 'import json,sys;print((json.load(open(sys.argv[1])).get("latest") or {}).get("manifestUrl",""))' "$TMP/check.json")
+    MANIFEST_URL=$(python3 -I -c 'import json,sys;print((json.load(open(sys.argv[1])).get("latest") or {}).get("manifestUrl",""))' "$TMP/check.json") || MANIFEST_URL=
 fi
 [ -n "$MANIFEST_URL" ] || die "이 PC용 릴리즈가 아직 없어요." "No release for this platform yet."
 curl -fsS -H 'X-Saba-Client: 1' "$MANIFEST_URL" >"$TMP/manifest.json" || die "manifest를 받지 못했어요." "Could not download the manifest."
@@ -119,7 +119,8 @@ if (!cli || (cli.url || "").indexOf("https://") !== 0) return "";
 return [own.gui ? "gui" : "nogui", cli.url, cli.sha256, cli.size_bytes == null ? "" : cli.size_bytes].join(" ");
 JS
 else
-    python3 -I - "$TMP/manifest.json" "$PLATFORM" >"$TMP/cli.txt" <<'PY'
+    # 항목이 없어 실패해도 `set -e`로 여기서 끝내지 않는다: 아래에서 빈 결과를 보고 알린다
+    python3 -I - "$TMP/manifest.json" "$PLATFORM" >"$TMP/cli.txt" <<'PY' || :
 import json, sys
 m = json.load(open(sys.argv[1]))["manifest"]
 own = m["components"] if m.get("platform") == sys.argv[2] else m.get("platforms", {}).get(sys.argv[2], {}).get("components", {})
@@ -198,6 +199,10 @@ elif [ -x "$DIR/saba-chan-gui" ]; then
         say "창 앱에 WebKitGTK가 필요해요. 예: sudo apt install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 (Fedora: sudo dnf install webkit2gtk4.1 libayatana-appindicator-gtk3)" \
             "The app needs WebKitGTK. For example: sudo apt install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 (Fedora: sudo dnf install webkit2gtk4.1 libayatana-appindicator-gtk3)"
         # 앱을 열 수 있을 때까지 CLI는 쓸 수 있게 데몬은 켠다 (앱을 열면 이 데몬에 붙는다)
+        "$CLI" daemon start
+    elif [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+        # ssh로 다시 깐 데스크톱 설치: 여기서는 앱을 띄울 화면이 없다. 데몬을 켜 둔다 (앱을 열면 이 데몬에 붙는다)
+        say "앱 메뉴에서 사바쨩을 열 수 있어요. 지금은 화면이 없어 데몬만 켭니다." "Saba-chan is in your app menu. No display here, so only the daemon is started."
         "$CLI" daemon start
     else
         say "앱 메뉴에서 사바쨩을 열 수 있어요. 지금 엽니다." "Saba-chan is in your app menu. Opening it now."

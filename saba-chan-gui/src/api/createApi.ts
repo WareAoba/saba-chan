@@ -470,6 +470,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                                     status: String(status),
                                     error: data.error || error.message,
                                 }),
+                                // 웹: 릴레이의 504(remote_timeout)도 아직 지우는 중일 수 있다
+                                error_code: data.error_code,
                             };
                     }
                 }

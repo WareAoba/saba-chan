@@ -303,12 +303,14 @@
   },
   "errors": {
     "start_cancelled": "El servidor se detuvo mientras se iniciaba, así que no se inició.",
+    "still_stopping": "El servidor todavía se está apagando, así que no se volvió a iniciar. Inícialo cuando se haya detenido por completo.",
     "generic": "No se pudo completar la solicitud.",
     "remote_not_allowed": "Esto solo se puede hacer en la app Saba-chan del PC.",
     "remote_field_blocked": "Estos ajustes solo se pueden cambiar en el PC: {{fields}}",
     "remote_bad_path": "Esta solicitud no se acepta.",
     "remote_bad_request": "Esta solicitud no se acepta.",
     "remote_timeout": "No terminó en 2 minutos, así que se trató como un fallo. Comprueba el resultado en el PC.",
+    "still_working": "No terminó en 2 minutos. Puede que el PC siga trabajando en ello; vuelve a comprobarlo en un momento.",
     "remote_host_gone": "Se perdió la conexión con el PC antes de que terminara la solicitud.",
     "remote_busy": "Demasiadas solicitudes. Inténtalo de nuevo en un momento."
   },
