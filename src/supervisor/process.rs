@@ -251,6 +251,43 @@ fn current_timestamp() -> u64 {
 mod tests {
     use super::*;
 
+    /// Unix에서는 그룹 리더를 끝내면 그 그룹의 자식(손자)까지 끝난다
+    #[cfg(unix)]
+    #[test]
+    fn force_kill_tree_ends_the_leaders_whole_group() {
+        use std::os::unix::process::CommandExt;
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("child.pid");
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("sleep 30 & echo $! > {}; wait", pidfile.display()))
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let wait = || std::thread::sleep(std::time::Duration::from_millis(20));
+        let mut grandchild = None;
+        for _ in 0..50 {
+            if let Some(pid) = std::fs::read_to_string(&pidfile).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
+                grandchild = Some(pid);
+                break;
+            }
+            wait();
+        }
+        let grandchild = grandchild.expect("child started");
+        force_kill_tree(child.id()).unwrap();
+        let _ = child.wait();
+        for _ in 0..50 {
+            // 거둘 부모가 없으면 좀비로 남으니 상태도 본다
+            let zombie = std::fs::read_to_string(format!("/proc/{grandchild}/stat"))
+                .is_ok_and(|s| s.rsplit(')').next().is_some_and(|r| r.trim_start().starts_with('Z')));
+            if zombie || !is_process_alive(grandchild) {
+                return;
+            }
+            wait();
+        }
+        panic!("grandchild {grandchild} survived");
+    }
+
     /// 재부팅 뒤 같은 PID를 다른 프로세스가 쓰면, 그 프로세스는 기록보다 늦게 시작했다
     #[test]
     fn a_pid_reused_after_the_record_is_not_the_same_process() {

@@ -1966,37 +1966,6 @@ print(json.dumps(codes))
         }
     }
 
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn a_timed_out_tree_is_killed_with_its_children() {
-        let dir = tempfile::tempdir().unwrap();
-        let pidfile = dir.path().join("child.pid");
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg(format!("sleep 30 & echo $! > {}; wait", pidfile.display())).process_group(0);
-        let mut child = cmd.spawn().unwrap();
-        let mut grandchild = None;
-        for _ in 0..50 {
-            if let Some(pid) = std::fs::read_to_string(&pidfile).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
-                grandchild = Some(pid);
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-        let grandchild = grandchild.expect("child started");
-        crate::supervisor::process::force_kill_tree(child.id().unwrap()).unwrap();
-        let _ = child.wait().await;
-        for _ in 0..50 {
-            // 거둘 부모가 없으면 좀비로 남으니 상태도 본다
-            let zombie = std::fs::read_to_string(format!("/proc/{grandchild}/stat"))
-                .is_ok_and(|s| s.rsplit(')').next().is_some_and(|r| r.trim_start().starts_with('Z')));
-            if zombie || !crate::supervisor::process::is_process_alive(grandchild) {
-                return;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-        panic!("grandchild {grandchild} survived");
-    }
-
     /// 격리된 모듈(127.0.0.1에 못 닿음)이 공용 도우미 `loopback_http`로 자기 서버에 물으면 데몬이 대신 보내고 답을 돌려준다
     #[cfg(unix)]
     #[tokio::test]
