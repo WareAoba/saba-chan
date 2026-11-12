@@ -835,6 +835,7 @@ impl Session {
             // 알림 채널 맨 위 글의 예약 목록
             "schedules": schedules,
             "modules": modules,
+            // 읽는 곳은 없지만 2026-11-12 전 릴레이 스키마가 요구한다. 그 요구를 뺀 릴레이가 배포되면 지운다
             "moduleDetails": {},
             "botConfig": {
                 // 비어 있으면 릴레이가 응답 언어의 기본값을 쓴다
@@ -3052,7 +3053,7 @@ mod tests {
         let meta = session.metadata().await;
         assert!(meta.get("features").is_none());
         assert_eq!(meta["botConfig"].as_object().unwrap().keys().collect::<Vec<_>>(), vec!["prefixes"]);
-        // 릴레이 스키마는 줄이지 않은 하트비트에 이 둘을 요구한다
+        // 2026-11-12 전 릴레이 스키마는 줄이지 않은 하트비트에 이 둘을 요구한다
         assert!(meta["modules"].is_array() && meta["moduleDetails"].is_object());
     }
 
