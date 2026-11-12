@@ -271,6 +271,7 @@ pub fn create_from(dir: &Path, kind: BackupKind, entries: &[(PathBuf, PathBuf)],
         return Err(e);
     }
     fs::rename(&partial, &final_path)?;
+    LAST_RESTORED.lock().unwrap_or_else(|e| e.into_inner()).remove(dir);
     info(&final_path).context("read new backup")
 }
 
@@ -339,15 +340,24 @@ fn inner_path(base: &Path, rel: &str) -> Result<PathBuf> {
     Ok(base.join(rel_path))
 }
 
-/// 가장 새 판 2 백업이 적은 파일 (원래 절대 경로 → 크기, 수정 시각, 해시). 그 백업 직전에 바뀐 파일은 뺀다
+/// 이 데몬이 마지막으로 복원한 백업 (백업 폴더 → 이름). 다음 백업을 만들면 지운다.
+/// 복원한 파일은 그 백업이 적은 크기·수정 시각 그대로인데 가장 새 백업은 복원 전 안전 백업이라,
+/// 이것이 없으면 복원 뒤 첫 백업이 그 사이 바뀌었던 파일을 모두 다시 읽어 압축한다 (내용은 이미 저장소에 있다)
+static LAST_RESTORED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, String>>> = std::sync::LazyLock::new(Default::default);
+
+/// 가장 새 판 2 백업이 적은 파일 (원래 절대 경로 → 크기, 수정 시각, 해시). 그 백업 직전에 바뀐 파일은 뺀다.
+/// 방금 복원한 백업이 있으면 그 기록이 앞선다 (`LAST_RESTORED`)
 fn known_files(dir: &Path) -> std::collections::HashMap<PathBuf, (u64, u64, String, u64)> {
     let newest = list(dir).into_iter().find_map(|b| read_v2(&dir.join(&b.name)).ok().flatten());
-    let Some(m) = newest else { return Default::default() };
+    let restored = LAST_RESTORED.lock().unwrap_or_else(|e| e.into_inner()).get(dir).cloned();
+    let restored = restored.and_then(|name| read_v2(&dir.join(name)).ok().flatten());
     let mut out = std::collections::HashMap::new();
-    for f in m.files.iter().filter(|f| f.mtime.saturating_add(MTIME_SLACK_NS) < m.started) {
-        let Some(entry) = m.paths.iter().find(|p| p.entry == f.entry && p.from.is_none()) else { continue };
-        let path = if f.rel.is_empty() { entry.path.clone() } else if let Ok(p) = inner_path(&entry.path, &f.rel) { p } else { continue };
-        out.insert(path, (f.size, f.mtime, f.hash.clone(), f.stored_size));
+    for m in newest.iter().chain(&restored) {
+        for f in m.files.iter().filter(|f| f.mtime.saturating_add(MTIME_SLACK_NS) < m.started) {
+            let Some(entry) = m.paths.iter().find(|p| p.entry == f.entry && p.from.is_none()) else { continue };
+            let path = if f.rel.is_empty() { entry.path.clone() } else if let Ok(p) = inner_path(&entry.path, &f.rel) { p } else { continue };
+            out.insert(path, (f.size, f.mtime, f.hash.clone(), f.stored_size));
+        }
     }
     out
 }
@@ -1038,6 +1048,7 @@ pub fn restore(dir: &Path, name: &str) -> Result<Restored> {
             remove_any(aside);
         }
     }
+    LAST_RESTORED.lock().unwrap_or_else(|e| e.into_inner()).insert(dir.to_path_buf(), name.to_string());
     Ok(Restored { paths: touched.into_iter().map(|(p, _)| p.to_path_buf()).collect(), links_missed })
 }
 
@@ -1462,6 +1473,39 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             assert_eq!(fs::metadata(&script).unwrap().permissions().mode() & 0o7777, 0o750);
         }
+    }
+
+    /// 복원한 파일은 복원한 백업이 적은 크기·수정 시각 그대로다. 가장 새 백업(복원 전 안전 백업)의 기록과
+    /// 달라도 다음 백업이 다시 읽지 않는다 (크기·수정 시각만 보는 것은 빠른 검사와 같다: 같은 크기로 바꾼 내용도 그대로 잇는다)
+    #[test]
+    fn the_backup_after_a_restore_reuses_what_the_restored_backup_recorded() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let level = w.join("level.dat");
+        let saved = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+        let stamp = |at| File::options().write(true).open(&level).unwrap().set_modified(at).unwrap();
+        stamp(saved);
+        let dir = tmp.path().join("backups");
+        let a = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+        let hash_in = |name: &str| read_v2(&dir.join(name)).unwrap().unwrap().files.into_iter().find(|f| f.rel == "level.dat").unwrap().hash;
+
+        fs::write(&level, b"played on").unwrap();
+        create(&dir, BackupKind::PreRestore, std::slice::from_ref(&w)).unwrap();
+        restore(&dir, &a.name).unwrap();
+        fs::write(&level, b"LEVEL").unwrap();
+        stamp(saved);
+        let after = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+        assert_eq!(hash_in(&after.name), hash_in(&a.name), "the restored file must not be read again");
+
+        // 그 다음 백업부터는 다시 가장 새 백업만 본다
+        fs::write(&level, b"again").unwrap();
+        stamp(saved + std::time::Duration::from_secs(60));
+        let next = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+        fs::write(&level, b"LEVEL").unwrap();
+        stamp(saved);
+        let last = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+        assert_ne!(hash_in(&next.name), hash_in(&a.name));
+        assert_ne!(hash_in(&last.name), hash_in(&a.name), "a file changed after the restore is read again");
     }
 
     #[test]
