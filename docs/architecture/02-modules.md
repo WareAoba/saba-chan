@@ -321,7 +321,7 @@ patterns = ["FAILED TO BIND TO PORT", "Address already in use"]
 ```
 
 #### `[runtime]` (`plugin::Runtime`, saba-core 0.1.14-0)
-실행 방식. 키는 `persistent`(불, 없으면 `false`) 하나다. `true`면 데몬이 호출마다 Python을 띄우지 않고 오래 사는 작업자 하나로 부른다(§2.1 끝). 함수·config·답은 그대로이고, 진입점이 공용 `run_lifecycle`이어야 한다. 모듈 로더는 이 키를 읽지 않고 실행기가 호출 때 module.toml에서 읽는다. 익스텐션 manifest의 `runtime`도 같은 표다(03 §1.1).
+실행 방식. 키는 `persistent`(불, 없으면 `false`) 하나다. `true`면 데몬이 호출마다 Python을 띄우지 않고 오래 사는 작업자 하나로 부른다(§2.1 끝). 격리해서 돌리는 구성요소(확인되지 않았거나 고친 것)는 선언해도 단발로 돈다. 함수·config·답은 그대로이고, 진입점이 공용 `run_lifecycle`이어야 한다. 모듈 로더는 이 키를 읽지 않고 실행기가 호출 때 module.toml에서 읽는다. 익스텐션 manifest의 `runtime`도 같은 표다(03 §1.1).
 
 ```toml
 [runtime]
