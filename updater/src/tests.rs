@@ -1006,6 +1006,39 @@ fn a_unix_binary_moved_aside_by_an_interrupted_apply_is_put_back() {
     assert!(tmp.path().join("notes.old").exists());
 }
 
+// saba-core zip에 같이 든 saba-runner도 Unix에서 코어와 함께 되돌릴 수 있게 비켜 둔다 (Windows는 `saba-runner.exe.old`)
+#[cfg(unix)]
+#[tokio::test]
+async fn a_unix_core_apply_keeps_the_previous_runner_for_rollback() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    for exe in ["saba-core", "saba-runner"] {
+        std::fs::write(manager.install_root.join(exe), b"previous").unwrap();
+    }
+    let zip_path = tmp.path().join("saba-core-linux-x64.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        for exe in ["saba-core", "saba-runner"] {
+            zw.start_file(exe, zip::write::SimpleFileOptions::default().unix_permissions(0o755)).unwrap();
+            zw.write_all(b"new").unwrap();
+        }
+        zw.finish().unwrap();
+    }
+    let before = manager.exe_backups();
+
+    manager.apply_binary_update("saba-core", &zip_path.to_string_lossy()).await.unwrap();
+    assert_eq!(std::fs::read(manager.install_root.join("saba-runner")).unwrap(), b"new");
+
+    manager.roll_back_exes_since(&before).unwrap();
+
+    for exe in ["saba-core", "saba-runner"] {
+        assert_eq!(std::fs::read(manager.install_root.join(exe)).unwrap(), b"previous", "{exe}");
+    }
+}
+
 // L3(c): 적용 중 꺼져 남은 `.update-bak`은 다음 정리 때 원래 파일이 있으면 지우고, 없으면 되돌린다
 #[test]
 fn leftover_update_backups_are_cleaned_or_restored() {

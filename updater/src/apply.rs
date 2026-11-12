@@ -544,6 +544,8 @@ impl UpdateManager {
     pub(crate) fn is_known_binary(path: &Path) -> bool {
         const KNOWN_BINARIES: &[&str] = &[
             "saba-core",
+            // saba-core zip에 같이 든다: 코어를 되돌릴 때 함께 되돌린다
+            "saba-runner",
             "saba-chan-cli",
             "saba-chan-gui",
             "saba-chan-updater",
