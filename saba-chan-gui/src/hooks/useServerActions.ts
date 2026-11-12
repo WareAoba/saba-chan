@@ -16,6 +16,7 @@ import { claimStopNotice, eventsAvailable, showPortMoved, watchInstance } from '
 import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 import { updateRequiredText } from '../utils/updateRequired';
+import { holdSavingOrder } from './useDragReorder';
 
 /**
  * Manages server CRUD operations: fetch, start, stop, status, add, delete.
@@ -208,7 +209,7 @@ export function useServerActions({
                             expanded: existing?.expanded || false,
                         };
                     });
-                    return reuseUnchanged(prev, merged);
+                    return reuseUnchanged(prev, holdSavingOrder(merged));
                 });
 
                 // 포트 충돌로 강제 정지된 서버가 있으면 앱 내 토스트 표시
