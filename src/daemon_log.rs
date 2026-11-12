@@ -37,6 +37,9 @@ pub struct DaemonLogEntry {
     pub message: String,
 }
 
+/// 데몬 로그에 줄이 생기면 울린다 (`GET /api/daemon/console?wait=`가 기다린다)
+pub(crate) static DAEMON_LOG_CHANGED: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
 /// Shared daemon log buffer accessible from multiple threads.
 #[derive(Clone)]
 pub struct DaemonLogBuffer {
@@ -85,6 +88,8 @@ impl DaemonLogBuffer {
             buf.pop_front();
         }
         buf.push_back(entry);
+        drop(buf);
+        DAEMON_LOG_CHANGED.notify_waiters();
     }
 
     /// Retrieve entries with `id >= since`. Returns at most `count` entries.

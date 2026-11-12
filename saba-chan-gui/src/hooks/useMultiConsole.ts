@@ -12,6 +12,8 @@ import { createTranslateError, safeShowToast } from '../utils/helpers';
 const POLL_ACTIVE_MS = 500;
 /** @constant 서버 비활성 시 polling 간격 (ms) */
 const POLL_IDLE_MS = 5000;
+// 새 줄이 없으면 데몬이 이만큼(초) 붙잡는다. 붙잡는 데몬(답에 waits: true)에는 답을 받고 POLL_ACTIVE_MS 뒤 다시 묻는다
+const CONSOLE_WAIT_S = 20;
 /** PIP로 띄울 때 메인 창 콘솔 자리에 흐리게 남기는 줄 수 */
 const GHOST_LINES = 40;
 
@@ -159,6 +161,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             // 실행 중에 받은 마지막 몇 줄의 표시(lineMark). 꺼진 뒤 디스크 꼬리와 겹치는 곳을 찾는 데 쓴다
             let seenTail: string[] = [];
             let polling = false;
+            // 마지막 답이 데몬이 붙잡았다 온 것인가 (옛 데몬은 wait를 모르고 바로 답한다)
+            let daemonWaits = false;
             // 이 루프의 ref. 닫았다 다시 열면 새 ref가 생기므로, 옛 루프는 자기 ref가 아니면 멈춘다(줄 중복 방지)
             const myRef: PollRef = { active: true, timer: null };
             const isMine = () => pollingRefs.current[instanceId] === myRef && myRef.active;
@@ -169,7 +173,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                 const servers = useServerStore.getState().servers;
                 const server = servers.find((s) => s.id === instanceId);
                 const isRunning = server && server.pid != null && server.pid > 0;
-                const interval = first ? 0 : isRunning ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+                const interval = first ? 0 : isRunning || daemonWaits ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+                const waitFor = first ? 0 : CONSOLE_WAIT_S;
                 first = false;
                 myRef.timer = setTimeout(async () => {
                     if (polling) { schedulePoll(); return; }
@@ -186,9 +191,15 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                             seenPid = pid;
                         }
                         // 하이라이트가 켜져 있으면 데몬에게 조각 토큰(spans)도 달라고 한다
-                        const opts = useSettingsStore.getState().consoleSyntaxHighlight ? { spans: true } : undefined;
+                        const opts = {
+                            spans: useSettingsStore.getState().consoleSyntaxHighlight || undefined,
+                            wait: waitFor || undefined,
+                            epoch: waitFor && seenEpoch !== null ? seenEpoch : undefined,
+                            diskSeen: (waitFor && diskLoaded) || undefined,
+                        };
                         const data = await window.api.managedConsole(instanceId, sinceId, 200, opts);
                         if (!isMine()) return;
+                        daemonWaits = data?.waits === true;
                         // epoch가 없는 응답(디스크 기록, 옛 데몬)은 지금처럼 이어 읽는다
                         if (typeof data?.epoch === 'number') {
                             const epochChanged = seenEpoch !== null && data.epoch !== seenEpoch;
