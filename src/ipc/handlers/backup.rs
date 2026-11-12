@@ -927,7 +927,7 @@ fn next_runs(id: &str, schedule: &[ScheduledTask]) -> Vec<Option<i64>> {
 fn history_of(instance_dir: &FsPath, id: &str, schedule: &[ScheduledTask]) -> Vec<Vec<crate::scheduler::Run>> {
     let _guard = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut history = crate::scheduler::read_history(&instance_dir.join(crate::scheduler::HISTORY_FILE));
-    schedule.iter().map(|task| history.remove(&crate::scheduler::task_key(id, task)).unwrap_or_default()).collect()
+    schedule.iter().map(|task| history.remove(&crate::scheduler::history_key(id, task)).unwrap_or_default()).collect()
 }
 
 /// 이력 파일을 읽고 고쳐 쓰는 동안 쥔다 (같은 인스턴스의 두 작업이 함께 끝나도 한 건을 잃지 않게)
@@ -957,7 +957,7 @@ fn outcome_of(resp: &crate::ipc::internal::InternalResponse) -> Option<Outcome> 
     }
 }
 
-/// 한 건을 인스턴스 폴더의 이력에 남긴다. 일정에서 사라진 작업의 이력은 이때 치운다. 새로 남겼으면 true
+/// 한 건을 인스턴스 폴더의 이력에 남긴다. 일정에서 사라진 작업의 이력은 이때 치운다 (꺼 둔 작업의 것은 둔다). 새로 남겼으면 true
 async fn record_run(state: &IPCServer, id: &str, key: &str, run: crate::scheduler::Run) -> bool {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(id) else { return false };
@@ -965,7 +965,7 @@ async fn record_run(state: &IPCServer, id: &str, key: &str, run: crate::schedule
     if !dir.is_dir() {
         return false;
     }
-    let keys: HashSet<String> = instance.schedule.iter().map(|t| crate::scheduler::task_key(id, t)).collect();
+    let keys: HashSet<String> = instance.schedule.iter().map(|t| crate::scheduler::history_key(id, t)).collect();
     let file = dir.join(crate::scheduler::HISTORY_FILE);
     let _guard = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut history = crate::scheduler::read_history(&file);
@@ -2055,6 +2055,36 @@ else:
         assert_eq!(failed.len(), 1, "only the failed restart is announced as failed");
         assert_eq!(failed[0].data["action"], "restart");
         assert_eq!(failed[0].data["code"], "not_running");
+    }
+
+    // 작업을 꺼 두어도 같은 작업이다: 이력이 그대로 보이고, 그사이 다른 작업이 돌아도 지워지지 않는다
+    #[tokio::test]
+    async fn turning_a_task_off_keeps_its_history() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let restart: ScheduledTask = serde_json::from_value(json!({"action": "restart", "at": "04:00"})).unwrap();
+        let stop: ScheduledTask = serde_json::from_value(json!({"action": "stop", "at": "05:00"})).unwrap();
+        let set = |schedule: Vec<ScheduledTask>| {
+            let (state, id) = (state.clone(), id.clone());
+            async move {
+                let mut sup = state.supervisor.write().await;
+                let mut instance = sup.instance_store.get(&id).unwrap().clone();
+                instance.schedule = schedule;
+                sup.instance_store.update(&id, instance).unwrap();
+            }
+        };
+        let history = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(get_schedule(Path(id), State(state)).await).await.body["history"].clone() }
+        };
+        set(vec![restart.clone(), stop.clone()]).await;
+        let fire = chrono::Local::now().naive_local() - chrono::Duration::seconds(5);
+        run_task(&state, &id, &restart, fire, &crate::scheduler::task_key(&id, &restart)).await;
+
+        set(vec![ScheduledTask { enabled: false, ..restart.clone() }, stop.clone()]).await;
+        assert_eq!(history().await[0][0]["code"], "not_running", "the switched-off task still shows its last run");
+        run_task(&state, &id, &stop, fire, &crate::scheduler::task_key(&id, &stop)).await;
+        set(vec![restart.clone(), stop.clone()]).await;
+        assert_eq!(history().await[0][0]["code"], "not_running", "another task's run did not drop it");
     }
 
     // 모든 서버의 다음 예약을 시각 순서로 한 번에 주고, 같은 PC에서 가까운 시각에 겹치는 무거운 작업을 짚는다

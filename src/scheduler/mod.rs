@@ -399,6 +399,11 @@ pub fn task_key(instance_id: &str, task: &ScheduledTask) -> String {
     format!("{}:{}", instance_id, serde_json::to_string(task).unwrap_or_default())
 }
 
+/// 실행 이력의 열쇠: 켠 모습의 `task_key`. 껐다 켜도 같은 작업의 이력으로 이어진다
+pub fn history_key(instance_id: &str, task: &ScheduledTask) -> String {
+    task_key(instance_id, &ScheduledTask { enabled: true, ..task.clone() })
+}
+
 /// 예고를 시작한 작업이 아직 그대로 예약돼 있는지. 지웠거나 껐거나 고쳤으면 키가 달라진다
 pub fn still_scheduled(instance_id: &str, schedule: &[ScheduledTask], key: &str) -> bool {
     schedule.iter().any(|t| t.enabled && task_key(instance_id, t) == key)
