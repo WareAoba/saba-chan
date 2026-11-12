@@ -82,6 +82,26 @@ describe('서버 설정 저장 뒤', () => {
         expect(sent.title).toBeUndefined();
     });
 
+    it('저장한 뒤 다시 읽기에 실패해도 저장한 값과 새 revision을 그대로 둔다', async () => {
+        const { result } = setup();
+        await act(async () => result.current.handleOpenSettings(server as never));
+        act(() => result.current.handleSettingChange('title', 'new'));
+        window.api.instanceUpdateSettings = vi.fn(async () => ({ success: true, synced: true, revision: 'r2' })) as never;
+        window.api.serverList = vi.fn(async () => {
+            throw new Error('network');
+        }) as never;
+        await act(async () => result.current.handleSaveSettings());
+
+        expect(result.current.settingsValues.title).toBe('new');
+        expect(result.current.openedSettings.title).toBe('new');
+
+        act(() => result.current.handleSettingChange('motd', 'bye'));
+        await act(async () => result.current.handleSaveSettings());
+        const sent = (window.api.instanceUpdateSettings as ReturnType<typeof vi.fn>).mock.calls[1][1];
+        expect(sent.revision).toBe('r2');
+        expect(sent.motd).toBe('bye');
+    });
+
     it('다시 읽는 사이 고친 칸은 지우지 않는다', async () => {
         const { result } = setup();
         await act(async () => result.current.handleOpenSettings(server as never));
