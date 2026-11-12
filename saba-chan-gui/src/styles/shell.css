@@ -2200,6 +2200,14 @@ button.activity-line:hover {
 .idle-stopped-notice {
     align-items: center;
 }
+/* 새 버전: 이름 아래 표시와 정보 탭의 새 버전 줄 */
+.tag.tag-accent {
+    color: var(--accent);
+    border-color: color-mix(in oklch, var(--accent) 45%, transparent);
+}
+.info-new-version {
+    color: var(--accent);
+}
 .idle-stopped-notice > span {
     flex: 1 1 auto;
     min-width: 0;

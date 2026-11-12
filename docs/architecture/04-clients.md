@@ -85,7 +85,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | instanceCheck | POST /api/instances/check (만들기 마법사의 이름·포트 단계와 확인 단계. 이름·서버 폴더·포트 겹침) | ✓ |
 | instanceProvisionProgress (485) | GET /api/provision-progress/:name | ✓ 668 |
 | instanceDismissProvision (492) | DELETE /api/provision-progress/:name | ✓ 668 |
-| instanceCheckUpdate (499) | GET /api/instance/:id/check-update | ✓ 670 |
+| instanceCheckUpdate (499) | GET /api/instance/:id/check-update. 새 빌드가 있으면 목록 줄의 화살표, 서버 상세 이름 아래의 "새 버전 있음" 표시와 안내 줄(`빌드 A → B (설치 방식 익스텐션 이름, 올라온 날)` + 업데이트 버튼, 꺼진 서버만), 정보 탭의 새 버전 줄로 알린다. 설치된 버전은 서버 목록의 `server_build`(데몬이 적어 둔 빌드 번호·받은 날)를 "빌드 N (날짜)"로, 없으면 `server_version`을 보인다. 머리의 켜기 버튼은 업데이트가 있어도 그대로다 | ✓ 670 |
 | instanceApplyUpdate (509) | POST /api/instance/:id/apply-update | ✓ 671 |
 | instanceDelete (519) | DELETE /api/instance/:id(`{keepSettings}`이면 `?keep_settings=true`). 서버 목록의 `linked_folder`가 있는 서버(가져온 서버)는 폴더가 남는다고 알리고, `restorable_settings`면 "설정 되돌리고 빼기"·"지금 설정 두고 빼기"를 고르게 한다. CLI `server rm --keep-settings`와 같다 | ✓ 665 |
 | instanceReorder (555) | PUT /api/instances/reorder {order} | ✓ 663 |

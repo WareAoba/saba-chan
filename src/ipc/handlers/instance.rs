@@ -2479,7 +2479,29 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
     });
 
     let results = crate::plugin::with_instance(Some(state.host_context(id)), crate::extension::run_hook(&state.extension_manager, "server.check_update", ctx)).await;
-    Some(update_status_from_hooks(results))
+    let status = update_status_from_hooks(results);
+    record_build(state, id, &status).await;
+    Some(status)
+}
+
+/// 업데이트 확인이 알려 준 설치 빌드(`local_buildid`, 받은 때 `local_build_time`)를 인스턴스에 적어 둔다.
+/// 화면은 이 값을 보이고 게임 서버에 버전을 묻지 않는다. 확인이 설치 빌드를 읽지 못했으면 적어 둔 것을 그대로 둔다
+pub(crate) async fn record_build(state: &IPCServer, id: &str, status: &Value) {
+    let build_id = match status.get("local_buildid") {
+        Some(Value::String(b)) if !b.is_empty() => b.clone(),
+        Some(v @ Value::Number(_)) => v.to_string(),
+        _ => return,
+    };
+    let build = crate::instance::ServerBuild { id: build_id, time: status.get("local_build_time").and_then(Value::as_i64) };
+    let mut supervisor = state.supervisor.write().await;
+    let Some(mut instance) = supervisor.instance_store.get(id).cloned() else { return };
+    if instance.server_build.as_ref() == Some(&build) {
+        return;
+    }
+    instance.server_build = Some(build);
+    if let Err(e) = supervisor.instance_store.update(id, instance) {
+        tracing::warn!("Failed to record the installed build of '{}': {}", id, e);
+    }
 }
 
 /// `server.check_update` hook 결과를 확인 답으로: 첫 성공 결과, 모두 실패했으면 확인 실패(`check_failed`),
@@ -2807,6 +2829,9 @@ pub(crate) async fn begin_server_update_holding(
                     .unwrap_or(false);
                 if success {
                     tracing::info!("Server update completed for '{}'", name_done);
+                    // 받은 새 빌드를 적어 둔다 (확인은 오래 걸릴 수 있어 뒤에서)
+                    let (state, id) = (backup_state.clone(), backup_id.clone());
+                    tokio::spawn(async move { server_update_status(&state, &id).await });
                     // 켜짐·꺼짐 알림을 켠 길드의 알림 채널에 "업데이트 끝남" (릴레이)
                     crate::events::emit("instance.updated", json!({ "instanceId": backup_id, "instance": name_done }));
                     tracker_done.update(
@@ -4996,6 +5021,36 @@ mod tests {
         assert_eq!(reason(imported).await, json!("update_unsupported"), "not installed through the extension");
         assert_eq!(reason(steam).await, json!("no_hook_handled"), "no steamcmd extension in this test");
         assert_eq!(reason(gone).await, json!("no_extension_data"), "a module that did not load is not called un-updatable");
+    }
+
+    /// 설치 방식 익스텐션으로 받은 서버는 업데이트 확인이 알려 준 설치 빌드를 적어 두고 서버 목록에 싣는다 (다시 묻지 않고 보인다)
+    #[tokio::test]
+    async fn an_update_check_records_the_installed_build_for_the_server_list() {
+        use std::sync::Arc;
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let inst = crate::instance::ServerInstance::new("pal", "sc");
+        let (id, opened) = (inst.id.clone(), inst.settings_revision());
+        state.supervisor.write().await.instance_store.add(inst).unwrap();
+        let listed = || {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(crate::ipc::handlers::server::list_servers_internal(&state).await).await.body["servers"][0].clone() }
+        };
+        assert_eq!(listed().await.get("server_build"), None, "nothing is known before the first check");
+
+        super::record_build(&state, &id, &json!({"update_available": true, "local_buildid": "19283746", "local_build_time": 1762128000, "remote_buildid": "19402210"})).await;
+        assert_eq!(listed().await["server_build"], json!({"id": "19283746", "time": 1762128000}));
+        assert_eq!(listed().await["revision"], json!(opened), "a settings form opened before the check can still save");
+
+        // 설치 폴더를 읽지 못한 확인은 적어 둔 빌드를 지우지 않는다
+        super::record_build(&state, &id, &json!({"update_available": false, "reason": "check_failed", "local_buildid": null})).await;
+        assert_eq!(listed().await["server_build"]["id"], json!("19283746"));
+
+        // 업데이트한 뒤의 확인은 새 빌드로 바꾼다 (받은 때를 모르면 번호만)
+        super::record_build(&state, &id, &json!({"update_available": false, "local_buildid": 19402210})).await;
+        assert_eq!(listed().await["server_build"], json!({"id": "19402210"}));
     }
 
     /// 확인 hook이 실패하면(시간 초과·예외) "업데이트 없음"이 아니라 확인 실패로 답한다. 성공한 답이 있으면 그것을 쓴다

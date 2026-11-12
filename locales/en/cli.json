@@ -249,6 +249,7 @@
     "state": "State",
     "uptime": "Uptime",
     "version": "Version",
+    "build": "Build {{id}}",
     "what": "Description",
     "when": "When",
     "why": "Why",

@@ -249,6 +249,7 @@
     "state": "Estado",
     "uptime": "Tiempo activo",
     "version": "Versión",
+    "build": "Compilación {{id}}",
     "what": "Descripción",
     "when": "Cuándo",
     "why": "Motivo",

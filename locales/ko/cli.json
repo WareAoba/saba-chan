@@ -249,6 +249,7 @@
     "state": "상태",
     "uptime": "가동 시간",
     "version": "버전",
+    "build": "빌드 {{id}}",
     "what": "설명",
     "when": "언제",
     "why": "이유",

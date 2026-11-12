@@ -7,6 +7,8 @@ import {
     useMaintenanceOf,
 } from '../../hooks/useInstanceMaintenance';
 import type { useMultiConsole } from '../../hooks/useMultiConsole';
+import { useExtensions } from '../../contexts/ExtensionContext';
+import { extensionInstallMethod } from '../../utils/installMethod';
 import type { useServerSettings } from '../../hooks/useServerSettings';
 import { useConsoleStore } from '../../stores/useConsoleStore';
 import { type Server, useServerStore } from '../../stores/useServerStore';
@@ -21,6 +23,7 @@ import { withCommandAliases } from '../../utils/commandRisk';
 import {
     STATUS_TONE,
     isTransitional,
+    buildDate,
     consoleQuickCommands,
     defaultServerTab,
     gameNameOf,
@@ -103,6 +106,7 @@ export function ServerDetail({
     const { t, i18n } = useTranslation('gui');
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
     const { provisionProgress, cooked, updateInfo, updatingServer } = useMaintenanceOf(server.id);
+    const { extensions } = useExtensions();
     const modulesLoaded = useServerStore((s) => s.modulesLoaded);
     const status = viewStatus(server, moduleData, modulesLoaded);
     const moduleFailure = useServerStore((st) =>
@@ -188,22 +192,19 @@ export function ServerDetail({
     const conflicts = portConflictCheck ? server.port_conflicts || [] : [];
     const uptime = status === 'running' && server.start_time ? <Uptime startTime={server.start_time} /> : null;
     const players = playersText(server);
+    // 설치 방식 익스텐션으로 받은 서버는 데몬이 적어 둔 빌드 번호가 버전이다
+    const versionTag = server.server_build ? t('shell.build', { id: server.server_build.id }) : server.server_version;
+    // 새 빌드를 알려 준 곳(설치 방식 익스텐션 이름)과 올라온 날
+    const installMethod = extensionInstallMethod(server, moduleData);
+    const updateFrom = [
+        installMethod && extensions.find((e) => e.id === installMethod)?.name,
+        buildDate(updateInfo?.remote_build_time, i18n.language),
+    ]
+        .filter(Boolean)
+        .join(', ');
 
     const primaryButton = (() => {
         if (status === 'missing') return null;
-        if (updateInfo && status === 'stopped') {
-            return (
-                <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={updatingServer}
-                    onClick={() => applyInstanceUpdate(server, setServers)}
-                    data-tooltip={`${updateInfo.local_buildid} → ${updateInfo.remote_buildid}`}
-                >
-                    <Icon name="arrowUp" size="sm" /> {updatingServer ? t('shell.updating') : t('shell.update')}
-                </button>
-            );
-        }
         if (action === 'busy') {
             return (
                 <button type="button" className="btn btn-ghost btn-lg" disabled>
@@ -265,7 +266,8 @@ export function ServerDetail({
                     <ServerName server={server} canRename={!!onRename && status === 'stopped'} onRename={onRename} />
                     <div className="detail-sub">
                         <span>{gameName}</span>
-                        {server.server_version && <span className="tag">{server.server_version}</span>}
+                        {versionTag && <span className="tag">{versionTag}</span>}
+                        {updateInfo && <span className="tag tag-accent">{t('shell.update_tag')}</span>}
                         {server.port && (
                             <span className="muted">
                                 {t('shell.info_port')} {server.port}
@@ -330,6 +332,25 @@ export function ServerDetail({
                             <Icon name="refresh" size="sm" /> {t('shell.restart')}
                         </button>
                     )}
+                </div>
+            )}
+
+            {/* 새 빌드가 있다: 무엇에서 무엇으로 바뀌는지와 올라온 날을 보이고 여기서 업데이트한다 */}
+            {updateInfo && status === 'stopped' && (
+                <div className="notice tone-info idle-stopped-notice update-notice" role="status">
+                    <Icon name="info" size="sm" />
+                    <span>
+                        {t('shell.update_notice', { from: updateInfo.local_buildid, to: updateInfo.remote_buildid })}
+                        {updateFrom && ` (${updateFrom})`}
+                    </span>
+                    <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={updatingServer}
+                        onClick={() => applyInstanceUpdate(server, setServers)}
+                    >
+                        {updatingServer ? t('shell.updating') : t('shell.update')}
+                    </button>
                 </div>
             )}
 
@@ -636,11 +657,30 @@ function InfoTab({
     uptime: ReactNode;
     onDelete: (server: Server) => void;
 }) {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
+    const { updateInfo } = useMaintenanceOf(server.id);
     const workingDir = (server.module_settings?.working_dir || server.working_dir || null) as string | null;
+    // 빌드 번호와 받은(올라온) 날
+    const build = (id: unknown, time: unknown) => {
+        const date = buildDate(time, i18n.language);
+        return (
+            <>
+                {t('shell.build', { id })}
+                {date && <span className="muted"> ({date})</span>}
+            </>
+        );
+    };
     const rows = [
         [t('shell.info_module'), gameName],
-        server.server_version && [t('shell.info_version'), server.server_version],
+        server.server_build
+            ? [t('shell.info_version'), build(server.server_build.id, server.server_build.time)]
+            : server.server_version && [t('shell.info_version'), server.server_version],
+        updateInfo && [
+            t('shell.info_new_version'),
+            <span key="new" className="info-new-version">
+                {build(updateInfo.remote_buildid, updateInfo.remote_build_time)}
+            </span>,
+        ],
         uptime && [t('shell.info_uptime'), uptime],
         server.port && [t('shell.info_port'), server.port],
         server.id && [t('shell.info_id'), <code key="id">{server.id}</code>],

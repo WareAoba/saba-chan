@@ -71,6 +71,8 @@ export interface ServerInfo {
     protocol_mode: string;
     module_settings: Record<string, Json>;
     server_version: string | null;
+    /** 설치된 빌드: 설치 방식 익스텐션의 업데이트 확인이 알려 준 번호와 받은 때(유닉스 초). 데몬이 적어 둔 값 */
+    server_build?: { id: string; time?: number } | null;
     /** API(CLI/Discord)로 마지막 시작·정지를 요청한 때 (epoch ms) */
     last_api_action?: number;
     provisioning: boolean;

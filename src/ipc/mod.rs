@@ -218,6 +218,9 @@ pub struct ServerInfo {
     #[serde(default)]
     pub module_settings: std::collections::HashMap<String, serde_json::Value>,
     pub server_version: Option<String>,
+    /// 설치된 빌드 (`ServerInstance::server_build`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_build: Option<crate::instance::ServerBuild>,
     /// API(CLI/Discord)를 통해 마지막으로 시작/정지가 요청된 시점 (epoch ms)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_api_action: Option<u64>,

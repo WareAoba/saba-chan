@@ -173,6 +173,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     protocol_mode: instance.protocol_mode.clone(),
                     module_settings: instance.module_settings.clone(),
                     server_version: instance.server_version.clone(),
+                    server_build: instance.server_build.clone(),
                     last_api_action: None,
                     provisioning: false,
                     managed,

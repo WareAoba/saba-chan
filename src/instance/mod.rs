@@ -73,6 +73,9 @@ pub struct ServerInstance {
     pub module_settings: HashMap<String, serde_json::Value>,
     #[serde(default)]
     pub server_version: Option<String>,
+    /// 설치된 빌드. 설치 방식 익스텐션의 업데이트 확인(`server.check_update`)이 알려 준 것을 적어 두고 다시 묻지 않고 보인다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_build: Option<ServerBuild>,
     /// 범용 익스텐션 확장 데이터 — 각 익스텐션이 필요한 플래그/설정을 저장합니다.
     /// 예: { "<ext>_enabled": true, "<ext>_cpu_limit": 2.0, "<ext>_memory_limit": "4g" }
     #[serde(default)]
@@ -130,6 +133,14 @@ pub struct ServerInstance {
     pub auto_update: bool,
 }
 
+/// 설치된 빌드: 설치 방식 익스텐션이 쓰는 빌드 번호와 그 빌드를 받은 때(유닉스 초, 모르면 없음)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ServerBuild {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time: Option<i64>,
+}
+
 fn default_protocol_mode() -> String {
     "auto".to_string()
 }
@@ -149,6 +160,8 @@ impl ServerInstance {
         if let Some(map) = value.as_object_mut() {
             map.remove("schedule");
             map.remove("backup_keep");
+            // 사용자가 고친 것이 아니다: 업데이트 확인이 적는 동안 열려 있던 설정 화면의 저장을 막지 않는다
+            map.remove("server_build");
         }
         crate::config_store::patch::revision(&value)
     }
@@ -170,6 +183,7 @@ impl ServerInstance {
             protocol_mode: "auto".to_string(),
             module_settings: HashMap::new(),
             server_version: None,
+            server_build: None,
             extension_data: HashMap::new(),
             required_extensions: Vec::new(),
             schedule: Vec::new(),

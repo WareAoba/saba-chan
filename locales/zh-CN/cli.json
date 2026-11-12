@@ -249,6 +249,7 @@
     "state": "状态",
     "uptime": "运行时长",
     "version": "版本",
+    "build": "构建版本 {{id}}",
     "what": "说明",
     "when": "时间",
     "why": "原因",

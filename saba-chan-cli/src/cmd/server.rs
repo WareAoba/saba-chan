@@ -225,13 +225,8 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
                 rows.push((t!(label), show(p)));
             }
         }
-        if let Some(v) = sv
-            .raw
-            .get("server_version")
-            .and_then(Value::as_str)
-            .filter(|v| !v.is_empty())
-        {
-            rows.push((t!("col.version"), v.to_string()));
+        if let Some(v) = installed_version(&sv.raw) {
+            rows.push((t!("col.version"), v));
         }
         if let Some(dir) = sv.raw.get("working_dir").and_then(Value::as_str) {
             rows.push((t!("col.folder"), dir.to_string()));
@@ -2102,6 +2097,15 @@ async fn properties(ctx: &Ctx, query: Option<&str>, action: Option<PropsCmd>) ->
 
 // ── 버전·업데이트 ──
 
+/// 서버 정보의 버전 칸: 데몬이 적어 둔 설치 빌드(설치 방식 익스텐션으로 받은 서버), 없으면 서버 버전
+fn installed_version(raw: &Value) -> Option<String> {
+    let text = |v: Option<&Value>| v.and_then(Value::as_str).filter(|v| !v.is_empty()).map(str::to_string);
+    match text(raw.pointer("/server_build/id")) {
+        Some(id) => Some(t!("col.build", id = id)),
+        None => text(raw.get("server_version")),
+    }
+}
+
 async fn version(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
     let r = ctx.api.installed_version(&sv.id).await?;
@@ -2489,6 +2493,15 @@ async fn reorder(ctx: &Ctx, names: &[String]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    /// 설치 방식 익스텐션으로 받은 서버는 데몬이 적어 둔 빌드 번호를 버전으로 보인다
+    #[test]
+    fn server_info_shows_the_recorded_build_as_the_version() {
+        crate::i18n::init("ko");
+        assert_eq!(super::installed_version(&serde_json::json!({ "server_build": { "id": "19283746" } })).as_deref(), Some("빌드 19283746"));
+        assert_eq!(super::installed_version(&serde_json::json!({ "server_version": "1.21.10" })).as_deref(), Some("1.21.10"));
+        assert_eq!(super::installed_version(&serde_json::json!({ "server_version": null })), None);
+    }
+
     use super::*;
 
     /// 데몬이 정리한 명령 결과(`output`)의 이름: 값 목록은 이름 폭을 맞춰 한 줄씩 (한글 이름도)
