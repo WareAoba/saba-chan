@@ -1568,18 +1568,4 @@ impl UpdateManager {
             }
         }
     }
-
-    // ─────── 테스트 헬퍼 (pub) ────────────────────────────────────────────────────────────────────────
-
-    /// 테스트 전용: extract_to_directory를 외부에서 호출
-    #[doc(hidden)]
-    pub async fn extract_to_directory_for_test(&self, staged: &Path, target: &Path) {
-        self.extract_to_directory(staged, target).await.unwrap();
-    }
-
-    /// 테스트 전용: resolve_install_dir를 외부에서 호출
-    #[doc(hidden)]
-    pub fn resolve_install_dir_for_test(&self, component: &Component, manifest_dir: Option<&str>) -> PathBuf {
-        self.resolve_install_dir(component, manifest_dir)
-    }
 }

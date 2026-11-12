@@ -56,41 +56,20 @@ impl UpdateManager {
 
         let exe_dir = self.install_root.clone();
 
-        // Windows: 대상 프로세스가 실행 중이라면 종료를 대기
-        #[cfg(target_os = "windows")]
-        {
-            let process_names: Vec<&str> = match binary_name {
-                n if n.contains("daemon") || n.contains("core") => vec!["saba-core.exe"],
-                n if n.contains("cli") => vec!["saba-chan-cli.exe"],
-                n if n.contains("gui") => GUI_EXE_NAMES.to_vec(),
-                _ => vec![],
-            };
-            for proc in &process_names {
-                if ProcessChecker::is_running(proc) {
-                    tracing::info!("[Updater] Waiting for {} to exit before applying update...", proc);
-                    let exited = ProcessChecker::wait_for_exit(proc, 15).await;
-                    if !exited {
-                        tracing::warn!("[Updater] {} did not exit within timeout, attempting update anyway", proc);
-                    }
-                }
-            }
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            let process_names: Vec<&str> = match binary_name {
-                n if n.contains("daemon") || n.contains("core") => vec!["saba-core"],
-                n if n.contains("cli") => vec!["saba-chan-cli"],
-                n if n.contains("gui") => vec!["saba-chan-gui"],
-                _ => vec![],
-            };
-            for proc in &process_names {
-                if ProcessChecker::is_running(proc) {
-                    tracing::info!("[Updater] Waiting for {} to exit before applying update...", proc);
-                    let exited = ProcessChecker::wait_for_exit(proc, 15).await;
-                    if !exited {
-                        tracing::warn!("[Updater] {} did not exit within timeout, attempting update anyway", proc);
-                    }
+        // 대상 프로세스가 실행 중이라면 종료를 대기
+        let exe = |name: &str| format!("{name}{}", std::env::consts::EXE_SUFFIX);
+        let process_names: Vec<String> = match binary_name {
+            n if n.contains("daemon") || n.contains("core") => vec![exe("saba-core")],
+            n if n.contains("cli") => vec![exe("saba-chan-cli")],
+            n if n.contains("gui") => GUI_EXE_NAMES.iter().map(|n| n.to_string()).collect(),
+            _ => vec![],
+        };
+        for proc in &process_names {
+            if ProcessChecker::is_running(proc) {
+                tracing::info!("[Updater] Waiting for {} to exit before applying update...", proc);
+                let exited = ProcessChecker::wait_for_exit(proc, 15).await;
+                if !exited {
+                    tracing::warn!("[Updater] {} did not exit within timeout, attempting update anyway", proc);
                 }
             }
         }
@@ -168,7 +147,7 @@ impl UpdateManager {
     pub(crate) async fn apply_gui_update(&self, staged_path: &str) -> Result<Vec<PathBuf>> {
         let staged = Path::new(staged_path);
 
-        // 설치 폴더 바로 안에 GUI exe가 있으면 (portable exe, 또는 0.1.1의 Electron 폴더) 그 자리에 푼다
+        // 설치 폴더 바로 안에 GUI exe가 있어야 그 자리에 푼다
         if let Some(portable_exe) = find_gui_exe(&self.install_root) {
             tracing::info!("[Updater] GUI portable exe detected at {}", portable_exe.display());
             let mut files = Self::extract_or_restore(staged, &self.install_root, "GUI")?;
@@ -187,35 +166,8 @@ impl UpdateManager {
             return Ok(files);
         }
 
-        // Directory mode fallback (unpacked Electron / dev)
-        let gui_dir = self.find_gui_directory()?;
-        let extract_dir = {
-            let build_dir = gui_dir.join("build");
-            if build_dir.exists() {
-                build_dir
-            } else {
-                let res_build = gui_dir.join("resources").join("app").join("build");
-                if res_build.exists() {
-                    res_build
-                } else {
-                    if gui_dir.join("src").exists() && gui_dir.join("package.json").exists() {
-                        anyhow::bail!(
-                            "GUI directory appears to be a source tree ({}). Refusing to overwrite.",
-                            gui_dir.display()
-                        );
-                    }
-                    gui_dir.clone()
-                }
-            }
-        };
-        tracing::info!("[Updater] Applying GUI update to dir: {}", extract_dir.display());
-        if !staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            anyhow::bail!("Unsupported archive format: {}", staged.display());
-        }
-        let files = Self::extract_or_restore(staged, &extract_dir, "GUI")?;
-        std::fs::remove_file(staged).ok();
-        tracing::info!("[Updater] GUI updated successfully");
-        Ok(files)
+        // 설치 폴더에 GUI가 없다: 다른 폴더를 찾아 풀지 않는다
+        anyhow::bail!("No GUI executable in the install folder {}; the GUI update was not applied", self.install_root.display())
     }
 
     /// 새 GUI exe 이름이 예전과 다르면(0.1.1의 `Saba-chan.exe` → `saba-chan-gui.exe`) 예전 exe를
@@ -250,35 +202,6 @@ impl UpdateManager {
         retired
     }
 
-    // ─────── 유틸리티 ────────────────────────────────────────────────────────────────────────
-
-    pub(crate) fn find_gui_directory(&self) -> Result<PathBuf> {
-        // 1) 설치 폴더 바로 안 (배포 환경 기본)
-        if find_gui_exe(&self.install_root).is_some() {
-            tracing::info!("[Updater] GUI exe found at install_root");
-            return Ok(self.install_root.clone());
-        }
-
-        // 2) exe 기준 (exe가 install_root와 다른 위치일 때)
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                if find_gui_exe(dir).is_some() {
-                    return Ok(dir.to_path_buf());
-                }
-            }
-        }
-
-        // 3) CWD 기준 (개발 환경 — Electron/소스 구조)
-        for p in &["saba-chan-gui", "../saba-chan-gui"] {
-            let path = PathBuf::from(p);
-            if path.exists() {
-                return Ok(path);
-            }
-        }
-
-        anyhow::bail!("GUI directory not found (checked: install_root={}, exe_dir, cwd)", self.install_root.display())
-    }
-
     // ══════════════════════════════════════════════════════
     // 초기 설치 관련 메서드
     // ══════════════════════════════════════════════════════
@@ -295,13 +218,7 @@ impl UpdateManager {
                 self.install_root.join(exe_name).exists()
                     || PathBuf::from("saba-chan-cli").join("target").exists()
             }
-            Component::Gui => {
-                // Portable exe OR directory
-                if find_gui_exe(&self.install_root).is_some() {
-                    return true;
-                }
-                self.find_gui_directory().ok().map(|d| d.exists()).unwrap_or(false)
-            }
+            Component::Gui => find_gui_exe(&self.install_root).is_some(),
             Component::Module(name) => {
                 let module_dir = self.modules_dir.join(name);
                 module_dir.join("module.toml").exists()
@@ -320,32 +237,6 @@ impl UpdateManager {
                 // locales/ 디렉터리에 en/ 존재 확인
                 self.install_root.join("locales").join("en").exists()
             }
-        }
-    }
-
-    // ─────── 설치 위치 유틸리티 ────────────────────────────────────────────────────────────────────────
-
-    /// 컴포넌트의 설치 디렉터리를 결정
-    pub(crate) fn resolve_install_dir(&self, component: &Component, manifest_dir: Option<&str>) -> PathBuf {
-        // manifest의 install_dir가 지정되면 install_root 하위로 결합
-        if let Some(dir) = manifest_dir {
-            // Extension인 경우 디렉토리명의 하이픈을 언더스코어로 변환 (Python import 호환)
-            if matches!(component, Component::Extension(_)) {
-                let safe = dir.replace('-', "_");
-                return self.install_root.join(safe);
-            }
-            return self.install_root.join(dir);
-        }
-
-        // 기본 매핑
-        match component {
-            Component::CoreDaemon => self.install_root.clone(),
-            Component::Cli => self.install_root.clone(),
-            Component::Gui => self.install_root.clone(),
-            Component::Module(name) => self.modules_dir.join(name),
-            Component::Extension(name) => self.resolve_ext_dir(name),
-            Component::Updater | Component::Installer => self.install_root.clone(),
-            Component::Locales => self.install_root.join("locales"),
         }
     }
 
@@ -393,48 +284,11 @@ impl UpdateManager {
             .unwrap_or(first)
     }
 
-    /// zip/tar.gz(또는 단일 파일)을 대상 디렉터리에 압축 해제
-    pub(crate) async fn extract_to_directory(&self, staged: &Path, target_dir: &Path) -> Result<Vec<PathBuf>> {
-        std::fs::create_dir_all(target_dir)?;
-
-        if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            return extract_zip(staged, target_dir, |_| Ok(()));
-        } else if Self::is_tar_gz(staged) {
-            Self::extract_tar_gz(staged, target_dir)?;
-        } else {
-            // 단일 파일인 경우 target_dir 내부에 복사
-            let file_name = staged.file_name().unwrap_or_default();
-            let dest = target_dir.join(file_name);
-            std::fs::copy(staged, &dest)?;
-            return Ok(vec![dest]);
-        }
-
-        Ok(Vec::new())
-    }
-
     /// ファイル名が .tar.gz で終わるか判定
     pub(crate) fn is_tar_gz(path: &Path) -> bool {
         path.file_name()
             .map(|n| n.to_string_lossy().ends_with(".tar.gz"))
             .unwrap_or(false)
-    }
-
-    /// tar.gz アーカイブを展開
-    pub(crate) fn extract_tar_gz(archive_path: &Path, target_dir: &Path) -> Result<()> {
-        Self::extract_tar_gz_with(archive_path, target_dir, |out_path| {
-            // 기존 바이너리를 .old로 백업
-            if out_path.exists() {
-                if out_path.extension().map(|e| e == "exe").unwrap_or(false) {
-                    let backup = out_path.with_extension("exe.old");
-                    let _ = Self::rename_with_retry(out_path, &backup, 5);
-                } else if cfg!(unix) && Self::is_known_binary(out_path) {
-                    let backup = out_path.with_extension("old");
-                    let _ = std::fs::rename(out_path, &backup);
-                }
-            }
-            Ok(())
-        })
-        .map(|_| ())
     }
 
     /// tar.gz를 풀며 파일을 쓰기 직전에 `before_write`를 부른다 (`extract_zip`과 같은 꼴). 쓴 파일을 돌려준다

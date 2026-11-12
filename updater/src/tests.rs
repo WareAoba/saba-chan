@@ -842,6 +842,29 @@ fn a_held_old_backup_does_not_block_the_next_replace() {
     assert!(!exe.exists() && held.is_dir());
 }
 
+/// 설치 폴더에 GUI가 없으면 GUI 업데이트는 그렇다고 알리며 끝난다. 작업 폴더 옆의 `saba-chan-gui`(소스 트리)를 GUI로 보고 풀지 않는다
+#[tokio::test]
+async fn a_gui_update_without_a_gui_in_the_install_folder_fails_and_writes_nowhere_else() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let zip_path = tmp.path().join("gui.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file(crate::GUI_EXE_NAMES[0], zip::write::SimpleFileOptions::default()).unwrap();
+        zw.write_all(b"new gui").unwrap();
+        zw.finish().unwrap();
+    }
+
+    let err = manager.apply_gui_update(&zip_path.to_string_lossy()).await.unwrap_err().to_string();
+
+    assert!(err.contains(&manager.install_root.display().to_string()), "{err}");
+    assert!(!manager.is_component_installed(&Component::Gui));
+    assert!(zip_path.exists(), "the staged file is kept");
+}
+
 // 모르는 압축 형식을 받아 두었으면 아무것도 풀지 않고 성공으로 끝내지 않는다
 #[tokio::test]
 async fn an_unknown_archive_format_is_not_applied_as_success() {
@@ -1143,13 +1166,13 @@ fn extract_tar_gz_does_not_create_or_follow_links() {
         tw.append_data(&mut file, "sub/new.txt", &b"bad"[..]).unwrap();
         tw.into_inner().unwrap().finish().unwrap();
     }
-    let _ = UpdateManager::extract_tar_gz(&archive, &target);
+    let _ = crate::Replacing::default().extract(&archive, &target);
     assert!(!outside.join("new.txt").exists());
     assert!(!target.join("sub").is_symlink());
 
     std::fs::remove_dir_all(target.join("sub")).unwrap();
     std::os::unix::fs::symlink(&outside, target.join("sub")).unwrap();
-    assert!(UpdateManager::extract_tar_gz(&archive, &target).is_err());
+    assert!(crate::Replacing::default().extract(&archive, &target).is_err());
     assert!(!outside.join("new.txt").exists());
 }
 

@@ -1162,7 +1162,7 @@ fn enable_extensions(config: &ConfigFile, ids: &[String]) -> std::io::Result<()>
 }
 
 /// 익스텐션을 풀 폴더: 익스텐션 폴더 아래, manifest `install_dir`(`extensions/<이름>`)의 마지막 이름이나 id.
-/// Python이 `import extensions.<이름>`으로 부르므로 하이픈은 밑줄로 (업데이터 `resolve_install_dir`와 같은 규칙)
+/// Python이 `import extensions.<이름>`으로 부르므로 하이픈은 밑줄로 (업데이터 `resolve_ext_dir`와 같은 규칙)
 fn extension_target(extensions_dir: &Path, ext_id: &str, install_dir: Option<&str>) -> PathBuf {
     let name = install_dir
         .and_then(|d| Path::new(d).file_name())
