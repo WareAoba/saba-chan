@@ -686,7 +686,6 @@ fn collect_garbage(dir: &Path) {
         return;
     }
     // 목록이 아니라 폴더의 백업 이름을 모두 본다: 목록에서 빠진(열지 못한) 백업의 내용도 지우지 않게
-    let mut used = std::collections::HashSet::new();
     let names = match backup_names(dir) {
         Ok(names) => names,
         Err(e) => {
@@ -694,17 +693,77 @@ fn collect_garbage(dir: &Path) {
             return;
         }
     };
-    for name in names {
-        match read_v2(&dir.join(&name)) {
-            Ok(Some(m)) => used.extend(m.files.into_iter().map(|f| f.hash)),
-            Ok(None) => {}
-            Err(e) => {
-                tracing::warn!("Not clearing unused backup content: could not read {}: {}", name, e);
-                return;
+    // 폴더마다 하나씩 도므로(`dir_lock`) 기록을 꺼내 쓰고 되돌려 둔다: 다른 폴더의 정리를 기다리게 하지 않는다
+    let mut content = USED_CONTENT.lock().unwrap_or_else(|e| e.into_inner()).remove(dir).unwrap_or_default();
+    let used = content.used_by(dir, &names);
+    if let Some(used) = &used {
+        sweep_objects(&objects, &mut content, used);
+    }
+    USED_CONTENT.lock().unwrap_or_else(|e| e.into_inner()).insert(dir.to_path_buf(), content);
+}
+
+/// 백업 zip이 쓰는 내용 (백업 폴더마다). zip의 크기·수정 시각이 그대로면 매니페스트를 다시 읽지 않는다:
+/// 정리할 때마다 모든 백업의 매니페스트(파일 수만큼의 JSON)를 읽으면 파일이 많은 서버는 백업마다 그만큼 느려진다.
+/// 해시는 폴더마다 한 번만 두고 백업은 그 번호만 든다 (백업 수십 개가 같은 파일 십만 개를 가리켜도 수십 MB를 넘지 않게)
+#[derive(Default)]
+struct UsedContent {
+    ids: std::collections::HashMap<[u8; 32], u32>,
+    next: u32,
+    /// 백업 이름 → (zip 크기, 수정 시각, 쓰는 내용의 번호)
+    backups: std::collections::HashMap<String, (u64, std::time::SystemTime, Vec<u32>)>,
+}
+
+static USED_CONTENT: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, UsedContent>>> = std::sync::LazyLock::new(Default::default);
+
+fn hash_bytes(hash: &str) -> Option<[u8; 32]> {
+    let mut out = [0; 32];
+    (is_hash(hash) && hex::decode_to_slice(hash, &mut out).is_ok()).then_some(out)
+}
+
+impl UsedContent {
+    /// `names`의 백업이 쓰는 내용 번호마다 true. 백업 하나라도 읽지 못하면 `None`
+    fn used_by(&mut self, dir: &Path, names: &[String]) -> Option<Vec<bool>> {
+        self.backups.retain(|name, _| names.contains(name));
+        for name in names {
+            let path = dir.join(name);
+            // 읽기 전의 크기·시각을 적는다: 읽는 사이 바뀐 파일은 다음에 다시 읽게
+            let stamp = object_stamp(&path);
+            if stamp.is_some_and(|(len, modified)| self.backups.get(name).is_some_and(|(l, m, _)| (*l, *m) == (len, modified))) {
+                continue;
+            }
+            self.backups.remove(name);
+            let ids = match read_v2(&path) {
+                Ok(Some(m)) => m.files.iter().filter_map(|f| hash_bytes(&f.hash)).map(|hash| self.id(hash)).collect(),
+                Ok(None) => Vec::new(),
+                Err(e) => {
+                    tracing::warn!("Not clearing unused backup content: could not read {}: {}", name, e);
+                    return None;
+                }
+            };
+            if let Some((len, modified)) = stamp {
+                self.backups.insert(name.clone(), (len, modified, ids));
+            } else {
+                // 크기·시각을 모르면 다음에도 읽는다. 이번 정리에는 넣는다
+                self.backups.insert(name.clone(), (u64::MAX, std::time::UNIX_EPOCH, ids));
             }
         }
+        let mut used = vec![false; self.next as usize];
+        for id in self.backups.values().flat_map(|(_, _, ids)| ids) {
+            used[*id as usize] = true;
+        }
+        Some(used)
     }
-    for shard in fs::read_dir(&objects).into_iter().flatten().flatten() {
+
+    fn id(&mut self, hash: [u8; 32]) -> u32 {
+        *self.ids.entry(hash).or_insert_with(|| {
+            self.next += 1;
+            self.next - 1
+        })
+    }
+}
+
+fn sweep_objects(objects: &Path, content: &mut UsedContent, used: &[bool]) {
+    for shard in fs::read_dir(objects).into_iter().flatten().flatten() {
         let path = shard.path();
         let name = shard.file_name().to_string_lossy().into_owned();
         if name.starts_with(".tmp-") {
@@ -716,9 +775,13 @@ fn collect_garbage(dir: &Path) {
         }
         for object in fs::read_dir(&path).into_iter().flatten().flatten() {
             let hash = object.file_name().to_string_lossy().into_owned();
-            if !used.contains(&hash) {
+            let known = hash_bytes(&hash);
+            if !known.and_then(|h| content.ids.get(&h)).is_some_and(|id| used[*id as usize]) {
                 if let Err(e) = fs::remove_file(object.path()) {
                     tracing::warn!("Could not remove unused backup content {}: {}", object.path().display(), e);
+                }
+                if let Some(h) = known {
+                    content.ids.remove(&h);
                 }
             }
         }
@@ -1760,6 +1823,25 @@ mod tests {
         assert_eq!(objects(&dir).len(), 2, "an unreadable backup might use any content");
         delete(&dir, "20000101-000000-000-manual.zip").unwrap();
         assert!(objects(&dir).is_empty());
+    }
+
+    /// 정리는 읽어 둔 백업을 다시 읽지 않지만, 그 뒤 바뀐 zip(다른 PC에서 옮겨 덮어쓴 백업)이 쓰는 내용은 지우지 않는다
+    #[test]
+    fn clearing_unused_content_reads_a_backup_file_that_was_replaced_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let first = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        fs::write(w.join("level.dat"), b"level 2").unwrap();
+        let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        let extra = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        delete(&dir, &extra).unwrap();
+
+        fs::copy(dir.join(&second), dir.join(&first)).unwrap();
+        delete(&dir, &second).unwrap();
+        fs::write(w.join("level.dat"), b"broken").unwrap();
+        restore(&dir, &first).unwrap();
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level 2");
     }
 
     /// 망가진 내용이 있으면 복원이 실패하고 이미 풀어 넣은 경로도 되돌린다
