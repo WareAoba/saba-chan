@@ -103,7 +103,8 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const [daemons, setDaemons] = useState<ApiBody[]>([]);
     // 원격 데몬마다 닿는지 (`/api/remote/servers`의 ok·error_code). 아직 모르면 비어 있다
     const [reach, setReach] = useState<Record<string, string>>({});
-    const [busy, setBusy] = useState<string | null>(null); // 진행 중인 동작 이름
+    // 진행 중인 동작 이름들 (`connect:<hostId>`, `save` …). 한 PC에 붙는 동안에도 다른 PC·설정은 쓸 수 있다 (사용자 11-12)
+    const [pending, setPending] = useState<string[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
     const [removing, setRemoving] = useState<PcCard | null>(null);
@@ -155,7 +156,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     }, [loadSettings, loadClients, loadPeers, loadDaemons]);
 
     const run = async (name: string, fn: () => Promise<ApiBody>) => {
-        setBusy(name);
+        setPending((p) => [...p, name]);
         setError(null);
         setNotice(null);
         try {
@@ -166,7 +167,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
             setError((e as Error).message);
             return null;
         } finally {
-            setBusy(null);
+            setPending((p) => p.filter((n) => n !== name));
         }
     };
 
@@ -310,9 +311,12 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
 
     const status = settings?.status || {};
     const statusError = settings?.enabled && status.error ? remoteErrorText({ error_code: status.error }, t) : null;
+    // 그 카드에서 도는 동작이 있거나, 데몬을 바꿔 여는 중(창을 다시 읽는다)이면 잠근다
+    const hostOf = (name: string) => name.slice(name.indexOf(':') + 1);
+    const cardBusy = (key: string) => pending.some((n) => n.startsWith('open:') || (n.includes(':') && hostOf(n) === key));
     const button = (name: string, label: string, onClick: () => void, icon: string, kind = 'btn-ghost', disabled = false) => (
-        <button type="button" className={`btn ${kind} btn-sm`} onClick={onClick} disabled={busy !== null || disabled}>
-            {busy === name ? <SabaSpinner size="xs" /> : <Icon name={icon} size="sm" />} {label}
+        <button type="button" className={`btn ${kind} btn-sm`} onClick={onClick} disabled={cardBusy(hostOf(name)) || disabled}>
+            {pending.includes(name) ? <SabaSpinner size="xs" /> : <Icon name={icon} size="sm" />} {label}
         </button>
     );
     const star = (on: boolean, onClick: () => void) => (
@@ -331,7 +335,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         <StatusChip tone={tone} label={text} className="remote-pc-chip" />
     );
     const editButton = (key: string) => (
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(key)} disabled={busy !== null}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(key)} disabled={cardBusy(key)}>
             <Icon name="edit" size="sm" /> {t('pc_settings.edit')}
         </button>
     );
@@ -375,7 +379,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                 hasAddress={Boolean(daemon) && state === null && online}
                 main={daemon ? mainDaemon === card.hostId : undefined}
                 updateTo={needsUpdate ? thisVersion : undefined}
-                canUpdate={online && busy === null}
+                canUpdate={online && !cardBusy(card.hostId)}
                 canRemove
                 onMain={() => updateSettings({ mainDaemon: card.hostId })}
                 onUpdate={() => {
@@ -484,7 +488,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                             </span>
                             <span className="setting-description">{t('remote_daemon.enabled_description')}</span>
                             <span className="setting-description remote-daemon-status" role="status">
-                                {busy === 'save' && <SabaSpinner size="xs" />}
+                                {pending.includes('save') && <SabaSpinner size="xs" />}
                                 {!settings!.enabled && t('remote_daemon.status_off')}
                                 {settings!.enabled &&
                                     status.listening &&
@@ -498,7 +502,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                             id="remote-daemon-enabled"
                             aria-label={t('remote_daemon.enabled')}
                             checked={draft.enabled}
-                            disabled={busy !== null}
+                            disabled={pending.includes('save')}
                             onChange={(enabled) => save({ enabled, port: savedPort })}
                         />
                     </div>
@@ -636,7 +640,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     ]
                         .filter(Boolean)
                         .join(' · ')}
-                    busy={busy === `remove:${removing.hostId}`}
+                    busy={pending.includes(`remove:${removing.hostId}`)}
                     onCancel={() => setRemoving(null)}
                     onConfirm={(choice) => remove(removing, choice)}
                 />
