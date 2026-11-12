@@ -2,7 +2,8 @@
 //!
 //! 구성요소(진입 파일)마다 Python 하나를 `python <진입 파일> --worker`로 띄워 두고, 호출마다 요청 한 줄
 //! `{"function", "config"}`을 보내 답 JSON 한 줄을 받는다. 함수 이름·config·답은 단발 실행과 같다(SDK `run_lifecycle`).
-//! 띄우는 준비(환경·작업 폴더·격리)는 단발 실행의 `Launch`를 그대로 쓰고, 준비가 바뀌면(업데이트·설정·언어) 새로 띄운다.
+//! 띄우는 준비(환경·작업 폴더)는 단발 실행의 `Launch`를 그대로 쓰고, 준비가 바뀌면(업데이트·설정·언어) 새로 띄운다.
+//! 격리해서 돌리는 구성요소(확인되지 않은 것)는 작업자로 두지 않는다: 격리가 그 호출에 준 권한은 호출이 끝나면 거둬야 한다.
 //! 작업자가 뜨지 못하거나 답하기 전에 끝나면 그 호출은 단발로 돌린다. 다른 호출을 하는 중이면 기다리지 않고 단발로 돌린다
 
 use super::*;
@@ -30,7 +31,6 @@ struct Worker {
     done: tokio::sync::watch::Receiver<u64>,
     stderr_task: tokio::task::AbortHandle,
     unverified_extensions: Vec<String>,
-    loopback_dir: Option<std::path::PathBuf>,
     /// 작업자의 `SABA_HOST_DIR` (호출마다 만들지 않고 작업자와 함께 산다)
     host_dir: tempfile::TempDir,
 }
@@ -103,8 +103,6 @@ pub(super) enum Outcome {
 #[allow(clippy::large_enum_variant)]
 enum Start {
     Ready(Worker),
-    /// 격리할 수 없어 막혔다: 단발로 돌려도 같은 답이다
-    Blocked(Value),
     /// 이 준비로는 작업자가 되지 못한다 (SDK 진입점이 아님 등)
     Unusable(String),
     /// 뜨는 사이에 호출 기한이 지났다
@@ -114,6 +112,11 @@ enum Start {
 /// 호출 하나를 작업자로 부른다
 pub(super) async fn call(mut launch: Launch, request: Request<'_>, deadline: &CallDeadline, on_progress: Option<Progress>) -> Outcome {
     let entry = launch.entry.clone();
+    // 확인되지 않은 것이 된 구성요소(손으로 고친 것 등)의 작업자도 끝낸다
+    if launch.isolation.is_some() {
+        stop_workers(Some(std::path::Path::new(&entry)));
+        return Outcome::OneShot(on_progress, Some(launch));
+    }
     let fingerprint = launch.fingerprint(request.declaration);
     if lock(&UNUSABLE).get(&entry) == Some(&fingerprint) {
         return Outcome::OneShot(on_progress, Some(launch));
@@ -125,17 +128,10 @@ pub(super) async fn call(mut launch: Launch, request: Request<'_>, deadline: &Ca
         tracing::info!("Restarting the worker of {}: its files or settings changed", module_name(&entry));
         busy.held.take();
     }
-    // 격리 실행이 인스턴스 폴더의 데몬 항목 자리에 만든 것은 단발 실행처럼 호출마다 치운다
-    let isolation = launch.isolation.clone();
-    let _clear_entries = isolation.as_ref().map(crate::sandbox::Isolation::clear_daemon_entries_on_drop);
     let started = busy.held.is_none();
     if started {
         match start(&mut launch, fingerprint.clone(), request.function, deadline).await {
             Start::Ready(worker) => *busy.held = Some(worker),
-            Start::Blocked(reply) => {
-                busy.finished = true;
-                return Outcome::Done(Ok(reply));
-            }
             Start::Unusable(reason) => {
                 tracing::warn!("{} cannot run as a persistent worker ({}); calling it once per request", module_name(&entry), reason);
                 lock(&UNUSABLE).insert(entry, fingerprint);
@@ -155,10 +151,9 @@ pub(super) async fn call(mut launch: Launch, request: Request<'_>, deadline: &Ca
         dir: worker.host_dir.path().into(),
         context: HOST_CONTEXT.try_with(Clone::clone).ok().flatten(),
         server: request.server,
-        sandboxed: launch.sandboxed.clone(),
+        sandboxed: None,
     };
-    let loopback = worker.loopback_dir.clone().map(|dir| loopback::Proxy { dir, ports: loopback::instance_ports(request.config), server: request.server });
-    *lock(&worker.current) = Some(StderrSink::new(on_progress, loopback, Some(host), CALL_DEADLINE.try_with(Clone::clone).ok(), log.clone()));
+    *lock(&worker.current) = Some(StderrSink::new(on_progress, None, Some(host), CALL_DEADLINE.try_with(Clone::clone).ok(), log.clone()));
     let line = serde_json::json!({ "function": request.function, "config": request.config }).to_string() + "\n";
     let before = *worker.done.borrow();
     let exchange = async {
@@ -226,7 +221,7 @@ async fn start(launch: &mut Launch, fingerprint: String, function: &str, deadlin
     };
     let mut process = match launch.spawn(function, true, host_dir.path(), deadline).await {
         Ok(Ok(process)) => process,
-        Ok(Err(blocked)) => return Start::Blocked(blocked),
+        Ok(Err(blocked)) => return Start::Unusable(blocked.to_string()),
         Err(error) => return Start::Unusable(error.to_string()),
     };
     let pid = process.pid();
@@ -264,7 +259,6 @@ async fn start(launch: &mut Launch, fingerprint: String, function: &str, deadlin
         done,
         stderr_task,
         unverified_extensions: launch.unverified_extensions.clone(),
-        loopback_dir: launch.loopback_dir.clone(),
         host_dir,
     };
     let greeting = tokio::time::timeout(std::time::Duration::from_secs(START_SECS), read_line(&mut worker.replies));
@@ -295,7 +289,7 @@ async fn read_line(replies: &mut BufReader<Reader>) -> std::io::Result<String> {
 mod tests {
     use super::*;
 
-    /// 모듈 폴더 아래에 `[runtime] persistent = true`인 모듈을 만든다 (격리 없이 돌리기로 동의해 둔다)
+    /// 모듈 폴더 아래에 `[runtime] persistent = true`인 모듈을 만든다. 카탈로그에서 받은 그대로라고 적어 둔다 (`verify`)
     fn persistent_module(code: &str) -> (tempfile::TempDir, String) {
         let dir = tempfile::Builder::new().prefix("worker-").tempdir_in(resolve_modules_dir()).unwrap();
         let name = dir.path().file_name().unwrap().to_string_lossy().into_owned();
@@ -306,8 +300,26 @@ mod tests {
         .unwrap();
         let entry = dir.path().join("lifecycle.py");
         std::fs::write(&entry, code).unwrap();
-        crate::sandbox::consent_test_component(&entry);
+        verify(dir.path());
         (dir, entry.to_string_lossy().into_owned())
+    }
+
+    /// 설치·업데이트처럼 그 폴더를 카탈로그에서 받은 것으로 기록한다: 확인된 구성요소는 격리 없이 돈다
+    fn verify(dir: &std::path::Path) {
+        let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, dir.file_name().unwrap().to_string_lossy());
+        saba_chan_updater_lib::integrity::record_dir(&key, dir).unwrap();
+        saba_chan_updater_lib::integrity::set_official(&key, true).unwrap();
+    }
+
+    /// 진입 파일의 수정 시각을 뒤로 민다 (수정 시각 해상도가 거친 파일 시스템에서도 바뀐 것으로 보이게)
+    fn touch_later(entry: &str) {
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+        std::fs::File::options().write(true).open(entry).unwrap().set_modified(later).unwrap();
+    }
+
+    async fn gone(pid: &Value) -> bool {
+        let pid = pid.as_u64().unwrap() as u32;
+        crate::supervisor::process::wait_gone(std::time::Duration::from_secs(5), || crate::supervisor::process::is_process_alive(pid)).await
     }
 
     const SDK_MODULE: &str = "import os, sys\nfrom daemon_rcon import run_lifecycle\n\
@@ -352,13 +364,28 @@ mod tests {
         let before = call(&entry, "pid").await;
         assert_eq!(before["argv"], ARG, "{before}");
         std::fs::write(&entry, format!("{SDK_MODULE}# changed\n")).unwrap();
-        // 수정 시각 해상도가 거친 파일 시스템에서도 바뀐 것으로 보이게
-        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
-        std::fs::File::options().write(true).open(&entry).unwrap().set_modified(later).unwrap();
-        crate::sandbox::consent_test_component(std::path::Path::new(&entry));
+        touch_later(&entry);
+        verify(dir.path());
         let after = call(&entry, "pid").await;
         assert_eq!(after["argv"], ARG, "{after}");
         assert_ne!(after["pid"], before["pid"]);
+        stop_workers(Some(dir.path()));
+    }
+
+    /// 확인되지 않은 구성요소(여기서는 손으로 고친 것)는 격리해서 돌리므로 작업자로 두지 않는다: 단발로 돌고, 떠 있던 작업자는 끝난다
+    #[tokio::test]
+    async fn an_unverified_module_runs_one_shot_and_its_worker_stops() {
+        crate::python_env::get_python_path().await.expect("test Python ready");
+        let (dir, entry) = persistent_module(SDK_MODULE);
+        let before = call(&entry, "pid").await;
+        assert_eq!(before["argv"], ARG, "{before}");
+        std::fs::write(&entry, format!("{SDK_MODULE}# edited by hand\n")).unwrap();
+        touch_later(&entry);
+        // 이 컨테이너처럼 격리할 수 없는 곳에서도 돌도록 격리 없이 돌리기로 동의해 둔다
+        crate::sandbox::consent_test_component(std::path::Path::new(&entry));
+        let after = call(&entry, "pid").await;
+        assert_eq!(after["argv"], "pid", "{after}");
+        assert!(gone(&before["pid"]).await, "the worker of the unverified module stopped");
         stop_workers(Some(dir.path()));
     }
 }

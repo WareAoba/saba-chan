@@ -387,15 +387,15 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 좀보이드 모듈은 옛 외부 INI 배치에서 부모의 `Saves`·`db`를 유지하도록 `import_settings`에서 `data_home`을 돌려준다. 데몬의 시작 후 보충은 기존 인스턴스에도 이 값을 저장한다. 현재 선택한 INI 폴더는 이 계약으로 바꾸지 않는다.
 
-**오래 사는 작업자** (`[runtime] persistent = true`, `D:src/plugin/worker.rs`): 단발 실행이 기본이고, 선언한 구성요소만 진입 파일마다 작업자 하나를 쓴다.
+**오래 사는 작업자** (`[runtime] persistent = true`, `D:src/plugin/worker.rs`): 단발 실행이 기본이고, 선언한 구성요소 가운데 확인된 것(카탈로그에서 받은 그대로, `Trust::Verified`)만 진입 파일마다 작업자 하나를 쓴다. 격리해서 돌리는 구성요소(확인되지 않았거나 고친 것)는 선언해도 단발로 돈다: 격리가 그 호출에 준 권한(가져오기의 인스턴스 폴더 쓰기 등)은 호출이 끝나 프로세스 트리가 끝날 때 거둬진다. 떠 있던 작업자의 구성요소가 확인되지 않게 되면(파일을 고치면) 다음 호출이 그 작업자를 끝내고 단발로 돈다.
 
-- 띄우기: `<python> <진입 파일> --worker`. 명령·작업 폴더·환경·격리 계획은 단발 실행과 같은 준비(`Launch`)로 만든다. `SABA_HOST_DIR`은 호출마다 만들지 않고 작업자와 함께 산다. 작업자는 뜨면 stdout에 `{"saba_worker": 1}` 한 줄을 쓴다(20초 안).
-- 호출: 요청 `{"function": <이름>, "config": <단발 실행의 stdin과 같은 JSON>}` 한 줄을 stdin에 쓰면, 작업자는 stderr에 `WORKER:done` 한 줄을 쓴 뒤 stdout에 답 JSON 한 줄을 쓴다. 답은 단발 실행과 같은 규칙으로 읽는다(`module_bad_output`, 4 MiB 상한, `stderr_tail`, 익스텐션 확인 실패 안내). `PROGRESS:`·`HOST:`·`LOOPBACK:` 줄도 그 호출 동안 같은 방식으로 처리한다. 호출 사이에 쓴 stderr는 debug 로그로만 남는다. 격리 실행이면 인스턴스 폴더의 데몬 항목 자리 정리도 호출마다 한다.
+- 띄우기: `<python> <진입 파일> --worker`. 명령·작업 폴더·환경은 단발 실행과 같은 준비(`Launch`)로 만든다. `SABA_HOST_DIR`은 호출마다 만들지 않고 작업자와 함께 산다. 작업자는 뜨면 stdout에 `{"saba_worker": 1}` 한 줄을 쓴다(20초 안).
+- 호출: 요청 `{"function": <이름>, "config": <단발 실행의 stdin과 같은 JSON>}` 한 줄을 stdin에 쓰면, 작업자는 stderr에 `WORKER:done` 한 줄을 쓴 뒤 stdout에 답 JSON 한 줄을 쓴다. 답은 단발 실행과 같은 규칙으로 읽는다(`module_bad_output`, 4 MiB 상한, `stderr_tail`, 익스텐션 확인 실패 안내). `PROGRESS:`·`HOST:` 줄도 그 호출 동안 같은 방식으로 처리한다. 호출 사이에 쓴 stderr는 debug 로그로만 남는다.
 - SDK `run_lifecycle`이 `--worker`를 받으면 요청을 줄마다 처리한다(`_serve_worker`). 함수의 `print`와 자식 프로세스가 물려받은 stdout은 stderr로 가고, stdin은 빈 입력이다. 호출마다 작업 폴더를 구성요소 폴더로 되돌린다. 모듈 전역 상태는 호출 사이에 남는다.
 - 한 번에 한 호출만 한다. 작업자가 다른 호출을 하는 중이면 그 호출은 기다리지 않고 단발로 돈다.
 - 단발로 돌리는 경우: 작업자가 뜨지 못하거나 첫 줄이 인사가 아니면(SDK 진입점이 아님) 그 준비가 바뀔 때까지 단발로만 돌리고 경고를 한 번 남긴다. 답하기 전에 작업자가 끝나면 작업자를 끝내고 그 호출을 단발로 다시 돌린다(함수가 두 번 돌 수 있다).
 - 기한을 넘기면 작업자를 끝내고 단발 실행의 시간 초과와 같은 `module_timeout`(`phase: "run"`)으로 답한다(기한이 이미 지나 단발로 다시 돌리지 않는다). 답이 4 MiB를 넘으면 작업자를 끝내고 `module_output_too_large`다.
-- 다시 띄우기: 명령·환경(`SABA_LANG`, 켠 익스텐션 목록 등)·격리 계획·비격리 동의, 진입 파일과 module.toml·manifest.json의 수정 시각이 바뀌면 다음 호출이 새로 띄운다. 격리 실행의 계획은 config(인스턴스 폴더)에 따르므로 인스턴스가 바뀌면 새로 띄운다.
+- 다시 띄우기: 명령·환경(`SABA_LANG`, 켠 익스텐션 목록 등), 진입 파일과 module.toml·manifest.json의 수정 시각이 바뀌면 다음 호출이 새로 띄운다.
 - 끝내기(`plugin::stop_workers`): 구성요소 폴더를 바꿀 때(`utils::swap_dir`, 설치·업데이트), 모듈·익스텐션을 지울 때, 익스텐션을 끌 때, 모듈·익스텐션 폴더를 옮길 때, 데몬이 끝날 때(`daemon.shutdown` hook 뒤). 호출 중인 작업자는 그 호출이 끝나면 끝낸다. 끝낼 때는 프로세스 트리를 끝낸다(Unix 프로세스 그룹, Windows Job·AppContainer). 데몬이 갑자기 끝나도 작업자는 stdin이 닫혀 스스로 끝난다.
 
 ### 2.2 모듈 측 디스패치 관례

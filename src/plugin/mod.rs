@@ -1247,19 +1247,17 @@ impl Launch {
         Ok(Self { entry: module_path.to_string(), python_exe, cmd, isolation, enabled_extensions, unverified_extensions, loopback_dir, host_root, sandboxed })
     }
 
-    /// 같은 준비인지 가리는 값: 명령·작업 폴더·환경·격리 계획(격리 없이 돌리기로 한 동의 포함)과 진입 파일·선언 파일(`declaration`)의 수정 시각.
+    /// 같은 준비인지 가리는 값: 명령·작업 폴더·환경과 진입 파일·선언 파일(`declaration`)의 수정 시각.
     /// 작업자는 이것이 바뀌면(업데이트·설정·언어·익스텐션 목록) 새로 띄운다
     fn fingerprint(&self, declaration: &std::path::Path) -> String {
         let cmd = self.cmd.as_std();
         let modified = |path: &std::path::Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
         format!(
-            "{:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
+            "{:?} {:?} {:?} {:?} {:?} {:?}",
             cmd.get_program(),
             cmd.get_args().collect::<Vec<_>>(),
             cmd.get_current_dir(),
             cmd.get_envs().collect::<Vec<_>>(),
-            self.isolation,
-            self.sandboxed,
             modified(std::path::Path::new(&self.entry)),
             modified(declaration),
         )

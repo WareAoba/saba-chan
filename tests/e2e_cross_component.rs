@@ -1209,7 +1209,10 @@ async fn persistent_module_reuses_one_worker_and_falls_back_to_one_shot_when_it_
          if __name__ == '__main__':\n    run_lifecycle({'pid': pid})\n",
     )
     .unwrap();
-    saba_core::sandbox::set_consent(saba_core::sandbox::Consent::Unisolated, &format!("module-{name}"), true).unwrap();
+    // 작업자는 확인된 구성요소만: 카탈로그에서 받은 그대로라고 기록해 둔다
+    let key = format!("module-{name}");
+    saba_chan_updater_lib::integrity::record_dir(&key, dir.path()).unwrap();
+    saba_chan_updater_lib::integrity::set_official(&key, true).unwrap();
     let entry = entry.to_str().unwrap();
     let call = || async { saba_core::plugin::run_plugin(entry, "pid", json!({})).await.expect("pid call") };
 
