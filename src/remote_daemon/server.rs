@@ -529,13 +529,14 @@ impl hyper::body::Body for Counted {
     }
 }
 
-/// 연 요청이 하나도 없이 `HEADER_TIMEOUT`이 지나면 끝난다
+/// 연 요청이 하나도 없이 `HEADER_TIMEOUT`이 지나면 끝난다. 열린 수가 아니라 바뀐 일로 시간을 되돌린다:
+/// 이 태스크가 다시 돌기 전에 열렸다 끝난 요청은 수로는 0 그대로다
 async fn idle(mut streams: tokio::sync::watch::Receiver<usize>) {
     loop {
         if streams.wait_for(|n| *n == 0).await.is_err() {
             return;
         }
-        if tokio::time::timeout(HEADER_TIMEOUT, streams.wait_for(|n| *n > 0)).await.is_err() {
+        if !matches!(tokio::time::timeout(HEADER_TIMEOUT, streams.changed()).await, Ok(Ok(()))) {
             return;
         }
     }
@@ -1085,6 +1086,19 @@ pub(crate) mod tests {
         })
         .await;
         assert!(closed.is_ok(), "an idle HTTP/2 connection must be closed");
+    }
+
+    /// 쉬는 시간은 마지막 요청부터 잰다: 연결 태스크가 다시 돌기 전에 열렸다 끝난 짧은 요청도 시간을 되돌린다
+    #[tokio::test]
+    async fn a_short_request_restarts_the_idle_time() {
+        let (opened, streams) = tokio::sync::watch::channel(0usize);
+        let idle = tokio::spawn(idle(streams));
+        tokio::time::sleep(HEADER_TIMEOUT * 7 / 10).await;
+        drop(Open::new(&opened));
+        tokio::time::sleep(HEADER_TIMEOUT * 6 / 10).await;
+        assert!(!idle.is_finished(), "closed only {:?} after the last request", HEADER_TIMEOUT * 6 / 10);
+        tokio::time::sleep(HEADER_TIMEOUT * 7 / 10).await;
+        assert!(idle.is_finished());
     }
 
     /// 머리만 보내고 본문을 보내지 않는 요청도 자리를 오래 쥐지 못한다 (토큰 없는 짝 맺기와 거절될 요청 모두)
