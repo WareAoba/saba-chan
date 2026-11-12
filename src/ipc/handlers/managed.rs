@@ -122,7 +122,7 @@ async fn read_console(state: &IPCServer, id: &str, since: Option<u64>, count: Op
     Ok(result)
 }
 
-/// GET /api/instance/:id/console/stream?count=200&spans=1 — 콘솔 스트림 (SSE, `long_poll::stream`).
+/// GET /api/instance/:id/console/stream?since=&epoch=&disk=seen&count=200&spans=1 — 콘솔 스트림 (SSE, `long_poll::stream`).
 /// 한 건의 data는 콘솔 조회의 답과 같고, 프로세스를 다시 켜면 처음부터 다시 보내며 `reset: true`를 붙인다
 pub async fn console_stream_handler(
     Path(id): Path<String>,
@@ -135,7 +135,7 @@ pub async fn console_stream_handler(
     let updates = super::long_poll::stream(
         &crate::supervisor::managed_process::CONSOLE_CHANGED,
         stop,
-        super::long_poll::Cursor::default(),
+        super::long_poll::Cursor::from_query(&params),
         move |cur| {
             let (state, id) = (state.clone(), id.clone());
             async move { read_console(&state, &id, cur.since, count, spans, cur.disk_seen).await }

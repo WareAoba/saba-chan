@@ -75,6 +75,19 @@ describe('Tauri 브리지 설치', () => {
         // 리스너를 단 뒤에 app_ready
         expect(tauri.invoke).toHaveBeenLastCalledWith('app_ready', undefined);
     });
+
+    it('콘솔 팝아웃 창도 자기 창에 온 콘솔 스트림을 받는다 (초기화 이벤트는 받지 않는다)', async () => {
+        const tauri = fakeTauri({ daemon_stream_open: { status: 200 } });
+        const target: Loose = { __TAURI__: tauri, location: { search: '?console-popout=a' } };
+        await installTauriBridge(target);
+        expect(tauri.invoke).not.toHaveBeenCalledWith('app_ready', undefined);
+        const got: unknown[] = [];
+        const close = await target.api.daemonConsoleStream({}, (b: unknown) => got.push(b), () => {});
+        expect(typeof close).toBe('function');
+        const { id } = tauri.invoke.mock.calls.find((c: Loose[]) => c[0] === 'daemon_stream_open')![1];
+        tauri.emit('daemon:stream', { id, event: 'message', data: { lines: [] } });
+        expect(got).toEqual([{ lines: [] }]);
+    });
 });
 
 describe('데몬 응답 가공', () => {

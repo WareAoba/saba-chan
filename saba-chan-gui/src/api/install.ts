@@ -14,9 +14,14 @@ export async function installTauriBridge(target = typeof window !== 'undefined' 
     const hub = createEventHub();
     target.api = createApi({ invoke, hub }).api;
 
-    // 이벤트는 메인 창에만 온다(계약 §3). 콘솔 팝아웃·트레이 팝업 창은 초기화를 다시 부르지 않는다
+    // 이벤트는 메인 창에만 온다(계약 §3). 콘솔 팝아웃·트레이 팝업 창은 초기화를 다시 부르지 않는다.
+    // 콘솔 팝아웃은 자기가 연 콘솔 스트림(셸이 그 창에 보내는 daemon:stream)만 받는다
     const search = new URLSearchParams(target.location?.search || '');
-    if (search.has('console-popout') || search.has('tray-popup')) return true;
+    if (search.has('console-popout')) {
+        await hub.start(listen, ['daemon:stream']).catch((e) => console.error('[Bridge] Failed to subscribe streams:', e));
+        return true;
+    }
+    if (search.has('tray-popup')) return true;
 
     try {
         await hub.start(listen);

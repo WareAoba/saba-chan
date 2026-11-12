@@ -185,7 +185,7 @@ fn read_daemon_log(state: &IPCServer, since: Option<u64>, count: Option<usize>, 
     json!({ "lines": lines, "count": count, "epoch": buffer.epoch() })
 }
 
-/// GET /api/daemon/console/stream?count=200&spans=1 — 데몬 로그 스트림 (SSE, 인스턴스 콘솔 스트림과 같은 모양)
+/// GET /api/daemon/console/stream?since=&epoch=&count=200&spans=1 — 데몬 로그 스트림 (SSE, 인스턴스 콘솔 스트림과 같은 모양)
 pub async fn daemon_console_stream(
     State(state): State<IPCServer>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
@@ -193,7 +193,7 @@ pub async fn daemon_console_stream(
     let count = params.get("count").and_then(|c| c.parse::<usize>().ok());
     let spans = params.get("spans").is_some_and(|v| v == "1" || v == "true");
     let stop = state.shutdown_token.clone();
-    let updates = super::long_poll::stream(&crate::daemon_log::DAEMON_LOG_CHANGED, stop, super::long_poll::Cursor::default(), move |cur| {
+    let updates = super::long_poll::stream(&crate::daemon_log::DAEMON_LOG_CHANGED, stop, super::long_poll::Cursor::from_query(&params), move |cur| {
         let state = state.clone();
         async move { Ok(read_daemon_log(&state, cur.since, count, spans)) }
     });

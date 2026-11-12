@@ -146,6 +146,38 @@ describe('ActivityBar', () => {
         expect(screen.getAllByText('new 60')).toHaveLength(1);
     });
 
+    it('처음 받은 뒤로는 데몬 로그 스트림으로 새 줄을 받고, 데몬이 다시 켜져 처음부터 오면 받은 줄을 바꾼다', async () => {
+        window.api.auditList = vi.fn().mockResolvedValue({ entries: [] }) as never;
+        const line = (id: number, message: string) => ({ id, timestamp: Date.now(), level: 'info', target: 'x', message });
+        window.api.daemonConsole = vi.fn(async () => ({ epoch: 100, lines: [line(7, 'first')] })) as never;
+        let update: (body: unknown) => void = () => {};
+        const close = vi.fn();
+        const stream = vi.fn(async (_opts: object, onUpdate: (body: unknown) => void) => {
+            update = onUpdate;
+            return close;
+        });
+        window.api.daemonConsoleStream = stream as never;
+        const { unmount } = render(<ActivityBar />);
+        await flush();
+        fireEvent.click(screen.getByRole('button'));
+        await flush();
+        expect(stream).toHaveBeenCalledWith({ since: 8, epoch: 100 }, expect.any(Function), expect.any(Function));
+
+        act(() => update({ epoch: 100, lines: [line(8, 'second')] }));
+        expect(screen.getByText('second')).toBeInTheDocument();
+        act(() => update({ epoch: 200, reset: true, lines: [line(1, 'again')] }));
+        expect(screen.queryByText('first')).toBeNull();
+        expect(screen.getByText('again')).toBeInTheDocument();
+        // 스트림이 열려 있는 동안은 다시 묻지 않는다
+        await act(async () => {
+            vi.advanceTimersByTime(5000);
+        });
+        expect(window.api.daemonConsole).toHaveBeenCalledTimes(1);
+        unmount();
+        expect(close).toHaveBeenCalledTimes(1);
+        delete (window.api as Partial<typeof window.api>).daemonConsoleStream;
+    });
+
     it('ago는 초·분·시간 단위로 쓴다', () => {
         const now = 1_000_000_000;
         expect(ago(now / 1000 - 5, now, 'en')).toBe('5 seconds ago');
