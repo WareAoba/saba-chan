@@ -332,6 +332,9 @@ mod tests {
         def boom(config):\n    raise RuntimeError('worker boom')\n\
         if __name__ == '__main__':\n    run_lifecycle({'pid': pid, 'boom': boom})\n";
 
+    /// 작업자를 다시 쓰는지 보는 시험(읽기)과 모든 작업자를 끝내는 시험(쓰기)이 겹치지 않게
+    static REUSE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
+
     async fn call(entry: &str, function: &str) -> Value {
         run_plugin(entry, function, serde_json::json!({})).await.unwrap_or_else(|e| error_response(&e))
     }
@@ -339,6 +342,7 @@ mod tests {
     /// 함수 예외의 traceback(답 앞에 쓴 stderr)이 그 호출의 `stderr_tail`에 실리고, 작업자는 다음 호출에도 남는다
     #[tokio::test]
     async fn a_worker_keeps_serving_after_a_function_raises_and_reports_its_traceback() {
+        let _reuse = REUSE.read().await;
         crate::python_env::get_python_path().await.expect("test Python ready");
         let (dir, entry) = persistent_module(SDK_MODULE);
         let first = call(&entry, "pid").await;
@@ -354,6 +358,7 @@ mod tests {
     /// 함수가 줄바꿈 없이 끝낸 출력에 호출 끝 표시가 붙어도 그 호출의 답을 기다리지 않고 받는다
     #[tokio::test]
     async fn output_without_a_trailing_newline_does_not_hide_the_end_of_a_call() {
+        let _reuse = REUSE.read().await;
         crate::python_env::get_python_path().await.expect("test Python ready");
         let (dir, entry) = persistent_module(
             "import os\nfrom daemon_rcon import run_lifecycle\n\
@@ -387,6 +392,25 @@ mod tests {
         std::fs::write(&entry, format!("{SDK_MODULE}# changed\n")).unwrap();
         touch_later(&entry);
         verify(dir.path());
+        let after = call(&entry, "pid").await;
+        assert_eq!(after["argv"], ARG, "{after}");
+        assert_ne!(after["pid"], before["pid"]);
+        stop_workers(Some(dir.path()));
+    }
+
+    /// 익스텐션을 설치·업데이트하면 모든 작업자를 끝낸다: 모듈 작업자가 옛 판을 import해 두었을 수 있다
+    #[tokio::test]
+    async fn installing_an_extension_stops_every_worker() {
+        let _reuse = REUSE.write().await;
+        crate::python_env::get_python_path().await.expect("test Python ready");
+        let (dir, entry) = persistent_module(SDK_MODULE);
+        let before = call(&entry, "pid").await;
+        assert_eq!(before["argv"], ARG, "{before}");
+        let extension = tempfile::Builder::new().prefix("worker-ext-").tempdir_in(resolve_extensions_dir()).unwrap();
+        let staged = extension.path().with_file_name(format!(".staging-{}", extension.path().file_name().unwrap().to_string_lossy()));
+        std::fs::create_dir(&staged).unwrap();
+        crate::utils::swap_dir(&staged, extension.path()).unwrap();
+        assert!(gone(&before["pid"]).await, "the worker stopped");
         let after = call(&entry, "pid").await;
         assert_eq!(after["argv"], ARG, "{after}");
         assert_ne!(after["pid"], before["pid"]);
