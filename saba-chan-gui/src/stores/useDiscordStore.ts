@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 import { create } from 'zustand';
-import type { AgentStatus, Json, JsonObject, RelayLink } from '../types/daemon';
+import type { AgentStatus, HeartbeatReject, Json, JsonObject, RelayLink } from '../types/daemon';
 import { readPrefixes } from '../components/discord/prefixes';
 import type { DiscordNode, MembersByGuild } from '../components/discord/types';
 import { eventsAvailable, subscribeDaemonEvents } from '../utils/daemonEvents';
@@ -30,15 +30,18 @@ export const DM_NOTICE_KINDS = [
     'schedule',
     'update',
     'disk',
+    'offline',
     'chatbotUsage',
     'moderation',
 ] as const;
 export type DmNoticeKind = (typeof DM_NOTICE_KINDS)[number];
 export type DmNotice = Record<DmNoticeKind, boolean>;
-/** 데몬 값 → 종류별 켜짐. 빠지거나 모르는 칸은 데몬 기본(켜짐) */
+/** 데몬 값 → 종류별 켜짐. 빠지거나 모르는 칸은 데몬 기본(켜짐. PC 연결 끊김 `offline`만 켜야 보낸다) */
 export function readDmNotice(raw: unknown): DmNotice {
     const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-    return Object.fromEntries(DM_NOTICE_KINDS.map((k) => [k, src[k] !== false])) as DmNotice;
+    return Object.fromEntries(
+        DM_NOTICE_KINDS.map((k) => [k, k === 'offline' ? src[k] === true : src[k] !== false]),
+    ) as DmNotice;
 }
 const readBackupNotice = (raw: unknown): BackupNotice => (raw === 'failures' || raw === 'off' ? raw : 'all');
 
@@ -106,6 +109,8 @@ export interface DiscordData {
     discordAgentReplaced: boolean;
     discordAgentRelayUrlInvalid: boolean;
     discordAgentMinVersion: string | null;
+    /** 릴레이가 이 PC의 상태 보고를 거절한 이유. 받으면 null */
+    discordHeartbeatReject: HeartbeatReject | null;
     botStatusReady: boolean;
     relayConnected: boolean;
     relayConnecting: boolean;
@@ -170,6 +175,7 @@ const initialState = (): DiscordData => ({
     discordAgentRelayUrlInvalid: false,
     // 릴레이가 이 앱 버전을 받지 않을 때 요구하는 최소 버전. 받으면 null
     discordAgentMinVersion: null,
+    discordHeartbeatReject: null,
     botStatusReady: false,
     relayConnected: false,
     relayConnecting: false,
@@ -495,6 +501,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         // too_old는 { status, running, minVersion }으로 온다. 연결 상태를 주는 데몬은 다른 상태도 객체로 준다
         const kind = info ? info.status : agent;
         const tooOld = info?.status === 'too_old' ? info : null;
+        const heartbeatReject = info?.status === 'rejected' ? info.reason : null;
         const agentRunning = keepAgent ? prev.discordBotStatus !== 'stopped' : info ? info.running : agent === 'running';
         const agentMinVersion = keepAgent ? prev.discordAgentMinVersion : tooOld ? tooOld.minVersion || '-' : null;
         const agentReplaced = keepAgent ? prev.discordAgentReplaced : kind === 'replaced';
@@ -519,6 +526,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             discordAgentReplaced: agentReplaced,
             discordAgentRelayUrlInvalid: agentRelayUrlInvalid,
             discordAgentMinVersion: agentMinVersion,
+            discordHeartbeatReject: keepAgent ? prev.discordHeartbeatReject : heartbeatReject,
             discordBotStatus: nextStatus,
             discordReconnecting:
                 // 릴레이가 이 버전이나 이 PC의 열쇠를 거절하면 저절로 다시 붙을 일이 없다 — 복구 중이 아니라 거절로 보인다

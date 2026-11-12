@@ -134,7 +134,9 @@
     "placeholder": "명령 입력",
     "send": "보내기",
     "danger_title": "위험한 명령이에요",
-    "danger_message": "{{command}} 명령을 정말 보낼까요?"
+    "danger_message": "{{command}} 명령을 정말 보낼까요?",
+    "danger_again": "'{{command}}'은(는) 되돌리기 어려운 명령이에요. 한 번 더 누르면 보내요.",
+    "danger_again_described": "{{description}}. 한 번 더 누르면 보내요."
   },
   "settings": {
     "game": "게임 설정",
@@ -171,7 +173,8 @@
       "manual": "직접",
       "scheduled": "예약",
       "pre-update": "업데이트 전",
-      "pre-restore": "복원 직전"
+      "pre-restore": "복원 직전",
+      "imported": "가져옴"
     }
   },
   "agreements": {

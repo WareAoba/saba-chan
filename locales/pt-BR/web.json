@@ -134,7 +134,9 @@
     "placeholder": "Digite um comando",
     "send": "Enviar",
     "danger_title": "Este comando é perigoso",
-    "danger_message": "Deseja mesmo enviar {{command}}?"
+    "danger_message": "Deseja mesmo enviar {{command}}?",
+    "danger_again": "'{{command}}' é difícil de desfazer. Toque em enviar mais uma vez para executar.",
+    "danger_again_described": "{{description}}. Toque em enviar mais uma vez para executar."
   },
   "settings": {
     "game": "Configurações do jogo",
@@ -171,7 +173,8 @@
       "manual": "Manual",
       "scheduled": "Agendado",
       "pre-update": "Antes da atualização",
-      "pre-restore": "Antes da restauração"
+      "pre-restore": "Antes da restauração",
+      "imported": "Importado"
     }
   },
   "agreements": {

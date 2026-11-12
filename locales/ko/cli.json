@@ -181,6 +181,7 @@
       "schedule": "예약 작업 예고",
       "update": "사바쨩 업데이트",
       "disk": "디스크 공간 부족",
+      "offline": "PC 연결 끊김",
       "chatbotUsage": "말하는 사바쨩 사용량",
       "moderation": "AI 모더레이션 신고"
     },
@@ -223,7 +224,10 @@
     "sleep_blocks_none": "없음",
     "bedtime": "착한 어린이",
     "bedtime_format": "--bedtime 은 01:00-08:00 처럼 잠드는 시각-일어나는 시각으로 써 주세요.",
-    "big_emoji": "이모지 업스케일"
+    "big_emoji": "이모지 업스케일",
+    "member_notice": "멤버 들어옴·나감 알림",
+    "busy_notice": "과부하 공지",
+    "chat_auto_open": "서버를 켜면 채팅 연동도 켜기"
   },
   "col": {
     "players": "접속자",
@@ -245,6 +249,7 @@
     "state": "상태",
     "uptime": "가동 시간",
     "version": "버전",
+    "build": "빌드 {{id}}",
     "what": "설명",
     "when": "언제",
     "why": "이유",
@@ -454,6 +459,10 @@
       "backup_unsupported": "이 게임 모듈에는 무엇을 백업할지 적혀 있지 않아요. 새 모듈에는 있을 수 있어요: saba-chan-cli update check",
       "nothing_to_back_up": "아직 월드가 없어요. 서버를 한 번 시작하면 만들어져요.",
       "backup_busy": "이 서버의 백업이나 되돌리기가 이미 진행 중이에요. 끝난 뒤 다시 해 주세요.",
+      "import_not_backup": "사바쨩이 내보낸 백업 파일이 아니에요. `backup export`로 만든 zip을 주세요.",
+      "import_damaged": "백업 파일이 망가졌어요. 원래 PC에서 다시 내보내 주세요.",
+      "import_other_module": "다른 게임의 서버에서 만든 백업이라 이 서버로 가져올 수 없어요.",
+      "export_old_backup": "예전 버전이 만든 백업이라 내보낼 수 없어요.",
       "backup_file_locked": "서버가 쓰고 있는 파일({{file}})이 있어요. 서버를 정지한 뒤 다시 하세요: saba-chan-cli stop 이름",
       "autosave_not_resumed": "백업은 만들었지만 서버의 자동 저장을 다시 켜지 못했어요. 서버를 다시 시작해 주세요: saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "백업하지 못했고, 서버의 자동 저장도 다시 켜지 못했어요. 서버를 다시 시작해 주세요: saba-chan-cli restart <name>",
@@ -710,7 +719,7 @@
     "unknown_key": "{{key}}는 새 키예요.",
     "restart_required_mark": "바꾸면 다시 시작",
     "restart_required": "다시 시작해야 적용돼요: {{keys}}",
-    "hidden": "다른 설정에 따라 지금 쓰지 않아 숨긴 설정: {{keys}}"
+    "hidden": "지금 쓰지 않아 숨긴 설정: {{keys}}"
   },
   "shell": {
     "bad_quotes": "따옴표가 닫히지 않았어요.",
@@ -941,6 +950,8 @@
       "backup.create": "지금 백업하기",
       "backup.delete": "백업 하나 지우기 (이름이 없으면 목록에서 고르기)",
       "backup.restore": "백업으로 되돌리기 (실행 중이면 정지할지 물어봐요). 이름이 없으면 목록에서 고르기",
+      "backup.export": "백업 하나를 다른 PC로 옮길 수 있는 zip 하나로 내보내기 (이름이 없으면 목록에서 고르기)",
+      "backup.import": "`backup export`로 만든 zip을 검사해 이 서버의 백업 목록에 올리기 (그 뒤 복원)",
       "schedule": "서버 예약 작업 (시작, 정지, 재시작, 저장, 백업, 공지, 업데이트, 게임 명령)",
       "schedule.show": "예약 보기",
       "schedule.add": "작업 예약: start, stop, restart, save, backup, announce, update, command",
@@ -1003,6 +1014,7 @@
       "config.paths": "데이터·모듈·익스텐션 폴더 위치와 기본 폴더",
       "config.move": "모듈이나 익스텐션을 다른 폴더로 옮겨요. 설치된 파일도 옮기며, 서버를 모두 정지해야 해요",
       "server.players": "지금 접속한 사람",
+      "server.lists": "게임이 지키는 플레이어 목록 (들어올 수 있는 사람, 관리자, 밴)",
       "server.address": "친구가 접속할 주소(IP:포트)",
       "server.port-check": "친구가 밖에서 이 서버에 접속할 수 있는지 확인 (포트포워딩)",
       "server.rcon": "서버가 명령을 받는 길(콘솔, 없으면 RCON)로 한 줄 보내고 답 보기",
@@ -1036,6 +1048,9 @@
       "bot.clear": "채널의 최근 메시지를 지워요(고정 메시지·사바쨩 패널은 남아요). 먼저 물어봐요",
       "bot.mute": "멤버의 채팅·반응·음성을 막아요: 기간(10m, 1h, 7d, 28일까지), forever, 풀려면 off",
       "bot.big-emoji": "디스코드 서버의 이모지 업스케일(커스텀 이모지만 쓴 글을 크게 보이기). 옵션이 없으면 보기",
+      "bot.member-notice": "디스코드 서버의 멤버 들어옴·나감 알림(알림 채널). 옵션이 없으면 보기",
+      "bot.busy-notice": "디스코드 서버의 과부하 공지(PC가 버거우면 올리고 풀리면 지움). 옵션이 없으면 보기",
+      "bot.chat-auto-open": "디스코드 서버에서 켜진 서버에 사람이 있으면 채팅 연동을 자동으로 열기. 옵션이 없으면 보기",
       "config.net-trace": "포트·서버별 네트워크(고급, Windows) 권한: 동작 없이 쓰면 지금 상태, grant는 데몬 PC에 관리자 확인 창을 한 번 띄워 권한을 받고, revoke는 되돌려요. 켜기는 config set systemMonitorNetTrace=on",
       "mcp": "이 PC의 AI 에이전트(Claude Code·Codex)가 모든 명령을 쓰게 하는 로컬 MCP 서버(stdin/stdout)",
       "agent": "이 PC의 AI 에이전트에 로컬 MCP(`mcp`)를 등록해요",
@@ -1055,6 +1070,7 @@
       "perm.level.add.name": "새 단계 이름 (1~32자)",
       "perm.level.rename.name": "새 이름 (1~32자)",
       "backup.create.from_snapshot": "지금 월드 대신 게임이 만든 가장 최근 자동 백업을 보관 (팰월드 등)",
+      "backup.export.out": "zip을 쓸 자리 (데몬이 도는 PC의 경로)",
       "bot.channels.notify": "알림 채널(크래시·백업·업데이트·예약 재시작), 이름 또는 id",
       "bot.channels.no_notify": "알림 채널 해제",
       "bot.channels.game_chat": "게임 채팅 채널(채팅 전달을 켠 서버의 게임 채팅), 이름 또는 id",
@@ -1180,6 +1196,7 @@
       "install.modules": "설치할 게임 모듈, 쉼표로 구분 (없으면 물어봄)",
       "install.gui": "화면이 없어도 데스크톱 앱까지 설치",
       "install.no_gui": "화면이 있어도 데스크톱 앱 없이 설치",
+      "install.channel": "설치하고 이후 업데이트를 받을 채널: stable(정식), rc(미리보기), beta(베타). 없으면 설치기의 채널",
       "uninstall.remove_settings": "설정과 디스코드 연결도 지움",
       "uninstall.remove_instances": "게임 서버도 지움 (서버 파일, 월드, 백업)",
       "config.move.kind": "옮길 것: modules(모듈) 또는 extensions(익스텐션)",
@@ -1271,6 +1288,12 @@
       "bot.sleep-mode.no_block": "자는 동안에도 아무 기능도 끄지 않기",
       "bot.big-emoji.on": "이모지 업스케일 켜기",
       "bot.big-emoji.off": "이모지 업스케일 끄기",
+      "bot.member-notice.on": "멤버 알림 켜기",
+      "bot.member-notice.off": "멤버 알림 끄기",
+      "bot.busy-notice.on": "과부하 공지 켜기",
+      "bot.busy-notice.off": "과부하 공지 끄기",
+      "bot.chat-auto-open.on": "채팅 연동을 자동으로 열기",
+      "bot.chat-auto-open.off": "누가 열 때까지 채팅 연동을 닫아 두기",
       "config.net-trace.action": "grant(권한 받기) 또는 revoke(되돌리기). 없으면 지금 상태",
       "agent.link.claude": "Claude Code만",
       "agent.link.codex": "Codex만",
@@ -1318,7 +1341,8 @@
       "pre-update": "업데이트 전",
       "pre-restore": "복원 직전",
       "snapshot": "게임 자동 백업 보관",
-      "game-snapshot": "게임 자동 백업"
+      "game-snapshot": "게임 자동 백업",
+      "imported": "가져옴"
     },
     "none": "{{name}}에는 아직 백업이 없어요.",
     "creating": "{{name}} 백업하는 중...",
@@ -1330,6 +1354,8 @@
     "confirm_restore_running": "{{name}}이(가) 실행 중이에요. 정지하고 백업 {{backup}}으로 되돌릴까요? 지금 월드는 먼저 백업해 둬요.",
     "restoring": "{{backup}} 되돌리는 중...",
     "restored": "{{name}}을(를) {{backup}}으로 되돌렸어요.",
+    "exported": "백업을 내보냈어요: {{path}} ({{size}}). 이 파일 하나만 다른 PC로 옮기면 가져올 수 있어요.",
+    "imported": "백업 {{backup}}을(를) {{name}}의 목록에 올렸어요. 서버에 넣으려면 복원하세요.",
     "pre_restore": "되돌리기 전 월드는 백업 {{backup}}으로 남겨 뒀어요.",
     "links_not_restored": "복원은 끝났지만 폴더 안 링크 {{count}}개는 되살리지 못했어요(Windows 권한 등). 자세한 경로는 데몬 로그에 있어요.",
     "start_again": "{{name}}을(를) 다시 켤까요?",
@@ -1837,6 +1863,7 @@
   "install": {
     "fetching": "최신 릴리스를 확인하고 있어요…",
     "fetch_failed": "최신 릴리스를 받지 못했어요: {{reason}}",
+    "channel_older": "{{channel}} 채널의 최신 판({{offered}})이 이 설치기({{installer}})보다 옛 판이라 이 채널로는 설치할 수 없어요. 다른 채널을 골라 주세요.",
     "ask_dir": "설치 폴더",
     "unknown_module": "모르는 모듈이에요: {{name}}. 고를 수 있는 모듈: {{list}}",
     "ask_module": "{{name}} 모듈도 설치할까요?",
@@ -1859,6 +1886,7 @@
     "next_mac_app": "응용 프로그램 폴더에서 사바쨩을 열거나 다음 명령으로 여세요:\n{{command}}",
     "components_dir": "모듈·익스텐션은 {{dir}}에 둬요.",
     "components_dir_invalid": "{{dir}}은(는) 모듈·익스텐션 위치로 쓸 수 없어요: {{reason}}",
+    "channel": "{{channel}} 채널의 최신 판을 설치하고, 이후 업데이트도 이 채널로 받아요.",
     "invalid_dir": "{{dir}}에는 설치할 수 없어요. 드라이브 루트, 홈 폴더, 설정 폴더가 아닌 폴더를 고르세요"
   },
   "uninstall": {
@@ -1884,6 +1912,12 @@
   "players": {
     "title": "{{server}} 접속자 {{count}}명",
     "none": "지금 접속한 사람이 없어요."
+  },
+  "lists": {
+    "title": "{{list}} {{count}}명",
+    "none": "아직 아무도 없어요.",
+    "unsupported": "이 서버의 게임은 플레이어 목록을 알려 주지 않아요.",
+    "edit": "넣기: {{add}} <이름>   빼기: {{remove}} <이름>"
   },
   "log": {
     "none": "저장된 로그가 아직 없어요. 서버를 한 번 시작하면 생겨요.",

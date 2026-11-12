@@ -134,7 +134,9 @@
     "placeholder": "コマンドを入力",
     "send": "送信",
     "danger_title": "危険なコマンドです",
-    "danger_message": "{{command}} を本当に送信しますか？"
+    "danger_message": "{{command}} を本当に送信しますか？",
+    "danger_again": "「{{command}}」は元に戻しにくいコマンドです。もう一度押すと送信します。",
+    "danger_again_described": "{{description}}。もう一度押すと送信します。"
   },
   "settings": {
     "game": "ゲーム設定",
@@ -171,7 +173,8 @@
       "manual": "手動",
       "scheduled": "定期",
       "pre-update": "更新前",
-      "pre-restore": "復元前"
+      "pre-restore": "復元前",
+      "imported": "インポート"
     }
   },
   "agreements": {

@@ -1193,6 +1193,112 @@ textarea {
 .line-error {
     color: var(--stop);
 }
+/* 줄 앞 시각과 데몬이 나눈 조각의 색 (앱 콘솔과 같은 토큰, tokens.css --tok-*) */
+.console-time {
+    margin-right: 8px;
+    color: var(--text-3);
+    user-select: none;
+}
+.tok-error {
+    color: var(--tok-error);
+    font-weight: 600;
+}
+.tok-warn {
+    color: var(--tok-warn);
+}
+.tok-info {
+    color: var(--tok-info);
+}
+.tok-debug {
+    color: var(--tok-debug);
+}
+.tok-success {
+    color: var(--tok-success);
+    font-weight: 600;
+}
+.tok-string {
+    color: var(--tok-string);
+}
+.tok-number {
+    color: var(--tok-number);
+}
+.tok-keyword {
+    color: var(--tok-keyword);
+}
+.tok-timestamp {
+    color: var(--tok-timestamp);
+}
+.tok-player {
+    color: var(--tok-player);
+    font-weight: 600;
+}
+.tok-command {
+    color: var(--tok-command);
+}
+.tok-selector {
+    color: var(--tok-selector);
+}
+.tok-ip {
+    color: var(--tok-ip);
+}
+.tok-uuid {
+    color: var(--tok-uuid);
+}
+.tok-path {
+    color: var(--tok-path);
+    font-style: italic;
+}
+.tok-dim {
+    color: var(--tok-dim);
+}
+/* 수준 칩과 빠른 명령 칩 */
+.console-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+}
+.console-chip {
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--bg-0);
+    color: var(--text-2);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.console-chip.on {
+    background: var(--bg-3);
+    color: var(--text-1);
+    font-weight: 700;
+}
+.console-chip.level-warn {
+    color: var(--warn);
+}
+.console-chip.level-error,
+.console-chip.risk-danger {
+    color: var(--stop);
+}
+.console-chip.level-warn.on {
+    border-color: var(--warn);
+    background: var(--warn-soft);
+}
+.console-chip.level-error.on {
+    border-color: var(--stop);
+    background: var(--stop-soft);
+}
+.console-chip.risk-danger {
+    border-color: color-mix(in srgb, var(--stop) 45%, transparent);
+}
+.console-confirm {
+    margin: 0;
+}
 /* 보낸 명령 (#18) */
 .line-input .echo {
     color: var(--accent);

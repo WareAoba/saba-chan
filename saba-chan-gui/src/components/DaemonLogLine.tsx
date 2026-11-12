@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { consoleStamper } from '../utils/consoleStamp';
+import { consoleStamper } from '../utils/consoleLine';
 import { HighlightedContent } from './ConsoleView';
 import './DaemonLogLine.css';
 

@@ -5,10 +5,10 @@ import type { Server } from '../../stores/useServerStore';
 import { type ConsoleEntry, type ConsoleLine as ConsoleLineData, useConsoleStore } from '../../stores/useConsoleStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { type CommandField, needsConfirm } from '../../utils/commandRisk';
+import { type ConsoleLevel as Level, consoleStamper, levelOf, type Stamp } from '../../utils/consoleLine';
 import { commandText } from '../../utils/serverView';
 import type { HighlightRule } from '../../types/daemon';
 import { sourceText } from '../../utils/audit';
-import { consoleStamper, type Stamp } from '../../utils/consoleStamp';
 import { type CompiledRule, getCachedRules } from '../../utils/syntaxHighlight';
 import { HighlightedContent } from '../ConsoleView';
 import { Icon } from '../Icon';
@@ -22,6 +22,9 @@ const historyOf = (id: string) => {
     return histories.get(id) as string[];
 };
 
+// 서버별 수준 필터 (탭을 오가도 남는다. 앱을 다시 켜면 전체로)
+const levelFilters = new Map<string, Level[]>();
+const lineKey = (line: ConsoleLineData | undefined) => line?.key ?? line?.id;
 
 interface ConsoleLineProps {
     line: ConsoleLineData;
@@ -43,6 +46,7 @@ const ConsoleLine = memo(function ConsoleLine({ line, syntaxEnabled, compiledRul
                 `console-${line.source?.toLowerCase() || 'stdout'}`,
                 `console-level-${line.level?.toLowerCase() || 'info'}`,
             )}
+            data-find=""
         >
             {stamp && line.timestamp != null && <span className="console-time">{stamp(line.timestamp)}</span>}
             {input ? (
@@ -143,6 +147,10 @@ export function ServerConsole({
     const draftRef = useRef('');
     const [focused, setFocused] = useState(false);
     const [confirmText, setConfirmText] = useState<string | null>(null); // 위험 명령 확인 대기
+    const [levels, setLevels] = useState<Level[]>(() => levelFilters.get(server.id) ?? []);
+    // 위로 올려 읽는 중 ("맨 아래로" 단추). seenRef: 맨 아래에 있던 마지막 순간의 끝 줄
+    const [away, setAway] = useState(false);
+    const seenRef = useRef<string | number | undefined>(undefined);
 
     // 탭이 보이면 로그 폴링 시작 (이미 열려 있으면 그대로)
     useEffect(() => {
@@ -158,6 +166,32 @@ export function ServerConsole({
     );
 
     const lines = state?.lines || [];
+    const levelCounts = useMemo(() => {
+        const counts = { warn: 0, error: 0 };
+        for (const line of lines) {
+            const level = levelOf(line);
+            if (level) counts[level]++;
+        }
+        return counts;
+    }, [lines]);
+    const shown = useMemo(
+        () => (levels.length ? lines.filter((line) => levels.includes(levelOf(line) as Level)) : lines),
+        [lines, levels],
+    );
+    const pickLevels = (next: Level[]) => {
+        levelFilters.set(server.id, next);
+        setLevels(next);
+    };
+    /** 맨 아래를 보고 있는지 다시 잰다 */
+    const measure = () => {
+        const el = outputRef.current;
+        if (!el) return;
+        stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+        if (stickRef.current || seenRef.current === undefined) seenRef.current = lineKey(lines[lines.length - 1]);
+        setAway(!stickRef.current);
+    };
+    const seenAt = away ? lines.findIndex((line) => lineKey(line) === seenRef.current) : lines.length - 1;
+    const newLines = lines.length - 1 - seenAt;
 
     const openMenu = useContextMenu();
     const outputMenu = (e: MouseEvent) => {
@@ -205,11 +239,12 @@ export function ServerConsole({
     }, [autoFocus]);
 
     // 맨 아래를 보고 있을 때만 새 줄을 따라 내려간다
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 줄 수가 바뀔 때만 스크롤
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 보이는 줄이 바뀔 때만 스크롤
     useLayoutEffect(() => {
         const el = outputRef.current;
         if (el && stickRef.current && consoleAutoScroll) el.scrollTop = el.scrollHeight;
-    }, [lines.length]);
+        measure();
+    }, [shown]);
 
     // PIP로 띄운 동안: 지난 줄을 흐리게 깔고 그 위에 안내 창을 띄운다
     if (poppedOut) {
@@ -259,28 +294,62 @@ export function ServerConsole({
                     {t('shell.console_offline_history')}
                 </div>
             )}
-            <div
-                className={clsx('term-output', { 'no-wrap': !consoleWrap })}
-                ref={outputRef}
-                onScroll={(e) => {
-                    const el = e.currentTarget;
-                    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-                }}
-                onContextMenu={outputMenu}
-                role="log"
-                aria-live="polite"
-            >
-                {lines.length === 0 && (
-                    <div className="term-empty">
-                        {server.status === 'running' ? t('console.waiting') : t('shell.console_offline')}
-                    </div>
+            <div className="term-levels" role="group" aria-label={t('console.level_filter')}>
+                <button
+                    type="button"
+                    className={clsx('term-chip', { on: !levels.length })}
+                    aria-pressed={!levels.length}
+                    onClick={() => pickLevels([])}
+                >
+                    {t('console.level_all')}
+                </button>
+                {(['warn', 'error'] as const).map((level) => (
+                    <button
+                        key={level}
+                        type="button"
+                        className={clsx('term-chip', `level-${level}`, { on: levels.includes(level) })}
+                        aria-pressed={levels.includes(level)}
+                        onClick={() => pickLevels(levels.includes(level) ? levels.filter((l) => l !== level) : [...levels, level])}
+                    >
+                        {t(`console.level_${level}`)} {levelCounts[level]}
+                    </button>
+                ))}
+            </div>
+            <div className="term-view">
+                <div
+                    className={clsx('term-output', { 'no-wrap': !consoleWrap })}
+                    ref={outputRef}
+                    onScroll={measure}
+                    onContextMenu={outputMenu}
+                    role="log"
+                    aria-live="polite"
+                    data-find-scroll=""
+                >
+                    {lines.length === 0 && (
+                        <div className="term-empty">
+                            {server.status === 'running' ? t('console.waiting') : t('shell.console_offline')}
+                        </div>
+                    )}
+                    <ConsoleLines lines={shown} syntaxEnabled={syntaxEnabled} compiledRules={compiledRules} stamp={stamp} />
+                    {shown.length < lines.length && (
+                        <div className="term-hidden">{t('console.lines_hidden', { count: lines.length - shown.length })}</div>
+                    )}
+                </div>
+                {away && (
+                    <button
+                        type="button"
+                        className="term-jump"
+                        onClick={() => {
+                            const el = outputRef.current as HTMLDivElement;
+                            el.scrollTop = el.scrollHeight;
+                            measure();
+                        }}
+                    >
+                        <Icon name="chevronDown" size="sm" />
+                        {t('console.jump_bottom')}{' '}
+                        {newLines > 0 && <b>{t('console.new_lines', { count: newLines })}</b>}
+                    </button>
                 )}
-                <ConsoleLines
-                    lines={lines}
-                    syntaxEnabled={syntaxEnabled}
-                    compiledRules={compiledRules}
-                    stamp={stamp}
-                />
             </div>
             {!stdinDisabled && quickCommands.length > 0 && (
                 <div className="term-quick" role="group" aria-label={t('shell.console_quick')}>

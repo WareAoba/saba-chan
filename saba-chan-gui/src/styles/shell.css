@@ -407,6 +407,75 @@
     box-shadow: var(--shadow-float);
     opacity: 0.95;
 }
+/* 브랜치 서버: 상위 서버 줄 왼쪽의 접기 단추, 그 아래에 가지 선으로 붙는 브랜치 줄.
+   브랜치가 있는 목록에서는 다른 줄도 단추 자리만큼 들여 아이콘 줄을 맞춘다 */
+.icon-btn.server-row-fold {
+    --btn-height: 20px;
+    flex: none;
+    width: 20px;
+    min-width: 0;
+    margin-right: calc(var(--sp-1-5) * -1);
+    color: var(--text-3);
+}
+.server-list.has-branches > .server-row:not(:has(.server-row-fold)) {
+    padding-left: calc(var(--sp-3) + var(--sp-5) + var(--sp-1-5));
+}
+.server-list.has-branches > .server-row.branch {
+    margin-left: calc(var(--sp-8) + var(--sp-0-5));
+    padding-left: var(--sp-3);
+}
+/* 가지 선: 윗줄 가운데(첫 브랜치는 상위 서버 줄 바로 아래)에서 내려와 이 줄 가운데로 꺾인다 */
+.server-row.branch::after {
+    content: '';
+    position: absolute;
+    left: calc(var(--sp-3) * -1 - 1px);
+    width: var(--sp-2-5);
+    top: calc(-50% - var(--sp-1-5));
+    height: calc(100% + var(--sp-1-5));
+    border-left: 1px solid var(--line-strong, var(--line));
+    border-bottom: 1px solid var(--line-strong, var(--line));
+    border-bottom-left-radius: var(--r-xs);
+    pointer-events: none;
+}
+.server-row:not(.branch) + .server-row.branch::after {
+    top: calc(var(--sp-1-5) * -1);
+    height: calc(50% + var(--sp-1-5));
+}
+.server-row.branch.dragging::after {
+    display: none;
+}
+.server-row-name:has(.server-row-branches) {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.server-row-name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tag.server-row-branches {
+    flex: none;
+    gap: var(--sp-1);
+    font-weight: 400;
+}
+/* 브랜치 서버 만들기 창 */
+.branch-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+.branch-form > * {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    font-size: var(--fs-sm);
+}
+.branch-port {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
 .server-row-icon {
     position: relative;
     width: 40px;
@@ -700,6 +769,44 @@
     padding: var(--sp-6) 0;
     text-align: center;
 }
+/* 수준 칩(전체·경고·오류): 콘솔 위에 늘 둔다. 모양은 "자주 쓰는 명령" 칩과 같다 */
+.term-levels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1-5);
+    padding: var(--sp-3) var(--sp-3) 0;
+}
+/* 출력과 그 위에 뜨는 "맨 아래로" 단추 */
+.term-view {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+.term-hidden {
+    padding-top: var(--sp-2);
+    color: color-mix(in oklch, var(--console-custom-text) 50%, transparent);
+}
+.term-jump {
+    position: absolute;
+    right: var(--sp-4);
+    bottom: var(--sp-2);
+    --btn-height: 30px;
+    --btn-padding: 0 12px;
+    --btn-font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklch, var(--console-custom-text) 22%, transparent);
+    background: color-mix(in oklch, var(--console-custom-bg) 86%, var(--console-custom-text));
+    color: var(--console-custom-text);
+    box-shadow: none;
+}
+.term-jump b {
+    color: var(--accent);
+}
 /* 입력줄: 콘솔 안에 떠 있는 둥근 칸. 콘솔은 테마와 상관없이 어두우므로 색은 콘솔 색에서만 파생한다 */
 .term-quick {
     display: flex;
@@ -721,6 +828,27 @@
 .term-chip:hover {
     background: color-mix(in oklch, var(--console-custom-text) 12%, transparent);
     color: var(--console-custom-text);
+}
+/* 켜짐·수준 색은 올려도 남는다 (hover 뒤에 둔다) */
+.term-chip.on {
+    background: color-mix(in oklch, var(--console-custom-text) 16%, transparent);
+    border-color: color-mix(in oklch, var(--console-custom-text) 35%, transparent);
+    color: var(--console-custom-text);
+    font-weight: 700;
+}
+.term-chip.level-warn {
+    color: var(--tok-warn);
+}
+.term-chip.level-error {
+    color: var(--tok-error);
+}
+.term-chip.level-warn.on {
+    background: color-mix(in oklch, var(--tok-warn) 16%, transparent);
+    border-color: color-mix(in oklch, var(--tok-warn) 50%, transparent);
+}
+.term-chip.level-error.on {
+    background: color-mix(in oklch, var(--tok-error) 16%, transparent);
+    border-color: color-mix(in oklch, var(--tok-error) 50%, transparent);
 }
 .term-input {
     display: flex;
@@ -873,6 +1001,13 @@
 /* 탭 줄 오른쪽 끝 */
 .detail-pip-btn {
     margin-left: auto;
+}
+/* 콘솔 탭: 찾기 단추와 PIP 단추가 함께 오른쪽 끝에 모인다 */
+.detail-tabrow > .page-find-btn {
+    margin-left: auto;
+}
+.page-find-btn + .detail-pip-btn {
+    margin-left: 0;
 }
 
 /* 줄 앞 시각 (설정에서 켤 때만). 줄 색과 상관없이 흐리게 */
@@ -1688,6 +1823,27 @@ button.activity-line:hover {
 .controllers-empty {
     margin: 0 0 var(--sp-3);
 }
+/* 플레이어 탭: 목록을 쓸지 정하는 스위치, 넣기 줄의 덧붙임 칸(이유), 접속 중 점 */
+.players-card > .segmented {
+    align-self: flex-start;
+}
+.players-use {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.controllers-add .players-extra {
+    flex: 0 1 180px;
+}
+.players-online {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: var(--sp-1-5);
+    border-radius: 50%;
+    background: var(--ok);
+    vertical-align: middle;
+}
 
 /* ════════════════════════════════════════════════════════════════
    디스코드 페이지: 왼쪽 메뉴(연결 · 디스코드 서버 · 봇) | 오른쪽 화면
@@ -2115,6 +2271,50 @@ button.activity-line:hover {
 }
 .dc-list-row.dim .dc-list-text {
     opacity: 0.55;
+}
+/* 숫자 칸 뒤의 단위 (분) */
+.ss-with-unit {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+/* 자동 정지·응답 없음 안내: 글은 남는 너비를 쓰고 버튼은 오른쪽 끝 */
+.idle-stopped-notice {
+    align-items: center;
+}
+/* 새 버전: 이름 아래 표시와 정보 탭의 새 버전 줄 */
+.tag.tag-accent {
+    color: var(--accent);
+    border-color: color-mix(in oklch, var(--accent) 45%, transparent);
+}
+.info-new-version {
+    color: var(--accent);
+}
+.idle-stopped-notice > span {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+/* 다가오는 예약: 줄이 많으면 목록 안에서 넘긴다 (아래 작업 기록이 칸 밖으로 밀리지 않게) */
+.upcoming-card {
+    flex: none;
+}
+.upcoming-list {
+    max-height: min(280px, 35vh);
+    overflow-y: auto;
+}
+.upcoming-list > li {
+    flex: none;
+}
+/* 다가오는 예약: 겹치는 작업 줄 */
+.upcoming-list .dc-list-row {
+    text-align: left;
+}
+.upcoming-list .dc-list-row.clash {
+    box-shadow: inset 3px 0 0 var(--warn);
+}
+.upcoming-range {
+    margin-left: auto;
+    width: 140px;
 }
 /* 인스턴스 카드: 어디를 눌러도 권한 메뉴로 */
 .dc-list-row.is-openable {
@@ -3493,6 +3693,21 @@ button.appbar-pill:focus-visible {
     color: var(--brand-text);
 }
 .mt-next {
+    font-size: var(--fs-xs);
+}
+/* 마지막 실행 결과와 실행 기록 */
+.mt-last {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
+.mt-last.tone-ok {
+    color: var(--ok);
+}
+.mt-last.tone-stop {
+    color: var(--stop);
+}
+.mt-runs {
     font-size: var(--fs-xs);
 }
 .mt-picker-body {

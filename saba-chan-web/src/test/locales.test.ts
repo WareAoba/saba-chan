@@ -110,6 +110,7 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:daemon_switcher.label',
         'gui.json:settings_modal.backdrop_material_label',
         'gui.json:remote_daemon.prompt_no',
+        'gui.json:server_settings.idle_stop_unit',
     ],
     'pt-BR': [
         'gui.json:palette.title',
@@ -149,6 +150,8 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:palette.status',
         'gui.json:remote_daemon.online',
         'gui.json:remote_daemon.offline',
+        'gui.json:server_settings.idle_stop_unit',
+        'gui.json:players.online',
     ],
     de: [
         'gui.json:palette.title',
@@ -194,6 +197,11 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:onboarding.optional',
         'gui.json:remote_daemon.online',
         'gui.json:remote_daemon.offline',
+        'gui.json:shell.build',
+        'gui.json:branch.name',
+        'gui.json:branch.count',
+        'gui.json:players.optional',
+        'gui.json:players.online',
     ],
     fr: [
         'gui.json:palette.title',
@@ -254,6 +262,9 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:palette.risk.danger',
         'gui.json:remote_daemon.install_prompt',
         'gui.json:guides.title',
+        'gui.json:server_settings.idle_stop_unit',
+        'gui.json:shell.build',
+        'gui.json:branch.count',
     ],
     ru: ['gui.json:discord.bot_settings.tts_speed_unit'],
 };

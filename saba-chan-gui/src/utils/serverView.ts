@@ -153,7 +153,28 @@ export function protocolLabel(server: Partial<ServerInfo>, moduleData?: Partial<
     return proto?.toUpperCase() || 'AUTO';
 }
 
+/** 빌드를 받은(올라온) 날짜 (유닉스 초): 올해면 월·일, 다른 해면 연도까지. 모르면 빈 글자 */
+export function buildDate(time: unknown, lang: string) {
+    if (typeof time !== 'number' || !(time > 0)) return '';
+    const at = new Date(time * 1000);
+    const year = at.getFullYear() === new Date().getFullYear() ? undefined : 'numeric';
+    return at.toLocaleDateString(lang, { year, month: 'long', day: 'numeric' });
+}
+
 /** 화면에 보일 게임 이름: 모듈 번역(display_name), 없으면 모듈의 game_name, 그것도 없으면 모듈 id */
 export function gameNameOf(t: TFunction, moduleName: string, moduleData?: Partial<ModuleInfo> | null) {
     return t(`mod_${moduleName}:module.display_name`, { defaultValue: moduleData?.game_name || moduleName });
+}
+
+/** 브랜치 서버의 상위 서버 (데몬 `branch_of`). 목록에 없으면 독립 서버로 본다 */
+export function branchParentOf<T extends ServerInfo>(server: T, servers: T[]): T | undefined {
+    return server.branch_of ? servers.find((s) => s.id === server.branch_of && !s.branch_of) : undefined;
+}
+
+/** 브랜치 서버를 상위 서버 바로 아래로 모은다 (나머지 순서는 그대로). 옮길 것이 없으면 받은 배열을 돌려준다 */
+export function branchesUnderParents<T extends ServerInfo>(servers: T[]): T[] {
+    if (!servers.some((s) => s.branch_of)) return servers;
+    const top = servers.filter((s) => !branchParentOf(s, servers));
+    const grouped = top.flatMap((parent) => [parent, ...servers.filter((s) => branchParentOf(s, servers) === parent)]);
+    return grouped.every((s, i) => s === servers[i]) ? servers : grouped;
 }

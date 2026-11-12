@@ -181,6 +181,7 @@
       "schedule": "Avisos de tareas programadas",
       "update": "Actualizaciones de Saba-chan",
       "disk": "Poco espacio en disco",
+      "offline": "PC sin conexión",
       "chatbotUsage": "Uso de Saba-chan parlante",
       "moderation": "Informes de moderación con IA"
     },
@@ -223,7 +224,10 @@
     "sleep_blocks_none": "Ninguno",
     "bedtime": "Buen niño",
     "bedtime_format": "Escribe --bedtime como hora de dormir-hora de despertar, por ejemplo 01:00-08:00.",
-    "big_emoji": "Ampliación de emojis"
+    "big_emoji": "Ampliación de emojis",
+    "member_notice": "Avisos de entrada y salida de miembros",
+    "busy_notice": "Aviso de sobrecarga",
+    "chat_auto_open": "Activar el enlace de chat al iniciar el servidor"
   },
   "col": {
     "players": "Jugadores",
@@ -245,6 +249,7 @@
     "state": "Estado",
     "uptime": "Tiempo activo",
     "version": "Versión",
+    "build": "Compilación {{id}}",
     "what": "Descripción",
     "when": "Cuándo",
     "why": "Motivo",
@@ -454,6 +459,10 @@
       "backup_unsupported": "El módulo de este juego no indica qué respaldar. Un módulo más reciente podría hacerlo: saba-chan-cli update check",
       "nothing_to_back_up": "El mundo aún no existe. Inicia el servidor una vez para crearlo.",
       "backup_busy": "Ya hay una copia de seguridad o restauración de este servidor en curso. Inténtalo de nuevo cuando termine.",
+      "import_not_backup": "Este archivo no es una copia exportada por Saba-chan. Indica un zip creado con `backup export`.",
+      "import_damaged": "Este archivo de copia está dañado. Expórtalo de nuevo en el PC original.",
+      "import_other_module": "Esta copia se hizo en un servidor de otro juego, así que no se puede importar aquí.",
+      "export_old_backup": "Esta copia la creó una versión antigua y no se puede exportar.",
       "backup_file_locked": "El servidor está usando un archivo ({{file}}). Detén el servidor e inténtalo de nuevo: saba-chan-cli stop <nombre>",
       "autosave_not_resumed": "La copia se hizo, pero no se pudo reactivar el autoguardado del servidor. Reinicia el servidor: saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "La copia falló y tampoco se pudo reactivar el autoguardado del servidor. Reinicia el servidor: saba-chan-cli restart <name>",
@@ -710,7 +719,7 @@
     "unknown_key": "{{key}} es una clave nueva.",
     "restart_required_mark": "requiere reinicio",
     "restart_required": "Reinicia el servidor para aplicar: {{keys}}",
-    "hidden": "Ocultos porque otros ajustes no los usan ahora: {{keys}}"
+    "hidden": "Ocultos porque no se usan ahora: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Comilla sin cerrar.",
@@ -941,6 +950,8 @@
       "backup.create": "Hacer una copia ahora",
       "backup.delete": "Eliminar una copia (sin nombre: elegir de una lista)",
       "backup.restore": "Restaurar una copia (pregunta si detener el servidor en ejecución). Sin nombre: elegir de una lista",
+      "backup.export": "Exportar una copia a un único zip que se puede llevar a otro PC (sin nombre: elegir de la lista)",
+      "backup.import": "Comprobar un zip creado con `backup export` y añadirlo a las copias de este servidor (después, restaurar)",
       "schedule": "Tareas programadas del servidor (inicio, parada, reinicio, guardado, copia, anuncio, actualización, comando del juego)",
       "schedule.show": "Ver la programación",
       "schedule.add": "Programar una tarea: start, stop, restart, save, backup, announce, update, command",
@@ -1003,6 +1014,7 @@
       "config.paths": "Dónde guarda Saba-chan sus datos, módulos y extensiones, y las carpetas predeterminadas",
       "config.move": "Mover los módulos o las extensiones a otra carpeta. Los archivos instalados se mueven; los servidores deben estar detenidos",
       "server.players": "Quién está conectado",
+      "server.lists": "Listas de jugadores del juego (quién puede entrar, administradores, vetados)",
       "server.address": "La dirección (IP:puerto) a la que se conectan tus amigos",
       "server.port-check": "Comprueba si tus amigos pueden conectarse a este servidor desde internet (reenvío de puertos)",
       "server.rcon": "Enviar una línea como el servidor recibe comandos (consola, si no RCON) y ver la respuesta",
@@ -1036,6 +1048,9 @@
       "bot.clear": "Borrar los mensajes recientes de un canal (los fijados y los paneles de Saba-chan se quedan). Pregunta antes",
       "bot.mute": "Bloquear el chat, las reacciones y la voz de un miembro: duración (10m, 1h, 7d, hasta 28 días), forever, off para quitarlo",
       "bot.big-emoji": "Ampliación de emojis (un emoji personalizado solo se muestra en grande) en un servidor de Discord. Sin opciones: mostrar",
+      "bot.member-notice": "Avisos de entrada y salida de miembros de un servidor de Discord (canal de avisos). Sin opciones: mostrar",
+      "bot.busy-notice": "Aviso de sobrecarga de un servidor de Discord (se publica con el PC sobrecargado y se quita después). Sin opciones: mostrar",
+      "bot.chat-auto-open": "Abrir solo el enlace de chat en un servidor de Discord mientras haya alguien en un servidor encendido. Sin opciones: mostrar",
       "config.net-trace": "Permiso de red por servidor y puerto (avanzado, Windows): sin acción muestra el estado actual; grant muestra una confirmación de administrador en el PC del daemon, revoke lo deshace. Actívalo con config set systemMonitorNetTrace=on",
       "mcp": "Deja que un agente de IA de este PC (Claude Code, Codex) use todos los comandos: servidor MCP local por stdin/stdout",
       "agent": "Registra el servidor MCP local (`mcp`) en los agentes de IA de este PC",
@@ -1055,6 +1070,7 @@
       "perm.level.add.name": "Nombre del nivel nuevo (1–32 caracteres)",
       "perm.level.rename.name": "Nombre nuevo (1–32 caracteres)",
       "backup.create.from_snapshot": "Guardar la copia automática más reciente del juego en vez de copiar el mundo ahora (Palworld y otros)",
+      "backup.export.out": "Dónde escribir el zip (una ruta en el PC donde corre el daemon)",
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
       "bot.channels.no_notify": "Quitar el canal de avisos",
       "bot.channels.game_chat": "El canal de chat del juego (chat de los servidores con el reenvío activado), por nombre o id",
@@ -1180,6 +1196,7 @@
       "install.modules": "Módulos de juego a instalar, separados por comas (se pregunta si se omite)",
       "install.gui": "Instalar también la app de escritorio aunque no haya pantalla",
       "install.no_gui": "Instalar sin la app de escritorio aunque haya pantalla",
+      "install.channel": "Canal del que instalar y seguir actualizando: stable, rc (vista previa) o beta. Si se omite, el canal del instalador",
       "uninstall.remove_settings": "Eliminar también los ajustes y la conexión con Discord",
       "uninstall.remove_instances": "Eliminar también los servidores (archivos, mundos, copias)",
       "config.move.kind": "Qué mover: modules o extensions",
@@ -1271,6 +1288,12 @@
       "bot.sleep-mode.no_block": "No apagar ninguna función mientras duerme",
       "bot.big-emoji.on": "Activar la ampliación de emojis",
       "bot.big-emoji.off": "Desactivar la ampliación de emojis",
+      "bot.member-notice.on": "Activar los avisos de miembros",
+      "bot.member-notice.off": "Desactivar los avisos de miembros",
+      "bot.busy-notice.on": "Activar el aviso de sobrecarga",
+      "bot.busy-notice.off": "Desactivar el aviso de sobrecarga",
+      "bot.chat-auto-open.on": "Abrir solo el enlace de chat",
+      "bot.chat-auto-open.off": "Dejar el enlace de chat cerrado hasta que alguien lo abra",
       "config.net-trace.action": "grant o revoke. Si se omite, muestra el estado actual",
       "agent.link.claude": "Solo Claude Code",
       "agent.link.codex": "Solo Codex",
@@ -1318,7 +1341,8 @@
       "pre-update": "antes de actualizar",
       "pre-restore": "antes de restaurar",
       "snapshot": "Copia del juego guardada",
-      "game-snapshot": "Copia automática del juego"
+      "game-snapshot": "Copia automática del juego",
+      "imported": "Importada"
     },
     "none": "{{name}} aún no tiene copias de seguridad.",
     "creating": "Haciendo copia de seguridad de {{name}}...",
@@ -1330,6 +1354,8 @@
     "confirm_restore_running": "{{name}} está en marcha. ¿Detenerlo y devolverlo a la copia de seguridad {{backup}}? Antes se guardará el mundo actual como copia de seguridad.",
     "restoring": "Restaurando {{backup}}...",
     "restored": "{{name}} ha vuelto a {{backup}}.",
+    "exported": "Copia exportada: {{path}} ({{size}}). Basta con llevar este único archivo a otro PC para importarla.",
+    "imported": "La copia {{backup}} se añadió a {{name}}. Restáurala para ponerla en el servidor.",
     "pre_restore": "El mundo anterior se conserva como copia de seguridad {{backup}}.",
     "links_not_restored": "La restauración terminó, pero no se pudieron recrear {{count}} enlace(s) dentro de la carpeta (por ejemplo, por permisos de Windows). Las rutas están en el registro del daemon.",
     "start_again": "¿Iniciar {{name}} de nuevo?",
@@ -1791,6 +1817,7 @@
   "install": {
     "fetching": "Comprobando la última versión…",
     "fetch_failed": "No se pudo obtener la última versión: {{reason}}",
+    "channel_older": "La última versión del canal {{channel}} ({{offered}}) es anterior a este instalador ({{installer}}), así que no se puede instalar desde este canal. Elige otro canal.",
     "ask_dir": "Carpeta de instalación",
     "unknown_module": "Módulo desconocido: {{name}}. Módulos disponibles: {{list}}",
     "ask_module": "¿Instalar también el módulo {{name}}?",
@@ -1813,6 +1840,7 @@
     "next_mac_app": "Abre Saba-chan desde la carpeta Aplicaciones o con:\n{{command}}",
     "components_dir": "Los módulos y extensiones van en {{dir}}.",
     "components_dir_invalid": "No se puede usar {{dir}} para módulos y extensiones: {{reason}}",
+    "channel": "Se instala la última versión del canal {{channel}}; las actualizaciones posteriores también llegan por este canal.",
     "invalid_dir": "No se puede instalar en {{dir}}. Elige una carpeta que no sea la raíz de una unidad, tu carpeta personal ni la carpeta de ajustes"
   },
   "uninstall": {
@@ -1884,6 +1912,12 @@
   "players": {
     "title": "{{server}}: {{count}} conectados",
     "none": "No hay nadie conectado."
+  },
+  "lists": {
+    "title": "{{list}}: {{count}}",
+    "none": "Todavía no hay nadie.",
+    "unsupported": "El juego de este servidor no ofrece listas de jugadores.",
+    "edit": "Añadir: {{add}} <nombre>   Quitar: {{remove}} <nombre>"
   },
   "log": {
     "none": "Aún no hay registro guardado. Aparece después de que el servidor funcione una vez.",

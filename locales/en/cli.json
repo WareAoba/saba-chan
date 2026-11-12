@@ -181,6 +181,7 @@
       "schedule": "Schedule warnings",
       "update": "Saba-chan updates",
       "disk": "Low disk space",
+      "offline": "PC went offline",
       "chatbotUsage": "Talking Saba-chan usage",
       "moderation": "AI moderation reports"
     },
@@ -223,7 +224,10 @@
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
     "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
-    "big_emoji": "Emoji upscale"
+    "big_emoji": "Emoji upscale",
+    "member_notice": "Member join and leave notices",
+    "busy_notice": "Overload notice",
+    "chat_auto_open": "Turn chat link on when the server starts"
   },
   "col": {
     "players": "Players",
@@ -245,6 +249,7 @@
     "state": "State",
     "uptime": "Uptime",
     "version": "Version",
+    "build": "Build {{id}}",
     "what": "Description",
     "when": "When",
     "why": "Why",
@@ -454,6 +459,10 @@
       "backup_unsupported": "This game's module does not say what to back up. A newer module may: saba-chan-cli update check",
       "nothing_to_back_up": "The world does not exist yet. Start the server once to create it.",
       "backup_busy": "A backup or restore of this server is already running. Try again when it finishes.",
+      "import_not_backup": "This file is not a backup exported by Saba-chan. Give a zip made by `backup export`.",
+      "import_damaged": "This backup file is damaged. Export it again on the original PC.",
+      "import_other_module": "This backup was made on a server for a different game, so it can't be imported here.",
+      "export_old_backup": "This backup was made by an old version and can't be exported.",
       "backup_file_locked": "The server is using a file ({{file}}). Stop the server and try again: saba-chan-cli stop <name>",
       "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server: saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "The backup failed, and the server’s autosave could not be turned back on either. Restart the server: saba-chan-cli restart <name>",
@@ -710,7 +719,7 @@
     "unknown_key": "{{key}} is a new key.",
     "restart_required_mark": "restart to apply",
     "restart_required": "Restart the server to apply: {{keys}}",
-    "hidden": "Hidden because other settings don't use them now: {{keys}}"
+    "hidden": "Hidden because they aren't used now: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Unclosed quote.",
@@ -945,6 +954,7 @@
       "install.modules": "Game modules to install, comma separated (asked when omitted)",
       "install.gui": "Install the desktop app too, even without a display",
       "install.no_gui": "Install without the desktop app, even with a display",
+      "install.channel": "Update channel to install from and keep updating from: stable, rc (preview) or beta. The installer's own channel when omitted",
       "do.action": "Action id, e.g. server.restart or server.command:say",
       "do.server": "Server the action works on",
       "server.discord.word": "Words for the server, comma-separated (replace the current ones). --word \"\" removes them",
@@ -983,6 +993,12 @@
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
       "bot.big-emoji.on": "Turn emoji upscale on",
       "bot.big-emoji.off": "Turn emoji upscale off",
+      "bot.member-notice.on": "Turn member notices on",
+      "bot.member-notice.off": "Turn member notices off",
+      "bot.busy-notice.on": "Turn the overload notice on",
+      "bot.busy-notice.off": "Turn the overload notice off",
+      "bot.chat-auto-open.on": "Open the chat link by itself",
+      "bot.chat-auto-open.off": "Leave the chat link closed until someone opens it",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
@@ -1022,7 +1038,8 @@
       "pre-update": "before update",
       "pre-restore": "before restore",
       "snapshot": "Kept game backup",
-      "game-snapshot": "Game auto-backup"
+      "game-snapshot": "Game auto-backup",
+      "imported": "Imported"
     },
     "none": "{{name}} has no backups yet.",
     "creating": "Backing up {{name}}...",
@@ -1034,6 +1051,8 @@
     "confirm_restore_running": "{{name}} is running. Stop it and put it back to backup {{backup}}? The current world is saved as a backup first.",
     "restoring": "Restoring {{backup}}...",
     "restored": "{{name}} is back to {{backup}}.",
+    "exported": "Backup exported: {{path}} ({{size}}). Move just this one file to another PC to import it there.",
+    "imported": "Backup {{backup}} was added to {{name}}. Restore it to put it into the server.",
     "pre_restore": "The world from before is kept as backup {{backup}}.",
     "links_not_restored": "The restore finished, but {{count}} link(s) inside the folder could not be recreated (Windows permissions, for example). The daemon log lists the paths.",
     "start_again": "Start {{name}} again?",
@@ -1541,6 +1560,7 @@
   "install": {
     "fetching": "Checking the latest release…",
     "fetch_failed": "Could not get the latest release: {{reason}}",
+    "channel_older": "The latest {{channel}} release ({{offered}}) is older than this installer ({{installer}}), so it can't be installed from this channel. Choose another channel.",
     "ask_dir": "Install folder",
     "unknown_module": "Unknown module: {{name}}. Available modules: {{list}}",
     "ask_module": "Install the {{name}} module too?",
@@ -1563,6 +1583,7 @@
     "next_mac_app": "Open Saba-chan from your Applications folder, or run:\n{{command}}",
     "components_dir": "Modules and extensions go in {{dir}}.",
     "components_dir_invalid": "Can't use {{dir}} for modules and extensions: {{reason}}",
+    "channel": "Installing the latest {{channel}} release. Later updates come from this channel too.",
     "invalid_dir": "Can't install into {{dir}}. Choose a folder that isn't a drive root, your home folder, or the settings folder"
   },
   "update_required": {
@@ -1588,6 +1609,12 @@
   "players": {
     "title": "{{server}}: {{count}} online",
     "none": "Nobody is online."
+  },
+  "lists": {
+    "title": "{{list}}: {{count}}",
+    "none": "No one here yet.",
+    "unsupported": "This server's game does not provide player lists.",
+    "edit": "Add: {{add}} <name>   Remove: {{remove}} <name>"
   },
   "log": {
     "none": "No saved log yet. One appears after the server runs once.",

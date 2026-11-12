@@ -930,10 +930,10 @@ describe('게임 서버 업데이트 배지', () => {
             { timeout: 5000 },
         );
 
-        // 상세 화면 머리에 켜기 대신 업데이트 버튼
+        // 상세 화면의 업데이트 안내 줄에 업데이트 버튼 (머리의 켜기는 그대로)
         await waitFor(
             () => {
-                const updateBtn = document.querySelector('.detail-actions .btn-primary');
+                const updateBtn = document.querySelector('.update-notice .btn-primary');
                 expect(updateBtn).toBeInTheDocument();
             },
             { timeout: 3000 },
@@ -983,14 +983,14 @@ describe('게임 서버 업데이트 배지', () => {
         // 업데이트 버튼 대기 후 클릭
         await waitFor(
             () => {
-                const updateBtn = document.querySelector('.detail-actions .btn-primary');
+                const updateBtn = document.querySelector('.update-notice .btn-primary');
                 expect(updateBtn).toBeInTheDocument();
             },
             { timeout: 5000 },
         );
 
         await act(async () => {
-            const updateBtn = document.querySelector<HTMLElement>('.detail-actions .btn-primary');
+            const updateBtn = document.querySelector<HTMLElement>('.update-notice .btn-primary');
             updateBtn!.click();
         });
 

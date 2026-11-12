@@ -61,7 +61,12 @@ pub async fn get_instance(
             body["agreements"] = json!(supervisor.agreement_views(instance, &language));
             // 06 §8.2: 저장된 값 기준으로 지금 숨겨진 설정 (CLI가 쓴다)
             let fields = supervisor.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()).map(|s| s.fields).unwrap_or_default();
-            body["hidden"] = json!(crate::validator::hidden_fields(&fields, |k| stored_setting(&body, instance, k)));
+            // 설치된 버전에 없는 설정 (`versions` 밖). 숨긴 설정이므로 `hidden`에도 든다
+            let version_hidden = crate::validator::version_hidden(&fields, instance.server_version.as_deref());
+            let mut hidden = crate::validator::hidden_fields(&fields, |k| stored_setting(&body, instance, k));
+            hidden.extend(version_hidden.iter().filter(|name| !hidden.contains(name)).cloned().collect::<Vec<_>>());
+            body["hidden"] = json!(hidden);
+            body["version_hidden"] = json!(version_hidden);
             body["revision"] = json!(instance.settings_revision());
             (StatusCode::OK, Json(body)).into_response()
         }
@@ -174,8 +179,84 @@ fn folder_has_entries(dir: &std::path::Path) -> bool {
     std::fs::read_dir(dir).is_ok_and(|entries| entries.flatten().any(|e| e.file_name() != INSTALL_STAGING))
 }
 
+/// 브랜치 서버 만들기 (`branch_of`: 상위 서버 id): 만들기 요청을 상위 서버의 모듈·버전·게임 설정으로 다시 쓴다.
+/// 요청에서 받는 것은 이름과 포트뿐이다. 포트 설정과 자리를 가리키는 값(인스턴스 폴더 기본값 칸, 경로 칸, 상위 서버 폴더 안)은
+/// 옮기지 않아 브랜치가 제 것을 쓴다. 가져온 서버는 그 칸이 비었거나 서버 폴더 밖을 가리켜 값만 봐서는 가릴 수 없다.
+/// 돌려주는 것: (다시 쓴 요청, 상위 서버). `branch_of`가 없으면 요청 그대로
+fn branch_request(supervisor: &crate::supervisor::Supervisor, payload: Value) -> Result<(Value, Option<crate::instance::ServerInstance>), Box<axum::response::Response>> {
+    let Some(wanted) = payload.get("branch_of").filter(|v| !v.is_null()) else {
+        return Ok((payload, None));
+    };
+    let refuse = |status: StatusCode, code: &str, error: &str| Box::new((status, Json(json!({ "success": false, "error": error, "error_code": code }))).into_response());
+    let Some(parent) = wanted.as_str().and_then(|id| supervisor.instance_store.get(id)).cloned() else {
+        return Err(refuse(StatusCode::NOT_FOUND, "branch_parent_not_found", "The server to branch from does not exist"));
+    };
+    // 한 단계만: 브랜치 아래에 또 브랜치를 두지 않는다 (상위 서버가 사라진 브랜치는 독립 서버다)
+    if parent.branch_of.as_deref().is_some_and(|id| supervisor.instance_store.get(id).is_some()) {
+        return Err(refuse(StatusCode::CONFLICT, "branch_of_branch", "A branch server cannot have its own branch"));
+    }
+    let metadata = supervisor.module_loader.get_module(&parent.module_name).ok().map(|m| m.metadata);
+    let folders = [Some(supervisor.instance_store.instance_dir(&parent.id).to_string_lossy().into_owned()), parent.working_dir.clone()];
+    let inside_parent = |value: &Value| value.as_str().is_some_and(|v| folders.iter().flatten().any(|dir| !dir.is_empty() && v.contains(dir.as_str())));
+    let settings: serde_json::Map<String, Value> = metadata
+        .as_ref()
+        .and_then(|m| m.settings.as_ref())
+        .into_iter()
+        .flat_map(|s| s.fields.iter())
+        .filter(|f| !f.port && !crate::supervisor::module_loader::CORE_PORT_FIELDS.contains(&f.name.as_str()) && f.field_type != "file" && f.format.as_deref() != Some("path"))
+        .filter(|f| !f.default.as_ref().and_then(|d| d.as_str()).is_some_and(|d| d.contains(INSTANCE_DIR_PLACEHOLDER)))
+        .filter_map(|f| parent.module_settings.get(&f.name).filter(|v| !v.is_null() && !inside_parent(v)).map(|v| (f.name.clone(), v.clone())))
+        .collect();
+    let mut request = json!({
+        "name": payload.get("name"),
+        "port": payload.get("port"),
+        "module_name": parent.module_name,
+        "module_settings": settings,
+        "extension_data": parent.extension_data,
+    });
+    // 버전을 골라 받는 모듈이면 상위 서버와 같은 버전을 받는다
+    let downloads = metadata.as_ref().and_then(|m| m.install.as_ref()).is_some_and(|i| i.method == "download");
+    if let Some(version) = parent.server_version.as_ref().filter(|_| downloads) {
+        let version = json!({ "version": version });
+        if matches!(requested_version(&version), Ok(Some(_))) {
+            request["version"] = version["version"].clone();
+        }
+    }
+    if let Some(managed) = parent.module_settings.get("managed_start").filter(|v| v.is_boolean()) {
+        request["managed_start"] = managed.clone();
+    }
+    Ok((request, Some(parent)))
+}
+
+/// 브랜치 서버가 만들 때 한 번 가져오는 사바쨩 설정: 데몬이 읽는 설정, 예약, 실행 인자·메모리 상한, 게임 채팅, 사용 모드와 명단, 자동 업데이트.
+/// 그 뒤로는 두 서버가 따로다
+fn copy_saba_settings(branch: &mut crate::instance::ServerInstance, parent: &crate::instance::ServerInstance) {
+    branch.branch_of = Some(parent.id.clone());
+    for (key, _) in saba_chan_updater_lib::constants::DAEMON_SETTINGS {
+        if let Some(value) = parent.module_settings.get(*key) {
+            branch.module_settings.insert(key.to_string(), value.clone());
+        }
+    }
+    branch.schedule = parent.schedule.clone();
+    branch.backup_keep = parent.backup_keep;
+    branch.extra_args = parent.extra_args.clone();
+    branch.memory_limit_mb = parent.memory_limit_mb;
+    branch.protocol_mode = parent.protocol_mode.clone();
+    branch.game_chat = parent.game_chat;
+    branch.game_chat_keyword = parent.game_chat_keyword.clone();
+    branch.access = parent.access;
+    branch.controllers = parent.controllers.clone();
+    branch.controllers_only = parent.controllers_only;
+    branch.kick_players = parent.kick_players.clone();
+    branch.auto_update = parent.auto_update;
+}
+
 async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) -> impl IntoResponse {
     let mut supervisor = state.supervisor.write().await;
+    let (payload, parent) = match branch_request(&supervisor, payload) {
+        Ok(found) => found,
+        Err(resp) => return *resp,
+    };
 
     let name = payload
         .get("name")
@@ -231,6 +312,9 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         if !app.new_server_auto_restart && !instance.module_settings.contains_key("auto_restart") {
             instance.module_settings.insert("auto_restart".into(), json!(false));
         }
+        if let Some(parent) = &parent {
+            copy_saba_settings(&mut instance, parent);
+        }
 
         // ── 익스텐션이 만들 때 물은 칸 (`AddServer.options` → `extension_data`, Q-7). 설치 방식 값은 뒤에서 덮는다 ──
         match payload.get("extension_data") {
@@ -279,7 +363,11 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         };
 
         if dry_run {
-            let suggested = (1..).map(|i| if i == 1 { module.to_string() } else { format!("{module}-{i}") }).find(|n| !name_taken(n));
+            // 브랜치는 보낸 이름(상위 서버 이름에서 온 것)을 지켜 번호만 붙인다
+            let suggested = match &parent {
+                Some(_) => (1..).map(|i| if i == 1 { name.to_string() } else { format!("{name} {i}") }).find(|n| !name_taken(n)),
+                None => (1..).map(|i| if i == 1 { module.to_string() } else { format!("{module}-{i}") }).find(|n| !name_taken(n)),
+            };
             let fields = port_fields_of(&supervisor, module);
             let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
             let ports: Vec<Value> = crate::validator::instance_ports(&instance, &fields).into_iter().map(|(field, port)| json!({
@@ -343,6 +431,22 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         // 인스턴스 저장 (프로비저닝은 비동기로 수행)
         match supervisor.instance_store.add(instance.clone()) {
             Ok(_) => {
+                // 브랜치 서버: 상위 서버의 명령 낱말(디스코드)도 한 번 가져온다. 서버를 부르는 낱말은 서버마다 달라야 해서 옮기지 않는다
+                if let Some(parent) = &parent {
+                    let (store, parent_id, branch_id) = (state.config_store.clone(), parent.id.clone(), id.clone());
+                    tokio::spawn(async move {
+                        let copied = store.update_server_words(|table| match table.get(&parent_id).map(|w| w.commands.clone()).filter(|c| !c.is_empty()) {
+                            Some(commands) => {
+                                table.insert(branch_id, crate::chat::words::InstanceWords { words: Vec::new(), commands });
+                                ((), true)
+                            }
+                            None => ((), false),
+                        });
+                        if let Err(e) = copied.await {
+                            tracing::warn!("Could not copy the Discord command words to the branch server: {}", e);
+                        }
+                    });
+                }
                 // ── Extension hook: server.post_create (결과를 기다리지 않는다) ──
                 {
                     let ext_mgr = state.extension_manager.clone();
@@ -649,6 +753,8 @@ async fn install_new_server(job: InstallJob) {
 
     // ── Phase 2: 플러그인 호출 (lock 없이 실행) ──
     // lifecycle.py install_server 호출 (SteamCMD / download 모두 처리)
+    // 설치한 버전 (고른 것, 고르지 않았으면 최신). 설치가 끝나면 인스턴스에 적는다
+    let installed_version;
     let result = {
         // download 방식 모듈은 먼저 list_versions로 최신 버전 조회.
         // 인스턴스 설정(서버 종류 등)을 넘겨, 그 설정으로 받을 수 있는 최신을 고르게 한다
@@ -674,6 +780,7 @@ async fn install_new_server(job: InstallJob) {
         } else {
             None // 익스텐션 방식은 version 불필요
         };
+        installed_version = version.clone();
 
         // 만들 수 없으면 고른 폴더에 바로 설치한다 (실패해도 아무것도 지우지 않는다)
         leftovers = leftovers_dir.as_deref().and_then(|dir| {
@@ -755,6 +862,9 @@ async fn install_new_server(job: InstallJob) {
                     match sup.instance_store.get(&id_done).cloned() {
                         Some(inst) => {
                             let mut updated = inst;
+                            if let Some(version) = &installed_version {
+                                updated.record_installed_version(&install_method, version);
+                            }
                             if let Some(ref exe) = exe_path {
                                 if !exe.is_empty() {
                                     updated.executable_path = Some(exe.clone());
@@ -1681,6 +1791,18 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     match removed {
         Ok(_) => {
             state.provision_tracker.forget(&instance.name);
+            // 지운 서버의 브랜치는 독립 서버로 남는다
+            {
+                let mut supervisor = state.supervisor.write().await;
+                let branches: Vec<_> = supervisor.instance_store.list().iter().filter(|i| i.branch_of.as_deref() == Some(id.as_str())).cloned().collect();
+                for mut branch in branches {
+                    branch.branch_of = None;
+                    let branch_id = branch.id.clone();
+                    if let Err(e) = supervisor.instance_store.update(&branch_id, branch) {
+                        tracing::warn!("Could not release branch server {} of deleted instance '{}': {}", branch_id, instance.name, e);
+                    }
+                }
+            }
             // 지운 서버의 디스코드 낱말은 heartbeat에 더 싣지 않는다
             if let Err(e) = state.config_store.update_server_words(|t| ((), t.remove(&id).is_some())).await {
                 tracing::warn!("Could not forget the Discord words of deleted instance '{}': {}", instance.name, e);
@@ -1882,7 +2004,10 @@ pub(crate) fn settings_rejection(supervisor: &crate::supervisor::Supervisor, ins
                 // 부분 변경이므로 보낸 필드만 검증한다
                 // 숨겨진 설정은 required를 보지 않는다 (06 §8.2). 숨김은 저장된 값에 이번 요청을 얹어 계산한다
                 let view = serde_json::to_value(instance).unwrap_or_default();
-                let hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| stored_setting(&view, instance, k)));
+                let mut hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| stored_setting(&view, instance, k)));
+                // 설치된 버전에 없는 설정도 숨긴 설정이다 (이번 요청이 버전을 바꾸면 그 버전으로)
+                let version = settings_obj.get("server_version").and_then(Value::as_str).or(instance.server_version.as_deref());
+                hidden.extend(crate::validator::version_hidden(&settings_meta.fields, version));
                 let errors: Vec<_> = crate::validator::validate_settings_patch(
                     &settings_meta.fields,
                     settings_obj,
@@ -2482,7 +2607,28 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
     let status = update_status_from_hooks(results);
     // 누가 확인했든(데몬의 주기 확인·서버 시작·앱·디스코드) 결과를 기억해 목록에 싣는다
     super::server_update::remember_check(id, &status);
+    record_build(state, id, &status).await;
     Some(status)
+}
+
+/// 업데이트 확인이 알려 준 설치 빌드(`local_buildid`, 받은 때 `local_build_time`)를 인스턴스에 적어 둔다.
+/// 화면은 이 값을 보이고 게임 서버에 버전을 묻지 않는다. 확인이 설치 빌드를 읽지 못했으면 적어 둔 것을 그대로 둔다
+pub(crate) async fn record_build(state: &IPCServer, id: &str, status: &Value) {
+    let build_id = match status.get("local_buildid") {
+        Some(Value::String(b)) if !b.is_empty() => b.clone(),
+        Some(v @ Value::Number(_)) => v.to_string(),
+        _ => return,
+    };
+    let build = crate::instance::ServerBuild { id: build_id, time: status.get("local_build_time").and_then(Value::as_i64) };
+    let mut supervisor = state.supervisor.write().await;
+    let Some(mut instance) = supervisor.instance_store.get(id).cloned() else { return };
+    if instance.server_build.as_ref() == Some(&build) {
+        return;
+    }
+    instance.server_build = Some(build);
+    if let Err(e) = supervisor.instance_store.update(id, instance) {
+        tracing::warn!("Failed to record the installed build of '{}': {}", id, e);
+    }
 }
 
 /// `server.check_update` hook 결과를 확인 답으로: 첫 성공 결과, 모두 실패했으면 확인 실패(`check_failed`),
@@ -2680,6 +2826,7 @@ pub(crate) async fn begin_server_update_holding(
     let instance_name = instance.name.clone();
     let module_name_owned = instance.module_name.clone();
     let install_settings = instance.module_settings.clone();
+    let branch = instance.install_branch(&method).map(str::to_string);
     let accepted_agreements: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
     let module = supervisor.module_loader.get_module(&instance.module_name).ok();
     let boundary = crate::module_paths::Boundary::for_instance(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata));
@@ -2763,11 +2910,15 @@ pub(crate) async fn begin_server_update_holding(
 
         // ── Phase 2: 플러그인 호출 (lock 없이 실행) ──
         let result = {
-            let config = serde_json::json!({
+            let mut config = serde_json::json!({
                 "install_dir": &install_dir_str,
                 "accepted_agreements": &accepted_agreements,
                 "settings": &install_settings,
             });
+            // 고른 브랜치가 있으면 그 브랜치로 받는다
+            if let Some(branch) = &branch {
+                config["version"] = json!(branch);
+            }
 
             let tracker_progress = tracker_done.clone();
             let name_progress = name_done.clone();
@@ -2810,6 +2961,9 @@ pub(crate) async fn begin_server_update_holding(
                     .unwrap_or(false);
                 if success {
                     tracing::info!("Server update completed for '{}'", name_done);
+                    // 받은 새 빌드를 적어 둔다 (확인은 오래 걸릴 수 있어 뒤에서)
+                    let (state, id) = (backup_state.clone(), backup_id.clone());
+                    tokio::spawn(async move { server_update_status(&state, &id).await });
                     // 켜짐·꺼짐 알림을 켠 길드의 알림 채널에 "업데이트 끝남" (릴레이)
                     crate::events::emit("instance.updated", json!({ "instanceId": backup_id, "instance": name_done }));
                     // 받은 빌드가 최신이다: 지난 확인의 "새 빌드 있음"을 지운다 (다음 주기 확인이 다시 채운다)
@@ -3606,6 +3760,150 @@ mod tests {
         assert_eq!(state.supervisor.read().await.instance_store.list().len(), 1, "the second server is not made");
     }
 
+    /// 브랜치 서버 (`branch_of`): 상위 서버의 모듈·설정을 만들 때 한 번 옮기고 포트는 따로 정한다. 그 뒤로는 서로 따로다.
+    /// 브랜치는 한 단계만 두고, 상위 서버를 지우면 브랜치는 독립 서버로 남는다
+    #[tokio::test]
+    async fn a_branch_copies_its_parents_settings_once_and_stays_one_level() {
+        use axum::extract::{Path, Query, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\ndefault_port = 25565\n\n\
+             [[settings.fields]]\nname = \"port\"\ntype = \"number\"\nport = true\n\n\
+             [[settings.fields]]\nname = \"max_players\"\ntype = \"number\"\ndefault = 20\n\n\
+             [[settings.fields]]\nname = \"data_dir\"\ntype = \"text\"\ndefault = \"{instance_dir}/data\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let create = |body: serde_json::Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(body)).await).await }
+        };
+        let get = |id: String| {
+            let state = state.clone();
+            async move { state.supervisor.read().await.instance_store.get(&id).cloned().unwrap() }
+        };
+
+        let made = create(json!({ "name": "main", "module_name": "game", "port": 25565, "module_settings": { "max_players": 5 } })).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+        let parent_id = made.body["id"].as_str().unwrap().to_string();
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut parent = sup.instance_store.get(&parent_id).cloned().unwrap();
+            parent.memory_limit_mb = Some(2048);
+            parent.extra_args = vec!["--nogui".into()];
+            parent.module_settings.insert("auto_restart".into(), json!(false));
+            sup.instance_store.update(&parent_id, parent).unwrap();
+        }
+        let parent = get(parent_id.clone()).await;
+
+        // 확인 단계: 비어 있는 포트를 알려 준다
+        let check = crate::ipc::internal::into_internal(super::check_new_instance(State(state.clone()), Json(json!({ "name": "main test", "branch_of": parent_id }))).await).await;
+        assert!(check.status.is_success(), "{:?}", check.body);
+        let free = check.body["ports"][0]["port"].as_u64().unwrap();
+        assert_ne!(free, 25565, "{:?}", check.body);
+        assert_eq!(state.supervisor.read().await.instance_store.list().len(), 1, "a check makes nothing");
+
+        let branched = create(json!({ "name": "main test", "branch_of": parent_id, "module_name": "other", "module_settings": { "max_players": 99 } })).await;
+        assert!(branched.status.is_success(), "{:?}", branched.body);
+        let branch_id = branched.body["id"].as_str().unwrap().to_string();
+        let branch = get(branch_id.clone()).await;
+        assert_eq!(branch.branch_of.as_deref(), Some(parent_id.as_str()));
+        assert_eq!(branch.module_name, "game", "the parent's module, whatever the request says");
+        assert_eq!(branch.module_settings["max_players"], json!(5), "the parent's setting");
+        assert_eq!(branch.port.map(u64::from), Some(free), "its own port");
+        assert_eq!((branch.memory_limit_mb, branch.extra_args.clone(), branch.module_settings["auto_restart"].clone()), (Some(2048), vec!["--nogui".to_string()], json!(false)));
+        // 상위 서버 폴더를 가리키는 값은 옮기지 않는다: 브랜치는 제 폴더를 쓴다
+        assert_ne!(branch.module_settings["data_dir"], parent.module_settings["data_dir"]);
+        assert!(branch.module_settings["data_dir"].as_str().unwrap().contains(&branch_id));
+
+        // 같은 이름으로 한 번 더 만들려 하면 그 이름에 번호를 붙여 권한다 (모듈 이름으로 바꾸지 않는다)
+        let again = crate::ipc::internal::into_internal(super::check_new_instance(State(state.clone()), Json(json!({ "name": "main test", "branch_of": parent_id }))).await).await;
+        assert_eq!((again.body["name"]["taken"].as_bool(), again.body["name"]["suggested"].as_str()), (Some(true), Some("main test 2")), "{:?}", again.body);
+
+        // 그 뒤로는 따로: 상위 서버를 고쳐도 브랜치는 그대로다
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut parent = sup.instance_store.get(&parent_id).cloned().unwrap();
+            parent.module_settings.insert("max_players".into(), json!(50));
+            sup.instance_store.update(&parent_id, parent).unwrap();
+        }
+        assert_eq!(get(branch_id.clone()).await.module_settings["max_players"], json!(5));
+
+        let deeper = create(json!({ "name": "deeper", "branch_of": branch_id })).await;
+        assert_eq!((deeper.status.as_u16(), deeper.body["error_code"].as_str()), (409, Some("branch_of_branch")), "{:?}", deeper.body);
+        let orphan = create(json!({ "name": "orphan", "branch_of": "nope" })).await;
+        assert_eq!((orphan.status.as_u16(), orphan.body["error_code"].as_str()), (404, Some("branch_parent_not_found")), "{:?}", orphan.body);
+
+        let removed = crate::ipc::internal::into_internal(super::delete_instance(Path(parent_id.clone()), State(state.clone()), Query(super::DeleteQuery { keep_settings: false })).await).await;
+        assert!(removed.status.is_success(), "{:?}", removed.body);
+        assert_eq!(get(branch_id).await.branch_of, None, "the branch stays as a server of its own");
+    }
+
+    /// 가져온 서버의 브랜치도 제 월드·데이터 폴더를 쓴다: 가져온 서버는 `{instance_dir}` 기본값 칸이 비어 있고
+    /// 경로 칸이 서버 폴더 밖(쓰던 자리)을 가리키는데, 그 값을 옮기면 두 서버가 같은 월드를 연다
+    #[tokio::test]
+    async fn a_branch_of_an_imported_server_gets_its_own_data_folders() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\ndefault_port = 25565\n\n\
+             [[settings.fields]]\nname = \"port\"\ntype = \"number\"\nport = true\n\n\
+             [[settings.fields]]\nname = \"world_name\"\ntype = \"text\"\ndefault = \"world\"\n\n\
+             [[settings.fields]]\nname = \"cache_dir\"\ntype = \"text\"\ndefault = \"{instance_dir}/data\"\n\n\
+             [[settings.fields]]\nname = \"world_dir\"\ntype = \"text\"\nformat = \"path\"\ndefault = \"{instance_dir}/Worlds\"\n\n\
+             [[settings.fields]]\nname = \"data_home\"\ntype = \"text\"\nformat = \"path\"\ndefault = \"\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let create = |body: serde_json::Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(body)).await).await }
+        };
+
+        let made = create(json!({ "name": "old", "module_name": "game", "port": 25565 })).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+        let parent_id = made.body["id"].as_str().unwrap().to_string();
+        // 가져오기가 남기는 값: `{instance_dir}` 기본값 칸은 비고, 경로 칸은 쓰던 자리를 가리킨다
+        let old_home = tmp.path().join("oldhome");
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut parent = sup.instance_store.get(&parent_id).cloned().unwrap();
+            parent.module_settings.insert("world_name".into(), json!("myworld"));
+            parent.module_settings.insert("cache_dir".into(), json!(""));
+            parent.module_settings.insert("world_dir".into(), json!(old_home.join("Worlds").to_string_lossy()));
+            parent.module_settings.insert("data_home".into(), json!(old_home.to_string_lossy()));
+            sup.instance_store.update(&parent_id, parent).unwrap();
+        }
+
+        let branched = create(json!({ "name": "old b", "branch_of": parent_id })).await;
+        assert!(branched.status.is_success(), "{:?}", branched.body);
+        let branch_id = branched.body["id"].as_str().unwrap().to_string();
+        let branch = state.supervisor.read().await.instance_store.get(&branch_id).cloned().unwrap();
+        assert_eq!(branch.module_settings["world_name"], json!("myworld"), "the parent's setting");
+        for key in ["cache_dir", "world_dir"] {
+            assert!(branch.module_settings[key].as_str().unwrap().contains(&branch_id), "{key}: {:?}", branch.module_settings[key]);
+        }
+        assert_eq!(branch.module_settings["data_home"], json!(""), "the parent's old data folder is not the branch's");
+    }
+
     /// 서버 이름의 쉼표는 받지 않는다: 문장 명령이 부르는 말을 쉼표로 나눈다 (사용자 지정 2026-11-06)
     #[tokio::test]
     async fn a_server_name_with_a_comma_is_refused() {
@@ -3931,12 +4229,16 @@ mod tests {
         let inst = state.supervisor.read().await.instance_store.get(id).cloned().unwrap();
         assert_eq!(inst.working_dir.as_deref(), Some(folder.to_string_lossy().as_ref()));
         assert_eq!(inst.module_settings["managed_start"], json!(false));
+        // 설치한 버전은 그때 안다 (사용자가 골랐다): 따로 읽어 올 때까지 비워 두지 않는다
+        assert_eq!(inst.server_version.as_deref(), Some("1.0"));
 
         // 버전을 고르지 않으면 최신이다
         let latest = create(json!({ "name": "b", "module_name": "game" })).await;
         assert!(latest.status.is_success(), "{}", latest.body);
         let progress = provisioned(&state, "b").await.expect("provisioning finished");
         assert_eq!(progress.error, None, "{:?}", progress.details);
+        let id = latest.body["id"].as_str().unwrap();
+        assert!(state.supervisor.read().await.instance_store.get(id).unwrap().server_version.is_some(), "the latest version it installed");
 
         // 파일이 든 폴더에는 새로 설치하지 않는다 (있는 서버는 가져오기로)
         let refused = create(json!({ "name": "c", "module_name": "game", "working_dir": folder.to_string_lossy() })).await;
@@ -4381,6 +4683,59 @@ mod tests {
         state.supervisor.read().await.tracker.untrack(&id).unwrap();
         let stored = std::fs::read_to_string(state.supervisor.read().await.instance_store.instance_dir(&id).join("settings.json")).unwrap();
         assert!(stored.contains("\"Alex\""), "{stored}");
+    }
+
+    /// 설치된 버전에 없는 설정(`versions` 밖)은 인스턴스 조회와 서버 목록이 `version_hidden`으로 알리고,
+    /// 숨긴 설정이라 `required`를 보지 않는다. 버전을 모르는 서버는 모든 설정을 보인다
+    #[tokio::test]
+    async fn settings_the_installed_version_does_not_have_are_reported_as_hidden() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 2\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"pvp\"\ntype = \"text\"\nrequired = true\nversions = \"<1.21.9\"\n\n\
+             [[settings.fields]]\nname = \"difficulty\"\ntype = \"text\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let get = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::get_instance(Path(id), State(state)).await).await.body }
+        };
+        let listed = || {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(crate::ipc::handlers::server::list_servers_internal(&state).await).await.body["servers"][0].clone() }
+        };
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+        assert_eq!(get().await["version_hidden"], json!([]), "the version is not known yet: every setting stays");
+        assert_eq!(listed().await.get("version_hidden"), None);
+        let empty = patch(json!({ "pvp": "" })).await;
+        assert_eq!(empty.status.as_u16(), 400, "still a required setting: {:?}", empty.body);
+
+        assert!(patch(json!({ "server_version": "1.21.10" })).await.status.is_success());
+        assert_eq!(get().await["version_hidden"], json!(["pvp"]));
+        assert_eq!(get().await["hidden"], json!(["pvp"]), "the CLI leaves it out with the other hidden settings");
+        assert_eq!(listed().await["version_hidden"], json!(["pvp"]));
+        let empty = patch(json!({ "pvp": "" })).await;
+        assert!(empty.status.is_success(), "a setting this version does not have is not required: {:?}", empty.body);
+
+        assert!(patch(json!({ "server_version": "1.21.8" })).await.status.is_success());
+        assert_eq!(get().await["version_hidden"], json!([]));
     }
 
     /// 리뷰 554: 숨김 조건은 인스턴스 칸에 저장되는 설정(port 등)의 지금 값을 보고, list 기본값은 만들 때 채우며,
@@ -5001,6 +5356,36 @@ mod tests {
         assert_eq!(reason(imported).await, json!("update_unsupported"), "not installed through the extension");
         assert_eq!(reason(steam).await, json!("no_hook_handled"), "no steamcmd extension in this test");
         assert_eq!(reason(gone).await, json!("no_extension_data"), "a module that did not load is not called un-updatable");
+    }
+
+    /// 설치 방식 익스텐션으로 받은 서버는 업데이트 확인이 알려 준 설치 빌드를 적어 두고 서버 목록에 싣는다 (다시 묻지 않고 보인다)
+    #[tokio::test]
+    async fn an_update_check_records_the_installed_build_for_the_server_list() {
+        use std::sync::Arc;
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let inst = crate::instance::ServerInstance::new("pal", "sc");
+        let (id, opened) = (inst.id.clone(), inst.settings_revision());
+        state.supervisor.write().await.instance_store.add(inst).unwrap();
+        let listed = || {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(crate::ipc::handlers::server::list_servers_internal(&state).await).await.body["servers"][0].clone() }
+        };
+        assert_eq!(listed().await.get("server_build"), None, "nothing is known before the first check");
+
+        super::record_build(&state, &id, &json!({"update_available": true, "local_buildid": "19283746", "local_build_time": 1762128000, "remote_buildid": "19402210"})).await;
+        assert_eq!(listed().await["server_build"], json!({"id": "19283746", "time": 1762128000}));
+        assert_eq!(listed().await["revision"], json!(opened), "a settings form opened before the check can still save");
+
+        // 설치 폴더를 읽지 못한 확인은 적어 둔 빌드를 지우지 않는다
+        super::record_build(&state, &id, &json!({"update_available": false, "reason": "check_failed", "local_buildid": null})).await;
+        assert_eq!(listed().await["server_build"]["id"], json!("19283746"));
+
+        // 업데이트한 뒤의 확인은 새 빌드로 바꾼다 (받은 때를 모르면 번호만)
+        super::record_build(&state, &id, &json!({"update_available": false, "local_buildid": 19402210})).await;
+        assert_eq!(listed().await["server_build"], json!({"id": "19402210"}));
     }
 
     /// 얇은 클라이언트 점검 2번: 화면이 서버마다 확인을 돌리지 않게 데몬이 한 확인의 결과를 기억해 목록에 싣는다.

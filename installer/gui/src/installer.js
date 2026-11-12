@@ -55,6 +55,11 @@ const T = {
         errInstallDir: 'This folder can\'t hold Saba-chan. Choose a folder that isn\'t a drive root, your home folder, or the settings folder.',
         labelModules: 'Game Modules',
         hintModules: 'You can add more later.',
+        labelChannel: 'Update Channel',
+        channelStable: 'Stable',
+        channelRc: 'Preview (release candidate)',
+        channelBeta: 'Beta (early, may be unstable)',
+        hintChannel: 'Installs the latest release of this channel, and later updates come from it too. You can change it in the app settings after installing.',
         labelOptions: 'Options',
         labelDesktop: 'Desktop Shortcut',
         labelStartMenu: 'Start Menu Shortcut',
@@ -83,6 +88,7 @@ const T = {
         launchFailed: 'Couldn\'t start Saba-chan. Start it from the Start menu or desktop shortcut.',
         installFailed: 'Installation failed',
         fetchFailed: 'Failed to fetch releases',
+        errChannelOlder: 'The latest release on this channel is older than this installer, so it can\'t be installed from this channel. Choose another channel.',
         uninstallTitle: 'Uninstall Saba-chan',
         uninstallDesc: 'This removes the Saba-chan program and every file it made: runtimes, modules, caches, logs, temporary files, shortcuts and registry entries. Running servers are stopped first. Choose below what to keep.',
         uninstallKeepInstances: 'Keep game servers',
@@ -177,6 +183,11 @@ const T = {
         errInstallDir: '이 폴더에는 사바쨩을 설치할 수 없습니다. 드라이브 루트, 홈 폴더, 설정 폴더가 아닌 폴더를 고르세요.',
         labelModules: '게임 모듈',
         hintModules: '나중에 추가할 수도 있어요.',
+        labelChannel: '업데이트 채널',
+        channelStable: '정식',
+        channelRc: '미리보기 (출시 후보)',
+        channelBeta: '베타 (먼저 받기, 불안정할 수 있음)',
+        hintChannel: '고른 채널의 최신 판을 설치하고, 이후 업데이트도 이 채널로 받아요. 설치한 뒤에 앱 설정에서 바꿀 수 있어요.',
         labelOptions: '옵션',
         labelDesktop: '바탕화면 바로가기',
         labelStartMenu: '시작 메뉴 바로가기',
@@ -205,6 +216,7 @@ const T = {
         launchFailed: '사바쨩을 실행하지 못했습니다. 시작 메뉴나 바탕화면 바로가기로 실행해 주세요.',
         installFailed: '설치 실패',
         fetchFailed: '릴리즈 정보를 가져오지 못했습니다',
+        errChannelOlder: '고른 채널의 최신 판이 이 설치기보다 옛 판이라 이 채널로는 설치할 수 없어요. 다른 채널을 골라 주세요.',
         uninstallTitle: '사바쨩 제거',
         uninstallDesc: '사바쨩 프로그램과 사바쨩이 만든 파일을 모두 지웁니다. 런타임, 모듈, 캐시, 로그, 임시 파일, 바로가기, 레지스트리 항목이 삭제됩니다. 켜져 있는 서버는 먼저 정상 종료합니다. 남길 것은 아래에서 고르세요.',
         uninstallKeepInstances: '게임 서버 남기기',
@@ -299,6 +311,11 @@ const T = {
         errInstallDir: 'このフォルダーにはサバちゃんをインストールできません。ドライブのルート、ホームフォルダー、設定フォルダー以外を選んでください。',
         labelModules: 'ゲームモジュール',
         hintModules: '後から追加もできます。',
+        labelChannel: 'アップデートチャンネル',
+        channelStable: '正式版',
+        channelRc: 'プレビュー（リリース候補）',
+        channelBeta: 'ベータ（先行版・不安定な場合あり）',
+        hintChannel: '選んだチャンネルの最新版をインストールし、以後のアップデートもこのチャンネルから受け取ります。インストール後にアプリの設定で変更できます。',
         labelOptions: 'オプション',
         labelDesktop: 'デスクトップショートカット',
         labelStartMenu: 'スタートメニューショートカット',
@@ -327,6 +344,7 @@ const T = {
         launchFailed: 'サバちゃんを起動できませんでした。スタートメニューかデスクトップのショートカットから起動してください。',
         installFailed: 'インストール失敗',
         fetchFailed: 'リリース情報の取得に失敗',
+        errChannelOlder: '選んだチャンネルの最新版がこのインストーラーより古いため、このチャンネルではインストールできません。別のチャンネルを選んでください。',
         uninstallTitle: 'サバちゃん アンインストール',
         uninstallDesc: 'サバちゃんのプログラムと、サバちゃんが作ったファイルをすべて削除します。ランタイム、モジュール、キャッシュ、ログ、一時ファイル、ショートカット、レジストリが削除されます。起動中のサーバーは先に正常終了します。残すものを下で選んでください。',
         uninstallKeepInstances: 'ゲームサーバーを残す',
@@ -421,6 +439,11 @@ const T = {
         errInstallDir: '无法安装到此文件夹。请选择驱动器根目录、主文件夹和设置文件夹以外的文件夹。',
         labelModules: '游戏模块',
         hintModules: '之后也可以添加。',
+        labelChannel: '更新渠道',
+        channelStable: '正式版',
+        channelRc: '预览版（候选发布）',
+        channelBeta: '测试版（抢先体验，可能不稳定）',
+        hintChannel: '安装所选渠道的最新版本，之后的更新也从这个渠道接收。安装后可以在应用设置里更改。',
         labelOptions: '选项',
         labelDesktop: '桌面快捷方式',
         labelStartMenu: '开始菜单快捷方式',
@@ -449,6 +472,7 @@ const T = {
         launchFailed: '无法启动 Saba-chan。请从开始菜单或桌面快捷方式启动。',
         installFailed: '安装失败',
         fetchFailed: '无法获取版本信息',
+        errChannelOlder: '所选渠道的最新版本比此安装程序旧，无法通过这个渠道安装。请选择其他渠道。',
         uninstallTitle: '卸载 Saba-chan',
         uninstallDesc: '这会删除 Saba-chan 程序及其创建的所有文件：运行环境、模块、缓存、日志、临时文件、快捷方式和注册表项。正在运行的服务器会先正常关闭。请在下方选择要保留的内容。',
         uninstallKeepInstances: '保留游戏服务器',
@@ -543,6 +567,11 @@ const T = {
         errInstallDir: '無法安裝到此資料夾。請選擇磁碟機根目錄、主資料夾和設定資料夾以外的資料夾。',
         labelModules: '遊戲模組',
         hintModules: '之後也可以新增。',
+        labelChannel: '更新頻道',
+        channelStable: '正式版',
+        channelRc: '預覽版（候選發布）',
+        channelBeta: '測試版（搶先體驗，可能不穩定）',
+        hintChannel: '安裝所選頻道的最新版本，之後的更新也從這個頻道接收。安裝後可以在應用程式設定裡變更。',
         labelOptions: '選項',
         labelDesktop: '桌面捷徑',
         labelStartMenu: '開始功能表捷徑',
@@ -571,6 +600,7 @@ const T = {
         launchFailed: '無法啟動 Saba-chan。請從開始功能表或桌面捷徑啟動。',
         installFailed: '安裝失敗',
         fetchFailed: '無法取得版本資訊',
+        errChannelOlder: '所選頻道的最新版本比此安裝程式舊，無法透過這個頻道安裝。請選擇其他頻道。',
         uninstallTitle: '解除安裝 Saba-chan',
         uninstallDesc: '這會刪除 Saba-chan 程式及其建立的所有檔案：執行環境、模組、快取、記錄、暫存檔、捷徑和登錄項目。執行中的伺服器會先正常關閉。請在下方選擇要保留的內容。',
         uninstallKeepInstances: '保留遊戲伺服器',
@@ -665,6 +695,11 @@ const T = {
         errInstallDir: 'No se puede instalar en esta carpeta. Elige una carpeta que no sea la raíz de una unidad, tu carpeta personal ni la carpeta de ajustes.',
         labelModules: 'Módulos de juego',
         hintModules: 'Puedes añadir más después.',
+        labelChannel: 'Canal de actualizaciones',
+        channelStable: 'Estable',
+        channelRc: 'Vista previa (candidata)',
+        channelBeta: 'Beta (anticipada, puede ser inestable)',
+        hintChannel: 'Se instala la última versión de este canal y las actualizaciones posteriores también llegan por él. Puedes cambiarlo en los ajustes de la aplicación después de instalar.',
         labelOptions: 'Opciones',
         labelDesktop: 'Acceso directo en el escritorio',
         labelStartMenu: 'Acceso directo en el menú Inicio',
@@ -693,6 +728,7 @@ const T = {
         launchFailed: 'No se pudo iniciar Saba-chan. Ábrelo desde el menú Inicio o el acceso directo del escritorio.',
         installFailed: 'Error en la instalación',
         fetchFailed: 'No se pudieron obtener las versiones',
+        errChannelOlder: 'La última versión de este canal es anterior a este instalador, así que no se puede instalar desde este canal. Elige otro canal.',
         uninstallTitle: 'Desinstalar Saba-chan',
         uninstallDesc: 'Esto elimina el programa Saba-chan y todos los archivos que creó: entornos, módulos, cachés, registros, archivos temporales, accesos directos y entradas del registro. Los servidores en marcha se detienen antes. Elija abajo qué conservar.',
         uninstallKeepInstances: 'Conservar los servidores',
@@ -787,6 +823,11 @@ const T = {
         errInstallDir: 'Não é possível instalar nesta pasta. Escolha uma pasta que não seja a raiz de uma unidade, a sua pasta pessoal nem a pasta de configurações.',
         labelModules: 'Módulos de jogo',
         hintModules: 'Você pode adicionar mais depois.',
+        labelChannel: 'Canal de atualizações',
+        channelStable: 'Estável',
+        channelRc: 'Prévia (candidata)',
+        channelBeta: 'Beta (antecipada, pode ser instável)',
+        hintChannel: 'Instala a versão mais recente deste canal, e as próximas atualizações também vêm dele. Você pode mudar nas configurações do app depois de instalar.',
         labelOptions: 'Opções',
         labelDesktop: 'Atalho na área de trabalho',
         labelStartMenu: 'Atalho no menu Iniciar',
@@ -815,6 +856,7 @@ const T = {
         launchFailed: 'Não foi possível iniciar o Saba-chan. Abra-o pelo menu Iniciar ou pelo atalho da área de trabalho.',
         installFailed: 'Falha na instalação',
         fetchFailed: 'Não foi possível obter as versões',
+        errChannelOlder: 'A versão mais recente deste canal é anterior a este instalador, então não dá para instalar por este canal. Escolha outro canal.',
         uninstallTitle: 'Desinstalar Saba-chan',
         uninstallDesc: 'Isto remove o programa Saba-chan e todos os arquivos que ele criou: ambientes, módulos, caches, logs, arquivos temporários, atalhos e entradas do registro. Os servidores em execução são parados antes. Escolha abaixo o que manter.',
         uninstallKeepInstances: 'Manter os servidores',
@@ -909,6 +951,11 @@ const T = {
         errInstallDir: 'В эту папку нельзя установить программу. Выберите папку, которая не является корнем диска, домашней папкой или папкой настроек.',
         labelModules: 'Игровые модули',
         hintModules: 'Можно добавить позже.',
+        labelChannel: 'Канал обновлений',
+        channelStable: 'Стабильный',
+        channelRc: 'Предварительный (кандидат в релиз)',
+        channelBeta: 'Бета (раньше всех, может быть нестабильной)',
+        hintChannel: 'Устанавливается последняя версия выбранного канала, и дальнейшие обновления тоже приходят из него. После установки канал можно изменить в настройках приложения.',
         labelOptions: 'Параметры',
         labelDesktop: 'Ярлык на рабочем столе',
         labelStartMenu: 'Ярлык в меню «Пуск»',
@@ -937,6 +984,7 @@ const T = {
         launchFailed: 'Не удалось запустить Saba-chan. Запустите его из меню «Пуск» или с ярлыка на рабочем столе.',
         installFailed: 'Ошибка установки',
         fetchFailed: 'Не удалось получить информацию о версиях',
+        errChannelOlder: 'Последняя версия этого канала старше этого установщика, поэтому установить её из этого канала нельзя. Выберите другой канал.',
         uninstallTitle: 'Удаление Saba-chan',
         uninstallDesc: 'Будут удалены программа Saba-chan и все созданные ею файлы: среды выполнения, модули, кэши, журналы, временные файлы, ярлыки и записи реестра. Запущенные серверы сначала останавливаются. Ниже выберите, что сохранить.',
         uninstallKeepInstances: 'Сохранить серверы',
@@ -1031,6 +1079,11 @@ const T = {
         errInstallDir: 'In diesen Ordner kann nicht installiert werden. Wähle einen Ordner, der kein Laufwerksstamm, kein Benutzerordner und nicht der Einstellungsordner ist.',
         labelModules: 'Spielmodule',
         hintModules: 'Weitere können später hinzugefügt werden.',
+        labelChannel: 'Update-Kanal',
+        channelStable: 'Stabil',
+        channelRc: 'Vorschau (Release Candidate)',
+        channelBeta: 'Beta (früh, evtl. instabil)',
+        hintChannel: 'Installiert die neueste Version dieses Kanals; spätere Updates kommen ebenfalls von dort. Nach der Installation lässt er sich in den App-Einstellungen ändern.',
         labelOptions: 'Optionen',
         labelDesktop: 'Desktop-Verknüpfung',
         labelStartMenu: 'Startmenü-Verknüpfung',
@@ -1059,6 +1112,7 @@ const T = {
         launchFailed: 'Saba-chan konnte nicht gestartet werden. Starte es über das Startmenü oder die Desktopverknüpfung.',
         installFailed: 'Installation fehlgeschlagen',
         fetchFailed: 'Versionsinformationen konnten nicht abgerufen werden',
+        errChannelOlder: 'Die neueste Version dieses Kanals ist älter als dieses Installationsprogramm und lässt sich daher nicht über diesen Kanal installieren. Wähle einen anderen Kanal.',
         uninstallTitle: 'Saba-chan deinstallieren',
         uninstallDesc: 'Entfernt das Programm Saba-chan und alle Dateien, die es angelegt hat: Laufzeitumgebungen, Module, Caches, Protokolle, temporäre Dateien, Verknüpfungen und Registrierungseinträge. Laufende Server werden zuerst beendet. Wählen Sie unten, was erhalten bleibt.',
         uninstallKeepInstances: 'Server behalten',
@@ -1153,6 +1207,11 @@ const T = {
         errInstallDir: 'Impossible d\'installer dans ce dossier. Choisissez un dossier qui n\'est ni la racine d\'un lecteur, ni votre dossier personnel, ni le dossier des paramètres.',
         labelModules: 'Modules de jeu',
         hintModules: 'Vous pourrez en ajouter d\'autres plus tard.',
+        labelChannel: 'Canal de mise à jour',
+        channelStable: 'Stable',
+        channelRc: 'Aperçu (version candidate)',
+        channelBeta: 'Bêta (en avance, peut être instable)',
+        hintChannel: 'Installe la dernière version de ce canal ; les mises à jour suivantes en viendront aussi. Vous pourrez le changer dans les paramètres de l\'application après l\'installation.',
         labelOptions: 'Options',
         labelDesktop: 'Raccourci sur le bureau',
         labelStartMenu: 'Raccourci dans le menu Démarrer',
@@ -1181,6 +1240,7 @@ const T = {
         launchFailed: 'Impossible de démarrer Saba-chan. Lancez-le depuis le menu Démarrer ou le raccourci du bureau.',
         installFailed: 'Échec de l\'installation',
         fetchFailed: 'Impossible de récupérer les versions',
+        errChannelOlder: 'La dernière version de ce canal est plus ancienne que ce programme d\'installation ; elle ne peut donc pas être installée depuis ce canal. Choisissez un autre canal.',
         uninstallTitle: 'Désinstaller Saba-chan',
         uninstallDesc: 'Ceci supprime le programme Saba-chan et tous les fichiers qu\'il a créés : environnements, modules, caches, journaux, fichiers temporaires, raccourcis et entrées du registre. Les serveurs en cours sont d\'abord arrêtés. Choisissez ci-dessous ce qu\'il faut conserver.',
         uninstallKeepInstances: 'Conserver les serveurs',
@@ -1316,6 +1376,9 @@ function applyTranslations() {
     s('hint-components', 'hintComponents');
     s('label-modules', 'labelModules');
     s('hint-modules', setupMode ? 'hintModulesSetup' : 'hintModules');
+    s('label-channel', 'labelChannel');
+    s('hint-channel', 'hintChannel');
+    $channel?.querySelectorAll('option').forEach(o => { o.textContent = tr(CHANNEL_LABELS[o.value] || 'channelStable'); });
     s('label-options', 'labelOptions');
     s('label-desktop', 'labelDesktop');
     s('label-startmenu', 'labelStartMenu');
@@ -1488,6 +1551,7 @@ function enterComplete(p) {
 const ERROR_KEYS = {
     elevation_failed: 'errElevation',
     fetch_failed: 'fetchFailed',
+    channel_older: 'errChannelOlder',
     installer_outdated: 'errOutdated',
     release_incomplete: 'errIncomplete',
     profile_failed: 'errProfile',
@@ -1561,6 +1625,18 @@ document.getElementById('btn-browse-components')?.addEventListener('click', asyn
 });
 $componentsPath?.addEventListener('change', () => setComponentsDir($componentsPath.value));
 
+// 업데이트 채널: 고른 채널의 최신 판을 설치하고 이후 업데이트도 그 채널로 받는다. 채널마다 릴리즈가 달라 모듈 목록을 다시 받는다
+const $channel = document.getElementById('update-channel');
+const CHANNEL_LABELS = { stable: 'channelStable', rc: 'channelRc', beta: 'channelBeta' };
+$channel?.addEventListener('change', async () => {
+    try {
+        await invoke('set_update_channel', { channel: $channel.value });
+    } catch (_) {
+        return;
+    }
+    await loadModules();
+});
+
 // 비어 있지 않은 폴더를 고르면 설치기가 그 아래 Saba-chan 폴더로 바꿔 돌려준다
 $installPath?.addEventListener('change', async () => {
     $installPath.value = await invoke('set_install_path', { path: $installPath.value });
@@ -1587,6 +1663,8 @@ let availableModules = null;
 async function loadModules() {
     try {
         availableModules = await invoke('get_available_modules');
+        // 채널을 바꿔 다시 받았으면 그 채널에 없는 모듈은 고른 것에서 뺀다
+        Array.from(selectedModules).filter(id => !availableModules.some(m => m.id === id)).forEach(id => selectedModules.delete(id));
         // 준비 모드는 이 기기에서 도는 게임을 처음부터 골라 둔다 (빼고 싶은 것만 끈다)
         if (setupMode) availableModules.filter(m => !m.unsupported_reason).forEach(m => selectedModules.add(m.id));
     } catch (_) {
@@ -1705,6 +1783,7 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
         desktop: document.getElementById('chk-desktop').checked,
         startMenu: document.getElementById('chk-startmenu').checked,
     });
+    if ($channel?.value) await invoke('set_update_channel', { channel: $channel.value });
     await invoke('set_selected_modules', { modules: Array.from(selectedModules) });
 
     // 설치 폴더 준비: 관리자 권한(UAC)이 필요하면 여기서 끝낸 뒤에 그림과 설치를 시작한다
@@ -1719,7 +1798,7 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
     try {
         await invoke('fetch_latest_release');
     } catch (e) {
-        enterError({ error_code: 'fetch_failed', message: String(e) });
+        enterError({ error_code: e?.error_code ?? 'fetch_failed', message: e?.message ?? String(e) });
         return;
     }
 
@@ -2020,6 +2099,11 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
         const st = await invoke('get_installer_state');
         if ($installPath) $installPath.value = st.install_path || '';
         if ($componentsPath) $componentsPath.value = st.components_dir || '';
+        // 업데이트 채널: 지금 쓰는 채널(없으면 이 설치기의 채널)을 골라 두고, 모듈 목록도 그 채널에서 받는다
+        if ($channel && !setupMode && st.channel) {
+            $channel.value = st.channel;
+            await invoke('set_update_channel', { channel: $channel.value });
+        }
     } catch (_) {}
 
     // 모듈 로드
