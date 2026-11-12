@@ -1,11 +1,7 @@
-import type { TFunction } from 'i18next';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import type { OverlayMenuItem } from '../../api/createApi';
 import { type HostWindow, HostWindowContext, isAppRoute, type ServerAction } from '../../extensions/host';
 import type { ServerInfo } from '../../types/daemon';
 import { SERVER_CHANGING, subscribeDaemonEvents } from '../../utils/daemonEvents';
-import { primaryAction, viewStatus } from '../../utils/serverView';
 import ExtensionSlot from '../ExtensionSlot';
 import './DesktopOverlay.css';
 
@@ -13,67 +9,23 @@ import './DesktopOverlay.css';
 const REFRESH_MS = 10_000;
 /** 누른 채 이만큼 움직이면 클릭이 아니라 창 끌기 (px) */
 const DRAG_THRESHOLD = 4;
-/** 메뉴에 넣는 서버 수 */
-const MENU_SERVERS = 12;
-const ACTIONS: ServerAction[] = ['start', 'stop', 'restart'];
-/** 메뉴에 쓰는 서버 이름 글자 수: 셸은 80자가 넘는 항목이 있으면 메뉴를 통째로 거절한다 */
-const MENU_NAME_MAX = 40;
-
-const shortName = (name: string) => {
-    const chars = Array.from(name);
-    return chars.length > MENU_NAME_MAX ? `${chars.slice(0, MENU_NAME_MAX - 1).join('')}…` : name;
-};
-
-/**
- * 우클릭 메뉴 항목 (셸이 OS 메뉴로 띄운다). 서버마다 하위 메뉴: 꺼져 있으면 시작, 켜져 있으면 정지·재시작을
- * 한 번 더 골라야 한다 (작은 창에서 잘못 누르기 쉽다). 켜고 끄는 중이면 고를 것이 없다
- */
-export function overlayMenuItems(servers: ServerInfo[], t: TFunction): OverlayMenuItem[] {
-    const items: OverlayMenuItem[] = servers.slice(0, MENU_SERVERS).map((server) => {
-        // 이 창은 모듈 목록을 읽지 않는다: "모듈 없음"으로 판정하지 않는다
-        const status = viewStatus(server, true);
-        const action = primaryAction(status);
-        const confirm = (what: 'stop' | 'restart') => ({
-            label: t(`desktop_overlay.menu_${what}`),
-            enabled: action === 'stop',
-            items: [{ id: `server:${server.id}:${what}`, label: t(`desktop_overlay.menu_${what}_confirm`) }],
-        });
-        return {
-            label: t('desktop_overlay.menu_server', {
-                name: shortName(server.name),
-                status: t(`shell.status_${status}`),
-            }),
-            items: [
-                {
-                    id: `server:${server.id}:start`,
-                    label: t('desktop_overlay.menu_start'),
-                    enabled: action === 'start',
-                },
-                confirm('stop'),
-                confirm('restart'),
-            ],
-        };
-    });
-    if (items.length === 0) items.push({ label: t('desktop_overlay.menu_no_servers'), enabled: false });
-    items.push(
-        { separator: true },
-        { id: 'open_app', label: t('desktop_overlay.menu_open_app') },
-        { id: 'hide', label: t('desktop_overlay.menu_hide') },
-    );
-    return items;
+/** 주소(`?desktop-overlay=1&scale=`)로 받은 처음 펫 크기 (%). 바뀌면 셸이 `overlay:scale`로 알린다 */
+function initialScale() {
+    const value = Number(new URLSearchParams(window.location.search).get('scale'));
+    return Number.isFinite(value) && value > 0 ? value : 100;
 }
 
 /**
  * 바탕화면 오버레이 창 (`?desktop-overlay=1`, 셸 overlay.rs). 익스텐션 slot `Desktop.overlay`를 그리고,
- * 창 일은 여기서 한다: 누르면 앱 열기, 누른 채 움직이면 창 끌기, 우클릭은 서버 메뉴.
+ * 창 일은 여기서 한다: 누르면 앱 열기, 누른 채 움직이면 창 끌기, 우클릭은 셸이 펫 옆에 판을 연다(`OverlayMenu`).
+ * 펫 크기(판의 크기 막대)는 slot 전체를 CSS zoom으로 키운다.
  * 내용 크기를 재서 셸에 알리면 셸이 아래 가운데 점을 지키며 크기를 맞추고 보인다.
- * 서버를 켜고 끄는 일은 데몬 API로 한다. 원격 데몬의 정지·재시작은 메뉴에서 한 번 더 고른 것만 하고,
- * 익스텐션(host.run)은 트레이 팝업처럼 이 PC 데몬의 서버만 정지·재시작할 수 있다
+ * 서버를 켜고 끄는 일은 데몬 API로 한다. 익스텐션(host.run)은 트레이 팝업처럼 이 PC 데몬의 서버만 정지·재시작할 수 있다
  */
 export function DesktopOverlay() {
-    const { t } = useTranslation('gui');
     const rootRef = useRef<HTMLDivElement>(null);
     const [servers, setServers] = useState<ServerInfo[]>([]);
+    const [scale, setScale] = useState(initialScale);
     const serversRef = useRef(servers);
     serversRef.current = servers;
     /** 마지막으로 확인한 고른 데몬: 이 PC면 null, 아직 모르면 undefined */
@@ -147,23 +99,16 @@ export function DesktopOverlay() {
         [runServer],
     );
 
-    // 셸 메뉴에서 고른 항목
+    // 판의 크기 막대
     useEffect(() => {
-        if (typeof window.api?.onOverlayMenu !== 'function') return undefined;
-        const off = window.api.onOverlayMenu((choice: unknown) => {
-            if (choice === 'open_app' || choice === 'hide') {
-                window.api?.overlayAction?.(choice);
-                return;
-            }
-            const m = typeof choice === 'string' ? /^server:(.+):(start|stop|restart)$/.exec(choice) : null;
-            if (!m || !ACTIONS.includes(m[2] as ServerAction)) return;
-            if (!serversRef.current.some((s) => s.id === m[1])) return;
-            runServer(m[1], m[2] as ServerAction);
+        if (typeof window.api?.onOverlayScale !== 'function') return undefined;
+        const off = window.api.onOverlayScale((value: unknown) => {
+            if (typeof value === 'number' && value > 0) setScale(value);
         });
         return () => {
             if (typeof off === 'function') off();
         };
-    }, [runServer]);
+    }, []);
 
     // 내용 크기가 바뀔 때마다 셸에 알린다 (첫 알림에 창이 보인다)
     useLayoutEffect(() => {
@@ -203,7 +148,7 @@ export function DesktopOverlay() {
     };
     const onContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
-        window.api?.overlayMenu?.(overlayMenuItems(serversRef.current, t));
+        window.api?.overlayMenu?.();
     };
 
     return (
@@ -219,7 +164,9 @@ export function DesktopOverlay() {
                 }}
                 onContextMenu={onContextMenu}
             >
-                <ExtensionSlot slotId="Desktop.overlay" />
+                <div className="desktop-overlay-zoom" style={{ zoom: scale / 100 }}>
+                    <ExtensionSlot slotId="Desktop.overlay" />
+                </div>
             </div>
         </HostWindowContext.Provider>
     );

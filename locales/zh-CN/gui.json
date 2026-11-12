@@ -2374,15 +2374,9 @@
     "stop_confirm_aria": "确认停止 {{name}}"
   },
   "desktop_overlay": {
-    "menu_server": "{{name}} · {{status}}",
-    "menu_start": "启动",
-    "menu_stop": "停止",
-    "menu_stop_confirm": "立即停止",
-    "menu_restart": "重启",
-    "menu_restart_confirm": "立即重启",
-    "menu_no_servers": "还没有服务器",
     "menu_open_app": "打开 Saba-chan",
     "menu_hide": "从桌面隐藏",
+    "menu_size": "宠物大小",
     "setting_label": "桌面浮窗",
     "setting_description": "显示扩展放在桌面角落的小窗口（如桌面宠物）。可拖动移动。",
     "setting_unsupported": "此桌面（Wayland）无法显示。"

@@ -19,6 +19,13 @@ html[data-desktop-overlay] #root {
     cursor: default;
 }
 
+.desktop-overlay-zoom {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+}
+
 .desktop-overlay img {
     -webkit-user-drag: none;
 }

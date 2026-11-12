@@ -5,25 +5,30 @@
 //! - 창은 내용 크기에 맞추고(`overlay_fit`) 아래 가운데 점을 붙박이로 둔다. 끌어 옮긴 자리는 `desktopOverlay.{x,y}`(물리 px)에 남는다
 //! - 끌기(`overlay_drag`)로 옮긴 자리만 기억한다. 모니터를 빼서 OS가 옮긴 자리는 기억하지 않고, 모니터 구성을 지켜보다
 //!   고른 자리가 있는 모니터가 돌아오면 그 자리로 되돌린다
-//! - 우클릭 메뉴는 렌더러가 항목을 주면 셸이 OS 메뉴로 띄우고 고른 것을 `overlay:menu`로 돌려준다 (작은 창 안에 그리면 잘린다)
+//! - 우클릭하면(`overlay_menu`) 펫 옆에 작은 판 창 `overlay-menu`를 띄운다(트레이 팝업과 같은 `window::Popup`):
+//!   서버 켜고 끄기, 펫 크기(`desktopOverlay.scale`, `overlay_set_scale`), 앱 열기, 숨기기. 포커스를 잃거나 Esc면 닫힌다
 //! - 사용자가 보는 창으로 세지 않는다: 트레이만 남은 상태 판단(`window::tray_only`)과 "창 모두 닫기"에서 빠진다
 //!
 //! 리눅스 Wayland는 창 자리와 항상 위를 앱이 정할 수 없어 띄우지 않는다.
 
 use crate::window::PxRect;
 use crate::AppState;
-use serde::Deserialize;
 use serde_json::{json, Value};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
-use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 pub const OVERLAY: &str = "desktop-overlay";
 /// 익스텐션 manifest `gui.slots`의 이 창 slot 이름 (`extensions/slotTable.ts`와 같다)
 pub const OVERLAY_SLOT: &str = "Desktop.overlay";
-/// OS 메뉴 항목 id 앞머리. 트레이 메뉴(리눅스)와 같은 전역 메뉴 이벤트로 오므로 섞이지 않게 붙인다
-const MENU_PREFIX: &str = "overlay-menu:";
+/// 펫 우클릭 판 창
+pub const OVERLAY_MENU: &str = "overlay-menu";
+static MENU: crate::window::Popup = crate::window::Popup::new(OVERLAY_MENU, "index.html?overlay-menu=1", 280.0);
+/// 펫 크기 (%): 기본, 한 칸 (한도는 데몬 설정 `DESKTOP_OVERLAY_SCALE` 50~200과 같다)
+const DEFAULT_SCALE: u32 = 100;
+const SCALE_MIN: u32 = 50;
+const SCALE_MAX: u32 = 200;
+const SCALE_STEP: f64 = 10.0;
 /// 내용 크기를 받기 전 처음 크기 (보이지 않는다)
 const INITIAL_SIZE: (f64, f64) = (200.0, 200.0);
 /// 창 크기 한도 (논리 px)
@@ -38,9 +43,6 @@ const DRAG_START_MS: u64 = 10_000;
 const DRAG_MOVE_MS: u64 = 2_000;
 /// 모니터를 꽂고 빼거나 OS가 창을 옮겼는지 보는 간격
 const WATCH_MS: u64 = 3_000;
-/// 메뉴 항목 한도 (렌더러가 보낸 것)
-const MENU_MAX_ITEMS: usize = 80;
-const MENU_MAX_LABEL: usize = 80;
 
 /// 사용자가 고른 아래 가운데 점 (물리 px). 끌어 옮길 때만 바뀐다: 크기가 바뀌어 가장자리에서 당겨도,
 /// 그 모니터를 빼서 다른 모니터에 놓아도 이 점은 그대로다
@@ -56,8 +58,9 @@ static LAST_FIT: Mutex<Option<(f64, f64)>> = Mutex::new(None);
 static DRAG_UNTIL: AtomicU64 = AtomicU64::new(0);
 /// 창을 열 때마다 늘린다. 옛 창의 지켜보기는 멈춘다
 static OPEN_GEN: AtomicU64 = AtomicU64::new(0);
-/// 마지막으로 연 메뉴의 세대. 늦게 온 옛 메뉴의 선택은 버린다
-static MENU_GEN: AtomicU64 = AtomicU64::new(0);
+/// 지금 펫 크기 (%). 창을 열 때 설정에서 읽고 크기 막대가 바꾼다
+static SCALE: AtomicU32 = AtomicU32::new(DEFAULT_SCALE);
+static SCALE_GEN: AtomicU64 = AtomicU64::new(0);
 
 /// 이 데스크톱에서 띄울 수 있는가 (Wayland는 자리·항상 위를 앱이 정할 수 없다)
 pub fn supported() -> bool {
@@ -81,12 +84,55 @@ pub fn wanted_by(list: &Value) -> bool {
     })
 }
 
-/// 설정 `desktopOverlay` (없으면 켬·자리 없음)
-fn saved(settings: &Value) -> (bool, Option<(f64, f64)>) {
+/// 설정 `desktopOverlay` (없으면 켬·자리 없음·100%)
+#[derive(Debug, PartialEq)]
+struct Saved {
+    enabled: bool,
+    at: Option<(f64, f64)>,
+    scale: u32,
+}
+
+fn saved(settings: &Value) -> Saved {
     let o = &settings["desktopOverlay"];
-    let enabled = o["enabled"].as_bool().unwrap_or(true);
-    let at = o["x"].as_f64().zip(o["y"].as_f64());
-    (enabled, at)
+    Saved {
+        enabled: o["enabled"].as_bool().unwrap_or(true),
+        at: o["x"].as_f64().zip(o["y"].as_f64()),
+        scale: o["scale"].as_f64().map_or(DEFAULT_SCALE, scale_of),
+    }
+}
+
+/// `desktopOverlay`의 몇 칸만 바꾸는 설정 저장 본문. GUI 설정 저장은 맨 위 키를 통째로 바꾸므로 나머지 칸을 함께 싣는다
+fn patch(settings: &Value, change: Value) -> Value {
+    let mut overlay = match &settings["desktopOverlay"] {
+        Value::Object(o) => o.clone(),
+        _ => serde_json::Map::new(),
+    };
+    if let Value::Object(change) = change {
+        overlay.extend(change);
+    }
+    json!({ "desktopOverlay": overlay })
+}
+
+/// 펫 크기 (%): 10% 칸, 50~200%
+fn scale_of(value: f64) -> u32 {
+    if !value.is_finite() {
+        return DEFAULT_SCALE;
+    }
+    ((value / SCALE_STEP).round() * SCALE_STEP).clamp(SCALE_MIN as f64, SCALE_MAX as f64) as u32
+}
+
+/// 창 크기 (물리 px): 내용 크기(논리 px)를 한도 안에 두고 모니터 배율을 곱한다. 한도는 펫 크기만큼 늘어난다
+fn window_size(width: f64, height: f64, scale: u32, dpi: f64) -> (f64, f64) {
+    let grow = scale as f64 / 100.0;
+    (
+        (width.clamp(MIN_SIDE, MAX_WIDTH * grow) * dpi).round(),
+        (height.clamp(MIN_SIDE, MAX_HEIGHT * grow) * dpi).round(),
+    )
+}
+
+/// 데몬 요청을 읽기와 서버 켜고 끄기로 묶는 창 (`allows_request`): 오버레이와 그 우클릭 판
+pub fn limited(label: &str) -> bool {
+    label == OVERLAY || label == OVERLAY_MENU
 }
 
 /// 창 자리(왼쪽 위, 물리 px). `anchor`는 아래 가운데 점이고, 없으면 작업 영역 오른쪽 아래에서 `margin`만큼 띄운다.
@@ -112,8 +158,7 @@ pub fn settle(anchor: Option<(f64, f64)>, size: (f64, f64), work: PxRect, margin
 /// 설정과 익스텐션 목록을 보고 창을 띄우거나 내린다. 데몬에 닿지 않으면 지금 상태를 그대로 둔다
 pub async fn sync(app: &AppHandle) {
     let state = app.state::<AppState>();
-    let (enabled, _) = saved(&state.settings());
-    if !enabled || !supported() {
+    if !saved(&state.settings()).enabled || !supported() {
         return close(app);
     }
     let Some(list) = local_extensions(&state).await else {
@@ -146,6 +191,7 @@ pub fn emit<S: serde::Serialize + Clone>(app: &AppHandle, event: &str, payload: 
 }
 
 pub fn close(app: &AppHandle) {
+    close_menu(app);
     // 맥은 패널을 원래 창으로 되돌린 뒤 없앤다. 둘 다 메인 스레드에서 차례로 한다
     #[cfg(target_os = "macos")]
     {
@@ -168,7 +214,11 @@ fn open(app: &AppHandle) {
     if app.get_webview_window(OVERLAY).is_some() {
         return;
     }
-    let builder = WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App("index.html?desktop-overlay=1".into()))
+    let scale = saved(&app.state::<AppState>().settings()).scale;
+    SCALE.store(scale, Ordering::SeqCst);
+    // 펫 크기는 주소로 처음 값을 주고, 바뀌면 `overlay:scale`로 알린다 (이 창은 설정을 읽지 않는다)
+    let url = format!("index.html?desktop-overlay=1&scale={scale}");
+    let builder = WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App(url.into()))
         .title("Saba-chan")
         .inner_size(INITIAL_SIZE.0, INITIAL_SIZE.1)
         .decorations(false)
@@ -207,12 +257,6 @@ fn open(app: &AppHandle) {
         // 셸이 놓은 자리(`fit`)와 OS가 옮긴 자리도 Moved로 온다: 끄는 중이 아니거나 놓은 점과 같으면 remember_moved가 거른다
         if let WindowEvent::Moved(_) = event {
             remember_moved(&handle);
-        }
-    });
-    let handle = app.clone();
-    win.on_menu_event(move |_, event| {
-        if let Some(choice) = menu_choice(event.id().as_ref(), MENU_GEN.load(Ordering::SeqCst)) {
-            let _ = handle.emit_to(OVERLAY, "overlay:menu", choice);
         }
     });
 }
@@ -297,21 +341,18 @@ pub fn fit(app: &AppHandle, width: f64, height: f64) {
 /// 이 내용 크기(논리 px)를 놓을 자리와 크기 (물리 px). 고른 점이 있는 모니터에, 그 모니터가 없으면 주 모니터의 처음 자리에
 fn plan(app: &AppHandle, width: f64, height: f64) -> Option<((f64, f64), (f64, f64))> {
     let anchor = *ANCHOR.lock().unwrap();
-    let anchor = anchor.or_else(|| saved(&app.state::<AppState>().settings()).1);
+    let anchor = anchor.or_else(|| saved(&app.state::<AppState>().settings()).at);
     let monitors = app.available_monitors().unwrap_or_default();
     let screens: Vec<PxRect> = monitors.iter().map(|m| rect(*m.position(), *m.size())).collect();
     let (monitor, anchor) = match screen_for(anchor, &screens) {
         Some(i) => (monitors[i].clone(), anchor),
         None => (app.primary_monitor().ok().flatten().or_else(|| monitors.first().cloned())?, None),
     };
-    let scale = monitor.scale_factor();
+    let dpi = monitor.scale_factor();
     // 물리 px는 정수로: 창이 옮겨진 뒤 잰 자리와 기억한 점이 어긋나 사용자가 옮긴 것으로 보지 않게
-    let size = (
-        (width.clamp(MIN_SIDE, MAX_WIDTH) * scale).round(),
-        (height.clamp(MIN_SIDE, MAX_HEIGHT) * scale).round(),
-    );
+    let size = window_size(width, height, SCALE.load(Ordering::SeqCst), dpi);
     let area = monitor.work_area();
-    let (pos, _) = settle(anchor, size, rect(area.position, area.size), MARGIN * scale);
+    let (pos, _) = settle(anchor, size, rect(area.position, area.size), MARGIN * dpi);
     Some((pos, size))
 }
 
@@ -429,22 +470,15 @@ fn remember_moved(app: &AppHandle) {
         *ANCHOR.lock().unwrap() = Some(anchor);
         *PLACED.lock().unwrap() = Some(anchor);
         let state = app.state::<AppState>();
-        let (enabled, _) = saved(&state.settings());
-        let patch = json!({ "desktopOverlay": { "enabled": enabled, "x": anchor.0.round() as i64, "y": anchor.1.round() as i64 } });
-        crate::native::save_settings(&state, &patch).await;
+        let body = patch(&state.settings(), json!({ "x": anchor.0.round() as i64, "y": anchor.1.round() as i64 }));
+        crate::native::save_settings(&state, &body).await;
     });
 }
 
 /// 설정의 켜기 스위치를 바꾸고 창을 맞춘다
 pub async fn set_enabled(app: &AppHandle, enabled: bool) -> bool {
     let state = app.state::<AppState>();
-    let (_, at) = saved(&state.settings());
-    let mut overlay = json!({ "enabled": enabled });
-    if let Some((x, y)) = at {
-        overlay["x"] = json!(x as i64);
-        overlay["y"] = json!(y as i64);
-    }
-    let ok = crate::native::save_settings(&state, &json!({ "desktopOverlay": overlay })).await;
+    let ok = crate::native::save_settings(&state, &patch(&state.settings(), json!({ "enabled": enabled }))).await;
     sync(app).await;
     ok
 }
@@ -452,7 +486,7 @@ pub async fn set_enabled(app: &AppHandle, enabled: bool) -> bool {
 /// 설정 화면이 보일 것: 켜기 스위치, 이 창을 쓸 익스텐션이 있는지, 이 데스크톱에서 띄울 수 있는지
 pub async fn state(app: &AppHandle) -> Value {
     let state = app.state::<AppState>();
-    let (enabled, _) = saved(&state.settings());
+    let enabled = saved(&state.settings()).enabled;
     let wanted = local_extensions(&state).await.is_some_and(|list| wanted_by(&list));
     json!({ "enabled": enabled, "available": wanted, "supported": supported() })
 }
@@ -497,10 +531,12 @@ fn tab_of(route: Option<&str>) -> Option<String> {
     ok.then(|| route.to_string())
 }
 
-/// 오버레이 창의 셸 동작: open_app(메인 창. `route`가 `server:<id>`면 그 서버를, 앱 탭이면 그 탭을 연다) |
-/// hide(설정에서 끄고 창을 내린다)
+/// 오버레이 창과 우클릭 판의 셸 동작: open_app(메인 창. `route`가 `server:<id>`면 그 서버를, 앱 탭이면 그 탭을 연다) |
+/// hide(설정에서 끄고 창을 내린다) | close(판만 닫는다). 판은 늘 닫는다
 pub async fn action(app: &AppHandle, action: &str, route: Option<&str>) -> bool {
+    close_menu(app);
     match action {
+        "close" => {}
         "open_app" => {
             crate::window::show_main(app);
             if let Some(id) = server_of(route) {
@@ -517,100 +553,49 @@ pub async fn action(app: &AppHandle, action: &str, route: Option<&str>) -> bool 
     true
 }
 
-// ── 우클릭 메뉴 ──
+// ── 우클릭 판 ──
 
-/// 렌더러가 보낸 메뉴 한 칸: 구분선이거나, id가 있는 항목이거나, 하위 메뉴(`items`)
-#[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct MenuSpec {
-    #[serde(default)]
-    pub id: Option<String>,
-    #[serde(default)]
-    pub label: String,
-    #[serde(default = "yes")]
-    pub enabled: bool,
-    #[serde(default)]
-    pub separator: bool,
-    #[serde(default)]
-    pub items: Option<Vec<MenuSpec>>,
-}
-
-fn yes() -> bool {
-    true
-}
-
-/// 메뉴가 받을 만한가: 항목 수·글자 수·깊이(하위 메뉴 두 단계: 서버 ▸ 정지 ▸ 확인) 한도
-pub fn menu_ok(items: &[MenuSpec]) -> bool {
-    fn walk(items: &[MenuSpec], depth: usize, count: &mut usize) -> bool {
-        items.iter().all(|i| {
-            *count += 1;
-            *count <= MENU_MAX_ITEMS
-                && i.label.chars().count() <= MENU_MAX_LABEL
-                && i.id.as_ref().is_none_or(|id| id.len() <= 200)
-                && match &i.items {
-                    Some(sub) => depth < 3 && walk(sub, depth + 1, count),
-                    None => true,
-                }
-        })
-    }
-    !items.is_empty() && walk(items, 1, &mut 0)
-}
-
-/// OS 메뉴 id: 앞머리 + 세대 + 렌더러 id
-fn menu_id(generation: u64, id: &str) -> String {
-    format!("{MENU_PREFIX}{generation}:{id}")
-}
-
-/// 받은 메뉴 이벤트가 지금 메뉴의 항목이면 렌더러 id
-fn menu_choice(raw: &str, generation: u64) -> Option<String> {
-    let rest = raw.strip_prefix(MENU_PREFIX)?;
-    let (g, id) = rest.split_once(':')?;
-    (g.parse::<u64>().ok()? == generation).then(|| id.to_string())
-}
-
-fn build_items(app: &AppHandle, items: &[MenuSpec], generation: u64) -> tauri::Result<Vec<Box<dyn IsMenuItem<tauri::Wry>>>> {
-    let mut out: Vec<Box<dyn IsMenuItem<tauri::Wry>>> = Vec::new();
-    for spec in items {
-        if spec.separator {
-            out.push(Box::new(PredefinedMenuItem::separator(app)?));
-        } else if let Some(sub) = &spec.items {
-            let children = build_items(app, sub, generation)?;
-            let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = children.iter().map(|b| b.as_ref()).collect();
-            out.push(Box::new(Submenu::with_items(app, &spec.label, spec.enabled, &refs)?));
-        } else {
-            let id = spec.id.as_deref().unwrap_or_default();
-            out.push(Box::new(MenuItem::with_id(
-                app,
-                menu_id(generation, id),
-                &spec.label,
-                spec.enabled && !id.is_empty(),
-                None::<&str>,
-            )?));
-        }
-    }
-    Ok(out)
-}
-
-/// 렌더러가 준 항목으로 OS 메뉴를 마우스 자리에 띄운다. 고르면 `overlay:menu`(항목 id)가 이 창에 간다
-pub fn popup_menu(app: &AppHandle, items: Vec<MenuSpec>) -> bool {
+/// 펫을 우클릭했다: 판이 있으면 닫고, 없으면 펫 옆에 연다 (지금 펫 크기를 주소로 준다)
+pub fn toggle_menu(app: &AppHandle) -> bool {
     let Some(win) = app.get_webview_window(OVERLAY) else {
         return false;
     };
-    if !menu_ok(&items) {
-        return false;
-    }
-    let generation = MENU_GEN.fetch_add(1, Ordering::SeqCst) + 1;
-    let built = build_items(app, &items, generation).and_then(|children| {
-        let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = children.iter().map(|b| b.as_ref()).collect();
-        Menu::with_items(app, &refs)
+    let pet = win.outer_position().ok().zip(win.outer_size().ok()).map(|(p, s)| PxRect {
+        x: p.x as f64,
+        y: p.y as f64,
+        w: s.width as f64,
+        h: s.height as f64,
     });
-    match built.and_then(|menu| win.popup_menu(&menu)) {
-        Ok(()) => true,
-        Err(e) => {
-            tracing::warn!("[Overlay] Failed to show the menu: {}", e);
-            false
-        }
+    let query = format!("&scale={}", SCALE.load(Ordering::SeqCst));
+    crate::window::toggle_popup(app, &MENU, pet, &query)
+}
+
+pub fn fit_menu(app: &AppHandle, height: f64) {
+    crate::window::fit_popup(app, &MENU, height);
+}
+
+fn close_menu(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(OVERLAY_MENU) {
+        let _ = w.destroy();
     }
+}
+
+/// 크기 막대를 움직였다: 펫에 바로 알리고(`overlay:scale`), 멈추면 저장한다. 고른 크기(%)를 돌려준다
+pub fn set_scale(app: &AppHandle, value: f64) -> u32 {
+    let scale = scale_of(value);
+    SCALE.store(scale, Ordering::SeqCst);
+    emit(app, "overlay:scale", scale);
+    let generation = SCALE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(SAVE_DEBOUNCE_MS)).await;
+        if SCALE_GEN.load(Ordering::SeqCst) != generation {
+            return;
+        }
+        let state = app.state::<AppState>();
+        crate::native::save_settings(&state, &patch(&state.settings(), json!({ "scale": scale }))).await;
+    });
+    scale
 }
 
 #[cfg(test)]
@@ -744,10 +729,10 @@ mod tests {
 
     #[test]
     fn the_overlay_switch_defaults_on_and_reads_its_place() {
-        assert_eq!(saved(&json!({})), (true, None));
+        assert_eq!(saved(&json!({})), Saved { enabled: true, at: None, scale: 100 });
         assert_eq!(
-            saved(&json!({ "desktopOverlay": { "enabled": false, "x": 100, "y": 200 } })),
-            (false, Some((100.0, 200.0)))
+            saved(&json!({ "desktopOverlay": { "enabled": false, "x": 100, "y": 200, "scale": 150 } })),
+            Saved { enabled: false, at: Some((100.0, 200.0)), scale: 150 }
         );
     }
 
@@ -759,53 +744,79 @@ mod tests {
         assert!(!wayland(None, false));
     }
 
+    /// 자리를 저장해도 켜기·펫 크기는 남는다 (GUI 설정 저장은 `desktopOverlay`를 통째로 바꾼다)
     #[test]
-    fn menu_choices_from_an_older_menu_or_the_tray_are_ignored() {
-        let id = menu_id(3, "srv:a1:stop");
-        assert_eq!(menu_choice(&id, 3).as_deref(), Some("srv:a1:stop"));
-        assert_eq!(menu_choice(&id, 4), None, "an older menu");
-        assert_eq!(menu_choice("open_window", 3), None, "the Linux tray menu");
+    fn saving_one_overlay_setting_keeps_the_others() {
+        let settings = json!({ "desktopOverlay": { "enabled": true, "x": 1, "y": 2, "scale": 150 } });
+        assert_eq!(
+            patch(&settings, json!({ "x": 5, "y": 6 })),
+            json!({ "desktopOverlay": { "enabled": true, "x": 5, "y": 6, "scale": 150 } })
+        );
+        assert_eq!(patch(&json!({}), json!({ "enabled": false })), json!({ "desktopOverlay": { "enabled": false } }));
     }
 
+    /// 펫 크기는 10% 칸으로 50~200%
     #[test]
-    fn the_menu_is_bounded() {
-        let item = |label: &str| MenuSpec {
-            id: Some("x".into()),
-            label: label.into(),
-            enabled: true,
-            separator: false,
-            items: None,
-        };
-        let sub = |items: Vec<MenuSpec>| MenuSpec {
-            id: None,
-            label: "sub".into(),
-            enabled: true,
-            separator: false,
-            items: Some(items),
-        };
-        assert!(menu_ok(&[item("열기"), sub(vec![item("정지")])]));
-        assert!(!menu_ok(&[]));
-        assert!(menu_ok(&[sub(vec![sub(vec![item("확인")])])]), "server ▸ stop ▸ confirm");
-        assert!(!menu_ok(&[sub(vec![sub(vec![sub(vec![item("too deep")])])])]), "two levels of submenus");
-        assert!(!menu_ok(&vec![item("x"); MENU_MAX_ITEMS + 1]));
-        assert!(!menu_ok(&[item(&"가".repeat(MENU_MAX_LABEL + 1))]));
-        let parsed: Vec<MenuSpec> =
-            serde_json::from_value(json!([{ "id": "a", "label": "A" }, { "separator": true }, { "label": "B", "items": [{ "id": "b", "label": "C", "enabled": false }] }]))
-                .unwrap();
-        assert!(menu_ok(&parsed));
-        assert!(parsed[0].enabled && !parsed[2].items.as_ref().unwrap()[0].enabled);
+    fn the_pet_size_snaps_to_10_percent_steps_between_50_and_200() {
+        assert_eq!(scale_of(100.0), 100);
+        assert_eq!(scale_of(173.0), 170);
+        assert_eq!(scale_of(10.0), 50);
+        assert_eq!(scale_of(900.0), 200);
+        assert_eq!(scale_of(f64::NAN), 100);
     }
 
+    /// 펫을 키우면 창 한도도 그만큼 커진다 (말풍선이 잘리지 않게)
     #[test]
-    fn the_overlay_may_call_what_it_needs_and_nothing_that_notifies() {
+    fn the_window_limit_grows_with_the_pet() {
+        assert_eq!(window_size(1000.0, 1000.0, 100, 1.0), (MAX_WIDTH, MAX_HEIGHT));
+        assert_eq!(window_size(1000.0, 1000.0, 200, 1.5), (MAX_WIDTH * 3.0, MAX_HEIGHT * 3.0));
+        assert_eq!(window_size(10.0, 10.0, 50, 1.0), (MIN_SIDE, MIN_SIDE));
+    }
+
+    /// 펫과 그 우클릭 판만 데몬 요청이 묶인다
+    #[test]
+    fn the_pet_and_its_menu_only_read_and_run_servers() {
+        assert!(limited(OVERLAY));
+        assert!(limited(OVERLAY_MENU));
+        assert!(!limited("main"));
+        assert!(!limited(crate::window::TRAY_POPUP));
+    }
+
+    fn granted_to(window: &str) -> Vec<String> {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
         let mut granted: Vec<String> = Vec::new();
         for entry in std::fs::read_dir(dir).unwrap() {
             let cap: Value = serde_json::from_str(&std::fs::read_to_string(entry.unwrap().path()).unwrap()).unwrap();
-            if cap["windows"].as_array().is_some_and(|w| w.iter().any(|w| w == OVERLAY)) {
+            if cap["windows"].as_array().is_some_and(|w| w.iter().any(|w| w == window)) {
                 granted.extend(cap["permissions"].as_array().unwrap().iter().filter_map(|p| p.as_str().map(String::from)));
             }
         }
+        granted
+    }
+
+    /// 우클릭 판은 서버 켜고 끄기, 펫 크기, 앱 열기·숨기기만 한다
+    #[test]
+    fn the_pet_menu_may_change_only_the_pet_size_and_run_servers() {
+        let granted = granted_to(OVERLAY_MENU);
+        for need in [
+            "allow-daemon-request",
+            "allow-daemon-status",
+            "allow-daemon-target-get",
+            "allow-language-get",
+            "allow-overlay-action",
+            "allow-overlay-menu-fit",
+            "allow-overlay-set-scale",
+        ] {
+            assert!(granted.iter().any(|g| g == need), "the pet menu cannot call {need}");
+        }
+        for never in ["core:event:allow-emit", "allow-notify", "allow-overlay-set-enabled", "allow-daemon-target-set", "allow-settings-local-save"] {
+            assert!(!granted.iter().any(|g| g == never), "the pet menu must not call {never}");
+        }
+    }
+
+    #[test]
+    fn the_overlay_may_call_what_it_needs_and_nothing_that_notifies() {
+        let granted = granted_to(OVERLAY);
         for need in [
             "allow-daemon-request",
             "allow-daemon-status",
@@ -820,11 +831,11 @@ mod tests {
         ] {
             assert!(granted.iter().any(|g| g == need), "the overlay cannot call {need}");
         }
-        for never in ["core:event:default", "core:event:allow-emit", "core:event:allow-emit-to", "allow-notify", "allow-overlay-set-enabled", "allow-daemon-target-set", "allow-settings-local-save", "core:window:allow-start-dragging"] {
+        for never in ["core:event:default", "core:event:allow-emit", "core:event:allow-emit-to", "allow-notify", "allow-overlay-set-enabled", "allow-daemon-target-set", "allow-settings-local-save", "core:window:allow-start-dragging", "allow-overlay-set-scale"] {
             assert!(!granted.iter().any(|g| g == never), "the overlay must not call {never}");
         }
         let build = include_str!("../build.rs");
-        for cmd in ["overlay_fit", "overlay_menu", "overlay_action", "overlay_state", "overlay_set_enabled", "overlay_sync", "overlay_drag"] {
+        for cmd in ["overlay_fit", "overlay_menu", "overlay_action", "overlay_state", "overlay_set_enabled", "overlay_sync", "overlay_drag", "overlay_menu_fit", "overlay_set_scale"] {
             assert!(build.contains(&format!("\"{cmd}\"")), "{cmd} is missing from the app manifest");
         }
     }

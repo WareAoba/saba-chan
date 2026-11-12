@@ -48,6 +48,8 @@ const COMMANDS: &[&str] = &[
     "overlay_set_enabled",
     "overlay_sync",
     "overlay_drag",
+    "overlay_menu_fit",
+    "overlay_set_scale",
     "sound_play",
 ];
 

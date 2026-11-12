@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "desktop-overlay",
-  "description": "바탕화면 오버레이(익스텐션 slot Desktop.overlay): 데몬 읽기(GET)와 서버 시작·정지·재시작(그 밖의 데몬 요청은 셸이 거절한다, overlay::allows_request), 이벤트 수신(보내기 없음), 창 끌기(셸을 거쳐: 끌어 옮긴 자리만 기억한다), 크기 맞춤·우클릭 메뉴·앱 열기·숨기기. 알림은 보내지 않는다. 설정은 숨기기만 셸을 거쳐 바꾼다(켜기 스위치를 끈다)",
+  "description": "바탕화면 오버레이(익스텐션 slot Desktop.overlay): 데몬 읽기(GET)와 서버 시작·정지·재시작(그 밖의 데몬 요청은 셸이 거절한다, overlay::allows_request), 이벤트 수신(보내기 없음), 창 끌기(셸을 거쳐: 끌어 옮긴 자리만 기억한다), 크기 맞춤·우클릭 판 열기·앱 열기·숨기기·펫 크기 알림 받기. 알림은 보내지 않는다. 설정은 숨기기만 셸을 거쳐 바꾼다(켜기 스위치를 끈다)",
   "windows": [
     "desktop-overlay"
   ],

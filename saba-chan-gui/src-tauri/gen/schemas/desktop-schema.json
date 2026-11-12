@@ -501,10 +501,22 @@
           "markdownDescription": "Enables the overlay_menu command without any pre-configured scope."
         },
         {
+          "description": "Enables the overlay_menu_fit command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-overlay-menu-fit",
+          "markdownDescription": "Enables the overlay_menu_fit command without any pre-configured scope."
+        },
+        {
           "description": "Enables the overlay_set_enabled command without any pre-configured scope.",
           "type": "string",
           "const": "allow-overlay-set-enabled",
           "markdownDescription": "Enables the overlay_set_enabled command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the overlay_set_scale command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-overlay-set-scale",
+          "markdownDescription": "Enables the overlay_set_scale command without any pre-configured scope."
         },
         {
           "description": "Enables the overlay_state command without any pre-configured scope.",
@@ -783,10 +795,22 @@
           "markdownDescription": "Denies the overlay_menu command without any pre-configured scope."
         },
         {
+          "description": "Denies the overlay_menu_fit command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-overlay-menu-fit",
+          "markdownDescription": "Denies the overlay_menu_fit command without any pre-configured scope."
+        },
+        {
           "description": "Denies the overlay_set_enabled command without any pre-configured scope.",
           "type": "string",
           "const": "deny-overlay-set-enabled",
           "markdownDescription": "Denies the overlay_set_enabled command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the overlay_set_scale command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-overlay-set-scale",
+          "markdownDescription": "Denies the overlay_set_scale command without any pre-configured scope."
         },
         {
           "description": "Denies the overlay_state command without any pre-configured scope.",

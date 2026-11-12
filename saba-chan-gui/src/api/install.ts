@@ -14,9 +14,9 @@ export async function installTauriBridge(target = typeof window !== 'undefined' 
     const hub = createEventHub();
     target.api = createApi({ invoke, hub }).api;
 
-    // 이벤트는 메인 창에만 온다(계약 §3). 콘솔 팝아웃·트레이 팝업 창은 초기화를 다시 부르지 않는다
+    // 이벤트는 메인 창에만 온다(계약 §3). 콘솔 팝아웃·트레이 팝업·펫 우클릭 판 창은 초기화를 다시 부르지 않는다
     const search = new URLSearchParams(target.location?.search || '');
-    if (search.has('console-popout') || search.has('tray-popup')) return true;
+    if (search.has('console-popout') || search.has('tray-popup') || search.has('overlay-menu')) return true;
 
     try {
         await hub.start(listen);

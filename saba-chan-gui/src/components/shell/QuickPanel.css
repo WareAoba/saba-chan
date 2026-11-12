@@ -1,0 +1,237 @@
+/* 작은 판 창 (트레이 팝업 TrayPopup.tsx, 펫 우클릭 판 OverlayMenu.tsx). 창은 투명하고 이 판만 보인다.
+ * 단차 없는 평면: 판 하나가 반투명 유리이고, 그 안의 줄·버튼은 면을 따로 세우지 않고 누를 때만 옅게 칠한다 */
+
+html[data-popup],
+html[data-popup] body {
+    background: transparent;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.quick-panel {
+    --qp-bg: color-mix(in oklch, var(--bg-1-solid) 82%, transparent);
+    --qp-faint: color-mix(in oklch, var(--text-1) 7%, transparent);
+    --qp-border: color-mix(in oklch, var(--text-1) 12%, transparent);
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    padding: var(--sp-2);
+    background: var(--qp-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--qp-border);
+    border-radius: var(--r-md);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+}
+
+/* 판 안의 버튼은 평면: 뉴모피즘 그림자를 빼고 누를 때 옅게 칠한다 */
+.quick-panel :is(.btn, .icon-btn) {
+    box-shadow: none;
+}
+.quick-panel :is(.btn-ghost, .icon-btn) {
+    background: var(--qp-faint);
+    border-color: transparent;
+}
+.quick-panel :is(.btn, .icon-btn):hover:not(:disabled) {
+    box-shadow: none;
+    filter: brightness(0.97);
+}
+.quick-panel :is(.btn, .icon-btn):active:not(:disabled) {
+    box-shadow: none;
+}
+
+.quick-panel-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-1);
+}
+.quick-panel-logo {
+    width: 22px;
+    height: 22px;
+    border-radius: var(--r-xs);
+}
+.quick-panel-title {
+    flex: 1;
+    font-size: var(--fs-md);
+    font-weight: 700;
+}
+.quick-panel-head .status-chip {
+    font-size: var(--fs-xs);
+}
+
+.quick-panel-servers {
+    list-style: none;
+    max-height: 240px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+.quick-panel-server {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: 36px;
+    padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-2);
+    border-radius: var(--r-sm);
+}
+.quick-panel-server:hover {
+    background: var(--qp-faint);
+}
+.quick-panel-dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--chip-color);
+}
+.quick-panel-dot.pulse {
+    animation: chip-pulse 1.2s var(--ease) infinite;
+}
+.quick-panel-server-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.quick-panel-server-meta {
+    color: var(--text-3);
+    font-size: var(--fs-xs);
+    font-variant-numeric: tabular-nums;
+}
+.quick-panel-server-meta.failed {
+    color: var(--stop);
+}
+.quick-panel-server-action {
+    --btn-height: 28px;
+    width: 28px;
+}
+
+.quick-panel-empty {
+    padding: var(--sp-3);
+    color: var(--text-3);
+    text-align: center;
+}
+
+.quick-panel-sep {
+    height: 1px;
+    margin: var(--sp-1) var(--sp-2);
+    background: var(--qp-faint);
+}
+
+/* 펫 크기 막대 (볼륨 막대처럼) */
+.quick-panel-size {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-1) var(--sp-2);
+    min-height: 36px;
+}
+.quick-panel-size-label {
+    flex: 1;
+}
+.quick-panel-slider {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 120px;
+    height: 6px;
+    border-radius: 3px;
+    background:
+        linear-gradient(in oklch, var(--text-1), var(--text-1)) 0 / var(--fill, 50%) 100% no-repeat,
+        var(--qp-faint);
+    outline: none;
+    cursor: pointer;
+}
+.quick-panel-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: white;
+    border: 1px solid var(--qp-border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.quick-panel-slider:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+}
+.quick-panel-size-value {
+    min-width: 40px;
+    text-align: right;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+}
+
+/* 판 안의 한 줄 버튼 (사바쨩 열기·숨기기) */
+.quick-panel-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    min-height: 34px;
+    justify-content: flex-start;
+    padding: var(--sp-1) var(--sp-2);
+    border: 0;
+    border-radius: var(--r-sm);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.quick-panel-row:hover {
+    background: var(--qp-faint);
+}
+.quick-panel-row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+.quick-panel-row .icon {
+    opacity: 0.75;
+}
+
+.quick-panel-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    gap: var(--sp-2);
+    padding: var(--sp-1) 0 0;
+}
+
+.quick-panel-foot {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 var(--sp-1);
+}
+.quick-panel-link {
+    --btn-height: 28px;
+    --btn-padding: 0 var(--sp-2);
+    --btn-font-size: var(--fs-xs);
+    --btn-font-weight: 500;
+    color: var(--text-2);
+}
+.quick-panel-link:hover:not(:disabled) {
+    color: var(--text-1);
+    background: var(--qp-faint);
+}
+.quick-panel-link.danger {
+    margin-left: auto;
+    color: var(--stop);
+}
+.quick-panel-link.danger:hover:not(:disabled) {
+    background: var(--stop-soft);
+}
+
+/* 익스텐션 칸 (`TrayPopup.section`): 비었으면 자리를 차지하지 않는다 */
+.quick-panel-ext:empty {
+    display: none;
+}
+.quick-panel-ext {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    max-height: 160px;
+    overflow-y: auto;
+}

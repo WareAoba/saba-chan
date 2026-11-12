@@ -5,13 +5,11 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';
-import { DesktopOverlay, overlayMenuItems } from '../components/shell/DesktopOverlay';
+import { DesktopOverlay } from '../components/shell/DesktopOverlay';
 import { ExtensionProvider } from '../contexts/ExtensionContext';
 import { loadsOn, SLOT_TABLE } from '../extensions/slotTable';
-import type { ServerInfo } from '../types/daemon';
 
 const flush = () => act(async () => {});
-const t = ((key: string, vars?: Record<string, unknown>) => (vars?.name ? `${key}:${vars.name}` : key)) as never;
 
 describe('slot 표', () => {
     it('Desktop.overlay는 오버레이 창의 slot이고, 그 창은 그 slot을 선언한 번들만 읽는다', () => {
@@ -29,11 +27,19 @@ describe('slot 표', () => {
 describe('오버레이 브리지', () => {
     it('셸 명령으로 간다', async () => {
         const invoke = vi.fn().mockResolvedValue({ ok: true });
-        const { api } = createApi({ invoke, hub: { dispatch: vi.fn(), on: vi.fn() } as never });
+        const on = vi.fn();
+        const { api } = createApi({ invoke, hub: { dispatch: vi.fn(), on } as never });
         await api.overlayFit(180, 220);
         expect(invoke).toHaveBeenLastCalledWith('overlay_fit', { width: 180, height: 220 });
-        await api.overlayMenu([{ id: 'open_app', label: '열기' }]);
-        expect(invoke).toHaveBeenLastCalledWith('overlay_menu', { items: [{ id: 'open_app', label: '열기' }] });
+        await api.overlayMenu();
+        expect(invoke).toHaveBeenLastCalledWith('overlay_menu');
+        await api.overlayMenuFit(212);
+        expect(invoke).toHaveBeenLastCalledWith('overlay_menu_fit', { height: 212 });
+        await api.overlaySetScale(150);
+        expect(invoke).toHaveBeenLastCalledWith('overlay_set_scale', { scale: 150 });
+        const listener = vi.fn();
+        api.onOverlayScale(listener);
+        expect(on).toHaveBeenLastCalledWith('overlay:scale', listener);
         await api.overlayAction('hide');
         expect(invoke).toHaveBeenLastCalledWith('overlay_action', { action: 'hide' });
         await api.overlayAction('open_app', 'server:b');
@@ -47,47 +53,8 @@ describe('오버레이 브리지', () => {
     });
 });
 
-describe('우클릭 메뉴', () => {
-    const servers = [
-        { id: 'a', name: '야생 서버', status: 'running' },
-        { id: 'b', name: '팰월드', status: 'stopped' },
-        { id: 'c', name: '켜는 중', status: 'starting' },
-    ] as ServerInfo[];
-
-    it('서버마다 하위 메뉴: 꺼진 서버는 시작, 켜진 서버는 한 번 더 골라야 정지·재시작', () => {
-        const items = overlayMenuItems(servers, t);
-        const [wild, pal, busy] = items;
-        expect(wild.label).toContain('야생 서버');
-        expect(wild.items?.find((i) => i.id === 'server:a:start')?.enabled).toBe(false);
-        const stop = wild.items?.find((i) => i.items?.some((s) => s.id === 'server:a:stop'));
-        expect(stop?.enabled).toBe(true);
-        expect(wild.items?.find((i) => i.items?.some((s) => s.id === 'server:a:restart'))?.enabled).toBe(true);
-        expect(pal.items?.find((i) => i.id === 'server:b:start')?.enabled).toBe(true);
-        expect(pal.items?.find((i) => i.items?.some((s) => s.id === 'server:b:stop'))?.enabled).toBe(false);
-        // 켜고 끄는 중에는 아무것도 고를 수 없다
-        expect(busy.items?.every((i) => i.enabled === false)).toBe(true);
-        const ids = items.map((i) => i.id);
-        expect(ids).toContain('open_app');
-        expect(ids).toContain('hide');
-    });
-
-    it('이름이 아주 길어도 메뉴가 셸의 글자 수 제한(80자)을 넘지 않는다', () => {
-        const long = [{ id: 'l', name: '가'.repeat(200), status: 'running' }] as ServerInfo[];
-        const walk = (items: ReturnType<typeof overlayMenuItems>): number[] =>
-            items.flatMap((i) => [(i.label ?? '').length, ...walk(i.items ?? [])]);
-        const [first] = overlayMenuItems(long, t);
-        expect(first.label).toContain('…');
-        expect(Math.max(...walk(overlayMenuItems(long, t)))).toBeLessThanOrEqual(80);
-    });
-
-    it('서버가 없으면 고를 수 없는 한 줄', () => {
-        const [first] = overlayMenuItems([], t);
-        expect(first).toMatchObject({ enabled: false });
-    });
-});
-
 describe('오버레이 화면', () => {
-    let menuListener: ((id: string) => void) | null = null;
+    let scaleListener: ((scale: number) => void) | null = null;
     beforeEach(() => {
         window.api.daemonStatus = vi.fn().mockResolvedValue({ running: true });
         window.api.daemonTarget = vi.fn().mockResolvedValue({ target: null });
@@ -100,10 +67,10 @@ describe('오버레이 화면', () => {
         window.api.overlayMenu = vi.fn().mockResolvedValue(true);
         window.api.overlayAction = vi.fn().mockResolvedValue({ ok: true });
         window.api.overlayStartDrag = vi.fn().mockResolvedValue(undefined);
-        window.api.onOverlayMenu = vi.fn((cb) => {
-            menuListener = cb;
+        window.api.onOverlayScale = vi.fn((cb) => {
+            scaleListener = cb;
             return () => {
-                menuListener = null;
+                scaleListener = null;
                 return true;
             };
         });
@@ -134,12 +101,13 @@ describe('오버레이 화면', () => {
             'overlayMenu',
             'overlayAction',
             'overlayStartDrag',
-            'onOverlayMenu',
+            'onOverlayScale',
             'extensionList',
             'extensionI18n',
         ])
             delete (window.api as unknown as Record<string, unknown>)[k];
         delete window.SabaExtPet;
+        window.history.replaceState(null, '', '/');
         vi.restoreAllMocks();
     });
 
@@ -199,20 +167,19 @@ describe('오버레이 화면', () => {
         expect(window.api.overlayAction).toHaveBeenCalledWith('open_app');
     });
 
-    it('우클릭은 OS 메뉴를 띄우고, 고른 것을 한다', async () => {
+    it('우클릭은 셸에 펫 옆의 판을 열게 한다', async () => {
         const root = await mount();
         fireEvent.contextMenu(root);
-        expect(window.api.overlayMenu).toHaveBeenCalled();
-        const items = vi.mocked(window.api.overlayMenu).mock.calls[0][0];
-        expect(JSON.stringify(items)).toContain('server:b:start');
-        await act(async () => menuListener?.('server:b:start'));
-        expect(window.api.instanceStart).toHaveBeenCalledWith('b');
-        await act(async () => menuListener?.('hide'));
-        expect(window.api.overlayAction).toHaveBeenCalledWith('hide');
-        // 모르는 서버·동작은 무시한다
-        await act(async () => menuListener?.('server:zz:start'));
-        await act(async () => menuListener?.('server:b:explode'));
-        expect(window.api.instanceStart).toHaveBeenCalledTimes(1);
+        expect(window.api.overlayMenu).toHaveBeenCalledWith();
+    });
+
+    it('펫 크기: 주소의 처음 값으로 그리고, 셸이 알리면 바로 바꾼다', async () => {
+        window.history.replaceState(null, '', '/?desktop-overlay=1&scale=150');
+        const root = await mount();
+        const zoomed = root.querySelector('.desktop-overlay-zoom') as HTMLElement;
+        expect(zoomed.style.zoom).toBe('1.5');
+        await act(async () => scaleListener?.(80));
+        expect(zoomed.style.zoom).toBe('0.8');
     });
 });
 
