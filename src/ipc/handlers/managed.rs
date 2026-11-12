@@ -595,15 +595,13 @@ pub async fn reset_server_handler(
             let guard = guard;
             // 백업을 남기지 못했으면 지우지 않는다
             if backup_first {
-                if let Err(refused) = super::backup::take_backup_held(&state, &id, crate::backup::BackupKind::Manual, &guard).await {
-                    return Err(refused);
-                }
+                super::backup::take_backup_held(&state, &id, crate::backup::BackupKind::Manual, &guard).await.map_err(Box::new)?;
             }
-            Ok(Supervisor::manage_properties(&state.supervisor, &id, "reset_server", scope).await)
+            Ok::<_, Box<axum::response::Response>>(Supervisor::manage_properties(&state.supervisor, &id, "reset_server", scope).await)
         })
     };
     let resp = match reset.await.unwrap_or_else(|e| Ok(Err(e.into()))) {
-        Err(refused) => refused,
+        Err(refused) => *refused,
         Ok(Ok(result)) => (StatusCode::OK, Json(result)).into_response(),
         Ok(Err(e)) => (
             StatusCode::INTERNAL_SERVER_ERROR,
