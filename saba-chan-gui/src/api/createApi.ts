@@ -1141,10 +1141,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 합쳐 보기 (G1c): 이 PC와 원격 데몬마다의 서버 {daemons:[{hostId(이 PC는 null), name, ok, error_code?, servers}]}
         // 데몬이 원격 데몬 하나를 30초까지 기다린다 (01 §1.4.2 8)
         remoteServers: () => call('get', '/api/remote/servers', undefined, 40000),
-        // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC
-        remoteInstanceAction: async (hostId: string | null, id: string, action: string): Promise<ApiBody> => {
+        // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC. `force`: 저장 없이 정지
+        remoteInstanceAction: async (hostId: string | null, id: string, action: string, opts: { force?: boolean } = {}): Promise<ApiBody> => {
             if (!['start', 'stop', 'restart'].includes(action)) return { success: false, error: `unknown action ${action}` };
-            const body = action === 'start' ? {} : { force: false };
+            const body = action === 'start' ? {} : { force: !!opts?.force };
             try {
                 return (
                     await request('post', `/api/instance/${encodeURIComponent(id)}/${action}`, body, {
@@ -1152,6 +1152,15 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                         target: hostId || 'local',
                     })
                 ).data;
+            } catch (caught) {
+                const error = caught as DaemonError;
+                return error.response ? failureBody(error) : connectionError(error);
+            }
+        },
+        // 합쳐 보기에서 켜려는 서버의 약관 동의를 그 데몬에 기록한다
+        remoteInstanceAgreements: async (hostId: string | null, id: string, accept: string[]): Promise<ApiBody> => {
+            try {
+                return (await request('post', instancePath(id, '/agreements'), { accept }, { target: hostId || 'local' })).data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 return error.response ? failureBody(error) : connectionError(error);

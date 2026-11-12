@@ -2678,7 +2678,11 @@
   },
   "other_daemons": {
     "open": "このデーモンを開く",
-    "empty": "サーバーがありません"
+    "empty": "サーバーがありません",
+    "stop_where": "{{pc}}で実行中です。",
+    "stop_players": "現在{{count}}人が接続しています。",
+    "agreement_where": "同意は{{pc}}のデーモンに記録されます。",
+    "open_to_continue": "{{pc}}に同意を記録できませんでした。「このデーモンを開く」でそのデーモンを開いてから起動してください。"
   },
   "remote_picker": {
     "title_file": "リモートPCのファイルを選ぶ",

@@ -2678,7 +2678,11 @@
   },
   "other_daemons": {
     "open": "Open this daemon",
-    "empty": "No servers"
+    "empty": "No servers",
+    "stop_where": "Running on {{pc}}.",
+    "stop_players": "{{count}} player(s) are online now.",
+    "agreement_where": "Your consent is recorded on the daemon of {{pc}}.",
+    "open_to_continue": "Could not record your consent on {{pc}}. Use \"Open this daemon\" and start the server there."
   },
   "remote_picker": {
     "title_file": "Choose a file on the remote PC",

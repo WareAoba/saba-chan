@@ -2678,7 +2678,11 @@
   },
   "other_daemons": {
     "open": "Ouvrir ce daemon",
-    "empty": "Aucun serveur"
+    "empty": "Aucun serveur",
+    "stop_where": "En cours d’exécution sur {{pc}}.",
+    "stop_players": "{{count}} joueur(s) connecté(s) en ce moment.",
+    "agreement_where": "Votre accord est enregistré dans le daemon de {{pc}}.",
+    "open_to_continue": "Impossible d’enregistrer votre accord sur {{pc}}. Utilisez « Ouvrir ce daemon » puis démarrez le serveur depuis celui-ci."
   },
   "remote_picker": {
     "title_file": "Choisir un fichier sur le PC distant",

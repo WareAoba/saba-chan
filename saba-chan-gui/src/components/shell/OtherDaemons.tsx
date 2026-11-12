@@ -1,9 +1,13 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useServerStore } from '../../stores/useServerStore';
+import type { PlayerCount } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
-import { isTransitional, STATUS_TONE, primaryAction } from '../../utils/serverView';
+import { gameNameOf, isTransitional, STATUS_TONE, primaryAction } from '../../utils/serverView';
+import { type Agreement, AgreementDialog } from '../AgreementList';
 import { Icon } from '../Icon';
+import { QuestionModal } from '../Modals/Modals';
 import { remoteErrorText } from '../Modals/RemoteDaemonSection';
 import { StatusChip } from '../ui/StatusChip';
 import { reloadWindow } from './DaemonSwitcher';
@@ -17,12 +21,19 @@ interface DaemonServers {
     name?: string;
     ok?: boolean;
     error_code?: string;
-    servers: { id: string; name: string; module: string; status: string }[];
+    servers: { id: string; name: string; module: string; status: string; players?: PlayerCount }[];
 }
+type RemoteServer = DaemonServers['servers'][number];
+
+/** 떠 있는 확인 창: 정지 확인, 저장 없이 정지, 약관 동의 (이 PC의 서버와 같은 창) */
+type Ask = { hostId: string | null; pc: string; server: RemoteServer } & (
+    | { kind: 'stop' | 'force' }
+    | { kind: 'agreements'; agreements: Agreement[] }
+);
 
 /**
  * 합쳐 보기 (G1c, 설정 `gui.daemonView = unified`): 서버 목록 아래에 고른 데몬이 아닌 데몬(이 PC 포함)의 서버를 데몬별로 보인다.
- * 서버는 id로 그 데몬에 바로 켜고 끈다(`remoteInstanceAction`). 설정·콘솔 같은 나머지는 "이 데몬 열기"로 그 데몬을 고른 뒤 쓴다.
+ * 서버는 id로 그 데몬에 켜고 끈다(`remoteInstanceAction`). 정지 확인·저장 없이 정지·약관 동의는 이 PC의 서버와 같은 창을 거친다. 설정·콘솔 같은 나머지는 "이 데몬 열기"로 그 데몬을 고른 뒤 쓴다.
  * 이름으로 서버를 찾는 목록(useServerActions)에 섞지 않는다: 데몬이 다르면 이름이 겹칠 수 있다.
  */
 export function OtherDaemons({
@@ -34,7 +45,9 @@ export function OtherDaemons({
 }) {
     const { t } = useTranslation('gui');
     const [daemons, setDaemons] = useState<DaemonServers[]>([]);
+    const modules = useServerStore((s) => s.modules);
     const [busy, setBusy] = useState<string | null>(null);
+    const [ask, setAsk] = useState<Ask | null>(null);
 
     const loading = useRef(false);
 
@@ -56,17 +69,37 @@ export function OtherDaemons({
         return () => clearInterval(timer);
     }, [load]);
 
-    const toggle = async (hostId: string | null, server: DaemonServers['servers'][number], action: string) => {
+    const run = async (target: Pick<Ask, 'hostId' | 'pc' | 'server'>, action: string, force = false) => {
+        const { hostId, server } = target;
+        setAsk(null);
         setBusy(server.id);
         try {
-            const res = await window.api.remoteInstanceAction(hostId, server.id, action);
-            if (!res || res.success === false || res.ok === false || res.error) {
+            const res = await window.api.remoteInstanceAction(hostId, server.id, action, force ? { force } : {});
+            if (res?.error_code === 'graceful_stop_unavailable') {
+                setAsk({ ...target, kind: 'force' });
+            } else if (res?.error_code === 'agreement_required' && Array.isArray(res.agreements) && res.agreements.length) {
+                setAsk({ ...target, kind: 'agreements', agreements: res.agreements });
+            } else if (!res || res.success === false || res.ok === false || res.error) {
                 safeShowToast(res?.error || remoteErrorText(res, t), 'error', 5000);
             }
         } finally {
             setBusy(null);
             await load();
         }
+    };
+
+    const toggle = (hostId: string | null, pc: string, server: RemoteServer, action: string) =>
+        action === 'stop' ? setAsk({ hostId, pc, server, kind: 'stop' }) : run({ hostId, pc, server }, action);
+
+    /** 동의를 그 데몬에 기록하고 다시 켠다. 옛 데몬이라 기록하지 못하면 그 데몬을 열어서 하라고 알린다 */
+    const accept = async (target: Ask, ids: string[]) => {
+        setAsk(null);
+        const res = await window.api.remoteInstanceAgreements(target.hostId, target.server.id, ids).catch(() => null);
+        if (!res || res.success === false || res.error) {
+            safeShowToast(t('other_daemons.open_to_continue', { pc: target.pc }), 'error', 5000);
+            return;
+        }
+        await run(target, 'start');
     };
 
     const open = async (hostId: string | null) => {
@@ -100,7 +133,7 @@ export function OtherDaemons({
                                     <div className="server-row-text">
                                         <div className="server-row-name">{s.name}</div>
                                         <div className="server-row-sub">
-                                            <span>{s.module}</span>
+                                            <span>{gameNameOf(t, s.module, modules.find((m) => m.name === s.module))}</span>
                                             <span className="sep">·</span>
                                             <StatusChip
                                                 tone={STATUS_TONE[s.status]}
@@ -114,7 +147,7 @@ export function OtherDaemons({
                                         type="button"
                                         className={clsx('icon-btn', 'server-row-action', `action-${action}`)}
                                         disabled={action === 'busy'}
-                                        onClick={() => toggle(d.hostId || null, s, action)}
+                                        onClick={() => toggle(d.hostId || null, name, s, action)}
                                         data-tooltip={action === 'stop' ? t('shell.stop') : action === 'start' ? t('shell.start') : label}
                                         aria-label={`${s.name} ${action === 'stop' ? t('shell.stop') : t('shell.start')}`}
                                     >
@@ -130,6 +163,44 @@ export function OtherDaemons({
                     </section>
                 );
             })}
+            {ask?.kind === 'stop' && (
+                <QuestionModal
+                    title={t('servers.stop_confirm_title')}
+                    message={t('servers.stop_confirm_message', { name: ask.server.name })}
+                    detail={[
+                        t('other_daemons.stop_where', { pc: ask.pc }),
+                        Number.isInteger(ask.server.players?.online) && (ask.server.players?.online as number) > 0
+                            ? t('other_daemons.stop_players', { count: ask.server.players?.online })
+                            : '',
+                    ]
+                        .filter(Boolean)
+                        .join(' ')}
+                    onConfirm={() => run(ask, 'stop')}
+                    onCancel={() => setAsk(null)}
+                />
+            )}
+            {ask?.kind === 'force' && (
+                <QuestionModal
+                    title={t('servers.force_stop_title')}
+                    message={t('servers.force_stop_message', { name: ask.server.name })}
+                    buttons={[
+                        { label: t('servers.force_stop_confirm'), action: () => run(ask, 'stop', true) },
+                        { label: t('modals.cancel'), action: () => setAsk(null) },
+                    ]}
+                    onCancel={() => setAsk(null)}
+                />
+            )}
+            {ask?.kind === 'agreements' && (
+                <AgreementDialog
+                    title={t('agreements.start_title')}
+                    message={t('agreements.start_message', { name: ask.server.name })}
+                    module={ask.server.module}
+                    agreements={ask.agreements}
+                    note={t('other_daemons.agreement_where', { pc: ask.pc })}
+                    onAccept={(ids) => accept(ask, ids)}
+                    onCancel={() => setAsk(null)}
+                />
+            )}
         </div>
     );
 }

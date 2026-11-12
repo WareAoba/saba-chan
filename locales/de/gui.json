@@ -2678,7 +2678,11 @@
   },
   "other_daemons": {
     "open": "Diesen Daemon öffnen",
-    "empty": "Keine Server"
+    "empty": "Keine Server",
+    "stop_where": "Läuft auf {{pc}}.",
+    "stop_players": "Gerade sind {{count}} Spieler online.",
+    "agreement_where": "Deine Zustimmung wird im Daemon von {{pc}} gespeichert.",
+    "open_to_continue": "Deine Zustimmung konnte auf {{pc}} nicht gespeichert werden. Öffne den Daemon mit „Diesen Daemon öffnen“ und starte den Server dort."
   },
   "remote_picker": {
     "title_file": "Datei auf dem entfernten PC wählen",

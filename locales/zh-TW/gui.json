@@ -2678,7 +2678,11 @@
   },
   "other_daemons": {
     "open": "開啟此守護程式",
-    "empty": "沒有伺服器"
+    "empty": "沒有伺服器",
+    "stop_where": "正在{{pc}}上執行。",
+    "stop_players": "目前有 {{count}} 人在線上。",
+    "agreement_where": "同意會記錄在{{pc}}的常駐程式上。",
+    "open_to_continue": "無法在{{pc}}上記錄同意。請用「開啟此守護程式」開啟它後再啟動。"
   },
   "remote_picker": {
     "title_file": "在遠端電腦上選擇檔案",

@@ -2678,7 +2678,11 @@
   },
   "other_daemons": {
     "open": "이 데몬 열기",
-    "empty": "서버가 없어요"
+    "empty": "서버가 없어요",
+    "stop_where": "{{pc}}에서 실행 중이에요.",
+    "stop_players": "지금 {{count}}명이 접속해 있어요.",
+    "agreement_where": "동의는 {{pc}}의 데몬에 기록돼요.",
+    "open_to_continue": "{{pc}}에 동의를 기록하지 못했어요. \"이 데몬 열기\"로 그 데몬을 연 뒤 시작해 주세요."
   },
   "remote_picker": {
     "title_file": "원격 PC에서 파일 고르기",

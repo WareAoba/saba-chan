@@ -2678,7 +2678,11 @@
   },
   "other_daemons": {
     "open": "打开此守护进程",
-    "empty": "没有服务器"
+    "empty": "没有服务器",
+    "stop_where": "正在{{pc}}上运行。",
+    "stop_players": "当前有 {{count}} 人在线。",
+    "agreement_where": "同意会记录在{{pc}}的守护进程上。",
+    "open_to_continue": "无法在{{pc}}上记录同意。请用“打开此守护进程”打开它后再启动。"
   },
   "remote_picker": {
     "title_file": "在远程电脑上选择文件",
