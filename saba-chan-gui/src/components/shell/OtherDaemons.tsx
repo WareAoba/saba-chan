@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import type { PlayerCount } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
-import { gameNameOf, isTransitional, STATUS_TONE, primaryAction } from '../../utils/serverView';
+import { gameNameOf, initials, isTransitional, STATUS_TONE, primaryAction } from '../../utils/serverView';
 import { type Agreement, AgreementDialog } from '../AgreementList';
 import { Icon } from '../Icon';
 import { QuestionModal } from '../Modals/Modals';
@@ -128,12 +128,23 @@ export function OtherDaemons({
                         {d.servers.map((s) => {
                             const action = busy === s.id ? 'busy' : primaryAction(s.status);
                             const label = t(`shell.status_${s.status}`, { defaultValue: s.status });
+                            const moduleData = modules.find((m) => m.name === s.module);
+                            const gameName = gameNameOf(t, s.module, moduleData);
                             return (
                                 <div key={s.id} className="server-row other-daemon-row" data-status={s.status}>
+                                    <div className="server-row-icon">
+                                        {moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>}
+                                        <span
+                                            className={clsx('server-row-dot', `tone-${STATUS_TONE[s.status]}`, {
+                                                pulse: isTransitional(s.status),
+                                            })}
+                                            aria-hidden="true"
+                                        />
+                                    </div>
                                     <div className="server-row-text">
                                         <div className="server-row-name">{s.name}</div>
                                         <div className="server-row-sub">
-                                            <span>{gameNameOf(t, s.module, modules.find((m) => m.name === s.module))}</span>
+                                            <span>{gameName}</span>
                                             <span className="sep">·</span>
                                             <StatusChip
                                                 tone={STATUS_TONE[s.status]}

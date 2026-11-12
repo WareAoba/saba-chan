@@ -122,6 +122,15 @@ describe('합쳐 보기: 다른 데몬의 서버 (G1c)', () => {
         useServerStore.setState({ modules: [] });
     });
 
+    it('행 왼쪽에 서버 목록과 같은 아이콘 칸을 둔다: 게임 아이콘이 없으면 게임 이름 첫 글자', async () => {
+        useServerStore.setState({ modules: [{ name: 'palworld', game_name: 'Palworld' }] as never });
+        await act(async () => render(<OtherDaemons currentTarget="host-b" onSwitched={switched} />));
+        const icon = screen.getByRole('region', { name: 'This PC' }).querySelector('.server-row-icon');
+        expect(icon).toHaveTextContent('P');
+        expect(icon?.querySelector('.server-row-dot')).toHaveClass('tone-idle');
+        useServerStore.setState({ modules: [] });
+    });
+
     it('켜지 못하면 데몬이 준 문구를 알린다', async () => {
         vi.mocked(window.api.remoteInstanceAction).mockResolvedValue({ success: false, error: '동의가 필요해요' });
         await act(async () => render(<OtherDaemons currentTarget="host-b" onSwitched={switched} />));
