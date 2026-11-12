@@ -1,13 +1,14 @@
-import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { TFunction } from 'i18next';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { changedForCli } from '../components/CliLine';
 import { SettingsField } from '../components/ServerSettingsModal';
-import { settleLaunchArgs, useServerSettings } from '../hooks/useServerSettings';
+import { settleLaunchArgs } from '../stores/useServerSettingsStore';
 import type { Server } from '../stores/useServerStore';
 import type { ModuleInfo, SettingField } from '../types/daemon';
 import { failedModuleReason } from '../utils/failedModules';
 import { hiddenFields, validateAllSettings } from '../utils/validation';
+import { setupSettingsStore } from './serverStore';
 
 // 모듈 설정 스키마 2 (데몬 #498, 02 §1.2): list·multiline 칸, visible_when 숨김, restart_required 안내, 로드 실패 이유
 
@@ -151,18 +152,9 @@ describe('설정 저장 (list 값, restart_required)', () => {
         module_settings: { ops: ['alice'] },
     } as unknown as Server;
 
-    function setup(onRestart?: () => void) {
+    function setup(onRestart: Mock) {
         const setModal = vi.fn();
-        const hook = renderHook(() =>
-            useServerSettings({
-                servers: [server],
-                modules,
-                setModal,
-                setProgressBar: vi.fn(),
-                fetchServers: vi.fn(),
-                onRestart,
-            }),
-        );
+        const hook = setupSettingsStore({ servers: [server], modules, setModal, onRestart });
         return { ...hook, setModal };
     }
 
@@ -354,15 +346,13 @@ describe('공통 칸을 가리키는 visible_when', () => {
             serverList: vi.fn().mockResolvedValue(null),
             instanceReadLiveSettings: vi.fn().mockResolvedValue({ success: true, settings: {} }),
         } as unknown as typeof window.api;
-        const { result } = renderHook(() =>
-            useServerSettings({
-                servers: [server],
-                modules: [{ name: 'game', settings: { fields } }] as unknown as ModuleInfo[],
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                fetchServers: vi.fn(),
-            }),
-        );
+        const { result } = setupSettingsStore({
+            servers: [server],
+            modules: [{ name: 'game', settings: { fields } }] as unknown as ModuleInfo[],
+            setModal: vi.fn(),
+            setProgressBar: vi.fn(),
+            fetchServers: vi.fn(),
+        });
         await act(async () => result.current.handleOpenSettings(server));
         expect(hiddenFields(fields, result.current.settingsValues)).toEqual([]);
     });
@@ -385,15 +375,13 @@ describe('열 때 비어 있던 글자 칸', () => {
             serverList: vi.fn().mockResolvedValue(null),
             instanceReadLiveSettings: vi.fn().mockResolvedValue({ success: true, settings: {} }),
         } as unknown as typeof window.api;
-        const { result } = renderHook(() =>
-            useServerSettings({
-                servers: [server],
-                modules: [{ name: 'game', settings: { fields } }] as unknown as ModuleInfo[],
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                fetchServers: vi.fn(),
-            }),
-        );
+        const { result } = setupSettingsStore({
+            servers: [server],
+            modules: [{ name: 'game', settings: { fields } }] as unknown as ModuleInfo[],
+            setModal: vi.fn(),
+            setProgressBar: vi.fn(),
+            fetchServers: vi.fn(),
+        });
         await act(async () => result.current.handleOpenSettings(server));
         const hidden = () => hiddenFields(fields, result.current.settingsValues, result.current.unsetSettings);
         expect(hidden()).toEqual(['seed']);

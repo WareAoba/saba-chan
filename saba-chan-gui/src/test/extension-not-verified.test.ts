@@ -1,7 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { setupServerStore } from './serverStore';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupServerStore, setupSettingsStore } from './serverStore';
 import type { Server } from '../stores/useServerStore';
 import type { ModuleInfo } from '../types/daemon';
 
@@ -88,9 +87,13 @@ describe('서버 설정 창에서 익스텐션이 확인되지 않았을 때', (
     } as unknown as Server;
     const open = async () => {
         const setModal = vi.fn();
-        const hook = renderHook(() =>
-            useServerSettings({ servers: [srv], modules, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-        );
+        const hook = setupSettingsStore({
+            servers: [srv],
+            modules,
+            setModal,
+            setProgressBar: vi.fn(),
+            fetchServers: vi.fn(),
+        });
         await act(async () => hook.result.current.handleOpenSettings(srv));
         return { ...hook, setModal };
     };

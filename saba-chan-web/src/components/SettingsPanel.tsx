@@ -23,7 +23,7 @@ const PC_ONLY = new Set([
     'extension_data',
 ]);
 
-/** 데몬이 인스턴스 최상위에 두는 공통 칸 (GUI useServerSettings 와 같다): 최상위가 진짜다 */
+/** 데몬이 인스턴스 최상위에 두는 공통 칸 (GUI useServerSettingsStore 와 같다): 최상위가 진짜다 */
 const TOP_LEVEL = new Set([
     'port',
     'rest_host',
@@ -209,7 +209,7 @@ export function SettingsPanel({ api, server, moduleData, running }: ServerPanelP
         if (failed(res)) return toast(errorText(t, res), 'error');
         if (res?.revision) revision.current = res.revision;
         setTouched(new Set());
-        // 저장은 됐지만 모듈이 게임 설정 파일에 쓰지 못했다 (GUI useServerSettings와 같은 문구)
+        // 저장은 됐지만 모듈이 게임 설정 파일에 쓰지 못했다 (GUI useServerSettingsStore와 같은 문구)
         if (res?.synced === false) toast(tg('settings.sync_failed', { error: res.sync_error || '' }), 'error');
         else toast(running ? t('settings.saved_restart') : t('settings.saved'), 'ok');
         // 데몬이 받았지만 쓰지 않는 키

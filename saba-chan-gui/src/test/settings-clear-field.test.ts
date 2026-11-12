@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 
 const modules = [
     {
@@ -32,15 +32,13 @@ describe('선택 문자열 칸을 비우고 저장할 때', () => {
     });
 
     it('지운 설명·비밀번호는 빈 값으로 보낸다', async () => {
-        const { result } = renderHook(() =>
-            useServerSettings({
-                servers: [srv] as never,
-                modules: modules as never,
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                fetchServers: vi.fn(),
-            }),
-        );
+        const { result } = setupSettingsStore({
+            servers: [srv] as never,
+            modules: modules as never,
+            setModal: vi.fn(),
+            setProgressBar: vi.fn(),
+            fetchServers: vi.fn(),
+        });
         await act(async () => result.current.handleOpenSettings(srv as never));
         act(() => {
             result.current.handleSettingChange('description', '');
@@ -53,15 +51,13 @@ describe('선택 문자열 칸을 비우고 저장할 때', () => {
     });
 
     it('숫자 칸을 비우면 보내지 않는다 (빈 숫자는 데몬이 거절한다)', async () => {
-        const { result } = renderHook(() =>
-            useServerSettings({
-                servers: [srv] as never,
-                modules: modules as never,
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                fetchServers: vi.fn(),
-            }),
-        );
+        const { result } = setupSettingsStore({
+            servers: [srv] as never,
+            modules: modules as never,
+            setModal: vi.fn(),
+            setProgressBar: vi.fn(),
+            fetchServers: vi.fn(),
+        });
         await act(async () => result.current.handleOpenSettings(srv as never));
         act(() => result.current.handleSettingChange('max_players', ''));
         await act(async () => result.current.handleSaveSettings());

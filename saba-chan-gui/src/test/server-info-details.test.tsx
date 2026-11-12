@@ -33,7 +33,6 @@ describe('서버 정보 탭', () => {
                 modules={[]}
                 servers={[server] as never}
                 consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
-                settingsProps={{} as never}
             />,
         );
         // 서버 정보 카드 안의 공통 펼치기 (사용자 11-11)

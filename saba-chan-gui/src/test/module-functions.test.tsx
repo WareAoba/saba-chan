@@ -3,11 +3,11 @@
  * 배열이면 빠진 선택 함수의 버튼을 숨기고, null이면(옛 모듈) 지금처럼 모두 보인다.
  * 그래도 불리면 데몬이 {success:false, error_code:"not_supported"}로 답하니 그 이유를 알린다.
  */
-import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServerSettingsModal } from '../components/ServerSettingsModal';
 import { ServerCheck } from '../components/servers/ServerCheck';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 import type { Server } from '../stores/useServerStore';
 import { useServerStore } from '../stores/useServerStore';
 import type { ModuleInfo } from '../types/daemon';
@@ -88,15 +88,13 @@ describe('설정 열기: 모듈이 구현하지 않은 버전 조회', () => {
             instanceGetInstalledVersion: vi.fn().mockResolvedValue({ success: false }),
         } as unknown as typeof window.api;
         const modules = [moduleWith(['validate'])] as unknown as ModuleInfo[];
-        const { result } = renderHook(() =>
-            useServerSettings({
-                servers: [srv],
-                modules,
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                fetchServers: vi.fn(),
-            }),
-        );
+        const { result } = setupSettingsStore({
+            servers: [srv],
+            modules,
+            setModal: vi.fn(),
+            setProgressBar: vi.fn(),
+            fetchServers: vi.fn(),
+        });
         await act(async () => result.current.handleOpenSettings(srv));
         expect(window.api.moduleListVersions).not.toHaveBeenCalled();
         expect(window.api.instanceGetInstalledVersion).not.toHaveBeenCalled();
@@ -109,9 +107,13 @@ describe('설정 열기: 모듈이 구현하지 않은 버전 조회', () => {
         } as unknown as typeof window.api;
         const setModal = vi.fn();
         const modules = [moduleWith(null)] as unknown as ModuleInfo[];
-        const { result } = renderHook(() =>
-            useServerSettings({ servers: [srv], modules, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-        );
+        const { result } = setupSettingsStore({
+            servers: [srv],
+            modules,
+            setModal,
+            setProgressBar: vi.fn(),
+            fetchServers: vi.fn(),
+        });
         await act(async () => result.current.handleOpenSettings(srv));
         await act(async () => result.current.handleResetServer());
         await act(async () => setModal.mock.calls.at(-1)![0].buttons[1].action());

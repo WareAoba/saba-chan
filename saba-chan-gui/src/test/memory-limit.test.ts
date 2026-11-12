@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 import type { Server } from '../stores/useServerStore';
 import type { ModuleInfo } from '../types/daemon';
 
@@ -9,9 +9,7 @@ const modules = [
 ] as unknown as ModuleInfo[];
 
 const setup = () =>
-    renderHook(() =>
-        useServerSettings({ servers: [], modules, setModal: vi.fn(), setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-    );
+    setupSettingsStore({ servers: [], modules, setModal: vi.fn(), setProgressBar: vi.fn(), fetchServers: vi.fn() });
 
 beforeEach(() => {
     window.showToast = vi.fn();
@@ -71,9 +69,13 @@ describe('메모리 상한 칸', () => {
             fields: [{ field: 'memory_limit_mb' }],
         });
         const setModal = vi.fn();
-        const { result } = renderHook(() =>
-            useServerSettings({ servers: [], modules, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-        );
+        const { result } = setupSettingsStore({
+            servers: [],
+            modules,
+            setModal,
+            setProgressBar: vi.fn(),
+            fetchServers: vi.fn(),
+        });
         await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game' } as Server));
         act(() => result.current.handleSettingChange('memory_limit_mb', '4096'));
         await act(async () => result.current.handleSaveSettings());

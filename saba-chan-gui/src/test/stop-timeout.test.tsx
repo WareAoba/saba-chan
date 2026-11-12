@@ -1,16 +1,14 @@
 import type { ComponentProps } from 'react';
-import { act, render, renderHook } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';
 import { ServerSettingsModal } from '../components/ServerSettingsModal';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 
 const modules = [{ name: 'game', settings: { fields: [{ name: 'title', field_type: 'text' }] } }];
 
 const setup = () =>
-    renderHook(() =>
-        useServerSettings({ servers: [], modules: modules as never, setModal: vi.fn(), setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-    );
+    setupSettingsStore({ servers: [], modules: modules as never, setModal: vi.fn(), setProgressBar: vi.fn(), fetchServers: vi.fn() });
 
 beforeEach(() => {
     window.showToast = vi.fn();

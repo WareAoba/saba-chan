@@ -21,7 +21,6 @@ const detail = (status: string) => {
             modules={[]}
             servers={[server] as never}
             consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
-            settingsProps={{} as never}
         />,
     );
 };

@@ -141,7 +141,6 @@ describe('플레이어 탭', () => {
                     modules={[]}
                     servers={[running] as never}
                     consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
-                    settingsProps={{} as never}
                 />,
             );
         const tab = i18n.t('gui:shell.tab_players');

@@ -9,8 +9,8 @@ import {
 import type { useMultiConsole } from '../../hooks/useMultiConsole';
 import { useExtensions } from '../../contexts/ExtensionContext';
 import { extensionInstallMethod } from '../../utils/installMethod';
-import type { useServerSettings } from '../../hooks/useServerSettings';
 import { useConsoleStore } from '../../stores/useConsoleStore';
+import { useServerSettingsStore } from '../../stores/useServerSettingsStore';
 import { type Server, useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
@@ -62,7 +62,6 @@ interface ServerDetailProps {
     servers: Server[];
     onBack?: (() => void) | null;
     consoleProps: ServerConsoleProps;
-    settingsProps: ServerSettingsProps;
 }
 
 /** App이 서버 화면에 넘기는 콘솔 묶음 */
@@ -70,12 +69,6 @@ export type ServerConsoleProps = Pick<
     ReturnType<typeof useMultiConsole>,
     'openConsole' | 'watchConsole' | 'setConsoleInput' | 'sendConsoleCommand' | 'consolePopoutIds' | 'popinConsole'
 >;
-
-/** App이 서버 화면에 넘기는 설정 묶음: 닫기 상태는 isClosing 하나로 넘긴다 */
-export type ServerSettingsProps = Omit<
-    ReturnType<typeof useServerSettings>,
-    'isSettingsClosing' | 'requestSettingsClose'
-> & { isClosing: boolean };
 
 /**
  * 오른쪽 서버 상세. 머리(이름·상태·켜기/끄기) + 탭(콘솔 · 명령 · 설정 · 백업·예약 · 정보).
@@ -88,7 +81,6 @@ export function ServerDetail({
     servers,
     onBack,
     consoleProps,
-    settingsProps,
 }: ServerDetailProps) {
     const { t, i18n } = useTranslation('gui');
     const setServers = useServerStore((s) => s.setServers);
@@ -471,7 +463,6 @@ export function ServerDetail({
                             <SettingsTab
                                 section={activeTab === 'saba' ? 'saba' : 'server'}
                                 server={server}
-                                settingsProps={settingsProps}
                                 modules={modules}
                                 servers={servers}
                             />
@@ -593,25 +584,24 @@ function ServerName({
 function SettingsTab({
     section,
     server,
-    settingsProps,
     modules,
     servers,
 }: {
     section: 'server' | 'saba';
     server: Server;
-    settingsProps: ServerDetailProps['settingsProps'];
     modules: ModuleInfo[];
     servers: Server[];
 }) {
     const { t } = useTranslation('gui');
-    const { showSettingsModal, settingsServer, handleOpenSettings } = settingsProps;
+    const settings = useServerSettingsStore();
+    const { showSettingsModal, settingsServer, handleOpenSettings } = settings;
     const ready = showSettingsModal && settingsServer?.id === server.id;
 
     // 탭을 열거나 설정 창이 닫히면(버전 설치 등) 최신 값으로 다시 연다
-    // biome-ignore lint/correctness/useExhaustiveDependencies: handleOpenSettings는 매 렌더 새로 만들어진다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 서버 객체는 목록을 받을 때마다 바뀐다 (서버가 바뀔 때만)
     useEffect(() => {
         if (!ready) handleOpenSettings(server);
-    }, [ready, server.id]);
+    }, [ready, server.id, handleOpenSettings]);
 
     if (!ready) {
         return (
@@ -623,8 +613,8 @@ function SettingsTab({
     }
     return (
         <ServerSettingsModal
-            {...settingsProps}
-            settingsServer={settingsProps.settingsServer as Server}
+            {...settings}
+            settingsServer={settingsServer as Server}
             section={section}
             modules={modules}
             servers={servers}

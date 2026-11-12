@@ -44,7 +44,7 @@ interface ServerRowProps {
     onToggleBranches?: (id: string) => void;
     /** 이 서버의 브랜치 서버 만들기 (브랜치에는 주지 않는다: 한 단계만 둔다) */
     onBranch?: (server: Server) => void;
-    /** 저장하지 않은 설정이 메모리에 남아 있다 (useServerSettings `unsavedServers`) */
+    /** 저장하지 않은 설정이 메모리에 남아 있다 (useServerSettingsStore `unsavedServerIds`) */
     unsaved?: boolean;
 }
 

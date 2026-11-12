@@ -1,9 +1,9 @@
 /**
  * G-U3: 서버 초기화 뒤 설정 폼을 module_settings만으로 다시 채워 램 상한·정지 대기 칸이 비어 보였다.
  */
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 
 const modules = [{ name: 'dl', settings: { fields: [{ name: 'motd', field_type: 'text' }] } }];
 
@@ -23,9 +23,7 @@ describe('초기화 뒤 설정 폼', () => {
             instanceResetServer: vi.fn().mockResolvedValue({ success: true, deleted: ['world'] }),
         } as unknown as typeof window.api;
         const setModal = vi.fn();
-        const { result } = renderHook(() =>
-            useServerSettings({ servers: [server] as never, modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-        );
+        const { result } = setupSettingsStore({ servers: [server] as never, modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() });
         await act(async () => result.current.handleOpenSettings(server as never));
         await act(async () => result.current.handleResetServer());
         await act(async () => setModal.mock.calls.at(-1)![0].buttons[1].action());

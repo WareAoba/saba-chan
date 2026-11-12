@@ -39,7 +39,6 @@ function page(onCreateBranch = vi.fn().mockResolvedValue(true)) {
                 onAddServer={() => {}}
                 drag={{ cardRefs: { current: {} }, skipNextClick: { current: false }, handleCardPointerDown: () => {} }}
                 consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] }}
-                settingsProps={{}}
             />
         </ContextMenuProvider>,
     );

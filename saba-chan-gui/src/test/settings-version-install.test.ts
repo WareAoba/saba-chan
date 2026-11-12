@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 
 const modules = [
     {
@@ -19,9 +19,7 @@ const srv = {
 
 function setup() {
     const setModal = vi.fn();
-    const hook = renderHook(() =>
-        useServerSettings({ servers: [srv] as never, modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-    );
+    const hook = setupSettingsStore({ servers: [srv] as never, modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() });
     return { ...hook, setModal };
 }
 
@@ -65,9 +63,7 @@ describe('서버 설정의 버전', () => {
         vi.mocked(window.api.moduleInstallServer).mockResolvedValue({ success: true, provisioning: true, id: 'a', version: '3.0' });
         const fetchServers = vi.fn();
         const setModal = vi.fn();
-        const { result } = renderHook(() =>
-            useServerSettings({ servers: [srv] as never, modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers }),
-        );
+        const { result } = setupSettingsStore({ servers: [srv] as never, modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers });
         await act(async () => result.current.handleOpenSettings(srv as never));
         act(() => result.current.handleSettingChange('server_version', '3.0'));
         await act(async () => result.current.handleInstallVersion());

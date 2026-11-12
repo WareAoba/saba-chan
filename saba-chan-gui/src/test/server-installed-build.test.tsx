@@ -37,7 +37,6 @@ function show(onStart = async () => {}) {
             modules={[]}
             servers={[server] as never}
             consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
-            settingsProps={{} as never}
         />,
     );
 }

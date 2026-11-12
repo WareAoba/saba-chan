@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 
 // 창을 연 뒤 다른 곳(CLI·디스코드·다른 창)이 같은 서버 설정을 바꿨으면 덮어쓰지 않는다.
 // 연 때의 revision을 함께 보내고, 데몬이 settings_changed로 거절하면 알리고 목록을 다시 읽는다
@@ -15,9 +15,7 @@ const srv = {
 };
 
 const open = async (setModal: ReturnType<typeof vi.fn>, fetchServers: ReturnType<typeof vi.fn>) => {
-    const { result } = renderHook(() =>
-        useServerSettings({ servers: [srv] as never, modules: modules as never, setModal: setModal as never, setProgressBar: vi.fn(), fetchServers: fetchServers as never }),
-    );
+    const { result } = setupSettingsStore({ servers: [srv] as never, modules: modules as never, setModal: setModal as never, setProgressBar: vi.fn(), fetchServers: fetchServers as never });
     await act(async () => result.current.handleOpenSettings(srv as never));
     return result;
 };

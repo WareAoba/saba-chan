@@ -38,7 +38,6 @@ const detail = (server: Record<string, unknown>) =>
             modules={[]}
             servers={[server] as never}
             consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
-            settingsProps={{} as never}
         />,
     );
 

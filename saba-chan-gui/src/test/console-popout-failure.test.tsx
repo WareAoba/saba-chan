@@ -32,7 +32,6 @@ const detail = () =>
             modules={[]}
             servers={[server]}
             consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] }}
-            settingsProps={{}}
         />,
     );
 

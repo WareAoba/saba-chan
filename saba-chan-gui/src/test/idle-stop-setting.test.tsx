@@ -2,20 +2,18 @@
  * 접속자 없을 때 자동 정지 (데몬 module_settings: idle_stop·idle_stop_minutes·idle_stop_grace_minutes).
  * 사바쨩 탭에서 켜고 끄고, 접속자 수를 모르는 게임에서는 고를 수 없다. 자동으로 정지한 서버는 이유를 알린다.
  */
-import { act, render, renderHook, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServerSettingsModal } from '../components/ServerSettingsModal';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 import i18n from '../i18n';
 
 const t = (k: string, o?: Record<string, unknown>) => i18n.t(`gui:${k}`, o ?? {}) as string;
 const modules = [{ name: 'game', settings: { fields: [{ name: 'title', field_type: 'text' }] } }];
 
 const setup = () =>
-    renderHook(() =>
-        useServerSettings({ servers: [], modules: modules as never, setModal: vi.fn(), setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-    );
+    setupSettingsStore({ servers: [], modules: modules as never, setModal: vi.fn(), setProgressBar: vi.fn(), fetchServers: vi.fn() });
 
 beforeEach(() => {
     window.showToast = vi.fn();

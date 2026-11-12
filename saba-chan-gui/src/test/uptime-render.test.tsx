@@ -33,7 +33,6 @@ describe('가동 시간 표시', () => {
                 modules={[]}
                 servers={[server] as never}
                 consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
-                settingsProps={{} as never}
             />,
         );
         expect(screen.getAllByText('02:03:04').length).toBeGreaterThan(0);

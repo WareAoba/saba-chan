@@ -36,7 +36,6 @@ import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
 import { useModalClose } from './hooks/useModalClose';
 import { useModulesRetry } from './hooks/useModulesRetry';
-import { useServerSettings } from './hooks/useServerSettings';
 import { useConsoleStore } from './stores/useConsoleStore';
 import { type DiscordData, setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerConsole } from './stores/serverActions';
@@ -198,7 +197,6 @@ function App() {
     // 서버 동작은 스토어 액션이다 (stores/serverActions). 관리 모드로 켜면 여는 콘솔은 이 창의 콘솔 훅이 들고 있다
     useEffect(() => setServerConsole(openConsole), [openConsole]);
     const fetchServers = useServerStore((s) => s.fetchServers);
-    const restartServer = useServerStore((s) => s.restartServer);
     const addServer = useServerStore((s) => s.addServer);
 
     // 익스텐션 화면의 host가 쓰는 이 창의 동작 (extensions/host)
@@ -227,44 +225,6 @@ function App() {
 
     // Store-based fetchModules
     const fetchModules = useServerStore((s) => s.fetchModules);
-
-    const {
-        showSettingsModal,
-        settingsServer,
-        settingsValues,
-        unsetSettings,
-        settingsSource,
-        settingsActiveTab,
-        setSettingsActiveTab,
-        advancedExpanded,
-        setAdvancedExpanded,
-        availableVersions,
-        versionsLoading,
-        versionInstalling,
-        resettingServer,
-        savingSettings,
-        isSettingsClosing,
-        handleOpenSettings,
-        handleSettingChange,
-        handleSettingLoaded,
-        revertSettings,
-        revertSetting,
-        openedSettings,
-        unsavedServers,
-        handleInstallVersion,
-        handleResetServer,
-        handleSaveSettings,
-        restartPending,
-        restartNow,
-        dismissRestart,
-    } = useServerSettings({
-        servers,
-        modules,
-        setModal,
-        setProgressBar,
-        fetchServers,
-        onRestart: restartServer,
-    });
 
     // ── Modal Close Animations ─────────────────────────────
     // biome-ignore lint/correctness/useExhaustiveDependencies: useState setters are stable
@@ -839,36 +799,6 @@ function App() {
         consolePopoutIds,
         popinConsole,
     };
-    const settingsProps = {
-        showSettingsModal,
-        settingsServer,
-        handleOpenSettings,
-        settingsValues,
-        unsetSettings,
-        settingsSource,
-        settingsActiveTab,
-        setSettingsActiveTab,
-        advancedExpanded,
-        setAdvancedExpanded,
-        availableVersions,
-        versionsLoading,
-        versionInstalling,
-        handleSettingChange,
-        handleSettingLoaded,
-        revertSettings,
-        revertSetting,
-        openedSettings,
-        unsavedServers,
-        handleInstallVersion,
-        handleSaveSettings,
-        handleResetServer,
-        resettingServer,
-        savingSettings,
-        isClosing: isSettingsClosing,
-        restartPending,
-        restartNow,
-        dismissRestart,
-    };
 
     const openingOverlay =
         openingPhase === 'loading' || openingPhase === 'prepare' ? (
@@ -951,7 +881,6 @@ function App() {
                                 onAddServer={() => setShowModuleManager(true)}
                                 drag={{ draggedId, cardRefs, skipNextClick, handleCardPointerDown }}
                                 consoleProps={consoleProps}
-                                settingsProps={settingsProps}
                             />
                         )}
                         {page === 'discord' && <DiscordPage {...discordPageProps} />}

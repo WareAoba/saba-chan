@@ -1,10 +1,12 @@
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 import type { useDragReorder } from '../../hooks/useDragReorder';
 import { useSwapAnimation } from '../../hooks/useSwapAnimation';
 import { useWindowSize } from '../../hooks/useWindowSize';
 import { type Server, useServerStore } from '../../stores/useServerStore';
+import { unsavedServerIds, useServerSettingsStore } from '../../stores/useServerSettingsStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useUIStore } from '../../stores/useUIStore';
 import type { ModuleInfo } from '../../types/daemon';
@@ -23,7 +25,7 @@ import { FirstRunGuide } from '../guides/FirstRunGuide';
 import { GuideCard } from '../guides/GuideCard';
 import { useGuideStore } from '../guides/guides';
 import { OnboardingCard } from './OnboardingCard';
-import type { ServerConsoleProps, ServerSettingsProps } from './ServerDetail';
+import type { ServerConsoleProps } from './ServerDetail';
 import { ServerDetail } from './ServerDetail';
 import { ServerRow } from './ServerRow';
 
@@ -47,7 +49,6 @@ interface ServersPageProps {
     onAddServer: () => void;
     drag: ReturnType<typeof useDragReorder>;
     consoleProps: ServerConsoleProps;
-    settingsProps: ServerSettingsProps;
 }
 
 /**
@@ -59,7 +60,6 @@ export function ServersPage({
     onAddServer,
     drag,
     consoleProps,
-    settingsProps,
 }: ServersPageProps) {
     const { t, i18n } = useTranslation('gui');
     const failedModules = useServerStore((st) => st.failedModules) || [];
@@ -69,6 +69,8 @@ export function ServersPage({
     const onDelete = useServerStore((st) => st.deleteServer);
     // 브랜치 서버 만들기: 만들기 요청을 그대로 데몬에 보낸다 (성공하면 true)
     const onCreateBranch = useServerStore((st) => st.addServer);
+    // 저장하지 않은 설정이 남은 서버 (줄의 경고 표시)
+    const unsavedIds = useServerSettingsStore(useShallow((st) => unsavedServerIds(st, modules)));
     const { width } = useWindowSize();
     const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
     const monitorOpen = useSettingsStore((s) => s.systemMonitorExpanded);
@@ -246,7 +248,7 @@ export function ServersPage({
                                 branchesCollapsed={collapsed.includes(server.id)}
                                 onToggleBranches={toggleBranches}
                                 onBranch={!parent ? setBranchFrom : undefined}
-                                unsaved={settingsProps?.unsavedServers?.includes(server.id)}
+                                unsaved={unsavedIds.includes(server.id)}
                                 onSelect={(id) => {
                                     setSelectedId(id);
                                     setShowDetailNarrow(true);
@@ -285,7 +287,6 @@ export function ServersPage({
                             servers={servers}
                             onBack={singleColumn ? () => setShowDetailNarrow(false) : null}
                             consoleProps={consoleProps}
-                            settingsProps={settingsProps}
                         />
                     </div>
                 </main>
