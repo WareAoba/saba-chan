@@ -133,6 +133,8 @@ pub static ROUTES: &[Route] = &[
     allow("POST", "/api/instance/{id}/backups/{name}/restore"),
     allow("GET", "/api/instance/{id}/schedule"),
     allow("PUT", "/api/instance/{id}/schedule"),
+    // 이 PC의 앱 화면만 쓴다 (작업 기록의 "다가오는 예약")
+    not_on_web("GET", "/api/schedules/upcoming"),
     // ── 모듈: 공식 목록에서만 받는다. 폴더에서 들이기·삭제는 PC에서 ──
     allow("GET", "/api/modules"),
     allow("POST", "/api/modules/refresh"),

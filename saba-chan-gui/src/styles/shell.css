@@ -2190,6 +2190,17 @@ button.activity-line:hover {
 .dc-list-row.dim .dc-list-text {
     opacity: 0.55;
 }
+/* 다가오는 예약: 겹치는 작업 줄 */
+.upcoming-list .dc-list-row {
+    text-align: left;
+}
+.upcoming-list .dc-list-row.clash {
+    box-shadow: inset 3px 0 0 var(--warn);
+}
+.upcoming-range {
+    margin-left: auto;
+    width: 140px;
+}
 /* 인스턴스 카드: 어디를 눌러도 권한 메뉴로 */
 .dc-list-row.is-openable {
     cursor: pointer;

@@ -4,6 +4,7 @@
 //! - `POST /api/instance/:id/backups/:name/restore` — 복원 (서버가 꺼져 있어야 한다. 먼저 pre-restore 백업)
 //! - `DELETE /api/instance/:id/backups/:name`
 //! - `GET/PUT /api/instance/:id/schedule` — `{schedule: [...], backup_keep}`
+//! - `GET /api/schedules/upcoming` — 모든 인스턴스의 다가오는 예약
 #![allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
 
 use super::LooseJson;
@@ -992,6 +993,75 @@ pub fn upcoming_runs(instances: &[crate::instance::ServerInstance], limit: usize
         .collect();
     runs.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(b.1)));
     runs.into_iter().take(limit).map(|(next, id, action)| json!({ "instanceId": id, "action": action, "next": next })).collect()
+}
+
+#[derive(Deserialize)]
+pub struct UpcomingQuery {
+    /// 지금부터 이 시간 안에 도는 것만 (기본 24, 1~720)
+    #[serde(default)]
+    pub hours: Option<u32>,
+}
+
+/// 이만큼 안에 함께 도는 무거운 작업(백업·재시작·업데이트)은 겹친다고 알린다
+const CLASH_WINDOW_SECS: i64 = 5 * 60;
+
+/// GET /api/schedules/upcoming?hours= — 모든 인스턴스의 켜 둔 예약의 다음 실행을 가까운 순으로.
+/// `{upcoming: [{instance_id, instance, index, task, next, clash}], clashes: [{at, actions}], utc_offset_minutes}`
+pub async fn upcoming_schedules(axum::extract::Query(q): axum::extract::Query<UpcomingQuery>, State(state): State<IPCServer>) -> Response {
+    let now = chrono::Local::now().timestamp();
+    let until = now + i64::from(q.hours.unwrap_or(24).clamp(1, 720)) * 3600;
+    let supervisor = state.supervisor.read().await;
+    let mut rows: Vec<(i64, &crate::instance::ServerInstance, usize, &ScheduledTask)> = supervisor
+        .instance_store
+        .list()
+        .iter()
+        .flat_map(|inst| {
+            next_runs(&inst.id, &inst.schedule)
+                .into_iter()
+                .zip(&inst.schedule)
+                .enumerate()
+                .filter_map(move |(index, (next, task))| Some((next?, inst, index, task)))
+        })
+        .filter(|(next, ..)| *next <= until)
+        .collect();
+    rows.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.name.cmp(&b.1.name)).then_with(|| a.2.cmp(&b.2)));
+    // 무거운 작업을 시각 순으로 훑어, 앞 것과 `CLASH_WINDOW_SECS` 안이면 한 묶음으로 본다
+    let heavy: Vec<usize> = (0..rows.len()).filter(|i| matches!(rows[*i].3.action, TaskAction::Backup | TaskAction::Restart | TaskAction::Update)).collect();
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    for i in heavy {
+        match groups.last_mut() {
+            Some(group) if rows[i].0 - rows[*group.last().expect("groups are never empty")].0 <= CLASH_WINDOW_SECS => group.push(i),
+            _ => groups.push(vec![i]),
+        }
+    }
+    groups.retain(|group| group.len() > 1);
+    let clashing: HashSet<usize> = groups.iter().flatten().copied().collect();
+    let clashes: Vec<Value> = groups
+        .iter()
+        .map(|group| {
+            let mut actions: Vec<TaskAction> = Vec::new();
+            for i in group {
+                if !actions.contains(&rows[*i].3.action) {
+                    actions.push(rows[*i].3.action);
+                }
+            }
+            json!({ "at": rows[group[0]].0, "actions": actions })
+        })
+        .collect();
+    let upcoming: Vec<Value> = rows
+        .iter()
+        .enumerate()
+        .map(|(i, (next, inst, index, task))| {
+            json!({ "instance_id": inst.id, "instance": inst.name, "index": index, "task": task, "next": next, "clash": clashing.contains(&i) })
+        })
+        .collect();
+    Json(json!({
+        "success": true,
+        "upcoming": upcoming,
+        "clashes": clashes,
+        "utc_offset_minutes": chrono::Local::now().offset().local_minus_utc() / 60,
+    }))
+    .into_response()
 }
 
 pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>) -> Response {
@@ -1985,6 +2055,47 @@ else:
         assert_eq!(failed.len(), 1, "only the failed restart is announced as failed");
         assert_eq!(failed[0].data["action"], "restart");
         assert_eq!(failed[0].data["code"], "not_running");
+    }
+
+    // 모든 서버의 다음 예약을 시각 순서로 한 번에 주고, 같은 PC에서 가까운 시각에 겹치는 무거운 작업을 짚는다
+    #[tokio::test]
+    async fn upcoming_schedules_lists_every_instance_in_time_order_and_marks_heavy_tasks_that_overlap() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        // 지금이 몇 시든 같은 순서가 되게 두 시간 뒤를 기준으로 잡는다
+        let at = |minutes: i64| (chrono::Local::now() + chrono::Duration::minutes(120 + minutes)).format("%H:%M").to_string();
+        let other = {
+            let mut sup = state.supervisor.write().await;
+            let mut instance = sup.instance_store.get(&id).unwrap().clone();
+            instance.schedule = serde_json::from_value(json!([
+                { "action": "backup", "at": at(0) },
+                { "action": "announce", "at": at(0), "message": "hi" },
+                { "action": "start", "at": at(60), "enabled": false },
+            ]))
+            .unwrap();
+            sup.instance_store.update(&id, instance).unwrap();
+            let mut other = crate::instance::ServerInstance::new("other", "plain");
+            other.schedule = serde_json::from_value(json!([{ "action": "restart", "at": at(3) }, { "action": "update", "at": at(30) }])).unwrap();
+            let other_id = other.id.clone();
+            sup.instance_store.add(other).unwrap();
+            other_id
+        };
+        let all = |hours| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(upcoming_schedules(axum::extract::Query(UpcomingQuery { hours }), State(state)).await).await.body }
+        };
+        let body = all(None).await;
+        let rows = body["upcoming"].as_array().unwrap();
+        let seen: Vec<(&str, &str, bool)> =
+            rows.iter().map(|r| (r["instance"].as_str().unwrap(), r["task"]["action"].as_str().unwrap(), r["clash"].as_bool().unwrap())).collect();
+        // 꺼 둔 작업은 없고, 공지는 무겁지 않고, 30분 떨어진 업데이트는 겹치지 않는다
+        assert_eq!(seen, [("srv", "backup", true), ("srv", "announce", false), ("other", "restart", true), ("other", "update", false)], "{}", body);
+        let restart = rows.iter().find(|r| r["task"]["action"] == "restart").unwrap();
+        assert_eq!((restart["instance_id"].as_str(), restart["index"].as_u64()), (Some(other.as_str()), Some(0)));
+        assert_eq!(body["clashes"].as_array().unwrap().len(), 1, "{}", body);
+        assert_eq!(body["clashes"][0]["actions"], json!(["backup", "restart"]));
+        assert_eq!(body["clashes"][0]["at"], rows[0]["next"]);
+        let soon = all(Some(1)).await;
+        assert_eq!(soon["upcoming"], json!([]), "nothing runs within the hour: {}", soon);
     }
 
     // 꺼진 PC에서 밀린 주기 백업은 데몬이 켜진 직후(서버는 아직 꺼져 있다)에 돈다: 지난 실행이 바꾼 것을 그때 담아야 한다

@@ -23,6 +23,7 @@ import { DateField } from '../ui/DateTimePicker';
 import { Popover } from '../ui/Popover';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
+import { UpcomingSchedules, upcomingAvailable } from './UpcomingSchedules';
 
 export { auditRange, auditResult, auditWhat, auditWho };
 
@@ -366,6 +367,7 @@ export function ActivityPage() {
             </aside>
             <main className="server-detail-pane activity-pane">
                 <div className="server-detail activity-page">
+                    {!current && upcomingAvailable() && <UpcomingSchedules />}
                     <AuditLog instanceId={current ?? undefined} />
                 </div>
             </main>

@@ -1190,6 +1190,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 BACKUP_TIMEOUT,
             ),
         instanceScheduleGet: (id: string) => call('get', instancePath(id, '/schedule')),
+        // 모든 서버의 다가오는 예약 (작업 기록 화면). hours 안에 도는 것만
+        schedulesUpcoming: (hours?: number) => call('get', `/api/schedules/upcoming${queryString({ hours })}`),
         instanceScheduleSave: (id: string, body: ApiBody) => call('put', instancePath(id, '/schedule'), body),
         chatbotGet: () => call('get', '/api/chatbot'),
         chatbotSave: (patch: ApiBody) => call('put', '/api/chatbot', patch),
