@@ -196,6 +196,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     slots: Default::default(),
                     players: None,
                     unresponsive: None,
+                    unresponsive_minutes: None,
                     // 폴더 판정은 아래 락 밖에서
                     linked_folder: None,
                     restorable_settings: false,
@@ -295,8 +296,12 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
     let catalog = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
     for srv in servers.iter_mut().filter(|s| s.status == "running") {
         srv.players = crate::supervisor::players::get(&srv.id);
-        srv.unresponsive = crate::supervisor::players::unresponsive(&srv.id, srv.pid, std::time::Instant::now())
-            .map(|reason| crate::supervisor::players::reason_text(&reason, &catalog));
+        // 응답 없음은 인스턴스 설정의 시간(`watchdog::rule_of`)이 지난 뒤에 알린다
+        let after = all_instances.iter().find(|i| i.id == srv.id).map(|i| crate::supervisor::watchdog::rule_of(i).after).unwrap_or_default();
+        if let Some((silent, reason)) = crate::supervisor::players::silent_for(&srv.id, srv.pid, std::time::Instant::now()).filter(|(silent, _)| *silent >= after) {
+            srv.unresponsive = Some(crate::supervisor::players::reason_text(&reason, &catalog));
+            srv.unresponsive_minutes = Some(silent.as_secs() / 60);
+        }
     }
 
     // ── 포트 충돌 계산: 시작 시 검사(check_port_conflicts)와 같은 기준 ──
@@ -1238,6 +1243,48 @@ async fn announce_updates(state: &IPCServer, id: &str, mut result: Value) -> Val
         }
     });
     result
+}
+
+/// 응답 없는 서버 감시 (`supervisor::watchdog`): 켜진 서버가 인스턴스 설정의 시간 넘게 상태 질문에 답하지 않으면
+/// `instance.unresponsive`를 내고, 설정이 `restart`면 다시 시작한다. 접속자 수를 갱신한 바로 뒤에 1분마다 부른다
+pub async fn watch_unresponsive(state: &IPCServer) {
+    watch_unresponsive_at(state, std::time::Instant::now()).await
+}
+
+pub(crate) async fn watch_unresponsive_at(state: &IPCServer, now: std::time::Instant) {
+    use crate::supervisor::{players, watchdog};
+    let due: Vec<(String, String, u64, watchdog::Verdict)> = {
+        let supervisor = state.supervisor.read().await;
+        let mut due = Vec::new();
+        for instance in supervisor.instance_store.list() {
+            let (running, pid, _) = supervisor.tracked_state(&instance.id).await;
+            if !running {
+                watchdog::forget(&instance.id);
+                continue;
+            }
+            let silent = players::silent_for(&instance.id, pid, now).map(|(silent, _)| silent);
+            if let Some(verdict) = watchdog::observe(&instance.id, pid, watchdog::rule_of(instance), silent, now) {
+                due.push((instance.id.clone(), instance.name.clone(), silent.unwrap_or_default().as_secs() / 60, verdict));
+            }
+        }
+        due
+    };
+    for (id, name, minutes, verdict) in due {
+        let restarting = verdict == watchdog::Verdict::Restart;
+        tracing::warn!("Server '{}' has not answered for {} minutes{}", id, minutes, if restarting { "; restarting it" } else { "" });
+        crate::events::emit("instance.unresponsive", json!({ "instanceId": id, "instance": name, "minutes": minutes, "restarting": restarting }));
+        if restarting {
+            // 재시작은 정지 대기 시간만큼 걸린다: 다른 서버의 감시를 붙잡지 않게 뒤에서 한다
+            let state = state.clone();
+            tokio::spawn(async move {
+                let restart = restart_instance_handler(Path(id.clone()), State(state), LooseJson(None));
+                let resp = crate::ipc::internal::into_internal(crate::audit::with_origin(crate::audit::Origin::new("watchdog"), Box::pin(restart)).await).await;
+                if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
+                    tracing::warn!("Could not restart the unresponsive server '{}': {}", id, resp.body);
+                }
+            });
+        }
+    }
 }
 
 /// 접속자 0명이 정한 시간 이어진 켜진 서버를 저장하고 정지한다 (인스턴스 설정 `idle_stop`, `supervisor::idle`).

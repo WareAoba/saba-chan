@@ -2182,6 +2182,33 @@ else:
         players::roster_end(&id, generation);
     }
 
+    /// 응답 없는 서버 감시: 켜진 서버가 설정한 시간 넘게 답하지 않으면 한 번 알리고, 서버 목록도 그때부터 알린다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_running_server_that_stays_silent_is_announced_once_after_the_configured_wait() {
+        use crate::supervisor::players;
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        run_fake_server(&state, &id, &tmp, "").await;
+        let mut events = crate::events::bus().subscribe(None);
+        let start = std::time::Instant::now();
+        let minutes = |m: u64| start + std::time::Duration::from_secs(m * 60);
+        let announced = |events: &mut crate::events::Subscription| -> Vec<Value> {
+            std::iter::from_fn(|| events.rx.try_recv().ok()).filter(|e| e.kind == "instance.unresponsive" && e.data["instanceId"] == id.as_str()).map(|e| e.data.clone()).collect()
+        };
+        players::fail_for_test(&id, None, "connection refused", start);
+        players::fail_for_test(&id, None, "connection refused", minutes(6));
+        let tick = |at| super::super::server::watch_unresponsive_at(&state, at);
+
+        tick(minutes(6)).await;
+        assert!(announced(&mut events).is_empty(), "the default wait is ten minutes");
+        tick(minutes(10)).await;
+        tick(minutes(11)).await;
+        let seen = announced(&mut events);
+        assert_eq!(seen.len(), 1, "one notice per silence: {seen:?}");
+        assert_eq!((seen[0]["minutes"].as_u64(), seen[0]["restarting"].as_bool(), seen[0]["instance"].as_str()), (Some(10), Some(false), Some("srv")));
+        assert!(is_running(&state, &id).await, "notify only does not touch the server");
+    }
+
     #[tokio::test]
     async fn a_failing_backup_paths_hook_stops_the_backup() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n");

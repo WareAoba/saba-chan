@@ -2196,7 +2196,7 @@ button.activity-line:hover {
     align-items: center;
     gap: var(--sp-2);
 }
-/* 자동 정지 안내: 글은 남는 너비를 쓰고 시작 버튼은 오른쪽 끝 */
+/* 자동 정지·응답 없음 안내: 글은 남는 너비를 쓰고 버튼은 오른쪽 끝 */
 .idle-stopped-notice {
     align-items: center;
 }

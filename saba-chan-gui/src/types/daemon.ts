@@ -103,6 +103,8 @@ export interface ServerInfo {
     slots?: JsonObject;
     players?: PlayerCount;
     unresponsive?: string;
+    /** `unresponsive`가 있을 때 답하지 않은 분 */
+    unresponsive_minutes?: number;
     linked_folder?: string;
     restorable_settings: boolean;
 }

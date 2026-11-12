@@ -80,6 +80,9 @@ pub const DAEMON_SETTINGS: &[(&str, &str)] = &[
     ("idle_stop", "boolean"),
     ("idle_stop_minutes", "number"),
     ("idle_stop_grace_minutes", "number"),
+    // 응답 없는 서버 감시 (`supervisor::watchdog`): off·notify·restart
+    ("unresponsive_action", "text"),
+    ("unresponsive_minutes", "number"),
 ];
 
 // ══════════════════════════════════════════════════════

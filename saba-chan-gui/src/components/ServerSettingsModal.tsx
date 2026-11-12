@@ -387,6 +387,7 @@ function GeneralTab({
         moduleSupports(module, 'install_server');
     const crashOff = String(settingsValues.auto_restart) === 'false';
     const idleStopOn = String(settingsValues.idle_stop) === 'true';
+    const watchAction = String(settingsValues.unresponsive_action ?? 'notify');
     const autoUpdatable = extensionInstallMethod(settingsServer, module) !== null;
     // 명령 팔레트가 고급 묶음의 칸을 찾아 달라고 하면 펼친다 (칸을 찾아 반짝이는 일은 팔레트가 한다)
     const findField = useUIStore((s) => s.findSettingField);
@@ -497,6 +498,53 @@ function GeneralTab({
                                 disabled={crashOff}
                                 onChange={(checked) => handleSettingChange('restart_on_unknown_exit', checked)}
                             />
+                        }
+                    />
+                </Card>
+            )}
+
+            {/* 응답 없는 서버 감시 (데몬 module_settings unresponsive_action·unresponsive_minutes) */}
+            {showSaba && (
+                <Card
+                    icon="alertTriangle"
+                    title={t('server_settings.unresponsive_title')}
+                    desc={t('server_settings.unresponsive_desc')}
+                    className="ss-unresponsive"
+                >
+                    <SettingRow
+                        label={t('server_settings.unresponsive_action')}
+                        findKey="unresponsive_action"
+                        control={
+                            <CustomDropdown
+                                className="ss-select"
+                                ariaLabel={t('server_settings.unresponsive_action')}
+                                value={watchAction}
+                                onChange={(v: string) => handleSettingChange('unresponsive_action', v)}
+                                options={(['off', 'notify', 'restart'] as const).map((a) => ({
+                                    value: a,
+                                    label: t(`server_settings.unresponsive_action_${a}`),
+                                }))}
+                            />
+                        }
+                    />
+                    <SettingRow
+                        label={t('server_settings.unresponsive_minutes')}
+                        findKey="unresponsive_minutes"
+                        desc={t('server_settings.unresponsive_minutes_hint')}
+                        disabled={watchAction === 'off'}
+                        control={
+                            <span className="ss-with-unit">
+                                <SabaNumberInput
+                                    className="input ss-short"
+                                    min={5}
+                                    max={1440}
+                                    value={settingsValues.unresponsive_minutes ?? ''}
+                                    disabled={watchAction === 'off'}
+                                    aria-label={t('server_settings.unresponsive_minutes')}
+                                    onChange={(e) => handleSettingChange('unresponsive_minutes', e.target.value)}
+                                />
+                                <span className="muted">{t('server_settings.idle_stop_unit')}</span>
+                            </span>
                         }
                     />
                 </Card>

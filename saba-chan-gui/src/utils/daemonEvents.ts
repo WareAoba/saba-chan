@@ -201,6 +201,16 @@ export function eventToast(ev: DaemonEvent, t: TFunction, nameOf: (id: string) =
                 ...(d.source === 'gui' ? { silent: true } : {}),
             };
         }
+        case 'instance.unresponsive': {
+            const name = d.instance || nameOf(d.instanceId);
+            const key = d.restarting ? 'events.instance_unresponsive_restart' : 'events.instance_unresponsive';
+            return {
+                message: t(key, { name, minutes: d.minutes }),
+                type: 'warning',
+                duration: 8000,
+                notice: serverNotice(d, name, t('events.n_unresponsive', { minutes: d.minutes }), 'error'),
+            };
+        }
         case 'backup.done': {
             // 직접 백업은 시킨 쪽(GUI 토스트, 디스코드면 action.run)이 이미 알린다
             if (d.kind === 'manual') return null;

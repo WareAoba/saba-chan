@@ -5,6 +5,7 @@ pub mod crash;
 pub mod highlight;
 pub mod players;
 pub mod idle;
+pub mod watchdog;
 pub mod ready;
 pub mod player_events;
 pub mod chat_link;

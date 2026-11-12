@@ -543,6 +543,8 @@ async fn main() -> anyhow::Result<()> {
             supervisor::players::refresh(&players_sup).await;
             // 접속자 없을 때 자동 정지: 방금 갱신한 수만 본다 (따로 묻지 않는다)
             ipc::handlers::server::stop_idle_servers(&idle_state).await;
+            // 응답 없는 서버 감시: 방금 모은 응답 실패 기록만 본다
+            ipc::handlers::server::watch_unresponsive(&idle_state).await;
         }
     });
 

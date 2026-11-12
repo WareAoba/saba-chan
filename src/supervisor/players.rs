@@ -167,6 +167,19 @@ pub fn unresponsive(instance_id: &str, pid: Option<u32>, now: std::time::Instant
     (*failed_pid == pid && *logged && now.duration_since(*since) >= UNRESPONSIVE_AFTER).then(|| reason.clone())
 }
 
+/// `unresponsive`와 같은 판정에 답하지 않은 시간을 더한 것 (응답 없음 감시 `watchdog`와 서버 목록이 인스턴스 설정의 시간과 견준다)
+pub fn silent_for(instance_id: &str, pid: Option<u32>, now: std::time::Instant) -> Option<(std::time::Duration, String)> {
+    let reason = unresponsive(instance_id, pid, now)?;
+    let since = failures().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id)?.1;
+    Some((now.duration_since(since), reason))
+}
+
+/// 시험이 응답 실패 한 번을 적는다
+#[cfg(test)]
+pub(crate) fn fail_for_test(instance_id: &str, pid: Option<u32>, reason: &str, at: std::time::Instant) {
+    record(instance_id, pid, Err(reason.to_string()), at);
+}
+
 /// 모듈 응답을 읽는다. 실패 응답이나 정수가 아닌 값은 None (모르는 값을 0으로 보이지 않는다)
 pub fn parse(result: &Value) -> Option<PlayerCount> {
     if result.get("success").and_then(Value::as_bool) == Some(false) {
@@ -449,6 +462,7 @@ mod tests {
         assert_eq!(unresponsive(id, pid, later), None, "not yet logged");
         record(id, pid, Ok(&refused), later);
         assert_eq!(unresponsive(id, pid, later).as_deref(), Some("connection refused"));
+        assert_eq!(silent_for(id, pid, later + std::time::Duration::from_secs(120)), Some((UNRESPONSIVE_AFTER + std::time::Duration::from_secs(120), "connection refused".to_string())));
 
         // 한 번이라도 답하면 지운다
         record(id, pid, Ok(&json!({ "success": true, "online": 0 })), later);

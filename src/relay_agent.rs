@@ -1302,6 +1302,8 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "update.available" => pick(&["at", "components"]),
         "schedule.warn" => pick(&["at", "instanceId", "instance", "action", "minutesLeft"]),
         "instance.ready" => pick(&["at", "instanceId", "instance", "ok", "code"]),
+        // 켜져 있지만 응답이 없다 (응답 없는 서버 감시). 실패 이유 원문은 싣지 않는다
+        "instance.unresponsive" => pick(&["at", "instanceId", "instance", "minutes", "restarting"]),
         // 서버가 켜지고 꺼진 것과 시킨 쪽. 사바쨩 밖의 시작은 unexpected (크래시·원인 모를 종료는 instance.exit)
         "instance.started" => pick(&["at", "instanceId", "instance", "source", "userName", "unexpected"]),
         "instance.stopped" => pick(&["at", "instanceId", "instance", "source", "userName", "kind"]),
@@ -2980,6 +2982,8 @@ mod tests {
         assert_eq!(relay_event(&failed).unwrap()["data"], json!({"instanceId": "i", "instance": "mc1", "kind": "manual", "ok": false}));
         assert!(relay_event(&ev("action.run", json!({"action": "server.start"}))).is_none());
         assert!(relay_event(&ev("provision.progress", json!({}))).is_none());
+        let silent = ev("instance.unresponsive", json!({"at": 1, "instanceId": "i", "instance": "mc1", "minutes": 10, "restarting": false, "reason": "connection refused"}));
+        assert_eq!(relay_event(&silent).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "minutes": 10, "restarting": false}));
         // R39 준비 알림은 계약 필드만 (디스코드 "다 켜졌어요")
         let ready = ev("instance.ready", json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed", "line": "C:\\x"}));
         assert_eq!(relay_event(&ready).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed"}));

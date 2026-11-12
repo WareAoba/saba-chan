@@ -281,10 +281,13 @@ pub struct ServerInfo {
     /// 접속자 수 (Q-5): 켜진 서버이고 모듈이 `[status] players`로 알려 줄 때만 (`supervisor::players`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub players: Option<crate::supervisor::players::PlayerCount>,
-    /// 켜져 있지만 상태 질문(접속자 수)에 `UNRESPONSIVE_AFTER` 넘게 답하지 않을 때 마지막 실패 이유.
+    /// 켜져 있지만 상태 질문(접속자 수)에 인스턴스 설정 `unresponsive_minutes`(기본 10분) 넘게 답하지 않을 때 마지막 실패 이유.
     /// REST로 명령을 보내는 서버라면 명령·정상 종료도 닿지 않는다 (`supervisor::players::unresponsive`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unresponsive: Option<String>,
+    /// `unresponsive`가 있을 때 답하지 않은 분
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unresponsive_minutes: Option<u64>,
     /// 인스턴스 폴더 밖의 서버 폴더(가져온 서버). 삭제해도 남는다 (`instance::migration::linked_folder`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linked_folder: Option<String>,

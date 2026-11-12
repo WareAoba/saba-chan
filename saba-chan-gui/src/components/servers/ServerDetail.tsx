@@ -310,9 +310,26 @@ export function ServerDetail({
             {status !== 'missing' && <ModuleAuditNotice moduleName={server.module} />}
 
             {server.unresponsive && status === 'running' && (
-                <div className="notice tone-warn" role="status">
+                <div className="notice tone-warn idle-stopped-notice" role="status">
                     <Icon name="alertTriangle" size="sm" />
-                    <span>{t('server_status.unresponsive', { reason: server.unresponsive })}</span>
+                    <span>
+                        {server.unresponsive_minutes != null && (
+                            <>
+                                <strong>
+                                    {t('server_status.unresponsive_for', { minutes: server.unresponsive_minutes })}
+                                </strong>{' '}
+                                {t('server_status.unresponsive_detail')}{' '}
+                            </>
+                        )}
+                        <span className="notice-detail">
+                            {t('server_status.unresponsive', { reason: server.unresponsive })}
+                        </span>
+                    </span>
+                    {onRestart && typeof window.api?.instanceRestart === 'function' && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRestart(server.name)}>
+                            <Icon name="refresh" size="sm" /> {t('shell.restart')}
+                        </button>
+                    )}
                 </div>
             )}
 
