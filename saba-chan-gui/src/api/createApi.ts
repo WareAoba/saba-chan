@@ -909,6 +909,9 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 // 릴레이가 이 앱 버전을 받지 않는다: 세션은 살아 있어도 명령이 오지 않는다
                 if (data?.lastErrorCode === 'agent_too_old')
                     return { status: 'too_old', running: !!data.running, minVersion: data.minVersion ?? null };
+                // 세션은 살아 있지만 릴레이가 상태 보고를 검증에서 거절했다: 이대로면 디스코드에서 오프라인이 된다
+                if (data?.running && data?.heartbeatRejected)
+                    return { status: 'rejected', running: true, reason: data.heartbeatRejected };
                 if (data?.running) return 'running';
                 // 같은 디스코드 계정이 다른 PC를 페어링해서 데몬이 에이전트를 멈췄다
                 if (data?.lastErrorCode === 'token_replaced') return 'replaced';

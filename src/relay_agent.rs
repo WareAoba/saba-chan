@@ -83,10 +83,26 @@ pub struct AgentStatus {
     /// `agent_too_old`일 때 릴레이가 요구하는 최소 버전
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_version: Option<String>,
+    /// 릴레이가 마지막 하트비트를 검증에서 거절한 이유. 다시 받아 주면 없다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heartbeat_rejected: Option<HeartbeatReject>,
     pub commands_handled: u64,
     /// 릴레이가 하트비트 답에 실어 준, 이 PC가 접속해 온 공인 주소 (서버 주소 `server.address`). 모르면 없다
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seen_address: Option<String>,
+}
+
+/// 릴레이가 하트비트를 거절한 이유 (400 답의 `reason`): 어느 칸이 맞지 않았는지, 개수·길이 상한이면 상한과 보낸 크기.
+/// 문장은 클라이언트가 만든다
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+pub struct HeartbeatReject {
+    /// `TOO_BIG`(상한 초과) 또는 `INVALID`
+    pub code: String,
+    pub field: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual: Option<u64>,
 }
 
 #[derive(Default)]
@@ -621,6 +637,7 @@ impl Session {
         let (metadata, hash, unchanged) = heartbeat_metadata(self.metadata().await, sent.as_deref());
         let acks = self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let body = heartbeat_body(metadata, &hash, unchanged, &acks);
+        let mut rejected: Option<HeartbeatReject> = None;
         let result = async {
             let resp = self.send_signed(reqwest::Method::POST, "/heartbeat", Some(body.to_string())).await?;
             let status = resp.status();
@@ -634,7 +651,9 @@ impl Session {
             }
             if !status.is_success() {
                 let hint = if status.as_u16() == 401 || status.as_u16() == 403 { " (node token rejected)" } else { "" };
-                return Err(format!("heartbeat {}{}: {}", status, hint, data.get("error").and_then(|v| v.as_str()).unwrap_or("")));
+                rejected = data.get("reason").cloned().and_then(|reason| serde_json::from_value(reason).ok());
+                let field = rejected.as_ref().map(|r| format!(" ({})", r.field)).unwrap_or_default();
+                return Err(format!("heartbeat {}{}: {}{}", status, hint, data.get("error").and_then(|v| v.as_str()).unwrap_or(""), field));
             }
             Ok(data)
         }
@@ -658,6 +677,7 @@ impl Session {
                     s.last_error = None;
                     s.last_error_code = None;
                     s.min_version = None;
+                    s.heartbeat_rejected = None;
                     // 사설 주소면 없다
                     seen_changed = s.seen_address != seen;
                     s.seen_address = seen;
@@ -697,6 +717,7 @@ impl Session {
             Err(e) if e == TOO_OLD => {}
             Err(e) => {
                 tracing::warn!("[RelayAgent] {}", e);
+                self.agent.update(self.generation, |s| s.heartbeat_rejected = rejected);
                 self.report_error(e);
             }
         }
@@ -2037,6 +2058,64 @@ mod tests {
         reported("poll");
         assert_eq!(poll_retry(&polled, 1), HEARTBEAT_INTERVAL);
         assert_eq!(poll_retry("poll 502 Bad Gateway: ", 1), backoff(1), "other failures keep the short backoff");
+    }
+
+    /// 릴레이가 상태 보고(heartbeat)를 검증에서 거절하면 어느 값 때문인지(칸·상한·보낸 크기)를 상태에 남겨
+    /// 앱이 연결 상태에 이유를 보이게 하고, 다시 받아 주면 지운다
+    #[tokio::test]
+    async fn a_heartbeat_the_relay_refuses_reports_which_value_was_refused() {
+        use axum::routing::post;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static REFUSE: AtomicBool = AtomicBool::new(true);
+        async fn heartbeat() -> (axum::http::StatusCode, axum::Json<Value>) {
+            if REFUSE.load(Ordering::SeqCst) {
+                let reason = json!({ "code": "TOO_BIG", "field": "metadata.servers", "max": 200, "actual": 201 });
+                return (axum::http::StatusCode::BAD_REQUEST, axum::Json(json!({ "error": "VALIDATION_ERROR", "details": [], "reason": reason })));
+            }
+            (axum::http::StatusCode::OK, axum::Json(json!({ "ok": true })))
+        }
+        let app = axum::Router::new().route("/heartbeat", post(heartbeat));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let server = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let agent = RelayAgent::new();
+        let cancel = CancellationToken::new();
+        {
+            let mut inner = agent.lock();
+            inner.cancel = Some(cancel.clone());
+            inner.generation = 1;
+            inner.status.running = true;
+        }
+        let session = Session {
+            agent: agent.clone(),
+            server,
+            client: http_client().unwrap(),
+            base,
+            token: "sbn_host.secret".into(),
+            cancel,
+            generation: 1,
+            seen: Arc::default(),
+            metadata_sent: Mutex::new(None),
+            linked_acks: Mutex::default(),
+        };
+
+        session.heartbeat().await;
+        let json = serde_json::to_value(agent.status()).unwrap();
+        assert_eq!(json["heartbeatRejected"], json!({ "code": "TOO_BIG", "field": "metadata.servers", "max": 200, "actual": 201 }), "{json}");
+        assert_eq!(json["lastError"], "heartbeat 400 Bad Request: VALIDATION_ERROR (metadata.servers)");
+
+        REFUSE.store(false, Ordering::SeqCst);
+        session.heartbeat().await;
+        let json = serde_json::to_value(agent.status()).unwrap();
+        assert!(json.get("heartbeatRejected").is_none() && json["lastError"].is_null(), "{json}");
     }
 
     /// 외부 감사: ack한 명령의 결과 전송이 한 번 실패하면(503 등) 릴레이가 다시 보내 주지 않아 결과가 사라졌다.

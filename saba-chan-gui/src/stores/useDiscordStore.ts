@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 import { create } from 'zustand';
-import type { AgentStatus, Json, JsonObject } from '../types/daemon';
+import type { AgentStatus, HeartbeatReject, Json, JsonObject } from '../types/daemon';
 import { readPrefixes } from '../components/discord/prefixes';
 import type { DiscordNode, MembersByGuild } from '../components/discord/types';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
@@ -97,6 +97,8 @@ export interface DiscordData {
     discordAgentReplaced: boolean;
     discordAgentRelayUrlInvalid: boolean;
     discordAgentMinVersion: string | null;
+    /** 릴레이가 이 PC의 상태 보고를 거절한 이유. 받으면 null */
+    discordHeartbeatReject: HeartbeatReject | null;
     botStatusReady: boolean;
     relayConnected: boolean;
     relayConnecting: boolean;
@@ -161,6 +163,7 @@ const initialState = (): DiscordData => ({
     discordAgentRelayUrlInvalid: false,
     // 릴레이가 이 앱 버전을 받지 않을 때 요구하는 최소 버전. 받으면 null
     discordAgentMinVersion: null,
+    discordHeartbeatReject: null,
     botStatusReady: false,
     relayConnected: false,
     relayConnecting: false,
@@ -473,12 +476,13 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         const prev = get();
         const keepAgent = agent === 'unknown' && agentFailures < 2;
         // too_old는 { status, running, minVersion }으로 온다
-        const tooOld = typeof agent === 'object' ? agent : null;
+        const tooOld = typeof agent === 'object' && agent.status === 'too_old' ? agent : null;
+        const heartbeatReject = typeof agent === 'object' && agent.status === 'rejected' ? agent.reason : null;
         const agentRunning = keepAgent
             ? prev.discordBotStatus !== 'stopped'
             : tooOld
               ? tooOld.running
-              : agent === 'running';
+              : agent === 'running' || !!heartbeatReject;
         const agentMinVersion = keepAgent ? prev.discordAgentMinVersion : tooOld ? tooOld.minVersion || '-' : null;
         const agentReplaced = keepAgent ? prev.discordAgentReplaced : agent === 'replaced';
         const agentRelayUrlInvalid = keepAgent ? prev.discordAgentRelayUrlInvalid : agent === 'invalid_relay_url';
@@ -502,6 +506,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             discordAgentReplaced: agentReplaced,
             discordAgentRelayUrlInvalid: agentRelayUrlInvalid,
             discordAgentMinVersion: agentMinVersion,
+            discordHeartbeatReject: keepAgent ? prev.discordHeartbeatReject : heartbeatReject,
             discordBotStatus: nextStatus,
             discordReconnecting:
                 // 릴레이가 이 버전이나 이 PC의 열쇠를 거절하면 저절로 다시 붙을 일이 없다 — 복구 중이 아니라 거절로 보인다

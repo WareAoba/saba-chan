@@ -349,14 +349,23 @@ export interface ExtensionListResponse {
 
 // ── 릴레이 에이전트 ──
 
-/** window.api.discordBotStatus: 데몬 릴레이 에이전트 상태. 릴레이가 이 앱 버전을 받지 않으면 객체로 온다 */
+/** window.api.discordBotStatus: 데몬 릴레이 에이전트 상태. 릴레이가 이 앱 버전이나 상태 보고를 받지 않으면 객체로 온다 */
 export type AgentStatus =
     | 'running'
     | 'stopped'
     | 'replaced'
     | 'invalid_relay_url'
     | 'unknown'
-    | { status: 'too_old'; running: boolean; minVersion: string | null };
+    | { status: 'too_old'; running: boolean; minVersion: string | null }
+    | { status: 'rejected'; running: boolean; reason: HeartbeatReject };
+
+/** 릴레이가 이 PC의 상태 보고(heartbeat)를 거절한 이유 (데몬 `heartbeatRejected`): 어느 칸이, 상한이면 상한과 보낸 크기 */
+export interface HeartbeatReject {
+    code: string;
+    field: string;
+    max?: number;
+    actual?: number;
+}
 
 // ── GUI 설정 (config_store::GuiSettings, camelCase) ──
 
