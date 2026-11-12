@@ -233,7 +233,7 @@ fn edit(change: impl Fn(&str) -> Option<String>) -> anyhow::Result<bool> {
         .chain(std::iter::once(0))
         .flat_map(u16::to_le_bytes)
         .collect();
-    env.set_raw_value("Path", &RegValue { bytes, vtype: kind })?;
+    env.set_raw_value("Path", &RegValue { bytes: bytes.into(), vtype: kind })?;
     broadcast();
     Ok(true)
 }
