@@ -389,11 +389,8 @@ async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
 //  Internal: 다운로드 (검증 다운로드) & 추출 (OS 네이티브 도구)
 // ═══════════════════════════════════════════════════════════════
 
-/// 받을 때 끊기면 다시 받는 횟수 (예전 `curl --retry 3`과 같다)
-const DOWNLOAD_RETRIES: usize = 3;
-
 /// 파일 다운로드 — 업데이터와 같은 검증 다운로드 (`expected`: 고정 SHA-256, 다르면 받은 파일을 남기지 않는다).
-/// 프록시는 reqwest가 환경 변수와 OS 설정에서 읽는다. 연결·전송 실패는 몇 번 다시 받는다 (해시가 다르면 다시 받지 않는다)
+/// 프록시는 reqwest가 환경 변수와 OS 설정에서 읽는다. 연결·전송 실패는 `download_verified`가 몇 번 이어 받는다
 ///
 /// 형태를 지운 future를 돌려준다: reqwest 타입의 Send 판정이 이것을 기다리는 시작 경로(자동 재시작 등)마다 깊어지지 않게
 fn download_file<'a>(url: &'a str, dest: &'a Path, expected: Option<&'a str>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
@@ -401,20 +398,10 @@ fn download_file<'a>(url: &'a str, dest: &'a Path, expected: Option<&'a str>) ->
 }
 
 async fn download_and_check(url: &str, dest: &Path, expected: Option<&str>) -> Result<()> {
-    use saba_chan_updater_lib::download::{download_verified, DownloadError};
     let client = saba_chan_updater_lib::tls::http_client_builder().build()?;
-    let mut attempt = 0;
-    loop {
-        match download_verified(&client, url, dest, expected, None, None).await {
-            Ok(_) => break,
-            Err(e @ (DownloadError::Http(_) | DownloadError::Stalled(_) | DownloadError::Io(_))) if attempt < DOWNLOAD_RETRIES => {
-                attempt += 1;
-                tracing::warn!("다운로드 실패, 다시 받습니다 ({}/{}): {}", attempt, DOWNLOAD_RETRIES, e);
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            }
-            Err(e) => return Err(anyhow::anyhow!("다운로드 실패: {}", e)),
-        }
-    }
+    saba_chan_updater_lib::download::download_verified(&client, url, dest, expected, None, None)
+        .await
+        .map_err(|e| anyhow::anyhow!("다운로드 실패: {}", e))?;
 
     // 크기 검증 (Python 배포판은 최소 수 MB)
     let meta = std::fs::metadata(dest).context("다운로드된 파일을 찾을 수 없습니다")?;
