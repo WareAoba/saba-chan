@@ -103,8 +103,10 @@ fn read_only_mount(_dir: &Path) -> bool {
 }
 
 /// 준비는 설치기가 마칠 때 설치 목록(`installs.json`)에 이 자리를 적는 것으로 끝난다. 파일이 있는지만 보지 않는 것은
-/// 앱 안 업데이트도 설치 기록 파일을 만들기 때문이다. 준비 도중 창을 닫으면 목록에 없어 다음에 다시 준비한다
-pub fn launch_for(install_dir: &Path, installs_file: &Path, modules_dir: &Path) -> Launch {
+/// 앱 안 업데이트도 설치 기록 파일을 만들기 때문이다. 준비 도중 창을 닫으면 목록에 없어 다음에 다시 준비한다.
+/// 설치 목록이 생기기 전 판에서 앱 안 업데이트로 올라온 자리는 업데이터가 이 자리에 GUI를 놓았다고 `records`
+/// (`installed-files.json`)에 적어 두므로 처음으로 보지 않는다 (모듈이 하나도 없어도)
+pub fn launch_for(install_dir: &Path, installs_file: &Path, modules_dir: &Path, records: &Path) -> Launch {
     if in_temporary_place(install_dir) {
         return Launch::MoveFirst;
     }
@@ -115,7 +117,7 @@ pub fn launch_for(install_dir: &Path, installs_file: &Path, modules_dir: &Path) 
     let has_modules = std::fs::read_dir(modules_dir)
         .map(|it| it.flatten().any(|e| e.path().join("module.toml").is_file()))
         .unwrap_or(false);
-    if has_modules { Launch::Relink } else { Launch::Setup }
+    if has_modules || crate::integrity::placed_under(records, "gui", install_dir) { Launch::Relink } else { Launch::Setup }
 }
 
 #[cfg(test)]
@@ -199,18 +201,42 @@ mod tests {
         let modules = tmp.path().join("modules");
         std::fs::create_dir_all(&modules).unwrap();
 
-        assert_eq!(launch_for(&app, &installs, &modules), Launch::Setup);
+        let records = tmp.path().join("installed-files.json");
+
+        assert_eq!(launch_for(&app, &installs, &modules, &records), Launch::Setup);
         std::fs::create_dir_all(modules.join("minecraft")).unwrap();
         std::fs::write(modules.join("minecraft/module.toml"), "").unwrap();
-        assert_eq!(launch_for(&app, &installs, &modules), Launch::Relink);
+        assert_eq!(launch_for(&app, &installs, &modules, &records), Launch::Relink);
         crate::uninstall_entry::remember_install(&installs, &app).unwrap();
-        assert_eq!(launch_for(&app, &installs, &modules), Launch::Ready);
+        assert_eq!(launch_for(&app, &installs, &modules, &records), Launch::Ready);
 
         // 디스크 이미지(읽기 전용 볼륨)만 임시 자리다. 외장 디스크에 둔 앱은 그대로 쓴다
         let dmg = Path::new("/Volumes/Saba-chan/Saba-chan.app/Contents/MacOS");
         assert!(temporary_place(dmg, || true));
         assert!(!temporary_place(Path::new("/Volumes/External/Applications/Saba-chan.app/Contents/MacOS"), || false));
         let translocated = Path::new("/private/var/folders/x/T/AppTranslocation/ABC/d/Saba-chan.app/Contents/MacOS");
-        assert_eq!(launch_for(translocated, &installs, &modules), Launch::MoveFirst);
+        assert_eq!(launch_for(translocated, &installs, &modules, &records), Launch::MoveFirst);
+    }
+
+    /// 설치 목록이 생기기 전 판에서 앱 안 업데이트로 올라온 자리는 모듈이 없어도 처음이 아니다:
+    /// 업데이터가 이 자리에 GUI를 놓았다고 적어 두었으면 준비 화면 없이 링크만 고친다
+    #[test]
+    fn an_app_updated_in_place_is_not_a_first_run() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = tmp.path().join("Applications/Saba-chan.app/Contents/MacOS");
+        std::fs::create_dir_all(&app).unwrap();
+        let gui = app.join("saba-chan-gui");
+        std::fs::write(&gui, b"gui").unwrap();
+        let (installs, modules, records) = (tmp.path().join("installs.json"), tmp.path().join("modules"), tmp.path().join("installed-files.json"));
+
+        // 다른 자리에 놓은 GUI 기록은 이 자리와 상관없다
+        let elsewhere = tmp.path().join("Other.app/Contents/MacOS");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::write(elsewhere.join("saba-chan-gui"), b"gui").unwrap();
+        crate::integrity::record_install_at(&records, "gui", &[elsewhere.join("saba-chan-gui")]).unwrap();
+        assert_eq!(launch_for(&app, &installs, &modules, &records), Launch::Setup);
+
+        crate::integrity::record_install_at(&records, "gui", &[gui]).unwrap();
+        assert_eq!(launch_for(&app, &installs, &modules, &records), Launch::Relink);
     }
 }
