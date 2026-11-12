@@ -75,14 +75,14 @@ impl Places {
     /// `~/.zfunc`가 zsh 함수 경로에 드는가: 내보낸 `FPATH`에 있거나 `.zshrc`가 그 폴더를 적었다 (읽기만 한다)
     fn zfunc_in_fpath(&self) -> bool {
         let dir = self.zfunc();
-        self.fpath.as_deref().is_some_and(|f| f.split(':').any(|p| Path::new(p) == dir))
+        self.fpath.as_deref().is_some_and(|f| std::env::split_paths(f).any(|p| p == dir))
             || std::fs::read_to_string(self.zshrc()).is_ok_and(|rc| rc.lines().any(|l| !l.trim_start().starts_with('#') && l.contains(".zfunc")))
     }
 
-    /// 홈 아래 경로는 `~/…`로 보인다
+    /// 홈 아래 경로는 `~/…`로 보인다 (셸이 쓰는 `/`로)
     fn tilde(&self, path: &Path) -> String {
         match path.strip_prefix(&self.home) {
-            Ok(rest) => format!("~/{}", rest.display()),
+            Ok(rest) => format!("~/{}", rest.display().to_string().replace(std::path::MAIN_SEPARATOR, "/")),
             Err(_) => path.display().to_string(),
         }
     }
@@ -205,7 +205,8 @@ mod tests {
         std::fs::write(tmp.path().join(".zshrc"), "fpath=(~/.zfunc $fpath)\nautoload -U compinit && compinit\n").unwrap();
         assert!(p.zfunc_in_fpath());
         let other = places(&tmp.path().join("other"));
-        let exported = Places { fpath: Some(format!("/usr/share/zsh/functions:{}", other.zfunc().display())), ..other };
+        let listed = std::env::join_paths([PathBuf::from("/usr/share/zsh/functions"), other.zfunc()]).unwrap();
+        let exported = Places { fpath: Some(listed.to_string_lossy().into_owned()), ..other };
         assert!(exported.zfunc_in_fpath());
     }
 }
