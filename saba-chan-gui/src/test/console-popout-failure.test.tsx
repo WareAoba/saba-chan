@@ -31,10 +31,6 @@ const detail = () =>
             moduleData={{ name: 'pal', protocols: { supported: ['stdin'] } }}
             modules={[]}
             servers={[server]}
-            setServers={() => {}}
-            onStart={() => {}}
-            onStop={() => {}}
-            setModal={() => {}}
             consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] }}
             settingsProps={{}}
         />,

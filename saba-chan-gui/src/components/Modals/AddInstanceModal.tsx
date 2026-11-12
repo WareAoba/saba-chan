@@ -9,7 +9,7 @@ import { AddInstanceNewServer } from './AddInstanceNewServer';
 import { AddInstanceMigration } from './AddInstanceMigration';
 import { AddServerFrame, AddServerFrameContext } from './AddServerFrame';
 import { useGuideStore } from '../guides/guides';
-import type { AddServerPayload } from '../../hooks/useServerActions';
+import type { AddServerPayload } from '../../stores/serverActions';
 import './AddServer.css';
 
 /**

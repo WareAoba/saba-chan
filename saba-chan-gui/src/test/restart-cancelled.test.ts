@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import i18n from '../i18n';
 import type { Server } from '../stores/useServerStore';
 
@@ -11,21 +11,8 @@ const restartWith = async (response: Record<string, unknown>) => {
         serverList: vi.fn(async () => ({ servers: list })),
         instanceRestart: vi.fn(async () => response),
     } as unknown as typeof window.api;
-    const setModal = vi.fn();
-    const { result } = renderHook(() =>
-        useServerActions({
-            servers: list,
-            setServers: vi.fn(),
-            modules: [],
-            loading: false,
-            setLoading: vi.fn(),
-            setModal,
-            setProgressBar: vi.fn(),
-            openConsole: vi.fn(),
-            setShowModuleManager: vi.fn(),
-        }),
-    );
-    await act(async () => result.current.handleRestart('a'));
+    const { result, setModal } = setupServerStore({ servers: list });
+    await act(async () => result.current.restartServer('a'));
     await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
     return vi.mocked(window.showToast!).mock.calls.at(-1)!;
 };

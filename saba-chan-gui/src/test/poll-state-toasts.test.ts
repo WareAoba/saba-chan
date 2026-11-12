@@ -1,35 +1,17 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import type { Server } from '../stores/useServerStore';
 
 // 디스코드·CLI로 켜고 끈 서버를 목록 폴링이 "사바쨩 밖에서 시작"·"예기치 않게 종료"로 알렸다.
 // 데몬 이벤트(instance.started·stopped·exit)가 출처를 싣고 오므로, 이벤트를 받는 앱에서는 폴링이 알리지 않는다
 describe('목록 폴링의 상태 변화 알림', () => {
-    let servers: Server[];
-    const setServers = vi.fn((update: Server[] | ((s: Server[]) => Server[])) => {
-        servers = typeof update === 'function' ? update(servers) : update;
-    });
     const srv = { id: 's1', name: 'Survival', module: 'game', status: 'stopped' } as unknown as Server;
-    const hook = () =>
-        renderHook(() =>
-            useServerActions({
-                servers,
-                setServers,
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-            }),
-        );
+    const hook = () => setupServerStore();
     const list = (patch: Partial<Server>) =>
         vi.mocked(window.api.serverList).mockResolvedValue({ servers: [{ ...srv, ...patch }] });
     beforeEach(() => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
-        servers = [];
         window.api = { serverList: vi.fn() } as unknown as typeof window.api;
         list({});
         window.showToast = vi.fn();

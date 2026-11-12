@@ -1,38 +1,22 @@
-import { useRef } from 'react';
-import { useTranslation } from 'react-i18next';
-import type { OptimisticStatus, Server } from '../stores/useServerStore';
-import { type ModalConfig, type ProgressBarConfig, useUIStore } from '../stores/useUIStore';
-import type { ApiBody, Json, ModuleInfo } from '../types/daemon';
+import type { StoreApi } from 'zustand';
+import { holdSavingOrder } from '../hooks/useDragReorder';
+import type { ApiBody, Json } from '../types/daemon';
+import { claimServerNotice, eventsLive, showPortMoved, watchInstance } from '../utils/daemonEvents';
 import {
     busyMessage,
-    createTranslateError,
     installFailureText,
-    moduleSupports,
     moduleFailureText,
+    moduleSupports,
     retryWithBackoff,
     safeShowToast,
 } from '../utils/helpers';
-import { claimServerNotice, eventsLive, showPortMoved, watchInstance } from '../utils/daemonEvents';
 import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 import { updateRequiredText } from '../utils/updateRequired';
-import { holdSavingOrder } from './useDragReorder';
+import { t, translateError } from './serverI18n';
+import type { Server, ServerState } from './useServerStore';
+import { setModal, setProgressBar, useUIStore } from './useUIStore';
 
-/**
- * Manages server CRUD operations: fetch, start, stop, status, add, delete.
- *
- * @param {Object} params
- * @param {Array} params.servers - Current server list
- * @param {Function} params.setServers - Server state setter
- * @param {Array} params.modules - Current module list
- * @param {boolean} params.loading - Whether initial load is in progress
- * @param {Function} params.setLoading - Loading state setter
- * @param {Function} params.setModal - Modal state setter
- * @param {Function} params.setProgressBar - Progress bar state setter
- * @param {Function} params.openConsole - Open console for a server
- * @param {Function} params.setShowModuleManager - Module manager visibility setter
- * @returns {Object} Server action handlers and fetchServers
- */
 /** 만들기 요청 본문 (AddServer 모달 → 데몬 POST /api/instances). 예전 호출은 이름 문자열만 넘겼다 */
 export interface AddServerPayload {
     name: string;
@@ -51,74 +35,85 @@ export interface AddServerPayload {
     branch_of?: string;
 }
 
-interface UseServerActionsParams {
-    servers: Server[];
-    setServers: (serversOrUpdater: Server[] | ((prev: Server[]) => Server[])) => void;
-    modules: ModuleInfo[];
-    loading: boolean;
-    setLoading: (loading: boolean) => void;
-    setModal: (modal: ModalConfig | null) => void;
-    setProgressBar: (config: ProgressBarConfig | null) => void;
-    openConsole: (instanceId: string, serverName: string) => void;
-    setShowModuleManager: (show: boolean) => void;
-    openSettingsToExtensions?: (() => void) | null;
+/** 서버 동작: 목록 받기, 켜기·끄기·다시 시작, 이름 바꾸기, 만들기, 지우기 (useServerStore의 액션) */
+export interface ServerActions {
+    fetchServers: () => Promise<void>;
+    startServer: (id: string) => Promise<void>;
+    stopServer: (id: string) => Promise<void>;
+    /** confirmed: 부른 곳에서 이미 재시작을 골랐다 (설정 저장 뒤 '지금 다시 시작') → 다시 묻지 않는다 */
+    restartServer: (id: string, options?: { confirmed?: boolean }) => Promise<void>;
+    renameServer: (id: string, newName: string) => Promise<boolean>;
+    addServer: (payload: AddServerPayload, legacyModuleName?: string) => Promise<boolean>;
+    deleteServer: (server: Server) => void;
 }
 
-export function useServerActions({
-    servers,
-    setServers,
-    modules,
-    loading,
-    setLoading,
-    setModal,
-    setProgressBar,
-    openConsole,
-    setShowModuleManager,
-    openSettingsToExtensions,
-}: UseServerActionsParams) {
-    const { t } = useTranslation('gui');
-    const translateError = createTranslateError(t);
+/** 화면이 버튼을 눌러 낙관적으로 바꿔 둔 상태 */
+interface OptimisticStatus {
+    status: string;
+    timestamp: number;
+    pending?: boolean;
+}
+
+/** 동작이 기억하는 것: 화면이 그리지 않으므로 스토어 상태 밖에 둔다 */
+const freshInternal = () => ({
+    // 이 창이 시킨 켜기·끄기 (폴링이 밖에서 바뀐 것으로 알리지 않는다)
+    guiOps: new Set<string>(),
+    optimistic: new Map<string, OptimisticStatus>(), // id → { status, timestamp, pending }
+    lastErrorToast: 0,
+    firstFetchDone: false,
+    // 목록 요청 번호. 먼저 보낸 요청이 늦게 오면 그 목록은 버린다 (G-S4)
+    fetchSeq: { sent: 0, applied: 0 },
+    bootGrace: true, // suppress notifications during app boot
+    bootGraceTimer: null as ReturnType<typeof setTimeout> | null,
+});
+let internal = freshInternal();
+
+/** 시험용: 기억한 것을 비운다 (useServerStore._resetForTest) */
+export function resetServerActions() {
+    if (internal.bootGraceTimer) clearTimeout(internal.bootGraceTimer);
+    internal = freshInternal();
+}
+
+/** 관리 모드로 켠 서버의 콘솔을 여는 곳. 콘솔은 App의 useMultiConsole이 들고 있어 App이 넣는다 */
+let openConsole: (instanceId: string, serverName: string) => void = () => {};
+export const setServerConsole = (open: typeof openConsole) => {
+    openConsole = open;
+};
+
+const ui = () => useUIStore.getState();
+
+export function serverActions(set: StoreApi<ServerState>['setState'], get: () => ServerState): ServerActions {
     // 되돌리지 못한 설정 사본: 개수와 함께 데몬이 알려준 보관 위치를 보인다
     const unrestoredNote = (r: ApiBody) =>
         r.settings_kept_at
             ? t('server_actions.unlink_restore_failed_kept', { n: r.settings_restore_failed, path: r.settings_kept_at })
             : t('server_actions.unlink_restore_failed', { n: r.settings_restore_failed });
 
-    // -- Internal refs for change detection --
-    const guiInitiatedOpsRef = useRef(new Set<string>());
-    const optimisticStatusRef = useRef(new Map<string, OptimisticStatus>()); // id → { status, timestamp, pending }
-    const lastErrorToastRef = useRef(0);
-    const firstFetchDoneRef = useRef(false);
-    // 목록 요청 번호. 먼저 보낸 요청이 늦게 오면 그 목록은 버린다 (G-S4)
-    const fetchSeqRef = useRef({ sent: 0, applied: 0 });
-    const bootGraceRef = useRef(true); // suppress notifications during app boot
-    const bootGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
     /** Optimistic 상태 해제 후 fetchServers로 실제 상태 복원 */
     const revertOptimistic = (id: string) => {
-        optimisticStatusRef.current.delete(id);
+        internal.optimistic.delete(id);
         fetchServers();
     };
 
     // ── fetchServers ────────────────────────────────────────
     const fetchServers = async () => {
-        const seq = ++fetchSeqRef.current.sent;
+        const seq = ++internal.fetchSeq.sent;
         try {
             const data = await retryWithBackoff(() => window.api.serverList(), 3, 800);
             const list = data?.servers;
             if (list) {
-                const stale = seq < fetchSeqRef.current.applied;
-                if (!stale) fetchSeqRef.current.applied = seq;
-                setServers((prev) => {
+                const stale = seq < internal.fetchSeq.applied;
+                if (!stale) internal.fetchSeq.applied = seq;
+                get().setServers((prev) => {
                     if (stale) return prev;
-                    if (!firstFetchDoneRef.current) {
-                        firstFetchDoneRef.current = true;
+                    if (!internal.firstFetchDone) {
+                        internal.firstFetchDone = true;
                         // Start boot grace period — suppress state-change
                         // notifications for 30s to avoid false alarms from
                         // daemon auto-start, initial status catch-up, etc.
-                        if (!bootGraceTimerRef.current) {
-                            bootGraceTimerRef.current = setTimeout(() => {
-                                bootGraceRef.current = false;
+                        if (!internal.bootGraceTimer) {
+                            internal.bootGraceTimer = setTimeout(() => {
+                                internal.bootGrace = false;
                             }, 30_000);
                         }
                         return list.map((newServer: Server) => {
@@ -136,7 +131,7 @@ export function useServerActions({
                         const nowStopped = newServer.status === 'stopped';
                         const nowRunning = newServer.status === 'running';
                         const wasStopped = existing.status === 'stopped';
-                        const isGuiOp = guiInitiatedOpsRef.current.has(newServer.id);
+                        const isGuiOp = internal.guiOps.has(newServer.id);
 
                         const apiAction = Number(newServer.last_api_action || 0);
                         const prevApiAction = Number(existing.last_api_action || 0);
@@ -147,12 +142,12 @@ export function useServerActions({
                         // During boot grace period, skip all state-change
                         // notifications to avoid false alarms from daemon
                         // auto-start and initial status catch-up.
-                        const inBootGrace = bootGraceRef.current;
+                        const inBootGrace = internal.bootGrace;
 
                         // Also treat servers with pending optimistic status as
                         // "known ops" — we initiated something but the guard
                         // hasn't cleared yet.
-                        const hasPendingOptimistic = optimisticStatusRef.current.has(newServer.id);
+                        const hasPendingOptimistic = internal.optimistic.has(newServer.id);
 
                         const isKnownOp = isGuiOp || isApiOp || inBootGrace || hasPendingOptimistic;
 
@@ -181,7 +176,7 @@ export function useServerActions({
                         }
 
                         if (isGuiOp && (nowStopped || nowRunning) && existing.status !== newServer.status) {
-                            guiInitiatedOpsRef.current.delete(newServer.id);
+                            internal.guiOps.delete(newServer.id);
                         }
                     }
 
@@ -191,7 +186,7 @@ export function useServerActions({
                         // 시작·정지가 진행 중인지는 데몬이 안다(`transition`, 어디서 시켰든). 이 창이 누른 것은
                         // 데몬이 요청을 받기 전에도 보이게 요청이 끝날 때까지만 지킨다. 데몬이 그 값을 주지 않는 옛 데몬이면 끝난 뒤 60초까지
                         let mergedStatus = newServer.transition || newServer.status;
-                        const opt = optimisticStatusRef.current.get(newServer.id);
+                        const opt = internal.optimistic.get(newServer.id);
                         if (opt) {
                             const elapsed = Date.now() - opt.timestamp;
                             // 0.1.14~ 데몬은 `update_check`를 늘 싣는다 (`transition`은 진행 중일 때만 있어 판별에 못 쓴다)
@@ -200,7 +195,7 @@ export function useServerActions({
                                 (opt.status === 'starting' && newServer.status === 'running') ||
                                 (opt.status === 'stopping' && newServer.status === 'stopped');
                             if (transitioned || (elapsed > GUARD_MS && !opt.pending)) {
-                                optimisticStatusRef.current.delete(newServer.id);
+                                internal.optimistic.delete(newServer.id);
                             } else {
                                 mergedStatus = opt.status;
                             }
@@ -241,25 +236,25 @@ export function useServerActions({
                 console.error('Server list error:', data.error);
                 const translatedErr = translateError(data.error);
                 const now = Date.now();
-                if (translatedErr && !loading && now - lastErrorToastRef.current > 5000) {
+                if (translatedErr && !get().loading && now - internal.lastErrorToast > 5000) {
                     safeShowToast(t('servers.fetch_failed_toast', { error: translatedErr }), 'warning', 3000);
-                    lastErrorToastRef.current = now;
+                    internal.lastErrorToast = now;
                 }
             } else {
-                if (loading) {
-                    setServers([]);
+                if (get().loading) {
+                    get().setServers([]);
                 }
             }
         } catch (error) {
             console.error('Failed to fetch servers:', error);
             const errorMsg = translateError((error as Error).message);
             const now = Date.now();
-            if (errorMsg && !loading && now - lastErrorToastRef.current > 5000) {
+            if (errorMsg && !get().loading && now - internal.lastErrorToast > 5000) {
                 safeShowToast(t('servers.fetch_update_failed_toast', { error: errorMsg }), 'warning', 3000);
-                lastErrorToastRef.current = now;
+                internal.lastErrorToast = now;
             }
         } finally {
-            setLoading(false);
+            set({ loading: false });
         }
     };
 
@@ -317,7 +312,7 @@ export function useServerActions({
                         safeShowToast(translateError(res?.error || ''), 'error', 5000);
                         return;
                     }
-                    handleStart(srv.id);
+                    startServer(srv.id);
                 } catch (err) {
                     safeShowToast(translateError((err as Error).message), 'error', 5000);
                 }
@@ -325,7 +320,7 @@ export function useServerActions({
         });
     };
 
-    // ── handleStart ─────────────────────────────────────────
+    // ── startServer ─────────────────────────────────────────
     // 데몬이 Windows 예약 범위를 피해 포트를 옮겨 저장했다 (시작·재시작, 성공·실패 모두): 조용히 바뀌지 않게 알린다
     const notifyPortMoved = (result: ApiBody | undefined, srv: Server) => {
         for (const m of Array.isArray(result?.port_moved) ? result.port_moved : []) {
@@ -333,9 +328,9 @@ export function useServerActions({
         }
     };
 
-    const handleStart = async (id: string) => {
+    const startServer = async (id: string) => {
         try {
-            const srv = servers.find((s) => s.id === id);
+            const srv = get().servers.find((s) => s.id === id);
             if (!srv) {
                 safeShowToast(t('servers.start_failed_toast', { error: t('servers.start_not_in_list') }), 'error', 4000);
                 return;
@@ -344,13 +339,13 @@ export function useServerActions({
 
             // Optimistic update: 즉시 'starting' 상태 표시
             // 시작 요청이 끝날 때까지는(첫 시작은 몇 분) 목록 새로고침이 이 표시를 지우지 않는다
-            optimisticStatusRef.current.set(id, { status: 'starting', timestamp: Date.now(), pending: true });
-            setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'starting' } : s)));
+            internal.optimistic.set(id, { status: 'starting', timestamp: Date.now(), pending: true });
+            get().setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'starting' } : s)));
 
             // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
             const result = await window.api.instanceStart(id);
-            const opt = optimisticStatusRef.current.get(id);
-            if (opt?.pending) optimisticStatusRef.current.set(id, { status: 'starting', timestamp: Date.now() });
+            const opt = internal.optimistic.get(id);
+            if (opt?.pending) internal.optimistic.set(id, { status: 'starting', timestamp: Date.now() });
             notifyPortMoved(result, srv);
 
             // ── action_required: 서버 실행 파일 없음 (범용 코드, 예전 모듈은 server_jar_not_found) ──
@@ -359,7 +354,7 @@ export function useServerActions({
                 result.action_required === 'server_jar_not_found'
             ) {
                 // 파일 종류는 설정된 경로의 확장자로, 없으면 모듈이 밝힌 실행 파일 이름으로 (둘 다 없으면 모든 파일)
-                const declared = modules.find((m) => m.name === module)?.server_executable;
+                const declared = get().modules.find((m) => m.name === module)?.server_executable;
                 const configuredName = (result.configured_path || declared || '').split(/[/\\]/).pop();
                 const ext = configuredName.includes('.') ? configuredName.split('.').pop() : '';
                 revertOptimistic(id);
@@ -392,7 +387,7 @@ export function useServerActions({
                                         }
                                         safeShowToast(t('servers.jar_path_updated'), 'success', 3000);
                                         await fetchServers();
-                                        handleStart(id);
+                                        startServer(id);
                                     }
                                 } catch (err) {
                                     safeShowToast(translateError((err as Error).message), 'error', 4000);
@@ -400,7 +395,7 @@ export function useServerActions({
                             },
                         },
                         moduleSupports(
-                            modules.find((m) => m.name === module),
+                            get().modules.find((m) => m.name === module),
                             'install_server',
                         ) && {
                             label: t('servers.jar_action_install_new'),
@@ -440,7 +435,7 @@ export function useServerActions({
                                         game: gameNameOf(
                                             t,
                                             module,
-                                            modules.find((m) => m.name === module),
+                                            get().modules.find((m) => m.name === module),
                                         ),
                                         version: installResult.version || '',
                                     });
@@ -451,7 +446,7 @@ export function useServerActions({
                                     await fetchServers();
 
                                     if (!installResult.java_warning) {
-                                        handleStart(id);
+                                        startServer(id);
                                     }
                                 } catch (err) {
                                     setProgressBar(null);
@@ -485,9 +480,7 @@ export function useServerActions({
                             label: t('servers.extension_open_settings', { defaultValue: 'Open Extension Settings' }),
                             action: () => {
                                 setModal(null);
-                                if (openSettingsToExtensions) {
-                                    openSettingsToExtensions();
-                                }
+                                ui().openSettings('extensions');
                             },
                         },
                         {
@@ -528,7 +521,7 @@ export function useServerActions({
                 const needsExtension = missing.some((d: string) => d.startsWith('ext-'));
                 const title = t('servers.dependency_unmet_title');
                 const message = `${t('servers.dependency_unmet_message', { name })}\n\n${missing.map((d: string) => `• ${d}`).join('\n')}`;
-                if (needsExtension && openSettingsToExtensions) {
+                if (needsExtension) {
                     setModal({
                         type: 'question',
                         title,
@@ -538,7 +531,7 @@ export function useServerActions({
                                 label: t('servers.extension_open_settings'),
                                 action: () => {
                                     setModal(null);
-                                    openSettingsToExtensions();
+                                    ui().openSettings('extensions');
                                 },
                             },
                             { label: t('modals.close'), action: () => setModal(null) },
@@ -574,7 +567,7 @@ export function useServerActions({
                 const title = t('servers.preflight_failed_title', { name });
                 // 동의 기록은 있는데 파일(eula.txt 등)이 지워진 경우: 다시 동의하면 모듈이 파일을 다시 쓴다
                 // 서버 목록에는 agreements가 없어 모듈 목록의 선언을 쓴다
-                const srvAgreements = modules.find((m) => m.name === module)?.agreements || [];
+                const srvAgreements = get().modules.find((m) => m.name === module)?.agreements || [];
                 if (
                     result.issue_code === 'EULA_NOT_ACCEPTED' &&
                     srvAgreements.length &&
@@ -622,7 +615,7 @@ export function useServerActions({
             // ── action_required: 격리를 준비하지 못함 → 이 구성요소만 격리 없이 돌릴지 한 번 묻는다 ──
             if (canAskUnisolated(result)) {
                 revertOptimistic(id);
-                askUnisolated(result, () => handleStart(id));
+                askUnisolated(result, () => startServer(id));
                 return;
             }
 
@@ -646,7 +639,7 @@ export function useServerActions({
                 const errorMsg = translateError(result.error);
                 safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
             } else {
-                guiInitiatedOpsRef.current.add(id);
+                internal.guiOps.add(id);
                 setProgressBar({ message: t('servers.starting_toast', { name }), indeterminate: true });
                 if (result.managed) {
                     openConsole(id, name);
@@ -717,29 +710,29 @@ export function useServerActions({
             ],
         });
 
-    // ── handleStop ──────────────────────────────────────────
-    const handleStop = async (id: string) => {
-        const srv = servers.find((s) => s.id === id);
+    // ── stopServer ──────────────────────────────────────────
+    const stopServer = async (id: string) => {
+        const srv = get().servers.find((s) => s.id === id);
         const name = srv?.name ?? id;
         const stopNow = async (forced: boolean) => {
             const undo = () => {
-                guiInitiatedOpsRef.current.delete(id);
+                internal.guiOps.delete(id);
                 revertOptimistic(id);
             };
             try {
                 // Optimistic update: 즉시 'stopping' 상태 표시
                 // 데몬은 stop_timeout까지 기다린 뒤 답하므로, 요청이 끝날 때까지는 목록 새로고침이 이 표시를 지우지 않는다.
                 // 그사이 꺼진 것도 GUI가 한 정지로 본다
-                optimisticStatusRef.current.set(id, { status: 'stopping', timestamp: Date.now(), pending: true });
-                guiInitiatedOpsRef.current.add(id);
-                setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'stopping' } : s)));
+                internal.optimistic.set(id, { status: 'stopping', timestamp: Date.now(), pending: true });
+                internal.guiOps.add(id);
+                get().setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'stopping' } : s)));
 
                 const useGraceful = srv?.module_settings?.graceful_stop;
                 const forceStop = forced || useGraceful === false;
 
                 const result = await window.api.instanceStop(id, { force: forceStop });
-                const opt = optimisticStatusRef.current.get(id);
-                if (opt?.pending) optimisticStatusRef.current.set(id, { status: 'stopping', timestamp: Date.now() });
+                const opt = internal.optimistic.get(id);
+                if (opt?.pending) internal.optimistic.set(id, { status: 'stopping', timestamp: Date.now() });
 
                 // ── extension_required 처리 ──
                 if (result.action_required === 'extension_required') {
@@ -760,9 +753,7 @@ export function useServerActions({
                                 }),
                                 action: () => {
                                     setModal(null);
-                                    if (openSettingsToExtensions) {
-                                        openSettingsToExtensions();
-                                    }
+                                    ui().openSettings('extensions');
                                 },
                             },
                             {
@@ -837,16 +828,16 @@ export function useServerActions({
         });
     };
 
-    // ── handleRestart: 데몬이 프로세스가 끝나길 기다렸다가 다시 켠다 ──
+    // ── restartServer: 데몬이 프로세스가 끝나길 기다렸다가 다시 켠다 ──
     // confirmed: 부른 곳에서 이미 재시작을 골랐다 (설정 저장 뒤 '지금 다시 시작') → 다시 묻지 않는다
-    const handleRestart = async (id: string, { confirmed = false }: { confirmed?: boolean } = {}) => {
-        const srv = servers.find((s) => s.id === id);
+    const restartServer = async (id: string, { confirmed = false }: { confirmed?: boolean } = {}) => {
+        const srv = get().servers.find((s) => s.id === id);
         if (!srv || !window.api.instanceRestart) return;
         const { name } = srv;
         const restartNow = async (forced: boolean) => {
-            optimisticStatusRef.current.set(id, { status: 'stopping', timestamp: Date.now() });
-            setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'stopping' } : s)));
-            guiInitiatedOpsRef.current.add(id);
+            internal.optimistic.set(id, { status: 'stopping', timestamp: Date.now() });
+            get().setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'stopping' } : s)));
+            internal.guiOps.add(id);
             setProgressBar({ message: t('servers.restarting_toast', { name }), indeterminate: true });
             try {
                 const force = forced || srv.module_settings?.graceful_stop === false;
@@ -870,7 +861,7 @@ export function useServerActions({
                     safeShowToast(t('servers.restart_failed_toast', { error: msg }), 'error', 4000);
                 } else {
                     // 데몬이 다시 켰다: 폴링이 짧은 정지 구간을 놓쳐도 '끄는 중'으로 남기지 않는다
-                    optimisticStatusRef.current.delete(id);
+                    internal.optimistic.delete(id);
                     safeShowToast(t('servers.restart_completed_toast', { name }), 'success', 3000);
                 }
             } catch (error) {
@@ -898,15 +889,15 @@ export function useServerActions({
         });
     };
 
-    // ── handleRename: 꺼져 있을 때만 (데몬이 server_running으로 거절) ──
-    const handleRename = async (id: string, newName: string) => {
+    // ── renameServer: 꺼져 있을 때만 (데몬이 server_running으로 거절) ──
+    const renameServer = async (id: string, newName: string) => {
         const name = (newName || '').trim();
-        const srv = servers.find((s) => s.id === id);
+        const srv = get().servers.find((s) => s.id === id);
         if (!srv || !name || name === srv.name || !window.api.instanceRename) return false;
         try {
             const result = await window.api.instanceRename(id, name);
             if (result?.success) {
-                setServers((prev) => prev.map((s) => (s.id === id ? { ...s, name: result.name || name } : s)));
+                get().setServers((prev) => prev.map((s) => (s.id === id ? { ...s, name: result.name || name } : s)));
                 fetchServers();
                 return true;
             }
@@ -924,8 +915,8 @@ export function useServerActions({
         return false;
     };
 
-    // ── handleAddServer ─────────────────────────────────────
-    const handleAddServer = async (payload: AddServerPayload, legacyModuleName?: string) => {
+    // ── addServer ─────────────────────────────────────
+    const addServer = async (payload: AddServerPayload, legacyModuleName?: string) => {
         // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, migration_mode?, module_settings?, version?, working_dir?, managed_start?, port? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
         const moduleName = typeof payload === 'string' ? legacyModuleName : payload?.module_name;
@@ -1018,9 +1009,7 @@ export function useServerActions({
                             label: t('servers.extension_open_settings', { defaultValue: 'Open Extension Settings' }),
                             action: () => {
                                 setModal(null);
-                                if (openSettingsToExtensions) {
-                                    openSettingsToExtensions();
-                                }
+                                ui().openSettings('extensions');
                             },
                         },
                         {
@@ -1096,7 +1085,7 @@ export function useServerActions({
                 showTrustWarnings(result, t);
                 if (result.provisioning) {
                     // 프로비저닝 시작 (컨테이너 또는 네이티브 설치) — 모달 닫고 서버 리스트에서 진행률 표시
-                    setShowModuleManager(false);
+                    ui().setShowModuleManager(false);
                     fetchServers();
                 } else {
                     // 마이그레이션: 모듈이 판정한 서버 종류와 플러그인·모드
@@ -1121,7 +1110,7 @@ export function useServerActions({
                         title: t('command_modal.success'),
                         message: t('server_actions.server_added', { name: serverName }) + detectedLine + noticeLines,
                     });
-                    setShowModuleManager(false);
+                    ui().setShowModuleManager(false);
                     fetchServers();
                 }
             }
@@ -1133,8 +1122,8 @@ export function useServerActions({
         }
     };
 
-    // ── handleDeleteServer ──────────────────────────────────
-    const handleDeleteServer = async (server: Server) => {
+    // ── deleteServer ──────────────────────────────────
+    const deleteServer = async (server: Server) => {
         // 가져온 서버(인스턴스 폴더 밖의 서버 폴더): 연결만 끊고 폴더는 남긴다. 보관한 원래 설정으로 되돌릴지 고른다
         if (server.linked_folder) {
             const remove = (keepSettings: boolean) => () => performDeleteServer(server, { keepSettings });
@@ -1237,11 +1226,11 @@ export function useServerActions({
 
     return {
         fetchServers,
-        handleStart,
-        handleStop,
-        handleRestart,
-        handleRename,
-        handleAddServer,
-        handleDeleteServer,
+        startServer,
+        stopServer,
+        restartServer,
+        renameServer,
+        addServer,
+        deleteServer,
     };
 }

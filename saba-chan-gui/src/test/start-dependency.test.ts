@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import { useUIStore } from '../stores/useUIStore';
 
 const blocked = (missing: string[]) => ({
@@ -11,26 +11,9 @@ const blocked = (missing: string[]) => ({
     missing_dependencies: missing,
 });
 
-function setup(openSettingsToExtensions: unknown, agreements?: unknown) {
+function setup(agreements?: unknown) {
     const modules = agreements ? [{ name: 'game', agreements }] : [];
-    const setModal = vi.fn();
-    const { result } = renderHook(() =>
-        useServerActions({
-            servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' } as never],
-            setServers: vi.fn(),
-            modules: modules as never,
-            loading: false,
-            setLoading: vi.fn(),
-            setModal,
-            setProgressBar: vi.fn(),
-            openConsole: vi.fn(),
-            closeConsole: vi.fn(),
-            setShowModuleManager: vi.fn(),
-            formatUptime: vi.fn(),
-            openSettingsToExtensions,
-        } as never),
-    );
-    return { result, setModal };
+    return setupServerStore({ servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }], modules });
 }
 
 describe('시작: 모듈 의존성이 안 맞을 때', () => {
@@ -41,20 +24,19 @@ describe('시작: 모듈 의존성이 안 맞을 때', () => {
 
     it('익스텐션이 빠졌으면 무엇이 빠졌는지 보여 주고 확장 기능 설정으로 안내한다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(blocked(['ext-steamcmd >=1.0.0 (not installed)']));
-        const open = vi.fn();
-        const { result, setModal } = setup(open);
-        await act(async () => result.current.handleStart('a'));
+        const { result, setModal } = setup();
+        await act(async () => result.current.startServer('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.type).toBe('question');
         expect(modal.message).toContain('• ext-steamcmd >=1.0.0 (not installed)');
         act(() => modal.buttons[0].action());
-        expect(open).toHaveBeenCalled();
+        expect(useUIStore.getState().settingsInitialView).toBe('extensions');
     });
 
     it('사바쨩 버전이 모자라면 업데이트가 필요하다고 알리고 업데이트 화면을 연다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(blocked(['saba-core >=9.0.0 (installed 0.1.1)']));
-        const { result, setModal } = setup(vi.fn());
-        await act(async () => result.current.handleStart('a'));
+        const { result, setModal } = setup();
+        await act(async () => result.current.startServer('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.title).toBe('Update required');
         expect(modal.message).toMatch(/^Update required/);
@@ -70,8 +52,8 @@ describe('시작: 모듈 의존성이 안 맞을 때', () => {
             error_code: 'module_schema_unsupported',
             required: 3,
         });
-        const { result, setModal } = setup(vi.fn());
-        await act(async () => result.current.handleStart('a'));
+        const { result, setModal } = setup();
+        await act(async () => result.current.startServer('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.title).toBe('Update required');
         expect(modal.message).toContain('game');
@@ -80,7 +62,7 @@ describe('시작: 모듈 의존성이 안 맞을 때', () => {
 
 describe('시작: 켜기 전 점검(preflight_failed)', () => {
     beforeEach(() => {
-        window.api = { serverList: vi.fn().mockResolvedValue({ servers: [] }) } as unknown as typeof window.api;
+        window.api = { serverList: vi.fn().mockResolvedValue({ servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }] }) } as unknown as typeof window.api;
         window.showToast = vi.fn();
     });
     const eula = {
@@ -99,8 +81,8 @@ describe('시작: 켜기 전 점검(preflight_failed)', () => {
         window.api.instanceStart = vi.fn().mockResolvedValueOnce(eula).mockResolvedValueOnce({ success: true });
         window.api.instanceAgreements = vi.fn().mockResolvedValue({ success: true });
         window.api.instanceStatus = vi.fn().mockResolvedValue({ status: 'running' });
-        const { result, setModal } = setup(vi.fn(), [{ id: 'eula', url: 'https://aka.ms/MinecraftEULA' }]);
-        await act(async () => result.current.handleStart('a'));
+        const { result, setModal } = setup([{ id: 'eula', url: 'https://aka.ms/MinecraftEULA' }]);
+        await act(async () => result.current.startServer('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.type).toBe('agreements');
         expect(modal.message).toContain('Minecraft EULA not accepted');
@@ -113,8 +95,8 @@ describe('시작: 켜기 전 점검(preflight_failed)', () => {
 
     it('동의 연결이 없거나 다른 문제면 실패 창에 해결 방법을 쓴다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue({ ...eula, issue_code: 'SERVER_JAR_MISSING' });
-        const { result, setModal } = setup(vi.fn());
-        await act(async () => result.current.handleStart('a'));
+        const { result, setModal } = setup();
+        await act(async () => result.current.startServer('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.type).toBe('failure');
         expect(modal.message).toContain('Accept the EULA');

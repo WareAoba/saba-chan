@@ -37,10 +37,6 @@ const detail = (server: Record<string, unknown>) =>
             moduleData={{ name: 'pal' } as never}
             modules={[]}
             servers={[server] as never}
-            setServers={() => {}}
-            onStart={() => {}}
-            onStop={() => {}}
-            setModal={() => {}}
             consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
             settingsProps={{} as never}
         />,

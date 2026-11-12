@@ -8,7 +8,7 @@ import Icon from '../Icon';
 import { Card, SettingRow } from '../ServerSettingsModal';
 import { SabaSpinner } from '../ui/SabaUI';
 import { TrustCreateNotice } from '../ui/TrustBadge';
-import type { AddServerPayload } from '../../hooks/useServerActions';
+import type { AddServerPayload } from '../../stores/serverActions';
 import { AddServerFrame } from './AddServerFrame';
 import { isImeKey } from '../../utils/ime';
 

@@ -3,7 +3,8 @@ import { memo, useEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ExtensionSlot from '../components/ExtensionSlot';
 import { useModalClose } from '../hooks/useModalClose';
-import { type AddServerPayload, useServerActions } from '../hooks/useServerActions';
+import type { AddServerPayload } from '../stores/serverActions';
+import { setupServerStore } from './serverStore';
 import type { HighlightRule, ModuleInfo } from '../types/daemon';
 import { getCachedRules, highlightLine } from '../utils/syntaxHighlight';
 
@@ -81,20 +82,8 @@ describe('서버 만들기 (이름, 모듈) 호출', () => {
     });
 
     it('두 번째 인자의 모듈로 만든다', async () => {
-        const { result } = renderHook(() =>
-            useServerActions({
-                servers: [],
-                setServers: vi.fn(),
-                modules: [{ name: 'game' }] as ModuleInfo[],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-            }),
-        );
-        await act(async () => result.current.handleAddServer('B' as unknown as AddServerPayload, 'game'));
+        const { result } = setupServerStore({ modules: [{ name: 'game' }] });
+        await act(async () => result.current.addServer('B' as unknown as AddServerPayload, 'game'));
         expect(window.api.instanceCreate).toHaveBeenCalledWith(expect.objectContaining({ module_name: 'game' }));
     });
 });

@@ -1,26 +1,14 @@
-import type { i18n as I18n, TFunction } from 'i18next';
 import { create } from 'zustand';
 import type { CommandAliasInfo, ModuleInfo, ModuleLoadError, ServerInfo } from '../types/daemon';
-import { createTranslateError, debugWarn, retryWithBackoff, safeShowToast, waitForDaemon } from '../utils/helpers';
+import { debugWarn, retryWithBackoff, safeShowToast, waitForDaemon } from '../utils/helpers';
 import { branchesUnderParents } from '../utils/serverView';
+import { resetServerActions, type ServerActions, serverActions } from './serverActions';
+import { serverI18n, t, translateError } from './serverI18n';
 import { useUIStore } from './useUIStore';
-
-// i18n translate function — set after store creation
-// biome-ignore lint/suspicious/noExplicitAny: i18next t의 여러 겹친 모양을 그대로 받는다
-type Translate = (key: string, options?: any) => string;
-let _t: Translate = (key, fallback) => (typeof fallback === 'string' && fallback) || key;
-let _translateError = (msg: string): string => msg;
-let _i18n: I18n | null = null;
-
-export const setServerI18n = (t: TFunction | Translate, i18n: I18n) => {
-    _t = t as Translate;
-    _translateError = createTranslateError(t) as (msg: string) => string;
-    _i18n = i18n;
-};
 
 let modulesFetch: Promise<void> | null = null;
 
-/** 화면이 쓰는 서버: 데몬 목록 항목에 펼침 상태를 더한다 (useServerActions) */
+/** 화면이 쓰는 서버: 데몬 목록 항목에 펼침 상태를 더한다 (serverActions) */
 export type Server = ServerInfo & { expanded?: boolean };
 
 /** 모듈 명령 하나의 별명·설명 (모듈 메타데이터 command_aliases + commands.fields) */
@@ -35,16 +23,9 @@ export interface ModuleAliases {
     commands: Record<string, ModuleCommandAliases>;
 }
 
-/** 화면이 버튼을 눌러 낙관적으로 바꿔 둔 상태 */
-export interface OptimisticStatus {
-    status: string;
-    timestamp: number;
-    pending?: boolean;
-}
-
 type Updater<T> = T | ((prev: T) => T);
 
-interface ServerState {
+export interface ServerState extends ServerActions {
     servers: Server[];
     modules: ModuleInfo[];
     failedModules: ModuleLoadError[];
@@ -57,11 +38,6 @@ interface ServerState {
     serversInitializing: boolean;
     nowEpoch: number;
     _uptimeInterval: ReturnType<typeof setInterval> | null;
-    _guiInitiatedOps: Set<string>;
-    _optimisticStatus: Map<string, OptimisticStatus>;
-    _lastErrorToast: number;
-    _firstFetchDone: boolean;
-    _openSettingsToExtensions: (() => void) | null;
 
     _resetForTest: () => void;
     setServers: (serversOrUpdater: Updater<Server[]>) => void;
@@ -80,6 +56,8 @@ interface ServerState {
 }
 
 export const useServerStore = create<ServerState>()((set, get) => ({
+    ...serverActions(set, get),
+
     // ── State ──
     servers: [],
     modules: [],
@@ -98,18 +76,13 @@ export const useServerStore = create<ServerState>()((set, get) => ({
     nowEpoch: Math.floor(Date.now() / 1000),
     _uptimeInterval: null,
 
-    // ── Internal refs ──
-    _guiInitiatedOps: new Set(),
-    _optimisticStatus: new Map(),
-    _lastErrorToast: 0,
-    _firstFetchDone: false,
-    _openSettingsToExtensions: null,
-
     // Test-only: reset to initial state
     _resetForTest: () => {
         const state = get();
         if (state._uptimeInterval) clearInterval(state._uptimeInterval);
+        resetServerActions();
         set({
+            ...serverActions(set, get),
             servers: [],
             modules: [],
             failedModules: [], // 데몬이 불러오지 못한 모듈 [{ path, error }]
@@ -122,11 +95,6 @@ export const useServerStore = create<ServerState>()((set, get) => ({
             serversInitializing: true,
             nowEpoch: Math.floor(Date.now() / 1000),
             _uptimeInterval: null,
-            _guiInitiatedOps: new Set(),
-            _optimisticStatus: new Map(),
-            _lastErrorToast: 0,
-            _firstFetchDone: false,
-            _openSettingsToExtensions: null,
         });
     },
 
@@ -181,9 +149,6 @@ export const useServerStore = create<ServerState>()((set, get) => ({
         return `${h}:${m}:${s}`;
     },
 
-    // fetchServers is managed by useServerActions hook (single source of truth)
-    // to avoid duplicating change-detection + optimistic status logic.
-
     // 데몬이 늦게 뜨거나 다시 켜지면 여러 곳에서 부를 수 있다: 이미 받는 중이면 그걸 기다린다
     fetchModules: (opts) => {
         if (!modulesFetch)
@@ -212,7 +177,7 @@ export const useServerStore = create<ServerState>()((set, get) => ({
                 set({ modules: data.modules, failedModules: data.failed || [], modulesLoaded: true });
 
                 // 번역과 메타데이터(별명)를 모듈마다 차례로 기다리지 않고 한꺼번에 받는다
-                const i18n = _i18n;
+                const i18n = serverI18n();
                 const loadLocales = async (mod: { name: string }) => {
                     try {
                         if (i18n && window.api.moduleGetLocales) {
@@ -277,21 +242,21 @@ export const useServerStore = create<ServerState>()((set, get) => ({
                 console.log('Module aliases loaded:', aliasesMap);
             } else if (data && data.error) {
                 console.error('Module fetch error:', data.error);
-                const errMsg = _translateError(data.error);
-                if (errMsg && !quiet) safeShowToast(_t('modules.load_failed_toast', { error: errMsg }), 'error', 4000);
+                const errMsg = translateError(data.error);
+                if (errMsg && !quiet) safeShowToast(t('modules.load_failed_toast', { error: errMsg }), 'error', 4000);
             } else {
                 debugWarn('No modules data:', data);
-                if (!quiet) safeShowToast(_t('modules.list_empty'), 'warning', 3000);
+                if (!quiet) safeShowToast(t('modules.list_empty'), 'warning', 3000);
             }
         } catch (error) {
             console.error('Failed to fetch modules:', error);
             if (quiet) return;
-            const errMsg = _translateError((error as Error).message);
-            if (errMsg) safeShowToast(_t('modules.fetch_failed_toast', { error: errMsg }), 'error', 5000);
+            const errMsg = translateError((error as Error).message);
+            if (errMsg) safeShowToast(t('modules.fetch_failed_toast', { error: errMsg }), 'error', 5000);
             useUIStore.getState().openModal({
                 type: 'failure',
-                title: _t('modules.load_error_title'),
-                message: _translateError((error as Error).message),
+                title: t('modules.load_error_title'),
+                message: translateError((error as Error).message),
             });
         }
     },
@@ -311,7 +276,6 @@ if (import.meta.hot) {
             initProgress: s.initProgress,
             serversInitializing: s.serversInitializing,
             nowEpoch: s.nowEpoch,
-            _firstFetchDone: s._firstFetchDone,
         };
     });
     if (import.meta.hot.data?.prevState) {

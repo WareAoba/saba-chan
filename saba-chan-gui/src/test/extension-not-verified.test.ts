@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import { useServerSettings } from '../hooks/useServerSettings';
 import type { Server } from '../stores/useServerStore';
 import type { ModuleInfo } from '../types/daemon';
@@ -12,24 +12,7 @@ const notVerified = {
     unverified_extensions: ['ue4-ini', 'steamcmd'],
 };
 
-function setup() {
-    const setModal = vi.fn();
-    const { result } = renderHook(() =>
-        useServerActions({
-            servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }] as unknown as Server[],
-            setServers: vi.fn(),
-            modules: [],
-            loading: false,
-            setLoading: vi.fn(),
-            setModal,
-            setProgressBar: vi.fn(),
-            openConsole: vi.fn(),
-            setShowModuleManager: vi.fn(),
-            openSettingsToExtensions: vi.fn(),
-        }),
-    );
-    return { result, setModal };
-}
+const setup = () => setupServerStore({ servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }] });
 
 /** 사용자에게 보인 글 (모달 메시지와 토스트) */
 const shown = (setModal: Mock) =>
@@ -47,7 +30,7 @@ describe('익스텐션 파일이 바뀌어 확인되지 않았을 때', () => {
     it('시작: 바뀐 익스텐션 이름과 다시 설치·되돌리기 안내를 보여 준다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(notVerified);
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('a'));
+        await act(async () => result.current.startServer('a'));
         const text = shown(setModal);
         expect(text).toMatch(/ue4-ini, steamcmd/);
         expect(text).toMatch(/changed/i);
@@ -61,14 +44,14 @@ describe('익스텐션 파일이 바뀌어 확인되지 않았을 때', () => {
             .fn()
             .mockResolvedValue({ ...notVerified, error_code: undefined, action_required: 'extension_not_verified' });
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('a'));
+        await act(async () => result.current.startServer('a'));
         expect(shown(setModal)).toMatch(/ue4-ini, steamcmd/);
     });
 
     it('정지: message가 없어도 바뀐 익스텐션을 알린다', async () => {
         window.api.instanceStop = vi.fn().mockResolvedValue(notVerified);
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStop('a'));
+        await act(async () => result.current.stopServer('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
         expect(shown(setModal)).toMatch(/ue4-ini, steamcmd/);
     });
@@ -78,7 +61,7 @@ describe('익스텐션 파일이 바뀌어 확인되지 않았을 때', () => {
         const { result, setModal } = setup();
         let returned: unknown;
         await act(async () => {
-            returned = await result.current.handleAddServer({ name: 'B', module_name: 'game' });
+            returned = await result.current.addServer({ name: 'B', module_name: 'game' });
         });
         // 실패로 알려야 만들기 창이 입력한 이름·게임을 지우지 않는다
         expect(returned).toBe(false);

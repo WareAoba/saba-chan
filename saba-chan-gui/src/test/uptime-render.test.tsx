@@ -32,10 +32,6 @@ describe('가동 시간 표시', () => {
                 moduleData={{ name: 'mc' } as never}
                 modules={[]}
                 servers={[server] as never}
-                setServers={() => {}}
-                onStart={() => {}}
-                onStop={() => {}}
-                setModal={() => {}}
                 consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
                 settingsProps={{} as never}
             />,

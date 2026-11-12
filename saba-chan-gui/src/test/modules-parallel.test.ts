@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { setServerI18n, useServerStore } from '../stores/useServerStore';
+import { setServerI18n } from '../stores/serverI18n';
+import { useServerStore } from '../stores/useServerStore';
 
 // 모듈마다 번역과 메타데이터를 차례로 기다려, 원격 데몬처럼 왕복이 느리면 게임 이름·명령 별명이 늦게 찼다
 describe('모듈 번역·메타데이터 읽기', () => {

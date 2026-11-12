@@ -17,7 +17,7 @@ import { failedModuleReason, failureForModule } from '../../utils/failedModules'
 import { openWithNotice, safeShowToast } from '../../utils/helpers';
 import { isImeKey } from '../../utils/ime';
 import { screenFallbackNotice } from '../../utils/openScreen';
-import { type ModalConfig, useUIStore } from '../../stores/useUIStore';
+import { useUIStore } from '../../stores/useUIStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { withCommandAliases } from '../../utils/commandRisk';
 import {
@@ -55,21 +55,12 @@ import { ModuleAuditNotice } from './ModuleAuditNotice';
 import { ServerConsole } from './ServerConsole';
 import { StartCoach } from './OnboardingCard';
 
-type ServerSetter = (updater: (prev: Server[]) => Server[]) => void;
-
 interface ServerDetailProps {
     server: Server;
     moduleData?: ModuleInfo;
     modules: ModuleInfo[];
     servers: Server[];
-    setServers: ServerSetter;
-    onStart: (id: string) => void;
-    onStop: (id: string) => void;
-    onRestart?: (id: string) => void;
-    onRename?: (id: string, name: string) => Promise<boolean> | boolean;
-    onDelete: (server: Server) => void;
     onBack?: (() => void) | null;
-    setModal?: (modal: ModalConfig | null) => void;
     consoleProps: ServerConsoleProps;
     settingsProps: ServerSettingsProps;
 }
@@ -95,17 +86,17 @@ export function ServerDetail({
     moduleData,
     modules,
     servers,
-    setServers,
-    onStart,
-    onStop,
-    onRestart,
-    onRename,
-    onDelete,
     onBack,
     consoleProps,
     settingsProps,
 }: ServerDetailProps) {
     const { t, i18n } = useTranslation('gui');
+    const setServers = useServerStore((s) => s.setServers);
+    const onStart = useServerStore((s) => s.startServer);
+    const onStop = useServerStore((s) => s.stopServer);
+    const onRestart = useServerStore((s) => s.restartServer);
+    const onRename = useServerStore((s) => s.renameServer);
+    const onDelete = useServerStore((s) => s.deleteServer);
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
     const { provisionProgress, cooked, updateInfo, updatingServer } = useMaintenanceOf(server.id);
     const { extensions } = useExtensions();
@@ -222,7 +213,7 @@ export function ServerDetail({
         }
         return action === 'stop' ? (
             <>
-                {onRestart && typeof window.api?.instanceRestart === 'function' && (
+                {typeof window.api?.instanceRestart === 'function' && (
                     <button
                         type="button"
                         className="icon-btn"
@@ -271,7 +262,7 @@ export function ServerDetail({
                     {moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>}
                 </div>
                 <div className="detail-title">
-                    <ServerName server={server} canRename={!!onRename && status === 'stopped'} onRename={onRename} />
+                    <ServerName server={server} canRename={status === 'stopped'} onRename={onRename} />
                     <div className="detail-sub">
                         <span>{gameName}</span>
                         {versionTag && <span className="tag">{versionTag}</span>}
@@ -336,7 +327,7 @@ export function ServerDetail({
                             {t('server_status.unresponsive', { reason: server.unresponsive })}
                         </span>
                     </span>
-                    {onRestart && typeof window.api?.instanceRestart === 'function' && (
+                    {typeof window.api?.instanceRestart === 'function' && (
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRestart(server.id)}>
                             <Icon name="refresh" size="sm" /> {t('shell.restart')}
                         </button>
@@ -534,7 +525,7 @@ function ServerName({
 }: {
     server: Server;
     canRename: boolean;
-    onRename?: ServerDetailProps['onRename'];
+    onRename: (id: string, name: string) => Promise<boolean>;
 }) {
     const { t } = useTranslation('gui');
     const [editing, setEditing] = useState(false);
@@ -573,7 +564,7 @@ function ServerName({
             return;
         }
         setSaving(true);
-        const ok = await (onRename as NonNullable<typeof onRename>)(server.id, next);
+        const ok = await onRename(server.id, next);
         setSaving(false);
         if (ok) setEditing(false);
     };

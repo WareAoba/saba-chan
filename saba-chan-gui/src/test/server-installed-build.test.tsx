@@ -27,8 +27,8 @@ const server = {
     server_build: { id: '19283746', time: NOV_3 },
 };
 
-function show(onStart = () => {}) {
-    useServerStore.setState({ modulesLoaded: true });
+function show(onStart = async () => {}) {
+    useServerStore.setState({ modulesLoaded: true, startServer: onStart });
     useUIStore.setState({ requestedServerTab: 'info' } as never);
     return render(
         <ServerDetail
@@ -36,10 +36,6 @@ function show(onStart = () => {}) {
             moduleData={{ name: 'pal', install: { method: 'steamcmd' }, protocols: { supported: ['rest'], default: 'rest' } } as never}
             modules={[]}
             servers={[server] as never}
-            setServers={() => {}}
-            onStart={onStart}
-            onStop={() => {}}
-            setModal={() => {}}
             consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
             settingsProps={{} as never}
         />,
@@ -72,7 +68,7 @@ describe('설치된 빌드 표시', () => {
         useMaintenanceStore.getState().patch('pal-1', {
             updateInfo: { update_available: true, local_buildid: '19283746', remote_buildid: '19402210', remote_build_time: NOV_11 },
         });
-        const onStart = vi.fn();
+        const onStart = vi.fn(async () => {});
         const { container } = show(onStart);
         expect([...container.querySelectorAll('.detail-sub .tag')].map((tag) => tag.textContent)).toEqual([
             'Build 19283746',

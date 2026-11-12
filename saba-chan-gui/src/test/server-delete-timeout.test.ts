@@ -1,31 +1,13 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 
 const srv = { id: 'a', name: 'A', module: 'game', status: 'stopped' };
 
-function setup() {
-    const setModal = vi.fn();
-    const { result } = renderHook(() =>
-        useServerActions({
-            servers: [srv],
-            setServers: vi.fn(),
-            modules: [],
-            loading: false,
-            setLoading: vi.fn(),
-            setModal,
-            setProgressBar: vi.fn(),
-            openConsole: vi.fn(),
-            closeConsole: vi.fn(),
-            setShowModuleManager: vi.fn(),
-            formatUptime: vi.fn(),
-        } as never),
-    );
-    return { result, setModal };
-}
+const setup = () => setupServerStore({ servers: [srv] });
 
-async function remove(result: { current: { handleDeleteServer: (s: never) => Promise<unknown> } }, setModal: ReturnType<typeof vi.fn>) {
-    await act(async () => result.current.handleDeleteServer(srv as never));
+async function remove(result: { current: { deleteServer: (s: never) => unknown } }, setModal: ReturnType<typeof vi.fn>) {
+    await act(async () => result.current.deleteServer(srv as never));
     await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
     return setModal.mock.calls.at(-1)![0];
 }

@@ -2,12 +2,11 @@ import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { useDragReorder } from '../../hooks/useDragReorder';
-import type { AddServerPayload } from '../../hooks/useServerActions';
 import { useSwapAnimation } from '../../hooks/useSwapAnimation';
 import { useWindowSize } from '../../hooks/useWindowSize';
 import { type Server, useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
-import { type ModalConfig, useUIStore } from '../../stores/useUIStore';
+import { useUIStore } from '../../stores/useUIStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { failedModuleName, failedModuleReason } from '../../utils/failedModules';
 import { branchParentOf } from '../../utils/serverView';
@@ -44,17 +43,8 @@ function readCollapsed(): string[] {
 
 interface ServersPageProps {
     servers: Server[];
-    setServers: (updater: (prev: Server[]) => Server[]) => void;
     modules: ModuleInfo[];
     onAddServer: () => void;
-    /** 브랜치 서버 만들기: 만들기 요청을 그대로 데몬에 보낸다 (성공하면 true) */
-    onCreateBranch?: (payload: AddServerPayload) => Promise<boolean> | boolean;
-    onStart: (id: string) => void;
-    onStop: (id: string) => void;
-    onRestart?: (id: string) => void;
-    onRename?: (id: string, name: string) => Promise<boolean> | boolean;
-    onDelete: (server: Server) => void;
-    setModal?: (modal: ModalConfig | null) => void;
     drag: ReturnType<typeof useDragReorder>;
     consoleProps: ServerConsoleProps;
     settingsProps: ServerSettingsProps;
@@ -65,22 +55,20 @@ interface ServersPageProps {
  */
 export function ServersPage({
     servers,
-    setServers,
     modules,
     onAddServer,
-    onCreateBranch,
-    onStart,
-    onStop,
-    onRestart,
-    onRename,
-    onDelete,
-    setModal,
     drag,
     consoleProps,
     settingsProps,
 }: ServersPageProps) {
     const { t, i18n } = useTranslation('gui');
     const failedModules = useServerStore((st) => st.failedModules) || [];
+    const onStart = useServerStore((st) => st.startServer);
+    const onStop = useServerStore((st) => st.stopServer);
+    const onRestart = useServerStore((st) => st.restartServer);
+    const onDelete = useServerStore((st) => st.deleteServer);
+    // 브랜치 서버 만들기: 만들기 요청을 그대로 데몬에 보낸다 (성공하면 true)
+    const onCreateBranch = useServerStore((st) => st.addServer);
     const { width } = useWindowSize();
     const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
     const monitorOpen = useSettingsStore((s) => s.systemMonitorExpanded);
@@ -257,7 +245,7 @@ export function ServersPage({
                                 branches={parent ? 0 : branchesOf(server.id).length}
                                 branchesCollapsed={collapsed.includes(server.id)}
                                 onToggleBranches={toggleBranches}
-                                onBranch={onCreateBranch && !parent ? setBranchFrom : undefined}
+                                onBranch={!parent ? setBranchFrom : undefined}
                                 unsaved={settingsProps?.unsavedServers?.includes(server.id)}
                                 onSelect={(id) => {
                                     setSelectedId(id);
@@ -295,14 +283,7 @@ export function ServersPage({
                             moduleData={moduleOf(selected.module)}
                             modules={modules}
                             servers={servers}
-                            setServers={setServers}
-                            onStart={onStart}
-                            onStop={onStop}
-                            onRestart={onRestart}
-                            onRename={onRename}
-                            onDelete={onDelete}
                             onBack={singleColumn ? () => setShowDetailNarrow(false) : null}
-                            setModal={setModal}
                             consoleProps={consoleProps}
                             settingsProps={settingsProps}
                         />
@@ -315,7 +296,7 @@ export function ServersPage({
                 </aside>
             )}
             {selected && monitorAt === 'float' && <FloatingMonitor servers={servers} />}
-            {branchFrom && onCreateBranch && (
+            {branchFrom && (
                 <BranchServerDialog parent={branchFrom} onClose={() => setBranchFrom(null)} onCreate={onCreateBranch} />
             )}
         </div>
