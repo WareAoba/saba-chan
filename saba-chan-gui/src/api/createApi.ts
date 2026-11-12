@@ -1128,6 +1128,9 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             (await call('delete', `/api/remote/clients/${encodeURIComponent(hostId)}`)) || { ok: true },
         remotePeers: () => call('get', '/api/remote/peers', undefined, 30000),
         remoteDaemons: () => call('get', '/api/remote/daemons'),
+        // 내 PC 하나(이 PC 포함)의 이름 (서버쨩의 PC 이름, 어느 PC에서든 바꾼다) → {hostId, name}
+        remoteRenamePc: (hostId: string, name: string) =>
+            call('put', `/api/remote/peers/${encodeURIComponent(hostId)}/name`, { name }, 15000),
         remoteConnect: (hostId: string) => call('post', '/api/remote/daemons', { hostId }, 30000),
         remoteForget: async (hostId: string) =>
             (await call('delete', `/api/remote/daemons/${encodeURIComponent(hostId)}`)) || { ok: true },

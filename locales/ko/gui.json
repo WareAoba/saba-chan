@@ -2420,6 +2420,7 @@
     "err_bind_failed": "포트를 열지 못했어요",
     "err_invalid_port": "포트는 1에서 65535 사이여야 해요",
     "err_invalid_address": "호스트 이름이나 IP 주소를 적어 주세요",
+    "err_invalid_name": "PC 이름은 1~64자로 적어 주세요.",
     "err_remote_not_found": "그 PC는 내 PC 목록에 없어요",
     "err_remote_no_endpoint": "그 PC가 원격 연결을 열지 않았어요",
     "err_remote_unreachable": "원격 데몬에 닿지 못했어요. 그 PC가 켜져 있고 사바쨩이 실행 중인지 확인해 주세요",
@@ -2530,6 +2531,7 @@
     "err_invalid_code": "페어링 코드가 올바르지 않아요"
   },
   "daemon_switcher": {
+    "local_named": "{{name}} (이 PC)",
     "label": "데몬",
     "local": "이 PC"
   },
@@ -2718,12 +2720,10 @@
     "fold_hits": "{{count}}개 일치"
   },
   "pc_settings": {
+    "name_title": "PC 이름",
+    "name_desc": "내 PC 모두와 디스코드에 이 이름으로 보여요.",
     "edit": "수정",
-    "title": "{{name}} 설정",
     "address_unavailable": "이 PC가 켜져 있고 연결돼 있을 때 바꿀 수 있어요.",
-    "main_title": "앱을 열면 먼저 보이는 PC",
-    "main_desc": "켜면 다음에 앱을 열 때 이 PC의 서버부터 보여요.",
-    "main_on_desc": "지금 이 PC가 먼저 보여요. 다른 PC를 고르면 바뀌어요.",
     "update_desc": "그 PC의 사바쨩을 이 PC와 같은 판으로 올려요.",
     "remove_title": "내 PC에서 지우기",
     "remove_desc": "연결을 끊고 목록에서 빼요. 무엇을 지울지는 다음 창에서 골라요."

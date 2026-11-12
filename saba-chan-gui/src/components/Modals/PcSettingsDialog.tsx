@@ -3,13 +3,21 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
 import { OsLogo, type Platform } from '../OsLogo';
 import { Dialog } from '../ui/Dialog';
-import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { SabaSpinner } from '../ui/SabaUI';
 import { type AddressDraft, addressDraft, addressPatch, PublicAddressFields, usePublicAddress } from './PublicAddress';
+
+/** PC 이름 상한 (서버쨩 `MAX_HOST_NAME`) */
+const PC_NAME_MAX = 64;
 
 interface PcSettingsDialogProps {
     /** null이면 이 PC */
     hostId: string | null;
+    /** 창 제목에 쓰는 이름 (주인 이름이 붙을 수 있다) */
     name: string;
+    /** 바꿀 PC 이름 그대로 (서버쨩의 PC 이름) */
+    pcName?: string;
+    /** PC 이름을 바꿀 수 있으면 (서버쨩에 연결된 내 PC). 실패하면 까닭을 돌려준다 */
+    onRename?: (name: string) => Promise<string | null>;
     sub: string;
     platform?: Platform | null;
     /** 그 PC의 게임 서버 주소를 읽을 수 있을 때만 (켜져 있고 연결된 데몬) */
@@ -27,13 +35,14 @@ interface PcSettingsDialogProps {
     onClose: (changed: boolean) => void;
 }
 
-/** 내 PC 카드의 수정 창: 게임 서버 주소, 먼저 보이는 PC, 업데이트, 지우기를 한곳에서 */
+/** 내 PC 카드의 수정 창: PC 이름(제목 자리)과 메인 별, 게임 서버 주소, 업데이트, 지우기를 한곳에서 */
 export function PcSettingsDialog(props: PcSettingsDialogProps) {
     const { hostId, name, sub, platform, hasAddress, main, updateTo, canUpdate, canRemove } = props;
     const { t } = useTranslation('gui');
     const address = usePublicAddress(hostId, hasAddress);
     const [draft, setDraft] = useState<AddressDraft | null>(null);
     const [mainDraft, setMainDraft] = useState(Boolean(main));
+    const [nameDraft, setNameDraft] = useState(props.pcName || '');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -47,9 +56,21 @@ export function PcSettingsDialog(props: PcSettingsDialogProps) {
         Boolean(cur && patch) &&
         (patch?.address !== (cur?.address || '') || patch?.shareAddress !== (cur?.shareAddress !== false));
     const mainChanged = main !== undefined && mainDraft !== main;
-    const invalid = Boolean(draft && !patch);
+    const newName = nameDraft.replace(/\s+/g, ' ').trim();
+    const nameChanged = Boolean(props.onRename) && newName !== (props.pcName || '');
+    const invalid = Boolean(draft && !patch) || (nameChanged && !newName);
 
     const save = async () => {
+        if (nameChanged && props.onRename) {
+            setBusy(true);
+            setError(null);
+            const err = await props.onRename(newName);
+            setBusy(false);
+            if (err) {
+                setError(err);
+                return;
+            }
+        }
         if (addressChanged && patch) {
             setBusy(true);
             setError(null);
@@ -61,14 +82,46 @@ export function PcSettingsDialog(props: PcSettingsDialogProps) {
             }
         }
         if (mainChanged && mainDraft) props.onMain();
-        props.onClose(addressChanged || mainChanged);
+        props.onClose(addressChanged || mainChanged || nameChanged);
     };
 
     return (
         <Dialog
             open
             onOpenChange={(open) => !open && !busy && props.onClose(false)}
-            title={t('pc_settings.title', { name })}
+            title={
+                // 제목 자리가 곧 PC 이름 칸이고, 바로 오른쪽 별이 메인 데몬이다 (사용자 11-12)
+                <span className="pc-settings-titlerow">
+                    {props.onRename ? (
+                        <input
+                            id="pc-settings-name"
+                            type="text"
+                            className="input pc-settings-name"
+                            aria-label={t('pc_settings.name_title')}
+                            maxLength={PC_NAME_MAX}
+                            value={nameDraft}
+                            disabled={busy}
+                            onChange={(e) => setNameDraft(e.target.value)}
+                        />
+                    ) : (
+                        <span className="pc-settings-name-text">{name}</span>
+                    )}
+                    {main !== undefined && (
+                        <button
+                            type="button"
+                            className={`remote-pc-star${mainDraft ? ' on' : ''}`}
+                            aria-pressed={mainDraft}
+                            aria-label={mainDraft ? t('remote_daemon.star_on') : t('remote_daemon.star_set')}
+                            data-tooltip={mainDraft ? t('remote_daemon.star_on') : t('remote_daemon.star_set')}
+                            // 지금 메인이면 끌 수 없다 (다른 PC를 고르면 바뀐다)
+                            disabled={busy || main}
+                            onClick={() => setMainDraft((m) => !m)}
+                        >
+                            <Icon name="star" size="sm" />
+                        </button>
+                    )}
+                </span>
+            }
             description={sub}
             media={
                 <span className="remote-pc-os large">
@@ -89,7 +142,7 @@ export function PcSettingsDialog(props: PcSettingsDialogProps) {
                     <button
                         type="button"
                         className="btn btn-primary"
-                        disabled={busy || invalid || !(addressChanged || mainChanged)}
+                        disabled={busy || invalid || !(addressChanged || mainChanged || nameChanged)}
                         onClick={save}
                     >
                         {busy ? <SabaSpinner size="xs" /> : null} {t('public_address.save')}
@@ -110,29 +163,6 @@ export function PcSettingsDialog(props: PcSettingsDialogProps) {
                     <PublicAddressFields current={address.current} draft={draft} busy={busy} onChange={setDraft} />
                 )}
             </section>
-
-            {main !== undefined && (
-                <section className="pc-settings-section">
-                    <div className="pc-settings-row">
-                        <label className="setting-label" htmlFor="pc-settings-main">
-                            <span className="setting-title">
-                                <Icon name="star" size="sm" /> {t('pc_settings.main_title')}
-                            </span>
-                            <span className="setting-description">
-                                {main ? t('pc_settings.main_on_desc') : t('pc_settings.main_desc')}
-                            </span>
-                        </label>
-                        <SabaToggle
-                            id="pc-settings-main"
-                            role="switch"
-                            aria-label={t('pc_settings.main_title')}
-                            checked={mainDraft}
-                            disabled={busy || main}
-                            onChange={setMainDraft}
-                        />
-                    </div>
-                </section>
-            )}
 
             {updateTo && (
                 <section className="pc-settings-section">

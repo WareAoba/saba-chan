@@ -2420,6 +2420,7 @@
     "err_bind_failed": "Impossible d'ouvrir le port",
     "err_invalid_port": "Le port doit être entre 1 et 65535",
     "err_invalid_address": "Saisissez un nom d'hôte ou une adresse IP",
+    "err_invalid_name": "Saisissez un nom de PC de 1 à 64 caractères.",
     "err_remote_not_found": "Ce PC ne fait pas partie de vos PC",
     "err_remote_no_endpoint": "Ce PC n'est pas ouvert aux connexions distantes",
     "err_remote_unreachable": "Impossible de joindre le démon distant. Vérifiez que le PC est allumé et que saba-chan tourne",
@@ -2530,6 +2531,7 @@
     "err_invalid_code": "Code d’appairage invalide"
   },
   "daemon_switcher": {
+    "local_named": "{{name}} (ce PC)",
     "label": "Démon",
     "local": "Ce PC"
   },
@@ -2718,12 +2720,10 @@
     "fold_hits": "Correspondances : {{count}}"
   },
   "pc_settings": {
+    "name_title": "Nom du PC",
+    "name_desc": "Tous vos PC et Discord affichent ce nom.",
     "edit": "Modifier",
-    "title": "Réglages de {{name}}",
     "address_unavailable": "Modifiable quand ce PC est allumé et connecté.",
-    "main_title": "Afficher en premier à l'ouverture de l'app",
-    "main_desc": "Activez pour afficher d'abord les serveurs de ce PC à la prochaine ouverture de l'app.",
-    "main_on_desc": "Ce PC est affiché en premier. Choisissez un autre PC pour changer.",
     "update_desc": "Met à jour Saba-chan sur ce PC vers la même version que ce PC-ci.",
     "remove_title": "Retirer de Mes PC",
     "remove_desc": "Le déconnecte et le retire de la liste. Vous choisirez quoi supprimer à l'étape suivante."

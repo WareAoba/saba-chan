@@ -32,6 +32,15 @@ describe('상단 바: 다룰 데몬 고르기 (이 PC / 연결한 원격 데몬)
         expect(within(within(again).getByRole('option', { name: /This PC/ })).getByRole('img', { name: 'Main' })).toBeInTheDocument();
     });
 
+    it('이 PC 이름을 알면 이름에 이 PC 표시를 붙여 보인다 (사용자 11-12)', async () => {
+        vi.mocked(window.api.remoteDaemons).mockResolvedValue({
+            daemons: [{ hostId: 'host-b', name: '게임 PC' }],
+            thisName: '작업용',
+        });
+        await act(async () => render(<DaemonSwitcher onSwitched={reload} />));
+        expect(screen.getByRole('combobox', { name: 'Daemon' })).toHaveTextContent('작업용 (This PC)');
+    });
+
     it('연결한 원격 데몬이 없으면 보이지 않는다', async () => {
         vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [] });
         const { container } = await act(async () => render(<DaemonSwitcher onSwitched={reload} />));

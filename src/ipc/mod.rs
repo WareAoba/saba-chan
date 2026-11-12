@@ -1045,6 +1045,7 @@ impl IPCServer {
             .route("/api/remote/clients", get(handlers::remote_daemon::list_clients))
             .route("/api/remote/clients/{host_id}", delete(handlers::remote_daemon::revoke_client))
             .route("/api/remote/peers", get(handlers::remote_daemon::list_peers))
+            .route("/api/remote/peers/{host_id}/name", put(handlers::remote_daemon::rename_peer))
             .route("/api/remote/daemons", get(handlers::remote_daemon::list_daemons).post(handlers::remote_daemon::connect_daemon))
             .route("/api/remote/daemons/{host_id}", delete(handlers::remote_daemon::forget_daemon))
             .route("/api/remote/daemons/{host_id}/remove", post(handlers::remote_daemon::remove_daemon))

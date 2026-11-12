@@ -283,6 +283,9 @@ pub struct State {
     /// 끝까지 본 가이드
     #[serde(default)]
     pub finished: Vec<String>,
+    /// 완료 조건이 있는 가이드 중 어느 PC에서든 실제로 해낸 것 (내 PC 모두가 함께 본다. 끝까지 보기만 한 것은 아니다)
+    #[serde(default)]
+    pub achieved: Vec<String>,
     /// 보던 단계 (0부터)
     #[serde(default)]
     pub step: BTreeMap<String, usize>,
@@ -294,13 +297,60 @@ impl State {
     }
 }
 
+fn union(a: &[String], b: &[String]) -> Vec<String> {
+    let mut out = a.to_vec();
+    for x in b {
+        if !out.contains(x) {
+            out.push(x.clone());
+        }
+    }
+    out
+}
+
+/// 이 PC의 진행도에 내 PC 모두가 함께 보는 진행도(릴레이)를 합친다: 아는·끝낸 가이드는 합치고, 보던 단계는 함께 보는 값을 따른다
+pub fn merge(local: &State, shared: &State) -> State {
+    let known = match (&local.known, &shared.known) {
+        (None, None) => None,
+        (a, b) => Some(union(a.as_deref().unwrap_or_default(), b.as_deref().unwrap_or_default())),
+    };
+    let mut step = local.step.clone();
+    step.extend(shared.step.iter().map(|(k, v)| (k.clone(), *v)));
+    State { known, finished: union(&local.finished, &shared.finished), achieved: union(&local.achieved, &shared.achieved), step }
+}
+
+/// `view`가 남기라고 주는 값: 처음 본 때 아는 가이드(`known`), 이 PC의 실제 상태로 해낸 가이드(`achieved`, 다른 PC도 끝난 것으로 본다)
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Remember {
+    pub known: Option<Vec<String>>,
+    pub achieved: Vec<String>,
+}
+
+impl Remember {
+    pub fn is_empty(&self) -> bool {
+        self.known.is_none() && self.achieved.is_empty()
+    }
+
+    /// 남길 칸 (`config.json guides`에 합칠 값)
+    pub fn patch(&self, state: &State) -> Value {
+        let mut out = serde_json::Map::new();
+        if let Some(known) = &self.known {
+            out.insert("known".into(), json!(known));
+        }
+        if !self.achieved.is_empty() {
+            out.insert("achieved".into(), json!(union(&state.achieved, &self.achieved)));
+        }
+        Value::Object(out)
+    }
+}
+
 /// 언어 → 없으면 영어
 fn text_for<'a>(g: &'a Guide, lang: &str) -> &'a Text {
     g.texts.get(lang).or_else(|| g.texts.get("en")).expect("parse requires English")
 }
 
-/// `GET /api/guides`의 목록. 처음 부르면(`known`이 없음) 지금 가이드를 모두 아는 것으로 남길 값을 함께 준다
-pub fn view(guides: &[Guide], state: &State, facts: &Facts, lang: &str) -> (Value, Option<Vec<String>>) {
+/// `GET /api/guides`의 목록. 처음 부르면(`known`이 없음) 지금 가이드를 모두 아는 것으로, 실제 상태로 끝난 가이드는 끝낸 것으로 남길 값을 함께 준다.
+/// 완료 조건이 있으면 이 PC에서 맞거나 어느 PC에서든 해냈으면(`achieved`) 끝이고, 이 판이 모르는 조건이나 조건 없는 가이드는 끝까지 봤으면 끝이다
+pub fn view(guides: &[Guide], state: &State, facts: &Facts, lang: &str) -> (Value, Remember) {
     let first_look = state.known.is_none();
     let known: Vec<String> = state.known.clone().unwrap_or_else(|| guides.iter().map(|g| g.id.clone()).collect());
     let onboarding_steps: Vec<(String, bool)> = facts.onboarding["steps"]
@@ -312,12 +362,23 @@ pub fn view(guides: &[Guide], state: &State, facts: &Facts, lang: &str) -> (Valu
                 .collect()
         })
         .unwrap_or_default();
+    let mut newly_done = Vec::new();
     let list: Vec<Value> = guides
         .iter()
         .map(|g| {
             let text = text_for(g, lang);
             let finished = state.finished.contains(&g.id);
-            let done = g.done.as_deref().and_then(|c| facts.met(c)).unwrap_or(finished);
+            let achieved = state.achieved.contains(&g.id);
+            let done = match g.done.as_deref().and_then(|c| facts.met(c)) {
+                Some(true) => {
+                    if !achieved {
+                        newly_done.push(g.id.clone());
+                    }
+                    true
+                }
+                Some(false) => achieved,
+                None => finished,
+            };
             let mut item = json!({
                 "id": g.id,
                 "group": g.group,
@@ -347,7 +408,7 @@ pub fn view(guides: &[Guide], state: &State, facts: &Facts, lang: &str) -> (Valu
             item
         })
         .collect();
-    (json!({ "guides": list, "groups": GROUPS }), first_look.then_some(known))
+    (json!({ "guides": list, "groups": GROUPS }), Remember { known: first_look.then_some(known), achieved: newly_done })
 }
 
 /// `POST /api/guides/:id`: 열었음(new! 끄기)·보던 단계·끝까지 봄을 남길 칸
@@ -439,12 +500,12 @@ spot = "backup.create"
     fn guides_present_at_first_look_are_not_new_but_later_ones_are_until_opened() {
         let (v, remember) = view(&guides(), &State::default(), &Facts::default(), "en");
         assert_eq!(v["guides"][0]["new"], false);
-        let mut state = State { known: remember, ..Default::default() };
+        let mut state = State { known: remember.known, ..Default::default() };
         assert_eq!(state.known.as_deref(), Some(&["backup".to_string(), "music".to_string()][..]));
 
         state.known = Some(vec!["backup".into()]);
         let (v, remember) = view(&guides(), &state, &Facts::default(), "en");
-        assert_eq!((v["guides"][1]["new"].clone(), remember), (json!(true), None));
+        assert_eq!((v["guides"][1]["new"].clone(), remember), (json!(true), Remember::default()));
         let p = patch(&state, "music", true, None, false);
         assert_eq!(p["known"], json!(["backup", "music"]));
     }
@@ -458,6 +519,45 @@ spot = "backup.create"
         let facts = Facts { backup_any: true, ..Default::default() };
         let (v, _) = view(&guides(), &State::default(), &facts, "en");
         assert_eq!(v["guides"][0]["done"], true);
+    }
+
+    /// 가이드 진행도는 내 PC 모두가 함께 본다 (사용자 11-12): 한 PC에서 실제로 해낸 가이드는 끝낸 것으로 남겨 다른 PC에도 끝난 것으로 보인다
+    #[test]
+    fn a_guide_done_on_one_pc_stays_done_on_the_others() {
+        let facts = Facts { backup_any: true, ..Default::default() };
+        let state = State { known: Some(vec![]), ..Default::default() };
+        let (_, remember) = view(&guides(), &state, &facts, "en");
+        assert_eq!(remember, Remember { known: None, achieved: vec!["backup".into()] });
+        // 다른 PC (백업 없음)
+        let shared = State { known: Some(vec![]), achieved: vec!["backup".into()], ..Default::default() };
+        let (v, remember) = view(&guides(), &shared, &Facts::default(), "en");
+        assert_eq!((v["guides"][0]["done"].clone(), remember), (json!(true), Remember::default()));
+    }
+
+    #[test]
+    fn shared_progress_merges_with_this_pcs_and_the_shared_step_wins() {
+        let local = State {
+            known: None,
+            finished: vec!["backup".into()],
+            achieved: vec![],
+            step: BTreeMap::from([("music".into(), 1), ("backup".into(), 1)]),
+        };
+        let shared = State {
+            known: Some(vec!["music".into()]),
+            finished: vec!["music".into()],
+            achieved: vec!["backup".into()],
+            step: BTreeMap::from([("music".into(), 0)]),
+        };
+        assert_eq!(
+            merge(&local, &shared),
+            State {
+                known: Some(vec!["music".into()]),
+                finished: vec!["backup".into(), "music".into()],
+                achieved: vec!["backup".into()],
+                step: BTreeMap::from([("music".into(), 0), ("backup".into(), 1)]),
+            }
+        );
+        assert_eq!(merge(&State::default(), &State::default()).known, None, "nobody has looked yet");
     }
 
     #[test]

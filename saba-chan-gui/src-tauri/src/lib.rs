@@ -107,11 +107,11 @@ fn first_run_handoff(launch: saba_chan_updater_lib::app_bundle::Launch, tray: bo
 /// 맥 앱 묶음을 처음 켰으면 설치기를 띄운다. GUI가 여기서 끝나야 하면 true (설치기를 띄우지 못하면 앱을 그대로 연다)
 #[cfg(target_os = "macos")]
 fn hand_over_first_run(install_root: &std::path::Path) -> bool {
-    use saba_chan_updater_lib::{app_bundle, uninstall_entry};
+    use saba_chan_updater_lib::{app_bundle, integrity, uninstall_entry};
     if app_bundle::bundle_of(install_root).is_none() {
         return false;
     }
-    let launch = app_bundle::launch_for(install_root, &uninstall_entry::installs_file(), &constants::resolve_modules_dir());
+    let launch = app_bundle::launch_for(install_root, &uninstall_entry::installs_file(), &constants::resolve_modules_dir(), &integrity::records_path());
     let Some((args, exits)) = first_run_handoff(launch, lifecycle::tray_arg(std::env::args())) else { return false };
     tracing::info!("[Setup] {:?}: launching the installer with {:?}", launch, args);
     use std::os::unix::process::CommandExt;

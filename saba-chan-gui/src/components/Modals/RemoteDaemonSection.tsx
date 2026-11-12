@@ -24,6 +24,7 @@ const ERRORS = [
     'bind_failed',
     'invalid_port',
     'invalid_address',
+    'invalid_name',
     'remote_not_found',
     'remote_no_endpoint',
     'remote_unreachable',
@@ -100,6 +101,8 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const [clients, setClients] = useState<ApiBody[]>([]);
     const [peers, setPeers] = useState<ApiBody[] | null>(null); // null = 못 읽음
     const [peersError, setPeersError] = useState<string | null>(null);
+    // 이 PC 이름 (서버쨩의 PC 이름). 내 PC 목록(`self`)이 먼저, 못 읽으면 데몬이 받아 둔 사본(`thisName`)
+    const [thisName, setThisName] = useState<{ fromRelay?: string; saved?: string }>({});
     const [daemons, setDaemons] = useState<ApiBody[]>([]);
     // 원격 데몬마다 닿는지 (`/api/remote/servers`의 ok·error_code). 아직 모르면 비어 있다
     const [reach, setReach] = useState<Record<string, string>>({});
@@ -135,11 +138,13 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         }
         setPeersError(null);
         setPeers(res.peers || []);
+        if (res.self?.name) setThisName((n) => ({ ...n, fromRelay: res.self.name }));
     }, [t]);
     const loadDaemons = useCallback(async () => {
         const res = await window.api.remoteDaemons();
         if (failed(res)) return;
         setDaemons(res.daemons || []);
+        setThisName((n) => ({ ...n, saved: res.thisName || '' }));
         if (!res.daemons?.length || typeof window.api.remoteServers !== 'function') return;
         // 그 PC의 데몬이 지워졌거나 다시 설치돼 짝을 잊었는지 본다 (닿지 않는 데몬은 늦게 답한다)
         const all = await window.api.remoteServers().catch(() => null);
@@ -242,6 +247,14 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         await reloadPcs();
     };
 
+    // 내 PC 이름 바꾸기 (이 PC 포함). 실패하면 까닭을 돌려준다 (수정 창이 보인다)
+    const rename = async (hostId: string, name: string): Promise<string | null> => {
+        const res = await window.api.remoteRenamePc(hostId, name);
+        if (!res || failed(res)) return remoteErrorText(res, t);
+        await reloadPcs();
+        return null;
+    };
+
     const update = async (hostId: string) => {
         const res = await run(`update:${hostId}`, () => window.api.remoteDaemonUpdate(hostId));
         if (res && !failed(res)) setNotice(t('remote_daemon.update_started'));
@@ -271,6 +284,9 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const mainIsRemote = daemons.some((d) => d.hostId === mainDaemon);
 
     const thisPc = settings?.thisPc || {};
+    const myName: string = thisName.fromRelay || thisName.saved || '';
+    // 이 PC 이름은 서버쨩에 연결된 PC만 있다 (내 PC 목록을 읽었을 때 바꿀 수 있다)
+    const myHostId: string | null = peers && settings?.hostId ? settings.hostId : null;
     const thisVersion: string | undefined = thisPc.agentVersion;
     const when = (iso?: string | null) => {
         if (!iso) return null;
@@ -350,7 +366,9 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
             return (
                 <PcSettingsDialog
                     hostId={null}
-                    name={t('daemon_switcher.local')}
+                    name={myName || t('daemon_switcher.local')}
+                    pcName={myName}
+                    onRename={myHostId ? (name) => rename(myHostId, name) : undefined}
                     sub={dialogSub(thisPc.platform, thisVersion)}
                     platform={thisPc.platform}
                     hasAddress
@@ -374,6 +392,8 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
             <PcSettingsDialog
                 hostId={card.hostId}
                 name={pcName(daemon || peer)}
+                pcName={peer?.name || daemon?.name || ''}
+                onRename={peer ? (name) => rename(card.hostId, name) : undefined}
                 sub={dialogSub(platform, peer?.agentVersion)}
                 platform={platform}
                 hasAddress={Boolean(daemon) && state === null && online}
@@ -544,7 +564,8 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                         </span>
                         <span className="remote-pc-who">
                             <span className="remote-pc-namerow">
-                                <b className="remote-pc-name">{t('daemon_switcher.local')}</b>
+                                <b className="remote-pc-name">{myName || t('daemon_switcher.local')}</b>
+                                {myName && <span className="remote-pc-tag">{t('daemon_switcher.local')}</span>}
                                 {versionTag(thisVersion)}
                             </span>
                             <span className="remote-pc-sub">{osLine(thisPc.platform)}</span>

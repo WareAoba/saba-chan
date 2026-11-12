@@ -96,6 +96,11 @@ pub async fn run(ctx: &Ctx, cmd: RemoteCmd) -> Result<()> {
             ctx.out.done(&t!("remote.forgotten", host = host_id), &r);
             Ok(())
         }
+        RemoteCmd::Rename { host_id, name } => {
+            let r = ctx.api.rename_pc(&host_id, &name).await?;
+            ctx.out.done(&t!("remote.renamed", name = s(&r, "name")), &r);
+            Ok(())
+        }
         RemoteCmd::Claim { code } => {
             let r = ctx.api.claim_remote(code.trim()).await?;
             ctx.out.done(&t!("remote.connected", name = pc_name(&r)), &r);

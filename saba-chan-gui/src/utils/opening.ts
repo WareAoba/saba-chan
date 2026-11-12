@@ -18,14 +18,36 @@ export interface OpeningInput {
     relayConnected: boolean;
     /** 데몬 준비 뒤 릴레이를 기다린 시간 */
     waitedMs: number;
+    /** 다른 PC로 바꿔 다시 연 창 (`markDaemonSwitch`): 오프닝·기동음 없이 바로 연다 */
+    switched?: boolean;
 }
 
 export function openingGate(s: OpeningInput): { hold: boolean; chime: boolean } {
-    if (!s.daemonOk) return { hold: false, chime: false };
+    if (!s.daemonOk || s.switched) return { hold: false, chime: false };
     const relayUnknown = !s.configLoaded || (s.relayConfigured && !s.relayChecked);
     if (relayUnknown && s.waitedMs < RELAY_WAIT_MS) return { hold: true, chime: false };
     if (relayUnknown) return { hold: false, chime: false };
     return { hold: false, chime: !s.relayConfigured || s.relayConnected };
+}
+
+/** 다른 PC로 바꿀 때 창을 다시 읽는다: 다시 연 창이 오프닝 없이 열리게 표시해 둔다 (사용자 11-12) */
+const SWITCH_KEY = 'saba:daemon-switched';
+export function markDaemonSwitch(): void {
+    try {
+        sessionStorage.setItem(SWITCH_KEY, '1');
+    } catch {
+        /* 저장할 수 없으면 오프닝이 그대로 나온다 */
+    }
+}
+/** 이 창이 PC를 바꿔 다시 연 창인가. 한 번 읽으면 지운다 */
+export function takeDaemonSwitch(): boolean {
+    try {
+        const switched = sessionStorage.getItem(SWITCH_KEY) === '1';
+        sessionStorage.removeItem(SWITCH_KEY);
+        return switched;
+    } catch {
+        return false;
+    }
 }
 
 /*
