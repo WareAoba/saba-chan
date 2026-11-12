@@ -81,9 +81,9 @@ pub fn spawn_update_checks(state: IPCServer) {
                 tried.retain(|id, _| list.iter().any(|i| &i.id == id));
                 due_checks(list, &tried, std::time::Instant::now())
             };
-            for (id, name) in due {
+            for (id, _) in due {
                 // 설치·업데이트 중이면 다음 틱에 본다
-                if is_pending(&id) || super::backup::InstanceLock::held(&id) || state.provision_tracker.get(&name).is_some_and(|p| !p.done) {
+                if is_pending(&id) || super::backup::InstanceLock::held(&id) || state.provision_tracker.get(&id).is_some_and(|p| !p.done) {
                     continue;
                 }
                 tried.insert(id.clone(), std::time::Instant::now());

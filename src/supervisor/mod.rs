@@ -986,29 +986,28 @@ impl Supervisor {
         (!unmet.is_empty()).then_some(unmet)
     }
 
-    /// Start a server by name (e.g., "my-server-1")
+    /// 인스턴스 id로 서버를 시작한다
     /// Called by IPC API: POST /api/instance/:id/start (비관리)
     ///
     /// managed 시작과 같이, 익스텐션 hook과 `get_launch_command`는 데몬 락 밖에서 부른다 (C12).
-    pub async fn start_server(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
+    pub async fn start_server(sup: &tokio::sync::RwLock<Self>, instance_id: &str, module_name: &str, config: Value) -> Result<Value> {
         let _swap = ADDON_SWAP_GATE.read().await;
-        tracing::info!("Starting server '{}' with module '{}'", server_name, module_name);
+        tracing::info!("Starting server '{}' with module '{}'", instance_id, module_name);
 
         let moved = {
             let mut s = sup.write().await;
-            let id = s.instance_store.find(server_name).map(|i| i.id.clone());
-            id.and_then(|id| s.move_reserved_default_rest_port(&id))
+            s.move_reserved_default_rest_port(instance_id)
         };
-        let result = Self::start_server_inner(sup, server_name, module_name, config).await;
-        Self::announce_ready(sup, server_name, &result).await;
+        let result = Self::start_server_inner(sup, instance_id, module_name, config).await;
+        Self::announce_ready(sup, instance_id, &result).await;
         result.map(|result| with_port_moved(result, moved))
     }
 
     /// 시작 결과로 준비 알림(R39, `ready.rs`)과 접속·퇴장 알림(MK8)·게임 채팅 전달(`player_events.rs`)을 시작한다. 콘솔을 읽는 managed 프로세스면 준비 문구를 기다린다
-    async fn announce_ready(sup: &tokio::sync::RwLock<Self>, key: &str, result: &Result<Value>) {
+    async fn announce_ready(sup: &tokio::sync::RwLock<Self>, instance_id: &str, result: &Result<Value>) {
         let (id, name, console, patterns, timeout, join, leave, chat) = {
             let s = sup.read().await;
-            let Some(instance) = s.instance_store.find(key) else { return };
+            let Some(instance) = s.instance_store.get(instance_id) else { return };
             let module = s.module_loader.get_module(&instance.module_name).ok();
             let meta = module.as_ref().map(|m| &m.metadata);
             let patterns = meta.map(|m| m.ready_patterns.clone()).unwrap_or_default();
@@ -1236,15 +1235,15 @@ impl Supervisor {
         })
     }
 
-    async fn start_server_inner(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
+    async fn start_server_inner(sup: &tokio::sync::RwLock<Self>, instance_id: &str, module_name: &str, config: Value) -> Result<Value> {
 
         // ── 검사 (읽기 락) ──
         let (instance, starting, hook) = {
             let s = sup.read().await;
             // Find instance to get executable_path and working_dir
-            let instance = s.instance_store.find(server_name)
+            let instance = s.instance_store.get(instance_id)
                 .cloned()
-                .ok_or_else(|| InstanceNotFound(server_name.to_string()))?;
+                .ok_or_else(|| InstanceNotFound(instance_id.to_string()))?;
 
             // ── 중복 시작 방어: 추적 중인 PID가 살아 있으면 새로 띄우지 않는다 (추적을 덮어쓰지 않게) ──
             if let Ok(existing_pid) = s.tracker.get_pid(&instance.id) {
@@ -1281,23 +1280,23 @@ impl Supervisor {
                         if !not_installed.is_empty() {
                             tracing::error!(
                                 "Instance '{}' requires extensions {:?} which are enabled but not installed on disk",
-                                server_name, not_installed
+                                instance_id, not_installed
                             );
                         } else {
                             tracing::error!(
                                 "Instance '{}' requires extensions {:?} but they are not enabled",
-                                server_name, missing
+                                instance_id, missing
                             );
                         }
                         return Ok(json!({
                             "success": false,
                             "error": "extension_required",
                             "error_code": "extension_required",
-                            "instance_name": server_name,
+                            "instance_name": instance_id,
                             "missing_extensions": missing,
                             "message": format!(
                                 "Instance '{}' requires extension(s) {} to start. Please enable them first.",
-                                server_name,
+                                instance_id,
                                 missing.join(", ")
                             )
                         }));
@@ -1311,7 +1310,7 @@ impl Supervisor {
                     "success": false,
                     "error": "start_in_progress",
                     "error_code": "start_in_progress",
-                    "message": format!("Server '{}' is already starting", server_name),
+                    "message": format!("Server '{}' is already starting", instance_id),
                 }));
             };
 
@@ -1442,12 +1441,12 @@ impl Supervisor {
         }
     }
 
-    /// 서버 정지. `server_name`은 인스턴스 id (이름은 겹칠 수 있다); 예전 호출을 위해 이름도 받는다
+    /// 인스턴스 id로 서버를 정지한다 (이름은 겹칠 수 있다)
     ///
     /// 데몬 락은 준비와 정리 때만 잡는다. 익스텐션 hook, 모듈 `stop()`, 종료 대기(최대
     /// `stop_timeout`초)는 락 밖에서 한다 (C12).
-    pub async fn stop_server(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, force: bool) -> Result<Value> {
-        let result = Self::stop_server_inner(sup, server_name, module_name, force).await;
+    pub async fn stop_server(sup: &tokio::sync::RwLock<Self>, instance_id: &str, module_name: &str, force: bool) -> Result<Value> {
+        let result = Self::stop_server_inner(sup, instance_id, module_name, force).await;
         // 정지가 실패하면 정지 표시를 지운다: 남겨 두면 뒤에 오는 진짜 크래시를 "사용자가 멈춤"으로 판정한다
         let failed = match &result {
             Err(_) => true,
@@ -1455,24 +1454,20 @@ impl Supervisor {
         };
         if failed {
             let mut s = sup.write().await;
-            let id = s.instance_store.find(server_name)
-                .map(|i| i.id.clone());
-            if let Some(id) = id {
-                s.stop_requested.remove(&id);
-            }
+            s.stop_requested.remove(instance_id);
         }
         result
     }
 
-    async fn stop_server_inner(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, force: bool) -> Result<Value> {
-        tracing::info!("Stopping server '{}' (force: {})", server_name, force);
+    async fn stop_server_inner(sup: &tokio::sync::RwLock<Self>, instance_id: &str, module_name: &str, force: bool) -> Result<Value> {
+        tracing::info!("Stopping server '{}' (force: {})", instance_id, force);
 
         // ── 1) 준비 (쓰기 락: 정지 표시를 남긴다) ──
         let (instance, hook, managed) = {
             let mut s = sup.write().await;
-            let instance = s.instance_store.find(server_name)
+            let instance = s.instance_store.get(instance_id)
                 .cloned()
-                .ok_or_else(|| InstanceNotFound(server_name.to_string()))?;
+                .ok_or_else(|| InstanceNotFound(instance_id.to_string()))?;
             s.stop_requested.insert(instance.id.clone(), crate::audit::current());
             let generation = s.run_generation.entry(instance.id.clone()).or_default();
             *generation += 1;
@@ -1740,19 +1735,17 @@ impl Supervisor {
         }
     }
 
-    /// Get server status by name
+    /// 인스턴스 id로 서버 상태를 본다 (응답의 `server`는 이름)
     /// Called by IPC API: GET /api/instance/:id/status
-    pub async fn get_server_status(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str) -> Result<Value> {
-        tracing::debug!("Getting status for server '{}'", server_name);
+    pub async fn get_server_status(sup: &tokio::sync::RwLock<Self>, instance_id: &str, module_name: &str) -> Result<Value> {
+        tracing::debug!("Getting status for server '{}'", instance_id);
 
         // 락 안에서는 값만 챙긴다. 익스텐션 hook과 모듈 status()는 락 밖에서 (C12)
         let (instance, hook) = {
             let s = sup.read().await;
-            let instance = s.instance_store.list()
-                .iter()
-                .find(|i| i.name == server_name)
+            let instance = s.instance_store.get(instance_id)
                 .cloned()
-                .ok_or_else(|| InstanceNotFound(server_name.to_string()))?;
+                .ok_or_else(|| InstanceNotFound(instance_id.to_string()))?;
             let hook = s.extension_manager.clone().map(|ext_mgr| {
                 let instance_dir = s.instance_store.instance_dir(&instance.id);
                 let process_patterns = s.module_loader.get_module(module_name)
@@ -1789,7 +1782,7 @@ impl Supervisor {
             if s.managed_store.get(&instance.id).await.is_some() {
                 let (running, pid, start_time) = s.tracked_state(&instance.id).await;
                 return Ok(json!({
-                    "server": server_name,
+                    "server": instance.name,
                     "status": if running { "running" } else { "stopped" },
                     "online": running,
                     "pid": pid,
@@ -1832,7 +1825,7 @@ impl Supervisor {
                     None => None,
                 };
                 Ok(json!({
-                    "server": server_name,
+                    "server": instance.name,
                     "status": status,
                     "pid": pid,
                     "start_time": start_time,
@@ -1841,7 +1834,7 @@ impl Supervisor {
             Err(e) => {
                 tracing::error!("Failed to get status: {}", e);
                 let mut result = crate::plugin::error_response(&e);
-                result["server"] = json!(server_name);
+                result["server"] = json!(instance.name);
                 result["status"] = json!("unknown");
                 result["pid"] = Value::Null;
                 Ok(result)
@@ -3326,7 +3319,7 @@ impl Supervisor {
             
             // 프로비저닝 중인 인스턴스는 auto-detect 건너뛰기
             if let Some(ref pt) = self.provision_tracker {
-                if let Some(progress) = pt.get(&instance.name) {
+                if let Some(progress) = pt.get(&instance.id) {
                     if !progress.done {
                         tracing::debug!(
                             "Skipping auto-detect for '{}' (provisioning in progress)",

@@ -240,12 +240,12 @@ pub fn run_status(run_id: &str, caller: &Caller) -> Result<Value, ActionError> {
 
 /// 새 서버 설치가 끝나기를 기다린다 (설치 진행이 없으면 바로)
 async fn wait_installed(server: &IPCServer, instance: &str) -> Result<(), ActionError> {
-    let Some(name) = server.supervisor.read().await.instance_store.get(instance).map(|i| i.name.clone()) else {
+    if server.supervisor.read().await.instance_store.get(instance).is_none() {
         return Err(ActionError::new(404, "not_found", "The new server is gone"));
-    };
+    }
     let started = Instant::now();
     loop {
-        match server.provision_tracker.get(&name) {
+        match server.provision_tracker.get(instance) {
             None => return Ok(()),
             Some(p) if p.done && p.error.is_some() => return Err(ActionError::new(502, "provision_failed", "Installing the server failed")),
             Some(p) if p.done => return Ok(()),

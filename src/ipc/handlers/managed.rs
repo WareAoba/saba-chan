@@ -39,8 +39,7 @@ pub async fn start_managed_handler(
             }
         };
 
-        // API 경유 시작 기록 (name과 id 모두)
-        state.api_actions.record(&instance.name);
+        // API 경유 시작 기록
         state.api_actions.record(&id);
 
         let module_name = instance.module_name.clone();
@@ -1006,9 +1005,9 @@ pub async fn install_server_handler(
     let executable = executable.map(str::to_string);
     let keep_executable = instance.as_ref().and_then(|(_, _, exe, _, _)| exe.clone());
     let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
-    if let (true, Some(name)) = (background, &instance_name) {
-        state.provision_tracker.take_creating(name);
-        state.provision_tracker.update(name, version_progress(text.t("provision.version_installing", &[("version", &version)]), false, None));
+    if let (true, Some(id), Some(name)) = (background, &instance_id, &instance_name) {
+        state.provision_tracker.take_creating(id);
+        state.provision_tracker.update(id, name, version_progress(text.t("provision.version_installing", &[("version", &version)]), false, None));
     }
     let install = {
         let state = state.clone();
@@ -1104,7 +1103,7 @@ pub async fn install_server_handler(
         }
         Err(body) => Err(body),
     };
-    if let (true, Some(name)) = (background, instance_name) {
+    if let (true, Some(id), Some(name)) = (background, instance_id.clone(), instance_name) {
         let tracker = state.provision_tracker.clone();
         tokio::spawn(async move {
             // 주의가 붙었거나 실패했으면 사용자가 닫을 때까지 남긴다
@@ -1135,10 +1134,10 @@ pub async fn install_server_handler(
                     version_progress(text.t("provision.install_failed", &[]), true, Some(error))
                 }
             };
-            tracker.update(&name, progress);
+            tracker.update(&id, &name, progress);
             if !keep {
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                tracker.remove(&name);
+                tracker.remove(&id);
             }
         });
         let body = json!({ "success": true, "provisioning": true, "id": instance_id, "version": version_label });
@@ -1850,7 +1849,7 @@ mod tests {
         };
         let finished = || async {
             for _ in 0..2400 {
-                if let Some(p) = state.provision_tracker.get("srv").filter(|p| p.done) {
+                if let Some(p) = state.provision_tracker.get(&id).filter(|p| p.done) {
                     return p;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -1864,7 +1863,7 @@ mod tests {
         assert_eq!(failed.error.as_deref(), Some("download failed"), "{failed:?}");
         assert_eq!(std::fs::read_to_string(files.join("world").join("level.dat")).unwrap(), "old", "the world comes back from the pre-install backup");
         assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().server_version, None);
-        state.provision_tracker.remove("srv");
+        state.provision_tracker.remove(&id);
 
         install("2.0").await;
         let done = finished().await;
@@ -1917,7 +1916,7 @@ mod tests {
         assert_eq!(started.status, StatusCode::OK, "{}", started.body);
         let mut done = None;
         for _ in 0..2400 {
-            done = state.provision_tracker.get("srv").filter(|p| p.done);
+            done = state.provision_tracker.get(&id).filter(|p| p.done);
             if done.is_some() {
                 break;
             }
@@ -1927,7 +1926,7 @@ mod tests {
         let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!(inst.extension_data.get("steamcmd_beta"), Some(&json!("unstable")));
         assert_eq!(inst.server_version, None, "a branch name is not a game version");
-        state.provision_tracker.remove("srv");
+        state.provision_tracker.remove(&id);
 
         // 업데이트는 고른 브랜치로 받는다
         std::fs::remove_file(files.join("branch.txt")).unwrap();

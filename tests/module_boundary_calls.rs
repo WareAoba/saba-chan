@@ -88,7 +88,8 @@ fn assert_module_failure(body: &Value, function: &str) {
 async fn progress_http_keeps_module_failure_fields() {
     let _serial = TEST_LOCK.lock().await;
     let state = boot("progress").await;
-    state.provision_tracker.update("progress", ProvisionProgress {
+    let id = add_instance(&state, "progress").await;
+    state.provision_tracker.update(&id, "progress", ProvisionProgress {
         step: 0, total: 1, label: "done".into(), message: "install failed".into(), done: true,
         error: None, percent: Some(100), steps: None, details: Default::default(),
     }.with_failure(json!({

@@ -467,20 +467,20 @@ impl ApiActionTracker {
         Self { inner: Arc::new(std::sync::Mutex::new(HashMap::new())) }
     }
 
-    /// 서버 이름에 대한 API 액션 타임스탬프 기록 (epoch millis)
-    pub fn record(&self, server_name: &str) {
+    /// 인스턴스 id에 대한 API 액션 타임스탬프 기록 (epoch millis)
+    pub fn record(&self, instance_id: &str) {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
         if let Ok(mut map) = self.inner.lock() {
-            map.insert(server_name.to_string(), ts);
+            map.insert(instance_id.to_string(), ts);
         }
     }
 
-    /// 서버의 마지막 API 액션 타임스탬프 조회
-    pub fn get(&self, server_name: &str) -> Option<u64> {
-        self.inner.lock().ok().and_then(|map| map.get(server_name).copied())
+    /// 인스턴스의 마지막 API 액션 타임스탬프 조회
+    pub fn get(&self, instance_id: &str) -> Option<u64> {
+        self.inner.lock().ok().and_then(|map| map.get(instance_id).copied())
     }
 }
 
@@ -519,14 +519,13 @@ impl ProvisionProgress {
     }
 }
 
-/// Tracks provisioning progress per instance_id
+/// 인스턴스 id별 프로비저닝 진행 상태. 이름은 바뀌고 겹칠 수 있으므로 키로 쓰지 않는다 (이름은 진행 알림에 싣기만 한다)
 #[derive(Debug, Clone)]
 pub struct ProvisionTracker {
     inner: Arc<std::sync::Mutex<HashMap<String, ProvisionProgress>>>,
-    /// 새로 만드는 중인 인스턴스 (진행 표시 이름 → 인스턴스 ID). 실패 후 dismiss할 때 롤백(삭제)해도 되는 것은
+    /// 새로 만드는 중인 인스턴스 id. 실패 후 dismiss할 때 롤백(삭제)해도 되는 것은
     /// 이 목록에 있는 것뿐이다. 기존 인스턴스의 업데이트 실패는 롤백하지 않는다.
-    /// 이름이 그 사이 다른 인스턴스로 넘어갈 수 있으므로 지울 대상은 ID로만 찾는다
-    creating: Arc<std::sync::Mutex<HashMap<String, String>>>,
+    creating: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 impl Default for ProvisionTracker {
@@ -544,46 +543,27 @@ impl ProvisionTracker {
     }
 
     /// 신규 생성 프로비저닝 시작을 기록한다.
-    pub fn mark_creating(&self, name: &str, instance_id: &str) {
-        if let Ok(mut map) = self.creating.lock() {
-            map.insert(name.to_string(), instance_id.to_string());
+    pub fn mark_creating(&self, instance_id: &str) {
+        if let Ok(mut set) = self.creating.lock() {
+            set.insert(instance_id.to_string());
         }
     }
 
-    /// 신규 생성 표시를 지우고, 표시가 있었으면 그 인스턴스 ID를 돌려준다.
-    pub fn take_creating(&self, name: &str) -> Option<String> {
-        self.creating.lock().ok().and_then(|mut map| map.remove(name))
+    /// 신규 생성 표시를 지우고, 표시가 있었는지 돌려준다.
+    pub fn take_creating(&self, instance_id: &str) -> bool {
+        self.creating.lock().is_ok_and(|mut set| set.remove(instance_id))
     }
 
-    /// 인스턴스 이름이 바뀌면 진행 표시와 신규 생성 표시도 새 이름으로 옮긴다.
-    /// 옛 이름에 남으면 그 이름으로 새로 만든 인스턴스가 설치 중으로 보이고, 그 배너를 닫으면 이 인스턴스가 지워진다
-    /// 새 이름에 남아 있던 옛 표시(지운 인스턴스의 것)는 버린다
-    pub fn rename(&self, from: &str, to: &str) {
-        self.forget(to);
-        if let Ok(mut map) = self.inner.lock() {
-            if let Some(progress) = map.remove(from) {
-                map.insert(to.to_string(), progress);
-            }
-        }
-        if let Ok(mut map) = self.creating.lock() {
-            if let Some(id) = map.remove(from) {
-                map.insert(to.to_string(), id);
-            }
-        }
+    /// 인스턴스를 지우면 그 진행 표시와 신규 생성 표시를 지운다
+    pub fn forget(&self, instance_id: &str) {
+        self.remove(instance_id);
+        self.take_creating(instance_id);
     }
 
-    /// 이름이 비면(인스턴스 삭제) 그 이름의 진행 표시와 신규 생성 표시를 지운다.
-    /// 남으면 같은 이름으로 새로 만든 인스턴스에 옛 오류 배너가 붙는다
-    pub fn forget(&self, name: &str) {
-        self.remove(name);
-        if let Ok(mut map) = self.creating.lock() {
-            map.remove(name);
-        }
-    }
-
-    pub fn update(&self, instance_id: &str, progress: ProvisionProgress) {
+    /// 진행 상태를 바꾸고 `provision.progress`를 알린다. `name`은 알림의 `instance`(클라이언트가 보이는 이름)다
+    pub fn update(&self, instance_id: &str, name: &str, progress: ProvisionProgress) {
         if let Ok(serde_json::Value::Object(mut data)) = serde_json::to_value(&progress) {
-            data.insert("instance".into(), instance_id.into());
+            data.insert("instance".into(), name.into());
             crate::events::emit_live("provision.progress", data.into());
         }
         if let Ok(mut map) = self.inner.lock() {
@@ -1253,8 +1233,8 @@ mod tests {
             error: None, percent: None, steps: None, details: Default::default(),
         }.with_failure(failure.clone());
         let tracker = ProvisionTracker::new();
-        tracker.update("test-game", progress);
-        let value = serde_json::to_value(tracker.get("test-game").unwrap()).unwrap();
+        tracker.update("test-id", "test-game", progress);
+        let value = serde_json::to_value(tracker.get("test-id").unwrap()).unwrap();
         for (key, expected) in failure.as_object().unwrap() {
             assert_eq!(&value[key], expected, "lost {key}");
         }
@@ -1274,28 +1254,24 @@ mod tests {
     #[test]
     fn only_new_instances_are_marked_for_rollback() {
         let tracker = ProvisionTracker::new();
-        tracker.mark_creating("fresh", "id-1");
-        assert_eq!(tracker.take_creating("fresh").as_deref(), Some("id-1"));
+        tracker.mark_creating("id-1");
+        assert!(tracker.take_creating("id-1"));
         // 한 번 꺼내면 끝 — 이후 업데이트 실패를 dismiss해도 롤백하지 않는다
-        assert!(tracker.take_creating("fresh").is_none());
-        assert!(tracker.take_creating("existing").is_none());
+        assert!(!tracker.take_creating("id-1"));
+        assert!(!tracker.take_creating("existing"));
     }
 
-    // 리뷰 289 P3-2: 지운 "b"나 이름을 바꿔 비운 "b"의 옛 오류 배너가 새로 만든 "b"에 붙었다
+    // 리뷰 289 P3-2: 지운 인스턴스의 옛 오류 배너가 남았다 (이름이 바뀌어도 진행 표시는 id를 따라가므로 따로 옮기지 않는다)
     #[test]
-    fn a_name_freed_by_delete_or_rename_carries_no_old_progress() {
+    fn a_deleted_instance_leaves_no_progress() {
         let failed = || ProvisionProgress {
             step: 1, total: 3, label: "install".into(), message: String::new(), done: true, error: Some("boom".into()), percent: None, steps: None, details: Default::default(),
         };
         let tracker = ProvisionTracker::new();
-        tracker.update("b", failed());
-        tracker.mark_creating("b", "old-b");
-        tracker.forget("b");
-        assert!(tracker.get("b").is_none() && tracker.take_creating("b").is_none());
-
-        tracker.update("b", failed());
-        tracker.rename("a", "b");
-        assert!(tracker.get("b").is_none(), "renaming onto a name drops the stale banner there");
+        tracker.update("old-b", "b", failed());
+        tracker.mark_creating("old-b");
+        tracker.forget("old-b");
+        assert!(tracker.get("old-b").is_none() && !tracker.take_creating("old-b"));
     }
 
     #[tokio::test]

@@ -280,11 +280,10 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         }
 
         // API(CLI/Discord)를 통한 마지막 시작/정지 타임스탬프 조회
-        server.last_api_action = state.api_actions.get(&server.name)
-            .or_else(|| state.api_actions.get(&server.id));
+        server.last_api_action = state.api_actions.get(&server.id);
 
         // 프로비저닝 진행 여부 확인 (tracker entry 존재 = provisioning UI 표시)
-        let provision_entry = state.provision_tracker.get(&server.name);
+        let provision_entry = state.provision_tracker.get(&server.id);
         server.provisioning = provision_entry.is_some();
         // 프로비저닝 중이면 상태를 "provisioning"으로 오버라이드
         if provision_entry.as_ref().is_some_and(|p| !p.done) {
@@ -846,10 +845,10 @@ pub async fn get_instance_status(
         supervisor
             .instance_store
             .find(&id)
-            .map(|i| (i.name.clone(), i.module_name.clone()))
+            .map(|i| (i.id.clone(), i.module_name.clone()))
     };
-    if let Some((name, module_name)) = instance {
-        match crate::supervisor::Supervisor::get_server_status(&state.supervisor, &name, &module_name).await {
+    if let Some((id, module_name)) = instance {
+        match crate::supervisor::Supervisor::get_server_status(&state.supervisor, &id, &module_name).await {
             Ok(result) => (StatusCode::OK, Json(result)).into_response(),
             Err(e) => {
                 let error = json!({ "error": format!("Failed to get status: {}", e) });
@@ -1155,44 +1154,40 @@ pub async fn instance_events_handler(Path(id): Path<String>, State(state): State
 
 /// 비관리 시작 (`start_checked`가 id로 부른다)
 async fn start_server_handler(
-    Path(name): Path<String>,
+    Path(id): Path<String>,
     State(state): State<IPCServer>,
     Json(payload): Json<ServerStartRequest>,
 ) -> impl IntoResponse {
     // API 경유 시작 기록 (GUI 외부 시작 감지용)
-    state.api_actions.record(&name);
+    state.api_actions.record(&id);
     // 익스텐션 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
-    let inst_id = {
-        let sup = state.supervisor.read().await;
-        let id = sup.instance_store.find(&name).map(|i| i.id.clone());
-        if let Some(id) = &id {
-            state.extension_status_cache.invalidate(id);
-        }
-        id
-    };
+    let exists = state.supervisor.read().await.instance_store.get(&id).is_some();
+    if exists {
+        state.extension_status_cache.invalidate(&id);
+    }
     // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
-    let _guard = match inst_id.as_deref() {
-        Some(id) => match super::backup::InstanceLock::take_for_writes(id).await {
-            None => return super::audited(&state, "start", &name, None, None, super::backup::instance_busy()).await,
+    let _guard = match exists {
+        true => match super::backup::InstanceLock::take_for_writes(&id).await {
+            None => return super::audited(&state, "start", &id, None, None, super::backup::instance_busy()).await,
             guard => guard,
         },
-        None => None,
+        false => None,
     };
     // 포트포워딩 확인이 시험 리스너로 포트를 잡고 있으면 놓을 때까지 (몇 초). 시작하는 동안에는 새 확인이 포트를 잡지 않는다
-    let _starting = match inst_id.as_deref() {
-        Some(id) => Some(crate::port_check::begin_start(id).await),
-        None => None,
+    let _starting = match exists {
+        true => Some(crate::port_check::begin_start(&id).await),
+        false => None,
     };
 
-    fill_passwords(&state, &name).await;
+    fill_passwords(&state, &id).await;
 
-    let resp = match crate::supervisor::Supervisor::start_server(&state.supervisor, &name, &payload.module, payload.config)
+    let resp = match crate::supervisor::Supervisor::start_server(&state.supervisor, &id, &payload.module, payload.config)
         .await
     {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => lifecycle_failure(&e, "start", "start_failed"),
     };
-    super::audited(&state, "start", &name, None, None, resp).await
+    super::audited(&state, "start", &id, None, None, resp).await
 }
 
 /// 시작·정지가 실패한 응답. 상태는 오류 문구가 아니라 종류로 고른다: 인스턴스가 없으면 404 `instance_not_found`,
@@ -1353,7 +1348,7 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
     // 정지가 끝날 때까지 복원 전 백업 정리를 붙잡아 둔다 (정리가 "돌고 있다"고 본 서버를 지우는 동안 멈추지 않게, 반대로 멈추는 중에는 지우지 않게)
     let _stopping = super::backup::stop_gate(id).await;
     // API 경유 정지 기록 (GUI 외부 정지 감지용)
-    state.api_actions.record(&name);
+    state.api_actions.record(id);
     // 익스텐션 상태 캐시 무효화 — 정지 직후 fresh 상태 반영
     {
         let sup = state.supervisor.read().await;
@@ -1369,8 +1364,6 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
     };
 
     if let Some(inst) = instance {
-        // instance id로도 API 액션 기록
-        state.api_actions.record(&inst.id);
         // 락은 stop_server가 단계마다 짧게 잡는다 (C12)
         match crate::supervisor::Supervisor::stop_server(&state.supervisor, &inst.id, &inst.module_name, payload.force).await {
             Ok(result) => {
@@ -1718,7 +1711,7 @@ mod tests {
 
         let both = || async {
             let list = crate::ipc::internal::into_internal(list_servers_internal(&state).await).await.body;
-            let one = crate::supervisor::Supervisor::get_server_status(&state.supervisor, "srv", "game").await.unwrap();
+            let one = crate::supervisor::Supervisor::get_server_status(&state.supervisor, "just-exited", "game").await.unwrap();
             (list["servers"][0]["status"].clone(), one["status"].clone())
         };
         assert_eq!(both().await, (json!("running"), json!("running")));

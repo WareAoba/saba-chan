@@ -512,8 +512,8 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                             "manual" | "download" => "download".to_string(),
                             other => other.to_string(),
                         };
-                        tracker.mark_creating(&instance_name, &id);
-                        tracker.update(&instance_name, crate::ipc::ProvisionProgress {
+                        tracker.mark_creating(&id);
+                        tracker.update(&id, &instance_name, crate::ipc::ProvisionProgress {
                             step: 0,
                             total: 1,
                             label: provision_label.clone(),
@@ -739,7 +739,7 @@ async fn install_new_server(job: InstallJob) {
             Ok(m) => m.entry_path(),
             Err(e) => {
                 drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
-                tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                tracker_done.update(&id_done, &name_done, crate::ipc::ProvisionProgress {
                     step: 0, total: 1,
                     label: "done".to_string(),
                     message: text.t("provision.install_failed", &[]),
@@ -769,7 +769,7 @@ async fn install_new_server(job: InstallJob) {
                 Ok(version) => Some(version),
                 Err(e) => {
                     drop(install_guard.take());
-                    tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                    tracker_done.update(&id_done, &name_done, crate::ipc::ProvisionProgress {
                         step: 0, total: 1,
                         label: "done".to_string(),
                         message: text.t("provision.install_failed", &[]),
@@ -804,11 +804,11 @@ async fn install_new_server(job: InstallJob) {
         }
 
         let tracker_progress = tracker_done.clone();
-        let name_progress = name_done.clone();
+        let (id_progress, name_progress) = (id_done.clone(), name_done.clone());
         let on_progress = move |prog: crate::plugin::ExtensionProgress| {
             let pct = prog.percent.unwrap_or(0);
             let msg = prog.message.clone().unwrap_or_default();
-            tracker_progress.update(&name_progress, crate::ipc::ProvisionProgress {
+            tracker_progress.update(&id_progress, &name_progress, crate::ipc::ProvisionProgress {
                 step: prog.step.unwrap_or(0),
                 total: prog.total.unwrap_or(1),
                 label: prog.label.unwrap_or_else(|| provision_label.clone()),
@@ -896,7 +896,7 @@ async fn install_new_server(job: InstallJob) {
                 // 실행 경로를 저장하지 못했으면 설치했다고 알리지 않는다 (시작할 실행 파일을 모른다)
                 if let Err(e) = saved {
                     tracing::warn!("Native provisioning for '{}' finished but the instance could not be saved: {}", name_done, e);
-                    tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                    tracker_done.update(&id_done, &name_done, crate::ipc::ProvisionProgress {
                         step: 0, total: 1,
                         label: "done".to_string(),
                         message: text.t("provision.install_failed", &[]),
@@ -908,7 +908,7 @@ async fn install_new_server(job: InstallJob) {
                     return;
                 }
                 tracing::info!("Native provisioning completed for '{}'", name_done);
-                tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                tracker_done.update(&id_done, &name_done, crate::ipc::ProvisionProgress {
                     step: 0, total: 1,
                     label: "done".to_string(),
                     message: text.t("provision.installed", &[]),
@@ -920,10 +920,10 @@ async fn install_new_server(job: InstallJob) {
 
                 // 5초 후 tracker 자동 정리
                 let tracker_cleanup = tracker_done.clone();
-                let name_cleanup = name_done.clone();
+                let id_cleanup = id_done.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    tracker_cleanup.remove(&name_cleanup);
+                    tracker_cleanup.remove(&id_cleanup);
                 });
             } else {
                 let err_msg = val.get("message")
@@ -933,7 +933,7 @@ async fn install_new_server(job: InstallJob) {
                 tracing::warn!("Native provisioning failed for '{}': {}", name_done, err_msg);
                 if let Some(left) = &leftovers { left.clear() }
                 drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
-                tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                tracker_done.update(&id_done, &name_done, crate::ipc::ProvisionProgress {
                     step: 0, total: 1,
                     label: "done".to_string(),
                     message: text.t("provision.install_failed", &[]),
@@ -948,7 +948,7 @@ async fn install_new_server(job: InstallJob) {
             tracing::warn!("Native provisioning error for '{}': {}", name_done, e);
             if let Some(left) = &leftovers { left.clear() }
             drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
-            tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+            tracker_done.update(&id_done, &name_done, crate::ipc::ProvisionProgress {
                 step: 0, total: 1,
                 label: "done".to_string(),
                 message: text.t("provision.install_failed", &[]),
@@ -1594,20 +1594,18 @@ pub async fn dismiss_provision_progress(
 ) -> impl IntoResponse {
     // 끝난 설치만 닫는다: 진행 중(또는 막 시작해 아직 표시가 없는) 설치의 신규 생성 표시를 지우면
     // 그 설치가 실패해도 롤백되지 않는다
-    let Some(progress) = state.provision_tracker.get(&name).filter(|p| p.done) else {
+    let Some((id, progress)) = provisioning_of(&state, &name).await.filter(|(_, p)| p.done) else {
         return (StatusCode::OK, Json(json!({ "success": true, "rolled_back": false }))).into_response();
     };
     let had_error = progress.error.is_some();
-    let creating = state.provision_tracker.take_creating(&name);
+    let creating = state.provision_tracker.take_creating(&id);
 
-    state.provision_tracker.remove(&name);
+    state.provision_tracker.remove(&id);
 
-    // 신규 생성이 실패했을 때만 롤백 — 그 설치의 인스턴스를 ID로 지운다.
-    // 이름으로 찾으면 그 사이 이름을 바꾸고 같은 이름으로 만든 다른 인스턴스가 지워진다
-    let rollback = creating.filter(|_| had_error);
+    // 신규 생성이 실패했을 때만 롤백 — 그 설치의 인스턴스를 ID로 지운다
     // 실제로 지웠을 때만 rolled_back (건너뛰거나 실패하면 인스턴스가 남아 있다)
     let mut rolled_back = false;
-    if let Some(id) = rollback {
+    if creating && had_error {
         // 다른 작업(업데이트·복원·삭제)이 그 폴더를 쓰는 중이면 지우지 않는다
         match super::backup::InstanceLock::take_for_writes(&id).await {
             None => tracing::warn!("Skipping rollback of '{}' (id={}): another task holds the instance", name, id),
@@ -1629,12 +1627,19 @@ pub async fn dismiss_provision_progress(
     (StatusCode::OK, Json(json!({ "success": true, "rolled_back": rolled_back }))).into_response()
 }
 
+/// 경로의 서버 이름을 인스턴스 id로 바꿔 그 진행 상태를 찾는다 (진행 상태는 id로 기억한다)
+async fn provisioning_of(state: &IPCServer, name: &str) -> Option<(String, crate::ipc::ProvisionProgress)> {
+    let id = state.supervisor.read().await.instance_store.find(name).map(|i| i.id.clone())?;
+    let progress = state.provision_tracker.get(&id)?;
+    Some((id, progress))
+}
+
 /// GET /api/provision-progress/:name - 프로비저닝 진행 상태 (서버 이름 기준)
 pub async fn get_provision_progress(
     Path(name): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    if let Some(progress) = state.provision_tracker.get(&name) {
+    if let Some((_, progress)) = provisioning_of(&state, &name).await {
         let mut resp = serde_json::to_value(progress).expect("provision progress contains JSON fields");
         resp["active"] = json!(true);
         (StatusCode::OK, Json(resp)).into_response()
@@ -1794,7 +1799,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     }
     match removed {
         Ok(_) => {
-            state.provision_tracker.forget(&instance.name);
+            state.provision_tracker.forget(&id);
             // 지운 서버의 브랜치는 독립 서버로 남는다
             {
                 let mut supervisor = state.supervisor.write().await;
@@ -1853,7 +1858,7 @@ pub async fn rename_instance(
     if new_name.contains(crate::chat::words::is_comma) {
         return invalid_name().into_response();
     }
-    // 설치·업데이트·복원 중에는 바꾸지 않는다: 진행 표시와 실패 정리가 이름으로 이어진다
+    // 설치·업데이트·복원 중에는 바꾸지 않는다: 진행 알림(`provision.progress`)이 시작 때의 이름을 싣는다
     let Some(_guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
     };
@@ -1876,8 +1881,6 @@ pub async fn rename_instance(
     if let Err(e) = supervisor.instance_store.update(&id, instance) {
         return fail(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), "internal");
     }
-    // 실패한 설치의 진행 표시는 이름으로 이어지므로 같은 잠금 안에서 함께 옮긴다
-    state.provision_tracker.rename(&previous, new_name);
     Json(json!({ "success": true, "id": id, "name": new_name, "previous": previous })).into_response()
 }
 
@@ -2843,8 +2846,9 @@ pub(crate) async fn begin_server_update_holding(
     let host_context = state.host_context(id);
 
     // 프로비저닝 상태 등록 (기존 인스턴스 업데이트 — 실패해도 롤백 대상이 아니다)
-    tracker.take_creating(&instance_name);
+    tracker.take_creating(id);
     tracker.update(
+        id,
         &instance_name,
         crate::ipc::ProvisionProgress {
             step: 0,
@@ -2862,7 +2866,7 @@ pub(crate) async fn begin_server_update_holding(
     drop(supervisor);
 
     let tracker_done = tracker.clone();
-    let name_done = instance_name.clone();
+    let (id_done, name_done) = (id.to_string(), instance_name.clone());
 
     let backup_state = state.clone();
     let backup_id = id.to_string();
@@ -2877,6 +2881,7 @@ pub(crate) async fn begin_server_update_holding(
             tracing::error!("Pre-update backup failed for '{}': {}", name_done, reason);
             emit_update_failed(&backup_state, &backup_id, &reason).await;
             tracker_done.update(
+                &id_done,
                 &name_done,
                 crate::ipc::ProvisionProgress {
                     step: 0,
@@ -2900,6 +2905,7 @@ pub(crate) async fn begin_server_update_holding(
                 Err(e) => {
                     emit_update_failed(&backup_state, &backup_id, &e.to_string()).await;
                     tracker_done.update(
+                        &id_done,
                         &name_done,
                         crate::ipc::ProvisionProgress {
                             step: 0,
@@ -2931,11 +2937,12 @@ pub(crate) async fn begin_server_update_holding(
             }
 
             let tracker_progress = tracker_done.clone();
-            let name_progress = name_done.clone();
+            let (id_progress, name_progress) = (id_done.clone(), name_done.clone());
             let on_progress = move |prog: crate::plugin::ExtensionProgress| {
                 let pct = prog.percent.unwrap_or(0);
                 let msg = prog.message.clone().unwrap_or_default();
                 tracker_progress.update(
+                    &id_progress,
                     &name_progress,
                     crate::ipc::ProvisionProgress {
                         step: prog.step.unwrap_or(0),
@@ -2979,6 +2986,7 @@ pub(crate) async fn begin_server_update_holding(
                     // 받은 빌드가 최신이다: 지난 확인의 "새 빌드 있음"을 지운다 (다음 주기 확인이 다시 채운다)
                     super::server_update::forget_check(&backup_id);
                     tracker_done.update(
+                        &id_done,
                         &name_done,
                         crate::ipc::ProvisionProgress {
                             step: 0,
@@ -3001,6 +3009,7 @@ pub(crate) async fn begin_server_update_holding(
                     tracing::error!("Server update failed for '{}': {}", name_done, err_msg);
                     emit_update_failed(&backup_state, &backup_id, &err_msg).await;
                     tracker_done.update(
+                        &id_done,
                         &name_done,
                         crate::ipc::ProvisionProgress {
                             step: 0,
@@ -3020,6 +3029,7 @@ pub(crate) async fn begin_server_update_holding(
                 tracing::error!("Server update error for '{}': {}", name_done, e);
                 emit_update_failed(&backup_state, &backup_id, &text.t("provision.script_failed", &[])).await;
                 tracker_done.update(
+                    &id_done,
                     &name_done,
                     crate::ipc::ProvisionProgress {
                         step: 0,
@@ -3038,10 +3048,10 @@ pub(crate) async fn begin_server_update_holding(
 
         // 5초 후 프로비저닝 tracker 자동 정리
         let tracker_cleanup = tracker_done.clone();
-        let name_cleanup = name_done.clone();
+        let id_cleanup = id_done.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            tracker_cleanup.remove(&name_cleanup);
+            tracker_cleanup.remove(&id_cleanup);
         });
         updated
     }))
@@ -3633,7 +3643,7 @@ mod tests {
     /// 설치가 끝났다는 표시를 기다린다. 상한은 멈춘 설치를 알아채려는 것이라, 병렬 테스트로 느려진 PC·CI에서도 넉넉히 둔다
     async fn provisioned(state: &crate::ipc::IPCServer, name: &str) -> Option<crate::ipc::ProvisionProgress> {
         for _ in 0..2400 {
-            if let Some(progress) = state.provision_tracker.get(name).filter(|p| p.done) {
+            if let Some((_, progress)) = super::provisioning_of(state, name).await.filter(|(_, p)| p.done) {
                 return Some(progress);
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -5213,7 +5223,7 @@ mod tests {
 
         // 처음 부르는 선택 함수 앞에는 함수 목록을 묻는 실행이 하나 더 있다: 느린 Windows CI에서도 넉넉히 기다린다
         provisioned(&state, "a").await;
-        assert!(state.provision_tracker.get("a").is_some_and(|p| p.error.is_some()), "the install should have failed");
+        assert!(state.provision_tracker.get(&a).is_some_and(|p| p.error.is_some()), "the install should have failed");
 
         // 실패 뒤 dismiss 전에 이름을 바꾸고, 그 이름으로 다른 인스턴스를 만든다
         let renamed = crate::ipc::internal::into_internal(super::rename_instance(State(state.clone()), Path(a.clone()), Json(json!({ "name": "b" }))).await).await;
@@ -5221,8 +5231,8 @@ mod tests {
         let c = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "plain" }))).await).await;
         let c = c.body["id"].as_str().unwrap().to_string();
 
-        // 실패 표시는 이름과 함께 옮겨 간다: 같은 이름의 새 인스턴스가 설치 중으로 보이거나 그 배너로 A가 지워지지 않게
-        assert!(state.provision_tracker.get("a").is_none(), "the new instance with the old name is not provisioning");
+        // 실패 표시는 인스턴스를 따라간다: 같은 이름의 새 인스턴스가 설치 중으로 보이거나 그 배너로 A가 지워지지 않게
+        assert!(state.provision_tracker.get(&c).is_none(), "the new instance with the old name is not provisioning");
         let other = crate::ipc::internal::into_internal(super::dismiss_provision_progress(Path("a".to_string()), State(state.clone())).await).await;
         assert_eq!(other.body["rolled_back"], false);
         assert!(state.supervisor.read().await.instance_store.get(&a).is_some(), "dismissing another name's banner keeps A");
