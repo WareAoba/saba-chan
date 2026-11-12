@@ -27,6 +27,8 @@ pub fn is_event_hook(name: &str) -> bool {
 pub trait Runner: Send + Sync + 'static {
     /// 이 hook을 가진 활성 익스텐션 id
     fn targets(&self, hook: &str) -> impl Future<Output = Vec<String>> + Send;
+    /// 확인되지 않아 격리로 도는 익스텐션인가 (비격리 동의가 없다)
+    fn isolated(&self, ext_id: &str) -> bool;
     /// 익스텐션 하나의 hook을 부르고 끝날 때까지 기다린다
     fn run(&self, ext_id: &str, hook: &str, context: Value) -> impl Future<Output = ()> + Send;
 }
@@ -34,6 +36,10 @@ pub trait Runner: Send + Sync + 'static {
 impl Runner for RwLock<ExtensionManager> {
     async fn targets(&self, hook: &str) -> Vec<String> {
         self.read().await.hooks_for(hook).iter().map(|(ext, _)| ext.manifest.id.clone()).collect()
+    }
+
+    fn isolated(&self, ext_id: &str) -> bool {
+        crate::sandbox::extension_isolated(ext_id)
     }
 
     async fn run(&self, ext_id: &str, hook: &str, context: Value) {
@@ -127,7 +133,16 @@ fn start_worker<R: Runner>(ext_id: String, runner: Arc<R>) -> Arc<Worker> {
                 me.wake.notified().await;
                 continue;
             };
-            let context = json!({ "event": item.event.kind, "id": item.event.id, "data": item.event.data });
+            // 격리는 데이터 폴더와 다른 인스턴스를 가리지만 네트워크는 연다: 릴레이에 올리는 것과 같은 모양만 넘긴다
+            let data = if runner.isolated(&ext_id) {
+                match crate::relay_agent::relay_event(&item.event) {
+                    Some(mut shared) => shared["data"].take(),
+                    None => continue,
+                }
+            } else {
+                item.event.data.clone()
+            };
+            let context = json!({ "event": item.event.kind, "id": item.event.id, "data": data });
             let (runner, ext) = (runner.clone(), ext_id.clone());
             // 따로 띄워 hook 하나가 패닉해도 이 익스텐션의 다음 이벤트는 이어진다
             let run = tokio::spawn(async move { runner.run(&ext, &item.hook, context).await });
@@ -146,17 +161,18 @@ mod tests {
     use tokio::sync::Semaphore;
     use tokio::time::{sleep, timeout, Duration};
 
-    /// 익스텐션 → 받는 hook. `held`의 hook은 허가를 받아야 끝난다
+    /// 익스텐션 → 받는 hook. `held`의 hook은 허가를 받아야 끝나고, `isolated`는 격리로 도는 익스텐션이다
     struct Fake {
         bus: &'static Bus,
         hooks: Vec<(&'static str, &'static str)>,
         calls: Mutex<Vec<(String, Value)>>,
         held: Option<(&'static str, Semaphore)>,
+        isolated: Option<&'static str>,
     }
 
     impl Fake {
         fn new(hooks: Vec<(&'static str, &'static str)>) -> Self {
-            Self { bus: Box::leak(Box::new(Bus::new())), hooks, calls: Mutex::default(), held: None }
+            Self { bus: Box::leak(Box::new(Bus::new())), hooks, calls: Mutex::default(), held: None, isolated: None }
         }
 
         fn calls_of(&self, ext: &str) -> Vec<Value> {
@@ -183,7 +199,11 @@ mod tests {
             self.hooks.iter().filter(|(_, h)| *h == hook).map(|(e, _)| e.to_string()).collect()
         }
 
-        async fn run(&self, ext_id: &str, hook: &str, context: Value) {
+        fn isolated(&self, ext_id: &str) -> bool {
+            self.isolated == Some(ext_id)
+        }
+
+        async fn run(&self, ext_id: &str, _hook: &str, context: Value) {
             self.calls.lock().unwrap().push((ext_id.to_string(), context));
             if let Some((held, gate)) = &self.held {
                 if *held == ext_id {
@@ -231,5 +251,25 @@ mod tests {
         let slow: Vec<usize> = fake.calls_of("slow").iter().map(|c| c["data"]["n"].as_u64().unwrap() as usize).collect();
         assert!(slow.len() <= QUEUE_CAP + 1, "a stuck extension keeps at most its queue: {slow:?}");
         assert_eq!(slow.last(), Some(&(total - 1)), "the newest event is kept: {slow:?}");
+    }
+
+    #[tokio::test]
+    async fn an_isolated_extension_gets_only_what_may_leave_this_pc() {
+        let hooks = ["event:action.run", "event:instance.exit"];
+        let mut fake = Fake::new(hooks.iter().flat_map(|h| [("open", *h), ("boxed", *h)]).collect());
+        fake.isolated = Some("boxed");
+        let fake = start(fake);
+        fake.bus.emit("action.run", json!({ "action": "server.start", "userName": "someone", "guildId": "g1" }));
+        fake.bus.emit("instance.exit", json!({ "instanceId": "i1", "kind": "crash", "evidence": "console: at /home/me/server/crash.log" }));
+
+        let open = fake.until("open", 2).await;
+        assert_eq!(open[0]["data"]["userName"], "someone");
+        assert_eq!(open[1]["data"]["evidence"], "console: at /home/me/server/crash.log");
+
+        let boxed = fake.until("boxed", 1).await;
+        sleep(Duration::from_millis(50)).await;
+        assert_eq!(fake.calls_of("boxed").len(), 1, "who ran what is not handed to an isolated extension: {:?}", fake.calls_of("boxed"));
+        assert_eq!((boxed[0]["event"].as_str(), boxed[0]["data"]["instanceId"].as_str()), (Some("instance.exit"), Some("i1")));
+        assert!(boxed[0]["data"].get("evidence").is_none(), "console lines and paths stay on this PC: {}", boxed[0]);
     }
 }

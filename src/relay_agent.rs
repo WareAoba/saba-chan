@@ -1367,15 +1367,15 @@ fn queue_event(pending: &mut std::collections::VecDeque<Value>, event: &crate::e
     }
 }
 
-/// 알림 채널(I3)에 올릴 모양 `{id, type, data}`. 올리지 않는 종류면 None.
-/// 원격으로 나가므로 경로·콘솔 줄·오류 원문은 싣지 않는다
 /// 이 이벤트가 오면 다음 하트비트를 기다리지 않고 곧 보낸다 — 서버가 켜지고 꺼진 것은 누가 어디서 시켰든
 /// (디스코드·챗봇·GUI·CLI·예약·사바쨩 밖) 데몬이 알아챈 때 릴레이의 서버 목록과 상황판에 닿게 한다
 fn kicks_heartbeat(kind: &str) -> bool {
     matches!(kind, "instance.started" | "instance.stopped" | "instance.ready" | "instance.exit")
 }
 
-fn relay_event(event: &crate::events::Event) -> Option<Value> {
+/// 알림 채널(I3)에 올릴 모양 `{id, type, data}`. 올리지 않는 종류면 None.
+/// 원격으로 나가므로 경로·콘솔 줄·오류 원문은 싣지 않는다. 격리된 익스텐션의 event hook도 이 모양만 받는다 (`extension::event_hooks`)
+pub(crate) fn relay_event(event: &crate::events::Event) -> Option<Value> {
     let d = &event.data;
     let pick = |keys: &[&str]| -> serde_json::Map<String, Value> {
         keys.iter().filter_map(|k| d.get(*k).map(|v| (k.to_string(), v.clone()))).collect()

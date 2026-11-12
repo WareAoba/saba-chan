@@ -793,10 +793,7 @@ fn importable_extensions(enabled: Vec<String>, isolated: bool, unverified: impl 
 
 /// 이 실행이 import할 수 있는 익스텐션을 Python 가드(`sitecustomize.py`)에 알린다. 확인되지 않아 뺀 것을 돌려준다
 fn set_extension_env(cmd: &mut tokio::process::Command, enabled: Vec<String>, isolated: bool, consented: Option<&str>) -> Vec<String> {
-    let (importable, unverified) = importable_extensions(enabled, isolated, |id| {
-        crate::sandbox::python_isolation_required(crate::sandbox::extension_trust(id))
-            && !crate::sandbox::extension_unisolated_allowed(id)
-    }, consented);
+    let (importable, unverified) = importable_extensions(enabled, isolated, crate::sandbox::extension_isolated, consented);
     cmd.env("SABA_ENABLED_EXTENSIONS", importable.join(","));
     // 가드가 "켜져 있지 않음" 대신 "확인되지 않아 쓸 수 없음"이라고 알리게
     cmd.env("SABA_UNVERIFIED_EXTENSIONS", unverified.join(","));

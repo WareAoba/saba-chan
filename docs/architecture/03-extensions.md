@@ -157,6 +157,7 @@ manifest에 발화되지 않는 hook을 새로 선언하면 `parse_manifest`가 
 - 이름: `event:` 뒤에 이벤트 종류(영문 소문자·숫자·`_`·`.`). 종류 목록과 대조하지 않으므로 없는 종류는 받을 일이 없을 뿐 오류가 아니다. `event:`만 있거나 모양이 다르면 다른 hook처럼 "never fired"다. `condition`은 쓸 수 없다(이벤트에는 `extension_data`가 없다, v1 오류·v0 경고).
 - context: `{event: <종류>, id: <이벤트 번호>, data: {at, ...이벤트 데이터}}` + 그 익스텐션 자신의 `extension_config`. 결과는 쓰지 않는다. 실패는 다른 hook처럼 로그에만 남는다.
 - 넘기는 것: 버퍼에 남는 이벤트(`emit`)만. 지금 붙은 클라이언트에게만 가는 것(`emit_live`: `provision.progress`, `servers.changed`, `instance.update_checked`, `relay.status`)은 넘기지 않는다.
+- 격리된 익스텐션(확인되지 않았고 비격리 동의가 없는 것, `sandbox::extension_isolated`): 격리는 데이터 폴더·다른 인스턴스를 가리지만 밖으로 나가는 네트워크는 열어 두므로, 릴레이 알림 채널에 올리는 것과 같은 모양(I3, `relay_agent::relay_event`의 `data`)만 넘긴다. 경로·콘솔 줄·오류 원문은 빠지고, 릴레이에 올리지 않는 종류(`action.run`, `instance.player` 등)는 그 익스텐션에 넘기지 않는다. 확인된 익스텐션과 비격리 동의를 받은 익스텐션은 이벤트 데이터를 그대로 받는다.
 - 인스턴스 문맥 없이 부른다: HOST 작업(`instance.stdin`·`instance.rcon`·`instance.rest`)은 `no_instance`다. 그래서 이벤트마다 게임 서버에 명령을 보내지 못한다.
 - 상한: 익스텐션마다 줄 하나와 일꾼 하나. 디스패처는 줄에 넣기만 하므로 버스를 막지 않는다. 한 익스텐션의 hook은 한 번에 하나씩(기본 120s 타임아웃) 돌고, 느리거나 실패하거나 패닉해도 다른 익스텐션의 hook은 기다리지 않는다. 줄은 32건까지, 넘치면 가장 오래된 것을 버리고 줄이 빌 때까지 경고를 한 번 남긴다. 디스패처가 버스(256)에 뒤처지면 놓친 수를 경고로 남긴다.
 
