@@ -331,7 +331,7 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
 
 /// 업데이트가 끈 서버를 다시 켠다. 그 순간 다른 작업(백업·복원)이 잠금을 쥐고 있으면 끝나기를 기다린다.
 /// 그사이 사용자가 켜거나 끄거나 인스턴스를 지우면(`generation`이 바뀌면) 그만둔다
-pub(crate) async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
+async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
     let wanted = || async {
         let supervisor = state.supervisor.read().await;
         supervisor.instance_store.get(id).is_some() && supervisor.run_generation_of(id) == generation
@@ -598,6 +598,8 @@ pub async fn apply_to_running(state: &IPCServer, id: &str, body: &ApplyBody) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ipc::handlers::backup::tests::{server_with, NO_BACKUP, WORK_DEADLINE};
+    use crate::ipc::handlers::backup::InstanceLock;
 
     /// 데몬의 주기 확인: 자동 업데이트를 켠 서버는 자동 업데이트 쪽이 보고, 나머지는 3시간에 한 번
     #[test]
@@ -802,5 +804,21 @@ mod tests {
         assert!(is_pending("srv-pending-test"));
         drop(first);
         assert!(Pending::take("srv-pending-test").is_some());
+    }
+
+    /// 예약 업데이트가 끝난 뒤 다시 켤 때도, 그 순간 다른 작업(백업)이 잠금을 쥐면 끝나기를 기다린다 (꺼진 채 남지 않게)
+    #[tokio::test]
+    async fn a_scheduled_update_restart_waits_for_a_running_backup() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let generation = state.supervisor.read().await.run_generation_of(&id);
+        let guard = InstanceLock::take(&id).expect("free");
+        let restart = tokio::spawn({
+            let (state, id) = (state.clone(), id.clone());
+            async move { start_after_update(&state, &id, generation).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        assert!(!restart.is_finished(), "the restart must wait for the backup, not fail with instance_busy");
+        drop(guard);
+        tokio::time::timeout(WORK_DEADLINE, restart).await.expect("starts once the lock is free").unwrap();
     }
 }

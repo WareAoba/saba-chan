@@ -1248,14 +1248,14 @@ pub(crate) async fn announce(state: &IPCServer, id: &str, message: &str) -> bool
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
-    const NO_BACKUP: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
+    pub(crate) const NO_BACKUP: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
 
-    async fn server_with(module_toml: &str, hook: Option<&str>) -> (IPCServer, String, tempfile::TempDir) {
+    pub(crate) async fn server_with(module_toml: &str, hook: Option<&str>) -> (IPCServer, String, tempfile::TempDir) {
         let tmp = tempfile::tempdir().unwrap();
         let modules = tmp.path().join("modules");
         let dir = modules.join("plain");
@@ -1276,7 +1276,7 @@ mod tests {
 
     /// 모듈 호출이 끝나기를 기다리는 한도. 여기서 재는 것은 "끝나면 풀린다"이지 빠르기가 아니다: Windows 전체 실행에서는
     /// 첫 격리 호출(venv 만들기)과 병렬 시험 부하로 Python이 10초 넘게 걸리기도 한다 (L24)
-    const WORK_DEADLINE: std::time::Duration = std::time::Duration::from_secs(180);
+    pub(crate) const WORK_DEADLINE: std::time::Duration = std::time::Duration::from_secs(180);
 
     /// 잠금이 풀릴 때까지 (WORK_DEADLINE까지) 기다린다. 풀려서 잡았으면 true
     async fn lock_freed(id: &str) -> bool {
@@ -1588,79 +1588,6 @@ else:
         assert_eq!(code(err).await, "backup_unsupported");
     }
 
-    #[tokio::test]
-    async fn a_scheduled_backup_of_a_stopped_server_is_logged_as_skipped() {
-        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
-        let task: ScheduledTask = serde_json::from_value(json!({"action": "backup", "every_minutes": 60})).unwrap();
-        crate::scheduler::runner::run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
-        let entries = crate::audit::log().recent(10, Some(&id));
-        let entry = entries.first().expect("the skipped backup must leave a record");
-        assert_eq!(entry["action"], "backup");
-        assert_eq!(entry["source"], "schedule");
-        assert_eq!(entry["ok"], false);
-        assert_eq!(entry["status"], 409);
-    }
-
-    // 예약이 실제로 돌았는지, 실패했는지를 일정 조회가 작업마다 알려 준다 (새것부터)
-    #[tokio::test]
-    async fn a_scheduled_run_leaves_its_result_in_the_schedule_history() {
-        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
-        let restart: ScheduledTask = serde_json::from_value(json!({"action": "restart", "at": "04:00"})).unwrap();
-        let backup: ScheduledTask = serde_json::from_value(json!({"action": "backup", "every_minutes": 60})).unwrap();
-        {
-            let mut sup = state.supervisor.write().await;
-            let mut instance = sup.instance_store.get(&id).unwrap().clone();
-            instance.schedule = vec![restart.clone(), backup.clone()];
-            sup.instance_store.update(&id, instance).unwrap();
-        }
-        let mut events = crate::events::bus().subscribe(None);
-        let fire = chrono::Local::now().naive_local() - chrono::Duration::seconds(5);
-        crate::scheduler::runner::run_task(&state, &id, &restart, fire, &crate::scheduler::task_key(&id, &restart)).await;
-        crate::scheduler::runner::run_task(&state, &id, &backup, fire, &crate::scheduler::task_key(&id, &backup)).await;
-
-        let body = crate::ipc::internal::into_internal(get_schedule(Path(id.clone()), State(state.clone())).await).await.body;
-        let at = crate::scheduler::instant(&chrono::Local, fire).unwrap().timestamp();
-        assert_eq!(body["history"][0], json!([{ "at": at, "result": "failed", "code": "not_running", "seconds": 0 }]), "{}", body);
-        assert_eq!(body["history"][1][0]["result"], "skipped", "a stopped server has nothing new to back up: {}", body);
-        assert_eq!(body["history"][1][0]["code"], "not_running");
-
-        let seen: Vec<_> = std::iter::from_fn(|| events.rx.try_recv().ok()).collect();
-        let failed: Vec<_> = seen.iter().filter(|e| e.kind == "schedule.failed" && e.data["instanceId"] == id.as_str()).collect();
-        assert_eq!(failed.len(), 1, "only the failed restart is announced as failed");
-        assert_eq!(failed[0].data["action"], "restart");
-        assert_eq!(failed[0].data["code"], "not_running");
-    }
-
-    // 작업을 꺼 두어도 같은 작업이다: 이력이 그대로 보이고, 그사이 다른 작업이 돌아도 지워지지 않는다
-    #[tokio::test]
-    async fn turning_a_task_off_keeps_its_history() {
-        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
-        let restart: ScheduledTask = serde_json::from_value(json!({"action": "restart", "at": "04:00"})).unwrap();
-        let stop: ScheduledTask = serde_json::from_value(json!({"action": "stop", "at": "05:00"})).unwrap();
-        let set = |schedule: Vec<ScheduledTask>| {
-            let (state, id) = (state.clone(), id.clone());
-            async move {
-                let mut sup = state.supervisor.write().await;
-                let mut instance = sup.instance_store.get(&id).unwrap().clone();
-                instance.schedule = schedule;
-                sup.instance_store.update(&id, instance).unwrap();
-            }
-        };
-        let history = || {
-            let (state, id) = (state.clone(), id.clone());
-            async move { crate::ipc::internal::into_internal(get_schedule(Path(id), State(state)).await).await.body["history"].clone() }
-        };
-        set(vec![restart.clone(), stop.clone()]).await;
-        let fire = chrono::Local::now().naive_local() - chrono::Duration::seconds(5);
-        crate::scheduler::runner::run_task(&state, &id, &restart, fire, &crate::scheduler::task_key(&id, &restart)).await;
-
-        set(vec![ScheduledTask { enabled: false, ..restart.clone() }, stop.clone()]).await;
-        assert_eq!(history().await[0][0]["code"], "not_running", "the switched-off task still shows its last run");
-        crate::scheduler::runner::run_task(&state, &id, &stop, fire, &crate::scheduler::task_key(&id, &stop)).await;
-        set(vec![restart.clone(), stop.clone()]).await;
-        assert_eq!(history().await[0][0]["code"], "not_running", "another task's run did not drop it");
-    }
-
     // 모든 서버의 다음 예약을 시각 순서로 한 번에 주고, 같은 PC에서 가까운 시각에 겹치는 무거운 작업을 짚는다
     #[tokio::test]
     async fn upcoming_schedules_lists_every_instance_in_time_order_and_marks_heavy_tasks_that_overlap() {
@@ -1700,55 +1627,6 @@ else:
         assert_eq!(body["clashes"][0]["at"], rows[0]["next"]);
         let soon = all(Some(1)).await;
         assert_eq!(soon["upcoming"], json!([]), "nothing runs within the hour: {}", soon);
-    }
-
-    // 꺼진 PC에서 밀린 주기 백업은 데몬이 켜진 직후(서버는 아직 꺼져 있다)에 돈다: 지난 실행이 바꾼 것을 그때 담아야 한다
-    #[tokio::test]
-    async fn a_scheduled_backup_of_a_stopped_server_runs_once_when_it_ran_since_the_last_backup() {
-        let (state, id, tmp) = server_with(&live_module(None), None).await;
-        std::fs::create_dir_all(tmp.path().join("server/world")).unwrap();
-        std::fs::write(tmp.path().join("server/world/level.dat"), b"played").unwrap();
-        let instance_dir = state.supervisor.read().await.instance_store.instance_dir(&id);
-        let sessions = crate::supervisor::managed_process::sessions_dir(&instance_dir);
-        std::fs::create_dir_all(&sessions).unwrap();
-        std::fs::write(sessions.join("20260101-000000.log"), "Server stopped\n").unwrap();
-        let task: ScheduledTask = serde_json::from_value(json!({"action": "backup", "every_minutes": 720})).unwrap();
-        let last_status = || crate::audit::log().recent(10, Some(&id)).first().map(|e| e["status"].clone());
-
-        crate::scheduler::runner::run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
-        assert_eq!(last_status(), Some(json!(200)), "the last run's changes were never backed up");
-        let made = backup::list(&backup::backups_dir(&instance_dir));
-        assert_eq!(made.iter().map(|b| b.kind).collect::<Vec<_>>(), [BackupKind::Scheduled]);
-
-        crate::scheduler::runner::run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
-        assert_eq!(last_status(), Some(json!(409)), "nothing ran since that backup");
-        assert_eq!(backup::list(&backup::backups_dir(&instance_dir)).len(), 1);
-    }
-
-    /// 예약 재시작은 예고를 시작할 때 꺼져 있었어도 실행 시각에 켜져 있으면 다시 시작한다 (예약 정지와 같다)
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn a_scheduled_restart_runs_when_the_server_comes_up_during_the_countdown() {
-        let (state, id, tmp) = server_with(&live_module(None), None).await;
-        let task: ScheduledTask = serde_json::from_value(json!({"action": "restart", "at": "04:00", "warn_minutes": [10]})).unwrap();
-        {
-            let mut sup = state.supervisor.write().await;
-            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
-            inst.schedule = vec![task.clone()];
-            sup.instance_store.update(&id, inst).unwrap();
-        }
-        let key = crate::scheduler::task_key(&id, &task);
-        let fire = chrono::Local::now().naive_local() + chrono::Duration::seconds(2);
-        let run = {
-            let (state, id, task) = (state.clone(), id.clone(), task.clone());
-            tokio::spawn(async move { crate::scheduler::runner::run_task(&state, &id, &task, fire, &key).await })
-        };
-        // 예고가 시작된 뒤에 서버가 켜진다
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-        run_fake_server(&state, &id, &tmp, "").await;
-        tokio::time::timeout(WORK_DEADLINE, run).await.unwrap().unwrap();
-        let entries = crate::audit::log().recent(10, Some(&id));
-        assert!(entries.iter().any(|e| e["action"] == "restart"), "the restart was skipped: {entries:?}");
     }
 
     /// 접속자 없을 때 자동 정지: 켜 둔 서버가 정한 시간 내내 0명이면 저장하고 정지하고, 사람이 있으면 그대로 둔다
@@ -1877,22 +1755,6 @@ else:
         let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
         let guard = InstanceLock::take(&id).expect("free");
         let restart = tokio::spawn(super::super::server::auto_restart(state.clone(), id.clone(), std::time::Duration::ZERO, 0));
-        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-        assert!(!restart.is_finished(), "the restart must wait for the backup, not fail with instance_busy");
-        drop(guard);
-        tokio::time::timeout(WORK_DEADLINE, restart).await.expect("starts once the lock is free").unwrap();
-    }
-
-    /// 예약 업데이트가 끝난 뒤 다시 켤 때도, 그 순간 다른 작업(백업)이 잠금을 쥐면 끝나기를 기다린다 (꺼진 채 남지 않게)
-    #[tokio::test]
-    async fn a_scheduled_update_restart_waits_for_a_running_backup() {
-        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
-        let generation = state.supervisor.read().await.run_generation_of(&id);
-        let guard = InstanceLock::take(&id).expect("free");
-        let restart = tokio::spawn({
-            let (state, id) = (state.clone(), id.clone());
-            async move { super::super::server_update::start_after_update(&state, &id, generation).await }
-        });
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         assert!(!restart.is_finished(), "the restart must wait for the backup, not fail with instance_busy");
         drop(guard);
@@ -2617,7 +2479,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
     }
 
     /// 켜진 서버로 백업하는 시험용 모듈: 콘솔 명령 세 개와 `[backup]`. `save_done`이 있으면 저장 완료 줄로 선언한다
-    fn live_module(save_done: Option<&str>) -> String {
+    pub(crate) fn live_module(save_done: Option<&str>) -> String {
         let done = save_done.map(|p| format!("save_done_pattern = '{p}'\n")).unwrap_or_default();
         format!(
             "{NO_BACKUP}\n[protocols]\nsupported = [\"stdin\"]\n\n[commands]\nfailure_patterns = ['(?m)^Unknown command']\n\n\
@@ -2630,7 +2492,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
 
     /// `script`(sh)를 서버로 띄워 managed로 둔다. 받은 줄은 `commands.log`에 남는다
     #[cfg(unix)]
-    async fn run_fake_server(state: &IPCServer, id: &str, tmp: &tempfile::TempDir, script: &str) {
+    pub(crate) async fn run_fake_server(state: &IPCServer, id: &str, tmp: &tempfile::TempDir, script: &str) {
         let work = tmp.path().join("server");
         std::fs::create_dir_all(work.join("world")).unwrap();
         std::fs::write(work.join("world/level.dat"), b"old").unwrap();
@@ -2828,24 +2690,6 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         let made = take_backup(&state, &id, BackupKind::Manual).await;
         swap.await.unwrap();
         assert!(made.is_ok(), "the same run of the server");
-    }
-
-    /// 하트비트의 예약 목록: 켜 둔 것만, 가까운 순으로, 상한까지
-    #[test]
-    fn upcoming_runs_list_enabled_tasks_soonest_first() {
-        let task = |v: Value| serde_json::from_value::<ScheduledTask>(v).unwrap();
-        let mut a = crate::instance::ServerInstance::new("a", "plain");
-        a.schedule = vec![
-            task(json!({ "action": "restart", "every_minutes": 120 })),
-            task(json!({ "action": "backup", "every_minutes": 30, "enabled": false })),
-        ];
-        let mut b = crate::instance::ServerInstance::new("b", "plain");
-        b.schedule = vec![task(json!({ "action": "backup", "every_minutes": 60 }))];
-        let runs = crate::scheduler::runner::upcoming_runs(&[a.clone(), b.clone()], 10);
-        let ids: Vec<_> = runs.iter().map(|r| (r["instanceId"].as_str().unwrap().to_string(), r["action"].clone())).collect();
-        assert_eq!(ids, vec![(b.id.clone(), json!("backup")), (a.id.clone(), json!("restart"))], "{runs:?}");
-        assert!(runs.iter().all(|r| r["next"].as_i64().is_some()));
-        assert_eq!(crate::scheduler::runner::upcoming_runs(&[a, b], 1).len(), 1);
     }
 
     /// 백업이 실패하고 자동 저장 되돌리기도 실패하면 둘 다 알린다 (서버가 자동 저장이 꺼진 채 돈다).
