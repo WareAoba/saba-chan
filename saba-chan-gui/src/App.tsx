@@ -56,6 +56,7 @@ import {
     openingChordMs,
     openingGate,
     RELAY_WAIT_MS,
+    takeDaemonSwitch,
     takeOpeningSound,
     whenOpeningReady,
     whenScreenSettled,
@@ -689,7 +690,10 @@ function App() {
         const timer = setTimeout(() => setRelayWaitOver(true), RELAY_WAIT_MS);
         return () => clearTimeout(timer);
     }, [daemonDone]);
+    // 다른 PC로 바꿔 다시 연 창이면 오프닝·기동음 없이 바로 연다 (사용자 11-12)
+    const [switchedDaemon] = useState(takeDaemonSwitch);
     const opening = openingGate({
+        switched: switchedDaemon,
         daemonOk: !openedWithoutDaemon,
         configLoaded: discordConfigLoaded,
         relayConfigured: !!discordCloudHostId,
@@ -735,11 +739,11 @@ function App() {
             return undefined;
         }
         if (!was) return undefined;
-        if (!isPopoutMode && motionAllowed()) {
+        if (!isPopoutMode && motionAllowed() && !switchedDaemon) {
             setOpeningPhase('prepare');
             return undefined;
         }
-        // 움직임을 줄였으면 오프닝 없이 열되, 맡은 소리가 있으면 기동음 대신 그것을 낸다
+        // 움직임을 줄였거나 PC를 바꿔 열었으면 오프닝 없이 열되, 맡은 소리가 있으면 기동음 대신 그것을 낸다 (전환이면 기동음은 없다)
         const claimed = takeOpeningSound();
         setOpeningPhase('done');
         if (!isPopoutMode) {
@@ -749,7 +753,7 @@ function App() {
         setLoadingLeaving(true);
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);
-    }, [showLoading]);
+    }, [showLoading, switchedDaemon]);
     // 메인 화면을 덮어 두고 그린 뒤, 글꼴·그림이 준비되고 메인 화면이 잠잠해지면(처음 그린 뒤 이어지는 렌더·번역
     // 불러오기가 끝나면) 무엇을 어떻게 재생할지 정해 로딩 화면에 넘긴다
     const prepareOpening = async (signal: AbortSignal): Promise<OpeningPlay | null> => {

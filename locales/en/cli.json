@@ -1635,6 +1635,7 @@
     "connected": "Paired with the remote daemon on {{name}}.",
     "no_daemons": "This daemon connects to no remote daemon. See your PCs with `remote peers` and connect with `remote connect <PC id>`.",
     "forgotten": "Forgot the remote daemon on {{host}}.",
+    "renamed": "Renamed the PC to {{name}}.",
     "connect_error": {
       "remote_not_found": "That PC is not one of your other PCs",
       "remote_no_endpoint": "That PC has not opened its remote port",

@@ -2420,6 +2420,7 @@
     "err_bind_failed": "Não foi possível abrir a porta",
     "err_invalid_port": "A porta deve estar entre 1 e 65535",
     "err_invalid_address": "Digite um nome de host ou um endereço IP",
+    "err_invalid_name": "Digite um nome de PC com 1 a 64 caracteres.",
     "err_remote_not_found": "Esse PC não é um dos seus PCs",
     "err_remote_no_endpoint": "Esse PC não está aberto a conexões remotas",
     "err_remote_unreachable": "Não foi possível alcançar o daemon remoto. Verifique se o PC está ligado e o saba-chan em execução",
@@ -2530,6 +2531,7 @@
     "err_invalid_code": "Código de pareamento inválido"
   },
   "daemon_switcher": {
+    "local_named": "{{name}} (este PC)",
     "label": "Daemon",
     "local": "Este PC"
   },
@@ -2718,12 +2720,10 @@
     "fold_hits": "Correspondências: {{count}}"
   },
   "pc_settings": {
+    "name_title": "Nome do PC",
+    "name_desc": "Todos os seus PCs e o Discord mostram este nome.",
     "edit": "Editar",
-    "title": "Configurações de {{name}}",
     "address_unavailable": "Você pode mudar isso quando esse PC estiver ligado e conectado.",
-    "main_title": "Mostrar primeiro ao abrir o app",
-    "main_desc": "Ative para mostrar primeiro os servidores deste PC na próxima vez que abrir o app.",
-    "main_on_desc": "Este PC é mostrado primeiro. Escolha outro PC para mudar.",
     "update_desc": "Atualiza o Saba-chan nesse PC para a mesma versão deste PC.",
     "remove_title": "Remover de Meus PCs",
     "remove_desc": "Desconecta e remove da lista. Você escolhe o que apagar na próxima etapa."

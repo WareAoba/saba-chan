@@ -801,12 +801,19 @@ fn pairing_body(payload: &Value, base: &str, configured: &str, token: Option<&st
     Value::Object(body)
 }
 
-/// 이 PC 의 이름 (릴레이에서 새 PC 의 이름)
+/// 새 PC 의 이름 (릴레이에서 새 PC 의 이름): OS 이름 (사용자 2026-11-12). 내 PC 카드·디스코드에서 바꾼다
 fn device_name() -> Option<String> {
-    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
-    env("COMPUTERNAME").or_else(|| env("HOSTNAME")).or_else(|| {
-        std::fs::read_to_string("/etc/hostname").ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
-    })
+    Some(os_name(std::env::consts::OS, crate::relay_agent::platform()["distro"]["name"].as_str()))
+}
+
+/// OS 이름: Windows·macOS, 리눅스는 배포판 이름(모르면 Linux)
+fn os_name(os: &str, distro: Option<&str>) -> String {
+    match os {
+        "windows" => "Windows".into(),
+        "macos" => "macOS".into(),
+        "linux" => distro.map(str::trim).filter(|d| !d.is_empty()).unwrap_or("Linux").into(),
+        other => other.into(),
+    }
 }
 
 // ── POST /api/relay/pair/status ──
@@ -968,6 +975,14 @@ mod tests {
         let fresh = pairing_body(&json!({}), "https://saba-chan.online", "", None, Some(&"x".repeat(80)));
         assert_eq!(fresh["deviceName"].as_str().unwrap().chars().count(), 64);
         assert!(fresh.get("currentToken").is_none());
+    }
+
+    #[test]
+    fn a_new_pc_is_named_after_its_os() {
+        assert_eq!(os_name("windows", None), "Windows");
+        assert_eq!(os_name("macos", None), "macOS");
+        assert_eq!(os_name("linux", Some("Ubuntu 24.04 LTS")), "Ubuntu 24.04 LTS");
+        assert_eq!(os_name("linux", None), "Linux");
     }
 
     /// 예전에 저장된 평문 http 릴레이 주소로는 노드 토큰을 싣지 않는다

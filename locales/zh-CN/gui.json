@@ -2420,6 +2420,7 @@
     "err_bind_failed": "无法打开端口",
     "err_invalid_port": "端口必须在 1 到 65535 之间",
     "err_invalid_address": "请输入主机名或 IP 地址",
+    "err_invalid_name": "请输入 1 到 64 个字符的电脑名称。",
     "err_remote_not_found": "那台电脑不是你的电脑",
     "err_remote_no_endpoint": "那台电脑未开放远程连接",
     "err_remote_unreachable": "无法连接远程守护进程。请确认那台电脑已开机且 saba-chan 正在运行",
@@ -2530,6 +2531,7 @@
     "err_invalid_code": "配对码无效"
   },
   "daemon_switcher": {
+    "local_named": "{{name}}（这台电脑）",
     "label": "守护进程",
     "local": "本机"
   },
@@ -2718,12 +2720,10 @@
     "fold_hits": "{{count}} 个匹配"
   },
   "pc_settings": {
+    "name_title": "电脑名称",
+    "name_desc": "你的所有电脑和 Discord 都会显示这个名称。",
     "edit": "编辑",
-    "title": "{{name}} 设置",
     "address_unavailable": "该电脑开机并连接时才能修改。",
-    "main_title": "打开应用时优先显示",
-    "main_desc": "开启后，下次打开应用时先显示这台电脑的服务器。",
-    "main_on_desc": "这台电脑已优先显示。选择其他电脑即可更改。",
     "update_desc": "将那台电脑上的 Saba-chan 更新到与本机相同的版本。",
     "remove_title": "从我的电脑中移除",
     "remove_desc": "断开连接并从列表中移除。下一步再选择要删除的内容。"

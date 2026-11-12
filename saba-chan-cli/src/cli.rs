@@ -374,6 +374,8 @@ pub enum RemoteCmd {
     Servers,
     /// Forget a remote daemon (pair again with `remote connect`)
     Forget { host_id: String },
+    /// Rename one of my PCs, this one included (the name all my PCs and Discord show)
+    Rename { host_id: String, name: String },
     /// Take a pairing code another PC printed (for example after the one-line Linux install) and connect to it
     Claim { code: String },
     /// Install Saba-chan on a Linux PC over this PC's ssh and connect to it (`user@host`)

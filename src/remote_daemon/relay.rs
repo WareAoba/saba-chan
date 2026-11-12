@@ -133,13 +133,67 @@ pub struct Peer {
     pub public_ip: Option<String>,
 }
 
-pub async fn peers(target: &Target) -> Result<Vec<Peer>, Failure> {
-    #[derive(Deserialize)]
-    struct Peers {
-        peers: Vec<Peer>,
-    }
+/// 이 PC (릴레이 내 PC 목록의 `self`, 옛 릴레이는 주지 않는다)
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThisPc {
+    pub host_id: String,
+    pub name: String,
+}
+
+/// 내 PC 목록: 이 PC와 같은 주인의 다른 PC
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PeerList {
+    #[serde(default, rename = "self")]
+    pub this_pc: Option<ThisPc>,
+    pub peers: Vec<Peer>,
+}
+
+pub async fn peer_list(target: &Target) -> Result<PeerList, Failure> {
     match send(target, reqwest::Method::GET, "/api/remote/peers", None).await? {
-        (200, data) => serde_json::from_value::<Peers>(data).map(|p| p.peers).map_err(|_| Failure::Unreachable),
+        (200, data) => serde_json::from_value::<PeerList>(data).map_err(|_| Failure::Unreachable),
+        _ => Err(Failure::Unreachable),
+    }
+}
+
+pub async fn peers(target: &Target) -> Result<Vec<Peer>, Failure> {
+    peer_list(target).await.map(|l| l.peers)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenameFailure {
+    /// 같은 주인의 PC가 아니다 (없음·남의 것)
+    NotFound,
+    /// 정리하면 빈 이름
+    Empty,
+    Unreachable,
+}
+
+/// 같은 주인의 PC 하나(이 PC 포함)의 이름을 바꾼다 (디스코드 `/사바쨩 내pc`와 같은 값). 릴레이가 정리해 남긴 이름을 준다
+pub async fn rename(target: &Target, host_id: &str, name: &str) -> Result<String, RenameFailure> {
+    if !valid_ticket_id(host_id) {
+        return Err(RenameFailure::NotFound);
+    }
+    match send(target, reqwest::Method::PUT, &format!("/api/remote/hosts/{host_id}/name"), Some(&json!({ "name": name }))).await {
+        Ok((200, data)) => data["name"].as_str().map(str::to_string).ok_or(RenameFailure::Unreachable),
+        Ok((400, _)) => Err(RenameFailure::Empty),
+        Ok((404, _)) => Err(RenameFailure::NotFound),
+        _ => Err(RenameFailure::Unreachable),
+    }
+}
+
+/// 주인의 가이드 진행도 (내 PC 모두가 함께 본다). 옛 릴레이(404)·끊김은 `Unreachable`
+pub async fn guide_state(target: &Target) -> Result<crate::guides::State, Failure> {
+    match send(target, reqwest::Method::GET, "/api/remote/guides", None).await? {
+        (200, data) => serde_json::from_value(data["state"].clone()).map_err(|_| Failure::Unreachable),
+        _ => Err(Failure::Unreachable),
+    }
+}
+
+/// 바뀐 진행도(`config.json guides` 칸 모양)를 보내 합치고, 합친 진행도를 받는다
+pub async fn merge_guide_state(target: &Target, patch: &Value) -> Result<crate::guides::State, Failure> {
+    match send(target, reqwest::Method::POST, "/api/remote/guides", Some(patch)).await? {
+        (200, data) => serde_json::from_value(data["state"].clone()).map_err(|_| Failure::Unreachable),
         _ => Err(Failure::Unreachable),
     }
 }
@@ -220,6 +274,64 @@ pub async fn ticket(target: &Target, to_host_id: &str) -> Result<Ticket, TicketF
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{extract::Path, http::StatusCode, routing::get, Json, Router};
+    use saba_chan_updater_lib::config_file::ConfigFile;
+
+    /// 릴레이 흉내: 내 PC 목록(이 PC 이름 포함), 이름 바꾸기, 가이드 진행도
+    async fn relay() -> Target {
+        let app = Router::new()
+            .route(
+                "/api/remote/peers",
+                get(|| async { Json(json!({ "self": { "hostId": "host-a", "name": "작업용" }, "peers": [{ "hostId": "host-b", "name": "맥북", "ownerName": "kim" }] })) }),
+            )
+            .route(
+                "/api/remote/hosts/{id}/name",
+                axum::routing::put(|Path(id): Path<String>, Json(b): Json<Value>| async move {
+                    let name = b["name"].as_str().unwrap_or_default().trim().to_string();
+                    match (id.as_str(), name.is_empty()) {
+                        (_, true) => (StatusCode::BAD_REQUEST, Json(json!({ "error": "EMPTY_NAME" }))),
+                        ("host-b", _) => (StatusCode::OK, Json(json!({ "hostId": id, "name": name }))),
+                        _ => (StatusCode::NOT_FOUND, Json(json!({ "error": "NOT_FOUND" }))),
+                    }
+                }),
+            )
+            .route(
+                "/api/remote/guides",
+                get(|| async { Json(json!({ "state": { "known": null, "finished": ["music"], "achieved": [], "step": {} } })) }).post(
+                    |Json(b): Json<Value>| async move {
+                        Json(json!({ "state": { "known": b["known"], "finished": ["music"], "achieved": b["achieved"].as_array().cloned().unwrap_or_default(), "step": {} } }))
+                    },
+                ),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        Target { base, token: "sbn_host-a.secret".into() }
+    }
+
+    /// PC 이름은 어느 PC에서든 바꾼다 (사용자 11-12). 이 PC 이름도 내 PC 목록에서 받아 둔다
+    #[tokio::test]
+    async fn any_of_my_pcs_can_be_renamed_and_this_pcs_name_is_remembered() {
+        let target = relay().await;
+        assert_eq!(rename(&target, "host-b", " 맥북 프로 ").await, Ok("맥북 프로".into()));
+        assert_eq!(rename(&target, "host-b", "  ").await, Err(RenameFailure::Empty));
+        assert_eq!(rename(&target, "host-x", "x").await, Err(RenameFailure::NotFound));
+        assert_eq!(rename(&target, "../x", "x").await, Err(RenameFailure::NotFound));
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        let list = crate::remote_daemon::sync_with_relay(&file, &target).await.unwrap();
+        assert_eq!(list.peers.len(), 1);
+        assert_eq!(crate::remote_daemon::config::this_name_in(&file), "작업용");
+    }
+
+    #[tokio::test]
+    async fn guide_progress_is_read_and_merged_on_the_relay() {
+        let target = relay().await;
+        assert_eq!(guide_state(&target).await.unwrap().finished, vec!["music".to_string()]);
+        let merged = merge_guide_state(&target, &json!({ "achieved": ["backup"] })).await.unwrap();
+        assert_eq!(merged.achieved, vec!["backup".to_string()]);
+    }
 
     /// 노드 토큰은 https(또는 루프백 http 모의 릴레이)로만 보낸다: 예전에 저장된 평문 http 주소에는 보내지 않는다
     #[tokio::test]

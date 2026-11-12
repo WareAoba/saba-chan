@@ -10,10 +10,13 @@
 //!   DELETE /api/remote/clients/:hostId     짝을 푼다 (그 PC의 토큰이 더는 통하지 않는다)
 //!
 //! 붙는 쪽 (D1b, `remote_daemon::peer`):
-//!   GET    /api/remote/peers                         {peers:[{hostId, name, ownerName, label, status, hasEndpoint, saved, platform, agentVersion,
+//!   GET    /api/remote/peers                         {self:{hostId, name}|null, peers:[{hostId, name, ownerName, label, status, hasEndpoint, saved, platform, agentVersion,
 //!                                                     createdAt, lastSeenAt, publicIp, route}]} 같은 주인의 다른 PC (릴레이). 읽을 때 릴레이 목록에 맞춘다
 //!                                                     (`remote_daemon::sync_with_relay`). route = 저장한 PC에 지금 붙는 길 `direct`|`relay` (저장 안 했으면 null)
-//!   GET    /api/remote/daemons                       {daemons:[{hostId, name, ownerName, label, address, port, pairedAt}]} 이 PC가 붙는 원격 데몬
+//!   PUT    /api/remote/peers/:hostId/name {name}     내 PC 하나(이 PC 포함)의 이름을 바꾼다 (릴레이 PC 이름, 디스코드 `/사바쨩 내pc`와 같은 값) → {hostId, name}
+//!                                                    400 invalid_name | 404 not_found | 502 relay_unreachable | 503 relay_not_paired
+//!   GET    /api/remote/daemons                       {daemons:[{hostId, name, ownerName, label, address, port, pairedAt}], thisName} 이 PC가 붙는 원격 데몬.
+//!                                                    thisName = 이 PC 이름 (릴레이에서 받아 둔 사본, 모르면 "")
 //!   POST   /api/remote/daemons {hostId}              짝을 맺고 저장한다 → {hostId, name, label}
 //!   label = 화면에 보일 이름 `디스코드 이름(PC 이름)` (`config::label`)
 //!   DELETE /api/remote/daemons/:hostId               잊는다. 그 PC에도 짝을 풀라고 알린다 (`DELETE /remote/self`, 닿지 않으면 그대로 잊는다)
@@ -198,11 +201,13 @@ pub async fn list_peers(State(state): State<IPCServer>) -> Response {
     };
     let file = ConfigFile::default_location();
     // 릴레이의 목록이 기준이다: 이름을 맞추고, 빠진 PC의 짝을 풀고, 바뀐 주소를 따른다
-    let Ok(peers) = remote_daemon::sync_with_relay(&file, &target).await else {
+    let Ok(list) = remote_daemon::sync_with_relay(&file, &target).await else {
         return peer::error(StatusCode::BAD_GATEWAY, "relay_unreachable");
     };
     let saved = config::daemons_in(&file);
-    let peers: Vec<Value> = peers
+    let this_pc = list.this_pc.map(|me| json!({ "hostId": me.host_id, "name": me.name }));
+    let peers: Vec<Value> = list
+        .peers
         .into_iter()
         .map(|p| {
             let saved = saved.iter().find(|d| d.host_id == p.host_id);
@@ -224,11 +229,42 @@ pub async fn list_peers(State(state): State<IPCServer>) -> Response {
             })
         })
         .collect();
-    Json(json!({ "peers": peers })).into_response()
+    Json(json!({ "self": this_pc, "peers": peers })).into_response()
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RenameBody {
+    name: String,
+}
+
+/// 내 PC 하나(이 PC 포함)의 이름을 바꾼다. 원본은 릴레이 PC 이름이라 어느 PC에서 바꿔도 모두에 보인다 (사용자 11-12)
+pub async fn rename_peer(State(state): State<IPCServer>, Path(host_id): Path<String>, Json(body): Json<RenameBody>) -> Response {
+    let name = body.name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if name.is_empty() || name.chars().count() > MAX_PC_NAME {
+        return bad("invalid_name", "PC name must be 1 to 64 characters");
+    }
+    let Some(target) = relay_target(&state).await else {
+        return peer::error(StatusCode::SERVICE_UNAVAILABLE, "relay_not_paired");
+    };
+    match remote_daemon::relay::rename(&target, &host_id, &name).await {
+        Ok(name) => {
+            // 저장한 이름(원격 데몬·짝 맺은 PC·이 PC)을 바로 맞춘다. 닿지 않으면 10분마다 맞출 때 따른다
+            let _ = remote_daemon::sync_with_relay(&ConfigFile::default_location(), &target).await;
+            Json(json!({ "hostId": host_id, "name": name })).into_response()
+        }
+        Err(remote_daemon::relay::RenameFailure::Empty) => bad("invalid_name", "PC name must not be empty"),
+        Err(remote_daemon::relay::RenameFailure::NotFound) => peer::error(StatusCode::NOT_FOUND, "not_found"),
+        Err(remote_daemon::relay::RenameFailure::Unreachable) => peer::error(StatusCode::BAD_GATEWAY, "relay_unreachable"),
+    }
+}
+
+/// PC 이름 상한 (릴레이 `MAX_HOST_NAME`과 같다)
+const MAX_PC_NAME: usize = 64;
+
 pub async fn list_daemons() -> Json<Value> {
-    let daemons: Vec<Value> = config::daemons_in(&ConfigFile::default_location())
+    let file = ConfigFile::default_location();
+    let daemons: Vec<Value> = config::daemons_in(&file)
         .into_iter()
         .map(|d| {
             json!({
@@ -242,7 +278,7 @@ pub async fn list_daemons() -> Json<Value> {
             })
         })
         .collect();
-    Json(json!({ "daemons": daemons }))
+    Json(json!({ "daemons": daemons, "thisName": config::this_name_in(&file) }))
 }
 
 #[derive(Deserialize)]

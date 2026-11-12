@@ -35,7 +35,7 @@ const card = (name: string) => within(cards()).getByText(name).closest('li')!;
 // 카드마다 수정 버튼 하나: 업데이트·지우기는 그 창 안에 있다 (사용자 결정 2026-11-11)
 const openEdit = async (name: string) => {
     await act(async () => fireEvent.click(within(card(name)).getByRole('button', { name: 'Edit' })));
-    return screen.getByRole('dialog', { name: `${name} settings` });
+    return screen.getByRole('dialog');
 };
 
 describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
@@ -384,5 +384,48 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         const clients = screen.getByRole('list', { name: 'PCs connected to this one' });
         await act(async () => fireEvent.click(within(clients).getByRole('button', { name: 'Disconnect' })));
         expect(window.api.remoteRevoke).toHaveBeenCalledWith('host-a');
+    });
+
+    // 어느 PC에서든 내 PC 이름을 바꾼다. 이름은 서버쨩 한 곳에 있다 (사용자 11-12)
+    it('이 PC 카드는 PC 이름에 이 PC 표시를 붙이고, 수정 창에서 바꾼 이름을 데몬에 보낸다', async () => {
+        vi.mocked(window.api.remotePeers).mockResolvedValue({ self: { hostId: 'host-me', name: '작업용' }, peers: [vps] });
+        vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [vpsDaemon], thisName: '작업용' });
+        window.api.remoteRenamePc = vi.fn().mockResolvedValue({ hostId: 'host-b', name: '맥북' });
+        await act(async () => render(<RemoteDaemonSection />));
+        const first = within(cards()).getAllByRole('listitem')[0];
+        expect(within(first).getByText('작업용', { selector: '.remote-pc-name' })).toBeInTheDocument();
+        expect(within(first).getByText('This PC', { selector: '.remote-pc-tag' })).toBeInTheDocument();
+
+        const dialog = await openEdit('김마무(vps)');
+        const input = within(dialog).getByRole('textbox', { name: 'PC name' });
+        expect(input).toHaveValue('vps');
+        await act(async () => fireEvent.change(input, { target: { value: '  맥북 ' } }));
+        await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Save' })));
+        expect(window.api.remoteRenamePc).toHaveBeenCalledWith('host-b', '맥북');
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('이름을 바꾸지 못하면 창을 닫지 않고 까닭을 보인다', async () => {
+        vi.mocked(window.api.remotePeers).mockResolvedValue({ self: { hostId: 'host-me', name: '작업용' }, peers: [vps] });
+        window.api.remoteRenamePc = vi.fn().mockResolvedValue({ error: 'x', error_code: 'relay_unreachable' });
+        await act(async () => render(<RemoteDaemonSection />));
+        await act(async () => fireEvent.click(within(within(cards()).getAllByRole('listitem')[0]).getByRole('button', { name: 'Edit' })));
+        const dialog = screen.getByRole('dialog');
+        await act(async () => fireEvent.change(within(dialog).getByRole('textbox', { name: 'PC name' }), { target: { value: '새 이름' } }));
+        await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Save' })));
+        expect(window.api.remoteRenamePc).toHaveBeenCalledWith('host-me', '새 이름');
+        expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeInTheDocument();
+    });
+
+    it('수정 창 제목 자리가 PC 이름 칸이고, 바로 오른쪽 별로 메인 데몬을 고른다', async () => {
+        vi.mocked(window.api.remotePeers).mockResolvedValue({ self: { hostId: 'host-me', name: '작업용' }, peers: [vps] });
+        vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [vpsDaemon] });
+        await act(async () => render(<RemoteDaemonSection />));
+        const dialog = await openEdit('김마무(vps)');
+        const title = dialog.querySelector('.saba-dialog-title')!;
+        expect(within(title as HTMLElement).getByRole('textbox', { name: 'PC name' })).toHaveValue('vps');
+        await act(async () => fireEvent.click(within(title as HTMLElement).getByRole('button', { pressed: false })));
+        await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Save' })));
+        expect(useSettingsStore.getState().mainDaemon).toBe('host-b');
     });
 });
