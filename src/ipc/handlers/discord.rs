@@ -518,7 +518,7 @@ pub fn take_pending_sync() -> bool {
 }
 
 /// 연결 실패나 릴레이 쪽 오류(5xx)면 다시 보낼 만하다. 거절(4xx)은 다시 보내도 같다
-fn retry_later(outcome: &Result<(StatusCode, Value), String>) -> bool {
+pub(super) fn retry_later(outcome: &Result<(StatusCode, Value), String>) -> bool {
     match outcome {
         Ok((c, _)) => c.is_server_error(),
         Err(_) => true,

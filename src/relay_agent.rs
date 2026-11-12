@@ -222,6 +222,7 @@ impl RelayAgent {
                 seen: agent.seen.clone(),
                 metadata_sent: Mutex::new(None),
                 linked_acks: Mutex::default(),
+                chatbot_sync_due: std::sync::atomic::AtomicBool::new(true),
             };
             if let Err(e) = session.check_version().await {
                 tracing::error!("[RelayAgent] {}", e);
@@ -229,19 +230,7 @@ impl RelayAgent {
                 return;
             }
             tracing::info!("[RelayAgent] started (relay={})", session.base);
-            // 챗봇 설정은 데몬이 원본: 연결될 때마다 릴레이에 맞춘다
-            // 세션이 끝나면(연결 해제·토큰 교체) 같이 멈춘다: 예전 토큰으로 설정을 올리지 않게
-            let sync_server = session.server.clone();
-            let sync_cancel = cancel.clone();
-            tokio::spawn(async move {
-                tokio::select! {
-                    _ = sync_cancel.cancelled() => {}
-                    _ = async {
-                        crate::ipc::handlers::chatbot::sync_on_connect(&sync_server).await;
-                    } => {}
-                }
-            });
-            // 디스코드 길드 설정도 데몬이 원본 (I2). 첫 하트비트 응답을 처리한 뒤에 보낸다:
+            // 디스코드 길드 설정과 챗봇 설정은 데몬이 원본 (I2): 연결될 때마다 릴레이에 맞춘다. 첫 하트비트 응답을 처리한 뒤에 보낸다:
             // 꺼져 있는 동안 다시 묶인 길드(`linkedGuilds`)는 릴레이 값을 먼저 받아야 옛 사본으로 덮지 않는다
             crate::ipc::handlers::discord::request_sync();
             tokio::join!(session.heartbeat_loop(), session.poll_loop(), session.events_loop(), session.unsent_loop());
@@ -506,6 +495,8 @@ struct Session {
     metadata_sent: Mutex<Option<String>>,
     /// 적용했지만 릴레이가 아직 확인 응답을 받지 못한 새로 묶인 길드의 연결 id (`linkedGuildsAckIds`)
     linked_acks: Mutex<Vec<String>>,
+    /// 첫 하트비트 응답 뒤 챗봇 설정을 릴레이에 맞춘다
+    chatbot_sync_due: std::sync::atomic::AtomicBool,
 }
 
 /// 받은 명령을 처음 본 것인지, 아직 처리 중인지, 이미 끝났는지
@@ -772,6 +763,16 @@ impl Session {
                     crate::ipc::updates::on_update_hint(&self.server.update_state, hint, self.cancel.clone());
                 }
                 // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다
+                // 세션이 끝나면(연결 해제·토큰 교체) 같이 멈춘다: 예전 토큰으로 설정을 올리지 않게
+                if self.chatbot_sync_due.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                    let (server, cancel) = (self.server.clone(), self.cancel.clone());
+                    tokio::spawn(async move {
+                        tokio::select! {
+                            _ = cancel.cancelled() => {}
+                            _ = crate::ipc::handlers::chatbot::sync_on_connect(&server) => {}
+                        }
+                    });
+                }
                 if crate::ipc::handlers::discord::take_pending_sync() {
                     let (server, cancel) = (self.server.clone(), self.cancel.clone());
                     tokio::spawn(async move {
@@ -1107,8 +1108,11 @@ impl Session {
             let link_id = g.get("linkId").and_then(Value::as_str).map(str::to_string);
             // 이미 적용하고 확인 응답을 기다리는 연결은 길드 설정을 다시 받지 않는다 (그 사이 앱에서 바꾼 값을 덮지 않게)
             let waiting = link_id.as_ref().is_some_and(|id| self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).contains(id));
-            // 풀었다가 다시 묶은 길드는 PC 없는 동안 디스코드에서 바꾼 설정을 받는다. 못 받았으면 확인 응답을 미뤄 다음 하트비트에 다시 한다
-            if !waiting && !crate::ipc::handlers::discord::adopt_linked_guild(&self.server, guild).await {
+            // 풀었다가 다시 묶은 길드는 PC 없는 동안 디스코드에서 바꾼 길드·챗봇 설정을 받는다. 못 받았으면 확인 응답을 미뤄 다음 하트비트에 다시 한다
+            if !waiting
+                && !(crate::ipc::handlers::discord::adopt_linked_guild(&self.server, guild).await
+                    && crate::ipc::handlers::chatbot::adopt_linked_guild(&self.server, guild).await)
+            {
                 tracing::warn!("[RelayAgent] could not read the settings of relinked guild {}; trying again at the next heartbeat", guild);
                 continue;
             }
@@ -2163,6 +2167,7 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
+            chatbot_sync_due: Default::default(),
         };
         let reset = || agent.update(1, |s| *s = AgentStatus { running: true, ..Default::default() });
         let reported = |what: &str| {
@@ -2230,6 +2235,7 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
+            chatbot_sync_due: Default::default(),
         };
 
         session.heartbeat().await;
@@ -2324,6 +2330,7 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
+            chatbot_sync_due: Default::default(),
         };
         session.post_result("c1", &json!({ "success": true })).await;
         assert_eq!(CALLS.swap(0, Ordering::SeqCst), 3, "two 503s, then taken");
@@ -2421,6 +2428,7 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
+            chatbot_sync_due: Default::default(),
         }
     }
 

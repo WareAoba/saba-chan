@@ -514,6 +514,49 @@ pub async fn sync_on_connect(state: &IPCServer) {
     }
 }
 
+/// 하트비트가 이 PC에 새로 묶였다고 알린 길드(`linkedGuilds`). PC 없는 동안 디스코드 `/설정`이 릴레이에 바로 쓴
+/// 이 서버의 값을 데몬 사본으로 받는다 (다음 동기화가 옛 사본으로 덮지 않게). 공통 값(모델)과 키는 이 PC 것을 둔다.
+/// 릴레이를 읽지 못해 맞추지 못했으면 false (부른 쪽이 다음 하트비트에 다시 한다)
+pub async fn adopt_linked_guild(state: &IPCServer, guild: &str) -> bool {
+    if super::relay::load_node_token().is_none() {
+        return true;
+    }
+    let _turn = SAVE_LOCK.lock().await;
+    adopt_from(state, &relay_base(state).await, guild).await
+}
+
+async fn adopt_from(state: &IPCServer, base: &str, guild: &str) -> bool {
+    let path = format!("/api/nodes/{}/chatbot", encode_path_segment(guild));
+    let outcome = call(base, reqwest::Method::GET, &path, None).await;
+    let body = match &outcome {
+        Ok((c, body)) if c.is_success() => body,
+        // 거절(이 PC의 길드가 아니다 등)은 다시 물어도 같다
+        _ => return !super::discord::retry_later(&outcome),
+    };
+    let mut cfg = state.config_store.get_chatbot();
+    // 지우는 중인 설정은 다시 채우지 않는다
+    if cfg.pending_relay_delete {
+        return true;
+    }
+    let defaults = relay_defaults();
+    let values: Map<String, Value> = defaults
+        .keys()
+        .filter(|k| !COMMON_KEYS.contains(&k.as_str()))
+        .filter_map(|k| Some((k.clone(), body.get(k)?.clone())))
+        .collect();
+    // 사본이 없고 릴레이도 기본값이면 적지 않는다 (챗봇을 쓰지 않는 PC가 연결마다 길드에 보내기 시작하지 않게)
+    let untouched = values.iter().all(|(k, v)| defaults.get(k) == Some(v));
+    if cfg.guilds.get(guild) == Some(&values) || (untouched && !cfg.guilds.contains_key(guild)) {
+        return true;
+    }
+    cfg.guilds.insert(guild.to_string(), values);
+    if let Err(e) = state.config_store.set_chatbot(&cfg) {
+        tracing::warn!("[Chatbot] could not keep the relay settings of relinked guild {}: {}", guild, e);
+        return false;
+    }
+    true
+}
+
 /// 챗봇 설정의 읽고-바꾸고-저장하기를 한 번에 하나씩 (키 교체와 설정 저장이 겹쳐도 서로의 값을 지우지 않게)
 pub(super) static SAVE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -1036,5 +1079,50 @@ mod tests {
         let v = view(&ChatbotConfig::default());
         assert_eq!(v["defaults"]["model"], relay_defaults()["model"]);
         assert_eq!(v["defaults"]["confirmLevel"], json!("all"));
+    }
+
+    /// 풀었다가 다시 묶은 길드: PC 없는 동안 디스코드 `/설정`으로 바꾼 이 서버의 챗봇 값을 받아,
+    /// 다음 동기화가 옛 사본으로 덮지 않는다. 공통 값(모델)과 API 키는 이 PC 것을 둔다
+    #[tokio::test]
+    async fn a_relinked_guild_keeps_the_chatbot_values_discord_changed_while_it_had_no_pc() {
+        use axum::{routing::get, Router};
+        let relay = json!({
+            "enabled": false, "model": "pc-less-model", "provider": "x", "memo": "새 메모", "effort": "high",
+            "ambient": false, "ambientMinutes": 3, "ambientEffort": "low", "confirmLevel": "danger", "memory": true,
+            "moderation": false, "tools": [], "tokenLimit": null, "balanceAlert": null, "hasApiKey": false, "effectiveModel": "pc-less-model",
+        });
+        let answer = relay.clone();
+        let app = Router::new()
+            .route("/api/nodes/relinked-guild/chatbot", get(move || async move { Json(answer) }))
+            .route("/api/nodes/new-guild/chatbot", get(|| async { Json(relay_defaults()) }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            dir.path().join("modules").to_str().unwrap(),
+            dir.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let mut before = ChatbotConfig { api_key: Some("pc-key".into()), ..Default::default() };
+        apply(&mut before, patch(json!({"settings": {"model": "pc-model"}, "guilds": {"relinked-guild": {"enabled": true, "tools": ["web_search"], "memo": "옛 메모"}}}))).unwrap();
+        state.config_store.set_chatbot(&before).unwrap();
+
+        // 릴레이에 닿지 않으면 맞추지 못했다고 답하고 사본을 건드리지 않는다
+        assert!(!adopt_from(&state, "http://127.0.0.1:9", "relinked-guild").await);
+        assert_eq!(state.config_store.get_chatbot(), before);
+
+        assert!(adopt_from(&state, &base, "relinked-guild").await);
+        let sent = put_body(&state.config_store.get_chatbot(), "relinked-guild");
+        for key in ["enabled", "tools", "memo", "effort", "ambient", "confirmLevel"] {
+            assert_eq!(sent[key], relay[key], "{key}");
+        }
+        assert_eq!((&sent["model"], &sent["apiKey"]), (&json!("pc-model"), &json!("pc-key")));
+
+        // 처음 묶인 길드의 릴레이 값이 기본값이면 적을 것이 없다 (챗봇을 쓰지 않는 PC가 길드마다 보내기 시작하지 않게)
+        assert!(adopt_from(&state, &base, "new-guild").await);
+        assert!(!state.config_store.get_chatbot().guilds.contains_key("new-guild"));
     }
 }
