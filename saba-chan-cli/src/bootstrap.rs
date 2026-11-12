@@ -17,11 +17,12 @@ fn gui_section() -> serde_json::Value {
 
 /// 데몬 포트: `SABA_IPC_PORT` > `config.json` gui.ipcPort > 기본값 (데몬 main.rs와 같은 순서)
 pub fn ipc_port() -> u16 {
-    std::env::var("SABA_IPC_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .or_else(|| gui_section().get("ipcPort").and_then(|v| v.as_u64()).map(|p| p as u16))
-        .unwrap_or(constants::DEFAULT_IPC_PORT)
+    std::env::var("SABA_IPC_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or_else(settings_port)
+}
+
+/// 환경 변수 없이 뜬 데몬(자동 실행 서비스)이 여는 포트
+fn settings_port() -> u16 {
+    gui_section().get("ipcPort").and_then(|v| v.as_u64()).map(|p| p as u16).unwrap_or(constants::DEFAULT_IPC_PORT)
 }
 
 /// 붙을 데몬 포트: 설정 포트에 데몬이 없는데 실행 중인 데몬이 남긴 기록(`daemon.lock.owner`)의 포트에서
@@ -126,15 +127,26 @@ pub fn daemon_binary() -> Option<PathBuf> {
 }
 
 /// 데몬을 분리 실행한다 (CLI가 끝나도 살아 있게)
-/// `port`는 CLI가 붙을 포트 (`--port`까지 반영된 값)
-pub fn spawn_daemon(port: u16) -> Result<std::process::Child> {
+/// `port`는 CLI가 붙을 포트 (`--port`까지 반영된 값).
+/// 이 설치의 데몬이 자동 실행 서비스(systemd 사용자 서비스, 맥 LaunchAgent)로 등록돼 있으면 그 서비스로 켜고 None을 돌려준다:
+/// 직접 띄우면 서비스 밖에서 돌아 죽어도 다시 뜨지 않는다. 서비스는 설정 파일의 포트로 뜨므로 다른 포트를 골랐으면 직접 띄운다
+pub fn spawn_daemon(port: u16) -> Result<Option<std::process::Child>> {
     let binary = daemon_binary().ok_or_else(|| failed(t!("daemon.binary_not_found")))?;
+    if port == settings_port() {
+        if let Some(start) = saba_chan_updater_lib::autostart::service_start(&binary) {
+            let run = Command::new(&start[0]).args(&start[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+            // 서비스 관리자에 닿지 못하면(사용자 세션 버스 없음 등) 직접 띄운다
+            if run.is_ok_and(|s| s.success()) {
+                return Ok(None);
+            }
+        }
+    }
     let mut cmd = Command::new(&binary);
     cmd.arg("--spawned").env("SABA_IPC_PORT", port.to_string());
     if let Some(dir) = binary.parent() {
         cmd.current_dir(dir);
     }
-    saba_chan_updater_lib::process::spawn_detached(&mut cmd).map_err(|e| failed(t!("daemon.spawn_failed", error = e)))
+    saba_chan_updater_lib::process::spawn_detached(&mut cmd).map(Some).map_err(|e| failed(t!("daemon.spawn_failed", error = e)))
 }
 
 /// 정상 종료가 안 된 데몬을 PID로만 끝낸다 (이름으로 죽이면 다른 사용자의 데몬까지 죽는다)
