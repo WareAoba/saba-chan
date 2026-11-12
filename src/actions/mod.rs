@@ -2117,6 +2117,11 @@ pub(crate) async fn call_raw_as(server: &IPCServer, method: &str, uri: &str, ori
     }
 }
 
+/// `call_as`와 같되 답을 읽지 않고 그대로 돌려준다 (콘솔 스트림처럼 끝없이 흐르는 본문)
+pub(crate) async fn call_response_as(server: &IPCServer, method: &str, uri: &str, origin: Option<crate::audit::Origin>) -> Result<axum::response::Response, String> {
+    route_once(server, method, uri, None, origin).await
+}
+
 async fn route_once(server: &IPCServer, method: &str, uri: &str, body: Option<Value>, origin: Option<crate::audit::Origin>) -> Result<axum::response::Response, String> {
     use tower::ServiceExt;
     let mut req = axum::http::Request::builder()

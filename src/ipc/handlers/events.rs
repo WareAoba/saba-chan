@@ -11,7 +11,7 @@ use std::convert::Infallible;
 use tokio::sync::broadcast::error::RecvError;
 
 /// 연결을 살려 두는 주석 줄 간격
-const PING: std::time::Duration = std::time::Duration::from_secs(15);
+pub(super) const PING: std::time::Duration = std::time::Duration::from_secs(15);
 
 #[derive(Deserialize)]
 pub struct EventsQuery {

@@ -2,8 +2,11 @@
 //!
 //! 릴레이가 명령 대기열로 `web_session`을 보내면 붙고, 웹 세션이 하나도 없는 채로 `IDLE`이 지나면 닫는다.
 //! 평소에는 열어 두지 않는다. 주고받는 것은 한 줄 JSON이다:
-//! - 릴레이 → 데몬: `{t:"open", sid, user}` · `{t:"close", sid}` · `{t:"req", sid, id, method, path, body?}`
-//! - 데몬 → 릴레이: `{t:"hello", version, protocol}` · `{t:"res", sid, id, status, body}` · `{t:"event", id, kind, data}`
+//! - 릴레이 → 데몬: `{t:"open", sid, user}` · `{t:"close", sid}` · `{t:"req", sid, id, method, path, body?}` · `{t:"cancel", sid, id}`
+//! - 데몬 → 릴레이: `{t:"hello", version, protocol}` · `{t:"res", sid, id, status, body}` · `{t:"chunk", sid, id, body}` · `{t:"event", id, kind, data}`
+//!
+//! 콘솔 스트림(`…/console/stream`)은 한 요청에 콘솔 답을 `chunk`로 여러 번 보내고 끝에 `res`를 보낸다.
+//! 대기열·실행 자리를 붙잡지 않고 세션마다 `STREAMS_PER_SESSION`개까지 연다. `cancel`·`close`·연결이 끊기면 멈춘다
 //!
 //! 이벤트는 세션을 가리지 않고 한 번 보내고, 릴레이가 그 PC의 세션들에 나눠 준다.
 
@@ -26,6 +29,24 @@ const IDLE: Duration = if cfg!(test) {
 } else {
     Duration::from_secs(60)
 };
+/// 한 세션이 함께 여는 콘솔 스트림 수
+const STREAMS_PER_SESSION: usize = 8;
+/// 열려 있는 콘솔 스트림: (세션, 요청 id) → 멈추는 토큰
+type Streams = Arc<Mutex<HashMap<(String, String), CancellationToken>>>;
+
+/// 스트림을 멈춘다. `id`가 없으면 그 세션의 것 모두
+fn cancel_streams(streams: &Streams, sid: &str, id: Option<&Value>) {
+    let id = id.map(Value::to_string);
+    let mut open = streams.lock().unwrap_or_else(|e| e.into_inner());
+    open.retain(|(s, i), token| {
+        let hit = s == sid && id.as_deref().is_none_or(|id| i == id);
+        if hit {
+            token.cancel();
+        }
+        !hit
+    });
+}
+
 /// 연결을 살려 두는 ping 간격 (nginx·릴레이 유휴 끊김보다 짧게)
 const PING: Duration = Duration::from_secs(25);
 /// 동시에 실행하는 원격 요청 수
@@ -145,6 +166,9 @@ async fn connect_once(
     let sessions: Arc<Mutex<HashMap<String, Option<String>>>> = Arc::default();
     let queue = Arc::new(Semaphore::new(QUEUED));
     let slots = Arc::new(Semaphore::new(IN_FLIGHT));
+    let streams = Streams::default();
+    // 연결이 끝나면 (어떤 까닭이든) 열린 스트림을 모두 멈춘다
+    let _streams_end = StreamsEnd(streams.clone());
     let mut events = crate::events::bus().subscribe(None).rx;
     let mut ping = tokio::time::interval(PING);
     ping.tick().await;
@@ -196,7 +220,9 @@ async fn connect_once(
                         let user = frame.get("user").and_then(Value::as_str).map(str::to_string);
                         sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(sid, user);
                     }
+                    Some("cancel") => cancel_streams(&streams, &sid, frame.get("id")),
                     Some("close") => {
+                        cancel_streams(&streams, &sid, None);
                         let mut s = sessions.lock().unwrap_or_else(|e| e.into_inner());
                         s.remove(&sid);
                         if s.is_empty() {
@@ -209,7 +235,7 @@ async fn connect_once(
                             Some(user) => user.clone(),
                             None => continue,
                         };
-                        dispatch(server, &frame, sid, user, &out_tx, &queue, &slots);
+                        dispatch(server, &frame, sid, user, &out_tx, &queue, &slots, &streams);
                     }
                     _ => {}
                 }
@@ -218,7 +244,18 @@ async fn connect_once(
     }
 }
 
-/// 요청 한 건을 대기열에 넣는다. 자리가 없으면 바로 바쁘다고 답한다
+struct StreamsEnd(Streams);
+
+impl Drop for StreamsEnd {
+    fn drop(&mut self) {
+        for token in self.0.lock().unwrap_or_else(|e| e.into_inner()).drain().map(|(_, t)| t) {
+            token.cancel();
+        }
+    }
+}
+
+/// 요청 한 건을 대기열에 넣는다. 자리가 없으면 바로 바쁘다고 답한다. 콘솔 스트림은 대기열 밖에서 연다
+#[allow(clippy::too_many_arguments)]
 fn dispatch(
     server: &IPCServer,
     frame: &Value,
@@ -227,14 +264,48 @@ fn dispatch(
     out: &mpsc::UnboundedSender<Value>,
     queue: &Arc<Semaphore>,
     slots: &Arc<Semaphore>,
+    streams: &Streams,
 ) {
     let id = frame.get("id").cloned().unwrap_or(Value::Null);
+    let busy = || json!({ "ok": false, "success": false, "error": "Too many requests", "error_code": "remote_busy" });
+    let req = request_of(frame);
+    if exec::is_stream(&req) {
+        let token = CancellationToken::new();
+        {
+            let mut open = streams.lock().unwrap_or_else(|e| e.into_inner());
+            if open.keys().filter(|(s, _)| *s == sid).count() >= STREAMS_PER_SESSION {
+                let _ = out.send(json!({ "t": "res", "sid": sid, "id": id, "status": 429, "body": busy() }));
+                return;
+            }
+            open.insert((sid.clone(), id.to_string()), token.clone());
+        }
+        let (server, out, streams) = (server.clone(), out.clone(), streams.clone());
+        tokio::spawn(async move {
+            let chunk = |body: Value| out.send(json!({ "t": "chunk", "sid": sid, "id": id, "body": body })).is_ok();
+            let end = exec::stream(&server, req, user, &token, chunk).await;
+            streams.lock().unwrap_or_else(|e| e.into_inner()).remove(&(sid.clone(), id.to_string()));
+            // 거둔 스트림은 릴레이가 이미 잊었다: 끝 답을 보내지 않는다
+            if let Some(res) = end {
+                let _ = out.send(json!({ "t": "res", "sid": sid, "id": id, "status": res.status, "body": res.body }));
+            }
+        });
+        return;
+    }
     let Ok(place) = queue.clone().try_acquire_owned() else {
-        let body = json!({ "ok": false, "success": false, "error": "Too many requests", "error_code": "remote_busy" });
-        let _ = out.send(json!({ "t": "res", "sid": sid, "id": id, "status": 429, "body": body }));
+        let _ = out.send(json!({ "t": "res", "sid": sid, "id": id, "status": 429, "body": busy() }));
         return;
     };
-    let req = exec::Request {
+    let (server, out, slots) = (server.clone(), out.clone(), slots.clone());
+    tokio::spawn(async move {
+        let _place = place;
+        let Ok(_slot) = slots.acquire_owned().await else { return };
+        let res = exec::run(&server, req, user).await;
+        let _ = out.send(json!({ "t": "res", "sid": sid, "id": id, "status": res.status, "body": res.body }));
+    });
+}
+
+fn request_of(frame: &Value) -> exec::Request {
+    exec::Request {
         method: frame
             .get("method")
             .and_then(Value::as_str)
@@ -246,14 +317,7 @@ fn dispatch(
             .unwrap_or_default()
             .to_string(),
         body: frame.get("body").cloned().filter(|b| !b.is_null()),
-    };
-    let (server, out, slots) = (server.clone(), out.clone(), slots.clone());
-    tokio::spawn(async move {
-        let _place = place;
-        let Ok(_slot) = slots.acquire_owned().await else { return };
-        let res = exec::run(&server, req, user).await;
-        let _ = out.send(json!({ "t": "res", "sid": sid, "id": id, "status": res.status, "body": res.body }));
-    });
+    }
 }
 
 #[cfg(test)]
@@ -424,7 +488,7 @@ mod tests {
         let queue = Arc::new(Semaphore::new(0));
         let slots = Arc::new(Semaphore::new(IN_FLIGHT));
         let frame = json!({ "t": "req", "sid": "s1", "id": 7, "method": "GET", "path": "/health" });
-        dispatch(&server, &frame, "s1".into(), None, &out_tx, &queue, &slots);
+        dispatch(&server, &frame, "s1".into(), None, &out_tx, &queue, &slots, &Streams::default());
         let res = tokio::time::timeout(Duration::from_secs(1), out_rx.recv())
             .await
             .unwrap()
@@ -432,6 +496,54 @@ mod tests {
         assert_eq!(res["id"], 7);
         assert_eq!(res["status"], 429);
         assert_eq!(res["body"]["error_code"], "remote_busy");
+    }
+
+    async fn recv(rx: &mut mpsc::UnboundedReceiver<Value>, ms: u64) -> Option<Value> {
+        tokio::time::timeout(Duration::from_millis(ms), rx.recv()).await.ok().flatten()
+    }
+
+    /// 콘솔 스트림은 답을 조각(chunk)으로 흘려보내고, 대기열·실행 자리를 붙잡지 않으며, 거두면(cancel) 멈춘다
+    #[tokio::test]
+    async fn a_console_stream_is_sent_in_chunks_until_it_is_cancelled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let server = server(tmp.path()).await;
+        server.daemon_log_buffer.push("INFO".into(), "t".into(), "hello stream".into());
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
+        // 대기열이 꽉 차 있어도 스트림은 연다
+        let queue = Arc::new(Semaphore::new(0));
+        let slots = Arc::new(Semaphore::new(0));
+        let streams = Streams::default();
+        let frame = json!({ "t": "req", "sid": "s1", "id": 4, "method": "GET", "path": "/api/daemon/console/stream" });
+        dispatch(&server, &frame, "s1".into(), None, &out_tx, &queue, &slots, &streams);
+        let first = recv(&mut out_rx, 2000).await.expect("first chunk");
+        assert_eq!((first["t"].as_str(), first["sid"].as_str(), first["id"].as_i64()), (Some("chunk"), Some("s1"), Some(4)));
+        assert!(first["body"]["lines"].to_string().contains("hello stream"), "{first}");
+
+        server.daemon_log_buffer.push("INFO".into(), "t".into(), "second".into());
+        let next = recv(&mut out_rx, 2000).await.expect("next chunk");
+        assert!(next["body"]["lines"].to_string().contains("second") && !next["body"]["lines"].to_string().contains("hello stream"));
+
+        cancel_streams(&streams, "s1", Some(&json!(4)));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        server.daemon_log_buffer.push("INFO".into(), "t".into(), "after cancel".into());
+        assert!(recv(&mut out_rx, 300).await.is_none(), "a cancelled stream sends nothing more");
+    }
+
+    /// 세션이 닫히면 그 세션의 스트림도 멈춘다
+    #[tokio::test]
+    async fn closing_a_session_stops_its_streams() {
+        let tmp = tempfile::tempdir().unwrap();
+        let server = server(tmp.path()).await;
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
+        let (queue, slots) = (Arc::new(Semaphore::new(QUEUED)), Arc::new(Semaphore::new(IN_FLIGHT)));
+        let streams = Streams::default();
+        let frame = json!({ "t": "req", "sid": "s1", "id": 1, "method": "GET", "path": "/api/daemon/console/stream" });
+        dispatch(&server, &frame, "s1".into(), None, &out_tx, &queue, &slots, &streams);
+        tokio::time::timeout(Duration::from_secs(2), out_rx.recv()).await.unwrap().unwrap();
+        cancel_streams(&streams, "s1", None);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        server.daemon_log_buffer.push("INFO".into(), "t".into(), "after close".into());
+        assert!(tokio::time::timeout(Duration::from_millis(300), out_rx.recv()).await.is_err());
     }
 
     /// 다시 붙기를 기다리는 중에 멈추면 더 붙지 않는다
