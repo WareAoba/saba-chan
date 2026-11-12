@@ -1378,8 +1378,10 @@ async fn drive(
         let (exit_status, stdout_str, ()) = tokio::try_join!(
             async {
                 if let Some(mut stdin) = stdin_pipe {
-                    stdin.write_all(input).await?;
-                    stdin.shutdown().await?;
+                    // 입력을 다 읽기 전에 끝난 프로세스는 쓰기가 실패한다: 무엇이 잘못됐는지는 종료 코드와 stderr에 있다
+                    if stdin.write_all(input).await.is_ok() {
+                        let _ = stdin.shutdown().await;
+                    }
                 }
                 running.child.wait().await
             },
@@ -1477,6 +1479,16 @@ mod tests {
         let mut child = python_process("import sys; sys.stdin.read(); sys.stdout.write('x' * (4 * 1024 * 1024 + 1)); sys.stdout.flush()").await;
         let result = drive(&mut child, b"{}", None, None, None, std::time::Duration::from_secs(10)).await;
         assert!(matches!(result, Ok(Err(_))), "stdout beyond the cap must fail");
+    }
+
+    /// 입력을 읽기 전에 죽은 모듈(import 오류)은 파이프 오류가 아니라 종료 코드와 traceback으로 보인다
+    #[tokio::test]
+    async fn a_module_that_dies_before_reading_its_input_reports_its_own_error() {
+        let mut child = python_process("import sys; print('ImportError: no module named game', file=sys.stderr); sys.exit(1)").await;
+        let input = vec![b' '; 4 * 1024 * 1024];
+        let (status, _, stderr) = drive(&mut child, &input, None, None, None, std::time::Duration::from_secs(10)).await.unwrap().expect("the exit, not a pipe error");
+        assert_eq!(status.code(), Some(1));
+        assert!(stderr.contains("ImportError: no module named game"), "{stderr}");
     }
 
     #[tokio::test]
