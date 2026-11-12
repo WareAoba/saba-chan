@@ -57,7 +57,7 @@
         var(--brand-to) calc(var(--about-gs) + 100%), calc(var(--about-gs) + 200% - var(--brand-grad-mid)),
         var(--brand-from) calc(var(--about-gs) + 200%));
     animation: about-ring-cycle 2.4s linear infinite;
-    box-shadow: 0 6px 24px color-mix(in oklch, var(--brand-from) 35%, transparent);
+    box-shadow: 0 6px 24px color-mix(in oklab, var(--brand-from) 35%, transparent);
 }
 @keyframes about-ring-cycle {
     to { --about-gs: 200%; }
@@ -85,7 +85,7 @@
     background: var(--brand-gradient);
     padding: var(--sp-1) var(--sp-2-5);
     border-radius: 12px;
-    box-shadow: 0 2px 8px color-mix(in oklch, var(--accent) 40%, transparent);
+    box-shadow: 0 2px 8px color-mix(in oklab, var(--accent) 40%, transparent);
 }
 
 .about-app-info {
@@ -133,8 +133,8 @@
     place-items: center;
     color: var(--brand-text);
     background: linear-gradient(in oklch 135deg, var(--brand-from), var(--brand-to));
-    box-shadow: 0 3px 8px color-mix(in oklch, var(--brand-from) 30%, transparent),
-        inset 0 1px 0 color-mix(in oklch, #ffffff 35%, transparent);
+    box-shadow: 0 3px 8px color-mix(in oklab, var(--brand-from) 30%, transparent),
+        inset 0 1px 0 color-mix(in oklab, #ffffff 35%, transparent);
 }
 .about-component-text {
     display: flex;

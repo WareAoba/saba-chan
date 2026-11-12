@@ -38,9 +38,13 @@ describe('가이드 카드 (사용자 11-11)', () => {
     });
 
     it('평소에는 "가이드" 한 줄, 누르면 세 개까지 펼치고 new!는 글자로만', () => {
-        render(<GuideCard />);
-        expect(screen.queryByText('T-going')).toBeNull();
-        fireEvent.click(screen.getByRole('button', { name: /Guides/ }));
+        const { container } = render(<GuideCard />);
+        // 접힌 동안 목록은 높이 0으로 접혀 누를 수도 읽을 수도 없다 (펼침 움직임 때문에 그려 둔다, 사용자 11-13)
+        const head = screen.getByRole('button', { name: /Guides/ });
+        expect(head.getAttribute('aria-expanded')).toBe('false');
+        expect(container.querySelector('.guide-dock-wrap')?.hasAttribute('inert')).toBe(true);
+        fireEvent.click(head);
+        expect(container.querySelector('.guide-dock-wrap')?.hasAttribute('inert')).toBe(false);
         const titles = screen.getAllByRole('button').map((b) => b.textContent);
         expect(titles.filter((x) => x?.startsWith('T-'))).toEqual(['T-goingStep 2 of 2', 'T-freshnew!S-fresh', 'T-aS-a']);
         expect(screen.getByText('new!').tagName).toBe('SPAN');

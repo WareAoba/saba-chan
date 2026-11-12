@@ -1,6 +1,6 @@
 import clsx from 'clsx';
-import { useEffect, useState } from 'react';
 import type { TFunction } from 'i18next';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useModalClose } from '../../hooks/useModalClose';
 import { subscribeDaemonEvents } from '../../utils/daemonEvents';
@@ -38,8 +38,8 @@ function GuideRow({ guide, onPick, current }: { guide: GuideItem; onPick: () => 
     );
 }
 
-/** 더 보기: 끝낸 것까지 모든 가이드를 묶음별로 */
-function GuideList({ guides, onClose }: { guides: GuideItem[]; onClose: () => void }) {
+/** 더 보기: 끝낸 것까지 모든 가이드를 묶음별로. `from`: 가이드 카드가 창 가운데에서 떨어진 거리 (그 자리에서 커지며 열린다) */
+function GuideList({ guides, from, onClose }: { guides: GuideItem[]; from: { x: number; y: number }; onClose: () => void }) {
     const { t } = useTranslation('gui');
     const { isClosing, requestClose } = useModalClose(onClose);
     // 데몬이 묶음 순서대로 준다
@@ -48,6 +48,7 @@ function GuideList({ guides, onClose }: { guides: GuideItem[]; onClose: () => vo
         <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
             <div
                 className="modal guide-sheet"
+                style={{ '--from-x': `${from.x}px`, '--from-y': `${from.y}px` } as CSSProperties}
                 role="dialog"
                 aria-label={t('guides.title')}
                 onClick={(e) => e.stopPropagation()}
@@ -91,7 +92,8 @@ export function GuideCard() {
     const { t } = useTranslation('gui');
     const guides = useGuideStore((s) => s.guides);
     const [open, setOpen] = useState(false);
-    const [all, setAll] = useState(false);
+    const [all, setAll] = useState<{ x: number; y: number } | null>(null);
+    const ref = useRef<HTMLElement>(null);
     // 데몬이 새 가이드를 받으면 다시 읽는다 (받기는 목록을 부를 때 뒤에서 한다)
     useEffect(
         () =>
@@ -108,13 +110,14 @@ export function GuideCard() {
         setOpen(!open);
     };
     return (
-        <section className="guide-dock">
+        <section ref={ref} className={clsx('guide-dock', { open })}>
             <button type="button" className="guide-dock-head" aria-expanded={open} onClick={toggle}>
                 <Icon name="lightbulb" size="sm" />
                 <span className="guide-dock-label">{t('guides.title')}</span>
-                <Icon name={open ? 'chevronDown' : 'chevronUp'} size="xs" />
+                <Icon name="chevronUp" size="xs" />
             </button>
-            {open && (
+            {/* 접혀도 그려 두고 높이만 접는다: 펼치고 접는 움직임 (사용자 11-13) */}
+            <div className="guide-dock-wrap" inert={!open}>
                 <div className="guide-dock-body">
                     {pending.map((g) => (
                         <GuideRow
@@ -129,14 +132,19 @@ export function GuideCard() {
                         className="guide-dock-more"
                         onClick={() => {
                             useGuideStore.getState().refreshGuides();
-                            setAll(true);
+                            const r = ref.current?.getBoundingClientRect();
+                            setAll(
+                                r
+                                    ? { x: r.left + r.width / 2 - window.innerWidth / 2, y: r.top + r.height / 2 - window.innerHeight / 2 }
+                                    : { x: 0, y: 0 },
+                            );
                         }}
                     >
                         {t('guides.more')}
                     </button>
                 </div>
-            )}
-            {all && <GuideList guides={guides} onClose={() => setAll(false)} />}
+            </div>
+            {all && <GuideList guides={guides} from={all} onClose={() => setAll(null)} />}
         </section>
     );
 }
