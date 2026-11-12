@@ -109,6 +109,9 @@ struct StoredFile {
     /// 내용 파일(압축)의 크기. 다음 백업이 이어 쓰기 전에 그 파일이 그대로인지 본다
     #[serde(default)]
     stored_size: u64,
+    /// 유닉스 권한 비트 (실행 권한을 되살린다). Windows에서 만든 백업에는 없다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mode: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -304,6 +307,16 @@ fn now_ns() -> u64 {
 
 fn mtime_ns(meta: &fs::Metadata) -> u64 {
     meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as u64).unwrap_or(0)
+}
+
+fn unix_mode(meta: &fs::Metadata) -> Option<u32> {
+    #[cfg(unix)]
+    return Some(std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o7777);
+    #[cfg(not(unix))]
+    {
+        let _ = meta;
+        None
+    }
 }
 
 fn is_hash(s: &str) -> bool {
@@ -515,7 +528,7 @@ impl V2Writer<'_> {
             }
         };
         self.summary.size += size;
-        self.manifest.files.push(StoredFile { entry: entry.to_string(), rel: rel.to_string(), hash, size, mtime, stored_size });
+        self.manifest.files.push(StoredFile { entry: entry.to_string(), rel: rel.to_string(), hash, size, mtime, stored_size, mode: unix_mode(&meta) });
         Ok(())
     }
 
@@ -1077,6 +1090,12 @@ fn write_object(dir: &Path, file: &StoredFile, out: &Path) -> Result<()> {
     if src.finish() != (file.hash.clone(), file.size) {
         bail!("backup content is damaged");
     }
+    // 백업할 때의 수정 시각·권한으로 (되돌리지 못해도 내용은 복원된 것이다)
+    #[cfg(unix)]
+    if let Some(mode) = file.mode {
+        let _ = dst.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(mode));
+    }
+    let _ = dst.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_nanos(file.mtime));
     Ok(())
 }
 
@@ -1414,6 +1433,35 @@ mod tests {
         assert!(!w.join("new.dat").exists(), "restore replaces the folder, not merges");
         assert_eq!(fs::read(&props).unwrap(), b"a=1");
         assert!(!aside_path(&w).exists());
+    }
+
+    /// 복원한 파일은 백업할 때의 수정 시각과 실행 권한을 되찾는다 (수정 시각으로 세이브를 고르는 게임, 백업 경로 안의 실행 스크립트)
+    #[test]
+    fn a_restored_file_gets_its_modified_time_and_permissions_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let level = w.join("level.dat");
+        let saved = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+        File::options().write(true).open(&level).unwrap().set_modified(saved).unwrap();
+        let script = w.join("start.sh");
+        fs::write(&script, b"#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o750)).unwrap();
+        }
+        let dir = tmp.path().join("backups");
+        let b = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+
+        fs::write(&level, b"broken").unwrap();
+        restore(&dir, &b.name).unwrap();
+        assert_eq!(fs::read(&level).unwrap(), b"level");
+        assert_eq!(fs::metadata(&level).unwrap().modified().unwrap(), saved);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&script).unwrap().permissions().mode() & 0o7777, 0o750);
+        }
     }
 
     #[test]
