@@ -483,6 +483,12 @@
           "markdownDescription": "Enables the overlay_action command without any pre-configured scope."
         },
         {
+          "description": "Enables the overlay_drag command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-overlay-drag",
+          "markdownDescription": "Enables the overlay_drag command without any pre-configured scope."
+        },
+        {
           "description": "Enables the overlay_fit command without any pre-configured scope.",
           "type": "string",
           "const": "allow-overlay-fit",
@@ -757,6 +763,12 @@
           "type": "string",
           "const": "deny-overlay-action",
           "markdownDescription": "Denies the overlay_action command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the overlay_drag command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-overlay-drag",
+          "markdownDescription": "Denies the overlay_drag command without any pre-configured scope."
         },
         {
           "description": "Denies the overlay_fit command without any pre-configured scope.",

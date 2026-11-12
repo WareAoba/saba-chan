@@ -211,6 +211,12 @@ pub async fn overlay_set_enabled(app: AppHandle, enabled: bool) -> Value {
     json!({ "ok": crate::overlay::set_enabled(&app, enabled).await })
 }
 
+/// 오버레이를 끌기 시작한다. 셸이 끌어 옮긴 자리만 기억하도록(OS가 옮긴 자리와 가르도록) 창 끌기를 셸이 시작한다
+#[tauri::command]
+pub fn overlay_drag(app: AppHandle) {
+    crate::overlay::drag(&app);
+}
+
 /// 익스텐션을 켜고 끄거나 설치·삭제한 뒤 메인 창이 부른다: 오버레이 창을 띄울지 다시 본다
 #[tauri::command]
 pub async fn overlay_sync(app: AppHandle) {

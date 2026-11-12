@@ -3,6 +3,8 @@
 //! 셸은 창만 준다: 투명·틀 없음·항상 위·작업 표시줄에 없음. 무엇을 그릴지는 그 slot을 선언한 익스텐션이 정한다.
 //! - 켜진 익스텐션 중 하나라도 `Desktop.overlay`를 선언했고(번들을 내줄 수 있고) 설정 `desktopOverlay.enabled`가 켜져 있을 때만 띄운다
 //! - 창은 내용 크기에 맞추고(`overlay_fit`) 아래 가운데 점을 붙박이로 둔다. 끌어 옮긴 자리는 `desktopOverlay.{x,y}`(물리 px)에 남는다
+//! - 끌기(`overlay_drag`)로 옮긴 자리만 기억한다. 모니터를 빼서 OS가 옮긴 자리는 기억하지 않고, 모니터 구성을 지켜보다
+//!   고른 자리가 있는 모니터가 돌아오면 그 자리로 되돌린다
 //! - 우클릭 메뉴는 렌더러가 항목을 주면 셸이 OS 메뉴로 띄우고 고른 것을 `overlay:menu`로 돌려준다 (작은 창 안에 그리면 잘린다)
 //! - 사용자가 보는 창으로 세지 않는다: 트레이만 남은 상태 판단(`window::tray_only`)과 "창 모두 닫기"에서 빠진다
 //!
@@ -31,17 +33,29 @@ const MAX_HEIGHT: f64 = 420.0;
 /// 처음 자리: 작업 영역 오른쪽 아래에서 띄우는 간격 (논리 px)
 const MARGIN: f64 = 16.0;
 const SAVE_DEBOUNCE_MS: u64 = 600;
+/// 끌기를 시작한 뒤 첫 이동을 기다리는 시간, 그 뒤 이동마다 늘리는 시간 (ms). 이 안의 이동만 사용자가 옮긴 것이다
+const DRAG_START_MS: u64 = 10_000;
+const DRAG_MOVE_MS: u64 = 2_000;
+/// 모니터를 꽂고 빼거나 OS가 창을 옮겼는지 보는 간격
+const WATCH_MS: u64 = 3_000;
 /// 메뉴 항목 한도 (렌더러가 보낸 것)
 const MENU_MAX_ITEMS: usize = 80;
 const MENU_MAX_LABEL: usize = 80;
 
-/// 지킬 아래 가운데 점 (물리 px). 크기가 바뀌어도 이 점을 지킨다 (가장자리에서 당겨도 바꾸지 않는다)
+/// 사용자가 고른 아래 가운데 점 (물리 px). 끌어 옮길 때만 바뀐다: 크기가 바뀌어 가장자리에서 당겨도,
+/// 그 모니터를 빼서 다른 모니터에 놓아도 이 점은 그대로다
 static ANCHOR: Mutex<Option<(f64, f64)>> = Mutex::new(None);
 /// 셸이 마지막으로 놓은 창의 아래 가운데 점: 이와 다른 자리로 옮겨졌으면 사용자가 끈 것이다
 static PLACED: Mutex<Option<(f64, f64)>> = Mutex::new(None);
 /// 셸이 창을 옮기고 크기를 바꾸는 중: 그 사이의 이동 알림은 사용자가 끈 것이 아니다
 static PLACING: AtomicBool = AtomicBool::new(false);
 static SAVE_GEN: AtomicU64 = AtomicU64::new(0);
+/// 렌더러가 마지막으로 알린 내용 크기 (논리 px). 모니터가 바뀌면 이 크기로 다시 놓는다
+static LAST_FIT: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+/// 이 시각(유닉스 ms)까지의 이동은 사용자가 끈 것이다
+static DRAG_UNTIL: AtomicU64 = AtomicU64::new(0);
+/// 창을 열 때마다 늘린다. 옛 창의 지켜보기는 멈춘다
+static OPEN_GEN: AtomicU64 = AtomicU64::new(0);
 /// 마지막으로 연 메뉴의 세대. 늦게 온 옛 메뉴의 선택은 버린다
 static MENU_GEN: AtomicU64 = AtomicU64::new(0);
 
@@ -186,9 +200,11 @@ fn open(app: &AppHandle) {
     }
     *ANCHOR.lock().unwrap() = None;
     *PLACED.lock().unwrap() = None;
+    *LAST_FIT.lock().unwrap() = None;
+    watch(app);
     let handle = app.clone();
     win.on_window_event(move |event| {
-        // 셸이 놓은 자리(`fit`)도 Moved로 온다: 놓는 중이거나 기억한 점과 같으면 remember_moved가 거른다
+        // 셸이 놓은 자리(`fit`)와 OS가 옮긴 자리도 Moved로 온다: 끄는 중이 아니거나 놓은 점과 같으면 remember_moved가 거른다
         if let WindowEvent::Moved(_) = event {
             remember_moved(&handle);
         }
@@ -260,17 +276,33 @@ pub fn fit(app: &AppHandle, width: f64, height: f64) {
         return;
     };
     if !has_content(width, height) {
+        *LAST_FIT.lock().unwrap() = None;
         let _ = win.hide();
         return;
     }
-    let anchor = *ANCHOR.lock().unwrap();
-    let anchor = anchor.or_else(|| saved(&app.state::<AppState>().settings()).1);
-    let monitor = anchor
-        .and_then(|(x, y)| app.monitor_from_point(x, y - 1.0).ok().flatten())
-        .or_else(|| app.primary_monitor().ok().flatten());
-    let Some(monitor) = monitor else {
+    *LAST_FIT.lock().unwrap() = Some((width, height));
+    let Some((pos, size)) = plan(app, width, height) else {
         let _ = win.show();
         return;
+    };
+    *PLACED.lock().unwrap() = Some((pos.0 + size.0 / 2.0, pos.1 + size.1));
+    PLACING.store(true, Ordering::SeqCst);
+    // 먼저 옮기고 크기를 준다: 배율이 다른 모니터로 옮기면 창 크기가 그 배율로 다시 잡힌다
+    let _ = win.set_position(tauri::PhysicalPosition::new(pos.0, pos.1));
+    let _ = win.set_size(tauri::PhysicalSize::new(size.0, size.1));
+    PLACING.store(false, Ordering::SeqCst);
+    let _ = win.show();
+}
+
+/// 이 내용 크기(논리 px)를 놓을 자리와 크기 (물리 px). 고른 점이 있는 모니터에, 그 모니터가 없으면 주 모니터의 처음 자리에
+fn plan(app: &AppHandle, width: f64, height: f64) -> Option<((f64, f64), (f64, f64))> {
+    let anchor = *ANCHOR.lock().unwrap();
+    let anchor = anchor.or_else(|| saved(&app.state::<AppState>().settings()).1);
+    let monitors = app.available_monitors().unwrap_or_default();
+    let screens: Vec<PxRect> = monitors.iter().map(|m| rect(*m.position(), *m.size())).collect();
+    let (monitor, anchor) = match screen_for(anchor, &screens) {
+        Some(i) => (monitors[i].clone(), anchor),
+        None => (app.primary_monitor().ok().flatten().or_else(|| monitors.first().cloned())?, None),
     };
     let scale = monitor.scale_factor();
     // 물리 px는 정수로: 창이 옮겨진 뒤 잰 자리와 기억한 점이 어긋나 사용자가 옮긴 것으로 보지 않게
@@ -279,23 +311,81 @@ pub fn fit(app: &AppHandle, width: f64, height: f64) {
         (height.clamp(MIN_SIDE, MAX_HEIGHT) * scale).round(),
     );
     let area = monitor.work_area();
-    let work = PxRect {
-        x: area.position.x as f64,
-        y: area.position.y as f64,
-        w: area.size.width as f64,
-        h: area.size.height as f64,
+    let (pos, _) = settle(anchor, size, rect(area.position, area.size), MARGIN * scale);
+    Some((pos, size))
+}
+
+fn rect(position: tauri::PhysicalPosition<i32>, size: tauri::PhysicalSize<u32>) -> PxRect {
+    PxRect {
+        x: position.x as f64,
+        y: position.y as f64,
+        w: size.width as f64,
+        h: size.height as f64,
+    }
+}
+
+/// 아래 가운데 점이 있는 모니터의 번호. 없으면(점이 없거나 그 모니터를 뺐다) None.
+/// 모니터 전체로 본다: 작업 표시줄 위에 내려놓아도 그 모니터다 (작업 영역 안으로는 `settle`이 당긴다)
+fn screen_for(anchor: Option<(f64, f64)>, screens: &[PxRect]) -> Option<usize> {
+    let (x, y) = anchor?;
+    screens.iter().position(|w| x >= w.x && x <= w.x + w.w && y > w.y && y <= w.y + w.h)
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// 지금(`now`) 사용자가 끄는 중인가
+fn dragging(now: u64, until: u64) -> bool {
+    now < until
+}
+
+/// 렌더러가 펫을 누른 채 끌기 시작했다: 이제부터의 이동을 사용자가 옮긴 것으로 본다
+pub fn drag(app: &AppHandle) {
+    let Some(win) = app.get_webview_window(OVERLAY) else {
+        return;
     };
-    // 다른 모니터에 남은 자리(모니터를 뺐다 등)는 버리고 처음 자리로
-    let anchor = anchor.filter(|&(x, y)| x >= work.x && x <= work.x + work.w && y > work.y && y <= work.y + work.h);
-    let ((x, y), intended) = settle(anchor, size, work, MARGIN * scale);
-    *ANCHOR.lock().unwrap() = Some(intended);
-    *PLACED.lock().unwrap() = Some((x + size.0 / 2.0, y + size.1));
-    PLACING.store(true, Ordering::SeqCst);
-    // 먼저 옮기고 크기를 준다: 배율이 다른 모니터로 옮기면 창 크기가 그 배율로 다시 잡힌다
-    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-    let _ = win.set_size(tauri::PhysicalSize::new(size.0, size.1));
-    PLACING.store(false, Ordering::SeqCst);
-    let _ = win.show();
+    DRAG_UNTIL.store(now_ms() + DRAG_START_MS, Ordering::SeqCst);
+    if let Err(e) = win.start_dragging() {
+        DRAG_UNTIL.store(0, Ordering::SeqCst);
+        tracing::debug!("[Overlay] Could not start dragging: {}", e);
+    }
+}
+
+/// 창이 있는 동안 모니터 구성과 창 자리를 지켜본다: 놓아야 할 자리와 지금 자리가 다르면(모니터를 꽂거나 뺐다,
+/// OS가 옮겼다) 다시 놓는다. 사용자가 끄는 중에는 건드리지 않는다
+fn watch(app: &AppHandle) {
+    let generation = OPEN_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(WATCH_MS)).await;
+            if OPEN_GEN.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            let Some(win) = app.get_webview_window(OVERLAY) else {
+                return;
+            };
+            let Some((width, height)) = *LAST_FIT.lock().unwrap() else {
+                continue;
+            };
+            if dragging(now_ms(), DRAG_UNTIL.load(Ordering::SeqCst)) {
+                continue;
+            }
+            let (Some((pos, size)), Ok(at)) = (plan(&app, width, height), win.outer_position()) else {
+                continue;
+            };
+            if (pos.0 - at.x as f64).abs() > 1.0 || (pos.1 - at.y as f64).abs() > 1.0 {
+                fit(&app, width, height);
+            } else if let Ok(now) = win.outer_size() {
+                if (size.0 - now.width as f64).abs() > 1.0 || (size.1 - now.height as f64).abs() > 1.0 {
+                    fit(&app, width, height);
+                }
+            }
+        }
+    });
 }
 
 /// 창의 아래 가운데 점 (물리 px)
@@ -304,9 +394,10 @@ fn anchor_of(win: &WebviewWindow) -> Option<(f64, f64)> {
     Some((pos.x as f64 + size.width as f64 / 2.0, pos.y as f64 + size.height as f64))
 }
 
-/// 사용자가 창을 끌어 옮겼다: 아래 가운데 점을 기억하고, 멈추면 그때의 자리를 저장한다
+/// 사용자가 창을 끌어 옮겼다: 아래 가운데 점을 기억하고, 멈추면 그때의 자리를 저장한다.
+/// 끄는 중이 아닌 이동(모니터를 빼서 OS가 옮겼다 등)은 기억하지 않는다. 지켜보기(`watch`)가 제자리로 되돌린다
 fn remember_moved(app: &AppHandle) {
-    if PLACING.load(Ordering::SeqCst) {
+    if PLACING.load(Ordering::SeqCst) || !dragging(now_ms(), DRAG_UNTIL.load(Ordering::SeqCst)) {
         return;
     }
     let Some(anchor) = app.get_webview_window(OVERLAY).as_ref().and_then(anchor_of) else {
@@ -323,6 +414,7 @@ fn remember_moved(app: &AppHandle) {
         *placed = Some(anchor);
         *ANCHOR.lock().unwrap() = Some(anchor);
     }
+    DRAG_UNTIL.fetch_max(now_ms() + DRAG_MOVE_MS, Ordering::SeqCst);
     let generation = SAVE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -624,6 +716,32 @@ mod tests {
         assert_eq!(xs[1], 1920.0 - 300.0, "pulled inside while wide");
     }
 
+    /// 듀얼 모니터: 고른 자리가 있는 모니터에 놓는다. 그 모니터를 빼면 주 모니터의 처음 자리로 가되,
+    /// 고른 자리는 잊지 않아서 다시 꽂으면 돌아간다
+    #[test]
+    fn a_place_on_an_unplugged_monitor_comes_back_when_it_is_plugged_in() {
+        let right = PxRect {
+            x: 1920.0,
+            y: 0.0,
+            w: 2560.0,
+            h: 1400.0,
+        };
+        let chosen = Some((3000.0, 1300.0));
+        assert_eq!(screen_for(chosen, &[WORK, right]), Some(1), "on the second monitor");
+        assert_eq!(screen_for(chosen, &[WORK]), None, "unplugged: the primary monitor's first place");
+        assert_eq!(screen_for(chosen, &[WORK, right]), Some(1), "plugged back in");
+        assert_eq!(screen_for(Some((500.0, 900.0)), &[right, WORK]), Some(1));
+        assert_eq!(screen_for(None, &[WORK, right]), None, "never moved");
+    }
+
+    /// 사용자가 끈 동안의 이동만 기억한다. 모니터를 빼서 OS가 옮긴 것은 기억하지 않는다
+    #[test]
+    fn only_moves_while_the_user_drags_are_remembered() {
+        assert!(!dragging(1_000, 0), "no drag yet");
+        assert!(dragging(1_000, 1_500));
+        assert!(!dragging(2_000, 1_500), "the drag is over");
+    }
+
     #[test]
     fn the_overlay_switch_defaults_on_and_reads_its_place() {
         assert_eq!(saved(&json!({})), (true, None));
@@ -698,15 +816,15 @@ mod tests {
             "allow-overlay-action",
             "core:event:allow-listen",
             "core:event:allow-unlisten",
-            "core:window:allow-start-dragging",
+            "allow-overlay-drag",
         ] {
             assert!(granted.iter().any(|g| g == need), "the overlay cannot call {need}");
         }
-        for never in ["core:event:default", "core:event:allow-emit", "core:event:allow-emit-to", "allow-notify", "allow-overlay-set-enabled", "allow-daemon-target-set", "allow-settings-local-save"] {
+        for never in ["core:event:default", "core:event:allow-emit", "core:event:allow-emit-to", "allow-notify", "allow-overlay-set-enabled", "allow-daemon-target-set", "allow-settings-local-save", "core:window:allow-start-dragging"] {
             assert!(!granted.iter().any(|g| g == never), "the overlay must not call {never}");
         }
         let build = include_str!("../build.rs");
-        for cmd in ["overlay_fit", "overlay_menu", "overlay_action", "overlay_state", "overlay_set_enabled", "overlay_sync"] {
+        for cmd in ["overlay_fit", "overlay_menu", "overlay_action", "overlay_state", "overlay_set_enabled", "overlay_sync", "overlay_drag"] {
             assert!(build.contains(&format!("\"{cmd}\"")), "{cmd} is missing from the app manifest");
         }
     }

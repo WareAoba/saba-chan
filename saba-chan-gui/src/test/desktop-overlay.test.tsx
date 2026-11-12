@@ -39,7 +39,7 @@ describe('오버레이 브리지', () => {
         await api.overlayAction('open_app', 'server:b');
         expect(invoke).toHaveBeenLastCalledWith('overlay_action', { action: 'open_app', route: 'server:b' });
         await api.overlayStartDrag();
-        expect(invoke).toHaveBeenLastCalledWith('plugin:window|start_dragging', { label: 'desktop-overlay' });
+        expect(invoke).toHaveBeenLastCalledWith('overlay_drag');
         await api.overlaySetEnabled(false);
         expect(invoke).toHaveBeenLastCalledWith('overlay_set_enabled', { enabled: false });
         await api.overlaySync();

@@ -236,6 +236,7 @@ pub fn run() {
             native::overlay_state,
             native::overlay_set_enabled,
             native::overlay_sync,
+            native::overlay_drag,
         ])
         .setup(|app| {
             let handle = app.handle();

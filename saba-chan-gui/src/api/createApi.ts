@@ -1299,7 +1299,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         overlayAction: (action: string, route?: string) =>
             invoke('overlay_action', route ? { action, route } : { action }),
         // 오버레이 창을 끌어 옮긴다 (누른 채 움직이기 시작했을 때)
-        overlayStartDrag: () => invoke('plugin:window|start_dragging', { label: 'desktop-overlay' }),
+        overlayStartDrag: () => invoke('overlay_drag'),
         // 설정 화면: {enabled, available, supported}와 켜기 스위치
         overlayState: () => invoke('overlay_state'),
         overlaySetEnabled: (enabled: boolean) => invoke('overlay_set_enabled', { enabled }),
