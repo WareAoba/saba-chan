@@ -562,6 +562,23 @@ impl RelayClient {
             Some(found) => select_release(channel, "", client_id, found.releases),
             None => self.check(channel, platform, "", client_id).await?.latest,
         };
+        // 베타로 먼저 낸 빌드(정식 채널 빌드인데 판이 정식 최신보다 높다)면 정식 최신은 다운그레이드다:
+        // 베타에서 이 빌드와 같은 판(그 판의 프리릴리스 포함)을 그 채널로 검증해 쓴다
+        let behind = |r: &LatestRelease| SemVer::parse(&r.version).zip(SemVer::parse(floor)).is_some_and(|(v, f)| v < f);
+        if channel != "beta" && latest.as_ref().is_none_or(behind) {
+            if let Some(found) = self.latest("beta", platform, "").await.ok().flatten() {
+                let own = found
+                    .releases
+                    .into_iter()
+                    .filter(|r| r.version == floor || same_base_prerelease(&r.version, floor))
+                    .filter(|r| in_rollout(client_id, &r.version, r.rollout_percent.unwrap_or(100)))
+                    .filter_map(|r| SemVer::parse(&r.version).map(|v| (v, r)))
+                    .max_by(|a, b| a.0.cmp(&b.0));
+                if let Some((_, own)) = own {
+                    return self.fetch_verified(own, platform, "beta", floor).await.map(Some);
+                }
+            }
+        }
         let Some(latest) = latest else { return Ok(None) };
         self.fetch_verified(latest, platform, channel, floor).await.map(Some)
     }
@@ -917,6 +934,22 @@ mod tests {
         let base = fake_relay(check, PRODUCTION_0_1_1.into()).await;
         let got = RelayClient::new(&base).fetch_verified_catalog("stable", "windows-x64", "0.1.0", "t").await;
         assert_eq!(got.unwrap().map(|v| v.manifest.version).as_deref(), Some("0.1.1"));
+    }
+
+    // 베타로 먼저 낸 빌드(정식 채널 빌드인데 판이 정식 최신보다 높다)의 설치기·카탈로그는 정식 최신을 다운그레이드로
+    // 거절해 모듈 목록이 비었다: 베타에서 이 빌드와 같은 판을 받는다 (맥 설치기 11-12)
+    #[tokio::test]
+    async fn a_build_ahead_of_its_channel_takes_its_own_version_from_beta() {
+        let (base, seen) = routed_relay(vec![
+            ("/v1/updates/latest?channel=beta", 200, r#"{"releases":[{"version":"0.3.0","channel":"beta"},{"version":"0.2.0","channel":"beta"}]}"#.into()),
+            ("/v1/updates/latest", 200, r#"{"releases":[{"version":"0.1.1","channel":"stable"}]}"#.into()),
+            ("/v1/updates/manifest/", 200, PRODUCTION_0_1_1.into()),
+        ])
+        .await;
+        let _ = RelayClient::new(&base).fetch_verified_catalog("stable", "windows-x64", "0.2.0", "t").await;
+        let seen = seen.lock().unwrap().clone();
+        assert!(seen.iter().any(|p| p.starts_with("/v1/updates/manifest/0.2.0")), "{seen:?}");
+        assert!(!seen.iter().any(|p| p.starts_with("/v1/updates/manifest/0.1.1") || p.starts_with("/v1/updates/manifest/0.3.0")), "{seen:?}");
     }
 
     /// 경로마다 정한 답을 주고 요청을 센다 (몇 번이든 받는다). `(경로 앞부분, 상태, 본문)`

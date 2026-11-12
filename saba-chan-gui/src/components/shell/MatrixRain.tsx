@@ -471,9 +471,14 @@ export function MatrixRain({
 
         resize();
         if (moving) raf = requestAnimationFrame(loop);
-        window.addEventListener('resize', resize);
+        // 창이 아니라 캔버스 자리의 크기를 따른다: 자리가 0이었다가 커지거나(전환 화면) 창 크기와 따로 바뀌면
+        // 예전 크기로 만든 판이 늘어나 글자가 커다랗게 깨져 보인다
+        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => resize()) : null;
+        if (observer) observer.observe(canvas);
+        else window.addEventListener('resize', resize);
         return () => {
             cancelAnimationFrame(raf);
+            observer?.disconnect();
             window.removeEventListener('resize', resize);
         };
     }, []);
