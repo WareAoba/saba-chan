@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';
-import { PortCheck, PortCheckNotice } from '../components/servers/PortCheck';
+import { PortCheck } from '../components/servers/PortCheck';
+import { ServerAddress } from '../components/servers/ServerAddress';
 import type { Server } from '../stores/useServerStore';
 import { portHelpUrl } from '../utils/portCheck';
 
@@ -79,25 +80,6 @@ describe('포트포워딩 확인', () => {
         expect(screen.getByRole('alert').textContent).toMatch(/Connect to Discord/);
     });
 
-    it('자동 확인 결과가 닫힘이면 상세 위에 알리고, 열림이면 알리지 않는다', async () => {
-        window.api.instancePortCheck = vi.fn();
-        window.api.instancePortCheckLast = vi.fn().mockResolvedValue(closedReport);
-        const { unmount } = render(<PortCheckNotice server={server} />);
-        expect(await screen.findByRole('status')).toHaveTextContent(/Not reachable from the internet/);
-        unmount();
-        window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'open' });
-        const { container } = render(<PortCheckNotice server={server} />);
-        await act(async () => {});
-        expect(container).toBeEmptyDOMElement();
-    });
-
-    it('방화벽이 막은 결과도 상세 위에 알린다', async () => {
-        window.api.instancePortCheck = vi.fn();
-        window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'firewall' });
-        render(<PortCheckNotice server={server} />);
-        expect(await screen.findByRole('status')).toHaveTextContent(/Blocked by the PC firewall/);
-    });
-
     it('결과가 나오면 성공이든 실패든 다시 확인할 수 있다', async () => {
         window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'open' });
         window.api.instancePortCheck = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'router' });
@@ -109,16 +91,6 @@ describe('포트포워딩 확인', () => {
         expect(screen.getByRole('button', { name: /Check again/i })).toBeInTheDocument();
     });
 
-    it('상단 알림에서 고친 뒤 바로 다시 확인하고, 열리면 알림이 사라진다', async () => {
-        window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'firewall' });
-        window.api.instancePortCheck = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'open' });
-        const { container } = render(<PortCheckNotice server={server} />);
-        await screen.findByRole('status');
-        await act(async () => fireEvent.click(screen.getByRole('button', { name: /Check again/i })));
-        expect(window.api.instancePortCheck).toHaveBeenCalledWith('a');
-        expect(container).toBeEmptyDOMElement();
-    });
-
     it('도움말 주소는 웹사이트 언어 경로를 따른다 (영어는 앞에 언어가 없다)', () => {
         expect(portHelpUrl('en')).toBe('https://saba-chan.online/docs/server-management');
         expect(portHelpUrl('ko')).toBe('https://saba-chan.online/ko/docs/server-management');
@@ -127,23 +99,32 @@ describe('포트포워딩 확인', () => {
     });
 });
 
-// 포트포워딩 안내는 닫을 수 있고, 같은 결과면 다시 그려도 닫힌 채다. 결과가 바뀌면 다시 뜬다 (사용자 11-07)
-describe('포트포워딩 안내 닫기', () => {
-    it('닫으면 사라지고, 다른 결과가 오면 다시 뜬다', async () => {
-        sessionStorage.clear();
-        window.api = { instancePortCheck: vi.fn(), instancePortCheckLast: vi.fn().mockResolvedValue(closedReport) } as never;
-        const first = render(<PortCheckNotice server={server} />);
-        await screen.findByRole('status');
-        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Close' })));
+// 포트포워딩 경고는 접속 주소 카드 안의 알약과 다시 확인 버튼으로 보인다 (사용자 11-12). 따로 뜨는 노란 안내는 없다
+describe('접속 주소 카드의 포트포워딩 알약', () => {
+    const addressApi = (last: object, check: object = {}) =>
+        ({
+            instancePortCheck: vi.fn().mockResolvedValue(check),
+            instancePortCheckLast: vi.fn().mockResolvedValue(last),
+            instanceAddress: vi.fn().mockResolvedValue({ address: '8.8.4.4', running: false, ports: [{ field: 'port', port: 7777 }] }),
+        }) as never;
+
+    it('포트포워딩이 안 됐으면 짧은 알약과 다시 확인 버튼을 카드 안에 한 번만 보이고, 고칠 방법은 알약에 띄운다', async () => {
+        window.api = addressApi({ ...closedReport, verdict: 'router' });
+        render(<ServerAddress server={server} />);
+        const pill = await screen.findByText('Port forwarding not set up');
+        expect(pill).toHaveAttribute('data-tooltip', expect.stringMatching(/Forward this port to this PC/));
+        expect(screen.getAllByText(/Port forwarding/)).toHaveLength(1);
+        expect(screen.getByRole('button', { name: /Check again/i })).toBeInTheDocument();
         expect(screen.queryByRole('status')).toBeNull();
-        first.unmount();
-        const again = render(<PortCheckNotice server={server} />);
-        await act(async () => {});
-        expect(screen.queryByRole('status')).toBeNull();
-        again.unmount();
-        window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'firewall' });
-        render(<PortCheckNotice server={server} />);
-        expect(await screen.findByRole('status')).toBeInTheDocument();
-        sessionStorage.clear();
+    });
+
+    it('다시 확인해서 열리면 알약이 열림으로 바뀌고 버튼은 사라진다', async () => {
+        window.api = addressApi({ ...closedReport, verdict: 'firewall' }, { ...closedReport, verdict: 'open' });
+        render(<ServerAddress server={server} />);
+        await screen.findByText('Blocked by the PC firewall');
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: /Check again/i })));
+        expect(window.api.instancePortCheck).toHaveBeenCalledWith('a');
+        expect(screen.getByText('Reachable from the internet')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Check again/i })).toBeNull();
     });
 });

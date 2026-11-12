@@ -4989,28 +4989,6 @@ button.appbar-pill:focus-visible {
 .server-check-issue.port-router {
     color: var(--danger);
 }
-/* 상세 머리 아래 알림: 다시 확인 버튼은 오른쪽 */
-.port-check-notice {
-    align-items: center;
-}
-/* 아이콘(Icon도 span이다)은 그대로 두고 문구만 남은 폭을 채운다 */
-.port-check-notice-text {
-    flex: 1;
-}
-.port-check-notice .btn {
-    flex: none;
-}
-.port-check-notice .btn svg {
-    color: inherit;
-    margin-top: 0;
-}
-/* 닫기 단추: 옆의 다시 확인 단추와 같은 높이의 정사각형으로 줄을 맞춘다 (사용자 11-07) */
-.port-check-notice-close {
-    --btn-height: 36px;
-    width: 36px;
-    height: 36px;
-    flex: none;
-}
 .server-check-issue.port-in_use {
     color: var(--warn);
 }
@@ -6298,13 +6276,13 @@ button.appbar-pill:focus-visible {
 .server-address-line.many .server-address-value {
     font-size: var(--fs-lg);
 }
-.server-address-value.dim,
-.server-address-value.masked {
+.server-address-value.dim {
     color: var(--text-2);
 }
 .server-address-sub {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: var(--sp-2);
     font-size: var(--fs-sm);
 }
@@ -6320,4 +6298,11 @@ button.appbar-pill:focus-visible {
 .server-address-check.verdict-open {
     background: var(--ok-soft);
     color: var(--ok);
+}
+/* 다시 확인은 알약 줄 끝에 */
+.server-address-retry {
+    margin-left: auto;
+}
+.server-address-error {
+    color: var(--danger);
 }

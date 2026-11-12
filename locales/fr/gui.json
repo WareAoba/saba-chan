@@ -2577,6 +2577,16 @@
       "host_mismatch": "L'adresse publique ne pointe pas vers ce PC",
       "host_unresolved": "L'adresse publique est introuvable"
     },
+    "pill": {
+      "open": "Accessible depuis internet",
+      "closed": "Inaccessible depuis l’extérieur",
+      "firewall": "Bloqué par le pare-feu du PC",
+      "router": "Redirection de port non configurée",
+      "cgnat": "Pas d’IP publique (CGNAT)",
+      "unknown": "Certains ports non vérifiés",
+      "host_mismatch": "L’adresse pointe ailleurs",
+      "host_unresolved": "Adresse introuvable"
+    },
     "status": {
       "open": "Ouvert",
       "closed": "Fermé",
@@ -2698,9 +2708,6 @@
     "title": "Adresse de connexion",
     "copy": "Copier",
     "copied": "Copié",
-    "hide": "Masquer",
-    "show": "Afficher",
-    "hidden": "Adresse masquée",
     "unknown": "L'adresse publique de ce PC n'est pas encore connue. Elle apparaît une fois connecté à Server-chan.",
     "stopped": "Démarre le serveur pour que tes amis puissent rejoindre",
     "checked_at": "Vérifié {{time}}"
