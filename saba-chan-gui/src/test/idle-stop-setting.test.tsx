@@ -9,7 +9,7 @@ import { ServerSettingsModal } from '../components/ServerSettingsModal';
 import { useServerSettings } from '../hooks/useServerSettings';
 import i18n from '../i18n';
 
-const t = (k: string, o?: Record<string, unknown>) => i18n.t(`gui:${k}`, o) as string;
+const t = (k: string, o?: Record<string, unknown>) => i18n.t(`gui:${k}`, o ?? {}) as string;
 const modules = [{ name: 'game', settings: { fields: [{ name: 'title', field_type: 'text' }] } }];
 
 const setup = () =>

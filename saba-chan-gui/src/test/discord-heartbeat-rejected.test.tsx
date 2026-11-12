@@ -10,7 +10,7 @@ import { createApi } from '../api/createApi';
 import { ConnectionView } from '../components/discord/ConnectionView';
 import { useDiscordStore } from '../stores/useDiscordStore';
 
-const tr = (key: string, vars?: Record<string, unknown>) => i18n.t(`gui:discord.${key}`, vars);
+const tr = (key: string, vars?: Record<string, unknown>) => i18n.t(`gui:discord.${key}`, vars ?? {});
 const viewProps = {
     cloudState: 'connected',
     hostId: 'host-1',

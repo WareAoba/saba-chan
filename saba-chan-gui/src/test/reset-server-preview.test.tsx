@@ -10,7 +10,7 @@ import { ServerSettingsModal } from '../components/ServerSettingsModal';
 import type { Server } from '../stores/useServerStore';
 import type { ModuleInfo } from '../types/daemon';
 
-const tr = (key: string, vars?: Record<string, unknown>) => i18n.t(`gui:server_settings.${key}`, vars);
+const tr = (key: string, vars?: Record<string, unknown>) => i18n.t(`gui:server_settings.${key}`, vars ?? {});
 const module = { name: 'dl', settings: { fields: [] }, functions: null } as unknown as ModuleInfo;
 const srv = { id: 's1', name: '친구들 서버', module: 'dl', status: 'stopped', module_settings: {} } as unknown as Server;
 

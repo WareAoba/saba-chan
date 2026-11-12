@@ -12,7 +12,7 @@ import * as helpers from '../utils/helpers';
 
 const server = { id: 'srv1', name: '친구들 서버', status: 'stopped' } as unknown as Server;
 const API_KEYS = ['instanceScheduleGet', 'instanceBackups', 'instanceBackupExport', 'instanceBackupImport'];
-const tr = (key: string, vars?: Record<string, unknown>) => i18n.t(`gui:maintenance.${key}`, vars);
+const tr = (key: string, vars?: Record<string, unknown>) => i18n.t(`gui:maintenance.${key}`, vars ?? {});
 
 const mount = () => {
     window.api.instanceScheduleGet = vi.fn().mockResolvedValue({ success: true, schedule: [], backup_keep: 5, backup_supported: true, revision: 'r1' });
