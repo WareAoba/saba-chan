@@ -2476,7 +2476,12 @@ else:
     /// 초기화는 고른 범위만 지우며 먼저 백업을 하나 남긴다
     #[tokio::test]
     async fn a_reset_shows_what_each_scope_deletes_and_backs_up_first_when_asked() {
-        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\n");
+        // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 서버 폴더 쓰기를 받지 못해 지우지 못한다
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = crate::plugin::resolve_modules_dir();
+        let module = tempfile::Builder::new().prefix("reset-scopes-").tempdir_in(&modules).unwrap();
+        let name = module.path().file_name().unwrap().to_string_lossy();
+        let toml = format!("[module]\nschema_version = 1\nname = '{name}'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[backup]\npaths = [\"world\"]\n");
         let hook = "import json, os, shutil, sys\nc = json.load(sys.stdin)\nw = c['working_dir']\nfn = sys.argv[1]\n\
             world = {'label': 'World', 'paths': ['world', 'world_nether']}\n\
             if fn == 'reset_preview':\n    print(json.dumps({'success': True, 'scopes': [\n\
@@ -2485,8 +2490,17 @@ else:
             elif fn == 'reset_server':\n    shutil.rmtree(os.path.join(w, 'world'))\n\
             \x20   if c.get('scope') == 'all':\n        os.remove(os.path.join(w, 'server.properties'))\n\
             \x20   print(json.dumps({'success': True, 'deleted': ['world']}))\n";
-        let (state, id, tmp) = server_with(&toml, Some(hook)).await;
+        std::fs::write(module.path().join("module.toml"), toml).unwrap();
+        std::fs::write(module.path().join("lifecycle.py"), hook).unwrap();
+        crate::sandbox::consent_test_component(&module.path().join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", &name);
         let server = tmp.path().join("server");
+        inst.working_dir = Some(server.to_string_lossy().into_owned());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         std::fs::create_dir_all(server.join("world")).unwrap();
         std::fs::write(server.join("world/level.dat"), b"level").unwrap();
         std::fs::write(server.join("server.properties"), b"a=1").unwrap();
