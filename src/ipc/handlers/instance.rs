@@ -68,6 +68,10 @@ pub async fn get_instance(
             body["hidden"] = json!(hidden);
             body["version_hidden"] = json!(version_hidden);
             body["revision"] = json!(instance.settings_revision());
+            // 이 OS에서는 걸리지 않는 상한이 저장돼 있다 (상한을 거절하기 전 릴리스가 저장한 값, `update_instance_settings`)
+            if !cfg!(windows) && instance.memory_limit_mb.is_some() {
+                body["memory_limit_unsupported"] = json!(true);
+            }
             (StatusCode::OK, Json(body)).into_response()
         }
         None => {
@@ -4665,6 +4669,22 @@ mod tests {
         }
         assert!(patch(json!({ "memory_limit_mb": null })).await.status.is_success());
         assert_eq!(stored().await, Some(None));
+
+        // 0.1.14까지 저장된 상한: 인스턴스 응답이 이 OS에서 걸리지 않는다고 알린다
+        let read = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::get_instance(Path(id), State(state)).await).await.body }
+        };
+        assert_eq!(read().await.get("memory_limit_unsupported"), None);
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).unwrap().clone();
+            inst.memory_limit_mb = Some(2048);
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        let body = read().await;
+        assert_eq!(body["memory_limit_mb"], json!(2048));
+        assert_eq!(body.get("memory_limit_unsupported"), (!cfg!(windows)).then_some(&json!(true)));
     }
 
     /// 06 §8.1·8.2 (스키마 2): 옛 문자열 값은 목록으로 읽고, 숨긴 설정은 required를 보지 않으며 `hidden`에 실린다.
