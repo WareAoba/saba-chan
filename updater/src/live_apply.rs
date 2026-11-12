@@ -736,6 +736,7 @@ impl PreviousVersion {
 
     /// 데몬이 끝난 뒤 직전 판으로 되돌린다: 실행 파일, 데이터 사본, `failed_release`(지금 판을 다시 자동 적용하지 않게), 완료 마커 `reverted`
     /// 차례. 되돌린 판을 돌려준다. 다 되돌리지 못하면 사본을 남기고 되살리는 법(`Recovery`)을 준다: 섞인 판이니 다시 띄우지 않는다
+    #[allow(clippy::result_large_err)] // 오류는 되돌림이 끝날 때 한 번 받아 보이는 되살리는 법이다
     pub fn restore(self, config: &ConfigFile, marker_path: &Path) -> Result<String, Recovery> {
         let record = Self::record(&self.copy.data_dir);
         let done = restore_exes(self.exes.clone());
