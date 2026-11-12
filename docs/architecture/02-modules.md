@@ -566,7 +566,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   - `runner.json`의 `format`(러너 형식 번호, 없으면 0)은 `ManagedProcess::runner_format`에 남는다. 코어 교체 판정이 쓴다(01 §4.3 7).
   - 기록한 PID가 아직 그 프로세스인지는 살아 있는지에 더해 시작 시각으로 본다(`process::is_same_process`): 기록한 때(runner는 `runner.json`의 `started_at`, `managed.pid`는 파일 수정 시각)보다 10초 넘게 늦게 시작한 프로세스는 재부팅 뒤 같은 PID를 받은 다른 프로세스로 보고 붙지 않는다(정지할 때 그 프로세스를 끄지 않게). 시작 시각을 읽지 못하면 살아 있는지만 본다.
   - runner가 없고 `managed.pid`의 PID만 살아 있으면 `create_reattached_stub`을 만든다. 이 스텁은 디스크 로그를 로드하고, 5초마다 PID 생존을 폴링하며, **stdin을 쓸 수 없고 새 출력도 받지 못한다** (`managed_process.rs:618-682`).
-- **disk fallback**: managed 프로세스가 없으면 `get_console_output`이 가장 최근 디스크 로그(세션 로그 또는 `console.log`)를 읽는다. 이때 `since_id`는 무시된다 (`mod.rs:1763-1781`).
+- **disk fallback**: managed 프로세스가 없으면 `get_console_output`이 가장 최근 디스크 로그(세션 로그 또는 `console.log`)를 읽는다. 이때 `since_id`는 무시된다 (`mod.rs:1763-1781`). 러너의 세션 로그에는 러너가 쓰는 서버 출력·러너 안내 말고도 데몬이 콘솔에 넣는 줄(보낸 명령 `[INPUT/INFO]`, 크래시 안내 같은 `[SYSTEM/…]`)을 데몬이 한 줄씩 덧붙인다(`LogBuffer::append_own`. 따라 읽기는 자기가 덧붙인 줄을 되읽으면 버린다, `take_own`). 그래서 서버가 꺼진 뒤와 데몬이 다시 붙은 뒤에도 같은 줄이 보인다(보낸 사람 `by`는 남지 않는다). 다시 붙었다는 안내는 덧붙이지 않는다.
 - **log follower**: 익스텐션이 `server.pre_start`에서 `log_follower{program,args,working_dir,interactive,strip_prefix,env_vars}`를 돌려주면 `spawn_log_follower`(읽기 전용) 또는 `spawn`(양방향)으로 그 프로세스를 managed_store에 등록한다. 종료 판정 대상은 아니다 (`mod.rs:684-761, 1411-1488`).
 
 ### 3.4 콘솔 입력, 정지, 강제 종료

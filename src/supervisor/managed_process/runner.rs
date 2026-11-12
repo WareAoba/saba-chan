@@ -291,6 +291,8 @@ impl ManagedProcess {
         if let Some(msg) = notice {
             buf.push(LogSource::System, msg, LogLevel::Info);
         }
+        // 다시 붙었다는 안내는 남기지 않는다 (데몬을 켤 때마다 쌓인다). 이 뒤로 데몬이 넣는 줄만 세션 로그에 덧붙인다
+        buf.session_log = Some(info.log.clone());
         let log_buffer = Arc::new(Mutex::new(buf));
         let (running_tx, running_rx) = watch::channel(true);
         // 러너가 끝났다는 신호. 로그 따라 읽기를 마저 끝낸 뒤에 running을 내린다.
@@ -328,7 +330,11 @@ impl ManagedProcess {
                         while let Some(nl) = partial[start..].iter().position(|b| *b == b'\n') {
                             let raw = String::from_utf8_lossy(&partial[start..start + nl + 1]);
                             start += nl + 1;
-                            let mut line = parse_disk_log_line(0, raw.trim_end_matches(['\r', '\n']));
+                            let raw = raw.trim_end_matches(['\r', '\n']);
+                            if buf.lock().await.take_own(raw) {
+                                continue;
+                            }
+                            let mut line = parse_disk_log_line(0, raw);
                             line.level = match line.source {
                                 LogSource::System => line.level,
                                 source => {
@@ -508,6 +514,38 @@ mod tests {
         assert!(wait_for(&proc, "old news").await);
         let line = proc.get_recent_console(100).await.into_iter().find(|l| l.content == "old news").unwrap();
         assert_eq!(line.timestamp, written);
+    }
+
+    /// 데몬이 콘솔에 넣는 줄(보낸 명령, 크래시 안내)은 메모리에만 있어, 서버가 꺼지거나 데몬이 다시 붙으면 사라졌다.
+    /// 크래시 안내는 프로세스가 이미 목록에서 빠진 뒤에 쓰여 한 번도 보이지 않았다. 세션 로그에도 남아야 한다
+    #[tokio::test]
+    async fn lines_the_daemon_adds_to_the_console_stay_in_the_session_log() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        let run = run_dir(inst);
+        std::fs::create_dir_all(&run).unwrap();
+        let log = inst.join("session.log");
+        std::fs::write(&log, "").unwrap();
+        std::fs::write(run.join(TOKEN_FILE), "tok").unwrap();
+        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: 1, log: log.clone(), started_at: saba_runner::now(), cwd: None, format: saba_runner::RUNNER_FORMAT };
+        saba_runner::write_json(&runner_file(&run), &info).unwrap();
+        let proc = ManagedProcess::attach_runner(inst, None).await.expect("attached");
+
+        // 받는 러너가 없어 전달은 실패하지만 보낸 줄은 콘솔에 남는다
+        let _ = proc.send_command("say hi").await;
+        proc.push_system_line("── Crash detected (signal 6). Restarting in 5s. ──".into(), LogLevel::Warn).await;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+        std::io::Write::write_all(&mut f, format!("{}\n", saba_runner::format_line(saba_runner::now(), saba_runner::Stream::Stdout, "server said hi")).as_bytes()).unwrap();
+        assert!(wait_for(&proc, "server said hi").await);
+        let seen = |lines: &[LogLine], source: LogSource, text: &str| lines.iter().filter(|l| l.source == source && l.content.contains(text)).count();
+        let live = proc.get_recent_console(100).await;
+        assert_eq!((seen(&live, LogSource::Input, "say hi"), seen(&live, LogSource::System, "Crash detected")), (1, 1), "shown once while running: {live:?}");
+
+        // 데몬이 다시 붙거나 서버가 꺼진 뒤에는 세션 로그에서 읽는다
+        drop(proc);
+        let again = ManagedProcess::attach_runner(inst, None).await.expect("attached again");
+        let restored = again.get_recent_console(100).await;
+        assert_eq!((seen(&restored, LogSource::Input, "say hi"), seen(&restored, LogSource::System, "Crash detected")), (1, 1), "{restored:?}");
     }
 
     /// 한 번에 여러 줄과 끝나지 않은 줄이 들어와도 줄마다 한 번씩, 순서대로 콘솔에 붙는다

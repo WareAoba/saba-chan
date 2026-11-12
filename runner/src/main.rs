@@ -125,7 +125,8 @@ type Log = Arc<Mutex<File>>;
 
 fn write_log(log: &Log, stream: Stream, content: &str) {
     if let Ok(mut f) = log.lock() {
-        let _ = writeln!(f, "{}", format_line(now(), stream, content));
+        // 한 줄을 한 번에 쓴다: 데몬도 같은 파일에 줄을 덧붙이므로, 내용과 줄바꿈을 나눠 쓰면 그 사이에 끼어든다
+        let _ = f.write_all(format!("{}\n", format_line(now(), stream, content)).as_bytes());
         let _ = f.flush();
     }
 }
