@@ -23,6 +23,8 @@ const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
 /// 세션 로그 기본 보관 개수
 pub const DEFAULT_LOG_SESSIONS: usize = 20;
+/// 인스턴스 하나의 지난 세션 로그를 모두 합친 크기 상한. 서버를 켤 때 오래된 세션부터 지워 맞춘다
+pub const SESSION_LOGS_MAX_BYTES: u64 = 512 * 1024 * 1024;
 
 /// 이 데몬이 붙을 수 있는 러너 형식(`saba_runner::RunnerInfo::format`) 범위, 양 끝 포함.
 /// 발행 때 manifest `saba-core.reads_runner_formats`로 실린다. 켜진 러너가 새 코어의 범위 밖이면 코어를 바꾸지 않는다 (`core_swap`)
@@ -108,17 +110,36 @@ pub fn runner_binary() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-/// 세션 로그를 최근 `keep`개만 남긴다 (이름이 시작 시각이라 이름 순이 시간 순).
-pub fn prune_sessions(instance_dir: &Path, keep: usize) {
+/// 세션 파일 이름(`<시각>.log` 또는 앞 조각 `<시각>.log.<n>`)에서 세션 이름 `<시각>`
+fn session_of(file_name: &str) -> Option<&str> {
+    let (session, rest) = file_name.split_once(".log")?;
+    let piece = rest.strip_prefix('.').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+    (rest.is_empty() || piece).then_some(session)
+}
+
+/// 세션 로그를 최근 `keep`개만, 모두 합쳐 `max_bytes`까지만 남긴다 (이름이 시작 시각이라 이름 순이 시간 순).
+/// 세션은 앞 조각(`<시각>.log.<n>`)까지 한 묶음으로 지운다
+pub fn prune_sessions(instance_dir: &Path, keep: usize, max_bytes: u64) {
     let Ok(entries) = std::fs::read_dir(sessions_dir(instance_dir)) else { return };
-    let mut logs: Vec<PathBuf> = entries
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|x| x == "log"))
-        .collect();
-    logs.sort();
-    let excess = logs.len().saturating_sub(keep);
-    for old in &logs[..excess] {
-        let _ = std::fs::remove_file(old);
+    let mut sessions: std::collections::BTreeMap<String, (Vec<PathBuf>, u64)> = Default::default();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(session) = name.to_str().and_then(session_of) else { continue };
+        let slot = sessions.entry(session.to_string()).or_default();
+        slot.0.push(entry.path());
+        slot.1 += entry.metadata().map(|m| m.len()).unwrap_or(0);
+    }
+    let mut total: u64 = sessions.values().map(|(_, size)| size).sum();
+    let mut left = sessions.len();
+    for (files, size) in sessions.into_values() {
+        if left <= keep && total <= max_bytes {
+            break;
+        }
+        for file in &files {
+            let _ = std::fs::remove_file(file);
+        }
+        left -= 1;
+        total -= size;
     }
 }
 
@@ -168,7 +189,7 @@ impl ManagedProcess {
 
         let log = sessions_dir(instance_dir).join(format!("{}.log", saba_runner::session_stamp(current_timestamp())));
         std::fs::create_dir_all(sessions_dir(instance_dir))?;
-        prune_sessions(instance_dir, keep_sessions.saturating_sub(1));
+        prune_sessions(instance_dir, keep_sessions.saturating_sub(1), SESSION_LOGS_MAX_BYTES);
 
         let mut cmd = TokioCommand::new(runner);
         cmd.arg("--run-dir").arg(&run)
@@ -306,24 +327,23 @@ impl ManagedProcess {
             let path = info.log.clone();
             let ended = ended_rx;
             tokio::spawn(async move {
-                let mut pos = offset;
                 let mut partial: Vec<u8> = Vec::new();
-                // 연 파일을 계속 쓴다: 서버마다 100ms마다 파일을 다시 열지 않게 (러너는 한 세션에 파일 하나만 쓴다)
-                let mut file: Option<std::fs::File> = None;
+                // 연 파일을 계속 쓴다: 서버마다 100ms마다 파일을 다시 열지 않게
+                let mut follow = Some(Follow { path, file: None, pos: offset });
                 loop {
                     let stopped = *ended.borrow();
-                    let path = path.clone();
-                    let opened = file.take();
-                    let (kept, chunk) = tokio::task::spawn_blocking(move || {
-                        let mut file = opened.or_else(|| std::fs::File::open(&path).ok());
-                        let bytes = file.as_mut().and_then(|f| read_from(f, pos));
-                        (file, bytes)
+                    let Some(mut reading) = follow.take() else { break };
+                    let chunk = tokio::task::spawn_blocking(move || {
+                        let bytes = reading.read_new();
+                        (reading, bytes)
                     })
                     .await
-                    .unwrap_or((None, None));
-                    file = kept;
+                    .ok();
+                    let chunk = chunk.and_then(|(kept, bytes)| {
+                        follow = Some(kept);
+                        bytes
+                    });
                     if let Some(bytes) = chunk {
-                        pos += bytes.len() as u64;
                         partial.extend_from_slice(&bytes);
                         // 줄마다 버퍼를 앞으로 당기지 않는다: 위치만 옮기며 자르고, 남은 꼬리는 끝에서 한 번만 정리한다
                         let mut start = 0;
@@ -464,6 +484,32 @@ async fn connect_stdin(port: u16, token: &str) -> Option<tokio::net::TcpStream> 
     let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.ok()?;
     stream.write_all(format!("{}\n", token).as_bytes()).await.ok()?;
     Some(stream)
+}
+
+/// 따라 읽는 세션 로그와 다음에 읽을 자리
+struct Follow {
+    path: PathBuf,
+    file: Option<std::fs::File>,
+    pos: u64,
+}
+
+impl Follow {
+    /// 지난번 뒤로 쓴 바이트. 없으면 None.
+    /// 러너가 파일을 앞 조각으로 넘겼으면(`saba_runner::session_log_piece`) 쥐고 있던 파일을 끝까지 읽은 다음 새 파일을 처음부터 읽는다
+    fn read_new(&mut self) -> Option<Vec<u8>> {
+        if self.file.is_none() {
+            self.file = std::fs::File::open(&self.path).ok();
+        }
+        let mut bytes = self.file.as_mut().and_then(|f| read_from(f, self.pos));
+        // 넘긴 뒤의 새 파일은 읽던 자리보다 짧다 (새 파일이 0.1초 안에 상한만큼 자라지는 않는다)
+        if bytes.is_none() && std::fs::metadata(&self.path).is_ok_and(|m| m.len() < self.pos) {
+            self.file = std::fs::File::open(&self.path).ok();
+            self.pos = 0;
+            bytes = self.file.as_mut().and_then(|f| read_from(f, 0));
+        }
+        self.pos += bytes.as_ref().map_or(0, |b| b.len() as u64);
+        bytes
+    }
 }
 
 /// `pos`부터 파일 끝까지. 새 내용이 없으면 None.
@@ -870,11 +916,58 @@ mod tests {
         for name in ["20260101-000000.log", "20260102-000000.log", "20260103-000000.log"] {
             std::fs::write(dir.join(name), "").unwrap();
         }
-        prune_sessions(tmp.path(), 2);
+        prune_sessions(tmp.path(), 2, u64::MAX);
         let mut left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
         left.sort();
         assert_eq!(left, ["20260102-000000.log", "20260103-000000.log"]);
         assert_eq!(latest_session_log(tmp.path()), Some(dir.join("20260103-000000.log")));
+    }
+
+    // 세션 하나가 수 GB까지 자라던 것을 러너가 조각으로 나눈다: 조각은 그 세션과 같이 지우고, 합친 크기도 상한을 지킨다
+    #[test]
+    fn session_logs_are_pruned_with_their_pieces_and_to_a_total_size() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = sessions_dir(tmp.path());
+        std::fs::create_dir_all(&dir).unwrap();
+        let names = || {
+            let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+            left.sort();
+            left
+        };
+        for name in ["20260101-000000.log", "20260101-000000.log.1", "20260102-000000.log", "20260102-000000.log.1", "20260103-000000.log", "notes.txt"] {
+            std::fs::write(dir.join(name), [b'x'; 100]).unwrap();
+        }
+
+        prune_sessions(tmp.path(), 2, u64::MAX);
+        assert_eq!(names(), ["20260102-000000.log", "20260102-000000.log.1", "20260103-000000.log", "notes.txt"]);
+
+        prune_sessions(tmp.path(), 2, 250);
+        assert_eq!(names(), ["20260103-000000.log", "notes.txt"]);
+    }
+
+    // 러너가 세션 로그를 앞 조각으로 넘겨도 콘솔은 넘기기 전의 마지막 줄과 새 파일의 줄을 빠짐없이 차례로 받는다
+    #[test]
+    fn following_continues_across_a_rotated_session_log() {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("session.log");
+        let mut follow = Follow { path: path.clone(), file: None, pos: 0 };
+        let mut seen = Vec::new();
+        let mut read = |follow: &mut Follow| {
+            while let Some(bytes) = follow.read_new() {
+                seen.extend(bytes);
+            }
+        };
+
+        let mut old = std::fs::File::create(&path).unwrap();
+        old.write_all(b"one\ntwo\n").unwrap();
+        read(&mut follow);
+        old.write_all(b"three\n").unwrap();
+        std::fs::rename(&path, saba_runner::session_log_piece(&path, 1)).unwrap();
+        std::fs::write(&path, b"four\n").unwrap();
+        read(&mut follow);
+
+        assert_eq!(String::from_utf8(seen).unwrap(), "one\ntwo\nthree\nfour\n");
     }
 }
 

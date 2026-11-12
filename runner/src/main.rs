@@ -23,7 +23,7 @@
 //! 쓰고, stdin을 로컬 포트로 받고, 종료 코드를 `exit.json`에 남긴다.
 //! 파일 형식은 `saba_runner`(lib.rs)에 있다.
 
-use saba_runner::{decode_line, exit_file, Lines, format_line, matching_files, now, runner_file, write_json, ExitInfo, RunnerInfo, Stream, RUNNER_FORMAT, TOKEN_ENV};
+use saba_runner::{decode_line, exit_file, Lines, format_line, matching_files, now, runner_file, session_log_piece, write_json, ExitInfo, RunnerInfo, Stream, RUNNER_FORMAT, SESSION_LOG_MAX_BYTES, SESSION_LOG_PIECES, TOKEN_ENV};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -121,16 +121,60 @@ fn parse_args() -> Result<Args, String> {
     })
 }
 
-type Log = Arc<Mutex<std::io::BufWriter<File>>>;
+type Log = Arc<Mutex<SessionLog>>;
+
+/// 세션 로그 파일. 줄을 모았다가 내리고(`LOG_FLUSH_INTERVAL`), 크기 상한에서 앞 조각으로 넘긴다
+struct SessionLog {
+    path: PathBuf,
+    out: std::io::BufWriter<File>,
+    /// 지금 파일에 쓴 바이트 (데몬이 덧붙인 줄은 세지 않는다)
+    size: u64,
+    max: u64,
+}
+
+impl SessionLog {
+    fn write_line(&mut self, line: &str) {
+        if self.size > 0 && self.size + line.len() as u64 > self.max {
+            self.rotate();
+        }
+        // 한 줄을 한 번에 넘긴다: 데몬도 같은 파일에 줄을 덧붙이므로, 줄 중간에서 파일로 내려가면 그 사이에 끼어든다
+        // (BufWriter는 한 번에 받은 조각을 나눠 내리지 않는다)
+        let _ = self.out.write_all(line.as_bytes());
+        self.size += line.len() as u64;
+    }
+
+    /// 지금 파일을 `.1`로 넘기고(`.1`→`.2`…, 마지막 조각은 지운다) 같은 이름으로 새 파일을 연다.
+    /// 넘기지 못하면 쓰던 파일에 계속 쓰고, 다시 상한만큼 쓴 뒤에 또 해 본다
+    fn rotate(&mut self) {
+        let _ = self.out.flush();
+        self.size = 0;
+        let _ = std::fs::remove_file(session_log_piece(&self.path, SESSION_LOG_PIECES));
+        for n in (1..SESSION_LOG_PIECES).rev() {
+            let _ = std::fs::rename(session_log_piece(&self.path, n), session_log_piece(&self.path, n + 1));
+        }
+        if std::fs::rename(&self.path, session_log_piece(&self.path, 1)).is_err() {
+            return;
+        }
+        match OpenOptions::new().create(true).append(true).open(&self.path) {
+            Ok(file) => self.out = std::io::BufWriter::new(file),
+            // 새 파일을 못 열면 넘긴 파일에 계속 쓴다. 이름은 되돌린다
+            Err(_) => {
+                let _ = std::fs::rename(session_log_piece(&self.path, 1), &self.path);
+            }
+        }
+    }
+}
 
 /// 모아 둔 줄을 파일로 내리는 주기. 데몬이 콘솔에서 보는 지연이 이만큼 늘 수 있다
 const LOG_FLUSH_INTERVAL: Duration = Duration::from_millis(100);
 
 /// 세션 로그를 연다. 줄은 모았다가 `LOG_FLUSH_INTERVAL`마다(또는 버퍼가 차면) 한 번에 파일로 내린다:
-/// 시작 때 수천 줄을 쏟는 서버에서 줄마다 쓰기 호출을 하지 않게
-fn open_log(path: &std::path::Path) -> std::io::Result<Log> {
+/// 시작 때 수천 줄을 쏟는 서버에서 줄마다 쓰기 호출을 하지 않게.
+/// 파일은 `max` 바이트를 넘기지 않는다 (한 줄이 그보다 길 때만 넘는다)
+fn open_log(path: &std::path::Path, max: u64) -> std::io::Result<Log> {
     let file = OpenOptions::new().create(true).append(true).open(path)?;
-    let log: Log = Arc::new(Mutex::new(std::io::BufWriter::new(file)));
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let log: Log = Arc::new(Mutex::new(SessionLog { path: path.to_path_buf(), out: std::io::BufWriter::new(file), size, max }));
     let weak = Arc::downgrade(&log);
     std::thread::spawn(move || {
         while let Some(log) = weak.upgrade() {
@@ -144,16 +188,14 @@ fn open_log(path: &std::path::Path) -> std::io::Result<Log> {
 
 fn write_log(log: &Log, stream: Stream, content: &str) {
     if let Ok(mut f) = log.lock() {
-        // 한 줄을 한 번에 넘긴다: 데몬도 같은 파일에 줄을 덧붙이므로, 줄 중간에서 파일로 내려가면 그 사이에 끼어든다
-        // (BufWriter는 한 번에 받은 조각을 나눠 내리지 않는다)
-        let _ = f.write_all(format!("{}\n", format_line(now(), stream, content)).as_bytes());
+        f.write_line(&format!("{}\n", format_line(now(), stream, content)));
     }
 }
 
 /// 모아 둔 줄을 지금 파일로 내린다 (출력이 끝났을 때, 종료 기록을 남기기 전)
 fn flush_log(log: &Log) {
     if let Ok(mut f) = log.lock() {
-        let _ = f.flush();
+        let _ = f.out.flush();
     }
 }
 
@@ -639,7 +681,7 @@ fn run(args: Args) -> Result<i32, String> {
     }
     let _ = std::fs::remove_file(exit_file(&args.run_dir));
 
-    let log = open_log(&args.log).map_err(|e| e.to_string())?;
+    let log = open_log(&args.log, SESSION_LOG_MAX_BYTES).map_err(|e| e.to_string())?;
     let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
 
@@ -878,7 +920,7 @@ mod tests {
     #[test]
     fn a_pseudo_console_cursor_query_gets_an_answer_even_without_a_newline() {
         let path = std::env::temp_dir().join(format!("saba-runner-cursor-{}.log", std::process::id()));
-        let log = super::open_log(&path).unwrap();
+        let log = super::open_log(&path, u64::MAX).unwrap();
         let sink = Sink::default();
         let stdin: std::sync::Arc<super::Stdin> = std::sync::Arc::new(std::sync::Mutex::new(Some(Box::new(sink.clone()))));
         // 앞쪽 요청은 두 조각으로 나뉘어 온다
@@ -906,7 +948,7 @@ mod tests {
     #[test]
     fn a_pseudo_console_line_without_a_newline_is_logged_once_output_pauses() {
         let path = std::env::temp_dir().join(format!("saba-runner-partial-{}.log", std::process::id()));
-        let log = super::open_log(&path).unwrap();
+        let log = super::open_log(&path, u64::MAX).unwrap();
         // 한 조각을 주고 나서는 테스트가 닫을 때까지 아무것도 주지 않는다 (살아 있는 서버)
         struct Held(Option<&'static [u8]>, std::sync::mpsc::Receiver<()>);
         impl std::io::Read for Held {
@@ -955,7 +997,7 @@ mod tests {
         let split = regex::Regex::new(r"\[LOG\] REST").unwrap();
         for console in [super::Console::Pty, super::Console::Pipe] {
             let path = std::env::temp_dir().join(format!("saba-runner-split-{}-{:?}.log", std::process::id(), console));
-            let log = super::open_log(&path).unwrap();
+            let log = super::open_log(&path, u64::MAX).unwrap();
             let reader = Chunks(vec![b"[LOG] REST accessed /v1/api/save[LOG] REST accessed /v1/api/shutdown\nplain [LOG] stays\n"]);
             super::pump(reader, log, super::Stream::Stdout, console, None, Some(split.clone()), Vec::new()).join().unwrap();
             let text = std::fs::read_to_string(&path).unwrap();
@@ -970,7 +1012,7 @@ mod tests {
     #[test]
     fn pseudo_console_lines_are_logged_as_the_screen_shows_them() {
         let path = std::env::temp_dir().join(format!("saba-runner-screen-{}.log", std::process::id()));
-        let log = super::open_log(&path).unwrap();
+        let log = super::open_log(&path, u64::MAX).unwrap();
         let progress: String = (1..=100).map(|p| format!("\rResetting game objects {p}%")).collect();
         let output = format!("{progress}\r\n: help\r\nhelp\x1b[4X\x1b[4CDisplays a list of commands.\r\n");
         super::pump(std::io::Cursor::new(output.into_bytes()), log, super::Stream::Stdout, super::Console::Pty, None, None, Vec::new()).join().unwrap();
@@ -1000,7 +1042,7 @@ mod tests {
         out.push_str("Server started\r\nResetting game objects 1%\r\nResetting game objects 2%\r\n");
         for console in [super::Console::Pipe, super::Console::Pty] {
             let path = std::env::temp_dir().join(format!("saba-runner-fold-{}-{:?}.log", std::process::id(), console));
-            let log = super::open_log(&path).unwrap();
+            let log = super::open_log(&path, u64::MAX).unwrap();
             super::pump(std::io::Cursor::new(out.clone().into_bytes()), log, super::Stream::Stdout, console, None, None, progress.clone()).join().unwrap();
             let text = std::fs::read_to_string(&path).unwrap();
             let _ = std::fs::remove_file(&path);
@@ -1022,7 +1064,7 @@ mod tests {
     #[test]
     fn a_folded_progress_line_is_logged_once_output_pauses() {
         let path = std::env::temp_dir().join(format!("saba-runner-fold-idle-{}.log", std::process::id()));
-        let log = super::open_log(&path).unwrap();
+        let log = super::open_log(&path, u64::MAX).unwrap();
         let (tx, rx) = std::sync::mpsc::channel::<()>();
         struct Paused(Vec<&'static [u8]>, std::sync::mpsc::Receiver<()>);
         impl std::io::Read for Paused {
@@ -1111,6 +1153,31 @@ mod tests {
         assert_eq!(read.iter().map(String::len).sum::<usize>(), saba_runner::MAX_LINE * 4 + 4);
         assert_eq!(read.last().map(String::as_str), Some("next"));
         assert!(at.lines.pending().is_empty());
+    }
+
+    // 몇 주씩 켜 둔 서버의 세션 로그가 끝없이 자랐다: 상한에서 앞 조각으로 넘기고 오래된 조각은 지운다
+    #[test]
+    fn a_session_log_moves_to_older_pieces_at_its_size_limit() {
+        let dir = std::env::temp_dir().join(format!("saba-runner-rotate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("20261112-000000.log");
+        let log = super::open_log(&path, 400).unwrap();
+        for i in 0..100 {
+            super::write_log(&log, super::Stream::Stdout, &format!("line {i:03}"));
+        }
+        super::flush_log(&log);
+
+        let piece = |n| saba_runner::session_log_piece(&path, n);
+        let sizes: Vec<u64> = std::iter::once(path.clone()).chain((1..=4).map(piece)).map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0)).collect();
+        // 오래된 것부터 이으면 끊긴 데 없이 마지막 줄까지 이어진다
+        let kept: String = [piece(3), piece(2), piece(1), path.clone()].iter().map(|p| std::fs::read_to_string(p).unwrap()).collect();
+        let numbers: Vec<usize> = kept.lines().map(|l| l.rsplit(' ').next().unwrap().parse().unwrap()).collect();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(sizes[..4].iter().all(|s| (1..=400).contains(s)), "each file stays within the limit: {sizes:?}");
+        assert_eq!(sizes[4], 0, "pieces beyond the kept count are removed");
+        assert_eq!(numbers.last(), Some(&99));
+        assert!(numbers.windows(2).all(|w| w[1] == w[0] + 1), "{numbers:?}");
     }
 
     #[test]

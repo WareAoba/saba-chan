@@ -49,10 +49,20 @@ fn sessions(instance_dir: &FsPath) -> Vec<Session> {
         .flatten()
         .flatten()
         .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "log"))
         .filter_map(|path| {
-            let id = path.file_stem()?.to_str()?.to_string();
-            let started_at = chrono::NaiveDateTime::parse_from_str(&id, "%Y%m%d-%H%M%S").ok().map(|t| t.and_utc().timestamp().max(0) as u64);
+            let name = path.file_name()?.to_str()?;
+            // 러너가 크기 상한에서 넘긴 앞 조각 `<시각>.log.<n>`은 `<시각>.<n>`으로, 그 조각 첫 줄의 시각과 함께 보인다
+            let (stem, piece) = name.split_once(".log")?;
+            let id = match piece.strip_prefix('.') {
+                None if piece.is_empty() => stem.to_string(),
+                Some(n) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => format!("{stem}.{n}"),
+                _ => return None,
+            };
+            let started_at = if piece.is_empty() {
+                chrono::NaiveDateTime::parse_from_str(&id, "%Y%m%d-%H%M%S").ok().map(|t| t.and_utc().timestamp().max(0) as u64)
+            } else {
+                first_line_time(&path)
+            };
             Some(Session { id, path, started_at })
         });
     // saba-runner 없이 직접 실행하면 콘솔 기록은 `console.log`와 그 회전 파일에 남는다
@@ -463,6 +473,25 @@ mod tests {
         assert_eq!(body["sources"][0]["startedAt"], 1792497600u64, "first line's time");
         let (_, rotated) = get(&state, &id, &[("source", "console.1")], true).await;
         assert_eq!(rotated["content"], "[2026-10-20 08:00:00] [STDOUT/INFO] rotated\n");
+    }
+
+    // 러너가 크기 상한에서 넘긴 앞 조각도 원천으로 골라 읽을 수 있다
+    #[tokio::test]
+    async fn a_session_split_at_its_size_limit_lists_its_older_pieces() {
+        let (state, id, _tmp) = server_with_sessions(&[("20261019-100000", "[2026-10-19 15:00:00] [STDOUT/INFO] newest\n")]).await;
+        let dir = sessions_dir(&state.supervisor.read().await.instance_store.instance_dir(&id));
+        std::fs::write(dir.join("20261019-100000.log.1"), "[2026-10-19 12:00:00] [STDOUT/INFO] older\n").unwrap();
+        std::fs::write(dir.join("20261019-100000.log.bak"), "not a piece\n").unwrap();
+        let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        std::fs::File::options().append(true).open(dir.join("20261019-100000.log.1")).unwrap().set_modified(earlier).unwrap();
+
+        let (status, body) = get(&state, &id, &[], false).await;
+        assert_eq!(status, StatusCode::OK);
+        let ids: Vec<&str> = body["sources"].as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["20261019-100000", "20261019-100000.1"]);
+        assert_eq!(body["sources"][1]["startedAt"], 1792411200u64, "the piece's first line");
+        let (_, piece) = get(&state, &id, &[("source", "20261019-100000.1")], false).await;
+        assert_eq!(piece["lines"], json!(["[2026-10-19 12:00:00] [STDOUT/INFO] older"]));
     }
 
     #[tokio::test]
