@@ -383,6 +383,32 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(screen.queryByRole('list', { name: 'PCs connected to this one' })).toBeNull();
     });
 
+    // 사용자 11-12: "연결"을 누르면 결과가 뜰 때까지 화면이 멈췄다 (칸의 모든 버튼이 잠겼다)
+    it('한 PC에 연결하는 동안 그 카드만 진행 중이고 다른 PC·켬 스위치는 그대로 쓸 수 있다', async () => {
+        vi.mocked(window.api.remotePeers).mockResolvedValue({
+            peers: [
+                { hostId: 'host-c', name: '게임 PC', status: 'online', hasEndpoint: true, saved: false },
+                { hostId: 'host-e', name: '거실', status: 'online', hasEndpoint: true, saved: false },
+            ],
+        });
+        let finish: (v: unknown) => void = () => {};
+        vi.mocked(window.api.remoteConnect).mockImplementation(
+            () =>
+                new Promise((r) => {
+                    finish = r as (v: unknown) => void;
+                }),
+        );
+        await act(async () => render(<RemoteDaemonSection />));
+        await act(async () => fireEvent.click(within(card('게임 PC')).getByRole('button', { name: 'Connect' })));
+        expect(within(card('게임 PC')).getByRole('button', { name: /Connect/ })).toBeDisabled();
+        expect(within(card('거실')).getByRole('button', { name: 'Connect' })).toBeEnabled();
+        expect(within(card('거실')).getByRole('button', { name: 'Edit' })).toBeEnabled();
+        expect(screen.getByRole('checkbox', { name: 'Allow remote connections' })).toBeEnabled();
+        await act(async () => fireEvent.click(within(card('거실')).getByRole('button', { name: 'Connect' })));
+        expect(window.api.remoteConnect).toHaveBeenCalledWith('host-e');
+        await act(async () => finish({ hostId: 'host-c', name: '게임 PC' }));
+    });
+
     // 어느 PC에서든 내 PC 이름을 바꾼다. 이름은 서버쨩 한 곳에 있다 (사용자 11-12)
     it('이 PC 카드는 PC 이름에 이 PC 표시를 붙이고, 수정 창에서 바꾼 이름을 데몬에 보낸다', async () => {
         vi.mocked(window.api.remotePeers).mockResolvedValue({ self: { hostId: 'host-me', name: '작업용' }, peers: [vps] });

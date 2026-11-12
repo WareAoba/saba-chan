@@ -62,7 +62,7 @@ describe('ActivityBar', () => {
         expect(screen.getByText('Failed')).toBeInTheDocument();
     });
 
-    it('누르면 데몬 콘솔을 펼치고, 받은 다음 id부터 이어 받는다', async () => {
+    it('누르면 데몬 콘솔을 펼치고, 받은 다음 id부터 이어 받는다 (새 줄이 없으면 데몬이 붙잡는다)', async () => {
         window.api.auditList = vi.fn().mockResolvedValue({ entries: [] }) as never;
         window.api.daemonConsole = vi
             .fn()
@@ -84,7 +84,7 @@ describe('ActivityBar', () => {
             vi.advanceTimersByTime(1000);
         });
         await flush();
-        expect(window.api.daemonConsole).toHaveBeenNthCalledWith(2, { since: 8 });
+        expect(window.api.daemonConsole).toHaveBeenNthCalledWith(2, { since: 8, wait: 8 });
     });
 
     // 사용자 2026-11-12: 줄 전체를 레벨 색으로 칠하지 않는다. 레벨은 배지, 본문은 데몬이 나눈 낱말 조각(spans)으로 칠한다
@@ -139,7 +139,7 @@ describe('ActivityBar', () => {
             vi.advanceTimersByTime(1000);
         });
         await flush();
-        expect(window.api.daemonConsole).toHaveBeenCalledWith({ since: 51 });
+        expect(window.api.daemonConsole).toHaveBeenCalledWith({ since: 51, wait: 8 });
         expect(window.api.daemonConsole).toHaveBeenLastCalledWith({});
         expect(screen.queryByText('old 50')).toBeNull();
         expect(screen.getByText('new 1')).toBeInTheDocument();

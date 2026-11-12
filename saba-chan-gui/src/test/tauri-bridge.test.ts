@@ -9,22 +9,37 @@ import { setRemotePathPicker } from '../api/remotePathPicker';
 // biome-ignore lint/suspicious/noExplicitAny: 가짜 __TAURI__ 응답·요청 인자는 명령마다 모양이 달라 느슨하게 둔다
 type Loose = any;
 
-/** 가짜 __TAURI__: invoke 응답은 handlers[명령](인자)로, listen은 emit으로 흉내 낸다 */
+/**
+ * 가짜 __TAURI__: invoke 응답은 handlers[명령](인자)로, listen은 emit으로 흉내 낸다.
+ * 셸 Tauri 2처럼 리스너마다 대상이 있다: 전역 event.listen은 기본이 Any(모든 창에 보낸 것을 받는다),
+ * 창의 listen은 그 창 이름. emitTo(창)는 대상이 Any이거나 그 창인 리스너에 간다 (`app.emit_to`)
+ */
 function fakeTauri(handlers: Record<string, Loose> = {}) {
-    const listeners = new Map<string, Set<Loose>>();
+    const listeners = new Map<string, Set<{ cb: Loose; label: string | null }>>();
     const invoke = vi.fn(async (cmd: string, args?: Loose) => {
         const h = handlers[cmd];
         return typeof h === 'function' ? h(args) : h;
     });
-    const listen = vi.fn(async (name: string, cb: Loose) => {
+    const listen = vi.fn(async (name: string, cb: Loose, options?: Loose) => {
         if (!listeners.has(name)) listeners.set(name, new Set());
-        listeners.get(name)!.add(cb);
-        return () => listeners.get(name)!.delete(cb);
+        const t = options?.target;
+        const entry = { cb, label: typeof t === 'string' ? t : (t?.label ?? null) };
+        listeners.get(name)!.add(entry);
+        return () => listeners.get(name)!.delete(entry);
     });
-    const emit = (name: string, payload: Loose) => {
-        for (const cb of listeners.get(name) || []) cb({ event: name, payload });
+    const emitTo = (label: string | null, name: string, payload: Loose) => {
+        for (const { cb, label: l } of [...(listeners.get(name) || [])]) {
+            if (label === null || l === null || l === label) cb({ event: name, payload });
+        }
     };
-    return { core: { invoke }, event: { listen }, invoke, emit };
+    const emit = (name: string, payload: Loose) => emitTo('main', name, payload);
+    const webviewWindow = {
+        getCurrentWebviewWindow: () => ({
+            label: 'main',
+            listen: (name: string, cb: Loose) => listen(name, cb, { target: { kind: 'WebviewWindow', label: 'main' } }),
+        }),
+    };
+    return { core: { invoke }, event: { listen }, webviewWindow, invoke, emit, emitTo };
 }
 
 /** daemon_request 응답을 경로별로 정한다 */
@@ -439,6 +454,17 @@ describe('이벤트', () => {
         expect(a).toHaveBeenCalledTimes(1);
         expect(a).toHaveBeenCalledWith({ id: 1, type: 'resync', data: {} });
         expect(b).toHaveBeenCalledTimes(2);
+    });
+
+    it('바탕화면 오버레이 창에 보낸 이벤트는 메인 창에서 다시 받지 않는다 (알림이 두 번 뜨지 않게)', async () => {
+        const { api, tauri } = await install({});
+        const cb = vi.fn();
+        api.onDaemonEvent(cb);
+        // 셸은 데몬 이벤트 한 건을 메인 창과 오버레이 창에 하나씩 보낸다 (lifecycle.rs)
+        const ev = { id: 7, type: 'instance.stopped', data: { instanceId: 'a' } };
+        tauri.emitTo('main', 'events:message', ev);
+        tauri.emitTo('desktop-overlay', 'events:message', ev);
+        expect(cb).toHaveBeenCalledTimes(1);
     });
 
     it('늦게 구독한 onStatusUpdate도 마지막 상태를 바로 받는다', async () => {

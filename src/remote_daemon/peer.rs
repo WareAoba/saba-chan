@@ -87,6 +87,8 @@ enum NotOpened {
     Unreachable,
     /// 닿았지만 원격 데몬이 TLS를 맺기 전에 끊었다: 연결 자리가 없다 (`server::MAX_PER_SOURCE`). 주소는 맞다
     Full,
+    /// 직접 연결이 `DIRECT_HEAD_START` 안에 열리지 않아 함께 연 터널이 먼저 열렸다 (`open_or_tunnel`만 낸다)
+    Slow,
 }
 
 /// 직접 연결의 TCP keepalive: 이만큼 조용하면 살아 있는지 묻기 시작하고, 이 간격으로 다시 묻는다.
@@ -191,8 +193,8 @@ async fn send_reused(endpoint: &Endpoint, req: Request<Body>) -> Reused {
 }
 
 /// `request`는 남겨 둔 연결이 끊겨 있었을 때 한 번 더 만든다.
-/// 원격 데몬이 자리가 없어 끊었으면 `Err`: 요청은 닿지 않았지만 주소는 맞다
-async fn send(endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Result<Sent, NotOpened> {
+/// 원격 데몬이 자리가 없어 끊었거나 터널이 먼저 열렸으면 `Err`: 요청은 나가지 않았다
+async fn send(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Result<Sent, NotOpened> {
     let Some(req) = request() else { return Ok(Sent::NotConnected) };
     // 방금 쓴 연결이 있으면 TCP·TLS를 새로 열지 않는다
     let req = match send_reused(endpoint, req).await {
@@ -203,10 +205,10 @@ async fn send(endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> 
             None => return Ok(Sent::NotConnected),
         },
     };
-    let mut sender = match open(endpoint).await {
+    let mut sender = match open_or_tunnel(relay, host_id, endpoint).await {
         Ok(sender) => sender,
         Err(NotOpened::Unreachable) => return Ok(Sent::NotConnected),
-        Err(full) => return Err(full),
+        Err(other) => return Err(other),
     };
     Ok(match tokio::time::timeout(RESPONSE_TIMEOUT, sender.send_request(req)).await {
         Ok(Ok(res)) => {
@@ -215,6 +217,52 @@ async fn send(endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> 
         }
         _ => Sent::NoAnswer,
     })
+}
+
+/// 직접 연결이 이만큼 안에 열리지 않으면 터널도 같이 열기 시작한다. 먼저 열린 쪽으로 보낸다
+/// (말없이 버려지는 주소에 직접 연결이 포기할 때(`CONNECT_TIMEOUT`)까지 요청을 붙잡지 않게)
+const DIRECT_HEAD_START: Duration = Duration::from_millis(1500);
+
+/// 직접 연결을 먼저 열어 보고, `DIRECT_HEAD_START` 안에 안 되면 터널도 함께 연다.
+/// 터널이 먼저 열리면 `Slow`: 직접 연결이 못 붙은 것으로 적고(다음 요청부터 터널로), 직접 연결은 뒤에서 마저 기다린다.
+/// 열리면 남겨 두고 적은 것을 지운다 (다음 요청은 직접)
+async fn open_or_tunnel(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint) -> Result<Sender, NotOpened> {
+    let ep = endpoint.clone();
+    let mut direct = Box::pin(async move { open(&ep).await });
+    if let Ok(first) = tokio::time::timeout(DIRECT_HEAD_START, &mut direct).await {
+        return first;
+    }
+    let Some(relay) = relay else { return direct.await };
+    let tunnel = tunnel::sender(relay, host_id, &endpoint.cert_sha256);
+    tokio::pin!(tunnel);
+    tokio::select! {
+        d = &mut direct => d,
+        t = &mut tunnel => {
+            if t.is_none() {
+                return direct.await;
+            }
+            direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: true });
+            let endpoint = endpoint.clone();
+            tokio::spawn(async move {
+                let opened = direct.await;
+                let mut failed = direct_failed();
+                match opened {
+                    Ok(sender) => {
+                        failed.remove(&idle_key(&endpoint));
+                        keep_idle(&endpoint, sender);
+                    }
+                    // 닿았지만 자리가 없었다: 주소는 맞다
+                    Err(NotOpened::Full) => {
+                        failed.remove(&idle_key(&endpoint));
+                    }
+                    Err(_) => {
+                        failed.insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
+                    }
+                }
+            });
+            Err(NotOpened::Slow)
+        }
+    }
 }
 
 async fn through_tunnel(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, mut req: Request<Body>) -> Sent {
@@ -307,7 +355,7 @@ pub fn route_of(d: &Daemon) -> &'static str {
 /// 원격 데몬이 자리가 없어 끊은 것은 그 요청만 터널로 보내고 주소는 그대로 믿는다 (잇달아 `FULL_LIMIT`번이면 못 붙은 주소로 적는다). `request`는 보낼 때마다 새로 만든다
 async fn send_to(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Sent {
     if !endpoint.address.is_empty() && try_direct(endpoint) {
-        match send(endpoint, request).await {
+        match send(relay, host_id, endpoint, request).await {
             Ok(Sent::NotConnected) => {
                 direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
             }
@@ -320,6 +368,8 @@ async fn send_to(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, req
                 }
                 return sent;
             }
+            // 터널이 먼저 열렸다: 이번 요청은 터널로 (직접 연결은 뒤에서 마저 열려 보고, 열리면 다음 요청부터 쓴다)
+            Err(NotOpened::Slow) => {}
             Err(_) => {
                 let mut streak = full_streak();
                 let seen = streak.entry(idle_key(endpoint)).or_default();
@@ -860,6 +910,31 @@ mod tests {
         connect(&file, Some(relay.clone()), "host-b").await.unwrap();
         let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200, "{body}");
+        assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    /// 주소가 말없이 붙잡히면(방화벽이 버림) 직접 연결이 포기할 때(10초)까지 기다리지 않는다.
+    /// 잠깐 기다려도 안 열리면 터널도 같이 열고 먼저 열린 쪽으로 보낸다 (사용자 11-12: 연결을 누르면 결과까지 멈춤)
+    #[tokio::test]
+    async fn a_silent_address_does_not_hold_the_request_until_the_direct_timeout() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        // TCP는 받지만 TLS에는 답하지 않는 주소
+        let silent = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let silent_port = silent.local_addr().unwrap().port();
+        let _hold = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((sock, _)) = silent.accept().await {
+                held.push(sock);
+            }
+        });
+        state.endpoint.lock().unwrap()["port"] = json!(silent_port);
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        let started = std::time::Instant::now();
+        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        assert!(started.elapsed() < CONNECT_TIMEOUT / 2, "paired through the tunnel in {:?}", started.elapsed());
         assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 

@@ -284,6 +284,13 @@ pub struct ServerInfo {
     /// 가져오기 전 게임 설정 파일을 보관해 두어, 삭제(연결 해제)할 때 되돌릴 수 있는가
     #[serde(default)]
     pub restorable_settings: bool,
+    /// 데몬이 마지막으로 한 게임 서버 업데이트 확인 결과 (`check-update`의 답 + `checked_at` unix 초, 0.1.14~).
+    /// 아직 확인하지 않았거나 확인하지 않는 서버면 null. 화면은 직접 확인하지 않고 이것을 읽는다 (`server_update::last_check`)
+    #[serde(default)]
+    pub update_check: Option<serde_json::Value>,
+    /// 시작·정지 요청이 진행 중이면 `starting`·`stopping` (0.1.14~). 화면은 이것으로 "하는 중"을 보인다 (`instance::transition`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transition: Option<String>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)
@@ -1050,6 +1057,8 @@ impl IPCServer {
             .route("/api/remote/daemons/{host_id}/proxy/{*rest}", get(handlers::remote_daemon::proxy).post(handlers::remote_daemon::proxy).put(handlers::remote_daemon::proxy).patch(handlers::remote_daemon::proxy).delete(handlers::remote_daemon::proxy))
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))
+            // 디스코드 탭의 릴레이 읽기를 잠깐 기억하고, 쓰는 요청이 끝나면 잊는다 (`relay_cache.rs`)
+            .layer(axum::middleware::from_fn(handlers::relay_cache::layer))
             // 감사 로그 출처 (A10): 요청마다 X-Saba-Client로 정한다. 인증층은 이 바깥에 씌운다 (업데이트 라우터까지)
             .layer(axum::middleware::from_fn(crate::audit::layer))
             // 짝 맺은 PC(출처 `remote`)의 PC 전용 경로·칸 (D1). 원격 포트와 안에서 다시 부르는 라우터(`actions::call_as`)가 모두 지난다

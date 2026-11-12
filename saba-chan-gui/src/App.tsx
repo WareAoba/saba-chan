@@ -44,7 +44,7 @@ import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
-import { eventsAvailable } from './utils/daemonEvents';
+import { eventsAvailable, serverListPollMs } from './utils/daemonEvents';
 import { startPoll } from './utils/poll';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
@@ -63,8 +63,10 @@ import {
 } from './utils/opening';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
 import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice';
+import { warmTabArt } from './utils/warmArt';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
+import { useSlowProgressBubble } from './hooks/useSlowProgressBubble';
 import './styles/shell.css';
 import './styles/backdrop.css';
 import './styles/motion.css';
@@ -72,15 +74,6 @@ import './styles/motion.css';
 const LOADING_LEAVE_MS = 700;
 /** 초기화 단계 소식이 이만큼 없으면 멈춘 것으로 본다. main의 가장 긴 단계(새 데몬 기다리기)는 30초를 넘지 않는다 */
 const INIT_STALL_MS = 60_000;
-
-interface ProgressSnapshot {
-    percent: number;
-    timestamp: number;
-    /** 이번 멈춤에 말풍선을 이미 띄웠다 */
-    shown: boolean;
-}
-/** 느린 진행 말풍선의 holdKey */
-const SLOW_PROGRESS_BUBBLE = 'slow-progress';
 
 function App() {
     const { t, i18n } = useTranslation('gui');
@@ -299,46 +292,7 @@ function App() {
     // ── Effects ──────────────────────────────────────────────
     // ══════════════════════════════════════════════════════════
 
-    // 진행이 5초 넘게 멈춰 보이면 사바쨩 말풍선으로 "멈춘 게 아니에요"를 알린다 (다시 움직이거나 끝나면 내린다)
-    const stallTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const progressSnapshotRef = useRef<ProgressSnapshot | null>(null);
-    useEffect(() => {
-        const settle = () => {
-            useSabaBubble.getState().release(SLOW_PROGRESS_BUBBLE);
-            if (stallTimerRef.current) clearInterval(stallTimerRef.current);
-            stallTimerRef.current = null;
-            progressSnapshotRef.current = null;
-        };
-        if (!progressBar || progressBar.percent === 100) {
-            settle();
-            return;
-        }
-        if (!progressSnapshotRef.current) {
-            progressSnapshotRef.current = { percent: progressBar.percent || 0, timestamp: Date.now(), shown: false };
-        }
-        if (!stallTimerRef.current) {
-            stallTimerRef.current = setInterval(() => {
-                const snap = progressSnapshotRef.current;
-                if (!snap || snap.shown || (Date.now() - snap.timestamp) / 1000 < 5) return;
-                snap.shown = true;
-                useSabaBubble
-                    .getState()
-                    .show({ kind: 'cooking', text: tRef.current('saba.slow_progress'), holdKey: SLOW_PROGRESS_BUBBLE });
-            }, 1000);
-        }
-        const currentPercent = progressBar.percent || 0;
-        const snap = progressSnapshotRef.current;
-        if (snap && currentPercent - snap.percent > 5) {
-            progressSnapshotRef.current = { percent: currentPercent, timestamp: Date.now(), shown: false };
-            useSabaBubble.getState().release(SLOW_PROGRESS_BUBBLE);
-        }
-    }, [progressBar]);
-    useEffect(
-        () => () => {
-            if (stallTimerRef.current) clearInterval(stallTimerRef.current);
-        },
-        [],
-    );
+    useSlowProgressBubble(progressBar, t('saba.slow_progress'));
 
     // Unread notice count tracking
     // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only event listener — setter is stable
@@ -512,6 +466,7 @@ function App() {
                 setBackgroundDaemonStatus('error');
             }
         };
+        // 창이 숨어 있는 동안(최소화·트레이)은 묻지 않고, 다시 보이면 바로 묻는다
         return startPoll(checkDaemonStatus, 5000);
     }, [daemonReady]);
 
@@ -640,22 +595,21 @@ function App() {
             });
         }
 
-        // Auto-refresh (데몬 준비 전에는 스킵)
-        const stopPoll = startPoll(
-            () => {
-                if (autoRefresh && daemonReady) return fetchServers();
-            },
-            refreshInterval,
-            { immediate: false },
-        );
-
         return () => {
-            stopPoll();
             if (typeof offClose === 'function') offClose();
             if (typeof offOpenServer === 'function') offOpenServer();
             if (typeof offOpenRoute === 'function') offOpenRoute();
         };
     }, [autoRefresh, refreshInterval, daemonReady]);
+
+    // 목록 자동 새로고침 (데몬 준비 전에는 스킵). 데몬 이벤트가 바뀜을 바로 알리면(DaemonEvents) 놓친 것만 메우게 느리게 돈다
+    const extensionStatus = useServerStore((s) => s.servers.some((srv) => Object.keys(srv.extension_status || {}).length > 0));
+    // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers는 렌더마다 새 함수다 (주기만 따른다)
+    useEffect(() => {
+        if (!autoRefresh || !daemonReady) return;
+        const ms = serverListPollMs(refreshInterval, { events: eventsAvailable(), extensionStatus });
+        return startPoll(fetchServers, ms, { immediate: false });
+    }, [autoRefresh, refreshInterval, daemonReady, extensionStatus]);
 
     // ══════════════════════════════════════════════════════════
     // ── Render ───────────────────────────────────────────────
@@ -754,6 +708,10 @@ function App() {
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);
     }, [showLoading, switchedDaemon]);
+    // 오프닝이 끝나면 탭 그림·글꼴을 한가할 때 미리 받아 둔다
+    useEffect(() => {
+        if (openingPhase === 'done') warmTabArt();
+    }, [openingPhase]);
     // 메인 화면을 덮어 두고 그린 뒤, 글꼴·그림이 준비되고 메인 화면이 잠잠해지면(처음 그린 뒤 이어지는 렌더·번역
     // 불러오기가 끝나면) 무엇을 어떻게 재생할지 정해 로딩 화면에 넘긴다
     const prepareOpening = async (signal: AbortSignal): Promise<OpeningPlay | null> => {

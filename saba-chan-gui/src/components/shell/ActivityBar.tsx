@@ -25,6 +25,8 @@ export const ACTIVITY_POLL_MS = 3000;
 /** 이벤트 스트림이 있으면 놓친 것만 메우는 느린 폴링 */
 export const ACTIVITY_SLOW_POLL_MS = 30000;
 export const CONSOLE_POLL_MS = 1000;
+/** 이어 읽을 때 새 줄이 없으면 데몬이 붙잡는 시간(초). 원격 데몬 중계가 다시 쓴 연결의 답을 10초까지만 기다린다 */
+export const CONSOLE_WAIT_S = 8;
 const CONSOLE_MAX = 2000;
 const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon', 'web', 'remote', 'mcp', 'agent', 'restart'];
 
@@ -63,7 +65,8 @@ function DaemonConsole() {
         let epoch: number | undefined; // 데몬 로그 버퍼 세대. 데몬이 다시 켜지면 id가 1부터라 바뀌면 처음부터 다시 받는다 (L55)
         const poll = async () => {
             try {
-                let res = await window.api.daemonConsole(next === undefined ? {} : { since: next });
+                // 이어 읽을 때는 새 줄이 생길 때까지 데몬이 붙잡게 한다 (옛 데몬은 바로 답하고 1초 뒤 다시 묻는다)
+                let res = await window.api.daemonConsole(next === undefined ? {} : { since: next, wait: CONSOLE_WAIT_S });
                 if (next !== undefined && res?.epoch !== undefined && res.epoch !== epoch) {
                     next = undefined;
                     setLines([]);

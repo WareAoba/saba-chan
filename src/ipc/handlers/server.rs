@@ -189,6 +189,8 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     revision: instance.settings_revision(),
                     port_conflicts: vec![],
                     slots: Default::default(),
+                    update_check: super::server_update::last_check(&instance.id),
+                    transition: crate::instance::transition::of(&instance.id).map(|k| k.as_str().to_string()),
                     players: None,
                     unresponsive: None,
                     // 폴더 판정은 아래 락 밖에서
@@ -891,6 +893,7 @@ async fn start_instance(
 }
 
 async fn start_checked(state: IPCServer, instance: crate::instance::ServerInstance, managed: bool) -> axum::response::Response {
+    let _transition = crate::instance::transition::Transition::begin(&instance.id, crate::instance::transition::Kind::Starting);
     if let Some(blocked) = preflight(&state, &instance.id).await {
         return blocked;
     }
@@ -1247,6 +1250,7 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
         return instance_not_found(key);
     };
     let id = id.as_str();
+    let _transition = crate::instance::transition::Transition::begin(id, crate::instance::transition::Kind::Stopping);
     // 정지가 끝날 때까지 복원 전 백업 정리를 붙잡아 둔다 (정리가 "돌고 있다"고 본 서버를 지우는 동안 멈추지 않게, 반대로 멈추는 중에는 지우지 않게)
     let _stopping = super::backup::stop_gate(id).await;
     // API 경유 정지 기록 (GUI 외부 정지 감지용)

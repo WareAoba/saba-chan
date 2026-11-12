@@ -6,7 +6,7 @@
     font-family: 'saba-hand';
     src: url('../../assets/fonts/gaegu-bold.woff2') format('woff2');
     font-weight: 700;
-    font-display: swap;
+    font-display: block; /* 앱 안 파일이라 금방 온다: 기본 글꼴로 먼저 그렸다가 바꿔 그리며 흔들리지 않게 */
 }
 
 /* 자기소개 카드는 테마와 상관없이 흰 종이다. 어두운 테마에서는 밝기만 조금 낮춘다 */

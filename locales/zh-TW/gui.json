@@ -2577,6 +2577,16 @@
       "host_mismatch": "公開位址沒有指向這台電腦",
       "host_unresolved": "找不到公開位址"
     },
+    "pill": {
+      "open": "可從外網連線",
+      "closed": "無法從外網連線",
+      "firewall": "被電腦防火牆封鎖",
+      "router": "未設定連接埠轉發",
+      "cgnat": "沒有公用 IP (CGNAT)",
+      "unknown": "部分連接埠未檢查",
+      "host_mismatch": "位址未指向這台電腦",
+      "host_unresolved": "找不到位址"
+    },
     "status": {
       "open": "開放",
       "closed": "關閉",
@@ -2698,9 +2708,6 @@
     "title": "連線位址",
     "copy": "複製",
     "copied": "已複製",
-    "hide": "隱藏",
-    "show": "顯示",
-    "hidden": "已隱藏的位址",
     "unknown": "還不知道這台電腦的公用位址。連上 Server-chan 後會顯示。",
     "stopped": "啟動伺服器後朋友才能進入",
     "checked_at": "{{time}} 檢查"

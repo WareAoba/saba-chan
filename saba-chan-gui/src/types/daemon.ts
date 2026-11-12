@@ -101,6 +101,10 @@ export interface ServerInfo {
     unresponsive?: string;
     linked_folder?: string;
     restorable_settings: boolean;
+    /** 데몬이 마지막으로 한 게임 서버 업데이트 확인 (`check-update`의 답 + `checked_at`). 확인 전·확인하지 않는 서버는 null, 옛 데몬은 없다 */
+    update_check?: ApiBody | null;
+    /** 시작·정지 요청이 데몬에서 진행 중이면 `starting`·`stopping` (0.1.14~, 어디서 시켰든) */
+    transition?: 'starting' | 'stopping';
 }
 
 /** 포트 충돌로 데몬이 강제로 끈 서버 알림 */
@@ -343,14 +347,26 @@ export interface ExtensionListResponse {
 
 // ── 릴레이 에이전트 ──
 
-/** window.api.discordBotStatus: 데몬 릴레이 에이전트 상태. 릴레이가 이 앱 버전을 받지 않으면 객체로 온다 */
+/** 에이전트가 하트비트로 아는 릴레이 연결 (`GET /api/relay/agent`의 `connected`·`lastError`, 0.1.14~) */
+export interface RelayLink {
+    connected: boolean;
+    error: string;
+    /** 하트비트가 한 번이라도 성공했다. 아니면(막 켬) 끊김이 아니라 연결 중이다 */
+    heard?: boolean;
+}
+
+/**
+ * window.api.discordBotStatus: 데몬 릴레이 에이전트 상태. 릴레이가 이 앱 버전을 받지 않거나(`too_old`)
+ * 데몬이 연결 상태를 알려 주면(`link`) 객체로 온다
+ */
 export type AgentStatus =
     | 'running'
     | 'stopped'
     | 'replaced'
     | 'invalid_relay_url'
     | 'unknown'
-    | { status: 'too_old'; running: boolean; minVersion: string | null };
+    | { status: 'too_old'; running: boolean; minVersion: string | null; link?: RelayLink }
+    | { status: 'running' | 'stopped' | 'replaced' | 'invalid_relay_url'; running: boolean; link: RelayLink };
 
 // ── GUI 설정 (config_store::GuiSettings, camelCase) ──
 
