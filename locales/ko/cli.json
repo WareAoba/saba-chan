@@ -1861,6 +1861,7 @@
   "install": {
     "fetching": "최신 릴리스를 확인하고 있어요…",
     "fetch_failed": "최신 릴리스를 받지 못했어요: {{reason}}",
+    "channel_older": "{{channel}} 채널의 최신 판({{offered}})이 이 설치기({{installer}})보다 옛 판이라 이 채널로는 설치할 수 없어요. 다른 채널을 골라 주세요.",
     "ask_dir": "설치 폴더",
     "unknown_module": "모르는 모듈이에요: {{name}}. 고를 수 있는 모듈: {{list}}",
     "ask_module": "{{name}} 모듈도 설치할까요?",

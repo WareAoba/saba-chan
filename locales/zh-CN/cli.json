@@ -1861,6 +1861,7 @@
   "install": {
     "fetching": "正在检查最新版本…",
     "fetch_failed": "无法获取最新版本：{{reason}}",
+    "channel_older": "{{channel}} 渠道的最新版本（{{offered}}）比此安装程序（{{installer}}）旧，无法通过这个渠道安装。请选择其他渠道。",
     "ask_dir": "安装文件夹",
     "unknown_module": "未知模块：{{name}}。可选模块：{{list}}",
     "ask_module": "也安装 {{name}} 模块吗？",

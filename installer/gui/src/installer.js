@@ -88,6 +88,7 @@ const T = {
         launchFailed: 'Couldn\'t start Saba-chan. Start it from the Start menu or desktop shortcut.',
         installFailed: 'Installation failed',
         fetchFailed: 'Failed to fetch releases',
+        errChannelOlder: 'The latest release on this channel is older than this installer, so it can\'t be installed from this channel. Choose another channel.',
         uninstallTitle: 'Uninstall Saba-chan',
         uninstallDesc: 'This removes the Saba-chan program and every file it made: runtimes, modules, caches, logs, temporary files, shortcuts and registry entries. Running servers are stopped first. Choose below what to keep.',
         uninstallKeepInstances: 'Keep game servers',
@@ -215,6 +216,7 @@ const T = {
         launchFailed: '사바쨩을 실행하지 못했습니다. 시작 메뉴나 바탕화면 바로가기로 실행해 주세요.',
         installFailed: '설치 실패',
         fetchFailed: '릴리즈 정보를 가져오지 못했습니다',
+        errChannelOlder: '고른 채널의 최신 판이 이 설치기보다 옛 판이라 이 채널로는 설치할 수 없어요. 다른 채널을 골라 주세요.',
         uninstallTitle: '사바쨩 제거',
         uninstallDesc: '사바쨩 프로그램과 사바쨩이 만든 파일을 모두 지웁니다. 런타임, 모듈, 캐시, 로그, 임시 파일, 바로가기, 레지스트리 항목이 삭제됩니다. 켜져 있는 서버는 먼저 정상 종료합니다. 남길 것은 아래에서 고르세요.',
         uninstallKeepInstances: '게임 서버 남기기',
@@ -342,6 +344,7 @@ const T = {
         launchFailed: 'サバちゃんを起動できませんでした。スタートメニューかデスクトップのショートカットから起動してください。',
         installFailed: 'インストール失敗',
         fetchFailed: 'リリース情報の取得に失敗',
+        errChannelOlder: '選んだチャンネルの最新版がこのインストーラーより古いため、このチャンネルではインストールできません。別のチャンネルを選んでください。',
         uninstallTitle: 'サバちゃん アンインストール',
         uninstallDesc: 'サバちゃんのプログラムと、サバちゃんが作ったファイルをすべて削除します。ランタイム、モジュール、キャッシュ、ログ、一時ファイル、ショートカット、レジストリが削除されます。起動中のサーバーは先に正常終了します。残すものを下で選んでください。',
         uninstallKeepInstances: 'ゲームサーバーを残す',
@@ -469,6 +472,7 @@ const T = {
         launchFailed: '无法启动 Saba-chan。请从开始菜单或桌面快捷方式启动。',
         installFailed: '安装失败',
         fetchFailed: '无法获取版本信息',
+        errChannelOlder: '所选渠道的最新版本比此安装程序旧，无法通过这个渠道安装。请选择其他渠道。',
         uninstallTitle: '卸载 Saba-chan',
         uninstallDesc: '这会删除 Saba-chan 程序及其创建的所有文件：运行环境、模块、缓存、日志、临时文件、快捷方式和注册表项。正在运行的服务器会先正常关闭。请在下方选择要保留的内容。',
         uninstallKeepInstances: '保留游戏服务器',
@@ -596,6 +600,7 @@ const T = {
         launchFailed: '無法啟動 Saba-chan。請從開始功能表或桌面捷徑啟動。',
         installFailed: '安裝失敗',
         fetchFailed: '無法取得版本資訊',
+        errChannelOlder: '所選頻道的最新版本比此安裝程式舊，無法透過這個頻道安裝。請選擇其他頻道。',
         uninstallTitle: '解除安裝 Saba-chan',
         uninstallDesc: '這會刪除 Saba-chan 程式及其建立的所有檔案：執行環境、模組、快取、記錄、暫存檔、捷徑和登錄項目。執行中的伺服器會先正常關閉。請在下方選擇要保留的內容。',
         uninstallKeepInstances: '保留遊戲伺服器',
@@ -723,6 +728,7 @@ const T = {
         launchFailed: 'No se pudo iniciar Saba-chan. Ábrelo desde el menú Inicio o el acceso directo del escritorio.',
         installFailed: 'Error en la instalación',
         fetchFailed: 'No se pudieron obtener las versiones',
+        errChannelOlder: 'La última versión de este canal es anterior a este instalador, así que no se puede instalar desde este canal. Elige otro canal.',
         uninstallTitle: 'Desinstalar Saba-chan',
         uninstallDesc: 'Esto elimina el programa Saba-chan y todos los archivos que creó: entornos, módulos, cachés, registros, archivos temporales, accesos directos y entradas del registro. Los servidores en marcha se detienen antes. Elija abajo qué conservar.',
         uninstallKeepInstances: 'Conservar los servidores',
@@ -850,6 +856,7 @@ const T = {
         launchFailed: 'Não foi possível iniciar o Saba-chan. Abra-o pelo menu Iniciar ou pelo atalho da área de trabalho.',
         installFailed: 'Falha na instalação',
         fetchFailed: 'Não foi possível obter as versões',
+        errChannelOlder: 'A versão mais recente deste canal é anterior a este instalador, então não dá para instalar por este canal. Escolha outro canal.',
         uninstallTitle: 'Desinstalar Saba-chan',
         uninstallDesc: 'Isto remove o programa Saba-chan e todos os arquivos que ele criou: ambientes, módulos, caches, logs, arquivos temporários, atalhos e entradas do registro. Os servidores em execução são parados antes. Escolha abaixo o que manter.',
         uninstallKeepInstances: 'Manter os servidores',
@@ -977,6 +984,7 @@ const T = {
         launchFailed: 'Не удалось запустить Saba-chan. Запустите его из меню «Пуск» или с ярлыка на рабочем столе.',
         installFailed: 'Ошибка установки',
         fetchFailed: 'Не удалось получить информацию о версиях',
+        errChannelOlder: 'Последняя версия этого канала старше этого установщика, поэтому установить её из этого канала нельзя. Выберите другой канал.',
         uninstallTitle: 'Удаление Saba-chan',
         uninstallDesc: 'Будут удалены программа Saba-chan и все созданные ею файлы: среды выполнения, модули, кэши, журналы, временные файлы, ярлыки и записи реестра. Запущенные серверы сначала останавливаются. Ниже выберите, что сохранить.',
         uninstallKeepInstances: 'Сохранить серверы',
@@ -1104,6 +1112,7 @@ const T = {
         launchFailed: 'Saba-chan konnte nicht gestartet werden. Starte es über das Startmenü oder die Desktopverknüpfung.',
         installFailed: 'Installation fehlgeschlagen',
         fetchFailed: 'Versionsinformationen konnten nicht abgerufen werden',
+        errChannelOlder: 'Die neueste Version dieses Kanals ist älter als dieses Installationsprogramm und lässt sich daher nicht über diesen Kanal installieren. Wähle einen anderen Kanal.',
         uninstallTitle: 'Saba-chan deinstallieren',
         uninstallDesc: 'Entfernt das Programm Saba-chan und alle Dateien, die es angelegt hat: Laufzeitumgebungen, Module, Caches, Protokolle, temporäre Dateien, Verknüpfungen und Registrierungseinträge. Laufende Server werden zuerst beendet. Wählen Sie unten, was erhalten bleibt.',
         uninstallKeepInstances: 'Server behalten',
@@ -1231,6 +1240,7 @@ const T = {
         launchFailed: 'Impossible de démarrer Saba-chan. Lancez-le depuis le menu Démarrer ou le raccourci du bureau.',
         installFailed: 'Échec de l\'installation',
         fetchFailed: 'Impossible de récupérer les versions',
+        errChannelOlder: 'La dernière version de ce canal est plus ancienne que ce programme d\'installation ; elle ne peut donc pas être installée depuis ce canal. Choisissez un autre canal.',
         uninstallTitle: 'Désinstaller Saba-chan',
         uninstallDesc: 'Ceci supprime le programme Saba-chan et tous les fichiers qu\'il a créés : environnements, modules, caches, journaux, fichiers temporaires, raccourcis et entrées du registre. Les serveurs en cours sont d\'abord arrêtés. Choisissez ci-dessous ce qu\'il faut conserver.',
         uninstallKeepInstances: 'Conserver les serveurs',
@@ -1541,6 +1551,7 @@ function enterComplete(p) {
 const ERROR_KEYS = {
     elevation_failed: 'errElevation',
     fetch_failed: 'fetchFailed',
+    channel_older: 'errChannelOlder',
     installer_outdated: 'errOutdated',
     release_incomplete: 'errIncomplete',
     profile_failed: 'errProfile',
@@ -1787,7 +1798,7 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
     try {
         await invoke('fetch_latest_release');
     } catch (e) {
-        enterError({ error_code: 'fetch_failed', message: String(e) });
+        enterError({ error_code: e?.error_code ?? 'fetch_failed', message: e?.message ?? String(e) });
         return;
     }
 

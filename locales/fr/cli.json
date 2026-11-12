@@ -1815,6 +1815,7 @@
   "install": {
     "fetching": "Vérification de la dernière version…",
     "fetch_failed": "Impossible d'obtenir la dernière version : {{reason}}",
+    "channel_older": "La dernière version du canal {{channel}} ({{offered}}) est plus ancienne que ce programme d'installation ({{installer}}) ; elle ne peut donc pas être installée depuis ce canal. Choisissez un autre canal.",
     "ask_dir": "Dossier d'installation",
     "unknown_module": "Module inconnu : {{name}}. Modules disponibles : {{list}}",
     "ask_module": "Installer aussi le module {{name}} ?",

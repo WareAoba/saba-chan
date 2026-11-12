@@ -140,7 +140,14 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
     let spin = crate::progress::spinner(&t!("install.fetching"));
     let manifest = release::fetch_latest(args.channel.as_deref()).await;
     spin.finish_and_clear();
-    let manifest = manifest.map_err(|e| failed(t!("install.fetch_failed", reason = e)))?;
+    let manifest = manifest.map_err(|e| {
+        failed(match &e {
+            release::FetchError::ChannelOlder { channel, offered, installer } => {
+                t!("install.channel_older", channel = channel, offered = offered, installer = installer)
+            }
+            release::FetchError::Other(reason) => t!("install.fetch_failed", reason = reason),
+        })
+    })?;
     let available = release::modules(&manifest);
     let fitted = fit_profile(profile, args.gui, manifest.components.contains_key("gui"), &saba_chan_updater_lib::relay::current_platform());
     if fitted != profile {

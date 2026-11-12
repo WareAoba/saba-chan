@@ -291,7 +291,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         Some(m) => m,
         None => match release::fetch_latest(config.channel.as_deref()).await {
             Ok(m) => m,
-            Err(e) => return fail("fetch_failed", &e),
+            Err(e) => return fail(e.code(), &e.to_string()),
         },
     }
     .for_profile(config.profile);

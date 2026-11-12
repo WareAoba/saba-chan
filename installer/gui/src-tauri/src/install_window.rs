@@ -192,9 +192,12 @@ async fn get_available_modules(state: State<'_, SharedState>) -> Result<Vec<Modu
 #[tauri::command]
 async fn fetch_latest_release(
     state: State<'_, SharedState>,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, serde_json::Value> {
     let channel = state.read().await.channel.clone();
-    let manifest = release::fetch_latest(channel.as_deref()).await?;
+    // 실패 종류(`error_code`)로 화면이 문구를 고른다: 고른 채널이 이 설치기보다 옛 판이면 `channel_older`
+    let manifest = release::fetch_latest(channel.as_deref())
+        .await
+        .map_err(|e| serde_json::json!({ "error_code": e.code(), "message": e.to_string() }))?;
     let info = serde_json::json!({
         "tag": manifest.version,
         "name": manifest.version,

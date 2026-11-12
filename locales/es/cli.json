@@ -1815,6 +1815,7 @@
   "install": {
     "fetching": "Comprobando la última versión…",
     "fetch_failed": "No se pudo obtener la última versión: {{reason}}",
+    "channel_older": "La última versión del canal {{channel}} ({{offered}}) es anterior a este instalador ({{installer}}), así que no se puede instalar desde este canal. Elige otro canal.",
     "ask_dir": "Carpeta de instalación",
     "unknown_module": "Módulo desconocido: {{name}}. Módulos disponibles: {{list}}",
     "ask_module": "¿Instalar también el módulo {{name}}?",

@@ -1861,6 +1861,7 @@
   "install": {
     "fetching": "最新リリースを確認しています…",
     "fetch_failed": "最新リリースを取得できませんでした: {{reason}}",
+    "channel_older": "{{channel}} チャンネルの最新版（{{offered}}）がこのインストーラー（{{installer}}）より古いため、このチャンネルではインストールできません。別のチャンネルを選んでください。",
     "ask_dir": "インストール先フォルダー",
     "unknown_module": "不明なモジュールです: {{name}}。選べるモジュール: {{list}}",
     "ask_module": "{{name}} モジュールもインストールしますか？",

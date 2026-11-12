@@ -1559,6 +1559,7 @@
   "install": {
     "fetching": "Checking the latest release…",
     "fetch_failed": "Could not get the latest release: {{reason}}",
+    "channel_older": "The latest {{channel}} release ({{offered}}) is older than this installer ({{installer}}), so it can't be installed from this channel. Choose another channel.",
     "ask_dir": "Install folder",
     "unknown_module": "Unknown module: {{name}}. Available modules: {{list}}",
     "ask_module": "Install the {{name}} module too?",
