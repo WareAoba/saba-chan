@@ -719,7 +719,7 @@
     "unknown_key": "{{key}} は新しいキーです。",
     "restart_required_mark": "変更後に再起動",
     "restart_required": "再起動すると反映されます: {{keys}}",
-    "hidden": "ほかの設定により現在使われないため非表示の設定: {{keys}}"
+    "hidden": "現在使われないため非表示の設定: {{keys}}"
   },
   "shell": {
     "bad_quotes": "引用符が閉じられていません。",

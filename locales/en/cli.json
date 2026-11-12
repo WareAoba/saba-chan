@@ -719,7 +719,7 @@
     "unknown_key": "{{key}} is a new key.",
     "restart_required_mark": "restart to apply",
     "restart_required": "Restart the server to apply: {{keys}}",
-    "hidden": "Hidden because other settings don't use them now: {{keys}}"
+    "hidden": "Hidden because they aren't used now: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Unclosed quote.",

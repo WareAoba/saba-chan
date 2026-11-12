@@ -719,7 +719,7 @@
     "unknown_key": "{{key}} 是新键。",
     "restart_required_mark": "修改后需重启",
     "restart_required": "重启服务器后生效: {{keys}}",
-    "hidden": "因其他设置当前未使用而隐藏的设置: {{keys}}"
+    "hidden": "因当前未使用而隐藏的设置: {{keys}}"
   },
   "shell": {
     "bad_quotes": "引号未闭合。",

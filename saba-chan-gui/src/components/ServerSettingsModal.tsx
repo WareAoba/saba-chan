@@ -407,7 +407,7 @@ function GeneralTab({
     const advancedFields = showServer ? fields.filter((f) => f.group === 'advanced') : [];
     // 설치 방식 익스텐션으로 받는 서버는 같은 칸에서 브랜치를 고른다 (모듈이 브랜치 목록을 줄 때만)
     const branchMethod = versionBranchMethod(module);
-    const branchPicker = !!branchMethod && (!!versionsLoading || availableVersions.length > 0);
+    const branchPicker = !!branchMethod && availableVersions.length > 0;
     const branchSource = extensions.find((e) => e.id === branchMethod)?.name || branchMethod;
     const versionPicker =
         showSaba &&

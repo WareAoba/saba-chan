@@ -458,7 +458,7 @@
     "restart_pending": "{{count}} configuração(ões) alterada(s) só valem após reiniciar o servidor: {{fields}}",
     "restart_badge": "Aplicado ao reiniciar",
     "changed_count": "{{count}} alterados",
-    "changed_title": "{{count}} campos alterados",
+    "changed_title": "Campos alterados: {{count}}",
     "revert_field": "Reverter {{name}}",
     "value_empty": "(vazio)",
     "toggle_on": "Ativado",

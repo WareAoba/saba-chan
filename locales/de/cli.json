@@ -719,7 +719,7 @@
     "unknown_key": "{{key}} ist ein neuer Schlüssel.",
     "restart_required_mark": "Neustart nötig",
     "restart_required": "Zum Übernehmen den Server neu starten: {{keys}}",
-    "hidden": "Ausgeblendet, weil andere Einstellungen sie gerade nicht nutzen: {{keys}}"
+    "hidden": "Ausgeblendet, weil sie gerade nicht genutzt werden: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Nicht geschlossenes Anführungszeichen.",

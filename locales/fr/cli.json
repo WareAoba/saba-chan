@@ -719,7 +719,7 @@
     "unknown_key": "{{key}} est une nouvelle clé.",
     "restart_required_mark": "redémarrage requis",
     "restart_required": "Redémarrez le serveur pour appliquer : {{keys}}",
-    "hidden": "Masqués car d'autres paramètres ne les utilisent pas pour l'instant : {{keys}}"
+    "hidden": "Masqués car ils ne sont pas utilisés pour l'instant : {{keys}}"
   },
   "shell": {
     "bad_quotes": "Guillemet non fermé.",

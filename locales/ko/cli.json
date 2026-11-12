@@ -719,7 +719,7 @@
     "unknown_key": "{{key}}는 새 키예요.",
     "restart_required_mark": "바꾸면 다시 시작",
     "restart_required": "다시 시작해야 적용돼요: {{keys}}",
-    "hidden": "다른 설정에 따라 지금 쓰지 않아 숨긴 설정: {{keys}}"
+    "hidden": "지금 쓰지 않아 숨긴 설정: {{keys}}"
   },
   "shell": {
     "bad_quotes": "따옴표가 닫히지 않았어요.",

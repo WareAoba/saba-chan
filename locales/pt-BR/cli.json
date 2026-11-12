@@ -719,7 +719,7 @@
     "unknown_key": "{{key}} é uma chave nova.",
     "restart_required_mark": "requer reinício",
     "restart_required": "Reinicie o servidor para aplicar: {{keys}}",
-    "hidden": "Ocultas porque outras configurações não as usam agora: {{keys}}"
+    "hidden": "Ocultas porque não são usadas agora: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Aspas não fechadas.",

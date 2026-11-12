@@ -777,26 +777,6 @@
     gap: var(--sp-1-5);
     padding: var(--sp-3) var(--sp-3) 0;
 }
-.term-chip.on {
-    background: color-mix(in oklch, var(--console-custom-text) 16%, transparent);
-    border-color: color-mix(in oklch, var(--console-custom-text) 35%, transparent);
-    color: var(--console-custom-text);
-    font-weight: 700;
-}
-.term-chip.level-warn {
-    color: var(--tok-warn);
-}
-.term-chip.level-error {
-    color: var(--tok-error);
-}
-.term-chip.level-warn.on {
-    background: color-mix(in oklch, var(--tok-warn) 16%, transparent);
-    border-color: color-mix(in oklch, var(--tok-warn) 50%, transparent);
-}
-.term-chip.level-error.on {
-    background: color-mix(in oklch, var(--tok-error) 16%, transparent);
-    border-color: color-mix(in oklch, var(--tok-error) 50%, transparent);
-}
 /* 출력과 그 위에 뜨는 "맨 아래로" 단추 */
 .term-view {
     position: relative;
@@ -849,6 +829,27 @@
 .term-chip:hover {
     background: color-mix(in oklch, var(--console-custom-text) 12%, transparent);
     color: var(--console-custom-text);
+}
+/* 켜짐·수준 색은 올려도 남는다 (hover 뒤에 둔다) */
+.term-chip.on {
+    background: color-mix(in oklch, var(--console-custom-text) 16%, transparent);
+    border-color: color-mix(in oklch, var(--console-custom-text) 35%, transparent);
+    color: var(--console-custom-text);
+    font-weight: 700;
+}
+.term-chip.level-warn {
+    color: var(--tok-warn);
+}
+.term-chip.level-error {
+    color: var(--tok-error);
+}
+.term-chip.level-warn.on {
+    background: color-mix(in oklch, var(--tok-warn) 16%, transparent);
+    border-color: color-mix(in oklch, var(--tok-warn) 50%, transparent);
+}
+.term-chip.level-error.on {
+    background: color-mix(in oklch, var(--tok-error) 16%, transparent);
+    border-color: color-mix(in oklch, var(--tok-error) 50%, transparent);
 }
 .term-input {
     display: flex;

@@ -719,7 +719,7 @@
     "unknown_key": "{{key}} es una clave nueva.",
     "restart_required_mark": "requiere reinicio",
     "restart_required": "Reinicia el servidor para aplicar: {{keys}}",
-    "hidden": "Ocultos porque otros ajustes no los usan ahora: {{keys}}"
+    "hidden": "Ocultos porque no se usan ahora: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Comilla sin cerrar.",

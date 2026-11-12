@@ -719,7 +719,7 @@
     "unknown_key": "{{key}} 是新的鍵。",
     "restart_required_mark": "修改後需重新啟動",
     "restart_required": "重新啟動伺服器後生效: {{keys}}",
-    "hidden": "因其他設定目前未使用而隱藏的設定: {{keys}}"
+    "hidden": "因目前未使用而隱藏的設定: {{keys}}"
   },
   "shell": {
     "bad_quotes": "引號未閉合。",

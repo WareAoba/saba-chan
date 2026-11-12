@@ -48,7 +48,7 @@ describe('저장 막대의 바뀐 칸 목록', () => {
     it('칩에 바뀐 칸 수를 보이고, 누르면 이전 값과 새 값·다시 시작 표시를 보인다', () => {
         render(<ServerSettingsModal {...make({ motd: 'b', port: '2', secret: 'new' })} />);
         fireEvent.click(screen.getByRole('button', { name: '3 changed' }));
-        const list = screen.getByRole('dialog', { name: '3 changed fields' });
+        const list = screen.getByRole('dialog', { name: 'Changed fields: 3' });
         const rows = within(list).getAllByRole('listitem');
         expect(rows.map((r) => r.textContent)).toEqual([
             expect.stringMatching(/^MOTDa → b/),

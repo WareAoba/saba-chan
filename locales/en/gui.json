@@ -458,7 +458,7 @@
     "restart_pending": "{{count}} changed setting(s) apply after a server restart: {{fields}}",
     "restart_badge": "Applies after restart",
     "changed_count": "{{count}} changed",
-    "changed_title": "{{count}} changed fields",
+    "changed_title": "Changed fields: {{count}}",
     "revert_field": "Revert {{name}}",
     "value_empty": "(empty)",
     "toggle_on": "On",

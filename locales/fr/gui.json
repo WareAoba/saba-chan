@@ -458,7 +458,7 @@
     "restart_pending": "{{count}} paramètre(s) modifié(s) s'appliquent au redémarrage du serveur : {{fields}}",
     "restart_badge": "Appliqué au redémarrage",
     "changed_count": "{{count}} modifiés",
-    "changed_title": "{{count}} champs modifiés",
+    "changed_title": "Champs modifiés : {{count}}",
     "revert_field": "Rétablir {{name}}",
     "value_empty": "(vide)",
     "toggle_on": "Activé",

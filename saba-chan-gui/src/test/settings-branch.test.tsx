@@ -30,7 +30,7 @@ const steamServer = {
     extension_data: { install_method_steamcmd: true, steamcmd_beta: 'unstable' },
 };
 
-const show = (server: Record<string, unknown>, version: string, handleInstallVersion = vi.fn()) =>
+const show = (server: Record<string, unknown>, version: string, handleInstallVersion = vi.fn(), extra: Record<string, unknown> = {}) =>
     render(
         <ServerSettingsModal
             {...({
@@ -54,6 +54,7 @@ const show = (server: Record<string, unknown>, version: string, handleInstallVer
                 resettingServer: false,
                 onClose: vi.fn(),
                 servers: [server],
+                ...extra,
             } as unknown as ComponentProps<typeof ServerSettingsModal>)}
         />,
     );
@@ -68,6 +69,12 @@ describe('서버마다 고르는 브랜치', () => {
         expect(container.querySelector('.ss-branch-notice')).not.toBeNull();
         fireEvent.click(screen.getByRole('button', { name: /Download this branch now/ }));
         expect(install).toHaveBeenCalled();
+    });
+
+    it('브랜치 목록이 아직 없으면 칸을 보이지 않는다 (목록을 주지 않는 모듈에서 잠깐 떴다 사라지지 않게)', () => {
+        const { container } = show(steamServer, '', vi.fn(), { availableVersions: [], versionsLoading: true });
+        expect(screen.queryByText('SteamCMD branch')).toBeNull();
+        expect(container.querySelector('.ss-branch-notice')).toBeNull();
     });
 
     it('버전을 받는 서버의 칸은 그대로다', () => {
