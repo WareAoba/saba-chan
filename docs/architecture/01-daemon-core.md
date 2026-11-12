@@ -911,49 +911,25 @@ REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자�
 
 ### 9.A 오너 원칙 위반 (인터페이스가 데몬을 우회하는 곳)
 
-1. ~~**GUI가 `settings.json`을 직접 읽고 쓴다.**~~ → 해결: GUI는 `config.json`의 `gui`를 읽기만 직접 하고(Tauri 셸 `saba-chan-gui/src-tauri/src/settings.rs:71-84`), 저장은 데몬 API(`PUT /api/config/gui`)로 하며 데몬이 응답하지 않을 때만 파일에 직접 쓴다(`saba-chan-gui/src/api/createApi.ts:108-129`, `src-tauri/src/native.rs:189-212`, `write_gui_section` `settings.rs:49-51`).
-2. ~~**GUI가 relay 서버를 직접 호출한다.**~~ → 해결: GUI(Tauri 셸 `saba-chan-gui/src-tauri/src`, 브리지 `saba-chan-gui/src/api`)에 릴레이 직접 호출이 없다. 봇 설정·초대·페어링은 데몬의 `/api/relay/*`, `/api/config/bot`을 거친다.
-3. ~~**봇 실행 로직이 GUI에 중복돼 있다.**~~ → 해결: 로컬 봇과 범용 `/api/ext-process/*`가 지워졌다(L1). 디스코드 연동은 데몬의 `relay_agent.rs` 하나뿐이다.
-4. **GUI가 데몬의 경로 일부를 정한다.** `saba-chan-gui/src-tauri/src/lifecycle.rs`에서 `SABA_INSTANCES_PATH`, `SABA_IPC_PORT`를 GUI가 정해 주입한다. ~~`SABA_MODULES_PATH`~~ → 해결: 모듈 폴더는 데몬이 `config.json` `paths`로 정한다(§1.5).
+4. **GUI가 데몬의 경로 일부를 정한다.** `saba-chan-gui/src-tauri/src/lifecycle.rs`에서 `SABA_INSTANCES_PATH`, `SABA_IPC_PORT`를 GUI가 정해 주입한다. 모듈 폴더는 데몬이 `config.json` `paths`로 정한다(§1.5).
 5. **CLI가 로컬 파일을 직접 읽는다.** (CLI 참조는 PR #6 리메이크 기준)
    - 데몬을 찾고 띄우는 `saba-chan-cli/src/bootstrap.rs`만 `config.json`의 `gui` 섹션을 직접 읽는다(`ipcPort`, `language`, `:14-46`). 파일 머리 주석이 이를 유일한 예외로 적어 둔다(`:1-6`).
-   - ~~데몬은 `SABA_IPC_PORT`를 먼저 보므로 포트가 다를 수 있다~~ → 해결: CLI도 `SABA_IPC_PORT` > `gui.ipcPort` > 기본값 순으로 읽어 데몬(`main.rs:285-296`)과 같다(`bootstrap.rs:18-25`). 다만 GUI가 데몬에만 넣어 준 환경변수는 따로 띄운 CLI가 보지 못한다.
-   - ~~`scan_directory` 로컬 fs 폴백, `get_module_locales` 로컬 폴백, 컴파일되지 않는 `gui_config.rs` 사본~~ → 해결: 예전 `config.rs`·`gui_config.rs`가 리메이크에서 지워졌다. CLI 문구(`locales/<lang>/cli.json`)는 로컬에서 읽는다(`i18n.rs:38`).
-6. ~~**Discord 봇(server-chan)이 `bot-config.json`을 파일 경로(`BOT_CONFIG_PATH`)로 받는다.**~~ → 해결: 로컬 봇이 없다. 릴레이 에이전트가 하트비트로 봇 설정을 올린다(§1.4).
+   - CLI는 `SABA_IPC_PORT` > `gui.ipcPort` > 기본값 순으로 읽어 데몬(`main.rs:285-296`)과 같다(`bootstrap.rs:18-25`). 다만 GUI가 데몬에만 넣어 준 환경변수는 따로 띄운 CLI가 보지 못한다.
 7. **토큰 파일 직접 읽기**(GUI, CLI, Python 모듈)는 인증 부트스트랩 구조상 피할 수 없으므로 예외로 본다.
-8. ~~**반대 방향 위반: 코어 안에 특정 익스텐션 이름이 하드코딩돼 있다.**~~ → 해결: `docker`·steamcmd 분기가 코어에서 빠졌다. 설치 방식은 `install_method_<방식>` 슬롯으로 범용화됐다(`instance/mod.rs:81-166`, `instance.rs:1547-1560`). 이름은 테스트에만 남아 있다.
 
 ### 9.B 보안과 정합성
 
-1. ~~`/api/updates/*`에 인증이 없다~~ 해결됨: 업데이트 라우터도 인증 미들웨어 안에 있다(`ipc/mod.rs:812-816`). 업데이트 출처 설정은 `relay_url`뿐이고, 서명되지 않은 manifest는 받지 않는다.
-2. ~~**`/health`는 인증이 필요하다.**~~ → 해결(A6): `/health`는 토큰 없이 답하고 보낸 토큰의 상태(`token`)만 알려 준다. 자세한 진단은 인증이 필요한 `/api/diagnostics`.
-3. ~~**토큰이 없으면 fail-open이다**~~ → 해결: 캐시도 파일도 없으면 401로 거부한다(`auth.rs:129-133`). ~~비교가 상수 시간이 아니다~~ → 해결: `constant_time_eq`로 끝까지 비교한다(`auth.rs:102-105, 142`).
-4. ~~**단일 인스턴스 보장이 없다.**~~ → 해결: `daemon.lock` 배타 잠금을 토큰 생성 전에 잡고(`main.rs:300-315`), Windows에서는 `SO_REUSEADDR`를 켜지 않는다(`ipc/mod.rs:845-848`). §1.6.
-5. ~~`/api/ext-process/:name/start`는 임의 명령을 실행~~(라우트 삭제). ~~`/api/fs/scan-dir`는 임의 디렉토리를 열람한다~~ → 해결: 지웠다. 마이그레이션은 게임 폴더 판정(`POST /api/modules/detect`)만 쓴다(D2).
-6. ~~**relay 토큰 유출 가능성**: `?relayUrl=`로 임의 호스트에 `Authorization: Bearer <node_token>`을 보낼 수 있다~~ → 해결: 서명 요청(host status·nodes·members)은 `signed_relay_url`로 설정한 릴레이(없으면 기본)만 쓰고, 요청 주소가 그와 같거나 루프백(모의 릴레이)일 때만 따른다(`relay.rs:46-67, 235-259`). 챗봇 동기화도 설정한 릴레이만 쓴다(`chatbot.rs:170-173`). ~~서명 없는 bot-invite·pair는 `relayUrl`을 그대로 따른다~~ → 해결: 페어링(시작·상태)과 bot-invite도 같은 규칙을 쓴다(`relay.rs:434, 462, 490`, 59a93b8).
-7. ~~**`POST /api/modules/manifest/:id/install`에 경로 검사가 없다**~~ → 해결: `..`, `/`, `\`를 거부한다(`server.rs:530-532`). `get_module_locales`는 여전히 이름을 그대로 `join`한다(`config.rs:209-211`).
-8. **비밀값이 평문으로 응답에 실린다.** `GET /api/instances`, `/api/servers`에는 REST 비밀번호가 들어 있다. ~~`/api/config/bot`의 Discord 토큰~~(BotConfig에서 `token` 삭제).
-9. **익스텐션 설치에 사용자 지정 `download_url`을 허용하고 sha256은 선택**이다(`extension.rs:405-423`). ~~포터블 Python/Node 다운로드에 체크섬 검증이 없다~~ → 해결: Python은 고정 해시로 검사하고(§6.1), Node 다운로드는 지워졌다.
-10. ~~**프로비저닝 dismiss 롤백 경쟁**~~ → 해결: 롤백은 신규 생성으로 표시된 이름(`mark_creating`)일 때만 한다. 기존 인스턴스의 업데이트 실패는 진행 표시만 지운다(`instance.rs:719-757`, `ipc/mod.rs:379-410`).
-11. ~~**`/api/daemon/shutdown`과 `unregister?shutdown=true`는 토큰만 cancel한다**~~ → 해결: 둘 다 `stop_requested`를 cancel하고, main의 단일 종료 경로가 `daemon.shutdown` 훅과 클라이언트 정리를 거친다(`ipc/mod.rs:630-636`, `main.rs:511-578`).
-12. ~~**`SABA_ENABLED_EXTENSIONS` 경로 해석 버그**~~ → 해결: `config.json`의 `extensions.enabled`를 `ConfigFile::default_location()`(`SABA_DATA_DIR` 반영)으로 읽는다(`plugin/mod.rs:317-322`).
-13. ~~**락을 오래 잡는 문제**~~ → 해결(C12): supervisor 함수는 `&RwLock`을 받아 단계마다 짧게 잠그고 Python은 락 밖에서 실행한다(`PluginCall`, `supervisor/mod.rs:1220-1266`). 마이그레이션 `import_settings`(`instance.rs:648-686`), managed 시작(`managed.rs:68`), 익스텐션 다운로드(`extension.rs:438-449`, write lock 전에 받음)도 락 밖이다. 2초 모니터는 여전히 `monitor_processes` 동안 write lock을 잡는다(`main.rs:436-437`).
-14. ~~**REST 명령이 async 핸들러 안에서 동기로 실행된다**~~ → 해결: `spawn_blocking`으로 실행한다(`command.rs:614-621`).
-15. ~~**ext-process 출력이 stderr로 새어 나간다.**~~ → 해결: `ext_process.rs`가 지워졌다.
+7. **`get_module_locales`는 모듈 이름을 그대로 `join`한다**(`config.rs:209-211`). `POST /api/modules/manifest/:id/install`은 `..`, `/`, `\`를 거부한다(`server.rs:530-532`).
+8. **비밀값이 평문으로 응답에 실린다.** `GET /api/instances`, `/api/servers`에는 REST 비밀번호가 들어 있다.
+9. **익스텐션 설치에 사용자 지정 `download_url`을 허용하고 sha256은 선택**이다(`extension.rs:405-423`). 포터블 Python은 고정 해시로 검사한다(§6.1).
+13. **2초 모니터는 `monitor_processes` 동안 write lock을 잡는다**(`main.rs:436-437`). 나머지 supervisor 함수는 `&RwLock`을 받아 단계마다 짧게 잠그고 Python은 락 밖에서 실행한다(C12, `PluginCall`, `supervisor/mod.rs:1220-1266`). 마이그레이션 `import_settings`(`instance.rs:648-686`), managed 시작(`managed.rs:68`), 익스텐션 다운로드(`extension.rs:438-449`, write lock 전에 받음)도 락 밖이다.
 
 ### 9.C 데드 코드와 반쯤 구현된 기능
 
-- ~~`src/config/mod.rs`의 `GlobalConfig`는 미사용이다~~ → 해결: 지워졌다.
-- ~~`handlers/python_env.rs`의 세 핸들러는 라우트가 없다~~ → 해결: 핸들러와 `pip_install*`가 지워졌다. 런타임 상태는 `/api/runtime/preflight`가 보인다.
-- ~~`plugin::run_extension*`, `RestClient::with_basic_auth`, `ServerResponse::success/error`, `CommandResponse`, `BotConfig`(ipc/mod.rs), `ExtensionInitTracker::is_initializing`, `InstanceStore::save`, `ServerInstance::ext_f64`, `process_monitor::find_by_name*` 동기 버전 미사용~~ → 해결: 모두 지워졌다(`ext_str`는 테스트 전용, `instance/mod.rs:128-131`).
-- ~~업데이트 설정의 `check_interval_hours`, `auto_download`, `auto_apply`는 저장만 되고 아무 동작이 없다~~ → 해결: `config.json`에 저장되고, 데몬 스케줄러가 주기와 `auto_download`를 쓴다(`updates.rs:256`, `:899-902`). `auto_apply`는 한때 지워졌다가 '받고 다음 실행 때 적용'으로 다시 생겼다(위 `apply-on-launch`).
-- ~~`skip_port_check` 계열이 따로 논다~~ → 해결: 기동 시 `gui.portConflictCheck`로 초기화하고, start 경로와 모니터가 같은 원자 변수 하나만 본다(§4.4).
-- ~~`GuiSettings.autoGeneratePasswords`는 데몬에서 효과가 없다~~ → 해결: 시작할 때 빈 REST 비밀번호를 채울지 이 값으로 정한다. ~~`ipcPort`~~는 데몬 포트로 쓴다(§4.4).
 - 비 Windows 부트 선택기는 키 입력을 지원하지 않는데도 DEL 안내를 표시한다(`boot_selector.rs:244-248, 308`).
-- ~~`ServerStartRequest.module`을 `/api/server/:name/start` 호출자가 다시 보내야 한다~~ → 그 라우트를 0.1.12에서 지웠다. `/api/instance/:id/start`는 이 값을 데몬이 채운다.
 - `python_env`의 데이터 디렉토리가 `constants::resolve_data_dir()`와 어긋난다(§6). 같은 파일 상단 주석은 `<data_dir>`라고 적고 있다.
 - `install_server` 진행 콜백은 `step/total`을 그대로 넘기지만, 완료될 때는 `step:0,total:1`로 덮어쓴다(`instance.rs:565-574`). 백그라운드 설치의 진행 단계 정보가 사라진다.
-- ~~`CLAUDE`/문서 주장 검증: `src/ipc/updates.rs:13`의 doc-claim "`/api/updates/apply` — 업데이터 exe 스폰하여 적용"은 코드와 다르다~~ → 해결: 모듈 머리 주석이 "`requires_updater`로 돌려주고 실제 적용은 `launch-updater`가 한다"로 바뀌었다(`updates.rs:13-14`). 핸들러 주석(`updates.rs:465`)에는 "업데이터 exe를 스폰하여 적용"이 아직 남아 있다. 그 밖의 README/docs 내용은 이 문서에서 근거로 쓰지 않았다.
+- 핸들러 주석(`updates.rs:465`)에는 "업데이터 exe를 스폰하여 적용"이 남아 있지만, 실제로는 `requires_updater`를 돌려주고 적용은 `launch-updater`가 한다(모듈 머리 주석 `updates.rs:13-14`). README/docs 내용은 이 문서에서 근거로 쓰지 않았다.
 
 ### 9.D 테스트 계약 (`tests/daemon_integration.rs`)
 
