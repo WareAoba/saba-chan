@@ -48,7 +48,7 @@ describe('오래 걸리는 서버 시작', () => {
             );
             await act(async () => result.current.fetchServers()); // 첫 목록
             act(() => {
-                result.current.handleStart('A', 'game');
+                result.current.handleStart('a');
             });
             expect(servers[0].status).toBe('starting');
             await act(async () => vi.advanceTimersByTime(90_000));

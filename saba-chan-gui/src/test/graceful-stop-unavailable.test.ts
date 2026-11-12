@@ -44,7 +44,7 @@ describe('저장 후 종료를 할 수 없는 서버', () => {
             instanceStop: vi.fn().mockResolvedValueOnce(refused).mockResolvedValueOnce({ success: true }),
         } as unknown as typeof window.api;
         const { result, setModal } = render();
-        await act(async () => result.current.handleStop('A'));
+        await act(async () => result.current.handleStop('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
 
         const ask = setModal.mock.calls.at(-1)![0];
@@ -62,7 +62,7 @@ describe('저장 후 종료를 할 수 없는 서버', () => {
     it('정지: 취소하면 다시 요청하지 않는다', async () => {
         window.api = { instanceStop: vi.fn().mockResolvedValue(refused) } as unknown as typeof window.api;
         const { result, setModal } = render();
-        await act(async () => result.current.handleStop('A'));
+        await act(async () => result.current.handleStop('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
         await act(async () => setModal.mock.calls.at(-1)![0].buttons[1].action());
         expect(window.api.instanceStop).toHaveBeenCalledTimes(1);
@@ -73,7 +73,7 @@ describe('저장 후 종료를 할 수 없는 서버', () => {
             instanceRestart: vi.fn().mockResolvedValueOnce(refused).mockResolvedValueOnce({ success: true }),
         } as unknown as typeof window.api;
         const { result, setModal } = render();
-        await act(async () => result.current.handleRestart('A'));
+        await act(async () => result.current.handleRestart('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
 
         const ask = setModal.mock.calls.at(-1)![0];

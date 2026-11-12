@@ -47,7 +47,7 @@ describe('익스텐션 파일이 바뀌어 확인되지 않았을 때', () => {
     it('시작: 바뀐 익스텐션 이름과 다시 설치·되돌리기 안내를 보여 준다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(notVerified);
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         const text = shown(setModal);
         expect(text).toMatch(/ue4-ini, steamcmd/);
         expect(text).toMatch(/changed/i);
@@ -61,14 +61,14 @@ describe('익스텐션 파일이 바뀌어 확인되지 않았을 때', () => {
             .fn()
             .mockResolvedValue({ ...notVerified, error_code: undefined, action_required: 'extension_not_verified' });
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         expect(shown(setModal)).toMatch(/ue4-ini, steamcmd/);
     });
 
     it('정지: message가 없어도 바뀐 익스텐션을 알린다', async () => {
         window.api.instanceStop = vi.fn().mockResolvedValue(notVerified);
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStop('A'));
+        await act(async () => result.current.handleStop('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
         expect(shown(setModal)).toMatch(/ue4-ini, steamcmd/);
     });

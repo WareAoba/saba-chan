@@ -25,7 +25,7 @@ const restartWith = async (response: Record<string, unknown>) => {
             setShowModuleManager: vi.fn(),
         }),
     );
-    await act(async () => result.current.handleRestart('A'));
+    await act(async () => result.current.handleRestart('a'));
     await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
     return vi.mocked(window.showToast!).mock.calls.at(-1)!;
 };

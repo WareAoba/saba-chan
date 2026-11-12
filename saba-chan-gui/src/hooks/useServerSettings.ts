@@ -124,7 +124,7 @@ interface UseServerSettingsParams {
     setModal: (modal: ModalConfig | null) => void;
     setProgressBar: (config: ProgressBarConfig | null) => void;
     fetchServers: () => Promise<unknown> | unknown;
-    onRestart?: (name: string, options: { confirmed: boolean }) => unknown;
+    onRestart?: (id: string, options: { confirmed: boolean }) => unknown;
 }
 
 export function useServerSettings({
@@ -938,7 +938,7 @@ export function useServerSettings({
     const restartNow = () => {
         const target = restartPending && servers.find((s) => s.id === restartPending.serverId);
         setRestartPending(null);
-        if (target && onRestart) return onRestart(target.name, { confirmed: true });
+        if (target && onRestart) return onRestart(target.id, { confirmed: true });
     };
     const dismissRestart = () => setRestartPending(null);
 

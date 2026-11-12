@@ -86,7 +86,7 @@ export function useServerActions({
 
     // -- Internal refs for change detection --
     const guiInitiatedOpsRef = useRef(new Set<string>());
-    const optimisticStatusRef = useRef(new Map<string, OptimisticStatus>()); // name → { status, timestamp, pending }
+    const optimisticStatusRef = useRef(new Map<string, OptimisticStatus>()); // id → { status, timestamp, pending }
     const lastErrorToastRef = useRef(0);
     const firstFetchDoneRef = useRef(false);
     // 목록 요청 번호. 먼저 보낸 요청이 늦게 오면 그 목록은 버린다 (G-S4)
@@ -95,8 +95,8 @@ export function useServerActions({
     const bootGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     /** Optimistic 상태 해제 후 fetchServers로 실제 상태 복원 */
-    const revertOptimistic = (name: string) => {
-        optimisticStatusRef.current.delete(name);
+    const revertOptimistic = (id: string) => {
+        optimisticStatusRef.current.delete(id);
         fetchServers();
     };
 
@@ -122,21 +122,21 @@ export function useServerActions({
                             }, 30_000);
                         }
                         return list.map((newServer: Server) => {
-                            const existing = prev.find((s) => s.name === newServer.name);
+                            const existing = prev.find((s) => s.id === newServer.id);
                             return { ...newServer, status: newServer.transition || newServer.status, expanded: existing?.expanded || false };
                         });
                     }
 
                     // Detect state changes (crash / external start·stop)
                     for (const newServer of list) {
-                        const existing = prev.find((s) => s.name === newServer.name);
+                        const existing = prev.find((s) => s.id === newServer.id);
                         if (!existing) continue;
 
                         const wasRunning = existing.status === 'running';
                         const nowStopped = newServer.status === 'stopped';
                         const nowRunning = newServer.status === 'running';
                         const wasStopped = existing.status === 'stopped';
-                        const isGuiOp = guiInitiatedOpsRef.current.has(newServer.name);
+                        const isGuiOp = guiInitiatedOpsRef.current.has(newServer.id);
 
                         const apiAction = Number(newServer.last_api_action || 0);
                         const prevApiAction = Number(existing.last_api_action || 0);
@@ -152,7 +152,7 @@ export function useServerActions({
                         // Also treat servers with pending optimistic status as
                         // "known ops" — we initiated something but the guard
                         // hasn't cleared yet.
-                        const hasPendingOptimistic = optimisticStatusRef.current.has(newServer.name);
+                        const hasPendingOptimistic = optimisticStatusRef.current.has(newServer.id);
 
                         const isKnownOp = isGuiOp || isApiOp || inBootGrace || hasPendingOptimistic;
 
@@ -181,17 +181,17 @@ export function useServerActions({
                         }
 
                         if (isGuiOp && (nowStopped || nowRunning) && existing.status !== newServer.status) {
-                            guiInitiatedOpsRef.current.delete(newServer.name);
+                            guiInitiatedOpsRef.current.delete(newServer.id);
                         }
                     }
 
                     const merged = list.map((newServer: Server) => {
-                        const existing = prev.find((s) => s.name === newServer.name);
+                        const existing = prev.find((s) => s.id === newServer.id);
 
                         // 시작·정지가 진행 중인지는 데몬이 안다(`transition`, 어디서 시켰든). 이 창이 누른 것은
                         // 데몬이 요청을 받기 전에도 보이게 요청이 끝날 때까지만 지킨다. 데몬이 그 값을 주지 않는 옛 데몬이면 끝난 뒤 60초까지
                         let mergedStatus = newServer.transition || newServer.status;
-                        const opt = optimisticStatusRef.current.get(newServer.name);
+                        const opt = optimisticStatusRef.current.get(newServer.id);
                         if (opt) {
                             const elapsed = Date.now() - opt.timestamp;
                             // 0.1.14~ 데몬은 `update_check`를 늘 싣는다 (`transition`은 진행 중일 때만 있어 판별에 못 쓴다)
@@ -200,7 +200,7 @@ export function useServerActions({
                                 (opt.status === 'starting' && newServer.status === 'running') ||
                                 (opt.status === 'stopping' && newServer.status === 'stopped');
                             if (transitioned || (elapsed > GUARD_MS && !opt.pending)) {
-                                optimisticStatusRef.current.delete(newServer.name);
+                                optimisticStatusRef.current.delete(newServer.id);
                             } else {
                                 mergedStatus = opt.status;
                             }
@@ -302,19 +302,12 @@ export function useServerActions({
     };
 
     // 약관 동의 창 (module.toml [[agreements]]). 동의하면 이 PC에서 기록하고 다시 켠다
-    const askAgreements = (
-        srv: Server,
-        name: string,
-        module: string,
-        title: string,
-        message: string,
-        agreements: unknown[],
-    ) => {
+    const askAgreements = (srv: Server, title: string, message: string, agreements: unknown[]) => {
         setModal({
             type: 'agreements',
             title,
             message,
-            module: srv?.module || module,
+            module: srv.module,
             agreements,
             onAccept: async (ids: string[]) => {
                 setModal(null);
@@ -324,7 +317,7 @@ export function useServerActions({
                         safeShowToast(translateError(res?.error || ''), 'error', 5000);
                         return;
                     }
-                    handleStart(name, module);
+                    handleStart(srv.id);
                 } catch (err) {
                     safeShowToast(translateError((err as Error).message), 'error', 5000);
                 }
@@ -340,23 +333,24 @@ export function useServerActions({
         }
     };
 
-    const handleStart = async (name: string, module: string) => {
+    const handleStart = async (id: string) => {
         try {
-            const srv = servers.find((s) => s.name === name);
+            const srv = servers.find((s) => s.id === id);
             if (!srv) {
                 safeShowToast(t('servers.start_failed_toast', { error: t('servers.start_not_in_list') }), 'error', 4000);
                 return;
             }
+            const { name, module } = srv;
 
             // Optimistic update: 즉시 'starting' 상태 표시
             // 시작 요청이 끝날 때까지는(첫 시작은 몇 분) 목록 새로고침이 이 표시를 지우지 않는다
-            optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now(), pending: true });
-            setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'starting' } : s)));
+            optimisticStatusRef.current.set(id, { status: 'starting', timestamp: Date.now(), pending: true });
+            setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'starting' } : s)));
 
             // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
-            const result = await window.api.instanceStart(srv.id);
-            const opt = optimisticStatusRef.current.get(name);
-            if (opt?.pending) optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now() });
+            const result = await window.api.instanceStart(id);
+            const opt = optimisticStatusRef.current.get(id);
+            if (opt?.pending) optimisticStatusRef.current.set(id, { status: 'starting', timestamp: Date.now() });
             notifyPortMoved(result, srv);
 
             // ── action_required: 서버 실행 파일 없음 (범용 코드, 예전 모듈은 server_jar_not_found) ──
@@ -365,10 +359,10 @@ export function useServerActions({
                 result.action_required === 'server_jar_not_found'
             ) {
                 // 파일 종류는 설정된 경로의 확장자로, 없으면 모듈이 밝힌 실행 파일 이름으로 (둘 다 없으면 모든 파일)
-                const declared = modules.find((m) => m.name === (srv?.module || module))?.server_executable;
+                const declared = modules.find((m) => m.name === module)?.server_executable;
                 const configuredName = (result.configured_path || declared || '').split(/[/\\]/).pop();
                 const ext = configuredName.includes('.') ? configuredName.split('.').pop() : '';
-                revertOptimistic(name);
+                revertOptimistic(id);
                 setModal({
                     type: 'question',
                     title: t('servers.jar_not_found_title'),
@@ -386,26 +380,19 @@ export function useServerActions({
                                         title: t('servers.select_server_jar'),
                                     });
                                     if (filePath) {
-                                        const s = servers.find((s) => s.name === name);
-                                        if (s) {
-                                            // 고른 파일과 그 폴더: 이름이 모듈 기본값과 달라도, 예전 경로가 남아 있어도 이 파일로 켠다
-                                            const dir = filePath.replace(/[/\\][^/\\]+$/, '');
-                                            const saved = await window.api.instanceUpdateSettings(s.id, {
-                                                working_dir: dir,
-                                                executable_path: filePath,
-                                            });
-                                            if (!saved || saved.error || saved.success === false) {
-                                                safeShowToast(
-                                                    translateError(saved?.error || saved?.message || ''),
-                                                    'error',
-                                                    4000,
-                                                );
-                                                return;
-                                            }
-                                            safeShowToast(t('servers.jar_path_updated'), 'success', 3000);
-                                            await fetchServers();
-                                            handleStart(name, module);
+                                        // 고른 파일과 그 폴더: 이름이 모듈 기본값과 달라도, 예전 경로가 남아 있어도 이 파일로 켠다
+                                        const dir = filePath.replace(/[/\\][^/\\]+$/, '');
+                                        const saved = await window.api.instanceUpdateSettings(id, {
+                                            working_dir: dir,
+                                            executable_path: filePath,
+                                        });
+                                        if (!saved || saved.error || saved.success === false) {
+                                            safeShowToast(translateError(saved?.error || saved?.message || ''), 'error', 4000);
+                                            return;
                                         }
+                                        safeShowToast(t('servers.jar_path_updated'), 'success', 3000);
+                                        await fetchServers();
+                                        handleStart(id);
                                     }
                                 } catch (err) {
                                     safeShowToast(translateError((err as Error).message), 'error', 4000);
@@ -422,13 +409,12 @@ export function useServerActions({
                                 try {
                                     const installDir = await window.api.openFolderDialog();
                                     if (!installDir) return;
-                                    const s = servers.find((s) => s.name === name);
 
                                     setProgressBar({ message: t('servers.progress_installing'), indeterminate: true });
 
                                     // 최신 버전은 데몬이 이 인스턴스 설정(서버 종류 등)으로 고른다 (L23)
                                     const installResult = await window.api.moduleInstallServer(module, {
-                                        instance_id: s?.id,
+                                        instance_id: id,
                                         install_dir: installDir,
                                     });
 
@@ -465,7 +451,7 @@ export function useServerActions({
                                     await fetchServers();
 
                                     if (!installResult.java_warning) {
-                                        handleStart(name, module);
+                                        handleStart(id);
                                     }
                                 } catch (err) {
                                     setProgressBar(null);
@@ -484,7 +470,7 @@ export function useServerActions({
 
             // ── action_required: extension_required ──
             if (result.action_required === 'extension_required') {
-                revertOptimistic(name);
+                revertOptimistic(id);
                 setModal({
                     type: 'question',
                     title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
@@ -514,9 +500,9 @@ export function useServerActions({
             }
 
             // ── 모듈이 더 새 사바쨩을 요구함 (saba-core 의존성, 더 새 module.toml 스키마) — 업데이트 화면으로 ──
-            const updateText = updateRequiredText(t, result, srv?.module || module);
+            const updateText = updateRequiredText(t, result, module);
             if (updateText) {
-                revertOptimistic(name);
+                revertOptimistic(id);
                 setModal({
                     type: 'question',
                     title: t('update_required.title'),
@@ -537,7 +523,7 @@ export function useServerActions({
 
             // ── error_code: module_dependency_unsatisfied — 모듈이 요구하는 익스텐션 버전이 안 맞음 ──
             if (result.error_code === 'module_dependency_unsatisfied') {
-                revertOptimistic(name);
+                revertOptimistic(id);
                 const missing = result.missing_dependencies || [];
                 const needsExtension = missing.some((d: string) => d.startsWith('ext-'));
                 const title = t('servers.dependency_unmet_title');
@@ -566,17 +552,10 @@ export function useServerActions({
 
             // ── error_code: agreement_required — 모듈이 선언한 약관(EULA 등)에 아직 동의하지 않음 ──
             if (result.error_code === 'agreement_required') {
-                revertOptimistic(name);
+                revertOptimistic(id);
                 const pending = Array.isArray(result.agreements) ? result.agreements : [];
                 if (pending.length && !!window.api.instanceAgreements) {
-                    askAgreements(
-                        srv,
-                        name,
-                        module,
-                        t('agreements.start_title'),
-                        t('agreements.start_message', { name }),
-                        pending,
-                    );
+                    askAgreements(srv, t('agreements.start_title'), t('agreements.start_message', { name }), pending);
                 } else {
                     // 데몬 문구는 이미 현지화돼 있다
                     setModal({ type: 'failure', title: t('agreements.start_title'), message: result.error || '' });
@@ -586,7 +565,7 @@ export function useServerActions({
 
             // ── error_code: preflight_failed — 켜기 전 점검(모듈 validate)이 critical 문제를 냈다 ──
             if (result.error_code === 'preflight_failed') {
-                revertOptimistic(name);
+                revertOptimistic(id);
                 const issues = Array.isArray(result.issues) ? result.issues : [];
                 const others = issues.slice(1).map((i: { message?: string; code?: string }) => `• ${i.message || i.code}`);
                 const message = [result.error, result.solution, others.length ? others.join('\n') : null]
@@ -595,13 +574,13 @@ export function useServerActions({
                 const title = t('servers.preflight_failed_title', { name });
                 // 동의 기록은 있는데 파일(eula.txt 등)이 지워진 경우: 다시 동의하면 모듈이 파일을 다시 쓴다
                 // 서버 목록에는 agreements가 없어 모듈 목록의 선언을 쓴다
-                const srvAgreements = modules.find((m) => m.name === (srv?.module || module))?.agreements || [];
+                const srvAgreements = modules.find((m) => m.name === module)?.agreements || [];
                 if (
                     result.issue_code === 'EULA_NOT_ACCEPTED' &&
                     srvAgreements.length &&
                     !!window.api.instanceAgreements
                 ) {
-                    askAgreements(srv, name, module, title, message, srvAgreements);
+                    askAgreements(srv, title, message, srvAgreements);
                 } else {
                     setModal({ type: 'failure', title, message });
                 }
@@ -617,20 +596,20 @@ export function useServerActions({
 
             // ── already_running — 이미 켜져 있다: "시작 완료" 대신 그렇다고만 알린다 (사용자 11-06 #10) ──
             if (result.success !== false && result.already_running === true) {
-                revertOptimistic(name);
+                revertOptimistic(id);
                 safeShowToast(t('servers.already_running_toast', { name }), 'info', 3000);
                 return;
             }
 
             // ── error_code: start_cancelled — 켜는 동안 사용자가 정지했다: 실패가 아니므로 알리지 않는다 ──
             if (result.error_code === 'start_cancelled') {
-                revertOptimistic(name);
+                revertOptimistic(id);
                 return;
             }
 
             // ── error_code: port_conflict — 데몬이 포트 충돌 감지 ──
             if (result.error_code === 'port_conflict' || result.error === 'port_conflict') {
-                revertOptimistic(name);
+                revertOptimistic(id);
                 const conflictDetails = (result.conflicts || []).join('\n');
                 setModal({
                     type: 'failure',
@@ -642,44 +621,44 @@ export function useServerActions({
 
             // ── action_required: 격리를 준비하지 못함 → 이 구성요소만 격리 없이 돌릴지 한 번 묻는다 ──
             if (canAskUnisolated(result)) {
-                revertOptimistic(name);
-                askUnisolated(result, () => handleStart(name, module));
+                revertOptimistic(id);
+                askUnisolated(result, () => handleStart(id));
                 return;
             }
 
             // ── action_required: 확인되지 않은 구성요소라 데몬이 막음 (악성코드 검사·서버 폴더 밖 실행) ──
             const blocked = blockedText(result, t);
             if (blocked) {
-                revertOptimistic(name);
+                revertOptimistic(id);
                 safeShowToast(t('servers.start_failed_toast', { error: blocked }), 'error', 8000);
                 return;
             }
 
             // ── success=false without specific action_required ──
             if (result.success === false) {
-                revertOptimistic(name);
+                revertOptimistic(id);
                 safeShowToast(translateError(moduleFailureText(t, result)), 'error', 5000);
                 return;
             }
 
             if (result.error) {
-                revertOptimistic(name);
+                revertOptimistic(id);
                 const errorMsg = translateError(result.error);
                 safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
             } else {
-                guiInitiatedOpsRef.current.add(name);
+                guiInitiatedOpsRef.current.add(id);
                 setProgressBar({ message: t('servers.starting_toast', { name }), indeterminate: true });
                 if (result.managed) {
-                    openConsole(srv.id, name);
+                    openConsole(id, name);
                 }
 
                 // 켜질 때까지 확인 (최대 30초). 이벤트가 있으면 그 서버의 이벤트가 올 때 묻는다
                 let consecutiveStopped = 0;
                 watchInstance({
-                    instanceId: srv.id,
+                    instanceId: id,
                     limitMs: 30000,
                     check: async (ev: { type?: string } | null) => {
-                        const statusResult = await window.api.instanceStatus(srv?.id ?? name, name);
+                        const statusResult = await window.api.instanceStatus(id, name);
                         if (statusResult.status === 'running') {
                             setProgressBar(null);
                             safeShowToast(t('servers.start_completed_toast', { name }), 'success', 3000);
@@ -691,7 +670,7 @@ export function useServerActions({
                             consecutiveStopped++;
                             if (ev?.type === 'instance.exit' || consecutiveStopped >= 5) {
                                 setProgressBar(null);
-                                revertOptimistic(name);
+                                revertOptimistic(id);
                                 safeShowToast(
                                     t('servers.start_failed_toast', { error: t('servers.start_exited_immediately') }),
                                     'error',
@@ -714,7 +693,7 @@ export function useServerActions({
             }
         } catch (error) {
             setProgressBar(null);
-            revertOptimistic(name);
+            revertOptimistic(id);
             const errorMsg = translateError((error as Error).message);
             safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
         }
@@ -739,28 +718,28 @@ export function useServerActions({
         });
 
     // ── handleStop ──────────────────────────────────────────
-    const handleStop = async (name: string) => {
+    const handleStop = async (id: string) => {
+        const srv = servers.find((s) => s.id === id);
+        const name = srv?.name ?? id;
         const stopNow = async (forced: boolean) => {
             const undo = () => {
-                guiInitiatedOpsRef.current.delete(name);
-                revertOptimistic(name);
+                guiInitiatedOpsRef.current.delete(id);
+                revertOptimistic(id);
             };
             try {
                 // Optimistic update: 즉시 'stopping' 상태 표시
                 // 데몬은 stop_timeout까지 기다린 뒤 답하므로, 요청이 끝날 때까지는 목록 새로고침이 이 표시를 지우지 않는다.
                 // 그사이 꺼진 것도 GUI가 한 정지로 본다
-                optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now(), pending: true });
-                guiInitiatedOpsRef.current.add(name);
-                setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'stopping' } : s)));
+                optimisticStatusRef.current.set(id, { status: 'stopping', timestamp: Date.now(), pending: true });
+                guiInitiatedOpsRef.current.add(id);
+                setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'stopping' } : s)));
 
-                const srv = servers.find((s) => s.name === name);
                 const useGraceful = srv?.module_settings?.graceful_stop;
                 const forceStop = forced || useGraceful === false;
 
-                // id로 정지 (이름이 바뀌어도 안전)
-                const result = await window.api.instanceStop(srv?.id ?? name, { force: forceStop });
-                const opt = optimisticStatusRef.current.get(name);
-                if (opt?.pending) optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
+                const result = await window.api.instanceStop(id, { force: forceStop });
+                const opt = optimisticStatusRef.current.get(id);
+                if (opt?.pending) optimisticStatusRef.current.set(id, { status: 'stopping', timestamp: Date.now() });
 
                 // ── extension_required 처리 ──
                 if (result.action_required === 'extension_required') {
@@ -822,10 +801,10 @@ export function useServerActions({
 
                     // 꺼질 때까지 확인 (최대 10초). 이벤트가 있으면 그 서버의 이벤트가 올 때 묻는다
                     watchInstance({
-                        instanceId: srv?.id,
+                        instanceId: id,
                         limitMs: 10000,
                         check: async () => {
-                            const statusResult = await window.api.instanceStatus(srv?.id ?? name, name);
+                            const statusResult = await window.api.instanceStatus(id, name);
                             if (statusResult.status !== 'stopped') return false;
                             setProgressBar(null);
                             safeShowToast(t('servers.stop_completed_toast', { name }), 'success', 3000);
@@ -860,41 +839,42 @@ export function useServerActions({
 
     // ── handleRestart: 데몬이 프로세스가 끝나길 기다렸다가 다시 켠다 ──
     // confirmed: 부른 곳에서 이미 재시작을 골랐다 (설정 저장 뒤 '지금 다시 시작') → 다시 묻지 않는다
-    const handleRestart = async (name: string, { confirmed = false }: { confirmed?: boolean } = {}) => {
-        const srv = servers.find((s) => s.name === name);
-        if (!srv?.id || !window.api.instanceRestart) return;
+    const handleRestart = async (id: string, { confirmed = false }: { confirmed?: boolean } = {}) => {
+        const srv = servers.find((s) => s.id === id);
+        if (!srv || !window.api.instanceRestart) return;
+        const { name } = srv;
         const restartNow = async (forced: boolean) => {
-            optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
-            setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'stopping' } : s)));
-            guiInitiatedOpsRef.current.add(name);
+            optimisticStatusRef.current.set(id, { status: 'stopping', timestamp: Date.now() });
+            setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'stopping' } : s)));
+            guiInitiatedOpsRef.current.add(id);
             setProgressBar({ message: t('servers.restarting_toast', { name }), indeterminate: true });
             try {
                 const force = forced || srv.module_settings?.graceful_stop === false;
-                const result = await window.api.instanceRestart(srv.id, { force });
+                const result = await window.api.instanceRestart(id, { force });
                 notifyPortMoved(result, srv);
                 const code = result?.error_code;
                 if (code === 'graceful_stop_unavailable') {
-                    revertOptimistic(name);
+                    revertOptimistic(id);
                     askForceStop(name, () => restartNow(true));
                 } else if (code === 'start_cancelled' || code === 'restart_cancelled') {
                     // 그사이 다른 쪽에서 정지·시작·삭제했다: 실패가 아니라 그만둔 것
-                    revertOptimistic(name);
+                    revertOptimistic(id);
                     safeShowToast(t(`errors.${code}`), 'info', 4000);
                 } else if (code === 'still_stopping') {
                     // 서버가 제때 꺼지지 않아 데몬이 다시 켜지 않았다
-                    revertOptimistic(name);
+                    revertOptimistic(id);
                     safeShowToast(t('errors.still_stopping'), 'error', 4000);
                 } else if (result?.error || result?.success === false) {
-                    revertOptimistic(name);
+                    revertOptimistic(id);
                     const msg = translateError(result.error || result.message || '');
                     safeShowToast(t('servers.restart_failed_toast', { error: msg }), 'error', 4000);
                 } else {
                     // 데몬이 다시 켰다: 폴링이 짧은 정지 구간을 놓쳐도 '끄는 중'으로 남기지 않는다
-                    optimisticStatusRef.current.delete(name);
+                    optimisticStatusRef.current.delete(id);
                     safeShowToast(t('servers.restart_completed_toast', { name }), 'success', 3000);
                 }
             } catch (error) {
-                revertOptimistic(name);
+                revertOptimistic(id);
                 safeShowToast(
                     t('servers.restart_failed_toast', { error: translateError((error as Error).message) }),
                     'error',
@@ -1052,7 +1032,7 @@ export function useServerActions({
                 return false;
             }
 
-            // 데몬은 같은 이름의 서버를 만들지 않는다 (이름으로 서버를 찾는 화면이 섞이지 않게)
+            // 데몬은 같은 이름의 서버를 만들지 않는다 (디스코드·CLI는 서버를 이름으로 부른다)
             if (result.error_code === 'name_taken') {
                 setModal({
                     type: 'failure',

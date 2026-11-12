@@ -11,10 +11,10 @@ interface SlotPosition {
     h: number;
 }
 
-/** 끌기 상태: active/draggedName 밖은 누르는 순간 채운다 */
+/** 끌기 상태: active/draggedId 밖은 누르는 순간 채운다. 카드는 인스턴스 id로 찾는다 */
 interface DragState {
     active: boolean;
-    draggedName: string | null;
+    draggedId: string | null;
     fromSlot: number;
     targetSlot: number;
     startX: number;
@@ -23,7 +23,6 @@ interface DragState {
     offsetY: number;
     slotPositions: Array<SlotPosition | null>;
     originalOrder: string[];
-    nameToId: Record<string, string>;
 }
 
 // 저장 중인 순서(id). 그사이 도착한 목록 응답은 옛 순서라 그대로 쓰면 카드가 한 번 되돌아갔다 온다
@@ -46,23 +45,23 @@ export const holdSavingOrder = (list: Server[]) => (savingOrder ? inOrder(list, 
  */
 export function useDragReorder(servers: Server[], setServers: (updater: (prev: Server[]) => Server[]) => void) {
     const cardRefs = useRef<Record<string, HTMLElement | null>>({});
-    const dragRef = useRef<DragState>({ active: false, draggedName: null } as DragState);
-    const [draggedName, setDraggedName] = useState<string | null>(null);
+    const dragRef = useRef<DragState>({ active: false, draggedId: null } as DragState);
+    const [draggedId, setDraggedId] = useState<string | null>(null);
     const skipNextClick = useRef(false);
 
     const handleCardPointerDown = (e: React.PointerEvent<HTMLElement>, index: number) => {
         if (e.button !== 0) return;
         if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('.action-icon')) return;
 
-        const name = servers[index].name;
-        const card = cardRefs.current[name];
+        const id = servers[index].id;
+        const card = cardRefs.current[id];
         if (!card) return;
 
         const rect = card.getBoundingClientRect();
 
         // Snapshot all card slot positions at drag start
         const slotPositions = servers.map((s) => {
-            const el = cardRefs.current[s.name];
+            const el = cardRefs.current[s.id];
             if (!el) return null;
             const r = el.getBoundingClientRect();
             return { x: r.left, y: r.top, w: r.width, h: r.height };
@@ -70,7 +69,7 @@ export function useDragReorder(servers: Server[], setServers: (updater: (prev: S
 
         dragRef.current = {
             active: false,
-            draggedName: name,
+            draggedId: id,
             fromSlot: index,
             targetSlot: index,
             startX: e.clientX,
@@ -78,13 +77,12 @@ export function useDragReorder(servers: Server[], setServers: (updater: (prev: S
             offsetX: e.clientX - rect.left,
             offsetY: e.clientY - rect.top,
             slotPositions,
-            originalOrder: servers.map((s) => s.name),
-            nameToId: Object.fromEntries(servers.map((s) => [s.name, s.id])),
+            originalOrder: servers.map((s) => s.id),
         };
 
         const onMove = (me: PointerEvent) => {
             const d = dragRef.current;
-            if (!d.draggedName) return;
+            if (!d.draggedId) return;
 
             const dx = me.clientX - d.startX;
             const dy = me.clientY - d.startY;
@@ -93,15 +91,15 @@ export function useDragReorder(servers: Server[], setServers: (updater: (prev: S
             if (!d.active) {
                 if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
                 d.active = true;
-                setDraggedName(d.draggedName);
-                const dragCard = cardRefs.current[d.draggedName];
+                setDraggedId(d.draggedId);
+                const dragCard = cardRefs.current[d.draggedId];
                 if (dragCard) {
                     dragCard.style.transition = 'box-shadow 0.2s ease, opacity 0.2s ease';
                 }
             }
 
             // Move dragged card with cursor
-            const dragCard = cardRefs.current[d.draggedName];
+            const dragCard = cardRefs.current[d.draggedId];
             if (dragCard) {
                 dragCard.style.transform = `translate(${dx}px, ${dy}px)`;
             }
@@ -126,17 +124,17 @@ export function useDragReorder(servers: Server[], setServers: (updater: (prev: S
 
                 // Compute visual reorder
                 const order = [...d.originalOrder];
-                const draggedIdx = order.indexOf(d.draggedName as string);
+                const draggedIdx = order.indexOf(d.draggedId as string);
                 const [item] = order.splice(draggedIdx, 1);
                 order.splice(targetSlot, 0, item);
 
                 // Animate other cards to target slot positions
-                order.forEach((cardName, newSlotIdx) => {
-                    if (cardName === d.draggedName) return;
-                    const el = cardRefs.current[cardName];
+                order.forEach((cardId, newSlotIdx) => {
+                    if (cardId === d.draggedId) return;
+                    const el = cardRefs.current[cardId];
                     if (!el) return;
 
-                    const origSlotIdx = d.originalOrder.indexOf(cardName);
+                    const origSlotIdx = d.originalOrder.indexOf(cardId);
                     const origPos = d.slotPositions[origSlotIdx];
                     const targetPos = d.slotPositions[newSlotIdx];
                     if (!origPos || !targetPos) return;
@@ -170,10 +168,10 @@ export function useDragReorder(servers: Server[], setServers: (updater: (prev: S
             });
 
             const wasActive = d.active;
-            const { targetSlot, fromSlot, originalOrder, nameToId } = d;
+            const { targetSlot, fromSlot, originalOrder } = d;
 
-            dragRef.current = { active: false, draggedName: null } as DragState;
-            setDraggedName(null);
+            dragRef.current = { active: false, draggedId: null } as DragState;
+            setDraggedId(null);
 
             // Prevent click after drag
             if (wasActive) {
@@ -186,21 +184,20 @@ export function useDragReorder(servers: Server[], setServers: (updater: (prev: S
             if (!wasActive || targetSlot === fromSlot || ue.type === 'pointercancel') return;
 
             // Compute and apply final order
-            const order = [...originalOrder];
-            const draggedIdx = order.indexOf(d.draggedName as string);
-            const [item] = order.splice(draggedIdx, 1);
-            order.splice(targetSlot, 0, item);
+            const orderedIds = [...originalOrder];
+            const draggedIdx = orderedIds.indexOf(d.draggedId as string);
+            const [item] = orderedIds.splice(draggedIdx, 1);
+            orderedIds.splice(targetSlot, 0, item);
 
             setServers((prev) => {
-                const byName: Record<string, Server> = {};
+                const byId: Record<string, Server> = {};
                 prev.forEach((s) => {
-                    byName[s.name] = s;
+                    byId[s.id] = s;
                 });
-                return order.map((n) => byName[n]).filter(Boolean);
+                return orderedIds.map((id) => byId[id]).filter(Boolean);
             });
 
             // Persist order to backend
-            const orderedIds = order.map((n) => nameToId[n]);
             savingOrder = orderedIds;
             // 브리지는 실패해도 던지지 않고 {error}를 돌려준다
             const res = await window.api.instanceReorder(orderedIds).catch((err: Error) => ({ error: err.message }));
@@ -208,7 +205,7 @@ export function useDragReorder(servers: Server[], setServers: (updater: (prev: S
             if (failed(res)) {
                 debugWarn('Failed to save server order:', res.error);
                 safeShowToast(res.error, 'error', 4000);
-                setServers((prev) => inOrder(prev, originalOrder.map((n) => nameToId[n])));
+                setServers((prev) => inOrder(prev, originalOrder));
             } else {
                 debugLog('Server order saved:', orderedIds);
             }
@@ -219,5 +216,5 @@ export function useDragReorder(servers: Server[], setServers: (updater: (prev: S
         document.addEventListener('pointercancel', onUp);
     };
 
-    return { draggedName, cardRefs, skipNextClick, handleCardPointerDown };
+    return { draggedId, cardRefs, skipNextClick, handleCardPointerDown };
 }

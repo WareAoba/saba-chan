@@ -145,7 +145,7 @@ describe('약관 동의: 시작', () => {
         window.api.instanceAgreements = vi.fn().mockResolvedValue({ success: true }) as never;
         window.api.instanceStatus = vi.fn().mockResolvedValue({ status: 'running' }) as never;
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.type).toBe('agreements');
         expect(modal.agreements).toEqual(required.agreements);
@@ -166,7 +166,7 @@ describe('약관 동의: 시작', () => {
     it('동의 채널이 없으면 데몬 문구를 실패 창으로 보인다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(required) as never;
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.type).toBe('failure');
         expect(modal.message).toContain('Minecraft EULA');

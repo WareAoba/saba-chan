@@ -36,7 +36,7 @@ describe('시작 중에 사용자가 정지함 (start_cancelled)', () => {
             message: "Server 'A' was stopped while it was starting",
         });
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         expect(setModal).not.toHaveBeenCalled();
         expect(window.showToast).not.toHaveBeenCalled();
         // 낙관적 'starting'을 지우고 데몬 상태를 다시 읽는다
@@ -70,7 +70,7 @@ describe('이미 실행 중인 서버 시작 (already_running)', () => {
                 formatUptime: vi.fn(),
             } as never),
         );
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         expect(setProgressBar).not.toHaveBeenCalled();
         expect(window.api.instanceStatus).not.toHaveBeenCalled();
         expect(vi.mocked(window.showToast!).mock.calls.at(-1)!.slice(0, 3)).toEqual(['ℹ️ “A” is already running', 'info', 3000]);

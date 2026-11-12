@@ -30,7 +30,7 @@ async function start(startResult: unknown, module: Record<string, unknown> = { n
             setShowModuleManager: vi.fn(),
         }),
     );
-    await act(async () => result.current.handleStart('A', 'game'));
+    await act(async () => result.current.handleStart('a'));
     return setModal.mock.calls[0]?.[0];
 }
 

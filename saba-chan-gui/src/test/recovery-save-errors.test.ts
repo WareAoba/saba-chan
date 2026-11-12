@@ -40,7 +40,7 @@ describe('jar 복구의 설정 저장 실패', () => {
 
     it('경로 바꾸기: 저장이 실패하면 오류를 보이고 다시 시작하지 않는다', async () => {
         const { result } = setup();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].buttons[0].action());
         expect(toastTypes()).toEqual(['error']);
         expect(window.api.instanceStart).toHaveBeenCalledTimes(1);
@@ -54,7 +54,7 @@ describe('jar 복구의 설정 저장 실패', () => {
             error_code: 'save_failed',
         });
         const { result } = setup();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].buttons[1].action());
         expect(toastTypes()).toEqual(['error']);
     });

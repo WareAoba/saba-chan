@@ -40,7 +40,7 @@ describe('시작 직후 프로세스가 죽은 서버', () => {
             } as never),
         );
         await act(async () => result.current.fetchServers());
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         for (let i = 0; i < 6; i++) await act(async () => vi.advanceTimersByTime(500));
         expect(vi.mocked(window.showToast!).mock.calls.at(-1)![1]).toBe('error');
         await act(async () => result.current.fetchServers());
@@ -64,7 +64,7 @@ describe('시작 직후 프로세스가 죽은 서버', () => {
             } as never),
         );
         await act(async () => result.current.fetchServers());
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         for (let i = 0; i < 6; i++) await act(async () => vi.advanceTimersByTime(500));
         const message = String(vi.mocked(window.showToast!).mock.calls.at(-1)![0]);
         expect(message).not.toContain('Process exited immediately');

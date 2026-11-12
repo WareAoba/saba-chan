@@ -38,7 +38,7 @@ describe('재시작이 끝난 뒤 상태', () => {
             } as never),
         );
         await act(async () => result.current.fetchServers());
-        await act(async () => result.current.handleRestart('A'));
+        await act(async () => result.current.handleRestart('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
         await act(async () => result.current.fetchServers());
         expect(servers[0].status).toBe('running');
@@ -65,7 +65,7 @@ describe('재시작이 끝난 뒤 상태', () => {
                 formatUptime: vi.fn(),
             } as never),
         );
-        await act(async () => result.current.handleRestart('A', { confirmed: true }));
+        await act(async () => result.current.handleRestart('a', { confirmed: true }));
         expect(setModal).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'question' }));
         expect(window.api.instanceRestart).toHaveBeenCalledWith('a', { force: false });
     });

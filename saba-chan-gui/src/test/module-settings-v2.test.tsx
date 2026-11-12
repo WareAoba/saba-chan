@@ -201,7 +201,7 @@ describe('설정 저장 (list 값, restart_required)', () => {
         expect(window.showToast).toHaveBeenCalledWith(expect.stringContaining('S'), 'success', expect.any(Number), undefined);
         expect(result.current.restartPending).toMatchObject({ serverId: 's', fields: ['motd'] });
         await act(async () => result.current.restartNow());
-        expect(onRestart).toHaveBeenCalledWith('S', { confirmed: true });
+        expect(onRestart).toHaveBeenCalledWith('s', { confirmed: true });
         expect(result.current.restartPending).toBeNull();
     });
 

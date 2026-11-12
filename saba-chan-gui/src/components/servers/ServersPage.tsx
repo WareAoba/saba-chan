@@ -49,9 +49,9 @@ interface ServersPageProps {
     onAddServer: () => void;
     /** 브랜치 서버 만들기: 만들기 요청을 그대로 데몬에 보낸다 (성공하면 true) */
     onCreateBranch?: (payload: AddServerPayload) => Promise<boolean> | boolean;
-    onStart: (name: string, moduleName: string) => void;
-    onStop: (name: string) => void;
-    onRestart?: (name: string) => void;
+    onStart: (id: string) => void;
+    onStop: (id: string) => void;
+    onRestart?: (id: string) => void;
     onRename?: (id: string, name: string) => Promise<boolean> | boolean;
     onDelete: (server: Server) => void;
     setModal?: (modal: ModalConfig | null) => void;
@@ -266,9 +266,9 @@ export function ServersPage({
                                 onStart={onStart}
                                 onStop={onStop}
                                 rowRef={(el) => {
-                                    drag.cardRefs.current[server.name] = el;
+                                    drag.cardRefs.current[server.id] = el;
                                 }}
-                                dragging={drag.draggedName === server.name}
+                                dragging={drag.draggedId === server.id}
                                 onPointerDown={query ? () => {} : drag.handleCardPointerDown}
                                 skipNextClick={drag.skipNextClick}
                                 onRestart={onRestart}

@@ -63,9 +63,9 @@ interface ServerDetailProps {
     modules: ModuleInfo[];
     servers: Server[];
     setServers: ServerSetter;
-    onStart: (name: string, moduleName: string) => void;
-    onStop: (name: string) => void;
-    onRestart?: (name: string) => void;
+    onStart: (id: string) => void;
+    onStop: (id: string) => void;
+    onRestart?: (id: string) => void;
     onRename?: (id: string, name: string) => Promise<boolean> | boolean;
     onDelete: (server: Server) => void;
     onBack?: (() => void) | null;
@@ -226,14 +226,14 @@ export function ServerDetail({
                     <button
                         type="button"
                         className="icon-btn"
-                        onClick={() => onRestart(server.name)}
+                        onClick={() => onRestart(server.id)}
                         data-tooltip={t('shell.restart')}
                         aria-label={t('shell.restart')}
                     >
                         <Icon name="refresh" size="sm" />
                     </button>
                 )}
-                <button type="button" className="btn btn-danger btn-lg" onClick={() => onStop(server.name)}>
+                <button type="button" className="btn btn-danger btn-lg" onClick={() => onStop(server.id)}>
                     <Icon name="stop" size="sm" /> {t('shell.stop')}
                 </button>
             </>
@@ -242,7 +242,7 @@ export function ServerDetail({
                 <button data-spot="server.start"
                     type="button"
                     className="btn btn-primary btn-lg"
-                    onClick={() => onStart(server.name, server.module)}
+                    onClick={() => onStart(server.id)}
                 >
                     <Icon name="play" size="sm" /> {t('shell.start')}
                 </button>
@@ -337,7 +337,7 @@ export function ServerDetail({
                         </span>
                     </span>
                     {onRestart && typeof window.api?.instanceRestart === 'function' && (
-                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRestart(server.name)}>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRestart(server.id)}>
                             <Icon name="refresh" size="sm" /> {t('shell.restart')}
                         </button>
                     )}
@@ -379,7 +379,7 @@ export function ServerDetail({
                     <button
                         type="button"
                         className="btn btn-primary btn-sm"
-                        onClick={() => onStart(server.name, server.module)}
+                        onClick={() => onStart(server.id)}
                     >
                         <Icon name="play" size="sm" /> {t('shell.start')}
                     </button>
@@ -421,7 +421,7 @@ export function ServerDetail({
                         }
                         onDismiss={() => dismissInstanceProvision(server, setServers)}
                         onClose={() => closeCookedCard(server)}
-                        onStart={() => onStart(server.name, server.module)}
+                        onStart={() => onStart(server.id)}
                         onSettings={() => setTab('settings')}
                     />
                 </div>

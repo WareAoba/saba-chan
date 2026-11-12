@@ -86,7 +86,7 @@ describe('꺼진 서버의 콘솔', () => {
                 setShowModuleManager: vi.fn(),
             } as never),
         );
-        await act(async () => result.current.handleStop('A'));
+        await act(async () => result.current.handleStop('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
         await act(async () => vi.advanceTimersByTimeAsync(1500));
         expect(window.api.instanceStop).toHaveBeenCalled();

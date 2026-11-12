@@ -188,7 +188,7 @@ function App() {
     // 서버를 끄면 PIP를 닫고, 다시 켜거나 앱을 다시 열면 기억된 PIP를 띄운다
     usePopoutLifecycle({ enabled: !isPopoutMode, servers, popoutIds: consolePopoutIds });
 
-    const { draggedName, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
+    const { draggedId, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
 
     // 익스텐션 초기화 상태 (daemon.startup hook 진행 중이면 스피너 표시)
     const { initializing: extInitializing, inProgress: extInitInProgress } = useExtensionInitStatus();
@@ -220,12 +220,11 @@ function App() {
         () => ({
             servers: () => useServerStore.getState().servers,
             run: async (instanceId, action) => {
-                const server = useServerStore.getState().servers.find((x) => x.id === instanceId);
-                if (!server) return false;
+                if (!useServerStore.getState().servers.some((x) => x.id === instanceId)) return false;
                 const { handleStart: start, handleStop: stop, handleRestart: restart } = serverActionsRef.current;
-                if (action === 'start') await start(server.name, server.module);
-                else if (action === 'stop') await stop(server.name);
-                else if (action === 'restart') await restart(server.name);
+                if (action === 'start') await start(instanceId);
+                else if (action === 'stop') await stop(instanceId);
+                else if (action === 'restart') await restart(instanceId);
                 else return false;
                 return true;
             },
@@ -973,7 +972,7 @@ function App() {
                                 onRename={handleRename}
                                 onDelete={handleDeleteServer}
                                 setModal={setModal}
-                                drag={{ draggedName, cardRefs, skipNextClick, handleCardPointerDown }}
+                                drag={{ draggedId, cardRefs, skipNextClick, handleCardPointerDown }}
                                 consoleProps={consoleProps}
                                 settingsProps={settingsProps}
                             />

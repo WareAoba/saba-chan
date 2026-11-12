@@ -55,7 +55,7 @@ describe('시작·정지 완료 확인 (이벤트)', () => {
 
     it('켜짐으로 바뀌는 이벤트는 없으므로, 이벤트가 없어도 0.5초마다 물어 알아챈다', async () => {
         const { result } = hook();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         await tick(500, 6);
         expect(toastTypes()).not.toContain('success');
         vi.mocked(window.api.instanceStatus).mockResolvedValue({ status: 'running' });
@@ -65,7 +65,7 @@ describe('시작·정지 완료 확인 (이벤트)', () => {
 
     it('그 서버의 이벤트가 오면 0.5초를 기다리지 않고 바로 묻는다', async () => {
         const { result } = hook();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         await tick(500);
         vi.mocked(window.api.instanceStatus).mockResolvedValue({ status: 'running' });
         const before = vi.mocked(window.api.instanceStatus).mock.calls.length;
@@ -78,7 +78,7 @@ describe('시작·정지 완료 확인 (이벤트)', () => {
 
     it('켜다가 꺼짐 이벤트가 오면 바로 실패로 알린다', async () => {
         const { result } = hook();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         await tick(500);
         vi.mocked(window.api.instanceStatus).mockResolvedValue({ status: 'stopped' });
         await emit('instance.exit', { instanceId: 'a', kind: 'start_failed' });
@@ -87,7 +87,7 @@ describe('시작·정지 완료 확인 (이벤트)', () => {
 
     it('이벤트가 없으면 30초 뒤 시간 초과로 끝난다', async () => {
         const { result } = hook();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         await tick(5000, 7);
         expect(toastTypes().at(-1)).toBe('warning');
     });
@@ -96,7 +96,7 @@ describe('시작·정지 완료 확인 (이벤트)', () => {
         servers = [{ id: 'a', name: 'A', module: 'game', status: 'running' }];
         vi.mocked(window.api.instanceStatus).mockResolvedValue({ status: 'stopped' });
         const { result } = hook();
-        await act(async () => result.current.handleStop('A'));
+        await act(async () => result.current.handleStop('a'));
         await act(async () => setModal.mock.calls[0][0].onConfirm());
         await tick(500, 2);
         expect(window.api.instanceStatus).toHaveBeenCalledTimes(1);

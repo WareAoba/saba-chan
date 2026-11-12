@@ -43,7 +43,7 @@ describe('시작: 모듈 의존성이 안 맞을 때', () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(blocked(['ext-steamcmd >=1.0.0 (not installed)']));
         const open = vi.fn();
         const { result, setModal } = setup(open);
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.type).toBe('question');
         expect(modal.message).toContain('• ext-steamcmd >=1.0.0 (not installed)');
@@ -54,7 +54,7 @@ describe('시작: 모듈 의존성이 안 맞을 때', () => {
     it('사바쨩 버전이 모자라면 업데이트가 필요하다고 알리고 업데이트 화면을 연다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(blocked(['saba-core >=9.0.0 (installed 0.1.1)']));
         const { result, setModal } = setup(vi.fn());
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.title).toBe('Update required');
         expect(modal.message).toMatch(/^Update required/);
@@ -71,7 +71,7 @@ describe('시작: 모듈 의존성이 안 맞을 때', () => {
             required: 3,
         });
         const { result, setModal } = setup(vi.fn());
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.title).toBe('Update required');
         expect(modal.message).toContain('game');
@@ -100,7 +100,7 @@ describe('시작: 켜기 전 점검(preflight_failed)', () => {
         window.api.instanceAgreements = vi.fn().mockResolvedValue({ success: true });
         window.api.instanceStatus = vi.fn().mockResolvedValue({ status: 'running' });
         const { result, setModal } = setup(vi.fn(), [{ id: 'eula', url: 'https://aka.ms/MinecraftEULA' }]);
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.type).toBe('agreements');
         expect(modal.message).toContain('Minecraft EULA not accepted');
@@ -114,7 +114,7 @@ describe('시작: 켜기 전 점검(preflight_failed)', () => {
     it('동의 연결이 없거나 다른 문제면 실패 창에 해결 방법을 쓴다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue({ ...eula, issue_code: 'SERVER_JAR_MISSING' });
         const { result, setModal } = setup(vi.fn());
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.type).toBe('failure');
         expect(modal.message).toContain('Accept the EULA');

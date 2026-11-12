@@ -46,7 +46,7 @@ describe('오래 걸리는 정지', () => {
         );
         await act(async () => result.current.fetchServers());
         tick(40_000); // 데몬이 막 켜진 뒤의 유예(30초)를 넘긴다
-        await act(async () => result.current.handleStop('A'));
+        await act(async () => result.current.handleStop('a'));
         act(() => {
             setModal.mock.calls.at(-1)![0].onConfirm();
         });

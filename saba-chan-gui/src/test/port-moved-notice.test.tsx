@@ -29,10 +29,10 @@ const startWith = async (response: Record<string, unknown>, action = 'start') =>
         }),
     );
     if (action === 'restart') {
-        await act(async () => result.current.handleRestart('A'));
+        await act(async () => result.current.handleRestart('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
     } else {
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.handleStart('a'));
     }
     return vi.mocked(window.showToast!).mock.calls.map((c) => c[0]);
 };
