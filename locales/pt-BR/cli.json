@@ -828,7 +828,13 @@
     "not_checked": "Ainda sem informações de atualização. Verifique agora: saba-chan-cli update check",
     "reinstall_official": "Reinstalar versão oficial",
     "name_module": "Módulo {{name}}",
-    "name_extension": "Extensão {{name}}"
+    "name_extension": "Extensão {{name}}",
+    "rollback_available": "Versão para a qual você pode voltar: {{version}} (agora {{current}}, atualizado em {{at}})",
+    "rollback_confirm": "Voltar para {{version}} reinicia o Saba-chan. Continuar?",
+    "rolling_back": "Revertendo...",
+    "rollback_launched": "Atualizador iniciado. O daemon está sendo encerrado para reverter.",
+    "rollback_after": "O Saba-chan vai reiniciar após reverter. Depois verifique: saba-chan update last",
+    "no_rollback": "Não há versão para a qual voltar. A versão anterior só é guardada após uma atualização, até a próxima."
   },
   "validate": {
     "blocked": "O servidor não pode iniciar até que estes itens sejam corrigidos.",
@@ -932,6 +938,7 @@
       "update.apply": "Instalar as atualizações baixadas",
       "update.last": "Resultado da última atualização",
       "update.integrity": "Comparar os arquivos instalados com a versão publicada",
+      "update.rollback": "Voltar para a versão anterior",
       "update.config": "Ver ou alterar as configurações de atualização: chave=valor ...",
       "config": "Configurações do app",
       "config.show": "Todas as configurações",

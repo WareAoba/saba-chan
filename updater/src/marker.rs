@@ -137,6 +137,21 @@ impl UpdateCompletionMarker {
         }
     }
 
+    /// 사용자가 직전 판(`to`)으로 되돌렸다 (`result: "reverted"`). 자동 되돌림(`rolled_back`)과 달리 받아 둔 업데이트를
+    /// 다시 적용할 준비가 아니다: 업데이트 단계를 바꾸지 않는다. 다 되돌리지 못했으면 `incomplete`에 되살리는 법
+    pub fn reverted(to: &str, from: &str, incomplete: Option<String>) -> Self {
+        Self {
+            success: incomplete.is_none(),
+            message: Some(match incomplete {
+                None => format!("Rolled back from {from} to {to}"),
+                Some(hint) => format!("Could not fully roll back from {from} to {to}; {hint}"),
+            }),
+            result: Some("reverted".into()),
+            version: Some(to.into()),
+            ..Self::failure(String::new())
+        }
+    }
+
     pub fn failure(message: String) -> Self {
         Self {
             timestamp: chrono::Utc::now().to_rfc3339(),

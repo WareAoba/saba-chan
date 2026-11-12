@@ -505,7 +505,7 @@ impl DataSnapshot {
 }
 
 /// 남긴 사본과 손으로 되살릴 곳: 사본의 `data/`는 데이터 폴더에, `instances/`는 인스턴스 폴더에 덮어쓴다
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct KeptCopy {
     pub dir: PathBuf,
     pub data_dir: PathBuf,
@@ -684,6 +684,88 @@ fn merge_install_record(copy: &[u8], current: &[u8]) -> Option<Vec<u8>> {
 }
 
 // ═══════════════════════════════════════════════════════
+// 직전 판 (사용자가 고르는 되돌리기)
+// ═══════════════════════════════════════════════════════
+
+/// 직전 판 기록 (`<데이터 폴더>/update-snapshot/previous.json`)
+const PREVIOUS_FILE: &str = "previous.json";
+
+/// 코어가 바뀐 업데이트가 건강하게 끝난 뒤 다음 업데이트 전까지 남기는 직전 판 한 벌: 그 판의 실행 파일과 적용 직전 데이터 사본.
+/// 데몬이 알리고(`GET /api/updates/rollback`) 업데이터가 되돌린다(`--apply --rollback`)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PreviousVersion {
+    /// 돌아갈 판
+    pub version: String,
+    /// 그 뒤 깐 코어 판 (되돌리면 `failed_release`에 적는다)
+    pub replaced_by: String,
+    /// 업데이트한 때 (RFC 3339)
+    pub updated_at: String,
+    pub copy: KeptCopy,
+    /// 남긴 실행 파일 → 제자리
+    pub exes: Vec<(PathBuf, PathBuf)>,
+}
+
+impl PreviousVersion {
+    fn record(data_dir: &Path) -> PathBuf {
+        data_dir.join(SNAPSHOT_DIR).join(PREVIOUS_FILE)
+    }
+
+    /// 남긴 직전 판. 없거나 읽지 못하면 None
+    pub fn load(data_dir: &Path) -> Option<Self> {
+        crate::read_json(&Self::record(data_dir)).ok().flatten()
+    }
+
+    fn save(&self) -> std::io::Result<()> {
+        let body = serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?;
+        write_atomic(&Self::record(&self.copy.data_dir), &body)
+    }
+
+    /// 사본 폴더와 그 밖에 둔 실행 파일(`update-recovery`)을 지운다. 기록은 다음 직전 판이 덮거나 `restore`가 지운다
+    fn discard_copy(self) {
+        for (kept, _) in &self.exes {
+            if !kept.starts_with(&self.copy.dir) {
+                let _ = std::fs::remove_file(kept);
+            }
+        }
+        if let Err(e) = std::fs::remove_dir_all(&self.copy.dir)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!("[Apply] Cannot remove the previous version {}: {}", self.copy.dir.display(), e);
+        }
+    }
+
+    /// 데몬이 끝난 뒤 직전 판으로 되돌린다: 실행 파일, 데이터 사본, `failed_release`(지금 판을 다시 자동 적용하지 않게), 완료 마커 `reverted`
+    /// 차례. 되돌린 판을 돌려준다. 다 되돌리지 못하면 사본을 남기고 되살리는 법(`Recovery`)을 준다: 섞인 판이니 다시 띄우지 않는다
+    pub fn restore(self, config: &ConfigFile, marker_path: &Path) -> Result<String, Recovery> {
+        let record = Self::record(&self.copy.data_dir);
+        let done = restore_exes(self.exes.clone());
+        let snapshot = DataSnapshot { dir: self.copy.dir.clone(), data_dir: self.copy.data_dir.clone(), instances_dir: self.copy.instances_dir.clone() };
+        let data_restored = snapshot.restore().inspect_err(|e| tracing::error!("[Apply] Cannot restore the data snapshot {}: {}", snapshot.path().display(), e)).is_ok();
+        if let Err(e) = record_failed_release(config, &self.replaced_by) {
+            tracing::error!("[Apply] Cannot record the rolled back release {}: {}", self.replaced_by, e);
+        }
+        // 기록은 지운다: 되돌린 판을 다시 되돌리지 않는다 (다 되돌리지 못했으면 사본 폴더는 손으로 쓰게 남는다)
+        let _ = std::fs::remove_file(&record);
+        let install_dir = self.exes.first().and_then(|(_, target)| target.parent()).map(Path::to_path_buf).unwrap_or_default();
+        let incomplete = (!(data_restored && done.pending.is_empty()))
+            .then(|| Recovery { stop_first: false, missing_core: false, exes: done.pending, copy: self.copy.clone(), install_dir });
+        let marker = UpdateCompletionMarker::reverted(&self.version, &self.replaced_by, incomplete.as_ref().map(Recovery::restore_hint));
+        if let Err(e) = marker.save_to(marker_path) {
+            tracing::error!("[Apply] Cannot record the rollback: {}", e);
+        }
+        match incomplete {
+            None => {
+                tracing::warn!("[Apply] Rolled back from {} to {}", self.replaced_by, self.version);
+                let version = self.version.clone();
+                self.discard_copy();
+                Ok(version)
+            }
+            Some(recovery) => Err(recovery),
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
 // 실패한 판과 보고
 // ═══════════════════════════════════════════════════════
 
@@ -784,11 +866,50 @@ impl LiveApply {
         self.release_version.as_deref().unwrap_or(&self.target_version)
     }
 
-    /// 새 데몬이 건강하다: 스냅샷과 이번 `.old`를 지운다
+    /// 새 데몬이 건강하다: 이번 `.old`와 스냅샷을 직전 판으로 한 벌 남기고(`PreviousVersion`, 그 전 것은 지운다) 남은 `.old`를 지운다
     pub fn healthy(self, manager: &UpdateManager) {
-        self.snapshot.discard();
-        end_watch(&self.staging_dir);
+        let staging_dir = self.staging_dir.clone();
+        let earlier = PreviousVersion::load(&self.snapshot.data_dir);
+        match self.keep_previous(manager) {
+            Some(previous) => {
+                if let Some(earlier) = earlier.filter(|e| e.copy.dir != previous.copy.dir) {
+                    earlier.discard_copy();
+                }
+            }
+            None => tracing::warn!("[Apply] The previous version could not be kept; it cannot be rolled back to"),
+        }
+        end_watch(&staging_dir);
         manager.cleanup_old_files();
+    }
+
+    /// 이번 적용이 비켜 둔 실행 파일(코어 포함)을 스냅샷 폴더로 옮기고 기록한다. 다 남기지 못하면 지운다
+    fn keep_previous(self, manager: &UpdateManager) -> Option<PreviousVersion> {
+        let exes = match manager.exe_rollbacks_since(&self.before) {
+            Ok(exes) if has_core(&exes) => exes,
+            _ => {
+                self.snapshot.discard();
+                return None;
+            }
+        };
+        let DataSnapshot { dir, data_dir, instances_dir } = self.snapshot;
+        let copy = KeptCopy { dir, data_dir, instances_dir };
+        let (exes, all) = copy.preserve_exes(exes);
+        let previous = PreviousVersion {
+            version: self.from_version,
+            replaced_by: self.target_version,
+            updated_at: chrono::Utc::now().to_rfc3339(),
+            copy,
+            exes,
+        };
+        let saved = if all { previous.save() } else { Err(std::io::Error::other("not every exe backup could be kept")) };
+        match saved {
+            Ok(()) => Some(previous),
+            Err(e) => {
+                tracing::warn!("[Apply] Cannot keep {} for a rollback: {}", previous.version, e);
+                previous.discard_copy();
+                None
+            }
+        }
     }
 
     /// 지켜볼 것이 없다: 코어를 적용하지 못했거나(그 전에 멈췄거나 되돌려짐) 다시 띄운 것이 없다.
@@ -905,6 +1026,53 @@ impl LiveApply {
 pub struct ExeRollback {
     pub restored: Vec<PathBuf>,
     pub pending: Vec<(PathBuf, PathBuf)>,
+}
+
+/// (백업, 제자리)마다 백업을 제자리에 되돌린다. 새 판은 비켜 두기만 하고 백업을 놓은 뒤에 지운다: 어느 단계가 실패해도
+/// 실행 파일이 없어지지 않는다. 다른 볼륨의 백업(직전 판 사본)은 복사한다
+pub(crate) fn restore_exes(pairs: Vec<(PathBuf, PathBuf)>) -> ExeRollback {
+    let mut rollback = ExeRollback::default();
+    for (backup, target) in pairs {
+        let mut name = target.file_name().unwrap_or_default().to_os_string();
+        name.push(".rolled-back");
+        let aside = target.with_file_name(name);
+        let moved = if target.exists() {
+            let _ = std::fs::remove_file(&aside);
+            match std::fs::rename(&target, &aside) {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::error!("[Updater] Cannot move {} aside to roll back: {}", target.display(), e);
+                    rollback.pending.push((backup, target));
+                    continue;
+                }
+            }
+        } else {
+            false
+        };
+        let placed = std::fs::rename(&backup, &target).or_else(|_| copy_whole(&backup, &target).map(|()| {
+            let _ = std::fs::remove_file(&backup);
+        }));
+        match placed {
+            Ok(()) => {
+                tracing::warn!("[Updater] Rolled back {} from {}", target.display(), backup.display());
+                if moved {
+                    let _ = std::fs::remove_file(&aside);
+                }
+                rollback.restored.push(target);
+            }
+            Err(e) => {
+                tracing::error!("[Updater] Cannot roll back {} from {}: {}", target.display(), backup.display(), e);
+                if moved {
+                    // 새 판을 제자리에 돌려 둔다 (실행 파일이 없는 것보다 낫다)
+                    if let Err(e) = std::fs::rename(&aside, &target) {
+                        tracing::error!("[Updater] Cannot put {} back from {}: {}", target.display(), aside.display(), e);
+                    }
+                }
+                rollback.pending.push((backup, target));
+            }
+        }
+    }
+    rollback
 }
 
 /// 되돌릴 목록에 코어(`saba-core`)가 있는가
@@ -1687,5 +1855,70 @@ mod tests {
         assert!(all);
         assert!(!backup.exists(), "moved, not copied");
         assert_eq!(std::fs::read(&exes[0].0).unwrap(), b"0.1.13");
+    }
+
+    /// 코어를 `from`에서 `to`로 바꾸고 새 데몬이 건강했다 (설정은 새 데몬이 바꿨다)
+    fn healthy_update(manager: &UpdateManager, data: &Path, from: &str, to: &str) {
+        let core = if cfg!(windows) { "saba-core.exe" } else { "saba-core" };
+        let old = if cfg!(windows) { "saba-core.exe.old" } else { "saba-core.old" };
+        let live = LiveApply::start(&manager.staging_dir, manager.exe_backups(), data, &data.join("instances"), from.into(), to.into(), None).unwrap();
+        std::fs::rename(manager.install_root.join(core), manager.install_root.join(old)).unwrap();
+        write(&manager.install_root.join(core), to);
+        write(&data.join("config.json"), &format!(r#"{{"gui":{{"language":"{to}"}}}}"#));
+        live.healthy(manager);
+    }
+
+    fn manager_at(root: &Path) -> UpdateManager {
+        let mut manager = UpdateManager::new(UpdateConfig::default(), root.join("modules").to_str().unwrap());
+        manager.install_root = root.join("install");
+        manager.staging_dir = root.join("staging");
+        std::fs::create_dir_all(&manager.staging_dir).unwrap();
+        write(&manager.install_root.join(if cfg!(windows) { "saba-core.exe" } else { "saba-core" }), "0.1.13");
+        manager
+    }
+
+    // 건강한 코어 업데이트 뒤에도 직전 판의 실행 파일과 데이터 사본을 한 벌 남긴다. 다음 업데이트가 그 자리를 새 직전 판으로 바꾼다
+    #[test]
+    fn a_healthy_update_keeps_the_previous_version_until_the_next_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        write(&data.join("config.json"), r#"{"gui":{"language":"0.1.13"}}"#);
+        let manager = manager_at(tmp.path());
+
+        healthy_update(&manager, &data, "0.1.13", "0.1.14");
+        let first = PreviousVersion::load(&data).expect("the previous version is kept");
+        assert_eq!((first.version.as_str(), first.replaced_by.as_str()), ("0.1.13", "0.1.14"));
+        assert_eq!(std::fs::read(&first.exes[0].0).unwrap(), b"0.1.13");
+        assert!(manager.try_exe_backups().unwrap().0.is_empty(), "no .old is left in the install folder");
+
+        healthy_update(&manager, &data, "0.1.14", "0.1.15");
+        let second = PreviousVersion::load(&data).unwrap();
+        assert_eq!(second.version, "0.1.14");
+        assert_eq!(std::fs::read(&second.exes[0].0).unwrap(), b"0.1.14");
+        assert!(!first.copy.dir.exists(), "only one previous version is kept");
+    }
+
+    // 사용자가 고른 되돌리기: 실행 파일과 데이터를 직전 판으로 되돌리고, 되돌린 판을 다시 자동 적용하지 않게 적는다.
+    // 마커는 자동 되돌림(`rolled_back`, 받아 둔 업데이트를 다시 적용할 준비)과 다른 `reverted`다
+    #[test]
+    fn rolling_back_to_the_previous_version_restores_it_and_blocks_the_newer_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        write(&data.join("config.json"), r#"{"gui":{"language":"0.1.13"}}"#);
+        let manager = manager_at(tmp.path());
+        let marker = data.join("update-complete.json");
+        healthy_update(&manager, &data, "0.1.13", "0.1.14");
+
+        let back = PreviousVersion::load(&data).unwrap().restore(&ConfigFile::at(&data), &marker);
+
+        assert_eq!(back, Ok("0.1.13".to_string()));
+        let core = manager.install_root.join(if cfg!(windows) { "saba-core.exe" } else { "saba-core" });
+        assert_eq!(std::fs::read(core).unwrap(), b"0.1.13");
+        let config = ConfigFile::at(&data);
+        assert_eq!(config.section("gui")["language"], "0.1.13", "the data snapshot is restored");
+        assert_eq!(saved_update_config(&config).failed_release.as_deref(), Some("0.1.14"));
+        let m = UpdateCompletionMarker::load_from(&marker).unwrap();
+        assert_eq!((m.result.as_deref(), m.version.as_deref(), m.success), (Some("reverted"), Some("0.1.13"), true));
+        assert!(PreviousVersion::load(&data).is_none(), "a version is rolled back to once");
     }
 }

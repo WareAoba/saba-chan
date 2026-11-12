@@ -1268,6 +1268,14 @@ impl Api {
     pub async fn clear_update_last_result(&self) -> Result<Value> {
         self.delete("/api/updates/last-result").await
     }
+    /// GET /api/updates/rollback — `{available, version, current, updated_at}` (남겨 둔 직전 판)
+    pub async fn update_rollback_info(&self) -> Result<Value> {
+        self.get("/api/updates/rollback").await
+    }
+    /// POST /api/updates/rollback — 데몬이 업데이터를 띄워 직전 판으로 되돌리고 스스로 종료한다
+    pub async fn update_rollback(&self, relaunch: &[String]) -> Result<Value> {
+        self.post("/api/updates/rollback", json!({ "relaunch": relaunch })).await
+    }
     pub async fn update_integrity(&self) -> Result<Value> {
         self.get_slow("/api/updates/integrity").await
     }

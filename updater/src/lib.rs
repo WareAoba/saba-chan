@@ -1351,46 +1351,7 @@ impl UpdateManager {
     /// (`restore_moved_aside_exes`를 넓힌 것. 그쪽은 실행 파일이 아예 없을 때만 되돌린다).
     /// 새 파일은 `<exe>.rolled-back`으로 비켜 두고 지운다(아직 쥐고 있으면 남는다). 되돌린 실행 파일 경로를 돌려준다
     pub fn roll_back_exes_since(&self, before: &live_apply::ExeBackups) -> std::io::Result<live_apply::ExeRollback> {
-        let mut rollback = live_apply::ExeRollback::default();
-        for (backup, target) in self.exe_rollbacks_since(before)? {
-            // 새 판은 비켜 두기만 하고, 백업을 제자리에 놓은 뒤에 지운다: 어느 단계가 실패해도 실행 파일이 없어지지 않는다
-            let mut name = target.file_name().unwrap_or_default().to_os_string();
-            name.push(".rolled-back");
-            let aside = target.with_file_name(name);
-            let moved = if target.exists() {
-                let _ = std::fs::remove_file(&aside);
-                match std::fs::rename(&target, &aside) {
-                    Ok(()) => true,
-                    Err(e) => {
-                        tracing::error!("[Updater] Cannot move {} aside to roll back: {}", target.display(), e);
-                        rollback.pending.push((backup, target));
-                        continue;
-                    }
-                }
-            } else {
-                false
-            };
-            match std::fs::rename(&backup, &target) {
-                Ok(()) => {
-                    tracing::warn!("[Updater] Rolled back {} from {}", target.display(), backup.display());
-                    if moved {
-                        let _ = std::fs::remove_file(&aside);
-                    }
-                    rollback.restored.push(target);
-                }
-                Err(e) => {
-                    tracing::error!("[Updater] Cannot roll back {} from {}: {}", target.display(), backup.display(), e);
-                    if moved {
-                        // 새 판을 제자리에 돌려 둔다 (실행 파일이 없는 것보다 낫다)
-                        if let Err(e) = std::fs::rename(&aside, &target) {
-                            tracing::error!("[Updater] Cannot put {} back from {}: {}", target.display(), aside.display(), e);
-                        }
-                    }
-                    rollback.pending.push((backup, target));
-                }
-            }
-        }
-        Ok(rollback)
+        Ok(live_apply::restore_exes(self.exe_rollbacks_since(before)?))
     }
 
     /// 이번 적용이 비켜 둔 실행 파일마다 (가장 최근 백업, 제자리). 적용 전 목록(`before`)에 있던 백업은 고르지 않는다.

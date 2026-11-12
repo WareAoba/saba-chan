@@ -103,8 +103,42 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
             });
             Ok(())
         }
+        UpdateCmd::Rollback => rollback(ctx).await,
         UpdateCmd::Config { pairs } => config(ctx, &pairs).await,
     }
+}
+
+/// 되돌릴 수 있는 판을 알리는 줄. 남긴 판이 없으면 None
+fn rollback_offer(r: &Value) -> Option<String> {
+    (r.get("available").and_then(Value::as_bool) == Some(true)).then(|| {
+        t!("update.rollback_available", version = s(r, "version"), current = s(r, "current"), at = local_time(s(r, "updated_at")))
+    })
+}
+
+/// `update rollback`: 데몬이 업데이터를 띄워 직전 판으로 되돌린다 (데몬은 꺼지고 되돌린 뒤 다시 켜진다)
+async fn rollback(ctx: &Ctx) -> Result<()> {
+    let info = ctx.api.update_rollback_info().await?;
+    let Some(offer) = rollback_offer(&info) else {
+        ctx.out.data(&info, |_| say!("{}", t!("update.no_rollback")));
+        return Ok(());
+    };
+    if !ctx.out.json {
+        say!("{}", offer);
+    }
+    ctx.ask.ensure(&t!("update.rollback_confirm", version = s(&info, "version")))?;
+    // 되돌린 뒤 데몬을 다시 띄우게 한다 (GUI 없이 쓰는 PC도 있다)
+    let relaunch: Vec<String> = crate::bootstrap::daemon_binary()
+        .map(|p| vec![p.display().to_string(), "--spawned".to_string()])
+        .unwrap_or_default();
+    let spin = crate::progress::spinner(&t!("update.rolling_back"));
+    let r = ctx.api.update_rollback(&relaunch).await;
+    spin.finish_and_clear();
+    let r = r?;
+    ctx.out.done(&t!("update.rollback_launched"), &r);
+    ctx.out.hint(&t!("update.rollback_after"));
+    // 이 셸은 되돌리는 CLI 파일로 떠 있고 데몬도 내려간다: 셸 안에서도 여기서 끝낸다
+    output::flush();
+    std::process::exit(0);
 }
 
 fn print_status(r: &Value) {
@@ -571,6 +605,17 @@ mod tests {
             assert_eq!(doc["apply"], apply);
             assert_eq!(doc["last"], last.cloned().unwrap_or(Value::Null));
         }
+    }
+
+    /// 되돌릴 판이 있으면 그 판·지금 판·업데이트한 때를 한 줄로 알리고, 없으면 알리지 않는다
+    #[test]
+    fn the_rollback_offer_names_both_versions() {
+        crate::i18n::init("en");
+        let offer = rollback_offer(&json!({ "available": true, "version": "0.1.13", "current": "0.1.14", "updated_at": "2026-11-12T03:09:00Z" })).unwrap();
+        assert!(offer.contains("0.1.13") && offer.contains("0.1.14") && offer.contains("2026-11-12 "), "{offer}");
+        assert!(rollback_offer(&json!({ "available": false, "current": "0.1.14" })).is_none());
+        let confirm = crate::i18n::try_t_in("ko", "update.rollback_confirm").unwrap();
+        assert_eq!(crate::i18n::fill(&confirm, &[("version", "0.1.13".into())]), "0.1.13으로 되돌리면 사바쨩이 다시 시작돼요. 계속할까요?");
     }
 
     /// update last는 원시 객체 대신 버전·결과·구성요소·실패를 줄로 보인다 (C16)

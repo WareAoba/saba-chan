@@ -292,6 +292,7 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/apply", post(apply_updates))
         .route("/api/updates/apply-on-launch", post(apply_on_launch))
         .route("/api/updates/launch-updater", post(launch_updater))
+        .route("/api/updates/rollback", get(get_rollback).post(roll_back))
         .route("/api/updates/install", post(install_updates))
         .route("/api/updates/last-result", get(get_last_result).delete(clear_last_result))
         .route("/api/updates/integrity", get(check_integrity))
@@ -1464,13 +1465,6 @@ async fn launch_updater(
     LooseJson(body): LooseJson<LaunchUpdaterRequest>,
 ) -> axum::response::Response {
     let body = body.map(|Json(b)| b).unwrap_or_default();
-    let Some(updater) = updater_binary() else {
-        return (
-            axum::http::StatusCode::NOT_FOUND,
-            Json(json!({ "ok": false, "error": "saba-chan-installer not found next to the daemon" })),
-        )
-            .into_response();
-    };
     let targets = state.manager.read().await.updater_targets();
     if targets.is_empty() {
         return (
@@ -1479,6 +1473,62 @@ async fn launch_updater(
         )
             .into_response();
     }
+    hand_off_to_updater(state, body, targets, false).await
+}
+
+/// GET /api/updates/rollback — 되돌릴 수 있는 직전 판 (`live_apply::PreviousVersion`)
+async fn get_rollback() -> impl IntoResponse {
+    let previous = saba_chan_updater_lib::live_apply::PreviousVersion::load(&saba_chan_updater_lib::constants::resolve_data_dir());
+    Json(rollback_body(previous.as_ref(), &saba_chan_updater_lib::relay::core_version()))
+}
+
+/// `{ok, available, current}`, 되돌릴 수 있으면 `version`(돌아갈 판)·`updated_at`(지금 판으로 업데이트한 때)도.
+/// 지금 코어가 그 직전 판을 바꾼 판일 때만 되돌릴 수 있다
+fn rollback_body(previous: Option<&saba_chan_updater_lib::live_apply::PreviousVersion>, current: &str) -> Value {
+    match previous.filter(|p| p.replaced_by == current) {
+        Some(p) => json!({ "ok": true, "available": true, "version": p.version, "current": current, "updated_at": p.updated_at }),
+        None => json!({ "ok": true, "available": false, "current": current }),
+    }
+}
+
+/// POST /api/updates/rollback — 남겨 둔 직전 판으로 되돌린다: 업데이터를 `--rollback`으로 띄우고 데몬은 꺼진다(`launch-updater`와 같은 길).
+/// 업데이터가 직전 판의 실행 파일과 데이터를 되돌리고 지금 판을 `failed_release`에 적은 뒤 다시 띄운다. 결과는 `last-result`(`result: "reverted"`).
+/// Body는 `launch-updater`와 같다. 남긴 판이 없으면 409 `no_previous_version`
+async fn roll_back(State(state): State<UpdateState>, LooseJson(body): LooseJson<LaunchUpdaterRequest>) -> axum::response::Response {
+    let previous = saba_chan_updater_lib::live_apply::PreviousVersion::load(&saba_chan_updater_lib::constants::resolve_data_dir());
+    roll_back_with(state, body.map(|Json(b)| b).unwrap_or_default(), previous).await
+}
+
+async fn roll_back_with(
+    state: UpdateState,
+    body: LaunchUpdaterRequest,
+    previous: Option<saba_chan_updater_lib::live_apply::PreviousVersion>,
+) -> axum::response::Response {
+    let Some(previous) = previous.filter(|p| p.replaced_by == saba_chan_updater_lib::relay::core_version()) else {
+        return (
+            axum::http::StatusCode::CONFLICT,
+            Json(json!({ "ok": false, "error": "No previous version is kept", "error_code": "no_previous_version" })),
+        )
+            .into_response();
+    };
+    // 되돌리는 실행 파일에 GUI가 있으면 떠 있는 GUI를 끄고 다시 띄운다 (`gui_must_restart`가 보는 키)
+    let targets = previous
+        .exes
+        .iter()
+        .map(|(_, exe)| if is_gui_exe(&exe.to_string_lossy()) { "gui".to_string() } else { exe.to_string_lossy().into_owned() })
+        .collect();
+    hand_off_to_updater(state, body, targets, true).await
+}
+
+/// 업데이터를 띄우고 데몬을 끈다. `targets`는 바꿀 구성요소 키(GUI를 다시 띄울지 정한다), `rollback`이면 적용 대신 직전 판으로 되돌린다
+async fn hand_off_to_updater(state: UpdateState, body: LaunchUpdaterRequest, targets: Vec<String>, rollback: bool) -> axum::response::Response {
+    let Some(updater) = updater_binary() else {
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(json!({ "ok": false, "error": "saba-chan-installer not found next to the daemon" })),
+        )
+            .into_response();
+    };
     use std::sync::atomic::Ordering;
     if state.updater_launched.swap(true, Ordering::SeqCst) {
         return (
@@ -1519,7 +1569,10 @@ async fn launch_updater(
     let restart = gui_must_restart(&targets, &body.relaunch, body.gui_stays);
     let (guis, relaunch) = restart_plan(restart, body.relaunch, &guis, resident, daemon_line);
     let gui_restart = !guis.is_empty() || relaunch.first().is_some_and(|exe| is_gui_exe(exe));
-    let args = updater_args(ticket, saba_chan_updater_lib::profile::Profile::load(), relaunch, saba_chan_updater_lib::autostart::service_relaunch());
+    let mut args = updater_args(ticket, saba_chan_updater_lib::profile::Profile::load(), relaunch, saba_chan_updater_lib::autostart::service_relaunch());
+    if rollback {
+        args.insert(1, "--rollback".to_string());
+    }
     // 바로 끝난 업데이터(라이브러리 없음·백신 차단)는 데몬을 내리기 전에 실패로 돌린다. --wait-pid로 데몬을 기다리므로 살아 있어야 한다
     if let Err(e) = spawn_and_confirm(&updater, &args, std::time::Duration::from_millis(700)).await {
         state.updater_launched.store(false, Ordering::SeqCst);
@@ -1530,7 +1583,7 @@ async fn launch_updater(
             .into_response();
     }
     tracing::info!("[Updates] Launched updater {} {:?}; daemon is shutting down", updater.display(), args);
-    if state.phase().state != PhaseState::Applying {
+    if !rollback && state.phase().state != PhaseState::Applying {
         let release = state.manager.read().await.applying_release();
         state.set_phase(Phase::new(PhaseState::Applying, release.as_ref().map(|r| r.version.clone()), release.map(|r| r.notes).filter(|n| !n.is_empty())));
     }
@@ -2845,5 +2898,39 @@ mod tests {
         file.set_section("updates", json!({ "relay_base_url": "http://old", "relay_url": "http://new", "channel": "beta" })).unwrap();
         let both = load_updater_config_from(&file);
         assert_eq!((both.relay_url.as_deref(), both.channel.as_str()), (Some("http://new"), "beta"));
+    }
+
+    fn kept(version: &str, replaced_by: &str) -> saba_chan_updater_lib::live_apply::PreviousVersion {
+        saba_chan_updater_lib::live_apply::PreviousVersion {
+            version: version.into(),
+            replaced_by: replaced_by.into(),
+            updated_at: "2026-11-12T03:09:00Z".into(),
+            copy: saba_chan_updater_lib::live_apply::KeptCopy { dir: "/d/s/1".into(), data_dir: "/d".into(), instances_dir: "/d/i".into() },
+            exes: vec![("/d/s/1/exes/0/saba-core".into(), "/opt/saba/saba-core".into())],
+        }
+    }
+
+    /// 되돌릴 수 있는 판은 지금 코어가 그 직전 판을 바꾼 판일 때만 알린다 (그 뒤 설치기로 다시 깔았으면 맞지 않는다)
+    #[test]
+    fn the_previous_version_is_offered_only_over_the_version_that_replaced_it() {
+        let body = super::rollback_body(Some(&kept("0.1.13", "0.1.14")), "0.1.14");
+        assert_eq!(body["available"], json!(true));
+        assert_eq!((body["version"].as_str(), body["current"].as_str()), (Some("0.1.13"), Some("0.1.14")));
+        assert_eq!(body["updated_at"], json!("2026-11-12T03:09:00Z"));
+        assert_eq!(super::rollback_body(Some(&kept("0.1.13", "0.1.14")), "0.1.15")["available"], json!(false));
+        assert_eq!(super::rollback_body(None, "0.1.14")["available"], json!(false));
+    }
+
+    /// 남긴 직전 판이 없으면 업데이터를 띄우지 않고(데몬도 끄지 않고) 그 까닭을 돌려준다
+    #[tokio::test]
+    async fn rolling_back_without_a_previous_version_launches_nothing() {
+        let state = UpdateState::default();
+        for previous in [None, Some(kept("0.1.13", "9.9.9"))] {
+            let resp = super::roll_back_with(state.clone(), super::LaunchUpdaterRequest::default(), previous).await;
+            assert_eq!(resp.status(), axum::http::StatusCode::CONFLICT);
+            let body = crate::ipc::internal::into_internal(resp).await.body;
+            assert_eq!(body["error_code"], json!("no_previous_version"));
+        }
+        assert!(!state.updater_launched.load(std::sync::atomic::Ordering::SeqCst));
     }
 }

@@ -367,6 +367,8 @@ Tauri 셸과 CLI는 Rust 쪽 SSOT `saba_chan_updater_lib::constants`(`updater/sr
 - `config autostart [off|daemon|full]`: 모드 없이 부르면 `GET /api/system/autostart`의 지금 값을, 있으면 `PUT`으로 바꾼다(GUI 설정 > 일반과 같다). 실패 코드 `autostart_*`는 `err.hint.autostart_*` 문구로 보인다. 서비스로 등록됐으면(`service`, 화면 없는 리눅스·맥) 그렇다고 알리고(맥은 `config.autostart.service_mac`), `lingering:false`면 `sudo loginctl enable-linger $USER`를 안내한다.
 - `config export FILE [--secrets]`·`config import FILE [--dry-run] [--overwrite]`(A9): 경로를 절대 경로로 바꿔 `/api/migration/*`에 넘긴다. 파일은 데몬이 읽고 쓴다.
 
+- `update rollback`: `GET /api/updates/rollback`으로 되돌릴 판(돌아갈 판, 지금 판, 업데이트한 때)을 보이고 한 번 묻은 뒤(`--yes`면 건너뛴다) `POST /api/updates/rollback {relaunch:[saba-core, --spawned]}`를 부르고 끝난다(데몬이 업데이터를 띄우고 꺼진다, 결과는 `update last`). 남긴 판이 없으면 그렇게 알린다. TUI 안에서는 받지 않는다(`refuse`).
+
 사용자 안내서는 `saba-chan-cli/README.md`에 있다.
 
 ## 4. 디스코드 연동 (데몬 쪽)

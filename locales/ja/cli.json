@@ -828,7 +828,13 @@
     "not_checked": "アップデート情報はまだありません。今すぐ確認: saba-chan-cli update check",
     "reinstall_official": "公式版を再取得",
     "name_module": "{{name}} モジュール",
-    "name_extension": "{{name}} 拡張機能"
+    "name_extension": "{{name}} 拡張機能",
+    "rollback_available": "戻せるバージョン: {{version}}（現在 {{current}}、{{at}} に更新）",
+    "rollback_confirm": "{{version}} に戻すとサバちゃんが再起動します。続けますか？",
+    "rolling_back": "元に戻しています...",
+    "rollback_launched": "アップデーターを起動しました。元に戻すためデーモンを終了しています。",
+    "rollback_after": "元に戻した後にサバちゃんが再起動します。その後確認: saba-chan update last",
+    "no_rollback": "戻せるバージョンがありません。直前のバージョンはアップデート後、次のアップデートまでのみ保管します。"
   },
   "validate": {
     "blocked": "これらを修正するまでサーバーを起動できません。",
@@ -932,6 +938,7 @@
       "update.apply": "ダウンロードしたアップデートをインストール",
       "update.last": "最後のアップデートの結果",
       "update.integrity": "インストールされたファイルをリリースと照合",
+      "update.rollback": "直前のバージョンに戻す",
       "update.config": "アップデート設定の表示・変更: キー=値 ...",
       "config": "アプリ設定",
       "config.show": "すべての設定",

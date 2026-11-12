@@ -1385,6 +1385,8 @@ pub enum UpdateCmd {
     },
     /// Verify installed files against the release
     Integrity,
+    /// Go back to the version before the last update
+    Rollback,
     /// Show or change update settings: KEY=VALUE ...
     Config {
         #[arg(value_name = "KEY=VALUE")]

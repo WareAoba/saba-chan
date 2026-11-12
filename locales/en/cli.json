@@ -828,7 +828,13 @@
     "not_checked": "No update information yet. Check now: saba-chan-cli update check",
     "reinstall_official": "Reinstall official build",
     "name_module": "{{name}} module",
-    "name_extension": "{{name}} extension"
+    "name_extension": "{{name}} extension",
+    "rollback_available": "Version you can go back to: {{version}} (now {{current}}, updated {{at}})",
+    "rollback_confirm": "Going back to {{version}} restarts Saba-chan. Continue?",
+    "rolling_back": "Rolling back...",
+    "rollback_launched": "Updater started. The daemon is shutting down to roll back.",
+    "rollback_after": "Saba-chan will restart after the rollback. Then check: saba-chan update last",
+    "no_rollback": "There is no version to go back to. The previous version is kept after an update only until the next update."
   },
   "validate": {
     "blocked": "The server can't start until these are fixed.",

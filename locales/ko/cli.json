@@ -828,7 +828,13 @@
     "not_checked": "아직 업데이트 정보가 없어요. 지금 확인: saba-chan-cli update check",
     "reinstall_official": "공식 판으로 다시 받기",
     "name_module": "{{name}} 모듈",
-    "name_extension": "{{name}} 익스텐션"
+    "name_extension": "{{name}} 익스텐션",
+    "rollback_available": "되돌릴 수 있는 판: {{version}} (지금 {{current}}, {{at}}에 업데이트)",
+    "rollback_confirm": "{{version}}(으)로 되돌리면 사바쨩이 다시 시작돼요. 계속할까요?",
+    "rolling_back": "되돌리는 중...",
+    "rollback_launched": "업데이터를 띄웠어요. 되돌리기 위해 데몬이 꺼져요.",
+    "rollback_after": "되돌린 뒤 사바쨩이 다시 켜져요. 그다음 확인: saba-chan update last",
+    "no_rollback": "되돌릴 판이 없어요. 업데이트한 뒤 다음 업데이트 전까지만 직전 판을 보관해요."
   },
   "validate": {
     "blocked": "이 문제를 고쳐야 서버를 켤 수 있어요.",
@@ -932,6 +938,7 @@
       "update.apply": "받은 업데이트 설치",
       "update.last": "마지막 업데이트 결과",
       "update.integrity": "설치된 파일을 릴리스와 대조",
+      "update.rollback": "직전 판으로 되돌리기",
       "update.config": "업데이트 설정 보기·바꾸기: 키=값 ...",
       "config": "앱 설정",
       "config.show": "모든 설정",

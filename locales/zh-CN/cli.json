@@ -828,7 +828,13 @@
     "not_checked": "暂无更新信息。立即检查：saba-chan-cli update check",
     "reinstall_official": "重新获取官方版本",
     "name_module": "{{name}} 模块",
-    "name_extension": "{{name}} 扩展"
+    "name_extension": "{{name}} 扩展",
+    "rollback_available": "可以回退到的版本：{{version}}（当前 {{current}}，{{at}} 更新）",
+    "rollback_confirm": "回退到 {{version}} 会重启 Saba-chan。要继续吗？",
+    "rolling_back": "正在回退...",
+    "rollback_launched": "更新程序已启动。守护进程正在关闭以进行回退。",
+    "rollback_after": "回退后 Saba-chan 将重启。之后请检查：saba-chan update last",
+    "no_rollback": "没有可以回退的版本。更新后只保留上一个版本，直到下一次更新。"
   },
   "validate": {
     "blocked": "修复这些问题之前服务器无法启动。",
@@ -932,6 +938,7 @@
       "update.apply": "安装已下载的更新",
       "update.last": "上次更新的结果",
       "update.integrity": "将已安装的文件与发布版本比对",
+      "update.rollback": "回退到上一个版本",
       "update.config": "查看或更改更新设置：键=值 ...",
       "config": "应用设置",
       "config.show": "所有设置",
