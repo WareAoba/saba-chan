@@ -2134,7 +2134,7 @@ async fn route_once(server: &IPCServer, method: &str, uri: &str, body: Option<Va
     if let Some(origin) = origin.or_else(|| Some(crate::audit::current())) {
         req.extensions_mut().insert(origin);
     }
-    server.router().oneshot(req).await.map_err(|e| e.to_string())
+    Ok(server.router().oneshot(req).await.unwrap_or_else(|never| match never {}))
 }
 
 mod steps;
