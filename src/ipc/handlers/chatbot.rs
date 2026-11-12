@@ -526,6 +526,12 @@ pub async fn adopt_linked_guild(state: &IPCServer, guild: &str) -> bool {
 }
 
 async fn adopt_from(state: &IPCServer, base: &str, guild: &str) -> bool {
+    let mut cfg = state.config_store.get_chatbot();
+    // 지우는 중인 설정은 다시 채우지 않는다. 챗봇을 쓰지 않는 PC(기본 설정)도 받아 적지 않는다: 적으면 다음 동기화부터
+    // 이 PC 길드마다 보내고, 그 본문의 빈 키와 기본 모델이 PC 없는 동안 그 서버가 둔 키·모델을 덮는다
+    if cfg.pending_relay_delete || cfg == ChatbotConfig::default() {
+        return true;
+    }
     let path = format!("/api/nodes/{}/chatbot", encode_path_segment(guild));
     let outcome = call(base, reqwest::Method::GET, &path, None).await;
     let body = match &outcome {
@@ -533,19 +539,15 @@ async fn adopt_from(state: &IPCServer, base: &str, guild: &str) -> bool {
         // 거절(이 PC의 길드가 아니다 등)은 다시 물어도 같다
         _ => return !super::discord::retry_later(&outcome),
     };
-    let mut cfg = state.config_store.get_chatbot();
-    // 지우는 중인 설정은 다시 채우지 않는다
-    if cfg.pending_relay_delete {
-        return true;
-    }
     let defaults = relay_defaults();
     let values: Map<String, Value> = defaults
         .keys()
         .filter(|k| !COMMON_KEYS.contains(&k.as_str()))
         .filter_map(|k| Some((k.clone(), body.get(k)?.clone())))
         .collect();
-    // 사본이 없고 릴레이도 기본값이면 적지 않는다 (챗봇을 쓰지 않는 PC가 연결마다 길드에 보내기 시작하지 않게)
-    let untouched = values.iter().all(|(k, v)| defaults.get(k) == Some(v));
+    // 사본이 없고 릴레이도 기본값이면 적지 않는다 (서버마다 정한 이 PC의 기본 켜기·도구를 따르게).
+    // 도구는 보지 않는다: 챗봇 행이 없는 길드에 릴레이가 답하는 기본 도구는 릴레이가 정하고, 꺼진 서버에는 쓰이지 않는다
+    let untouched = values.iter().all(|(k, v)| k == "tools" || defaults.get(k) == Some(v));
     if cfg.guilds.get(guild) == Some(&values) || (untouched && !cfg.guilds.contains_key(guild)) {
         return true;
     }
@@ -1094,7 +1096,13 @@ mod tests {
         let answer = relay.clone();
         let app = Router::new()
             .route("/api/nodes/relinked-guild/chatbot", get(move || async move { Json(answer) }))
-            .route("/api/nodes/new-guild/chatbot", get(|| async { Json(relay_defaults()) }));
+            // 챗봇 행이 없는 길드에 릴레이가 실제로 답하는 값 (릴레이 `publicSettings(null)`: 도구 다섯 개가 기본이다)
+            .route("/api/nodes/new-guild/chatbot", get(|| async { Json(json!({
+                "enabled": false, "model": "gpt-6-luna", "provider": "openai", "memo": "", "effort": "medium",
+                "ambient": true, "ambientMinutes": 3, "ambientEffort": "low", "confirmLevel": "all", "memory": true,
+                "moderation": false, "tools": ["game_servers", "research", "lol", "images", "web_search"],
+                "tokenLimit": null, "balanceAlert": null, "channelIds": [], "hasApiKey": false, "effectiveModel": "gpt-6-luna",
+            })) }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1106,6 +1114,11 @@ mod tests {
         );
         sup.initialize().await.unwrap();
         let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        // 챗봇을 쓰지 않는 PC(기본 설정)는 받아 적지 않는다: 적으면 다음 동기화가 이 PC의 빈 키와 기본 모델로
+        // PC 없는 동안 그 서버가 둔 키·모델을 덮는다
+        assert!(adopt_from(&state, &base, "relinked-guild").await);
+        assert_eq!(state.config_store.get_chatbot(), ChatbotConfig::default());
+
         let mut before = ChatbotConfig { api_key: Some("pc-key".into()), ..Default::default() };
         apply(&mut before, patch(json!({"settings": {"model": "pc-model"}, "guilds": {"relinked-guild": {"enabled": true, "tools": ["web_search"], "memo": "옛 메모"}}}))).unwrap();
         state.config_store.set_chatbot(&before).unwrap();
