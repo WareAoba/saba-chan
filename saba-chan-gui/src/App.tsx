@@ -44,7 +44,7 @@ import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
-import { eventsAvailable } from './utils/daemonEvents';
+import { eventsAvailable, serverListPollMs } from './utils/daemonEvents';
 import { startPoll } from './utils/poll';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
@@ -512,6 +512,7 @@ function App() {
                 setBackgroundDaemonStatus('error');
             }
         };
+        // 창이 숨어 있는 동안(최소화·트레이)은 묻지 않고, 다시 보이면 바로 묻는다
         return startPoll(checkDaemonStatus, 5000);
     }, [daemonReady]);
 
@@ -640,22 +641,21 @@ function App() {
             });
         }
 
-        // Auto-refresh (데몬 준비 전에는 스킵)
-        const stopPoll = startPoll(
-            () => {
-                if (autoRefresh && daemonReady) return fetchServers();
-            },
-            refreshInterval,
-            { immediate: false },
-        );
-
         return () => {
-            stopPoll();
             if (typeof offClose === 'function') offClose();
             if (typeof offOpenServer === 'function') offOpenServer();
             if (typeof offOpenRoute === 'function') offOpenRoute();
         };
     }, [autoRefresh, refreshInterval, daemonReady]);
+
+    // 목록 자동 새로고침 (데몬 준비 전에는 스킵). 데몬 이벤트가 바뀜을 바로 알리면(DaemonEvents) 놓친 것만 메우게 느리게 돈다
+    const extensionStatus = useServerStore((s) => s.servers.some((srv) => Object.keys(srv.extension_status || {}).length > 0));
+    // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers는 렌더마다 새 함수다 (주기만 따른다)
+    useEffect(() => {
+        if (!autoRefresh || !daemonReady) return;
+        const ms = serverListPollMs(refreshInterval, { events: eventsAvailable(), extensionStatus });
+        return startPoll(fetchServers, ms, { immediate: false });
+    }, [autoRefresh, refreshInterval, daemonReady, extensionStatus]);
 
     // ══════════════════════════════════════════════════════════
     // ── Render ───────────────────────────────────────────────

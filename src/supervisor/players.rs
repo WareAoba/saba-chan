@@ -227,6 +227,14 @@ pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
         }
         (calls, idle, probes)
     };
+    // 목록에 보이는 칸(접속자 수·응답 없음)이 이번 갱신으로 바뀌면 화면이 목록을 다시 읽게 알린다 (`servers.changed`)
+    let watched: Vec<(String, Option<u32>)> = calls
+        .iter()
+        .map(|(id, pid, _, _)| (id.clone(), Some(*pid)))
+        .chain(idle.iter().map(|(id, _)| (id.clone(), None)))
+        .chain(probes.iter().map(|(id, pid, _, _)| (id.clone(), Some(*pid))))
+        .collect();
+    let before = shown(&watched);
     for (id, probed) in idle {
         set(&id, None);
         if !probed {
@@ -252,6 +260,15 @@ pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
         }));
     }
     while asks.next().await.is_some() {}
+    if shown(&watched) != before {
+        crate::events::emit_live("servers.changed", serde_json::json!({}));
+    }
+}
+
+/// 서버 목록에 보이는 접속자 칸: 서버마다 (수, 응답 없음 이유)
+fn shown(watched: &[(String, Option<u32>)]) -> Vec<(Option<PlayerCount>, Option<String>)> {
+    let now = std::time::Instant::now();
+    watched.iter().map(|(id, pid)| (get(id), unresponsive(id, *pid, now))).collect()
 }
 
 /// 포트 확인 실패 이유의 머리. 화면에 낼 때 `reason_text`가 화면 언어 문구로 바꾼다

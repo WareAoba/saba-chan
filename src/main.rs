@@ -528,6 +528,8 @@ async fn main() -> anyhow::Result<()> {
     ipc::handlers::backup::spawn_scheduler(ipc_server.clone());
     // 인스턴스별 게임 서버 자동 업데이트 (auto_update)
     ipc::handlers::server_update::spawn_auto_updater(ipc_server.clone());
+    // 나머지 서버의 게임 서버 업데이트 확인 (화면은 목록의 결과만 읽는다)
+    ipc::handlers::server_update::spawn_update_checks(ipc_server.clone());
     controllers::spawn_gate(ipc_server.clone());
 
     // 접속자 수 (Q-5): 모듈이 `[status] players`를 선언한 켜진 서버만 1분마다 묻는다
