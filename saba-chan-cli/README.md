@@ -35,7 +35,7 @@ saba-chan-cli chat 팰월드 시작      # 디스코드와 같은 채팅 처리
 | `config` | 앱 설정 보기·바꾸기 (`cli.키`는 CLI 전용 칸) |
 | `daemon` | 데몬 켜기·끄기·다시 켜기·로그·붙은 앱 창(`clients`) |
 | `do` | 데몬 액션을 id로, 여러 단계는 `--steps`, 뒤에서 이어 가는 실행은 `--run` |
-| `shell`, `completions` | 대화형 셸, 셸 자동 완성 스크립트 |
+| `shell`, `completions` | 대화형 셸, 셸 자동 완성 스크립트 (`completions --install`은 쓰는 셸이 읽는 자리에 설치) |
 
 `saba-chan-cli <명령> --help`로 자세한 사용법을 볼 수 있습니다.
 

@@ -76,7 +76,7 @@
 |---|---|---|
 | `SABA_IPC_PORT` | `main.rs:286` | IPC 포트 (없으면 `gui.ipcPort`, 기본 57474) |
 | `RUST_LOG` | `main.rs:233` | tracing 필터 |
-| `SABA_DATA_DIR` | `constants.rs:56`, `python_env/mod.rs:397` | 데이터 루트 |
+| `SABA_DATA_DIR` | `constants.rs:56`, `updater/src/python_runtime.rs` `runtime_dir` | 데이터 루트 |
 | `SABA_TOKEN_PATH` | `constants.rs:83` | IPC 토큰 파일 경로 |
 | `SABA_MODULES_PATH` | `component_dirs.rs` `Kind::env_var` | 모듈 디렉토리 (있으면 `config.json` `paths`보다 먼저, §1.5) |
 | `SABA_EXTENSIONS_DIR` | `component_dirs.rs` `Kind::env_var` | 익스텐션 디렉토리 (같음) |
@@ -529,8 +529,10 @@ Relay 서명 방식(`relay.rs:115-161`):
 | POST | `/api/updates/apply` | `updates.rs:475` | download와 같은 본문 규칙 | `{ok,applied,needs_updater,requires_updater,errors}` |
 | POST | `/api/updates/install` | `updates.rs` `install_updates` | - | 확인 → 전부 받기 → apply → `requires_updater`면 `launch-updater`까지 한 번에. apply 답에 `downloaded`, 받지 못한 것 `download_errors`, 업데이터를 띄웠으면 `updater_launched: true`. 액션 `update.apply`(디스코드 `/사바쨩 업데이트`, 주인만, 챗봇 표면 없음)가 이 경로다 |
 | POST | `/api/updates/launch-updater` | `updates.rs:609` | 선택 `{relaunch:[exe, args...]}` | `{ok, updater_launched, daemon_stopping}`. 404(업데이터 없음) / 409(받은 업데이트 없음). 등록된 GUI(`/api/client/register`의 `pid`, 실행 파일 이름이 GUI일 때만)가 떠 있으면 다시 띄울 것을 그 GUI로 바꾸고, 종료 전에 3초 기다려 남은 GUI를 끈다. 헤드리스 설치면 `--headless`를 붙이고, 다시 띄울 것을 받지 않았으면 데몬 자신(`<saba-core> --spawned`)을 다시 띄우게 한다(`updater_args`) |
+| GET/POST | `/api/updates/rollback` | `updates.rs` `get_rollback`/`roll_back` | POST는 `launch-updater`와 같은 본문 | GET `{ok, available, current, version?, updated_at?, needs_newer_core?}`(남겨 둔 직전 판, `needs_newer_core`는 그 판 코어가 읽지 않을 모듈·익스텐션 키). POST는 업데이터를 `--apply --rollback`으로 띄우고 데몬이 꺼진다(`{ok, updater_launched, daemon_stopping, gui_restart}`), 남긴 판이 없으면 409 `no_previous_version`. 05 문서 참고 |
 | GET/DELETE | `/api/updates/last-result` | `updates.rs` `get_last_result`/`clear_last_result` | GET `?lang=`, `?include_seen=true` | 마지막 적용 결과 `{result, version, notes, acknowledged}` / 확인 처리(마커는 남기고 `acknowledged`만 적는다, 05 참고) |
 | GET | `/api/updates/integrity` | `updates.rs:814` | - | `{ok,checked_at,overall,total,verified,failed,skipped,components[...]}` |
+| GET/POST | `/api/updates/repair` | `updates.rs` `get_repair`/`repair` | - | 설치 점검·복구. GET `{ok, verified, failed, skipped, repair:[{component, display_name, installed, offered}], unavailable:[…]}`: 무결성 검사에서 `Tampered`·`FileNotFound`인 구성요소 중 확인한 릴리즈가 설치된 판을 그대로 내주는 것(`repair`)과 아닌 것(`unavailable`). POST는 `repair`만 그 판으로 다시 받아(`download_components_with`) 적용하고(`apply_updates_with`) 답에 `repaired`·`needs_updater`·`requires_updater`·`errors`를 더한다. 데몬·GUI·업데이터가 끼면 `apply`처럼 부른 쪽이 `launch-updater`를 부른다. 05 문서 참고 |
 | POST | `/api/updates/apply-on-launch` | `updates.rs` `apply_on_launch` | - | GUI가 열릴 때 한 번 부른다. `auto_apply`가 꺼져 있으면 `{ok, skipped:"off"}`. 켜져 있으면 받아 둔 컴포넌트를 apply와 같이 적용하되(데몬을 다시 켜 아직 확인 전이면 `pending.json`에서 되살린다, `restore_pending`), 켜진 서버가 있으면 재시작이 필요한 것(saba-core·GUI·업데이터)은 미루고 `held`에 담는다. 모듈·익스텐션은 고르지 않는다(사용자 변경·켜진 서버를 살피는 자동 교체가 맡는다, `launch_targets`). 적용할 것이 없으면 `{ok, skipped:"nothing"\|"servers_running", held}`, 아니면 apply 답 + `held`. 원격(웹·데몬 중계)에서는 막는다 |
 | GET | `/api/updates/config` | `updates.rs:844` | - | `{ok, config, mock_relay}` |
 | PUT | `/api/updates/config` | `updates.rs:859` | 부분 `{enabled,check_interval_hours(1-8),auto_download,auto_apply,install_root,relay_url,channel}` | `{ok, config}`. `channel`은 `stable`·`rc`·`beta`만 받고 그 밖은 400 `invalid_channel`(05 §1 채널). `config.json`의 `updates` 절에 저장한다(`:899-902, 936-942`). 비어 있지 않은 `relay_url`은 개발 빌드(`mock-relay`)만 받고, 릴리즈 빌드는 403 `relay_url_not_settable`(D7: 출처는 config.json에서만) |
@@ -740,15 +742,17 @@ spot = "server.tab.maintenance"    # 짚을 화면 요소의 data-spot
 
 ### 6.1 Python (`src/python_env/mod.rs`)
 
-- 버전: 포터블 CPython **3.12.8**(python-build-standalone 태그 `20250106`, `install_only_stripped`)이다(`updater/src/python_pin.rs:7-8`). 시스템 Python을 쓸 경우 3.11 이상이어야 한다(`python_env/mod.rs:45`, 모듈 공용 도우미가 표준 `tomllib`으로 module.toml을 읽는다). 기존 venv도 버전을 확인해 그보다 낮으면 다시 만든다(`verify_python`).
+- 자리(`<pyroot>`, `python-standalone`·`python-env`), 포터블 받기·풀기·검사(최소 판 포함), venv 만들기·pip 업그레이드는 설치기(05 §설치 5단계)와 같은 updater-lib `python_runtime`을 쓴다. 데몬의 `python_env`는 고르는 순서(아래), 캐시, 사전 점검만 맡고, 명령은 준비가 취소되면 자식까지 끝내는 `plugin::preparation_output`으로 띄운다(`python_runtime::Run`).
+
+- 버전: 포터블 CPython **3.12.8**(python-build-standalone 태그 `20250106`, `install_only_stripped`)이다(`updater/src/python_pin.rs:7-8`). 시스템 Python을 쓸 경우 3.11 이상이어야 한다(`python_runtime::MIN_VERSION`, 모듈 공용 도우미가 표준 `tomllib`으로 module.toml을 읽는다). 기존 venv도 버전을 확인해 그보다 낮으면 다시 만든다(`python_runtime::verify`).
 - 탐색 순서: 이미 받은 포터블 Python, 시스템 Python, 자동 다운로드 순이다(`find_base_python`, `:209`). 찾은 인터프리터로 `<pyroot>/python-env` venv를 만들고 pip를 업그레이드한다(`ensure_venv`, `:114`).
 - 시스템 Python은 `sys.executable`로 확인한 실제 인터프리터 파일 경로를 사용한다.
 - 성공한 결과는 `OnceCell`에 캐시하고, 실패는 캐시하지 않아 다음 호출이 다시 시도한다(`get_python_path`, `:56`). 모든 `run_plugin` 호출이 여기를 거친다(`plugin/mod.rs:282`). 데몬은 기동하자마자 미리 준비를 시작하고(`main.rs:320-324`), 진행은 `/api/runtime/preflight`(`preflight_snapshot`, `python_env/mod.rs:86-106`)로 보인다.
 - 다운로드 URL: `https://github.com/indygreg/python-build-standalone/releases/download/{tag}/cpython-{ver}+{tag}-{triple}-install_only_stripped.tar.gz`(`python_pin.rs:41-49`). 지원 triple은 win x64, linux x64/arm64, mac x64/arm64다. `SABA_PYTHON_URL`로 미러를 쓸 수 있다.
-- 다운로드 방식: 업데이터와 같은 검증 다운로드(`saba_chan_updater_lib::download::download_verified`, reqwest. 프록시는 환경 변수와 OS 설정)다. 연결·전송 실패는 `download_verified`가 3번까지 이어 받는다(05 §1.5). 압축 해제는 `tar`를 쓴다. 받으면서 triple별로 고정한 SHA-256과 비교하고 다르면 받은 파일을 남기지 않는다(`python_env::download_file`, `python_pin.rs:11-17`). 미러를 쓰면 `SABA_PYTHON_SHA256`이 있을 때만 검사한다.
-- **`<pyroot>`는 `constants::resolve_data_dir()`와 다르다**(`python_env/mod.rs:395-432`). 순서는 다음과 같다.
+- 다운로드 방식: 업데이터와 같은 검증 다운로드(`python_runtime::install_portable` → `download::download_reporting` → `download_verified`, reqwest. 프록시는 환경 변수와 OS 설정)다. 연결·전송 실패는 `download_verified`가 3번까지 이어 받는다(05 §1.5). 압축 해제는 `tar`를 쓴다. 받으면서 triple별로 고정한 SHA-256과 비교하고 다르면 받은 파일을 남기지 않는다(`python_pin.rs:11-17`). 미러를 쓰면 `SABA_PYTHON_SHA256`이 있을 때만 검사한다.
+- **`<pyroot>`는 `constants::resolve_data_dir()`와 다르다**(`python_runtime::runtime_dir`, 데몬은 자기 폴더를, 설치기는 설치 폴더를 넘긴다). 순서는 다음과 같다.
   1. `SABA_DATA_DIR`
-  2. **exe 디렉토리에 쓰기 권한이 있으면 exe 디렉토리**. 단 맥 앱 묶음 안(`*.app/Contents/MacOS`, `app_bundle::bundle_of`)이면 묶음에 파일을 더하면 서명이 깨지므로 쓰지 않고 `constants::resolve_data_dir()`(`~/.config/saba-chan`)를 쓴다. 제거기가 그 폴더의 런타임 항목으로 지운다(`runtime_root`)
+  2. **exe 디렉토리에 쓰기 권한이 있으면 exe 디렉토리**. 단 맥 앱 묶음 안(`*.app/Contents/MacOS`, `app_bundle::bundle_of`)이면 묶음에 파일을 더하면 서명이 깨지므로 쓰지 않고 `constants::resolve_data_dir()`(`~/.config/saba-chan`)를 쓴다. 제거기가 그 폴더의 런타임 항목으로 지운다
   3. Windows `%APPDATA%/saba-chan`, Linux `~/.local/share/saba-chan`, macOS `~/Library/Application Support/saba-chan`
 - 결과적으로 Linux에서 데이터는 `~/.config/saba-chan`에, 런타임은 `~/.local/share/saba-chan` 또는 exe 옆에 흩어진다.
 - 예전 `status()`와 `/api/python-env/*` 핸들러는 지워졌다.

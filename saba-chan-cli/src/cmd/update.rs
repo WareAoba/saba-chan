@@ -91,20 +91,155 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
                 }
                 output::print_table(t);
                 say!();
-                say!(
-                    "{}",
-                    t!(
-                        "update.integrity_summary",
-                        verified = output::show(r.get("verified").unwrap_or(&Value::Null)),
-                        failed = output::show(r.get("failed").unwrap_or(&Value::Null)),
-                        skipped = output::show(r.get("skipped").unwrap_or(&Value::Null))
-                    )
-                );
+                say!("{}", integrity_summary(r));
             });
             Ok(())
         }
+        UpdateCmd::Repair => repair(ctx).await,
+        UpdateCmd::Rollback => rollback(ctx).await,
         UpdateCmd::Config { pairs } => config(ctx, &pairs).await,
     }
+}
+
+fn names(items: &[Value]) -> String {
+    items.iter().map(component_name).collect::<Vec<_>>().join(", ")
+}
+
+/// `update repair`: 데몬이 점검하고, 바뀌었거나 없어진 구성요소만 지금 판 그대로 다시 받아 덮는다.
+/// 데몬·GUI·업데이터가 끼면 업데이트와 같은 길(다시 시작을 묻고 업데이터)로 간다
+async fn repair(ctx: &Ctx) -> Result<()> {
+    let spin = crate::progress::spinner(&t!("update.repair_checking"));
+    let plan = ctx.api.update_repair_plan().await;
+    spin.finish_and_clear();
+    let plan = plan.map_err(older_daemon)?;
+    let list = |key: &str| plan.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
+    let (todo, unavailable) = (list("repair"), list("unavailable"));
+    if !ctx.out.json {
+        say!("{}", integrity_summary(&plan));
+    }
+    for u in &unavailable {
+        ctx.out.warn(&t!("update.repair_unavailable", name = component_name(u)));
+    }
+    if todo.is_empty() {
+        if !unavailable.is_empty() {
+            return Err(crate::error::CliError::Partial { message: t!("update.repair_failed"), data: plan }.into());
+        }
+        ctx.out.data(&plan, |_| say!("{}", t!("update.nothing_to_repair")));
+        return Ok(());
+    }
+    if !ctx.out.json {
+        say!("{}", t!("update.repair_list", list = names(&todo)));
+    }
+    // 받는 동안 받기 시작한 구성요소를 한 줄씩 알린다 (진행률에 잡히지 않을 만큼 빨리 받은 것은 끝난 뒤에)
+    let mut shown: Vec<String> = Vec::new();
+    let show = |key: &str, shown: &mut Vec<String>| {
+        if let Some(item) = todo.iter().find(|i| s(i, "component") == key).filter(|_| !shown.iter().any(|k| k == key)) {
+            shown.push(key.to_string());
+            if !ctx.out.json {
+                say!("{}  {} {}", t!("update.downloading"), component_name(item), s(item, "installed"));
+            }
+        }
+    };
+    let req = ctx.api.update_repair();
+    tokio::pin!(req);
+    let r = loop {
+        tokio::select! {
+            r = &mut req => break r,
+            _ = tokio::time::sleep(Duration::from_millis(400)) => {
+                if let Ok(p) = ctx.api.update_progress().await {
+                    show(s(&p, "component"), &mut shown);
+                }
+            }
+        }
+    };
+    let r = crate::client::partial(r)?;
+    for key in r.get("repaired").and_then(Value::as_array).into_iter().flatten().chain(r.get("needs_updater").and_then(Value::as_array).into_iter().flatten()) {
+        show(key.as_str().unwrap_or_default(), &mut shown);
+    }
+    for e in r.get("errors").and_then(Value::as_array).into_iter().flatten() {
+        ctx.out.warn(&output::show(e));
+    }
+    if r.get("requires_updater").and_then(Value::as_bool) == Some(true) {
+        return hand_to_updater(ctx, r).await;
+    }
+    let repaired: Vec<Value> = r
+        .get("repaired")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|k| todo.iter().find(|i| i.get("component") == Some(k)).cloned())
+        .collect();
+    let failed = r.get("errors").and_then(Value::as_array).is_some_and(|e| !e.is_empty()) || !unavailable.is_empty();
+    if !repaired.is_empty() && !(failed && ctx.out.json) {
+        ctx.out.done(&t!("update.repaired", list = names(&repaired)), &r);
+    }
+    if failed {
+        return Err(crate::error::CliError::Partial { message: t!("update.repair_failed"), data: r }.into());
+    }
+    Ok(())
+}
+
+/// 라우트가 없는 옛 데몬(업데이트 도중 CLI만 먼저 바뀌고 코어는 다시 시작을 기다릴 때)의 404를 데몬을 먼저 업데이트하라는 안내로 바꾼다
+fn older_daemon(e: anyhow::Error) -> anyhow::Error {
+    match e.downcast::<crate::error::CliError>() {
+        Ok(crate::error::CliError::Api { status: 404, code, body, .. }) => {
+            crate::error::CliError::Api { status: 404, code, message: t!("update.daemon_too_old"), body }.into()
+        }
+        Ok(other) => other.into(),
+        Err(e) => e,
+    }
+}
+
+/// `정상 9 · 바뀜/읽기 실패 1 · 파일 없음 1` (`update integrity`와 같은 줄)
+fn integrity_summary(r: &Value) -> String {
+    t!(
+        "update.integrity_summary",
+        verified = output::show(r.get("verified").unwrap_or(&Value::Null)),
+        failed = output::show(r.get("failed").unwrap_or(&Value::Null)),
+        skipped = output::show(r.get("skipped").unwrap_or(&Value::Null))
+    )
+}
+
+/// 되돌릴 수 있는 판을 알리는 줄. 남긴 판이 없으면 None
+fn rollback_offer(r: &Value) -> Option<String> {
+    (r.get("available").and_then(Value::as_bool) == Some(true)).then(|| {
+        t!("update.rollback_available", version = s(r, "version"), current = s(r, "current"), at = local_time(s(r, "updated_at")))
+    })
+}
+
+/// 되돌려도 새 판으로 남아 돌아갈 판에서 읽히지 않을 모듈·익스텐션을 알리는 줄 (데몬의 `needs_newer_core`). 없으면 None
+fn rollback_addons_warning(r: &Value) -> Option<String> {
+    let addons: Vec<Value> = r.get("needs_newer_core").and_then(Value::as_array)?.iter().map(|k| json!({ "component": k })).collect();
+    (!addons.is_empty()).then(|| t!("update.rollback_addons", version = s(r, "version"), list = names(&addons)))
+}
+
+/// `update rollback`: 데몬이 업데이터를 띄워 직전 판으로 되돌린다 (데몬은 꺼지고 되돌린 뒤 다시 켜진다)
+async fn rollback(ctx: &Ctx) -> Result<()> {
+    let info = ctx.api.update_rollback_info().await.map_err(older_daemon)?;
+    let Some(offer) = rollback_offer(&info) else {
+        ctx.out.data(&info, |_| say!("{}", t!("update.no_rollback")));
+        return Ok(());
+    };
+    if !ctx.out.json {
+        say!("{}", offer);
+    }
+    if let Some(warning) = rollback_addons_warning(&info) {
+        ctx.out.warn(&warning);
+    }
+    ctx.ask.ensure(&t!("update.rollback_confirm", version = s(&info, "version")))?;
+    // 되돌린 뒤 데몬을 다시 띄우게 한다 (GUI 없이 쓰는 PC도 있다)
+    let relaunch: Vec<String> = crate::bootstrap::daemon_binary()
+        .map(|p| vec![p.display().to_string(), "--spawned".to_string()])
+        .unwrap_or_default();
+    let spin = crate::progress::spinner(&t!("update.rolling_back"));
+    let r = ctx.api.update_rollback(&relaunch).await;
+    spin.finish_and_clear();
+    let r = r?;
+    ctx.out.done(&t!("update.rollback_launched"), &r);
+    ctx.out.hint(&t!("update.rollback_after"));
+    // 이 셸은 되돌리는 CLI 파일로 떠 있고 데몬도 내려간다: 셸 안에서도 여기서 끝낸다
+    output::flush();
+    std::process::exit(0);
 }
 
 fn print_status(r: &Value) {
@@ -301,6 +436,11 @@ async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
         }
         return Ok(());
     }
+    hand_to_updater(ctx, r).await
+}
+
+/// 데몬·GUI·업데이터가 낀 적용(`requires_updater`): 다시 시작을 묻고 데몬에 업데이터를 띄우게 한 뒤, 다시 뜬 데몬의 결과를 보이고 끝낸다
+async fn hand_to_updater(ctx: &Ctx, r: Value) -> Result<()> {
     // 실패한 구성요소가 있어도 코어 업데이트는 막지 않는다 (GUI와 같다): 알리고 종료 코드로 실패를 남긴다
     let (_, failed) = apply_outcome(&r);
     if failed {
@@ -469,7 +609,9 @@ fn last_rows(r: &Value) -> Vec<(String, String)> {
     };
     let ok = res.get("success").and_then(Value::as_bool) == Some(true);
     let mut rows = Vec::new();
-    if let Some(v) = r.get("version").and_then(Value::as_str) {
+    // 사용자 되돌리기는 릴리즈가 아니라 돌아간 판(`version`)과 그 전 판(`replaced_by`)을 보인다
+    let reverted = s(res, "result") == "reverted";
+    if let Some(v) = if reverted { res.get("version") } else { r.get("version") }.and_then(Value::as_str) {
         rows.push((t!("col.version"), v.to_string()));
     }
     rows.push((
@@ -484,7 +626,11 @@ fn last_rows(r: &Value) -> Vec<(String, String)> {
     for f in list("failed") {
         rows.push((t!("update.failed_one"), console::style(f).red().to_string()));
     }
-    if let Some(m) = res.get("message").and_then(Value::as_str).filter(|m| !m.is_empty()) {
+    if reverted {
+        rows.push((t!("col.what"), t!("update.last_reverted", version = s(res, "version"), from = s(res, "replaced_by"))));
+    }
+    // 다 되돌리지 못했으면 원문에 되살리는 차례가 있다
+    if let Some(m) = res.get("message").and_then(Value::as_str).filter(|m| !m.is_empty() && !(reverted && ok)) {
         rows.push((t!("col.what"), m.to_string()));
     }
     rows
@@ -573,6 +719,20 @@ mod tests {
         }
     }
 
+    /// 되돌릴 판이 있으면 그 판·지금 판·업데이트한 때를 한 줄로 알리고, 없으면 알리지 않는다
+    #[test]
+    fn the_rollback_offer_names_both_versions() {
+        crate::i18n::init("en");
+        let offer = rollback_offer(&json!({ "available": true, "version": "0.1.13", "current": "0.1.14", "updated_at": "2026-11-12T03:09:00Z" })).unwrap();
+        assert!(offer.contains("0.1.13") && offer.contains("0.1.14") && offer.contains("2026-11-12 "), "{offer}");
+        assert!(rollback_offer(&json!({ "available": false, "current": "0.1.14" })).is_none());
+        let warn = rollback_addons_warning(&json!({ "available": true, "version": "0.1.13", "needs_newer_core": ["module-minecraft", "ext-music"] })).unwrap();
+        assert_eq!(warn, t!("update.rollback_addons", version = "0.1.13", list = format!("{}, {}", t!("update.name_module", name = "minecraft"), t!("update.name_extension", name = "music"))));
+        assert!(rollback_addons_warning(&json!({ "available": true, "version": "0.1.13", "needs_newer_core": [] })).is_none());
+        let confirm = crate::i18n::try_t_in("ko", "update.rollback_confirm").unwrap();
+        assert_eq!(crate::i18n::fill(&confirm, &[("version", "0.1.13".into())]), "0.1.13으로 되돌리면 사바쨩이 다시 시작돼요. 계속할까요?");
+    }
+
     /// update last는 원시 객체 대신 버전·결과·구성요소·실패를 줄로 보인다 (C16)
     #[test]
     fn the_last_result_reads_as_rows() {
@@ -586,5 +746,29 @@ mod tests {
         assert!(rows.contains(&(t!("update.updated"), "saba-core, cli".to_string())));
         assert!(rows.contains(&(t!("update.failed_one"), "gui: 파일이 쓰기 중".to_string())));
         assert!(last_rows(&json!({ "ok": true, "result": null })).is_empty());
+    }
+
+    /// 새 CLI가 이 라우트가 없는 옛 데몬을 부르면(업데이트 도중 CLI만 먼저 바뀐 때) `HTTP 404` 대신 데몬을 먼저 업데이트하라고 알린다
+    #[test]
+    fn a_daemon_without_the_route_is_told_to_update_first() {
+        let api = |status: u16| -> anyhow::Error {
+            crate::error::CliError::Api { status, code: None, message: format!("HTTP {status}"), body: Value::Null }.into()
+        };
+        assert_eq!(older_daemon(api(404)).to_string(), t!("update.daemon_too_old"));
+        assert_eq!(older_daemon(api(409)).to_string(), "HTTP 409");
+    }
+
+    /// 사용자 되돌리기 결과는 돌아간 판과 그 전 판을 사용자 언어로 보인다 (마커의 영어 원문이 아니라)
+    #[test]
+    fn a_rollback_result_reads_in_the_user_language() {
+        let r = json!({ "ok": true, "version": null, "result": {
+            "timestamp": "2026-11-12T03:09:00Z", "success": true, "updated_components": [], "result": "reverted",
+            "version": "0.1.13", "replaced_by": "0.1.14", "message": "Rolled back from 0.1.14 to 0.1.13"
+        } });
+        let rows: Vec<(String, String)> = last_rows(&r).into_iter().map(|(k, v)| (k, console::strip_ansi_codes(&v).to_string())).collect();
+        assert_eq!(rows[0], (t!("col.version"), "0.1.13".to_string()));
+        let what = &rows.iter().find(|(k, _)| *k == t!("col.what")).unwrap().1;
+        assert_eq!(what, &t!("update.last_reverted", version = "0.1.13", from = "0.1.14"));
+        assert!(what.contains("0.1.14") && what.contains("0.1.13"), "{what}");
     }
 }
