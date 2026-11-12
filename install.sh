@@ -200,6 +200,10 @@ elif [ -x "$DIR/saba-chan-gui" ]; then
             "The app needs WebKitGTK. For example: sudo apt install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 (Fedora: sudo dnf install webkit2gtk4.1 libayatana-appindicator-gtk3)"
         # 앱을 열 수 있을 때까지 CLI는 쓸 수 있게 데몬은 켠다 (앱을 열면 이 데몬에 붙는다)
         "$CLI" daemon start
+    elif [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+        # ssh로 다시 깐 데스크톱 설치: 여기서는 앱을 띄울 화면이 없다. 데몬을 켜 둔다 (앱을 열면 이 데몬에 붙는다)
+        say "앱 메뉴에서 사바쨩을 열 수 있어요. 지금은 화면이 없어 데몬만 켭니다." "Saba-chan is in your app menu. No display here, so only the daemon is started."
+        "$CLI" daemon start
     else
         say "앱 메뉴에서 사바쨩을 열 수 있어요. 지금 엽니다." "Saba-chan is in your app menu. Opening it now."
         (cd "$DIR" && setsid "$DIR/saba-chan-gui" </dev/null >/dev/null 2>&1 &)
