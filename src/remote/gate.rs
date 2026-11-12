@@ -124,15 +124,24 @@ pub static ROUTES: &[Route] = &[
     allow("PUT", "/api/instance/{id}/properties"),
     allow("POST", "/api/instance/{id}/properties/reset"),
     not_on_web("GET", "/api/instance/{id}/settings/live"),
+    // 초기화 확인 창이 보이는 지울 목록 (PC 경로가 실린다). 웹은 확인 문구만 보인다
+    not_on_web("GET", "/api/instance/{id}/server/reset"),
     allow("POST", "/api/instance/{id}/server/reset"),
     allow("POST", "/api/instance/{id}/agreements"),
+    // 플레이어 목록 화면 (앱에만 있다. 넣기·빼기는 명령 라우트로 한다)
+    not_on_web("GET", "/api/instance/{id}/lists"),
     // ── 백업·일정 ──
     allow("GET", "/api/instance/{id}/backups"),
     allow("POST", "/api/instance/{id}/backups"),
     allow("DELETE", "/api/instance/{id}/backups/{name}"),
     allow("POST", "/api/instance/{id}/backups/{name}/restore"),
+    // 데몬 PC의 경로에 zip을 쓰고 읽는다 (내보내기·가져오기)
+    deny("POST", "/api/instance/{id}/backups/{name}/export"),
+    deny("POST", "/api/instance/{id}/backups/import"),
     allow("GET", "/api/instance/{id}/schedule"),
     allow("PUT", "/api/instance/{id}/schedule"),
+    // 이 PC의 앱 화면만 쓴다 (작업 기록의 "다가오는 예약")
+    not_on_web("GET", "/api/schedules/upcoming"),
     // ── 모듈: 공식 목록에서만 받는다. 폴더에서 들이기·삭제는 PC에서 ──
     allow("GET", "/api/modules"),
     allow("POST", "/api/modules/refresh"),

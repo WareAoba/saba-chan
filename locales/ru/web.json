@@ -135,7 +135,9 @@
     "placeholder": "Введите команду",
     "send": "Отправить",
     "danger_title": "Опасная команда",
-    "danger_message": "Точно отправить {{command}}?"
+    "danger_message": "Точно отправить {{command}}?",
+    "danger_again": "Команду «{{command}}» трудно отменить. Нажмите «Отправить» ещё раз, чтобы выполнить её.",
+    "danger_again_described": "{{description}}. Нажмите «Отправить» ещё раз, чтобы выполнить её."
   },
   "settings": {
     "game": "Настройки игры",
@@ -172,7 +174,8 @@
       "manual": "Вручную",
       "scheduled": "По расписанию",
       "pre-update": "Перед обновлением",
-      "pre-restore": "Перед восстановлением"
+      "pre-restore": "Перед восстановлением",
+      "imported": "Импорт"
     }
   },
   "agreements": {

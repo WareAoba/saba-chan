@@ -133,6 +133,9 @@ pub struct InstallOptions {
     pub selected_modules: Vec<String>,
     /// 미리 받아 둔 검증된 manifest. 없으면 설치가 받는다
     pub release: Option<VerifiedRelease>,
+    /// 설치할 때 고른 업데이트 채널 (`release::CHANNELS`). 그 채널의 최신 판을 받고(미리 받은 `release`도 같은 채널로 받은 것이어야 한다),
+    /// 설치 뒤의 업데이트도 그 채널로 받게 `config.json`의 `updates.channel`에 적는다. 없으면 설치기 빌드의 채널로 받고 설정은 건드리지 않는다
+    pub channel: Option<String>,
     /// 모듈 메타데이터 (required_extensions 해석용)
     pub module_metadata: Vec<ModuleInfo>,
     /// 설치 폴더에 `saba-chan-installer.exe`로 남길 제거기 (창 인스톨러는 자기 exe). 없으면 남기지 않는다
@@ -259,6 +262,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         }
     };
 
+    if let Some(chosen) = config.channel.as_deref().filter(|c| !release::CHANNELS.contains(c)) {
+        return fail("channel_invalid", &format!("Unknown update channel: {}", chosen));
+    }
+
     // Step 1: 설치 디렉토리 생성 + 쓰기 권한 확인 (0-5%)
     emit("prepare", "Creating install directory...", 2);
     let install_dir = config.install_path.clone();
@@ -282,9 +289,9 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     emit("fetch", "Fetching release information...", 7);
     let manifest = match config.release.clone() {
         Some(m) => m,
-        None => match release::fetch_latest().await {
+        None => match release::fetch_latest(config.channel.as_deref()).await {
             Ok(m) => m,
-            Err(e) => return fail("fetch_failed", &e),
+            Err(e) => return fail(e.code(), &e.to_string()),
         },
     }
     .for_profile(config.profile);
@@ -416,6 +423,9 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     // Step 8: 언어 설정 저장 (88-90%)
     emit("config-lang", "Saving language settings...", 89);
     save_language_setting(&config.language);
+    if let Some(channel) = &config.channel {
+        save_channel_setting(&ConfigFile::default_location(), channel);
+    }
 
     // Step 9: 레지스트리 등록 (90-95%). 제거 항목이 없는 설치(CLI)도 폴더 목록에는 남겨, 다른 설치본을 지울 때 공용 데이터를 지키게 한다
     emit("registry", "Registering application...", 92);
@@ -682,7 +692,8 @@ pub async fn setup(config: SetupOptions, hooks: &dyn InstallHooks) -> InstallPro
         emit_step(hooks, "fetch", "Fetching release information...", 7);
         let manifest = match config.release.clone() {
             Some(m) => Ok(m),
-            None => release::fetch_latest().await,
+            // 앱 묶음의 준비는 채널을 고르지 않는다: 그 빌드의 채널
+            None => release::fetch_latest(None).await,
         };
         match manifest {
             Ok(m) => {
@@ -1070,6 +1081,20 @@ fn save_language_setting(language: &str) {
     }
 }
 
+/// 설치할 때 고른 업데이트 채널을 업데이트 설정(`config.json`의 `updates.channel`)에 넣는다. 다른 키는 보존.
+fn save_channel_setting(config: &ConfigFile, channel: &str) {
+    let result = config.update(|doc| {
+        let updates = doc.entry("updates".to_string()).or_insert_with(|| serde_json::json!({}));
+        if !updates.is_object() {
+            *updates = serde_json::json!({});
+        }
+        updates["channel"] = serde_json::Value::String(channel.to_string());
+    });
+    if let Err(e) = result {
+        tracing::warn!("Failed to save update channel: {}", e);
+    }
+}
+
 // ═══════════════════════════════════════════════════════
 // Fix 1: 버전 비교 유틸리티
 // ═══════════════════════════════════════════════════════
@@ -1276,6 +1301,53 @@ mod tests {
         let section = config.section("extensions");
         assert_eq!(section["enabled"], serde_json::json!(["steamcmd", "ue4-ini", "zeta"]));
         assert_eq!(section["settings"]["zeta"]["k"], 1, "other keys stay");
+    }
+
+    /// 설치할 때 고른 업데이트 채널은 `config.json`의 `updates.channel`에 남아 이후 업데이트도 그 채널로 받는다.
+    /// 다시 설치할 때는 그 값이 미리 골라져 있다 (고를 수 없는 값이면 설치기 빌드의 채널)
+    #[test]
+    fn the_channel_chosen_at_install_is_kept_for_later_updates() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = ConfigFile::at(dir.path());
+        let bundled = saba_chan_updater_lib::versions::bundled().channel.clone();
+        assert_eq!(release::default_channel(&config), bundled, "nothing chosen yet");
+        config.set_section("updates", serde_json::json!({ "auto_apply": false })).unwrap();
+
+        save_channel_setting(&config, "beta");
+
+        let section = config.section("updates");
+        assert_eq!(section["channel"], "beta");
+        assert_eq!(section["auto_apply"], false, "other keys stay");
+        assert_eq!(release::default_channel(&config), "beta");
+
+        config.set_section("updates", serde_json::json!({ "channel": "nightly" })).unwrap();
+        assert_eq!(release::default_channel(&config), bundled, "not a channel the installer offers");
+    }
+
+    /// 고를 수 없는 채널로는 아무것도 하기 전에 멈춘다 (폴더를 만들거나 릴레이에 묻지 않는다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_unknown_channel_stops_before_anything_is_touched() {
+        let root = tempfile::tempdir().unwrap();
+        let hooks = Recorder(Default::default());
+        let options = InstallOptions {
+            install_path: root.path().join("Saba-chan"),
+            language: "en".into(),
+            profile: Profile::Headless,
+            create_desktop_shortcut: false,
+            create_start_menu_shortcut: false,
+            selected_modules: Vec::new(),
+            release: None,
+            channel: Some("nightly".into()),
+            module_metadata: Vec::new(),
+            uninstaller_exe: None,
+            components_dir: None,
+        };
+
+        let last = install(options, &hooks).await;
+
+        assert_eq!(last.error_code.as_deref(), Some("channel_invalid"), "{:?}", last);
+        assert!(!root.path().join("Saba-chan").exists());
     }
 
     #[test]
@@ -1581,6 +1653,7 @@ mod tests {
             create_start_menu_shortcut: false,
             selected_modules: Vec::new(),
             release: None,
+            channel: None,
             module_metadata: Vec::new(),
             uninstaller_exe: None,
             components_dir: None,

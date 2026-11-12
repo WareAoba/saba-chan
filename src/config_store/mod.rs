@@ -442,11 +442,11 @@ pub struct BotConfig {
     /// 백업 결과를 PC 주인에게 DM으로 알리는 범위 (`failures`면 실패만). 릴레이가 하트비트 `backupNotice`로 거른다
     pub backup_notice: BackupNotice,
     /// PC 주인 DM 알림을 종류별로 켜고 끈다 (사용자 2026-11-08). 백업은 `backup_notice`가 맡는다.
-    /// 릴레이가 하트비트 `dmOff`로 거른다
+    /// 릴레이가 하트비트 `dmOff`(끈 종류)·`dmOn`(켜야 보내는 종류 중 켠 것)으로 거른다
     pub dm_notice: DmNotice,
 }
 
-/// PC 주인 DM 알림 종류별 켜짐 (`BotConfig::dm_notice`). 빠진 칸은 켜짐이다
+/// PC 주인 DM 알림 종류별 켜짐 (`BotConfig::dm_notice`). 빠진 칸은 켜짐이다 (`offline`만 꺼짐)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DmNotice {
@@ -464,6 +464,8 @@ pub struct DmNotice {
     pub chatbot_usage: bool,
     /// AI 모더레이션 신고 (릴레이 `moderation`)
     pub moderation: bool,
+    /// PC 연결 끊김: 서버가 켜진 채로 이 PC가 릴레이에 닿지 않을 때 (릴레이 `offlineNotice`). 켜야 보낸다 (사용자 2026-11-12)
+    pub offline: bool,
 }
 
 impl Default for DmNotice {
@@ -476,6 +478,7 @@ impl Default for DmNotice {
             disk: true,
             chatbot_usage: true,
             moderation: true,
+            offline: false,
         }
     }
 }
@@ -495,6 +498,11 @@ impl DmNotice {
         .into_iter()
         .filter_map(|(k, on)| (!on).then_some(k))
         .collect()
+    }
+
+    /// 켜야 보내는 종류 중 켠 것 (하트비트 `dmOn`)
+    pub fn on_kinds(&self) -> Vec<&'static str> {
+        if self.offline { vec!["offline"] } else { Vec::new() }
     }
 }
 

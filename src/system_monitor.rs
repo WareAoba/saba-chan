@@ -289,7 +289,7 @@ fn measure_dirs_once(jobs: Vec<(String, Vec<PathBuf>)>, mut size_of: impl FnMut(
 }
 
 /// 폴더 크기 (심볼릭 링크는 따라가지 않는다)
-fn dir_size(path: &Path) -> u64 {
+pub(crate) fn dir_size(path: &Path) -> u64 {
     let mut total = 0;
     let mut stack = vec![path.to_path_buf()];
     while let Some(dir) = stack.pop() {

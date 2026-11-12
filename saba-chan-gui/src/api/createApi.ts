@@ -554,7 +554,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             if (extraArgs !== undefined && extraArgs !== null) body.extra_args = extraArgs;
             return call('post', `/api/instance/${encodeURIComponent(id)}/launch-preview`, body, 15000);
         },
-        instanceResetServer: (instanceId: string) => call('post', `/api/instance/${encodeURIComponent(instanceId)}/server/reset`, {}),
+        // 초기화가 지울 것 (범위마다 지금 있는 항목과 크기). 모듈이 알려 주지 않으면 error_code not_supported
+        instanceResetPreview: (instanceId: string) => call('get', `/api/instance/${encodeURIComponent(instanceId)}/server/reset`),
+        instanceResetServer: (instanceId: string, body: { scope?: string; backup?: boolean } = {}) =>
+            call('post', `/api/instance/${encodeURIComponent(instanceId)}/server/reset`, body, BACKUP_TIMEOUT),
         // 게임 명령 — 해석과 라우팅은 데몬이 한다
         executeCommand: async (id: string, command: { command?: string; args?: Record<string, unknown> | null }): Promise<ApiBody> => {
             const payload = {
@@ -606,6 +609,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         instanceCommands: (id: string) => call('get', `/api/instance/${encodeURIComponent(id)}/commands`),
         // 지금 접속한 사람 이름 (모듈 players 함수가 게임에 묻는다). 부를 때만 묻고 주기적으로 부르지 않는다
         instancePlayers: (id: string) => call('get', `/api/instance/${encodeURIComponent(id)}/players`),
+        // 플레이어 목록 (모듈 `[[lists]]`: 화이트리스트·관리자·밴 등)과 지금 명단. 넣기·빼기는 executeCommand로 한다
+        instanceLists: (id: string) => call('get', `/api/instance/${encodeURIComponent(id)}/lists`),
         // 서버 점검: 모듈 validate(켜기 전 점검)·diagnose(최근 로그 진단). 모듈 Python을 돌리므로 넉넉히 기다린다
         instanceValidate: (id: string) => call('post', `/api/instance/${encodeURIComponent(id)}/validate`, {}, 60000),
         instanceDiagnose: (id: string) => call('post', `/api/instance/${encodeURIComponent(id)}/diagnose`, {}, 60000),
@@ -925,6 +930,9 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 // 릴레이가 이 앱 버전을 받지 않는다: 세션은 살아 있어도 명령이 오지 않는다
                 if (data?.lastErrorCode === 'agent_too_old')
                     return { status: 'too_old', running: !!data.running, minVersion: data.minVersion ?? null, ...(link ? { link } : {}) };
+                // 세션은 살아 있지만 릴레이가 상태 보고를 검증에서 거절했다: 이대로면 디스코드에서 오프라인이 된다
+                if (data?.running && data?.heartbeatRejected)
+                    return { status: 'rejected', running: true, reason: data.heartbeatRejected, ...(link ? { link } : {}) };
                 const status = data?.running
                     ? 'running'
                     : // 같은 디스코드 계정이 다른 PC를 페어링해서 데몬이 에이전트를 멈췄다
@@ -1157,10 +1165,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 합쳐 보기 (G1c): 이 PC와 원격 데몬마다의 서버 {daemons:[{hostId(이 PC는 null), name, ok, error_code?, servers}]}
         // 데몬이 원격 데몬 하나를 30초까지 기다린다 (01 §1.4.2 8)
         remoteServers: () => call('get', '/api/remote/servers', undefined, 40000),
-        // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC
-        remoteInstanceAction: async (hostId: string | null, id: string, action: string): Promise<ApiBody> => {
+        // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC. `force`: 저장 없이 정지
+        remoteInstanceAction: async (hostId: string | null, id: string, action: string, opts: { force?: boolean } = {}): Promise<ApiBody> => {
             if (!['start', 'stop', 'restart'].includes(action)) return { success: false, error: `unknown action ${action}` };
-            const body = action === 'start' ? {} : { force: false };
+            const body = action === 'start' ? {} : { force: !!opts?.force };
             try {
                 return (
                     await request('post', `/api/instance/${encodeURIComponent(id)}/${action}`, body, {
@@ -1168,6 +1176,15 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                         target: hostId || 'local',
                     })
                 ).data;
+            } catch (caught) {
+                const error = caught as DaemonError;
+                return error.response ? failureBody(error) : connectionError(error);
+            }
+        },
+        // 합쳐 보기에서 켜려는 서버의 약관 동의를 그 데몬에 기록한다
+        remoteInstanceAgreements: async (hostId: string | null, id: string, accept: string[]): Promise<ApiBody> => {
+            try {
+                return (await request('post', instancePath(id, '/agreements'), { accept }, { target: hostId || 'local' })).data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 return error.response ? failureBody(error) : connectionError(error);
@@ -1213,7 +1230,38 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 undefined,
                 BACKUP_TIMEOUT,
             ),
+        // 백업 내보내기·가져오기: zip은 데몬이 읽고 쓴다. 여기서는 경로만 고른다
+        instanceBackupExport: async (id: string, name: string, defaultName: string): Promise<ApiBody> => {
+            const filePath = await pickLocal('dialog_save_file', {
+                defaultPath: defaultName,
+                filters: [{ name: 'Zip', extensions: ['zip'] }],
+            });
+            if (!filePath) return { canceled: true };
+            return call(
+                'post',
+                instancePath(id, `/backups/${encodeURIComponent(name)}/export`),
+                { path: filePath },
+                BACKUP_TIMEOUT,
+            );
+        },
+        // path 없이 부르면 파일을 고르게 하고, 결과에 path를 붙인다 (`preview` 뒤 같은 path로 다시 부른다)
+        instanceBackupImport: async (id: string, opts: { path?: string; preview?: boolean } = {}): Promise<ApiBody> => {
+            let filePath = opts.path || null;
+            if (!filePath) {
+                filePath = await pickLocal('dialog_open_file', { filters: [{ name: 'Zip', extensions: ['zip'] }] });
+                if (!filePath) return { canceled: true };
+            }
+            const body = await call(
+                'post',
+                instancePath(id, '/backups/import'),
+                { path: filePath, preview: !!opts.preview },
+                BACKUP_TIMEOUT,
+            );
+            return { ...body, path: filePath };
+        },
         instanceScheduleGet: (id: string) => call('get', instancePath(id, '/schedule')),
+        // 모든 서버의 다가오는 예약 (작업 기록 화면). hours 안에 도는 것만
+        schedulesUpcoming: (hours?: number) => call('get', `/api/schedules/upcoming${queryString({ hours })}`),
         instanceScheduleSave: (id: string, body: ApiBody) => call('put', instancePath(id, '/schedule'), body),
         chatbotGet: () => call('get', '/api/chatbot'),
         chatbotSave: (patch: ApiBody) => call('put', '/api/chatbot', patch),

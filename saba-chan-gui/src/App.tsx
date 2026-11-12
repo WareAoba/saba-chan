@@ -263,7 +263,9 @@ function App() {
         handleSettingChange,
         handleSettingLoaded,
         revertSettings,
+        revertSetting,
         openedSettings,
+        unsavedServers,
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,
@@ -869,7 +871,9 @@ function App() {
         handleSettingChange,
         handleSettingLoaded,
         revertSettings,
+        revertSetting,
         openedSettings,
+        unsavedServers,
         handleInstallVersion,
         handleSaveSettings,
         handleResetServer,
@@ -961,6 +965,7 @@ function App() {
                                 setServers={setServers}
                                 modules={modules}
                                 onAddServer={() => setShowModuleManager(true)}
+                                onCreateBranch={handleAddServer}
                                 onStart={handleStart}
                                 onStop={handleStop}
                                 onRestart={handleRestart}

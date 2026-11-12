@@ -58,6 +58,30 @@ describe('디스코드 봇 설정 탭', () => {
         expect(screen.getByRole('checkbox', { name: 'Emoji upscale' })).toBeInTheDocument();
     });
 
+    it('멤버 알림·과부하 공지·채팅 기본으로 열기: 릴레이 값이 있을 때만 보이고 바꾼 키만 바로 보낸다', async () => {
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue(base) as never;
+        const { unmount } = render(<BotSettingsTab node={node} section="bot" />);
+        await flush();
+        expect(screen.queryByRole('checkbox', { name: 'Member join and leave notices' })).toBeNull();
+        expect(screen.queryByRole('checkbox', { name: 'Overload notice' })).toBeNull();
+        unmount();
+        window.api.discordSettingsGet = vi
+            .fn()
+            .mockResolvedValue({ ...base, memberNotice: false, busyNotice: true, gameChatAutoOpen: false }) as never;
+        window.api.discordSettingsSet = vi.fn().mockResolvedValue({ success: true, settings: base, sync: { ok: true } }) as never;
+        render(<BotSettingsTab node={node} section="bot" />);
+        await flush();
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Member join and leave notices' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { memberNotice: true });
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Overload notice' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { busyNotice: false });
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Turn chat link on when the server starts' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { gameChatAutoOpen: true });
+    });
+
     // 사용자 11-03: 게임 채팅 채널 옵션 — 이모지 업스케일처럼 릴레이가 원본, 값이 있을 때만 보인다
     it('게임 채팅: 글 막기·꺼지면 채팅 지우기는 릴레이 값이 있을 때만 보이고 바꾼 키만 보낸다', async () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue(base) as never;

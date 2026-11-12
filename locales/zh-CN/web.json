@@ -135,7 +135,9 @@
     "placeholder": "输入命令",
     "send": "发送",
     "danger_title": "这是危险命令",
-    "danger_message": "确定要发送 {{command}} 吗？"
+    "danger_message": "确定要发送 {{command}} 吗？",
+    "danger_again": "“{{command}}”是难以撤销的命令。再按一次即可发送。",
+    "danger_again_described": "{{description}}。再按一次即可发送。"
   },
   "settings": {
     "game": "游戏设置",
@@ -172,7 +174,8 @@
       "manual": "手动",
       "scheduled": "定时",
       "pre-update": "更新前",
-      "pre-restore": "恢复前"
+      "pre-restore": "恢复前",
+      "imported": "已导入"
     }
   },
   "agreements": {

@@ -143,11 +143,12 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `restart_required` | bool | 스키마 2, `false`. 켜져 있을 때 바꾸면 다시 켜야 적용된다. PATCH 응답 `restart_required`에 실린다(01) |
 | `visible_when` | `{field, equals}` 또는 `{field, in=[...]}` | 스키마 2. 다른 설정 값에 따라 보일지. `field`는 같은 모듈의 설정이고 자기 자신·순환·`list`·`multiline`·`password`·`file` 설정이면 로드 오류, 값은 그 설정 타입에 맞아야 한다. 비교는 타입으로 바꾼 값끼리(`number`는 "25565"와 25565가 같다), 값이 없으면 `default`로. 숨긴 설정은 값을 지우지 않고 `required`를 보지 않는다. `GET /api/instance/:id`의 `hidden`(CLI)과 GUI의 같은 계산이 쓴다(`validator::hidden_fields`) |
 | `file_key` | String | — 이 설정이 게임 설정 파일에서 쓰는 키(예: `max-players`, `MaxPlayers`). 데몬은 읽지 않고 공용 도우미 `settings_to_file`·`settings_from_file`(§2.5)이 설정 이름과 파일 키를 이 한 곳에서 잇는다. 비었거나 `=`·줄바꿈이 들었거나 다른 설정과 겹치면 로드 오류(saba-core 0.1.11, 0.1.10 데몬은 모르는 키로 경고만 한다) |
+| `versions` | String | — 이 설정이 있는 게임 버전 범위. 비교(`<` `<=` `>` `>=` `=`)와 점으로 나눈 숫자 버전을 공백이나 쉼표로 이은 것이고 모두 맞아야 한다(`"<1.21.9"`, `">=1.13 <1.20"`). 읽을 수 없으면 로드 오류. 데몬이 인스턴스의 `server_version`과 비교해(`validator::version_hidden`: 앞머리의 숫자만 본다 `1.21.9-pre2` → 1.21.9, 짧은 쪽은 0으로 채운다 `1.21` = `1.21.0`) 범위 밖인 설정 이름을 서버 목록·`GET /api/instance/:id`의 `version_hidden`으로 알리고(`hidden`에도 넣는다), 숨긴 설정이라 PATCH에서 `required`를 보지 않는다. 값은 지우지 않는다. 버전을 모르거나 숫자 버전이 아니면(스냅숏 이름, 브랜치 이름) 판단하지 않고 모두 남긴다. GUI 설정 탭은 그 설정을 그리지 않고 "설치된 버전(N)에 없는 설정 n개는 숨겼어요" 안내 줄을 보이며, 모듈 locales `settings_note.version_hidden`(선택, 한 문장)이 있으면 까닭으로 덧붙인다. 옛 데몬은 모르는 칸 키로 경고만 한다. 버전은 게임 서버에 묻지 않는다: 설치 때 고른(또는 그때의 최신) 버전을 만들기·버전 설치가 `server_version`에 적고, 가져온 서버는 `get_installed_version`이 파일에서 읽는다 |
 
 - `fields`가 비어 있으면 `settings = None`이 된다.
 - 옮기기(06 §8.1): 문자열로 저장된 값의 설정이 모듈 업데이트로 `list`가 되면, 데몬이 인스턴스를 읽을 때(시작, 모듈 다시 읽기) 쉼표로 나누고 앞뒤 공백·빈 항목을 버려 배열로 바꾼다(`validator::migrate_list_values`, `Supervisor::migrate_list_settings`). 파일에는 다음 저장 때 쓴다.
 - `players_detail`·`stop_call_limit`은 데몬이 호출마다 정해 넣는 키다(`RESERVED_CALL_KEYS`). 같은 이름의 설정은 로드하되 경고하고, 그 값은 모듈 config에 싣지 않는다(`insert_instance_fields`).
-- 데몬이 직접 의미를 부여하는 setting 이름은 `rest_port`(기본 8212), `rest_host`(기본 127.0.0.1) (`:259-267`), 시작 경로를 고르는 `managed_start`(`mod.rs:1690-1700`), 자동 재시작의 `auto_restart`·`restart_on_unknown_exit`(`mod.rs:2285-2286`), 세션 로그 보관 수 `log_sessions_keep`(`mod.rs:1628-1631`), 정지 대기 시간(초) `stop_timeout`(모듈 `[config] stop_timeout`보다 앞선다, 1~3600, `supervisor::stop_timeout_of`, MK14. 데몬이 기다리는 managed 정지에 쓴다. non-managed 정지는 모듈 `stop()` 호출 하나이고, 그 호출의 시간 제한이 `stop_timeout + 30`초다(`supervisor::module_stop_limit`))이다. 이 값들도 module_settings라서 모듈 함수 config에 펼쳐 들어간다. 모듈 `stop()`의 config에는 데몬이 실제로 쓸 `stop_timeout`(인스턴스 값, 모듈 값, 기본 30 순)과 그 호출의 시간 제한 `stop_call_limit`(초, non-managed면 `stop_timeout + 30`, managed면 120)이 늘 실린다. `stop_call_limit`이 없으면(0.1.8 데몬) 모듈은 120초 안에 끝나게 기다린다. non-managed 정지(`managed:false`)의 모듈은 이 값만큼 기다리고 자기 상한을 두지 않는다. managed 정지(`managed:true`)의 모듈은 저장·종료 요청만 보내고 바로 `success`를 돌려준다(기다림과 강제 종료는 데몬이 한다).
+- 데몬이 직접 의미를 부여하는 setting 이름은 `rest_port`(기본 8212), `rest_host`(기본 127.0.0.1) (`:259-267`), 시작 경로를 고르는 `managed_start`(`mod.rs:1690-1700`), 자동 재시작의 `auto_restart`·`restart_on_unknown_exit`(`mod.rs:2285-2286`), 세션 로그 보관 수 `log_sessions_keep`(`mod.rs:1628-1631`), 접속자 없을 때 자동 정지 `idle_stop`(불리언, 기본 끔)·`idle_stop_minutes`(기본 30, 1~1440)·`idle_stop_grace_minutes`(기본 15, 0~1440)(`supervisor::idle`: 접속자 수 갱신(§2.3 `[status] players`) 바로 뒤 1분마다 `server::stop_idle_servers`가 데몬이 이미 아는 수(`players::get`)만 보고, 0명이 `idle_stop_minutes`분 이어지고 켠 지 `idle_stop_grace_minutes`분이 지났으면 저장 후 정지한다. 강제 종료하지 않는다. 수를 모르는 동안과 사람이 있는 동안은 처음부터 다시 센다. 이 판정을 위해 서버에 따로 묻지 않는다. 정지의 감사 출처와 `instance.stopped`의 `source`는 `idle`), 응답 없는 서버 감시 `unresponsive_action`(`off`·`notify`(기본)·`restart`)·`unresponsive_minutes`(기본 10, 5~1440)(`supervisor::watchdog`: 접속자 수 갱신이 모은 응답 실패 기록(`players::silent_for`)만 보고, 켜진 서버가 그 시간 넘게 답하지 않으면 끊김 한 번에 한 번 `instance.unresponsive`를 내고 `restart`면 다시 시작한다(감사 출처 `watchdog`). 다시 시작한 서버도 답이 없으면 또 다시 시작하지 않고 알리기만 한다. 서버 목록의 `unresponsive`·`unresponsive_minutes`도 이 시간이 지난 뒤부터 실린다(`off`여도). 이 감시를 위해 서버에 따로 묻지 않는다), 정지 대기 시간(초) `stop_timeout`(모듈 `[config] stop_timeout`보다 앞선다, 1~3600, `supervisor::stop_timeout_of`, MK14. 데몬이 기다리는 managed 정지에 쓴다. non-managed 정지는 모듈 `stop()` 호출 하나이고, 그 호출의 시간 제한이 `stop_timeout + 30`초다(`supervisor::module_stop_limit`))이다. 이 값들도 module_settings라서 모듈 함수 config에 펼쳐 들어간다. 모듈 `stop()`의 config에는 데몬이 실제로 쓸 `stop_timeout`(인스턴스 값, 모듈 값, 기본 30 순)과 그 호출의 시간 제한 `stop_call_limit`(초, non-managed면 `stop_timeout + 30`, managed면 120)이 늘 실린다. `stop_call_limit`이 없으면(0.1.8 데몬) 모듈은 120초 안에 끝나게 기다린다. non-managed 정지(`managed:false`)의 모듈은 이 값만큼 기다리고 자기 상한을 두지 않는다. managed 정지(`managed:true`)의 모듈은 저장·종료 요청만 보내고 바로 `success`를 돌려준다(기다림과 강제 종료는 데몬이 한다).
 - 실제 모듈에서 쓰이는 type 값: `text`, `number`, `boolean`, `select`, `password`, `file` (지금 공식 모듈은 모두 스키마 2).
 
 #### `[[commands.fields]]` (`CommandFieldToml` `:928-949` → `CommandField` `:352-370`)
@@ -178,7 +179,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 #### `[[syntax_highlight.rules]]` (`HighlightRuleToml` `:999-1015`)
 `name`✔, `pattern`✔(regex, `(?P<hl>…)` 선택), `color`✔(시맨틱 토큰), `background`, `bold`=false, `italic`=false, `underline`=false, `priority`=0. `/api/modules`로 GUI에 그대로 전달되고, 데몬은 Python 전용 정규식 문법에 경고만 남긴다 (`:1017-1035`).
 - 데몬 토큰화(`src/supervisor/highlight.rs`): `GET /api/instance/:id/console?spans=1`이면 줄마다 `spans: [[start, end, token]]`를 붙인다. 오프셋은 `content`의 UTF-16 코드 단위, 오름차순·겹침 없음, 칠할 곳만 들어 있다. 디스크 폴백 줄에도 붙고, 4096바이트를 넘는 줄은 앞부분만 본다.
-  - 토큰은 16개로 고정: `error, warn, info, debug, success, string, number, keyword, timestamp, player, command, selector, ip, uuid, path, dim` (`TOKENS`). `warning`→`warn`, `trace`→`debug`, `comment`→`dim`으로 바꾸고, 색 값(`#hex`)이나 모르는 이름의 규칙은 경고를 남기고 뺀다. `bold`·`italic`·`background`·`underline`은 spans에 싣지 않는다(굵기·색은 클라이언트 테마가 토큰별로 정한다).
+  - 토큰은 16개로 고정: `error, warn, info, debug, success, string, number, keyword, timestamp, player, command, selector, ip, uuid, path, dim` (`TOKENS`). `warning`→`warn`, `trace`→`debug`, `comment`→`dim`으로 바꾸고, 색 값(`#hex`)이나 모르는 이름의 규칙은 경고를 남기고 뺀다. `bold`·`italic`·`background`·`underline`은 spans에 싣지 않는다(굵기·색은 클라이언트 테마가 토큰별로 정한다). 줄 맨 앞(시작 0) 조각이 `timestamp`이면 사바쨩 웹 콘솔은 줄 앞에 데몬 시각을 붙일 때 그 조각을 빼고 보인다(시각이 두 번 보이지 않게, GUI `utils/consoleLine.ts` `withoutOwnStamp`).
   - 엔진은 Rust `regex`(선형 시간). lookaround(`(?=`, `(?!`, `(?<=`, `(?<!`)는 컴파일되지 않아 그 규칙은 빠진다. 모듈 적합성 검사가 이를 막는다(saba-chan-modules `conformance`).
   - 겹치면 priority가 큰 규칙, 같으면 먼저 선언된 규칙이 이긴다. 모듈 규칙 뒤에 공통 규칙(스택 프레임·`... N more`→dim, `Caused by:`→error, IPv4[:포트]→ip, UUID→uuid, 따옴표 문자열→string, 퍼센트→number)이 남은 칸만 칠한다.
   - 컴파일 결과는 모듈 이름별로 캐시하고, 규칙 지문이 바뀌면(모듈 업데이트) 다시 만든다.
@@ -195,7 +196,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `beta` | String | — |
 | `requires_extensions` | Vec<String> | `[]`. 인스턴스 생성·non-managed 시작·`/api/module/:name/install` 때 필수 익스텐션 검증에 사용 (`instance.rs:233-252`, `mod.rs:572-629`, `managed.rs:526-`) |
 
-zomboid의 `beta_branch` 키와 lifecycle의 `use_beta` 분기는 지워졌다. 받을 브랜치는 module.toml `[install].beta` 한 곳에 둔다: 설치·업데이트(`install_for_module`)와 업데이트 확인(`extension_data.steamcmd_beta`)이 같은 값을 쓴다.
+zomboid의 `beta_branch` 키와 lifecycle의 `use_beta` 분기는 지워졌다. 받을 브랜치의 기본값은 module.toml `[install].beta` 한 곳에 둔다: 설치·업데이트(`install_for_module`)와 업데이트 확인(`extension_data.steamcmd_beta`)이 같은 값을 쓴다. 서버마다 브랜치를 고르게 하려면 새 키 없이 `list_versions`·`install_server`를 쓴다(§3.3 `list_versions`): 설치 방식 익스텐션으로 받는 모듈의 버전 목록은 브랜치 목록이고, 고른 값은 데몬이 그 인스턴스의 `<방식>_beta`에 적는다.
 
 #### `[extensions.<익스텐션 id>]`
 익스텐션이 읽는 모듈별 설정. 데몬은 내용을 보지 않고 `ModuleMetadata.extensions`에 그대로 넘긴다 (`:618-622, 1139-1145`). 예전 `[docker]` 섹션(`ContainerSectionToml`)은 Docker 익스텐션과 함께 지워졌다.
@@ -256,6 +257,29 @@ url = "https://aka.ms/MinecraftEULA"
 - 동의는 인스턴스 레코드 `accepted_agreements`(`{id: 동의 시각 RFC3339}`)에 남는다. 만들 때 `POST /api/instances`의 `accept_agreements:[id]`, 만든 뒤 `POST /api/instance/:id/agreements {accept:[id]}`로 받는다. 원격(디스코드·챗봇·원격 MCP)에서 온 동의는 403 `agreement_local_only`(사람이 직접 원문을 보고 동의해야 하는 법적 동의).
 - 선언된 약관을 다 동의하지 않으면 켜기 전 점검이 409 `agreement_required`(`agreements:[{id, label, url, accepted, accepted_at}]`)로 막는다(01 문서 시작 라우트). 파일 내용(예: eula.txt)으로 동의를 추정하지 않는다.
 - 설치·재설치·업데이트 때 모듈은 `accepted_agreements:[id]`를 받고, 그 안에 자기 id가 있을 때만 자기 파일에 동의를 쓴다. 동의를 받으면 데몬이 lifecycle `accept_agreements`를 부른다(§2.3).
+
+#### `[[lists]]` (`ModuleList`)
+게임이 지키는 플레이어 이름 명단(화이트리스트·관리자·밴 등)을 목록 화면으로 보이는 선언. 선언한 모듈의 서버에만 GUI "플레이어" 탭이 생긴다(`GET /api/modules`의 `lists`). 데몬은 게임 이름을 보지 않는다.
+
+| 키 | 필수 | 뜻 |
+|---|---|---|
+| `id` | ✔ | 소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음. 이름은 모듈 locales `lists.<id>`(없으면 id) |
+| `add` | ✔ | 이름을 넣는 `[[commands.fields]]` 이름. 첫 입력이 플레이어 이름이고, 나머지 입력(예: 이유)은 화면이 옆 칸으로 보인다 |
+| `remove` | ✔ | 이름을 빼는 `[[commands.fields]]` 이름 (첫 입력이 플레이어 이름) |
+| `setting` | – | 이 명단을 쓸지 정하는 boolean `[[settings.fields]]` 이름(예: 화이트리스트 사용). 화면이 스위치로 보이고 설정 PATCH로 저장한다 |
+| `danger` | – | 넣으면 그 사람을 막는 명단(밴). 넣기 단추가 위험 색이고 단추 글이 목록 이름이다 |
+
+```toml
+[[lists]]
+id = "whitelist"
+add = "whitelist-add"
+remove = "whitelist-remove"
+setting = "white_list"
+```
+
+- 지금 명단은 lifecycle `read_lists`(§2.3, 선택 함수)가 읽어 준다. 데몬은 `GET /api/instance/:id/lists`(01)로 선언·이름·명단을 한 번에 돌려준다.
+- 넣기·빼기는 새 계약이 없다: `add`·`remove`가 가리키는 명령을 `POST /api/instance/:id/command`로 그대로 보낸다. 그래서 명령을 받을 수 있을 때(보통 켜진 서버)만 고칠 수 있다.
+- 검사(`player_list_problems`): id 형식·중복, `add`·`remove`가 없는 명령이거나 입력이 없음, `setting`이 boolean 설정이 아님 → 스키마를 밝힌 모듈은 로드 오류, 스키마 이전 모듈은 경고를 남기고 목록을 켜지 않는다.
 
 #### `[permissions]` (`ModulePermissions`)
 모듈 Python 코드가 쓰는 위험한 능력의 선언(M12). 모두 bool, 기본 false. 선언은 실행을 막거나 풀지 않는다: 격리(§2.1)는 신뢰 표시로만 정해진다. 검사기가 코드에서 찾은 능력 중 선언하지 않은 것을 알린다.
@@ -386,7 +410,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - `config_files`: `success`, `files[]`(절대 경로). 선택 함수. 사바쨩이 고칠 수 있는 게임 설정 파일(설정 저장·시작 전 정책·약관이 쓰는 파일)이다. 데몬은 마이그레이션 때 지금 있는 것만 보관하고, 연결 해제(삭제) 때 그 내용으로 되돌린다(01 `POST /api/instances`·`DELETE /api/instance/:id`). minecraft `server.properties`·`eula.txt`, palworld `PalWorldSettings.ini`, zomboid 프로필 ini.
 - `instance_commands`: `success`, `commands[]`(명령 필드 + `group`), `components` (`[commands] hook = true`일 때).
 - `install_server`: config에 인스턴스 설정 `settings{}`가 온다(프로비저닝·업데이트, `instance_id`를 준 `POST /api/module/:name/install`).
-- `list_versions`: config `settings{}`(인스턴스 설정, 만들기 화면이 고른 설정)로 그 설정에서 받을 수 있는 버전만 `versions`에 주고(쪽 나누기도 거른 뒤), 그중 받을 수 있는 최신을 `latest.release`(예전 모양 `latest_release`)에 준다. 예: Minecraft `server_type`이면 그 종류의 받을 곳이 내놓은 버전만이고, Paper·Folia는 안정 빌드가 나온 가장 새 버전이 최신이며 그보다 새 것은 목록에서도 뺀다. 받을 곳을 읽지 못하면 거르지 않는다. 데몬은 처음 설치와 버전을 비운 `POST /api/module/:name/install`에서 이 값만 읽는다(`Supervisor::latest_version`. 없으면 모듈의 `message`를 까닭으로 싣는다).
+- `list_versions`: config `settings{}`(인스턴스 설정, 만들기 화면이 고른 설정)로 그 설정에서 받을 수 있는 버전만 `versions`에 주고(쪽 나누기도 거른 뒤), 그중 받을 수 있는 최신을 `latest.release`(예전 모양 `latest_release`)에 준다. 예: Minecraft `server_type`이면 그 종류의 받을 곳이 내놓은 버전만이고, Paper·Folia는 안정 빌드가 나온 가장 새 버전이 최신이며 그보다 새 것은 목록에서도 뺀다. 받을 곳을 읽지 못하면 거르지 않는다. 데몬은 처음 설치와 버전을 비운 `POST /api/module/:name/install`에서 이 값만 읽는다(`Supervisor::latest_version`. 없으면 모듈의 `message`를 까닭으로 싣는다). `versions`의 항목이 객체면 `id`(설치에 넘길 값)와 선택 `name`(화면에 보일 이름, 없으면 `id`), `type`을 가진다. 설치 방식 익스텐션으로 받는 모듈(`[install] method`가 `manual`·`download`가 아님)이 이 함수를 구현하면 목록은 그 방식의 브랜치 목록이다(예: zomboid의 Steam 브랜치 `public`·`unstable`·`legacy41`): 화면은 버전 칸을 브랜치 칸으로 보이고, 고른 `id`가 `install_server`의 `version`으로 오며, 설치가 끝나면 데몬이 인스턴스 `extension_data`의 `<방식>_beta`에 적어 업데이트 확인(`server.check_update`)과 업데이트(`install_server`에 `version`으로 다시 넘긴다)가 같은 브랜치를 쓴다. `server_version`에는 적지 않는다. 이런 모듈은 처음 설치 때 `version`이 오지 않으면 기본 브랜치로 받는다.
 - `backup_paths`: `success`, `paths[]`, 선택 `restore_roots[]` (`[backup] hook = true`일 때). `restore_roots`는 `paths`와 같이 해석하는 복원 허용 범위다. 그 폴더 안을 담은 옛 백업(데이터 폴더를 통째로 담던 예전 모듈의 백업 등)도 복원되게 하고, 백업 대상에는 넣지 않는다 (MA3).
 
 ### 2.3 데몬이 호출하는 함수 전체 목록과 전달 config
@@ -402,13 +426,15 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `configure` | `PUT /properties`, 인스턴스 설정 PATCH 후 동기화 (`instance.rs:1276-1349`) → `manage_properties` `mod.rs:1865-1916` | `working_dir`, `extension_data`, 인스턴스 값, `port`, `settings{}`. PATCH 동기화의 `settings`에는 데몬 필드(`protocol_mode`·`executable_path`·`working_dir`·`server_version`·`extension_data`·`managed_start`·`rest_*`·`rcon_*`·`enable_rcon`)와 모듈이 `group = "saba-chan"`으로 선언한 사바쨩 설정이 빠진다(MK6) |
 | `read_properties` | `GET /properties` | `working_dir`, `extension_data`, 인스턴스 값, `port` |
 | `reset_properties` | `POST /properties/reset` | 위와 같음 |
-| `reset_server` | `POST /server/reset` | 위와 같음 |
+| `reset_server` | `POST /server/reset` | 위와 같음 + `scope`(요청이 고른 범위 id, `reset_preview`가 밝힌 것. 없으면 모듈의 기본 범위) |
+| `reset_preview` | `GET /server/reset` | `reset_server`와 같음. 선택 함수. 아무것도 지우지 않고 `{success, scopes:[{id, label?, note?, items:[{label, paths[]}]}]}`를 돌려준다: 범위마다 `reset_server`가 지울 경로(서버 폴더 기준 상대 경로나 절대 경로)와 이름. 범위가 하나면 `label`을 쓰지 않는다. 지금 있는지와 크기는 데몬이 본다 |
+| `read_lists` | `GET /api/instance/:id/lists` (`[[lists]]`를 선언한 모듈만) | `read_properties`와 같음. 선택 함수. 읽기만 한다(꺼진 서버에도 온다). `{success, lists:{<목록 id>: [{name, added?, note?}]}}`: `added`는 넣은 때(ISO 8601 날짜나 시각), `note`는 덧붙일 말(예: 밴 이유). 데몬은 선언한 id의 이 세 값만 남긴다 |
 | `import_settings` | 마이그레이션 인스턴스 생성 `instance.rs:653-657`, `GET /api/instance/:id/settings/live` (`managed.rs:245-271`) | 마이그레이션은 `working_dir`·`instance_dir`(서버 폴더에 더하지 않고 인스턴스에 둘 것의 자리. minecraft는 맞는 포터블 JRE가 없으면 `<instance_dir>/java`에 받고, 받지 못하면 `java_warning`)·`migration_import: true`(가져오기 호출 표시. 런타임을 받는 일은 이 호출에서만 한다. 시간 한도는 설치와 같은 `INSTALL_TIMEOUT_SECS`), live는 위와 같음(인스턴스를 가리키는 다른 호출도 `instance_dir`을 받는다, `insert_instance_fields`: 켜기 전 점검 `validate`도 인스턴스 폴더에 받은 포터블 JRE를 본다). 마이그레이션에서 모듈은 쓰던 실행 스크립트의 값도 돌려준다: minecraft `ram`(`user_jvm_args.txt`·`run.bat`·`start.bat`·`run.sh`·`start.sh`의 `-Xmx`), zomboid `ram`(GB)·`server_name`(`-servername`, 없으면 데이터 폴더 `Server/`에 하나뿐인 프로필)·`data_home`(`-cachedir=`). 모듈 기본값으로 덮지 않게 하려는 것이다 |
 | `config_files` | 마이그레이션 인스턴스 생성(가져온 설정을 저장한 뒤) → `manage_properties("config_files")` | `read_properties`와 같음 |
 | `instance_commands` | `GET /api/instance/:id/commands`, module.toml에 없는 이름의 명령 실행 (`[commands] hook = true`일 때, `D:src/ipc/handlers/command.rs`) | `working_dir`, 인스턴스 값(`insert_instance_fields`) |
 | `accept_agreements` | `POST /api/instance/:id/agreements` (동의를 기록한 뒤) | `validate`와 같은 config + `accepted_agreements:[id]`(지금까지 동의한 전부). 모듈은 자기 파일에 동의를 쓴다(예: minecraft eula.txt). 함수가 없으면 기록만 남는다 |
 | `diagnose_log` | `POST /diagnose` | `working_dir`, `log_lines[]`(managed일 때 최근 500줄 중 이번 실행분, `mod.rs:1982-1990`) |
-| `list_versions` | `GET /api/module/:name/versions`, 프로비저닝(download 방식), 버전을 비운 `POST /api/module/:name/install` | `include_snapshots`, `page`, `per_page`, `settings?`(목록 query `settings`, 최신을 고를 때 인스턴스 설정) |
+| `list_versions` | `GET /api/module/:name/versions`(버전 칸·브랜치 칸), 프로비저닝(download 방식), 버전을 비운 `POST /api/module/:name/install` | `include_snapshots`, `page`, `per_page`, `settings?`(목록 query `settings`, 최신을 고를 때 인스턴스 설정) |
 | `get_version_details` | `GET /api/module/:name/version/:v` | `version` |
 | `install_server` | `POST /api/module/:name/install`, 프로비저닝·업데이트(모두 1800초) | `version`, `install_dir`(사용자가 고른 폴더에 처음 설치할 때는 그 안의 `.saba-installing`. 성공하면 데몬이 내용을 고른 폴더로 옮기고 돌려받은 `install_path`·`executable_path`를 옮긴 자리로 바꾼다. 실패하면 그 폴더와 옮긴 항목만 지운다(설치 중에 사용자가 넣은 파일은 남는다, `InstallStaging`). 그래서 모듈은 `install_dir`의 절대 경로를 설치한 파일 안에 적지 않는다), `accepted_agreements`(동의한 `[[agreements]]` id), `settings`(프로비저닝 때, 그리고 `POST /api/module/:name/install`에 `instance_id`가 있을 때 그 인스턴스 `module_settings`), `instance_data_dirs`(같은 때), `server_executable`(요청 값, 없으면 모듈 `server_executable`), `initial_settings` 등 |
 | `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:2200-2249` | `validate`와 같은 config(`Supervisor::instance_call`: `server_executable`, `working_dir` 등). `server_executable`은 시작과 같이 `resolve_executable`로 정한다(인스턴스 경로, 옛 `module_settings.executable_path`, `working_dir` + 모듈 `server_executable` 순) |
@@ -439,6 +465,8 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | read_properties (호출) | ✔ | ✔ | ✔ | – |
 | reset_properties (호출) | ✔ | ✔ | – | – |
 | reset_server (호출) | ✔ | ✔ | ✔ | – |
+| reset_preview (호출) | ✔ | ✔ | ✔ | – |
+| read_lists (호출) | ✔ | – | – | – |
 | accept_agreements (호출) | ✔ | – | – | – |
 | diagnose_log (호출) | ✔ | ✔ | ✔ | ✔(stub) |
 | list_versions (호출) | ✔ | ✔ | – | – |
@@ -648,12 +676,12 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 항목 | 내용 |
 |---|---|
 | protocols | `supported=["stdin"]`, console, `stop_command="quit"`. `RCONPassword`를 비워 RCON을 끈다 |
-| 설치 | `steamcmd`, app_id 380870. steamcmd 익스텐션의 `install_for_module`로 설치하고(브랜치는 `[install].beta`, 지금은 없음 = public), 익스텐션을 불러올 수 없으면 `extension_required`를 돌려준다 |
+| 설치 | `steamcmd`, app_id 380870. steamcmd 익스텐션의 `install_for_module`로 설치하고, 익스텐션을 불러올 수 없으면 `extension_required`를 돌려준다. 브랜치: `list_versions`가 `STEAM_BRANCHES`(`public`·`unstable`·`legacy41`, 이름은 locales `versions.<id>`)를 주고, `install_server`는 `version`으로 온 브랜치를 `install_for_module(beta=...)`로 받는다(목록 밖이면 `errors.unknown_branch`로 거절, `version`이 없으면 `[install].beta`, 그것도 없으면 지금 브랜치 그대로) |
 | 실행 | `StartServer64.bat`나 `start-server.sh`를 **파싱**해서(`_parse_bat`, `_parse_sh`, `_parse_java_cmdline` `:607-741`) 번들 Java, classpath, native lib을 찾는다. 그다음 `java ... zombie.network.GameServer -servername <name> -cachedir=...`를 직접 구성한다 |
 | 설정 | `IniManager`가 공용 `read_key_values`·`update_key_values`로 `Zomboid/Server/<servername>.ini`를 다룬다. saba 키 → INI 키는 settings 필드의 `file_key`이다. 로그 진단은 `[[diagnose]]` 규칙으로 `server-console.txt`를 본다. settings 117개. `[backup] hook = true`라 `backup_paths()`가 세이브 위치를 계산한다 |
 | 명령 | 23개. kick, banuser는 `method="module"`이라 lifecycle `command()`를 거친다(이유가 없으면 `-r`을 붙이지 않고, 서버가 콘솔에 찍은 답을 `message`로 돌려준다. 값의 큰따옴표는 `error_code="invalid_argument"`·`rule="quote"`로 거절). 나머지는 `console`(콘솔 stdin): servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |
 | 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 공용 `graceful_stop`으로 force가 아니면 콘솔 `quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 강제 종료한다. managed(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). |
-| 미구현 | `list_versions`, `get_version_details`, `get_installed_version`, `reset_properties` |
+| 미구현 | `get_version_details`, `get_installed_version`, `reset_properties` |
 
 ### 4.4 terraria (`M:terraria/`, lifecycle 627줄, toml 816줄)
 
@@ -674,7 +702,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 ### 4.6 i18n과 locales
 
-- 모듈 측: `I18n(MODULE_DIR)`이 `locales/<SABA_LANG>.json`을 읽고, 없으면 `en`으로 대체한다. 키 구조는 `module`, `aliases`(언어별 별명, §2 `[aliases]`), `settings`, `commands`, `presets`, `queries`, `agreements`, `errors`, `messages`, `rcon`, `reset` 등이다(minecraft ko.json 기준). `queries.<name>.label`·`description`과 `[errors]` 코드의 `errors.<code>`는 데몬도 읽는다: 액션 목록(`GET /api/actions?instance=`)과 heartbeat `actions`의 조회 제목·설명(`actions::module_locale`, `<모듈 폴더>/locales/<lang>.json`). `reset.label`·`reset.description`은 서버 초기화(`reset_server`)가 무엇을 지우고 남기는지 GUI 초기화 화면에 보여 주는 문구다(모듈마다 다르다: minecraft는 JAR·eula.txt만 남김, palworld는 설정만 기본값으로, zomboid는 월드 세이브만 지움).
+- 모듈 측: `I18n(MODULE_DIR)`이 `locales/<SABA_LANG>.json`을 읽고, 없으면 `en`으로 대체한다. 키 구조는 `module`, `aliases`(언어별 별명, §2 `[aliases]`), `settings`, `settings_note`(`version_hidden`: 버전 때문에 숨긴 설정의 까닭 한 문장, §1.2 `versions`), `commands`, `presets`, `queries`, `agreements`, `errors`, `messages`, `rcon`, `reset` 등이다(minecraft ko.json 기준). `queries.<name>.label`·`description`과 `[errors]` 코드의 `errors.<code>`는 데몬도 읽는다: 액션 목록(`GET /api/actions?instance=`)과 heartbeat `actions`의 조회 제목·설명(`actions::module_locale`, `<모듈 폴더>/locales/<lang>.json`). `reset.label`·`reset.description`은 서버 초기화(`reset_server`)가 무엇을 지우고 남기는지 GUI 초기화 화면에 보여 주는 문구다(모듈마다 다르다: minecraft는 JAR·eula.txt만 남김, palworld는 설정만 기본값으로, zomboid는 월드 세이브만 지움).
 - 인터페이스 측: `GET /api/module/:name/locales`가 `<modules_dir>/<name>/locales/*.json`을 하나의 맵으로 묶어 돌려준다 (`D:src/ipc/handlers/config.rs:200-234`). GUI는 이를 `mod_<name>` 네임스페이스로 쓴다. 이 경로 계산은 `module.path`가 아니라 **모듈 이름으로 만든 경로**라서, ZIP 모듈(`.extracted/<name>`)이나 폴더명이 name과 다른 모듈에서는 locales가 비어 나온다.
 
 ---

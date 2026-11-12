@@ -135,7 +135,9 @@
     "placeholder": "Type a command",
     "send": "Send",
     "danger_title": "This is a dangerous command",
-    "danger_message": "Really send {{command}}?"
+    "danger_message": "Really send {{command}}?",
+    "danger_again": "'{{command}}' is hard to undo. Press send once more to run it.",
+    "danger_again_described": "{{description}}. Press send once more to run it."
   },
   "settings": {
     "game": "Game settings",
@@ -172,7 +174,8 @@
       "manual": "Manual",
       "scheduled": "Scheduled",
       "pre-update": "Before update",
-      "pre-restore": "Before restore"
+      "pre-restore": "Before restore",
+      "imported": "Imported"
     }
   },
   "agreements": {
