@@ -659,6 +659,30 @@ mod tests {
         base: Arc<Mutex<String>>,
         waiting: Arc<Mutex<std::collections::HashMap<String, axum::extract::ws::WebSocket>>>,
         tunnels: Arc<std::sync::atomic::AtomicUsize>,
+        /// `proxy` 앞의 연결을 끊는 표시: 취소하면 그때 이어 둔 연결이 모두 끊긴다 (`/api/cut-once`)
+        cut: Arc<Mutex<CancellationToken>>,
+    }
+
+    /// 원격 데몬 앞의 TCP 중계. 릴레이가 알리는 주소를 이것으로 바꾼다 (터널은 그대로 원격 데몬에 붙는다).
+    /// 새 연결은 `delay` 뒤에 잇고, `state.cut`이 취소되면 그때 이어 둔 연결을 끊는다
+    async fn proxy(state: &Relay, delay: Duration) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream = *state.port.lock().unwrap();
+        state.endpoint.lock().unwrap()["port"] = json!(listener.local_addr().unwrap().port());
+        let cut = state.cut.clone();
+        tokio::spawn(async move {
+            while let Ok((mut near, _)) = listener.accept().await {
+                let cut = cut.lock().unwrap().clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(delay).await;
+                    let Ok(mut far) = tokio::net::TcpStream::connect(("127.0.0.1", upstream)).await else { return };
+                    tokio::select! {
+                        _ = tokio::io::copy_bidirectional(&mut near, &mut far) => {}
+                        () = cut.cancelled() => {}
+                    }
+                });
+            }
+        });
     }
 
     /// 두 웹소켓의 프레임을 잇는다 (릴레이 `TunnelHub` 흉내)
@@ -791,6 +815,10 @@ mod tests {
                 }),
             )
             .route(
+                "/api/cut-once",
+                get(cut_once(state.cut.clone())).post(cut_once(state.cut.clone())),
+            )
+            .route(
                 "/api/stream",
                 get(|| async {
                     let chunks = futures_util::stream::once(async { Ok::<_, std::io::Error>(axum::body::Bytes::from("first\n")) })
@@ -815,6 +843,21 @@ mod tests {
         }
         tokio::spawn(server::serve(listener, Arc::new(tls), server::router(routes, ctx), cancel.clone()));
         (dir, cancel)
+    }
+
+    /// 처음 받은 요청은 원격 데몬이 받은 뒤 연결이 끊긴다(`proxy`). 다시 오면 답한다
+    fn cut_once(cut: Arc<Mutex<CancellationToken>>) -> impl Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Json<Value>> + Send>> + Clone + Send + Sync + 'static {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        move || {
+            let (calls, cut) = (calls.clone(), cut.clone());
+            Box::pin(async move {
+                if calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                    std::mem::take(&mut *cut.lock().unwrap()).cancel();
+                    tokio::time::sleep(RESPONSE_TIMEOUT * 3).await;
+                }
+                Json(json!({ "ok": true }))
+            })
+        }
     }
 
     fn get_req(headers: &[(&str, &str)]) -> Request<Body> {
@@ -893,6 +936,26 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(2500)).await;
         let (status, _) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200);
+        assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    /// 열어 둔 HTTP/2 연결이 요청이 나간 뒤 끊기면, 원격 데몬이 받았는지 모르므로 읽기만 새 연결로 다시 보내고
+    /// 바꾸는 요청은 다시 보내지 않는다
+    #[tokio::test]
+    async fn after_the_shared_connection_drops_only_a_read_is_sent_again() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        proxy(&state, Duration::ZERO).await;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let send = |req| forward(&file, Some(relay.clone()), "host-b", "/api/cut-once", req, CancellationToken::new());
+
+        let (status, body) = json_of(send(get_req(&[])).await).await;
+        assert_eq!((status, body), (200, json!({ "ok": true })));
+        let (status, body) = json_of(send(Request::post("/ignored").body(Body::empty()).unwrap()).await).await;
+        assert_eq!((status, body["error_code"].as_str()), (504, Some("remote_timeout")));
         assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
 
