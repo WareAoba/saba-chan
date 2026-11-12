@@ -1791,8 +1791,8 @@ fn parsed(words: &[String]) -> Option<crate::cli::Cli> {
 pub fn refuse(words: &[String]) -> Option<String> {
     use crate::cli::{Cmd, UpdateCmd};
     match parsed(words)?.cmd? {
-        // 되돌리기는 데몬과 이 프로그램을 끝낸다
-        Cmd::Shell | Cmd::Tui { .. } | Cmd::Completions { .. } | Cmd::Install(_) | Cmd::Update(UpdateCmd::Rollback) => Some(t!("tui.not_here")),
+        // 되돌리기와 (데몬·GUI를 고치는) 복구는 데몬과 이 프로그램을 끝낸다
+        Cmd::Shell | Cmd::Tui { .. } | Cmd::Completions { .. } | Cmd::Install(_) | Cmd::Update(UpdateCmd::Rollback | UpdateCmd::Repair) => Some(t!("tui.not_here")),
         Cmd::Gui { .. } => Some(t!("tui.use_switch")),
         Cmd::Monitor(a) if a.watch => Some(t!("tui.not_here")),
         // 모듈·익스텐션만 적용하는 것은 업데이터를 띄우지 않는다: 메뉴 안에서 된다
@@ -2156,6 +2156,7 @@ mod tests {
         assert!(refuse(&shlex::split("update apply saba-core").unwrap()).is_some());
         assert!(refuse(&shlex::split("update apply").unwrap()).is_some());
         assert!(refuse(&shlex::split("update rollback").unwrap()).is_some());
+        assert!(refuse(&shlex::split("update repair").unwrap()).is_some());
     }
 
     /// 찾기 결과에 보이는 화면의 같은 명령은 실제 명령이다

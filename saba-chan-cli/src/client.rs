@@ -1276,6 +1276,14 @@ impl Api {
     pub async fn update_rollback(&self, relaunch: &[String]) -> Result<Value> {
         self.post("/api/updates/rollback", json!({ "relaunch": relaunch })).await
     }
+    /// GET /api/updates/repair — 점검 요약과 지금 판으로 다시 받을 것(`repair`)·받을 수 없는 것(`unavailable`)
+    pub async fn update_repair_plan(&self) -> Result<Value> {
+        self.get_slow("/api/updates/repair").await
+    }
+    /// POST /api/updates/repair — 고칠 것을 다시 받아 적용한다 (`requires_updater`면 `launch_updater`)
+    pub async fn update_repair(&self) -> Result<Value> {
+        self.post_long("/api/updates/repair", json!({})).await
+    }
     pub async fn update_integrity(&self) -> Result<Value> {
         self.get_slow("/api/updates/integrity").await
     }

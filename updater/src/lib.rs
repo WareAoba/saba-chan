@@ -213,6 +213,25 @@ pub struct ComponentVersion {
     pub installed: bool,
 }
 
+/// 설치 점검·복구 계획 (`UpdateManager::repair_plan`)
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct RepairPlan {
+    /// 지금 판 그대로 다시 받을 것
+    pub repair: Vec<RepairItem>,
+    /// 지금 판을 받을 수 없는 것 (릴리즈가 다른 판을 내주거나 없다)
+    pub unavailable: Vec<RepairItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RepairItem {
+    pub component: String,
+    pub display_name: String,
+    /// 설치된 판 (모르면 빈 값)
+    pub installed: String,
+    /// 확인한 릴리즈가 내주는 판
+    pub offered: Option<String>,
+}
+
 /// 전체 업데이트/설치 상태 정보
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateStatus {
@@ -714,6 +733,39 @@ impl UpdateManager {
     /// 릴리즈 manifest의 sha256은 zip의 해시라 설치된 파일과 직접 비교할 수 없다
     pub fn verify_integrity(&self) -> integrity::IntegrityReport {
         integrity::verify_installed()
+    }
+
+    /// 무결성 검사에서 바뀌었거나(`Tampered`) 파일이 없어진(`FileNotFound`) 구성요소를 지금 설치된 판 그대로 다시 받을 계획.
+    /// 확인한 릴리즈가 그 판을 내주는 것만 고친다. 다른 판을 내주거나(업데이트가 있다) 릴리즈에 없으면 `unavailable`
+    pub fn repair_plan(&self, report: &integrity::IntegrityReport) -> RepairPlan {
+        let mut plan = RepairPlan::default();
+        let broken = report.components.iter().filter(|c| matches!(c.status, integrity::IntegrityStatus::Tampered | integrity::IntegrityStatus::FileNotFound));
+        for c in broken {
+            let status = self.status.components.iter().find(|s| s.component.manifest_key() == c.component && s.installed);
+            let item = RepairItem {
+                component: c.component.clone(),
+                display_name: c.display_name.clone(),
+                installed: status.map(|s| s.current_version.clone()).unwrap_or_default(),
+                offered: status.and_then(|s| s.latest_version.clone()),
+            };
+            if !item.installed.is_empty() && item.offered.as_deref() == Some(item.installed.as_str()) {
+                plan.repair.push(item);
+            } else {
+                plan.unavailable.push(item);
+            }
+        }
+        plan
+    }
+
+    /// 계획의 고칠 것을 다시 받을 수 있게 표시한다 (받기·적용은 업데이트와 같은 `download_component`·`apply_single_component`)
+    pub fn mark_for_repair(&mut self, plan: &RepairPlan) {
+        for comp in &mut self.status.components {
+            if plan.repair.iter().any(|r| r.component == comp.component.manifest_key()) {
+                comp.update_available = true;
+                comp.downloaded = false;
+                comp.downloaded_path = None;
+            }
+        }
     }
 
     fn relay_client(&self) -> relay::RelayClient {

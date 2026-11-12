@@ -1391,6 +1391,8 @@ pub enum UpdateCmd {
     },
     /// Verify installed files against the release
     Integrity,
+    /// Re-download changed or missing parts at the installed version
+    Repair,
     /// Go back to the version before the last update
     Rollback,
     /// Show or change update settings: KEY=VALUE ...

@@ -841,7 +841,13 @@
     "rolling_back": "Retour en arrière...",
     "rollback_launched": "Programme de mise à jour lancé. Le daemon s'arrête pour revenir en arrière.",
     "rollback_after": "Saba-chan redémarrera après le retour en arrière. Vérifiez ensuite : saba-chan update last",
-    "no_rollback": "Aucune version à laquelle revenir. La version précédente n'est conservée après une mise à jour que jusqu'à la suivante."
+    "no_rollback": "Aucune version à laquelle revenir. La version précédente n'est conservée après une mise à jour que jusqu'à la suivante.",
+    "repair_checking": "Vérification de l'installation...",
+    "repair_list": "Éléments à retélécharger : {{list}}",
+    "repaired": "Réparé : {{list}}",
+    "nothing_to_repair": "Rien à réparer.",
+    "repair_unavailable": "{{name}} : la version installée ne peut pas être retéléchargée. Corrigez-le en mettant à jour : saba-chan update download && saba-chan update apply",
+    "repair_failed": "Certains éléments n'ont pas pu être réparés. Consultez les messages ci-dessus."
   },
   "validate": {
     "blocked": "Le serveur ne peut pas démarrer tant que ces points ne sont pas corrigés.",
@@ -945,6 +951,7 @@
       "update.apply": "Installer les mises à jour téléchargées",
       "update.last": "Résultat de la dernière mise à jour",
       "update.integrity": "Comparer les fichiers installés avec la version publiée",
+      "update.repair": "Retélécharger les éléments modifiés ou manquants dans la version installée",
       "update.rollback": "Revenir à la version précédente",
       "update.config": "Voir ou modifier les réglages de mise à jour : clé=valeur ...",
       "config": "Réglages de l'application",

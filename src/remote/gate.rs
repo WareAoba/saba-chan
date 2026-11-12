@@ -330,6 +330,8 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/updates/last-result"),
     deny("DELETE", "/api/updates/last-result"),
     deny("GET", "/api/updates/integrity"),
+    deny("GET", "/api/updates/repair"),
+    deny("POST", "/api/updates/repair"),
     deny("GET", "/api/updates/config"),
     deny("PUT", "/api/updates/config"),
     deny("POST", "/api/updates/phase/ack"),

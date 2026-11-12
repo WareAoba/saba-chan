@@ -841,7 +841,13 @@
     "rolling_back": "正在回退...",
     "rollback_launched": "更新程序已启动。守护进程正在关闭以进行回退。",
     "rollback_after": "回退后 Saba-chan 将重启。之后请检查：saba-chan update last",
-    "no_rollback": "没有可以回退的版本。更新后只保留上一个版本，直到下一次更新。"
+    "no_rollback": "没有可以回退的版本。更新后只保留上一个版本，直到下一次更新。",
+    "repair_checking": "正在检查安装...",
+    "repair_list": "要重新下载的组件：{{list}}",
+    "repaired": "已修复：{{list}}",
+    "nothing_to_repair": "没有需要修复的。",
+    "repair_unavailable": "{{name}}：当前版本无法重新下载。请通过更新修复：saba-chan update download && saba-chan update apply",
+    "repair_failed": "部分组件未能修复。请查看上面的提示。"
   },
   "validate": {
     "blocked": "修复这些问题之前服务器无法启动。",
@@ -945,6 +951,7 @@
       "update.apply": "安装已下载的更新",
       "update.last": "上次更新的结果",
       "update.integrity": "将已安装的文件与发布版本比对",
+      "update.repair": "按当前版本重新下载已更改或缺失的组件",
       "update.rollback": "回退到上一个版本",
       "update.config": "查看或更改更新设置：键=值 ...",
       "config": "应用设置",

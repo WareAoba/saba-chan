@@ -841,7 +841,13 @@
     "rolling_back": "되돌리는 중...",
     "rollback_launched": "업데이터를 띄웠어요. 되돌리기 위해 데몬이 꺼져요.",
     "rollback_after": "되돌린 뒤 사바쨩이 다시 켜져요. 그다음 확인: saba-chan update last",
-    "no_rollback": "되돌릴 판이 없어요. 업데이트한 뒤 다음 업데이트 전까지만 직전 판을 보관해요."
+    "no_rollback": "되돌릴 판이 없어요. 업데이트한 뒤 다음 업데이트 전까지만 직전 판을 보관해요.",
+    "repair_checking": "설치 점검 중...",
+    "repair_list": "다시 받을 구성요소: {{list}}",
+    "repaired": "복구했어요: {{list}}",
+    "nothing_to_repair": "고칠 게 없어요.",
+    "repair_unavailable": "{{name}}: 지금 판은 다시 받을 수 없어요. 업데이트로 고치세요: saba-chan update download && saba-chan update apply",
+    "repair_failed": "일부 구성요소를 고치지 못했어요. 위의 안내를 확인하세요."
   },
   "validate": {
     "blocked": "이 문제를 고쳐야 서버를 켤 수 있어요.",
@@ -945,6 +951,7 @@
       "update.apply": "받은 업데이트 설치",
       "update.last": "마지막 업데이트 결과",
       "update.integrity": "설치된 파일을 릴리스와 대조",
+      "update.repair": "바뀌었거나 없어진 구성요소를 지금 판 그대로 다시 받기",
       "update.rollback": "직전 판으로 되돌리기",
       "update.config": "업데이트 설정 보기·바꾸기: 키=값 ...",
       "config": "앱 설정",

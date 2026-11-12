@@ -91,21 +91,102 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
                 }
                 output::print_table(t);
                 say!();
-                say!(
-                    "{}",
-                    t!(
-                        "update.integrity_summary",
-                        verified = output::show(r.get("verified").unwrap_or(&Value::Null)),
-                        failed = output::show(r.get("failed").unwrap_or(&Value::Null)),
-                        skipped = output::show(r.get("skipped").unwrap_or(&Value::Null))
-                    )
-                );
+                say!("{}", integrity_summary(r));
             });
             Ok(())
         }
+        UpdateCmd::Repair => repair(ctx).await,
         UpdateCmd::Rollback => rollback(ctx).await,
         UpdateCmd::Config { pairs } => config(ctx, &pairs).await,
     }
+}
+
+fn names(items: &[Value]) -> String {
+    items.iter().map(component_name).collect::<Vec<_>>().join(", ")
+}
+
+/// `update repair`: 데몬이 점검하고, 바뀌었거나 없어진 구성요소만 지금 판 그대로 다시 받아 덮는다.
+/// 데몬·GUI·업데이터가 끼면 업데이트와 같은 길(다시 시작을 묻고 업데이터)로 간다
+async fn repair(ctx: &Ctx) -> Result<()> {
+    let spin = crate::progress::spinner(&t!("update.repair_checking"));
+    let plan = ctx.api.update_repair_plan().await;
+    spin.finish_and_clear();
+    let plan = plan?;
+    let list = |key: &str| plan.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
+    let (todo, unavailable) = (list("repair"), list("unavailable"));
+    if !ctx.out.json {
+        say!("{}", integrity_summary(&plan));
+    }
+    for u in &unavailable {
+        ctx.out.warn(&t!("update.repair_unavailable", name = component_name(u)));
+    }
+    if todo.is_empty() {
+        if !unavailable.is_empty() {
+            return Err(crate::error::CliError::Partial { message: t!("update.repair_failed"), data: plan }.into());
+        }
+        ctx.out.data(&plan, |_| say!("{}", t!("update.nothing_to_repair")));
+        return Ok(());
+    }
+    if !ctx.out.json {
+        say!("{}", t!("update.repair_list", list = names(&todo)));
+    }
+    // 받는 동안 받기 시작한 구성요소를 한 줄씩 알린다 (진행률에 잡히지 않을 만큼 빨리 받은 것은 끝난 뒤에)
+    let mut shown: Vec<String> = Vec::new();
+    let show = |key: &str, shown: &mut Vec<String>| {
+        if let Some(item) = todo.iter().find(|i| s(i, "component") == key).filter(|_| !shown.iter().any(|k| k == key)) {
+            shown.push(key.to_string());
+            if !ctx.out.json {
+                say!("{}  {} {}", t!("update.downloading"), component_name(item), s(item, "installed"));
+            }
+        }
+    };
+    let req = ctx.api.update_repair();
+    tokio::pin!(req);
+    let r = loop {
+        tokio::select! {
+            r = &mut req => break r,
+            _ = tokio::time::sleep(Duration::from_millis(400)) => {
+                if let Ok(p) = ctx.api.update_progress().await {
+                    show(s(&p, "component"), &mut shown);
+                }
+            }
+        }
+    };
+    let r = crate::client::partial(r)?;
+    for key in r.get("repaired").and_then(Value::as_array).into_iter().flatten().chain(r.get("needs_updater").and_then(Value::as_array).into_iter().flatten()) {
+        show(key.as_str().unwrap_or_default(), &mut shown);
+    }
+    for e in r.get("errors").and_then(Value::as_array).into_iter().flatten() {
+        ctx.out.warn(&output::show(e));
+    }
+    if r.get("requires_updater").and_then(Value::as_bool) == Some(true) {
+        return hand_to_updater(ctx, r).await;
+    }
+    let repaired: Vec<Value> = r
+        .get("repaired")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|k| todo.iter().find(|i| i.get("component") == Some(k)).cloned())
+        .collect();
+    let failed = r.get("errors").and_then(Value::as_array).is_some_and(|e| !e.is_empty()) || !unavailable.is_empty();
+    if !repaired.is_empty() && !(failed && ctx.out.json) {
+        ctx.out.done(&t!("update.repaired", list = names(&repaired)), &r);
+    }
+    if failed {
+        return Err(crate::error::CliError::Partial { message: t!("update.repair_failed"), data: r }.into());
+    }
+    Ok(())
+}
+
+/// `정상 9 · 바뀜/읽기 실패 1 · 파일 없음 1` (`update integrity`와 같은 줄)
+fn integrity_summary(r: &Value) -> String {
+    t!(
+        "update.integrity_summary",
+        verified = output::show(r.get("verified").unwrap_or(&Value::Null)),
+        failed = output::show(r.get("failed").unwrap_or(&Value::Null)),
+        skipped = output::show(r.get("skipped").unwrap_or(&Value::Null))
+    )
 }
 
 /// 되돌릴 수 있는 판을 알리는 줄. 남긴 판이 없으면 None
@@ -335,6 +416,11 @@ async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
         }
         return Ok(());
     }
+    hand_to_updater(ctx, r).await
+}
+
+/// 데몬·GUI·업데이터가 낀 적용(`requires_updater`): 다시 시작을 묻고 데몬에 업데이터를 띄우게 한 뒤, 다시 뜬 데몬의 결과를 보이고 끝낸다
+async fn hand_to_updater(ctx: &Ctx, r: Value) -> Result<()> {
     // 실패한 구성요소가 있어도 코어 업데이트는 막지 않는다 (GUI와 같다): 알리고 종료 코드로 실패를 남긴다
     let (_, failed) = apply_outcome(&r);
     if failed {

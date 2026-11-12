@@ -841,7 +841,13 @@
     "rolling_back": "Revirtiendo...",
     "rollback_launched": "Actualizador iniciado. El daemon se está cerrando para revertir.",
     "rollback_after": "Saba-chan se reiniciará tras revertir. Después revisa: saba-chan update last",
-    "no_rollback": "No hay ninguna versión a la que volver. La versión anterior solo se guarda tras una actualización y hasta la siguiente."
+    "no_rollback": "No hay ninguna versión a la que volver. La versión anterior solo se guarda tras una actualización y hasta la siguiente.",
+    "repair_checking": "Revisando la instalación...",
+    "repair_list": "Partes que se volverán a descargar: {{list}}",
+    "repaired": "Reparado: {{list}}",
+    "nothing_to_repair": "No hay nada que reparar.",
+    "repair_unavailable": "{{name}}: la versión instalada no se puede volver a descargar. Corrígelo actualizando: saba-chan update download && saba-chan update apply",
+    "repair_failed": "No se pudieron reparar algunas partes. Revisa los mensajes de arriba."
   },
   "validate": {
     "blocked": "El servidor no puede iniciarse hasta que se corrijan estos puntos.",
@@ -945,6 +951,7 @@
       "update.apply": "Instalar las actualizaciones descargadas",
       "update.last": "Resultado de la última actualización",
       "update.integrity": "Comparar los archivos instalados con la versión publicada",
+      "update.repair": "Volver a descargar las partes cambiadas o que faltan en la versión instalada",
       "update.rollback": "Volver a la versión anterior",
       "update.config": "Ver o cambiar los ajustes de actualización: clave=valor ...",
       "config": "Ajustes de la app",

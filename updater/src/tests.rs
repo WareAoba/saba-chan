@@ -2242,3 +2242,65 @@ fn the_exe_list_comes_from_versions_toml() {
     let found: Vec<String> = manager.old_exe_backups().into_iter().map(|(_, exe, ..)| exe).collect();
     assert_eq!(found, vec!["saba-runner.exe".to_string()]);
 }
+
+// 설치 점검·복구: 바뀌었거나 없어진 구성요소만, 확인한 릴리즈가 지금 설치된 판을 내줄 때만 그 판으로 다시 받는다.
+// 다른 판을 내주면(업데이트가 있음) 고치지 않고 알린다. 읽지 못한 것·멀쩡한 것은 고르지 않는다
+#[test]
+fn repair_picks_broken_components_at_the_installed_version() {
+    use crate::integrity::{ComponentIntegrity, IntegrityStatus};
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().to_str().unwrap());
+    let at = |component: Component, current: &str, latest: &str| crate::ComponentVersion {
+        current_version: current.into(),
+        latest_version: Some(latest.into()),
+        update_available: current != latest,
+        downloaded: false,
+        downloaded_path: None,
+        ..staged(component, tmp.path())
+    };
+    manager.status.components = vec![
+        at(Component::Cli, "0.1.14", "0.1.14"),
+        at(Component::Module("minecraft".into()), "1.8.2", "1.8.2"),
+        at(Component::Gui, "0.1.14", "0.1.15"),
+        at(Component::CoreDaemon, "0.1.14", "0.1.14"),
+        at(Component::Module("palworld".into()), "2.0.0", "2.0.0"),
+    ];
+    let check = |key: &str, status: IntegrityStatus| ComponentIntegrity {
+        component: key.into(),
+        display_name: key.into(),
+        status,
+        expected_hash: None,
+        actual_hash: None,
+        file_path: None,
+        message: String::new(),
+    };
+    let report = crate::integrity::IntegrityReport {
+        checked_at: String::new(),
+        overall: crate::integrity::OverallIntegrity::TamperDetected,
+        components: vec![
+            check("cli", IntegrityStatus::Tampered),
+            check("module-minecraft", IntegrityStatus::FileNotFound),
+            check("gui", IntegrityStatus::Tampered),
+            check("saba-core", IntegrityStatus::Verified),
+            check("module-palworld", IntegrityStatus::Error),
+            check("ext-gone", IntegrityStatus::FileNotFound),
+        ],
+        total: 6,
+        verified: 1,
+        failed: 3,
+        skipped: 2,
+    };
+
+    let plan = manager.repair_plan(&report);
+    let keys = |items: &[crate::RepairItem]| items.iter().map(|i| (i.component.clone(), i.installed.clone(), i.offered.clone())).collect::<Vec<_>>();
+    assert_eq!(
+        keys(&plan.repair),
+        vec![("cli".into(), "0.1.14".into(), Some("0.1.14".into())), ("module-minecraft".into(), "1.8.2".into(), Some("1.8.2".into()))]
+    );
+    assert_eq!(keys(&plan.unavailable), vec![("gui".into(), "0.1.14".into(), Some("0.1.15".into())), ("ext-gone".into(), String::new(), None)]);
+
+    // 고칠 것만 다시 받을 수 있게 표시한다 (받기·적용은 업데이트와 같은 길이다)
+    manager.mark_for_repair(&plan);
+    let ready: Vec<String> = manager.status.components.iter().filter(|c| c.update_available).map(|c| c.component.manifest_key()).collect();
+    assert_eq!(ready, vec!["cli", "module-minecraft", "gui"]);
+}

@@ -38,7 +38,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use saba_chan_updater_lib::{
-    Component, DownloadProgress, UpdateConfig, UpdateManager,
+    Component, DownloadProgress, IntegrityStatus, UpdateConfig, UpdateManager,
 };
 
 use super::update_phase::{self, Decision, LiveState, Phase, PhaseState, ReadyReason};
@@ -296,6 +296,7 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/install", post(install_updates))
         .route("/api/updates/last-result", get(get_last_result).delete(clear_last_result))
         .route("/api/updates/integrity", get(check_integrity))
+        .route("/api/updates/repair", get(get_repair).post(repair))
         .route("/api/updates/config", get(get_config))
         .route("/api/updates/config", put(set_config))
         .route("/api/updates/phase/ack", post(ack_phase))
@@ -1939,6 +1940,84 @@ async fn check_integrity(
     }))
 }
 
+/// 설치 점검: 무결성 검사와 지금 판 그대로 다시 받을 계획. 고칠 것이 있는데 확인한 적이 없으면 먼저 확인한다 (받기와 같다).
+/// `mark`면 고칠 것을 다시 받을 수 있게 표시한다
+async fn repair_plan(state: &UpdateState, mark: bool) -> Result<Value, String> {
+    let report = state.manager.read().await.verify_integrity();
+    let mut mgr = state.manager.write().await;
+    let broken = report.components.iter().any(|c| matches!(c.status, IntegrityStatus::Tampered | IntegrityStatus::FileNotFound));
+    if broken && mgr.get_status().components.is_empty() {
+        mgr.check_for_updates().await.map_err(|e| format!("Update check failed: {}", e))?;
+    }
+    let plan = mgr.repair_plan(&report);
+    if mark && !plan.repair.is_empty() {
+        mgr.mark_for_repair(&plan);
+    }
+    Ok(json!({
+        "ok": true,
+        "verified": report.verified,
+        "failed": report.failed,
+        "skipped": report.skipped,
+        "repair": plan.repair,
+        "unavailable": plan.unavailable,
+    }))
+}
+
+/// GET /api/updates/repair — 설치 점검: 무결성 요약(`verified`·`failed`·`skipped`)과 바뀌었거나 없어진 구성요소 중
+/// 지금 판 그대로 다시 받을 것(`repair: [{component, display_name, installed, offered}]`)과 받을 수 없는 것(`unavailable`, 다른 판이 나왔거나 릴리즈에 없다)
+async fn get_repair(State(state): State<UpdateState>) -> axum::response::Response {
+    match repair_plan(&state, false).await {
+        Ok(plan) => Json(plan).into_response(),
+        Err(e) => Json(json!({ "ok": false, "error": e })).into_response(),
+    }
+}
+
+/// POST /api/updates/repair — 점검한 뒤 고칠 것만 지금 판 그대로 다시 받아(`download_components_with`) 적용한다(`apply_updates_with`).
+/// 데몬·GUI·업데이터가 끼면 적용하지 않고 `apply`처럼 `requires_updater`·`needs_updater`로 돌려준다(부른 쪽이 `launch-updater`).
+/// 답: GET의 계획에 고친 키 `repaired`, `needs_updater`, `requires_updater`, 받거나 적용하지 못한 것 `errors`
+async fn repair(State(state): State<UpdateState>) -> axum::response::Response {
+    use crate::ipc::internal::into_internal;
+    let plan = match repair_plan(&state, true).await {
+        Ok(plan) => plan,
+        Err(e) => return Json(json!({ "ok": false, "error": e })).into_response(),
+    };
+    let keys: Vec<String> = plan["repair"].as_array().into_iter().flatten().filter_map(|r| r["component"].as_str().map(str::to_string)).collect();
+    if keys.is_empty() {
+        return Json(repair_result(plan, &json!({}), &json!({}))).into_response();
+    }
+    let downloaded = into_internal(download_components_with(state.clone(), DownloadRequest { components: keys }).await).await.body;
+    let got = downloaded_keys(&downloaded);
+    let applied = if got.is_empty() {
+        json!({})
+    } else {
+        into_internal(apply_updates_with(state, ApplyRequest { components: got, ..Default::default() }).await).await.body
+    };
+    Json(repair_result(plan, &downloaded, &applied)).into_response()
+}
+
+fn downloaded_keys(downloaded: &Value) -> Vec<String> {
+    downloaded["downloaded"].as_array().into_iter().flatten().filter_map(|d| d["component"].as_str().map(str::to_string)).collect()
+}
+
+/// 계획에 받기·적용 결과를 더한다. 받아서 데몬이 바로 적용한 것만 고친 것이다
+fn repair_result(mut plan: Value, downloaded: &Value, applied: &Value) -> Value {
+    let applied_names: Vec<&str> = applied["applied"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    let repaired: Vec<String> = downloaded_keys(downloaded).into_iter().filter(|k| applied_names.contains(&Component::from_manifest_key(k).display_name().as_str())).collect();
+    let mut errors: Vec<Value> = downloaded["errors"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|e| json!(format!("{}: {}", e["component"].as_str().unwrap_or_default(), e["error"].as_str().unwrap_or_default())))
+        .collect();
+    errors.extend(applied["errors"].as_array().into_iter().flatten().cloned());
+    plan["ok"] = json!(errors.is_empty());
+    plan["repaired"] = json!(repaired);
+    plan["needs_updater"] = applied.get("needs_updater").cloned().unwrap_or_else(|| json!([]));
+    plan["requires_updater"] = json!(applied["requires_updater"].as_bool() == Some(true));
+    plan["errors"] = json!(errors);
+    plan
+}
+
 /// GET /api/updates/config
 async fn get_config(
     State(state): State<UpdateState>,
@@ -2898,6 +2977,26 @@ mod tests {
         file.set_section("updates", json!({ "relay_base_url": "http://old", "relay_url": "http://new", "channel": "beta" })).unwrap();
         let both = load_updater_config_from(&file);
         assert_eq!((both.relay_url.as_deref(), both.channel.as_str()), (Some("http://new"), "beta"));
+    }
+
+    /// 복구 답: 받지 못한 것과 적용하지 못한 것은 오류로 모으고, 받아서 적용한 것만 고친 것(`repaired`)이다
+    #[test]
+    fn a_repair_reports_what_was_fixed_and_what_failed() {
+        let plan = json!({ "ok": true, "verified": 9, "failed": 1, "skipped": 1, "repair": [{ "component": "cli" }, { "component": "module-minecraft" }], "unavailable": [] });
+        let downloaded = json!({ "ok": false, "downloaded": [{ "component": "module-minecraft", "asset": "m.zip" }], "errors": [{ "component": "cli", "error": "net down" }] });
+        let applied = json!({ "ok": true, "applied": ["Module: minecraft"], "needs_updater": [], "requires_updater": false, "errors": [] });
+        let r = super::repair_result(plan.clone(), &downloaded, &applied);
+        assert_eq!(r["ok"], json!(false));
+        assert_eq!(r["repaired"], json!(["module-minecraft"]));
+        assert_eq!(r["errors"], json!(["cli: net down"]));
+        assert_eq!((r["verified"].clone(), r["requires_updater"].clone()), (json!(9), json!(false)));
+
+        // 데몬·GUI가 끼면 고친 것은 업데이터가 적용한 뒤에 안다: 넘길 목록만 싣는다
+        let core = json!({ "ok": true, "downloaded": [{ "component": "saba-core" }], "errors": [] });
+        let handed = json!({ "ok": true, "applied": [], "needs_updater": ["saba-core"], "requires_updater": true, "errors": [] });
+        let r = super::repair_result(plan, &core, &handed);
+        assert_eq!((r["ok"].clone(), r["requires_updater"].clone(), r["needs_updater"].clone()), (json!(true), json!(true), json!(["saba-core"])));
+        assert_eq!(r["repaired"], json!([]));
     }
 
     fn kept(version: &str, replaced_by: &str) -> saba_chan_updater_lib::live_apply::PreviousVersion {

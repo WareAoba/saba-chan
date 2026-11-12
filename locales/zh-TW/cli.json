@@ -841,7 +841,13 @@
     "rolling_back": "正在退回...",
     "rollback_launched": "更新程式已啟動。常駐程式正在關閉以進行退回。",
     "rollback_after": "退回後 Saba-chan 會重新啟動。之後請檢查：saba-chan update last",
-    "no_rollback": "沒有可以退回的版本。更新後只保留上一個版本，直到下一次更新。"
+    "no_rollback": "沒有可以退回的版本。更新後只保留上一個版本，直到下一次更新。",
+    "repair_checking": "正在檢查安裝...",
+    "repair_list": "要重新下載的元件：{{list}}",
+    "repaired": "已修復：{{list}}",
+    "nothing_to_repair": "沒有需要修復的。",
+    "repair_unavailable": "{{name}}：目前版本無法重新下載。請透過更新修復：saba-chan update download && saba-chan update apply",
+    "repair_failed": "部分元件未能修復。請查看上方的提示。"
   },
   "validate": {
     "blocked": "修正這些問題之前伺服器無法啟動。",
@@ -945,6 +951,7 @@
       "update.apply": "安裝已下載的更新",
       "update.last": "上次更新的結果",
       "update.integrity": "將已安裝的檔案與發行版本比對",
+      "update.repair": "依目前版本重新下載已變更或遺失的元件",
       "update.rollback": "退回上一個版本",
       "update.config": "檢視或更改更新設定：鍵=值 ...",
       "config": "應用設定",

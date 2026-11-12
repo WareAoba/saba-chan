@@ -841,7 +841,13 @@
     "rolling_back": "元に戻しています...",
     "rollback_launched": "アップデーターを起動しました。元に戻すためデーモンを終了しています。",
     "rollback_after": "元に戻した後にサバちゃんが再起動します。その後確認: saba-chan update last",
-    "no_rollback": "戻せるバージョンがありません。直前のバージョンはアップデート後、次のアップデートまでのみ保管します。"
+    "no_rollback": "戻せるバージョンがありません。直前のバージョンはアップデート後、次のアップデートまでのみ保管します。",
+    "repair_checking": "インストールを点検しています...",
+    "repair_list": "再ダウンロードする構成要素: {{list}}",
+    "repaired": "修復しました: {{list}}",
+    "nothing_to_repair": "修復するものはありません。",
+    "repair_unavailable": "{{name}}: 現在のバージョンは再ダウンロードできません。アップデートで直してください: saba-chan update download && saba-chan update apply",
+    "repair_failed": "一部の構成要素を修復できませんでした。上の案内を確認してください。"
   },
   "validate": {
     "blocked": "これらを修正するまでサーバーを起動できません。",
@@ -945,6 +951,7 @@
       "update.apply": "ダウンロードしたアップデートをインストール",
       "update.last": "最後のアップデートの結果",
       "update.integrity": "インストールされたファイルをリリースと照合",
+      "update.repair": "変更・欠落した構成要素を現在のバージョンのまま再ダウンロード",
       "update.rollback": "直前のバージョンに戻す",
       "update.config": "アップデート設定の表示・変更: キー=値 ...",
       "config": "アプリ設定",
