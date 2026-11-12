@@ -10,10 +10,11 @@ import { moduleSupports } from '../utils/helpers';
 import { extensionInstallMethod, versionBranchMethod } from '../utils/installMethod';
 import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/validation';
 import { useExtensions } from '../contexts/ExtensionContext';
-import { CliLine, changedForCli } from './CliLine';
+import { CliLine, SECRET_KEY, changedForCli } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon, SabaCheckbox, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
 import { type ResetChoice, type ResetScope, ResetServerDialog } from './servers/ResetServerDialog';
+import { Popover } from './ui/Popover';
 import { SabaNumberInput } from './ui/SabaUI';
 import { SaveBar } from './ui/SaveBar';
 import { LinkedText } from './ui/ScreenLink';
@@ -889,6 +890,105 @@ function GeneralTab({
     );
 }
 
+/** 모듈 설정이 아닌, 데몬이 인스턴스에 두는 칸의 화면 이름 (GeneralTab의 줄 이름과 같은 키) */
+const OWN_LABELS: Record<string, string> = {
+    server_version: 'server_settings.server_version',
+    auto_restart: 'shell.restart_on_crash',
+    restart_on_unknown_exit: 'shell.restart_on_unknown',
+    auto_update: 'server_settings.auto_update_label',
+    memory_limit_mb: 'memory_limit.label',
+    game_chat: 'game_chat.mode_label',
+    game_chat_keyword: 'game_chat.keyword_label',
+    stop_timeout: 'stop_timeout.label',
+    _launch_extra_args: 'launch_preview.extra_label',
+};
+
+/**
+ * 저장 막대의 "N개 바뀜" 칩 (사용자 11-12): 누르면 칸마다 `이전 → 새 값`과 칸 하나 되돌리기를 보인다.
+ * 다시 시작해야 적용되는 칸에는 설정 줄과 같은 표시를 붙인다.
+ */
+function ChangedFields({
+    keys,
+    values,
+    opened,
+    fields = [],
+    modNs,
+    onRevert,
+}: {
+    keys: string[];
+    values: SettingValues;
+    opened: SettingValues;
+    fields?: SettingField[];
+    modNs: string;
+    onRevert?: (key: string) => void;
+}) {
+    const { t } = useTranslation('gui');
+    const [open, setOpen] = useState(false);
+    if (!keys.length) return null;
+    const count = keys.length;
+    const text = (field: SettingField | undefined, key: string, v: unknown): string => {
+        if (v == null || v === '' || (Array.isArray(v) && !v.length)) return t('server_settings.value_empty');
+        if (field?.field_type === 'password' || SECRET_KEY.test(key)) return '••••';
+        if (field ? field.field_type === 'boolean' : ['true', 'false'].includes(String(v)))
+            return t(String(v) === 'true' ? 'server_settings.toggle_on' : 'server_settings.toggle_off');
+        const option = (opt: unknown) =>
+            t(`settings.${key}.options.${opt}`, { ns: modNs, nsSeparator: false, defaultValue: String(opt) });
+        if (Array.isArray(v)) return v.map(field?.options?.length ? option : String).join(', ');
+        if (field?.field_type === 'select') return option(v);
+        if (key === 'game_chat') return t(`game_chat.mode_${v}`, { defaultValue: String(v) });
+        return typeof v === 'object' ? JSON.stringify(v) : String(v);
+    };
+    return (
+        <Popover
+            open={open}
+            onOpenChange={setOpen}
+            side="top"
+            align="center"
+            label={t('server_settings.changed_title', { count })}
+            className="ss-changed"
+            trigger={
+                <button type="button" className="ss-changed-chip">
+                    {t('server_settings.changed_count', { count })}
+                </button>
+            }
+        >
+            <h5 className="ss-changed-title">{t('server_settings.changed_title', { count })}</h5>
+            <ul className="ss-changed-list">
+                {keys.map((key) => {
+                    const field = fields.find((f) => f.name === key);
+                    const name = field
+                        ? t(`${modNs}:settings.${key}.label`, { defaultValue: field.label || key })
+                        : OWN_LABELS[key]
+                          ? t(OWN_LABELS[key])
+                          : key;
+                    return (
+                        <li key={key} className="ss-changed-row">
+                            <div className="ss-changed-name">
+                                {name}
+                                {field?.restart_required && <span className="ss-chip">{t('server_settings.restart_badge')}</span>}
+                            </div>
+                            <div className="ss-changed-values">
+                                <s>{text(field, key, opened[key])}</s> → <b>{text(field, key, values[key])}</b>
+                            </div>
+                            {onRevert && (
+                                <button
+                                    type="button"
+                                    className="icon-btn"
+                                    data-tooltip={t('server_settings.revert_field', { name })}
+                                    aria-label={t('server_settings.revert_field', { name })}
+                                    onClick={() => onRevert(key)}
+                                >
+                                    <Icon name="undo" size="sm" />
+                                </button>
+                            )}
+                        </li>
+                    );
+                })}
+            </ul>
+        </Popover>
+    );
+}
+
 /** 저장 막대 위의 다시 시작 안내 (사용자 11-06 #5): [지금 다시 시작] [나중에] */
 export function RestartNotice({
     pending,
@@ -937,6 +1037,8 @@ interface ServerSettingsModalProps extends Omit<GeneralTabProps, 'portConflicts'
     openedSettings?: SettingValues;
     /** 기준 값으로 되돌린다 */
     revertSettings?: () => void;
+    /** 칸 하나만 기준 값으로 되돌린다 (바뀐 칸 목록) */
+    revertSetting?: (key: string) => void;
     /** 화면이 읽어 온 값을 넣는다 (바꾼 것으로 치지 않는다) */
     handleSettingLoaded?: (key: string, value: unknown) => void;
 }
@@ -966,6 +1068,7 @@ export function ServerSettingsModal({
     // 기준을 받지 못했으면(이 화면만 따로 그릴 때) 지금 값이 기준이다
     openedSettings = settingsValues,
     revertSettings,
+    revertSetting,
     handleSettingLoaded,
     // 서버 상세에 나눠 보이기: 'server' | 'saba' (GeneralTab 참고)
     section,
@@ -1099,7 +1202,19 @@ export function ServerSettingsModal({
                     onSave={handleSaveSettings}
                     onRevert={() => revertSettings?.()}
                     saveLabel={t('server_settings.save_settings')}
-                    extra={<CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />}
+                    extra={
+                        <>
+                            <ChangedFields
+                                keys={revertKeys}
+                                values={settingsValues}
+                                opened={openedSettings}
+                                fields={module?.settings?.fields}
+                                modNs={`mod_${settingsServer.module}`}
+                                onRevert={revertSetting}
+                            />
+                            <CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />
+                        </>
+                    }
                 />
             </div>
         </div>

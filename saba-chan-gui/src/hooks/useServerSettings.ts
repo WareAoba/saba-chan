@@ -467,6 +467,17 @@ export function useServerSettings({
         unsetFields.current = new Set(openedUnset.current);
     };
 
+    /** 바뀐 칸 목록의 칸 하나 되돌리기: 그 칸만 기준 값으로 돌리고 고친 칸 표시를 지운다 */
+    const revertSetting = (name: string) => {
+        setSettingsValues((prev) => {
+            if (name in openedSettings) return { ...prev, [name]: openedSettings[name] };
+            const { [name]: _gone, ...rest } = prev;
+            return rest;
+        });
+        touchedFields.current.delete(name);
+        if (openedUnset.current.has(name)) unsetFields.current.add(name);
+    };
+
     // ── handleInstallVersion ────────────────────────────────
     const handleInstallVersion = async () => {
         if (!settingsServer || !settingsValues.server_version) return;
@@ -962,6 +973,7 @@ export function useServerSettings({
         handleSettingChange,
         handleSettingLoaded,
         revertSettings,
+        revertSetting,
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,
