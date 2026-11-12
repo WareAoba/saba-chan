@@ -265,8 +265,6 @@
     "update": "Update",
     "update_to": "v{{version}} available",
     "updated": "Updated.",
-    "check_ok": "Check: uses only declared features.",
-    "check_failed": "Could not get the check result.",
     "check_undeclared": "Check: uses features not declared by the module ({{perms}}). Make sure you trust this module."
   },
   "plugins": {
@@ -427,6 +425,9 @@
     "off": "Off",
     "saved": "Changed.",
     "pc": "PC",
+    "guild_here": "This PC",
+    "guild_other_pc": "Another PC",
+    "guild_no_pc": "No PC",
     "no_guilds": "There are no Discord servers you can manage.",
     "other_pc": "This server is connected to another PC. Change it from that PC's /saba web link.",
     "err": {
@@ -538,6 +539,7 @@
     "channel_board": "Status board channel",
     "sleep_now": "Put to sleep now",
     "awake": "Awake",
+    "sleep_needs_pc": "Available once a PC is linked",
     "basics_desc": "Language and emoji for this server",
     "music_desc": "Plays music in voice channels",
     "reading_desc": "Reads chat aloud in voice channels",

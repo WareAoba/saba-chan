@@ -766,9 +766,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // ── 콘솔 팝아웃 (창은 Rust가 만든다) ──
         consolePopout: (instanceId: string, serverName: string) => invoke('console_popout', { instanceId, serverName }),
         consolePopoutList: () => invoke('console_popout_list'),
+        // 데몬이 나눈 낱말 조각(spans)도 늘 받는다 (DaemonLogLine이 칠한다)
         daemonConsole: (opts?: { since?: number; count?: number }) => {
             const { since, count } = opts || {};
-            const qs = queryString({ since, count: count || undefined });
+            const qs = queryString({ since, count: count || undefined, spans: 1 });
             return call('get', `/api/daemon/console${qs}`, undefined, 10000);
         },
         consolePopin: (instanceId: string) => invoke('console_popin', { instanceId }),

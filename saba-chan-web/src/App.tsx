@@ -17,7 +17,7 @@ import { createRelay } from './relay';
 import { useApp, useData } from './store';
 import type { PcEvent, SessionState, WebApi, WebSession } from './types';
 
-// 휴대폰은 아래 탭, 넓은 화면은 왼쪽 메뉴 (styles.css .tabs)
+// 휴대폰은 아래 탭, 넓은 화면은 맨 위 줄 탭 (앱 상단바와 같다, 사용자 2026-11-12. styles.css .tabs)
 // PC 없는 세션(hostId null)은 디스코드 탭만 열린다 — 나머지는 자물쇠를 달고 앱 설치를 안내한다
 const TABS = [
     { id: 'servers', icon: 'servers' },
@@ -132,32 +132,33 @@ export function App({ api, session }: AppProps) {
     if (!live) return <Gate phase={phase} reason={reason} />;
     return (
         <div className="shell">
-            <SessionBar session={session} />
-            <nav className="tabs" aria-label={t('tabs.label')}>
-                {TABS.map((x) => {
-                    const locked = noPc && x.id !== 'discord';
-                    return (
-                        <button
-                            key={x.id}
-                            type="button"
-                            className={clsx(tab === x.id && 'on', locked && 'tab-locked')}
-                            aria-current={tab === x.id ? 'page' : undefined}
-                            aria-label={locked ? t('tabs.locked', { name: t(`tabs.${x.id}`) }) : undefined}
-                            onClick={() => setTab(x.id)}
-                        >
-                            <span className="tab-icon">
-                                <Icon name={x.icon} />
-                                {locked && (
-                                    <span className="tab-lock">
-                                        <Icon name="lock" size={10} />
-                                    </span>
-                                )}
-                            </span>
-                            <span>{t(`tabs.${x.id}`)}</span>
-                        </button>
-                    );
-                })}
-            </nav>
+            <SessionBar session={session}>
+                <nav className="tabs" aria-label={t('tabs.label')}>
+                    {TABS.map((x) => {
+                        const locked = noPc && x.id !== 'discord';
+                        return (
+                            <button
+                                key={x.id}
+                                type="button"
+                                className={clsx(tab === x.id && 'on', locked && 'tab-locked')}
+                                aria-current={tab === x.id ? 'page' : undefined}
+                                aria-label={locked ? t('tabs.locked', { name: t(`tabs.${x.id}`) }) : undefined}
+                                onClick={() => setTab(x.id)}
+                            >
+                                <span className="tab-icon">
+                                    <Icon name={x.icon} />
+                                    {locked && (
+                                        <span className="tab-lock">
+                                            <Icon name="lock" size={10} />
+                                        </span>
+                                    )}
+                                </span>
+                                <span>{t(`tabs.${x.id}`)}</span>
+                            </button>
+                        );
+                    })}
+                </nav>
+            </SessionBar>
             <main className="content">
                 {/* key: 탭을 바꿀 때마다 새로 그려서 들어오는 움직임을 다시 낸다 */}
                 <div className="view" key={tab}>

@@ -421,10 +421,14 @@
     font-weight: 800;
     color: var(--text-2);
 }
-/* 게임 아이콘은 투명 배경 그림이 많다: 자르지 않고 칸 안에 여백을 두고 맞춘다 */
-.server-row-icon img {
-    width: 72%;
-    height: 72%;
+/* 모듈 아이콘: 자르지 않고 칸 안에 여백을 두고 맞춘다 (--module-icon-size). 세로로 긴 그림도 칸을 넘지 않게 정사각형 상자에 넣는다 */
+.server-row-icon > img,
+.detail-icon > img,
+.as-game-icon > img,
+.ss-catalog-top .ss-card-icon > img {
+    width: var(--module-icon-size);
+    height: auto;
+    aspect-ratio: 1;
     object-fit: contain;
 }
 .server-row-icon:has(> img),
@@ -586,11 +590,6 @@
 }
 .dc-brand-mark.on {
     color: var(--discord);
-}
-.detail-icon img {
-    width: 70%;
-    height: 70%;
-    object-fit: contain;
 }
 .detail-title {
     flex: 1;
@@ -902,58 +901,6 @@
 .console-line.console-level-debug {
     color: var(--tok-debug);
 }
-.tok-error {
-    color: var(--tok-error);
-    font-weight: 600;
-}
-.tok-warn {
-    color: var(--tok-warn);
-}
-.tok-info {
-    color: var(--tok-info);
-}
-.tok-debug {
-    color: var(--tok-debug);
-}
-.tok-success {
-    color: var(--tok-success);
-    font-weight: 600;
-}
-.tok-string {
-    color: var(--tok-string);
-}
-.tok-number {
-    color: var(--tok-number);
-}
-.tok-keyword {
-    color: var(--tok-keyword);
-}
-.tok-timestamp {
-    color: var(--tok-timestamp);
-}
-.tok-player {
-    color: var(--tok-player);
-    font-weight: 600;
-}
-.tok-command {
-    color: var(--tok-command);
-}
-.tok-selector {
-    color: var(--tok-selector);
-}
-.tok-ip {
-    color: var(--tok-ip);
-}
-.tok-uuid {
-    color: var(--tok-uuid);
-}
-.tok-path {
-    color: var(--tok-path);
-    font-style: italic;
-}
-.tok-dim {
-    color: var(--tok-dim);
-}
 
 /* ── 따로 띄운 콘솔 창 (PiP): 제목줄 + 상세 화면 콘솔. 콘솔은 테마와 상관없이 어두우므로 색은 콘솔 색에서 파생한다 ── */
 .App.console-popout-app {
@@ -1222,27 +1169,6 @@ button.activity-line:hover {
 }
 .activity-console * {
     font-family: var(--font-mono);
-}
-.activity-console-line {
-    display: flex;
-    gap: var(--sp-2);
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-.activity-console-time,
-.activity-console-level {
-    flex-shrink: 0;
-    color: color-mix(in oklch, var(--console-custom-text) 50%, transparent);
-}
-.activity-console-level {
-    width: 5ch;
-}
-.activity-console-line.level-warn .activity-console-level {
-    color: var(--console-warn);
-}
-.activity-console-line.level-error .activity-console-level,
-.activity-console-line.level-error .activity-console-msg {
-    color: var(--console-error);
 }
 .activity-console-empty,
 .activity-console-error {
@@ -5641,11 +5567,13 @@ button.appbar-pill:focus-visible {
     border-radius: var(--r-md);
     background: var(--bg-1);
 }
-.guide-module img {
+.guide-module > img {
     width: 36px;
     height: 36px;
+    padding: var(--sp-1);
     border-radius: var(--r-sm);
-    object-fit: cover;
+    background: var(--bg-3);
+    object-fit: contain;
 }
 .guide-module-text {
     display: flex;
