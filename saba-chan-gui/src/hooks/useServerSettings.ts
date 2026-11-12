@@ -5,6 +5,7 @@ import type { ModalConfig, ProgressBarConfig } from '../stores/useUIStore';
 import type { Server } from '../stores/useServerStore';
 import type { Json, ModuleInfo, SettingField } from '../types/daemon';
 import { busyMessage, createTranslateError, installFailureText, moduleSupports, safeShowToast } from '../utils/helpers';
+import { versionBranchMethod } from '../utils/installMethod';
 import { gameNameOf } from '../utils/serverView';
 import { blockedText } from '../utils/trustNotice';
 import { listItems } from '../utils/validation';
@@ -354,19 +355,23 @@ export function useServerSettings({
         const installMethod = mod?.install?.method;
         if (!reload) setAvailableVersions([]);
         versionsUnfinished.current = false;
+        // 설치 방식 익스텐션으로 받는 서버의 버전 목록은 브랜치 목록이다 (목록을 밝힌 모듈만)
+        const branchMethod = versionBranchMethod(mod);
         // 버전 목록·설치를 구현한 모듈만 (MK1)
         if (
-            installMethod === 'download' &&
+            (installMethod === 'download' || branchMethod) &&
             moduleSupports(mod, 'list_versions') &&
             moduleSupports(mod, 'install_server')
         ) {
             versionsUnfinished.current = true;
             setVersionsLoading(true);
+            let latest: Json | undefined;
             try {
                 const versions = await window.api.moduleListVersions(latestServer.module, { per_page: 30 });
                 if (request !== openRequest.current) return;
                 if (versions && versions.versions) {
                     setAvailableVersions(versions.versions);
+                    latest = versions.latest?.release;
                 }
             } catch (err) {
                 console.warn('Failed to load versions:', err);
@@ -374,6 +379,17 @@ export function useServerSettings({
                 if (request === openRequest.current) setVersionsLoading(false);
             }
             if (request !== openRequest.current) return;
+
+            if (branchMethod) {
+                // 데몬이 적어 둔 브랜치(`<방식>_beta`), 없으면 모듈의 기본 브랜치를 고른 채로 연다
+                const branch = latestServer.extension_data?.[`${branchMethod}_beta`] || latest;
+                if (branch) {
+                    setSettingsValues((prev) => ({ ...prev, server_version: String(branch) }));
+                    setOpenedSettings((prev) => ({ ...prev, server_version: String(branch) }));
+                }
+                versionsUnfinished.current = false;
+                return;
+            }
 
             // Detect installed version from server binary if not already saved
             const hasSavedVersion = latestServer.module_settings?.server_version || latestServer.server_version;
@@ -424,7 +440,9 @@ export function useServerSettings({
     // ── handleInstallVersion ────────────────────────────────
     const handleInstallVersion = async () => {
         if (!settingsServer || !settingsValues.server_version) return;
-        const version = settingsValues.server_version as string;
+        const chosen = settingsValues.server_version as string;
+        // 확인 창과 알림에는 모듈이 붙인 이름(브랜치 이름 등)을 쓴다
+        const version = String(availableVersions.find((v) => v.id === chosen)?.name || chosen);
         const serverName = settingsServer.name;
         const module = settingsServer.module;
         const game = gameNameOf(
@@ -470,7 +488,7 @@ export function useServerSettings({
 
                             // instance_id: 데몬이 이 인스턴스 설정(서버 종류 등)으로 설치하고 작업 잠금을 잡는다
                             const installResult = await window.api.moduleInstallServer(module, {
-                                version,
+                                version: chosen,
                                 install_dir: targetDir,
                                 instance_id: settingsServer.id,
                                 background: true,

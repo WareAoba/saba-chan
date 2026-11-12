@@ -7,7 +7,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
 import type { ModuleInfo, SettingField } from '../types/daemon';
 import { moduleSupports } from '../utils/helpers';
-import { extensionInstallMethod } from '../utils/installMethod';
+import { extensionInstallMethod, versionBranchMethod } from '../utils/installMethod';
 import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/validation';
 import { useExtensions } from '../contexts/ExtensionContext';
 import { CliLine, changedForCli } from './CliLine';
@@ -331,7 +331,7 @@ interface GeneralTabProps {
     advancedExpanded: boolean;
     setAdvancedExpanded: (expanded: boolean) => void;
     versionsLoading?: boolean;
-    availableVersions: { id?: string; version?: string; type?: string }[];
+    availableVersions: { id?: string; version?: string; type?: string; name?: string }[];
     versionInstalling?: boolean;
     handleSettingChange: (name: string, value: unknown) => void;
     handleInstallVersion: () => void;
@@ -367,6 +367,7 @@ function GeneralTab({
     openedValues,
 }: GeneralTabProps) {
     const { t } = useTranslation('gui');
+    const { extensions } = useExtensions();
     const versionId = useId();
     const rowId = useId();
     const advancedId = useId();
@@ -403,9 +404,13 @@ function GeneralTab({
     const sabaFields = showSaba ? fields.filter((f) => f.group === 'saba-chan') : [];
     const basicFields = showServer ? fields.filter((f) => !f.group || f.group === 'basic') : [];
     const advancedFields = showServer ? fields.filter((f) => f.group === 'advanced') : [];
+    // 설치 방식 익스텐션으로 받는 서버는 같은 칸에서 브랜치를 고른다 (모듈이 브랜치 목록을 줄 때만)
+    const branchMethod = versionBranchMethod(module);
+    const branchPicker = !!branchMethod && (!!versionsLoading || availableVersions.length > 0);
+    const branchSource = extensions.find((e) => e.id === branchMethod)?.name || branchMethod;
     const versionPicker =
         showSaba &&
-        module?.install?.method === 'download' &&
+        (module?.install?.method === 'download' || branchPicker) &&
         moduleSupports(module, 'list_versions') &&
         moduleSupports(module, 'install_server');
     const crashOff = String(settingsValues.auto_restart) === 'false';
@@ -441,11 +446,19 @@ function GeneralTab({
                 <Card icon="sabaFace" title={t('server_settings.saba_chan_group', { defaultValue: 'saba-chan Settings' })} className="ss-saba">
                     {versionPicker && (
                         <SettingRow
-                            label={t('server_settings.server_version', { defaultValue: 'Server Version' })}
+                            label={
+                                branchPicker
+                                    ? t('server_settings.branch', { source: branchSource })
+                                    : t('server_settings.server_version', { defaultValue: 'Server Version' })
+                            }
                             htmlFor={versionId}
-                            desc={t('server_settings.version_description_install', {
-                                defaultValue: 'Select a version and click Install to download the server files.',
-                            })}
+                            desc={
+                                branchPicker
+                                    ? t('server_settings.branch_desc')
+                                    : t('server_settings.version_description_install', {
+                                          defaultValue: 'Select a version and click Install to download the server files.',
+                                      })
+                            }
                             control={
                                 versionsLoading ? (
                                     <span className="muted ss-loading">
@@ -462,7 +475,7 @@ function GeneralTab({
                                             placeholder={t('server_settings.select_version', { defaultValue: 'Select version' })}
                                             options={availableVersions.map((v) => ({
                                                 value: (v.id || v.version || v) as string,
-                                                label: `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
+                                                label: v.name || `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
                                             }))}
                                         />
                                         <button
@@ -481,12 +494,20 @@ function GeneralTab({
                                             <Icon name={versionInstalling ? 'loader' : 'download'} size="sm" />{' '}
                                             {versionInstalling
                                                 ? t('server_settings.installing', { defaultValue: 'Installing...' })
-                                                : t('server_settings.install_version_button', { defaultValue: 'Install' })}
+                                                : branchPicker
+                                                  ? t('server_settings.branch_install')
+                                                  : t('server_settings.install_version_button', { defaultValue: 'Install' })}
                                         </button>
                                     </span>
                                 )
                             }
                         />
+                    )}
+                    {versionPicker && branchPicker && (
+                        <div className="notice tone-info idle-stopped-notice ss-branch-notice" role="note">
+                            <Icon name="info" size="sm" />
+                            <span>{t('server_settings.branch_notice')}</span>
+                        </div>
                     )}
                     {fieldRows(sabaFields)}
                 </Card>

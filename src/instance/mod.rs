@@ -248,6 +248,21 @@ impl ServerInstance {
         changed
     }
 
+    /// 설치한 버전을 적는다. 설치 방식 익스텐션으로 받는 서버에서 고른 버전은 그 방식의 브랜치라
+    /// `<방식>_beta`에 적고(업데이트 확인과 업데이트가 그 브랜치를 쓴다), 그 밖에는 게임 버전으로 적는다
+    pub fn record_installed_version(&mut self, method: &str, version: &str) {
+        if BUILTIN_INSTALL_METHODS.contains(&method) || method.is_empty() {
+            self.server_version = Some(version.to_string());
+        } else {
+            self.apply_install_extension_data(method, &[("beta", serde_json::json!(version))]);
+        }
+    }
+
+    /// 설치 방식 익스텐션으로 받는 서버의 브랜치 (`record_installed_version`이나 모듈 `[install] beta`가 적은 값)
+    pub fn install_branch(&self, method: &str) -> Option<&str> {
+        self.extension_data.get(&format!("{}_beta", method)).and_then(|v| v.as_str()).filter(|b| !b.is_empty())
+    }
+
     /// 게임 설정 파일에서 읽어 온 값(`import_settings` 결과)을 반영한다: `module_settings`에 넣고,
     /// 같은 값을 가리키는 인스턴스 필드(포트·REST 비밀번호)도 맞춘다. 안 그러면 인스턴스 필드가
     /// 옛 값으로 남아 다음 저장에서 파일을 되돌린다.

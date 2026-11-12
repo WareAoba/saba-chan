@@ -984,6 +984,9 @@ pub async fn install_server_handler(
                 return result;
             };
             if result.as_ref().is_ok_and(|r| r.get("success").and_then(Value::as_bool) == Some(true)) {
+                // 받은 빌드를 적어 둔다 (확인은 오래 걸릴 수 있어 뒤에서)
+                let (state, id) = (state.clone(), id.to_string());
+                tokio::spawn(async move { super::instance::server_update_status(&state, &id).await });
                 return result;
             }
             let mut result = result;
@@ -1094,7 +1097,8 @@ fn save_installed(sup: &mut Supervisor, id: &str, version: &str, result: &Value,
     let Some(mut inst) = sup.instance_store.get(id).cloned() else {
         anyhow::bail!("instance {} is gone", id);
     };
-    inst.server_version = Some(version.to_string());
+    let method = sup.module_loader.get_module(&inst.module_name).ok().and_then(|m| m.metadata.install.map(|i| i.method)).unwrap_or_default();
+    inst.record_installed_version(&method, version);
     let exe = ["executable_path", "jar_path"].iter().find_map(|k| result.get(*k).and_then(Value::as_str)).filter(|p| !p.is_empty());
     if let Some(exe) = exe {
         let folder = result
@@ -1730,6 +1734,64 @@ mod tests {
         assert_eq!(inst.working_dir, Some(files.join("v2").to_string_lossy().into_owned()));
         assert_eq!(inst.executable_path, Some(files.join("v2").join("server.bin").to_string_lossy().into_owned()));
         assert_eq!(std::fs::read_to_string(files.join("world").join("level.dat")).unwrap(), "migrated");
+    }
+
+    /// 설치 방식 익스텐션으로 받는 서버(Steam 등)에서 고른 버전은 그 방식의 브랜치다: `<방식>_beta`에 적어
+    /// 업데이트 확인이 그 브랜치를 보고, 업데이트도 같은 브랜치로 받는다. 게임 버전(`server_version`)으로 적지 않는다
+    #[tokio::test]
+    async fn a_version_chosen_for_an_extension_installed_server_is_kept_as_its_branch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = crate::plugin::resolve_modules_dir();
+        let module = tempfile::Builder::new().prefix("branch-install-").tempdir_in(&modules).unwrap();
+        let dir = module.path();
+        let game = dir.file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(
+            dir.join("module.toml"),
+            format!("[module]\nschema_version = 1\nname = \"{game}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"steamcmd\"\n"),
+        )
+        .unwrap();
+        // 받으라고 한 브랜치를 서버 폴더에 적어 둔다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nconfig = json.load(sys.stdin)\n\
+             if sys.argv[1] == 'install_server':\n    open(os.path.join(config['install_dir'], 'branch.txt'), 'w').write(config.get('version') or 'none')\n\
+             print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", &game);
+        let id = inst.id.clone();
+        let files = sup.instance_store.instance_dir(&id).join("files");
+        std::fs::create_dir_all(&files).unwrap();
+        inst.working_dir = Some(files.to_string_lossy().into_owned());
+        inst.apply_install_extension_data("steamcmd", &[]);
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let body = json!({ "install_dir": files, "instance_id": id, "version": "unstable", "background": true });
+        let started = crate::ipc::internal::into_internal(install_server_handler(Path(game.clone()), State(state.clone()), Json(body)).await.into_response()).await;
+        assert_eq!(started.status, StatusCode::OK, "{}", started.body);
+        let mut done = None;
+        for _ in 0..2400 {
+            done = state.provision_tracker.get("srv").filter(|p| p.done);
+            if done.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert_eq!(done.expect("the install never finished").error, None);
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!(inst.extension_data.get("steamcmd_beta"), Some(&json!("unstable")));
+        assert_eq!(inst.server_version, None, "a branch name is not a game version");
+        state.provision_tracker.remove("srv");
+
+        // 업데이트는 고른 브랜치로 받는다
+        std::fs::remove_file(files.join("branch.txt")).unwrap();
+        let updated = super::super::instance::begin_server_update(&state, &id).await.ok().expect("the update starts").await.unwrap();
+        assert!(updated);
+        assert_eq!(std::fs::read_to_string(files.join("branch.txt")).unwrap(), "unstable");
     }
 
     // D-S12: 설치 버전 감지는 모듈 호출 동안 잠금을 쥐지 않아, 그사이 저장된 새 버전(설치·업데이트 뒤 설정)을

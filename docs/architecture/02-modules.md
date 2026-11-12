@@ -196,7 +196,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `beta` | String | — |
 | `requires_extensions` | Vec<String> | `[]`. 인스턴스 생성·non-managed 시작·`/api/module/:name/install` 때 필수 익스텐션 검증에 사용 (`instance.rs:233-252`, `mod.rs:572-629`, `managed.rs:526-`) |
 
-zomboid의 `beta_branch` 키와 lifecycle의 `use_beta` 분기는 지워졌다. 받을 브랜치는 module.toml `[install].beta` 한 곳에 둔다: 설치·업데이트(`install_for_module`)와 업데이트 확인(`extension_data.steamcmd_beta`)이 같은 값을 쓴다.
+zomboid의 `beta_branch` 키와 lifecycle의 `use_beta` 분기는 지워졌다. 받을 브랜치의 기본값은 module.toml `[install].beta` 한 곳에 둔다: 설치·업데이트(`install_for_module`)와 업데이트 확인(`extension_data.steamcmd_beta`)이 같은 값을 쓴다. 서버마다 브랜치를 고르게 하려면 새 키 없이 `list_versions`·`install_server`를 쓴다(§3.3 `list_versions`): 설치 방식 익스텐션으로 받는 모듈의 버전 목록은 브랜치 목록이고, 고른 값은 데몬이 그 인스턴스의 `<방식>_beta`에 적는다.
 
 #### `[extensions.<익스텐션 id>]`
 익스텐션이 읽는 모듈별 설정. 데몬은 내용을 보지 않고 `ModuleMetadata.extensions`에 그대로 넘긴다 (`:618-622, 1139-1145`). 예전 `[docker]` 섹션(`ContainerSectionToml`)은 Docker 익스텐션과 함께 지워졌다.
@@ -387,7 +387,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - `config_files`: `success`, `files[]`(절대 경로). 선택 함수. 사바쨩이 고칠 수 있는 게임 설정 파일(설정 저장·시작 전 정책·약관이 쓰는 파일)이다. 데몬은 마이그레이션 때 지금 있는 것만 보관하고, 연결 해제(삭제) 때 그 내용으로 되돌린다(01 `POST /api/instances`·`DELETE /api/instance/:id`). minecraft `server.properties`·`eula.txt`, palworld `PalWorldSettings.ini`, zomboid 프로필 ini.
 - `instance_commands`: `success`, `commands[]`(명령 필드 + `group`), `components` (`[commands] hook = true`일 때).
 - `install_server`: config에 인스턴스 설정 `settings{}`가 온다(프로비저닝·업데이트, `instance_id`를 준 `POST /api/module/:name/install`).
-- `list_versions`: config `settings{}`(인스턴스 설정, 만들기 화면이 고른 설정)로 그 설정에서 받을 수 있는 버전만 `versions`에 주고(쪽 나누기도 거른 뒤), 그중 받을 수 있는 최신을 `latest.release`(예전 모양 `latest_release`)에 준다. 예: Minecraft `server_type`이면 그 종류의 받을 곳이 내놓은 버전만이고, Paper·Folia는 안정 빌드가 나온 가장 새 버전이 최신이며 그보다 새 것은 목록에서도 뺀다. 받을 곳을 읽지 못하면 거르지 않는다. 데몬은 처음 설치와 버전을 비운 `POST /api/module/:name/install`에서 이 값만 읽는다(`Supervisor::latest_version`. 없으면 모듈의 `message`를 까닭으로 싣는다).
+- `list_versions`: config `settings{}`(인스턴스 설정, 만들기 화면이 고른 설정)로 그 설정에서 받을 수 있는 버전만 `versions`에 주고(쪽 나누기도 거른 뒤), 그중 받을 수 있는 최신을 `latest.release`(예전 모양 `latest_release`)에 준다. 예: Minecraft `server_type`이면 그 종류의 받을 곳이 내놓은 버전만이고, Paper·Folia는 안정 빌드가 나온 가장 새 버전이 최신이며 그보다 새 것은 목록에서도 뺀다. 받을 곳을 읽지 못하면 거르지 않는다. 데몬은 처음 설치와 버전을 비운 `POST /api/module/:name/install`에서 이 값만 읽는다(`Supervisor::latest_version`. 없으면 모듈의 `message`를 까닭으로 싣는다). `versions`의 항목이 객체면 `id`(설치에 넘길 값)와 선택 `name`(화면에 보일 이름, 없으면 `id`), `type`을 가진다. 설치 방식 익스텐션으로 받는 모듈(`[install] method`가 `manual`·`download`가 아님)이 이 함수를 구현하면 목록은 그 방식의 브랜치 목록이다(예: zomboid의 Steam 브랜치 `public`·`unstable`·`legacy41`): 화면은 버전 칸을 브랜치 칸으로 보이고, 고른 `id`가 `install_server`의 `version`으로 오며, 설치가 끝나면 데몬이 인스턴스 `extension_data`의 `<방식>_beta`에 적어 업데이트 확인(`server.check_update`)과 업데이트(`install_server`에 `version`으로 다시 넘긴다)가 같은 브랜치를 쓴다. `server_version`에는 적지 않는다. 이런 모듈은 처음 설치 때 `version`이 오지 않으면 기본 브랜치로 받는다.
 - `backup_paths`: `success`, `paths[]`, 선택 `restore_roots[]` (`[backup] hook = true`일 때). `restore_roots`는 `paths`와 같이 해석하는 복원 허용 범위다. 그 폴더 안을 담은 옛 백업(데이터 폴더를 통째로 담던 예전 모듈의 백업 등)도 복원되게 하고, 백업 대상에는 넣지 않는다 (MA3).
 
 ### 2.3 데몬이 호출하는 함수 전체 목록과 전달 config
@@ -410,7 +410,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `instance_commands` | `GET /api/instance/:id/commands`, module.toml에 없는 이름의 명령 실행 (`[commands] hook = true`일 때, `D:src/ipc/handlers/command.rs`) | `working_dir`, 인스턴스 값(`insert_instance_fields`) |
 | `accept_agreements` | `POST /api/instance/:id/agreements` (동의를 기록한 뒤) | `validate`와 같은 config + `accepted_agreements:[id]`(지금까지 동의한 전부). 모듈은 자기 파일에 동의를 쓴다(예: minecraft eula.txt). 함수가 없으면 기록만 남는다 |
 | `diagnose_log` | `POST /diagnose` | `working_dir`, `log_lines[]`(managed일 때 최근 500줄 중 이번 실행분, `mod.rs:1982-1990`) |
-| `list_versions` | `GET /api/module/:name/versions`, 프로비저닝(download 방식), 버전을 비운 `POST /api/module/:name/install` | `include_snapshots`, `page`, `per_page`, `settings?`(목록 query `settings`, 최신을 고를 때 인스턴스 설정) |
+| `list_versions` | `GET /api/module/:name/versions`(버전 칸·브랜치 칸), 프로비저닝(download 방식), 버전을 비운 `POST /api/module/:name/install` | `include_snapshots`, `page`, `per_page`, `settings?`(목록 query `settings`, 최신을 고를 때 인스턴스 설정) |
 | `get_version_details` | `GET /api/module/:name/version/:v` | `version` |
 | `install_server` | `POST /api/module/:name/install`, 프로비저닝·업데이트(모두 1800초) | `version`, `install_dir`(사용자가 고른 폴더에 처음 설치할 때는 그 안의 `.saba-installing`. 성공하면 데몬이 내용을 고른 폴더로 옮기고 돌려받은 `install_path`·`executable_path`를 옮긴 자리로 바꾼다. 실패하면 그 폴더와 옮긴 항목만 지운다(설치 중에 사용자가 넣은 파일은 남는다, `InstallStaging`). 그래서 모듈은 `install_dir`의 절대 경로를 설치한 파일 안에 적지 않는다), `accepted_agreements`(동의한 `[[agreements]]` id), `settings`(프로비저닝 때, 그리고 `POST /api/module/:name/install`에 `instance_id`가 있을 때 그 인스턴스 `module_settings`), `instance_data_dirs`(같은 때), `server_executable`(요청 값, 없으면 모듈 `server_executable`), `initial_settings` 등 |
 | `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:2200-2249` | `validate`와 같은 config(`Supervisor::instance_call`: `server_executable`, `working_dir` 등). `server_executable`은 시작과 같이 `resolve_executable`로 정한다(인스턴스 경로, 옛 `module_settings.executable_path`, `working_dir` + 모듈 `server_executable` 순) |
@@ -651,12 +651,12 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 항목 | 내용 |
 |---|---|
 | protocols | `supported=["stdin"]`, console, `stop_command="quit"`. `RCONPassword`를 비워 RCON을 끈다 |
-| 설치 | `steamcmd`, app_id 380870. steamcmd 익스텐션의 `install_for_module`로 설치하고(브랜치는 `[install].beta`, 지금은 없음 = public), 익스텐션을 불러올 수 없으면 `extension_required`를 돌려준다 |
+| 설치 | `steamcmd`, app_id 380870. steamcmd 익스텐션의 `install_for_module`로 설치하고, 익스텐션을 불러올 수 없으면 `extension_required`를 돌려준다. 브랜치: `list_versions`가 `STEAM_BRANCHES`(`public`·`unstable`·`legacy41`, 이름은 locales `versions.<id>`)를 주고, `install_server`는 `version`으로 온 브랜치를 `install_for_module(beta=...)`로 받는다(목록 밖이면 `errors.unknown_branch`로 거절, `version`이 없으면 `[install].beta`, 그것도 없으면 지금 브랜치 그대로) |
 | 실행 | `StartServer64.bat`나 `start-server.sh`를 **파싱**해서(`_parse_bat`, `_parse_sh`, `_parse_java_cmdline` `:607-741`) 번들 Java, classpath, native lib을 찾는다. 그다음 `java ... zombie.network.GameServer -servername <name> -cachedir=...`를 직접 구성한다 |
 | 설정 | `IniManager`가 공용 `read_key_values`·`update_key_values`로 `Zomboid/Server/<servername>.ini`를 다룬다. saba 키 → INI 키는 settings 필드의 `file_key`이다. 로그 진단은 `[[diagnose]]` 규칙으로 `server-console.txt`를 본다. settings 117개. `[backup] hook = true`라 `backup_paths()`가 세이브 위치를 계산한다 |
 | 명령 | 23개. kick, banuser는 `method="module"`이라 lifecycle `command()`를 거친다(이유가 없으면 `-r`을 붙이지 않고, 서버가 콘솔에 찍은 답을 `message`로 돌려준다. 값의 큰따옴표는 `error_code="invalid_argument"`·`rule="quote"`로 거절). 나머지는 `console`(콘솔 stdin): servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |
 | 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 공용 `graceful_stop`으로 force가 아니면 콘솔 `quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 강제 종료한다. managed(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). |
-| 미구현 | `list_versions`, `get_version_details`, `get_installed_version`, `reset_properties` |
+| 미구현 | `get_version_details`, `get_installed_version`, `reset_properties` |
 
 ### 4.4 terraria (`M:terraria/`, lifecycle 627줄, toml 816줄)
 

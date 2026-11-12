@@ -764,7 +764,7 @@ async fn install_new_server(job: InstallJob) {
                         Some(inst) => {
                             let mut updated = inst;
                             if let Some(version) = &installed_version {
-                                updated.server_version = Some(version.clone());
+                                updated.record_installed_version(&install_method, version);
                             }
                             if let Some(ref exe) = exe_path {
                                 if !exe.is_empty() {
@@ -2713,6 +2713,7 @@ pub(crate) async fn begin_server_update_holding(
     let instance_name = instance.name.clone();
     let module_name_owned = instance.module_name.clone();
     let install_settings = instance.module_settings.clone();
+    let branch = instance.install_branch(&method).map(str::to_string);
     let accepted_agreements: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
     let module = supervisor.module_loader.get_module(&instance.module_name).ok();
     let boundary = crate::module_paths::Boundary::for_instance(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata));
@@ -2796,11 +2797,15 @@ pub(crate) async fn begin_server_update_holding(
 
         // ── Phase 2: 플러그인 호출 (lock 없이 실행) ──
         let result = {
-            let config = serde_json::json!({
+            let mut config = serde_json::json!({
                 "install_dir": &install_dir_str,
                 "accepted_agreements": &accepted_agreements,
                 "settings": &install_settings,
             });
+            // 고른 브랜치가 있으면 그 브랜치로 받는다
+            if let Some(branch) = &branch {
+                config["version"] = json!(branch);
+            }
 
             let tracker_progress = tracker_done.clone();
             let name_progress = name_done.clone();
