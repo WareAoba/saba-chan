@@ -24,7 +24,7 @@ import {
     WEEKDAYS,
     weekdayLabel,
 } from '../../utils/schedule';
-import { commandText } from '../../utils/serverView';
+import { commandText, gameNameOf } from '../../utils/serverView';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { useContextMenu } from '../ui/ContextMenu';
@@ -46,6 +46,17 @@ interface Backup {
     stored?: number;
     kind: string;
     readable?: boolean;
+    /** 가져온 백업이면 그 백업을 만든 서버의 이름 */
+    imported_from?: string;
+}
+
+/** 가져오기 전에 데몬이 알려 준 것 (POST …/backups/import `{preview: true}`) */
+interface ImportPreview {
+    path: string;
+    server: string;
+    module: string;
+    created: number;
+    size: number;
 }
 
 /** 모듈·익스텐션 명령 한 개 (입력 정의만 좁혀 읽는다) */
@@ -100,6 +111,7 @@ const KIND_TONE: Record<string, 'ok' | 'stop' | 'warn' | 'info' | 'idle'> = {
     'pre-update': 'warn',
     'pre-restore': 'warn',
     snapshot: 'info',
+    imported: 'info',
     'game-snapshot': 'idle',
 };
 // 게임이 스스로 만든 자동 백업 (데몬 `game-snapshot:<id>`). 복원만 하고 사바쨩이 지우지 않는다
@@ -126,6 +138,11 @@ const CODE_TEXT: Record<string, string> = {
     // 켜진 서버를 묶는 사이 서버가 꺼져 그 백업을 지웠다
     backup_server_stopped: 'maintenance.err_backup_server_stopped',
     snapshot_not_found: 'maintenance.err_snapshot_not_found',
+    // 가져오려는 zip이 사바쨩이 내보낸 백업이 아니거나, 내용이 목록과 다르거나, 다른 모듈의 서버 것이다
+    import_not_backup: 'maintenance.err_import_not_backup',
+    import_damaged: 'maintenance.err_import_damaged',
+    import_other_module: 'maintenance.err_import_other_module',
+    export_old_backup: 'maintenance.err_export_old_backup',
     // 백업 폴더나 그 안의 백업 파일을 읽지 못했다
     backups_unreadable: 'maintenance.err_backups_unreadable',
     schedule_changed: 'maintenance.err_schedule_changed',
@@ -209,6 +226,8 @@ function BackupsCard({ server }: { server: Server }) {
     const [snapshots, setSnapshots] = useState(false);
     const [busy, setBusy] = useState<string | null>(null); // 'create' | `restore:${name}` | `delete:${name}`
     const [armed, setArmed] = useState<string | null>(null); // 두 번 눌러 확정할 동작
+    // 가져오려고 고른 zip (데몬이 검사해 알려 준 내용). 확인하면 목록에 올린다
+    const [importing, setImporting] = useState<ImportPreview | null>(null);
     const alive = useRef(true);
     useEffect(
         () => () => {
@@ -252,7 +271,9 @@ function BackupsCard({ server }: { server: Server }) {
             } else if (okMessage) {
                 // 일부만 된 결과(예: 되살리지 못한 링크)는 경고로 알린다
                 const msg = okMessage(res);
-                if (typeof msg === 'string') safeShowToast(msg, 'success', 4000);
+                if (typeof msg === 'string') {
+                    if (msg) safeShowToast(msg, 'success', 4000);
+                }
                 else safeShowToast(msg.text, msg.tone, 6000);
             }
         } catch (err) {
@@ -275,11 +296,56 @@ function BackupsCard({ server }: { server: Server }) {
             minute: '2-digit',
         });
     const list = [...(backups || [])].sort((a, b) => b.created - a.created);
+    const canTransfer =
+        typeof window.api?.instanceBackupExport === 'function' && typeof window.api?.instanceBackupImport === 'function';
+    // 파일 이름에 쓸 수 없는 글자는 뺀다
+    const exportName = () => {
+        const d = new Date();
+        const day = [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+        return `${(server.name || 'backup').replace(/[\\/:*?"<>|]/g, '_')}-${day}.zip`;
+    };
+    const exportBackup = (name: string) =>
+        run(
+            `export:${name}`,
+            () => window.api.instanceBackupExport(server.id, name, exportName()),
+            (res) => (res?.canceled ? '' : t('maintenance.backup_exported', { path: res?.path, size: formatBytes(res?.size || 0) })),
+        );
+    // 고른 파일을 데몬이 먼저 검사한다. 사바쨩 백업이 아니면 창을 띄우지 않는다
+    const pickImport = async () => {
+        setBusy('import');
+        try {
+            const res = await window.api.instanceBackupImport(server.id, { preview: true });
+            if (res?.canceled || !alive.current) return;
+            if (failed(res) || !res?.preview) {
+                safeShowToast(errorText(res, t('maintenance.action_failed'), t), 'error', 6000);
+                return;
+            }
+            setImporting({ ...res.preview, path: res.path });
+        } catch (err) {
+            safeShowToast((err as Error).message || String(err), 'error', 6000);
+        } finally {
+            if (alive.current) setBusy(null);
+        }
+    };
+    const confirmImport = async (path: string) => {
+        await run(
+            'import',
+            () => window.api.instanceBackupImport(server.id, { path }),
+            () => t('maintenance.backup_imported'),
+        );
+        if (alive.current) setImporting(null);
+    };
 
     return (
         <section className="dc-card" aria-label={t('maintenance.backups_title')}>
             <div className="dc-card-head">
                 <h2>{t('maintenance.backups_title')}</h2>
+                {canTransfer && (
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={pickImport}>
+                        {busy === 'import' && !importing ? <SabaSpinner size="sm" /> : <Icon name="download" size="sm" />}{' '}
+                        {t('maintenance.backup_import')}
+                    </button>
+                )}
                 {snapshots && (
                     <button
                         type="button"
@@ -349,6 +415,14 @@ function BackupsCard({ server }: { server: Server }) {
                                     disabled: !stopped || !!busy || unreadable,
                                     onSelect: () => setArmed(restoreKey),
                                 },
+                                !game &&
+                                    canTransfer && {
+                                        id: 'export',
+                                        label: t('maintenance.backup_export'),
+                                        icon: 'arrowUp',
+                                        disabled: !!busy || unreadable,
+                                        onSelect: () => exportBackup(b.name),
+                                    },
                                 !game && {
                                     id: 'delete',
                                     label: t('maintenance.delete'),
@@ -373,7 +447,9 @@ function BackupsCard({ server }: { server: Server }) {
                                                   ? t('maintenance.backup_game_snapshot')
                                                   : b.kind === 'pre-restore'
                                                     ? t('maintenance.backup_pre_restore_hint')
-                                                    : null,
+                                                    : b.imported_from
+                                                      ? t('maintenance.backup_imported_from', { server: b.imported_from })
+                                                      : null,
                                             b.name,
                                         ]
                                             .filter(Boolean)
@@ -384,6 +460,17 @@ function BackupsCard({ server }: { server: Server }) {
                                     tone={KIND_TONE[b.kind] || 'idle'}
                                     label={t(`maintenance.kind_${b.kind}`, { defaultValue: b.kind })}
                                 />
+                                {!game && canTransfer && (
+                                    <button
+                                        type="button"
+                                        className="btn btn-ghost btn-sm"
+                                        disabled={!!busy || unreadable}
+                                        onClick={() => exportBackup(b.name)}
+                                    >
+                                        {busy === `export:${b.name}` ? <SabaSpinner size="sm" /> : <Icon name="arrowUp" size="sm" />}{' '}
+                                        {t('maintenance.backup_export')}
+                                    </button>
+                                )}
                                 <button data-spot="backup.restore"
                                     type="button"
                                     className={clsx('btn btn-sm', armed === restoreKey ? 'btn-primary' : 'btn-ghost')}
@@ -440,6 +527,45 @@ function BackupsCard({ server }: { server: Server }) {
                 </ul>
                 </>
             )}
+            <Dialog
+                open={!!importing}
+                onOpenChange={(open) => !open && busy !== 'import' && setImporting(null)}
+                title={t('maintenance.backup_import_title')}
+                description={importing?.path.split(/[\\/]/).pop()}
+                media={<Icon name="download" />}
+                size="sm"
+                footer={
+                    <>
+                        <button type="button" className="btn btn-ghost" disabled={busy === 'import'} onClick={() => setImporting(null)}>
+                            {t('maintenance.backup_import_cancel')}
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={busy === 'import'}
+                            onClick={() => importing && confirmImport(importing.path)}
+                        >
+                            {busy === 'import' && <SabaSpinner size="sm" light />} {t('maintenance.backup_import')}
+                        </button>
+                    </>
+                }
+            >
+                {importing && (
+                    <>
+                        <dl className="dc-facts">
+                            <dt>{t('maintenance.backup_import_server')}</dt>
+                            <dd>
+                                {importing.server} ({gameNameOf(t, importing.module)})
+                            </dd>
+                            <dt>{t('maintenance.backup_import_created')}</dt>
+                            <dd>{fmt(importing.created)}</dd>
+                            <dt>{t('maintenance.backup_import_size')}</dt>
+                            <dd>{formatBytes(importing.size)}</dd>
+                        </dl>
+                        <p className="muted">{t('maintenance.backup_import_note')}</p>
+                    </>
+                )}
+            </Dialog>
         </section>
     );
 }

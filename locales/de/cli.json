@@ -1318,7 +1318,8 @@
       "pre-update": "vor Update",
       "pre-restore": "vor Wiederherstellung",
       "snapshot": "Behaltenes Spiel-Backup",
-      "game-snapshot": "Spiel-Autobackup"
+      "game-snapshot": "Spiel-Autobackup",
+      "imported": "Importiert"
     },
     "none": "{{name}} hat noch keine Backups.",
     "creating": "{{name}} wird gesichert...",

@@ -1318,7 +1318,8 @@
       "pre-update": "antes de actualizar",
       "pre-restore": "antes de restaurar",
       "snapshot": "Copia del juego guardada",
-      "game-snapshot": "Copia automática del juego"
+      "game-snapshot": "Copia automática del juego",
+      "imported": "Importada"
     },
     "none": "{{name}} aún no tiene copias de seguridad.",
     "creating": "Haciendo copia de seguridad de {{name}}...",

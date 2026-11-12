@@ -172,7 +172,8 @@
       "manual": "Manual",
       "scheduled": "Programada",
       "pre-update": "Antes de actualizar",
-      "pre-restore": "Antes de restaurar"
+      "pre-restore": "Antes de restaurar",
+      "imported": "Importada"
     }
   },
   "agreements": {

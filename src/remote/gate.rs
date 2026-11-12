@@ -131,6 +131,9 @@ pub static ROUTES: &[Route] = &[
     allow("POST", "/api/instance/{id}/backups"),
     allow("DELETE", "/api/instance/{id}/backups/{name}"),
     allow("POST", "/api/instance/{id}/backups/{name}/restore"),
+    // 데몬 PC의 경로에 zip을 쓰고 읽는다 (내보내기·가져오기)
+    deny("POST", "/api/instance/{id}/backups/{name}/export"),
+    deny("POST", "/api/instance/{id}/backups/import"),
     allow("GET", "/api/instance/{id}/schedule"),
     allow("PUT", "/api/instance/{id}/schedule"),
     // 이 PC의 앱 화면만 쓴다 (작업 기록의 "다가오는 예약")

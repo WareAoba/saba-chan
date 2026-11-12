@@ -1022,7 +1022,8 @@
       "pre-update": "before update",
       "pre-restore": "before restore",
       "snapshot": "Kept game backup",
-      "game-snapshot": "Game auto-backup"
+      "game-snapshot": "Game auto-backup",
+      "imported": "Imported"
     },
     "none": "{{name}} has no backups yet.",
     "creating": "Backing up {{name}}...",

@@ -172,7 +172,8 @@
       "manual": "직접",
       "scheduled": "예약",
       "pre-update": "업데이트 전",
-      "pre-restore": "복원 직전"
+      "pre-restore": "복원 직전",
+      "imported": "가져옴"
     }
   },
   "agreements": {

@@ -172,7 +172,8 @@
       "manual": "手動",
       "scheduled": "定時",
       "pre-update": "更新前",
-      "pre-restore": "還原前"
+      "pre-restore": "還原前",
+      "imported": "已匯入"
     }
   },
   "agreements": {

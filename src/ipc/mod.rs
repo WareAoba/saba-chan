@@ -893,6 +893,8 @@ impl IPCServer {
             .route("/api/instance/{id}/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
             .route("/api/instance/{id}/backups/{name}", delete(handlers::backup::delete_backup))
             .route("/api/instance/{id}/backups/{name}/restore", post(handlers::backup::restore_backup))
+            .route("/api/instance/{id}/backups/{name}/export", post(handlers::backup::export_backup))
+            .route("/api/instance/{id}/backups/import", post(handlers::backup::import_backup))
             .route("/api/instance/{id}/schedule", get(handlers::backup::get_schedule).put(handlers::backup::put_schedule))
             .route("/api/schedules/upcoming", get(handlers::backup::upcoming_schedules))
             // ── Server installation endpoints ──

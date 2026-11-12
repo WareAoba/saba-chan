@@ -3,6 +3,8 @@
 //! - `GET/POST /api/instance/:id/backups` — 목록 / 지금 백업
 //! - `POST /api/instance/:id/backups/:name/restore` — 복원 (서버가 꺼져 있어야 한다. 먼저 pre-restore 백업)
 //! - `DELETE /api/instance/:id/backups/:name`
+//! - `POST /api/instance/:id/backups/:name/export` — `{path}`: 백업 하나를 zip 하나로 쓴다
+//! - `POST /api/instance/:id/backups/import` — `{path, preview}`: 내보낸 zip을 검사하고 목록에 올린다
 //! - `GET/PUT /api/instance/:id/schedule` — `{schedule: [...], backup_keep}`
 //! - `GET /api/schedules/upcoming` — 모든 인스턴스의 다가오는 예약
 #![allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
@@ -782,6 +784,118 @@ fn delete_failed(e: anyhow::Error) -> Response {
         Some(backup::BadName::Missing(_)) => error(StatusCode::NOT_FOUND, "backup_not_found", e.to_string()),
         None if gone => error(StatusCode::NOT_FOUND, "backup_not_found", e.to_string()),
         None => error(StatusCode::INTERNAL_SERVER_ERROR, "backup_delete_failed", format!("{:#}", e)),
+    }
+}
+
+/// 내보내기·가져오기가 쓰는 이 인스턴스의 자리: 백업 폴더, 서버 폴더, 인스턴스 폴더, 서버 이름, 모듈 이름
+struct Transfer {
+    dir: PathBuf,
+    server: PathBuf,
+    instance: PathBuf,
+    name: String,
+    module: String,
+}
+
+async fn transfer(state: &IPCServer, id: &str) -> Result<Transfer, Response> {
+    let supervisor = state.supervisor.read().await;
+    let Some(instance) = supervisor.instance_store.get(id) else {
+        return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+    };
+    let instance_dir = supervisor.instance_store.instance_dir(id);
+    let module = supervisor.module_loader.get_module(&instance.module_name).ok();
+    Ok(Transfer {
+        dir: backup::backups_dir(&instance_dir),
+        server: server_base(instance, &instance_dir, module.as_ref().map(|m| &m.metadata)),
+        instance: instance_dir,
+        name: instance.name.clone(),
+        module: instance.module_name.clone(),
+    })
+}
+
+#[derive(Deserialize)]
+pub struct TransferBody {
+    /// 데몬 PC의 zip 경로 (절대 경로)
+    path: String,
+    /// 가져오기: true면 검사만 하고 무엇인지 돌려준다
+    #[serde(default)]
+    preview: bool,
+}
+
+/// 내보내기·가져오기 실패: 사바쨩 백업이 아니거나 망가진 파일은 400, 그 밖(권한·입출력)은 500
+fn transfer_failed(e: anyhow::Error, code: &str) -> Response {
+    match e.downcast_ref::<backup::BadExport>() {
+        Some(backup::BadExport::NotBackup) => error(StatusCode::BAD_REQUEST, "import_not_backup", e.to_string()),
+        Some(backup::BadExport::Damaged) => error(StatusCode::BAD_REQUEST, "import_damaged", e.to_string()),
+        Some(backup::BadExport::OldFormat) => error(StatusCode::BAD_REQUEST, "export_old_backup", e.to_string()),
+        None if e.downcast_ref::<backup::BadName>().is_some() => delete_failed(e),
+        None => error(StatusCode::INTERNAL_SERVER_ERROR, code, format!("{:#}", e)),
+    }
+}
+
+fn absolute(path: &str) -> Result<PathBuf, Response> {
+    let path = PathBuf::from(path);
+    if !path.is_absolute() {
+        return Err(error(StatusCode::BAD_REQUEST, "invalid_request", "path must be an absolute path"));
+    }
+    Ok(path)
+}
+
+/// 백업 하나를 내용까지 담은 zip 하나로 쓴다 (다른 PC로 옮기거나 따로 보관). 게임 자동 백업은 먼저 보관한 뒤 내보낸다
+pub async fn export_backup(Path((id, name)): Path<(String, String)>, State(state): State<IPCServer>, Json(body): Json<TransferBody>) -> Response {
+    if name.starts_with(SNAPSHOT_PREFIX) {
+        return error(StatusCode::BAD_REQUEST, "invalid_backup_name", "Keep the game's automatic backup first, then export it");
+    }
+    let (at, dest) = match (transfer(&state, &id).await, absolute(&body.path)) {
+        (Ok(at), Ok(dest)) => (at, dest),
+        (Err(r), _) | (_, Err(r)) => return r,
+    };
+    let Some(_guard) = InstanceLock::take(&id) else {
+        return error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance");
+    };
+    let shown = dest.clone();
+    let done = tokio::task::spawn_blocking(move || {
+        let origin = backup::Origin { server: at.name, module: at.module };
+        backup::export(&at.dir, &name, &dest, &origin, &backup::Bases { server: &at.server, instance: &at.instance })
+    })
+    .await;
+    match done {
+        Ok(Ok(size)) => Json(json!({ "success": true, "path": shown, "size": size })).into_response(),
+        Ok(Err(e)) => transfer_failed(e, "export_failed"),
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, "export_failed", e.to_string()),
+    }
+}
+
+/// 내보낸 zip을 검사하고(`preview`) 이 서버의 백업 목록에 올린다. 사바쨩이 내보낸 백업이 아니거나, 내용이 목록과 다르거나,
+/// 다른 모듈의 서버에서 만든 백업이면 올리지 않는다. 서버에 넣는 것은 복원이 한다
+pub async fn import_backup(Path(id): Path<String>, State(state): State<IPCServer>, Json(body): Json<TransferBody>) -> Response {
+    let (at, source) = match (transfer(&state, &id).await, absolute(&body.path)) {
+        (Ok(at), Ok(source)) => (at, source),
+        (Err(r), _) | (_, Err(r)) => return r,
+    };
+    let seen = {
+        let source = source.clone();
+        match tokio::task::spawn_blocking(move || backup::inspect_export(&source)).await {
+            Ok(Ok(seen)) => seen,
+            Ok(Err(e)) => return transfer_failed(e, "import_failed"),
+            Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, "import_failed", e.to_string()),
+        }
+    };
+    if seen.module != at.module {
+        let mut body = json!({ "success": false, "error": "This backup was made for a different kind of server", "error_code": "import_other_module" });
+        body["module"] = json!(seen.module);
+        return (StatusCode::BAD_REQUEST, Json(body)).into_response();
+    }
+    if body.preview {
+        return Json(json!({ "success": true, "preview": seen })).into_response();
+    }
+    let Some(_guard) = InstanceLock::take(&id) else {
+        return error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance");
+    };
+    let done = tokio::task::spawn_blocking(move || backup::import(&at.dir, &source, &backup::Bases { server: &at.server, instance: &at.instance })).await;
+    match done {
+        Ok(Ok(made)) => Json(json!({ "success": true, "backup": made })).into_response(),
+        Ok(Err(e)) => transfer_failed(e, "import_failed"),
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, "import_failed", e.to_string()),
     }
 }
 
@@ -1769,6 +1883,39 @@ mod tests {
         // 확인한 뒤 지우기 전에 사라졌으면 없는 백업이다
         let gone = delete_failed(std::io::Error::from(std::io::ErrorKind::NotFound).into());
         assert_eq!(gone.status(), StatusCode::NOT_FOUND);
+    }
+
+    /// 내보낸 zip을 다른 서버에 가져오면 목록에 "가져옴"으로 오르고, 사바쨩 백업이 아닌 파일과 다른 모듈의 백업은 거절된다
+    #[tokio::test]
+    async fn an_exported_backup_is_checked_and_listed_when_imported() {
+        const WORLD: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[backup]\npaths = [\"world\"]\n";
+        let (state, id, tmp) = server_with(WORLD, None).await;
+        std::fs::create_dir_all(tmp.path().join("server/world")).unwrap();
+        std::fs::write(tmp.path().join("server/world/level.dat"), b"level").unwrap();
+        let made = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap();
+        let zip = tmp.path().join("out.zip").to_string_lossy().to_string();
+        let body = |preview| Json(TransferBody { path: zip.clone(), preview });
+        let out = crate::ipc::internal::into_internal(export_backup(Path((id.clone(), made.name.clone())), State(state.clone()), body(false)).await).await;
+        assert_eq!(out.body["success"], true, "{}", out.body);
+        assert_eq!(out.body["size"].as_u64(), Some(std::fs::metadata(&zip).unwrap().len()));
+
+        let seen = crate::ipc::internal::into_internal(import_backup(Path(id.clone()), State(state.clone()), body(true)).await).await;
+        assert_eq!((seen.body["preview"]["server"].as_str(), seen.body["preview"]["module"].as_str()), (Some("srv"), Some("plain")));
+        let dir = backups_dir(&state, &id).await.unwrap();
+        assert_eq!(backup::list(&dir).len(), 1, "a preview lists nothing");
+        let got = crate::ipc::internal::into_internal(import_backup(Path(id.clone()), State(state.clone()), body(false)).await).await;
+        assert_eq!((got.body["backup"]["kind"].as_str(), got.body["backup"]["imported_from"].as_str()), (Some("imported"), Some("srv")));
+        assert_eq!(backup::list(&dir).len(), 2);
+
+        let other = tmp.path().join("other.zip");
+        let origin = backup::Origin { server: "x".into(), module: "another-game".into() };
+        backup::export(&dir, &made.name, &other, &origin, &backup::Bases { server: tmp.path(), instance: tmp.path() }).unwrap();
+        let refused = import_backup(Path(id.clone()), State(state.clone()), Json(TransferBody { path: other.to_string_lossy().to_string(), preview: true })).await;
+        assert_eq!(code(refused).await, "import_other_module");
+        let plain = dir.join(&made.name).to_string_lossy().to_string();
+        let refused = import_backup(Path(id.clone()), State(state.clone()), Json(TransferBody { path: plain, preview: false })).await;
+        assert_eq!(code(refused).await, "import_not_backup");
+        assert_eq!(backup::list(&dir).len(), 2);
     }
 
     async fn data_roots_backfill_server(import_result: &str) -> (IPCServer, String, tempfile::TempDir, tempfile::TempDir) {

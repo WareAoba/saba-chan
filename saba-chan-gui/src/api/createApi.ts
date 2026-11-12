@@ -1189,6 +1189,35 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 undefined,
                 BACKUP_TIMEOUT,
             ),
+        // 백업 내보내기·가져오기: zip은 데몬이 읽고 쓴다. 여기서는 경로만 고른다
+        instanceBackupExport: async (id: string, name: string, defaultName: string): Promise<ApiBody> => {
+            const filePath = await pickLocal('dialog_save_file', {
+                defaultPath: defaultName,
+                filters: [{ name: 'Zip', extensions: ['zip'] }],
+            });
+            if (!filePath) return { canceled: true };
+            return call(
+                'post',
+                instancePath(id, `/backups/${encodeURIComponent(name)}/export`),
+                { path: filePath },
+                BACKUP_TIMEOUT,
+            );
+        },
+        // path 없이 부르면 파일을 고르게 하고, 결과에 path를 붙인다 (`preview` 뒤 같은 path로 다시 부른다)
+        instanceBackupImport: async (id: string, opts: { path?: string; preview?: boolean } = {}): Promise<ApiBody> => {
+            let filePath = opts.path || null;
+            if (!filePath) {
+                filePath = await pickLocal('dialog_open_file', { filters: [{ name: 'Zip', extensions: ['zip'] }] });
+                if (!filePath) return { canceled: true };
+            }
+            const body = await call(
+                'post',
+                instancePath(id, '/backups/import'),
+                { path: filePath, preview: !!opts.preview },
+                BACKUP_TIMEOUT,
+            );
+            return { ...body, path: filePath };
+        },
         instanceScheduleGet: (id: string) => call('get', instancePath(id, '/schedule')),
         // 모든 서버의 다가오는 예약 (작업 기록 화면). hours 안에 도는 것만
         schedulesUpcoming: (hours?: number) => call('get', `/api/schedules/upcoming${queryString({ hours })}`),

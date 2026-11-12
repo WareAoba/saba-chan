@@ -1318,7 +1318,8 @@
       "pre-update": "更新前",
       "pre-restore": "恢复前",
       "snapshot": "保留的游戏备份",
-      "game-snapshot": "游戏自动备份"
+      "game-snapshot": "游戏自动备份",
+      "imported": "已导入"
     },
     "none": "{{name}} 还没有备份。",
     "creating": "正在备份 {{name}}...",

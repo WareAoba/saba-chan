@@ -417,7 +417,8 @@
         "pre-update": "vor Update",
         "pre-restore": "vor Wiederherstellung",
         "snapshot": "Behaltenes Spiel-Backup",
-        "game-snapshot": "Spiel-Autobackup"
+        "game-snapshot": "Spiel-Autobackup",
+        "imported": "Importiert"
       },
       "events": "📜 **Letzte Starts und Stopps**",
       "events_empty": "📭 Keine Einträge",
