@@ -2162,8 +2162,6 @@ impl Supervisor {
     /// 콘솔 명령을 stdin으로 보내야 하는가.
     /// 모듈이 `stdin`을 지원하고 stdin이 열린 managed 프로세스가 돌고 있으면 stdin을 쓴다
     /// (RCON은 보안상 늘 꺼져 있다).
-    /// 서버가 켜져 있는가: 추적표(non-managed와 managed 모두 띄운 뒤 올린다)나 managed 저장소에 살아 있으면.
-    /// "켜져 있으면 거절" 판정은 모두 이것을 쓴다 (재부착 때 추적표 등록이 실패해 managed에만 남은 경우도 켜진 것이다)
     /// 데몬이 아는 실행 상태 `(실행 중, PID, 시작 시각)`: 서버 목록과 개별 상태 조회가 같이 쓴다.
     /// managed 프로세스가 있으면 그것이 살아 있는지로 정한다(끝났지만 모니터가 아직 치우지 않은 PID를 실행 중으로 보지 않는다).
     /// 없으면 추적 중인 PID가 있는지다
@@ -2179,6 +2177,8 @@ impl Supervisor {
         (true, pid, self.tracker.get_start_time(instance_id).ok())
     }
 
+    /// 서버가 켜져 있는가: 추적표(non-managed와 managed 모두 띄운 뒤 올린다)나 managed 저장소에 살아 있으면.
+    /// "켜져 있으면 거절" 판정은 모두 이것을 쓴다 (재부착 때 추적표 등록이 실패해 managed에만 남은 경우도 켜진 것이다)
     pub async fn is_running(&self, instance_id: &str) -> bool {
         self.tracker.get_pid(instance_id).is_ok() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
     }
