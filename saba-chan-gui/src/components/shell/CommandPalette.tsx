@@ -11,6 +11,7 @@ import { commandArgs } from '../../utils/commandSyntax';
 import { flashSetting } from '../../utils/findOnScreen';
 import { choseong } from '../../utils/hangul';
 import { safeShowToast } from '../../utils/helpers';
+import { isImeKey } from '../../utils/ime';
 import { openScreen } from '../../utils/openScreen';
 import { commandInputLabel, commandText, interactionOf } from '../../utils/serverView';
 import { botSettingsAvailable } from '../discord/BotSettingsTab';
@@ -513,6 +514,7 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
     };
 
     const onKeyDown = (e: React.KeyboardEvent) => {
+        if (isImeKey(e)) return;
         if (busy || mode === 'done') {
             if (e.key === 'Escape') e.preventDefault();
             return;

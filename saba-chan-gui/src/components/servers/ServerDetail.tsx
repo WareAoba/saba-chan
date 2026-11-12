@@ -11,43 +11,44 @@ import type { useServerSettings } from '../../hooks/useServerSettings';
 import { useConsoleStore } from '../../stores/useConsoleStore';
 import { type Server, useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
-import { failedModuleReason, failureForModule } from '../../utils/failedModules';
-import { openWithNotice, safeShowToast } from '../../utils/helpers';
-import { screenFallbackNotice } from '../../utils/openScreen';
 import { type ModalConfig, useUIStore } from '../../stores/useUIStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { withCommandAliases } from '../../utils/commandRisk';
+import { failedModuleReason, failureForModule } from '../../utils/failedModules';
+import { openWithNotice, safeShowToast } from '../../utils/helpers';
+import { isImeKey } from '../../utils/ime';
+import { screenFallbackNotice } from '../../utils/openScreen';
 import {
-    STATUS_TONE,
-    isTransitional,
     consoleQuickCommands,
     defaultServerTab,
     gameNameOf,
     initials,
     interactionOf,
+    isTransitional,
     playersText,
     primaryAction,
     protocolLabel,
+    STATUS_TONE,
     viewStatus,
 } from '../../utils/serverView';
 import { dataStatusRows } from '../DataSlots';
+import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import ExtensionSlot, { SlotView, useSlotPages } from '../ExtensionSlot';
 import { Icon } from '../Icon';
-import { PageFind, PageFindButton } from './PageFind';
-import { PortCheck, PortCheckNotice } from './PortCheck';
-import { ServerAddress } from './ServerAddress';
-import { ServerCheck } from './ServerCheck';
 import CommandModal from '../Modals/CommandModal';
 import { NativeProvision } from '../NativeProvision';
 import { Card, ServerSettingsModal, SettingRow } from '../ServerSettingsModal';
 import { Disclosure } from '../ui/Disclosure';
 import { Segmented, StatusChip } from '../ui/StatusChip';
-import { ServerLogs } from './ServerLogs';
-import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
-import { ServerConsole } from './ServerConsole';
 import { StartCoach } from './OnboardingCard';
+import { PageFind, PageFindButton } from './PageFind';
+import { PortCheck, PortCheckNotice } from './PortCheck';
+import { ServerAddress } from './ServerAddress';
+import { ServerCheck } from './ServerCheck';
+import { ServerConsole } from './ServerConsole';
+import { ServerLogs } from './ServerLogs';
 
 type ServerSetter = (updater: (prev: Server[]) => Server[]) => void;
 
@@ -516,7 +517,7 @@ function ServerName({
             onChange={(e) => setValue(e.target.value)}
             onBlur={commit}
             onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Enter' && !isImeKey(e)) e.currentTarget.blur();
                 if (e.key === 'Escape') {
                     setValue(server.name);
                     setEditing(false);
