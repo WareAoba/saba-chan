@@ -121,12 +121,38 @@ fn parse_args() -> Result<Args, String> {
     })
 }
 
-type Log = Arc<Mutex<File>>;
+type Log = Arc<Mutex<std::io::BufWriter<File>>>;
+
+/// 모아 둔 줄을 파일로 내리는 주기. 데몬이 콘솔에서 보는 지연이 이만큼 늘 수 있다
+const LOG_FLUSH_INTERVAL: Duration = Duration::from_millis(100);
+
+/// 세션 로그를 연다. 줄은 모았다가 `LOG_FLUSH_INTERVAL`마다(또는 버퍼가 차면) 한 번에 파일로 내린다:
+/// 시작 때 수천 줄을 쏟는 서버에서 줄마다 쓰기 호출을 하지 않게
+fn open_log(path: &std::path::Path) -> std::io::Result<Log> {
+    let file = OpenOptions::new().create(true).append(true).open(path)?;
+    let log: Log = Arc::new(Mutex::new(std::io::BufWriter::new(file)));
+    let weak = Arc::downgrade(&log);
+    std::thread::spawn(move || {
+        while let Some(log) = weak.upgrade() {
+            flush_log(&log);
+            drop(log);
+            std::thread::sleep(LOG_FLUSH_INTERVAL);
+        }
+    });
+    Ok(log)
+}
 
 fn write_log(log: &Log, stream: Stream, content: &str) {
     if let Ok(mut f) = log.lock() {
-        // 한 줄을 한 번에 쓴다: 데몬도 같은 파일에 줄을 덧붙이므로, 내용과 줄바꿈을 나눠 쓰면 그 사이에 끼어든다
+        // 한 줄을 한 번에 넘긴다: 데몬도 같은 파일에 줄을 덧붙이므로, 줄 중간에서 파일로 내려가면 그 사이에 끼어든다
+        // (BufWriter는 한 번에 받은 조각을 나눠 내리지 않는다)
         let _ = f.write_all(format!("{}\n", format_line(now(), stream, content)).as_bytes());
+    }
+}
+
+/// 모아 둔 줄을 지금 파일로 내린다 (출력이 끝났을 때, 종료 기록을 남기기 전)
+fn flush_log(log: &Log) {
+    if let Ok(mut f) = log.lock() {
         let _ = f.flush();
     }
 }
@@ -307,6 +333,7 @@ fn pump(
         if let Some(last) = fold.flush() {
             write_log(&log, stream, &last);
         }
+        flush_log(&log);
     })
 }
 
@@ -612,9 +639,7 @@ fn run(args: Args) -> Result<i32, String> {
     }
     let _ = std::fs::remove_file(exit_file(&args.run_dir));
 
-    let log: Log = Arc::new(Mutex::new(
-        OpenOptions::new().create(true).append(true).open(&args.log).map_err(|e| e.to_string())?,
-    ));
+    let log = open_log(&args.log).map_err(|e| e.to_string())?;
     let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
 
@@ -623,6 +648,7 @@ fn run(args: Args) -> Result<i32, String> {
         Err(e) => {
             let msg = format!("Failed to spawn process '{}': {}", args.program, e);
             write_log(&log, Stream::System, &msg);
+            flush_log(&log);
             let _ = write_json(&exit_file(&args.run_dir), &ExitInfo { code: None, success: false, ended_at: now(), signal: None, memory_limit_mb: None });
             return Err(msg);
         }
@@ -722,6 +748,8 @@ fn run(args: Args) -> Result<i32, String> {
         (None, Some(sig)) => write_log(&log, Stream::System, &format!("Process killed by signal {}", sig)),
         (None, None) => write_log(&log, Stream::System, "Process exited (status unknown)"),
     }
+    // 데몬은 종료 기록을 보고 로그를 마지막으로 읽는다: 그 전에 남은 줄을 내린다
+    flush_log(&log);
     let _ = write_json(&exit_file(&args.run_dir), &exit);
     let _ = std::fs::remove_file(runner_file(&args.run_dir));
     Ok(exit.code.unwrap_or(1))
@@ -850,7 +878,7 @@ mod tests {
     #[test]
     fn a_pseudo_console_cursor_query_gets_an_answer_even_without_a_newline() {
         let path = std::env::temp_dir().join(format!("saba-runner-cursor-{}.log", std::process::id()));
-        let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
+        let log = super::open_log(&path).unwrap();
         let sink = Sink::default();
         let stdin: std::sync::Arc<super::Stdin> = std::sync::Arc::new(std::sync::Mutex::new(Some(Box::new(sink.clone()))));
         // 앞쪽 요청은 두 조각으로 나뉘어 온다
@@ -878,7 +906,7 @@ mod tests {
     #[test]
     fn a_pseudo_console_line_without_a_newline_is_logged_once_output_pauses() {
         let path = std::env::temp_dir().join(format!("saba-runner-partial-{}.log", std::process::id()));
-        let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
+        let log = super::open_log(&path).unwrap();
         // 한 조각을 주고 나서는 테스트가 닫을 때까지 아무것도 주지 않는다 (살아 있는 서버)
         struct Held(Option<&'static [u8]>, std::sync::mpsc::Receiver<()>);
         impl std::io::Read for Held {
@@ -927,7 +955,7 @@ mod tests {
         let split = regex::Regex::new(r"\[LOG\] REST").unwrap();
         for console in [super::Console::Pty, super::Console::Pipe] {
             let path = std::env::temp_dir().join(format!("saba-runner-split-{}-{:?}.log", std::process::id(), console));
-            let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
+            let log = super::open_log(&path).unwrap();
             let reader = Chunks(vec![b"[LOG] REST accessed /v1/api/save[LOG] REST accessed /v1/api/shutdown\nplain [LOG] stays\n"]);
             super::pump(reader, log, super::Stream::Stdout, console, None, Some(split.clone()), Vec::new()).join().unwrap();
             let text = std::fs::read_to_string(&path).unwrap();
@@ -942,7 +970,7 @@ mod tests {
     #[test]
     fn pseudo_console_lines_are_logged_as_the_screen_shows_them() {
         let path = std::env::temp_dir().join(format!("saba-runner-screen-{}.log", std::process::id()));
-        let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
+        let log = super::open_log(&path).unwrap();
         let progress: String = (1..=100).map(|p| format!("\rResetting game objects {p}%")).collect();
         let output = format!("{progress}\r\n: help\r\nhelp\x1b[4X\x1b[4CDisplays a list of commands.\r\n");
         super::pump(std::io::Cursor::new(output.into_bytes()), log, super::Stream::Stdout, super::Console::Pty, None, None, Vec::new()).join().unwrap();
@@ -972,7 +1000,7 @@ mod tests {
         out.push_str("Server started\r\nResetting game objects 1%\r\nResetting game objects 2%\r\n");
         for console in [super::Console::Pipe, super::Console::Pty] {
             let path = std::env::temp_dir().join(format!("saba-runner-fold-{}-{:?}.log", std::process::id(), console));
-            let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
+            let log = super::open_log(&path).unwrap();
             super::pump(std::io::Cursor::new(out.clone().into_bytes()), log, super::Stream::Stdout, console, None, None, progress.clone()).join().unwrap();
             let text = std::fs::read_to_string(&path).unwrap();
             let _ = std::fs::remove_file(&path);
@@ -994,7 +1022,7 @@ mod tests {
     #[test]
     fn a_folded_progress_line_is_logged_once_output_pauses() {
         let path = std::env::temp_dir().join(format!("saba-runner-fold-idle-{}.log", std::process::id()));
-        let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
+        let log = super::open_log(&path).unwrap();
         let (tx, rx) = std::sync::mpsc::channel::<()>();
         struct Paused(Vec<&'static [u8]>, std::sync::mpsc::Receiver<()>);
         impl std::io::Read for Paused {
