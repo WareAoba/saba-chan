@@ -1203,6 +1203,36 @@ pub enum BotCmd {
         #[arg(long)]
         off: bool,
     },
+    /// Member join and leave notices in the notice channel of a Discord server. No options: show
+    MemberNotice {
+        guild: Option<String>,
+        /// Turn member notices on
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Turn member notices off
+        #[arg(long)]
+        off: bool,
+    },
+    /// Overload notice (posted while the PC is overloaded, removed when it clears) on a Discord server. No options: show
+    BusyNotice {
+        guild: Option<String>,
+        /// Turn the overload notice on
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Turn the overload notice off
+        #[arg(long)]
+        off: bool,
+    },
+    /// Open the game chat link by itself while someone is on a running server, on a Discord server. No options: show
+    ChatAutoOpen {
+        guild: Option<String>,
+        /// Open the chat link by itself
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Leave the chat link closed until someone opens it
+        #[arg(long)]
+        off: bool,
+    },
     /// Singing Saba-chan settings of a Discord server. No options: show
     Music {
         guild: Option<String>,
