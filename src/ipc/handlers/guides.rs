@@ -226,11 +226,19 @@ pub async fn update(State(state): State<IPCServer>, Path(id): Path<String>, Loos
     }
     match state.config_store.merge_client_section(crate::guides::SECTION, patch.clone()) {
         Ok(_) => {
-            spawn_share(&state, patch);
+            spawn_share(&state, only_this_step(patch, &id));
             Json(json!({ "ok": true })).into_response()
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
     }
+}
+
+/// 릴레이에 보낼 때 단계는 이 가이드 것만 보낸다. 이 PC의 다른 가이드 단계는 낡았을 수 있어 다른 PC가 넘긴 단계를 되돌린다
+fn only_this_step(mut patch: Value, id: &str) -> Value {
+    if let Some(step) = patch.get("step").and_then(|s| s.get(id)).cloned() {
+        patch["step"] = json!({ id: step });
+    }
+    patch
 }
 
 #[cfg(test)]
@@ -248,5 +256,12 @@ mod sync_tests {
         sync_failed(&next, t0);
         assert!(!claim_sync(&next, t0 + RETRY_AFTER - Duration::from_secs(1)));
         assert!(claim_sync(&next, t0 + RETRY_AFTER));
+    }
+
+    /// 한 가이드의 단계를 남길 때 다른 가이드의 낡은 단계로 다른 PC가 넘긴 단계를 되돌리지 않는다
+    #[test]
+    fn sharing_a_step_sends_only_that_guides_step() {
+        let patch = json!({ "known": ["music"], "step": { "music": 2, "backup": 1 } });
+        assert_eq!(only_this_step(patch, "music"), json!({ "known": ["music"], "step": { "music": 2 } }));
     }
 }
