@@ -249,6 +249,19 @@ pub(crate) fn launch_args(launch_result: &Value, instance: &crate::instance::Ser
     args
 }
 
+/// 찾는 인스턴스가 없다. 핸들러는 오류 문구가 아니라 이 타입을 보고 404를 고른다
+/// (모듈이 낸 "not found" 같은 문구가 "인스턴스 없음"으로 바뀌지 않게)
+#[derive(Debug)]
+pub struct InstanceNotFound(pub String);
+
+impl std::fmt::Display for InstanceNotFound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Instance '{}' not found", self.0)
+    }
+}
+
+impl std::error::Error for InstanceNotFound {}
+
 /// 모듈 함수가 성공을 알리지 않았을 때 사용자에게 보일 이유. 모듈이 준 `message`·`error`를 쓰고,
 /// 둘 다 없으면 계약 위반(예: `success`·`program` 없이 옛 키만 돌려줌)을 그대로 알린다
 pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> anyhow::Error {
@@ -719,7 +732,7 @@ impl Supervisor {
                 .instance_store
                 .get(instance_id)
                 .cloned()
-                .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", instance_id))?;
+                .ok_or_else(|| InstanceNotFound(instance_id.to_string()))?;
             let module = s.module_loader.get_module(&instance.module_name)?;
             let fields = module.metadata.settings.as_ref().map(|m| m.fields.clone()).unwrap_or_default();
 
@@ -1231,7 +1244,7 @@ impl Supervisor {
             // Find instance to get executable_path and working_dir
             let instance = s.instance_store.find(server_name)
                 .cloned()
-                .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
+                .ok_or_else(|| InstanceNotFound(server_name.to_string()))?;
 
             // ── 중복 시작 방어: 추적 중인 PID가 살아 있으면 새로 띄우지 않는다 (추적을 덮어쓰지 않게) ──
             if let Ok(existing_pid) = s.tracker.get_pid(&instance.id) {
@@ -1459,7 +1472,7 @@ impl Supervisor {
             let mut s = sup.write().await;
             let instance = s.instance_store.find(server_name)
                 .cloned()
-                .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
+                .ok_or_else(|| InstanceNotFound(server_name.to_string()))?;
             s.stop_requested.insert(instance.id.clone(), crate::audit::current());
             let generation = s.run_generation.entry(instance.id.clone()).or_default();
             *generation += 1;
@@ -1739,7 +1752,7 @@ impl Supervisor {
                 .iter()
                 .find(|i| i.name == server_name)
                 .cloned()
-                .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
+                .ok_or_else(|| InstanceNotFound(server_name.to_string()))?;
             let hook = s.extension_manager.clone().map(|ext_mgr| {
                 let instance_dir = s.instance_store.instance_dir(&instance.id);
                 let process_patterns = s.module_loader.get_module(module_name)
@@ -2554,7 +2567,7 @@ impl Supervisor {
         let call = {
             let mut s = sup.write().await;
             let mut instance = s.instance_store.get(instance_id).cloned()
-                .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
+                .ok_or_else(|| InstanceNotFound(instance_id.to_string()))?;
             let module = s.module_loader.get_module(&instance.module_name)?;
             if let Some(unknown) = ids.iter().find(|id| !module.metadata.agreements.iter().any(|a| &a.id == *id)) {
                 return Ok(Err(unknown.clone()));
@@ -2856,7 +2869,7 @@ impl Supervisor {
         let call = {
             let s = sup.read().await;
             let instance = s.instance_store.get(instance_id)
-                .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", instance_id))?;
+                .ok_or_else(|| InstanceNotFound(instance_id.to_string()))?;
             if instance.module_name != module_name {
                 anyhow::bail!("Instance '{}' is not a '{}' server", instance_id, module_name);
             }
@@ -4237,7 +4250,7 @@ mod tests {
     }
 
     #[test]
-    fn module_failure_uses_message_for_the_existing_http_status_selection() {
+    fn module_failure_reads_as_the_module_message() {
         let value = json!({ "success": false, "error": "cannot start", "message": "jar missing", "module": "game", "function": "get_launch_command" });
         let error = module_failure(&value, "game", "get_launch_command");
         assert_eq!(error.to_string(), "jar missing");

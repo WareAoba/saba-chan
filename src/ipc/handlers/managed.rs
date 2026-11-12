@@ -737,10 +737,10 @@ pub async fn accept_agreements_handler(
         Ok(Err(unknown)) => {
             super::instance::invalid_field("accept", format!("This server's module has no agreement '{}'", unknown))
         }
-        Err(e) if e.to_string().starts_with("Instance not found") => {
-            (StatusCode::NOT_FOUND, Json(json!({ "error": e.to_string(), "error_code": "not_found" }))).into_response()
-        }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
+        Err(e) => match e.downcast_ref::<crate::supervisor::InstanceNotFound>() {
+            Some(missing) => super::server::instance_not_found(&missing.0),
+            None => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
+        },
     }
 }
 

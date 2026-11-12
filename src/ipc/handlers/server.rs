@@ -894,11 +894,7 @@ async fn start_instance(
             })
     };
     let Some((instance, managed)) = picked else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" })),
-        )
-            .into_response();
+        return instance_not_found(&id);
     };
 
     // 점검 중에 들어온 정지도 시작을 취소하도록 세대를 점검 전에 잡는다.
@@ -1001,7 +997,7 @@ async fn instance_key_of(state: &IPCServer, key: &str) -> Option<(String, String
         .map(|i| (i.id.clone(), i.name.clone()))
 }
 
-fn instance_not_found(id: &str) -> axum::response::Response {
+pub(super) fn instance_not_found(id: &str) -> axum::response::Response {
     (
         StatusCode::NOT_FOUND,
         Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" })),
@@ -1152,7 +1148,7 @@ pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::tim
 pub async fn instance_events_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
     if supervisor.instance_store.get(&id).is_none() {
-        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
+        return instance_not_found(&id);
     }
     Json(json!({ "events": supervisor.exit_events(&id) })).into_response()
 }
@@ -1194,25 +1190,23 @@ async fn start_server_handler(
         .await
     {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-        Err(e) => {
-            let msg = e.to_string();
-            let (code, error_code) = if msg.contains("not found") {
-                (StatusCode::NOT_FOUND, "instance_not_found")
-            } else if msg.contains("jar") || msg.contains("executable") {
-                (StatusCode::UNPROCESSABLE_ENTITY, "executable_missing")
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "start_failed")
-            };
-            let error = if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
-                crate::plugin::error_response(&e)
-            } else { json!({
-                "error": format!("Failed to start server: {}", msg),
-                "error_code": error_code,
-            }) };
-            (code, Json(error)).into_response()
-        }
+        Err(e) => lifecycle_failure(&e, "start", "start_failed"),
     };
     super::audited(&state, "start", &name, None, None, resp).await
+}
+
+/// 시작·정지가 실패한 응답. 상태는 오류 문구가 아니라 종류로 고른다: 인스턴스가 없으면 404 `instance_not_found`,
+/// 모듈 호출 실패는 모듈이 준 본문 그대로 500, 그 밖은 500 `failed_code`
+fn lifecycle_failure(e: &anyhow::Error, action: &str, failed_code: &str) -> axum::response::Response {
+    if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(e))).into_response();
+    }
+    let (code, error_code) = if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() {
+        (StatusCode::NOT_FOUND, "instance_not_found")
+    } else {
+        (StatusCode::INTERNAL_SERVER_ERROR, failed_code)
+    };
+    (code, Json(json!({ "error": format!("Failed to {} server: {}", action, e), "error_code": error_code }))).into_response()
 }
 
 /// 받아 둔 업데이트 확인 결과에서 이 모듈의 새 버전 `{module, current, latest}`
@@ -1397,21 +1391,7 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
                 }
                 (StatusCode::OK, Json(result)).into_response()
             }
-            Err(e) => {
-                let msg = e.to_string();
-                let (code, error_code) = if msg.contains("not found") {
-                    (StatusCode::NOT_FOUND, "instance_not_found")
-                } else {
-                    (StatusCode::INTERNAL_SERVER_ERROR, "stop_failed")
-                };
-                let error = if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
-                    crate::plugin::error_response(&e)
-                } else { json!({
-                    "error": format!("Failed to stop server: {}", msg),
-                    "error_code": error_code,
-                }) };
-                (code, Json(error)).into_response()
-            }
+            Err(e) => lifecycle_failure(&e, "stop", "stop_failed"),
         }
     } else {
         let error = json!({
@@ -2461,6 +2441,43 @@ mod tests {
         assert_eq!(std::fs::read_to_string(target.join("lifecycle.py")).unwrap(), "new");
         assert!(!staging.exists());
         assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 1, "the old folder is removed after the swap");
+    }
+
+    /// 시작 실패의 상태는 오류 종류로 고른다. 모듈이 낸 문구에 "not found"나 "executable"이 들어 있어도
+    /// 404 "인스턴스 없음"이나 422 "실행 파일 없음"이 되지 않고, 모듈이 준 본문 그대로 500이다
+    #[tokio::test]
+    async fn a_module_start_failure_is_not_classified_by_its_message() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\n\
+             messages = {'missing-jar': 'Server jar not found: server.jar', 'missing-java': 'Java executable is missing'}\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             config = json.load(sys.stdin)\n    \
+             print(json.dumps({'success': False, 'message': messages[os.path.basename(config['instance_dir'])]}))\n\
+             else:\n    print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        for id in ["missing-jar", "missing-java"] {
+            let mut inst = crate::instance::ServerInstance::new(id, "game");
+            inst.id = id.into();
+            inst.module_settings.insert("managed_start".into(), json!(false));
+            sup.instance_store.add(inst).unwrap();
+        }
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        for (id, message) in [("missing-jar", "Server jar not found: server.jar"), ("missing-java", "Java executable is missing")] {
+            let started = crate::ipc::internal::into_internal(start_instance(Path(id.into()), State(state.clone())).await).await;
+            assert_eq!(started.status, StatusCode::INTERNAL_SERVER_ERROR, "{}", started.body);
+            assert_eq!((started.body["module"].as_str(), started.body["function"].as_str()), (Some("game"), Some("get_launch_command")), "{}", started.body);
+            assert_eq!(started.body["message"], message);
+        }
     }
 
     /// 가져오기 전 폴더 검사에서 사바쨩 밖에서 켜 둔 서버를 미리 알린다 (가져오기를 누르기 전에 끄라고 보인다)

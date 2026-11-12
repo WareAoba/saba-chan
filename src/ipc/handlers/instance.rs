@@ -1904,7 +1904,7 @@ pub async fn launch_preview(
     };
     match crate::supervisor::Supervisor::launch_preview(&state.supervisor, &id, &draft, extra.as_deref()).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-        Err(e) if e.to_string().contains("not found") => (StatusCode::NOT_FOUND, Json(crate::plugin::error_response(&e))).into_response(),
+        Err(e) if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() => (StatusCode::NOT_FOUND, Json(crate::plugin::error_response(&e))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
     }
 }
@@ -3076,6 +3076,26 @@ fn settings_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMe
 
 #[cfg(test)]
 mod tests {
+    /// 미리보기의 404는 인스턴스가 없을 때뿐이다. 인스턴스의 모듈이 없는 것("Module 'gone' not found")은 404가 아니다
+    #[tokio::test]
+    async fn launch_preview_is_not_found_only_for_a_missing_instance() {
+        use axum::{extract::{Path, State}, response::IntoResponse};
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        let mut inst = crate::instance::ServerInstance::new("orphan", "gone");
+        inst.id = "orphan".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let preview = |id: &str| {
+            let (state, id) = (state.clone(), id.to_string());
+            async move { crate::ipc::internal::into_internal(super::launch_preview(State(state), Path(id), super::LooseJson(None)).await.into_response()).await }
+        };
+        let missing = preview("nope").await;
+        assert_eq!((missing.status.as_u16(), missing.body["error"].as_str()), (404, Some("Instance 'nope' not found")), "{}", missing.body);
+        let orphan = preview("orphan").await;
+        assert_eq!(orphan.status.as_u16(), 500, "{}", orphan.body);
+    }
+
     #[tokio::test]
     async fn contract_paths_migration_reports_outside_executables_without_saving_them() {
         use axum::{extract::State, Json};
