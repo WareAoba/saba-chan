@@ -839,7 +839,7 @@
     "name_module": "{{name}} 模块",
     "name_extension": "{{name}} 扩展",
     "rollback_available": "可以回退到的版本：{{version}}（当前 {{current}}，{{at}} 更新）",
-    "rollback_confirm": "回退到 {{version}} 会重启 Saba-chan。要继续吗？",
+    "rollback_confirm": "回退到 {{version}} 会重启 Saba-chan，更新后修改的设置也会恢复到更新前的状态。要继续吗？",
     "rollback_addons": "回退后模块和扩展仍保持当前版本。以下内容无法在 {{version}} 中使用（需要更新的 Saba-chan）：{{list}}",
     "rolling_back": "正在回退...",
     "rollback_launched": "更新程序已启动。守护进程正在关闭以进行回退。",

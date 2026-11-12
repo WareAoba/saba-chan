@@ -839,7 +839,7 @@
     "name_module": "{{name}} 模組",
     "name_extension": "{{name}} 擴充功能",
     "rollback_available": "可以退回的版本：{{version}}（目前 {{current}}，{{at}} 更新）",
-    "rollback_confirm": "退回 {{version}} 會重新啟動 Saba-chan。要繼續嗎？",
+    "rollback_confirm": "退回 {{version}} 會重新啟動 Saba-chan，更新後變更的設定也會恢復到更新前的狀態。要繼續嗎？",
     "rollback_addons": "退回後模組和擴充功能仍維持目前版本。以下項目無法在 {{version}} 中使用（需要更新的 Saba-chan）：{{list}}",
     "rolling_back": "正在退回...",
     "rollback_launched": "更新程式已啟動。常駐程式正在關閉以進行退回。",
