@@ -197,15 +197,25 @@ textarea {
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    height: 32px;
     transition:
         background-color var(--dur-fast) var(--ease),
         color var(--dur-fast) var(--ease);
     font-variant-numeric: tabular-nums;
-    padding: 4px 12px;
+    padding: 0 12px;
     border-radius: 999px;
     background: var(--bg-3);
     color: var(--text-2);
     font-size: 13px;
+}
+/* 머리 오른쪽 알약은 모두 32px 한 줄 (남은 시간 · 연장 · 언어) */
+.topbar-row > .btn-small {
+    height: 32px;
+    min-height: 32px;
+    border-radius: 999px;
+    background: var(--bg-3);
+    box-shadow: none;
+    color: var(--text-1);
 }
 /* 화면 언어 버튼 (머리·연결 화면): 남은 시간 알약과 같은 모양, 누르면 그 아래에 목록 */
 .lang-menu {
@@ -216,7 +226,8 @@ textarea {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 10px;
+    height: 32px;
+    padding: 0 12px;
     border: 0;
     border-radius: 999px;
     background: var(--bg-3);
@@ -1141,13 +1152,13 @@ textarea {
     font-size: 22px;
     overflow-wrap: anywhere;
 }
+/* 상세 머리 오른쪽: 다시 시작 아이콘 · 시작/정지 단추 (앱 상세 머리처럼) */
 .detail-actions {
     display: flex;
+    align-items: center;
     gap: 8px;
-    margin-bottom: 16px;
-}
-.detail-actions .btn {
-    flex: 1;
+    margin-left: auto;
+    flex: none;
 }
 
 .console {
@@ -1301,6 +1312,14 @@ textarea {
 .inline {
     display: flex;
     gap: 8px;
+}
+.inline > input {
+    flex: 1;
+    min-width: 0;
+}
+.inline > .btn {
+    flex: none;
+    white-space: nowrap;
 }
 /* 토글: GUI SabaToggle과 같은 뉴모피즘 (44×24). 파인 홈에 강조색이 차고 손잡이가 튀듯 미끄러진다 */
 .switch {
@@ -1610,23 +1629,28 @@ textarea {
     .topbar-title {
         flex: none;
     }
+    /* 탭 바 모양은 상세 탭(.segments)과 같다: 오목한 판 위에 고른 칸만 솟는다 (사용자 11-12) */
     .tabs {
         position: static;
-        flex: 1;
+        flex: none;
         display: flex;
         gap: 4px;
-        margin-left: 12px;
-        padding: 0;
+        margin: 0 auto 0 12px;
+        padding: 4px;
         border-top: 0;
-        background: none;
+        border-radius: 12px;
+        background: var(--inset);
+        box-shadow:
+            inset 0 0 0 1px var(--line),
+            var(--neu-in);
     }
     .tabs button {
         display: flex;
         align-items: center;
         gap: 8px;
-        min-height: 36px;
+        min-height: 32px;
         padding: 0 14px;
-        border-radius: 10px;
+        border-radius: 8px;
         font-size: 14px;
         font-weight: 600;
         color: var(--text-2);
@@ -1635,9 +1659,9 @@ textarea {
             background-color var(--dur-fast) var(--ease);
     }
     .tabs button.on {
-        background: var(--bg-3);
+        background: var(--bg-2);
         color: var(--text-1);
-        box-shadow: inset 0 0 0 1px var(--line-strong);
+        box-shadow: var(--neu-up);
     }
     .tab-icon {
         width: auto;
@@ -2104,9 +2128,6 @@ textarea {
 }
 .detail-title .card-sub > span:not(.pill):not(.status) {
     margin-left: 8px;
-}
-.detail-actions .more-btn {
-    flex: none;
 }
 /* 탭이 많아도 줄이지 않고 옆으로 민다 */
 .segments-scroll {

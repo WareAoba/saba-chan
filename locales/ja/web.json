@@ -125,7 +125,6 @@
   "detail": {
     "backups": "バックアップ",
     "players": "プレイヤー",
-    "more": "その他",
     "tabs": "サーバーメニュー",
     "uptime": "稼働 {{time}}",
     "port_check": "ポート開放の確認"

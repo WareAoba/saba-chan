@@ -16,7 +16,7 @@ import { SabaSettings } from './SabaSettings';
 import { SchedulePanel } from './SchedulePanel';
 import { ServerIcon } from './ServerIcon';
 import { SettingsPanel } from './SettingsPanel';
-import { Button, errorText, failed, Segments, Sheet, StatusDot } from './ui';
+import { Button, Card, errorText, failed, Segments, Sheet, StatusDot } from './ui';
 import { useProvision } from './useProvision';
 import { useServerControl } from './useServerControl';
 import { useStickToBottom } from './useStickToBottom';
@@ -186,16 +186,15 @@ function Uptime({ startTime }: { startTime: number | null }) {
     return text ? <span className="pill">{t('detail.uptime', { time: text })}</span> : null;
 }
 
-/** 더보기: 이름 바꾸기, 서버 삭제 (켜져 있으면 삭제는 막는다) */
-interface MoreSheetProps {
+/** 정보 탭 아래: 이름 바꾸기, 서버 삭제 (켜져 있으면 삭제는 막는다. 앱 정보 탭처럼, 사용자 11-12) */
+interface ManageSectionProps {
     api: WebApi;
     server: Server;
     running: boolean;
     control: ReturnType<typeof useServerControl>;
-    onClose: () => void;
 }
 
-function MoreSheet({ api, server, running, control, onClose }: MoreSheetProps) {
+function ManageSection({ api, server, running, control }: ManageSectionProps) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const toast = useApp((s) => s.toast);
@@ -215,47 +214,43 @@ function MoreSheet({ api, server, running, control, onClose }: MoreSheetProps) {
             return toast(text, 'error');
         }
         toast(t('settings.renamed'), 'ok');
-        onClose();
     };
 
     return (
-        <Sheet title={server.name} onClose={onClose}>
-            <form
-                className="form"
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    rename();
-                }}
-            >
-                <label className="field">
-                    <span>{t('servers.name')}</span>
-                    <div className="inline">
-                        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} />
-                        <Button type="submit" busy={busy} disabled={!changed}>
-                            {t('settings.rename')}
-                        </Button>
-                    </div>
-                </label>
-                <div className="field">
-                    <span>{t('settings.danger_zone')}</span>
-                    <small className="hint">{t('settings.delete_hint')}</small>
-                    <Button
-                        tone="ghost-danger"
-                        disabled={running}
-                        busy={control.busy}
-                        onClick={async () => {
-                            if (await control.remove(server)) {
-                                onClose();
-                                openServer(null);
-                            }
-                        }}
-                    >
-                        <Icon name="trash" size={16} /> {t('servers.delete')}
+        <div className="panel">
+            <Card icon="edit" tone="1" title={t('settings.rename')}>
+                <form
+                    className="inline"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        rename();
+                    }}
+                >
+                    <input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        maxLength={64}
+                        aria-label={t('servers.name')}
+                    />
+                    <Button type="submit" busy={busy} disabled={!changed}>
+                        {t('settings.rename')}
                     </Button>
-                    {running && <small className="hint">{t('settings.stop_first')}</small>}
-                </div>
-            </form>
-        </Sheet>
+                </form>
+            </Card>
+            <Card icon="trash" tone="2" title={t('settings.danger_zone')} desc={t('settings.delete_hint')}>
+                <Button
+                    tone="ghost-danger"
+                    disabled={running}
+                    busy={control.busy}
+                    onClick={async () => {
+                        if (await control.remove(server)) openServer(null);
+                    }}
+                >
+                    <Icon name="trash" size={16} /> {t('servers.delete')}
+                </Button>
+                {running && <small className="hint">{t('settings.stop_first')}</small>}
+            </Card>
+        </div>
     );
 }
 
@@ -289,7 +284,6 @@ export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
     useEffect(() => {
         if (requestedTab) setView(requestedTab);
     }, [requestedTab]);
-    const [more, setMore] = useState(false);
     const [playersOpen, setPlayersOpen] = useState(false);
     const moduleData = modules.find((m) => m.name === server.module);
     const provision = useProvision(api, server);
@@ -329,6 +323,32 @@ export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
                         {server.port ? <span className="pill">:{server.port}</span> : null}
                     </p>
                 </div>
+                {/* 앱 상세 머리처럼: 다시 시작은 아이콘, 시작·정지는 보통 크기 단추 하나 (사용자 11-12) */}
+                <div className="detail-actions">
+                    {action === 'stop' && (
+                        <button
+                            type="button"
+                            className="icon-btn"
+                            disabled={control.busy}
+                            onClick={() => control.restart(server)}
+                            aria-label={t('servers.restart')}
+                            title={t('servers.restart')}
+                        >
+                            <Icon name="refresh" size={16} />
+                        </button>
+                    )}
+                    {action === 'start' && (
+                        <Button tone="accent" busy={control.busy} onClick={() => control.start(server)}>
+                            <Icon name="play" size={16} /> {t('servers.start')}
+                        </Button>
+                    )}
+                    {action === 'stop' && (
+                        <Button tone="danger" busy={control.busy} onClick={() => control.stop(server)}>
+                            <Icon name="stop" size={16} /> {t('servers.stop')}
+                        </Button>
+                    )}
+                    {action === 'busy' && <Button disabled>{t(`status.${status}`)}</Button>}
+                </div>
             </header>
             {provision.view?.state === 'running' && (
                 <div className="banner banner-info">
@@ -345,32 +365,6 @@ export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
                     <Button onClick={provision.dismiss}>{t('provision.dismiss')}</Button>
                 </div>
             )}
-            <div className="detail-actions">
-                {action === 'start' && (
-                    <Button tone="accent" busy={control.busy} onClick={() => control.start(server)}>
-                        <Icon name="play" size={16} /> {t('servers.start')}
-                    </Button>
-                )}
-                {action === 'stop' && (
-                    <>
-                        <Button tone="danger" busy={control.busy} onClick={() => control.stop(server)}>
-                            <Icon name="stop" size={16} /> {t('servers.stop')}
-                        </Button>
-                        <Button busy={control.busy} onClick={() => control.restart(server)}>
-                            <Icon name="refresh" size={16} /> {t('servers.restart')}
-                        </Button>
-                    </>
-                )}
-                {action === 'busy' && <Button disabled>{t(`status.${status}`)}</Button>}
-                <button
-                    type="button"
-                    className="icon-btn more-btn"
-                    onClick={() => setMore(true)}
-                    aria-label={t('detail.more')}
-                >
-                    <Icon name="more" />
-                </button>
-            </div>
             <Segments
                 value={tab}
                 onChange={setView}
@@ -396,21 +390,13 @@ export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
                     <InfoPanel api={api} server={server} moduleData={moduleData} />
                     {/* 서버 점검·포트포워딩 확인은 앱과 같이 정보 탭에 (예전 점검 탭) */}
                     <CheckPanel api={api} server={server} moduleData={moduleData} running={running} />
+                    <ManageSection api={api} server={server} running={running} control={control} />
                 </>
             )}
             {playersOpen && (
                 <Sheet title={t('detail.players')} onClose={() => setPlayersOpen(false)}>
                     <PlayersPanel api={api} server={server} running={status === 'running'} />
                 </Sheet>
-            )}
-            {more && (
-                <MoreSheet
-                    api={api}
-                    server={server}
-                    running={running}
-                    control={control}
-                    onClose={() => setMore(false)}
-                />
             )}
         </div>
     );

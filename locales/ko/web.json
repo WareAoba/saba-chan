@@ -125,7 +125,6 @@
   "detail": {
     "backups": "백업",
     "players": "플레이어",
-    "more": "더보기",
     "tabs": "서버 메뉴",
     "uptime": "시작한 지 {{time}}",
     "port_check": "포트포워딩 확인"

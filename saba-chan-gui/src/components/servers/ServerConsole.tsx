@@ -8,6 +8,7 @@ import { type CommandField, needsConfirm } from '../../utils/commandRisk';
 import { commandText } from '../../utils/serverView';
 import type { HighlightRule } from '../../types/daemon';
 import { sourceText } from '../../utils/audit';
+import { consoleStamper, type Stamp } from '../../utils/consoleStamp';
 import { type CompiledRule, getCachedRules } from '../../utils/syntaxHighlight';
 import { HighlightedContent } from '../ConsoleView';
 import { Icon } from '../Icon';
@@ -21,7 +22,6 @@ const historyOf = (id: string) => {
     return histories.get(id) as string[];
 };
 
-type Stamp = ((ts: number) => string) | null;
 
 interface ConsoleLineProps {
     line: ConsoleLineData;
@@ -87,21 +87,6 @@ const ConsoleLines = memo(function ConsoleLines({
         />
     ));
 });
-
-/**
- * 줄 앞 시각 표시 함수. 끔이면 null. 시각은 데몬이 준 unix 초이고 이 PC 시간대·언어로 보인다
- */
-export function consoleStamper(mode: string | undefined, withDate: boolean, lang: string | undefined): Stamp {
-    if (!mode || mode === 'off') return null;
-    const fmt = new Intl.DateTimeFormat(lang || undefined, {
-        ...(withDate ? { month: '2-digit', day: '2-digit' } : {}),
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: mode === '12h',
-    });
-    return (ts: number) => fmt.format(new Date(ts * 1000));
-}
 
 /**
  * 상세 화면에 박힌 콘솔. 창을 따로 열지 않아도 로그를 보고 명령을 보낼 수 있다(L).

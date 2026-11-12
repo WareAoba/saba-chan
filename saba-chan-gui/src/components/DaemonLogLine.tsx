@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { consoleStamper } from '../utils/consoleStamp';
 import { HighlightedContent } from './ConsoleView';
 import './DaemonLogLine.css';
 
@@ -20,7 +21,8 @@ export function DaemonLogLine({ line, locale }: { line: DaemonLogEntry; locale?:
     return (
         <div className={clsx('daemon-log-line', `level-${level}`)}>
             <span className="daemon-log-time">
-                {new Date(line.timestamp).toLocaleTimeString(locale, { hour12: false })}
+                {/* 서버 콘솔과 같은 두 자리 시각 — 줄마다 칸 너비가 같아 본문이 세로로 맞는다 */}
+                {consoleStamper('24h', false, locale)?.(new Date(line.timestamp).getTime() / 1000)}
             </span>
             <span className="daemon-log-level">{level.toUpperCase()}</span>
             <span className="daemon-log-msg">

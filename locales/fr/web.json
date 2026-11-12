@@ -125,7 +125,6 @@
   "detail": {
     "backups": "Sauvegardes",
     "players": "Joueurs",
-    "more": "Plus",
     "tabs": "Menu du serveur",
     "uptime": "En marche depuis {{time}}",
     "port_check": "Vérifier la redirection de ports"

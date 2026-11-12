@@ -125,7 +125,6 @@
   "detail": {
     "backups": "備份",
     "players": "玩家",
-    "more": "更多",
     "tabs": "伺服器選單",
     "uptime": "已執行 {{time}}",
     "port_check": "埠轉發檢查"
