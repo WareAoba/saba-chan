@@ -475,9 +475,11 @@ foreach ($f in 'Desktop','Programs','CommonDesktopDirectory','CommonPrograms') {
 
 /// `target_dir`을 받은 zip(`staged`) 내용으로 바꾸고 푼 파일을 돌려준다. 도중에 실패하면 백업으로 되돌린다 (C13).
 /// 백업은 `staging_dir/backup_name`에 둔다. `__pycache__`와 점(.)으로 시작하는 항목은 남긴다.
-/// 업데이터(모듈·익스텐션·locales)와 설치기(모듈·익스텐션)가 함께 쓴다
+/// 새 판을 staging에 다 푼 뒤 이름 바꾸기로 맞바꾼다 (원래 폴더가 그대로 백업이 된다). 이름을 바꿀 수 없으면
+/// (staging이 다른 볼륨, 폴더가 링크, Windows에서 폴더가 잡혀 있음) 폴더를 백업에 복사하고 제자리에서 비우고 푼다
 pub fn replace_dir(target_dir: &Path, staged: &Path, staging_dir: &Path, backup_name: &str) -> Result<Vec<PathBuf>> {
     let backup_dir = staging_dir.join(backup_name);
+    let mut swapped = None;
     // 백업은 다 복사한 뒤 이름을 바꿔 둔다: `backup_dir`이 있으면 언제나 온전한 원래 내용이다
     let partial = staging_dir.join(format!("{}.partial", backup_name));
     if partial.exists() {
@@ -494,21 +496,30 @@ pub fn replace_dir(target_dir: &Path, staged: &Path, staging_dir: &Path, backup_
         }
         copy_tree(&backup_dir, target_dir)?;
     } else if target_dir.exists() {
-        copy_tree(target_dir, &partial)?;
-        std::fs::rename(&partial, &backup_dir)?;
+        if staged.extension().is_some_and(|e| e == "zip") {
+            swapped = swap_in(target_dir, staged, &staging_dir.join(format!("{}.new", backup_name)), &backup_dir)?;
+        }
+        if swapped.is_none() {
+            copy_tree(target_dir, &partial)?;
+            std::fs::rename(&partial, &backup_dir)?;
+        }
     }
     let had_target = backup_dir.exists();
-    let result = (|| -> Result<Vec<PathBuf>> {
-        if staged.extension().is_some_and(|e| e == "zip") {
-            if had_target {
-                clean_dir(target_dir)?;
+    let result = match swapped {
+        // 새 판이 제자리에 있고 원래 폴더가 백업이다: 남길 항목만 가져온다
+        Some(files) => carry_kept_entries(&backup_dir, target_dir).map(|_| files),
+        None => (|| -> Result<Vec<PathBuf>> {
+            if staged.extension().is_some_and(|e| e == "zip") {
+                if had_target {
+                    clean_dir(target_dir)?;
+                }
+                extract_zip(staged, target_dir, |_| Ok(()))
+            } else {
+                std::fs::copy(staged, target_dir)?;
+                Ok(Vec::new())
             }
-            extract_zip(staged, target_dir, |_| Ok(()))
-        } else {
-            std::fs::copy(staged, target_dir)?;
-            Ok(Vec::new())
-        }
-    })();
+        })(),
+    };
     let files = match result {
         Ok(files) => files,
         Err(e) => {
@@ -533,6 +544,64 @@ pub fn replace_dir(target_dir: &Path, staged: &Path, staging_dir: &Path, backup_
     std::fs::remove_file(staged).ok();
     let _ = std::fs::remove_dir_all(&backup_dir);
     Ok(files)
+}
+
+/// 새 판을 `fresh`에 다 푼 뒤 이름 바꾸기 두 번으로 맞바꾼다: 원래 폴더는 `backup_dir`이 되고 `fresh`가 `target_dir`이 된다.
+/// 폴더를 복사하지 않는다. 풀다 실패하면 `target_dir`을 건드리지 않고 Err.
+/// 이름을 바꿀 수 없으면(다른 볼륨, Windows에서 폴더가 잡혀 있음) 아무것도 바꾸지 않고 None. 링크인 폴더도 None: 링크가 가리키는 곳의 내용을 바꿔야 한다
+fn swap_in(target_dir: &Path, staged: &Path, fresh: &Path, backup_dir: &Path) -> Result<Option<Vec<PathBuf>>> {
+    if std::fs::symlink_metadata(target_dir).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Ok(None);
+    }
+    if fresh.exists() {
+        std::fs::remove_dir_all(fresh)?;
+    }
+    let extracted = match extract_zip(staged, fresh, |_| Ok(())) {
+        Ok(files) => files,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(fresh);
+            return Err(e);
+        }
+    };
+    if std::fs::rename(target_dir, backup_dir).is_err() {
+        let _ = std::fs::remove_dir_all(fresh);
+        return Ok(None);
+    }
+    if let Err(e) = std::fs::rename(fresh, target_dir) {
+        let _ = std::fs::remove_dir_all(fresh);
+        // 되돌리지 못하면 백업이 남는다: 다음 교체가 먼저 원래 내용으로 되돌린다
+        std::fs::rename(backup_dir, target_dir)
+            .map_err(|re| anyhow::anyhow!("Cannot put the new {} in place ({}) nor the previous one back ({})", target_dir.display(), e, re))?;
+        return Ok(None);
+    }
+    Ok(Some(extracted.iter().filter_map(|f| f.strip_prefix(fresh).ok().map(|rel| target_dir.join(rel))).collect()))
+}
+
+/// 맞바꾼 뒤 원래 폴더(`old`)에서 `clean_dir`이 남기는 항목(`__pycache__`, 점으로 시작하는 것)을 새 폴더로 옮긴다
+fn carry_kept_entries(old: &Path, new: &Path) -> Result<()> {
+    for entry in std::fs::read_dir(old)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str == "__pycache__" || name_str.starts_with('.') {
+            merge_into(&entry.path(), &new.join(&name))?;
+        }
+    }
+    Ok(())
+}
+
+/// `from`을 `to`로 옮긴다. 새 판에도 같은 이름이 있으면 새 판 것을 두고, 폴더끼리는 새 판에 없는 것만 옮긴다
+/// (제자리에서 비우고 풀 때와 같은 결과)
+fn merge_into(from: &Path, to: &Path) -> Result<()> {
+    if std::fs::symlink_metadata(to).is_err() {
+        std::fs::rename(from, to)?;
+    } else if from.is_dir() && to.is_dir() {
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            merge_into(&entry.path(), &to.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
 }
 
 /// 번역 묶음을 옆 폴더(`.locales-new`)에 다 푼 뒤 `locales/version`에 판 번호를 적고, 이름 바꾸기로 `dir`과 맞바꾼다.

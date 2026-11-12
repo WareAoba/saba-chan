@@ -387,6 +387,71 @@ fn replace_dir_restores_backup_when_extract_fails() {
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
 }
 
+/// 모듈 폴더 교체: 내용은 새 판으로 바뀌고, 점으로 시작하는 항목과 `__pycache__`는 남고, 백업·임시 폴더는 남지 않는다
+#[test]
+fn replace_dir_swaps_the_content_and_keeps_dot_entries() {
+    let tmp = tempfile::tempdir().unwrap();
+    let staging = tmp.path().join("staging");
+    let target = tmp.path().join("modules").join("game");
+    std::fs::create_dir_all(target.join(".git")).unwrap();
+    std::fs::create_dir_all(target.join("__pycache__")).unwrap();
+    std::fs::create_dir_all(target.join("assets")).unwrap();
+    std::fs::write(target.join("module.toml"), "old").unwrap();
+    std::fs::write(target.join("assets/old.bin"), "old").unwrap();
+    std::fs::write(target.join(".git/HEAD"), "ref").unwrap();
+    std::fs::write(target.join("__pycache__/lifecycle.pyc"), "pyc").unwrap();
+    let staged = new_module_zip(&staging);
+
+    let files = crate::replace_dir(&target, &staged, &staging, "game_backup").unwrap();
+
+    assert_eq!(files, [target.join("module.toml")]);
+    assert_eq!(names_in(&target), [".git", "__pycache__", "module.toml"]);
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
+    assert_eq!(std::fs::read_to_string(target.join(".git/HEAD")).unwrap(), "ref");
+    assert_eq!(std::fs::read_to_string(target.join("__pycache__/lifecycle.pyc")).unwrap(), "pyc");
+    assert!(names_in(&staging).is_empty(), "nothing is left in staging: {:?}", names_in(&staging));
+}
+
+/// 맞바꾸는 두 이름 바꾸기 사이에 꺼졌으면(제자리가 비고 백업만 있다) 다음 교체가 원래 내용을 되살린 뒤 바꾼다
+#[test]
+fn replace_dir_recovers_a_folder_that_was_moved_aside_and_never_replaced() {
+    let tmp = tempfile::tempdir().unwrap();
+    let staging = tmp.path().join("staging");
+    let target = tmp.path().join("modules").join("game");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    let backup = staging.join("game_backup");
+    std::fs::create_dir_all(backup.join(".git")).unwrap();
+    std::fs::write(backup.join("module.toml"), "old").unwrap();
+    std::fs::write(backup.join(".git/HEAD"), "ref").unwrap();
+    let staged = new_module_zip(&staging);
+
+    crate::replace_dir(&target, &staged, &staging, "game_backup").unwrap();
+
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
+    assert_eq!(std::fs::read_to_string(target.join(".git/HEAD")).unwrap(), "ref");
+    assert!(names_in(&staging).is_empty());
+}
+
+/// 모듈 폴더가 다른 곳을 가리키는 링크면(개발 폴더를 걸어 둠) 링크를 지우거나 옮기지 않고 그 안의 내용을 바꾼다
+#[cfg(unix)]
+#[test]
+fn replace_dir_writes_into_a_linked_folder_and_keeps_the_link() {
+    let tmp = tempfile::tempdir().unwrap();
+    let staging = tmp.path().join("staging");
+    let real = tmp.path().join("dev").join("game");
+    std::fs::create_dir_all(&real).unwrap();
+    std::fs::write(real.join("module.toml"), "old").unwrap();
+    let target = tmp.path().join("modules").join("game");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(&real, &target).unwrap();
+    let staged = new_module_zip(&staging);
+
+    crate::replace_dir(&target, &staged, &staging, "game_backup").unwrap();
+
+    assert!(target.is_symlink());
+    assert_eq!(std::fs::read_to_string(real.join("module.toml")).unwrap(), "new");
+}
+
 /// 묻지 않는 교체에 쓸 새 판 zip (`module.toml` 하나)
 fn new_module_zip(dir: &std::path::Path) -> std::path::PathBuf {
     use std::io::Write;
