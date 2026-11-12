@@ -18,8 +18,10 @@ pub const FRESH_FOR: Duration = Duration::from_secs(60);
 /// 답 하나의 크기 상한 (넘으면 기억하지 않고 그대로 준다)
 const MAX_BODY: usize = 4 * 1024 * 1024;
 
-static READS: LazyLock<Mutex<HashMap<String, (Instant, axum::http::HeaderMap, axum::body::Bytes)>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+/// 기억한 답: 받은 때, 헤더, 본문
+type Remembered = (Instant, axum::http::HeaderMap, axum::body::Bytes);
+
+static READS: LazyLock<Mutex<HashMap<String, Remembered>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// 기억해 둘 릴레이 읽기인가 (연결 확인 `/status`·크레딧은 늘 새로 읽는다)
 fn cacheable(path: &str) -> bool {
