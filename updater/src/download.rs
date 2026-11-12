@@ -73,6 +73,33 @@ pub async fn download_verified(
     download_with(client, url, dest, expected, max_bytes, progress, retry).await
 }
 
+/// `download_verified`처럼 받되, 받는 동안 `on_progress(받은 크기, 전체)`를 0.2초마다 부른다
+pub async fn download_reporting(
+    client: &reqwest::Client,
+    url: &str,
+    expected: Option<&str>,
+    dest: &Path,
+    max_bytes: Option<u64>,
+    on_progress: impl Fn(u64, Option<u64>),
+) -> Result<String, DownloadError> {
+    let progress = Arc::new(Mutex::new(DownloadProgress::default()));
+    // 같은 작업 안에서 받기와 함께 돈다: 진행 콜백이 호출한 쪽의 것을 빌려 쓸 수 있다
+    let ticker = async {
+        loop {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            let Ok((received, total)) = progress.lock().map(|p| (p.bytes_received, p.total_bytes)) else {
+                // 진행을 못 읽어도 받기는 끝까지 간다
+                return std::future::pending::<()>().await;
+            };
+            on_progress(received, (total > 0).then_some(total));
+        }
+    };
+    tokio::select! {
+        r = download_verified(client, url, dest, expected, max_bytes, Some(&progress)) => r,
+        _ = ticker => unreachable!("the ticker never finishes"),
+    }
+}
+
 async fn download_with(
     client: &reqwest::Client,
     url: &str,
@@ -433,5 +460,43 @@ mod tests {
         let dest = tmp.path().join("asset.zip");
         assert!(download_verified(&crate::tls::http_client_builder().build().unwrap(), &url, &dest, None, None, None).await.is_err());
         assert!(!dest.exists());
+    }
+
+    /// 길이 `len`의 본문을 절반 보내고 잠깐 쉬었다가 나머지를 보내는 서버
+    async fn serve_slowly_for_progress(len: usize) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = sock.read(&mut buf).await;
+            let body = vec![b'p'; len];
+            let _ = sock.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {len}\r\n\r\n").as_bytes()).await;
+            let _ = sock.write_all(&body[..len / 2]).await;
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let _ = sock.write_all(&body[len / 2..]).await;
+        });
+        format!("http://{}/python.tar.gz", addr)
+    }
+
+    /// Python처럼 큰 파일을 받는 동안 설치 화면이 멈춰 보이지 않게 받은 크기를 알리고, 고정 해시와 다른 파일은 남기지 않는다
+    #[tokio::test]
+    async fn a_reporting_download_reports_its_progress_and_checks_the_pin() {
+        const LEN: usize = 1_200_000;
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("python.tar.gz");
+        let seen = Mutex::new(Vec::new());
+        let url = serve_slowly_for_progress(LEN).await;
+        download_reporting(&crate::tls::http_client_builder().build().unwrap(), &url, None, &dest, None, |got, total| seen.lock().unwrap().push((got, total))).await.unwrap();
+        assert_eq!(std::fs::metadata(&dest).unwrap().len(), LEN as u64);
+        let seen = seen.into_inner().unwrap();
+        assert!(seen.iter().any(|(got, total)| *got > 0 && *total == Some(LEN as u64)), "{:?}", seen);
+
+        let url = serve_slowly_for_progress(LEN).await;
+        let other = tmp.path().join("other.tar.gz");
+        let err = download_reporting(&crate::tls::http_client_builder().build().unwrap(), &url, Some(&"0".repeat(64)), &other, None, |_, _| {}).await.unwrap_err().to_string();
+        assert!(err.contains("SHA-256"), "{err}");
+        assert!(!other.exists());
     }
 }

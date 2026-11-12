@@ -1308,7 +1308,7 @@ fn remove_install_dir(dir: &PathBuf, dedicated: bool) -> Vec<PathBuf> {
 
 /// 표시가 없는 설치 폴더에서 지울 바로 안의 폴더: locales와, 설치 폴더에 쓸 수 있으면 설치기가 두는 Python 런타임
 const INSTALLED_DIRS: &[&str] =
-    &["locales", crate::runtime_bootstrap::PORTABLE_PYTHON_DIR, crate::runtime_bootstrap::VENV_DIR_NAME];
+    &["locales", saba_chan_updater_lib::python_runtime::PORTABLE_DIR, saba_chan_updater_lib::python_runtime::VENV_DIR];
 
 /// 설치 폴더 바로 안의 사바쨩 항목인지. 폴더는 [`INSTALLED_DIRS`]만 사바쨩 것이다 (실행 파일 이름과 같은 사용자 폴더는 남긴다)
 fn is_ours(path: &Path) -> bool {

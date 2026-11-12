@@ -76,7 +76,7 @@
 |---|---|---|
 | `SABA_IPC_PORT` | `main.rs:286` | IPC 포트 (없으면 `gui.ipcPort`, 기본 57474) |
 | `RUST_LOG` | `main.rs:233` | tracing 필터 |
-| `SABA_DATA_DIR` | `constants.rs:56`, `python_env/mod.rs:397` | 데이터 루트 |
+| `SABA_DATA_DIR` | `constants.rs:56`, `updater/src/python_runtime.rs` `runtime_dir` | 데이터 루트 |
 | `SABA_TOKEN_PATH` | `constants.rs:83` | IPC 토큰 파일 경로 |
 | `SABA_MODULES_PATH` | `component_dirs.rs` `Kind::env_var` | 모듈 디렉토리 (있으면 `config.json` `paths`보다 먼저, §1.5) |
 | `SABA_EXTENSIONS_DIR` | `component_dirs.rs` `Kind::env_var` | 익스텐션 디렉토리 (같음) |
@@ -739,15 +739,17 @@ spot = "server.tab.maintenance"    # 짚을 화면 요소의 data-spot
 
 ### 6.1 Python (`src/python_env/mod.rs`)
 
-- 버전: 포터블 CPython **3.12.8**(python-build-standalone 태그 `20250106`, `install_only_stripped`)이다(`updater/src/python_pin.rs:7-8`). 시스템 Python을 쓸 경우 3.11 이상이어야 한다(`python_env/mod.rs:45`, 모듈 공용 도우미가 표준 `tomllib`으로 module.toml을 읽는다). 기존 venv도 버전을 확인해 그보다 낮으면 다시 만든다(`verify_python`).
+- 자리(`<pyroot>`, `python-standalone`·`python-env`), 포터블 받기·풀기·검사(최소 판 포함), venv 만들기·pip 업그레이드는 설치기(05 §설치 5단계)와 같은 updater-lib `python_runtime`을 쓴다. 데몬의 `python_env`는 고르는 순서(아래), 캐시, 사전 점검만 맡고, 명령은 준비가 취소되면 자식까지 끝내는 `plugin::preparation_output`으로 띄운다(`python_runtime::Run`).
+
+- 버전: 포터블 CPython **3.12.8**(python-build-standalone 태그 `20250106`, `install_only_stripped`)이다(`updater/src/python_pin.rs:7-8`). 시스템 Python을 쓸 경우 3.11 이상이어야 한다(`python_runtime::MIN_VERSION`, 모듈 공용 도우미가 표준 `tomllib`으로 module.toml을 읽는다). 기존 venv도 버전을 확인해 그보다 낮으면 다시 만든다(`python_runtime::verify`).
 - 탐색 순서: 이미 받은 포터블 Python, 시스템 Python, 자동 다운로드 순이다(`find_base_python`, `:209`). 찾은 인터프리터로 `<pyroot>/python-env` venv를 만들고 pip를 업그레이드한다(`ensure_venv`, `:114`).
 - 시스템 Python은 `sys.executable`로 확인한 실제 인터프리터 파일 경로를 사용한다.
 - 성공한 결과는 `OnceCell`에 캐시하고, 실패는 캐시하지 않아 다음 호출이 다시 시도한다(`get_python_path`, `:56`). 모든 `run_plugin` 호출이 여기를 거친다(`plugin/mod.rs:282`). 데몬은 기동하자마자 미리 준비를 시작하고(`main.rs:320-324`), 진행은 `/api/runtime/preflight`(`preflight_snapshot`, `python_env/mod.rs:86-106`)로 보인다.
 - 다운로드 URL: `https://github.com/indygreg/python-build-standalone/releases/download/{tag}/cpython-{ver}+{tag}-{triple}-install_only_stripped.tar.gz`(`python_pin.rs:41-49`). 지원 triple은 win x64, linux x64/arm64, mac x64/arm64다. `SABA_PYTHON_URL`로 미러를 쓸 수 있다.
-- 다운로드 방식: 업데이터와 같은 검증 다운로드(`saba_chan_updater_lib::download::download_verified`, reqwest. 프록시는 환경 변수와 OS 설정)다. 연결·전송 실패는 `download_verified`가 3번까지 이어 받는다(05 §1.5). 압축 해제는 `tar`를 쓴다. 받으면서 triple별로 고정한 SHA-256과 비교하고 다르면 받은 파일을 남기지 않는다(`python_env::download_file`, `python_pin.rs:11-17`). 미러를 쓰면 `SABA_PYTHON_SHA256`이 있을 때만 검사한다.
-- **`<pyroot>`는 `constants::resolve_data_dir()`와 다르다**(`python_env/mod.rs:395-432`). 순서는 다음과 같다.
+- 다운로드 방식: 업데이터와 같은 검증 다운로드(`python_runtime::install_portable` → `download::download_reporting` → `download_verified`, reqwest. 프록시는 환경 변수와 OS 설정)다. 연결·전송 실패는 `download_verified`가 3번까지 이어 받는다(05 §1.5). 압축 해제는 `tar`를 쓴다. 받으면서 triple별로 고정한 SHA-256과 비교하고 다르면 받은 파일을 남기지 않는다(`python_pin.rs:11-17`). 미러를 쓰면 `SABA_PYTHON_SHA256`이 있을 때만 검사한다.
+- **`<pyroot>`는 `constants::resolve_data_dir()`와 다르다**(`python_runtime::runtime_dir`, 데몬은 자기 폴더를, 설치기는 설치 폴더를 넘긴다). 순서는 다음과 같다.
   1. `SABA_DATA_DIR`
-  2. **exe 디렉토리에 쓰기 권한이 있으면 exe 디렉토리**. 단 맥 앱 묶음 안(`*.app/Contents/MacOS`, `app_bundle::bundle_of`)이면 묶음에 파일을 더하면 서명이 깨지므로 쓰지 않고 `constants::resolve_data_dir()`(`~/.config/saba-chan`)를 쓴다. 제거기가 그 폴더의 런타임 항목으로 지운다(`runtime_root`)
+  2. **exe 디렉토리에 쓰기 권한이 있으면 exe 디렉토리**. 단 맥 앱 묶음 안(`*.app/Contents/MacOS`, `app_bundle::bundle_of`)이면 묶음에 파일을 더하면 서명이 깨지므로 쓰지 않고 `constants::resolve_data_dir()`(`~/.config/saba-chan`)를 쓴다. 제거기가 그 폴더의 런타임 항목으로 지운다
   3. Windows `%APPDATA%/saba-chan`, Linux `~/.local/share/saba-chan`, macOS `~/Library/Application Support/saba-chan`
 - 결과적으로 Linux에서 데이터는 `~/.config/saba-chan`에, 런타임은 `~/.local/share/saba-chan` 또는 exe 옆에 흩어진다.
 - 예전 `status()`와 `/api/python-env/*` 핸들러는 지워졌다.
