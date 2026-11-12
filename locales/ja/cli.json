@@ -457,6 +457,7 @@
       "dependency_outdated": "新しいバージョンに更新してください: saba-chan-cli update check",
       "port_conflict": "どちらかに別のポートを割り当ててください: saba-chan-cli server set NAME port=PORT",
       "backup_unsupported": "このゲームのモジュールはバックアップ対象を指定していません。新しいモジュールなら対応しているかもしれません: saba-chan-cli update check",
+      "memory_limit_unsupported": "メモリ上限はWindowsでのみ適用されます。このサーバーが動いているPCはWindowsではないため、保存しませんでした。",
       "nothing_to_back_up": "ワールドがまだありません。一度サーバーを起動して作成してください。",
       "backup_busy": "このサーバーのバックアップまたは復元がすでに実行中です。終わってからもう一度試してください。",
       "import_not_backup": "サバちゃんがエクスポートしたバックアップファイルではありません。`backup export`で作ったzipを指定してください。",

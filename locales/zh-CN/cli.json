@@ -457,6 +457,7 @@
       "dependency_outdated": "请更新到较新版本：saba-chan-cli update check",
       "port_conflict": "请为其中一个分配其他端口：saba-chan-cli server set NAME port=PORT",
       "backup_unsupported": "此游戏的模块未说明要备份哪些内容。较新的模块可能支持：saba-chan-cli update check",
+      "memory_limit_unsupported": "内存上限仅在 Windows 上生效。运行此服务器的电脑不是 Windows，因此没有保存。",
       "nothing_to_back_up": "世界尚不存在。请先启动一次服务器来创建它。",
       "backup_busy": "此服务器已有备份或恢复正在进行。请在完成后重试。",
       "import_not_backup": "这不是 Saba-chan 导出的备份文件。请提供由 `backup export` 生成的 zip。",

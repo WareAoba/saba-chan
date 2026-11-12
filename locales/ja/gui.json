@@ -2279,7 +2279,8 @@
     "label": "メモリ上限 (MB)",
     "hint": "空欄なら無制限。Javaサーバーは-Xmxより1〜2GB大きくしてください。Windowsでのみ適用されます。",
     "placeholder": "制限なし",
-    "restart_note": "再起動すると適用されます。"
+    "restart_note": "再起動すると適用されます。",
+    "unsupported": "メモリ上限はWindowsでのみ適用されます。このサーバーが動いているPCはWindowsではないため、保存しませんでした。"
   },
   "game_chat": {
     "title": "ゲームチャット転送",

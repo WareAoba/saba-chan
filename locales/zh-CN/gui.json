@@ -2279,7 +2279,8 @@
     "label": "内存上限 (MB)",
     "hint": "留空表示不限制。Java 服务器请设为比 -Xmx 大 1~2GB。仅在 Windows 上生效。",
     "placeholder": "不限制",
-    "restart_note": "重启后生效。"
+    "restart_note": "重启后生效。",
+    "unsupported": "内存上限仅在 Windows 上生效。运行此服务器的电脑不是 Windows，因此没有保存。"
   },
   "game_chat": {
     "title": "游戏聊天转发",

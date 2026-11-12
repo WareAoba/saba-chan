@@ -2279,7 +2279,8 @@
     "label": "Limite de mémoire (Mo)",
     "hint": "Laisse vide pour aucune limite. Pour les serveurs Java, mets 1 à 2 Go de plus que -Xmx. Uniquement sous Windows.",
     "placeholder": "Aucune limite",
-    "restart_note": "S'applique après un redémarrage."
+    "restart_note": "S'applique après un redémarrage.",
+    "unsupported": "La limite de mémoire ne s'applique que sous Windows. Le PC qui fait tourner ce serveur n'est pas sous Windows, elle n'a donc pas été enregistrée."
   },
   "game_chat": {
     "title": "Relais du chat du jeu",

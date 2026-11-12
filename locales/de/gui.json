@@ -2279,7 +2279,8 @@
     "label": "Speicherlimit (MB)",
     "hint": "Leer lassen für kein Limit. Bei Java-Servern 1–2 GB über -Xmx setzen. Gilt nur unter Windows.",
     "placeholder": "Kein Limit",
-    "restart_note": "Gilt nach einem Neustart."
+    "restart_note": "Gilt nach einem Neustart.",
+    "unsupported": "Speicherlimits gelten nur unter Windows. Der PC, auf dem dieser Server läuft, nutzt kein Windows, daher wurde das Limit nicht gespeichert."
   },
   "game_chat": {
     "title": "Spielchat weiterleiten",

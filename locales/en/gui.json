@@ -2279,7 +2279,8 @@
     "label": "Memory limit (MB)",
     "hint": "Leave empty for no limit. For Java servers, set it 1–2 GB above the -Xmx value. Applies on Windows only.",
     "placeholder": "No limit",
-    "restart_note": "Takes effect after a restart."
+    "restart_note": "Takes effect after a restart.",
+    "unsupported": "Memory limits only apply on Windows. The PC running this server isn't on Windows, so the limit wasn't saved."
   },
   "game_chat": {
     "title": "Game chat relay",

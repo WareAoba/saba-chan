@@ -457,6 +457,7 @@
       "dependency_outdated": "새 버전으로 업데이트하세요: saba-chan-cli update check",
       "port_conflict": "둘 중 하나의 포트를 바꾸세요: saba-chan-cli server set 이름 port=포트",
       "backup_unsupported": "이 게임 모듈에는 무엇을 백업할지 적혀 있지 않아요. 새 모듈에는 있을 수 있어요: saba-chan-cli update check",
+      "memory_limit_unsupported": "메모리 상한은 Windows에서만 적용돼요. 이 서버가 도는 PC는 Windows가 아니라서 저장하지 않았어요.",
       "nothing_to_back_up": "아직 월드가 없어요. 서버를 한 번 시작하면 만들어져요.",
       "backup_busy": "이 서버의 백업이나 되돌리기가 이미 진행 중이에요. 끝난 뒤 다시 해 주세요.",
       "import_not_backup": "사바쨩이 내보낸 백업 파일이 아니에요. `backup export`로 만든 zip을 주세요.",

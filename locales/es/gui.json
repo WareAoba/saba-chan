@@ -2279,7 +2279,8 @@
     "label": "Límite de memoria (MB)",
     "hint": "Déjalo vacío para no limitar. En servidores Java, ponlo 1–2 GB por encima de -Xmx. Solo se aplica en Windows.",
     "placeholder": "Sin límite",
-    "restart_note": "Se aplica tras reiniciar."
+    "restart_note": "Se aplica tras reiniciar.",
+    "unsupported": "El límite de memoria solo se aplica en Windows. El PC que ejecuta este servidor no usa Windows, así que no se guardó."
   },
   "game_chat": {
     "title": "Reenvío del chat del juego",

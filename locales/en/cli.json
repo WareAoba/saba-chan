@@ -457,6 +457,7 @@
       "dependency_outdated": "Update to newer versions: saba-chan-cli update check",
       "port_conflict": "Give one of them other ports: saba-chan-cli server set NAME port=PORT",
       "backup_unsupported": "This game's module does not say what to back up. A newer module may: saba-chan-cli update check",
+      "memory_limit_unsupported": "Memory limits only apply on Windows. The PC running this server isn't on Windows, so the limit wasn't saved.",
       "nothing_to_back_up": "The world does not exist yet. Start the server once to create it.",
       "backup_busy": "A backup or restore of this server is already running. Try again when it finishes.",
       "import_not_backup": "This file is not a backup exported by Saba-chan. Give a zip made by `backup export`.",
