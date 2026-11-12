@@ -509,14 +509,23 @@ fn retry_later(outcome: &Result<(StatusCode, Value), String>) -> bool {
 }
 
 /// 데몬에 저장된 값. 아직 없으면(업그레이드 뒤 첫 연결 전) 릴레이 값을, 릴레이에 노드 설정이 없으면 기본값.
-/// 페어링했는데 릴레이를 읽지 못하면 `None`: 기본값으로 착각해 저장하면 다음 동기화가 릴레이 값을 덮어쓴다
-async fn current(state: &IPCServer, guild: &str) -> Option<GuildSettings> {
+/// 페어링했는데 릴레이를 읽지 못하면 `None`: 기본값으로 착각해 저장하면 다음 동기화가 릴레이 값을 덮어쓴다.
+/// 부른 쪽이 릴레이 값을 이미 읽었으면 `read`로 넘긴다 (같은 GET을 두 번 보내지 않는다)
+async fn current(state: &IPCServer, guild: &str, read: Option<&RelaySettings>) -> Option<GuildSettings> {
     let bot = state.config_store.get_bot_config().await;
     if let Some(s) = GuildSettings::of_guild(&bot.node_settings, guild, &bot) {
         return Some(s);
     }
-    match relay_settings(&relay_base(state).await, guild).await {
-        RelaySettings::Found(body) => Some(GuildSettings::from_relay(&body).inherit(&body, &bot)),
+    let fetched;
+    let relay = match read {
+        Some(r) => r,
+        None => {
+            fetched = relay_settings(&relay_base(state).await, guild).await;
+            &fetched
+        }
+    };
+    match relay {
+        RelaySettings::Found(body) => Some(GuildSettings::from_relay(body).inherit(body, &bot)),
         RelaySettings::Absent => Some(GuildSettings::default().inherit(&Value::Null, &bot)),
         RelaySettings::Unreachable => None,
     }
@@ -608,11 +617,13 @@ async fn push(state: &IPCServer, base: &str, guild: &str, before: &Value, s: &Gu
 /// GET /api/discord/:guild/settings
 /// 처음 보는 길드인데 릴레이를 읽지 못하면 기본값에 `loaded: false`를 붙인다 (그 값으로 저장하지 않는다)
 pub async fn get_settings(State(state): State<IPCServer>, Path(guild): Path<String>) -> Response {
-    let relay = match relay_settings(&relay_base(&state).await, &guild).await {
+    let read = relay_settings(&relay_base(&state).await, &guild).await;
+    let found = current(&state, &guild, Some(&read)).await;
+    let relay = match read {
         RelaySettings::Found(body) => body,
         _ => Value::Null,
     };
-    match current(&state, &guild).await {
+    match found {
         Some(s) => Json(with_relay_owned(view(&guild, &s), &relay)).into_response(),
         None => {
             let mut v = view(&guild, &GuildSettings::default());
@@ -634,7 +645,7 @@ pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<St
         return (StatusCode::CONFLICT, Json(json!({ "success": false, "error": "Not paired with the relay", "error_code": "not_paired" }))).into_response();
     }
     let _turn = SETTINGS_LOCK.lock().await;
-    let Some(before) = current(&state, &guild).await else {
+    let Some(before) = current(&state, &guild, None).await else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({ "success": false, "error": "Could not read this server's settings from the relay", "error_code": "relay_unavailable" })),
@@ -743,6 +754,24 @@ mod tests {
 
     fn patch(v: Value) -> Map<String, Value> {
         v.as_object().unwrap().clone()
+    }
+
+    async fn test_state(dir: &std::path::Path) -> IPCServer {
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(dir.join("modules").to_str().unwrap(), dir.join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new())
+    }
+
+    /// 앱이 처음 보는 길드를 읽을 때 릴레이 값은 화면용으로 이미 읽었다: 그 값으로 채우고 다시 묻지 않는다
+    #[tokio::test]
+    async fn a_guild_seen_first_is_filled_from_the_relay_values_already_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state(dir.path()).await;
+        let read = RelaySettings::Found(json!({ "locale": "ja", "prefixes": ["!r"] }));
+        let s = current(&state, "first-seen-guild", Some(&read)).await.unwrap();
+        assert_eq!((s.locale.as_str(), s.prefixes), ("ja", vec!["!r".to_string()]));
+        // 읽지 못했으면 기본값으로 채우지 않는다
+        assert!(current(&state, "first-seen-guild", Some(&RelaySettings::Unreachable)).await.is_none());
     }
 
     #[test]
