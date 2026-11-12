@@ -2204,6 +2204,17 @@ button.activity-line:hover {
     flex: 1 1 auto;
     min-width: 0;
 }
+/* 다가오는 예약: 줄이 많으면 목록 안에서 넘긴다 (아래 작업 기록이 칸 밖으로 밀리지 않게) */
+.upcoming-card {
+    flex: none;
+}
+.upcoming-list {
+    max-height: min(280px, 35vh);
+    overflow-y: auto;
+}
+.upcoming-list > li {
+    flex: none;
+}
 /* 다가오는 예약: 겹치는 작업 줄 */
 .upcoming-list .dc-list-row {
     text-align: left;
