@@ -394,7 +394,8 @@ pub fn watch_in_progress(staging_dir: &Path) -> bool {
 // ═══════════════════════════════════════════════════════
 
 /// 적용 직전에 뜬 설정·인스턴스 기록 사본. 새 데몬이 형식을 바꾼 뒤 죽어도 이전 데몬이 읽을 수 있게 되돌린다.
-/// 데이터 폴더 안(원본과 같은 권한)에 두고, 성공을 확인하면 지운다 (설정 파일에는 토큰이 들어 있다)
+/// 데이터 폴더 안 주인만 여는 폴더에 둔다 (설정 파일에는 토큰이 들어 있다). 건강한 업데이트의 사본은 직전 판으로 다음 업데이트까지
+/// 남고(`PreviousVersion`), 사용자 되돌리기가 덮기 전에 뜬 사본과 되살리지 못한 사본은 지우지 않는다
 #[derive(Debug)]
 pub struct DataSnapshot {
     dir: PathBuf,
@@ -482,7 +483,18 @@ impl DataSnapshot {
             };
             Ok(merge_install_record(&copy, &current).unwrap_or(copy))
         })?;
-        restore_tree(&self.dir.join("instances"), &self.instances_dir, &|_, _, copy| Ok(copy))?;
+        // 사본에만 있는 인스턴스(그 뒤 지운 서버)는 되살리지 않는다: 기록만 든 빈 서버가 생긴다
+        if let Some(entries) = read_dir_if_exists(&self.dir.join("instances"))? {
+            for entry in entries {
+                let entry = entry?;
+                let (src, dst) = (entry.path(), self.instances_dir.join(entry.file_name()));
+                if !std::fs::metadata(&src)?.is_dir() {
+                    write_atomic(&dst, &std::fs::read(&src)?)?;
+                } else if dst.is_dir() {
+                    restore_tree(&src, &dst, &|_, _, copy| Ok(copy))?;
+                }
+            }
+        }
         tracing::info!("[Apply] Data restored from {}", self.dir.display());
         Ok(())
     }
@@ -739,6 +751,11 @@ impl PreviousVersion {
     #[allow(clippy::result_large_err)] // 오류는 되돌림이 끝날 때 한 번 받아 보이는 되살리는 법이다
     pub fn restore(self, config: &ConfigFile, marker_path: &Path) -> Result<String, Recovery> {
         let record = Self::record(&self.copy.data_dir);
+        // 업데이트 뒤 바꾼 설정·서버 기록은 사본이 덮는다: 덮기 전 지금 데이터를 한 벌 남긴다 (자동으로 지우지 않는다)
+        match DataSnapshot::take(&self.copy.data_dir, &self.copy.instances_dir, &format!("before-rollback-{}", self.replaced_by)) {
+            Ok(current) => tracing::warn!("[Apply] The data before the rollback is kept at {}", current.path().display()),
+            Err(e) => tracing::error!("[Apply] Cannot keep the current data before the rollback: {}", e),
+        }
         let done = restore_exes(self.exes.clone());
         let snapshot = DataSnapshot { dir: self.copy.dir.clone(), data_dir: self.copy.data_dir.clone(), instances_dir: self.copy.instances_dir.clone() };
         let data_restored = snapshot.restore().inspect_err(|e| tracing::error!("[Apply] Cannot restore the data snapshot {}: {}", snapshot.path().display(), e)).is_ok();
@@ -1921,5 +1938,31 @@ mod tests {
         let m = UpdateCompletionMarker::load_from(&marker).unwrap();
         assert_eq!((m.result.as_deref(), m.version.as_deref(), m.success), (Some("reverted"), Some("0.1.13"), true));
         assert!(PreviousVersion::load(&data).is_none(), "a version is rolled back to once");
+    }
+
+    // 사용자 되돌리기는 업데이트 며칠 뒤에도 한다: 그 사이 지운 서버는 되살리지 않고, 덮어쓰기 전 지금 데이터를 한 벌 남긴다
+    #[test]
+    fn rolling_back_keeps_the_data_it_overwrites_and_does_not_revive_removed_servers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let inst = data.join("instances");
+        write(&data.join("config.json"), r#"{"gui":{"language":"0.1.13"}}"#);
+        write(&inst.join("aaa/settings.json"), "before update");
+        write(&inst.join("bbb/instance.json"), "bbb");
+        let manager = manager_at(tmp.path());
+        healthy_update(&manager, &data, "0.1.13", "0.1.14");
+        // 업데이트 뒤에 사용자가 바꾼 것
+        write(&inst.join("aaa/settings.json"), "after update");
+        std::fs::remove_dir_all(inst.join("bbb")).unwrap();
+
+        let back = PreviousVersion::load(&data).unwrap().restore(&ConfigFile::at(&data), &data.join("update-complete.json"));
+
+        assert_eq!(back, Ok("0.1.13".to_string()));
+        assert_eq!(std::fs::read_to_string(inst.join("aaa/settings.json")).unwrap(), "before update");
+        assert!(!inst.join("bbb").exists(), "a server removed after the update is not revived");
+        let kept: Vec<PathBuf> = std::fs::read_dir(data.join(SNAPSHOT_DIR)).unwrap().map(|e| e.unwrap().path()).collect();
+        assert_eq!(kept.len(), 1, "one copy of the overwritten data: {kept:?}");
+        assert_eq!(std::fs::read_to_string(kept[0].join("instances/aaa/settings.json")).unwrap(), "after update");
+        assert_eq!(std::fs::read_to_string(kept[0].join("data/config.json")).unwrap(), r#"{"gui":{"language":"0.1.14"}}"#);
     }
 }
