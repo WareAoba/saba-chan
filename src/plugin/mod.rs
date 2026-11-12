@@ -1117,7 +1117,10 @@ async fn spawn_plugin(call: PluginCall, on_progress: Option<Box<dyn Fn(Extension
     // 놓는 자리에서는 종료를 기다릴 수 없어, 끝나기 직전 그 자리에 새로 생긴 것은 남을 수 있다
     let clear_entries = isolation.as_ref().map(crate::sandbox::Isolation::clear_daemon_entries_on_drop);
     let mut child = match &isolation {
-        None => plain(&mut cmd).map_err(|error| call_error(module_path, function, "module_execution_failed", "run", error, Vec::new()))?,
+        None => plain(&mut cmd).map_err(|error| {
+            crate::python_env::forget_python(&python_exe);
+            call_error(module_path, function, "module_execution_failed", "run", error, Vec::new())
+        })?,
         Some(iso) => match deadline.paused(crate::sandbox::spawn_isolated(cmd.as_std(), iso)).await {
             Ok(crate::sandbox::Spawned::Unisolated) => {
                 // 사용자가 격리 없이 돌리기로 한 것은 이 구성요소뿐이다: 확인되지 않은 다른 익스텐션은 import하지 못하게
@@ -1152,6 +1155,7 @@ async fn spawn_plugin(call: PluginCall, on_progress: Option<Box<dyn Fn(Extension
         Ok(Ok((exit_status, stdout_str, stderr_str))) => {
             if !exit_status.success() {
                 tracing::error!("Plugin failed (exit {:?}):\n  stderr: {}\n  stdout: {}", exit_status.code(), stderr_str, stdout_str.trim());
+                tokio::spawn(crate::python_env::recheck_python(python_exe));
                 return Err(call_error(module_path, function, "module_crashed", "run", format!("{}.{} exited with {:?}", module_name(module_path), function, exit_status.code()), stderr_tail(&stderr_str)));
             }
 

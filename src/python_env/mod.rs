@@ -49,20 +49,59 @@ const PORTABLE_DIR_NAME: &str = "python-standalone";
 
 // ── Cached venv python path ─────────────────────────────────────
 
-static VENV_PYTHON: OnceCell<PathBuf> = OnceCell::const_new();
+static VENV_PYTHON: PythonCache = PythonCache::new();
+
+/// 준비한 venv Python 경로. 실행 파일이 사라졌거나 실행되지 않으면 버리고 다음 호출이 다시 준비한다
+/// (시스템 Python을 지우거나 올려 venv가 깨져도 데몬을 다시 켜지 않게)
+struct PythonCache(std::sync::Mutex<Option<std::sync::Arc<OnceCell<PathBuf>>>>);
+
+impl PythonCache {
+    const fn new() -> Self {
+        Self(std::sync::Mutex::new(None))
+    }
+
+    fn cell(&self) -> std::sync::Arc<OnceCell<PathBuf>> {
+        let mut slot = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if slot.as_ref().and_then(|cell| cell.get()).is_some_and(|path| !path.exists()) {
+            *slot = None;
+        }
+        slot.get_or_insert_with(Default::default).clone()
+    }
+
+    async fn get_or_prepare<F: std::future::Future<Output = Result<PathBuf>>>(&self, prepare: impl FnOnce() -> F) -> Result<PathBuf> {
+        self.cell().get_or_try_init(prepare).await.cloned()
+    }
+
+    fn forget(&self, path: &Path) {
+        let mut slot = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if slot.as_ref().and_then(|cell| cell.get()).is_some_and(|cached| cached == path) {
+            *slot = None;
+        }
+    }
+}
 
 /// 관리 venv의 Python 인터프리터 경로를 반환합니다.
 /// 최초 호출 시 전체 부트스트랩(다운로드 포함)을 자동 수행합니다. 실패는 캐시하지 않는다(다음 호출이 다시 시도)
 pub async fn get_python_path() -> Result<PathBuf> {
-    if let Some(path) = VENV_PYTHON.get() {
-        return Ok(path.clone());
-    }
-    VENV_PYTHON.get_or_try_init(|| async {
+    VENV_PYTHON.get_or_prepare(|| async {
         let mut preparing = Preparation::new(&PREFLIGHT);
         let result = ensure_venv().await;
         preparing.finish(&result);
         result
-    }).await.cloned()
+    }).await
+}
+
+/// 이 경로의 Python을 띄우지 못했다: 다음 호출이 venv를 다시 확인한다
+pub fn forget_python(path: &Path) {
+    VENV_PYTHON.forget(path);
+}
+
+/// 이 경로의 Python이 비정상 종료했다: 인터프리터 자체가 돌지 않으면 다음 호출이 venv를 다시 만든다
+/// (Windows venv 실행기는 원본 Python이 없어져도 파일은 남아 있고, 띄우면 오류 코드로 끝난다)
+pub async fn recheck_python(path: PathBuf) {
+    if !verify_python(&path).await {
+        VENV_PYTHON.forget(&path);
+    }
 }
 
 // ── 부팅 사전 점검 (GET /api/runtime/preflight) ──────────────────
@@ -154,6 +193,31 @@ pub async fn ensure_venv() -> Result<PathBuf> {
     // ── Python 인터프리터 찾기 ──
     let base_python = find_base_python(&data_dir).await?;
 
+    let portable = async { download_portable_python(&data_dir).await.map(|exe| exe.to_string_lossy().into_owned()) };
+    let portable = (Path::new(&base_python) != portable_python_exe(&data_dir)).then_some(portable);
+    create_venv_or_fall_back(&base_python, &venv_dir, portable).await?;
+
+    tracing::info!("Python venv 준비 완료: {}", python_exe.display());
+    Ok(python_exe)
+}
+
+/// `base`로 venv를 만든다. 만들지 못하면 `portable`(포터블 Python 받기)로 한 번 더 만든다:
+/// Debian·Ubuntu는 python3가 있어도 python3-venv가 없으면 `python3 -m venv`가 실패한다
+async fn create_venv_or_fall_back(base: &str, venv_dir: &Path, portable: Option<impl std::future::Future<Output = Result<String>>>) -> Result<()> {
+    let Err(error) = create_venv(base, venv_dir).await else { return Ok(()) };
+    let Some(portable) = portable else { return Err(error) };
+    tracing::warn!("{} 로 venv를 만들지 못해 포터블 Python으로 다시 만듭니다: {:#}", base, error);
+    let base = portable.await.with_context(|| format!("{error:#}"))?;
+    create_venv(&base, venv_dir).await
+}
+
+async fn create_venv(base_python: &str, venv_dir: &Path) -> Result<()> {
+    let python_exe = venv_python_exe(venv_dir);
+    // 만들다 만 venv 제거
+    if venv_dir.exists() {
+        let _ = std::fs::remove_dir_all(venv_dir);
+    }
+
     tracing::info!(
         "Python venv 생성 중: {} (base: {})",
         venv_dir.display(),
@@ -166,7 +230,7 @@ pub async fn ensure_venv() -> Result<PathBuf> {
     }
 
     // ── venv 생성 ──
-    let mut cmd = Command::new(&base_python);
+    let mut cmd = Command::new(base_python);
     cmd.args(["-m", "venv", &venv_dir.to_string_lossy()]);
     apply_creation_flags(&mut cmd);
 
@@ -183,9 +247,7 @@ pub async fn ensure_venv() -> Result<PathBuf> {
     if !verify_python(&python_exe).await {
         return Err(anyhow::anyhow!("venv 생성 후 검증 실패"));
     }
-
-    tracing::info!("Python venv 준비 완료: {}", python_exe.display());
-    Ok(python_exe)
+    Ok(())
 }
 
 /// 시스템에서 Python ≥ 3.11 을 탐지합니다.
@@ -586,6 +648,57 @@ mod tests {
         }).await.unwrap();
         assert_eq!(path, Path::new("python"));
         assert_eq!(*state.lock().unwrap(), Preflight::Ready);
+    }
+
+    #[tokio::test]
+    async fn a_prepared_python_that_disappeared_or_was_forgotten_is_prepared_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let python = tmp.path().join("python");
+        std::fs::write(&python, b"").unwrap();
+        let cache = PythonCache::new();
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        let prepare = || async {
+            calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            std::fs::write(&python, b"").unwrap();
+            Ok(python.clone())
+        };
+        cache.get_or_prepare(prepare).await.unwrap();
+        cache.get_or_prepare(prepare).await.unwrap();
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        std::fs::remove_file(&python).unwrap();
+        assert_eq!(cache.get_or_prepare(prepare).await.unwrap(), python);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+
+        cache.forget(Path::new("another-python"));
+        cache.get_or_prepare(prepare).await.unwrap();
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+        cache.forget(&python);
+        cache.get_or_prepare(prepare).await.unwrap();
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 3);
+    }
+
+    /// python3-venv가 없는 Debian·Ubuntu: 시스템 Python으로 venv를 못 만들면 포터블로 만든다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_base_python_that_cannot_make_a_venv_falls_back_to_the_portable_one() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let script = |name: &str, body: &str| {
+            let path = tmp.path().join(name);
+            std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            path.to_string_lossy().into_owned()
+        };
+        let no_venv = script("no-venv", "mkdir -p \"$3/bin\"; echo 'ensurepip is not available' >&2; exit 1");
+        let works = script("works", "[ \"$1\" = -m ] || exit 0\nmkdir -p \"$3/bin\"\nprintf '#!/bin/sh\\necho 3.12.0\\n' > \"$3/bin/python\"\nchmod +x \"$3/bin/python\"");
+        let venv = tmp.path().join("python-env");
+
+        let error = create_venv_or_fall_back(&no_venv, &venv, None::<std::future::Ready<Result<String>>>).await.unwrap_err();
+        assert!(error.to_string().contains("ensurepip"), "{error:#}");
+
+        create_venv_or_fall_back(&no_venv, &venv, Some(async { Ok(works) })).await.unwrap();
+        assert!(verify_python(&venv_python_exe(&venv)).await);
     }
 
     #[test]
