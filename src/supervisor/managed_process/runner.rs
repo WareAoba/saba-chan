@@ -119,6 +119,7 @@ fn session_of(file_name: &str) -> Option<&str> {
 
 /// 세션 로그를 최근 `keep`개만, 모두 합쳐 `max_bytes`까지만 남긴다 (이름이 시작 시각이라 이름 순이 시간 순).
 /// 세션은 앞 조각(`<시각>.log.<n>`)까지 한 묶음으로 지운다
+/// 가장 최근 세션은 크기 때문에 지우지 않는다 (개수로만 지운다): 방금 끝난 실행의 로그는 다시 켠 뒤에도 볼 수 있어야 한다
 pub fn prune_sessions(instance_dir: &Path, keep: usize, max_bytes: u64) {
     let Ok(entries) = std::fs::read_dir(sessions_dir(instance_dir)) else { return };
     let mut sessions: std::collections::BTreeMap<String, (Vec<PathBuf>, u64)> = Default::default();
@@ -132,7 +133,7 @@ pub fn prune_sessions(instance_dir: &Path, keep: usize, max_bytes: u64) {
     let mut total: u64 = sessions.values().map(|(_, size)| size).sum();
     let mut left = sessions.len();
     for (files, size) in sessions.into_values() {
-        if left <= keep && total <= max_bytes {
+        if left <= keep && (total <= max_bytes || left == 1) {
             break;
         }
         for file in &files {
@@ -943,6 +944,19 @@ mod tests {
 
         prune_sessions(tmp.path(), 2, 250);
         assert_eq!(names(), ["20260103-000000.log", "notes.txt"]);
+    }
+
+    // 회전이 없던 때의 큰 로그가 가장 최근 세션이어도 크기 때문에 지우지 않는다: 크래시 뒤 다시 켰을 때 그 로그가 남아 있어야 한다
+    #[test]
+    fn the_latest_session_log_survives_the_size_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = sessions_dir(tmp.path());
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("20260101-000000.log"), [b'x'; 10]).unwrap();
+        std::fs::write(dir.join("20260102-000000.log"), [b'x'; 500]).unwrap();
+        prune_sessions(tmp.path(), 2, 250);
+        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, ["20260102-000000.log"]);
     }
 
     // 러너가 세션 로그를 앞 조각으로 넘겨도 콘솔은 넘기기 전의 마지막 줄과 새 파일의 줄을 빠짐없이 차례로 받는다
