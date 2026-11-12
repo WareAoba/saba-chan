@@ -85,8 +85,10 @@ pub fn on_seen_address(server: &IPCServer) {
 }
 
 impl RemoteDaemon {
+    /// 적용(`apply`)이 도는 동안이면 끝난 뒤에 답한다: 포트를 먼저 잡고, 올렸는가는 그 뒤에 읽는다
     pub async fn status(&self) -> Status {
-        Status { published: self.publisher.published(), ..self.port.lock().await.status.clone() }
+        let port = self.port.lock().await;
+        Status { published: self.publisher.published(), ..port.status.clone() }
     }
 
     /// 릴레이의 내 PC 목록에 맞춘다 (`GET /api/remote/peers`를 읽을 때와 10분마다):

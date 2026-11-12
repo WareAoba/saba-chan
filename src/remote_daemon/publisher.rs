@@ -326,4 +326,24 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(calls.load(Ordering::SeqCst), after, "no more attempts after the port closed");
     }
+
+    /// 적용이 도는 동안(포트를 쥐고 올리기를 기다리는 동안) 물은 상태는 적용이 끝난 뒤의 것 하나다:
+    /// 올렸는가와 포트가 열렸는가가 적용 전·후로 섞이지 않는다
+    #[tokio::test]
+    async fn status_asked_during_an_apply_is_the_state_after_it() {
+        let remote = super::super::RemoteDaemon::default();
+        let mut port = remote.port.lock().await;
+        let asked = tokio::spawn({
+            let remote = remote.clone();
+            async move { remote.status().await }
+        });
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        remote.publisher.0.done.send_replace(Done { applied: 1, published: true });
+        port.status.listening = true;
+        drop(port);
+        let status = asked.await.unwrap();
+        assert_eq!((status.listening, status.published), (true, true));
+    }
 }
