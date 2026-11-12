@@ -1896,7 +1896,7 @@
     "nav_all": "所有服务器",
     "nav_label": "操作记录服务器列表",
     "upcoming_title": "即将运行的计划",
-    "upcoming_desc": "这台电脑上所有服务器的计划任务。点击一行可打开该服务器的备份与计划标签页。",
+    "upcoming_desc": "这台电脑上所有服务器的计划任务。每个任务只显示下一次运行。点击一行可打开该服务器的备份与计划标签页。",
     "upcoming_range": "显示范围",
     "upcoming_range_24": "24 小时内",
     "upcoming_range_168": "7 天内",

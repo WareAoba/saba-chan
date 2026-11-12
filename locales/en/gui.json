@@ -1896,7 +1896,7 @@
     "nav_all": "All servers",
     "nav_label": "Servers in activity log",
     "upcoming_title": "Upcoming schedules",
-    "upcoming_desc": "Scheduled tasks for every server on this PC. Click a row to open that server's Backups & schedule tab.",
+    "upcoming_desc": "Scheduled tasks for every server on this PC. Each task shows only its next run. Click a row to open that server's Backups & schedule tab.",
     "upcoming_range": "Time range",
     "upcoming_range_24": "Next 24 hours",
     "upcoming_range_168": "Next 7 days",

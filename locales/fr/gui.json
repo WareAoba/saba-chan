@@ -1896,7 +1896,7 @@
     "nav_all": "Tous les serveurs",
     "nav_label": "Serveurs du journal",
     "upcoming_title": "Tâches planifiées à venir",
-    "upcoming_desc": "Tâches planifiées de tous les serveurs de ce PC. Cliquez sur une ligne pour ouvrir l'onglet Sauvegardes et planification de ce serveur.",
+    "upcoming_desc": "Tâches planifiées de tous les serveurs de ce PC. Chaque tâche n'affiche que sa prochaine exécution. Cliquez sur une ligne pour ouvrir l'onglet Sauvegardes et planification de ce serveur.",
     "upcoming_range": "Période",
     "upcoming_range_24": "Prochaines 24 heures",
     "upcoming_range_168": "7 prochains jours",

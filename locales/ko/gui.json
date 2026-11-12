@@ -1896,7 +1896,7 @@
     "nav_all": "모든 서버",
     "nav_label": "작업 기록 서버 목록",
     "upcoming_title": "다가오는 예약",
-    "upcoming_desc": "이 PC의 모든 서버에 걸린 예약 작업이에요. 줄을 누르면 그 서버의 백업·예약 탭으로 가요.",
+    "upcoming_desc": "이 PC의 모든 서버에 걸린 예약 작업이에요. 작업마다 다음 한 번만 보여요. 줄을 누르면 그 서버의 백업·예약 탭으로 가요.",
     "upcoming_range": "보일 기간",
     "upcoming_range_24": "24시간 안",
     "upcoming_range_168": "7일 안",

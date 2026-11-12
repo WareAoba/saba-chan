@@ -1896,7 +1896,7 @@
     "nav_all": "所有伺服器",
     "nav_label": "操作紀錄伺服器列表",
     "upcoming_title": "即將執行的排程",
-    "upcoming_desc": "這台電腦上所有伺服器的排程工作。點選一列可開啟該伺服器的備份與排程分頁。",
+    "upcoming_desc": "這台電腦上所有伺服器的排程工作。每項工作只顯示下一次執行。點選一列可開啟該伺服器的備份與排程分頁。",
     "upcoming_range": "顯示範圍",
     "upcoming_range_24": "24 小時內",
     "upcoming_range_168": "7 天內",

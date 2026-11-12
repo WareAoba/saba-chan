@@ -1896,7 +1896,7 @@
     "nav_all": "Todos os servidores",
     "nav_label": "Servidores do registro",
     "upcoming_title": "Próximos agendamentos",
-    "upcoming_desc": "Tarefas agendadas de todos os servidores deste PC. Clique em uma linha para abrir a aba de backups e agendamentos desse servidor.",
+    "upcoming_desc": "Tarefas agendadas de todos os servidores deste PC. Cada tarefa mostra apenas a próxima execução. Clique em uma linha para abrir a aba de backups e agendamentos desse servidor.",
     "upcoming_range": "Período",
     "upcoming_range_24": "Próximas 24 horas",
     "upcoming_range_168": "Próximos 7 dias",

@@ -1896,7 +1896,7 @@
     "nav_all": "Alle Server",
     "nav_label": "Server im Aktivitätsprotokoll",
     "upcoming_title": "Anstehende Zeitpläne",
-    "upcoming_desc": "Geplante Aufgaben aller Server auf diesem PC. Klicke auf eine Zeile, um den Tab „Backups & Zeitplan“ dieses Servers zu öffnen.",
+    "upcoming_desc": "Geplante Aufgaben aller Server auf diesem PC. Jede Aufgabe erscheint nur mit ihrem nächsten Lauf. Klicke auf eine Zeile, um den Tab „Backups & Zeitplan“ dieses Servers zu öffnen.",
     "upcoming_range": "Zeitraum",
     "upcoming_range_24": "Nächste 24 Stunden",
     "upcoming_range_168": "Nächste 7 Tage",
