@@ -82,7 +82,39 @@ pub fn error(status: StatusCode, code: &str) -> Response {
 /// 이전 릴리스는 HTTP/1.1이라 요청마다 연결 하나를 쓰고, 답을 마친 것을 잠깐 남겨 다시 쓴다(`IDLE`)
 enum Conn {
     H1(H1Sender),
-    H2(h2::Sender),
+    H2(Direct),
+}
+
+/// HTTP/2 직접 연결과 그 위에 연 요청 수 (답 본문이 끝날 때까지). 원격 데몬은 연 요청이 없이 15초(`server::HEADER_TIMEOUT`)가
+/// 지나면 연결을 닫는다: 그 닫힘이 닿지 않은 연결(원격 PC의 전원·망이 조용히 끊김)에 요청을 싣지 않게, 연 요청 없이
+/// `REUSE_WINDOW`가 지난 연결은 쓰지 않는다
+#[derive(Clone)]
+struct Direct {
+    sender: h2::Sender,
+    opened: tokio::sync::watch::Sender<usize>,
+}
+
+impl Direct {
+    fn new(sender: h2::Sender) -> Self {
+        let (opened, streams) = tokio::sync::watch::channel(0);
+        // 쉬는 시간이 지나면 받는 쪽을 놓고 끝난다: 그 뒤로 `opened.is_closed()`다
+        tokio::spawn(h2::idle(streams, REUSE_WINDOW));
+        Self { sender, opened }
+    }
+
+    /// 잡은 자리에 아직 열려 있고 쉰 지 오래되지 않은 연결
+    fn live(held: &h2::Held<Direct>) -> Option<Direct> {
+        held.as_ref().filter(|d| !d.sender.is_closed() && !d.opened.is_closed()).cloned()
+    }
+
+    /// 싣는다. 결과는 `send_h2`와 같다
+    async fn send(self, req: Request<Body>) -> Result<Sent, Option<Request<Body>>> {
+        let open = h2::Open::new(&self.opened);
+        Ok(match send_h2(self.sender, req).await? {
+            Sent::Answered(res) => Sent::Answered(res.map(|body| h2::counted(body, open))),
+            other => other,
+        })
+    }
 }
 
 type H1Sender = hyper::client::conn::http1::SendRequest<Body>;
@@ -126,7 +158,7 @@ async fn open(endpoint: &Endpoint) -> Result<Conn, NotOpened> {
         let h2 = stream.get_ref().1.alpn_protocol() == Some(tls::DIRECT_H2);
         mark_http1(endpoint, !h2);
         if h2 {
-            return h2::handshake(stream).await.map(Conn::H2).ok_or(NotOpened::Unreachable);
+            return h2::handshake(stream).await.map(|s| Conn::H2(Direct::new(s))).ok_or(NotOpened::Unreachable);
         }
         let (send, conn) = hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream)).await.map_err(|_| NotOpened::Unreachable)?;
         tokio::spawn(conn.with_upgrades());
@@ -136,7 +168,7 @@ async fn open(endpoint: &Endpoint) -> Result<Conn, NotOpened> {
 }
 
 enum Sent {
-    Answered(hyper::Response<hyper::body::Incoming>),
+    Answered(hyper::Response<Body>),
     /// 붙지 못했다: 요청은 원격 데몬에 닿지 않았다 (다른 주소로 다시 보내도 된다)
     NotConnected,
     /// 붙은 뒤 답이 오지 않았다: 원격 데몬이 이미 처리하고 있을 수 있다 (다시 보내지 않는다)
@@ -157,7 +189,7 @@ type Idle = std::collections::HashMap<IdleKey, Vec<(H1Sender, std::time::Instant
 static IDLE: std::sync::LazyLock<std::sync::Mutex<Idle>> =
     std::sync::LazyLock::new(Default::default);
 /// 원격 데몬(주소·포트·지문)마다 열어 둔 HTTP/2 직접 연결 하나
-static DIRECT: h2::Connections<IdleKey> = h2::Connections::new();
+static DIRECT: h2::Connections<IdleKey, Direct> = h2::Connections::new();
 /// 지난번에 HTTP/1.1로 답한 원격 데몬(이전 릴리스): 연결을 같이 쓸 수 없으므로 여는 동안 다른 요청을 기다리게 하지 않는다
 static HTTP1: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<IdleKey>>> = std::sync::LazyLock::new(Default::default);
 
@@ -196,7 +228,7 @@ fn keep_idle(endpoint: &Endpoint, sender: H1Sender) {
 async fn keep(endpoint: &Endpoint, conn: Conn) {
     match conn {
         Conn::H1(sender) => keep_idle(endpoint, sender),
-        Conn::H2(sender) => *DIRECT.hold(idle_key(endpoint)).await = Some(sender),
+        Conn::H2(direct) => *DIRECT.hold(idle_key(endpoint)).await = Some(direct),
     }
 }
 
@@ -220,7 +252,7 @@ async fn send_reused(endpoint: &Endpoint, req: Request<Body>) -> Reused {
     match tokio::time::timeout(REUSED_ANSWER_TIMEOUT, sender.try_send_request(req)).await {
         Ok(Ok(res)) => {
             keep_idle(endpoint, sender);
-            Reused::Sent(Sent::Answered(res))
+            Reused::Sent(Sent::Answered(res.map(Body::new)))
         }
         Ok(Err(mut e)) => e.take_message().map_or(Reused::Lost, Reused::Unsent),
         Err(_) => Reused::Lost,
@@ -235,9 +267,9 @@ async fn send(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, reques
     // 열어 둔 HTTP/2 연결이 있으면 싣는다. 그새 끊겼으면 놓고 새로 연다: 나가지 못한 요청은 그대로, 나간 뒤 끊긴 것은
     // 원격 데몬이 받았는지 모르므로 다시 보내도 되는 읽기(GET·HEAD)만 다시 만든다 (원격 데몬이 막 다시 켜진 것)
     let read = matches!(*req.method(), Method::GET | Method::HEAD);
-    let shared = h2::live(&DIRECT.hold(key.clone()).await);
+    let shared = Direct::live(&DIRECT.hold(key.clone()).await);
     let req = match shared {
-        Some(sender) => match send_h2(sender, req).await {
+        Some(direct) => match direct.send(req).await {
             Ok(sent) => return Ok(sent),
             Err(unsent) => {
                 *DIRECT.hold(key.clone()).await = None;
@@ -260,9 +292,9 @@ async fn send(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, reques
     };
     // 여는 동안 같은 PC의 다른 요청은 기다렸다가 HTTP/2 연결이면 같이 쓴다 (한꺼번에 온 요청이 연결을 하나씩 열지 않게)
     let held = DIRECT.hold(key.clone()).await;
-    if let Some(sender) = h2::live(&held) {
+    if let Some(direct) = Direct::live(&held) {
         drop(held);
-        return Ok(sent_h2(send_h2(sender, req).await));
+        return Ok(sent_h2(direct.send(req).await));
     }
     if direct_failed().contains_key(&key) {
         return Err(NotOpened::Slow);
@@ -278,14 +310,14 @@ async fn send(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, reques
         Err(other) => return Err(other),
     };
     let mut sender = match conn {
-        Conn::H2(sender) => {
+        Conn::H2(direct) => {
             match held.as_mut() {
-                Some(held) => **held = Some(sender.clone()),
+                Some(held) => **held = Some(direct.clone()),
                 // 그새 새 릴리스로 바뀌었다
-                None => *DIRECT.hold(key).await = Some(sender.clone()),
+                None => *DIRECT.hold(key).await = Some(direct.clone()),
             }
             drop(held);
-            return Ok(sent_h2(send_h2(sender, req).await));
+            return Ok(sent_h2(direct.send(req).await));
         }
         Conn::H1(sender) => sender,
     };
@@ -293,7 +325,7 @@ async fn send(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, reques
     Ok(match tokio::time::timeout(RESPONSE_TIMEOUT, sender.send_request(req)).await {
         Ok(Ok(res)) => {
             keep_idle(endpoint, sender);
-            Sent::Answered(res)
+            Sent::Answered(res.map(Body::new))
         }
         _ => Sent::NoAnswer,
     })
@@ -307,7 +339,7 @@ async fn send_h2(mut sender: h2::Sender, mut req: Request<Body>) -> Result<Sent,
         return Err(Some(req));
     }
     match tokio::time::timeout(RESPONSE_TIMEOUT, sender.try_send_request(req)).await {
-        Ok(Ok(res)) => Ok(Sent::Answered(res)),
+        Ok(Ok(res)) => Ok(Sent::Answered(res.map(Body::new))),
         Ok(Err(mut e)) => Err(e.take_message()),
         Err(_) => Ok(Sent::NoAnswer),
     }
@@ -650,11 +682,11 @@ async fn send_saved(file: &ConfigFile, relay: Option<Target>, daemon: &Daemon, p
         Sent::NotConnected => return error(StatusCode::BAD_GATEWAY, "remote_unreachable"),
         Sent::NoAnswer => return error(StatusCode::GATEWAY_TIMEOUT, "remote_timeout"),
     };
-    let (mut head, incoming) = res.into_parts();
+    let (mut head, body) = res.into_parts();
     for hop in [header::CONNECTION, header::TRANSFER_ENCODING, HeaderName::from_static("keep-alive")] {
         head.headers.remove(hop);
     }
-    Response::from_parts(head, Body::new(incoming))
+    Response::from_parts(head, body)
 }
 
 async fn fresh_endpoint(relay: Option<&Target>, host_id: &str) -> Option<Endpoint> {
@@ -680,6 +712,8 @@ mod tests {
         tunnels: Arc<std::sync::atomic::AtomicUsize>,
         /// `proxy` 앞의 연결을 끊는 표시: 취소하면 그때 이어 둔 연결이 모두 끊긴다 (`/api/cut-once`)
         cut: Arc<Mutex<CancellationToken>>,
+        /// 켜 두면 끊긴 연결을 닫지 않고 말없이 버린다 (원격 PC의 전원·망이 조용히 끊긴 것)
+        silent: Arc<std::sync::atomic::AtomicBool>,
     }
 
     /// 원격 데몬 앞의 TCP 중계. 릴레이가 알리는 주소를 이것으로 바꾼다 (터널은 그대로 원격 데몬에 붙는다).
@@ -688,16 +722,20 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let upstream = *state.port.lock().unwrap();
         state.endpoint.lock().unwrap()["port"] = json!(listener.local_addr().unwrap().port());
-        let cut = state.cut.clone();
+        let (cut, silent) = (state.cut.clone(), state.silent.clone());
         tokio::spawn(async move {
             while let Ok((mut near, _)) = listener.accept().await {
-                let cut = cut.lock().unwrap().clone();
+                let (cut, silent) = (cut.lock().unwrap().clone(), silent.clone());
                 tokio::spawn(async move {
                     tokio::time::sleep(delay).await;
                     let Ok(mut far) = tokio::net::TcpStream::connect(("127.0.0.1", upstream)).await else { return };
                     tokio::select! {
                         _ = tokio::io::copy_bidirectional(&mut near, &mut far) => {}
-                        () = cut.cancelled() => {}
+                        () = cut.cancelled() => {
+                            if silent.load(std::sync::atomic::Ordering::SeqCst) {
+                                std::future::pending::<()>().await;
+                            }
+                        }
                     }
                 });
             }
@@ -976,6 +1014,29 @@ mod tests {
         let (status, body) = json_of(send(Request::post("/ignored").body(Body::empty()).unwrap()).await).await;
         assert_eq!((status, body["error_code"].as_str()), (504, Some("remote_timeout")));
         assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    /// 원격 데몬은 쉬는 HTTP/2 연결을 닫는다. 그 닫힘이 닿지 않은 연결(원격 PC의 망이 조용히 끊김)에는 쉬고 난 뒤의 요청을
+    /// 싣지 않고 새로 연다: 바꾸는 요청도 답을 기다리다 504로 끝나지 않는다
+    #[tokio::test]
+    async fn a_connection_that_went_quiet_while_idle_is_not_used_again() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        proxy(&state, Duration::ZERO).await;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        assert_eq!(status, 200);
+
+        state.silent.store(true, std::sync::atomic::Ordering::SeqCst);
+        std::mem::take(&mut *state.cut.lock().unwrap()).cancel();
+        tokio::time::sleep(REUSE_WINDOW + Duration::from_millis(200)).await;
+        let post = Request::post("/ignored").header("content-type", "text/plain").body(Body::from("hello")).unwrap();
+        let res = forward(&file, Some(relay), "host-b", "/api/echo", post, CancellationToken::new()).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(axum::body::to_bytes(res.into_body(), 1024).await.unwrap(), "hello");
     }
 
     /// 이전 릴리스의 원격 데몬(HTTP/1.1)에도 직접 붙는다. 잇달아 보내는 요청(GUI 폴링)은 방금 쓴 직접 연결을 다시 쓰고,

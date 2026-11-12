@@ -23,6 +23,7 @@ use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
 use super::config::{self, Client};
+use super::h2;
 use super::relay::{self, Failure, Target};
 
 /// PC 전용 칸을 보려고 받아 두는 본문 (axum `Json`의 기본 한도와 같다)
@@ -444,11 +445,11 @@ pub(crate) async fn serve(
             if tunnel || direct {
                 let (opened, streams) = tokio::sync::watch::channel(0usize);
                 let service = hyper::service::service_fn(move |req: Request<hyper::body::Incoming>| {
-                    let open = Open::new(&opened);
+                    let open = h2::Open::new(&opened);
                     let app = app.clone();
                     async move {
                         let res = tower::ServiceExt::oneshot(app, req).await;
-                        res.map(|res| res.map(|body| Body::new(Counted { body, _open: open })))
+                        res.map(|res| res.map(|body| h2::counted(body, open)))
                     }
                 });
                 let mut builder = hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new());
@@ -461,7 +462,7 @@ pub(crate) async fn serve(
                 tokio::pin!(conn);
                 let idle = async {
                     if direct {
-                        idle(streams).await;
+                        h2::idle(streams, HEADER_TIMEOUT).await;
                     } else {
                         std::future::pending().await
                     }
@@ -484,61 +485,6 @@ pub(crate) async fn serve(
                 }
             }
         });
-    }
-}
-
-/// HTTP/2 연결에서 열린 요청 하나: 답 본문을 다 보내거나 상대가 그만둘 때까지
-struct Open(tokio::sync::watch::Sender<usize>);
-
-impl Open {
-    fn new(count: &tokio::sync::watch::Sender<usize>) -> Self {
-        count.send_modify(|n| *n += 1);
-        Self(count.clone())
-    }
-}
-
-impl Drop for Open {
-    fn drop(&mut self) {
-        self.0.send_modify(|n| *n -= 1);
-    }
-}
-
-/// 답 본문 그대로에 열린 요청 표시를 붙인 것 (길이를 그대로 알려 `content-length`가 남는다)
-struct Counted {
-    body: Body,
-    _open: Open,
-}
-
-impl hyper::body::Body for Counted {
-    type Data = axum::body::Bytes;
-    type Error = axum::Error;
-
-    fn poll_frame(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Result<hyper::body::Frame<Self::Data>, Self::Error>>> {
-        std::pin::Pin::new(&mut self.body).poll_frame(cx)
-    }
-
-    fn is_end_stream(&self) -> bool {
-        self.body.is_end_stream()
-    }
-
-    fn size_hint(&self) -> hyper::body::SizeHint {
-        self.body.size_hint()
-    }
-}
-
-/// 연 요청이 하나도 없이 `HEADER_TIMEOUT`이 지나면 끝난다. 열린 수가 아니라 바뀐 일로 시간을 되돌린다:
-/// 이 태스크가 다시 돌기 전에 열렸다 끝난 요청은 수로는 0 그대로다
-async fn idle(mut streams: tokio::sync::watch::Receiver<usize>) {
-    loop {
-        if streams.wait_for(|n| *n == 0).await.is_err() {
-            return;
-        }
-        if !matches!(tokio::time::timeout(HEADER_TIMEOUT, streams.changed()).await, Ok(Ok(()))) {
-            return;
-        }
     }
 }
 
@@ -1086,19 +1032,6 @@ pub(crate) mod tests {
         })
         .await;
         assert!(closed.is_ok(), "an idle HTTP/2 connection must be closed");
-    }
-
-    /// 쉬는 시간은 마지막 요청부터 잰다: 연결 태스크가 다시 돌기 전에 열렸다 끝난 짧은 요청도 시간을 되돌린다
-    #[tokio::test]
-    async fn a_short_request_restarts_the_idle_time() {
-        let (opened, streams) = tokio::sync::watch::channel(0usize);
-        let idle = tokio::spawn(idle(streams));
-        tokio::time::sleep(HEADER_TIMEOUT * 7 / 10).await;
-        drop(Open::new(&opened));
-        tokio::time::sleep(HEADER_TIMEOUT * 6 / 10).await;
-        assert!(!idle.is_finished(), "closed only {:?} after the last request", HEADER_TIMEOUT * 6 / 10);
-        tokio::time::sleep(HEADER_TIMEOUT * 7 / 10).await;
-        assert!(idle.is_finished());
     }
 
     /// 머리만 보내고 본문을 보내지 않는 요청도 자리를 오래 쥐지 못한다 (토큰 없는 짝 맺기와 거절될 요청 모두)
