@@ -34,6 +34,8 @@ import { Segmented, StatusChip } from '../ui/StatusChip';
 import { failed } from '../../utils/apiResult';
 import { SaveBar } from '../ui/SaveBar';
 import { Dialog } from '../ui/Dialog';
+import { Disclosure } from '../ui/Disclosure';
+import { auditReason } from '../../utils/audit';
 
 /** 백업 목록 한 줄 (GET /api/instance/:id/backups) */
 interface Backup {
@@ -48,6 +50,36 @@ interface Backup {
 /** 모듈·익스텐션 명령 한 개 (입력 정의만 좁혀 읽는다) */
 type LocalCommand = ApiBody & { inputs?: CommandInputDef[] };
 
+/** 예약 작업이 한 번 돈 기록 (데몬 `history`의 한 건) */
+interface TaskRun {
+    at: number;
+    result: 'ok' | 'failed' | 'skipped';
+    code?: string;
+    seconds?: number;
+}
+
+const RUN_LOOK = {
+    ok: { icon: 'checkCircle', tone: 'ok' },
+    failed: { icon: 'xCircle', tone: 'stop' },
+    skipped: { icon: 'clock', tone: 'idle' },
+} as const;
+
+/** 한 건 → "성공 · 12초", "실패 · 이유". 문구가 없는 이유 코드는 코드 그대로 보인다 */
+function runText(run: TaskRun, t: TFunction) {
+    const secs = run.seconds ?? 0;
+    const took =
+        secs >= 60
+            ? t('maintenance.run_took_mins', { m: Math.floor(secs / 60), s: secs % 60 })
+            : t('maintenance.run_took_secs', { s: secs });
+    const reason =
+        run.code &&
+        (t(`maintenance.run_code_${run.code}`, { defaultValue: '' }) ||
+            auditReason({ ok: false, code: run.code }, t) ||
+            run.code);
+    const detail = run.result === 'ok' ? took : reason;
+    return [t(`maintenance.run_${run.result}`), detail].filter(Boolean).join(' · ');
+}
+
 /** 예약 탭이 읽어 둔 데몬 응답 (GET /api/instance/:id/schedule) */
 interface ScheduleInfo {
     schedule: ScheduledTask[];
@@ -56,6 +88,7 @@ interface ScheduleInfo {
     announceSupported: boolean;
     saveSupported: boolean;
     nextRuns: number[];
+    history: TaskRun[][];
     utcOffset: number | null;
     revision?: string;
 }
@@ -128,6 +161,7 @@ export function MaintenanceTab({ server, moduleCommands = [] }: { server: Server
                 saveSupported: !!res?.save_supported,
                 // 작업마다 다음 실행 시각 (유닉스 초). 보는 사람의 시간대로 보인다
                 nextRuns: Array.isArray(res?.next_runs) ? res.next_runs : [],
+                history: Array.isArray(res?.history) ? res.history : [],
                 // 작업 시각은 서버 PC의 시계다
                 utcOffset: typeof res?.utc_offset_minutes === 'number' ? res.utc_offset_minutes : null,
                 // 저장할 때 다시 보낸다: 그사이 다른 곳에서 바뀌었으면 데몬이 덮어쓰지 않고 거절한다 (L51)
@@ -453,7 +487,11 @@ function ScheduleCard({
     const commands = localizeCommands(t, server.module, useInstanceCommands(server, moduleCommands) || []);
     // 다음 실행 시각: 작업이 돈 뒤에는 이것만 다시 읽는다 (고치던 내용은 그대로 둔다)
     const [nextRuns, setNextRuns] = useState(info.nextRuns);
-    useEffect(() => setNextRuns(info.nextRuns), [info]);
+    const [history, setHistory] = useState(info.history);
+    useEffect(() => {
+        setNextRuns(info.nextRuns);
+        setHistory(info.history);
+    }, [info]);
     useEffect(() => {
         const nowSecs = Date.now() / 1000;
         const soonest = Math.min(...nextRuns.filter((s: number) => typeof s === 'number' && s > nowSecs));
@@ -465,6 +503,7 @@ function ScheduleCard({
                 const res = await window.api.instanceScheduleGet(server.id);
                 if (res?.success !== false && res?.revision === info.revision && Array.isArray(res?.next_runs)) {
                     setNextRuns(res.next_runs);
+                    if (Array.isArray(res?.history)) setHistory(res.history);
                 }
             } catch {
                 // 다음에 탭을 열 때 다시 읽는다
@@ -510,6 +549,11 @@ function ScheduleCard({
         const at = nextRuns[i];
         if (typeof at === 'number' && at > Date.now() / 1000) return { at };
         return d.mode === 'date' ? { done: true } : null;
+    };
+    // 저장된 그대로인 작업의 실행 기록 (고친 작업은 새 작업이라 기록이 없다)
+    const runsOf = (d: TaskDraft): TaskRun[] | null => {
+        const i = saved.indexOf(sameKey(toTask(d)));
+        return i < 0 ? null : history[i] || [];
     };
     const fmtRun = (secs: number) =>
         new Date(secs * 1000).toLocaleString(i18n.language, {
@@ -610,6 +654,7 @@ function ScheduleCard({
                         const canWarn = WARNS.includes(d.action) && info.announceSupported;
                         const command = d.action === COMMAND ? findCommand(commands, d.command) : null;
                         const next = d.enabled ? nextRunOf(d) : null;
+                        const runs = runsOf(d);
                         return (
                             <li key={d.key} data-spot="schedule.task" className={clsx('mt-task', { off: !d.enabled })}>
                                 <div className="mt-task-head">
@@ -785,6 +830,39 @@ function ScheduleCard({
                                     </p>
                                 )}
                                 {next?.done && <p className="muted mt-next">{t('maintenance.date_done')}</p>}
+                                {runs?.length === 0 && (
+                                    <p className="muted mt-next mt-last">
+                                        <Icon name="clock" size="xs" /> {t('maintenance.last_run_none')}
+                                    </p>
+                                )}
+                                {runs && runs.length > 0 && (
+                                    <Disclosure
+                                        className="mt-runs"
+                                        summary={
+                                            <span className={`mt-last tone-${RUN_LOOK[runs[0].result]?.tone}`}>
+                                                <Icon name={RUN_LOOK[runs[0].result]?.icon || 'clock'} size="xs" />
+                                                {t('maintenance.last_run', {
+                                                    time: fmtRun(runs[0].at),
+                                                    result: runText(runs[0], t),
+                                                })}
+                                            </span>
+                                        }
+                                    >
+                                        <ul className="dc-list">
+                                            {runs.map((run) => (
+                                                <li key={run.at} className="dc-list-row">
+                                                    <span className={`mt-last tone-${RUN_LOOK[run.result]?.tone}`}>
+                                                        <Icon name={RUN_LOOK[run.result]?.icon || 'clock'} size="sm" />
+                                                    </span>
+                                                    <div className="dc-list-text">
+                                                        <div className="dc-list-name">{fmtRun(run.at)}</div>
+                                                        <div className="dc-list-sub">{runText(run, t)}</div>
+                                                    </div>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </Disclosure>
+                                )}
                                 {problems[i].length > 0 && (
                                     <p className="dc-field-error">
                                         <Icon name="alertTriangle" size="xs" /> {problems[i].join(' · ')}

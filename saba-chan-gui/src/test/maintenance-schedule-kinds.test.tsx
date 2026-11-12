@@ -164,6 +164,50 @@ describe('예약 작업 화면', () => {
         }
     });
 
+    it('작업마다 마지막 실행 결과를 보이고, 펼치면 최근 실행 기록이 나온다', async () => {
+        const now = Math.floor(Date.now() / 1000);
+        window.api.instanceScheduleGet = vi.fn(async () => ({
+            success: true,
+            schedule: [
+                { action: 'backup', at: '04:00', enabled: true },
+                { action: 'restart', at: '00:00', enabled: true },
+                { action: 'update', at: '06:00', weekdays: ['mon'], enabled: true },
+            ],
+            next_runs: [now + 3600, now + 7200, now + 9000],
+            history: [
+                [
+                    { at: now - 3600, result: 'ok', seconds: 12 },
+                    { at: now - 90000, result: 'failed', code: 'save_failed', seconds: 3 },
+                    { at: now - 180000, result: 'skipped', code: 'daemon_off', seconds: 0 },
+                ],
+                [{ at: now - 7200, result: 'failed', code: 'not_running', seconds: 0 }],
+                [],
+            ],
+            backup_keep: 5,
+            revision: 'r1',
+        }));
+        render(<MaintenanceTab server={server} moduleCommands={commands} />);
+        await screen.findByRole('tablist', { name: 'Task 1 type' });
+        await act(async () => {});
+        const tasks = screen.getAllByRole('listitem').filter((li) => li.classList.contains('mt-task'));
+        const lastRun = t('maintenance.last_run').split('{{')[0];
+        const head = within(tasks[0]).getByRole('button', { name: new RegExp(`^${lastRun}`) });
+        expect(head.textContent).toContain(t('maintenance.run_ok'));
+        expect(within(tasks[1]).getByRole('button', { name: new RegExp(`^${lastRun}`) }).textContent).toContain(
+            `${t('maintenance.run_failed')} · ${t('maintenance.run_code_not_running')}`,
+        );
+        expect(within(tasks[2]).getByText(t('maintenance.last_run_none'))).toBeTruthy();
+
+        fireEvent.click(head);
+        const rows = within(tasks[0])
+            .getAllByRole('listitem')
+            .map((li) => li.textContent);
+        expect(rows).toHaveLength(3);
+        expect(rows[0]).toContain(`${t('maintenance.run_ok')} · 12s`);
+        expect(rows[1]).toContain(t('maintenance.run_failed'));
+        expect(rows[2]).toContain(`${t('maintenance.run_skipped')} · ${t('maintenance.run_code_daemon_off')}`);
+    });
+
     it('명령 목록과 입력은 모듈 locales의 문구를 쓴다', async () => {
         i18n.addResourceBundle(
             'en',

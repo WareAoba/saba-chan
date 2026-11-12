@@ -922,6 +922,62 @@ fn next_runs(id: &str, schedule: &[ScheduledTask]) -> Vec<Option<i64>> {
         .collect()
 }
 
+/// 일정 순서대로 작업마다 실행 이력 (`schedule-history.json`)
+fn history_of(instance_dir: &FsPath, id: &str, schedule: &[ScheduledTask]) -> Vec<Vec<crate::scheduler::Run>> {
+    let _guard = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut history = crate::scheduler::read_history(&instance_dir.join(crate::scheduler::HISTORY_FILE));
+    schedule.iter().map(|task| history.remove(&crate::scheduler::task_key(id, task)).unwrap_or_default()).collect()
+}
+
+/// 이력 파일을 읽고 고쳐 쓰는 동안 쥔다 (같은 인스턴스의 두 작업이 함께 끝나도 한 건을 잃지 않게)
+static HISTORY_LOCK: Mutex<()> = Mutex::new(());
+
+/// 예약 작업 한 번의 결과. 이유 코드는 실패·건너뜀에만 있다
+type Outcome = (crate::scheduler::RunResult, Option<String>);
+
+fn done() -> Option<Outcome> {
+    Some((crate::scheduler::RunResult::Ok, None))
+}
+
+fn failed(code: Option<String>) -> Option<Outcome> {
+    Some((crate::scheduler::RunResult::Failed, code))
+}
+
+fn skipped(code: &str) -> Option<Outcome> {
+    Some((crate::scheduler::RunResult::Skipped, Some(code.to_string())))
+}
+
+/// 핸들러 응답 → 결과. 실패면 그 `error_code`를 이유로 남긴다
+fn outcome_of(resp: &crate::ipc::internal::InternalResponse) -> Option<Outcome> {
+    if resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false) {
+        done()
+    } else {
+        failed(crate::audit::failure_code(&resp.body))
+    }
+}
+
+/// 한 건을 인스턴스 폴더의 이력에 남긴다. 일정에서 사라진 작업의 이력은 이때 치운다. 새로 남겼으면 true
+async fn record_run(state: &IPCServer, id: &str, key: &str, run: crate::scheduler::Run) -> bool {
+    let supervisor = state.supervisor.read().await;
+    let Some(instance) = supervisor.instance_store.get(id) else { return false };
+    let dir = supervisor.instance_store.instance_dir(id);
+    if !dir.is_dir() {
+        return false;
+    }
+    let keys: HashSet<String> = instance.schedule.iter().map(|t| crate::scheduler::task_key(id, t)).collect();
+    let file = dir.join(crate::scheduler::HISTORY_FILE);
+    let _guard = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut history = crate::scheduler::read_history(&file);
+    history.retain(|k, _| keys.contains(k) || k == key);
+    if !crate::scheduler::push_run(&mut history, key, run) {
+        return false;
+    }
+    if let Err(e) = crate::scheduler::write_history(&file, &history) {
+        tracing::warn!("Could not save the schedule history of '{}': {}", instance.name, e);
+    }
+    true
+}
+
 /// 하트비트의 예약 목록 `[{instanceId, action, next}]` (`next`는 Unix 초): 켜 둔 예약의 다음 실행을 가까운 순으로 `limit`개까지.
 /// 릴레이가 알림 채널 맨 위 글에 보인다
 pub fn upcoming_runs(instances: &[crate::instance::ServerInstance], limit: usize) -> Vec<Value> {
@@ -953,6 +1009,8 @@ pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>
         "announce_supported": meta.as_ref().is_some_and(|m| m.announce_command.is_some()),
         "save_supported": meta.as_ref().is_some_and(|m| save_command_of(m).is_some()),
         "next_runs": next_runs(&id, &instance.schedule),
+        // 작업마다 최근 실행 기록 (새것부터, `scheduler::HISTORY_KEEP`건까지). 돈 적이 없으면 빈 배열
+        "history": history_of(&supervisor.instance_store.instance_dir(&id), &id, &instance.schedule),
         // 작업 시각(`at`·`date`)은 데몬 PC의 벽시계다: 다른 시간대에서 보는 화면이 그 차이를 알린다
         "utc_offset_minutes": chrono::Local::now().offset().local_minus_utc() / 60,
     }))
@@ -1102,6 +1160,7 @@ pub fn spawn_scheduler(state: IPCServer) {
             let saved = store.list().iter().flat_map(|i| crate::scheduler::read_runs(&store.instance_dir(&i.id).join(crate::scheduler::RUNS_FILE))).collect();
             clock.lock().unwrap_or_else(|e| e.into_inner()).restore(saved);
         }
+        record_missed(&state, &clock, started).await;
         // 복원 전 백업을 이미 살핀 (인스턴스, 켠 시각). 한 번 켠 뒤로 한 번만 살핀다
         let mut swept: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
         loop {
@@ -1149,6 +1208,29 @@ pub fn spawn_scheduler(state: IPCServer) {
             }
         }
     });
+}
+
+/// 데몬이 꺼져 있던 사이 지나간 시각 작업을 이력에 건너뜀으로 남긴다 (그 차례는 따라잡지 않는다)
+async fn record_missed(state: &IPCServer, clock: &Mutex<Clock>, started: chrono::NaiveDateTime) {
+    let missed: Vec<(String, String, i64)> = {
+        let supervisor = state.supervisor.read().await;
+        let clock = clock.lock().unwrap_or_else(|e| e.into_inner());
+        supervisor
+            .instance_store
+            .list()
+            .iter()
+            .flat_map(|i| i.schedule.iter().map(move |t| (i.id.clone(), t)))
+            .filter_map(|(id, task)| {
+                let key = crate::scheduler::task_key(&id, task);
+                let at = crate::scheduler::instant(&chrono::Local, clock.missed(&key, task, started)?)?.timestamp();
+                Some((id, key, at))
+            })
+            .collect()
+    };
+    for (id, key, at) in missed {
+        let run = crate::scheduler::Run { at, result: crate::scheduler::RunResult::Skipped, code: Some("daemon_off".into()), seconds: 0 };
+        record_run(state, &id, &key, run).await;
+    }
 }
 
 /// 마지막 실행 시각이 바뀌었으면 인스턴스 폴더마다 남긴다: 데몬을 다시 켜도 주기 작업이 이어 센다
@@ -1354,25 +1436,47 @@ async fn ran_since_last_backup(state: &IPCServer, id: &str) -> bool {
 async fn run_task(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
     // 감사 로그 (A10): 예약 작업이 한 일은 출처 schedule
     // 갈래마다 큰 핸들러 future를 품으므로 힙에 둔다 (디버그 빌드 스택 넘침)
-    crate::audit::with_origin(crate::audit::Origin::new("schedule"), Box::pin(run_task_now(state, id, task, fire, key))).await
+    let called = chrono::Local::now().naive_local();
+    let outcome = crate::audit::with_origin(crate::audit::Origin::new("schedule"), Box::pin(run_task_now(state, id, task, fire, key))).await;
+    // 예고 중에 지우거나 끈 작업은 남기지 않는다
+    let Some((result, code)) = outcome else { return };
+    let Some(at) = crate::scheduler::instant(&chrono::Local, fire).map(|t| t.timestamp()) else { return };
+    // 예고를 기다린 시간은 빼고 잰다
+    let seconds = (chrono::Local::now().naive_local() - called.max(fire)).num_seconds().max(0) as u64;
+    if !record_run(state, id, key, crate::scheduler::Run { at, result, code: code.clone(), seconds }).await {
+        return;
+    }
+    let kind = match result {
+        crate::scheduler::RunResult::Ok => "schedule.ran",
+        crate::scheduler::RunResult::Failed => "schedule.failed",
+        crate::scheduler::RunResult::Skipped => return,
+    };
+    let name = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
+    let mut data = json!({ "instanceId": id, "instance": name, "action": task.action, "seconds": seconds });
+    if let Some(code) = code {
+        data["code"] = Value::from(code);
+    }
+    crate::events::emit(kind, data);
 }
 
-async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
+/// 작업을 하고 결과를 돌려준다. 예고 중에 작업이 지워지거나 꺼졌으면 None
+async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) -> Option<Outcome> {
     let running = is_running(state, id).await;
     match task.action {
         TaskAction::Backup => {
             // 꺼져 있고 마지막 백업 뒤로 돈 적도 없으면 바뀐 게 없으니 건너뛰되, 건너뛴 것도 감사 로그에 남긴다
-            let (status, code) = if !running && !ran_since_last_backup(state, id).await {
+            let (status, code, outcome) = if !running && !ran_since_last_backup(state, id).await {
                 tracing::info!("Scheduled backup of '{}' skipped: the server is not running and has not run since the last backup", id);
-                (409, None)
+                (409, None, skipped("not_running"))
             } else {
                 match take_backup(state, id, BackupKind::Scheduled).await {
-                    Ok(Some(_)) => (200, None),
-                    Ok(None) => (204, None),
+                    Ok(Some(_)) => (200, None, done()),
+                    Ok(None) => (204, None, skipped("backup_unsupported")),
                     Err(r) => {
                         let resp = crate::ipc::internal::into_internal(r).await;
                         tracing::warn!("Scheduled backup of '{}' failed: {}", id, resp.body["error"]);
-                        (resp.status.as_u16(), crate::audit::failure_code(&resp.body))
+                        let code = crate::audit::failure_code(&resp.body);
+                        (resp.status.as_u16(), code.clone(), failed(code))
                     }
                 }
             };
@@ -1384,14 +1488,22 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
                 code: code.as_deref(),
                 ..Default::default()
             });
+            outcome
         }
         TaskAction::Announce if running => {
-            announce(state, id, task.message.as_deref().unwrap_or_default()).await;
+            if announce(state, id, task.message.as_deref().unwrap_or_default()).await {
+                done()
+            } else {
+                failed(Some("command_failed".into()))
+            }
         }
         // 예고 시작 때 꺼져 있었어도 재시작 시각에 켜져 있으면 다시 시작한다 (정지와 같다)
         TaskAction::Restart => {
-            if !count_down(state, id, task, fire, key, "schedule.restart_warning", running).await || !is_running(state, id).await {
-                return;
+            if !count_down(state, id, task, fire, key, "schedule.restart_warning", running).await {
+                return None;
+            }
+            if !is_running(state, id).await {
+                return failed(Some("not_running".into()));
             }
             tracing::info!("Scheduled restart of '{}'", id);
             let resp = crate::ipc::internal::into_internal(
@@ -1401,6 +1513,7 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
             if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
                 tracing::warn!("Scheduled restart of '{}' failed: {}", id, resp.body);
             }
+            outcome_of(&resp)
         }
         TaskAction::Update => Box::pin(run_update(state, id, task, fire, key)).await,
         TaskAction::Start if !running => {
@@ -1412,11 +1525,15 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
             if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
                 tracing::warn!("Scheduled start of '{}' failed: {}", id, resp.body);
             }
+            outcome_of(&resp)
         }
         // 예고 시작 때 꺼져 있었어도 정지 시각에 켜져 있으면 끈다 (같은 시각 앞의 예약 시작 등)
         TaskAction::Stop => {
-            if !count_down(state, id, task, fire, key, "schedule.stop_warning", running).await || !is_running(state, id).await {
-                return;
+            if !count_down(state, id, task, fire, key, "schedule.stop_warning", running).await {
+                return None;
+            }
+            if !is_running(state, id).await {
+                return skipped("not_running");
             }
             tracing::info!("Scheduled stop of '{}'", id);
             // 예약 작업은 강제 종료하지 않는다 (저장 후 종료를 못 하는 서버는 그대로 둔다)
@@ -1427,6 +1544,7 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
             if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
                 tracing::warn!("Scheduled stop of '{}' failed: {}", id, resp.body);
             }
+            outcome_of(&resp)
         }
         TaskAction::Save if running => {
             let cmd = {
@@ -1437,21 +1555,28 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
                     .and_then(|i| supervisor.module_loader.get_module(&i.module_name).ok())
                     .and_then(|m| save_command_of(&m.metadata))
             };
-            if let Some(cmd) = cmd {
-                if !run_command(state, id, &cmd, json!({})).await {
+            match cmd {
+                Some(cmd) if run_command(state, id, &cmd, json!({})).await => done(),
+                Some(_) => {
                     tracing::warn!("Scheduled save of '{}' failed", id);
+                    failed(Some("command_failed".into()))
                 }
+                None => skipped("save_unsupported"),
             }
         }
         // 익스텐션 명령은 서버가 꺼져 있어도 돈다: 켜짐 여부는 명령 실행이 판단하고, 결과는 감사 로그에 남는다
         TaskAction::Command => {
             let name = task.command.as_deref().unwrap_or_default();
             let args = task.args.clone().map(Value::Object).unwrap_or(Value::Null);
-            if !run_command(state, id, name, args).await {
+            if run_command(state, id, name, args).await {
+                done()
+            } else {
                 tracing::warn!("Scheduled command '{}' on '{}' failed", name, id);
+                failed(Some("command_failed".into()))
             }
         }
-        _ => {}
+        TaskAction::Start => skipped("already_running"),
+        TaskAction::Announce | TaskAction::Save => skipped("not_running"),
     }
 }
 
@@ -1466,7 +1591,7 @@ fn daily_runs(schedule: &[ScheduledTask], action: TaskAction) -> u32 {
 
 /// 업데이트가 있으면: (켜져 있으면) 예고 → 정지 → 업데이트(업데이트 전 백업 포함) → 다시 시작.
 /// 꺼져 있어도 정한 시각까지는 기다린다 (예고 시각에 바로 시작하지 않게)
-async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
+async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) -> Option<Outcome> {
     let check = crate::ipc::internal::into_internal(
         super::instance::check_server_update(Path(id.to_string()), State(state.clone())).await,
     )
@@ -1474,20 +1599,25 @@ async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chr
     if check.body.get("update_available").and_then(Value::as_bool) != Some(true) {
         if check.body.get("reason").and_then(Value::as_str) == Some("check_failed") {
             tracing::warn!("Scheduled update of '{}': update check failed: {}", id, check.body["error"]);
+            return failed(Some("check_failed".into()));
         }
-        return;
+        return skipped("no_update");
     }
     let running_now = is_running(state, id).await;
     if !count_down(state, id, task, fire, key, "schedule.update_warning", running_now).await {
-        return;
+        return None;
     }
     tracing::info!("Scheduled update of '{}'", id);
     // 디스코드·자동 업데이트가 같은 서버에 걸어 둔 업데이트와 겹치지 않게 한다
     let Some(_mark) = super::server_update::Pending::take(id) else {
         tracing::info!("Scheduled update of '{}': another update is already under way", id);
-        return;
+        return skipped("update_in_progress");
     };
-    super::server_update::stop_update_start(state, id).await;
+    if super::server_update::stop_update_start(state, id).await {
+        done()
+    } else {
+        failed(Some("update_failed".into()))
+    }
 }
 
 /// 예약 업데이트가 끈 서버를 다시 켠다. 그 순간 다른 작업(백업·복원)이 잠금을 쥐고 있으면 끝나기를 기다린다.
@@ -1825,6 +1955,36 @@ else:
         assert_eq!(entry["source"], "schedule");
         assert_eq!(entry["ok"], false);
         assert_eq!(entry["status"], 409);
+    }
+
+    // 예약이 실제로 돌았는지, 실패했는지를 일정 조회가 작업마다 알려 준다 (새것부터)
+    #[tokio::test]
+    async fn a_scheduled_run_leaves_its_result_in_the_schedule_history() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let restart: ScheduledTask = serde_json::from_value(json!({"action": "restart", "at": "04:00"})).unwrap();
+        let backup: ScheduledTask = serde_json::from_value(json!({"action": "backup", "every_minutes": 60})).unwrap();
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut instance = sup.instance_store.get(&id).unwrap().clone();
+            instance.schedule = vec![restart.clone(), backup.clone()];
+            sup.instance_store.update(&id, instance).unwrap();
+        }
+        let mut events = crate::events::bus().subscribe(None);
+        let fire = chrono::Local::now().naive_local() - chrono::Duration::seconds(5);
+        run_task(&state, &id, &restart, fire, &crate::scheduler::task_key(&id, &restart)).await;
+        run_task(&state, &id, &backup, fire, &crate::scheduler::task_key(&id, &backup)).await;
+
+        let body = crate::ipc::internal::into_internal(get_schedule(Path(id.clone()), State(state.clone())).await).await.body;
+        let at = crate::scheduler::instant(&chrono::Local, fire).unwrap().timestamp();
+        assert_eq!(body["history"][0], json!([{ "at": at, "result": "failed", "code": "not_running", "seconds": 0 }]), "{}", body);
+        assert_eq!(body["history"][1][0]["result"], "skipped", "a stopped server has nothing new to back up: {}", body);
+        assert_eq!(body["history"][1][0]["code"], "not_running");
+
+        let seen: Vec<_> = std::iter::from_fn(|| events.rx.try_recv().ok()).collect();
+        let failed: Vec<_> = seen.iter().filter(|e| e.kind == "schedule.failed" && e.data["instanceId"] == id.as_str()).collect();
+        assert_eq!(failed.len(), 1, "only the failed restart is announced as failed");
+        assert_eq!(failed[0].data["action"], "restart");
+        assert_eq!(failed[0].data["code"], "not_running");
     }
 
     // 꺼진 PC에서 밀린 주기 백업은 데몬이 켜진 직후(서버는 아직 꺼져 있다)에 돈다: 지난 실행이 바꾼 것을 그때 담아야 한다

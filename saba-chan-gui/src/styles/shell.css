@@ -3569,6 +3569,21 @@ button.appbar-pill:focus-visible {
 .mt-next {
     font-size: var(--fs-xs);
 }
+/* 마지막 실행 결과와 실행 기록 */
+.mt-last {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
+.mt-last.tone-ok {
+    color: var(--ok);
+}
+.mt-last.tone-stop {
+    color: var(--stop);
+}
+.mt-runs {
+    font-size: var(--fs-xs);
+}
 .mt-picker-body {
     display: flex;
     flex-direction: column;
