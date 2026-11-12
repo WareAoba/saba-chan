@@ -124,6 +124,8 @@ pub static ROUTES: &[Route] = &[
     allow("PUT", "/api/instance/{id}/properties"),
     allow("POST", "/api/instance/{id}/properties/reset"),
     not_on_web("GET", "/api/instance/{id}/settings/live"),
+    // 초기화 확인 창이 보이는 지울 목록 (PC 경로가 실린다). 웹은 확인 문구만 보인다
+    not_on_web("GET", "/api/instance/{id}/server/reset"),
     allow("POST", "/api/instance/{id}/server/reset"),
     allow("POST", "/api/instance/{id}/agreements"),
     // ── 백업·일정 ──

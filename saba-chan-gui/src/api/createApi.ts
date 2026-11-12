@@ -553,7 +553,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             if (extraArgs !== undefined && extraArgs !== null) body.extra_args = extraArgs;
             return call('post', `/api/instance/${encodeURIComponent(id)}/launch-preview`, body, 15000);
         },
-        instanceResetServer: (instanceId: string) => call('post', `/api/instance/${encodeURIComponent(instanceId)}/server/reset`, {}),
+        // 초기화가 지울 것 (범위마다 지금 있는 항목과 크기). 모듈이 알려 주지 않으면 error_code not_supported
+        instanceResetPreview: (instanceId: string) => call('get', `/api/instance/${encodeURIComponent(instanceId)}/server/reset`),
+        instanceResetServer: (instanceId: string, body: { scope?: string; backup?: boolean } = {}) =>
+            call('post', `/api/instance/${encodeURIComponent(instanceId)}/server/reset`, body, BACKUP_TIMEOUT),
         // 게임 명령 — 해석과 라우팅은 데몬이 한다
         executeCommand: async (id: string, command: { command?: string; args?: Record<string, unknown> | null }): Promise<ApiBody> => {
             const payload = {

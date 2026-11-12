@@ -92,7 +92,8 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | instanceUpdateSettings (572) | PATCH /api/instance/:id. 400이면 `{status, error, error_code, details, fields}`를 그대로 넘긴다(`invalid_format`이면 형식 오류 알림). 설정 창은 연 때의 `ServerInfo.revision`(그 뒤 실제 값 읽기·버전 감지·설치 저장이 준 `revision`이 있으면 그 값)을 싣고, 409 `settings_changed`면 다른 곳에서 바뀌었다고 알린 뒤 목록을 다시 읽는다 | ✓ 665 |
 | instanceGet | GET /api/instance/:id(실패는 데몬 본문에 `error`를 채운 실패 본문). 사바쨩 웹 서버 설정(`SettingsPanel.tsx`)이 저장에서 409 `settings_changed`를 받고 "새 값 불러오기"를 고르면 마지막 폴링 대신 이것으로 지금 값과 `revision`을 다시 읽는다(없으면 409 본문의 `revision`). 읽지 못하면 고친 값을 두고 알린다 | ✓ |
 | instanceLaunchPreview (621) | POST /api/instance/:id/launch-preview `{settings, extra_args?}` (extra_args를 안 넘기면 저장된 것) | ✓ 666 |
-| instanceResetServer (626) | POST /api/instance/:id/server/reset | ✓ 686 |
+| instanceResetServer(id, {scope?, backup?}) | POST /api/instance/:id/server/reset (10분 timeout) | ✓ 686 (본문 없이) |
+| instanceResetPreview | GET /api/instance/:id/server/reset. 설정 탭 위험 구역의 초기화 확인 창(`servers/ResetServerDialog.tsx`)이 범위(둘 이상이면 고르기)마다 지울 항목·크기와 "지우기 전에 백업"(그 범위의 `backup`이 참일 때, 기본 켬)을 보인다. `not_supported`면 예전 확인 문구로 묻는다 | - |
 | executeCommand (637) | POST /api/instance/:id/command {command, args}. 명령 해석과 라우팅(REST·stdin·모듈)은 데몬이 한다(464 주석). GUI는 `…/rcon`, `…/rest`를 직접 부르지 않는다 | ✓ 673 |
 | instanceStop/Restart/Rename/Commands (493-498) | POST …/stop·…/restart {force}(둘 다 70분 timeout: 데몬이 stop_timeout까지 기다린 뒤 답한다, L74), POST …/rename {name}, GET …/commands | ✓ 648, 649, 664, 674 |
 | instanceValidate / instanceDiagnose | POST /api/instance/:id/validate · /diagnose `{}` (60초 timeout). 모듈 결과 `{success, issues:[{code, severity, message, solution}]}`를 그대로 돌려준다(서버 상세 `ServerCheck`) | ✓ 717, 724 |

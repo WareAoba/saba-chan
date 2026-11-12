@@ -532,8 +532,81 @@ export function useServerSettings({
     };
 
     // ── handleResetServer ───────────────────────────────────
-    const handleResetServer = async () => {
+    // 서버를 초기화한다. `choice`는 확인 창에서 고른 범위와 "지우기 전에 백업"
+    const resetServer = async (choice?: { scope?: string; backup?: boolean }) => {
         if (!settingsServer) return;
+        const request = openRequest.current;
+        setResettingServer(true);
+        try {
+            const result = await window.api.instanceResetServer(settingsServer.id, choice);
+            // 모듈은 200으로 {success:false}를 돌려줄 수 있다
+            if (!result || result.error || result.success === false) {
+                safeShowToast(
+                    t('server_settings.reset_failed', {
+                        error:
+                            busyMessage(t, result?.error_code, 'reset_server_running') ||
+                            translateError(result?.error || result?.message || ''),
+                        defaultValue: 'Reset failed',
+                    }),
+                    'error',
+                );
+            } else {
+                const deletedCount = result?.deleted?.length || 0;
+                // 게임 설정 파일이 지워졌다: 열 때 읽은 파일 값은 더는 맞지 않으니 저장할 때 다시 쓴다
+                liveFields.current = new Set();
+                safeShowToast(
+                    t('server_settings.reset_success', {
+                        name: settingsServer.name,
+                        count: deletedCount,
+                        defaultValue: `Server '${settingsServer.name}' has been reset (${deletedCount} items deleted)`,
+                    }),
+                    'success',
+                );
+                // Refresh settings display
+                if (settingsServer?.id) {
+                    try {
+                        const serverList = await window.api.serverList();
+                        if (serverList && serverList.servers && !serverList.error) {
+                            const updated = serverList.servers.find((s: Server) => s.id === settingsServer.id);
+                            if (updated && request === openRequest.current) {
+                                setSettingsServer(updated);
+                                revision.current = updated.revision || null;
+                                // 데몬이 따로 두는 칸은 module_settings 밖이거나 표시 형식이 달라 같이 채운다 (G-U3)
+                                setSettingsValues((prev) => ({
+                                    ...prev,
+                                    ...updated.module_settings,
+                                    ...restartFlagsOf(updated),
+                                    ...idleStopOf(updated),
+                                    ...unresponsiveOf(updated),
+                                    memory_limit_mb: memoryLimitOf(updated),
+                                    stop_timeout: stopTimeoutOf(updated),
+                                    auto_update: autoUpdateOf(updated),
+                                    ...gameChatOf(updated),
+                                }));
+                            }
+                        }
+                    } catch (_e) {
+                        /* silent */
+                    }
+                }
+            }
+        } catch (err) {
+            safeShowToast(
+                t('server_settings.reset_error', {
+                    error: translateError((err as Error).message),
+                    defaultValue: 'Reset error',
+                }),
+                'error',
+            );
+        } finally {
+            setResettingServer(false);
+        }
+    };
+
+    // 고른 범위가 오면(지울 항목을 보인 확인 창을 지났다) 바로 초기화하고, 아니면 확인 문구로 묻는다
+    const handleResetServer = async (choice?: { scope?: string; backup?: boolean }) => {
+        if (!settingsServer) return;
+        if (choice) return resetServer(choice);
 
         setModal({
             type: 'question',
@@ -552,74 +625,9 @@ export function useServerSettings({
                 },
                 {
                     label: t('server_settings.reset_button', { defaultValue: 'Reset' }),
-                    action: async () => {
-                        const request = openRequest.current;
+                    action: () => {
                         setModal(null);
-                        setResettingServer(true);
-                        try {
-                            const result = await window.api.instanceResetServer(settingsServer.id);
-                            // 모듈은 200으로 {success:false}를 돌려줄 수 있다
-                            if (!result || result.error || result.success === false) {
-                                safeShowToast(
-                                    t('server_settings.reset_failed', {
-                                        error:
-                                            busyMessage(t, result?.error_code, 'reset_server_running') ||
-                                            translateError(result?.error || result?.message || ''),
-                                        defaultValue: 'Reset failed',
-                                    }),
-                                    'error',
-                                );
-                            } else {
-                                const deletedCount = result?.deleted?.length || 0;
-                                // 게임 설정 파일이 지워졌다: 열 때 읽은 파일 값은 더는 맞지 않으니 저장할 때 다시 쓴다
-                                liveFields.current = new Set();
-                                safeShowToast(
-                                    t('server_settings.reset_success', {
-                                        name: settingsServer.name,
-                                        count: deletedCount,
-                                        defaultValue: `Server '${settingsServer.name}' has been reset (${deletedCount} items deleted)`,
-                                    }),
-                                    'success',
-                                );
-                                // Refresh settings display
-                                if (settingsServer?.id) {
-                                    try {
-                                        const serverList = await window.api.serverList();
-                                        if (serverList && serverList.servers && !serverList.error) {
-                                            const updated = serverList.servers.find((s: Server) => s.id === settingsServer.id);
-                                            if (updated && request === openRequest.current) {
-                                                setSettingsServer(updated);
-                                                revision.current = updated.revision || null;
-                                                // 데몬이 따로 두는 칸은 module_settings 밖이거나 표시 형식이 달라 같이 채운다 (G-U3)
-                                                setSettingsValues((prev) => ({
-                                                    ...prev,
-                                                    ...updated.module_settings,
-                                                    ...restartFlagsOf(updated),
-                                                    ...idleStopOf(updated),
-                                                    ...unresponsiveOf(updated),
-                                                    memory_limit_mb: memoryLimitOf(updated),
-                                                    stop_timeout: stopTimeoutOf(updated),
-                                                    auto_update: autoUpdateOf(updated),
-                                                    ...gameChatOf(updated),
-                                                }));
-                                            }
-                                        }
-                                    } catch (_e) {
-                                        /* silent */
-                                    }
-                                }
-                            }
-                        } catch (err) {
-                            safeShowToast(
-                                t('server_settings.reset_error', {
-                                    error: translateError((err as Error).message),
-                                    defaultValue: 'Reset error',
-                                }),
-                                'error',
-                            );
-                        } finally {
-                            setResettingServer(false);
-                        }
+                        resetServer();
                     },
                 },
             ],

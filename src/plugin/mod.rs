@@ -826,7 +826,7 @@ fn explain_unverified_extensions(result: &mut Value, unverified: &[String]) {
 /// 모듈이 구현하지 않아도 되는 lifecycle 함수 (MK1). 모듈이 `functions`로 밝힌 목록에 없으면 데몬은 Python을 띄우지 않고
 /// `not_supported`로 답하고, 클라이언트는 `GET /api/modules`의 `functions`를 보고 그 기능을 숨긴다
 pub const OPTIONAL_MODULE_FUNCTIONS: &[&str] = &[
-    "reset_server", "list_versions", "get_version_details", "get_installed_version", "diagnose_log",
+    "reset_server", "reset_preview", "list_versions", "get_version_details", "get_installed_version", "diagnose_log",
     "read_properties", "reset_properties", "configure", "import_settings", "install_server", "validate", "config_files",
 ];
 

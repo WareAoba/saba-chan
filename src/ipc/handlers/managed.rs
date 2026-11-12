@@ -510,12 +510,78 @@ pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, exc
     Ok(guards)
 }
 
+/// GET /api/instance/:id/server/reset — 초기화가 지울 것. 모듈 `reset_preview`가 범위마다 밝힌 항목 가운데
+/// 지금 있는 것만 크기와 함께 돌려준다 (아무것도 지우지 않는다). 모듈이 구현하지 않으면 `not_supported`
+pub async fn reset_preview_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
+    let mut result = match Supervisor::manage_properties(&state.supervisor, &id, "reset_preview", None).await {
+        Ok(result) => result,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
+    };
+    if result.get("success").and_then(Value::as_bool) != Some(true) {
+        return (StatusCode::OK, Json(result)).into_response();
+    }
+    let (base, boundary) = {
+        let supervisor = state.supervisor.read().await;
+        let Some(instance) = supervisor.instance_store.get(&id) else {
+            return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
+        };
+        let instance_dir = supervisor.instance_store.instance_dir(&id);
+        let module = supervisor.module_loader.get_module(&instance.module_name).ok();
+        let metadata = module.as_ref().map(|m| &m.metadata);
+        (crate::module_paths::server_dir(instance, &instance_dir, metadata), crate::module_paths::Boundary::for_instance(instance, &instance_dir, metadata))
+    };
+    let backed_up = super::backup::backup_targets(&state, &id).await;
+    let scopes = result["scopes"].take();
+    let scopes = tokio::task::spawn_blocking(move || {
+        let scopes: Vec<Value> = scopes.as_array().into_iter().flatten().map(|scope| reset_scope(scope, &base, &boundary, &backed_up)).collect();
+        scopes
+    })
+    .await
+    .unwrap_or_default();
+    (StatusCode::OK, Json(json!({ "success": true, "scopes": scopes }))).into_response()
+}
+
+/// 모듈이 밝힌 초기화 범위 하나 `{id, label, note?, items:[{label, paths}]}`를 화면에 보일 모양으로:
+/// 항목마다 지금 있는 경로만(서버 폴더 안이면 상대 경로, 폴더는 `/`로 끝낸다) 크기와 함께 남기고, 남은 경로가 없는 항목은 뺀다.
+/// `backup`은 이 범위가 백업이 담는 것을 지우는가
+fn reset_scope(scope: &Value, base: &std::path::Path, boundary: &crate::module_paths::Boundary, backed_up: &[std::path::PathBuf]) -> Value {
+    let mut backup = false;
+    let items: Vec<Value> = scope["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let mut size = 0;
+            let mut shown = Vec::new();
+            for path in item["paths"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+                let Some(path) = boundary.resolve(std::path::Path::new(path)) else { continue };
+                let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
+                size += if meta.is_dir() { crate::system_monitor::dir_size(&path) } else { meta.len() };
+                backup |= backed_up.iter().any(|b| saba_chan_updater_lib::paths_overlap(b, &path));
+                let name = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+                shown.push(if meta.is_dir() { format!("{name}/") } else { name });
+            }
+            (!shown.is_empty()).then(|| json!({ "label": item["label"], "paths": shown, "size": size }))
+        })
+        .collect();
+    let mut out = json!({ "id": scope["id"], "label": scope["label"], "items": items, "backup": backup });
+    if scope["note"].is_string() {
+        out["note"] = scope["note"].clone();
+    }
+    out
+}
+
 /// POST /api/instance/:id/server/reset — Full server reset (delete worlds, configs, etc.)
+/// 본문 `{scope?, backup?}`: `scope`는 미리 보기(`GET`)가 준 범위 id(없으면 모듈의 기본 범위), `backup: true`면 지우기 전에 백업을 하나 만든다.
 /// 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
 pub async fn reset_server_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
+    LooseJson(payload): LooseJson<Value>,
 ) -> impl IntoResponse {
+    let payload = payload.map(|Json(v)| v).unwrap_or(Value::Null);
+    let scope = payload.get("scope").filter(|s| s.is_string()).cloned();
+    let backup_first = payload.get("backup").and_then(Value::as_bool) == Some(true);
     let Some(guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
     };
@@ -526,13 +592,20 @@ pub async fn reset_server_handler(
     let reset = {
         let (state, id) = (state.clone(), id.clone());
         crate::audit::spawn(async move {
-            let _guard = guard;
-            Supervisor::manage_properties(&state.supervisor, &id, "reset_server", None).await
+            let guard = guard;
+            // 백업을 남기지 못했으면 지우지 않는다
+            if backup_first {
+                if let Err(refused) = super::backup::take_backup_held(&state, &id, crate::backup::BackupKind::Manual, &guard).await {
+                    return Err(refused);
+                }
+            }
+            Ok(Supervisor::manage_properties(&state.supervisor, &id, "reset_server", scope).await)
         })
     };
-    let resp = match reset.await.unwrap_or_else(|e| Err(e.into())) {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-        Err(e) => (
+    let resp = match reset.await.unwrap_or_else(|e| Ok(Err(e.into()))) {
+        Err(refused) => refused,
+        Ok(Ok(result)) => (StatusCode::OK, Json(result)).into_response(),
+        Ok(Err(e)) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(crate::plugin::error_response(&e)),
         )

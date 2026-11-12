@@ -402,7 +402,8 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `configure` | `PUT /properties`, 인스턴스 설정 PATCH 후 동기화 (`instance.rs:1276-1349`) → `manage_properties` `mod.rs:1865-1916` | `working_dir`, `extension_data`, 인스턴스 값, `port`, `settings{}`. PATCH 동기화의 `settings`에는 데몬 필드(`protocol_mode`·`executable_path`·`working_dir`·`server_version`·`extension_data`·`managed_start`·`rest_*`·`rcon_*`·`enable_rcon`)와 모듈이 `group = "saba-chan"`으로 선언한 사바쨩 설정이 빠진다(MK6) |
 | `read_properties` | `GET /properties` | `working_dir`, `extension_data`, 인스턴스 값, `port` |
 | `reset_properties` | `POST /properties/reset` | 위와 같음 |
-| `reset_server` | `POST /server/reset` | 위와 같음 |
+| `reset_server` | `POST /server/reset` | 위와 같음 + `scope`(요청이 고른 범위 id, `reset_preview`가 밝힌 것. 없으면 모듈의 기본 범위) |
+| `reset_preview` | `GET /server/reset` | `reset_server`와 같음. 선택 함수. 아무것도 지우지 않고 `{success, scopes:[{id, label?, note?, items:[{label, paths[]}]}]}`를 돌려준다: 범위마다 `reset_server`가 지울 경로(서버 폴더 기준 상대 경로나 절대 경로)와 이름. 범위가 하나면 `label`을 쓰지 않는다. 지금 있는지와 크기는 데몬이 본다 |
 | `import_settings` | 마이그레이션 인스턴스 생성 `instance.rs:653-657`, `GET /api/instance/:id/settings/live` (`managed.rs:245-271`) | 마이그레이션은 `working_dir`·`instance_dir`(서버 폴더에 더하지 않고 인스턴스에 둘 것의 자리. minecraft는 맞는 포터블 JRE가 없으면 `<instance_dir>/java`에 받고, 받지 못하면 `java_warning`)·`migration_import: true`(가져오기 호출 표시. 런타임을 받는 일은 이 호출에서만 한다. 시간 한도는 설치와 같은 `INSTALL_TIMEOUT_SECS`), live는 위와 같음(인스턴스를 가리키는 다른 호출도 `instance_dir`을 받는다, `insert_instance_fields`: 켜기 전 점검 `validate`도 인스턴스 폴더에 받은 포터블 JRE를 본다). 마이그레이션에서 모듈은 쓰던 실행 스크립트의 값도 돌려준다: minecraft `ram`(`user_jvm_args.txt`·`run.bat`·`start.bat`·`run.sh`·`start.sh`의 `-Xmx`), zomboid `ram`(GB)·`server_name`(`-servername`, 없으면 데이터 폴더 `Server/`에 하나뿐인 프로필)·`data_home`(`-cachedir=`). 모듈 기본값으로 덮지 않게 하려는 것이다 |
 | `config_files` | 마이그레이션 인스턴스 생성(가져온 설정을 저장한 뒤) → `manage_properties("config_files")` | `read_properties`와 같음 |
 | `instance_commands` | `GET /api/instance/:id/commands`, module.toml에 없는 이름의 명령 실행 (`[commands] hook = true`일 때, `D:src/ipc/handlers/command.rs`) | `working_dir`, 인스턴스 값(`insert_instance_fields`) |
@@ -439,6 +440,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | read_properties (호출) | ✔ | ✔ | ✔ | – |
 | reset_properties (호출) | ✔ | ✔ | – | – |
 | reset_server (호출) | ✔ | ✔ | ✔ | – |
+| reset_preview (호출) | ✔ | ✔ | ✔ | – |
 | accept_agreements (호출) | ✔ | – | – | – |
 | diagnose_log (호출) | ✔ | ✔ | ✔ | ✔(stub) |
 | list_versions (호출) | ✔ | ✔ | – | – |

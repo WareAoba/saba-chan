@@ -2503,7 +2503,14 @@ impl Supervisor {
                     "configure"
                 }
                 "reset" => "reset_properties",
-                "reset_server" => "reset_server",
+                // 지울 범위 (모듈 `reset_preview`가 밝힌 id). 없으면 모듈의 기본 범위
+                "reset_server" => {
+                    if let Some(scope) = settings {
+                        cfg.insert("scope".to_string(), scope);
+                    }
+                    "reset_server"
+                }
+                "reset_preview" => "reset_preview",
                 // 실제 설정 파일을 saba-chan 키로 (설정 화면이 캐시 대신 실제 값을 보여 준다)
                 "import" => "import_settings",
                 // 사바쨩이 고칠 수 있는 게임 설정 파일 (가져온 서버를 해제할 때 되돌린다)

@@ -289,6 +289,11 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
     Ok(Some(Plan { dir, paths, targets, restore_roots, spec, keep, boundary, module_name }))
 }
 
+/// 이 인스턴스의 백업이 담는 경로 (지금 없는 것 포함). 모듈이 `[backup]`을 선언하지 않았거나 경로를 알 수 없으면 빈 목록
+pub(super) async fn backup_targets(state: &IPCServer, id: &str) -> Vec<PathBuf> {
+    plan(state, id).await.ok().flatten().map(|plan| plan.targets).unwrap_or_default()
+}
+
 /// 백업 하나를 만들고 오래된 자동 백업을 정리한다. 백업할 것이 없으면 Ok(None).
 /// 모듈이 백업을 지원하지 않으면 수동 백업만 오류이고, 자동 백업(업데이트 전·예약)은 건너뛴다
 pub async fn take_backup(state: &IPCServer, id: &str, kind: BackupKind) -> Result<Option<BackupInfo>, Response> {
@@ -2461,10 +2466,44 @@ else:
     async fn a_dropped_reset_request_keeps_the_lock_until_the_module_is_done() {
         let hook = "import json, time\ntime.sleep(1.5)\nprint(json.dumps({'success': True}))\n";
         let (state, id, _tmp) = server_with(NO_BACKUP, Some(hook)).await;
-        let request = super::super::managed::reset_server_handler(Path(id.clone()), State(state.clone()));
+        let request = super::super::managed::reset_server_handler(Path(id.clone()), State(state.clone()), crate::ipc::handlers::LooseJson(None));
         assert!(tokio::time::timeout(std::time::Duration::from_millis(300), request).await.is_err(), "the module is still running");
         assert!(InstanceLock::take(&id).is_none(), "a client that hangs up must not free the lock mid-reset");
         assert!(lock_freed(&id).await, "the lock is released when the reset ends");
+    }
+
+    /// 초기화 미리 보기는 모듈이 범위마다 밝힌 것 중 지금 있는 것만 크기와 함께 보이고,
+    /// 초기화는 고른 범위만 지우며 먼저 백업을 하나 남긴다
+    #[tokio::test]
+    async fn a_reset_shows_what_each_scope_deletes_and_backs_up_first_when_asked() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\n");
+        let hook = "import json, os, shutil, sys\nc = json.load(sys.stdin)\nw = c['working_dir']\nfn = sys.argv[1]\n\
+            world = {'label': 'World', 'paths': ['world', 'world_nether']}\n\
+            if fn == 'reset_preview':\n    print(json.dumps({'success': True, 'scopes': [\n\
+            \x20       {'id': 'world', 'label': 'World only', 'items': [world]},\n\
+            \x20       {'id': 'all', 'label': 'Everything', 'note': 'Jars stay', 'items': [world, {'label': 'Settings', 'paths': ['server.properties', 'ops.json']}]}]}))\n\
+            elif fn == 'reset_server':\n    shutil.rmtree(os.path.join(w, 'world'))\n\
+            \x20   if c.get('scope') == 'all':\n        os.remove(os.path.join(w, 'server.properties'))\n\
+            \x20   print(json.dumps({'success': True, 'deleted': ['world']}))\n";
+        let (state, id, tmp) = server_with(&toml, Some(hook)).await;
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(server.join("world")).unwrap();
+        std::fs::write(server.join("world/level.dat"), b"level").unwrap();
+        std::fs::write(server.join("server.properties"), b"a=1").unwrap();
+
+        let seen = crate::ipc::internal::into_internal(super::super::managed::reset_preview_handler(Path(id.clone()), State(state.clone())).await.into_response()).await.body;
+        assert_eq!(seen["success"], true, "{seen}");
+        assert_eq!(seen["scopes"][0]["items"], json!([{ "label": "World", "paths": ["world/"], "size": 5 }]), "only what exists now is listed");
+        assert_eq!(seen["scopes"][0]["backup"], true, "this scope deletes what a backup holds");
+        assert_eq!(seen["scopes"][1]["items"][1], json!({ "label": "Settings", "paths": ["server.properties"], "size": 3 }));
+        assert_eq!((seen["scopes"][1]["id"].as_str(), seen["scopes"][1]["note"].as_str()), (Some("all"), Some("Jars stay")));
+
+        let body = crate::ipc::handlers::LooseJson(Some(Json(json!({ "scope": "world", "backup": true }))));
+        let done = crate::ipc::internal::into_internal(super::super::managed::reset_server_handler(Path(id.clone()), State(state.clone()), body).await.into_response()).await.body;
+        assert_eq!(done["success"], true, "{done}");
+        assert!(!server.join("world").exists() && server.join("server.properties").exists(), "only the chosen scope is deleted");
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        assert_eq!(backup::list(&dir).iter().map(|b| b.kind).collect::<Vec<_>>(), [BackupKind::Manual], "the world was backed up before it was deleted");
     }
 
     /// 복원은 지금 서버 폴더·인스턴스 폴더 밖에 쓰지 않고, 복원 전 안전 백업은 백업이 덮을 경로까지 담는다 (D-B1)
@@ -2813,7 +2852,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         };
         let reset = || {
             let (state, id) = (state.clone(), id.clone());
-            async move { code(super::super::managed::reset_server_handler(Path(id), State(state)).await.into_response()).await }
+            async move { code(super::super::managed::reset_server_handler(Path(id), State(state), crate::ipc::handlers::LooseJson(None)).await.into_response()).await }
         };
 
         let guard = InstanceLock::take(&id).expect("free");

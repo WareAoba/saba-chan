@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { type ReactNode, useEffect, useId } from 'react';
+import React, { type ReactNode, useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { RestartPending } from '../hooks/useServerSettings';
 import type { Server } from '../stores/useServerStore';
@@ -13,6 +13,7 @@ import { useExtensions } from '../contexts/ExtensionContext';
 import { CliLine, changedForCli } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon, SabaCheckbox, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
+import { type ResetChoice, type ResetScope, ResetServerDialog } from './servers/ResetServerDialog';
 import { SabaNumberInput } from './ui/SabaUI';
 import { SaveBar } from './ui/SaveBar';
 import { LinkedText } from './ui/ScreenLink';
@@ -334,7 +335,8 @@ interface GeneralTabProps {
     versionInstalling?: boolean;
     handleSettingChange: (name: string, value: unknown) => void;
     handleInstallVersion: () => void;
-    handleResetServer: () => void;
+    /** 고른 범위·백업 여부가 오면 묻지 않고 초기화한다 (확인 창이 이미 물었다) */
+    handleResetServer: (choice?: ResetChoice) => void;
     resettingServer?: boolean;
     validationErrors?: Record<string, SettingValidationError>;
     portConflicts?: { port: number | string; conflictName: string }[];
@@ -368,6 +370,16 @@ function GeneralTab({
     const versionId = useId();
     const rowId = useId();
     const advancedId = useId();
+    // 초기화 확인 창에 보일 범위 (데몬이 알려 준 지울 항목). 모듈이 알려 주지 않으면 예전 확인 문구로 묻는다
+    const [resetScopes, setResetScopes] = useState<ResetScope[] | null>(null);
+    const askReset = async () => {
+        const seen =
+            typeof window.api?.instanceResetPreview === 'function'
+                ? await window.api.instanceResetPreview(settingsServer.id).catch(() => null)
+                : null;
+        if (seen?.success && Array.isArray(seen.scopes) && seen.scopes.length) setResetScopes(seen.scopes);
+        else handleResetServer();
+    };
     // section: 'server' = 게임 서버 설정만, 'saba' = 사바쨩이 서버를 다루는 설정만, 없으면 모두
     const showSaba = section !== 'server';
     const showServer = section !== 'saba';
@@ -781,7 +793,7 @@ function GeneralTab({
                             <button
                                 type="button"
                                 className="btn btn-ghost btn-danger-text ss-reset"
-                                onClick={handleResetServer}
+                                onClick={askReset}
                                 disabled={resettingServer || serverRunning}
                                 data-tooltip={serverRunning ? t('server_settings.reset_server_running') : undefined}
                             >
@@ -792,6 +804,17 @@ function GeneralTab({
                             </button>
                         }
                     />
+                    {resetScopes && (
+                        <ResetServerDialog
+                            name={settingsServer.name}
+                            scopes={resetScopes}
+                            onClose={() => setResetScopes(null)}
+                            onConfirm={(choice) => {
+                                setResetScopes(null);
+                                handleResetServer(choice);
+                            }}
+                        />
+                    )}
                 </Card>
             )}
 

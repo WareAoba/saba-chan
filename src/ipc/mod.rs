@@ -884,7 +884,7 @@ impl IPCServer {
             .route("/api/instance/{id}/properties", get(handlers::managed::read_properties_handler).put(handlers::managed::write_properties_handler))
             .route("/api/instance/{id}/properties/reset", post(handlers::managed::reset_properties_handler))
             .route("/api/instance/{id}/settings/live", get(handlers::managed::read_live_settings_handler))
-            .route("/api/instance/{id}/server/reset", post(handlers::managed::reset_server_handler))
+            .route("/api/instance/{id}/server/reset", get(handlers::managed::reset_preview_handler).post(handlers::managed::reset_server_handler))
             .route("/api/instance/{id}/agreements", post(handlers::managed::accept_agreements_handler))
             .route("/api/instance/{id}/diagnose", post(handlers::managed::diagnose_handler))
             .route("/api/instance/{id}/port-check", get(handlers::port_check::last).post(handlers::port_check::check))
