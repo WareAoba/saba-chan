@@ -11,6 +11,8 @@ use std::path::PathBuf;
 use saba_chan_updater_lib::config_file::ConfigFile;
 use saba_chan_updater_lib::version::SemVer;
 
+pub mod event_hooks;
+
 const PACKAGE_DOWNLOAD_LIMIT: usize = 128 * 1024 * 1024;
 const PACKAGE_LIMITS: crate::archive::Limits = crate::archive::Limits {
     what: "Extension package",
@@ -22,6 +24,7 @@ const PACKAGE_LIMITS: crate::archive::Limits = crate::archive::Limits {
 pub const EXTENSION_SCHEMA_VERSION: u32 = 1;
 
 /// 데몬이 실제로 부르는 hook. 여기에 없는 이름에 바인딩하면 절대 실행되지 않는다
+/// (이 밖에 이벤트 버스를 따르는 `event:<종류>`, [`event_hooks`])
 pub const FIRED_HOOKS: &[&str] = &[
     "daemon.startup",
     "daemon.shutdown",
@@ -425,8 +428,13 @@ pub fn parse_manifest(content: &str) -> Result<(ExtensionManifest, Vec<String>)>
     let mut hooks: Vec<_> = manifest.hooks.iter().collect();
     hooks.sort_by_key(|(name, _)| name.as_str());
     for (name, binding) in hooks {
-        if !FIRED_HOOKS.contains(&name.as_str()) {
+        let on_event = event_hooks::is_event_hook(name);
+        if !FIRED_HOOKS.contains(&name.as_str()) && !on_event {
             problems.push(format!("hook '{}' is never fired by the daemon", name));
+        }
+        // 이벤트에는 extension_data가 없어 조건이 늘 거짓이다
+        if on_event && binding.condition.is_some() {
+            problems.push(format!("event hook '{}' cannot have a condition", name));
         }
         if !manifest.python_modules.contains_key(&binding.module) {
             problems.push(format!("hook '{}' uses unknown python module '{}'", name, binding.module));
@@ -2202,6 +2210,24 @@ mod tests {
         let mut newer = ok.clone();
         newer["schema_version"] = json!(2);
         assert!(parse_manifest(&newer.to_string()).unwrap_err().to_string().contains("schema_version 2"));
+    }
+
+    #[test]
+    fn event_hooks_take_any_event_kind_but_no_condition() {
+        let with = |hook: &str, binding: Value| {
+            json!({"schema_version": 1, "id": "a", "name": "A", "version": "0.1.0",
+                "python_modules": {"m": "m.py"}, "hooks": {hook: binding}})
+            .to_string()
+        };
+        let plain = json!({"module": "m", "function": "f"});
+        for ok in ["event:backup.done", "event:instance.exit", "event:some_future.kind"] {
+            assert!(parse_manifest(&with(ok, plain.clone())).unwrap().1.is_empty(), "{ok}");
+        }
+        for bad in ["event:", "event:Backup.Done", "event: backup.done"] {
+            assert!(parse_manifest(&with(bad, plain.clone())).unwrap_err().to_string().contains("never fired"), "{bad}");
+        }
+        let gated = json!({"module": "m", "function": "f", "condition": "instance.ext_data.x"});
+        assert!(parse_manifest(&with("event:backup.done", gated)).unwrap_err().to_string().contains("condition"));
     }
 
     #[test]

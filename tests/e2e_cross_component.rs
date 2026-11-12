@@ -890,6 +890,72 @@ async fn event_stream_reports_who_ran_what_and_replays_after_reconnect() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
+/// manifest `hooks`의 `event:<종류>`: 이벤트 버스에 난 일을 익스텐션 Python이 데이터와 함께 받는다
+#[tokio::test]
+async fn extension_event_hook_receives_bus_event_with_its_data() {
+    if find_python().is_none() {
+        eprintln!("SKIP: Python not found");
+        return;
+    }
+    let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
+
+    let id = "e2e_event_probe";
+    let ext_dir = saba_chan_updater_lib::constants::resolve_extensions_dir().join(id);
+    fs::create_dir_all(&ext_dir).unwrap();
+    fs::write(
+        ext_dir.join("manifest.json"),
+        json!({
+            "schema_version": 1, "id": id, "name": "Event probe", "version": "0.0.1",
+            "python_modules": { "probe": "probe.py" },
+            "hooks": { "event:e2e.hook_probe": { "module": "probe", "function": "seen" } }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    fs::write(
+        ext_dir.join("probe.py"),
+        r#"import json, os, sys
+
+def seen(ctx):
+    out = os.environ.get("SABA_EXTENSION_DATA_DIR") or os.path.dirname(os.path.abspath(__file__))
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, "seen.json"), "w", encoding="utf-8") as f:
+        json.dump(ctx, f)
+    return {"success": True}
+
+if __name__ == "__main__":
+    print(json.dumps(globals()[sys.argv[1]](json.load(sys.stdin))))
+"#,
+    )
+    .unwrap();
+    saba_core::sandbox::set_consent(saba_core::sandbox::Consent::Unisolated, &format!("ext-{id}"), true).unwrap();
+    client.post(format!("{}/api/extensions/rescan", base_url)).send().await.unwrap();
+    let enabled = client.post(format!("{}/api/extensions/{}/enable", base_url, id)).send().await.unwrap();
+    assert!(enabled.status().is_success(), "{}", enabled.text().await.unwrap());
+
+    saba_core::events::emit("e2e.hook_probe", json!({ "instanceId": "probe-1", "ok": true }));
+
+    let outputs = [d_dir.join("extension-data").join(id).join("seen.json"), ext_dir.join("seen.json")];
+    let mut seen = None;
+    for _ in 0..600 {
+        if let Some(text) = outputs.iter().find_map(|p| fs::read_to_string(p).ok()) {
+            seen = serde_json::from_str::<Value>(&text).ok();
+            if seen.is_some() {
+                break;
+            }
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    let seen = seen.expect("the extension's event hook ran");
+    assert_eq!(seen["event"], "e2e.hook_probe");
+    assert_eq!((seen["data"]["instanceId"].as_str(), seen["data"]["ok"].as_bool()), (Some("probe-1"), Some(true)));
+    assert!(seen["id"].is_u64() && seen["data"]["at"].is_u64(), "{}", seen);
+
+    task.abort();
+    cleanup_dirs(&m_dir, &i_dir, &d_dir);
+}
+
 // ═══════════════════════════════════════════════════════
 // 9. 버전 관리 — 자동 감지·저장·백업·복원 (E2E)
 // ═══════════════════════════════════════════════════════

@@ -1154,6 +1154,8 @@ impl IPCServer {
                         crate::ipc::handlers::words::migrate_on_start(&agent_server).await;
                         crate::relay_agent::auto_start(&agent_server).await
                     });
+                    // 익스텐션 `event:<종류>` hook: 이벤트 버스를 따라 부른다
+                    crate::extension::event_hooks::spawn(self.extension_manager.clone());
                     // 원격 포트 (D1): 켜져 있으면 열고 릴레이에 주소를 올린다
                     let remote_server = self.clone();
                     tokio::spawn(async move { crate::remote_daemon::apply(&remote_server).await });

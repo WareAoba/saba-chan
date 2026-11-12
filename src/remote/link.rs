@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn web_events_carry_only_the_kind_and_instance() {
-        let event = |kind: &str, data: Value| crate::events::Event { id: 9, kind: kind.into(), data, replay: false };
+        let event = |kind: &str, data: Value| crate::events::Event { id: 9, kind: kind.into(), data, replay: false, hook_depth: 0 };
         let exit = event(
             "instance.exit",
             json!({ "at": 1, "instanceId": "i1", "evidence": "console: C:/Users/me/crash.txt" }),
