@@ -1749,9 +1749,13 @@ fn a_headless_install_does_not_count_the_bundled_gui_for_requires() {
     assert!(headless.contains_key("saba-core"));
 }
 
+/// `apply_staged`는 완료 마커를 한 자리(데이터 폴더)에 남긴다: 마커를 남기는 시험끼리 차례로
+static MARKER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 // 업데이터 `--apply` 한 번(창·창 없음 공통): 받아 둔 것을 적용하고 목록을 지운다
 #[tokio::test]
 async fn apply_staged_applies_the_pending_list_and_clears_it() {
+    let _marker = MARKER.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.install_root = tmp.path().join("install");
@@ -1775,6 +1779,7 @@ async fn apply_staged_applies_the_pending_list_and_clears_it() {
 
 #[tokio::test]
 async fn apply_staged_without_a_pending_list_fails() {
+    let _marker = MARKER.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.staging_dir = tmp.path().join("staging");
@@ -1810,6 +1815,7 @@ fn a_restored_pending_list_skips_what_is_already_installed_at_that_version_or_ne
 // 적용 대상 목록을 남긴 뒤 설치기로 그중 하나를 같거나 더 새 판으로 깔았으면, 그 키는 건너뛰고 나머지는 적용한다
 #[tokio::test]
 async fn an_apply_target_already_installed_is_skipped_and_the_rest_are_applied() {
+    let _marker = MARKER.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.install_root = tmp.path().join("install");
@@ -1836,6 +1842,7 @@ async fn an_apply_target_already_installed_is_skipped_and_the_rest_are_applied()
 // 일부만 적용하면 고르지 않은 것은 받아 둔 채 다음 적용을 기다린다 (다시 확인·다운로드하지 않게)
 #[tokio::test]
 async fn applying_some_targets_keeps_the_rest_pending() {
+    let _marker = MARKER.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.install_root = tmp.path().join("install");
@@ -1867,10 +1874,11 @@ async fn applying_some_targets_keeps_the_rest_pending() {
 }
 
 // 코어가 바뀌는 묶음에서 지금 코어로 돌지 않는 모듈·익스텐션은 적용하지 않고 받아 둔 채 둔다:
-// 새 데몬이 건강하지 않아 코어만 되돌아가면 옛 코어가 거절하는 판이 남는다. 건강한 새 데몬이 자동 교체로 바꾼다
+// 새 데몬이 건강하지 않아 코어만 되돌아가면 옛 코어가 거절하는 판이 남는다. 완료 마커의 `deferred`를 보고 건강한 새 데몬이 마저 바꾼다
 #[tokio::test]
 async fn an_addon_needing_the_new_core_waits_for_the_new_daemon() {
     use std::io::Write;
+    let _marker = MARKER.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.install_root = tmp.path().join("install");
@@ -1907,6 +1915,9 @@ async fn an_addon_needing_the_new_core_waits_for_the_new_daemon() {
     assert!(failed.is_empty(), "{:?}", failed);
     assert_eq!(applied, vec!["saba-core".to_string(), applied_now.manifest_key()]);
     assert!(!manager.resolve_ext_dir(&needs_new).exists(), "the addon needing the new core is not applied yet");
+    let marker = crate::UpdateCompletionMarker::load().unwrap();
+    assert!(marker.success);
+    assert_eq!(marker.deferred, vec![held.manifest_key()], "the new daemon finds what is left of the chosen bundle");
     let mut next = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     next.staging_dir = manager.staging_dir.clone();
     next.installed_manifest_file = tmp.path().join("other-installed-manifest.json");

@@ -568,6 +568,54 @@ async fn replace_addons_once(state: &UpdateState) -> Leftover {
     Leftover { held, failed }
 }
 
+/// 업데이터가 코어가 낀 묶음에서 새 코어를 기다리게 둔 모듈·익스텐션(완료 마커 `deferred`)을 마저 바꾼다.
+/// 사용자가 고른 묶음이므로 자동 교체와 달리 업데이트 확인 설정·사용자 변경과 상관없이 업데이터처럼 바꾸고,
+/// 켜진 서버가 쓰는 것은 서버가 꺼질 때까지 5분마다 다시 본다. 기동 때 한 번 띄운다
+pub fn spawn_deferred_apply(state: UpdateState) {
+    tokio::spawn(async move {
+        let staging = saba_chan_updater_lib::constants::resolve_staging_dir();
+        while let Some(wait) = apply_deferred_once(&state, &staging).await {
+            tokio::time::sleep(wait).await;
+        }
+    });
+}
+
+/// 한 차례. 다음 차례까지 기다릴 시간을 돌려주고, 할 것이 없으면 None
+async fn apply_deferred_once(state: &UpdateState, staging: &std::path::Path) -> Option<std::time::Duration> {
+    // 업데이터가 이 데몬을 지켜보는 동안은 바꾸지 않는다: 건강하지 않아 코어만 되돌리면 옛 코어가 거절하는 판이 남는다
+    const WATCH_POLL: std::time::Duration = std::time::Duration::from_secs(2);
+    if saba_chan_updater_lib::live_apply::watch_in_progress(staging) {
+        return Some(WATCH_POLL);
+    }
+    // 되돌린(`rolled_back`) 뒤나 새 판을 그대로 둔(`left_in_place`) 마커는 하지 않는다: 받아 둔 채 다음 앱 업데이트를 기다린다
+    let deferred = saba_chan_updater_lib::UpdateCompletionMarker::load().filter(|m| m.result.is_none())?.deferred;
+    let pending: Vec<Component> = {
+        let mut mgr = state.manager.write().await;
+        restore_pending(&mut mgr);
+        mgr.get_pending_components().into_iter().map(|c| c.component.clone()).filter(|c| deferred.contains(&c.manifest_key())).collect()
+    };
+    if pending.is_empty() {
+        return None;
+    }
+    // 교체가 끝날 때까지 서버 시작을 막는다: 사용 확인과 교체 사이에 켜진 서버가 쓰던 판을 바꾸지 않게
+    let Some(_starts) = crate::supervisor::Supervisor::try_hold_starts() else {
+        return Some(ADDON_HOLD_RETRY);
+    };
+    let (busy_modules, busy_extensions) = busy_addons(state).await;
+    let (ready, held) = split_by_busy(pending, &busy_modules, &busy_extensions);
+    if !ready.is_empty() {
+        let keys: Vec<String> = ready.iter().map(Component::manifest_key).collect();
+        tracing::info!("[Updates] Applying {:?}, which waited for this core", keys);
+        // 결과는 `record_daemon_apply`가 그 묶음의 완료 마커에 더한다. 실패한 것은 받아 둔 채 업데이트 목록에 남는다
+        let _ = apply_updates_with(state.clone(), ApplyRequest { components: keys, ..Default::default() }).await;
+    }
+    if !held.is_empty() {
+        tracing::info!("[Updates] Servers are using {:?}; applying them after they stop", held.iter().map(Component::manifest_key).collect::<Vec<_>>());
+        return Some(ADDON_HOLD_RETRY);
+    }
+    None
+}
+
 /// 지금 바꿀 것과 켜진 서버가 써서 미룰 것
 fn split_by_busy(
     pending: Vec<Component>,
@@ -1271,7 +1319,8 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
 
     // 데몬이 바로 적용했으면 결과와 패치노트를 남긴다 (업데이터에 넘기면 업데이터가 남긴다). CLI만으로 적용해도 `update last`로 본다
     if needs_updater.is_empty() && !targets.is_empty() {
-        record_daemon_apply(&saba_chan_updater_lib::UpdateCompletionMarker::path(), &applied_keys, &errors, mgr.applying_release());
+        let target_keys: Vec<String> = targets.iter().map(Component::manifest_key).collect();
+        record_daemon_apply(&saba_chan_updater_lib::UpdateCompletionMarker::path(), &target_keys, &applied_keys, &errors, mgr.applying_release());
     }
 
     // UpdateManager lock 해제 (supervisor/extension_manager lock과 교차 잠금 방지)
@@ -1712,18 +1761,15 @@ fn last_result_at(path: &std::path::Path, include_seen: bool, lang: &str) -> Val
     body
 }
 
-/// 데몬이 바로 적용한 결과를 완료 마커로 남긴다 (업데이터가 적용할 때와 같은 모양). 클라이언트가 결과·패치노트를 본다
-fn record_daemon_apply(path: &std::path::Path, applied: &[String], errors: &[String], release: Option<saba_chan_updater_lib::marker::ReleaseSummary>) {
-    let marker = saba_chan_updater_lib::UpdateCompletionMarker {
-        message: Some(if errors.is_empty() {
-            format!("{} updates applied: {}", applied.len(), applied.join(", "))
-        } else {
-            format!("{} applied, {} failed", applied.len(), errors.len())
-        }),
-        success: errors.is_empty(),
-        failed: errors.to_vec(),
-        release,
-        ..saba_chan_updater_lib::UpdateCompletionMarker::success(applied.to_vec())
+/// 데몬이 바로 적용한 결과를 완료 마커로 남긴다 (업데이터가 적용할 때와 같은 모양). 클라이언트가 결과·패치노트를 본다.
+/// 업데이터가 새 코어를 기다리게 둔 것(`deferred`)을 마저 적용했으면 사용자가 고른 그 묶음의 결과에 더한다
+fn record_daemon_apply(path: &std::path::Path, targets: &[String], applied: &[String], errors: &[String], release: Option<saba_chan_updater_lib::marker::ReleaseSummary>) {
+    use saba_chan_updater_lib::UpdateCompletionMarker;
+    let waiting = UpdateCompletionMarker::load_from(path)
+        .filter(|m| m.result.is_none() && !targets.is_empty() && targets.iter().all(|k| m.deferred.contains(k)));
+    let marker = match waiting {
+        Some(bundle) => bundle.finish_deferred(targets, applied, errors),
+        None => UpdateCompletionMarker::applied(applied.to_vec(), errors.to_vec(), Vec::new(), release),
     };
     if let Err(e) = marker.save_to(path) {
         tracing::warn!("[Updates] Cannot record the update result: {}", e);
@@ -2391,6 +2437,62 @@ mod tests {
     }
 
     /// 헤드리스 설치는 창 없이 적용하고, 다시 띄울 것을 받지 않았으면 데몬 자신을 다시 띄운다. 데스크톱은 그대로
+    /// 코어가 낀 묶음에서 업데이터가 새 코어를 기다리게 둔 모듈(완료 마커 `deferred`)은 업데이터가 새 데몬을 다 지켜본 뒤
+    /// 새 데몬이 마저 바꾼다. 사용자가 고른 묶음이므로 업데이트 확인을 꺼 두었거나 카탈로그 그대로가 아닌 폴더여도 바꾸고,
+    /// 결과는 그 묶음의 결과(패치노트 포함)에 더한다
+    #[tokio::test]
+    async fn an_addon_left_for_the_new_core_is_applied_after_the_updater_stops_watching() {
+        use std::io::Write;
+        use saba_chan_updater_lib::{live_apply, UpdateCompletionMarker};
+        let _staging = STAGING.lock().await;
+        let staging = saba_chan_updater_lib::constants::resolve_staging_dir();
+        std::fs::create_dir_all(&staging).unwrap();
+        let name = format!("deferred-{}", std::process::id());
+        let key = format!("module-{name}");
+        let staged = staging.join(format!("{key}.zip"));
+        {
+            let mut zw = zip::ZipWriter::new(std::fs::File::create(&staged).unwrap());
+            zw.start_file("module.toml", zip::write::SimpleFileOptions::default()).unwrap();
+            zw.write_all(b"new").unwrap();
+            zw.finish().unwrap();
+        }
+        let pending = json!([{
+            "component": { "module": name }, "current_version": "0.1.0", "latest_version": "0.2.0",
+            "update_available": true, "download_url": null, "asset_name": null,
+            "release_notes": null, "published_at": null, "downloaded": true,
+            "downloaded_path": staged.to_string_lossy(), "installed": true
+        }]);
+        std::fs::write(staging.join("pending.json"), pending.to_string()).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let module_dir = tmp.path().join("modules").join(&name);
+        std::fs::create_dir_all(&module_dir).unwrap();
+        std::fs::write(module_dir.join("module.toml"), "old, edited by the user").unwrap();
+        let state = state_in(tmp.path());
+        let cfg = saba_chan_updater_lib::UpdateConfig { enabled: false, ..Default::default() };
+        *state.manager.write().await = saba_chan_updater_lib::UpdateManager::new(cfg, tmp.path().join("modules").to_str().unwrap());
+        let release = saba_chan_updater_lib::marker::ReleaseSummary { version: "9.9.9".into(), ..Default::default() };
+        UpdateCompletionMarker { deferred: vec![key.clone()], release: Some(release), ..UpdateCompletionMarker::success(vec!["saba-core".into()]) }
+            .save()
+            .unwrap();
+
+        live_apply::begin_watch(&staging).unwrap();
+        let first = super::apply_deferred_once(&state, &staging).await;
+        live_apply::end_watch(&staging);
+        assert!(first.is_some(), "waits while the updater may still roll the core back");
+        assert_eq!(std::fs::read_to_string(module_dir.join("module.toml")).unwrap(), "old, edited by the user");
+
+        assert_eq!(super::apply_deferred_once(&state, &staging).await, None);
+        assert_eq!(std::fs::read_to_string(module_dir.join("module.toml")).unwrap(), "new");
+        let marker = UpdateCompletionMarker::load().unwrap();
+        assert_eq!(marker.updated_components, vec!["saba-core".to_string(), key.clone()]);
+        assert!(marker.success && marker.deferred.is_empty(), "{marker:?}");
+        assert_eq!(marker.release.map(|r| r.version).as_deref(), Some("9.9.9"), "the notes of the chosen bundle stay");
+
+        let _ = std::fs::remove_file(staging.join("pending.json"));
+        let _ = std::fs::remove_file(&staged);
+        let _ = std::fs::remove_file(UpdateCompletionMarker::path());
+    }
+
     #[test]
     fn a_module_or_extension_a_running_server_uses_waits_for_the_server_to_stop() {
         use saba_chan_updater_lib::Component;
@@ -2442,7 +2544,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("update-complete.json");
         let release = ReleaseSummary { version: "0.1.8".into(), released_at: None, notes: [("ko".to_string(), "고침".to_string())].into() };
-        super::record_daemon_apply(&path, &["module-minecraft".into()], &["ext-steamcmd: busy".into()], Some(release));
+        super::record_daemon_apply(&path, &["module-minecraft".into(), "ext-steamcmd".into()], &["module-minecraft".into()], &["ext-steamcmd: busy".into()], Some(release));
 
         let first = super::last_result_at(&path, false, "ko");
         assert_eq!((first["version"].as_str(), first["notes"].as_str()), (Some("0.1.8"), Some("고침")), "{first}");

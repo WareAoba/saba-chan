@@ -33,6 +33,10 @@ pub struct UpdateCompletionMarker {
     /// `UpdateConfig::failed_release`에 따로 둔다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    /// 사용자가 고른 묶음 중 새 코어를 기다리게 둔 모듈·익스텐션 키 (업데이터 `apply_staged`). 받아 둔 채 남고,
+    /// 건강한 새 데몬이 업데이터의 감시가 끝난 뒤 마저 바꿔 이 마커에 결과를 더한다 (`finish_deferred`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deferred: Vec<String>,
 }
 
 /// 릴리즈 버전과 언어별 패치노트
@@ -78,7 +82,33 @@ impl UpdateCompletionMarker {
             result: None,
             reason: None,
             version: None,
+            deferred: Vec::new(),
         }
+    }
+
+    /// 적용 결과 (업데이터 `apply_staged`, 데몬이 바로 적용한 것). `deferred`는 새 코어를 기다리게 둔 키
+    pub fn applied(applied: Vec<String>, failed: Vec<String>, deferred: Vec<String>, release: Option<ReleaseSummary>) -> Self {
+        let mut message = if failed.is_empty() {
+            format!("{} updates applied: {}", applied.len(), applied.join(", "))
+        } else {
+            format!("{} applied, {} failed", applied.len(), failed.len())
+        };
+        if !deferred.is_empty() {
+            message.push_str(&format!("; waiting for the new core: {}", deferred.join(", ")));
+        }
+        Self { message: Some(message), success: failed.is_empty(), failed, release, deferred, ..Self::success(applied) }
+    }
+
+    /// 새 코어를 기다리게 둔 것(`deferred`) 중 `done`을 데몬이 마저 적용했다: 같은 묶음의 결과에 더한다.
+    /// 바뀐 모듈의 익스텐션을 다시 맞추게 하고(`extensions_prepared`), 실패가 있으면 확인했던 결과도 다시 알린다
+    pub fn finish_deferred(self, done: &[String], applied: &[String], failed: &[String]) -> Self {
+        let deferred = self.deferred.iter().filter(|k| !done.contains(k)).cloned().collect();
+        let acknowledged = self.acknowledged && failed.is_empty();
+        let mut all_applied = self.updated_components;
+        all_applied.extend_from_slice(applied);
+        let mut all_failed = self.failed;
+        all_failed.extend_from_slice(failed);
+        Self { acknowledged, ..Self::applied(all_applied, all_failed, deferred, self.release) }
     }
 
     /// 파일을 바꾸지 않고 끝났다 (예: 예전 데몬이 끝나지 않음 `wait_pid_timeout`). 받아 둔 것은 그대로 남는다
@@ -120,6 +150,7 @@ impl UpdateCompletionMarker {
             result: None,
             reason: None,
             version: None,
+            deferred: Vec::new(),
         }
     }
 

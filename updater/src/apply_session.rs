@@ -46,7 +46,7 @@ impl UpdateManager {
         // 목록을 남긴 뒤 설치기로 같거나 더 새 판을 깐 키는 적용할 것이 없다 (실패로 남은 것까지 막지 않게)
         target_keys.retain(|k| !self.already_installed.contains(k));
         // 코어가 바뀌는 묶음에서 지금 코어로 돌지 않는 모듈·익스텐션은 받아 둔 채 둔다: 새 데몬이 건강하지 않아 코어만
-        // 되돌아가면(`live_apply`) 옛 코어가 거절하는 판이 남는다. 건강한 새 데몬이 첫 확인의 자동 교체로 바꾼다
+        // 되돌아가면(`live_apply`) 옛 코어가 거절하는 판이 남는다. 완료 마커의 `deferred`를 보고 건강한 새 데몬이 마저 바꾼다
         let waiting = self.addons_waiting_for_the_new_core(&target_keys);
         target_keys.retain(|k| !waiting.contains(k));
         // 적용 대상 목록이 일부만 고른 것이면 나머지는 받아 둔 채 다음 적용을 기다린다
@@ -66,23 +66,16 @@ impl UpdateManager {
             .await;
 
         // 성공·실패 모두 남겨 "됐는지 안 됐는지" 볼 수 있게 한다
-        let marker = UpdateCompletionMarker {
-            message: Some(if failed.is_empty() {
-                format!("{} updates applied: {}", applied.len(), applied.join(", "))
-            } else {
-                format!("{} applied, {} failed", applied.len(), failed.len())
-            }),
-            success: failed.is_empty(),
-            failed: failed.clone(),
-            // 적용한 릴리즈의 버전·패치노트: 앱이 결과 알림을 누르면 보여 준다 (A5)
-            release: self.pending_release(),
-            ..UpdateCompletionMarker::success(applied.clone())
-        };
+        // 적용한 릴리즈의 버전·패치노트: 앱이 결과 알림을 누르면 보여 준다 (A5)
+        let marker = UpdateCompletionMarker::applied(applied.clone(), failed.clone(), waiting.clone(), self.pending_release());
         marker.save().ok();
         self.finish_pending_manifest(&rest);
 
         if failed.is_empty() {
-            let msg = if applied.is_empty() { "No updates to apply.".to_string() } else { format!("{} updates applied!", applied.len()) };
+            let mut msg = if applied.is_empty() { "No updates to apply.".to_string() } else { format!("{} updates applied!", applied.len()) };
+            if !waiting.is_empty() {
+                msg.push_str(&format!(" {} waiting for the new core: {}", waiting.len(), waiting.join(", ")));
+            }
             report(&ApplyProgress::new("complete", &msg, 100, &applied, 0));
         } else {
             let msg = format!("{} applied, {} failed: {}", applied.len(), failed.len(), failed.join("; "));
