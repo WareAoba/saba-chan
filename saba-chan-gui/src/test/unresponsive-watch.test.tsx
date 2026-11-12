@@ -72,7 +72,7 @@ describe('응답 없음 감시 설정', () => {
                 {...(props({ unresponsive_action: 'notify', unresponsive_minutes: '10' }) as unknown as ComponentProps<typeof ServerSettingsModal>)}
             />,
         );
-        const minutes = () => screen.getByRole('spinbutton', { name: t('server_settings.unresponsive_minutes') }) as HTMLInputElement;
+        const minutes = () => screen.getByRole('spinbutton', { name: `${t('server_settings.unresponsive_title')}: ${t('server_settings.unresponsive_minutes')}` }) as HTMLInputElement;
         expect(minutes().value).toBe('10');
         expect(minutes().disabled).toBe(false);
         pickOption(

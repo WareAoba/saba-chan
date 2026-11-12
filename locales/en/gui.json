@@ -466,7 +466,7 @@
     "unresponsive_action_off": "Off",
     "unresponsive_action_notify": "Notify only",
     "unresponsive_action_restart": "Notify and restart",
-    "unresponsive_minutes": "Time before it counts",
+    "unresponsive_minutes": "Wait time",
     "unresponsive_minutes_hint": "Counts as unresponsive after this long (5 minutes or more)",
     "restart_now": "Restart now",
     "restart_later": "Later",

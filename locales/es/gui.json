@@ -466,7 +466,7 @@
     "unresponsive_action_off": "Desactivado",
     "unresponsive_action_notify": "Solo avisar",
     "unresponsive_action_restart": "Avisar y reiniciar",
-    "unresponsive_minutes": "Tiempo para considerarlo sin respuesta",
+    "unresponsive_minutes": "Tiempo de espera",
     "unresponsive_minutes_hint": "Se considera sin respuesta tras este tiempo (5 minutos o más)",
     "restart_now": "Reiniciar ahora",
     "restart_later": "Más tarde",

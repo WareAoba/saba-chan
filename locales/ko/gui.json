@@ -466,7 +466,7 @@
     "unresponsive_action_off": "끄기",
     "unresponsive_action_notify": "알림만",
     "unresponsive_action_restart": "알리고 재시작",
-    "unresponsive_minutes": "응답 없음 판정 시간",
+    "unresponsive_minutes": "기다리는 시간",
     "unresponsive_minutes_hint": "이만큼 이어지면 응답 없음으로 봐요 (5분부터)",
     "restart_now": "지금 다시 시작",
     "restart_later": "나중에",

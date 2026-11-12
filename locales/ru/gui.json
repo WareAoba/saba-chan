@@ -466,7 +466,7 @@
     "unresponsive_action_off": "Выключено",
     "unresponsive_action_notify": "Только уведомить",
     "unresponsive_action_restart": "Уведомить и перезапустить",
-    "unresponsive_minutes": "Время до признания зависшим",
+    "unresponsive_minutes": "Время ожидания",
     "unresponsive_minutes_hint": "Считается зависшим через это время (не меньше 5 минут)",
     "restart_now": "Перезапустить сейчас",
     "restart_later": "Позже",

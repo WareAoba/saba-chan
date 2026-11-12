@@ -540,7 +540,8 @@ function GeneralTab({
                                     max={1440}
                                     value={settingsValues.unresponsive_minutes ?? ''}
                                     disabled={watchAction === 'off'}
-                                    aria-label={t('server_settings.unresponsive_minutes')}
+                                    // 자동 정지 카드에도 같은 이름의 칸이 있어, 읽어 주는 이름에는 카드 제목을 붙인다
+                                    aria-label={`${t('server_settings.unresponsive_title')}: ${t('server_settings.unresponsive_minutes')}`}
                                     onChange={(e) => handleSettingChange('unresponsive_minutes', e.target.value)}
                                 />
                                 <span className="muted">{t('server_settings.idle_stop_unit')}</span>

@@ -466,7 +466,7 @@
     "unresponsive_action_off": "關閉",
     "unresponsive_action_notify": "僅通知",
     "unresponsive_action_restart": "通知並重新啟動",
-    "unresponsive_minutes": "判定無回應的時間",
+    "unresponsive_minutes": "等待時間",
     "unresponsive_minutes_hint": "持續這麼久即視為無回應（至少 5 分鐘）",
     "restart_now": "立即重新啟動",
     "restart_later": "稍後",

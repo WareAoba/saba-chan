@@ -466,7 +466,7 @@
     "unresponsive_action_off": "Désactivé",
     "unresponsive_action_notify": "Notifier seulement",
     "unresponsive_action_restart": "Notifier et redémarrer",
-    "unresponsive_minutes": "Délai avant de le considérer sans réponse",
+    "unresponsive_minutes": "Temps d'attente",
     "unresponsive_minutes_hint": "Considéré sans réponse après cette durée (5 minutes ou plus)",
     "restart_now": "Redémarrer maintenant",
     "restart_later": "Plus tard",

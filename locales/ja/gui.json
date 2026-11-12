@@ -411,7 +411,7 @@
     "unresponsive_action_off": "オフ",
     "unresponsive_action_notify": "通知のみ",
     "unresponsive_action_restart": "通知して再起動",
-    "unresponsive_minutes": "応答なしと判定する時間",
+    "unresponsive_minutes": "待ち時間",
     "unresponsive_minutes_hint": "この時間続いたら応答なしとみなします（5分以上）",
     "restart_now": "今すぐ再起動",
     "restart_later": "あとで",
