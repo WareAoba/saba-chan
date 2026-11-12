@@ -387,7 +387,7 @@ pub async fn chat_link_handler(Path((id, guild)): Path<(String, String)>, State(
         Ok(d) => d,
         Err(e) => return fail(StatusCode::BAD_REQUEST, "invalid_input", e),
     };
-    let (reads_chat, sends_chat, running) = {
+    let (reads_chat, sends_chat, running, runtime) = {
         let sup = state.supervisor.read().await;
         let Some(instance) = sup.instance_store.get(&id) else {
             return fail(StatusCode::NOT_FOUND, "not_found", "Instance not found");
@@ -395,7 +395,7 @@ pub async fn chat_link_handler(Path((id, guild)): Path<(String, String)>, State(
         let module = sup.module_loader.get_module(&instance.module_name).ok();
         let reads = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
         let sends = module.as_ref().is_some_and(|m| m.metadata.chat_send_function.is_some());
-        (reads, sends, sup.tracker.get_pid(&id).is_ok())
+        (reads, sends, sup.tracker.get_pid(&id).is_ok(), sup.runtime.clone())
     };
     let result = chat_link::toggle(&id, &guild, channel, direction, |d| {
         if (d.to_discord() && !reads_chat) || (d.to_game() && !sends_chat) {
@@ -404,7 +404,7 @@ pub async fn chat_link_handler(Path((id, guild)): Path<(String, String)>, State(
         if !running {
             return Err(("server_not_running", "The server is not running"));
         }
-        match crate::supervisor::players::counted(&id) {
+        match crate::supervisor::players::counted(&runtime, &id) {
             None => Err(("players_unknown", "Players on this server are not counted")),
             Some(0) => Err(("no_players", "Nobody is on the server")),
             Some(_) => Ok(()),
@@ -1479,15 +1479,16 @@ mod tests {
         assert_eq!(link("link-game", on.clone()).await.body["error_code"], "server_not_running");
         state.supervisor.read().await.tracker.track("link-game", std::process::id()).unwrap();
         assert_eq!(link("link-game", on.clone()).await.body["error_code"], "players_unknown", "players must be counted from join/leave lines");
-        let roster = crate::supervisor::players::roster_start("link-game");
+        let rt = state.supervisor.read().await.runtime.clone();
+        let roster = crate::supervisor::players::roster_start(&rt, "link-game");
         assert_eq!(link("link-game", on.clone()).await.body["error_code"], "no_players");
-        crate::supervisor::players::roster_change("link-game", roster, "Steve", true);
+        crate::supervisor::players::roster_change(&rt, "link-game", roster, "Steve", true);
         assert_eq!(link("link-game", on.clone()).await.body, json!({ "success": true, "state": "on", "direction": "both" }));
         let changed = link("link-game", json!({ "channel": "200000000000000001", "direction": "to_discord" })).await;
         assert_eq!(changed.body, json!({ "success": true, "state": "changed", "direction": "to_discord" }));
-        crate::supervisor::players::roster_change("link-game", roster, "Steve", false);
+        crate::supervisor::players::roster_change(&rt, "link-game", roster, "Steve", false);
         assert_eq!(link("link-game", on.clone()).await.body["state"], "off", "turning off needs no players");
-        crate::supervisor::players::roster_end("link-game", roster);
+        crate::supervisor::players::roster_end(&rt, "link-game", roster);
         let _ = state.supervisor.read().await.tracker.untrack("link-game");
 
         assert_eq!(link("link-readonly", on.clone()).await.body["error_code"], "not_supported", "both ways needs chat_send");

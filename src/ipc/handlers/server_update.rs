@@ -453,7 +453,8 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
         return;
     }
     let running = super::backup::is_running(state, id).await;
-    let mut players = crate::supervisor::players::get(id).map(|c| c.online);
+    let runtime = state.supervisor.read().await.runtime.clone();
+    let mut players = crate::supervisor::players::get(&runtime, id).map(|c| c.online);
     let mut step = auto_step(running, players);
     if step != AutoStep::Wait {
         // 기다리는 동안 알림 버튼·앱·예약으로 이미 업데이트했을 수 있다: 끄기 전에 한 번 더 본다

@@ -176,6 +176,7 @@ pub fn gate_targets(kind: &str, data: &Value) -> Vec<(String, String)> {
 /// 이 데몬이 켜진 뒤 낸 알림부터 본다: 다시 붙은 서버의 알림은 이 감시가 뜨기 전에 나올 수 있다
 pub fn spawn_gate(state: IPCServer) {
     tokio::spawn(async move {
+        let runtime = state.supervisor.read().await.runtime.clone();
         let sub = crate::events::bus().subscribe(Some(0));
         let mut rx = sub.rx;
         let mut backlog = sub.backlog.into_iter();
@@ -186,7 +187,7 @@ pub fn spawn_gate(state: IPCServer) {
                     Ok(e) => e,
                     // 밀려 건너뛴 접속 알림이 있을 수 있다: 지금 들어와 있는 사람을 다시 본다
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                        sweep(&state, None);
+                        sweep(&state, &runtime, None);
                         continue;
                     }
                     Err(_) => return,
@@ -202,8 +203,8 @@ pub fn spawn_gate(state: IPCServer) {
 
 /// 지금 들어와 있는 사람(접속·퇴장 줄로 센 명단)을 게이트에 한 번 넣는다. `instance_id`가 없으면 모든 서버.
 /// 게이트가 모드와 명단을 다시 보므로 내보낼 사람이 아니면 그대로 둔다
-pub fn sweep(state: &IPCServer, instance_id: Option<&str>) {
-    for (id, player) in crate::supervisor::players::present(instance_id) {
+pub fn sweep(state: &IPCServer, runtime: &crate::supervisor::runtime::Runtimes, instance_id: Option<&str>) {
+    for (id, player) in crate::supervisor::players::present(runtime, instance_id) {
         let state = state.clone();
         tokio::spawn(async move { gate(&state, &id, &player).await });
     }

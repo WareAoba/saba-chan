@@ -25,6 +25,7 @@ use std::sync::Mutex;
 use super::super::{CommandRequest, IPCServer};
 use crate::backup::{self, BackupInfo, BackupKind};
 use crate::scheduler::{Clock, ScheduledTask, TaskAction};
+use crate::supervisor::runtime::Runtimes;
 
 pub(crate) const DEFAULT_KEEP: usize = 10;
 /// 원격에서 넣는 반복 작업의 가장 짧은 간격(분)과 보관 개수 상한
@@ -1460,22 +1461,20 @@ async fn remote_cap_reached(dir: &FsPath, kind: BackupKind) -> Result<bool, Resp
     }
 }
 
-/// 인스턴스마다 하나: 정지가 쥐는 동안 복원 전 백업 정리는 들어오지 않고(다음 차례로 미룬다),
+/// 인스턴스마다 하나(`InstanceRuntime::stop_gate`): 정지가 쥐는 동안 복원 전 백업 정리는 들어오지 않고(다음 차례로 미룬다),
 /// 정리가 쥐는 동안 정지는 끝나기를 기다린다. 그래서 정리가 "돌고 있다"고 확인한 뒤 지우는 동안 서버가 멈추지 않는다
-static STOP_GATES: std::sync::LazyLock<Mutex<std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>>> = std::sync::LazyLock::new(Default::default);
-
-fn stop_gate_of(id: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
-    STOP_GATES.lock().unwrap_or_else(|e| e.into_inner()).entry(id.to_string()).or_default().clone()
+fn stop_gate_of(runtime: &Runtimes, id: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    runtime.with(id, |r| r.stop_gate.clone())
 }
 
 /// 정지 경로가 정지가 끝날 때까지 쥔다
-pub(crate) async fn stop_gate(id: &str) -> tokio::sync::OwnedMutexGuard<()> {
-    stop_gate_of(id).lock_owned().await
+pub(crate) async fn stop_gate(runtime: &Runtimes, id: &str) -> tokio::sync::OwnedMutexGuard<()> {
+    stop_gate_of(runtime, id).lock_owned().await
 }
 
 /// 복원 전 백업 정리가 쥔다. 정지가 진행 중이면 `None`
-fn sweep_gate(id: &str) -> Option<tokio::sync::OwnedMutexGuard<()>> {
-    stop_gate_of(id).try_lock_owned().ok()
+fn sweep_gate(runtime: &Runtimes, id: &str) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+    stop_gate_of(runtime, id).try_lock_owned().ok()
 }
 
 /// 복원한 뒤 켠 서버가 15분 넘게 돌면 복원 직전 안전 백업을 치운다 (그동안 접속해 확인한다고 본다).
@@ -1500,7 +1499,8 @@ async fn sweep_restore_safeties(state: &IPCServer, swept: &mut std::collections:
         // 복원·백업·업데이트가 잡고 있으면 다음 차례에 다시 본다
         let Some(_guard) = InstanceLock::take(&id) else { continue };
         // 정지가 진행 중이면 다음 차례로 미루고, 지우는 동안에는 정지를 붙잡아 둔다
-        let Some(_stopping) = sweep_gate(&id) else { continue };
+        let runtime = state.supervisor.read().await.runtime.clone();
+        let Some(_stopping) = sweep_gate(&runtime, &id) else { continue };
         let Some(started) = long_running(state, &id, saba_runner::now()).await else { continue };
         let Ok(dir) = backups_dir(state, &id).await else { continue };
         // 폴더를 읽지 못하거나 작업이 실패하면 빈 목록으로 보지 않고 다음 차례에 다시 시도한다
@@ -2345,15 +2345,16 @@ else:
         }
         run_fake_server(&state, &id, &tmp, "stop) exit 0;;").await;
         let mut events = crate::events::bus().subscribe(None);
-        let generation = players::roster_start(&id);
+        let rt = state.supervisor.read().await.runtime.clone();
+        let generation = players::roster_start(&rt, &id);
         let now = saba_runner::now();
         let tick = |at| super::super::server::stop_idle_servers_at(&state, at);
 
         tick(now).await;
-        players::roster_change(&id, generation, "Bob", true);
+        players::roster_change(&rt, &id, generation, "Bob", true);
         tick(now + 11 * 60).await;
         assert!(is_running(&state, &id).await, "a player is on");
-        players::roster_change(&id, generation, "Bob", false);
+        players::roster_change(&rt, &id, generation, "Bob", false);
         tick(now + 12 * 60).await;
         tick(now + 21 * 60).await;
         assert!(is_running(&state, &id).await, "empty for nine minutes only");
@@ -2364,7 +2365,7 @@ else:
         assert_eq!(crate::supervisor::idle::stopped(&id).map(|s| s.minutes), Some(10));
         let stopped: Vec<Value> = std::iter::from_fn(|| events.rx.try_recv().ok()).filter(|e| e.kind == "instance.stopped" && e.data["instanceId"] == id.as_str()).map(|e| e.data.clone()).collect();
         assert_eq!(stopped.iter().map(|d| (d["source"].as_str(), d["idleMinutes"].as_u64())).collect::<Vec<_>>(), [(Some("idle"), Some(10))], "{stopped:?}");
-        players::roster_end(&id, generation);
+        players::roster_end(&rt, &id, generation);
     }
 
     /// 자동 정지가 실패하면 서버 목록에 "접속자가 없어 정지했어요"를 남기지 않는다 (뒤에 사람이 끈 정지가 그 안내를 달지 않게)
@@ -2384,13 +2385,14 @@ else:
             inst.module_name = "gone".into();
             sup.instance_store.update(&id, inst).unwrap();
         }
-        let generation = players::roster_start(&id);
+        let rt = state.supervisor.read().await.runtime.clone();
+        let generation = players::roster_start(&rt, &id);
         let now = saba_runner::now();
         super::super::server::stop_idle_servers_at(&state, now).await;
         super::super::server::stop_idle_servers_at(&state, now + 10 * 60).await;
         assert!(is_running(&state, &id).await, "the stop failed");
         assert_eq!(crate::supervisor::idle::stopped(&id), None);
-        players::roster_end(&id, generation);
+        players::roster_end(&rt, &id, generation);
     }
 
     /// 응답 없는 서버 감시: 켜진 서버가 설정한 시간 넘게 답하지 않으면 한 번 알리고, 서버 목록도 그때부터 알린다
@@ -2406,8 +2408,9 @@ else:
         let announced = |events: &mut crate::events::Subscription| -> Vec<Value> {
             std::iter::from_fn(|| events.rx.try_recv().ok()).filter(|e| e.kind == "instance.unresponsive" && e.data["instanceId"] == id.as_str()).map(|e| e.data.clone()).collect()
         };
-        players::fail_for_test(&id, None, "connection refused", start);
-        players::fail_for_test(&id, None, "connection refused", minutes(6));
+        let rt = state.supervisor.read().await.runtime.clone();
+        players::fail_for_test(&rt, &id, None, "connection refused", start);
+        players::fail_for_test(&rt, &id, None, "connection refused", minutes(6));
         let tick = |at| super::super::server::watch_unresponsive_at(&state, at);
 
         tick(minutes(6)).await;
@@ -3440,14 +3443,15 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
     #[tokio::test]
     async fn the_stop_gate_keeps_the_sweep_and_a_stop_apart() {
         let id = "gate-test";
-        let stopping = stop_gate(id).await;
-        assert!(sweep_gate(id).is_none(), "a stop in progress keeps the sweep out");
+        let rt = Runtimes::default();
+        let stopping = stop_gate(&rt, id).await;
+        assert!(sweep_gate(&rt, id).is_none(), "a stop in progress keeps the sweep out");
         drop(stopping);
-        let sweeping = sweep_gate(id).expect("free once the stop is done");
-        let waiting = tokio::time::timeout(std::time::Duration::from_millis(50), stop_gate(id)).await;
+        let sweeping = sweep_gate(&rt, id).expect("free once the stop is done");
+        let waiting = tokio::time::timeout(std::time::Duration::from_millis(50), stop_gate(&rt, id)).await;
         assert!(waiting.is_err(), "a stop waits while the sweep deletes");
         drop(sweeping);
-        assert!(tokio::time::timeout(std::time::Duration::from_millis(500), stop_gate(id)).await.is_ok());
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(500), stop_gate(&rt, id)).await.is_ok());
     }
 
     /// 원격 백업 상한 검사는 목록을 읽지 못하면 세지 못한 채 통과시키지 않고 오류로 거절한다

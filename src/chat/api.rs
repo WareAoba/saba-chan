@@ -211,8 +211,9 @@ impl DaemonApi for IPCServer {
         }
         let servers = resp.body.get("servers").cloned().unwrap_or(json!([]));
         let mut servers: Vec<ServerView> = serde_json::from_value(servers).map_err(|e| e.to_string())?;
+        let runtime = self.supervisor.read().await.runtime.clone();
         for s in &mut servers {
-            s.starting = s.is_running() && crate::supervisor::ready::is_starting(&s.id);
+            s.starting = s.is_running() && crate::supervisor::ready::is_waiting(&runtime, &s.id);
         }
         Ok(servers)
     }

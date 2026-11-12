@@ -302,11 +302,12 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
 
     // ── 접속자 수 (Q-5): 모듈이 알려 준 마지막 값, 켜진 서버만 ──
     let catalog = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
+    let runtime = state.supervisor.read().await.runtime.clone();
     for srv in servers.iter_mut().filter(|s| s.status == "running") {
-        srv.players = crate::supervisor::players::get(&srv.id);
+        srv.players = crate::supervisor::players::get(&runtime, &srv.id);
         // 응답 없음은 인스턴스 설정의 시간(`watchdog::rule_of`)이 지난 뒤에 알린다
         let after = all_instances.iter().find(|i| i.id == srv.id).map(|i| crate::supervisor::watchdog::rule_of(i).after).unwrap_or_default();
-        if let Some((silent, reason)) = crate::supervisor::players::silent_for(&srv.id, srv.pid, std::time::Instant::now()).filter(|(silent, _)| *silent >= after) {
+        if let Some((silent, reason)) = crate::supervisor::players::silent_for(&runtime, &srv.id, srv.pid, std::time::Instant::now()).filter(|(silent, _)| *silent >= after) {
             srv.unresponsive = Some(crate::supervisor::players::reason_text(&reason, &catalog));
             srv.unresponsive_minutes = Some(silent.as_secs() / 60);
         }
@@ -1262,7 +1263,7 @@ pub(crate) async fn watch_unresponsive_at(state: &IPCServer, now: std::time::Ins
                 watchdog::forget(&instance.id);
                 continue;
             }
-            let silent = players::silent_for(&instance.id, pid, now).map(|(silent, _)| silent);
+            let silent = players::silent_for(&supervisor.runtime, &instance.id, pid, now).map(|(silent, _)| silent);
             if let Some(verdict) = watchdog::observe(&instance.id, pid, watchdog::rule_of(instance), silent, now) {
                 due.push((instance.id.clone(), instance.name.clone(), silent.unwrap_or_default().as_secs() / 60, verdict));
             }
@@ -1295,7 +1296,7 @@ pub async fn stop_idle_servers(state: &IPCServer) {
 
 pub(crate) async fn stop_idle_servers_at(state: &IPCServer, now: u64) {
     use crate::supervisor::{idle, players};
-    let due: Vec<(String, u64)> = {
+    let (runtime, due): (_, Vec<(String, u64)>) = {
         let supervisor = state.supervisor.read().await;
         let mut due = Vec::new();
         for instance in supervisor.instance_store.list() {
@@ -1306,16 +1307,16 @@ pub(crate) async fn stop_idle_servers_at(state: &IPCServer, now: u64) {
             }
             // 켠 시각을 모르는 서버(다시 붙은 뒤 추적표에 없는 것)는 켠 직후가 아니라고 본다
             let started = started.unwrap_or_default();
-            let count = players::get(&instance.id).map(|c| c.online);
+            let count = players::get(&supervisor.runtime, &instance.id).map(|c| c.online);
             if let Some(minutes) = idle::observe(&instance.id, idle::rule_of(instance), started, count, now) {
                 due.push((instance.id.clone(), minutes));
             }
         }
-        due
+        (supervisor.runtime.clone(), due)
     };
     for (id, minutes) in due {
         // 그사이 누가 들어왔으면 끄지 않는다
-        if players::get(&id).map(|c| c.online) != Some(0) {
+        if players::get(&runtime, &id).map(|c| c.online) != Some(0) {
             continue;
         }
         tracing::info!("Stopping '{}': no players for {} minutes", id, minutes);
@@ -1346,7 +1347,8 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
     let id = id.as_str();
     let _transition = crate::instance::transition::Transition::begin(id, crate::instance::transition::Kind::Stopping);
     // 정지가 끝날 때까지 복원 전 백업 정리를 붙잡아 둔다 (정리가 "돌고 있다"고 본 서버를 지우는 동안 멈추지 않게, 반대로 멈추는 중에는 지우지 않게)
-    let _stopping = super::backup::stop_gate(id).await;
+    let runtime = state.supervisor.read().await.runtime.clone();
+    let _stopping = super::backup::stop_gate(&runtime, id).await;
     // API 경유 정지 기록 (GUI 외부 정지 감지용)
     state.api_actions.record(id);
     // 익스텐션 상태 캐시 무효화 — 정지 직후 fresh 상태 반영

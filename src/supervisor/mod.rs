@@ -11,13 +11,14 @@ pub mod player_events;
 pub mod chat_link;
 pub mod game_chat;
 pub mod core_swap;
+pub mod runtime;
 
 use anyhow::Result;
 use process::ProcessTracker;
 use module_loader::{ModuleLoader, LoadedModule};
 use managed_process::{ManagedProcess, ManagedProcessStore};
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -79,8 +80,6 @@ pub struct Supervisor {
     pub instance_store: InstanceStore,
     /// Store for processes spawned and managed directly by the daemon (with stdio capture)
     pub managed_store: ManagedProcessStore,
-    /// Stop 이후 auto-detect 억제 쿨다운 (instance_id → 정지 시각)
-    stop_cooldowns: HashMap<String, Instant>,
     /// 익스텐션 매니저 (Phase 3에서 optional로 추가)
     pub extension_manager: Option<std::sync::Arc<tokio::sync::RwLock<crate::extension::ExtensionManager>>>,
     /// 프로비저닝 진행 상태 추적 (auto-detect 억제용)
@@ -89,26 +88,19 @@ pub struct Supervisor {
     port_conflict_stops: std::sync::Mutex<PortConflictStops>,
     /// GUI 설정: 포트 충돌 검사 건너뛰기 (portConflictCheck 비활성화 시 true)
     pub skip_port_check: std::sync::Arc<AtomicBool>,
-    /// 데몬이 정지를 보낸 인스턴스와 정지를 시킨 쪽. 이 상태로 끝나면 사용자 정지다 (A1)
-    stop_requested: HashMap<String, crate::audit::Origin>,
     /// 모니터가 한 번 돌았는가. 데몬이 켜질 때 이미 돌던 프로세스는 예기치 않은 시작으로 알리지 않는다
     first_scan_done: bool,
-    /// 자동 재시작 시각 (한도 계산용)
-    restart_history: HashMap<String, VecDeque<Instant>>,
-    /// 종료 이력 (GET /api/instance/:id/events)
-    exit_events: HashMap<String, VecDeque<crash::ExitEvent>>,
     /// 모니터가 정한 재시작 (인스턴스 ID, 대기, 예약 때의 실행 세대). 데몬 루프가 가져가 실행한다
     pending_restarts: Vec<(String, Duration, u64)>,
-    /// 정지 요청과 시작마다 오르는 인스턴스별 세대. 예약된 재시작은 세대가 그대로일 때만 실행한다
-    run_generation: HashMap<String, u64>,
-    /// 지금 시작 중인 인스턴스. 시작은 락을 놓고 진행하므로 중복 시작을 이것으로 막는다 (C12)
-    starting: std::sync::Arc<std::sync::Mutex<HashSet<String>>>,
+    /// 인스턴스별 런타임 상태 (정지 표시·실행 세대·재시작과 종료 이력·접속자 수·준비 알림 등).
+    /// 인스턴스를 지우면 `Runtimes::forget`으로 한 번에 버린다
+    pub runtime: runtime::Runtimes,
     pub(crate) host_runtime: std::sync::OnceLock<crate::plugin::host::Runtime>,
 }
 
 /// 시작하는 동안 쥐는 표시. 놓으면(drop) 지워진다
 struct StartGuard {
-    set: std::sync::Arc<std::sync::Mutex<HashSet<String>>>,
+    runtime: runtime::Runtimes,
     id: String,
     /// 시작을 받았을 때의 실행 세대. 정지 요청은 세대를 올리므로, 띄우기 전후에 이 값과 다르면
     /// 시작 준비 중에 정지가 들어온 것이다 (그 정지는 PID가 없어 바로 성공으로 끝난다)
@@ -130,9 +122,9 @@ fn start_baseline(s: &Supervisor, id: &str) -> u64 {
 }
 
 impl StartGuard {
-    fn claim(set: &std::sync::Arc<std::sync::Mutex<HashSet<String>>>, id: &str, generation: u64) -> Option<Self> {
-        let fresh = set.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string());
-        fresh.then(|| Self { set: set.clone(), id: id.to_string(), generation })
+    fn claim(runtime: &runtime::Runtimes, id: &str, generation: u64) -> Option<Self> {
+        let fresh = runtime.with(id, |r| !std::mem::replace(&mut r.starting, true));
+        fresh.then(|| Self { runtime: runtime.clone(), id: id.to_string(), generation })
     }
 
     /// 시작 준비 중에 정지(또는 삭제)가 들어왔는가
@@ -162,7 +154,7 @@ fn start_cancelled(server_name: &str) -> Value {
 
 impl Drop for StartGuard {
     fn drop(&mut self) {
-        self.set.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.id);
+        self.runtime.existing(&self.id, |r| r.starting = false);
     }
 }
 
@@ -358,6 +350,13 @@ fn same_file_path(a: &std::path::Path, b: &std::path::Path) -> bool {
 static ADDON_SWAP_GATE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
 
 impl Supervisor {
+    /// 인스턴스를 지운다: 저장소의 기록·폴더와 그 런타임 상태를 함께 (지운 인스턴스의 상태가 데몬이 끝날 때까지 남지 않게)
+    pub fn remove_instance(&mut self, id: &str) -> Result<()> {
+        self.instance_store.remove(id)?;
+        self.runtime.forget(id);
+        Ok(())
+    }
+
     pub(crate) fn host_context(&self, id: &str) -> Option<crate::plugin::host::Context> {
         self.host_runtime.get().map(|runtime| runtime.for_instance(id))
     }
@@ -376,18 +375,13 @@ impl Supervisor {
             module_loader: ModuleLoader::new(modules_dir),
             instance_store: InstanceStore::new(instances_dir),
             managed_store: ManagedProcessStore::new(),
-            stop_cooldowns: HashMap::new(),
             extension_manager: None,
             provision_tracker: None,
             port_conflict_stops: std::sync::Mutex::new(PortConflictStops::default()),
             skip_port_check: std::sync::Arc::new(AtomicBool::new(false)),
-            stop_requested: HashMap::new(),
             first_scan_done: false,
-            restart_history: HashMap::new(),
-            exit_events: HashMap::new(),
             pending_restarts: Vec::new(),
-            run_generation: HashMap::new(),
-            starting: Default::default(),
+            runtime: Default::default(),
             host_runtime: Default::default(),
         }
     }
@@ -468,7 +462,7 @@ impl Supervisor {
                         .map(|m| (m.player_join_patterns, m.player_leave_patterns, m.chat_patterns))
                         .unwrap_or_default();
                     game_chat::remember(&instance.id, &instance.game_chat());
-                    player_events::after_reattach(&instance.id, &instance.name, console, &join, &leave, &chat);
+                    player_events::after_reattach(&self.runtime, &instance.id, &instance.name, console, &join, &leave, &chat);
                 }
                 continue;
             }
@@ -1005,7 +999,7 @@ impl Supervisor {
 
     /// 시작 결과로 준비 알림(R39, `ready.rs`)과 접속·퇴장 알림(MK8)·게임 채팅 전달(`player_events.rs`)을 시작한다. 콘솔을 읽는 managed 프로세스면 준비 문구를 기다린다
     async fn announce_ready(sup: &tokio::sync::RwLock<Self>, instance_id: &str, result: &Result<Value>) {
-        let (id, name, console, patterns, timeout, join, leave, chat) = {
+        let (rt, id, name, console, patterns, timeout, join, leave, chat) = {
             let s = sup.read().await;
             let Some(instance) = s.instance_store.get(instance_id) else { return };
             let module = s.module_loader.get_module(&instance.module_name).ok();
@@ -1016,11 +1010,11 @@ impl Supervisor {
             let chat = meta.map(|m| m.chat_patterns.clone()).unwrap_or_default();
             game_chat::remember(&instance.id, &instance.game_chat());
             let console = s.managed_store.get(&instance.id).await.filter(|p| !p.log_follower);
-            (instance.id.clone(), instance.name.clone(), console, patterns, Duration::from_secs(timeout), join, leave, chat)
+            (s.runtime.clone(), instance.id.clone(), instance.name.clone(), console, patterns, Duration::from_secs(timeout), join, leave, chat)
         };
         // 접속·퇴장 알림(MK8)과 게임 채팅도 같은 콘솔을 본다
-        player_events::after_start(&id, &name, result, console.clone(), &join, &leave, &chat);
-        ready::after_start(&id, &name, result, console, &patterns, timeout);
+        player_events::after_start(&rt, &id, &name, result, console.clone(), &join, &leave, &chat);
+        ready::after_start(&rt, &id, &name, result, console, &patterns, timeout);
     }
 
     /// `server.pre_start` hook을 부른다 (락 밖). 익스텐션이 시작을 맡았으면(handled) 그 결과를 돌려주고, 맡은 곳이 없으면 `None`.
@@ -1071,7 +1065,7 @@ impl Supervisor {
                             return Some(blocked);
                         }
                     }
-                    announce_started(&instance.id, &instance.name, &crate::audit::current(), false);
+                    announce_started(&starting.runtime, &instance.id, &instance.name, &crate::audit::current(), false);
                     return Some(val.clone());
                 }
             }
@@ -1305,7 +1299,7 @@ impl Supervisor {
             }
 
 
-            let Some(starting) = StartGuard::claim(&s.starting, &instance.id, start_baseline(&s, &instance.id)) else {
+            let Some(starting) = StartGuard::claim(&s.runtime, &instance.id, start_baseline(&s, &instance.id)) else {
                 return Ok(json!({
                     "success": false,
                     "error": "start_in_progress",
@@ -1395,7 +1389,7 @@ impl Supervisor {
         // 다른 경로(포트 충돌 검사·상태·정지)와 같은 키(인스턴스 id)로 추적한다.
         // managed 시작과 같이 정지 표시를 지우고 세대를 올린다 (기다리던 재시작이 이 시작 뒤에 또 켜지 않게)
         {
-            let mut s = sup.write().await;
+            let s = sup.write().await;
             // 띄우는 사이 정지가 들어왔으면 추적하지 않고 끈다: 정지는 이미 "꺼져 있음"으로 끝났다
             if starting.stop_requested(&s) {
                 drop(s);
@@ -1417,12 +1411,14 @@ impl Supervisor {
                 }
                 return Ok(start_cancelled(server_name));
             }
-            s.stop_requested.remove(&instance.id);
-            *s.run_generation.entry(instance.id.clone()).or_default() += 1;
+            s.runtime.with(&instance.id, |r| {
+                r.stop_requested = None;
+                r.run_generation += 1;
+            });
             s.tracker.track(&instance.id, pid)?;
         }
         tracing::info!("Non-managed server '{}' started with PID {}", server_name, pid);
-        announce_started(&instance.id, &instance.name, &crate::audit::current(), false);
+        announce_started(&starting.runtime, &instance.id, &instance.name, &crate::audit::current(), false);
 
         Ok(json!({
             "success": true,
@@ -1453,8 +1449,8 @@ impl Supervisor {
             Ok(v) => v.get("success").and_then(Value::as_bool) == Some(false),
         };
         if failed {
-            let mut s = sup.write().await;
-            s.stop_requested.remove(instance_id);
+            let s = sup.write().await;
+            s.runtime.existing(instance_id, |r| r.stop_requested = None);
         }
         result
     }
@@ -1463,15 +1459,17 @@ impl Supervisor {
         tracing::info!("Stopping server '{}' (force: {})", instance_id, force);
 
         // ── 1) 준비 (쓰기 락: 정지 표시를 남긴다) ──
-        let (instance, hook, managed) = {
-            let mut s = sup.write().await;
+        let (instance, hook, managed, rt) = {
+            let s = sup.write().await;
             let instance = s.instance_store.get(instance_id)
                 .cloned()
                 .ok_or_else(|| InstanceNotFound(instance_id.to_string()))?;
-            s.stop_requested.insert(instance.id.clone(), crate::audit::current());
-            let generation = s.run_generation.entry(instance.id.clone()).or_default();
-            *generation += 1;
-            let _ = STOPPED_AT.try_with(|at| at.set(Some(*generation)));
+            let generation = s.runtime.with(&instance.id, |r| {
+                r.stop_requested = Some(crate::audit::current());
+                r.run_generation += 1;
+                r.run_generation
+            });
+            let _ = STOPPED_AT.try_with(|at| at.set(Some(generation)));
             let hook = s.extension_manager.clone().map(|ext_mgr| {
                 let instance_dir = s.instance_store.instance_dir(&instance.id);
                 let ctx = json!({
@@ -1483,7 +1481,7 @@ impl Supervisor {
                 (ext_mgr, ctx)
             });
             let managed = s.managed_store.get(&instance.id).await;
-            (instance, hook, managed)
+            (instance, hook, managed, s.runtime.clone())
         };
         // 받은 키가 id여도 메시지·응답에는 이름을 쓴다
         let server_name = instance.name.as_str();
@@ -1496,7 +1494,7 @@ impl Supervisor {
             for (_ext_id, result) in &results {
                 if let Ok(val) = result {
                     if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
-                        sup.write().await.stop_cooldowns.insert(instance.id.clone(), Instant::now());
+                        sup.write().await.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
                         if val.get("success").and_then(Value::as_bool) != Some(false) {
                             announce_stopped(&instance.id, server_name, crash::ExitKind::UserStop, &crate::audit::current());
                         }
@@ -1551,11 +1549,11 @@ impl Supervisor {
 
                 // 준비 문구 전에 받은 명령을 실패하는 서버가 있다 (마인크래프트 26.3은 오류만 찍고 계속 돈다).
                 // Ctrl+C 저장 처리기도 준비 뒤에야 붙는다. 켜지는 중이면 준비될 때까지(정지 대기 시간 안에서) 들고 있다가 보낸다
-                if !force && (wants_interrupt || via_stdin) && ready::is_waiting(&instance.id) {
+                if !force && (wants_interrupt || via_stdin) && ready::is_waiting(&rt, &instance.id) {
                     tracing::info!("'{}' is still starting; holding the stop until it is ready", server_name);
                     let hold = Duration::from_secs(stop_timeout_of(&instance, module.metadata.stop_timeout));
                     let until = tokio::time::Instant::now() + hold;
-                    while ready::is_waiting(&instance.id) && managed.is_running() && tokio::time::Instant::now() < until {
+                    while ready::is_waiting(&rt, &instance.id) && managed.is_running() && tokio::time::Instant::now() < until {
                         tokio::time::sleep(Duration::from_millis(250)).await;
                     }
                 }
@@ -1632,9 +1630,11 @@ impl Supervisor {
                     // 종료 기록 (user_stop)과 정지 표시 정리
                     s.judge_exit(&instance.id, &managed, false).await;
                     if force {
-                        if let Some(last) = s.exit_events.get_mut(&instance.id).and_then(|e| e.back_mut()) {
-                            last.verdict.evidence = "force stop requested through saba-chan".into();
-                        }
+                        s.runtime.existing(&instance.id, |r| {
+                            if let Some(last) = r.exit_events.as_mut().and_then(|e| e.back_mut()) {
+                                last.verdict.evidence = "force stop requested through saba-chan".into();
+                            }
+                        });
                         s.save_exit_events(&instance.id);
                     }
                 }
@@ -1645,7 +1645,7 @@ impl Supervisor {
 
                 tracing::info!("Managed server '{}' stopped", server_name);
                 // auto-detect 쿨다운 등록
-                s.stop_cooldowns.insert(instance.id.clone(), Instant::now());
+                s.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
                 return Ok(json!({
                     "success": true,
                     "server": server_name,
@@ -1660,14 +1660,14 @@ impl Supervisor {
                 );
                 let mut s = sup.write().await;
                 // 이미 스스로 끝났다: 정지 요청 때문이 아니므로 표시를 지우고 기록한다
-                s.stop_requested.remove(&instance.id);
+                s.runtime.existing(&instance.id, |r| r.stop_requested = None);
                 // 크래시였어도 다시 켜지 않는다: 사용자가 정지를 눌렀다 (D-S6)
                 if let Some(proc) = s.managed_store.remove(&instance.id).await {
                     s.judge_exit(&instance.id, &proc, false).await;
                 }
                 let pid_file = s.instance_store.managed_pid_file(&instance.id);
                 let _ = std::fs::remove_file(&pid_file);
-                s.stop_cooldowns.insert(instance.id.clone(), Instant::now());
+                s.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
 
                 // tracker에서도 제거
                 let _ = s.tracker.untrack(&instance.id);
@@ -1684,7 +1684,7 @@ impl Supervisor {
         // 데몬이 추적하는 PID가 없으면 멈출 것이 없다. 모듈 stop()을 PID 없이 부르면
         // 이미지 이름으로 같은 게임의 다른 서버까지 끝낼 수 있다
         let Some(pid) = tracked_pid else {
-            sup.write().await.stop_requested.remove(&instance.id);
+            sup.write().await.runtime.existing(&instance.id, |r| r.stop_requested = None);
             return Ok(json!({
                 "success": true,
                 "server": server_name,
@@ -1719,10 +1719,13 @@ impl Supervisor {
         if plugin_success {
             tracing::info!("Server '{}' stopped successfully: {}", server_name, plugin_message);
             // auto-detect 쿨다운 등록
-            let mut s = sup.write().await;
-            s.stop_cooldowns.insert(instance.id.clone(), Instant::now());
+            let s = sup.write().await;
             // 정지 표시는 다음 시작까지 남긴다: 모니터가 사라진 PID를 원인 모를 종료로 보지 않게
-            let origin = s.stop_requested.get(&instance.id).cloned().unwrap_or_else(crate::audit::current);
+            let origin = s.runtime.with(&instance.id, |r| {
+                r.stop_cooldown = Some(Instant::now());
+                r.stop_requested.clone()
+            });
+            let origin = origin.unwrap_or_else(crate::audit::current);
             announce_stopped(&instance.id, server_name, crash::ExitKind::UserStop, &origin);
             Ok(json!({
                 "success": true,
@@ -2003,7 +2006,7 @@ impl Supervisor {
             }
 
 
-            let Some(starting) = StartGuard::claim(&s.starting, instance_id, start_baseline(&s, instance_id)) else {
+            let Some(starting) = StartGuard::claim(&s.runtime, instance_id, start_baseline(&s, instance_id)) else {
                 return Ok(json!({
                     "success": false,
                     "error": "start_in_progress",
@@ -2121,7 +2124,7 @@ impl Supervisor {
 
         // Track the process
         {
-            let mut s = sup.write().await;
+            let s = sup.write().await;
             // 띄우는 사이 정지가 들어왔으면 추적하지 않고 끈다: 정지는 이미 "꺼져 있음"으로 끝났다
             if starting.stop_requested(&s) {
                 drop(s);
@@ -2130,8 +2133,10 @@ impl Supervisor {
                 }
                 return Ok(start_cancelled(&instance.name));
             }
-            s.stop_requested.remove(instance_id);
-            *s.run_generation.entry(instance.id.clone()).or_default() += 1;
+            s.runtime.with(&instance.id, |r| {
+                r.stop_requested = None;
+                r.run_generation += 1;
+            });
             s.tracker.track(&instance.id, pid)?;
             s.managed_store.insert(&instance.id, managed).await;
         }
@@ -2142,7 +2147,7 @@ impl Supervisor {
         }
 
         tracing::info!("Managed server '{}' started with PID {}", instance.name, pid);
-        announce_started(&instance.id, &instance.name, &crate::audit::current(), false);
+        announce_started(&starting.runtime, &instance.id, &instance.name, &crate::audit::current(), false);
         Ok(json!({
             "success": true,
             "server": instance.name,
@@ -3019,12 +3024,12 @@ impl Supervisor {
         if self.tracker.get_pid(instance_id).is_ok_and(|pid| pid == proc.pid || proc.runner_pid.is_some()) {
             let _ = self.tracker.untrack(instance_id);
         }
-        let stop_origin = self.stop_requested.remove(instance_id);
+        let stop_origin = self.runtime.existing(instance_id, |r| r.stop_requested.take()).flatten();
         let stop_requested = stop_origin.is_some();
         let Some(instance) = self.instance_store.get(instance_id).cloned() else { return };
         // 준비되기 전에 끝났으면 그 시작의 준비 알림을 닫는다 (R39)
-        ready::exited(instance_id, &instance.name, stop_requested);
-        let became_ready = ready::take_ready(instance_id);
+        ready::exited(&self.runtime, instance_id, &instance.name, stop_requested);
+        let became_ready = ready::take_ready(&self.runtime, instance_id);
         let (graceful, artifacts, ready_patterns) = self
             .module_loader
             .get_module(&instance.module_name)
@@ -3057,10 +3062,9 @@ impl Supervisor {
         let on_unknown = setting_flag(&instance, "restart_on_unknown_exit", false);
         let mut attempt = None;
         let (restart_in, note, note_code) = if may_restart && crash::wants_restart(verdict.kind, auto_restart, on_unknown) {
-            let history = self.restart_history.entry(instance_id.to_string()).or_default();
-            match crash::next_restart_delay(history, Instant::now()) {
-                Some(delay) => {
-                    let generation = self.run_generation.get(instance_id).copied().unwrap_or_default();
+            let planned = self.runtime.with(instance_id, |r| crash::next_restart_delay(&mut r.restart_history, Instant::now()).map(|delay| (delay, r.run_generation)));
+            match planned {
+                Some((delay, generation)) => {
                     self.pending_restarts.push((instance_id.to_string(), delay, generation));
                     attempt = Some(generation);
                     (Some(delay.as_secs()), None, None)
@@ -3124,7 +3128,7 @@ impl Supervisor {
             "noteArgs": event.note_args,
         });
         if event.verdict.kind == crash::ExitKind::StartFailed {
-            let origin = started_by.or_else(|| start_origins().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).cloned());
+            let origin = started_by.or_else(|| self.runtime.existing(instance_id, |r| r.start_origin.clone()).flatten());
             if let (Some(origin), Some(map)) = (origin, data.as_object_mut()) {
                 map.extend(origin_fields(&origin));
             }
@@ -3140,15 +3144,15 @@ impl Supervisor {
                 ..Default::default()
             });
         }
-        if !self.exit_events.contains_key(instance_id) {
-            let saved = self.saved_exit_events(instance_id);
-            self.exit_events.insert(instance_id.to_string(), saved.into());
-        }
-        let events = self.exit_events.entry(instance_id.to_string()).or_default();
-        events.push_back(event);
-        while events.len() > crash::EVENTS_KEPT {
-            events.pop_front();
-        }
+        // 이 실행에서 처음 남기면 지난 실행의 이력부터 읽는다 (파일은 잠금 밖에서 읽는다)
+        let saved = (!self.runtime.existing(instance_id, |r| r.exit_events.is_some()).unwrap_or(false)).then(|| self.saved_exit_events(instance_id));
+        self.runtime.with(instance_id, |r| {
+            let events = r.exit_events.get_or_insert_with(|| saved.unwrap_or_default().into());
+            events.push_back(event);
+            while events.len() > crash::EVENTS_KEPT {
+                events.pop_front();
+            }
+        });
         self.save_exit_events(instance_id);
     }
 
@@ -3165,12 +3169,12 @@ impl Supervisor {
     }
 
     fn save_exit_events(&self, instance_id: &str) {
-        let Some(events) = self.exit_events.get(instance_id) else { return };
+        let Some(events) = self.runtime.existing(instance_id, |r| r.exit_events.clone()).flatten() else { return };
         let path = self.exit_events_path(instance_id);
         if !path.parent().is_some_and(|d| d.is_dir()) {
             return;
         }
-        match serde_json::to_vec(events) {
+        match serde_json::to_vec(&events) {
             Ok(bytes) => {
                 if let Err(e) = saba_atomic_file::write(&path, &bytes, saba_atomic_file::Mode::Plain) {
                     tracing::warn!("Failed to save exit history for '{}': {}", instance_id, e);
@@ -3188,9 +3192,9 @@ impl Supervisor {
     /// 대기하는 동안 사용자가 정지·시작했거나 인스턴스가 지워졌으면 false.
     /// `generation`은 예약 때의 실행 세대 (꺼진 서버에 정지를 보내면 정지 표시가 바로 지워지므로 세대로 가른다)
     pub async fn restart_still_wanted(&self, instance_id: &str, generation: u64) -> bool {
-        if self.stop_requested.contains_key(instance_id)
+        if self.runtime.existing(instance_id, |r| r.stop_requested.is_some()).unwrap_or(false)
             || self.instance_store.get(instance_id).is_none()
-            || self.run_generation.get(instance_id).copied().unwrap_or_default() != generation
+            || self.run_generation_of(instance_id) != generation
         {
             return false;
         }
@@ -3199,21 +3203,25 @@ impl Supervisor {
 
     /// 지금 실행 세대 (시작할 때마다 1씩 오른다)
     pub fn run_generation_of(&self, instance_id: &str) -> u64 {
-        self.run_generation.get(instance_id).copied().unwrap_or_default()
+        self.runtime.existing(instance_id, |r| r.run_generation).unwrap_or_default()
     }
 
     /// 자동 재시작이 실패했을 때 이력에 남긴다
     pub fn record_restart_failure(&mut self, instance_id: &str, attempt: u64, reason: String) {
-        if let Some(last) = self.exit_events.get_mut(instance_id).and_then(|e| e.back_mut()) {
+        let noted = self.runtime.existing(instance_id, |r| {
+            let last = r.exit_events.as_mut().and_then(|e| e.back_mut())?;
             last.note = Some(format!("restart failed: {}", reason));
             last.note_code = Some("restart_failed".into());
             last.note_args = Some(serde_json::json!({ "reason": reason }));
+            Some((last.note_code.clone(), last.note_args.clone()))
+        });
+        if let Some((note_code, note_args)) = noted.flatten() {
             // `instance.exit`는 이미 나갔으므로 실패는 따로 알린다 (오류 원문이 있어 릴레이로는 올리지 않는다)
             crate::events::emit("instance.restart_failed", serde_json::json!({
                 "instanceId": instance_id,
                 "instance": self.instance_store.get(instance_id).map(|i| i.name.clone()).unwrap_or_default(),
-                "noteCode": last.note_code,
-                "noteArgs": last.note_args,
+                "noteCode": note_code,
+                "noteArgs": note_args,
                 "restartAttempt": attempt,
             }));
         }
@@ -3234,8 +3242,8 @@ impl Supervisor {
 
     /// 최근 종료 이력, 오래된 것부터
     pub fn exit_events(&self, instance_id: &str) -> Vec<crash::ExitEvent> {
-        match self.exit_events.get(instance_id) {
-            Some(events) => events.iter().cloned().collect(),
+        match self.runtime.existing(instance_id, |r| r.exit_events.as_ref().map(|e| e.iter().cloned().collect())).flatten() {
+            Some(events) => events,
             None => self.saved_exit_events(instance_id),
         }
     }
@@ -3272,7 +3280,7 @@ impl Supervisor {
             // 죽은 managed process에 대해 stop cooldown 등록 → auto_detect 재탐색 억제
             // 이전 세션에서 실행되어 reattach된 프로세스가 종료된 경우,
             // cooldown 없이 auto_detect가 즉시 동명 프로세스를 재추적하는 것을 방지
-            self.stop_cooldowns.insert(dead_id.clone(), Instant::now());
+            self.runtime.with(dead_id, |r| r.stop_cooldown = Some(Instant::now()));
         }
         
         let all_instances_snapshot = self.instance_store.list().to_vec();
@@ -3308,7 +3316,7 @@ impl Supervisor {
                     }
                     // 사바쨩이 시키지 않았는데 사라진 non-managed 서버 (managed는 위에서 판정했다)
                     let judged = dead.iter().any(|(id, _)| *id == instance.id) || self.managed_store.get(&instance.id).await.is_some();
-                    if !judged && !self.stop_requested.contains_key(&instance.id) {
+                    if !judged && !self.runtime.existing(&instance.id, |r| r.stop_requested.is_some()).unwrap_or(false) {
                         let verdict = crash::ExitVerdict { kind: crash::ExitKind::UnknownExit, exit_code: None, signal: None, evidence: "exit status unknown".into() };
                         let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: None, note: None, note_code: None, note_args: None };
                         self.record_exit(&instance.id, &instance.name, event, None, None);
@@ -3333,7 +3341,7 @@ impl Supervisor {
             // auto_detect가 활성화되어 있고 process_name이 설정되어 있으면 감지 시도
             if instance.auto_detect {
                 // stop 쿨다운 중이면 건너뛰기
-                if let Some(stopped_at) = self.stop_cooldowns.get(&instance.id) {
+                if let Some(stopped_at) = self.runtime.existing(&instance.id, |r| r.stop_cooldown).flatten() {
                     if stopped_at.elapsed().as_secs() < STOP_COOLDOWN_SECS {
                         tracing::debug!(
                             "Skipping auto-detect for '{}' (stop cooldown: {}s remaining)",
@@ -3343,7 +3351,7 @@ impl Supervisor {
                         continue;
                     } else {
                         // 쿨다운 만료 → 제거
-                        self.stop_cooldowns.remove(&instance.id);
+                        self.runtime.existing(&instance.id, |r| r.stop_cooldown = None);
                     }
                 }
                 if let Some(process_name) = &instance.process_name {
@@ -3386,7 +3394,7 @@ impl Supervisor {
                                     tracing::error!("Failed to track process: {}", e);
                                 }
                                 // 지난 정지의 표시를 지운다: 이 프로세스가 나중에 사라지면 사용자 정지가 아니다
-                                self.stop_requested.remove(&instance.id);
+                                self.runtime.existing(&instance.id, |r| r.stop_requested = None);
 
                                 // ── 포트 충돌 검사: 새로 감지된 프로세스의 포트가 이미 실행 중인 인스턴스와 겹치면 강제 종료 ──
                                 // GUI에서 portConflictCheck를 비활성화하면 auto-detect 시에도 강제 종료를 건너뜀
@@ -3419,7 +3427,7 @@ impl Supervisor {
 
                                     // tracker에서 제거 + 쿨다운 설정
                                     let _ = self.tracker.untrack(&instance.id);
-                                    self.stop_cooldowns.insert(instance.id.clone(), Instant::now());
+                                    self.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
 
                                     // 이벤트 기록 (GUI 폴링에서 읽어감) — 충돌마다 개별 이벤트 생성
                                     let ts = std::time::SystemTime::now()
@@ -3439,9 +3447,9 @@ impl Supervisor {
                                 }
                                 // 사바쨩이 띄우지 않은 서버가 켜졌다. 데몬이 켜질 때 이미 돌던 것은 빼고, 포트 충돌로 끈 것도 뺀다.
                                 // 사바쨩이 띄우는 중(추적 전)에 먼저 본 것도 뺀다
-                                let starting = self.starting.lock().unwrap_or_else(|e| e.into_inner()).contains(&instance.id);
+                                let starting = self.runtime.existing(&instance.id, |r| r.starting).unwrap_or(false);
                                 if self.first_scan_done && !starting && self.tracker.get_pid(&instance.id).is_ok() {
-                                    announce_started(&instance.id, &instance.name, &crate::audit::Origin::new("external"), true);
+                                    announce_started(&self.runtime, &instance.id, &instance.name, &crate::audit::Origin::new("external"), true);
                                 }
                             }
                 }
@@ -3571,15 +3579,10 @@ fn origin_fields(origin: &crate::audit::Origin) -> serde_json::Map<String, Value
     fields
 }
 
-/// 인스턴스마다 마지막으로 켠 쪽. 켜진 뒤 곧 끝난 시작 실패(`instance.exit` `start_failed`)에 시킨 쪽을 싣는다
-fn start_origins() -> &'static std::sync::Mutex<HashMap<String, crate::audit::Origin>> {
-    static ORIGINS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, crate::audit::Origin>>> = std::sync::OnceLock::new();
-    ORIGINS.get_or_init(Default::default)
-}
-
-/// `instance.started`: 서버가 켜졌다. `unexpected`면 사바쨩이 띄우지 않은 프로세스다
-fn announce_started(instance_id: &str, name: &str, origin: &crate::audit::Origin, unexpected: bool) {
-    start_origins().lock().unwrap_or_else(|e| e.into_inner()).insert(instance_id.to_string(), origin.clone());
+/// `instance.started`: 서버가 켜졌다. `unexpected`면 사바쨩이 띄우지 않은 프로세스다.
+/// 켠 쪽을 기억해 켜진 뒤 곧 끝난 시작 실패(`instance.exit` `start_failed`)에 싣는다
+fn announce_started(runtime: &runtime::Runtimes, instance_id: &str, name: &str, origin: &crate::audit::Origin, unexpected: bool) {
+    runtime.with(instance_id, |r| r.start_origin = Some(origin.clone()));
     idle::clear_stopped(instance_id);
     let mut data = origin_fields(origin);
     data.insert("instanceId".into(), json!(instance_id));
@@ -3738,13 +3741,14 @@ mod tests {
         assert_eq!((ready["ok"].clone(), ready["instance"].clone(), ready.get("code").cloned()), (json!(true), json!("r-ready"), None));
 
         // 종료 판정이 준비 뒤의 종료를 시작 실패로 보지 않게 남긴다 (한 번 읽으면 지운다)
-        assert!(ready::take_ready("r-ready"));
-        assert!(!ready::take_ready("r-ready"));
+        let rt = sup.read().await.runtime.clone();
+        assert!(ready::take_ready(&rt, "r-ready"));
+        assert!(!ready::take_ready(&rt, "r-ready"));
 
         let code = |e: Value| (e["ok"].clone(), e["code"].clone());
         start("r-dies", "dies").await;
         assert_eq!(code(ready_event(&mut sub, "r-dies").await), (json!(false), json!("start_failed")));
-        assert!(!ready::take_ready("r-dies"));
+        assert!(!ready::take_ready(&rt, "r-dies"));
 
         start("r-slow", "slow").await;
         assert_eq!(code(ready_event(&mut sub, "r-slow").await), (json!(false), json!("ready_timeout")));
@@ -3936,23 +3940,23 @@ mod tests {
     /// stop_cooldowns에 등록되어 auto_detect 재탐색이 억제되는지 검증
     #[tokio::test]
     async fn test_cleanup_dead_registers_stop_cooldown() {
-        let mut supervisor = Supervisor::new("./modules");
+        let supervisor = Supervisor::new("./modules");
 
         // 가짜 인스턴스를 등록 (파일 시스템 없이 인메모리 테스트)
         // cleanup_dead가 dead_ids를 반환하면 monitor_processes가 cooldown을 삽입해야 함
         // managed_store에 직접 죽은 프로세스를 넣을 순 없으므로,
         // 쿨다운 삽입 로직 자체를 단위 테스트
-        assert!(!supervisor.stop_cooldowns.contains_key("test-instance-id"));
+        let cooldown = || supervisor.runtime.existing("test-instance-id", |r| r.stop_cooldown).flatten();
+        assert!(cooldown().is_none());
 
         // dead_ids에 해당하는 쿨다운이 삽입됨을 시뮬레이션
         let dead_ids = vec!["test-instance-id".to_string()];
         for dead_id in &dead_ids {
-            supervisor.stop_cooldowns.insert(dead_id.clone(), Instant::now());
+            supervisor.runtime.with(dead_id, |r| r.stop_cooldown = Some(Instant::now()));
         }
 
-        assert!(supervisor.stop_cooldowns.contains_key("test-instance-id"));
         // 쿨다운이 30초 내이면 auto_detect를 건너뛰어야 함
-        let stopped_at = supervisor.stop_cooldowns.get("test-instance-id").unwrap();
+        let stopped_at = cooldown().unwrap();
         assert!(stopped_at.elapsed().as_secs() < STOP_COOLDOWN_SECS);
     }
 
@@ -3974,7 +3978,7 @@ mod tests {
         let id = inst.id.clone();
         sup.instance_store.add(inst).unwrap();
         // 정지 전에 다른 쪽(자동 재시작)이 세대를 올려 둔다
-        *sup.run_generation.entry(id.clone()).or_default() += 5;
+        sup.runtime.with(&id, |r| r.run_generation += 5);
         let sup = tokio::sync::RwLock::new(sup);
         let stopped_at = STOPPED_AT
             .scope(std::cell::Cell::new(None), async {
@@ -4591,7 +4595,7 @@ mod tests {
         supervisor.managed_store.insert("start-fail-src", proc).await;
         let mut discord = crate::audit::Origin::new("discord");
         discord.user_name = Some("주인님".into());
-        announce_started("start-fail-src", "sf", &discord, false);
+        announce_started(&supervisor.runtime, "start-fail-src", "sf", &discord, false);
         for _ in 0..50 {
             if supervisor.managed_store.running_instance_ids().await.is_empty() {
                 break;
@@ -4655,7 +4659,7 @@ mod tests {
             }
             supervisor.managed_store.insert(id, proc).await;
         }
-        supervisor.stop_requested.insert("stopped".into(), crate::audit::Origin::new("gui"));
+        supervisor.runtime.with("stopped", |r| r.stop_requested = Some(crate::audit::Origin::new("gui")));
         for _ in 0..50 {
             if supervisor.managed_store.running_instance_ids().await.is_empty() {
                 break;
@@ -4703,10 +4707,10 @@ mod tests {
         assert_eq!(ends, vec![("instance.restarted".to_string(), json!(7)), ("instance.restart_cancelled".to_string(), json!(8))]);
         assert_eq!(supervisor.take_pending_restarts(), vec![("crash".to_string(), Duration::from_secs(5), 0)]);
         assert!(supervisor.restart_still_wanted("crash", 0).await);
-        supervisor.stop_requested.insert("crash".into(), crate::audit::Origin::new("gui"));
+        supervisor.runtime.with("crash", |r| r.stop_requested = Some(crate::audit::Origin::new("gui")));
         assert!(!supervisor.restart_still_wanted("crash", 0).await, "a stop during the wait cancels the restart");
         // 꺼진 서버에 보낸 정지는 정지 표시를 바로 지운다: 그래도 대기 중 정지가 있었으면 재시작하지 않는다
-        supervisor.stop_requested.remove("crash");
+        supervisor.runtime.with("crash", |r| r.stop_requested = None);
         let sup = tokio::sync::RwLock::new(supervisor);
         Supervisor::stop_server(&sup, "crash", "game", false).await.unwrap();
         assert!(!sup.read().await.restart_still_wanted("crash", 0).await, "a stop of the already exited server cancels the restart");
@@ -4822,9 +4826,9 @@ mod tests {
         // 사바쨩이 띄우는 중(아직 추적 전)에 모니터가 먼저 본 프로세스는 밖에서 켠 것이 아니다
         sup.write().await.monitor_processes_taken_at(&[], u64::MAX).await.unwrap();
         seen("instance.exit", "w-ext");
-        sup.read().await.starting.lock().unwrap().insert("w-ext".into());
+        sup.read().await.runtime.with("w-ext", |r| r.starting = true);
         sup.write().await.monitor_processes_taken_at(std::slice::from_ref(&ext), u64::MAX).await.unwrap();
-        sup.read().await.starting.lock().unwrap().remove("w-ext");
+        sup.read().await.runtime.with("w-ext", |r| r.starting = false);
         assert!(seen("instance.started", "w-ext").is_empty(), "a server saba-chan is starting is not unexpected");
 
         // 끝까지 판정한 정지 뒤의 모니터 순회가 같은 실행을 원인 모를 종료로 다시 보지 않는다
@@ -5588,7 +5592,7 @@ mod tests {
     /// 시작은 락 밖에서 진행되므로, 같은 인스턴스의 두 번째 시작은 표시로 막는다 (C12)
     #[test]
     fn start_guard_blocks_a_second_start_until_dropped() {
-        let set = std::sync::Arc::new(std::sync::Mutex::new(HashSet::new()));
+        let set = runtime::Runtimes::default();
         let first = StartGuard::claim(&set, "a", 0).expect("first start");
         assert!(StartGuard::claim(&set, "a", 0).is_none());
         assert!(StartGuard::claim(&set, "b", 0).is_some(), "other instances are not blocked");

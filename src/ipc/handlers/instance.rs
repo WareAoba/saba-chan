@@ -1493,7 +1493,7 @@ async fn undo_import(state: &IPCServer, instance: &crate::instance::ServerInstan
     }
     // Windows 파일 잠금 대비 재시도 (삭제와 같다)
     for attempt in 0..3 {
-        match state.supervisor.write().await.instance_store.remove(&instance.id) {
+        match state.supervisor.write().await.remove_instance(&instance.id) {
             Ok(()) => return true,
             Err(e) => tracing::warn!("Could not remove '{}' after a failed import ({}/3): {}", instance.name, attempt + 1, e),
         }
@@ -1612,7 +1612,7 @@ pub async fn dismiss_provision_progress(
             Some(_guard) => {
                 let mut supervisor = state.supervisor.write().await;
                 if supervisor.instance_store.get(&id).is_some() {
-                    match supervisor.instance_store.remove(&id) {
+                    match supervisor.remove_instance(&id) {
                         Ok(_) => {
                             rolled_back = true;
                             tracing::info!("Provisioning rollback: removed instance '{}' (id={})", name, id)
@@ -1786,7 +1786,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
             tracing::warn!("{:#}", e);
         }
     }
-    let removed = state.supervisor.write().await.instance_store.remove(&id);
+    let removed = state.supervisor.write().await.remove_instance(&id);
     if let Some(dir) = detached.filter(|_| !keep_folder) {
         let name = instance.name.clone();
         let _ = tokio::task::spawn_blocking(move || {
@@ -2478,9 +2478,10 @@ pub async fn update_instance_settings(
     let module_extensions = module
         .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
         .unwrap_or_else(|| serde_json::json!({}));
+    let runtime = supervisor.runtime.clone();
     drop(supervisor);
     if sweep {
-        crate::controllers::sweep(&state, Some(&id));
+        crate::controllers::sweep(&state, &runtime, Some(&id));
     }
 
     // 게임 설정 파일 동기화 (변경된 항목이 있을 때만). 실패해도 저장은 남기고 응답에 싣는다
@@ -3638,6 +3639,31 @@ mod tests {
         assert_eq!(call.config()[crate::sandbox::MIGRATION_IMPORT], json!(true));
         assert_eq!(call.config()["working_dir"], json!("/srv/game"));
         assert_eq!(call.config()["instance_dir"], json!("/data/instances/a"));
+    }
+
+    /// 지운 인스턴스의 런타임 상태(정지 표시·실행 세대·정지 문·접속자 수 등)는 데몬이 끝날 때까지 남지 않는다
+    #[tokio::test]
+    async fn deleting_an_instance_leaves_no_runtime_state_behind() {
+        use axum::extract::{Path, Query, State};
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let inst = crate::instance::ServerInstance::new("gone", "game");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let runtime = state.supervisor.read().await.runtime.clone();
+        // 정지를 한 번 거치면 정지 문과 실행 세대가, 콘솔로 세기 시작하면 접속자 목록이 생긴다
+        let _ = crate::ipc::internal::into_internal(super::super::server::stop_instance(state.clone(), &id, false).await).await;
+        crate::supervisor::players::roster_start(&runtime, &id);
+        assert!(runtime.contains(&id), "the instance has runtime state");
+
+        let removed = crate::ipc::internal::into_internal(super::delete_instance(Path(id.clone()), State(state.clone()), Query(Default::default())).await).await;
+        assert_eq!(removed.status.as_u16(), 200, "{}", removed.body);
+        assert!(!runtime.contains(&id), "deleting the instance drops its runtime state");
+        assert_eq!(crate::supervisor::players::get(&runtime, &id), None);
     }
 
     /// 설치가 끝났다는 표시를 기다린다. 상한은 멈춘 설치를 알아채려는 것이라, 병렬 테스트로 느려진 PC·CI에서도 넉넉히 둔다
