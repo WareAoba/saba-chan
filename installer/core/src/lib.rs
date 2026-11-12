@@ -929,7 +929,7 @@ fn load_main_app_language() -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// 컴포넌트를 모두 `temp_dir`에 받고(`fetch`가 SHA-256까지 확인) 빈 폴더에 한 번 풀어 본다.
+/// 컴포넌트를 모두 `temp_dir`에 받고(`fetch`가 SHA-256까지 확인) 풀지 않고 끝까지 읽어 확인한다(`verify_zip`).
 /// 하나라도 받지 못하거나 깨졌으면 무엇도 적용하기 전에 실패 종류와 이유를 돌려준다. 받은 zip 경로를 같은 순서로 돌려준다
 async fn fetch_all<'a, F, Fut>(
     components: &[(&'a String, &'a relay::ManifestComponent)],
@@ -946,9 +946,7 @@ where
         fetch(i, key, info, zip.clone())
             .await
             .map_err(|e| ("download_failed", format!("Failed to download {}: {}", key, e)))?;
-        let probe = temp_dir.join(format!(".check-{}", i));
-        let checked = if is_bare_installer(key, &zip) { Ok(()) } else { saba_chan_updater_lib::extract_zip(&zip, &probe, |_| Ok(())).map(|_| ()) };
-        let _ = std::fs::remove_dir_all(&probe);
+        let checked = if is_bare_installer(key, &zip) { Ok(()) } else { saba_chan_updater_lib::verify_zip(&zip) };
         checked.map_err(|e| ("extract_failed", format!("Failed to extract {}: {}", key, e)))?;
         zips.push(zip);
     }

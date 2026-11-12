@@ -265,6 +265,42 @@ mod run_all {
     }
 }
 
+/// 설치기는 받은 zip을 적용 전에 확인한다. 확인은 풀어 쓰지 않고 읽기만 해서, 깨진 내용(CRC)과 밖으로 나가는 경로를 잡는다
+#[test]
+fn verify_zip_catches_a_damaged_or_unsafe_archive_without_writing() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let stored = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let good = tmp.path().join("good.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&good).unwrap());
+        zw.start_file("dir/inner.txt", stored).unwrap();
+        zw.write_all(b"the-content-of-the-file").unwrap();
+        zw.finish().unwrap();
+    }
+    crate::verify_zip(&good).unwrap();
+
+    let mut bytes = std::fs::read(&good).unwrap();
+    let at = bytes.windows(11).position(|w| w == b"the-content").unwrap();
+    bytes[at] ^= 0xff;
+    let damaged = tmp.path().join("damaged.zip");
+    std::fs::write(&damaged, bytes).unwrap();
+    assert!(crate::verify_zip(&damaged).is_err(), "a changed byte must fail the CRC check");
+
+    let evil = tmp.path().join("evil.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&evil).unwrap());
+        zw.start_file("../escaped.txt", stored).unwrap();
+        zw.write_all(b"bad").unwrap();
+        zw.finish().unwrap();
+    }
+    assert!(crate::verify_zip(&evil).is_err());
+
+    let mut left: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    left.sort();
+    assert_eq!(left, ["damaged.zip", "evil.zip", "good.zip"]);
+}
+
 #[test]
 fn test_extract_zip_rejects_paths_outside_target() {
     use std::io::Write;
