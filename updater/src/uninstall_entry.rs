@@ -129,7 +129,7 @@ const RUNTIME_ENTRIES: &[&str] = &[
     "sandbox-temp",
     "temp",
     "pip-cache",
-    "_python_download.tar.gz",
+    crate::python_runtime::DOWNLOAD_ARCHIVE,
     "daemon.lock",
     "daemon.lock.owner",
     "daemon.log",

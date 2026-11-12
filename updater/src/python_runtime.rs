@@ -15,6 +15,8 @@ use tokio::process::Command;
 
 pub const PORTABLE_DIR: &str = "python-standalone";
 pub const VENV_DIR: &str = "python-env";
+/// 포터블 Python을 받는 묶음 (풀고 나면 지우지만 중간에 끊기면 남는다. 제거기가 지운다)
+pub const DOWNLOAD_ARCHIVE: &str = "_python_download.tar.gz";
 /// venv로 쓰는 최소 판. 모듈 공용 도우미가 표준 `tomllib`(3.11+)으로 module.toml을 읽는다
 pub const MIN_VERSION: (u32, u32) = (3, 11);
 
@@ -102,16 +104,6 @@ pub fn parse_version(s: &str) -> Option<(u32, u32)> {
     Some((major, minor))
 }
 
-/// 콘솔 창 없이 띄운다 (Windows)
-pub fn hide_window(cmd: &mut Command) -> &mut Command {
-    #[cfg(windows)]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    cmd
-}
-
 /// 실행되고 최소 판 이상인가
 pub async fn verify(run: &dyn Run, exe: &Path) -> bool {
     if !exe.exists() {
@@ -119,7 +111,7 @@ pub async fn verify(run: &dyn Run, exe: &Path) -> bool {
     }
     let mut cmd = Command::new(exe);
     cmd.args(["-c", "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}.{v.micro}')"]);
-    hide_window(&mut cmd);
+    crate::process::hide_console(cmd.as_std_mut());
     matches!(run.output(&mut cmd).await,
         Ok(o) if o.status.success() && parse_version(&String::from_utf8_lossy(&o.stdout)).is_some_and(|v| v >= MIN_VERSION))
 }
@@ -135,7 +127,7 @@ pub fn install_portable<'a>(
     Box::pin(async move {
         let (url, sha256) = crate::python_pin::download().context("이 플랫폼에서는 포터블 Python 자동 설치를 지원하지 않습니다")?;
         let portable_dir = root.join(PORTABLE_DIR);
-        let archive = root.join("_python_download.tar.gz");
+        let archive = root.join(DOWNLOAD_ARCHIVE);
         // 기존 실패분 정리
         if portable_dir.exists() {
             let _ = std::fs::remove_dir_all(&portable_dir);
@@ -156,7 +148,7 @@ pub fn install_portable<'a>(
 
         let mut tar = Command::new(crate::process::system_tool("tar"));
         tar.arg("-xzf").arg(&archive).arg("-C").arg(&portable_dir);
-        hide_window(&mut tar);
+        crate::process::hide_console(tar.as_std_mut());
         let output = run.output(&mut tar).await.context("tar 실행 실패")?;
         let _ = std::fs::remove_file(&archive);
         if !output.status.success() {
@@ -191,7 +183,7 @@ pub async fn create_venv(run: &dyn Run, base: &Path, root: &Path) -> Result<Path
 
     let mut cmd = Command::new(base);
     cmd.arg("-m").arg("venv").arg(&venv_dir);
-    hide_window(&mut cmd);
+    crate::process::hide_console(cmd.as_std_mut());
     let output = run.output(&mut cmd).await.context("venv 생성 명령 실행 실패")?;
     if !output.status.success() {
         anyhow::bail!("venv 생성 실패: {}", String::from_utf8_lossy(&output.stderr));
@@ -201,7 +193,7 @@ pub async fn create_venv(run: &dyn Run, base: &Path, root: &Path) -> Result<Path
     // pip 업그레이드 (실패해도 치명적이지 않음). 받은 패키지 캐시는 데이터 폴더에 둔다(제거기가 지운다)
     let mut pip = Command::new(&python);
     pip.env("PIP_CACHE_DIR", crate::constants::resolve_pip_cache_dir()).args(["-m", "pip", "install", "--upgrade", "--quiet", "pip"]);
-    hide_window(&mut pip);
+    crate::process::hide_console(pip.as_std_mut());
     match run.output(&mut pip).await {
         Ok(o) if !o.status.success() => tracing::warn!("pip 업그레이드 실패: {}", String::from_utf8_lossy(&o.stderr)),
         Err(e) => tracing::warn!("pip 실행 실패: {}", e),

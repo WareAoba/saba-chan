@@ -1233,7 +1233,7 @@ const INSTALLED_ENTRIES: &[&str] = &[
     // GUI zip의 리눅스 앱 메뉴 아이콘 (맥 묶음 정보·아이콘은 설치기가 Contents로 옮긴다)
     "saba-chan-gui.png",
     // 설치 폴더에 Python 런타임을 받을 때 내려받는 묶음 (풀고 나면 지우지만 중간에 끊기면 남는다)
-    "_python_download.tar.gz",
+    saba_chan_updater_lib::python_runtime::DOWNLOAD_ARCHIVE,
     INSTALL_MARKER,
 ];
 
