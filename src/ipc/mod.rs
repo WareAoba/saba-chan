@@ -288,6 +288,9 @@ pub struct ServerInfo {
     /// 아직 확인하지 않았거나 확인하지 않는 서버면 null. 화면은 직접 확인하지 않고 이것을 읽는다 (`server_update::last_check`)
     #[serde(default)]
     pub update_check: Option<serde_json::Value>,
+    /// 시작·정지 요청이 진행 중이면 `starting`·`stopping` (0.1.14~). 화면은 이것으로 "하는 중"을 보인다 (`instance::transition`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transition: Option<String>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)

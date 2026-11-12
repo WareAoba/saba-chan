@@ -103,6 +103,8 @@ export interface ServerInfo {
     restorable_settings: boolean;
     /** 데몬이 마지막으로 한 게임 서버 업데이트 확인 (`check-update`의 답 + `checked_at`). 확인 전·확인하지 않는 서버는 null, 옛 데몬은 없다 */
     update_check?: ApiBody | null;
+    /** 시작·정지 요청이 데몬에서 진행 중이면 `starting`·`stopping` (0.1.14~, 어디서 시켰든) */
+    transition?: 'starting' | 'stopping';
 }
 
 /** 포트 충돌로 데몬이 강제로 끈 서버 알림 */
