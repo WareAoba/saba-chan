@@ -83,11 +83,6 @@ interface LoadingScreenProps {
     onShake?: (dx: number, dy: number) => void;
 }
 
-/**
- * 오프닝 재생: 시작 시각과 로고 가운데를 정해 매트릭스에 넘기고, 같은 시계로 가운데 묶음·섬광·바탕을 움직인다.
- * burst: 화음(메인 화면이 열리는 때)부터 바탕을 걷어 글자만 메인 화면 위에 흩어지게 두고, 화면을 한 번 흔든다(onShake).
- * fall: 섬광 없이 바탕을 서서히 걷으며 가운데 묶음을 가라앉힌다
- */
 /** onPrepare가 준비를 마치면 재생할 오프닝 (그 전에는 null) */
 function usePreparedOpening(onPrepare?: (signal: AbortSignal) => Promise<OpeningPlay | null>) {
     const [play, setPlay] = useState<OpeningPlay | null>(null);
@@ -105,6 +100,11 @@ function usePreparedOpening(onPrepare?: (signal: AbortSignal) => Promise<Opening
     return preparing ? play : null;
 }
 
+/**
+ * 오프닝 재생: 시작 시각과 로고 가운데를 정해 매트릭스에 넘기고, 같은 시계로 가운데 묶음·섬광·바탕을 움직인다.
+ * burst: 화음(메인 화면이 열리는 때)부터 바탕을 걷어 글자만 메인 화면 위에 흩어지게 두고, 화면을 한 번 흔든다(onShake).
+ * fall: 섬광 없이 바탕을 서서히 걷으며 가운데 묶음을 가라앉힌다
+ */
 function useOpeningPlayback(
     play: OpeningPlay | null,
     onOpened?: () => void,
