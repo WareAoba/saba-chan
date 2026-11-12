@@ -1,0 +1,6 @@
+/* JS 번들 로드 전에 테마 바탕색(tokens.css --bg-0)을 미리 칠해 흰 화면 플래시 방지.
+   index.html에 인라인 <style>로 두지 않는다 (src/test/index-html-csp.test.ts) */
+html, body { margin: 0; background: #0d0e10; }
+@media (prefers-color-scheme: light) {
+  html, body { background: #e6e8ed; }
+}

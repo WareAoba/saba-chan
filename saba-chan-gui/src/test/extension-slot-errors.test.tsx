@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ExtensionSlot from '../components/ExtensionSlot';
 import { ExtensionProvider, useExtensions } from '../contexts/ExtensionContext';
 
-const ext = (id: string) => ({ id, enabled: true, version: '1.0.0', gui: { bundle: 'x.js', styles: 'x.css' }, gui_allowed: true });
+const ext = (id: string) => ({ id, enabled: true, version: '1.0.0', gui: { bundle: 'x.js' }, gui_allowed: true });
 const Good = () => <span>good slot</span>;
 
 describe('확장 슬롯 오류 격리', () => {

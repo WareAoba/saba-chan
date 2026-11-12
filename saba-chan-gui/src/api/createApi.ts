@@ -682,9 +682,11 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 });
                 return typeof data === 'string' ? data : null;
             } catch (caught) {
-                // 404는 스타일이 없는 것이다. 그 밖의 실패는 호출자가 다시 받도록 던진다
-                if ((caught as DaemonError).response?.status === 404) return null;
-                throw caught;
+                const error = caught as DaemonError;
+                if (error.response?.status !== 404) {
+                    console.warn(`[Extension] Failed to load GUI styles for '${extId}':`, error.message);
+                }
+                return null;
             }
         },
         // 익스텐션 아이콘 (PNG → data:image/png;base64)
