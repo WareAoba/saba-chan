@@ -83,7 +83,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | moduleRemove (429) | DELETE /api/modules/:id | ✓ 658 |
 | instanceCreate (437) | POST /api/instances | ✓ 662 |
 | instanceCheck | POST /api/instances/check (만들기 마법사의 이름·포트 단계와 확인 단계. 이름·서버 폴더·포트 겹침) | ✓ |
-| instanceProvisionProgress (485) | GET /api/provision-progress/:name | ✓ 668 |
+| instanceProvisionProgress (485) | GET /api/provision-progress/:name. 설치 중인 서버 줄(`useInstanceMaintenance`)은 데몬 이벤트 `provision.progress`(같은 모양 + `instance`)로 진행률·완성을 받고, 이 조회는 놓친 것을 메우려 10초마다만 한다(이벤트가 없는 셸은 1.2초) | ✓ 668 |
 | instanceDismissProvision (492) | DELETE /api/provision-progress/:name | ✓ 668 |
 | instanceCheckUpdate (499) | GET /api/instance/:id/check-update. 서버 목록에 `update_check`가 있으면(0.1.14~ 데몬) 부르지 않고 그 값을 쓴다(`useInstanceMaintenance`). 옛 데몬에만 목록 줄이 처음 보일 때와 3시간마다 부른다 | ✓ 670 |
 | instanceApplyUpdate (509) | POST /api/instance/:id/apply-update | ✓ 671 |
@@ -198,7 +198,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | onOpenRoute | 셸의 `app:openRoute {route}`(바탕화면 오버레이가 고른 앱 탭)를 받는다. App은 앱 탭이면 `setActiveTab(route)`. 메인 창이 막 뜨는 중이면 놓칠 수 있다(그때는 기본 탭) | n/a |
 | onCloseRequest / closeResponse (1021-1025) | 셸의 `app:closeRequest`를 받고, Rust `app_close_response`로 답한다(기다리지 않음). App은 받자마자 `ack`를 보낸다. 앱 설정 `closeAction`이 `tray`면 묻지 않고 `exit-interface`, `quit`이면 모두 끄기(켜진 managed 서버가 있으면 그 경고는 그대로), `ask`(기본)면 종료 모달. 돌려주는 함수로 그 구독만 해제 | n/a |
 | onStatusUpdate (1403) | 셸의 `status:update`. 브리지가 마지막 값을 기억해 늦게 붙은 콜백에도 준다(`events.ts:68-76`). 돌려주는 함수로 그 구독만 해제 (채널 전체를 떼는 `off*`는 없다) | n/a |
-| daemonStatus (1404) | Rust `daemon_status` → GET /health. 응답의 `token`이 `valid`(필드가 없으면 예전 데몬이라 유효로 본다)일 때만 `running: true`. 어긋나면 토큰 파일을 한 번 다시 읽어 재시도하고, 그래도 어긋나면 `running: false, error_code: "token_invalid"`. 실행 중이면 `in_parent_job`(데몬을 띄운 프로그램과 함께 끝날 수 있는가: `/health` `stops_with_launcher`, 키가 없는 옛 데몬이면 이 GUI가 job breakaway 없이 띄운 데몬이 아직 살아 있는가)도 준다 | ✓ 637 |
+| daemonStatus (1404) | Rust `daemon_status` → GET /health. App.tsx가 5초마다 묻되 창이 숨어 있으면(최소화·트레이) 건너뛰고 다시 보이면 바로 묻는다(`utils/visibleTimer.ts`, 합쳐 보기 `OtherDaemons` 10초·코코낸내 구석 `SleepCorner` 60초도 같다). 응답의 `token`이 `valid`(필드가 없으면 예전 데몬이라 유효로 본다)일 때만 `running: true`. 어긋나면 토큰 파일을 한 번 다시 읽어 재시도하고, 그래도 어긋나면 `running: false, error_code: "token_invalid"`. 실행 중이면 `in_parent_job`(데몬을 띄운 프로그램과 함께 끝날 수 있는가: `/health` `stops_with_launcher`, 키가 없는 옛 데몬이면 이 GUI가 job breakaway 없이 띄운 데몬이 아직 살아 있는가)도 준다 | ✓ 637 |
 | daemonRestart (1405) | Rust `daemon_restart`: `stop_daemon()`(API 종료, 안 되면 자기 PID만 kill) 후 `/health`가 멎을 때까지 기다렸다가 **`start_daemon()`으로 직접 spawn**(`lifecycle.rs:592-618`) | 부분 |
 | minimize/maximize/closeWindow | Rust `window_minimize` / `window_maximize`(토글) / `window_close`. 호출한 창에 적용한다 | n/a |
 | windowIsMaximized | Rust `window_is_maximized`. 창 버튼이 최대화·복원 아이콘을 고른다 | n/a |

@@ -2,11 +2,14 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import type { Server } from '../stores/useServerStore';
 import type { ApiBody, ModuleInfo } from '../types/daemon';
+import { eventsAvailable, subscribeDaemonEvents } from '../utils/daemonEvents';
 import { extensionInstallMethod } from '../utils/installMethod';
 
 /** 데몬이 목록에 확인 결과를 싣지 않는 옛 데몬일 때만 화면이 직접 확인을 시킨다 */
 const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3시간
 const PROVISION_POLL_MS = 1200;
+/** 데몬의 `provision.progress` 이벤트를 받는 동안 놓친 것을 메우는 간격 */
+const PROVISION_SLOW_POLL_MS = 10_000;
 
 /**
  * 인스턴스별 "관리" 상태 — 게임 서버 업데이트 정보, 설치(프로비저닝) 진행률, 설치 완성 카드(cooked).
@@ -93,28 +96,50 @@ export function useInstanceMaintenance(server: Server, module: ModuleInfo | unde
         // 새 설치·업데이트가 시작됐다: 예전 완성 카드는 지운다 (이번에 실패하면 다시 보이지 않게)
         patch(server.id, { cooked: false });
         let cancelled = false;
+        let finished = false;
+        let wake: (() => void) | null = null;
+        // 한 번의 진행 상태(조회 답이나 이벤트)를 화면에 싣는다. 끝났으면 true
+        const apply = (result: ApiBody | null | undefined) => {
+            if (cancelled || finished || !result?.active) return;
+            patch(server.id, { provisionProgress: result });
+            if (result.done) {
+                // 데몬은 성공한 설치 표시를 곧 지운다 — 완성 카드는 사용자가 닫을 때까지 남긴다
+                if (!result.error) patch(server.id, { cooked: true });
+                finished = true; // 끝났으면 묻기만 멈추고 화면은 유지
+                wake?.();
+            }
+        };
+        // 데몬이 단계마다 진행률을 알린다: 이벤트를 받으면 가끔만 묻는다 (놓친 것 메우기)
+        const offEvents = subscribeDaemonEvents((ev) => {
+            if (ev.type === 'provision.progress' && ev.data?.instance === server.name) {
+                const { instance: _instance, ...progress } = ev.data;
+                apply({ ...progress, active: true });
+            }
+        });
+        const pollMs = eventsAvailable() ? PROVISION_SLOW_POLL_MS : PROVISION_POLL_MS;
         const poll = async () => {
-            while (!cancelled) {
+            while (!cancelled && !finished) {
                 try {
-                    const result = await window.api.instanceProvisionProgress(server.name);
-                    if (cancelled) break;
-                    if (result?.active) {
-                        patch(server.id, { provisionProgress: result });
-                        if (result.done) {
-                            // 데몬은 성공한 설치 표시를 곧 지운다 — 완성 카드는 사용자가 닫을 때까지 남긴다
-                            if (!result.error) patch(server.id, { cooked: true });
-                            break; // 끝났으면 폴링만 멈추고 화면은 유지
-                        }
-                    }
+                    apply(await window.api.instanceProvisionProgress(server.name));
                 } catch {
                     // 무시
                 }
-                await new Promise((r) => setTimeout(r, PROVISION_POLL_MS));
+                if (cancelled || finished) break;
+                await new Promise<void>((r) => {
+                    const timer = setTimeout(r, pollMs);
+                    wake = () => {
+                        clearTimeout(timer);
+                        r();
+                    };
+                });
+                wake = null;
             }
         };
         poll();
         return () => {
             cancelled = true;
+            offEvents();
+            wake?.();
         };
     }, [server.id, server.provisioning, server.name, patch]);
 }

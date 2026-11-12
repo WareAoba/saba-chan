@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { everyWhileVisible } from '../../utils/visibleTimer';
 import { SabaArt } from '../ui/SabaArt';
 
 /** 자는지 다시 묻는 간격 — 자동 코코낸내(착한 어린이)는 릴레이가 정한 시각에 잠들고 깬다 */
@@ -48,10 +49,11 @@ export function SleepCorner({ guildId }: SleepCornerProps) {
             } else setState((s) => (s === 'waking' ? s : null));
         };
         check();
-        const timer = setInterval(check, POLL_MS);
+        // 창이 숨어 있는 동안은 묻지 않는다 (다시 보이면 바로 묻는다)
+        const stop = everyWhileVisible(check, POLL_MS);
         return () => {
             alive = false;
-            clearInterval(timer);
+            stop();
             clearTimeout(wakingTimer);
         };
     }, [guildId]);

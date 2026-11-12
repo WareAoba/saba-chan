@@ -44,6 +44,7 @@ import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
 import { eventsAvailable, serverListPollMs } from './utils/daemonEvents';
+import { everyWhileVisible } from './utils/visibleTimer';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
     beginOpeningSound,
@@ -509,8 +510,8 @@ function App() {
             }
         };
         checkDaemonStatus();
-        const interval = setInterval(checkDaemonStatus, 5000);
-        return () => clearInterval(interval);
+        // 창이 숨어 있는 동안(최소화·트레이)은 묻지 않고, 다시 보이면 바로 묻는다
+        return everyWhileVisible(checkDaemonStatus, 5000);
     }, [daemonReady]);
 
     // ── Settings Save Functions ─────────────────────────────
