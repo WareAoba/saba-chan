@@ -3391,13 +3391,14 @@ impl Supervisor {
                                         instance.name, process.pid, details
                                     );
 
-                                    // 자식까지 강제 종료 (런처형 서버는 런처만 끝내면 실제 서버가 남는다. taskkill은 동기라 spawn_blocking)
+                                    // 자식까지 강제 종료 (런처형 서버는 런처만 끝내면 실제 서버가 남는다. taskkill은 동기라 spawn_blocking).
+                                    // 끝나기를 기다리지 않는다: 여기는 supervisor 쓰기 잠금 안이라 기다리는 동안 모든 API 요청이 멈춘다
                                     let kill_pid = process.pid;
                                     let kill_name = instance.name.clone();
                                     tokio::task::spawn_blocking(move || match process::force_kill_tree(kill_pid) {
                                         Ok(()) => tracing::info!("Force-killed PID {} for instance '{}'", kill_pid, kill_name),
                                         Err(e) => tracing::warn!("Could not force-kill PID {} for instance '{}': {}", kill_pid, kill_name, e),
-                                    }).await.ok();
+                                    });
 
                                     // tracker에서 제거 + 쿨다운 설정
                                     let _ = self.tracker.untrack(&instance.id);
