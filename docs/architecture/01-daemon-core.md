@@ -769,7 +769,7 @@ spot = "server.tab.maintenance"    # 짚을 화면 요소의 data-spot
 
 **호출 계약**
 
-- 실행 형태: `<venv python> <module_path> <function>`. stdin으로 config JSON을 한 번 쓰고 닫는다.
+- 실행 형태: `<venv python> <module_path> <function>`. stdin으로 config JSON을 한 번 쓰고 닫는다. module.toml `[runtime]`·manifest `runtime`에 `persistent = true`를 밝힌 구성요소는 오래 사는 작업자로 부른다(`plugin/worker.rs`, [02 §2.1 끝](02-modules.md#21-실행-방식-dsrcpluginmodrs266-463)). 오류 코드와 상한은 같다.
 - 결과: stdout 전체, 또는 마지막 비지 않은 줄이 JSON이어야 한다(앞에 찍힌 print는 무시, `parse_plugin_output`, `:467-476`). 종료 코드가 0이 아니면 Err다. 파싱에 실패해도 Err다.
 - 진행률: stderr의 `PROGRESS:{json}` 줄을 `ExtensionProgress{percent,message,step,total,label}`로 파싱해 콜백에 넘긴다. `LOOPBACK:`·`HOST:` 줄은 중계로 처리하고 로그에 넣지 않는다. 나머지 줄은 debug 로그로 남기며 아래 상한 안에서 보존한다.
 - 타임아웃: 기본 120초(`DEFAULT_PLUGIN_TIMEOUT_SECS`), `install_server`는 1800초(`INSTALL_TIMEOUT_SECS`)다. 기한은 아래의 자리 대기·선조회·환경 준비·실행 전체를 포함한다.

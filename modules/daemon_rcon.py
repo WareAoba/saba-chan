@@ -1134,48 +1134,93 @@ def safe_extract(archive, dest, *, prefix=None, strip_top=False, keep_existing=(
 
 # ─── CLI 진입점 ───────────────────────────────────────────────
 
+# 작업자 약속 (데몬 `src/plugin/worker.rs`와 같은 값): 뜨면 stdout에 READY 한 줄, 요청 `{"function", "config"}` 한 줄마다
+# stderr에 DONE 한 줄을 쓴 뒤 stdout에 응답 JSON 한 줄
+WORKER_ARG = "--worker"
+WORKER_READY = '{"saba_worker": 1}'
+WORKER_DONE = "WORKER:done"
+
+
 def run_lifecycle(functions):
     """`python lifecycle.py <function>` 진입점.
 
     stdin의 JSON config를 함수에 넘기고 결과 JSON 한 개를 stdout에 출력한다.
     알 수 없는 함수나 예외도 JSON으로 응답하고 종료 코드 0을 유지한다
     (데몬은 0이 아닌 종료 코드를 HTTP 500으로 바꾼다).
+    `python lifecycle.py --worker`는 오래 사는 작업자다 (`[runtime] persistent = true`, `_serve_worker`).
     """
-    def emit(result):
-        try:
-            output = json.dumps(result, ensure_ascii=False, allow_nan=False)
-        except Exception as e:
-            output = json.dumps({"success": False, "error_code": "module_bad_output", "message": str(e)}, ensure_ascii=False)
-        sys.stdout.write(output + "\n")
-        sys.stdout.flush()
-
     if len(sys.argv) < 2:
-        emit({"success": False, "message": "Usage: lifecycle.py <function>"})
+        _emit(sys.stdout, {"success": False, "message": "Usage: lifecycle.py <function>"})
         return
-
     name = sys.argv[1]
+    if name == WORKER_ARG and name not in functions:
+        _serve_worker(functions)
+        return
+    _emit(sys.stdout, _answer(functions, name, _stdin_config))
+
+
+def _stdin_config():
+    raw = sys.stdin.read()
+    return json.loads(raw) if raw.strip() else {}
+
+
+def _emit(out, result):
+    try:
+        output = json.dumps(result, ensure_ascii=False, allow_nan=False)
+    except Exception as e:
+        output = json.dumps({"success": False, "error_code": "module_bad_output", "message": str(e)}, ensure_ascii=False)
+    out.write(output + "\n")
+    out.flush()
+
+
+def _answer(functions, name, read_config):
+    """함수 하나를 불러 답을 돌려준다. config는 부를 함수가 있을 때만 `read_config()`로 읽는다"""
     # 예약 함수: 데몬이 구현된 함수 목록을 묻는다 (자신은 넣지 않는다)
     if name == "functions" and name not in functions:
-        emit({"success": True, "functions": list(functions)})
-        return
+        return {"success": True, "functions": list(functions)}
     fn = functions.get(name)
     if fn is None:
-        emit({"success": False, "message": f"Unknown function: {name}", "available": list(functions)})
-        return
+        return {"success": False, "message": f"Unknown function: {name}", "available": list(functions)}
 
     try:
-        raw = sys.stdin.read()
-        config = json.loads(raw) if raw.strip() else {}
+        config = read_config()
     except json.JSONDecodeError as e:
-        emit({"success": False, "message": f"Invalid JSON config on stdin: {e}"})
-        return
+        return {"success": False, "message": f"Invalid JSON config on stdin: {e}"}
 
     try:
-        result = fn(config)
+        return fn(config)
     except PathOutside as e:
-        result = {"success": False, "error_code": "module_path_outside", "message": str(e), "path": e.path}
+        return {"success": False, "error_code": "module_path_outside", "message": str(e), "path": e.path}
     except Exception as e:  # 모듈 함수 오류도 JSON으로 돌려준다
         import traceback
         print(traceback.format_exc(), file=sys.stderr)
-        result = {"success": False, "error_code": "module_exception", "message": f"Error in {name}: {e}"}
-    emit(result)
+        return {"success": False, "error_code": "module_exception", "message": f"Error in {name}: {e}"}
+
+
+def _serve_worker(functions):
+    """오래 사는 작업자: stdin이 닫힐 때까지 요청 한 줄을 받아 단발 실행과 같은 답을 한 줄로 돌려준다."""
+    # 약속 줄만 따로 연 통로로 주고받는다. 함수의 print와 자식 프로세스가 물려받는 stdout은 stderr로, stdin은 빈 입력으로
+    requests = os.fdopen(os.dup(0), "r", encoding="utf-8")
+    replies = os.fdopen(os.dup(1), "w", encoding="utf-8", newline="\n")
+    with open(os.devnull, "rb") as empty:
+        os.dup2(empty.fileno(), 0)
+    os.dup2(2, 1)
+    sys.stdin = open(os.devnull, "r", encoding="utf-8")
+    sys.stdout = sys.stderr
+    cwd = os.getcwd()
+    replies.write(WORKER_READY + "\n")
+    replies.flush()
+    for line in requests:
+        if not line.strip():
+            continue
+        try:
+            request = json.loads(line)
+            name, config = request["function"], request.get("config")
+        except (ValueError, KeyError, TypeError, AttributeError) as e:
+            result = {"success": False, "message": f"Invalid worker request: {e}"}
+        else:
+            result = _answer(functions, name, lambda: {} if config is None else config)
+            # 단발 실행처럼 다음 호출은 구성요소 폴더에서 시작한다
+            os.chdir(cwd)
+        print(WORKER_DONE, file=sys.stderr, flush=True)
+        _emit(replies, result)

@@ -127,6 +127,8 @@ async fn move_component_dir(
         return Err(PathError::new("busy", format!("instance {}", id)));
     }
     let mut extensions = state.extension_manager.write().await;
+    // 옛 폴더에서 떠 있는 작업자는 끝낸다 (Windows는 작업 폴더로 쓰는 폴더를 옮기지 못한다)
+    crate::plugin::stop_workers(Some(&source));
 
     let (src, dst) = (source.clone(), target.clone());
     let moved = tokio::task::spawn_blocking(move || {

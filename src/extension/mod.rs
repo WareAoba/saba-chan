@@ -269,6 +269,9 @@ pub struct ExtensionManifest {
     /// 코드가 쓰는 위험한 능력 선언 (모듈 `[permissions]`와 같은 표). `extension audit`가 코드와 대조한다
     #[serde(default)]
     pub permissions: crate::supervisor::module_loader::ModulePermissions,
+    /// 실행 방식 (모듈 `[runtime]`과 같은 표). `persistent`면 hook·명령을 오래 사는 작업자로 부른다 (실행기가 manifest에서 읽는다)
+    #[serde(default, skip_serializing_if = "crate::plugin::Runtime::is_default")]
+    pub runtime: crate::plugin::Runtime,
 }
 
 /// 익스텐션이 선언하는 게임 명령. 실행하면 `module`의 `function`을 부른다
@@ -1128,6 +1131,8 @@ impl ExtensionManager {
             return Err(e);
         }
         tracing::info!("Extension disabled: {}", ext_id);
+        // 꺼진 익스텐션은 더 불리지 않는다
+        crate::plugin::stop_workers(Some(&self.ext_dir_on_disk(ext_id)));
         Ok(())
     }
 
@@ -1154,6 +1159,7 @@ impl ExtensionManager {
         self.discovered.remove(ext_id);
         // 디렉토리 삭제
         let ext_path = self.ext_dir_on_disk(ext_id);
+        crate::plugin::stop_workers(Some(&ext_path));
         if ext_path.exists() {
             std::fs::remove_dir_all(&ext_path)
                 .with_context(|| format!("Failed to remove extension directory: {}", ext_path.display()))?;
@@ -2187,6 +2193,13 @@ mod tests {
         let (m, warnings) = parse_manifest(&legacy.to_string()).unwrap();
         assert_eq!(m.schema_version, 0);
         assert!(warnings.iter().any(|w| w.contains("never fired")), "{warnings:?}");
+
+        let mut runtime = ok.clone();
+        runtime["runtime"] = json!({"persistent": true});
+        let (m, warnings) = parse_manifest(&runtime.to_string()).unwrap();
+        assert!(m.runtime.persistent && warnings.is_empty(), "{warnings:?}");
+        runtime["runtime"]["persistant"] = json!(true);
+        assert!(parse_manifest(&runtime.to_string()).unwrap_err().to_string().contains("persistant"));
 
         let mut perms = ok.clone();
         perms["permissions"] = json!({"network": true, "spawn_process": true});

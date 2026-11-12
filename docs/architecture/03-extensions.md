@@ -60,6 +60,7 @@
 | `priority` | `i32` | `100` | 같은 hook·명령을 여러 익스텐션이 가질 때의 순서. 작을수록 먼저, 같으면 id 순(`ext/:265-267,1116-1127`). |
 | `commands` | `Vec<ExtensionCommand>` | `[]` | 인스턴스 명령 카탈로그에 더하는 명령(`ext/:273-293`). `GET /api/instance/:id/commands`에 실리고(모듈 명령이 우선, `handlers/command.rs:296-300`), `POST /api/instance/:id/command`가 `plan_command`로 실행한다(`handlers/command.rs:90-102`, `ext/:1143-1176`). |
 | `permissions` | `ModulePermissions` | 모두 false | 코드가 쓰는 위험한 능력 선언. 모듈 `[permissions]`와 같은 표다(02 문서 §1). 실행을 막거나 풀지 않고, `GET /api/extensions/:id/audit`(모듈 audit과 같은 모양)와 CLI 도구 `saba-core extension audit <폴더>...`가 코드와 대조해 선언하지 않은 능력을 알린다. |
+| `runtime` | `plugin::Runtime` | `{"persistent": false}` | 실행 방식. 모듈 `[runtime]`과 같은 표다(02 §1.2). `persistent: true`면 hook·명령의 Python을 진입 파일마다 오래 사는 작업자 하나로 부른다(02 §2.1 끝). 실행기가 호출 때 manifest.json에서 읽고, 기본값이면 목록 응답에 싣지 않는다. saba-core 0.1.14-0부터 받는다(옛 데몬은 `schema_version: 1` manifest를 모르는 키로 거부한다). |
 
 ### 1.2 하위 구조체
 
@@ -103,7 +104,7 @@
 
 ### 2.1 Python 호출 프로토콜 (`plg/:168-332`)
 
-- **명령**: `<venv python> <절대경로 module.py> <function>`. Python 경로는 `python_env::get_python_path()`(`plg/:178`)에서 얻는다. 매 호출마다 새 프로세스를 띄우는 short-lived 방식이다.
+- **명령**: `<venv python> <절대경로 module.py> <function>`. Python 경로는 `python_env::get_python_path()`(`plg/:178`)에서 얻는다. 매 호출마다 새 프로세스를 띄우는 short-lived 방식이다. manifest `runtime.persistent`를 밝힌 익스텐션은 진입 파일마다 오래 사는 작업자 하나로 부른다(같은 함수·같은 context·같은 답, 02 §2.1 끝).
 - **stdin**: context JSON 한 덩어리. 쓴 다음 바로 닫는다(`plg/:239-242`).
 - **stdout**: 최대 4 MiB를 모아 하나의 JSON으로 파싱한다. 실패하면 비어 있지 않은 마지막 줄을 JSON으로 파싱한다(앞의 print 무시). 둘 다 실패하면 `module_bad_output`, 상한 초과면 `module_output_too_large`, 종료 코드가 0이 아니면 `module_crashed`다.
 - **stderr**: 줄 단위로 스트리밍한다. `PROGRESS:{json}` 줄은 `ExtensionProgress{percent,message,step,total,label}`로 파싱해 콜백을 호출하고 `LOOPBACK:`·`HOST:`는 중계로 처리하고 그 줄을 로그에 넣지 않는다. 나머지는 계속 비우고 마지막 200줄, 합계 64 KiB를 보존한다. 앞의 줄은 debug 로그로만 남긴다.

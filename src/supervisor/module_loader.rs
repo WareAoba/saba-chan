@@ -897,6 +897,10 @@ struct ModuleToml {
     /// [[diagnose]] 로그 진단 규칙 (`ModuleMetadata::diagnose`)
     #[serde(default)]
     diagnose: Vec<DiagnoseRule>,
+    /// [runtime] 실행 방식. 실행기가 호출 때 module.toml에서 읽는다 (`plugin::Runtime`)
+    #[serde(default)]
+    #[allow(dead_code)]
+    runtime: crate::plugin::Runtime,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

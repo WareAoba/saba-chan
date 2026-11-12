@@ -649,6 +649,9 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
+        // 모듈·익스텐션 작업자를 끝낸다 (daemon.shutdown hook도 작업자로 불렸을 수 있다)
+        plugin::stop_workers(None);
+
         // 2. 등록된 클라이언트 정리
         let timeout = std::time::Duration::from_secs(0); // 즉시 모든 클라이언트 만료 처리
         let all = registry_shutdown.reap_expired(timeout).await;
