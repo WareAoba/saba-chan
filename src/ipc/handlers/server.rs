@@ -989,6 +989,9 @@ pub async fn restart_instance_handler(
     super::audited(&state, "restart", &id, None, None, resp).await
 }
 
+/// 재시작이 정지 뒤 이전 프로세스가 끝나기를 기다리는 최소 시간 (정지 대기 시간이 더 길면 그만큼)
+const RESTART_EXIT_WAIT_FLOOR: std::time::Duration = std::time::Duration::from_secs(if cfg!(test) { 2 } else { 120 });
+
 async fn restart_instance(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
@@ -996,12 +999,12 @@ async fn restart_instance(
 ) -> axum::response::Response {
     let picked = {
         let supervisor = state.supervisor.read().await;
-        supervisor
-            .instance_store
-            .find(&id)
-            .map(|i| i.id.clone())
+        supervisor.instance_store.find(&id).map(|i| {
+            let module_timeout = supervisor.module_loader.get_module(&i.module_name).ok().and_then(|m| m.metadata.stop_timeout);
+            (i.id.clone(), crate::supervisor::stop_timeout_of(i, module_timeout), supervisor.tracker.get_pid(&i.id).ok())
+        })
     };
-    let Some(inst_id) = picked else {
+    let Some((inst_id, stop_timeout, old_pid)) = picked else {
         return instance_not_found(&id);
     };
     let force = body.map(|Json(b)| b.force).unwrap_or(false);
@@ -1025,14 +1028,21 @@ async fn restart_instance(
             return (stop.status, Json(stop.body)).into_response();
         }
         running = stop.body.get("was_running").and_then(Value::as_bool) != Some(false);
-        // 정지 응답이 프로세스가 끝나기 전에 올 수 있다: 끝날 때까지 기다린다 (최대 2분)
-        for _ in 0..240 {
-            let alive = {
+        // 정지 응답이 프로세스가 끝나기 전에 올 수 있다: 끝날 때까지 기다린다 (정지 대기 시간만큼, 적어도 2분).
+        // non-managed 정지는 모듈이 성공이라고 답하면 추적을 바로 놓으므로, 정지 전에 알던 PID가 살아 있는지도 본다
+        let deadline = tokio::time::Instant::now() + RESTART_EXIT_WAIT_FLOOR.max(std::time::Duration::from_secs(stop_timeout));
+        loop {
+            let alive = old_pid.is_some_and(crate::supervisor::process::is_process_alive) || {
                 let supervisor = state.supervisor.read().await;
                 supervisor.is_running(&inst_id).await
             };
             if !alive {
                 break;
+            }
+            // 이전 프로세스가 아직 저장 중일 수 있다: 같은 월드를 여는 새 서버를 띄우지 않는다
+            if tokio::time::Instant::now() >= deadline {
+                let error = json!({ "success": false, "error": "The server is still shutting down; start it again once it has stopped", "error_code": "still_stopping", "stopped": false });
+                return (StatusCode::CONFLICT, Json(error)).into_response();
             }
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
@@ -1528,6 +1538,40 @@ mod tests {
         let s = state.supervisor.read().await;
         assert!(s.tracker.get_pid("stop-during-restart").is_err(), "nothing is tracked");
         assert!(s.managed_store.get("stop-during-restart").await.is_none(), "the restart did not bring the server back");
+    }
+
+    /// 정지를 받고도 기다리는 시간 안에 끝나지 않은 서버(월드 저장이 긴 서버)를 두고 재시작이 성공했다고 답했다:
+    /// 시작이 "이미 켜져 있음"을 성공으로 돌려줬고, 그 서버는 곧 꺼진 채로 남았다. 끝나지 않았으면 켜지 않고 오류로 답한다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_restart_does_not_report_success_while_the_old_server_is_still_stopping() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nstop_timeout = 1\n",
+        )
+        .unwrap();
+        // 정지를 요청만 하고 바로 답하는 모듈: 서버는 그 뒤로도 한참 저장한다
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True, 'issues': []}))\n").unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "slow-save".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        state.supervisor.read().await.tracker.track("slow-save", child.id()).unwrap();
+
+        let restarted = crate::ipc::internal::into_internal(restart_instance(Path("slow-save".into()), State(state.clone()), super::super::LooseJson(None)).await).await;
+        assert_eq!(restarted.status, StatusCode::CONFLICT, "{}", restarted.body);
+        assert_eq!((restarted.body["success"].clone(), restarted.body["error_code"].clone()), (json!(false), json!("still_stopping")), "{}", restarted.body);
+        assert!(child.try_wait().unwrap().is_none(), "the old server is left to finish saving");
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     /// 시작 전 점검(모듈 validate) 중에 들어온 정지도 시작을 취소한다: 그 정지는 PID가 없어 바로 성공으로 끝난다
