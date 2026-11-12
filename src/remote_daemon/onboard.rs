@@ -137,7 +137,8 @@ pub fn valid_user(user: &str) -> bool {
 
 /// ssh에 넘길 인자. 호스트·계정은 걸러 받은 것만
 pub fn ssh_args(o: &InstallOptions) -> Vec<String> {
-    let mut flags = String::from(" --pair --yes --no-gui");
+    // `--no-gui`를 붙이지 않는다: ssh 세션이라 새 설치는 CLI가 헤드리스로 판정하고, 이미 데스크톱으로 깐 PC는 GUI를 지키게 둔다
+    let mut flags = String::from(" --pair --yes");
     if o.linger {
         flags.push_str(" --linger");
     }
@@ -480,7 +481,7 @@ mod tests {
         let args = ssh_args(&o);
         assert_eq!(&args[..5], ["-tt", "-o", "ServerAliveInterval=15", "-p", "2222"]);
         assert_eq!(args[5], "saba@nas.local");
-        assert_eq!(args[6], format!("curl -fsSL {INSTALL_URL} | sh -s -- --pair --yes --no-gui --linger"));
+        assert_eq!(args[6], format!("curl -fsSL {INSTALL_URL} | sh -s -- --pair --yes --linger"));
         assert!(valid_user("saba_1.x"));
         for bad in ["", "-oProxyCommand=x", "a b", "a;b", "a@b"] {
             assert!(!valid_user(bad), "{bad}");

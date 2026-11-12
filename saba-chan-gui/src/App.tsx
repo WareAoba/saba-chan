@@ -35,6 +35,7 @@ import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
 import { useModalClose } from './hooks/useModalClose';
+import { useModulesRetry } from './hooks/useModulesRetry';
 import { useServerActions } from './hooks/useServerActions';
 import { useServerSettings } from './hooks/useServerSettings';
 import { useConsoleStore } from './stores/useConsoleStore';
@@ -44,20 +45,20 @@ import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
 import { eventsAvailable, serverListPollMs } from './utils/daemonEvents';
-import { everyWhileVisible } from './utils/visibleTimer';
+import { startPoll } from './utils/poll';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
     beginOpeningSound,
     OPENING_CHIME_LEAD_MS,
-    OPENING_CHORD_MS,
     OPENING_READY_WAIT_MS,
-    type OpeningKind,
+    type OpeningPlay,
     type OpeningSound,
     openingChordMs,
     openingGate,
     RELAY_WAIT_MS,
     takeOpeningSound,
     whenOpeningReady,
+    whenScreenSettled,
 } from './utils/opening';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
 import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice';
@@ -185,6 +186,7 @@ function App() {
     const {
         consolePopoutIds,
         openConsole,
+        watchConsole,
         popinConsole,
         setConsoleInput,
         sendConsoleCommand,
@@ -509,9 +511,8 @@ function App() {
                 setBackgroundDaemonStatus('error');
             }
         };
-        checkDaemonStatus();
         // 창이 숨어 있는 동안(최소화·트레이)은 묻지 않고, 다시 보이면 바로 묻는다
-        return everyWhileVisible(checkDaemonStatus, 5000);
+        return startPoll(checkDaemonStatus, 5000);
     }, [daemonReady]);
 
     // ── Settings Save Functions ─────────────────────────────
@@ -535,12 +536,8 @@ function App() {
         useServerStore.getState().fetchModules();
     }, []);
 
-    // 처음에 데몬이 늦었거나 꺼져 있어 모듈 목록을 못 받았으면, 데몬이 살아났을 때 다시 받는다
-    useEffect(() => {
-        if (backgroundDaemonStatus === 'running' && !useServerStore.getState().modulesLoaded) {
-            useServerStore.getState().fetchModules();
-        }
-    }, [backgroundDaemonStatus]);
+    // 처음에 데몬이 늦었거나 꺼져 있어 모듈 목록을 못 받았으면, 데몬이 살아 있는 동안 받을 때까지 다시 받는다
+    useModulesRetry(backgroundDaemonStatus);
 
     // ── Main initialization + auto-refresh ──────────────────
     // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers/t/setModal are intentionally omitted — adding them would cause interval re-registration on every action
@@ -656,8 +653,7 @@ function App() {
     useEffect(() => {
         if (!autoRefresh || !daemonReady) return;
         const ms = serverListPollMs(refreshInterval, { events: eventsAvailable(), extensionStatus });
-        const interval = setInterval(fetchServers, ms);
-        return () => clearInterval(interval);
+        return startPoll(fetchServers, ms, { immediate: false });
     }, [autoRefresh, refreshInterval, daemonReady, extensionStatus]);
 
     // ══════════════════════════════════════════════════════════
@@ -721,11 +717,10 @@ function App() {
     // 글꼴·그림까지 준비되면 기동음과 함께 오프닝을 재생한다(play). 움직임을 줄였으면 예전처럼 잠깐 사라지게만 둔다
     const showLoading = !daemonDone || opening.hold;
     // 처음부터 로딩할 것이 없으면(HMR로 데몬이 이미 떠 있으면) 오프닝 없이 바로 연다
-    const [openingPhase, setOpeningPhase] = useState<'loading' | 'prepare' | 'play' | 'done'>(() =>
+    // 재생(play)은 로딩 화면 안에서만 바뀐다: App이 다시 그려지면 메인 화면 전체를 다시 그려 오프닝 첫머리가 끊긴다
+    const [openingPhase, setOpeningPhase] = useState<'loading' | 'prepare' | 'done'>(() =>
         showLoading ? 'loading' : 'done',
     );
-    const [openingKind, setOpeningKind] = useState<OpeningKind>('burst');
-    const [openingChord, setOpeningChord] = useState(OPENING_CHORD_MS);
     const openingAfterRef = useRef<OpeningSound | null>(null);
     const appRef = useRef<HTMLDivElement>(null);
     const [loadingLeaving, setLoadingLeaving] = useState(false);
@@ -755,37 +750,33 @@ function App() {
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);
     }, [showLoading]);
-    useEffect(() => {
-        if (openingPhase !== 'prepare') return undefined;
-        let alive = true;
+    // 메인 화면을 덮어 두고 그린 뒤, 글꼴·그림이 준비되고 메인 화면이 잠잠해지면(처음 그린 뒤 이어지는 렌더·번역
+    // 불러오기가 끝나면) 무엇을 어떻게 재생할지 정해 로딩 화면에 넘긴다
+    const prepareOpening = async (signal: AbortSignal): Promise<OpeningPlay | null> => {
         const decode = (src: string) => {
             const img = new Image();
             img.src = src;
             return img.decode ? img.decode() : Promise.resolve();
         };
-        whenOpeningReady(
+        await whenOpeningReady(
             [document.fonts?.ready, decode('./title.png'), decode(logoSrc)].filter(Boolean),
             OPENING_READY_WAIT_MS,
             (cb) => requestAnimationFrame(() => cb()),
-        ).then(() => {
-            if (!alive) return;
-            // 데몬·릴레이가 정상이면 기동음과 함께 터뜨리고, 아니면 소리 없이 후두둑
-            // 소리는 낱말을 떼어 오기 시작한 뒤에 틀어, 그 화음이 오프닝의 화음 순간에 맞게 한다.
-            // 맡은 소리가 길면(가이드 열림음) 그 화음까지 오프닝을 길게 끌어온다
-            const claimed = takeOpeningSound();
-            const burst = chimeRef.current.chime;
-            const sound = claimed ?? 'startup';
-            setOpeningKind(burst ? 'burst' : 'fall');
-            setOpeningChord(openingChordMs(sound));
-            // 후두둑(비정상)은 기동음을 내지 않고, 맡은 소리는 화면이 드러난 뒤에 낸다
-            openingAfterRef.current = burst ? null : claimed;
-            if (burst) setTimeout(() => playOpeningSound(sound), OPENING_CHIME_LEAD_MS);
-            setOpeningPhase('play');
-        });
-        return () => {
-            alive = false;
-        };
-    }, [openingPhase]);
+        );
+        await whenScreenSettled((cb) => requestAnimationFrame(cb));
+        // 기다리는 사이 로딩 화면이 사라졌으면 소리도 내지 않는다
+        if (signal.aborted) return null;
+        // 데몬·릴레이가 정상이면 기동음과 함께 터뜨리고, 아니면 소리 없이 후두둑
+        // 소리는 낱말을 떼어 오기 시작한 뒤에 틀어, 그 화음이 오프닝의 화음 순간에 맞게 한다.
+        // 맡은 소리가 길면(가이드 열림음) 그 화음까지 오프닝을 길게 끌어온다
+        const claimed = takeOpeningSound();
+        const burst = chimeRef.current.chime;
+        const sound = claimed ?? 'startup';
+        // 후두둑(비정상)은 기동음을 내지 않고, 맡은 소리는 화면이 드러난 뒤에 낸다
+        openingAfterRef.current = burst ? null : claimed;
+        if (burst) setTimeout(() => playOpeningSound(sound), OPENING_CHIME_LEAD_MS);
+        return { kind: burst ? 'burst' : 'fall', chord: openingChordMs(sound) };
+    };
 
     // Loading screen (daemon not ready or servers still initializing)
     if (showLoading) {
@@ -823,6 +814,7 @@ function App() {
                 highlightRules={mod?.syntax_highlight?.rules || null}
                 quickCommands={consoleQuickCommands(mod?.commands?.fields, mod?.command_aliases as null | undefined)}
                 openConsole={openConsole}
+                watchConsole={watchConsole}
                 setConsoleInput={setConsoleInput}
                 sendConsoleCommand={sendConsoleCommand}
             />
@@ -892,6 +884,7 @@ function App() {
     // ── 서버 페이지에 넘기는 묶음 ──
     const consoleProps = {
         openConsole,
+        watchConsole,
         setConsoleInput,
         sendConsoleCommand,
         consolePopoutIds,
@@ -927,14 +920,13 @@ function App() {
     };
 
     const openingOverlay =
-        openingPhase === 'loading' || openingPhase === 'prepare' || openingPhase === 'play' ? (
+        openingPhase === 'loading' || openingPhase === 'prepare' ? (
             <LoadingScreen
                 logoSrc={logoSrc}
                 initStatus={initStatus}
                 initProgress={100}
-                opening={openingPhase === 'play' ? 'play' : 'prepare'}
-                openingKind={openingKind}
-                openingChord={openingChord}
+                opening="prepare"
+                onPrepare={openingPhase === 'prepare' ? prepareOpening : undefined}
                 onOpened={() => {
                     const after = openingAfterRef.current;
                     openingAfterRef.current = null;

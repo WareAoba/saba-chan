@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { startPoll } from './poll';
+import { startPoll } from '@gui/utils/poll';
 import type { ApiBody, Server, WebApi } from '../types';
 
 /** 데몬 설치 진행(`/api/provision-progress/:name`) → 화면 상태. 설치 중이 아니면 null */

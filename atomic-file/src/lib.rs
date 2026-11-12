@@ -18,14 +18,63 @@ pub enum Mode {
 pub fn write(path: &Path, contents: &[u8], mode: Mode) -> std::io::Result<()> {
     let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
     std::fs::create_dir_all(dir)?;
+    remove_abandoned_temps(dir);
     let tmp = temp_path(dir, path);
-    let result = write_temp(&tmp, path, contents, mode).and_then(|_| std::fs::rename(&tmp, path));
+    let result = write_temp(&tmp, path, contents, mode).and_then(|_| retry_while_held(|| std::fs::rename(&tmp, path), held_by_another_program));
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
         return result;
     }
     sync_dir(dir);
     Ok(())
+}
+
+/// 다시 해 보기 전에 기다리는 시간들 (모두 0.3초쯤)
+const RETRY_WAITS_MS: [u64; 5] = [10, 20, 40, 80, 160];
+
+/// `op`가 `held`인 오류로 실패하면 잠깐씩 기다렸다 다시 한다. 끝까지 실패하면 마지막 오류를 돌려준다
+fn retry_while_held(mut op: impl FnMut() -> std::io::Result<()>, held: impl Fn(&std::io::Error) -> bool) -> std::io::Result<()> {
+    for wait in RETRY_WAITS_MS {
+        match op() {
+            Err(e) if held(&e) => std::thread::sleep(std::time::Duration::from_millis(wait)),
+            done => return done,
+        }
+    }
+    op()
+}
+
+/// 다른 프로그램(백신·백업·색인)이 대상 파일을 잠깐 열고 있어서 난 오류인가.
+/// Windows만: 접근 거부(5), 공유 위반(32), 잠금 위반(33). Unix의 이름 바꾸기는 열린 파일에 막히지 않는다
+fn held_by_another_program(e: &std::io::Error) -> bool {
+    cfg!(windows) && matches!(e.raw_os_error(), Some(5 | 32 | 33))
+}
+
+/// 임시 파일이 이보다 오래됐으면 쓰던 프로세스가 죽고 남긴 것으로 본다 (저장 한 번은 길어야 몇 초다)
+const ABANDONED_AFTER: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// 쓰다 죽은 프로세스가 `dir`에 남긴 임시 파일을 지운다. 프로세스마다 폴더당 한 번만 본다
+fn remove_abandoned_temps(dir: &Path) {
+    static SEEN: std::sync::Mutex<Option<std::collections::HashSet<PathBuf>>> = std::sync::Mutex::new(None);
+    if !SEEN.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(dir.to_path_buf()) {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let old = entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > ABANDONED_AFTER);
+        if old && entry.file_name().to_str().is_some_and(is_temp_name) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// `temp_path`가 짓는 이름(`.<이름>.<pid>-<순번>.tmp`)인가
+fn is_temp_name(name: &str) -> bool {
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    name.strip_prefix('.')
+        .and_then(|n| n.strip_suffix(".tmp"))
+        .and_then(|n| n.rsplit_once('.'))
+        .and_then(|(target, id)| id.split_once('-').filter(|_| !target.is_empty()))
+        .is_some_and(|(pid, seq)| digits(pid) && digits(seq))
 }
 
 /// 같은 프로세스·다른 프로세스가 동시에 써도 겹치지 않는 임시 이름
@@ -226,6 +275,52 @@ mod tests {
         let last = std::fs::read(&path).unwrap();
         assert!(bodies.contains(&last), "file is one writer's whole content");
         assert!(leftovers(dir.path()).is_empty());
+    }
+
+    // Windows: 백신·백업이 대상 파일을 잠깐 열고 있으면 이름 바꾸기가 한 번 실패하고 설정 저장이 실패로 끝났다
+    #[test]
+    fn a_target_held_for_a_moment_is_retried_and_other_errors_are_not() {
+        let held = |e: &std::io::Error| e.raw_os_error() == Some(32);
+        let mut tries = 0;
+        let saved = retry_while_held(
+            || {
+                tries += 1;
+                if tries < 3 { Err(std::io::Error::from_raw_os_error(32)) } else { Ok(()) }
+            },
+            held,
+        );
+        assert!(saved.is_ok());
+        assert_eq!(tries, 3);
+
+        let mut tries = 0;
+        let failed = retry_while_held(
+            || {
+                tries += 1;
+                Err(std::io::Error::from_raw_os_error(2))
+            },
+            held,
+        );
+        assert!(failed.is_err());
+        assert_eq!(tries, 1, "an error that waiting cannot fix fails at once");
+    }
+
+    // 쓰다 죽은 프로세스의 임시 파일이 영영 남았다: 그 폴더에 처음 저장할 때 오래된 것만 지운다
+    #[test]
+    fn temps_left_by_a_dead_writer_are_removed_and_other_files_are_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 60 * 60);
+        for (name, old) in [(".a.json.4242-7.tmp", true), (".a.json.4243-0.tmp", false), (".notes.tmp", true), ("b.4242-7.tmp", true)] {
+            let file = std::fs::File::create(dir.path().join(name)).unwrap();
+            if old {
+                file.set_modified(long_ago).unwrap();
+            }
+        }
+
+        write(&dir.path().join("a.json"), b"{}", Mode::Plain).unwrap();
+
+        let mut left = leftovers(dir.path());
+        left.sort();
+        assert_eq!(left, [".a.json.4243-0.tmp", ".notes.tmp", "b.4242-7.tmp"], "only an old temp of this crate's naming goes");
     }
 
     #[cfg(unix)]

@@ -8,7 +8,7 @@ import { LanguageMenu } from './components/LanguageMenu';
 import { ModulesTab } from './components/ModulesTab';
 import { MoreTab } from './components/MoreTab';
 import { NeedsPc } from './components/NoPc';
-import { startPoll } from './components/poll';
+import { startPoll } from '@gui/utils/poll';
 import { ServersTab } from './components/ServersTab';
 import { SessionBar } from './components/SessionBar';
 import { ConfirmHost, ToastHost, Wordmark } from './components/ui';
@@ -27,28 +27,37 @@ const TABS = [
 ];
 
 /** 세션이 열린 동안 서버·모듈 목록을 맞춘다 (이벤트가 오면 바로, 아니면 4초마다) */
-function useLiveData(api: WebApi | undefined, ready: boolean) {
+export function useLiveData(api: WebApi | undefined, ready: boolean) {
     const busy = useRef(false);
     useEffect(() => {
         if (!api || !ready) return;
         const { setServers, setModules } = useData.getState();
+        let loadingModules = false;
+        const loadModules = async () => {
+            loadingModules = true;
+            try {
+                const res = await api.moduleList();
+                if (!Array.isArray(res?.modules)) return;
+                setModules(res.modules);
+                // 모듈 locales가 붙으면 번역된 게임·설정 이름으로 다시 그린다 (i18n `bindI18nStore`)
+                registerModuleLocales(api, res.modules).catch(() => {});
+            } finally {
+                loadingModules = false;
+            }
+        };
         const loadServers = async () => {
             if (busy.current) return;
             busy.current = true;
             try {
                 const res = await api.serverList();
-                if (res?.servers) setServers(res.servers);
-                else setServers(useData.getState().servers, res?.error || 'error');
+                if (res?.servers) {
+                    setServers(res.servers);
+                    // 모듈 목록을 아직 못 받았으면(첫 요청 실패) 연결이 되는 지금 다시 받는다
+                    if (!useData.getState().modulesLoaded && !loadingModules) loadModules();
+                } else setServers(useData.getState().servers, res?.error || 'error');
             } finally {
                 busy.current = false;
             }
-        };
-        const loadModules = async () => {
-            const res = await api.moduleList();
-            if (!Array.isArray(res?.modules)) return;
-            setModules(res.modules);
-            // 모듈 locales가 붙으면 번역된 게임·설정 이름으로 다시 그린다 (i18n `bindI18nStore`)
-            registerModuleLocales(api, res.modules).catch(() => {});
         };
         loadModules();
         const stopPoll = startPoll(loadServers, 4000);

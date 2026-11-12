@@ -227,6 +227,22 @@ async fn download_with_limit(
     limit: Option<u64>,
     on_progress: impl Fn(u64, Option<u64>),
 ) -> Result<(), String> {
+    let max_bytes = match (info.size_bytes, limit) {
+        (Some(size), Some(limit)) => Some(size.min(limit)),
+        (Some(size), None) => Some(size),
+        (None, limit) => limit,
+    };
+    download_url(&info.url, Some(&info.sha256), dest, max_bytes, on_progress).await
+}
+
+/// `url`을 `dest`로 받는다 (`download_verified`). 받는 동안 `on_progress(received, total)`를 0.2초마다 부른다
+pub(crate) async fn download_url(
+    url: &str,
+    sha256: Option<&str>,
+    dest: &Path,
+    max_bytes: Option<u64>,
+    on_progress: impl Fn(u64, Option<u64>),
+) -> Result<(), String> {
     let http = saba_chan_updater_lib::tls::http_client_builder()
         .user_agent(concat!("saba-chan-installer/", env!("CARGO_PKG_VERSION")))
         .build()
@@ -243,13 +259,8 @@ async fn download_with_limit(
             on_progress(received, (total > 0).then_some(total));
         }
     };
-    let max_bytes = match (info.size_bytes, limit) {
-        (Some(size), Some(limit)) => Some(size.min(limit)),
-        (Some(size), None) => Some(size),
-        (None, limit) => limit,
-    };
     let result = tokio::select! {
-        r = download_verified(&http, &info.url, dest, Some(&info.sha256), max_bytes, Some(&progress)) => r,
+        r = download_verified(&http, url, dest, sha256, max_bytes, Some(&progress)) => r,
         _ = ticker => unreachable!("the ticker never finishes"),
     };
     result.map(|_| ()).map_err(|e| e.to_string())

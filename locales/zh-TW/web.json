@@ -303,12 +303,14 @@
   },
   "errors": {
     "start_cancelled": "伺服器在啟動過程中被停止，因此未啟動。",
+    "still_stopping": "伺服器仍在關閉中，因此沒有重新啟動。請在它完全停止後再啟動。",
     "generic": "無法完成請求。",
     "remote_not_allowed": "只能在電腦上的 Saba-chan 應用程式中進行。",
     "remote_field_blocked": "以下設定只能在電腦上變更：{{fields}}",
     "remote_bad_path": "不接受此請求。",
     "remote_bad_request": "不接受此請求。",
     "remote_timeout": "未在 2 分鐘內完成，已視為失敗。請在電腦上確認結果。",
+    "still_working": "2 分鐘內沒有完成。電腦上可能仍在進行，請稍後再查看。",
     "remote_host_gone": "請求完成前與電腦的連線已中斷。",
     "remote_busy": "請求過多。請稍後再試。"
   },

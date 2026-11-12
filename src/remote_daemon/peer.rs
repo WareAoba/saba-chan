@@ -80,18 +80,45 @@ pub fn error(status: StatusCode, code: &str) -> Response {
 
 type Sender = hyper::client::conn::http1::SendRequest<Body>;
 
+/// 직접 붙지 못한 까닭
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NotOpened {
+    /// 주소에 닿지 않거나 지문이 다르다
+    Unreachable,
+    /// 닿았지만 원격 데몬이 TLS를 맺기 전에 끊었다: 연결 자리가 없다 (`server::MAX_PER_SOURCE`). 주소는 맞다
+    Full,
+    /// 직접 연결이 `DIRECT_HEAD_START` 안에 열리지 않아 함께 연 터널이 먼저 열렸다 (`open_or_tunnel`만 낸다)
+    Slow,
+}
+
+/// 직접 연결의 TCP keepalive: 이만큼 조용하면 살아 있는지 묻기 시작하고, 이 간격으로 다시 묻는다.
+/// 긴 요청(정지 대기)의 답과 이벤트 스트림은 시간 제한 없이 기다리므로, 원격 PC의 망이 조용히 끊긴 것을 여기서 알아챈다
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(30);
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
+
+async fn dial(endpoint: &Endpoint) -> std::io::Result<tokio::net::TcpStream> {
+    let tcp = tokio::net::TcpStream::connect((endpoint.address.as_str(), endpoint.port)).await?;
+    socket2::SockRef::from(&tcp).set_tcp_keepalive(&socket2::TcpKeepalive::new().with_time(KEEPALIVE_IDLE).with_interval(KEEPALIVE_INTERVAL))?;
+    Ok(tcp)
+}
+
 /// 지문을 고정해 원격 데몬에 붙는다
-async fn open(endpoint: &Endpoint) -> Option<Sender> {
+async fn open(endpoint: &Endpoint) -> Result<Sender, NotOpened> {
+    use std::io::ErrorKind;
     let connect = async {
-        let tcp = tokio::net::TcpStream::connect((endpoint.address.as_str(), endpoint.port)).await.ok()?;
-        let tls_config = tls::pinned_client_config(&endpoint.cert_sha256).ok()?;
-        let name = rustls::pki_types::ServerName::try_from(tls::SERVER_NAME).ok()?;
-        let stream = tokio_rustls::TlsConnector::from(Arc::new(tls_config)).connect(name, tcp).await.ok()?;
-        let (send, conn) = hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream)).await.ok()?;
+        let tcp = dial(endpoint).await.map_err(|_| NotOpened::Unreachable)?;
+        let tls_config = tls::pinned_client_config(&endpoint.cert_sha256).map_err(|_| NotOpened::Unreachable)?;
+        let name = rustls::pki_types::ServerName::try_from(tls::SERVER_NAME).map_err(|_| NotOpened::Unreachable)?;
+        // 지문이 다르면 `InvalidData`, 상대가 그냥 끊으면 EOF·reset이다
+        let stream = tokio_rustls::TlsConnector::from(Arc::new(tls_config)).connect(name, tcp).await.map_err(|e| match e.kind() {
+            ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::BrokenPipe => NotOpened::Full,
+            _ => NotOpened::Unreachable,
+        })?;
+        let (send, conn) = hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream)).await.map_err(|_| NotOpened::Unreachable)?;
         tokio::spawn(conn.with_upgrades());
-        Some(send)
+        Ok(send)
     };
-    tokio::time::timeout(CONNECT_TIMEOUT, connect).await.ok().flatten()
+    tokio::time::timeout(CONNECT_TIMEOUT, connect).await.unwrap_or(Err(NotOpened::Unreachable))
 }
 
 enum Sent {
@@ -165,82 +192,75 @@ async fn send_reused(endpoint: &Endpoint, req: Request<Body>) -> Reused {
     }
 }
 
-/// `request`는 남겨 둔 연결이 끊겨 있었을 때 한 번 더 만든다
-async fn send(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Sent {
-    let Some(req) = request() else { return Sent::NotConnected };
+/// `request`는 남겨 둔 연결이 끊겨 있었을 때 한 번 더 만든다.
+/// 원격 데몬이 자리가 없어 끊었거나 터널이 먼저 열렸으면 `Err`: 요청은 나가지 않았다
+async fn send(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Result<Sent, NotOpened> {
+    let Some(req) = request() else { return Ok(Sent::NotConnected) };
     // 방금 쓴 연결이 있으면 TCP·TLS를 새로 열지 않는다
     let req = match send_reused(endpoint, req).await {
-        Reused::Sent(sent) => return sent,
+        Reused::Sent(sent) => return Ok(sent),
         Reused::Unsent(unsent) => unsent,
         Reused::Lost => match request() {
             Some(req) => req,
-            None => return Sent::NotConnected,
+            None => return Ok(Sent::NotConnected),
         },
     };
     let mut sender = match open_or_tunnel(relay, host_id, endpoint).await {
-        Opened::Direct(sender) => sender,
-        // 터널이 먼저 열렸다: 이번 요청은 터널로 (직접 연결은 뒤에서 마저 열려 보고, 열리면 다음 요청부터 쓴다)
-        Opened::Tunnel => return through_tunnel(relay, host_id, endpoint, req).await,
-        Opened::Neither => return Sent::NotConnected,
+        Ok(sender) => sender,
+        Err(NotOpened::Unreachable) => return Ok(Sent::NotConnected),
+        Err(other) => return Err(other),
     };
-    match tokio::time::timeout(RESPONSE_TIMEOUT, sender.send_request(req)).await {
+    Ok(match tokio::time::timeout(RESPONSE_TIMEOUT, sender.send_request(req)).await {
         Ok(Ok(res)) => {
             keep_idle(endpoint, sender);
             Sent::Answered(res)
         }
         _ => Sent::NoAnswer,
-    }
+    })
 }
 
 /// 직접 연결이 이만큼 안에 열리지 않으면 터널도 같이 열기 시작한다. 먼저 열린 쪽으로 보낸다
 /// (말없이 버려지는 주소에 직접 연결이 포기할 때(`CONNECT_TIMEOUT`)까지 요청을 붙잡지 않게)
 const DIRECT_HEAD_START: Duration = Duration::from_millis(1500);
 
-enum Opened {
-    Direct(Sender),
-    Tunnel,
-    Neither,
-}
-
 /// 직접 연결을 먼저 열어 보고, `DIRECT_HEAD_START` 안에 안 되면 터널도 함께 연다.
-/// 터널이 먼저 열리면 직접 연결이 못 붙은 것으로 적고(다음 요청부터 터널로), 직접 연결은 뒤에서 마저 기다린다:
+/// 터널이 먼저 열리면 `Slow`: 직접 연결이 못 붙은 것으로 적고(다음 요청부터 터널로), 직접 연결은 뒤에서 마저 기다린다.
 /// 열리면 남겨 두고 적은 것을 지운다 (다음 요청은 직접)
-async fn open_or_tunnel(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint) -> Opened {
+async fn open_or_tunnel(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint) -> Result<Sender, NotOpened> {
     let ep = endpoint.clone();
     let mut direct = Box::pin(async move { open(&ep).await });
     if let Ok(first) = tokio::time::timeout(DIRECT_HEAD_START, &mut direct).await {
-        return first.map_or(Opened::Neither, Opened::Direct);
+        return first;
     }
-    let Some(relay) = relay else { return direct.await.map_or(Opened::Neither, Opened::Direct) };
+    let Some(relay) = relay else { return direct.await };
     let tunnel = tunnel::sender(relay, host_id, &endpoint.cert_sha256);
     tokio::pin!(tunnel);
     tokio::select! {
-        d = &mut direct => match d {
-            Some(sender) => Opened::Direct(sender),
-            None => Opened::Neither,
-        },
+        d = &mut direct => d,
         t = &mut tunnel => {
             if t.is_none() {
-                return direct.await.map_or(Opened::Neither, Opened::Direct);
+                return direct.await;
             }
-            direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), probing: true });
+            direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: true });
             let endpoint = endpoint.clone();
             tokio::spawn(async move {
-                let ok = match direct.await {
-                    Some(sender) => {
-                        keep_idle(&endpoint, sender);
-                        true
-                    }
-                    None => false,
-                };
+                let opened = direct.await;
                 let mut failed = direct_failed();
-                if ok {
-                    failed.remove(&idle_key(&endpoint));
-                } else {
-                    failed.insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), probing: false });
+                match opened {
+                    Ok(sender) => {
+                        failed.remove(&idle_key(&endpoint));
+                        keep_idle(&endpoint, sender);
+                    }
+                    // 닿았지만 자리가 없었다: 주소는 맞다
+                    Err(NotOpened::Full) => {
+                        failed.remove(&idle_key(&endpoint));
+                    }
+                    Err(_) => {
+                        failed.insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
+                    }
                 }
             });
-            Opened::Tunnel
+            Err(NotOpened::Slow)
         }
     }
 }
@@ -267,13 +287,16 @@ async fn through_tunnel(relay: Option<&Target>, host_id: &str, endpoint: &Endpoi
 }
 
 /// 직접 붙지 못한 주소를 다시 직접 붙어 보기까지 터널만 쓰는 시간. 그동안 요청은 기다리지 않고 터널로 가고,
-/// 시간이 지나면 다음 요청이 뒤에서 한 번 직접 붙어 본다 (NAT 뒤 PC에 직접 붙기를 요청마다 기다리지 않게)
-const DIRECT_RETRY: Duration = if cfg!(test) { Duration::from_millis(200) } else { Duration::from_secs(300) };
+/// 시간이 지나면 다음 요청이 뒤에서 한 번 직접 붙어 본다 (NAT 뒤 PC에 직접 붙기를 요청마다 기다리지 않게).
+/// 다시 붙어 봐도 안 되면 `DIRECT_RETRY_MAX`까지 두 배씩 늘린다: 업데이트로 잠깐 내려간 원격 데몬은 금방 다시 직접 붙는다
+const DIRECT_RETRY: Duration = if cfg!(test) { Duration::from_millis(200) } else { Duration::from_secs(15) };
+const DIRECT_RETRY_MAX: Duration = if cfg!(test) { Duration::from_millis(800) } else { Duration::from_secs(300) };
 
-/// 직접 붙지 못한 주소(주소·포트·지문)와 그때. 뒤에서 다시 붙어 보는 중이면 `probing`
+/// 직접 붙지 못한 주소(주소·포트·지문)와 그때, 다시 붙어 보기까지 기다릴 시간. 뒤에서 다시 붙어 보는 중이면 `probing`
 #[derive(Clone, Copy)]
 struct DirectFailed {
     at: std::time::Instant,
+    wait: Duration,
     probing: bool,
 }
 static DIRECT_FAILED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<IdleKey, DirectFailed>>> =
@@ -283,28 +306,38 @@ fn direct_failed() -> std::sync::MutexGuard<'static, std::collections::HashMap<I
     DIRECT_FAILED.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 이 주소로 지금 직접 붙어 봐도 되는가. 얼마 전에 못 붙었으면 아니다. 그때로부터 `DIRECT_RETRY`가 지났으면
+/// 원격 데몬이 자리가 없다며 끊은 것을 이만큼 잇달아 보면 닿지 못하는 주소로 적는다: 그 주소에서 원격 데몬이 아닌 것이
+/// 받고 끊는 것일 수 있다 (포트 포워딩이 다른 곳을 가리킴). 적지 않으면 요청마다 직접 붙어 보고 PC 카드는 계속 `direct`다
+const FULL_LIMIT: u32 = 3;
+static FULL_STREAK: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<IdleKey, u32>>> = std::sync::LazyLock::new(Default::default);
+
+fn full_streak() -> std::sync::MutexGuard<'static, std::collections::HashMap<IdleKey, u32>> {
+    FULL_STREAK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 이 주소로 지금 직접 붙어 봐도 되는가. 얼마 전에 못 붙었으면 아니다. 그때로부터 기다릴 시간이 지났으면
 /// 뒤에서 한 번 붙어 보고(되면 다음 요청부터 직접) 이번 요청은 터널로 보낸다
 fn try_direct(endpoint: &Endpoint) -> bool {
     let key = idle_key(endpoint);
     let mut failed = direct_failed();
     let Some(f) = failed.get_mut(&key) else { return true };
-    if !f.probing && f.at.elapsed() >= DIRECT_RETRY {
+    if !f.probing && f.at.elapsed() >= f.wait {
         f.probing = true;
+        let wait = (f.wait * 2).min(DIRECT_RETRY_MAX);
         let endpoint = endpoint.clone();
         tokio::spawn(async move {
             let ok = match open(&endpoint).await {
-                Some(sender) => {
+                Ok(sender) => {
                     keep_idle(&endpoint, sender);
                     true
                 }
-                None => false,
+                Err(_) => false,
             };
             let mut failed = direct_failed();
             if ok {
                 failed.remove(&idle_key(&endpoint));
             } else {
-                failed.insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), probing: false });
+                failed.insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), wait, probing: false });
             }
         });
     }
@@ -318,14 +351,34 @@ pub fn route_of(d: &Daemon) -> &'static str {
 }
 
 /// 직접 붙어 보고, 주소가 없거나 붙지 못하면 릴레이 터널로 (사용자 결정 2026-10-25: 릴레이는 연결될 때까지만 거든다).
-/// (열어 둔 터널은 그 위의 이벤트 스트림이 끝나지 않게 그대로 둔다.) 못 붙은 주소는 한동안 터널로만 보낸다(`try_direct`). `request`는 보낼 때마다 새로 만든다
+/// 직접 답을 받으면 열어 둔 터널을 놓는다 (그 위에서 받던 이벤트 스트림은 끝날 때까지 간다). 못 붙은 주소는 한동안 터널로만 보낸다(`try_direct`).
+/// 원격 데몬이 자리가 없어 끊은 것은 그 요청만 터널로 보내고 주소는 그대로 믿는다 (잇달아 `FULL_LIMIT`번이면 못 붙은 주소로 적는다). `request`는 보낼 때마다 새로 만든다
 async fn send_to(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Sent {
     if !endpoint.address.is_empty() && try_direct(endpoint) {
         match send(relay, host_id, endpoint, request).await {
-            Sent::NotConnected => {
-                direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), probing: false });
+            Ok(Sent::NotConnected) => {
+                direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
             }
-            sent => return sent,
+            Ok(sent) => {
+                if matches!(sent, Sent::Answered(_)) {
+                    full_streak().remove(&idle_key(endpoint));
+                    if let Some(relay) = relay {
+                        tunnel::release(relay, host_id);
+                    }
+                }
+                return sent;
+            }
+            // 터널이 먼저 열렸다: 이번 요청은 터널로 (직접 연결은 뒤에서 마저 열려 보고, 열리면 다음 요청부터 쓴다)
+            Err(NotOpened::Slow) => {}
+            Err(_) => {
+                let mut streak = full_streak();
+                let seen = streak.entry(idle_key(endpoint)).or_default();
+                *seen += 1;
+                if *seen >= FULL_LIMIT {
+                    streak.remove(&idle_key(endpoint));
+                    direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
+                }
+            }
         }
     }
     let Some(req) = request() else { return Sent::NotConnected };
@@ -883,6 +936,137 @@ mod tests {
         connect(&file, Some(relay.clone()), "host-b").await.unwrap();
         assert!(started.elapsed() < CONNECT_TIMEOUT / 2, "paired through the tunnel in {:?}", started.elapsed());
         assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    /// 원격 데몬이 연결 자리가 없어 받자마자 끊은 것은 닿지 못하는 주소가 아니다: 자리가 나면 다음 요청은 바로 직접 간다
+    #[tokio::test]
+    async fn a_remote_daemon_with_no_free_connection_is_still_reached_directly_afterwards() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        let daemon = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        IDLE.lock().unwrap().remove(&idle_key(&endpoint_of(&daemon)));
+        // 이 PC(루프백) 몫의 자리를 다 쥔다
+        let mut held = Vec::new();
+        for _ in 0..32 {
+            held.push(tokio::net::TcpStream::connect(("127.0.0.1", daemon.port)).await.unwrap());
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let res = forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
+        assert_eq!(res.status(), StatusCode::BAD_GATEWAY, "nothing gets in while every slot is taken");
+        assert_eq!(route_of(&daemon), "direct");
+
+        drop(held);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let tunnels = state.tunnels.load(std::sync::atomic::Ordering::SeqCst);
+        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), tunnels, "the request went straight to the remote daemon");
+    }
+
+    /// 저장한 주소에서 원격 데몬이 아닌 것이 받자마자 끊으면(포트 포워딩이 다른 곳을 가리킴) 몇 번 뒤에는 닿지 못하는 주소로 본다:
+    /// PC 카드가 릴레이로 보이고 요청마다 직접 붙어 보지 않는다
+    #[tokio::test]
+    async fn an_address_that_keeps_hanging_up_is_shown_as_reached_through_the_relay() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        let other = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        state.endpoint.lock().unwrap()["port"] = json!(other.local_addr().unwrap().port());
+        let tries = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        tokio::spawn({
+            let tries = tries.clone();
+            async move {
+                while other.accept().await.is_ok() {
+                    tries.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        let daemon = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        for _ in 0..4 {
+            let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+            assert_eq!(status, 200);
+        }
+        assert_eq!(route_of(&daemon), "relay");
+        let tries = tries.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(tries <= 3, "kept trying the address directly: {tries} times");
+    }
+
+    /// 직접 닿지 않는 주소는 다시 붙어 보는 간격을 늘려 간다 (잠깐 내려간 원격 데몬은 금방 다시 직접 붙고, NAT 뒤 PC는 자주 두드리지 않는다)
+    #[tokio::test]
+    async fn an_unreachable_address_is_tried_again_soon_and_then_less_and_less_often() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        // 그 주소에는 원격 데몬이 아닌 것이 있다
+        let other = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        state.endpoint.lock().unwrap()["port"] = json!(other.local_addr().unwrap().port());
+        let tries = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        tokio::spawn({
+            let tries = tries.clone();
+            async move {
+                while let Ok((mut tcp, _)) = other.accept().await {
+                    tries.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    // 보낸 것을 읽고 답한다: 읽지 않고 닫으면 Windows는 reset을 보내 '자리가 없어 끊음'으로 읽힌다
+                    let _ = tokio::io::AsyncReadExt::read(&mut tcp, &mut [0u8; 4096]).await;
+                    let _ = tokio::io::AsyncWriteExt::write_all(&mut tcp, b"not a remote daemon\n").await;
+                }
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        assert_eq!(tries.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        let started = std::time::Instant::now();
+        while started.elapsed() < DIRECT_RETRY * 6 {
+            let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+            assert_eq!(status, 200);
+            tokio::time::sleep(DIRECT_RETRY / 8).await;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let again = tries.load(std::sync::atomic::Ordering::SeqCst) - 1;
+        assert!((1..=3).contains(&again), "tried again {again} times in six first intervals");
+    }
+
+    /// 터널로 짝 맺은 PC에 직접 닿게 되면 열어 둔 터널을 놓는다. 그 위에서 받던 스트림은 끊기지 않는다
+    #[tokio::test]
+    async fn the_tunnel_is_let_go_once_the_remote_daemon_answers_directly() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        let reachable = state.endpoint.lock().unwrap().clone();
+        state.endpoint.lock().unwrap()["address"] = Value::Null;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        let daemon = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let res = forward(&file, Some(relay.clone()), "host-b", "/api/stream", get_req(&[]), CancellationToken::new()).await;
+        let mut stream = res.into_body().into_data_stream();
+        assert_eq!(stream.next().await.unwrap().unwrap(), "first\n");
+        assert!(tunnel::is_open(Some(&relay), "host-b"));
+
+        // 원격 PC가 공인 주소를 올렸다
+        config::update_endpoint_in(&file, "host-b", reachable["address"].as_str().unwrap(), daemon.port, &daemon.cert_sha256).unwrap();
+        let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        assert_eq!(status, 200);
+        assert!(!tunnel::is_open(Some(&relay), "host-b"));
+        assert!(tokio::time::timeout(Duration::from_millis(500), stream.next()).await.is_err(), "the stream on the tunnel is still open");
+    }
+
+    /// 직접 연결은 TCP keepalive를 켠다 (원격 PC의 망이 조용히 끊기면 기다리던 답과 이벤트 스트림이 끝나게).
+    /// 끊긴 연결이 실제로 끝나는 것은 OS 몫이라 여기서 보지 않는다
+    #[tokio::test]
+    async fn a_direct_connection_has_tcp_keepalive_on() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = Endpoint { address: "127.0.0.1".into(), port: listener.local_addr().unwrap().port(), cert_sha256: String::new() };
+        let tcp = dial(&endpoint).await.unwrap();
+        assert!(socket2::SockRef::from(&tcp).keepalive().unwrap());
+        #[cfg(target_os = "linux")]
+        assert_eq!((socket2::SockRef::from(&tcp).tcp_keepalive_time().unwrap(), socket2::SockRef::from(&tcp).tcp_keepalive_interval().unwrap()), (KEEPALIVE_IDLE, KEEPALIVE_INTERVAL));
     }
 
     #[tokio::test]

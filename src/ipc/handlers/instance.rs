@@ -190,8 +190,9 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))));
 
     if let (Ok(name), Ok(module)) = (name, module_name) {
-        // 이름으로 서버를 찾는 클라이언트가 있어 같은 이름은 둘 두지 않는다 (rename과 같은 409)
-        let name_taken = |n: &str| supervisor.instance_store.list().iter().any(|i| i.name == n);
+        // 이름으로 서버를 찾는 클라이언트가 있어 같은 이름은 둘 두지 않는다 (rename과 같은 409).
+        // 채팅이 대소문자·공백 칸 수를 가리지 않고 찾으므로 그것만 다른 이름도 같은 이름이다
+        let name_taken = |n: &str| supervisor.instance_store.list().iter().any(|i| crate::chat::words::same(&i.name, n));
         if name_taken(name) && !dry_run {
             let error = json!({ "success": false, "error": format!("An instance named '{}' already exists", name), "error_code": "name_taken" });
             return (StatusCode::CONFLICT, Json(error)).into_response();
@@ -278,9 +279,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         };
 
         if dry_run {
-            // 추천 이름은 대소문자를 가리지 않고 겹치지 않는 것 (GUI·CLI 이름 칸과 같다)
-            let taken_ignoring_case = |n: &str| supervisor.instance_store.list().iter().any(|i| i.name.eq_ignore_ascii_case(n));
-            let suggested = (1..).map(|i| if i == 1 { module.to_string() } else { format!("{module}-{i}") }).find(|n| !taken_ignoring_case(n));
+            let suggested = (1..).map(|i| if i == 1 { module.to_string() } else { format!("{module}-{i}") }).find(|n| !name_taken(n));
             let fields = port_fields_of(&supervisor, module);
             let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
             let ports: Vec<Value> = crate::validator::instance_ports(&instance, &fields).into_iter().map(|(field, port)| json!({
@@ -1739,7 +1738,7 @@ pub async fn rename_instance(
     if instance.name == new_name {
         return Json(json!({ "success": true, "id": id, "name": new_name, "previous": new_name })).into_response();
     }
-    if supervisor.instance_store.list().iter().any(|i| i.id != id && i.name == new_name) {
+    if supervisor.instance_store.list().iter().any(|i| i.id != id && crate::chat::words::same(&i.name, new_name)) {
         return fail(StatusCode::CONFLICT, format!("An instance named '{}' already exists", new_name), "name_taken");
     }
     // 실행 중인 서버는 이름으로도 추적되므로 꺼진 뒤에만 바꾼다
@@ -3646,6 +3645,53 @@ mod tests {
         assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().name, "우리 마크");
     }
 
+    /// 대소문자·공백 칸 수만 다른 이름은 같은 이름이다: 채팅이 그렇게 서버를 찾으므로 둘이면 이름으로 부를 수 없다
+    #[tokio::test]
+    async fn a_name_that_differs_only_in_case_or_spacing_is_taken() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let create = |body: serde_json::Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(body)).await).await }
+        };
+        let rename = |id: String, name: &'static str| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::rename_instance(State(state), Path(id), Json(json!({ "name": name }))).await).await }
+        };
+
+        let first = create(json!({ "name": "My Server", "module_name": "game" })).await;
+        assert!(first.status.is_success(), "{:?}", first.body);
+        let first = first.body["id"].as_str().unwrap().to_string();
+        for name in ["my server", "MY  SERVER"] {
+            let twin = create(json!({ "name": name, "module_name": "game" })).await;
+            assert_eq!((twin.status.as_u16(), twin.body["error_code"].as_str()), (409, Some("name_taken")), "{name}");
+        }
+        let check = crate::ipc::internal::into_internal(super::check_new_instance(State(state.clone()), Json(json!({ "name": "my server", "module_name": "game" }))).await).await;
+        assert_eq!(check.body["name"]["taken"], true, "{}", check.body);
+
+        let other = create(json!({ "name": "other", "module_name": "game" })).await;
+        let other = other.body["id"].as_str().unwrap().to_string();
+        let twin = rename(other, "MY SERVER").await;
+        assert_eq!((twin.status.as_u16(), twin.body["error_code"].as_str()), (409, Some("name_taken")), "{}", twin.body);
+        // 자기 이름의 대소문자는 바꿀 수 있다
+        let own = rename(first.clone(), "my server").await;
+        assert!(own.status.is_success(), "{}", own.body);
+        assert_eq!(state.supervisor.read().await.instance_store.get(&first).unwrap().name, "my server");
+    }
+
     #[tokio::test]
     async fn a_crashed_install_script_keeps_the_short_error_and_structured_details() {
         use axum::extract::State;
@@ -3847,7 +3893,7 @@ mod tests {
         assert_eq!(named.body["name"]["suggested"], "game-3", "{}", named.body);
 
         // 포트를 정하지 않으면 만들기가 고를 포트(다른 서버와 겹치지 않게 옮긴 값)를 알려 준다
-        let free = check(json!({ "name": "game-2", "module_name": "game" })).await;
+        let free = check(json!({ "name": "game-3", "module_name": "game" })).await;
         assert_eq!(free.body["name"]["taken"], false, "{}", free.body);
         assert_eq!(free.body["folder"], json!({ "custom": false, "path": null, "in_use_by": null, "not_empty": false }), "{}", free.body);
         let port = free.body["ports"].as_array().unwrap().iter().find(|p| p["field"] == "port").cloned().unwrap();

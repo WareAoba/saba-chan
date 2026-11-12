@@ -265,6 +265,42 @@ mod run_all {
     }
 }
 
+/// 설치기는 받은 zip을 적용 전에 확인한다. 확인은 풀어 쓰지 않고 읽기만 해서, 깨진 내용(CRC)과 밖으로 나가는 경로를 잡는다
+#[test]
+fn verify_zip_catches_a_damaged_or_unsafe_archive_without_writing() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let stored = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let good = tmp.path().join("good.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&good).unwrap());
+        zw.start_file("dir/inner.txt", stored).unwrap();
+        zw.write_all(b"the-content-of-the-file").unwrap();
+        zw.finish().unwrap();
+    }
+    crate::verify_zip(&good).unwrap();
+
+    let mut bytes = std::fs::read(&good).unwrap();
+    let at = bytes.windows(11).position(|w| w == b"the-content").unwrap();
+    bytes[at] ^= 0xff;
+    let damaged = tmp.path().join("damaged.zip");
+    std::fs::write(&damaged, bytes).unwrap();
+    assert!(crate::verify_zip(&damaged).is_err(), "a changed byte must fail the CRC check");
+
+    let evil = tmp.path().join("evil.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&evil).unwrap());
+        zw.start_file("../escaped.txt", stored).unwrap();
+        zw.write_all(b"bad").unwrap();
+        zw.finish().unwrap();
+    }
+    assert!(crate::verify_zip(&evil).is_err());
+
+    let mut left: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    left.sort();
+    assert_eq!(left, ["damaged.zip", "evil.zip", "good.zip"]);
+}
+
 #[test]
 fn test_extract_zip_rejects_paths_outside_target() {
     use std::io::Write;
@@ -349,6 +385,71 @@ fn replace_dir_restores_backup_when_extract_fails() {
 
     assert!(crate::replace_dir(&target, &bad, &manager.staging_dir, "game_backup").is_err());
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
+}
+
+/// 모듈 폴더 교체: 내용은 새 판으로 바뀌고, 점으로 시작하는 항목과 `__pycache__`는 남고, 백업·임시 폴더는 남지 않는다
+#[test]
+fn replace_dir_swaps_the_content_and_keeps_dot_entries() {
+    let tmp = tempfile::tempdir().unwrap();
+    let staging = tmp.path().join("staging");
+    let target = tmp.path().join("modules").join("game");
+    std::fs::create_dir_all(target.join(".git")).unwrap();
+    std::fs::create_dir_all(target.join("__pycache__")).unwrap();
+    std::fs::create_dir_all(target.join("assets")).unwrap();
+    std::fs::write(target.join("module.toml"), "old").unwrap();
+    std::fs::write(target.join("assets/old.bin"), "old").unwrap();
+    std::fs::write(target.join(".git/HEAD"), "ref").unwrap();
+    std::fs::write(target.join("__pycache__/lifecycle.pyc"), "pyc").unwrap();
+    let staged = new_module_zip(&staging);
+
+    let files = crate::replace_dir(&target, &staged, &staging, "game_backup").unwrap();
+
+    assert_eq!(files, [target.join("module.toml")]);
+    assert_eq!(names_in(&target), [".git", "__pycache__", "module.toml"]);
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
+    assert_eq!(std::fs::read_to_string(target.join(".git/HEAD")).unwrap(), "ref");
+    assert_eq!(std::fs::read_to_string(target.join("__pycache__/lifecycle.pyc")).unwrap(), "pyc");
+    assert!(names_in(&staging).is_empty(), "nothing is left in staging: {:?}", names_in(&staging));
+}
+
+/// 맞바꾸는 두 이름 바꾸기 사이에 꺼졌으면(제자리가 비고 백업만 있다) 다음 교체가 원래 내용을 되살린 뒤 바꾼다
+#[test]
+fn replace_dir_recovers_a_folder_that_was_moved_aside_and_never_replaced() {
+    let tmp = tempfile::tempdir().unwrap();
+    let staging = tmp.path().join("staging");
+    let target = tmp.path().join("modules").join("game");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    let backup = staging.join("game_backup");
+    std::fs::create_dir_all(backup.join(".git")).unwrap();
+    std::fs::write(backup.join("module.toml"), "old").unwrap();
+    std::fs::write(backup.join(".git/HEAD"), "ref").unwrap();
+    let staged = new_module_zip(&staging);
+
+    crate::replace_dir(&target, &staged, &staging, "game_backup").unwrap();
+
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "new");
+    assert_eq!(std::fs::read_to_string(target.join(".git/HEAD")).unwrap(), "ref");
+    assert!(names_in(&staging).is_empty());
+}
+
+/// 모듈 폴더가 다른 곳을 가리키는 링크면(개발 폴더를 걸어 둠) 링크를 지우거나 옮기지 않고 그 안의 내용을 바꾼다
+#[cfg(unix)]
+#[test]
+fn replace_dir_writes_into_a_linked_folder_and_keeps_the_link() {
+    let tmp = tempfile::tempdir().unwrap();
+    let staging = tmp.path().join("staging");
+    let real = tmp.path().join("dev").join("game");
+    std::fs::create_dir_all(&real).unwrap();
+    std::fs::write(real.join("module.toml"), "old").unwrap();
+    let target = tmp.path().join("modules").join("game");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(&real, &target).unwrap();
+    let staged = new_module_zip(&staging);
+
+    crate::replace_dir(&target, &staged, &staging, "game_backup").unwrap();
+
+    assert!(target.is_symlink());
+    assert_eq!(std::fs::read_to_string(real.join("module.toml")).unwrap(), "new");
 }
 
 /// 묻지 않는 교체에 쓸 새 판 zip (`module.toml` 하나)
@@ -806,6 +907,29 @@ fn a_held_old_backup_does_not_block_the_next_replace() {
     assert!(!exe.exists() && held.is_dir());
 }
 
+/// 설치 폴더에 GUI가 없으면 GUI 업데이트는 그렇다고 알리며 끝난다. 작업 폴더 옆의 `saba-chan-gui`(소스 트리)를 GUI로 보고 풀지 않는다
+#[tokio::test]
+async fn a_gui_update_without_a_gui_in_the_install_folder_fails_and_writes_nowhere_else() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let zip_path = tmp.path().join("gui.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file(crate::GUI_EXE_NAMES[0], zip::write::SimpleFileOptions::default()).unwrap();
+        zw.write_all(b"new gui").unwrap();
+        zw.finish().unwrap();
+    }
+
+    let err = manager.apply_gui_update(&zip_path.to_string_lossy()).await.unwrap_err().to_string();
+
+    assert!(err.contains(&manager.install_root.display().to_string()), "{err}");
+    assert!(!manager.is_component_installed(&Component::Gui));
+    assert!(zip_path.exists(), "the staged file is kept");
+}
+
 // 모르는 압축 형식을 받아 두었으면 아무것도 풀지 않고 성공으로 끝내지 않는다
 #[tokio::test]
 async fn an_unknown_archive_format_is_not_applied_as_success() {
@@ -1006,6 +1130,39 @@ fn a_unix_binary_moved_aside_by_an_interrupted_apply_is_put_back() {
     assert!(tmp.path().join("notes.old").exists());
 }
 
+// saba-core zip에 같이 든 saba-runner도 Unix에서 코어와 함께 되돌릴 수 있게 비켜 둔다 (Windows는 `saba-runner.exe.old`)
+#[cfg(unix)]
+#[tokio::test]
+async fn a_unix_core_apply_keeps_the_previous_runner_for_rollback() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    for exe in ["saba-core", "saba-runner"] {
+        std::fs::write(manager.install_root.join(exe), b"previous").unwrap();
+    }
+    let zip_path = tmp.path().join("saba-core-linux-x64.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        for exe in ["saba-core", "saba-runner"] {
+            zw.start_file(exe, zip::write::SimpleFileOptions::default().unix_permissions(0o755)).unwrap();
+            zw.write_all(b"new").unwrap();
+        }
+        zw.finish().unwrap();
+    }
+    let before = manager.exe_backups();
+
+    manager.apply_binary_update("saba-core", &zip_path.to_string_lossy()).await.unwrap();
+    assert_eq!(std::fs::read(manager.install_root.join("saba-runner")).unwrap(), b"new");
+
+    manager.roll_back_exes_since(&before).unwrap();
+
+    for exe in ["saba-core", "saba-runner"] {
+        assert_eq!(std::fs::read(manager.install_root.join(exe)).unwrap(), b"previous", "{exe}");
+    }
+}
+
 // L3(c): 적용 중 꺼져 남은 `.update-bak`은 다음 정리 때 원래 파일이 있으면 지우고, 없으면 되돌린다
 #[test]
 fn leftover_update_backups_are_cleaned_or_restored() {
@@ -1074,13 +1231,13 @@ fn extract_tar_gz_does_not_create_or_follow_links() {
         tw.append_data(&mut file, "sub/new.txt", &b"bad"[..]).unwrap();
         tw.into_inner().unwrap().finish().unwrap();
     }
-    let _ = UpdateManager::extract_tar_gz(&archive, &target);
+    let _ = crate::Replacing::default().extract(&archive, &target);
     assert!(!outside.join("new.txt").exists());
     assert!(!target.join("sub").is_symlink());
 
     std::fs::remove_dir_all(target.join("sub")).unwrap();
     std::os::unix::fs::symlink(&outside, target.join("sub")).unwrap();
-    assert!(UpdateManager::extract_tar_gz(&archive, &target).is_err());
+    assert!(crate::Replacing::default().extract(&archive, &target).is_err());
     assert!(!outside.join("new.txt").exists());
 }
 
@@ -1973,4 +2130,34 @@ fn old_backups_are_kept_while_the_updater_watches_the_new_daemon() {
     crate::live_apply::end_watch(&manager.staging_dir);
     manager.cleanup_old_files();
     assert!(!manager.install_root.join(&core_old).exists());
+}
+
+// CLI zip은 명령 실행기를 `bin/saba-chan.exe`에 둔다: 그 백업도 설치 폴더 바로 안의 exe와 같게 되돌리고 지운다
+#[test]
+fn a_launcher_backup_inside_bin_is_rolled_back_and_cleaned_up_too() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    let bin = manager.install_root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let (launcher, backup) = (bin.join("saba-chan.exe"), bin.join("saba-chan.exe.old"));
+
+    let before = manager.exe_backups();
+    std::fs::write(&backup, b"old").unwrap();
+    std::fs::write(&launcher, b"new").unwrap();
+    let rollback = manager.roll_back_exes_since(&before).unwrap();
+    assert_eq!(rollback.restored, vec![launcher.clone()]);
+    assert_eq!(std::fs::read(&launcher).unwrap(), b"old");
+
+    // 적용이 끊겨 실행기가 없으면 되살린다
+    std::fs::rename(&launcher, &backup).unwrap();
+    manager.restore_moved_aside_exes();
+    assert_eq!(std::fs::read(&launcher).unwrap(), b"old");
+
+    std::fs::write(&backup, b"older").unwrap();
+    manager.cleanup_old_files();
+    assert!(!backup.exists());
+    assert!(launcher.exists());
 }

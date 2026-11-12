@@ -49,17 +49,6 @@ pub fn download() -> Option<(String, Option<String>)> {
     ))
 }
 
-/// 받은 파일이 기대 해시와 같은지. 기대 해시가 없으면 통과
-pub fn verify(path: &std::path::Path, expected: Option<&str>) -> Result<(), String> {
-    let Some(expected) = expected else { return Ok(()) };
-    let got = crate::integrity::compute_sha256(path)?;
-    if got.eq_ignore_ascii_case(expected.trim()) {
-        Ok(())
-    } else {
-        Err(format!("Python archive sha256 mismatch: expected {}, got {}", expected, got))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,15 +61,5 @@ mod tests {
         if let Some(triple) = target_triple() {
             assert!(PINS.iter().any(|(t, _)| *t == triple));
         }
-    }
-
-    #[test]
-    fn verify_rejects_a_wrong_hash() {
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(tmp.path(), b"abc").unwrap();
-        let abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-        assert!(verify(tmp.path(), Some(abc)).is_ok());
-        assert!(verify(tmp.path(), Some(&"0".repeat(64))).is_err());
-        assert!(verify(tmp.path(), None).is_ok());
     }
 }

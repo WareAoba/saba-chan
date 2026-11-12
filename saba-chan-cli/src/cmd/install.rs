@@ -84,6 +84,16 @@ fn detect_profile(gui: bool, no_gui: bool, os: Os, env: impl Fn(&str) -> Option<
     }
 }
 
+/// 이미 있는 설치 위에 다시 깔 때 따를 구성: `--gui`·`--no-gui`가 없으면 그 설치의 구성 그대로.
+/// 환경만 보면 데스크톱으로 깐 PC에 SSH로 들어와 다시 깔 때 헤드리스로 판정되어 GUI와 바로가기를 지운다
+fn kept_profile(gui: bool, no_gui: bool, installed: Option<Profile>) -> Option<Profile> {
+    if gui || no_gui {
+        None
+    } else {
+        installed
+    }
+}
+
 /// `--modules a,b`를 릴리스에 있는 모듈 id로 확인한다. 모르는 이름은 고를 수 있는 목록과 함께 거절한다
 fn pick_modules(asked: &[String], available: &[core::ModuleInfo]) -> std::result::Result<Vec<String>, String> {
     let ids: Vec<&str> = available.iter().map(|m| m.id.as_str()).collect();
@@ -124,7 +134,8 @@ impl InstallHooks for Hooks {
 }
 
 pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
-    let profile = detect_profile(args.gui, args.no_gui, Os::current(), |k| std::env::var(k).ok());
+    let profile = kept_profile(args.gui, args.no_gui, core::existing_install().map(|_| Profile::load()))
+        .unwrap_or_else(|| detect_profile(args.gui, args.no_gui, Os::current(), |k| std::env::var(k).ok()));
 
     let spin = crate::progress::spinner(&t!("install.fetching"));
     let manifest = release::fetch_latest().await;
@@ -393,6 +404,16 @@ mod tests {
             detect_profile(false, true, Os::Unix, env(&[("DISPLAY", ":0")])),
             Profile::Headless
         );
+    }
+
+    /// 데스크톱으로 깐 PC에 SSH로 들어와 다시 설치해도 GUI를 지우지 않는다: 있는 설치의 구성을 따르고, 바꾸려면 `--gui`·`--no-gui`
+    #[test]
+    fn reinstalling_keeps_the_installed_profile_unless_asked() {
+        assert_eq!(kept_profile(false, false, Some(Profile::Desktop)), Some(Profile::Desktop));
+        assert_eq!(kept_profile(false, false, Some(Profile::Headless)), Some(Profile::Headless));
+        assert_eq!(kept_profile(false, false, None), None, "a first install looks at the environment");
+        assert_eq!(kept_profile(false, true, Some(Profile::Desktop)), None);
+        assert_eq!(kept_profile(true, false, Some(Profile::Headless)), None);
     }
 
     /// 모듈 이름은 릴리스에 있는 것만, 대소문자 무시, 겹치면 한 번

@@ -6,7 +6,7 @@ import { isTransitional, STATUS_TONE, primaryAction } from '../../utils/serverVi
 import { Icon } from '../Icon';
 import { remoteErrorText } from '../Modals/RemoteDaemonSection';
 import { StatusChip } from '../ui/StatusChip';
-import { everyWhileVisible } from '../../utils/visibleTimer';
+import { startPoll } from '../../utils/poll';
 import { reloadWindow } from './DaemonSwitcher';
 
 const REFRESH_MS = 10_000;
@@ -52,9 +52,8 @@ export function OtherDaemons({
     }, []);
 
     useEffect(() => {
-        load();
         // 창이 숨어 있는 동안은 다른 데몬에 묻지 않는다
-        return everyWhileVisible(load, REFRESH_MS);
+        return startPoll(load, REFRESH_MS);
     }, [load]);
 
     const toggle = async (hostId: string | null, server: DaemonServers['servers'][number], action: string) => {

@@ -29,6 +29,8 @@ describe('콘솔: 새 줄이 올 때까지 기다리는 데몬', () => {
             useMultiConsole({ isPopoutMode: false, popoutParams: null, consoleBufferRef: { current: 2000 } }),
         );
         act(() => result.current.openConsole('a', 'A'));
+        // 화면에 보이는 콘솔만 데몬에 붙잡아 달라고 한다
+        act(() => void result.current.watchConsole('a'));
         await act(async () => vi.advanceTimersByTimeAsync(10_000));
         expect(contents()).toEqual(['hello']);
         // 두 번째 요청은 기다려 달라고 하고(세대를 같이 보낸다) 답이 올 때까지 다음 요청을 보내지 않는다
@@ -57,6 +59,8 @@ describe('콘솔: 새 줄이 올 때까지 기다리는 데몬', () => {
             useMultiConsole({ isPopoutMode: false, popoutParams: null, consoleBufferRef: { current: 2000 } }),
         );
         act(() => result.current.openConsole('a', 'A'));
+        // 화면에 보이는 콘솔만 데몬에 붙잡아 달라고 한다
+        act(() => void result.current.watchConsole('a'));
         await act(async () => vi.advanceTimersByTimeAsync(1200));
         expect(contents()).toEqual(['past']);
         expect(managedConsole.mock.calls.at(-1)?.[3]).toMatchObject({ diskSeen: true });

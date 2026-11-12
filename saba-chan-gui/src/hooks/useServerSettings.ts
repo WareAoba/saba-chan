@@ -147,35 +147,52 @@ export function useServerSettings({
     // 저장에 실을 revision: 연 때의 값에서, 창이 연 뒤 데몬이 인스턴스를 고친 응답(실제 값 읽기·버전 감지·설치)이 오면 그 값으로
     const revision = useRef<string | null>(null);
     const openRequest = useRef(0);
+    // 버전 목록·설치된 버전 읽기가 아직 끝나지 않았다: 그사이 저장 뒤 다시 읽기가 번호를 올려 결과를 버렸으면 다시 읽기가 이어 받는다
+    const versionsUnfinished = useRef(false);
 
     // ── Close animation ─────────────────────────────────────
     const closeSettingsModal = useCallback(() => setShowSettingsModal(false), []);
     const { isClosing: isSettingsClosing, requestClose: requestSettingsClose } = useModalClose(closeSettingsModal);
 
     // ── handleOpenSettings ──────────────────────────────────
-    const handleOpenSettings = async (server: Server) => {
+    // reload: 저장한 뒤 열린 화면 그대로 다시 읽는다 (보던 탭·접힘을 두고, 읽는 사이 고친 칸도 둔다)
+    const handleOpenSettings = async (server: Server, reload = false, saved?: SettingsValues) => {
         // 첫 await 전에 번호를 매긴다: 그사이 다른 서버를 열면 이 호출의 늦은 결과는 모두 버린다
         const request = ++openRequest.current;
         // Fetch latest server data from API
         let latestServer = server;
+        let fresh = false;
         try {
             const data = await window.api.serverList();
             if (data && data.servers) {
                 const found = data.servers.find((s: Server) => s.id === server.id);
                 if (found) {
                     latestServer = found;
+                    fresh = true;
                 }
             }
         } catch (error) {
             console.warn('Failed to fetch latest server data:', error);
         }
         if (request !== openRequest.current) return;
+        // 저장한 뒤 다시 읽지 못했다: 저장 전 값으로 되돌리지 않고, 저장한 값을 기준으로 둔다 (revision은 저장 응답의 것)
+        if (saved && !fresh) {
+            setOpenedSettings((prev) => ({ ...prev, ...saved }));
+            return;
+        }
 
         setSettingsServer(latestServer);
         revision.current = latestServer.revision || null;
         unconfirmedFields.current = new Set();
-        touchedFields.current = new Set();
-        setSettingsSource('loading');
+        if (!reload) {
+            touchedFields.current = new Set();
+            setSettingsSource('loading');
+        }
+        const touched = touchedFields.current;
+        const withTouched = (initial: SettingsValues) => (prev: SettingsValues) => ({
+            ...initial,
+            ...Object.fromEntries([...touched].filter((k) => k in prev).map((k) => [k, prev[k]])),
+        });
         const defaulted = new Set<string>();
         unsetFields.current = new Set();
         liveFields.current = new Set();
@@ -230,7 +247,7 @@ export function useServerSettings({
             initial.stop_timeout = stopTimeoutOf(latestServer);
             initial.auto_update = autoUpdateOf(latestServer);
             Object.assign(initial, gameChatOf(latestServer));
-            setSettingsValues(initial);
+            setSettingsValues(withTouched(initial));
             setOpenedSettings(initial);
         } else {
             const protocols: Partial<NonNullable<ModuleInfo['protocols']>> = module?.protocols || {};
@@ -254,13 +271,16 @@ export function useServerSettings({
                 auto_update: autoUpdateOf(latestServer),
                 ...gameChatOf(latestServer),
             };
-            setSettingsValues(initial);
+            setSettingsValues(withTouched(initial));
             setOpenedSettings(initial);
         }
         openedUnset.current = new Set(unsetFields.current);
+        for (const name of touched) unsetFields.current.delete(name);
 
-        setSettingsActiveTab('general');
-        setAdvancedExpanded(false);
+        if (!reload) {
+            setSettingsActiveTab('general');
+            setAdvancedExpanded(false);
+        }
         setShowSettingsModal(true);
 
         // 디스크의 실제 설정으로 덮는다. 그사이 사용자가 고친 칸과, 다른 서버로 바꿔 연 경우는 건드리지 않는다
@@ -310,16 +330,20 @@ export function useServerSettings({
             }
         }
 
+        if (reload && !versionsUnfinished.current) return;
+
         // Async load versions — only for download-based modules (extension install methods have no version list)
         const mod = modules.find((m) => m.name === latestServer.module);
         const installMethod = mod?.install?.method;
-        setAvailableVersions([]);
+        if (!reload) setAvailableVersions([]);
+        versionsUnfinished.current = false;
         // 버전 목록·설치를 구현한 모듈만 (MK1)
         if (
             installMethod === 'download' &&
             moduleSupports(mod, 'list_versions') &&
             moduleSupports(mod, 'install_server')
         ) {
+            versionsUnfinished.current = true;
             setVersionsLoading(true);
             try {
                 const versions = await window.api.moduleListVersions(latestServer.module, { per_page: 30 });
@@ -355,6 +379,7 @@ export function useServerSettings({
                     console.warn('Failed to detect installed version:', err);
                 }
             }
+            versionsUnfinished.current = false;
         }
     };
 
@@ -786,8 +811,13 @@ export function useServerSettings({
                 if (result.ignored?.length) {
                     safeShowToast(t('settings.ignored', { keys: result.ignored.join(', ') }), 'warning', 6000);
                 }
-                if (stillOpen) setShowSettingsModal(false);
                 fetchServers();
+                // 화면을 닫지 않는다: 닫았다 열면 탭 전체가 로딩 표시로 바뀌고 스크롤을 잃는다
+                if (stillOpen) {
+                    touchedFields.current = new Set();
+                    if (result.revision) revision.current = result.revision;
+                    await handleOpenSettings(settingsServer, true, settingsValues);
+                }
             }
         } catch (error) {
             console.error('Exception in handleSaveSettings:', error);

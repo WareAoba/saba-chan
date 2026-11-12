@@ -6,10 +6,11 @@ import i18n from 'i18next';
 import type { ComponentProps } from 'react';
 import { describe, expect, it } from 'vitest';
 import { ServerConsole } from '../components/servers/ServerConsole';
+import type { ConsoleEntry } from '../stores/useConsoleStore';
 import type { Server } from '../stores/useServerStore';
 
 const server = { id: 'p', name: 'Pal', status: 'running' } as unknown as Server;
-const state = { lines: [{ id: 0, content: '[LogInit] started', level: 'info', _key: 'k0' }], input: '' };
+const state = { lines: [{ id: 0, content: '[LogInit] started', level: 'info', _key: 'k0' }], input: '' } as unknown as ConsoleEntry;
 
 const consoleOf = (props?: Partial<ComponentProps<typeof ServerConsole>>) =>
     render(

@@ -6,6 +6,7 @@ import type { DiscordNode, MembersByGuild } from '../components/discord/types';
 import { eventsAvailable, subscribeDaemonEvents } from '../utils/daemonEvents';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { mergePatchDiff } from '../utils/mergePatch';
+import { startPoll } from '../utils/poll';
 
 // i18n translate function — set after store creation
 // biome-ignore lint/suspicious/noExplicitAny: i18next t의 여러 겹친 모양을 그대로 받는다
@@ -111,13 +112,17 @@ export interface DiscordData {
     /** 지금 호스트로 릴레이 확인이 한 번이라도 답했는가 (오프닝이 기동음을 낼지 정할 때 기다린다) */
     relayChecked: boolean;
     relayError: string;
+    /** relayError의 종류: 토큰 거절(다시 연결해야 함)·요청 한도(잠깐 쉼)·그 밖. 실패가 없으면 '' */
+    relayErrorKind: RelayFailureKind | '';
     _relayFailures: number;
+    /** 마지막으로 릴레이에 상태를 물은 때 (거절된 동안 덜 묻는다) */
+    _relayCheckedAt: number;
     _agentFailures: number;
     _saveErrorCode: string | null;
     _settingsReady: boolean;
     _botConfigLoaded: boolean;
-    /** 다음 상태 확인 타이머 (확인이 끝나면 다음을 건다) */
-    _statusInterval: ReturnType<typeof setTimeout> | null;
+    /** 상태 폴링을 멈추는 함수 (돌고 있을 때만) */
+    _statusInterval: (() => void) | null;
     _statusTimeout: ReturnType<typeof setTimeout> | null;
 }
 
@@ -171,10 +176,12 @@ const initialState = (): DiscordData => ({
     relayChecked: false,
     // 릴레이 확인이 연달아 실패한 이유. 비어 있지 않으면 화면이 '연결 중' 대신 실패를 보인다
     relayError: '',
+    relayErrorKind: '',
 
     // ── Internal ──
     // 연달아 실패한 릴레이 확인 수. 한 번 놓친 것으로 끊김·실패를 보이지 않는다
     _relayFailures: 0,
+    _relayCheckedAt: 0,
     // 연달아 답을 받지 못한 에이전트 상태 확인 수. 한 번 늦은 것으로 꺼짐을 보이지 않는다
     _agentFailures: 0,
     // 마지막 봇 설정 저장이 거절된 이유(error_code). 저장에 성공하면 비운다
@@ -184,6 +191,36 @@ const initialState = (): DiscordData => ({
     _statusInterval: null,
     _statusTimeout: null,
 });
+
+export type RelayFailureKind = 'rejected' | 'rate' | 'other';
+
+/** 릴레이가 이 PC의 노드 토큰을 받지 않는다는 답 (새 코드로 다시 연결해야 풀린다) */
+const TOKEN_REJECTED = new Set([
+    'MISSING_TOKEN',
+    'INVALID_TOKEN_FORMAT',
+    'INVALID_TOKEN',
+    'TOKEN_REPLACED',
+    'NODE_NOT_FOUND',
+    'MISSING_AUTH',
+    // 토큰은 맞지만 다른 PC의 것이다 (설정의 호스트와 토큰이 어긋났다)
+    'FORBIDDEN',
+]);
+
+/**
+ * 릴레이 상태 확인 실패를 가른다. 릴레이의 요청 한도 오류는 코드 없이 `ERROR`와
+ * "Rate limit exceeded" 문구로 온다 (fastify rate-limit 기본 오류)
+ */
+export function relayFailureKind(failure: unknown): RelayFailureKind {
+    const body = (failure && typeof failure === 'object' ? failure : {}) as { error?: unknown; message?: unknown };
+    const code = typeof body.error === 'string' ? body.error : '';
+    if (TOKEN_REJECTED.has(code)) return 'rejected';
+    const message = typeof body.message === 'string' ? body.message : '';
+    if (code === 'RATE_LIMITED' || /rate limit/i.test(message)) return 'rate';
+    return 'other';
+}
+
+/** 토큰이 거절된 동안 상태를 다시 묻는 간격: 다시 연결하기 전에는 같은 답이다 */
+const REJECTED_RECHECK_MS = 30_000;
 
 export const useDiscordStore = create<DiscordState>()((set, get) => ({
     ...initialState(),
@@ -202,6 +239,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             relayConnecting: false,
             relayChecked: false,
             relayError: '',
+            relayErrorKind: '',
             _relayFailures: 0,
         });
         if (get()._statusInterval) get().checkStatus();
@@ -286,7 +324,10 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
                     k === 'cloud'
                         ? { relayUrl: pick('discordCloudRelayUrl'), hostId: pick('discordCloudHostId') }
                         : pick(BOT_KEYS[k][0]);
-                const patch = mergePatchDiff(value(base), value((f: keyof DiscordData) => state[f]));
+                const patch = mergePatchDiff(
+                    value(base),
+                    value((f: keyof DiscordData) => state[f]),
+                );
                 if (patch !== undefined) payload[k] = patch;
             }
             const res = await window.api.botConfigSave(payload);
@@ -306,7 +347,9 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             if (Array.isArray(res?.ignored) && res.ignored.length > 0) {
                 safeShowToast(_t('discord.permission_keys_ignored'), 'warning', 6000);
                 // 화면이 저장되지 않은 값을 저장된 것처럼 보이지 않게 데몬 값으로 다시 읽는다
-                await get().loadConfig().catch(() => {});
+                await get()
+                    .loadConfig()
+                    .catch(() => {});
             }
             return true;
         } catch (error) {
@@ -330,7 +373,6 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         set({ nodeSettings: put(get().nodeSettings) });
     },
 
-
     startBot: async () => {
         try {
             const result = await window.api.discordBotStart();
@@ -346,7 +388,11 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
                 get().checkStatus();
             }
         } catch (e) {
-            safeShowToast(_t('discord_bot.start_error_toast', { error: _translateError((e as Error).message) }), 'error', 4000);
+            safeShowToast(
+                _t('discord_bot.start_error_toast', { error: _translateError((e as Error).message) }),
+                'error',
+                4000,
+            );
         }
     },
 
@@ -360,11 +406,22 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
                     4000,
                 );
             } else {
-                set({ discordBotStatus: 'stopped', discordReconnecting: false, relayConnected: false, relayError: '', _relayFailures: 0 });
+                set({
+                    discordBotStatus: 'stopped',
+                    discordReconnecting: false,
+                    relayConnected: false,
+                    relayError: '',
+                    relayErrorKind: '',
+                    _relayFailures: 0,
+                });
                 safeShowToast(_t('discord_bot.stopped_toast'), 'discord', 3000);
             }
         } catch (e) {
-            safeShowToast(_t('discord_bot.stop_error_toast', { error: _translateError((e as Error).message) }), 'error', 4000);
+            safeShowToast(
+                _t('discord_bot.stop_error_toast', { error: _translateError((e as Error).message) }),
+                'error',
+                4000,
+            );
         }
     },
 
@@ -399,23 +456,33 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         const info = typeof agent === 'object' ? agent : null;
         const link: RelayLink | undefined = info?.link;
         if (agent !== 'unknown') daemonKnowsLink = !!link;
-        let relayOk = false;
-        let relayFailure = '';
-        if (state.discordCloudHostId && link && info?.running) {
-            relayOk = link.connected;
-            // 막 켜 하트비트 전이면 끊김이 아니라 연결 중이다 (실패 없이 '연결 중')
-            if (!relayOk && (link.error || link.heard !== false)) relayFailure = link.error || _t('errors.network_error');
-        } else if (state.discordCloudHostId) {
+        const agentLink = state.discordCloudHostId && link && info?.running ? link : null;
+        // 토큰이 거절된 동안은 릴레이를 30초에 한 번만 묻는다 (같은 공유기의 다른 PC와 릴레이 요청 한도를 나눠 쓴다).
+        // 그 사이에는 거절을 그대로 두고, 에이전트 상태는 5초마다 반영한다
+        const now = Date.now();
+        const holdRejected =
+            !agentLink?.connected && state.relayErrorKind === 'rejected' && now - state._relayCheckedAt < REJECTED_RECHECK_MS;
+        let relayOk = !!agentLink?.connected;
+        let relayFailure = holdRejected ? state.relayError : '';
+        let failureKind: RelayFailureKind | '' = holdRejected ? 'rejected' : '';
+        // 붙어 있거나 막 켜 하트비트 전(연결 중)이면 릴레이에 묻지 않는다. 끊겼으면 왜인지(토큰 거절·요청 한도) 릴레이에 묻는다
+        const agentConnecting = !!agentLink && !agentLink.connected && !agentLink.error && agentLink.heard === false;
+        if (state.discordCloudHostId && !relayOk && !agentConnecting && !holdRejected) {
             const relayUrl = state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
+            set({ _relayCheckedAt: now });
             try {
                 // 이미 붙어 있거나 실패로 정해졌으면 '연결 중'으로 깜빡이지 않는다 (5초마다 확인)
                 if (generation === statusGeneration && !state.relayConnected && !state.relayError)
                     set({ relayConnecting: true });
                 const result = await window.api.relayCheckHostStatus(state.discordCloudHostId, relayUrl);
                 relayOk = !!result && !result.error;
-                if (!relayOk) relayFailure = String(result?.error || _t('errors.network_error'));
+                if (!relayOk) {
+                    relayFailure = String(result?.error || _t('errors.network_error'));
+                    failureKind = relayFailureKind(result);
+                }
             } catch (e) {
                 relayFailure = (e as Error)?.message || String(e);
+                failureKind = 'other';
             }
         }
         // 그 사이 대상이 바뀌었거나 폴링이 멈췄으면 이 결과는 버린다
@@ -446,6 +513,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             relayConnected: relayOk,
             relayChecked: !!state.discordCloudHostId,
             relayError: settled ? relayFailure : get().relayError,
+            relayErrorKind: settled ? failureKind : get().relayErrorKind,
             _relayFailures: failures,
             _agentFailures: agentFailures,
             discordAgentReplaced: agentReplaced,
@@ -453,9 +521,10 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             discordAgentMinVersion: agentMinVersion,
             discordBotStatus: nextStatus,
             discordReconnecting:
-                // 릴레이가 이 버전을 거절하면 다시 붙을 일이 없다 — 복구 중이 아니라 거절로 보인다
+                // 릴레이가 이 버전이나 이 PC의 열쇠를 거절하면 저절로 다시 붙을 일이 없다 — 복구 중이 아니라 거절로 보인다
                 nextStatus === 'connecting' &&
                 !agentMinVersion &&
+                !(settled && failureKind === 'rejected') &&
                 (prev.discordBotStatus === 'running' || prev.discordReconnecting),
         });
     },
@@ -464,17 +533,14 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         if (get()._statusInterval || get()._statusTimeout) return;
         const generation = statusGeneration;
 
-        // 다음 확인. 데몬이 연결 상태를 알려 주고 이벤트를 받으면 바뀔 때 이벤트로 바로 읽으니 평소에는 드물게 본다
-        const schedule = () => {
-            if (generation !== statusGeneration) return;
-            // 끊긴 것 같으면(한 번 실패) 끊김을 정하려 곧 다시 본다
-            const ms = daemonKnowsLink && eventsAvailable() && get()._relayFailures === 0 ? STATUS_SLOW_POLL_MS : STATUS_POLL_MS;
-            set({
-                _statusInterval: setTimeout(async () => {
-                    await get().checkStatus();
-                    schedule();
-                }, ms),
-            });
+        // 다음 확인까지. 데몬이 연결 상태를 알려 주고 이벤트를 받으면 바뀔 때 이벤트로 바로 읽으니 평소에는 드물게 본다.
+        // 끊긴 것 같으면(한 번 실패) 끊김을 정하려 곧 다시 본다
+        const statusPollMs = () =>
+            daemonKnowsLink && eventsAvailable() && get()._relayFailures === 0 ? STATUS_SLOW_POLL_MS : STATUS_POLL_MS;
+        // 창이 가려진 동안은 쉰다 (startPoll)
+        const poll = () => {
+            get()._statusInterval?.();
+            set({ _statusInterval: startPoll(() => get().checkStatus(), statusPollMs, { immediate: false }) });
         };
         offStatusEvents = subscribeDaemonEvents((ev) => {
             if (ev.type !== 'relay.status' && ev.type !== 'resync') return;
@@ -488,8 +554,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
                 .then(() => {
                     // 끊긴 것 같으면 30초 뒤가 아니라 곧 다시 보고 끊김을 정한다
                     if (generation !== statusGeneration || get()._relayFailures === 0 || get()._statusTimeout) return;
-                    clearTimeout(get()._statusInterval ?? undefined);
-                    schedule();
+                    poll();
                 });
         });
         // 첫 확인은 잠깐 미룬다. 멈추면 취소되도록 타이머를 들고 있는다
@@ -498,7 +563,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             await get().checkStatus();
             if (generation !== statusGeneration) return;
             set({ botStatusReady: true });
-            schedule();
+            poll();
         }, 200);
         set({ _statusTimeout: timeout });
     },
@@ -507,7 +572,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         const state = get();
         offStatusEvents?.();
         offStatusEvents = null;
-        clearTimeout(state._statusInterval ?? undefined);
+        state._statusInterval?.();
         clearTimeout(state._statusTimeout ?? undefined);
         statusGeneration += 1;
         set({
@@ -515,6 +580,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             _statusTimeout: null,
             relayConnecting: false,
             relayError: '',
+            relayErrorKind: '',
             _relayFailures: 0,
             _agentFailures: 0,
         });
@@ -526,7 +592,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         offStatusEvents?.();
         offStatusEvents = null;
         daemonKnowsLink = false;
-        clearTimeout(state._statusInterval ?? undefined);
+        state._statusInterval?.();
         clearTimeout(state._statusTimeout ?? undefined);
         statusGeneration += 1;
         synced = {};

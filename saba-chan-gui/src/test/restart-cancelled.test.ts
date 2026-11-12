@@ -55,4 +55,15 @@ describe('그만둔 재시작', () => {
         expect(message).not.toMatch(/started or removed while waiting/);
         expect(type).toBe('info');
     });
+
+    it('서버가 아직 꺼지는 중이라 다시 켜지 못했으면 데몬의 영어 문장이 아니라 번역된 이유를 알린다', async () => {
+        const [message, type] = await restartWith({
+            success: false,
+            stopped: false,
+            error: 'The server is still shutting down; start it again once it has stopped',
+            error_code: 'still_stopping',
+        });
+        expect(message).toBe(i18n.t('errors.still_stopping'));
+        expect(type).toBe('error');
+    });
 });

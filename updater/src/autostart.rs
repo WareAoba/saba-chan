@@ -418,8 +418,7 @@ pub fn service_relaunch() -> Option<Vec<String>> {
     #[cfg(not(target_os = "macos"))]
     {
         let cgroup = std::fs::read_to_string("/proc/self/cgroup").ok()?;
-        let systemctl = ["/usr/bin/systemctl", "/bin/systemctl"].into_iter().map(PathBuf::from).find(|p| p.is_file());
-        service_relaunch_from(&cgroup, systemctl)
+        service_relaunch_from(&cgroup, systemctl())
     }
 }
 
@@ -427,7 +426,41 @@ pub fn service_relaunch() -> Option<Vec<String>> {
 fn service_relaunch_from(cgroup: &str, systemctl: Option<PathBuf>) -> Option<Vec<String>> {
     let unit = format!("/{SERVICE_FILE}");
     cgroup.lines().any(|l| l.trim_end().ends_with(&unit)).then_some(())?;
+    systemd_start(systemctl)
+}
+
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn systemctl() -> Option<PathBuf> {
+    ["/usr/bin/systemctl", "/bin/systemctl"].into_iter().map(PathBuf::from).find(|p| p.is_file())
+}
+
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn systemd_start(systemctl: Option<PathBuf>) -> Option<Vec<String>> {
     Some(vec![systemctl?.to_string_lossy().into_owned(), "--user".into(), "start".into(), SERVICE_FILE.into()])
+}
+
+/// 꺼진 데몬(`core`)을 자동 실행 서비스로 켜는 명령 (`systemctl --user start`, 맥은 `launchctl kickstart`).
+/// 등록 항목이 이 설치의 데몬을 서비스로 돌릴 때만 있다. CLI가 그런 설치에서 데몬을 직접 띄우면 서비스 밖에서 돌아
+/// 죽어도 다시 뜨지 않고 `systemctl --user status`와 어긋난다. 데이터 폴더를 바꾼 실행은 서비스와 다른 데몬이라 None
+pub fn service_start(core: &Path) -> Option<Vec<String>> {
+    if cfg!(target_os = "windows") || !supported() {
+        return None;
+    }
+    #[cfg(target_os = "macos")]
+    // SAFETY: getuid는 실패하지 않고 메모리를 건드리지 않는다
+    let start = launchd_kickstart(unsafe { libc::getuid() }, Some(PathBuf::from("/bin/launchctl")).filter(|p| p.is_file()));
+    #[cfg(not(target_os = "macos"))]
+    let start = systemd_start(systemctl());
+    service_start_from(read().as_ref(), core, start)
+}
+
+fn service_start_from(entry: Option<&Entry>, core: &Path, start: Option<Vec<String>>) -> Option<Vec<String>> {
+    let entry = entry.filter(|e| e.is_service())?;
+    let same = match (std::fs::canonicalize(&entry.program), std::fs::canonicalize(core)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    };
+    same.then_some(start).flatten()
 }
 
 /// 로그인하지 않아도 이 사용자의 서비스가 부팅할 때 도는가 (`loginctl enable-linger`). 리눅스가 아니면 None
@@ -554,6 +587,11 @@ fn remove_agent_in(dir: &Path) -> std::io::Result<()> {
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn launchd_relaunch_from(service_name: Option<&str>, uid: u32, launchctl: Option<PathBuf>) -> Option<Vec<String>> {
     (service_name? == LAUNCH_AGENT_LABEL).then_some(())?;
+    launchd_kickstart(uid, launchctl)
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn launchd_kickstart(uid: u32, launchctl: Option<PathBuf>) -> Option<Vec<String>> {
     Some(vec![launchctl?.to_string_lossy().into_owned(), "kickstart".into(), format!("gui/{uid}/{LAUNCH_AGENT_LABEL}")])
 }
 
@@ -768,6 +806,28 @@ mod tests {
         assert_eq!(service_relaunch_from("0::/user.slice/user-1000.slice/session-2.scope\n", systemctl.clone()), None);
         assert_eq!(service_relaunch_from("0::/system.slice/saba-chan.service.d\n", systemctl), None);
         assert_eq!(service_relaunch_from(cgroup, None), None, "no systemctl, no service relaunch");
+    }
+
+    /// 서비스로 등록된 설치에서 CLI가 데몬을 직접 띄우면 서비스 밖에서 돈다 (죽어도 다시 뜨지 않고 `systemctl --user status`와 어긋난다):
+    /// 등록 항목이 이 설치의 데몬을 서비스로 돌릴 때만 서비스로 켠다
+    #[test]
+    fn a_daemon_registered_as_the_service_is_started_through_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = dir.path().join(crate::uninstall_entry::CORE_EXE);
+        std::fs::write(&core, b"").unwrap();
+        let start = Some(vec!["/usr/bin/systemctl".to_string(), "--user".into(), "start".into(), SERVICE_FILE.into()]);
+        let service = Entry { program: core.clone(), args: Vec::new() };
+        assert_eq!(service_start_from(Some(&service), &core, start.clone()), start);
+        // 같은 파일을 다른 표기로 가리켜도 같은 설치다
+        let dotted = dir.path().join(".").join(crate::uninstall_entry::CORE_EXE);
+        assert_eq!(service_start_from(Some(&service), &dotted, start.clone()), start);
+
+        let other = Entry { program: dir.path().join("elsewhere").join(crate::uninstall_entry::CORE_EXE), args: Vec::new() };
+        assert_eq!(service_start_from(Some(&other), &core, start.clone()), None, "another install's service");
+        let tray = Entry { program: dir.path().join("saba-chan-gui"), args: vec![TRAY_ARG.to_string()] };
+        assert_eq!(service_start_from(Some(&tray), &core, start.clone()), None, "a desktop entry starts the GUI, not a service");
+        assert_eq!(service_start_from(None, &core, start), None);
+        assert_eq!(service_start_from(Some(&service), &core, None), None, "no systemctl");
     }
 
     #[cfg(not(target_os = "windows"))]

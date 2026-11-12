@@ -105,10 +105,18 @@ struct LogBuffer {
     epoch: u64,
     /// 방금 stdin으로 보낸 명령과 보낸 시각: 서버가 그 줄을 되풀이해 찍으면 한 번만 버린다 (`take_echo`)
     echo: Option<(String, std::time::Instant)>,
+    /// 러너가 쓰는 세션 로그 (러너 기반 버퍼). 데몬이 넣는 줄(안내, 보낸 명령)을 여기에도 덧붙인다:
+    /// 러너는 서버 출력만 쓰므로, 덧붙이지 않으면 서버가 꺼지거나 데몬이 다시 붙은 뒤 그 줄이 사라진다
+    session_log: Option<PathBuf>,
+    /// 세션 로그에 덧붙인 줄. 따라 읽기가 되읽으면 한 번씩 버린다 (`take_own`)
+    own: VecDeque<String>,
 }
 
 /// 콘솔 줄이 생기거나 관리 프로세스가 붙고 떨어질 때 울린다 (콘솔 조회 `?wait=`가 기다린다)
 pub(crate) static CONSOLE_CHANGED: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+/// 되읽기를 기다리는 덧붙인 줄의 상한 (러너가 끝난 뒤 덧붙인 줄은 되읽지 않는다)
+const OWN_LINES_KEPT: usize = 64;
 
 /// 보낸 명령의 되풀이 줄을 기다리는 시간
 const ECHO_WINDOW: std::time::Duration = std::time::Duration::from_secs(2);
@@ -140,7 +148,32 @@ impl LogBuffer {
             file_tx: None,
             epoch: next_epoch(),
             echo: None,
+            session_log: None,
+            own: VecDeque::new(),
         }
+    }
+
+    /// 데몬이 넣은 줄을 러너의 세션 로그에 덧붙인다. 러너의 줄과 섞이지 않게 한 줄을 한 번에 쓴다
+    fn append_own(&mut self, line: &LogLine) {
+        use std::io::Write;
+        let Some(path) = &self.session_log else { return };
+        let disk_line = format_log_line_for_disk(line);
+        let written = std::fs::OpenOptions::new().append(true).open(path).and_then(|mut f| f.write_all(format!("{disk_line}\n").as_bytes()));
+        match written {
+            Ok(()) => {
+                if self.own.len() >= OWN_LINES_KEPT {
+                    self.own.pop_front();
+                }
+                self.own.push_back(disk_line);
+            }
+            Err(e) => tracing::debug!("Could not add a console line to {}: {}", path.display(), e),
+        }
+    }
+
+    /// 세션 로그에서 읽은 줄이 데몬이 덧붙인 것인가. 맞으면 한 번만 참이다 (버퍼에는 이미 있다)
+    fn take_own(&mut self, raw: &str) -> bool {
+        let found = self.own.iter().position(|l| l == raw);
+        found.is_some_and(|i| self.own.remove(i).is_some())
     }
 
     /// stdin으로 보낸 명령을 적어 둔다
@@ -164,7 +197,9 @@ impl LogBuffer {
 
     /// Push a new log line and return the created `LogLine`.
     fn push(&mut self, source: LogSource, content: String, level: LogLevel) -> LogLine {
-        self.push_at(current_timestamp(), source, content, level)
+        let line = self.push_at(current_timestamp(), source, content, level);
+        self.append_own(&line);
+        line
     }
 
     /// 시각을 정해서 넣는다 (러너 로그처럼 줄마다 쓴 시각이 이미 있을 때)
@@ -174,7 +209,9 @@ impl LogBuffer {
 
     /// 보낸 명령 한 줄과 시킨 쪽
     fn push_input(&mut self, command: &str, by: InputBy) -> LogLine {
-        self.push_line(current_timestamp(), LogSource::Input, command.to_string(), LogLevel::Info, Some(by))
+        let line = self.push_line(current_timestamp(), LogSource::Input, command.to_string(), LogLevel::Info, Some(by));
+        self.append_own(&line);
+        line
     }
 
     fn push_line(&mut self, timestamp: u64, source: LogSource, content: String, level: LogLevel, by: Option<InputBy>) -> LogLine {
@@ -338,12 +375,19 @@ impl std::fmt::Display for StdinFull {
 impl std::error::Error for StdinFull {}
 
 impl ManagedProcess {
-    /// 강제 종료. 러너가 있으면 러너도 죽여, 런처가 띄운 손자 프로세스까지 Job Object로 끝낸다.
+    /// 강제 종료. 러너가 있으면 러너도 죽여, 런처가 띄운 손자 프로세스까지 끝낸다 (Windows는 Job Object, Unix는 프로세스 그룹).
     /// 종료 요청이 거부되면 오류 (끝났는지는 `is_running`으로 확인한다).
     /// Windows는 taskkill을 띄워 끝나기를 기다리므로 async 작업자 밖에서 한다
     pub async fn force_kill(&self) -> Result<()> {
         let (pid, runner_pid) = (self.pid, self.runner_pid);
         tokio::task::spawn_blocking(move || {
+            // Unix: 러너는 자기 그룹의 리더이고 서버와 그 자식이 그 그룹에 든다 (의사 콘솔이면 서버가 제 그룹의 리더다).
+            // PID만 죽이면 런처 스크립트가 띄운 실제 서버가 남으므로 그룹째 끝낸다
+            #[cfg(unix)]
+            if let Some(runner_pid) = runner_pid {
+                super::process::force_kill_group(pid);
+                super::process::force_kill_group(runner_pid);
+            }
             let server = super::process::force_kill_tree(pid);
             let runner = runner_pid.map_or(Ok(()), super::process::force_kill_pid);
             server.and(runner)

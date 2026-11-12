@@ -352,8 +352,9 @@ pub enum RemoteCmd {
         on: bool,
         #[arg(long)]
         off: bool,
-        #[arg(long)]
-        port: Option<u16>,
+        /// Remote port number (`--port` is the daemon's)
+        #[arg(long = "remote-port", value_name = "PORT")]
+        remote_port: Option<u16>,
         /// Public host name or IP of this PC (empty clears it)
         #[arg(long)]
         address: Option<String>,
@@ -378,8 +379,9 @@ pub enum RemoteCmd {
     /// Install Saba-chan on a Linux PC over this PC's ssh and connect to it (`user@host`)
     Install {
         target: String,
-        #[arg(long, default_value_t = 22)]
-        port: u16,
+        /// ssh port (`--port` is the daemon's)
+        #[arg(long = "ssh-port", value_name = "PORT", default_value_t = 22)]
+        ssh_port: u16,
         /// Keep the daemon running after you log out (sudo)
         #[arg(long)]
         linger: bool,
@@ -1661,6 +1663,35 @@ mod tests {
         Cli::command().debug_assert();
         // 도움말을 바꿔 끼워도 위치 인자 순서가 그대로여야 한다
         localized().debug_assert();
+    }
+
+    /// 전역 옵션(`--port`는 데몬 포트)과 id가 같은 하위 명령 옵션은 값이 서로 섞인다
+    #[test]
+    fn no_subcommand_argument_shares_an_id_with_a_global_option() {
+        fn walk(cmd: &clap::Command, path: &str, globals: &[String], clashes: &mut Vec<String>) {
+            for sub in cmd.get_subcommands() {
+                let path = format!("{} {}", path, sub.get_name());
+                clashes.extend(sub.get_arguments().filter(|a| globals.contains(&a.get_id().to_string())).map(|a| format!("{} --{}", path.trim(), a.get_id())));
+                walk(sub, &path, globals, clashes);
+            }
+        }
+        let root = Cli::command();
+        let globals: Vec<String> = root.get_arguments().filter(|a| a.is_global_set()).map(|a| a.get_id().to_string()).collect();
+        assert!(globals.contains(&"port".to_string()));
+        let mut clashes = Vec::new();
+        walk(&root, "", &globals, &mut clashes);
+        assert!(clashes.is_empty(), "{clashes:?}");
+    }
+
+    #[test]
+    fn remote_ports_are_not_the_daemon_port() {
+        let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied())).unwrap();
+        assert_eq!(p(&["remote", "install", "u@h"]).global.port, None);
+        assert_eq!(p(&["remote", "set", "--remote-port", "5000"]).global.port, None);
+        let cli = p(&["--port", "57474", "remote", "set", "--off"]);
+        assert_eq!(cli.global.port, Some(57474));
+        assert!(matches!(cli.cmd, Some(Cmd::Remote(RemoteCmd::Set { remote_port: None, .. }))));
+        assert!(matches!(p(&["remote", "install", "u@h", "--ssh-port", "2222"]).cmd, Some(Cmd::Remote(RemoteCmd::Install { ssh_port: 2222, .. }))));
     }
 
     /// 명령 본문 안의 `--lang=ko`는 전역 옵션이 아니다: 데몬 언어를 바꾸지 않게 실제 전역 옵션만 쓴다

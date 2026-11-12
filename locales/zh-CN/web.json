@@ -303,12 +303,14 @@
   },
   "errors": {
     "start_cancelled": "服务器在启动过程中被停止，因此未启动。",
+    "still_stopping": "服务器仍在关闭中，因此没有重新启动。请在它完全停止后再启动。",
     "generic": "无法完成请求。",
     "remote_not_allowed": "只能在电脑上的 Saba-chan 应用中进行。",
     "remote_field_blocked": "以下设置只能在电脑上更改：{{fields}}",
     "remote_bad_path": "不接受此请求。",
     "remote_bad_request": "不接受此请求。",
     "remote_timeout": "未在 2 分钟内完成，已按失败处理。请在电脑上确认结果。",
+    "still_working": "2 分钟内没有完成。电脑上可能仍在进行，请稍后再查看。",
     "remote_host_gone": "请求完成前与电脑的连接已断开。",
     "remote_busy": "请求过多。请稍后再试。"
   },

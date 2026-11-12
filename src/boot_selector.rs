@@ -574,22 +574,14 @@ pub const LAUNCH_TAG_ENV: &str = "SABA_LAUNCH_TAG";
 /// 리눅스: CLI를 새 터미널 창에 띄운다 ("CLI로 전환"). 터미널 pid를 돌려주고, CLI에는 `tag`를 환경으로 단다
 #[cfg(target_os = "linux")]
 pub fn spawn_cli_in_new_console(cli: &std::path::Path, args: &[String], tag: &str) -> std::io::Result<u32> {
-    use std::os::unix::process::CommandExt;
     let (term, prefix) = terminal_command(std::env::var("TERMINAL").ok().as_deref(), find_program)
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "no terminal program found"))?;
     let mut cmd = std::process::Command::new(term);
-    cmd.args(prefix)
-        .arg(cli)
-        .args(args)
-        .env(LAUNCH_TAG_ENV, tag)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .process_group(0);
+    cmd.args(prefix).arg(cli).args(args).env(LAUNCH_TAG_ENV, tag);
     if let Some(dir) = cli.parent() {
         cmd.current_dir(dir);
     }
-    let child = cmd.spawn()?;
+    let child = saba_chan_updater_lib::process::spawn_detached(&mut cmd)?;
     let pid = child.id();
     // 오래 사는 데몬이 띄우므로 끝난 터미널을 거둔다
     std::thread::spawn(move || {

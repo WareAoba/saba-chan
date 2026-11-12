@@ -13,6 +13,8 @@
 //! `ok` 또는 `error: 까닭` 한 줄로 답한 뒤 닫는다 (`INTERRUPT_OK`).
 //!
 //! 로그: 세션마다 파일 하나, 한 줄 형식은 `format_line` (데몬의 콘솔 로그 형식과 같다).
+//! 파일이 `SESSION_LOG_MAX_BYTES`를 넘게 되면 러너가 `<파일>.1`로 넘기고 같은 이름으로 새로 쓴다
+//! (`session_log_piece`, 앞 조각은 `SESSION_LOG_PIECES`개까지).
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -27,6 +29,18 @@ pub const INTERRUPT: &str = "interrupt";
 pub const INTERRUPT_OK: &str = "ok";
 /// 지금 러너가 runner.json에 쓰는 형식 번호. 데몬이 붙는 방식을 옛 데몬이 못 읽게 바꿀 때만 올린다
 pub const RUNNER_FORMAT: u32 = 1;
+
+/// 세션 로그 파일 하나의 크기 상한. 다음 줄을 쓰면 넘게 될 때 러너가 앞 조각으로 넘긴다
+pub const SESSION_LOG_MAX_BYTES: u64 = 32 * 1024 * 1024;
+/// 한 세션에 남기는 앞 조각 수 (`.1`이 가장 최근). 더 오래된 조각은 지운다
+pub const SESSION_LOG_PIECES: u32 = 3;
+
+/// 세션 로그 `log`의 `n`번째 앞 조각 (`<log>.<n>`)
+pub fn session_log_piece(log: &Path, n: u32) -> PathBuf {
+    let mut name = log.as_os_str().to_os_string();
+    name.push(format!(".{n}"));
+    PathBuf::from(name)
+}
 
 /// 서버에 Ctrl+C를 보내 달라는 연결의 첫 줄 (줄 끝 없음)
 pub fn interrupt_request(token: &str) -> String {
