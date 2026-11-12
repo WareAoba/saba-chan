@@ -298,24 +298,14 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
     // 잡은 잠금은 업데이트에 넘긴다: 놓았다 다시 잡는 틈에 다른 작업이 끼어 업데이트를 못 하는 일이 없게
     let updated = match super::instance::begin_server_update_holding(state, id, start_lock).await {
         Ok(job) => Some(job.await.unwrap_or(false)),
-        Err(r) => {
-            let body = crate::ipc::internal::into_internal(r).await.body;
-            tracing::warn!("Update of '{}' could not start: {}", id, body);
+        Err(failure) => {
+            tracing::warn!("Update of '{}' could not start: {}", id, failure.body);
             // 위에서 본 뒤 끄는 사이에 같은 폴더의 다른 인스턴스가 켜졌거나 작업을 시작했다: 자동 업데이트는 실패로 남기지 않고 미룬다
-            let in_use = matches!(
-                body.get("error_code").and_then(Value::as_str),
-                Some("instance_busy" | "server_running")
-            );
-            if only_if_empty && in_use {
+            if only_if_empty && failure.is_in_use() {
                 postpone(id, false);
                 None
             } else {
-                super::instance::emit_update_failed(
-                    state,
-                    id,
-                    body.get("error").and_then(Value::as_str).unwrap_or("update failed"),
-                )
-                .await;
+                super::instance::emit_update_failed(state, id, failure.reason().unwrap_or("update failed")).await;
                 Some(false)
             }
         }
@@ -579,8 +569,8 @@ fn warn_minutes_for(requested: Option<u32>, players: Option<u32>) -> u32 {
 /// 켜진 서버의 `apply-update`: 예고 뒤 업데이트를 걸고 바로 답한다
 pub async fn apply_to_running(state: &IPCServer, id: &str, body: &ApplyBody) -> Response {
     // 업데이트할 수 없는 서버(직접 설치 등)는 예고하거나 끄기 전에 거절한다 (꺼진 서버와 같은 400)
-    if let Err(r) = super::instance::updatable(&*state.supervisor.read().await, id) {
-        return r;
+    if let Err(failure) = super::instance::updatable(&*state.supervisor.read().await, id) {
+        return failure.into_response();
     }
     // 예고 없이 끌지(0명)는 기억한 수(최대 1분 전)가 아니라 지금 수로 정한다 (모르면 예고한다)
     let players = crate::supervisor::players::fresh(&state.supervisor, id).await;

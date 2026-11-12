@@ -495,7 +495,7 @@ pub async fn reset_properties_handler(
     };
     // 켜진 서버의 파일을 기본값으로 바꾸면 서버가 쓰는 값과 어긋난다
     if super::backup::is_running(&state, &id).await {
-        return server_running();
+        return server_running().into_response();
     }
     let resp = match Supervisor::manage_properties(&state.supervisor, &id, "reset", None).await {
         Ok(result) => {
@@ -523,9 +523,8 @@ async fn sync_after_file_change(state: &IPCServer, id: &str, result: &Value) {
 }
 
 /// 켜져 있는 서버의 파일을 바꾸는 작업을 거절하는 409
-fn server_running() -> axum::response::Response {
-    let error = json!({ "success": false, "error": "Stop the server first", "error_code": "server_running" });
-    (StatusCode::CONFLICT, Json(error)).into_response()
+fn server_running() -> super::Failure {
+    super::Failure::running(json!({ "success": false, "error": "Stop the server first", "error_code": "server_running" }))
 }
 
 /// `dir`과 겹치는 폴더(working_dir 또는 인스턴스 폴더, 그 안이나 바깥)를 쓰는 인스턴스 (`except`는 뺀다)
@@ -554,12 +553,11 @@ pub(super) async fn other_instances_busy(state: &IPCServer, dir: &str, except: O
 
 /// `dir`과 겹치는 폴더(working_dir 또는 인스턴스 폴더, 그 안이나 바깥)를 쓰는 인스턴스의 작업 잠금을 모두 잡는다.
 /// `except`(이미 잠금을 쥔 인스턴스)는 건너뛴다. 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
-#[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
-pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<super::backup::InstanceLock>, axum::response::Response> {
+pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<super::backup::InstanceLock>, super::Failure> {
     let mut guards = Vec::new();
     for id in other_instances_using(state, dir, except).await {
         let Some(guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
-            return Err(super::backup::instance_busy());
+            return Err(super::Failure::busy());
         };
         guards.push(guard);
         if super::backup::is_running(state, &id).await {
@@ -645,7 +643,7 @@ pub async fn reset_server_handler(
         return super::backup::instance_busy();
     };
     if super::backup::is_running(&state, &id).await {
-        return server_running();
+        return server_running().into_response();
     }
     // 요청이 끊겨도 모듈이 파일을 지우는 동안 잠금을 쥔다
     let reset = {
@@ -910,7 +908,7 @@ pub async fn install_server_handler(
                 return super::backup::instance_busy();
             };
             if super::backup::is_running(&state, id).await {
-                return server_running();
+                return server_running().into_response();
             }
             let sup = state.supervisor.read().await;
             // 잡기 전에 지워졌을 수 있다
@@ -975,7 +973,7 @@ pub async fn install_server_handler(
     // 설치를 마칠 때까지 잡고, 요청이 끊겨도 잠금이 설치와 함께 남게 따로 돌린다
     let others = match hold_other_instances_using(&state, &install_dir, instance_id.as_deref()).await {
         Ok(guards) => guards,
-        Err(resp) => return resp,
+        Err(failure) => return failure.into_response(),
     };
     // 인스턴스의 버전 설치는 뒤에서 돌릴 수 있다: 설치 전 백업이 길어도 요청 한도에 걸리지 않게 (진행은 provision-progress)
     let background = instance_id.is_some() && payload.get("background").and_then(Value::as_bool) == Some(true);

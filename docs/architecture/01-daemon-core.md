@@ -354,7 +354,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 
 #### 백업과 예약 작업 (handlers/backup.rs, 실행기는 scheduler/runner.rs)
 
-시작·정지·재시작·백업은 서비스 함수(`server::start`·`stop`·`restart`, `backup::take_backup`)가 한다. HTTP 핸들러와 예약 실행기·자동 재시작·채팅 명령이 같은 함수를 부르고, 실패는 HTTP 응답과 같은 상태·본문을 담은 `handlers::Failure`로 받는다(모듈이 `success:false`로 답한 것은 200 그대로의 실패). 작업 잠금 때문에 거절한 시작은 `Failure::is_busy`로 가려 다시 시도한다(`start_when_free`). 실행기(`scheduler/runner.rs`)는 때가 된 작업을 돌리고 결과를 이력에 남기며, 복원 전 안전 백업 정리도 맡는다.
+시작·정지·재시작·백업은 서비스 함수(`server::start`·`stop`·`restart`, `backup::take_backup`)가 한다. HTTP 핸들러와 예약 실행기·자동 재시작·채팅 명령이 같은 함수를 부르고, 실패는 HTTP 응답과 같은 상태·본문을 담은 `handlers::Failure`로 받는다(모듈이 `success:false`로 답한 것은 200 그대로의 실패). 작업 잠금 때문에 거절한 시작은 `Failure::is_busy`로 가려 다시 시도한다(`start_when_free`). 업데이트 시작(`begin_server_update`)도 `Failure`로 거절하며, 자동 업데이트는 작업 잠금이나 켜진 서버 때문에 거절된 것(`Failure::is_in_use`)을 실패로 남기지 않고 미룬다. 실행기(`scheduler/runner.rs`)는 때가 된 작업을 돌리고 결과를 이력에 남기며, 복원 전 안전 백업 정리도 맡는다.
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|

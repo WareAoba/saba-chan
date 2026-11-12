@@ -2707,7 +2707,7 @@ pub async fn apply_server_update(
             })),
         )
             .into_response(),
-        Err(r) => r,
+        Err(failure) => failure.into_response(),
     }
 }
 
@@ -2719,22 +2719,20 @@ pub(crate) async fn emit_update_failed(state: &IPCServer, id: &str, error: &str)
 
 /// 이 인스턴스를 `apply-update`로 업데이트할 수 있는가: 있고, 모듈에 설치 설정이 있고, 설치 방식 익스텐션이 설치했다.
 /// 켜진 서버의 업데이트는 예고·정지 전에 이것부터 본다 (업데이트할 수 없는 서버를 끄지 않게)
-#[allow(clippy::result_large_err)]
 pub(crate) fn updatable(
     supervisor: &crate::supervisor::Supervisor,
     id: &str,
-) -> Result<(crate::instance::ServerInstance, crate::supervisor::module_loader::ModuleInstallConfig), axum::response::Response> {
+) -> Result<(crate::instance::ServerInstance, crate::supervisor::module_loader::ModuleInstallConfig), super::Failure> {
     let instance = match supervisor.instance_store.get(id) {
         Some(inst) => inst.clone(),
         None => {
-            return Err((
+            return Err(super::Failure::new(
                 StatusCode::NOT_FOUND,
-                Json(json!({
+                json!({
                     "error": format!("Instance not found: {}", id),
                     "error_code": "instance_not_found",
-                })),
-            )
-                .into_response());
+                }),
+            ));
         }
     };
 
@@ -2748,28 +2746,26 @@ pub(crate) fn updatable(
     let (install_config, _module_path) = match module_info {
         Some((Some(cfg), path)) => (cfg, path),
         _ => {
-            return Err((
+            return Err(super::Failure::new(
                 StatusCode::BAD_REQUEST,
-                Json(json!({
+                json!({
                     "error": "Module install configuration not found.",
                     "error_code": "no_install_config",
-                })),
-            )
-                .into_response());
+                }),
+            ));
         }
     };
 
     // 익스텐션이 설치한 인스턴스만 이 경로로 업데이트한다 (설치 방식 슬롯)
     let method = install_config.method.clone();
     if !installed_by_extension(&instance, &method) {
-        return Err((
+        return Err(super::Failure::new(
             StatusCode::BAD_REQUEST,
-            Json(json!({
+            json!({
                 "error": "Only instances installed by an install-method extension can be updated this way.",
                 "error_code": "update_unsupported",
-            })),
-        )
-            .into_response());
+            }),
+        ));
     }
 
     Ok((instance, install_config))
@@ -2789,25 +2785,23 @@ pub(crate) async fn update_blocked_by_shared_folder(state: &IPCServer, id: &str)
 }
 
 /// 업데이트를 백그라운드로 시작한다. 작업은 성공 여부를 돌려준다 (예약 업데이트가 기다린다)
-#[allow(clippy::result_large_err)]
-pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
+pub(crate) async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::task::JoinHandle<bool>, super::Failure> {
     begin_server_update_holding(state, id, None).await
 }
 
 /// `begin_server_update`. `held`: 부르는 쪽이 이미 잡은 작업 잠금 (자동 업데이트가 끄기부터 잡고 있다: 놓았다 다시 잡는 틈이 없게)
-#[allow(clippy::result_large_err)]
 pub(crate) async fn begin_server_update_holding(
     state: &IPCServer,
     id: &str,
     held: Option<super::backup::InstanceLock>,
-) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
+) -> Result<tokio::task::JoinHandle<bool>, super::Failure> {
     // 업데이트가 끝날 때까지 시작·복원·삭제를 막는다 (작업 안으로 넘긴다)
     let held = match held {
         Some(lock) => Some(lock),
         None => super::backup::InstanceLock::take_for_writes(id).await,
     };
     let Some(guard) = held.map(|g| g.purpose(super::backup::Purpose::ServerUpdate)) else {
-        return Err(super::backup::instance_busy());
+        return Err(super::Failure::busy());
     };
     let supervisor = state.supervisor.read().await;
 
@@ -2816,14 +2810,10 @@ pub(crate) async fn begin_server_update_holding(
 
     // 실행 중이면 업데이트 불가
     if supervisor.is_running(id).await {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({
-                "error": "Cannot update while server is running. Stop the server first.",
-                "error_code": "server_running",
-            })),
-        )
-            .into_response());
+        return Err(super::Failure::running(json!({
+            "error": "Cannot update while server is running. Stop the server first.",
+            "error_code": "server_running",
+        })));
     }
 
     let instance_dir = supervisor.instance_store.instance_dir(id);
@@ -5027,8 +5017,9 @@ mod tests {
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let other = super::super::backup::InstanceLock::take(&ids[1]).expect("free");
         let refused = super::begin_server_update(&state, &ids[0]).await.err().expect("the other instance is busy");
-        let body = crate::ipc::internal::into_internal(refused).await.body;
-        assert_eq!(body["error_code"], "instance_busy");
+        // 자동 업데이트는 이 거절을 실패로 남기지 않고 미룬다: 본문의 코드를 읽지 않고 가려낸다
+        assert!(refused.is_in_use(), "{}", refused.body);
+        assert_eq!(refused.body["error_code"], "instance_busy");
         drop(other);
         assert!(super::super::backup::InstanceLock::take(&ids[0]).is_some(), "a refused update must not keep its own lock");
     }

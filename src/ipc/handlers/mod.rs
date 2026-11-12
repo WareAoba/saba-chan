@@ -127,13 +127,21 @@ pub(crate) type Outcome = Result<serde_json::Value, Failure>;
 pub(crate) struct Failure {
     pub(crate) status: axum::http::StatusCode,
     pub(crate) body: serde_json::Value,
-    /// 백업·복원·업데이트가 작업 잠금을 쥐고 있어 거절했다: 그 작업이 끝나면 다시 할 수 있다
-    busy: bool,
+    /// 다른 작업이나 켜진 서버 때문에 거절했다: 그것이 끝나면 다시 할 수 있다
+    in_use: Option<InUse>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InUse {
+    /// 백업·복원·업데이트가 작업 잠금을 쥐고 있다
+    Busy,
+    /// 서버가 켜져 있다
+    Running,
 }
 
 impl Failure {
     pub(crate) fn new(status: axum::http::StatusCode, body: serde_json::Value) -> Self {
-        Self { status, body, busy: false }
+        Self { status, body, in_use: None }
     }
 
     /// `{success: false, error, error_code}`
@@ -144,11 +152,21 @@ impl Failure {
     /// 다른 긴 작업이 작업 잠금을 쥐고 있다 (409 `instance_busy`)
     pub(crate) fn busy() -> Self {
         let failure = Self::coded(axum::http::StatusCode::CONFLICT, "instance_busy", "A backup, restore or update is running for this instance");
-        Self { busy: true, ..failure }
+        Self { in_use: Some(InUse::Busy), ..failure }
+    }
+
+    /// 서버가 켜져 있어 파일을 바꾸지 않는다 (409 `server_running`, 본문은 부르는 쪽이 정한다)
+    pub(crate) fn running(body: serde_json::Value) -> Self {
+        Self { in_use: Some(InUse::Running), ..Self::new(axum::http::StatusCode::CONFLICT, body) }
     }
 
     pub(crate) fn is_busy(&self) -> bool {
-        self.busy
+        self.in_use == Some(InUse::Busy)
+    }
+
+    /// 작업 잠금이나 켜진 서버 때문에 거절했다 (`busy`·`running`)
+    pub(crate) fn is_in_use(&self) -> bool {
+        self.in_use.is_some()
     }
 
     /// 기록에 남길 이유 코드 (`error_code`)
