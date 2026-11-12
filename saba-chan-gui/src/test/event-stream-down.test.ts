@@ -7,8 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';
 import { createEventHub } from '../api/events';
 import { useServerActions } from '../hooks/useServerActions';
+import i18n from '../i18n';
 import type { Server } from '../stores/useServerStore';
-import { eventsLive } from '../utils/daemonEvents';
+import { eventsLive, showEventToast } from '../utils/daemonEvents';
+
+const t = i18n.getFixedT('en', 'gui');
 
 describe('이벤트 스트림이 끊긴 동안', () => {
     let servers: Server[];
@@ -75,5 +78,33 @@ describe('이벤트 스트림이 끊긴 동안', () => {
         await act(async () => vi.advanceTimersByTime(31_000)); // 앞 알림과 짝짓는 시간이 지나도
         await pollOnce(result, [stopped]);
         expect(stopToasts()).toHaveLength(1);
+    });
+
+    // 다시 붙으면 데몬이 끊긴 동안의 이벤트를 다시 보낸다(Last-Event-ID). 폴링이 이미 알린 일은 두 번 알리지 않는다
+    it('끊긴 동안 폴링이 알린 멈춤·밖의 시작은 다시 붙은 뒤 밀려 온 이벤트가 다시 알리지 않는다', async () => {
+        const other = { id: 's2', name: 'Creative', module: 'game', status: 'running' };
+        const at = () => Math.floor(Date.now() / 1000);
+        const toasts = () => vi.mocked(window.showToast as NonNullable<typeof window.showToast>).mock.calls.length;
+        const { result } = hook();
+        await pollOnce(result, [other]);
+        await act(async () => vi.advanceTimersByTime(31_000)); // 시작 직후 유예
+
+        shell.get('events:live')?.(false);
+        const stoppedAt = at();
+        await pollOnce(result, [{ ...other, status: 'stopped' }]);
+        await act(async () => vi.advanceTimersByTime(5_000));
+        const startedAt = at();
+        await pollOnce(result, [other]);
+        expect(toasts()).toBe(2);
+
+        await act(async () => vi.advanceTimersByTime(60_000));
+        shell.get('events:live')?.(true);
+        showEventToast({ type: 'instance.exit', data: { instanceId: 's2', instance: 'Creative', kind: 'crash', at: stoppedAt } }, t);
+        showEventToast({ type: 'instance.started', data: { instanceId: 's2', instance: 'Creative', unexpected: true, at: startedAt } }, t);
+        expect(toasts()).toBe(2);
+
+        // 다시 붙은 뒤 새로 일어난 크래시는 알린다
+        showEventToast({ type: 'instance.exit', data: { instanceId: 's2', instance: 'Creative', kind: 'crash', at: at() } }, t);
+        expect(toasts()).toBe(3);
     });
 });

@@ -12,7 +12,7 @@ import {
     retryWithBackoff,
     safeShowToast,
 } from '../utils/helpers';
-import { claimStopNotice, eventsLive, showPortMoved, watchInstance } from '../utils/daemonEvents';
+import { claimServerNotice, eventsLive, showPortMoved, watchInstance } from '../utils/daemonEvents';
 import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 import { updateRequiredText } from '../utils/updateRequired';
@@ -164,7 +164,7 @@ export function useServerActions({
                         if (pollNotices && wasRunning && nowStopped) {
                             // Crash / unexpected stop — genuinely important.
                             // instance.exit 이벤트가 이미 알렸으면 건너뛴다 (G-S6)
-                            if (claimStopNotice(newServer.id, 'poll'))
+                            if (claimServerNotice(newServer.id, 'stop', 'poll'))
                                 safeShowToast(
                                     t('servers.unexpected_stop_toast', { name: newServer.name }),
                                     'error',
@@ -175,7 +175,7 @@ export function useServerActions({
                                         notice: { message: t('events.n_exit_unknown_exit'), instanceId: newServer.id },
                                     },
                                 );
-                        } else if (pollNotices && wasStopped && nowRunning) {
+                        } else if (pollNotices && wasStopped && nowRunning && claimServerNotice(newServer.id, 'start', 'poll')) {
                             // External start — informational only, not alarming.
                             safeShowToast(t('servers.external_start_toast', { name: newServer.name }), 'info', 3000);
                         }
