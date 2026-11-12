@@ -13,7 +13,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 /// SDK `daemon_rcon.WORKER_ARG`·`WORKER_READY`·`WORKER_DONE`과 같은 값
 pub(super) const ARG: &str = "--worker";
 const READY: &str = r#"{"saba_worker": 1}"#;
-/// 답을 쓰기 직전에 stderr에 쓰는 줄: 그 호출의 stderr를 다 받았다는 표시
+/// 답을 쓰기 직전에 stderr에 쓰는 줄: 그 호출의 stderr를 다 받았다는 표시. 앞 출력에 붙어 줄 끝에 올 수 있다
 const DONE: &str = "WORKER:done";
 /// 띄운 작업자가 READY를 쓰기까지 기다리는 한도. 넘기면 이 준비로는 띄우지 않고 단발로 돌린다
 const START_SECS: u64 = 20;
@@ -236,15 +236,20 @@ async fn start(launch: &mut Launch, fingerprint: String, function: &str, deadlin
         async move {
             let mut reader = BufReader::new(stderr);
             let mut lines = saba_runner::Lines::default();
+            let forward = |line: String, ended: bool| match lock(&current).as_mut() {
+                Some(sink) => sink.line(line, ended),
+                None => tracing::debug!("Plugin worker stderr: {}", line),
+            };
             while let Ok(Some((line, ended))) = next_stderr_line(&mut reader, &mut lines).await {
-                if line == DONE {
-                    done_tx.send_modify(|done| *done += 1);
+                // 함수나 자식 프로세스가 줄바꿈 없이 끝낸 출력 뒤에 붙어 올 수 있다
+                let Some(output) = line.strip_suffix(DONE) else {
+                    forward(line, ended);
                     continue;
+                };
+                if !output.is_empty() {
+                    forward(output.to_string(), true);
                 }
-                match lock(&current).as_mut() {
-                    Some(sink) => sink.line(line, ended),
-                    None => tracing::debug!("Plugin worker stderr: {}", line),
-                }
+                done_tx.send_modify(|done| *done += 1);
             }
         }
     })
@@ -343,6 +348,22 @@ mod tests {
         let tail = failed["stderr_tail"].as_array().unwrap();
         assert!(tail.iter().any(|line| line.as_str().is_some_and(|l| l.contains("RuntimeError: worker boom"))), "{failed}");
         assert_eq!(call(&entry, "pid").await["pid"], first["pid"]);
+        stop_workers(Some(dir.path()));
+    }
+
+    /// 함수가 줄바꿈 없이 끝낸 출력에 호출 끝 표시가 붙어도 그 호출의 답을 기다리지 않고 받는다
+    #[tokio::test]
+    async fn output_without_a_trailing_newline_does_not_hide_the_end_of_a_call() {
+        crate::python_env::get_python_path().await.expect("test Python ready");
+        let (dir, entry) = persistent_module(
+            "import os\nfrom daemon_rcon import run_lifecycle\n\
+             def partial(config):\n    print('downloading...', end='')\n    return {'success': True, 'pid': os.getpid()}\n\
+             if __name__ == '__main__':\n    run_lifecycle({'partial': partial})\n",
+        );
+        let first = run_plugin_with_timeout(&entry, "partial", serde_json::json!({}), 10).await.unwrap_or_else(|e| error_response(&e));
+        assert_eq!(first["success"], true, "{first}");
+        let second = run_plugin_with_timeout(&entry, "partial", serde_json::json!({}), 10).await.unwrap_or_else(|e| error_response(&e));
+        assert_eq!(second["pid"], first["pid"], "{second}");
         stop_workers(Some(dir.path()));
     }
 
