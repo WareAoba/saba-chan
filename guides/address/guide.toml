@@ -1,0 +1,12 @@
+[guide]
+group = "start"
+icon = "globe"
+order = 40
+
+[[steps]]
+go = "server/:first"
+spot = "server.address"
+
+[[steps]]
+go = "server/:first/info"
+spot = "port.check"

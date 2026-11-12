@@ -68,6 +68,10 @@ pub struct GuildSettings {
 /// 서버 조작·알림, 말하는 사바쨩·AI 모더레이션, 노래하는 사바쨩, 읽어주는 사바쨩, 그 밖의 부가 기능
 pub const SLEEP_FEATURES: &[&str] = &["commands", "llm", "music", "tts", "extras"];
 
+/// 연결을 풀어 PC 없는 서버가 돼도 릴레이에 남는 값 (릴레이 `demoteToPcLess`가 지우지 않는 것, `apply`의 키 이름).
+/// 그동안은 디스코드 `/설정`이 릴레이에 바로 쓴다
+const RELAY_KEPT: &[&str] = &["locale", "music", "tts", "sleepBlocks", "bedtime"];
+
 /// 자동 코코낸내 — 잠드는 시각과 일어나는 시각 (HH:MM, 서로 다르다)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Bedtime {
@@ -252,6 +256,19 @@ impl GuildSettings {
     /// 릴레이 `GET /api/nodes/:guild/settings` 응답에서 (처음 한 번 가져오기). 모르는 값은 기본값
     fn from_relay(body: &Value) -> Self {
         let mut out = Self::default();
+        out.take_relay(body, |_| true);
+        out
+    }
+
+    /// 이 PC에 다시 묶인 길드: PC 없는 동안 릴레이가 원본으로 지닌 값(`RELAY_KEPT`)만 릴레이 응답에서 받는다.
+    /// 연결을 풀 때 릴레이가 지운 값(접두사·명령 모양·잠재우기)은 데몬 사본을 그대로 둔다 (다음 동기화가 다시 보낸다)
+    fn adopt_relay_kept(&mut self, body: &Value) {
+        self.take_relay(body, |key| RELAY_KEPT.contains(&key));
+    }
+
+    /// 릴레이 응답의 값을 `wanted`인 키(`apply`의 키 이름)만 받는다. 틀린 값은 건너뛴다
+    fn take_relay(&mut self, body: &Value, wanted: impl Fn(&str) -> bool) {
+        let out = self;
         let mut patch = Map::new();
         // 릴레이는 `auto`나 언어 태그를 준다
         if let Some(l) = body.get("locale").and_then(Value::as_str) {
@@ -278,12 +295,13 @@ impl GuildSettings {
             patch.insert("tts".into(), t.clone());
         }
         for key in ["prefixes", "translateCommands", "slashPrefix", "slashRootName", "privateQueries", "sleepBlocks", "bedtime"] {
-            if let Some(v) = body.get(key).filter(|v| !v.is_null()) {
+            // 코코낸내 기능·시각의 null은 값이다 (모두 끄기, 자동 없음). 나머지 null은 릴레이에 값이 없다는 뜻
+            if let Some(v) = body.get(key).filter(|v| !v.is_null() || matches!(key, "sleepBlocks" | "bedtime")) {
                 patch.insert(key.into(), v.clone());
             }
         }
         // 하나씩 넣어 틀린 값 하나 때문에 나머지를 잃지 않는다
-        for (k, v) in patch {
+        for (k, v) in patch.into_iter().filter(|(k, _)| wanted(k)) {
             match (k.as_str(), v) {
                 (section @ ("music" | "tts"), Value::Object(m)) => {
                     for (mk, mv) in m {
@@ -296,7 +314,6 @@ impl GuildSettings {
                 }
             }
         }
-        out
     }
 
     /// 바꿀 키만 적용한다. 틀리면 (필드, 이유)를 돌려주고 아무것도 바꾸지 않는다
@@ -449,7 +466,7 @@ impl GuildSettings {
 }
 
 /// 원본이 릴레이인 길드 설정 (데몬은 저장하지 않고 앱의 값을 릴레이에 그대로 넘긴다). 모두 참·거짓 값
-pub const RELAY_OWNED: [&str; 3] = ["bigEmoji", "gameChatGuard", "gameChatClearOnStop"];
+pub const RELAY_OWNED: [&str; 6] = ["bigEmoji", "gameChatGuard", "gameChatClearOnStop", "gameChatAutoOpen", "memberNotice", "busyNotice"];
 
 /// (데몬이 맡는 키, 릴레이 원본 키)
 type SplitPatch = (Map<String, Value>, Map<String, Value>);
@@ -509,14 +526,23 @@ fn retry_later(outcome: &Result<(StatusCode, Value), String>) -> bool {
 }
 
 /// 데몬에 저장된 값. 아직 없으면(업그레이드 뒤 첫 연결 전) 릴레이 값을, 릴레이에 노드 설정이 없으면 기본값.
-/// 페어링했는데 릴레이를 읽지 못하면 `None`: 기본값으로 착각해 저장하면 다음 동기화가 릴레이 값을 덮어쓴다
-async fn current(state: &IPCServer, guild: &str) -> Option<GuildSettings> {
+/// 페어링했는데 릴레이를 읽지 못하면 `None`: 기본값으로 착각해 저장하면 다음 동기화가 릴레이 값을 덮어쓴다.
+/// 부른 쪽이 릴레이 값을 이미 읽었으면 `read`로 넘긴다 (같은 GET을 두 번 보내지 않는다)
+async fn current(state: &IPCServer, guild: &str, read: Option<&RelaySettings>) -> Option<GuildSettings> {
     let bot = state.config_store.get_bot_config().await;
     if let Some(s) = GuildSettings::of_guild(&bot.node_settings, guild, &bot) {
         return Some(s);
     }
-    match relay_settings(&relay_base(state).await, guild).await {
-        RelaySettings::Found(body) => Some(GuildSettings::from_relay(&body).inherit(&body, &bot)),
+    let fetched;
+    let relay = match read {
+        Some(r) => r,
+        None => {
+            fetched = relay_settings(&relay_base(state).await, guild).await;
+            &fetched
+        }
+    };
+    match relay {
+        RelaySettings::Found(body) => Some(GuildSettings::from_relay(body).inherit(body, &bot)),
         RelaySettings::Absent => Some(GuildSettings::default().inherit(&Value::Null, &bot)),
         RelaySettings::Unreachable => None,
     }
@@ -608,11 +634,13 @@ async fn push(state: &IPCServer, base: &str, guild: &str, before: &Value, s: &Gu
 /// GET /api/discord/:guild/settings
 /// 처음 보는 길드인데 릴레이를 읽지 못하면 기본값에 `loaded: false`를 붙인다 (그 값으로 저장하지 않는다)
 pub async fn get_settings(State(state): State<IPCServer>, Path(guild): Path<String>) -> Response {
-    let relay = match relay_settings(&relay_base(&state).await, &guild).await {
+    let read = relay_settings(&relay_base(&state).await, &guild).await;
+    let found = current(&state, &guild, Some(&read)).await;
+    let relay = match read {
         RelaySettings::Found(body) => body,
         _ => Value::Null,
     };
-    match current(&state, &guild).await {
+    match found {
         Some(s) => Json(with_relay_owned(view(&guild, &s), &relay)).into_response(),
         None => {
             let mut v = view(&guild, &GuildSettings::default());
@@ -634,7 +662,7 @@ pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<St
         return (StatusCode::CONFLICT, Json(json!({ "success": false, "error": "Not paired with the relay", "error_code": "not_paired" }))).into_response();
     }
     let _turn = SETTINGS_LOCK.lock().await;
-    let Some(before) = current(&state, &guild).await else {
+    let Some(before) = current(&state, &guild, None).await else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({ "success": false, "error": "Could not read this server's settings from the relay", "error_code": "relay_unavailable" })),
@@ -681,6 +709,43 @@ pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<St
     }
     Json(json!({ "success": true, "settings": with_relay_owned(view(&guild, &next), &Value::Object(owned)), "sync": result_row(&guild, &outcome) }))
         .into_response()
+}
+
+/// 다음 하트비트가 성공하면 `sync_on_connect`를 돌린다
+pub fn request_sync() {
+    PENDING_SYNC.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// 하트비트가 이 PC에 새로 묶였다고 알린 길드(`linkedGuilds`). 데몬에 사본이 남아 있으면(풀었다가 다시 묶은 길드)
+/// PC 없는 동안 디스코드에서 바꾼 값을 릴레이에서 받아 사본을 맞추고, 나머지 값은 다음 동기화가 릴레이로 보낸다.
+/// 릴레이를 읽지 못해 맞추지 못했으면 false (부른 쪽이 다음 하트비트에 다시 한다. 그대로 동기화하면 옛 사본이 릴레이 값을 덮는다)
+pub async fn adopt_linked_guild(state: &IPCServer, guild: &str) -> bool {
+    if load_node_token().is_none() {
+        return true;
+    }
+    let _turn = SETTINGS_LOCK.lock().await;
+    adopt_from(state, &relay_base(state).await, guild).await
+}
+
+async fn adopt_from(state: &IPCServer, base: &str, guild: &str) -> bool {
+    let bot = state.config_store.get_bot_config().await;
+    // 사본이 없는 길드는 `sync_on_connect`가 릴레이 값을 통째로 가져온다
+    let Some(mut s) = GuildSettings::of_guild(&bot.node_settings, guild, &bot) else { return true };
+    let path = format!("/api/nodes/{}/settings", encode_path_segment(guild));
+    let outcome = call(base, reqwest::Method::GET, &path, None).await;
+    match &outcome {
+        Ok((c, body)) if c.is_success() => {
+            s.adopt_relay_kept(body);
+            if let Err(e) = save(state, guild, &s).await {
+                tracing::warn!("[Discord] could not keep the relay settings of relinked guild {}: {}", guild, e);
+                return false;
+            }
+            request_sync();
+            true
+        }
+        // 거절(이 PC의 길드가 아니다 등)은 다시 물어도 같다
+        _ => !retry_later(&outcome),
+    }
 }
 
 /// 릴레이 에이전트가 연결된 직후 한 번: 원본이 있는 길드는 보내고, 없는 길드는 릴레이 값을 한 번 가져온다
@@ -745,6 +810,65 @@ mod tests {
         v.as_object().unwrap().clone()
     }
 
+    async fn test_state(dir: &std::path::Path) -> IPCServer {
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(dir.join("modules").to_str().unwrap(), dir.join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new())
+    }
+
+    /// 풀었다가 다시 묶은 길드: PC 없는 동안 디스코드 `/설정`으로 바꾼 값(언어·음악·읽어주기)은 릴레이 값을 받고,
+    /// 연결을 풀 때 릴레이가 지운 값(접두사·잠재우기)은 데몬 사본을 지켜 다음 동기화가 되살린다
+    #[tokio::test]
+    async fn a_relinked_guild_keeps_what_discord_changed_while_it_had_no_pc() {
+        use axum::{routing::get, Router};
+        let relay = json!({
+            "guildId": "relinked-guild", "locale": "ja", "sleeping": false,
+            "musicEnabled": false, "musicUIEnabled": true, "musicSettings": { "queueLines": 9, "refreshInterval": 4000, "normalize": true },
+            "ttsSettings": { "volume": 80, "speed": 100, "pitch": 0, "names": "multi", "voiceChatOnly": false, "keepRead": false, "autoChannels": [] },
+            "prefixes": null, "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false,
+            "sleepBlocks": null, "bedtime": null,
+        });
+        let answer = relay.clone();
+        let app = Router::new().route("/api/nodes/relinked-guild/settings", get(move || async move { Json(answer) }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state(dir.path()).await;
+        let mut before = GuildSettings::default();
+        before.apply(&patch(json!({ "locale": "ko", "sleeping": true, "prefixes": ["!s"], "slashPrefix": false, "bedtime": { "start": "23:00", "end": "07:00" } }))).unwrap();
+        save(&state, "relinked-guild", &before).await.unwrap();
+
+        // 릴레이에 닿지 않으면 맞추지 못했다고 답하고 사본을 건드리지 않는다
+        assert!(!adopt_from(&state, "http://127.0.0.1:9", "relinked-guild").await);
+        let bot = state.config_store.get_bot_config().await;
+        assert_eq!(GuildSettings::of_guild(&bot.node_settings, "relinked-guild", &bot).unwrap(), before);
+
+        assert!(adopt_from(&state, &base, "relinked-guild").await);
+        let bot = state.config_store.get_bot_config().await;
+        let after = GuildSettings::of_guild(&bot.node_settings, "relinked-guild", &bot).unwrap();
+        assert_eq!((after.locale.as_str(), after.music.enabled, after.music.queue_lines, after.tts.volume, &after.bedtime), ("ja", false, 9, 80, &None));
+        assert_eq!((after.sleeping, &after.prefixes, after.slash_prefix), (true, &vec!["!s".to_string()], false));
+        // 다음 동기화는 릴레이가 지운 값만 다시 보낸다
+        let resent = changed(&relay, &after.relay_body());
+        assert_eq!(resent.keys().map(String::as_str).collect::<std::collections::BTreeSet<_>>(), std::collections::BTreeSet::from(["prefixes", "sleepBlocks", "sleeping", "slashPrefix"]));
+        // 사본이 없는 길드는 여기서 할 일이 없다 (연결 직후 동기화가 통째로 가져온다)
+        assert!(adopt_from(&state, "http://127.0.0.1:9", "never-saved-guild").await);
+    }
+
+    /// 앱이 처음 보는 길드를 읽을 때 릴레이 값은 화면용으로 이미 읽었다: 그 값으로 채우고 다시 묻지 않는다
+    #[tokio::test]
+    async fn a_guild_seen_first_is_filled_from_the_relay_values_already_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state(dir.path()).await;
+        let read = RelaySettings::Found(json!({ "locale": "ja", "prefixes": ["!r"] }));
+        let s = current(&state, "first-seen-guild", Some(&read)).await.unwrap();
+        assert_eq!((s.locale.as_str(), s.prefixes), ("ja", vec!["!r".to_string()]));
+        // 읽지 못했으면 기본값으로 채우지 않는다
+        assert!(current(&state, "first-seen-guild", Some(&RelaySettings::Unreachable)).await.is_none());
+    }
+
     #[test]
     fn relay_owned_keys_are_split_off_and_checked() {
         let (rest, owned) = split_relay_owned(&patch(json!({ "locale": "ko", "bigEmoji": true }))).unwrap();
@@ -755,6 +879,13 @@ mod tests {
         let (rest, owned) = split_relay_owned(&patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false }))).unwrap();
         assert!(rest.is_empty());
         assert_eq!(owned, patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false })));
+        // 멤버 알림·과부하 공지·채팅 기본으로 열기도 릴레이가 원본이다: 앱에서 보내면 모르는 칸으로 거절하지 않고 릴레이에 넘긴다
+        let notices = patch(json!({ "memberNotice": true, "busyNotice": false, "gameChatAutoOpen": true }));
+        let (rest, owned) = split_relay_owned(&notices).unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(owned, notices);
+        let shown = with_relay_owned(json!({}), &json!({ "memberNotice": false, "busyNotice": true, "gameChatAutoOpen": false, "other": 1 }));
+        assert_eq!(shown, json!({ "memberNotice": false, "busyNotice": true, "gameChatAutoOpen": false }));
     }
 
     #[test]

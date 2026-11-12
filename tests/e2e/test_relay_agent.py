@@ -163,13 +163,14 @@ def test_pairing_flow_saves_token_and_starts_agent(sandbox, relay, daemon_factor
     init = d.api.ok("POST", "/api/relay/pair/initiate", {"relayUrl": relay.url})
     code, poll_secret = init["code"], init["pollSecret"]
 
-    pending = d.api.get(f"/api/relay/pair/{code}/status?secret={poll_secret}&relayUrl={relay.url}")
+    status_body = {"code": code, "secret": poll_secret, "relayUrl": relay.url}
+    pending = d.api.post("/api/relay/pair/status", status_body)
     assert pending.status_code == 200 and pending.json().get("status") == "pending", (
         f"페어링 대기 조회가 실패함: {pending.status_code} {pending.text}. "
         f"릴레이가 받은 요청: {[(r['path'], r['query'], r['headers'].get('x-poll-secret')) for r in relay.requests if '/status' in r['path']]}"
     )
     relay.claim_pairing(code)
-    claimed = d.api.ok("GET", f"/api/relay/pair/{code}/status?secret={poll_secret}&relayUrl={relay.url}")
+    claimed = d.api.ok("POST", "/api/relay/pair/status", status_body)
     assert claimed["status"] == "claimed"
     assert json.loads((sandbox.data / "config.json").read_text(encoding="utf-8"))["node"]["token"] == relay.node_token
     secret_in_query = [r for r in relay.requests if "/status" in r["path"] and poll_secret in r["query"]]

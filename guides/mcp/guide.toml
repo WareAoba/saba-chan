@@ -1,0 +1,12 @@
+[guide]
+group = "more"
+icon = "network"
+order = 40
+
+[[steps]]
+go = "settings/connection"
+spot = "discord.agent"
+
+[[steps]]
+go = "settings/connection"
+spot = "discord.agent"

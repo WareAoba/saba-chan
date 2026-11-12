@@ -12,6 +12,80 @@ pub fn hide_console(cmd: &mut std::process::Command) -> &mut std::process::Comma
     cmd
 }
 
+/// 띄운 쪽이 끝나도 살아남게 띄운다 (데몬, 업데이터, 새 터미널). 표준 입출력은 끊는다.
+/// - Unix: 프로세스 그룹을 나눈다. 터미널의 Ctrl+C는 전면 프로세스 그룹 전체에 가므로, 띄운 명령을 끝낼 때 같이 꺼지지 않는다
+/// - Windows: 콘솔과 프로세스 그룹에서 떼고, 띄운 쪽의 Job Object가 닫혀도 살아남게 빠져나온다 (허용되지 않으면 그냥 띄운다).
+///   이 프로세스의 표준 입출력 핸들도 물려주지 않는다: Windows는 상속 가능한 핸들을 모두 자식에게 넘기므로,
+///   출력이 부른 쪽의 파이프면 자식이 그 파이프를 쥐어 이 프로세스가 끝나도 부른 쪽은 출력의 끝을 기다린다
+pub fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<std::process::Child> {
+    use std::process::Stdio;
+    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+        const ERROR_ACCESS_DENIED: i32 = 5;
+        let _no_inherit = StdNoInherit::new();
+        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB);
+        match cmd.spawn() {
+            Err(e) if e.raw_os_error() == Some(ERROR_ACCESS_DENIED) => {
+                cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+                cmd.spawn()
+            }
+            other => other,
+        }
+    }
+    #[cfg(unix)]
+    {
+        std::os::unix::process::CommandExt::process_group(cmd, 0);
+        cmd.spawn()
+    }
+}
+
+/// 표준 입출력 핸들의 상속 표시를 잠시 지우고, 사라질 때 되돌린다
+#[cfg(windows)]
+struct StdNoInherit(Vec<windows_sys::Win32::Foundation::HANDLE>);
+
+#[cfg(windows)]
+impl StdNoInherit {
+    fn new() -> Self {
+        use windows_sys::Win32::Foundation::{
+            GetHandleInformation, SetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
+        };
+        use windows_sys::Win32::System::Console::{
+            GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+        };
+        let mut cleared = Vec::new();
+        for which in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+            let handle = unsafe { GetStdHandle(which) };
+            if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+                continue;
+            }
+            let mut flags = 0;
+            // stdout과 stderr이 같은 핸들이면 두 번째는 이미 지워져 있다
+            if unsafe { GetHandleInformation(handle, &mut flags) } != 0
+                && flags & HANDLE_FLAG_INHERIT != 0
+                && unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) } != 0
+            {
+                cleared.push(handle);
+            }
+        }
+        Self(cleared)
+    }
+}
+
+#[cfg(windows)]
+impl Drop for StdNoInherit {
+    fn drop(&mut self) {
+        use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
+        for &handle in &self.0 {
+            unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) };
+        }
+    }
+}
+
 /// Windows 시스템 도구(powershell·taskkill·tasklist·tar·cmd·icacls)를 띄울 경로. 다른 OS는 이름 그대로다.
 /// 이름만 주면 실행 파일이 있는 폴더부터 찾으므로, 같은 이름의 다른 파일이 아니라 시스템 폴더의 것을 띄운다.
 /// 시스템 폴더는 OS에 묻는다(`GetSystemDirectoryW`). 사용자가 바꿀 수 있는 SystemRoot·windir 환경변수는 보지 않는다.
@@ -147,6 +221,68 @@ impl ProcessChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 터미널의 Ctrl+C는 전면 프로세스 그룹 전체에 간다: 띄운 쪽의 그룹에 있으면 그 명령을 끝낼 때 같이 꺼진다
+    #[cfg(unix)]
+    #[test]
+    fn a_detached_child_is_outside_our_process_group() {
+        let mut cmd = std::process::Command::new("sleep");
+        cmd.arg("5");
+        let mut child = spawn_detached(&mut cmd).expect("sleep starts");
+        let (ours, theirs) = unsafe { (libc::getpgrp(), libc::getpgid(child.id() as libc::pid_t)) };
+        let _ = child.kill();
+        let _ = child.wait();
+        assert_ne!(theirs, ours);
+    }
+
+    /// 출력이 파이프인 프로그램(스크립트, `| more`)이 띄워도 자식이 그 파이프를 쥐지 않는다:
+    /// 쥐면 띄운 쪽이 끝나도 부른 쪽이 출력의 끝을 받지 못해 `daemon start`가 끝나지 않는 것처럼 보인다
+    #[cfg(windows)]
+    #[test]
+    fn a_detached_child_does_not_hold_our_output_pipe() {
+        use std::io::Read;
+        use std::os::windows::io::AsRawHandle;
+        use std::process::{Command, Stdio};
+        use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE, HANDLE_FLAG_INHERIT};
+        use windows_sys::Win32::System::Console::{GetStdHandle, SetStdHandle, STD_OUTPUT_HANDLE};
+        // 표준 출력 핸들은 프로세스 전체가 함께 쓴다: 바꾸는 동안 다른 시험과 시험 틀의 출력이 이 파이프로 새거나
+        // 닫힌 핸들에 쓰다 멈춘다 (L71). 이 시험만 도는 자식 프로세스에서 바꾼다
+        const ALONE: &str = "SABA_TEST_STD_HANDLE_ALONE";
+        if std::env::var_os(ALONE).is_none() {
+            let out = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "process::tests::a_detached_child_does_not_hold_our_output_pipe", "--test-threads=1"])
+                .env(ALONE, "1")
+                .stdin(Stdio::null())
+                .output()
+                .unwrap();
+            let text = String::from_utf8_lossy(&out.stdout);
+            assert!(out.status.success() && text.contains("1 passed"), "{text}{}", String::from_utf8_lossy(&out.stderr));
+            return;
+        }
+        let (mut reader, writer) = std::io::pipe().unwrap();
+        let raw = writer.as_raw_handle() as HANDLE;
+        // 부른 쪽이 넘겨준 파이프처럼 상속 가능하게 해서 표준 출력으로 둔다
+        unsafe { SetHandleInformation(raw, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) };
+        let old = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
+        unsafe { SetStdHandle(STD_OUTPUT_HANDLE, raw) };
+        let mut cmd = Command::new(system_tool("ping"));
+        cmd.args(["-n", "6", "127.0.0.1"]);
+        let child = spawn_detached(&mut cmd);
+        unsafe { SetStdHandle(STD_OUTPUT_HANDLE, old) };
+        drop(writer);
+        let mut child = child.expect("ping starts");
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = reader.read_to_end(&mut buf);
+            let _ = tx.send(());
+        });
+        let closed = rx.recv_timeout(std::time::Duration::from_secs(2)).is_ok();
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(closed, "the child still holds the write end of our output pipe");
+    }
 
     // 시스템 도구는 이름으로 찾지 않고 Windows 시스템 폴더의 절대 경로로 띄운다
     #[test]

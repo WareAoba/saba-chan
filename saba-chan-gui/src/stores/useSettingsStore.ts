@@ -56,6 +56,7 @@ export const APP_OPTION_DEFAULTS: Readonly<AppOptions> = Object.freeze({
     consoleTimestampDate: false,
     consoleWrap: true, // 콘솔 긴 줄 접기 (끄면 가로 스크롤)
     consoleAutoScroll: true, // 맨 아래를 볼 때 새 줄 따라가기
+    consoleGlass: true, // 창 반투명일 때 콘솔 바탕도 유리 (인앱·PIP)
     consoleFonts: CONSOLE_FONT_DEFAULTS, // 콘솔 글꼴: 글자마다 하나 (utils/consoleFonts.js)
     systemMonitorNetTrace: false, // 고급: 포트·서버별 네트워크 (모니터를 펼쳐 둔 동안 데몬이 센다)
 });
@@ -71,6 +72,7 @@ type AppOptionKey =
     | 'consoleTimestampDate'
     | 'consoleWrap'
     | 'consoleAutoScroll'
+    | 'consoleGlass'
     | 'consoleFonts'
     | 'systemMonitorNetTrace';
 type AppOptions = Pick<GuiSettings, AppOptionKey> & { consoleFonts: Readonly<ConsoleFonts> };

@@ -2,7 +2,16 @@ import clsx from 'clsx';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import type { ToastOptions, ToastType } from '../../types/global';
+import { Icon } from '../Icon';
 import './Toast.css';
+
+/** 종류별 앱 아이콘 (문구 앞 이모지 대신) */
+const TYPE_ICON: Record<string, string> = {
+    success: 'checkCircle',
+    error: 'xCircle',
+    warning: 'alertTriangle',
+    info: 'info',
+};
 
 // 알림 표시 시간 설정 (toastDuration)에 따른 배율. 사라지지 않는 토스트(0)는 그대로
 const DURATION_SCALE: Record<string, number> = { short: 0.6, normal: 1, long: 2 };
@@ -135,7 +144,15 @@ function Toast() {
                     className={clsx('toast', `toast-${toast.type}`, { 'toast-removing': removingToasts.has(toast.id) })}
                     onClick={() => removeToast(toast.id)}
                 >
-                    {toast.icon && <span className="toast-icon">{toast.icon}</span>}
+                    {toast.icon ? (
+                        <span className="toast-icon">{toast.icon}</span>
+                    ) : (
+                        TYPE_ICON[toast.type] && (
+                            <span className={`toast-icon tone-${toast.type}`} aria-hidden="true">
+                                <Icon name={TYPE_ICON[toast.type]} size="sm" />
+                            </span>
+                        )
+                    )}
                     <span className="toast-message">{toast.message}</span>
                     {toast.action && (
                         <button

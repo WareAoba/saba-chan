@@ -1,0 +1,14 @@
+[guide]
+group = "discord"
+icon = "musicNote"
+order = 10
+
+[[steps]]
+go = "discord/*/music"
+spot = "music.settings"
+
+[[steps]]
+go = "discord/*/moderation/channels"
+spot = "mod.assign"
+
+[[steps]]

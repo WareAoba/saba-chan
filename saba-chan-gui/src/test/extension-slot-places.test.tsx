@@ -118,7 +118,8 @@ describe('서버 추가 카드 (AddServer.method)', () => {
         rerender(<AddInstanceModal {...props} />);
         await flush();
         expect(screen.queryByText('modpack flow')).toBeNull();
-        expect(document.querySelector('.ai-choice-card')).not.toBeNull();
+        // 게임 고르기 화면(가져오기 칸이 함께 있다)으로 돌아온다
+        expect(screen.getByRole('button', { name: /Import a server you have/ })).toBeTruthy();
     });
 });
 

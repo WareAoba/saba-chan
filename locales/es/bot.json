@@ -121,6 +121,7 @@
   "schedule": {
     "restart_warning": "El servidor se reiniciará en {{minutes}} min.",
     "update_warning": "El servidor se reiniciará para actualizarse en {{minutes}} min.",
+    "update_cancelled": "Se canceló la actualización prevista. El servidor sigue encendido.",
     "stop_warning": "El servidor se detendrá en {{minutes}} min."
   },
   "provision": {
@@ -256,10 +257,19 @@
       },
       "update": {
         "check": {
-          "title": "Buscar actualización del servidor de juego"
+          "title": "Buscar actualización del servidor de juego",
+          "name": "Buscar actualización",
+          "description": "Comprueba si Steam tiene una nueva versión del servidor de juego"
         },
         "apply": {
-          "title": "Actualizar servidor de juego"
+          "title": "Actualizar servidor de juego",
+          "name": "Actualizar",
+          "description": "Actualiza el servidor de juego. Si está encendido, avisa en el juego 5 minutos antes, lo detiene, lo actualiza y lo vuelve a iniciar"
+        },
+        "cancel": {
+          "title": "Cancelar la actualización prevista",
+          "name": "cancelar-actualizacion",
+          "description": "Cancela una actualización del servidor de juego que aún está en aviso (antes de detenerlo)"
         }
       },
       "diagnose": {
@@ -407,7 +417,8 @@
         "pre-update": "antes de actualizar",
         "pre-restore": "antes de restaurar",
         "snapshot": "Copia del juego guardada",
-        "game-snapshot": "Copia automática del juego"
+        "game-snapshot": "Copia automática del juego",
+        "imported": "Importada"
       },
       "events": "📜 **Inicios y paradas recientes**",
       "events_empty": "📭 Sin registros",
@@ -462,6 +473,17 @@
         "router": "El firewall del PC permite este puerto. Reenvía este puerto a este PC en la configuración del router y vuelve a comprobar.",
         "cgnat": "Tu proveedor comparte una IP pública entre muchos hogares, así que el reenvío de puertos no puede abrirlo. Pide una IP pública a tu proveedor o usa una VPN como Tailscale.",
         "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar."
+      },
+      "server_update": {
+        "available": "Hay una versión nueva (build {{local}} → {{remote}}).",
+        "latest": "Está al día (build {{build}}).",
+        "check_failed": "No se pudo comprobar la actualización: {{error}}",
+        "unsupported": "Saba-chan no actualiza este servidor (instalado a mano).",
+        "unchecked": "No se pueden buscar actualizaciones para este servidor.",
+        "started": "La actualización ha empezado. Te aviso cuando termine.",
+        "cancelled": "Se canceló la actualización anunciada. El servidor sigue encendido.",
+        "scheduled": "Avisaré en el juego {{minutes}} minutos antes; luego guardaré, detendré, actualizaré y volveré a iniciarlo.",
+        "players": "Ahora hay {{count}} jugadores conectados."
       }
     }
   },

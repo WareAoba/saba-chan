@@ -1,17 +1,20 @@
 import clsx from 'clsx';
-import React, { type ReactNode, useEffect, useId } from 'react';
+import React, { type ReactNode, useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { RestartPending } from '../hooks/useServerSettings';
+import { type RestartPending, unsavedSettingKeys } from '../hooks/useServerSettings';
 import type { Server } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
 import type { ModuleInfo, SettingField } from '../types/daemon';
 import { moduleSupports } from '../utils/helpers';
+import { extensionInstallMethod, versionBranchMethod } from '../utils/installMethod';
 import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/validation';
 import { useExtensions } from '../contexts/ExtensionContext';
-import { CliLine, changedForCli } from './CliLine';
+import { CliLine, SECRET_KEY, changedForCli } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon, SabaCheckbox, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
+import { type ResetChoice, type ResetScope, ResetServerDialog } from './servers/ResetServerDialog';
+import { Popover } from './ui/Popover';
 import { SabaNumberInput } from './ui/SabaUI';
 import { SaveBar } from './ui/SaveBar';
 import { LinkedText } from './ui/ScreenLink';
@@ -74,13 +77,15 @@ function validationText(t: ReturnType<typeof useTranslation>['t'], fieldLabel: s
                 value: e.value,
                 defaultValue: `${fieldLabel}: '${e.value}' is not a valid option`,
             });
+        case 'invalid':
+            return t('validation.invalid', { field: fieldLabel });
         default:
             return null;
     }
 }
 
-/** 설정 한 줄: 이름·설명 왼쪽, 입력은 오른쪽 끝(또는 stack이면 아래 전체 폭) */
-function SettingRow({
+/** 설정 한 줄: 이름·설명 왼쪽, 입력은 오른쪽 끝(또는 stack이면 아래 전체 폭). 서버 추가 창도 쓴다 */
+export function SettingRow({
     label,
     labelId,
     htmlFor,
@@ -134,10 +139,12 @@ interface SettingsFieldProps {
     validationError?: SettingValidationError;
     /** 화면을 연 뒤 값이 바뀌었는가 (다시 시작해야 적용되는 칸이면 그렇다고 표시한다) */
     changed?: boolean;
+    /** 줄에 더할 class (서버 추가 창은 바꾼 줄을 표시한다) */
+    className?: string;
 }
 
 /** 모듈이 선언한 설정 칸 하나 (field_type에 맞는 입력) */
-export function SettingsField({ field, value, modNs, onChange, validationError, changed }: SettingsFieldProps) {
+export function SettingsField({ field, value, modNs, onChange, validationError, changed, className }: SettingsFieldProps) {
     const { t } = useTranslation('gui');
     // 이름표를 입력 칸에 잇는다 (화면 낭독기, 이름표 눌러 칸으로 가기)
     const inputId = useId();
@@ -258,6 +265,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
             control={control}
             stack={STACKED_TYPES.includes(fieldType)}
             error={validationError ? validationText(t, fieldLabel, validationError) : null}
+            className={className}
         />
     );
 }
@@ -278,14 +286,15 @@ export function ProtocolNotice({ protocol }: { protocol: string }) {
     );
 }
 
-/** 설정 묶음 카드 */
-function Card({
+/** 설정 묶음 카드. 서버 추가 창도 쓴다 */
+export function Card({
     icon,
     title,
     desc,
     className,
     children,
     head,
+    spot,
 }: {
     icon: string;
     title: ReactNode;
@@ -294,9 +303,11 @@ function Card({
     children?: ReactNode;
     /** 머리를 직접 그릴 때 (접는 묶음) */
     head?: ReactNode;
+    /** 가이드가 짚는 자리 이름 (화면 강조) */
+    spot?: string;
 }) {
     return (
-        <section className={clsx('dc-card ss-card', className)}>
+        <section className={clsx('dc-card ss-card', className)} data-spot={spot}>
             {head ?? (
                 <div className="dc-card-head">
                     <h2 className="ss-card-title" data-find="name">
@@ -321,11 +332,12 @@ interface GeneralTabProps {
     advancedExpanded: boolean;
     setAdvancedExpanded: (expanded: boolean) => void;
     versionsLoading?: boolean;
-    availableVersions: { id?: string; version?: string; type?: string }[];
+    availableVersions: { id?: string; version?: string; type?: string; name?: string }[];
     versionInstalling?: boolean;
     handleSettingChange: (name: string, value: unknown) => void;
     handleInstallVersion: () => void;
-    handleResetServer: () => void;
+    /** 고른 범위·백업 여부가 오면 묻지 않고 초기화한다 (확인 창이 이미 물었다) */
+    handleResetServer: (choice?: ResetChoice) => void;
     resettingServer?: boolean;
     validationErrors?: Record<string, SettingValidationError>;
     portConflicts?: { port: number | string; conflictName: string }[];
@@ -356,27 +368,56 @@ function GeneralTab({
     openedValues,
 }: GeneralTabProps) {
     const { t } = useTranslation('gui');
+    const { extensions } = useExtensions();
     const versionId = useId();
     const rowId = useId();
     const advancedId = useId();
+    // 초기화 확인 창에 보일 범위 (데몬이 알려 준 지울 항목). 모듈이 알려 주지 않으면 예전 확인 문구로 묻는다
+    const [resetScopes, setResetScopes] = useState<ResetScope[] | null>(null);
+    // 버전 때문에 숨긴 설정의 이름을 펼쳤는가 ("목록 보기")
+    const [versionHiddenListed, setVersionHiddenListed] = useState(false);
+    const askReset = async () => {
+        const seen =
+            typeof window.api?.instanceResetPreview === 'function'
+                ? await window.api.instanceResetPreview(settingsServer.id).catch(() => null)
+                : null;
+        if (seen?.success && Array.isArray(seen.scopes) && seen.scopes.length) setResetScopes(seen.scopes);
+        else handleResetServer();
+    };
     // section: 'server' = 게임 서버 설정만, 'saba' = 사바쨩이 서버를 다루는 설정만, 없으면 모두
     const showSaba = section !== 'server';
     const showServer = section !== 'saba';
     const module = modules.find((m) => m.name === settingsServer.module);
     const hasModuleSettings = (module?.settings?.fields?.length ?? 0) > 0;
     const modNs = `mod_${settingsServer.module}`;
+    // 설치된 버전에 없는 설정 (데몬이 계산한 version_hidden): 그리지 않고 설정 탭 아래 안내 줄로 알린다
+    const versionHidden = new Set(settingsServer.version_hidden || []);
+    const versionHiddenFields =
+        showServer && hasModuleSettings
+            ? module!.settings!.fields.filter((f) => versionHidden.has(f.name) && f.group !== 'saba-chan')
+            : [];
     // visible_when으로 숨긴 설정은 그리지 않는다 (값은 지우지 않는다)
-    const hidden = new Set(hasModuleSettings ? hiddenFields(module!.settings!.fields, settingsValues, unsetSettings) : []);
+    const hidden = new Set([
+        ...(hasModuleSettings ? hiddenFields(module!.settings!.fields, settingsValues, unsetSettings) : []),
+        ...versionHidden,
+    ]);
     const fields = hasModuleSettings ? module!.settings!.fields.filter((f) => !hidden.has(f.name)) : [];
     const sabaFields = showSaba ? fields.filter((f) => f.group === 'saba-chan') : [];
     const basicFields = showServer ? fields.filter((f) => !f.group || f.group === 'basic') : [];
     const advancedFields = showServer ? fields.filter((f) => f.group === 'advanced') : [];
+    // 설치 방식 익스텐션으로 받는 서버는 같은 칸에서 브랜치를 고른다 (모듈이 브랜치 목록을 줄 때만)
+    const branchMethod = versionBranchMethod(module);
+    const branchPicker = !!branchMethod && availableVersions.length > 0;
+    const branchSource = extensions.find((e) => e.id === branchMethod)?.name || branchMethod;
     const versionPicker =
         showSaba &&
-        module?.install?.method === 'download' &&
+        (module?.install?.method === 'download' || branchPicker) &&
         moduleSupports(module, 'list_versions') &&
         moduleSupports(module, 'install_server');
     const crashOff = String(settingsValues.auto_restart) === 'false';
+    const idleStopOn = String(settingsValues.idle_stop) === 'true';
+    const watchAction = String(settingsValues.unresponsive_action ?? 'notify');
+    const autoUpdatable = extensionInstallMethod(settingsServer, module) !== null;
     // 명령 팔레트가 고급 묶음의 칸을 찾아 달라고 하면 펼친다 (칸을 찾아 반짝이는 일은 팔레트가 한다)
     const findField = useUIStore((s) => s.findSettingField);
     // biome-ignore lint/correctness/useExhaustiveDependencies: 찾기 요청이 올 때만
@@ -406,11 +447,19 @@ function GeneralTab({
                 <Card icon="sabaFace" title={t('server_settings.saba_chan_group', { defaultValue: 'saba-chan Settings' })} className="ss-saba">
                     {versionPicker && (
                         <SettingRow
-                            label={t('server_settings.server_version', { defaultValue: 'Server Version' })}
+                            label={
+                                branchPicker
+                                    ? t('server_settings.branch', { source: branchSource })
+                                    : t('server_settings.server_version', { defaultValue: 'Server Version' })
+                            }
                             htmlFor={versionId}
-                            desc={t('server_settings.version_description_install', {
-                                defaultValue: 'Select a version and click Install to download the server files.',
-                            })}
+                            desc={
+                                branchPicker
+                                    ? t('server_settings.branch_desc')
+                                    : t('server_settings.version_description_install', {
+                                          defaultValue: 'Select a version and click Install to download the server files.',
+                                      })
+                            }
                             control={
                                 versionsLoading ? (
                                     <span className="muted ss-loading">
@@ -427,7 +476,7 @@ function GeneralTab({
                                             placeholder={t('server_settings.select_version', { defaultValue: 'Select version' })}
                                             options={availableVersions.map((v) => ({
                                                 value: (v.id || v.version || v) as string,
-                                                label: `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
+                                                label: v.name || `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
                                             }))}
                                         />
                                         <button
@@ -446,12 +495,20 @@ function GeneralTab({
                                             <Icon name={versionInstalling ? 'loader' : 'download'} size="sm" />{' '}
                                             {versionInstalling
                                                 ? t('server_settings.installing', { defaultValue: 'Installing...' })
-                                                : t('server_settings.install_version_button', { defaultValue: 'Install' })}
+                                                : branchPicker
+                                                  ? t('server_settings.branch_install')
+                                                  : t('server_settings.install_version_button', { defaultValue: 'Install' })}
                                         </button>
                                     </span>
                                 )
                             }
                         />
+                    )}
+                    {versionPicker && branchPicker && (
+                        <div className="notice tone-info idle-stopped-notice ss-branch-notice" role="note">
+                            <Icon name="info" size="sm" />
+                            <span>{t('server_settings.branch_notice')}</span>
+                        </div>
                     )}
                     {fieldRows(sabaFields)}
                 </Card>
@@ -491,6 +548,128 @@ function GeneralTab({
                 </Card>
             )}
 
+            {/* 응답 없는 서버 감시 (데몬 module_settings unresponsive_action·unresponsive_minutes) */}
+            {showSaba && (
+                <Card
+                    icon="alertTriangle"
+                    title={t('server_settings.unresponsive_title')}
+                    desc={t('server_settings.unresponsive_desc')}
+                    className="ss-unresponsive"
+                >
+                    <SettingRow
+                        label={t('server_settings.unresponsive_action')}
+                        findKey="unresponsive_action"
+                        control={
+                            <CustomDropdown
+                                className="ss-select"
+                                ariaLabel={t('server_settings.unresponsive_action')}
+                                value={watchAction}
+                                onChange={(v: string) => handleSettingChange('unresponsive_action', v)}
+                                options={(['off', 'notify', 'restart'] as const).map((a) => ({
+                                    value: a,
+                                    label: t(`server_settings.unresponsive_action_${a}`),
+                                }))}
+                            />
+                        }
+                    />
+                    <SettingRow
+                        label={t('server_settings.unresponsive_minutes')}
+                        findKey="unresponsive_minutes"
+                        desc={t('server_settings.unresponsive_minutes_hint')}
+                        disabled={watchAction === 'off'}
+                        control={
+                            <span className="ss-with-unit">
+                                <SabaNumberInput
+                                    className="input ss-short"
+                                    min={5}
+                                    max={1440}
+                                    value={settingsValues.unresponsive_minutes ?? ''}
+                                    disabled={watchAction === 'off'}
+                                    // 자동 정지 카드에도 같은 이름의 칸이 있어, 읽어 주는 이름에는 카드 제목을 붙인다
+                                    aria-label={`${t('server_settings.unresponsive_title')}: ${t('server_settings.unresponsive_minutes')}`}
+                                    onChange={(e) => handleSettingChange('unresponsive_minutes', e.target.value)}
+                                />
+                                <span className="muted">{t('server_settings.idle_stop_unit')}</span>
+                            </span>
+                        }
+                    />
+                </Card>
+            )}
+
+            {/* 게임 서버 자동 업데이트 (데몬 인스턴스 auto_update): 설치 방식 익스텐션으로 설치한 서버만 새 빌드를 확인할 수 있다 */}
+            {showSaba && autoUpdatable && (
+                <Card icon="download" title={t('server_settings.auto_update_title')} className="ss-auto-update">
+                    <SettingRow
+                        label={t('server_settings.auto_update_label')}
+                        htmlFor={`${rowId}-auto-update`}
+                        desc={t('server_settings.auto_update_hint')}
+                        control={
+                            <SabaToggle
+                                id={`${rowId}-auto-update`}
+                                checked={String(settingsValues.auto_update) === 'true'}
+                                onChange={(checked) => handleSettingChange('auto_update', checked)}
+                            />
+                        }
+                    />
+                </Card>
+            )}
+
+            {/* 접속자 없을 때 자동 정지 (데몬 module_settings idle_stop·idle_stop_minutes·idle_stop_grace_minutes).
+                데몬이 접속자 수를 알 길이 없는 서버(idle_stop_supported 거짓)에서는 고를 수 없다 */}
+            {showSaba && (
+                <Card icon="moon" title={t('server_settings.idle_stop_title')} desc={t('server_settings.idle_stop_desc')} className="ss-idle-stop">
+                    <SettingRow
+                        label={t('server_settings.idle_stop_label')}
+                        findKey="idle_stop"
+                        htmlFor={`${rowId}-idle`}
+                        disabled={!settingsServer.idle_stop_supported}
+                        control={
+                            <SabaToggle
+                                id={`${rowId}-idle`}
+                                checked={settingsServer.idle_stop_supported === true && idleStopOn}
+                                disabled={!settingsServer.idle_stop_supported}
+                                onChange={(checked) => handleSettingChange('idle_stop', checked)}
+                            />
+                        }
+                    />
+                    {!settingsServer.idle_stop_supported && (
+                        <div className="notice tone-info">
+                            <Icon name="info" size="sm" />
+                            <span>{t('server_settings.idle_stop_unsupported')}</span>
+                        </div>
+                    )}
+                    {settingsServer.idle_stop_supported &&
+                        (
+                            [
+                                ['idle_stop_minutes', 'idle_stop_minutes', 1],
+                                ['idle_stop_grace_minutes', 'idle_stop_grace', 0],
+                            ] as const
+                        ).map(([key, text, min]) => (
+                            <SettingRow
+                                key={key}
+                                label={t(`server_settings.${text}`)}
+                                findKey={key}
+                                desc={t(`server_settings.${text}_hint`)}
+                                disabled={!idleStopOn}
+                                control={
+                                    <span className="ss-with-unit">
+                                        <SabaNumberInput
+                                            className="input ss-short"
+                                            min={min}
+                                            max={1440}
+                                            value={settingsValues[key] ?? ''}
+                                            disabled={!idleStopOn}
+                                            aria-label={t(`server_settings.${text}`)}
+                                            onChange={(e) => handleSettingChange(key, e.target.value)}
+                                        />
+                                        <span className="muted">{t('server_settings.idle_stop_unit')}</span>
+                                    </span>
+                                }
+                            />
+                        ))}
+                </Card>
+            )}
+
             {/* 램 상한 (데몬 인스턴스 memory_limit_mb, MiB). 비우면 제한 없음, 다음 시작부터 적용 */}
             {showSaba && (
                 <Card icon="monitor" title={t('memory_limit.title')} desc={t('memory_limit.desc')} className="ss-memory">
@@ -522,7 +701,7 @@ function GeneralTab({
 
             {/* 게임 채팅 전달 (데몬 인스턴스 game_chat·game_chat_keyword). 모듈이 채팅 줄을 알려 주고 데몬이 콘솔을 읽을 때만 */}
             {showSaba && settingsServer.game_chat_supported && (
-                <Card icon="messageSquare" title={t('game_chat.title')} desc={t('game_chat.desc')} className="ss-game-chat">
+                <Card icon="messageSquare" title={t('game_chat.title')} desc={t('game_chat.desc')} className="ss-game-chat" spot="game_chat">
                     <SettingRow
                         label={t('game_chat.mode_label')}
                         findKey="game_chat"
@@ -637,6 +816,35 @@ function GeneralTab({
                 </Card>
             )}
 
+            {/* 설치된 버전에 없어 숨긴 설정: 몇 개인지와 모듈이 적어 둔 까닭(locales settings_note.version_hidden) */}
+            {versionHiddenFields.length > 0 && (
+                <div className="notice tone-info idle-stopped-notice ss-version-hidden" role="status">
+                    <Icon name="info" size="sm" />
+                    <span>
+                        {t('server_settings.version_hidden', {
+                            version: settingsServer.server_version,
+                            count: versionHiddenFields.length,
+                        })}{' '}
+                        {t(`${modNs}:settings_note.version_hidden`, { defaultValue: '' })}
+                        {versionHiddenListed && (
+                            <span className="notice-detail">
+                                {versionHiddenFields
+                                    .map((f) => t(`${modNs}:settings.${f.name}.label`, { defaultValue: f.label }))
+                                    .join(', ')}
+                            </span>
+                        )}
+                    </span>
+                    <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        aria-expanded={versionHiddenListed}
+                        onClick={() => setVersionHiddenListed(!versionHiddenListed)}
+                    >
+                        {t('server_settings.version_hidden_list')}
+                    </button>
+                </div>
+            )}
+
             {/* 위험 구역: 초기화를 구현한 모듈만 (MK1). 무엇을 지우는지는 모듈 locales의 reset.label·description이 먼저 */}
             {showServer && moduleSupports(module, 'reset_server') && (
                 <Card icon="alertTriangle" title={t('server_settings.danger_zone', { defaultValue: 'Danger Zone' })} className="ss-danger">
@@ -647,7 +855,7 @@ function GeneralTab({
                             <button
                                 type="button"
                                 className="btn btn-ghost btn-danger-text ss-reset"
-                                onClick={handleResetServer}
+                                onClick={askReset}
                                 disabled={resettingServer || serverRunning}
                                 data-tooltip={serverRunning ? t('server_settings.reset_server_running') : undefined}
                             >
@@ -658,6 +866,17 @@ function GeneralTab({
                             </button>
                         }
                     />
+                    {resetScopes && (
+                        <ResetServerDialog
+                            name={settingsServer.name}
+                            scopes={resetScopes}
+                            onClose={() => setResetScopes(null)}
+                            onConfirm={(choice) => {
+                                setResetScopes(null);
+                                handleResetServer(choice);
+                            }}
+                        />
+                    )}
                 </Card>
             )}
 
@@ -668,6 +887,105 @@ function GeneralTab({
                 </div>
             )}
         </div>
+    );
+}
+
+/** 모듈 설정이 아닌, 데몬이 인스턴스에 두는 칸의 화면 이름 (GeneralTab의 줄 이름과 같은 키) */
+const OWN_LABELS: Record<string, string> = {
+    server_version: 'server_settings.server_version',
+    auto_restart: 'shell.restart_on_crash',
+    restart_on_unknown_exit: 'shell.restart_on_unknown',
+    auto_update: 'server_settings.auto_update_label',
+    memory_limit_mb: 'memory_limit.label',
+    game_chat: 'game_chat.mode_label',
+    game_chat_keyword: 'game_chat.keyword_label',
+    stop_timeout: 'stop_timeout.label',
+    _launch_extra_args: 'launch_preview.extra_label',
+};
+
+/**
+ * 저장 막대의 "N개 바뀜" 칩 (사용자 11-12): 누르면 칸마다 `이전 → 새 값`과 칸 하나 되돌리기를 보인다.
+ * 다시 시작해야 적용되는 칸에는 설정 줄과 같은 표시를 붙인다.
+ */
+function ChangedFields({
+    keys,
+    values,
+    opened,
+    fields = [],
+    modNs,
+    onRevert,
+}: {
+    keys: string[];
+    values: SettingValues;
+    opened: SettingValues;
+    fields?: SettingField[];
+    modNs: string;
+    onRevert?: (key: string) => void;
+}) {
+    const { t } = useTranslation('gui');
+    const [open, setOpen] = useState(false);
+    if (!keys.length) return null;
+    const count = keys.length;
+    const text = (field: SettingField | undefined, key: string, v: unknown): string => {
+        if (v == null || v === '' || (Array.isArray(v) && !v.length)) return t('server_settings.value_empty');
+        if (field?.field_type === 'password' || SECRET_KEY.test(key)) return '••••';
+        if (field ? field.field_type === 'boolean' : ['true', 'false'].includes(String(v)))
+            return t(String(v) === 'true' ? 'server_settings.toggle_on' : 'server_settings.toggle_off');
+        const option = (opt: unknown) =>
+            t(`settings.${key}.options.${opt}`, { ns: modNs, nsSeparator: false, defaultValue: String(opt) });
+        if (Array.isArray(v)) return v.map(field?.options?.length ? option : String).join(', ');
+        if (field?.field_type === 'select') return option(v);
+        if (key === 'game_chat') return t(`game_chat.mode_${v}`, { defaultValue: String(v) });
+        return typeof v === 'object' ? JSON.stringify(v) : String(v);
+    };
+    return (
+        <Popover
+            open={open}
+            onOpenChange={setOpen}
+            side="top"
+            align="center"
+            label={t('server_settings.changed_title', { count })}
+            className="ss-changed"
+            trigger={
+                <button type="button" className="ss-changed-chip">
+                    {t('server_settings.changed_count', { count })}
+                </button>
+            }
+        >
+            <h5 className="ss-changed-title">{t('server_settings.changed_title', { count })}</h5>
+            <ul className="ss-changed-list">
+                {keys.map((key) => {
+                    const field = fields.find((f) => f.name === key);
+                    const name = field
+                        ? t(`${modNs}:settings.${key}.label`, { defaultValue: field.label || key })
+                        : OWN_LABELS[key]
+                          ? t(OWN_LABELS[key])
+                          : key;
+                    return (
+                        <li key={key} className="ss-changed-row">
+                            <div className="ss-changed-name">
+                                {name}
+                                {field?.restart_required && <span className="ss-chip">{t('server_settings.restart_badge')}</span>}
+                            </div>
+                            <div className="ss-changed-values">
+                                <s>{text(field, key, opened[key])}</s> → <b>{text(field, key, values[key])}</b>
+                            </div>
+                            {onRevert && (
+                                <button
+                                    type="button"
+                                    className="icon-btn"
+                                    data-tooltip={t('server_settings.revert_field', { name })}
+                                    aria-label={t('server_settings.revert_field', { name })}
+                                    onClick={() => onRevert(key)}
+                                >
+                                    <Icon name="undo" size="sm" />
+                                </button>
+                            )}
+                        </li>
+                    );
+                })}
+            </ul>
+        </Popover>
     );
 }
 
@@ -719,6 +1037,8 @@ interface ServerSettingsModalProps extends Omit<GeneralTabProps, 'portConflicts'
     openedSettings?: SettingValues;
     /** 기준 값으로 되돌린다 */
     revertSettings?: () => void;
+    /** 칸 하나만 기준 값으로 되돌린다 (바뀐 칸 목록) */
+    revertSetting?: (key: string) => void;
     /** 화면이 읽어 온 값을 넣는다 (바꾼 것으로 치지 않는다) */
     handleSettingLoaded?: (key: string, value: unknown) => void;
 }
@@ -748,6 +1068,7 @@ export function ServerSettingsModal({
     // 기준을 받지 못했으면(이 화면만 따로 그릴 때) 지금 값이 기준이다
     openedSettings = settingsValues,
     revertSettings,
+    revertSetting,
     handleSettingLoaded,
     // 서버 상세에 나눠 보이기: 'server' | 'saba' (GeneralTab 참고)
     section,
@@ -767,18 +1088,16 @@ export function ServerSettingsModal({
     const module = modules.find((m) => m.name === settingsServer.module);
     const changedSettings = changedForCli(settingsValues, openedSettings, module?.settings?.fields);
     // 저장 막대·"CLI로 보기"의 기준은 이 서버를 연 때의 설정. 저장 막대: 연 때와 다른 키 (`_`로 시작하는 GUI 값도 저장되므로 함께 본다)
-    const differs = (k: string) =>
-        JSON.stringify(settingsValues[k] ?? '') !== JSON.stringify(openedSettings[k] ?? '');
-    const revertKeys = [...new Set([...Object.keys(settingsValues), ...Object.keys(openedSettings)])].filter(
-        (k) => (k.startsWith('_') ? differs(k) : k in changedSettings),
-    );
+    const revertKeys = unsavedSettingKeys(settingsValues, openedSettings, module?.settings?.fields);
     const { errors: validationErrors } = React.useMemo(() => {
         if (!module?.settings?.fields) return { valid: true, errors: {} };
-        return validateAllSettings(module.settings.fields, settingsValues, unsetSettings) as {
+        // 설치된 버전에 없어 숨긴 설정은 검사하지 않는다 (데몬도 required를 보지 않는다)
+        const shown = module.settings.fields.filter((f) => !settingsServer?.version_hidden?.includes(f.name));
+        return validateAllSettings(shown, settingsValues, unsetSettings) as {
             valid: boolean;
             errors: Record<string, SettingValidationError>;
         };
-    }, [module, settingsValues, unsetSettings]);
+    }, [module, settingsValues, unsetSettings, settingsServer?.version_hidden]);
 
     // ── Validation: 포트 충돌 검사 (모듈 프로토콜 인지) ──
     const moduleProtocols = React.useMemo(() => {
@@ -883,7 +1202,19 @@ export function ServerSettingsModal({
                     onSave={handleSaveSettings}
                     onRevert={() => revertSettings?.()}
                     saveLabel={t('server_settings.save_settings')}
-                    extra={<CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />}
+                    extra={
+                        <>
+                            <ChangedFields
+                                keys={revertKeys}
+                                values={settingsValues}
+                                opened={openedSettings}
+                                fields={module?.settings?.fields}
+                                modNs={`mod_${settingsServer.module}`}
+                                onRevert={revertSetting}
+                            />
+                            <CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />
+                        </>
+                    }
                 />
             </div>
         </div>

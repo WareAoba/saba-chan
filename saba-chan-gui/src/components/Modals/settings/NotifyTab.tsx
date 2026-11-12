@@ -2,7 +2,6 @@ import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../../stores/useSettingsStore';
 import type { SoundSettings } from '../../../types/daemon';
 import CustomDropdown from '../../CustomDropdown/CustomDropdown';
-import { Icon } from '../../Icon';
 import { SabaToggle } from '../../ui/SabaUI';
 import { setOption } from './options';
 
@@ -29,7 +28,7 @@ export function NotifyTab() {
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="messageSquare" size="sm" /> {t('gui:settings_modal.toast_duration_label')}
+                        {t('gui:settings_modal.toast_duration_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.toast_duration_description')}</span>
                 </label>
@@ -48,7 +47,7 @@ export function NotifyTab() {
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="bell" size="sm" /> {t('gui:settings_modal.os_notifications_label')}
+                        {t('gui:settings_modal.os_notifications_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.os_notifications_description')}</span>
                 </label>
@@ -59,11 +58,11 @@ export function NotifyTab() {
             </div>
 
             {/* 밖에서 켜고 끈 것·크래시·설치 결과·업데이트 효과음: 전체 스위치 + 종류별 */}
-            <div className="setting-item setting-item-group">
+            <div data-spot="settings.sound" className="setting-item setting-item-group">
                 <div className="setting-item-row">
                     <label className="setting-label">
                         <span className="setting-title">
-                            <Icon name="volume" size="sm" /> {t('gui:settings_modal.sound_effects_label')}
+                            {t('gui:settings_modal.sound_effects_label')}
                         </span>
                         <span className="setting-description">{t('gui:settings_modal.sound_effects_description')}</span>
                     </label>

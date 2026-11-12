@@ -9,13 +9,18 @@ export type Listen = (name: string, cb: (payload: unknown) => void) => Promise<(
 /** withGlobalTauri가 거는 window.__TAURI__ 중 쓰는 것 */
 export interface TauriGlobal {
     core: { invoke: Invoke };
-    event: { listen: (name: string, cb: (event: { payload?: unknown }) => void) => Promise<() => void> };
+    webviewWindow: {
+        getCurrentWebviewWindow: () => {
+            listen: (name: string, cb: (event: { payload?: unknown }) => void) => Promise<() => void>;
+        };
+    };
 }
 
 export function tauriBindings(tauri: TauriGlobal): { invoke: Invoke; listen: Listen } {
     return {
         invoke: (cmd, args) => tauri.core.invoke(cmd, args),
+        // 이 창에 보낸 것만 받는다: 전역 event.listen은 다른 창(바탕화면 오버레이)에 보낸 것까지 받아 같은 이벤트가 두 번 온다.
         // 콜백에는 이벤트 본문(payload)만 넘긴다. 해제 함수의 Promise를 돌려준다
-        listen: (name, cb) => tauri.event.listen(name, (event) => cb(event?.payload)),
+        listen: (name, cb) => tauri.webviewWindow.getCurrentWebviewWindow().listen(name, (event) => cb(event?.payload)),
     };
 }

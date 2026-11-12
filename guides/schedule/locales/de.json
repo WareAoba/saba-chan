@@ -1,0 +1,9 @@
+{
+    "title": "Geplante Aufgaben",
+    "summary": "Automatische Neustarts und regelmäßige Backups",
+    "steps": [
+        "Mit Aufgabe hinzufügen legst du eine geplante Aufgabe an.",
+        "Wähle, was passieren soll (Start, Stopp, Neustart, Backup, Ankündigung, Update oder ein Spielbefehl) und wann. Mit dem Schalter pausierst du eine Aufgabe.",
+        "Erst mit Speichern gilt der Zeitplan."
+    ]
+}

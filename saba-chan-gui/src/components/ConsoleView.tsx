@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { type CompiledRule, highlightLine, spanSegments } from '../utils/syntaxHighlight';
+import './ConsoleView.css';
 
 /**
  * 단일 콘솔 라인의 content를 하이라이팅하여 렌더링.

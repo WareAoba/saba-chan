@@ -30,6 +30,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::Send { server, line } => send(ctx, &server, &line.join(" ")).await,
         ServerCmd::Chat { server, name, text } => chat(ctx, &server, &name, &text.join(" ")).await,
         ServerCmd::Players { server } => players(ctx, server.as_deref()).await,
+        ServerCmd::Lists { server } => lists(ctx, server.as_deref()).await,
         ServerCmd::PortCheck { server } => port_check(ctx, server.as_deref()).await,
         ServerCmd::Address { server } => address(ctx, server.as_deref()).await,
         ServerCmd::Rcon { server, line } => rcon(ctx, &server, &line.join(" ")).await,
@@ -225,13 +226,8 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
                 rows.push((t!(label), show(p)));
             }
         }
-        if let Some(v) = sv
-            .raw
-            .get("server_version")
-            .and_then(Value::as_str)
-            .filter(|v| !v.is_empty())
-        {
-            rows.push((t!("col.version"), v.to_string()));
+        if let Some(v) = installed_version(&sv.raw) {
+            rows.push((t!("col.version"), v));
         }
         if let Some(dir) = sv.raw.get("working_dir").and_then(Value::as_str) {
             rows.push((t!("col.folder"), dir.to_string()));
@@ -281,7 +277,7 @@ fn progress_line(p: &Value) -> String {
         .unwrap_or_default();
     match p.get("error").and_then(Value::as_str) {
         Some(err) => format!("{} {}", console::style("✗").red(), err),
-        None => format!("{} {}{}", console::style("◐").yellow(), pct, s(p, "message")),
+        None => format!("{} {}{}", console::style("◐").dim(), pct, s(p, "message")),
     }
 }
 
@@ -1539,6 +1535,31 @@ async fn players(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// 플레이어 목록(화이트리스트·관리자·밴 등 모듈이 선언한 것)마다 지금 명단과, 이름을 넣고 빼는 명령
+async fn lists(ctx: &Ctx, query: Option<&str>) -> Result<()> {
+    let sv = resolve::server(ctx, query).await?;
+    let r = ctx.api.lists(&sv.id).await?;
+    ctx.out.data(&r, |r| {
+        let lists: Vec<&Value> = r.get("lists").and_then(Value::as_array).into_iter().flatten().collect();
+        if lists.is_empty() {
+            say!("{}", output::dim(&t!("lists.unsupported")));
+        }
+        for list in lists {
+            let entries: Vec<&Value> = list.get("entries").and_then(Value::as_array).into_iter().flatten().collect();
+            output::heading(&t!("lists.title", list = s(list, "label"), count = entries.len()));
+            if entries.is_empty() {
+                say!("{}", output::dim(&t!("lists.none")));
+            }
+            for e in entries {
+                let more: Vec<&str> = [s(e, "note"), s(e, "added")].into_iter().filter(|v| !v.is_empty()).collect();
+                say!("  {}  {}", s(e, "name"), output::dim(&more.join(" · ")));
+            }
+            say!("{}", output::dim(&t!("lists.edit", add = format!("server run {} {}", sv.name, s(list, "add")), remove = format!("server run {} {}", sv.name, s(list, "remove")))));
+        }
+    });
+    Ok(())
+}
+
 /// `주소:포트` (IPv6는 `[주소]:포트`). 호스트 이름이면 그대로 붙인다
 fn host_port(host: &str, port: u16) -> String {
     match host.parse::<std::net::IpAddr>() {
@@ -2102,6 +2123,15 @@ async fn properties(ctx: &Ctx, query: Option<&str>, action: Option<PropsCmd>) ->
 
 // ── 버전·업데이트 ──
 
+/// 서버 정보의 버전 칸: 데몬이 적어 둔 설치 빌드(설치 방식 익스텐션으로 받은 서버), 없으면 서버 버전
+fn installed_version(raw: &Value) -> Option<String> {
+    let text = |v: Option<&Value>| v.and_then(Value::as_str).filter(|v| !v.is_empty()).map(str::to_string);
+    match text(raw.pointer("/server_build/id")) {
+        Some(id) => Some(t!("col.build", id = id)),
+        None => text(raw.get("server_version")),
+    }
+}
+
 async fn version(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
     let r = ctx.api.installed_version(&sv.id).await?;
@@ -2129,6 +2159,9 @@ async fn update(ctx: &Ctx, query: Option<&str>, check_only: bool) -> Result<()> 
                 say!("{}", t!("server.update_available", name = sv.name));
                 ctx.out
                     .hint(&format!("saba-chan-cli server update {}", shell_word(&sv.name)));
+            } else if s(r, "reason") == "check_failed" {
+                // 확인하지 못했다: "최신"이라고 말하지 않는다
+                say!("{}", t!("server.update_check_failed", name = sv.name, error = s(r, "error")));
             } else if s(r, "reason") == "update_unsupported" {
                 // 다운로드·수동 설치 서버: 최신인지 알 수 없다
                 say!("{}", t!("err.hint.update_unsupported"));
@@ -2486,6 +2519,15 @@ async fn reorder(ctx: &Ctx, names: &[String]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    /// 설치 방식 익스텐션으로 받은 서버는 데몬이 적어 둔 빌드 번호를 버전으로 보인다
+    #[test]
+    fn server_info_shows_the_recorded_build_as_the_version() {
+        crate::i18n::init("ko");
+        assert_eq!(super::installed_version(&serde_json::json!({ "server_build": { "id": "19283746" } })).as_deref(), Some("빌드 19283746"));
+        assert_eq!(super::installed_version(&serde_json::json!({ "server_version": "1.21.10" })).as_deref(), Some("1.21.10"));
+        assert_eq!(super::installed_version(&serde_json::json!({ "server_version": null })), None);
+    }
+
     use super::*;
 
     /// 데몬이 정리한 명령 결과(`output`)의 이름: 값 목록은 이름 폭을 맞춰 한 줄씩 (한글 이름도)
@@ -2726,6 +2768,7 @@ mod tests {
         assert!(typed_setting(&fields, &inst, "difficulty", "insane").is_err());
         assert_eq!(typed_setting(&fields, &inst, "memory_limit_mb", "6144").unwrap().1, json!(6144));
         assert_eq!(typed_setting(&fields, &inst, "memory_limit_mb", "").unwrap().1, Value::Null);
+        assert_eq!(typed_setting(&fields, &inst, "auto_update", "on").unwrap().1, json!(true));
         let (k, v) = typed_setting(&fields, &inst, "ext.box", "").unwrap();
         assert_eq!((k.as_str(), v), ("extension_data.box", Value::Null));
     }

@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../../stores/useSettingsStore';
 import CustomDropdown from '../../CustomDropdown/CustomDropdown';
-import { Icon } from '../../Icon';
 import { SabaToggle } from '../../ui/SabaUI';
 import { NetTraceSetting, netTraceAvailable } from '../NetTraceSetting';
 import { setOption } from './options';
@@ -21,7 +20,6 @@ export function ServersTab() {
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="key" size="sm" />{' '}
                         {t('gui:settings_modal.auto_generate_passwords_label', 'Auto-generate Passwords')}
                     </span>
                     <span className="setting-description">
@@ -41,7 +39,6 @@ export function ServersTab() {
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="alertCircle" size="sm" />{' '}
                         {t('gui:settings_modal.port_conflict_check_label', 'Port Conflict Detection')}
                     </span>
                     <span className="setting-description">
@@ -61,7 +58,6 @@ export function ServersTab() {
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="globe" size="sm" />{' '}
                         {t('gui:settings_modal.auto_port_check_label', 'Automatic Port Forwarding Check')}
                     </span>
                     <span className="setting-description">
@@ -85,7 +81,7 @@ export function ServersTab() {
                 <div className="setting-item-row">
                     <label className="setting-label">
                         <span className="setting-title">
-                            <Icon name="server" size="sm" /> {t('gui:settings_modal.new_server_defaults_label')}
+                            {t('gui:settings_modal.new_server_defaults_label')}
                         </span>
                         <span className="setting-description">
                             {t('gui:settings_modal.new_server_defaults_description')}
@@ -124,7 +120,7 @@ export function ServersTab() {
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">
-                        <Icon name="file" size="sm" /> {t('gui:settings_modal.audit_keep_label')}
+                        {t('gui:settings_modal.audit_keep_label')}
                     </span>
                     <span className="setting-description">{t('gui:settings_modal.audit_keep_description')}</span>
                 </label>

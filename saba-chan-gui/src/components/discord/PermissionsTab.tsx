@@ -7,6 +7,7 @@ import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
+import { Disclosure } from '../ui/Disclosure';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { SabaFail } from '../ui/SabaArt';
 import { Segmented } from '../ui/StatusChip';
@@ -483,7 +484,7 @@ export function PeopleView({
                     >
                         <Icon name="refresh" size="sm" />
                     </button>
-                    <button type="button" className="btn btn-secondary" onClick={onEditLevels}>
+                    <button data-spot="perm.edit_levels" type="button" className="btn btn-ghost" onClick={onEditLevels}>
                         <Icon name="key" size="sm" /> {t('discord.perm_edit_levels')}
                     </button>
                 </span>
@@ -588,6 +589,7 @@ export function PeopleView({
                                         <li>
                                             <button
                                                 type="button"
+                                                data-spot="perm.add_person"
                                                 className={clsx('dc-chip is-add', { 'is-active': adding === level })}
                                                 aria-expanded={adding === level}
                                                 aria-label={t('discord.perm_add_person_to', {
@@ -628,8 +630,8 @@ export function PeopleView({
             {!membersLoading && !members?.length && <p className="muted pad">{t('discord.members_empty')}</p>}
 
             {candidates.length > 0 && (
-                <details className="dc-card dc-import">
-                    <summary>{t('discord.perm_import_count', { count: candidates.length })}</summary>
+                <section className="dc-card dc-import">
+                    <Disclosure summary={t('discord.perm_import_count', { count: candidates.length })}>
                     <p className="dc-hint">{t('discord.perm_import_hint')}</p>
                     <ul className="dc-list">
                         {candidates.map((m) => {
@@ -679,7 +681,8 @@ export function PeopleView({
                             {t('discord.perm_import_button', { count: picked.length })}
                         </button>
                     </div>
-                </details>
+                    </Disclosure>
+                </section>
             )}
         </div>
     );

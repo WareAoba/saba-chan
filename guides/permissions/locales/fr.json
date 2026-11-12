@@ -1,0 +1,9 @@
+{
+    "title": "Droits",
+    "summary": "Décider qui peut faire quoi",
+    "steps": [
+        "Dans l'onglet Membres, attribuez un niveau à chaque personne de votre serveur Discord. Plus le niveau est élevé, plus il y a de commandes disponibles.",
+        "Utilisez Ajouter une personne à côté d'un niveau pour y placer quelqu'un. Les personnes sans niveau défini ont le Niveau par défaut.",
+        "Dans Modifier les niveaux, changez le nom et l'ordre des niveaux, ainsi que les commandes de chaque niveau."
+    ]
+}

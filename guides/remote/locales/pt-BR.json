@@ -1,0 +1,9 @@
+{
+    "title": "Daemon remoto",
+    "summary": "A Saba-chan de outros PCs, neste app",
+    "steps": [
+        "Para outro PC gerenciar este, ative Permitir conexões remotas neste PC e salve.",
+        "Seus PCs vinculados à mesma conta do Discord aparecem aqui. Clique em Conectar num PC que permite conexões remotas para pareá-lo e em Abrir para gerenciar os servidores dele neste app.",
+        "Para um servidor Linux que você acessa por SSH, use Instalar no Linux para instalar a Saba-chan e parear na hora."
+    ]
+}

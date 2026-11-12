@@ -50,7 +50,7 @@ export function WindowBackdropSetting() {
             <div className="setting-item-row">
                 <div className="setting-label">
                     <span className="setting-title">
-                        <Icon name="palette" size="sm" /> {t('settings_modal.backdrop_label')}
+                        {t('settings_modal.backdrop_label')}
                     </span>
                     <span className="setting-description">{description()}</span>
                 </div>

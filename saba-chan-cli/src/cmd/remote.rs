@@ -13,8 +13,8 @@ pub async fn run(ctx: &Ctx, cmd: RemoteCmd) -> Result<()> {
             ctx.out.data(&v, print_status);
             Ok(())
         }
-        RemoteCmd::Set { on, off, port, address } => {
-            let body = patch(on, off, port, address);
+        RemoteCmd::Set { on, off, remote_port, address } => {
+            let body = patch(on, off, remote_port, address);
             if body.is_empty() {
                 return status(ctx).await;
             }
@@ -96,12 +96,17 @@ pub async fn run(ctx: &Ctx, cmd: RemoteCmd) -> Result<()> {
             ctx.out.done(&t!("remote.forgotten", host = host_id), &r);
             Ok(())
         }
+        RemoteCmd::Rename { host_id, name } => {
+            let r = ctx.api.rename_pc(&host_id, &name).await?;
+            ctx.out.done(&t!("remote.renamed", name = s(&r, "name")), &r);
+            Ok(())
+        }
         RemoteCmd::Claim { code } => {
             let r = ctx.api.claim_remote(code.trim()).await?;
             ctx.out.done(&t!("remote.connected", name = pc_name(&r)), &r);
             Ok(())
         }
-        RemoteCmd::Install { target, port, linger, steam_libs } => install(ctx, &target, port, linger, steam_libs).await,
+        RemoteCmd::Install { target, ssh_port, linger, steam_libs } => install(ctx, &target, ssh_port, linger, steam_libs).await,
         RemoteCmd::Remove { host_id, uninstall, remove_settings, remove_instances, from_relay } => {
             let body = json!({ "uninstall": uninstall, "keepSettings": !remove_settings, "keepInstances": !remove_instances, "removePc": from_relay });
             let r = ctx.api.remove_remote_daemon(&host_id, body).await?;

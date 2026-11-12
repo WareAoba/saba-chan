@@ -39,16 +39,22 @@ export function viewStatus(server: Partial<ServerInfo>, moduleData?: unknown, mo
     return 'stopped';
 }
 
-/** 상태 → 상태 칩 색 이름 (tokens.css의 --ok/--stop/--warn/--info) */
-/** 상태 → StatusChip 색 */
+/**
+ * 상태 → StatusChip 색 (tokens.css의 --ok/--stop/--warn/--info).
+ * 켜는 중·끄는 중은 떠나온 상태의 색으로 깜빡인다 (사용자 11-11): 켜는 중 = 꺼짐 회색, 끄는 중 = 켜짐 초록. 노랑은 복구 중만
+ */
 export type StatusTone = 'ok' | 'stop' | 'warn' | 'info' | 'idle';
+
+/** 깜빡이는(진행 중) 상태 — 설치·업데이트 중(provisioning)도 꺼짐에서 출발한 진행이다 */
+export const isTransitional = (status: string | undefined) =>
+    status === 'starting' || status === 'stopping' || status === 'provisioning';
 
 export const STATUS_TONE: Record<string, StatusTone> = {
     running: 'ok',
     stopped: 'idle',
-    starting: 'warn',
-    stopping: 'warn',
-    provisioning: 'info',
+    starting: 'idle',
+    stopping: 'ok',
+    provisioning: 'idle',
     missing: 'warn',
 };
 
@@ -147,7 +153,28 @@ export function protocolLabel(server: Partial<ServerInfo>, moduleData?: Partial<
     return proto?.toUpperCase() || 'AUTO';
 }
 
+/** 빌드를 받은(올라온) 날짜 (유닉스 초): 올해면 월·일, 다른 해면 연도까지. 모르면 빈 글자 */
+export function buildDate(time: unknown, lang: string) {
+    if (typeof time !== 'number' || !(time > 0)) return '';
+    const at = new Date(time * 1000);
+    const year = at.getFullYear() === new Date().getFullYear() ? undefined : 'numeric';
+    return at.toLocaleDateString(lang, { year, month: 'long', day: 'numeric' });
+}
+
 /** 화면에 보일 게임 이름: 모듈 번역(display_name), 없으면 모듈의 game_name, 그것도 없으면 모듈 id */
 export function gameNameOf(t: TFunction, moduleName: string, moduleData?: Partial<ModuleInfo> | null) {
     return t(`mod_${moduleName}:module.display_name`, { defaultValue: moduleData?.game_name || moduleName });
+}
+
+/** 브랜치 서버의 상위 서버 (데몬 `branch_of`). 목록에 없으면 독립 서버로 본다 */
+export function branchParentOf<T extends ServerInfo>(server: T, servers: T[]): T | undefined {
+    return server.branch_of ? servers.find((s) => s.id === server.branch_of && !s.branch_of) : undefined;
+}
+
+/** 브랜치 서버를 상위 서버 바로 아래로 모은다 (나머지 순서는 그대로). 옮길 것이 없으면 받은 배열을 돌려준다 */
+export function branchesUnderParents<T extends ServerInfo>(servers: T[]): T[] {
+    if (!servers.some((s) => s.branch_of)) return servers;
+    const top = servers.filter((s) => !branchParentOf(s, servers));
+    const grouped = top.flatMap((parent) => [parent, ...servers.filter((s) => branchParentOf(s, servers) === parent)]);
+    return grouped.every((s, i) => s === servers[i]) ? servers : grouped;
 }

@@ -1,0 +1,10 @@
+{
+    "title": "Premiers pas",
+    "summary": "De la liaison à Discord au premier démarrage du serveur",
+    "steps": [
+        "Cliquez sur Connecter un serveur Discord pour démarrer et arrêter vos serveurs de jeu depuis Discord. Vous pouvez le faire plus tard.",
+        "Pour créer un serveur, récupérez d'abord le module de votre jeu.",
+        "Dans Ajouter un serveur, créez un nouveau serveur ou migrez un serveur existant.",
+        "Cliquez sur Démarrer pour lancer le serveur."
+    ]
+}

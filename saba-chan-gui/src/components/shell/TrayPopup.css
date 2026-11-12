@@ -65,6 +65,9 @@ html[data-tray-popup] body {
     border-radius: 50%;
     background: var(--chip-color);
 }
+.tray-popup-dot.pulse {
+    animation: chip-pulse 1.2s var(--ease) infinite;
+}
 .tray-popup-server-name {
     flex: 1;
     min-width: 0;

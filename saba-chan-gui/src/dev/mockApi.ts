@@ -202,6 +202,81 @@ const mockSpans = (text: string) => {
 
 const ok = (v = {}) => Promise.resolve(v);
 
+/** 데몬 `GET /api/guides` 흉내 (한국어 몇 개만) */
+const mockGuides = [
+    {
+        id: 'first-start',
+        group: 'start',
+        icon: 'rocket',
+        title: '처음 시작하기',
+        summary: '디스코드 연결부터 첫 서버 시작까지',
+        steps: [
+            { id: 'discord', go: 'discord/connection', spot: 'discord.pair', text: '디스코드와 연결하면 친구들이 디스코드에서 서버를 시작·정지할 수 있어요. 나중에 해도 돼요.' },
+            { id: 'module', action: 'modules', text: '서버를 만들려면 먼저 게임 모듈을 받아요.' },
+            { id: 'server', action: 'page.servers', spot: 'server.add', text: '여기서 새 서버를 만들거나 쓰던 서버를 불러와요.' },
+            { id: 'start', go: 'server/:first', spot: 'server.start', text: '준비됐으면 서버를 시작해 봐요.' },
+        ],
+        done: false,
+        new: false,
+        step: 1,
+        progress: { done: 1, total: 4 },
+    },
+    {
+        id: 'sonar',
+        group: 'care',
+        icon: 'sonar',
+        title: '소나',
+        summary: 'Ctrl+K · 찾고 열고 바로 실행',
+        steps: [
+            { text: 'Ctrl+K를 누르면 어디서든 소나가 열려요. 서버·설정·명령을 찾아 바로 열거나 실행해요.' },
+            { action: 'sonar', text: '지금 열어 볼게요.' },
+        ],
+        done: false,
+        new: true,
+        step: 0,
+    },
+    {
+        id: 'address',
+        group: 'start',
+        icon: 'globe',
+        title: '게임 서버 주소 · 포트포워딩 확인',
+        summary: '친구가 들어올 수 있게',
+        steps: [
+            { go: 'server/:first', spot: 'server.address', text: '친구에게 이 주소를 알려 주면 들어올 수 있어요.' },
+            { go: 'server/:first/info', spot: 'port.check', text: '밖에서 들어올 수 있는지 사바쨩이 직접 확인해요. 막혀 있으면 공유기에서 포트포워딩을 해야 해요.' },
+        ],
+        done: false,
+        new: false,
+        step: 0,
+    },
+    {
+        id: 'backup',
+        group: 'care',
+        icon: 'save',
+        title: '백업 · 백업 복원',
+        summary: '지금 상태를 남기고 언제든 되돌려요',
+        steps: [
+            { go: 'server/:first/maintenance', spot: 'server.tab.maintenance', text: '백업과 예약 작업은 서버마다 이 탭에 있어요.' },
+            { go: 'server/:first/maintenance', spot: 'backup.create', text: '누르면 지금 서버 상태를 백업으로 남겨요.' },
+            { spot: 'backup.restore', text: '남겨 둔 백업으로 언제든 되돌릴 수 있어요. 되돌리기 전에 지금 상태도 한 번 더 남겨요.' },
+        ],
+        done: false,
+        new: false,
+        step: 0,
+    },
+    {
+        id: 'import',
+        group: 'start',
+        icon: 'folder',
+        title: '쓰던 서버 불러오기',
+        summary: '월드·설정을 그대로 두고 관리해요',
+        steps: [{ action: 'addServer.migrate', text: '쓰던 서버 폴더를 고르면 그대로 불러와요.' }],
+        done: true,
+        new: false,
+        step: 0,
+    },
+];
+
 const mockBotSettings = {
     locale: 'auto',
     sleeping: false,
@@ -375,6 +450,13 @@ const impl: Record<string, MockFn> = {
     instanceBackupCreate: () => ok({ success: true, backup: { name: 'new-manual.zip' } }),
     instanceBackupDelete: () => ok({ success: true }),
     instanceBackupRestore: () => ok({ success: true, restored: true }),
+    instanceBackupExport: () => ok({ success: true, path: 'D:\\backup\\mock.zip', size: 95_000_000 }),
+    instanceBackupImport: (_id: string, opts?: { preview?: boolean }) =>
+        ok(
+            opts?.preview
+                ? { success: true, path: 'D:\\backup\\mock.zip', preview: { server: 'Mock', module: 'mock', created: now() - 86400, size: 95_000_000 } }
+                : { success: true, backup: { name: 'mock-imported.zip' } },
+        ),
     chatbotGet: () =>
         ok({
             success: true,
@@ -927,6 +1009,16 @@ const impl: Record<string, MockFn> = {
             { id: 'chatbot', done: false, optional: true },
         ];
         return ok({ steps, next: steps.find((st) => !st.optional && !st.done)?.id ?? null });
+    },
+    guides: () => ok({ guides: mockGuides.map((g) => ({ ...g, steps: g.steps.map((st) => ({ ...st })) })), groups: ['start', 'care', 'discord', 'more'] }),
+    guideUpdate: (id: string, body: { opened?: boolean; step?: number; finished?: boolean }) => {
+        const g = mockGuides.find((x) => x.id === id);
+        if (g) {
+            if (body.opened) g.new = false;
+            if (typeof body.step === 'number') g.step = body.step;
+            if (body.finished) g.done = true;
+        }
+        return ok({ ok: true });
     },
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),

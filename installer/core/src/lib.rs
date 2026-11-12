@@ -133,6 +133,9 @@ pub struct InstallOptions {
     pub selected_modules: Vec<String>,
     /// 미리 받아 둔 검증된 manifest. 없으면 설치가 받는다
     pub release: Option<VerifiedRelease>,
+    /// 설치할 때 고른 업데이트 채널 (`release::CHANNELS`). 그 채널의 최신 판을 받고(미리 받은 `release`도 같은 채널로 받은 것이어야 한다),
+    /// 설치 뒤의 업데이트도 그 채널로 받게 `config.json`의 `updates.channel`에 적는다. 없으면 설치기 빌드의 채널로 받고 설정은 건드리지 않는다
+    pub channel: Option<String>,
     /// 모듈 메타데이터 (required_extensions 해석용)
     pub module_metadata: Vec<ModuleInfo>,
     /// 설치 폴더에 `saba-chan-installer.exe`로 남길 제거기 (창 인스톨러는 자기 exe). 없으면 남기지 않는다
@@ -259,6 +262,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         }
     };
 
+    if let Some(chosen) = config.channel.as_deref().filter(|c| !release::CHANNELS.contains(c)) {
+        return fail("channel_invalid", &format!("Unknown update channel: {}", chosen));
+    }
+
     // Step 1: 설치 디렉토리 생성 + 쓰기 권한 확인 (0-5%)
     emit("prepare", "Creating install directory...", 2);
     let install_dir = config.install_path.clone();
@@ -282,9 +289,9 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     emit("fetch", "Fetching release information...", 7);
     let manifest = match config.release.clone() {
         Some(m) => m,
-        None => match release::fetch_latest().await {
+        None => match release::fetch_latest(config.channel.as_deref()).await {
             Ok(m) => m,
-            Err(e) => return fail("fetch_failed", &e),
+            Err(e) => return fail(e.code(), &e.to_string()),
         },
     }
     .for_profile(config.profile);
@@ -365,16 +372,17 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         tracing::warn!("installed-manifest.json could not be read: {}", e);
         UpdateManager::load_installed_manifest()
     });
-    for (i, ((key, info), zip)) in components.iter().zip(&fetched).enumerate() {
+    let placed = place_components(&install_dir, &components, &fetched, |i, key| {
         emit(
             "extract",
             &format!("Extracting {}...", key),
             40 + (i * 5 / total) as i32,
         );
-        if let Err(e) = place_component(key, zip, &release::target_dir(&install_dir, info)) {
-            return fail("extract_failed", &format!("Failed to extract {}: {}", key, e));
-        }
-        let _ = std::fs::remove_file(zip);
+    });
+    if let Err((key, e)) = placed {
+        return fail("extract_failed", &format!("Failed to extract {}: {}", key, e));
+    }
+    for (key, info) in &components {
         installed_versions.insert(key.to_string(), info.version.clone());
         installed.push(key.to_string());
     }
@@ -406,7 +414,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
 
     // Step 5: 포터블 Python 다운로드 + venv 생성 (55-70%)
     emit("runtime-python", "Preparing Python runtime...", 57);
-    prepare_python(&install_dir, &mut installed, &warn).await;
+    prepare_python(hooks, &install_dir, &mut installed, &warn).await;
 
     // Step 7: 설정 파일 생성 (85-88%)
     emit("config", "Setting up configuration...", 86);
@@ -415,6 +423,9 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     // Step 8: 언어 설정 저장 (88-90%)
     emit("config-lang", "Saving language settings...", 89);
     save_language_setting(&config.language);
+    if let Some(channel) = &config.channel {
+        save_channel_setting(&ConfigFile::default_location(), channel);
+    }
 
     // Step 9: 레지스트리 등록 (90-95%). 제거 항목이 없는 설치(CLI)도 폴더 목록에는 남겨, 다른 설치본을 지울 때 공용 데이터를 지키게 한다
     emit("registry", "Registering application...", 92);
@@ -461,7 +472,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         }
     }
 
-    // 짧은 명령 `saba-chan`: Windows는 설치 폴더의 `bin`(실행기 하나)을 사용자 PATH에 넣는다. 리눅스는 install.sh가 링크를 만든다
+    // 짧은 명령 `saba-chan`: Windows는 설치 폴더의 `bin`(실행기 하나)을 사용자 PATH에 넣는다. 리눅스·맥은 `~/.local/bin`에 링크를 둔다
     match user_path::add(&install_dir) {
         Ok(true) => tracing::info!("[Install] Added {} to the user PATH", install_dir.join(user_path::BIN_DIR).display()),
         Ok(false) => {}
@@ -605,10 +616,27 @@ async fn install_modules(
 
 /// 포터블 Python과 venv를 준비한다. 기존 런타임이 손상되었으면 지우고 다시 받는다.
 /// 실패해도 설치는 계속한다: 데몬이 시작할 때 다시 시도한다
-async fn prepare_python(install_dir: &Path, installed: &mut Vec<String>, warn: &(dyn Fn(String) + Sync)) {
+/// Python을 받는 동안은 다른 컴포넌트처럼 받은 크기를 알린다 (화면이 멈춰 보이지 않게)
+async fn prepare_python(hooks: &dyn InstallHooks, install_dir: &Path, installed: &mut Vec<String>, warn: &(dyn Fn(String) + Sync)) {
     let runtime_data_dir = runtime_bootstrap::resolve_runtime_data_dir(install_dir);
     let _ = std::fs::create_dir_all(&runtime_data_dir);
-    match runtime_bootstrap::setup_python_with_repair(&runtime_data_dir).await {
+    let on_download = |received: u64, total: Option<u64>| {
+        let mb = received as f64 / 1_048_576.0;
+        let message = match total {
+            Some(total) => format!("Downloading Python — {:.1}/{:.1} MB ({}%)", mb, total as f64 / 1_048_576.0, received * 100 / total.max(1)),
+            None => format!("Downloading Python — {:.1} MB", mb),
+        };
+        hooks.progress(&InstallProgress {
+            step: "runtime-python".to_string(),
+            message,
+            percent: 57,
+            download_file: Some("Python".to_string()),
+            download_received: Some(received),
+            download_total: total,
+            ..Default::default()
+        });
+    };
+    match runtime_bootstrap::setup_python_with_repair(&runtime_data_dir, &on_download).await {
         Ok(python_path) => {
             tracing::info!("Python 환경 준비 완료: {}", python_path.display());
             installed.push("runtime:python".to_string());
@@ -664,7 +692,8 @@ pub async fn setup(config: SetupOptions, hooks: &dyn InstallHooks) -> InstallPro
         emit_step(hooks, "fetch", "Fetching release information...", 7);
         let manifest = match config.release.clone() {
             Some(m) => Ok(m),
-            None => release::fetch_latest().await,
+            // 앱 묶음의 준비는 채널을 고르지 않는다: 그 빌드의 채널
+            None => release::fetch_latest(None).await,
         };
         match manifest {
             Ok(m) => {
@@ -682,7 +711,7 @@ pub async fn setup(config: SetupOptions, hooks: &dyn InstallHooks) -> InstallPro
     }
 
     emit_step(hooks, "runtime-python", "Preparing Python runtime...", 57);
-    prepare_python(&config.install_path, &mut installed, &warn).await;
+    prepare_python(hooks, &config.install_path, &mut installed, &warn).await;
 
     emit_step(hooks, "config-lang", "Saving language settings...", 89);
     save_language_setting(&config.language);
@@ -928,7 +957,7 @@ fn load_main_app_language() -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// 컴포넌트를 모두 `temp_dir`에 받고(`fetch`가 SHA-256까지 확인) 빈 폴더에 한 번 풀어 본다.
+/// 컴포넌트를 모두 `temp_dir`에 받고(`fetch`가 SHA-256까지 확인) 풀지 않고 끝까지 읽어 확인한다(`verify_zip`).
 /// 하나라도 받지 못하거나 깨졌으면 무엇도 적용하기 전에 실패 종류와 이유를 돌려준다. 받은 zip 경로를 같은 순서로 돌려준다
 async fn fetch_all<'a, F, Fut>(
     components: &[(&'a String, &'a relay::ManifestComponent)],
@@ -945,9 +974,7 @@ where
         fetch(i, key, info, zip.clone())
             .await
             .map_err(|e| ("download_failed", format!("Failed to download {}: {}", key, e)))?;
-        let probe = temp_dir.join(format!(".check-{}", i));
-        let checked = if is_bare_installer(key, &zip) { Ok(()) } else { saba_chan_updater_lib::extract_zip(&zip, &probe, |_| Ok(())).map(|_| ()) };
-        let _ = std::fs::remove_dir_all(&probe);
+        let checked = if is_bare_installer(key, &zip) { Ok(()) } else { saba_chan_updater_lib::verify_zip(&zip) };
         checked.map_err(|e| ("extract_failed", format!("Failed to extract {}: {}", key, e)))?;
         zips.push(zip);
     }
@@ -959,25 +986,48 @@ fn is_bare_installer(key: &str, path: &Path) -> bool {
     key == "installer" && !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip"))
 }
 
-/// 받은 컴포넌트를 둔다: zip은 풀고, zip이 아닌 설치기는 그 이름으로 복사한다 (실패하면 이전 사본을 되돌린다)
-fn place_component(key: &str, file: &Path, target_dir: &Path) -> anyhow::Result<()> {
-    if !is_bare_installer(key, file) {
-        return extract_zip(file, target_dir);
+/// 받은 컴포넌트를 모두 둔다 (실패한 컴포넌트의 키와 이유). 하나라도 실패하면 앞서 둔 컴포넌트까지 이전 파일로 되돌린다:
+/// 일부만 새 판인 설치는 기록(installed-manifest)과도 어긋나고 업데이터도 고치기 어렵다
+fn place_components(
+    install_dir: &Path,
+    components: &[(&String, &relay::ManifestComponent)],
+    fetched: &[PathBuf],
+    mut on_each: impl FnMut(usize, &str),
+) -> Result<(), (String, anyhow::Error)> {
+    let mut replacing = saba_chan_updater_lib::Replacing::default();
+    for (i, ((key, info), file)) in components.iter().zip(fetched).enumerate() {
+        on_each(i, key);
+        if let Err(e) = place_component(&mut replacing, key, file, &release::target_dir(install_dir, info)) {
+            tracing::error!("Placing {} failed, restoring the previous files: {}", key, e);
+            replacing.restore();
+            return Err((key.to_string(), e));
+        }
+        let _ = std::fs::remove_file(file);
     }
+    replacing.keep();
+    Ok(())
+}
+
+/// 받은 컴포넌트를 둔다: zip은 풀고, zip이 아닌 설치기는 그 이름으로 복사한다.
+/// 덮어쓸 파일은 `replacing`에 비켜 둔다 (켜진 서버의 saba-runner처럼 잠긴 exe도 업데이터처럼 이름을 바꿔 둔다)
+fn place_component(
+    replacing: &mut saba_chan_updater_lib::Replacing,
+    key: &str,
+    file: &Path,
+    target_dir: &Path,
+) -> anyhow::Result<()> {
     std::fs::create_dir_all(target_dir)?;
-    saba_chan_updater_lib::replace_bare_installer(file, &target_dir.join(saba_chan_updater_lib::INSTALLER_EXE))
+    if is_bare_installer(key, file) {
+        replacing.place_file(file, &target_dir.join(saba_chan_updater_lib::INSTALLER_EXE))
+    } else {
+        replacing.extract(file, target_dir).map(|_| ())
+    }
 }
 
 /// 업데이트·제거를 맡을 설치기를 릴리즈에서 받는가. 창 설치기는 Windows에서만 자기 사본을 설치 폴더에 남기므로
 /// (`registry::register_uninstall_entry`) 다른 OS의 창 설치와 CLI 설치는 릴리즈의 것을 받는다
 fn installer_from_release(running_installer: bool) -> bool {
     !running_installer || !cfg!(windows)
-}
-
-fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
-    std::fs::create_dir_all(target_dir)?;
-    // 덮어쓰기 설치 때 켜진 서버의 saba-runner처럼 잠긴 exe는 업데이터처럼 비켜 둔다
-    saba_chan_updater_lib::extract_zip(zip_path, target_dir, saba_chan_updater_lib::move_aside_binary).map(|_| ())
 }
 
 /// core zip에 포함된 공유 Python 모듈(i18n.py, daemon_rcon.py)을
@@ -1028,6 +1078,20 @@ fn save_language_setting(language: &str) {
     });
     if let Err(e) = result {
         tracing::warn!("Failed to save language setting: {}", e);
+    }
+}
+
+/// 설치할 때 고른 업데이트 채널을 업데이트 설정(`config.json`의 `updates.channel`)에 넣는다. 다른 키는 보존.
+fn save_channel_setting(config: &ConfigFile, channel: &str) {
+    let result = config.update(|doc| {
+        let updates = doc.entry("updates".to_string()).or_insert_with(|| serde_json::json!({}));
+        if !updates.is_object() {
+            *updates = serde_json::json!({});
+        }
+        updates["channel"] = serde_json::Value::String(channel.to_string());
+    });
+    if let Err(e) = result {
+        tracing::warn!("Failed to save update channel: {}", e);
     }
 }
 
@@ -1123,7 +1187,7 @@ fn enable_extensions(config: &ConfigFile, ids: &[String]) -> std::io::Result<()>
 }
 
 /// 익스텐션을 풀 폴더: 익스텐션 폴더 아래, manifest `install_dir`(`extensions/<이름>`)의 마지막 이름이나 id.
-/// Python이 `import extensions.<이름>`으로 부르므로 하이픈은 밑줄로 (업데이터 `resolve_install_dir`와 같은 규칙)
+/// Python이 `import extensions.<이름>`으로 부르므로 하이픈은 밑줄로 (업데이터 `resolve_ext_dir`와 같은 규칙)
 fn extension_target(extensions_dir: &Path, ext_id: &str, install_dir: Option<&str>) -> PathBuf {
     let name = install_dir
         .and_then(|d| Path::new(d).file_name())
@@ -1151,12 +1215,70 @@ mod tests {
         let file = tmp.path().join("saba-core-linux-x64.tar.gz");
         std::fs::write(&file, b"not a zip").unwrap();
         let dir = tmp.path().join("install");
-        assert!(place_component("saba-core", &file, &dir).is_err());
+        let mut replacing = saba_chan_updater_lib::Replacing::default();
+        assert!(place_component(&mut replacing, "saba-core", &file, &dir).is_err());
         assert!(!dir.join(saba_chan_updater_lib::INSTALLER_EXE).exists());
         let exe = tmp.path().join("saba-chan-installer.exe");
         std::fs::write(&exe, b"exe").unwrap();
-        place_component("installer", &exe, &dir).unwrap();
+        place_component(&mut replacing, "installer", &exe, &dir).unwrap();
         assert_eq!(std::fs::read(dir.join(saba_chan_updater_lib::INSTALLER_EXE)).unwrap(), b"exe");
+    }
+
+    /// 덮어쓰기 설치가 둘째 컴포넌트에서 실패하면 앞서 푼 첫째까지 이전 파일로 되돌린다 (판이 섞인 설치가 남지 않게)
+    #[test]
+    fn a_failed_overwrite_install_puts_the_earlier_components_back() {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("install");
+        std::fs::create_dir_all(dir.join("locales")).unwrap();
+        let exe = saba_chan_updater_lib::uninstall_entry::CORE_EXE;
+        for (name, body) in [(exe, "old core"), ("locales/ko.json", "old ko")] {
+            std::fs::write(dir.join(name), body).unwrap();
+        }
+        let comp = |file: &str, install_dir: &str| relay::ManifestComponent {
+            version: "0.1.14".into(),
+            filename: file.into(),
+            size_bytes: None,
+            sha256: "0".repeat(64),
+            url: "https://example.invalid/x.zip".into(),
+            install_dir: Some(install_dir.into()),
+            requires: None,
+            meta: None,
+            reads_runner_formats: None,
+        };
+        let zip_of = |name: &str, files: &[&str]| {
+            let path = tmp.path().join(name);
+            let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+            for file in files {
+                zip.start_file(*file, zip::write::SimpleFileOptions::default()).unwrap();
+                zip.write_all(b"new").unwrap();
+            }
+            zip.finish().unwrap();
+            path
+        };
+        let broken = tmp.path().join("core.zip");
+        std::fs::write(&broken, b"not a zip").unwrap();
+        let (k1, k2, k3) = ("locales".to_string(), "saba-core".to_string(), "zz-broken".to_string());
+        let (c1, c2, c3) = (comp("locales.zip", "locales"), comp("core.zip", "."), comp("broken.zip", "."));
+        let components = vec![(&k1, &c1), (&k2, &c2), (&k3, &c3)];
+        let fetched = vec![zip_of("locales.zip", &["ko.json", "ja.json"]), zip_of("good-core.zip", &[exe, "i18n.py"]), broken];
+
+        let (key, _) = place_components(&dir, &components, &fetched, |_, _| {}).unwrap_err();
+
+        assert_eq!(key, "zz-broken");
+        let mut left: Vec<String> = walk(&dir).into_iter().map(|p| p.strip_prefix(&dir).unwrap().to_string_lossy().replace('\\', "/")).collect();
+        left.sort();
+        assert_eq!(left, vec!["locales/ko.json".to_string(), exe.to_string()]);
+        assert_eq!(std::fs::read_to_string(dir.join(exe)).unwrap(), "old core");
+        assert_eq!(std::fs::read_to_string(dir.join("locales/ko.json")).unwrap(), "old ko");
+    }
+
+    fn walk(dir: &Path) -> Vec<PathBuf> {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .flat_map(|e| if e.path().is_dir() { walk(&e.path()) } else { vec![e.path()] })
+            .collect()
     }
 
     /// 설치 폴더에 설치기가 꼭 남는다: Windows 창 설치는 자기 사본을 남기고, 그 밖에는 릴리즈의 것을 받는다
@@ -1179,6 +1301,53 @@ mod tests {
         let section = config.section("extensions");
         assert_eq!(section["enabled"], serde_json::json!(["steamcmd", "ue4-ini", "zeta"]));
         assert_eq!(section["settings"]["zeta"]["k"], 1, "other keys stay");
+    }
+
+    /// 설치할 때 고른 업데이트 채널은 `config.json`의 `updates.channel`에 남아 이후 업데이트도 그 채널로 받는다.
+    /// 다시 설치할 때는 그 값이 미리 골라져 있다 (고를 수 없는 값이면 설치기 빌드의 채널)
+    #[test]
+    fn the_channel_chosen_at_install_is_kept_for_later_updates() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = ConfigFile::at(dir.path());
+        let bundled = saba_chan_updater_lib::versions::bundled().channel.clone();
+        assert_eq!(release::default_channel(&config), bundled, "nothing chosen yet");
+        config.set_section("updates", serde_json::json!({ "auto_apply": false })).unwrap();
+
+        save_channel_setting(&config, "beta");
+
+        let section = config.section("updates");
+        assert_eq!(section["channel"], "beta");
+        assert_eq!(section["auto_apply"], false, "other keys stay");
+        assert_eq!(release::default_channel(&config), "beta");
+
+        config.set_section("updates", serde_json::json!({ "channel": "nightly" })).unwrap();
+        assert_eq!(release::default_channel(&config), bundled, "not a channel the installer offers");
+    }
+
+    /// 고를 수 없는 채널로는 아무것도 하기 전에 멈춘다 (폴더를 만들거나 릴레이에 묻지 않는다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_unknown_channel_stops_before_anything_is_touched() {
+        let root = tempfile::tempdir().unwrap();
+        let hooks = Recorder(Default::default());
+        let options = InstallOptions {
+            install_path: root.path().join("Saba-chan"),
+            language: "en".into(),
+            profile: Profile::Headless,
+            create_desktop_shortcut: false,
+            create_start_menu_shortcut: false,
+            selected_modules: Vec::new(),
+            release: None,
+            channel: Some("nightly".into()),
+            module_metadata: Vec::new(),
+            uninstaller_exe: None,
+            components_dir: None,
+        };
+
+        let last = install(options, &hooks).await;
+
+        assert_eq!(last.error_code.as_deref(), Some("channel_invalid"), "{:?}", last);
+        assert!(!root.path().join("Saba-chan").exists());
     }
 
     #[test]
@@ -1484,6 +1653,7 @@ mod tests {
             create_start_menu_shortcut: false,
             selected_modules: Vec::new(),
             release: None,
+            channel: None,
             module_metadata: Vec::new(),
             uninstaller_exe: None,
             components_dir: None,
@@ -1547,8 +1717,9 @@ mod tests {
         std::fs::create_dir_all(&app).unwrap();
         let installs = tmp.path().join("installs.json");
         let modules = tmp.path().join("modules");
-        assert_eq!(launch_for(&app, &installs, &modules), Launch::Setup);
+        let records = tmp.path().join("installed-files.json");
+        assert_eq!(launch_for(&app, &installs, &modules, &records), Launch::Setup);
         finish_setup(&app, &installs).unwrap();
-        assert_eq!(launch_for(&app, &installs, &modules), Launch::Ready);
+        assert_eq!(launch_for(&app, &installs, &modules, &records), Launch::Ready);
     }
 }

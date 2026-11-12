@@ -38,8 +38,8 @@ pub struct Status {
 #[derive(Default)]
 struct Runtime {
     cancel: Option<(CancellationToken, tokio::task::JoinHandle<()>)>,
-    /// 실패한 주소 올리기를 다시 하는 작업과, 그 작업이 올렸는지
-    retry: Option<(tokio::task::JoinHandle<()>, Arc<AtomicBool>)>,
+    /// 실패한 주소 올리기를 다시 하는 작업: 그 작업만 멈추는 취소(리스너 취소의 자식), 작업, 그 작업이 올렸는지
+    retry: Option<(CancellationToken, tokio::task::JoinHandle<()>, Arc<AtomicBool>)>,
     published: bool,
     /// 릴레이에 올린 주소: 설정한 주소, 비었으면 릴레이가 본 이 PC의 공인 IP (`None`: 주소 없이, 터널로만)
     address: Option<String>,
@@ -79,26 +79,69 @@ pub fn configured_address(settings: &config::Settings) -> Option<String> {
 pub async fn on_seen_address(server: &IPCServer) {
     let settings = config::settings_in(&ConfigFile::default_location());
     let mut rt = RUNTIME.lock().await;
-    let (true, Some(sha)) = (rt.status.listening, rt.status.cert_sha256.clone()) else { return };
     let address = published_address(&settings, server);
+    publish_changed(&mut rt, &server::RelaySource::Configured(server.clone()), address, settings.port, RETRY_FIRST).await;
+}
+
+/// 원격 포트가 열려 있고 올릴 주소가 바뀌었으면 새 주소를 올린다. 실패하면 `retry_after` 뒤부터 다시 올린다
+async fn publish_changed(rt: &mut Runtime, relay: &server::RelaySource, address: Option<String>, port: u16, retry_after: std::time::Duration) {
+    let (true, Some(sha)) = (rt.status.listening, rt.status.cert_sha256.clone()) else { return };
     if address == rt.address {
         return;
     }
-    let Some(target) = server::RelaySource::Configured(server.clone()).target().await else { return };
-    if relay::publish(&target, address.as_deref(), settings.port, &sha).await == relay::Published::Done {
-        tracing::info!("Published the remote daemon address the relay sees");
-        rt.address = address;
-        rt.published = true;
-        rt.status.published = true;
+    let Some(target) = relay.target().await else { return };
+    // 다시 올리던 작업은 예전 주소를 쥐고 있다: 멈추고, 보내던 요청이 끝난 뒤에 새 주소를 올린다 (늦게 닿은 예전 주소가 덮지 않게)
+    if let Some((cancel, task, done)) = rt.retry.take() {
+        cancel.cancel();
+        let _ = task.await;
+        if done.load(Ordering::SeqCst) {
+            rt.published = true;
+            rt.status.published = true;
+        }
     }
+    match relay::publish(&target, address.as_deref(), port, &sha).await {
+        relay::Published::Done => {
+            tracing::info!("Published the remote daemon address the relay sees");
+            rt.address = address;
+            rt.published = true;
+            rt.status.published = true;
+        }
+        relay::Published::Failed => {
+            rt.address = address.clone();
+            retry_publishing(rt, relay.clone(), address, port, sha, retry_after);
+        }
+        relay::Published::Refused | relay::Published::Unauthorized => {}
+    }
+}
+
+/// 실패한 주소 올리기를 포트가 열려 있는 동안 다시 하는 작업을 띄운다
+fn retry_publishing(rt: &mut Runtime, relay: server::RelaySource, address: Option<String>, port: u16, sha: String, first: std::time::Duration) {
+    let Some((listener, _)) = rt.cancel.as_ref() else { return };
+    let cancel = listener.child_token();
+    let done = Arc::new(AtomicBool::new(false));
+    let (stop, flag) = (cancel.clone(), done.clone());
+    let task = tokio::spawn(async move {
+        if publish_with_retry(&relay, address.as_deref(), port, &sha, &stop, first).await {
+            flag.store(true, Ordering::SeqCst);
+            tracing::info!("Published the remote daemon address to the relay");
+        }
+    });
+    rt.retry = Some((cancel, task, done));
 }
 
 /// 릴레이의 내 PC 목록에 맞춘다 (`GET /api/remote/peers`를 읽을 때와 10분마다):
 /// - 저장한 이름·주인 이름을 릴레이 것으로
 /// - 서버쨩에서 빠진 PC(디스코드에서 지웠거나 개인정보를 지운 PC)는 짝을 푼다. 그 PC가 가진 토큰은 더는 통하지 않는다 (사용자 결정 2026-11-08)
 /// - 저장한 원격 데몬의 주소·지문이 바뀌었으면 따른다 (터널로 짝 맺은 PC가 공인 주소를 올린 뒤 직접 붙게)
-pub async fn sync_with_relay(file: &ConfigFile, target: &relay::Target) -> Result<Vec<relay::Peer>, relay::Failure> {
-    let peers = relay::peers(target).await?;
+/// - 이 PC 이름을 받아 둔다 (`config::this_name_in`, 옛 릴레이는 주지 않는다)
+pub async fn sync_with_relay(file: &ConfigFile, target: &relay::Target) -> Result<relay::PeerList, relay::Failure> {
+    let list = relay::peer_list(target).await?;
+    if let Some(me) = &list.this_pc {
+        if let Err(e) = config::save_this_name_in(file, &me.name) {
+            tracing::warn!("Failed to remember this PC's name: {}", e);
+        }
+    }
+    let peers = &list.peers;
     let known: Vec<_> = peers.iter().map(|p| (p.host_id.clone(), p.name.clone(), p.owner_name.clone())).collect();
     if let Err(e) = config::refresh_names_in(file, &known) {
         tracing::warn!("Failed to refresh remote PC names: {}", e);
@@ -117,7 +160,7 @@ pub async fn sync_with_relay(file: &ConfigFile, target: &relay::Target) -> Resul
     }
     // 원격 포트가 들고 있는 짝 맺은 PC도 (새 이름, 푼 짝)
     reload_clients(file);
-    Ok(peers)
+    Ok(list)
 }
 
 /// 데몬이 떠 있는 동안 10분마다 릴레이의 내 PC 목록에 맞춘다 (`sync_with_relay`)
@@ -151,7 +194,7 @@ pub(crate) fn reload_clients(file: &ConfigFile) {
 pub async fn status() -> Status {
     let rt = RUNTIME.lock().await;
     let mut status = rt.status.clone();
-    status.published |= rt.retry.as_ref().is_some_and(|(_, done)| done.load(Ordering::SeqCst));
+    status.published |= rt.retry.as_ref().is_some_and(|(_, _, done)| done.load(Ordering::SeqCst));
     status
 }
 
@@ -196,7 +239,8 @@ fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
     tokio::net::TcpListener::from_std(std_listener)
 }
 
-/// 다시 올리기 간격의 상한
+/// 올리기에 실패한 뒤 처음 다시 올릴 때까지의 간격과, 간격의 상한
+const RETRY_FIRST: std::time::Duration = std::time::Duration::from_secs(5);
 const RETRY_MAX: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// `first`만큼 기다렸다가 주소를 올린다. 실패하면 간격을 두 배씩 늘려(상한 5분) 올릴 때까지 다시 한다.
@@ -241,7 +285,7 @@ pub async fn apply(server: &IPCServer) -> Status {
     }
     // 다시 올리기도 같은 취소로 멈춘다. 보내던 요청이 끝나야 새 주소를 올린다
     let mut was_published = rt.published;
-    if let Some((task, done)) = rt.retry.take() {
+    if let Some((_, task, done)) = rt.retry.take() {
         let _ = task.await;
         was_published |= done.load(Ordering::SeqCst);
     }
@@ -293,20 +337,10 @@ pub async fn apply(server: &IPCServer) -> Status {
         if published == relay::Published::Unauthorized {
             tracing::warn!("The relay rejected the node token; not publishing the remote daemon address");
         }
-        if let (relay::Published::Failed, Some((cancel, _))) = (published, rt.cancel.as_ref()) {
+        if published == relay::Published::Failed {
             // 부팅 직후 네트워크가 아직이거나 릴레이가 잠시 받지 않으면, 포트가 열려 있는 동안 다시 올린다
             tracing::warn!("Failed to publish the remote daemon address to the relay; retrying");
-            let (cancel, address, sha) = (cancel.clone(), address.map(str::to_string), sha.to_string());
-            let port = settings.port;
-            let done = Arc::new(AtomicBool::new(false));
-            let flag = done.clone();
-            let task = tokio::spawn(async move {
-                if publish_with_retry(&relay, address.as_deref(), port, &sha, &cancel, std::time::Duration::from_secs(5)).await {
-                    flag.store(true, Ordering::SeqCst);
-                    tracing::info!("Published the remote daemon address to the relay");
-                }
-            });
-            rt.retry = Some((task, done));
+            retry_publishing(&mut rt, relay, address.map(str::to_string), settings.port, sha.to_string(), RETRY_FIRST);
         }
     } else if let (true, Some(t)) = (was_published || tls::exists(&saba_chan_updater_lib::constants::resolve_data_dir()), target.as_ref()) {
         // 데몬이 다시 뜬 뒤에는 전에 올렸는지 모르므로, 원격 포트를 연 적이 있는(인증서가 있는) PC면 내린다
@@ -395,6 +429,42 @@ mod tests {
         let published = super::publish_with_retry(&relay, Some("saba.example.com"), 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
         assert!(!published);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// 부팅 직후 주소 없이 올리려다 실패해 다시 올리는 중에 릴레이가 본 공인 IP를 알게 되면, 나중 주소가 남는다:
+    /// 다시 올리던 작업이 쥐고 있던 예전 주소(없음)가 새 주소를 덮지 않는다
+    #[tokio::test]
+    async fn an_address_learned_while_retrying_is_not_overwritten_by_the_stale_retry() {
+        let up = super::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let last = super::Arc::new(std::sync::Mutex::new(None));
+        let (online, record) = (up.clone(), last.clone());
+        let app = axum::Router::new().route(
+            "/api/remote/endpoint",
+            axum::routing::put(move |axum::Json(body): axum::Json<serde_json::Value>| {
+                let ok = online.load(Ordering::SeqCst);
+                if ok {
+                    *record.lock().unwrap() = Some(body["address"].clone());
+                }
+                async move { if ok { axum::http::StatusCode::NO_CONTENT } else { axum::http::StatusCode::SERVICE_UNAVAILABLE } }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let relay = super::server::RelaySource::Fixed(super::relay::Target { base, token: "sbn_host-b.secret".into() });
+
+        let mut rt = super::Runtime {
+            cancel: Some((super::CancellationToken::new(), tokio::spawn(async {}))),
+            status: super::Status { listening: true, cert_sha256: Some("ab".repeat(32)), ..Default::default() },
+            ..Default::default()
+        };
+        super::retry_publishing(&mut rt, relay.clone(), None, 57480, "ab".repeat(32), Duration::from_millis(150));
+        up.store(true, Ordering::SeqCst);
+        super::publish_changed(&mut rt, &relay, Some("203.0.113.7".into()), 57480, Duration::from_millis(150)).await;
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert_eq!(*last.lock().unwrap(), Some(serde_json::json!("203.0.113.7")), "the later address is what the relay keeps");
+        assert_eq!(rt.address.as_deref(), Some("203.0.113.7"));
+        assert!(rt.status.published);
     }
 
     /// 포트를 닫거나 설정을 다시 적용하면 다시 올리기를 멈춘다

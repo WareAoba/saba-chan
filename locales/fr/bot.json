@@ -121,6 +121,7 @@
   "schedule": {
     "restart_warning": "Le serveur redémarre dans {{minutes}} min.",
     "update_warning": "Le serveur redémarre pour une mise à jour dans {{minutes}} min.",
+    "update_cancelled": "La mise à jour prévue a été annulée. Le serveur reste allumé.",
     "stop_warning": "Le serveur s'arrête dans {{minutes}} min."
   },
   "provision": {
@@ -256,10 +257,19 @@
       },
       "update": {
         "check": {
-          "title": "Vérifier la mise à jour du serveur de jeu"
+          "title": "Vérifier la mise à jour du serveur de jeu",
+          "name": "Vérifier la mise à jour",
+          "description": "Vérifie si Steam propose une nouvelle version du serveur de jeu"
         },
         "apply": {
-          "title": "Mettre à jour le serveur de jeu"
+          "title": "Mettre à jour le serveur de jeu",
+          "name": "Mettre à jour",
+          "description": "Met à jour le serveur de jeu. S’il tourne, prévient en jeu 5 minutes avant, l’arrête, le met à jour et le relance"
+        },
+        "cancel": {
+          "title": "Annuler la mise à jour prévue",
+          "name": "annuler-mise-a-jour",
+          "description": "Annule une mise à jour du serveur de jeu encore en préavis (avant l'arrêt du serveur)"
         }
       },
       "diagnose": {
@@ -407,7 +417,8 @@
         "pre-update": "avant mise à jour",
         "pre-restore": "avant restauration",
         "snapshot": "Sauvegarde du jeu conservée",
-        "game-snapshot": "Sauvegarde auto du jeu"
+        "game-snapshot": "Sauvegarde auto du jeu",
+        "imported": "Importée"
       },
       "events": "📜 **Démarrages et arrêts récents**",
       "events_empty": "📭 Aucun enregistrement",
@@ -462,6 +473,17 @@
         "router": "Le pare-feu du PC autorise ce port. Redirigez ce port vers ce PC dans les paramètres du routeur, puis vérifiez à nouveau.",
         "cgnat": "Votre fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l’ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
         "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau."
+      },
+      "server_update": {
+        "available": "Une nouvelle version est disponible (build {{local}} → {{remote}}).",
+        "latest": "À jour (build {{build}}).",
+        "check_failed": "Impossible de vérifier la mise à jour : {{error}}",
+        "unsupported": "Saba-chan ne met pas à jour ce serveur (installé à la main).",
+        "unchecked": "Impossible de vérifier les mises à jour de ce serveur.",
+        "started": "La mise à jour a commencé. Je vous préviens quand c'est fini.",
+        "cancelled": "La mise à jour annoncée a été annulée. Le serveur reste allumé.",
+        "scheduled": "Je préviens en jeu {{minutes}} minutes avant, puis j'enregistre, j'arrête, je mets à jour et je relance.",
+        "players": "{{count}} joueurs sont connectés."
       }
     }
   },

@@ -1,0 +1,24 @@
+[guide]
+group = "start"
+icon = "rocket"
+order = 10
+done = "onboarding"
+
+[[steps]]
+id = "discord"
+go = "discord/connection"
+spot = "discord.pair"
+
+[[steps]]
+id = "module"
+action = "modules"
+
+[[steps]]
+id = "server"
+action = "page.servers"
+spot = "server.add"
+
+[[steps]]
+id = "start"
+go = "server/:first"
+spot = "server.start"

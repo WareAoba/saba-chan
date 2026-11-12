@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { useDragReorder } from '../../hooks/useDragReorder';
+import type { AddServerPayload } from '../../hooks/useServerActions';
 import { useSwapAnimation } from '../../hooks/useSwapAnimation';
 import { useWindowSize } from '../../hooks/useWindowSize';
 import { type Server, useServerStore } from '../../stores/useServerStore';
@@ -9,14 +10,18 @@ import { useSettingsStore } from '../../stores/useSettingsStore';
 import { type ModalConfig, useUIStore } from '../../stores/useUIStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { failedModuleName, failedModuleReason } from '../../utils/failedModules';
+import { branchParentOf } from '../../utils/serverView';
 import { Icon } from '../Icon';
+import { Disclosure } from '../ui/Disclosure';
 import { LinkedText } from '../ui/ScreenLink';
 import { SabaArt } from '../ui/SabaArt';
 import { FloatingMonitor, monitorPlacement, SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
 import { useDaemonTarget } from '../shell/DaemonSwitcher';
 import { OtherDaemons } from '../shell/OtherDaemons';
+import { BranchServerDialog } from './BranchServerDialog';
 import { DaemonDownNotice, DaemonDownState, daemonDown } from './DaemonDown';
 import { FirstRunGuide } from '../guides/FirstRunGuide';
+import { GuideCard } from '../guides/GuideCard';
 import { useGuideStore } from '../guides/guides';
 import { OnboardingCard } from './OnboardingCard';
 import type { ServerConsoleProps, ServerSettingsProps } from './ServerDetail';
@@ -26,12 +31,24 @@ import { ServerRow } from './ServerRow';
 /** 이 너비보다 좁으면 목록/상세를 한 열로 (gui-design-reference §3) */
 export const SINGLE_COLUMN_MAX_WIDTH = 900;
 const SEARCH_MIN_SERVERS = 6;
+const COLLAPSED_KEY = 'saba-branches-collapsed';
+
+function readCollapsed(): string[] {
+    try {
+        const saved = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]');
+        return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string') : [];
+    } catch {
+        return [];
+    }
+}
 
 interface ServersPageProps {
     servers: Server[];
     setServers: (updater: (prev: Server[]) => Server[]) => void;
     modules: ModuleInfo[];
     onAddServer: () => void;
+    /** 브랜치 서버 만들기: 만들기 요청을 그대로 데몬에 보낸다 (성공하면 true) */
+    onCreateBranch?: (payload: AddServerPayload) => Promise<boolean> | boolean;
     onStart: (name: string, moduleName: string) => void;
     onStop: (name: string) => void;
     onRestart?: (name: string) => void;
@@ -51,6 +68,7 @@ export function ServersPage({
     setServers,
     modules,
     onAddServer,
+    onCreateBranch,
     onStart,
     onStop,
     onRestart,
@@ -61,7 +79,7 @@ export function ServersPage({
     consoleProps,
     settingsProps,
 }: ServersPageProps) {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
     const failedModules = useServerStore((st) => st.failedModules) || [];
     const { width } = useWindowSize();
     const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
@@ -77,6 +95,19 @@ export function ServersPage({
     const isDaemonDown = useUIStore((s) => daemonDown(s.backgroundDaemonStatus));
     const [query, setQuery] = useState('');
     const [showDetailNarrow, setShowDetailNarrow] = useState(false);
+    // 브랜치 서버: 만들기 창을 연 상위 서버, 브랜치를 접어 둔 상위 서버 (이 PC에서 본 대로 기억한다)
+    const [branchFrom, setBranchFrom] = useState<Server | null>(null);
+    const [collapsed, setCollapsed] = useState<string[]>(readCollapsed);
+    const toggleBranches = (id: string) =>
+        setCollapsed((prev) => {
+            const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+            try {
+                localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+            } catch {
+                // 기억하지 못해도 접기는 된다
+            }
+            return next;
+        });
     // 바깥에서 연 서버는 좁은 창에서도 상세로
     const revealServerCount = useUIStore((s) => s.revealServerCount);
     useEffect(() => {
@@ -90,6 +121,11 @@ export function ServersPage({
     useEffect(() => {
         if (activeTab === 'servers') useGuideStore.getState().refreshOnboarding();
     }, [servers.length, runningCount, activeTab]);
+    // 가이드 카드: 완료(서버·모듈·켜짐)와 언어가 바뀌면 다시 묻는다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 바뀔 때 다시 묻는 것이 목적이다
+    useEffect(() => {
+        if (activeTab === 'servers') useGuideStore.getState().refreshGuides();
+    }, [servers.length, runningCount, modules.length, activeTab, i18n.language]);
     const guideStep = useGuideStore((s) => s.step);
     // 가이드를 연 채(갈림길 등) 다른 곳에서 서버가 생기면 가이드를 접는다 (모듈 받기는 원래 하던 곳으로 이어 가므로 둔다)
     const serverCount = useRef(servers.length);
@@ -114,9 +150,11 @@ export function ServersPage({
         return (name: string): ModuleInfo | undefined => map[name];
     }, [modules]);
 
+    // 접어 둔 상위 서버의 브랜치는 감춘다 (찾는 중에는 맞는 서버를 모두 보인다)
     const visible = query.trim()
         ? servers.filter((s) => `${s.name} ${s.module}`.toLowerCase().includes(query.trim().toLowerCase()))
-        : servers;
+        : servers.filter((s) => !collapsed.includes(branchParentOf(s, servers)?.id ?? ''));
+    const branchesOf = (id: string) => servers.filter((s) => branchParentOf(s, servers)?.id === id);
     const selected = servers.find((s) => s.id === selectedId) || null;
     // 다른 서버를 고르면 상세가 살짝 떠오르며 바뀐다
     const detailRef = useSwapAnimation(selectedId);
@@ -143,11 +181,12 @@ export function ServersPage({
                             <LinkedText i18nKey="shell.empty_no_modules" to="settings/sabaStorage/modules" />
                         </p>
                     )}
-                    <button type="button" className="btn btn-primary btn-lg" onClick={onAddServer}>
+                    <button type="button" data-spot="server.add" className="btn btn-primary btn-lg" onClick={onAddServer}>
                         <Icon name="plus" size="sm" /> {t('shell.add_server')}
                     </button>
                 </div>
                 <OnboardingCard />
+                <GuideCard />
                 {/* 고른 데몬에 서버가 없어도 다른 데몬의 서버는 보인다 */}
                 {unified && daemonTarget !== undefined && <OtherDaemons currentTarget={daemonTarget} />}
             </div>
@@ -162,7 +201,7 @@ export function ServersPage({
             {!listHidden && (
                 <aside className="server-list-pane" aria-label={t('shell.nav_servers')}>
                     <div className="server-list-head">
-                        <button type="button" className="btn btn-primary btn-block" onClick={onAddServer}>
+                        <button type="button" data-spot="server.add" className="btn btn-primary btn-block" onClick={onAddServer}>
                             <Icon name="plus" size="sm" /> {t('shell.add_server')}
                         </button>
                         {servers.length >= SEARCH_MIN_SERVERS && (
@@ -177,14 +216,17 @@ export function ServersPage({
                         )}
                     </div>
                     {isDaemonDown && <DaemonDownNotice />}
-                    <OnboardingCard />
                     {failedModules.length > 0 && (
                         // 모듈이 목록에서 사라진 이유를 알려준다 (module.toml 오류 등)
-                        <details className="notice tone-warn module-failures">
-                            <summary>
-                                <Icon name="alertTriangle" size="sm" />
-                                {t('shell.modules_failed', { count: failedModules.length })}
-                            </summary>
+                        <div className="notice tone-warn module-failures">
+                            <Disclosure
+                                summary={
+                                    <>
+                                        <Icon name="alertTriangle" size="sm" />
+                                        {t('shell.modules_failed', { count: failedModules.length })}
+                                    </>
+                                }
+                            >
                             <ul>
                                 {failedModules.map((f) => (
                                     <li key={f.path}>
@@ -193,17 +235,30 @@ export function ServersPage({
                                     </li>
                                 ))}
                             </ul>
-                        </details>
+                            </Disclosure>
+                        </div>
                     )}
-                    <div className="server-list" role="listbox" aria-label={t('shell.nav_servers')}>
+                    <div
+                        className={clsx('server-list', { 'has-branches': servers.some((s) => branchParentOf(s, servers)) })}
+                        role="listbox"
+                        aria-label={t('shell.nav_servers')}
+                    >
                         {visible.length === 0 && <p className="muted pad">{t('shell.no_match')}</p>}
-                        {visible.map((server) => (
+                        {visible.map((server) => {
+                            const parent = branchParentOf(server, servers);
+                            return (
                             <ServerRow
                                 key={server.id || server.name}
                                 server={server}
                                 index={servers.indexOf(server)}
                                 moduleData={moduleOf(server.module)}
                                 selected={server.id === selectedId}
+                                branch={!!parent}
+                                branches={parent ? 0 : branchesOf(server.id).length}
+                                branchesCollapsed={collapsed.includes(server.id)}
+                                onToggleBranches={toggleBranches}
+                                onBranch={onCreateBranch && !parent ? setBranchFrom : undefined}
+                                unsaved={settingsProps?.unsavedServers?.includes(server.id)}
                                 onSelect={(id) => {
                                     setSelectedId(id);
                                     setShowDetailNarrow(true);
@@ -219,9 +274,11 @@ export function ServersPage({
                                 onRestart={onRestart}
                                 onDelete={onDelete}
                             />
-                        ))}
+                            );
+                        })}
                     </div>
                     {unified && daemonTarget !== undefined && <OtherDaemons currentTarget={daemonTarget} />}
+                    <GuideCard />
                 </aside>
             )}
             {!detailHidden && selected && (
@@ -258,6 +315,9 @@ export function ServersPage({
                 </aside>
             )}
             {selected && monitorAt === 'float' && <FloatingMonitor servers={servers} />}
+            {branchFrom && onCreateBranch && (
+                <BranchServerDialog parent={branchFrom} onClose={() => setBranchFrom(null)} onCreate={onCreateBranch} />
+            )}
         </div>
     );
 }

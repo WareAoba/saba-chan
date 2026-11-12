@@ -336,11 +336,27 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }:
                                 settings.bigEmoji,
                                 (bigEmoji) => save({ bigEmoji }),
                             )}
+                        {/* 멤버 알림·과부하 공지: 디스코드 /설정과 같은 값 (원본은 서버쨩) */}
+                        {typeof settings.memberNotice === 'boolean' &&
+                            toggleRow(
+                                t('discord.bot_settings.member_notice'),
+                                t('discord.bot_settings.member_notice_desc'),
+                                settings.memberNotice,
+                                (memberNotice) => save({ memberNotice }),
+                            )}
+                        {typeof settings.busyNotice === 'boolean' &&
+                            toggleRow(
+                                t('discord.bot_settings.busy_notice'),
+                                t('discord.bot_settings.busy_notice_desc'),
+                                settings.busyNotice,
+                                (busyNotice) => save({ busyNotice }),
+                            )}
                     </section>
 
                     {/* 게임 채팅 채널 옵션: 원본은 서버쨩(릴레이). 릴레이를 못 읽으면 값이 없어 카드를 두지 않는다 */}
                     {(typeof settings.gameChatGuard === 'boolean' ||
-                        typeof settings.gameChatClearOnStop === 'boolean') && (
+                        typeof settings.gameChatClearOnStop === 'boolean' ||
+                        typeof settings.gameChatAutoOpen === 'boolean') && (
                         <section className="dc-card">
                             <div className="dc-card-head">
                                 <h2>{t('discord.bot_settings.game_chat_title')}</h2>
@@ -358,6 +374,13 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }:
                                     t('discord.bot_settings.game_chat_clear_on_stop_desc'),
                                     settings.gameChatClearOnStop,
                                     (gameChatClearOnStop) => save({ gameChatClearOnStop }),
+                                )}
+                            {typeof settings.gameChatAutoOpen === 'boolean' &&
+                                toggleRow(
+                                    t('discord.bot_settings.game_chat_auto_open'),
+                                    t('discord.bot_settings.game_chat_auto_open_desc'),
+                                    settings.gameChatAutoOpen,
+                                    (gameChatAutoOpen) => save({ gameChatAutoOpen }),
                                 )}
                         </section>
                     )}
@@ -463,7 +486,7 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }:
                 </>
             )}
             {section === 'music' && (
-                <section className="dc-card">
+                <section data-spot="music.settings" className="dc-card">
                     {toggleRow(t('discord.bot_settings.music_enabled'), null, music.enabled, (enabled) =>
                         save({ music: { enabled } }),
                     )}
@@ -500,7 +523,7 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }:
                 </section>
             )}
             {section === 'tts' && (
-                <section className="dc-card">
+                <section data-spot="tts.settings" className="dc-card">
                     <div className="cb-fields">
                         <NumberField
                             label={t('discord.bot_settings.tts_volume')}
@@ -602,7 +625,7 @@ function AutoChannelsField({ guildId, value, locked, onChange }: AutoChannelsFie
     const toggle = (id: string) =>
         onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id].slice(0, TTS_AUTO_CHANNELS_MAX));
     return (
-        <div className="mt-field">
+        <div data-spot="tts.auto_channels" className="mt-field">
             <span>{t('discord.bot_settings.tts_auto_channels')}</span>
             {channels && !shown.length ? (
                 <p className="dc-hint">{t('discord.bot_settings.tts_auto_channels_none')}</p>

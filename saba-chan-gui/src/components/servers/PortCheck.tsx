@@ -68,8 +68,8 @@ function HelpLink() {
     );
 }
 
-/** 확인을 실행한다. 결과는 `setReport`로, 실패는 `setError`로 */
-function usePortCheckRun(serverId: string, setReport: SetReport) {
+/** 확인을 실행한다. 결과는 `setReport`로, 실패는 `setError`로 (접속 주소 카드도 쓴다) */
+export function usePortCheckRun(serverId: string, setReport: SetReport) {
     const { t } = useTranslation('gui');
     const [running, setRunning] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -89,12 +89,24 @@ function usePortCheckRun(serverId: string, setReport: SetReport) {
     return { run, running, error };
 }
 
-/** 확인 버튼. 결과가 있으면 성공이든 실패든 "다시 확인" */
-function PortCheckButton({ run, running, checked }: { run: () => void; running: boolean; checked: boolean }) {
+/** 확인 버튼. 결과가 있으면 성공이든 실패든 "다시 확인". 가이드가 가리키는 정보 탭 버튼만 `spot`을 단다 */
+export function PortCheckButton({
+    run,
+    running,
+    checked,
+    spot = false,
+    className = 'btn btn-ghost',
+}: {
+    run: () => void;
+    running: boolean;
+    checked: boolean;
+    spot?: boolean;
+    className?: string;
+}) {
     const { t } = useTranslation('gui');
     const label = running ? t('port_check.running') : checked ? t('port_check.retry') : t('port_check.button');
     return (
-        <button type="button" className="btn btn-ghost" disabled={running} onClick={run}>
+        <button data-spot={spot ? 'port.check' : undefined} type="button" className={className} disabled={running} onClick={run}>
             <Icon name={running || checked ? 'refresh' : 'globe'} size="sm" className={running ? 'spin' : undefined} /> {label}
         </button>
     );
@@ -111,7 +123,7 @@ export function PortCheck({ server }: { server: Server }) {
     return (
         <section className="server-check port-check">
             <div className="server-check-actions">
-                <PortCheckButton run={run} running={running} checked={portCheckShown(report)} />
+                <PortCheckButton run={run} running={running} checked={portCheckShown(report)} spot />
             </div>
             {error && (
                 <div className="notice tone-stop" role="alert">
@@ -151,51 +163,5 @@ export function PortCheck({ server }: { server: Server }) {
                 </div>
             )}
         </section>
-    );
-}
-
-/** 상세 머리 아래: 확인에서 닿지 않는다고 나왔으면 알린다. 고친 뒤 바로 다시 확인할 수 있다 */
-export function PortCheckNotice({ server }: { server: Server }) {
-    const { t } = useTranslation('gui');
-    const [report, setReport] = useLastPortCheck(server.id);
-    const { run, running, error } = usePortCheckRun(server.id, setReport);
-    // 닫기 (사용자 11-07): 같은 결과는 이번 실행 동안 다시 띄우지 않는다. 결과가 바뀌면 다시 뜬다
-    const storeKey = `saba.portNoticeDismissed.${server.id}`;
-    const reportKey = report ? JSON.stringify([report.verdict, report.address, report.ports]) : '';
-    const [dismissed, setDismissed] = useState(() => {
-        try {
-            return sessionStorage.getItem(storeKey) || '';
-        } catch {
-            return '';
-        }
-    });
-    if (!report || !portCheckAvailable() || !portCheckNeedsAttention(report) || dismissed === reportKey) return null;
-    const dismiss = () => {
-        setDismissed(reportKey);
-        try {
-            sessionStorage.setItem(storeKey, reportKey);
-        } catch {
-            // 저장 못 해도 지금 화면에서는 닫힌다
-        }
-    };
-    return (
-        <div className="notice tone-warn port-check-notice" role="status">
-            <Icon name="globe" size="sm" />
-            <span className="port-check-notice-text">
-                <strong>{t(`port_check.verdict.${report.verdict}`)}</strong> {t(portCheckHintKey(report))}{' '}
-                <HelpLink />
-                {error && <span className="port-check-notice-error"> {error}</span>}
-            </span>
-            <PortCheckButton run={run} running={running} checked />
-            <button
-                type="button"
-                className="icon-btn port-check-notice-close"
-                onClick={dismiss}
-                aria-label={t('modals.close')}
-                data-tooltip={t('modals.close')}
-            >
-                <Icon name="close" size="sm" />
-            </button>
-        </div>
     );
 }

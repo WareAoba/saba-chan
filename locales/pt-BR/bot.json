@@ -121,6 +121,7 @@
   "schedule": {
     "restart_warning": "O servidor será reiniciado em {{minutes}} min.",
     "update_warning": "O servidor será reiniciado para atualização em {{minutes}} min.",
+    "update_cancelled": "A atualização prevista foi cancelada. O servidor continua ligado.",
     "stop_warning": "O servidor será desligado em {{minutes}} min."
   },
   "provision": {
@@ -256,10 +257,19 @@
       },
       "update": {
         "check": {
-          "title": "Verificar atualização do servidor de jogo"
+          "title": "Verificar atualização do servidor de jogo",
+          "name": "Verificar atualização",
+          "description": "Verifica se há uma nova versão do servidor de jogo no Steam"
         },
         "apply": {
-          "title": "Atualizar servidor de jogo"
+          "title": "Atualizar servidor de jogo",
+          "name": "Atualizar",
+          "description": "Atualiza o servidor de jogo. Se estiver ligado, avisa no jogo 5 minutos antes, para, atualiza e liga de novo"
+        },
+        "cancel": {
+          "title": "Cancelar a atualização prevista",
+          "name": "cancelar-atualizacao",
+          "description": "Cancela uma atualização do servidor de jogo que ainda está no aviso (antes de desligar)"
         }
       },
       "diagnose": {
@@ -407,7 +417,8 @@
         "pre-update": "antes da atualização",
         "pre-restore": "antes da restauração",
         "snapshot": "Backup do jogo guardado",
-        "game-snapshot": "Backup automático do jogo"
+        "game-snapshot": "Backup automático do jogo",
+        "imported": "Importado"
       },
       "events": "📜 **Inícios e paradas recentes**",
       "events_empty": "📭 Nenhum registro",
@@ -462,6 +473,17 @@
         "router": "O firewall do PC permite esta porta. Redirecione esta porta para este PC nas configurações do roteador e verifique novamente.",
         "cgnat": "Sua operadora divide um IP público entre várias casas, então o redirecionamento de portas não consegue abri-lo. Peça um IP público à operadora ou use uma VPN como o Tailscale.",
         "unknown": "Não é possível verificar portas UDP de um servidor ligado nem portas usadas por outro programa. Pare o servidor e verifique de novo."
+      },
+      "server_update": {
+        "available": "Há uma versão nova (build {{local}} → {{remote}}).",
+        "latest": "Está atualizado (build {{build}}).",
+        "check_failed": "Não foi possível verificar a atualização: {{error}}",
+        "unsupported": "O Saba-chan não atualiza este servidor (instalado manualmente).",
+        "unchecked": "Não é possível verificar atualizações deste servidor.",
+        "started": "A atualização começou. Aviso quando terminar.",
+        "cancelled": "A atualização anunciada foi cancelada. O servidor continua ligado.",
+        "scheduled": "Vou avisar no jogo {{minutes}} minutos antes; depois salvo, paro, atualizo e ligo de novo.",
+        "players": "{{count}} jogadores estão online agora."
       }
     }
   },

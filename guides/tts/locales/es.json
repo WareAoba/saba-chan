@@ -1,0 +1,9 @@
+{
+    "title": "Saba-chan lectora",
+    "summary": "Escucha el chat en voz alta",
+    "steps": [
+        "Ajusta el volumen, la velocidad, el tono y Decir nombres de la voz lectora.",
+        "Elige canales de voz con lectura continua. Cuando haya dos o más personas en uno, Saba-chan entra y lee todo su chat.",
+        "En otros canales de voz, usa el comando de lectura en Discord y Saba-chan leerá lo que escribas después. Vuelve a usarlo para apagarlo."
+    ]
+}

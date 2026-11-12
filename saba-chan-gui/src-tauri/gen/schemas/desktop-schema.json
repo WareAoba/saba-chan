@@ -375,10 +375,22 @@
           "markdownDescription": "Enables the console_popout command without any pre-configured scope."
         },
         {
+          "description": "Enables the console_popout_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-console-popout-close",
+          "markdownDescription": "Enables the console_popout_close command without any pre-configured scope."
+        },
+        {
           "description": "Enables the console_popout_list command without any pre-configured scope.",
           "type": "string",
           "const": "allow-console-popout-list",
           "markdownDescription": "Enables the console_popout_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the console_popout_saved command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-console-popout-saved",
+          "markdownDescription": "Enables the console_popout_saved command without any pre-configured scope."
         },
         {
           "description": "Enables the console_toggle_always_on_top command without any pre-configured scope.",
@@ -465,6 +477,42 @@
           "markdownDescription": "Enables the notify command without any pre-configured scope."
         },
         {
+          "description": "Enables the overlay_action command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-overlay-action",
+          "markdownDescription": "Enables the overlay_action command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the overlay_fit command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-overlay-fit",
+          "markdownDescription": "Enables the overlay_fit command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the overlay_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-overlay-menu",
+          "markdownDescription": "Enables the overlay_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the overlay_set_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-overlay-set-enabled",
+          "markdownDescription": "Enables the overlay_set_enabled command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the overlay_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-overlay-state",
+          "markdownDescription": "Enables the overlay_state command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the overlay_sync command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-overlay-sync",
+          "markdownDescription": "Enables the overlay_sync command without any pre-configured scope."
+        },
+        {
           "description": "Enables the refresh_ipc_base command without any pre-configured scope.",
           "type": "string",
           "const": "allow-refresh-ipc-base",
@@ -543,6 +591,12 @@
           "markdownDescription": "Enables the window_close command without any pre-configured scope."
         },
         {
+          "description": "Enables the window_is_maximized command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-window-is-maximized",
+          "markdownDescription": "Enables the window_is_maximized command without any pre-configured scope."
+        },
+        {
           "description": "Enables the window_maximize command without any pre-configured scope.",
           "type": "string",
           "const": "allow-window-maximize",
@@ -597,10 +651,22 @@
           "markdownDescription": "Denies the console_popout command without any pre-configured scope."
         },
         {
+          "description": "Denies the console_popout_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-console-popout-close",
+          "markdownDescription": "Denies the console_popout_close command without any pre-configured scope."
+        },
+        {
           "description": "Denies the console_popout_list command without any pre-configured scope.",
           "type": "string",
           "const": "deny-console-popout-list",
           "markdownDescription": "Denies the console_popout_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the console_popout_saved command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-console-popout-saved",
+          "markdownDescription": "Denies the console_popout_saved command without any pre-configured scope."
         },
         {
           "description": "Denies the console_toggle_always_on_top command without any pre-configured scope.",
@@ -687,6 +753,42 @@
           "markdownDescription": "Denies the notify command without any pre-configured scope."
         },
         {
+          "description": "Denies the overlay_action command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-overlay-action",
+          "markdownDescription": "Denies the overlay_action command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the overlay_fit command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-overlay-fit",
+          "markdownDescription": "Denies the overlay_fit command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the overlay_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-overlay-menu",
+          "markdownDescription": "Denies the overlay_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the overlay_set_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-overlay-set-enabled",
+          "markdownDescription": "Denies the overlay_set_enabled command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the overlay_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-overlay-state",
+          "markdownDescription": "Denies the overlay_state command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the overlay_sync command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-overlay-sync",
+          "markdownDescription": "Denies the overlay_sync command without any pre-configured scope."
+        },
+        {
           "description": "Denies the refresh_ipc_base command without any pre-configured scope.",
           "type": "string",
           "const": "deny-refresh-ipc-base",
@@ -763,6 +865,12 @@
           "type": "string",
           "const": "deny-window-close",
           "markdownDescription": "Denies the window_close command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the window_is_maximized command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-window-is-maximized",
+          "markdownDescription": "Denies the window_is_maximized command without any pre-configured scope."
         },
         {
           "description": "Denies the window_maximize command without any pre-configured scope.",

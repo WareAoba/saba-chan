@@ -1,8 +1,9 @@
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 
-const DAEMON_TONE: Record<string, string> = { running: 'ok', checking: 'warn', stopped: 'stop', error: 'stop', token_invalid: 'stop' };
-const BOT_TONE: Record<string, string> = { running: 'ok', connecting: 'warn', stopped: 'idle' };
+// 붙는 중은 떠나온 상태(꺼짐)의 회색으로 깜빡이고, 붙어 있다가 끊겨 다시 붙는 중만 노랑 (사용자 11-11)
+const DAEMON_TONE: Record<string, string> = { running: 'ok', checking: 'idle', stopped: 'stop', error: 'stop', token_invalid: 'stop' };
+const BOT_TONE: Record<string, string> = { running: 'ok', connecting: 'idle', stopped: 'idle' };
 
 /**
  * 연결 경로 표시: 내 PC의 데몬 ── 디스코드 봇(사바쨩 클라우드 경유).
@@ -12,18 +13,20 @@ const BOT_TONE: Record<string, string> = { running: 'ok', connecting: 'warn', st
 interface ConnectionRailProps {
     daemonStatus?: string;
     botStatus?: string;
+    /** 실행 중이던 봇이 릴레이와 끊겨 다시 붙는 중 (노랑) */
+    botReconnecting?: boolean;
     onDaemonClick: () => void;
     onBotClick: () => void;
     daemonExpanded?: boolean;
 }
 
-export function ConnectionRail({ daemonStatus, botStatus, onDaemonClick, onBotClick, daemonExpanded }: ConnectionRailProps) {
+export function ConnectionRail({ daemonStatus, botStatus, botReconnecting, onDaemonClick, onBotClick, daemonExpanded }: ConnectionRailProps) {
     const { t } = useTranslation('gui');
     const daemonKey = daemonStatus === 'error' ? 'stopped' : daemonStatus || 'checking';
     const daemonTone = DAEMON_TONE[daemonKey] || 'warn';
     const daemonUp = daemonKey === 'running';
     const botKey = botStatus && BOT_TONE[botStatus] ? botStatus : 'stopped';
-    const botTone = BOT_TONE[botKey];
+    const botTone = botKey === 'connecting' && botReconnecting ? 'warn' : BOT_TONE[botKey];
 
     return (
         <div className={clsx('conn-rail', `daemon-${daemonKey}`)} role="group" aria-label={t('shell.conn_label')}>

@@ -167,6 +167,19 @@ pub fn unresponsive(instance_id: &str, pid: Option<u32>, now: std::time::Instant
     (*failed_pid == pid && *logged && now.duration_since(*since) >= UNRESPONSIVE_AFTER).then(|| reason.clone())
 }
 
+/// `unresponsive`와 같은 판정에 답하지 않은 시간을 더한 것 (응답 없음 감시 `watchdog`와 서버 목록이 인스턴스 설정의 시간과 견준다)
+pub fn silent_for(instance_id: &str, pid: Option<u32>, now: std::time::Instant) -> Option<(std::time::Duration, String)> {
+    let reason = unresponsive(instance_id, pid, now)?;
+    let since = failures().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id)?.1;
+    Some((now.duration_since(since), reason))
+}
+
+/// 시험이 응답 실패 한 번을 적는다
+#[cfg(test)]
+pub(crate) fn fail_for_test(instance_id: &str, pid: Option<u32>, reason: &str, at: std::time::Instant) {
+    record(instance_id, pid, Err(reason.to_string()), at);
+}
+
 /// 모듈 응답을 읽는다. 실패 응답이나 정수가 아닌 값은 None (모르는 값을 0으로 보이지 않는다)
 pub fn parse(result: &Value) -> Option<PlayerCount> {
     if result.get("success").and_then(Value::as_bool) == Some(false) {
@@ -175,6 +188,22 @@ pub fn parse(result: &Value) -> Option<PlayerCount> {
     let int = |key: &str| result.get(key).and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok());
     let online = int("online")?;
     Some(PlayerCount { online, max: max_of(result) })
+}
+
+/// 지금 접속자 수 — 끄기 직전 판단(자동 업데이트)용. 접속·퇴장 줄로 세는 서버는 그 수(실시간),
+/// 아니면 모듈 접속자 함수를 한 번 불러 묻는다(기억한 값은 최대 1분 전이다). 묻지 못하면 None. 주기 호출이 아니다
+pub async fn fresh(sup: &tokio::sync::RwLock<Supervisor>, instance_id: &str) -> Option<u32> {
+    if let Some(n) = counted(instance_id) {
+        return Some(n);
+    }
+    let call = {
+        let s = sup.read().await;
+        let module_name = s.instance_store.get(instance_id)?.module_name.clone();
+        let function = s.module_loader.get_module(&module_name).ok()?.metadata.players_function.clone()?;
+        s.instance_call(instance_id, &function).ok()?
+    };
+    let value = call.timeout(CALL_TIMEOUT_SECS).try_run().await.ok()??;
+    parse(&value).map(|c| c.online)
 }
 
 /// 답의 `max`. 0이거나 정수가 아니면 모른다
@@ -211,6 +240,14 @@ pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
         }
         (calls, idle, probes)
     };
+    // 목록에 보이는 칸(접속자 수·응답 없음)이 이번 갱신으로 바뀌면 화면이 목록을 다시 읽게 알린다 (`servers.changed`)
+    let watched: Vec<(String, Option<u32>)> = calls
+        .iter()
+        .map(|(id, pid, _, _)| (id.clone(), Some(*pid)))
+        .chain(idle.iter().map(|(id, _)| (id.clone(), None)))
+        .chain(probes.iter().map(|(id, pid, _, _)| (id.clone(), Some(*pid))))
+        .collect();
+    let before = shown(&watched);
     for (id, probed) in idle {
         set(&id, None);
         if !probed {
@@ -236,6 +273,15 @@ pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
         }));
     }
     while asks.next().await.is_some() {}
+    if shown(&watched) != before {
+        crate::events::emit_live("servers.changed", serde_json::json!({}));
+    }
+}
+
+/// 서버 목록에 보이는 접속자 칸: 서버마다 (수, 응답 없음 이유)
+fn shown(watched: &[(String, Option<u32>)]) -> Vec<(Option<PlayerCount>, Option<String>)> {
+    let now = std::time::Instant::now();
+    watched.iter().map(|(id, pid)| (get(id), unresponsive(id, *pid, now))).collect()
 }
 
 /// 포트 확인 실패 이유의 머리. 화면에 낼 때 `reason_text`가 화면 언어 문구로 바꾼다
@@ -433,6 +479,7 @@ mod tests {
         assert_eq!(unresponsive(id, pid, later), None, "not yet logged");
         record(id, pid, Ok(&refused), later);
         assert_eq!(unresponsive(id, pid, later).as_deref(), Some("connection refused"));
+        assert_eq!(silent_for(id, pid, later + std::time::Duration::from_secs(120)), Some((UNRESPONSIVE_AFTER + std::time::Duration::from_secs(120), "connection refused".to_string())));
 
         // 한 번이라도 답하면 지운다
         record(id, pid, Ok(&json!({ "success": true, "online": 0 })), later);

@@ -1,0 +1,13 @@
+[guide]
+group = "discord"
+icon = "messageSquare"
+order = 80
+done = "game_chat.on"
+
+[[steps]]
+go = "server/:first/saba"
+spot = "game_chat"
+
+[[steps]]
+go = "discord/*/moderation/channels"
+spot = "mod.assign"

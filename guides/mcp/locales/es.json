@@ -1,0 +1,8 @@
+{
+    "title": "Agentes de IA (MCP)",
+    "summary": "Deja que tu agente de IA gestione los servidores",
+    "steps": [
+        "Añade la dirección que aparece aquí como servidor MCP en un agente de IA como ChatGPT o Claude e inicia sesión con tu cuenta de Discord para conectarlo. Solo aparece en un PC vinculado a Discord.",
+        "Un agente conectado puede gestionar servidores en todos los PC de tu cuenta de Discord. Pulsa su tarjeta para ver Desvincular agente."
+    ]
+}

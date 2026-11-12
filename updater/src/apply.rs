@@ -56,41 +56,20 @@ impl UpdateManager {
 
         let exe_dir = self.install_root.clone();
 
-        // Windows: 대상 프로세스가 실행 중이라면 종료를 대기
-        #[cfg(target_os = "windows")]
-        {
-            let process_names: Vec<&str> = match binary_name {
-                n if n.contains("daemon") || n.contains("core") => vec!["saba-core.exe"],
-                n if n.contains("cli") => vec!["saba-chan-cli.exe"],
-                n if n.contains("gui") => GUI_EXE_NAMES.to_vec(),
-                _ => vec![],
-            };
-            for proc in &process_names {
-                if ProcessChecker::is_running(proc) {
-                    tracing::info!("[Updater] Waiting for {} to exit before applying update...", proc);
-                    let exited = ProcessChecker::wait_for_exit(proc, 15).await;
-                    if !exited {
-                        tracing::warn!("[Updater] {} did not exit within timeout, attempting update anyway", proc);
-                    }
-                }
-            }
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            let process_names: Vec<&str> = match binary_name {
-                n if n.contains("daemon") || n.contains("core") => vec!["saba-core"],
-                n if n.contains("cli") => vec!["saba-chan-cli"],
-                n if n.contains("gui") => vec!["saba-chan-gui"],
-                _ => vec![],
-            };
-            for proc in &process_names {
-                if ProcessChecker::is_running(proc) {
-                    tracing::info!("[Updater] Waiting for {} to exit before applying update...", proc);
-                    let exited = ProcessChecker::wait_for_exit(proc, 15).await;
-                    if !exited {
-                        tracing::warn!("[Updater] {} did not exit within timeout, attempting update anyway", proc);
-                    }
+        // 대상 프로세스가 실행 중이라면 종료를 대기
+        let exe = |name: &str| format!("{name}{}", std::env::consts::EXE_SUFFIX);
+        let process_names: Vec<String> = match binary_name {
+            n if n.contains("daemon") || n.contains("core") => vec![exe("saba-core")],
+            n if n.contains("cli") => vec![exe("saba-chan-cli")],
+            n if n.contains("gui") => GUI_EXE_NAMES.iter().map(|n| n.to_string()).collect(),
+            _ => vec![],
+        };
+        for proc in &process_names {
+            if ProcessChecker::is_running(proc) {
+                tracing::info!("[Updater] Waiting for {} to exit before applying update...", proc);
+                let exited = ProcessChecker::wait_for_exit(proc, 15).await;
+                if !exited {
+                    tracing::warn!("[Updater] {} did not exit within timeout, attempting update anyway", proc);
                 }
             }
         }
@@ -152,55 +131,13 @@ impl UpdateManager {
     }
 
     fn extract_zip_or_restore(staged: &Path, dir: &Path, what: &str) -> Result<Vec<PathBuf>> {
-        // (원래 경로, 백업, 성공하면 백업을 지울지)
-        let mut moved: Vec<(PathBuf, PathBuf, bool)> = Vec::new();
-        let mut created: Vec<PathBuf> = Vec::new();
-        let tar_gz = Self::is_tar_gz(staged);
-        let mut before_write = |out_path: &Path| -> Result<()> {
-            // 같은 경로가 zip에 두 번 있으면 두 번째는 덮어쓰기만 한다. 다시 비켜 두면
-            // 원래 백업이 새 파일로 바뀌어 되돌릴 수 없게 된다
-            if moved.iter().any(|(p, _, _)| same_path(p, out_path)) || created.iter().any(|p| same_path(p, out_path)) {
-                return Ok(());
-            }
-            if let Some(backup) = Self::move_aside(out_path)? {
-                moved.push((out_path.to_path_buf(), backup, false));
-            } else if out_path.is_file() {
-                let mut name = out_path.file_name().unwrap_or_default().to_os_string();
-                name.push(".update-bak");
-                let backup = out_path.with_file_name(name);
-                let _ = std::fs::remove_file(&backup);
-                // 다른 프로세스가 지우기 공유 없이 잡고 있으면 이름을 못 바꾼다. 예전처럼 덮어쓰기만 한다
-                match std::fs::rename(out_path, &backup) {
-                    Ok(()) => moved.push((out_path.to_path_buf(), backup, true)),
-                    Err(e) => tracing::warn!("[Updater] Cannot back up {}, overwriting in place: {}", out_path.display(), e),
-                }
-            } else {
-                created.push(out_path.to_path_buf());
-            }
-            Ok(())
-        };
-        let result = if tar_gz {
-            Self::extract_tar_gz_with(staged, dir, &mut before_write)
-        } else {
-            extract_zip(staged, dir, &mut before_write)
-        };
+        let mut replacing = Replacing::default();
+        let result = replacing.extract(staged, dir);
         match &result {
-            Ok(_) => {
-                for (_, backup, _) in moved.iter().filter(|m| m.2) {
-                    let _ = std::fs::remove_file(backup);
-                }
-            }
+            Ok(_) => replacing.keep(),
             Err(e) => {
                 tracing::error!("[Updater] Applying {} failed, restoring previous files: {}", what, e);
-                for path in &created {
-                    let _ = std::fs::remove_file(path);
-                }
-                for (original, backup, _) in moved.iter().rev() {
-                    let _ = std::fs::remove_file(original);
-                    if let Err(re) = std::fs::rename(backup, original) {
-                        tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
-                    }
-                }
+                replacing.restore();
             }
         }
         result
@@ -210,7 +147,7 @@ impl UpdateManager {
     pub(crate) async fn apply_gui_update(&self, staged_path: &str) -> Result<Vec<PathBuf>> {
         let staged = Path::new(staged_path);
 
-        // 설치 폴더 바로 안에 GUI exe가 있으면 (portable exe, 또는 0.1.1의 Electron 폴더) 그 자리에 푼다
+        // 설치 폴더 바로 안에 GUI exe가 있어야 그 자리에 푼다
         if let Some(portable_exe) = find_gui_exe(&self.install_root) {
             tracing::info!("[Updater] GUI portable exe detected at {}", portable_exe.display());
             let mut files = Self::extract_or_restore(staged, &self.install_root, "GUI")?;
@@ -229,35 +166,8 @@ impl UpdateManager {
             return Ok(files);
         }
 
-        // Directory mode fallback (unpacked Electron / dev)
-        let gui_dir = self.find_gui_directory()?;
-        let extract_dir = {
-            let build_dir = gui_dir.join("build");
-            if build_dir.exists() {
-                build_dir
-            } else {
-                let res_build = gui_dir.join("resources").join("app").join("build");
-                if res_build.exists() {
-                    res_build
-                } else {
-                    if gui_dir.join("src").exists() && gui_dir.join("package.json").exists() {
-                        anyhow::bail!(
-                            "GUI directory appears to be a source tree ({}). Refusing to overwrite.",
-                            gui_dir.display()
-                        );
-                    }
-                    gui_dir.clone()
-                }
-            }
-        };
-        tracing::info!("[Updater] Applying GUI update to dir: {}", extract_dir.display());
-        if !staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            anyhow::bail!("Unsupported archive format: {}", staged.display());
-        }
-        let files = Self::extract_or_restore(staged, &extract_dir, "GUI")?;
-        std::fs::remove_file(staged).ok();
-        tracing::info!("[Updater] GUI updated successfully");
-        Ok(files)
+        // 설치 폴더에 GUI가 없다: 다른 폴더를 찾아 풀지 않는다
+        anyhow::bail!("No GUI executable in the install folder {}; the GUI update was not applied", self.install_root.display())
     }
 
     /// 새 GUI exe 이름이 예전과 다르면(0.1.1의 `Saba-chan.exe` → `saba-chan-gui.exe`) 예전 exe를
@@ -292,35 +202,6 @@ impl UpdateManager {
         retired
     }
 
-    // ─────── 유틸리티 ────────────────────────────────────────────────────────────────────────
-
-    pub(crate) fn find_gui_directory(&self) -> Result<PathBuf> {
-        // 1) 설치 폴더 바로 안 (배포 환경 기본)
-        if find_gui_exe(&self.install_root).is_some() {
-            tracing::info!("[Updater] GUI exe found at install_root");
-            return Ok(self.install_root.clone());
-        }
-
-        // 2) exe 기준 (exe가 install_root와 다른 위치일 때)
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                if find_gui_exe(dir).is_some() {
-                    return Ok(dir.to_path_buf());
-                }
-            }
-        }
-
-        // 3) CWD 기준 (개발 환경 — Electron/소스 구조)
-        for p in &["saba-chan-gui", "../saba-chan-gui"] {
-            let path = PathBuf::from(p);
-            if path.exists() {
-                return Ok(path);
-            }
-        }
-
-        anyhow::bail!("GUI directory not found (checked: install_root={}, exe_dir, cwd)", self.install_root.display())
-    }
-
     // ══════════════════════════════════════════════════════
     // 초기 설치 관련 메서드
     // ══════════════════════════════════════════════════════
@@ -337,13 +218,7 @@ impl UpdateManager {
                 self.install_root.join(exe_name).exists()
                     || PathBuf::from("saba-chan-cli").join("target").exists()
             }
-            Component::Gui => {
-                // Portable exe OR directory
-                if find_gui_exe(&self.install_root).is_some() {
-                    return true;
-                }
-                self.find_gui_directory().ok().map(|d| d.exists()).unwrap_or(false)
-            }
+            Component::Gui => find_gui_exe(&self.install_root).is_some(),
             Component::Module(name) => {
                 let module_dir = self.modules_dir.join(name);
                 module_dir.join("module.toml").exists()
@@ -362,32 +237,6 @@ impl UpdateManager {
                 // locales/ 디렉터리에 en/ 존재 확인
                 self.install_root.join("locales").join("en").exists()
             }
-        }
-    }
-
-    // ─────── 설치 위치 유틸리티 ────────────────────────────────────────────────────────────────────────
-
-    /// 컴포넌트의 설치 디렉터리를 결정
-    pub(crate) fn resolve_install_dir(&self, component: &Component, manifest_dir: Option<&str>) -> PathBuf {
-        // manifest의 install_dir가 지정되면 install_root 하위로 결합
-        if let Some(dir) = manifest_dir {
-            // Extension인 경우 디렉토리명의 하이픈을 언더스코어로 변환 (Python import 호환)
-            if matches!(component, Component::Extension(_)) {
-                let safe = dir.replace('-', "_");
-                return self.install_root.join(safe);
-            }
-            return self.install_root.join(dir);
-        }
-
-        // 기본 매핑
-        match component {
-            Component::CoreDaemon => self.install_root.clone(),
-            Component::Cli => self.install_root.clone(),
-            Component::Gui => self.install_root.clone(),
-            Component::Module(name) => self.modules_dir.join(name),
-            Component::Extension(name) => self.resolve_ext_dir(name),
-            Component::Updater | Component::Installer => self.install_root.clone(),
-            Component::Locales => self.install_root.join("locales"),
         }
     }
 
@@ -435,48 +284,11 @@ impl UpdateManager {
             .unwrap_or(first)
     }
 
-    /// zip/tar.gz(또는 단일 파일)을 대상 디렉터리에 압축 해제
-    pub(crate) async fn extract_to_directory(&self, staged: &Path, target_dir: &Path) -> Result<Vec<PathBuf>> {
-        std::fs::create_dir_all(target_dir)?;
-
-        if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            return extract_zip(staged, target_dir, |_| Ok(()));
-        } else if Self::is_tar_gz(staged) {
-            Self::extract_tar_gz(staged, target_dir)?;
-        } else {
-            // 단일 파일인 경우 target_dir 내부에 복사
-            let file_name = staged.file_name().unwrap_or_default();
-            let dest = target_dir.join(file_name);
-            std::fs::copy(staged, &dest)?;
-            return Ok(vec![dest]);
-        }
-
-        Ok(Vec::new())
-    }
-
     /// ファイル名が .tar.gz で終わるか判定
     pub(crate) fn is_tar_gz(path: &Path) -> bool {
         path.file_name()
             .map(|n| n.to_string_lossy().ends_with(".tar.gz"))
             .unwrap_or(false)
-    }
-
-    /// tar.gz アーカイブを展開
-    pub(crate) fn extract_tar_gz(archive_path: &Path, target_dir: &Path) -> Result<()> {
-        Self::extract_tar_gz_with(archive_path, target_dir, |out_path| {
-            // 기존 바이너리를 .old로 백업
-            if out_path.exists() {
-                if out_path.extension().map(|e| e == "exe").unwrap_or(false) {
-                    let backup = out_path.with_extension("exe.old");
-                    let _ = Self::rename_with_retry(out_path, &backup, 5);
-                } else if cfg!(unix) && Self::is_known_binary(out_path) {
-                    let backup = out_path.with_extension("old");
-                    let _ = std::fs::rename(out_path, &backup);
-                }
-            }
-            Ok(())
-        })
-        .map(|_| ())
     }
 
     /// tar.gz를 풀며 파일을 쓰기 직전에 `before_write`를 부른다 (`extract_zip`과 같은 꼴). 쓴 파일을 돌려준다
@@ -544,6 +356,8 @@ impl UpdateManager {
     pub(crate) fn is_known_binary(path: &Path) -> bool {
         const KNOWN_BINARIES: &[&str] = &[
             "saba-core",
+            // saba-core zip에 같이 든다: 코어를 되돌릴 때 함께 되돌린다
+            "saba-runner",
             "saba-chan-cli",
             "saba-chan-gui",
             "saba-chan-updater",
@@ -553,6 +367,77 @@ impl UpdateManager {
             .and_then(|n| n.to_str())
             .map(|name| KNOWN_BINARIES.contains(&name))
             .unwrap_or(false)
+    }
+}
+
+/// 덮어쓰며 비켜 둔 파일의 기록. 압축 파일 여러 개를 한 묶음으로 풀고(설치기의 덮어쓰기 설치),
+/// 끝나면 `keep`, 도중에 실패하면 `restore`로 앞서 푼 것까지 되돌린다
+#[derive(Default)]
+pub struct Replacing {
+    // (원래 경로, 백업, 성공하면 백업을 지울지)
+    moved: Vec<(PathBuf, PathBuf, bool)>,
+    created: Vec<PathBuf>,
+}
+
+impl Replacing {
+    /// zip·tar.gz를 `dir`에 푼다. 실패해도 되돌리지 않는다 (부른 쪽이 `restore`)
+    pub fn extract(&mut self, staged: &Path, dir: &Path) -> Result<Vec<PathBuf>> {
+        let mut before_write = |out_path: &Path| self.before_write(out_path);
+        if UpdateManager::is_tar_gz(staged) {
+            UpdateManager::extract_tar_gz_with(staged, dir, &mut before_write)
+        } else {
+            extract_zip(staged, dir, &mut before_write)
+        }
+    }
+
+    /// 압축하지 않은 파일 하나(Windows 릴리스의 설치기)를 `target`에 둔다
+    pub fn place_file(&mut self, staged: &Path, target: &Path) -> Result<()> {
+        self.before_write(target)?;
+        std::fs::copy(staged, target).map(|_| ()).map_err(|e| anyhow::anyhow!("Cannot replace {}: {}", target.display(), e))
+    }
+
+    fn before_write(&mut self, out_path: &Path) -> Result<()> {
+        // 같은 경로가 zip에 두 번 있으면 두 번째는 덮어쓰기만 한다. 다시 비켜 두면
+        // 원래 백업이 새 파일로 바뀌어 되돌릴 수 없게 된다
+        if self.moved.iter().any(|(p, _, _)| same_path(p, out_path)) || self.created.iter().any(|p| same_path(p, out_path)) {
+            return Ok(());
+        }
+        if let Some(backup) = UpdateManager::move_aside(out_path)? {
+            self.moved.push((out_path.to_path_buf(), backup, false));
+        } else if out_path.is_file() {
+            let mut name = out_path.file_name().unwrap_or_default().to_os_string();
+            name.push(".update-bak");
+            let backup = out_path.with_file_name(name);
+            let _ = std::fs::remove_file(&backup);
+            // 다른 프로세스가 지우기 공유 없이 잡고 있으면 이름을 못 바꾼다. 예전처럼 덮어쓰기만 한다
+            match std::fs::rename(out_path, &backup) {
+                Ok(()) => self.moved.push((out_path.to_path_buf(), backup, true)),
+                Err(e) => tracing::warn!("[Updater] Cannot back up {}, overwriting in place: {}", out_path.display(), e),
+            }
+        } else {
+            self.created.push(out_path.to_path_buf());
+        }
+        Ok(())
+    }
+
+    /// 새 파일을 그대로 둔다: `.update-bak`만 지운다 (`.old`는 `cleanup_old_files`가 지운다)
+    pub fn keep(self) {
+        for (_, backup, _) in self.moved.iter().filter(|m| m.2) {
+            let _ = std::fs::remove_file(backup);
+        }
+    }
+
+    /// 새로 생긴 파일을 지우고 비켜 둔 파일을 모두 되돌린다
+    pub fn restore(self) {
+        for path in &self.created {
+            let _ = std::fs::remove_file(path);
+        }
+        for (original, backup, _) in self.moved.iter().rev() {
+            let _ = std::fs::remove_file(original);
+            if let Err(re) = std::fs::rename(backup, original) {
+                tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
+            }
+        }
     }
 }
 
@@ -590,9 +475,11 @@ foreach ($f in 'Desktop','Programs','CommonDesktopDirectory','CommonPrograms') {
 
 /// `target_dir`을 받은 zip(`staged`) 내용으로 바꾸고 푼 파일을 돌려준다. 도중에 실패하면 백업으로 되돌린다 (C13).
 /// 백업은 `staging_dir/backup_name`에 둔다. `__pycache__`와 점(.)으로 시작하는 항목은 남긴다.
-/// 업데이터(모듈·익스텐션·locales)와 설치기(모듈·익스텐션)가 함께 쓴다
+/// 새 판을 staging에 다 푼 뒤 이름 바꾸기로 맞바꾼다 (원래 폴더가 그대로 백업이 된다). 이름을 바꿀 수 없으면
+/// (staging이 다른 볼륨, 폴더가 링크, Windows에서 폴더가 잡혀 있음) 폴더를 백업에 복사하고 제자리에서 비우고 푼다
 pub fn replace_dir(target_dir: &Path, staged: &Path, staging_dir: &Path, backup_name: &str) -> Result<Vec<PathBuf>> {
     let backup_dir = staging_dir.join(backup_name);
+    let mut swapped = None;
     // 백업은 다 복사한 뒤 이름을 바꿔 둔다: `backup_dir`이 있으면 언제나 온전한 원래 내용이다
     let partial = staging_dir.join(format!("{}.partial", backup_name));
     if partial.exists() {
@@ -609,21 +496,30 @@ pub fn replace_dir(target_dir: &Path, staged: &Path, staging_dir: &Path, backup_
         }
         copy_tree(&backup_dir, target_dir)?;
     } else if target_dir.exists() {
-        copy_tree(target_dir, &partial)?;
-        std::fs::rename(&partial, &backup_dir)?;
+        if staged.extension().is_some_and(|e| e == "zip") {
+            swapped = swap_in(target_dir, staged, &staging_dir.join(format!("{}.new", backup_name)), &backup_dir)?;
+        }
+        if swapped.is_none() {
+            copy_tree(target_dir, &partial)?;
+            std::fs::rename(&partial, &backup_dir)?;
+        }
     }
     let had_target = backup_dir.exists();
-    let result = (|| -> Result<Vec<PathBuf>> {
-        if staged.extension().is_some_and(|e| e == "zip") {
-            if had_target {
-                clean_dir(target_dir)?;
+    let result = match swapped {
+        // 새 판이 제자리에 있고 원래 폴더가 백업이다: 남길 항목만 가져온다
+        Some(files) => carry_kept_entries(&backup_dir, target_dir).map(|_| files),
+        None => (|| -> Result<Vec<PathBuf>> {
+            if staged.extension().is_some_and(|e| e == "zip") {
+                if had_target {
+                    clean_dir(target_dir)?;
+                }
+                extract_zip(staged, target_dir, |_| Ok(()))
+            } else {
+                std::fs::copy(staged, target_dir)?;
+                Ok(Vec::new())
             }
-            extract_zip(staged, target_dir, |_| Ok(()))
-        } else {
-            std::fs::copy(staged, target_dir)?;
-            Ok(Vec::new())
-        }
-    })();
+        })(),
+    };
     let files = match result {
         Ok(files) => files,
         Err(e) => {
@@ -648,6 +544,64 @@ pub fn replace_dir(target_dir: &Path, staged: &Path, staging_dir: &Path, backup_
     std::fs::remove_file(staged).ok();
     let _ = std::fs::remove_dir_all(&backup_dir);
     Ok(files)
+}
+
+/// 새 판을 `fresh`에 다 푼 뒤 이름 바꾸기 두 번으로 맞바꾼다: 원래 폴더는 `backup_dir`이 되고 `fresh`가 `target_dir`이 된다.
+/// 폴더를 복사하지 않는다. 풀다 실패하면 `target_dir`을 건드리지 않고 Err.
+/// 이름을 바꿀 수 없으면(다른 볼륨, Windows에서 폴더가 잡혀 있음) 아무것도 바꾸지 않고 None. 링크인 폴더도 None: 링크가 가리키는 곳의 내용을 바꿔야 한다
+fn swap_in(target_dir: &Path, staged: &Path, fresh: &Path, backup_dir: &Path) -> Result<Option<Vec<PathBuf>>> {
+    if std::fs::symlink_metadata(target_dir).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Ok(None);
+    }
+    if fresh.exists() {
+        std::fs::remove_dir_all(fresh)?;
+    }
+    let extracted = match extract_zip(staged, fresh, |_| Ok(())) {
+        Ok(files) => files,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(fresh);
+            return Err(e);
+        }
+    };
+    if std::fs::rename(target_dir, backup_dir).is_err() {
+        let _ = std::fs::remove_dir_all(fresh);
+        return Ok(None);
+    }
+    if let Err(e) = std::fs::rename(fresh, target_dir) {
+        let _ = std::fs::remove_dir_all(fresh);
+        // 되돌리지 못하면 백업이 남는다: 다음 교체가 먼저 원래 내용으로 되돌린다
+        std::fs::rename(backup_dir, target_dir)
+            .map_err(|re| anyhow::anyhow!("Cannot put the new {} in place ({}) nor the previous one back ({})", target_dir.display(), e, re))?;
+        return Ok(None);
+    }
+    Ok(Some(extracted.iter().filter_map(|f| f.strip_prefix(fresh).ok().map(|rel| target_dir.join(rel))).collect()))
+}
+
+/// 맞바꾼 뒤 원래 폴더(`old`)에서 `clean_dir`이 남기는 항목(`__pycache__`, 점으로 시작하는 것)을 새 폴더로 옮긴다
+fn carry_kept_entries(old: &Path, new: &Path) -> Result<()> {
+    for entry in std::fs::read_dir(old)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str == "__pycache__" || name_str.starts_with('.') {
+            merge_into(&entry.path(), &new.join(&name))?;
+        }
+    }
+    Ok(())
+}
+
+/// `from`을 `to`로 옮긴다. 새 판에도 같은 이름이 있으면 새 판 것을 두고, 폴더끼리는 새 판에 없는 것만 옮긴다
+/// (제자리에서 비우고 풀 때와 같은 결과)
+fn merge_into(from: &Path, to: &Path) -> Result<()> {
+    if std::fs::symlink_metadata(to).is_err() {
+        std::fs::rename(from, to)?;
+    } else if from.is_dir() && to.is_dir() {
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            merge_into(&entry.path(), &to.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
 }
 
 /// 번역 묶음을 옆 폴더(`.locales-new`)에 다 푼 뒤 `locales/version`에 판 번호를 적고, 이름 바꾸기로 `dir`과 맞바꾼다.

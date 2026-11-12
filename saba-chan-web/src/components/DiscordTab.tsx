@@ -1275,8 +1275,11 @@ function ModerationSection({ relay, g, can, moderation, busy, write, refresh }: 
     );
 }
 
-/** 코코낸내 (이 PC 의 서버만, GUI 봇 설정의 코코낸내 칸과 같은 값): 지금 재우기, 잠든 동안 끌 기능, 착한 어린이 시각 */
-function SleepSection({ relay, g, settings, busy, write }: SectionProps & { settings: GuildSettings }) {
+/**
+ * 코코낸내 (GUI 봇 설정의 코코낸내 칸과 같은 값): 지금 재우기, 잠든 동안 끌 기능, 착한 어린이 시각.
+ * PC 없는 서버도 릴레이 기능(음악·읽어주기·말하는 사바쨩)을 재우므로 보인다 — 서버 조작·알림만 PC 가 있어야 한다 (사용자 11-12)
+ */
+function SleepSection({ relay, g, settings, busy, write, here }: SectionProps & { settings: GuildSettings }) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const save = (patch: RelaySettingsPatch) => write(() => relay.saveSettings(g, patch), 'settings');
@@ -1306,18 +1309,22 @@ function SleepSection({ relay, g, settings, busy, write }: SectionProps & { sett
                 onChange={(sleeping) => save({ sleeping })}
             />
             <p className="hint">{tg('discord.bot_settings.sleep_desc')}</p>
-            {SLEEP_FEATURES.map((f) => (
-                <Toggle
-                    key={f}
-                    label={tg(`discord.bot_settings.sleep_${f}`)}
-                    hint={tg(`discord.bot_settings.sleep_${f}_hint`)}
-                    checked={blocks.includes(f)}
-                    disabled={busy}
-                    onChange={(on) =>
-                        save({ sleepBlocks: SLEEP_FEATURES.filter((x) => (x === f ? on : blocks.includes(x))) })
-                    }
-                />
-            ))}
+            {SLEEP_FEATURES.map((f) => {
+                // PC 가 없으면 끌 서버 조작·알림도 없다 — 잠가 꺼진 채로 보인다 (저장된 값은 그대로 둔다)
+                const locked = f === 'commands' && !here;
+                return (
+                    <Toggle
+                        key={f}
+                        label={tg(`discord.bot_settings.sleep_${f}`)}
+                        hint={locked ? t('relay.sleep_needs_pc') : tg(`discord.bot_settings.sleep_${f}_hint`)}
+                        checked={!locked && blocks.includes(f)}
+                        disabled={busy || locked}
+                        onChange={(on) =>
+                            save({ sleepBlocks: SLEEP_FEATURES.filter((x) => (x === f ? on : blocks.includes(x))) })
+                        }
+                    />
+                );
+            })}
             <Toggle
                 label={tg('discord.bot_settings.bedtime')}
                 hint={tg('discord.bot_settings.bedtime_hint')}
@@ -1354,7 +1361,7 @@ function RelayGuild({ relay, guild, here = false }: { relay: GuildStore; guild: 
             {manage && ready(data.settings) && (
                 <>
                     <BasicsSection {...props} settings={data.settings} />
-                    {here && <SleepSection {...props} settings={data.settings} />}
+                    <SleepSection {...props} settings={data.settings} />
                     <MusicSection {...props} settings={data.settings} />
                     <ReadingSection {...props} settings={data.settings} />
                 </>
@@ -1393,7 +1400,13 @@ function GuildChips({
                     onClick={() => onChange(g.id)}
                 >
                     <Avatar url={g.icon} name={g.name} className="guild-initial" />
-                    {g.name}
+                    <span className="guild-chip-text">
+                        <span className="guild-chip-name">{g.name}</span>
+                        {/* 넓은 화면 왼쪽 목록에서만 보이는 줄: 이 서버가 어디에 붙어 있는지 */}
+                        <span className="guild-chip-sub">
+                            {t(g.here ? 'relay.guild_here' : g.hasPc ? 'relay.guild_other_pc' : 'relay.guild_no_pc')}
+                        </span>
+                    </span>
                     {(g.here || g.hasPc) && <span className="pill">{t('relay.pc')}</span>}
                 </button>
             ))}
@@ -1454,22 +1467,24 @@ export function DiscordTab({ api, relay }: { api: WebApi; relay: Relay | null })
             ) : guilds.length === 0 ? (
                 !relayFailed && <Empty>{t('relay.no_guilds')}</Empty>
             ) : (
-                <>
+                <div className={guilds.length > 1 ? 'side-layout' : undefined}>
                     {guilds.length > 1 && <GuildChips guilds={guilds} value={guildId} onChange={setGuildId} />}
-                    {guild?.here && relay && (guild.can?.manage || modAllowed(guild.can)) && (
-                        <RelayGuild key={`here-${guild.id}`} relay={here as GuildStore} guild={guild} here />
-                    )}
-                    {guild?.here && (
-                        <GuildPermissions
-                            key={guild.id}
-                            api={api}
-                            guildId={guild.id}
-                            siblings={guilds.filter((x) => x.here && x.id !== guild.id).map((x) => x.id)}
-                        />
-                    )}
-                    {guild && !guild.here && guild.hasPc && <Empty>{t('relay.other_pc')}</Empty>}
-                    {guild && !guild.here && !guild.hasPc && <RelayGuild key={guild.id} relay={relay as GuildStore} guild={guild} />}
-                </>
+                    <div className="side-main">
+                        {guild?.here && relay && (guild.can?.manage || modAllowed(guild.can)) && (
+                            <RelayGuild key={`here-${guild.id}`} relay={here as GuildStore} guild={guild} here />
+                        )}
+                        {guild?.here && (
+                            <GuildPermissions
+                                key={guild.id}
+                                api={api}
+                                guildId={guild.id}
+                                siblings={guilds.filter((x) => x.here && x.id !== guild.id).map((x) => x.id)}
+                            />
+                        )}
+                        {guild && !guild.here && guild.hasPc && <Empty>{t('relay.other_pc')}</Empty>}
+                        {guild && !guild.here && !guild.hasPc && <RelayGuild key={guild.id} relay={relay as GuildStore} guild={guild} />}
+                    </div>
+                </div>
             )}
         </Section>
     );

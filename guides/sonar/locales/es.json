@@ -1,0 +1,9 @@
+{
+    "title": "Sonar",
+    "summary": "Ctrl+K · busca, abre y ejecuta",
+    "steps": [
+        "Pulsa Ctrl+K (⌘K en macOS) en cualquier sitio para abrir Sonar. Escribe lo que quieres hacer o el nombre de un servidor para encontrar controles, comandos del juego, pantallas y ajustes, y ejecútalos o ábrelos al momento.",
+        "Pulsa Tab para centrarte en un servidor de juego o de Discord y ver solo lo que puedes hacer allí.",
+        "Vamos a abrirlo ahora."
+    ]
+}

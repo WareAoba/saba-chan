@@ -153,6 +153,8 @@ async fn finish_background_init(app: &AppHandle) {
     start_heartbeat(app);
     start_events(app);
     start_update_checker(app);
+    // 바탕화면 오버레이를 쓸 익스텐션이 켜져 있으면 띄운다
+    crate::overlay::sync(app).await;
 
     status_t(app, "ready", "init.ready");
 
@@ -894,7 +896,8 @@ fn start_events(app: &AppHandle) {
                     tauri::async_runtime::spawn(async move { check_for_updates(&app3).await });
                 }
                 if feed == Feed::Chosen {
-                    emit_main(&app2, "events:message", &ev)
+                    emit_main(&app2, "events:message", &ev);
+                    crate::overlay::emit(&app2, "events:message", &ev);
                 }
             },
         )
@@ -1073,9 +1076,22 @@ pub fn show_notification(_app: &AppHandle, title: &str, body: &str, silent: bool
     });
 }
 
-/// 다른 OS는 알림 플러그인이 소리를 따로 넣지 않는다 (소리를 주지 않으면 OS 기본 동작)
-#[cfg(not(windows))]
+/// macOS는 UserNotifications로 낸다. 앱 묶음 밖에서 띄운 개발 실행은 알림 플러그인으로 낸다
+#[cfg(target_os = "macos")]
+pub fn show_notification(app: &AppHandle, title: &str, body: &str, silent: bool) {
+    if !crate::mac_notify::show(title, body, silent) {
+        plugin_notification(app, title, body);
+    }
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
 pub fn show_notification(app: &AppHandle, title: &str, body: &str, _silent: bool) {
+    plugin_notification(app, title, body);
+}
+
+/// 알림 플러그인은 소리를 따로 넣지 않는다 (소리를 주지 않으면 OS 기본 동작)
+#[cfg(not(windows))]
+fn plugin_notification(app: &AppHandle, title: &str, body: &str) {
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
         tracing::warn!("[Notify] Failed to show notification: {}", e);
     }

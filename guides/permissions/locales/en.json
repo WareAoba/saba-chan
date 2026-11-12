@@ -1,0 +1,9 @@
+{
+    "title": "Permissions",
+    "summary": "Decide who can do what",
+    "steps": [
+        "In the Members tab, give each person in your Discord server a level. Higher levels can use more commands.",
+        "Use Add person next to a level to put someone in it. Anyone you have not set is at the Default level.",
+        "In Edit levels, change level names, their order, and the commands each level can use."
+    ]
+}

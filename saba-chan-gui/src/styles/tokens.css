@@ -296,6 +296,8 @@
     --tok-uuid: #74c7ec;
     --tok-path: #94e2d5;
     --tok-dim: #6c7086;
+    /* 모듈 아이콘은 칸의 이만큼 크기로 가운데에, 자르지 않고 그린다 (사용자 2026-11-12: 모든 모듈 똑같이 살짝 축소) */
+    --module-icon-size: 80%;
 
     /* 글자 */
     --font-sans: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Noto Sans', 'Segoe UI', 'Apple SD Gothic Neo',

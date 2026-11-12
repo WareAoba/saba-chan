@@ -1,0 +1,8 @@
+{
+    "title": "KI-Agenten (MCP)",
+    "summary": "Lass deinen KI-Agenten die Server verwalten",
+    "steps": [
+        "Füge die hier angezeigte Adresse in einem KI-Agenten wie ChatGPT oder Claude als MCP-Server hinzu und melde dich mit deinem Discord-Konto an. Das erscheint nur auf einem PC, der mit Discord verbunden ist.",
+        "Ein verbundener Agent kann Server auf allen PCs deines Discord-Kontos verwalten. Klicke auf seine Karte, um Agent trennen anzuzeigen."
+    ]
+}

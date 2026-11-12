@@ -1,0 +1,9 @@
+{
+    "title": "Sonar",
+    "summary": "Strg+K · finden, öffnen, ausführen",
+    "steps": [
+        "Mit Strg+K (⌘K unter macOS) öffnest du Sonar überall. Tippe ein, was du tun willst, oder einen Servernamen, um Steuerung, Spielbefehle, Ansichten und Einstellungen zu finden und sofort auszuführen oder zu öffnen.",
+        "Mit Tab grenzt du auf einen Spielserver oder Discord-Server ein und siehst nur, was dort möglich ist.",
+        "Öffnen wir es jetzt."
+    ]
+}

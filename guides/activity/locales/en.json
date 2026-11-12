@@ -1,0 +1,9 @@
+{
+    "title": "Activity log",
+    "summary": "Who did what",
+    "steps": [
+        "Who started, stopped or changed a server, and when, is kept here, whether from the app, Discord, the CLI or a scheduled task. Pick a server on the left to see only its records.",
+        "Click a row to see where it came from, who did it and the result.",
+        "Use Filter to show only records such as crashes or failures, and Export to save them to a file."
+    ]
+}

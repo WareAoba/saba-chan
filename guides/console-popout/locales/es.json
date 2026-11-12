@@ -1,0 +1,8 @@
+{
+    "title": "Consola · Abrir en ventana separada",
+    "summary": "La consola siempre a la vista",
+    "steps": [
+        "La pestaña Consola de cada servidor muestra su registro y recibe comandos.",
+        "Pulsa Abrir en ventana separada para seguir viendo la consola mientras usas otras pantallas."
+    ]
+}

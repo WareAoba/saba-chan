@@ -6,7 +6,7 @@
 
 /** 순환하는 버튼. styles/grad-cycle.css 의 선택자와 같아야 한다 (강조색 그라데이션 설정이 켜졌을 때만) */
 export const GRAD_CYCLE_SELECTOR =
-    ':root[data-brand-gradient="on"] :is(.btn-primary, .btn.btn-confirm, .console-send, .background-restart-btn, .btn-accent)';
+    ':root[data-brand-gradient="on"] :is(.btn-primary, .console-send, .background-restart-btn, .btn-accent)';
 
 export const LAP_SEC = 2.4; // 최고 속도에서 한 바퀴 시간
 const RAMP_SEC = 0.6; // 0 → 최고 속도 (S자 곡선)

@@ -125,7 +125,6 @@
   "detail": {
     "backups": "Copias",
     "players": "Jugadores",
-    "more": "Más",
     "tabs": "Menú del servidor",
     "uptime": "Activo {{time}}",
     "port_check": "Comprobar reenvío de puertos"
@@ -135,7 +134,9 @@
     "placeholder": "Escribe un comando",
     "send": "Enviar",
     "danger_title": "Este comando es peligroso",
-    "danger_message": "¿Seguro que quieres enviar {{command}}?"
+    "danger_message": "¿Seguro que quieres enviar {{command}}?",
+    "danger_again": "'{{command}}' es difícil de deshacer. Pulsa enviar otra vez para ejecutarlo.",
+    "danger_again_described": "{{description}}. Pulsa enviar otra vez para ejecutarlo."
   },
   "settings": {
     "game": "Ajustes del juego",
@@ -172,7 +173,8 @@
       "manual": "Manual",
       "scheduled": "Programada",
       "pre-update": "Antes de actualizar",
-      "pre-restore": "Antes de restaurar"
+      "pre-restore": "Antes de restaurar",
+      "imported": "Importada"
     }
   },
   "agreements": {
@@ -265,8 +267,6 @@
     "update": "Actualizar",
     "update_to": "v{{version}} disponible",
     "updated": "Actualizado.",
-    "check_ok": "Revisión: solo usa las funciones declaradas.",
-    "check_failed": "No se pudo obtener el resultado de la revisión.",
     "check_undeclared": "Revisión: usa funciones que el módulo no declara ({{perms}}). Asegúrate de que confías en este módulo."
   },
   "plugins": {
@@ -303,12 +303,14 @@
   },
   "errors": {
     "start_cancelled": "El servidor se detuvo mientras se iniciaba, así que no se inició.",
+    "still_stopping": "El servidor todavía se está apagando, así que no se volvió a iniciar. Inícialo cuando se haya detenido por completo.",
     "generic": "No se pudo completar la solicitud.",
     "remote_not_allowed": "Esto solo se puede hacer en la app Saba-chan del PC.",
     "remote_field_blocked": "Estos ajustes solo se pueden cambiar en el PC: {{fields}}",
     "remote_bad_path": "Esta solicitud no se acepta.",
     "remote_bad_request": "Esta solicitud no se acepta.",
     "remote_timeout": "No terminó en 2 minutos, así que se trató como un fallo. Comprueba el resultado en el PC.",
+    "still_working": "No terminó en 2 minutos. Puede que el PC siga trabajando en ello; vuelve a comprobarlo en un momento.",
     "remote_host_gone": "Se perdió la conexión con el PC antes de que terminara la solicitud.",
     "remote_busy": "Demasiadas solicitudes. Inténtalo de nuevo en un momento."
   },
@@ -425,6 +427,9 @@
     "off": "Desactivado",
     "saved": "Cambiado.",
     "pc": "PC",
+    "guild_here": "Este PC",
+    "guild_other_pc": "Otro PC",
+    "guild_no_pc": "Sin PC",
     "no_guilds": "No hay servidores de Discord que puedas gestionar.",
     "other_pc": "Este servidor está conectado a otro PC. Cámbialo desde el enlace /saba web de ese PC.",
     "err": {
@@ -536,6 +541,7 @@
     "channel_board": "Canal del panel de estado",
     "sleep_now": "Dormir ahora",
     "awake": "Despierta",
+    "sleep_needs_pc": "Disponible al vincular un PC",
     "basics_desc": "Idioma y emojis de este servidor",
     "music_desc": "Pone música en los canales de voz",
     "reading_desc": "Lee el chat en voz alta en los canales de voz",

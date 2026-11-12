@@ -71,6 +71,10 @@ export interface ServerInfo {
     protocol_mode: string;
     module_settings: Record<string, Json>;
     server_version: string | null;
+    /** 설치된 빌드: 설치 방식 익스텐션의 업데이트 확인이 알려 준 번호와 받은 때(유닉스 초). 데몬이 적어 둔 값 */
+    server_build?: { id: string; time?: number } | null;
+    /** 설치된 버전에 없어 숨기는 설정 이름 (모듈 `versions` 범위 밖. 데몬이 계산한다) */
+    version_hidden?: string[];
     /** API(CLI/Discord)로 마지막 시작·정지를 요청한 때 (epoch ms) */
     last_api_action?: number;
     provisioning: boolean;
@@ -81,6 +85,10 @@ export interface ServerInfo {
     extra_args: string[];
     revision: string;
     memory_limit_mb: number | null;
+    /** 게임 서버 자동 업데이트 (설치 방식 익스텐션으로 설치한 서버만, PC에서만 바꾼다) */
+    auto_update?: boolean;
+    /** 브랜치 서버: 만들 때 설정을 가져온 상위 서버 id (목록에서 그 서버 아래에 묶인다) */
+    branch_of?: string;
     game_chat: GameChatMode;
     game_chat_keyword: string;
     game_chat_supported: boolean;
@@ -94,11 +102,21 @@ export interface ServerInfo {
     kick_players?: string[];
     /** 자동 강퇴를 쓸 수 있는지: 모듈이 접속 줄과 내보내기 명령을 알려 주고 데몬이 콘솔을 읽을 때만 참 */
     controllers_only_supported?: boolean;
+    /** 접속자 없을 때 자동 정지를 쓸 수 있는지: 데몬이 접속자 수를 알 길이 있을 때만 참 */
+    idle_stop_supported?: boolean;
+    /** 꺼져 있고 마지막 정지가 접속자 없음 자동 정지였을 때: 정지한 시각(Unix 초)과 비어 있던 분 */
+    idle_stopped?: { at: number; minutes: number };
     slots?: JsonObject;
     players?: PlayerCount;
     unresponsive?: string;
+    /** `unresponsive`가 있을 때 답하지 않은 분 */
+    unresponsive_minutes?: number;
     linked_folder?: string;
     restorable_settings: boolean;
+    /** 데몬이 마지막으로 한 게임 서버 업데이트 확인 (`check-update`의 답 + `checked_at`). 확인 전·확인하지 않는 서버는 null, 옛 데몬은 없다 */
+    update_check?: ApiBody | null;
+    /** 시작·정지 요청이 데몬에서 진행 중이면 `starting`·`stopping` (0.1.14~, 어디서 시켰든) */
+    transition?: 'starting' | 'stopping';
 }
 
 /** 포트 충돌로 데몬이 강제로 끈 서버 알림 */
@@ -155,6 +173,8 @@ export interface SettingField {
     restart_required?: boolean;
     visible_when?: VisibleWhen;
     file_key?: string;
+    /** 이 설정이 있는 게임 버전 범위 (`<1.21.9` 등). 숨길지는 데몬이 계산해 서버 목록 `version_hidden`으로 준다 */
+    versions?: string;
 }
 
 /** module_loader::CommandInput */
@@ -232,6 +252,26 @@ export interface ModuleAgreement {
     url: string;
 }
 
+/** [[lists]] (module_loader::ModuleList): 플레이어 목록 선언 */
+export interface ModuleList {
+    id: string;
+    /** 이름을 넣는·빼는 `[[commands.fields]]` 이름 */
+    add: string;
+    remove: string;
+    /** 이 목록을 쓸지 정하는 boolean 설정 이름 */
+    setting?: string;
+    /** 넣으면 그 사람을 막는 목록 (밴) */
+    danger?: boolean;
+}
+
+/** GET /api/instance/:id/lists 의 목록 하나: 선언 + 모듈 locales의 이름 + 지금 명단 */
+export interface PlayerList extends ModuleList {
+    label: string;
+    /** 넣기·빼기 명령을 지금 보낼 수 있는가 */
+    editable: boolean;
+    entries: { name: string; added?: string; note?: string }[];
+}
+
 /** GET /api/modules 항목 (ipc::ExtensionInfo) */
 export interface ModuleInfo {
     name: string;
@@ -266,6 +306,7 @@ export interface ModuleInfo {
     presets?: ModulePreset[];
     queries?: JsonObject[];
     agreements?: ModuleAgreement[];
+    lists?: ModuleList[];
     /** 모듈이 밝힌 lifecycle 함수. null이면 모른다 (아무 기능도 숨기지 않는다) */
     functions: string[] | null;
 }
@@ -341,14 +382,35 @@ export interface ExtensionListResponse {
 
 // ── 릴레이 에이전트 ──
 
-/** window.api.discordBotStatus: 데몬 릴레이 에이전트 상태. 릴레이가 이 앱 버전을 받지 않으면 객체로 온다 */
+/** 에이전트가 하트비트로 아는 릴레이 연결 (`GET /api/relay/agent`의 `connected`·`lastError`, 0.1.14~) */
+export interface RelayLink {
+    connected: boolean;
+    error: string;
+    /** 하트비트가 한 번이라도 성공했다. 아니면(막 켬) 끊김이 아니라 연결 중이다 */
+    heard?: boolean;
+}
+
+/**
+ * window.api.discordBotStatus: 데몬 릴레이 에이전트 상태. 릴레이가 이 앱 버전이나 상태 보고를 받지 않거나(`too_old`)
+ * 데몬이 연결 상태를 알려 주면(`link`) 객체로 온다
+ */
 export type AgentStatus =
     | 'running'
     | 'stopped'
     | 'replaced'
     | 'invalid_relay_url'
     | 'unknown'
-    | { status: 'too_old'; running: boolean; minVersion: string | null };
+    | { status: 'too_old'; running: boolean; minVersion: string | null; link?: RelayLink }
+    | { status: 'running' | 'stopped' | 'replaced' | 'invalid_relay_url'; running: boolean; link: RelayLink }
+    | { status: 'rejected'; running: boolean; reason: HeartbeatReject; link?: RelayLink };
+
+/** 릴레이가 이 PC의 상태 보고(heartbeat)를 거절한 이유 (데몬 `heartbeatRejected`): 어느 칸이, 상한이면 상한과 보낸 크기 */
+export interface HeartbeatReject {
+    code: string;
+    field: string;
+    max?: number;
+    actual?: number;
+}
 
 // ── GUI 설정 (config_store::GuiSettings, camelCase) ──
 
@@ -396,6 +458,7 @@ export interface GuiSettings {
     consoleTimestampDate: boolean;
     /** 콘솔 긴 줄 접기 */
     consoleWrap: boolean;
+    consoleGlass: boolean;
     /** 맨 아래를 볼 때 새 줄 따라가기 */
     consoleAutoScroll: boolean;
     /** auto · light · dark. 예전 버전은 저장하지 않았다 */

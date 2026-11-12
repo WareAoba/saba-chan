@@ -5,16 +5,9 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { type AuditEntry as AuditRecord, auditWhat } from '../../utils/audit';
 import { auditEntryOf, eventsAvailable, subscribeDaemonEvents } from '../../utils/daemonEvents';
+import { type DaemonLogEntry, DaemonLogLine } from '../DaemonLogLine';
 import { Icon } from '../Icon';
 import { Popover } from '../ui/Popover';
-
-/** GET /api/daemon/console 한 줄 */
-interface ConsoleLine {
-    id: number;
-    level: string;
-    timestamp: string | number;
-    message: string;
-}
 
 /** 감사 한 건 (GET /api/audit 항목) */
 interface AuditEntry extends AuditRecord {
@@ -25,13 +18,15 @@ interface AuditEntry extends AuditRecord {
 
 /** 맨 아래 줄을 띄울 IPC가 있는지 (감사 로그) */
 export const activityAvailable = () => !!window.api?.auditList;
-/** 펼쳐서 데몬 콘솔을 볼 IPC가 있는지 (로드맵 쪽 preload가 먼저 들어와야 한다) */
+/** 펼쳐서 데몬 콘솔을 볼 IPC가 있는지 (구버전 브리지에는 없다) */
 export const daemonConsoleAvailable = () => !!window.api?.daemonConsole;
 
 export const ACTIVITY_POLL_MS = 3000;
 /** 이벤트 스트림이 있으면 놓친 것만 메우는 느린 폴링 */
 export const ACTIVITY_SLOW_POLL_MS = 30000;
 export const CONSOLE_POLL_MS = 1000;
+/** 이어 읽을 때 새 줄이 없으면 데몬이 붙잡는 시간(초). 원격 데몬 중계가 다시 쓴 연결의 답을 10초까지만 기다린다 */
+export const CONSOLE_WAIT_S = 8;
 const CONSOLE_MAX = 2000;
 const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon', 'web', 'remote', 'mcp', 'agent', 'restart'];
 
@@ -54,7 +49,7 @@ export function activityText(e: AuditEntry, t: TFunction) {
 /** 펼친 보기: 데몬이 남긴 로그 전체 (GET /api/daemon/console, 새 줄만 이어 받는다) */
 function DaemonConsole() {
     const { t, i18n } = useTranslation('gui');
-    const [lines, setLines] = useState<ConsoleLine[]>([]);
+    const [lines, setLines] = useState<DaemonLogEntry[]>([]);
     const [error, setError] = useState<string | null>(null);
     const outputRef = useRef<HTMLDivElement>(null);
     const stickRef = useRef(true);
@@ -70,7 +65,8 @@ function DaemonConsole() {
         let epoch: number | undefined; // 데몬 로그 버퍼 세대. 데몬이 다시 켜지면 id가 1부터라 바뀌면 처음부터 다시 받는다 (L55)
         const poll = async () => {
             try {
-                let res = await window.api.daemonConsole(next === undefined ? {} : { since: next });
+                // 이어 읽을 때는 새 줄이 생길 때까지 데몬이 붙잡게 한다 (옛 데몬은 바로 답하고 1초 뒤 다시 묻는다)
+                let res = await window.api.daemonConsole(next === undefined ? {} : { since: next, wait: CONSOLE_WAIT_S });
                 if (next !== undefined && res?.epoch !== undefined && res.epoch !== epoch) {
                     next = undefined;
                     setLines([]);
@@ -123,13 +119,7 @@ function DaemonConsole() {
                 <div className="activity-console-empty">{t('activity.console_empty')}</div>
             )}
             {lines.map((l) => (
-                <div key={l.id} className={clsx('activity-console-line', `level-${String(l.level).toLowerCase()}`)}>
-                    <span className="activity-console-time">
-                        {new Date(l.timestamp).toLocaleTimeString(i18n.language, { hour12: false })}
-                    </span>
-                    <span className="activity-console-level">{String(l.level).toUpperCase()}</span>
-                    <span className="activity-console-msg">{l.message}</span>
-                </div>
+                <DaemonLogLine key={l.id} line={l} locale={i18n.language} />
             ))}
         </div>
     );

@@ -30,7 +30,7 @@ def _pair_via_daemon(daemon, relay) -> str:
     init = daemon.api.ok("POST", "/api/relay/pair/initiate", {"relayUrl": relay.url})
     claim = relay.claim(init["code"], OWNER, GUILD)
     assert claim.get("ok"), claim
-    r = daemon.api.get(f"/api/relay/pair/{init['code']}/status?secret={init['pollSecret']}&relayUrl={relay.url}")
+    r = daemon.api.post("/api/relay/pair/status", {"code": init["code"], "secret": init["pollSecret"], "relayUrl": relay.url})
     assert r.status_code == 200 and r.json().get("status") == "claimed", f"{r.status_code} {r.text}"
     return claim["hostId"]
 

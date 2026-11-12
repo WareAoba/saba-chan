@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ComponentType } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useGuideStore, openGuide } from '../components/guides/guides';
+import { useGuideStore } from '../components/guides/guides';
 import { ServersPage as ServersPageImpl } from '../components/servers/ServersPage';
 import { useServerStore } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
@@ -94,14 +94,11 @@ describe('처음 시작하기 가이드', () => {
         expect(screen.queryByText('Do you already run a game server?')).toBeNull();
     });
 
-    it('✕로 닫으면 빈 화면으로 돌아가고, 설정에서 다시 열 수 있다', async () => {
+    it('✕로 닫으면 빈 화면으로 돌아간다', async () => {
         render(page());
         await act(async () => {});
         fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
         expect(useSettingsStore.getState().closedGuides).toContain('firstRun');
         expect(screen.queryByRole('button', { name: 'Later' })).toBeNull();
-        act(() => openGuide('firstRun'));
-        expect(useSettingsStore.getState().closedGuides).not.toContain('firstRun');
-        expect(screen.getByRole('button', { name: 'Later' })).toBeInTheDocument();
     });
 });

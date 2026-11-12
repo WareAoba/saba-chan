@@ -1,10 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { changedForCli } from '../components/CliLine';
 import { launchDraft } from '../components/servers/LaunchPreview';
 import type { ModalConfig, ProgressBarConfig } from '../stores/useUIStore';
 import type { Server } from '../stores/useServerStore';
 import type { Json, ModuleInfo, SettingField } from '../types/daemon';
 import { busyMessage, createTranslateError, installFailureText, moduleSupports, safeShowToast } from '../utils/helpers';
+import { versionBranchMethod } from '../utils/installMethod';
 import { gameNameOf } from '../utils/serverView';
 import { blockedText } from '../utils/trustNotice';
 import { listItems } from '../utils/validation';
@@ -30,6 +32,21 @@ const restartFlagsOf = (server: Server | null | undefined) => ({
     restart_on_unknown_exit: asFlag(server?.module_settings?.restart_on_unknown_exit, false),
 });
 
+/** 접속자 없을 때 자동 정지 칸 값 (데몬 module_settings, 기본값은 데몬 `supervisor::idle`과 같다: 꺼짐·30분·15분) */
+const idleStopOf = (server: Server | null | undefined) => ({
+    idle_stop: asFlag(server?.module_settings?.idle_stop, false),
+    idle_stop_minutes: String(server?.module_settings?.idle_stop_minutes ?? 30),
+    idle_stop_grace_minutes: String(server?.module_settings?.idle_stop_grace_minutes ?? 15),
+});
+
+/** 응답 없음 감시 칸 값 (데몬 module_settings, 기본값은 데몬 `supervisor::watchdog`과 같다: 알림만·10분) */
+const unresponsiveOf = (server: Server | null | undefined) => ({
+    unresponsive_action: ['off', 'notify', 'restart'].includes(String(server?.module_settings?.unresponsive_action))
+        ? String(server?.module_settings?.unresponsive_action)
+        : 'notify',
+    unresponsive_minutes: String(server?.module_settings?.unresponsive_minutes ?? 10),
+});
+
 /** 램 상한 칸 값 (MiB, 비면 제한 없음): 데몬 인스턴스 최상위 memory_limit_mb */
 const memoryLimitOf = (server: Server | null | undefined) => (server?.memory_limit_mb == null ? '' : String(server.memory_limit_mb));
 
@@ -40,6 +57,9 @@ const gameChatOf = (server: Server | null | undefined) => ({
     // 조작 가능한 사람만 접속 (데몬 인스턴스 최상위 controllers_only). 사바쨩 탭에서 함께 고친다
     controllers_only: server?.controllers_only === true,
 });
+
+/** 게임 서버 자동 업데이트 (데몬 인스턴스 최상위 auto_update, 꺼져 있으면 없다) */
+const autoUpdateOf = (server: Server | null | undefined) => server?.auto_update === true;
 
 /** 정지 대기 칸 값 (초, 비면 모듈 값): 데몬 MK14 module_settings.stop_timeout */
 const stopTimeoutOf = (server: Server | null | undefined) =>
@@ -80,6 +100,14 @@ const liveFieldValue = (field: SettingField, v: unknown, saved: string | string[
 
 /** 설정 창 칸 값 (칸 이름 → 값). _extension_data·_launch_extra_args 같은 내부 칸도 여기 담는다 */
 type SettingsValues = Record<string, Json>;
+
+/** 연 때(기준)와 달라 저장 막대가 묻는 칸. `_`로 시작하는 GUI 값도 저장되므로 함께 본다 */
+export function unsavedSettingKeys(values: SettingsValues, opened: SettingsValues, fields?: SettingField[]) {
+    const changed = changedForCli(values, opened, fields);
+    return [...new Set([...Object.keys(values), ...Object.keys(opened)])].filter((k) =>
+        k.startsWith('_') ? JSON.stringify(values[k] ?? '') !== JSON.stringify(opened[k] ?? '') : k in changed,
+    );
+}
 
 /** 켜진 서버에서 다시 시작해야 적용되는 설정을 저장했다 (저장 막대 위 안내, ServerSettingsModal `RestartNotice`) */
 export interface RestartPending {
@@ -144,35 +172,72 @@ export function useServerSettings({
     // 저장에 실을 revision: 연 때의 값에서, 창이 연 뒤 데몬이 인스턴스를 고친 응답(실제 값 읽기·버전 감지·설치)이 오면 그 값으로
     const revision = useRef<string | null>(null);
     const openRequest = useRef(0);
+    // 다른 서버를 여느라 내려놓은, 저장하지 않은 칸 (서버 id → 고친 칸 값). 메모리에만 두고 돌아오면 다시 올린다 (사용자 11-12)
+    const drafts = useRef(new Map<string, SettingsValues>());
+    const fieldsOf = (server: Server | null) => modules.find((m) => m.name === server?.module)?.settings?.fields;
+    const unsavedNow = settingsServer ? unsavedSettingKeys(settingsValues, openedSettings, fieldsOf(settingsServer)) : [];
+    // 늦게 끝난 열기가 서버를 바꿀 때 그 순간의 값을 내려놓도록 마지막 렌더의 값을 쥔다
+    const shown = useRef({ server: settingsServer, values: settingsValues, unsaved: unsavedNow });
+    shown.current = { server: settingsServer, values: settingsValues, unsaved: unsavedNow };
+    // 버전 목록·설치된 버전 읽기가 아직 끝나지 않았다: 그사이 저장 뒤 다시 읽기가 번호를 올려 결과를 버렸으면 다시 읽기가 이어 받는다
+    const versionsUnfinished = useRef(false);
 
     // ── Close animation ─────────────────────────────────────
     const closeSettingsModal = useCallback(() => setShowSettingsModal(false), []);
     const { isClosing: isSettingsClosing, requestClose: requestSettingsClose } = useModalClose(closeSettingsModal);
 
     // ── handleOpenSettings ──────────────────────────────────
-    const handleOpenSettings = async (server: Server) => {
+    // reload: 저장한 뒤 열린 화면 그대로 다시 읽는다 (보던 탭·접힘을 두고, 읽는 사이 고친 칸도 둔다)
+    const handleOpenSettings = async (server: Server, reload = false, saved?: SettingsValues) => {
         // 첫 await 전에 번호를 매긴다: 그사이 다른 서버를 열면 이 호출의 늦은 결과는 모두 버린다
         const request = ++openRequest.current;
         // Fetch latest server data from API
         let latestServer = server;
+        let fresh = false;
         try {
             const data = await window.api.serverList();
             if (data && data.servers) {
                 const found = data.servers.find((s: Server) => s.id === server.id);
                 if (found) {
                     latestServer = found;
+                    fresh = true;
                 }
             }
         } catch (error) {
             console.warn('Failed to fetch latest server data:', error);
         }
         if (request !== openRequest.current) return;
+        // 저장한 뒤 다시 읽지 못했다: 저장 전 값으로 되돌리지 않고, 저장한 값을 기준으로 둔다 (revision은 저장 응답의 것)
+        if (saved && !fresh) {
+            setOpenedSettings((prev) => ({ ...prev, ...saved }));
+            return;
+        }
+
+        // 다른 서버로 바꿔 연다: 고치던 칸은 내려놓고, 이 서버에 내려놓은 칸이 있으면 다시 올린다
+        let draft: SettingsValues | undefined;
+        if (!reload) {
+            const left = shown.current;
+            if (left.server && left.server.id !== latestServer.id) {
+                const kept = left.unsaved.filter((k) => touchedFields.current.has(k)).map((k) => [k, left.values[k]]);
+                if (kept.length) drafts.current.set(left.server.id, Object.fromEntries(kept));
+                else drafts.current.delete(left.server.id);
+            }
+            draft = drafts.current.get(latestServer.id);
+            drafts.current.delete(latestServer.id);
+        }
 
         setSettingsServer(latestServer);
         revision.current = latestServer.revision || null;
         unconfirmedFields.current = new Set();
-        touchedFields.current = new Set();
-        setSettingsSource('loading');
+        if (!reload) {
+            touchedFields.current = new Set(Object.keys(draft ?? {}));
+            setSettingsSource('loading');
+        }
+        const touched = touchedFields.current;
+        const withTouched = (initial: SettingsValues) => (prev: SettingsValues) => ({
+            ...initial,
+            ...(draft ?? Object.fromEntries([...touched].filter((k) => k in prev).map((k) => [k, prev[k]]))),
+        });
         const defaulted = new Set<string>();
         unsetFields.current = new Set();
         liveFields.current = new Set();
@@ -222,11 +287,12 @@ export function useServerSettings({
                 initial.server_version = String(savedVersion);
             }
 
-            Object.assign(initial, restartFlagsOf(latestServer));
+            Object.assign(initial, restartFlagsOf(latestServer), idleStopOf(latestServer), unresponsiveOf(latestServer));
             initial.memory_limit_mb = memoryLimitOf(latestServer);
             initial.stop_timeout = stopTimeoutOf(latestServer);
+            initial.auto_update = autoUpdateOf(latestServer);
             Object.assign(initial, gameChatOf(latestServer));
-            setSettingsValues(initial);
+            setSettingsValues(withTouched(initial));
             setOpenedSettings(initial);
         } else {
             const protocols: Partial<NonNullable<ModuleInfo['protocols']>> = module?.protocols || {};
@@ -245,17 +311,23 @@ export function useServerSettings({
                       }
                     : {}),
                 ...restartFlagsOf(latestServer),
+                ...idleStopOf(latestServer),
+                ...unresponsiveOf(latestServer),
                 memory_limit_mb: memoryLimitOf(latestServer),
                 stop_timeout: stopTimeoutOf(latestServer),
+                auto_update: autoUpdateOf(latestServer),
                 ...gameChatOf(latestServer),
             };
-            setSettingsValues(initial);
+            setSettingsValues(withTouched(initial));
             setOpenedSettings(initial);
         }
         openedUnset.current = new Set(unsetFields.current);
+        for (const name of touched) unsetFields.current.delete(name);
 
-        setSettingsActiveTab('general');
-        setAdvancedExpanded(false);
+        if (!reload) {
+            setSettingsActiveTab('general');
+            setAdvancedExpanded(false);
+        }
         setShowSettingsModal(true);
 
         // 디스크의 실제 설정으로 덮는다. 그사이 사용자가 고친 칸과, 다른 서버로 바꿔 연 경우는 건드리지 않는다
@@ -305,22 +377,30 @@ export function useServerSettings({
             }
         }
 
+        if (reload && !versionsUnfinished.current) return;
+
         // Async load versions — only for download-based modules (extension install methods have no version list)
         const mod = modules.find((m) => m.name === latestServer.module);
         const installMethod = mod?.install?.method;
-        setAvailableVersions([]);
+        if (!reload) setAvailableVersions([]);
+        versionsUnfinished.current = false;
+        // 설치 방식 익스텐션으로 받는 서버의 버전 목록은 브랜치 목록이다 (목록을 밝힌 모듈만)
+        const branchMethod = versionBranchMethod(mod);
         // 버전 목록·설치를 구현한 모듈만 (MK1)
         if (
-            installMethod === 'download' &&
+            (installMethod === 'download' || branchMethod) &&
             moduleSupports(mod, 'list_versions') &&
             moduleSupports(mod, 'install_server')
         ) {
+            versionsUnfinished.current = true;
             setVersionsLoading(true);
+            let latest: Json | undefined;
             try {
                 const versions = await window.api.moduleListVersions(latestServer.module, { per_page: 30 });
                 if (request !== openRequest.current) return;
                 if (versions && versions.versions) {
                     setAvailableVersions(versions.versions);
+                    latest = versions.latest?.release;
                 }
             } catch (err) {
                 console.warn('Failed to load versions:', err);
@@ -328,6 +408,17 @@ export function useServerSettings({
                 if (request === openRequest.current) setVersionsLoading(false);
             }
             if (request !== openRequest.current) return;
+
+            if (branchMethod) {
+                // 데몬이 적어 둔 브랜치(`<방식>_beta`), 없으면 모듈의 기본 브랜치를 고른 채로 연다
+                const branch = latestServer.extension_data?.[`${branchMethod}_beta`] || latest;
+                if (branch) {
+                    setSettingsValues((prev) => ({ ...prev, server_version: String(branch) }));
+                    setOpenedSettings((prev) => ({ ...prev, server_version: String(branch) }));
+                }
+                versionsUnfinished.current = false;
+                return;
+            }
 
             // Detect installed version from server binary if not already saved
             const hasSavedVersion = latestServer.module_settings?.server_version || latestServer.server_version;
@@ -350,6 +441,7 @@ export function useServerSettings({
                     console.warn('Failed to detect installed version:', err);
                 }
             }
+            versionsUnfinished.current = false;
         }
     };
 
@@ -363,7 +455,8 @@ export function useServerSettings({
     /** 화면이 읽어 온 값 (추가 실행 인자 등): 사용자가 바꾼 것이 아니므로 기준에도 넣는다 */
     const handleSettingLoaded = (fieldName: string, value: unknown) => {
         const v = Array.isArray(value) ? value : String(value);
-        setSettingsValues((prev) => ({ ...prev, [fieldName]: v }));
+        // 고치던 칸(다른 서버에 다녀와 다시 올린 값 포함)은 읽어 온 값으로 덮지 않는다
+        if (!touchedFields.current.has(fieldName)) setSettingsValues((prev) => ({ ...prev, [fieldName]: v }));
         setOpenedSettings((prev) => ({ ...prev, [fieldName]: v }));
     };
 
@@ -374,10 +467,23 @@ export function useServerSettings({
         unsetFields.current = new Set(openedUnset.current);
     };
 
+    /** 바뀐 칸 목록의 칸 하나 되돌리기: 그 칸만 기준 값으로 돌리고 고친 칸 표시를 지운다 */
+    const revertSetting = (name: string) => {
+        setSettingsValues((prev) => {
+            if (name in openedSettings) return { ...prev, [name]: openedSettings[name] };
+            const { [name]: _gone, ...rest } = prev;
+            return rest;
+        });
+        touchedFields.current.delete(name);
+        if (openedUnset.current.has(name)) unsetFields.current.add(name);
+    };
+
     // ── handleInstallVersion ────────────────────────────────
     const handleInstallVersion = async () => {
         if (!settingsServer || !settingsValues.server_version) return;
-        const version = settingsValues.server_version as string;
+        const chosen = settingsValues.server_version as string;
+        // 확인 창과 알림에는 모듈이 붙인 이름(브랜치 이름 등)을 쓴다
+        const version = String(availableVersions.find((v) => v.id === chosen)?.name || chosen);
         const serverName = settingsServer.name;
         const module = settingsServer.module;
         const game = gameNameOf(
@@ -423,7 +529,7 @@ export function useServerSettings({
 
                             // instance_id: 데몬이 이 인스턴스 설정(서버 종류 등)으로 설치하고 작업 잠금을 잡는다
                             const installResult = await window.api.moduleInstallServer(module, {
-                                version,
+                                version: chosen,
                                 install_dir: targetDir,
                                 instance_id: settingsServer.id,
                                 background: true,
@@ -485,8 +591,81 @@ export function useServerSettings({
     };
 
     // ── handleResetServer ───────────────────────────────────
-    const handleResetServer = async () => {
+    // 서버를 초기화한다. `choice`는 확인 창에서 고른 범위와 "지우기 전에 백업"
+    const resetServer = async (choice?: { scope?: string; backup?: boolean }) => {
         if (!settingsServer) return;
+        const request = openRequest.current;
+        setResettingServer(true);
+        try {
+            const result = await window.api.instanceResetServer(settingsServer.id, choice);
+            // 모듈은 200으로 {success:false}를 돌려줄 수 있다
+            if (!result || result.error || result.success === false) {
+                safeShowToast(
+                    t('server_settings.reset_failed', {
+                        error:
+                            busyMessage(t, result?.error_code, 'reset_server_running') ||
+                            translateError(result?.error || result?.message || ''),
+                        defaultValue: 'Reset failed',
+                    }),
+                    'error',
+                );
+            } else {
+                const deletedCount = result?.deleted?.length || 0;
+                // 게임 설정 파일이 지워졌다: 열 때 읽은 파일 값은 더는 맞지 않으니 저장할 때 다시 쓴다
+                liveFields.current = new Set();
+                safeShowToast(
+                    t('server_settings.reset_success', {
+                        name: settingsServer.name,
+                        count: deletedCount,
+                        defaultValue: `Server '${settingsServer.name}' has been reset (${deletedCount} items deleted)`,
+                    }),
+                    'success',
+                );
+                // Refresh settings display
+                if (settingsServer?.id) {
+                    try {
+                        const serverList = await window.api.serverList();
+                        if (serverList && serverList.servers && !serverList.error) {
+                            const updated = serverList.servers.find((s: Server) => s.id === settingsServer.id);
+                            if (updated && request === openRequest.current) {
+                                setSettingsServer(updated);
+                                revision.current = updated.revision || null;
+                                // 데몬이 따로 두는 칸은 module_settings 밖이거나 표시 형식이 달라 같이 채운다 (G-U3)
+                                setSettingsValues((prev) => ({
+                                    ...prev,
+                                    ...updated.module_settings,
+                                    ...restartFlagsOf(updated),
+                                    ...idleStopOf(updated),
+                                    ...unresponsiveOf(updated),
+                                    memory_limit_mb: memoryLimitOf(updated),
+                                    stop_timeout: stopTimeoutOf(updated),
+                                    auto_update: autoUpdateOf(updated),
+                                    ...gameChatOf(updated),
+                                }));
+                            }
+                        }
+                    } catch (_e) {
+                        /* silent */
+                    }
+                }
+            }
+        } catch (err) {
+            safeShowToast(
+                t('server_settings.reset_error', {
+                    error: translateError((err as Error).message),
+                    defaultValue: 'Reset error',
+                }),
+                'error',
+            );
+        } finally {
+            setResettingServer(false);
+        }
+    };
+
+    // 고른 범위가 오면(지울 항목을 보인 확인 창을 지났다) 바로 초기화하고, 아니면 확인 문구로 묻는다
+    const handleResetServer = async (choice?: { scope?: string; backup?: boolean }) => {
+        if (!settingsServer) return;
+        if (choice) return resetServer(choice);
 
         setModal({
             type: 'question',
@@ -505,71 +684,9 @@ export function useServerSettings({
                 },
                 {
                     label: t('server_settings.reset_button', { defaultValue: 'Reset' }),
-                    action: async () => {
-                        const request = openRequest.current;
+                    action: () => {
                         setModal(null);
-                        setResettingServer(true);
-                        try {
-                            const result = await window.api.instanceResetServer(settingsServer.id);
-                            // 모듈은 200으로 {success:false}를 돌려줄 수 있다
-                            if (!result || result.error || result.success === false) {
-                                safeShowToast(
-                                    t('server_settings.reset_failed', {
-                                        error:
-                                            busyMessage(t, result?.error_code, 'reset_server_running') ||
-                                            translateError(result?.error || result?.message || ''),
-                                        defaultValue: 'Reset failed',
-                                    }),
-                                    'error',
-                                );
-                            } else {
-                                const deletedCount = result?.deleted?.length || 0;
-                                // 게임 설정 파일이 지워졌다: 열 때 읽은 파일 값은 더는 맞지 않으니 저장할 때 다시 쓴다
-                                liveFields.current = new Set();
-                                safeShowToast(
-                                    t('server_settings.reset_success', {
-                                        name: settingsServer.name,
-                                        count: deletedCount,
-                                        defaultValue: `Server '${settingsServer.name}' has been reset (${deletedCount} items deleted)`,
-                                    }),
-                                    'success',
-                                );
-                                // Refresh settings display
-                                if (settingsServer?.id) {
-                                    try {
-                                        const serverList = await window.api.serverList();
-                                        if (serverList && serverList.servers && !serverList.error) {
-                                            const updated = serverList.servers.find((s: Server) => s.id === settingsServer.id);
-                                            if (updated && request === openRequest.current) {
-                                                setSettingsServer(updated);
-                                                revision.current = updated.revision || null;
-                                                // 데몬이 따로 두는 칸은 module_settings 밖이거나 표시 형식이 달라 같이 채운다 (G-U3)
-                                                setSettingsValues((prev) => ({
-                                                    ...prev,
-                                                    ...updated.module_settings,
-                                                    ...restartFlagsOf(updated),
-                                                    memory_limit_mb: memoryLimitOf(updated),
-                                                    stop_timeout: stopTimeoutOf(updated),
-                                                    ...gameChatOf(updated),
-                                                }));
-                                            }
-                                        }
-                                    } catch (_e) {
-                                        /* silent */
-                                    }
-                                }
-                            }
-                        } catch (err) {
-                            safeShowToast(
-                                t('server_settings.reset_error', {
-                                    error: translateError((err as Error).message),
-                                    defaultValue: 'Reset error',
-                                }),
-                                'error',
-                            );
-                        } finally {
-                            setResettingServer(false);
-                        }
+                        resetServer();
                     },
                 },
             ],
@@ -662,6 +779,10 @@ export function useServerSettings({
                 convertedSettings.stop_timeout = stopTimeout === '' ? null : stopTimeout;
             }
 
+            // 자동 업데이트: 바꿨을 때만 보낸다
+            const autoUpdate = asFlag(settingsValues.auto_update, null);
+            if (autoUpdate !== null && autoUpdate !== autoUpdateOf(settingsServer)) convertedSettings.auto_update = autoUpdate;
+
             // 게임 채팅 전달: 바꾼 칸만 보낸다. 감지 단어 모드에 단어가 있는지는 데몬이 본다 (invalid_format)
             const openedChat = gameChatOf(settingsServer);
             for (const key of ['game_chat', 'game_chat_keyword'] as const) {
@@ -681,6 +802,22 @@ export function useServerSettings({
             for (const key of ['auto_restart', 'restart_on_unknown_exit'] as const) {
                 const flag = asFlag(settingsValues[key], null);
                 if (flag !== null && flag !== openedFlags[key]) convertedSettings[key] = flag;
+            }
+
+            // 응답 없음 감시: 바꾼 칸만 보낸다
+            const openedWatch = unresponsiveOf(settingsServer);
+            for (const key of ['unresponsive_action', 'unresponsive_minutes'] as const) {
+                const value = String(settingsValues[key] ?? '').trim();
+                if (settingsValues[key] !== undefined && value !== '' && value !== openedWatch[key]) convertedSettings[key] = value;
+            }
+
+            // 접속자 없을 때 자동 정지: 바꾼 칸만 보낸다
+            const openedIdle = idleStopOf(settingsServer);
+            const idleStop = asFlag(settingsValues.idle_stop, null);
+            if (idleStop !== null && idleStop !== openedIdle.idle_stop) convertedSettings.idle_stop = idleStop;
+            for (const key of ['idle_stop_minutes', 'idle_stop_grace_minutes'] as const) {
+                const value = String(settingsValues[key] ?? '').trim();
+                if (settingsValues[key] !== undefined && value !== '' && value !== openedIdle[key]) convertedSettings[key] = value;
             }
 
             const protocols: Partial<NonNullable<ModuleInfo['protocols']>> = module?.protocols || {};
@@ -776,8 +913,13 @@ export function useServerSettings({
                 if (result.ignored?.length) {
                     safeShowToast(t('settings.ignored', { keys: result.ignored.join(', ') }), 'warning', 6000);
                 }
-                if (stillOpen) setShowSettingsModal(false);
                 fetchServers();
+                // 화면을 닫지 않는다: 닫았다 열면 탭 전체가 로딩 표시로 바뀌고 스크롤을 잃는다
+                if (stillOpen) {
+                    touchedFields.current = new Set();
+                    if (result.revision) revision.current = result.revision;
+                    await handleOpenSettings(settingsServer, true, settingsValues);
+                }
             }
         } catch (error) {
             console.error('Exception in handleSaveSettings:', error);
@@ -809,6 +951,10 @@ export function useServerSettings({
         settingsValues,
         unsetSettings: unsetFields.current,
         openedSettings,
+        /** 저장하지 않은 설정이 남은 서버 id (지금 연 서버와 내려놓은 서버): 서버 카드의 경고 표시 */
+        unsavedServers: servers
+            .map((s) => s.id)
+            .filter((id) => (id === settingsServer?.id ? unsavedNow.length > 0 : drafts.current.has(id))),
         settingsSource,
         settingsActiveTab,
         setSettingsActiveTab,
@@ -827,6 +973,7 @@ export function useServerSettings({
         handleSettingChange,
         handleSettingLoaded,
         revertSettings,
+        revertSetting,
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,

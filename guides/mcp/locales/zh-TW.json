@@ -1,0 +1,8 @@
+{
+    "title": "AI 代理 (MCP)",
+    "summary": "讓你的 AI 代理管理伺服器",
+    "steps": [
+        "在 ChatGPT、Claude 等 AI 代理裡把這裡顯示的位址新增為 MCP 伺服器，再用 Discord 帳號登入即可連線。只在已連線 Discord 的電腦上顯示。",
+        "連線的代理可以管理你 Discord 帳號下所有電腦上的伺服器。按卡片會出現中斷代理連線。"
+    ]
+}

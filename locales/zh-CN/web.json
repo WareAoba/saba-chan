@@ -125,7 +125,6 @@
   "detail": {
     "backups": "备份",
     "players": "玩家",
-    "more": "更多",
     "tabs": "服务器菜单",
     "uptime": "已运行 {{time}}",
     "port_check": "端口转发检查"
@@ -135,7 +134,9 @@
     "placeholder": "输入命令",
     "send": "发送",
     "danger_title": "这是危险命令",
-    "danger_message": "确定要发送 {{command}} 吗？"
+    "danger_message": "确定要发送 {{command}} 吗？",
+    "danger_again": "“{{command}}”是难以撤销的命令。再按一次即可发送。",
+    "danger_again_described": "{{description}}。再按一次即可发送。"
   },
   "settings": {
     "game": "游戏设置",
@@ -172,7 +173,8 @@
       "manual": "手动",
       "scheduled": "定时",
       "pre-update": "更新前",
-      "pre-restore": "恢复前"
+      "pre-restore": "恢复前",
+      "imported": "已导入"
     }
   },
   "agreements": {
@@ -265,8 +267,6 @@
     "update": "更新",
     "update_to": "有 v{{version}}",
     "updated": "已更新。",
-    "check_ok": "检查结果：只使用已声明的功能。",
-    "check_failed": "无法获取检查结果。",
     "check_undeclared": "检查结果：使用了模块未声明的功能（{{perms}}）。请确认这是可信的模块。"
   },
   "plugins": {
@@ -303,12 +303,14 @@
   },
   "errors": {
     "start_cancelled": "服务器在启动过程中被停止，因此未启动。",
+    "still_stopping": "服务器仍在关闭中，因此没有重新启动。请在它完全停止后再启动。",
     "generic": "无法完成请求。",
     "remote_not_allowed": "只能在电脑上的 Saba-chan 应用中进行。",
     "remote_field_blocked": "以下设置只能在电脑上更改：{{fields}}",
     "remote_bad_path": "不接受此请求。",
     "remote_bad_request": "不接受此请求。",
     "remote_timeout": "未在 2 分钟内完成，已按失败处理。请在电脑上确认结果。",
+    "still_working": "2 分钟内没有完成。电脑上可能仍在进行，请稍后再查看。",
     "remote_host_gone": "请求完成前与电脑的连接已断开。",
     "remote_busy": "请求过多。请稍后再试。"
   },
@@ -425,6 +427,9 @@
     "off": "关",
     "saved": "已更改。",
     "pc": "PC",
+    "guild_here": "此电脑",
+    "guild_other_pc": "另一台电脑",
+    "guild_no_pc": "无电脑",
     "no_guilds": "没有你可以管理的 Discord 服务器。",
     "other_pc": "此服务器已连接到另一台电脑。请通过那台电脑的 /saba web 链接更改。",
     "err": {
@@ -536,6 +541,7 @@
     "channel_board": "状态板频道",
     "sleep_now": "现在睡觉",
     "awake": "醒着",
+    "sleep_needs_pc": "连接电脑后即可使用",
     "basics_desc": "此服务器使用的语言和表情",
     "music_desc": "在语音频道播放音乐",
     "reading_desc": "用语音朗读聊天内容",

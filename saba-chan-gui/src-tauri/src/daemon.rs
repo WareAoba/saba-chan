@@ -386,7 +386,19 @@ impl DaemonClient {
         body: Option<&Value>,
         timeout_ms: u64,
     ) -> Result<Value, CallError> {
-        match self.send(method, path, body, Duration::from_millis(timeout_ms)).await {
+        self.call_to(method, path, body, timeout_ms, None).await
+    }
+
+    /// `call`과 같고, `target`이 있으면 이 요청만 그 데몬에 보낸다 (`local`이면 이 PC)
+    pub async fn call_to(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+        timeout_ms: u64,
+        target: Option<&str>,
+    ) -> Result<Value, CallError> {
+        match self.send_to(method, path, body, Duration::from_millis(timeout_ms), target).await {
             Ok(r) if r.is_success() => Ok(r.data()),
             Ok(r) => Err(CallError {
                 status: Some(r.status),

@@ -32,6 +32,11 @@ const vpsDaemon = { hostId: 'host-b', name: 'vps', label: '김마무(vps)', addr
 
 const cards = () => screen.getByRole('list', { name: 'My PCs' });
 const card = (name: string) => within(cards()).getByText(name).closest('li')!;
+// 카드마다 수정 버튼 하나: 업데이트·지우기는 그 창 안에 있다 (사용자 결정 2026-11-11)
+const openEdit = async (name: string) => {
+    await act(async () => fireEvent.click(within(card(name)).getByRole('button', { name: 'Edit' })));
+    return screen.getByRole('dialog');
+};
 
 describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
     beforeEach(() => {
@@ -39,8 +44,6 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         window.api = {
             remoteSettings: vi.fn().mockResolvedValue(settings),
             remoteSettingsSet: vi.fn(),
-            remoteClients: vi.fn().mockResolvedValue({ clients: [{ hostId: 'host-a', name: '노트북', pairedAt: '' }] }),
-            remoteRevoke: vi.fn().mockResolvedValue({ ok: true }),
             remotePeers: vi.fn().mockResolvedValue({
                 peers: [
                     { hostId: 'host-c', name: '게임 PC', status: 'online', hasEndpoint: true, saved: false, platform: { os: 'windows x86_64' } },
@@ -63,10 +66,12 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         await act(async () => render(<RemoteDaemonSection />));
         const first = within(cards()).getAllByRole('listitem')[0];
         expect(first).toHaveClass('me');
-        expect(within(first).getByText('This PC', { selector: '.remote-pc-me' })).toBeInTheDocument();
+        expect(within(first).getByText('This PC', { selector: '.remote-pc-name' })).toBeInTheDocument();
         expect(within(first).getByText('125.180.44.17')).toBeInTheDocument();
         expect(within(first).getByText('Listening on port 57480')).toBeInTheDocument();
-        expect(within(first).getByText('Windows · x86_64 · 0.1.13')).toBeInTheDocument();
+        // OS 줄은 OS 이름만 (x86_64는 적지 않는다), 사바쨩 판은 이름 옆에
+        expect(within(first).getByText('Windows', { selector: '.remote-pc-sub' })).toBeInTheDocument();
+        expect(within(first).getByText('v0.1.13')).toBeInTheDocument();
     });
 
     it('연결한 PC 카드는 배포판 로고, 연결한 날, 공인 IP, 직접 연결을 보인다', async () => {
@@ -75,11 +80,24 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         await act(async () => render(<RemoteDaemonSection />));
         const c = card('김마무(vps)');
         expect(within(c).getByRole('img', { name: 'Ubuntu' })).toBeInTheDocument();
-        expect(within(c).getByText('Ubuntu 24.04 LTS · x86_64 · 0.1.13')).toBeInTheDocument();
+        expect(within(c).getByText('Ubuntu 24.04 LTS', { selector: '.remote-pc-sub' })).toBeInTheDocument();
+        expect(within(c).getByText('v0.1.13')).toBeInTheDocument();
         expect(within(c).getByText('203.0.113.24')).toBeInTheDocument();
         expect(within(c).getByText('Direct (port 57480)')).toBeInTheDocument();
         expect(within(c).getByText('Online')).toBeInTheDocument();
         expect(within(c).queryByText('Not connected yet')).toBeNull();
+    });
+
+    it('CPU는 ARM일 때만 OS 이름 뒤에 (ARM)으로 붙인다', async () => {
+        vi.mocked(window.api.remotePeers).mockResolvedValue({
+            peers: [
+                { ...vps, platform: { ...vps.platform, os: 'linux aarch64' } },
+                { hostId: 'host-m', name: '맥북', status: 'online', hasEndpoint: false, saved: false, platform: { os: 'macos aarch64' } },
+            ],
+        });
+        await act(async () => render(<RemoteDaemonSection />));
+        expect(within(card('김마무(vps)')).getByText('Ubuntu 24.04 LTS (ARM)')).toBeInTheDocument();
+        expect(within(card('맥북')).getByText('macOS (ARM)')).toBeInTheDocument();
     });
 
     it('별을 누른 PC가 메인 데몬이 되고, 이 PC의 별을 누르면 이 PC로 돌아간다', async () => {
@@ -120,7 +138,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [vpsDaemon] });
         window.api.daemonTarget = vi.fn().mockResolvedValue({ target: null });
         await act(async () => render(<RemoteDaemonSection />));
-        await act(async () => fireEvent.click(within(card('김마무(vps)')).getByRole('button', { name: 'Delete' })));
+        await act(async () => fireEvent.click(within(await openEdit('김마무(vps)')).getByRole('button', { name: 'Delete' })));
         const dialog = screen.getByRole('dialog', { name: 'Remove 김마무(vps)?' });
         const uninstall = within(dialog).getByRole('checkbox', { name: 'Also uninstall Saba-chan on that PC' });
         expect(uninstall).not.toBeDisabled();
@@ -142,7 +160,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         vi.mocked(window.api.remotePeers).mockResolvedValue({ peers: [{ ...vps, platform: { os: 'windows x86_64' } }] });
         vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [vpsDaemon] });
         await act(async () => render(<RemoteDaemonSection />));
-        await act(async () => fireEvent.click(within(card('김마무(vps)')).getByRole('button', { name: 'Delete' })));
+        await act(async () => fireEvent.click(within(await openEdit('김마무(vps)')).getByRole('button', { name: 'Delete' })));
         expect(screen.getByRole('checkbox', { name: 'Also uninstall Saba-chan on that PC' })).toBeDisabled();
     });
 
@@ -153,7 +171,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         window.api.daemonTargetSet = vi.fn().mockResolvedValue({ success: true, target: null });
         const reload = vi.fn();
         await act(async () => render(<RemoteDaemonSection onTargetGone={reload} />));
-        await act(async () => fireEvent.click(within(card('김마무(vps)')).getByRole('button', { name: 'Delete' })));
+        await act(async () => fireEvent.click(within(await openEdit('김마무(vps)')).getByRole('button', { name: 'Delete' })));
         await act(async () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' })));
         expect(window.api.daemonTargetSet).toHaveBeenCalledWith(null);
         expect(reload).toHaveBeenCalled();
@@ -163,9 +181,13 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         vi.mocked(window.api.remotePeers).mockResolvedValue({ peers: [{ ...vps, agentVersion: '0.1.12' }] });
         vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [vpsDaemon] });
         await act(async () => render(<RemoteDaemonSection />));
-        const c = card('김마무(vps)');
-        expect(within(c).getByText('Needs update to 0.1.13')).toBeInTheDocument();
-        await act(async () => fireEvent.click(within(c).getByRole('button', { name: 'Update' })));
+        // 카드에는 판 옆 표시만, 업데이트는 수정 창에서
+        expect(within(card('김마무(vps)')).getByText('v0.1.12')).toHaveAttribute('data-tooltip', 'Needs update to 0.1.13');
+        expect(within(card('김마무(vps)')).queryByRole('button', { name: 'Update' })).toBeNull();
+        const dialog = await openEdit('김마무(vps)');
+        expect(within(dialog).getByText('Needs update to 0.1.13')).toBeInTheDocument();
+        await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Update' })));
+        expect(screen.queryByRole('dialog')).toBeNull();
         expect(window.api.remoteDaemonUpdate).toHaveBeenCalledWith('host-b');
         expect(screen.getByText(/Update started/)).toBeInTheDocument();
         expect(olderVersion('0.1.9', '0.1.13')).toBe(true);
@@ -353,12 +375,80 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(screen.getByRole('alert')).toHaveTextContent('The port is already in use');
     });
 
-    it('이 PC에 붙은 PC는 짝을 풀 수 있고, 릴레이에 연결하지 않았으면 안내를 보인다', async () => {
+    // 내 PC 카드 개편 뒤 쓸모가 없어진 "이 PC에 붙은 PC" 목록은 뺐다 (사용자 11-12)
+    it('릴레이에 연결하지 않았으면 안내를 보이고, 이 PC에 붙은 PC 목록은 없다', async () => {
         vi.mocked(window.api.remotePeers).mockResolvedValue({ error: 'relay_not_paired', error_code: 'relay_not_paired' });
         await act(async () => render(<RemoteDaemonSection />));
         expect(screen.getByText('This PC is not connected to Discord yet. Connect it on the Discord page first.')).toBeInTheDocument();
-        const clients = screen.getByRole('list', { name: 'PCs connected to this one' });
-        await act(async () => fireEvent.click(within(clients).getByRole('button', { name: 'Disconnect' })));
-        expect(window.api.remoteRevoke).toHaveBeenCalledWith('host-a');
+        expect(screen.queryByRole('list', { name: 'PCs connected to this one' })).toBeNull();
+    });
+
+    // 사용자 11-12: "연결"을 누르면 결과가 뜰 때까지 화면이 멈췄다 (칸의 모든 버튼이 잠겼다)
+    it('한 PC에 연결하는 동안 그 카드만 진행 중이고 다른 PC·켬 스위치는 그대로 쓸 수 있다', async () => {
+        vi.mocked(window.api.remotePeers).mockResolvedValue({
+            peers: [
+                { hostId: 'host-c', name: '게임 PC', status: 'online', hasEndpoint: true, saved: false },
+                { hostId: 'host-e', name: '거실', status: 'online', hasEndpoint: true, saved: false },
+            ],
+        });
+        let finish: (v: unknown) => void = () => {};
+        vi.mocked(window.api.remoteConnect).mockImplementation(
+            () =>
+                new Promise((r) => {
+                    finish = r as (v: unknown) => void;
+                }),
+        );
+        await act(async () => render(<RemoteDaemonSection />));
+        await act(async () => fireEvent.click(within(card('게임 PC')).getByRole('button', { name: 'Connect' })));
+        expect(within(card('게임 PC')).getByRole('button', { name: /Connect/ })).toBeDisabled();
+        expect(within(card('거실')).getByRole('button', { name: 'Connect' })).toBeEnabled();
+        expect(within(card('거실')).getByRole('button', { name: 'Edit' })).toBeEnabled();
+        expect(screen.getByRole('checkbox', { name: 'Allow remote connections' })).toBeEnabled();
+        await act(async () => fireEvent.click(within(card('거실')).getByRole('button', { name: 'Connect' })));
+        expect(window.api.remoteConnect).toHaveBeenCalledWith('host-e');
+        await act(async () => finish({ hostId: 'host-c', name: '게임 PC' }));
+    });
+
+    // 어느 PC에서든 내 PC 이름을 바꾼다. 이름은 서버쨩 한 곳에 있다 (사용자 11-12)
+    it('이 PC 카드는 PC 이름에 이 PC 표시를 붙이고, 수정 창에서 바꾼 이름을 데몬에 보낸다', async () => {
+        vi.mocked(window.api.remotePeers).mockResolvedValue({ self: { hostId: 'host-me', name: '작업용' }, peers: [vps] });
+        vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [vpsDaemon], thisName: '작업용' });
+        window.api.remoteRenamePc = vi.fn().mockResolvedValue({ hostId: 'host-b', name: '맥북' });
+        await act(async () => render(<RemoteDaemonSection />));
+        const first = within(cards()).getAllByRole('listitem')[0];
+        expect(within(first).getByText('작업용', { selector: '.remote-pc-name' })).toBeInTheDocument();
+        expect(within(first).getByText('This PC', { selector: '.remote-pc-tag' })).toBeInTheDocument();
+
+        const dialog = await openEdit('김마무(vps)');
+        const input = within(dialog).getByRole('textbox', { name: 'PC name' });
+        expect(input).toHaveValue('vps');
+        await act(async () => fireEvent.change(input, { target: { value: '  맥북 ' } }));
+        await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Save' })));
+        expect(window.api.remoteRenamePc).toHaveBeenCalledWith('host-b', '맥북');
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('이름을 바꾸지 못하면 창을 닫지 않고 까닭을 보인다', async () => {
+        vi.mocked(window.api.remotePeers).mockResolvedValue({ self: { hostId: 'host-me', name: '작업용' }, peers: [vps] });
+        window.api.remoteRenamePc = vi.fn().mockResolvedValue({ error: 'x', error_code: 'relay_unreachable' });
+        await act(async () => render(<RemoteDaemonSection />));
+        await act(async () => fireEvent.click(within(within(cards()).getAllByRole('listitem')[0]).getByRole('button', { name: 'Edit' })));
+        const dialog = screen.getByRole('dialog');
+        await act(async () => fireEvent.change(within(dialog).getByRole('textbox', { name: 'PC name' }), { target: { value: '새 이름' } }));
+        await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Save' })));
+        expect(window.api.remoteRenamePc).toHaveBeenCalledWith('host-me', '새 이름');
+        expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeInTheDocument();
+    });
+
+    it('수정 창 제목 자리가 PC 이름 칸이고, 바로 오른쪽 별로 메인 데몬을 고른다', async () => {
+        vi.mocked(window.api.remotePeers).mockResolvedValue({ self: { hostId: 'host-me', name: '작업용' }, peers: [vps] });
+        vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [vpsDaemon] });
+        await act(async () => render(<RemoteDaemonSection />));
+        const dialog = await openEdit('김마무(vps)');
+        const title = dialog.querySelector('.saba-dialog-title')!;
+        expect(within(title as HTMLElement).getByRole('textbox', { name: 'PC name' })).toHaveValue('vps');
+        await act(async () => fireEvent.click(within(title as HTMLElement).getByRole('button', { pressed: false })));
+        await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Save' })));
+        expect(useSettingsStore.getState().mainDaemon).toBe('host-b');
     });
 });

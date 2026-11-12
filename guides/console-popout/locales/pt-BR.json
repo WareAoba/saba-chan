@@ -1,0 +1,8 @@
+{
+    "title": "Console · Abrir em janela separada",
+    "summary": "O console sempre à vista",
+    "steps": [
+        "A aba Console de cada servidor mostra o log e recebe comandos.",
+        "Clique em Abrir em janela separada para manter o console aberto enquanto usa outras telas."
+    ]
+}

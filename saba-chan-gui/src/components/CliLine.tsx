@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { CommandField, SettingField } from '../types/daemon';
 import { listItems } from '../utils/validation';
 import { Icon } from './Icon';
+import { Disclosure } from './ui/Disclosure';
 
 /**
  * "CLI로 보기" (I4-c): 이 화면과 같은 일을 하는 CLI 한 줄. 데몬 카탈로그(GET /api/actions)의
@@ -41,7 +42,7 @@ function arg(value: unknown) {
     return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-const SECRET_KEY = /(password|passwd|token|secret)$/i;
+export const SECRET_KEY = /(password|passwd|token|secret)$/i;
 
 /**
  * 설정 화면에서 CLI 줄에 덧붙일 값: 화면을 연 뒤 바꾼 것만 (`_`로 시작하는 GUI 내부 값 제외).
@@ -149,11 +150,16 @@ export function CliText({ line }: { line: string }) {
     const { t } = useTranslation('gui');
     const [copied, setCopied] = useState(false);
     return (
-        <details className="cli-line">
-            <summary>
-                <Icon name="terminal" size="sm" />
-                {t('cli_line.summary')}
-            </summary>
+        <Disclosure
+            spot="cli.line"
+            className="cli-line"
+            summary={
+                <>
+                    <Icon name="terminal" size="sm" />
+                    {t('cli_line.summary')}
+                </>
+            }
+        >
             <code data-tooltip={line}>{line}</code>
             <button
                 type="button"
@@ -168,7 +174,7 @@ export function CliText({ line }: { line: string }) {
             >
                 <Icon name={copied ? 'check' : 'copy'} size="sm" />
             </button>
-        </details>
+        </Disclosure>
     );
 }
 

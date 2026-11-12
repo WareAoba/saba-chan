@@ -84,6 +84,16 @@ fn detect_profile(gui: bool, no_gui: bool, os: Os, env: impl Fn(&str) -> Option<
     }
 }
 
+/// 이미 있는 설치 위에 다시 깔 때 따를 구성: `--gui`·`--no-gui`가 없으면 그 설치의 구성 그대로.
+/// 환경만 보면 데스크톱으로 깐 PC에 SSH로 들어와 다시 깔 때 헤드리스로 판정되어 GUI와 바로가기를 지운다
+fn kept_profile(gui: bool, no_gui: bool, installed: Option<Profile>) -> Option<Profile> {
+    if gui || no_gui {
+        None
+    } else {
+        installed
+    }
+}
+
 /// `--modules a,b`를 릴리스에 있는 모듈 id로 확인한다. 모르는 이름은 고를 수 있는 목록과 함께 거절한다
 fn pick_modules(asked: &[String], available: &[core::ModuleInfo]) -> std::result::Result<Vec<String>, String> {
     let ids: Vec<&str> = available.iter().map(|m| m.id.as_str()).collect();
@@ -124,12 +134,20 @@ impl InstallHooks for Hooks {
 }
 
 pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
-    let profile = detect_profile(args.gui, args.no_gui, Os::current(), |k| std::env::var(k).ok());
+    let profile = kept_profile(args.gui, args.no_gui, core::existing_install().map(|_| Profile::load()))
+        .unwrap_or_else(|| detect_profile(args.gui, args.no_gui, Os::current(), |k| std::env::var(k).ok()));
 
     let spin = crate::progress::spinner(&t!("install.fetching"));
-    let manifest = release::fetch_latest().await;
+    let manifest = release::fetch_latest(args.channel.as_deref()).await;
     spin.finish_and_clear();
-    let manifest = manifest.map_err(|e| failed(t!("install.fetch_failed", reason = e)))?;
+    let manifest = manifest.map_err(|e| {
+        failed(match &e {
+            release::FetchError::ChannelOlder { channel, offered, installer } => {
+                t!("install.channel_older", channel = channel, offered = offered, installer = installer)
+            }
+            release::FetchError::Other(reason) => t!("install.fetch_failed", reason = reason),
+        })
+    })?;
     let available = release::modules(&manifest);
     let fitted = fit_profile(profile, args.gui, manifest.components.contains_key("gui"), &saba_chan_updater_lib::relay::current_platform());
     if fitted != profile {
@@ -198,6 +216,9 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         }
         ctx.out.hint(&t!("install.components_dir", dir = chosen.display()));
     }
+    if let Some(channel) = &args.channel {
+        ctx.out.hint(&t!("install.channel", channel = channel));
+    }
     ctx.ask.ensure(&summary)?;
 
     let hooks = Hooks {
@@ -213,6 +234,8 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         selected_modules: modules.clone(),
         module_metadata: available,
         release: Some(manifest),
+        // 위에서 이 채널로 받았다. 설치 뒤의 업데이트도 이 채널로 받는다
+        channel: args.channel.clone(),
         // 창 제거기를 두지 않는다: Windows 앱 목록에도 나오지 않고, 지울 때는 데몬을 끄고 설치 폴더를 지운다
         uninstaller_exe: None,
         components_dir: args
@@ -393,6 +416,16 @@ mod tests {
             detect_profile(false, true, Os::Unix, env(&[("DISPLAY", ":0")])),
             Profile::Headless
         );
+    }
+
+    /// 데스크톱으로 깐 PC에 SSH로 들어와 다시 설치해도 GUI를 지우지 않는다: 있는 설치의 구성을 따르고, 바꾸려면 `--gui`·`--no-gui`
+    #[test]
+    fn reinstalling_keeps_the_installed_profile_unless_asked() {
+        assert_eq!(kept_profile(false, false, Some(Profile::Desktop)), Some(Profile::Desktop));
+        assert_eq!(kept_profile(false, false, Some(Profile::Headless)), Some(Profile::Headless));
+        assert_eq!(kept_profile(false, false, None), None, "a first install looks at the environment");
+        assert_eq!(kept_profile(false, true, Some(Profile::Desktop)), None);
+        assert_eq!(kept_profile(true, false, Some(Profile::Headless)), None);
     }
 
     /// 모듈 이름은 릴리스에 있는 것만, 대소문자 무시, 겹치면 한 번

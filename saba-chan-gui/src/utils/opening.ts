@@ -18,14 +18,36 @@ export interface OpeningInput {
     relayConnected: boolean;
     /** 데몬 준비 뒤 릴레이를 기다린 시간 */
     waitedMs: number;
+    /** 다른 PC로 바꿔 다시 연 창 (`markDaemonSwitch`): 오프닝·기동음 없이 바로 연다 */
+    switched?: boolean;
 }
 
 export function openingGate(s: OpeningInput): { hold: boolean; chime: boolean } {
-    if (!s.daemonOk) return { hold: false, chime: false };
+    if (!s.daemonOk || s.switched) return { hold: false, chime: false };
     const relayUnknown = !s.configLoaded || (s.relayConfigured && !s.relayChecked);
     if (relayUnknown && s.waitedMs < RELAY_WAIT_MS) return { hold: true, chime: false };
     if (relayUnknown) return { hold: false, chime: false };
     return { hold: false, chime: !s.relayConfigured || s.relayConnected };
+}
+
+/** 다른 PC로 바꿀 때 창을 다시 읽는다: 다시 연 창이 오프닝 없이 열리게 표시해 둔다 (사용자 11-12) */
+const SWITCH_KEY = 'saba:daemon-switched';
+export function markDaemonSwitch(): void {
+    try {
+        sessionStorage.setItem(SWITCH_KEY, '1');
+    } catch {
+        /* 저장할 수 없으면 오프닝이 그대로 나온다 */
+    }
+}
+/** 이 창이 PC를 바꿔 다시 연 창인가. 한 번 읽으면 지운다 */
+export function takeDaemonSwitch(): boolean {
+    try {
+        const switched = sessionStorage.getItem(SWITCH_KEY) === '1';
+        sessionStorage.removeItem(SWITCH_KEY);
+        return switched;
+    } catch {
+        return false;
+    }
 }
 
 /*
@@ -36,6 +58,11 @@ export function openingGate(s: OpeningInput): { hold: boolean; chime: boolean } 
  * - 비정상 기동(fall, 소리 없음): 낱말이 제자리에서 후두둑 떨어지고 로고가 가라앉으며 메인 화면이 드러난다.
  */
 export type OpeningKind = 'burst' | 'fall';
+/** 재생할 오프닝: 종류와 화음이 울리는 때 (openingChordMs) */
+export interface OpeningPlay {
+    kind: OpeningKind;
+    chord: number;
+}
 
 /** 기동음 안에서 마지막 음(도·라·도 화음)이 울리는 때. 248 BPM 네 번째 박 (app-startup.wav) */
 export const CHIME_CHORD_MS = 726;
@@ -207,4 +234,37 @@ export function whenOpeningReady(
     return Promise.race([settled, timeout]).then(
         () => new Promise<void>((resolve) => nextFrame(() => nextFrame(() => resolve()))),
     );
+}
+
+/** 메인 화면이 잠잠해졌다고 볼 조건: gapMs보다 긴 프레임 없이 quietMs 동안 그려지기. timeoutMs가 지나면 그냥 재생한다 */
+export const OPENING_SETTLE = { quietMs: 250, gapMs: 40, timeoutMs: 1000 };
+
+/**
+ * 메인 화면이 잠잠해질 때까지 기다린다. 메인 화면은 처음 그린 뒤에도 확장·모듈 번역을 받아 다시 그리는 등
+ * 한동안 긴 프레임이 이어지는데, 그 사이에 오프닝을 시작하면 첫머리가 끊긴다.
+ * 프레임 시계(nextFrame이 주는 시각)로 재고, 기다린 시간(ms)을 돌려준다.
+ */
+export function whenScreenSettled(
+    nextFrame: (cb: (now: number) => void) => void,
+    { quietMs, gapMs, timeoutMs }: { quietMs: number; gapMs: number; timeoutMs: number } = OPENING_SETTLE,
+): Promise<number> {
+    return new Promise((resolve) => {
+        let first: number | null = null;
+        let last = 0;
+        let quietSince = 0;
+        const tick = (now: number) => {
+            if (first === null) {
+                first = last = quietSince = now;
+            } else {
+                if (now - last > gapMs) quietSince = now;
+                last = now;
+                if (now - quietSince >= quietMs || now - first >= timeoutMs) {
+                    resolve(now - first);
+                    return;
+                }
+            }
+            nextFrame(tick);
+        };
+        nextFrame(tick);
+    });
 }

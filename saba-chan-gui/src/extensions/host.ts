@@ -19,7 +19,7 @@ export interface HostWindow {
     servers: () => ServerInfo[];
     /** 서버 켜기·끄기·재시작. 확인이 필요하면 그 창의 확인 규칙을 그대로 거친다. 넘겼으면 true (메인 창은 확인 창을 띄운 것도 true) */
     run: (instanceId: string, action: ServerAction) => Promise<boolean>;
-    /** 메인 창의 그 화면(`servers`·`discord`·`activity`·`settings`·`ext:<id>`)을 연다 */
+    /** 메인 창의 그 화면(`servers`·`discord`·`activity`·`settings`·`ext:<id>`)이나 그 서버(`server:<인스턴스 id>`)를 연다 */
     openApp: (route?: string) => void;
 }
 
@@ -36,7 +36,10 @@ export interface ExtensionHost extends HostWindow {
 /** openApp이 받는 메인 창 화면. 그 밖의 값은 무시한다 (빈 화면으로 가지 않게) */
 const APP_ROUTES = ['servers', 'discord', 'activity', 'settings'];
 export const isAppRoute = (route: unknown): route is string =>
-    typeof route === 'string' && (APP_ROUTES.includes(route) || /^ext:[A-Za-z0-9_-]+$/.test(route));
+    typeof route === 'string' &&
+    (APP_ROUTES.includes(route) || /^ext:[A-Za-z0-9_-]+$/.test(route) || serverRoute(route) !== null);
+/** `server:<인스턴스 id>`의 id */
+export const serverRoute = (route: string): string | null => /^server:([A-Za-z0-9_-]{1,128})$/.exec(route)?.[1] ?? null;
 
 const NO_WINDOW: HostWindow = {
     servers: () => [],

@@ -24,3 +24,19 @@ export function extensionInstallMethod(server?: { extension_data?: Record<string
     }
     return null;
 }
+
+/**
+ * 버전 목록이 브랜치 목록인 모듈의 설치 방식 이름, 아니면 null.
+ * 설치 방식 익스텐션(Steam 등)으로 받으면서 `list_versions`·`install_server`를 구현했다고 밝힌 모듈이다
+ * (함수 목록을 모르는 옛 모듈은 뺀다). 고른 브랜치는 데몬이 `<방식>_beta`에 적는다.
+ */
+export function versionBranchMethod(
+    module?: { install?: { method?: string } | null; functions?: string[] | null } | null,
+) {
+    const method = module?.install?.method;
+    if (!method || BUILTIN_INSTALL_METHODS.includes(method)) return null;
+    const functions = module?.functions;
+    return Array.isArray(functions) && functions.includes('list_versions') && functions.includes('install_server')
+        ? method
+        : null;
+}

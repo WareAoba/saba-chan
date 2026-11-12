@@ -88,16 +88,28 @@ pub async fn get_console_handler(
     State(state): State<IPCServer>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
     let since_id = params.get("since").and_then(|s| s.parse::<u64>().ok());
     let count = params.get("count").and_then(|c| c.parse::<usize>().ok());
-
-    let result = if params.get("spans").is_some_and(|v| v == "1" || v == "true") {
-        supervisor.get_console_output_with_spans(&id, since_id, count).await
-    } else {
-        supervisor.get_console_output(&id, since_id, count).await
-    };
+    let spans = params.get("spans").is_some_and(|v| v == "1" || v == "true");
+    // `?wait=<초>&epoch=<세대>`: 새 줄이 없으면 생길 때까지 기다린다. 기다리는 동안 supervisor 잠금은 쥐지 않는다
+    let known_epoch = params.get("epoch").and_then(|e| e.parse::<u64>().ok());
+    let wait = if since_id.is_some() { super::long_poll::wait_of(&params) } else { std::time::Duration::ZERO };
+    // `disk=seen`: 꺼진 서버의 디스크 기록을 이미 받았다. 디스크 기록은 since를 몰라 매번 같은 줄을 주므로, 기다릴 때는 빼고 준다
+    let disk_seen = !wait.is_zero() && params.get("disk").is_some_and(|v| v == "seen");
+    let changed = &crate::supervisor::managed_process::CONSOLE_CHANGED;
+    let result = super::long_poll::read_waiting(changed, wait, known_epoch, || async {
+        let supervisor = state.supervisor.read().await;
+        let mut result = if spans {
+            supervisor.get_console_output_with_spans(&id, since_id, count).await?
+        } else {
+            supervisor.get_console_output(&id, since_id, count).await?
+        };
+        if disk_seen && result.get("source").and_then(Value::as_str) == Some("disk") {
+            result["lines"] = json!([]);
+        }
+        Ok(result)
+    })
+    .await;
     match result {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
@@ -244,6 +256,73 @@ pub async fn players_handler(Path(id): Path<String>, State(state): State<IPCServ
             (StatusCode::OK, Json(crate::plugin::error_response(&e))).into_response()
         }
     }
+}
+
+/// GET /api/instance/:id/lists — 모듈이 선언한 플레이어 목록(`[[lists]]`: 화이트리스트·관리자·밴 등)과 지금 명단.
+/// 명단은 모듈 `read_lists`가 읽어 주고(서버가 꺼져 있어도 읽는다), 이름은 모듈 locales `lists.<id>`(없으면 id).
+/// `editable`은 넣기·빼기 명령을 지금 보낼 수 있는가다 (넣기·빼기는 `POST …/command`에 선언된 명령 이름으로 한다)
+pub async fn lists_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
+    let fail = |status: StatusCode, code: &str, error: String| (status, Json(json!({ "success": false, "error_code": code, "error": error }))).into_response();
+    let lang = state.config_store.ui_language().await;
+    let mut lists: Vec<Value> = {
+        let sup = state.supervisor.read().await;
+        let Some(instance) = sup.instance_store.get(&id) else {
+            return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+        };
+        let Some(module) = sup.module_loader.get_module(&instance.module_name).ok().filter(|m| !m.metadata.lists.is_empty()) else {
+            return fail(StatusCode::OK, "not_supported", "This server's module has no player lists".into());
+        };
+        let running = sup.is_running(&id).await;
+        let stdin_route = sup.routes_commands_to_stdin(&id).await;
+        let rcon_route = !stdin_route && sup.rcon_route(&id).is_some();
+        let lang = crate::chat::i18n::normalize_language(&lang);
+        let locales = [crate::actions::module_locale(&module, &lang), crate::actions::module_locale(&module, "en")];
+        let ready = |command: &str| {
+            let method = crate::commands::find(&module.metadata, command).and_then(|c| c.method.as_deref());
+            super::command::command_ready(method, running, stdin_route, rcon_route)
+        };
+        module
+            .metadata
+            .lists
+            .iter()
+            .map(|list| {
+                let pointer = format!("/lists/{}", list.id);
+                let label = locales.iter().find_map(|l| l.pointer(&pointer).and_then(Value::as_str)).unwrap_or(&list.id);
+                let mut view = json!({ "id": list.id, "label": label, "add": list.add, "remove": list.remove, "danger": list.danger, "editable": ready(&list.add) && ready(&list.remove) });
+                if let Some(setting) = &list.setting {
+                    view["setting"] = json!(setting);
+                }
+                view
+            })
+            .collect()
+    };
+    let result = match Supervisor::manage_properties(&state.supervisor, &id, "read_lists", None).await {
+        Ok(result) => result,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
+    };
+    if result.get("success").and_then(Value::as_bool) != Some(true) {
+        return (StatusCode::OK, Json(result)).into_response();
+    }
+    for list in &mut lists {
+        let entries: Vec<Value> = list["id"].as_str().and_then(|id| result["lists"].get(id)).and_then(Value::as_array).into_iter().flatten().filter_map(list_entry).collect();
+        list["entries"] = json!(entries);
+    }
+    (StatusCode::OK, Json(json!({ "success": true, "lists": lists }))).into_response()
+}
+
+/// 모듈이 준 명단 한 줄에서 이름·넣은 때(`added`)·메모(`note`, 예: 밴 이유)만 남긴다. 이름이 없는 줄은 뺀다
+fn list_entry(entry: &Value) -> Option<Value> {
+    let text = |key: &str, max: usize| {
+        let value: String = entry.get(key)?.as_str()?.chars().filter(|c| !c.is_control()).take(max).collect();
+        (!value.is_empty()).then_some(value)
+    };
+    let mut out = json!({ "name": text("name", 64)? });
+    for (key, max) in [("added", 40), ("note", 200)] {
+        if let Some(value) = text(key, max) {
+            out[key] = json!(value);
+        }
+    }
+    Some(out)
 }
 
 /// POST /api/instance/:id/chat — 디스코드 글을 게임 채팅으로 (`{name, text}`, 액션 `server.chat`). 모듈 `chat_send` 함수를
@@ -469,24 +548,36 @@ fn server_running() -> axum::response::Response {
     (StatusCode::CONFLICT, Json(error)).into_response()
 }
 
+/// `dir`과 겹치는 폴더(working_dir 또는 인스턴스 폴더, 그 안이나 바깥)를 쓰는 인스턴스 (`except`는 뺀다)
+async fn other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Vec<String> {
+    let supervisor = state.supervisor.read().await;
+    let dir = std::path::Path::new(dir);
+    supervisor.instance_store.list().iter()
+        .filter(|i| {
+            i.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::paths_overlap(std::path::Path::new(d), dir))
+                || saba_chan_updater_lib::paths_overlap(&supervisor.instance_store.instance_dir(&i.id), dir)
+        })
+        .filter(|i| except != Some(i.id.as_str()))
+        .map(|i| i.id.clone())
+        .collect()
+}
+
+/// `hold_other_instances_using`이 지금 거절할지를 잠금을 잡지 않고 본다: 그 인스턴스 중 작업 중이거나 켜진 것이 있다
+pub(super) async fn other_instances_busy(state: &IPCServer, dir: &str, except: Option<&str>) -> bool {
+    for id in other_instances_using(state, dir, except).await {
+        if super::backup::InstanceLock::held(&id) || super::backup::is_running(state, &id).await {
+            return true;
+        }
+    }
+    false
+}
+
 /// `dir`과 겹치는 폴더(working_dir 또는 인스턴스 폴더, 그 안이나 바깥)를 쓰는 인스턴스의 작업 잠금을 모두 잡는다.
 /// `except`(이미 잠금을 쥔 인스턴스)는 건너뛴다. 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
 #[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
 pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<super::backup::InstanceLock>, axum::response::Response> {
-    let ids: Vec<String> = {
-        let supervisor = state.supervisor.read().await;
-        let dir = std::path::Path::new(dir);
-        supervisor.instance_store.list().iter()
-            .filter(|i| {
-                i.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::paths_overlap(std::path::Path::new(d), dir))
-                    || saba_chan_updater_lib::paths_overlap(&supervisor.instance_store.instance_dir(&i.id), dir)
-            })
-            .filter(|i| except != Some(i.id.as_str()))
-            .map(|i| i.id.clone())
-            .collect()
-    };
     let mut guards = Vec::new();
-    for id in ids {
+    for id in other_instances_using(state, dir, except).await {
         let Some(guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
             return Err(super::backup::instance_busy());
         };
@@ -498,12 +589,78 @@ pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, exc
     Ok(guards)
 }
 
+/// GET /api/instance/:id/server/reset — 초기화가 지울 것. 모듈 `reset_preview`가 범위마다 밝힌 항목 가운데
+/// 지금 있는 것만 크기와 함께 돌려준다 (아무것도 지우지 않는다). 모듈이 구현하지 않으면 `not_supported`
+pub async fn reset_preview_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
+    let mut result = match Supervisor::manage_properties(&state.supervisor, &id, "reset_preview", None).await {
+        Ok(result) => result,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
+    };
+    if result.get("success").and_then(Value::as_bool) != Some(true) {
+        return (StatusCode::OK, Json(result)).into_response();
+    }
+    let (base, boundary) = {
+        let supervisor = state.supervisor.read().await;
+        let Some(instance) = supervisor.instance_store.get(&id) else {
+            return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
+        };
+        let instance_dir = supervisor.instance_store.instance_dir(&id);
+        let module = supervisor.module_loader.get_module(&instance.module_name).ok();
+        let metadata = module.as_ref().map(|m| &m.metadata);
+        (crate::module_paths::server_dir(instance, &instance_dir, metadata), crate::module_paths::Boundary::for_instance(instance, &instance_dir, metadata))
+    };
+    let backed_up = super::backup::backup_targets(&state, &id).await;
+    let scopes = result["scopes"].take();
+    let scopes = tokio::task::spawn_blocking(move || {
+        let scopes: Vec<Value> = scopes.as_array().into_iter().flatten().map(|scope| reset_scope(scope, &base, &boundary, &backed_up)).collect();
+        scopes
+    })
+    .await
+    .unwrap_or_default();
+    (StatusCode::OK, Json(json!({ "success": true, "scopes": scopes }))).into_response()
+}
+
+/// 모듈이 밝힌 초기화 범위 하나 `{id, label, note?, items:[{label, paths}]}`를 화면에 보일 모양으로:
+/// 항목마다 지금 있는 경로만(서버 폴더 안이면 상대 경로, 폴더는 `/`로 끝낸다) 크기와 함께 남기고, 남은 경로가 없는 항목은 뺀다.
+/// `backup`은 이 범위가 백업이 담는 것을 지우는가
+fn reset_scope(scope: &Value, base: &std::path::Path, boundary: &crate::module_paths::Boundary, backed_up: &[std::path::PathBuf]) -> Value {
+    let mut backup = false;
+    let items: Vec<Value> = scope["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let mut size = 0;
+            let mut shown = Vec::new();
+            for path in item["paths"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+                let Some(path) = boundary.resolve(std::path::Path::new(path)) else { continue };
+                let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
+                size += if meta.is_dir() { crate::system_monitor::dir_size(&path) } else { meta.len() };
+                backup |= backed_up.iter().any(|b| saba_chan_updater_lib::paths_overlap(b, &path));
+                let name = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+                shown.push(if meta.is_dir() { format!("{name}/") } else { name });
+            }
+            (!shown.is_empty()).then(|| json!({ "label": item["label"], "paths": shown, "size": size }))
+        })
+        .collect();
+    let mut out = json!({ "id": scope["id"], "label": scope["label"], "items": items, "backup": backup });
+    if scope["note"].is_string() {
+        out["note"] = scope["note"].clone();
+    }
+    out
+}
+
 /// POST /api/instance/:id/server/reset — Full server reset (delete worlds, configs, etc.)
+/// 본문 `{scope?, backup?}`: `scope`는 미리 보기(`GET`)가 준 범위 id(없으면 모듈의 기본 범위), `backup: true`면 지우기 전에 백업을 하나 만든다.
 /// 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
 pub async fn reset_server_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
+    LooseJson(payload): LooseJson<Value>,
 ) -> impl IntoResponse {
+    let payload = payload.map(|Json(v)| v).unwrap_or(Value::Null);
+    let scope = payload.get("scope").filter(|s| s.is_string()).cloned();
+    let backup_first = payload.get("backup").and_then(Value::as_bool) == Some(true);
     let Some(guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
     };
@@ -514,13 +671,18 @@ pub async fn reset_server_handler(
     let reset = {
         let (state, id) = (state.clone(), id.clone());
         crate::audit::spawn(async move {
-            let _guard = guard;
-            Supervisor::manage_properties(&state.supervisor, &id, "reset_server", None).await
+            let guard = guard;
+            // 백업을 남기지 못했으면 지우지 않는다
+            if backup_first {
+                super::backup::take_backup_held(&state, &id, crate::backup::BackupKind::Manual, &guard).await.map_err(Box::new)?;
+            }
+            Ok::<_, Box<axum::response::Response>>(Supervisor::manage_properties(&state.supervisor, &id, "reset_server", scope).await)
         })
     };
-    let resp = match reset.await.unwrap_or_else(|e| Err(e.into())) {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-        Err(e) => (
+    let resp = match reset.await.unwrap_or_else(|e| Ok(Err(e.into()))) {
+        Err(refused) => *refused,
+        Ok(Ok(result)) => (StatusCode::OK, Json(result)).into_response(),
+        Ok(Err(e)) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(crate::plugin::error_response(&e)),
         )
@@ -901,6 +1063,9 @@ pub async fn install_server_handler(
                 return result;
             };
             if result.as_ref().is_ok_and(|r| r.get("success").and_then(Value::as_bool) == Some(true)) {
+                // 받은 빌드를 적어 둔다 (확인은 오래 걸릴 수 있어 뒤에서)
+                let (state, id) = (state.clone(), id.to_string());
+                tokio::spawn(async move { super::instance::server_update_status(&state, &id).await });
                 return result;
             }
             let mut result = result;
@@ -1011,7 +1176,8 @@ fn save_installed(sup: &mut Supervisor, id: &str, version: &str, result: &Value,
     let Some(mut inst) = sup.instance_store.get(id).cloned() else {
         anyhow::bail!("instance {} is gone", id);
     };
-    inst.server_version = Some(version.to_string());
+    let method = sup.module_loader.get_module(&inst.module_name).ok().and_then(|m| m.metadata.install.map(|i| i.method)).unwrap_or_default();
+    inst.record_installed_version(&method, version);
     let exe = ["executable_path", "jar_path"].iter().find_map(|k| result.get(*k).and_then(Value::as_str)).filter(|p| !p.is_empty());
     if let Some(exe) = exe {
         let folder = result
@@ -1174,6 +1340,65 @@ mod tests {
         let unsupported = players("without").await;
         assert_eq!((unsupported.status, unsupported.body["error_code"].as_str()), (StatusCode::OK, Some("not_supported")), "{}", unsupported.body);
         assert_eq!(players("missing").await.status, StatusCode::NOT_FOUND);
+    }
+
+    /// 플레이어 목록: 모듈이 선언한 목록(`[[lists]]`)마다 모듈 locales의 이름과 `read_lists`가 읽어 준 명단을 돌려준다.
+    /// 명단은 이름·넣은 때·메모만 남기고, 넣기·빼기 명령을 지금 보낼 수 있는지를 `editable`로 알린다
+    #[tokio::test]
+    async fn lists_come_from_the_module_declaration_and_read_lists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let lists = "\n[[commands.fields]]\nname = \"allow\"\nlabel = \"Allow\"\nmethod = \"module\"\ninputs = [{ name = \"player\", type = \"text\", required = true }]\n\n\
+                     [[commands.fields]]\nname = \"block\"\nlabel = \"Block\"\nmethod = \"console\"\nconsole_template = \"block {player} {reason}\"\ninputs = [{ name = \"player\", type = \"text\", required = true }, { name = \"reason\", type = \"text\" }]\n\n\
+                     [[lists]]\nid = \"whitelist\"\nadd = \"allow\"\nremove = \"allow\"\n\n[[lists]]\nid = \"banned\"\nadd = \"block\"\nremove = \"allow\"\ndanger = true\n";
+        for (name, table) in [("game", lists), ("plain", "")] {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(dir.join("locales")).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n{table}")).unwrap();
+            std::fs::write(dir.join("locales").join("en.json"), r#"{ "lists": { "whitelist": "Whitelist" } }"#).unwrap();
+            std::fs::write(
+                dir.join("lifecycle.py"),
+                "import json, sys\nconfig = json.load(sys.stdin)\n\
+                 lists = {'whitelist': [{'name': 'Steve', 'uuid': 'x'}, {'name': 'Al\\nex'}, {'uuid': 'no-name'}],\n\
+                          'banned': [{'name': 'Griefer', 'added': '2026-11-09T10:00:00+09:00', 'note': 'spam'}], 'undeclared': [{'name': 'x'}]}\n\
+                 print(json.dumps({'success': sys.argv[1] == 'read_lists', 'lists': lists}))\n",
+            )
+            .unwrap();
+        }
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        for (id, module) in [("with", "game"), ("without", "plain")] {
+            let mut inst = crate::instance::ServerInstance::new(id, module);
+            inst.id = id.into();
+            sup.instance_store.add(inst).unwrap();
+        }
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let lists = |id: &'static str| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(lists_handler(Path(id.into()), State(state)).await.into_response()).await }
+        };
+
+        let off = lists("with").await;
+        assert_eq!(off.status, StatusCode::OK, "{}", off.body);
+        assert_eq!(
+            off.body,
+            json!({ "success": true, "lists": [
+                { "id": "whitelist", "label": "Whitelist", "add": "allow", "remove": "allow", "danger": false, "editable": false,
+                  "entries": [{ "name": "Steve" }, { "name": "Alex" }] },
+                { "id": "banned", "label": "banned", "add": "block", "remove": "allow", "danger": true, "editable": false,
+                  "entries": [{ "name": "Griefer", "added": "2026-11-09T10:00:00+09:00", "note": "spam" }] },
+            ] })
+        );
+        // 켜진 서버: 모듈이 받는 명령은 보낼 수 있고, 콘솔 명령은 콘솔·RCON 길이 있어야 한다
+        state.supervisor.read().await.tracker.track("with", std::process::id()).unwrap();
+        let on = lists("with").await;
+        assert_eq!((on.body["lists"][0]["editable"].as_bool(), on.body["lists"][1]["editable"].as_bool()), (Some(true), Some(false)), "{}", on.body);
+        let _ = state.supervisor.read().await.tracker.untrack("with");
+
+        let unsupported = lists("without").await;
+        assert_eq!((unsupported.status, unsupported.body["error_code"].as_str()), (StatusCode::OK, Some("not_supported")), "{}", unsupported.body);
+        assert_eq!(lists("missing").await.status, StatusCode::NOT_FOUND);
     }
 
     /// 디스코드 → 게임 채팅 (사용자 요청 2026-10-30): 모듈 `chat_send`가 한 줄로 다듬은 이름·본문을 받는다
@@ -1647,6 +1872,64 @@ mod tests {
         assert_eq!(inst.working_dir, Some(files.join("v2").to_string_lossy().into_owned()));
         assert_eq!(inst.executable_path, Some(files.join("v2").join("server.bin").to_string_lossy().into_owned()));
         assert_eq!(std::fs::read_to_string(files.join("world").join("level.dat")).unwrap(), "migrated");
+    }
+
+    /// 설치 방식 익스텐션으로 받는 서버(Steam 등)에서 고른 버전은 그 방식의 브랜치다: `<방식>_beta`에 적어
+    /// 업데이트 확인이 그 브랜치를 보고, 업데이트도 같은 브랜치로 받는다. 게임 버전(`server_version`)으로 적지 않는다
+    #[tokio::test]
+    async fn a_version_chosen_for_an_extension_installed_server_is_kept_as_its_branch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = crate::plugin::resolve_modules_dir();
+        let module = tempfile::Builder::new().prefix("branch-install-").tempdir_in(&modules).unwrap();
+        let dir = module.path();
+        let game = dir.file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(
+            dir.join("module.toml"),
+            format!("[module]\nschema_version = 1\nname = \"{game}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"steamcmd\"\n"),
+        )
+        .unwrap();
+        // 받으라고 한 브랜치를 서버 폴더에 적어 둔다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nconfig = json.load(sys.stdin)\n\
+             if sys.argv[1] == 'install_server':\n    open(os.path.join(config['install_dir'], 'branch.txt'), 'w').write(config.get('version') or 'none')\n\
+             print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", &game);
+        let id = inst.id.clone();
+        let files = sup.instance_store.instance_dir(&id).join("files");
+        std::fs::create_dir_all(&files).unwrap();
+        inst.working_dir = Some(files.to_string_lossy().into_owned());
+        inst.apply_install_extension_data("steamcmd", &[]);
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let body = json!({ "install_dir": files, "instance_id": id, "version": "unstable", "background": true });
+        let started = crate::ipc::internal::into_internal(install_server_handler(Path(game.clone()), State(state.clone()), Json(body)).await.into_response()).await;
+        assert_eq!(started.status, StatusCode::OK, "{}", started.body);
+        let mut done = None;
+        for _ in 0..2400 {
+            done = state.provision_tracker.get("srv").filter(|p| p.done);
+            if done.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert_eq!(done.expect("the install never finished").error, None);
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!(inst.extension_data.get("steamcmd_beta"), Some(&json!("unstable")));
+        assert_eq!(inst.server_version, None, "a branch name is not a game version");
+        state.provision_tracker.remove("srv");
+
+        // 업데이트는 고른 브랜치로 받는다
+        std::fs::remove_file(files.join("branch.txt")).unwrap();
+        let updated = super::super::instance::begin_server_update(&state, &id).await.ok().expect("the update starts").await.unwrap();
+        assert!(updated);
+        assert_eq!(std::fs::read_to_string(files.join("branch.txt")).unwrap(), "unstable");
     }
 
     // D-S12: 설치 버전 감지는 모듈 호출 동안 잠금을 쥐지 않아, 그사이 저장된 새 버전(설치·업데이트 뒤 설정)을

@@ -4,8 +4,9 @@
 //! 정한 요일마다(`weekdays`), 정한 날 한 번(`date`). 시각은 데몬 PC의 시간대로 본다.
 //!
 //! 인스턴스마다 `instance.json`의 `schedule`에 작업 목록이 있다. 데몬은 30초마다 한 번 보고,
-//! 때가 된 작업을 실행한다. 마지막 실행 시각은 메모리에만 둔다: 데몬을 다시 켜면 주기 작업은
-//! 그때부터 다시 세고, 시각 작업은 지나간 시각을 따라잡지 않는다 (밀린 재시작이 한꺼번에 돌지 않게).
+//! 때가 된 작업을 실행한다. 마지막 실행 시각은 인스턴스 폴더 `schedule-runs.json`에도 남긴다: 데몬을 다시 켜면
+//! 주기 작업은 앞 실행에서 세던 데부터 이어 세고(꺼져 있던 사이 지난 차례는 켠 뒤 한 번만),
+//! 시각 작업은 지나간 시각을 따라잡지 않는다 (밀린 재시작이 한꺼번에 돌지 않게).
 //! 데몬이 켜진 뒤 더하거나 고친 작업은 그때부터 세고, 밀린 차례(PC 절전 등)는 가장 최근 것 한 번만 실행한다.
 //! 재시작·업데이트는 `warn_minutes`만큼 먼저 깨어나 게임 안에 예고한 뒤 정한 시각에 실행한다.
 
@@ -218,6 +219,10 @@ pub struct Clock {
     running: HashSet<String>,
     /// 첫 차례의 시각 (그때 있던 작업만 데몬 시작부터 센다)
     first_scan: Option<NaiveDateTime>,
+    /// 앞 실행(데몬을 끄기 전)이 남긴 `last`. 주기 작업만 여기서 이어 센다
+    saved: HashMap<String, NaiveDateTime>,
+    /// `last`가 마지막 `take_changed` 뒤로 바뀌었다
+    changed: bool,
 }
 
 impl Clock {
@@ -230,7 +235,15 @@ impl Clock {
         // 처음 보는 작업: 데몬이 켜질 때 있던 것(첫 차례)은 시작부터, 뒤에 더하거나 고친 것은 지금부터 센다
         let first = *self.first_scan.get_or_insert(now);
         let base = if now == first { started } else { now };
-        let last = *self.last.entry(key.to_string()).or_insert(base);
+        let last = match self.last.get(key) {
+            Some(last) => *last,
+            None => {
+                let base = self.resume(key, task, now).unwrap_or(base);
+                self.last.insert(key.to_string(), base);
+                self.changed = true;
+                base
+            }
+        };
         let mut fire = task.next_fire(last)?;
         if now < fire - task.lead() {
             return None;
@@ -263,19 +276,116 @@ impl Clock {
             return None;
         }
         let base = if self.first_scan.is_none() { started } else { now };
-        task.next_fire(self.last.get(key).copied().unwrap_or(base))
+        task.next_fire(self.last.get(key).copied().or_else(|| self.resume(key, task, now)).unwrap_or(base))
+    }
+
+    /// 앞 실행이 남긴 시각 (주기 작업만). 앞날로 적힌 시각(시계가 뒤로 간 PC)은 믿지 않는다
+    fn resume(&self, key: &str, task: &ScheduledTask, now: NaiveDateTime) -> Option<NaiveDateTime> {
+        task.every_minutes.and(self.saved.get(key).copied()).filter(|last| *last <= now)
+    }
+
+    /// 데몬이 꺼져 있던 사이 지나간 시각 작업의 가장 최근 차례 (`restore` 뒤 첫 차례 전에 묻는다). 시각 작업은 따라잡지 않으므로
+    /// 그 차례는 돌지 않는다. 주기 작업은 켠 뒤 한 번 돌므로 없다
+    pub fn missed(&self, key: &str, task: &ScheduledTask, started: NaiveDateTime) -> Option<NaiveDateTime> {
+        if !task.enabled || task.every_minutes.is_some() || !task.problems().is_empty() {
+            return None;
+        }
+        let last = self.saved.get(key).copied().filter(|last| *last <= started)?;
+        let mut fire = task.next_fire(last).filter(|fire| *fire <= started)?;
+        while let Some(next) = task.next_fire(fire).filter(|next| *next <= started) {
+            fire = next;
+        }
+        Some(fire)
+    }
+
+    /// 데몬이 켜질 때 한 번: 앞 실행이 남긴 마지막 실행 시각 (`read_runs`)
+    pub fn restore(&mut self, saved: HashMap<String, NaiveDateTime>) {
+        self.saved = saved;
+    }
+
+    /// 마지막으로 부른 뒤 마지막 실행 시각이 바뀌었으면 전부 (파일에 남길 것)
+    pub fn take_changed(&mut self) -> Option<HashMap<String, NaiveDateTime>> {
+        std::mem::take(&mut self.changed).then(|| self.last.clone())
     }
 
     pub fn finish(&mut self, key: &str, fired_at: NaiveDateTime) {
         self.running.remove(key);
         self.last.insert(key.to_string(), fired_at);
+        self.changed = true;
     }
 
     /// 차례마다 먼저 부른다: 목록에서 사라진 작업은 잊는다
     pub fn retain(&mut self, keys: &HashSet<String>, now: NaiveDateTime) {
         self.first_scan.get_or_insert(now);
+        let before = self.last.len();
         self.last.retain(|k, _| keys.contains(k));
+        self.saved.retain(|k, _| keys.contains(k));
+        self.changed |= self.last.len() != before;
     }
+}
+
+/// 인스턴스 폴더에 두는 마지막 실행 시각 파일: `{작업 열쇠: "YYYY-MM-DDTHH:MM:SS"}` (데몬 PC 벽시계)
+pub const RUNS_FILE: &str = "schedule-runs.json";
+const RUN_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";
+
+/// 파일이 없거나 읽지 못하면 빈 것 (그 작업은 데몬 시작부터 센다)
+pub fn read_runs(path: &std::path::Path) -> HashMap<String, NaiveDateTime> {
+    let saved: HashMap<String, String> = std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    saved.into_iter().filter_map(|(k, v)| Some((k, NaiveDateTime::parse_from_str(&v, RUN_FORMAT).ok()?))).collect()
+}
+
+pub fn write_runs(path: &std::path::Path, runs: &HashMap<String, NaiveDateTime>) -> std::io::Result<()> {
+    let text: HashMap<&String, String> = runs.iter().map(|(k, v)| (k, v.format(RUN_FORMAT).to_string())).collect();
+    saba_atomic_file::write(path, &serde_json::to_vec(&text)?, saba_atomic_file::Mode::Plain)
+}
+
+/// 인스턴스 폴더에 두는 실행 이력 파일: `{작업 열쇠: [Run, ...]}` (새것부터, 작업마다 `HISTORY_KEEP`건)
+pub const HISTORY_FILE: &str = "schedule-history.json";
+pub const HISTORY_KEEP: usize = 20;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunResult {
+    Ok,
+    Failed,
+    /// 할 일이 없었거나(꺼진 서버의 백업 등) 데몬이 꺼져 있어 돌지 못했다
+    Skipped,
+}
+
+/// 예약 작업이 한 번 돈 기록
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Run {
+    /// 예약된 실행 시각 (Unix 초)
+    pub at: i64,
+    pub result: RunResult,
+    /// 실패·건너뜀 이유 코드 (데몬 `error_code`나 `not_running`·`daemon_off` 등). 화면이 문구로 바꾼다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// 걸린 시간 (초, 예고를 기다린 시간은 빼고)
+    #[serde(default)]
+    pub seconds: u64,
+}
+
+pub type History = HashMap<String, Vec<Run>>;
+
+/// 파일이 없거나 읽지 못하면 빈 것
+pub fn read_history(path: &std::path::Path) -> History {
+    std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+pub fn write_history(path: &std::path::Path, history: &History) -> std::io::Result<()> {
+    saba_atomic_file::write(path, &serde_json::to_vec(history)?, saba_atomic_file::Mode::Plain)
+}
+
+/// 한 건을 맨 앞에 더한다. 같은 시각의 기록이 이미 있으면 더하지 않고 false
+pub fn push_run(history: &mut History, key: &str, run: Run) -> bool {
+    let runs = history.entry(key.to_string()).or_default();
+    if runs.iter().any(|r| r.at == run.at) {
+        return false;
+    }
+    runs.insert(0, run);
+    runs.truncate(HISTORY_KEEP);
+    true
 }
 
 /// 코어 업데이트가 막는 것을 기다리는 동안 미루는 예약 (13절 끝나지 않는 대기): 그 자체가 업데이트를 막는 긴 데몬 작업인 것.
@@ -287,6 +397,11 @@ pub fn waits_for_update(action: &TaskAction) -> bool {
 /// 작업마다 고유한 열쇠 (인스턴스 id + 작업 내용). 작업을 고치면 새 작업으로 센다
 pub fn task_key(instance_id: &str, task: &ScheduledTask) -> String {
     format!("{}:{}", instance_id, serde_json::to_string(task).unwrap_or_default())
+}
+
+/// 실행 이력의 열쇠: 켠 모습의 `task_key`. 껐다 켜도 같은 작업의 이력으로 이어진다
+pub fn history_key(instance_id: &str, task: &ScheduledTask) -> String {
+    task_key(instance_id, &ScheduledTask { enabled: true, ..task.clone() })
 }
 
 /// 예고를 시작한 작업이 아직 그대로 예약돼 있는지. 지웠거나 껐거나 고쳤으면 키가 달라진다
@@ -339,6 +454,77 @@ mod tests {
         let job = task(serde_json::json!({"action": "restart", "at": "04:00", "warn_minutes": [10]}));
         assert_eq!(c.due("k", &job, t("2026-10-17 03:55"), t("2026-10-17 03:56")), None);
         assert_eq!(c.due("k", &job, t("2026-10-17 03:55"), t("2026-10-18 03:50")), Some(t("2026-10-18 04:00")));
+    }
+
+    /// 밤마다 PC를 끄면 12시간 주기 백업이 한 번도 돌지 않았다: 주기를 데몬이 켜질 때마다 처음부터 셌다.
+    /// 앞 실행이 파일에 남긴 시각부터 이어 세고, 꺼져 있던 사이 지난 차례는 켠 뒤 한 번만 한다
+    #[test]
+    fn interval_keeps_counting_across_a_daemon_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(RUNS_FILE);
+        let job = task(serde_json::json!({"action": "backup", "every_minutes": 720}));
+        let daily = task(serde_json::json!({"action": "restart", "at": "04:00"}));
+
+        // 첫날: 10:00에 켜서 18:00에 끈다. 12시간이 안 돼 한 번도 돌지 않는다
+        let mut day1 = Clock::default();
+        let start = t("2026-10-17 10:00");
+        assert_eq!(day1.due("k", &job, start, t("2026-10-17 10:01")), None);
+        assert_eq!(day1.due("d", &daily, start, t("2026-10-17 10:01")), None);
+        write_runs(&file, &day1.take_changed().expect("the first look is worth saving")).unwrap();
+        assert!(day1.take_changed().is_none(), "nothing new to save");
+
+        // 둘째 날 09:00에 켠다: 전날 10:00부터 세어 22:00 차례가 밀렸으므로 켜자마자 한 번
+        let mut day2 = Clock::default();
+        day2.restore(read_runs(&file));
+        let start = t("2026-10-18 09:00");
+        assert_eq!(day2.peek("k", &job, start, start), Some(t("2026-10-17 22:00")));
+        let fire = day2.due("k", &job, start, t("2026-10-18 09:01")).unwrap();
+        assert_eq!(fire, t("2026-10-17 22:00"));
+        day2.finish("k", fire);
+        assert_eq!(day2.due("k", &job, start, t("2026-10-18 09:02")), None, "once, not once per missed turn");
+        assert_eq!(day2.due("k", &job, start, t("2026-10-18 10:00")), Some(t("2026-10-18 10:00")));
+        // 시각 작업은 꺼져 있던 사이 지나간 04:00을 따라잡지 않는다
+        assert_eq!(day2.due("d", &daily, start, t("2026-10-18 09:01")), None);
+        write_runs(&file, &day2.take_changed().unwrap()).unwrap();
+        assert_eq!(read_runs(&file).get("k"), Some(&t("2026-10-17 22:00")));
+
+        // 시계가 뒤로 간 PC: 앞날로 적힌 시각은 믿지 않고 켠 때부터 센다
+        let mut back = Clock::default();
+        back.restore(read_runs(&file));
+        let start = t("2026-10-01 09:00");
+        assert_eq!(back.due("k", &job, start, t("2026-10-01 21:00")), Some(t("2026-10-01 21:00")));
+        assert!(read_runs(&dir.path().join("missing.json")).is_empty());
+    }
+
+    /// 꺼져 있던 PC에서 지나간 시각 작업은 돌지 않는다: 이력에 "건너뜀"으로 남길 수 있게 그 차례를 알려 준다
+    #[test]
+    fn a_time_task_that_passed_while_the_daemon_was_off_is_reported_as_missed() {
+        let daily = task(serde_json::json!({"action": "restart", "at": "04:00"}));
+        let every = task(serde_json::json!({"action": "backup", "every_minutes": 720}));
+        let mut c = Clock::default();
+        c.restore(HashMap::from([("d".to_string(), t("2026-10-15 10:00")), ("k".to_string(), t("2026-10-15 10:00"))]));
+        assert_eq!(c.missed("d", &daily, t("2026-10-18 09:00")), Some(t("2026-10-18 04:00")), "the latest missed turn only");
+        assert_eq!(c.missed("d", &daily, t("2026-10-15 18:00")), None, "no turn passed");
+        assert_eq!(c.missed("k", &every, t("2026-10-18 09:00")), None, "an interval task runs once after start instead");
+        assert_eq!(c.missed("new", &daily, t("2026-10-18 09:00")), None, "a task the last run never saw");
+    }
+
+    #[test]
+    fn run_history_keeps_the_newest_runs_first_and_drops_old_and_repeated_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(HISTORY_FILE);
+        let mut history = read_history(&file);
+        for at in 0..(HISTORY_KEEP as i64 + 5) {
+            assert!(push_run(&mut history, "k", Run { at, result: RunResult::Ok, code: None, seconds: 1 }));
+        }
+        let failed = Run { at: 100, result: RunResult::Failed, code: Some("not_running".into()), seconds: 0 };
+        assert!(push_run(&mut history, "k", failed.clone()));
+        assert!(!push_run(&mut history, "k", failed.clone()), "the same turn is recorded once");
+        write_history(&file, &history).unwrap();
+        let back = read_history(&file);
+        assert_eq!(back["k"].len(), HISTORY_KEEP);
+        assert_eq!(back["k"][0], failed);
+        assert_eq!(back["k"][1].at, HISTORY_KEEP as i64 + 4);
     }
 
     /// 외부 감사: 데몬이 켜진 뒤에 더한 작업이 데몬 시작부터 세어 지나간 횟수를 연달아 실행했다.

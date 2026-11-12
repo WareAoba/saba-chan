@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cloudStateOf, DiscordPage as DiscordPageImpl } from '../components/discord/DiscordPage';
 import * as P from '../components/discord/nodePermissions';
 import { useDiscordStore } from '../stores/useDiscordStore';
+import { useUIStore } from '../stores/useUIStore';
 import type { ComponentType } from 'react';
 
 /** 시험에 필요한 props만 넘기려고 느슨하게 받는다 */
@@ -38,6 +39,8 @@ describe('nodePermissions (데몬 src/chat/mod.rs 해석과 같다)', () => {
         expect(cloudStateOf({ hostId: 'h', connected: true })).toBe('connected');
         expect(cloudStateOf({ hostId: 'h', error: 'x' })).toBe('error');
         expect(cloudStateOf({ hostId: 'h' })).toBe('connecting');
+        // 붙어 있다가 끊겨 에이전트가 다시 붙는 중이면 실패가 아니라 (노랑) 연결 중이다 (사용자 11-11)
+        expect(cloudStateOf({ hostId: 'h', error: 'x', reconnecting: true })).toBe('connecting');
         // 데몬에서 설정을 아직 못 읽었으면 호스트가 비어도 연결 전이라고 단정하지 않는다
         expect(cloudStateOf({ hostId: '', loaded: false })).toBe('checking');
         expect(cloudStateOf({ hostId: '', loaded: true })).toBe('no_host');
@@ -128,6 +131,19 @@ describe('DiscordPage', () => {
         await act(async () => fireEvent.click(screen.getByRole('tab', { name: /Bot|봇/ })));
         expect(screen.queryByText(/minecraft/)).toBeNull();
         expect(screen.getByText(/ module start$/)).toBeInTheDocument();
+    });
+
+    it('화면 주소로 연 디스코드 서버는 서버 목록을 받은 뒤에 연다 (처음 열 때 연결 화면으로 빠지지 않게)', async () => {
+        useDiscordStore.setState({ _botConfigLoaded: true });
+        let answer: (v: unknown) => void = () => {};
+        window.api.relayListHostNodes = vi.fn(() => new Promise((r) => { answer = r; })) as never;
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue({ guildId: 'g1', locale: 'auto', sleepBlocks: [], music: {} }) as never;
+        window.api.discordSettingsSet = vi.fn() as never;
+        act(() => useUIStore.getState().showDiscordView({ kind: 'node', id: '*', tab: 'bot' }));
+        await act(async () => render(<Harness save={vi.fn()} />));
+        await act(async () => answer([{ guildId: 'g1', guildName: '사바 마을' }]));
+        expect(window.showToast).not.toHaveBeenCalled();
+        expect(await screen.findByRole('tab', { name: /Bot|봇/, selected: true })).toBeTruthy();
     });
 
     it('사바쨩 설정은 연결 다음 메뉴로 따로 있고, 옛 봇 기본 설정 메뉴는 없다', async () => {

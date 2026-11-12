@@ -7,7 +7,7 @@ import type { Server } from '../../stores/useServerStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { screenFallbackNotice } from '../../utils/openScreen';
 import { Icon } from '../Icon';
-import { SabaToggle } from '../ui/SabaUI';
+import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { LinkedText } from '../ui/ScreenLink';
 import { Segmented } from '../ui/StatusChip';
 import { Avatar, initialOf } from './Avatar';
@@ -172,7 +172,7 @@ function InstancesTab({
                                         )}
                                     </span>
                                 </span>
-                                <button
+                                <button data-spot="discord.start_notice"
                                     type="button"
                                     className={clsx('icon-btn dc-notice-btn', { active: notice })}
                                     aria-pressed={notice}
@@ -370,12 +370,14 @@ export function NodeView({
                     <SleepCorner guildId={node.guildId} />
                     {saveState && (
                         <span className={clsx('dc-save-state', saveState)}>
+                            {saveState === 'saving' ? <SabaSpinner size="xs" /> : <Icon name="check" size="xs" color="var(--ok)" />}
                             {saveState === 'saving' ? t('discord.saving') : t('discord.saved')}
                         </span>
                     )}
                 </header>
 
                 <Segmented
+                    spot="discord.tab"
                     ariaLabel={node.guildName}
                     value={tab}
                     onChange={(v) => {

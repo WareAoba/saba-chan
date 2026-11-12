@@ -13,12 +13,13 @@
 #      데스크톱이면 앱 메뉴에 사바쨩을 넣고(CLI 설치가 한다) GUI를 띄운다 (GUI가 데몬을 켠다. Windows 데스크톱 설치와 같다)
 #      맥은 ~/Applications/Saba-chan.app에 설치하고(CLI 설치가 앱 묶음을 만든다) 그 앱을 연다
 #
-# 인자는 `saba-chan-cli install`의 것이다 (--dir, --modules, --components-dir, --gui, --no-gui, --yes).
+# 인자는 `saba-chan-cli install`의 것이다 (--dir, --modules, --components-dir, --channel, --gui, --no-gui, --yes).
 # 이 스크립트만 받는 인자 (다른 PC의 앱이 ssh로 설치할 때 붙인다):
 #   --pair        데몬을 켠 뒤 서버쨩 페어링 코드를 받아 `SABA_PAIR_CODE=<코드>` 줄로 찍고, 누가 받을 때까지 기다린다
 #   --linger      로그아웃해도 데몬이 돌게 한다 (sudo loginctl enable-linger)
 #   --steam-libs  SteamCMD에 필요한 32비트 라이브러리를 설치한다 (sudo, apt·dnf)
-# 정식 채널만 설치한다 (CLI 설치도 정식 채널을 받는다). 채널은 설치 뒤 `saba-chan-cli update config channel=beta`로
+# 채널: 고르지 않으면 정식(stable). `--channel rc`·`--channel beta`를 붙이면 CLI를 그 채널에서 받고, CLI 설치에도 그대로 넘겨
+# 나머지도 그 채널의 최신 판으로 깔고 이후 업데이트도 그 채널로 받는다. 설치 뒤에는 `saba-chan-cli update config channel=beta`로 바꾼다
 # 필요: curl, sha256sum, python3(manifest JSON 읽기, zip 풀기. 클라우드 서버 이미지에는 unzip이 없는 일이 많다).
 # 맥은 OS에 든 것만 쓴다: shasum, osascript(JSON), ditto(zip). 맥의 python3는 개발 도구를 깔라는 창을 띄울 수 있다
 set -eu
@@ -77,9 +78,18 @@ fi
 prev=
 for arg in "$@"; do
     [ "$prev" = --dir ] && DIR=$arg
-    case "$arg" in --dir=*) DIR=${arg#--dir=} ;; esac
+    [ "$prev" = --channel ] && CHANNEL=$arg
+    case "$arg" in
+        --dir=*) DIR=${arg#--dir=} ;;
+        --channel=*) CHANNEL=${arg#--channel=} ;;
+    esac
     prev=$arg
 done
+# 주소에 그대로 들어가는 값이다: 고를 수 있는 채널만 받는다 (CLI 설치의 --channel과 같다)
+case "$CHANNEL" in
+    stable | rc | beta) ;;
+    *) die "채널은 stable, rc, beta 중 하나예요." "The channel must be stable, rc or beta." ;;
+esac
 case " $* " in
     *" --dir "* | *" --dir="*) ;;
     *) set -- --dir "$DIR" "$@" ;;
@@ -103,7 +113,7 @@ return (j.latest || {}).manifestUrl || "";
 JS
 )
 else
-    MANIFEST_URL=$(python3 -I -c 'import json,sys;print((json.load(open(sys.argv[1])).get("latest") or {}).get("manifestUrl",""))' "$TMP/check.json")
+    MANIFEST_URL=$(python3 -I -c 'import json,sys;print((json.load(open(sys.argv[1])).get("latest") or {}).get("manifestUrl",""))' "$TMP/check.json") || MANIFEST_URL=
 fi
 [ -n "$MANIFEST_URL" ] || die "이 PC용 릴리즈가 아직 없어요." "No release for this platform yet."
 curl -fsS -H 'X-Saba-Client: 1' "$MANIFEST_URL" >"$TMP/manifest.json" || die "manifest를 받지 못했어요." "Could not download the manifest."
@@ -119,7 +129,8 @@ if (!cli || (cli.url || "").indexOf("https://") !== 0) return "";
 return [own.gui ? "gui" : "nogui", cli.url, cli.sha256, cli.size_bytes == null ? "" : cli.size_bytes].join(" ");
 JS
 else
-    python3 -I - "$TMP/manifest.json" "$PLATFORM" >"$TMP/cli.txt" <<'PY'
+    # 항목이 없어 실패해도 `set -e`로 여기서 끝내지 않는다: 아래에서 빈 결과를 보고 알린다
+    python3 -I - "$TMP/manifest.json" "$PLATFORM" >"$TMP/cli.txt" <<'PY' || :
 import json, sys
 m = json.load(open(sys.argv[1]))["manifest"]
 own = m["components"] if m.get("platform") == sys.argv[2] else m.get("platforms", {}).get(sys.argv[2], {}).get("components", {})
@@ -198,6 +209,10 @@ elif [ -x "$DIR/saba-chan-gui" ]; then
         say "창 앱에 WebKitGTK가 필요해요. 예: sudo apt install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 (Fedora: sudo dnf install webkit2gtk4.1 libayatana-appindicator-gtk3)" \
             "The app needs WebKitGTK. For example: sudo apt install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 (Fedora: sudo dnf install webkit2gtk4.1 libayatana-appindicator-gtk3)"
         # 앱을 열 수 있을 때까지 CLI는 쓸 수 있게 데몬은 켠다 (앱을 열면 이 데몬에 붙는다)
+        "$CLI" daemon start
+    elif [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+        # ssh로 다시 깐 데스크톱 설치: 여기서는 앱을 띄울 화면이 없다. 데몬을 켜 둔다 (앱을 열면 이 데몬에 붙는다)
+        say "앱 메뉴에서 사바쨩을 열 수 있어요. 지금은 화면이 없어 데몬만 켭니다." "Saba-chan is in your app menu. No display here, so only the daemon is started."
         "$CLI" daemon start
     else
         say "앱 메뉴에서 사바쨩을 열 수 있어요. 지금 엽니다." "Saba-chan is in your app menu. Opening it now."

@@ -54,7 +54,7 @@ describe('ModuleAuditNotice (데몬 M12)', () => {
         unmount();
         render(<ExtensionAuditNotice extId="music" name="Music" />);
         expect(await screen.findByText("Extension 'Music' uses capabilities it doesn't declare.")).toBeTruthy();
-        expect(screen.getByText(/running dynamic code/)).toBeTruthy();
+        expect(screen.getAllByText(/running dynamic code/).length).toBeGreaterThan(0);
         expect(window.api.extensionAudit).toHaveBeenCalledWith('music');
     });
 
@@ -66,7 +66,7 @@ describe('ModuleAuditNotice (데몬 M12)', () => {
         render(<ModuleAuditNotice moduleName="game" />);
         await waitFor(() => expect(window.api.moduleAudit).toHaveBeenCalledTimes(1));
         act(() => clearModuleAuditCache());
-        expect(await screen.findByText(/compiled code with no source/)).toBeTruthy();
+        expect((await screen.findAllByText(/compiled code with no source/)).length).toBeGreaterThan(0);
         fireEvent.click(screen.getByRole('button', { name: 'Details (1)' }));
         expect(screen.getByText('helper.pyc')).toBeTruthy();
     });

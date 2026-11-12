@@ -61,7 +61,7 @@ describe('명령 입력 안내', () => {
             'tok-ok',
             'tok-bad',
         ]);
-        expect(screen.getByRole('status').textContent).toBe('✕ amount takes 1–64. Got: 99');
+        expect(screen.getByRole('status').textContent).toBe('amount takes 1–64. Got: 99');
     });
 
     it('빠진 칸을 알리고, 다 채우면 보낼 수 있다고 알린다', () => {
@@ -70,7 +70,19 @@ describe('명령 입력 안내', () => {
         fireEvent.change(line, { target: { value: 'give Steve ' } });
         expect(screen.getByRole('status').textContent).toBe('Add item too.');
         fireEvent.change(line, { target: { value: 'give Steve diamond 3' } });
-        expect(screen.getByRole('status').textContent).toBe('✓ Ready. Press Enter to send.');
+        expect(screen.getByRole('status').textContent).toBe('Ready. Press Enter to send.');
+    });
+
+    // WebKit(맥·리눅스 웹뷰)은 변환을 확정하는 Enter를 조합이 끝난 뒤 keyCode 229로 보낸다
+    it('IME 변환을 확정하는 Enter는 명령을 보내지 않는다', async () => {
+        window.api.executeCommand = vi.fn().mockResolvedValue({ data: {} }) as never;
+        open('mc');
+        const line = screen.getByRole('textbox');
+        fireEvent.change(line, { target: { value: 'say こんにちは' } });
+        await act(async () => fireEvent.keyDown(line, { key: 'Enter', keyCode: 229 }));
+        expect(window.api.executeCommand).not.toHaveBeenCalled();
+        await act(async () => fireEvent.keyDown(line, { key: 'Enter', keyCode: 13 }));
+        expect(window.api.executeCommand).toHaveBeenCalledTimes(1);
     });
 
     it('목록에 없는 명령도 막지 않고 그대로 보낸다', async () => {

@@ -103,10 +103,25 @@ describe('PC 없는 사람의 웹', () => {
         const session = fakeSession();
         render(<App api={mockApi({})} session={mockSession(session)} />);
         await flush();
-        fireEvent.click(screen.getByRole('checkbox', { name: /Emoji upscale/ }));
+        fireEvent.click(screen.getByRole('checkbox', { name: /^Emoji upscale/ }));
         await flush();
         expect(session.request).toHaveBeenCalledWith('PATCH', `/relay/guilds/${G}/settings`, { bigEmoji: true });
-        expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /Emoji upscale/ }).checked).toBe(true);
+        expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /^Emoji upscale/ }).checked).toBe(true);
+    });
+
+    it('PC 없는 서버도 코코낸내를 릴레이에 바로 바꾸고, PC 가 있어야 하는 서버 조작·알림만 잠근다 (사용자 11-12)', async () => {
+        const session = fakeSession();
+        render(<App api={mockApi({})} session={mockSession(session)} />);
+        await flush();
+        const card = screen.getByRole('region', { name: 'Sleep mode' });
+        const commands = within(card).getByRole<HTMLInputElement>('checkbox', { name: /Server control and alerts/ });
+        expect(commands.disabled).toBe(true);
+        expect(commands.checked).toBe(false);
+        expect(commands.closest('label')?.textContent).toContain('Available once a PC is linked');
+        expect(within(card).getByRole<HTMLInputElement>('checkbox', { name: /Singing Saba-chan/ }).disabled).toBe(false);
+        fireEvent.click(within(card).getByRole('checkbox', { name: /Put to sleep now/ }));
+        await flush();
+        expect(session.request).toHaveBeenCalledWith('PATCH', `/relay/guilds/${G}/settings`, { sleeping: true });
     });
 
     it('제재(타임아웃)를 풀면 릴레이 서버 관리 경로로 보낸다', async () => {

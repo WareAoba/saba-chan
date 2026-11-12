@@ -413,8 +413,11 @@
     flex-direction: column;
     gap: var(--sp-0-5);
 }
+/* 앱 공통 버튼 높이(base.css `button { height }`)를 지운다: 맥(WebKit)은 그 높이를 flex 최소 크기로 써서 단추가 칸 밖으로 늘어난다 */
 .saba-number-steps button {
     flex: 1;
+    height: auto;
+    min-height: 0;
     display: grid;
     place-items: center;
     padding: 0;
@@ -758,4 +761,91 @@
     background-size:
         100% 100%,
         100% 100%;
+}
+
+/* 고르기 목록 (명령 고르기·가져올 서버 고르기): 줄마다 테두리, 고르면 파인 면 */
+.saba-pick-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+    max-height: 320px;
+    margin: 0;
+    padding: var(--sp-0-5);
+    overflow-y: auto;
+    list-style: none;
+}
+.saba-pick-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1) var(--sp-2);
+    width: 100%;
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color var(--dur) var(--ease);
+}
+.saba-pick-item:hover {
+    border-color: var(--brand-primary);
+}
+.saba-pick-item:focus-visible {
+    outline: 2px solid var(--brand-primary);
+    outline-offset: 2px;
+}
+.saba-pick-item.selected {
+    border-color: var(--brand-primary);
+    box-shadow: var(--neu-in);
+}
+
+/* 공통 펼치기 (Disclosure): 화살표가 돌고 머리는 흐린 글자 */
+.saba-disclosure-head {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    padding: var(--sp-1) var(--sp-1-5);
+    margin-left: calc(-1 * var(--sp-1-5));
+    border: 0;
+    border-radius: var(--r-sm);
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        color var(--dur) var(--ease),
+        background-color var(--dur) var(--ease);
+}
+.saba-disclosure-head:hover {
+    color: var(--text-1);
+    background: var(--bg-3);
+}
+.saba-disclosure-head:focus-visible {
+    outline: 2px solid var(--brand-primary);
+    outline-offset: 2px;
+}
+.saba-disclosure-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
+.saba-disclosure-chevron {
+    display: inline-flex;
+    flex-shrink: 0;
+    transition: transform var(--dur) var(--ease);
+}
+.saba-disclosure.open > .saba-disclosure-head .saba-disclosure-chevron {
+    transform: rotate(90deg);
+}
+.saba-disclosure-body {
+    padding-top: var(--sp-2);
+}
+.saba-disclosure-body[hidden] {
+    display: none;
 }

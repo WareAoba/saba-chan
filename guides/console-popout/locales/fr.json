@@ -1,0 +1,8 @@
+{
+    "title": "Console · Ouvrir dans une fenêtre séparée",
+    "summary": "La console toujours sous les yeux",
+    "steps": [
+        "L'onglet Console de chaque serveur affiche son journal et reçoit les commandes.",
+        "Cliquez sur Ouvrir dans une fenêtre séparée pour garder la console sous les yeux pendant que vous utilisez d'autres écrans."
+    ]
+}

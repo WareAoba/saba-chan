@@ -32,7 +32,7 @@
 
 ## 3. 로그 전체 읽기·내보내기 (검수 9번)
 
-- 로그 원천은 인스턴스의 콘솔 기록이다: saba-runner가 남기는 세션 파일(`log_sessions_keep`개)과, 러너 없이 직접 실행했을 때의 `logs/console.log`·회전 파일. 모듈 `[launch] log_files`도 콘솔에 합쳐져 있다. 원천 id는 세션 파일 이름(확장자 뺀 것) 또는 `console`·`console.1`·`console.2`, `label`은 그 기록의 시작 시각이다. 목록은 최근에 쓴 것부터이고 맨 앞이 `latest`다.
+- 로그 원천은 인스턴스의 콘솔 기록이다: saba-runner가 남기는 세션 파일(`log_sessions_keep`개)과, 러너 없이 직접 실행했을 때의 `logs/console.log`·회전 파일. 모듈 `[launch] log_files`도 콘솔에 합쳐져 있다. 원천 id는 세션 파일 이름(확장자 뺀 것. 크기 상한에서 넘긴 앞 조각은 `<시각>.1`~`<시각>.3`) 또는 `console`·`console.1`·`console.2`, `label`은 그 기록의 시작 시각이다. 목록은 최근에 쓴 것부터이고 맨 앞이 `latest`다.
 - 라우트 `GET /api/instance/:id/logs?source=&lines=&before=`
   - 응답 `{sources:[{id, label, startedAt}], source, lines:[문자열], before?}`. `startedAt`은 세션 시작 unix 초라 GUI·CLI가 자기 시간대·언어로 다시 그릴 수 있다. `lines`는 기본 200, 최대 500. 끝에서부터 읽고 `before`(이전 응답이 준 커서)로 더 앞을 읽는다. 원천이 없으면 404 `not_found`.
 - 라우트 `GET /api/instance/:id/logs/export?source=&since=&until=`

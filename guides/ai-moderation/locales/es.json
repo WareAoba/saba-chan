@@ -1,0 +1,8 @@
+{
+    "title": "Moderación con IA",
+    "summary": "Avisos de spam y promociones fraudulentas",
+    "steps": [
+        "La moderación con IA usa la clave de API registrada para Saba-chan parlante. Si no hay clave, añádela primero.",
+        "Activa Avisar de spam y estafas y guarda. Si un mensaje parece dañino, avisa por DM al dueño y a los administradores del servidor. No borra mensajes."
+    ]
+}

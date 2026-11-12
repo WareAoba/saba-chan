@@ -9,6 +9,8 @@
 //! - `--open-server=<id>`  CLI의 `gui`가 띄웠다 → 그 서버를 연다 (`app:openServer`). 이미 떠 있으면 그 창이 받는다
 //! - `--tray`              데몬이 띄운 상주 GUI: 창 없이 트레이만 든다 (`tray_host.rs`). 이미 떠 있으면 아무것도 하지 않는다
 //!
+//! 바탕화면 오버레이(익스텐션 slot `Desktop.overlay`)는 셸이 데몬에 붙은 뒤 띄운다 (`overlay.rs`).
+//!
 //! 창을 모두 닫아도 프로세스는 트레이로 남는다. 끝나는 것은 완전히 종료·업데이트·데몬이 밖에서 꺼졌을 때뿐이다.
 
 pub mod backdrop;
@@ -17,7 +19,10 @@ pub mod events;
 pub mod i18n;
 pub mod lifecycle;
 pub mod logging;
+#[cfg(target_os = "macos")]
+mod mac_notify;
 pub mod native;
+pub mod overlay;
 pub mod settings;
 pub mod sounds;
 pub mod tray;
@@ -102,11 +107,11 @@ fn first_run_handoff(launch: saba_chan_updater_lib::app_bundle::Launch, tray: bo
 /// 맥 앱 묶음을 처음 켰으면 설치기를 띄운다. GUI가 여기서 끝나야 하면 true (설치기를 띄우지 못하면 앱을 그대로 연다)
 #[cfg(target_os = "macos")]
 fn hand_over_first_run(install_root: &std::path::Path) -> bool {
-    use saba_chan_updater_lib::{app_bundle, uninstall_entry};
+    use saba_chan_updater_lib::{app_bundle, integrity, uninstall_entry};
     if app_bundle::bundle_of(install_root).is_none() {
         return false;
     }
-    let launch = app_bundle::launch_for(install_root, &uninstall_entry::installs_file(), &constants::resolve_modules_dir());
+    let launch = app_bundle::launch_for(install_root, &uninstall_entry::installs_file(), &constants::resolve_modules_dir(), &integrity::records_path());
     let Some((args, exits)) = first_run_handoff(launch, lifecycle::tray_arg(std::env::args())) else { return false };
     tracing::info!("[Setup] {:?}: launching the installer with {:?}", launch, args);
     use std::os::unix::process::CommandExt;
@@ -162,7 +167,11 @@ pub fn run() {
         life: lifecycle::Lifecycle::default(),
     };
 
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // 바탕화면 오버레이 창을 NSPanel로 바꿀 때 쓴다 (`overlay::mac_panel`)
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(tauri_nspanel::init());
+    let app = builder
         // 두 번째 실행은 창을 새로 띄우지 않고 떠 있는 창을 앞으로 가져온다.
         // 여러 GUI가 한 데몬을 함께 쓰다 한쪽의 완전히 종료가 다른 쪽의 데몬을 꺼뜨리던 것을 막는다
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -209,15 +218,24 @@ pub fn run() {
             native::console_popout,
             native::console_popout_list,
             native::console_popin,
+            native::console_popout_close,
+            native::console_popout_saved,
             native::console_toggle_always_on_top,
             native::window_minimize,
             native::window_set_background,
             native::window_set_backdrop,
             native::window_maximize,
+            native::window_is_maximized,
             native::window_close,
             native::sandbox_consent_allow,
             native::tray_action,
             native::tray_popup_fit,
+            native::overlay_fit,
+            native::overlay_menu,
+            native::overlay_action,
+            native::overlay_state,
+            native::overlay_set_enabled,
+            native::overlay_sync,
         ])
         .setup(|app| {
             let handle = app.handle();

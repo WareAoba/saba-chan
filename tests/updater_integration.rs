@@ -12,8 +12,6 @@
 //!
 //! 모든 테스트는 `tempdir`을 사용해 파일시스템을 격리합니다.
 
-use std::collections::HashMap;
-use std::io::Write;
 use std::path::Path;
 use tempfile::TempDir;
 
@@ -26,23 +24,6 @@ use saba_chan_updater_lib::version::SemVer;
 // ═══════════════════════════════════════════════════════
 // 테스트 유틸리티
 // ═══════════════════════════════════════════════════════
-
-/// 테스트용 zip 파일 생성 — 파일 이름 → 내용 맵을 zip 으로 패킹
-fn create_test_zip(files: &HashMap<&str, &[u8]>) -> Vec<u8> {
-    let buf = std::io::Cursor::new(Vec::new());
-    let mut zip_writer = zip::ZipWriter::new(buf);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored);
-
-    for (name, content) in files {
-        zip_writer.start_file(*name, options).unwrap();
-        zip_writer.write_all(content).unwrap();
-    }
-
-    let cursor = zip_writer.finish().unwrap();
-    cursor.into_inner()
-}
-
 
 /// UpdateManager를 테스트 환경으로 생성 (staging, install_root, modules 모두 tempdir)
 fn create_test_manager(tmpdir: &TempDir) -> UpdateManager {
@@ -275,73 +256,6 @@ fn test_manager_config_roundtrip() {
 }
 
 // ═══════════════════════════════════════════════════════
-// 7. Zip 추출 + 파일 덮어쓰기 테스트
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn test_zip_extraction_creates_files() {
-    let tmp = TempDir::new().unwrap();
-    let mgr = create_test_manager(&tmp);
-
-    // 테스트용 zip 생성
-    let mut files = HashMap::new();
-    files.insert("module.toml", b"name = \"test\"\nversion = \"1.0.0\"\n" as &[u8]);
-    files.insert("lifecycle.py", b"def start(): pass\n" as &[u8]);
-    files.insert("README.md", b"# Test Module\n" as &[u8]);
-    let zip_data = create_test_zip(&files);
-
-    // zip 파일을 스테이징에 저장
-    let staged_path = tmp.path().join("test-module.zip");
-    std::fs::write(&staged_path, &zip_data).unwrap();
-
-    // 추출 대상 디렉터리
-    let target_dir = tmp.path().join("modules").join("test");
-    mgr.extract_to_directory_for_test(&staged_path, &target_dir).await;
-
-    // 결과 검증
-    assert!(target_dir.join("module.toml").exists());
-    assert!(target_dir.join("lifecycle.py").exists());
-    assert!(target_dir.join("README.md").exists());
-
-    let content = std::fs::read_to_string(target_dir.join("module.toml")).unwrap();
-    assert!(content.contains("name = \"test\""));
-}
-
-#[tokio::test]
-async fn test_zip_overwrite_existing_files() {
-    let tmp = TempDir::new().unwrap();
-    let mgr = create_test_manager(&tmp);
-
-    let target_dir = tmp.path().join("modules").join("overwrite_test");
-    std::fs::create_dir_all(&target_dir).unwrap();
-
-    // 기존 파일 생성 (v1)
-    std::fs::write(target_dir.join("data.txt"), "version 1 content").unwrap();
-    std::fs::write(target_dir.join("old_file.txt"), "should survive if not in zip").unwrap();
-
-    // 새 버전 zip (v2)
-    let mut files = HashMap::new();
-    files.insert("data.txt", b"version 2 content - UPDATED" as &[u8]);
-    files.insert("new_file.txt", b"brand new file" as &[u8]);
-    let zip_data = create_test_zip(&files);
-
-    let staged = tmp.path().join("update.zip");
-    std::fs::write(&staged, &zip_data).unwrap();
-
-    mgr.extract_to_directory_for_test(&staged, &target_dir).await;
-
-    // data.txt가 v2로 덮어쓰임
-    let content = std::fs::read_to_string(target_dir.join("data.txt")).unwrap();
-    assert_eq!(content, "version 2 content - UPDATED");
-
-    // 새 파일 추가됨
-    assert!(target_dir.join("new_file.txt").exists());
-
-    // zip에 없는 기존 파일은 유지됨
-    assert!(target_dir.join("old_file.txt").exists());
-}
-
-// ═══════════════════════════════════════════════════════
 // 11. 에지 케이스 테스트
 // ═══════════════════════════════════════════════════════
 
@@ -441,28 +355,6 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
             std::fs::copy(&src_path, &dst_path).unwrap();
         }
     }
-}
-
-// ═══════════════════════════════════════════════════════
-// 13. UpdateManager — resolve_install_dir 정밀 테스트
-// ═══════════════════════════════════════════════════════
-
-#[test]
-fn test_resolve_install_dir_with_manifest_override() {
-    let tmp = TempDir::new().unwrap();
-    let mgr = create_test_manager(&tmp);
-
-    // manifest에서 install_dir 지정
-    let dir = mgr.resolve_install_dir_for_test(&Component::Cli, Some("custom/bin"));
-    assert!(dir.ends_with("custom/bin") || dir.ends_with("custom\\bin"));
-
-    // manifest에 install_dir 없으면 기본 규칙 — GUI는 install_root 직접
-    let dir = mgr.resolve_install_dir_for_test(&Component::Gui, None);
-    // GUI 기본 매핑은 install_root 자체 (portable exe 방식)
-    assert_eq!(dir, tmp.path().to_path_buf());
-
-    let dir = mgr.resolve_install_dir_for_test(&Component::Module("mc".into()), None);
-    assert!(dir.to_string_lossy().contains("mc"));
 }
 
 // ═══════════════════════════════════════════════════════

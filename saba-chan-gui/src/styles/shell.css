@@ -170,16 +170,20 @@
         background-position: 8px 0;
     }
 }
+/* 창 버튼: 둥근 사각형 칸 (사용자 11-11 W2). 닫기는 옅은 빨강 칸에 빨간 X */
 .appbar-window {
     display: flex;
+    align-items: center;
+    gap: var(--sp-0-5);
     height: 100%;
     margin-left: var(--sp-2);
+    padding-right: var(--sp-1-5);
 }
 .win-btn {
-    --btn-height: 100%;
-    width: 44px;
+    --btn-height: 30px;
+    width: 34px;
     padding: 0;
-    border-radius: 0;
+    border-radius: 9px;
     color: var(--text-2);
 }
 .win-btn:hover {
@@ -187,21 +191,16 @@
     color: var(--text-1);
 }
 .win-btn.win-close:hover {
-    background: var(--stop);
-    color: var(--text-on-dark);
+    background: color-mix(in oklch, var(--stop) 18%, transparent);
+    color: var(--stop);
 }
 /* 맥: 신호등이 상단바 왼쪽 위에 겹친다 (window.rs `frame`). 앱 창 버튼은 숨기고 그 자리를 비운다 */
-:root[data-platform='mac'] .appbar-window,
-:root[data-platform='mac'] .console-popout-window-btn {
+:root[data-platform='mac'] .appbar-window {
     display: none;
 }
 :root[data-platform='mac'] .appbar {
     padding-left: var(--mac-traffic-lights-w);
     padding-right: var(--sp-4);
-}
-:root[data-platform='mac'] .console-popout-titlebar {
-    min-height: 36px;
-    padding-left: var(--mac-traffic-lights-w);
 }
 
 /* 상단바에서 펼쳐지는 패널(데몬·알림): 버튼 아래에 붙는다 */
@@ -408,6 +407,75 @@
     box-shadow: var(--shadow-float);
     opacity: 0.95;
 }
+/* 브랜치 서버: 상위 서버 줄 왼쪽의 접기 단추, 그 아래에 가지 선으로 붙는 브랜치 줄.
+   브랜치가 있는 목록에서는 다른 줄도 단추 자리만큼 들여 아이콘 줄을 맞춘다 */
+.icon-btn.server-row-fold {
+    --btn-height: 20px;
+    flex: none;
+    width: 20px;
+    min-width: 0;
+    margin-right: calc(var(--sp-1-5) * -1);
+    color: var(--text-3);
+}
+.server-list.has-branches > .server-row:not(:has(.server-row-fold)) {
+    padding-left: calc(var(--sp-3) + var(--sp-5) + var(--sp-1-5));
+}
+.server-list.has-branches > .server-row.branch {
+    margin-left: calc(var(--sp-8) + var(--sp-0-5));
+    padding-left: var(--sp-3);
+}
+/* 가지 선: 윗줄 가운데(첫 브랜치는 상위 서버 줄 바로 아래)에서 내려와 이 줄 가운데로 꺾인다 */
+.server-row.branch::after {
+    content: '';
+    position: absolute;
+    left: calc(var(--sp-3) * -1 - 1px);
+    width: var(--sp-2-5);
+    top: calc(-50% - var(--sp-1-5));
+    height: calc(100% + var(--sp-1-5));
+    border-left: 1px solid var(--line-strong, var(--line));
+    border-bottom: 1px solid var(--line-strong, var(--line));
+    border-bottom-left-radius: var(--r-xs);
+    pointer-events: none;
+}
+.server-row:not(.branch) + .server-row.branch::after {
+    top: calc(var(--sp-1-5) * -1);
+    height: calc(50% + var(--sp-1-5));
+}
+.server-row.branch.dragging::after {
+    display: none;
+}
+.server-row-name:has(.server-row-branches) {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.server-row-name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tag.server-row-branches {
+    flex: none;
+    gap: var(--sp-1);
+    font-weight: 400;
+}
+/* 브랜치 서버 만들기 창 */
+.branch-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+.branch-form > * {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    font-size: var(--fs-sm);
+}
+.branch-port {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
 .server-row-icon {
     position: relative;
     width: 40px;
@@ -422,10 +490,14 @@
     font-weight: 800;
     color: var(--text-2);
 }
-/* 게임 아이콘은 투명 배경 그림이 많다: 자르지 않고 칸 안에 여백을 두고 맞춘다 */
-.server-row-icon img {
-    width: 72%;
-    height: 72%;
+/* 모듈 아이콘: 자르지 않고 칸 안에 여백을 두고 맞춘다 (--module-icon-size). 세로로 긴 그림도 칸을 넘지 않게 정사각형 상자에 넣는다 */
+.server-row-icon > img,
+.detail-icon > img,
+.as-game-icon > img,
+.ss-catalog-top .ss-card-icon > img {
+    width: var(--module-icon-size);
+    height: auto;
+    aspect-ratio: 1;
     object-fit: contain;
 }
 .server-row-icon:has(> img),
@@ -442,6 +514,9 @@
     border-radius: 50%;
     background: var(--chip-color);
     box-shadow: 0 0 0 3px var(--bg-1);
+}
+.server-row-dot.pulse {
+    animation: chip-pulse 1.2s var(--ease) infinite;
 }
 .server-row-text {
     flex: 1;
@@ -585,11 +660,6 @@
 .dc-brand-mark.on {
     color: var(--discord);
 }
-.detail-icon img {
-    width: 70%;
-    height: 70%;
-    object-fit: contain;
-}
 .detail-title {
     flex: 1;
     min-width: 180px;
@@ -699,6 +769,44 @@
     padding: var(--sp-6) 0;
     text-align: center;
 }
+/* 수준 칩(전체·경고·오류): 콘솔 위에 늘 둔다. 모양은 "자주 쓰는 명령" 칩과 같다 */
+.term-levels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1-5);
+    padding: var(--sp-3) var(--sp-3) 0;
+}
+/* 출력과 그 위에 뜨는 "맨 아래로" 단추 */
+.term-view {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+.term-hidden {
+    padding-top: var(--sp-2);
+    color: color-mix(in oklch, var(--console-custom-text) 50%, transparent);
+}
+.term-jump {
+    position: absolute;
+    right: var(--sp-4);
+    bottom: var(--sp-2);
+    --btn-height: 30px;
+    --btn-padding: 0 12px;
+    --btn-font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklch, var(--console-custom-text) 22%, transparent);
+    background: color-mix(in oklch, var(--console-custom-bg) 86%, var(--console-custom-text));
+    color: var(--console-custom-text);
+    box-shadow: none;
+}
+.term-jump b {
+    color: var(--accent);
+}
 /* 입력줄: 콘솔 안에 떠 있는 둥근 칸. 콘솔은 테마와 상관없이 어두우므로 색은 콘솔 색에서만 파생한다 */
 .term-quick {
     display: flex;
@@ -720,6 +828,27 @@
 .term-chip:hover {
     background: color-mix(in oklch, var(--console-custom-text) 12%, transparent);
     color: var(--console-custom-text);
+}
+/* 켜짐·수준 색은 올려도 남는다 (hover 뒤에 둔다) */
+.term-chip.on {
+    background: color-mix(in oklch, var(--console-custom-text) 16%, transparent);
+    border-color: color-mix(in oklch, var(--console-custom-text) 35%, transparent);
+    color: var(--console-custom-text);
+    font-weight: 700;
+}
+.term-chip.level-warn {
+    color: var(--tok-warn);
+}
+.term-chip.level-error {
+    color: var(--tok-error);
+}
+.term-chip.level-warn.on {
+    background: color-mix(in oklch, var(--tok-warn) 16%, transparent);
+    border-color: color-mix(in oklch, var(--tok-warn) 50%, transparent);
+}
+.term-chip.level-error.on {
+    background: color-mix(in oklch, var(--tok-error) 16%, transparent);
+    border-color: color-mix(in oklch, var(--tok-error) 50%, transparent);
 }
 .term-input {
     display: flex;
@@ -782,23 +911,103 @@
     color: color-mix(in oklch, var(--console-custom-text) 45%, transparent);
     opacity: 1;
 }
-.term-divider {
-    width: 1px;
-    height: 20px;
-    background: color-mix(in oklch, var(--console-custom-text) 14%, transparent);
+/* PIP로 띄운 동안 메인 창 콘솔 자리: 지난 줄을 흐리게 깔고 가운데에 안내 창 (사용자 11-11 N1) */
+.term-popped {
+    position: relative;
 }
-.term-popout {
-    color: color-mix(in oklch, var(--console-custom-text) 60%, transparent);
+.term-popped-ghost {
+    filter: blur(6px);
+    opacity: 0.6;
+    pointer-events: none;
+    user-select: none;
 }
-.term-popout:hover {
-    color: var(--console-custom-text);
-    background: color-mix(in oklch, var(--console-custom-text) 10%, transparent);
-}
-.term-placeholder {
+.term-popped-veil {
+    position: absolute;
+    inset: 0;
+    display: flex;
     align-items: center;
     justify-content: center;
+    padding: var(--sp-4);
+    background: color-mix(in oklch, var(--console-custom-bg) 35%, transparent);
+}
+.term-popped-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: var(--sp-3);
+    max-width: 380px;
+    padding: var(--sp-6) var(--sp-8) var(--sp-5);
+    border-radius: var(--r-lg);
+    border: 1px solid var(--line);
+    background: var(--bg-2);
+    color: var(--text-1);
+    text-align: center;
+    box-shadow: var(--shadow-float);
+}
+.term-popped-art {
+    position: relative;
+    width: 132px;
+    height: 84px;
+    margin-bottom: var(--sp-3);
+    border-radius: 10px;
+    border: 1.5px solid color-mix(in oklch, var(--text-1) 22%, transparent);
+}
+.term-popped-art::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 14px;
+    border-bottom: 1.5px solid color-mix(in oklch, var(--text-1) 22%, transparent);
+}
+.term-popped-art i {
+    position: absolute;
+    right: -16px;
+    bottom: -12px;
+    width: 74px;
+    height: 50px;
+    border-radius: 8px;
+    background: var(--accent);
+    box-shadow: 0 8px 20px color-mix(in oklch, black 30%, transparent);
+}
+.term-popped-art i::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 10px;
+    border-bottom: 1.5px solid color-mix(in oklch, white 55%, transparent);
+}
+.term-popped-title {
+    font-size: var(--fs-lg);
+}
+.term-popped-desc {
+    margin: 0;
+    font-size: var(--fs-sm);
     color: var(--text-2);
+}
+.term-popped-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-1);
+}
+.term-popped-actions .btn,
+.detail-pip-btn {
+    --btn-height: 32px;
+    --btn-padding: 0 14px;
+    --btn-font-size: var(--fs-sm);
+    --btn-radius: var(--r-pill);
+}
+/* 탭 줄 오른쪽 끝 */
+.detail-pip-btn {
+    margin-left: auto;
+}
+/* 콘솔 탭: 찾기 단추와 PIP 단추가 함께 오른쪽 끝에 모인다 */
+.detail-tabrow > .page-find-btn {
+    margin-left: auto;
+}
+.page-find-btn + .detail-pip-btn {
+    margin-left: 0;
 }
 
 /* 줄 앞 시각 (설정에서 켤 때만). 줄 색과 상관없이 흐리게 */
@@ -827,58 +1036,6 @@
 .console-line.console-level-debug {
     color: var(--tok-debug);
 }
-.tok-error {
-    color: var(--tok-error);
-    font-weight: 600;
-}
-.tok-warn {
-    color: var(--tok-warn);
-}
-.tok-info {
-    color: var(--tok-info);
-}
-.tok-debug {
-    color: var(--tok-debug);
-}
-.tok-success {
-    color: var(--tok-success);
-    font-weight: 600;
-}
-.tok-string {
-    color: var(--tok-string);
-}
-.tok-number {
-    color: var(--tok-number);
-}
-.tok-keyword {
-    color: var(--tok-keyword);
-}
-.tok-timestamp {
-    color: var(--tok-timestamp);
-}
-.tok-player {
-    color: var(--tok-player);
-    font-weight: 600;
-}
-.tok-command {
-    color: var(--tok-command);
-}
-.tok-selector {
-    color: var(--tok-selector);
-}
-.tok-ip {
-    color: var(--tok-ip);
-}
-.tok-uuid {
-    color: var(--tok-uuid);
-}
-.tok-path {
-    color: var(--tok-path);
-    font-style: italic;
-}
-.tok-dim {
-    color: var(--tok-dim);
-}
 
 /* ── 따로 띄운 콘솔 창 (PiP): 제목줄 + 상세 화면 콘솔. 콘솔은 테마와 상관없이 어두우므로 색은 콘솔 색에서 파생한다 ── */
 .App.console-popout-app {
@@ -886,60 +1043,89 @@
     flex-direction: column;
     height: 100vh;
     padding: 0;
-    background: var(--console-custom-bg);
+    background: var(--bg-0);
     color: var(--console-custom-text);
     overflow: hidden;
 }
-.console-popout-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+/* 제목줄은 앱 상단바(.appbar)를 그대로 쓰고 높이만 줄인다. 이름·도구는 앱 상단바의 알약(.conn-rail)과 같은 모양 */
+.appbar.console-popout-titlebar {
+    height: 42px;
     gap: var(--sp-2);
-    padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
-    border-bottom: 1px solid color-mix(in oklch, var(--console-custom-text) 10%, transparent);
-    -webkit-app-region: drag;
-    flex-shrink: 0;
-    user-select: none;
+    padding-left: var(--sp-2);
 }
-.console-popout-titlebar-title {
-    display: flex;
+.pip-pill {
+    display: inline-flex;
     align-items: center;
-    gap: var(--sp-2);
+    height: 28px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: var(--inset);
     min-width: 0;
+}
+.pip-title {
+    gap: var(--sp-2);
+    padding: 0 var(--sp-3) 0 var(--sp-2-5);
     font-size: var(--fs-sm);
-    font-weight: 600;
+}
+/* 색은 tone-* (STATUS_TONE, 앱의 다른 표시등과 같은 표), 진행 중이면 깜빡인다 */
+.pip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+    background: var(--chip-color);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--chip-color) 18%, transparent);
+}
+.pip-dot.pulse {
+    animation: chip-pulse 1.2s var(--ease) infinite;
+}
+.pip-name {
+    min-width: 0;
+    font-weight: 700;
+    color: var(--text-1);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.console-popout-titlebar-controls {
+.pip-kind {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding-left: var(--sp-2);
+    border-left: 1px solid var(--line);
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+}
+.pip-tools {
     display: flex;
     gap: var(--sp-0-5);
     -webkit-app-region: no-drag;
 }
-.console-popout-titlebar-btn {
+.pip-tool {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
+    width: 32px;
     height: 28px;
+    padding: 0;
     border: none;
-    border-radius: var(--r-sm);
+    border-radius: var(--r-pill);
     background: none;
-    color: color-mix(in oklch, var(--console-custom-text) 60%, transparent);
+    color: var(--text-2);
     cursor: pointer;
 }
-.console-popout-titlebar-btn:hover {
-    color: var(--console-custom-text);
-    background: color-mix(in oklch, var(--console-custom-text) 10%, transparent);
+.pip-tool:hover {
+    color: var(--text-1);
+    background: var(--bg-3);
 }
-.console-popout-titlebar-pinned {
-    color: var(--console-info);
-    background: color-mix(in oklch, var(--console-info) 15%, transparent);
+.pip-tool.active {
+    color: var(--accent);
+    background: var(--accent-soft);
 }
-.console-popout-titlebar-close:hover {
-    color: var(--console-error);
-    background: color-mix(in oklch, var(--console-error) 15%, transparent);
+.console-popout-titlebar .appbar-window {
+    margin-left: 0;
+    -webkit-app-region: no-drag;
 }
 .console-popout-body {
     display: flex;
@@ -1119,27 +1305,6 @@ button.activity-line:hover {
 .activity-console * {
     font-family: var(--font-mono);
 }
-.activity-console-line {
-    display: flex;
-    gap: var(--sp-2);
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-.activity-console-time,
-.activity-console-level {
-    flex-shrink: 0;
-    color: color-mix(in oklch, var(--console-custom-text) 50%, transparent);
-}
-.activity-console-level {
-    width: 5ch;
-}
-.activity-console-line.level-warn .activity-console-level {
-    color: var(--console-warn);
-}
-.activity-console-line.level-error .activity-console-level,
-.activity-console-line.level-error .activity-console-msg {
-    color: var(--console-error);
-}
 .activity-console-empty,
 .activity-console-error {
     padding: var(--sp-3) 0;
@@ -1153,56 +1318,65 @@ button.activity-line:hover {
     flex-direction: column;
     gap: var(--sp-4);
 }
-.info-grid {
+/* 서버 정보 카드: 이름·값을 줄 맞춘 표로 */
+.info-facts {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0 var(--sp-6);
+    margin: 0;
+}
+.info-fact {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
     gap: var(--sp-3);
+    padding: var(--sp-2) 0;
+    border-bottom: 1px solid var(--line);
 }
-.info-cell {
-    padding: var(--sp-3) var(--sp-4);
-    border-radius: var(--r-md);
-    background: var(--surface-gradient);
-    border: 1px solid var(--line);
-    box-shadow: var(--shadow-raised);
+.info-fact dt {
+    color: var(--text-2);
+    font-size: var(--fs-sm);
 }
-.info-cell dt {
-    font-size: var(--fs-xs);
-    color: var(--text-3);
+.info-fact dd {
+    margin: 0;
     font-weight: 600;
-    margin-bottom: var(--sp-0-5);
-}
-.info-cell dd {
-    font-size: var(--fs-lg);
-    font-weight: 700;
     font-variant-numeric: tabular-nums;
+    text-align: right;
     overflow-wrap: anywhere;
     -webkit-user-select: text;
     user-select: text;
 }
-.info-cell dd code {
+.info-fact dd code {
     font-size: var(--fs-sm);
 }
-/* 개발 용어(PID·REST·통신 방식)는 접어 둔다 */
-.info-more > summary {
-    cursor: pointer;
-    width: fit-content;
-    font-size: var(--fs-sm);
-    color: var(--text-3);
-    user-select: none;
-}
-.info-more > summary:hover,
-.info-more > summary:focus-visible {
-    color: var(--text-2);
-}
-.info-more[open] > summary {
-    margin-bottom: var(--sp-2);
-}
-.info-actions {
+.info-folder {
     display: flex;
+    align-items: center;
     gap: var(--sp-2);
-    flex-wrap: wrap;
-    padding-top: var(--sp-2);
-    border-top: 1px solid var(--line);
+    margin: var(--sp-3) 0 var(--sp-1);
+}
+.info-folder code {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* 점검 카드: 단추는 한 줄, 결과는 그 아래 */
+.info-check > .ss-rows {
+    display: flex;
+    flex-flow: row wrap;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.info-check .server-check {
+    display: contents;
+}
+.info-check .server-check > :not(.server-check-actions) {
+    flex-basis: 100%;
+    order: 1;
 }
 
 /* ── 박아 넣은 옛 화면들 (서버 설정·설정·디스코드) ── */
@@ -1300,9 +1474,6 @@ button.activity-line:hover {
     overflow: visible;
     padding: 0;
 }
-.settings-page .settings-modal-header {
-    padding: 0 0 var(--sp-4);
-}
 
 /* ── 좁은 창 ── */
 @media (max-width: 899px) {
@@ -1394,17 +1565,6 @@ button.activity-line:hover {
     .settings-tab-content.slide-down {
         animation: none;
     }
-}
-.btn.btn-confirm {
-    background: var(--brand-gradient);
-    color: var(--brand-text);
-    border: none;
-    box-shadow: var(--shadow-raised);
-}
-.btn.btn-cancel {
-    background: transparent;
-    color: var(--text-1);
-    border: 1px solid var(--line-strong);
 }
 
 /* ── 데몬(백그라운드 서비스) 팝업: 상태 → 할 일 → 연결 정보 → 보조 동작 순 ── */
@@ -1526,13 +1686,8 @@ button.activity-line:hover {
 .server-detail-pane > .daemon-down-notice {
     margin: var(--sp-4) var(--sp-4) 0;
 }
-.module-failures summary {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    cursor: pointer;
-    font-weight: 600;
-    list-style: none;
+.module-failures .saba-disclosure-head {
+    color: inherit;
 }
 .module-failures ul {
     margin: var(--sp-2) 0 0;
@@ -1667,6 +1822,27 @@ button.activity-line:hover {
 }
 .controllers-empty {
     margin: 0 0 var(--sp-3);
+}
+/* 플레이어 탭: 목록을 쓸지 정하는 스위치, 넣기 줄의 덧붙임 칸(이유), 접속 중 점 */
+.players-card > .segmented {
+    align-self: flex-start;
+}
+.players-use {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.controllers-add .players-extra {
+    flex: 0 1 180px;
+}
+.players-online {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: var(--sp-1-5);
+    border-radius: 50%;
+    background: var(--ok);
+    vertical-align: middle;
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -1973,9 +2149,10 @@ button.activity-line:hover {
     color: var(--text-3);
     align-self: flex-start;
 }
-.dc-save-state.saved::before {
-    content: '✓ ';
-    color: var(--ok);
+.dc-save-state {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
 }
 
 .dc-tab {
@@ -1999,7 +2176,8 @@ button.activity-line:hover {
     padding: var(--sp-3) var(--sp-4);
     border-radius: var(--r-md);
     border: 1px solid var(--line);
-    background: var(--bg-1);
+    background: var(--surface-gradient);
+    box-shadow: var(--neu-up);
     color: inherit;
     font: inherit;
     text-align: left;
@@ -2009,11 +2187,13 @@ button.activity-line:hover {
         background var(--dur-fast) var(--ease);
 }
 .dc-choice-item:hover {
-    background: var(--bg-2);
+    border-color: var(--brand-primary);
 }
+/* 고른 카드는 파인 면 (서버 추가의 고르기 목록과 같다) */
 .dc-choice-item.active {
-    border-color: var(--accent);
-    background: color-mix(in oklch, var(--accent) 8%, var(--bg-1));
+    border-color: var(--brand-primary);
+    background: var(--inset);
+    box-shadow: var(--neu-in);
 }
 /* 라디오: 체크박스와 같은 파인 홈, 고르면 가운데 볼록한 점이 튀어나온다 */
 .dc-radio {
@@ -2091,6 +2271,50 @@ button.activity-line:hover {
 }
 .dc-list-row.dim .dc-list-text {
     opacity: 0.55;
+}
+/* 숫자 칸 뒤의 단위 (분) */
+.ss-with-unit {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+/* 자동 정지·응답 없음 안내: 글은 남는 너비를 쓰고 버튼은 오른쪽 끝 */
+.idle-stopped-notice {
+    align-items: center;
+}
+/* 새 버전: 이름 아래 표시와 정보 탭의 새 버전 줄 */
+.tag.tag-accent {
+    color: var(--accent);
+    border-color: color-mix(in oklch, var(--accent) 45%, transparent);
+}
+.info-new-version {
+    color: var(--accent);
+}
+.idle-stopped-notice > span {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+/* 다가오는 예약: 줄이 많으면 목록 안에서 넘긴다 (아래 작업 기록이 칸 밖으로 밀리지 않게) */
+.upcoming-card {
+    flex: none;
+}
+.upcoming-list {
+    max-height: min(280px, 35vh);
+    overflow-y: auto;
+}
+.upcoming-list > li {
+    flex: none;
+}
+/* 다가오는 예약: 겹치는 작업 줄 */
+.upcoming-list .dc-list-row {
+    text-align: left;
+}
+.upcoming-list .dc-list-row.clash {
+    box-shadow: inset 3px 0 0 var(--warn);
+}
+.upcoming-range {
+    margin-left: auto;
+    width: 140px;
 }
 /* 인스턴스 카드: 어디를 눌러도 권한 메뉴로 */
 .dc-list-row.is-openable {
@@ -2223,7 +2447,7 @@ button.activity-line:hover {
     font-weight: 400;
 }
 .screen-link-arrow {
-    font-size: 0.9em;
+    display: inline-flex;
 }
 
 /* 권한 레벨 (P1) */
@@ -2489,10 +2713,6 @@ button.activity-line:hover {
     position: fixed;
     z-index: 60;
     pointer-events: none;
-}
-.dc-import summary {
-    font-weight: 600;
-    cursor: pointer;
 }
 .dc-dot {
     display: inline-block;
@@ -3475,40 +3695,25 @@ button.appbar-pill:focus-visible {
 .mt-next {
     font-size: var(--fs-xs);
 }
-.modal.mt-picker {
-    max-width: 520px;
-    width: calc(100vw - var(--sp-8));
-    text-align: left;
+/* 마지막 실행 결과와 실행 기록 */
+.mt-last {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
+.mt-last.tone-ok {
+    color: var(--ok);
+}
+.mt-last.tone-stop {
+    color: var(--stop);
+}
+.mt-runs {
+    font-size: var(--fs-xs);
+}
+.mt-picker-body {
     display: flex;
     flex-direction: column;
     gap: var(--sp-3);
-}
-.mt-picker-list {
-    list-style: none;
-    margin: 0;
-    padding: var(--sp-1);
-    max-height: 320px;
-    overflow-y: auto;
-    border: 1px solid var(--line);
-    border-radius: var(--r-md);
-}
-.mt-picker-item {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--sp-1) var(--sp-2);
-    width: 100%;
-    padding: var(--sp-2) var(--sp-3);
-    border: 0;
-    border-radius: var(--r-sm);
-    background: transparent;
-    color: var(--text-1);
-    text-align: left;
-    cursor: pointer;
-}
-.mt-picker-item:hover,
-.mt-picker-item.selected {
-    background: var(--bg-2);
 }
 .mt-picker-name {
     display: flex;
@@ -3517,13 +3722,9 @@ button.appbar-pill:focus-visible {
     font-weight: 600;
     margin-right: auto;
 }
-.mt-picker-item > .muted {
+.saba-pick-item > .muted {
     flex-basis: 100%;
     font-size: var(--fs-xs);
-}
-.mt-picker .modal-actions {
-    display: flex;
-    justify-content: flex-end;
 }
 .mt-keep {
     padding-top: var(--sp-3);
@@ -3653,16 +3854,11 @@ button.appbar-pill:focus-visible {
     flex: 1;
     min-width: 0;
 }
-.module-audit .btn-link {
-    margin-left: var(--sp-1-5);
-    padding: 0;
-    height: auto;
-    border: none;
-    background: none;
-    color: var(--accent);
-    font: inherit;
-    cursor: pointer;
-    text-decoration: underline;
+.module-audit .saba-disclosure {
+    margin-top: var(--sp-1);
+}
+.module-audit .saba-disclosure-head {
+    color: inherit;
 }
 .module-audit-list {
     list-style: none;
@@ -4225,9 +4421,30 @@ button.appbar-pill:focus-visible {
     background: var(--ok);
     box-shadow: 0 0 0 3px var(--ok-soft);
 }
+/* 켜는 중은 꺼짐 회색, 끄는 중은 켜짐 초록으로 깜빡인다 (사용자 11-11) */
+.palette-dot.stopping {
+    background: var(--ok);
+}
 .palette-dot.starting,
 .palette-dot.stopping {
-    background: var(--warn);
+    animation: chip-pulse 1.2s var(--ease) infinite;
+}
+/* 움직임이 꺼지면 깜빡이지 않으니 속 빈 고리로 진행 중을 구분한다 (base.css 의 상태 점과 같이) */
+@media (prefers-reduced-motion: reduce) {
+    .palette-dot:is(.starting, .stopping) {
+        background: transparent;
+        box-shadow: inset 0 0 0 2px var(--text-3);
+    }
+    .palette-dot.stopping {
+        box-shadow: inset 0 0 0 2px var(--ok);
+    }
+}
+[data-no-transitions='true'] .palette-dot:is(.starting, .stopping) {
+    background: transparent;
+    box-shadow: inset 0 0 0 2px var(--text-3);
+}
+[data-no-transitions='true'] .palette-dot.stopping {
+    box-shadow: inset 0 0 0 2px var(--ok);
 }
 .palette-gmark {
     width: 16px;
@@ -4826,12 +5043,8 @@ button.appbar-pill:focus-visible {
     flex-shrink: 0;
 }
 .agreement-modal .agreement-list {
-    margin: var(--sp-1) 0 var(--sp-4);
+    margin: 0;
     width: 100%;
-}
-.modal-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 /* 서버 점검 (validate·diagnose) 결과: 정보 탭 */
@@ -4839,7 +5052,6 @@ button.appbar-pill:focus-visible {
     display: flex;
     flex-direction: column;
     gap: var(--sp-2);
-    margin-top: var(--sp-3);
 }
 .server-check-actions {
     display: flex;
@@ -4866,8 +5078,8 @@ button.appbar-pill:focus-visible {
     gap: var(--sp-2);
     align-items: flex-start;
     padding: var(--sp-2) var(--sp-2-5);
-    border-radius: 8px;
-    background: var(--bg-2);
+    border-radius: var(--r-md);
+    background: var(--inset);
 }
 .server-check-issue.sev-critical,
 .server-check-issue.sev-error {
@@ -4917,28 +5129,6 @@ button.appbar-pill:focus-visible {
 .server-check-issue.port-firewall,
 .server-check-issue.port-router {
     color: var(--danger);
-}
-/* 상세 머리 아래 알림: 다시 확인 버튼은 오른쪽 */
-.port-check-notice {
-    align-items: center;
-}
-/* 아이콘(Icon도 span이다)은 그대로 두고 문구만 남은 폭을 채운다 */
-.port-check-notice-text {
-    flex: 1;
-}
-.port-check-notice .btn {
-    flex: none;
-}
-.port-check-notice .btn svg {
-    color: inherit;
-    margin-top: 0;
-}
-/* 닫기 단추: 옆의 다시 확인 단추와 같은 높이의 정사각형으로 줄을 맞춘다 (사용자 11-07) */
-.port-check-notice-close {
-    --btn-height: 36px;
-    width: 36px;
-    height: 36px;
-    flex: none;
 }
 .server-check-issue.port-in_use {
     color: var(--warn);
@@ -5167,6 +5357,237 @@ button.appbar-pill:focus-visible {
     color: var(--text-3);
 }
 
+/* 가이드 카드 (사용자 11-11 시안 v4): 서버 목록 아래 얇은 카드. 누르면 안 끝낸 가이드 세 개까지 */
+.guide-dock {
+    flex: none;
+    margin: auto var(--sp-3) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--bg-1);
+    box-shadow: var(--shadow-raised);
+    overflow: hidden;
+}
+.guide-dock-head {
+    display: flex;
+    justify-content: flex-start;
+    color: var(--accent);
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    padding: var(--sp-2-5) var(--sp-3);
+    border: none;
+    background: none;
+    font: inherit;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+.guide-dock-label {
+    flex: 1;
+    color: var(--text-1);
+}
+.guide-dock-head > :last-child {
+    color: var(--text-3);
+}
+.guide-dock-body {
+    display: flex;
+    flex-direction: column;
+    padding: var(--sp-1-5);
+    border-top: 1px solid var(--line);
+}
+.guide-dock-more {
+    align-self: flex-start;
+    padding: var(--sp-2) var(--sp-2) var(--sp-1);
+    border: none;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    cursor: pointer;
+}
+.guide-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2-5);
+    width: 100%;
+    padding: var(--sp-2);
+    border: none;
+    border-radius: var(--r-md);
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.guide-row:hover {
+    background: var(--bg-2);
+}
+.guide-row.current {
+    background: color-mix(in oklch, var(--accent) 12%, transparent);
+}
+.guide-row.done {
+    opacity: 0.55;
+}
+.guide-row-icon {
+    display: flex;
+    color: var(--accent);
+}
+.guide-row.done .guide-row-icon {
+    color: var(--ok);
+}
+.guide-row-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.3;
+}
+.guide-row-title {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+}
+.guide-row-sub {
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+/* new!: 알약 없이 글자만 (사용자 11-11) */
+.guide-new {
+    margin-left: var(--sp-1-5);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 800;
+    vertical-align: 1px;
+}
+.modal.guide-sheet {
+    width: min(760px, 92vw);
+    max-width: none;
+    max-height: 84vh;
+    overflow: auto;
+    padding: var(--sp-5);
+    text-align: left;
+}
+.guide-sheet-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2-5);
+    margin-bottom: var(--sp-1-5);
+}
+.guide-sheet-head > svg {
+    color: var(--accent);
+}
+.guide-sheet-head strong {
+    flex: 1;
+    font-size: var(--fs-lg);
+}
+.guide-sheet-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--sp-1-5) var(--sp-5);
+}
+.guide-sheet-groups h3 {
+    margin: 0;
+    padding: var(--sp-3) var(--sp-2-5) var(--sp-1);
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+}
+
+/* 빈 화면에서는 왼쪽 아래에 떠 있다 (처음 시작하기 카드는 오른쪽 아래) */
+.page-empty .guide-dock {
+    position: absolute;
+    left: var(--sp-4);
+    bottom: var(--sp-4);
+    z-index: 3;
+    width: min(280px, calc(100% - var(--sp-8)));
+    margin: 0;
+}
+
+/* 화면 강조 (사용자 11-11): 짚을 자리만 밝게, 바깥을 누르면 닫힌다 */
+.spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 9600;
+    pointer-events: none;
+}
+.spotlight-catch {
+    position: fixed;
+    pointer-events: auto;
+}
+.spotlight-hole {
+    position: fixed;
+    border-radius: 12px;
+    box-shadow: 0 0 0 9999px color-mix(in oklch, black 58%, transparent);
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    transition: left var(--dur) var(--ease), top var(--dur) var(--ease), width var(--dur) var(--ease), height var(--dur) var(--ease);
+}
+.spotlight-dim {
+    position: fixed;
+    inset: 0;
+    background: color-mix(in oklch, black 58%, transparent);
+}
+.spotlight-bubble {
+    position: fixed;
+    padding: var(--sp-3) var(--sp-4);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--bg-1);
+    box-shadow: var(--shadow-float);
+    pointer-events: auto;
+}
+.spotlight-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+}
+.spotlight-head > svg {
+    color: var(--accent);
+}
+.spotlight-title {
+    flex: 1;
+}
+.spotlight-count {
+    font-variant-numeric: tabular-nums;
+}
+.spotlight-text {
+    margin: var(--sp-2) 0 var(--sp-3);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+}
+.spotlight-foot {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
+.spotlight-dots {
+    display: flex;
+    flex: 1;
+    gap: var(--sp-1);
+}
+.spotlight-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--line);
+}
+.spotlight-dots span.on {
+    background: var(--accent);
+}
+@media (prefers-reduced-motion: reduce) {
+    .spotlight-hole {
+        transition: none;
+    }
+}
+
 /* 처음 시작하기 가이드 (사용자 11-08~10): 서버가 없을 때 서버 화면 */
 .guide-page {
     overflow-y: auto;
@@ -5339,11 +5760,13 @@ button.appbar-pill:focus-visible {
     border-radius: var(--r-md);
     background: var(--bg-1);
 }
-.guide-module img {
+.guide-module > img {
     width: 36px;
     height: 36px;
+    padding: var(--sp-1);
     border-radius: var(--r-sm);
-    object-fit: cover;
+    background: var(--bg-3);
+    object-fit: contain;
 }
 .guide-module-text {
     display: flex;
@@ -5429,41 +5852,6 @@ button.appbar-pill:focus-visible {
     opacity: 0.85;
 }
 
-/* 설정 → 일반 맨 위: 가이드 다시 열기 */
-.setting-guides {
-    flex-direction: column;
-    align-items: stretch;
-}
-.guide-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-1-5);
-    margin: var(--sp-2) 0 0;
-    padding: 0;
-    list-style: none;
-}
-.guide-list li {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    padding: var(--sp-2) var(--sp-3);
-    border-radius: var(--r-md);
-    background: var(--bg-2);
-}
-.guide-list li > svg {
-    color: var(--accent);
-}
-.guide-list-text {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    font-size: var(--fs-sm);
-}
-.guide-list-text span {
-    color: var(--text-3);
-    font-size: var(--fs-xs);
-}
-
 /* CLI로 보기 (I4-c): 같은 일을 하는 CLI 한 줄. '명령줄로 하기'를 펼치면 보인다 */
 .cli-line {
     display: flex;
@@ -5474,24 +5862,17 @@ button.appbar-pill:focus-visible {
     margin-right: auto;
     color: var(--text-2);
 }
-.cli-line > summary {
-    display: inline-flex;
+.cli-line .saba-disclosure-head {
+    font-size: 12px;
+    font-weight: 500;
+}
+.cli-line .saba-disclosure-body:not([hidden]) {
+    display: flex;
+    flex: 1;
     align-items: center;
     gap: var(--sp-1-5);
-    cursor: pointer;
-    font-size: 12px;
-    list-style: none;
-    user-select: none;
-}
-.cli-line > summary::-webkit-details-marker {
-    display: none;
-}
-.cli-line > summary:hover,
-.cli-line > summary:focus-visible {
-    color: var(--text-1);
-}
-.cli-line:not([open]) > :not(summary) {
-    display: none;
+    min-width: 0;
+    padding-top: 0;
 }
 .cli-line code {
     overflow: hidden;
@@ -5864,12 +6245,8 @@ button.appbar-pill:focus-visible {
     gap: var(--sp-2);
     margin: 0 0 var(--sp-2);
 }
-.server-logs-head h3 {
-    margin: 0;
+.server-logs-head .ss-card-title {
     flex: 1;
-    font-size: var(--fs-sm);
-    color: var(--text-2);
-    font-weight: 600;
 }
 .server-logs-run {
     min-width: 160px;
@@ -5879,9 +6256,9 @@ button.appbar-pill:focus-visible {
     max-height: 320px;
     overflow: auto;
     padding: var(--sp-2) var(--sp-3);
-    border: 1px solid var(--line);
     border-radius: var(--r-md);
-    background: var(--bg-2);
+    background: var(--inset);
+    box-shadow: var(--neu-in);
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 12px;
     line-height: 1.5;
@@ -6042,13 +6419,13 @@ button.appbar-pill:focus-visible {
 .server-address-line.many .server-address-value {
     font-size: var(--fs-lg);
 }
-.server-address-value.dim,
-.server-address-value.masked {
+.server-address-value.dim {
     color: var(--text-2);
 }
 .server-address-sub {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: var(--sp-2);
     font-size: var(--fs-sm);
 }
@@ -6064,4 +6441,11 @@ button.appbar-pill:focus-visible {
 .server-address-check.verdict-open {
     background: var(--ok-soft);
     color: var(--ok);
+}
+/* 다시 확인은 알약 줄 끝에 */
+.server-address-retry {
+    margin-left: auto;
+}
+.server-address-error {
+    color: var(--danger);
 }

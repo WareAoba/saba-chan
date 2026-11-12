@@ -1,4 +1,5 @@
 fn main() {
+    embed_guides();
     #[cfg(windows)]
     println!("cargo:rustc-link-arg-bins=/DEPENDENTLOADFLAG:0x800");
     #[cfg(windows)]
@@ -178,4 +179,34 @@ fn compile_with_winres(icon: Option<&std::path::Path>, manifest: &std::path::Pat
         Err(e) if std::env::var("PROFILE").as_deref() == Ok("release") => panic!("winres fallback failed: {e}"),
         Err(e) => println!("cargo:warning=winres fallback failed: {}", e),
     }
+}
+
+/// 앱에 함께 싣는 가이드 (`guides/<이름>/guide.toml` + `locales/<언어>.json`)를 데몬에 넣는다 (`src/guides.rs` `BUILTIN`).
+/// 가이드를 더해도 코드를 고치지 않게 폴더를 훑어 목록을 만든다
+fn embed_guides() {
+    use std::fmt::Write as _;
+    let root = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("guides");
+    println!("cargo:rerun-if-changed=guides");
+    let mut dirs: Vec<_> = std::fs::read_dir(&root)
+        .map(|r| r.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.join("guide.toml").is_file()).collect())
+        .unwrap_or_default();
+    dirs.sort();
+    let lit = |p: &std::path::Path| format!("include_str!({:?})", p.to_str().unwrap());
+    let mut out = String::from("&[\n");
+    for dir in dirs {
+        let id = dir.file_name().unwrap().to_str().unwrap().to_string();
+        println!("cargo:rerun-if-changed={}", dir.display());
+        let mut langs: Vec<_> = std::fs::read_dir(dir.join("locales"))
+            .map(|r| r.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect())
+            .unwrap_or_default();
+        langs.sort();
+        let _ = write!(out, "    ({id:?}, {}, &[", lit(&dir.join("guide.toml")));
+        for lang in langs {
+            println!("cargo:rerun-if-changed={}", lang.display());
+            let _ = write!(out, "({:?}, {}), ", lang.file_stem().unwrap().to_str().unwrap(), lit(&lang));
+        }
+        out.push_str("]),\n");
+    }
+    out.push(']');
+    std::fs::write(std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("builtin_guides.rs"), out).unwrap();
 }

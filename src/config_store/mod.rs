@@ -56,6 +56,10 @@ pub struct GuiSettings {
     pub console_wrap: bool,
     /// 맨 아래를 보고 있을 때 새 줄을 따라 내려간다
     pub console_auto_scroll: bool,
+    /// 창 반투명이 켜져 있을 때 콘솔 바탕(인앱·PIP)도 유리처럼 비치게 한다
+    pub console_glass: bool,
+    /// 서버별 콘솔 PIP 창 기억 (GUI 셸 `window.rs`가 쓴다): 크기·위치·최대화, 서버가 다시 켜지면 띄울지
+    pub console_popouts: HashMap<String, ConsolePopout>,
 
     // Theme customization
     /// "dark" | "light" | "auto". 없으면 GUI가 정한다(예전 브라우저 저장값 이전, 기본 auto)
@@ -96,6 +100,8 @@ pub struct GuiSettings {
     pub system_monitor_float: Option<MonitorFloat>,
     /// 사용자가 ✕로 닫은 가이드 id (`firstRun`·`checklist` 등, GUI `guides.ts`). 설정 → 일반의 가이드 목록에서 다시 연다
     pub closed_guides: Vec<String>,
+    /// 바탕화면 오버레이 창 (익스텐션 slot `Desktop.overlay`, GUI 셸이 띄운다): 켜기와 마지막 자리
+    pub desktop_overlay: DesktopOverlaySettings,
 
     // Window state (GUI가 저장하지만 데몬이 중개)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -108,6 +114,41 @@ pub struct GuiSettings {
     /// 서버 목록 보기 (G1c): "switch"(고른 데몬만) | "unified"(다른 데몬의 서버도 데몬별로). 없으면 switch
     #[serde(skip_serializing_if = "Option::is_none")]
     pub daemon_view: Option<String>,
+}
+
+/// 콘솔 PIP 창 하나의 기억. 위치·크기는 논리 픽셀, 최대화 중에는 그 전 크기를 둔다
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ConsolePopout {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<f64>,
+    pub maximized: bool,
+    /// 사용자가 직접 닫지 않았다 → 서버가 다시 켜지거나 앱을 다시 열면 띄운다
+    pub reopen: bool,
+}
+
+/// 바탕화면 오버레이 창. 자리는 창 아래 가운데 점(물리 px)이고, 처음에는 셸이 작업 영역 오른쪽 아래에 놓는다
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DesktopOverlaySettings {
+    /// 끄면 `Desktop.overlay` slot을 선언한 익스텐션이 켜져 있어도 창을 띄우지 않는다
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<i32>,
+}
+
+impl Default for DesktopOverlaySettings {
+    fn default() -> Self {
+        Self { enabled: true, x: None, y: None }
+    }
 }
 
 /// 효과음 — 전체 스위치와 종류별 스위치. 둘 다 켜져 있어야 울린다
@@ -251,6 +292,8 @@ impl Default for GuiSettings {
             console_timestamp_date: false,
             console_wrap: true,
             console_auto_scroll: true,
+            console_glass: true,
+            console_popouts: HashMap::new(),
             theme: None,
             accent_color: "#667eea".to_string(),
             accent_secondary: "#764ba2".to_string(),
@@ -272,6 +315,7 @@ impl Default for GuiSettings {
             system_monitor_mode: "docked".into(),
             system_monitor_float: None,
             closed_guides: Vec::new(),
+            desktop_overlay: DesktopOverlaySettings::default(),
             window_bounds: None,
             language: None,
             main_daemon: None,
@@ -398,11 +442,11 @@ pub struct BotConfig {
     /// 백업 결과를 PC 주인에게 DM으로 알리는 범위 (`failures`면 실패만). 릴레이가 하트비트 `backupNotice`로 거른다
     pub backup_notice: BackupNotice,
     /// PC 주인 DM 알림을 종류별로 켜고 끈다 (사용자 2026-11-08). 백업은 `backup_notice`가 맡는다.
-    /// 릴레이가 하트비트 `dmOff`로 거른다
+    /// 릴레이가 하트비트 `dmOff`(끈 종류)·`dmOn`(켜야 보내는 종류 중 켠 것)으로 거른다
     pub dm_notice: DmNotice,
 }
 
-/// PC 주인 DM 알림 종류별 켜짐 (`BotConfig::dm_notice`). 빠진 칸은 켜짐이다
+/// PC 주인 DM 알림 종류별 켜짐 (`BotConfig::dm_notice`). 빠진 칸은 켜짐이다 (`offline`만 꺼짐)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DmNotice {
@@ -420,6 +464,8 @@ pub struct DmNotice {
     pub chatbot_usage: bool,
     /// AI 모더레이션 신고 (릴레이 `moderation`)
     pub moderation: bool,
+    /// PC 연결 끊김: 서버가 켜진 채로 이 PC가 릴레이에 닿지 않을 때 (릴레이 `offlineNotice`). 켜야 보낸다 (사용자 2026-11-12)
+    pub offline: bool,
 }
 
 impl Default for DmNotice {
@@ -432,6 +478,7 @@ impl Default for DmNotice {
             disk: true,
             chatbot_usage: true,
             moderation: true,
+            offline: false,
         }
     }
 }
@@ -451,6 +498,11 @@ impl DmNotice {
         .into_iter()
         .filter_map(|(k, on)| (!on).then_some(k))
         .collect()
+    }
+
+    /// 켜야 보내는 종류 중 켠 것 (하트비트 `dmOn`)
+    pub fn on_kinds(&self) -> Vec<&'static str> {
+        if self.offline { vec!["offline"] } else { Vec::new() }
     }
 }
 
@@ -1423,6 +1475,21 @@ mod tests {
     }
 
     #[test]
+    fn console_popouts_survive_a_typed_save() {
+        // 셸이 보내는 PIP 기억이 데몬의 타입을 거쳐도 남아야 다음에 다시 띄운다
+        let json = serde_json::json!({
+            "consolePopouts": { "srv-1": { "width": 820, "height": 500, "x": 40, "y": 60, "maximized": true, "reopen": true } }
+        });
+        let s: GuiSettings = serde_json::from_value(json).unwrap();
+        let p = &s.console_popouts["srv-1"];
+        assert_eq!((p.width, p.height, p.x, p.y), (Some(820.0), Some(500.0), Some(40.0), Some(60.0)));
+        assert!(p.maximized && p.reopen);
+        let back = serde_json::to_value(&s).unwrap();
+        assert_eq!(back["consolePopouts"]["srv-1"]["reopen"], true);
+        assert!(GuiSettings::default().console_glass, "콘솔 반투명은 기본 켜짐");
+    }
+
+    #[test]
     fn gui_settings_camel_case_serialization() {
         let settings = GuiSettings::default();
         let value = serde_json::to_value(&settings).unwrap();
@@ -2028,6 +2095,21 @@ mod tests {
         // 빠진 종류는 기본(켬)으로 채운다
         assert_eq!(saved["sounds"]["crash"], false);
         assert_eq!(saved["sounds"]["update"], true);
+    }
+
+    /// 바탕화면 오버레이 창(Desktop.overlay slot): 기본은 켬·자리 없음. 셸이 저장한 스위치와 자리가 남는다
+    #[tokio::test]
+    async fn the_desktop_overlay_switch_and_place_survive_a_save() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        let defaults = serde_json::to_value(store.get_gui_settings().await).unwrap();
+        assert_eq!(defaults["desktopOverlay"], serde_json::json!({ "enabled": true }));
+        store
+            .set_gui_settings_from_json(serde_json::json!({ "desktopOverlay": { "enabled": false, "x": 1500, "y": -20 } }))
+            .await
+            .unwrap();
+        let saved = serde_json::to_value(ConfigStore::new(tmp.path()).get_gui_settings().await).unwrap();
+        assert_eq!(saved["desktopOverlay"], serde_json::json!({ "enabled": false, "x": 1500, "y": -20 }));
     }
 
     #[tokio::test]

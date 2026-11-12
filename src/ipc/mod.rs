@@ -218,6 +218,12 @@ pub struct ServerInfo {
     #[serde(default)]
     pub module_settings: std::collections::HashMap<String, serde_json::Value>,
     pub server_version: Option<String>,
+    /// 설치된 빌드 (`ServerInstance::server_build`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_build: Option<crate::instance::ServerBuild>,
+    /// 설치된 버전에 없어 숨기는 설정 이름 (모듈 `[[settings.fields]] versions` 밖, `validator::version_hidden`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub version_hidden: Vec<String>,
     /// API(CLI/Discord)를 통해 마지막으로 시작/정지가 요청된 시점 (epoch ms)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_api_action: Option<u64>,
@@ -245,6 +251,12 @@ pub struct ServerInfo {
     /// 메모리 상한 MiB (`ServerInstance::memory_limit_mb`)
     #[serde(default)]
     pub memory_limit_mb: Option<u64>,
+    /// 게임 서버 자동 업데이트 (`ServerInstance::auto_update`)
+    #[serde(default)]
+    pub auto_update: bool,
+    /// 브랜치 서버의 상위 서버 id (`ServerInstance::branch_of`). 클라이언트가 그 서버 아래에 묶어 보인다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_of: Option<String>,
     /// 게임 채팅 전달 (`ServerInstance::game_chat`·`game_chat_keyword`)
     #[serde(default)]
     pub game_chat: crate::supervisor::game_chat::Mode,
@@ -265,22 +277,39 @@ pub struct ServerInfo {
     /// 자동 강퇴를 쓸 수 있는지: 모듈이 접속 줄(`player_join_patterns`)과 `kick_command`를 주고 데몬이 콘솔을 읽는 시작일 때
     #[serde(default)]
     pub controllers_only_supported: bool,
+    /// 접속자 없을 때 자동 정지를 쓸 수 있는지: 데몬이 접속자 수를 알 길이 있을 때 (모듈의 `[status] players` 함수,
+    /// 또는 접속·퇴장 문구와 데몬이 콘솔을 읽는 시작)
+    #[serde(default)]
+    pub idle_stop_supported: bool,
+    /// 꺼져 있고 마지막 정지가 접속자 없음 자동 정지였을 때 `{at, minutes}` (`supervisor::idle`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idle_stopped: Option<crate::supervisor::idle::Stopped>,
     /// 익스텐션 데이터 slot (Q-7): 데몬이 조건을 판정하고 값을 찾아 둔 것 (`ExtensionManager::server_slots`)
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub slots: serde_json::Map<String, serde_json::Value>,
     /// 접속자 수 (Q-5): 켜진 서버이고 모듈이 `[status] players`로 알려 줄 때만 (`supervisor::players`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub players: Option<crate::supervisor::players::PlayerCount>,
-    /// 켜져 있지만 상태 질문(접속자 수)에 `UNRESPONSIVE_AFTER` 넘게 답하지 않을 때 마지막 실패 이유.
+    /// 켜져 있지만 상태 질문(접속자 수)에 인스턴스 설정 `unresponsive_minutes`(기본 10분) 넘게 답하지 않을 때 마지막 실패 이유.
     /// REST로 명령을 보내는 서버라면 명령·정상 종료도 닿지 않는다 (`supervisor::players::unresponsive`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unresponsive: Option<String>,
+    /// `unresponsive`가 있을 때 답하지 않은 분
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unresponsive_minutes: Option<u64>,
     /// 인스턴스 폴더 밖의 서버 폴더(가져온 서버). 삭제해도 남는다 (`instance::migration::linked_folder`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linked_folder: Option<String>,
     /// 가져오기 전 게임 설정 파일을 보관해 두어, 삭제(연결 해제)할 때 되돌릴 수 있는가
     #[serde(default)]
     pub restorable_settings: bool,
+    /// 데몬이 마지막으로 한 게임 서버 업데이트 확인 결과 (`check-update`의 답 + `checked_at` unix 초, 0.1.14~).
+    /// 아직 확인하지 않았거나 확인하지 않는 서버면 null. 화면은 직접 확인하지 않고 이것을 읽는다 (`server_update::last_check`)
+    #[serde(default)]
+    pub update_check: Option<serde_json::Value>,
+    /// 시작·정지 요청이 진행 중이면 `starting`·`stopping` (0.1.14~). 화면은 이것으로 "하는 중"을 보인다 (`instance::transition`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transition: Option<String>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)
@@ -378,6 +407,9 @@ pub struct ExtensionInfo {
     /// `[[agreements]]` 켜기 전에 동의할 약관 (이름은 모듈 locales `agreements.<id>`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agreements: Vec<crate::supervisor::module_loader::ModuleAgreement>,
+    /// `[[lists]]` 플레이어 목록 선언 (있으면 클라이언트가 목록 화면을 보인다. 이름과 지금 명단은 `GET /api/instance/:id/lists`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lists: Vec<crate::supervisor::module_loader::ModuleList>,
     /// 모듈이 `functions`로 밝힌 lifecycle 함수 (MK1). null이면 모름: 클라이언트는 아무 기능도 숨기지 않는다
     #[serde(default)]
     pub functions: Option<Vec<String>>,
@@ -818,6 +850,8 @@ impl IPCServer {
             .route("/health", get(handlers::server::health_check))
             .route("/api/diagnostics", get(handlers::diagnostics::diagnostics))
             .route("/api/onboarding", get(handlers::diagnostics::onboarding))
+            .route("/api/guides", get(handlers::guides::list))
+            .route("/api/guides/{id}", post(handlers::guides::update))
             .route("/api/audit", get(handlers::diagnostics::audit))
             .route("/api/audit/export", post(handlers::diagnostics::audit_export))
             .route("/api/events", get(handlers::events::stream))
@@ -850,7 +884,7 @@ impl IPCServer {
             .route("/api/provision-progress/{name}", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
             // ── Server update ──
             .route("/api/instance/{id}/check-update", get(handlers::instance::check_server_update))
-            .route("/api/instance/{id}/apply-update", post(handlers::instance::apply_server_update))
+            .route("/api/instance/{id}/apply-update", post(handlers::instance::apply_server_update).delete(handlers::server_update::cancel_server_update))
             // ── Command execution ──
             .route("/api/instance/{id}/command", post(handlers::command::execute_command))
             .route("/api/instance/{id}/commands", get(handlers::command::list_instance_commands))
@@ -869,8 +903,9 @@ impl IPCServer {
             .route("/api/instance/{id}/properties", get(handlers::managed::read_properties_handler).put(handlers::managed::write_properties_handler))
             .route("/api/instance/{id}/properties/reset", post(handlers::managed::reset_properties_handler))
             .route("/api/instance/{id}/settings/live", get(handlers::managed::read_live_settings_handler))
-            .route("/api/instance/{id}/server/reset", post(handlers::managed::reset_server_handler))
+            .route("/api/instance/{id}/server/reset", get(handlers::managed::reset_preview_handler).post(handlers::managed::reset_server_handler))
             .route("/api/instance/{id}/agreements", post(handlers::managed::accept_agreements_handler))
+            .route("/api/instance/{id}/lists", get(handlers::managed::lists_handler))
             .route("/api/instance/{id}/diagnose", post(handlers::managed::diagnose_handler))
             .route("/api/instance/{id}/port-check", get(handlers::port_check::last).post(handlers::port_check::check))
             .route("/api/instance/{id}/address", get(handlers::port_check::address))
@@ -878,7 +913,10 @@ impl IPCServer {
             .route("/api/instance/{id}/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
             .route("/api/instance/{id}/backups/{name}", delete(handlers::backup::delete_backup))
             .route("/api/instance/{id}/backups/{name}/restore", post(handlers::backup::restore_backup))
+            .route("/api/instance/{id}/backups/{name}/export", post(handlers::backup::export_backup))
+            .route("/api/instance/{id}/backups/import", post(handlers::backup::import_backup))
             .route("/api/instance/{id}/schedule", get(handlers::backup::get_schedule).put(handlers::backup::put_schedule))
+            .route("/api/schedules/upcoming", get(handlers::backup::upcoming_schedules))
             // ── Server installation endpoints ──
             .route("/api/module/{name}/versions", get(handlers::managed::list_versions_handler))
             .route("/api/module/{name}/version/{version}", get(handlers::managed::get_version_details_handler))
@@ -1033,6 +1071,7 @@ impl IPCServer {
             .route("/api/remote/clients", get(handlers::remote_daemon::list_clients))
             .route("/api/remote/clients/{host_id}", delete(handlers::remote_daemon::revoke_client))
             .route("/api/remote/peers", get(handlers::remote_daemon::list_peers))
+            .route("/api/remote/peers/{host_id}/name", put(handlers::remote_daemon::rename_peer))
             .route("/api/remote/daemons", get(handlers::remote_daemon::list_daemons).post(handlers::remote_daemon::connect_daemon))
             .route("/api/remote/daemons/{host_id}", delete(handlers::remote_daemon::forget_daemon))
             .route("/api/remote/daemons/{host_id}/remove", post(handlers::remote_daemon::remove_daemon))
@@ -1044,6 +1083,8 @@ impl IPCServer {
             .route("/api/remote/daemons/{host_id}/proxy/{*rest}", get(handlers::remote_daemon::proxy).post(handlers::remote_daemon::proxy).put(handlers::remote_daemon::proxy).patch(handlers::remote_daemon::proxy).delete(handlers::remote_daemon::proxy))
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))
+            // 디스코드 탭의 릴레이 읽기를 잠깐 기억하고, 쓰는 요청이 끝나면 잊는다 (`relay_cache.rs`)
+            .layer(axum::middleware::from_fn(handlers::relay_cache::layer))
             // 감사 로그 출처 (A10): 요청마다 X-Saba-Client로 정한다. 인증층은 이 바깥에 씌운다 (업데이트 라우터까지)
             .layer(axum::middleware::from_fn(crate::audit::layer))
             // 짝 맺은 PC(출처 `remote`)의 PC 전용 경로·칸 (D1). 원격 포트와 안에서 다시 부르는 라우터(`actions::call_as`)가 모두 지난다
@@ -1297,6 +1338,7 @@ mod tests {
             presets: Vec::new(),
             queries: Vec::new(),
             agreements: Vec::new(),
+            lists: Vec::new(),
             functions: None,
             commands: Some(crate::supervisor::module_loader::ModuleCommands {
                 fields: vec![
@@ -1361,6 +1403,7 @@ mod tests {
             presets: Vec::new(),
             queries: Vec::new(),
             agreements: Vec::new(),
+            lists: Vec::new(),
             functions: None,
             commands: None,
         };
@@ -1406,6 +1449,7 @@ mod tests {
                     presets: Vec::new(),
                     queries: Vec::new(),
                     agreements: Vec::new(),
+                    lists: Vec::new(),
                     functions: None,
                     commands: Some(crate::supervisor::module_loader::ModuleCommands {
                         fields: vec![

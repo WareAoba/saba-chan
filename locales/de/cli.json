@@ -181,6 +181,7 @@
       "schedule": "Vorwarnung für Zeitpläne",
       "update": "Saba-chan-Updates",
       "disk": "Wenig Speicherplatz",
+      "offline": "PC nicht erreichbar",
       "chatbotUsage": "Sprechende Saba-chan: Verbrauch",
       "moderation": "KI-Moderationsmeldungen"
     },
@@ -223,7 +224,10 @@
     "sleep_blocks_none": "Keine",
     "bedtime": "Braver Junge",
     "bedtime_format": "Schreiben Sie --bedtime als Einschlafzeit-Aufwachzeit, z. B. 01:00-08:00.",
-    "big_emoji": "Emoji-Upscaling"
+    "big_emoji": "Emoji-Upscaling",
+    "member_notice": "Hinweise zu Beitritten und Austritten",
+    "busy_notice": "Überlastungshinweis",
+    "chat_auto_open": "Chat-Verbindung mit dem Serverstart einschalten"
   },
   "col": {
     "players": "Spieler",
@@ -245,6 +249,7 @@
     "state": "Status",
     "uptime": "Laufzeit",
     "version": "Version",
+    "build": "Build {{id}}",
     "what": "Beschreibung",
     "when": "Wann",
     "why": "Grund",
@@ -454,6 +459,10 @@
       "backup_unsupported": "Das Modul dieses Spiels gibt nicht an, was gesichert werden soll. Ein neueres Modul kann es vielleicht: saba-chan-cli update check",
       "nothing_to_back_up": "Die Welt existiert noch nicht. Starte den Server einmal, um sie zu erstellen.",
       "backup_busy": "Für diesen Server läuft bereits ein Backup oder eine Wiederherstellung. Versuche es erneut, wenn es fertig ist.",
+      "import_not_backup": "Diese Datei ist keine von Saba-chan exportierte Sicherung. Gib eine mit `backup export` erstellte zip an.",
+      "import_damaged": "Diese Sicherungsdatei ist beschädigt. Exportiere sie auf dem ursprünglichen PC erneut.",
+      "import_other_module": "Diese Sicherung stammt von einem Server für ein anderes Spiel und kann hier nicht importiert werden.",
+      "export_old_backup": "Diese Sicherung wurde von einer alten Version erstellt und kann nicht exportiert werden.",
       "backup_file_locked": "Der Server benutzt eine Datei ({{file}}). Server stoppen und erneut versuchen: saba-chan-cli stop <Name>",
       "autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten: saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "Das Backup ist fehlgeschlagen, und das Autospeichern des Servers ließ sich auch nicht wieder einschalten. Server neu starten: saba-chan-cli restart <name>",
@@ -680,6 +689,7 @@
     "port_conflict_with": "Port {{port}} wird auch von {{name}} verwendet.",
     "update_available": "Für {{name}} ist ein Update verfügbar.",
     "update_none": "{{name}} ist aktuell.",
+    "update_check_failed": "Updates für {{name}} konnten nicht geprüft werden: {{error}}",
     "update_reason": {
       "no_extension_data": "(keine Installationsmethode gespeichert)",
       "no_hook_handled": "(keine Erweiterung übernimmt Updates dafür)"
@@ -709,7 +719,7 @@
     "unknown_key": "{{key}} ist ein neuer Schlüssel.",
     "restart_required_mark": "Neustart nötig",
     "restart_required": "Zum Übernehmen den Server neu starten: {{keys}}",
-    "hidden": "Ausgeblendet, weil andere Einstellungen sie gerade nicht nutzen: {{keys}}"
+    "hidden": "Ausgeblendet, weil sie gerade nicht genutzt werden: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Nicht geschlossenes Anführungszeichen.",
@@ -940,6 +950,8 @@
       "backup.create": "Jetzt sichern",
       "backup.delete": "Ein Backup löschen (ohne Namen: aus einer Liste wählen)",
       "backup.restore": "Ein Backup wiederherstellen (fragt, ob ein laufender Server gestoppt werden soll). Ohne Namen: aus einer Liste wählen",
+      "backup.export": "Eine Sicherung in eine einzelne zip schreiben, die auf einen anderen PC verschoben werden kann (ohne Namen: aus der Liste wählen)",
+      "backup.import": "Eine mit `backup export` erstellte zip prüfen und zu den Sicherungen dieses Servers hinzufügen (danach wiederherstellen)",
       "schedule": "Geplante Serveraufgaben (Start, Stopp, Neustart, Speichern, Backup, Ankündigung, Update, Spielbefehl)",
       "schedule.show": "Zeitplan anzeigen",
       "schedule.add": "Aufgabe planen: start, stop, restart, save, backup, announce, update, command",
@@ -1002,6 +1014,7 @@
       "config.paths": "Wo Saba-chan Daten, Module und Erweiterungen ablegt, und die Standardordner",
       "config.move": "Module oder Erweiterungen in einen anderen Ordner verschieben. Installierte Dateien werden verschoben; Server müssen gestoppt sein",
       "server.players": "Wer gerade online ist",
+      "server.lists": "Spielerlisten des Spiels (wer beitreten darf, Admins, Sperren)",
       "server.address": "Die Adresse (IP:Port), mit der sich Freunde verbinden",
       "server.port-check": "Prüfen, ob Freunde diesen Server aus dem Internet erreichen (Portweiterleitung)",
       "server.rcon": "Eine Zeile so senden, wie der Server Befehle annimmt (Konsole, sonst RCON), und die Antwort zeigen",
@@ -1019,6 +1032,7 @@
       "remote.daemons": "Remote-Daemons, mit denen sich dieser Daemon verbindet",
       "remote.servers": "Server auf diesem PC und auf jedem Remote-Daemon, nach Daemon (einen bedienen mit `--daemon <Name>`)",
       "remote.forget": "Remote-Daemon entfernen (erneut verbinden mit `remote connect`)",
+      "remote.rename": "Einen meiner PCs umbenennen, auch diesen (der Name auf allen meinen PCs und in Discord)",
       "config.autostart": "Was beim Anmelden an diesem PC startet: off, daemon (nur Daemon und Tray) oder full (mit GUI-Fenster). Ohne Modus wird der aktuelle Wert gezeigt",
       "config.browse": "Ordner und Dateien auf dem PC des Daemons (mit --daemon der entfernte PC). Ohne Pfad Laufwerke oder /",
       "bot.notice": "Im Hinweiskanal des Discord-Servers melden, wenn ein Server ohne Discord-Befehl startet oder stoppt (standardmäßig aus). `--full`: wenn er voll ist oder wieder ein Platz frei wird. Ohne Server: anzeigen. Server mit `--on`/`--off`: ändern",
@@ -1034,6 +1048,9 @@
       "bot.clear": "Letzte Nachrichten eines Kanals löschen (angeheftete Nachrichten und Saba-chan-Panels bleiben). Fragt vorher nach",
       "bot.mute": "Chat, Reaktionen und Sprache eines Mitglieds sperren: Dauer (10m, 1h, 7d, bis 28 Tage), forever, aufheben mit off",
       "bot.big-emoji": "Emoji-Upscaling (ein einzelnes eigenes Emoji wird groß gezeigt) auf einem Discord-Server. Ohne Optionen: anzeigen",
+      "bot.member-notice": "Hinweise zu Beitritten und Austritten auf einem Discord-Server (Hinweiskanal). Ohne Optionen: anzeigen",
+      "bot.busy-notice": "Überlastungshinweis auf einem Discord-Server (bei überlastetem PC gepostet, danach entfernt). Ohne Optionen: anzeigen",
+      "bot.chat-auto-open": "Chat-Verbindung auf einem Discord-Server von selbst öffnen, solange jemand auf einem laufenden Server ist. Ohne Optionen: anzeigen",
       "config.net-trace": "Berechtigung für Netzwerk pro Server und Port (erweitert, Windows): ohne Aktion der aktuelle Stand; grant zeigt auf dem Daemon-PC einmal eine Administratorbestätigung, revoke macht es rückgängig. Einschalten mit config set systemMonitorNetTrace=on",
       "mcp": "Ein KI-Agent auf diesem PC (Claude Code, Codex) nutzt alle Befehle: lokaler MCP-Server über stdin/stdout",
       "agent": "Den lokalen MCP-Server (`mcp`) bei KI-Agenten auf diesem PC eintragen",
@@ -1053,6 +1070,7 @@
       "perm.level.add.name": "Name der neuen Stufe (1–32 Zeichen)",
       "perm.level.rename.name": "Neuer Name (1–32 Zeichen)",
       "backup.create.from_snapshot": "Statt die Welt jetzt zu kopieren, das neueste automatische Backup des Spiels behalten (Palworld u. a.)",
+      "backup.export.out": "Wohin die zip geschrieben wird (ein Pfad auf dem PC, auf dem der Daemon läuft)",
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
       "bot.channels.no_notify": "Benachrichtigungskanal entfernen",
       "bot.channels.game_chat": "Der Spielchat-Kanal (Chat der Server mit aktivierter Weiterleitung), per Name oder ID",
@@ -1178,6 +1196,7 @@
       "install.modules": "Zu installierende Spielmodule, durch Kommas getrennt (wird gefragt, wenn weggelassen)",
       "install.gui": "Auch ohne Bildschirm die Desktop-App installieren",
       "install.no_gui": "Auch mit Bildschirm ohne Desktop-App installieren",
+      "install.channel": "Kanal für die Installation und spätere Updates: stable, rc (Vorschau) oder beta. Ohne Angabe der Kanal des Installers",
       "uninstall.remove_settings": "Auch Einstellungen und die Discord-Verbindung entfernen",
       "uninstall.remove_instances": "Auch Server entfernen (Serverdateien, Welten, Backups)",
       "config.move.kind": "Was verschoben wird: modules oder extensions",
@@ -1196,11 +1215,13 @@
       "do.server": "Server, auf den die Aktion wirkt",
       "remote.set.on": "Remote-Port einschalten",
       "remote.set.off": "Remote-Port ausschalten",
-      "remote.set.port": "Remote-Portnummer",
+      "remote.set.remote_port": "Remote-Portnummer",
       "remote.set.address": "Öffentlicher Hostname oder IP dieses PCs (leer löscht ihn, Verbindung dann über das Relay)",
       "remote.revoke.host_id": "PC-ID, deren Kopplung aufgehoben wird (siehe `remote clients`)",
       "remote.connect.host_id": "PC-ID zum Verbinden (siehe `remote peers`)",
       "remote.forget.host_id": "PC-ID zum Entfernen (siehe `remote daemons`)",
+      "remote.rename.host_id": "ID des PCs (siehe `remote peers`; dieser PC: ID in `remote status`)",
+      "remote.rename.name": "Neuer PC-Name (1 bis 64 Zeichen)",
       "config.autostart.mode": "off, daemon oder full",
       "keep_settings": "Beim Löschen der Instanz die Spieleinstellungsdateien nicht auf den Stand vor dem Import zurücksetzen, sondern so lassen",
       "move_folder": "Den --from-Ordner nicht an Ort und Stelle verknüpfen, sondern in den saba-chan-Ordner verschieben (nur auf demselben Laufwerk)",
@@ -1267,6 +1288,12 @@
       "bot.sleep-mode.no_block": "Im Schlaf keine Funktion ausschalten",
       "bot.big-emoji.on": "Emoji-Upscaling einschalten",
       "bot.big-emoji.off": "Emoji-Upscaling ausschalten",
+      "bot.member-notice.on": "Mitgliederhinweise einschalten",
+      "bot.member-notice.off": "Mitgliederhinweise ausschalten",
+      "bot.busy-notice.on": "Überlastungshinweis einschalten",
+      "bot.busy-notice.off": "Überlastungshinweis ausschalten",
+      "bot.chat-auto-open.on": "Chat-Verbindung von selbst öffnen",
+      "bot.chat-auto-open.off": "Chat-Verbindung geschlossen lassen, bis jemand sie öffnet",
       "config.net-trace.action": "grant oder revoke. Ohne Angabe wird der aktuelle Stand gezeigt",
       "agent.link.claude": "Nur Claude Code",
       "agent.link.codex": "Nur Codex",
@@ -1274,7 +1301,7 @@
       "agent.unlink.codex": "Nur Codex",
       "remote.claim.code": "Der Kopplungscode, den der PC angezeigt hat",
       "remote.install.target": "Ziel-PC (`benutzer@host`)",
-      "remote.install.port": "ssh-Port",
+      "remote.install.ssh_port": "ssh-Port",
       "remote.install.linger": "Daemon nach dem Abmelden weiterlaufen lassen (sudo)",
       "remote.install.steam_libs": "32-Bit-Bibliotheken für SteamCMD installieren (sudo)",
       "remote.remove.host_id": "ID des zu entfernenden PCs (siehe `remote peers`)",
@@ -1314,7 +1341,8 @@
       "pre-update": "vor Update",
       "pre-restore": "vor Wiederherstellung",
       "snapshot": "Behaltenes Spiel-Backup",
-      "game-snapshot": "Spiel-Autobackup"
+      "game-snapshot": "Spiel-Autobackup",
+      "imported": "Importiert"
     },
     "none": "{{name}} hat noch keine Backups.",
     "creating": "{{name}} wird gesichert...",
@@ -1326,6 +1354,8 @@
     "confirm_restore_running": "{{name}} läuft. Stoppen und auf Backup {{backup}} zurücksetzen? Die aktuelle Welt wird vorher als Backup gesichert.",
     "restoring": "{{backup}} wird wiederhergestellt...",
     "restored": "{{name}} ist wieder auf dem Stand von {{backup}}.",
+    "exported": "Sicherung exportiert: {{path}} ({{size}}). Nur diese eine Datei auf einen anderen PC verschieben, um sie dort zu importieren.",
+    "imported": "Sicherung {{backup}} wurde zu {{name}} hinzugefügt. Zum Einspielen in den Server wiederherstellen.",
     "pre_restore": "Die vorherige Welt bleibt als Backup {{backup}} erhalten.",
     "links_not_restored": "Die Wiederherstellung ist fertig, aber {{count}} Verknüpfung(en) im Ordner konnten nicht wiederhergestellt werden (z. B. Windows-Berechtigungen). Die Pfade stehen im Daemon-Protokoll.",
     "start_again": "{{name}} wieder starten?",
@@ -1787,6 +1817,7 @@
   "install": {
     "fetching": "Prüfe die neueste Version…",
     "fetch_failed": "Die neueste Version konnte nicht geladen werden: {{reason}}",
+    "channel_older": "Die neueste Version des Kanals {{channel}} ({{offered}}) ist älter als dieses Installationsprogramm ({{installer}}) und lässt sich daher nicht über diesen Kanal installieren. Wähle einen anderen Kanal.",
     "ask_dir": "Installationsordner",
     "unknown_module": "Unbekanntes Modul: {{name}}. Verfügbare Module: {{list}}",
     "ask_module": "Das Modul {{name}} auch installieren?",
@@ -1809,6 +1840,7 @@
     "next_mac_app": "Öffne Saba-chan im Ordner „Programme“ oder mit:\n{{command}}",
     "components_dir": "Module und Erweiterungen kommen nach {{dir}}.",
     "components_dir_invalid": "{{dir}} kann nicht für Module und Erweiterungen verwendet werden: {{reason}}",
+    "channel": "Die neueste Version aus dem Kanal {{channel}} wird installiert; spätere Updates kommen ebenfalls aus diesem Kanal.",
     "invalid_dir": "Installation in {{dir}} nicht möglich. Wähle einen Ordner, der kein Laufwerksstamm, kein Benutzerordner und nicht der Einstellungsordner ist"
   },
   "uninstall": {
@@ -1881,6 +1913,12 @@
     "title": "{{server}}: {{count}} online",
     "none": "Niemand ist online."
   },
+  "lists": {
+    "title": "{{list}}: {{count}}",
+    "none": "Noch niemand hier.",
+    "unsupported": "Das Spiel dieses Servers stellt keine Spielerlisten bereit.",
+    "edit": "Hinzufügen: {{add}} <Name>   Entfernen: {{remove}} <Name>"
+  },
   "log": {
     "none": "Noch kein gespeichertes Log. Es entsteht, nachdem der Server einmal gelaufen ist.",
     "truncated": "Das Log war zu groß; nur der Anfang kam zurück.",
@@ -1927,6 +1965,7 @@
     "connected": "Mit dem Remote-Daemon auf {{name}} gekoppelt.",
     "no_daemons": "Dieser Daemon verbindet sich mit keinem Remote-Daemon. Zeige deine PCs mit `remote peers` und verbinde mit `remote connect <PC-ID>`.",
     "forgotten": "Remote-Daemon auf {{host}} entfernt.",
+    "renamed": "PC in {{name}} umbenannt.",
     "connect_error": {
       "remote_not_found": "Dieser PC gehört nicht zu deinen anderen PCs",
       "remote_no_endpoint": "Dieser PC hat seinen Remote-Port nicht geöffnet",

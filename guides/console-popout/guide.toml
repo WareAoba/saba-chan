@@ -1,0 +1,11 @@
+[guide]
+group = "care"
+icon = "terminal"
+order = 40
+
+[[steps]]
+go = "server/:first/console"
+spot = "server.tab.console"
+
+[[steps]]
+spot = "console.popout"

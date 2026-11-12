@@ -155,9 +155,18 @@ pub async fn daemon_console(
     let since_id = params.get("since").and_then(|s| s.parse::<u64>().ok());
     let count = params.get("count").and_then(|c| c.parse::<usize>().ok());
 
-    let entries = state.daemon_log_buffer.get_since(since_id, count);
-    let count = entries.len();
-    let mut lines = serde_json::to_value(entries).unwrap_or_else(|_| json!([]));
+    // `?wait=<초>`: 새 줄이 없으면 생길 때까지 기다린다 (since가 있을 때만)
+    let wait = if since_id.is_some() { super::long_poll::wait_of(&params) } else { std::time::Duration::ZERO };
+    let buffer = &state.daemon_log_buffer;
+    let waited = super::long_poll::read_waiting(&crate::daemon_log::DAEMON_LOG_CHANGED, wait, None, || async {
+        Ok(json!({"lines": serde_json::to_value(buffer.get_since(since_id, count))?}))
+    })
+    .await
+    .unwrap_or_else(|_| json!({"lines": []}));
+    let waits = waited.get("waits").cloned();
+    let entries = waited.get("lines").cloned().unwrap_or_else(|| json!([]));
+    let count = entries.as_array().map_or(0, Vec::len);
+    let mut lines = entries;
     // `spans=1`: 줄마다 구문 강조 토큰 구간 (인스턴스 콘솔과 같은 토큰, UTF-16 오프셋)
     if params.get("spans").is_some_and(|v| v == "1" || v == "true") {
         let hl = crate::supervisor::highlight::daemon_log();
@@ -179,6 +188,7 @@ pub async fn daemon_console(
             "lines": lines,
             "count": count,
             "epoch": state.daemon_log_buffer.epoch(),
+            "waits": waits,
         })),
     )
         .into_response()

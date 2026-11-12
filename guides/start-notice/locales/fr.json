@@ -1,0 +1,8 @@
+{
+    "title": "Alerte de démarrage/arrêt",
+    "summary": "Alertes de démarrage et d’arrêt sur Discord",
+    "steps": [
+        "Dans l'onglet Instances du serveur Discord, activez la cloche à côté d'un serveur. Saba-chan prévient quand ce serveur démarre ou s'arrête en dehors de Discord.",
+        "Pour choisir le salon des alertes, sélectionnez un salon dans Gestion du serveur › Salons et réglez Tâches de Saba-chan sur Alertes."
+    ]
+}

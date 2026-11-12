@@ -51,15 +51,6 @@
     }
 }
 
-.modal-illustration {
-    width: 168px;
-    height: auto;
-    margin-bottom: var(--sp-1);
-    object-fit: contain;
-    pointer-events: none;
-    user-select: none;
-}
-
 .modal-title {
     font-size: calc(17px * var(--font-scale));
     font-weight: 600;
@@ -86,94 +77,6 @@
     padding: var(--sp-2-5);
     border-radius: 6px;
     border-left: 3px solid var(--line);
-}
-
-/* 유리 위의 버튼: 채운 버튼은 색 한 겹 + 위쪽 빛줄, 올리면 같은 색으로 은은히 빛난다 */
-.modal-button {
-    --btn-tone: var(--accent);
-    padding: 0 var(--sp-5);
-    border: 1px solid color-mix(in oklch, var(--btn-tone) 70%, white);
-    height: 40px;
-    border-radius: var(--r-md);
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    cursor: pointer;
-    background-color: var(--btn-tone);
-    color: var(--text-on-dark);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.22),
-        0 2px 8px color-mix(in oklch, var(--btn-tone) 22%, transparent);
-    transition:
-        transform var(--dur-fast) var(--ease),
-        filter var(--dur-fast) var(--ease),
-        box-shadow var(--dur-fast) var(--ease),
-        background-color var(--dur-fast) var(--ease);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.modal-button:hover {
-    filter: brightness(1.07);
-    transform: translateY(-1px);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.26),
-        0 6px 18px color-mix(in oklch, var(--btn-tone) 38%, transparent);
-}
-
-.modal-button:active {
-    transform: translateY(0) scale(0.98);
-    filter: brightness(0.97);
-}
-
-.modal-button:focus-visible {
-    outline: none;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.22),
-        0 0 0 3px color-mix(in oklch, var(--btn-tone) 40%, transparent);
-}
-
-.failure-button {
-    --btn-tone: var(--stop);
-}
-
-.notification-button {
-    --btn-tone: var(--info);
-}
-
-.modal-buttons-group {
-    display: flex;
-    gap: var(--sp-2-5);
-    margin-top: var(--sp-4);
-    justify-content: center;
-}
-
-.modal-buttons-group.stacked {
-    flex-direction: column;
-}
-
-.modal-buttons-group.stacked > .modal-button {
-    flex: none;
-}
-
-.question-confirm {
-    flex: 1;
-}
-
-/* 취소는 색 없는 유리 버튼: 테두리와 옅은 면만 */
-.question-cancel {
-    --btn-tone: transparent;
-    flex: 1;
-    color: var(--text-1);
-    background-color: color-mix(in oklch, var(--text-1) 7%, transparent);
-    border-color: var(--glass-border);
-    box-shadow: var(--glass-highlight);
-}
-
-.question-cancel:hover {
-    background-color: color-mix(in oklch, var(--text-1) 12%, transparent);
-    box-shadow: var(--glass-highlight);
 }
 
 /* ===== Context Menu (components/ui/ContextMenu.js) ===== */
@@ -263,16 +166,9 @@
     overflow: hidden;
 }
 
-.settings-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--sp-6);
-    border-bottom: none;
-}
-
-.settings-modal-header h2 {
-    margin: 0;
+/* 설정 화면 큰 제목: 고른 탭 이름 하나 */
+.settings-tab-title {
+    margin: 0 0 var(--sp-4);
     font-size: calc(22px * var(--font-scale));
     color: var(--text-1);
 }
@@ -1537,7 +1433,10 @@
 }
 
 @keyframes download-ring-spin {
-    to { transform: rotate(270deg); transform-origin: center; }
+    to {
+        transform: rotate(270deg);
+        transform-origin: center;
+    }
 }
 
 /* transform-origin이 SVG에서 제대로 작동하려면 */
@@ -1547,8 +1446,12 @@
 }
 
 @keyframes download-ring-spin {
-    from { transform: rotate(-90deg); }
-    to   { transform: rotate(270deg); }
+    from {
+        transform: rotate(-90deg);
+    }
+    to {
+        transform: rotate(270deg);
+    }
 }
 
 .download-ring-label {
@@ -1635,12 +1538,6 @@
     border-radius: var(--r-sm);
 }
 
-.ss-catalog-top .ss-card-icon img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: inherit;
-}
 
 .ss-catalog-title {
     display: flex;
@@ -1682,36 +1579,15 @@
     margin-bottom: var(--sp-4);
 }
 
-.ss-unsupported > summary {
+.ss-unsupported > .saba-disclosure-head {
     display: flex;
-    align-items: center;
-    gap: var(--sp-2);
+    width: 100%;
+    margin: 0;
     padding: var(--sp-3) var(--sp-4);
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    color: var(--text-2);
-    cursor: pointer;
-    list-style: none;
+    border-radius: 0;
 }
-
-.ss-unsupported > summary::-webkit-details-marker {
-    display: none;
-}
-
-.ss-unsupported > summary::before {
-    content: '›';
-    font-size: 16px;
-    line-height: 1;
-    transition: transform var(--dur-fast) var(--ease);
-}
-
-.ss-unsupported[open] > summary::before {
-    transform: rotate(90deg);
-}
-
-.ss-unsupported > summary:focus-visible {
-    outline: 2px solid var(--brand-primary);
-    outline-offset: -2px;
+.ss-unsupported > .saba-disclosure-body {
+    padding-top: 0;
 }
 
 .ss-unsupported-row {
@@ -1850,7 +1726,10 @@
     border-radius: 50%;
     border: 2px solid transparent;
     cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    transition:
+        transform 0.15s ease,
+        box-shadow 0.15s ease,
+        border-color 0.15s ease;
     position: relative;
     padding: 0;
 }
@@ -1862,7 +1741,9 @@
 
 .accent-preset-btn.active {
     border-color: var(--text-1);
-    box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 4px var(--text-1);
+    box-shadow:
+        0 0 0 2px var(--bg-2),
+        0 0 0 4px var(--text-1);
 }
 
 .accent-preset-custom {
@@ -1870,9 +1751,15 @@
     align-items: center;
     justify-content: center;
     /* 색상환 견본: 테마와 무관한 고정 무지개라 토큰 규칙의 예외다 */
-    background: conic-gradient(in oklch
-        from 0deg,
-        #f38ba8, #fab387, #f9e2af, #a6e3a1, #89b4fa, #cba6f7, #f38ba8
+    background: conic-gradient(
+        in oklch from 0deg,
+        #f38ba8,
+        #fab387,
+        #f9e2af,
+        #a6e3a1,
+        #89b4fa,
+        #cba6f7,
+        #f38ba8
     ) !important;
     cursor: pointer;
     position: relative;
@@ -2028,10 +1915,9 @@
 }
 
 /* 패치노트 */
-.patch-notes-modal {
-    max-width: 560px;
-    width: 100%;
-    text-align: left;
+.saba-dialog.patch-notes .saba-dialog-body {
+    display: flex;
+    flex-direction: column;
     gap: var(--sp-3);
 }
 .patch-notes-body {
@@ -2087,38 +1973,6 @@
     font-size: 13px;
     font-weight: 600;
 }
-.remote-daemon-list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-1);
-}
-/* 버튼이 있든 없든 행 높이를 같게 둔다 (작은 버튼 30px + 위아래 여백) */
-.remote-daemon-row {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    min-height: 40px;
-    padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-3);
-    border-radius: var(--r-md);
-    background: var(--inset);
-}
-.remote-daemon-row > .muted {
-    padding-right: var(--sp-2);
-}
-.remote-daemon-row .btn {
-    flex-shrink: 0;
-}
-.remote-daemon-name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 /* 설정 > 연결: 내 PC 카드 (이 PC가 맨 앞, 강조 테두리) */
 .remote-pc-cards {
     margin: 0;
@@ -2168,6 +2022,29 @@
     display: flex;
     flex-direction: column;
 }
+.remote-pc-os.large {
+    width: 52px;
+    height: 52px;
+    border-radius: var(--r-lg);
+}
+.remote-pc-namerow {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+.remote-pc-ver {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    font-variant-numeric: tabular-nums;
+}
+.remote-pc-ver.warn {
+    color: var(--warn);
+}
 .remote-pc-name {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2181,32 +2058,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.remote-pc-me {
-    margin-left: var(--sp-1);
-    padding: 1px var(--sp-1-5);
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--accent);
-    border: 1px solid var(--accent);
-}
-.remote-pc-pill {
-    flex-shrink: 0;
-    padding: var(--sp-0-5) var(--sp-2);
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    border: 1px solid currentColor;
-}
-.remote-pc-pill.on {
-    color: var(--ok);
-}
-.remote-pc-pill.off {
-    color: var(--text-2);
-}
-.remote-pc-pill.warn {
-    color: var(--warn);
-}
 /* 별: 채운 별이 메인 데몬, 빈 별을 누르면 그 PC가 메인이 된다 */
 .remote-pc-star {
     flex-shrink: 0;
@@ -2217,29 +2068,35 @@
     height: 28px;
     padding: 0;
     border-radius: var(--r-md);
-    border: 1px solid transparent;
+    border: none;
     background: none;
     color: var(--text-2);
     cursor: pointer;
     opacity: 0.45;
 }
 .remote-pc-star:hover {
-    border-color: var(--line-strong);
     opacity: 1;
 }
 .remote-pc-star.on {
     color: var(--star);
     opacity: 1;
 }
+.remote-pc-chip {
+    flex-shrink: 0;
+}
+/* 이름표와 값이 한 줄 높이로 맞는다: 이름표 칸은 가장 긴 이름표에 맞추고 줄 바꿈하지 않는다 */
 .remote-pc-kv {
     margin: 0;
     display: grid;
-    grid-template-columns: auto 1fr;
-    gap: var(--sp-0-5) var(--sp-3);
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: baseline;
+    gap: var(--sp-1) var(--sp-3);
     font-size: var(--fs-sm);
+    line-height: 1.5;
 }
 .remote-pc-kv dt {
     color: var(--text-2);
+    white-space: nowrap;
 }
 .remote-pc-kv dd {
     margin: 0;
@@ -2294,38 +2151,23 @@
     text-align: left;
     cursor: pointer;
 }
-/* 지우기·리눅스에 설치 창 */
-.modal.remote-pc-dialog {
-    max-width: 480px;
-    text-align: left;
+/* 지우기·리눅스에 설치 창 (공통 Dialog) */
+.saba-dialog.remote-install {
+    --dialog-w: 620px;
+}
+.remote-install-body {
     display: flex;
     flex-direction: column;
     gap: var(--sp-3);
 }
-.modal.remote-install {
-    max-width: 620px;
-}
-.remote-pc-dialog-title {
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-}
-.remote-pc-choice {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-0-5);
-}
-.remote-pc-choice > .setting-description {
-    padding-left: var(--sp-6);
-}
+/* 지우기를 고르면 그 아래 줄로 남길 것을 고른다 */
 .remote-pc-subchoice {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-1);
-    padding: var(--sp-1) 0 0 var(--sp-6);
+    gap: var(--sp-1-5);
+    padding: var(--sp-2) var(--sp-4) var(--sp-3) var(--sp-6);
 }
-.remote-pc-dialog-actions {
+.remote-install-prompt-actions {
     display: flex;
     justify-content: flex-end;
     gap: var(--sp-2);
@@ -2424,6 +2266,59 @@
 }
 .folder-paths-dir code {
     word-break: break-all;
+}
+
+/* 내 PC 카드의 수정 창 (PcSettingsDialog.tsx) */
+.pc-settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding-top: var(--sp-3);
+    border-top: 1px solid var(--line);
+}
+.pc-settings-section > .segmented {
+    align-self: flex-start;
+}
+.pc-settings-section > .setting-description {
+    margin: 0;
+}
+/* 수정 창 제목 자리: PC 이름 칸과 바로 오른쪽 메인 별 */
+.pc-settings-titlerow {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+.pc-settings-name {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-weight: 700;
+}
+.pc-settings-name-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.pc-settings-heading {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    font-size: var(--fs-md);
+}
+.pc-settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+}
+.pc-settings-row > .setting-label {
+    flex: 1;
+    min-width: 0;
+}
+.pc-settings-danger .setting-title,
+.pc-settings-danger .btn.danger {
+    color: var(--stop);
 }
 
 /* 불러오기 설명 (사용자 11-08~10): 켜져 있음 경고, 파일 둘 곳, 바뀌는 것, 편해지는 점 */
@@ -2545,31 +2440,37 @@
 .public-address-value {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
+    align-items: baseline;
     gap: var(--sp-1) var(--sp-2);
 }
 .public-address-private {
     font-size: var(--fs-xs);
 }
-.public-address-option {
-    display: flex;
-    gap: var(--sp-2);
-    align-items: flex-start;
-    padding: var(--sp-2) var(--sp-3);
-    border: 1px solid var(--line);
-    border-radius: var(--r-sm);
-    cursor: pointer;
+
+/* 확인창 (Modals.tsx, AgreementDialog): 공통 Dialog의 그림 자리에 상태 아이콘 */
+.saba-confirm-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    border-radius: var(--r-lg);
+    color: var(--tone, var(--accent));
+    background: color-mix(in oklch, var(--tone, var(--accent)) 14%, transparent);
 }
-.public-address-option.on {
-    border-color: var(--accent);
-    background: var(--accent-soft);
+.saba-confirm-icon.tone-ok {
+    --tone: var(--ok);
 }
-.public-address-option input {
-    margin-top: var(--sp-0-5);
-    accent-color: var(--accent);
+.saba-confirm-icon.tone-stop {
+    --tone: var(--stop);
 }
-.public-address-option > span {
-    display: flex;
+.saba-confirm-icon.tone-warn {
+    --tone: var(--warn);
+}
+.saba-confirm-icon.tone-info {
+    --tone: var(--info);
+}
+.saba-confirm.stacked .saba-dialog-footer {
     flex-direction: column;
-    gap: var(--sp-0-5);
+    align-items: stretch;
 }

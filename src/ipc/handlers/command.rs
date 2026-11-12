@@ -360,7 +360,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
 
 /// 지금 이 명령을 보낼 수 있는가: `run_command`의 경로 판정과 같다. 콘솔이 붙어 있으면(stdin) 무엇이든,
 /// 아니면 서버가 켜져 있어야 하고 콘솔·RCON 명령은 RCON 경로도 있어야 한다
-fn command_ready(method: Option<&str>, running: bool, stdin_route: bool, rcon_route: bool) -> bool {
+pub(super) fn command_ready(method: Option<&str>, running: bool, stdin_route: bool, rcon_route: bool) -> bool {
     if stdin_route {
         return true;
     }

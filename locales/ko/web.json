@@ -125,7 +125,6 @@
   "detail": {
     "backups": "백업",
     "players": "플레이어",
-    "more": "더보기",
     "tabs": "서버 메뉴",
     "uptime": "시작한 지 {{time}}",
     "port_check": "포트포워딩 확인"
@@ -135,7 +134,9 @@
     "placeholder": "명령 입력",
     "send": "보내기",
     "danger_title": "위험한 명령이에요",
-    "danger_message": "{{command}} 명령을 정말 보낼까요?"
+    "danger_message": "{{command}} 명령을 정말 보낼까요?",
+    "danger_again": "'{{command}}'은(는) 되돌리기 어려운 명령이에요. 한 번 더 누르면 보내요.",
+    "danger_again_described": "{{description}}. 한 번 더 누르면 보내요."
   },
   "settings": {
     "game": "게임 설정",
@@ -172,7 +173,8 @@
       "manual": "직접",
       "scheduled": "예약",
       "pre-update": "업데이트 전",
-      "pre-restore": "복원 직전"
+      "pre-restore": "복원 직전",
+      "imported": "가져옴"
     }
   },
   "agreements": {
@@ -265,8 +267,6 @@
     "update": "업데이트",
     "update_to": "v{{version}} 있음",
     "updated": "업데이트했어요.",
-    "check_ok": "검사 결과: 선언한 기능만 써요.",
-    "check_failed": "검사 결과를 받지 못했어요.",
     "check_undeclared": "검사 결과: 모듈 설명에 없는 기능을 써요 ({{perms}}). 믿을 수 있는 모듈인지 확인해 주세요."
   },
   "plugins": {
@@ -303,12 +303,14 @@
   },
   "errors": {
     "start_cancelled": "시작하는 동안 정지 요청이 들어와 서버를 시작하지 않았어요.",
+    "still_stopping": "서버가 아직 꺼지는 중이라 다시 켜지 않았어요. 완전히 꺼진 뒤에 시작해 주세요.",
     "generic": "요청을 처리하지 못했어요.",
     "remote_not_allowed": "이 작업은 PC의 사바쨩 앱에서만 할 수 있어요.",
     "remote_field_blocked": "이 설정은 PC에서만 바꿀 수 있어요: {{fields}}",
     "remote_bad_path": "받을 수 없는 요청이에요.",
     "remote_bad_request": "받을 수 없는 요청이에요.",
     "remote_timeout": "2분 안에 끝나지 않아 실패로 처리했어요. PC에서 결과를 확인해 주세요.",
+    "still_working": "2분 안에 끝나지 않았어요. PC에서는 아직 진행 중일 수 있으니 잠시 뒤 다시 확인해 주세요.",
     "remote_host_gone": "PC와 연결이 끊겨 요청을 끝내지 못했어요.",
     "remote_busy": "요청이 너무 많아요. 잠시 뒤 다시 해 주세요."
   },
@@ -425,6 +427,9 @@
     "off": "끄기",
     "saved": "바꿨어요.",
     "pc": "PC",
+    "guild_here": "이 PC",
+    "guild_other_pc": "다른 PC",
+    "guild_no_pc": "PC 없음",
     "no_guilds": "관리할 수 있는 디스코드 서버가 없어요.",
     "other_pc": "이 서버는 다른 PC에 연결돼 있어요. 그 PC의 /사바쨩 웹 링크에서 바꿀 수 있어요.",
     "err": {
@@ -536,6 +541,7 @@
     "channel_board": "상황판 채널",
     "sleep_now": "지금 재우기",
     "awake": "깨어 있어요",
+    "sleep_needs_pc": "PC를 연결하면 쓸 수 있어요",
     "basics_desc": "이 서버에서 쓸 언어와 이모지",
     "music_desc": "음성 채널에서 노래를 틀어요",
     "reading_desc": "채팅을 음성으로 읽어 줘요",

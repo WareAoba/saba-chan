@@ -1,5 +1,6 @@
 import { type AuditEntry, auditRange, auditReason, auditResult, auditWhat, auditWho } from '@gui/utils/audit';
 import { CONSOLE_FONT_CHOICES, CONSOLE_FONT_NAMES, CONSOLE_FONT_SLOTS } from '@gui/utils/consoleFonts';
+import { type DaemonLogEntry, DaemonLogLine } from '@gui/components/DaemonLogLine';
 import { MetricRing, MonitorPicker } from '@gui/components/monitor/MonitorRing';
 import {
     buildRings,
@@ -18,8 +19,9 @@ import { setLanguage } from '../i18n';
 import { applyScreenFonts, applyTheme, readConsoleFonts, readMonitorItems, readPref, THEMES, writeMonitorItems, writePref } from '../prefs';
 import { sizeText } from './BackupsPanel';
 import { Dropdown } from './Dropdown';
-import { startPoll } from './poll';
-import { Button, Empty, Loading, Section, Segments } from './ui';
+import { startPoll } from '@gui/utils/poll';
+import { Icon } from './icons';
+import { Button, Card, Empty, Loading, Section, Segments } from './ui';
 import { useStickToBottom } from './useStickToBottom';
 import type { ApiBody, WebApi } from '../types';
 
@@ -30,13 +32,6 @@ interface MetricInstance {
     running: boolean;
     cpu_percent: number;
     memory_bytes: number;
-}
-
-/** 데몬 콘솔 한 줄 */
-interface DaemonLine {
-    id: number;
-    level?: string;
-    message: string;
 }
 
 /** 활동 기록 한 건 (audit::Event) */
@@ -52,6 +47,8 @@ function Metrics({ api }: { api: WebApi }) {
     });
     const [picked, setPicked] = useState<string[] | null>(readMonitorItems);
     const [picking, setPicking] = useState(false);
+    // 안내를 펼친 원 (한 번에 하나)
+    const [note, setNote] = useState<string | null>(null);
     // GPU는 고른 때만 묻는다 (데몬이 NVIDIA 라이브러리를 올린다)
     const gpu = wantsGpu(picked ?? []);
     useEffect(() => {
@@ -77,18 +74,17 @@ function Metrics({ api }: { api: WebApi }) {
     const slots = colorSlots(instances.map((i) => i.id));
     const rings = buildRings(snap, slots, peaks, picked ?? defaultItems(snap));
     const running = instances.filter((i) => i.running);
+    const action = (
+        <div className="metrics-head">
+            {picking && picked && <Button onClick={() => pick(null)}>{tg('monitor.pick_reset')}</Button>}
+            <Button onClick={() => setPicking((v) => !v)} aria-expanded={picking}>
+                {tg('monitor.pick')}
+            </Button>
+        </div>
+    );
+    // 시안 (사용자 2026-11-12): 원·서버별 사용량을 한 카드에, 원마다 칸, 긴 안내는 ⓘ를 눌러 본다
     return (
-        <>
-            <div className="metrics-head">
-                <Button onClick={() => setPicking((v) => !v)} aria-expanded={picking}>
-                    {tg('monitor.pick')}
-                </Button>
-                {picking && picked && (
-                    <Button onClick={() => pick(null)}>
-                        {tg('monitor.pick_reset')}
-                    </Button>
-                )}
-            </div>
+        <Card icon="monitor" tone="3" title={t('more.metrics')} action={action}>
             {picking && (
                 <div className="metrics-picker">
                     <MonitorPicker groups={pickerGroups(snap)} items={picked ?? defaultItems(snap)} onChange={pick} t={tg} />
@@ -99,39 +95,55 @@ function Metrics({ api }: { api: WebApi }) {
             ) : (
                 <div className="metrics-rings">
                     {rings.map((r) => (
-                        <MetricRing key={r.key} ring={r} t={tg} size={96} />
+                        <div key={r.key} className="metrics-ring">
+                            <MetricRing ring={r} t={tg} size={96} inlineNote={false} />
+                            {r.noteKey && (
+                                <button
+                                    type="button"
+                                    className="metrics-note-btn"
+                                    aria-expanded={note === r.key}
+                                    aria-label={tg(r.noteKey)}
+                                    onClick={() => setNote(note === r.key ? null : r.key)}
+                                >
+                                    <Icon name="info" size={14} />
+                                </button>
+                            )}
+                            {note === r.key && r.noteKey && <p className="hint metrics-note">{tg(r.noteKey)}</p>}
+                        </div>
                     ))}
                 </div>
             )}
-            <h3 className="sub-title">{t('more.servers_usage')}</h3>
-            {running.length === 0 ? (
-                <Empty>{t('more.none_running')}</Empty>
-            ) : (
-                <ul className="rows">
-                    {running.map((i) => (
-                        <li key={i.id} className="row">
-                            <span
-                                className="metrics-swatch"
-                                style={{ background: slots[i.id] ? `var(--series-${slots[i.id]})` : 'var(--text-2)' }}
-                                aria-hidden="true"
-                            />
-                            <div className="row-main">
-                                <div className="row-title">{i.name}</div>
-                                <div className="row-sub">
-                                    CPU {Math.round(i.cpu_percent)}% · {sizeText(i.memory_bytes)}
+            <div className="metrics-usage">
+                <h4 className="sub-title">{t('more.servers_usage')}</h4>
+                {running.length === 0 ? (
+                    <p className="hint">{t('more.none_running')}</p>
+                ) : (
+                    <ul className="rows">
+                        {running.map((i) => (
+                            <li key={i.id} className="row">
+                                <span
+                                    className="metrics-swatch"
+                                    style={{ background: slots[i.id] ? `var(--series-${slots[i.id]})` : 'var(--text-2)' }}
+                                    aria-hidden="true"
+                                />
+                                <div className="row-main">
+                                    <div className="row-title">{i.name}</div>
+                                    <div className="row-sub">
+                                        CPU {Math.round(i.cpu_percent)}% · {sizeText(i.memory_bytes)}
+                                    </div>
                                 </div>
-                            </div>
-                        </li>
-                    ))}
-                </ul>
-            )}
-        </>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
+        </Card>
     );
 }
 
 function DaemonLog({ api }: { api: WebApi }) {
-    const { t } = useTranslation();
-    const [lines, setLines] = useState<DaemonLine[] | null>(null);
+    const { t, i18n } = useTranslation();
+    const [lines, setLines] = useState<DaemonLogEntry[] | null>(null);
     const next = useRef<number | undefined>(undefined);
     const box = useStickToBottom<HTMLPreElement>(lines);
     useEffect(() => {
@@ -156,11 +168,7 @@ function DaemonLog({ api }: { api: WebApi }) {
             {lines.length === 0 ? (
                 <span className="console-empty">{t('console.empty')}</span>
             ) : (
-                lines.map((l) => (
-                    <div key={l.id} className={`line line-${l.level || 'info'}`}>
-                        {l.message}
-                    </div>
-                ))
+                lines.map((l) => <DaemonLogLine key={l.id} line={l} locale={i18n.language} />)
             )}
         </pre>
     );
@@ -333,7 +341,7 @@ export function MoreTab({ api }: { api: WebApi }) {
     const [view, setView] = useState('metrics');
     const View = VIEWS[view];
     return (
-        <div className="panel">
+        <div className="panel side-layout">
             <Segments
                 value={view}
                 onChange={setView}
@@ -345,10 +353,12 @@ export function MoreTab({ api }: { api: WebApi }) {
                     { value: 'screen', label: t('more.screen') },
                 ]}
             />
-            <Section>
-                <View api={api} />
-            </Section>
-            <p className="hint">{t('more.pc_only_note')}</p>
+            <div className="side-main">
+                <Section>
+                    <View api={api} />
+                </Section>
+                <p className="hint">{t('more.pc_only_note')}</p>
+            </div>
         </div>
     );
 }

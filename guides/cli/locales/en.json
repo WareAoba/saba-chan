@@ -1,0 +1,8 @@
+{
+    "title": "CLI",
+    "summary": "The same, in a terminal",
+    "steps": [
+        "After changing settings, open Use the command line to see and copy the CLI command that does the same thing.",
+        "Press Switch to CLI to open the CLI in a new terminal on the selected server; this window closes. Your servers keep running."
+    ]
+}

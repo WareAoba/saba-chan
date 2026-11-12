@@ -247,6 +247,9 @@ pub struct InstallArgs {
     /// Folder for modules and extensions (Saba-chan makes `modules` and `extensions` inside it). Installed files are moved
     #[arg(long, value_name = "PATH")]
     pub components_dir: Option<std::path::PathBuf>,
+    /// Update channel to install from and keep updating from: stable, rc (preview) or beta. The installer's own channel when omitted
+    #[arg(long, value_name = "CHANNEL", value_parser = clap::builder::PossibleValuesParser::new(saba_chan_installer_core::release::CHANNELS))]
+    pub channel: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -279,6 +282,16 @@ pub enum BackupCmd {
     Delete { server: String, backup: Option<String> },
     /// Put a backup back (the server must be stopped; asks to stop it). No name: pick from the list
     Restore { server: String, backup: Option<String> },
+    /// Write one backup into a single zip you can move to another PC (no name: pick from the list)
+    Export {
+        server: String,
+        backup: Option<String>,
+        /// Where to write the zip (a path on the PC the daemon runs on)
+        #[arg(long, short, value_name = "FILE")]
+        out: std::path::PathBuf,
+    },
+    /// Check a zip made by `backup export` and add it to this server's backups (restore it afterwards)
+    Import { server: String, file: std::path::PathBuf },
 }
 
 #[derive(Subcommand, Debug)]
@@ -352,8 +365,9 @@ pub enum RemoteCmd {
         on: bool,
         #[arg(long)]
         off: bool,
-        #[arg(long)]
-        port: Option<u16>,
+        /// Remote port number (`--port` is the daemon's)
+        #[arg(long = "remote-port", value_name = "PORT")]
+        remote_port: Option<u16>,
         /// Public host name or IP of this PC (empty clears it)
         #[arg(long)]
         address: Option<String>,
@@ -373,13 +387,16 @@ pub enum RemoteCmd {
     Servers,
     /// Forget a remote daemon (pair again with `remote connect`)
     Forget { host_id: String },
+    /// Rename one of my PCs, this one included (the name all my PCs and Discord show)
+    Rename { host_id: String, name: String },
     /// Take a pairing code another PC printed (for example after the one-line Linux install) and connect to it
     Claim { code: String },
     /// Install Saba-chan on a Linux PC over this PC's ssh and connect to it (`user@host`)
     Install {
         target: String,
-        #[arg(long, default_value_t = 22)]
-        port: u16,
+        /// ssh port (`--port` is the daemon's)
+        #[arg(long = "ssh-port", value_name = "PORT", default_value_t = 22)]
+        ssh_port: u16,
         /// Keep the daemon running after you log out (sudo)
         #[arg(long)]
         linger: bool,
@@ -597,6 +614,8 @@ pub enum ServerCmd {
     Commands { server: Option<String> },
     /// Who is online
     Players { server: Option<String> },
+    /// Player lists the game keeps (who may join, who is an admin, who is banned)
+    Lists { server: Option<String> },
     /// The address (IP:port) friends connect to
     Address { server: Option<String> },
     /// Check from the internet whether friends can reach this server (port forwarding)
@@ -1189,6 +1208,36 @@ pub enum BotCmd {
         #[arg(long)]
         off: bool,
     },
+    /// Member join and leave notices in the notice channel of a Discord server. No options: show
+    MemberNotice {
+        guild: Option<String>,
+        /// Turn member notices on
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Turn member notices off
+        #[arg(long)]
+        off: bool,
+    },
+    /// Overload notice (posted while the PC is overloaded, removed when it clears) on a Discord server. No options: show
+    BusyNotice {
+        guild: Option<String>,
+        /// Turn the overload notice on
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Turn the overload notice off
+        #[arg(long)]
+        off: bool,
+    },
+    /// Open the game chat link by itself while someone is on a running server, on a Discord server. No options: show
+    ChatAutoOpen {
+        guild: Option<String>,
+        /// Open the chat link by itself
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Leave the chat link closed until someone opens it
+        #[arg(long)]
+        off: bool,
+    },
     /// Singing Saba-chan settings of a Discord server. No options: show
     Music {
         guild: Option<String>,
@@ -1426,17 +1475,19 @@ pub enum DmKind {
     Schedule,
     Update,
     Disk,
+    Offline,
     ChatbotUsage,
     Moderation,
 }
 
 impl DmKind {
-    pub const ALL: [DmKind; 7] = [
+    pub const ALL: [DmKind; 8] = [
         DmKind::Crash,
         DmKind::ExternalStart,
         DmKind::Schedule,
         DmKind::Update,
         DmKind::Disk,
+        DmKind::Offline,
         DmKind::ChatbotUsage,
         DmKind::Moderation,
     ];
@@ -1449,9 +1500,15 @@ impl DmKind {
             DmKind::Schedule => "schedule",
             DmKind::Update => "update",
             DmKind::Disk => "disk",
+            DmKind::Offline => "offline",
             DmKind::ChatbotUsage => "chatbotUsage",
             DmKind::Moderation => "moderation",
         }
+    }
+
+    /// 설정에 없을 때의 값: PC 연결 끊김만 켜야 보낸다
+    pub fn default_on(self) -> bool {
+        self != DmKind::Offline
     }
 }
 
@@ -1661,6 +1718,35 @@ mod tests {
         Cli::command().debug_assert();
         // 도움말을 바꿔 끼워도 위치 인자 순서가 그대로여야 한다
         localized().debug_assert();
+    }
+
+    /// 전역 옵션(`--port`는 데몬 포트)과 id가 같은 하위 명령 옵션은 값이 서로 섞인다
+    #[test]
+    fn no_subcommand_argument_shares_an_id_with_a_global_option() {
+        fn walk(cmd: &clap::Command, path: &str, globals: &[String], clashes: &mut Vec<String>) {
+            for sub in cmd.get_subcommands() {
+                let path = format!("{} {}", path, sub.get_name());
+                clashes.extend(sub.get_arguments().filter(|a| globals.contains(&a.get_id().to_string())).map(|a| format!("{} --{}", path.trim(), a.get_id())));
+                walk(sub, &path, globals, clashes);
+            }
+        }
+        let root = Cli::command();
+        let globals: Vec<String> = root.get_arguments().filter(|a| a.is_global_set()).map(|a| a.get_id().to_string()).collect();
+        assert!(globals.contains(&"port".to_string()));
+        let mut clashes = Vec::new();
+        walk(&root, "", &globals, &mut clashes);
+        assert!(clashes.is_empty(), "{clashes:?}");
+    }
+
+    #[test]
+    fn remote_ports_are_not_the_daemon_port() {
+        let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied())).unwrap();
+        assert_eq!(p(&["remote", "install", "u@h"]).global.port, None);
+        assert_eq!(p(&["remote", "set", "--remote-port", "5000"]).global.port, None);
+        let cli = p(&["--port", "57474", "remote", "set", "--off"]);
+        assert_eq!(cli.global.port, Some(57474));
+        assert!(matches!(cli.cmd, Some(Cmd::Remote(RemoteCmd::Set { remote_port: None, .. }))));
+        assert!(matches!(p(&["remote", "install", "u@h", "--ssh-port", "2222"]).cmd, Some(Cmd::Remote(RemoteCmd::Install { ssh_port: 2222, .. }))));
     }
 
     /// 명령 본문 안의 `--lang=ko`는 전역 옵션이 아니다: 데몬 언어를 바꾸지 않게 실제 전역 옵션만 쓴다

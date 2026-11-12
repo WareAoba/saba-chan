@@ -33,4 +33,22 @@ describe('웹 서버 켜기 알림', () => {
     it('그냥 켜졌으면 켰다고 한다', async () => {
         expect((await start({ success: true }))?.message).toBe('Started A.');
     });
+
+    it('다시 켜려는데 서버가 아직 꺼지는 중이면 데몬의 영어 문장이 아니라 번역된 이유를 보인다', async () => {
+        const res = { success: false, stopped: false, error_code: 'still_stopping', error: 'x' };
+        const api = mockApi({ instanceRestart: vi.fn().mockResolvedValue(res) });
+        const { result } = renderHook(() => useServerControl(api));
+        let restarting: Promise<unknown> = Promise.resolve();
+        act(() => {
+            restarting = result.current.restart(asServer({ id: 'a', name: 'A' }));
+        });
+        await act(async () => {
+            useApp.getState().confirm?.done(true);
+            await restarting;
+        });
+        expect(useApp.getState().toasts.at(-1)).toMatchObject({
+            message: expect.stringMatching(/still shutting down/),
+            tone: 'error',
+        });
+    });
 });
