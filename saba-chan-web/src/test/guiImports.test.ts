@@ -74,6 +74,8 @@ const ALLOWED = new Set([
     // PC 상태 원과 항목 고르기: 앱 시스템 모니터를 웹에서 그대로 본다 (스토어 없는 그림 부품과 순수 계산)
     '@gui/components/monitor/MonitorRing',
     '@gui/components/monitor/systemMetrics',
+    // 데몬 로그 한 줄 (시각·레벨 배지·데몬이 준 강조 조각, 스토어·API 없이 받은 줄만 그린다)
+    '@gui/components/DaemonLogLine',
 ]);
 
 function sources(dir: string): string[] {

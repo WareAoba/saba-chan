@@ -125,7 +125,6 @@
   "detail": {
     "backups": "Copias",
     "players": "Jugadores",
-    "more": "Más",
     "tabs": "Menú del servidor",
     "uptime": "Activo {{time}}",
     "port_check": "Comprobar reenvío de puertos"
@@ -268,8 +267,6 @@
     "update": "Actualizar",
     "update_to": "v{{version}} disponible",
     "updated": "Actualizado.",
-    "check_ok": "Revisión: solo usa las funciones declaradas.",
-    "check_failed": "No se pudo obtener el resultado de la revisión.",
     "check_undeclared": "Revisión: usa funciones que el módulo no declara ({{perms}}). Asegúrate de que confías en este módulo."
   },
   "plugins": {
@@ -430,6 +427,9 @@
     "off": "Desactivado",
     "saved": "Cambiado.",
     "pc": "PC",
+    "guild_here": "Este PC",
+    "guild_other_pc": "Otro PC",
+    "guild_no_pc": "Sin PC",
     "no_guilds": "No hay servidores de Discord que puedas gestionar.",
     "other_pc": "Este servidor está conectado a otro PC. Cámbialo desde el enlace /saba web de ese PC.",
     "err": {
@@ -541,6 +541,7 @@
     "channel_board": "Canal del panel de estado",
     "sleep_now": "Dormir ahora",
     "awake": "Despierta",
+    "sleep_needs_pc": "Disponible al vincular un PC",
     "basics_desc": "Idioma y emojis de este servidor",
     "music_desc": "Pone música en los canales de voz",
     "reading_desc": "Lee el chat en voz alta en los canales de voz",

@@ -5,16 +5,9 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { type AuditEntry as AuditRecord, auditWhat } from '../../utils/audit';
 import { auditEntryOf, eventsAvailable, subscribeDaemonEvents } from '../../utils/daemonEvents';
+import { type DaemonLogEntry, DaemonLogLine } from '../DaemonLogLine';
 import { Icon } from '../Icon';
 import { Popover } from '../ui/Popover';
-
-/** GET /api/daemon/console 한 줄 */
-interface ConsoleLine {
-    id: number;
-    level: string;
-    timestamp: string | number;
-    message: string;
-}
 
 /** 감사 한 건 (GET /api/audit 항목) */
 interface AuditEntry extends AuditRecord {
@@ -56,7 +49,7 @@ export function activityText(e: AuditEntry, t: TFunction) {
 /** 펼친 보기: 데몬이 남긴 로그 전체 (GET /api/daemon/console, 새 줄만 이어 받는다) */
 function DaemonConsole() {
     const { t, i18n } = useTranslation('gui');
-    const [lines, setLines] = useState<ConsoleLine[]>([]);
+    const [lines, setLines] = useState<DaemonLogEntry[]>([]);
     const [error, setError] = useState<string | null>(null);
     const outputRef = useRef<HTMLDivElement>(null);
     const stickRef = useRef(true);
@@ -126,13 +119,7 @@ function DaemonConsole() {
                 <div className="activity-console-empty">{t('activity.console_empty')}</div>
             )}
             {lines.map((l) => (
-                <div key={l.id} className={clsx('activity-console-line', `level-${String(l.level).toLowerCase()}`)}>
-                    <span className="activity-console-time">
-                        {new Date(l.timestamp).toLocaleTimeString(i18n.language, { hour12: false })}
-                    </span>
-                    <span className="activity-console-level">{String(l.level).toUpperCase()}</span>
-                    <span className="activity-console-msg">{l.message}</span>
-                </div>
+                <DaemonLogLine key={l.id} line={l} locale={i18n.language} />
             ))}
         </div>
     );

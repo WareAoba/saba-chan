@@ -125,7 +125,6 @@
   "detail": {
     "backups": "Backups",
     "players": "Spieler",
-    "more": "Mehr",
     "tabs": "Servermenü",
     "uptime": "Läuft seit {{time}}",
     "port_check": "Portweiterleitung prüfen"
@@ -268,8 +267,6 @@
     "update": "Aktualisieren",
     "update_to": "v{{version}} verfügbar",
     "updated": "Aktualisiert.",
-    "check_ok": "Prüfung: nutzt nur angegebene Funktionen.",
-    "check_failed": "Das Prüfergebnis konnte nicht abgerufen werden.",
     "check_undeclared": "Prüfung: nutzt Funktionen, die das Modul nicht angibt ({{perms}}). Stelle sicher, dass du diesem Modul vertraust."
   },
   "plugins": {
@@ -430,6 +427,9 @@
     "off": "Aus",
     "saved": "Geändert.",
     "pc": "PC",
+    "guild_here": "Dieser PC",
+    "guild_other_pc": "Anderer PC",
+    "guild_no_pc": "Kein PC",
     "no_guilds": "Es gibt keine Discord-Server, die du verwalten kannst.",
     "other_pc": "Dieser Server ist mit einem anderen PC verbunden. Ändere es über den /saba web-Link dieses PCs.",
     "err": {
@@ -541,6 +541,7 @@
     "channel_board": "Statustafel-Kanal",
     "sleep_now": "Jetzt schlafen legen",
     "awake": "Wach",
+    "sleep_needs_pc": "Verfügbar, sobald ein PC verbunden ist",
     "basics_desc": "Sprache und Emojis für diesen Server",
     "music_desc": "Spielt Musik in Sprachkanälen",
     "reading_desc": "Liest den Chat in Sprachkanälen vor",
