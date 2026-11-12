@@ -89,11 +89,22 @@ enum NotOpened {
     Full,
 }
 
+/// 직접 연결의 TCP keepalive: 이만큼 조용하면 살아 있는지 묻기 시작하고, 이 간격으로 다시 묻는다.
+/// 긴 요청(정지 대기)의 답과 이벤트 스트림은 시간 제한 없이 기다리므로, 원격 PC의 망이 조용히 끊긴 것을 여기서 알아챈다
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(30);
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
+
+async fn dial(endpoint: &Endpoint) -> std::io::Result<tokio::net::TcpStream> {
+    let tcp = tokio::net::TcpStream::connect((endpoint.address.as_str(), endpoint.port)).await?;
+    socket2::SockRef::from(&tcp).set_tcp_keepalive(&socket2::TcpKeepalive::new().with_time(KEEPALIVE_IDLE).with_interval(KEEPALIVE_INTERVAL))?;
+    Ok(tcp)
+}
+
 /// 지문을 고정해 원격 데몬에 붙는다
 async fn open(endpoint: &Endpoint) -> Result<Sender, NotOpened> {
     use std::io::ErrorKind;
     let connect = async {
-        let tcp = tokio::net::TcpStream::connect((endpoint.address.as_str(), endpoint.port)).await.map_err(|_| NotOpened::Unreachable)?;
+        let tcp = dial(endpoint).await.map_err(|_| NotOpened::Unreachable)?;
         let tls_config = tls::pinned_client_config(&endpoint.cert_sha256).map_err(|_| NotOpened::Unreachable)?;
         let name = rustls::pki_types::ServerName::try_from(tls::SERVER_NAME).map_err(|_| NotOpened::Unreachable)?;
         // 지문이 다르면 `InvalidData`, 상대가 그냥 끊으면 EOF·reset이다
@@ -917,6 +928,15 @@ mod tests {
         assert_eq!(status, 200);
         assert!(!tunnel::is_open(Some(&relay), "host-b"));
         assert!(tokio::time::timeout(Duration::from_millis(500), stream.next()).await.is_err(), "the stream on the tunnel is still open");
+    }
+
+    /// 직접 연결은 TCP keepalive를 켠다: 원격 PC의 망이 조용히 끊기면 기다리던 답과 이벤트 스트림이 끝난다
+    #[tokio::test]
+    async fn a_direct_connection_notices_a_remote_pc_that_went_silent() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = Endpoint { address: "127.0.0.1".into(), port: listener.local_addr().unwrap().port(), cert_sha256: String::new() };
+        let tcp = dial(&endpoint).await.unwrap();
+        assert!(socket2::SockRef::from(&tcp).keepalive().unwrap());
     }
 
     #[tokio::test]
