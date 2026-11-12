@@ -1322,7 +1322,8 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     // 데몬이 바로 적용했으면 결과와 패치노트를 남긴다 (업데이터에 넘기면 업데이터가 남긴다). CLI만으로 적용해도 `update last`로 본다
     if needs_updater.is_empty() && !targets.is_empty() {
         let target_keys: Vec<String> = targets.iter().map(Component::manifest_key).collect();
-        record_daemon_apply(&saba_chan_updater_lib::UpdateCompletionMarker::path(), &target_keys, &applied_keys, &errors, mgr.applying_release());
+        let repair = mgr.is_repair(&target_keys);
+        record_daemon_apply(&saba_chan_updater_lib::UpdateCompletionMarker::path(), &target_keys, &applied_keys, &errors, mgr.applying_release(), repair);
     }
 
     // UpdateManager lock 해제 (supervisor/extension_manager lock과 교차 잠금 방지)
@@ -1816,13 +1817,15 @@ fn last_result_at(path: &std::path::Path, include_seen: bool, lang: &str) -> Val
 }
 
 /// 데몬이 바로 적용한 결과를 완료 마커로 남긴다 (업데이터가 적용할 때와 같은 모양). 클라이언트가 결과·패치노트를 본다.
-/// 업데이터가 새 코어를 기다리게 둔 것(`deferred`)을 마저 적용했으면 사용자가 고른 그 묶음의 결과에 더한다
-fn record_daemon_apply(path: &std::path::Path, targets: &[String], applied: &[String], errors: &[String], release: Option<saba_chan_updater_lib::marker::ReleaseSummary>) {
+/// 업데이터가 새 코어를 기다리게 둔 것(`deferred`)을 마저 적용했으면 사용자가 고른 그 묶음의 결과에 더한다.
+/// 복구(`repair`)는 업데이트로 알리지 않는다 (`UpdateCompletionMarker::repaired`)
+fn record_daemon_apply(path: &std::path::Path, targets: &[String], applied: &[String], errors: &[String], release: Option<saba_chan_updater_lib::marker::ReleaseSummary>, repair: bool) {
     use saba_chan_updater_lib::UpdateCompletionMarker;
     let waiting = UpdateCompletionMarker::load_from(path)
         .filter(|m| m.result.is_none() && !targets.is_empty() && targets.iter().all(|k| m.deferred.contains(k)));
     let marker = match waiting {
         Some(bundle) => bundle.finish_deferred(targets, applied, errors),
+        None if repair => UpdateCompletionMarker::applied(applied.to_vec(), errors.to_vec(), Vec::new(), None).repaired(),
         None => UpdateCompletionMarker::applied(applied.to_vec(), errors.to_vec(), Vec::new(), release),
     };
     if let Err(e) = marker.save_to(path) {
@@ -2676,7 +2679,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("update-complete.json");
         let release = ReleaseSummary { version: "0.1.8".into(), released_at: None, notes: [("ko".to_string(), "고침".to_string())].into() };
-        super::record_daemon_apply(&path, &["module-minecraft".into(), "ext-steamcmd".into()], &["module-minecraft".into()], &["ext-steamcmd: busy".into()], Some(release));
+        super::record_daemon_apply(&path, &["module-minecraft".into(), "ext-steamcmd".into()], &["module-minecraft".into()], &["ext-steamcmd: busy".into()], Some(release), false);
 
         let first = super::last_result_at(&path, false, "ko");
         assert_eq!((first["version"].as_str(), first["notes"].as_str()), (Some("0.1.8"), Some("고침")), "{first}");
@@ -2690,6 +2693,19 @@ mod tests {
         let again = super::last_result_at(&path, true, "ko");
         assert_eq!(again["notes"], "고침", "the notes stay readable after a client acknowledged them");
         assert_eq!(again["acknowledged"], true);
+    }
+
+    /// 데몬이 바로 적용한 복구(`update repair`)는 업데이트 알림이 되지 않는다: 확인한 결과로 남아 `update last`만 본다
+    #[test]
+    fn a_repair_the_daemon_applied_is_not_announced_as_an_update() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("update-complete.json");
+        let release = saba_chan_updater_lib::marker::ReleaseSummary { version: "0.1.8".into(), ..Default::default() };
+        super::record_daemon_apply(&path, &["cli".into()], &["cli".into()], &[], Some(release), true);
+
+        assert!(super::last_result_at(&path, false, "ko")["result"].is_null(), "{}", super::last_result_at(&path, false, "ko"));
+        let seen = super::last_result_at(&path, true, "ko");
+        assert_eq!((seen["result"]["result"].as_str(), seen["result"]["success"].as_bool()), (Some("repaired"), Some(true)), "{seen}");
     }
 
     #[test]

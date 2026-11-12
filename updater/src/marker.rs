@@ -115,6 +115,12 @@ impl UpdateCompletionMarker {
         Self { acknowledged, ..Self::applied(all_applied, all_failed, deferred, self.release) }
     }
 
+    /// 같은 판으로 다시 받은 복구(`update repair`)의 결과 (`result: "repaired"`). 업데이트가 아니라 패치노트를 싣지 않고,
+    /// 성공했으면 확인한 것으로 남긴다: 앱이 업데이트로 알리지 않고 `update last`(확인한 것까지)로 본다
+    pub fn repaired(self) -> Self {
+        Self { result: Some("repaired".into()), acknowledged: self.success, release: None, ..self }
+    }
+
     /// 파일을 바꾸지 않고 끝났다 (예: 예전 데몬이 끝나지 않음 `wait_pid_timeout`). 받아 둔 것은 그대로 남는다
     pub fn deferred(reason: &str) -> Self {
         Self {

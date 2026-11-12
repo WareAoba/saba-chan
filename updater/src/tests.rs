@@ -1816,6 +1816,34 @@ fn a_restored_pending_list_skips_what_is_already_installed_at_that_version_or_ne
     assert_eq!(loaded.status.components.iter().map(|c| c.component.clone()).collect::<Vec<_>>(), vec![Component::Module("m".into())]);
 }
 
+// 복구(같은 판 다시 받기)는 업데이터가 적용하고, 결과는 업데이트로 알리지 않는다: 앱은 알림을 띄우지 않고 `update last`가 본다
+#[tokio::test]
+async fn the_updater_applies_a_repair_and_does_not_announce_it_as_an_update() {
+    let _marker = MARKER.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    manager.installed_manifest_file = tmp.path().join("installed-manifest.json");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("repair-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    let same = crate::ComponentVersion { current_version: "0.2.0".into(), repair: true, ..staged(ext.clone(), &extension_zip(tmp.path())) };
+    manager.status.components = vec![same];
+    manager.save_pending_manifest().unwrap();
+    manager.status.components.clear();
+    let installed: std::collections::HashMap<String, String> = [(ext.manifest_key(), "0.2.0".to_string())].into_iter().collect();
+    std::fs::write(&manager.installed_manifest_file, serde_json::to_string(&installed).unwrap()).unwrap();
+
+    let (applied, failed) = manager.apply_staged(|_| {}).await.unwrap();
+
+    assert_eq!(applied, vec![ext.manifest_key()]);
+    assert!(failed.is_empty(), "{:?}", failed);
+    let marker = crate::UpdateCompletionMarker::load().unwrap();
+    assert_eq!((marker.result.as_deref(), marker.acknowledged, marker.success), (Some("repaired"), true, true));
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
+}
+
 // 적용 대상 목록을 남긴 뒤 설치기로 그중 하나를 같거나 더 새 판으로 깔았으면, 그 키는 건너뛰고 나머지는 적용한다
 #[tokio::test]
 async fn an_apply_target_already_installed_is_skipped_and_the_rest_are_applied() {

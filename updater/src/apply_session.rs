@@ -68,6 +68,7 @@ impl UpdateManager {
         // 성공·실패 모두 남겨 "됐는지 안 됐는지" 볼 수 있게 한다
         // 적용한 릴리즈의 버전·패치노트: 앱이 결과 알림을 누르면 보여 준다 (A5)
         let marker = UpdateCompletionMarker::applied(applied.clone(), failed.clone(), waiting.clone(), self.pending_release());
+        let marker = if self.is_repair(&target_keys) { marker.repaired() } else { marker };
         marker.save().ok();
         self.finish_pending_manifest(&rest);
 

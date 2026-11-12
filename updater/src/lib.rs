@@ -772,6 +772,11 @@ impl UpdateManager {
         }
     }
 
+    /// `keys`가 모두 복구(`mark_for_repair`)로 받아 둔 것인가 (완료 마커를 `repaired`로 남긴다)
+    pub fn is_repair(&self, keys: &[String]) -> bool {
+        !keys.is_empty() && keys.iter().all(|k| self.status.components.iter().any(|c| c.repair && c.component.manifest_key() == *k))
+    }
+
     fn relay_client(&self) -> relay::RelayClient {
         relay::RelayClient::new(self.config.relay_url.as_deref().unwrap_or(relay::DEFAULT_RELAY_URL))
             .with_manifest_cache(self.staging_dir.join("manifests"))
