@@ -1339,6 +1339,18 @@ async fn count_down(
     alive
 }
 
+/// 꺼진 서버가 가장 새 백업 뒤에 돈 적이 있는가: 가장 최근 세션 로그가 그 백업보다 뒤에 쓰였으면.
+/// 세션 로그가 없으면(돈 적이 없다) false. 꺼진 PC에서 밀린 예약 백업이 데몬이 켜진 직후에 지난 실행을 담게 한다
+async fn ran_since_last_backup(state: &IPCServer, id: &str) -> bool {
+    let instance_dir = state.supervisor.read().await.instance_store.instance_dir(id);
+    let check = move || {
+        let wrote = crate::supervisor::managed_process::latest_session_log(&instance_dir)?.metadata().ok()?.modified().ok()?;
+        let wrote = wrote.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        Some(backup::list(&backup::backups_dir(&instance_dir)).iter().map(|b| b.created).max().is_none_or(|made| wrote > made))
+    };
+    tokio::task::spawn_blocking(check).await.ok().flatten().unwrap_or(false)
+}
+
 async fn run_task(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
     // 감사 로그 (A10): 예약 작업이 한 일은 출처 schedule
     // 갈래마다 큰 핸들러 future를 품으므로 힙에 둔다 (디버그 빌드 스택 넘침)
@@ -1349,9 +1361,9 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
     let running = is_running(state, id).await;
     match task.action {
         TaskAction::Backup => {
-            // 꺼져 있으면 바뀐 게 없으니 건너뛰되, 건너뛴 것도 감사 로그에 남긴다
-            let (status, code) = if !running {
-                tracing::info!("Scheduled backup of '{}' skipped: the server is not running", id);
+            // 꺼져 있고 마지막 백업 뒤로 돈 적도 없으면 바뀐 게 없으니 건너뛰되, 건너뛴 것도 감사 로그에 남긴다
+            let (status, code) = if !running && !ran_since_last_backup(state, id).await {
+                tracing::info!("Scheduled backup of '{}' skipped: the server is not running and has not run since the last backup", id);
                 (409, None)
             } else {
                 match take_backup(state, id, BackupKind::Scheduled).await {
@@ -1813,6 +1825,29 @@ else:
         assert_eq!(entry["source"], "schedule");
         assert_eq!(entry["ok"], false);
         assert_eq!(entry["status"], 409);
+    }
+
+    // 꺼진 PC에서 밀린 주기 백업은 데몬이 켜진 직후(서버는 아직 꺼져 있다)에 돈다: 지난 실행이 바꾼 것을 그때 담아야 한다
+    #[tokio::test]
+    async fn a_scheduled_backup_of_a_stopped_server_runs_once_when_it_ran_since_the_last_backup() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        std::fs::create_dir_all(tmp.path().join("server/world")).unwrap();
+        std::fs::write(tmp.path().join("server/world/level.dat"), b"played").unwrap();
+        let instance_dir = state.supervisor.read().await.instance_store.instance_dir(&id);
+        let sessions = crate::supervisor::managed_process::sessions_dir(&instance_dir);
+        std::fs::create_dir_all(&sessions).unwrap();
+        std::fs::write(sessions.join("20260101-000000.log"), "Server stopped\n").unwrap();
+        let task: ScheduledTask = serde_json::from_value(json!({"action": "backup", "every_minutes": 720})).unwrap();
+        let last_status = || crate::audit::log().recent(10, Some(&id)).first().map(|e| e["status"].clone());
+
+        run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
+        assert_eq!(last_status(), Some(json!(200)), "the last run's changes were never backed up");
+        let made = backup::list(&backup::backups_dir(&instance_dir));
+        assert_eq!(made.iter().map(|b| b.kind).collect::<Vec<_>>(), [BackupKind::Scheduled]);
+
+        run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
+        assert_eq!(last_status(), Some(json!(409)), "nothing ran since that backup");
+        assert_eq!(backup::list(&backup::backups_dir(&instance_dir)).len(), 1);
     }
 
     /// 예약 재시작은 예고를 시작할 때 꺼져 있었어도 실행 시각에 켜져 있으면 다시 시작한다 (예약 정지와 같다)
