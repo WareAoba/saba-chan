@@ -123,7 +123,9 @@ async fn open(endpoint: &Endpoint) -> Result<Conn, NotOpened> {
             ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::BrokenPipe => NotOpened::Full,
             _ => NotOpened::Unreachable,
         })?;
-        if stream.get_ref().1.alpn_protocol() == Some(tls::DIRECT_H2) {
+        let h2 = stream.get_ref().1.alpn_protocol() == Some(tls::DIRECT_H2);
+        mark_http1(endpoint, !h2);
+        if h2 {
             return h2::handshake(stream).await.map(Conn::H2).ok_or(NotOpened::Unreachable);
         }
         let (send, conn) = hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream)).await.map_err(|_| NotOpened::Unreachable)?;
@@ -156,6 +158,17 @@ static IDLE: std::sync::LazyLock<std::sync::Mutex<Idle>> =
     std::sync::LazyLock::new(Default::default);
 /// 원격 데몬(주소·포트·지문)마다 열어 둔 HTTP/2 직접 연결 하나
 static DIRECT: h2::Connections<IdleKey> = h2::Connections::new();
+/// 지난번에 HTTP/1.1로 답한 원격 데몬(이전 릴리스): 연결을 같이 쓸 수 없으므로 여는 동안 다른 요청을 기다리게 하지 않는다
+static HTTP1: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<IdleKey>>> = std::sync::LazyLock::new(Default::default);
+
+fn mark_http1(endpoint: &Endpoint, http1: bool) {
+    let mut earlier = HTTP1.lock().unwrap_or_else(|e| e.into_inner());
+    if http1 {
+        earlier.insert(idle_key(endpoint));
+    } else {
+        earlier.remove(&idle_key(endpoint));
+    }
+}
 
 fn idle_key(endpoint: &Endpoint) -> IdleKey {
     (endpoint.address.clone(), endpoint.port, endpoint.cert_sha256.clone())
@@ -246,7 +259,7 @@ async fn send(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, reques
         },
     };
     // 여는 동안 같은 PC의 다른 요청은 기다렸다가 HTTP/2 연결이면 같이 쓴다 (한꺼번에 온 요청이 연결을 하나씩 열지 않게)
-    let mut held = DIRECT.hold(key.clone()).await;
+    let held = DIRECT.hold(key.clone()).await;
     if let Some(sender) = h2::live(&held) {
         drop(held);
         return Ok(sent_h2(send_h2(sender, req).await));
@@ -254,6 +267,8 @@ async fn send(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, reques
     if direct_failed().contains_key(&key) {
         return Err(NotOpened::Slow);
     }
+    let earlier = HTTP1.lock().unwrap_or_else(|e| e.into_inner()).contains(&key);
+    let mut held = (!earlier).then_some(held);
     let conn = match open_or_tunnel(relay, host_id, endpoint).await {
         Ok(conn) => conn,
         Err(NotOpened::Unreachable) => {
@@ -264,7 +279,11 @@ async fn send(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, reques
     };
     let mut sender = match conn {
         Conn::H2(sender) => {
-            *held = Some(sender.clone());
+            match held.as_mut() {
+                Some(held) => **held = Some(sender.clone()),
+                // 그새 새 릴리스로 바뀌었다
+                None => *DIRECT.hold(key).await = Some(sender.clone()),
+            }
             drop(held);
             return Ok(sent_h2(send_h2(sender, req).await));
         }
@@ -982,6 +1001,30 @@ mod tests {
         let (status, _) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200);
         assert_eq!(idle(), 1);
+    }
+
+    /// 이전 릴리스(HTTP/1.1)로 답한 원격 데몬에는 연결 하나를 같이 쓸 수 없으므로, 동시에 온 요청이 연결을 하나씩 차례로 열지 않는다
+    #[tokio::test]
+    async fn concurrent_requests_to_an_earlier_remote_daemon_open_their_connections_together() {
+        const OPENING: Duration = Duration::from_millis(300);
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = earlier_remote_daemon(&relay, &state).await;
+        proxy(&state, OPENING).await;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+
+        let started = std::time::Instant::now();
+        let posts = (0..4).map(|_| {
+            let post = Request::post("/ignored").header("content-type", "text/plain").body(Body::from("hello")).unwrap();
+            forward(&file, Some(relay.clone()), "host-b", "/api/echo", post, CancellationToken::new())
+        });
+        for res in futures_util::future::join_all(posts).await {
+            assert_eq!(res.status(), StatusCode::OK);
+        }
+        assert!(started.elapsed() < OPENING * 3, "4 connections took {:?} to open", started.elapsed());
+        assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
 
     /// HTTP/1.1(이전 릴리스)에서 다시 쓴 연결에 보낸 읽기 요청은 답 머리를 짧게만 기다린다. 조용히 끊긴 연결이면 새 연결로 다시 보낸다
