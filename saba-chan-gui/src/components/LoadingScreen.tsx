@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { fallFrame, OPENING_CHORD_MS, type OpeningKind, openingFrame, openingShake } from '../utils/opening';
+import { fallFrame, type OpeningKind, type OpeningPlay, openingFrame, openingShake } from '../utils/opening';
 import { Icon } from './Icon';
 import { WindowControls } from './shell/AppBar';
 import { logTokens, type MatrixPull, MatrixRain } from './shell/MatrixRain';
@@ -73,12 +73,11 @@ interface LoadingScreenProps {
     leaving?: boolean;
     /**
      * 오프닝 (utils/opening.ts). prepare: 메인 화면을 아래에 그리는 동안 로딩 화면 그대로 덮어 둔다.
-     * play: openingKind대로 메인 화면을 연다 (burst: 기동음과 함께 끌어모아 터뜨림, fall: 후두둑). 끝나면 onOpened
+     * onPrepare가 오면 그것이 준비를 마치고 돌려준 대로 메인 화면을 연다 (burst: 기동음과 함께 끌어모아 터뜨림,
+     * fall: 후두둑). 재생은 이 안에서만 바뀌어 메인 화면을 다시 그리지 않는다. 끝나면 onOpened
      */
-    opening?: 'prepare' | 'play' | null;
-    openingKind?: OpeningKind;
-    /** burst에서 화음이 울리는 때 (opening.ts openingChordMs, 함께 내는 소리에 따라 다르다) */
-    openingChord?: number;
+    opening?: 'prepare' | null;
+    onPrepare?: (signal: AbortSignal) => Promise<OpeningPlay | null>;
     onOpened?: () => void;
     /** 화음 순간 메인 화면을 흔들 만큼 (px). 끝나면 0, 0 */
     onShake?: (dx: number, dy: number) => void;
@@ -89,10 +88,25 @@ interface LoadingScreenProps {
  * burst: 화음(메인 화면이 열리는 때)부터 바탕을 걷어 글자만 메인 화면 위에 흩어지게 두고, 화면을 한 번 흔든다(onShake).
  * fall: 섬광 없이 바탕을 서서히 걷으며 가운데 묶음을 가라앉힌다
  */
+/** onPrepare가 준비를 마치면 재생할 오프닝 (그 전에는 null) */
+function usePreparedOpening(onPrepare?: (signal: AbortSignal) => Promise<OpeningPlay | null>) {
+    const [play, setPlay] = useState<OpeningPlay | null>(null);
+    const onPrepareRef = useRef(onPrepare);
+    onPrepareRef.current = onPrepare;
+    const preparing = !!onPrepare;
+    useEffect(() => {
+        if (!preparing) return undefined;
+        const abort = new AbortController();
+        onPrepareRef.current?.(abort.signal).then((p) => {
+            if (!abort.signal.aborted && p) setPlay(p);
+        });
+        return () => abort.abort();
+    }, [preparing]);
+    return preparing ? play : null;
+}
+
 function useOpeningPlayback(
-    playing: boolean,
-    kind: OpeningKind,
-    chord: number,
+    play: OpeningPlay | null,
     onOpened?: () => void,
     onShake?: (dx: number, dy: number) => void,
 ) {
@@ -106,6 +120,9 @@ function useOpeningPlayback(
     const onShakeRef = useRef(onShake);
     onShakeRef.current = onShake;
 
+    const playing = !!play;
+    const kind: OpeningKind = play?.kind ?? 'burst';
+    const chord = play?.chord ?? 0;
     useEffect(() => {
         if (!playing) return undefined;
         const box = logoRef.current?.getBoundingClientRect();
@@ -188,21 +205,21 @@ export function LoadingScreen({
     onContinue,
     leaving = false,
     opening = null,
-    openingKind = 'burst',
-    openingChord = OPENING_CHORD_MS,
+    onPrepare,
     onOpened,
     onShake,
 }: LoadingScreenProps) {
     const { t } = useTranslation('gui');
     const [retrying, setRetrying] = useState(false);
     const { line: log, tokens } = useDaemonLog(!failed && !leaving && !opening);
-    const pull = useOpeningPlayback(opening === 'play', openingKind, openingChord, onOpened, onShake);
+    const play = usePreparedOpening(opening === 'prepare' ? onPrepare : undefined);
+    const pull = useOpeningPlayback(play, onOpened, onShake);
 
     return (
         <div
             ref={pull.rootRef}
             className={clsx('loading-screen', { leaving, opening: !!opening })}
-            aria-hidden={leaving || opening === 'play' || undefined}
+            aria-hidden={leaving || !!play || undefined}
         >
             <i ref={pull.flashRef} className="loading-flash" aria-hidden="true" />
             {/* 뒤에서 흐르는 서버 콘솔 (가운데는 비워 둔다) */}
