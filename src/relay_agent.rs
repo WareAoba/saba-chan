@@ -31,6 +31,8 @@ const HEARTBEAT_KICK_DELAY: Duration = Duration::from_secs(2);
 const HEARTBEAT_MIN_GAP: Duration = Duration::from_secs(15);
 /// 마지막 하트비트 성공이 이보다 오래되면 붙어 있지 않은 것으로 본다 (하트비트 세 번)
 const CONNECTED_WITHIN_MS: u64 = 3 * 60_000;
+/// 공인 IPv4를 일시 실패로 얻지 못했을 때 다시 묻는 간격 (`friend_address`, 포트 확인 한도 분당 6회보다 넉넉히)
+const IPV4_RETRY: Duration = if cfg!(test) { Duration::from_millis(50) } else { Duration::from_secs(5 * 60) };
 const POLL_TIMEOUT: Duration = Duration::from_secs(40); // 릴레이 롱폴 25초 + 여유
 const RETRY_BASE: Duration = Duration::from_secs(3);
 const RETRY_MAX: Duration = Duration::from_secs(60);
@@ -498,8 +500,9 @@ struct Session {
     linked_acks: Mutex<Vec<String>>,
     /// 첫 하트비트 응답 뒤 챗봇 설정을 릴레이에 맞춘다
     chatbot_sync_due: std::sync::atomic::AtomicBool,
-    /// 릴레이가 본 IPv6와 그때 IPv4로 다시 물어 얻은 공인 IPv4 (`friend_address`). 같은 IPv6에는 다시 묻지 않는다
-    seen_v4: Mutex<Option<(String, Option<String>)>>,
+    /// 릴레이가 본 IPv6, 그때 IPv4로 다시 물어 얻은 공인 IPv4, 일시 실패였으면 다시 물을 때 (`friend_address`).
+    /// 같은 IPv6에는 답을 얻은 뒤로 다시 묻지 않는다
+    seen_v4: Mutex<Option<(String, Option<String>, Option<std::time::Instant>)>>,
 }
 
 /// 받은 명령을 처음 본 것인지, 아직 처리 중인지, 이미 끝났는지
@@ -801,15 +804,21 @@ impl Session {
     /// 친구에게 안내할 이 PC의 공인 주소. 하트비트가 IPv6로 나가 릴레이가 IPv6를 봤으면 포트 확인과 같은 IPv4 전용 연결로
     /// 한 번 다시 물어 공인 IPv4를 쓴다 (포트 확인은 IPv4로 두드리고, 친구는 대개 IPv4로 붙는다). 얻지 못하면 IPv6 그대로
     async fn friend_address(&self, seen: Option<String>) -> Option<String> {
+        use crate::port_check::Ipv4Lookup;
         let Some(v6) = seen.as_deref().filter(|a| a.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_ipv6())) else { return seen };
-        if let Some((asked, v4)) = self.seen_v4.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        if let Some((asked, v4, retry_at)) = self.seen_v4.lock().unwrap_or_else(|e| e.into_inner()).clone()
             && asked == v6
+            && retry_at.is_none_or(|at| std::time::Instant::now() < at)
         {
             return v4.or(seen);
         }
         let relay = crate::port_check::Relay { base: self.base.clone(), token: self.token.clone(), host: None };
-        let v4 = crate::port_check::public_ipv4(&relay).await.map(|ip| ip.to_string());
-        *self.seen_v4.lock().unwrap_or_else(|e| e.into_inner()) = Some((v6.to_string(), v4.clone()));
+        let (v4, retry_at) = match crate::port_check::public_ipv4(&relay).await {
+            Ipv4Lookup::Found(ip) => (Some(ip.to_string()), None),
+            Ipv4Lookup::Unusable => (None, None),
+            Ipv4Lookup::Later => (None, Some(std::time::Instant::now() + IPV4_RETRY)),
+        };
+        *self.seen_v4.lock().unwrap_or_else(|e| e.into_inner()) = Some((v6.to_string(), v4.clone(), retry_at));
         v4.or(seen)
     }
 
@@ -3068,15 +3077,22 @@ mod tests {
     }
 
     /// 하트비트가 IPv6로 나가 릴레이가 IPv6를 봤으면, 친구에게 안내할 주소는 포트 확인처럼 IPv4로 다시 물어 얻은 공인 IPv4다.
-    /// 같은 IPv6에는 다시 묻지 않고, 그 답을 모르는 옛 릴레이(빈 포트 목록을 400으로 거절)면 IPv6를 그대로 쓴다
+    /// 같은 IPv6에는 다시 묻지 않고, 그 답을 모르는 옛 릴레이(빈 포트 목록을 400으로 거절)면 IPv6를 그대로 쓴다.
+    /// 일시 실패(한도·시간 초과)면 그동안 IPv6를 쓰고 간격을 두고 다시 묻는다
     #[tokio::test]
     async fn a_relay_that_saw_ipv6_is_asked_once_for_the_ipv4_friends_reach() {
         use axum::{extract::State as AxState, routing::post};
         use std::sync::atomic::{AtomicUsize, Ordering};
+        #[derive(Clone, Copy, PartialEq)]
+        enum PortCheck {
+            KnowsAddressOnly,
+            Old,
+            LimitedOnce,
+        }
         #[derive(Clone)]
         struct Relay {
             heartbeat_address: &'static str,
-            knows_address_only: bool,
+            mode: PortCheck,
             asked: Arc<AtomicUsize>,
         }
         async fn heartbeat(AxState(r): AxState<Relay>) -> axum::Json<Value> {
@@ -3084,18 +3100,22 @@ mod tests {
         }
         async fn port_check(AxState(r): AxState<Relay>, axum::Json(body): axum::Json<Value>) -> axum::response::Response {
             use axum::response::IntoResponse;
-            r.asked.fetch_add(1, Ordering::SeqCst);
-            if !r.knows_address_only || body["ports"] != json!([]) {
+            let asked = r.asked.fetch_add(1, Ordering::SeqCst);
+            if r.mode == PortCheck::Old || body["ports"] != json!([]) {
                 return (axum::http::StatusCode::BAD_REQUEST, axum::Json(json!({ "error": "VALIDATION_ERROR" }))).into_response();
+            }
+            if r.mode == PortCheck::LimitedOnce && asked == 0 {
+                return axum::http::StatusCode::TOO_MANY_REQUESTS.into_response();
             }
             axum::Json(json!({ "address": "203.0.113.7", "publicAddress": true, "probes": [] })).into_response()
         }
-        for (heartbeat_address, knows_address_only, shown, asked) in [
-            ("2001:db8::1", true, "203.0.113.7", 1),
-            ("2001:db8::1", false, "2001:db8::1", 1),
-            ("198.51.100.4", true, "198.51.100.4", 0),
+        for (heartbeat_address, mode, shown, asked) in [
+            ("2001:db8::1", PortCheck::KnowsAddressOnly, "203.0.113.7", 1),
+            ("2001:db8::1", PortCheck::Old, "2001:db8::1", 1),
+            ("2001:db8::1", PortCheck::LimitedOnce, "203.0.113.7", 2),
+            ("198.51.100.4", PortCheck::KnowsAddressOnly, "198.51.100.4", 0),
         ] {
-            let relay = Relay { heartbeat_address, knows_address_only, asked: Arc::default() };
+            let relay = Relay { heartbeat_address, mode, asked: Arc::default() };
             let app = axum::Router::new().route("/heartbeat", post(heartbeat)).route("/api/port-check", post(port_check)).with_state(relay.clone());
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let base = format!("http://{}", listener.local_addr().unwrap());
@@ -3111,9 +3131,14 @@ mod tests {
                 inner.status.running = true;
             }
             session.heartbeat_once().await;
+            if mode == PortCheck::LimitedOnce {
+                assert_eq!(agent.seen_address().as_deref(), Some(heartbeat_address));
+                tokio::time::sleep(IPV4_RETRY).await;
+            }
             session.heartbeat_once().await;
-            assert_eq!(agent.seen_address().as_deref(), Some(shown), "{heartbeat_address} knows={knows_address_only}");
-            assert_eq!(relay.asked.load(Ordering::SeqCst), asked, "{heartbeat_address} knows={knows_address_only}");
+            session.heartbeat_once().await;
+            assert_eq!(agent.seen_address().as_deref(), Some(shown), "{heartbeat_address}");
+            assert_eq!(relay.asked.load(Ordering::SeqCst), asked, "{heartbeat_address}");
             session.cancel.cancel();
         }
     }
