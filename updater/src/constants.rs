@@ -76,6 +76,13 @@ pub const DAEMON_SETTINGS: &[(&str, &str)] = &[
     ("managed_start", "boolean"),
     ("log_sessions_keep", "number"),
     ("stop_timeout", "number"),
+    // 접속자 없을 때 자동 정지 (`supervisor::idle`)
+    ("idle_stop", "boolean"),
+    ("idle_stop_minutes", "number"),
+    ("idle_stop_grace_minutes", "number"),
+    // 응답 없는 서버 감시 (`supervisor::watchdog`): off·notify·restart
+    ("unresponsive_action", "text"),
+    ("unresponsive_minutes", "number"),
 ];
 
 // ══════════════════════════════════════════════════════

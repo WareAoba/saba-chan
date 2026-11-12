@@ -1538,12 +1538,6 @@
     border-radius: var(--r-sm);
 }
 
-.ss-catalog-top .ss-card-icon img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: inherit;
-}
 
 .ss-catalog-title {
     display: flex;
@@ -1979,38 +1973,6 @@
     font-size: 13px;
     font-weight: 600;
 }
-.remote-daemon-list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-1);
-}
-/* 버튼이 있든 없든 행 높이를 같게 둔다 (작은 버튼 30px + 위아래 여백) */
-.remote-daemon-row {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    min-height: 40px;
-    padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-3);
-    border-radius: var(--r-md);
-    background: var(--inset);
-}
-.remote-daemon-row > .muted {
-    padding-right: var(--sp-2);
-}
-.remote-daemon-row .btn {
-    flex-shrink: 0;
-}
-.remote-daemon-name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 /* 설정 > 연결: 내 PC 카드 (이 PC가 맨 앞, 강조 테두리) */
 .remote-pc-cards {
     margin: 0;
@@ -2106,14 +2068,13 @@
     height: 28px;
     padding: 0;
     border-radius: var(--r-md);
-    border: 1px solid transparent;
+    border: none;
     background: none;
     color: var(--text-2);
     cursor: pointer;
     opacity: 0.45;
 }
 .remote-pc-star:hover {
-    border-color: var(--line-strong);
     opacity: 1;
 }
 .remote-pc-star.on {
@@ -2320,6 +2281,23 @@
 }
 .pc-settings-section > .setting-description {
     margin: 0;
+}
+/* 수정 창 제목 자리: PC 이름 칸과 바로 오른쪽 메인 별 */
+.pc-settings-titlerow {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+.pc-settings-name {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-weight: 700;
+}
+.pc-settings-name-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 .pc-settings-heading {
     margin: 0;

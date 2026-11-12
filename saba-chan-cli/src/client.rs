@@ -449,6 +449,10 @@ impl Api {
     pub async fn players(&self, id: &str) -> Result<Value> {
         self.get_slow(&format!("/api/instance/{}/players", seg(id))).await
     }
+    /// GET /api/instance/:id/lists — 모듈이 선언한 플레이어 목록과 지금 명단 `{lists:[{id, label, add, remove, editable, entries:[{name, added?, note?}]}]}`
+    pub async fn lists(&self, id: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/instance/{}/lists", seg(id))).await
+    }
     /// GET /api/instance/:id/address — 친구가 접속할 주소 `{address, running, ports:[{label, port, protocols}]}`
     pub async fn address(&self, id: &str) -> Result<Value> {
         self.get(&format!("/api/instance/{}/address", seg(id))).await
@@ -823,6 +827,10 @@ impl Api {
         // 데몬이 원격 데몬 하나를 30초까지 기다린다
         self.get_slow("/api/remote/servers").await
     }
+    /// PUT /api/remote/peers/:hostId/name — 내 PC 하나(이 PC 포함)의 이름 (서버쨩의 PC 이름)
+    pub async fn rename_pc(&self, host_id: &str, name: &str) -> Result<Value> {
+        self.put(&format!("/api/remote/peers/{}/name", seg(host_id)), json!({ "name": name })).await
+    }
     /// DELETE /api/remote/daemons/:hostId
     pub async fn forget_remote_daemon(&self, host_id: &str) -> Result<Value> {
         self.delete(&format!("/api/remote/daemons/{}", seg(host_id))).await
@@ -1169,6 +1177,16 @@ impl Api {
             json!({}),
         )
         .await
+    }
+    /// POST …/backups/:name/export — `{path}`(데몬 PC의 절대 경로)에 백업 하나를 zip 하나로 쓴다. `{path, size}`
+    pub async fn export_backup(&self, id: &str, name: &str, path: &str) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/backups/{}/export", seg(id), seg(name)), json!({ "path": path }))
+            .await
+    }
+    /// POST …/backups/import — 내보낸 zip을 검사하고 목록에 올린다. `{backup}`
+    pub async fn import_backup(&self, id: &str, path: &str) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/backups/import", seg(id)), json!({ "path": path }))
+            .await
     }
     /// GET /api/instance/:id/schedule — `{schedule, backup_keep, revision, backup_supported, announce_supported}`
     pub async fn schedule(&self, id: &str) -> Result<Value> {
@@ -1751,6 +1769,7 @@ mod route_coverage {
         ("/api/locales/{lang}/{ns}", "GUI 번역 (CLI는 설치 폴더 cli.json을 직접 읽고, TUI는 `locales_version`이 바뀌면 다시 읽는다)"),
         ("/api/instance/{id}/status", "GUI가 시작·정지가 끝났는지 묻는 길 (CLI `server info`·`list`는 /api/servers 상태를 쓴다)"),
         ("/api/instance/{id}/chat-link/{guild}", "디스코드 채널과 게임 채팅을 잇는 원격(디스코드 `/채팅연동`) 전용 (잇는 채널이 디스코드에만 있다)"),
+        ("/api/schedules/upcoming", "GUI 작업 기록 화면의 '다가오는 예약' 카드 (CLI는 `schedule show <서버>`로 서버마다 다음 실행을 본다)"),
         ("/api/guides", "GUI 가이드 카드·화면 강조 (GUI 화면을 짚는 안내라 CLI에는 그릴 곳이 없다)"),
         ("/api/guides/{id}", "GUI 가이드를 열었음·보던 단계·끝까지 봄"),
         ("/api/remote/daemons/{host_id}/proxy/{*rest}", "원격 데몬 중계: 데몬 API 전체를 그 데몬으로 넘기는 길 (원격 데몬 고르기는 G1)"),

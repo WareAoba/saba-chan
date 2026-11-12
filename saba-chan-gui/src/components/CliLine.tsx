@@ -42,7 +42,7 @@ function arg(value: unknown) {
     return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-const SECRET_KEY = /(password|passwd|token|secret)$/i;
+export const SECRET_KEY = /(password|passwd|token|secret)$/i;
 
 /**
  * 설정 화면에서 CLI 줄에 덧붙일 값: 화면을 연 뒤 바꾼 것만 (`_`로 시작하는 GUI 내부 값 제외).

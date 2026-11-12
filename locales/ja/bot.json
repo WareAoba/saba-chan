@@ -417,7 +417,8 @@
         "pre-update": "アップデート前",
         "pre-restore": "復元前",
         "snapshot": "ゲーム自動バックアップの保管",
-        "game-snapshot": "ゲーム自動バックアップ"
+        "game-snapshot": "ゲーム自動バックアップ",
+        "imported": "インポート"
       },
       "events": "📜 **最近の起動・停止記録**",
       "events_empty": "📭 記録がありません",

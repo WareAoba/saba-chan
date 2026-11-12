@@ -29,6 +29,8 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
 /// 앞당긴 하트비트도 앞의 것과 이만큼은 띄운다 (릴레이 `POST /heartbeat` 한도)
 const HEARTBEAT_KICK_DELAY: Duration = Duration::from_secs(2);
 const HEARTBEAT_MIN_GAP: Duration = Duration::from_secs(15);
+/// 마지막 하트비트 성공이 이보다 오래되면 붙어 있지 않은 것으로 본다 (하트비트 세 번)
+const CONNECTED_WITHIN_MS: u64 = 3 * 60_000;
 const POLL_TIMEOUT: Duration = Duration::from_secs(40); // 릴레이 롱폴 25초 + 여유
 const RETRY_BASE: Duration = Duration::from_secs(3);
 const RETRY_MAX: Duration = Duration::from_secs(60);
@@ -83,10 +85,29 @@ pub struct AgentStatus {
     /// `agent_too_old`일 때 릴레이가 요구하는 최소 버전
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_version: Option<String>,
+    /// 릴레이가 마지막 하트비트를 검증에서 거절한 이유. 다시 받아 주면 없다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heartbeat_rejected: Option<HeartbeatReject>,
     pub commands_handled: u64,
+    /// 릴레이와 붙어 있다: 돌고 있고, 하트비트가 최근에 성공했고, 그 뒤로 실패가 없다.
+    /// 화면은 릴레이에 따로 묻지 않고 이 값을 본다. 바뀌면 `relay.status` 이벤트가 나간다
+    pub connected: bool,
     /// 릴레이가 하트비트 답에 실어 준, 이 PC가 접속해 온 공인 주소 (서버 주소 `server.address`). 모르면 없다
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seen_address: Option<String>,
+}
+
+/// 릴레이가 하트비트를 거절한 이유 (400 답의 `reason`): 어느 칸이 맞지 않았는지, 개수·길이 상한이면 상한과 보낸 크기.
+/// 문장은 클라이언트가 만든다
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+pub struct HeartbeatReject {
+    /// `TOO_BIG`(상한 초과) 또는 `INVALID`
+    pub code: String,
+    pub field: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual: Option<u64>,
 }
 
 #[derive(Default)]
@@ -142,6 +163,7 @@ impl RelayAgent {
         status.agent_version = AGENT_VERSION;
         // GUI가 5초마다 부른다: 설정 파일이 그대로면 다시 읽지 않는다
         status.has_token = crate::ipc::handlers::relay::peek_node_token().as_deref().and_then(parse_node_token).is_some();
+        status.connected = connected(&status, now_ms());
         status
     }
 
@@ -157,8 +179,10 @@ impl RelayAgent {
                 // 돌던 세션은 없다: 상태에 이유를 남겨 클라이언트가 보이게 한다
                 let mut inner = self.lock();
                 if inner.cancel.is_none() {
+                    let before = Shown::of(&inner.status);
                     inner.status.last_error = Some(e.message.clone());
                     inner.status.last_error_code = Some(e.code);
+                    before.announce_if_changed(&inner.status);
                 }
                 return Err(e);
             }
@@ -172,7 +196,9 @@ impl RelayAgent {
             inner.cancel = Some(token.clone());
             inner.endpoint = Some((relay_url.clone(), node_token.clone()));
             inner.generation += 1;
+            let before = Shown::of(&inner.status);
             inner.status = AgentStatus { running: true, relay_url: Some(relay_url.clone()), ..Default::default() };
+            before.announce_if_changed(&inner.status);
             (token, inner.generation)
         };
 
@@ -263,6 +289,33 @@ impl RelayAgent {
         Ok(())
     }
 
+    /// 사용자가 사바쨩을 꺼서 데몬이 내려가기 직전: 릴레이가 3분을 기다리지 않고 바로 꺼짐으로 두고 "PC 연결 끊김" 알림을 보내지 않게 한다
+    /// (`POST /v1/host/stopping`, 본문 없음). 업데이트로 내려가는 중이면 이미 알렸으므로 보내지 않는다. 실패해도 종료는 진행한다
+    pub async fn notify_stopping(&self) {
+        // 알린 뒤의 heartbeat가 다시 켜짐으로 돌리지 않게 먼저 막는다. 이미 막혀 있으면 업데이트 창이다
+        if self.going_down.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        let (base, token) = {
+            let inner = self.lock();
+            match (&inner.cancel, &inner.endpoint) {
+                (Some(cancel), Some(endpoint)) if !cancel.is_cancelled() => endpoint.clone(),
+                _ => return,
+            }
+        };
+        let Ok(client) = http_client() else { return };
+        let Some(req) = crate::ipc::handlers::relay::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/stopping", &token, None)
+        else {
+            return;
+        };
+        match tokio::time::timeout(std::time::Duration::from_secs(5), req.send()).await {
+            Ok(Ok(resp)) if resp.status().is_success() => {}
+            Ok(Ok(resp)) => tracing::warn!("[Shutdown] Relay answered {} to the stopping notice", resp.status()),
+            Ok(Err(e)) => tracing::warn!("[Shutdown] Could not tell the relay we are stopping: {}", e),
+            Err(_) => tracing::warn!("[Shutdown] Telling the relay we are stopping timed out"),
+        }
+    }
+
     pub fn stop(&self) {
         crate::remote::link::stop();
         let mut inner = self.lock();
@@ -270,7 +323,9 @@ impl RelayAgent {
         if let Some(cancel) = inner.cancel.take() {
             cancel.cancel();
         }
+        let before = Shown::of(&inner.status);
         inner.status.running = false;
+        before.announce_if_changed(&inner.status);
     }
 
     /// 세션이 끝났을 때. 그 사이 새 세션이 시작됐으면(세대가 다르면) 아무것도 건드리지 않는다
@@ -281,10 +336,12 @@ impl RelayAgent {
         }
         inner.cancel = None;
         inner.endpoint = None;
+        let before = Shown::of(&inner.status);
         inner.status.running = false;
         if error.is_some() {
             inner.status.last_error = error;
         }
+        before.announce_if_changed(&inner.status);
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -308,7 +365,36 @@ impl RelayAgent {
     fn update(&self, generation: u64, f: impl FnOnce(&mut AgentStatus)) {
         let mut inner = self.lock();
         if inner.generation == generation && inner.cancel.is_some() {
-            f(&mut inner.status)
+            let before = Shown::of(&inner.status);
+            f(&mut inner.status);
+            before.announce_if_changed(&inner.status);
+        }
+    }
+}
+
+/// 릴레이와 붙어 있는가 (`AgentStatus::connected`)
+fn connected(s: &AgentStatus, now: u64) -> bool {
+    s.running && s.last_error.is_none() && s.last_heartbeat_at.is_some_and(|at| now.saturating_sub(at) < CONNECTED_WITHIN_MS)
+}
+
+/// 화면이 보이는 연결 상태. 하트비트 시각처럼 늘 바뀌는 값은 빼고, 이것이 바뀔 때만 알린다
+#[derive(PartialEq)]
+struct Shown {
+    running: bool,
+    heard: bool,
+    error: Option<String>,
+    code: Option<&'static str>,
+}
+
+impl Shown {
+    fn of(s: &AgentStatus) -> Self {
+        Self { running: s.running, heard: s.last_heartbeat_at.is_some(), error: s.last_error.clone(), code: s.last_error_code }
+    }
+
+    /// 바뀌었으면 `relay.status`를 낸다 (지금 붙은 클라이언트에게만: 다시 붙으면 상태를 새로 읽는다)
+    fn announce_if_changed(self, after: &AgentStatus) {
+        if self != Self::of(after) {
+            crate::events::emit_live("relay.status", json!({}));
         }
     }
 }
@@ -621,6 +707,7 @@ impl Session {
         let (metadata, hash, unchanged) = heartbeat_metadata(self.metadata().await, sent.as_deref());
         let acks = self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let body = heartbeat_body(metadata, &hash, unchanged, &acks);
+        let mut rejected: Option<HeartbeatReject> = None;
         let result = async {
             let resp = self.send_signed(reqwest::Method::POST, "/heartbeat", Some(body.to_string())).await?;
             let status = resp.status();
@@ -634,7 +721,9 @@ impl Session {
             }
             if !status.is_success() {
                 let hint = if status.as_u16() == 401 || status.as_u16() == 403 { " (node token rejected)" } else { "" };
-                return Err(format!("heartbeat {}{}: {}", status, hint, data.get("error").and_then(|v| v.as_str()).unwrap_or("")));
+                rejected = data.get("reason").cloned().and_then(|reason| serde_json::from_value(reason).ok());
+                let field = rejected.as_ref().map(|r| format!(" ({})", r.field)).unwrap_or_default();
+                return Err(format!("heartbeat {}{}: {}{}", status, hint, data.get("error").and_then(|v| v.as_str()).unwrap_or(""), field));
             }
             Ok(data)
         }
@@ -658,6 +747,7 @@ impl Session {
                     s.last_error = None;
                     s.last_error_code = None;
                     s.min_version = None;
+                    s.heartbeat_rejected = None;
                     // 사설 주소면 없다
                     seen_changed = s.seen_address != seen;
                     s.seen_address = seen;
@@ -697,6 +787,7 @@ impl Session {
             Err(e) if e == TOO_OLD => {}
             Err(e) => {
                 tracing::warn!("[RelayAgent] {}", e);
+                self.agent.update(self.generation, |s| s.heartbeat_rejected = rejected);
                 self.report_error(e);
             }
         }
@@ -824,6 +915,10 @@ impl Session {
                     next = None;
                     match polled {
                         Ok(commands) => {
+                            // 실패 뒤 다시 받았다: 하트비트를 기다리지 않고 붙어 있다고 보인다 (`connected`)
+                            if failures > 0 {
+                                self.agent.update(self.generation, |s| s.last_error = None);
+                            }
                             failures = 0;
                             let now = std::time::Instant::now();
                             let mut reack = Vec::new();
@@ -1302,6 +1397,8 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "update.available" => pick(&["at", "components"]),
         "schedule.warn" => pick(&["at", "instanceId", "instance", "action", "minutesLeft"]),
         "instance.ready" => pick(&["at", "instanceId", "instance", "ok", "code"]),
+        // 켜져 있지만 응답이 없다 (응답 없는 서버 감시). 실패 이유 원문은 싣지 않는다
+        "instance.unresponsive" => pick(&["at", "instanceId", "instance", "minutes", "restarting"]),
         // 서버가 켜지고 꺼진 것과 시킨 쪽. 사바쨩 밖의 시작은 unexpected (크래시·원인 모를 종료는 instance.exit)
         "instance.started" => pick(&["at", "instanceId", "instance", "source", "userName", "unexpected"]),
         "instance.stopped" => pick(&["at", "instanceId", "instance", "source", "userName", "kind"]),
@@ -1840,6 +1937,10 @@ fn dm_notice_meta(meta: &mut Value, bot: &crate::config_store::BotConfig) {
     if !off.is_empty() {
         meta["dmOff"] = json!(off);
     }
+    let on = bot.dm_notice.on_kinds();
+    if !on.is_empty() {
+        meta["dmOn"] = json!(on);
+    }
 }
 
 fn heartbeat_metadata(mut meta: Value, sent: Option<&str>) -> (Value, String, bool) {
@@ -1972,6 +2073,53 @@ mod tests {
         assert!(agent.notify_updating(90).await.is_err(), "a stopped session sends nothing");
     }
 
+    /// 사용자가 사바쨩을 끄면 내려가기 직전 릴레이에 알린다 (`POST /v1/host/stopping`, 본문 없음): 릴레이가 "PC 연결 끊김"으로 보지 않는다.
+    /// 업데이트로 내려가는 중이면 이미 알렸으므로 보내지 않는다
+    #[tokio::test]
+    async fn the_relay_is_told_when_the_daemon_is_shut_down_on_purpose() {
+        use axum::routing::post;
+        let seen: Arc<Mutex<Vec<(String, bool)>>> = Arc::default();
+        let log = seen.clone();
+        let app = axum::Router::new()
+            .route(
+                "/v1/host/stopping",
+                post(move |headers: axum::http::HeaderMap, body: String| {
+                    let log = log.clone();
+                    async move {
+                        let signed = headers.keys().any(|k| k.as_str().to_ascii_lowercase().contains("signature"));
+                        log.lock().unwrap().push((body, signed));
+                        axum::Json(json!({ "ok": true }))
+                    }
+                }),
+            )
+            .route("/v1/host/updating", post(|| async { axum::Json(json!({ "ok": true, "untilSeconds": 210 })) }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let connected = || {
+            let agent = RelayAgent::new();
+            let mut inner = agent.lock();
+            inner.cancel = Some(CancellationToken::new());
+            inner.endpoint = Some((base.clone(), "sbn_host.secret".into()));
+            drop(inner);
+            agent
+        };
+        let agent = RelayAgent::new();
+        agent.notify_stopping().await;
+        assert!(seen.lock().unwrap().is_empty(), "not connected");
+
+        let agent = connected();
+        agent.notify_stopping().await;
+        assert_eq!(seen.lock().unwrap().clone(), vec![(String::new(), true)], "no body, signed like the heartbeat");
+        assert!(agent.going_down.load(std::sync::atomic::Ordering::SeqCst), "no heartbeat brings it back online afterwards");
+
+        let agent = connected();
+        agent.notify_updating(90).await.unwrap();
+        agent.notify_stopping().await;
+        assert_eq!(seen.lock().unwrap().len(), 1, "going down for an update: the relay keeps its update window");
+    }
+
     /// 릴레이가 이 PC의 버전을 받지 않으면(최소 버전 미달) 상태에 `agent_too_old`와 요구 버전을 남겨
     /// GUI·CLI가 업데이트를 안내하게 하고, 받기는 업데이트 전에는 같은 답이므로 heartbeat 주기로만 다시 묻는다
     #[tokio::test]
@@ -2035,6 +2183,107 @@ mod tests {
         reported("poll");
         assert_eq!(poll_retry(&polled, 1), HEARTBEAT_INTERVAL);
         assert_eq!(poll_retry("poll 502 Bad Gateway: ", 1), backoff(1), "other failures keep the short backoff");
+    }
+
+    /// 릴레이가 상태 보고(heartbeat)를 검증에서 거절하면 어느 값 때문인지(칸·상한·보낸 크기)를 상태에 남겨
+    /// 앱이 연결 상태에 이유를 보이게 하고, 다시 받아 주면 지운다
+    #[tokio::test]
+    async fn a_heartbeat_the_relay_refuses_reports_which_value_was_refused() {
+        use axum::routing::post;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static REFUSE: AtomicBool = AtomicBool::new(true);
+        async fn heartbeat() -> (axum::http::StatusCode, axum::Json<Value>) {
+            if REFUSE.load(Ordering::SeqCst) {
+                let reason = json!({ "code": "TOO_BIG", "field": "metadata.servers", "max": 200, "actual": 201 });
+                return (axum::http::StatusCode::BAD_REQUEST, axum::Json(json!({ "error": "VALIDATION_ERROR", "details": [], "reason": reason })));
+            }
+            (axum::http::StatusCode::OK, axum::Json(json!({ "ok": true })))
+        }
+        let app = axum::Router::new().route("/heartbeat", post(heartbeat));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let server = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let agent = RelayAgent::new();
+        let cancel = CancellationToken::new();
+        {
+            let mut inner = agent.lock();
+            inner.cancel = Some(cancel.clone());
+            inner.generation = 1;
+            inner.status.running = true;
+        }
+        let session = Session {
+            agent: agent.clone(),
+            server,
+            client: http_client().unwrap(),
+            base,
+            token: "sbn_host.secret".into(),
+            cancel,
+            generation: 1,
+            seen: Arc::default(),
+            metadata_sent: Mutex::new(None),
+            linked_acks: Mutex::default(),
+        };
+
+        session.heartbeat().await;
+        let json = serde_json::to_value(agent.status()).unwrap();
+        assert_eq!(json["heartbeatRejected"], json!({ "code": "TOO_BIG", "field": "metadata.servers", "max": 200, "actual": 201 }), "{json}");
+        assert_eq!(json["lastError"], "heartbeat 400 Bad Request: VALIDATION_ERROR (metadata.servers)");
+
+        REFUSE.store(false, Ordering::SeqCst);
+        session.heartbeat().await;
+        let json = serde_json::to_value(agent.status()).unwrap();
+        assert!(json.get("heartbeatRejected").is_none() && json["lastError"].is_null(), "{json}");
+    }
+
+    /// 화면은 릴레이에 따로 묻지 않고 이 값으로 붙었는지 본다 (예전에는 5초마다 릴레이에 다녀왔다)
+    #[test]
+    fn connected_means_a_recent_heartbeat_with_no_failure_since() {
+        let now = now_ms();
+        let heard = |ago: u64| AgentStatus { running: true, last_heartbeat_at: Some(now - ago), ..Default::default() };
+        assert!(connected(&heard(1_000), now));
+        assert!(!connected(&AgentStatus { running: true, ..Default::default() }, now), "never heard back");
+        assert!(!connected(&AgentStatus { last_error: Some("poll 502".into()), ..heard(1_000) }, now), "failed since");
+        assert!(!connected(&heard(CONNECTED_WITHIN_MS + 1), now), "the heartbeat stopped answering");
+        assert!(!connected(&AgentStatus { running: false, ..heard(1_000) }, now), "stopped");
+    }
+
+    /// 붙고 끊길 때만 `relay.status`를 낸다. 매분 바뀌는 하트비트 시각만으로는 내지 않는다
+    #[tokio::test]
+    async fn a_change_in_the_connection_is_announced_once() {
+        let mut rx = crate::events::bus().subscribe(None).rx;
+        let agent = RelayAgent::new();
+        {
+            let mut inner = agent.lock();
+            inner.cancel = Some(CancellationToken::new());
+            inner.generation = 1;
+            inner.status.running = true;
+        }
+        let mut announced = || {
+            let mut n = 0;
+            while let Ok(e) = rx.try_recv() {
+                n += usize::from(e.kind == "relay.status");
+            }
+            n
+        };
+        agent.update(1, |s| s.last_heartbeat_at = Some(1));
+        assert_eq!(announced(), 1, "first heartbeat");
+        agent.update(1, |s| s.last_heartbeat_at = Some(2));
+        assert_eq!(announced(), 0, "only the time moved");
+        agent.update(1, |s| s.last_error = Some("poll 502".into()));
+        agent.update(1, |s| s.last_error = Some("poll 502".into()));
+        assert_eq!(announced(), 1, "the same failure again is not news");
+        agent.stop();
+        assert_eq!(announced(), 1);
+        let json = serde_json::to_value(agent.status()).unwrap();
+        assert_eq!(json["connected"], json!(false));
     }
 
     /// 외부 감사: ack한 명령의 결과 전송이 한 번 실패하면(503 등) 릴레이가 다시 보내 주지 않아 결과가 사라졌다.
@@ -2905,6 +3154,12 @@ mod tests {
         let mut meta = json!({});
         dm_notice_meta(&mut meta, &bot);
         assert_eq!(meta["backupNotice"], "failures");
+
+        // 켜야 보내는 종류(PC 연결 끊김)는 켰을 때만 `dmOn`으로 싣고, 끈 종류에는 넣지 않는다
+        let bot: BotConfig = serde_json::from_value(json!({ "dmNotice": { "offline": true } })).unwrap();
+        let mut meta = json!({});
+        dm_notice_meta(&mut meta, &bot);
+        assert_eq!(meta, json!({ "dmOn": ["offline"] }));
     }
 
     // 켜짐 알림을 켠 서버는 길드마다 싣는다. 켠 서버가 없는 길드는 싣지 않는다 (릴레이는 없으면 알리지 않는다)
@@ -2980,6 +3235,8 @@ mod tests {
         assert_eq!(relay_event(&failed).unwrap()["data"], json!({"instanceId": "i", "instance": "mc1", "kind": "manual", "ok": false}));
         assert!(relay_event(&ev("action.run", json!({"action": "server.start"}))).is_none());
         assert!(relay_event(&ev("provision.progress", json!({}))).is_none());
+        let silent = ev("instance.unresponsive", json!({"at": 1, "instanceId": "i", "instance": "mc1", "minutes": 10, "restarting": false, "reason": "connection refused"}));
+        assert_eq!(relay_event(&silent).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "minutes": 10, "restarting": false}));
         // R39 준비 알림은 계약 필드만 (디스코드 "다 켜졌어요")
         let ready = ev("instance.ready", json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed", "line": "C:\\x"}));
         assert_eq!(relay_event(&ready).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed"}));

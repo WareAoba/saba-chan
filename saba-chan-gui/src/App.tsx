@@ -44,26 +44,29 @@ import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
-import { eventsAvailable } from './utils/daemonEvents';
+import { eventsAvailable, serverListPollMs } from './utils/daemonEvents';
 import { startPoll } from './utils/poll';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
     beginOpeningSound,
     OPENING_CHIME_LEAD_MS,
-    OPENING_CHORD_MS,
     OPENING_READY_WAIT_MS,
-    type OpeningKind,
+    type OpeningPlay,
     type OpeningSound,
     openingChordMs,
     openingGate,
     RELAY_WAIT_MS,
+    takeDaemonSwitch,
     takeOpeningSound,
     whenOpeningReady,
+    whenScreenSettled,
 } from './utils/opening';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
 import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice';
+import { warmTabArt } from './utils/warmArt';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
+import { useSlowProgressBubble } from './hooks/useSlowProgressBubble';
 import './styles/shell.css';
 import './styles/backdrop.css';
 import './styles/motion.css';
@@ -71,15 +74,6 @@ import './styles/motion.css';
 const LOADING_LEAVE_MS = 700;
 /** 초기화 단계 소식이 이만큼 없으면 멈춘 것으로 본다. main의 가장 긴 단계(새 데몬 기다리기)는 30초를 넘지 않는다 */
 const INIT_STALL_MS = 60_000;
-
-interface ProgressSnapshot {
-    percent: number;
-    timestamp: number;
-    /** 이번 멈춤에 말풍선을 이미 띄웠다 */
-    shown: boolean;
-}
-/** 느린 진행 말풍선의 holdKey */
-const SLOW_PROGRESS_BUBBLE = 'slow-progress';
 
 function App() {
     const { t, i18n } = useTranslation('gui');
@@ -269,7 +263,9 @@ function App() {
         handleSettingChange,
         handleSettingLoaded,
         revertSettings,
+        revertSetting,
         openedSettings,
+        unsavedServers,
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,
@@ -298,46 +294,7 @@ function App() {
     // ── Effects ──────────────────────────────────────────────
     // ══════════════════════════════════════════════════════════
 
-    // 진행이 5초 넘게 멈춰 보이면 사바쨩 말풍선으로 "멈춘 게 아니에요"를 알린다 (다시 움직이거나 끝나면 내린다)
-    const stallTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const progressSnapshotRef = useRef<ProgressSnapshot | null>(null);
-    useEffect(() => {
-        const settle = () => {
-            useSabaBubble.getState().release(SLOW_PROGRESS_BUBBLE);
-            if (stallTimerRef.current) clearInterval(stallTimerRef.current);
-            stallTimerRef.current = null;
-            progressSnapshotRef.current = null;
-        };
-        if (!progressBar || progressBar.percent === 100) {
-            settle();
-            return;
-        }
-        if (!progressSnapshotRef.current) {
-            progressSnapshotRef.current = { percent: progressBar.percent || 0, timestamp: Date.now(), shown: false };
-        }
-        if (!stallTimerRef.current) {
-            stallTimerRef.current = setInterval(() => {
-                const snap = progressSnapshotRef.current;
-                if (!snap || snap.shown || (Date.now() - snap.timestamp) / 1000 < 5) return;
-                snap.shown = true;
-                useSabaBubble
-                    .getState()
-                    .show({ kind: 'cooking', text: tRef.current('saba.slow_progress'), holdKey: SLOW_PROGRESS_BUBBLE });
-            }, 1000);
-        }
-        const currentPercent = progressBar.percent || 0;
-        const snap = progressSnapshotRef.current;
-        if (snap && currentPercent - snap.percent > 5) {
-            progressSnapshotRef.current = { percent: currentPercent, timestamp: Date.now(), shown: false };
-            useSabaBubble.getState().release(SLOW_PROGRESS_BUBBLE);
-        }
-    }, [progressBar]);
-    useEffect(
-        () => () => {
-            if (stallTimerRef.current) clearInterval(stallTimerRef.current);
-        },
-        [],
-    );
+    useSlowProgressBubble(progressBar, t('saba.slow_progress'));
 
     // Unread notice count tracking
     // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only event listener — setter is stable
@@ -511,6 +468,7 @@ function App() {
                 setBackgroundDaemonStatus('error');
             }
         };
+        // 창이 숨어 있는 동안(최소화·트레이)은 묻지 않고, 다시 보이면 바로 묻는다
         return startPoll(checkDaemonStatus, 5000);
     }, [daemonReady]);
 
@@ -639,22 +597,21 @@ function App() {
             });
         }
 
-        // Auto-refresh (데몬 준비 전에는 스킵)
-        const stopPoll = startPoll(
-            () => {
-                if (autoRefresh && daemonReady) return fetchServers();
-            },
-            refreshInterval,
-            { immediate: false },
-        );
-
         return () => {
-            stopPoll();
             if (typeof offClose === 'function') offClose();
             if (typeof offOpenServer === 'function') offOpenServer();
             if (typeof offOpenRoute === 'function') offOpenRoute();
         };
     }, [autoRefresh, refreshInterval, daemonReady]);
+
+    // 목록 자동 새로고침 (데몬 준비 전에는 스킵). 데몬 이벤트가 바뀜을 바로 알리면(DaemonEvents) 놓친 것만 메우게 느리게 돈다
+    const extensionStatus = useServerStore((s) => s.servers.some((srv) => Object.keys(srv.extension_status || {}).length > 0));
+    // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers는 렌더마다 새 함수다 (주기만 따른다)
+    useEffect(() => {
+        if (!autoRefresh || !daemonReady) return;
+        const ms = serverListPollMs(refreshInterval, { events: eventsAvailable(), extensionStatus });
+        return startPoll(fetchServers, ms, { immediate: false });
+    }, [autoRefresh, refreshInterval, daemonReady, extensionStatus]);
 
     // ══════════════════════════════════════════════════════════
     // ── Render ───────────────────────────────────────────────
@@ -689,7 +646,10 @@ function App() {
         const timer = setTimeout(() => setRelayWaitOver(true), RELAY_WAIT_MS);
         return () => clearTimeout(timer);
     }, [daemonDone]);
+    // 다른 PC로 바꿔 다시 연 창이면 오프닝·기동음 없이 바로 연다 (사용자 11-12)
+    const [switchedDaemon] = useState(takeDaemonSwitch);
     const opening = openingGate({
+        switched: switchedDaemon,
         daemonOk: !openedWithoutDaemon,
         configLoaded: discordConfigLoaded,
         relayConfigured: !!discordCloudHostId,
@@ -717,11 +677,10 @@ function App() {
     // 글꼴·그림까지 준비되면 기동음과 함께 오프닝을 재생한다(play). 움직임을 줄였으면 예전처럼 잠깐 사라지게만 둔다
     const showLoading = !daemonDone || opening.hold;
     // 처음부터 로딩할 것이 없으면(HMR로 데몬이 이미 떠 있으면) 오프닝 없이 바로 연다
-    const [openingPhase, setOpeningPhase] = useState<'loading' | 'prepare' | 'play' | 'done'>(() =>
+    // 재생(play)은 로딩 화면 안에서만 바뀐다: App이 다시 그려지면 메인 화면 전체를 다시 그려 오프닝 첫머리가 끊긴다
+    const [openingPhase, setOpeningPhase] = useState<'loading' | 'prepare' | 'done'>(() =>
         showLoading ? 'loading' : 'done',
     );
-    const [openingKind, setOpeningKind] = useState<OpeningKind>('burst');
-    const [openingChord, setOpeningChord] = useState(OPENING_CHORD_MS);
     const openingAfterRef = useRef<OpeningSound | null>(null);
     const appRef = useRef<HTMLDivElement>(null);
     const [loadingLeaving, setLoadingLeaving] = useState(false);
@@ -736,11 +695,11 @@ function App() {
             return undefined;
         }
         if (!was) return undefined;
-        if (!isPopoutMode && motionAllowed()) {
+        if (!isPopoutMode && motionAllowed() && !switchedDaemon) {
             setOpeningPhase('prepare');
             return undefined;
         }
-        // 움직임을 줄였으면 오프닝 없이 열되, 맡은 소리가 있으면 기동음 대신 그것을 낸다
+        // 움직임을 줄였거나 PC를 바꿔 열었으면 오프닝 없이 열되, 맡은 소리가 있으면 기동음 대신 그것을 낸다 (전환이면 기동음은 없다)
         const claimed = takeOpeningSound();
         setOpeningPhase('done');
         if (!isPopoutMode) {
@@ -750,38 +709,38 @@ function App() {
         setLoadingLeaving(true);
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);
-    }, [showLoading]);
+    }, [showLoading, switchedDaemon]);
+    // 오프닝이 끝나면 탭 그림·글꼴을 한가할 때 미리 받아 둔다
     useEffect(() => {
-        if (openingPhase !== 'prepare') return undefined;
-        let alive = true;
+        if (openingPhase === 'done') warmTabArt();
+    }, [openingPhase]);
+    // 메인 화면을 덮어 두고 그린 뒤, 글꼴·그림이 준비되고 메인 화면이 잠잠해지면(처음 그린 뒤 이어지는 렌더·번역
+    // 불러오기가 끝나면) 무엇을 어떻게 재생할지 정해 로딩 화면에 넘긴다
+    const prepareOpening = async (signal: AbortSignal): Promise<OpeningPlay | null> => {
         const decode = (src: string) => {
             const img = new Image();
             img.src = src;
             return img.decode ? img.decode() : Promise.resolve();
         };
-        whenOpeningReady(
+        await whenOpeningReady(
             [document.fonts?.ready, decode('./title.png'), decode(logoSrc)].filter(Boolean),
             OPENING_READY_WAIT_MS,
             (cb) => requestAnimationFrame(() => cb()),
-        ).then(() => {
-            if (!alive) return;
-            // 데몬·릴레이가 정상이면 기동음과 함께 터뜨리고, 아니면 소리 없이 후두둑
-            // 소리는 낱말을 떼어 오기 시작한 뒤에 틀어, 그 화음이 오프닝의 화음 순간에 맞게 한다.
-            // 맡은 소리가 길면(가이드 열림음) 그 화음까지 오프닝을 길게 끌어온다
-            const claimed = takeOpeningSound();
-            const burst = chimeRef.current.chime;
-            const sound = claimed ?? 'startup';
-            setOpeningKind(burst ? 'burst' : 'fall');
-            setOpeningChord(openingChordMs(sound));
-            // 후두둑(비정상)은 기동음을 내지 않고, 맡은 소리는 화면이 드러난 뒤에 낸다
-            openingAfterRef.current = burst ? null : claimed;
-            if (burst) setTimeout(() => playOpeningSound(sound), OPENING_CHIME_LEAD_MS);
-            setOpeningPhase('play');
-        });
-        return () => {
-            alive = false;
-        };
-    }, [openingPhase]);
+        );
+        await whenScreenSettled((cb) => requestAnimationFrame(cb));
+        // 기다리는 사이 로딩 화면이 사라졌으면 소리도 내지 않는다
+        if (signal.aborted) return null;
+        // 데몬·릴레이가 정상이면 기동음과 함께 터뜨리고, 아니면 소리 없이 후두둑
+        // 소리는 낱말을 떼어 오기 시작한 뒤에 틀어, 그 화음이 오프닝의 화음 순간에 맞게 한다.
+        // 맡은 소리가 길면(가이드 열림음) 그 화음까지 오프닝을 길게 끌어온다
+        const claimed = takeOpeningSound();
+        const burst = chimeRef.current.chime;
+        const sound = claimed ?? 'startup';
+        // 후두둑(비정상)은 기동음을 내지 않고, 맡은 소리는 화면이 드러난 뒤에 낸다
+        openingAfterRef.current = burst ? null : claimed;
+        if (burst) setTimeout(() => playOpeningSound(sound), OPENING_CHIME_LEAD_MS);
+        return { kind: burst ? 'burst' : 'fall', chord: openingChordMs(sound) };
+    };
 
     // Loading screen (daemon not ready or servers still initializing)
     if (showLoading) {
@@ -912,7 +871,9 @@ function App() {
         handleSettingChange,
         handleSettingLoaded,
         revertSettings,
+        revertSetting,
         openedSettings,
+        unsavedServers,
         handleInstallVersion,
         handleSaveSettings,
         handleResetServer,
@@ -925,14 +886,13 @@ function App() {
     };
 
     const openingOverlay =
-        openingPhase === 'loading' || openingPhase === 'prepare' || openingPhase === 'play' ? (
+        openingPhase === 'loading' || openingPhase === 'prepare' ? (
             <LoadingScreen
                 logoSrc={logoSrc}
                 initStatus={initStatus}
                 initProgress={100}
-                opening={openingPhase === 'play' ? 'play' : 'prepare'}
-                openingKind={openingKind}
-                openingChord={openingChord}
+                opening="prepare"
+                onPrepare={openingPhase === 'prepare' ? prepareOpening : undefined}
                 onOpened={() => {
                     const after = openingAfterRef.current;
                     openingAfterRef.current = null;
@@ -1005,6 +965,7 @@ function App() {
                                 setServers={setServers}
                                 modules={modules}
                                 onAddServer={() => setShowModuleManager(true)}
+                                onCreateBranch={handleAddServer}
                                 onStart={handleStart}
                                 onStop={handleStop}
                                 onRestart={handleRestart}

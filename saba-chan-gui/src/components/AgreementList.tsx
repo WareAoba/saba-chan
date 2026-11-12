@@ -71,11 +71,13 @@ interface AgreementDialogProps {
     message: string;
     module: string;
     agreements: Agreement[];
+    /** 목록 아래 한 줄 (합쳐 보기: 동의가 어느 PC에 기록되는지) */
+    note?: string;
     onAccept: (ids: string[]) => void;
     onCancel: () => void;
 }
 
-export function AgreementDialog({ title, message, module, agreements, onAccept, onCancel }: AgreementDialogProps) {
+export function AgreementDialog({ title, message, module, agreements, note, onAccept, onCancel }: AgreementDialogProps) {
     const { t } = useTranslation('gui');
     const [checked, setChecked] = useState<Record<string, boolean>>({});
     const ready = allChecked(agreements, checked);
@@ -110,6 +112,7 @@ export function AgreementDialog({ title, message, module, agreements, onAccept, 
                 checked={checked}
                 onToggle={(id, on) => setChecked((prev) => ({ ...prev, [id]: on }))}
             />
+            {note && <p className="modal-detail">{note}</p>}
         </Dialog>
     );
 }

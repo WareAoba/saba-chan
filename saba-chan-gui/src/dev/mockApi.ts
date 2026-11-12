@@ -450,6 +450,13 @@ const impl: Record<string, MockFn> = {
     instanceBackupCreate: () => ok({ success: true, backup: { name: 'new-manual.zip' } }),
     instanceBackupDelete: () => ok({ success: true }),
     instanceBackupRestore: () => ok({ success: true, restored: true }),
+    instanceBackupExport: () => ok({ success: true, path: 'D:\\backup\\mock.zip', size: 95_000_000 }),
+    instanceBackupImport: (_id: string, opts?: { preview?: boolean }) =>
+        ok(
+            opts?.preview
+                ? { success: true, path: 'D:\\backup\\mock.zip', preview: { server: 'Mock', module: 'mock', created: now() - 86400, size: 95_000_000 } }
+                : { success: true, backup: { name: 'mock-imported.zip' } },
+        ),
     chatbotGet: () =>
         ok({
             success: true,

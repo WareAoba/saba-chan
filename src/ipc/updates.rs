@@ -1855,8 +1855,8 @@ async fn get_config(
     }))
 }
 
-/// 앱에서 고를 수 있는 업데이트 채널 (위 채널은 아래 채널 릴리즈도 받는다, updater `relay::CHANNELS`)
-const SELECTABLE_CHANNELS: [&str; 3] = ["stable", "rc", "beta"];
+/// 앱에서 고를 수 있는 업데이트 채널 (위 채널은 아래 채널 릴리즈도 받는다, updater `relay::CHANNELS`). 설치할 때 고르는 채널과 같다
+use saba_chan_updater_lib::relay::SELECTABLE_CHANNELS;
 
 /// PUT /api/updates/config
 async fn set_config(

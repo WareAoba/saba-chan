@@ -101,6 +101,8 @@
     transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 .input:focus { border-color: var(--brand-primary); box-shadow: var(--neu-in), var(--accent-ring); }
+select.input { font-family: inherit; cursor: pointer; }
+select.input option { background: var(--bg-2); color: var(--text-1); }
 .sqbtn {
     width: 36px;
     height: 36px;

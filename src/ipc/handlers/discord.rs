@@ -466,7 +466,7 @@ impl GuildSettings {
 }
 
 /// 원본이 릴레이인 길드 설정 (데몬은 저장하지 않고 앱의 값을 릴레이에 그대로 넘긴다). 모두 참·거짓 값
-pub const RELAY_OWNED: [&str; 3] = ["bigEmoji", "gameChatGuard", "gameChatClearOnStop"];
+pub const RELAY_OWNED: [&str; 6] = ["bigEmoji", "gameChatGuard", "gameChatClearOnStop", "gameChatAutoOpen", "memberNotice", "busyNotice"];
 
 /// (데몬이 맡는 키, 릴레이 원본 키)
 type SplitPatch = (Map<String, Value>, Map<String, Value>);
@@ -879,6 +879,13 @@ mod tests {
         let (rest, owned) = split_relay_owned(&patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false }))).unwrap();
         assert!(rest.is_empty());
         assert_eq!(owned, patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false })));
+        // 멤버 알림·과부하 공지·채팅 기본으로 열기도 릴레이가 원본이다: 앱에서 보내면 모르는 칸으로 거절하지 않고 릴레이에 넘긴다
+        let notices = patch(json!({ "memberNotice": true, "busyNotice": false, "gameChatAutoOpen": true }));
+        let (rest, owned) = split_relay_owned(&notices).unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(owned, notices);
+        let shown = with_relay_owned(json!({}), &json!({ "memberNotice": false, "busyNotice": true, "gameChatAutoOpen": false, "other": 1 }));
+        assert_eq!(shown, json!({ "memberNotice": false, "busyNotice": true, "gameChatAutoOpen": false }));
     }
 
     #[test]

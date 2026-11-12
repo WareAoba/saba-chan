@@ -247,6 +247,9 @@ pub struct InstallArgs {
     /// Folder for modules and extensions (Saba-chan makes `modules` and `extensions` inside it). Installed files are moved
     #[arg(long, value_name = "PATH")]
     pub components_dir: Option<std::path::PathBuf>,
+    /// Update channel to install from and keep updating from: stable, rc (preview) or beta. The installer's own channel when omitted
+    #[arg(long, value_name = "CHANNEL", value_parser = clap::builder::PossibleValuesParser::new(saba_chan_installer_core::release::CHANNELS))]
+    pub channel: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -279,6 +282,16 @@ pub enum BackupCmd {
     Delete { server: String, backup: Option<String> },
     /// Put a backup back (the server must be stopped; asks to stop it). No name: pick from the list
     Restore { server: String, backup: Option<String> },
+    /// Write one backup into a single zip you can move to another PC (no name: pick from the list)
+    Export {
+        server: String,
+        backup: Option<String>,
+        /// Where to write the zip (a path on the PC the daemon runs on)
+        #[arg(long, short, value_name = "FILE")]
+        out: std::path::PathBuf,
+    },
+    /// Check a zip made by `backup export` and add it to this server's backups (restore it afterwards)
+    Import { server: String, file: std::path::PathBuf },
 }
 
 #[derive(Subcommand, Debug)]
@@ -374,6 +387,8 @@ pub enum RemoteCmd {
     Servers,
     /// Forget a remote daemon (pair again with `remote connect`)
     Forget { host_id: String },
+    /// Rename one of my PCs, this one included (the name all my PCs and Discord show)
+    Rename { host_id: String, name: String },
     /// Take a pairing code another PC printed (for example after the one-line Linux install) and connect to it
     Claim { code: String },
     /// Install Saba-chan on a Linux PC over this PC's ssh and connect to it (`user@host`)
@@ -599,6 +614,8 @@ pub enum ServerCmd {
     Commands { server: Option<String> },
     /// Who is online
     Players { server: Option<String> },
+    /// Player lists the game keeps (who may join, who is an admin, who is banned)
+    Lists { server: Option<String> },
     /// The address (IP:port) friends connect to
     Address { server: Option<String> },
     /// Check from the internet whether friends can reach this server (port forwarding)
@@ -1191,6 +1208,36 @@ pub enum BotCmd {
         #[arg(long)]
         off: bool,
     },
+    /// Member join and leave notices in the notice channel of a Discord server. No options: show
+    MemberNotice {
+        guild: Option<String>,
+        /// Turn member notices on
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Turn member notices off
+        #[arg(long)]
+        off: bool,
+    },
+    /// Overload notice (posted while the PC is overloaded, removed when it clears) on a Discord server. No options: show
+    BusyNotice {
+        guild: Option<String>,
+        /// Turn the overload notice on
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Turn the overload notice off
+        #[arg(long)]
+        off: bool,
+    },
+    /// Open the game chat link by itself while someone is on a running server, on a Discord server. No options: show
+    ChatAutoOpen {
+        guild: Option<String>,
+        /// Open the chat link by itself
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Leave the chat link closed until someone opens it
+        #[arg(long)]
+        off: bool,
+    },
     /// Singing Saba-chan settings of a Discord server. No options: show
     Music {
         guild: Option<String>,
@@ -1428,17 +1475,19 @@ pub enum DmKind {
     Schedule,
     Update,
     Disk,
+    Offline,
     ChatbotUsage,
     Moderation,
 }
 
 impl DmKind {
-    pub const ALL: [DmKind; 7] = [
+    pub const ALL: [DmKind; 8] = [
         DmKind::Crash,
         DmKind::ExternalStart,
         DmKind::Schedule,
         DmKind::Update,
         DmKind::Disk,
+        DmKind::Offline,
         DmKind::ChatbotUsage,
         DmKind::Moderation,
     ];
@@ -1451,9 +1500,15 @@ impl DmKind {
             DmKind::Schedule => "schedule",
             DmKind::Update => "update",
             DmKind::Disk => "disk",
+            DmKind::Offline => "offline",
             DmKind::ChatbotUsage => "chatbotUsage",
             DmKind::Moderation => "moderation",
         }
+    }
+
+    /// 설정에 없을 때의 값: PC 연결 끊김만 켜야 보낸다
+    pub fn default_on(self) -> bool {
+        self != DmKind::Offline
     }
 }
 

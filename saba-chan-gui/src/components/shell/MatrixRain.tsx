@@ -41,6 +41,13 @@ const HEX = '0123456789abcdef';
 const FONT_PX = 10;
 const STEP_MS = 70;
 const LINE = Math.round(FONT_PX * 1.5);
+/**
+ * 오프닝 동안 캔버스 해상도 배수. 화면 전체 캔버스가 매 프레임 바뀌면 창 합성·표시를 기다리느라 프레임이 밀린다
+ * (PC 실측: 화음 뒤 최대 프레임 24~30ms → 12ms). 글자가 빠르게 움직이는 동안이라 선명도 차이는 눈에 잘 띄지 않는다
+ */
+const OPENING_RESOLUTION = 0.75;
+/** 터질 때 글자 조각의 처음 크기 배수 (조각 그림은 이 크기로 한 번 그려 두고 줄여 찍는다) */
+const SHARD_SCALE = 1.15;
 
 /** 지나간 줄이 한 걸음마다 바탕에 덮여 남는 비율 (로딩 화면의 --matrix-fade 14%) */
 const KEEP = 0.86;
@@ -162,6 +169,7 @@ export function MatrixRain({
         let wordsFor = -1;
         let mono = 'monospace';
         let rows = 0;
+        let dpr = 1;
         let w = 0;
         let h = 0;
         let raf = 0;
@@ -176,7 +184,7 @@ export function MatrixRain({
         };
 
         const resize = () => {
-            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            dpr = Math.min(window.devicePixelRatio || 1, 2);
             w = canvas.clientWidth;
             h = canvas.clientHeight;
             canvas.width = Math.round(w * dpr);
@@ -230,6 +238,11 @@ export function MatrixRain({
 
         // 오프닝을 시작할 때 화면에 떠 있던 글자를 낱말 단위로 붙잡는다
         const takeWords = (p: MatrixPull) => {
+            // 오프닝 동안은 캔버스를 낮은 해상도로 다시 잡는다 (글자 자리는 CSS 픽셀이라 그대로다)
+            dpr = Math.min(window.devicePixelRatio || 1, 2) * OPENING_RESOLUTION;
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.font = `${FONT_PX}px ${mono}`;
             const reach = Math.hypot(w, h) * 0.6;
             words = glyphs.map((g) => {
@@ -261,7 +274,44 @@ export function MatrixRain({
             ranked.forEach((word, i) => {
                 word.order = ranked.length > 1 ? i / (ranked.length - 1) : 1;
             });
+            if (p.kind === 'burst') buildAtlas();
             wordsFor = p.start;
+        };
+
+        /*
+         * 터질 때의 글자 조각은 글자마다 한 번만 그려 둔 그림(atlas)에서 잘라 돌려 찍는다. 조각마다 각도·크기가 달라
+         * fillText로 찍으면 매 프레임 수백 개의 글자를 새로 래스터화하느라 화음 직후가 끊긴다.
+         * 그림은 낱말을 붙잡을 때(끌어오기 시작) 한 장에 다 그려 두어 화음 순간에는 할 일이 없게 한다
+         */
+        let atlas: HTMLCanvasElement | null = null;
+        const cells = new Map<string, number>();
+        const cellHalf = Math.ceil(FONT_PX * SHARD_SCALE);
+        const buildAtlas = () => {
+            cells.clear();
+            for (const word of words) {
+                for (const shard of word.shards) if (!cells.has(shard.ch)) cells.set(shard.ch, cells.size);
+            }
+            const cell = Math.ceil(cellHalf * 2 * dpr);
+            atlas = document.createElement('canvas');
+            atlas.width = Math.max(1, cells.size) * cell;
+            atlas.height = cell;
+            const g = atlas.getContext('2d');
+            if (!g) return;
+            g.scale(dpr, dpr);
+            g.font = `600 ${FONT_PX * SHARD_SCALE}px ${mono}`;
+            g.textAlign = 'center';
+            g.textBaseline = 'middle';
+            g.fillStyle = head;
+            for (const [ch, i] of cells) g.fillText(ch, (i * cell) / dpr + cellHalf, cellHalf);
+        };
+        const drawShard = (ch: string, x: number, y: number, turn: number, scale: number) => {
+            const i = cells.get(ch);
+            if (!atlas || i === undefined) return;
+            const cell = atlas.height;
+            const cos = Math.cos(turn) * scale * dpr;
+            const sin = Math.sin(turn) * scale * dpr;
+            ctx.setTransform(cos, sin, -sin, cos, x * dpr, y * dpr);
+            ctx.drawImage(atlas, i * cell, 0, cell, cell, -cellHalf, -cellHalf, cellHalf * 2, cellHalf * 2);
         };
 
         const drawWord = (word: Word, x: number, y: number, angle: number, scale: number, font: string) => {
@@ -323,7 +373,7 @@ export function MatrixRain({
             }
             const b = f.burst;
             // 터지면 낱말이 글자 조각으로 다 부서져 저마다 흩어지고, 조각도 곧 먼지가 되어 사라진다
-            const bold = `600 ${FONT_PX * (1.15 - 0.35 * b)}px ${mono}`;
+            const shrink = (1.15 - 0.35 * b) / SHARD_SCALE;
             const fade = (1 - b) ** 1.4;
             const glyphAlpha = fade * (1 - smooth(b, 0.2, 0.6));
             const dustAlpha = fade * smooth(b, 0.08, 0.3);
@@ -331,13 +381,16 @@ export function MatrixRain({
             ctx.fillStyle = head;
             ctx.lineWidth = 1;
             for (const word of words) {
+                const seen = Math.max(word.seen, 0.55);
+                // 먼지는 낱말마다 길 하나에 모아 한 번에 칠한다
+                const dust = dustAlpha > 0.02 ? new Path2D() : null;
                 for (const [i, shard] of word.shards.entries()) {
                     const angle = word.angle + shard.da;
                     const dist = word.dist * shard.dk;
                     const at = scatterPoint(center, angle, dist, b);
-                    const seen = Math.max(word.seen, 0.55);
                     if (i === 0) {
                         const tail = scatterPoint(center, angle, dist, Math.max(0, b - 0.06));
+                        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
                         ctx.globalAlpha = fade * 0.35;
                         ctx.beginPath();
                         ctx.moveTo(tail.x, tail.y);
@@ -346,20 +399,14 @@ export function MatrixRain({
                     }
                     if (glyphAlpha > 0.02) {
                         ctx.globalAlpha = glyphAlpha * seen;
-                        ctx.save();
-                        ctx.translate(at.x, at.y);
-                        ctx.rotate(word.spin * Math.PI + shard.spin * b);
-                        ctx.font = bold;
-                        ctx.fillText(shard.ch, 0, 0);
-                        ctx.restore();
+                        drawShard(shard.ch, at.x, at.y, word.spin * Math.PI + shard.spin * b, shrink);
                     }
-                    if (dustAlpha > 0.02) {
+                    if (dust) {
                         // 조각 하나가 먼지 셋으로 바스러져 조금씩 벌어진다
-                        ctx.globalAlpha = dustAlpha * seen;
                         const spread = 4 + 22 * b;
                         for (let k = 0; k < 3; k++) {
                             const a = angle + shard.spin + (k * Math.PI * 2) / 3;
-                            ctx.fillRect(
+                            dust.rect(
                                 at.x + Math.cos(a) * spread * shard.dk - 0.9,
                                 at.y + Math.sin(a) * spread * shard.dk - 0.9,
                                 1.8,
@@ -368,7 +415,13 @@ export function MatrixRain({
                         }
                     }
                 }
+                if (dust) {
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    ctx.globalAlpha = dustAlpha * seen;
+                    ctx.fill(dust);
+                }
             }
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             // 충격파 두 겹
             const wave = (ms - p.chord) / 550;
             if (wave < 1) {
@@ -428,9 +481,14 @@ export function MatrixRain({
 
         resize();
         if (moving) raf = requestAnimationFrame(loop);
-        window.addEventListener('resize', resize);
+        // 창이 아니라 캔버스 자리의 크기를 따른다: 자리가 0이었다가 커지거나(전환 화면) 창 크기와 따로 바뀌면
+        // 예전 크기로 만든 판이 늘어나 글자가 커다랗게 깨져 보인다
+        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => resize()) : null;
+        if (observer) observer.observe(canvas);
+        else window.addEventListener('resize', resize);
         return () => {
             cancelAnimationFrame(raf);
+            observer?.disconnect();
             window.removeEventListener('resize', resize);
         };
     }, []);

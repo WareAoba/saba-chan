@@ -23,6 +23,7 @@ import { DateField } from '../ui/DateTimePicker';
 import { Popover } from '../ui/Popover';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
+import { UpcomingSchedules, upcomingAvailable } from './UpcomingSchedules';
 
 export { auditRange, auditResult, auditWhat, auditWho };
 
@@ -40,6 +41,17 @@ const PAGE = 100;
 const MAX = 1000; // 데몬 상한
 const EXPORT_ERRORS = ['INVALID_PATH', 'WRITE_FAILED']; // data_transfer.err_* 문구를 같이 쓴다
 
+/** 받은 기록: 서버·기간마다 하나. 탭을 다시 열면 이것부터 바로 보이고 새 기록은 뒤에서 받아 바꾼다 */
+interface AuditPage {
+    key: string;
+    entries: AuditRow[];
+    rawCount: number; // 숨긴 줄까지 센 받은 건수 (더 보기 판단)
+    limit: number;
+}
+const pages = new Map<string, AuditPage>();
+/** 시험용: 받아 둔 기록을 비운다 */
+export const clearAuditCache = () => pages.clear();
+
 /**
  * 감사 로그 (데몬 GET /api/audit, 최신이 먼저). instanceId가 있으면 그 서버 것만,
  * 없으면 모든 서버를 보이고 서버 이름도 적는다. 머리(새로고침·기간·거르기·내보내기)는 스크롤 영역 밖에 두고,
@@ -47,15 +59,23 @@ const EXPORT_ERRORS = ['INVALID_PATH', 'WRITE_FAILED']; // data_transfer.err_* �
  */
 export function AuditLog({ instanceId }: { instanceId?: string }) {
     const { t, i18n } = useTranslation('gui');
-    const [entries, setEntries] = useState<AuditRow[] | null>(null);
-    const [rawCount, setRawCount] = useState(0); // 숨긴 줄까지 센 받은 건수 (더 보기 판단)
-    const [limit, setLimit] = useState(PAGE);
-    // 다른 서버를 고르면 처음 쪽부터 다시
+    const [period, setPeriod] = useState('all');
+    const [from, setFrom] = useState('');
+    const [to, setTo] = useState('');
+    const range = auditRange(period, from, to);
+    const rangeKey = JSON.stringify(range);
+    const key = `${instanceId ?? ''}|${rangeKey}`;
+    const [data, setData] = useState<AuditPage | null>(null);
+    // 지금 서버·기간의 것만 보인다: 방금 받은 것, 없으면 전에 받아 둔 것
+    const view = data?.key === key ? data : (pages.get(key) ?? null);
+    const entries = view?.entries ?? null;
+    const rawCount = view?.rawCount ?? 0;
+    const [limit, setLimit] = useState(() => pages.get(key)?.limit ?? PAGE);
+    // 다른 서버를 고르면 받아 둔 만큼(없으면 처음 쪽)부터 다시
     // biome-ignore lint/correctness/useExhaustiveDependencies: instanceId가 바뀔 때만 되돌린다
-    useEffect(() => setLimit(PAGE), [instanceId]);
+    useEffect(() => setLimit(pages.get(key)?.limit ?? PAGE), [instanceId]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [period, setPeriod] = useState('all');
     const [filters, setFilters] = useState<string[]>([]);
     const [open, setOpen] = useState<Set<string>>(() => new Set());
     const toggleRow = (key: string) =>
@@ -64,11 +84,7 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
             if (!next.delete(key)) next.add(key);
             return next;
         });
-    const [from, setFrom] = useState('');
-    const [to, setTo] = useState('');
     const [exporting, setExporting] = useState(false);
-    const range = auditRange(period, from, to);
-    const rangeKey = JSON.stringify(range);
     const alive = useRef(true);
     const seq = useRef(0); // 늦게 온 이전 응답이 새 응답을 덮지 않게
     useEffect(
@@ -89,10 +105,16 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
                 ...(instanceId ? { instance: instanceId } : {}),
                 ...JSON.parse(rangeKey),
             });
-            if (!current()) return;
             if (!Array.isArray(res?.entries)) throw new Error(res?.error || t('audit.load_failed'));
-            setRawCount(res.entries.length);
-            setEntries(res.entries.filter(isInstanceEntry));
+            const page = {
+                key: `${instanceId ?? ''}|${rangeKey}`,
+                entries: res.entries.filter(isInstanceEntry),
+                rawCount: res.entries.length,
+                limit,
+            };
+            if (mine !== seq.current) return; // 더 새 요청이 나갔다
+            pages.set(page.key, page); // 화면을 떠난 뒤에 와도 다음에 쓰게 남긴다
+            if (alive.current) setData(page);
         } catch (err) {
             if (current()) setError((err as Error).message || String(err));
         } finally {
@@ -366,6 +388,7 @@ export function ActivityPage() {
             </aside>
             <main className="server-detail-pane activity-pane">
                 <div className="server-detail activity-page">
+                    {!current && upcomingAvailable() && <UpcomingSchedules />}
                     <AuditLog instanceId={current ?? undefined} />
                 </div>
             </main>

@@ -4,6 +4,8 @@ pub mod managed_process;
 pub mod crash;
 pub mod highlight;
 pub mod players;
+pub mod idle;
+pub mod watchdog;
 pub mod ready;
 pub mod player_events;
 pub mod chat_link;
@@ -2501,7 +2503,16 @@ impl Supervisor {
                     "configure"
                 }
                 "reset" => "reset_properties",
-                "reset_server" => "reset_server",
+                // 지울 범위 (모듈 `reset_preview`가 밝힌 id). 없으면 모듈의 기본 범위
+                "reset_server" => {
+                    if let Some(scope) = settings {
+                        cfg.insert("scope".to_string(), scope);
+                    }
+                    "reset_server"
+                }
+                "reset_preview" => "reset_preview",
+                // 플레이어 목록 (`[[lists]]`)의 지금 명단
+                "read_lists" => "read_lists",
                 // 실제 설정 파일을 saba-chan 키로 (설정 화면이 캐시 대신 실제 값을 보여 준다)
                 "import" => "import_settings",
                 // 사바쨩이 고칠 수 있는 게임 설정 파일 (가져온 서버를 해제할 때 되돌린다)
@@ -3563,6 +3574,7 @@ fn start_origins() -> &'static std::sync::Mutex<HashMap<String, crate::audit::Or
 /// `instance.started`: 서버가 켜졌다. `unexpected`면 사바쨩이 띄우지 않은 프로세스다
 fn announce_started(instance_id: &str, name: &str, origin: &crate::audit::Origin, unexpected: bool) {
     start_origins().lock().unwrap_or_else(|e| e.into_inner()).insert(instance_id.to_string(), origin.clone());
+    idle::clear_stopped(instance_id);
     let mut data = origin_fields(origin);
     data.insert("instanceId".into(), json!(instance_id));
     data.insert("instance".into(), json!(name));
@@ -5253,6 +5265,7 @@ mod tests {
             protocol_mode: "auto".to_string(),
             module_settings: std::collections::HashMap::new(),
             server_version: None,
+            server_build: None,
             extension_data: std::collections::HashMap::new(),
             required_extensions: Vec::new(),
             schedule: Vec::new(),
@@ -5270,6 +5283,7 @@ mod tests {
             access: Default::default(),
             kick_players: Vec::new(),
             auto_update: false,
+            branch_of: None,
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -5322,6 +5336,7 @@ mod tests {
             protocol_mode: "auto".to_string(),
             module_settings: std::collections::HashMap::new(),
             server_version: None,
+            server_build: None,
             extension_data: std::collections::HashMap::new(),
             required_extensions: Vec::new(),
             schedule: Vec::new(),
@@ -5339,6 +5354,7 @@ mod tests {
             access: Default::default(),
             kick_players: Vec::new(),
             auto_update: false,
+            branch_of: None,
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

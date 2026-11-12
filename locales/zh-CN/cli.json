@@ -181,6 +181,7 @@
       "schedule": "计划任务预告",
       "update": "Saba-chan 更新",
       "disk": "磁盘空间不足",
+      "offline": "电脑连接中断",
       "chatbotUsage": "会说话的 Saba-chan 用量",
       "moderation": "AI 审核报告"
     },
@@ -223,7 +224,10 @@
     "sleep_blocks_none": "无",
     "bedtime": "乖孩子",
     "bedtime_format": "用 --bedtime 指定时间，格式为 入睡时间-醒来时间，例如 01:00-08:00。",
-    "big_emoji": "表情符号放大"
+    "big_emoji": "表情符号放大",
+    "member_notice": "成员加入和离开通知",
+    "busy_notice": "过载公告",
+    "chat_auto_open": "开启服务器时也开启聊天连接"
   },
   "col": {
     "players": "在线玩家",
@@ -245,6 +249,7 @@
     "state": "状态",
     "uptime": "运行时长",
     "version": "版本",
+    "build": "构建版本 {{id}}",
     "what": "说明",
     "when": "时间",
     "why": "原因",
@@ -454,6 +459,10 @@
       "backup_unsupported": "此游戏的模块未说明要备份哪些内容。较新的模块可能支持：saba-chan-cli update check",
       "nothing_to_back_up": "世界尚不存在。请先启动一次服务器来创建它。",
       "backup_busy": "此服务器已有备份或恢复正在进行。请在完成后重试。",
+      "import_not_backup": "这不是 Saba-chan 导出的备份文件。请提供由 `backup export` 生成的 zip。",
+      "import_damaged": "备份文件已损坏。请在原电脑上重新导出。",
+      "import_other_module": "此备份来自其他游戏的服务器,无法导入到此服务器。",
+      "export_old_backup": "此备份由旧版本创建,无法导出。",
       "backup_file_locked": "服务器正在使用文件（{{file}}）。请关闭服务器后重试：saba-chan-cli stop 名称",
       "autosave_not_resumed": "备份已完成，但无法重新开启服务器的自动保存。请重启服务器: saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "备份失败，服务器的自动保存也未能重新开启。请重启服务器: saba-chan-cli restart <name>",
@@ -710,7 +719,7 @@
     "unknown_key": "{{key}} 是新键。",
     "restart_required_mark": "修改后需重启",
     "restart_required": "重启服务器后生效: {{keys}}",
-    "hidden": "因其他设置当前未使用而隐藏的设置: {{keys}}"
+    "hidden": "因当前未使用而隐藏的设置: {{keys}}"
   },
   "shell": {
     "bad_quotes": "引号未闭合。",
@@ -941,6 +950,8 @@
       "backup.create": "立即备份",
       "backup.delete": "删除一个备份（不指定名称则从列表中选择）",
       "backup.restore": "恢复到备份（服务器运行中会询问是否停止）。不指定名称则从列表中选择",
+      "backup.export": "将一个备份导出为可移到其他电脑的单个 zip(不带名称则从列表中选择)",
+      "backup.import": "检查由 `backup export` 生成的 zip 并加入此服务器的备份列表(之后再还原)",
       "schedule": "服务器计划任务（启动、停止、重启、保存、备份、公告、更新、游戏命令）",
       "schedule.show": "查看计划",
       "schedule.add": "添加计划任务：start、stop、restart、save、backup、announce、update、command",
@@ -1003,6 +1014,7 @@
       "config.paths": "Saba-chan 存放数据、模块和扩展的位置，以及默认文件夹",
       "config.move": "把模块或扩展移到其他文件夹。已安装的文件会一起移动；必须先停止服务器",
       "server.players": "当前在线的人",
+      "server.lists": "游戏保存的玩家名单（可加入的人、管理员、封禁）",
       "server.address": "朋友连接用的地址（IP:端口）",
       "server.port-check": "检查朋友能否从外网连接此服务器（端口转发）",
       "server.rcon": "按服务器接收命令的方式（控制台，没有则用 RCON）发送一行并查看回复",
@@ -1020,6 +1032,7 @@
       "remote.daemons": "此守护进程连接的远程守护进程",
       "remote.servers": "按守护进程列出本机和每个远程守护进程的服务器（要操作某个请用`--daemon <名称>`）",
       "remote.forget": "移除远程守护进程（重新连接用 `remote connect`）",
+      "remote.rename": "重命名我的一台电脑（包括这台，所有电脑和 Discord 都显示这个名称）",
       "config.autostart": "登录此电脑时启动的内容：off（关闭）、daemon（仅守护进程和托盘）、full（包括 GUI 窗口）。不带模式时显示当前值",
       "config.browse": "查看守护进程所在电脑的文件夹和文件（加 --daemon 时为那台远程电脑）。不给路径则显示驱动器或 /",
       "bot.notice": "服务器不通过 Discord 命令启动或停止时在 Discord 服务器的通知频道告知(默认关闭)。`--full`：满员或重新有空位时。不带服务器：查看，带服务器和 `--on`·`--off`：更改",
@@ -1035,6 +1048,9 @@
       "bot.clear": "删除频道的最近消息（置顶消息和 Saba-chan 面板会保留）。会先询问",
       "bot.mute": "禁止成员聊天、反应和语音：时长（10m、1h、7d，最多 28 天）、forever，解除用 off",
       "bot.big-emoji": "Discord 服务器的表情符号放大(只发一个自定义表情符号时放大显示)。不带选项则查看",
+      "bot.member-notice": "Discord 服务器的成员加入和离开通知(通知频道)。不带选项则显示",
+      "bot.busy-notice": "Discord 服务器的过载公告(电脑负载过高时发布,恢复后删除)。不带选项则显示",
+      "bot.chat-auto-open": "在 Discord 服务器上,运行中的服务器有人时自动开启聊天连接。不带选项则显示",
       "config.net-trace": "按服务器·端口统计网络（高级，Windows）的权限：不带操作时显示当前状态，grant 在守护进程电脑上弹出一次管理员确认以授予权限，revoke 撤销。开启：config set systemMonitorNetTrace=on",
       "mcp": "让此电脑上的 AI 代理(Claude Code、Codex)使用所有命令的本地 MCP 服务器(stdin/stdout)",
       "agent": "向此电脑上的 AI 代理注册本地 MCP(`mcp`)",
@@ -1054,6 +1070,7 @@
       "perm.level.add.name": "新等级名称（1–32 个字符）",
       "perm.level.rename.name": "新名称（1–32 个字符）",
       "backup.create.from_snapshot": "保留游戏最新的自动备份，而不是现在复制世界（Palworld 等）",
+      "backup.export.out": "zip 的写入位置(守护进程所在电脑上的路径)",
       "bot.channels.notify": "通知频道(崩溃、备份、更新、定时重启),名称或 ID",
       "bot.channels.no_notify": "取消通知频道",
       "bot.channels.game_chat": "游戏聊天频道（开启聊天转发的服务器的游戏聊天），名称或 id",
@@ -1179,6 +1196,7 @@
       "install.modules": "要安装的游戏模块，用逗号分隔（省略时会询问）",
       "install.gui": "即使没有显示器也安装桌面应用",
       "install.no_gui": "即使有显示器也不安装桌面应用",
+      "install.channel": "安装并在之后接收更新的频道：stable（正式）、rc（预览）、beta（测试）。省略时用安装程序自身的频道",
       "uninstall.remove_settings": "同时删除设置和 Discord 连接",
       "uninstall.remove_instances": "同时删除游戏服务器（服务器文件、世界、备份）",
       "config.move.kind": "要移动的内容：modules 或 extensions",
@@ -1202,6 +1220,8 @@
       "remote.revoke.host_id": "要解除配对的电脑 id (见 `remote clients`)",
       "remote.connect.host_id": "要连接的电脑 id（见 `remote peers`）",
       "remote.forget.host_id": "要移除的电脑 id（见 `remote daemons`）",
+      "remote.rename.host_id": "要重命名的电脑 ID（见 `remote peers`；这台电脑见 `remote status`）",
+      "remote.rename.name": "新的电脑名称（1 到 64 个字符）",
       "config.autostart.mode": "off、daemon 或 full",
       "keep_settings": "删除时不将游戏设置文件恢复到导入前，保留当前设置",
       "move_folder": "不在原位置链接 --from 文件夹，而是移入 saba-chan 文件夹（仅限同一驱动器）",
@@ -1268,6 +1288,12 @@
       "bot.sleep-mode.no_block": "睡着时也不关闭任何功能",
       "bot.big-emoji.on": "开启表情符号放大",
       "bot.big-emoji.off": "关闭表情符号放大",
+      "bot.member-notice.on": "开启成员通知",
+      "bot.member-notice.off": "关闭成员通知",
+      "bot.busy-notice.on": "开启过载公告",
+      "bot.busy-notice.off": "关闭过载公告",
+      "bot.chat-auto-open.on": "自动开启聊天连接",
+      "bot.chat-auto-open.off": "在有人开启之前保持聊天连接关闭",
       "config.net-trace.action": "grant（授予）或 revoke（撤销）。省略时显示当前状态",
       "agent.link.claude": "仅 Claude Code",
       "agent.link.codex": "仅 Codex",
@@ -1315,7 +1341,8 @@
       "pre-update": "更新前",
       "pre-restore": "恢复前",
       "snapshot": "保留的游戏备份",
-      "game-snapshot": "游戏自动备份"
+      "game-snapshot": "游戏自动备份",
+      "imported": "已导入"
     },
     "none": "{{name}} 还没有备份。",
     "creating": "正在备份 {{name}}...",
@@ -1327,6 +1354,8 @@
     "confirm_restore_running": "{{name}} 正在运行。要停止并恢复到备份 {{backup}} 吗？当前世界会先保存为备份。",
     "restoring": "正在恢复 {{backup}}...",
     "restored": "{{name}} 已恢复到 {{backup}}。",
+    "exported": "已导出备份:{{path}}({{size}})。只需把这一个文件移到另一台电脑即可导入。",
+    "imported": "已将备份 {{backup}} 加入 {{name}} 的列表。要放入服务器请进行还原。",
     "pre_restore": "之前的世界已保留为备份 {{backup}}。",
     "links_not_restored": "恢复已完成，但文件夹中有 {{count}} 个链接未能重新创建（例如 Windows 权限）。路径见守护进程日志。",
     "start_again": "要再次启动 {{name}} 吗？",
@@ -1834,6 +1863,7 @@
   "install": {
     "fetching": "正在检查最新版本…",
     "fetch_failed": "无法获取最新版本：{{reason}}",
+    "channel_older": "{{channel}} 渠道的最新版本（{{offered}}）比此安装程序（{{installer}}）旧，无法通过这个渠道安装。请选择其他渠道。",
     "ask_dir": "安装文件夹",
     "unknown_module": "未知模块：{{name}}。可选模块：{{list}}",
     "ask_module": "也安装 {{name}} 模块吗？",
@@ -1856,6 +1886,7 @@
     "next_mac_app": "从“应用程序”文件夹打开 Saba-chan，或运行以下命令：\n{{command}}",
     "components_dir": "模块和扩展放在 {{dir}}。",
     "components_dir_invalid": "无法将 {{dir}} 用于模块和扩展：{{reason}}",
+    "channel": "安装 {{channel}} 频道的最新版本，之后的更新也从这个频道接收。",
     "invalid_dir": "无法安装到 {{dir}}。请选择不是驱动器根目录、用户主文件夹或设置文件夹的文件夹"
   },
   "uninstall": {
@@ -1881,6 +1912,12 @@
   "players": {
     "title": "{{server}}：{{count}} 人在线",
     "none": "没有人在线。"
+  },
+  "lists": {
+    "title": "{{list}}：{{count}} 人",
+    "none": "还没有人。",
+    "unsupported": "这个服务器的游戏不提供玩家名单。",
+    "edit": "添加：{{add}} <名字>   移除：{{remove}} <名字>"
   },
   "log": {
     "none": "还没有保存的日志。服务器运行一次后就会有。",
@@ -1928,6 +1965,7 @@
     "connected": "已与 {{name}} 的远程守护进程配对。",
     "no_daemons": "此守护进程未连接任何远程守护进程。用 `remote peers` 查看你的电脑，用 `remote connect <PC id>` 连接。",
     "forgotten": "已移除 {{host}} 的远程守护进程。",
+    "renamed": "已将电脑名称改为 {{name}}。",
     "connect_error": {
       "remote_not_found": "该电脑不在你的其他电脑列表中",
       "remote_no_endpoint": "那台电脑没有打开远程端口",

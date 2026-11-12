@@ -373,6 +373,74 @@ pub fn hidden_fields(fields: &[SettingField], value_of: impl Fn(&str) -> Option<
         .collect()
 }
 
+/// 설치된 게임 버전에 없는 설정 이름: `versions` 범위 밖인 것. 버전을 모르거나 숫자 버전이 아니면(스냅숏 이름 등)
+/// 판단하지 않고 모두 남긴다
+pub fn version_hidden(fields: &[SettingField], server_version: Option<&str>) -> Vec<String> {
+    let Some(installed) = server_version.and_then(version_numbers) else { return Vec::new() };
+    fields
+        .iter()
+        .filter(|f| f.versions.as_deref().and_then(|r| version_range(r).ok()).is_some_and(|range| !range.iter().all(|(op, wanted)| op.holds(compare_versions(&installed, wanted)))))
+        .map(|f| f.name.clone())
+        .collect()
+}
+
+/// `versions` 범위를 읽을 수 없는 까닭 (module.toml 로드 검사). 읽히면 None
+pub fn version_range_problem(range: &str) -> Option<String> {
+    version_range(range).err()
+}
+
+#[derive(Clone, Copy)]
+enum VersionOp {
+    Less,
+    LessOrEqual,
+    Greater,
+    GreaterOrEqual,
+    Equal,
+}
+
+impl VersionOp {
+    fn holds(self, installed_vs_wanted: std::cmp::Ordering) -> bool {
+        use std::cmp::Ordering::*;
+        match self {
+            Self::Less => installed_vs_wanted == Less,
+            Self::LessOrEqual => installed_vs_wanted != Greater,
+            Self::Greater => installed_vs_wanted == Greater,
+            Self::GreaterOrEqual => installed_vs_wanted != Less,
+            Self::Equal => installed_vs_wanted == Equal,
+        }
+    }
+}
+
+/// `<1.21.9`, `>=1.13 <1.20`, `>=1.13, <1.20`: 모두 맞아야 하는 비교들
+fn version_range(range: &str) -> Result<Vec<(VersionOp, Vec<u64>)>, String> {
+    let parts: Vec<&str> = range.split([' ', ',']).filter(|p| !p.is_empty()).collect();
+    if parts.is_empty() {
+        return Err("is empty".into());
+    }
+    parts
+        .into_iter()
+        .map(|part| {
+            let (op, rest) = [("<=", VersionOp::LessOrEqual), (">=", VersionOp::GreaterOrEqual), ("<", VersionOp::Less), (">", VersionOp::Greater), ("=", VersionOp::Equal)]
+                .into_iter()
+                .find_map(|(sign, op)| part.strip_prefix(sign).map(|rest| (op, rest)))
+                .ok_or_else(|| format!("'{}' must start with <, <=, >, >= or =", part))?;
+            let numbers: Option<Vec<u64>> = rest.split('.').map(|n| n.parse().ok()).collect();
+            numbers.map(|n| (op, n)).ok_or_else(|| format!("'{}' needs a version of numbers and dots", part))
+        })
+        .collect()
+}
+
+/// 버전 앞머리의 점으로 나눈 숫자 (`1.21.9-pre2` → 1.21.9). 숫자에 글자가 바로 붙으면(`25w41a`) 숫자 버전이 아니다
+fn version_numbers(version: &str) -> Option<Vec<u64>> {
+    let head = version.trim().split(['-', '+', '_', ' ']).next().unwrap_or_default();
+    head.split('.').map(|n| n.parse().ok()).collect()
+}
+
+/// 짧은 쪽을 0으로 채워 비교한다 (1.21 = 1.21.0)
+fn compare_versions(a: &[u64], b: &[u64]) -> std::cmp::Ordering {
+    (0..a.len().max(b.len())).map(|i| a.get(i).copied().unwrap_or(0).cmp(&b.get(i).copied().unwrap_or(0))).find(|o| o.is_ne()).unwrap_or(std::cmp::Ordering::Equal)
+}
+
 /// 설정 타입으로 바꾼 값끼리 비교한다: boolean은 참·거짓, number는 수 값("25565"와 25565는 같다), 나머지는 문자열
 fn same_setting_value(field_type: &str, a: &Value, b: &Value) -> bool {
     let text = |v: &Value| match v {
@@ -882,6 +950,32 @@ mod tests {
         assert!(validate_setting_value(&name, Some(&Value::from("my srv"))).is_err());
         assert_eq!(expected_of(&name), "pattern");
         assert_eq!(expected_of(&ram), "memory_size");
+    }
+
+    /// 설정이 `versions`로 밝힌 게임 버전 범위 밖이면 그 서버에는 없는 설정이다. 버전을 모르거나 비교할 수 없으면 모두 보인다
+    #[test]
+    fn settings_outside_the_installed_game_version_are_hidden() {
+        let ranged = |name: &str, versions: &str| {
+            let mut f = make_field(name, "boolean");
+            f.versions = Some(versions.into());
+            f
+        };
+        let fields = [ranged("pvp", "<1.21.9"), ranged("spawn_animals", "<1.21.2"), ranged("management", ">=1.21.9"), ranged("middle", ">=1.13, <1.20"), make_field("difficulty", "select")];
+        let hidden = |version: Option<&str>| version_hidden(&fields, version);
+        assert_eq!(hidden(Some("1.21.8")), ["spawn_animals", "management", "middle"]);
+        assert_eq!(hidden(Some("1.21.10")), ["pvp", "spawn_animals", "middle"], "10 is after 9, not before 2");
+        assert_eq!(hidden(Some("26.1")), ["pvp", "spawn_animals", "middle"]);
+        assert_eq!(hidden(Some("1.21.9-pre2")), ["pvp", "spawn_animals", "middle"], "a pre-release already has the new set");
+        assert_eq!(hidden(Some("1.21")), ["management", "middle"], "1.21 is 1.21.0");
+        assert_eq!(hidden(Some("1.16.5")), ["management"]);
+        for unknown in [None, Some(""), Some("25w41a"), Some("unstable")] {
+            assert_eq!(hidden(unknown), Vec::<String>::new(), "{:?}: every setting stays", unknown);
+        }
+        assert!(version_range_problem("<1.21.9").is_none());
+        assert!(version_range_problem(">=1.13 <1.20").is_none());
+        for bad in ["", "1.21.9", "<", "~1.2", "<1.x", "<=1.21.9 or >2"] {
+            assert!(version_range_problem(bad).is_some(), "{:?}", bad);
+        }
     }
 
     /// 설정 값은 설정 파일의 한 줄·실행 인자 하나가 된다. 줄바꿈이 있으면 다른 키를 덮어쓸 수 있다

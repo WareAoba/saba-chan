@@ -13,6 +13,8 @@ const ALLOWED = new Set([
     // 주기 읽기 (숨으면 쉬고 보이면 바로 읽기, 앱과 같다)
     '@gui/utils/poll',
     '@gui/utils/commandRisk',
+    // 콘솔 줄의 시각 표시·수준 판정 (화면 없는 순수 함수, 앱 콘솔과 같은 규칙)
+    '@gui/utils/consoleLine',
     // 명령 줄 읽기와 입력 칸 값 → 인자 (데몬이 읽는 방식 그대로, 앱 명령 탭과 같은 규칙)
     '@gui/utils/commandSyntax',
     // 포트포워딩 확인 결과 읽기 (화면 없는 순수 함수)
@@ -67,9 +69,13 @@ const ALLOWED = new Set([
     '@gui/components/ui/SabaUI',
     // 명령 입력 줄 (친 글자 색칠·안내 부품, 스토어·API 없이 받은 상태만 그린다)
     '@gui/components/ui/CommandLine',
+    // 콘솔 한 줄 색칠 (스토어·API 없이 받은 글과 조각만 그린다, 앱 콘솔과 같은 색)
+    '@gui/components/ConsoleView',
     // PC 상태 원과 항목 고르기: 앱 시스템 모니터를 웹에서 그대로 본다 (스토어 없는 그림 부품과 순수 계산)
     '@gui/components/monitor/MonitorRing',
     '@gui/components/monitor/systemMetrics',
+    // 데몬 로그 한 줄 (시각·레벨 배지·데몬이 준 강조 조각, 스토어·API 없이 받은 줄만 그린다)
+    '@gui/components/DaemonLogLine',
 ]);
 
 function sources(dir: string): string[] {

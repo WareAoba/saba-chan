@@ -11,6 +11,9 @@ import { createTranslateError, safeShowToast } from '../utils/helpers';
 const POLL_ACTIVE_MS = 500;
 /** @constant 서버 비활성이거나 콘솔이 화면에 없을 때 polling 간격 (ms) */
 const POLL_IDLE_MS = 5000;
+// 새 줄이 없으면 데몬이 이만큼(초) 붙잡는다. 붙잡는 데몬(답에 waits: true)에는 답을 받고 POLL_ACTIVE_MS 뒤 다시 묻는다
+// 원격 데몬 중계(remote_daemon peer)가 다시 쓴 연결의 답을 10초까지만 기다리므로 그보다 짧게 둔다
+const CONSOLE_WAIT_S = 8;
 /** PIP로 띄울 때 메인 창 콘솔 자리에 흐리게 남기는 줄 수 */
 const GHOST_LINES = 40;
 
@@ -133,6 +136,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             // 실행 중에 받은 마지막 몇 줄의 표시(lineMark). 꺼진 뒤 디스크 꼬리와 겹치는 곳을 찾는 데 쓴다
             let seenTail: string[] = [];
             let polling = false;
+            // 마지막 답이 데몬이 붙잡았다 온 것인가 (옛 데몬은 wait를 모르고 바로 답한다)
+            let daemonWaits = false;
             // 이 루프의 ref. 닫았다 다시 열면 새 ref가 생기므로, 옛 루프는 자기 ref가 아니면 멈춘다(줄 중복 방지)
             const myRef: PollRef = { active: true, timer: null, wake: () => {} };
             const isMine = () => pollingRefs.current[instanceId] === myRef && myRef.active;
@@ -151,7 +156,10 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     return;
                 }
                 const isRunning = server && server.pid != null && server.pid > 0;
-                const interval = now ? 0 : isRunning && watching.current[instanceId] ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+                // 화면에 보이는 콘솔만 데몬에 붙잡아 달라고 한다 (보이지 않는 콘솔은 5초마다 그냥 읽는다)
+                const watched = !!watching.current[instanceId];
+                const interval = now ? 0 : watched && (isRunning || daemonWaits) ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+                const waitFor = now || !watched ? 0 : CONSOLE_WAIT_S;
                 myRef.timer = setTimeout(async () => {
                     if (polling) { schedulePoll(); return; }
                     polling = true;
@@ -167,9 +175,15 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                             seenPid = pid;
                         }
                         // 하이라이트가 켜져 있으면 데몬에게 조각 토큰(spans)도 달라고 한다
-                        const opts = useSettingsStore.getState().consoleSyntaxHighlight ? { spans: true } : undefined;
+                        const opts = {
+                            spans: useSettingsStore.getState().consoleSyntaxHighlight || undefined,
+                            wait: waitFor || undefined,
+                            epoch: waitFor && seenEpoch !== null ? seenEpoch : undefined,
+                            diskSeen: (waitFor && diskLoaded) || undefined,
+                        };
                         const data = await window.api.managedConsole(instanceId, sinceId, 200, opts);
                         if (!isMine()) return;
+                        daemonWaits = data?.waits === true;
                         // epoch가 없는 응답(디스크 기록, 옛 데몬)은 지금처럼 이어 읽는다
                         if (typeof data?.epoch === 'number') {
                             const epochChanged = seenEpoch !== null && data.epoch !== seenEpoch;

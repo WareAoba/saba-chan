@@ -774,7 +774,8 @@ pub(crate) mod tests {
             assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_local_only")), "{method} {path}");
         }
         // 웹 원격에만 없는 라우트(GUI가 쓰는 것)는 받는다
-        for path in ["/api/onboarding", "/api/runtime/preflight", "/api/config/bot", "/api/system/browse"] {
+        // 그 PC의 봇 연결 상태 읽기: 고른 원격 데몬의 디스코드 탭이 '연결 안 됨'으로 보이지 않게 (사용자 11-12)
+        for path in ["/api/onboarding", "/api/runtime/preflight", "/api/config/bot", "/api/system/browse", "/api/relay/agent", "/api/relay/host/h/status"] {
             let (s, body) = call(addr, &pin, "GET", path, Some(&token), None).await.unwrap();
             assert_ne!(body["error_code"].as_str(), Some("remote_local_only"), "{path} {s}");
         }

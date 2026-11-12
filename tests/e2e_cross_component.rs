@@ -1030,41 +1030,20 @@ async fn e2e_version_backfill_on_startup() {
     let (base_url, sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
     let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
-    // 인스턴스 생성 + working_dir 세팅
+    // 가져온 서버는 설치 때 적어 둔 버전이 없다 (새로 설치한 서버는 설치한 버전을 그때 적는다)
+    let work_dir = std::env::temp_dir().join(format!("saba-e2e-backfill-{}", pick_free_port()));
+    fs::create_dir_all(&work_dir).unwrap();
+    fs::write(work_dir.join("version.txt"), "1.20.4").unwrap();
     let create_resp = client
         .post(format!("{}/api/instances", base_url))
         .json(&json!({
             "name": "BackfillTest",
-            "module_name": "e2e-mock"
+            "module_name": "e2e-mock",
+            "migration_source": work_dir.to_string_lossy(),
         }))
         .send().await.unwrap();
     let created: Value = create_resp.json().await.unwrap();
-    let instance_id = created["id"].as_str().unwrap().to_string();
-    wait_for_provision(&base_url, &client, "BackfillTest").await;
-
-    // 자동 설정된 working_dir에 version.txt 작성
-    let inst_resp = client
-        .get(format!("{}/api/instance/{}", base_url, instance_id))
-        .send().await.unwrap();
-    let inst_data: Value = inst_resp.json().await.unwrap();
-
-    let work_dir = inst_data.get("working_dir")
-        .and_then(|v| v.as_str())
-        .map(|s| std::path::PathBuf::from(s));
-
-    let work_dir = if let Some(wd) = work_dir {
-        fs::create_dir_all(&wd).unwrap();
-        wd
-    } else {
-        let wd = std::env::temp_dir().join(format!("saba-e2e-backfill-{}", pick_free_port()));
-        fs::create_dir_all(&wd).unwrap();
-        let _ = client
-            .patch(format!("{}/api/instance/{}", base_url, instance_id))
-            .json(&json!({ "working_dir": wd.to_string_lossy(), "server_name": "BackfillTest" }))
-            .send().await.unwrap();
-        wd
-    };
-    fs::write(work_dir.join("version.txt"), "1.20.4").unwrap();
+    let instance_id = created["id"].as_str().unwrap_or_else(|| panic!("{created}")).to_string();
 
     // backfill 실행
     saba_core::supervisor::Supervisor::backfill_server_versions(sup.clone()).await;

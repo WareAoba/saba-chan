@@ -133,8 +133,15 @@ fn retry_publishing(rt: &mut Runtime, relay: server::RelaySource, address: Optio
 /// - 저장한 이름·주인 이름을 릴레이 것으로
 /// - 서버쨩에서 빠진 PC(디스코드에서 지웠거나 개인정보를 지운 PC)는 짝을 푼다. 그 PC가 가진 토큰은 더는 통하지 않는다 (사용자 결정 2026-11-08)
 /// - 저장한 원격 데몬의 주소·지문이 바뀌었으면 따른다 (터널로 짝 맺은 PC가 공인 주소를 올린 뒤 직접 붙게)
-pub async fn sync_with_relay(file: &ConfigFile, target: &relay::Target) -> Result<Vec<relay::Peer>, relay::Failure> {
-    let peers = relay::peers(target).await?;
+/// - 이 PC 이름을 받아 둔다 (`config::this_name_in`, 옛 릴레이는 주지 않는다)
+pub async fn sync_with_relay(file: &ConfigFile, target: &relay::Target) -> Result<relay::PeerList, relay::Failure> {
+    let list = relay::peer_list(target).await?;
+    if let Some(me) = &list.this_pc {
+        if let Err(e) = config::save_this_name_in(file, &me.name) {
+            tracing::warn!("Failed to remember this PC's name: {}", e);
+        }
+    }
+    let peers = &list.peers;
     let known: Vec<_> = peers.iter().map(|p| (p.host_id.clone(), p.name.clone(), p.owner_name.clone())).collect();
     if let Err(e) = config::refresh_names_in(file, &known) {
         tracing::warn!("Failed to refresh remote PC names: {}", e);
@@ -153,7 +160,7 @@ pub async fn sync_with_relay(file: &ConfigFile, target: &relay::Target) -> Resul
     }
     // 원격 포트가 들고 있는 짝 맺은 PC도 (새 이름, 푼 짝)
     reload_clients(file);
-    Ok(peers)
+    Ok(list)
 }
 
 /// 데몬이 떠 있는 동안 10분마다 릴레이의 내 PC 목록에 맞춘다 (`sync_with_relay`)

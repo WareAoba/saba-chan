@@ -92,4 +92,22 @@ describe('웹 정보 탭', () => {
         const more = screen.getByText('Details').closest('details') as HTMLElement;
         expect(within(more).getByText('STDIN')).toBeTruthy();
     });
+
+    // 사용자 11-12: 시작·정지가 클 필요도, 다시 시작이 글자 단추일 이유도, … 메뉴도 없다 (앱 상세 머리처럼)
+    it('머리 오른쪽에 다시 시작 아이콘과 정지 단추만 두고 … 메뉴는 없다', async () => {
+        const server = asServer({ id: 's1', name: 'MC', module: 'minecraft', status: 'running' });
+        await act(async () => render(<ServerDetail api={apiWith()} server={server} />));
+        const head = document.querySelector('.detail-head') as HTMLElement;
+        expect(within(head).getByRole('button', { name: 'Stop' })).toBeTruthy();
+        expect(within(head).getByRole('button', { name: 'Restart' }).textContent?.trim()).toBe('');
+        expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+    });
+
+    it('이름 바꾸기와 서버 지우기는 정보 탭에 있다', async () => {
+        const server = asServer({ id: 's1', name: 'MC', module: 'minecraft', status: 'stopped' });
+        await act(async () => render(<ServerDetail api={apiWith()} server={server} />));
+        await act(async () => fireEvent.click(screen.getByRole('tab', { name: 'Info' })));
+        expect(screen.getByRole('button', { name: 'Rename' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: /Delete server/ })).toBeTruthy();
+    });
 });

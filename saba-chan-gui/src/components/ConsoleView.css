@@ -1,0 +1,53 @@
+/* 콘솔 조각 색 (HighlightedContent): 토큰 이름 = 데몬 spans·모듈 규칙의 토큰. 값은 tokens.css의 --tok-* (밝은 콘솔은 data-console-tone) */
+.tok-error {
+    color: var(--tok-error);
+    font-weight: 600;
+}
+.tok-warn {
+    color: var(--tok-warn);
+}
+.tok-info {
+    color: var(--tok-info);
+}
+.tok-debug {
+    color: var(--tok-debug);
+}
+.tok-success {
+    color: var(--tok-success);
+    font-weight: 600;
+}
+.tok-string {
+    color: var(--tok-string);
+}
+.tok-number {
+    color: var(--tok-number);
+}
+.tok-keyword {
+    color: var(--tok-keyword);
+}
+.tok-timestamp {
+    color: var(--tok-timestamp);
+}
+.tok-player {
+    color: var(--tok-player);
+    font-weight: 600;
+}
+.tok-command {
+    color: var(--tok-command);
+}
+.tok-selector {
+    color: var(--tok-selector);
+}
+.tok-ip {
+    color: var(--tok-ip);
+}
+.tok-uuid {
+    color: var(--tok-uuid);
+}
+.tok-path {
+    color: var(--tok-path);
+    font-style: italic;
+}
+.tok-dim {
+    color: var(--tok-dim);
+}

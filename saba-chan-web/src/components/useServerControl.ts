@@ -14,6 +14,7 @@ interface Agreement {
 /** 켜기·끄기·다시 켜기·지우기. 확인 창과 약관 동의는 GUI 와 같다 */
 export function useServerControl(api: WebApi) {
     const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const { toast, ask } = useApp.getState();
     const [busy, setBusy] = useState(false);
 
@@ -24,6 +25,25 @@ export function useServerControl(api: WebApi) {
         } finally {
             setBusy(false);
         }
+    };
+
+    /**
+     * 콘솔이 없어 저장하고 정지하라고 요청할 길이 없으면 데몬은 서버를 죽이지 않고 `graceful_stop_unavailable`로 답한다.
+     * 앱과 같은 문구로 저장 없이 정지할지 묻고, 그러겠다면 같은 요청을 `force`로 다시 보낸다
+     */
+    const orForce = async <T extends { error_code?: unknown } | null | undefined>(
+        server: Server,
+        send: (opts: { force?: boolean }) => Promise<T>,
+    ): Promise<T | null> => {
+        const res = await send({});
+        if (res?.error_code !== 'graceful_stop_unavailable') return res;
+        const ok = await ask({
+            title: tg('servers.force_stop_title'),
+            message: tg('servers.force_stop_message', { name: server.name }),
+            confirmLabel: tg('servers.force_stop_confirm'),
+            danger: true,
+        });
+        return ok ? send({ force: true }) : null;
     };
 
     const start = (server: Server) =>
@@ -66,7 +86,8 @@ export function useServerControl(api: WebApi) {
                 danger: true,
             });
             if (!ok) return;
-            const res = await api.instanceStop(server.id, {});
+            const res = await orForce(server, (opts) => api.instanceStop(server.id, opts));
+            if (res === null) return;
             if (timedOut(res)) return toast(t('errors.still_working'), 'info');
             if (failed(res)) return toast(errorText(t, res), 'error');
             toast(t('servers.stopped', { name: server.name }), 'ok');
@@ -81,7 +102,8 @@ export function useServerControl(api: WebApi) {
                 danger: true,
             });
             if (!ok) return;
-            const res = await api.instanceRestart(server.id, {});
+            const res = await orForce(server, (opts) => api.instanceRestart(server.id, opts));
+            if (res === null) return;
             if (timedOut(res)) return toast(t('errors.still_working'), 'info');
             if (res?.error_code === 'still_stopping') return toast(t('errors.still_stopping'), 'error');
             if (failed(res)) return toast(errorText(t, res), 'error');

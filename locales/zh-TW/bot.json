@@ -417,7 +417,8 @@
         "pre-update": "更新前",
         "pre-restore": "還原前",
         "snapshot": "保留的遊戲備份",
-        "game-snapshot": "遊戲自動備份"
+        "game-snapshot": "遊戲自動備份",
+        "imported": "已匯入"
       },
       "events": "📜 **最近的啟動與停止紀錄**",
       "events_empty": "📭 沒有紀錄",
