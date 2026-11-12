@@ -470,21 +470,34 @@ fn addon_retry_wait(left: Leftover, failures: &mut usize) -> Option<std::time::D
     if left.held { Some(ADDON_HOLD_RETRY) } else { wait }
 }
 
+/// 다시 해 보려고 기다리는 교체를 깨운다: 그 사이의 확인(사용자가 누른 것 포함)이 남은 잠 뒤로 밀리지 않게
+static ADDON_RECHECK: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
 /// 모듈·익스텐션 자동 교체: 새 판(지금 코어로 돌아가는 가장 새 판, 릴레이 `/v1/addons/catalog`)을 받아 바로 바꿔 끼운다.
 /// 켜진 서버가 쓰는 것은 서버가 꺼질 때까지 5분마다 다시 보고, 받지 못했거나 바꾸지 못한 것은 5분·30분·30분 뒤에 다시 해 본다.
+/// 기다리는 사이에 확인이 또 오면 바로 한 차례 돈다.
 /// 사용자가 고친 것·직접 넣은 것은 덮어쓰지 않는다. 한 번에 하나만 돈다
 fn spawn_addon_replace(state: UpdateState) {
     use std::sync::atomic::Ordering;
     if ADDON_REPLACING.swap(true, Ordering::SeqCst) {
+        ADDON_RECHECK.notify_one();
         return;
     }
     tokio::spawn(async move {
-        let mut failures = 0;
-        while let Some(wait) = addon_retry_wait(replace_addons_once(&state).await, &mut failures) {
-            tokio::time::sleep(wait).await;
-        }
+        replace_addons_until_done(|| replace_addons_once(&state), &ADDON_RECHECK).await;
         ADDON_REPLACING.store(false, Ordering::SeqCst);
     });
+}
+
+/// 남긴 것이 없어질 때까지(또는 실패를 다 쓸 때까지) 차례를 돌린다. 차례 사이의 잠은 `recheck`가 깨운다
+async fn replace_addons_until_done<Fut: std::future::Future<Output = Leftover>>(mut once: impl FnMut() -> Fut, recheck: &tokio::sync::Notify) {
+    let mut failures = 0;
+    while let Some(wait) = addon_retry_wait(once().await, &mut failures) {
+        tokio::select! {
+            _ = tokio::time::sleep(wait) => {}
+            _ = recheck.notified() => {}
+        }
+    }
 }
 
 /// 바꿀 수 있는 것을 바꾸고, 다음 차례로 남긴 것(켜진 서버 때문에 미룬 것, 실패한 것)을 돌려준다
@@ -2381,6 +2394,30 @@ mod tests {
         // 잘 끝난 차례 뒤의 실패는 처음부터 센다
         assert_eq!(addon_retry_wait(Leftover::default(), &mut failures), None);
         assert_eq!(addon_retry_wait(failed, &mut failures), minutes(5));
+    }
+
+    /// 실패한 교체를 다시 해 보려고 기다리는 사이에 확인이 또 오면(네트워크를 고치고 '업데이트 확인'을 누름) 남은 잠을 기다리지 않는다
+    #[tokio::test]
+    async fn a_new_check_does_not_wait_out_the_retry_delay_of_a_failed_addon_replacement() {
+        use super::{replace_addons_until_done, Leftover};
+        let recheck = tokio::sync::Notify::new();
+        let (ran, mut runs) = tokio::sync::mpsc::unbounded_channel();
+        let rounds = replace_addons_until_done(
+            || {
+                let _ = ran.send(());
+                async { Leftover { held: false, failed: true } }
+            },
+            &recheck,
+        );
+        let checks = async {
+            runs.recv().await.unwrap();
+            recheck.notify_one();
+            tokio::time::timeout(std::time::Duration::from_secs(5), runs.recv()).await.expect("the replacement ran again right after the check");
+        };
+        tokio::select! {
+            _ = rounds => panic!("the retries ended early"),
+            _ = checks => {}
+        }
     }
 
     /// 헤드리스 설치는 창 없이 적용하고, 다시 띄울 것을 받지 않았으면 데몬 자신을 다시 띄운다. 데스크톱은 그대로
