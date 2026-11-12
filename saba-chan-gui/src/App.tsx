@@ -43,7 +43,7 @@ import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
-import { eventsAvailable } from './utils/daemonEvents';
+import { eventsAvailable, serverListPollMs } from './utils/daemonEvents';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
     beginOpeningSound,
@@ -642,20 +642,22 @@ function App() {
             });
         }
 
-        // Auto-refresh (데몬 준비 전에는 스킵)
-        const interval = setInterval(() => {
-            if (autoRefresh && daemonReady) {
-                fetchServers();
-            }
-        }, refreshInterval);
-
         return () => {
-            clearInterval(interval);
             if (typeof offClose === 'function') offClose();
             if (typeof offOpenServer === 'function') offOpenServer();
             if (typeof offOpenRoute === 'function') offOpenRoute();
         };
     }, [autoRefresh, refreshInterval, daemonReady]);
+
+    // 목록 자동 새로고침 (데몬 준비 전에는 스킵). 데몬 이벤트가 바뀜을 바로 알리면(DaemonEvents) 놓친 것만 메우게 느리게 돈다
+    const extensionStatus = useServerStore((s) => s.servers.some((srv) => Object.keys(srv.extension_status || {}).length > 0));
+    // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers는 렌더마다 새 함수다 (주기만 따른다)
+    useEffect(() => {
+        if (!autoRefresh || !daemonReady) return;
+        const ms = serverListPollMs(refreshInterval, { events: eventsAvailable(), extensionStatus });
+        const interval = setInterval(fetchServers, ms);
+        return () => clearInterval(interval);
+    }, [autoRefresh, refreshInterval, daemonReady, extensionStatus]);
 
     // ══════════════════════════════════════════════════════════
     // ── Render ───────────────────────────────────────────────
