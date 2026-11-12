@@ -502,9 +502,10 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             discordAgentMinVersion: agentMinVersion,
             discordBotStatus: nextStatus,
             discordReconnecting:
-                // 릴레이가 이 버전을 거절하면 다시 붙을 일이 없다 — 복구 중이 아니라 거절로 보인다
+                // 릴레이가 이 버전이나 이 PC의 열쇠를 거절하면 저절로 다시 붙을 일이 없다 — 복구 중이 아니라 거절로 보인다
                 nextStatus === 'connecting' &&
                 !agentMinVersion &&
+                !(settled && failureKind === 'rejected') &&
                 (prev.discordBotStatus === 'running' || prev.discordReconnecting),
         });
     },

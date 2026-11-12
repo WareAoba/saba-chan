@@ -55,6 +55,16 @@ describe('릴레이 실패 종류', () => {
         expect(useDiscordStore.getState().relayErrorKind).toBe('rejected');
     });
 
+    it('연결돼 있던 에이전트가 계속 돌아도 거절이 정해지면 복구 중이 아니라 거절로 보인다', async () => {
+        useDiscordStore.setState({ discordBotStatus: 'running', relayConnected: true });
+        vi.mocked(window.api.relayCheckHostStatus).mockResolvedValue({ error: 'INVALID_TOKEN' });
+        await useDiscordStore.getState().checkStatus();
+        await useDiscordStore.getState().checkStatus();
+        const s = useDiscordStore.getState();
+        expect(s.relayErrorKind).toBe('rejected');
+        expect(s.discordReconnecting).toBe(false);
+    });
+
     it('거절된 동안은 5초마다 묻지 않고 30초에 한 번만 묻는다', async () => {
         vi.useFakeTimers();
         try {
