@@ -136,7 +136,8 @@
     "send": "Enviar",
     "danger_title": "Este comando es peligroso",
     "danger_message": "¿Seguro que quieres enviar {{command}}?",
-    "danger_again": "'{{command}}' es difícil de deshacer. Pulsa enviar otra vez para ejecutarlo."
+    "danger_again": "'{{command}}' es difícil de deshacer. Pulsa enviar otra vez para ejecutarlo.",
+    "danger_again_described": "{{description}}. Pulsa enviar otra vez para ejecutarlo."
   },
   "settings": {
     "game": "Ajustes del juego",

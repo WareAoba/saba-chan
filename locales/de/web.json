@@ -136,7 +136,8 @@
     "send": "Senden",
     "danger_title": "Das ist ein gefährlicher Befehl",
     "danger_message": "{{command}} wirklich senden?",
-    "danger_again": "„{{command}}“ lässt sich schwer rückgängig machen. Zum Ausführen noch einmal auf Senden drücken."
+    "danger_again": "„{{command}}“ lässt sich schwer rückgängig machen. Zum Ausführen noch einmal auf Senden drücken.",
+    "danger_again_described": "{{description}}. Zum Ausführen noch einmal auf Senden drücken."
   },
   "settings": {
     "game": "Spieleinstellungen",

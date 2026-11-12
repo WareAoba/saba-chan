@@ -1,7 +1,7 @@
 import { HighlightedContent } from '@gui/components/ConsoleView';
 import { sourceText } from '@gui/utils/audit';
-import { needsConfirm } from '@gui/utils/commandRisk';
-import { type ConsoleLevel, consoleStamper, levelOf } from '@gui/utils/consoleLine';
+import { commandOf, needsConfirm } from '@gui/utils/commandRisk';
+import { type ConsoleLevel, consoleStamper, levelOf, withoutOwnStamp } from '@gui/utils/consoleLine';
 import {
     commandText,
     consoleQuickCommands,
@@ -86,6 +86,11 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
         () => consoleQuickCommands(moduleData?.commands?.fields, moduleData?.command_aliases),
         [moduleData],
     );
+    // 확인을 기다리는 위험 명령의 설명 (모듈이 준 것). 문장 끝 부호는 알림 문구가 붙인다
+    const confirmCommand = confirmText ? commandOf(moduleData?.commands?.fields, confirmText) : undefined;
+    const confirmWhat = confirmCommand
+        ? commandText(t, server.module, confirmCommand).description.replace(/[.。!?！？\s]+$/u, '')
+        : '';
     const since = useRef(0);
     const pid = useRef(server.pid);
     pid.current = server.pid;
@@ -116,7 +121,12 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
                 }
             }
             setStdin(!!res.stdin_available);
-            const received: ConsoleLine[] = res.lines.map((l: ConsoleLine) => ({ ...l, key: ++lineSeq }));
+            // 데몬 시각을 줄 앞에 붙이므로, 게임이 스스로 찍은 줄 앞 시각은 뺀다 (시각이 두 번 보이지 않게)
+            const received: ConsoleLine[] = res.lines.map((l: ConsoleLine) => ({
+                ...l,
+                ...(l.timestamp != null && withoutOwnStamp(l.content, l.spans)),
+                key: ++lineSeq,
+            }));
             if (res.source === 'disk') {
                 // 꺼진 서버의 지난 로그는 since와 상관없이 매번 같은 꼬리가 온다: 한 번만 보이고, 줄 번호(0부터)로 since를 올리지 않는다
                 if (!diskLoaded && received.length) {
@@ -234,7 +244,11 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
             {confirmText && confirmText === input.trim() && (
                 <div className="banner banner-error console-confirm" role="alert">
                     <Icon name="alertTriangle" size={16} />
-                    <span>{t('console.danger_again', { command: confirmText })}</span>
+                    <span>
+                        {confirmWhat
+                            ? t('console.danger_again_described', { description: confirmWhat })
+                            : t('console.danger_again', { command: confirmText })}
+                    </span>
                 </div>
             )}
             {stdin && server.status === 'running' && quick.length > 0 && (
@@ -244,7 +258,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
                             key={c.name}
                             type="button"
                             className={`console-chip${c.risk ? ` risk-${c.risk}` : ''}`}
-                            title={commandText(t, server.module, c).description || c.name}
+                            title={commandText(t, server.module, c).description || commandText(t, server.module, c).label}
                             onClick={() => {
                                 // 바로 보내지 않고 채워만 둔다: 인자가 필요하거나 위험한 명령도 있으니까
                                 cursor.current = -1;
@@ -252,7 +266,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
                                 field.current?.focus();
                             }}
                         >
-                            {commandText(t, server.module, c).label}
+                            {c.name}
                             {c.inputs?.length ? ' …' : ''}
                         </button>
                     ))}

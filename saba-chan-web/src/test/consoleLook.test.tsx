@@ -22,7 +22,8 @@ const minecraft = {
         fields: [
             { name: 'list', label: 'List', method: 'console' },
             { name: 'say', label: 'Say', method: 'console', inputs: [{ name: 'message' }] },
-            { name: 'stop', label: 'Stop', method: 'console', risk: 'danger' },
+            { name: 'stop', label: 'Stop', description: 'Saves the world and stops the server', method: 'console', risk: 'danger' },
+            { name: 'wipe', label: 'Wipe', method: 'console', risk: 'danger' },
             { name: 'players', label: 'Players', method: 'rest' },
         ],
     },
@@ -81,8 +82,9 @@ describe('웹 콘솔 표시 (앱 콘솔과 같은 모습)', () => {
     it('빠른 명령 칩은 콘솔로 보낼 수 있는 명령만 보이고, 누르면 입력 칸을 채운다', async () => {
         const { api } = await open();
         const quick = screen.getByRole('group', { name: 'Quick commands' });
-        expect([...quick.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['List', 'Say …', 'Stop']);
-        fireEvent.click(screen.getByRole('button', { name: 'Say …' }));
+        // 칩 글자는 누르면 입력 칸에 들어가는 명령 이름이다
+        expect([...quick.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['list', 'say …', 'stop', 'wipe']);
+        fireEvent.click(screen.getByRole('button', { name: 'say …' }));
         expect((screen.getByPlaceholderText('Type a command') as HTMLInputElement).value).toBe('say ');
         expect(api.managedStdin).not.toHaveBeenCalled();
     });
@@ -94,10 +96,42 @@ describe('웹 콘솔 표시 (앱 콘솔과 같은 모습)', () => {
         fireEvent.change(input, { target: { value: 'stop' } });
         await act(async () => fireEvent.submit(form));
         expect(api.managedStdin).not.toHaveBeenCalled();
-        expect(screen.getByRole('alert').textContent).toMatch(/stop.*once more/i);
+        // 모듈이 준 명령 설명이 알림 앞에 온다
+        expect(screen.getByRole('alert').textContent).toMatch(/^Saves the world and stops the server\. .*once more/i);
         await act(async () => fireEvent.submit(form));
         expect(api.managedStdin).toHaveBeenCalledWith('s1', 'stop');
         expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('설명이 없는 위험한 명령은 공통 문구로 알린다', async () => {
+        const { container } = await open();
+        fireEvent.change(screen.getByPlaceholderText('Type a command'), { target: { value: 'wipe' } });
+        await act(async () => fireEvent.submit(container.querySelector('.console-input') as HTMLFormElement));
+        expect(screen.getByRole('alert').textContent).toMatch(/wipe.*once more/i);
+    });
+
+    it('게임이 줄 앞에 찍은 시각(모듈이 timestamp로 선언한 조각)은 데몬 시각을 붙인 줄에서 뺀다', async () => {
+        const content = '[12:00:00] [Server thread/INFO]: Done';
+        const managedConsole = vi.fn().mockResolvedValue({
+            running: true,
+            epoch: 1,
+            stdin_available: true,
+            lines: [
+                { id: 0, timestamp: 1_700_000_000, level: 'INFO', content, spans: [[0, 10, 'timestamp'], [11, 31, 'dim']] },
+                // 데몬 시각이 없는 줄(디스크에서 읽은 옛 줄)은 게임이 찍은 시각을 그대로 둔다
+                { id: 1, level: 'INFO', content, spans: [[0, 10, 'timestamp']] },
+                // 조각이 괄호를 닫지 않으면(`[시각 수준]` 꼴) 빼지 않는다: 줄이 깨진다
+                { id: 2, timestamp: 1_700_000_000, level: 'INFO', content: '[12:00:00 INFO]: Done', spans: [[0, 9, 'timestamp']] },
+            ],
+        });
+        const { lines } = await open({ managedConsole });
+        const [stamped, bare, joined] = lines();
+        expect(stamped.querySelector('.console-time')?.textContent).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+        expect(stamped.querySelector('.tok-timestamp')).toBeNull();
+        expect(stamped.textContent).toMatch(/^\d{2}:\d{2}:\d{2}\[Server thread\/INFO\]: Done$/);
+        expect(stamped.querySelector('.tok-dim')?.textContent).toBe('[Server thread/INFO]');
+        expect(bare.textContent).toBe(content);
+        expect(joined.textContent).toContain('[12:00:00 INFO]: Done');
     });
 
     it('↑ 로 보냈던 명령을 다시 꺼낸다', async () => {

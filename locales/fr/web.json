@@ -136,7 +136,8 @@
     "send": "Envoyer",
     "danger_title": "Cette commande est dangereuse",
     "danger_message": "Voulez-vous vraiment envoyer {{command}} ?",
-    "danger_again": "« {{command}} » est difficile à annuler. Appuyez encore une fois sur Envoyer pour l’exécuter."
+    "danger_again": "« {{command}} » est difficile à annuler. Appuyez encore une fois sur Envoyer pour l’exécuter.",
+    "danger_again_described": "{{description}}. Appuyez encore une fois sur Envoyer pour l’exécuter."
   },
   "settings": {
     "game": "Réglages du jeu",
