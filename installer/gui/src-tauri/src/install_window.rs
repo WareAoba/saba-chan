@@ -21,6 +21,8 @@ pub struct InstallerState {
     pub selected_modules: Vec<String>,
     /// fetch_latest_release가 받은 검증된 manifest
     pub release: Option<VerifiedRelease>,
+    /// 설정 화면에서 고른 업데이트 채널 (`set_update_channel`). 고르는 칸이 없는 준비 모드는 None: 이 빌드의 채널
+    pub channel: Option<String>,
     pub progress: InstallProgress,
     /// 로드된 모듈 메타데이터 (required_extensions 해석용)
     pub module_metadata: Vec<ModuleInfo>,
@@ -37,6 +39,7 @@ impl Default for InstallerState {
             create_start_menu_shortcut: true,
             selected_modules: Vec::new(),
             release: None,
+            channel: None,
             progress: InstallProgress::default(),
             module_metadata: Vec::new(),
             components_dir: None,
@@ -80,8 +83,29 @@ async fn get_installer_state(state: State<'_, SharedState>) -> Result<serde_json
         "selected_modules": s.selected_modules,
         "components_dir": s.components_dir.clone().unwrap_or_else(current_components_dir),
         "latest_release_tag": s.release.as_ref().map(|r| r.version.clone()),
+        // 채널 칸에 미리 골라 둘 값: 고른 것, 없으면 지금 쓰는 채널(다시 설치할 때), 그것도 없으면 이 설치기의 채널
+        "channel": s.channel.clone().unwrap_or_else(|| {
+            release::default_channel(&saba_chan_updater_lib::config_file::ConfigFile::default_location())
+        }),
+        "channels": release::CHANNELS,
         "progress": s.progress,
     }))
+}
+
+/// 업데이트 채널을 고른다: 그 채널의 최신 판을 설치하고 이후 업데이트도 그 채널로 받는다.
+/// 받아 둔 릴리즈와 모듈 목록은 다른 채널의 것일 수 있어 버린다 (화면이 모듈 목록을 다시 받는다)
+#[tauri::command]
+async fn set_update_channel(state: State<'_, SharedState>, channel: String) -> Result<(), String> {
+    if !release::CHANNELS.contains(&channel.as_str()) {
+        return Err(format!("Unknown update channel: {}", channel));
+    }
+    let mut s = state.write().await;
+    if s.channel.as_deref() != Some(channel.as_str()) {
+        s.release = None;
+        s.module_metadata = Vec::new();
+        s.channel = Some(channel);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -140,11 +164,14 @@ async fn set_selected_modules(
 #[tauri::command]
 async fn get_available_modules(state: State<'_, SharedState>) -> Result<Vec<ModuleInfo>, String> {
     // 목록은 최신 릴리즈 manifest의 `module-*` 컴포넌트다 (U9e). 실패하면 화면이 알리고, 모듈은 설치 뒤 앱에서 받을 수 있다.
-    let cached = state.read().await.release.clone();
+    let (cached, channel) = {
+        let s = state.read().await;
+        (s.release.clone(), s.channel.clone())
+    };
     let manifest = match cached {
         Some(m) => m,
         None => {
-            let m = release::fetch_latest().await?;
+            let m = release::fetch_latest(channel.as_deref()).await?;
             state.write().await.release = Some(m.clone());
             m
         }
@@ -166,7 +193,8 @@ async fn get_available_modules(state: State<'_, SharedState>) -> Result<Vec<Modu
 async fn fetch_latest_release(
     state: State<'_, SharedState>,
 ) -> Result<serde_json::Value, String> {
-    let manifest = release::fetch_latest().await?;
+    let channel = state.read().await.channel.clone();
+    let manifest = release::fetch_latest(channel.as_deref()).await?;
     let info = serde_json::json!({
         "tag": manifest.version,
         "name": manifest.version,
@@ -246,6 +274,7 @@ async fn start_install(
             create_start_menu_shortcut: s.create_start_menu_shortcut,
             selected_modules: s.selected_modules.clone(),
             release: s.release.clone(),
+            channel: s.channel.clone(),
             module_metadata: s.module_metadata.clone(),
             // 설치 폴더에 제거기로 남는다
             uninstaller_exe: std::env::current_exe().ok(),
@@ -420,6 +449,7 @@ pub(crate) fn run(app_mode: AppMode) {
             set_components_dir,
             set_language,
             set_shortcut_options,
+            set_update_channel,
             set_selected_modules,
             get_available_modules,
             fetch_latest_release,

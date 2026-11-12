@@ -25,6 +25,8 @@ pub const DEFAULT_CHANNEL: &str = "stable";
 /// 채널은 안정한 순서로 쌓인다: 정식(stable) ⊂ 미리보기(rc) ⊂ 베타(beta) ⊂ nightly.
 /// 위 채널을 고른 클라이언트는 아래 채널 릴리즈도 받는다 (릴레이 `routes/updates.ts` `CHANNEL_ORDER`와 같다)
 pub const CHANNELS: [&str; 4] = ["stable", "rc", "beta", "nightly"];
+/// 사용자가 고를 수 있는 채널 (앱 설정, 설치할 때의 채널 고르기)
+pub const SELECTABLE_CHANNELS: [&str; 3] = ["stable", "rc", "beta"];
 
 /// `selected` 채널을 고른 클라이언트가 `release` 채널의 릴리즈를 받는가
 pub fn channel_includes(selected: &str, release: &str) -> bool {

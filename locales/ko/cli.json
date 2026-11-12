@@ -1194,6 +1194,7 @@
       "install.modules": "설치할 게임 모듈, 쉼표로 구분 (없으면 물어봄)",
       "install.gui": "화면이 없어도 데스크톱 앱까지 설치",
       "install.no_gui": "화면이 있어도 데스크톱 앱 없이 설치",
+      "install.channel": "설치하고 이후 업데이트를 받을 채널: stable(정식), rc(미리보기), beta(베타). 없으면 설치기의 채널",
       "uninstall.remove_settings": "설정과 디스코드 연결도 지움",
       "uninstall.remove_instances": "게임 서버도 지움 (서버 파일, 월드, 백업)",
       "config.move.kind": "옮길 것: modules(모듈) 또는 extensions(익스텐션)",
@@ -1882,6 +1883,7 @@
     "next_mac_app": "응용 프로그램 폴더에서 사바쨩을 열거나 다음 명령으로 여세요:\n{{command}}",
     "components_dir": "모듈·익스텐션은 {{dir}}에 둬요.",
     "components_dir_invalid": "{{dir}}은(는) 모듈·익스텐션 위치로 쓸 수 없어요: {{reason}}",
+    "channel": "{{channel}} 채널의 최신 판을 설치하고, 이후 업데이트도 이 채널로 받아요.",
     "invalid_dir": "{{dir}}에는 설치할 수 없어요. 드라이브 루트, 홈 폴더, 설정 폴더가 아닌 폴더를 고르세요"
   },
   "uninstall": {

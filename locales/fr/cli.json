@@ -1194,6 +1194,7 @@
       "install.modules": "Modules de jeu à installer, séparés par des virgules (demandés s'ils sont omis)",
       "install.gui": "Installer aussi l'application de bureau, même sans écran",
       "install.no_gui": "Installer sans l'application de bureau, même avec un écran",
+      "install.channel": "Canal d'installation et des mises à jour suivantes : stable, rc (aperçu) ou beta. Par défaut, le canal de l'installeur",
       "uninstall.remove_settings": "Supprimer aussi les paramètres et la connexion Discord",
       "uninstall.remove_instances": "Supprimer aussi les serveurs (fichiers, mondes, copies)",
       "config.move.kind": "Ce qu'il faut déplacer : modules ou extensions",
@@ -1836,6 +1837,7 @@
     "next_mac_app": "Ouvrez Saba-chan depuis le dossier Applications ou avec :\n{{command}}",
     "components_dir": "Les modules et extensions vont dans {{dir}}.",
     "components_dir_invalid": "Impossible d'utiliser {{dir}} pour les modules et extensions : {{reason}}",
+    "channel": "Installation de la dernière version du canal {{channel}} ; les mises à jour suivantes viendront aussi de ce canal.",
     "invalid_dir": "Impossible d'installer dans {{dir}}. Choisissez un dossier qui n'est ni la racine d'un lecteur, ni votre dossier personnel, ni le dossier des paramètres"
   },
   "uninstall": {

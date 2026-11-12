@@ -1194,6 +1194,7 @@
       "install.modules": "Zu installierende Spielmodule, durch Kommas getrennt (wird gefragt, wenn weggelassen)",
       "install.gui": "Auch ohne Bildschirm die Desktop-App installieren",
       "install.no_gui": "Auch mit Bildschirm ohne Desktop-App installieren",
+      "install.channel": "Kanal für die Installation und spätere Updates: stable, rc (Vorschau) oder beta. Ohne Angabe der Kanal des Installers",
       "uninstall.remove_settings": "Auch Einstellungen und die Discord-Verbindung entfernen",
       "uninstall.remove_instances": "Auch Server entfernen (Serverdateien, Welten, Backups)",
       "config.move.kind": "Was verschoben wird: modules oder extensions",
@@ -1836,6 +1837,7 @@
     "next_mac_app": "Öffne Saba-chan im Ordner „Programme“ oder mit:\n{{command}}",
     "components_dir": "Module und Erweiterungen kommen nach {{dir}}.",
     "components_dir_invalid": "{{dir}} kann nicht für Module und Erweiterungen verwendet werden: {{reason}}",
+    "channel": "Die neueste Version aus dem Kanal {{channel}} wird installiert; spätere Updates kommen ebenfalls aus diesem Kanal.",
     "invalid_dir": "Installation in {{dir}} nicht möglich. Wähle einen Ordner, der kein Laufwerksstamm, kein Benutzerordner und nicht der Einstellungsordner ist"
   },
   "uninstall": {

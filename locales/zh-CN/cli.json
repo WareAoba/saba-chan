@@ -1194,6 +1194,7 @@
       "install.modules": "要安装的游戏模块，用逗号分隔（省略时会询问）",
       "install.gui": "即使没有显示器也安装桌面应用",
       "install.no_gui": "即使有显示器也不安装桌面应用",
+      "install.channel": "安装并在之后接收更新的频道：stable（正式）、rc（预览）、beta（测试）。省略时用安装程序自身的频道",
       "uninstall.remove_settings": "同时删除设置和 Discord 连接",
       "uninstall.remove_instances": "同时删除游戏服务器（服务器文件、世界、备份）",
       "config.move.kind": "要移动的内容：modules 或 extensions",
@@ -1882,6 +1883,7 @@
     "next_mac_app": "从“应用程序”文件夹打开 Saba-chan，或运行以下命令：\n{{command}}",
     "components_dir": "模块和扩展放在 {{dir}}。",
     "components_dir_invalid": "无法将 {{dir}} 用于模块和扩展：{{reason}}",
+    "channel": "安装 {{channel}} 频道的最新版本，之后的更新也从这个频道接收。",
     "invalid_dir": "无法安装到 {{dir}}。请选择不是驱动器根目录、用户主文件夹或设置文件夹的文件夹"
   },
   "uninstall": {

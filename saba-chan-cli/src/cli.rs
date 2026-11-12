@@ -247,6 +247,9 @@ pub struct InstallArgs {
     /// Folder for modules and extensions (Saba-chan makes `modules` and `extensions` inside it). Installed files are moved
     #[arg(long, value_name = "PATH")]
     pub components_dir: Option<std::path::PathBuf>,
+    /// Update channel to install from and keep updating from: stable, rc (preview) or beta. The installer's own channel when omitted
+    #[arg(long, value_name = "CHANNEL", value_parser = clap::builder::PossibleValuesParser::new(saba_chan_installer_core::release::CHANNELS))]
+    pub channel: Option<String>,
 }
 
 #[derive(Args, Debug)]

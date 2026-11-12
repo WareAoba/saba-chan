@@ -42,14 +42,30 @@ fn relay_url() -> String {
     relay::DEFAULT_RELAY_URL.to_string()
 }
 
-/// 이 플랫폼의 최신 릴리즈 manifest (서명 검증 완료)
-pub async fn fetch_latest() -> Result<VerifiedRelease, String> {
+/// 설치할 때 고를 수 있는 업데이트 채널 (앱 설정의 "업데이트 채널"과 같다)
+pub use saba_chan_updater_lib::relay::SELECTABLE_CHANNELS as CHANNELS;
+
+/// 채널을 고르는 칸에 미리 골라 둘 값: 이미 쓰는 채널(`config.json`의 `updates.channel`), 없거나 고를 수 없는 값이면 설치기 빌드의 채널
+pub fn default_channel(config: &saba_chan_updater_lib::config_file::ConfigFile) -> String {
+    let bundled = &saba_chan_updater_lib::versions::bundled().channel;
+    match config.section("updates").get("channel").and_then(|v| v.as_str()) {
+        Some(used) if CHANNELS.contains(&used) => used.to_string(),
+        _ => bundled.clone(),
+    }
+}
+
+/// 이 플랫폼의 최신 릴리즈 manifest (서명 검증 완료). `channel`은 설치할 때 고른 채널(`CHANNELS` 중 하나)이고, 고르지 않았으면 설치기 빌드의 채널이다
+pub async fn fetch_latest(channel: Option<&str>) -> Result<VerifiedRelease, String> {
     let client = RelayClient::new(&relay_url());
     let platform = relay::current_platform();
     let bundled = saba_chan_updater_lib::versions::bundled();
+    if let Some(chosen) = channel.filter(|c| !CHANNELS.contains(c)) {
+        return Err(format!("Unknown update channel: {}", chosen));
+    }
     match client
-        // 설치기 자신의 채널(`versions.toml` `[release] channel`)에서 받는다: 베타 설치기가 정식 채널의 옛 판을 내림 설치로 거절하지 않게
-        .fetch_verified_catalog(&bundled.channel, &platform, &bundled.release, &relay::anon_client_id())
+        // 고르지 않았으면 설치기 자신의 채널(`versions.toml` `[release] channel`)에서 받는다: 베타 설치기가 정식 채널의 옛 판을 내림 설치로 거절하지 않게.
+        // 고른 채널의 최신 판이 이 설치기의 판보다 옛것이면 내림 설치로 거절된다 (그 검사는 풀지 않는다)
+        .fetch_verified_catalog(channel.unwrap_or(&bundled.channel), &platform, &bundled.release, &relay::anon_client_id())
         .await
     {
         Ok(Some(release)) => Ok(VerifiedRelease(release.manifest)),

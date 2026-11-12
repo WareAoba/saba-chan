@@ -138,7 +138,7 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         .unwrap_or_else(|| detect_profile(args.gui, args.no_gui, Os::current(), |k| std::env::var(k).ok()));
 
     let spin = crate::progress::spinner(&t!("install.fetching"));
-    let manifest = release::fetch_latest().await;
+    let manifest = release::fetch_latest(args.channel.as_deref()).await;
     spin.finish_and_clear();
     let manifest = manifest.map_err(|e| failed(t!("install.fetch_failed", reason = e)))?;
     let available = release::modules(&manifest);
@@ -209,6 +209,9 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         }
         ctx.out.hint(&t!("install.components_dir", dir = chosen.display()));
     }
+    if let Some(channel) = &args.channel {
+        ctx.out.hint(&t!("install.channel", channel = channel));
+    }
     ctx.ask.ensure(&summary)?;
 
     let hooks = Hooks {
@@ -224,6 +227,8 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         selected_modules: modules.clone(),
         module_metadata: available,
         release: Some(manifest),
+        // 위에서 이 채널로 받았다. 설치 뒤의 업데이트도 이 채널로 받는다
+        channel: args.channel.clone(),
         // 창 제거기를 두지 않는다: Windows 앱 목록에도 나오지 않고, 지울 때는 데몬을 끄고 설치 폴더를 지운다
         uninstaller_exe: None,
         components_dir: args

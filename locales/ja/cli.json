@@ -1194,6 +1194,7 @@
       "install.modules": "インストールするゲームモジュール、カンマ区切り（省略時は質問）",
       "install.gui": "画面がなくてもデスクトップアプリまでインストール",
       "install.no_gui": "画面があってもデスクトップアプリなしでインストール",
+      "install.channel": "インストールし、以後のアップデートを受け取るチャンネル: stable(正式), rc(プレビュー), beta(ベータ)。省略するとインストーラーのチャンネル",
       "uninstall.remove_settings": "設定と Discord 連携も削除",
       "uninstall.remove_instances": "ゲームサーバーも削除（サーバーファイル、ワールド、バックアップ）",
       "config.move.kind": "移すもの: modules（モジュール）または extensions（拡張機能）",
@@ -1882,6 +1883,7 @@
     "next_mac_app": "アプリケーションフォルダからサバちゃんを開くか、次のコマンドで開いてください:\n{{command}}",
     "components_dir": "モジュール・拡張機能は {{dir}} に置きます。",
     "components_dir_invalid": "{{dir}} はモジュール・拡張機能の場所に使えません: {{reason}}",
+    "channel": "{{channel}} チャンネルの最新版をインストールし、以後のアップデートもこのチャンネルから受け取ります。",
     "invalid_dir": "{{dir}} にはインストールできません。ドライブのルート、ホームフォルダー、設定フォルダー以外を選んでください"
   },
   "uninstall": {

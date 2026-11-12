@@ -953,6 +953,7 @@
       "install.modules": "Game modules to install, comma separated (asked when omitted)",
       "install.gui": "Install the desktop app too, even without a display",
       "install.no_gui": "Install without the desktop app, even with a display",
+      "install.channel": "Update channel to install from and keep updating from: stable, rc (preview) or beta. The installer's own channel when omitted",
       "do.action": "Action id, e.g. server.restart or server.command:say",
       "do.server": "Server the action works on",
       "server.discord.word": "Words for the server, comma-separated (replace the current ones). --word \"\" removes them",
@@ -1580,6 +1581,7 @@
     "next_mac_app": "Open Saba-chan from your Applications folder, or run:\n{{command}}",
     "components_dir": "Modules and extensions go in {{dir}}.",
     "components_dir_invalid": "Can't use {{dir}} for modules and extensions: {{reason}}",
+    "channel": "Installing the latest {{channel}} release. Later updates come from this channel too.",
     "invalid_dir": "Can't install into {{dir}}. Choose a folder that isn't a drive root, your home folder, or the settings folder"
   },
   "update_required": {
