@@ -440,28 +440,54 @@ fn is_addon(c: &Component) -> bool {
 
 /// 켜진 서버가 쓰고 있어 미룬 모듈·익스텐션 교체를 다시 해 보는 간격
 const ADDON_HOLD_RETRY: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+/// 받지 못했거나 바꾸지 못한 모듈·익스텐션 교체를 다시 해 보는 간격 (잠깐의 네트워크 오류로 새 판이 다음 정기 확인까지 밀리지 않게).
+/// 다 쓰면 다음 확인에 맡긴다
+const ADDON_FAIL_RETRY: [std::time::Duration; 3] =
+    [ADDON_HOLD_RETRY, std::time::Duration::from_secs(30 * 60), std::time::Duration::from_secs(30 * 60)];
 static ADDON_REPLACING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// 교체 한 차례가 남긴 것
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Leftover {
+    /// 켜진 서버가 쓰거나 서버 시작·설치 중이라 미뤘다
+    held: bool,
+    /// 받지 못했거나 바꾸지 못했다
+    failed: bool,
+}
+
+/// 남긴 것이 있으면 다음 차례까지 기다릴 시간. `failures`는 잇달아 실패한 차례 수
+fn addon_retry_wait(left: Leftover, failures: &mut usize) -> Option<std::time::Duration> {
+    if !left.failed {
+        *failures = 0;
+        return left.held.then_some(ADDON_HOLD_RETRY);
+    }
+    let wait = ADDON_FAIL_RETRY.get(*failures).copied();
+    *failures = failures.saturating_add(1);
+    if left.held { Some(ADDON_HOLD_RETRY) } else { wait }
+}
+
 /// 모듈·익스텐션 자동 교체: 새 판(지금 코어로 돌아가는 가장 새 판, 릴레이 `/v1/addons/catalog`)을 받아 바로 바꿔 끼운다.
-/// 켜진 서버가 쓰는 것은 서버가 꺼질 때까지 5분마다 다시 보고, 사용자가 고친 것·직접 넣은 것은 덮어쓰지 않는다. 한 번에 하나만 돈다
+/// 켜진 서버가 쓰는 것은 서버가 꺼질 때까지 5분마다 다시 보고, 받지 못했거나 바꾸지 못한 것은 5분·30분·30분 뒤에 다시 해 본다.
+/// 사용자가 고친 것·직접 넣은 것은 덮어쓰지 않는다. 한 번에 하나만 돈다
 fn spawn_addon_replace(state: UpdateState) {
     use std::sync::atomic::Ordering;
     if ADDON_REPLACING.swap(true, Ordering::SeqCst) {
         return;
     }
     tokio::spawn(async move {
-        while replace_addons_once(&state).await {
-            tokio::time::sleep(ADDON_HOLD_RETRY).await;
+        let mut failures = 0;
+        while let Some(wait) = addon_retry_wait(replace_addons_once(&state).await, &mut failures) {
+            tokio::time::sleep(wait).await;
         }
         ADDON_REPLACING.store(false, Ordering::SeqCst);
     });
 }
 
-/// 바꿀 수 있는 것을 바꾸고, 켜진 서버 때문에 미룬 것이 남았는가를 돌려준다
-async fn replace_addons_once(state: &UpdateState) -> bool {
+/// 바꿀 수 있는 것을 바꾸고, 다음 차례로 남긴 것(켜진 서버 때문에 미룬 것, 실패한 것)을 돌려준다
+async fn replace_addons_once(state: &UpdateState) -> Leftover {
     // 미뤄 둔 사이 업데이트 확인을 껐으면 멈춘다
     if !state.manager.read().await.get_config().enabled {
-        return false;
+        return Leftover::default();
     }
     // 이 코어로 돌아가지 않는 판(릴리즈 manifest에만 있는 더 새 판)은 앱을 올릴 때까지 둔다: 적용이 requires 검사로 거절한다
     let core = std::collections::HashMap::from([("saba-core".to_string(), env!("CARGO_PKG_VERSION").to_string())]);
@@ -475,7 +501,7 @@ async fn replace_addons_once(state: &UpdateState) -> bool {
         .map(|c| c.component)
         .collect();
     if pending.is_empty() {
-        return false;
+        return Leftover::default();
     }
     let (busy_modules, busy_extensions) = busy_addons(state).await;
     let pending: Vec<Component> = pending.into_iter().filter(|c| replaceable_without_asking(&c.manifest_key())).collect();
@@ -484,22 +510,26 @@ async fn replace_addons_once(state: &UpdateState) -> bool {
         tracing::info!("[Updates] Servers are using {:?}; replacing them after they stop", held.iter().map(Component::manifest_key).collect::<Vec<_>>());
     }
     if ready.is_empty() {
-        return !held.is_empty();
+        return Leftover { held: !held.is_empty(), failed: false };
     }
+    let mut failed = false;
     let mut downloaded = Vec::new();
     for comp in ready {
         // 판마다 잠갔다 놓는다: 판 하나를 받는 동안만 상태 조회·업데이트 화면이 기다린다
         let result = state.manager.write().await.download_component(&comp).await;
         match result {
             Ok(_) => downloaded.push(comp),
-            Err(e) => tracing::warn!("[Updates] Could not download {} for replacement: {}", comp.manifest_key(), e),
+            Err(e) => {
+                failed = true;
+                tracing::warn!("[Updates] Could not download {} for replacement: {}", comp.manifest_key(), e);
+            }
         }
     }
     // 여기부터 교체가 끝날 때까지 서버 시작을 막는다: 사용 확인과 교체 사이에 켜진 서버가 쓰던 판을 바꾸지 않게
     // 시작·설치가 진행 중이면 기다리지 않고 다음 차례로 미룬다 (받은 파일은 남는다)
     let Some(_starts) = crate::supervisor::Supervisor::try_hold_starts() else {
         tracing::info!("[Updates] A server is starting or installing; replacing modules and extensions later");
-        return true;
+        return Leftover { held: true, failed };
     };
     // 받는 사이에 켠 서버가 쓰는 것은 바꾸지 않고 다음 차례로 미룬다
     let (busy_modules, busy_extensions) = busy_addons(state).await;
@@ -511,12 +541,14 @@ async fn replace_addons_once(state: &UpdateState) -> bool {
     if !keys.is_empty() {
         tracing::info!("[Updates] Replacing {:?} without asking", keys);
         let answer = crate::ipc::internal::into_internal(apply_updates_with(state.clone(), ApplyRequest { components: keys, untouched_only: true }).await.into_response()).await.body;
-        // 바꾸지 못한 것(교체 순간 사용자 파일이 보였거나, 옮기지 못함)은 업데이트 목록에 남아 사용자가 고른다
+        // 바꾸지 못한 것(교체 순간 사용자 파일이 보였거나, 옮기지 못함)은 업데이트 목록에 남아 사용자가 고른다.
+        // 다음 차례는 사용자 파일이 있는 것을 받기 전에 거르므로(`replaceable_without_asking`) 옮기지 못한 것만 다시 해 본다
         if let Some(errors) = answer.get("errors").and_then(Value::as_array).filter(|e| !e.is_empty()) {
+            failed = true;
             tracing::warn!("[Updates] Some modules or extensions were not replaced: {:?}", errors);
         }
     }
-    held
+    Leftover { held, failed }
 }
 
 /// 지금 바꿀 것과 켜진 서버가 써서 미룰 것
@@ -2298,6 +2330,27 @@ mod tests {
         assert!(super::only_resident_guis(&registry.list().await), "CLIs do not count");
         registry.register(crate::ipc::ClientKind::Gui, Some(3), None).await;
         assert!(!super::only_resident_guis(&registry.list().await), "a GUI with a window is relaunched with its window");
+    }
+
+    /// 받지 못했거나 바꾸지 못한 모듈·익스텐션은 다음 정기 확인(하루 뒤)을 기다리지 않고 5분, 30분, 30분 뒤에 다시 해 본다
+    #[test]
+    fn a_failed_addon_replacement_is_tried_again_a_few_times_before_the_next_check() {
+        use super::{addon_retry_wait, Leftover, ADDON_HOLD_RETRY};
+        let minutes = |m: u64| Some(std::time::Duration::from_secs(m * 60));
+        let failed = Leftover { held: false, failed: true };
+        let mut failures = 0;
+        let waits: Vec<_> = (0..4).map(|_| addon_retry_wait(failed, &mut failures)).collect();
+        assert_eq!(waits, [minutes(5), minutes(30), minutes(30), None]);
+
+        // 켜진 서버 때문에 미룬 것은 서버가 꺼질 때까지 5분마다 본다. 실패가 섞여도 더 늦추지 않는다
+        let mut failures = 0;
+        assert_eq!(addon_retry_wait(Leftover { held: true, failed: false }, &mut failures), Some(ADDON_HOLD_RETRY));
+        for _ in 0..5 {
+            assert_eq!(addon_retry_wait(Leftover { held: true, failed: true }, &mut failures), Some(ADDON_HOLD_RETRY));
+        }
+        // 잘 끝난 차례 뒤의 실패는 처음부터 센다
+        assert_eq!(addon_retry_wait(Leftover::default(), &mut failures), None);
+        assert_eq!(addon_retry_wait(failed, &mut failures), minutes(5));
     }
 
     /// 헤드리스 설치는 창 없이 적용하고, 다시 띄울 것을 받지 않았으면 데몬 자신을 다시 띄운다. 데스크톱은 그대로
