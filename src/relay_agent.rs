@@ -3045,6 +3045,163 @@ mod tests {
         assert!(host_load(&none).get("diskFree").is_none());
     }
 
+    /// heartbeat 계약 표본 (`tests/fixtures/relay-heartbeat-sample.json`, 릴레이 저장소의 같은 파일을 그대로 복사한 것).
+    /// 릴레이 시험은 이 표본을 스키마·처리기·카탈로그로 지나게 하고, 여기서는 데몬이 실제로 보내는 본문과 받는 답을 대조한다
+    fn heartbeat_sample() -> Value {
+        serde_json::from_str(include_str!("../tests/fixtures/relay-heartbeat-sample.json")).unwrap()
+    }
+
+    /// JSON 모양: 경로 → 값 형식들. 배열 원소는 `[]`, 키가 id·언어·칸 이름인 묶음은 `*`로 모은다.
+    /// 액션 `input`은 릴레이가 넘기기만 하는 JSON 스키마라 그 자체의 형식만 본다
+    fn shape(v: &Value, path: &str, out: &mut std::collections::BTreeMap<String, std::collections::BTreeSet<&'static str>>) {
+        const MAPS: &[&str] = &[
+            "metadata.allowedInstances", "metadata.fullNotice", "metadata.startNotice", "metadata.serverWords", "metadata.serverWords.*.commands",
+            "metadata.permissions", "metadata.permissions.*.members", "metadata.permissions.*.commandLevels",
+            "metadata.actions[].title", "metadata.actions[].name", "metadata.actions[].description",
+            "metadata.modules[].display_names", "metadata.modules[].module_aliases_by_language",
+            "metadata.modules[].commands.fields[].titles", "metadata.modules[].commands.fields[].descriptions",
+            "metadata.modules[].commands.fields[].aliases_by_language", "metadata.modules[].commands.fields[].inputs[].titles",
+            "latestReleases",
+        ];
+        let kind = match v {
+            Value::Null => "null",
+            Value::Bool(_) => "bool",
+            Value::Number(_) => "number",
+            Value::String(_) => "string",
+            Value::Array(_) => "array",
+            Value::Object(_) => "object",
+        };
+        out.entry(path.to_string()).or_default().insert(kind);
+        if path.ends_with("].input") {
+            return;
+        }
+        let join = |key: &str| if path.is_empty() { key.to_string() } else { format!("{path}.{key}") };
+        match v {
+            Value::Array(items) => items.iter().for_each(|i| shape(i, &format!("{path}[]"), out)),
+            Value::Object(map) if MAPS.contains(&path) => map.values().for_each(|i| shape(i, &join("*"), out)),
+            Value::Object(map) => map.iter().for_each(|(k, i)| shape(i, &join(k), out)),
+            _ => {}
+        }
+    }
+
+    /// 데몬이 보낸 값의 경로가 모두 표본에 같은 형식으로 있는가. 어긋난 (경로, 형식)을 돌려준다.
+    /// 어느 쪽이 키 이름을 바꿔도 여기서 드러난다. 표본의 null은 "값이 없을 수도 있다"라 어느 형식이든 받는다
+    fn off_contract(sent: &Value, samples: &[&Value], except: &[&str]) -> Vec<(String, &'static str)> {
+        let (mut ours, mut theirs) = (Default::default(), Default::default());
+        shape(sent, "", &mut ours);
+        samples.iter().for_each(|sample| shape(sample, "", &mut theirs));
+        ours.into_iter()
+            .filter(|(p, _)| !except.iter().any(|e| p == e || p.starts_with(&format!("{e}."))))
+            .flat_map(|(p, kinds)| {
+                let known = theirs.get(&p).cloned().unwrap_or_default();
+                kinds.into_iter().filter(move |k| !(known.contains(k) || (known.contains("null") || *k == "null") && !known.is_empty())).map(move |k| (p.clone(), k)).collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    /// 실제 하트비트 본문(첫 전체·줄인 것)과 서버·모듈 한 줄이 표본과 같은 키·형식이고, 표본의 답(공인 주소·새로 묶인 길드·
+    /// 메타데이터 다시 달라기)을 데몬이 읽는다. 어느 저장소에서 키 이름을 바꾸면 이 시험이나 릴레이 시험이 깨진다
+    #[tokio::test]
+    async fn the_heartbeat_matches_the_contract_sample_shared_with_the_relay() {
+        use axum::{extract::State as AxState, routing::post};
+        use std::collections::VecDeque;
+        let sample = heartbeat_sample();
+        // 표본은 공개 저장소에 들어간다: 가짜 값만
+        let text = sample.to_string();
+        assert!(!text.contains("sbn_") && !text.contains("sk-"), "the sample holds no tokens or keys");
+
+        type Shared = Arc<Mutex<(Vec<Value>, VecDeque<Value>)>>;
+        async fn heartbeat(AxState(shared): AxState<Shared>, axum::Json(body): axum::Json<Value>) -> axum::Json<Value> {
+            let mut s = shared.lock().unwrap();
+            s.0.push(body);
+            axum::Json(s.1.pop_front().unwrap_or(Value::Null))
+        }
+        let shared: Shared = Arc::new(Mutex::new((Vec::new(), VecDeque::from([sample["response"].clone(), sample["response"].clone(), sample["needMetadataResponse"].clone()]))));
+        let app = axum::Router::new().route("/heartbeat", post(heartbeat)).with_state(shared.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let agent = RelayAgent::new();
+        let session = test_session(&agent, &base, "sbn_h1.secret", tmp.path()).await;
+        {
+            let mut inner = agent.lock();
+            inner.cancel = Some(session.cancel.clone());
+            inner.generation = 1;
+            inner.status.running = true;
+        }
+        // 권한·허용 서버가 실리게 길드 하나를 둔다
+        let guild = "600000000000000001";
+        session.server.config_store.update_node_settings(guild, |node| {
+            node.insert("allowedInstances".into(), json!(["inst-0001"]));
+            ((), true)
+        }).await.unwrap();
+
+        assert!(session.heartbeat_once().await, "a newly linked guild is acknowledged at once");
+        session.heartbeat_once().await;
+        let sent = shared.lock().unwrap().0.clone();
+        // moduleDetails: 새 릴레이는 받지 않지만 운영 중인 릴레이 스키마가 요구한다 (`metadata`의 주석)
+        assert_eq!(off_contract(&sent[0], &[&sample["request"]], &["metadata.moduleDetails"]), vec![], "{}", sent[0]);
+        assert!(sent[0]["metadata"]["permissions"][guild].is_object() && sent[0]["metadata"]["actions"].as_array().is_some_and(|a| !a.is_empty()));
+        // 답의 공인 주소와 새로 묶인 길드를 읽었다: 다음 하트비트가 그 연결 id로 확인 응답을 싣는다
+        assert_eq!(agent.lock().status.seen_address.as_deref(), sample["response"]["address"].as_str());
+        assert_eq!(sent[1]["linkedGuildsAckIds"], json!([sample["response"]["linkedGuilds"][0]["linkId"]]));
+
+        // 릴레이가 지문을 받아 두었으면 줄여 보내고, 모른다고 하면(needMetadata) 곧바로 전체를 다시 보낸다
+        *session.metadata_sent.lock().unwrap() = sent[1]["metadataHash"].as_str().map(str::to_string);
+        assert!(session.heartbeat_once().await, "needMetadata asks for the whole metadata again");
+        let reduced = shared.lock().unwrap().0[2].clone();
+        assert_eq!(reduced["metadataUnchanged"], json!(true));
+        // 줄인 본문은 전체 본문의 일부 키다 (표본의 줄인 본문은 예시라 PC 부하·예약·확인 응답이 없다)
+        assert_eq!(off_contract(&reduced, &[&sample["reducedRequest"], &sample["request"]], &[]), vec![], "{reduced}");
+
+        // 서버·모듈 한 줄 (빈 데몬에는 없다): 표본 줄을 데몬 값으로 만들어 대조한다
+        let server = json!({
+            "id": "inst-0001", "name": "friends", "module": "minecraft", "status": "running", "access": "members",
+            "controllers": [{ "name": "Steve", "discord_id": "300000000000000002" }], "players": { "online": 2, "max": 20 },
+            "start_time": 1_731_400_000u64, "extension_status": { "docker": { "status_line": "TPS 20.0" } },
+        });
+        let usage = crate::system_monitor::InstanceMetrics {
+            id: "inst-0001".into(), name: "friends".into(), running: true, process_count: 1,
+            cpu_percent: 12.5, memory_bytes: 2048 * 1024 * 1024, disk_read_bps: 0, disk_write_bps: 0, net_rx_bps: None, net_tx_bps: None,
+        };
+        crate::supervisor::chat_link::toggle("inst-0001", "600000000000000001", "700000000000000001", None, |_| Ok::<(), ()>(())).unwrap();
+        let entry = relay_server_entry(&server, Some(&usage));
+        assert_eq!(off_contract(&entry, &[&sample["request"]["metadata"]["servers"][0]], &[]), vec![], "{entry}");
+        assert_eq!(entry.as_object().unwrap().len(), sample["request"]["metadata"]["servers"][0].as_object().unwrap().len(), "{entry}");
+
+        let module_dir = tmp.path().join("mc");
+        std::fs::create_dir_all(module_dir.join("locales")).unwrap();
+        std::fs::write(
+            module_dir.join("locales").join("ko.json"),
+            r#"{"module": {"display_name": "마인크래프트"}, "aliases": {"module": ["마크"], "commands": {"say": ["공지"]}}, "commands": {"say": {"label": "말하기", "description": "모두에게 말해요", "inputs": {"message": {"label": "메시지"}}}}}"#,
+        )
+        .unwrap();
+        let say: crate::supervisor::module_loader::CommandField = serde_json::from_value(json!({
+            "name": "say", "label": "Say", "description": "Broadcast a message", "risk": "safe",
+            "inputs": [{ "name": "message", "label": "Message", "type": "text", "required": true }],
+        }))
+        .unwrap();
+        let view = crate::chat::api::ModuleView {
+            name: "minecraft".into(),
+            game_names: vec!["Minecraft".into()],
+            module_aliases: vec!["mc".into()],
+            display_name: Some("Minecraft".into()),
+            command_aliases: vec![("say".into(), vec!["broadcast".into()])],
+            commands: vec![say],
+            presets: vec![serde_json::from_value(json!({ "id": "vanilla", "label": "Vanilla" })).unwrap()],
+            locale_dir: Some(module_dir),
+            ..Default::default()
+        };
+        let module = relay_module_entry(&view);
+        let sample_module = &sample["request"]["metadata"]["modules"][0];
+        assert_eq!(off_contract(&module, &[sample_module], &[]), vec![], "{module}");
+        let keys = |v: &Value| v.as_object().unwrap().keys().cloned().collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(keys(&module), keys(sample_module), "{module}");
+        assert_eq!(keys(&module["commands"]["fields"][0]), keys(&sample_module["commands"]["fields"][0]), "{module}");
+    }
+
     /// 릴레이가 읽지 않는 값(기능 목록, 옛 전역 별명)은 하트비트에 싣지 않는다. 릴레이 스키마가 버리는 값이다
     #[tokio::test]
     async fn heartbeat_leaves_out_what_the_relay_drops() {
