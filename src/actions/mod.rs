@@ -2134,7 +2134,9 @@ async fn route_once(server: &IPCServer, method: &str, uri: &str, body: Option<Va
     if let Some(origin) = origin.or_else(|| Some(crate::audit::current())) {
         req.extensions_mut().insert(origin);
     }
-    server.router().oneshot(req).await.map_err(|e| e.to_string())
+    // 라우터는 실패하지 않는다 (`Infallible`)
+    let Ok(res) = server.router().oneshot(req).await;
+    Ok(res)
 }
 
 mod steps;
