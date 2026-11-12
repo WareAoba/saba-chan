@@ -1678,7 +1678,7 @@ fn updater_binary_near(daemon_exe: &std::path::Path, applies: bool) -> Option<st
 /// 데몬이 끝나도 살아남게 띄운다
 /// 띄우고 `grace` 동안 지켜본다. 그 사이 끝나면 종료 코드를 담은 오류
 async fn spawn_and_confirm(program: &std::path::Path, args: &[String], grace: std::time::Duration) -> std::io::Result<()> {
-    let mut child = spawn_detached(program, args)?;
+    let mut child = saba_chan_updater_lib::process::spawn_detached(std::process::Command::new(program).args(args))?;
     let deadline = std::time::Instant::now() + grace;
     while std::time::Instant::now() < deadline {
         if let Some(status) = child.try_wait()? {
@@ -1687,36 +1687,6 @@ async fn spawn_and_confirm(program: &std::path::Path, args: &[String], grace: st
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     Ok(())
-}
-
-fn spawn_detached(program: &std::path::Path, args: &[String]) -> std::io::Result<std::process::Child> {
-    let mut cmd = std::process::Command::new(program);
-    cmd.args(args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const DETACHED_PROCESS: u32 = 0x0000_0008;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
-        // 데몬을 띄운 쪽의 Job Object가 닫혀도 업데이터가 살아남게 빠져나온다. 허용되지 않으면 그냥 띄운다.
-        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB);
-        match cmd.spawn() {
-            Err(e) if e.raw_os_error() == Some(5) => {
-                cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
-                cmd.spawn()
-            }
-            other => other,
-        }
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
-        cmd.spawn()
-    }
 }
 
 /// GET /api/updates/last-result — 마지막 적용 결과 (업데이터나 데몬이 남긴 완료 마커). 없으면 `result: null`.
