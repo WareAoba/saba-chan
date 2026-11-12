@@ -25,7 +25,7 @@ pub(crate) const VENV_DIR_NAME: &str = "python-env";
 /// `data_dir`: 런타임을 설치할 루트 디렉토리 (`%APPDATA%/saba-chan`)
 ///
 /// 반환: venv 내 Python 실행 파일 경로
-pub async fn setup_python(data_dir: &Path) -> Result<PathBuf, String> {
+pub async fn setup_python(data_dir: &Path, on_download: &(dyn Fn(u64, Option<u64>) + Sync)) -> Result<PathBuf, String> {
     let portable_dir = data_dir.join(PORTABLE_PYTHON_DIR);
     let venv_dir = data_dir.join(VENV_DIR_NAME);
     let portable_exe = portable_python_exe(data_dir);
@@ -44,14 +44,10 @@ pub async fn setup_python(data_dir: &Path) -> Result<PathBuf, String> {
 
         let tmp_archive = data_dir.join("_python_download.tar.gz");
 
-        download_file(&url, &tmp_archive)
+        // 고정 해시와 다르면 받은 파일을 남기지 않는다 (풀지 않는다)
+        download_file(&url, sha256.as_deref(), &tmp_archive, on_download)
             .await
             .map_err(|e| format!("Python 다운로드 실패: {}", e))?;
-        // 고정 해시와 다르면 풀지 않는다
-        if let Err(e) = saba_chan_updater_lib::python_pin::verify(&tmp_archive, sha256.as_deref()) {
-            let _ = std::fs::remove_file(&tmp_archive);
-            return Err(e);
-        }
 
         std::fs::create_dir_all(&portable_dir)
             .map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
@@ -124,7 +120,7 @@ pub async fn setup_python(data_dir: &Path) -> Result<PathBuf, String> {
 ///
 /// 기존 `setup_python`은 포터블 Python이 존재하면 스킵했지만,
 /// 이 함수는 검증에 실패하면 기존 디렉토리를 삭제하고 재다운로드한다.
-pub async fn setup_python_with_repair(data_dir: &Path) -> Result<PathBuf, String> {
+pub async fn setup_python_with_repair(data_dir: &Path, on_download: &(dyn Fn(u64, Option<u64>) + Sync)) -> Result<PathBuf, String> {
     let portable_dir = data_dir.join(PORTABLE_PYTHON_DIR);
     let venv_dir = data_dir.join(VENV_DIR_NAME);
     let portable_exe = portable_python_exe(data_dir);
@@ -148,7 +144,7 @@ pub async fn setup_python_with_repair(data_dir: &Path) -> Result<PathBuf, String
         let _ = std::fs::remove_dir_all(&venv_dir);
     }
 
-    setup_python(data_dir).await
+    setup_python(data_dir, on_download).await
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -156,53 +152,13 @@ pub async fn setup_python_with_repair(data_dir: &Path) -> Result<PathBuf, String
 // ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
-//  다운로드 & 추출 (OS 네이티브 도구)
+//  다운로드 (검증 다운로드) & 추출 (OS 네이티브 도구)
 // ═══════════════════════════════════════════════════════════════
 
-async fn download_file(url: &str, dest: &Path) -> Result<(), String> {
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
-    }
-
-    let output = {
-        #[cfg(target_os = "windows")]
-        {
-            // URL·경로는 스크립트에 끼우지 않고 환경변수로 넘긴다 (따옴표가 든 경로도 그대로)
-            let script = "$ProgressPreference = 'SilentlyContinue'; \
-                 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; \
-                 Invoke-WebRequest -Uri $env:SABA_DL_URL -OutFile $env:SABA_DL_DEST -UseBasicParsing";
-            let mut cmd = Command::new(saba_chan_updater_lib::process::system_tool("powershell"));
-            cmd.args(["-NoProfile", "-NonInteractive", "-Command", script])
-                .env("SABA_DL_URL", url)
-                .env("SABA_DL_DEST", dest);
-            apply_creation_flags(&mut cmd);
-            cmd.output()
-                .await
-                .map_err(|e| format!("PowerShell 실행 실패: {}", e))?
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let mut cmd = Command::new("curl");
-            cmd.args([
-                "-fSL",
-                "--retry",
-                "3",
-                "-o",
-                &dest.to_string_lossy(),
-                url,
-            ]);
-            apply_creation_flags(&mut cmd);
-            cmd.output()
-                .await
-                .map_err(|e| format!("curl 실행 실패: {}", e))?
-        }
-    };
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("다운로드 실패: {}", stderr));
-    }
+/// 다른 컴포넌트와 같은 검증 다운로드로 받는다: 받는 동안 `on_progress(받은 크기, 전체)`를 부르고,
+/// 30초 동안 아무것도 오지 않으면 끊고, `sha256`과 다르면 받은 파일을 남기지 않는다
+async fn download_file(url: &str, sha256: Option<&str>, dest: &Path, on_progress: &(dyn Fn(u64, Option<u64>) + Sync)) -> Result<(), String> {
+    crate::release::download_url(url, sha256, dest, None, on_progress).await?;
 
     // 최소 크기 검증
     let meta = std::fs::metadata(dest)
@@ -374,5 +330,49 @@ mod runtime_dir_tests {
         std::fs::create_dir_all(&macos).unwrap();
         assert_eq!(resolve_runtime_data_dir(&macos), constants::resolve_data_dir());
         assert_eq!(resolve_runtime_data_dir(tmp.path()), tmp.path());
+    }
+}
+
+#[cfg(test)]
+mod download_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// 길이 `len`의 본문을 절반 보내고 잠깐 쉬었다가 나머지를 보내는 서버
+    async fn serve_slowly(len: usize) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = sock.read(&mut buf).await;
+            let body = vec![b'p'; len];
+            let _ = sock.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {len}\r\n\r\n").as_bytes()).await;
+            let _ = sock.write_all(&body[..len / 2]).await;
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let _ = sock.write_all(&body[len / 2..]).await;
+        });
+        format!("http://{}/python.tar.gz", addr)
+    }
+
+    /// Python을 받는 동안 설치 화면이 멈춰 보이지 않게 받은 크기를 알리고, 고정 해시와 다른 파일은 남기지 않는다
+    #[tokio::test]
+    async fn the_python_download_reports_its_progress_and_checks_the_pin() {
+        const LEN: usize = 1_200_000;
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("python.tar.gz");
+        let seen = Mutex::new(Vec::new());
+        let url = serve_slowly(LEN).await;
+        download_file(&url, None, &dest, &|got, total| seen.lock().unwrap().push((got, total))).await.unwrap();
+        assert_eq!(std::fs::metadata(&dest).unwrap().len(), LEN as u64);
+        let seen = seen.into_inner().unwrap();
+        assert!(seen.iter().any(|(got, total)| *got > 0 && *total == Some(LEN as u64)), "{:?}", seen);
+
+        let url = serve_slowly(LEN).await;
+        let other = tmp.path().join("other.tar.gz");
+        let err = download_file(&url, Some(&"0".repeat(64)), &other, &|_, _| {}).await.unwrap_err();
+        assert!(err.contains("SHA-256"), "{err}");
+        assert!(!other.exists());
     }
 }

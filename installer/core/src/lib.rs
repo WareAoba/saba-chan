@@ -407,7 +407,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
 
     // Step 5: 포터블 Python 다운로드 + venv 생성 (55-70%)
     emit("runtime-python", "Preparing Python runtime...", 57);
-    prepare_python(&install_dir, &mut installed, &warn).await;
+    prepare_python(hooks, &install_dir, &mut installed, &warn).await;
 
     // Step 7: 설정 파일 생성 (85-88%)
     emit("config", "Setting up configuration...", 86);
@@ -606,10 +606,27 @@ async fn install_modules(
 
 /// 포터블 Python과 venv를 준비한다. 기존 런타임이 손상되었으면 지우고 다시 받는다.
 /// 실패해도 설치는 계속한다: 데몬이 시작할 때 다시 시도한다
-async fn prepare_python(install_dir: &Path, installed: &mut Vec<String>, warn: &(dyn Fn(String) + Sync)) {
+/// Python을 받는 동안은 다른 컴포넌트처럼 받은 크기를 알린다 (화면이 멈춰 보이지 않게)
+async fn prepare_python(hooks: &dyn InstallHooks, install_dir: &Path, installed: &mut Vec<String>, warn: &(dyn Fn(String) + Sync)) {
     let runtime_data_dir = runtime_bootstrap::resolve_runtime_data_dir(install_dir);
     let _ = std::fs::create_dir_all(&runtime_data_dir);
-    match runtime_bootstrap::setup_python_with_repair(&runtime_data_dir).await {
+    let on_download = |received: u64, total: Option<u64>| {
+        let mb = received as f64 / 1_048_576.0;
+        let message = match total {
+            Some(total) => format!("Downloading Python — {:.1}/{:.1} MB ({}%)", mb, total as f64 / 1_048_576.0, received * 100 / total.max(1)),
+            None => format!("Downloading Python — {:.1} MB", mb),
+        };
+        hooks.progress(&InstallProgress {
+            step: "runtime-python".to_string(),
+            message,
+            percent: 57,
+            download_file: Some("Python".to_string()),
+            download_received: Some(received),
+            download_total: total,
+            ..Default::default()
+        });
+    };
+    match runtime_bootstrap::setup_python_with_repair(&runtime_data_dir, &on_download).await {
         Ok(python_path) => {
             tracing::info!("Python 환경 준비 완료: {}", python_path.display());
             installed.push("runtime:python".to_string());
@@ -683,7 +700,7 @@ pub async fn setup(config: SetupOptions, hooks: &dyn InstallHooks) -> InstallPro
     }
 
     emit_step(hooks, "runtime-python", "Preparing Python runtime...", 57);
-    prepare_python(&config.install_path, &mut installed, &warn).await;
+    prepare_python(hooks, &config.install_path, &mut installed, &warn).await;
 
     emit_step(hooks, "config-lang", "Saving language settings...", 89);
     save_language_setting(&config.language);
