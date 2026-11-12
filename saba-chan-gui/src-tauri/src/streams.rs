@@ -60,6 +60,10 @@ pub async fn daemon_stream_open(app: AppHandle, window: WebviewWindow, id: Strin
         let mut body = res.bytes_stream();
         let mut buf = SseBuffer::default();
         while let Some(Ok(chunk)) = body.next().await {
+            // 창을 닫으면 렌더러가 닫지 못한다: 받는 창이 없으면 멈춘다 (keep-alive가 15초마다 깨운다)
+            if handle.get_webview_window(&label).is_none() {
+                break;
+            }
             for ev in buf.push(&chunk) {
                 let _ = handle.emit_to(label.as_str(), "daemon:stream", json!({ "id": sid, "event": ev.kind, "data": ev.data }));
             }
