@@ -72,6 +72,10 @@ pub async fn start_managed_handler(
                 )
                     .into_response()
             }
+            // 시작하는 사이 지워졌다: 비관리 시작과 같은 404 `instance_not_found`
+            None if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() => {
+                super::server::lifecycle_failure(&e, "start", "start_failed")
+            }
             None => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(crate::plugin::error_response(&e)),

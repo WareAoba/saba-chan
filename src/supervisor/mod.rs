@@ -1959,7 +1959,7 @@ impl Supervisor {
         let (mut instance, starting, hook) = {
             let s = sup.read().await;
             let instance = s.instance_store.get(instance_id).cloned()
-                .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
+                .ok_or_else(|| InstanceNotFound(instance_id.to_string()))?;
 
             // ── 중복 프로세스 방어: 이미 실행 중인 managed 프로세스가 있으면 새로 생성하지 않음 ──
             if let Some(existing) = s.managed_store.get(instance_id).await {
@@ -4491,6 +4491,17 @@ mod tests {
         drop(gate);
         assert!(managed.await.unwrap().is_err(), "then it runs (no such instance here)");
         let _ = plain.await.unwrap();
+    }
+
+    /// managed 시작도 인스턴스가 없으면 비관리 시작과 같은 종류로 알린다 (핸들러가 문구가 아니라 종류로 404를 고른다)
+    #[tokio::test]
+    async fn a_managed_start_of_a_missing_instance_says_so_by_type() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        supervisor.initialize().await.unwrap();
+        let sup = tokio::sync::RwLock::new(supervisor);
+        let e = Supervisor::start_managed_server(&sup, "gone", "game", json!({})).await.unwrap_err();
+        assert_eq!(e.downcast_ref::<InstanceNotFound>().map(|m| m.0.as_str()), Some("gone"), "{e}");
     }
 
     /// 시작·설치가 문을 읽기로 쥔 동안 자동 교체는 기다리지 않고 미룬다: 기다리는 교체 뒤에 다른 시작·설치가 줄 서지 않는다

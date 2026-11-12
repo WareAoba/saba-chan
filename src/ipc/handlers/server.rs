@@ -1197,7 +1197,7 @@ async fn start_server_handler(
 
 /// 시작·정지가 실패한 응답. 상태는 오류 문구가 아니라 종류로 고른다: 인스턴스가 없으면 404 `instance_not_found`,
 /// 모듈 호출 실패는 모듈이 준 본문 그대로 500, 그 밖은 500 `failed_code`
-fn lifecycle_failure(e: &anyhow::Error, action: &str, failed_code: &str) -> axum::response::Response {
+pub(super) fn lifecycle_failure(e: &anyhow::Error, action: &str, failed_code: &str) -> axum::response::Response {
     if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(e))).into_response();
     }
