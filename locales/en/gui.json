@@ -2300,6 +2300,19 @@
     "unsupported": "This server can’t read joins, so auto kick isn’t available.",
     "save_failed": "Couldn’t save the auto kick list: {{error}}"
   },
+  "branch": {
+    "create": "Create branch server",
+    "desc": "Creates a new server under '{{name}}'. It gets its own server folder, world, and port, and copies the current settings once. After that, each server is changed on its own.",
+    "name": "Name",
+    "default_name": "{{name}} · branch",
+    "port_hint": "(picked a free port)",
+    "port_auto": "A free port is picked when it is created",
+    "submit": "Create",
+    "count": "Branches {{count}}",
+    "collapse": "Hide branch servers of {{name}}",
+    "expand": "Show branch servers of {{name}}",
+    "tag": "Branch of {{name}}"
+  },
   "players": {
     "title": "Player lists",
     "desc": "Adding or removing a name applies to the running server right away.",

@@ -82,7 +82,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | moduleInstallFromManifest (419) | POST /api/modules/manifest/:id/install | ✓ 657 |
 | moduleRemove (429) | DELETE /api/modules/:id | ✓ 658 |
 | instanceCreate (437) | POST /api/instances | ✓ 662 |
-| instanceCheck | POST /api/instances/check (만들기 마법사의 이름·포트 단계와 확인 단계. 이름·서버 폴더·포트 겹침) | ✓ |
+| instanceCheck | POST /api/instances/check (만들기 마법사의 이름·포트 단계와 확인 단계. 이름·서버 폴더·포트 겹침). 브랜치 서버 만들기 창(`servers/BranchServerDialog.tsx`, 서버 줄 우클릭 메뉴. 브랜치 줄에는 없다)도 `{name, branch_of}`로 물어 데몬이 정한 빈 포트를 보이고, `instanceCreate`에 `{name, module_name, branch_of, port}`를 보낸다(`handleAddServer`). 목록은 `branch_of`가 가리키는 서버 바로 아래에 브랜치를 모아(`utils/serverView.ts` `branchesUnderParents`, 스토어 `setServers`) 가지 선으로 보이고, 접은 상태는 이 PC의 localStorage(`saba-branches-collapsed`)에만 둔다 | ✓ |
 | instanceProvisionProgress (485) | GET /api/provision-progress/:name | ✓ 668 |
 | instanceDismissProvision (492) | DELETE /api/provision-progress/:name | ✓ 668 |
 | instanceCheckUpdate (499) | GET /api/instance/:id/check-update. 새 빌드가 있으면 목록 줄의 화살표, 서버 상세 이름 아래의 "새 버전 있음" 표시와 안내 줄(`빌드 A → B (설치 방식 익스텐션 이름, 올라온 날)` + 업데이트 버튼, 꺼진 서버만), 정보 탭의 새 버전 줄로 알린다. 설치된 버전은 서버 목록의 `server_build`(데몬이 적어 둔 빌드 번호·받은 날)를 "빌드 N (날짜)"로, 없으면 `server_version`을 보인다. 머리의 켜기 버튼은 업데이트가 있어도 그대로다 | ✓ 670 |

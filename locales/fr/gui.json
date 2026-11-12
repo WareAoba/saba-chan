@@ -2300,6 +2300,19 @@
     "unsupported": "Ce serveur ne sait pas lire les connexions : l’expulsion automatique n’est pas disponible.",
     "save_failed": "Impossible d’enregistrer la liste d’expulsion : {{error}}"
   },
+  "branch": {
+    "create": "Créer un serveur branche",
+    "desc": "Crée un nouveau serveur sous « {{name}} ». Il a son propre dossier, son monde et son port, et copie une seule fois les paramètres actuels. Ensuite, chaque serveur se modifie séparément.",
+    "name": "Nom",
+    "default_name": "{{name}} · branche",
+    "port_hint": "(port libre choisi)",
+    "port_auto": "Un port libre est choisi à la création",
+    "submit": "Créer",
+    "count": "Branches {{count}}",
+    "collapse": "Masquer les serveurs branches de {{name}}",
+    "expand": "Afficher les serveurs branches de {{name}}",
+    "tag": "Branche de {{name}}"
+  },
   "players": {
     "title": "Listes de joueurs",
     "desc": "Un nom ajouté ou retiré s'applique tout de suite au serveur en marche.",

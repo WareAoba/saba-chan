@@ -47,6 +47,8 @@ export interface AddServerPayload {
     working_dir?: string;
     managed_start?: boolean;
     port?: number;
+    /** 브랜치 서버: 상위 서버 id (모듈·설정은 데몬이 그 서버에서 가져온다) */
+    branch_of?: string;
 }
 
 interface UseServerActionsParams {
@@ -992,7 +994,7 @@ export function useServerActions({
             }
 
             // 마법사에서 고른 버전·폴더·실행 방식·포트 (installFields.createBody가 고른 것만 싣는다)
-            for (const key of ['version', 'working_dir', 'managed_start', 'port'] as const) {
+            for (const key of ['version', 'working_dir', 'managed_start', 'port', 'branch_of'] as const) {
                 if (payload?.[key] !== undefined) instanceData[key] = payload[key];
             }
 

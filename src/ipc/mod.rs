@@ -254,6 +254,9 @@ pub struct ServerInfo {
     /// 게임 서버 자동 업데이트 (`ServerInstance::auto_update`)
     #[serde(default)]
     pub auto_update: bool,
+    /// 브랜치 서버의 상위 서버 id (`ServerInstance::branch_of`). 클라이언트가 그 서버 아래에 묶어 보인다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_of: Option<String>,
     /// 게임 채팅 전달 (`ServerInstance::game_chat`·`game_chat_keyword`)
     #[serde(default)]
     pub game_chat: crate::supervisor::game_chat::Mode,

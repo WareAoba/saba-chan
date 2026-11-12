@@ -2300,6 +2300,19 @@
     "unsupported": "Dieser Server kann Beitritte nicht lesen, daher ist der automatische Kick nicht verfügbar.",
     "save_failed": "Kick-Liste konnte nicht gespeichert werden: {{error}}"
   },
+  "branch": {
+    "create": "Branch-Server erstellen",
+    "desc": "Erstellt einen neuen Server unter „{{name}}“. Er bekommt einen eigenen Serverordner, eine eigene Welt und einen eigenen Port; die aktuellen Einstellungen werden einmal kopiert. Danach wird jeder Server für sich geändert.",
+    "name": "Name",
+    "default_name": "{{name}} · Branch",
+    "port_hint": "(freier Port gewählt)",
+    "port_auto": "Beim Erstellen wird ein freier Port gewählt",
+    "submit": "Erstellen",
+    "count": "Branches {{count}}",
+    "collapse": "Branch-Server von {{name}} einklappen",
+    "expand": "Branch-Server von {{name}} ausklappen",
+    "tag": "Branch von {{name}}"
+  },
   "players": {
     "title": "Spielerlisten",
     "desc": "Hinzugefügte oder entfernte Namen gelten sofort auf dem laufenden Server.",

@@ -1003,6 +1003,7 @@ function App() {
                                 setServers={setServers}
                                 modules={modules}
                                 onAddServer={() => setShowModuleManager(true)}
+                                onCreateBranch={handleAddServer}
                                 onStart={handleStart}
                                 onStop={handleStop}
                                 onRestart={handleRestart}

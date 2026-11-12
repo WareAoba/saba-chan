@@ -87,6 +87,8 @@ export interface ServerInfo {
     memory_limit_mb: number | null;
     /** 게임 서버 자동 업데이트 (설치 방식 익스텐션으로 설치한 서버만, PC에서만 바꾼다) */
     auto_update?: boolean;
+    /** 브랜치 서버: 만들 때 설정을 가져온 상위 서버 id (목록에서 그 서버 아래에 묶인다) */
+    branch_of?: string;
     game_chat: GameChatMode;
     game_chat_keyword: string;
     game_chat_supported: boolean;

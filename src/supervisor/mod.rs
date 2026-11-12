@@ -5283,6 +5283,7 @@ mod tests {
             access: Default::default(),
             kick_players: Vec::new(),
             auto_update: false,
+            branch_of: None,
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -5353,6 +5354,7 @@ mod tests {
             access: Default::default(),
             kick_players: Vec::new(),
             auto_update: false,
+            branch_of: None,
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

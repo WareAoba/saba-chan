@@ -407,6 +407,75 @@
     box-shadow: var(--shadow-float);
     opacity: 0.95;
 }
+/* 브랜치 서버: 상위 서버 줄 왼쪽의 접기 단추, 그 아래에 가지 선으로 붙는 브랜치 줄.
+   브랜치가 있는 목록에서는 다른 줄도 단추 자리만큼 들여 아이콘 줄을 맞춘다 */
+.icon-btn.server-row-fold {
+    --btn-height: 20px;
+    flex: none;
+    width: 20px;
+    min-width: 0;
+    margin-right: calc(var(--sp-1-5) * -1);
+    color: var(--text-3);
+}
+.server-list.has-branches > .server-row:not(:has(.server-row-fold)) {
+    padding-left: calc(var(--sp-3) + var(--sp-5) + var(--sp-1-5));
+}
+.server-list.has-branches > .server-row.branch {
+    margin-left: calc(var(--sp-8) + var(--sp-0-5));
+    padding-left: var(--sp-3);
+}
+/* 가지 선: 윗줄 가운데(첫 브랜치는 상위 서버 줄 바로 아래)에서 내려와 이 줄 가운데로 꺾인다 */
+.server-row.branch::after {
+    content: '';
+    position: absolute;
+    left: calc(var(--sp-3) * -1 - 1px);
+    width: var(--sp-2-5);
+    top: calc(-50% - var(--sp-1-5));
+    height: calc(100% + var(--sp-1-5));
+    border-left: 1px solid var(--line-strong, var(--line));
+    border-bottom: 1px solid var(--line-strong, var(--line));
+    border-bottom-left-radius: var(--r-xs);
+    pointer-events: none;
+}
+.server-row:not(.branch) + .server-row.branch::after {
+    top: calc(var(--sp-1-5) * -1);
+    height: calc(50% + var(--sp-1-5));
+}
+.server-row.branch.dragging::after {
+    display: none;
+}
+.server-row-name:has(.server-row-branches) {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.server-row-name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tag.server-row-branches {
+    flex: none;
+    gap: var(--sp-1);
+    font-weight: 400;
+}
+/* 브랜치 서버 만들기 창 */
+.branch-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+.branch-form > * {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    font-size: var(--fs-sm);
+}
+.branch-port {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
 .server-row-icon {
     position: relative;
     width: 40px;

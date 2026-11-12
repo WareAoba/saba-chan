@@ -179,8 +179,82 @@ fn folder_has_entries(dir: &std::path::Path) -> bool {
     std::fs::read_dir(dir).is_ok_and(|entries| entries.flatten().any(|e| e.file_name() != INSTALL_STAGING))
 }
 
+/// 브랜치 서버 만들기 (`branch_of`: 상위 서버 id): 만들기 요청을 상위 서버의 모듈·버전·게임 설정으로 다시 쓴다.
+/// 요청에서 받는 것은 이름과 포트뿐이다. 포트 설정과 상위 서버 폴더를 가리키는 값은 옮기지 않아 브랜치가 제 것을 쓴다.
+/// 돌려주는 것: (다시 쓴 요청, 상위 서버). `branch_of`가 없으면 요청 그대로
+fn branch_request(supervisor: &crate::supervisor::Supervisor, payload: Value) -> Result<(Value, Option<crate::instance::ServerInstance>), Box<axum::response::Response>> {
+    let Some(wanted) = payload.get("branch_of").filter(|v| !v.is_null()) else {
+        return Ok((payload, None));
+    };
+    let refuse = |status: StatusCode, code: &str, error: &str| Box::new((status, Json(json!({ "success": false, "error": error, "error_code": code }))).into_response());
+    let Some(parent) = wanted.as_str().and_then(|id| supervisor.instance_store.get(id)).cloned() else {
+        return Err(refuse(StatusCode::NOT_FOUND, "branch_parent_not_found", "The server to branch from does not exist"));
+    };
+    // 한 단계만: 브랜치 아래에 또 브랜치를 두지 않는다 (상위 서버가 사라진 브랜치는 독립 서버다)
+    if parent.branch_of.as_deref().is_some_and(|id| supervisor.instance_store.get(id).is_some()) {
+        return Err(refuse(StatusCode::CONFLICT, "branch_of_branch", "A branch server cannot have its own branch"));
+    }
+    let metadata = supervisor.module_loader.get_module(&parent.module_name).ok().map(|m| m.metadata);
+    let folders = [Some(supervisor.instance_store.instance_dir(&parent.id).to_string_lossy().into_owned()), parent.working_dir.clone()];
+    let inside_parent = |value: &Value| value.as_str().is_some_and(|v| folders.iter().flatten().any(|dir| !dir.is_empty() && v.contains(dir.as_str())));
+    let settings: serde_json::Map<String, Value> = metadata
+        .as_ref()
+        .and_then(|m| m.settings.as_ref())
+        .into_iter()
+        .flat_map(|s| s.fields.iter())
+        .filter(|f| !f.port && !crate::supervisor::module_loader::CORE_PORT_FIELDS.contains(&f.name.as_str()) && f.field_type != "file")
+        .filter_map(|f| parent.module_settings.get(&f.name).filter(|v| !v.is_null() && !inside_parent(v)).map(|v| (f.name.clone(), v.clone())))
+        .collect();
+    let mut request = json!({
+        "name": payload.get("name"),
+        "port": payload.get("port"),
+        "module_name": parent.module_name,
+        "module_settings": settings,
+        "extension_data": parent.extension_data,
+    });
+    // 버전을 골라 받는 모듈이면 상위 서버와 같은 버전을 받는다
+    let downloads = metadata.as_ref().and_then(|m| m.install.as_ref()).is_some_and(|i| i.method == "download");
+    if let Some(version) = parent.server_version.as_ref().filter(|_| downloads) {
+        let version = json!({ "version": version });
+        if matches!(requested_version(&version), Ok(Some(_))) {
+            request["version"] = version["version"].clone();
+        }
+    }
+    if let Some(managed) = parent.module_settings.get("managed_start").filter(|v| v.is_boolean()) {
+        request["managed_start"] = managed.clone();
+    }
+    Ok((request, Some(parent)))
+}
+
+/// 브랜치 서버가 만들 때 한 번 가져오는 사바쨩 설정: 데몬이 읽는 설정, 예약, 실행 인자·메모리 상한, 게임 채팅, 사용 모드와 명단, 자동 업데이트.
+/// 그 뒤로는 두 서버가 따로다
+fn copy_saba_settings(branch: &mut crate::instance::ServerInstance, parent: &crate::instance::ServerInstance) {
+    branch.branch_of = Some(parent.id.clone());
+    for (key, _) in saba_chan_updater_lib::constants::DAEMON_SETTINGS {
+        if let Some(value) = parent.module_settings.get(*key) {
+            branch.module_settings.insert(key.to_string(), value.clone());
+        }
+    }
+    branch.schedule = parent.schedule.clone();
+    branch.backup_keep = parent.backup_keep;
+    branch.extra_args = parent.extra_args.clone();
+    branch.memory_limit_mb = parent.memory_limit_mb;
+    branch.protocol_mode = parent.protocol_mode.clone();
+    branch.game_chat = parent.game_chat;
+    branch.game_chat_keyword = parent.game_chat_keyword.clone();
+    branch.access = parent.access;
+    branch.controllers = parent.controllers.clone();
+    branch.controllers_only = parent.controllers_only;
+    branch.kick_players = parent.kick_players.clone();
+    branch.auto_update = parent.auto_update;
+}
+
 async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) -> impl IntoResponse {
     let mut supervisor = state.supervisor.write().await;
+    let (payload, parent) = match branch_request(&supervisor, payload) {
+        Ok(found) => found,
+        Err(resp) => return *resp,
+    };
 
     let name = payload
         .get("name")
@@ -235,6 +309,9 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         }
         if !app.new_server_auto_restart && !instance.module_settings.contains_key("auto_restart") {
             instance.module_settings.insert("auto_restart".into(), json!(false));
+        }
+        if let Some(parent) = &parent {
+            copy_saba_settings(&mut instance, parent);
         }
 
         // ── 익스텐션이 만들 때 물은 칸 (`AddServer.options` → `extension_data`, Q-7). 설치 방식 값은 뒤에서 덮는다 ──
@@ -348,6 +425,22 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         // 인스턴스 저장 (프로비저닝은 비동기로 수행)
         match supervisor.instance_store.add(instance.clone()) {
             Ok(_) => {
+                // 브랜치 서버: 상위 서버의 명령 낱말(디스코드)도 한 번 가져온다. 서버를 부르는 낱말은 서버마다 달라야 해서 옮기지 않는다
+                if let Some(parent) = &parent {
+                    let (store, parent_id, branch_id) = (state.config_store.clone(), parent.id.clone(), id.clone());
+                    tokio::spawn(async move {
+                        let copied = store.update_server_words(|table| match table.get(&parent_id).map(|w| w.commands.clone()).filter(|c| !c.is_empty()) {
+                            Some(commands) => {
+                                table.insert(branch_id, crate::chat::words::InstanceWords { words: Vec::new(), commands });
+                                ((), true)
+                            }
+                            None => ((), false),
+                        });
+                        if let Err(e) = copied.await {
+                            tracing::warn!("Could not copy the Discord command words to the branch server: {}", e);
+                        }
+                    });
+                }
                 // ── Extension hook: server.post_create (결과를 기다리지 않는다) ──
                 {
                     let ext_mgr = state.extension_manager.clone();
@@ -1692,6 +1785,18 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     match removed {
         Ok(_) => {
             state.provision_tracker.forget(&instance.name);
+            // 지운 서버의 브랜치는 독립 서버로 남는다
+            {
+                let mut supervisor = state.supervisor.write().await;
+                let branches: Vec<_> = supervisor.instance_store.list().iter().filter(|i| i.branch_of.as_deref() == Some(id.as_str())).cloned().collect();
+                for mut branch in branches {
+                    branch.branch_of = None;
+                    let branch_id = branch.id.clone();
+                    if let Err(e) = supervisor.instance_store.update(&branch_id, branch) {
+                        tracing::warn!("Could not release branch server {} of deleted instance '{}': {}", branch_id, instance.name, e);
+                    }
+                }
+            }
             // 지운 서버의 디스코드 낱말은 heartbeat에 더 싣지 않는다
             if let Err(e) = state.config_store.update_server_words(|t| ((), t.remove(&id).is_some())).await {
                 tracing::warn!("Could not forget the Discord words of deleted instance '{}': {}", instance.name, e);
@@ -3643,6 +3748,90 @@ mod tests {
         let twin = create(json!({ "name": "a", "module_name": "game" })).await;
         assert_eq!((twin.status.as_u16(), twin.body["error_code"].as_str()), (409, Some("name_taken")));
         assert_eq!(state.supervisor.read().await.instance_store.list().len(), 1, "the second server is not made");
+    }
+
+    /// 브랜치 서버 (`branch_of`): 상위 서버의 모듈·설정을 만들 때 한 번 옮기고 포트는 따로 정한다. 그 뒤로는 서로 따로다.
+    /// 브랜치는 한 단계만 두고, 상위 서버를 지우면 브랜치는 독립 서버로 남는다
+    #[tokio::test]
+    async fn a_branch_copies_its_parents_settings_once_and_stays_one_level() {
+        use axum::extract::{Path, Query, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\ndefault_port = 25565\n\n\
+             [[settings.fields]]\nname = \"port\"\ntype = \"number\"\nport = true\n\n\
+             [[settings.fields]]\nname = \"max_players\"\ntype = \"number\"\ndefault = 20\n\n\
+             [[settings.fields]]\nname = \"data_dir\"\ntype = \"text\"\ndefault = \"{instance_dir}/data\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let create = |body: serde_json::Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(body)).await).await }
+        };
+        let get = |id: String| {
+            let state = state.clone();
+            async move { state.supervisor.read().await.instance_store.get(&id).cloned().unwrap() }
+        };
+
+        let made = create(json!({ "name": "main", "module_name": "game", "port": 25565, "module_settings": { "max_players": 5 } })).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+        let parent_id = made.body["id"].as_str().unwrap().to_string();
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut parent = sup.instance_store.get(&parent_id).cloned().unwrap();
+            parent.memory_limit_mb = Some(2048);
+            parent.extra_args = vec!["--nogui".into()];
+            parent.module_settings.insert("auto_restart".into(), json!(false));
+            sup.instance_store.update(&parent_id, parent).unwrap();
+        }
+        let parent = get(parent_id.clone()).await;
+
+        // 확인 단계: 비어 있는 포트를 알려 준다
+        let check = crate::ipc::internal::into_internal(super::check_new_instance(State(state.clone()), Json(json!({ "name": "main test", "branch_of": parent_id }))).await).await;
+        assert!(check.status.is_success(), "{:?}", check.body);
+        let free = check.body["ports"][0]["port"].as_u64().unwrap();
+        assert_ne!(free, 25565, "{:?}", check.body);
+        assert_eq!(state.supervisor.read().await.instance_store.list().len(), 1, "a check makes nothing");
+
+        let branched = create(json!({ "name": "main test", "branch_of": parent_id, "module_name": "other", "module_settings": { "max_players": 99 } })).await;
+        assert!(branched.status.is_success(), "{:?}", branched.body);
+        let branch_id = branched.body["id"].as_str().unwrap().to_string();
+        let branch = get(branch_id.clone()).await;
+        assert_eq!(branch.branch_of.as_deref(), Some(parent_id.as_str()));
+        assert_eq!(branch.module_name, "game", "the parent's module, whatever the request says");
+        assert_eq!(branch.module_settings["max_players"], json!(5), "the parent's setting");
+        assert_eq!(branch.port.map(u64::from), Some(free), "its own port");
+        assert_eq!((branch.memory_limit_mb, branch.extra_args.clone(), branch.module_settings["auto_restart"].clone()), (Some(2048), vec!["--nogui".to_string()], json!(false)));
+        // 상위 서버 폴더를 가리키는 값은 옮기지 않는다: 브랜치는 제 폴더를 쓴다
+        assert_ne!(branch.module_settings["data_dir"], parent.module_settings["data_dir"]);
+        assert!(branch.module_settings["data_dir"].as_str().unwrap().contains(&branch_id));
+
+        // 그 뒤로는 따로: 상위 서버를 고쳐도 브랜치는 그대로다
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut parent = sup.instance_store.get(&parent_id).cloned().unwrap();
+            parent.module_settings.insert("max_players".into(), json!(50));
+            sup.instance_store.update(&parent_id, parent).unwrap();
+        }
+        assert_eq!(get(branch_id.clone()).await.module_settings["max_players"], json!(5));
+
+        let deeper = create(json!({ "name": "deeper", "branch_of": branch_id })).await;
+        assert_eq!((deeper.status.as_u16(), deeper.body["error_code"].as_str()), (409, Some("branch_of_branch")), "{:?}", deeper.body);
+        let orphan = create(json!({ "name": "orphan", "branch_of": "nope" })).await;
+        assert_eq!((orphan.status.as_u16(), orphan.body["error_code"].as_str()), (404, Some("branch_parent_not_found")), "{:?}", orphan.body);
+
+        let removed = crate::ipc::internal::into_internal(super::delete_instance(Path(parent_id.clone()), State(state.clone()), Query(super::DeleteQuery { keep_settings: false })).await).await;
+        assert!(removed.status.is_success(), "{:?}", removed.body);
+        assert_eq!(get(branch_id).await.branch_of, None, "the branch stays as a server of its own");
     }
 
     /// 서버 이름의 쉼표는 받지 않는다: 문장 명령이 부르는 말을 쉼표로 나눈다 (사용자 지정 2026-11-06)

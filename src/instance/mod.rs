@@ -131,6 +131,10 @@ pub struct ServerInstance {
     /// 이 PC(앱·CLI)에서만 바꾼다
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub auto_update: bool,
+    /// 브랜치 서버: 이 서버를 만들 때 설정을 가져온 상위 서버 id. 목록에서 그 서버 아래에 묶일 뿐이고 설정은 따로다.
+    /// 한 단계만 둔다 (브랜치의 브랜치는 만들지 않는다). 상위 서버를 지우면 비운다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_of: Option<String>,
 }
 
 /// 설치된 빌드: 설치 방식 익스텐션이 쓰는 빌드 번호와 그 빌드를 받은 때(유닉스 초, 모르면 없음)
@@ -201,6 +205,7 @@ impl ServerInstance {
             controllers_only: false,
             kick_players: Vec::new(),
             auto_update: false,
+            branch_of: None,
         }
     }
 

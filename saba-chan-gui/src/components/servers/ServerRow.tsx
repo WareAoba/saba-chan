@@ -36,6 +36,14 @@ interface ServerRowProps {
     skipNextClick: MutableRefObject<boolean>;
     onRestart?: (name: string) => void;
     onDelete?: (server: Server) => void;
+    /** 브랜치 서버 줄: 상위 서버 아래에 가지 선으로 붙는다 */
+    branch?: boolean;
+    /** 이 서버 아래 브랜치 서버 수 (0이면 접기 단추가 없다) */
+    branches?: number;
+    branchesCollapsed?: boolean;
+    onToggleBranches?: (id: string) => void;
+    /** 이 서버의 브랜치 서버 만들기 (브랜치에는 주지 않는다: 한 단계만 둔다) */
+    onBranch?: (server: Server) => void;
 }
 
 /**
@@ -55,6 +63,11 @@ export function ServerRow({
     skipNextClick,
     onRestart,
     onDelete,
+    branch,
+    branches = 0,
+    branchesCollapsed = false,
+    onToggleBranches,
+    onBranch,
 }: ServerRowProps) {
     const { t } = useTranslation('gui');
     useInstanceMaintenance(server, moduleData);
@@ -96,6 +109,7 @@ export function ServerRow({
             onSelect: () => showTab('console'),
         },
         'separator',
+        onBranch && { id: 'branch', label: t('branch.create'), icon: 'branch', onSelect: () => onBranch(server) },
         { id: 'settings', label: t('context_menu.settings'), icon: 'settings', onSelect: () => showTab('settings') },
         !!dir && {
             id: 'folder',
@@ -116,7 +130,7 @@ export function ServerRow({
     return (
         <div
             ref={rowRef}
-            className={clsx('server-row', { selected, dragging })}
+            className={clsx('server-row', { selected, dragging, branch })}
             onPointerDown={(e) => onPointerDown(e, index)}
             onClick={() => {
                 if (skipNextClick.current) return;
@@ -134,6 +148,20 @@ export function ServerRow({
             tabIndex={0}
             data-status={status}
         >
+            {branches > 0 && (
+                <button
+                    type="button"
+                    className="icon-btn server-row-fold"
+                    aria-expanded={!branchesCollapsed}
+                    aria-label={t(branchesCollapsed ? 'branch.expand' : 'branch.collapse', { name: server.name })}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleBranches?.(server.id);
+                    }}
+                >
+                    <Icon name={branchesCollapsed ? 'chevronRight' : 'chevronDown'} size={14} />
+                </button>
+            )}
             <div className="server-row-icon">
                 {moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>}
                 <span
@@ -144,7 +172,23 @@ export function ServerRow({
             </div>
             <div className="server-row-text">
                 <div className="server-row-name">
-                    {server.name}
+                    {branches > 0 && branchesCollapsed ? (
+                        // 접어 둔 상위 서버: 이름이 길어도 브랜치 수는 잘리지 않는다 (좁은 목록이라 아이콘과 수만 보인다)
+                        <>
+                            <span className="server-row-name-text">{server.name}</span>
+                            <span
+                                className="tag server-row-branches"
+                                role="img"
+                                aria-label={t('branch.count', { count: branches })}
+                                data-tooltip={t('branch.count', { count: branches })}
+                            >
+                                <Icon name="branch" size={11} />
+                                {branches}
+                            </span>
+                        </>
+                    ) : (
+                        server.name
+                    )}
                     <DataBadges server={server} />
                 </div>
                 <div className="server-row-sub">

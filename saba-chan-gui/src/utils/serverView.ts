@@ -165,3 +165,16 @@ export function buildDate(time: unknown, lang: string) {
 export function gameNameOf(t: TFunction, moduleName: string, moduleData?: Partial<ModuleInfo> | null) {
     return t(`mod_${moduleName}:module.display_name`, { defaultValue: moduleData?.game_name || moduleName });
 }
+
+/** 브랜치 서버의 상위 서버 (데몬 `branch_of`). 목록에 없으면 독립 서버로 본다 */
+export function branchParentOf<T extends ServerInfo>(server: T, servers: T[]): T | undefined {
+    return server.branch_of ? servers.find((s) => s.id === server.branch_of && !s.branch_of) : undefined;
+}
+
+/** 브랜치 서버를 상위 서버 바로 아래로 모은다 (나머지 순서는 그대로). 옮길 것이 없으면 받은 배열을 돌려준다 */
+export function branchesUnderParents<T extends ServerInfo>(servers: T[]): T[] {
+    if (!servers.some((s) => s.branch_of)) return servers;
+    const top = servers.filter((s) => !branchParentOf(s, servers));
+    const grouped = top.flatMap((parent) => [parent, ...servers.filter((s) => branchParentOf(s, servers) === parent)]);
+    return grouped.every((s, i) => s === servers[i]) ? servers : grouped;
+}

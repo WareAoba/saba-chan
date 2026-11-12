@@ -2300,6 +2300,19 @@
     "unsupported": "Este servidor no puede leer las entradas, así que la expulsión automática no está disponible.",
     "save_failed": "No se pudo guardar la lista de expulsión: {{error}}"
   },
+  "branch": {
+    "create": "Crear servidor rama",
+    "desc": "Crea un servidor nuevo bajo «{{name}}». Tiene su propia carpeta, mundo y puerto, y copia una sola vez la configuración actual. Después, cada servidor se cambia por separado.",
+    "name": "Nombre",
+    "default_name": "{{name}} · rama",
+    "port_hint": "(se eligió un puerto libre)",
+    "port_auto": "Al crearlo se elige un puerto libre",
+    "submit": "Crear",
+    "count": "Ramas {{count}}",
+    "collapse": "Ocultar los servidores rama de {{name}}",
+    "expand": "Mostrar los servidores rama de {{name}}",
+    "tag": "Rama de {{name}}"
+  },
   "players": {
     "title": "Listas de jugadores",
     "desc": "Al añadir o quitar un nombre, se aplica de inmediato en el servidor en marcha.",

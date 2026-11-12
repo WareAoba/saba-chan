@@ -23,6 +23,7 @@ import { withCommandAliases } from '../../utils/commandRisk';
 import {
     STATUS_TONE,
     isTransitional,
+    branchParentOf,
     buildDate,
     consoleQuickCommands,
     defaultServerTab,
@@ -198,6 +199,7 @@ export function ServerDetail({
     const conflicts = portConflictCheck ? server.port_conflicts || [] : [];
     const uptime = status === 'running' && server.start_time ? <Uptime startTime={server.start_time} /> : null;
     const players = playersText(server);
+    const branchParent = branchParentOf(server, servers || []);
     // 설치 방식 익스텐션으로 받은 서버는 데몬이 적어 둔 빌드 번호가 버전이다
     const versionTag = server.server_build ? t('shell.build', { id: server.server_build.id }) : server.server_version;
     // 새 빌드를 알려 준 곳(설치 방식 익스텐션 이름)과 올라온 날
@@ -274,6 +276,7 @@ export function ServerDetail({
                         <span>{gameName}</span>
                         {versionTag && <span className="tag">{versionTag}</span>}
                         {updateInfo && <span className="tag tag-accent">{t('shell.update_tag')}</span>}
+                        {branchParent && <span className="tag">{t('branch.tag', { name: branchParent.name })}</span>}
                         {server.port && (
                             <span className="muted">
                                 {t('shell.info_port')} {server.port}

@@ -2300,6 +2300,19 @@
     "unsupported": "Este servidor não consegue ler as entradas, então a expulsão automática não está disponível.",
     "save_failed": "Não foi possível salvar a lista de expulsão: {{error}}"
   },
+  "branch": {
+    "create": "Criar servidor ramificado",
+    "desc": "Cria um novo servidor abaixo de '{{name}}'. Ele tem pasta, mundo e porta próprios e copia uma única vez as configurações atuais. Depois disso, cada servidor é alterado separadamente.",
+    "name": "Nome",
+    "default_name": "{{name}} · ramificação",
+    "port_hint": "(porta livre escolhida)",
+    "port_auto": "Uma porta livre é escolhida na criação",
+    "submit": "Criar",
+    "count": "Ramificações {{count}}",
+    "collapse": "Ocultar os servidores ramificados de {{name}}",
+    "expand": "Mostrar os servidores ramificados de {{name}}",
+    "tag": "Ramificação de {{name}}"
+  },
   "players": {
     "title": "Listas de jogadores",
     "desc": "Ao adicionar ou remover um nome, isso vale na hora no servidor em execução.",
