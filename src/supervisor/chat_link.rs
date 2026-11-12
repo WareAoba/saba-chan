@@ -122,6 +122,16 @@ pub fn end(rt: &super::runtime::Runtimes, instance_id: &str, instance: &str, rea
         }
         map.remove(instance_id).unwrap_or_default()
     };
+    announce_ended(instance_id, instance, reason, removed);
+}
+
+/// 인스턴스를 지운다: 프로세스와 상관없이 그 서버의 연동을 모두 끄고 `stopped`로 알린다 (`Supervisor::remove_instance`)
+pub fn forget(instance_id: &str, instance: &str) {
+    let removed = links().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id).unwrap_or_default();
+    announce_ended(instance_id, instance, "stopped", removed);
+}
+
+fn announce_ended(instance_id: &str, instance: &str, reason: &str, removed: Vec<Link>) {
     for link in removed {
         crate::events::emit("instance.chat_link", json!({ "instanceId": instance_id, "instance": instance, "guild": link.guild, "channel": link.channel, "active": false, "reason": reason }));
     }

@@ -638,7 +638,7 @@ spot = "server.tab.maintenance"    # 짚을 화면 요소의 data-spot
 4. **모니터링**: 2초 루프(`main.rs:416`)가 PID와 패턴을 매칭해 auto-detect하고, 크래시를 감지하면 자동 재시작을 예약한다. 세부는 supervisor 담당 문서에 있다.
 5. **정지**: `/api/instance/:id/stop`(`stop_instance`, `server.rs:958`). 성공하면 tracker에서 id로 untrack한다(`server.rs:999`).
 6. **삭제**: 실행 중이면 force kill(2초 대기), `server.pre_delete` 훅, 디렉토리 삭제(최대 3회 재시도) 순으로 진행한다(`instance.rs:789-875`).
-   - 기록·폴더는 `Supervisor::remove_instance`가 지우고, 같은 자리에서 그 인스턴스의 런타임 상태(`supervisor/runtime.rs` `InstanceRuntime`: 정지 표시·실행 세대·자동 재시작과 종료 이력·auto-detect 쿨다운·시작 중 표시·마지막으로 켠 쪽·접속자 수와 응답 없음 기록·준비 알림·정지 문·명령 목록 기억)를 한 번에 버린다(`Runtimes::forget`). 실패한 신규 설치의 롤백과 실패한 가져오기 정리도 같은 함수를 쓴다. 인스턴스마다 새 런타임 상태가 생기면 `InstanceRuntime`에 칸을 더한다.
+   - 기록·폴더는 `Supervisor::remove_instance`가 지우고, 같은 자리에서 그 인스턴스의 런타임 상태(`supervisor/runtime.rs` `InstanceRuntime`: 정지 표시·실행 세대·자동 재시작과 종료 이력·auto-detect 쿨다운·시작 중 표시·마지막으로 켠 쪽·접속자 수와 응답 없음 기록·준비 알림·정지 문·명령 목록 기억)를 한 번에 버린다(`Runtimes::forget`). 버리기 전에 준비를 기다리던 시작은 `instance.ready {ok:false, code:"start_failed"}`로, 켜 둔 채팅 연동은 `instance.chat_link {active:false, reason:"stopped"}`로 닫아 알린다. 지운 id는 기억해 두어, 지운 뒤 늦게 끝난 상태 질문·정지의 쓰기가 상태를 되살리지 않는다. 실패한 신규 설치의 롤백과 실패한 가져오기 정리도 같은 함수를 쓴다. 인스턴스마다 새 런타임 상태가 생기면 `InstanceRuntime`에 칸을 더한다.
 7. **러너 형식과 코어 교체**: 데몬을 바꿔도 saba-runner가 쥔 서버는 새 데몬이 다시 붙는다(02 §3.3). 그러려면 새 데몬이 그 러너의 실행 폴더 약속을 읽어야 하므로 번호로 맞춘다.
    - 러너는 `runner.json`(`saba_runner::RunnerInfo`)에 `format`을 쓴다. 지금 값은 `saba_runner::RUNNER_FORMAT = 1`이고, 이 칸이 없는 옛 러너는 0이다. 옛 데몬이 붙지 못하게 약속을 바꿀 때만 올린다.
    - 데몬은 붙을 수 있는 범위를 `managed_process::READS_RUNNER_FORMATS`(`supervisor/managed_process/runner.rs`, 양 끝 포함, 지금 `(0, 1)`)로 둔다. 발행 때 이 값이 manifest `saba-core.reads_runner_formats`로 실린다.

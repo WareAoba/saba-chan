@@ -352,7 +352,11 @@ static ADDON_SWAP_GATE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new
 impl Supervisor {
     /// 인스턴스를 지운다: 저장소의 기록·폴더와 그 런타임 상태를 함께 (지운 인스턴스의 상태가 데몬이 끝날 때까지 남지 않게)
     pub fn remove_instance(&mut self, id: &str) -> Result<()> {
+        let name = self.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
         self.instance_store.remove(id)?;
+        // 상태를 버리면 그 프로세스의 준비 알림과 연동 닫기가 할 일을 못 찾는다: 버리기 전에 지우기 전과 같은 알림으로 닫는다
+        ready::exited(&self.runtime, id, &name, false);
+        chat_link::forget(id, &name);
         self.runtime.forget(id);
         Ok(())
     }
@@ -5620,5 +5624,43 @@ mod tests {
         let restarted = daemon();
         restarted.record_port_conflict_stops([event()]);
         assert_eq!(restarted.port_conflict_stops_after(seen).len(), 1, "a client that saw id {seen} gets the new notice");
+    }
+
+    /// 시작 중(준비 문구를 기다림)이고 채팅 연동이 켜진 서버를 지우면, 상태를 버리기 전에 준비 알림은 시작 실패로,
+    /// 연동은 프로세스가 끝난 것으로 닫아 알린다 (지우기 전과 같은 알림)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn removing_a_starting_instance_closes_its_ready_wait_and_chat_links() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        let inst = crate::instance::ServerInstance::new("half-up", "game");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let proc = Arc::new(ManagedProcess::spawn("/bin/sh", &["-c".into(), "sleep 30".into()], ".", Vec::new(), None, None).await.unwrap());
+        let mut sub = crate::events::bus().subscribe(None);
+        let started = Ok(json!({ "success": true, "managed": true }));
+        ready::after_start(&sup.runtime, &id, "half-up", &started, Some(proc.clone()), &["^never$".to_string()], std::time::Duration::from_secs(600));
+        chat_link::toggle(&id, "111111111111111111", "222222222222222222", None, |_| Ok::<(), ()>(())).unwrap();
+
+        sup.remove_instance(&id).unwrap();
+        let (mut ready_seen, mut link_seen) = (None, None);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+        while ready_seen.is_none() || link_seen.is_none() {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let Ok(e) = tokio::time::timeout(left, sub.rx.recv()).await else { break };
+            let e = e.unwrap();
+            if e.data["instanceId"] != id.as_str() {
+                continue;
+            }
+            match e.kind.as_str() {
+                "instance.ready" => ready_seen = Some((e.data["ok"].clone(), e.data["code"].clone())),
+                "instance.chat_link" => link_seen = Some((e.data["active"].clone(), e.data["reason"].clone())),
+                _ => {}
+            }
+        }
+        let _ = proc.force_kill().await;
+        assert_eq!(ready_seen, Some((json!(false), json!("start_failed"))));
+        assert_eq!(link_seen, Some((json!(false), json!("stopped"))));
+        assert!(chat_link::list(&id).is_empty());
     }
 }
