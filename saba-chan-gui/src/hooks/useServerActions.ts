@@ -877,6 +877,10 @@ export function useServerActions({
                     // 그사이 다른 쪽에서 정지·시작·삭제했다: 실패가 아니라 그만둔 것
                     revertOptimistic(name);
                     safeShowToast(t(`errors.${code}`), 'info', 4000);
+                } else if (code === 'still_stopping') {
+                    // 서버가 제때 꺼지지 않아 데몬이 다시 켜지 않았다
+                    revertOptimistic(name);
+                    safeShowToast(t('errors.still_stopping'), 'error', 4000);
                 } else if (result?.error || result?.success === false) {
                     revertOptimistic(name);
                     const msg = translateError(result.error || result.message || '');

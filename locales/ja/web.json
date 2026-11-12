@@ -303,6 +303,7 @@
   },
   "errors": {
     "start_cancelled": "起動中に停止が要求されたため、サーバーを起動しませんでした。",
+    "still_stopping": "サーバーがまだ停止中のため、起動し直しませんでした。完全に停止してから起動してください。",
     "generic": "リクエストを完了できませんでした。",
     "remote_not_allowed": "PC のサバちゃんアプリでのみ行えます。",
     "remote_field_blocked": "次の設定は PC でのみ変更できます: {{fields}}",

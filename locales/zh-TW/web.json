@@ -303,6 +303,7 @@
   },
   "errors": {
     "start_cancelled": "伺服器在啟動過程中被停止，因此未啟動。",
+    "still_stopping": "伺服器仍在關閉中，因此沒有重新啟動。請在它完全停止後再啟動。",
     "generic": "無法完成請求。",
     "remote_not_allowed": "只能在電腦上的 Saba-chan 應用程式中進行。",
     "remote_field_blocked": "以下設定只能在電腦上變更：{{fields}}",

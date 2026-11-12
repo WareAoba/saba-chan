@@ -83,6 +83,7 @@ export function useServerControl(api: WebApi) {
             if (!ok) return;
             const res = await api.instanceRestart(server.id, {});
             if (timedOut(res)) return toast(t('errors.still_working'), 'info');
+            if (res?.error_code === 'still_stopping') return toast(t('errors.still_stopping'), 'error');
             if (failed(res)) return toast(errorText(t, res), 'error');
             toast(t('servers.restarted', { name: server.name }), 'ok');
         });

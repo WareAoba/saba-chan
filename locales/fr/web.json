@@ -303,6 +303,7 @@
   },
   "errors": {
     "start_cancelled": "Le serveur a été arrêté pendant son démarrage ; il n'a donc pas été lancé.",
+    "still_stopping": "Le serveur est encore en cours d'arrêt, il n'a donc pas été redémarré. Démarrez-le une fois qu'il sera complètement arrêté.",
     "generic": "Impossible de terminer la requête.",
     "remote_not_allowed": "Ceci n'est possible que dans l'app Saba-chan sur le PC.",
     "remote_field_blocked": "Ces réglages ne se modifient que sur le PC : {{fields}}",

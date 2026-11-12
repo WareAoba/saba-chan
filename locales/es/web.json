@@ -303,6 +303,7 @@
   },
   "errors": {
     "start_cancelled": "El servidor se detuvo mientras se iniciaba, así que no se inició.",
+    "still_stopping": "El servidor todavía se está apagando, así que no se volvió a iniciar. Inícialo cuando se haya detenido por completo.",
     "generic": "No se pudo completar la solicitud.",
     "remote_not_allowed": "Esto solo se puede hacer en la app Saba-chan del PC.",
     "remote_field_blocked": "Estos ajustes solo se pueden cambiar en el PC: {{fields}}",

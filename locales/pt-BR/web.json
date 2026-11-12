@@ -303,6 +303,7 @@
   },
   "errors": {
     "start_cancelled": "O servidor foi parado enquanto iniciava, então não foi iniciado.",
+    "still_stopping": "O servidor ainda está sendo encerrado, então não foi iniciado de novo. Inicie-o quando ele tiver parado por completo.",
     "generic": "Não foi possível concluir a solicitação.",
     "remote_not_allowed": "Isso só pode ser feito no app Saba-chan no PC.",
     "remote_field_blocked": "Estas configurações só podem ser alteradas no PC: {{fields}}",

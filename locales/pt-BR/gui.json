@@ -578,6 +578,7 @@
     "rcon_timeout": "O servidor não respondeu ao comando RCON a tempo.",
     "rcon_failed": "O servidor enviou uma resposta RCON que não pôde ser lida.",
     "restart_cancelled": "O servidor foi parado, iniciado ou removido em outro lugar durante a reinicialização, então não foi reiniciado.",
+    "still_stopping": "O servidor ainda está sendo encerrado, então não foi iniciado de novo. Inicie-o quando ele tiver parado por completo.",
     "not_supported": "O módulo deste servidor não oferece suporte a este recurso.",
     "executable_not_found": "Executável do servidor de jogos não encontrado. Verifique o caminho nas configurações.",
     "file_not_found": "Arquivo ou pasta não encontrada. Verifique o caminho.",

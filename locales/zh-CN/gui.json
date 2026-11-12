@@ -578,6 +578,7 @@
     "rcon_timeout": "服务器没有及时响应 RCON 命令。",
     "rcon_failed": "服务器返回了无法识别的 RCON 响应。",
     "restart_cancelled": "重启期间服务器已在别处停止、启动或删除，因此没有重启。",
+    "still_stopping": "服务器仍在关闭中，因此没有重新启动。请在它完全停止后再启动。",
     "not_supported": "此服务器的模块不支持此功能。",
     "executable_not_found": "找不到游戏服务器可执行文件。请检查设置中的路径。",
     "file_not_found": "找不到文件或文件夹。请检查路径。",

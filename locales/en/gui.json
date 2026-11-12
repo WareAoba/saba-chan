@@ -578,6 +578,7 @@
     "rcon_timeout": "The server didn't answer the RCON command in time.",
     "rcon_failed": "The server sent an RCON reply that couldn't be read.",
     "restart_cancelled": "The server was stopped, started or removed elsewhere during the restart, so it was not restarted.",
+    "still_stopping": "The server is still shutting down, so it was not started again. Start it once it has fully stopped.",
     "not_supported": "This server's module doesn't support this feature.",
     "executable_not_found": "Game server executable not found. Check the path in settings.",
     "file_not_found": "File or folder not found. Check the path.",

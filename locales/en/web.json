@@ -303,6 +303,7 @@
   },
   "errors": {
     "start_cancelled": "The server was stopped while it was starting, so it was not started.",
+    "still_stopping": "The server is still shutting down, so it was not started again. Start it once it has fully stopped.",
     "generic": "Couldn't complete the request.",
     "remote_not_allowed": "This can only be done in the Saba-chan app on the PC.",
     "remote_field_blocked": "These settings can only be changed on the PC: {{fields}}",

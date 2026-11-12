@@ -578,6 +578,7 @@
     "rcon_timeout": "Der Server hat nicht rechtzeitig auf den RCON-Befehl geantwortet.",
     "rcon_failed": "Der Server hat eine unlesbare RCON-Antwort geschickt.",
     "restart_cancelled": "Der Server wurde während des Neustarts an anderer Stelle gestoppt, gestartet oder entfernt, daher wurde er nicht neu gestartet.",
+    "still_stopping": "Der Server fährt noch herunter und wurde daher nicht wieder gestartet. Starte ihn, sobald er vollständig gestoppt ist.",
     "not_supported": "Das Modul dieses Servers unterstützt diese Funktion nicht.",
     "executable_not_found": "Ausführbare Datei des Spielservers nicht gefunden. Prüfen Sie den Pfad in den Einstellungen.",
     "file_not_found": "Datei oder Ordner nicht gefunden. Prüfen Sie den Pfad.",
