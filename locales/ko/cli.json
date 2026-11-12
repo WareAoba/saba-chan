@@ -181,6 +181,7 @@
       "schedule": "예약 작업 예고",
       "update": "사바쨩 업데이트",
       "disk": "디스크 공간 부족",
+      "offline": "PC 연결 끊김",
       "chatbotUsage": "말하는 사바쨩 사용량",
       "moderation": "AI 모더레이션 신고"
     },

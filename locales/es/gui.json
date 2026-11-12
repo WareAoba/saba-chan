@@ -1306,6 +1306,8 @@
     "dm_update_desc": "Te avisa cuando sale una versión nueva.",
     "dm_disk_title": "Poco espacio en disco",
     "dm_disk_desc": "Te avisa cuando la unidad de servidores o copias baja del 10 % libre.",
+    "dm_offline_title": "PC sin conexión",
+    "dm_offline_desc": "Te avisa si este PC lleva más de 3 minutos sin llegar a Server-chan con un servidor de juego encendido, para que sepas de un apagón o un corte de internet. No se envía si cierras Saba-chan tú mismo o se actualiza.",
     "dm_chatbot_usage_title": "Uso de Saba-chan parlante",
     "dm_chatbot_usage_desc": "Te avisa al 50, 80 y 100 % del límite de tokens del mes, o cuando el saldo baja de la cantidad fijada.",
     "dm_moderation_title": "Informes de moderación con IA",

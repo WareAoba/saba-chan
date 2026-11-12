@@ -181,6 +181,7 @@
       "schedule": "计划任务预告",
       "update": "Saba-chan 更新",
       "disk": "磁盘空间不足",
+      "offline": "电脑连接中断",
       "chatbotUsage": "会说话的 Saba-chan 用量",
       "moderation": "AI 审核报告"
     },

@@ -279,6 +279,33 @@ impl RelayAgent {
         Ok(())
     }
 
+    /// 사용자가 사바쨩을 꺼서 데몬이 내려가기 직전: 릴레이가 3분을 기다리지 않고 바로 꺼짐으로 두고 "PC 연결 끊김" 알림을 보내지 않게 한다
+    /// (`POST /v1/host/stopping`, 본문 없음). 업데이트로 내려가는 중이면 이미 알렸으므로 보내지 않는다. 실패해도 종료는 진행한다
+    pub async fn notify_stopping(&self) {
+        // 알린 뒤의 heartbeat가 다시 켜짐으로 돌리지 않게 먼저 막는다. 이미 막혀 있으면 업데이트 창이다
+        if self.going_down.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        let (base, token) = {
+            let inner = self.lock();
+            match (&inner.cancel, &inner.endpoint) {
+                (Some(cancel), Some(endpoint)) if !cancel.is_cancelled() => endpoint.clone(),
+                _ => return,
+            }
+        };
+        let Ok(client) = http_client() else { return };
+        let Some(req) = crate::ipc::handlers::relay::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/stopping", &token, None)
+        else {
+            return;
+        };
+        match tokio::time::timeout(std::time::Duration::from_secs(5), req.send()).await {
+            Ok(Ok(resp)) if resp.status().is_success() => {}
+            Ok(Ok(resp)) => tracing::warn!("[Shutdown] Relay answered {} to the stopping notice", resp.status()),
+            Ok(Err(e)) => tracing::warn!("[Shutdown] Could not tell the relay we are stopping: {}", e),
+            Err(_) => tracing::warn!("[Shutdown] Telling the relay we are stopping timed out"),
+        }
+    }
+
     pub fn stop(&self) {
         crate::remote::link::stop();
         let mut inner = self.lock();
@@ -1863,6 +1890,10 @@ fn dm_notice_meta(meta: &mut Value, bot: &crate::config_store::BotConfig) {
     if !off.is_empty() {
         meta["dmOff"] = json!(off);
     }
+    let on = bot.dm_notice.on_kinds();
+    if !on.is_empty() {
+        meta["dmOn"] = json!(on);
+    }
 }
 
 fn heartbeat_metadata(mut meta: Value, sent: Option<&str>) -> (Value, String, bool) {
@@ -1993,6 +2024,53 @@ mod tests {
         assert!(seen[0].1, "signed like the heartbeat");
         agent.stop();
         assert!(agent.notify_updating(90).await.is_err(), "a stopped session sends nothing");
+    }
+
+    /// 사용자가 사바쨩을 끄면 내려가기 직전 릴레이에 알린다 (`POST /v1/host/stopping`, 본문 없음): 릴레이가 "PC 연결 끊김"으로 보지 않는다.
+    /// 업데이트로 내려가는 중이면 이미 알렸으므로 보내지 않는다
+    #[tokio::test]
+    async fn the_relay_is_told_when_the_daemon_is_shut_down_on_purpose() {
+        use axum::routing::post;
+        let seen: Arc<Mutex<Vec<(String, bool)>>> = Arc::default();
+        let log = seen.clone();
+        let app = axum::Router::new()
+            .route(
+                "/v1/host/stopping",
+                post(move |headers: axum::http::HeaderMap, body: String| {
+                    let log = log.clone();
+                    async move {
+                        let signed = headers.keys().any(|k| k.as_str().to_ascii_lowercase().contains("signature"));
+                        log.lock().unwrap().push((body, signed));
+                        axum::Json(json!({ "ok": true }))
+                    }
+                }),
+            )
+            .route("/v1/host/updating", post(|| async { axum::Json(json!({ "ok": true, "untilSeconds": 210 })) }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let connected = || {
+            let agent = RelayAgent::new();
+            let mut inner = agent.lock();
+            inner.cancel = Some(CancellationToken::new());
+            inner.endpoint = Some((base.clone(), "sbn_host.secret".into()));
+            drop(inner);
+            agent
+        };
+        let agent = RelayAgent::new();
+        agent.notify_stopping().await;
+        assert!(seen.lock().unwrap().is_empty(), "not connected");
+
+        let agent = connected();
+        agent.notify_stopping().await;
+        assert_eq!(seen.lock().unwrap().clone(), vec![(String::new(), true)], "no body, signed like the heartbeat");
+        assert!(agent.going_down.load(std::sync::atomic::Ordering::SeqCst), "no heartbeat brings it back online afterwards");
+
+        let agent = connected();
+        agent.notify_updating(90).await.unwrap();
+        agent.notify_stopping().await;
+        assert_eq!(seen.lock().unwrap().len(), 1, "going down for an update: the relay keeps its update window");
     }
 
     /// 릴레이가 이 PC의 버전을 받지 않으면(최소 버전 미달) 상태에 `agent_too_old`와 요구 버전을 남겨
@@ -2986,6 +3064,12 @@ mod tests {
         let mut meta = json!({});
         dm_notice_meta(&mut meta, &bot);
         assert_eq!(meta["backupNotice"], "failures");
+
+        // 켜야 보내는 종류(PC 연결 끊김)는 켰을 때만 `dmOn`으로 싣고, 끈 종류에는 넣지 않는다
+        let bot: BotConfig = serde_json::from_value(json!({ "dmNotice": { "offline": true } })).unwrap();
+        let mut meta = json!({});
+        dm_notice_meta(&mut meta, &bot);
+        assert_eq!(meta, json!({ "dmOn": ["offline"] }));
     }
 
     // 켜짐 알림을 켠 서버는 길드마다 싣는다. 켠 서버가 없는 길드는 싣지 않는다 (릴레이는 없으면 알리지 않는다)

@@ -1470,17 +1470,19 @@ pub enum DmKind {
     Schedule,
     Update,
     Disk,
+    Offline,
     ChatbotUsage,
     Moderation,
 }
 
 impl DmKind {
-    pub const ALL: [DmKind; 7] = [
+    pub const ALL: [DmKind; 8] = [
         DmKind::Crash,
         DmKind::ExternalStart,
         DmKind::Schedule,
         DmKind::Update,
         DmKind::Disk,
+        DmKind::Offline,
         DmKind::ChatbotUsage,
         DmKind::Moderation,
     ];
@@ -1493,9 +1495,15 @@ impl DmKind {
             DmKind::Schedule => "schedule",
             DmKind::Update => "update",
             DmKind::Disk => "disk",
+            DmKind::Offline => "offline",
             DmKind::ChatbotUsage => "chatbotUsage",
             DmKind::Moderation => "moderation",
         }
+    }
+
+    /// 설정에 없을 때의 값: PC 연결 끊김만 켜야 보낸다
+    pub fn default_on(self) -> bool {
+        self != DmKind::Offline
     }
 }
 

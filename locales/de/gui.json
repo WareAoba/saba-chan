@@ -1306,6 +1306,8 @@
     "dm_update_desc": "Meldet, wenn eine neue Version erscheint.",
     "dm_disk_title": "Wenig Speicherplatz",
     "dm_disk_desc": "Meldet, wenn das Laufwerk mit Servern oder Sicherungen unter 10 % frei fällt.",
+    "dm_offline_title": "PC nicht erreichbar",
+    "dm_offline_desc": "Meldet, wenn dieser PC bei laufendem Spielserver länger als 3 Minuten Server-chan nicht erreicht – so erfährst du von Stromausfall oder Internetabbruch. Nicht, wenn du Saba-chan selbst beendest oder es sich aktualisiert.",
     "dm_chatbot_usage_title": "Sprechende Saba-chan: Verbrauch",
     "dm_chatbot_usage_desc": "Meldet bei 50, 80 und 100 % des monatlichen Token-Limits oder wenn das Guthaben unter den festgelegten Betrag fällt.",
     "dm_moderation_title": "KI-Moderationsmeldungen",

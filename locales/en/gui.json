@@ -1306,6 +1306,8 @@
     "dm_update_desc": "Alerts you when a new version is out.",
     "dm_disk_title": "Low disk space",
     "dm_disk_desc": "Alerts you when the drive with your servers or backups drops below 10% free.",
+    "dm_offline_title": "PC went offline",
+    "dm_offline_desc": "Alerts you when this PC can't reach Server-chan for over 3 minutes while a game server is running, so you hear about a power cut or lost internet. Not sent when you close Saba-chan yourself or it updates.",
     "dm_chatbot_usage_title": "Talking Saba-chan usage",
     "dm_chatbot_usage_desc": "Alerts you at 50, 80 and 100% of this month's token limit, or when the balance falls below your set amount.",
     "dm_moderation_title": "AI moderation reports",

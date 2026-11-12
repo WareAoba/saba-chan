@@ -181,6 +181,7 @@
       "schedule": "Vorwarnung für Zeitpläne",
       "update": "Saba-chan-Updates",
       "disk": "Wenig Speicherplatz",
+      "offline": "PC nicht erreichbar",
       "chatbotUsage": "Sprechende Saba-chan: Verbrauch",
       "moderation": "KI-Moderationsmeldungen"
     },

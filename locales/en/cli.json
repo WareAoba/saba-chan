@@ -181,6 +181,7 @@
       "schedule": "Schedule warnings",
       "update": "Saba-chan updates",
       "disk": "Low disk space",
+      "offline": "PC went offline",
       "chatbotUsage": "Talking Saba-chan usage",
       "moderation": "AI moderation reports"
     },

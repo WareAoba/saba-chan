@@ -763,12 +763,12 @@ fn backup_notice_text(mode: &str) -> String {
     }
 }
 
-/// 봇 설정의 `dmNotice` → 종류별 켜짐 (빠지거나 모르는 값이면 데몬 기본 켜짐)
+/// 봇 설정의 `dmNotice` → 종류별 켜짐 (빠지거나 모르는 값이면 데몬 기본: PC 연결 끊김만 꺼짐)
 fn dm_notice_states(cfg: &Value) -> Value {
     let set = cfg.get("dmNotice");
     let states: serde_json::Map<String, Value> = crate::cli::DmKind::ALL
         .into_iter()
-        .map(|k| (k.key().to_string(), json!(set.and_then(|s| s.get(k.key())).and_then(Value::as_bool) != Some(false))))
+        .map(|k| (k.key().to_string(), json!(set.and_then(|s| s.get(k.key())).and_then(Value::as_bool).unwrap_or(k.default_on()))))
         .collect();
     Value::Object(states)
 }
@@ -1294,7 +1294,9 @@ mod tests {
         assert_eq!(s["crash"], false);
         assert_eq!(s["disk"], true);
         assert_eq!(s["moderation"], true);
-        assert_eq!(s.as_object().unwrap().len(), 7);
+        assert_eq!(s["offline"], false, "PC 연결 끊김은 켜야 보낸다");
+        assert_eq!(super::dm_notice_states(&json!({ "dmNotice": { "offline": true } }))["offline"], true);
+        assert_eq!(s.as_object().unwrap().len(), 8);
     }
 
     use super::*;

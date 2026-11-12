@@ -181,6 +181,7 @@
       "schedule": "予約の予告",
       "update": "サバちゃんのアップデート",
       "disk": "ディスク容量不足",
+      "offline": "PC の接続切れ",
       "chatbotUsage": "おしゃべりサバちゃんの使用量",
       "moderation": "AI モデレーションの報告"
     },

@@ -598,6 +598,8 @@ async fn main() -> anyhow::Result<()> {
         if !relay_shutdown.settle(std::time::Duration::from_secs(15)).await {
             tracing::warn!("[Shutdown] Some relay results were still being sent after 15s");
         }
+        // 스스로 내려간다고 릴레이에 알린다: "PC 연결 끊김" 알림이 가지 않는다 (업데이트로 내려갈 때는 이미 알렸다)
+        relay_shutdown.notify_stopping().await;
 
         // 1. 익스텐션 정리 (컨테이너 종료 등은 extension hook으로 위임)
         {

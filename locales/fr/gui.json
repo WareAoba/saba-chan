@@ -1306,6 +1306,8 @@
     "dm_update_desc": "Vous prévient quand une nouvelle version sort.",
     "dm_disk_title": "Espace disque faible",
     "dm_disk_desc": "Vous prévient quand le lecteur des serveurs ou sauvegardes passe sous 10 % libres.",
+    "dm_offline_title": "PC injoignable",
+    "dm_offline_desc": "Vous prévient si ce PC ne joint plus Server-chan depuis plus de 3 minutes alors qu'un serveur de jeu tourne : coupure de courant ou d'internet. Rien n'est envoyé si vous fermez Saba-chan vous-même ou pendant une mise à jour.",
     "dm_chatbot_usage_title": "Consommation de Saba-chan qui parle",
     "dm_chatbot_usage_desc": "Vous prévient à 50, 80 et 100 % de la limite de jetons du mois, ou quand le solde passe sous le montant choisi.",
     "dm_moderation_title": "Signalements de modération IA",

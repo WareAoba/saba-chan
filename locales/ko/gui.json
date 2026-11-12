@@ -1306,6 +1306,8 @@
     "dm_update_desc": "새 버전이 나오면 알려요.",
     "dm_disk_title": "디스크 공간 부족",
     "dm_disk_desc": "서버·백업 드라이브의 남은 공간이 10% 아래로 내려가면 알려요.",
+    "dm_offline_title": "PC 연결 끊김",
+    "dm_offline_desc": "게임 서버가 켜진 채로 이 PC가 3분 넘게 서버쨩에 닿지 않으면 알려요. 정전이나 인터넷 끊김을 알 수 있어요. 사바쨩을 직접 끄거나 업데이트할 때는 보내지 않아요.",
     "dm_chatbot_usage_title": "말하는 사바쨩 사용량",
     "dm_chatbot_usage_desc": "이번 달 토큰 한도의 50·80·100%에 닿거나 잔액이 정한 금액 아래로 내려가면 알려요.",
     "dm_moderation_title": "AI 모더레이션 신고",

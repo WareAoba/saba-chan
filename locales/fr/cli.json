@@ -181,6 +181,7 @@
       "schedule": "Annonces de tâches planifiées",
       "update": "Mises à jour de Saba-chan",
       "disk": "Espace disque faible",
+      "offline": "PC injoignable",
       "chatbotUsage": "Consommation de Saba-chan qui parle",
       "moderation": "Signalements de modération IA"
     },

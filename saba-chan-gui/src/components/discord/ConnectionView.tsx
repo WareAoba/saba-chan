@@ -672,7 +672,7 @@ export function ConnectionView({
 // PC 주인 DM 알림 묶음 (사용자 2026-11-08). 백업은 범위(끄기·실패만·모두), 나머지는 켜고 끈다
 const DM_GROUPS: { label: string; kinds: DmNoticeKind[] }[] = [
     { label: 'dm_group_server', kinds: ['crash', 'externalStart', 'schedule'] },
-    { label: 'dm_group_pc', kinds: ['update', 'disk'] },
+    { label: 'dm_group_pc', kinds: ['update', 'disk', 'offline'] },
     { label: 'dm_group_guild', kinds: ['chatbotUsage', 'moderation'] },
 ];
 const DM_KEYS: Record<DmNoticeKind, string> = {
@@ -681,6 +681,7 @@ const DM_KEYS: Record<DmNoticeKind, string> = {
     schedule: 'dm_schedule',
     update: 'dm_update',
     disk: 'dm_disk',
+    offline: 'dm_offline',
     chatbotUsage: 'dm_chatbot_usage',
     moderation: 'dm_moderation',
 };

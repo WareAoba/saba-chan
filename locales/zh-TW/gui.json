@@ -1306,6 +1306,8 @@
     "dm_update_desc": "有新版本時通知你。",
     "dm_disk_title": "磁碟空間不足",
     "dm_disk_desc": "伺服器或備份所在磁碟的剩餘空間低於 10% 時通知你。",
+    "dm_offline_title": "電腦連線中斷",
+    "dm_offline_desc": "遊戲伺服器還開著、這台電腦卻超過 3 分鐘連不上 Server-chan 時通知你，方便發現停電或斷網。自己關閉 Saba-chan 或更新時不會傳送。",
     "dm_chatbot_usage_title": "會說話的 Saba-chan 用量",
     "dm_chatbot_usage_desc": "達到本月權杖上限的 50%、80%、100%，或餘額低於設定金額時通知你。",
     "dm_moderation_title": "AI 審核回報",
