@@ -268,6 +268,13 @@ pub struct ServerInfo {
     /// 자동 강퇴를 쓸 수 있는지: 모듈이 접속 줄(`player_join_patterns`)과 `kick_command`를 주고 데몬이 콘솔을 읽는 시작일 때
     #[serde(default)]
     pub controllers_only_supported: bool,
+    /// 접속자 없을 때 자동 정지를 쓸 수 있는지: 데몬이 접속자 수를 알 길이 있을 때 (모듈의 `[status] players` 함수,
+    /// 또는 접속·퇴장 문구와 데몬이 콘솔을 읽는 시작)
+    #[serde(default)]
+    pub idle_stop_supported: bool,
+    /// 꺼져 있고 마지막 정지가 접속자 없음 자동 정지였을 때 `{at, minutes}` (`supervisor::idle`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idle_stopped: Option<crate::supervisor::idle::Stopped>,
     /// 익스텐션 데이터 slot (Q-7): 데몬이 조건을 판정하고 값을 찾아 둔 것 (`ExtensionManager::server_slots`)
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub slots: serde_json::Map<String, serde_json::Value>,

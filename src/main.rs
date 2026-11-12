@@ -533,6 +533,7 @@ async fn main() -> anyhow::Result<()> {
     // 접속자 수 (Q-5): 모듈이 `[status] players`를 선언한 켜진 서버만 1분마다 묻는다
     let players_sup = supervisor.clone();
     let players_cancel = shutdown_token.clone();
+    let idle_state = ipc_server.clone();
     tokio::spawn(async move {
         loop {
             tokio::select! {
@@ -540,6 +541,8 @@ async fn main() -> anyhow::Result<()> {
                 _ = tokio::time::sleep(tokio::time::Duration::from_secs(supervisor::players::REFRESH_SECS)) => {}
             }
             supervisor::players::refresh(&players_sup).await;
+            // 접속자 없을 때 자동 정지: 방금 갱신한 수만 본다 (따로 묻지 않는다)
+            ipc::handlers::server::stop_idle_servers(&idle_state).await;
         }
     });
 

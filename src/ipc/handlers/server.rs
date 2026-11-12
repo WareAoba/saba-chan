@@ -151,6 +151,9 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
             let chat_patterns = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
             let kick_on_join = module.as_ref().is_some_and(|m| m.metadata.kick_command.is_some() && !m.metadata.player_join_patterns.is_empty());
             let managed = supervisor.uses_managed_start(instance);
+            let counts_players = module.as_ref().is_some_and(|m| {
+                m.metadata.players_function.is_some() || (managed && !m.metadata.player_join_patterns.is_empty() && !m.metadata.player_leave_patterns.is_empty())
+            });
             InstanceSnapshot {
                 info: ServerInfo {
                     id: instance.id.clone(),
@@ -186,6 +189,8 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     kick_players: instance.kick_players.clone(),
                     game_chat_supported: chat_patterns && managed,
                     controllers_only_supported: kick_on_join && managed,
+                    idle_stop_supported: counts_players,
+                    idle_stopped: if running { None } else { crate::supervisor::idle::stopped(&instance.id) },
                     revision: instance.settings_revision(),
                     port_conflicts: vec![],
                     slots: Default::default(),
@@ -1233,6 +1238,49 @@ async fn announce_updates(state: &IPCServer, id: &str, mut result: Value) -> Val
         }
     });
     result
+}
+
+/// 접속자 0명이 정한 시간 이어진 켜진 서버를 저장하고 정지한다 (인스턴스 설정 `idle_stop`, `supervisor::idle`).
+/// 접속자 수를 갱신한 바로 뒤에 1분마다 부른다. 강제 종료하지 않는다: 정지하지 못하면 다음 차례에 다시 본다
+pub async fn stop_idle_servers(state: &IPCServer) {
+    stop_idle_servers_at(state, saba_runner::now()).await
+}
+
+pub(crate) async fn stop_idle_servers_at(state: &IPCServer, now: u64) {
+    use crate::supervisor::{idle, players};
+    let due: Vec<(String, u64)> = {
+        let supervisor = state.supervisor.read().await;
+        let mut due = Vec::new();
+        for instance in supervisor.instance_store.list() {
+            let (running, _, started) = supervisor.tracked_state(&instance.id).await;
+            if !running {
+                idle::forget(&instance.id);
+                continue;
+            }
+            // 켠 시각을 모르는 서버(다시 붙은 뒤 추적표에 없는 것)는 켠 직후가 아니라고 본다
+            let started = started.unwrap_or_default();
+            let count = players::get(&instance.id).map(|c| c.online);
+            if let Some(minutes) = idle::observe(&instance.id, idle::rule_of(instance), started, count, now) {
+                due.push((instance.id.clone(), minutes));
+            }
+        }
+        due
+    };
+    for (id, minutes) in due {
+        // 그사이 누가 들어왔으면 끄지 않는다
+        if players::get(&id).map(|c| c.online) != Some(0) {
+            continue;
+        }
+        tracing::info!("Stopping '{}': no players for {} minutes", id, minutes);
+        let stop = crate::audit::with_origin(crate::audit::Origin::new("idle"), Box::pin(stop_instance(state.clone(), &id, false))).await;
+        let stop = crate::ipc::internal::into_internal(stop).await;
+        if stop.status.is_success() && stop.body.get("success").and_then(Value::as_bool) != Some(false) {
+            idle::forget(&id);
+            idle::mark_stopped(&id, minutes, saba_runner::now());
+        } else {
+            tracing::warn!("Could not stop the idle server '{}': {}", id, stop.body);
+        }
+    }
 }
 
 /// 인스턴스 하나를 id로 정지한다. 이름은 겹칠 수 있으니 정지 경로는 모두 id를 쓴다

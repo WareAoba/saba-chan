@@ -4,6 +4,7 @@ pub mod managed_process;
 pub mod crash;
 pub mod highlight;
 pub mod players;
+pub mod idle;
 pub mod ready;
 pub mod player_events;
 pub mod chat_link;
@@ -3563,6 +3564,7 @@ fn start_origins() -> &'static std::sync::Mutex<HashMap<String, crate::audit::Or
 /// `instance.started`: 서버가 켜졌다. `unexpected`면 사바쨩이 띄우지 않은 프로세스다
 fn announce_started(instance_id: &str, name: &str, origin: &crate::audit::Origin, unexpected: bool) {
     start_origins().lock().unwrap_or_else(|e| e.into_inner()).insert(instance_id.to_string(), origin.clone());
+    idle::clear_stopped(instance_id);
     let mut data = origin_fields(origin);
     data.insert("instanceId".into(), json!(instance_id));
     data.insert("instance".into(), json!(name));

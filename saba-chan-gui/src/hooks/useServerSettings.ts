@@ -30,6 +30,13 @@ const restartFlagsOf = (server: Server | null | undefined) => ({
     restart_on_unknown_exit: asFlag(server?.module_settings?.restart_on_unknown_exit, false),
 });
 
+/** 접속자 없을 때 자동 정지 칸 값 (데몬 module_settings, 기본값은 데몬 `supervisor::idle`과 같다: 꺼짐·30분·15분) */
+const idleStopOf = (server: Server | null | undefined) => ({
+    idle_stop: asFlag(server?.module_settings?.idle_stop, false),
+    idle_stop_minutes: String(server?.module_settings?.idle_stop_minutes ?? 30),
+    idle_stop_grace_minutes: String(server?.module_settings?.idle_stop_grace_minutes ?? 15),
+});
+
 /** 램 상한 칸 값 (MiB, 비면 제한 없음): 데몬 인스턴스 최상위 memory_limit_mb */
 const memoryLimitOf = (server: Server | null | undefined) => (server?.memory_limit_mb == null ? '' : String(server.memory_limit_mb));
 
@@ -242,7 +249,7 @@ export function useServerSettings({
                 initial.server_version = String(savedVersion);
             }
 
-            Object.assign(initial, restartFlagsOf(latestServer));
+            Object.assign(initial, restartFlagsOf(latestServer), idleStopOf(latestServer));
             initial.memory_limit_mb = memoryLimitOf(latestServer);
             initial.stop_timeout = stopTimeoutOf(latestServer);
             initial.auto_update = autoUpdateOf(latestServer);
@@ -266,6 +273,7 @@ export function useServerSettings({
                       }
                     : {}),
                 ...restartFlagsOf(latestServer),
+                ...idleStopOf(latestServer),
                 memory_limit_mb: memoryLimitOf(latestServer),
                 stop_timeout: stopTimeoutOf(latestServer),
                 auto_update: autoUpdateOf(latestServer),
@@ -578,6 +586,7 @@ export function useServerSettings({
                                                     ...prev,
                                                     ...updated.module_settings,
                                                     ...restartFlagsOf(updated),
+                                                    ...idleStopOf(updated),
                                                     memory_limit_mb: memoryLimitOf(updated),
                                                     stop_timeout: stopTimeoutOf(updated),
                                                     auto_update: autoUpdateOf(updated),
@@ -716,6 +725,15 @@ export function useServerSettings({
             for (const key of ['auto_restart', 'restart_on_unknown_exit'] as const) {
                 const flag = asFlag(settingsValues[key], null);
                 if (flag !== null && flag !== openedFlags[key]) convertedSettings[key] = flag;
+            }
+
+            // 접속자 없을 때 자동 정지: 바꾼 칸만 보낸다
+            const openedIdle = idleStopOf(settingsServer);
+            const idleStop = asFlag(settingsValues.idle_stop, null);
+            if (idleStop !== null && idleStop !== openedIdle.idle_stop) convertedSettings.idle_stop = idleStop;
+            for (const key of ['idle_stop_minutes', 'idle_stop_grace_minutes'] as const) {
+                const value = String(settingsValues[key] ?? '').trim();
+                if (settingsValues[key] !== undefined && value !== '' && value !== openedIdle[key]) convertedSettings[key] = value;
             }
 
             const protocols: Partial<NonNullable<ModuleInfo['protocols']>> = module?.protocols || {};

@@ -2190,6 +2190,20 @@ button.activity-line:hover {
 .dc-list-row.dim .dc-list-text {
     opacity: 0.55;
 }
+/* 숫자 칸 뒤의 단위 (분) */
+.ss-with-unit {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+/* 자동 정지 안내: 글은 남는 너비를 쓰고 시작 버튼은 오른쪽 끝 */
+.idle-stopped-notice {
+    align-items: center;
+}
+.idle-stopped-notice > span {
+    flex: 1 1 auto;
+    min-width: 0;
+}
 /* 다가오는 예약: 겹치는 작업 줄 */
 .upcoming-list .dc-list-row {
     text-align: left;

@@ -2147,6 +2147,41 @@ else:
         assert!(entries.iter().any(|e| e["action"] == "restart"), "the restart was skipped: {entries:?}");
     }
 
+    /// 접속자 없을 때 자동 정지: 켜 둔 서버가 정한 시간 내내 0명이면 저장하고 정지하고, 사람이 있으면 그대로 둔다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_empty_server_with_idle_stop_on_is_stopped_after_the_wait_and_says_why() {
+        use crate::supervisor::players;
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("idle_stop".into(), json!(true));
+            inst.module_settings.insert("idle_stop_minutes".into(), json!(10));
+            inst.module_settings.insert("idle_stop_grace_minutes".into(), json!(0));
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        run_fake_server(&state, &id, &tmp, "stop) exit 0;;").await;
+        let generation = players::roster_start(&id);
+        let now = saba_runner::now();
+        let tick = |at| super::super::server::stop_idle_servers_at(&state, at);
+
+        tick(now).await;
+        players::roster_change(&id, generation, "Bob", true);
+        tick(now + 11 * 60).await;
+        assert!(is_running(&state, &id).await, "a player is on");
+        players::roster_change(&id, generation, "Bob", false);
+        tick(now + 12 * 60).await;
+        tick(now + 21 * 60).await;
+        assert!(is_running(&state, &id).await, "empty for nine minutes only");
+        tick(now + 22 * 60).await;
+        assert!(!is_running(&state, &id).await, "empty for ten minutes");
+        let stop = crate::audit::log().recent(10, Some(&id)).into_iter().find(|e| e["action"] == "stop").expect("the stop is on record");
+        assert_eq!(stop["source"], "idle");
+        assert_eq!(crate::supervisor::idle::stopped(&id).map(|s| s.minutes), Some(10));
+        players::roster_end(&id, generation);
+    }
+
     #[tokio::test]
     async fn a_failing_backup_paths_hook_stops_the_backup() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n");

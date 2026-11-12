@@ -100,7 +100,7 @@ export function ServerDetail({
     consoleProps,
     settingsProps,
 }: ServerDetailProps) {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
     const { provisionProgress, cooked, updateInfo, updatingServer } = useMaintenanceOf(server.id);
     const modulesLoaded = useServerStore((s) => s.modulesLoaded);
@@ -313,6 +313,29 @@ export function ServerDetail({
                 <div className="notice tone-warn" role="status">
                     <Icon name="alertTriangle" size="sm" />
                     <span>{t('server_status.unresponsive', { reason: server.unresponsive })}</span>
+                </div>
+            )}
+
+            {/* 접속자가 없어 데몬이 자동으로 정지했다 (데몬 idle_stopped: 다시 켜면 사라진다) */}
+            {server.idle_stopped && status === 'stopped' && (
+                <div className="notice tone-info idle-stopped-notice" role="status">
+                    <Icon name="moon" size="sm" />
+                    <span>
+                        <strong>{t('server_settings.idle_stopped', { minutes: server.idle_stopped.minutes })}</strong>{' '}
+                        {new Date(server.idle_stopped.at * 1000).toLocaleString(i18n.language, {
+                            month: 'numeric',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                        })}
+                    </span>
+                    <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => onStart(server.name, server.module)}
+                    >
+                        <Icon name="play" size="sm" /> {t('shell.start')}
+                    </button>
                 </div>
             )}
 

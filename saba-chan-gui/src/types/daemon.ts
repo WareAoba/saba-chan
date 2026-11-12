@@ -96,6 +96,10 @@ export interface ServerInfo {
     kick_players?: string[];
     /** 자동 강퇴를 쓸 수 있는지: 모듈이 접속 줄과 내보내기 명령을 알려 주고 데몬이 콘솔을 읽을 때만 참 */
     controllers_only_supported?: boolean;
+    /** 접속자 없을 때 자동 정지를 쓸 수 있는지: 데몬이 접속자 수를 알 길이 있을 때만 참 */
+    idle_stop_supported?: boolean;
+    /** 꺼져 있고 마지막 정지가 접속자 없음 자동 정지였을 때: 정지한 시각(Unix 초)과 비어 있던 분 */
+    idle_stopped?: { at: number; minutes: number };
     slots?: JsonObject;
     players?: PlayerCount;
     unresponsive?: string;

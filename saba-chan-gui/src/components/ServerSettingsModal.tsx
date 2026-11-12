@@ -386,6 +386,7 @@ function GeneralTab({
         moduleSupports(module, 'list_versions') &&
         moduleSupports(module, 'install_server');
     const crashOff = String(settingsValues.auto_restart) === 'false';
+    const idleStopOn = String(settingsValues.idle_stop) === 'true';
     const autoUpdatable = extensionInstallMethod(settingsServer, module) !== null;
     // 명령 팔레트가 고급 묶음의 칸을 찾아 달라고 하면 펼친다 (칸을 찾아 반짝이는 일은 팔레트가 한다)
     const findField = useUIStore((s) => s.findSettingField);
@@ -516,6 +517,62 @@ function GeneralTab({
                             />
                         }
                     />
+                </Card>
+            )}
+
+            {/* 접속자 없을 때 자동 정지 (데몬 module_settings idle_stop·idle_stop_minutes·idle_stop_grace_minutes).
+                데몬이 접속자 수를 알 길이 없는 서버(idle_stop_supported 거짓)에서는 고를 수 없다 */}
+            {showSaba && (
+                <Card icon="moon" title={t('server_settings.idle_stop_title')} desc={t('server_settings.idle_stop_desc')} className="ss-idle-stop">
+                    <SettingRow
+                        label={t('server_settings.idle_stop_label')}
+                        findKey="idle_stop"
+                        htmlFor={`${rowId}-idle`}
+                        disabled={!settingsServer.idle_stop_supported}
+                        control={
+                            <SabaToggle
+                                id={`${rowId}-idle`}
+                                checked={settingsServer.idle_stop_supported === true && idleStopOn}
+                                disabled={!settingsServer.idle_stop_supported}
+                                onChange={(checked) => handleSettingChange('idle_stop', checked)}
+                            />
+                        }
+                    />
+                    {!settingsServer.idle_stop_supported && (
+                        <div className="notice tone-info">
+                            <Icon name="info" size="sm" />
+                            <span>{t('server_settings.idle_stop_unsupported')}</span>
+                        </div>
+                    )}
+                    {settingsServer.idle_stop_supported &&
+                        (
+                            [
+                                ['idle_stop_minutes', 'idle_stop_minutes', 1],
+                                ['idle_stop_grace_minutes', 'idle_stop_grace', 0],
+                            ] as const
+                        ).map(([key, text, min]) => (
+                            <SettingRow
+                                key={key}
+                                label={t(`server_settings.${text}`)}
+                                findKey={key}
+                                desc={t(`server_settings.${text}_hint`)}
+                                disabled={!idleStopOn}
+                                control={
+                                    <span className="ss-with-unit">
+                                        <SabaNumberInput
+                                            className="input ss-short"
+                                            min={min}
+                                            max={1440}
+                                            value={settingsValues[key] ?? ''}
+                                            disabled={!idleStopOn}
+                                            aria-label={t(`server_settings.${text}`)}
+                                            onChange={(e) => handleSettingChange(key, e.target.value)}
+                                        />
+                                        <span className="muted">{t('server_settings.idle_stop_unit')}</span>
+                                    </span>
+                                }
+                            />
+                        ))}
                 </Card>
             )}
 
