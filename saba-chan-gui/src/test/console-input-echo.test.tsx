@@ -33,9 +33,11 @@ describe('보낸 명령', () => {
             { id: 2, source: 'stdout', content: 'There are 0 players' },
             { id: 3, source: 'input', content: 'say hi', by: { source: 'discord', userName: 'jace' } },
         ]);
-        const echoes = [...document.querySelectorAll('.console-input')].map((el) => el.textContent);
-        expect(echoes).toEqual(['› list · App', '› say hi · Discord · jace']);
-        expect(document.querySelector('.console-input .console-echo-by')?.textContent).toBe(' · App');
+        const text = (sel: string) => [...document.querySelectorAll(sel)].map((el) => el.textContent);
+        expect(text('.console-sent .console-echo')).toEqual(['list', 'say hi']);
+        expect(text('.console-sent .console-echo-by')).toEqual(['App', 'Discord · jace']);
+        // 보낸 줄이 입력칸 이름(.console-input)을 달면 입력칸 테두리·배경이 묻는다 (사용자 11-13)
+        expect(document.querySelector('.console-line.console-input')).toBeNull();
     });
 
     it('콘솔·다른 곳에서 보낸 명령도 실행 기록에 들어간다 (앱 명령 창은 스스로 남긴다)', async () => {

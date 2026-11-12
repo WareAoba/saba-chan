@@ -17,7 +17,7 @@ import { type Server, useServerStore } from '../stores/useServerStore';
 import type { ModuleInfo } from '../types/daemon';
 
 const ServerDetail = ServerDetailFull as unknown as ComponentType<Partial<ComponentProps<typeof ServerDetailFull>>>;
-const tr = (key: string, vars?: Record<string, unknown>) => i18n.t(`gui:players.${key}`, vars);
+const tr = (key: string, vars?: Record<string, unknown>) => i18n.t(`gui:players.${key}`, vars ?? {});
 
 const player = { name: 'player', type: 'text', label: 'Player Name', required: true };
 const moduleData = {

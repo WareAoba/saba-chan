@@ -142,7 +142,7 @@
     border-radius: 50%;
     flex: none;
     background: var(--chip-color);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--chip-color) 18%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--chip-color) 18%, transparent);
 }
 .conn-node.pulse .conn-dot {
     animation: chip-pulse 1.2s var(--ease) infinite;
@@ -191,7 +191,7 @@
     color: var(--text-1);
 }
 .win-btn.win-close:hover {
-    background: color-mix(in oklch, var(--stop) 18%, transparent);
+    background: color-mix(in oklab, var(--stop) 18%, transparent);
     color: var(--stop);
 }
 /* 맥: 신호등이 상단바 왼쪽 위에 겹친다 (window.rs `frame`). 앱 창 버튼은 숨기고 그 자리를 비운다 */
@@ -490,10 +490,14 @@
     font-weight: 800;
     color: var(--text-2);
 }
-/* 게임 아이콘은 투명 배경 그림이 많다: 자르지 않고 칸 안에 여백을 두고 맞춘다 */
-.server-row-icon img {
-    width: 72%;
-    height: 72%;
+/* 모듈 아이콘: 자르지 않고 칸 안에 여백을 두고 맞춘다 (--module-icon-size). 세로로 긴 그림도 칸을 넘지 않게 정사각형 상자에 넣는다 */
+.server-row-icon > img,
+.detail-icon > img,
+.as-game-icon > img,
+.ss-catalog-top .ss-card-icon > img {
+    width: var(--module-icon-size);
+    height: auto;
+    aspect-ratio: 1;
     object-fit: contain;
 }
 .server-row-icon:has(> img),
@@ -656,11 +660,6 @@
 .dc-brand-mark.on {
     color: var(--discord);
 }
-.detail-icon img {
-    width: 70%;
-    height: 70%;
-    object-fit: contain;
-}
 .detail-title {
     flex: 1;
     min-width: 180px;
@@ -750,9 +749,9 @@
     gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-4);
     font-size: var(--fs-sm);
-    color: color-mix(in oklch, var(--console-custom-text) 70%, transparent);
-    background: color-mix(in oklch, var(--console-custom-text) 6%, transparent);
-    border-bottom: 1px solid color-mix(in oklch, var(--console-custom-text) 12%, transparent);
+    color: color-mix(in oklab, var(--console-custom-text) 70%, transparent);
+    background: color-mix(in oklab, var(--console-custom-text) 6%, transparent);
+    border-bottom: 1px solid color-mix(in oklab, var(--console-custom-text) 12%, transparent);
 }
 .term-offline-dot {
     width: 8px;
@@ -787,7 +786,7 @@
 }
 .term-hidden {
     padding-top: var(--sp-2);
-    color: color-mix(in oklch, var(--console-custom-text) 50%, transparent);
+    color: color-mix(in oklab, var(--console-custom-text) 50%, transparent);
 }
 .term-jump {
     position: absolute;
@@ -800,8 +799,8 @@
     align-items: center;
     gap: var(--sp-1);
     border-radius: var(--r-pill);
-    border: 1px solid color-mix(in oklch, var(--console-custom-text) 22%, transparent);
-    background: color-mix(in oklch, var(--console-custom-bg) 86%, var(--console-custom-text));
+    border: 1px solid color-mix(in oklab, var(--console-custom-text) 22%, transparent);
+    background: color-mix(in oklab, var(--console-custom-bg) 86%, var(--console-custom-text));
     color: var(--console-custom-text);
     box-shadow: none;
 }
@@ -820,20 +819,20 @@
     --btn-padding: 0 10px;
     --btn-font-size: 12px;
     border-radius: var(--r-pill);
-    border: 1px solid color-mix(in oklch, var(--console-custom-text) 14%, transparent);
-    background: color-mix(in oklch, var(--console-custom-text) 6%, transparent);
-    color: color-mix(in oklch, var(--console-custom-text) 80%, transparent);
+    border: 1px solid color-mix(in oklab, var(--console-custom-text) 14%, transparent);
+    background: color-mix(in oklab, var(--console-custom-text) 6%, transparent);
+    color: color-mix(in oklab, var(--console-custom-text) 80%, transparent);
     box-shadow: none;
     font-weight: 500;
 }
 .term-chip:hover {
-    background: color-mix(in oklch, var(--console-custom-text) 12%, transparent);
+    background: color-mix(in oklab, var(--console-custom-text) 12%, transparent);
     color: var(--console-custom-text);
 }
 /* 켜짐·수준 색은 올려도 남는다 (hover 뒤에 둔다) */
 .term-chip.on {
-    background: color-mix(in oklch, var(--console-custom-text) 16%, transparent);
-    border-color: color-mix(in oklch, var(--console-custom-text) 35%, transparent);
+    background: color-mix(in oklab, var(--console-custom-text) 16%, transparent);
+    border-color: color-mix(in oklab, var(--console-custom-text) 35%, transparent);
     color: var(--console-custom-text);
     font-weight: 700;
 }
@@ -844,12 +843,12 @@
     color: var(--tok-error);
 }
 .term-chip.level-warn.on {
-    background: color-mix(in oklch, var(--tok-warn) 16%, transparent);
-    border-color: color-mix(in oklch, var(--tok-warn) 50%, transparent);
+    background: color-mix(in oklab, var(--tok-warn) 16%, transparent);
+    border-color: color-mix(in oklab, var(--tok-warn) 50%, transparent);
 }
 .term-chip.level-error.on {
-    background: color-mix(in oklch, var(--tok-error) 16%, transparent);
-    border-color: color-mix(in oklch, var(--tok-error) 50%, transparent);
+    background: color-mix(in oklab, var(--tok-error) 16%, transparent);
+    border-color: color-mix(in oklab, var(--tok-error) 50%, transparent);
 }
 .term-input {
     display: flex;
@@ -859,17 +858,17 @@
     padding: 0 var(--sp-1-5) 0 var(--sp-3);
     height: 44px;
     border-radius: var(--r-md);
-    border: 1px solid color-mix(in oklch, var(--console-custom-text) 14%, transparent);
-    background: color-mix(in oklch, var(--console-custom-bg) 70%, var(--shadow-ink));
+    border: 1px solid color-mix(in oklab, var(--console-custom-text) 14%, transparent);
+    background: color-mix(in oklab, var(--console-custom-bg) 70%, var(--shadow-ink));
     color: var(--accent);
     transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 .term-input.focused {
-    border-color: color-mix(in oklch, var(--accent) 70%, transparent);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 18%, transparent);
+    border-color: color-mix(in oklab, var(--accent) 70%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
 }
 .term-input.disabled {
-    color: color-mix(in oklch, var(--console-custom-text) 35%, transparent);
+    color: color-mix(in oklab, var(--console-custom-text) 35%, transparent);
 }
 .term-field {
     flex: 1;
@@ -887,12 +886,12 @@
     outline: none;
 }
 .term-field::placeholder {
-    color: color-mix(in oklch, var(--console-custom-text) 45%, transparent);
+    color: color-mix(in oklab, var(--console-custom-text) 45%, transparent);
 }
 .term-hint {
     font-size: 11px;
     white-space: nowrap;
-    color: color-mix(in oklch, var(--console-custom-text) 38%, transparent);
+    color: color-mix(in oklab, var(--console-custom-text) 38%, transparent);
 }
 .term-input.focused .term-hint {
     display: none;
@@ -908,8 +907,8 @@
     box-shadow: none;
 }
 .term-send:disabled {
-    background: color-mix(in oklch, var(--console-custom-text) 12%, transparent);
-    color: color-mix(in oklch, var(--console-custom-text) 45%, transparent);
+    background: color-mix(in oklab, var(--console-custom-text) 12%, transparent);
+    color: color-mix(in oklab, var(--console-custom-text) 45%, transparent);
     opacity: 1;
 }
 /* PIP로 띄운 동안 메인 창 콘솔 자리: 지난 줄을 흐리게 깔고 가운데에 안내 창 (사용자 11-11 N1) */
@@ -929,7 +928,7 @@
     align-items: center;
     justify-content: center;
     padding: var(--sp-4);
-    background: color-mix(in oklch, var(--console-custom-bg) 35%, transparent);
+    background: color-mix(in oklab, var(--console-custom-bg) 35%, transparent);
 }
 .term-popped-card {
     display: flex;
@@ -951,14 +950,14 @@
     height: 84px;
     margin-bottom: var(--sp-3);
     border-radius: 10px;
-    border: 1.5px solid color-mix(in oklch, var(--text-1) 22%, transparent);
+    border: 1.5px solid color-mix(in oklab, var(--text-1) 22%, transparent);
 }
 .term-popped-art::before {
     content: '';
     position: absolute;
     inset: 0 0 auto;
     height: 14px;
-    border-bottom: 1.5px solid color-mix(in oklch, var(--text-1) 22%, transparent);
+    border-bottom: 1.5px solid color-mix(in oklab, var(--text-1) 22%, transparent);
 }
 .term-popped-art i {
     position: absolute;
@@ -968,14 +967,14 @@
     height: 50px;
     border-radius: 8px;
     background: var(--accent);
-    box-shadow: 0 8px 20px color-mix(in oklch, black 30%, transparent);
+    box-shadow: 0 8px 20px color-mix(in oklab, black 30%, transparent);
 }
 .term-popped-art i::before {
     content: '';
     position: absolute;
     inset: 0 0 auto;
     height: 10px;
-    border-bottom: 1.5px solid color-mix(in oklch, white 55%, transparent);
+    border-bottom: 1.5px solid color-mix(in oklab, white 55%, transparent);
 }
 .term-popped-title {
     font-size: var(--fs-lg);
@@ -1018,13 +1017,39 @@
     user-select: none;
 }
 
-/* 보낸 명령 줄 (#18): "› list" 굵게 강조색, 보낸 곳은 흐리게 */
+/* 보낸 명령 줄 (사용자 11-13 시안 B): 줄 전체에 옅은 강조색 띠, 보낸 곳은 오른쪽 끝 알약 */
+.console-line.console-sent {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    /* 띠는 콘솔 안쪽 여백까지 가로로 꽉 채운다 */
+    margin-inline: calc(-1 * var(--sp-4));
+    padding-inline: var(--sp-4);
+    background: color-mix(in oklab, var(--accent) 9%, transparent);
+}
+.console-sent .console-time {
+    margin-right: 0;
+}
+.console-echo-prompt {
+    color: var(--accent);
+    font-weight: 700;
+}
 .console-echo {
-    color: var(--tok-info);
+    flex: 1;
+    min-width: 0;
+    color: var(--console-text);
     font-weight: 700;
 }
 .console-echo-by {
-    color: var(--text-3);
+    flex: none;
+    padding: 0 var(--sp-2);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--console-text) 10%, transparent);
+    color: color-mix(in oklab, var(--console-text) 70%, transparent);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
 }
 
 /* ── 콘솔 색 토큰: 줄 전체 색은 데몬이 매긴 level, 조각 색은 spans(또는 모듈 규칙)의 토큰 ── */
@@ -1036,58 +1061,6 @@
 }
 .console-line.console-level-debug {
     color: var(--tok-debug);
-}
-.tok-error {
-    color: var(--tok-error);
-    font-weight: 600;
-}
-.tok-warn {
-    color: var(--tok-warn);
-}
-.tok-info {
-    color: var(--tok-info);
-}
-.tok-debug {
-    color: var(--tok-debug);
-}
-.tok-success {
-    color: var(--tok-success);
-    font-weight: 600;
-}
-.tok-string {
-    color: var(--tok-string);
-}
-.tok-number {
-    color: var(--tok-number);
-}
-.tok-keyword {
-    color: var(--tok-keyword);
-}
-.tok-timestamp {
-    color: var(--tok-timestamp);
-}
-.tok-player {
-    color: var(--tok-player);
-    font-weight: 600;
-}
-.tok-command {
-    color: var(--tok-command);
-}
-.tok-selector {
-    color: var(--tok-selector);
-}
-.tok-ip {
-    color: var(--tok-ip);
-}
-.tok-uuid {
-    color: var(--tok-uuid);
-}
-.tok-path {
-    color: var(--tok-path);
-    font-style: italic;
-}
-.tok-dim {
-    color: var(--tok-dim);
 }
 
 /* ── 따로 띄운 콘솔 창 (PiP): 제목줄 + 상세 화면 콘솔. 콘솔은 테마와 상관없이 어두우므로 색은 콘솔 색에서 파생한다 ── */
@@ -1127,7 +1100,7 @@
     border-radius: 50%;
     flex: none;
     background: var(--chip-color);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--chip-color) 18%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--chip-color) 18%, transparent);
 }
 .pip-dot.pulse {
     animation: chip-pulse 1.2s var(--ease) infinite;
@@ -1270,7 +1243,7 @@ button.activity-line:hover {
 }
 /* 새 글자 위로 빛이 한 번 지나간다 */
 .activity-slide.entering .activity-shine {
-    background-image: linear-gradient(in oklch
+    background-image: linear-gradient(in oklab
         100deg,
         currentColor 0%,
         currentColor 40%,
@@ -1358,31 +1331,10 @@ button.activity-line:hover {
 .activity-console * {
     font-family: var(--font-mono);
 }
-.activity-console-line {
-    display: flex;
-    gap: var(--sp-2);
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-.activity-console-time,
-.activity-console-level {
-    flex-shrink: 0;
-    color: color-mix(in oklch, var(--console-custom-text) 50%, transparent);
-}
-.activity-console-level {
-    width: 5ch;
-}
-.activity-console-line.level-warn .activity-console-level {
-    color: var(--console-warn);
-}
-.activity-console-line.level-error .activity-console-level,
-.activity-console-line.level-error .activity-console-msg {
-    color: var(--console-error);
-}
 .activity-console-empty,
 .activity-console-error {
     padding: var(--sp-3) 0;
-    color: color-mix(in oklch, var(--console-custom-text) 55%, transparent);
+    color: color-mix(in oklab, var(--console-custom-text) 55%, transparent);
     font-family: var(--font-sans);
 }
 
@@ -1668,8 +1620,8 @@ button.activity-line:hover {
     place-items: center;
     border-radius: var(--r-md);
     color: var(--chip-color);
-    background: color-mix(in oklch, var(--chip-color) 14%, transparent);
-    border: 1px solid color-mix(in oklch, var(--chip-color) 30%, transparent);
+    background: color-mix(in oklab, var(--chip-color) 14%, transparent);
+    border: 1px solid color-mix(in oklab, var(--chip-color) 30%, transparent);
 }
 .bg-pop-orb.pulse {
     animation: chip-pulse 1.2s var(--ease) infinite;
@@ -1801,8 +1753,8 @@ button.activity-line:hover {
     background: var(--stop-soft);
 }
 .term-chip.risk-danger {
-    border-color: color-mix(in oklch, var(--console-error) 45%, transparent);
-    color: color-mix(in oklch, var(--console-error) 85%, var(--console-custom-text));
+    border-color: color-mix(in oklab, var(--console-error) 45%, transparent);
+    color: color-mix(in oklab, var(--console-error) 85%, var(--console-custom-text));
 }
 .notice.risk-confirm {
     align-items: center;
@@ -2133,7 +2085,7 @@ button.activity-line:hover {
 /* 페어링 */
 .dc-pair.tone-ok,
 .dc-pair.tone-warn {
-    border-color: color-mix(in oklch, var(--chip-color) 40%, var(--line));
+    border-color: color-mix(in oklab, var(--chip-color) 40%, var(--line));
 }
 .dc-pair-wait {
     display: flex;
@@ -2359,7 +2311,7 @@ button.activity-line:hover {
 /* 새 버전: 이름 아래 표시와 정보 탭의 새 버전 줄 */
 .tag.tag-accent {
     color: var(--accent);
-    border-color: color-mix(in oklch, var(--accent) 45%, transparent);
+    border-color: color-mix(in oklab, var(--accent) 45%, transparent);
 }
 .info-new-version {
     color: var(--accent);
@@ -2468,7 +2420,7 @@ button.activity-line:hover {
     font-size: var(--fs-xs);
     font-weight: 600;
     color: var(--chip-color);
-    background: color-mix(in oklch, var(--chip-color) 14%, transparent);
+    background: color-mix(in oklab, var(--chip-color) 14%, transparent);
 }
 .dc-toolbar {
     display: flex;
@@ -2514,7 +2466,7 @@ button.activity-line:hover {
 .screen-link:hover,
 .screen-link:focus-visible {
     outline-color: var(--accent);
-    background: color-mix(in oklch, var(--accent) 22%, transparent);
+    background: color-mix(in oklab, var(--accent) 22%, transparent);
 }
 .screen-link-sep {
     opacity: 0.6;
@@ -2591,7 +2543,7 @@ button.activity-line:hover {
     padding-inline: var(--sp-2);
     border-radius: var(--r-md);
     box-shadow: inset 0 0 0 2px var(--accent);
-    background: color-mix(in oklch, var(--accent) 12%, transparent);
+    background: color-mix(in oklab, var(--accent) 12%, transparent);
 }
 .dc-level-head {
     display: flex;
@@ -2780,8 +2732,8 @@ button.activity-line:hover {
     opacity: 0.4;
 }
 .dc-member-search.is-dragging .dc-member-results {
-    background: color-mix(in oklch, var(--bg-1) 55%, transparent);
-    border-color: color-mix(in oklch, var(--line-strong) 50%, transparent);
+    background: color-mix(in oklab, var(--bg-1) 55%, transparent);
+    border-color: color-mix(in oklab, var(--line-strong) 50%, transparent);
 }
 .dc-member-result > .dc-chip.is-floating {
     position: fixed;
@@ -2830,7 +2782,7 @@ button.activity-line:hover {
     min-height: 0;
     padding: var(--sp-2-5) var(--sp-2);
     border-top: 3px solid var(--accent);
-    background: color-mix(in oklch, var(--accent) calc(4% + var(--step) * 4%), var(--bg-1));
+    background: color-mix(in oklab, var(--accent) calc(4% + var(--step) * 4%), var(--bg-1));
     transition: box-shadow var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
 .dc-step.level-banned {
@@ -2839,7 +2791,7 @@ button.activity-line:hover {
 }
 .dc-step.is-over {
     box-shadow: inset 0 0 0 2px var(--accent);
-    background: color-mix(in oklch, var(--accent) calc(12% + var(--step) * 4%), var(--bg-1));
+    background: color-mix(in oklab, var(--accent) calc(12% + var(--step) * 4%), var(--bg-1));
 }
 .dc-step-chips {
     display: flex;
@@ -2934,7 +2886,7 @@ button.activity-line:hover {
 }
 .dc-level-step.is-up {
     border-color: transparent;
-    background: color-mix(in oklch, var(--accent) 16%, var(--bg-1));
+    background: color-mix(in oklab, var(--accent) 16%, var(--bg-1));
     color: var(--accent);
 }
 .dc-level-step.is-on {
@@ -3479,13 +3431,22 @@ button.dc-ladder-chip.is-fixed {
 .appbar-preflight .preflight-track {
     stroke: var(--line);
 }
+/* 링의 호는 강조색 두 색 그라데이션 (PillRing, 사용자 11-13) */
 .appbar-preflight .preflight-fill {
-    stroke: var(--accent);
     transition: stroke-dashoffset 0.4s ease;
 }
+.pill-ring-from {
+    stop-color: var(--brand-from);
+}
+.pill-ring-to {
+    stop-color: var(--brand-to);
+}
+/* 진행률을 모를 때: 호가 돌면서 짧아졌다 길어진다 (시안 B). 둘레는 2π·7 ≈ 44 */
 .appbar-preflight .preflight-fill.indeterminate {
     transform-origin: 9px 9px;
-    animation: preflight-spin 1s linear infinite;
+    animation:
+        preflight-spin 1.6s linear infinite,
+        preflight-breathe 1.6s ease-in-out infinite;
 }
 @keyframes preflight-spin {
     from {
@@ -3493,6 +3454,20 @@ button.dc-ladder-chip.is-fixed {
     }
     to {
         transform: rotate(360deg);
+    }
+}
+@keyframes preflight-breathe {
+    0% {
+        stroke-dasharray: 3 41;
+        stroke-dashoffset: 0;
+    }
+    50% {
+        stroke-dasharray: 30 14;
+        stroke-dashoffset: -6;
+    }
+    100% {
+        stroke-dasharray: 3 41;
+        stroke-dashoffset: -41;
     }
 }
 button.appbar-preflight {
@@ -4035,7 +4010,7 @@ button.appbar-pill:focus-visible {
     background: var(--bg-3);
 }
 .dc-mod-row.active {
-    border-color: color-mix(in oklch, var(--accent) 60%, transparent);
+    border-color: color-mix(in oklab, var(--accent) 60%, transparent);
     background: var(--accent-soft);
 }
 .dc-mod-row-name {
@@ -4704,7 +4679,7 @@ button.appbar-pill:focus-visible {
 }
 .palette-ico.app,
 .palette-ico.set {
-    background: linear-gradient(in oklch 160deg, #46484f, #2f3137);
+    background: linear-gradient(in oklab 160deg, #46484f, #2f3137);
     color: #eceef3;
 }
 .palette-ico.ctl {
@@ -5448,7 +5423,7 @@ button.appbar-pill:focus-visible {
     align-items: center;
     gap: var(--sp-2);
     width: 100%;
-    padding: var(--sp-2-5) var(--sp-3);
+    padding: var(--sp-3);
     border: none;
     background: none;
     font: inherit;
@@ -5463,16 +5438,60 @@ button.appbar-pill:focus-visible {
 }
 .guide-dock-head > :last-child {
     color: var(--text-3);
+    transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.3, 1);
+}
+.guide-dock.open .guide-dock-head > :last-child {
+    transform: rotate(180deg);
+}
+/* 펼침 (사용자 11-13): 높이가 부드럽게 늘고 줄이 차례로 떠오른다 */
+.guide-dock-wrap {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.3s cubic-bezier(0.3, 0.7, 0.3, 1);
+}
+.guide-dock.open .guide-dock-wrap {
+    grid-template-rows: 1fr;
 }
 .guide-dock-body {
     display: flex;
     flex-direction: column;
-    padding: var(--sp-1-5);
-    border-top: 1px solid var(--line);
+    gap: var(--sp-1);
+    min-height: 0;
+    overflow: hidden;
+    padding: 0 var(--sp-2);
+    border-top: 1px solid transparent;
+    transition:
+        padding 0.3s cubic-bezier(0.3, 0.7, 0.3, 1),
+        border-color 0.3s;
+}
+.guide-dock.open .guide-dock-body {
+    padding: var(--sp-2);
+    border-top-color: var(--line);
+}
+.guide-dock-body > * {
+    opacity: 0;
+    transform: translateY(6px);
+    transition:
+        opacity 0.2s ease,
+        transform 0.25s ease;
+}
+.guide-dock.open .guide-dock-body > * {
+    opacity: 1;
+    transform: none;
+}
+.guide-dock.open .guide-dock-body > :nth-child(2) {
+    transition-delay: 0.04s;
+}
+.guide-dock.open .guide-dock-body > :nth-child(3) {
+    transition-delay: 0.08s;
+}
+.guide-dock.open .guide-dock-body > :nth-child(4) {
+    transition-delay: 0.12s;
 }
 .guide-dock-more {
     align-self: flex-start;
-    padding: var(--sp-2) var(--sp-2) var(--sp-1);
+    /* 글자를 줄 제목과 같은 자리에 맞춘다 (줄 여백 + 아이콘 16px + 간격) */
+    padding: var(--sp-1-5) var(--sp-2-5) var(--sp-1) calc(var(--sp-2-5) + var(--sp-4) + var(--sp-3));
     border: none;
     background: none;
     color: var(--accent);
@@ -5484,9 +5503,9 @@ button.appbar-pill:focus-visible {
 .guide-row {
     display: flex;
     align-items: center;
-    gap: var(--sp-2-5);
+    gap: var(--sp-3);
     width: 100%;
-    padding: var(--sp-2);
+    padding: var(--sp-2-5);
     border: none;
     border-radius: var(--r-md);
     background: none;
@@ -5499,7 +5518,7 @@ button.appbar-pill:focus-visible {
     background: var(--bg-2);
 }
 .guide-row.current {
-    background: color-mix(in oklch, var(--accent) 12%, transparent);
+    background: color-mix(in oklab, var(--accent) 12%, transparent);
 }
 .guide-row.done {
     opacity: 0.55;
@@ -5515,8 +5534,9 @@ button.appbar-pill:focus-visible {
     display: flex;
     flex: 1;
     flex-direction: column;
+    gap: var(--sp-0-5);
     min-width: 0;
-    line-height: 1.3;
+    line-height: 1.35;
 }
 .guide-row-title {
     font-size: var(--fs-sm);
@@ -5544,6 +5564,26 @@ button.appbar-pill:focus-visible {
     overflow: auto;
     padding: var(--sp-5);
     text-align: left;
+    /* 가이드 카드 자리에서 커지며 열리고 그 자리로 줄어들며 닫힌다 (사용자 11-13 시안 A) */
+    animation: guide-sheet-in 0.38s cubic-bezier(0.2, 0.9, 0.25, 1.04) both;
+}
+.modal-overlay.closing .modal.guide-sheet {
+    animation: guide-sheet-out 0.22s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+}
+@keyframes guide-sheet-in {
+    from {
+        opacity: 0;
+        transform: translate(var(--from-x, 0), var(--from-y, 0)) scale(0.3);
+    }
+    40% {
+        opacity: 1;
+    }
+}
+@keyframes guide-sheet-out {
+    to {
+        opacity: 0;
+        transform: translate(var(--from-x, 0), var(--from-y, 0)) scale(0.3);
+    }
 }
 .guide-sheet-head {
     display: flex;
@@ -5562,6 +5602,11 @@ button.appbar-pill:focus-visible {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: var(--sp-1-5) var(--sp-5);
+}
+.guide-sheet-groups section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
 }
 .guide-sheet-groups h3 {
     margin: 0;
@@ -5595,7 +5640,7 @@ button.appbar-pill:focus-visible {
 .spotlight-hole {
     position: fixed;
     border-radius: 12px;
-    box-shadow: 0 0 0 9999px color-mix(in oklch, black 58%, transparent);
+    box-shadow: 0 0 0 9999px color-mix(in oklab, black 58%, transparent);
     outline: 2px solid var(--accent);
     outline-offset: 2px;
     transition: left var(--dur) var(--ease), top var(--dur) var(--ease), width var(--dur) var(--ease), height var(--dur) var(--ease);
@@ -5603,7 +5648,7 @@ button.appbar-pill:focus-visible {
 .spotlight-dim {
     position: fixed;
     inset: 0;
-    background: color-mix(in oklch, black 58%, transparent);
+    background: color-mix(in oklab, black 58%, transparent);
 }
 .spotlight-bubble {
     position: fixed;
@@ -5748,7 +5793,7 @@ button.appbar-pill:focus-visible {
     margin-bottom: var(--sp-3);
     padding: var(--sp-0-5) var(--sp-2);
     border-radius: var(--r-pill);
-    background: color-mix(in oklch, var(--ok) 16%, transparent);
+    background: color-mix(in oklab, var(--ok) 16%, transparent);
     color: var(--ok);
     font-size: var(--fs-xs);
     font-weight: 600;
@@ -5834,11 +5879,13 @@ button.appbar-pill:focus-visible {
     border-radius: var(--r-md);
     background: var(--bg-1);
 }
-.guide-module img {
+.guide-module > img {
     width: 36px;
     height: 36px;
+    padding: var(--sp-1);
     border-radius: var(--r-sm);
-    object-fit: cover;
+    background: var(--bg-3);
+    object-fit: contain;
 }
 .guide-module-text {
     display: flex;
@@ -6020,7 +6067,7 @@ button.appbar-pill:focus-visible {
     background: var(--surface-gradient-hover);
 }
 .cmd-item.active {
-    background: color-mix(in oklch, var(--accent) 16%, transparent);
+    background: color-mix(in oklab, var(--accent) 16%, transparent);
 }
 .cmd-item-name {
     flex: none;

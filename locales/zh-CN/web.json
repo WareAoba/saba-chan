@@ -125,7 +125,6 @@
   "detail": {
     "backups": "备份",
     "players": "玩家",
-    "more": "更多",
     "tabs": "服务器菜单",
     "uptime": "已运行 {{time}}",
     "port_check": "端口转发检查"
@@ -268,8 +267,6 @@
     "update": "更新",
     "update_to": "有 v{{version}}",
     "updated": "已更新。",
-    "check_ok": "检查结果：只使用已声明的功能。",
-    "check_failed": "无法获取检查结果。",
     "check_undeclared": "检查结果：使用了模块未声明的功能（{{perms}}）。请确认这是可信的模块。"
   },
   "plugins": {
@@ -430,6 +427,9 @@
     "off": "关",
     "saved": "已更改。",
     "pc": "PC",
+    "guild_here": "此电脑",
+    "guild_other_pc": "另一台电脑",
+    "guild_no_pc": "无电脑",
     "no_guilds": "没有你可以管理的 Discord 服务器。",
     "other_pc": "此服务器已连接到另一台电脑。请通过那台电脑的 /saba web 链接更改。",
     "err": {
@@ -541,6 +541,7 @@
     "channel_board": "状态板频道",
     "sleep_now": "现在睡觉",
     "awake": "醒着",
+    "sleep_needs_pc": "连接电脑后即可使用",
     "basics_desc": "此服务器使用的语言和表情",
     "music_desc": "在语音频道播放音乐",
     "reading_desc": "用语音朗读聊天内容",

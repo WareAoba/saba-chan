@@ -12,7 +12,7 @@ import { eventToast } from '../utils/daemonEvents';
 import { pickOption } from './dropdown';
 
 const tr = i18n.getFixedT('en', 'gui');
-const t = (k: string, o?: Record<string, unknown>) => i18n.t(`gui:${k}`, o) as string;
+const t = (k: string, o?: Record<string, unknown>) => i18n.t(`gui:${k}`, o ?? {}) as string;
 const modules = [{ name: 'game', settings: { fields: [{ name: 'title', field_type: 'text' }] } }];
 
 const setup = () =>

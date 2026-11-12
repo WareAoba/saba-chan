@@ -257,7 +257,7 @@ export function SystemMonitor({ layout = 'top', servers = [], float }: SystemMon
                     {rings.map((r) => (
                         <span key={r.key} className="monitor-chip">
                             <MiniRing ring={r} />
-                            <span className="muted">{t(r.titleKey, r.titleVars)}</span>{' '}
+                            <span className="muted">{t(r.titleKey, r.titleVars ?? {})}</span>{' '}
                             <strong>
                                 {r.value}
                                 {r.unit}

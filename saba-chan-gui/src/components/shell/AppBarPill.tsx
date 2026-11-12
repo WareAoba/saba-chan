@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { type HTMLAttributes, type ReactNode, type Ref, useLayoutEffect, useRef, useState } from 'react';
+import { type HTMLAttributes, type ReactNode, type Ref, useId, useLayoutEffect, useRef, useState } from 'react';
 import { motionAllowed } from '../../hooks/useSwapAnimation';
 
 /** 접힌 알약(원)의 지름. 알약 높이와 같다 */
@@ -197,3 +197,40 @@ export function AppBarPill({ visible, icon, label, tone, as = 'output', changeKe
         </span>
     );
 }
+
+const RING_R = 7;
+const RING_C = 2 * Math.PI * RING_R;
+
+/**
+ * 알약 앞의 진행 링. `percent`를 모르면(없으면) 호가 돌며 짧아졌다 길어진다 (사용자 11-13 시안 B).
+ * 호는 강조색 두 색 그라데이션으로 칠한다. 그라데이션 이름은 링마다 따로 (알약이 여럿 떠도 겹치지 않게)
+ */
+export function PillRing({ percent }: { percent?: number }) {
+    const id = `pill-ring-${useId().replace(/:/g, '')}`;
+    const known = percent !== undefined;
+    return (
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">
+            <defs>
+                <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" className="pill-ring-from" />
+                    <stop offset="1" className="pill-ring-to" />
+                </linearGradient>
+            </defs>
+            <circle className="preflight-track" cx="9" cy="9" r={RING_R} fill="none" strokeWidth="2.5" />
+            <circle
+                className={clsx('preflight-fill', { indeterminate: !known })}
+                cx="9"
+                cy="9"
+                r={RING_R}
+                fill="none"
+                stroke={`url(#${id})`}
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeDasharray={known ? RING_C : undefined}
+                strokeDashoffset={known ? RING_C * (1 - percent / 100) : undefined}
+                transform="rotate(-90 9 9)"
+            />
+        </svg>
+    );
+}
+

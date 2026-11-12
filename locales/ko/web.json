@@ -125,7 +125,6 @@
   "detail": {
     "backups": "백업",
     "players": "플레이어",
-    "more": "더보기",
     "tabs": "서버 메뉴",
     "uptime": "시작한 지 {{time}}",
     "port_check": "포트포워딩 확인"
@@ -268,8 +267,6 @@
     "update": "업데이트",
     "update_to": "v{{version}} 있음",
     "updated": "업데이트했어요.",
-    "check_ok": "검사 결과: 선언한 기능만 써요.",
-    "check_failed": "검사 결과를 받지 못했어요.",
     "check_undeclared": "검사 결과: 모듈 설명에 없는 기능을 써요 ({{perms}}). 믿을 수 있는 모듈인지 확인해 주세요."
   },
   "plugins": {
@@ -430,6 +427,9 @@
     "off": "끄기",
     "saved": "바꿨어요.",
     "pc": "PC",
+    "guild_here": "이 PC",
+    "guild_other_pc": "다른 PC",
+    "guild_no_pc": "PC 없음",
     "no_guilds": "관리할 수 있는 디스코드 서버가 없어요.",
     "other_pc": "이 서버는 다른 PC에 연결돼 있어요. 그 PC의 /사바쨩 웹 링크에서 바꿀 수 있어요.",
     "err": {
@@ -541,6 +541,7 @@
     "channel_board": "상황판 채널",
     "sleep_now": "지금 재우기",
     "awake": "깨어 있어요",
+    "sleep_needs_pc": "PC를 연결하면 쓸 수 있어요",
     "basics_desc": "이 서버에서 쓸 언어와 이모지",
     "music_desc": "음성 채널에서 노래를 틀어요",
     "reading_desc": "채팅을 음성으로 읽어 줘요",

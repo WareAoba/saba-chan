@@ -552,6 +552,7 @@ pub async fn connect(file: &ConfigFile, relay: Option<Target>, host_id: &str) ->
         paired_at: chrono::Utc::now().to_rfc3339(),
     };
     config::save_daemon_in(file, daemon.clone()).map_err(|_| ConnectError::SaveFailed)?;
+    note_reached(&relay, host_id);
     tracing::info!("Paired with remote daemon {}", host_id);
     Ok(daemon)
 }
@@ -658,6 +659,80 @@ impl Drop for AuditLine {
     }
 }
 
+/// 닿지 않는 원격 PC에 쉬는 동안: 요청마다 붙어 보지 않고 바로 닿지 않음으로 답한다 (꺼진 PC에 GUI 폴링마다 터널을 열고
+/// 경고를 남기지 않게). 릴레이가 꺼졌다고 하면 바로, 켜졌다는데 닿지 않으면 `UNREACHABLE_LIMIT`번 잇달아 실패한 뒤 쉰다.
+/// 때가 지나면 다음 요청이 뒤에서 릴레이 PC 목록을 한 번 읽어, 꺼져 있으면 `OFFLINE_RECHECK` 더 쉬고 아니면 푼다.
+/// 다시 연결(`connect`)하면 바로 푼다
+const OFFLINE_RECHECK: Duration = if cfg!(test) { Duration::from_millis(200) } else { Duration::from_secs(60) };
+const UNREACHABLE_LIMIT: u32 = 3;
+
+#[derive(Default)]
+struct Unreachable {
+    /// 잇달아 닿지 않은 횟수 (닿으면 지운다)
+    streak: u32,
+    /// 쉬기 시작한 때와 쉴 시간. 뒤에서 릴레이에 묻는 중이면 `checking`
+    paused: Option<(std::time::Instant, Duration)>,
+    checking: bool,
+}
+
+/// 릴레이·원격 PC마다 (같은 PC도 릴레이가 다르면 따로)
+static UNREACHABLE: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<(String, String), Unreachable>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn unreachable() -> std::sync::MutexGuard<'static, std::collections::HashMap<(String, String), Unreachable>> {
+    UNREACHABLE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 쉬는 중인가. 쉴 시간이 지났으면 뒤에서 릴레이에 그 PC가 켜졌는지 묻는다 (이번 요청은 기다리지 않는다)
+fn resting(relay: &Target, host_id: &str) -> bool {
+    let key = (relay.base.clone(), host_id.to_string());
+    let mut all = unreachable();
+    let Some(u) = all.get_mut(&key) else { return false };
+    let Some((at, wait)) = u.paused else { return false };
+    if !u.checking && at.elapsed() >= wait {
+        u.checking = true;
+        let relay = relay.clone();
+        tokio::spawn(async move {
+            let offline = matches!(relay::peers(&relay).await, Ok(peers) if peers.iter().any(|p| p.host_id == key.1 && p.status == "offline"));
+            let mut all = unreachable();
+            let Some(u) = all.get_mut(&key) else { return };
+            u.checking = false;
+            if offline {
+                u.paused = Some((std::time::Instant::now(), OFFLINE_RECHECK));
+            } else {
+                // 다음 요청이 다시 붙어 본다. 또 닿지 않으면 잇달은 횟수가 이어져 더 오래 쉰다
+                u.paused = None;
+                tracing::info!("Trying remote daemon {} again", key.1);
+            }
+        });
+    }
+    true
+}
+
+/// 닿지 않았다. 릴레이가 꺼졌다고 했으면 바로, 아니면 잇달아 `UNREACHABLE_LIMIT`번째부터 쉰다 (`DIRECT_RETRY`부터 두 배씩)
+fn note_unreachable(relay: &Target, host_id: &str, offline: bool) {
+    let mut all = unreachable();
+    let u = all.entry((relay.base.clone(), host_id.to_string())).or_default();
+    u.streak += 1;
+    let wait = if offline {
+        OFFLINE_RECHECK
+    } else if u.streak >= UNREACHABLE_LIMIT {
+        DIRECT_RETRY.saturating_mul(1 << (u.streak - UNREACHABLE_LIMIT).min(8)).min(DIRECT_RETRY_MAX)
+    } else {
+        return;
+    };
+    u.paused = Some((std::time::Instant::now(), wait));
+    if offline {
+        tracing::warn!("Remote daemon {} is offline; not connecting until it is back", host_id);
+    } else {
+        tracing::warn!("Remote daemon {} is unreachable {} times in a row; retrying in {:?}", host_id, u.streak, wait);
+    }
+}
+
+fn note_reached(relay: &Target, host_id: &str) {
+    unreachable().remove(&(relay.base.clone(), host_id.to_string()));
+}
+
 async fn send_saved(file: &ConfigFile, relay: Option<Target>, daemon: &Daemon, path: &str, req: Request<Body>) -> Response {
     let host_id = daemon.host_id.as_str();
     let (parts, body) = req.into_parts();
@@ -668,14 +743,25 @@ async fn send_saved(file: &ConfigFile, relay: Option<Target>, daemon: &Daemon, p
     if request().is_none() {
         return error(StatusCode::BAD_REQUEST, "bad_request");
     }
+    if relay.as_ref().is_some_and(|r| resting(r, host_id)) {
+        return error(StatusCode::BAD_GATEWAY, "remote_unreachable");
+    }
     let endpoint = endpoint_of(daemon);
     let mut res = send_to(relay.as_ref(), host_id, &endpoint, &request).await;
-    if matches!(res, Sent::NotConnected) {
+    if let (Sent::NotConnected, Some(relay)) = (&res, relay.as_ref()) {
         // 주소가 바뀌었거나 원격 데몬이 인증서를 새로 만들었을 수 있다: 릴레이가 아는 지금 값으로 한 번 더
-        if let Some(fresh) = fresh_endpoint(relay.as_ref(), host_id).await.filter(|e| *e != endpoint) {
+        let peer = relay::peers(relay).await.ok().and_then(|peers| peers.into_iter().find(|p| p.host_id == host_id));
+        let offline = peer.as_ref().is_some_and(|p| p.status == "offline");
+        if let Some(fresh) = peer.and_then(|p| p.endpoint).filter(|e| !offline && *e != endpoint) {
             let _ = config::update_endpoint_in(file, host_id, &fresh.address, fresh.port, &fresh.cert_sha256);
-            res = send_to(relay.as_ref(), host_id, &fresh, &request).await;
+            res = send_to(Some(relay), host_id, &fresh, &request).await;
         }
+        if matches!(res, Sent::NotConnected) {
+            note_unreachable(relay, host_id, offline);
+        }
+    }
+    if let (Sent::Answered(_), Some(relay)) = (&res, relay.as_ref()) {
+        note_reached(relay, host_id);
     }
     let res = match res {
         Sent::Answered(res) => res,
@@ -689,9 +775,6 @@ async fn send_saved(file: &ConfigFile, relay: Option<Target>, daemon: &Daemon, p
     Response::from_parts(head, body)
 }
 
-async fn fresh_endpoint(relay: Option<&Target>, host_id: &str) -> Option<Endpoint> {
-    relay::peers(relay?).await.ok()?.into_iter().find(|p| p.host_id == host_id)?.endpoint
-}
 
 #[cfg(test)]
 mod tests {
@@ -714,6 +797,16 @@ mod tests {
         cut: Arc<Mutex<CancellationToken>>,
         /// 켜 두면 끊긴 연결을 닫지 않고 말없이 버린다 (원격 PC의 전원·망이 조용히 끊긴 것)
         silent: Arc<std::sync::atomic::AtomicBool>,
+        /// PC 목록이 알리는 host-b 상태 (비면 online). online이 아니거나 `refuse`면 터널을 열자마자 닫는다 (릴레이가 명령을 넘기지 못함)
+        status: Arc<Mutex<String>>,
+        refuse: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl Relay {
+        fn status(&self) -> String {
+            let s = self.status.lock().unwrap().clone();
+            if s.is_empty() { "online".into() } else { s }
+        }
     }
 
     /// 원격 데몬 앞의 TCP 중계. 릴레이가 알리는 주소를 이것으로 바꾼다 (터널은 그대로 원격 데몬에 붙는다).
@@ -770,6 +863,9 @@ mod tests {
         }
         ws.on_upgrade(move |a| async move {
             let id = format!("t{}", r.tunnels.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
+            if r.status() != "online" || r.refuse.load(std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
             r.waiting.lock().unwrap().insert(id.clone(), a);
             let b = Target { base: r.base.lock().unwrap().clone(), token: "sbn_host-b.secret".into() };
             let port = *r.port.lock().unwrap();
@@ -811,7 +907,7 @@ mod tests {
                 "/api/remote/peers",
                 get(|State(r): State<Relay>| async move {
                     let endpoint = r.endpoint.lock().unwrap().clone();
-                    Json(json!({ "peers": [{ "hostId": "host-b", "name": "원격 PC", "status": "online", "endpoint": endpoint }] }))
+                    Json(json!({ "peers": [{ "hostId": "host-b", "name": "원격 PC", "status": r.status(), "endpoint": endpoint }] }))
                 }),
             )
             .route("/node/tunnel", get(tunnel_ws))
@@ -1286,6 +1382,64 @@ mod tests {
         assert_eq!(route_of(&daemon), "relay");
         let tries = tries.load(std::sync::atomic::Ordering::SeqCst);
         assert!(tries <= 3, "kept trying the address directly: {tries} times");
+    }
+
+    /// 릴레이가 꺼졌다고 하는 PC에는 요청마다 터널을 열지 않는다 (경고가 3초마다 쌓였다).
+    /// 다시 켜지면 뒤에서 릴레이 PC 목록으로 알아채고 다시 붙는다
+    #[tokio::test]
+    async fn a_pc_the_relay_reports_offline_is_not_dialed_for_every_request() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        state.endpoint.lock().unwrap()["address"] = Value::Null;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        tunnel::release(&relay, "host-b");
+        *state.status.lock().unwrap() = "offline".into();
+        let dials = || state.tunnels.load(std::sync::atomic::Ordering::SeqCst);
+        let before = dials();
+        for _ in 0..5 {
+            let res = forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
+            assert_eq!(res.status(), StatusCode::BAD_GATEWAY);
+        }
+        assert_eq!(dials(), before + 1, "only the first request opens a tunnel");
+
+        *state.status.lock().unwrap() = "online".into();
+        tokio::time::sleep(OFFLINE_RECHECK * 2).await;
+        // 쉬는 동안의 요청은 바로 닿지 않음으로 답하고, 뒤에서 릴레이에 다시 물어본다
+        let _ = forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        assert_eq!(status, 200, "{body}");
+    }
+
+    /// 릴레이는 켜졌다는데 터널이 잇달아 닿지 않으면 간격을 늘려 가며 쉰다
+    #[tokio::test]
+    async fn a_tunnel_that_keeps_failing_is_retried_with_growing_gaps() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        state.endpoint.lock().unwrap()["address"] = Value::Null;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        tunnel::release(&relay, "host-b");
+        state.refuse.store(true, std::sync::atomic::Ordering::SeqCst);
+        let dials = || state.tunnels.load(std::sync::atomic::Ordering::SeqCst);
+        let before = dials();
+        for _ in 0..8 {
+            let res = forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
+            assert_eq!(res.status(), StatusCode::BAD_GATEWAY);
+        }
+        assert_eq!(dials(), before + UNREACHABLE_LIMIT as usize, "stops dialing after {UNREACHABLE_LIMIT} failures in a row");
+
+        state.refuse.store(false, std::sync::atomic::Ordering::SeqCst);
+        tokio::time::sleep(DIRECT_RETRY * 2).await;
+        let _ = forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        assert_eq!(status, 200, "{body}");
     }
 
     /// 직접 닿지 않는 주소는 다시 붙어 보는 간격을 늘려 간다 (잠깐 내려간 원격 데몬은 금방 다시 직접 붙고, NAT 뒤 PC는 자주 두드리지 않는다)

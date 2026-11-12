@@ -11,9 +11,9 @@
     min-height: 100vh;
     overflow: hidden;
     background: var(--bg-0);
-    --matrix-ink: color-mix(in oklch, var(--brand-primary) 45%, transparent);
-    --matrix-head: color-mix(in oklch, var(--brand-primary) 70%, var(--text-1));
-    --matrix-fade: color-mix(in oklch, var(--bg-0) 14%, transparent);
+    --matrix-ink: color-mix(in oklab, var(--brand-primary) 45%, transparent);
+    --matrix-head: color-mix(in oklab, var(--brand-primary) 70%, var(--text-1));
+    --matrix-fade: color-mix(in oklab, var(--bg-0) 14%, transparent);
 }
 
 .loading-matrix {
@@ -33,10 +33,10 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: radial-gradient(in oklch
+    background: radial-gradient(in oklab
         ellipse 46% 52% at 50% 46%,
         var(--bg-0) 35%,
-        color-mix(in oklch, var(--bg-0) 70%, transparent) 62%,
+        color-mix(in oklab, var(--bg-0) 70%, transparent) 62%,
         transparent 100%
     );
 }
@@ -204,7 +204,7 @@ span[style*="--icon-loader"] svg {
 }
 /* 후두둑(비정상 기동): 바탕을 서서히 걷는다 (--opening-cover 1 → 0) */
 .loading-screen.falling {
-    background: color-mix(in oklch, var(--bg-0) calc(var(--opening-cover, 1) * 100%), transparent);
+    background: color-mix(in oklab, var(--bg-0) calc(var(--opening-cover, 1) * 100%), transparent);
 }
 .loading-screen.falling > .loading-vignette,
 .loading-screen.falling > .appbar {
@@ -379,8 +379,8 @@ span[style*="--icon-loader"] svg {
 }
 
 .cook-done {
-    background: color-mix(in oklch, var(--ok) 6%, var(--bg-2));
-    border-color: color-mix(in oklch, var(--ok) 28%, var(--line));
+    background: color-mix(in oklab, var(--ok) 6%, var(--bg-2));
+    border-color: color-mix(in oklab, var(--ok) 28%, var(--line));
 }
 
 .cook-text {
@@ -405,7 +405,7 @@ span[style*="--icon-loader"] svg {
 .cook-bar {
     height: var(--sp-2);
     border-radius: var(--r-pill);
-    background: color-mix(in oklch, var(--text-1) 9%, transparent);
+    background: color-mix(in oklab, var(--text-1) 9%, transparent);
     overflow: hidden;
 }
 
@@ -642,7 +642,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .btn-small:hover {
-    background: color-mix(in oklch, var(--discord) 85%, var(--shadow-ink));
+    background: color-mix(in oklab, var(--discord) 85%, var(--shadow-ink));
 }
 
 .btn-save {
@@ -726,7 +726,7 @@ span[style*="--icon-loader"] svg {
     transition:
         left 0.35s cubic-bezier(0.4, 0, 0.2, 1),
         width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 1px 3px color-mix(in oklch, var(--shadow-ink) 10%, transparent);
+    box-shadow: 0 1px 3px color-mix(in oklab, var(--shadow-ink) 10%, transparent);
     z-index: 0;
     pointer-events: none;
 }
@@ -773,8 +773,8 @@ span[style*="--icon-loader"] svg {
     border-radius: 12px;
     margin-top: var(--sp-4);
     overflow: hidden;
-    border: 1px solid color-mix(in oklch, var(--text-1) 6%, transparent);
-    box-shadow: 0 4px 24px color-mix(in oklch, var(--shadow-ink) 25%, transparent);
+    border: 1px solid color-mix(in oklab, var(--text-1) 6%, transparent);
+    box-shadow: 0 4px 24px color-mix(in oklab, var(--shadow-ink) 25%, transparent);
     animation: console-slide-up 0.25s ease-out;
     height: 380px;
     min-height: 200px;
@@ -796,8 +796,8 @@ span[style*="--icon-loader"] svg {
     align-items: center;
     justify-content: space-between;
     padding: var(--sp-2) var(--sp-4);
-    background: color-mix(in oklch, var(--text-1) 4%, transparent);
-    border-bottom: 1px solid color-mix(in oklch, var(--text-1) 6%, transparent);
+    background: color-mix(in oklab, var(--text-1) 4%, transparent);
+    border-bottom: 1px solid color-mix(in oklab, var(--text-1) 6%, transparent);
     flex-shrink: 0;
 }
 
@@ -820,7 +820,7 @@ span[style*="--icon-loader"] svg {
 .console-close {
     background: none;
     border: none;
-    color: color-mix(in oklch, var(--console-text) 55%, transparent);
+    color: color-mix(in oklab, var(--console-text) 55%, transparent);
     font-size: calc(20px * var(--font-scale));
     cursor: pointer;
     padding: var(--sp-0-5) var(--sp-1-5);
@@ -831,7 +831,7 @@ span[style*="--icon-loader"] svg {
 
 .console-close:hover {
     color: var(--console-error);
-    background: color-mix(in oklch, var(--console-error) 10%, transparent);
+    background: color-mix(in oklab, var(--console-error) 10%, transparent);
 }
 
 .console-output {
@@ -843,7 +843,7 @@ span[style*="--icon-loader"] svg {
     line-height: 1.6;
     color: var(--console-custom-text);
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklch, var(--text-1) 10%, transparent) transparent;
+    scrollbar-color: color-mix(in oklab, var(--text-1) 10%, transparent) transparent;
     -webkit-user-select: text;
     user-select: text;
     cursor: text;
@@ -858,16 +858,16 @@ span[style*="--icon-loader"] svg {
 }
 
 .console-output::-webkit-scrollbar-thumb {
-    background: color-mix(in oklch, var(--text-1) 10%, transparent);
+    background: color-mix(in oklab, var(--text-1) 10%, transparent);
     border-radius: 3px;
 }
 
 .console-output::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklch, var(--text-1) 20%, transparent);
+    background: color-mix(in oklab, var(--text-1) 20%, transparent);
 }
 
 .console-empty {
-    color: color-mix(in oklch, var(--console-text) 55%, transparent);
+    color: color-mix(in oklab, var(--console-text) 55%, transparent);
     font-style: italic;
     padding: var(--sp-5) 0;
     text-align: center;
@@ -901,8 +901,8 @@ span[style*="--icon-loader"] svg {
     align-items: center;
     gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-4);
-    border-top: 1px solid color-mix(in oklch, var(--text-1) 6%, transparent);
-    background: color-mix(in oklch, var(--text-1) 2%, transparent);
+    border-top: 1px solid color-mix(in oklab, var(--text-1) 6%, transparent);
+    background: color-mix(in oklab, var(--text-1) 2%, transparent);
     flex-shrink: 0;
 }
 
@@ -916,8 +916,8 @@ span[style*="--icon-loader"] svg {
 
 .console-input {
     flex: 1;
-    background: color-mix(in oklch, var(--text-1) 5%, transparent);
-    border: 1px solid color-mix(in oklch, var(--text-1) 8%, transparent);
+    background: color-mix(in oklab, var(--text-1) 5%, transparent);
+    border: 1px solid color-mix(in oklab, var(--text-1) 8%, transparent);
     border-radius: 6px;
     padding: var(--sp-1-5) var(--sp-2-5);
     color: var(--console-text);
@@ -928,11 +928,11 @@ span[style*="--icon-loader"] svg {
 }
 
 .console-input:focus {
-    border-color: color-mix(in oklch, var(--console-ok) 40%, transparent);
+    border-color: color-mix(in oklab, var(--console-ok) 40%, transparent);
 }
 
 .console-input::placeholder {
-    color: color-mix(in oklch, var(--console-text) 55%, transparent);
+    color: color-mix(in oklab, var(--console-text) 55%, transparent);
 }
 
 .console-send {
@@ -992,7 +992,7 @@ span[style*="--icon-loader"] svg {
 /* Console toggle active state on server card */
 .action-icon.action-active {
     color: var(--brand-primary);
-    background: color-mix(in oklch, var(--accent) 12%, transparent);
+    background: color-mix(in oklab, var(--accent) 12%, transparent);
 }
 
 /* ===== Spin Animation ===== */
@@ -1026,7 +1026,7 @@ span[style*="--icon-loader"] svg {
     max-width: 480px;
     width: 100%;
     text-align: center;
-    box-shadow: 0 8px 32px color-mix(in oklch, var(--shadow-ink) 15%, transparent);
+    box-shadow: 0 8px 32px color-mix(in oklab, var(--shadow-ink) 15%, transparent);
 }
 
 .error-fallback-content h2 {

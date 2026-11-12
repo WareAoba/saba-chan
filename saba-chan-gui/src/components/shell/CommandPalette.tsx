@@ -177,7 +177,8 @@ function Magnifier() {
 
 function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRefObject<boolean> }) {
     const { t } = useTranslation('gui');
-    const tr = t as Translate;
+    // i18next 27의 TFunction은 키를 리소스 타입으로 좁힌다: 명령 이름 같은 동적 키를 받으려고 넓힌다
+    const tr = t as unknown as Translate;
     const activeTab = useUIStore((s) => s.activeTab);
     const activeServerId = useUIStore((s) => s.activeServerId);
     const openNodeId = useUIStore((s) => s.openDiscordNodeId);

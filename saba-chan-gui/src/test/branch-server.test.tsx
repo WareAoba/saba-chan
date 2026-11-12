@@ -20,7 +20,7 @@ import { useUIStore } from '../stores/useUIStore';
 
 /** 시험에 필요한 props만 넘기려고 느슨하게 받는다 */
 const ServersPage = ServersPageImpl as unknown as ComponentType<Record<string, unknown>>;
-const tr = (key: string, vars?: Record<string, unknown>) => i18n.t(`gui:branch.${key}`, vars);
+const tr = (key: string, vars?: Record<string, unknown>) => i18n.t(`gui:branch.${key}`, vars ?? {});
 
 const LIST = [
     { id: 's1', name: 'Friends', module: 'game', status: 'running', port: 25565 },
