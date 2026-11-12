@@ -1,6 +1,7 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackupsPanel } from '../components/BackupsPanel';
+import { createWebApi } from '../api';
 import { useServerControl } from '../components/useServerControl';
 import { initI18n } from '../i18n';
 import { useApp } from '../store';
@@ -18,6 +19,20 @@ describe('웹에서 2분 넘게 걸리는 작업', () => {
     it('서버 켜기가 2분을 넘기면 오류가 아니라 진행 중일 수 있다고 알린다', async () => {
         const { result } = renderHook(() => useServerControl(mockApi({ instanceStart: vi.fn().mockResolvedValue(slow) })));
         await act(async () => result.current.start(asServer({ id: 'a', name: 'A' })));
+        expect(lastToast()).toMatchObject({ message: expect.stringMatching(/still be working/i), tone: 'info' });
+    });
+
+    it('지우기가 릴레이의 504로 끝나도 오류가 아니라 진행 중일 수 있다고 알린다', async () => {
+        const session = { request: async () => ({ status: 504, data: slow }) };
+        const { result } = renderHook(() => useServerControl(createWebApi(session).api));
+        let removing: Promise<unknown> = Promise.resolve();
+        act(() => {
+            removing = result.current.remove(asServer({ id: 'a', name: 'A' }));
+        });
+        await act(async () => {
+            useApp.getState().confirm?.done(true);
+            await removing;
+        });
         expect(lastToast()).toMatchObject({ message: expect.stringMatching(/still be working/i), tone: 'info' });
     });
 
