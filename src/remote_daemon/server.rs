@@ -37,8 +37,11 @@ const MAX_TUNNELS: usize = 16;
 const PAIR_PER_SOURCE: usize = 5;
 const PAIR_PER_MINUTE: usize = 20;
 const PAIR_BODY_LIMIT: usize = 1024;
-/// 요청 머리를 이 안에 다 보내지 않으면 끊는다 (TLS만 맺고 가만히 있는 연결이 자리를 쥐지 못하게)
+/// 요청 머리를 이 안에 다 보내지 않으면 끊는다 (TLS만 맺고 가만히 있는 연결이 자리를 쥐지 못하게).
+/// 직접 연결의 HTTP/2는 연 요청이 하나도 없이 이만큼 지나면 닫는다
 const HEADER_TIMEOUT: Duration = if cfg!(test) { Duration::from_secs(1) } else { Duration::from_secs(15) };
+/// HTTP/2 연결 하나가 한꺼번에 여는 요청 수 (앱 콘솔 스트림 여럿과 이벤트 스트림, 그 사이의 요청이 한 연결로 온다)
+const MAX_STREAMS: u32 = 64;
 
 /// 연결한 곳 (요청 확장값, `serve`가 넣는다)
 #[derive(Clone, Copy)]
@@ -432,22 +435,47 @@ pub(crate) async fn serve(
                 req.extensions_mut().insert(ip);
                 req
             });
-            let service = hyper_util::service::TowerToHyperService::new(app);
-            // 릴레이 터널(T1)은 이 PC 안에서 붙고 ALPN h2로 HTTP/2 연결 하나에 요청을 여러 개 싣는다.
-            // 그 밖은 HTTP/1.1만: 요청 머리 시간 제한이 HTTP/2에는 없다
-            let h2 = ip.0.is_loopback() && stream.get_ref().1.alpn_protocol() == Some(b"h2");
+            // 릴레이 터널(T1)은 이 PC 안에서 ALPN h2로, 직접 연결은 `tls::DIRECT_H2`로 HTTP/2 연결 하나에 요청을 여러 개 싣는다.
+            // 그 밖은 HTTP/1.1이다. HTTP/2에는 요청 머리 시간 제한이 없으므로 직접 연결은 연 요청이 없이 `HEADER_TIMEOUT`이 지나면 닫는다
+            let alpn = stream.get_ref().1.alpn_protocol();
+            let tunnel = ip.0.is_loopback() && alpn == Some(b"h2");
+            let direct = alpn == Some(super::tls::DIRECT_H2);
             let io = hyper_util::rt::TokioIo::new(stream);
-            if h2 {
+            if tunnel || direct {
+                let (opened, streams) = tokio::sync::watch::channel(0usize);
+                let service = hyper::service::service_fn(move |req: Request<hyper::body::Incoming>| {
+                    let open = Open::new(&opened);
+                    let app = app.clone();
+                    async move {
+                        let res = tower::ServiceExt::oneshot(app, req).await;
+                        res.map(|res| res.map(|body| Body::new(Counted { body, _open: open })))
+                    }
+                });
                 let mut builder = hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new());
                 builder
                     .timer(hyper_util::rt::TokioTimer::new())
                     .keep_alive_interval(Duration::from_secs(25))
-                    .keep_alive_timeout(Duration::from_secs(20));
+                    .keep_alive_timeout(Duration::from_secs(20))
+                    .max_concurrent_streams(MAX_STREAMS);
+                let conn = builder.serve_connection(io, service);
+                tokio::pin!(conn);
+                let idle = async {
+                    if direct {
+                        idle(streams).await;
+                    } else {
+                        std::future::pending().await
+                    }
+                };
                 tokio::select! {
-                    _ = builder.serve_connection(io, service) => {}
+                    _ = conn.as_mut() => {}
                     _ = cancel.cancelled() => {}
+                    () = idle => {
+                        conn.as_mut().graceful_shutdown();
+                        let _ = tokio::time::timeout(HEADER_TIMEOUT, conn).await;
+                    }
                 }
             } else {
+                let service = hyper_util::service::TowerToHyperService::new(app);
                 let mut builder = hyper::server::conn::http1::Builder::new();
                 builder.timer(hyper_util::rt::TokioTimer::new()).header_read_timeout(HEADER_TIMEOUT);
                 tokio::select! {
@@ -456,6 +484,60 @@ pub(crate) async fn serve(
                 }
             }
         });
+    }
+}
+
+/// HTTP/2 연결에서 열린 요청 하나: 답 본문을 다 보내거나 상대가 그만둘 때까지
+struct Open(tokio::sync::watch::Sender<usize>);
+
+impl Open {
+    fn new(count: &tokio::sync::watch::Sender<usize>) -> Self {
+        count.send_modify(|n| *n += 1);
+        Self(count.clone())
+    }
+}
+
+impl Drop for Open {
+    fn drop(&mut self) {
+        self.0.send_modify(|n| *n -= 1);
+    }
+}
+
+/// 답 본문 그대로에 열린 요청 표시를 붙인 것 (길이를 그대로 알려 `content-length`가 남는다)
+struct Counted {
+    body: Body,
+    _open: Open,
+}
+
+impl hyper::body::Body for Counted {
+    type Data = axum::body::Bytes;
+    type Error = axum::Error;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<hyper::body::Frame<Self::Data>, Self::Error>>> {
+        std::pin::Pin::new(&mut self.body).poll_frame(cx)
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.body.is_end_stream()
+    }
+
+    fn size_hint(&self) -> hyper::body::SizeHint {
+        self.body.size_hint()
+    }
+}
+
+/// 연 요청이 하나도 없이 `HEADER_TIMEOUT`이 지나면 끝난다
+async fn idle(mut streams: tokio::sync::watch::Receiver<usize>) {
+    loop {
+        if streams.wait_for(|n| *n == 0).await.is_err() {
+            return;
+        }
+        if tokio::time::timeout(HEADER_TIMEOUT, streams.wait_for(|n| *n > 0)).await.is_err() {
+            return;
+        }
     }
 }
 
@@ -979,6 +1061,30 @@ pub(crate) mod tests {
         let mut buf = [0u8; 64];
         let read = tokio::time::timeout(HEADER_TIMEOUT * 3, tls.read(&mut buf)).await;
         assert!(matches!(read, Ok(Ok(0)) | Ok(Err(_))), "the idle connection must be closed, got {read:?}");
+    }
+
+    /// HTTP/2로 맺은 직접 연결도 요청을 하나도 열지 않고 있으면 머리 시간 제한 뒤 닫힌다 (HTTP/2에는 요청 머리 시간 제한이 없다)
+    #[tokio::test]
+    async fn an_http2_connection_with_no_open_request_is_closed() {
+        use tokio::io::AsyncReadExt;
+        let r = start(None).await;
+        let tcp = tokio::net::TcpStream::connect(r.addr).await.unwrap();
+        let mut config = pinned_client_config(&r.pin).unwrap();
+        config.alpn_protocols = vec![crate::remote_daemon::tls::DIRECT_H2.to_vec()];
+        let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
+        let mut tls = connector.connect(rustls::pki_types::ServerName::try_from(SERVER_NAME).unwrap(), tcp).await.unwrap();
+        assert_eq!(tls.get_ref().1.alpn_protocol(), Some(crate::remote_daemon::tls::DIRECT_H2));
+        let closed = tokio::time::timeout(HEADER_TIMEOUT * 3, async {
+            let mut buf = [0u8; 1024];
+            loop {
+                match tls.read(&mut buf).await {
+                    Ok(0) | Err(_) => return,
+                    Ok(_) => {}
+                }
+            }
+        })
+        .await;
+        assert!(closed.is_ok(), "an idle HTTP/2 connection must be closed");
     }
 
     /// 머리만 보내고 본문을 보내지 않는 요청도 자리를 오래 쥐지 못한다 (토큰 없는 짝 맺기와 거절될 요청 모두)

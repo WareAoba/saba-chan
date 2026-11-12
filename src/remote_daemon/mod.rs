@@ -5,6 +5,7 @@
 //! 공인 주소가 없으면 주소 없이 올리고, 붙는 PC는 릴레이 터널로 붙는다 (T1, `tunnel.rs`)
 
 pub mod config;
+mod h2;
 pub mod onboard;
 pub mod peer;
 pub mod relay;
