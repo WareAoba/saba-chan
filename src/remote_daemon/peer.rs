@@ -936,6 +936,8 @@ mod tests {
             async move {
                 while let Ok((mut tcp, _)) = other.accept().await {
                     tries.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    // 보낸 것을 읽고 답한다: 읽지 않고 닫으면 Windows는 reset을 보내 '자리가 없어 끊음'으로 읽힌다
+                    let _ = tokio::io::AsyncReadExt::read(&mut tcp, &mut [0u8; 4096]).await;
                     let _ = tokio::io::AsyncWriteExt::write_all(&mut tcp, b"not a remote daemon\n").await;
                 }
             }
