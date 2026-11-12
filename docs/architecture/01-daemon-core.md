@@ -457,6 +457,16 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 
 #### Relay 프록시, 에이전트, 채팅
 
+릴레이 프록시가 답을 기다리는 시간은 `relay.rs`의 표 하나(`RELAY_WAITS`, `relay_wait`)에 둔다. 표에 없는 경로는 기본 5초(`RELAY_WAIT`)다. 릴레이가 그 경로에서 바깥을 기다리는 시간보다 길게 잡으므로 릴레이 쪽 시간을 바꾸면 이 표도 맞춘다.
+
+| 릴레이 경로 (`/api/nodes/:guild/` 뒤) | 데몬이 기다리는 시간 | 릴레이가 바깥을 기다리는 시간 |
+|---|---|---|
+| GET `chatbot/credit` | 12초 | 제공사 잔액 8초 |
+| GET `chatbot/models` | 18초 | 제공사 모델 목록 15초 |
+| GET `discord-members` | 15초 | 디스코드 길드 멤버 8초(그 뒤에는 캐시) |
+| GET `moderation` | 15초 | 음소거 목록용 길드 멤버 8초 |
+| GET이 아닌 `moderation/…` | 60초 | 디스코드 작업(청소는 메시지를 쪽마다 읽는다) |
+
 | Method | Path | Handler | 비고 |
 |---|---|---|---|
 | GET | `/api/relay/host/:host_id/status` | `relay.rs:235` | query `relayUrl?`. relay `/api/hosts/:id` 프록시 (HMAC 서명). 서명 요청의 `relayUrl`은 설정한 릴레이와 같거나 루프백일 때만 따른다(`signed_relay_url`, `relay.rs:46-67`) |
