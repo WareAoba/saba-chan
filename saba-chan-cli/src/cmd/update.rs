@@ -207,6 +207,12 @@ fn rollback_offer(r: &Value) -> Option<String> {
     })
 }
 
+/// 되돌려도 새 판으로 남아 돌아갈 판에서 읽히지 않을 모듈·익스텐션을 알리는 줄 (데몬의 `needs_newer_core`). 없으면 None
+fn rollback_addons_warning(r: &Value) -> Option<String> {
+    let addons: Vec<Value> = r.get("needs_newer_core").and_then(Value::as_array)?.iter().map(|k| json!({ "component": k })).collect();
+    (!addons.is_empty()).then(|| t!("update.rollback_addons", version = s(r, "version"), list = names(&addons)))
+}
+
 /// `update rollback`: 데몬이 업데이터를 띄워 직전 판으로 되돌린다 (데몬은 꺼지고 되돌린 뒤 다시 켜진다)
 async fn rollback(ctx: &Ctx) -> Result<()> {
     let info = ctx.api.update_rollback_info().await.map_err(older_daemon)?;
@@ -216,6 +222,9 @@ async fn rollback(ctx: &Ctx) -> Result<()> {
     };
     if !ctx.out.json {
         say!("{}", offer);
+    }
+    if let Some(warning) = rollback_addons_warning(&info) {
+        ctx.out.warn(&warning);
     }
     ctx.ask.ensure(&t!("update.rollback_confirm", version = s(&info, "version")))?;
     // 되돌린 뒤 데몬을 다시 띄우게 한다 (GUI 없이 쓰는 PC도 있다)
@@ -717,6 +726,9 @@ mod tests {
         let offer = rollback_offer(&json!({ "available": true, "version": "0.1.13", "current": "0.1.14", "updated_at": "2026-11-12T03:09:00Z" })).unwrap();
         assert!(offer.contains("0.1.13") && offer.contains("0.1.14") && offer.contains("2026-11-12 "), "{offer}");
         assert!(rollback_offer(&json!({ "available": false, "current": "0.1.14" })).is_none());
+        let warn = rollback_addons_warning(&json!({ "available": true, "version": "0.1.13", "needs_newer_core": ["module-minecraft", "ext-music"] })).unwrap();
+        assert_eq!(warn, t!("update.rollback_addons", version = "0.1.13", list = format!("{}, {}", t!("update.name_module", name = "minecraft"), t!("update.name_extension", name = "music"))));
+        assert!(rollback_addons_warning(&json!({ "available": true, "version": "0.1.13", "needs_newer_core": [] })).is_none());
         let confirm = crate::i18n::try_t_in("ko", "update.rollback_confirm").unwrap();
         assert_eq!(crate::i18n::fill(&confirm, &[("version", "0.1.13".into())]), "0.1.13으로 되돌리면 사바쨩이 다시 시작돼요. 계속할까요?");
     }

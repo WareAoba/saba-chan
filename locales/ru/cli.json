@@ -839,6 +839,7 @@
     "name_extension": "Расширение {{name}}",
     "rollback_available": "Можно вернуться к версии: {{version}} (сейчас {{current}}, обновлено {{at}})",
     "rollback_confirm": "Возврат к {{version}} перезапустит Saba-chan. Продолжить?",
+    "rollback_addons": "После отката модули и расширения останутся в текущих версиях. Эти нельзя будет использовать в {{version}} (им нужна более новая версия Saba-chan): {{list}}",
     "rolling_back": "Откат...",
     "rollback_launched": "Программа обновления запущена. Демон завершается для отката.",
     "rollback_after": "После отката Saba-chan перезапустится. Затем проверьте: saba-chan update last",

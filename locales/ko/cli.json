@@ -839,6 +839,7 @@
     "name_extension": "{{name}} 익스텐션",
     "rollback_available": "되돌릴 수 있는 판: {{version}} (지금 {{current}}, {{at}}에 업데이트)",
     "rollback_confirm": "{{version}}(으)로 되돌리면 사바쨩이 다시 시작돼요. 계속할까요?",
+    "rollback_addons": "되돌려도 모듈·익스텐션은 지금 판으로 남아요. 다음은 {{version}}에서 쓸 수 없어요(더 새 사바쨩이 필요해요): {{list}}",
     "rolling_back": "되돌리는 중...",
     "rollback_launched": "업데이터를 띄웠어요. 되돌리기 위해 데몬이 꺼져요.",
     "rollback_after": "되돌린 뒤 사바쨩이 다시 켜져요. 그다음 확인: saba-chan update last",

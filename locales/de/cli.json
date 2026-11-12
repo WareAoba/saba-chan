@@ -839,6 +839,7 @@
     "name_extension": "Erweiterung {{name}}",
     "rollback_available": "Version, zu der du zurückkehren kannst: {{version}} (jetzt {{current}}, aktualisiert am {{at}})",
     "rollback_confirm": "Die Rückkehr zu {{version}} startet Saba-chan neu. Fortfahren?",
+    "rollback_addons": "Module und Erweiterungen bleiben nach dem Zurücksetzen in ihrer aktuellen Version. Diese können unter {{version}} nicht genutzt werden (sie brauchen ein neueres Saba-chan): {{list}}",
     "rolling_back": "Wird zurückgesetzt...",
     "rollback_launched": "Updater gestartet. Der Daemon wird für das Zurücksetzen beendet.",
     "rollback_after": "Saba-chan startet nach dem Zurücksetzen neu. Prüfe dann: saba-chan update last",

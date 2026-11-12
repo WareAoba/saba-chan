@@ -1479,9 +1479,13 @@ async fn launch_updater(
 }
 
 /// GET /api/updates/rollback — 되돌릴 수 있는 직전 판 (`live_apply::PreviousVersion`)
-async fn get_rollback() -> impl IntoResponse {
+async fn get_rollback(State(state): State<UpdateState>) -> impl IntoResponse {
     let previous = saba_chan_updater_lib::live_apply::PreviousVersion::load(&saba_chan_updater_lib::constants::resolve_data_dir());
-    Json(rollback_body(previous.as_ref(), &saba_chan_updater_lib::relay::core_version()))
+    let mut body = rollback_body(previous.as_ref(), &saba_chan_updater_lib::relay::core_version());
+    if let Some(version) = body["version"].as_str().map(str::to_string) {
+        body["needs_newer_core"] = json!(addons_needing_core(&version, installed_addon_requires(&state).await));
+    }
+    Json(body)
 }
 
 /// `{ok, available, current}`, 되돌릴 수 있으면 `version`(돌아갈 판)·`updated_at`(지금 판으로 업데이트한 때)도.
@@ -1491,6 +1495,42 @@ fn rollback_body(previous: Option<&saba_chan_updater_lib::live_apply::PreviousVe
         Some(p) => json!({ "ok": true, "available": true, "version": p.version, "current": current, "updated_at": p.updated_at }),
         None => json!({ "ok": true, "available": false, "current": current }),
     }
+}
+
+/// 설치된 모듈·익스텐션 키와 그 `saba-core` 요구 (모듈 `[module.dependencies]`, 익스텐션 `dependencies`·`min_app_version`)
+async fn installed_addon_requires(state: &UpdateState) -> Vec<(String, std::collections::HashMap<String, String>)> {
+    let core = crate::supervisor::module_loader::CORE_COMPONENT.to_string();
+    let mut addons = Vec::new();
+    if let Some(sup) = &state.supervisor
+        && let Ok(modules) = sup.read().await.list_modules()
+    {
+        addons.extend(modules.into_iter().map(|m| (format!("module-{}", m.metadata.name), m.metadata.dependencies)));
+    }
+    if let Some(ext) = &state.extension_manager {
+        addons.extend(ext.read().await.list().into_iter().map(|e| {
+            let mut requires = e.dependencies;
+            if let Some(min) = e.min_app_version {
+                requires.entry(core.clone()).or_insert(min);
+            }
+            (format!("ext-{}", e.id), requires)
+        }));
+    }
+    addons
+}
+
+/// `version` 코어가 읽지 않을 것: `saba-core` 요구를 채우지 못하는 모듈·익스텐션 키. 사용자 되돌리기는 실행 파일만 되돌려
+/// 이것들은 새 판으로 남는다
+fn addons_needing_core(version: &str, addons: Vec<(String, std::collections::HashMap<String, String>)>) -> Vec<String> {
+    let core = crate::supervisor::module_loader::CORE_COMPONENT.to_string();
+    let installed = std::collections::HashMap::from([(core.clone(), version.to_string())]);
+    addons
+        .into_iter()
+        .filter(|(key, requires)| {
+            let needs: std::collections::HashMap<String, String> = requires.get(&core).map(|min| [(core.clone(), min.clone())].into()).unwrap_or_default();
+            !saba_chan_updater_lib::unmet_requires(key, &needs, &installed).is_empty()
+        })
+        .map(|(key, _)| key)
+        .collect()
 }
 
 /// POST /api/updates/rollback — 남겨 둔 직전 판으로 되돌린다: 업데이터를 `--rollback`으로 띄우고 데몬은 꺼진다(`launch-updater`와 같은 길).
@@ -3034,6 +3074,22 @@ mod tests {
         assert_eq!(body["updated_at"], json!("2026-11-12T03:09:00Z"));
         assert_eq!(super::rollback_body(Some(&kept("0.1.13", "0.1.14")), "0.1.15")["available"], json!(false));
         assert_eq!(super::rollback_body(None, "0.1.14")["available"], json!(false));
+    }
+
+    /// 되돌려도 모듈·익스텐션은 그대로 남는다: 직전 판 코어가 읽지 않을 것(그 판보다 새 `saba-core`를 요구)을 미리 알린다
+    #[test]
+    fn the_rollback_names_addons_the_previous_core_will_not_load() {
+        let needs = |min: &str| std::collections::HashMap::from([("saba-core".to_string(), min.to_string())]);
+        let addons = super::addons_needing_core(
+            "0.1.13",
+            vec![
+                ("module-minecraft".to_string(), needs(">=0.1.14")),
+                ("module-palworld".to_string(), needs(">=0.1.10")),
+                ("ext-steamcmd".to_string(), std::collections::HashMap::new()),
+                ("ext-music".to_string(), needs("0.1.14")),
+            ],
+        );
+        assert_eq!(addons, vec!["module-minecraft".to_string(), "ext-music".to_string()]);
     }
 
     /// 남긴 직전 판이 없으면 업데이터를 띄우지 않고(데몬도 끄지 않고) 그 까닭을 돌려준다
