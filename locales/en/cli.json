@@ -457,6 +457,10 @@
       "backup_file_locked": "The server is using a file ({{file}}). Stop the server and try again: saba-chan-cli stop <name>",
       "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server: saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "The backup failed, and the server’s autosave could not be turned back on either. Restart the server: saba-chan-cli restart <name>",
+      "import_not_backup": "This file is not a backup exported by Saba-chan. Give a zip made by `backup export`.",
+      "import_damaged": "This backup file is damaged. Export it again on the original PC.",
+      "import_other_module": "This backup was made on a server for a different game, so it can't be imported here.",
+      "export_old_backup": "This backup was made by an old version and can't be exported.",
       "backup_save_rejected": "The server refused the save command, so no backup was made. Stop the server and back up again: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "The server did not report that saving finished, so no backup was made. Try again shortly or stop the server and back up: saba-chan-cli stop <name>",
       "backup_server_stopped": "The server stopped while it was being backed up, so that backup was discarded. Check the server and back up again: saba-chan-cli backup <name>",
@@ -1044,6 +1048,8 @@
     "unreadable_restore": "Backup {{backup}} cannot be opened, so it cannot be restored. Delete it."
   },
   "schedule": {
+    "exported": "Backup exported: {{path}} ({{size}}). Move just this one file to another PC to import it there.",
+    "imported": "Backup {{backup}} was added to {{name}}. Restore it to put it into the server.",
     "col": {
       "task": "Task",
       "when": "When",

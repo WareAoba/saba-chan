@@ -1174,6 +1174,16 @@ impl Api {
         )
         .await
     }
+    /// POST …/backups/:name/export — `{path}`(데몬 PC의 절대 경로)에 백업 하나를 zip 하나로 쓴다. `{path, size}`
+    pub async fn export_backup(&self, id: &str, name: &str, path: &str) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/backups/{}/export", seg(id), seg(name)), json!({ "path": path }))
+            .await
+    }
+    /// POST …/backups/import — 내보낸 zip을 검사하고 목록에 올린다. `{backup}`
+    pub async fn import_backup(&self, id: &str, path: &str) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/backups/import", seg(id)), json!({ "path": path }))
+            .await
+    }
     /// GET /api/instance/:id/schedule — `{schedule, backup_keep, revision, backup_supported, announce_supported}`
     pub async fn schedule(&self, id: &str) -> Result<Value> {
         self.get(&format!("/api/instance/{}/schedule", seg(id))).await

@@ -279,6 +279,16 @@ pub enum BackupCmd {
     Delete { server: String, backup: Option<String> },
     /// Put a backup back (the server must be stopped; asks to stop it). No name: pick from the list
     Restore { server: String, backup: Option<String> },
+    /// Write one backup into a single zip you can move to another PC (no name: pick from the list)
+    Export {
+        server: String,
+        backup: Option<String>,
+        /// Where to write the zip (a path on the PC the daemon runs on)
+        #[arg(long, short, value_name = "FILE")]
+        out: std::path::PathBuf,
+    },
+    /// Check a zip made by `backup export` and add it to this server's backups (restore it afterwards)
+    Import { server: String, file: std::path::PathBuf },
 }
 
 #[derive(Subcommand, Debug)]
