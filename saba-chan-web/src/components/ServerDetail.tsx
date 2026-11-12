@@ -195,7 +195,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
 
     return (
         <div className="console">
-            <div className="console-chips" role="group" aria-label={tg('console.level_filter')}>
+            <fieldset className="console-chips" aria-label={tg('console.level_filter')}>
                 <button
                     type="button"
                     className={`console-chip${levels.length ? '' : ' on'}`}
@@ -217,7 +217,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
                         {tg(`console.level_${level}`)} {levelCounts[level]}
                     </button>
                 ))}
-            </div>
+            </fieldset>
             <pre className="console-lines" ref={box.ref} onScroll={box.onScroll} aria-live="polite">
                 {lines.length === 0 ? (
                     <span className="console-empty">{t('console.empty')}</span>
@@ -252,7 +252,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
                 </div>
             )}
             {stdin && server.status === 'running' && quick.length > 0 && (
-                <div className="console-chips" role="group" aria-label={tg('shell.console_quick')}>
+                <fieldset className="console-chips" aria-label={tg('shell.console_quick')}>
                     {quick.slice(0, 6).map((c) => (
                         <button
                             key={c.name}
@@ -270,7 +270,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
                             {c.inputs?.length ? ' …' : ''}
                         </button>
                     ))}
-                </div>
+                </fieldset>
             )}
             <form
                 className="console-input"
