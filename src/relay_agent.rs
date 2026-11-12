@@ -29,6 +29,8 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
 /// 앞당긴 하트비트도 앞의 것과 이만큼은 띄운다 (릴레이 `POST /heartbeat` 한도)
 const HEARTBEAT_KICK_DELAY: Duration = Duration::from_secs(2);
 const HEARTBEAT_MIN_GAP: Duration = Duration::from_secs(15);
+/// 마지막 하트비트 성공이 이보다 오래되면 붙어 있지 않은 것으로 본다 (하트비트 세 번)
+const CONNECTED_WITHIN_MS: u64 = 3 * 60_000;
 const POLL_TIMEOUT: Duration = Duration::from_secs(40); // 릴레이 롱폴 25초 + 여유
 const RETRY_BASE: Duration = Duration::from_secs(3);
 const RETRY_MAX: Duration = Duration::from_secs(60);
@@ -87,6 +89,9 @@ pub struct AgentStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub heartbeat_rejected: Option<HeartbeatReject>,
     pub commands_handled: u64,
+    /// 릴레이와 붙어 있다: 돌고 있고, 하트비트가 최근에 성공했고, 그 뒤로 실패가 없다.
+    /// 화면은 릴레이에 따로 묻지 않고 이 값을 본다. 바뀌면 `relay.status` 이벤트가 나간다
+    pub connected: bool,
     /// 릴레이가 하트비트 답에 실어 준, 이 PC가 접속해 온 공인 주소 (서버 주소 `server.address`). 모르면 없다
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seen_address: Option<String>,
@@ -158,6 +163,7 @@ impl RelayAgent {
         status.agent_version = AGENT_VERSION;
         // GUI가 5초마다 부른다: 설정 파일이 그대로면 다시 읽지 않는다
         status.has_token = crate::ipc::handlers::relay::peek_node_token().as_deref().and_then(parse_node_token).is_some();
+        status.connected = connected(&status, now_ms());
         status
     }
 
@@ -173,8 +179,10 @@ impl RelayAgent {
                 // 돌던 세션은 없다: 상태에 이유를 남겨 클라이언트가 보이게 한다
                 let mut inner = self.lock();
                 if inner.cancel.is_none() {
+                    let before = Shown::of(&inner.status);
                     inner.status.last_error = Some(e.message.clone());
                     inner.status.last_error_code = Some(e.code);
+                    before.announce_if_changed(&inner.status);
                 }
                 return Err(e);
             }
@@ -188,7 +196,9 @@ impl RelayAgent {
             inner.cancel = Some(token.clone());
             inner.endpoint = Some((relay_url.clone(), node_token.clone()));
             inner.generation += 1;
+            let before = Shown::of(&inner.status);
             inner.status = AgentStatus { running: true, relay_url: Some(relay_url.clone()), ..Default::default() };
+            before.announce_if_changed(&inner.status);
             (token, inner.generation)
         };
 
@@ -313,7 +323,9 @@ impl RelayAgent {
         if let Some(cancel) = inner.cancel.take() {
             cancel.cancel();
         }
+        let before = Shown::of(&inner.status);
         inner.status.running = false;
+        before.announce_if_changed(&inner.status);
     }
 
     /// 세션이 끝났을 때. 그 사이 새 세션이 시작됐으면(세대가 다르면) 아무것도 건드리지 않는다
@@ -324,10 +336,12 @@ impl RelayAgent {
         }
         inner.cancel = None;
         inner.endpoint = None;
+        let before = Shown::of(&inner.status);
         inner.status.running = false;
         if error.is_some() {
             inner.status.last_error = error;
         }
+        before.announce_if_changed(&inner.status);
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -351,7 +365,36 @@ impl RelayAgent {
     fn update(&self, generation: u64, f: impl FnOnce(&mut AgentStatus)) {
         let mut inner = self.lock();
         if inner.generation == generation && inner.cancel.is_some() {
-            f(&mut inner.status)
+            let before = Shown::of(&inner.status);
+            f(&mut inner.status);
+            before.announce_if_changed(&inner.status);
+        }
+    }
+}
+
+/// 릴레이와 붙어 있는가 (`AgentStatus::connected`)
+fn connected(s: &AgentStatus, now: u64) -> bool {
+    s.running && s.last_error.is_none() && s.last_heartbeat_at.is_some_and(|at| now.saturating_sub(at) < CONNECTED_WITHIN_MS)
+}
+
+/// 화면이 보이는 연결 상태. 하트비트 시각처럼 늘 바뀌는 값은 빼고, 이것이 바뀔 때만 알린다
+#[derive(PartialEq)]
+struct Shown {
+    running: bool,
+    heard: bool,
+    error: Option<String>,
+    code: Option<&'static str>,
+}
+
+impl Shown {
+    fn of(s: &AgentStatus) -> Self {
+        Self { running: s.running, heard: s.last_heartbeat_at.is_some(), error: s.last_error.clone(), code: s.last_error_code }
+    }
+
+    /// 바뀌었으면 `relay.status`를 낸다 (지금 붙은 클라이언트에게만: 다시 붙으면 상태를 새로 읽는다)
+    fn announce_if_changed(self, after: &AgentStatus) {
+        if self != Self::of(after) {
+            crate::events::emit_live("relay.status", json!({}));
         }
     }
 }
@@ -872,6 +915,10 @@ impl Session {
                     next = None;
                     match polled {
                         Ok(commands) => {
+                            // 실패 뒤 다시 받았다: 하트비트를 기다리지 않고 붙어 있다고 보인다 (`connected`)
+                            if failures > 0 {
+                                self.agent.update(self.generation, |s| s.last_error = None);
+                            }
                             failures = 0;
                             let now = std::time::Instant::now();
                             let mut reack = Vec::new();
@@ -2194,6 +2241,49 @@ mod tests {
         session.heartbeat().await;
         let json = serde_json::to_value(agent.status()).unwrap();
         assert!(json.get("heartbeatRejected").is_none() && json["lastError"].is_null(), "{json}");
+    }
+
+    /// 화면은 릴레이에 따로 묻지 않고 이 값으로 붙었는지 본다 (예전에는 5초마다 릴레이에 다녀왔다)
+    #[test]
+    fn connected_means_a_recent_heartbeat_with_no_failure_since() {
+        let now = now_ms();
+        let heard = |ago: u64| AgentStatus { running: true, last_heartbeat_at: Some(now - ago), ..Default::default() };
+        assert!(connected(&heard(1_000), now));
+        assert!(!connected(&AgentStatus { running: true, ..Default::default() }, now), "never heard back");
+        assert!(!connected(&AgentStatus { last_error: Some("poll 502".into()), ..heard(1_000) }, now), "failed since");
+        assert!(!connected(&heard(CONNECTED_WITHIN_MS + 1), now), "the heartbeat stopped answering");
+        assert!(!connected(&AgentStatus { running: false, ..heard(1_000) }, now), "stopped");
+    }
+
+    /// 붙고 끊길 때만 `relay.status`를 낸다. 매분 바뀌는 하트비트 시각만으로는 내지 않는다
+    #[tokio::test]
+    async fn a_change_in_the_connection_is_announced_once() {
+        let mut rx = crate::events::bus().subscribe(None).rx;
+        let agent = RelayAgent::new();
+        {
+            let mut inner = agent.lock();
+            inner.cancel = Some(CancellationToken::new());
+            inner.generation = 1;
+            inner.status.running = true;
+        }
+        let mut announced = || {
+            let mut n = 0;
+            while let Ok(e) = rx.try_recv() {
+                n += usize::from(e.kind == "relay.status");
+            }
+            n
+        };
+        agent.update(1, |s| s.last_heartbeat_at = Some(1));
+        assert_eq!(announced(), 1, "first heartbeat");
+        agent.update(1, |s| s.last_heartbeat_at = Some(2));
+        assert_eq!(announced(), 0, "only the time moved");
+        agent.update(1, |s| s.last_error = Some("poll 502".into()));
+        agent.update(1, |s| s.last_error = Some("poll 502".into()));
+        assert_eq!(announced(), 1, "the same failure again is not news");
+        agent.stop();
+        assert_eq!(announced(), 1);
+        let json = serde_json::to_value(agent.status()).unwrap();
+        assert_eq!(json["connected"], json!(false));
     }
 
     /// 외부 감사: ack한 명령의 결과 전송이 한 번 실패하면(503 등) 릴레이가 다시 보내 주지 않아 결과가 사라졌다.

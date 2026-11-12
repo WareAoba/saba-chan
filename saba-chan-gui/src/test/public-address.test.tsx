@@ -130,25 +130,18 @@ describe('인스턴스 접속 주소', () => {
         expect(writeText).toHaveBeenCalledWith('mc.example.com:25565');
     });
 
-    it('공인 IP는 가리기를 누르면 가리고 기억한다. 포트가 여럿이면 줄마다', async () => {
+    it('공인 IP도 가리기 없이 그대로 보인다 (사용자 11-12). 포트가 여럿이면 줄마다', async () => {
+        localStorage.setItem('saba.hideServerIp', '1');
         window.api.instanceAddress = vi
             .fn()
             .mockResolvedValue({ address: '203.0.113.7', custom: false, running: false, ports: [port(16261), port(16262, 'UDP port')] });
-        let view: ReturnType<typeof render> | undefined;
         await act(async () => {
-            view = render(<ServerAddress server={server} />);
+            render(<ServerAddress server={server} />);
         });
         expect(screen.getByText('203.0.113.7:16261')).toBeInTheDocument();
         expect(screen.getByText('UDP port')).toBeInTheDocument();
         expect(screen.getByText(/Start the server/)).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: /Hide/ }));
-        expect(screen.queryByText('203.0.113.7:16261')).toBeNull();
-        view!.unmount();
-        await act(async () => {
-            render(<ServerAddress server={server} />);
-        });
-        expect(screen.queryByText('203.0.113.7:16261')).toBeNull();
-        expect(screen.getByRole('button', { name: /Show/ })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Hide|Show/ })).toBeNull();
     });
 
     it('포트가 없거나 예전 데몬이면 그리지 않는다', async () => {

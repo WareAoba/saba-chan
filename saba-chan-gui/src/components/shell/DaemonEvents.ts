@@ -35,7 +35,11 @@ export function DaemonEvents({ onServersChanged }: { onServersChanged?: () => vo
         const nameOf = (id: string) => useServerStore.getState().servers.find((s) => s.id === id)?.name || id;
         const off = subscribeDaemonEvents((ev: { type: string; data: ApiBody }) => {
             const tr = tRef.current;
-            if (SERVER_CHANGING.includes(ev.type)) {
+            // 설치가 시작되거나 끝나면 목록의 설치 중 표시가 바뀐다 (진행 중의 잦은 갱신에는 다시 읽지 않는다)
+            const provisionFlip =
+                ev.type === 'provision.progress' &&
+                (ev.data.done === true || !useServerStore.getState().servers.some((s) => s.name === ev.data.instance && s.provisioning));
+            if (SERVER_CHANGING.includes(ev.type) || provisionFlip) {
                 // 한꺼번에 여러 건이 와도 한 번만 다시 읽는다
                 clearTimeout(timer);
                 timer = setTimeout(() => refetchRef.current?.(), REFETCH_DEBOUNCE_MS);

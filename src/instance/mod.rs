@@ -10,6 +10,7 @@
 //! ```
 
 pub mod lock;
+pub mod transition;
 pub mod migration;
 
 use anyhow::{Context, Result};

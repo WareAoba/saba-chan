@@ -10,6 +10,7 @@ import { Icon } from '../Icon';
 import { QuestionModal } from '../Modals/Modals';
 import { remoteErrorText } from '../Modals/RemoteDaemonSection';
 import { StatusChip } from '../ui/StatusChip';
+import { startPoll } from '../../utils/poll';
 import { reloadWindow } from './DaemonSwitcher';
 
 const REFRESH_MS = 10_000;
@@ -64,9 +65,8 @@ export function OtherDaemons({
     }, []);
 
     useEffect(() => {
-        load();
-        const timer = setInterval(load, REFRESH_MS);
-        return () => clearInterval(timer);
+        // 창이 숨어 있는 동안은 다른 데몬에 묻지 않는다
+        return startPoll(load, REFRESH_MS);
     }, [load]);
 
     const run = async (target: Pick<Ask, 'hostId' | 'pc' | 'server'>, action: string, force = false) => {

@@ -2725,6 +2725,16 @@
       "host_mismatch": "Die öffentliche Adresse zeigt nicht auf diesen PC",
       "host_unresolved": "Die öffentliche Adresse wurde nicht gefunden"
     },
+    "pill": {
+      "open": "Von außen erreichbar",
+      "closed": "Von außen nicht erreichbar",
+      "firewall": "Von der PC-Firewall blockiert",
+      "router": "Portweiterleitung fehlt",
+      "cgnat": "Keine öffentliche IP (CGNAT)",
+      "unknown": "Einige Ports nicht geprüft",
+      "host_mismatch": "Adresse zeigt woanders hin",
+      "host_unresolved": "Adresse nicht gefunden"
+    },
     "status": {
       "open": "Offen",
       "closed": "Geschlossen",
@@ -2846,9 +2856,6 @@
     "title": "Beitrittsadresse",
     "copy": "Kopieren",
     "copied": "Kopiert",
-    "hide": "Verbergen",
-    "show": "Anzeigen",
-    "hidden": "Verborgene Adresse",
     "unknown": "Die öffentliche Adresse dieses PCs ist noch unbekannt. Sie erscheint nach der Verbindung mit Server-chan.",
     "stopped": "Starte den Server, damit Freunde beitreten können",
     "checked_at": "Geprüft {{time}}"

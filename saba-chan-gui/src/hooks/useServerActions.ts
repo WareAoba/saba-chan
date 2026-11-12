@@ -123,7 +123,7 @@ export function useServerActions({
                         }
                         return list.map((newServer: Server) => {
                             const existing = prev.find((s) => s.name === newServer.name);
-                            return { ...newServer, expanded: existing?.expanded || false };
+                            return { ...newServer, status: newServer.transition || newServer.status, expanded: existing?.expanded || false };
                         });
                     }
 
@@ -188,13 +188,14 @@ export function useServerActions({
                     const merged = list.map((newServer: Server) => {
                         const existing = prev.find((s) => s.name === newServer.name);
 
-                        // Optimistic status 보호: starting/stopping 상태를
-                        // 서버가 아직 전환 완료 전이면 유지 (요청이 끝난 뒤 최대 60초, 요청 중에는 계속)
-                        let mergedStatus = newServer.status;
+                        // 시작·정지가 진행 중인지는 데몬이 안다(`transition`, 어디서 시켰든). 이 창이 누른 것은
+                        // 데몬이 요청을 받기 전에도 보이게 요청이 끝날 때까지만 지킨다. 데몬이 그 값을 주지 않는 옛 데몬이면 끝난 뒤 60초까지
+                        let mergedStatus = newServer.transition || newServer.status;
                         const opt = optimisticStatusRef.current.get(newServer.name);
                         if (opt) {
                             const elapsed = Date.now() - opt.timestamp;
-                            const GUARD_MS = 60_000;
+                            // 0.1.14~ 데몬은 `update_check`를 늘 싣는다 (`transition`은 진행 중일 때만 있어 판별에 못 쓴다)
+                            const GUARD_MS = newServer.update_check !== undefined ? 0 : 60_000;
                             const transitioned =
                                 (opt.status === 'starting' && newServer.status === 'running') ||
                                 (opt.status === 'stopping' && newServer.status === 'stopped');

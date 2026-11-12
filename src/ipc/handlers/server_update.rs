@@ -25,6 +25,87 @@ const TICK: std::time::Duration = std::time::Duration::from_secs(60);
 /// 정지를 기다리는 가장 긴 시간 (500ms × 240)
 const STOP_POLLS: usize = 240;
 
+/// 인스턴스별 마지막 게임 서버 업데이트 확인 결과 (`server_update_status`의 답 + `checked_at`)
+fn checks() -> &'static Mutex<HashMap<String, Value>> {
+    static CHECKS: OnceLock<Mutex<HashMap<String, Value>>> = OnceLock::new();
+    CHECKS.get_or_init(Default::default)
+}
+
+/// 확인 결과를 기억한다. 화면에 보이는 값(새 빌드 여부·빌드·실패 이유)이 바뀌면 `instance.update_checked`를 낸다
+/// (지금 붙은 클라이언트에게만: 목록을 다시 읽으라는 신호다)
+pub fn remember_check(id: &str, status: &Value) {
+    let shown = |v: &Value| (v.get("update_available").cloned(), v.get("reason").cloned(), v.get("remote_buildid").cloned(), v.get("error").cloned());
+    let mut kept = status.clone();
+    if let Some(map) = kept.as_object_mut() {
+        map.insert("checked_at".into(), json!(unix_secs()));
+    }
+    let before = checks().lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), kept);
+    if before.as_ref().map(shown) != Some(shown(status)) {
+        crate::events::emit_live("instance.update_checked", json!({ "instanceId": id }));
+    }
+}
+
+fn unix_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// 마지막 확인 결과 (목록의 `update_check`). 확인하지 않았으면 없다
+pub fn last_check(id: &str) -> Option<Value> {
+    checks().lock().unwrap_or_else(|e| e.into_inner()).get(id).cloned()
+}
+
+/// 업데이트를 마쳤거나 서버가 지워졌다: 지난 결과를 버린다
+pub fn forget_check(id: &str) {
+    if checks().lock().unwrap_or_else(|e| e.into_inner()).remove(id).is_some() {
+        crate::events::emit_live("instance.update_checked", json!({ "instanceId": id }));
+    }
+}
+
+/// 게임 서버 새 빌드를 데몬이 주기적으로 확인한다 (자동 업데이트를 켜지 않은 서버. 켠 서버는 `spawn_auto_updater`가 본다).
+/// 화면은 확인하지 않고 목록의 결과만 읽는다. 확인하지 않는 서버(직접 받은 서버 등)는 hook 없이 바로 끝난다
+pub fn spawn_update_checks(state: IPCServer) {
+    tokio::spawn(async move {
+        let started = std::time::Instant::now();
+        let mut tried: HashMap<String, std::time::Instant> = HashMap::new();
+        loop {
+            tokio::select! {
+                _ = state.shutdown_token.cancelled() => break,
+                _ = tokio::time::sleep(TICK) => {}
+            }
+            if started.elapsed() < FIRST_CHECK_AFTER {
+                continue;
+            }
+            let due = {
+                let supervisor = state.supervisor.read().await;
+                let list = supervisor.instance_store.list();
+                tried.retain(|id, _| list.iter().any(|i| &i.id == id));
+                due_checks(list, &tried, std::time::Instant::now())
+            };
+            for (id, name) in due {
+                // 설치·업데이트 중이면 다음 틱에 본다
+                if is_pending(&id) || super::backup::InstanceLock::held(&id) || state.provision_tracker.get(&name).is_some_and(|p| !p.done) {
+                    continue;
+                }
+                tried.insert(id.clone(), std::time::Instant::now());
+                super::instance::server_update_status(&state, &id).await;
+            }
+        }
+    });
+}
+
+/// 이번 틱에 확인할 서버 `(id, 이름)`: 자동 업데이트를 켜지 않았고 `CHECK_EVERY` 안에 확인하지 않은 것
+fn due_checks(
+    list: &[crate::instance::ServerInstance],
+    tried: &HashMap<String, std::time::Instant>,
+    now: std::time::Instant,
+) -> Vec<(String, String)> {
+    list.iter()
+        .filter(|i| !i.auto_update)
+        .filter(|i| tried.get(&i.id).is_none_or(|at| now.duration_since(*at) >= CHECK_EVERY))
+        .map(|i| (i.id.clone(), i.name.clone()))
+        .collect()
+}
+
 /// 예고·정지·업데이트가 진행 중인 인스턴스. 같은 서버에 두 번 걸지 않는다
 fn pending() -> &'static Mutex<HashSet<String>> {
     static PENDING: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
@@ -510,6 +591,49 @@ pub async fn apply_to_running(state: &IPCServer, id: &str, body: &ApplyBody) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 데몬의 주기 확인: 자동 업데이트를 켠 서버는 자동 업데이트 쪽이 보고, 나머지는 3시간에 한 번
+    #[test]
+    fn periodic_checks_skip_auto_update_servers_and_recent_ones() {
+        let mut auto = crate::instance::ServerInstance::new("auto", "m");
+        auto.auto_update = true;
+        let (fresh, stale, never) = (
+            crate::instance::ServerInstance::new("fresh", "m"),
+            crate::instance::ServerInstance::new("stale", "m"),
+            crate::instance::ServerInstance::new("never", "m"),
+        );
+        let now = std::time::Instant::now();
+        let tried: HashMap<String, std::time::Instant> = [
+            (fresh.id.clone(), now - std::time::Duration::from_secs(60)),
+            (stale.id.clone(), now - CHECK_EVERY),
+        ]
+        .into();
+        let due: Vec<String> = due_checks(&[auto, fresh, stale, never], &tried, now).into_iter().map(|(_, name)| name).collect();
+        assert_eq!(due, vec!["stale", "never"]);
+    }
+
+    /// 같은 결과를 다시 기억하면 알리지 않는다 (확인 시각만 바뀐다). 결과가 바뀌면 목록을 다시 읽으라고 알린다
+    #[tokio::test]
+    async fn a_new_check_result_is_announced_once() {
+        let mut rx = crate::events::bus().subscribe(None).rx;
+        let id = "update-check-announce";
+        let mut announced = || {
+            let mut n = 0;
+            while let Ok(e) = rx.try_recv() {
+                n += usize::from(e.kind == "instance.update_checked" && e.data["instanceId"] == json!(id));
+            }
+            n
+        };
+        remember_check(id, &json!({ "update_available": false }));
+        remember_check(id, &json!({ "update_available": false }));
+        assert_eq!(announced(), 1);
+        remember_check(id, &json!({ "update_available": true, "remote_buildid": "2" }));
+        assert_eq!(announced(), 1);
+        assert_eq!(last_check(id).unwrap()["remote_buildid"], json!("2"));
+        forget_check(id);
+        assert_eq!(announced(), 1);
+        assert!(last_check(id).is_none());
+    }
 
     /// 자동 업데이트는 작업 잠금(시작도 잡는다)을 잡은 채로만 끄기를 정한다: 다른 작업·시작이 잡고 있으면 끄지 않고 미룬다
     #[tokio::test]

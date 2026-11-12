@@ -112,6 +112,9 @@ struct LogBuffer {
     own: VecDeque<String>,
 }
 
+/// 콘솔 줄이 생기거나 관리 프로세스가 붙고 떨어질 때 울린다 (콘솔 조회 `?wait=`가 기다린다)
+pub(crate) static CONSOLE_CHANGED: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
 /// 되읽기를 기다리는 덧붙인 줄의 상한 (러너가 끝난 뒤 덧붙인 줄은 되읽지 않는다)
 const OWN_LINES_KEPT: usize = 64;
 
@@ -226,6 +229,7 @@ impl LogBuffer {
             self.lines.pop_front();
         }
         self.lines.push_back(line.clone());
+        CONSOLE_CHANGED.notify_waiters();
 
         // Persist to disk — writer 실패 시 시스템 경고를 콘솔 버퍼에 삽입
         if let Some(ref tx) = self.file_tx {
@@ -817,6 +821,7 @@ impl ManagedProcessStore {
     pub async fn insert(&self, instance_id: &str, process: impl Into<Arc<ManagedProcess>>) {
         let mut map = self.processes.lock().await;
         map.insert(instance_id.to_string(), process.into());
+        CONSOLE_CHANGED.notify_waiters();
     }
 
     /// Get a managed process by instance ID.
@@ -828,7 +833,9 @@ impl ManagedProcessStore {
     /// Remove a managed process (e.g., after it exits).
     pub async fn remove(&self, instance_id: &str) -> Option<Arc<ManagedProcess>> {
         let mut map = self.processes.lock().await;
-        map.remove(instance_id)
+        let removed = map.remove(instance_id);
+        CONSOLE_CHANGED.notify_waiters();
+        removed
     }
 
     /// 현재 실행 중인 인스턴스 ID 목록 반환
@@ -851,6 +858,9 @@ impl ManagedProcessStore {
     pub async fn cleanup_dead(&self) -> Vec<(String, Arc<ManagedProcess>)> {
         let mut map = self.processes.lock().await;
         let dead: Vec<String> = map.iter().filter(|(_, p)| !p.is_running()).map(|(id, _)| id.clone()).collect();
+        if !dead.is_empty() {
+            CONSOLE_CHANGED.notify_waiters();
+        }
         dead.into_iter()
             .filter_map(|id| {
                 tracing::info!("Cleaning up dead managed process for instance '{}'", id);

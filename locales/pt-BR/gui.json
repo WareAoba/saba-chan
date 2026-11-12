@@ -2725,6 +2725,16 @@
       "host_mismatch": "O endereço público não aponta para este PC",
       "host_unresolved": "O endereço público não foi encontrado"
     },
+    "pill": {
+      "open": "Acessível pela internet",
+      "closed": "Inacessível de fora",
+      "firewall": "Bloqueado pelo firewall do PC",
+      "router": "Redirecionamento de porta não configurado",
+      "cgnat": "Sem IP público (CGNAT)",
+      "unknown": "Algumas portas não verificadas",
+      "host_mismatch": "O endereço aponta para outro lugar",
+      "host_unresolved": "Endereço não encontrado"
+    },
     "status": {
       "open": "Aberta",
       "closed": "Fechada",
@@ -2846,9 +2856,6 @@
     "title": "Endereço para entrar",
     "copy": "Copiar",
     "copied": "Copiado",
-    "hide": "Ocultar",
-    "show": "Mostrar",
-    "hidden": "Endereço oculto",
     "unknown": "O endereço público deste PC ainda não é conhecido. Ele aparece quando conectar ao Server-chan.",
     "stopped": "Inicie o servidor para os amigos poderem entrar",
     "checked_at": "Verificado {{time}}"

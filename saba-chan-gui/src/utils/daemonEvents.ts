@@ -26,8 +26,33 @@ export interface EventToast {
 
 export const eventsAvailable = () => typeof window.api?.onDaemonEvent === 'function';
 
-/** 서버 목록을 다시 읽어야 하는 이벤트 (상태는 이벤트로 오지 않는다) */
-export const SERVER_CHANGING = ['action.run', 'instance.exit', 'instance.started', 'instance.stopped', 'resync'];
+/**
+ * 서버 목록을 다시 읽어야 하는 이벤트 (목록 자체는 이벤트로 오지 않는다). `servers.changed`는 접속자 수·응답 없음처럼
+ * 데몬이 뒤에서 바꾼 목록 칸, `instance.update_checked`는 데몬의 게임 서버 업데이트 확인 결과
+ */
+export const SERVER_CHANGING = [
+    'action.run',
+    'instance.exit',
+    'instance.started',
+    'instance.stopped',
+    'instance.ready',
+    'instance.player',
+    'instance.updated',
+    'instance.update_checked',
+    'servers.changed',
+    'resync',
+];
+
+/** 이벤트를 받는 동안 서버 목록을 평소에 다시 읽는 간격 (놓친 것을 메우는 정도) */
+export const SERVER_LIST_SLOW_MS = 30_000;
+
+/**
+ * 서버 목록을 평소에 다시 읽는 간격. 이벤트로 바뀜을 알 수 있으면 느리게 읽는다.
+ * 익스텐션이 상태를 알려 주는 서버(`extension_status`)는 데몬이 바뀜을 모르니 사용자 주기 그대로
+ */
+export function serverListPollMs(refreshInterval: number, { events, extensionStatus }: { events: boolean; extensionStatus: boolean }) {
+    return events && !extensionStatus ? Math.max(refreshInterval, SERVER_LIST_SLOW_MS) : refreshInterval;
+}
 
 /** 브리지가 넘긴 한 건 → {id, type, data}. data는 문자열(JSON)이어도 받는다 */
 export function normalizeEvent(raw: unknown): DaemonEvent | null {

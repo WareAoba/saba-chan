@@ -88,16 +88,28 @@ pub async fn get_console_handler(
     State(state): State<IPCServer>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
     let since_id = params.get("since").and_then(|s| s.parse::<u64>().ok());
     let count = params.get("count").and_then(|c| c.parse::<usize>().ok());
-
-    let result = if params.get("spans").is_some_and(|v| v == "1" || v == "true") {
-        supervisor.get_console_output_with_spans(&id, since_id, count).await
-    } else {
-        supervisor.get_console_output(&id, since_id, count).await
-    };
+    let spans = params.get("spans").is_some_and(|v| v == "1" || v == "true");
+    // `?wait=<초>&epoch=<세대>`: 새 줄이 없으면 생길 때까지 기다린다. 기다리는 동안 supervisor 잠금은 쥐지 않는다
+    let known_epoch = params.get("epoch").and_then(|e| e.parse::<u64>().ok());
+    let wait = if since_id.is_some() { super::long_poll::wait_of(&params) } else { std::time::Duration::ZERO };
+    // `disk=seen`: 꺼진 서버의 디스크 기록을 이미 받았다. 디스크 기록은 since를 몰라 매번 같은 줄을 주므로, 기다릴 때는 빼고 준다
+    let disk_seen = !wait.is_zero() && params.get("disk").is_some_and(|v| v == "seen");
+    let changed = &crate::supervisor::managed_process::CONSOLE_CHANGED;
+    let result = super::long_poll::read_waiting(changed, wait, known_epoch, || async {
+        let supervisor = state.supervisor.read().await;
+        let mut result = if spans {
+            supervisor.get_console_output_with_spans(&id, since_id, count).await?
+        } else {
+            supervisor.get_console_output(&id, since_id, count).await?
+        };
+        if disk_seen && result.get("source").and_then(Value::as_str) == Some("disk") {
+            result["lines"] = json!([]);
+        }
+        Ok(result)
+    })
+    .await;
     match result {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (

@@ -2725,6 +2725,16 @@
       "host_mismatch": "公開アドレスがこのPCを指していません",
       "host_unresolved": "公開アドレスが見つかりません"
     },
+    "pill": {
+      "open": "外部から接続できます",
+      "closed": "外部から接続できません",
+      "firewall": "PCのファイアウォールがブロック",
+      "router": "ポート開放が未設定",
+      "cgnat": "グローバルIPなし (CGNAT)",
+      "unknown": "一部のポートを確認できず",
+      "host_mismatch": "アドレスがこのPCを指していません",
+      "host_unresolved": "アドレスが見つかりません"
+    },
     "status": {
       "open": "開放",
       "closed": "閉鎖",
@@ -2846,9 +2856,6 @@
     "title": "接続アドレス",
     "copy": "コピー",
     "copied": "コピーしました",
-    "hide": "隠す",
-    "show": "表示",
-    "hidden": "隠したアドレス",
     "unknown": "このPCのグローバルアドレスはまだ分かりません。サーバーちゃんにつながると表示されます。",
     "stopped": "サーバーを起動すると友だちが入れます",
     "checked_at": "{{time}} に確認"
