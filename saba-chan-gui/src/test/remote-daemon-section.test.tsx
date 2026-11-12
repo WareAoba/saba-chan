@@ -44,8 +44,6 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         window.api = {
             remoteSettings: vi.fn().mockResolvedValue(settings),
             remoteSettingsSet: vi.fn(),
-            remoteClients: vi.fn().mockResolvedValue({ clients: [{ hostId: 'host-a', name: '노트북', pairedAt: '' }] }),
-            remoteRevoke: vi.fn().mockResolvedValue({ ok: true }),
             remotePeers: vi.fn().mockResolvedValue({
                 peers: [
                     { hostId: 'host-c', name: '게임 PC', status: 'online', hasEndpoint: true, saved: false, platform: { os: 'windows x86_64' } },
@@ -377,13 +375,12 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(screen.getByRole('alert')).toHaveTextContent('The port is already in use');
     });
 
-    it('이 PC에 붙은 PC는 짝을 풀 수 있고, 릴레이에 연결하지 않았으면 안내를 보인다', async () => {
+    // 내 PC 카드 개편 뒤 쓸모가 없어진 "이 PC에 붙은 PC" 목록은 뺐다 (사용자 11-12)
+    it('릴레이에 연결하지 않았으면 안내를 보이고, 이 PC에 붙은 PC 목록은 없다', async () => {
         vi.mocked(window.api.remotePeers).mockResolvedValue({ error: 'relay_not_paired', error_code: 'relay_not_paired' });
         await act(async () => render(<RemoteDaemonSection />));
         expect(screen.getByText('This PC is not connected to Discord yet. Connect it on the Discord page first.')).toBeInTheDocument();
-        const clients = screen.getByRole('list', { name: 'PCs connected to this one' });
-        await act(async () => fireEvent.click(within(clients).getByRole('button', { name: 'Disconnect' })));
-        expect(window.api.remoteRevoke).toHaveBeenCalledWith('host-a');
+        expect(screen.queryByRole('list', { name: 'PCs connected to this one' })).toBeNull();
     });
 
     // 어느 PC에서든 내 PC 이름을 바꾼다. 이름은 서버쨩 한 곳에 있다 (사용자 11-12)

@@ -1099,9 +1099,6 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 원격 데몬 (01 §1.4.2): 고른 데몬과 상관없이 이 PC의 데몬이 답한다. 지우기는 204라 본문이 없다
         remoteSettings: () => call('get', '/api/remote/settings'),
         remoteSettingsSet: (patch: ApiBody) => call('put', '/api/remote/settings', patch),
-        remoteClients: () => call('get', '/api/remote/clients'),
-        remoteRevoke: async (hostId: string) =>
-            (await call('delete', `/api/remote/clients/${encodeURIComponent(hostId)}`)) || { ok: true },
         remotePeers: () => call('get', '/api/remote/peers', undefined, 30000),
         remoteDaemons: () => call('get', '/api/remote/daemons'),
         // 내 PC 하나(이 PC 포함)의 이름 (서버쨩의 PC 이름, 어느 PC에서든 바꾼다) → {hostId, name}

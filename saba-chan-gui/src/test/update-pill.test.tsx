@@ -84,6 +84,22 @@ describe('업데이트 알약', () => {
         await waitFor(() => expect(container.querySelector('.appbar-pill')).toBeNull());
     });
 
+    // 알약을 누르지 않아도 앱을 쓰기 시작하면(완료가 뜨고 잠시 뒤 처음 누르거나 친 때) 지운다 (사용자 11-12)
+    it('완료가 뜬 뒤 앱을 쓰기 시작하면 데몬에 확인했다고 알리고 사라진다', async () => {
+        status.mockResolvedValue(phase('done'));
+        let now = 1_000_000;
+        vi.spyOn(Date, 'now').mockImplementation(() => now);
+        const { container } = render(<UpdatePill />);
+        await screen.findByText('Update complete');
+        // 뜨자마자 누른 것은 알약을 보기 전이라 지우지 않는다
+        fireEvent.pointerDown(document.body);
+        expect(window.api.updaterPhaseAck).not.toHaveBeenCalled();
+        now += 5_000;
+        fireEvent.keyDown(document.body, { key: 'a' });
+        expect(window.api.updaterPhaseAck).toHaveBeenCalledTimes(1);
+        await waitFor(() => expect(container.querySelector('.appbar-pill')).toBeNull());
+    });
+
     it('준비됨을 누르면 다시 시작할지 묻고, 나중에는 아무것도 하지 않는다', async () => {
         status.mockResolvedValue(phase('ready'));
         render(<UpdatePill />);

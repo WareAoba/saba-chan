@@ -98,7 +98,6 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const { t, i18n } = useTranslation('gui');
     const [settings, setSettings] = useState<ApiBody | null>(null);
     const [draft, setDraft] = useState<{ enabled: boolean } | null>(null); // 주소는 카드의 게임 서버 주소 줄에서 (PublicAddress)
-    const [clients, setClients] = useState<ApiBody[]>([]);
     const [peers, setPeers] = useState<ApiBody[] | null>(null); // null = 못 읽음
     const [peersError, setPeersError] = useState<string | null>(null);
     // 이 PC 이름 (서버쨩의 PC 이름). 내 PC 목록(`self`)이 먼저, 못 읽으면 데몬이 받아 둔 사본(`thisName`)
@@ -123,10 +122,6 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         if (failed(res)) return;
         setSettings(res);
         setDraft({ enabled: Boolean(res.enabled) });
-    }, []);
-    const loadClients = useCallback(async () => {
-        const res = await window.api.remoteClients();
-        if (!failed(res)) setClients(res.clients || []);
     }, []);
     const loadPeers = useCallback(async () => {
         const res = await window.api.remotePeers();
@@ -154,10 +149,9 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
 
     useEffect(() => {
         loadSettings();
-        loadClients();
         loadPeers();
         loadDaemons();
-    }, [loadSettings, loadClients, loadPeers, loadDaemons]);
+    }, [loadSettings, loadPeers, loadDaemons]);
 
     const run = async (name: string, fn: () => Promise<ApiBody>) => {
         setBusy(name);
@@ -220,10 +214,6 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const connect = async (hostId: string) => {
         const res = await run(`connect:${hostId}`, () => window.api.remoteConnect(hostId));
         if (res && !failed(res)) await reloadPcs();
-    };
-    const revoke = async (hostId: string) => {
-        const res = await run(`revoke:${hostId}`, () => window.api.remoteRevoke(hostId));
-        if (res && !failed(res)) await loadClients();
     };
 
     const remove = async (card: PcCard, choice: { uninstall: boolean; keepSettings: boolean; keepInstances: boolean; removePc: boolean }) => {
@@ -599,18 +589,6 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                         <span>{t('remote_daemon.install_linux')}</span>
                     </button>
                 </li>
-            </ul>
-
-            <h5 className="remote-daemon-subtitle">{t('remote_daemon.clients')}</h5>
-            <ul className="remote-daemon-list" aria-label={t('remote_daemon.clients')}>
-                {clients.length === 0 && <li className="muted">{t('remote_daemon.no_clients')}</li>}
-                {clients.map((c) => (
-                    <li key={c.hostId} className="remote-daemon-row">
-                        <Icon name="desktop" size="sm" />
-                        <span className="remote-daemon-name">{pcName(c)}</span>
-                        {button(`revoke:${c.hostId}`, t('remote_daemon.revoke'), () => revoke(c.hostId), 'close')}
-                    </li>
-                ))}
             </ul>
 
             {daemons.length > 0 && (
