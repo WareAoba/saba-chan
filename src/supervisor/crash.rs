@@ -3,8 +3,8 @@
 //! 판정 순서:
 //! 1. 데몬이 정지를 보냈다 (GUI·CLI·디스코드의 정지, 재시작) → `user_stop`
 //! 2. 크래시 흔적 → `crash`
-//!    - Windows 예외 종료 코드 (0xC0000005 같은 0xC… 값, Ctrl+C 종료 0xC000013A는 뺀다)
-//!    - unix 크래시 시그널 (SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL)
+//!    - Windows 예외 종료 코드 (0xC0000005 같은 0xC… 값, Ctrl+C 종료 0xC000013A는 뺀다. 잡지 못한 .NET·C++ 예외 0xE0434352·0xE06D7363)
+//!    - unix 크래시 시그널 (SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL)과 데몬이 보내지 않은 SIGKILL (메모리가 모자라 커널이 끝낸 경우)
 //!    - 모듈 `[detection] crash_artifacts`에 맞는 파일이 이번 실행 중에 생겼다
 //! 3. 모듈 `[detection] graceful_exit_patterns`가 콘솔 끝부분에 있다 → `in_game_stop`
 //! 4. 시작하고 `STARTUP_GRACE` 안에, 준비 문구가 찍히기 전에 끝났다 (포트 충돌·설정 오류 같은 시작 실패) → `start_failed`.
@@ -13,6 +13,7 @@
 //! 6. 그 밖 (작업 관리자 강제 종료, 창 닫기, 원인 모를 종료) → `unknown_exit`
 //!
 //! 사용자 종료와 강제 종료를 크래시로 잘못 보지 않는 것이 우선이라, 흔적이 없으면 크래시로 보지 않는다.
+//! unix의 SIGKILL만 예외다: OOM killer와 사람이 보낸 `kill -9`를 가를 수 없어, 다시 띄워야 하는 쪽(메모리 부족)에 맞춘다.
 
 use super::managed_process::ProcessExit;
 use serde::{Deserialize, Serialize};
@@ -35,6 +36,10 @@ pub const EVENTS_KEPT: usize = 20;
 
 /// Windows STATUS_CONTROL_C_EXIT: Ctrl+C나 콘솔 창 닫기
 const STATUS_CONTROL_C_EXIT: u32 = 0xC000_013A;
+/// 잡지 못한 예외로 끝난 Windows 종료 코드: .NET(CLR), C++(MSVC)
+const UNHANDLED_EXCEPTION_CODES: &[u32] = &[0xE043_4352, 0xE06D_7363];
+/// 데몬의 정지·강제 종료는 `stop_requested`로 먼저 걸러지므로, 여기까지 온 SIGKILL은 밖에서 온 것이다
+const SIGKILL: i32 = 9;
 #[cfg(target_os = "linux")]
 const CRASH_SIGNALS: &[i32] = &[4, 6, 7, 8, 11];
 #[cfg(not(target_os = "linux"))]
@@ -84,11 +89,11 @@ pub fn classify(f: &ExitFacts) -> ExitVerdict {
     }
     if let Some(code) = exit_code {
         let raw = code as u32;
-        if raw & 0xF000_0000 == 0xC000_0000 && raw != STATUS_CONTROL_C_EXIT {
+        if (raw & 0xF000_0000 == 0xC000_0000 && raw != STATUS_CONTROL_C_EXIT) || UNHANDLED_EXCEPTION_CODES.contains(&raw) {
             return verdict(ExitKind::Crash, format!("exit code 0x{:08X}", raw));
         }
     }
-    if let Some(sig) = signal.filter(|s| CRASH_SIGNALS.contains(s)) {
+    if let Some(sig) = signal.filter(|s| CRASH_SIGNALS.contains(s) || *s == SIGKILL) {
         return verdict(ExitKind::Crash, format!("signal {}", sig));
     }
     if let Some(file) = f.new_crash_files.first() {
@@ -231,7 +236,9 @@ mod tests {
         assert_eq!(k(facts(code(0xC000_0005u32 as i32), &none, &no_files)), ExitKind::Crash);
         assert_eq!(k(facts(code(0xC000_013Au32 as i32), &none, &no_files)), ExitKind::UnknownExit, "Ctrl+C / closed window");
         assert_eq!(k(facts(Some(ProcessExit { signal: Some(11), ..Default::default() }), &none, &no_files)), ExitKind::Crash);
-        assert_eq!(k(facts(Some(ProcessExit { signal: Some(9), ..Default::default() }), &none, &no_files)), ExitKind::UnknownExit, "SIGKILL is a kill");
+        assert_eq!(k(facts(Some(ProcessExit { signal: Some(9), ..Default::default() }), &none, &no_files)), ExitKind::Crash, "a SIGKILL we did not send: the OOM killer");
+        assert_eq!(k(facts(code(0xE043_4352u32 as i32), &none, &no_files)), ExitKind::Crash, "unhandled .NET exception");
+        assert_eq!(k(facts(code(0xE06D_7363u32 as i32), &none, &no_files)), ExitKind::Crash, "unhandled C++ exception");
         let over = facts(Some(ProcessExit { code: Some(8), memory_limit_mb: Some(4096), ..Default::default() }), &none, &no_files);
         assert_eq!(classify(&over).kind, ExitKind::Crash);
         assert_eq!(classify(&over).evidence, "memory limit 4096 MiB reached");

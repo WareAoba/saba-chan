@@ -94,6 +94,36 @@ pub async fn list_servers_internal(state: &IPCServer) -> axum::response::Respons
     server_list(state, Notices::After(0)).await
 }
 
+/// 서버마다의 `server.list_enrich` 답 (서버 id → 답). TTL 캐시에 답이 있으면 Python을 띄우지 않는다.
+/// 캐시에 없는 서버의 hook은 함께 돌린다: 차례로 돌리면 캐시가 끝날 때마다 목록이 (서버 수 × Python 기동 시간)만큼 늦는다.
+/// 한 번에 `LIST_ENRICH_AT_ONCE`개까지만 돈다: hook의 시간 한도는 plugin 실행 자리를 기다리는 시간도 쓰므로, 자리 수(8)만큼
+/// 한꺼번에 줄을 세우면 뒤에 선 서버가 돌아 보지도 못하고 시간 초과가 되고 그동안 다른 모듈 호출도 줄을 선다
+const LIST_ENRICH_AT_ONCE: usize = 4;
+
+async fn enrich_results<Fut>(cache: &crate::ipc::ExtensionStatusCache, contexts: Vec<(String, Value)>, run: impl Fn(Value) -> Fut) -> std::collections::HashMap<String, Value>
+where
+    Fut: std::future::Future<Output = Vec<(String, anyhow::Result<Value>)>>,
+{
+    let asks = contexts.into_iter().map(|(id, ctx)| {
+        let run = &run;
+        async move {
+            if let Some(cached) = cache.get(&id) {
+                return (id, cached);
+            }
+            // 첫 번째 성공 응답만 캐시한다 (실패는 다음 목록 요청에서 다시 시도)
+            let result = match run(ctx).await.into_iter().find_map(|(_id, r)| r.ok()) {
+                Some(result) => {
+                    cache.set(&id, result.clone());
+                    result
+                }
+                None => json!({"handled": false}),
+            };
+            (id, result)
+        }
+    });
+    futures_util::StreamExt::collect(futures_util::StreamExt::buffer_unordered(futures_util::stream::iter(asks), LIST_ENRICH_AT_ONCE)).await
+}
+
 async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Response {
     let state = state.clone();
     // ── Phase 1: supervisor lock을 최소 시간만 잡고 필요한 데이터 복사 ──
@@ -110,13 +140,12 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         let all_instances = instances.to_vec();
         let module_protocols = supervisor.build_module_protocols_map();
         let modules = supervisor.module_loader.modules().unwrap_or_default();
+        let mut states = std::collections::HashMap::new();
+        for instance in instances {
+            states.insert(instance.id.as_str(), supervisor.tracked_state(&instance.id).await);
+        }
         let snapshots =         instances.iter().map(|instance| {
-            let pid = supervisor.tracker.get_pid(&instance.id).ok();
-            let start_time = if pid.is_some() {
-                supervisor.tracker.get_start_time(&instance.id).ok()
-            } else {
-                None
-            };
+            let (running, pid, start_time) = states[instance.id.as_str()];
             let module = modules.iter().find(|m| m.metadata.name == instance.module_name);
             let process_patterns = module.as_ref().map(|m| m.metadata.process_patterns.clone()).unwrap_or_default();
             let chat_patterns = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
@@ -128,7 +157,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     name: instance.name.clone(),
                     module: instance.module_name.clone(),
                     // Native 모드: 스냅샷의 PID 및 시작 시간
-                    status: if pid.is_some() { "running" } else { "stopped" }.to_string(),
+                    status: if running { "running" } else { "stopped" }.to_string(),
                     pid,
                     start_time,
                     executable_path: instance.executable_path.clone(),
@@ -195,36 +224,28 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
     };
 
     // ── Phase 2: Extension hooks (lock 없이 실행) ──
+    // Extension이 런타임 상태/통계를 제공할 수 있음 (TTL 캐시 적용)
+    let contexts = snapshots.iter().filter(|s| !s.info.extension_data.is_empty()).map(|s| {
+        let ctx = serde_json::json!({
+            "instance_id": &s.info.id,
+            "instance_name": &s.info.name,
+            "module": &s.info.module,
+            "extension_data": &s.info.extension_data,
+            "instance_dir": &s.instance_dir,
+            "process_patterns": &s.process_patterns,
+        });
+        (s.info.id.clone(), ctx)
+    }).collect();
+    let ext_mgr = state.extension_manager.clone();
+    let mut enriched = enrich_results(&state.extension_status_cache, contexts, |ctx| {
+        let ext_mgr = ext_mgr.clone();
+        async move { crate::extension::run_hook_timed(&ext_mgr, "server.list_enrich", ctx, 10).await }
+    }).await;
     let mut servers = Vec::new();
 
-    for InstanceSnapshot { info: mut server, instance_dir, process_patterns } in snapshots {
+    for InstanceSnapshot { info: mut server, .. } in snapshots {
         // ── Extension hook: server.list_enrich ──
-        // Extension이 런타임 상태/통계를 제공할 수 있음 (TTL 캐시 적용)
-        if !server.extension_data.is_empty() {
-            // 캐시 확인 — TTL 내 결과가 있으면 Python 프로세스 스폰 생략
-            let enrich_result = if let Some(cached_val) = state.extension_status_cache.get(&server.id) {
-                cached_val
-            } else {
-                let ext_mgr = state.extension_manager.clone();
-                let ctx = serde_json::json!({
-                    "instance_id": &server.id,
-                    "instance_name": &server.name,
-                    "module": &server.module,
-                    "extension_data": &server.extension_data,
-                    "instance_dir": &instance_dir,
-                    "process_patterns": &process_patterns,
-                });
-                let results = crate::extension::run_hook_timed(&ext_mgr, "server.list_enrich", ctx, 10).await;
-                // 첫 번째 성공 응답만 캐시한다 (실패는 다음 목록 요청에서 다시 시도)
-                match results.into_iter().find_map(|(_id, r)| r.ok()) {
-                    Some(result) => {
-                        state.extension_status_cache.set(&server.id, result.clone());
-                        result
-                    }
-                    None => json!({"handled": false}),
-                }
-            };
-
+        if let Some(enrich_result) = enriched.remove(&server.id) {
             // handled: true인 경우만 Extension이 서버 정보를 제공: 상태·PID·시작 시간·extension_status만 바꾼다
             let is_handled = enrich_result.get("handled")
                 .and_then(|h| h.as_bool()) == Some(true);
@@ -989,6 +1010,9 @@ pub async fn restart_instance_handler(
     super::audited(&state, "restart", &id, None, None, resp).await
 }
 
+/// 재시작이 정지 뒤 이전 프로세스가 끝나기를 기다리는 최소 시간 (정지 대기 시간이 더 길면 그만큼)
+const RESTART_EXIT_WAIT_FLOOR: std::time::Duration = std::time::Duration::from_secs(if cfg!(test) { 2 } else { 120 });
+
 async fn restart_instance(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
@@ -996,12 +1020,12 @@ async fn restart_instance(
 ) -> axum::response::Response {
     let picked = {
         let supervisor = state.supervisor.read().await;
-        supervisor
-            .instance_store
-            .find(&id)
-            .map(|i| i.id.clone())
+        supervisor.instance_store.find(&id).map(|i| {
+            let module_timeout = supervisor.module_loader.get_module(&i.module_name).ok().and_then(|m| m.metadata.stop_timeout);
+            (i.id.clone(), crate::supervisor::stop_timeout_of(i, module_timeout), supervisor.tracker.get_pid(&i.id).ok())
+        })
     };
-    let Some(inst_id) = picked else {
+    let Some((inst_id, stop_timeout, old_pid)) = picked else {
         return instance_not_found(&id);
     };
     let force = body.map(|Json(b)| b.force).unwrap_or(false);
@@ -1025,14 +1049,21 @@ async fn restart_instance(
             return (stop.status, Json(stop.body)).into_response();
         }
         running = stop.body.get("was_running").and_then(Value::as_bool) != Some(false);
-        // 정지 응답이 프로세스가 끝나기 전에 올 수 있다: 끝날 때까지 기다린다 (최대 2분)
-        for _ in 0..240 {
-            let alive = {
+        // 정지 응답이 프로세스가 끝나기 전에 올 수 있다: 끝날 때까지 기다린다 (정지 대기 시간만큼, 적어도 2분).
+        // non-managed 정지는 모듈이 성공이라고 답하면 추적을 바로 놓으므로, 정지 전에 알던 PID가 살아 있는지도 본다
+        let deadline = tokio::time::Instant::now() + RESTART_EXIT_WAIT_FLOOR.max(std::time::Duration::from_secs(stop_timeout));
+        loop {
+            let alive = old_pid.is_some_and(crate::supervisor::process::is_process_alive) || {
                 let supervisor = state.supervisor.read().await;
                 supervisor.is_running(&inst_id).await
             };
             if !alive {
                 break;
+            }
+            // 이전 프로세스가 아직 저장 중일 수 있다: 같은 월드를 여는 새 서버를 띄우지 않는다
+            if tokio::time::Instant::now() >= deadline {
+                let error = json!({ "success": false, "error": "The server is still shutting down; start it again once it has stopped", "error_code": "still_stopping", "stopped": false });
+                return (StatusCode::CONFLICT, Json(error)).into_response();
             }
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
@@ -1530,6 +1561,86 @@ mod tests {
         assert!(s.managed_store.get("stop-during-restart").await.is_none(), "the restart did not bring the server back");
     }
 
+    /// 정지를 받고도 기다리는 시간 안에 끝나지 않은 서버(월드 저장이 긴 서버)를 두고 재시작이 성공했다고 답했다:
+    /// 시작이 "이미 켜져 있음"을 성공으로 돌려줬고, 그 서버는 곧 꺼진 채로 남았다. 끝나지 않았으면 켜지 않고 오류로 답한다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_restart_does_not_report_success_while_the_old_server_is_still_stopping() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nstop_timeout = 1\n",
+        )
+        .unwrap();
+        // 정지를 요청만 하고 바로 답하는 모듈: 서버는 그 뒤로도 한참 저장한다
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True, 'issues': []}))\n").unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "slow-save".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        state.supervisor.read().await.tracker.track("slow-save", child.id()).unwrap();
+
+        let restarted = crate::ipc::internal::into_internal(restart_instance(Path("slow-save".into()), State(state.clone()), super::super::LooseJson(None)).await).await;
+        assert_eq!(restarted.status, StatusCode::CONFLICT, "{}", restarted.body);
+        assert_eq!((restarted.body["success"].clone(), restarted.body["error_code"].clone()), (json!(false), json!("still_stopping")), "{}", restarted.body);
+        assert!(child.try_wait().unwrap().is_none(), "the old server is left to finish saving");
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    /// 서버가 끝났는데 모니터가 아직 치우지 않은 사이, 목록은 추적 중인 PID만 보고 "실행 중"이라 하고
+    /// 개별 상태 조회는 "꺼짐"이라 했다. 두 조회는 같은 판정을 쓴다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_server_list_and_the_status_of_one_server_agree_right_after_it_exits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', 'sleep 30'], 'working_dir': '.'}))\n\
+             else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "just-exited".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let started = crate::ipc::internal::into_internal(start_instance(Path("just-exited".into()), State(state.clone())).await).await.body;
+        assert_eq!(started["success"], true, "{started}");
+
+        let both = || async {
+            let list = crate::ipc::internal::into_internal(list_servers_internal(&state).await).await.body;
+            let one = crate::supervisor::Supervisor::get_server_status(&state.supervisor, "srv", "game").await.unwrap();
+            (list["servers"][0]["status"].clone(), one["status"].clone())
+        };
+        assert_eq!(both().await, (json!("running"), json!("running")));
+
+        // 모니터가 돌기 전: managed 프로세스는 끝났고 추적 PID는 남아 있다
+        let managed = state.supervisor.read().await.managed_store.get("just-exited").await.unwrap();
+        managed.force_kill().await.unwrap();
+        assert!(crate::supervisor::process::wait_gone(std::time::Duration::from_secs(10), || managed.is_running()).await);
+        assert_eq!(both().await, (json!("stopped"), json!("stopped")));
+    }
+
     /// 시작 전 점검(모듈 validate) 중에 들어온 정지도 시작을 취소한다: 그 정지는 PID가 없어 바로 성공으로 끝난다
     #[cfg(unix)]
     #[tokio::test]
@@ -1887,6 +1998,59 @@ mod tests {
         };
         assert_eq!(managed("default"), json!(true), "managed is the default (C8b)");
         assert_eq!(managed("direct"), json!(false));
+    }
+
+    /// 캐시에 답이 없는 서버들의 `server.list_enrich`는 함께 돈다 (차례로 돌면 목록이 서버 수만큼 늦는다).
+    /// 캐시에 있는 서버는 부르지 않고, 받은 답은 캐시에 남는다
+    #[tokio::test]
+    async fn list_enrich_hooks_for_uncached_servers_run_together() {
+        let cache = crate::ipc::ExtensionStatusCache::new(30);
+        cache.set("cached", json!({ "handled": true, "status": "running" }));
+        let all_started = tokio::sync::Barrier::new(3);
+        let run = |ctx: Value| {
+            let all_started = &all_started;
+            async move {
+                assert_ne!(ctx["instance_id"], "cached", "a cached server is not asked again");
+                all_started.wait().await;
+                if ctx["instance_id"] == "failing" {
+                    return vec![("docker".to_string(), Err(anyhow::anyhow!("hook failed")))];
+                }
+                vec![("docker".to_string(), Ok(json!({ "handled": true, "status": "starting", "for": ctx["instance_id"] })))]
+            }
+        };
+        let contexts = ["a", "cached", "b", "failing"].map(|id| (id.to_string(), json!({ "instance_id": id }))).to_vec();
+        let results = tokio::time::timeout(std::time::Duration::from_secs(5), enrich_results(&cache, contexts, run))
+            .await
+            .expect("the hooks must not wait for each other");
+        assert_eq!(results["a"]["for"], "a");
+        assert_eq!(results["b"]["for"], "b");
+        assert_eq!(results["cached"]["status"], "running");
+        assert_eq!(results["failing"], json!({ "handled": false }));
+        assert_eq!(cache.get("a").unwrap()["for"], "a");
+        assert!(cache.get("failing").is_none(), "a failed hook is asked again on the next list");
+    }
+
+    /// 서버가 많아도 `server.list_enrich`는 몇 개씩만 함께 돈다: plugin 실행 자리를 목록 요청 하나가 다 쥐지 않고,
+    /// 뒤에 선 서버가 자리를 기다리다 hook 시간 한도를 넘기지 않는다
+    #[tokio::test]
+    async fn list_enrich_hooks_for_many_servers_do_not_all_start_at_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let cache = crate::ipc::ExtensionStatusCache::new(30);
+        let (running, most) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let run = |ctx: Value| {
+            let (running, most) = (&running, &most);
+            async move {
+                most.fetch_max(running.fetch_add(1, Ordering::SeqCst) + 1, Ordering::SeqCst);
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                running.fetch_sub(1, Ordering::SeqCst);
+                vec![("docker".to_string(), Ok(json!({ "handled": true, "for": ctx["instance_id"] })))]
+            }
+        };
+        let contexts: Vec<_> = (0..12).map(|i| (format!("s{i}"), json!({ "instance_id": format!("s{i}") }))).collect();
+        let results = enrich_results(&cache, contexts, run).await;
+        assert_eq!(results.len(), 12);
+        assert_eq!(results["s11"]["for"], "s11");
+        assert_eq!(most.load(Ordering::SeqCst), 4);
     }
 
     /// 익스텐션이 맡았다고 답한 서버(`server.list_enrich`의 handled)는 상태·PID·시작 시간·extension_status만 익스텐션 답을 따르고

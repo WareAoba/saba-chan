@@ -90,9 +90,19 @@ pub fn force_kill_pid(pid: u32) -> Result<()> {
 }
 
 /// 게임 서버 강제 종료. Windows는 자식까지 끝낸다: 런처형 서버(PalServer.exe 등)는 런처만 죽이면
-/// 실제 서버가 남는다. Unix는 `force_kill_pid`와 같다
+/// 실제 서버가 남는다. Unix는 `force_kill_pid`와 같다 (러너로 띄운 서버의 자식은 `force_kill_group`)
 pub fn force_kill_tree(pid: u32) -> Result<()> {
     kill(pid, true)
+}
+
+/// `pid`가 이끄는 프로세스 그룹을 통째로 끝낸다. 그런 그룹이 없으면 아무 일도 없다.
+/// 러너와 의사 콘솔의 서버처럼 사바쨩이 그룹 리더로 띄운 것에만 쓴다
+#[cfg(unix)]
+pub fn force_kill_group(pid: u32) {
+    // 0·-1은 호출한 쪽의 그룹·모든 프로세스를 뜻한다
+    if let Some(pid) = i32::try_from(pid).ok().filter(|p| *p > 1) {
+        unsafe { libc::kill(-pid, libc::SIGKILL) };
+    }
 }
 
 #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]

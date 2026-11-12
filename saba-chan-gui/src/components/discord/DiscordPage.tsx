@@ -61,7 +61,6 @@ interface DiscordView {
     seq?: number;
 }
 
-
 interface DiscordPageProps {
     discordBotStatus: string;
     discordCloudRelayUrl?: string;
@@ -166,7 +165,7 @@ export function DiscordPage({
     };
 
     // 명령 팔레트의 빈 검색 기준: 지금 연 디스코드 서버 (페이지를 떠나면 없음)
-    const openNodeId = view.kind === 'node' ? view.id ?? null : null;
+    const openNodeId = view.kind === 'node' ? (view.id ?? null) : null;
     useEffect(() => {
         useUIStore.getState().setOpenDiscordNodeId(openNodeId);
         return () => useUIStore.getState().setOpenDiscordNodeId(null);
@@ -188,7 +187,7 @@ export function DiscordPage({
         // `*`는 지금 연 디스코드 서버, 없으면 하나뿐인 서버
         const only = cloudNodes.length === 1 ? cloudNodes[0].guildId : null;
         const current = openNodeId && cloudNodes.some((n) => n.guildId === openNodeId) ? openNodeId : null;
-        const id = requested.id === '*' ? current ?? only : requested.id;
+        const id = requested.id === '*' ? (current ?? only) : requested.id;
         if (!id || !cloudNodes.some((n) => n.guildId === id)) {
             go({ kind: 'connection' });
             screenFallbackNotice(requested.id === '*' && cloudNodes.length > 1 ? 'pick_guild' : 'guild_missing');
@@ -473,20 +472,23 @@ export function DiscordPage({
                         )}
                         <div className="dc-nav-group">
                             <span>{t('discord.nav_nodes')}</span>
-                            {cloudState === 'connected' && (
-                                <button
-                                    type="button"
-                                    className="icon-btn dc-nav-add"
-                                    data-tooltip={t('discord.pair_start')}
-                                    aria-label={t('discord.pair_start')}
-                                    onClick={() => {
-                                        go({ kind: 'connection' });
-                                        if (!pairing.active) pairing.start();
-                                    }}
-                                >
-                                    <Icon name="plus" size="sm" />
-                                </button>
-                            )}
+                            {/* 끊겨도 남긴다: 끊겼을 때 다시 연결하는 길이기도 하다 */}
+                            <button
+                                type="button"
+                                className="icon-btn dc-nav-add"
+                                data-tooltip={t(
+                                    cloudState === 'connected' ? 'discord.pair_start' : 'discord.pair_this_pc',
+                                )}
+                                aria-label={t(
+                                    cloudState === 'connected' ? 'discord.pair_start' : 'discord.pair_this_pc',
+                                )}
+                                onClick={() => {
+                                    go({ kind: 'connection' });
+                                    if (!pairing.active) pairing.start();
+                                }}
+                            >
+                                <Icon name="plus" size="sm" />
+                            </button>
                         </div>
                         {cloudState === 'connected' && cloudError && (
                             <p className="dc-nav-empty dc-field-error">

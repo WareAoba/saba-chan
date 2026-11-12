@@ -35,6 +35,7 @@ import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
 import { useModalClose } from './hooks/useModalClose';
+import { useModulesRetry } from './hooks/useModulesRetry';
 import { useServerActions } from './hooks/useServerActions';
 import { useServerSettings } from './hooks/useServerSettings';
 import { useConsoleStore } from './stores/useConsoleStore';
@@ -44,6 +45,7 @@ import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
+import { startPoll } from './utils/poll';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
     beginOpeningSound,
@@ -184,6 +186,7 @@ function App() {
     const {
         consolePopoutIds,
         openConsole,
+        watchConsole,
         popinConsole,
         setConsoleInput,
         sendConsoleCommand,
@@ -508,9 +511,7 @@ function App() {
                 setBackgroundDaemonStatus('error');
             }
         };
-        checkDaemonStatus();
-        const interval = setInterval(checkDaemonStatus, 5000);
-        return () => clearInterval(interval);
+        return startPoll(checkDaemonStatus, 5000);
     }, [daemonReady]);
 
     // ── Settings Save Functions ─────────────────────────────
@@ -534,12 +535,8 @@ function App() {
         useServerStore.getState().fetchModules();
     }, []);
 
-    // 처음에 데몬이 늦었거나 꺼져 있어 모듈 목록을 못 받았으면, 데몬이 살아났을 때 다시 받는다
-    useEffect(() => {
-        if (backgroundDaemonStatus === 'running' && !useServerStore.getState().modulesLoaded) {
-            useServerStore.getState().fetchModules();
-        }
-    }, [backgroundDaemonStatus]);
+    // 처음에 데몬이 늦었거나 꺼져 있어 모듈 목록을 못 받았으면, 데몬이 살아 있는 동안 받을 때까지 다시 받는다
+    useModulesRetry(backgroundDaemonStatus);
 
     // ── Main initialization + auto-refresh ──────────────────
     // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers/t/setModal are intentionally omitted — adding them would cause interval re-registration on every action
@@ -643,14 +640,16 @@ function App() {
         }
 
         // Auto-refresh (데몬 준비 전에는 스킵)
-        const interval = setInterval(() => {
-            if (autoRefresh && daemonReady) {
-                fetchServers();
-            }
-        }, refreshInterval);
+        const stopPoll = startPoll(
+            () => {
+                if (autoRefresh && daemonReady) return fetchServers();
+            },
+            refreshInterval,
+            { immediate: false },
+        );
 
         return () => {
-            clearInterval(interval);
+            stopPoll();
             if (typeof offClose === 'function') offClose();
             if (typeof offOpenServer === 'function') offOpenServer();
             if (typeof offOpenRoute === 'function') offOpenRoute();
@@ -820,6 +819,7 @@ function App() {
                 highlightRules={mod?.syntax_highlight?.rules || null}
                 quickCommands={consoleQuickCommands(mod?.commands?.fields, mod?.command_aliases as null | undefined)}
                 openConsole={openConsole}
+                watchConsole={watchConsole}
                 setConsoleInput={setConsoleInput}
                 sendConsoleCommand={sendConsoleCommand}
             />
@@ -889,6 +889,7 @@ function App() {
     // ── 서버 페이지에 넘기는 묶음 ──
     const consoleProps = {
         openConsole,
+        watchConsole,
         setConsoleInput,
         sendConsoleCommand,
         consolePopoutIds,

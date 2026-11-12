@@ -1,3 +1,4 @@
+import { reuseUnchanged } from '@gui/utils/serverView';
 import { create } from 'zustand';
 import type { Module, Server, SessionState } from './types';
 
@@ -85,6 +86,8 @@ export const useData = create<DataState>()((set) => ({
     serversError: null,
     modules: [],
     modulesLoaded: false,
-    setServers: (servers, error = null) => set({ servers, serversError: error, serversLoaded: true }),
+    // 내용이 그대로인 서버는 이전 객체를 쓴다: 4초마다 받아도 바뀐 게 없으면 화면을 다시 그리지 않는다
+    setServers: (servers, error = null) =>
+        set((state) => ({ servers: reuseUnchanged(state.servers, servers), serversError: error, serversLoaded: true })),
     setModules: (modules) => set({ modules, modulesLoaded: true }),
 }));

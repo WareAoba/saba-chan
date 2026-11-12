@@ -45,7 +45,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.request
 
 # ─── Constants ────────────────────────────────────────────────
 
@@ -568,13 +567,7 @@ def load_setting_types(module_dir):
 
     type이 없으면 데몬과 같게 "text"로 본다. 파일이 없거나 파싱할 수 없으면 {}.
     """
-    try:
-        import tomllib
-        raw = (Path(module_dir) / "module.toml").read_bytes()
-        data = tomllib.loads(raw.decode("utf-8-sig"))
-    except (ImportError, OSError, UnicodeError, ValueError):
-        return {}
-    fields = data.get("settings", {}).get("fields", [])
+    fields = _module_toml(module_dir).get("settings", {}).get("fields", [])
     return {f["name"]: f.get("type", "text") for f in fields if isinstance(f, dict) and "name" in f}
 
 
@@ -607,11 +600,19 @@ def coerce_setting(value, field_type):
     return int(number) if number.is_integer() and "." not in text and "e" not in text.lower() else number
 
 
+_MODULE_TOML = {}
+
+
 def _module_toml(module_dir):
-    """모듈의 module.toml (dict). 없거나 읽지 못하면 {}"""
+    """모듈의 module.toml (dict). 없거나 읽지 못하면 {}. 한 호출 안에서 여러 번 물어도 파일이 그대로면 한 번만 읽는다"""
+    path = Path(module_dir) / "module.toml"
     try:
         import tomllib
-        return tomllib.loads((Path(module_dir) / "module.toml").read_bytes().decode("utf-8-sig"))
+        st = path.stat()
+        key = (os.fspath(path), st.st_mtime_ns, st.st_size)
+        if key not in _MODULE_TOML:
+            _MODULE_TOML[key] = tomllib.loads(path.read_bytes().decode("utf-8-sig"))
+        return _MODULE_TOML[key]
     except (ImportError, OSError, UnicodeError, ValueError):
         return {}
 
@@ -963,6 +964,7 @@ def download(url, dest, *, on_progress=None, timeout=60, checksums=None, user_ag
     실패하면 dest에 있던 파일은 그대로다. 반환: {알고리즘: hex} (sha1·sha256은 늘 계산한다).
     urlopen의 timeout은 읽기 한 번의 한도라서, 느리게 이어지는 받기도 전체로 timeout*10 안에 끊는다"""
     import hashlib
+    import urllib.request
     wanted = {k.lower(): v.lower() for k, v in (checksums or {}).items() if v}
     hashes = {name: hashlib.new(name) for name in {"sha1", "sha256", *wanted}}
     deadline = time.monotonic() + timeout * 10

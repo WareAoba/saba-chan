@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { memo, type MouseEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Server } from '../../stores/useServerStore';
-import { type ConsoleEntry, useConsoleStore } from '../../stores/useConsoleStore';
+import { type ConsoleEntry, type ConsoleLine as ConsoleLineData, useConsoleStore } from '../../stores/useConsoleStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { type CommandField, needsConfirm } from '../../utils/commandRisk';
 import { commandText } from '../../utils/serverView';
@@ -20,19 +20,6 @@ const historyOf = (id: string) => {
     if (!histories.has(id)) histories.set(id, []);
     return histories.get(id) as string[];
 };
-
-/** 콘솔 한 줄 (데몬이 준 줄 + 받을 때 붙이는 키) */
-interface ConsoleLineData {
-    key?: string | number;
-    id?: string | number;
-    source?: string;
-    level?: string;
-    timestamp?: number | null;
-    content: string;
-    spans?: unknown[];
-    /** 보낸 명령 줄(source: input)을 시킨 쪽 */
-    by?: { source?: string; userName?: string };
-}
 
 type Stamp = ((ts: number) => string) | null;
 
@@ -127,6 +114,8 @@ interface ServerConsoleProps {
     highlightRules?: HighlightRule[] | null;
     quickCommands?: CommandField[];
     openConsole: (id: string, name: string) => void;
+    /** 이 콘솔이 화면에 떠 있다고 알린다 (해제 함수를 돌려준다) */
+    watchConsole?: (id: string) => () => void;
     setConsoleInput: (id: string, value: string) => void;
     sendConsoleCommand: (id: string) => void;
     poppedOut?: boolean;
@@ -142,6 +131,7 @@ export function ServerConsole({
     highlightRules,
     quickCommands = [],
     openConsole,
+    watchConsole,
     setConsoleInput,
     sendConsoleCommand,
     poppedOut,
@@ -173,6 +163,9 @@ export function ServerConsole({
     useEffect(() => {
         if (!state && !poppedOut) openConsole(server.id, server.name);
     }, [server.id, server.name, state, poppedOut, openConsole]);
+    useEffect(() => {
+        if (!poppedOut) return watchConsole?.(server.id);
+    }, [server.id, poppedOut, watchConsole]);
 
     const compiledRules = useMemo(
         () => (syntaxEnabled && highlightRules ? getCachedRules(server.module || '_', highlightRules) : []),

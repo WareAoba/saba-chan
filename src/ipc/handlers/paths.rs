@@ -423,16 +423,8 @@ mod tests {
             config.peek_section(component_dirs::PATHS_SECTION)["modules"],
             json!(path.to_string_lossy())
         );
-        // 나중에 받는 모듈 업데이트도 새 폴더에 푼다
+        // 업데이터도 새 폴더에서 모듈을 찾는다 (옛 폴더는 없다): 나중에 받는 모듈 업데이트를 새 폴더에 푼다
         let module = saba_chan_updater_lib::Component::Module("pathgame".into());
-        assert_eq!(
-            state
-                .update_state
-                .manager
-                .read()
-                .await
-                .resolve_install_dir_for_test(&module, None),
-            path.join("pathgame")
-        );
+        assert!(state.update_state.manager.read().await.is_component_installed(&module));
     }
 }

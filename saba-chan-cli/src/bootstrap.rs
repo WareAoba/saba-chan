@@ -17,11 +17,12 @@ fn gui_section() -> serde_json::Value {
 
 /// 데몬 포트: `SABA_IPC_PORT` > `config.json` gui.ipcPort > 기본값 (데몬 main.rs와 같은 순서)
 pub fn ipc_port() -> u16 {
-    std::env::var("SABA_IPC_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .or_else(|| gui_section().get("ipcPort").and_then(|v| v.as_u64()).map(|p| p as u16))
-        .unwrap_or(constants::DEFAULT_IPC_PORT)
+    std::env::var("SABA_IPC_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or_else(settings_port)
+}
+
+/// 환경 변수 없이 뜬 데몬(자동 실행 서비스)이 여는 포트
+fn settings_port() -> u16 {
+    gui_section().get("ipcPort").and_then(|v| v.as_u64()).map(|p| p as u16).unwrap_or(constants::DEFAULT_IPC_PORT)
 }
 
 /// 붙을 데몬 포트: 설정 포트에 데몬이 없는데 실행 중인 데몬이 남긴 기록(`daemon.lock.owner`)의 포트에서
@@ -126,77 +127,26 @@ pub fn daemon_binary() -> Option<PathBuf> {
 }
 
 /// 데몬을 분리 실행한다 (CLI가 끝나도 살아 있게)
-/// `port`는 CLI가 붙을 포트 (`--port`까지 반영된 값)
-pub fn spawn_daemon(port: u16) -> Result<std::process::Child> {
+/// `port`는 CLI가 붙을 포트 (`--port`까지 반영된 값).
+/// 이 설치의 데몬이 자동 실행 서비스(systemd 사용자 서비스, 맥 LaunchAgent)로 등록돼 있으면 그 서비스로 켜고 None을 돌려준다:
+/// 직접 띄우면 서비스 밖에서 돌아 죽어도 다시 뜨지 않는다. 서비스는 설정 파일의 포트로 뜨므로 다른 포트를 골랐으면 직접 띄운다
+pub fn spawn_daemon(port: u16) -> Result<Option<std::process::Child>> {
     let binary = daemon_binary().ok_or_else(|| failed(t!("daemon.binary_not_found")))?;
+    if port == settings_port() {
+        if let Some(start) = saba_chan_updater_lib::autostart::service_start(&binary) {
+            let run = Command::new(&start[0]).args(&start[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+            // 서비스 관리자에 닿지 못하면(사용자 세션 버스 없음 등) 직접 띄운다
+            if run.is_ok_and(|s| s.success()) {
+                return Ok(None);
+            }
+        }
+    }
     let mut cmd = Command::new(&binary);
-    cmd.arg("--spawned")
-        .env("SABA_IPC_PORT", port.to_string())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    cmd.arg("--spawned").env("SABA_IPC_PORT", port.to_string());
     if let Some(dir) = binary.parent() {
         cmd.current_dir(dir);
     }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const DETACHED_PROCESS: u32 = 0x0000_0008;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
-    }
-    spawn_detached(&mut cmd).map_err(|e| failed(t!("daemon.spawn_failed", error = e)))
-}
-
-/// 이 프로세스의 표준 입출력 핸들을 물려주지 않고 띄운다 (자식의 입출력은 `cmd`에 정한 대로).
-/// Windows는 상속 가능한 핸들을 모두 자식에게 넘긴다: CLI의 출력이 부른 쪽의 파이프면 데몬이 그 파이프를 쥐어,
-/// CLI가 끝나도 부른 쪽은 출력의 끝을 기다린다
-fn spawn_detached(cmd: &mut Command) -> std::io::Result<std::process::Child> {
-    #[cfg(windows)]
-    let _no_inherit = StdNoInherit::new();
-    cmd.spawn()
-}
-
-/// 표준 입출력 핸들의 상속 표시를 잠시 지우고, 사라질 때 되돌린다
-#[cfg(windows)]
-struct StdNoInherit(Vec<windows_sys::Win32::Foundation::HANDLE>);
-
-#[cfg(windows)]
-impl StdNoInherit {
-    fn new() -> Self {
-        use windows_sys::Win32::Foundation::{
-            GetHandleInformation, SetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
-        };
-        use windows_sys::Win32::System::Console::{
-            GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
-        };
-        let mut cleared = Vec::new();
-        for which in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
-            let handle = unsafe { GetStdHandle(which) };
-            if handle.is_null() || handle == INVALID_HANDLE_VALUE {
-                continue;
-            }
-            let mut flags = 0;
-            // stdout과 stderr이 같은 핸들이면 두 번째는 이미 지워져 있다
-            if unsafe { GetHandleInformation(handle, &mut flags) } != 0
-                && flags & HANDLE_FLAG_INHERIT != 0
-                && unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) } != 0
-            {
-                cleared.push(handle);
-            }
-        }
-        Self(cleared)
-    }
-}
-
-#[cfg(windows)]
-impl Drop for StdNoInherit {
-    fn drop(&mut self) {
-        use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
-        for &handle in &self.0 {
-            unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) };
-        }
-    }
+    saba_chan_updater_lib::process::spawn_detached(&mut cmd).map(Some).map_err(|e| failed(t!("daemon.spawn_failed", error = e)))
 }
 
 /// 정상 종료가 안 된 데몬을 PID로만 끝낸다 (이름으로 죽이면 다른 사용자의 데몬까지 죽는다)
@@ -226,61 +176,6 @@ pub fn kill_pid(pid: u64) -> Result<()> {
 pub const START_TIMEOUT: Duration = Duration::from_secs(20);
 /// 데몬의 종료 hook 한도(30초, src/main.rs)보다 길게 기다린다: 그 전에 강제 종료를 묻지 않는다
 pub const STOP_TIMEOUT: Duration = Duration::from_secs(40);
-
-#[cfg(all(test, windows))]
-mod tests {
-    use super::*;
-    use std::io::Read;
-    use std::os::windows::io::AsRawHandle;
-    use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE, HANDLE_FLAG_INHERIT};
-    use windows_sys::Win32::System::Console::{GetStdHandle, SetStdHandle, STD_OUTPUT_HANDLE};
-
-    /// 출력이 파이프인 CLI(스크립트, `| more`)가 데몬을 띄워도 데몬이 그 파이프를 쥐지 않는다:
-    /// 쥐면 CLI가 끝나도 부른 쪽이 출력의 끝을 받지 못해 `daemon start`가 끝나지 않는 것처럼 보인다
-    #[test]
-    fn a_detached_child_does_not_hold_our_output_pipe() {
-        // 표준 출력 핸들은 프로세스 전체가 함께 쓴다: 바꾸는 동안 다른 시험과 시험 틀의 출력이 이 파이프로 새거나
-        // 닫힌 핸들에 쓰다 멈춘다 (L71). 이 시험만 도는 자식 프로세스에서 바꾼다
-        const ALONE: &str = "SABA_TEST_STD_HANDLE_ALONE";
-        if std::env::var_os(ALONE).is_none() {
-            let out = Command::new(std::env::current_exe().unwrap())
-                .args(["--exact", "bootstrap::tests::a_detached_child_does_not_hold_our_output_pipe", "--test-threads=1"])
-                .env(ALONE, "1")
-                .stdin(Stdio::null())
-                .output()
-                .unwrap();
-            let text = String::from_utf8_lossy(&out.stdout);
-            assert!(out.status.success() && text.contains("1 passed"), "{text}{}", String::from_utf8_lossy(&out.stderr));
-            return;
-        }
-        let (mut reader, writer) = std::io::pipe().unwrap();
-        let raw = writer.as_raw_handle() as HANDLE;
-        // 부른 쪽이 넘겨준 파이프처럼 상속 가능하게 해서 표준 출력으로 둔다
-        unsafe { SetHandleInformation(raw, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) };
-        let old = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
-        unsafe { SetStdHandle(STD_OUTPUT_HANDLE, raw) };
-        let mut cmd = Command::new(saba_chan_updater_lib::process::system_tool("ping"));
-        cmd.args(["-n", "6", "127.0.0.1"])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let child = spawn_detached(&mut cmd);
-        unsafe { SetStdHandle(STD_OUTPUT_HANDLE, old) };
-        drop(writer);
-        let mut child = child.expect("ping starts");
-
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            let _ = reader.read_to_end(&mut buf);
-            let _ = tx.send(());
-        });
-        let closed = rx.recv_timeout(Duration::from_secs(2)).is_ok();
-        let _ = child.kill();
-        let _ = child.wait();
-        assert!(closed, "the child still holds the write end of our output pipe");
-    }
-}
 
 #[cfg(test)]
 mod port_tests {
