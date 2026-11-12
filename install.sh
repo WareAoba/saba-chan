@@ -103,7 +103,7 @@ return (j.latest || {}).manifestUrl || "";
 JS
 )
 else
-    MANIFEST_URL=$(python3 -I -c 'import json,sys;print((json.load(open(sys.argv[1])).get("latest") or {}).get("manifestUrl",""))' "$TMP/check.json")
+    MANIFEST_URL=$(python3 -I -c 'import json,sys;print((json.load(open(sys.argv[1])).get("latest") or {}).get("manifestUrl",""))' "$TMP/check.json") || MANIFEST_URL=
 fi
 [ -n "$MANIFEST_URL" ] || die "이 PC용 릴리즈가 아직 없어요." "No release for this platform yet."
 curl -fsS -H 'X-Saba-Client: 1' "$MANIFEST_URL" >"$TMP/manifest.json" || die "manifest를 받지 못했어요." "Could not download the manifest."
@@ -119,7 +119,8 @@ if (!cli || (cli.url || "").indexOf("https://") !== 0) return "";
 return [own.gui ? "gui" : "nogui", cli.url, cli.sha256, cli.size_bytes == null ? "" : cli.size_bytes].join(" ");
 JS
 else
-    python3 -I - "$TMP/manifest.json" "$PLATFORM" >"$TMP/cli.txt" <<'PY'
+    # 항목이 없어 실패해도 `set -e`로 여기서 끝내지 않는다: 아래에서 빈 결과를 보고 알린다
+    python3 -I - "$TMP/manifest.json" "$PLATFORM" >"$TMP/cli.txt" <<'PY' || :
 import json, sys
 m = json.load(open(sys.argv[1]))["manifest"]
 own = m["components"] if m.get("platform") == sys.argv[2] else m.get("platforms", {}).get(sys.argv[2], {}).get("components", {})
