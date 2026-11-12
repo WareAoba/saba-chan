@@ -3657,13 +3657,14 @@ mod tests {
         let runtime = state.supervisor.read().await.runtime.clone();
         // 정지를 한 번 거치면 정지 문과 실행 세대가, 콘솔로 세기 시작하면 접속자 목록이 생긴다
         let _ = crate::ipc::internal::into_internal(super::super::server::stop_instance(state.clone(), &id, false).await).await;
-        crate::supervisor::players::roster_start(&runtime, &id);
-        assert!(runtime.contains(&id), "the instance has runtime state");
+        let roster = crate::supervisor::players::roster_start(&runtime, &id);
+        crate::supervisor::players::roster_change(&runtime, &id, roster, "alice", true);
+        assert_eq!(crate::supervisor::players::counted(&runtime, &id), Some(1));
 
         let removed = crate::ipc::internal::into_internal(super::delete_instance(Path(id.clone()), State(state.clone()), Query(Default::default())).await).await;
         assert_eq!(removed.status.as_u16(), 200, "{}", removed.body);
-        assert!(!runtime.contains(&id), "deleting the instance drops its runtime state");
-        assert_eq!(crate::supervisor::players::get(&runtime, &id), None);
+        assert_eq!(crate::supervisor::players::get(&runtime, &id), None, "deleting the instance drops its runtime state");
+        assert!(crate::supervisor::players::present(&runtime, Some(&id)).is_empty());
     }
 
     /// 설치가 끝났다는 표시를 기다린다. 상한은 멈춘 설치를 알아채려는 것이라, 병렬 테스트로 느려진 PC·CI에서도 넉넉히 둔다
