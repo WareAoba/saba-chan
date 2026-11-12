@@ -309,6 +309,7 @@
     "remote_bad_path": "不接受此请求。",
     "remote_bad_request": "不接受此请求。",
     "remote_timeout": "未在 2 分钟内完成，已按失败处理。请在电脑上确认结果。",
+    "still_working": "2 分钟内没有完成。电脑上可能仍在进行，请稍后再查看。",
     "remote_host_gone": "请求完成前与电脑的连接已断开。",
     "remote_busy": "请求过多。请稍后再试。"
   },

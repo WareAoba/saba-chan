@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
-import { errorText, failed } from './ui';
+import { errorText, failed, timedOut } from './ui';
 import type { Server, WebApi } from '../types';
 
 /** 데몬이 동의를 요구한 약관 한 건 */
@@ -52,6 +52,7 @@ export function useServerControl(api: WebApi) {
                 return toast(t('servers.already_running', { name: server.name }), 'info');
             }
             if (res?.error_code === 'start_cancelled') return toast(t('errors.start_cancelled'), 'info');
+            if (timedOut(res)) return toast(t('errors.still_working'), 'info');
             if (failed(res)) return toast(errorText(t, res), 'error');
             toast(t('servers.started', { name: server.name }), 'ok');
         });
@@ -66,6 +67,7 @@ export function useServerControl(api: WebApi) {
             });
             if (!ok) return;
             const res = await api.instanceStop(server.id, {});
+            if (timedOut(res)) return toast(t('errors.still_working'), 'info');
             if (failed(res)) return toast(errorText(t, res), 'error');
             toast(t('servers.stopped', { name: server.name }), 'ok');
         });
@@ -80,6 +82,7 @@ export function useServerControl(api: WebApi) {
             });
             if (!ok) return;
             const res = await api.instanceRestart(server.id, {});
+            if (timedOut(res)) return toast(t('errors.still_working'), 'info');
             if (failed(res)) return toast(errorText(t, res), 'error');
             toast(t('servers.restarted', { name: server.name }), 'ok');
         });
@@ -95,7 +98,7 @@ export function useServerControl(api: WebApi) {
             if (!ok) return false;
             const res = await api.instanceDelete(server.id);
             if (failed(res)) {
-                toast(errorText(t, res), 'error');
+                toast(timedOut(res) ? t('errors.still_working') : errorText(t, res), timedOut(res) ? 'info' : 'error');
                 return false;
             }
             toast(t('servers.deleted', { name: server.name }), 'ok');

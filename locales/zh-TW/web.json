@@ -309,6 +309,7 @@
     "remote_bad_path": "不接受此請求。",
     "remote_bad_request": "不接受此請求。",
     "remote_timeout": "未在 2 分鐘內完成，已視為失敗。請在電腦上確認結果。",
+    "still_working": "2 分鐘內沒有完成。電腦上可能仍在進行，請稍後再查看。",
     "remote_host_gone": "請求完成前與電腦的連線已中斷。",
     "remote_busy": "請求過多。請稍後再試。"
   },

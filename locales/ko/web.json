@@ -309,6 +309,7 @@
     "remote_bad_path": "받을 수 없는 요청이에요.",
     "remote_bad_request": "받을 수 없는 요청이에요.",
     "remote_timeout": "2분 안에 끝나지 않아 실패로 처리했어요. PC에서 결과를 확인해 주세요.",
+    "still_working": "2분 안에 끝나지 않았어요. PC에서는 아직 진행 중일 수 있으니 잠시 뒤 다시 확인해 주세요.",
     "remote_host_gone": "PC와 연결이 끊겨 요청을 끝내지 못했어요.",
     "remote_busy": "요청이 너무 많아요. 잠시 뒤 다시 해 주세요."
   },

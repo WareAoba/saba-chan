@@ -309,6 +309,7 @@
     "remote_bad_path": "Cette requête n'est pas acceptée.",
     "remote_bad_request": "Cette requête n'est pas acceptée.",
     "remote_timeout": "Ce n'était pas terminé en 2 minutes, c'est donc considéré comme un échec. Vérifiez le résultat sur le PC.",
+    "still_working": "Ce n'était pas terminé au bout de 2 minutes. Le PC y travaille peut-être encore ; revérifiez dans un instant.",
     "remote_host_gone": "La connexion avec le PC a été perdue avant la fin de la requête.",
     "remote_busy": "Trop de requêtes. Réessayez dans un instant."
   },

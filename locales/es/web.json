@@ -309,6 +309,7 @@
     "remote_bad_path": "Esta solicitud no se acepta.",
     "remote_bad_request": "Esta solicitud no se acepta.",
     "remote_timeout": "No terminó en 2 minutos, así que se trató como un fallo. Comprueba el resultado en el PC.",
+    "still_working": "No terminó en 2 minutos. Puede que el PC siga trabajando en ello; vuelve a comprobarlo en un momento.",
     "remote_host_gone": "Se perdió la conexión con el PC antes de que terminara la solicitud.",
     "remote_busy": "Demasiadas solicitudes. Inténtalo de nuevo en un momento."
   },

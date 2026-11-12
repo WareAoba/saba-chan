@@ -309,6 +309,7 @@
     "remote_bad_path": "Diese Anfrage wird nicht angenommen.",
     "remote_bad_request": "Diese Anfrage wird nicht angenommen.",
     "remote_timeout": "Es wurde nicht innerhalb von 2 Minuten fertig und gilt daher als fehlgeschlagen. Prüfe das Ergebnis am PC.",
+    "still_working": "Es wurde nicht innerhalb von 2 Minuten fertig. Der PC arbeitet eventuell noch daran; prüfe es gleich noch einmal.",
     "remote_host_gone": "Die Verbindung zum PC brach ab, bevor die Anfrage fertig war.",
     "remote_busy": "Zu viele Anfragen. Versuch es gleich noch einmal."
   },
