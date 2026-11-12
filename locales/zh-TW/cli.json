@@ -727,7 +727,8 @@
     "installed": "已安裝 {{shell}} 自動補全：{{path}}",
     "new_terminal": "開啟新的終端機後生效。",
     "zsh_fpath": "{{rc}} 中需要有這一行才會生效：fpath=(~/.zfunc $fpath)",
-    "by_hand": "{{shell}} 只能透過修改設定檔載入自動補全，因此沒有寫入檔案。請在 {{profile}} 中加入這一行：{{line}}"
+    "by_hand": "{{shell}} 只能透過修改設定檔載入自動補全，因此沒有寫入檔案。請在 {{profile}} 中加入這一行：{{line}}",
+    "no_home": "找不到用來放置自動完成的主資料夾。請設定 HOME。"
   },
   "shell": {
     "bad_quotes": "引號未閉合。",

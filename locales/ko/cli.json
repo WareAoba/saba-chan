@@ -727,7 +727,8 @@
     "installed": "{{shell}} 자동 완성을 설치했어요: {{path}}",
     "new_terminal": "새 터미널을 열면 적용돼요.",
     "zsh_fpath": "{{rc}}에 다음 한 줄이 있어야 적용돼요: fpath=(~/.zfunc $fpath)",
-    "by_hand": "{{shell}} 자동 완성은 설정 파일을 고쳐야 읽혀서 파일을 두지 않았어요. {{profile}}에 다음 한 줄을 넣으세요: {{line}}"
+    "by_hand": "{{shell}} 자동 완성은 설정 파일을 고쳐야 읽혀서 파일을 두지 않았어요. {{profile}}에 다음 한 줄을 넣으세요: {{line}}",
+    "no_home": "홈 폴더를 찾지 못해 자동 완성을 둘 자리를 정하지 못했어요. HOME을 지정하세요."
   },
   "shell": {
     "bad_quotes": "따옴표가 닫히지 않았어요.",

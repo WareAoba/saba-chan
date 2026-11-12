@@ -727,7 +727,8 @@
     "installed": "Autocompletado de {{shell}} instalado: {{path}}",
     "new_terminal": "Abre una terminal nueva para usarlo.",
     "zsh_fpath": "Funcionará cuando {{rc}} tenga esta línea: fpath=(~/.zfunc $fpath)",
-    "by_hand": "{{shell}} solo carga el autocompletado desde su archivo de configuración, así que no se escribió ningún archivo. Añade esta línea a {{profile}}: {{line}}"
+    "by_hand": "{{shell}} solo carga el autocompletado desde su archivo de configuración, así que no se escribió ningún archivo. Añade esta línea a {{profile}}: {{line}}",
+    "no_home": "No se encontró la carpeta de inicio donde poner el autocompletado. Define HOME."
   },
   "shell": {
     "bad_quotes": "Comilla sin cerrar.",

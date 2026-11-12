@@ -267,8 +267,11 @@ if [ -n "$PAIR" ]; then
             "Could not finish connecting to Server-chan. Run saba-chan bot pair later."
 fi
 
-# 셸 자동 완성: 쓰는 셸이 스스로 읽는 자리에만 둔다 (셸 설정 파일은 고치지 않는다). 못 해도 설치는 마친다
-"$CLI" completions --install || true
+# 셸 자동 완성: 쓰는 셸이 스스로 읽는 자리에만 둔다 (셸 설정 파일은 고치지 않는다). 못 해도 설치는 마친다.
+# 파일을 둘 수 있는 셸만 부른다: sh·dash 같은 셸이면 조용히 건너뛴다
+case "${SHELL##*/}" in
+    bash | zsh | fish) "$CLI" completions --install || true ;;
+esac
 
 case ":$PATH:" in
     *":$HOME/.local/bin:"*) ;;

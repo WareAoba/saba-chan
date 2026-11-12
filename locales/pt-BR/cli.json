@@ -727,7 +727,8 @@
     "installed": "Autocompletar do {{shell}} instalado: {{path}}",
     "new_terminal": "Abra um novo terminal para usar.",
     "zsh_fpath": "Funciona quando {{rc}} tiver esta linha: fpath=(~/.zfunc $fpath)",
-    "by_hand": "O {{shell}} só carrega o autocompletar pelo arquivo de configuração, então nenhum arquivo foi gravado. Adicione esta linha em {{profile}}: {{line}}"
+    "by_hand": "O {{shell}} só carrega o autocompletar pelo arquivo de configuração, então nenhum arquivo foi gravado. Adicione esta linha em {{profile}}: {{line}}",
+    "no_home": "Não foi possível encontrar a pasta pessoal para colocar o autocompletar. Defina HOME."
   },
   "shell": {
     "bad_quotes": "Aspas não fechadas.",

@@ -727,7 +727,8 @@
     "installed": "已安装 {{shell}} 自动补全：{{path}}",
     "new_terminal": "打开新的终端后生效。",
     "zsh_fpath": "{{rc}} 中需要有这一行才会生效：fpath=(~/.zfunc $fpath)",
-    "by_hand": "{{shell}} 只能通过修改配置文件加载自动补全，因此没有写入文件。请在 {{profile}} 中加入这一行：{{line}}"
+    "by_hand": "{{shell}} 只能通过修改配置文件加载自动补全，因此没有写入文件。请在 {{profile}} 中加入这一行：{{line}}",
+    "no_home": "找不到用于放置自动补全的主文件夹。请设置 HOME。"
   },
   "shell": {
     "bad_quotes": "引号未闭合。",

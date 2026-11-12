@@ -727,7 +727,8 @@
     "installed": "Autocomplétion {{shell}} installée : {{path}}",
     "new_terminal": "Ouvrez un nouveau terminal pour l'utiliser.",
     "zsh_fpath": "Elle fonctionnera quand {{rc}} contiendra cette ligne : fpath=(~/.zfunc $fpath)",
-    "by_hand": "{{shell}} ne charge l'autocomplétion que depuis son fichier de configuration, aucun fichier n'a donc été écrit. Ajoutez cette ligne à {{profile}} : {{line}}"
+    "by_hand": "{{shell}} ne charge l'autocomplétion que depuis son fichier de configuration, aucun fichier n'a donc été écrit. Ajoutez cette ligne à {{profile}} : {{line}}",
+    "no_home": "Dossier personnel introuvable pour y placer l'autocomplétion. Définissez HOME."
   },
   "shell": {
     "bad_quotes": "Guillemet non fermé.",

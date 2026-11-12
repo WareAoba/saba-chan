@@ -15,16 +15,11 @@ const NAMES: [&str; 2] = ["saba-chan", "saba-chan-cli"];
 pub fn run(ctx: &Ctx, shell: Option<Shell>, install: bool) -> Result<()> {
     if !install {
         let shell = shell.ok_or_else(|| usage(t!("completions.which_shell")))?;
-        // PowerShell·elvish는 이 출력을 설정 파일에서 그대로 실행한다(`by_hand`): 두 이름을 한 번에 붙인다.
-        // 나머지는 예전처럼 한 이름이다 (파일로 저장해 쓰는 zsh 꼴은 둘을 이어 붙이면 깨진다)
-        let names: &[&str] = if matches!(shell, Shell::PowerShell | Shell::Elvish) { &NAMES } else { &NAMES[1..] };
-        for name in names {
-            clap_complete::generate(shell, &mut crate::cli::localized(), *name, &mut std::io::stdout());
-        }
+        std::io::Write::write_all(&mut std::io::stdout(), &printed(shell)).map_err(|e| failed(e.to_string()))?;
         return Ok(());
     }
     let shell = shell.or_else(Shell::from_env).ok_or_else(|| usage(t!("completions.which_shell")))?;
-    let places = Places::from_env().ok_or_else(|| failed("no home folder"))?;
+    let places = Places::from_env().ok_or_else(|| failed(t!("completions.no_home")))?;
     match install_for(shell, &places).map_err(|e| failed(e.to_string()))? {
         Installed::Files(files) => {
             let shown = places.tilde(&files[0]);
@@ -101,22 +96,34 @@ enum Installed {
     ByHand { profile: &'static str, line: String },
 }
 
+/// 한 이름의 완성 스크립트
+fn script(shell: Shell, name: &str) -> Vec<u8> {
+    let mut out = Vec::new();
+    clap_complete::generate(shell, &mut crate::cli::localized(), name, &mut out);
+    out
+}
+
+/// zsh는 `#compdef`에 적은 이름 모두에 한 파일을 쓴다 (둘을 이어 붙이면 파일로 저장해 쓰는 꼴이 깨진다)
+fn zsh_script() -> Vec<u8> {
+    let body = String::from_utf8_lossy(&script(Shell::Zsh, NAMES[0])).replacen(&format!("#compdef {}", NAMES[0]), &format!("#compdef {}", NAMES.join(" ")), 1);
+    body.into_bytes()
+}
+
+/// `completions <셸>`이 찍는 두 이름의 스크립트. zsh 말고는 이름마다 이어 붙인다
+fn printed(shell: Shell) -> Vec<u8> {
+    match shell {
+        Shell::Zsh => zsh_script(),
+        _ => NAMES.iter().flat_map(|n| script(shell, n)).collect(),
+    }
+}
+
 /// 셸이 스스로 읽는 이 사용자의 자리에 두 이름의 완성 스크립트를 쓴다
 fn install_for(shell: Shell, places: &Places) -> std::io::Result<Installed> {
-    let script = |name: &str| {
-        let mut out = Vec::new();
-        clap_complete::generate(shell, &mut crate::cli::localized(), name, &mut out);
-        out
-    };
     let files: Vec<(PathBuf, Vec<u8>)> = match shell {
         // bash-completion은 명령 이름의 파일을 그 명령을 처음 완성할 때 읽는다
-        Shell::Bash => NAMES.iter().map(|n| (places.data.join("bash-completion/completions").join(n), script(n))).collect(),
-        Shell::Fish => NAMES.iter().map(|n| (places.config.join("fish/completions").join(format!("{n}.fish")), script(n))).collect(),
-        // zsh는 `#compdef`에 적은 이름 모두에 한 파일을 쓴다
-        Shell::Zsh => {
-            let body = String::from_utf8_lossy(&script(NAMES[0])).replacen(&format!("#compdef {}", NAMES[0]), &format!("#compdef {}", NAMES.join(" ")), 1);
-            vec![(places.zfunc().join(format!("_{}", NAMES[0])), body.into_bytes())]
-        }
+        Shell::Bash => NAMES.iter().map(|n| (places.data.join("bash-completion/completions").join(n), script(shell, n))).collect(),
+        Shell::Fish => NAMES.iter().map(|n| (places.config.join("fish/completions").join(format!("{n}.fish")), script(shell, n))).collect(),
+        Shell::Zsh => vec![(places.zfunc().join(format!("_{}", NAMES[0])), zsh_script())],
         Shell::PowerShell => {
             return Ok(Installed::ByHand { profile: "$PROFILE", line: format!("{} completions powershell | Out-String | Invoke-Expression", NAMES[0]) });
         }
@@ -160,6 +167,22 @@ mod tests {
         assert_eq!(fish, vec![tmp.path().join(".config/fish/completions/saba-chan.fish"), tmp.path().join(".config/fish/completions/saba-chan-cli.fish")]);
         assert!(std::fs::read_to_string(&fish[1]).unwrap().contains("complete -c saba-chan-cli"));
         assert_eq!(p.tilde(&zsh[0]), "~/.zfunc/_saba-chan");
+    }
+
+    /// 찍는 꼴(`completions <셸>`, 파일로 저장하거나 rc에서 eval)도 두 이름에 붙는다. zsh는 설치하는 파일과 같은 본문이다
+    #[test]
+    fn the_printed_script_covers_both_command_names() {
+        crate::i18n::init("en");
+        for shell in [Shell::Bash, Shell::Fish] {
+            let out = String::from_utf8(printed(shell)).unwrap();
+            for name in NAMES {
+                let registered = if shell == Shell::Fish { out.contains(&format!("complete -c {name} ")) } else { out.contains(&format!(" {name}\n")) };
+                assert!(registered, "{shell} {name}");
+            }
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let Installed::Files(zsh) = install_for(Shell::Zsh, &places(tmp.path())).unwrap() else { panic!("zsh writes a file") };
+        assert_eq!(printed(Shell::Zsh), std::fs::read(&zsh[0]).unwrap());
     }
 
     /// 설정 파일을 고쳐야만 읽는 셸은 아무 파일도 쓰지 않고 넣을 한 줄을 준다
