@@ -269,7 +269,7 @@ mod tests {
         let url = serve_once(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nonly ten b").await;
         let tmp = tempfile::tempdir().unwrap();
         let dest = tmp.path().join("asset.zip");
-        let err = download_verified(&crate::tls::http_client_builder().build().unwrap(), &url, &dest, None, None, None).await.unwrap_err();
+        let err = download_with(&crate::tls::http_client_builder().build().unwrap(), &url, &dest, None, None, None, QUICK).await.unwrap_err();
         assert!(matches!(err, DownloadError::Http(_)), "{:?}", err);
         assert!(!dest.exists());
     }
@@ -421,7 +421,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dest = tmp.path().join("asset.zip");
         std::fs::write(&dest, b"good staged file").unwrap();
-        assert!(download_verified(&crate::tls::http_client_builder().build().unwrap(), &url, &dest, None, None, None).await.is_err());
+        assert!(download_with(&crate::tls::http_client_builder().build().unwrap(), &url, &dest, None, None, None, QUICK).await.is_err());
         assert_eq!(std::fs::read(&dest).unwrap(), b"good staged file");
         assert!(!tmp.path().join("asset.zip.part").exists());
     }
