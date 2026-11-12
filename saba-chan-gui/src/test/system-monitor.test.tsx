@@ -366,7 +366,9 @@ describe('시스템 모니터 표시 방식 (사용자 11-11: 끔·고정·떠 �
         Object.defineProperties(box, { offsetWidth: { value: 200 }, offsetHeight: { value: 100 } });
         const head = box.querySelector('.monitor-head')!;
         // 기본 자리(오른쪽 위 = left 788, top 12)에서 왼쪽 가운데쯤으로 끌어 놓는다
-        fireEvent.pointerDown(head, { clientX: 800, clientY: 20, pointerId: 1, button: 0 });
+        // 끌기 시작이 글자 선택을 시작하지 않아야 아래 콘솔 등이 함께 선택되지 않는다 (사용자 11-12)
+        const notPrevented = fireEvent.pointerDown(head, { clientX: 800, clientY: 20, pointerId: 1, button: 0 });
+        expect(notPrevented).toBe(false);
         fireEvent.pointerMove(head, { clientX: 300, clientY: 200, pointerId: 1 });
         fireEvent.pointerUp(head, { clientX: 300, clientY: 200, pointerId: 1 });
         expect(useSettingsStore.getState().systemMonitorFloat).toEqual({ corner: 'top-left', x: 288, y: 192 });
