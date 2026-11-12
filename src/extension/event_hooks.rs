@@ -65,8 +65,8 @@ struct Queue {
     warned: bool,
 }
 
-#[derive(Default)]
 struct Worker {
+    ext_id: String,
     queue: Mutex<Queue>,
     wake: Notify,
 }
@@ -106,7 +106,7 @@ impl Worker {
         if queue.items.len() >= QUEUE_CAP {
             queue.items.pop_front();
             if !std::mem::replace(&mut queue.warned, true) {
-                tracing::warn!("[EventHooks] an extension is behind on '{}'; dropping its oldest waiting events", item.hook);
+                tracing::warn!("[EventHooks] extension '{}' is behind on '{}'; dropping its oldest waiting events", self.ext_id, item.hook);
             }
         }
         queue.items.push_back(item);
@@ -125,7 +125,7 @@ impl Worker {
 }
 
 fn start_worker<R: Runner>(ext_id: String, runner: Arc<R>) -> Arc<Worker> {
-    let worker = Arc::new(Worker::default());
+    let worker = Arc::new(Worker { ext_id: ext_id.clone(), queue: Mutex::default(), wake: Notify::new() });
     let me = worker.clone();
     tokio::spawn(async move {
         loop {
