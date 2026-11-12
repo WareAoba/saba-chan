@@ -212,11 +212,12 @@ impl RelayAgent {
                     _ = sync_cancel.cancelled() => {}
                     _ = async {
                         crate::ipc::handlers::chatbot::sync_on_connect(&sync_server).await;
-                        // 디스코드 길드 설정도 데몬이 원본 (I2)
-                        crate::ipc::handlers::discord::sync_on_connect(&sync_server).await;
                     } => {}
                 }
             });
+            // 디스코드 길드 설정도 데몬이 원본 (I2). 첫 하트비트 응답을 처리한 뒤에 보낸다:
+            // 꺼져 있는 동안 다시 묶인 길드(`linkedGuilds`)는 릴레이 값을 먼저 받아야 옛 사본으로 덮지 않는다
+            crate::ipc::handlers::discord::request_sync();
             tokio::join!(session.heartbeat_loop(), session.poll_loop(), session.events_loop(), session.unsent_loop());
             agent.finish(generation, None);
             tracing::info!("[RelayAgent] stopped");
@@ -1009,6 +1010,13 @@ impl Session {
             let (Some(guild), Some(via)) = (g.get("guildId").and_then(Value::as_str), g.get("via").and_then(Value::as_str)) else { continue };
             // 릴레이가 연결마다 준 id로 답해야, 풀고 다시 묶은 사이 늦게 간 답이 새 연결의 확인이 되지 않는다
             let link_id = g.get("linkId").and_then(Value::as_str).map(str::to_string);
+            // 이미 적용하고 확인 응답을 기다리는 연결은 길드 설정을 다시 받지 않는다 (그 사이 앱에서 바꾼 값을 덮지 않게)
+            let waiting = link_id.as_ref().is_some_and(|id| self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).contains(id));
+            // 풀었다가 다시 묶은 길드는 PC 없는 동안 디스코드에서 바꾼 설정을 받는다. 못 받았으면 확인 응답을 미뤄 다음 하트비트에 다시 한다
+            if !waiting && !crate::ipc::handlers::discord::adopt_linked_guild(&self.server, guild).await {
+                tracing::warn!("[RelayAgent] could not read the settings of relinked guild {}; trying again at the next heartbeat", guild);
+                continue;
+            }
             match store.update_node_settings(guild, |node| {
                 let c = close_linked_guild(node, via, policy);
                 (c, c)
