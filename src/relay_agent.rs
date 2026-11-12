@@ -223,6 +223,7 @@ impl RelayAgent {
                 metadata_sent: Mutex::new(None),
                 linked_acks: Mutex::default(),
                 chatbot_sync_due: std::sync::atomic::AtomicBool::new(true),
+                seen_v4: Mutex::default(),
             };
             if let Err(e) = session.check_version().await {
                 tracing::error!("[RelayAgent] {}", e);
@@ -497,6 +498,8 @@ struct Session {
     linked_acks: Mutex<Vec<String>>,
     /// 첫 하트비트 응답 뒤 챗봇 설정을 릴레이에 맞춘다
     chatbot_sync_due: std::sync::atomic::AtomicBool,
+    /// 릴레이가 본 IPv6와 그때 IPv4로 다시 물어 얻은 공인 IPv4 (`friend_address`). 같은 IPv6에는 다시 묻지 않는다
+    seen_v4: Mutex<Option<(String, Option<String>)>>,
 }
 
 /// 받은 명령을 처음 본 것인지, 아직 처리 중인지, 이미 끝났는지
@@ -731,7 +734,7 @@ impl Session {
                 if data.get("warning").and_then(|v| v.as_str()) == Some("UPDATE_REQUIRED") {
                     tracing::warn!("[RelayAgent] relay asks for agent update (min {})", data.get("minVersion").and_then(|v| v.as_str()).unwrap_or("?"));
                 }
-                let seen = relay_seen_address(&data);
+                let seen = self.friend_address(relay_seen_address(&data)).await;
                 let mut seen_changed = false;
                 self.agent.update(self.generation, |s| {
                     s.last_heartbeat_at = Some(now_ms());
@@ -793,6 +796,21 @@ impl Session {
             }
         }
         (need_full && unchanged) || send_again
+    }
+
+    /// 친구에게 안내할 이 PC의 공인 주소. 하트비트가 IPv6로 나가 릴레이가 IPv6를 봤으면 포트 확인과 같은 IPv4 전용 연결로
+    /// 한 번 다시 물어 공인 IPv4를 쓴다 (포트 확인은 IPv4로 두드리고, 친구는 대개 IPv4로 붙는다). 얻지 못하면 IPv6 그대로
+    async fn friend_address(&self, seen: Option<String>) -> Option<String> {
+        let Some(v6) = seen.as_deref().filter(|a| a.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_ipv6())) else { return seen };
+        if let Some((asked, v4)) = self.seen_v4.lock().unwrap_or_else(|e| e.into_inner()).clone()
+            && asked == v6
+        {
+            return v4.or(seen);
+        }
+        let relay = crate::port_check::Relay { base: self.base.clone(), token: self.token.clone(), host: None };
+        let v4 = crate::port_check::public_ipv4(&relay).await.map(|ip| ip.to_string());
+        *self.seen_v4.lock().unwrap_or_else(|e| e.into_inner()) = Some((v6.to_string(), v4.clone()));
+        v4.or(seen)
     }
 
     /// 하트비트 메타데이터: 릴레이 봇이 자동완성·접두사 표시에 쓴다
@@ -2169,6 +2187,7 @@ mod tests {
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
             chatbot_sync_due: Default::default(),
+            seen_v4: Mutex::default(),
         };
         let reset = || agent.update(1, |s| *s = AgentStatus { running: true, ..Default::default() });
         let reported = |what: &str| {
@@ -2237,6 +2256,7 @@ mod tests {
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
             chatbot_sync_due: Default::default(),
+            seen_v4: Mutex::default(),
         };
 
         session.heartbeat().await;
@@ -2332,6 +2352,7 @@ mod tests {
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
             chatbot_sync_due: Default::default(),
+            seen_v4: Mutex::default(),
         };
         session.post_result("c1", &json!({ "success": true })).await;
         assert_eq!(CALLS.swap(0, Ordering::SeqCst), 3, "two 503s, then taken");
@@ -2430,6 +2451,7 @@ mod tests {
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
             chatbot_sync_due: Default::default(),
+            seen_v4: Mutex::default(),
         }
     }
 
@@ -3043,6 +3065,57 @@ mod tests {
         assert_eq!(host_load(&snap), json!({ "cpu": 82, "mem": 80, "diskFree": 7 }));
         let none = MetricsSnapshot { disks: vec![], ..snap };
         assert!(host_load(&none).get("diskFree").is_none());
+    }
+
+    /// 하트비트가 IPv6로 나가 릴레이가 IPv6를 봤으면, 친구에게 안내할 주소는 포트 확인처럼 IPv4로 다시 물어 얻은 공인 IPv4다.
+    /// 같은 IPv6에는 다시 묻지 않고, 그 답을 모르는 옛 릴레이(빈 포트 목록을 400으로 거절)면 IPv6를 그대로 쓴다
+    #[tokio::test]
+    async fn a_relay_that_saw_ipv6_is_asked_once_for_the_ipv4_friends_reach() {
+        use axum::{extract::State as AxState, routing::post};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        #[derive(Clone)]
+        struct Relay {
+            heartbeat_address: &'static str,
+            knows_address_only: bool,
+            asked: Arc<AtomicUsize>,
+        }
+        async fn heartbeat(AxState(r): AxState<Relay>) -> axum::Json<Value> {
+            axum::Json(json!({ "status": "ok", "address": r.heartbeat_address }))
+        }
+        async fn port_check(AxState(r): AxState<Relay>, axum::Json(body): axum::Json<Value>) -> axum::response::Response {
+            use axum::response::IntoResponse;
+            r.asked.fetch_add(1, Ordering::SeqCst);
+            if !r.knows_address_only || body["ports"] != json!([]) {
+                return (axum::http::StatusCode::BAD_REQUEST, axum::Json(json!({ "error": "VALIDATION_ERROR" }))).into_response();
+            }
+            axum::Json(json!({ "address": "203.0.113.7", "publicAddress": true, "probes": [] })).into_response()
+        }
+        for (heartbeat_address, knows_address_only, shown, asked) in [
+            ("2001:db8::1", true, "203.0.113.7", 1),
+            ("2001:db8::1", false, "2001:db8::1", 1),
+            ("198.51.100.4", true, "198.51.100.4", 0),
+        ] {
+            let relay = Relay { heartbeat_address, knows_address_only, asked: Arc::default() };
+            let app = axum::Router::new().route("/heartbeat", post(heartbeat)).route("/api/port-check", post(port_check)).with_state(relay.clone());
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+            let tmp = tempfile::tempdir().unwrap();
+            let agent = RelayAgent::new();
+            let session = test_session(&agent, &base, "sbn_h1.secret", tmp.path()).await;
+            {
+                let mut inner = agent.lock();
+                inner.cancel = Some(session.cancel.clone());
+                inner.generation = 1;
+                inner.status.running = true;
+            }
+            session.heartbeat_once().await;
+            session.heartbeat_once().await;
+            assert_eq!(agent.seen_address().as_deref(), Some(shown), "{heartbeat_address} knows={knows_address_only}");
+            assert_eq!(relay.asked.load(Ordering::SeqCst), asked, "{heartbeat_address} knows={knows_address_only}");
+            session.cancel.cancel();
+        }
     }
 
     /// heartbeat 계약 표본 (`tests/fixtures/relay-heartbeat-sample.json`, 릴레이 저장소의 같은 파일을 그대로 복사한 것).

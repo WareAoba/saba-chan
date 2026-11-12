@@ -493,6 +493,14 @@ async fn ask_relay(relay: &Relay, nonce: &str, ports: &[(u16, Protocol)]) -> Res
     }
 }
 
+/// 이 PC의 공인 IPv4 주소. 포트 없이 확인을 부르면 릴레이는 아무 데도 보내지 않고 요청이 온 주소만 답한다.
+/// 그 답을 모르는 옛 릴레이(빈 포트 목록을 거절)거나 IPv4로 닿지 못하면(IPv6 전용 회선) 없다
+pub async fn public_ipv4(relay: &Relay) -> Option<Ipv4Addr> {
+    let nonce = uuid::Uuid::new_v4().simple().to_string();
+    let answer = ask_relay(relay, &nonce, &[]).await.ok()?;
+    answer.public_address.then(|| answer.address.parse().ok()).flatten()
+}
+
 /// 이 주소로 가는 길에서 쓰는 이 PC의 주소 (보내지는 않는다: UDP connect는 길만 고른다)
 fn route_local(observed: IpAddr) -> Option<IpAddr> {
     let socket = std::net::UdpSocket::bind((bind_ip(), 0)).ok()?;
