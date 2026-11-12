@@ -1312,7 +1312,7 @@ impl UpdateManager {
                 _ => continue,
             };
             let gui = GUI_EXE_NAMES.iter().any(|g| g.trim_end_matches(".exe") == stem);
-            if gui || stem.starts_with("saba-") {
+            if gui || Self::is_known_binary(Path::new(stem)) {
                 found.push((path.clone(), format!("{stem}.exe"), number, gui));
             }
         }

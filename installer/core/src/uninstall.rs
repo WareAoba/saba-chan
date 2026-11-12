@@ -1667,6 +1667,20 @@ mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
+    // 실행 파일 목록의 원천은 versions.toml `exes`다: 릴리즈에 든 실행 파일은 모두 제거·덮어쓰기 때 끄고 표시 없는 설치에서도 지운다.
+    // 제거기 자신(설치기)은 끄지 않고, `bin`의 명령 실행기(`saba-chan`)는 따로 끄고 지운다 (`running_launcher`, `install_leftovers`)
+    #[test]
+    fn every_released_exe_is_stopped_and_removed() {
+        for stem in saba_chan_updater_lib::versions::exe_stems() {
+            if stem != "saba-chan" {
+                assert!(INSTALLED_ENTRIES.contains(&stem.as_str()), "{stem} is not removed");
+            }
+            if stem != "saba-chan" && stem != "saba-chan-installer" {
+                assert!(TARGETS.iter().any(|t| t.name == stem), "{stem} is not stopped");
+            }
+        }
+    }
+
     #[test]
     fn moved_component_folders_are_removed_only_when_marked() {
         use saba_chan_updater_lib::component_dirs::{mark_owned, Source};

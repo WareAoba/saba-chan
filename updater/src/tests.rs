@@ -2210,3 +2210,24 @@ fn a_launcher_backup_inside_bin_is_rolled_back_and_cleaned_up_too() {
     assert!(!backup.exists());
     assert!(launcher.exists());
 }
+
+// 사바쨩 실행 파일 목록은 versions.toml `exes` 한 곳에서 온다: 거기 적힌 것(명령 실행기 포함)과 0.1.12 전 업데이터만
+// 실행 파일로 다루고, 이름이 `saba-`로 시작할 뿐인 다른 파일의 `.exe.old`는 백업으로 보지 않는다(정리가 지우지 않게)
+#[test]
+fn the_exe_list_comes_from_versions_toml() {
+    for stem in crate::versions::exe_stems() {
+        assert!(UpdateManager::is_known_binary(std::path::Path::new(stem)), "{stem}");
+    }
+    assert!(UpdateManager::is_known_binary(std::path::Path::new("saba-chan-updater")));
+    assert!(!UpdateManager::is_known_binary(std::path::Path::new("i18n.py")));
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    for name in ["saba-runner.exe.old", "saba-notes.exe.old"] {
+        std::fs::write(manager.install_root.join(name), b"").unwrap();
+    }
+    let found: Vec<String> = manager.old_exe_backups().into_iter().map(|(_, exe, ..)| exe).collect();
+    assert_eq!(found, vec!["saba-runner.exe".to_string()]);
+}
