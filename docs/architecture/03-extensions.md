@@ -1,7 +1,7 @@
 # 03. 익스텐션(= 플러그인) 시스템 — 코드 기준 분석
 
 > 기준: saba-chan 저장소 (daemon, GUI, CLI) + saba-chan-extensions 저장소 (steamcmd, ue4_ini).
-> 모든 내용은 코드에서 직접 추출했다. README / docs / copilot-instructions는 참고하지 않았다(오래된 문서로 간주).
+> 모든 내용은 코드에서 직접 추출했다. README와 그 밖의 문서는 참고하지 않았다(오래된 문서로 간주).
 > 경로 약어: `ext/` = `saba-chan/src/extension/mod.rs`, `plg/` = `saba-chan/src/plugin/mod.rs`, `EXT/` = `saba-chan-extensions/`.
 
 ---
