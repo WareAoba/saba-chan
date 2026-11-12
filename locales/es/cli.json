@@ -842,6 +842,7 @@
     "rollback_launched": "Actualizador iniciado. El daemon se está cerrando para revertir.",
     "rollback_after": "Saba-chan se reiniciará tras revertir. Después revisa: saba-chan update last",
     "no_rollback": "No hay ninguna versión a la que volver. La versión anterior solo se guarda tras una actualización y hasta la siguiente.",
+    "last_reverted": "Se volvió de {{from}} a {{version}}",
     "repair_checking": "Revisando la instalación...",
     "repair_list": "Partes que se volverán a descargar: {{list}}",
     "repaired": "Reparado: {{list}}",

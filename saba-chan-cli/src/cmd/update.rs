@@ -589,7 +589,9 @@ fn last_rows(r: &Value) -> Vec<(String, String)> {
     };
     let ok = res.get("success").and_then(Value::as_bool) == Some(true);
     let mut rows = Vec::new();
-    if let Some(v) = r.get("version").and_then(Value::as_str) {
+    // 사용자 되돌리기는 릴리즈가 아니라 돌아간 판(`version`)과 그 전 판(`replaced_by`)을 보인다
+    let reverted = s(res, "result") == "reverted";
+    if let Some(v) = if reverted { res.get("version") } else { r.get("version") }.and_then(Value::as_str) {
         rows.push((t!("col.version"), v.to_string()));
     }
     rows.push((
@@ -604,7 +606,11 @@ fn last_rows(r: &Value) -> Vec<(String, String)> {
     for f in list("failed") {
         rows.push((t!("update.failed_one"), console::style(f).red().to_string()));
     }
-    if let Some(m) = res.get("message").and_then(Value::as_str).filter(|m| !m.is_empty()) {
+    if reverted {
+        rows.push((t!("col.what"), t!("update.last_reverted", version = s(res, "version"), from = s(res, "replaced_by"))));
+    }
+    // 다 되돌리지 못했으면 원문에 되살리는 차례가 있다
+    if let Some(m) = res.get("message").and_then(Value::as_str).filter(|m| !m.is_empty() && !(reverted && ok)) {
         rows.push((t!("col.what"), m.to_string()));
     }
     rows
@@ -717,5 +723,19 @@ mod tests {
         assert!(rows.contains(&(t!("update.updated"), "saba-core, cli".to_string())));
         assert!(rows.contains(&(t!("update.failed_one"), "gui: 파일이 쓰기 중".to_string())));
         assert!(last_rows(&json!({ "ok": true, "result": null })).is_empty());
+    }
+
+    /// 사용자 되돌리기 결과는 돌아간 판과 그 전 판을 사용자 언어로 보인다 (마커의 영어 원문이 아니라)
+    #[test]
+    fn a_rollback_result_reads_in_the_user_language() {
+        let r = json!({ "ok": true, "version": null, "result": {
+            "timestamp": "2026-11-12T03:09:00Z", "success": true, "updated_components": [], "result": "reverted",
+            "version": "0.1.13", "replaced_by": "0.1.14", "message": "Rolled back from 0.1.14 to 0.1.13"
+        } });
+        let rows: Vec<(String, String)> = last_rows(&r).into_iter().map(|(k, v)| (k, console::strip_ansi_codes(&v).to_string())).collect();
+        assert_eq!(rows[0], (t!("col.version"), "0.1.13".to_string()));
+        let what = &rows.iter().find(|(k, _)| *k == t!("col.what")).unwrap().1;
+        assert_eq!(what, &t!("update.last_reverted", version = "0.1.13", from = "0.1.14"));
+        assert!(what.contains("0.1.14") && what.contains("0.1.13"), "{what}");
     }
 }

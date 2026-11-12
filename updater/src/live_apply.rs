@@ -1937,6 +1937,8 @@ mod tests {
         assert_eq!(saved_update_config(&config).failed_release.as_deref(), Some("0.1.14"));
         let m = UpdateCompletionMarker::load_from(&marker).unwrap();
         assert_eq!((m.result.as_deref(), m.version.as_deref(), m.success), (Some("reverted"), Some("0.1.13"), true));
+        assert_eq!(m.replaced_by.as_deref(), Some("0.1.14"), "update last shows both versions");
+        assert!(m.acknowledged, "the app does not announce a rollback as an update; update last still shows it");
         assert!(PreviousVersion::load(&data).is_none(), "a version is rolled back to once");
     }
 

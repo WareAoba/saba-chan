@@ -842,6 +842,7 @@
     "rollback_launched": "Updater gestartet. Der Daemon wird für das Zurücksetzen beendet.",
     "rollback_after": "Saba-chan startet nach dem Zurücksetzen neu. Prüfe dann: saba-chan update last",
     "no_rollback": "Es gibt keine Version, zu der du zurückkehren kannst. Die vorherige Version wird nach einem Update nur bis zum nächsten Update aufbewahrt.",
+    "last_reverted": "Von {{from}} auf {{version}} zurückgesetzt",
     "repair_checking": "Installation wird geprüft...",
     "repair_list": "Erneut herunterzuladende Teile: {{list}}",
     "repaired": "Repariert: {{list}}",

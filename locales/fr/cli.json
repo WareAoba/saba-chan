@@ -842,6 +842,7 @@
     "rollback_launched": "Programme de mise à jour lancé. Le daemon s'arrête pour revenir en arrière.",
     "rollback_after": "Saba-chan redémarrera après le retour en arrière. Vérifiez ensuite : saba-chan update last",
     "no_rollback": "Aucune version à laquelle revenir. La version précédente n'est conservée après une mise à jour que jusqu'à la suivante.",
+    "last_reverted": "Retour de {{from}} à {{version}}",
     "repair_checking": "Vérification de l'installation...",
     "repair_list": "Éléments à retélécharger : {{list}}",
     "repaired": "Réparé : {{list}}",

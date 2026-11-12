@@ -842,6 +842,7 @@
     "rollback_launched": "更新程式已啟動。常駐程式正在關閉以進行退回。",
     "rollback_after": "退回後 Saba-chan 會重新啟動。之後請檢查：saba-chan update last",
     "no_rollback": "沒有可以退回的版本。更新後只保留上一個版本，直到下一次更新。",
+    "last_reverted": "已從 {{from}} 回復到 {{version}}",
     "repair_checking": "正在檢查安裝...",
     "repair_list": "要重新下載的元件：{{list}}",
     "repaired": "已修復：{{list}}",

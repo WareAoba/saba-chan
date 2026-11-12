@@ -842,6 +842,7 @@
     "rollback_launched": "アップデーターを起動しました。元に戻すためデーモンを終了しています。",
     "rollback_after": "元に戻した後にサバちゃんが再起動します。その後確認: saba-chan update last",
     "no_rollback": "戻せるバージョンがありません。直前のバージョンはアップデート後、次のアップデートまでのみ保管します。",
+    "last_reverted": "{{from}} から {{version}} に戻しました",
     "repair_checking": "インストールを点検しています...",
     "repair_list": "再ダウンロードする構成要素: {{list}}",
     "repaired": "修復しました: {{list}}",

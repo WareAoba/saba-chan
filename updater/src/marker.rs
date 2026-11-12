@@ -33,6 +33,9 @@ pub struct UpdateCompletionMarker {
     /// `UpdateConfig::failed_release`에 따로 둔다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    /// 사용자 되돌리기 전의 코어 판 (`result: "reverted"`, `version`은 돌아간 판)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaced_by: Option<String>,
     /// 사용자가 고른 묶음 중 새 코어를 기다리게 둔 모듈·익스텐션 키 (업데이터 `apply_staged`). 받아 둔 채 남고,
     /// 건강한 새 데몬이 업데이터의 감시가 끝난 뒤 마저 바꿔 이 마커에 결과를 더한다 (`finish_deferred`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -82,6 +85,7 @@ impl UpdateCompletionMarker {
             result: None,
             reason: None,
             version: None,
+            replaced_by: None,
             deferred: Vec::new(),
         }
     }
@@ -138,9 +142,12 @@ impl UpdateCompletionMarker {
     }
 
     /// 사용자가 직전 판(`to`)으로 되돌렸다 (`result: "reverted"`). 자동 되돌림(`rolled_back`)과 달리 받아 둔 업데이트를
-    /// 다시 적용할 준비가 아니다: 업데이트 단계를 바꾸지 않는다. 다 되돌리지 못했으면 `incomplete`에 되살리는 법
+    /// 다시 적용할 준비가 아니다: 업데이트 단계를 바꾸지 않는다. 다 되돌리지 못했으면 `incomplete`에 되살리는 법.
+    /// 확인한 것으로 남긴다: 앱이 업데이트 결과로 알리지 않고, `update last`(확인한 것까지)로 본다
     pub fn reverted(to: &str, from: &str, incomplete: Option<String>) -> Self {
         Self {
+            acknowledged: true,
+            replaced_by: Some(from.into()),
             success: incomplete.is_none(),
             message: Some(match incomplete {
                 None => format!("Rolled back from {from} to {to}"),
@@ -165,6 +172,7 @@ impl UpdateCompletionMarker {
             result: None,
             reason: None,
             version: None,
+            replaced_by: None,
             deferred: Vec::new(),
         }
     }
