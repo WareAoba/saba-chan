@@ -2711,9 +2711,6 @@
     "title": "連線位址",
     "copy": "複製",
     "copied": "已複製",
-    "hide": "隱藏",
-    "show": "顯示",
-    "hidden": "已隱藏的位址",
     "unknown": "還不知道這台電腦的公用位址。連上 Server-chan 後會顯示。",
     "stopped": "啟動伺服器後朋友才能進入",
     "checked_at": "{{time}} 檢查"

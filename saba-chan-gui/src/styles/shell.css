@@ -6276,8 +6276,7 @@ button.appbar-pill:focus-visible {
 .server-address-line.many .server-address-value {
     font-size: var(--fs-lg);
 }
-.server-address-value.dim,
-.server-address-value.masked {
+.server-address-value.dim {
     color: var(--text-2);
 }
 .server-address-sub {

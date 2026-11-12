@@ -2711,9 +2711,6 @@
     "title": "Adresse de connexion",
     "copy": "Copier",
     "copied": "Copié",
-    "hide": "Masquer",
-    "show": "Afficher",
-    "hidden": "Adresse masquée",
     "unknown": "L'adresse publique de ce PC n'est pas encore connue. Elle apparaît une fois connecté à Server-chan.",
     "stopped": "Démarre le serveur pour que tes amis puissent rejoindre",
     "checked_at": "Vérifié {{time}}"

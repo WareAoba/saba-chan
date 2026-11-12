@@ -2711,9 +2711,6 @@
     "title": "Join address",
     "copy": "Copy",
     "copied": "Copied",
-    "hide": "Hide",
-    "show": "Show",
-    "hidden": "Hidden address",
     "unknown": "This PC's public address is not known yet. It appears once connected to Server-chan.",
     "stopped": "Start the server so friends can join",
     "checked_at": "Checked {{time}}"

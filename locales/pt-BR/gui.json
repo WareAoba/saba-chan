@@ -2711,9 +2711,6 @@
     "title": "Endereço para entrar",
     "copy": "Copiar",
     "copied": "Copiado",
-    "hide": "Ocultar",
-    "show": "Mostrar",
-    "hidden": "Endereço oculto",
     "unknown": "O endereço público deste PC ainda não é conhecido. Ele aparece quando conectar ao Server-chan.",
     "stopped": "Inicie o servidor para os amigos poderem entrar",
     "checked_at": "Verificado {{time}}"
