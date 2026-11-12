@@ -2580,6 +2580,16 @@
       "host_mismatch": "公开地址没有指向这台电脑",
       "host_unresolved": "找不到公开地址"
     },
+    "pill": {
+      "open": "可从外网连接",
+      "closed": "无法从外网连接",
+      "firewall": "被电脑防火墙拦截",
+      "router": "未设置端口转发",
+      "cgnat": "没有公网 IP (CGNAT)",
+      "unknown": "部分端口未检查",
+      "host_mismatch": "地址未指向这台电脑",
+      "host_unresolved": "找不到地址"
+    },
     "status": {
       "open": "开放",
       "closed": "关闭",

@@ -2580,6 +2580,16 @@
       "host_mismatch": "L'adresse publique ne pointe pas vers ce PC",
       "host_unresolved": "L'adresse publique est introuvable"
     },
+    "pill": {
+      "open": "Accessible depuis internet",
+      "closed": "Inaccessible depuis l’extérieur",
+      "firewall": "Bloqué par le pare-feu du PC",
+      "router": "Redirection de port non configurée",
+      "cgnat": "Pas d’IP publique (CGNAT)",
+      "unknown": "Certains ports non vérifiés",
+      "host_mismatch": "L’adresse pointe ailleurs",
+      "host_unresolved": "Adresse introuvable"
+    },
     "status": {
       "open": "Ouvert",
       "closed": "Fermé",

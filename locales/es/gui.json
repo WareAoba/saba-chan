@@ -2580,6 +2580,16 @@
       "host_mismatch": "La dirección pública no apunta a este PC",
       "host_unresolved": "No se encontró la dirección pública"
     },
+    "pill": {
+      "open": "Accesible desde internet",
+      "closed": "No accesible desde fuera",
+      "firewall": "Bloqueado por el firewall del PC",
+      "router": "Reenvío de puertos sin configurar",
+      "cgnat": "Sin IP pública (CGNAT)",
+      "unknown": "Algunos puertos sin comprobar",
+      "host_mismatch": "La dirección apunta a otro lugar",
+      "host_unresolved": "Dirección no encontrada"
+    },
     "status": {
       "open": "Abierto",
       "closed": "Cerrado",

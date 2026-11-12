@@ -35,7 +35,7 @@ import { dataStatusRows } from '../DataSlots';
 import ExtensionSlot, { SlotView, useSlotPages } from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { PageFind, PageFindButton } from './PageFind';
-import { PortCheck, PortCheckNotice } from './PortCheck';
+import { PortCheck } from './PortCheck';
 import { ServerAddress } from './ServerAddress';
 import { ServerCheck } from './ServerCheck';
 import CommandModal from '../Modals/CommandModal';
@@ -318,7 +318,6 @@ export function ServerDetail({
 
             {status !== 'missing' && <ServerAddress server={server} />}
 
-            {status !== 'missing' && <PortCheckNotice server={server} />}
 
             {conflicts.length > 0 && (
                 <div className="notice tone-warn">

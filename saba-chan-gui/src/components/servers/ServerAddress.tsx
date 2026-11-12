@@ -3,10 +3,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { subscribeDaemonEvents } from '../../utils/daemonEvents';
-import { portCheckShown } from '../../utils/portCheck';
+import { portCheckHintKey, portCheckNeedsAttention, portCheckShown } from '../../utils/portCheck';
 import type { Server } from '../../stores/useServerStore';
 import { Icon } from '../Icon';
-import { useLastPortCheck, usePortNoticeShown } from './PortCheck';
+import { PortCheckButton, useLastPortCheck, usePortCheckRun } from './PortCheck';
 
 /** 공인 IP 가리기 (방송 화면용, 이 PC의 이 앱에서만 기억한다) */
 const HIDE_KEY = 'saba.hideServerIp';
@@ -33,9 +33,8 @@ export function ServerAddress({ server }: { server: Server }) {
     const [info, setInfo] = useState<ApiBody | null>(null);
     const [hidden, setHidden] = useState(readHidden);
     const [copied, setCopied] = useState<string | null>(null);
-    const [report] = useLastPortCheck(server.id);
-    // 상단 안내가 같은 판정을 말하고 있으면 여기서는 쓰지 않는다
-    const [noticeShown] = usePortNoticeShown(server.id, report);
+    const [report, setReport] = useLastPortCheck(server.id);
+    const { run, running, error } = usePortCheckRun(server.id, setReport);
 
     const load = useCallback(async () => {
         if (typeof window.api?.instanceAddress !== 'function') return;
@@ -111,9 +110,13 @@ export function ServerAddress({ server }: { server: Server }) {
                     );
                 })}
             <div className="server-address-sub">
-                {report && portCheckShown(report) && !noticeShown && (
-                    <span className={clsx('server-address-check', `verdict-${report.verdict}`)}>
-                        {t(`port_check.verdict.${report.verdict}`)}
+                {/* 포트포워딩 결과는 이 알약 하나로 알린다. 손볼 것이 있으면 고칠 방법을 알약에 띄우고 바로 다시 확인한다 (사용자 11-12) */}
+                {report && portCheckShown(report) && (
+                    <span
+                        className={clsx('server-address-check', `verdict-${report.verdict}`)}
+                        data-tooltip={portCheckNeedsAttention(report) ? t(portCheckHintKey(report)) : undefined}
+                    >
+                        {t(`port_check.pill.${report.verdict}`)}
                     </span>
                 )}
                 {report && portCheckShown(report) && checkedAt && !Number.isNaN(checkedAt.getTime()) && (
@@ -124,6 +127,10 @@ export function ServerAddress({ server }: { server: Server }) {
                     </span>
                 )}
                 {info.running === false && <span className="muted">{t('server_address.stopped')}</span>}
+                {portCheckNeedsAttention(report) && (
+                    <PortCheckButton run={run} running={running} checked className="btn btn-ghost btn-sm server-address-retry" />
+                )}
+                {error && <span className="server-address-error">{error}</span>}
             </div>
         </section>
     );

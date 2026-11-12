@@ -2580,6 +2580,16 @@
       "host_mismatch": "Die öffentliche Adresse zeigt nicht auf diesen PC",
       "host_unresolved": "Die öffentliche Adresse wurde nicht gefunden"
     },
+    "pill": {
+      "open": "Von außen erreichbar",
+      "closed": "Von außen nicht erreichbar",
+      "firewall": "Von der PC-Firewall blockiert",
+      "router": "Portweiterleitung fehlt",
+      "cgnat": "Keine öffentliche IP (CGNAT)",
+      "unknown": "Einige Ports nicht geprüft",
+      "host_mismatch": "Adresse zeigt woanders hin",
+      "host_unresolved": "Adresse nicht gefunden"
+    },
     "status": {
       "open": "Offen",
       "closed": "Geschlossen",

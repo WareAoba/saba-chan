@@ -2580,6 +2580,16 @@
       "host_mismatch": "The public address does not point to this PC",
       "host_unresolved": "The public address could not be found"
     },
+    "pill": {
+      "open": "Reachable from the internet",
+      "closed": "Not reachable from outside",
+      "firewall": "Blocked by the PC firewall",
+      "router": "Port forwarding not set up",
+      "cgnat": "No public IP (CGNAT)",
+      "unknown": "Some ports not checked",
+      "host_mismatch": "Address points elsewhere",
+      "host_unresolved": "Address not found"
+    },
     "status": {
       "open": "Open",
       "closed": "Closed",
