@@ -500,9 +500,17 @@ struct Session {
     linked_acks: Mutex<Vec<String>>,
     /// 첫 하트비트 응답 뒤 챗봇 설정을 릴레이에 맞춘다
     chatbot_sync_due: std::sync::atomic::AtomicBool,
-    /// 릴레이가 본 IPv6, 그때 IPv4로 다시 물어 얻은 공인 IPv4, 일시 실패였으면 다시 물을 때 (`friend_address`).
-    /// 같은 IPv6에는 답을 얻은 뒤로 다시 묻지 않는다
-    seen_v4: Mutex<Option<(String, Option<String>, Option<std::time::Instant>)>>,
+    /// 릴레이가 본 IPv6를 IPv4로 다시 물은 결과 (`friend_address`). 같은 IPv6에는 답을 얻은 뒤로 다시 묻지 않는다
+    seen_v4: Mutex<Option<SeenV4>>,
+}
+
+#[derive(Clone)]
+struct SeenV4 {
+    v6: String,
+    /// 그때 얻은 공인 IPv4
+    v4: Option<String>,
+    /// 일시 실패였으면 다시 물을 때
+    retry_at: Option<std::time::Instant>,
 }
 
 /// 받은 명령을 처음 본 것인지, 아직 처리 중인지, 이미 끝났는지
@@ -807,7 +815,7 @@ impl Session {
     async fn friend_address(&self, seen: Option<String>) -> Option<String> {
         use crate::port_check::Ipv4Lookup;
         let Some(v6) = seen.as_deref().filter(|a| a.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_ipv6())) else { return seen };
-        if let Some((asked, v4, retry_at)) = self.seen_v4.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        if let Some(SeenV4 { v6: asked, v4, retry_at }) = self.seen_v4.lock().unwrap_or_else(|e| e.into_inner()).clone()
             && asked == v6
             && retry_at.is_none_or(|at| std::time::Instant::now() < at)
         {
@@ -819,7 +827,7 @@ impl Session {
             Ipv4Lookup::Unusable => (None, None),
             Ipv4Lookup::Later => (None, Some(std::time::Instant::now() + IPV4_RETRY)),
         };
-        *self.seen_v4.lock().unwrap_or_else(|e| e.into_inner()) = Some((v6.to_string(), v4.clone(), retry_at));
+        *self.seen_v4.lock().unwrap_or_else(|e| e.into_inner()) = Some(SeenV4 { v6: v6.to_string(), v4: v4.clone(), retry_at });
         v4.or(seen)
     }
 
