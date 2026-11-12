@@ -225,7 +225,7 @@ describe('예약 작업 화면', () => {
         let emit: (ev: unknown) => void = () => {};
         window.api.onDaemonEvent = vi.fn((cb) => {
             emit = cb;
-            return () => {};
+            return () => true;
         });
         try {
             render(<MaintenanceTab server={server} moduleCommands={commands} />);
