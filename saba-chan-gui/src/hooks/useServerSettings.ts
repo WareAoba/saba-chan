@@ -153,7 +153,8 @@ export function useServerSettings({
     const { isClosing: isSettingsClosing, requestClose: requestSettingsClose } = useModalClose(closeSettingsModal);
 
     // ── handleOpenSettings ──────────────────────────────────
-    const handleOpenSettings = async (server: Server) => {
+    // reload: 저장한 뒤 열린 화면 그대로 다시 읽는다 (보던 탭·접힘을 두고, 읽는 사이 고친 칸도 둔다)
+    const handleOpenSettings = async (server: Server, reload = false) => {
         // 첫 await 전에 번호를 매긴다: 그사이 다른 서버를 열면 이 호출의 늦은 결과는 모두 버린다
         const request = ++openRequest.current;
         // Fetch latest server data from API
@@ -174,8 +175,15 @@ export function useServerSettings({
         setSettingsServer(latestServer);
         revision.current = latestServer.revision || null;
         unconfirmedFields.current = new Set();
-        touchedFields.current = new Set();
-        setSettingsSource('loading');
+        if (!reload) {
+            touchedFields.current = new Set();
+            setSettingsSource('loading');
+        }
+        const touched = touchedFields.current;
+        const withTouched = (initial: SettingsValues) => (prev: SettingsValues) => ({
+            ...initial,
+            ...Object.fromEntries([...touched].filter((k) => k in prev).map((k) => [k, prev[k]])),
+        });
         const defaulted = new Set<string>();
         unsetFields.current = new Set();
         liveFields.current = new Set();
@@ -230,7 +238,7 @@ export function useServerSettings({
             initial.stop_timeout = stopTimeoutOf(latestServer);
             initial.auto_update = autoUpdateOf(latestServer);
             Object.assign(initial, gameChatOf(latestServer));
-            setSettingsValues(initial);
+            setSettingsValues(withTouched(initial));
             setOpenedSettings(initial);
         } else {
             const protocols: Partial<NonNullable<ModuleInfo['protocols']>> = module?.protocols || {};
@@ -254,13 +262,16 @@ export function useServerSettings({
                 auto_update: autoUpdateOf(latestServer),
                 ...gameChatOf(latestServer),
             };
-            setSettingsValues(initial);
+            setSettingsValues(withTouched(initial));
             setOpenedSettings(initial);
         }
         openedUnset.current = new Set(unsetFields.current);
+        for (const name of touched) unsetFields.current.delete(name);
 
-        setSettingsActiveTab('general');
-        setAdvancedExpanded(false);
+        if (!reload) {
+            setSettingsActiveTab('general');
+            setAdvancedExpanded(false);
+        }
         setShowSettingsModal(true);
 
         // 디스크의 실제 설정으로 덮는다. 그사이 사용자가 고친 칸과, 다른 서버로 바꿔 연 경우는 건드리지 않는다
@@ -309,6 +320,8 @@ export function useServerSettings({
                 setSettingsSource('stored');
             }
         }
+
+        if (reload) return;
 
         // Async load versions — only for download-based modules (extension install methods have no version list)
         const mod = modules.find((m) => m.name === latestServer.module);
@@ -786,8 +799,12 @@ export function useServerSettings({
                 if (result.ignored?.length) {
                     safeShowToast(t('settings.ignored', { keys: result.ignored.join(', ') }), 'warning', 6000);
                 }
-                if (stillOpen) setShowSettingsModal(false);
                 fetchServers();
+                // 화면을 닫지 않는다: 닫았다 열면 탭 전체가 로딩 표시로 바뀌고 스크롤을 잃는다
+                if (stillOpen) {
+                    touchedFields.current = new Set();
+                    await handleOpenSettings(settingsServer, true);
+                }
             }
         } catch (error) {
             console.error('Exception in handleSaveSettings:', error);

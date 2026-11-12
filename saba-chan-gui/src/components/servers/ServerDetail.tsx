@@ -11,44 +11,44 @@ import type { useServerSettings } from '../../hooks/useServerSettings';
 import { useConsoleStore } from '../../stores/useConsoleStore';
 import { type Server, useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
-import { type ModalConfig, useUIStore } from '../../stores/useUIStore';
-import type { ModuleInfo } from '../../types/daemon';
-import { withCommandAliases } from '../../utils/commandRisk';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
 import { openWithNotice, safeShowToast } from '../../utils/helpers';
 import { isImeKey } from '../../utils/ime';
 import { screenFallbackNotice } from '../../utils/openScreen';
+import { type ModalConfig, useUIStore } from '../../stores/useUIStore';
+import type { ModuleInfo } from '../../types/daemon';
+import { withCommandAliases } from '../../utils/commandRisk';
 import {
+    STATUS_TONE,
+    isTransitional,
     consoleQuickCommands,
     defaultServerTab,
     gameNameOf,
     initials,
     interactionOf,
-    isTransitional,
     playersText,
     primaryAction,
     protocolLabel,
-    STATUS_TONE,
     viewStatus,
 } from '../../utils/serverView';
 import { dataStatusRows } from '../DataSlots';
-import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import ExtensionSlot, { SlotView, useSlotPages } from '../ExtensionSlot';
 import { Icon } from '../Icon';
+import { PageFind, PageFindButton } from './PageFind';
+import { PortCheck, PortCheckNotice } from './PortCheck';
+import { ServerAddress } from './ServerAddress';
+import { ServerCheck } from './ServerCheck';
 import CommandModal from '../Modals/CommandModal';
 import { NativeProvision } from '../NativeProvision';
 import { Card, ServerSettingsModal, SettingRow } from '../ServerSettingsModal';
 import { Disclosure } from '../ui/Disclosure';
 import { Segmented, StatusChip } from '../ui/StatusChip';
+import { ServerLogs } from './ServerLogs';
+import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
-import { StartCoach } from './OnboardingCard';
-import { PageFind, PageFindButton } from './PageFind';
-import { PortCheck, PortCheckNotice } from './PortCheck';
-import { ServerAddress } from './ServerAddress';
-import { ServerCheck } from './ServerCheck';
 import { ServerConsole } from './ServerConsole';
-import { ServerLogs } from './ServerLogs';
+import { StartCoach } from './OnboardingCard';
 
 type ServerSetter = (updater: (prev: Server[]) => Server[]) => void;
 
@@ -545,7 +545,7 @@ function SettingsTab({
     const { showSettingsModal, settingsServer, handleOpenSettings } = settingsProps;
     const ready = showSettingsModal && settingsServer?.id === server.id;
 
-    // 탭을 열거나 저장 뒤 닫히면 최신 값으로 다시 연다
+    // 탭을 열거나 설정 창이 닫히면(버전 설치 등) 최신 값으로 다시 연다
     // biome-ignore lint/correctness/useExhaustiveDependencies: handleOpenSettings는 매 렌더 새로 만들어진다
     useEffect(() => {
         if (!ready) handleOpenSettings(server);
