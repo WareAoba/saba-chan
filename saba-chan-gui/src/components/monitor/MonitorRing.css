@@ -41,7 +41,7 @@
 /* 서버로 나누지 않는 몫의 바탕색: 원 종류마다 고유색을 회색에 조금만 섞는다 (사용자 11-07) */
 .monitor-ring {
     --ring-hue: var(--info);
-    --ring-base: color-mix(in oklch, var(--ring-hue) 22%, var(--text-3));
+    --ring-base: color-mix(in oklab, var(--ring-hue) 22%, var(--text-3));
 }
 .monitor-ring[data-tone='memory'] {
     --ring-hue: var(--ok);
@@ -171,7 +171,7 @@
 .monitor-mini {
     flex: none;
     --ring-hue: var(--info);
-    --ring-base: color-mix(in oklch, var(--ring-hue) 22%, var(--text-3));
+    --ring-base: color-mix(in oklab, var(--ring-hue) 22%, var(--text-3));
 }
 .monitor-mini[data-tone='memory'] {
     --ring-hue: var(--ok);

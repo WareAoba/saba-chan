@@ -11,11 +11,11 @@
 }
 .daemon-log-line.level-warn {
     border-left-color: var(--console-warn);
-    background: color-mix(in oklch, var(--console-warn) 6%, transparent);
+    background: color-mix(in oklab, var(--console-warn) 6%, transparent);
 }
 .daemon-log-line.level-error {
     border-left-color: var(--console-error);
-    background: color-mix(in oklch, var(--console-error) 8%, transparent);
+    background: color-mix(in oklab, var(--console-error) 8%, transparent);
 }
 .daemon-log-time {
     color: var(--tok-timestamp);
@@ -27,18 +27,18 @@
     font-size: 0.85em;
     font-weight: 600;
     color: var(--tok-info);
-    background: color-mix(in oklch, var(--tok-info) 12%, transparent);
+    background: color-mix(in oklab, var(--tok-info) 12%, transparent);
 }
 .daemon-log-line.level-warn .daemon-log-level {
     color: var(--console-warn);
-    background: color-mix(in oklch, var(--console-warn) 14%, transparent);
+    background: color-mix(in oklab, var(--console-warn) 14%, transparent);
 }
 .daemon-log-line.level-error .daemon-log-level {
     color: var(--console-error);
-    background: color-mix(in oklch, var(--console-error) 16%, transparent);
+    background: color-mix(in oklab, var(--console-error) 16%, transparent);
 }
 .daemon-log-line.level-debug .daemon-log-level,
 .daemon-log-line.level-trace .daemon-log-level {
     color: var(--tok-debug);
-    background: color-mix(in oklch, var(--tok-debug) 12%, transparent);
+    background: color-mix(in oklab, var(--tok-debug) 12%, transparent);
 }
