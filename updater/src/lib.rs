@@ -211,6 +211,9 @@ pub struct ComponentVersion {
     pub requires: Option<HashMap<String, String>>,
     /// 해당 컴포넌트가 설치되어 있는지 여부 (false면 미설치 상태)
     pub installed: bool,
+    /// 같은 판으로 다시 받은 복구 (`mark_for_repair`). pending.json에 실어 업데이터 `--apply`가 이미 설치된 판이라고 건너뛰지 않게 한다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub repair: bool,
 }
 
 /// 설치 점검·복구 계획 (`UpdateManager::repair_plan`)
@@ -764,6 +767,7 @@ impl UpdateManager {
                 comp.update_available = true;
                 comp.downloaded = false;
                 comp.downloaded_path = None;
+                comp.repair = true;
             }
         }
     }
@@ -873,6 +877,7 @@ impl UpdateManager {
                     staged_sha256: None,
                     requires: info.requires.clone(),
                     installed,
+                    repair: false,
                 });
                 Self::keep_staged(&previous, components.last_mut().expect("just pushed"));
             }

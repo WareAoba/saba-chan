@@ -738,6 +738,7 @@ fn staged_file_is_rechecked_before_apply() {
         staged_sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into()),
         requires: None,
         installed: true,
+        repair: false,
     };
     assert!(UpdateManager::verified_staged_path(&comp).is_ok());
     comp.staged_sha256 = Some("0".repeat(64));
@@ -831,6 +832,7 @@ fn downloaded_release_notes_reach_the_completion_marker() {
         staged_sha256: None,
         requires: None,
         installed: true,
+        repair: false,
     });
     manager.latest_release = Some(crate::relay::LatestRelease {
         version: "0.1.3".into(),
@@ -873,6 +875,7 @@ fn recheck_keeps_downloads_of_the_same_version() {
         staged_sha256: Some("ab".into()),
         requires: None,
         installed: true,
+        repair: false,
     };
     let fresh = |latest: &str| crate::ComponentVersion { downloaded: false, downloaded_path: None, staged_sha256: None, ..staged(latest, &file) };
 
@@ -1030,6 +1033,7 @@ fn staged(component: Component, path: &std::path::Path) -> crate::ComponentVersi
         staged_sha256: None,
         requires: None,
         installed: true,
+        repair: false,
     }
 }
 
@@ -2303,4 +2307,33 @@ fn repair_picks_broken_components_at_the_installed_version() {
     manager.mark_for_repair(&plan);
     let ready: Vec<String> = manager.status.components.iter().filter(|c| c.update_available).map(|c| c.component.manifest_key()).collect();
     assert_eq!(ready, vec!["cli", "module-minecraft", "gui"]);
+}
+
+// 코어·GUI·업데이터 복구는 업데이터가 적용한다: 받아 둔 같은 판을 "이미 설치됨"으로 건너뛰면 아무것도 고치지 않고 성공으로 끝난다
+#[test]
+fn the_updater_applies_a_repair_at_the_installed_version() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("core.zip");
+    std::fs::write(&file, b"zip").unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    let same = |component: Component| crate::ComponentVersion { current_version: "0.1.14".into(), latest_version: Some("0.1.14".into()), ..staged(component, &file) };
+    manager.status.components = vec![same(Component::CoreDaemon), same(Component::Gui)];
+    let item = |key: &str| crate::RepairItem { component: key.into(), display_name: key.into(), installed: "0.1.14".into(), offered: Some("0.1.14".into()) };
+    manager.mark_for_repair(&crate::RepairPlan { repair: vec![item("saba-core")], unavailable: Vec::new() });
+    for c in &mut manager.status.components {
+        c.downloaded = true;
+        c.downloaded_path = Some(file.to_string_lossy().to_string());
+    }
+    manager.save_pending_manifest().unwrap();
+
+    let mut loaded = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    loaded.staging_dir = manager.staging_dir.clone();
+    loaded.installed_manifest_file = tmp.path().join("installed-manifest.json");
+    let installed: std::collections::HashMap<String, String> =
+        [("saba-core".to_string(), "0.1.14".to_string()), ("gui".to_string(), "0.1.14".to_string())].into_iter().collect();
+    std::fs::write(&loaded.installed_manifest_file, serde_json::to_string(&installed).unwrap()).unwrap();
+    loaded.load_pending_manifest().unwrap();
+    assert_eq!(loaded.status.components.iter().map(|c| c.component.clone()).collect::<Vec<_>>(), vec![Component::CoreDaemon]);
+    assert_eq!(loaded.already_installed, vec!["gui".to_string()], "only what was not marked for repair is skipped");
 }

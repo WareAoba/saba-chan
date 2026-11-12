@@ -885,8 +885,15 @@ impl LiveApply {
     }
 
     /// 새 데몬이 건강하다: 이번 `.old`와 스냅샷을 직전 판으로 한 벌 남기고(`PreviousVersion`, 그 전 것은 지운다) 남은 `.old`를 지운다
+    /// 같은 판으로 고친 코어(`update repair`)는 직전 판이 아니다: 남겨 둔 직전 판을 그대로 두고 이번 사본을 지운다
     pub fn healthy(self, manager: &UpdateManager) {
         let staging_dir = self.staging_dir.clone();
+        if self.from_version == self.target_version {
+            self.snapshot.discard();
+            end_watch(&staging_dir);
+            manager.cleanup_old_files();
+            return;
+        }
         let earlier = PreviousVersion::load(&self.snapshot.data_dir);
         match self.keep_previous(manager) {
             Some(previous) => {
@@ -1914,6 +1921,25 @@ mod tests {
         assert_eq!(second.version, "0.1.14");
         assert_eq!(std::fs::read(&second.exes[0].0).unwrap(), b"0.1.14");
         assert!(!first.copy.dir.exists(), "only one previous version is kept");
+    }
+
+    // 같은 판으로 고친 코어(`update repair`)는 직전 판이 아니다: 남겨 둔 직전 판을 고장 난 실행 파일로 바꾸지 않는다
+    #[test]
+    fn a_core_repair_keeps_the_earlier_previous_version() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        write(&data.join("config.json"), r#"{"gui":{"language":"0.1.13"}}"#);
+        let manager = manager_at(tmp.path());
+        healthy_update(&manager, &data, "0.1.13", "0.1.14");
+        let first = PreviousVersion::load(&data).unwrap();
+
+        healthy_update(&manager, &data, "0.1.14", "0.1.14");
+
+        assert_eq!(PreviousVersion::load(&data), Some(first.clone()), "the rollback still goes to 0.1.13");
+        assert_eq!(std::fs::read(&first.exes[0].0).unwrap(), b"0.1.13");
+        let copies = std::fs::read_dir(data.join(SNAPSHOT_DIR)).unwrap().filter(|e| e.as_ref().unwrap().path().is_dir()).count();
+        assert_eq!(copies, 1, "the repair's own snapshot is removed");
+        assert!(manager.try_exe_backups().unwrap().0.is_empty(), "the repair's backup is cleaned up");
     }
 
     // 사용자가 고른 되돌리기: 실행 파일과 데이터를 직전 판으로 되돌리고, 되돌린 판을 다시 자동 적용하지 않게 적는다.
