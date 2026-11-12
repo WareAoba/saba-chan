@@ -16,7 +16,11 @@ use std::time::Duration;
 
 pub const EVENTS_RETRY: Duration = Duration::from_secs(3);
 /// 데몬은 15초마다 ping 주석을 보낸다. 두 번을 놓쳐도 기다리고, 그보다 오래 조용하면 다시 붙는다
+#[cfg(not(test))]
 pub const EVENTS_IDLE: Duration = Duration::from_secs(45);
+/// 시험은 조용한 연결을 45초씩 기다리지 않는다
+#[cfg(test)]
+pub const EVENTS_IDLE: Duration = Duration::from_millis(300);
 /// 확인 주기는 데몬이 정한다 (U6). GUI는 데몬이 캐시한 결과를 가끔 읽는다
 pub const UPDATE_STATUS_POLL: Duration = Duration::from_secs(10 * 60);
 
@@ -326,6 +330,99 @@ pub fn updates_cleared(data: &Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio::sync::mpsc;
+
+    /// 고른 데몬(이 PC)의 스트림을 띄우고, 붙었는지(`live`)를 차례로 받는 통로를 돌려준다
+    fn spawn_stream(
+        base: String,
+    ) -> (
+        tokio::task::JoinHandle<()>,
+        mpsc::UnboundedReceiver<bool>,
+        tempfile::TempDir,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let client = Arc::new(DaemonClient::new(base, dir.path().join(".ipc_token")));
+        let (tx, rx) = mpsc::unbounded_channel();
+        let task = tokio::spawn(run_event_stream(
+            client,
+            Arc::new(AtomicBool::new(false)),
+            Feed::Chosen,
+            |_, _| {},
+            move |up| {
+                let _ = tx.send(up);
+            },
+        ));
+        (task, rx, dir)
+    }
+
+    async fn next<T>(rx: &mut mpsc::UnboundedReceiver<T>, within: Duration) -> T {
+        tokio::time::timeout(within, rx.recv())
+            .await
+            .expect("timed out")
+            .expect("closed")
+    }
+
+    /// 200을 받은 뒤 ping까지 끊긴 연결: `EVENTS_IDLE`이 지나면 마지막 번호를 실어 다시 붙고, 붙을 때마다 live(true)
+    #[tokio::test]
+    async fn a_silent_stream_reconnects_with_the_last_event_id() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let (seen_tx, mut seen) = mpsc::unbounded_channel();
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = vec![0u8; 4096];
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
+                let last = req
+                    .lines()
+                    .find_map(|l| l.strip_prefix("last-event-id: "))
+                    .map(str::to_string);
+                let _ = seen_tx.send(last);
+                let _ = sock
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\nid: 7\nevent: instance.started\ndata: {}\n\n")
+                    .await;
+                // 닫지 않고 아무것도 보내지 않는다 (반쯤 끊긴 연결)
+                held.push(sock);
+            }
+        });
+        let (task, mut live, _dir) = spawn_stream(base);
+        assert_eq!(next(&mut seen, Duration::from_secs(5)).await, None);
+        assert!(next(&mut live, Duration::from_secs(5)).await);
+        let again = next(&mut seen, EVENTS_IDLE + EVENTS_RETRY + Duration::from_secs(5)).await;
+        assert_eq!(again.as_deref(), Some("7"));
+        assert!(next(&mut live, Duration::from_secs(5)).await);
+        task.abort();
+    }
+
+    /// 200이 아니거나 붙지 못하면 live(false): 화면이 그동안 폴링으로 메운다
+    #[tokio::test]
+    async fn a_refused_or_failed_stream_is_not_live() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = vec![0u8; 4096];
+                let _ = sock.read(&mut buf).await;
+                let _ = sock
+                    .write_all(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    .await;
+            }
+        });
+        let (task, mut live, _dir) = spawn_stream(base);
+        assert!(!next(&mut live, Duration::from_secs(5)).await);
+        task.abort();
+
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", closed.local_addr().unwrap());
+        drop(closed);
+        let (task, mut live, _dir) = spawn_stream(base);
+        // Windows는 닫힌 로컬 포트의 거부까지 2초쯤 걸린다
+        assert!(!next(&mut live, Duration::from_secs(10)).await);
+        task.abort();
+    }
 
     /// 꼭 알아야 할 일만 OS 알림으로: 크래시·원인 모를 종료·재시작 실패·사바쨩 밖의 시작·자동 백업 실패.
     /// 사바쨩을 거친 시작·정지, 게임 안 정지, 시작 실패(시킨 쪽이 이미 본다)는 알리지 않는다
