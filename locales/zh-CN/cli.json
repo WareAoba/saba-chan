@@ -1014,6 +1014,7 @@
       "config.paths": "Saba-chan 存放数据、模块和扩展的位置，以及默认文件夹",
       "config.move": "把模块或扩展移到其他文件夹。已安装的文件会一起移动；必须先停止服务器",
       "server.players": "当前在线的人",
+      "server.lists": "游戏保存的玩家名单（可加入的人、管理员、封禁）",
       "server.address": "朋友连接用的地址（IP:端口）",
       "server.port-check": "检查朋友能否从外网连接此服务器（端口转发）",
       "server.rcon": "按服务器接收命令的方式（控制台，没有则用 RCON）发送一行并查看回复",
@@ -1911,6 +1912,12 @@
   "players": {
     "title": "{{server}}：{{count}} 人在线",
     "none": "没有人在线。"
+  },
+  "lists": {
+    "title": "{{list}}：{{count}} 人",
+    "none": "还没有人。",
+    "unsupported": "这个服务器的游戏不提供玩家名单。",
+    "edit": "添加：{{add}} <名字>   移除：{{remove}} <名字>"
   },
   "log": {
     "none": "还没有保存的日志。服务器运行一次后就会有。",

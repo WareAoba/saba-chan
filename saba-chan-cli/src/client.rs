@@ -449,6 +449,10 @@ impl Api {
     pub async fn players(&self, id: &str) -> Result<Value> {
         self.get_slow(&format!("/api/instance/{}/players", seg(id))).await
     }
+    /// GET /api/instance/:id/lists — 모듈이 선언한 플레이어 목록과 지금 명단 `{lists:[{id, label, add, remove, editable, entries:[{name, added?, note?}]}]}`
+    pub async fn lists(&self, id: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/instance/{}/lists", seg(id))).await
+    }
     /// GET /api/instance/:id/address — 친구가 접속할 주소 `{address, running, ports:[{label, port, protocols}]}`
     pub async fn address(&self, id: &str) -> Result<Value> {
         self.get(&format!("/api/instance/{}/address", seg(id))).await

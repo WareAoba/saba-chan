@@ -1014,6 +1014,7 @@
       "config.paths": "Où Saba-chan garde ses données, modules et extensions, et les dossiers par défaut",
       "config.move": "Déplacer les modules ou les extensions vers un autre dossier. Les fichiers installés sont déplacés ; les serveurs doivent être arrêtés",
       "server.players": "Qui est connecté",
+      "server.lists": "Listes de joueurs du jeu (qui peut entrer, administrateurs, bannis)",
       "server.address": "L'adresse (IP:port) à laquelle vos amis se connectent",
       "server.port-check": "Vérifier si vos amis peuvent joindre ce serveur depuis Internet (redirection de ports)",
       "server.rcon": "Envoyer une ligne comme le serveur reçoit les commandes (console, sinon RCON) et afficher la réponse",
@@ -1911,6 +1912,12 @@
   "players": {
     "title": "{{server}} : {{count}} en ligne",
     "none": "Personne n'est en ligne."
+  },
+  "lists": {
+    "title": "{{list}} : {{count}}",
+    "none": "Personne pour l'instant.",
+    "unsupported": "Le jeu de ce serveur ne fournit pas de listes de joueurs.",
+    "edit": "Ajouter : {{add}} <nom>   Retirer : {{remove}} <nom>"
   },
   "log": {
     "none": "Pas encore de journal enregistré. Il apparaît après un premier lancement du serveur.",

@@ -874,6 +874,7 @@
     "status_missing": "Module missing",
     "tab_console": "Console",
     "tab_commands": "Commands",
+    "tab_players": "Players",
     "tab_settings": "Settings",
     "tab_saba": "Saba-chan",
     "tab_info": "Info",
@@ -2298,6 +2299,25 @@
     "add": "Add",
     "unsupported": "This server can’t read joins, so auto kick isn’t available.",
     "save_failed": "Couldn’t save the auto kick list: {{error}}"
+  },
+  "players": {
+    "title": "Player lists",
+    "desc": "Adding or removing a name applies to the running server right away.",
+    "desc_offline": "This is the current list. You can add or remove names while the server is running.",
+    "kinds": "List type",
+    "use_list": "Use {{list}}",
+    "name_placeholder": "Player name",
+    "optional": "{{label}} (optional)",
+    "add": "Add",
+    "remove_named": "Remove {{name}} from the list",
+    "added_on": "Added {{date}}",
+    "no_reason": "No reason",
+    "online": "Online",
+    "empty": "No one here yet.",
+    "load_failed": "Couldn't read the lists: {{error}}",
+    "failed": "Couldn't change it: {{error}}",
+    "setting_failed": "Couldn't save the setting: {{error}}",
+    "restart_to_apply": "Restart the server to apply this."
   },
   "controllers": {
     "desc": "People on this list can start and stop this server and use every command. Discord levels are not checked.",

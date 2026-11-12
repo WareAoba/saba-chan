@@ -1014,6 +1014,7 @@
       "config.paths": "Dónde guarda Saba-chan sus datos, módulos y extensiones, y las carpetas predeterminadas",
       "config.move": "Mover los módulos o las extensiones a otra carpeta. Los archivos instalados se mueven; los servidores deben estar detenidos",
       "server.players": "Quién está conectado",
+      "server.lists": "Listas de jugadores del juego (quién puede entrar, administradores, vetados)",
       "server.address": "La dirección (IP:puerto) a la que se conectan tus amigos",
       "server.port-check": "Comprueba si tus amigos pueden conectarse a este servidor desde internet (reenvío de puertos)",
       "server.rcon": "Enviar una línea como el servidor recibe comandos (consola, si no RCON) y ver la respuesta",
@@ -1911,6 +1912,12 @@
   "players": {
     "title": "{{server}}: {{count}} conectados",
     "none": "No hay nadie conectado."
+  },
+  "lists": {
+    "title": "{{list}}: {{count}}",
+    "none": "Todavía no hay nadie.",
+    "unsupported": "El juego de este servidor no ofrece listas de jugadores.",
+    "edit": "Añadir: {{add}} <nombre>   Quitar: {{remove}} <nombre>"
   },
   "log": {
     "none": "Aún no hay registro guardado. Aparece después de que el servidor funcione una vez.",

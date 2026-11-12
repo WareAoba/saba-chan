@@ -1014,6 +1014,7 @@
       "config.paths": "Wo Saba-chan Daten, Module und Erweiterungen ablegt, und die Standardordner",
       "config.move": "Module oder Erweiterungen in einen anderen Ordner verschieben. Installierte Dateien werden verschoben; Server müssen gestoppt sein",
       "server.players": "Wer gerade online ist",
+      "server.lists": "Spielerlisten des Spiels (wer beitreten darf, Admins, Sperren)",
       "server.address": "Die Adresse (IP:Port), mit der sich Freunde verbinden",
       "server.port-check": "Prüfen, ob Freunde diesen Server aus dem Internet erreichen (Portweiterleitung)",
       "server.rcon": "Eine Zeile so senden, wie der Server Befehle annimmt (Konsole, sonst RCON), und die Antwort zeigen",
@@ -1911,6 +1912,12 @@
   "players": {
     "title": "{{server}}: {{count}} online",
     "none": "Niemand ist online."
+  },
+  "lists": {
+    "title": "{{list}}: {{count}}",
+    "none": "Noch niemand hier.",
+    "unsupported": "Das Spiel dieses Servers stellt keine Spielerlisten bereit.",
+    "edit": "Hinzufügen: {{add}} <Name>   Entfernen: {{remove}} <Name>"
   },
   "log": {
     "none": "Noch kein gespeichertes Log. Es entsteht, nachdem der Server einmal gelaufen ist.",

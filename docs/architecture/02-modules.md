@@ -258,6 +258,29 @@ url = "https://aka.ms/MinecraftEULA"
 - 선언된 약관을 다 동의하지 않으면 켜기 전 점검이 409 `agreement_required`(`agreements:[{id, label, url, accepted, accepted_at}]`)로 막는다(01 문서 시작 라우트). 파일 내용(예: eula.txt)으로 동의를 추정하지 않는다.
 - 설치·재설치·업데이트 때 모듈은 `accepted_agreements:[id]`를 받고, 그 안에 자기 id가 있을 때만 자기 파일에 동의를 쓴다. 동의를 받으면 데몬이 lifecycle `accept_agreements`를 부른다(§2.3).
 
+#### `[[lists]]` (`ModuleList`)
+게임이 지키는 플레이어 이름 명단(화이트리스트·관리자·밴 등)을 목록 화면으로 보이는 선언. 선언한 모듈의 서버에만 GUI "플레이어" 탭이 생긴다(`GET /api/modules`의 `lists`). 데몬은 게임 이름을 보지 않는다.
+
+| 키 | 필수 | 뜻 |
+|---|---|---|
+| `id` | ✔ | 소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음. 이름은 모듈 locales `lists.<id>`(없으면 id) |
+| `add` | ✔ | 이름을 넣는 `[[commands.fields]]` 이름. 첫 입력이 플레이어 이름이고, 나머지 입력(예: 이유)은 화면이 옆 칸으로 보인다 |
+| `remove` | ✔ | 이름을 빼는 `[[commands.fields]]` 이름 (첫 입력이 플레이어 이름) |
+| `setting` | – | 이 명단을 쓸지 정하는 boolean `[[settings.fields]]` 이름(예: 화이트리스트 사용). 화면이 스위치로 보이고 설정 PATCH로 저장한다 |
+| `danger` | – | 넣으면 그 사람을 막는 명단(밴). 넣기 단추가 위험 색이고 단추 글이 목록 이름이다 |
+
+```toml
+[[lists]]
+id = "whitelist"
+add = "whitelist-add"
+remove = "whitelist-remove"
+setting = "white_list"
+```
+
+- 지금 명단은 lifecycle `read_lists`(§2.3, 선택 함수)가 읽어 준다. 데몬은 `GET /api/instance/:id/lists`(01)로 선언·이름·명단을 한 번에 돌려준다.
+- 넣기·빼기는 새 계약이 없다: `add`·`remove`가 가리키는 명령을 `POST /api/instance/:id/command`로 그대로 보낸다. 그래서 명령을 받을 수 있을 때(보통 켜진 서버)만 고칠 수 있다.
+- 검사(`player_list_problems`): id 형식·중복, `add`·`remove`가 없는 명령이거나 입력이 없음, `setting`이 boolean 설정이 아님 → 스키마를 밝힌 모듈은 로드 오류, 스키마 이전 모듈은 경고를 남기고 목록을 켜지 않는다.
+
 #### `[permissions]` (`ModulePermissions`)
 모듈 Python 코드가 쓰는 위험한 능력의 선언(M12). 모두 bool, 기본 false. 선언은 실행을 막거나 풀지 않는다: 격리(§2.1)는 신뢰 표시로만 정해진다. 검사기가 코드에서 찾은 능력 중 선언하지 않은 것을 알린다.
 
@@ -405,6 +428,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `reset_properties` | `POST /properties/reset` | 위와 같음 |
 | `reset_server` | `POST /server/reset` | 위와 같음 + `scope`(요청이 고른 범위 id, `reset_preview`가 밝힌 것. 없으면 모듈의 기본 범위) |
 | `reset_preview` | `GET /server/reset` | `reset_server`와 같음. 선택 함수. 아무것도 지우지 않고 `{success, scopes:[{id, label?, note?, items:[{label, paths[]}]}]}`를 돌려준다: 범위마다 `reset_server`가 지울 경로(서버 폴더 기준 상대 경로나 절대 경로)와 이름. 범위가 하나면 `label`을 쓰지 않는다. 지금 있는지와 크기는 데몬이 본다 |
+| `read_lists` | `GET /api/instance/:id/lists` (`[[lists]]`를 선언한 모듈만) | `read_properties`와 같음. 선택 함수. 읽기만 한다(꺼진 서버에도 온다). `{success, lists:{<목록 id>: [{name, added?, note?}]}}`: `added`는 넣은 때(ISO 8601 날짜나 시각), `note`는 덧붙일 말(예: 밴 이유). 데몬은 선언한 id의 이 세 값만 남긴다 |
 | `import_settings` | 마이그레이션 인스턴스 생성 `instance.rs:653-657`, `GET /api/instance/:id/settings/live` (`managed.rs:245-271`) | 마이그레이션은 `working_dir`·`instance_dir`(서버 폴더에 더하지 않고 인스턴스에 둘 것의 자리. minecraft는 맞는 포터블 JRE가 없으면 `<instance_dir>/java`에 받고, 받지 못하면 `java_warning`)·`migration_import: true`(가져오기 호출 표시. 런타임을 받는 일은 이 호출에서만 한다. 시간 한도는 설치와 같은 `INSTALL_TIMEOUT_SECS`), live는 위와 같음(인스턴스를 가리키는 다른 호출도 `instance_dir`을 받는다, `insert_instance_fields`: 켜기 전 점검 `validate`도 인스턴스 폴더에 받은 포터블 JRE를 본다). 마이그레이션에서 모듈은 쓰던 실행 스크립트의 값도 돌려준다: minecraft `ram`(`user_jvm_args.txt`·`run.bat`·`start.bat`·`run.sh`·`start.sh`의 `-Xmx`), zomboid `ram`(GB)·`server_name`(`-servername`, 없으면 데이터 폴더 `Server/`에 하나뿐인 프로필)·`data_home`(`-cachedir=`). 모듈 기본값으로 덮지 않게 하려는 것이다 |
 | `config_files` | 마이그레이션 인스턴스 생성(가져온 설정을 저장한 뒤) → `manage_properties("config_files")` | `read_properties`와 같음 |
 | `instance_commands` | `GET /api/instance/:id/commands`, module.toml에 없는 이름의 명령 실행 (`[commands] hook = true`일 때, `D:src/ipc/handlers/command.rs`) | `working_dir`, 인스턴스 값(`insert_instance_fields`) |
@@ -442,6 +466,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | reset_properties (호출) | ✔ | ✔ | – | – |
 | reset_server (호출) | ✔ | ✔ | ✔ | – |
 | reset_preview (호출) | ✔ | ✔ | ✔ | – |
+| read_lists (호출) | ✔ | – | – | – |
 | accept_agreements (호출) | ✔ | – | – | – |
 | diagnose_log (호출) | ✔ | ✔ | ✔ | ✔(stub) |
 | list_versions (호출) | ✔ | ✔ | – | – |

@@ -30,6 +30,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::Send { server, line } => send(ctx, &server, &line.join(" ")).await,
         ServerCmd::Chat { server, name, text } => chat(ctx, &server, &name, &text.join(" ")).await,
         ServerCmd::Players { server } => players(ctx, server.as_deref()).await,
+        ServerCmd::Lists { server } => lists(ctx, server.as_deref()).await,
         ServerCmd::PortCheck { server } => port_check(ctx, server.as_deref()).await,
         ServerCmd::Address { server } => address(ctx, server.as_deref()).await,
         ServerCmd::Rcon { server, line } => rcon(ctx, &server, &line.join(" ")).await,
@@ -1529,6 +1530,31 @@ async fn players(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         }
         for n in names {
             say!("  {}", n);
+        }
+    });
+    Ok(())
+}
+
+/// 플레이어 목록(화이트리스트·관리자·밴 등 모듈이 선언한 것)마다 지금 명단과, 이름을 넣고 빼는 명령
+async fn lists(ctx: &Ctx, query: Option<&str>) -> Result<()> {
+    let sv = resolve::server(ctx, query).await?;
+    let r = ctx.api.lists(&sv.id).await?;
+    ctx.out.data(&r, |r| {
+        let lists: Vec<&Value> = r.get("lists").and_then(Value::as_array).into_iter().flatten().collect();
+        if lists.is_empty() {
+            say!("{}", output::dim(&t!("lists.unsupported")));
+        }
+        for list in lists {
+            let entries: Vec<&Value> = list.get("entries").and_then(Value::as_array).into_iter().flatten().collect();
+            output::heading(&t!("lists.title", list = s(list, "label"), count = entries.len()));
+            if entries.is_empty() {
+                say!("{}", output::dim(&t!("lists.none")));
+            }
+            for e in entries {
+                let more: Vec<&str> = [s(e, "note"), s(e, "added")].into_iter().filter(|v| !v.is_empty()).collect();
+                say!("  {}  {}", s(e, "name"), output::dim(&more.join(" · ")));
+            }
+            say!("{}", output::dim(&t!("lists.edit", add = format!("server run {} {}", sv.name, s(list, "add")), remove = format!("server run {} {}", sv.name, s(list, "remove")))));
         }
     });
     Ok(())

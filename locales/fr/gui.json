@@ -874,6 +874,7 @@
     "status_missing": "Module manquant",
     "tab_console": "Console",
     "tab_commands": "Commandes",
+    "tab_players": "Joueurs",
     "tab_settings": "Paramètres",
     "tab_saba": "Saba-chan",
     "tab_info": "Infos",
@@ -2298,6 +2299,25 @@
     "add": "Ajouter",
     "unsupported": "Ce serveur ne sait pas lire les connexions : l’expulsion automatique n’est pas disponible.",
     "save_failed": "Impossible d’enregistrer la liste d’expulsion : {{error}}"
+  },
+  "players": {
+    "title": "Listes de joueurs",
+    "desc": "Un nom ajouté ou retiré s'applique tout de suite au serveur en marche.",
+    "desc_offline": "Voici la liste actuelle. Vous pouvez ajouter ou retirer des noms quand le serveur est en marche.",
+    "kinds": "Type de liste",
+    "use_list": "Utiliser {{list}}",
+    "name_placeholder": "Nom du joueur",
+    "optional": "{{label}} (facultatif)",
+    "add": "Ajouter",
+    "remove_named": "Retirer {{name}} de la liste",
+    "added_on": "Ajouté le {{date}}",
+    "no_reason": "Sans motif",
+    "online": "En ligne",
+    "empty": "Personne pour l'instant.",
+    "load_failed": "Impossible de lire les listes : {{error}}",
+    "failed": "Impossible de modifier : {{error}}",
+    "setting_failed": "Impossible d'enregistrer le réglage : {{error}}",
+    "restart_to_apply": "Redémarrez le serveur pour l'appliquer."
   },
   "controllers": {
     "desc": "Les personnes de cette liste peuvent démarrer et arrêter ce serveur et utiliser toutes les commandes. Les niveaux Discord ne sont pas vérifiés.",

@@ -1610,6 +1610,12 @@
     "title": "{{server}}: {{count}} online",
     "none": "Nobody is online."
   },
+  "lists": {
+    "title": "{{list}}: {{count}}",
+    "none": "No one here yet.",
+    "unsupported": "This server's game does not provide player lists.",
+    "edit": "Add: {{add}} <name>   Remove: {{remove}} <name>"
+  },
   "log": {
     "none": "No saved log yet. One appears after the server runs once.",
     "truncated": "The log was too big; only the first part came back.",

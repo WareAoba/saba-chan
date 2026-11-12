@@ -246,6 +246,26 @@ export interface ModuleAgreement {
     url: string;
 }
 
+/** [[lists]] (module_loader::ModuleList): 플레이어 목록 선언 */
+export interface ModuleList {
+    id: string;
+    /** 이름을 넣는·빼는 `[[commands.fields]]` 이름 */
+    add: string;
+    remove: string;
+    /** 이 목록을 쓸지 정하는 boolean 설정 이름 */
+    setting?: string;
+    /** 넣으면 그 사람을 막는 목록 (밴) */
+    danger?: boolean;
+}
+
+/** GET /api/instance/:id/lists 의 목록 하나: 선언 + 모듈 locales의 이름 + 지금 명단 */
+export interface PlayerList extends ModuleList {
+    label: string;
+    /** 넣기·빼기 명령을 지금 보낼 수 있는가 */
+    editable: boolean;
+    entries: { name: string; added?: string; note?: string }[];
+}
+
 /** GET /api/modules 항목 (ipc::ExtensionInfo) */
 export interface ModuleInfo {
     name: string;
@@ -280,6 +300,7 @@ export interface ModuleInfo {
     presets?: ModulePreset[];
     queries?: JsonObject[];
     agreements?: ModuleAgreement[];
+    lists?: ModuleList[];
     /** 모듈이 밝힌 lifecycle 함수. null이면 모른다 (아무 기능도 숨기지 않는다) */
     functions: string[] | null;
 }

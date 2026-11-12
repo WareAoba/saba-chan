@@ -2511,6 +2511,8 @@ impl Supervisor {
                     "reset_server"
                 }
                 "reset_preview" => "reset_preview",
+                // 플레이어 목록 (`[[lists]]`)의 지금 명단
+                "read_lists" => "read_lists",
                 // 실제 설정 파일을 saba-chan 키로 (설정 화면이 캐시 대신 실제 값을 보여 준다)
                 "import" => "import_settings",
                 // 사바쨩이 고칠 수 있는 게임 설정 파일 (가져온 서버를 해제할 때 되돌린다)

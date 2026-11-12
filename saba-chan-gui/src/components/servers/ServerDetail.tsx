@@ -49,6 +49,7 @@ import { Segmented, StatusChip } from '../ui/StatusChip';
 import { ServerLogs } from './ServerLogs';
 import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
+import { PlayersTab, playerListsAvailable } from './PlayersTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
 import { ServerConsole } from './ServerConsole';
 import { StartCoach } from './OnboardingCard';
@@ -133,6 +134,11 @@ export function ServerDetail({
             id: 'commands',
             label: t('shell.tab_commands'),
             icon: <Icon name="command" size="sm" />,
+        },
+        playerListsAvailable(moduleData) && {
+            id: 'players',
+            label: t('shell.tab_players'),
+            icon: <Icon name="user" size="sm" />,
         },
         { id: 'settings', label: t('shell.tab_settings'), icon: <Icon name="gamepad" size="sm" /> },
         { id: 'saba', label: t('shell.tab_saba'), icon: <Icon name="sabaFace" size="sm" /> },
@@ -467,6 +473,7 @@ export function ServerDetail({
                                     <p>{t('shell.commands_offline')}</p>
                                 </div>
                             ))}
+                        {activeTab === 'players' && <PlayersTab server={server} moduleData={moduleData} />}
                         {(activeTab === 'settings' || activeTab === 'saba') && (
                             <SettingsTab
                                 section={activeTab === 'saba' ? 'saba' : 'server'}

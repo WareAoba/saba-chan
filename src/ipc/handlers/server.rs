@@ -454,6 +454,7 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         presets: meta.presets,
         queries: meta.queries,
         agreements: meta.agreements,
+        lists: meta.lists,
         functions: None,
     }
 }

@@ -128,6 +128,8 @@ pub static ROUTES: &[Route] = &[
     not_on_web("GET", "/api/instance/{id}/server/reset"),
     allow("POST", "/api/instance/{id}/server/reset"),
     allow("POST", "/api/instance/{id}/agreements"),
+    // 플레이어 목록 화면 (앱에만 있다. 넣기·빼기는 명령 라우트로 한다)
+    not_on_web("GET", "/api/instance/{id}/lists"),
     // ── 백업·일정 ──
     allow("GET", "/api/instance/{id}/backups"),
     allow("POST", "/api/instance/{id}/backups"),

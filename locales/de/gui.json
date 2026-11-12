@@ -874,6 +874,7 @@
     "status_missing": "Modul fehlt",
     "tab_console": "Konsole",
     "tab_commands": "Befehle",
+    "tab_players": "Spieler",
     "tab_settings": "Einstellungen",
     "tab_saba": "Saba-chan",
     "tab_info": "Info",
@@ -2298,6 +2299,25 @@
     "add": "Hinzufügen",
     "unsupported": "Dieser Server kann Beitritte nicht lesen, daher ist der automatische Kick nicht verfügbar.",
     "save_failed": "Kick-Liste konnte nicht gespeichert werden: {{error}}"
+  },
+  "players": {
+    "title": "Spielerlisten",
+    "desc": "Hinzugefügte oder entfernte Namen gelten sofort auf dem laufenden Server.",
+    "desc_offline": "Das ist die aktuelle Liste. Namen lassen sich hinzufügen oder entfernen, solange der Server läuft.",
+    "kinds": "Listenart",
+    "use_list": "{{list}} verwenden",
+    "name_placeholder": "Spielername",
+    "optional": "{{label}} (optional)",
+    "add": "Hinzufügen",
+    "remove_named": "{{name}} aus der Liste entfernen",
+    "added_on": "Hinzugefügt am {{date}}",
+    "no_reason": "Kein Grund",
+    "online": "Online",
+    "empty": "Noch niemand hier.",
+    "load_failed": "Die Listen konnten nicht gelesen werden: {{error}}",
+    "failed": "Änderung fehlgeschlagen: {{error}}",
+    "setting_failed": "Die Einstellung konnte nicht gespeichert werden: {{error}}",
+    "restart_to_apply": "Starte den Server neu, damit das gilt."
   },
   "controllers": {
     "desc": "Personen auf dieser Liste können diesen Server starten und stoppen und alle Befehle nutzen. Discord-Stufen werden nicht geprüft.",

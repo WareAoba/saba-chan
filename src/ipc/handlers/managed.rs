@@ -246,6 +246,73 @@ pub async fn players_handler(Path(id): Path<String>, State(state): State<IPCServ
     }
 }
 
+/// GET /api/instance/:id/lists — 모듈이 선언한 플레이어 목록(`[[lists]]`: 화이트리스트·관리자·밴 등)과 지금 명단.
+/// 명단은 모듈 `read_lists`가 읽어 주고(서버가 꺼져 있어도 읽는다), 이름은 모듈 locales `lists.<id>`(없으면 id).
+/// `editable`은 넣기·빼기 명령을 지금 보낼 수 있는가다 (넣기·빼기는 `POST …/command`에 선언된 명령 이름으로 한다)
+pub async fn lists_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
+    let fail = |status: StatusCode, code: &str, error: String| (status, Json(json!({ "success": false, "error_code": code, "error": error }))).into_response();
+    let lang = state.config_store.ui_language().await;
+    let mut lists: Vec<Value> = {
+        let sup = state.supervisor.read().await;
+        let Some(instance) = sup.instance_store.get(&id) else {
+            return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+        };
+        let Some(module) = sup.module_loader.get_module(&instance.module_name).ok().filter(|m| !m.metadata.lists.is_empty()) else {
+            return fail(StatusCode::OK, "not_supported", "This server's module has no player lists".into());
+        };
+        let running = sup.is_running(&id).await;
+        let stdin_route = sup.routes_commands_to_stdin(&id).await;
+        let rcon_route = !stdin_route && sup.rcon_route(&id).is_some();
+        let lang = crate::chat::i18n::normalize_language(&lang);
+        let locales = [crate::actions::module_locale(&module, &lang), crate::actions::module_locale(&module, "en")];
+        let ready = |command: &str| {
+            let method = crate::commands::find(&module.metadata, command).and_then(|c| c.method.as_deref());
+            super::command::command_ready(method, running, stdin_route, rcon_route)
+        };
+        module
+            .metadata
+            .lists
+            .iter()
+            .map(|list| {
+                let pointer = format!("/lists/{}", list.id);
+                let label = locales.iter().find_map(|l| l.pointer(&pointer).and_then(Value::as_str)).unwrap_or(&list.id);
+                let mut view = json!({ "id": list.id, "label": label, "add": list.add, "remove": list.remove, "danger": list.danger, "editable": ready(&list.add) && ready(&list.remove) });
+                if let Some(setting) = &list.setting {
+                    view["setting"] = json!(setting);
+                }
+                view
+            })
+            .collect()
+    };
+    let result = match Supervisor::manage_properties(&state.supervisor, &id, "read_lists", None).await {
+        Ok(result) => result,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
+    };
+    if result.get("success").and_then(Value::as_bool) != Some(true) {
+        return (StatusCode::OK, Json(result)).into_response();
+    }
+    for list in &mut lists {
+        let entries: Vec<Value> = list["id"].as_str().and_then(|id| result["lists"].get(id)).and_then(Value::as_array).into_iter().flatten().filter_map(list_entry).collect();
+        list["entries"] = json!(entries);
+    }
+    (StatusCode::OK, Json(json!({ "success": true, "lists": lists }))).into_response()
+}
+
+/// 모듈이 준 명단 한 줄에서 이름·넣은 때(`added`)·메모(`note`, 예: 밴 이유)만 남긴다. 이름이 없는 줄은 뺀다
+fn list_entry(entry: &Value) -> Option<Value> {
+    let text = |key: &str, max: usize| {
+        let value: String = entry.get(key)?.as_str()?.chars().filter(|c| !c.is_control()).take(max).collect();
+        (!value.is_empty()).then_some(value)
+    };
+    let mut out = json!({ "name": text("name", 64)? });
+    for (key, max) in [("added", 40), ("note", 200)] {
+        if let Some(value) = text(key, max) {
+            out[key] = json!(value);
+        }
+    }
+    Some(out)
+}
+
 /// POST /api/instance/:id/chat — 디스코드 글을 게임 채팅으로 (`{name, text}`, 액션 `server.chat`). 모듈 `chat_send` 함수를
 /// `chat_name`·`chat_text`로 부른다. 둘 다 한 줄로 다듬어 넘긴다: 줄바꿈이 남으면 콘솔 명령을 끼워 넣을 수 있다
 pub async fn chat_handler(Path(id): Path<String>, State(state): State<IPCServer>, LooseJson(body): LooseJson<Value>) -> impl IntoResponse {
@@ -1261,6 +1328,65 @@ mod tests {
         let unsupported = players("without").await;
         assert_eq!((unsupported.status, unsupported.body["error_code"].as_str()), (StatusCode::OK, Some("not_supported")), "{}", unsupported.body);
         assert_eq!(players("missing").await.status, StatusCode::NOT_FOUND);
+    }
+
+    /// 플레이어 목록: 모듈이 선언한 목록(`[[lists]]`)마다 모듈 locales의 이름과 `read_lists`가 읽어 준 명단을 돌려준다.
+    /// 명단은 이름·넣은 때·메모만 남기고, 넣기·빼기 명령을 지금 보낼 수 있는지를 `editable`로 알린다
+    #[tokio::test]
+    async fn lists_come_from_the_module_declaration_and_read_lists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let lists = "\n[[commands.fields]]\nname = \"allow\"\nlabel = \"Allow\"\nmethod = \"module\"\ninputs = [{ name = \"player\", type = \"text\", required = true }]\n\n\
+                     [[commands.fields]]\nname = \"block\"\nlabel = \"Block\"\nmethod = \"console\"\nconsole_template = \"block {player} {reason}\"\ninputs = [{ name = \"player\", type = \"text\", required = true }, { name = \"reason\", type = \"text\" }]\n\n\
+                     [[lists]]\nid = \"whitelist\"\nadd = \"allow\"\nremove = \"allow\"\n\n[[lists]]\nid = \"banned\"\nadd = \"block\"\nremove = \"allow\"\ndanger = true\n";
+        for (name, table) in [("game", lists), ("plain", "")] {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(dir.join("locales")).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n{table}")).unwrap();
+            std::fs::write(dir.join("locales").join("en.json"), r#"{ "lists": { "whitelist": "Whitelist" } }"#).unwrap();
+            std::fs::write(
+                dir.join("lifecycle.py"),
+                "import json, sys\nconfig = json.load(sys.stdin)\n\
+                 lists = {'whitelist': [{'name': 'Steve', 'uuid': 'x'}, {'name': 'Al\\nex'}, {'uuid': 'no-name'}],\n\
+                          'banned': [{'name': 'Griefer', 'added': '2026-11-09T10:00:00+09:00', 'note': 'spam'}], 'undeclared': [{'name': 'x'}]}\n\
+                 print(json.dumps({'success': sys.argv[1] == 'read_lists', 'lists': lists}))\n",
+            )
+            .unwrap();
+        }
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        for (id, module) in [("with", "game"), ("without", "plain")] {
+            let mut inst = crate::instance::ServerInstance::new(id, module);
+            inst.id = id.into();
+            sup.instance_store.add(inst).unwrap();
+        }
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let lists = |id: &'static str| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(lists_handler(Path(id.into()), State(state)).await.into_response()).await }
+        };
+
+        let off = lists("with").await;
+        assert_eq!(off.status, StatusCode::OK, "{}", off.body);
+        assert_eq!(
+            off.body,
+            json!({ "success": true, "lists": [
+                { "id": "whitelist", "label": "Whitelist", "add": "allow", "remove": "allow", "danger": false, "editable": false,
+                  "entries": [{ "name": "Steve" }, { "name": "Alex" }] },
+                { "id": "banned", "label": "banned", "add": "block", "remove": "allow", "danger": true, "editable": false,
+                  "entries": [{ "name": "Griefer", "added": "2026-11-09T10:00:00+09:00", "note": "spam" }] },
+            ] })
+        );
+        // 켜진 서버: 모듈이 받는 명령은 보낼 수 있고, 콘솔 명령은 콘솔·RCON 길이 있어야 한다
+        state.supervisor.read().await.tracker.track("with", std::process::id()).unwrap();
+        let on = lists("with").await;
+        assert_eq!((on.body["lists"][0]["editable"].as_bool(), on.body["lists"][1]["editable"].as_bool()), (Some(true), Some(false)), "{}", on.body);
+        let _ = state.supervisor.read().await.tracker.untrack("with");
+
+        let unsupported = lists("without").await;
+        assert_eq!((unsupported.status, unsupported.body["error_code"].as_str()), (StatusCode::OK, Some("not_supported")), "{}", unsupported.body);
+        assert_eq!(lists("missing").await.status, StatusCode::NOT_FOUND);
     }
 
     /// 디스코드 → 게임 채팅 (사용자 요청 2026-10-30): 모듈 `chat_send`가 한 줄로 다듬은 이름·본문을 받는다

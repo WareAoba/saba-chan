@@ -874,6 +874,7 @@
     "status_missing": "Falta el módulo",
     "tab_console": "Consola",
     "tab_commands": "Comandos",
+    "tab_players": "Jugadores",
     "tab_settings": "Ajustes",
     "tab_saba": "Saba-chan",
     "tab_info": "Info",
@@ -2298,6 +2299,25 @@
     "add": "Añadir",
     "unsupported": "Este servidor no puede leer las entradas, así que la expulsión automática no está disponible.",
     "save_failed": "No se pudo guardar la lista de expulsión: {{error}}"
+  },
+  "players": {
+    "title": "Listas de jugadores",
+    "desc": "Al añadir o quitar un nombre, se aplica de inmediato en el servidor en marcha.",
+    "desc_offline": "Esta es la lista actual. Puedes añadir o quitar nombres mientras el servidor está en marcha.",
+    "kinds": "Tipo de lista",
+    "use_list": "Usar {{list}}",
+    "name_placeholder": "Nombre del jugador",
+    "optional": "{{label}} (opcional)",
+    "add": "Añadir",
+    "remove_named": "Quitar a {{name}} de la lista",
+    "added_on": "Añadido el {{date}}",
+    "no_reason": "Sin motivo",
+    "online": "Conectado",
+    "empty": "Todavía no hay nadie.",
+    "load_failed": "No se pudieron leer las listas: {{error}}",
+    "failed": "No se pudo cambiar: {{error}}",
+    "setting_failed": "No se pudo guardar el ajuste: {{error}}",
+    "restart_to_apply": "Reinicia el servidor para aplicarlo."
   },
   "controllers": {
     "desc": "Las personas de esta lista pueden iniciar y detener este servidor y usar todos los comandos. No se miran los niveles de Discord.",

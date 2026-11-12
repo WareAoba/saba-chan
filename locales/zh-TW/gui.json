@@ -874,6 +874,7 @@
     "status_missing": "缺少模組",
     "tab_console": "主控台",
     "tab_commands": "命令",
+    "tab_players": "玩家",
     "tab_settings": "設定",
     "tab_saba": "Saba-chan",
     "tab_info": "資訊",
@@ -2298,6 +2299,25 @@
     "add": "加入",
     "unsupported": "這台伺服器讀不到玩家進入，無法使用自動踢出。",
     "save_failed": "無法儲存自動踢出名單：{{error}}"
+  },
+  "players": {
+    "title": "玩家名單",
+    "desc": "加入或移除名字後，會立即套用到執行中的伺服器。",
+    "desc_offline": "這是目前的名單。伺服器執行時可以加入或移除名字。",
+    "kinds": "名單類型",
+    "use_list": "啟用{{list}}",
+    "name_placeholder": "玩家名稱",
+    "optional": "{{label}}（選填）",
+    "add": "加入",
+    "remove_named": "將 {{name}} 移出名單",
+    "added_on": "{{date}}加入",
+    "no_reason": "無理由",
+    "online": "線上",
+    "empty": "還沒有人。",
+    "load_failed": "無法讀取名單：{{error}}",
+    "failed": "無法變更：{{error}}",
+    "setting_failed": "無法儲存設定：{{error}}",
+    "restart_to_apply": "重新啟動伺服器後生效。"
   },
   "controllers": {
     "desc": "名單裡的人可以啟動、停止這台伺服器並使用所有指令。不看 Discord 等級。",

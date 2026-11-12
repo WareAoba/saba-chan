@@ -608,6 +608,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         instanceCommands: (id: string) => call('get', `/api/instance/${encodeURIComponent(id)}/commands`),
         // 지금 접속한 사람 이름 (모듈 players 함수가 게임에 묻는다). 부를 때만 묻고 주기적으로 부르지 않는다
         instancePlayers: (id: string) => call('get', `/api/instance/${encodeURIComponent(id)}/players`),
+        // 플레이어 목록 (모듈 `[[lists]]`: 화이트리스트·관리자·밴 등)과 지금 명단. 넣기·빼기는 executeCommand로 한다
+        instanceLists: (id: string) => call('get', `/api/instance/${encodeURIComponent(id)}/lists`),
         // 서버 점검: 모듈 validate(켜기 전 점검)·diagnose(최근 로그 진단). 모듈 Python을 돌리므로 넉넉히 기다린다
         instanceValidate: (id: string) => call('post', `/api/instance/${encodeURIComponent(id)}/validate`, {}, 60000),
         instanceDiagnose: (id: string) => call('post', `/api/instance/${encodeURIComponent(id)}/diagnose`, {}, 60000),

@@ -874,6 +874,7 @@
     "status_missing": "모듈 없음",
     "tab_console": "콘솔",
     "tab_commands": "명령",
+    "tab_players": "플레이어",
     "tab_settings": "설정",
     "tab_saba": "사바쨩",
     "tab_info": "정보",
@@ -2298,6 +2299,25 @@
     "add": "넣기",
     "unsupported": "이 서버는 접속을 읽지 못해 자동 강퇴를 쓸 수 없어요.",
     "save_failed": "자동 강퇴 명단을 저장하지 못했어요: {{error}}"
+  },
+  "players": {
+    "title": "플레이어 목록",
+    "desc": "이름을 넣거나 빼면 켜진 서버에 바로 적용돼요.",
+    "desc_offline": "지금 명단이에요. 서버가 켜져 있을 때 이름을 넣거나 뺄 수 있어요.",
+    "kinds": "목록 종류",
+    "use_list": "{{list}} 사용",
+    "name_placeholder": "플레이어 이름",
+    "optional": "{{label}} (선택)",
+    "add": "추가",
+    "remove_named": "{{name}} 목록에서 빼기",
+    "added_on": "{{date}}에 추가",
+    "no_reason": "이유 없음",
+    "online": "접속 중",
+    "empty": "아직 아무도 없어요.",
+    "load_failed": "목록을 읽지 못했어요: {{error}}",
+    "failed": "바꾸지 못했어요: {{error}}",
+    "setting_failed": "설정을 저장하지 못했어요: {{error}}",
+    "restart_to_apply": "서버를 다시 시작하면 적용돼요."
   },
   "controllers": {
     "desc": "이 명단에 있는 사람은 이 서버를 켜고 끄고 모든 명령을 쓸 수 있어요. 디스코드 레벨은 보지 않아요.",

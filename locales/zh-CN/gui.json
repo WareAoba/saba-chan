@@ -874,6 +874,7 @@
     "status_missing": "缺少模块",
     "tab_console": "控制台",
     "tab_commands": "命令",
+    "tab_players": "玩家",
     "tab_settings": "设置",
     "tab_saba": "Saba-chan",
     "tab_info": "信息",
@@ -2298,6 +2299,25 @@
     "add": "加入",
     "unsupported": "这台服务器读不到玩家进入，无法使用自动踢出。",
     "save_failed": "无法保存自动踢出名单：{{error}}"
+  },
+  "players": {
+    "title": "玩家名单",
+    "desc": "添加或移除名字后，会立即应用到运行中的服务器。",
+    "desc_offline": "这是当前名单。服务器运行时可以添加或移除名字。",
+    "kinds": "名单类型",
+    "use_list": "启用{{list}}",
+    "name_placeholder": "玩家名",
+    "optional": "{{label}}（可选）",
+    "add": "添加",
+    "remove_named": "将 {{name}} 移出名单",
+    "added_on": "{{date}}添加",
+    "no_reason": "无理由",
+    "online": "在线",
+    "empty": "还没有人。",
+    "load_failed": "无法读取名单：{{error}}",
+    "failed": "无法更改：{{error}}",
+    "setting_failed": "无法保存设置：{{error}}",
+    "restart_to_apply": "重启服务器后生效。"
   },
   "controllers": {
     "desc": "名单里的人可以启动、停止这台服务器并使用所有命令。不看 Discord 等级。",

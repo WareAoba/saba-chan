@@ -614,6 +614,8 @@ pub enum ServerCmd {
     Commands { server: Option<String> },
     /// Who is online
     Players { server: Option<String> },
+    /// Player lists the game keeps (who may join, who is an admin, who is banned)
+    Lists { server: Option<String> },
     /// The address (IP:port) friends connect to
     Address { server: Option<String> },
     /// Check from the internet whether friends can reach this server (port forwarding)

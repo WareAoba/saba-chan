@@ -165,6 +165,9 @@ pub struct ModuleMetadata {
     /// [[agreements]] 서버를 켜기 전에 사용자가 동의해야 하는 약관 (예: 게임 EULA)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agreements: Vec<ModuleAgreement>,
+    /// [[lists]] 플레이어 목록 (화이트리스트·관리자·밴 같은 이름 명단). `GET /api/instance/:id/lists`가 읽어 보인다
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lists: Vec<ModuleList>,
     /// [status] players — 켜진 서버의 접속자 수를 돌려주는 lifecycle 함수 (Q-5, `supervisor::players`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub players_function: Option<String>,
@@ -224,6 +227,26 @@ pub struct ModuleAgreement {
     pub id: String,
     /// 사용자가 읽을 원문 (https)
     pub url: String,
+}
+
+/// `[[lists]]` — 게임이 지키는 플레이어 이름 명단 하나 (예: 화이트리스트, 관리자, 밴).
+/// 지금 명단은 lifecycle `read_lists`가 읽어 주고, 넣기·빼기는 이미 선언한 명령(`[[commands.fields]]`)으로 한다.
+/// 이름은 모듈 locales의 `lists.<id>`
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct ModuleList {
+    /// 소문자·숫자·`-`·`_` (모듈 안에서 겹치지 않음, 예: "whitelist")
+    pub id: String,
+    /// 이름을 넣는 `[[commands.fields]]` 이름. 첫 입력이 플레이어 이름이고, 나머지 입력(예: 이유)은 화면이 옆 칸으로 보인다
+    pub add: String,
+    /// 이름을 빼는 `[[commands.fields]]` 이름 (첫 입력이 플레이어 이름)
+    pub remove: String,
+    /// 이 명단을 쓸지 정하는 boolean `[[settings.fields]]` 이름 (예: 화이트리스트 사용). 없으면 늘 쓰는 명단
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setting: Option<String>,
+    /// 넣으면 그 사람을 막는 명단 (밴). 화면이 넣기 단추를 위험 색으로 보인다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub danger: bool,
 }
 
 /// `[[diagnose]]` — 콘솔 줄에서 알려진 문제를 찾는 규칙. 문구는 모듈 locales의
@@ -865,6 +888,9 @@ struct ModuleToml {
     /// [[agreements]] 켜기 전에 동의할 약관
     #[serde(default)]
     agreements: Vec<ModuleAgreement>,
+    /// [[lists]] 플레이어 목록 (화이트리스트·관리자·밴)
+    #[serde(default)]
+    lists: Vec<ModuleList>,
     /// [status] 켜진 서버의 상태를 더 알려 주는 함수
     #[serde(default)]
     status: Option<StatusSection>,
@@ -1534,6 +1560,7 @@ impl ModuleToml {
                 private: q.private,
             }).collect(),
             agreements: self.agreements,
+            lists: self.lists,
             players_function: self.status.and_then(|s| s.players),
             diagnose: self.diagnose,
             warnings: Vec::new(),
@@ -1582,6 +1609,12 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     }
     problems.extend(bad_queries);
     problems.extend(agreement_problems(&meta));
+    let bad_lists = player_list_problems(&meta);
+    // 스키마 이전 모듈도 잘못된 목록은 켜지 않는다 (없는 명령을 보내는 화면이 생기지 않게)
+    if meta.schema_version == 0 && !bad_lists.is_empty() {
+        meta.lists.clear();
+    }
+    problems.extend(bad_lists);
     if let Some(problem) = meta.players_function.as_deref().and_then(|f| function_problem(f, "status.players")) {
         // 잘못 선언한 함수는 부르지 않는다
         meta.players_function = None;
@@ -2058,6 +2091,36 @@ fn agreement_problems(meta: &ModuleMetadata) -> Vec<String> {
         }
         if !a.url.starts_with("https://") {
             problems.push(format!("agreements '{}': url must start with https://", a.id));
+        }
+    }
+    problems
+}
+
+/// 플레이어 목록 선언이 계약을 벗어난 곳: id 형식·중복, 넣기·빼기 명령이 없거나 이름 입력이 없음, boolean이 아닌 설정
+fn player_list_problems(meta: &ModuleMetadata) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let commands = meta.commands.as_ref().map(|c| c.fields.as_slice()).unwrap_or_default();
+    let settings = meta.settings.as_ref().map(|s| s.fields.as_slice()).unwrap_or_default();
+    for list in &meta.lists {
+        let mut problem = |what: String| problems.push(format!("lists '{}': {}", list.id, what));
+        if !is_slug(&list.id) {
+            problem("id must be lowercase letters, digits, '-' or '_'".into());
+        }
+        if !seen.insert(list.id.as_str()) {
+            problem("duplicate id".into());
+        }
+        for (key, name) in [("add", &list.add), ("remove", &list.remove)] {
+            match commands.iter().find(|c| &c.name == name) {
+                None => problem(format!("{key} '{name}' is not a [[commands.fields]] name")),
+                Some(c) if c.inputs.is_empty() => problem(format!("{key} '{name}' needs an input for the player name")),
+                Some(_) => {}
+            }
+        }
+        if let Some(name) = &list.setting {
+            if !settings.iter().any(|f| &f.name == name && f.field_type == "boolean") {
+                problem(format!("setting '{name}' is not a boolean [[settings.fields]] name"));
+            }
         }
     }
     problems
@@ -3417,6 +3480,34 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
         assert!(titled.warnings.iter().any(|w| w.contains("title")), "{:?}", titled.warnings);
         let twice = format!("{toml}\n[[agreements]]\nid = \"eula\"\nurl = \"https://example.com/2\"\n");
         assert!(parse_module_toml(&twice).unwrap_err().to_string().contains("duplicate"));
+    }
+
+    /// 플레이어 목록(`[[lists]]`): 넣기·빼기는 이미 있는 명령 이름, 켜고 끄는 칸은 boolean 설정 이름이어야 한다
+    #[test]
+    fn schema_v1_reads_lists_and_rejects_bad_ones() {
+        let toml = format!(
+            "{V1}\n[[settings.fields]]\nname = \"white_list\"\ntype = \"boolean\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n\n\
+             [[commands.fields]]\nname = \"allow\"\nlabel = \"Allow\"\nmethod = \"console\"\nconsole_template = \"allow {{player}}\"\ninputs = [{{ name = \"player\", type = \"text\", required = true }}]\n\n\
+             [[commands.fields]]\nname = \"save\"\nlabel = \"Save\"\nmethod = \"console\"\nconsole_template = \"save\"\n\n\
+             [[lists]]\nid = \"whitelist\"\nadd = \"allow\"\nremove = \"allow\"\nsetting = \"white_list\"\n"
+        );
+        let meta = parse_module_toml(&toml).unwrap();
+        assert!(meta.warnings.is_empty(), "{:?}", meta.warnings);
+        assert_eq!(meta.lists, vec![ModuleList { id: "whitelist".into(), add: "allow".into(), remove: "allow".into(), setting: Some("white_list".into()), danger: false }]);
+        for (good, bad, why) in [
+            ("id = \"whitelist\"", "id = \"White List\"", "id"),
+            ("add = \"allow\"", "add = \"missing\"", "add"),
+            ("remove = \"allow\"", "remove = \"save\"", "remove"),
+            ("setting = \"white_list\"", "setting = \"motd\"", "setting"),
+        ] {
+            let err = parse_module_toml(&toml.replacen(good, bad, 1)).unwrap_err().to_string();
+            assert!(err.contains("lists") && err.contains(why), "{why}: {err}");
+        }
+        let twice = format!("{toml}\n[[lists]]\nid = \"whitelist\"\nadd = \"allow\"\nremove = \"allow\"\n");
+        assert!(parse_module_toml(&twice).unwrap_err().to_string().contains("duplicate"));
+        // 스키마 이전 모듈의 잘못된 목록은 켜지 않는다
+        let legacy = toml.replacen("schema_version = 1\n", "", 1).replacen("add = \"allow\"", "add = \"missing\"", 1);
+        assert!(parse_module_toml(&legacy).unwrap().lists.is_empty());
     }
 
     #[test]

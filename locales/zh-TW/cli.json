@@ -1014,6 +1014,7 @@
       "config.paths": "Saba-chan 存放資料、模組和擴充的位置，以及預設資料夾",
       "config.move": "把模組或擴充移到其他資料夾。已安裝的檔案會一起移動；必須先停止伺服器",
       "server.players": "目前在線的人",
+      "server.lists": "遊戲保存的玩家名單（可加入的人、管理員、封鎖）",
       "server.address": "朋友連線用的位址（IP:連接埠）",
       "server.port-check": "檢查朋友能否從外部連線到此伺服器（連接埠轉發）",
       "server.rcon": "依伺服器接收指令的方式（主控台，沒有則用 RCON）送出一行並查看回覆",
@@ -1911,6 +1912,12 @@
   "players": {
     "title": "{{server}}：{{count}} 人在線",
     "none": "沒有人在線。"
+  },
+  "lists": {
+    "title": "{{list}}：{{count}} 人",
+    "none": "還沒有人。",
+    "unsupported": "這個伺服器的遊戲不提供玩家名單。",
+    "edit": "加入：{{add}} <名字>   移除：{{remove}} <名字>"
   },
   "log": {
     "none": "還沒有已儲存的記錄。伺服器執行一次後就會有。",

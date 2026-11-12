@@ -397,6 +397,9 @@ pub struct ExtensionInfo {
     /// `[[agreements]]` 켜기 전에 동의할 약관 (이름은 모듈 locales `agreements.<id>`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agreements: Vec<crate::supervisor::module_loader::ModuleAgreement>,
+    /// `[[lists]]` 플레이어 목록 선언 (있으면 클라이언트가 목록 화면을 보인다. 이름과 지금 명단은 `GET /api/instance/:id/lists`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lists: Vec<crate::supervisor::module_loader::ModuleList>,
     /// 모듈이 `functions`로 밝힌 lifecycle 함수 (MK1). null이면 모름: 클라이언트는 아무 기능도 숨기지 않는다
     #[serde(default)]
     pub functions: Option<Vec<String>>,
@@ -892,6 +895,7 @@ impl IPCServer {
             .route("/api/instance/{id}/settings/live", get(handlers::managed::read_live_settings_handler))
             .route("/api/instance/{id}/server/reset", get(handlers::managed::reset_preview_handler).post(handlers::managed::reset_server_handler))
             .route("/api/instance/{id}/agreements", post(handlers::managed::accept_agreements_handler))
+            .route("/api/instance/{id}/lists", get(handlers::managed::lists_handler))
             .route("/api/instance/{id}/diagnose", post(handlers::managed::diagnose_handler))
             .route("/api/instance/{id}/port-check", get(handlers::port_check::last).post(handlers::port_check::check))
             .route("/api/instance/{id}/address", get(handlers::port_check::address))
@@ -1322,6 +1326,7 @@ mod tests {
             presets: Vec::new(),
             queries: Vec::new(),
             agreements: Vec::new(),
+            lists: Vec::new(),
             functions: None,
             commands: Some(crate::supervisor::module_loader::ModuleCommands {
                 fields: vec![
@@ -1386,6 +1391,7 @@ mod tests {
             presets: Vec::new(),
             queries: Vec::new(),
             agreements: Vec::new(),
+            lists: Vec::new(),
             functions: None,
             commands: None,
         };
@@ -1431,6 +1437,7 @@ mod tests {
                     presets: Vec::new(),
                     queries: Vec::new(),
                     agreements: Vec::new(),
+                    lists: Vec::new(),
                     functions: None,
                     commands: Some(crate::supervisor::module_loader::ModuleCommands {
                         fields: vec![

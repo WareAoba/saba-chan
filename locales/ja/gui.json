@@ -874,6 +874,7 @@
     "status_missing": "モジュールなし",
     "tab_console": "コンソール",
     "tab_commands": "コマンド",
+    "tab_players": "プレイヤー",
     "tab_settings": "設定",
     "tab_saba": "サバちゃん",
     "tab_info": "情報",
@@ -2298,6 +2299,25 @@
     "add": "追加",
     "unsupported": "このサーバーは接続を読めないため、自動キックを使えません。",
     "save_failed": "自動キック名簿を保存できませんでした: {{error}}"
+  },
+  "players": {
+    "title": "プレイヤーリスト",
+    "desc": "名前を追加・削除すると、起動中のサーバーにすぐ反映されます。",
+    "desc_offline": "現在のリストです。サーバーの起動中に名前を追加・削除できます。",
+    "kinds": "リストの種類",
+    "use_list": "{{list}}を使う",
+    "name_placeholder": "プレイヤー名",
+    "optional": "{{label}}(任意)",
+    "add": "追加",
+    "remove_named": "{{name}}をリストから外す",
+    "added_on": "{{date}}に追加",
+    "no_reason": "理由なし",
+    "online": "接続中",
+    "empty": "まだ誰もいません。",
+    "load_failed": "リストを読み込めませんでした: {{error}}",
+    "failed": "変更できませんでした: {{error}}",
+    "setting_failed": "設定を保存できませんでした: {{error}}",
+    "restart_to_apply": "サーバーを再起動すると反映されます。"
   },
   "controllers": {
     "desc": "この名簿にいる人はこのサーバーの起動・停止とすべてのコマンドができます。Discordのレベルは見ません。",
