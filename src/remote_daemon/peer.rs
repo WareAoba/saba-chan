@@ -5,7 +5,8 @@
 //!
 //! 직접 붙지 못하거나 주소가 없는 PC(NAT 뒤)는 릴레이 터널로 붙는다 (T1, `tunnel.rs`)
 
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -78,8 +79,41 @@ pub fn error(status: StatusCode, code: &str) -> Response {
     (status, Json(json!({ "error": code, "error_code": code }))).into_response()
 }
 
-/// 직접 연결. 새 원격 데몬은 HTTP/2(ALPN `tls::DIRECT_H2`)로 받아 원격 PC마다 하나를 열어 두고 요청을 모두 싣는다(`DIRECT`).
-/// 이전 릴리스는 HTTP/1.1이라 요청마다 연결 하나를 쓰고, 답을 마친 것을 잠깐 남겨 다시 쓴다(`IDLE`)
+/// 붙는 쪽의 연결 상태: 원격 데몬마다의 직접 연결과 터널, 직접 붙기·닿기 실패 기록.
+/// `RemoteDaemon`이 하나 쥐고, 복제는 같은 상태를 가리킨다
+#[derive(Clone, Default)]
+pub struct Pool(Arc<State>);
+
+#[derive(Default)]
+struct State {
+    /// 원격 데몬에 직접 붙은 HTTP/1.1 연결 중 다시 쓸 수 있는 것
+    idle: Mutex<Idle>,
+    /// 원격 데몬(주소·포트·지문)마다 열어 둔 HTTP/2 직접 연결 하나
+    direct: h2::Connections<IdleKey, Direct>,
+    /// 지난번에 HTTP/1.1로 답한 원격 데몬(이전 릴리스): 연결을 같이 쓸 수 없으므로 여는 동안 다른 요청을 기다리게 하지 않는다
+    http1: Mutex<HashSet<IdleKey>>,
+    /// 직접 붙지 못한 주소 (`try_direct`)
+    direct_failed: Mutex<HashMap<IdleKey, DirectFailed>>,
+    /// 원격 데몬이 자리가 없다며 잇달아 끊은 횟수 (`FULL_LIMIT`)
+    full_streak: Mutex<HashMap<IdleKey, u32>>,
+    /// 닿지 않는 원격 PC: 릴레이·원격 PC마다 (같은 PC도 릴레이가 다르면 따로)
+    unreachable: Mutex<HashMap<(String, String), Unreachable>>,
+    tunnels: tunnel::Tunnels,
+}
+
+impl Pool {
+    /// 열어 둔 릴레이 터널 (원격 데몬을 잊으면 놓는다)
+    pub fn tunnels(&self) -> &tunnel::Tunnels {
+        &self.0.tunnels
+    }
+}
+
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 직접 연결. 새 원격 데몬은 HTTP/2(ALPN `tls::DIRECT_H2`)로 받아 원격 PC마다 하나를 열어 두고 요청을 모두 싣는다(`State::direct`).
+/// 이전 릴리스는 HTTP/1.1이라 요청마다 연결 하나를 쓰고, 답을 마친 것을 잠깐 남겨 다시 쓴다(`State::idle`)
 enum Conn {
     H1(H1Sender),
     H2(Direct),
@@ -142,29 +176,31 @@ async fn dial(endpoint: &Endpoint) -> std::io::Result<tokio::net::TcpStream> {
     Ok(tcp)
 }
 
-/// 지문을 고정해 원격 데몬에 붙는다
-async fn open(endpoint: &Endpoint) -> Result<Conn, NotOpened> {
-    use std::io::ErrorKind;
-    let connect = async {
-        let tcp = dial(endpoint).await.map_err(|_| NotOpened::Unreachable)?;
-        let mut tls_config = tls::pinned_client_config(&endpoint.cert_sha256).map_err(|_| NotOpened::Unreachable)?;
-        tls_config.alpn_protocols = vec![tls::DIRECT_H2.to_vec(), b"http/1.1".to_vec()];
-        let name = rustls::pki_types::ServerName::try_from(tls::SERVER_NAME).map_err(|_| NotOpened::Unreachable)?;
-        // 지문이 다르면 `InvalidData`, 상대가 그냥 끊으면 EOF·reset이다
-        let stream = tokio_rustls::TlsConnector::from(Arc::new(tls_config)).connect(name, tcp).await.map_err(|e| match e.kind() {
-            ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::BrokenPipe => NotOpened::Full,
-            _ => NotOpened::Unreachable,
-        })?;
-        let h2 = stream.get_ref().1.alpn_protocol() == Some(tls::DIRECT_H2);
-        mark_http1(endpoint, !h2);
-        if h2 {
-            return h2::handshake(stream).await.map(|s| Conn::H2(Direct::new(s))).ok_or(NotOpened::Unreachable);
-        }
-        let (send, conn) = hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream)).await.map_err(|_| NotOpened::Unreachable)?;
-        tokio::spawn(conn.with_upgrades());
-        Ok(Conn::H1(send))
-    };
-    tokio::time::timeout(CONNECT_TIMEOUT, connect).await.unwrap_or(Err(NotOpened::Unreachable))
+impl Pool {
+    /// 지문을 고정해 원격 데몬에 붙는다
+    async fn open(&self, endpoint: &Endpoint) -> Result<Conn, NotOpened> {
+        use std::io::ErrorKind;
+        let connect = async {
+            let tcp = dial(endpoint).await.map_err(|_| NotOpened::Unreachable)?;
+            let mut tls_config = tls::pinned_client_config(&endpoint.cert_sha256).map_err(|_| NotOpened::Unreachable)?;
+            tls_config.alpn_protocols = vec![tls::DIRECT_H2.to_vec(), b"http/1.1".to_vec()];
+            let name = rustls::pki_types::ServerName::try_from(tls::SERVER_NAME).map_err(|_| NotOpened::Unreachable)?;
+            // 지문이 다르면 `InvalidData`, 상대가 그냥 끊으면 EOF·reset이다
+            let stream = tokio_rustls::TlsConnector::from(Arc::new(tls_config)).connect(name, tcp).await.map_err(|e| match e.kind() {
+                ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::BrokenPipe => NotOpened::Full,
+                _ => NotOpened::Unreachable,
+            })?;
+            let h2 = stream.get_ref().1.alpn_protocol() == Some(tls::DIRECT_H2);
+            self.mark_http1(endpoint, !h2);
+            if h2 {
+                return h2::handshake(stream).await.map(|s| Conn::H2(Direct::new(s))).ok_or(NotOpened::Unreachable);
+            }
+            let (send, conn) = hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream)).await.map_err(|_| NotOpened::Unreachable)?;
+            tokio::spawn(conn.with_upgrades());
+            Ok(Conn::H1(send))
+        };
+        tokio::time::timeout(CONNECT_TIMEOUT, connect).await.unwrap_or(Err(NotOpened::Unreachable))
+    }
 }
 
 enum Sent {
@@ -184,51 +220,47 @@ const REUSED_ANSWER_TIMEOUT: Duration = if cfg!(test) { Duration::from_millis(30
 const IDLE_PER_ENDPOINT: usize = 4;
 
 type IdleKey = (String, u16, String);
-/// 원격 데몬에 직접 붙은 HTTP/1.1 연결 중 다시 쓸 수 있는 것: (연결, 마지막 요청의 답을 받은 시각)
-type Idle = std::collections::HashMap<IdleKey, Vec<(H1Sender, std::time::Instant)>>;
-static IDLE: std::sync::LazyLock<std::sync::Mutex<Idle>> =
-    std::sync::LazyLock::new(Default::default);
-/// 원격 데몬(주소·포트·지문)마다 열어 둔 HTTP/2 직접 연결 하나
-static DIRECT: h2::Connections<IdleKey, Direct> = h2::Connections::new();
-/// 지난번에 HTTP/1.1로 답한 원격 데몬(이전 릴리스): 연결을 같이 쓸 수 없으므로 여는 동안 다른 요청을 기다리게 하지 않는다
-static HTTP1: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<IdleKey>>> = std::sync::LazyLock::new(Default::default);
-
-fn mark_http1(endpoint: &Endpoint, http1: bool) {
-    let mut earlier = HTTP1.lock().unwrap_or_else(|e| e.into_inner());
-    if http1 {
-        earlier.insert(idle_key(endpoint));
-    } else {
-        earlier.remove(&idle_key(endpoint));
-    }
-}
+/// HTTP/1.1 직접 연결 중 다시 쓸 수 있는 것: (연결, 마지막 요청의 답을 받은 시각)
+type Idle = HashMap<IdleKey, Vec<(H1Sender, std::time::Instant)>>;
 
 fn idle_key(endpoint: &Endpoint) -> IdleKey {
     (endpoint.address.clone(), endpoint.port, endpoint.cert_sha256.clone())
 }
 
-/// 비어 있고 아직 열려 있는, 최근에 쓴 연결 하나. 답 본문을 아직 받는 연결은 준비되지 않아 건너뛴다
-fn take_idle(endpoint: &Endpoint) -> Option<H1Sender> {
-    let mut idle = IDLE.lock().unwrap_or_else(|e| e.into_inner());
-    let list = idle.get_mut(&idle_key(endpoint))?;
-    list.retain(|(s, at)| !s.is_closed() && at.elapsed() < REUSE_WINDOW);
-    let i = list.iter().position(|(s, _)| s.is_ready())?;
-    Some(list.swap_remove(i).0)
-}
-
-fn keep_idle(endpoint: &Endpoint, sender: H1Sender) {
-    let mut idle = IDLE.lock().unwrap_or_else(|e| e.into_inner());
-    let list = idle.entry(idle_key(endpoint)).or_default();
-    list.retain(|(s, at)| !s.is_closed() && at.elapsed() < REUSE_WINDOW);
-    if list.len() < IDLE_PER_ENDPOINT {
-        list.push((sender, std::time::Instant::now()));
+impl Pool {
+    fn mark_http1(&self, endpoint: &Endpoint, http1: bool) {
+        let mut earlier = lock(&self.0.http1);
+        if http1 {
+            earlier.insert(idle_key(endpoint));
+        } else {
+            earlier.remove(&idle_key(endpoint));
+        }
     }
-}
 
-/// 뒤에서 연 직접 연결을 다음 요청이 쓰게 둔다
-async fn keep(endpoint: &Endpoint, conn: Conn) {
-    match conn {
-        Conn::H1(sender) => keep_idle(endpoint, sender),
-        Conn::H2(direct) => *DIRECT.hold(idle_key(endpoint)).await = Some(direct),
+    /// 비어 있고 아직 열려 있는, 최근에 쓴 연결 하나. 답 본문을 아직 받는 연결은 준비되지 않아 건너뛴다
+    fn take_idle(&self, endpoint: &Endpoint) -> Option<H1Sender> {
+        let mut idle = lock(&self.0.idle);
+        let list = idle.get_mut(&idle_key(endpoint))?;
+        list.retain(|(s, at)| !s.is_closed() && at.elapsed() < REUSE_WINDOW);
+        let i = list.iter().position(|(s, _)| s.is_ready())?;
+        Some(list.swap_remove(i).0)
+    }
+
+    fn keep_idle(&self, endpoint: &Endpoint, sender: H1Sender) {
+        let mut idle = lock(&self.0.idle);
+        let list = idle.entry(idle_key(endpoint)).or_default();
+        list.retain(|(s, at)| !s.is_closed() && at.elapsed() < REUSE_WINDOW);
+        if list.len() < IDLE_PER_ENDPOINT {
+            list.push((sender, std::time::Instant::now()));
+        }
+    }
+
+    /// 뒤에서 연 직접 연결을 다음 요청이 쓰게 둔다
+    async fn keep(&self, endpoint: &Endpoint, conn: Conn) {
+        match conn {
+            Conn::H1(sender) => self.keep_idle(endpoint, sender),
+            Conn::H2(direct) => *self.0.direct.hold(idle_key(endpoint)).await = Some(direct),
+        }
     }
 }
 
@@ -241,94 +273,96 @@ enum Reused {
     Lost,
 }
 
-/// 남겨 둔 연결로 보내 본다. 읽기 요청(GET·HEAD)만: 원격 데몬이 막 다시 켜져 연결이 끊긴 것을 보내고 나서야 알면
-/// 원격 데몬이 받았는지 모르므로, 다시 보내도 되는 요청만 싣는다
-async fn send_reused(endpoint: &Endpoint, req: Request<Body>) -> Reused {
-    if !matches!(*req.method(), Method::GET | Method::HEAD) {
-        return Reused::Unsent(req);
-    }
-    let Some(mut sender) = take_idle(endpoint) else { return Reused::Unsent(req) };
-    // 그새 원격 PC의 망이 조용히 끊겼으면 OS가 포기할 때까지 기다리게 된다: 머리는 짧게만 기다리고 새 연결로 다시 보낸다
-    match tokio::time::timeout(REUSED_ANSWER_TIMEOUT, sender.try_send_request(req)).await {
-        Ok(Ok(res)) => {
-            keep_idle(endpoint, sender);
-            Reused::Sent(Sent::Answered(res.map(Body::new)))
+impl Pool {
+    /// 남겨 둔 연결로 보내 본다. 읽기 요청(GET·HEAD)만: 원격 데몬이 막 다시 켜져 연결이 끊긴 것을 보내고 나서야 알면
+    /// 원격 데몬이 받았는지 모르므로, 다시 보내도 되는 요청만 싣는다
+    async fn send_reused(&self, endpoint: &Endpoint, req: Request<Body>) -> Reused {
+        if !matches!(*req.method(), Method::GET | Method::HEAD) {
+            return Reused::Unsent(req);
         }
-        Ok(Err(mut e)) => e.take_message().map_or(Reused::Lost, Reused::Unsent),
-        Err(_) => Reused::Lost,
+        let Some(mut sender) = self.take_idle(endpoint) else { return Reused::Unsent(req) };
+        // 그새 원격 PC의 망이 조용히 끊겼으면 OS가 포기할 때까지 기다리게 된다: 머리는 짧게만 기다리고 새 연결로 다시 보낸다
+        match tokio::time::timeout(REUSED_ANSWER_TIMEOUT, sender.try_send_request(req)).await {
+            Ok(Ok(res)) => {
+                self.keep_idle(endpoint, sender);
+                Reused::Sent(Sent::Answered(res.map(Body::new)))
+            }
+            Ok(Err(mut e)) => e.take_message().map_or(Reused::Lost, Reused::Unsent),
+            Err(_) => Reused::Lost,
+        }
     }
-}
 
-/// `request`는 남겨 둔 연결이 끊겨 있었을 때 한 번 더 만든다. 직접 붙지 못했으면 그렇게 적고 `Sent::NotConnected`.
-/// 원격 데몬이 자리가 없어 끊었거나 터널이 먼저 열렸으면 `Err`: 요청은 나가지 않았다
-async fn send(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Result<Sent, NotOpened> {
-    let Some(req) = request() else { return Ok(Sent::NotConnected) };
-    let key = idle_key(endpoint);
-    // 열어 둔 HTTP/2 연결이 있으면 싣는다. 그새 끊겼으면 놓고 새로 연다: 나가지 못한 요청은 그대로, 나간 뒤 끊긴 것은
-    // 원격 데몬이 받았는지 모르므로 다시 보내도 되는 읽기(GET·HEAD)만 다시 만든다 (원격 데몬이 막 다시 켜진 것)
-    let read = matches!(*req.method(), Method::GET | Method::HEAD);
-    let shared = Direct::live(&DIRECT.hold(key.clone()).await);
-    let req = match shared {
-        Some(direct) => match direct.send(req).await {
-            Ok(sent) => return Ok(sent),
-            Err(unsent) => {
-                *DIRECT.hold(key.clone()).await = None;
-                match unsent.or_else(|| read.then(request).flatten()) {
-                    Some(req) => req,
-                    None => return Ok(Sent::NoAnswer),
+    /// `request`는 남겨 둔 연결이 끊겨 있었을 때 한 번 더 만든다. 직접 붙지 못했으면 그렇게 적고 `Sent::NotConnected`.
+    /// 원격 데몬이 자리가 없어 끊었거나 터널이 먼저 열렸으면 `Err`: 요청은 나가지 않았다
+    async fn send(&self, relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Result<Sent, NotOpened> {
+        let Some(req) = request() else { return Ok(Sent::NotConnected) };
+        let key = idle_key(endpoint);
+        // 열어 둔 HTTP/2 연결이 있으면 싣는다. 그새 끊겼으면 놓고 새로 연다: 나가지 못한 요청은 그대로, 나간 뒤 끊긴 것은
+        // 원격 데몬이 받았는지 모르므로 다시 보내도 되는 읽기(GET·HEAD)만 다시 만든다 (원격 데몬이 막 다시 켜진 것)
+        let read = matches!(*req.method(), Method::GET | Method::HEAD);
+        let shared = Direct::live(&self.0.direct.hold(key.clone()).await);
+        let req = match shared {
+            Some(direct) => match direct.send(req).await {
+                Ok(sent) => return Ok(sent),
+                Err(unsent) => {
+                    *self.0.direct.hold(key.clone()).await = None;
+                    match unsent.or_else(|| read.then(request).flatten()) {
+                        Some(req) => req,
+                        None => return Ok(Sent::NoAnswer),
+                    }
                 }
-            }
-        },
-        None => req,
-    };
-    // 이전 릴리스(HTTP/1.1)면 방금 쓴 연결이 있을 때 TCP·TLS를 새로 열지 않는다
-    let req = match send_reused(endpoint, req).await {
-        Reused::Sent(sent) => return Ok(sent),
-        Reused::Unsent(unsent) => unsent,
-        Reused::Lost => match request() {
-            Some(req) => req,
-            None => return Ok(Sent::NotConnected),
-        },
-    };
-    // 여는 동안 같은 PC의 다른 요청은 기다렸다가 HTTP/2 연결이면 같이 쓴다 (한꺼번에 온 요청이 연결을 하나씩 열지 않게)
-    let held = DIRECT.hold(key.clone()).await;
-    if let Some(direct) = Direct::live(&held) {
-        drop(held);
-        return Ok(sent_h2(direct.send(req).await));
-    }
-    if direct_failed().contains_key(&key) {
-        return Err(NotOpened::Slow);
-    }
-    let earlier = HTTP1.lock().unwrap_or_else(|e| e.into_inner()).contains(&key);
-    let mut held = (!earlier).then_some(held);
-    let conn = match open_or_tunnel(relay, host_id, endpoint).await {
-        Ok(conn) => conn,
-        Err(NotOpened::Unreachable) => {
-            direct_failed().insert(key, DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
-            return Ok(Sent::NotConnected);
-        }
-        Err(other) => return Err(other),
-    };
-    let mut sender = match conn {
-        Conn::H2(direct) => {
-            match held.as_mut() {
-                Some(held) => **held = Some(direct.clone()),
-                // 그새 새 릴리스로 바뀌었다
-                None => *DIRECT.hold(key).await = Some(direct.clone()),
-            }
+            },
+            None => req,
+        };
+        // 이전 릴리스(HTTP/1.1)면 방금 쓴 연결이 있을 때 TCP·TLS를 새로 열지 않는다
+        let req = match self.send_reused(endpoint, req).await {
+            Reused::Sent(sent) => return Ok(sent),
+            Reused::Unsent(unsent) => unsent,
+            Reused::Lost => match request() {
+                Some(req) => req,
+                None => return Ok(Sent::NotConnected),
+            },
+        };
+        // 여는 동안 같은 PC의 다른 요청은 기다렸다가 HTTP/2 연결이면 같이 쓴다 (한꺼번에 온 요청이 연결을 하나씩 열지 않게)
+        let held = self.0.direct.hold(key.clone()).await;
+        if let Some(direct) = Direct::live(&held) {
             drop(held);
             return Ok(sent_h2(direct.send(req).await));
         }
-        Conn::H1(sender) => sender,
-    };
-    drop(held);
-    Ok(match tokio::time::timeout(RESPONSE_TIMEOUT, sender.send_request(req)).await {
-        Ok(Ok(res)) => {
-            keep_idle(endpoint, sender);
-            Sent::Answered(res.map(Body::new))
+        if self.direct_failed().contains_key(&key) {
+            return Err(NotOpened::Slow);
         }
-        _ => Sent::NoAnswer,
-    })
+        let earlier = lock(&self.0.http1).contains(&key);
+        let mut held = (!earlier).then_some(held);
+        let conn = match self.open_or_tunnel(relay, host_id, endpoint).await {
+            Ok(conn) => conn,
+            Err(NotOpened::Unreachable) => {
+                self.direct_failed().insert(key, DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
+                return Ok(Sent::NotConnected);
+            }
+            Err(other) => return Err(other),
+        };
+        let mut sender = match conn {
+            Conn::H2(direct) => {
+                match held.as_mut() {
+                    Some(held) => **held = Some(direct.clone()),
+                    // 그새 새 릴리스로 바뀌었다
+                    None => *self.0.direct.hold(key).await = Some(direct.clone()),
+                }
+                drop(held);
+                return Ok(sent_h2(direct.send(req).await));
+            }
+            Conn::H1(sender) => sender,
+        };
+        drop(held);
+        Ok(match tokio::time::timeout(RESPONSE_TIMEOUT, sender.send_request(req)).await {
+            Ok(Ok(res)) => {
+                self.keep_idle(endpoint, sender);
+                Sent::Answered(res.map(Body::new))
+            }
+            _ => Sent::NoAnswer,
+        })
+    }
 }
 
 /// HTTP/2 연결에 싣는다. 연결이 끊겼으면 `Err`: 요청이 나가지 못하고 돌아왔으면 그 요청(새 연결로 다시 보내도 된다),
@@ -358,58 +392,61 @@ fn sent_h2(sent: Result<Sent, Option<Request<Body>>>) -> Sent {
 /// (말없이 버려지는 주소에 직접 연결이 포기할 때(`CONNECT_TIMEOUT`)까지 요청을 붙잡지 않게)
 const DIRECT_HEAD_START: Duration = Duration::from_millis(1500);
 
-/// 직접 연결을 먼저 열어 보고, `DIRECT_HEAD_START` 안에 안 되면 터널도 함께 연다.
-/// 터널이 먼저 열리면 `Slow`: 직접 연결이 못 붙은 것으로 적고(다음 요청부터 터널로), 직접 연결은 뒤에서 마저 기다린다.
-/// 열리면 남겨 두고 적은 것을 지운다 (다음 요청은 직접)
-async fn open_or_tunnel(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint) -> Result<Conn, NotOpened> {
-    let ep = endpoint.clone();
-    let mut direct = Box::pin(async move { open(&ep).await });
-    if let Ok(first) = tokio::time::timeout(DIRECT_HEAD_START, &mut direct).await {
-        return first;
-    }
-    let Some(relay) = relay else { return direct.await };
-    let tunnel = tunnel::sender(relay, host_id, &endpoint.cert_sha256);
-    tokio::pin!(tunnel);
-    tokio::select! {
-        d = &mut direct => d,
-        t = &mut tunnel => {
-            if t.is_none() {
-                return direct.await;
-            }
-            direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: true });
-            let endpoint = endpoint.clone();
-            tokio::spawn(async move {
-                match direct.await {
-                    Ok(conn) => {
-                        keep(&endpoint, conn).await;
-                        direct_failed().remove(&idle_key(&endpoint));
-                    }
-                    // 닿았지만 자리가 없었다: 주소는 맞다
-                    Err(NotOpened::Full) => {
-                        direct_failed().remove(&idle_key(&endpoint));
-                    }
-                    Err(_) => {
-                        direct_failed().insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
-                    }
+impl Pool {
+    /// 직접 연결을 먼저 열어 보고, `DIRECT_HEAD_START` 안에 안 되면 터널도 함께 연다.
+    /// 터널이 먼저 열리면 `Slow`: 직접 연결이 못 붙은 것으로 적고(다음 요청부터 터널로), 직접 연결은 뒤에서 마저 기다린다.
+    /// 열리면 남겨 두고 적은 것을 지운다 (다음 요청은 직접)
+    async fn open_or_tunnel(&self, relay: Option<&Target>, host_id: &str, endpoint: &Endpoint) -> Result<Conn, NotOpened> {
+        let ep = endpoint.clone();
+        let pool = self.clone();
+        let mut direct = Box::pin(async move { pool.open(&ep).await });
+        if let Ok(first) = tokio::time::timeout(DIRECT_HEAD_START, &mut direct).await {
+            return first;
+        }
+        let Some(relay) = relay else { return direct.await };
+        let tunnel = self.0.tunnels.sender(relay, host_id, &endpoint.cert_sha256);
+        tokio::pin!(tunnel);
+        tokio::select! {
+            d = &mut direct => d,
+            t = &mut tunnel => {
+                if t.is_none() {
+                    return direct.await;
                 }
-            });
-            Err(NotOpened::Slow)
+                self.direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: true });
+                let (pool, endpoint) = (self.clone(), endpoint.clone());
+                tokio::spawn(async move {
+                    match direct.await {
+                        Ok(conn) => {
+                            pool.keep(&endpoint, conn).await;
+                            pool.direct_failed().remove(&idle_key(&endpoint));
+                        }
+                        // 닿았지만 자리가 없었다: 주소는 맞다
+                        Err(NotOpened::Full) => {
+                            pool.direct_failed().remove(&idle_key(&endpoint));
+                        }
+                        Err(_) => {
+                            pool.direct_failed().insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
+                        }
+                    }
+                });
+                Err(NotOpened::Slow)
+            }
         }
     }
-}
 
-async fn through_tunnel(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, mut req: Request<Body>) -> Sent {
-    let Some(relay) = relay else { return Sent::NotConnected };
-    // 열어 둔 터널이 그새 끊겼으면 요청은 나가지 않고 돌아온다: 새 터널로 한 번 더 보낸다
-    for _ in 0..2 {
-        let Some(sender) = tunnel::sender(relay, host_id, &endpoint.cert_sha256).await else { return Sent::NotConnected };
-        match send_h2(sender, req).await {
-            Ok(sent) => return sent,
-            Err(Some(unsent)) => req = unsent,
-            Err(None) => return Sent::NoAnswer,
+    async fn through_tunnel(&self, relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, mut req: Request<Body>) -> Sent {
+        let Some(relay) = relay else { return Sent::NotConnected };
+        // 열어 둔 터널이 그새 끊겼으면 요청은 나가지 않고 돌아온다: 새 터널로 한 번 더 보낸다
+        for _ in 0..2 {
+            let Some(sender) = self.0.tunnels.sender(relay, host_id, &endpoint.cert_sha256).await else { return Sent::NotConnected };
+            match send_h2(sender, req).await {
+                Ok(sent) => return sent,
+                Err(Some(unsent)) => req = unsent,
+                Err(None) => return Sent::NoAnswer,
+            }
         }
+        Sent::NotConnected
     }
-    Sent::NotConnected
 }
 
 /// 직접 붙지 못한 주소를 다시 직접 붙어 보기까지 터널만 쓰는 시간. 그동안 요청은 기다리지 않고 터널로 가고,
@@ -425,136 +462,135 @@ struct DirectFailed {
     wait: Duration,
     probing: bool,
 }
-static DIRECT_FAILED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<IdleKey, DirectFailed>>> =
-    std::sync::LazyLock::new(Default::default);
-
-fn direct_failed() -> std::sync::MutexGuard<'static, std::collections::HashMap<IdleKey, DirectFailed>> {
-    DIRECT_FAILED.lock().unwrap_or_else(|e| e.into_inner())
-}
 
 /// 원격 데몬이 자리가 없다며 끊은 것을 이만큼 잇달아 보면 닿지 못하는 주소로 적는다: 그 주소에서 원격 데몬이 아닌 것이
 /// 받고 끊는 것일 수 있다 (포트 포워딩이 다른 곳을 가리킴). 적지 않으면 요청마다 직접 붙어 보고 PC 카드는 계속 `direct`다
 const FULL_LIMIT: u32 = 3;
-static FULL_STREAK: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<IdleKey, u32>>> = std::sync::LazyLock::new(Default::default);
 
-fn full_streak() -> std::sync::MutexGuard<'static, std::collections::HashMap<IdleKey, u32>> {
-    FULL_STREAK.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-/// 이 주소로 지금 직접 붙어 봐도 되는가. 얼마 전에 못 붙었으면 아니다. 그때로부터 기다릴 시간이 지났으면
-/// 뒤에서 한 번 붙어 보고(되면 다음 요청부터 직접) 이번 요청은 터널로 보낸다
-fn try_direct(endpoint: &Endpoint) -> bool {
-    let key = idle_key(endpoint);
-    let mut failed = direct_failed();
-    let Some(f) = failed.get_mut(&key) else { return true };
-    if !f.probing && f.at.elapsed() >= f.wait {
-        f.probing = true;
-        let wait = (f.wait * 2).min(DIRECT_RETRY_MAX);
-        let endpoint = endpoint.clone();
-        tokio::spawn(async move {
-            let ok = match open(&endpoint).await {
-                Ok(conn) => {
-                    keep(&endpoint, conn).await;
-                    true
-                }
-                Err(_) => false,
-            };
-            let mut failed = direct_failed();
-            if ok {
-                failed.remove(&idle_key(&endpoint));
-            } else {
-                failed.insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), wait, probing: false });
-            }
-        });
+impl Pool {
+    fn direct_failed(&self) -> MutexGuard<'_, HashMap<IdleKey, DirectFailed>> {
+        lock(&self.0.direct_failed)
     }
-    false
-}
 
-/// 저장한 원격 데몬에 지금 붙는 길 (앱의 PC 카드): 주소가 있고 얼마 전 직접 붙기에 실패하지 않았으면 `direct`, 아니면 `relay`
-pub fn route_of(d: &Daemon) -> &'static str {
-    let endpoint = endpoint_of(d);
-    if endpoint.address.is_empty() || direct_failed().contains_key(&idle_key(&endpoint)) { "relay" } else { "direct" }
-}
+    fn full_streak(&self) -> MutexGuard<'_, HashMap<IdleKey, u32>> {
+        lock(&self.0.full_streak)
+    }
 
-/// 직접 붙어 보고, 주소가 없거나 붙지 못하면 릴레이 터널로 (사용자 결정 2026-10-25: 릴레이는 연결될 때까지만 거든다).
-/// 직접 답을 받으면 열어 둔 터널을 놓는다 (그 위에서 받던 이벤트 스트림은 끝날 때까지 간다). 못 붙은 주소는 한동안 터널로만 보낸다(`try_direct`).
-/// 원격 데몬이 자리가 없어 끊은 것은 그 요청만 터널로 보내고 주소는 그대로 믿는다 (잇달아 `FULL_LIMIT`번이면 못 붙은 주소로 적는다). `request`는 보낼 때마다 새로 만든다
-async fn send_to(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Sent {
-    if !endpoint.address.is_empty() && try_direct(endpoint) {
-        match send(relay, host_id, endpoint, request).await {
-            // 직접 붙지 못했다 (`send`가 적었다)
-            Ok(Sent::NotConnected) => {}
-            Ok(sent) => {
-                if matches!(sent, Sent::Answered(_)) {
-                    full_streak().remove(&idle_key(endpoint));
-                    if let Some(relay) = relay {
-                        tunnel::release(relay, host_id);
+    /// 이 주소로 지금 직접 붙어 봐도 되는가. 얼마 전에 못 붙었으면 아니다. 그때로부터 기다릴 시간이 지났으면
+    /// 뒤에서 한 번 붙어 보고(되면 다음 요청부터 직접) 이번 요청은 터널로 보낸다
+    fn try_direct(&self, endpoint: &Endpoint) -> bool {
+        let key = idle_key(endpoint);
+        let mut failed = self.direct_failed();
+        let Some(f) = failed.get_mut(&key) else { return true };
+        if !f.probing && f.at.elapsed() >= f.wait {
+            f.probing = true;
+            let wait = (f.wait * 2).min(DIRECT_RETRY_MAX);
+            let (pool, endpoint) = (self.clone(), endpoint.clone());
+            tokio::spawn(async move {
+                let ok = match pool.open(&endpoint).await {
+                    Ok(conn) => {
+                        pool.keep(&endpoint, conn).await;
+                        true
                     }
+                    Err(_) => false,
+                };
+                let mut failed = pool.direct_failed();
+                if ok {
+                    failed.remove(&idle_key(&endpoint));
+                } else {
+                    failed.insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), wait, probing: false });
                 }
-                return sent;
-            }
-            // 터널이 먼저 열렸다: 이번 요청은 터널로 (직접 연결은 뒤에서 마저 열려 보고, 열리면 다음 요청부터 쓴다)
-            Err(NotOpened::Slow) => {}
-            Err(_) => {
-                let mut streak = full_streak();
-                let seen = streak.entry(idle_key(endpoint)).or_default();
-                *seen += 1;
-                if *seen >= FULL_LIMIT {
-                    streak.remove(&idle_key(endpoint));
-                    direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
+            });
+        }
+        false
+    }
+
+    /// 저장한 원격 데몬에 지금 붙는 길 (앱의 PC 카드): 주소가 있고 얼마 전 직접 붙기에 실패하지 않았으면 `direct`, 아니면 `relay`
+    pub fn route_of(&self, d: &Daemon) -> &'static str {
+        let endpoint = endpoint_of(d);
+        if endpoint.address.is_empty() || self.direct_failed().contains_key(&idle_key(&endpoint)) { "relay" } else { "direct" }
+    }
+
+    /// 직접 붙어 보고, 주소가 없거나 붙지 못하면 릴레이 터널로 (사용자 결정 2026-10-25: 릴레이는 연결될 때까지만 거든다).
+    /// 직접 답을 받으면 열어 둔 터널을 놓는다 (그 위에서 받던 이벤트 스트림은 끝날 때까지 간다). 못 붙은 주소는 한동안 터널로만 보낸다(`try_direct`).
+    /// 원격 데몬이 자리가 없어 끊은 것은 그 요청만 터널로 보내고 주소는 그대로 믿는다 (잇달아 `FULL_LIMIT`번이면 못 붙은 주소로 적는다). `request`는 보낼 때마다 새로 만든다
+    async fn send_to(&self, relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Sent {
+        if !endpoint.address.is_empty() && self.try_direct(endpoint) {
+            match self.send(relay, host_id, endpoint, request).await {
+                // 직접 붙지 못했다 (`send`가 적었다)
+                Ok(Sent::NotConnected) => {}
+                Ok(sent) => {
+                    if matches!(sent, Sent::Answered(_)) {
+                        self.full_streak().remove(&idle_key(endpoint));
+                        if let Some(relay) = relay {
+                            self.0.tunnels.release(relay, host_id);
+                        }
+                    }
+                    return sent;
+                }
+                // 터널이 먼저 열렸다: 이번 요청은 터널로 (직접 연결은 뒤에서 마저 열려 보고, 열리면 다음 요청부터 쓴다)
+                Err(NotOpened::Slow) => {}
+                Err(_) => {
+                    let mut streak = self.full_streak();
+                    let seen = streak.entry(idle_key(endpoint)).or_default();
+                    *seen += 1;
+                    if *seen >= FULL_LIMIT {
+                        streak.remove(&idle_key(endpoint));
+                        self.direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
+                    }
                 }
             }
         }
+        let Some(req) = request() else { return Sent::NotConnected };
+        self.through_tunnel(relay, host_id, endpoint, req).await
     }
-    let Some(req) = request() else { return Sent::NotConnected };
-    through_tunnel(relay, host_id, endpoint, req).await
-}
 
-/// `host_id` 원격 데몬과 짝을 맺고 저장한다
-pub async fn connect(file: &ConfigFile, relay: Option<Target>, host_id: &str) -> Result<Daemon, ConnectError> {
-    let relay = relay.ok_or(ConnectError::RelayNotPaired)?;
-    let ticket = relay::ticket(&relay, host_id).await.map_err(|e| match e {
-        TicketFailure::NotFound => ConnectError::NotFound,
-        TicketFailure::NoEndpoint => ConnectError::NoEndpoint,
-        TicketFailure::Unreachable => ConnectError::RelayUnreachable,
-    })?;
-    let body = json!({ "ticketId": ticket.ticket_id, "secret": ticket.secret }).to_string();
-    let req = || {
-        Request::post("/remote/pair")
-            .header(header::HOST, tls::SERVER_NAME)
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(body.clone()))
+    /// `host_id` 원격 데몬과 짝을 맺고 저장한다
+    pub async fn connect(&self, file: &ConfigFile, relay: Option<Target>, host_id: &str) -> Result<Daemon, ConnectError> {
+        let relay = relay.ok_or(ConnectError::RelayNotPaired)?;
+        let ticket = relay::ticket(&relay, host_id).await.map_err(|e| match e {
+            TicketFailure::NotFound => ConnectError::NotFound,
+            TicketFailure::NoEndpoint => ConnectError::NoEndpoint,
+            TicketFailure::Unreachable => ConnectError::RelayUnreachable,
+        })?;
+        let body = json!({ "ticketId": ticket.ticket_id, "secret": ticket.secret }).to_string();
+        let req = || {
+            Request::post("/remote/pair")
+                .header(header::HOST, tls::SERVER_NAME)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.clone()))
+                .ok()
+        };
+        let Sent::Answered(res) = self.send_to(Some(&relay), host_id, &ticket.endpoint, &req).await else {
+            return Err(ConnectError::RemoteUnreachable);
+        };
+        if !res.status().is_success() {
+            return Err(if res.status() == StatusCode::UNAUTHORIZED { ConnectError::Rejected } else { ConnectError::RemoteUnreachable });
+        }
+        let raw = http_body_util::BodyExt::collect(http_body_util::Limited::new(res.into_body(), 64 * 1024))
+            .await
+            .map_err(|_| ConnectError::RemoteUnreachable)?
+            .to_bytes();
+        let token = serde_json::from_slice::<Value>(&raw)
             .ok()
-    };
-    let Sent::Answered(res) = send_to(Some(&relay), host_id, &ticket.endpoint, &req).await else {
-        return Err(ConnectError::RemoteUnreachable);
-    };
-    if !res.status().is_success() {
-        return Err(if res.status() == StatusCode::UNAUTHORIZED { ConnectError::Rejected } else { ConnectError::RemoteUnreachable });
+            .and_then(|v| v.get("token").and_then(Value::as_str).map(str::to_string))
+            .filter(|t| t.starts_with("sbr_"))
+            .ok_or(ConnectError::RemoteUnreachable)?;
+        let daemon = Daemon {
+            host_id: host_id.to_string(),
+            name: ticket.name,
+            owner_name: ticket.owner_name,
+            address: ticket.endpoint.address,
+            port: ticket.endpoint.port,
+            cert_sha256: ticket.endpoint.cert_sha256,
+            token,
+            paired_at: chrono::Utc::now().to_rfc3339(),
+        };
+        config::save_daemon_in(file, daemon.clone()).map_err(|_| ConnectError::SaveFailed)?;
+        self.note_reached(&relay, host_id);
+        tracing::info!("Paired with remote daemon {}", host_id);
+        Ok(daemon)
     }
-    let raw = http_body_util::BodyExt::collect(http_body_util::Limited::new(res.into_body(), 64 * 1024))
-        .await
-        .map_err(|_| ConnectError::RemoteUnreachable)?
-        .to_bytes();
-    let token = serde_json::from_slice::<Value>(&raw)
-        .ok()
-        .and_then(|v| v.get("token").and_then(Value::as_str).map(str::to_string))
-        .filter(|t| t.starts_with("sbr_"))
-        .ok_or(ConnectError::RemoteUnreachable)?;
-    let daemon = Daemon {
-        host_id: host_id.to_string(),
-        name: ticket.name,
-        owner_name: ticket.owner_name,
-        address: ticket.endpoint.address,
-        port: ticket.endpoint.port,
-        cert_sha256: ticket.endpoint.cert_sha256,
-        token,
-        paired_at: chrono::Utc::now().to_rfc3339(),
-    };
-    config::save_daemon_in(file, daemon.clone()).map_err(|_| ConnectError::SaveFailed)?;
-    note_reached(&relay, host_id);
-    tracing::info!("Paired with remote daemon {}", host_id);
-    Ok(daemon)
 }
 
 fn endpoint_of(d: &Daemon) -> Endpoint {
@@ -585,43 +621,45 @@ pub fn forward_path(rest: &str, query: Option<&str>) -> Option<String> {
     })
 }
 
-/// 저장한 원격 데몬 `host_id`에 `path`(쿼리 포함, `/api/...`)를 보낸다.
-/// `stop`(이 데몬 종료)이 취소되면 기다리던 답과 넘기던 스트림을 끝낸다.
-pub async fn forward(file: &ConfigFile, relay: Option<Target>, host_id: &str, path: &str, req: Request<Body>, stop: CancellationToken) -> Response {
-    tokio::select! {
-        _ = stop.cancelled() => error(StatusCode::SERVICE_UNAVAILABLE, "shutting_down"),
-        res = forward_once(file, relay, host_id, path, req) => {
-            let (head, body) = res.into_parts();
-            let body = body.into_data_stream().take_until(stop.cancelled_owned());
-            Response::from_parts(head, Body::from_stream(body))
+impl Pool {
+    /// 저장한 원격 데몬 `host_id`에 `path`(쿼리 포함, `/api/...`)를 보낸다.
+    /// `stop`(이 데몬 종료)이 취소되면 기다리던 답과 넘기던 스트림을 끝낸다.
+    pub async fn forward(&self, file: &ConfigFile, relay: Option<Target>, host_id: &str, path: &str, req: Request<Body>, stop: CancellationToken) -> Response {
+        tokio::select! {
+            _ = stop.cancelled() => error(StatusCode::SERVICE_UNAVAILABLE, "shutting_down"),
+            res = self.forward_once(file, relay, host_id, path, req) => {
+                let (head, body) = res.into_parts();
+                let body = body.into_data_stream().take_until(stop.cancelled_owned());
+                Response::from_parts(head, Body::from_stream(body))
+            }
         }
     }
-}
 
-async fn forward_once(file: &ConfigFile, relay: Option<Target>, host_id: &str, path: &str, req: Request<Body>) -> Response {
-    let Some(daemon) = config::daemons_in(file).into_iter().find(|d| d.host_id == host_id) else {
-        return error(StatusCode::NOT_FOUND, "remote_unknown");
-    };
-    // 원격 데몬도 출처 `remote`로 남기지만, 이 PC에서 누가 시켰는지는 이 PC에만 있다. 읽기는 남기지 않는다
-    let mut line = (!matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) && !crate::audit::is_quiet())
-        .then(|| AuditLine::new(req.method(), path, &daemon.name));
-    let res = send_saved(file, relay, &daemon, path, req).await;
-    let Some(line) = line.as_mut() else { return res };
-    line.status = res.status().as_u16();
-    // 시작 실패처럼 200에 `success:false`(또는 `ok:false`)로 답하는 라우트가 있다: 길이를 아는 작은 본문만 열어 보고 그대로 넘긴다
-    let small = axum::body::HttpBody::size_hint(res.body()).exact().is_some_and(|n| n <= DECLINE_PEEK_LIMIT as u64);
-    if !res.status().is_success() || !small {
-        return res;
+    async fn forward_once(&self, file: &ConfigFile, relay: Option<Target>, host_id: &str, path: &str, req: Request<Body>) -> Response {
+        let Some(daemon) = config::daemons_in(file).into_iter().find(|d| d.host_id == host_id) else {
+            return error(StatusCode::NOT_FOUND, "remote_unknown");
+        };
+        // 원격 데몬도 출처 `remote`로 남기지만, 이 PC에서 누가 시켰는지는 이 PC에만 있다. 읽기는 남기지 않는다
+        let mut line = (!matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) && !crate::audit::is_quiet())
+            .then(|| AuditLine::new(req.method(), path, &daemon.name));
+        let res = self.send_saved(file, relay, &daemon, path, req).await;
+        let Some(line) = line.as_mut() else { return res };
+        line.status = res.status().as_u16();
+        // 시작 실패처럼 200에 `success:false`(또는 `ok:false`)로 답하는 라우트가 있다: 길이를 아는 작은 본문만 열어 보고 그대로 넘긴다
+        let small = axum::body::HttpBody::size_hint(res.body()).exact().is_some_and(|n| n <= DECLINE_PEEK_LIMIT as u64);
+        if !res.status().is_success() || !small {
+            return res;
+        }
+        let (head, body) = res.into_parts();
+        let Ok(bytes) = axum::body::to_bytes(body, DECLINE_PEEK_LIMIT).await else {
+            line.status = 0;
+            return error(StatusCode::BAD_GATEWAY, "remote_unreachable");
+        };
+        if let Ok(v) = serde_json::from_slice::<Value>(&bytes) {
+            line.declined = ["success", "ok"].iter().any(|k| v.get(*k).and_then(Value::as_bool) == Some(false));
+        }
+        Response::from_parts(head, Body::from(bytes))
     }
-    let (head, body) = res.into_parts();
-    let Ok(bytes) = axum::body::to_bytes(body, DECLINE_PEEK_LIMIT).await else {
-        line.status = 0;
-        return error(StatusCode::BAD_GATEWAY, "remote_unreachable");
-    };
-    if let Ok(v) = serde_json::from_slice::<Value>(&bytes) {
-        line.declined = ["success", "ok"].iter().any(|k| v.get(*k).and_then(Value::as_bool) == Some(false));
-    }
-    Response::from_parts(head, Body::from(bytes))
 }
 
 /// 감사 기록에 실패 여부를 보려고 열어 보는 답 본문의 상한
@@ -675,104 +713,102 @@ struct Unreachable {
     checking: bool,
 }
 
-/// 릴레이·원격 PC마다 (같은 PC도 릴레이가 다르면 따로)
-static UNREACHABLE: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<(String, String), Unreachable>>> =
-    std::sync::LazyLock::new(Default::default);
+impl Pool {
+    fn unreachable(&self) -> MutexGuard<'_, HashMap<(String, String), Unreachable>> {
+        lock(&self.0.unreachable)
+    }
 
-fn unreachable() -> std::sync::MutexGuard<'static, std::collections::HashMap<(String, String), Unreachable>> {
-    UNREACHABLE.lock().unwrap_or_else(|e| e.into_inner())
-}
+    /// 쉬는 중인가. 쉴 시간이 지났으면 뒤에서 릴레이에 그 PC가 켜졌는지 묻는다 (이번 요청은 기다리지 않는다)
+    fn resting(&self, relay: &Target, host_id: &str) -> bool {
+        let key = (relay.base.clone(), host_id.to_string());
+        let mut all = self.unreachable();
+        let Some(u) = all.get_mut(&key) else { return false };
+        let Some((at, wait)) = u.paused else { return false };
+        if !u.checking && at.elapsed() >= wait {
+            u.checking = true;
+            let (pool, relay) = (self.clone(), relay.clone());
+            tokio::spawn(async move {
+                let offline = matches!(relay::peers(&relay).await, Ok(peers) if peers.iter().any(|p| p.host_id == key.1 && p.status == "offline"));
+                let mut all = pool.unreachable();
+                let Some(u) = all.get_mut(&key) else { return };
+                u.checking = false;
+                if offline {
+                    u.paused = Some((std::time::Instant::now(), OFFLINE_RECHECK));
+                } else {
+                    // 다음 요청이 다시 붙어 본다. 또 닿지 않으면 잇달은 횟수가 이어져 더 오래 쉰다
+                    u.paused = None;
+                    tracing::info!("Trying remote daemon {} again", key.1);
+                }
+            });
+        }
+        true
+    }
 
-/// 쉬는 중인가. 쉴 시간이 지났으면 뒤에서 릴레이에 그 PC가 켜졌는지 묻는다 (이번 요청은 기다리지 않는다)
-fn resting(relay: &Target, host_id: &str) -> bool {
-    let key = (relay.base.clone(), host_id.to_string());
-    let mut all = unreachable();
-    let Some(u) = all.get_mut(&key) else { return false };
-    let Some((at, wait)) = u.paused else { return false };
-    if !u.checking && at.elapsed() >= wait {
-        u.checking = true;
-        let relay = relay.clone();
-        tokio::spawn(async move {
-            let offline = matches!(relay::peers(&relay).await, Ok(peers) if peers.iter().any(|p| p.host_id == key.1 && p.status == "offline"));
-            let mut all = unreachable();
-            let Some(u) = all.get_mut(&key) else { return };
-            u.checking = false;
-            if offline {
-                u.paused = Some((std::time::Instant::now(), OFFLINE_RECHECK));
-            } else {
-                // 다음 요청이 다시 붙어 본다. 또 닿지 않으면 잇달은 횟수가 이어져 더 오래 쉰다
-                u.paused = None;
-                tracing::info!("Trying remote daemon {} again", key.1);
+    /// 닿지 않았다. 릴레이가 꺼졌다고 했으면 바로, 아니면 잇달아 `UNREACHABLE_LIMIT`번째부터 쉰다 (`DIRECT_RETRY`부터 두 배씩)
+    fn note_unreachable(&self, relay: &Target, host_id: &str, offline: bool) {
+        let mut all = self.unreachable();
+        let u = all.entry((relay.base.clone(), host_id.to_string())).or_default();
+        u.streak += 1;
+        let wait = if offline {
+            OFFLINE_RECHECK
+        } else if u.streak >= UNREACHABLE_LIMIT {
+            DIRECT_RETRY.saturating_mul(1 << (u.streak - UNREACHABLE_LIMIT).min(8)).min(DIRECT_RETRY_MAX)
+        } else {
+            return;
+        };
+        u.paused = Some((std::time::Instant::now(), wait));
+        if offline {
+            tracing::warn!("Remote daemon {} is offline; not connecting until it is back", host_id);
+        } else {
+            tracing::warn!("Remote daemon {} is unreachable {} times in a row; retrying in {:?}", host_id, u.streak, wait);
+        }
+    }
+
+    fn note_reached(&self, relay: &Target, host_id: &str) {
+        self.unreachable().remove(&(relay.base.clone(), host_id.to_string()));
+    }
+
+    async fn send_saved(&self, file: &ConfigFile, relay: Option<Target>, daemon: &Daemon, path: &str, req: Request<Body>) -> Response {
+        let host_id = daemon.host_id.as_str();
+        let (parts, body) = req.into_parts();
+        let Ok(body) = axum::body::to_bytes(body, BODY_LIMIT).await else {
+            return error(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large");
+        };
+        let request = || build(&parts.method, path, &parts.headers, &daemon.token, &body);
+        if request().is_none() {
+            return error(StatusCode::BAD_REQUEST, "bad_request");
+        }
+        if relay.as_ref().is_some_and(|r| self.resting(r, host_id)) {
+            return error(StatusCode::BAD_GATEWAY, "remote_unreachable");
+        }
+        let endpoint = endpoint_of(daemon);
+        let mut res = self.send_to(relay.as_ref(), host_id, &endpoint, &request).await;
+        if let (Sent::NotConnected, Some(relay)) = (&res, relay.as_ref()) {
+            // 주소가 바뀌었거나 원격 데몬이 인증서를 새로 만들었을 수 있다: 릴레이가 아는 지금 값으로 한 번 더
+            let peer = relay::peers(relay).await.ok().and_then(|peers| peers.into_iter().find(|p| p.host_id == host_id));
+            let offline = peer.as_ref().is_some_and(|p| p.status == "offline");
+            if let Some(fresh) = peer.and_then(|p| p.endpoint).filter(|e| !offline && *e != endpoint) {
+                let _ = config::update_endpoint_in(file, host_id, &fresh.address, fresh.port, &fresh.cert_sha256);
+                res = self.send_to(Some(relay), host_id, &fresh, &request).await;
             }
-        });
-    }
-    true
-}
-
-/// 닿지 않았다. 릴레이가 꺼졌다고 했으면 바로, 아니면 잇달아 `UNREACHABLE_LIMIT`번째부터 쉰다 (`DIRECT_RETRY`부터 두 배씩)
-fn note_unreachable(relay: &Target, host_id: &str, offline: bool) {
-    let mut all = unreachable();
-    let u = all.entry((relay.base.clone(), host_id.to_string())).or_default();
-    u.streak += 1;
-    let wait = if offline {
-        OFFLINE_RECHECK
-    } else if u.streak >= UNREACHABLE_LIMIT {
-        DIRECT_RETRY.saturating_mul(1 << (u.streak - UNREACHABLE_LIMIT).min(8)).min(DIRECT_RETRY_MAX)
-    } else {
-        return;
-    };
-    u.paused = Some((std::time::Instant::now(), wait));
-    if offline {
-        tracing::warn!("Remote daemon {} is offline; not connecting until it is back", host_id);
-    } else {
-        tracing::warn!("Remote daemon {} is unreachable {} times in a row; retrying in {:?}", host_id, u.streak, wait);
-    }
-}
-
-fn note_reached(relay: &Target, host_id: &str) {
-    unreachable().remove(&(relay.base.clone(), host_id.to_string()));
-}
-
-async fn send_saved(file: &ConfigFile, relay: Option<Target>, daemon: &Daemon, path: &str, req: Request<Body>) -> Response {
-    let host_id = daemon.host_id.as_str();
-    let (parts, body) = req.into_parts();
-    let Ok(body) = axum::body::to_bytes(body, BODY_LIMIT).await else {
-        return error(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large");
-    };
-    let request = || build(&parts.method, path, &parts.headers, &daemon.token, &body);
-    if request().is_none() {
-        return error(StatusCode::BAD_REQUEST, "bad_request");
-    }
-    if relay.as_ref().is_some_and(|r| resting(r, host_id)) {
-        return error(StatusCode::BAD_GATEWAY, "remote_unreachable");
-    }
-    let endpoint = endpoint_of(daemon);
-    let mut res = send_to(relay.as_ref(), host_id, &endpoint, &request).await;
-    if let (Sent::NotConnected, Some(relay)) = (&res, relay.as_ref()) {
-        // 주소가 바뀌었거나 원격 데몬이 인증서를 새로 만들었을 수 있다: 릴레이가 아는 지금 값으로 한 번 더
-        let peer = relay::peers(relay).await.ok().and_then(|peers| peers.into_iter().find(|p| p.host_id == host_id));
-        let offline = peer.as_ref().is_some_and(|p| p.status == "offline");
-        if let Some(fresh) = peer.and_then(|p| p.endpoint).filter(|e| !offline && *e != endpoint) {
-            let _ = config::update_endpoint_in(file, host_id, &fresh.address, fresh.port, &fresh.cert_sha256);
-            res = send_to(Some(relay), host_id, &fresh, &request).await;
+            if matches!(res, Sent::NotConnected) {
+                self.note_unreachable(relay, host_id, offline);
+            }
         }
-        if matches!(res, Sent::NotConnected) {
-            note_unreachable(relay, host_id, offline);
+        if let (Sent::Answered(_), Some(relay)) = (&res, relay.as_ref()) {
+            self.note_reached(relay, host_id);
         }
+        let res = match res {
+            Sent::Answered(res) => res,
+            Sent::NotConnected => return error(StatusCode::BAD_GATEWAY, "remote_unreachable"),
+            Sent::NoAnswer => return error(StatusCode::GATEWAY_TIMEOUT, "remote_timeout"),
+        };
+        let (mut head, body) = res.into_parts();
+        for hop in [header::CONNECTION, header::TRANSFER_ENCODING, HeaderName::from_static("keep-alive")] {
+            head.headers.remove(hop);
+        }
+        Response::from_parts(head, body)
     }
-    if let (Sent::Answered(_), Some(relay)) = (&res, relay.as_ref()) {
-        note_reached(relay, host_id);
-    }
-    let res = match res {
-        Sent::Answered(res) => res,
-        Sent::NotConnected => return error(StatusCode::BAD_GATEWAY, "remote_unreachable"),
-        Sent::NoAnswer => return error(StatusCode::GATEWAY_TIMEOUT, "remote_timeout"),
-    };
-    let (mut head, body) = res.into_parts();
-    for hop in [header::CONNECTION, header::TRANSFER_ENCODING, HeaderName::from_static("keep-alive")] {
-        head.headers.remove(hop);
-    }
-    Response::from_parts(head, body)
 }
 
 
@@ -1036,22 +1072,23 @@ mod tests {
         let (_b, _stop) = remote_daemon(&relay, &state, None).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
+        let peers = Pool::default();
 
-        let daemon = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let daemon = peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
         assert_eq!(daemon.name, "원격 PC");
         assert!(daemon.token.starts_with("sbr_"));
         assert_eq!(config::daemons_in(&file), vec![daemon]);
 
         let req = get_req(&[("accept-language", "ko"), ("x-saba-token", "local-ipc-secret"), ("cookie", "c=1")]);
-        let (status, body) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", req, CancellationToken::new()).await).await;
+        let (status, body) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", req, CancellationToken::new()).await).await;
         assert_eq!(status, 200, "{body}");
         assert_eq!(body, json!({ "lang": "ko", "ipcToken": null, "cookie": null }));
 
         let post = Request::post("/ignored").header("content-type", "text/plain").body(Body::from("hello")).unwrap();
-        let res = forward(&file, Some(relay.clone()), "host-b", "/api/echo", post, CancellationToken::new()).await;
+        let res = peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", post, CancellationToken::new()).await;
         assert_eq!(axum::body::to_bytes(res.into_body(), 1024).await.unwrap(), "hello");
 
-        let (status, body) = json_of(forward(&file, Some(relay), "host-x", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, body) = json_of(peers.forward(&file, Some(relay), "host-x", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!((status, body["error_code"].as_str()), (404, Some("remote_unknown")));
     }
 
@@ -1065,20 +1102,21 @@ mod tests {
         let (_b, _stop) = remote_daemon(&relay, &state, None).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
         let mut streams = Vec::new();
         for _ in 0..20 {
-            let res = forward(&file, Some(relay.clone()), "host-b", "/api/stream", get_req(&[]), CancellationToken::new()).await;
+            let res = peers.forward(&file, Some(relay.clone()), "host-b", "/api/stream", get_req(&[]), CancellationToken::new()).await;
             let mut stream = res.into_body().into_data_stream();
             assert_eq!(stream.next().await.unwrap().unwrap(), "first\n");
             streams.push(stream);
         }
         // 원격 데몬이 쉬는 연결을 닫는 시간(시험에서 1초)보다 오래 지나도 스트림이 열린 연결은 그대로다
         tokio::time::sleep(Duration::from_millis(2500)).await;
-        let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, _) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200);
         let post = Request::post("/ignored").header("content-type", "text/plain").body(Body::from("hello")).unwrap();
-        let res = forward(&file, Some(relay.clone()), "host-b", "/api/echo", post, CancellationToken::new()).await;
+        let res = peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", post, CancellationToken::new()).await;
         assert_eq!(axum::body::to_bytes(res.into_body(), 1024).await.unwrap(), "hello");
         for stream in &mut streams {
             assert!(tokio::time::timeout(Duration::from_millis(20), stream.next()).await.is_err(), "the stream is still open");
@@ -1087,7 +1125,7 @@ mod tests {
 
         drop(streams);
         tokio::time::sleep(Duration::from_millis(2500)).await;
-        let (status, _) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, _) = json_of(peers.forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200);
         assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
@@ -1102,8 +1140,9 @@ mod tests {
         proxy(&state, Duration::ZERO).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
-        let send = |req| forward(&file, Some(relay.clone()), "host-b", "/api/cut-once", req, CancellationToken::new());
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let send = |req| peers.forward(&file, Some(relay.clone()), "host-b", "/api/cut-once", req, CancellationToken::new());
 
         let (status, body) = json_of(send(get_req(&[])).await).await;
         assert_eq!((status, body), (200, json!({ "ok": true })));
@@ -1122,15 +1161,16 @@ mod tests {
         proxy(&state, Duration::ZERO).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
-        let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let (status, _) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200);
 
         state.silent.store(true, std::sync::atomic::Ordering::SeqCst);
         std::mem::take(&mut *state.cut.lock().unwrap()).cancel();
         tokio::time::sleep(REUSE_WINDOW + Duration::from_millis(200)).await;
         let post = Request::post("/ignored").header("content-type", "text/plain").body(Body::from("hello")).unwrap();
-        let res = forward(&file, Some(relay), "host-b", "/api/echo", post, CancellationToken::new()).await;
+        let res = peers.forward(&file, Some(relay), "host-b", "/api/echo", post, CancellationToken::new()).await;
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(axum::body::to_bytes(res.into_body(), 1024).await.unwrap(), "hello");
     }
@@ -1144,18 +1184,19 @@ mod tests {
         let (_b, _stop) = earlier_remote_daemon(&relay, &state).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        let daemon = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let peers = Pool::default();
+        let daemon = peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
         let key = idle_key(&endpoint_of(&daemon));
-        let idle = || IDLE.lock().unwrap().get(&key).map_or(0, Vec::len);
+        let idle = || peers.0.idle.lock().unwrap().get(&key).map_or(0, Vec::len);
 
         for _ in 0..3 {
-            let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+            let (status, _) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
             assert_eq!(status, 200);
             assert_eq!(idle(), 1, "one connection, used again");
         }
         // 원격 데몬이 다음 요청을 기다리다 닫을 만큼 지난 뒤에도 요청은 새 연결로 간다
         tokio::time::sleep(Duration::from_millis(1200)).await;
-        let (status, _) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, _) = json_of(peers.forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200);
         assert_eq!(idle(), 1);
     }
@@ -1170,12 +1211,13 @@ mod tests {
         proxy(&state, OPENING).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
 
         let started = std::time::Instant::now();
         let posts = (0..4).map(|_| {
             let post = Request::post("/ignored").header("content-type", "text/plain").body(Body::from("hello")).unwrap();
-            forward(&file, Some(relay.clone()), "host-b", "/api/echo", post, CancellationToken::new())
+            peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", post, CancellationToken::new())
         });
         for res in futures_util::future::join_all(posts).await {
             assert_eq!(res.status(), StatusCode::OK);
@@ -1192,11 +1234,12 @@ mod tests {
         let (_b, _stop) = earlier_remote_daemon(&relay, &state).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
-        let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let (status, _) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200);
         // 남겨 둔 연결로 간 첫 요청은 답이 오지 않는다
-        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/slow-once", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, body) = json_of(peers.forward(&file, Some(relay), "host-b", "/api/slow-once", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!((status, body), (200, json!({ "ok": true })));
     }
 
@@ -1209,18 +1252,19 @@ mod tests {
         let (_b, _stop) = remote_daemon(&relay, &state, None).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
 
         let marker = uuid::Uuid::new_v4().to_string();
         let origin = Origin { user_name: Some(marker.clone()), ..Origin::new("cli") };
         let origin_b = Origin { user_name: Some(format!("{marker}-cut")), ..Origin::new("gui") };
         let relay_b = relay.clone();
         let post = Request::post("/ignored").body(Body::from("secret-body")).unwrap();
-        let forwarded = forward(&file, Some(relay.clone()), "host-b", "/api/echo?token=secret-query", post, CancellationToken::new());
+        let forwarded = peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo?token=secret-query", post, CancellationToken::new());
         assert_eq!(with_origin(origin.clone(), forwarded).await.status(), StatusCode::OK);
-        let read = forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new());
+        let read = peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new());
         assert_eq!(with_origin(origin.clone(), read).await.status(), StatusCode::OK);
-        let missing = forward(&file, Some(relay), "host-b", "/api/missing", Request::delete("/ignored").body(Body::empty()).unwrap(), CancellationToken::new());
+        let missing = peers.forward(&file, Some(relay), "host-b", "/api/missing", Request::delete("/ignored").body(Body::empty()).unwrap(), CancellationToken::new());
         assert_eq!(with_origin(origin, missing).await.status(), StatusCode::NOT_FOUND);
 
         let mine: Vec<Value> = crate::audit::log().recent(1000, None).into_iter().filter(|e| e["userName"] == marker.as_str()).collect();
@@ -1235,7 +1279,7 @@ mod tests {
         assert!(!mine.iter().any(|e| e.to_string().contains("secret")), "{mine:?}");
 
         // 200이어도 본문이 실패(`success`·`ok`가 false)라고 하면 실패로 남기고, 본문은 그대로 넘긴다
-        let declined = forward(&file, Some(relay_b.clone()), "host-b", "/api/declined", Request::post("/ignored").body(Body::empty()).unwrap(), CancellationToken::new());
+        let declined = peers.forward(&file, Some(relay_b.clone()), "host-b", "/api/declined", Request::post("/ignored").body(Body::empty()).unwrap(), CancellationToken::new());
         let declined_origin = Origin { user_name: Some(format!("{marker}-declined")), ..Origin::new("gui") };
         let (status, body) = json_of(with_origin(declined_origin, declined).await).await;
         assert_eq!((status, body["error_code"].as_str()), (200, Some("not_found")));
@@ -1244,7 +1288,7 @@ mod tests {
 
         // 답을 기다리다 이 데몬이 멈춰도 원격에 닿았을 수 있으므로 결과 모름으로 남는다
         let stop = CancellationToken::new();
-        let slow = forward(&file, Some(relay_b.clone()), "host-b", "/api/slow", Request::post("/ignored").body(Body::empty()).unwrap(), stop.clone());
+        let slow = peers.forward(&file, Some(relay_b.clone()), "host-b", "/api/slow", Request::post("/ignored").body(Body::empty()).unwrap(), stop.clone());
         let (res, ()) = tokio::join!(with_origin(origin_b, slow), async {
             tokio::time::sleep(Duration::from_millis(300)).await;
             stop.cancel();
@@ -1264,26 +1308,27 @@ mod tests {
         state.endpoint.lock().unwrap()["address"] = Value::Null;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
+        let peers = Pool::default();
 
-        let daemon = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let daemon = peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
         assert_eq!(daemon.address, "");
         let req = get_req(&[("accept-language", "ko")]);
-        let (status, body) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", req, CancellationToken::new()).await).await;
+        let (status, body) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", req, CancellationToken::new()).await).await;
         assert_eq!((status, body["lang"].as_str()), (200, Some("ko")), "{body}");
         let post = Request::post("/ignored").header("content-type", "text/plain").body(Body::from("hello")).unwrap();
-        let res = forward(&file, Some(relay.clone()), "host-b", "/api/echo", post, CancellationToken::new()).await;
+        let res = peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", post, CancellationToken::new()).await;
         assert_eq!(axum::body::to_bytes(res.into_body(), 1024).await.unwrap(), "hello");
         // 이벤트 스트림이 열려 있어도 다른 요청은 같은 터널로 간다
-        let res = forward(&file, Some(relay.clone()), "host-b", "/api/stream", get_req(&[]), CancellationToken::new()).await;
+        let res = peers.forward(&file, Some(relay.clone()), "host-b", "/api/stream", get_req(&[]), CancellationToken::new()).await;
         let mut stream = res.into_body().into_data_stream();
         assert_eq!(stream.next().await.unwrap().unwrap(), "first\n");
-        let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, _) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200);
         assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 1, "one tunnel carries every request");
         // 원격 데몬을 잊으면 열어 둔 터널을 놓는다 (릴레이의 터널 수 한도를 쥐고 있지 않게)
-        assert!(tunnel::is_open(Some(&relay), "host-b").await);
-        tunnel::close("host-b");
-        assert!(!tunnel::is_open(Some(&relay), "host-b").await);
+        assert!(peers.tunnels().is_open(Some(&relay), "host-b").await);
+        peers.tunnels().close("host-b");
+        assert!(!peers.tunnels().is_open(Some(&relay), "host-b").await);
     }
 
     /// 주소가 있어도 직접 닿지 않으면(공유기가 포트를 넘기지 않음) 터널로 붙는다
@@ -1295,8 +1340,9 @@ mod tests {
         state.endpoint.lock().unwrap()["port"] = json!(9);
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
-        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let (status, body) = json_of(peers.forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200, "{body}");
         assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
@@ -1320,8 +1366,9 @@ mod tests {
         state.endpoint.lock().unwrap()["port"] = json!(silent_port);
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
+        let peers = Pool::default();
         let started = std::time::Instant::now();
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
         assert!(started.elapsed() < CONNECT_TIMEOUT / 2, "paired through the tunnel in {:?}", started.elapsed());
         assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
@@ -1334,22 +1381,23 @@ mod tests {
         let (_b, _stop) = remote_daemon(&relay, &state, None).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        let daemon = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
-        DIRECT.remove(&idle_key(&endpoint_of(&daemon)));
+        let peers = Pool::default();
+        let daemon = peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        peers.0.direct.remove(&idle_key(&endpoint_of(&daemon)));
         // 이 PC(루프백) 몫의 자리를 다 쥔다
         let mut held = Vec::new();
         for _ in 0..32 {
             held.push(tokio::net::TcpStream::connect(("127.0.0.1", daemon.port)).await.unwrap());
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
-        let res = forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
+        let res = peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
         assert_eq!(res.status(), StatusCode::BAD_GATEWAY, "nothing gets in while every slot is taken");
-        assert_eq!(route_of(&daemon), "direct");
+        assert_eq!(peers.route_of(&daemon), "direct");
 
         drop(held);
         tokio::time::sleep(Duration::from_millis(100)).await;
         let tunnels = state.tunnels.load(std::sync::atomic::Ordering::SeqCst);
-        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, body) = json_of(peers.forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200, "{body}");
         assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), tunnels, "the request went straight to the remote daemon");
     }
@@ -1374,12 +1422,13 @@ mod tests {
         });
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        let daemon = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let peers = Pool::default();
+        let daemon = peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
         for _ in 0..4 {
-            let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+            let (status, _) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
             assert_eq!(status, 200);
         }
-        assert_eq!(route_of(&daemon), "relay");
+        assert_eq!(peers.route_of(&daemon), "relay");
         let tries = tries.load(std::sync::atomic::Ordering::SeqCst);
         assert!(tries <= 3, "kept trying the address directly: {tries} times");
     }
@@ -1394,13 +1443,14 @@ mod tests {
         state.endpoint.lock().unwrap()["address"] = Value::Null;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
-        tunnel::release(&relay, "host-b");
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        peers.tunnels().release(&relay, "host-b");
         *state.status.lock().unwrap() = "offline".into();
         let dials = || state.tunnels.load(std::sync::atomic::Ordering::SeqCst);
         let before = dials();
         for _ in 0..5 {
-            let res = forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
+            let res = peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
             assert_eq!(res.status(), StatusCode::BAD_GATEWAY);
         }
         assert_eq!(dials(), before + 1, "only the first request opens a tunnel");
@@ -1408,9 +1458,9 @@ mod tests {
         *state.status.lock().unwrap() = "online".into();
         tokio::time::sleep(OFFLINE_RECHECK * 2).await;
         // 쉬는 동안의 요청은 바로 닿지 않음으로 답하고, 뒤에서 릴레이에 다시 물어본다
-        let _ = forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
+        let _ = peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, body) = json_of(peers.forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200, "{body}");
     }
 
@@ -1423,22 +1473,23 @@ mod tests {
         state.endpoint.lock().unwrap()["address"] = Value::Null;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
-        tunnel::release(&relay, "host-b");
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        peers.tunnels().release(&relay, "host-b");
         state.refuse.store(true, std::sync::atomic::Ordering::SeqCst);
         let dials = || state.tunnels.load(std::sync::atomic::Ordering::SeqCst);
         let before = dials();
         for _ in 0..8 {
-            let res = forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
+            let res = peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
             assert_eq!(res.status(), StatusCode::BAD_GATEWAY);
         }
         assert_eq!(dials(), before + UNREACHABLE_LIMIT as usize, "stops dialing after {UNREACHABLE_LIMIT} failures in a row");
 
         state.refuse.store(false, std::sync::atomic::Ordering::SeqCst);
         tokio::time::sleep(DIRECT_RETRY * 2).await;
-        let _ = forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
+        let _ = peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await;
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, body) = json_of(peers.forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200, "{body}");
     }
 
@@ -1465,12 +1516,13 @@ mod tests {
         });
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
         assert_eq!(tries.load(std::sync::atomic::Ordering::SeqCst), 1);
 
         let started = std::time::Instant::now();
         while started.elapsed() < DIRECT_RETRY * 6 {
-            let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+            let (status, _) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
             assert_eq!(status, 200);
             tokio::time::sleep(DIRECT_RETRY / 8).await;
         }
@@ -1489,17 +1541,18 @@ mod tests {
         state.endpoint.lock().unwrap()["address"] = Value::Null;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        let daemon = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
-        let res = forward(&file, Some(relay.clone()), "host-b", "/api/stream", get_req(&[]), CancellationToken::new()).await;
+        let peers = Pool::default();
+        let daemon = peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let res = peers.forward(&file, Some(relay.clone()), "host-b", "/api/stream", get_req(&[]), CancellationToken::new()).await;
         let mut stream = res.into_body().into_data_stream();
         assert_eq!(stream.next().await.unwrap().unwrap(), "first\n");
-        assert!(tunnel::is_open(Some(&relay), "host-b").await);
+        assert!(peers.tunnels().is_open(Some(&relay), "host-b").await);
 
         // 원격 PC가 공인 주소를 올렸다
         config::update_endpoint_in(&file, "host-b", reachable["address"].as_str().unwrap(), daemon.port, &daemon.cert_sha256).unwrap();
-        let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, _) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200);
-        assert!(!tunnel::is_open(Some(&relay), "host-b").await);
+        assert!(!peers.tunnels().is_open(Some(&relay), "host-b").await);
         assert!(tokio::time::timeout(Duration::from_millis(500), stream.next()).await.is_err(), "the stream on the tunnel is still open");
     }
 
@@ -1521,12 +1574,13 @@ mod tests {
         let relay = fake_relay(state.clone()).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        assert_eq!(connect(&file, None, "host-b").await, Err(ConnectError::RelayNotPaired));
-        assert_eq!(connect(&file, Some(relay.clone()), "host-x").await, Err(ConnectError::NotFound));
-        assert_eq!(connect(&file, Some(relay.clone()), "host-off").await, Err(ConnectError::NoEndpoint));
+        let peers = Pool::default();
+        assert_eq!(peers.connect(&file, None, "host-b").await, Err(ConnectError::RelayNotPaired));
+        assert_eq!(peers.connect(&file, Some(relay.clone()), "host-x").await, Err(ConnectError::NotFound));
+        assert_eq!(peers.connect(&file, Some(relay.clone()), "host-off").await, Err(ConnectError::NoEndpoint));
         // 릴레이가 알려 준 주소에 아무도 없다
         *state.endpoint.lock().unwrap() = json!({ "address": "127.0.0.1", "port": 9, "certSha256": "ab".repeat(32) });
-        assert_eq!(connect(&file, Some(relay), "host-b").await, Err(ConnectError::RemoteUnreachable));
+        assert_eq!(peers.connect(&file, Some(relay), "host-b").await, Err(ConnectError::RemoteUnreachable));
         assert!(config::daemons_in(&file).is_empty());
     }
 
@@ -1538,11 +1592,12 @@ mod tests {
         let (b, stop) = remote_daemon(&relay, &state, None).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        let before = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let peers = Pool::default();
+        let before = peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
         stop.cancel();
 
         let (_b2, _stop2) = remote_daemon(&relay, &state, Some(&ConfigFile::at(b.path()))).await;
-        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, body) = json_of(peers.forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200, "{body}");
         let after = config::daemons_in(&file).remove(0);
         assert_ne!((after.port, &after.cert_sha256), (before.port, &before.cert_sha256), "the saved endpoint follows the relay");
@@ -1557,10 +1612,11 @@ mod tests {
         let (_b, _stop) = remote_daemon(&relay, &state, None).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        let before = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let peers = Pool::default();
+        let before = peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
         // 릴레이가 다른 주소를 알게 됐다
         *state.endpoint.lock().unwrap() = json!({ "address": "127.0.0.1", "port": 9, "certSha256": "cd".repeat(32) });
-        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/slow", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, body) = json_of(peers.forward(&file, Some(relay), "host-b", "/api/slow", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!((status, body["error_code"].as_str()), (504, Some("remote_timeout")));
         assert_eq!(config::daemons_in(&file).remove(0), before, "the saved endpoint stays");
     }
@@ -1573,8 +1629,9 @@ mod tests {
         let (_b, _stop) = remote_daemon(&relay, &state, None).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
-        let res = forward(&file, Some(relay), "host-b", "/api/stream", get_req(&[]), CancellationToken::new()).await;
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let res = peers.forward(&file, Some(relay), "host-b", "/api/stream", get_req(&[]), CancellationToken::new()).await;
         assert_eq!(res.status(), StatusCode::OK);
         let mut stream = res.into_body().into_data_stream();
         let first = tokio::time::timeout(Duration::from_secs(5), stream.next()).await.expect("the first chunk arrives before the stream ends");
@@ -1588,10 +1645,11 @@ mod tests {
         let (_b, _stop) = remote_daemon(&relay, &state, None).await;
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
 
         let stop = CancellationToken::new();
-        let res = forward(&file, Some(relay.clone()), "host-b", "/api/stream", get_req(&[]), stop.clone()).await;
+        let res = peers.forward(&file, Some(relay.clone()), "host-b", "/api/stream", get_req(&[]), stop.clone()).await;
         let mut stream = res.into_body().into_data_stream();
         stream.next().await.unwrap().unwrap();
         stop.cancel();
@@ -1600,8 +1658,8 @@ mod tests {
 
         let stop = CancellationToken::new();
         let slow = tokio::spawn({
-            let (file, relay, stop) = (file.clone(), relay.clone(), stop.clone());
-            async move { forward(&file, Some(relay), "host-b", "/api/slow", get_req(&[]), stop).await }
+            let (file, relay, stop, peers) = (file.clone(), relay.clone(), stop.clone(), peers.clone());
+            async move { peers.forward(&file, Some(relay), "host-b", "/api/slow", get_req(&[]), stop).await }
         });
         tokio::time::sleep(Duration::from_millis(100)).await;
         stop.cancel();
