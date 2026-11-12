@@ -53,7 +53,7 @@ pub use marker::UpdateCompletionMarker;
 pub(crate) use apply::swap_dir_untouched;
 #[cfg(test)]
 pub(crate) use apply::replace_dir;
-pub use apply::{carry_swap_dot_entries, SWAP_FINGERPRINT};
+pub use apply::{carry_swap_dot_entries, Replacing, SWAP_FINGERPRINT};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -439,16 +439,6 @@ fn path_parts(p: &Path) -> Vec<String> {
             if cfg!(windows) { s.to_lowercase() } else { s.into_owned() }
         })
         .collect()
-}
-
-/// zip이 아닌 설치기(실행 파일 그대로)를 `target`에 둔다. 실패하면 이전 사본을 되돌린다
-pub fn replace_bare_installer(staged: &Path, target: &Path) -> Result<()> {
-    UpdateManager::replace_bare_installer(staged, target)
-}
-
-/// 덮어쓸 실행 파일이 떠 있으면 `.old`로 비켜 둔다 (`extract_zip`의 `before_write`로 쓴다)
-pub fn move_aside_binary(path: &Path) -> Result<()> {
-    UpdateManager::move_aside_binary(path)
 }
 
 /// zip을 `target_dir`에 푼다. 모든 압축 해제는 이 함수를 거친다.

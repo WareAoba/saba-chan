@@ -152,55 +152,13 @@ impl UpdateManager {
     }
 
     fn extract_zip_or_restore(staged: &Path, dir: &Path, what: &str) -> Result<Vec<PathBuf>> {
-        // (원래 경로, 백업, 성공하면 백업을 지울지)
-        let mut moved: Vec<(PathBuf, PathBuf, bool)> = Vec::new();
-        let mut created: Vec<PathBuf> = Vec::new();
-        let tar_gz = Self::is_tar_gz(staged);
-        let mut before_write = |out_path: &Path| -> Result<()> {
-            // 같은 경로가 zip에 두 번 있으면 두 번째는 덮어쓰기만 한다. 다시 비켜 두면
-            // 원래 백업이 새 파일로 바뀌어 되돌릴 수 없게 된다
-            if moved.iter().any(|(p, _, _)| same_path(p, out_path)) || created.iter().any(|p| same_path(p, out_path)) {
-                return Ok(());
-            }
-            if let Some(backup) = Self::move_aside(out_path)? {
-                moved.push((out_path.to_path_buf(), backup, false));
-            } else if out_path.is_file() {
-                let mut name = out_path.file_name().unwrap_or_default().to_os_string();
-                name.push(".update-bak");
-                let backup = out_path.with_file_name(name);
-                let _ = std::fs::remove_file(&backup);
-                // 다른 프로세스가 지우기 공유 없이 잡고 있으면 이름을 못 바꾼다. 예전처럼 덮어쓰기만 한다
-                match std::fs::rename(out_path, &backup) {
-                    Ok(()) => moved.push((out_path.to_path_buf(), backup, true)),
-                    Err(e) => tracing::warn!("[Updater] Cannot back up {}, overwriting in place: {}", out_path.display(), e),
-                }
-            } else {
-                created.push(out_path.to_path_buf());
-            }
-            Ok(())
-        };
-        let result = if tar_gz {
-            Self::extract_tar_gz_with(staged, dir, &mut before_write)
-        } else {
-            extract_zip(staged, dir, &mut before_write)
-        };
+        let mut replacing = Replacing::default();
+        let result = replacing.extract(staged, dir);
         match &result {
-            Ok(_) => {
-                for (_, backup, _) in moved.iter().filter(|m| m.2) {
-                    let _ = std::fs::remove_file(backup);
-                }
-            }
+            Ok(_) => replacing.keep(),
             Err(e) => {
                 tracing::error!("[Updater] Applying {} failed, restoring previous files: {}", what, e);
-                for path in &created {
-                    let _ = std::fs::remove_file(path);
-                }
-                for (original, backup, _) in moved.iter().rev() {
-                    let _ = std::fs::remove_file(original);
-                    if let Err(re) = std::fs::rename(backup, original) {
-                        tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
-                    }
-                }
+                replacing.restore();
             }
         }
         result
@@ -555,6 +513,77 @@ impl UpdateManager {
             .and_then(|n| n.to_str())
             .map(|name| KNOWN_BINARIES.contains(&name))
             .unwrap_or(false)
+    }
+}
+
+/// 덮어쓰며 비켜 둔 파일의 기록. 압축 파일 여러 개를 한 묶음으로 풀고(설치기의 덮어쓰기 설치),
+/// 끝나면 `keep`, 도중에 실패하면 `restore`로 앞서 푼 것까지 되돌린다
+#[derive(Default)]
+pub struct Replacing {
+    // (원래 경로, 백업, 성공하면 백업을 지울지)
+    moved: Vec<(PathBuf, PathBuf, bool)>,
+    created: Vec<PathBuf>,
+}
+
+impl Replacing {
+    /// zip·tar.gz를 `dir`에 푼다. 실패해도 되돌리지 않는다 (부른 쪽이 `restore`)
+    pub fn extract(&mut self, staged: &Path, dir: &Path) -> Result<Vec<PathBuf>> {
+        let mut before_write = |out_path: &Path| self.before_write(out_path);
+        if UpdateManager::is_tar_gz(staged) {
+            UpdateManager::extract_tar_gz_with(staged, dir, &mut before_write)
+        } else {
+            extract_zip(staged, dir, &mut before_write)
+        }
+    }
+
+    /// 압축하지 않은 파일 하나(Windows 릴리스의 설치기)를 `target`에 둔다
+    pub fn place_file(&mut self, staged: &Path, target: &Path) -> Result<()> {
+        self.before_write(target)?;
+        std::fs::copy(staged, target).map(|_| ()).map_err(|e| anyhow::anyhow!("Cannot replace {}: {}", target.display(), e))
+    }
+
+    fn before_write(&mut self, out_path: &Path) -> Result<()> {
+        // 같은 경로가 zip에 두 번 있으면 두 번째는 덮어쓰기만 한다. 다시 비켜 두면
+        // 원래 백업이 새 파일로 바뀌어 되돌릴 수 없게 된다
+        if self.moved.iter().any(|(p, _, _)| same_path(p, out_path)) || self.created.iter().any(|p| same_path(p, out_path)) {
+            return Ok(());
+        }
+        if let Some(backup) = UpdateManager::move_aside(out_path)? {
+            self.moved.push((out_path.to_path_buf(), backup, false));
+        } else if out_path.is_file() {
+            let mut name = out_path.file_name().unwrap_or_default().to_os_string();
+            name.push(".update-bak");
+            let backup = out_path.with_file_name(name);
+            let _ = std::fs::remove_file(&backup);
+            // 다른 프로세스가 지우기 공유 없이 잡고 있으면 이름을 못 바꾼다. 예전처럼 덮어쓰기만 한다
+            match std::fs::rename(out_path, &backup) {
+                Ok(()) => self.moved.push((out_path.to_path_buf(), backup, true)),
+                Err(e) => tracing::warn!("[Updater] Cannot back up {}, overwriting in place: {}", out_path.display(), e),
+            }
+        } else {
+            self.created.push(out_path.to_path_buf());
+        }
+        Ok(())
+    }
+
+    /// 새 파일을 그대로 둔다: `.update-bak`만 지운다 (`.old`는 `cleanup_old_files`가 지운다)
+    pub fn keep(self) {
+        for (_, backup, _) in self.moved.iter().filter(|m| m.2) {
+            let _ = std::fs::remove_file(backup);
+        }
+    }
+
+    /// 새로 생긴 파일을 지우고 비켜 둔 파일을 모두 되돌린다
+    pub fn restore(self) {
+        for path in &self.created {
+            let _ = std::fs::remove_file(path);
+        }
+        for (original, backup, _) in self.moved.iter().rev() {
+            let _ = std::fs::remove_file(original);
+            if let Err(re) = std::fs::rename(backup, original) {
+                tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
+            }
+        }
     }
 }
 
