@@ -1866,6 +1866,55 @@ async fn applying_some_targets_keeps_the_rest_pending() {
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
 }
 
+// 코어가 바뀌는 묶음에서 지금 코어로 돌지 않는 모듈·익스텐션은 적용하지 않고 받아 둔 채 둔다:
+// 새 데몬이 건강하지 않아 코어만 되돌아가면 옛 코어가 거절하는 판이 남는다. 건강한 새 데몬이 자동 교체로 바꾼다
+#[tokio::test]
+async fn an_addon_needing_the_new_core_waits_for_the_new_daemon() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    manager.installed_manifest_file = tmp.path().join("installed-manifest.json");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let core_zip = manager.staging_dir.join("saba-core.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&core_zip).unwrap());
+        zw.start_file("saba-core", zip::write::SimpleFileOptions::default().unix_permissions(0o755)).unwrap();
+        zw.write_all(b"new").unwrap();
+        zw.finish().unwrap();
+    }
+    let (needs_new, runs_now) = (format!("needs-new-{}", std::process::id()), format!("runs-now-{}", std::process::id()));
+    let (held, applied_now) = (Component::Extension(needs_new.clone()), Component::Extension(runs_now.clone()));
+    let zip_dir = |name: &str| {
+        let dir = tmp.path().join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        extension_zip(&dir)
+    };
+    let requires = |min: &str| Some([("saba-core".to_string(), min.to_string())].into_iter().collect());
+    manager.status.components = vec![
+        crate::ComponentVersion { latest_version: Some("99.0.0".into()), ..staged(Component::CoreDaemon, &core_zip) },
+        crate::ComponentVersion { requires: requires(">=99.0.0"), ..staged(held.clone(), &zip_dir("held")) },
+        crate::ComponentVersion { requires: requires(">=0.0.1"), ..staged(applied_now.clone(), &zip_dir("now")) },
+    ];
+    manager.save_pending_manifest().unwrap();
+    manager.save_updater_apply_targets(&["saba-core".to_string(), held.manifest_key(), applied_now.manifest_key()]).unwrap();
+    manager.status.components.clear();
+
+    let (applied, failed) = manager.apply_staged(|_| {}).await.unwrap();
+
+    assert!(failed.is_empty(), "{:?}", failed);
+    assert_eq!(applied, vec!["saba-core".to_string(), applied_now.manifest_key()]);
+    assert!(!manager.resolve_ext_dir(&needs_new).exists(), "the addon needing the new core is not applied yet");
+    let mut next = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    next.staging_dir = manager.staging_dir.clone();
+    next.installed_manifest_file = tmp.path().join("other-installed-manifest.json");
+    next.load_pending_manifest().unwrap();
+    assert_eq!(next.status.components.iter().map(|c| c.component.clone()).collect::<Vec<_>>(), vec![held], "it stays staged");
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&runs_now));
+}
+
 // 기록 없이 놓인 모듈의 같은 버전 재설치(공식 표시 복구)는 되살린 목록에서도 남긴다. 더 새 판이 깔렸으면 뺀다
 #[test]
 fn a_restored_same_version_reinstall_without_a_record_is_kept() {

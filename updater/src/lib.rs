@@ -1449,6 +1449,24 @@ impl UpdateManager {
         }
     }
 
+    /// `keys`에 코어가 있으면, 그중 지금 설치된 코어로는 `saba-core` requires를 채우지 못하는 모듈·익스텐션
+    pub(crate) fn addons_waiting_for_the_new_core(&self, keys: &[String]) -> Vec<String> {
+        let core = Component::CoreDaemon.manifest_key();
+        if !keys.contains(&core) {
+            return Vec::new();
+        }
+        let installed = self.dependency_versions();
+        keys.iter()
+            .filter(|k| matches!(Component::from_manifest_key(k), Component::Module(_) | Component::Extension(_)))
+            .filter(|k| {
+                let needs: HashMap<String, String> =
+                    self.requires_of(k).and_then(|r| r.get(&core)).map(|min| HashMap::from([(core.clone(), min.clone())])).unwrap_or_default();
+                !unmet_requires(k, &needs, &installed).is_empty()
+            })
+            .cloned()
+            .collect()
+    }
+
     /// 받아 둔 상태의 requires (pending.json에서 읽은 업데이터 `--apply`도), 없으면 캐시된 서버 매니페스트
     fn requires_of(&self, component_key: &str) -> Option<&HashMap<String, String>> {
         self.status.components.iter()
