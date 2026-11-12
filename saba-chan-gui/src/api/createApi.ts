@@ -704,6 +704,23 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 return null;
             }
         },
+        // 익스텐션 GUI 정적 파일 (manifest `gui.assets` 폴더 기준 이름 → base64). 번들처럼 이 PC 데몬에서 받는다. 없으면 null
+        extensionGuiAsset: async (extId: string, path: string) => {
+            try {
+                const name = path.split('/').map(encodeURIComponent).join('/');
+                const { data } = await get(`/api/extensions/${encodeURIComponent(extId)}/gui/assets/${name}`, {
+                    responseType: 'base64',
+                    target: 'local',
+                });
+                return typeof data === 'string' ? data : null;
+            } catch (caught) {
+                const error = caught as DaemonError;
+                if (error.response?.status !== 404) {
+                    console.warn(`[Extension] Failed to load GUI asset '${path}' for '${extId}':`, error.message);
+                }
+                return null;
+            }
+        },
         // 익스텐션 아이콘 (PNG → data:image/png;base64)
         extensionIcon: async (extId: string) => {
             try {

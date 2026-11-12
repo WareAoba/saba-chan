@@ -314,6 +314,10 @@ pub struct GuiManifest {
     pub bundle: Option<String>,
     #[serde(default)]
     pub styles: Option<String>,
+    /// 번들이 처음 쓸 때 받는 정적 파일 폴더 (익스텐션 폴더 기준, 예: "gui/assets").
+    /// 데몬이 `GET /api/extensions/:id/gui/assets/*path`로 번들과 같은 조건에 서빙한다 (03 §4.1)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assets: Option<String>,
     #[serde(default)]
     pub builtin: Option<bool>,
     /// slot id → 표시 정보 `{label?, icon?, description?}` (옛 모양: 컴포넌트 이름 문자열).

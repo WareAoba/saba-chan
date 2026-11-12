@@ -65,7 +65,8 @@
 ### 1.2 하위 구조체
 
 - **`HookBinding`** (`ext/:299-305`): `module: String`(필수, `python_modules`의 키), `function: String`(필수), `condition: Option<String>`.
-- **`GuiManifest`** (`ext/:325-336`): `bundle`, `styles`, `builtin: Option<bool>`, `slots: HashMap<String, Value>`.
+- **`GuiManifest`** (`ext/:325-336`): `bundle`, `styles`, `assets: Option<String>`, `builtin: Option<bool>`, `slots: HashMap<String, Value>`.
+  - `assets`(saba-core 0.1.14-0): 번들이 처음 쓸 때 받는 정적 파일(그림 등) 폴더. 익스텐션 폴더 기준 상대 경로다(예: `gui/assets`). 데몬이 `GET /api/extensions/:id/gui/assets/*path`로 번들과 같은 조건에 서빙하고(4.1 보안), 번들은 `host.assetUrl(이름)`으로 받는다(4.5). 그림을 번들에 data URI로 넣지 않아도 되어, 번들이 작아지고 쓰지 않는 그림을 읽지 않는다. 이 키를 모르는 데몬은 schema v1 manifest를 모르는 키로 거부하므로, 쓰는 익스텐션은 `min_app_version`을 이 버전 이상으로 둔다. 목록 응답의 `gui`에는 선언했을 때만 실린다.
   - `builtin`은 daemon에서 읽지 않는다.
   - `slots`는 slot id → 표시 정보 `{label?, icon?, description?}`이다(옛 모양인 컴포넌트 이름 문자열도 받고 빈 표시 정보로 본다). 데몬은 검사하지 않고 `/api/extensions`의 `gui`에 그대로 싣는다. GUI가 slot 표와 대조하고, 창마다 읽을 번들을 고르고, 탭·버튼·카드 이름을 정한다(4.2). `bundle` 없이 `slots`만 써도 된다(설정 탭 자동 폼).
 - **`CliManifest`** (`ext/:320-326`): `slots: HashMap<String, Value>`. 데이터 slot 선언(4.3). 값은 항목 하나 또는 배열이다.
@@ -239,13 +240,14 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
    - 확인되지 않았고 이 PC에서 허락하지 않은 익스텐션(목록의 `gui_allowed:false`, 또는 번들 요청이 403 `extension_gui_unapproved`)은 번들·스타일을 요청하지 않고 한 번 묻는다. 허락하면 `POST /api/sandbox/extension-gui/ext-<id>` 뒤 목록을 다시 받아 로드한다. 거절하면 그 실행에서는 다시 묻지 않고, 설정 > 보안 `ExtensionGuiSection`에서 허락하거나 지운다.
    - 전역 이름 규칙: `window["SabaExt" + PascalCase(id)]`. `-`와 `_` 구분자를 제거하고 다음 글자를 대문자로 바꾼다(`:174-176`). steamcmd → `SabaExtSteamcmd`. 번들이 정확히 이 전역을 만들어야 한다.
    - 스타일: `GET …/gui/styles`가 있으면 `<style data-extension=id>`로 넣는다(`:146-153`).
+   - 정적 파일(`gui.assets`)은 미리 받지 않는다. 번들이 `host.assetUrl`을 부를 때 받는다(4.5). 버전이 바뀌거나 익스텐션을 내리면 받은 URL을 놓는다(`forgetAssets`).
    - 모듈의 **`registerSlots(): { [slotId]: Component | Component[] }`**를 호출해 슬롯 레지스트리에 병합한다. 레지스트리의 한 칸은 `{ext, Component?, meta}`(`SlotEntry`)이고 `meta`는 manifest `gui.slots[slotId]`다. 선언과 어긋나면(모르는 slot 이름, 선언하지 않고 등록) 콘솔에 경고만 남기고 등록은 그대로 한다(`extensions/slotTable.ts` `slotProblems`). 번들 없이 `Settings.tab`만 선언했으면 컴포넌트 없는 칸을 넣어 `config_fields` 자동 폼을 그린다.
    - 창(`ExtensionProvider surface`)마다 읽을 번들을 고른다(`loadsOn`): 메인 창은 메인 slot을 선언했거나 아무 slot도 선언하지 않은 것, 트레이 팝업(`surface="tray"`)은 `TrayPopup.section`을, 바탕화면 오버레이(`surface="desktop"`)는 `Desktop.overlay`를 선언한 것만 읽는다. 이 두 창은 허락되지 않은 번들을 묻지 않고 건너뛴다(묻는 것은 메인 창).
    - 버전이 바뀌면 전역을 삭제하고 style 태그를 제거한 뒤 다시 로드한다(핫로드, `:289-309`). 로드됨으로 기억했는데 전역이 없어도 다시 로드한다.
    - 실행이 실패한 번들은 자기가 남긴 전역만 되돌린다. 같은 확장을 겹쳐 읽은 다른 로드가 성공해 등록한 전역은 지우지 않는다.
 3. React 공유: 호스트가 `window.React`와 `window.ReactDOM`을 전역으로 노출하고(`src/index.tsx:20-21`), 번들은 `window.React`를 참조한다(external 처리). 호스트는 React 19다: 번들은 JSX를 `window.React.createElement`(classic 런타임)로 만들거나 React 19의 `jsx-runtime`을 쓴다. React 18의 `jsx-runtime`을 번들에 넣으면 요소 모양이 달라 React 19가 그리지 못한다. 그 밖의 호스트 API(토스트, 데몬 API, 스토어 등)는 노출하지 않는다. 확장 컴포넌트는 props만으로 동작해야 한다.
 4. 보안: 번들은 렌더러 컨텍스트에서 **그대로 eval**되므로 `window.api`(브리지의 모든 메서드)과 `window.__TAURI__`(`withGlobalTauri`)에 접근할 수 있다. 즉 번들은 AppContainer 밖에서 데몬 API 전체를 부른다. 셸 쪽 경계는 `daemon_request`의 경로 제한(`/api/…`·`/health`만, 셸이 직접 정하는 `/api/updates/launch-updater`·`/api/client/*`·`/api/daemon/shutdown`은 거부, 04 문서 §1.1)과 capability가 연 명령 목록(`src-tauri/capabilities/default.json`)뿐이다.
-   - 그래서 데몬은 번들(`/gui`)과 스타일(`/gui/styles`)을 **확인된(`verified`) 익스텐션이거나 사용자가 이 PC에서 허락한 익스텐션에만** 서빙한다(`extension::gui_allowed`, 플랫폼과 무관). 아니면 403 `{error_code:"extension_gui_unapproved", component:"ext-<id>"}`. manifest의 `gui.bundle`·`gui.styles`는 익스텐션 폴더 기준 상대 경로(`..`·절대 경로 없음)이고, 링크를 거치지 않는 일반 파일이어야 한다. 아니면 404(허락은 폴더 안 파일의 지문에 묶이기 때문이다).
+   - 그래서 데몬은 번들(`/gui`)과 스타일(`/gui/styles`), 정적 파일(`/gui/assets/*path`)을 **확인된(`verified`) 익스텐션이거나 사용자가 이 PC에서 허락한 익스텐션에만** 서빙한다(`extension::gui_allowed`, 플랫폼과 무관). 아니면 403 `{error_code:"extension_gui_unapproved", component:"ext-<id>"}`. manifest의 `gui.bundle`·`gui.styles`와 `gui.assets` 폴더 안 이름은 익스텐션 폴더 기준 상대 경로(`..`·절대 경로·이름에 `:`이 든 조각 없음)이고, 링크를 거치지 않는 일반 파일이어야 한다. 아니면 404(허락은 폴더 안 파일의 지문에 묶이기 때문이다).
    - `GET /api/extensions` 항목에 GUI 번들이 있으면 `gui_allowed: bool`이 실린다. false면 GUI는 번들을 요청하지 말고 사용자에게 물은 뒤 `POST /api/sandbox/extension-gui/ext-<id>`로 기록한다(원격 출처는 403 `consent_local_only`). 동의는 `config.json` `sandbox.extension_gui`에 익스텐션 폴더 전체의 파일 지문으로 남아, 파일이 하나라도 바뀌면 다시 묻는다. 철회는 `DELETE` 같은 경로.
    - 웹뷰 CSP(04 §1)는 스크립트를 앱 자신과 `blob:`으로만 열고 `unsafe-eval`이 없으므로, 번들 안에서 `eval`·`new Function`을 쓰면 실행되지 않는다.
    - 받아들인 위험: 허락한 번들은 데몬 API 전체(동의 라우트 포함)를 부를 수 있다. 허락은 그 익스텐션을 GUI에서 믿는다는 뜻이다.
@@ -315,6 +317,7 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 | `run(instanceId, 'start'\|'stop'\|'restart')` | 넘겼으면 `true`, 하지 않았으면 `false`. 메인 창은 앱 버튼과 같은 `useServerActions` 손잡이를 거친다: 정지·재시작은 확인 창을 띄우고 `true`를 돌려주므로, 사용자가 취소해도 `true`다(결과는 `on`으로 받는다). 트레이 팝업과 바탕화면 오버레이는 `instanceStart`·`instanceStop`·`instanceRestart`를 바로 부르고 데몬 답으로 `true`/`false`를 정한다. 이 PC 데몬이라고 확인한 때만 정지·재시작을 보내고, 원격 데몬이거나 아직 모르면 `false`(그 창들은 원격 정지를 두 번 눌러 확정한다) |
 | `openApp(route?)` | 메인 창: 상단 페이지(`servers`·`discord`·`activity`·`settings`·`ext:<id>`)로 옮기거나, `server:<인스턴스 id>`(영문·숫자·`-`·`_` 128자까지)면 그 서버를 연다. 그 밖의 값은 무시한다. 트레이 팝업: 메인 창을 연다. 바탕화면 오버레이: 메인 창을 열고, `server:<id>`면 셸이 그 서버를 연다(`app:openServer`, 메인 창이 막 뜨는 중이면 준비된 뒤). 앱 탭이면 그 탭을 연다(`app:openRoute`) |
 | `on(type, fn)` | 데몬 이벤트(`/api/events`, 01 문서) 구독. `type` `*`는 전부. 끊는 함수를 돌려준다. 트레이 팝업은 이벤트를 받지 않아 부르지 않는다 |
+| `assetUrl(path)` | manifest `gui.assets` 폴더의 파일(그 폴더 기준 이름, `/`로 나눈다)을 이 창에서 그릴 수 있는 URL(`blob:`)로 준다(`Promise<string \| null>`). 처음 부를 때 이 PC 데몬에서 받고(`extensionGuiAsset`), 그 창이 닫히거나 익스텐션을 내릴 때까지 같은 URL을 준다. 데몬 요청은 셸이 토큰을 붙여 대행하므로 번들에 주소를 그대로 주지 않고 받은 파일의 URL을 준다. 형식은 이름의 확장자로 붙인다(webp·png·jpg·gif·svg·avif). 받지 못하면 `null`이고 다음에 다시 받는다 (0.1.14-0) |
 
 - 번들은 여전히 `window.api`에 손이 닿는다(4.1 보안). `host`는 그것을 쓰지 않아도 되게 하는 정해진 통로이고, 막는 장치는 아니다.
 

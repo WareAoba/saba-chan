@@ -1010,6 +1010,7 @@ impl IPCServer {
             .route("/api/extensions/{id}/config", get(handlers::extension::get_extension_config).put(handlers::extension::save_extension_config))
             .route("/api/extensions/{id}/gui", get(handlers::extension::serve_gui_bundle))
             .route("/api/extensions/{id}/gui/styles", get(handlers::extension::serve_gui_styles))
+            .route("/api/extensions/{id}/gui/assets/{*path}", get(handlers::extension::serve_gui_asset))
             .route("/api/extensions/{id}/icon", get(handlers::extension::serve_icon))
             .route("/api/extensions/{id}/audit", get(handlers::extension::audit_extension))
             .route("/api/extensions/{id}/i18n/{locale}", get(handlers::extension::serve_i18n))
