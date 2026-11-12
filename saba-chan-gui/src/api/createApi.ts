@@ -919,7 +919,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 const { data } = await get('/api/relay/agent', { timeout: 3000 });
                 // 에이전트가 하트비트로 아는 연결 상태 (0.1.14~). 있으면 화면이 릴레이에 따로 묻지 않는다
                 const link: RelayLink | undefined =
-                    typeof data?.connected === 'boolean' ? { connected: data.connected, error: String(data.lastError || '') } : undefined;
+                    typeof data?.connected === 'boolean' ? { connected: data.connected, error: String(data.lastError || ''), heard: data.lastHeartbeatAt != null } : undefined;
                 // 릴레이가 이 앱 버전을 받지 않는다: 세션은 살아 있어도 명령이 오지 않는다
                 if (data?.lastErrorCode === 'agent_too_old')
                     return { status: 'too_old', running: !!data.running, minVersion: data.minVersion ?? null, ...(link ? { link } : {}) };

@@ -351,6 +351,8 @@ export interface ExtensionListResponse {
 export interface RelayLink {
     connected: boolean;
     error: string;
+    /** 하트비트가 한 번이라도 성공했다. 아니면(막 켬) 끊김이 아니라 연결 중이다 */
+    heard?: boolean;
 }
 
 /**

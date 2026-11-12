@@ -44,7 +44,8 @@ where
         }
         let now_shape = shape(&result);
         let has_lines = result.get("lines").and_then(Value::as_array).is_some_and(|l| !l.is_empty());
-        let other_epoch = known_epoch.is_some_and(|e| result.get("epoch").and_then(Value::as_u64) != Some(e));
+        // 세대가 없는 답(꺼진 서버의 디스크 기록)은 세대로 가리지 않는다 (출처가 바뀐 것은 아래 `moved`가 본다)
+        let other_epoch = known_epoch.is_some_and(|e| result.get("epoch").and_then(Value::as_u64).is_some_and(|now| now != e));
         let moved = first.as_ref().is_some_and(|s| *s != now_shape);
         if has_lines || other_epoch || moved || tokio::time::Instant::now() >= deadline {
             if let Some(obj) = result.as_object_mut() {
@@ -118,6 +119,16 @@ mod tests {
         let got = read_waiting(&changed, Duration::from_millis(800), None, reader(state)).await.unwrap();
         assert_eq!(got["epoch"], 9);
         assert!(started.elapsed() < Duration::from_millis(600));
+    }
+
+    /// 꺼진 서버의 디스크 기록(세대가 없다)은 클라이언트가 아는 세대와 다르다고 보지 않는다: 붙잡는다
+    #[tokio::test]
+    async fn a_disk_record_without_an_epoch_is_held() {
+        let changed = Notify::new();
+        let state = Arc::new(Mutex::new(json!({"lines": [], "source": "disk", "running": false})));
+        let started = tokio::time::Instant::now();
+        read_waiting(&changed, Duration::from_millis(300), Some(7), reader(state)).await.unwrap();
+        assert!(started.elapsed() >= Duration::from_millis(290), "held {:?}", started.elapsed());
     }
 
     #[tokio::test]

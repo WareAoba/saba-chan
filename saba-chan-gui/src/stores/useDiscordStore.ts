@@ -403,7 +403,8 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         let relayFailure = '';
         if (state.discordCloudHostId && link && info?.running) {
             relayOk = link.connected;
-            if (!relayOk) relayFailure = link.error || _t('errors.network_error');
+            // 막 켜 하트비트 전이면 끊김이 아니라 연결 중이다 (실패 없이 '연결 중')
+            if (!relayOk && (link.error || link.heard !== false)) relayFailure = link.error || _t('errors.network_error');
         } else if (state.discordCloudHostId) {
             const relayUrl = state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
             try {
@@ -466,7 +467,8 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         // 다음 확인. 데몬이 연결 상태를 알려 주고 이벤트를 받으면 바뀔 때 이벤트로 바로 읽으니 평소에는 드물게 본다
         const schedule = () => {
             if (generation !== statusGeneration) return;
-            const ms = daemonKnowsLink && eventsAvailable() ? STATUS_SLOW_POLL_MS : STATUS_POLL_MS;
+            // 끊긴 것 같으면(한 번 실패) 끊김을 정하려 곧 다시 본다
+            const ms = daemonKnowsLink && eventsAvailable() && get()._relayFailures === 0 ? STATUS_SLOW_POLL_MS : STATUS_POLL_MS;
             set({
                 _statusInterval: setTimeout(async () => {
                     await get().checkStatus();
@@ -477,8 +479,18 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         offStatusEvents = subscribeDaemonEvents((ev) => {
             if (ev.type !== 'relay.status' && ev.type !== 'resync') return;
             // 확인하는 중에 바뀌었으면 그 답은 이미 옛것일 수 있다: 끝나고 한 번 더 본다
-            if (checkingGeneration === statusGeneration) checkAgain = true;
-            else get().checkStatus();
+            if (checkingGeneration === statusGeneration) {
+                checkAgain = true;
+                return;
+            }
+            get()
+                .checkStatus()
+                .then(() => {
+                    // 끊긴 것 같으면 30초 뒤가 아니라 곧 다시 보고 끊김을 정한다
+                    if (generation !== statusGeneration || get()._relayFailures === 0 || get()._statusTimeout) return;
+                    clearTimeout(get()._statusInterval ?? undefined);
+                    schedule();
+                });
         });
         // 첫 확인은 잠깐 미룬다. 멈추면 취소되도록 타이머를 들고 있는다
         const timeout = setTimeout(async () => {

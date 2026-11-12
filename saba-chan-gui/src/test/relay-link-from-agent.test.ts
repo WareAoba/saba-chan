@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDiscordStore } from '../stores/useDiscordStore';
 
 let listeners: ((ev: unknown) => void)[] = [];
-const link = (connected: boolean, error = '') => ({ status: 'running', running: true, link: { connected, error } });
+const link = (connected: boolean, error = '', heard = true) => ({ status: 'running', running: true, link: { connected, error, heard } });
 
 beforeEach(() => {
     vi.useFakeTimers();
@@ -56,6 +56,27 @@ describe('릴레이 연결은 데몬 에이전트가 안다', () => {
         expect(window.api.relayCheckHostStatus).not.toHaveBeenCalled();
     });
 
+    it('막 켠 봇이 아직 하트비트를 못 했으면 끊김이 아니라 연결 중이다', async () => {
+        vi.mocked(window.api.discordBotStatus).mockResolvedValue(link(false, '', false) as never);
+        await useDiscordStore.getState().checkStatus();
+        await useDiscordStore.getState().checkStatus();
+        const s = useDiscordStore.getState();
+        expect(s.relayError).toBeFalsy();
+        expect(s.discordReconnecting).toBe(false);
+        expect(s.discordBotStatus).toBe('connecting');
+    });
+
+    it('끊긴 것 같으면 30초를 기다리지 않고 5초 뒤 다시 보고 끊김을 정한다', async () => {
+        useDiscordStore.getState().startStatusPolling();
+        await vi.advanceTimersByTimeAsync(300);
+        vi.mocked(window.api.discordBotStatus).mockResolvedValue(link(false, 'poll 502') as never);
+        for (const l of listeners) l({ type: 'relay.status', data: {} });
+        await vi.advanceTimersByTimeAsync(10);
+        expect(useDiscordStore.getState().relayConnected).toBe(true);
+        await vi.advanceTimersByTimeAsync(5_100);
+        expect(useDiscordStore.getState().relayConnected).toBe(false);
+    });
+
     it('봇을 꺼 두었으면 에이전트가 모르므로 릴레이에 묻는다', async () => {
         vi.mocked(window.api.discordBotStatus).mockResolvedValue({ status: 'stopped', running: false, link: { connected: false, error: '' } } as never);
         await useDiscordStore.getState().checkStatus();
@@ -71,7 +92,6 @@ describe('릴레이 연결은 데몬 에이전트가 안다', () => {
         await vi.advanceTimersByTimeAsync(10_000);
         expect(window.api.discordBotStatus).toHaveBeenCalledTimes(1);
 
-        vi.mocked(window.api.discordBotStatus).mockResolvedValue(link(false, 'poll 502') as never);
         for (const l of listeners) l({ type: 'relay.status', data: {} });
         await vi.advanceTimersByTimeAsync(0);
         expect(window.api.discordBotStatus).toHaveBeenCalledTimes(2);

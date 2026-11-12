@@ -877,6 +877,10 @@ impl Session {
                     next = None;
                     match polled {
                         Ok(commands) => {
+                            // 실패 뒤 다시 받았다: 하트비트를 기다리지 않고 붙어 있다고 보인다 (`connected`)
+                            if failures > 0 {
+                                self.agent.update(self.generation, |s| s.last_error = None);
+                            }
                             failures = 0;
                             let now = std::time::Instant::now();
                             let mut reack = Vec::new();
