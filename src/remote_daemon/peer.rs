@@ -988,6 +988,8 @@ mod tests {
         let endpoint = Endpoint { address: "127.0.0.1".into(), port: listener.local_addr().unwrap().port(), cert_sha256: String::new() };
         let tcp = dial(&endpoint).await.unwrap();
         assert!(socket2::SockRef::from(&tcp).keepalive().unwrap());
+        #[cfg(target_os = "linux")]
+        assert_eq!((socket2::SockRef::from(&tcp).tcp_keepalive_time().unwrap(), socket2::SockRef::from(&tcp).tcp_keepalive_interval().unwrap()), (KEEPALIVE_IDLE, KEEPALIVE_INTERVAL));
     }
 
     #[tokio::test]
