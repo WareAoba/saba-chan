@@ -72,6 +72,23 @@ describe('릴레이 실패 종류', () => {
             vi.useRealTimers();
         }
     });
+
+    it('릴레이를 덜 묻는 동안에도 에이전트 상태는 5초마다 반영한다', async () => {
+        vi.useFakeTimers();
+        try {
+            vi.mocked(window.api.relayCheckHostStatus).mockResolvedValue({ error: 'INVALID_TOKEN' });
+            await useDiscordStore.getState().checkStatus();
+            await useDiscordStore.getState().checkStatus();
+            vi.mocked(window.api.discordBotStatus).mockResolvedValue('stopped');
+            vi.advanceTimersByTime(5_000);
+            await useDiscordStore.getState().checkStatus();
+            await useDiscordStore.getState().checkStatus();
+            expect(useDiscordStore.getState().discordBotStatus).toBe('stopped');
+            expect(useDiscordStore.getState().relayErrorKind).toBe('rejected');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });
 
 describe('연결 카드', () => {

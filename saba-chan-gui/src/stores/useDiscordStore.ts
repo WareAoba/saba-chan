@@ -438,13 +438,14 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             /* unknown */
         }
 
-        // 토큰이 거절된 동안은 30초에 한 번만 묻는다 (같은 공유기의 다른 PC와 릴레이 요청 한도를 나눠 쓴다)
+        // 토큰이 거절된 동안은 릴레이를 30초에 한 번만 묻는다 (같은 공유기의 다른 PC와 릴레이 요청 한도를 나눠 쓴다).
+        // 그 사이에는 거절을 그대로 두고, 에이전트 상태는 5초마다 반영한다
         const now = Date.now();
-        if (state.relayErrorKind === 'rejected' && now - state._relayCheckedAt < REJECTED_RECHECK_MS) return;
+        const holdRejected = state.relayErrorKind === 'rejected' && now - state._relayCheckedAt < REJECTED_RECHECK_MS;
         let relayOk = false;
-        let relayFailure = '';
-        let failureKind: RelayFailureKind | '' = '';
-        if (state.discordCloudHostId) {
+        let relayFailure = holdRejected ? state.relayError : '';
+        let failureKind: RelayFailureKind | '' = holdRejected ? 'rejected' : '';
+        if (state.discordCloudHostId && !holdRejected) {
             const relayUrl = state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
             set({ _relayCheckedAt: now });
             try {
