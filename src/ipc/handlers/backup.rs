@@ -1096,6 +1096,12 @@ pub fn spawn_scheduler(state: IPCServer) {
     tokio::spawn(async move {
         let started = chrono::Local::now().naive_local();
         let clock = RUNNER.get_or_init(|| (started, std::sync::Arc::new(Mutex::new(Clock::default())))).1.clone();
+        {
+            let supervisor = state.supervisor.read().await;
+            let store = &supervisor.instance_store;
+            let saved = store.list().iter().flat_map(|i| crate::scheduler::read_runs(&store.instance_dir(&i.id).join(crate::scheduler::RUNS_FILE))).collect();
+            clock.lock().unwrap_or_else(|e| e.into_inner()).restore(saved);
+        }
         // 복원 전 백업을 이미 살핀 (인스턴스, 켠 시각). 한 번 켠 뒤로 한 번만 살핀다
         let mut swept: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
         loop {
@@ -1131,16 +1137,42 @@ pub fn spawn_scheduler(state: IPCServer) {
                     }
                 }
             }
+            save_runs(&state, &clock).await;
             for (key, id, task, fire) in due {
                 let state = state.clone();
                 let clock = clock.clone();
                 tokio::spawn(async move {
                     run_task(&state, &id, &task, fire, &key).await;
                     clock.lock().unwrap_or_else(|e| e.into_inner()).finish(&key, fire);
+                    save_runs(&state, &clock).await;
                 });
             }
         }
     });
+}
+
+/// 마지막 실행 시각이 바뀌었으면 인스턴스 폴더마다 남긴다: 데몬을 다시 켜도 주기 작업이 이어 센다
+async fn save_runs(state: &IPCServer, clock: &Mutex<Clock>) {
+    let Some(runs) = clock.lock().unwrap_or_else(|e| e.into_inner()).take_changed() else { return };
+    let supervisor = state.supervisor.read().await;
+    let store = &supervisor.instance_store;
+    for instance in store.list() {
+        let dir = store.instance_dir(&instance.id);
+        let file = dir.join(crate::scheduler::RUNS_FILE);
+        let of_instance: std::collections::HashMap<_, _> = instance
+            .schedule
+            .iter()
+            .map(|t| crate::scheduler::task_key(&instance.id, t))
+            .filter_map(|k| runs.get(&k).map(|at| (k, *at)))
+            .collect();
+        // 예약이 없는 인스턴스에는 파일을 만들지 않고, 지워진 인스턴스의 폴더를 되살리지 않는다
+        if (of_instance.is_empty() && !file.exists()) || !dir.is_dir() {
+            continue;
+        }
+        if let Err(e) = crate::scheduler::write_runs(&file, &of_instance) {
+            tracing::warn!("Could not save the schedule state of '{}': {}", instance.name, e);
+        }
+    }
 }
 
 fn backup_limit() -> Response {
