@@ -328,7 +328,7 @@ patterns = ["FAILED TO BIND TO PORT", "Address already in use"]
 persistent = true
 ```
 
-#### `[patterns]` (이름 붙인 정규식 조각, saba-core 0.1.14-0)
+#### `[patterns]` (이름 붙인 정규식 조각, saba-core 0.1.15-0)
 여러 정규식이 같이 쓰는 머리(로그 머리, 플레이어 이름 규칙)를 이름 하나에 둔다(`ModuleToml.patterns`, `module_loader.rs` `resolve_pattern_fragments`·`expand_pattern_refs`). 값은 정규식 조각이고, 데몬이 읽는 정규식 키에서 `{이름}`으로 쓰면 로드할 때 `(?:조각)`으로 바뀐다. 클라이언트·러너·API(`GET /api/modules`)는 바뀐 정규식만 본다.
 - 바뀌는 키: `[module] log_pattern`, `[launch] line_start`, `[detection] graceful_exit_patterns`, `[backup] save_done_pattern`, `[[settings.fields]] pattern`, `[commands] failure_patterns`, `[[commands.fields]] reply_pattern`, `[[syntax_highlight.rules]] pattern`, `[extensions.saba-core]`의 `ready_patterns`·`player_join_patterns`·`player_leave_patterns`·`chat_patterns`·`progress_patterns`. 정규식이 아닌 키(`[backup] paths`·`data_roots`의 `{설정 이름}` 등)는 바꾸지 않는다. `[[diagnose]] patterns`는 모듈 Python(`load_diagnose_rules`)이 module.toml에서 직접 읽으므로 바꾸지 않는다.
 - 참조 규칙: `{이름}`은 `[patterns]`에 선언한 이름일 때만 바뀐다. 이름은 글자·숫자·`_`이고 숫자로 시작하지 않으므로 반복 횟수 `{2}`·`{1,16}`은 그대로이고, 선언하지 않은 이름도 쓴 그대로 남는다. 선언한 이름을 글자로 쓰려면 `\{이름}`처럼 여는 괄호를 막는다.
@@ -777,7 +777,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 - 메이커 스킬과 도구는 모듈 저장소 `maker/`에 있고 앱에 싣지 않는다. 사용자는 에이전트별로 받는다: Claude Code는 받은 저장소의 `.claude/skills/`, Codex는 스킬 설치기, 그 밖은 저장소의 `AGENTS.md`. Claude Code 플러그인 마켓은 아직 열지 않았다(사용자 지시). 메이커 버전은 `maker/.claude-plugin/plugin.json`, 맞는 데몬은 `maker/SKILL.md` 머리의 `metadata.saba-core`다.
 - 데몬은 `GET /api/maker`(`D:src/ipc/handlers/maker.rs`)로 이 PC의 경로(`saba-core`·러너, 데몬 venv Python, 공용 런타임 `<data_dir>/python-shared`, 모듈 폴더)와 받는 스키마 버전, 저장소·가이드 주소만 알려 준다. CLI `module maker`(`--json`이면 그대로)와 GUI `ModuleMakerCard`가 이것을 쓰고, 메이커 `check.py`는 `saba-chan-cli module maker --json`으로 `--saba-core`·공용 런타임을 채운다.
-- 여러 정규식이 같은 머리나 이름 규칙을 쓰면 메이커는 그 조각을 `[patterns]`에 한 번 두고 `{이름}`으로 참조한다(§1.2 `[patterns]`, saba-core 0.1.14-0 이상을 요구한다). 조각을 고치면 그것을 쓰는 정규식이 모두 함께 바뀐다.
+- 여러 정규식이 같은 머리나 이름 규칙을 쓰면 메이커는 그 조각을 `[patterns]`에 한 번 두고 `{이름}`으로 참조한다(§1.2 `[patterns]`, saba-core 0.1.15-0 이상을 요구한다). 조각을 고치면 그것을 쓰는 정규식이 모두 함께 바뀐다.
 - 직접 만든 모듈은 모듈 폴더에 두면 확인되지 않은 모듈로 격리 실행된다(§5.2 신뢰 표시). 공개하려면 모듈 저장소 PR을 거쳐 다음 릴리스 manifest에 실린다(§5.1).
 
 ---

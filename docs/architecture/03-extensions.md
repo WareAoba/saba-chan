@@ -66,7 +66,7 @@
 
 - **`HookBinding`** (`ext/:299-305`): `module: String`(필수, `python_modules`의 키), `function: String`(필수), `condition: Option<String>`.
 - **`GuiManifest`** (`ext/:325-336`): `bundle`, `styles`, `assets: Option<String>`, `builtin: Option<bool>`, `slots: HashMap<String, Value>`.
-  - `assets`(saba-core 0.1.14-0): 번들이 처음 쓸 때 받는 정적 파일(그림 등) 폴더. 익스텐션 폴더 기준 상대 경로다(예: `gui/assets`). 데몬이 `GET /api/extensions/:id/gui/assets/*path`로 번들과 같은 조건에 서빙하고(4.1 보안), 번들은 `host.assetUrl(이름)`으로 받는다(4.5). 그림을 번들에 data URI로 넣지 않아도 되어, 번들이 작아지고 쓰지 않는 그림을 읽지 않는다. 이 키를 모르는 데몬은 schema v1 manifest를 모르는 키로 거부하므로, 쓰는 익스텐션은 `min_app_version`을 이 버전 이상으로 둔다. 목록 응답의 `gui`에는 선언했을 때만 실린다.
+  - `assets`(saba-core 0.1.15-0): 번들이 처음 쓸 때 받는 정적 파일(그림 등) 폴더. 익스텐션 폴더 기준 상대 경로다(예: `gui/assets`). 데몬이 `GET /api/extensions/:id/gui/assets/*path`로 번들과 같은 조건에 서빙하고(4.1 보안), 번들은 `host.assetUrl(이름)`으로 받는다(4.5). 그림을 번들에 data URI로 넣지 않아도 되어, 번들이 작아지고 쓰지 않는 그림을 읽지 않는다. 이 키를 모르는 데몬은 schema v1 manifest를 모르는 키로 거부하므로, 쓰는 익스텐션은 `min_app_version`을 이 버전 이상으로 둔다. 목록 응답의 `gui`에는 선언했을 때만 실린다.
   - `builtin`은 daemon에서 읽지 않는다.
   - `slots`는 slot id → 표시 정보 `{label?, icon?, description?}`이다(옛 모양인 컴포넌트 이름 문자열도 받고 빈 표시 정보로 본다). 데몬은 검사하지 않고 `/api/extensions`의 `gui`에 그대로 싣는다. GUI가 slot 표와 대조하고, 창마다 읽을 번들을 고르고, 탭·버튼·카드 이름을 정한다(4.2). `bundle` 없이 `slots`만 써도 된다(설정 탭 자동 폼).
 - **`CliManifest`** (`ext/:320-326`): `slots: HashMap<String, Value>`. 데이터 slot 선언(4.3). 값은 항목 하나 또는 배열이다.
@@ -317,7 +317,7 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 | `run(instanceId, 'start'\|'stop'\|'restart')` | 넘겼으면 `true`, 하지 않았으면 `false`. 메인 창은 앱 버튼과 같은 `useServerActions` 손잡이를 거친다: 정지·재시작은 확인 창을 띄우고 `true`를 돌려주므로, 사용자가 취소해도 `true`다(결과는 `on`으로 받는다). 트레이 팝업과 바탕화면 오버레이는 `instanceStart`·`instanceStop`·`instanceRestart`를 바로 부르고 데몬 답으로 `true`/`false`를 정한다. 이 PC 데몬이라고 확인한 때만 정지·재시작을 보내고, 원격 데몬이거나 아직 모르면 `false`(그 창들은 원격 정지를 두 번 눌러 확정한다) |
 | `openApp(route?)` | 메인 창: 상단 페이지(`servers`·`discord`·`activity`·`settings`·`ext:<id>`)로 옮기거나, `server:<인스턴스 id>`(영문·숫자·`-`·`_` 128자까지)면 그 서버를 연다. 그 밖의 값은 무시한다. 트레이 팝업: 메인 창을 연다. 바탕화면 오버레이: 메인 창을 열고, `server:<id>`면 셸이 그 서버를 연다(`app:openServer`, 메인 창이 막 뜨는 중이면 준비된 뒤). 앱 탭이면 그 탭을 연다(`app:openRoute`) |
 | `on(type, fn)` | 데몬 이벤트(`/api/events`, 01 문서) 구독. `type` `*`는 전부. 끊는 함수를 돌려준다. 트레이 팝업은 이벤트를 받지 않아 부르지 않는다 |
-| `assetUrl(path)` | manifest `gui.assets` 폴더의 파일(그 폴더 기준 이름, `/`로 나눈다)을 이 창에서 그릴 수 있는 URL(`blob:`)로 준다(`Promise<string \| null>`). 처음 부를 때 이 PC 데몬에서 받고(`extensionGuiAsset`), 그 창이 닫히거나 익스텐션을 내릴 때까지 같은 URL을 준다. 데몬 요청은 셸이 토큰을 붙여 대행하므로 번들에 주소를 그대로 주지 않고 받은 파일의 URL을 준다. 형식은 이름의 확장자로 붙인다(webp·png·jpg·gif·svg·avif). 받지 못하면 `null`이고 다음에 다시 받는다 (0.1.14-0) |
+| `assetUrl(path)` | manifest `gui.assets` 폴더의 파일(그 폴더 기준 이름, `/`로 나눈다)을 이 창에서 그릴 수 있는 URL(`blob:`)로 준다(`Promise<string \| null>`). 처음 부를 때 이 PC 데몬에서 받고(`extensionGuiAsset`), 그 창이 닫히거나 익스텐션을 내릴 때까지 같은 URL을 준다. 데몬 요청은 셸이 토큰을 붙여 대행하므로 번들에 주소를 그대로 주지 않고 받은 파일의 URL을 준다. 형식은 이름의 확장자로 붙인다(webp·png·jpg·gif·svg·avif). 받지 못하면 `null`이고 다음에 다시 받는다 (0.1.15-0) |
 
 - 번들은 여전히 `window.api`에 손이 닿는다(4.1 보안). `host`는 그것을 쓰지 않아도 되게 하는 정해진 통로이고, 막는 장치는 아니다.
 
