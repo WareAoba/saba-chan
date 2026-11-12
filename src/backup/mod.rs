@@ -408,12 +408,21 @@ fn put_stream(
         }
     };
     let target = object_path(dir, &hash)?;
+    #[cfg(test)]
+    {
+        let together = PUT_TOGETHER.lock().unwrap().get(dir).cloned();
+        if let Some(together) = together {
+            together.wait();
+        }
+    }
     let added = fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
-    if fs::metadata(&target).is_ok_and(|m| m.is_file() && m.len() == added) && object_intact(&target, &hash, read) {
+    // 본 때의 것 하나로 판정한다: 다시 보면 그새 다른 스레드가 넣은 같은 내용을 망가진 것으로 읽는다
+    let existing = fs::metadata(&target).ok().filter(|m| m.is_file());
+    if existing.as_ref().is_some_and(|m| m.len() == added) && object_intact(&target, &hash, read) {
         let _ = fs::remove_file(&tmp);
         return Ok((hash, read, added, None));
     }
-    if target.is_file() {
+    if existing.is_some() {
         tracing::warn!("Backup content {} was damaged; replacing it", &hash[..12]);
     }
     let moved = target.parent().map_or(Ok(()), fs::create_dir_all).and_then(|_| fs::rename(&tmp, &target));
@@ -556,6 +565,11 @@ thread_local! {
     static VANISH_BEFORE_READ: std::cell::RefCell<Vec<std::ffi::OsString>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
+/// 시험용: 이 백업 폴더에 내용을 넣는 스레드는 모두 여기 모인 뒤에 저장소에 이미 있는지 본다 (같은 내용을 동시에 넣는 것)
+#[cfg(test)]
+static PUT_TOGETHER: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, std::sync::Arc<std::sync::Barrier>>>> =
+    std::sync::LazyLock::new(Default::default);
+
 /// 시험용: 백업 폴더마다 내용을 저장소에 넣은 스레드
 #[cfg(test)]
 static PUT_THREADS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, std::collections::HashSet<std::thread::ThreadId>>>> =
@@ -629,11 +643,13 @@ impl V2Writer<'_> {
             }
         });
         let mut gone = std::collections::HashSet::new();
+        // 내용이 같은 파일을 두 스레드가 동시에 넣으면 둘 다 새로 썼다고 한다: 한 번만 센다
+        let mut fresh = std::collections::HashSet::new();
         // 가져간 파일은 앞에서부터 이어지므로, 넣지 않은 파일보다 앞에 그 까닭인 실패가 있다
         for (p, put) in pending.iter().zip(puts) {
             match put {
                 Some(Put::Stored((hash, read, stored_size, written))) => {
-                    if let Some(written) = written {
+                    if let Some(written) = written.filter(|w| fresh.insert(w.clone())) {
                         self.summary.stored += stored_size;
                         self.written.push(written);
                     }
@@ -1714,6 +1730,27 @@ mod tests {
         fs::remove_dir_all(&w).unwrap();
         restore(&dir, &made.name).unwrap();
         assert_eq!(fs::read_dir(&w).unwrap().count(), 64);
+    }
+
+    /// 내용이 같은 파일 둘을 두 스레드가 동시에 넣어도 새로 쓴 용량은 한 번만 센다
+    #[test]
+    fn the_same_content_put_at_once_is_counted_once() {
+        if put_lanes() < 2 {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let w = tmp.path().join("world");
+        fs::create_dir_all(&w).unwrap();
+        for name in ["a.json", "b.json"] {
+            fs::write(w.join(name), b"[]").unwrap();
+        }
+        let dir = tmp.path().join("backups");
+        PUT_TOGETHER.lock().unwrap().insert(dir.clone(), std::sync::Arc::new(std::sync::Barrier::new(2)));
+        let made = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+        PUT_TOGETHER.lock().unwrap().remove(&dir);
+        let objects: Vec<_> = fs::read_dir(dir.join(OBJECTS)).unwrap().flatten().flat_map(|s| fs::read_dir(s.path()).unwrap().flatten()).collect();
+        assert_eq!(objects.len(), 1);
+        assert_eq!(made.stored, objects[0].metadata().unwrap().len());
     }
 
     #[test]
