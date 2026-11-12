@@ -890,11 +890,11 @@ async fn event_stream_reports_who_ran_what_and_replays_after_reconnect() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
-/// manifest `hooks`의 `event:<종류>`: 이벤트 버스에 난 일을 익스텐션 Python이 데이터와 함께 받는다
 /// 켠 익스텐션 목록은 이 프로세스의 테스트가 함께 쓰는 설정이다. 작업자는 그 목록이 바뀌면 새로 뜨므로,
 /// 목록을 바꾸는 테스트와 작업자 재사용을 보는 테스트는 겹치지 않게 돈다
 static EXTENSION_LIST: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+/// manifest `hooks`의 `event:<종류>`: 이벤트 버스에 난 일을 익스텐션 Python이 데이터와 함께 받는다
 #[tokio::test]
 async fn extension_event_hook_receives_bus_event_with_its_data() {
     let _extension_list = EXTENSION_LIST.lock().await;
