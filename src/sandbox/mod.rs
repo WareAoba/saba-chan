@@ -295,7 +295,12 @@ pub fn extension_trust(ext_id: &str) -> Trust {
     saba_chan_updater_lib::integrity::trust_of(&key, &extension_dir_in(&crate::plugin::resolve_extensions_dir(), ext_id))
 }
 
-pub fn extension_unisolated_allowed(ext_id: &str) -> bool {
+/// 이 익스텐션의 실행이 격리로 도는가: 확인되지 않았고 비격리 동의도 없다
+pub fn extension_isolated(ext_id: &str) -> bool {
+    python_isolation_required(extension_trust(ext_id)) && !extension_unisolated_allowed(ext_id)
+}
+
+fn extension_unisolated_allowed(ext_id: &str) -> bool {
     let dir = extension_dir_in(&crate::plugin::resolve_extensions_dir(), ext_id);
     unisolated_allowed(&format!("{}{}", saba_chan_updater_lib::relay::EXTENSION_PREFIX, ext_id), &dir)
 }

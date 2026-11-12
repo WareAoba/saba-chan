@@ -1316,6 +1316,8 @@
     "dm_crash_title": "Crashes",
     "dm_crash_desc": "Alerts you when a server crashes. If auto-restart is off, a Restart button is attached.",
     "dm_crash_off_warn": "When off, you won't hear about crashes on Discord. They still show in the app's notifications.",
+    "dm_unresponsive_title": "Not responding",
+    "dm_unresponsive_desc": "Alerts you when a running server stops answering status checks. If it is set to only notify, a Restart button is attached.",
     "dm_external_start_title": "Started outside Saba-chan",
     "dm_external_start_desc": "Alerts you when a server starts without going through Saba-chan.",
     "dm_schedule_title": "Schedule warnings",
@@ -2279,7 +2281,8 @@
     "label": "Memory limit (MB)",
     "hint": "Leave empty for no limit. For Java servers, set it 1–2 GB above the -Xmx value. Applies on Windows only.",
     "placeholder": "No limit",
-    "restart_note": "Takes effect after a restart."
+    "restart_note": "Takes effect after a restart.",
+    "unsupported": "Memory limits only apply on Windows. The PC running this server isn't on Windows, so the limit wasn't saved."
   },
   "game_chat": {
     "title": "Game chat relay",

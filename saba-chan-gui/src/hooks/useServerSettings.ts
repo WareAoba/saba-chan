@@ -880,6 +880,7 @@ export function useServerSettings({
                             (result.error_code === 'working_dir_in_use' &&
                                 t('servers.working_dir_in_use', { instance: result.instance || '?' })) ||
                             (result.error_code === 'instance_busy' && t('server_settings.instance_busy')) ||
+                            (result.error_code === 'memory_limit_unsupported' && t('memory_limit.unsupported')) ||
                             blockedText(result, t) ||
                             translateError(result.error),
                     });

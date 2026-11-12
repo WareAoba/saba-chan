@@ -452,6 +452,8 @@ pub struct BotConfig {
 pub struct DmNotice {
     /// 비정상 종료 (`instance.exit`)
     pub crash: bool,
+    /// 켜져 있지만 응답 없음 (`instance.unresponsive`)
+    pub unresponsive: bool,
     /// 사바쨩 밖에서 켜짐 (`instance.started` `unexpected`)
     pub external_start: bool,
     /// 예약 작업 예고 (`schedule.warn`)
@@ -472,6 +474,7 @@ impl Default for DmNotice {
     fn default() -> Self {
         Self {
             crash: true,
+            unresponsive: true,
             external_start: true,
             schedule: true,
             update: true,
@@ -488,6 +491,7 @@ impl DmNotice {
     pub fn off_kinds(&self) -> Vec<&'static str> {
         [
             ("crash", self.crash),
+            ("unresponsive", self.unresponsive),
             ("externalStart", self.external_start),
             ("schedule", self.schedule),
             ("update", self.update),

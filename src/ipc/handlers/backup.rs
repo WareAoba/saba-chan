@@ -2344,6 +2344,7 @@ else:
             sup.instance_store.update(&id, inst).unwrap();
         }
         run_fake_server(&state, &id, &tmp, "stop) exit 0;;").await;
+        let mut events = crate::events::bus().subscribe(None);
         let generation = players::roster_start(&id);
         let now = saba_runner::now();
         let tick = |at| super::super::server::stop_idle_servers_at(&state, at);
@@ -2361,6 +2362,34 @@ else:
         let stop = crate::audit::log().recent(10, Some(&id)).into_iter().find(|e| e["action"] == "stop").expect("the stop is on record");
         assert_eq!(stop["source"], "idle");
         assert_eq!(crate::supervisor::idle::stopped(&id).map(|s| s.minutes), Some(10));
+        let stopped: Vec<Value> = std::iter::from_fn(|| events.rx.try_recv().ok()).filter(|e| e.kind == "instance.stopped" && e.data["instanceId"] == id.as_str()).map(|e| e.data.clone()).collect();
+        assert_eq!(stopped.iter().map(|d| (d["source"].as_str(), d["idleMinutes"].as_u64())).collect::<Vec<_>>(), [(Some("idle"), Some(10))], "{stopped:?}");
+        players::roster_end(&id, generation);
+    }
+
+    /// 자동 정지가 실패하면 서버 목록에 "접속자가 없어 정지했어요"를 남기지 않는다 (뒤에 사람이 끈 정지가 그 안내를 달지 않게)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_idle_stop_leaves_no_idle_stop_record() {
+        use crate::supervisor::players;
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        run_fake_server(&state, &id, &tmp, "").await;
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("idle_stop".into(), json!(true));
+            inst.module_settings.insert("idle_stop_minutes".into(), json!(10));
+            inst.module_settings.insert("idle_stop_grace_minutes".into(), json!(0));
+            // 모듈이 사라져 정지가 실패한다
+            inst.module_name = "gone".into();
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        let generation = players::roster_start(&id);
+        let now = saba_runner::now();
+        super::super::server::stop_idle_servers_at(&state, now).await;
+        super::super::server::stop_idle_servers_at(&state, now + 10 * 60).await;
+        assert!(is_running(&state, &id).await, "the stop failed");
+        assert_eq!(crate::supervisor::idle::stopped(&id), None);
         players::roster_end(&id, generation);
     }
 

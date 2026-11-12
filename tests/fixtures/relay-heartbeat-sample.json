@@ -1,0 +1,181 @@
+{
+    "description": "POST /heartbeat 계약 표본 — 데몬(saba-chan src/relay_agent.rs heartbeat_body·metadata·relay_server_entry·relay_module_entry·permission_entry, src/actions/mod.rs heartbeat_actions)이 보내는 본문과 릴레이(relay-server/src/routes/heartbeat.ts)가 돌려주는 답의 모양. 두 저장소의 시험이 같은 파일을 읽는다: 릴레이는 test/heartbeatContract.test.ts, 데몬은 이 파일의 사본. 값은 모두 가짜다. request 는 줄이지 않은(metadataUnchanged 없는) 첫 heartbeat 이고, 데몬이 싣는 키를 모두 담는다(값이 기본이면 빠지는 키도). reducedRequest 는 지문이 그대로라 줄인 heartbeat(servers·permissions·permissionsAt 만)이고, needMetadataResponse 는 릴레이가 그 지문을 모를 때의 답(데몬은 전체를 다시 보낸다)이고, response 의 metadataHash 를 뺀 나머지 키도 함께 실릴 수 있다. response 는 릴레이가 실을 수 있는 키를 모두 담은 예이고(needMetadata 는 needMetadataResponse 쪽에만), 키와 값의 JSON 형식이 계약이다. metadata 의 servers·modules·actions·permissions 안쪽은 릴레이 스키마가 검사하지 않고 넘기므로, 그 안쪽 키는 릴레이 시험이 카탈로그로 다시 읽어 확인한다. moduleDetails 는 릴레이가 받지 않으므로(0.1.13·0.1.14 가 보내는 것은 버린다) 표본에 없다.",
+    "request": {
+        "agentVersion": "0.1.14",
+        "os": "linux x86_64",
+        "distro": { "id": "ubuntu", "version": "24.04", "name": "Ubuntu 24.04.1 LTS" },
+        "metadataHash": "5d41402abc4b2a76b9719d911017c5925d41402abc4b2a76b9719d911017c592",
+        "linkedGuildsAckIds": ["00000000-0000-4000-8000-000000000001"],
+        "metadata": {
+            "servers": [
+                {
+                    "id": "inst-0001",
+                    "name": "friends",
+                    "module": "minecraft",
+                    "status": "running",
+                    "usage": { "cpu": 12.5, "memMb": 2048 },
+                    "players": { "online": 2, "max": 20 },
+                    "access": "members",
+                    "controllers": ["300000000000000002"],
+                    "startedAt": 1731400000,
+                    "statusLine": "TPS 20.0",
+                    "chatLinks": [
+                        { "guild": "600000000000000001", "channel": "700000000000000001", "direction": "both" }
+                    ]
+                },
+                { "id": "inst-0002", "name": "pal", "module": "palworld", "status": "stopped" }
+            ],
+            "schedules": [{ "instanceId": "inst-0001", "action": "backup", "next": 1731403600 }],
+            "modules": [
+                {
+                    "name": "minecraft",
+                    "module_aliases": ["Minecraft", "mc"],
+                    "commands": {
+                        "fields": [
+                            {
+                                "name": "say",
+                                "label": "Say",
+                                "description": "Broadcast a message",
+                                "risk": "safe",
+                                "inputs": [
+                                    {
+                                        "name": "message",
+                                        "label": "Message",
+                                        "type": "text",
+                                        "required": true,
+                                        "min": null,
+                                        "max": null,
+                                        "options": null,
+                                        "titles": { "ko": "메시지", "en": "Message" }
+                                    }
+                                ],
+                                "aliases": ["broadcast"],
+                                "titles": { "ko": "말하기", "en": "Say" },
+                                "descriptions": { "ko": "모두에게 말해요", "en": "Broadcast a message" },
+                                "aliases_by_language": { "ko": ["공지"] }
+                            }
+                        ]
+                    },
+                    "presets": [{ "id": "vanilla", "label": "Vanilla" }],
+                    "display_name": "Minecraft",
+                    "display_names": { "ko": "마인크래프트", "en": "Minecraft" },
+                    "module_aliases_by_language": { "ko": ["마인크래프트", "마크"] }
+                },
+                { "name": "palworld", "module_aliases": [], "commands": { "fields": [] }, "presets": [] }
+            ],
+            "botConfig": { "prefixes": ["!사바"] },
+            "allowedInstances": { "600000000000000001": ["inst-0001"] },
+            "host": { "cpu": 23, "mem": 61, "diskFree": 42 },
+            "backupNotice": "failures",
+            "dmOff": ["schedule"],
+            "dmOn": ["offline"],
+            "fullNotice": { "600000000000000001": ["inst-0001"] },
+            "startNotice": { "600000000000000001": ["inst-0001"] },
+            "serverWords": { "inst-0001": { "words": ["친구서버"], "commands": { "say": ["말해"] } } },
+            "permissions": {
+                "600000000000000001": {
+                    "defaultLevel": 1,
+                    "members": { "300000000000000001": 3 },
+                    "chatbotCap": 2,
+                    "levels": { "safe": 1, "caution": 2, "danger": 3, "admin": 3 },
+                    "commandLevels": { "say": 1 },
+                    "commandLevelsTruncated": true,
+                    "ladder": [{ "id": 3 }, { "id": 2, "name": "운영진" }, { "id": 1 }, { "id": 0 }, { "id": -1 }]
+                }
+            },
+            "permissionsAt": 1731400000000,
+            "onboarding": {
+                "steps": [
+                    { "id": "discord", "done": true, "optional": false },
+                    { "id": "module", "done": true, "optional": false },
+                    { "id": "server", "done": true, "optional": false },
+                    { "id": "start", "done": true, "optional": false },
+                    { "id": "chatbot", "done": false, "optional": true }
+                ],
+                "next": null
+            },
+            "language": "ko",
+            "actions": [
+                {
+                    "id": "server.address",
+                    "kind": "query",
+                    "risk": "safe",
+                    "surfaces": ["discord"],
+                    "scope": "instance",
+                    "title": { "ko": "서버 주소", "en": "Server address" },
+                    "input": {
+                        "type": "object",
+                        "properties": { "instance": { "type": "string", "title": { "ko": "서버", "en": "Server" } } },
+                        "required": ["instance"]
+                    },
+                    "name": { "ko": "주소", "en": "address" },
+                    "defaultLevel": 1,
+                    "secret": true,
+                    "modules": ["minecraft"]
+                },
+                {
+                    "id": "server.start",
+                    "kind": "command",
+                    "risk": "safe",
+                    "surfaces": ["discord", "chatbot"],
+                    "scope": "instance",
+                    "title": { "ko": "서버 시작", "en": "Start server" },
+                    "input": {
+                        "type": "object",
+                        "properties": { "instance": { "type": "string", "title": { "ko": "서버", "en": "Server" } } },
+                        "required": ["instance"]
+                    },
+                    "name": { "ko": "시작", "en": "start" },
+                    "defaultLevel": 1,
+                    "controllers": true
+                },
+                {
+                    "id": "update.apply",
+                    "kind": "admin",
+                    "risk": "danger",
+                    "surfaces": ["discord"],
+                    "scope": "none",
+                    "title": { "ko": "업데이트 설치", "en": "Install updates" },
+                    "input": { "type": "object", "properties": {}, "required": [] },
+                    "level": 3
+                },
+                {
+                    "id": "server.query:tps",
+                    "kind": "query",
+                    "risk": "safe",
+                    "surfaces": ["discord", "chatbot"],
+                    "scope": "instance",
+                    "module": "minecraft",
+                    "title": { "ko": "TPS", "en": "TPS" },
+                    "input": { "type": "object", "properties": {}, "required": [] },
+                    "description": { "ko": "틱 속도를 봐요", "en": "Show tick rate" },
+                    "private": true
+                }
+            ],
+            "actionsTruncated": true
+        }
+    },
+    "response": {
+        "status": "ok",
+        "metadataHash": "5d41402abc4b2a76b9719d911017c5925d41402abc4b2a76b9719d911017c592",
+        "linkedGuilds": [
+            { "guildId": "600000000000000002", "via": "link", "linkId": "00000000-0000-4000-8000-000000000002" }
+        ],
+        "updateHint": { "version": "0.1.15", "channel": "stable" },
+        "latestReleases": { "stable": 42 },
+        "address": "11.22.33.44"
+    },
+    "reducedRequest": {
+        "agentVersion": "0.1.14",
+        "os": "linux x86_64",
+        "distro": { "id": "ubuntu", "version": "24.04", "name": "Ubuntu 24.04.1 LTS" },
+        "metadataHash": "5d41402abc4b2a76b9719d911017c5925d41402abc4b2a76b9719d911017c592",
+        "metadataUnchanged": true,
+        "metadata": {
+            "servers": [{ "id": "inst-0001", "name": "friends", "module": "minecraft", "status": "running" }],
+            "permissions": { "600000000000000001": { "defaultLevel": 1, "members": {} } },
+            "permissionsAt": 1731400060000
+        }
+    },
+    "needMetadataResponse": { "status": "ok", "needMetadata": true }
+}

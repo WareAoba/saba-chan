@@ -1316,6 +1316,8 @@
     "dm_crash_title": "Travamentos",
     "dm_crash_desc": "Avisa quando um servidor trava. Sem reinício automático, vem um botão Reiniciar.",
     "dm_crash_off_warn": "Desligado, você não fica sabendo dos travamentos pelo Discord. Eles continuam nas notificações do app.",
+    "dm_unresponsive_title": "Sem resposta",
+    "dm_unresponsive_desc": "Avisa quando um servidor ligado para de responder às consultas de status. Se estiver configurado só para avisar, vem um botão Reiniciar.",
     "dm_external_start_title": "Iniciado fora do Saba-chan",
     "dm_external_start_desc": "Avisa quando um servidor inicia sem passar pelo Saba-chan.",
     "dm_schedule_title": "Avisos de tarefas agendadas",
@@ -2279,7 +2281,8 @@
     "label": "Limite de memória (MB)",
     "hint": "Deixe vazio para não limitar. Em servidores Java, defina 1–2 GB acima do -Xmx. Só vale no Windows.",
     "placeholder": "Sem limite",
-    "restart_note": "Vale após reiniciar."
+    "restart_note": "Vale após reiniciar.",
+    "unsupported": "O limite de memória só vale no Windows. O PC que roda este servidor não usa Windows, então o limite não foi salvo."
   },
   "game_chat": {
     "title": "Encaminhar chat do jogo",

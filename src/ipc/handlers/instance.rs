@@ -68,6 +68,10 @@ pub async fn get_instance(
             body["hidden"] = json!(hidden);
             body["version_hidden"] = json!(version_hidden);
             body["revision"] = json!(instance.settings_revision());
+            // 이 OS에서는 걸리지 않는 상한이 저장돼 있다 (상한을 거절하기 전 릴리스가 저장한 값, `update_instance_settings`)
+            if !cfg!(windows) && instance.memory_limit_mb.is_some() {
+                body["memory_limit_unsupported"] = json!(true);
+            }
             (StatusCode::OK, Json(body)).into_response()
         }
         None => {
@@ -2203,6 +2207,12 @@ pub async fn update_instance_settings(
     // 메모리 상한(MiB): 비우거나(null·"") 0이면 제한 없음
     if let Some(limit) = settings.get("memory_limit_mb") {
         match memory_limit_from(limit) {
+            // 러너는 Windows Job으로만 상한을 건다 (`runner/src/job.rs`): 다른 OS에 저장하면 걸린 줄 알고 그냥 돈다
+            Ok(Some(_)) if !cfg!(windows) => {
+                let message = "memory_limit_mb is only enforced on Windows; this daemon's OS cannot apply it";
+                let error = json!({ "error": message, "error_code": "memory_limit_unsupported", "message": message, "fields": [{"field": "memory_limit_mb"}] });
+                return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
+            }
             Ok(v) => updated.memory_limit_mb = v,
             Err(()) => {
                 return invalid_field_message("memory_limit_mb", format!("memory_limit_mb must be empty or a whole number of MiB of at least {}", MIN_MEMORY_LIMIT_MB));
@@ -4619,6 +4629,62 @@ mod tests {
         assert_eq!(instance.module_settings["motd"], json!("one"));
         // revision 없이 보내면 예전처럼 받는다
         assert!(patch(json!({ "motd": "three" })).await.status.is_success());
+    }
+
+    /// 메모리 상한은 러너가 Windows Job으로만 건다: 다른 OS의 데몬은 상한을 저장하지 않고 적용할 수 없다고 답한다
+    /// (저장되면 사용자는 걸린 줄 안다). 비우기는 어디서나 받는다
+    #[tokio::test]
+    async fn a_memory_limit_is_only_saved_where_it_is_enforced() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let inst = crate::instance::ServerInstance::new("a", "game");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+        let stored = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { state.supervisor.read().await.instance_store.get(&id).map(|i| i.memory_limit_mb) }
+        };
+
+        let saved = patch(json!({ "memory_limit_mb": "4G" })).await;
+        if cfg!(windows) {
+            assert!(saved.status.is_success(), "{:?}", saved.body);
+            assert_eq!(stored().await, Some(Some(4096)));
+        } else {
+            assert_eq!((saved.status.as_u16(), saved.body["error_code"].as_str()), (422, Some("memory_limit_unsupported")), "{:?}", saved.body);
+            assert_eq!(saved.body["fields"], json!([{ "field": "memory_limit_mb" }]));
+            assert_eq!(stored().await, Some(None));
+        }
+        assert!(patch(json!({ "memory_limit_mb": null })).await.status.is_success());
+        assert_eq!(stored().await, Some(None));
+
+        // 0.1.14까지 저장된 상한: 인스턴스 응답이 이 OS에서 걸리지 않는다고 알린다
+        let read = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::get_instance(Path(id), State(state)).await).await.body }
+        };
+        assert_eq!(read().await.get("memory_limit_unsupported"), None);
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).unwrap().clone();
+            inst.memory_limit_mb = Some(2048);
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        let body = read().await;
+        assert_eq!(body["memory_limit_mb"], json!(2048));
+        assert_eq!(body.get("memory_limit_unsupported"), (!cfg!(windows)).then_some(&json!(true)));
     }
 
     /// 06 §8.1·8.2 (스키마 2): 옛 문자열 값은 목록으로 읽고, 숨긴 설정은 required를 보지 않으며 `hidden`에 실린다.

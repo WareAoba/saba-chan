@@ -51,7 +51,7 @@ interface DialogArgs {
     [key: string]: unknown;
 }
 
-export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub, 'on' | 'dispatch'> }) {
+export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub, 'on' | 'dispatch' | 'live'> }) {
     const { request, call } = createDaemonClient(invoke);
     const get = <T = ApiBody>(path: string, opts?: RequestOptions) => request<T>('get', path, undefined, opts);
     const post = (path: string, body?: unknown, opts?: RequestOptions) => request('post', path, body, opts);
@@ -1037,6 +1037,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         },
         // 데몬 이벤트 스트림: cb({id, type, data}). 돌려주는 함수로 해제
         onDaemonEvent: (callback: Listener) => hub.on('events:message', callback),
+        // 셸이 지금 이벤트 스트림에 붙어 있는가 (`events:live`, 허브가 기억한다)
+        daemonEventsLive: () => hub.live(),
 
         // 내보내기/가져오기: 파일은 데몬이 읽고 쓴다. 여기서는 경로만 고른다
         dataExport: async (opts: { secrets?: boolean } = {}) => {

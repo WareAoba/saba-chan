@@ -180,10 +180,16 @@ pub enum Cmd {
         #[arg(value_name = "COMMAND")]
         command: Vec<String>,
     },
-    /// Print a shell completion script
+    /// Print a shell completion script, or install it for this user (`--install`)
     Completions {
-        #[arg(value_name = "SHELL")]
-        shell: clap_complete::Shell,
+        #[arg(value_name = "SHELL", required_unless_present = "install")]
+        shell: Option<clap_complete::Shell>,
+        /// Put the script where your shell loads it, for both `saba-chan` and `saba-chan-cli`. Shell settings are not changed
+        #[arg(long)]
+        install: bool,
+        /// Shell to install for (default: the shell you use)
+        #[arg(long = "shell", value_name = "SHELL", requires = "install", conflicts_with = "shell")]
+        install_shell: Option<clap_complete::Shell>,
     },
     /// Let an AI agent on this PC (Claude Code, Codex) use every command: a local MCP server on stdin/stdout
     Mcp,
@@ -1385,6 +1391,10 @@ pub enum UpdateCmd {
     },
     /// Verify installed files against the release
     Integrity,
+    /// Re-download changed or missing parts at the installed version
+    Repair,
+    /// Go back to the version before the last update
+    Rollback,
     /// Show or change update settings: KEY=VALUE ...
     Config {
         #[arg(value_name = "KEY=VALUE")]
@@ -1471,6 +1481,7 @@ pub enum ConfigCmd {
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DmKind {
     Crash,
+    Unresponsive,
     ExternalStart,
     Schedule,
     Update,
@@ -1481,8 +1492,9 @@ pub enum DmKind {
 }
 
 impl DmKind {
-    pub const ALL: [DmKind; 8] = [
+    pub const ALL: [DmKind; 9] = [
         DmKind::Crash,
+        DmKind::Unresponsive,
         DmKind::ExternalStart,
         DmKind::Schedule,
         DmKind::Update,
@@ -1496,6 +1508,7 @@ impl DmKind {
     pub fn key(self) -> &'static str {
         match self {
             DmKind::Crash => "crash",
+            DmKind::Unresponsive => "unresponsive",
             DmKind::ExternalStart => "externalStart",
             DmKind::Schedule => "schedule",
             DmKind::Update => "update",

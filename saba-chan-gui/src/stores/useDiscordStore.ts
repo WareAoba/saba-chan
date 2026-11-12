@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import type { AgentStatus, HeartbeatReject, Json, JsonObject, RelayLink } from '../types/daemon';
 import { readPrefixes } from '../components/discord/prefixes';
 import type { DiscordNode, MembersByGuild } from '../components/discord/types';
-import { eventsAvailable, subscribeDaemonEvents } from '../utils/daemonEvents';
+import { eventsLive, subscribeDaemonEvents } from '../utils/daemonEvents';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { mergePatchDiff } from '../utils/mergePatch';
 import { startPoll } from '../utils/poll';
@@ -26,6 +26,7 @@ export type BackupNotice = 'all' | 'failures' | 'off';
 /** PC 주인 DM 알림 종류 (데몬 `config_store::DmNotice`, 백업은 `backupNotice`) */
 export const DM_NOTICE_KINDS = [
     'crash',
+    'unresponsive',
     'externalStart',
     'schedule',
     'update',
@@ -544,7 +545,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         // 다음 확인까지. 데몬이 연결 상태를 알려 주고 이벤트를 받으면 바뀔 때 이벤트로 바로 읽으니 평소에는 드물게 본다.
         // 끊긴 것 같으면(한 번 실패) 끊김을 정하려 곧 다시 본다
         const statusPollMs = () =>
-            daemonKnowsLink && eventsAvailable() && get()._relayFailures === 0 ? STATUS_SLOW_POLL_MS : STATUS_POLL_MS;
+            daemonKnowsLink && eventsLive() && get()._relayFailures === 0 ? STATUS_SLOW_POLL_MS : STATUS_POLL_MS;
         // 창이 가려진 동안은 쉰다 (startPoll)
         const poll = () => {
             get()._statusInterval?.();

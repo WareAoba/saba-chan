@@ -6,13 +6,10 @@
 //! 창 설치기는 `installer`를 받지 않고 자기 exe(`InstallOptions.uninstaller_exe`)를 설치 폴더에 복사한다(`registry.rs`).
 //! 자기 사본이 없는 CLI 설치는 릴리즈의 `installer`(업데이트 적용·제거를 맡는 같은 프로그램)를 받는다.
 
-use saba_chan_updater_lib::download::download_verified;
 use saba_chan_updater_lib::relay::{self, ManifestComponent, ReleaseManifest, RelayClient};
-use saba_chan_updater_lib::{Component, DownloadProgress};
+use saba_chan_updater_lib::Component;
 use crate::Profile;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 /// relay 서명을 검증한 릴리즈 manifest. `fetch_latest`만 만들 수 있어, 설치 호출자가 검증을 건너뛸 수 없다
 /// (받은 모듈·익스텐션은 공식으로 기록된다)
@@ -296,7 +293,7 @@ async fn download_with_limit(
     download_url(&info.url, Some(&info.sha256), dest, max_bytes, on_progress).await
 }
 
-/// `url`을 `dest`로 받는다 (`download_verified`). 받는 동안 `on_progress(received, total)`를 0.2초마다 부른다
+/// `url`을 `dest`로 받는다 (`download_reporting`: 받는 동안 `on_progress(received, total)`를 0.2초마다 부른다)
 pub(crate) async fn download_url(
     url: &str,
     sha256: Option<&str>,
@@ -308,23 +305,7 @@ pub(crate) async fn download_url(
         .user_agent(concat!("saba-chan-installer/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| e.to_string())?;
-    let progress = Arc::new(Mutex::new(DownloadProgress::default()));
-    // 같은 작업 안에서 받기와 함께 돈다: 진행 콜백이 호출한 쪽의 것을 빌려 쓸 수 있다
-    let ticker = async {
-        loop {
-            tokio::time::sleep(Duration::from_millis(200)).await;
-            let Ok((received, total)) = progress.lock().map(|p| (p.bytes_received, p.total_bytes)) else {
-                // 진행을 못 읽어도 받기는 끝까지 간다
-                return std::future::pending::<()>().await;
-            };
-            on_progress(received, (total > 0).then_some(total));
-        }
-    };
-    let result = tokio::select! {
-        r = download_verified(&http, url, dest, sha256, max_bytes, Some(&progress)) => r,
-        _ = ticker => unreachable!("the ticker never finishes"),
-    };
-    result.map(|_| ()).map_err(|e| e.to_string())
+    saba_chan_updater_lib::download::download_reporting(&http, url, sha256, dest, max_bytes, on_progress).await.map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

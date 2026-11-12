@@ -116,8 +116,8 @@ impl Keep {
 /// 무엇을 남기든 지우는 항목: 다시 받거나 다시 만들 수 있는 런타임·캐시·상태 파일.
 /// 여기와 [`INSTANCE_ENTRIES`]에 없는 것(설정, 토큰, 앞으로 생길 파일)은 설정으로 친다
 const RUNTIME_ENTRIES: &[&str] = &[
-    "python-standalone",
-    "python-env",
+    crate::python_runtime::PORTABLE_DIR,
+    crate::python_runtime::VENV_DIR,
     "node-portable",
     "modules",
     "extensions",
@@ -129,7 +129,7 @@ const RUNTIME_ENTRIES: &[&str] = &[
     "sandbox-temp",
     "temp",
     "pip-cache",
-    "_python_download.tar.gz",
+    crate::python_runtime::DOWNLOAD_ARCHIVE,
     "daemon.lock",
     "daemon.lock.owner",
     "daemon.log",

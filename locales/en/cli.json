@@ -177,6 +177,7 @@
     "dm_notice_off": "off",
     "dm_kind": {
       "crash": "Crashes",
+      "unresponsive": "Not responding",
       "externalStart": "Started outside Saba-chan",
       "schedule": "Schedule warnings",
       "update": "Saba-chan updates",
@@ -457,6 +458,7 @@
       "dependency_outdated": "Update to newer versions: saba-chan-cli update check",
       "port_conflict": "Give one of them other ports: saba-chan-cli server set NAME port=PORT",
       "backup_unsupported": "This game's module does not say what to back up. A newer module may: saba-chan-cli update check",
+      "memory_limit_unsupported": "Memory limits only apply on Windows. The PC running this server isn't on Windows, so the limit wasn't saved.",
       "nothing_to_back_up": "The world does not exist yet. Start the server once to create it.",
       "backup_busy": "A backup or restore of this server is already running. Try again when it finishes.",
       "import_not_backup": "This file is not a backup exported by Saba-chan. Give a zip made by `backup export`.",
@@ -721,6 +723,14 @@
     "restart_required": "Restart the server to apply: {{keys}}",
     "hidden": "Hidden because they aren't used now: {{keys}}"
   },
+  "completions": {
+    "which_shell": "Cannot tell which shell you use. Pick one: bash, zsh, fish, powershell, elvish (with `--install`, use `--shell`)",
+    "installed": "Installed {{shell}} completions: {{path}}",
+    "new_terminal": "Open a new terminal to use them.",
+    "zsh_fpath": "They work once {{rc}} has this line: fpath=(~/.zfunc $fpath)",
+    "by_hand": "{{shell}} only loads completions from its settings file, so no file was written. Add this line to {{profile}}: {{line}}",
+    "no_home": "Could not find the home folder to place the completions in. Set HOME."
+  },
   "shell": {
     "bad_quotes": "Unclosed quote.",
     "bye": "Bye. The daemon and servers keep running.",
@@ -827,7 +837,22 @@
     "not_checked": "No update information yet. Check now: saba-chan-cli update check",
     "reinstall_official": "Reinstall official build",
     "name_module": "{{name}} module",
-    "name_extension": "{{name}} extension"
+    "name_extension": "{{name}} extension",
+    "rollback_available": "Version you can go back to: {{version}} (now {{current}}, updated {{at}})",
+    "rollback_confirm": "Going back to {{version}} restarts Saba-chan. Continue?",
+    "rollback_addons": "Modules and extensions stay at their current versions after the rollback. These cannot be used on {{version}} (they need a newer Saba-chan): {{list}}",
+    "rolling_back": "Rolling back...",
+    "rollback_launched": "Updater started. The daemon is shutting down to roll back.",
+    "rollback_after": "Saba-chan will restart after the rollback. Then check: saba-chan update last",
+    "no_rollback": "There is no version to go back to. The previous version is kept after an update only until the next update.",
+    "last_reverted": "Rolled back from {{from}} to {{version}}",
+    "daemon_too_old": "The running daemon is older than this command. Update the daemon first: saba-chan update apply",
+    "repair_checking": "Checking the installation...",
+    "repair_list": "Parts to download again: {{list}}",
+    "repaired": "Repaired: {{list}}",
+    "nothing_to_repair": "Nothing to repair.",
+    "repair_unavailable": "{{name}}: the installed version cannot be downloaded again. Fix it by updating: saba-chan update download && saba-chan update apply",
+    "repair_failed": "Some parts could not be repaired. See the messages above."
   },
   "validate": {
     "blocked": "The server can't start until these are fixed.",

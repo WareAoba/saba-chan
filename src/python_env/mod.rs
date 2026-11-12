@@ -25,27 +25,27 @@
 //!     bin/python           (Linux/macOS)
 //! ```
 //!
-//! ## 새 Cargo 의존성: 없음
-//! 다운로드는 OS 내장 도구(PowerShell / curl), 추출은 OS 내장 tar 사용.
+//! 자리·포터블 받기·검사·venv 만들기는 설치기와 같은 `saba_chan_updater_lib::python_runtime`을 쓴다.
+//! 이 모듈은 고르는 순서(포터블 → 시스템 → 받기)와 캐시·사전 점검만 맡는다.
 
 use anyhow::{Context, Result};
+use saba_chan_updater_lib::python_runtime::{self as runtime, MIN_VERSION as MIN_PYTHON_VERSION};
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tokio::sync::OnceCell;
 
 use crate::utils::apply_creation_flags;
 
-// ── Portable Python Build Info ──────────────────────────────────
-// python-build-standalone: https://github.com/indygreg/python-build-standalone
-// `install_only_stripped` 변형: pip/venv 포함, 디버그 심볼 제거 (~20 MB)
-
 use saba_chan_updater_lib::python_pin::PYTHON_VERSION;
 
-/// 시스템 Python 사용 시 최소 요구 버전
-const MIN_PYTHON_VERSION: (u32, u32) = (3, 11);
+/// 준비 명령은 준비가 취소되면 자식까지 끝낸다 (`plugin::preparation_output`)
+struct Preparing;
 
-const VENV_DIR_NAME: &str = "python-env";
-const PORTABLE_DIR_NAME: &str = "python-standalone";
+impl runtime::Run for Preparing {
+    fn output<'a>(&'a self, cmd: &'a mut Command) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<std::process::Output>> + Send + 'a>> {
+        Box::pin(crate::plugin::preparation_output(cmd))
+    }
+}
 
 // ── Cached venv python path ─────────────────────────────────────
 
@@ -175,79 +175,33 @@ pub fn preflight_snapshot() -> serde_json::Value {
 /// 반환값: venv 내부 Python 실행 파일의 절대 경로
 pub async fn ensure_venv() -> Result<PathBuf> {
     let data_dir = resolve_data_dir()?;
-    let venv_dir = data_dir.join(VENV_DIR_NAME);
-    let python_exe = venv_python_exe(&venv_dir);
+    let python_exe = runtime::venv_python(&data_dir);
 
     // ── Fast path: 기존 venv 유효 ──
-    if python_exe.exists() && verify_python(&python_exe).await {
+    if verify_python(&python_exe).await {
         tracing::debug!("Python venv 확인 완료: {}", python_exe.display());
         return Ok(python_exe);
     }
 
-    // 손상된 venv 제거
-    if venv_dir.exists() {
-        tracing::warn!("기존 venv 손상, 재생성합니다...");
-        let _ = std::fs::remove_dir_all(&venv_dir);
-    }
-
-    // ── Python 인터프리터 찾기 ──
+    // ── Python 인터프리터 찾기 ── (venv 만들기가 손상된 venv를 지운다)
     let base_python = find_base_python(&data_dir).await?;
 
     let portable = async { download_portable_python(&data_dir).await.map(|exe| exe.to_string_lossy().into_owned()) };
-    let portable = (Path::new(&base_python) != portable_python_exe(&data_dir)).then_some(portable);
-    create_venv_or_fall_back(&base_python, &venv_dir, portable).await?;
+    let portable = (Path::new(&base_python) != runtime::portable_python(&data_dir)).then_some(portable);
+    create_venv_or_fall_back(&base_python, &data_dir, portable).await?;
 
     tracing::info!("Python venv 준비 완료: {}", python_exe.display());
     Ok(python_exe)
 }
 
-/// `base`로 venv를 만든다. 만들지 못하면 `portable`(포터블 Python 받기)로 한 번 더 만든다:
+/// `base`로 `<root>/python-env`를 만든다. 만들지 못하면 `portable`(포터블 Python 받기)로 한 번 더 만든다:
 /// Debian·Ubuntu는 python3가 있어도 python3-venv가 없으면 `python3 -m venv`가 실패한다
-async fn create_venv_or_fall_back(base: &str, venv_dir: &Path, portable: Option<impl std::future::Future<Output = Result<String>>>) -> Result<()> {
-    let Err(error) = create_venv(base, venv_dir).await else { return Ok(()) };
+async fn create_venv_or_fall_back(base: &str, root: &Path, portable: Option<impl std::future::Future<Output = Result<String>>>) -> Result<()> {
+    let Err(error) = runtime::create_venv(&Preparing, Path::new(base), root).await else { return Ok(()) };
     let Some(portable) = portable else { return Err(error) };
     tracing::warn!("{} 로 venv를 만들지 못해 포터블 Python으로 다시 만듭니다: {:#}", base, error);
     let base = portable.await.with_context(|| format!("{error:#}"))?;
-    create_venv(&base, venv_dir).await
-}
-
-async fn create_venv(base_python: &str, venv_dir: &Path) -> Result<()> {
-    let python_exe = venv_python_exe(venv_dir);
-    // 만들다 만 venv 제거
-    if venv_dir.exists() {
-        let _ = std::fs::remove_dir_all(venv_dir);
-    }
-
-    tracing::info!(
-        "Python venv 생성 중: {} (base: {})",
-        venv_dir.display(),
-        base_python
-    );
-
-    if let Some(parent) = venv_dir.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("디렉토리 생성 실패: {}", parent.display()))?;
-    }
-
-    // ── venv 생성 ──
-    let mut cmd = Command::new(base_python);
-    cmd.args(["-m", "venv", &venv_dir.to_string_lossy()]);
-    apply_creation_flags(&mut cmd);
-
-    let output = crate::plugin::preparation_output(&mut cmd).await?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!("venv 생성 실패: {}", stderr));
-    }
-
-    // pip 업그레이드 (실패해도 치명적이지 않음)
-    let _ = run_pip(&python_exe, &["install", "--upgrade", "--quiet", "pip"]).await;
-
-    // ── 검증 ──
-    if !verify_python(&python_exe).await {
-        return Err(anyhow::anyhow!("venv 생성 후 검증 실패"));
-    }
-    Ok(())
+    runtime::create_venv(&Preparing, Path::new(&base), root).await.map(|_| ())
 }
 
 /// 시스템에서 Python ≥ 3.11 을 탐지합니다.
@@ -261,7 +215,7 @@ pub async fn detect_system_python() -> Result<String> {
         if let Ok(output) = crate::plugin::preparation_output(&mut cmd).await {
             if output.status.success() {
                 let Ok((ver, executable)) = serde_json::from_slice::<(String, String)>(&output.stdout) else { continue; };
-                if let Some((major, minor)) = parse_python_version(&ver) {
+                if let Some((major, minor)) = runtime::parse_version(&ver) {
                     if (major, minor) >= MIN_PYTHON_VERSION {
                         if !Path::new(&executable).is_file() {
                             continue;
@@ -296,8 +250,8 @@ pub async fn detect_system_python() -> Result<String> {
 /// Python 인터프리터를 찾습니다: 포터블 → 시스템 → 자동 다운로드
 async fn find_base_python(data_dir: &Path) -> Result<String> {
     // 1) 이미 다운로드된 포터블 Python
-    let portable_exe = portable_python_exe(data_dir);
-    if portable_exe.exists() && verify_python(&portable_exe).await {
+    let portable_exe = runtime::portable_python(data_dir);
+    if verify_python(&portable_exe).await {
         tracing::info!("포터블 Python 사용: {}", portable_exe.display());
         return Ok(portable_exe.to_string_lossy().into_owned());
     }
@@ -317,295 +271,34 @@ async fn find_base_python(data_dir: &Path) -> Result<String> {
     Ok(exe.to_string_lossy().into_owned())
 }
 
-/// 포터블 Python 다운로드 → 추출 → 검증
+/// 포터블 Python 받기 → 추출 → 검증 (`python_runtime::install_portable`). 고정 해시와 다르면 풀지 않는다 (C6)
 async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
-    let (url, sha256) = saba_chan_updater_lib::python_pin::download().ok_or_else(|| anyhow::anyhow!(
-        "이 플랫폼에서는 포터블 Python 자동 설치를 지원하지 않습니다. \
-         Python {}.{} 이상을 수동으로 설치해 주세요.",
-        MIN_PYTHON_VERSION.0,
-        MIN_PYTHON_VERSION.1
-    ))?;
-    let portable_dir = data_dir.join(PORTABLE_DIR_NAME);
-    let tmp_archive = data_dir.join("_python_download.tar.gz");
-
-    // 기존 실패분 정리
-    if portable_dir.exists() {
-        let _ = std::fs::remove_dir_all(&portable_dir);
-    }
-
-    // ── 다운로드 ──
-    tracing::info!("포터블 Python 다운로드 중: {}", url);
-    // 고정 해시와 다르면 받은 파일을 남기지 않는다 (풀지 않는다, C6)
-    download_file(&url, &tmp_archive, sha256.as_deref())
-        .await
-        .context(
-            "Python 다운로드 실패. \
-             인터넷 연결을 확인하거나, Python 3.11 이상을 수동 설치해 주세요.",
-        )?;
-
-    // ── 추출 ──
-    tracing::info!("포터블 Python 추출 중...");
-    std::fs::create_dir_all(&portable_dir)?;
-    extract_tar_gz(&tmp_archive, &portable_dir)
-        .await
-        .context("Python 아카이브 추출 실패")?;
-
-    // 임시 아카이브 삭제
-    let _ = std::fs::remove_file(&tmp_archive);
-
-    // ── 실행 권한 (Unix) ──
-    let exe = portable_python_exe(data_dir);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if exe.exists() {
-            let _ = std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755));
-        }
-    }
-
-    // ── 검증 ──
-    if !exe.exists() {
-        return Err(anyhow::anyhow!(
-            "포터블 Python 추출 후 실행 파일을 찾을 수 없습니다: {}",
-            exe.display()
-        ));
-    }
-    if !verify_python(&exe).await {
-        return Err(anyhow::anyhow!(
-            "다운로드된 포터블 Python이 정상 동작하지 않습니다: {}",
-            exe.display()
-        ));
-    }
-
-    tracing::info!(
-        "포터블 Python 설치 완료: {} ({:.1} MB)",
-        exe.display(),
-        dir_size_mb(&portable_dir)
-    );
-    Ok(exe)
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  Internal: 다운로드 (검증 다운로드) & 추출 (OS 네이티브 도구)
-// ═══════════════════════════════════════════════════════════════
-
-/// 파일 다운로드 — 업데이터와 같은 검증 다운로드 (`expected`: 고정 SHA-256, 다르면 받은 파일을 남기지 않는다).
-/// 프록시는 reqwest가 환경 변수와 OS 설정에서 읽는다. 연결·전송 실패는 `download_verified`가 몇 번 이어 받는다
-///
-/// 형태를 지운 future를 돌려준다: reqwest 타입의 Send 판정이 이것을 기다리는 시작 경로(자동 재시작 등)마다 깊어지지 않게
-fn download_file<'a>(url: &'a str, dest: &'a Path, expected: Option<&'a str>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
-    Box::pin(download_and_check(url, dest, expected))
-}
-
-async fn download_and_check(url: &str, dest: &Path, expected: Option<&str>) -> Result<()> {
-    let client = saba_chan_updater_lib::tls::http_client_builder().build()?;
-    saba_chan_updater_lib::download::download_verified(&client, url, dest, expected, None, None)
-        .await
-        .map_err(|e| anyhow::anyhow!("다운로드 실패: {}", e))?;
-
-    // 크기 검증 (Python 배포판은 최소 수 MB)
-    let meta = std::fs::metadata(dest).context("다운로드된 파일을 찾을 수 없습니다")?;
-    if meta.len() < 1_000_000 {
-        let _ = std::fs::remove_file(dest);
-        return Err(anyhow::anyhow!(
-            "다운로드된 파일이 너무 작습니다 ({} bytes). URL이 올바른지 확인하세요.",
-            meta.len()
-        ));
-    }
-
-    tracing::info!(
-        "다운로드 완료: {} ({:.1} MB)",
-        dest.display(),
-        meta.len() as f64 / 1_048_576.0
-    );
-    Ok(())
-}
-
-/// .tar.gz 추출 — Windows 10+ / Linux / macOS 내장 `tar` 명령 사용
-async fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<()> {
-    std::fs::create_dir_all(dest)?;
-
-    let mut cmd = Command::new(saba_chan_updater_lib::process::system_tool("tar"));
-    cmd.args([
-        "-xzf",
-        &archive.to_string_lossy(),
-        "-C",
-        &dest.to_string_lossy(),
-    ]);
-    apply_creation_flags(&mut cmd);
-
-    let output = crate::plugin::preparation_output(&mut cmd).await?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!("tar 추출 실패: {}", stderr));
-    }
-    Ok(())
+    runtime::install_portable(&Preparing, data_dir, &|_, _| {}).await.with_context(|| {
+        format!(
+            "포터블 Python을 준비하지 못했습니다. 인터넷 연결을 확인하거나, Python {}.{} 이상을 수동 설치해 주세요.",
+            MIN_PYTHON_VERSION.0, MIN_PYTHON_VERSION.1
+        )
+    })
 }
 
 // ═══════════════════════════════════════════════════════════════
 //  Internal: 경로 & 유틸리티
 // ═══════════════════════════════════════════════════════════════
 
-/// 사바쨩 데이터 디렉토리 결정
+/// 런타임 폴더 (`python_runtime::runtime_dir`: `SABA_DATA_DIR` → 데몬 옆 → 플랫폼 앱 데이터)
 fn resolve_data_dir() -> Result<PathBuf> {
-    // 1) 환경변수 오버라이드
-    if let Ok(dir) = std::env::var("SABA_DATA_DIR") {
-        return Ok(PathBuf::from(dir));
-    }
-
     let exe = std::env::current_exe().ok();
-    runtime_root(exe.as_deref().and_then(Path::parent))
-}
-
-fn runtime_root(exe_dir: Option<&Path>) -> Result<PathBuf> {
-    if let Some(exe_dir) = exe_dir {
-        // 맥 앱 묶음(`*.app/Contents/MacOS`) 안은 쓰지 않는다: 묶음에 파일을 더하면 서명이 깨진다.
-        // 데이터 폴더에 두면 제거기가 런타임 항목으로 지운다
-        if saba_chan_updater_lib::app_bundle::bundle_of(exe_dir).is_some() {
-            return Ok(saba_chan_updater_lib::constants::resolve_data_dir());
-        }
-        // 2) exe 옆 (포터블 배포 모드)
-        if is_dir_writable(exe_dir) {
-            return Ok(exe_dir.to_path_buf());
-        }
-    }
-
-    // 3) 플랫폼별 앱 데이터
-    platform_data_dir()
-}
-
-#[cfg(target_os = "windows")]
-fn platform_data_dir() -> Result<PathBuf> {
-    let appdata = std::env::var("APPDATA").context("APPDATA 환경변수 없음")?;
-    Ok(PathBuf::from(appdata).join(saba_chan_updater_lib::constants::APP_NAME))
-}
-
-#[cfg(target_os = "linux")]
-fn platform_data_dir() -> Result<PathBuf> {
-    let home = std::env::var("HOME").context("HOME 환경변수 없음")?;
-    Ok(PathBuf::from(home).join(".local/share").join(saba_chan_updater_lib::constants::APP_NAME))
-}
-
-#[cfg(target_os = "macos")]
-fn platform_data_dir() -> Result<PathBuf> {
-    let home = std::env::var("HOME").context("HOME 환경변수 없음")?;
-    Ok(PathBuf::from(home)
-        .join("Library/Application Support").join(saba_chan_updater_lib::constants::APP_NAME))
-}
-
-/// 포터블 Python 실행 파일 경로
-/// 추출 레이아웃: `<portable_dir>/python/python.exe` (Win) 또는 `.../python/bin/python3` (Unix)
-fn portable_python_exe(data_dir: &Path) -> PathBuf {
-    let base = data_dir.join(PORTABLE_DIR_NAME).join("python");
-    #[cfg(target_os = "windows")]
-    {
-        base.join("python.exe")
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        base.join("bin").join("python3")
-    }
+    runtime::runtime_dir(exe.as_deref().and_then(Path::parent))
 }
 
 /// 데몬 venv의 Python 실행 파일 (있든 없든 그 자리)
 pub fn venv_python() -> Option<PathBuf> {
-    resolve_data_dir().ok().map(|d| venv_python_exe(&d.join(VENV_DIR_NAME)))
-}
-
-/// venv 내 Python 실행 파일 경로
-fn venv_python_exe(venv_dir: &Path) -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        venv_dir.join("Scripts").join("python.exe")
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        venv_dir.join("bin").join("python")
-    }
-}
-
-/// 디렉토리에 쓰기 가능한지 확인
-fn is_dir_writable(dir: &Path) -> bool {
-    let probe = dir.join(".saba-write-test");
-    match std::fs::write(&probe, b"") {
-        Ok(_) => {
-            let _ = std::fs::remove_file(&probe);
-            true
-        }
-        Err(_) => false,
-    }
-}
-
-/// verify_python 출력("3.12.8")이 최소 버전 이상인가. 그보다 낮은 venv는 다시 만든다
-fn python_output_supported(stdout: &str) -> bool {
-    parse_python_version(stdout).is_some_and(|v| v >= MIN_PYTHON_VERSION)
+    resolve_data_dir().ok().map(|d| runtime::venv_python(&d))
 }
 
 /// Python 실행 파일이 정상 동작하고 최소 버전 이상인지 확인
 async fn verify_python(exe: &Path) -> bool {
-    let mut cmd = Command::new(exe);
-    cmd.args([
-        "-c",
-        "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}.{v.micro}')",
-    ]);
-    apply_creation_flags(&mut cmd);
-    matches!(crate::plugin::preparation_output(&mut cmd).await,
-        Ok(o) if o.status.success() && python_output_supported(&String::from_utf8_lossy(&o.stdout)))
-}
-
-/// pip 명령 실행
-async fn run_pip(python_exe: &Path, args: &[&str]) -> Result<()> {
-    let mut cmd = Command::new(python_exe);
-    // 받은 패키지 캐시는 데이터 폴더에 (사용자 pip 캐시에 남기지 않는다. 제거기가 지운다)
-    cmd.env("PIP_CACHE_DIR", saba_chan_updater_lib::constants::resolve_pip_cache_dir());
-    cmd.arg("-m").arg("pip");
-    for arg in args {
-        cmd.arg(arg);
-    }
-    apply_creation_flags(&mut cmd);
-
-    let output = crate::plugin::preparation_output(&mut cmd).await?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!("pip 실행 실패: {}", stderr));
-    }
-    Ok(())
-}
-
-/// "Python 3.12.8" → (3, 12)
-fn parse_python_version(s: &str) -> Option<(u32, u32)> {
-    let s = s.trim();
-    let ver_part = s
-        .strip_prefix("Python ")
-        .or_else(|| s.strip_prefix("python "))
-        .unwrap_or(s);
-    let parts: Vec<&str> = ver_part.split('.').collect();
-    if parts.len() >= 2 {
-        let major = parts[0].trim().parse().ok()?;
-        let minor = parts[1].trim().parse().ok()?;
-        Some((major, minor))
-    } else {
-        None
-    }
-}
-
-/// 디렉토리 총 크기 (MB)
-fn dir_size_mb(dir: &Path) -> f64 {
-    fn walk(dir: &Path) -> u64 {
-        let mut total = 0u64;
-        if let Ok(entries) = std::fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    total += entry.metadata().map(|m| m.len()).unwrap_or(0);
-                } else if path.is_dir() {
-                    total += walk(&path);
-                }
-            }
-        }
-        total
-    }
-    walk(dir) as f64 / 1_048_576.0
+    runtime::verify(&Preparing, exe).await
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -679,32 +372,13 @@ mod tests {
         };
         let no_venv = script("no-venv", "mkdir -p \"$3/bin\"; echo 'ensurepip is not available' >&2; exit 1");
         let works = script("works", "[ \"$1\" = -m ] || exit 0\nmkdir -p \"$3/bin\"\nprintf '#!/bin/sh\\necho 3.12.0\\n' > \"$3/bin/python\"\nchmod +x \"$3/bin/python\"");
-        let venv = tmp.path().join("python-env");
+        let root = tmp.path().join("runtime");
 
-        let error = create_venv_or_fall_back(&no_venv, &venv, None::<std::future::Ready<Result<String>>>).await.unwrap_err();
+        let error = create_venv_or_fall_back(&no_venv, &root, None::<std::future::Ready<Result<String>>>).await.unwrap_err();
         assert!(error.to_string().contains("ensurepip"), "{error:#}");
 
-        create_venv_or_fall_back(&no_venv, &venv, Some(async { Ok(works) })).await.unwrap();
-        assert!(verify_python(&venv_python_exe(&venv)).await);
-    }
-
-    #[test]
-    fn a_venv_older_than_the_minimum_is_not_reused() {
-        // 모듈 공용 도우미가 표준 tomllib(3.11+)으로 module.toml을 읽는다. 3.10 venv는 다시 만든다
-        assert!(!python_output_supported("3.10.12\n"));
-        assert!(python_output_supported("3.11.0\n"));
-        assert!(python_output_supported("3.12.8"));
-        assert!(!python_output_supported(""));
-    }
-
-    #[test]
-    fn test_parse_python_version() {
-        assert_eq!(parse_python_version("Python 3.12.8"), Some((3, 12)));
-        assert_eq!(parse_python_version("Python 3.10.0"), Some((3, 10)));
-        assert_eq!(parse_python_version("Python 2.7.18"), Some((2, 7)));
-        assert_eq!(parse_python_version("  Python 3.11.5  "), Some((3, 11)));
-        assert_eq!(parse_python_version("garbage"), None);
-        assert_eq!(parse_python_version(""), None);
+        create_venv_or_fall_back(&no_venv, &root, Some(async { Ok(works) })).await.unwrap();
+        assert!(verify_python(&runtime::venv_python(&root)).await);
     }
 
     #[test]
@@ -717,50 +391,8 @@ mod tests {
     }
 
     #[test]
-    fn test_venv_python_exe_path() {
-        let dir = PathBuf::from(if cfg!(target_os = "windows") {
-            "C:\\test-venv"
-        } else {
-            "/tmp/test-venv"
-        });
-        let exe = venv_python_exe(&dir);
-        #[cfg(target_os = "windows")]
-        assert!(exe.to_string_lossy().contains("Scripts\\python.exe"));
-        #[cfg(not(target_os = "windows"))]
-        assert!(exe.to_string_lossy().contains("bin/python"));
-    }
-
-    #[test]
-    fn test_portable_python_exe_path() {
-        let dir = PathBuf::from(if cfg!(target_os = "windows") {
-            "C:\\test-data"
-        } else {
-            "/tmp/test-data"
-        });
-        let exe = portable_python_exe(&dir);
-        let s = exe.to_string_lossy();
-        assert!(s.contains(PORTABLE_DIR_NAME));
-        assert!(s.contains("python"));
-    }
-
-    #[test]
     fn test_resolve_data_dir_no_panic() {
         let _ = resolve_data_dir();
-    }
-
-    /// 맥 앱 묶음 안은 쓰기가 되어도 런타임을 두지 않는다 (묶음에 파일을 더하면 서명이 깨진다)
-    #[test]
-    fn the_runtime_is_not_placed_inside_an_app_bundle() {
-        let tmp = tempfile::tempdir().unwrap();
-        let exe_dir = tmp.path().join("Saba-chan.app").join("Contents").join("MacOS");
-        std::fs::create_dir_all(&exe_dir).unwrap();
-        let root = runtime_root(Some(&exe_dir)).unwrap();
-        assert_eq!(root, saba_chan_updater_lib::constants::resolve_data_dir());
-        assert!(!root.starts_with(tmp.path()), "{}", root.display());
-
-        let plain = tmp.path().join("portable");
-        std::fs::create_dir_all(&plain).unwrap();
-        assert_eq!(runtime_root(Some(&plain)).unwrap(), plain);
     }
 
     #[tokio::test]

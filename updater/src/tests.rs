@@ -738,6 +738,7 @@ fn staged_file_is_rechecked_before_apply() {
         staged_sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into()),
         requires: None,
         installed: true,
+        repair: false,
     };
     assert!(UpdateManager::verified_staged_path(&comp).is_ok());
     comp.staged_sha256 = Some("0".repeat(64));
@@ -831,6 +832,7 @@ fn downloaded_release_notes_reach_the_completion_marker() {
         staged_sha256: None,
         requires: None,
         installed: true,
+        repair: false,
     });
     manager.latest_release = Some(crate::relay::LatestRelease {
         version: "0.1.3".into(),
@@ -873,6 +875,7 @@ fn recheck_keeps_downloads_of_the_same_version() {
         staged_sha256: Some("ab".into()),
         requires: None,
         installed: true,
+        repair: false,
     };
     let fresh = |latest: &str| crate::ComponentVersion { downloaded: false, downloaded_path: None, staged_sha256: None, ..staged(latest, &file) };
 
@@ -1030,6 +1033,7 @@ fn staged(component: Component, path: &std::path::Path) -> crate::ComponentVersi
         staged_sha256: None,
         requires: None,
         installed: true,
+        repair: false,
     }
 }
 
@@ -1749,9 +1753,13 @@ fn a_headless_install_does_not_count_the_bundled_gui_for_requires() {
     assert!(headless.contains_key("saba-core"));
 }
 
+/// `apply_staged`는 완료 마커를 한 자리(데이터 폴더)에 남긴다: 마커를 남기는 시험끼리 차례로
+static MARKER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 // 업데이터 `--apply` 한 번(창·창 없음 공통): 받아 둔 것을 적용하고 목록을 지운다
 #[tokio::test]
 async fn apply_staged_applies_the_pending_list_and_clears_it() {
+    let _marker = MARKER.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.install_root = tmp.path().join("install");
@@ -1775,6 +1783,7 @@ async fn apply_staged_applies_the_pending_list_and_clears_it() {
 
 #[tokio::test]
 async fn apply_staged_without_a_pending_list_fails() {
+    let _marker = MARKER.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.staging_dir = tmp.path().join("staging");
@@ -1807,9 +1816,38 @@ fn a_restored_pending_list_skips_what_is_already_installed_at_that_version_or_ne
     assert_eq!(loaded.status.components.iter().map(|c| c.component.clone()).collect::<Vec<_>>(), vec![Component::Module("m".into())]);
 }
 
+// 복구(같은 판 다시 받기)는 업데이터가 적용하고, 결과는 업데이트로 알리지 않는다: 앱은 알림을 띄우지 않고 `update last`가 본다
+#[tokio::test]
+async fn the_updater_applies_a_repair_and_does_not_announce_it_as_an_update() {
+    let _marker = MARKER.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    manager.installed_manifest_file = tmp.path().join("installed-manifest.json");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("repair-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    let same = crate::ComponentVersion { current_version: "0.2.0".into(), repair: true, ..staged(ext.clone(), &extension_zip(tmp.path())) };
+    manager.status.components = vec![same];
+    manager.save_pending_manifest().unwrap();
+    manager.status.components.clear();
+    let installed: std::collections::HashMap<String, String> = [(ext.manifest_key(), "0.2.0".to_string())].into_iter().collect();
+    std::fs::write(&manager.installed_manifest_file, serde_json::to_string(&installed).unwrap()).unwrap();
+
+    let (applied, failed) = manager.apply_staged(|_| {}).await.unwrap();
+
+    assert_eq!(applied, vec![ext.manifest_key()]);
+    assert!(failed.is_empty(), "{:?}", failed);
+    let marker = crate::UpdateCompletionMarker::load().unwrap();
+    assert_eq!((marker.result.as_deref(), marker.acknowledged, marker.success), (Some("repaired"), true, true));
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
+}
+
 // 적용 대상 목록을 남긴 뒤 설치기로 그중 하나를 같거나 더 새 판으로 깔았으면, 그 키는 건너뛰고 나머지는 적용한다
 #[tokio::test]
 async fn an_apply_target_already_installed_is_skipped_and_the_rest_are_applied() {
+    let _marker = MARKER.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.install_root = tmp.path().join("install");
@@ -1836,6 +1874,7 @@ async fn an_apply_target_already_installed_is_skipped_and_the_rest_are_applied()
 // 일부만 적용하면 고르지 않은 것은 받아 둔 채 다음 적용을 기다린다 (다시 확인·다운로드하지 않게)
 #[tokio::test]
 async fn applying_some_targets_keeps_the_rest_pending() {
+    let _marker = MARKER.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.install_root = tmp.path().join("install");
@@ -1864,6 +1903,59 @@ async fn applying_some_targets_keeps_the_rest_pending() {
     assert_eq!(next.load_pending_manifest().unwrap(), 1);
     assert_eq!(next.status.components[0].component, Component::Locales);
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
+}
+
+// 코어가 바뀌는 묶음에서 지금 코어로 돌지 않는 모듈·익스텐션은 적용하지 않고 받아 둔 채 둔다:
+// 새 데몬이 건강하지 않아 코어만 되돌아가면 옛 코어가 거절하는 판이 남는다. 완료 마커의 `deferred`를 보고 건강한 새 데몬이 마저 바꾼다
+#[tokio::test]
+async fn an_addon_needing_the_new_core_waits_for_the_new_daemon() {
+    use std::io::Write;
+    let _marker = MARKER.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    manager.installed_manifest_file = tmp.path().join("installed-manifest.json");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let core_zip = manager.staging_dir.join("saba-core.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&core_zip).unwrap());
+        zw.start_file("saba-core", zip::write::SimpleFileOptions::default().unix_permissions(0o755)).unwrap();
+        zw.write_all(b"new").unwrap();
+        zw.finish().unwrap();
+    }
+    let (needs_new, runs_now) = (format!("needs-new-{}", std::process::id()), format!("runs-now-{}", std::process::id()));
+    let (held, applied_now) = (Component::Extension(needs_new.clone()), Component::Extension(runs_now.clone()));
+    let zip_dir = |name: &str| {
+        let dir = tmp.path().join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        extension_zip(&dir)
+    };
+    let requires = |min: &str| Some([("saba-core".to_string(), min.to_string())].into_iter().collect());
+    manager.status.components = vec![
+        crate::ComponentVersion { latest_version: Some("99.0.0".into()), ..staged(Component::CoreDaemon, &core_zip) },
+        crate::ComponentVersion { requires: requires(">=99.0.0"), ..staged(held.clone(), &zip_dir("held")) },
+        crate::ComponentVersion { requires: requires(">=0.0.1"), ..staged(applied_now.clone(), &zip_dir("now")) },
+    ];
+    manager.save_pending_manifest().unwrap();
+    manager.save_updater_apply_targets(&["saba-core".to_string(), held.manifest_key(), applied_now.manifest_key()]).unwrap();
+    manager.status.components.clear();
+
+    let (applied, failed) = manager.apply_staged(|_| {}).await.unwrap();
+
+    assert!(failed.is_empty(), "{:?}", failed);
+    assert_eq!(applied, vec!["saba-core".to_string(), applied_now.manifest_key()]);
+    assert!(!manager.resolve_ext_dir(&needs_new).exists(), "the addon needing the new core is not applied yet");
+    let marker = crate::UpdateCompletionMarker::load().unwrap();
+    assert!(marker.success);
+    assert_eq!(marker.deferred, vec![held.manifest_key()], "the new daemon finds what is left of the chosen bundle");
+    let mut next = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    next.staging_dir = manager.staging_dir.clone();
+    next.installed_manifest_file = tmp.path().join("other-installed-manifest.json");
+    next.load_pending_manifest().unwrap();
+    assert_eq!(next.status.components.iter().map(|c| c.component.clone()).collect::<Vec<_>>(), vec![held], "it stays staged");
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&runs_now));
 }
 
 // 기록 없이 놓인 모듈의 같은 버전 재설치(공식 표시 복구)는 되살린 목록에서도 남긴다. 더 새 판이 깔렸으면 뺀다
@@ -2160,4 +2252,116 @@ fn a_launcher_backup_inside_bin_is_rolled_back_and_cleaned_up_too() {
     manager.cleanup_old_files();
     assert!(!backup.exists());
     assert!(launcher.exists());
+}
+
+// 사바쨩 실행 파일 목록은 versions.toml `exes` 한 곳에서 온다: 거기 적힌 것(명령 실행기 포함)과 0.1.12 전 업데이터만
+// 실행 파일로 다루고, 이름이 `saba-`로 시작할 뿐인 다른 파일의 `.exe.old`는 백업으로 보지 않는다(정리가 지우지 않게)
+#[test]
+fn the_exe_list_comes_from_versions_toml() {
+    for stem in crate::versions::exe_stems() {
+        assert!(UpdateManager::is_known_binary(std::path::Path::new(stem)), "{stem}");
+    }
+    assert!(UpdateManager::is_known_binary(std::path::Path::new("saba-chan-updater")));
+    assert!(!UpdateManager::is_known_binary(std::path::Path::new("i18n.py")));
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    for name in ["saba-runner.exe.old", "saba-notes.exe.old"] {
+        std::fs::write(manager.install_root.join(name), b"").unwrap();
+    }
+    let found: Vec<String> = manager.old_exe_backups().into_iter().map(|(_, exe, ..)| exe).collect();
+    assert_eq!(found, vec!["saba-runner.exe".to_string()]);
+}
+
+// 설치 점검·복구: 바뀌었거나 없어진 구성요소만, 확인한 릴리즈가 지금 설치된 판을 내줄 때만 그 판으로 다시 받는다.
+// 다른 판을 내주면(업데이트가 있음) 고치지 않고 알린다. 읽지 못한 것·멀쩡한 것은 고르지 않는다
+#[test]
+fn repair_picks_broken_components_at_the_installed_version() {
+    use crate::integrity::{ComponentIntegrity, IntegrityStatus};
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().to_str().unwrap());
+    let at = |component: Component, current: &str, latest: &str| crate::ComponentVersion {
+        current_version: current.into(),
+        latest_version: Some(latest.into()),
+        update_available: current != latest,
+        downloaded: false,
+        downloaded_path: None,
+        ..staged(component, tmp.path())
+    };
+    manager.status.components = vec![
+        at(Component::Cli, "0.1.14", "0.1.14"),
+        at(Component::Module("minecraft".into()), "1.8.2", "1.8.2"),
+        at(Component::Gui, "0.1.14", "0.1.15"),
+        at(Component::CoreDaemon, "0.1.14", "0.1.14"),
+        at(Component::Module("palworld".into()), "2.0.0", "2.0.0"),
+    ];
+    let check = |key: &str, status: IntegrityStatus| ComponentIntegrity {
+        component: key.into(),
+        display_name: key.into(),
+        status,
+        expected_hash: None,
+        actual_hash: None,
+        file_path: None,
+        message: String::new(),
+    };
+    let report = crate::integrity::IntegrityReport {
+        checked_at: String::new(),
+        overall: crate::integrity::OverallIntegrity::TamperDetected,
+        components: vec![
+            check("cli", IntegrityStatus::Tampered),
+            check("module-minecraft", IntegrityStatus::FileNotFound),
+            check("gui", IntegrityStatus::Tampered),
+            check("saba-core", IntegrityStatus::Verified),
+            check("module-palworld", IntegrityStatus::Error),
+            check("ext-gone", IntegrityStatus::FileNotFound),
+        ],
+        total: 6,
+        verified: 1,
+        failed: 3,
+        skipped: 2,
+    };
+
+    let plan = manager.repair_plan(&report);
+    let keys = |items: &[crate::RepairItem]| items.iter().map(|i| (i.component.clone(), i.installed.clone(), i.offered.clone())).collect::<Vec<_>>();
+    assert_eq!(
+        keys(&plan.repair),
+        vec![("cli".into(), "0.1.14".into(), Some("0.1.14".into())), ("module-minecraft".into(), "1.8.2".into(), Some("1.8.2".into()))]
+    );
+    assert_eq!(keys(&plan.unavailable), vec![("gui".into(), "0.1.14".into(), Some("0.1.15".into())), ("ext-gone".into(), String::new(), None)]);
+
+    // 고칠 것만 다시 받을 수 있게 표시한다 (받기·적용은 업데이트와 같은 길이다)
+    manager.mark_for_repair(&plan);
+    let ready: Vec<String> = manager.status.components.iter().filter(|c| c.update_available).map(|c| c.component.manifest_key()).collect();
+    assert_eq!(ready, vec!["cli", "module-minecraft", "gui"]);
+}
+
+// 코어·GUI·업데이터 복구는 업데이터가 적용한다: 받아 둔 같은 판을 "이미 설치됨"으로 건너뛰면 아무것도 고치지 않고 성공으로 끝난다
+#[test]
+fn the_updater_applies_a_repair_at_the_installed_version() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("core.zip");
+    std::fs::write(&file, b"zip").unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    let same = |component: Component| crate::ComponentVersion { current_version: "0.1.14".into(), latest_version: Some("0.1.14".into()), ..staged(component, &file) };
+    manager.status.components = vec![same(Component::CoreDaemon), same(Component::Gui)];
+    let item = |key: &str| crate::RepairItem { component: key.into(), display_name: key.into(), installed: "0.1.14".into(), offered: Some("0.1.14".into()) };
+    manager.mark_for_repair(&crate::RepairPlan { repair: vec![item("saba-core")], unavailable: Vec::new() });
+    for c in &mut manager.status.components {
+        c.downloaded = true;
+        c.downloaded_path = Some(file.to_string_lossy().to_string());
+    }
+    manager.save_pending_manifest().unwrap();
+
+    let mut loaded = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    loaded.staging_dir = manager.staging_dir.clone();
+    loaded.installed_manifest_file = tmp.path().join("installed-manifest.json");
+    let installed: std::collections::HashMap<String, String> =
+        [("saba-core".to_string(), "0.1.14".to_string()), ("gui".to_string(), "0.1.14".to_string())].into_iter().collect();
+    std::fs::write(&loaded.installed_manifest_file, serde_json::to_string(&installed).unwrap()).unwrap();
+    loaded.load_pending_manifest().unwrap();
+    assert_eq!(loaded.status.components.iter().map(|c| c.component.clone()).collect::<Vec<_>>(), vec![Component::CoreDaemon]);
+    assert_eq!(loaded.already_installed, vec!["gui".to_string()], "only what was not marked for repair is skipped");
 }

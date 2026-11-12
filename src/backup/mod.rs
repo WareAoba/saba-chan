@@ -375,6 +375,8 @@ fn known_files(dir: &Path) -> std::collections::HashMap<PathBuf, (u64, u64, Stri
 /// 이미 있는 파일이 크기가 다르거나 풀어 본 내용의 해시가 맞지 않으면 망가진 것으로 보고 바꿔 넣는다 (망가진 내용을 다음 백업이 물려받지 않게).
 /// 디스크에 내리는 일(fsync)은 부른 쪽이 백업을 마치기 전에 한꺼번에 한다
 fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathBuf>)> {
+    #[cfg(test)]
+    PUT_THREADS.lock().unwrap().entry(dir.to_path_buf()).or_default().insert(std::thread::current().id());
     // 서버가 쓰는 중이라 잠긴 파일(Windows)은 건너뛰지 않고 실패로 알린다: 반쪽 백업을 믿지 않게
     let src = File::open(path).map_err(|e| read_error(e, path))?;
     put_stream(dir, src, |e| read_error(e, path))
@@ -406,12 +408,21 @@ fn put_stream(
         }
     };
     let target = object_path(dir, &hash)?;
+    #[cfg(test)]
+    {
+        let together = PUT_TOGETHER.lock().unwrap().get(dir).cloned();
+        if let Some(together) = together {
+            together.wait();
+        }
+    }
     let added = fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
-    if fs::metadata(&target).is_ok_and(|m| m.is_file() && m.len() == added) && object_intact(&target, &hash, read) {
+    // 본 때의 것 하나로 판정한다: 다시 보면 그새 다른 스레드가 넣은 같은 내용을 망가진 것으로 읽는다
+    let existing = fs::metadata(&target).ok().filter(|m| m.is_file());
+    if existing.as_ref().is_some_and(|m| m.len() == added) && object_intact(&target, &hash, read) {
         let _ = fs::remove_file(&tmp);
         return Ok((hash, read, added, None));
     }
-    if target.is_file() {
+    if existing.is_some() {
         tracing::warn!("Backup content {} was damaged; replacing it", &hash[..12]);
     }
     let moved = target.parent().map_or(Ok(()), fs::create_dir_all).and_then(|_| fs::rename(&tmp, &target));
@@ -521,15 +532,48 @@ struct V2Writer<'a> {
     exclude: &'a [glob::Pattern],
     /// 이번에 새로 쓴 내용 파일 (매니페스트를 쓰기 전에 한꺼번에 디스크에 내린다)
     written: Vec<PathBuf>,
+    /// 걷는 동안 목록에 올린, 저장소에 새로 넣을 파일 (`put_pending`이 여러 스레드로 넣는다)
+    pending: Vec<Pending>,
     manifest: ManifestV2,
     summary: SummaryV2,
+}
+
+/// 저장소에 넣을 파일과 그 매니페스트 항목 번호
+struct Pending {
+    path: PathBuf,
+    file: usize,
+}
+
+/// 파일 하나를 저장소에 넣은 결과
+enum Put {
+    Stored((String, u64, u64, Option<PathBuf>)),
+    /// 목록에 올린 뒤 읽기 전에 사라졌다 (켜진 서버가 지운 임시 파일)
+    Gone(anyhow::Error),
+    Failed(anyhow::Error),
+}
+
+/// 걷거나 읽는 사이 원본이 정말 사라졌는가 (오류 종류만 보면 저장소 쪽의 NotFound와 구분하지 못한다)
+fn vanished(path: &Path) -> bool {
+    matches!(fs::symlink_metadata(path), Err(gone) if gone.kind() == io::ErrorKind::NotFound)
 }
 
 #[cfg(test)]
 thread_local! {
     /// 시험용: 폴더를 걷다가 이 이름의 항목에 닿으면 읽기 직전에 지운다 (걷는 사이 서버가 지운 파일·폴더)
     static VANISH_WHEN_REACHED: std::cell::RefCell<Vec<std::ffi::OsString>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// 시험용: 이 이름의 파일은 목록에 올린 뒤 내용을 읽기 전에 지운다
+    static VANISH_BEFORE_READ: std::cell::RefCell<Vec<std::ffi::OsString>> = const { std::cell::RefCell::new(Vec::new()) };
 }
+
+/// 시험용: 이 백업 폴더에 내용을 넣는 스레드는 모두 여기 모인 뒤에 저장소에 이미 있는지 본다 (같은 내용을 동시에 넣는 것)
+#[cfg(test)]
+static PUT_TOGETHER: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, std::sync::Arc<std::sync::Barrier>>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// 시험용: 백업 폴더마다 내용을 저장소에 넣은 스레드
+#[cfg(test)]
+static PUT_THREADS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, std::collections::HashSet<std::thread::ThreadId>>>> =
+    std::sync::LazyLock::new(Default::default);
 
 impl V2Writer<'_> {
     fn add_file(&mut self, path: &Path, entry: &str, rel: &str) -> Result<()> {
@@ -547,16 +591,87 @@ impl V2Writer<'_> {
         let (hash, size, stored_size) = match reuse {
             Some(v) => v,
             None => {
-                let (hash, read, stored_size, written) = put_object(self.dir, path)?;
-                if let Some(written) = written {
-                    self.summary.stored += stored_size;
-                    self.written.push(written);
+                // 내용은 다 걸은 뒤 여러 스레드로 넣는다. 해시·크기는 그때 채운다
+                self.pending.push(Pending { path: path.to_path_buf(), file: self.manifest.files.len() });
+                #[cfg(test)]
+                if VANISH_BEFORE_READ.with_borrow(|names| path.file_name().is_some_and(|n| names.iter().any(|v| v == n))) {
+                    fs::remove_file(path)?;
                 }
-                (hash, read, stored_size)
+                (String::new(), 0, 0)
             }
         };
         self.summary.size += size;
         self.manifest.files.push(StoredFile { entry: entry.to_string(), rel: rel.to_string(), hash, size, mtime, stored_size, mode: unix_mode(&meta) });
+        Ok(())
+    }
+
+    /// 목록에 올린 파일의 내용을 `put_lanes`개 스레드로 저장소에 넣고 매니페스트 항목을 채운다.
+    /// 폴더 안에서 읽기 전에 사라진 파일은 뺀다. 다른 실패가 나면 남은 파일은 넣지 않고 걷는 순서로 첫 실패를 낸다
+    fn put_pending(&mut self) -> Result<()> {
+        let pending = std::mem::take(&mut self.pending);
+        let dir = self.dir;
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        let failed = std::sync::atomic::AtomicBool::new(false);
+        let mut puts: Vec<Option<Put>> = std::iter::repeat_with(|| None).take(pending.len()).collect();
+        std::thread::scope(|scope| {
+            let lanes: Vec<_> = (0..put_lanes().min(pending.len()))
+                .map(|_| {
+                    scope.spawn(|| {
+                        let mut done = Vec::new();
+                        // 파일 크기가 제각각이라 미리 나누지 않고 끝난 스레드가 다음 파일을 가져간다
+                        while !failed.load(std::sync::atomic::Ordering::Relaxed) {
+                            let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            let Some(p) = pending.get(i) else { break };
+                            let put = match put_object(dir, &p.path) {
+                                Ok(stored) => Put::Stored(stored),
+                                Err(e) if vanished(&p.path) => Put::Gone(e),
+                                Err(e) => {
+                                    failed.store(true, std::sync::atomic::Ordering::Relaxed);
+                                    Put::Failed(e)
+                                }
+                            };
+                            done.push((i, put));
+                        }
+                        done
+                    })
+                })
+                .collect();
+            for lane in lanes {
+                for (i, put) in lane.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic)) {
+                    puts[i] = Some(put);
+                }
+            }
+        });
+        let mut gone = std::collections::HashSet::new();
+        // 내용이 같은 파일을 두 스레드가 동시에 넣으면 둘 다 새로 썼다고 한다: 한 번만 센다
+        let mut fresh = std::collections::HashSet::new();
+        // 가져간 파일은 앞에서부터 이어지므로, 넣지 않은 파일보다 앞에 그 까닭인 실패가 있다
+        for (p, put) in pending.iter().zip(puts) {
+            match put {
+                Some(Put::Stored((hash, read, stored_size, written))) => {
+                    if let Some(written) = written.filter(|w| fresh.insert(w.clone())) {
+                        self.summary.stored += stored_size;
+                        self.written.push(written);
+                    }
+                    self.summary.size += read;
+                    let file = &mut self.manifest.files[p.file];
+                    (file.hash, file.size, file.stored_size) = (hash, read, stored_size);
+                }
+                // 백업할 항목이 파일 하나면 그 파일 없이 만들지 않는다 (폴더를 걸을 때와 같다)
+                Some(Put::Gone(e)) if self.manifest.files[p.file].rel.is_empty() => return Err(e),
+                Some(Put::Gone(_)) => {
+                    tracing::warn!("Leaving {} out of the backup: it was removed while the folder was being read", p.path.display());
+                    gone.insert(p.file);
+                }
+                Some(Put::Failed(e)) => return Err(e),
+                None => bail!("backup stopped before {} was read", p.path.display()),
+            }
+        }
+        let mut i = 0;
+        self.manifest.files.retain(|_| {
+            i += 1;
+            !gone.contains(&(i - 1))
+        });
         Ok(())
     }
 
@@ -570,11 +685,10 @@ impl V2Writer<'_> {
             }
             let name = item.file_name().to_string_lossy().into_owned();
             let child = if rel.is_empty() { name } else { format!("{}/{}", rel, name) };
-            let before = (self.manifest.files.len(), self.manifest.dirs.len(), self.manifest.links.len(), self.summary.size);
+            let before = (self.manifest.files.len(), self.manifest.dirs.len(), self.manifest.links.len(), self.summary.size, self.pending.len());
             let Err(e) = self.add_child(&item, entry, &child) else { continue };
             // 켜진 서버는 걷는 사이에도 임시 파일을 지운다. 원본이 정말 사라졌을 때만 없던 것으로 본다
-            // (오류 종류만 보면 저장소 쪽의 NotFound와 구분하지 못한다)
-            if !matches!(fs::symlink_metadata(item.path()), Err(gone) if gone.kind() == io::ErrorKind::NotFound) {
+            if !vanished(&item.path()) {
                 return Err(e);
             }
             tracing::warn!("Leaving {} out of the backup: it was removed while the folder was being read", item.path().display());
@@ -583,6 +697,7 @@ impl V2Writer<'_> {
             self.manifest.dirs.truncate(before.1);
             self.manifest.links.truncate(before.2);
             self.summary.size = before.3;
+            self.pending.truncate(before.4);
         }
         Ok(())
     }
@@ -616,6 +731,7 @@ fn write_v2(dir: &Path, target: &Path, entries: &[(PathBuf, PathBuf)], exclude: 
         known: known_files(dir),
         exclude,
         written: Vec::new(),
+        pending: Vec::new(),
         manifest: ManifestV2 { version: 2, paths: Vec::new(), links: Vec::new(), files: Vec::new(), dirs: Vec::new(), started },
         summary: SummaryV2 { started, ..Default::default() },
     };
@@ -639,6 +755,7 @@ fn write_v2(dir: &Path, target: &Path, entries: &[(PathBuf, PathBuf)], exclude: 
         let from = (source != path).then(|| source.clone());
         w.manifest.paths.push(ManifestEntry { entry, path: path.clone(), is_file, from });
     }
+    w.put_pending()?;
     // 링크 대상이 다른 자리에서 읽은 어느 항목 안이면 그 항목의 복원 자리로 (스냅샷을 지워도 끊기지 않게)
     for link in &mut w.manifest.links {
         if let Some(t) = entries.iter().filter(|(s, p)| s != p).find_map(|(s, p)| link.target.strip_prefix(s).ok().map(|rel| p.join(rel))) {
@@ -654,6 +771,11 @@ fn write_v2(dir: &Path, target: &Path, entries: &[(PathBuf, PathBuf)], exclude: 
     serde_json::to_writer(&mut zip, &w.manifest)?;
     zip.finish()?.sync_all()?;
     Ok(())
+}
+
+/// 파일 내용의 해시·압축을 나눠 하는 스레드 수: 코어의 절반, 8개까지 (켜진 게임 서버의 CPU를 다 뺏지 않게)
+fn put_lanes() -> usize {
+    (std::thread::available_parallelism().map_or(2, |n| n.get()) / 2).clamp(1, 8)
 }
 
 /// 새로 쓴 내용 파일을 디스크에 내린다. Windows는 쓰기 권한 핸들이어야 내릴 수 있다. 파일마다 차례로 기다리면 작은 파일이 많은 서버의 첫 백업이 아주 느려서 몇 갈래로 나눠 한다
@@ -1563,7 +1685,9 @@ mod tests {
         fs::write(w.join("players.db-journal"), b"journal").unwrap();
         fs::create_dir_all(w.join("tmp-chunks")).unwrap();
         fs::write(w.join("tmp-chunks/c.tmp"), b"chunk").unwrap();
+        fs::write(w.join("region/r.0.0.tmp"), b"half a chunk").unwrap();
         VANISH_WHEN_REACHED.with_borrow_mut(|names| *names = vec!["players.db-journal".into(), "tmp-chunks".into()]);
+        VANISH_BEFORE_READ.with_borrow_mut(|names| *names = vec!["r.0.0.tmp".into()]);
         let dir = tmp.path().join("backups");
         let made = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
         let mut files = backed_up_files(&dir, &made.name);
@@ -1573,6 +1697,60 @@ mod tests {
         restore(&dir, &made.name).unwrap();
         assert!(w.join("region/r.0.0.mca").exists());
         assert!(!w.join("tmp-chunks").exists(), "a folder that was gone is not brought back empty");
+    }
+
+    /// 큰 월드의 첫 백업은 파일 내용의 해시·압축을 여러 코어에 나눠 한다 (한 코어에 묶여 오래 걸리지 않게).
+    /// 매니페스트는 걷는 순서 그대로다
+    #[test]
+    fn a_first_backup_compresses_files_on_several_cores() {
+        if put_lanes() < 2 {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let w = tmp.path().join("world");
+        fs::create_dir_all(&w).unwrap();
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        for i in 0..64 {
+            let bytes: Vec<u8> = (0..256 * 1024)
+                .map(|_| {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 7;
+                    seed ^= seed << 17;
+                    seed as u8
+                })
+                .collect();
+            fs::write(w.join(format!("r.{i}.mca")), bytes).unwrap();
+        }
+        let dir = tmp.path().join("backups");
+        let made = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+        let threads = PUT_THREADS.lock().unwrap().get(&dir).map_or(0, |t| t.len());
+        assert!(threads > 1, "compressed on {threads} thread(s)");
+        let walked: Vec<String> = fs::read_dir(&w).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        assert_eq!(backed_up_files(&dir, &made.name), walked);
+        fs::remove_dir_all(&w).unwrap();
+        restore(&dir, &made.name).unwrap();
+        assert_eq!(fs::read_dir(&w).unwrap().count(), 64);
+    }
+
+    /// 내용이 같은 파일 둘을 두 스레드가 동시에 넣어도 새로 쓴 용량은 한 번만 센다
+    #[test]
+    fn the_same_content_put_at_once_is_counted_once() {
+        if put_lanes() < 2 {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let w = tmp.path().join("world");
+        fs::create_dir_all(&w).unwrap();
+        for name in ["a.json", "b.json"] {
+            fs::write(w.join(name), b"[]").unwrap();
+        }
+        let dir = tmp.path().join("backups");
+        PUT_TOGETHER.lock().unwrap().insert(dir.clone(), std::sync::Arc::new(std::sync::Barrier::new(2)));
+        let made = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+        PUT_TOGETHER.lock().unwrap().remove(&dir);
+        let objects: Vec<_> = fs::read_dir(dir.join(OBJECTS)).unwrap().flatten().flat_map(|s| fs::read_dir(s.path()).unwrap().flatten()).collect();
+        assert_eq!(objects.len(), 1);
+        assert_eq!(made.stored, objects[0].metadata().unwrap().len());
     }
 
     #[test]

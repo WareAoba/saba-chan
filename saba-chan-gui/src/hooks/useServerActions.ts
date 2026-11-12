@@ -12,7 +12,7 @@ import {
     retryWithBackoff,
     safeShowToast,
 } from '../utils/helpers';
-import { claimStopNotice, eventsAvailable, showPortMoved, watchInstance } from '../utils/daemonEvents';
+import { claimServerNotice, eventsLive, showPortMoved, watchInstance } from '../utils/daemonEvents';
 import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 import { updateRequiredText } from '../utils/updateRequired';
@@ -157,14 +157,14 @@ export function useServerActions({
                         const isKnownOp = isGuiOp || isApiOp || inBootGrace || hasPendingOptimistic;
 
                         // 데몬 이벤트를 받으면 켜짐·꺼짐은 이벤트가 출처와 함께 알린다 (instance.started·stopped·exit).
-                        // 폴링은 이벤트를 못 받을 때만, 사바쨩을 거치지 않은 변화만 알린다.
+                        // 폴링은 이벤트를 못 받을 때(셸이 스트림에 다시 붙지 못하는 동안 포함)만, 사바쨩을 거치지 않은 변화만 알린다.
                         // 익스텐션이 상태를 알려 주는 서버(server.list_enrich)는 데몬이 종료를 판정하지 않아 이벤트가 없다
                         const extensionStatus = Object.keys(newServer.extension_status || {}).length > 0;
-                        const pollNotices = (!eventsAvailable() || extensionStatus) && !isKnownOp;
+                        const pollNotices = (!eventsLive() || extensionStatus) && !isKnownOp;
                         if (pollNotices && wasRunning && nowStopped) {
                             // Crash / unexpected stop — genuinely important.
                             // instance.exit 이벤트가 이미 알렸으면 건너뛴다 (G-S6)
-                            if (claimStopNotice(newServer.id, 'poll'))
+                            if (claimServerNotice(newServer.id, 'stop', 'poll'))
                                 safeShowToast(
                                     t('servers.unexpected_stop_toast', { name: newServer.name }),
                                     'error',
@@ -175,7 +175,7 @@ export function useServerActions({
                                         notice: { message: t('events.n_exit_unknown_exit'), instanceId: newServer.id },
                                     },
                                 );
-                        } else if (pollNotices && wasStopped && nowRunning) {
+                        } else if (pollNotices && wasStopped && nowRunning && claimServerNotice(newServer.id, 'start', 'poll')) {
                             // External start — informational only, not alarming.
                             safeShowToast(t('servers.external_start_toast', { name: newServer.name }), 'info', 3000);
                         }
