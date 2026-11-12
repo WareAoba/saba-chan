@@ -843,6 +843,7 @@
     "rollback_after": "O Saba-chan vai reiniciar após reverter. Depois verifique: saba-chan update last",
     "no_rollback": "Não há versão para a qual voltar. A versão anterior só é guardada após uma atualização, até a próxima.",
     "last_reverted": "Revertido de {{from}} para {{version}}",
+    "daemon_too_old": "O daemon em execução é mais antigo que este comando. Atualize o daemon primeiro: saba-chan update apply",
     "repair_checking": "Verificando a instalação...",
     "repair_list": "Partes a baixar de novo: {{list}}",
     "repaired": "Reparado: {{list}}",

@@ -843,6 +843,7 @@
     "rollback_after": "回退后 Saba-chan 将重启。之后请检查：saba-chan update last",
     "no_rollback": "没有可以回退的版本。更新后只保留上一个版本，直到下一次更新。",
     "last_reverted": "已从 {{from}} 回退到 {{version}}",
+    "daemon_too_old": "正在运行的守护进程比此命令旧。请先更新守护进程：saba-chan update apply",
     "repair_checking": "正在检查安装...",
     "repair_list": "要重新下载的组件：{{list}}",
     "repaired": "已修复：{{list}}",

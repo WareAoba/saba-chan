@@ -843,6 +843,7 @@
     "rollback_after": "退回後 Saba-chan 會重新啟動。之後請檢查：saba-chan update last",
     "no_rollback": "沒有可以退回的版本。更新後只保留上一個版本，直到下一次更新。",
     "last_reverted": "已從 {{from}} 回復到 {{version}}",
+    "daemon_too_old": "正在執行的常駐程式比此指令舊。請先更新常駐程式：saba-chan update apply",
     "repair_checking": "正在檢查安裝...",
     "repair_list": "要重新下載的元件：{{list}}",
     "repaired": "已修復：{{list}}",

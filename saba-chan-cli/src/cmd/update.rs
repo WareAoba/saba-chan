@@ -111,7 +111,7 @@ async fn repair(ctx: &Ctx) -> Result<()> {
     let spin = crate::progress::spinner(&t!("update.repair_checking"));
     let plan = ctx.api.update_repair_plan().await;
     spin.finish_and_clear();
-    let plan = plan?;
+    let plan = plan.map_err(older_daemon)?;
     let list = |key: &str| plan.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
     let (todo, unavailable) = (list("repair"), list("unavailable"));
     if !ctx.out.json {
@@ -179,6 +179,17 @@ async fn repair(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
+/// 라우트가 없는 옛 데몬(업데이트 도중 CLI만 먼저 바뀌고 코어는 다시 시작을 기다릴 때)의 404를 데몬을 먼저 업데이트하라는 안내로 바꾼다
+fn older_daemon(e: anyhow::Error) -> anyhow::Error {
+    match e.downcast::<crate::error::CliError>() {
+        Ok(crate::error::CliError::Api { status: 404, code, body, .. }) => {
+            crate::error::CliError::Api { status: 404, code, message: t!("update.daemon_too_old"), body }.into()
+        }
+        Ok(other) => other.into(),
+        Err(e) => e,
+    }
+}
+
 /// `정상 9 · 바뀜/읽기 실패 1 · 파일 없음 1` (`update integrity`와 같은 줄)
 fn integrity_summary(r: &Value) -> String {
     t!(
@@ -198,7 +209,7 @@ fn rollback_offer(r: &Value) -> Option<String> {
 
 /// `update rollback`: 데몬이 업데이터를 띄워 직전 판으로 되돌린다 (데몬은 꺼지고 되돌린 뒤 다시 켜진다)
 async fn rollback(ctx: &Ctx) -> Result<()> {
-    let info = ctx.api.update_rollback_info().await?;
+    let info = ctx.api.update_rollback_info().await.map_err(older_daemon)?;
     let Some(offer) = rollback_offer(&info) else {
         ctx.out.data(&info, |_| say!("{}", t!("update.no_rollback")));
         return Ok(());
@@ -723,6 +734,16 @@ mod tests {
         assert!(rows.contains(&(t!("update.updated"), "saba-core, cli".to_string())));
         assert!(rows.contains(&(t!("update.failed_one"), "gui: 파일이 쓰기 중".to_string())));
         assert!(last_rows(&json!({ "ok": true, "result": null })).is_empty());
+    }
+
+    /// 새 CLI가 이 라우트가 없는 옛 데몬을 부르면(업데이트 도중 CLI만 먼저 바뀐 때) `HTTP 404` 대신 데몬을 먼저 업데이트하라고 알린다
+    #[test]
+    fn a_daemon_without_the_route_is_told_to_update_first() {
+        let api = |status: u16| -> anyhow::Error {
+            crate::error::CliError::Api { status, code: None, message: format!("HTTP {status}"), body: Value::Null }.into()
+        };
+        assert_eq!(older_daemon(api(404)).to_string(), t!("update.daemon_too_old"));
+        assert_eq!(older_daemon(api(409)).to_string(), "HTTP 409");
     }
 
     /// 사용자 되돌리기 결과는 돌아간 판과 그 전 판을 사용자 언어로 보인다 (마커의 영어 원문이 아니라)
