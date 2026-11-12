@@ -100,4 +100,39 @@ describe('서버 설정 저장 뒤', () => {
         expect(result.current.settingsValues.motd).toBe('typed while reloading');
         expect(result.current.openedSettings.motd).toBe('hi');
     });
+
+    it('버전 목록이 오기 전에 저장해도 버전 목록을 끝까지 받는다', async () => {
+        const game = { ...modules[0], install: { method: 'download' }, functions: ['list_versions', 'install_server'] };
+        const { result } = renderHook(() =>
+            useServerSettings({
+                servers: [],
+                modules: [game] as never,
+                setModal: vi.fn(),
+                setProgressBar: vi.fn(),
+                fetchServers: vi.fn(),
+            }),
+        );
+        // 처음 열 때의 버전 목록은 저장이 끝난 뒤에야 온다
+        const arrive: Array<() => void> = [];
+        let calls = 0;
+        window.api.moduleListVersions = vi.fn(async () => {
+            if (calls++ === 0) await new Promise<void>((r) => arrive.push(r));
+            return { versions: [{ id: '1.0' }, { id: '1.1' }] };
+        }) as never;
+
+        let opening: Promise<void> = Promise.resolve();
+        await act(async () => {
+            opening = result.current.handleOpenSettings(server as never);
+            await vi.waitFor(() => expect(arrive).toHaveLength(1));
+        });
+        act(() => result.current.handleSettingChange('title', 'new'));
+        await act(async () => result.current.handleSaveSettings());
+        await act(async () => {
+            arrive[0]();
+            await opening;
+        });
+
+        expect(result.current.versionsLoading).toBe(false);
+        expect(result.current.availableVersions).toHaveLength(2);
+    });
 });

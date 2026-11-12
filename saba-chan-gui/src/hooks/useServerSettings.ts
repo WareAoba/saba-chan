@@ -147,6 +147,8 @@ export function useServerSettings({
     // 저장에 실을 revision: 연 때의 값에서, 창이 연 뒤 데몬이 인스턴스를 고친 응답(실제 값 읽기·버전 감지·설치)이 오면 그 값으로
     const revision = useRef<string | null>(null);
     const openRequest = useRef(0);
+    // 버전 목록·설치된 버전 읽기가 아직 끝나지 않았다: 그사이 저장 뒤 다시 읽기가 번호를 올려 결과를 버렸으면 다시 읽기가 이어 받는다
+    const versionsUnfinished = useRef(false);
 
     // ── Close animation ─────────────────────────────────────
     const closeSettingsModal = useCallback(() => setShowSettingsModal(false), []);
@@ -321,18 +323,20 @@ export function useServerSettings({
             }
         }
 
-        if (reload) return;
+        if (reload && !versionsUnfinished.current) return;
 
         // Async load versions — only for download-based modules (extension install methods have no version list)
         const mod = modules.find((m) => m.name === latestServer.module);
         const installMethod = mod?.install?.method;
-        setAvailableVersions([]);
+        if (!reload) setAvailableVersions([]);
+        versionsUnfinished.current = false;
         // 버전 목록·설치를 구현한 모듈만 (MK1)
         if (
             installMethod === 'download' &&
             moduleSupports(mod, 'list_versions') &&
             moduleSupports(mod, 'install_server')
         ) {
+            versionsUnfinished.current = true;
             setVersionsLoading(true);
             try {
                 const versions = await window.api.moduleListVersions(latestServer.module, { per_page: 30 });
@@ -368,6 +372,7 @@ export function useServerSettings({
                     console.warn('Failed to detect installed version:', err);
                 }
             }
+            versionsUnfinished.current = false;
         }
     };
 
