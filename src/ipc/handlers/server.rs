@@ -110,13 +110,12 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         let all_instances = instances.to_vec();
         let module_protocols = supervisor.build_module_protocols_map();
         let modules = supervisor.module_loader.modules().unwrap_or_default();
+        let mut states = std::collections::HashMap::new();
+        for instance in instances {
+            states.insert(instance.id.as_str(), supervisor.tracked_state(&instance.id).await);
+        }
         let snapshots =         instances.iter().map(|instance| {
-            let pid = supervisor.tracker.get_pid(&instance.id).ok();
-            let start_time = if pid.is_some() {
-                supervisor.tracker.get_start_time(&instance.id).ok()
-            } else {
-                None
-            };
+            let (running, pid, start_time) = states[instance.id.as_str()];
             let module = modules.iter().find(|m| m.metadata.name == instance.module_name);
             let process_patterns = module.as_ref().map(|m| m.metadata.process_patterns.clone()).unwrap_or_default();
             let chat_patterns = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
@@ -128,7 +127,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     name: instance.name.clone(),
                     module: instance.module_name.clone(),
                     // Native 모드: 스냅샷의 PID 및 시작 시간
-                    status: if pid.is_some() { "running" } else { "stopped" }.to_string(),
+                    status: if running { "running" } else { "stopped" }.to_string(),
                     pid,
                     start_time,
                     executable_path: instance.executable_path.clone(),
@@ -1572,6 +1571,52 @@ mod tests {
         assert!(child.try_wait().unwrap().is_none(), "the old server is left to finish saving");
         let _ = child.kill();
         let _ = child.wait();
+    }
+
+    /// 서버가 끝났는데 모니터가 아직 치우지 않은 사이, 목록은 추적 중인 PID만 보고 "실행 중"이라 하고
+    /// 개별 상태 조회는 "꺼짐"이라 했다. 두 조회는 같은 판정을 쓴다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_server_list_and_the_status_of_one_server_agree_right_after_it_exits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', 'sleep 30'], 'working_dir': '.'}))\n\
+             else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "just-exited".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let started = crate::ipc::internal::into_internal(start_instance(Path("just-exited".into()), State(state.clone())).await).await.body;
+        assert_eq!(started["success"], true, "{started}");
+
+        let both = || async {
+            let list = crate::ipc::internal::into_internal(list_servers_internal(&state).await).await.body;
+            let one = crate::supervisor::Supervisor::get_server_status(&state.supervisor, "srv", "game").await.unwrap();
+            (list["servers"][0]["status"].clone(), one["status"].clone())
+        };
+        assert_eq!(both().await, (json!("running"), json!("running")));
+
+        // 모니터가 돌기 전: managed 프로세스는 끝났고 추적 PID는 남아 있다
+        let managed = state.supervisor.read().await.managed_store.get("just-exited").await.unwrap();
+        managed.force_kill().await.unwrap();
+        assert!(crate::supervisor::process::wait_gone(std::time::Duration::from_secs(10), || managed.is_running()).await);
+        assert_eq!(both().await, (json!("stopped"), json!("stopped")));
     }
 
     /// 시작 전 점검(모듈 validate) 중에 들어온 정지도 시작을 취소한다: 그 정지는 PID가 없어 바로 성공으로 끝난다

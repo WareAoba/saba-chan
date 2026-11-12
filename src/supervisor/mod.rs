@@ -1771,10 +1771,8 @@ impl Supervisor {
         let call = {
             let s = sup.read().await;
             // Managed 프로세스가 있으면 plugin 호출 없이 직접 판단
-            if let Some(managed) = s.managed_store.get(&instance.id).await {
-                let running = managed.is_running();
-                let pid = s.tracker.get_pid(&instance.id).ok();
-                let start_time = if running { s.tracker.get_start_time(&instance.id).ok() } else { None };
+            if s.managed_store.get(&instance.id).await.is_some() {
+                let (running, pid, start_time) = s.tracked_state(&instance.id).await;
                 return Ok(json!({
                     "server": server_name,
                     "status": if running { "running" } else { "stopped" },
@@ -2166,6 +2164,21 @@ impl Supervisor {
     /// (RCON은 보안상 늘 꺼져 있다).
     /// 서버가 켜져 있는가: 추적표(non-managed와 managed 모두 띄운 뒤 올린다)나 managed 저장소에 살아 있으면.
     /// "켜져 있으면 거절" 판정은 모두 이것을 쓴다 (재부착 때 추적표 등록이 실패해 managed에만 남은 경우도 켜진 것이다)
+    /// 데몬이 아는 실행 상태 `(실행 중, PID, 시작 시각)`: 서버 목록과 개별 상태 조회가 같이 쓴다.
+    /// managed 프로세스가 있으면 그것이 살아 있는지로 정한다(끝났지만 모니터가 아직 치우지 않은 PID를 실행 중으로 보지 않는다).
+    /// 없으면 추적 중인 PID가 있는지다
+    pub async fn tracked_state(&self, instance_id: &str) -> (bool, Option<u32>, Option<u64>) {
+        let pid = self.tracker.get_pid(instance_id).ok();
+        let running = match self.managed_store.get(instance_id).await {
+            Some(managed) => managed.is_running(),
+            None => pid.is_some(),
+        };
+        if !running {
+            return (false, None, None);
+        }
+        (true, pid, self.tracker.get_start_time(instance_id).ok())
+    }
+
     pub async fn is_running(&self, instance_id: &str) -> bool {
         self.tracker.get_pid(instance_id).is_ok() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
     }
