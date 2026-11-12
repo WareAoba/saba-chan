@@ -69,9 +69,13 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(within(first).getByText('This PC', { selector: '.remote-pc-name' })).toBeInTheDocument();
         expect(within(first).getByText('125.180.44.17')).toBeInTheDocument();
         expect(within(first).getByText('Listening on port 57480')).toBeInTheDocument();
-        // OS 줄은 OS 이름만 (x86_64는 적지 않는다), 사바쨩 판은 이름 옆에
+        // OS 줄은 OS 이름만 (x86_64는 적지 않는다)
         expect(within(first).getByText('Windows', { selector: '.remote-pc-sub' })).toBeInTheDocument();
-        expect(within(first).getByText('v0.1.13')).toBeInTheDocument();
+        // 이름 줄은 이름이 혼자 쓴다: 상태·OS·판은 그 아래 한 줄 (이름이 잘리지 않게, 사용자 11-13)
+        const meta = first.querySelector('.remote-pc-meta') as HTMLElement;
+        expect(within(meta).getByText('Online')).toBeInTheDocument();
+        expect(within(meta).getByText('v0.1.13')).toBeInTheDocument();
+        expect(first.querySelector('.remote-pc-namerow')?.textContent).not.toMatch(/v0\.1\.13|Online/);
     });
 
     it('연결한 PC 카드는 배포판 로고, 연결한 날, 공인 IP, 직접 연결을 보인다', async () => {

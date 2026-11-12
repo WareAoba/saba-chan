@@ -1980,14 +1980,14 @@
     list-style: none;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: var(--sp-2);
+    gap: var(--sp-3);
 }
 .remote-pc-card {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-2);
-    padding: var(--sp-3);
-    border-radius: var(--r-md);
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+    border-radius: var(--r-lg);
     background: var(--bg-2);
     border: 1px solid var(--line);
 }
@@ -2057,6 +2057,40 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+/* 내 PC 카드 (사용자 11-13): 이름은 한 줄을 혼자 쓰고, 상태·OS·판은 그 아래 한 줄. 값 목록은 가는 선으로 나눈다 */
+.remote-pc-card .remote-pc-top {
+    align-items: flex-start;
+    gap: var(--sp-3);
+}
+.remote-pc-card .remote-pc-os {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--r-lg);
+}
+.remote-pc-card .remote-pc-name {
+    font-size: var(--fs-md);
+}
+.remote-pc-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1) var(--sp-1-5);
+    margin-top: var(--sp-1-5);
+    min-width: 0;
+}
+.remote-pc-meta .remote-pc-sub {
+    min-width: 0;
+}
+.remote-pc-meta .remote-pc-sub:not(:empty) + .remote-pc-ver::before {
+    content: "·";
+    margin-right: var(--sp-1);
+    color: var(--text-3);
+}
+.remote-pc-card .remote-pc-kv {
+    gap: var(--sp-1-5) var(--sp-3);
+    padding-top: var(--sp-3);
+    border-top: 1px solid var(--line);
 }
 /* 별: 채운 별이 메인 데몬, 빈 별을 누르면 그 PC가 메인이 된다 */
 .remote-pc-star {

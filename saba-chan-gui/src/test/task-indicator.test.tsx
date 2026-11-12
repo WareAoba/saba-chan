@@ -19,4 +19,20 @@ describe('TaskIndicator', () => {
         expect(document.querySelector('.preflight-fill.indeterminate')).not.toBeNull();
         expect(screen.queryByText(/%/)).toBeNull();
     });
+
+    it('링은 강조색 두 색 그라데이션으로 칠한다 (사용자 11-13). 알약이 여럿이어도 그라데이션 이름이 겹치지 않는다', () => {
+        render(
+            <>
+                <TaskIndicator />
+                <TaskIndicator />
+            </>,
+        );
+        act(() => useUIStore.getState().setProgressBar({ message: '시작 중', indeterminate: true }));
+        const fills = [...document.querySelectorAll('.preflight-fill')];
+        const ids = fills.map((f) => f.getAttribute('stroke')?.match(/^url\(#(.+)\)$/)?.[1]);
+        expect(new Set(ids).size).toBe(2);
+        for (const [i, id] of ids.entries()) {
+            expect(fills[i].closest('svg')?.querySelector(`linearGradient[id="${id}"]`)).not.toBeNull();
+        }
+    });
 });

@@ -301,7 +301,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         const os = platform?.distro?.name || (family ? t(`remote_daemon.os_${family}`) : '');
         return os && /^(aarch64|arm)/i.test(arch) ? `${os} (ARM)` : os;
     };
-    // 사바쨩 판은 PC 이름 옆에. 새 판이 있으면 판 옆에 업데이트 표시를 붙인다
+    // 사바쨩 판은 이름 아래 줄 OS 뒤에. 새 판이 있으면 판 옆에 업데이트 표시를 붙인다
     const versionTag = (version?: string | null, updateTo?: string) =>
         version ? (
             <span
@@ -423,14 +423,16 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     <span className="remote-pc-who">
                         <span className="remote-pc-namerow">
                             <b className="remote-pc-name">{name}</b>
+                        </span>
+                        <span className="remote-pc-meta">
+                            {state
+                                ? chip('warn', t(`remote_daemon.state_${state}`))
+                                : peer &&
+                                  chip(online ? 'ok' : 'idle', online ? t('remote_daemon.online') : t('remote_daemon.offline'))}
+                            <span className="remote-pc-sub">{osLine(platform)}</span>
                             {versionTag(peer?.agentVersion, needsUpdate ? thisVersion : undefined)}
                         </span>
-                        <span className="remote-pc-sub">{osLine(platform)}</span>
                     </span>
-                    {state
-                        ? chip('warn', t(`remote_daemon.state_${state}`))
-                        : peer &&
-                          chip(online ? 'ok' : 'idle', online ? t('remote_daemon.online') : t('remote_daemon.offline'))}
                     {daemon && star(mainDaemon === card.hostId, () => updateSettings({ mainDaemon: card.hostId }))}
                 </div>
                 <dl className="remote-pc-kv">
@@ -556,11 +558,13 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                             <span className="remote-pc-namerow">
                                 <b className="remote-pc-name">{myName || t('daemon_switcher.local')}</b>
                                 {myName && <span className="remote-pc-tag">{t('daemon_switcher.local')}</span>}
+                            </span>
+                            <span className="remote-pc-meta">
+                                {chip('ok', t('remote_daemon.online'))}
+                                <span className="remote-pc-sub">{osLine(thisPc.platform)}</span>
                                 {versionTag(thisVersion)}
                             </span>
-                            <span className="remote-pc-sub">{osLine(thisPc.platform)}</span>
                         </span>
-                        {chip('ok', t('remote_daemon.online'))}
                         {star(!mainIsRemote, () => updateSettings({ mainDaemon: null }))}
                     </div>
                     <dl className="remote-pc-kv">

@@ -1017,13 +1017,39 @@
     user-select: none;
 }
 
-/* 보낸 명령 줄 (#18): "› list" 굵게 강조색, 보낸 곳은 흐리게 */
+/* 보낸 명령 줄 (사용자 11-13 시안 B): 줄 전체에 옅은 강조색 띠, 보낸 곳은 오른쪽 끝 알약 */
+.console-line.console-sent {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    /* 띠는 콘솔 안쪽 여백까지 가로로 꽉 채운다 */
+    margin-inline: calc(-1 * var(--sp-4));
+    padding-inline: var(--sp-4);
+    background: color-mix(in oklab, var(--accent) 9%, transparent);
+}
+.console-sent .console-time {
+    margin-right: 0;
+}
+.console-echo-prompt {
+    color: var(--accent);
+    font-weight: 700;
+}
 .console-echo {
-    color: var(--tok-info);
+    flex: 1;
+    min-width: 0;
+    color: var(--console-text);
     font-weight: 700;
 }
 .console-echo-by {
-    color: var(--text-3);
+    flex: none;
+    padding: 0 var(--sp-2);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--console-text) 10%, transparent);
+    color: color-mix(in oklab, var(--console-text) 70%, transparent);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
 }
 
 /* ── 콘솔 색 토큰: 줄 전체 색은 데몬이 매긴 level, 조각 색은 spans(또는 모듈 규칙)의 토큰 ── */
@@ -3405,13 +3431,22 @@ button.dc-ladder-chip.is-fixed {
 .appbar-preflight .preflight-track {
     stroke: var(--line);
 }
+/* 링의 호는 강조색 두 색 그라데이션 (PillRing, 사용자 11-13) */
 .appbar-preflight .preflight-fill {
-    stroke: var(--accent);
     transition: stroke-dashoffset 0.4s ease;
 }
+.pill-ring-from {
+    stop-color: var(--brand-from);
+}
+.pill-ring-to {
+    stop-color: var(--brand-to);
+}
+/* 진행률을 모를 때: 호가 돌면서 짧아졌다 길어진다 (시안 B). 둘레는 2π·7 ≈ 44 */
 .appbar-preflight .preflight-fill.indeterminate {
     transform-origin: 9px 9px;
-    animation: preflight-spin 1s linear infinite;
+    animation:
+        preflight-spin 1.6s linear infinite,
+        preflight-breathe 1.6s ease-in-out infinite;
 }
 @keyframes preflight-spin {
     from {
@@ -3419,6 +3454,20 @@ button.dc-ladder-chip.is-fixed {
     }
     to {
         transform: rotate(360deg);
+    }
+}
+@keyframes preflight-breathe {
+    0% {
+        stroke-dasharray: 3 41;
+        stroke-dashoffset: 0;
+    }
+    50% {
+        stroke-dasharray: 30 14;
+        stroke-dashoffset: -6;
+    }
+    100% {
+        stroke-dasharray: 3 41;
+        stroke-dashoffset: -41;
     }
 }
 button.appbar-preflight {
@@ -5374,7 +5423,7 @@ button.appbar-pill:focus-visible {
     align-items: center;
     gap: var(--sp-2);
     width: 100%;
-    padding: var(--sp-2-5) var(--sp-3);
+    padding: var(--sp-3);
     border: none;
     background: none;
     font: inherit;
@@ -5389,16 +5438,60 @@ button.appbar-pill:focus-visible {
 }
 .guide-dock-head > :last-child {
     color: var(--text-3);
+    transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.3, 1);
+}
+.guide-dock.open .guide-dock-head > :last-child {
+    transform: rotate(180deg);
+}
+/* 펼침 (사용자 11-13): 높이가 부드럽게 늘고 줄이 차례로 떠오른다 */
+.guide-dock-wrap {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.3s cubic-bezier(0.3, 0.7, 0.3, 1);
+}
+.guide-dock.open .guide-dock-wrap {
+    grid-template-rows: 1fr;
 }
 .guide-dock-body {
     display: flex;
     flex-direction: column;
-    padding: var(--sp-1-5);
-    border-top: 1px solid var(--line);
+    gap: var(--sp-1);
+    min-height: 0;
+    overflow: hidden;
+    padding: 0 var(--sp-2);
+    border-top: 1px solid transparent;
+    transition:
+        padding 0.3s cubic-bezier(0.3, 0.7, 0.3, 1),
+        border-color 0.3s;
+}
+.guide-dock.open .guide-dock-body {
+    padding: var(--sp-2);
+    border-top-color: var(--line);
+}
+.guide-dock-body > * {
+    opacity: 0;
+    transform: translateY(6px);
+    transition:
+        opacity 0.2s ease,
+        transform 0.25s ease;
+}
+.guide-dock.open .guide-dock-body > * {
+    opacity: 1;
+    transform: none;
+}
+.guide-dock.open .guide-dock-body > :nth-child(2) {
+    transition-delay: 0.04s;
+}
+.guide-dock.open .guide-dock-body > :nth-child(3) {
+    transition-delay: 0.08s;
+}
+.guide-dock.open .guide-dock-body > :nth-child(4) {
+    transition-delay: 0.12s;
 }
 .guide-dock-more {
     align-self: flex-start;
-    padding: var(--sp-2) var(--sp-2) var(--sp-1);
+    /* 글자를 줄 제목과 같은 자리에 맞춘다 (줄 여백 + 아이콘 16px + 간격) */
+    padding: var(--sp-1-5) var(--sp-2-5) var(--sp-1) calc(var(--sp-2-5) + var(--sp-4) + var(--sp-3));
     border: none;
     background: none;
     color: var(--accent);
@@ -5410,9 +5503,9 @@ button.appbar-pill:focus-visible {
 .guide-row {
     display: flex;
     align-items: center;
-    gap: var(--sp-2-5);
+    gap: var(--sp-3);
     width: 100%;
-    padding: var(--sp-2);
+    padding: var(--sp-2-5);
     border: none;
     border-radius: var(--r-md);
     background: none;
@@ -5441,8 +5534,9 @@ button.appbar-pill:focus-visible {
     display: flex;
     flex: 1;
     flex-direction: column;
+    gap: var(--sp-0-5);
     min-width: 0;
-    line-height: 1.3;
+    line-height: 1.35;
 }
 .guide-row-title {
     font-size: var(--fs-sm);
@@ -5470,6 +5564,26 @@ button.appbar-pill:focus-visible {
     overflow: auto;
     padding: var(--sp-5);
     text-align: left;
+    /* 가이드 카드 자리에서 커지며 열리고 그 자리로 줄어들며 닫힌다 (사용자 11-13 시안 A) */
+    animation: guide-sheet-in 0.38s cubic-bezier(0.2, 0.9, 0.25, 1.04) both;
+}
+.modal-overlay.closing .modal.guide-sheet {
+    animation: guide-sheet-out 0.22s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+}
+@keyframes guide-sheet-in {
+    from {
+        opacity: 0;
+        transform: translate(var(--from-x, 0), var(--from-y, 0)) scale(0.3);
+    }
+    40% {
+        opacity: 1;
+    }
+}
+@keyframes guide-sheet-out {
+    to {
+        opacity: 0;
+        transform: translate(var(--from-x, 0), var(--from-y, 0)) scale(0.3);
+    }
 }
 .guide-sheet-head {
     display: flex;
@@ -5488,6 +5602,11 @@ button.appbar-pill:focus-visible {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: var(--sp-1-5) var(--sp-5);
+}
+.guide-sheet-groups section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
 }
 .guide-sheet-groups h3 {
     margin: 0;

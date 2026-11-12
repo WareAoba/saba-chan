@@ -6,7 +6,7 @@ import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { Dialog } from '../ui/Dialog';
 import { Popover } from '../ui/Popover';
-import { AppBarPill } from './AppBarPill';
+import { AppBarPill, PillRing } from './AppBarPill';
 
 /** 업데이트가 진행 중이면 자주, 할 일이 없으면 드물게 읽는다 (이 PC 데몬에 묻는 로컬 요청) */
 const ACTIVE_POLL_MS = 5000;
@@ -74,22 +74,7 @@ const pillIcon = (state: State) => {
     if (state === 'done') return <Icon name="check" size="sm" />;
     if (state === 'waiting') return <Icon name="clock" size="sm" />;
     if (state === 'ready') return <Icon name="arrowUp" size="sm" />;
-    return (
-        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">
-            <circle className="preflight-track" cx="9" cy="9" r="7" fill="none" strokeWidth="2.5" />
-            <circle
-                className="preflight-fill indeterminate"
-                cx="9"
-                cy="9"
-                r="7"
-                fill="none"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeDasharray="44"
-                strokeDashoffset="33"
-            />
-        </svg>
-    );
+    return <PillRing />;
 };
 
 /**
