@@ -768,7 +768,7 @@ impl Session {
                 } else if let Some(hint) = data.get("updateHint") {
                     crate::ipc::updates::on_update_hint(&self.server.update_state, hint, self.cancel.clone());
                 }
-                // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다
+                // 챗봇 설정은 첫 하트비트 응답(새로 묶인 길드 받기) 뒤에 한 번 릴레이에 맞춘다.
                 // 세션이 끝나면(연결 해제·토큰 교체) 같이 멈춘다: 예전 토큰으로 설정을 올리지 않게
                 if self.chatbot_sync_due.swap(false, std::sync::atomic::Ordering::SeqCst) {
                     let (server, cancel) = (self.server.clone(), self.cancel.clone());
@@ -779,6 +779,7 @@ impl Session {
                         }
                     });
                 }
+                // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다 (세션과 함께 멈춘다)
                 if crate::ipc::handlers::discord::take_pending_sync() {
                     let (server, cancel) = (self.server.clone(), self.cancel.clone());
                     tokio::spawn(async move {
