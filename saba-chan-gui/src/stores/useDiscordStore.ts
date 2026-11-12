@@ -5,6 +5,7 @@ import { readPrefixes } from '../components/discord/prefixes';
 import type { DiscordNode, MembersByGuild } from '../components/discord/types';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { mergePatchDiff } from '../utils/mergePatch';
+import { startPoll } from '../utils/poll';
 
 // i18n translate function — set after store creation
 // biome-ignore lint/suspicious/noExplicitAny: i18next t의 여러 겹친 모양을 그대로 받는다
@@ -107,7 +108,8 @@ export interface DiscordData {
     _saveErrorCode: string | null;
     _settingsReady: boolean;
     _botConfigLoaded: boolean;
-    _statusInterval: ReturnType<typeof setInterval> | null;
+    /** 상태 폴링을 멈추는 함수 (돌고 있을 때만) */
+    _statusInterval: (() => void) | null;
     _statusTimeout: ReturnType<typeof setTimeout> | null;
 }
 
@@ -452,13 +454,13 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             await get().checkStatus();
             if (generation === statusGeneration) set({ botStatusReady: true });
         }, 200);
-        const interval = setInterval(() => get().checkStatus(), 5000);
+        const interval = startPoll(() => get().checkStatus(), 5000, { immediate: false });
         set({ _statusInterval: interval, _statusTimeout: timeout });
     },
 
     stopStatusPolling: () => {
         const state = get();
-        clearInterval(state._statusInterval ?? undefined);
+        state._statusInterval?.();
         clearTimeout(state._statusTimeout ?? undefined);
         statusGeneration += 1;
         set({
@@ -474,7 +476,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
     // Test-only: reset to initial state
     _resetForTest: () => {
         const state = get();
-        clearInterval(state._statusInterval ?? undefined);
+        state._statusInterval?.();
         clearTimeout(state._statusTimeout ?? undefined);
         statusGeneration += 1;
         synced = {};

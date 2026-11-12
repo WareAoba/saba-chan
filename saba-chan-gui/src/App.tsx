@@ -45,6 +45,7 @@ import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
+import { startPoll } from './utils/poll';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
     beginOpeningSound,
@@ -510,9 +511,7 @@ function App() {
                 setBackgroundDaemonStatus('error');
             }
         };
-        checkDaemonStatus();
-        const interval = setInterval(checkDaemonStatus, 5000);
-        return () => clearInterval(interval);
+        return startPoll(checkDaemonStatus, 5000);
     }, [daemonReady]);
 
     // ── Settings Save Functions ─────────────────────────────
@@ -641,14 +640,16 @@ function App() {
         }
 
         // Auto-refresh (데몬 준비 전에는 스킵)
-        const interval = setInterval(() => {
-            if (autoRefresh && daemonReady) {
-                fetchServers();
-            }
-        }, refreshInterval);
+        const stopPoll = startPoll(
+            () => {
+                if (autoRefresh && daemonReady) return fetchServers();
+            },
+            refreshInterval,
+            { immediate: false },
+        );
 
         return () => {
-            clearInterval(interval);
+            stopPoll();
             if (typeof offClose === 'function') offClose();
             if (typeof offOpenServer === 'function') offOpenServer();
             if (typeof offOpenRoute === 'function') offOpenRoute();

@@ -18,7 +18,7 @@ import { setLanguage } from '../i18n';
 import { applyScreenFonts, applyTheme, readConsoleFonts, readMonitorItems, readPref, THEMES, writeMonitorItems, writePref } from '../prefs';
 import { sizeText } from './BackupsPanel';
 import { Dropdown } from './Dropdown';
-import { startPoll } from './poll';
+import { startPoll } from '@gui/utils/poll';
 import { Button, Empty, Loading, Section, Segments } from './ui';
 import { useStickToBottom } from './useStickToBottom';
 import type { ApiBody, WebApi } from '../types';

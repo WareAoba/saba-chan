@@ -11,7 +11,7 @@ import { InfoPanel } from './InfoPanel';
 import { InstanceWords } from './InstanceWords';
 import { Icon } from './icons';
 import { PlayersPanel } from './PlayersPanel';
-import { startPoll } from './poll';
+import { startPoll } from '@gui/utils/poll';
 import { SabaSettings } from './SabaSettings';
 import { SchedulePanel } from './SchedulePanel';
 import { ServerIcon } from './ServerIcon';

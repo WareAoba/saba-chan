@@ -8,7 +8,7 @@ import { LanguageMenu } from './components/LanguageMenu';
 import { ModulesTab } from './components/ModulesTab';
 import { MoreTab } from './components/MoreTab';
 import { NeedsPc } from './components/NoPc';
-import { startPoll } from './components/poll';
+import { startPoll } from '@gui/utils/poll';
 import { ServersTab } from './components/ServersTab';
 import { SessionBar } from './components/SessionBar';
 import { ConfirmHost, ToastHost, Wordmark } from './components/ui';

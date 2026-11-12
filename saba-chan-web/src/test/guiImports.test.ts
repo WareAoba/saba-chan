@@ -10,6 +10,8 @@ const ALLOWED = new Set([
     // 데몬 호출 결과가 실패인지 (앱과 같은 판정)
     '@gui/utils/apiResult',
     '@gui/utils/localizedText',
+    // 주기 읽기 (숨으면 쉬고 보이면 바로 읽기, 앱과 같다)
+    '@gui/utils/poll',
     '@gui/utils/commandRisk',
     // 명령 줄 읽기와 입력 칸 값 → 인자 (데몬이 읽는 방식 그대로, 앱 명령 탭과 같은 규칙)
     '@gui/utils/commandSyntax',
