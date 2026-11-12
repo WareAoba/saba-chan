@@ -258,11 +258,11 @@ impl DaemonApi for IPCServer {
     }
 
     async fn start(&self, server: &ServerView) -> InternalResponse {
-        into_internal(crate::ipc::handlers::server::start_instance_handler(Path(server.id.clone()), State(self.clone())).await).await
+        crate::ipc::handlers::server::start(self, &server.id).await.into()
     }
 
     async fn stop(&self, server: &ServerView) -> InternalResponse {
-        into_internal(crate::ipc::handlers::server::stop_instance(self.clone(), &server.id, false).await).await
+        crate::ipc::handlers::server::stop(self, &server.id, false).await.into()
     }
 
     async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse {

@@ -33,7 +33,7 @@ pub(crate) struct InstanceRuntime {
     pub players: players::Players,
     /// 준비 알림 (`ready.rs`)
     pub ready: ready::Ready,
-    /// 정지와 복원 전 백업 정리가 함께 쥐는 문 (`ipc/handlers/backup.rs` `stop_gate`)
+    /// 정지와 복원 전 백업 정리가 함께 쥐는 문 (`Runtimes::stop_gate`)
     pub stop_gate: Arc<tokio::sync::Mutex<()>>,
     /// 모듈 `instance_commands()` 결과와 읽은 때 (`ipc/handlers/command.rs`)
     pub commands: Option<(Instant, crate::commands::InstanceCommands)>,
@@ -69,6 +69,12 @@ impl Runtimes {
         self.lock().live.get_mut(instance_id).map(f)
     }
 
+    /// 정지와 복원 전 백업 정리가 함께 쥐는 문: 정지가 쥐는 동안 정리는 들어오지 않고(다음 차례로 미룬다),
+    /// 정리가 쥐는 동안 정지는 끝나기를 기다린다. 그래서 정리가 "돌고 있다"고 확인한 뒤 지우는 동안 서버가 멈추지 않는다
+    pub(crate) fn stop_gate(&self, instance_id: &str) -> Arc<tokio::sync::Mutex<()>> {
+        self.with(instance_id, |r| r.stop_gate.clone())
+    }
+
     /// 모든 인스턴스의 상태를 읽는다
     pub(crate) fn all<R>(&self, f: impl FnOnce(&HashMap<String, InstanceRuntime>) -> R) -> R {
         f(&self.lock().live)
@@ -85,6 +91,21 @@ impl Runtimes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 정리가 쥐는 동안 정지는 기다리고, 정지가 쥐는 동안 정리는 들어오지 않는다
+    #[tokio::test]
+    async fn the_stop_gate_keeps_the_sweep_and_a_stop_apart() {
+        let id = "gate-test";
+        let rt = Runtimes::default();
+        let stopping = rt.stop_gate(id).lock_owned().await;
+        assert!(rt.stop_gate(id).try_lock_owned().is_err(), "a stop in progress keeps the sweep out");
+        drop(stopping);
+        let sweeping = rt.stop_gate(id).try_lock_owned().expect("free once the stop is done");
+        let waiting = tokio::time::timeout(std::time::Duration::from_millis(50), rt.stop_gate(id).lock_owned()).await;
+        assert!(waiting.is_err(), "a stop waits while the sweep deletes");
+        drop(sweeping);
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(500), rt.stop_gate(id).lock_owned()).await.is_ok());
+    }
 
     /// 지운 뒤 늦게 도착한 쓰기(진행 중이던 상태 질문의 답, 겹친 정지의 쿨다운 등)는 지운 인스턴스의 상태를 되살리지 않는다
     #[test]

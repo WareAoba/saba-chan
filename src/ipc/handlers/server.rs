@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use super::super::{
     IPCServer, ExtensionInfo, ExtensionListResponse, PortConflictInfo, ProtocolsInfo, ServerInfo, ServerListResponse,
-    ServerStartRequest, ServerStopRequest,
+    ServerStopRequest,
 };
 
 /// GET /health - 데몬 활성 확인용 경량 ping
@@ -865,28 +865,30 @@ pub async fn get_instance_status(
     }
 }
 
-/// POST /api/instance/:id/start — 서버 시작. 경로(managed / non-managed)는 데몬이 고른다.
-///
-/// `:id`는 인스턴스 ID, 없으면 이름으로 찾는다(CLI·채팅처럼 이름만 아는 쪽용).
-/// 정책은 `Supervisor::uses_managed_start`, 포트 충돌 검사는 전역 설정 하나다.
-/// 응답은 고른 경로의 응답 그대로에 `managed`를 더한 것이다.
+/// POST /api/instance/:id/start — 서버 시작 (`start`)
 pub async fn start_instance_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> axum::response::Response {
-    let resp = start_instance(Path(id.clone()), State(state.clone())).await;
-    super::audited(&state, "start", &id, None, None, resp).await
+    super::answer(start(&state, &id).await)
 }
 
-async fn start_instance(
-    Path(id): Path<String>,
-    State(state): State<IPCServer>,
-) -> axum::response::Response {
+/// 서버 시작. 경로(managed / non-managed)는 데몬이 고르고, 작업 기록에 `start` 한 줄로 남는다.
+///
+/// `id`는 인스턴스 ID, 없으면 이름으로 찾는다(CLI·채팅처럼 이름만 아는 쪽용).
+/// 정책은 `Supervisor::uses_managed_start`, 포트 충돌 검사는 전역 설정 하나다.
+/// 답은 고른 경로의 답 그대로에 `managed`를 더한 것이다 (실패도 같다)
+pub(crate) async fn start(state: &IPCServer, id: &str) -> super::Outcome {
+    let result = start_unrecorded(state, id).await;
+    super::audited_result(state, "start", id, result).await
+}
+
+async fn start_unrecorded(state: &IPCServer, id: &str) -> super::Outcome {
     let picked = {
         let supervisor = state.supervisor.read().await;
         supervisor
             .instance_store
-            .find(&id)
+            .find(id)
             .cloned()
             .map(|inst| {
                 let managed = supervisor.uses_managed_start(&inst);
@@ -894,7 +896,7 @@ async fn start_instance(
             })
     };
     let Some((instance, managed)) = picked else {
-        return instance_not_found(&id);
+        return Err(instance_not_found(id));
     };
 
     // 점검 중에 들어온 정지도 시작을 취소하도록 세대를 점검 전에 잡는다.
@@ -906,24 +908,23 @@ async fn start_instance(
     crate::supervisor::START_SINCE.scope(since, start_checked(state, instance, managed)).await
 }
 
-async fn start_checked(state: IPCServer, instance: crate::instance::ServerInstance, managed: bool) -> axum::response::Response {
+async fn start_checked(state: &IPCServer, instance: crate::instance::ServerInstance, managed: bool) -> super::Outcome {
     let _transition = crate::instance::transition::Transition::begin(&instance.id, crate::instance::transition::Kind::Starting);
-    if let Some(blocked) = preflight(&state, &instance.id).await {
-        return blocked;
+    if let Some(blocked) = preflight(state, &instance.id).await {
+        return Err(blocked);
     }
 
-    let resp = if managed {
-        crate::ipc::internal::into_internal(
-            super::managed::start_managed_handler(Path(instance.id.clone()), State(state.clone()), LooseJson(None)).await,
-        )
-        .await
+    let mut result = if managed {
+        super::managed::start_managed(state, &instance.id).await
     } else {
-        let req = ServerStartRequest { module: instance.module_name.clone(), config: json!({}) };
         // id로 넘긴다 (이름은 겹칠 수 있다)
-        crate::ipc::internal::into_internal(start_server_handler(Path(instance.id.clone()), State(state.clone()), Json(req)).await)
-            .await
+        start_unmanaged(state, &instance.id, &instance.module_name).await
     };
-    let mut body = match resp.body {
+    let body = match &mut result {
+        Ok(body) => body,
+        Err(failure) => &mut failure.body,
+    };
+    let mut map = match std::mem::take(body) {
         Value::Object(map) => map,
         other => {
             let mut map = serde_json::Map::new();
@@ -931,13 +932,14 @@ async fn start_checked(state: IPCServer, instance: crate::instance::ServerInstan
             map
         }
     };
-    body.insert("managed".into(), json!(managed));
-    (resp.status, Json(announce_updates(&state, &instance.id, Value::Object(body)).await)).into_response()
+    map.insert("managed".into(), json!(managed));
+    *body = announce_updates(state, &instance.id, Value::Object(map)).await;
+    result
 }
 
 /// 켜기 전 점검: 동의하지 않은 모듈 약관이 있거나, 모듈 validate가 critical 문제(EULA 미동의, 서버 파일 없음 등)를 내면 켜지 않는다.
 /// 이미 켜져 있거나, 모듈에 validate가 없거나, 점검 자체가 실패하면 막지 않는다
-async fn preflight(state: &IPCServer, id: &str) -> Option<axum::response::Response> {
+async fn preflight(state: &IPCServer, id: &str) -> Option<super::Failure> {
     {
         let supervisor = state.supervisor.read().await;
         if supervisor.is_running(id).await {
@@ -951,13 +953,10 @@ async fn preflight(state: &IPCServer, id: &str) -> Option<axum::response::Respon
         let names: Vec<&str> = missing.iter().filter_map(|a| a["label"].as_str()).collect();
         let message = crate::chat::i18n::Catalog::for_language(&language).t("errors.agreement_required", &[("names", &names.join(", "))]);
         tracing::info!("Start of '{}' blocked: agreements not accepted", id);
-        return Some(
-            (
-                StatusCode::CONFLICT,
-                Json(json!({ "success": false, "error": message, "error_code": "agreement_required", "agreements": missing })),
-            )
-                .into_response(),
-        );
+        return Some(super::Failure::new(
+            StatusCode::CONFLICT,
+            json!({ "success": false, "error": message, "error_code": "agreement_required", "agreements": missing }),
+        ));
     }
     let result = match crate::supervisor::Supervisor::validate_instance(&state.supervisor, id).await {
         Ok(v) => v,
@@ -972,20 +971,17 @@ async fn preflight(state: &IPCServer, id: &str) -> Option<axum::response::Respon
     let code = first.get("code").and_then(Value::as_str).unwrap_or("preflight_failed");
     let message = first.get("message").and_then(Value::as_str).unwrap_or("Pre-start check failed");
     tracing::info!("Start of '{}' blocked by pre-start check: {}", id, code);
-    Some(
-        (
-            StatusCode::CONFLICT,
-            Json(json!({
-                "success": false,
-                "error": message,
-                "error_code": "preflight_failed",
-                "issue_code": code,
-                "solution": first.get("solution"),
-                "issues": critical,
-            })),
-        )
-            .into_response(),
-    )
+    Some(super::Failure::new(
+        StatusCode::CONFLICT,
+        json!({
+            "success": false,
+            "error": message,
+            "error_code": "preflight_failed",
+            "issue_code": code,
+            "solution": first.get("solution"),
+            "issues": critical,
+        }),
+    ))
 }
 
 /// id(또는 고유한 이름)로 인스턴스를 찾아 (id, 이름)을 돌려준다
@@ -997,12 +993,8 @@ async fn instance_key_of(state: &IPCServer, key: &str) -> Option<(String, String
         .map(|i| (i.id.clone(), i.name.clone()))
 }
 
-pub(super) fn instance_not_found(id: &str) -> axum::response::Response {
-    (
-        StatusCode::NOT_FOUND,
-        Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" })),
-    )
-        .into_response()
+pub(super) fn instance_not_found(id: &str) -> super::Failure {
+    super::Failure::new(StatusCode::NOT_FOUND, json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))
 }
 
 /// POST /api/instance/:id/stop — id로 정지 (`{force?}`)
@@ -1012,40 +1004,41 @@ pub async fn stop_instance_handler(
     LooseJson(body): LooseJson<ServerStopRequest>,
 ) -> axum::response::Response {
     let force = body.map(|Json(b)| b.force).unwrap_or(false);
-    stop_instance(state, &id, force).await
+    super::answer(stop(&state, &id, force).await)
 }
 
-/// POST /api/instance/:id/restart — 정지(`{force?}`) 뒤 시작. 꺼져 있으면 시작만 한다.
-/// 응답은 시작 응답에 `stopped`(정지했는가)를 더한 것. 정지가 실패하면 그 응답을 그대로 준다
+/// POST /api/instance/:id/restart — 정지(`{force?}`) 뒤 시작 (`restart`)
 pub async fn restart_instance_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
     LooseJson(body): LooseJson<ServerStopRequest>,
 ) -> axum::response::Response {
+    let force = body.map(|Json(b)| b.force).unwrap_or(false);
+    super::answer(restart(&state, &id, force).await)
+}
+
+/// 정지 뒤 시작. 꺼져 있으면 시작만 한다. 작업 기록에는 `restart` 한 줄로 남는다.
+/// 답은 시작 답에 `stopped`(정지했는가)를 더한 것. 정지가 실패하면 그 답을 그대로 준다
+pub(crate) async fn restart(state: &IPCServer, id: &str, force: bool) -> super::Outcome {
     // 안에서 부르는 정지·시작은 따로 남기지 않는다
-    let resp = crate::audit::quietly(restart_instance(Path(id.clone()), State(state.clone()), LooseJson(body))).await;
-    super::audited(&state, "restart", &id, None, None, resp).await
+    let result = crate::audit::quietly(restart_unrecorded(state, id, force)).await;
+    super::audited_result(state, "restart", id, result).await
 }
 
 /// 재시작이 정지 뒤 이전 프로세스가 끝나기를 기다리는 최소 시간 (정지 대기 시간이 더 길면 그만큼)
 const RESTART_EXIT_WAIT_FLOOR: std::time::Duration = std::time::Duration::from_secs(if cfg!(test) { 2 } else { 120 });
 
-async fn restart_instance(
-    Path(id): Path<String>,
-    State(state): State<IPCServer>,
-    LooseJson(body): LooseJson<ServerStopRequest>,
-) -> axum::response::Response {
+async fn restart_unrecorded(state: &IPCServer, id: &str, force: bool) -> super::Outcome {
     let picked = {
         let supervisor = state.supervisor.read().await;
-        supervisor.instance_store.find(&id).map(|i| {
+        supervisor.instance_store.find(id).map(|i| {
             let module_timeout = supervisor.module_loader.get_module(&i.module_name).ok().and_then(|m| m.metadata.stop_timeout);
             (i.id.clone(), crate::supervisor::stop_timeout_of(i, module_timeout), supervisor.tracker.get_pid(&i.id).ok())
         })
     };
     let Some((inst_id, stop_timeout, old_pid)) = picked else {
-        return instance_not_found(&id);
+        return Err(instance_not_found(id));
     };
-    let force = body.map(|Json(b)| b.force).unwrap_or(false);
     // 이 재시작의 정지가 올린 세대보다 더 올랐으면 그사이 다른 정지·시작이 들어온 것이다 (D-S8).
     // 기준은 정지가 알려 준 값이다: 정지 전에 따로 읽으면 그 틈에 끼어든 자동 재시작 시작까지 세어 스스로 취소한다 (D-S10)
     let before_stop = state.supervisor.read().await.run_generation_of(&inst_id);
@@ -1054,18 +1047,13 @@ async fn restart_instance(
     {
         // 데몬이 추적하지 않아도 익스텐션이 맡은 서버일 수 있다: 정지를 먼저 맡긴다
         let stopping = async {
-            let resp = stop_instance(state.clone(), &inst_id, force).await;
-            (resp, crate::supervisor::STOPPED_AT.with(|at| at.get()))
+            let result = stop(state, &inst_id, force).await;
+            (result, crate::supervisor::STOPPED_AT.with(|at| at.get()))
         };
-        let (stop, at) = crate::supervisor::STOPPED_AT.scope(std::cell::Cell::new(None), stopping).await;
+        let (stopped, at) = crate::supervisor::STOPPED_AT.scope(std::cell::Cell::new(None), stopping).await;
         stopped_at = at.unwrap_or(before_stop + 1);
-        let stop = crate::ipc::internal::into_internal(stop).await;
         // 꺼져 있던 일반 인스턴스는 정지가 아무것도 하지 않고 was_running=false를 준다
-        let ok = stop.status.is_success() && stop.body.get("success").and_then(Value::as_bool) != Some(false);
-        if !ok {
-            return (stop.status, Json(stop.body)).into_response();
-        }
-        running = stop.body.get("was_running").and_then(Value::as_bool) != Some(false);
+        running = stopped?.get("was_running").and_then(Value::as_bool) != Some(false);
         // 정지 응답이 프로세스가 끝나기 전에 올 수 있다: 끝날 때까지 기다린다 (정지 대기 시간만큼, 적어도 2분).
         // non-managed 정지는 모듈이 성공이라고 답하면 추적을 바로 놓으므로, 정지 전에 알던 PID가 살아 있는지도 본다
         let deadline = tokio::time::Instant::now() + RESTART_EXIT_WAIT_FLOOR.max(std::time::Duration::from_secs(stop_timeout));
@@ -1080,7 +1068,7 @@ async fn restart_instance(
             // 이전 프로세스가 아직 저장 중일 수 있다: 같은 월드를 여는 새 서버를 띄우지 않는다
             if tokio::time::Instant::now() >= deadline {
                 let error = json!({ "success": false, "error": "The server is still shutting down; start it again once it has stopped", "error_code": "still_stopping", "stopped": false });
-                return (StatusCode::CONFLICT, Json(error)).into_response();
+                return Err(super::Failure::new(StatusCode::CONFLICT, error));
             }
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
@@ -1090,31 +1078,61 @@ async fn restart_instance(
     let generation = state.supervisor.read().await.run_generation_of(&inst_id);
     if generation > stopped_at {
         let error = json!({ "success": false, "error": "The server was stopped or started while restarting", "error_code": "restart_cancelled", "stopped": running });
-        return (StatusCode::CONFLICT, Json(error)).into_response();
+        return Err(super::Failure::new(StatusCode::CONFLICT, error));
     }
+    let state = state.clone();
     let start = crate::audit::spawn(async move {
         let wanted = || async {
             let supervisor = state.supervisor.read().await;
             supervisor.instance_store.get(&inst_id).is_some() && supervisor.run_generation_of(&inst_id) == generation
         };
-        super::backup::start_when_free(&state, &inst_id, generation, wanted).await
+        start_when_free(&state, &inst_id, generation, wanted).await
     })
     .await;
-    let start = match start {
-        Ok(Some(start)) => start,
+    let mut result = match start {
+        Ok(Some(result)) => result,
         Ok(None) => {
             let error = json!({ "success": false, "error": "The server was started or removed while waiting", "error_code": "restart_cancelled", "stopped": running });
-            return (StatusCode::CONFLICT, Json(error)).into_response();
+            return Err(super::Failure::new(StatusCode::CONFLICT, error));
         }
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))).into_response(),
+        Err(e) => return Err(super::Failure::new(StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string() }))),
     };
-    let mut body = match start.body {
+    let body = match &mut result {
+        Ok(body) => body,
+        Err(failure) => &mut failure.body,
+    };
+    let mut map = match std::mem::take(body) {
         Value::Object(map) => map,
         other => serde_json::Map::from_iter([("data".to_string(), other)]),
     };
-    body.insert("stopped".into(), json!(running));
-    (start.status, Json(Value::Object(body))).into_response()
+    map.insert("stopped".into(), json!(running));
+    *body = Value::Object(map);
+    result
 }
+
+/// 작업 잠금이 풀리면 시작한다. 재시작이 백업·복원과 겹쳐도 서버가 꺼진 채 남지 않게 한다.
+/// 기다리는 동안 `still_wanted`가 false가 되면 그만두고 None.
+/// `generation`은 부른 쪽이 확인한 실행 세대다: 시작도 이 값을 기준으로 삼아, 확인 뒤에 들어온 정지가 시작을 취소하게 한다
+pub(crate) async fn start_when_free<F, Fut>(state: &IPCServer, id: &str, generation: u64, still_wanted: F) -> Option<super::Outcome>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    let deadline = std::time::Instant::now() + START_WAIT_LIMIT;
+    loop {
+        let result = crate::supervisor::START_SINCE.scope(generation, Box::pin(start(state, id))).await;
+        if !result.as_ref().is_err_and(super::Failure::is_busy) || std::time::Instant::now() >= deadline {
+            return Some(result);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        if !still_wanted().await {
+            return None;
+        }
+    }
+}
+
+/// 재시작이 작업 잠금이 풀리기를 기다리는 가장 긴 시간 (큰 월드의 백업·업데이트)
+const START_WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
 /// 크래시 뒤 자동 재시작 (A1). 대기하는 동안 사용자가 정지·시작했으면 그만둔다.
 pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::time::Duration, generation: u64) {
@@ -1129,18 +1147,18 @@ pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::tim
     let wanted = || async { state.supervisor.read().await.restart_still_wanted(&instance_id, generation).await };
     // 다시 띄운 시작의 출처는 자동 재시작이다 (`instance.started`·감사 로그)
     let restart = crate::audit::Origin::new("restart");
-    let Some(resp) = crate::audit::with_origin(restart, super::backup::start_when_free(&state, &instance_id, generation, wanted)).await else {
+    let Some(result) = crate::audit::with_origin(restart, start_when_free(&state, &instance_id, generation, wanted)).await else {
         tracing::info!("Auto restart of '{}' skipped: stopped or started meanwhile", instance_id);
         state.supervisor.read().await.record_restart_outcome(&instance_id, generation, false);
         return;
     };
-    let ok = resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false);
-    if !ok {
-        let reason = resp.body.get("error").or_else(|| resp.body.get("message")).and_then(Value::as_str).unwrap_or("start failed").to_string();
-        tracing::warn!("Auto restart of '{}' failed: {}", instance_id, reason);
-        state.supervisor.write().await.record_restart_failure(&instance_id, generation, reason);
-    } else {
-        state.supervisor.read().await.record_restart_outcome(&instance_id, generation, true);
+    match result {
+        Err(failure) => {
+            let reason = failure.body.get("error").or_else(|| failure.body.get("message")).and_then(Value::as_str).unwrap_or("start failed").to_string();
+            tracing::warn!("Auto restart of '{}' failed: {}", instance_id, reason);
+            state.supervisor.write().await.record_restart_failure(&instance_id, generation, reason);
+        }
+        Ok(_) => state.supervisor.read().await.record_restart_outcome(&instance_id, generation, true),
     }
 }
 
@@ -1148,61 +1166,55 @@ pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::tim
 pub async fn instance_events_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
     if supervisor.instance_store.get(&id).is_none() {
-        return instance_not_found(&id);
+        return instance_not_found(&id).into_response();
     }
     Json(json!({ "events": supervisor.exit_events(&id) })).into_response()
 }
 
 /// 비관리 시작 (`start_checked`가 id로 부른다)
-async fn start_server_handler(
-    Path(id): Path<String>,
-    State(state): State<IPCServer>,
-    Json(payload): Json<ServerStartRequest>,
-) -> impl IntoResponse {
+async fn start_unmanaged(state: &IPCServer, id: &str, module: &str) -> super::Outcome {
     // API 경유 시작 기록 (GUI 외부 시작 감지용)
-    state.api_actions.record(&id);
+    state.api_actions.record(id);
     // 익스텐션 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
-    let exists = state.supervisor.read().await.instance_store.get(&id).is_some();
+    let exists = state.supervisor.read().await.instance_store.get(id).is_some();
     if exists {
-        state.extension_status_cache.invalidate(&id);
+        state.extension_status_cache.invalidate(id);
     }
     // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
     let _guard = match exists {
-        true => match super::backup::InstanceLock::take_for_writes(&id).await {
-            None => return super::audited(&state, "start", &id, None, None, super::backup::instance_busy()).await,
+        true => match super::backup::InstanceLock::take_for_writes(id).await {
+            None => return super::audited_result(state, "start", id, Err(super::Failure::busy())).await,
             guard => guard,
         },
         false => None,
     };
     // 포트포워딩 확인이 시험 리스너로 포트를 잡고 있으면 놓을 때까지 (몇 초). 시작하는 동안에는 새 확인이 포트를 잡지 않는다
     let _starting = match exists {
-        true => Some(crate::port_check::begin_start(&id).await),
+        true => Some(crate::port_check::begin_start(id).await),
         false => None,
     };
 
-    fill_passwords(&state, &id).await;
+    fill_passwords(state, id).await;
 
-    let resp = match crate::supervisor::Supervisor::start_server(&state.supervisor, &id, &payload.module, payload.config)
-        .await
-    {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-        Err(e) => lifecycle_failure(&e, "start", "start_failed"),
+    let result = match crate::supervisor::Supervisor::start_server(&state.supervisor, id, module, json!({})).await {
+        Ok(result) => super::settled(result),
+        Err(e) => Err(lifecycle_failure(&e, "start", "start_failed")),
     };
-    super::audited(&state, "start", &id, None, None, resp).await
+    super::audited_result(state, "start", id, result).await
 }
 
 /// 시작·정지가 실패한 응답. 상태는 오류 문구가 아니라 종류로 고른다: 인스턴스가 없으면 404 `instance_not_found`,
 /// 모듈 호출 실패는 모듈이 준 본문 그대로 500, 그 밖은 500 `failed_code`
-pub(super) fn lifecycle_failure(e: &anyhow::Error, action: &str, failed_code: &str) -> axum::response::Response {
+pub(super) fn lifecycle_failure(e: &anyhow::Error, action: &str, failed_code: &str) -> super::Failure {
     if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(e))).into_response();
+        return super::Failure::new(StatusCode::INTERNAL_SERVER_ERROR, crate::plugin::error_response(e));
     }
     let (code, error_code) = if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() {
         (StatusCode::NOT_FOUND, "instance_not_found")
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, failed_code)
     };
-    (code, Json(json!({ "error": format!("Failed to {} server: {}", action, e), "error_code": error_code }))).into_response()
+    super::Failure::new(code, json!({ "error": format!("Failed to {} server: {}", action, e), "error_code": error_code }))
 }
 
 /// 받아 둔 업데이트 확인 결과에서 이 모듈의 새 버전 `{module, current, latest}`
@@ -1278,10 +1290,9 @@ pub(crate) async fn watch_unresponsive_at(state: &IPCServer, now: std::time::Ins
             // 재시작은 정지 대기 시간만큼 걸린다: 다른 서버의 감시를 붙잡지 않게 뒤에서 한다
             let state = state.clone();
             tokio::spawn(async move {
-                let restart = restart_instance_handler(Path(id.clone()), State(state), LooseJson(None));
-                let resp = crate::ipc::internal::into_internal(crate::audit::with_origin(crate::audit::Origin::new("watchdog"), Box::pin(restart)).await).await;
-                if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
-                    tracing::warn!("Could not restart the unresponsive server '{}': {}", id, resp.body);
+                let restarted = crate::audit::with_origin(crate::audit::Origin::new("watchdog"), Box::pin(restart(&state, &id, false))).await;
+                if let Err(failure) = restarted {
+                    tracing::warn!("Could not restart the unresponsive server '{}': {}", id, failure.body);
                 }
             });
         }
@@ -1322,33 +1333,31 @@ pub(crate) async fn stop_idle_servers_at(state: &IPCServer, now: u64) {
         tracing::info!("Stopping '{}': no players for {} minutes", id, minutes);
         // 정지 전에 적어 둔다: 정지 알림(`instance.stopped` `idleMinutes`)이 이 분을 싣는다
         idle::mark_stopped(&id, minutes, saba_runner::now());
-        let stop = crate::audit::with_origin(crate::audit::Origin::new("idle"), Box::pin(stop_instance(state.clone(), &id, false))).await;
-        let stop = crate::ipc::internal::into_internal(stop).await;
-        if stop.status.is_success() && stop.body.get("success").and_then(Value::as_bool) != Some(false) {
-            idle::forget(&id);
-        } else {
-            idle::clear_stopped(&id);
-            tracing::warn!("Could not stop the idle server '{}': {}", id, stop.body);
+        match crate::audit::with_origin(crate::audit::Origin::new("idle"), Box::pin(stop(state, &id, false))).await {
+            Ok(_) => idle::forget(&id),
+            Err(failure) => {
+                idle::clear_stopped(&id);
+                tracing::warn!("Could not stop the idle server '{}': {}", id, failure.body);
+            }
         }
     }
 }
 
-/// 인스턴스 하나를 id로 정지한다. 이름은 겹칠 수 있으니 정지 경로는 모두 id를 쓴다
-pub async fn stop_instance(state: IPCServer, key: &str, force: bool) -> axum::response::Response {
-    let resp = stop_instance_unrecorded(state.clone(), key, force).await;
-    super::audited(&state, "stop", key, None, None, resp).await
+/// 인스턴스 하나를 id로 정지한다. 이름은 겹칠 수 있으니 정지 경로는 모두 id를 쓴다. 작업 기록에 `stop`으로 남는다
+pub(crate) async fn stop(state: &IPCServer, key: &str, force: bool) -> super::Outcome {
+    let result = stop_unrecorded(state, key, force).await;
+    super::audited_result(state, "stop", key, result).await
 }
 
-async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> axum::response::Response {
-    let payload = ServerStopRequest { force };
-    let Some((id, name)) = instance_key_of(&state, key).await else {
-        return instance_not_found(key);
+async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> super::Outcome {
+    let Some((id, name)) = instance_key_of(state, key).await else {
+        return Err(instance_not_found(key));
     };
     let id = id.as_str();
     let _transition = crate::instance::transition::Transition::begin(id, crate::instance::transition::Kind::Stopping);
     // 정지가 끝날 때까지 복원 전 백업 정리를 붙잡아 둔다 (정리가 "돌고 있다"고 본 서버를 지우는 동안 멈추지 않게, 반대로 멈추는 중에는 지우지 않게)
-    let runtime = state.supervisor.read().await.runtime.clone();
-    let _stopping = super::backup::stop_gate(&runtime, id).await;
+    let gate = state.supervisor.read().await.runtime.stop_gate(id);
+    let _stopping = gate.lock_owned().await;
     // API 경유 정지 기록 (GUI 외부 정지 감지용)
     state.api_actions.record(id);
     // 익스텐션 상태 캐시 무효화 — 정지 직후 fresh 상태 반영
@@ -1367,7 +1376,7 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
 
     if let Some(inst) = instance {
         // 락은 stop_server가 단계마다 짧게 잡는다 (C12)
-        match crate::supervisor::Supervisor::stop_server(&state.supervisor, &inst.id, &inst.module_name, payload.force).await {
+        match crate::supervisor::Supervisor::stop_server(&state.supervisor, &inst.id, &inst.module_name, force).await {
             Ok(result) => {
                 // 실제 종료 성공 시에만 tracker에서 제거
                 let success = result
@@ -1384,16 +1393,16 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
                         Err(e) => tracing::warn!("Failed to untrack stopped server '{}': {}", name, e),
                     }
                 }
-                (StatusCode::OK, Json(result)).into_response()
+                super::settled(result)
             }
-            Err(e) => lifecycle_failure(&e, "stop", "stop_failed"),
+            Err(e) => Err(lifecycle_failure(&e, "stop", "stop_failed")),
         }
     } else {
         let error = json!({
             "error": format!("Server '{}' not found", name),
             "error_code": "instance_not_found",
         });
-        (StatusCode::NOT_FOUND, Json(error)).into_response()
+        Err(super::Failure::new(StatusCode::NOT_FOUND, error))
     }
 }
 
@@ -1626,13 +1635,13 @@ mod tests {
         inst.id = "stop-during-restart".into();
         sup.instance_store.add(inst).unwrap();
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
-        let started = crate::ipc::internal::into_internal(start_instance(Path("stop-during-restart".into()), State(state.clone())).await).await.body;
+        let started = crate::ipc::internal::InternalResponse::from(start_unrecorded(&state, "stop-during-restart").await).body;
         assert_ne!(started["success"], false, "{started}");
 
         let restarter = {
             let state = state.clone();
             tokio::spawn(async move {
-                crate::ipc::internal::into_internal(restart_instance(Path("stop-during-restart".into()), State(state), super::super::LooseJson(None)).await).await.body
+                crate::ipc::internal::InternalResponse::from(restart_unrecorded(&state, "stop-during-restart", false).await).body
             })
         };
         tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
@@ -1671,7 +1680,7 @@ mod tests {
         let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
         state.supervisor.read().await.tracker.track("slow-save", child.id()).unwrap();
 
-        let restarted = crate::ipc::internal::into_internal(restart_instance(Path("slow-save".into()), State(state.clone()), super::super::LooseJson(None)).await).await;
+        let restarted = crate::ipc::internal::InternalResponse::from(restart_unrecorded(&state, "slow-save", false).await);
         assert_eq!(restarted.status, StatusCode::CONFLICT, "{}", restarted.body);
         assert_eq!((restarted.body["success"].clone(), restarted.body["error_code"].clone()), (json!(false), json!("still_stopping")), "{}", restarted.body);
         assert!(child.try_wait().unwrap().is_none(), "the old server is left to finish saving");
@@ -1708,7 +1717,7 @@ mod tests {
         inst.id = "just-exited".into();
         sup.instance_store.add(inst).unwrap();
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
-        let started = crate::ipc::internal::into_internal(start_instance(Path("just-exited".into()), State(state.clone())).await).await.body;
+        let started = crate::ipc::internal::InternalResponse::from(start_unrecorded(&state, "just-exited").await).body;
         assert_eq!(started["success"], true, "{started}");
 
         let both = || async {
@@ -1758,7 +1767,7 @@ mod tests {
         let starter = {
             let state = state.clone();
             tokio::spawn(async move {
-                crate::ipc::internal::into_internal(start_instance(Path("stop-during-check".into()), State(state)).await).await.body
+                crate::ipc::internal::InternalResponse::from(start_unrecorded(&state, "stop-during-check").await).body
             })
         };
         tokio::time::sleep(std::time::Duration::from_millis(700)).await;
@@ -1805,7 +1814,7 @@ mod tests {
         let checked = state.supervisor.read().await.run_generation_of("stop-after-check");
         let stopped = crate::supervisor::Supervisor::stop_server(&state.supervisor, "stop-after-check", "game", false).await.unwrap();
         assert_ne!(stopped["success"], false, "{stopped}");
-        let started = super::super::backup::start_when_free(&state, "stop-after-check", checked, || async { true }).await.unwrap().body;
+        let started = start_when_free(&state, "stop-after-check", checked, || async { true }).await.unwrap().unwrap_err().body;
 
         assert_eq!(started["error_code"], "start_cancelled", "{started}");
         let s = state.supervisor.read().await;
@@ -1843,11 +1852,11 @@ mod tests {
         inst.module_settings.insert("stop_timeout".into(), json!(1));
         sup.instance_store.add(inst).unwrap();
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
-        let started = crate::ipc::internal::into_internal(start_instance(Path("short-stop".into()), State(state.clone())).await).await.body;
+        let started = crate::ipc::internal::InternalResponse::from(start_unrecorded(&state, "short-stop").await).body;
         assert_eq!(started["success"], true, "{started}");
 
         let begun = std::time::Instant::now();
-        let stopped = crate::ipc::internal::into_internal(stop_instance(state.clone(), "short-stop", false).await).await.body;
+        let stopped = crate::ipc::internal::InternalResponse::from(stop(&state, "short-stop", false).await).body;
         assert_eq!(stopped["success"], true, "{stopped}");
         assert!(begun.elapsed() < std::time::Duration::from_secs(15), "waited {:?}, not the instance's 1s", begun.elapsed());
     }
@@ -1889,11 +1898,11 @@ mod tests {
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let stop = |id: &'static str, force: bool| {
             let state = state.clone();
-            async move { crate::ipc::internal::into_internal(stop_instance(state, id, force).await).await.body }
+            async move { crate::ipc::internal::InternalResponse::from(stop(&state, id, force).await).body }
         };
 
         // managed인데 모듈이 stdin을 받지 않는다: 데몬은 모듈 stop()에 맡긴다
-        let started = crate::ipc::internal::into_internal(start_instance(Path("no-console-managed".into()), State(state.clone())).await).await.body;
+        let started = crate::ipc::internal::InternalResponse::from(start_unrecorded(&state, "no-console-managed").await).body;
         assert_eq!(started["success"], true, "{started}");
         let refused = stop("no-console-managed", false).await;
         assert_eq!((refused["success"].clone(), refused["error_code"].clone()), (json!(false), json!("graceful_stop_unavailable")), "{refused}");
@@ -1949,7 +1958,7 @@ mod tests {
 
         let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
         state.supervisor.read().await.tracker.track("native", child.id()).unwrap();
-        let stopped = crate::ipc::internal::into_internal(stop_instance(state.clone(), "native", false).await).await.body;
+        let stopped = crate::ipc::internal::InternalResponse::from(stop(&state, "native", false).await).body;
         assert_eq!(stopped["success"], true, "{stopped}");
         assert!(child.wait().is_ok());
         assert_eq!(std::fs::read_to_string(&seen).unwrap(), "200 230");
@@ -1993,7 +2002,7 @@ mod tests {
         let (status, created) = body(created).await;
         assert!(status.is_success(), "{created}");
         let id = created["id"].as_str().unwrap().to_string();
-        let (status, refused) = body(start_instance(Path(id.clone()), State(state.clone())).await).await;
+        let (status, refused) = body(super::super::answer(start_unrecorded(&state, &id).await)).await;
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(refused["error_code"], "agreement_required");
         assert_eq!(refused["agreements"][0]["id"], "eula");
@@ -2468,7 +2477,7 @@ mod tests {
         }
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         for (id, message) in [("missing-jar", "Server jar not found: server.jar"), ("missing-java", "Java executable is missing")] {
-            let started = crate::ipc::internal::into_internal(start_instance(Path(id.into()), State(state.clone())).await).await;
+            let started = crate::ipc::internal::InternalResponse::from(start_unrecorded(&state, id).await);
             assert_eq!(started.status, StatusCode::INTERNAL_SERVER_ERROR, "{}", started.body);
             assert_eq!((started.body["module"].as_str(), started.body["function"].as_str()), (Some("game"), Some("get_launch_command")), "{}", started.body);
             assert_eq!(started.body["message"], message);

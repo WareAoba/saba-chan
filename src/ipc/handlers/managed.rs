@@ -11,76 +11,53 @@ use std::collections::HashMap;
 use super::super::IPCServer;
 use crate::supervisor::Supervisor;
 
-/// 관리형 시작 (saba-runner가 콘솔 stdin/stdout을 잡는다). `POST /api/instance/:id/start`가 고르면 부른다 (감사는 그쪽이 남긴다)
-pub async fn start_managed_handler(
-    Path(id): Path<String>,
-    State(state): State<IPCServer>,
-    LooseJson(payload): LooseJson<serde_json::Value>,
-) -> impl IntoResponse {
+/// 관리형 시작 (saba-runner가 콘솔 stdin/stdout을 잡는다). 시작 서비스(`server::start`)가 고르면 부른다 (감사는 그쪽이 남긴다)
+pub(super) async fn start_managed(state: &IPCServer, id: &str) -> super::Outcome {
     // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
-    let Some(_guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
-        return super::backup::instance_busy();
+    let Some(_guard) = super::backup::InstanceLock::take_for_writes(id).await else {
+        return Err(super::Failure::busy());
     };
     // 포트포워딩 확인이 시험 리스너로 포트를 잡고 있으면 놓을 때까지 (몇 초). 시작하는 동안에는 새 확인이 포트를 잡지 않는다
-    let _starting = crate::port_check::begin_start(&id).await;
-    super::server::fill_passwords(&state, &id).await;
+    let _starting = crate::port_check::begin_start(id).await;
+    super::server::fill_passwords(state, id).await;
 
-    let (module_name, config) = {
+    let module_name = {
         let supervisor = state.supervisor.read().await;
 
-        let instance = match supervisor.instance_store.get(&id) {
-            Some(i) => i,
-            None => {
-                return (
-                    StatusCode::NOT_FOUND,
-                    Json(json!({"error": format!("Instance not found: {}", id)})),
-                )
-                    .into_response()
-            }
+        let Some(instance) = supervisor.instance_store.get(id) else {
+            return Err(super::Failure::new(StatusCode::NOT_FOUND, json!({"error": format!("Instance not found: {}", id)})));
         };
 
         // API 경유 시작 기록
-        state.api_actions.record(&id);
+        state.api_actions.record(id);
 
-        let module_name = instance.module_name.clone();
-        let payload_val = payload.map(|j| j.0).unwrap_or(json!({}));
-        let config = payload_val.get("config").cloned().unwrap_or(json!({}));
-        (module_name, config)
+        instance.module_name.clone()
     };
 
     // 락은 start_managed_server가 단계마다 짧게 잡는다 (C12)
-    match Supervisor::start_managed_server(&state.supervisor, &id, &module_name, config).await {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-        Err(e) => match e.downcast_ref::<crate::supervisor::managed_process::MemoryLimitAtStart>() {
+    match Supervisor::start_managed_server(&state.supervisor, id, &module_name, json!({})).await {
+        Ok(result) => super::settled(result),
+        Err(e) => Err(match e.downcast_ref::<crate::supervisor::managed_process::MemoryLimitAtStart>() {
             Some(hit) => {
                 let language = state.config_store.ui_language().await;
                 let message = crate::chat::i18n::Catalog::for_language(&language)
                     .t("errors.memory_limit_at_start", &[("limit", &hit.limit_mb.to_string())]);
-                (
+                super::Failure::new(
                     StatusCode::UNPROCESSABLE_ENTITY,
-                    Json(json!({ "success": false, "error": message, "error_code": "memory_limit_reached", "limit_mb": hit.limit_mb })),
+                    json!({ "success": false, "error": message, "error_code": "memory_limit_reached", "limit_mb": hit.limit_mb }),
                 )
-                    .into_response()
             }
             None if e.downcast_ref::<crate::supervisor::managed_process::RunnerMissing>().is_some() => {
                 let language = state.config_store.ui_language().await;
                 let message = crate::chat::i18n::Catalog::for_language(&language).t("errors.runner_missing", &[]);
-                (
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    Json(json!({ "success": false, "error": message, "error_code": "runner_missing" })),
-                )
-                    .into_response()
+                super::Failure::coded(StatusCode::UNPROCESSABLE_ENTITY, "runner_missing", message)
             }
             // 시작하는 사이 지워졌다: 비관리 시작과 같은 404 `instance_not_found`
             None if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() => {
                 super::server::lifecycle_failure(&e, "start", "start_failed")
             }
-            None => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(crate::plugin::error_response(&e)),
-            )
-                .into_response(),
-        },
+            None => super::Failure::new(StatusCode::INTERNAL_SERVER_ERROR, crate::plugin::error_response(&e)),
+        }),
     }
 }
 
@@ -677,13 +654,13 @@ pub async fn reset_server_handler(
             let guard = guard;
             // 백업을 남기지 못했으면 지우지 않는다
             if backup_first {
-                super::backup::take_backup_held(&state, &id, crate::backup::BackupKind::Manual, &guard).await.map_err(Box::new)?;
+                super::backup::take_backup_held(&state, &id, crate::backup::BackupKind::Manual, &guard).await?;
             }
-            Ok::<_, Box<axum::response::Response>>(Supervisor::manage_properties(&state.supervisor, &id, "reset_server", scope).await)
+            Ok::<_, super::Failure>(Supervisor::manage_properties(&state.supervisor, &id, "reset_server", scope).await)
         })
     };
     let resp = match reset.await.unwrap_or_else(|e| Ok(Err(e.into()))) {
-        Err(refused) => *refused,
+        Err(refused) => refused.into_response(),
         Ok(Ok(result)) => (StatusCode::OK, Json(result)).into_response(),
         Ok(Err(e)) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -741,7 +718,7 @@ pub async fn accept_agreements_handler(
             super::instance::invalid_field("accept", format!("This server's module has no agreement '{}'", unknown))
         }
         Err(e) => match e.downcast_ref::<crate::supervisor::InstanceNotFound>() {
-            Some(missing) => super::server::instance_not_found(&missing.0),
+            Some(missing) => super::server::instance_not_found(&missing.0).into_response(),
             None => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
         },
     }
@@ -1021,7 +998,7 @@ pub async fn install_server_handler(
                 Some((id, guard)) => match super::backup::take_backup_held(&state, id, crate::backup::BackupKind::PreUpdate, guard).await {
                     Ok(made) => made.map(|b| b.name),
                     Err(r) => {
-                        let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("backup failed").to_string();
+                        let reason = r.reason().unwrap_or("backup failed").to_string();
                         return Err(json!({ "success": false, "error": format!("Pre-install backup failed: {}", reason), "error_code": "backup_failed", "reason": reason }));
                     }
                 },
@@ -1082,7 +1059,7 @@ pub async fn install_server_handler(
                     match restored {
                         Ok(_) => body["restored_backup"] = json!(name),
                         Err(r) => {
-                            let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("restore failed").to_string();
+                            let reason = r.reason().unwrap_or("restore failed").to_string();
                             tracing::error!("Could not put back the pre-install backup '{}' for '{}': {}", name, id, reason);
                             body["kept_backup"] = json!(name);
                         }

@@ -1,4 +1,4 @@
-//! 백업 API (A2)와 예약 작업 API·실행기 (A3)
+//! 백업 API (A2)와 예약 작업 API (A3). 실행기는 `scheduler::runner`
 //!
 //! - `GET/POST /api/instance/:id/backups` — 목록 / 지금 백업
 //! - `POST /api/instance/:id/backups/:name/restore` — 복원 (서버가 꺼져 있어야 한다. 먼저 pre-restore 백업)
@@ -7,9 +7,8 @@
 //! - `POST /api/instance/:id/backups/import` — `{path, preview}`: 내보낸 zip을 검사하고 목록에 올린다
 //! - `GET/PUT /api/instance/:id/schedule` — `{schedule: [...], backup_keep}`
 //! - `GET /api/schedules/upcoming` — 모든 인스턴스의 다가오는 예약
-#![allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
 
-use super::LooseJson;
+use super::{Failure, LooseJson};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -20,12 +19,11 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::path::{Path as FsPath, PathBuf};
-use std::sync::Mutex;
 
 use super::super::{CommandRequest, IPCServer};
 use crate::backup::{self, BackupInfo, BackupKind};
-use crate::scheduler::{Clock, ScheduledTask, TaskAction};
-use crate::supervisor::runtime::Runtimes;
+use crate::scheduler::runner::{history_of, next_runs};
+use crate::scheduler::{daily_runs, ScheduledTask, TaskAction};
 
 pub(crate) const DEFAULT_KEEP: usize = 10;
 /// 원격에서 넣는 반복 작업의 가장 짧은 간격(분)과 보관 개수 상한
@@ -33,13 +31,11 @@ const REMOTE_MIN_EVERY_MINUTES: u32 = 30;
 const REMOTE_MAX_BACKUP_KEEP: u32 = 30;
 /// 원격(디스코드·챗봇)이 만드는 백업의 종류별 상한. 원격 백업은 정리하지 않으므로(D-B11) 끝없이 쌓이지 않게 막는다 (D-B7)
 const REMOTE_BACKUP_CAP: usize = 50;
-/// 재시작이 작업 잠금이 풀리기를 기다리는 가장 긴 시간 (큰 월드의 백업·업데이트)
-const START_WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
 pub(crate) use crate::instance::lock::{InstanceLock, Purpose};
 
 fn error(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
-    (status, Json(json!({ "success": false, "error": message.into(), "error_code": code }))).into_response()
+    Failure::coded(status, code, message).into_response()
 }
 
 pub(crate) async fn is_running(state: &IPCServer, id: &str) -> bool {
@@ -220,11 +216,11 @@ fn server_base(instance: &crate::instance::ServerInstance, instance_dir: &FsPath
 }
 
 /// 모듈이 `[backup]`을 선언하지 않았으면 Ok(None)
-async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
+async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Failure> {
     let (spec, base, dir, keep, hook_call, lookup, boundary, module_name) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id).cloned() else {
-            return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+            return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
         };
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
         let Some(spec) = module.as_ref().and_then(|m| m.metadata.backup.clone()) else {
@@ -274,14 +270,14 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
             }
             // 경로를 모르면 안전 백업 없이 업데이트·복원이 진행되니 여기서 멈춘다
             Ok(v) => {
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(v)).into_response());
+                return Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, v));
             }
-            Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response()),
+            Err(e) => return Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, crate::plugin::error_response(&e))),
         }
     }
-    let resolve = |paths: Vec<PathBuf>| -> Result<Vec<PathBuf>, Response> {
+    let resolve = |paths: Vec<PathBuf>| -> Result<Vec<PathBuf>, Failure> {
         paths.into_iter().map(|path| boundary.resolve(&path).ok_or_else(|| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&crate::module_paths::outside(&module_name, "backup_paths", path.display())))).into_response()
+            Failure::new(StatusCode::INTERNAL_SERVER_ERROR, crate::plugin::error_response(&crate::module_paths::outside(&module_name, "backup_paths", path.display())))
         })).collect()
     };
     let restore_roots = resolve(backup::fill_paths(&root_patterns, &base, &lookup))?;
@@ -297,9 +293,9 @@ pub(super) async fn backup_targets(state: &IPCServer, id: &str) -> Vec<PathBuf> 
 
 /// 백업 하나를 만들고 오래된 자동 백업을 정리한다. 백업할 것이 없으면 Ok(None).
 /// 모듈이 백업을 지원하지 않으면 수동 백업만 오류이고, 자동 백업(업데이트 전·예약)은 건너뛴다
-pub async fn take_backup(state: &IPCServer, id: &str, kind: BackupKind) -> Result<Option<BackupInfo>, Response> {
+pub(crate) async fn take_backup(state: &IPCServer, id: &str, kind: BackupKind) -> Result<Option<BackupInfo>, Failure> {
     let Some(guard) = InstanceLock::take(id).map(|g| g.purpose(Purpose::Backup)) else {
-        return Err(error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
+        return Err(Failure::coded(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
     };
     let (state, id) = (state.clone(), id.to_string());
     detached(async move {
@@ -310,40 +306,18 @@ pub async fn take_backup(state: &IPCServer, id: &str, kind: BackupKind) -> Resul
 }
 
 /// 잠금을 쥔 작업을 따로 돌린다: 요청이 끊겨 핸들러가 버려져도 파일 작업이 끝날 때까지 잠금이 남는다
-async fn detached<T: Send + 'static>(work: impl std::future::Future<Output = Result<T, Response>> + Send + 'static) -> Result<T, Response> {
-    crate::audit::spawn(work).await.unwrap_or_else(|e| Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())))
-}
-
-/// 작업 잠금이 풀리면 시작한다. 재시작이 백업·복원과 겹쳐도 서버가 꺼진 채 남지 않게 한다.
-/// 기다리는 동안 `still_wanted`가 false가 되면 그만두고 None.
-/// `generation`은 부른 쪽이 확인한 실행 세대다: 시작도 이 값을 기준으로 삼아, 확인 뒤에 들어온 정지가 시작을 취소하게 한다
-pub(crate) async fn start_when_free<F, Fut>(state: &IPCServer, id: &str, generation: u64, still_wanted: F) -> Option<crate::ipc::internal::InternalResponse>
-where
-    F: Fn() -> Fut,
-    Fut: std::future::Future<Output = bool>,
-{
-    let deadline = std::time::Instant::now() + START_WAIT_LIMIT;
-    loop {
-        let start = Box::pin(super::server::start_instance_handler(Path(id.to_string()), State(state.clone())));
-        let resp = crate::ipc::internal::into_internal(crate::supervisor::START_SINCE.scope(generation, start).await).await;
-        if resp.body["error_code"] != "instance_busy" || std::time::Instant::now() >= deadline {
-            return Some(resp);
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        if !still_wanted().await {
-            return None;
-        }
-    }
+async fn detached<T: Send + 'static>(work: impl std::future::Future<Output = Result<T, Failure>> + Send + 'static) -> Result<T, Failure> {
+    crate::audit::spawn(work).await.unwrap_or_else(|e| Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())))
 }
 
 /// 이미 작업 잠금을 잡은 호출자(업데이트)용 `take_backup`
-pub(crate) async fn take_backup_held(state: &IPCServer, id: &str, kind: BackupKind, _guard: &InstanceLock) -> Result<Option<BackupInfo>, Response> {
+pub(crate) async fn take_backup_held(state: &IPCServer, id: &str, kind: BackupKind, _guard: &InstanceLock) -> Result<Option<BackupInfo>, Failure> {
     take_backup_locked(state, id, kind, None, &[]).await
 }
 
 /// 다른 작업이 잡고 있을 때의 응답 (시작·업데이트·삭제)
 pub(crate) fn instance_busy() -> Response {
-    error(StatusCode::CONFLICT, "instance_busy", "A backup, restore or update is running for this instance")
+    Failure::busy().into_response()
 }
 
 /// `also`의 경로를 더한다. 이미 담는 경로 안에 있는 것은 빼고, 담는 경로를 품는 것은 그 경로들을 대신한다
@@ -358,10 +332,10 @@ fn add_paths(paths: &mut Vec<PathBuf>, also: &[PathBuf]) {
 }
 
 /// `[backup]` 선언 없이 경로만 따로 담을 때의 계획: 이 인스턴스의 백업 폴더와 보관 개수
-async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Response> {
+async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Failure> {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(id) else {
-        return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+        return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
     };
     Ok(Plan {
         dir: backup::backups_dir(&supervisor.instance_store.instance_dir(id)),
@@ -377,11 +351,11 @@ async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Response> {
 
 /// `protect`: 정리에서 빼 둘 백업 이름 (복원 중인 백업)
 /// `also`: 지금 설정이 가리키지 않아도 함께 담을 경로 (복원이 덮을 경로). 없는 것과 이미 담는 경로와 겹치는 것은 뺀다
-async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>, also: &[PathBuf]) -> Result<Option<BackupInfo>, Response> {
+async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>, also: &[PathBuf]) -> Result<Option<BackupInfo>, Failure> {
     let mut plan = match plan(state, id).await? {
         Some(plan) => plan,
         None if kind == BackupKind::Manual => {
-            return Err(error(StatusCode::BAD_REQUEST, "backup_unsupported", "This module does not declare [backup] paths"));
+            return Err(Failure::coded(StatusCode::BAD_REQUEST, "backup_unsupported", "This module does not declare [backup] paths"));
         }
         // 모듈이 `[backup]`을 더는 선언하지 않아도 복원이 덮을 경로는 남긴다
         None if !also.is_empty() => bare_plan(state, id).await?,
@@ -496,7 +470,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
             body["error"] = json!(format!("{}; the server's autosave could not be turned back on", e));
             body["command"] = json!(command);
         }
-        (status, Json(body)).into_response()
+        Failure::new(status, body)
     })
 }
 
@@ -524,10 +498,10 @@ fn backup_error(e: &anyhow::Error) -> (StatusCode, Value) {
     }
 }
 
-async fn backups_dir(state: &IPCServer, id: &str) -> Result<PathBuf, Response> {
+pub(crate) async fn backups_dir(state: &IPCServer, id: &str) -> Result<PathBuf, Failure> {
     let supervisor = state.supervisor.read().await;
     if supervisor.instance_store.get(id).is_none() {
-        return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+        return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
     }
     Ok(backup::backups_dir(&supervisor.instance_store.instance_dir(id)))
 }
@@ -549,7 +523,7 @@ pub async fn list_backups(Path(id): Path<String>, State(state): State<IPCServer>
             items.extend(snapshots);
             Json(json!({ "success": true, "backups": items, "total_bytes": total, "snapshots_supported": snapshots_supported })).into_response()
         }
-        Err(r) => r,
+        Err(r) => r.into_response(),
     }
 }
 
@@ -594,11 +568,11 @@ struct GameSnapshot {
 
 /// 모듈 `[backup] snapshots`의 lifecycle `backup_snapshots()`. 선언하지 않았으면 빈 목록.
 /// 경로는 모두 이 인스턴스의 경계 안이어야 한다 (밖이면 `module_path_outside`)
-async fn game_snapshots(state: &IPCServer, id: &str) -> Result<Vec<GameSnapshot>, Response> {
+async fn game_snapshots(state: &IPCServer, id: &str) -> Result<Vec<GameSnapshot>, Failure> {
     let (call, boundary, module_name) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id).cloned() else {
-            return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+            return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
         };
         let Some(module) = supervisor.module_loader.get_module(&instance.module_name).ok().filter(|m| m.metadata.backup.as_ref().is_some_and(|b| b.snapshots)) else {
             return Ok(Vec::new());
@@ -615,13 +589,13 @@ async fn game_snapshots(state: &IPCServer, id: &str) -> Result<Vec<GameSnapshot>
     };
     let v = match call.run().await {
         Ok(v) if v.get("success").and_then(Value::as_bool) == Some(true) => v,
-        Ok(v) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(v)).into_response()),
-        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response()),
+        Ok(v) => return Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, v)),
+        Err(e) => return Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, crate::plugin::error_response(&e))),
     };
     let mut out = Vec::new();
     for s in v["snapshots"].as_array().into_iter().flatten() {
         let Some(sid) = s["id"].as_str().filter(|i| !i.is_empty()) else { continue };
-        let outside = |path: &str| (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&crate::module_paths::outside(&module_name, "backup_snapshots", path)))).into_response();
+        let outside = |path: &str| Failure::new(StatusCode::INTERNAL_SERVER_ERROR, crate::plugin::error_response(&crate::module_paths::outside(&module_name, "backup_snapshots", path)));
         let resolve = |path: &str| boundary.resolve(FsPath::new(path)).ok_or_else(|| outside(path));
         // zip 하나로 된 스냅샷: 그 파일은 경계 안, zip 안의 경로는 위로 올라가지 않는 상대 경로
         let archive = match s["archive"].as_str() {
@@ -652,30 +626,30 @@ async fn snapshot_items(state: &IPCServer, id: &str) -> Vec<Value> {
             .map(|s| json!({ "name": format!("{}{}", SNAPSHOT_PREFIX, s.id), "kind": "game-snapshot", "created": s.created, "readable": true }))
             .collect(),
         Err(r) => {
-            tracing::warn!("Listing game snapshots of '{}' failed: {:?}", id, crate::ipc::internal::into_internal(r).await.body);
+            tracing::warn!("Listing game snapshots of '{}' failed: {:?}", id, r.body);
             Vec::new()
         }
     }
 }
 
 /// 고른 스냅샷 (None이면 가장 새것). 없으면 404 `snapshot_not_found`
-async fn find_snapshot(state: &IPCServer, id: &str, which: Option<&str>) -> Result<GameSnapshot, Response> {
+async fn find_snapshot(state: &IPCServer, id: &str, which: Option<&str>) -> Result<GameSnapshot, Failure> {
     let list = game_snapshots(state, id).await?;
     let found = match which {
         Some(sid) => list.into_iter().find(|s| s.id == sid),
         None => list.into_iter().next(),
     };
-    found.ok_or_else(|| error(StatusCode::NOT_FOUND, "snapshot_not_found", "The game has no such automatic backup"))
+    found.ok_or_else(|| Failure::coded(StatusCode::NOT_FOUND, "snapshot_not_found", "The game has no such automatic backup"))
 }
 
 /// 스냅샷을 사바쨩 백업으로 적는다 (작업 잠금을 쥔 채). 없는 경로는 뺀다
-async fn keep_snapshot_locked(state: &IPCServer, id: &str, snapshot: GameSnapshot, kind: BackupKind) -> Result<BackupInfo, Response> {
+async fn keep_snapshot_locked(state: &IPCServer, id: &str, snapshot: GameSnapshot, kind: BackupKind) -> Result<BackupInfo, Failure> {
     let dir = backups_dir(state, id).await?;
     if kind == BackupKind::Snapshot && crate::audit::current().is_relay() && remote_cap_reached(&dir, kind).await? {
         return Err(backup_limit());
     }
     if snapshot.archive.as_ref().is_some_and(|a| !a.is_file()) || (snapshot.archive.is_none() && !snapshot.paths.iter().any(|(from, _)| from.exists())) {
-        return Err(error(StatusCode::NOT_FOUND, "snapshot_not_found", "The game's automatic backup has no files"));
+        return Err(Failure::coded(StatusCode::NOT_FOUND, "snapshot_not_found", "The game's automatic backup has no files"));
     }
     let made = tokio::task::spawn_blocking(move || match &snapshot.archive {
         None => {
@@ -701,25 +675,25 @@ async fn keep_snapshot_locked(state: &IPCServer, id: &str, snapshot: GameSnapsho
     .await;
     match made {
         Ok(Ok(made)) => Ok(made),
-        Ok(Err(e)) if e.downcast_ref::<backup::LockedFile>().is_some() => Err(error(StatusCode::CONFLICT, "backup_file_locked", e.to_string())),
-        Ok(Err(e)) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
-        Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
+        Ok(Err(e)) if e.downcast_ref::<backup::LockedFile>().is_some() => Err(Failure::coded(StatusCode::CONFLICT, "backup_file_locked", e.to_string())),
+        Ok(Err(e)) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
+        Err(e) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
     }
 }
 
 /// 백업 하나를 만든다: 지금 상태(`Current`, 수동 백업) 또는 게임 스냅샷 보관(`Snapshot`)
-pub async fn create_from(state: &IPCServer, id: &str, source: Source) -> Result<BackupInfo, Response> {
+pub(crate) async fn create_from(state: &IPCServer, id: &str, source: Source) -> Result<BackupInfo, Failure> {
     let which = match source {
         Source::Current => {
             return match take_backup(state, id, BackupKind::Manual).await? {
                 Some(made) => Ok(made),
-                None => Err(error(StatusCode::BAD_REQUEST, "nothing_to_back_up", "None of the module's backup paths exist yet")),
+                None => Err(Failure::coded(StatusCode::BAD_REQUEST, "nothing_to_back_up", "None of the module's backup paths exist yet")),
             };
         }
         Source::Snapshot(which) => which,
     };
     let Some(guard) = InstanceLock::take(id).map(|g| g.purpose(Purpose::Backup)) else {
-        return Err(error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
+        return Err(Failure::coded(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
     };
     let (state, id) = (state.clone(), id.to_string());
     detached(async move {
@@ -758,7 +732,7 @@ pub async fn create_backup(Path(id): Path<String>, State(state): State<IPCServer
     };
     let resp = match create_from(&state, &id, source).await {
         Ok(made) => Json(json!({ "success": true, "backup": made })).into_response(),
-        Err(r) => r,
+        Err(r) => r.into_response(),
     };
     super::audited(&state, "backup", &id, None, None, resp).await
 }
@@ -769,7 +743,7 @@ pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state
     }
     let dir = match backups_dir(&state, &id).await {
         Ok(d) => d,
-        Err(r) => return r,
+        Err(r) => return r.into_response(),
     };
     let Some(_guard) = InstanceLock::take(&id) else {
         return error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance");
@@ -802,10 +776,10 @@ struct Transfer {
     module: String,
 }
 
-async fn transfer(state: &IPCServer, id: &str) -> Result<Transfer, Response> {
+async fn transfer(state: &IPCServer, id: &str) -> Result<Transfer, Failure> {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(id) else {
-        return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+        return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
     };
     let instance_dir = supervisor.instance_store.instance_dir(id);
     let module = supervisor.module_loader.get_module(&instance.module_name).ok();
@@ -838,10 +812,10 @@ fn transfer_failed(e: anyhow::Error, code: &str) -> Response {
     }
 }
 
-fn absolute(path: &str) -> Result<PathBuf, Response> {
+fn absolute(path: &str) -> Result<PathBuf, Failure> {
     let path = PathBuf::from(path);
     if !path.is_absolute() {
-        return Err(error(StatusCode::BAD_REQUEST, "invalid_request", "path must be an absolute path"));
+        return Err(Failure::coded(StatusCode::BAD_REQUEST, "invalid_request", "path must be an absolute path"));
     }
     Ok(path)
 }
@@ -853,7 +827,7 @@ pub async fn export_backup(Path((id, name)): Path<(String, String)>, State(state
     }
     let (at, dest) = match (transfer(&state, &id).await, absolute(&body.path)) {
         (Ok(at), Ok(dest)) => (at, dest),
-        (Err(r), _) | (_, Err(r)) => return r,
+        (Err(r), _) | (_, Err(r)) => return r.into_response(),
     };
     let Some(_guard) = InstanceLock::take(&id) else {
         return error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance");
@@ -876,7 +850,7 @@ pub async fn export_backup(Path((id, name)): Path<(String, String)>, State(state
 pub async fn import_backup(Path(id): Path<String>, State(state): State<IPCServer>, Json(body): Json<TransferBody>) -> Response {
     let (at, source) = match (transfer(&state, &id).await, absolute(&body.path)) {
         (Ok(at), Ok(source)) => (at, source),
-        (Err(r), _) | (_, Err(r)) => return r,
+        (Err(r), _) | (_, Err(r)) => return r.into_response(),
     };
     let seen = {
         let source = source.clone();
@@ -914,7 +888,7 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
 async fn restore_unaudited(id: &str, name: String, state: IPCServer) -> Response {
     let id = id.to_string();
     if let Err(r) = backups_dir(&state, &id).await {
-        return r;
+        return r.into_response();
     }
     // 잠금을 먼저 잡고 실행 여부를 본다: 시작도 같은 잠금을 잡으니 확인 뒤에 켜지지 않는다.
     // 진행 중인 설정 저장이 게임 파일을 쓰는 중이면 기다리고, 복원과 다시 읽기를 마칠 때까지 저장이 끼어들지 않게 한다
@@ -940,20 +914,20 @@ async fn restore_unaudited(id: &str, name: String, state: IPCServer) -> Response
             None => restore_held(&state, &id, &name, &guard, true).await?,
         };
         drop(guard);
-        Ok(Json(response).into_response())
+        Ok(response)
     };
-    detached(work).await.unwrap_or_else(|r| r)
+    super::answer(detached(work).await)
 }
 
 /// 작업 잠금을 쥔 채 백업 하나를 되돌린다. `safety`면 덮기 전에 지금 상태를 안전 백업으로 남긴다
 /// (설치 실패 뒤 자동 복원은 반쯤 바뀐 상태를 남길 까닭이 없어 남기지 않는다)
-pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard: &InstanceLock, safety: bool) -> Result<Value, Response> {
+pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard: &InstanceLock, safety: bool) -> Result<Value, Failure> {
     let dir = backups_dir(state, id).await?;
     // 백업은 만들 때의 절대 경로로 돌아간다: 서버 폴더를 옮긴 뒤면 옛 폴더(이제 다른 인스턴스 것일 수 있다)에 쓰게 되니 거절한다
     let (mut roots, boundary) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id) else {
-            return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+            return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
         };
         let instance_dir = supervisor.instance_store.instance_dir(id);
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
@@ -968,10 +942,10 @@ pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard
     }
     let targets = match backup::backed_up_paths(&dir, name) {
         Ok(t) => t,
-        Err(e) => return Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
+        Err(e) => return Err(Failure::coded(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
     };
     if targets.iter().any(|t| boundary.resolve(t).is_none() || !crate::module_paths::is_inside(t, &roots)) {
-        return Err(error(
+        return Err(Failure::coded(
             StatusCode::BAD_REQUEST,
             "restore_outside",
             "This backup was made for a different server folder; it can no longer be restored here",
@@ -1000,8 +974,8 @@ pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard
                 "settings_refreshed": refreshed,
             }))
         }
-        Ok(Err(e)) => Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
-        Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "restore_failed", e.to_string())),
+        Ok(Err(e)) => Err(Failure::coded(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
+        Err(e) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "restore_failed", e.to_string())),
     }
 }
 
@@ -1020,99 +994,6 @@ pub struct ScheduleBody {
 /// 일정과 보관 수의 지문. 목록 전체를 다시 보내는 편집이 그사이 바뀐 일정을 덮어쓰지 않게 한다
 fn schedule_revision(instance: &crate::instance::ServerInstance) -> String {
     crate::config_store::patch::revision(&json!({ "schedule": instance.schedule, "backup_keep": instance.backup_keep }))
-}
-
-/// 실행기의 시계와 데몬 시작 시각 (화면에 다음 실행 시각을 보일 때 읽는다)
-static RUNNER: std::sync::OnceLock<(chrono::NaiveDateTime, std::sync::Arc<Mutex<Clock>>)> = std::sync::OnceLock::new();
-
-/// 작업마다 다음 실행 시각 (유닉스 초, 꺼졌거나 다시 돌 일이 없으면 null). 보는 쪽이 자기 시간대로 보인다
-fn next_runs(id: &str, schedule: &[ScheduledTask]) -> Vec<Option<i64>> {
-    let now = chrono::Local::now().naive_local();
-    let fresh = Clock::default();
-    let (started, guard) = match RUNNER.get() {
-        Some((started, clock)) => (*started, Some(clock.lock().unwrap_or_else(|e| e.into_inner()))),
-        None => (now, None),
-    };
-    let clock = guard.as_deref().unwrap_or(&fresh);
-    schedule
-        .iter()
-        .map(|task| {
-            let wall = clock.peek(&crate::scheduler::task_key(id, task), task, started, now)?;
-            crate::scheduler::instant(&chrono::Local, wall).map(|t| t.timestamp())
-        })
-        .collect()
-}
-
-/// 일정 순서대로 작업마다 실행 이력 (`schedule-history.json`)
-fn history_of(instance_dir: &FsPath, id: &str, schedule: &[ScheduledTask]) -> Vec<Vec<crate::scheduler::Run>> {
-    let _guard = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut history = crate::scheduler::read_history(&instance_dir.join(crate::scheduler::HISTORY_FILE));
-    schedule.iter().map(|task| history.remove(&crate::scheduler::history_key(id, task)).unwrap_or_default()).collect()
-}
-
-/// 이력 파일을 읽고 고쳐 쓰는 동안 쥔다 (같은 인스턴스의 두 작업이 함께 끝나도 한 건을 잃지 않게)
-static HISTORY_LOCK: Mutex<()> = Mutex::new(());
-
-/// 예약 작업 한 번의 결과. 이유 코드는 실패·건너뜀에만 있다
-type Outcome = (crate::scheduler::RunResult, Option<String>);
-
-fn done() -> Option<Outcome> {
-    Some((crate::scheduler::RunResult::Ok, None))
-}
-
-fn failed(code: Option<String>) -> Option<Outcome> {
-    Some((crate::scheduler::RunResult::Failed, code))
-}
-
-fn skipped(code: &str) -> Option<Outcome> {
-    Some((crate::scheduler::RunResult::Skipped, Some(code.to_string())))
-}
-
-/// 핸들러 응답 → 결과. 실패면 그 `error_code`를 이유로 남긴다
-fn outcome_of(resp: &crate::ipc::internal::InternalResponse) -> Option<Outcome> {
-    if resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false) {
-        done()
-    } else {
-        failed(crate::audit::failure_code(&resp.body))
-    }
-}
-
-/// 한 건을 인스턴스 폴더의 이력에 남긴다. 일정에서 사라진 작업의 이력은 이때 치운다 (꺼 둔 작업의 것은 둔다). 새로 남겼으면 true
-async fn record_run(state: &IPCServer, id: &str, key: &str, run: crate::scheduler::Run) -> bool {
-    let supervisor = state.supervisor.read().await;
-    let Some(instance) = supervisor.instance_store.get(id) else { return false };
-    let dir = supervisor.instance_store.instance_dir(id);
-    if !dir.is_dir() {
-        return false;
-    }
-    let keys: HashSet<String> = instance.schedule.iter().map(|t| crate::scheduler::history_key(id, t)).collect();
-    let file = dir.join(crate::scheduler::HISTORY_FILE);
-    let _guard = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut history = crate::scheduler::read_history(&file);
-    history.retain(|k, _| keys.contains(k) || k == key);
-    if !crate::scheduler::push_run(&mut history, key, run) {
-        return false;
-    }
-    if let Err(e) = crate::scheduler::write_history(&file, &history) {
-        tracing::warn!("Could not save the schedule history of '{}': {}", instance.name, e);
-    }
-    true
-}
-
-/// 하트비트의 예약 목록 `[{instanceId, action, next}]` (`next`는 Unix 초): 켜 둔 예약의 다음 실행을 가까운 순으로 `limit`개까지.
-/// 릴레이가 알림 채널 맨 위 글에 보인다
-pub fn upcoming_runs(instances: &[crate::instance::ServerInstance], limit: usize) -> Vec<Value> {
-    let mut runs: Vec<(i64, &str, TaskAction)> = instances
-        .iter()
-        .flat_map(|inst| {
-            next_runs(&inst.id, &inst.schedule)
-                .into_iter()
-                .zip(&inst.schedule)
-                .filter_map(move |(next, task)| Some((next?, inst.id.as_str(), task.action)))
-        })
-        .collect();
-    runs.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(b.1)));
-    runs.into_iter().take(limit).map(|(next, id, action)| json!({ "instanceId": id, "action": action, "next": next })).collect()
 }
 
 #[derive(Deserialize)]
@@ -1207,7 +1088,7 @@ pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>
     .into_response()
 }
 
-fn save_command_of(meta: &crate::supervisor::module_loader::ModuleMetadata) -> Option<String> {
+pub(crate) fn save_command_of(meta: &crate::supervisor::module_loader::ModuleMetadata) -> Option<String> {
     meta.backup.as_ref().and_then(|b| b.save_command.clone())
 }
 
@@ -1337,209 +1218,17 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
     }
 }
 
-// ── 실행기 ────────────────────────────────────────────────
-
-/// 데몬이 끝날 때까지 30초마다 예약 작업을 확인한다
-pub fn spawn_scheduler(state: IPCServer) {
-    tokio::spawn(async move {
-        let started = chrono::Local::now().naive_local();
-        let clock = RUNNER.get_or_init(|| (started, std::sync::Arc::new(Mutex::new(Clock::default())))).1.clone();
-        {
-            let supervisor = state.supervisor.read().await;
-            let store = &supervisor.instance_store;
-            let saved = store.list().iter().flat_map(|i| crate::scheduler::read_runs(&store.instance_dir(&i.id).join(crate::scheduler::RUNS_FILE))).collect();
-            clock.lock().unwrap_or_else(|e| e.into_inner()).restore(saved);
-        }
-        record_missed(&state, &clock, started).await;
-        // 복원 전 백업을 이미 살핀 (인스턴스, 켠 시각). 한 번 켠 뒤로 한 번만 살핀다
-        let mut swept: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
-        loop {
-            tokio::select! {
-                _ = state.shutdown_token.cancelled() => break,
-                _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {}
-            }
-            sweep_restore_safeties(&state, &mut swept).await;
-            let now = chrono::Local::now().naive_local();
-            let tasks: Vec<(String, ScheduledTask)> = {
-                let supervisor = state.supervisor.read().await;
-                supervisor
-                    .instance_store
-                    .list()
-                    .iter()
-                    .flat_map(|i| i.schedule.iter().map(move |t| (i.id.clone(), t.clone())))
-                    .collect()
-            };
-            let mut due = Vec::new();
-            // 코어 업데이트가 기다리는 동안 새 예약 백업·업데이트는 미룬다: 잦은 예약이 업데이트를 끝없이 미루지 않게 (13절)
-            let update_waiting = state.update_state.core_update_waiting();
-            {
-                let mut c = clock.lock().unwrap_or_else(|e| e.into_inner());
-                let keys: HashSet<String> = tasks.iter().map(|(id, t)| crate::scheduler::task_key(id, t)).collect();
-                c.retain(&keys, now);
-                for (id, task) in tasks {
-                    if update_waiting && crate::scheduler::waits_for_update(&task.action) {
-                        continue;
-                    }
-                    let key = crate::scheduler::task_key(&id, &task);
-                    if let Some(fire) = c.due(&key, &task, started, now) {
-                        due.push((key, id, task, fire));
-                    }
-                }
-            }
-            save_runs(&state, &clock).await;
-            for (key, id, task, fire) in due {
-                let state = state.clone();
-                let clock = clock.clone();
-                tokio::spawn(async move {
-                    run_task(&state, &id, &task, fire, &key).await;
-                    clock.lock().unwrap_or_else(|e| e.into_inner()).finish(&key, fire);
-                    save_runs(&state, &clock).await;
-                });
-            }
-        }
-    });
-}
-
-/// 데몬이 꺼져 있던 사이 지나간 시각 작업을 이력에 건너뜀으로 남긴다 (그 차례는 따라잡지 않는다)
-async fn record_missed(state: &IPCServer, clock: &Mutex<Clock>, started: chrono::NaiveDateTime) {
-    let missed: Vec<(String, String, i64)> = {
-        let supervisor = state.supervisor.read().await;
-        let clock = clock.lock().unwrap_or_else(|e| e.into_inner());
-        supervisor
-            .instance_store
-            .list()
-            .iter()
-            .flat_map(|i| i.schedule.iter().map(move |t| (i.id.clone(), t)))
-            .filter_map(|(id, task)| {
-                let key = crate::scheduler::task_key(&id, task);
-                let at = crate::scheduler::instant(&chrono::Local, clock.missed(&key, task, started)?)?.timestamp();
-                Some((id, key, at))
-            })
-            .collect()
-    };
-    for (id, key, at) in missed {
-        let run = crate::scheduler::Run { at, result: crate::scheduler::RunResult::Skipped, code: Some("daemon_off".into()), seconds: 0 };
-        record_run(state, &id, &key, run).await;
-    }
-}
-
-/// 마지막 실행 시각이 바뀌었으면 인스턴스 폴더마다 남긴다: 데몬을 다시 켜도 주기 작업이 이어 센다
-async fn save_runs(state: &IPCServer, clock: &Mutex<Clock>) {
-    let Some(runs) = clock.lock().unwrap_or_else(|e| e.into_inner()).take_changed() else { return };
-    let supervisor = state.supervisor.read().await;
-    let store = &supervisor.instance_store;
-    for instance in store.list() {
-        let dir = store.instance_dir(&instance.id);
-        let file = dir.join(crate::scheduler::RUNS_FILE);
-        let of_instance: std::collections::HashMap<_, _> = instance
-            .schedule
-            .iter()
-            .map(|t| crate::scheduler::task_key(&instance.id, t))
-            .filter_map(|k| runs.get(&k).map(|at| (k, *at)))
-            .collect();
-        // 예약이 없는 인스턴스에는 파일을 만들지 않고, 지워진 인스턴스의 폴더를 되살리지 않는다
-        if (of_instance.is_empty() && !file.exists()) || !dir.is_dir() {
-            continue;
-        }
-        if let Err(e) = crate::scheduler::write_runs(&file, &of_instance) {
-            tracing::warn!("Could not save the schedule state of '{}': {}", instance.name, e);
-        }
-    }
-}
-
-fn backup_limit() -> Response {
-    error(StatusCode::CONFLICT, "backup_limit", format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP))
+fn backup_limit() -> Failure {
+    Failure::coded(StatusCode::CONFLICT, "backup_limit", format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP))
 }
 
 /// 원격 요청이 만들 수 있는 이 종류의 백업이 상한에 닿았는가. 목록을 읽지 못하면 세지 못한 채 통과시키지 않고 오류로 거절한다
-async fn remote_cap_reached(dir: &FsPath, kind: BackupKind) -> Result<bool, Response> {
+async fn remote_cap_reached(dir: &FsPath, kind: BackupKind) -> Result<bool, Failure> {
     let dir = dir.to_path_buf();
     match tokio::task::spawn_blocking(move || backup::list_checked(&dir)).await {
         Ok(Ok(list)) => Ok(list.iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP),
-        Ok(Err(e)) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", format!("Could not read the backup folder: {}", e))),
-        Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", e.to_string())),
-    }
-}
-
-/// 인스턴스마다 하나(`InstanceRuntime::stop_gate`): 정지가 쥐는 동안 복원 전 백업 정리는 들어오지 않고(다음 차례로 미룬다),
-/// 정리가 쥐는 동안 정지는 끝나기를 기다린다. 그래서 정리가 "돌고 있다"고 확인한 뒤 지우는 동안 서버가 멈추지 않는다
-fn stop_gate_of(runtime: &Runtimes, id: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
-    runtime.with(id, |r| r.stop_gate.clone())
-}
-
-/// 정지 경로가 정지가 끝날 때까지 쥔다
-pub(crate) async fn stop_gate(runtime: &Runtimes, id: &str) -> tokio::sync::OwnedMutexGuard<()> {
-    stop_gate_of(runtime, id).lock_owned().await
-}
-
-/// 복원 전 백업 정리가 쥔다. 정지가 진행 중이면 `None`
-fn sweep_gate(runtime: &Runtimes, id: &str) -> Option<tokio::sync::OwnedMutexGuard<()>> {
-    stop_gate_of(runtime, id).try_lock_owned().ok()
-}
-
-/// 복원한 뒤 켠 서버가 15분 넘게 돌면 복원 직전 안전 백업을 치운다 (그동안 접속해 확인한다고 본다).
-/// 서버를 켜기 전이나 켠 지 15분 안에는 남겨 둔다. 켠 시각은 데몬이 다시 떠도 그대로라 상태를 따로 저장하지 않는다
-async fn sweep_restore_safeties(state: &IPCServer, swept: &mut std::collections::HashMap<String, u64>) {
-    // 지금 도는 서버가 켠 시각(초). 켜져 있지 않거나 켠 지 15분이 안 됐으면 None
-    async fn long_running(state: &IPCServer, id: &str, now: u64) -> Option<u64> {
-        let supervisor = state.supervisor.read().await;
-        if !supervisor.is_running(id).await {
-            return None;
-        }
-        let started = supervisor.tracker.get_start_time(id).ok()?;
-        (now >= started.saturating_add(backup::RESTORE_SAFETY_GRACE_SECS)).then_some(started)
-    }
-    let now = saba_runner::now();
-    let ids: Vec<String> = state.supervisor.read().await.instance_store.list().iter().map(|i| i.id.clone()).collect();
-    for id in ids {
-        match long_running(state, &id, now).await {
-            Some(started) if swept.get(&id) != Some(&started) => {}
-            _ => continue,
-        }
-        // 복원·백업·업데이트가 잡고 있으면 다음 차례에 다시 본다
-        let Some(_guard) = InstanceLock::take(&id) else { continue };
-        // 정지가 진행 중이면 다음 차례로 미루고, 지우는 동안에는 정지를 붙잡아 둔다
-        let runtime = state.supervisor.read().await.runtime.clone();
-        let Some(_stopping) = sweep_gate(&runtime, &id) else { continue };
-        let Some(started) = long_running(state, &id, saba_runner::now()).await else { continue };
-        let Ok(dir) = backups_dir(state, &id).await else { continue };
-        // 폴더를 읽지 못하거나 작업이 실패하면 빈 목록으로 보지 않고 다음 차례에 다시 시도한다
-        let listing = {
-            let dir = dir.clone();
-            tokio::task::spawn_blocking(move || backup::list_checked(&dir)).await
-        };
-        let list = match listing {
-            Ok(Ok(list)) => list,
-            Ok(Err(e)) => {
-                tracing::warn!("Could not list backups of '{}' to clear restore safety backups; will retry: {}", id, e);
-                continue;
-            }
-            Err(e) => {
-                tracing::warn!("Listing backups of '{}' failed; will retry: {}", id, e);
-                continue;
-            }
-        };
-        let expired = backup::expired_restore_safeties(&list, started, saba_runner::now());
-        let mut removed = 0;
-        for name in &expired {
-            // 하나씩 지우기 직전에 서버가 그대로 같은 실행인지 다시 본다: 그 사이 멈추거나 다시 켜졌으면 남긴다
-            if long_running(state, &id, saba_runner::now()).await != Some(started) {
-                break;
-            }
-            let (dir, name) = (dir.clone(), name.clone());
-            if matches!(tokio::task::spawn_blocking(move || backup::delete(&dir, &name)).await, Ok(Ok(()))) {
-                removed += 1;
-            }
-        }
-        if removed > 0 {
-            tracing::info!("Removed {} restore safety backup(s) of '{}' after the server ran {} minutes", removed, id, backup::RESTORE_SAFETY_GRACE_SECS / 60);
-        }
-        // 못 지운 것(파일 잠금, 도중에 멈춤 등)이 있으면 처리한 것으로 적지 않아 다음 차례(30초 뒤)에 다시 본다
-        if removed == expired.len() {
-            swept.insert(id, started);
-        } else {
-            tracing::warn!("Could not remove all restore safety backups of '{}'; will retry", id);
-        }
+        Ok(Err(e)) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", format!("Could not read the backup folder: {}", e))),
+        Err(e) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", e.to_string())),
     }
 }
 
@@ -1555,273 +1244,6 @@ pub(crate) async fn announce(state: &IPCServer, id: &str, message: &str) -> bool
     match cmd {
         Some(cmd) => run_command(state, id, &cmd, json!({ "message": message })).await,
         None => false,
-    }
-}
-
-/// 예고하는 사이에 사용자가 그 예약을 지우거나 껐으면 false
-async fn still_scheduled(state: &IPCServer, id: &str, key: &str) -> bool {
-    let supervisor = state.supervisor.read().await;
-    supervisor
-        .instance_store
-        .get(id)
-        .is_some_and(|i| crate::scheduler::still_scheduled(id, &i.schedule, key))
-}
-
-/// 실행 시각까지 `warn_minutes`마다 게임 안에 예고한다 (`announce`가 false면 기다리기만).
-/// 그 사이 예약이 지워지거나 꺼지면 false
-async fn count_down(
-    state: &IPCServer,
-    id: &str,
-    task: &ScheduledTask,
-    fire: chrono::NaiveDateTime,
-    task_key: &str,
-    message_key: &str,
-    announce_on: bool,
-) -> bool {
-    let language = state.config_store.ui_language().await;
-    let catalog = crate::chat::i18n::Catalog::for_language(&language);
-    let mut marks = if announce_on { task.warn_minutes.clone() } else { Vec::new() };
-    marks.sort_unstable_by(|a, b| b.cmp(a));
-    marks.dedup();
-    for minutes in marks {
-        let at = fire - chrono::Duration::minutes(minutes as i64);
-        let wait = (at - chrono::Local::now().naive_local()).to_std().unwrap_or_default();
-        tokio::time::sleep(wait).await;
-        // 예고 시각이 이미 지났으면 (데몬이 그 사이 멈췄다 등) 그 예고는 건너뛴다
-        if chrono::Local::now().naive_local() - at > chrono::Duration::minutes(1) {
-            continue;
-        }
-        if !still_scheduled(state, id, task_key).await {
-            return false;
-        }
-        let name = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
-        crate::events::emit(
-            "schedule.warn",
-            json!({ "instanceId": id, "instance": name, "action": task.action, "minutesLeft": minutes }),
-        );
-        announce(state, id, &catalog.t(message_key, &[("minutes", &minutes.to_string())])).await;
-    }
-    let wait = (fire - chrono::Local::now().naive_local()).to_std().unwrap_or_default();
-    tokio::time::sleep(wait).await;
-    let alive = still_scheduled(state, id, task_key).await;
-    if !alive {
-        tracing::info!("Scheduled task for '{}' was removed or disabled during its countdown; skipping", id);
-    }
-    alive
-}
-
-/// 꺼진 서버가 가장 새 백업 뒤에 돈 적이 있는가: 가장 최근 세션 로그가 그 백업보다 뒤에 쓰였으면.
-/// 세션 로그가 없으면(돈 적이 없다) false. 꺼진 PC에서 밀린 예약 백업이 데몬이 켜진 직후에 지난 실행을 담게 한다
-async fn ran_since_last_backup(state: &IPCServer, id: &str) -> bool {
-    let instance_dir = state.supervisor.read().await.instance_store.instance_dir(id);
-    let check = move || {
-        let wrote = crate::supervisor::managed_process::latest_session_log(&instance_dir)?.metadata().ok()?.modified().ok()?;
-        let wrote = wrote.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
-        Some(backup::list(&backup::backups_dir(&instance_dir)).iter().map(|b| b.created).max().is_none_or(|made| wrote > made))
-    };
-    tokio::task::spawn_blocking(check).await.ok().flatten().unwrap_or(false)
-}
-
-async fn run_task(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
-    // 감사 로그 (A10): 예약 작업이 한 일은 출처 schedule
-    // 갈래마다 큰 핸들러 future를 품으므로 힙에 둔다 (디버그 빌드 스택 넘침)
-    let called = chrono::Local::now().naive_local();
-    let outcome = crate::audit::with_origin(crate::audit::Origin::new("schedule"), Box::pin(run_task_now(state, id, task, fire, key))).await;
-    // 예고 중에 지우거나 끈 작업은 남기지 않는다
-    let Some((result, code)) = outcome else { return };
-    let Some(at) = crate::scheduler::instant(&chrono::Local, fire).map(|t| t.timestamp()) else { return };
-    // 예고를 기다린 시간은 빼고 잰다
-    let seconds = (chrono::Local::now().naive_local() - called.max(fire)).num_seconds().max(0) as u64;
-    if !record_run(state, id, key, crate::scheduler::Run { at, result, code: code.clone(), seconds }).await {
-        return;
-    }
-    let kind = match result {
-        crate::scheduler::RunResult::Ok => "schedule.ran",
-        crate::scheduler::RunResult::Failed => "schedule.failed",
-        crate::scheduler::RunResult::Skipped => return,
-    };
-    let name = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
-    let mut data = json!({ "instanceId": id, "instance": name, "action": task.action, "seconds": seconds });
-    if let Some(code) = code {
-        data["code"] = Value::from(code);
-    }
-    crate::events::emit(kind, data);
-}
-
-/// 작업을 하고 결과를 돌려준다. 예고 중에 작업이 지워지거나 꺼졌으면 None
-async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) -> Option<Outcome> {
-    let running = is_running(state, id).await;
-    match task.action {
-        TaskAction::Backup => {
-            // 꺼져 있고 마지막 백업 뒤로 돈 적도 없으면 바뀐 게 없으니 건너뛰되, 건너뛴 것도 감사 로그에 남긴다
-            let (status, code, outcome) = if !running && !ran_since_last_backup(state, id).await {
-                tracing::info!("Scheduled backup of '{}' skipped: the server is not running and has not run since the last backup", id);
-                (409, None, skipped("not_running"))
-            } else {
-                match take_backup(state, id, BackupKind::Scheduled).await {
-                    Ok(Some(_)) => (200, None, done()),
-                    Ok(None) => (204, None, skipped("backup_unsupported")),
-                    Err(r) => {
-                        let resp = crate::ipc::internal::into_internal(r).await;
-                        tracing::warn!("Scheduled backup of '{}' failed: {}", id, resp.body["error"]);
-                        let code = crate::audit::failure_code(&resp.body);
-                        (resp.status.as_u16(), code.clone(), failed(code))
-                    }
-                }
-            };
-            crate::audit::record(crate::audit::Event {
-                action: "backup",
-                instance_id: id,
-                ok: status < 300,
-                status,
-                code: code.as_deref(),
-                ..Default::default()
-            });
-            outcome
-        }
-        TaskAction::Announce if running => {
-            if announce(state, id, task.message.as_deref().unwrap_or_default()).await {
-                done()
-            } else {
-                failed(Some("command_failed".into()))
-            }
-        }
-        // 예고 시작 때 꺼져 있었어도 재시작 시각에 켜져 있으면 다시 시작한다 (정지와 같다)
-        TaskAction::Restart => {
-            if !count_down(state, id, task, fire, key, "schedule.restart_warning", running).await {
-                return None;
-            }
-            if !is_running(state, id).await {
-                return failed(Some("not_running".into()));
-            }
-            tracing::info!("Scheduled restart of '{}'", id);
-            let resp = crate::ipc::internal::into_internal(
-                Box::pin(super::server::restart_instance_handler(Path(id.to_string()), State(state.clone()), LooseJson(None))).await,
-            )
-            .await;
-            if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
-                tracing::warn!("Scheduled restart of '{}' failed: {}", id, resp.body);
-            }
-            outcome_of(&resp)
-        }
-        TaskAction::Update => Box::pin(run_update(state, id, task, fire, key)).await,
-        TaskAction::Start if !running => {
-            tracing::info!("Scheduled start of '{}'", id);
-            let resp = crate::ipc::internal::into_internal(
-                Box::pin(super::server::start_instance_handler(Path(id.to_string()), State(state.clone()))).await,
-            )
-            .await;
-            if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
-                tracing::warn!("Scheduled start of '{}' failed: {}", id, resp.body);
-            }
-            outcome_of(&resp)
-        }
-        // 예고 시작 때 꺼져 있었어도 정지 시각에 켜져 있으면 끈다 (같은 시각 앞의 예약 시작 등)
-        TaskAction::Stop => {
-            if !count_down(state, id, task, fire, key, "schedule.stop_warning", running).await {
-                return None;
-            }
-            if !is_running(state, id).await {
-                return skipped("not_running");
-            }
-            tracing::info!("Scheduled stop of '{}'", id);
-            // 예약 작업은 강제 종료하지 않는다 (저장 후 종료를 못 하는 서버는 그대로 둔다)
-            let resp = crate::ipc::internal::into_internal(
-                Box::pin(super::server::stop_instance_handler(Path(id.to_string()), State(state.clone()), LooseJson(None))).await,
-            )
-            .await;
-            if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
-                tracing::warn!("Scheduled stop of '{}' failed: {}", id, resp.body);
-            }
-            outcome_of(&resp)
-        }
-        TaskAction::Save if running => {
-            let cmd = {
-                let supervisor = state.supervisor.read().await;
-                supervisor
-                    .instance_store
-                    .get(id)
-                    .and_then(|i| supervisor.module_loader.get_module(&i.module_name).ok())
-                    .and_then(|m| save_command_of(&m.metadata))
-            };
-            match cmd {
-                Some(cmd) if run_command(state, id, &cmd, json!({})).await => done(),
-                Some(_) => {
-                    tracing::warn!("Scheduled save of '{}' failed", id);
-                    failed(Some("command_failed".into()))
-                }
-                None => skipped("save_unsupported"),
-            }
-        }
-        // 익스텐션 명령은 서버가 꺼져 있어도 돈다: 켜짐 여부는 명령 실행이 판단하고, 결과는 감사 로그에 남는다
-        TaskAction::Command => {
-            let name = task.command.as_deref().unwrap_or_default();
-            let args = task.args.clone().map(Value::Object).unwrap_or(Value::Null);
-            if run_command(state, id, name, args).await {
-                done()
-            } else {
-                tracing::warn!("Scheduled command '{}' on '{}' failed", name, id);
-                failed(Some("command_failed".into()))
-            }
-        }
-        TaskAction::Start => skipped("already_running"),
-        TaskAction::Announce | TaskAction::Save => skipped("not_running"),
-    }
-}
-
-/// 켜진 `action` 작업들이 하루에 도는 횟수 (매일 시각 작업은 1번, N분마다는 하루를 N으로 나눈 만큼)
-fn daily_runs(schedule: &[ScheduledTask], action: TaskAction) -> u32 {
-    schedule
-        .iter()
-        .filter(|t| t.enabled && t.action == action)
-        .map(|t| t.every_minutes.map_or(1, |m| (24 * 60u32).div_ceil(m.max(1))))
-        .sum()
-}
-
-/// 업데이트가 있으면: (켜져 있으면) 예고 → 정지 → 업데이트(업데이트 전 백업 포함) → 다시 시작.
-/// 꺼져 있어도 정한 시각까지는 기다린다 (예고 시각에 바로 시작하지 않게)
-async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) -> Option<Outcome> {
-    let check = crate::ipc::internal::into_internal(
-        super::instance::check_server_update(Path(id.to_string()), State(state.clone())).await,
-    )
-    .await;
-    if check.body.get("update_available").and_then(Value::as_bool) != Some(true) {
-        if check.body.get("reason").and_then(Value::as_str) == Some("check_failed") {
-            tracing::warn!("Scheduled update of '{}': update check failed: {}", id, check.body["error"]);
-            return failed(Some("check_failed".into()));
-        }
-        return skipped("no_update");
-    }
-    let running_now = is_running(state, id).await;
-    if !count_down(state, id, task, fire, key, "schedule.update_warning", running_now).await {
-        return None;
-    }
-    tracing::info!("Scheduled update of '{}'", id);
-    // 디스코드·자동 업데이트가 같은 서버에 걸어 둔 업데이트와 겹치지 않게 한다
-    let Some(_mark) = super::server_update::Pending::take(id) else {
-        tracing::info!("Scheduled update of '{}': another update is already under way", id);
-        return skipped("update_in_progress");
-    };
-    if super::server_update::stop_update_start(state, id).await {
-        done()
-    } else {
-        failed(Some("update_failed".into()))
-    }
-}
-
-/// 예약 업데이트가 끈 서버를 다시 켠다. 그 순간 다른 작업(백업·복원)이 잠금을 쥐고 있으면 끝나기를 기다린다.
-/// 그사이 사용자가 켜거나 끄거나 인스턴스를 지우면(`generation`이 바뀌면) 그만둔다
-pub(crate) async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
-    let wanted = || async {
-        let supervisor = state.supervisor.read().await;
-        supervisor.instance_store.get(id).is_some() && supervisor.run_generation_of(id) == generation
-    };
-    match start_when_free(state, id, generation, wanted).await {
-        None => tracing::info!("Scheduled update of '{}': not starting again, the server was started, stopped or removed meanwhile", id),
-        Some(resp) if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) => {
-            tracing::warn!("Scheduled update of '{}': could not start the server again: {}", id, resp.body)
-        }
-        Some(_) => {}
     }
 }
 
@@ -1868,7 +1290,7 @@ mod tests {
         false
     }
 
-    async fn code(r: Response) -> String {
+    async fn code(r: impl IntoResponse) -> String {
         crate::ipc::internal::into_internal(r).await.body["error_code"].as_str().unwrap_or_default().to_string()
     }
 
@@ -2170,7 +1592,7 @@ else:
     async fn a_scheduled_backup_of_a_stopped_server_is_logged_as_skipped() {
         let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
         let task: ScheduledTask = serde_json::from_value(json!({"action": "backup", "every_minutes": 60})).unwrap();
-        run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
+        crate::scheduler::runner::run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
         let entries = crate::audit::log().recent(10, Some(&id));
         let entry = entries.first().expect("the skipped backup must leave a record");
         assert_eq!(entry["action"], "backup");
@@ -2193,8 +1615,8 @@ else:
         }
         let mut events = crate::events::bus().subscribe(None);
         let fire = chrono::Local::now().naive_local() - chrono::Duration::seconds(5);
-        run_task(&state, &id, &restart, fire, &crate::scheduler::task_key(&id, &restart)).await;
-        run_task(&state, &id, &backup, fire, &crate::scheduler::task_key(&id, &backup)).await;
+        crate::scheduler::runner::run_task(&state, &id, &restart, fire, &crate::scheduler::task_key(&id, &restart)).await;
+        crate::scheduler::runner::run_task(&state, &id, &backup, fire, &crate::scheduler::task_key(&id, &backup)).await;
 
         let body = crate::ipc::internal::into_internal(get_schedule(Path(id.clone()), State(state.clone())).await).await.body;
         let at = crate::scheduler::instant(&chrono::Local, fire).unwrap().timestamp();
@@ -2230,11 +1652,11 @@ else:
         };
         set(vec![restart.clone(), stop.clone()]).await;
         let fire = chrono::Local::now().naive_local() - chrono::Duration::seconds(5);
-        run_task(&state, &id, &restart, fire, &crate::scheduler::task_key(&id, &restart)).await;
+        crate::scheduler::runner::run_task(&state, &id, &restart, fire, &crate::scheduler::task_key(&id, &restart)).await;
 
         set(vec![ScheduledTask { enabled: false, ..restart.clone() }, stop.clone()]).await;
         assert_eq!(history().await[0][0]["code"], "not_running", "the switched-off task still shows its last run");
-        run_task(&state, &id, &stop, fire, &crate::scheduler::task_key(&id, &stop)).await;
+        crate::scheduler::runner::run_task(&state, &id, &stop, fire, &crate::scheduler::task_key(&id, &stop)).await;
         set(vec![restart.clone(), stop.clone()]).await;
         assert_eq!(history().await[0][0]["code"], "not_running", "another task's run did not drop it");
     }
@@ -2293,12 +1715,12 @@ else:
         let task: ScheduledTask = serde_json::from_value(json!({"action": "backup", "every_minutes": 720})).unwrap();
         let last_status = || crate::audit::log().recent(10, Some(&id)).first().map(|e| e["status"].clone());
 
-        run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
+        crate::scheduler::runner::run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
         assert_eq!(last_status(), Some(json!(200)), "the last run's changes were never backed up");
         let made = backup::list(&backup::backups_dir(&instance_dir));
         assert_eq!(made.iter().map(|b| b.kind).collect::<Vec<_>>(), [BackupKind::Scheduled]);
 
-        run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
+        crate::scheduler::runner::run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
         assert_eq!(last_status(), Some(json!(409)), "nothing ran since that backup");
         assert_eq!(backup::list(&backup::backups_dir(&instance_dir)).len(), 1);
     }
@@ -2319,7 +1741,7 @@ else:
         let fire = chrono::Local::now().naive_local() + chrono::Duration::seconds(2);
         let run = {
             let (state, id, task) = (state.clone(), id.clone(), task.clone());
-            tokio::spawn(async move { run_task(&state, &id, &task, fire, &key).await })
+            tokio::spawn(async move { crate::scheduler::runner::run_task(&state, &id, &task, fire, &key).await })
         };
         // 예고가 시작된 뒤에 서버가 켜진다
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
@@ -2438,7 +1860,8 @@ else:
         let guard = InstanceLock::take(&id).expect("free");
         let start = super::super::server::start_instance_handler(Path(id.clone()), State(state.clone())).await;
         assert_eq!(code(start).await, "instance_busy");
-        let managed = super::super::managed::start_managed_handler(Path(id.clone()), State(state.clone()), super::LooseJson(None)).await.into_response();
+        let managed = super::super::managed::start_managed(&state, &id).await.unwrap_err();
+        assert!(managed.is_busy(), "a retrying start must tell the lock apart from other refusals");
         assert_eq!(code(managed).await, "instance_busy");
         let update = super::super::instance::begin_server_update(&state, &id).await.err().expect("update must wait");
         assert_eq!(code(update).await, "instance_busy");
@@ -2468,7 +1891,7 @@ else:
         let guard = InstanceLock::take(&id).expect("free");
         let restart = tokio::spawn({
             let (state, id) = (state.clone(), id.clone());
-            async move { start_after_update(&state, &id, generation).await }
+            async move { super::super::server_update::start_after_update(&state, &id, generation).await }
         });
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         assert!(!restart.is_finished(), "the restart must wait for the backup, not fail with instance_busy");
@@ -3418,11 +2841,11 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         ];
         let mut b = crate::instance::ServerInstance::new("b", "plain");
         b.schedule = vec![task(json!({ "action": "backup", "every_minutes": 60 }))];
-        let runs = upcoming_runs(&[a.clone(), b.clone()], 10);
+        let runs = crate::scheduler::runner::upcoming_runs(&[a.clone(), b.clone()], 10);
         let ids: Vec<_> = runs.iter().map(|r| (r["instanceId"].as_str().unwrap().to_string(), r["action"].clone())).collect();
         assert_eq!(ids, vec![(b.id.clone(), json!("backup")), (a.id.clone(), json!("restart"))], "{runs:?}");
         assert!(runs.iter().all(|r| r["next"].as_i64().is_some()));
-        assert_eq!(upcoming_runs(&[a, b], 1).len(), 1);
+        assert_eq!(crate::scheduler::runner::upcoming_runs(&[a, b], 1).len(), 1);
     }
 
     /// 백업이 실패하고 자동 저장 되돌리기도 실패하면 둘 다 알린다 (서버가 자동 저장이 꺼진 채 돈다).
@@ -3439,21 +2862,6 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert_eq!(body["command"], "save-on", "{body}");
     }
 
-    /// 정리가 쥐는 동안 정지는 기다리고, 정지가 쥐는 동안 정리는 들어오지 않는다
-    #[tokio::test]
-    async fn the_stop_gate_keeps_the_sweep_and_a_stop_apart() {
-        let id = "gate-test";
-        let rt = Runtimes::default();
-        let stopping = stop_gate(&rt, id).await;
-        assert!(sweep_gate(&rt, id).is_none(), "a stop in progress keeps the sweep out");
-        drop(stopping);
-        let sweeping = sweep_gate(&rt, id).expect("free once the stop is done");
-        let waiting = tokio::time::timeout(std::time::Duration::from_millis(50), stop_gate(&rt, id)).await;
-        assert!(waiting.is_err(), "a stop waits while the sweep deletes");
-        drop(sweeping);
-        assert!(tokio::time::timeout(std::time::Duration::from_millis(500), stop_gate(&rt, id)).await.is_ok());
-    }
-
     /// 원격 백업 상한 검사는 목록을 읽지 못하면 세지 못한 채 통과시키지 않고 오류로 거절한다
     #[tokio::test]
     async fn the_remote_cap_check_fails_closed_when_the_backups_cannot_be_listed() {
@@ -3462,6 +2870,6 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         let file = tmp.path().join("not-a-folder");
         std::fs::write(&file, b"x").unwrap();
         let refused = remote_cap_reached(&file, BackupKind::Manual).await.err().expect("an unreadable folder is an error");
-        assert_eq!(refused.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(refused.status, StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

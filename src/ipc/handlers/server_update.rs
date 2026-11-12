@@ -245,7 +245,7 @@ async fn warn(state: &IPCServer, id: &str, minutes: u32) -> bool {
 }
 
 /// 켜져 있으면 저장하고 정지 → 업데이트 → 켜져 있었으면 다시 켠다. 정지하지 못하면 업데이트하지 않는다.
-/// 예약 업데이트(`backup::run_update`)와 켜진 서버의 업데이트가 함께 쓴다. 업데이트가 됐으면 true
+/// 예약 업데이트(`scheduler::runner::run_update`)와 켜진 서버의 업데이트가 함께 쓴다. 업데이트가 됐으면 true
 pub(crate) async fn stop_update_start(state: &IPCServer, id: &str) -> bool {
     stop_update_start_when(state, id, false).await.unwrap_or(false)
 }
@@ -280,18 +280,10 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
         }
     }
     if was_running {
-        let stop =
-            crate::ipc::internal::into_internal(super::server::stop_instance(state.clone(), id, false).await).await;
         // 콘솔이 없어 저장 후 종료를 못 하는 서버(`graceful_stop_unavailable`)도 여기서 멈춘다: 강제 종료하지 않는다
-        if !stop.status.is_success() || stop.body.get("success").and_then(Value::as_bool) == Some(false) {
-            tracing::warn!("Update of '{}': stop failed: {}", id, stop.body);
-            let error = stop
-                .body
-                .get("error")
-                .and_then(Value::as_str)
-                .unwrap_or("stop failed")
-                .to_string();
-            super::instance::emit_update_failed(state, id, &error).await;
+        if let Err(failure) = super::server::stop(state, id, false).await {
+            tracing::warn!("Update of '{}': stop failed: {}", id, failure.body);
+            super::instance::emit_update_failed(state, id, failure.reason().unwrap_or("stop failed")).await;
             return Some(false);
         }
         for _ in 0..STOP_POLLS {
@@ -332,9 +324,23 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
         if updated != Some(true) {
             tracing::warn!("Update of '{}' did not finish; starting the old version again", id);
         }
-        super::backup::start_after_update(state, id, generation).await;
+        start_after_update(state, id, generation).await;
     }
     updated
+}
+
+/// 업데이트가 끈 서버를 다시 켠다. 그 순간 다른 작업(백업·복원)이 잠금을 쥐고 있으면 끝나기를 기다린다.
+/// 그사이 사용자가 켜거나 끄거나 인스턴스를 지우면(`generation`이 바뀌면) 그만둔다
+pub(crate) async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
+    let wanted = || async {
+        let supervisor = state.supervisor.read().await;
+        supervisor.instance_store.get(id).is_some() && supervisor.run_generation_of(id) == generation
+    };
+    match super::server::start_when_free(state, id, generation, wanted).await {
+        None => tracing::info!("Scheduled update of '{}': not starting again, the server was started, stopped or removed meanwhile", id),
+        Some(Err(failure)) => tracing::warn!("Scheduled update of '{}': could not start the server again: {}", id, failure.body),
+        Some(Ok(_)) => {}
+    }
 }
 
 fn error(status: StatusCode, code: &str, message: &str) -> Response {

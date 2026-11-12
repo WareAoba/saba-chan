@@ -171,13 +171,6 @@ impl ClientRegistry {
 // ── IPC Request/Response Types ─────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerStartRequest {
-    pub module: String,
-    #[serde(default)]
-    pub config: Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerStopRequest {
     #[serde(default)]
     pub force: bool,
