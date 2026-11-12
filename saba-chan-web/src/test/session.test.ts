@@ -171,4 +171,42 @@ describe('web session', () => {
         expect(latest().last('bye')).toEqual({ t: 'bye' });
         expect(latest().readyState).toBe(3);
     });
+
+    it('streams a console in chunks until the PC ends it, and cancels when asked', () => {
+        const { session } = open();
+        ready(latest(), { features: ['stream'] });
+        const chunks: unknown[] = [];
+        const ends: unknown[] = [];
+        const cancel = session.stream('GET', '/api/daemon/console/stream', (b) => chunks.push(b), (r) => ends.push(r));
+        expect(cancel).toBeTypeOf('function');
+        const req = latest().last('req') as { id: number };
+        expect(req).toMatchObject({ method: 'GET', path: '/api/daemon/console/stream' });
+        latest().push({ t: 'chunk', id: req.id, body: { lines: [1] } });
+        // keep-alive 조각(빈 body)은 넘기지 않는다
+        latest().push({ t: 'chunk', id: req.id, body: null });
+        latest().push({ t: 'chunk', id: req.id, body: { lines: [2] } });
+        expect(chunks).toEqual([{ lines: [1] }, { lines: [2] }]);
+        latest().push({ t: 'res', id: req.id, status: 404, body: { error: 'gone' } });
+        expect(ends).toEqual([{ status: 404, data: { error: 'gone' } }]);
+
+        const again = session.stream('GET', '/api/daemon/console/stream', (b) => chunks.push(b), (r) => ends.push(r));
+        const second = latest().last('req') as { id: number };
+        again?.();
+        expect(latest().last('cancel')).toEqual({ t: 'cancel', id: second.id });
+        latest().push({ t: 'chunk', id: second.id, body: { lines: [3] } });
+        expect(chunks).toHaveLength(2);
+        expect(ends).toHaveLength(1);
+    });
+
+    it('a relay without streams or a dropped connection leaves the caller to poll', () => {
+        const { session } = open();
+        ready(latest());
+        expect(session.stream('GET', '/x', () => {}, () => {})).toBeNull();
+
+        ready(latest(), { features: ['stream'] });
+        const ends: { status: number }[] = [];
+        session.stream('GET', '/x', () => {}, (r) => ends.push(r));
+        latest().drop();
+        expect(ends).toMatchObject([{ status: 0 }]);
+    });
 });

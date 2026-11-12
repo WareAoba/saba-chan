@@ -84,6 +84,12 @@ pub struct Cursor {
 }
 
 impl Cursor {
+    /// 받는 쪽이 이미 받은 데: `since`(다음 줄 번호), `epoch`(그 버퍼 세대), `disk=seen`(꺼진 서버의 디스크 기록을 받았다)
+    pub fn from_query(params: &std::collections::HashMap<String, String>) -> Self {
+        let num = |k: &str| params.get(k).and_then(|v| v.parse::<u64>().ok());
+        Self { since: num("since"), epoch: num("epoch"), disk_seen: params.get("disk").is_some_and(|v| v == "seen") }
+    }
+
     /// 보낸 답 다음 자리
     fn after(self, v: &Value) -> Self {
         // 꺼진 서버의 디스크 기록은 줄 번호가 실행 중 버퍼와 따로다: 자리를 잊고, 다음에 켜진 프로세스는 처음부터 읽는다
@@ -99,7 +105,7 @@ impl Cursor {
     }
 }
 
-/// 콘솔 스트림 (SSE): 처음 답(`start` 자리부터)을 보내고, 새 줄이 생기거나 콘솔 상태가 바뀔 때마다 한 건씩 보낸다.
+/// 콘솔 스트림 (SSE): 처음 답(`start` 자리부터: 받는 쪽이 이미 받은 데까지)을 보내고, 새 줄이 생기거나 콘솔 상태가 바뀔 때마다 한 건씩 보낸다.
 /// 한 건의 `data`는 콘솔 조회(`GET …/console`)의 답과 같은 모양이다. 버퍼 세대가 바뀌면(프로세스를 다시 켬)
 /// 처음부터 다시 읽어 `reset: true`를 붙인다: 받은 쪽은 지금까지 받은 줄을 버리고 이 답으로 다시 그린다.
 /// 읽다가 오류가 나면 `event: error`를 한 건 보내고 끝낸다. `stop`(데몬 종료)이면 끝낸다
@@ -173,7 +179,8 @@ where
                         return Some((Err(body), st));
                     }
                 };
-                let restarted = !first && cur.epoch.is_some_and(|e| v.get("epoch").and_then(Value::as_u64).is_some_and(|now| now != e));
+                // 아는 세대(처음이면 받는 쪽이 준 것)와 다르면 줄 번호가 0부터다
+                let restarted = cur.epoch.is_some_and(|e| v.get("epoch").and_then(Value::as_u64).is_some_and(|now| now != e));
                 if restarted {
                     match (st.read)(Cursor { since: Some(0), epoch: None, disk_seen: false }).await {
                         Ok(again) => v = again,
@@ -317,6 +324,22 @@ mod tests {
         stop.cancel();
         use futures_util::StreamExt;
         assert!(s.next().await.is_none(), "데몬이 꺼지면 끝난다");
+    }
+
+    /// 이미 받은 데서 이어 받는다. 받는 쪽이 아는 세대가 지났으면 처음부터 다시 (reset)
+    #[tokio::test]
+    async fn the_stream_continues_from_where_the_client_is() {
+        let changed: &'static Notify = Box::leak(Box::new(Notify::new()));
+        let state = Arc::new(Mutex::new(json!({"lines": [{"id": 0, "t": "a"}, {"id": 1, "t": "b"}], "epoch": 1, "running": true})));
+        let stop = tokio_util::sync::CancellationToken::new();
+        let from = Cursor { since: Some(1), epoch: Some(1), disk_seen: false };
+        let mut s = Box::pin(updates(changed, stop.clone(), from, console(state.clone())));
+        let got = next(&mut s).await.unwrap();
+        assert_eq!((texts(&got), got.get("reset")), (vec!["b"], None));
+
+        let mut s = Box::pin(updates(changed, stop, Cursor { since: Some(5), epoch: Some(0), disk_seen: false }, console(state)));
+        let got = next(&mut s).await.unwrap();
+        assert_eq!((texts(&got), &got["reset"]), (vec!["a", "b"], &json!(true)));
     }
 
     #[tokio::test]

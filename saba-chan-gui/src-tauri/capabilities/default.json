@@ -9,6 +9,8 @@
   "permissions": [
     "core:default",
     "allow-daemon-request",
+    "allow-daemon-stream-open",
+    "allow-daemon-stream-close",
     "allow-app-ready",
     "allow-daemon-status",
     "allow-daemon-restart",

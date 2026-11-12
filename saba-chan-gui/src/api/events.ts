@@ -19,6 +19,7 @@ export const EVENT_CHANNELS = [
     'app:openServer',
     'app:openRoute',
     'overlay:menu',
+    'daemon:stream',
 ] as const;
 
 export type EventHub = ReturnType<typeof createEventHub>;
@@ -92,9 +93,9 @@ export function createEventHub() {
         return () => set.delete(cb);
     }
 
-    /** 모든 채널을 구독한다 (listen: (name, cb) => Promise<unlisten>) */
-    async function start(listen: Listen) {
-        await Promise.all(EVENT_CHANNELS.map((name) => listen(name, (payload) => receive(name, payload))));
+    /** 채널을 구독한다 (기본은 모두. listen: (name, cb) => Promise<unlisten>) */
+    async function start(listen: Listen, names: readonly string[] = EVENT_CHANNELS) {
+        await Promise.all(names.map((name) => listen(name, (payload) => receive(name, payload))));
     }
 
     return { on, dispatch, start };

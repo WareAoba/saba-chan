@@ -130,19 +130,23 @@ pub async fn stream(server: &IPCServer, req: Request, user: Option<String>, stop
     }
 }
 
-/// SSE 한 덩어리 → (event 이름, data JSON). 주석(ping)뿐이거나 data가 JSON이 아니면 None
+/// SSE 한 덩어리 → (event 이름, data JSON). keep-alive 주석(ping)은 빈 data(Null): 릴레이에 조각으로 보내 스트림이 살아 있음을 알린다.
+/// data가 JSON이 아니면 None
 fn sse_block(block: &str) -> Option<(Option<&str>, Value)> {
     let mut event = None;
     let mut data = Vec::new();
+    let mut comment = false;
     for line in block.lines() {
-        if let Some(v) = line.strip_prefix("event:") {
+        if line.starts_with(':') {
+            comment = true;
+        } else if let Some(v) = line.strip_prefix("event:") {
             event = Some(v.trim());
         } else if let Some(v) = line.strip_prefix("data:") {
             data.push(v.strip_prefix(' ').unwrap_or(v));
         }
     }
     if data.is_empty() {
-        return None;
+        return comment.then_some((None, Value::Null));
     }
     serde_json::from_str(&data.join("\n")).ok().map(|d| (event, d))
 }
@@ -368,6 +372,14 @@ fn hide_paths(body: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 데몬 SSE의 keep-alive(주석 줄)는 빈 조각이 된다: 릴레이는 2분 동안 아무것도 오지 않은 스트림을 끝낸다
+    #[test]
+    fn a_keep_alive_ping_becomes_an_empty_chunk() {
+        assert_eq!(sse_block(":ping\n\n"), Some((None, Value::Null)));
+        assert_eq!(sse_block("data: {\"a\":1}\n\n"), Some((None, json!({ "a": 1 }))));
+        assert_eq!(sse_block("event: error\ndata: {}\n\n"), Some((Some("error"), json!({}))));
+    }
 
     async fn server(tmp: &std::path::Path) -> IPCServer {
         crate::ipc::auth::ensure_test_token();

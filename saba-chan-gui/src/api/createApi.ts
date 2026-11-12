@@ -156,6 +156,40 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         return body?.error_code === 'extension_gui_unapproved';
     };
     const discordSettingsPath = (guild: string) => `/api/discord/${encodeURIComponent(guild)}/settings`;
+    /**
+     * 콘솔 스트림 (셸 `daemon_stream_open`, 웹은 릴레이의 조각 답). 건마다 onUpdate(콘솔 조회와 같은 답, reset이면 처음부터 다시),
+     * 끝나거나 데몬이 오류를 보내면 onEnd. 열지 못하면(옛 데몬·옛 릴레이·연결 실패) null: 부른 쪽은 주기 조회로 읽는다.
+     * 연 스트림은 돌려준 함수로 닫는다
+     */
+    let streamSeq = 0;
+    const openStream = async (
+        path: string,
+        onUpdate: (body: ApiBody) => void,
+        onEnd: () => void,
+    ): Promise<(() => void) | null> => {
+        // 셸은 스트림을 창과 상관없이 id로 들고 있다: 창마다 따로 세는 번호에 임의 값을 붙여 겹치지 않게 한다
+        const id = `s${Date.now().toString(36)}-${++streamSeq}-${Math.random().toString(36).slice(2, 8)}`;
+        let open = true;
+        const close = () => {
+            if (!open) return;
+            open = false;
+            off();
+            send('daemon_stream_close', { id });
+        };
+        const off = hub.on('daemon:stream', (msg: { id?: string; event?: string; data?: ApiBody } | null) => {
+            if (!open || msg?.id !== id) return;
+            if (msg.event === 'message' && msg.data) return onUpdate(msg.data);
+            close();
+            onEnd();
+        });
+        const res = await Promise.resolve(invoke('daemon_stream_open', { id, path })).catch(() => null);
+        if (res?.status !== 200) {
+            open = false;
+            off();
+            return null;
+        }
+        return close;
+    };
     const instancePath = (id: string, rest = '') => `/api/instance/${encodeURIComponent(id)}${rest}`;
     const relayQs = (relayUrl: string) => (relayUrl ? `?relayUrl=${encodeURIComponent(relayUrl)}` : '');
     // 큰 월드는 묶고 푸는 데 몇 분 걸린다
@@ -786,6 +820,28 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // ── 콘솔 팝아웃 (창은 Rust가 만든다) ──
         consolePopout: (instanceId: string, serverName: string) => invoke('console_popout', { instanceId, serverName }),
         consolePopoutList: () => invoke('console_popout_list'),
+        /** 콘솔 스트림: 새 줄·상태가 바뀔 때마다 managedConsole과 같은 답. 열지 못하면 null (openStream) */
+        managedConsoleStream: (
+            instanceId: string,
+            opts: { since?: number; epoch?: number; diskSeen?: boolean; spans?: boolean; count?: number },
+            onUpdate: (body: ApiBody) => void,
+            onEnd: () => void,
+        ) => {
+            const qs = queryString({
+                since: opts.since,
+                epoch: opts.epoch,
+                disk: opts.diskSeen ? 'seen' : undefined,
+                count: opts.count ?? 200,
+                spans: opts.spans ? 1 : undefined,
+            });
+            return openStream(instancePath(instanceId, `/console/stream${qs}`), onUpdate, onEnd);
+        },
+        /** 데몬 로그 스트림: daemonConsole과 같은 답을 새 줄마다. 열지 못하면 null */
+        daemonConsoleStream: (
+            opts: { since?: number; epoch?: number; count?: number },
+            onUpdate: (body: ApiBody) => void,
+            onEnd: () => void,
+        ) => openStream(`/api/daemon/console/stream${queryString({ since: opts.since, epoch: opts.epoch, count: opts.count || undefined, spans: 1 })}`, onUpdate, onEnd),
         // wait(초): since 뒤 새 줄이 없으면 데몬이 그만큼 붙잡는다 (답에 waits: true).
         // 데몬이 나눈 낱말 조각(spans)도 늘 받는다 (DaemonLogLine이 칠한다)
         daemonConsole: (opts?: { since?: number; count?: number; wait?: number }) => {

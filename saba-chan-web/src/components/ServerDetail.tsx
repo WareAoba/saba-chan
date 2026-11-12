@@ -31,7 +31,7 @@ import { Button, Card, errorText, failed, Segments, Sheet, StatusDot } from './u
 import { useProvision } from './useProvision';
 import { useServerControl } from './useServerControl';
 import { useStickToBottom } from './useStickToBottom';
-import type { Module, Server, ServerPanelProps, WebApi } from '../types';
+import type { ApiBody, Module, Server, ServerPanelProps, WebApi } from '../types';
 import type { ProvisionView } from './useProvision';
 
 /** 콘솔 한 줄 (managedConsole). source: input은 사바쨩이 보낸 명령, by는 보낸 쪽 */
@@ -50,6 +50,8 @@ interface ConsoleLine {
 }
 
 const MAX_LINES = 500;
+/** 콘솔 스트림을 열지 못했거나 끊긴 뒤 다시 열어 보기까지 (ms). 그동안은 주기 조회로 읽는다 */
+const STREAM_RETRY_MS = 30_000;
 let lineSeq = 0;
 
 // 서버별 보낸 명령 기록 (탭을 오가도 남는다. 화면을 다시 열면 비운다, 앱 콘솔과 같다)
@@ -105,19 +107,25 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
         let seenPid: number | null = null;
         let replace = false;
         let diskLoaded = false;
-        const poll = async (): Promise<void> => {
-            const res = await api.managedConsole(server.id, since.current, 200, { spans: true });
-            if (stopped || !Array.isArray(res?.lines)) return;
+        // 열린 콘솔 스트림을 닫는 함수. 열려 있는 동안 주기 조회는 쉰다
+        let closeStream: (() => void) | null = null;
+        let opening = false;
+        // 스트림을 열지 못했거나 끊긴 뒤 이때까지는 주기 조회로 읽는다
+        let streamRetryAt = 0;
+        /** 콘솔 조회·스트림의 답 한 건을 넣는다. 조회에서 세대가 바뀌었으면 false (처음부터 다시 묻는다).
+         *  스트림은 세대가 바뀌면 PC가 이미 처음부터 보낸다 (reset) */
+        const apply = (res: ApiBody | null | undefined, fromStream: boolean) => {
+            if (stopped || !Array.isArray(res?.lines)) return true;
             const pidChanged = pid.current != null && seenPid !== null && pid.current !== seenPid;
             if (pid.current != null && pid.current > 0) seenPid = pid.current;
             if (typeof res.epoch === 'number') {
-                const epochChanged = seenEpoch !== null && res.epoch !== seenEpoch;
+                const epochChanged = (seenEpoch !== null && res.epoch !== seenEpoch) || res.reset === true;
                 seenEpoch = res.epoch;
                 // 옛 번호로 받은 줄은 버리고 처음부터 다시 받는다. 새 프로세스면 이어 붙이고, 같은 프로세스에 다시 붙었으면 그 버퍼로 바꾼다
                 if (epochChanged) {
                     since.current = 0;
                     replace = !pidChanged && !diskLoaded;
-                    return poll();
+                    if (!fromStream) return false;
                 }
             }
             setStdin(!!res.stdin_available);
@@ -133,7 +141,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
                     diskLoaded = true;
                     setLines(received);
                 }
-                return;
+                return true;
             }
             if (received.length) {
                 diskLoaded = false;
@@ -142,11 +150,48 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
                 since.current = res.lines[res.lines.length - 1].id + 1;
                 setLines((prev) => (swap ? received : [...prev, ...received]).slice(-MAX_LINES));
             }
+            return true;
         };
+        /** 받은 데부터 스트림으로 받는다 (릴레이·PC가 스트림을 모르면 주기 조회를 이어 간다) */
+        const openStream = async () => {
+            opening = true;
+            const close = await Promise.resolve(
+                api.managedConsoleStream?.(
+                    server.id,
+                    { since: since.current, epoch: seenEpoch ?? undefined, diskSeen: diskLoaded || undefined, spans: true },
+                    (res) => {
+                        apply(res, true);
+                    },
+                    () => {
+                        closeStream = null;
+                        streamRetryAt = Date.now() + STREAM_RETRY_MS;
+                    },
+                ),
+            ).then((c) => (typeof c === 'function' ? c : null), () => null);
+            opening = false;
+            if (stopped || document.hidden) return close?.();
+            if (close) closeStream = close;
+            else streamRetryAt = Date.now() + STREAM_RETRY_MS;
+        };
+        const poll = async (): Promise<void> => {
+            if (closeStream || opening) return;
+            const res = await api.managedConsole(server.id, since.current, 200, { spans: true });
+            if (!apply(res, false)) return poll();
+            if (!stopped && Array.isArray(res?.lines) && Date.now() >= streamRetryAt) await openStream();
+        };
+        // 탭이 가려지면 스트림을 닫는다 (다시 보이면 주기 조회가 읽고 다시 연다)
+        const onHidden = () => {
+            if (!document.hidden) return;
+            closeStream?.();
+            closeStream = null;
+        };
+        document.addEventListener('visibilitychange', onHidden);
         const stop = startPoll(poll, 1500);
         return () => {
             stopped = true;
             stop();
+            document.removeEventListener('visibilitychange', onHidden);
+            closeStream?.();
         };
     }, [api, server.id]);
 
