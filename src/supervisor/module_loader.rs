@@ -1726,7 +1726,7 @@ fn is_pattern_name(name: &str) -> bool {
 }
 
 /// 정규식 안의 `{이름}` 참조 자리와 이름. `is_declared`가 아닌 이름과 `\{`로 막은 자리는 참조가 아니다
-fn pattern_refs<'a>(pattern: &'a str, is_declared: impl Fn(&str) -> bool) -> Vec<(std::ops::Range<usize>, &'a str)> {
+fn pattern_refs(pattern: &str, is_declared: impl Fn(&str) -> bool) -> Vec<(std::ops::Range<usize>, &str)> {
     let mut refs = Vec::new();
     let mut from = 0;
     while let Some(open) = pattern[from..].find('{').map(|i| from + i) {
