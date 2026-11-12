@@ -1644,8 +1644,9 @@ mod tests {
         std::fs::create_dir_all(&app).unwrap();
         let installs = tmp.path().join("installs.json");
         let modules = tmp.path().join("modules");
-        assert_eq!(launch_for(&app, &installs, &modules), Launch::Setup);
+        let records = tmp.path().join("installed-files.json");
+        assert_eq!(launch_for(&app, &installs, &modules, &records), Launch::Setup);
         finish_setup(&app, &installs).unwrap();
-        assert_eq!(launch_for(&app, &installs, &modules), Launch::Ready);
+        assert_eq!(launch_for(&app, &installs, &modules, &records), Launch::Ready);
     }
 }
