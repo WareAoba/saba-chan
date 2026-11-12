@@ -84,7 +84,7 @@ describe('ActivityBar', () => {
             vi.advanceTimersByTime(1000);
         });
         await flush();
-        expect(window.api.daemonConsole).toHaveBeenNthCalledWith(2, { since: 8, wait: 20 });
+        expect(window.api.daemonConsole).toHaveBeenNthCalledWith(2, { since: 8, wait: 8 });
     });
 
     // L55: 데몬은 다시 켜질 때마다 로그 id를 1부터 센다. 답의 epoch가 바뀌면 since를 버리고 처음부터 받는다.
@@ -110,7 +110,7 @@ describe('ActivityBar', () => {
             vi.advanceTimersByTime(1000);
         });
         await flush();
-        expect(window.api.daemonConsole).toHaveBeenCalledWith({ since: 51, wait: 20 });
+        expect(window.api.daemonConsole).toHaveBeenCalledWith({ since: 51, wait: 8 });
         expect(window.api.daemonConsole).toHaveBeenLastCalledWith({});
         expect(screen.queryByText('old 50')).toBeNull();
         expect(screen.getByText('new 1')).toBeInTheDocument();

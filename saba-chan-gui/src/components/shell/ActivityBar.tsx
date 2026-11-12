@@ -32,8 +32,8 @@ export const ACTIVITY_POLL_MS = 3000;
 /** 이벤트 스트림이 있으면 놓친 것만 메우는 느린 폴링 */
 export const ACTIVITY_SLOW_POLL_MS = 30000;
 export const CONSOLE_POLL_MS = 1000;
-/** 이어 읽을 때 새 줄이 없으면 데몬이 붙잡는 시간(초) */
-export const CONSOLE_WAIT_S = 20;
+/** 이어 읽을 때 새 줄이 없으면 데몬이 붙잡는 시간(초). 원격 데몬 중계가 다시 쓴 연결의 답을 10초까지만 기다린다 */
+export const CONSOLE_WAIT_S = 8;
 const CONSOLE_MAX = 2000;
 const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon', 'web', 'remote', 'mcp', 'agent', 'restart'];
 

@@ -13,7 +13,8 @@ const POLL_ACTIVE_MS = 500;
 /** @constant 서버 비활성 시 polling 간격 (ms) */
 const POLL_IDLE_MS = 5000;
 // 새 줄이 없으면 데몬이 이만큼(초) 붙잡는다. 붙잡는 데몬(답에 waits: true)에는 답을 받고 POLL_ACTIVE_MS 뒤 다시 묻는다
-const CONSOLE_WAIT_S = 20;
+// 원격 데몬 중계(remote_daemon peer)가 다시 쓴 연결의 답을 10초까지만 기다리므로 그보다 짧게 둔다
+const CONSOLE_WAIT_S = 8;
 /** PIP로 띄울 때 메인 창 콘솔 자리에 흐리게 남기는 줄 수 */
 const GHOST_LINES = 40;
 
