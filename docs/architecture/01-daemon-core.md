@@ -203,6 +203,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
   - `{"success": false, "error", "error_code", ...}` (익스텐션, 백업, 이름 변경 등)
   - 인증 실패: 본문 없는 401, Host 거부: 본문 없는 403
   - 일부 핸들러는 실패해도 HTTP 200을 돌려준다(modules manifest/install/remove, extensions manifest/install).
+- **릴레이 읽기 기억** (`handlers/relay_cache.rs`, 인증·감사 층 안쪽): 디스코드 탭이 읽는 릴레이 GET(`/api/relay/host/:id/nodes`, `/api/relay/node/:guild_id/{members,channels,moderation,chatbot/models,chatbot/tools}`)의 200 답을 쿼리까지 같은 요청 단위로 60초 기억해 그대로 준다. `/api/relay/`·`/api/chatbot`·`/api/chat/`·`/api/config`·`/api/guilds`·`/api/actions`·`/api/discord`·`/api/bot`로 가는 쓰기(GET이 아닌 요청)가 끝나면 모두 잊는다. 연결 확인(`/status`)과 크레딧은 기억하지 않는다. 디스코드에서 직접 바뀐 것(새 멤버 등)은 최대 60초 늦게 보인다.
 - **JSON 바디 파싱 실패**: axum 기본 거부 응답(400/415/422, 텍스트 본문)이 나간다. 본문을 생략할 수 있는 라우트(`LooseJson`, `ipc/handlers/mod.rs`)는 본문이 없거나 읽히지 않으면 본문 없이 처리한다. `/api/updates/download`·`apply`만 본문을 직접 읽어 `{ok:false, error, error_code:"invalid_body"}` 400을 준다.
 - **식별자 혼용**: `/api/provision-progress/:name`만 서버를 **이름**으로, 나머지는 인스턴스 **UUID**(`/api/instance/:id/*`)로 가리킨다. 이름 기준 `/api/server/:name/start|stop|status`와 `/api/instance/:id/managed/start`는 0.1.12에서 지웠다. `/api/instance/:id/start|stop|restart|status`는 id가 없으면 이름으로도 찾는다(`server.rs:667-671, 767-774`).
 
