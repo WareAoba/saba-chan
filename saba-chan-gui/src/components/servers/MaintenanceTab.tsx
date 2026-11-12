@@ -6,6 +6,7 @@ import { useInstanceCommands } from '../../hooks/useInstanceCommands';
 import type { Server } from '../../stores/useServerStore';
 import type { ToastType } from '../../types/global';
 import type { ApiBody, CommandInput as CommandInputDef } from '../../types/daemon';
+import { subscribeDaemonEvents } from '../../utils/daemonEvents';
 import { safeShowToast } from '../../utils/helpers';
 import {
     ACTIONS,
@@ -492,25 +493,36 @@ function ScheduleCard({
         setNextRuns(info.nextRuns);
         setHistory(info.history);
     }, [info]);
+    const refreshRuns = useCallback(async () => {
+        try {
+            const res = await window.api.instanceScheduleGet(server.id);
+            if (res?.success !== false && res?.revision === info.revision && Array.isArray(res?.next_runs)) {
+                setNextRuns(res.next_runs);
+                if (Array.isArray(res?.history)) setHistory(res.history);
+            }
+        } catch {
+            // 다음에 탭을 열 때 다시 읽는다
+        }
+    }, [info.revision, server.id]);
     useEffect(() => {
         const nowSecs = Date.now() / 1000;
         const soonest = Math.min(...nextRuns.filter((s: number) => typeof s === 'number' && s > nowSecs));
         if (!Number.isFinite(soonest)) return undefined;
         // 실행기는 30초마다 본다: 그 뒤에 읽는다
         const wait = Math.min((soonest - nowSecs + 40) * 1000, 2 ** 31 - 1);
-        const timer = setTimeout(async () => {
-            try {
-                const res = await window.api.instanceScheduleGet(server.id);
-                if (res?.success !== false && res?.revision === info.revision && Array.isArray(res?.next_runs)) {
-                    setNextRuns(res.next_runs);
-                    if (Array.isArray(res?.history)) setHistory(res.history);
-                }
-            } catch {
-                // 다음에 탭을 열 때 다시 읽는다
-            }
-        }, wait);
+        const timer = setTimeout(refreshRuns, wait);
         return () => clearTimeout(timer);
-    }, [nextRuns, info.revision, server.id]);
+    }, [nextRuns, refreshRuns]);
+    // 이력은 작업이 끝난 뒤에 남는다: 오래 걸린 백업·재시작은 끝났다는 이벤트에 다시 읽는다
+    useEffect(
+        () =>
+            subscribeDaemonEvents((ev) => {
+                if ((ev.type === 'schedule.ran' || ev.type === 'schedule.failed') && ev.data.instanceId === server.id) {
+                    refreshRuns();
+                }
+            }),
+        [refreshRuns, server.id],
+    );
 
     useEffect(() => {
         const next = info.schedule.map(toDraft);

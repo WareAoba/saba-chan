@@ -208,6 +208,40 @@ describe('예약 작업 화면', () => {
         expect(rows[2]).toContain(`${t('maintenance.run_skipped')} · ${t('maintenance.run_code_daemon_off')}`);
     });
 
+    it('열어 둔 탭은 예약이 끝났다는 이벤트를 받으면 마지막 실행을 다시 읽는다', async () => {
+        const now = Math.floor(Date.now() / 1000);
+        const reply = (history: unknown[]) => ({
+            success: true,
+            schedule: [{ action: 'backup', at: '04:00', enabled: true }],
+            next_runs: [now + 3600],
+            history: [history],
+            backup_keep: 5,
+            revision: 'r1',
+        });
+        window.api.instanceScheduleGet = vi
+            .fn()
+            .mockResolvedValueOnce(reply([]))
+            .mockResolvedValue(reply([{ at: now, result: 'failed', code: 'save_failed', seconds: 95 }]));
+        let emit: (ev: unknown) => void = () => {};
+        window.api.onDaemonEvent = vi.fn((cb) => {
+            emit = cb;
+            return () => {};
+        });
+        try {
+            render(<MaintenanceTab server={server} moduleCommands={commands} />);
+            await screen.findByText(t('maintenance.last_run_none'));
+            await act(async () => emit({ type: 'schedule.ran', data: { instanceId: 'other', action: 'backup' } }));
+            expect(window.api.instanceScheduleGet).toHaveBeenCalledTimes(1);
+            await act(async () => emit({ type: 'schedule.failed', data: { instanceId: 'srv1', action: 'backup' } }));
+            const lastRun = t('maintenance.last_run').split('{{')[0];
+            expect((await screen.findByRole('button', { name: new RegExp(`^${lastRun}`) })).textContent).toContain(
+                t('maintenance.run_failed'),
+            );
+        } finally {
+            delete (window.api as Partial<typeof window.api>).onDaemonEvent;
+        }
+    });
+
     it('명령 목록과 입력은 모듈 locales의 문구를 쓴다', async () => {
         i18n.addResourceBundle(
             'en',
