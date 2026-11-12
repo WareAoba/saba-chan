@@ -135,7 +135,8 @@
     "placeholder": "輸入指令",
     "send": "傳送",
     "danger_title": "這是危險指令",
-    "danger_message": "確定要傳送 {{command}} 嗎？"
+    "danger_message": "確定要傳送 {{command}} 嗎？",
+    "danger_again": "「{{command}}」是難以復原的指令。再按一次即可送出。"
   },
   "settings": {
     "game": "遊戲設定",

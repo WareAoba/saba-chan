@@ -135,7 +135,8 @@
     "placeholder": "Befehl eingeben",
     "send": "Senden",
     "danger_title": "Das ist ein gefährlicher Befehl",
-    "danger_message": "{{command}} wirklich senden?"
+    "danger_message": "{{command}} wirklich senden?",
+    "danger_again": "„{{command}}“ lässt sich schwer rückgängig machen. Zum Ausführen noch einmal auf Senden drücken."
   },
   "settings": {
     "game": "Spieleinstellungen",

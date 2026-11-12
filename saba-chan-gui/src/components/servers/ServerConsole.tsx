@@ -5,6 +5,7 @@ import type { Server } from '../../stores/useServerStore';
 import { type ConsoleEntry, type ConsoleLine as ConsoleLineData, useConsoleStore } from '../../stores/useConsoleStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { type CommandField, needsConfirm } from '../../utils/commandRisk';
+import { type ConsoleLevel as Level, consoleStamper, levelOf, type Stamp } from '../../utils/consoleLine';
 import { commandText } from '../../utils/serverView';
 import type { HighlightRule } from '../../types/daemon';
 import { sourceText } from '../../utils/audit';
@@ -22,15 +23,8 @@ const historyOf = (id: string) => {
 };
 
 // 서버별 수준 필터 (탭을 오가도 남는다. 앱을 다시 켜면 전체로)
-type Level = 'warn' | 'error';
 const levelFilters = new Map<string, Level[]>();
-const levelOf = (line: ConsoleLineData): Level | null => {
-    const level = line.level?.toLowerCase();
-    return level === 'error' ? 'error' : level === 'warn' || level === 'warning' ? 'warn' : null;
-};
 const lineKey = (line: ConsoleLineData | undefined) => line?.key ?? line?.id;
-
-type Stamp = ((ts: number) => string) | null;
 
 interface ConsoleLineProps {
     line: ConsoleLineData;
@@ -97,21 +91,6 @@ const ConsoleLines = memo(function ConsoleLines({
         />
     ));
 });
-
-/**
- * 줄 앞 시각 표시 함수. 끔이면 null. 시각은 데몬이 준 unix 초이고 이 PC 시간대·언어로 보인다
- */
-export function consoleStamper(mode: string | undefined, withDate: boolean, lang: string | undefined): Stamp {
-    if (!mode || mode === 'off') return null;
-    const fmt = new Intl.DateTimeFormat(lang || undefined, {
-        ...(withDate ? { month: '2-digit', day: '2-digit' } : {}),
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: mode === '12h',
-    });
-    return (ts: number) => fmt.format(new Date(ts * 1000));
-}
 
 /**
  * 상세 화면에 박힌 콘솔. 창을 따로 열지 않아도 로그를 보고 명령을 보낼 수 있다(L).
