@@ -180,10 +180,16 @@ pub enum Cmd {
         #[arg(value_name = "COMMAND")]
         command: Vec<String>,
     },
-    /// Print a shell completion script
+    /// Print a shell completion script, or install it for this user (`--install`)
     Completions {
-        #[arg(value_name = "SHELL")]
-        shell: clap_complete::Shell,
+        #[arg(value_name = "SHELL", required_unless_present = "install")]
+        shell: Option<clap_complete::Shell>,
+        /// Put the script where your shell loads it, for both `saba-chan` and `saba-chan-cli`. Shell settings are not changed
+        #[arg(long)]
+        install: bool,
+        /// Shell to install for (default: the shell you use)
+        #[arg(long = "shell", value_name = "SHELL", requires = "install", conflicts_with = "shell")]
+        install_shell: Option<clap_complete::Shell>,
     },
     /// Let an AI agent on this PC (Claude Code, Codex) use every command: a local MCP server on stdin/stdout
     Mcp,

@@ -722,6 +722,13 @@
     "restart_required": "Zum Übernehmen den Server neu starten: {{keys}}",
     "hidden": "Ausgeblendet, weil sie gerade nicht genutzt werden: {{keys}}"
   },
+  "completions": {
+    "which_shell": "Die verwendete Shell ist nicht erkennbar. Wähle eine: bash, zsh, fish, powershell, elvish (mit `--install` über `--shell`)",
+    "installed": "{{shell}}-Autovervollständigung installiert: {{path}}",
+    "new_terminal": "Öffne ein neues Terminal, damit sie wirkt.",
+    "zsh_fpath": "Sie wirkt, sobald {{rc}} diese Zeile enthält: fpath=(~/.zfunc $fpath)",
+    "by_hand": "{{shell}} lädt Vervollständigungen nur über seine Einstellungsdatei, daher wurde keine Datei geschrieben. Füge diese Zeile zu {{profile}} hinzu: {{line}}"
+  },
   "shell": {
     "bad_quotes": "Nicht geschlossenes Anführungszeichen.",
     "bye": "Tschüss. Daemon und Server laufen weiter.",
@@ -948,7 +955,7 @@
       "chat": "Chatbefehl wie in Discord senden (z. B. `chat my-server-1 start`)",
       "version": "Versionen aller installierten Teile",
       "shell": "Interaktive Shell öffnen",
-      "completions": "Skript für Shell-Autovervollständigung ausgeben",
+      "completions": "Skript für Shell-Autovervollständigung ausgeben (mit `--install` für diesen Benutzer installieren)",
       "server.rename": "Server umbenennen",
       "bot.reset": "Bot-Einstellungen auf Standard zurücksetzen (ohne Schlüssel: alle)",
       "config.defaults": "Standardwerte aller Einstellungen",
@@ -1150,6 +1157,8 @@
       "key": "Einstellungsschlüssel",
       "text": "Zu sendender Text",
       "shell": "bash, zsh, fish, powershell, elvish",
+      "completions.install": "Vervollständigung für `saba-chan` und `saba-chan-cli` dort ablegen, wo deine Shell sie lädt. Shell-Einstellungen bleiben unverändert",
+      "completions.install_shell": "Shell, für die installiert wird (Standard: die verwendete Shell)",
       "game_port": "Spielport",
       "keys": "Einstellungsschlüssel",
       "server.rename.name": "Neuer Name",

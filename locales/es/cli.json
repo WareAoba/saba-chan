@@ -722,6 +722,13 @@
     "restart_required": "Reinicia el servidor para aplicar: {{keys}}",
     "hidden": "Ocultos porque no se usan ahora: {{keys}}"
   },
+  "completions": {
+    "which_shell": "No se puede saber qué shell usas. Elige una: bash, zsh, fish, powershell, elvish (con `--install`, usa `--shell`)",
+    "installed": "Autocompletado de {{shell}} instalado: {{path}}",
+    "new_terminal": "Abre una terminal nueva para usarlo.",
+    "zsh_fpath": "Funcionará cuando {{rc}} tenga esta línea: fpath=(~/.zfunc $fpath)",
+    "by_hand": "{{shell}} solo carga el autocompletado desde su archivo de configuración, así que no se escribió ningún archivo. Añade esta línea a {{profile}}: {{line}}"
+  },
   "shell": {
     "bad_quotes": "Comilla sin cerrar.",
     "bye": "Adiós. El daemon y los servidores siguen en marcha.",
@@ -948,7 +955,7 @@
       "chat": "Enviar un comando de chat como en Discord (p. ej. `chat my-server-1 start`)",
       "version": "Versiones de todas las partes instaladas",
       "shell": "Abrir la shell interactiva",
-      "completions": "Mostrar el script de autocompletado de la shell",
+      "completions": "Mostrar el script de autocompletado de la shell (con `--install`, instalarlo para este usuario)",
       "server.rename": "Cambiar el nombre de un servidor",
       "bot.reset": "Restablecer los ajustes del bot (sin clave: todos)",
       "config.defaults": "Valores predeterminados de todos los ajustes",
@@ -1150,6 +1157,8 @@
       "key": "Clave del ajuste",
       "text": "Texto que enviar",
       "shell": "bash, zsh, fish, powershell, elvish",
+      "completions.install": "Coloca el autocompletado de `saba-chan` y `saba-chan-cli` donde tu shell lo carga. No cambia la configuración de la shell",
+      "completions.install_shell": "Shell para la que instalar (por defecto, la que usas)",
       "game_port": "Puerto del juego",
       "keys": "Claves de ajuste",
       "server.rename.name": "Nombre nuevo",

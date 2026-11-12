@@ -722,6 +722,13 @@
     "restart_required": "再起動すると反映されます: {{keys}}",
     "hidden": "現在使われないため非表示の設定: {{keys}}"
   },
+  "completions": {
+    "which_shell": "使っているシェルがわかりません。シェルを選んでください: bash, zsh, fish, powershell, elvish（`--install` なら `--shell`）",
+    "installed": "{{shell}} の補完をインストールしました: {{path}}",
+    "new_terminal": "新しいターミナルを開くと有効になります。",
+    "zsh_fpath": "{{rc}} に次の 1 行があると有効になります: fpath=(~/.zfunc $fpath)",
+    "by_hand": "{{shell}} は設定ファイルを書き換えないと補完を読み込まないため、ファイルは置いていません。{{profile}} に次の 1 行を追加してください: {{line}}"
+  },
   "shell": {
     "bad_quotes": "引用符が閉じられていません。",
     "bye": "またね。デーモンとサーバーは動き続けます。",
@@ -948,7 +955,7 @@
       "chat": "Discord と同じようにチャットコマンドを送る (例: `chat my-server-1 start`)",
       "version": "インストールされたすべての部分のバージョン",
       "shell": "対話シェルを開く",
-      "completions": "シェル補完スクリプトを出力",
+      "completions": "シェル補完スクリプトを出力（`--install` でこのユーザーの場所にインストール）",
       "server.rename": "サーバーの名前を変える",
       "bot.reset": "ボット設定を既定値に戻す (キーを省くとすべて)",
       "config.defaults": "すべての設定の既定値",
@@ -1150,6 +1157,8 @@
       "key": "設定キー",
       "text": "送る言葉",
       "shell": "bash、zsh、fish、powershell、elvish",
+      "completions.install": "使っているシェルが読む場所に `saba-chan`・`saba-chan-cli` 両方の補完を置く。シェルの設定ファイルは変更しない",
+      "completions.install_shell": "インストールするシェル（省略時は今使っているシェル）",
       "game_port": "ゲームのポート",
       "keys": "設定キー",
       "server.rename.name": "新しい名前",

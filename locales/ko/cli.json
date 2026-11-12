@@ -722,6 +722,13 @@
     "restart_required": "다시 시작해야 적용돼요: {{keys}}",
     "hidden": "지금 쓰지 않아 숨긴 설정: {{keys}}"
   },
+  "completions": {
+    "which_shell": "어느 셸인지 알 수 없어요. 셸을 고르세요: bash, zsh, fish, powershell, elvish (`--install`이면 `--shell`)",
+    "installed": "{{shell}} 자동 완성을 설치했어요: {{path}}",
+    "new_terminal": "새 터미널을 열면 적용돼요.",
+    "zsh_fpath": "{{rc}}에 다음 한 줄이 있어야 적용돼요: fpath=(~/.zfunc $fpath)",
+    "by_hand": "{{shell}} 자동 완성은 설정 파일을 고쳐야 읽혀서 파일을 두지 않았어요. {{profile}}에 다음 한 줄을 넣으세요: {{line}}"
+  },
   "shell": {
     "bad_quotes": "따옴표가 닫히지 않았어요.",
     "bye": "안녕히. 데몬과 서버는 계속 돌아요.",
@@ -948,7 +955,7 @@
       "chat": "디스코드처럼 채팅 명령 보내기 (예: `chat my-server-1 시작`)",
       "version": "설치된 모든 부분의 버전",
       "shell": "대화형 셸 열기",
-      "completions": "셸 자동 완성 스크립트 출력",
+      "completions": "셸 자동 완성 스크립트 출력, `--install`이면 이 사용자 자리에 설치",
       "server.rename": "서버 이름 바꾸기",
       "bot.reset": "봇 설정을 기본값으로 (키가 없으면 전부)",
       "config.defaults": "모든 설정의 기본값",
@@ -1150,6 +1157,8 @@
       "key": "설정 키",
       "text": "보낼 말",
       "shell": "bash, zsh, fish, powershell, elvish",
+      "completions.install": "쓰는 셸이 읽는 자리에 `saba-chan`·`saba-chan-cli` 두 이름의 완성을 둔다. 셸 설정 파일은 고치지 않는다",
+      "completions.install_shell": "설치할 셸 (없으면 지금 쓰는 셸)",
       "game_port": "게임 포트",
       "keys": "설정 키",
       "server.rename.name": "새 이름",

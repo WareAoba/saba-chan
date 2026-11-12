@@ -12,6 +12,7 @@
 #   3. CLI를 ~/.local/bin/saba-chan(짧은 이름)과 saba-chan-cli로 링크한다. 헤드리스면 systemd 사용자 서비스(saba-chan.service)로 데몬을 켜고,
 #      데스크톱이면 앱 메뉴에 사바쨩을 넣고(CLI 설치가 한다) GUI를 띄운다 (GUI가 데몬을 켠다. Windows 데스크톱 설치와 같다)
 #      맥은 ~/Applications/Saba-chan.app에 설치하고(CLI 설치가 앱 묶음을 만든다) 그 앱을 연다
+#   4. 쓰는 셸의 자동 완성을 그 셸이 읽는 자리에 둔다 (`saba-chan completions --install`, 셸 설정 파일은 고치지 않는다)
 #
 # 인자는 `saba-chan-cli install`의 것이다 (--dir, --modules, --components-dir, --channel, --gui, --no-gui, --yes).
 # 이 스크립트만 받는 인자 (다른 PC의 앱이 ssh로 설치할 때 붙인다):
@@ -265,6 +266,9 @@ if [ -n "$PAIR" ]; then
         say "서버쨩 연결을 마치지 못했어요. 나중에 saba-chan bot pair 로 다시 해 주세요." \
             "Could not finish connecting to Server-chan. Run saba-chan bot pair later."
 fi
+
+# 셸 자동 완성: 쓰는 셸이 스스로 읽는 자리에만 둔다 (셸 설정 파일은 고치지 않는다). 못 해도 설치는 마친다
+"$CLI" completions --install || true
 
 case ":$PATH:" in
     *":$HOME/.local/bin:"*) ;;

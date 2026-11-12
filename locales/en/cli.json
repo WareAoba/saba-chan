@@ -722,6 +722,13 @@
     "restart_required": "Restart the server to apply: {{keys}}",
     "hidden": "Hidden because they aren't used now: {{keys}}"
   },
+  "completions": {
+    "which_shell": "Cannot tell which shell you use. Pick one: bash, zsh, fish, powershell, elvish (with `--install`, use `--shell`)",
+    "installed": "Installed {{shell}} completions: {{path}}",
+    "new_terminal": "Open a new terminal to use them.",
+    "zsh_fpath": "They work once {{rc}} has this line: fpath=(~/.zfunc $fpath)",
+    "by_hand": "{{shell}} only loads completions from its settings file, so no file was written. Add this line to {{profile}}: {{line}}"
+  },
   "shell": {
     "bad_quotes": "Unclosed quote.",
     "bye": "Bye. The daemon and servers keep running.",

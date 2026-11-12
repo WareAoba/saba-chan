@@ -722,6 +722,13 @@
     "restart_required": "重启服务器后生效: {{keys}}",
     "hidden": "因当前未使用而隐藏的设置: {{keys}}"
   },
+  "completions": {
+    "which_shell": "无法判断你使用的 shell。请选择：bash、zsh、fish、powershell、elvish（使用 `--install` 时用 `--shell`）",
+    "installed": "已安装 {{shell}} 自动补全：{{path}}",
+    "new_terminal": "打开新的终端后生效。",
+    "zsh_fpath": "{{rc}} 中需要有这一行才会生效：fpath=(~/.zfunc $fpath)",
+    "by_hand": "{{shell}} 只能通过修改配置文件加载自动补全，因此没有写入文件。请在 {{profile}} 中加入这一行：{{line}}"
+  },
   "shell": {
     "bad_quotes": "引号未闭合。",
     "bye": "再见。守护进程和服务器会继续运行。",
@@ -948,7 +955,7 @@
       "chat": "像在 Discord 中一样发送聊天命令（例：`chat my-server-1 start`）",
       "version": "所有已安装部分的版本",
       "shell": "打开交互式 shell",
-      "completions": "输出 shell 自动补全脚本",
+      "completions": "输出 shell 自动补全脚本（`--install` 时为当前用户安装）",
       "server.rename": "重命名服务器",
       "bot.reset": "将机器人设置恢复为默认值（不指定键则全部）",
       "config.defaults": "所有设置的默认值",
@@ -1150,6 +1157,8 @@
       "key": "设置键",
       "text": "要发送的话",
       "shell": "bash、zsh、fish、powershell、elvish",
+      "completions.install": "把 `saba-chan` 和 `saba-chan-cli` 两个名称的补全放到所用 shell 读取的位置。不修改 shell 配置文件",
+      "completions.install_shell": "要安装的 shell（省略时为当前使用的 shell）",
       "game_port": "游戏端口",
       "keys": "设置键",
       "server.rename.name": "新名称",
