@@ -330,12 +330,13 @@ mod tests {
         crate::supervisor::process::wait_gone(std::time::Duration::from_secs(5), || crate::supervisor::process::is_process_alive(pid)).await
     }
 
-    const SDK_MODULE: &str = "import os, sys\nfrom daemon_rcon import run_lifecycle\n\
+    const SDK_MODULE: &str = "import os, sys, time\nfrom daemon_rcon import run_lifecycle\n\
         def pid(config):\n    return {'success': True, 'pid': os.getpid(), 'argv': sys.argv[1]}\n\
         def boom(config):\n    raise RuntimeError('worker boom')\n\
-        if __name__ == '__main__':\n    run_lifecycle({'pid': pid, 'boom': boom})\n";
+        def wait(config):\n    time.sleep(config['secs'])\n    return {'success': True}\n\
+        if __name__ == '__main__':\n    run_lifecycle({'pid': pid, 'boom': boom, 'wait': wait})\n";
 
-    /// 작업자를 다시 쓰는지 보는 시험(읽기)과 모든 작업자를 끝내는 시험(쓰기)이 겹치지 않게
+    /// 작업자 시험(읽기)과 모든 작업자를 끝내는 시험(쓰기)이 겹치지 않게 (작업자도, 단발로 돌리기로 한 기록도 지운다)
     static REUSE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
 
     async fn call(entry: &str, function: &str) -> Value {
@@ -355,6 +356,43 @@ mod tests {
         let tail = failed["stderr_tail"].as_array().unwrap();
         assert!(tail.iter().any(|line| line.as_str().is_some_and(|l| l.contains("RuntimeError: worker boom"))), "{failed}");
         assert_eq!(call(&entry, "pid").await["pid"], first["pid"]);
+        stop_workers(Some(dir.path()));
+        assert!(gone(&first["pid"]).await, "stop_workers ended the worker");
+    }
+
+    /// 기한을 넘긴 호출은 작업자를 끝내고 `module_timeout`으로 답한다. 다음 호출은 새 작업자를 띄운다
+    #[tokio::test]
+    async fn a_call_past_its_deadline_ends_the_worker() {
+        let _reuse = REUSE.read().await;
+        crate::python_env::get_python_path().await.expect("test Python ready");
+        let (dir, entry) = persistent_module(SDK_MODULE);
+        let before = call(&entry, "pid").await;
+        assert_eq!(before["argv"], ARG, "{before}");
+        let late = run_plugin_with_timeout(&entry, "wait", serde_json::json!({"secs": 30}), 2).await.unwrap_or_else(|e| error_response(&e));
+        assert_eq!(late["error_code"], "module_timeout", "{late}");
+        assert!(gone(&before["pid"]).await, "the late worker ended");
+        let after = call(&entry, "pid").await;
+        assert_eq!(after["argv"], ARG, "{after}");
+        assert_ne!(after["pid"], before["pid"]);
+        stop_workers(Some(dir.path()));
+    }
+
+    /// 작업자가 다른 호출을 하는 중이면 기다리지 않고 단발로 돈다
+    #[tokio::test]
+    async fn a_call_while_the_worker_is_busy_runs_one_shot() {
+        let _reuse = REUSE.read().await;
+        crate::python_env::get_python_path().await.expect("test Python ready");
+        let (dir, entry) = persistent_module(SDK_MODULE);
+        let worker = call(&entry, "pid").await;
+        assert_eq!(worker["argv"], ARG, "{worker}");
+        let busy = tokio::spawn({
+            let entry = entry.clone();
+            async move { run_plugin(&entry, "wait", serde_json::json!({"secs": 3})).await.unwrap_or_else(|e| error_response(&e)) }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        assert_eq!(call(&entry, "pid").await["argv"], "pid");
+        assert_eq!(busy.await.unwrap()["success"], true);
+        assert_eq!(call(&entry, "pid").await["pid"], worker["pid"]);
         stop_workers(Some(dir.path()));
     }
 
@@ -378,11 +416,12 @@ mod tests {
     /// 단발 계약대로 stdin을 먼저 읽는 진입점은 인사하지 않는다: 뜨는 사이에 기한이 지나도 다음 호출부터 단발로 돈다
     #[tokio::test]
     async fn an_entry_point_that_waits_for_stdin_runs_one_shot_after_its_start_timed_out() {
+        let _reuse = REUSE.read().await;
         crate::python_env::get_python_path().await.expect("test Python ready");
         let (dir, entry) = persistent_module("import json, sys\nsys.stdin.read()\nprint(json.dumps({'success': True, 'argv': sys.argv[1]}))\n");
         let first = run_plugin_with_timeout(&entry, "probe", serde_json::json!({}), 3).await.unwrap_or_else(|e| error_response(&e));
         assert_eq!(first["error_code"], "module_timeout", "{first}");
-        let second = run_plugin_with_timeout(&entry, "probe", serde_json::json!({}), 3).await.unwrap_or_else(|e| error_response(&e));
+        let second = call(&entry, "probe").await;
         assert_eq!(second["argv"], "probe", "{second}");
         stop_workers(Some(dir.path()));
     }
@@ -390,6 +429,7 @@ mod tests {
     /// 진입점이 SDK가 아니면 작업자가 되지 못한다: 단발로 답한다
     #[tokio::test]
     async fn a_module_without_the_sdk_entry_point_runs_one_shot() {
+        let _reuse = REUSE.read().await;
         crate::python_env::get_python_path().await.expect("test Python ready");
         let (dir, entry) = persistent_module("import json, sys\nprint(json.dumps({'success': True, 'argv': sys.argv[1]}))\n");
         assert_eq!(call(&entry, "probe").await["argv"], "probe");
@@ -400,6 +440,7 @@ mod tests {
     /// 진입 파일이 바뀌면(업데이트) 작업자를 새로 띄운다
     #[tokio::test]
     async fn a_changed_module_gets_a_new_worker() {
+        let _reuse = REUSE.read().await;
         crate::python_env::get_python_path().await.expect("test Python ready");
         let (dir, entry) = persistent_module(SDK_MODULE);
         let before = call(&entry, "pid").await;
@@ -435,6 +476,7 @@ mod tests {
     /// 확인되지 않은 구성요소(여기서는 손으로 고친 것)는 격리해서 돌리므로 작업자로 두지 않는다: 단발로 돌고, 떠 있던 작업자는 끝난다
     #[tokio::test]
     async fn an_unverified_module_runs_one_shot_and_its_worker_stops() {
+        let _reuse = REUSE.read().await;
         crate::python_env::get_python_path().await.expect("test Python ready");
         let (dir, entry) = persistent_module(SDK_MODULE);
         let before = call(&entry, "pid").await;
