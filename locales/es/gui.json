@@ -447,6 +447,7 @@
     "reset_failed": "Error al restablecer: {{error}}",
     "reset_error": "Error de restablecimiento: {{error}}",
     "stored_values_notice": "No se pudo leer el archivo de ajustes del servidor, así que se muestran los últimos valores guardados. Al guardar solo se aplican los campos que cambies.",
+    "unsaved_flag": "Hay ajustes sin guardar",
     "install_server_running": "Detén el servidor antes de instalar una versión",
     "reset_server_running": "Detén el servidor antes de restablecerlo",
     "instance_busy": "Hay otra tarea (copia de seguridad o restauración) en curso en este servidor. Inténtalo de nuevo cuando termine",

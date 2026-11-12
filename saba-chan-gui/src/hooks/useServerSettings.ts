@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { changedForCli } from '../components/CliLine';
 import { launchDraft } from '../components/servers/LaunchPreview';
 import type { ModalConfig, ProgressBarConfig } from '../stores/useUIStore';
 import type { Server } from '../stores/useServerStore';
@@ -100,6 +101,14 @@ const liveFieldValue = (field: SettingField, v: unknown, saved: string | string[
 /** 설정 창 칸 값 (칸 이름 → 값). _extension_data·_launch_extra_args 같은 내부 칸도 여기 담는다 */
 type SettingsValues = Record<string, Json>;
 
+/** 연 때(기준)와 달라 저장 막대가 묻는 칸. `_`로 시작하는 GUI 값도 저장되므로 함께 본다 */
+export function unsavedSettingKeys(values: SettingsValues, opened: SettingsValues, fields?: SettingField[]) {
+    const changed = changedForCli(values, opened, fields);
+    return [...new Set([...Object.keys(values), ...Object.keys(opened)])].filter((k) =>
+        k.startsWith('_') ? JSON.stringify(values[k] ?? '') !== JSON.stringify(opened[k] ?? '') : k in changed,
+    );
+}
+
 /** 켜진 서버에서 다시 시작해야 적용되는 설정을 저장했다 (저장 막대 위 안내, ServerSettingsModal `RestartNotice`) */
 export interface RestartPending {
     serverId: string;
@@ -163,6 +172,13 @@ export function useServerSettings({
     // 저장에 실을 revision: 연 때의 값에서, 창이 연 뒤 데몬이 인스턴스를 고친 응답(실제 값 읽기·버전 감지·설치)이 오면 그 값으로
     const revision = useRef<string | null>(null);
     const openRequest = useRef(0);
+    // 다른 서버를 여느라 내려놓은, 저장하지 않은 칸 (서버 id → 고친 칸 값). 메모리에만 두고 돌아오면 다시 올린다 (사용자 11-12)
+    const drafts = useRef(new Map<string, SettingsValues>());
+    const fieldsOf = (server: Server | null) => modules.find((m) => m.name === server?.module)?.settings?.fields;
+    const unsavedNow = settingsServer ? unsavedSettingKeys(settingsValues, openedSettings, fieldsOf(settingsServer)) : [];
+    // 늦게 끝난 열기가 서버를 바꿀 때 그 순간의 값을 내려놓도록 마지막 렌더의 값을 쥔다
+    const shown = useRef({ server: settingsServer, values: settingsValues, unsaved: unsavedNow });
+    shown.current = { server: settingsServer, values: settingsValues, unsaved: unsavedNow };
     // 버전 목록·설치된 버전 읽기가 아직 끝나지 않았다: 그사이 저장 뒤 다시 읽기가 번호를 올려 결과를 버렸으면 다시 읽기가 이어 받는다
     const versionsUnfinished = useRef(false);
 
@@ -197,17 +213,30 @@ export function useServerSettings({
             return;
         }
 
+        // 다른 서버로 바꿔 연다: 고치던 칸은 내려놓고, 이 서버에 내려놓은 칸이 있으면 다시 올린다
+        let draft: SettingsValues | undefined;
+        if (!reload) {
+            const left = shown.current;
+            if (left.server && left.server.id !== latestServer.id) {
+                const kept = left.unsaved.filter((k) => touchedFields.current.has(k)).map((k) => [k, left.values[k]]);
+                if (kept.length) drafts.current.set(left.server.id, Object.fromEntries(kept));
+                else drafts.current.delete(left.server.id);
+            }
+            draft = drafts.current.get(latestServer.id);
+            drafts.current.delete(latestServer.id);
+        }
+
         setSettingsServer(latestServer);
         revision.current = latestServer.revision || null;
         unconfirmedFields.current = new Set();
         if (!reload) {
-            touchedFields.current = new Set();
+            touchedFields.current = new Set(Object.keys(draft ?? {}));
             setSettingsSource('loading');
         }
         const touched = touchedFields.current;
         const withTouched = (initial: SettingsValues) => (prev: SettingsValues) => ({
             ...initial,
-            ...Object.fromEntries([...touched].filter((k) => k in prev).map((k) => [k, prev[k]])),
+            ...(draft ?? Object.fromEntries([...touched].filter((k) => k in prev).map((k) => [k, prev[k]]))),
         });
         const defaulted = new Set<string>();
         unsetFields.current = new Set();
@@ -426,7 +455,8 @@ export function useServerSettings({
     /** 화면이 읽어 온 값 (추가 실행 인자 등): 사용자가 바꾼 것이 아니므로 기준에도 넣는다 */
     const handleSettingLoaded = (fieldName: string, value: unknown) => {
         const v = Array.isArray(value) ? value : String(value);
-        setSettingsValues((prev) => ({ ...prev, [fieldName]: v }));
+        // 고치던 칸(다른 서버에 다녀와 다시 올린 값 포함)은 읽어 온 값으로 덮지 않는다
+        if (!touchedFields.current.has(fieldName)) setSettingsValues((prev) => ({ ...prev, [fieldName]: v }));
         setOpenedSettings((prev) => ({ ...prev, [fieldName]: v }));
     };
 
@@ -910,6 +940,10 @@ export function useServerSettings({
         settingsValues,
         unsetSettings: unsetFields.current,
         openedSettings,
+        /** 저장하지 않은 설정이 남은 서버 id (지금 연 서버와 내려놓은 서버): 서버 카드의 경고 표시 */
+        unsavedServers: servers
+            .map((s) => s.id)
+            .filter((id) => (id === settingsServer?.id ? unsavedNow.length > 0 : drafts.current.has(id))),
         settingsSource,
         settingsActiveTab,
         setSettingsActiveTab,

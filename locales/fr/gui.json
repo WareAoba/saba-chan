@@ -447,6 +447,7 @@
     "reset_failed": "Échec de la réinitialisation : {{error}}",
     "reset_error": "Erreur de réinitialisation : {{error}}",
     "stored_values_notice": "Impossible de lire le fichier de paramètres du serveur : voici les dernières valeurs enregistrées. Seuls les champs modifiés seront appliqués.",
+    "unsaved_flag": "Des paramètres ne sont pas enregistrés",
     "install_server_running": "Arrêtez le serveur avant d'installer une version",
     "reset_server_running": "Arrêtez le serveur avant de le réinitialiser",
     "instance_busy": "Une autre tâche (sauvegarde ou restauration) est en cours sur ce serveur. Réessayez quand elle sera terminée",

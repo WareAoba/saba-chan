@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import React, { type ReactNode, useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { RestartPending } from '../hooks/useServerSettings';
+import { type RestartPending, unsavedSettingKeys } from '../hooks/useServerSettings';
 import type { Server } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
@@ -985,11 +985,7 @@ export function ServerSettingsModal({
     const module = modules.find((m) => m.name === settingsServer.module);
     const changedSettings = changedForCli(settingsValues, openedSettings, module?.settings?.fields);
     // 저장 막대·"CLI로 보기"의 기준은 이 서버를 연 때의 설정. 저장 막대: 연 때와 다른 키 (`_`로 시작하는 GUI 값도 저장되므로 함께 본다)
-    const differs = (k: string) =>
-        JSON.stringify(settingsValues[k] ?? '') !== JSON.stringify(openedSettings[k] ?? '');
-    const revertKeys = [...new Set([...Object.keys(settingsValues), ...Object.keys(openedSettings)])].filter(
-        (k) => (k.startsWith('_') ? differs(k) : k in changedSettings),
-    );
+    const revertKeys = unsavedSettingKeys(settingsValues, openedSettings, module?.settings?.fields);
     const { errors: validationErrors } = React.useMemo(() => {
         if (!module?.settings?.fields) return { valid: true, errors: {} };
         // 설치된 버전에 없어 숨긴 설정은 검사하지 않는다 (데몬도 required를 보지 않는다)

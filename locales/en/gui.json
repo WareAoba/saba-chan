@@ -447,6 +447,7 @@
     "reset_failed": "Reset failed: {{error}}",
     "reset_error": "Reset error: {{error}}",
     "stored_values_notice": "Couldn't read the server's settings file, so these are the last saved values. Saving only applies the fields you change.",
+    "unsaved_flag": "Settings have unsaved changes",
     "install_server_running": "Stop the server before installing a version",
     "reset_server_running": "Stop the server before resetting it",
     "instance_busy": "Another task (backup or restore) is running on this server. Try again when it finishes",

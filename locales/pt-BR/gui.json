@@ -447,6 +447,7 @@
     "reset_failed": "Falha ao resetar: {{error}}",
     "reset_error": "Erro ao resetar: {{error}}",
     "stored_values_notice": "Não foi possível ler o arquivo de configurações do servidor, então estes são os últimos valores salvos. Salvar aplica apenas os campos que você alterar.",
+    "unsaved_flag": "Há configurações não salvas",
     "install_server_running": "Pare o servidor antes de instalar uma versão",
     "reset_server_running": "Pare o servidor antes de redefini-lo",
     "instance_busy": "Outra tarefa (backup ou restauração) está em andamento neste servidor. Tente novamente quando terminar",

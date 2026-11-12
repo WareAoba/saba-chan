@@ -258,6 +258,7 @@ export function ServersPage({
                                 branchesCollapsed={collapsed.includes(server.id)}
                                 onToggleBranches={toggleBranches}
                                 onBranch={onCreateBranch && !parent ? setBranchFrom : undefined}
+                                unsaved={settingsProps.unsavedServers?.includes(server.id)}
                                 onSelect={(id) => {
                                     setSelectedId(id);
                                     setShowDetailNarrow(true);

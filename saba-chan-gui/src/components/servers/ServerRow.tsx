@@ -44,6 +44,8 @@ interface ServerRowProps {
     onToggleBranches?: (id: string) => void;
     /** 이 서버의 브랜치 서버 만들기 (브랜치에는 주지 않는다: 한 단계만 둔다) */
     onBranch?: (server: Server) => void;
+    /** 저장하지 않은 설정이 메모리에 남아 있다 (useServerSettings `unsavedServers`) */
+    unsaved?: boolean;
 }
 
 /**
@@ -68,6 +70,7 @@ export function ServerRow({
     branchesCollapsed = false,
     onToggleBranches,
     onBranch,
+    unsaved,
 }: ServerRowProps) {
     const { t } = useTranslation('gui');
     useInstanceMaintenance(server, moduleData);
@@ -215,6 +218,16 @@ export function ServerRow({
                     )}
                 </div>
             </div>
+            {unsaved && (
+                <span
+                    className="server-row-flag tone-warn"
+                    data-tooltip={t('server_settings.unsaved_flag')}
+                    role="img"
+                    aria-label={t('server_settings.unsaved_flag')}
+                >
+                    <Icon name="alertTriangle" size={14} />
+                </span>
+            )}
             {/* 켜져 있지만 상태 질문에 계속 답하지 않는다 (데몬 unresponsive: 모듈의 마지막 실패 이유) */}
             {server.unresponsive && status === 'running' && (
                 <span

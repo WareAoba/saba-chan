@@ -447,6 +447,7 @@
     "reset_failed": "초기화 실패: {{error}}",
     "reset_error": "초기화 오류: {{error}}",
     "stored_values_notice": "설정 파일을 읽지 못해 마지막으로 저장된 값을 보여 주고 있어요. 저장하면 직접 바꾼 칸만 반영돼요.",
+    "unsaved_flag": "저장하지 않은 설정이 있어요",
     "install_server_running": "실행 중인 서버에는 버전을 설치할 수 없어요. 먼저 정지해 주세요",
     "reset_server_running": "실행 중인 서버는 초기화할 수 없어요. 먼저 정지해 주세요",
     "instance_busy": "이 서버에서 다른 작업(백업이나 복원)이 진행 중이에요. 끝난 뒤에 다시 시도해 주세요",
