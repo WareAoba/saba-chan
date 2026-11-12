@@ -2,6 +2,8 @@
 //!
 //! 연결 하나를 유지하고 받은 이벤트를 `events:message`({id, type, data})로 넘긴다.
 //! 끊기면 마지막 번호(Last-Event-ID)로 3초 뒤 다시 붙는다. 놓친 건이 있으면 데몬이 `resync`를 보낸다.
+//! 아무것도 오지 않은 채 `EVENTS_IDLE`이 지나면 반쯤 끊긴 연결(원격 중계·절전 복귀)로 보고 다시 붙는다.
+//! 붙었는지(`live`)를 알려 화면이 붙지 못하는 동안 폴링으로 메우게 한다.
 //! 원격 데몬을 고른 동안에는 이 PC 데몬에도 따로 붙어 중대 알림을 놓치지 않는다 (`Feed`).
 
 use crate::daemon::DaemonClient;
@@ -13,6 +15,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub const EVENTS_RETRY: Duration = Duration::from_secs(3);
+/// 데몬은 15초마다 ping 주석을 보낸다. 두 번을 놓쳐도 기다리고, 그보다 오래 조용하면 다시 붙는다
+pub const EVENTS_IDLE: Duration = Duration::from_secs(45);
 /// 확인 주기는 데몬이 정한다 (U6). GUI는 데몬이 캐시한 결과를 가끔 읽는다
 pub const UPDATE_STATUS_POLL: Duration = Duration::from_secs(10 * 60);
 
@@ -116,12 +120,14 @@ pub fn events_request(client: &DaemonClient, source: Option<&str>) -> reqwest::R
         .header("Accept", "text/event-stream")
 }
 
-/// 멈출 때까지 스트림을 유지한다. `emit`은 이벤트와 그 이벤트를 낸 데몬(None = 이 PC)을 받는다
-pub async fn run_event_stream<F: Fn(SseEvent, Option<&str>)>(
+/// 멈출 때까지 스트림을 유지한다. `emit`은 이벤트와 그 이벤트를 낸 데몬(None = 이 PC)을 받는다.
+/// `live`는 붙을 때마다 붙었는지(200을 받았는지)를 받는다. 붙지 못하는 동안 다시 시도할 때마다 false가 온다
+pub async fn run_event_stream<F: Fn(SseEvent, Option<&str>), L: Fn(bool)>(
     client: Arc<DaemonClient>,
     stop: Arc<AtomicBool>,
     feed: Feed,
     emit: F,
+    live: L,
 ) {
     let mut last_id: Option<u64> = None;
     // 다룰 데몬(G1)이 바뀌어 붙을 데몬이 달라지면 끊고 바로 새 대상에 붙는다. 번호는 데몬마다 따로라 처음부터 받는다
@@ -160,11 +166,14 @@ pub async fn run_event_stream<F: Fn(SseEvent, Option<&str>)>(
         };
         match sent {
             Ok(res) if res.status().as_u16() == 200 => {
+                live(true);
                 let mut stream = res.bytes_stream();
                 let mut buf = SseBuffer::default();
                 loop {
                     let chunk = tokio::select! {
                         c = stream.next() => c,
+                        // ping까지 끊겼다: TCP가 끊기기를 기다리지 않고 번호를 이어 다시 붙는다
+                        _ = tokio::time::sleep(EVENTS_IDLE) => break,
                         _ = target.changed() => {
                             // 원격 데몬끼리 바꿔도 이 PC 감시는 같은 데몬이다: 끊지 않는다
                             if !feed.moves(&source, client.target()) {
@@ -188,12 +197,13 @@ pub async fn run_event_stream<F: Fn(SseEvent, Option<&str>)>(
                 }
             }
             Ok(res) => {
+                live(false);
                 // 토큰이 바뀌었을 수 있다 (데몬 재시작)
                 if res.status().as_u16() == 401 {
                     client.load_token();
                 }
             }
-            Err(_) => {}
+            Err(_) => live(false),
         }
         if !switched {
             tokio::select! {

@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 're
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { type AuditEntry as AuditRecord, auditWhat } from '../../utils/audit';
-import { auditEntryOf, eventsAvailable, subscribeDaemonEvents } from '../../utils/daemonEvents';
+import { auditEntryOf, eventsAvailable, eventsLive, subscribeDaemonEvents } from '../../utils/daemonEvents';
 import { Icon } from '../Icon';
 import { Popover } from '../ui/Popover';
 
@@ -188,7 +188,6 @@ export function ActivityBar() {
     useEffect(() => {
         let alive = true;
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const live = eventsAvailable();
         const fetchLast = async () => {
             try {
                 const res = await window.api.auditList({ limit: 1 });
@@ -202,7 +201,7 @@ export function ActivityBar() {
                 await fetchLast();
                 if (alive) setNow(Date.now());
             }
-            if (alive) timer = setTimeout(poll, live ? ACTIVITY_SLOW_POLL_MS : ACTIVITY_POLL_MS);
+            if (alive) timer = setTimeout(poll, eventsLive() ? ACTIVITY_SLOW_POLL_MS : ACTIVITY_POLL_MS);
         };
         const off = subscribeDaemonEvents((ev: { type: string; data: ApiBody }) => {
             if (!alive) return;
@@ -214,7 +213,7 @@ export function ActivityBar() {
             }
         });
         // 이벤트로 줄이 바뀌지 않아도 "몇 초 전"은 흐르게 한다
-        const clock = live ? setInterval(() => !document.hidden && setNow(Date.now()), ACTIVITY_POLL_MS) : null;
+        const clock = eventsAvailable() ? setInterval(() => !document.hidden && setNow(Date.now()), ACTIVITY_POLL_MS) : null;
         poll();
         return () => {
             alive = false;

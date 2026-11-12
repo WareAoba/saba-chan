@@ -44,7 +44,7 @@ import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
-import { eventsAvailable, serverListPollMs } from './utils/daemonEvents';
+import { eventsAvailable, eventsLive, serverListPollMs } from './utils/daemonEvents';
 import { startPoll } from './utils/poll';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
@@ -609,7 +609,8 @@ function App() {
     // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers는 렌더마다 새 함수다 (주기만 따른다)
     useEffect(() => {
         if (!autoRefresh || !daemonReady) return;
-        const ms = serverListPollMs(refreshInterval, { events: eventsAvailable(), extensionStatus });
+        // 스트림이 끊긴 동안에는 사용자 주기로 돌아간다: 주기는 돌 때마다 다시 정한다
+        const ms = () => serverListPollMs(refreshInterval, { events: eventsLive(), extensionStatus });
         return startPoll(fetchServers, ms, { immediate: false });
     }, [autoRefresh, refreshInterval, daemonReady, extensionStatus]);
 

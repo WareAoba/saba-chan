@@ -26,6 +26,9 @@ export interface EventToast {
 
 export const eventsAvailable = () => typeof window.api?.onDaemonEvent === 'function';
 
+/** 이벤트가 지금 오고 있는가. 셸이 스트림에 다시 붙지 못하는 동안에는 false: 폴링이 주기와 알림을 메운다 */
+export const eventsLive = () => eventsAvailable() && window.api.daemonEventsLive?.() !== false;
+
 /**
  * 서버 목록을 다시 읽어야 하는 이벤트 (목록 자체는 이벤트로 오지 않는다). `servers.changed`는 접속자 수·응답 없음처럼
  * 데몬이 뒤에서 바꾼 목록 칸, `instance.update_checked`는 데몬의 게임 서버 업데이트 확인 결과

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import type { Server } from '../stores/useServerStore';
 import type { ApiBody, ModuleInfo } from '../types/daemon';
-import { eventsAvailable, subscribeDaemonEvents } from '../utils/daemonEvents';
+import { eventsLive, subscribeDaemonEvents } from '../utils/daemonEvents';
 import { extensionInstallMethod } from '../utils/installMethod';
 
 /** 데몬이 목록에 확인 결과를 싣지 않는 옛 데몬일 때만 화면이 직접 확인을 시킨다 */
@@ -116,7 +116,6 @@ export function useInstanceMaintenance(server: Server, module: ModuleInfo | unde
                 apply({ ...progress, active: true });
             }
         });
-        const pollMs = eventsAvailable() ? PROVISION_SLOW_POLL_MS : PROVISION_POLL_MS;
         const poll = async () => {
             while (!cancelled && !finished) {
                 try {
@@ -126,7 +125,7 @@ export function useInstanceMaintenance(server: Server, module: ModuleInfo | unde
                 }
                 if (cancelled || finished) break;
                 await new Promise<void>((r) => {
-                    const timer = setTimeout(r, pollMs);
+                    const timer = setTimeout(r, eventsLive() ? PROVISION_SLOW_POLL_MS : PROVISION_POLL_MS);
                     wake = () => {
                         clearTimeout(timer);
                         r();

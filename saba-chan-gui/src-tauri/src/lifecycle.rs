@@ -862,7 +862,7 @@ fn start_events(app: &AppHandle) {
     let (client, stop) = (state.client.clone(), state.life.events_stop.clone());
     // 화면은 고른 데몬을 따르고, 원격을 고른 동안에도 이 PC 데몬의 중대 알림·크래시 소리는 따로 받는다
     let stream = |feed: Feed| {
-        let app2 = app.clone();
+        let (app2, app_live) = (app.clone(), app.clone());
         let cues = Mutex::new(sounds::EventCues::default());
         events::run_event_stream(
             client.clone(),
@@ -898,6 +898,12 @@ fn start_events(app: &AppHandle) {
                 if feed == Feed::Chosen {
                     emit_main(&app2, "events:message", &ev);
                     crate::overlay::emit(&app2, "events:message", &ev);
+                }
+            },
+            // 화면은 고른 데몬의 스트림만 본다: 붙지 못하는 동안 폴링으로 메운다
+            move |up: bool| {
+                if feed == Feed::Chosen {
+                    emit_main(&app_live, "events:live", up);
                 }
             },
         )
