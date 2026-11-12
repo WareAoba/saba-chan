@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useModalClose } from '../../hooks/useModalClose';
 import { subscribeDaemonEvents } from '../../utils/daemonEvents';
@@ -10,7 +11,7 @@ import { type GuideItem, pendingGuides, startGuide, useGuideStore } from './guid
 const SHOWN = 3;
 
 /** 둘째 줄: 진행 중이면 "N단계 중 M단계", 아니면 요약 */
-function subtitle(g: GuideItem, t: (key: string, o?: Record<string, unknown>) => string) {
+function subtitle(g: GuideItem, t: TFunction<'gui'>) {
     if (g.progress && g.progress.done > 0) {
         return t('guides.step_of', { step: Math.min(g.progress.done + 1, g.progress.total), total: g.progress.total });
     }

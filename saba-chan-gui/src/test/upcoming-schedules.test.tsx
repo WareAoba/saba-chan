@@ -10,7 +10,7 @@ import { type Server, useServerStore } from '../stores/useServerStore';
 import { useUIStore } from '../stores/useUIStore';
 import { pickOption } from './dropdown';
 
-const t = (k: string, o?: Record<string, unknown>) => i18n.t(`gui:${k}`, o) as string;
+const t = (k: string, o?: Record<string, unknown>) => i18n.t(`gui:${k}`, o ?? {}) as string;
 
 afterEach(() => {
     delete (window.api as Partial<typeof window.api>).schedulesUpcoming;
