@@ -377,11 +377,15 @@ fn known_files(dir: &Path) -> std::collections::HashMap<PathBuf, (u64, u64, Stri
 fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathBuf>)> {
     // 서버가 쓰는 중이라 잠긴 파일(Windows)은 건너뛰지 않고 실패로 알린다: 반쪽 백업을 믿지 않게
     let src = File::open(path).map_err(|e| read_error(e, path))?;
-    put_stream(dir, src, path)
+    put_stream(dir, src, |e| read_error(e, path))
 }
 
-/// `put_object`와 같고 내용을 `src`에서 읽는다 (`path`는 읽기 오류에 적을 이름)
-fn put_stream(dir: &Path, src: impl io::Read, path: &Path) -> Result<(String, u64, u64, Option<PathBuf>)> {
+/// `put_object`와 같고 내용을 `src`에서 읽는다. 읽다 난 오류는 `unreadable`이 바꾼다 (저장소에 쓰다 난 오류는 그대로 나간다)
+fn put_stream(
+    dir: &Path,
+    src: impl io::Read,
+    unreadable: impl FnOnce(io::Error) -> anyhow::Error,
+) -> Result<(String, u64, u64, Option<PathBuf>)> {
     let objects = dir.join(OBJECTS);
     fs::create_dir_all(&objects)?;
     let tmp = objects.join(format!(".tmp-{}", uuid::Uuid::new_v4().simple()));
@@ -389,7 +393,7 @@ fn put_stream(dir: &Path, src: impl io::Read, path: &Path) -> Result<(String, u6
         let mut out = flate2::write::DeflateEncoder::new(File::create(&tmp)?, flate2::Compression::default());
         let mut src = Hashing::new(src);
         if let Err(e) = src.copy_to(&mut out) {
-            return Err(if src.read_failed { read_error(e, path) } else { e.into() });
+            return Err(if src.read_failed { unreadable(e) } else { e.into() });
         }
         out.finish()?;
         Ok(src.finish())
@@ -1460,7 +1464,8 @@ pub fn import(dir: &Path, source: &Path, bases: &Bases) -> Result<BackupInfo> {
         let mut files = Vec::with_capacity(listed.files.len());
         for file in &listed.files {
             let member = zip.by_name(&listed.member(file)?).map_err(|_| BadExport::Damaged)?;
-            let (hash, read, stored_size, written) = put_stream(dir, member, source)?;
+            // zip을 풀다 난 오류(CRC가 다르다, 압축이 깨졌다)도 내용이 목록과 다른 것이다
+            let (hash, read, stored_size, written) = put_stream(dir, member, |_| BadExport::Damaged.into())?;
             if let Some(written) = written {
                 summary.stored += stored_size;
                 fresh.push(written);
@@ -1958,6 +1963,20 @@ mod tests {
         }
         out.finish().unwrap();
         assert!(matches!(refused(&bad), BadExport::Damaged));
+
+        // 옮기다 비트가 깨진 내보내기 (zip을 풀다 오류가 난다)
+        let data = {
+            let mut z = zip::ZipArchive::new(File::open(&good).unwrap()).unwrap();
+            let members = 0..z.len();
+            let at = |i| z.by_index(i).ok().filter(|f| f.name().unwrap().ends_with("level.dat"))?.data_start();
+            members.into_iter().find_map(at).unwrap() as usize
+        };
+        let mut bytes = fs::read(&good).unwrap();
+        bytes[data + 2] ^= 0xff;
+        let flipped = tmp.path().join("flipped.zip");
+        fs::write(&flipped, bytes).unwrap();
+        assert!(inspect_export(&flipped).is_ok(), "the preview does not read the content");
+        assert!(matches!(refused(&flipped), BadExport::Damaged));
     }
 
     /// 가져온 백업은 직접 만든 백업처럼 자동 정리에서 빠진다
