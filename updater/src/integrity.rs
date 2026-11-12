@@ -106,7 +106,7 @@ pub fn record_install(component_key: &str, files: &[PathBuf]) -> Result<(), Stri
     record_install_at(&records_path(), component_key, files)
 }
 
-fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Result<(), String> {
+pub(crate) fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Result<(), String> {
     let mut hashes = BTreeMap::new();
     for file in files {
         hashes.insert(file.to_string_lossy().to_string(), compute_sha256(file)?);
@@ -118,6 +118,13 @@ fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Res
     records.insert(component_key.to_string(), hashes);
     let json = serde_json::to_string_pretty(&records).map_err(|e| e.to_string())?;
     crate::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
+}
+
+/// 이 컴포넌트를 그 폴더 안에 놓았다고 적어 두었는가
+pub fn placed_under(path: &Path, component_key: &str, dir: &Path) -> bool {
+    load_records(path)
+        .get(component_key)
+        .is_some_and(|files| files.keys().any(|f| Path::new(f).parent().is_some_and(|p| crate::same_path(p, dir))))
 }
 
 /// `keep`이 아닌 컴포넌트의 파일 기록을 뺀다 (지운 컴포넌트를 남기면 무결성 검사가 지운 파일을 "없음"으로 보인다). 뺄 것이 없으면 그대로 둔다
