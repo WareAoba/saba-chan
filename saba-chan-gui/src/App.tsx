@@ -35,6 +35,7 @@ import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
 import { useModalClose } from './hooks/useModalClose';
+import { useModulesRetry } from './hooks/useModulesRetry';
 import { useServerActions } from './hooks/useServerActions';
 import { useServerSettings } from './hooks/useServerSettings';
 import { useConsoleStore } from './stores/useConsoleStore';
@@ -534,12 +535,8 @@ function App() {
         useServerStore.getState().fetchModules();
     }, []);
 
-    // 처음에 데몬이 늦었거나 꺼져 있어 모듈 목록을 못 받았으면, 데몬이 살아났을 때 다시 받는다
-    useEffect(() => {
-        if (backgroundDaemonStatus === 'running' && !useServerStore.getState().modulesLoaded) {
-            useServerStore.getState().fetchModules();
-        }
-    }, [backgroundDaemonStatus]);
+    // 처음에 데몬이 늦었거나 꺼져 있어 모듈 목록을 못 받았으면, 데몬이 살아 있는 동안 받을 때까지 다시 받는다
+    useModulesRetry(backgroundDaemonStatus);
 
     // ── Main initialization + auto-refresh ──────────────────
     // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers/t/setModal are intentionally omitted — adding them would cause interval re-registration on every action

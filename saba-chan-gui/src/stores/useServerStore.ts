@@ -73,8 +73,9 @@ interface ServerState {
     stopUptimeClock: () => void;
     /** 시작 시각(epoch 초)부터 지금까지 hh:mm:ss */
     formatUptime: (startTime: number | null | undefined) => string | null;
-    fetchModules: () => Promise<void>;
-    _fetchModulesOnce: () => Promise<void>;
+    /** quiet: 실패해도 알리지 않는다 (받을 때까지 다시 받는 중) */
+    fetchModules: (opts?: { quiet?: boolean }) => Promise<void>;
+    _fetchModulesOnce: (quiet?: boolean) => Promise<void>;
 }
 
 export const useServerStore = create<ServerState>()((set, get) => ({
@@ -182,17 +183,17 @@ export const useServerStore = create<ServerState>()((set, get) => ({
     // to avoid duplicating change-detection + optimistic status logic.
 
     // 데몬이 늦게 뜨거나 다시 켜지면 여러 곳에서 부를 수 있다: 이미 받는 중이면 그걸 기다린다
-    fetchModules: () => {
+    fetchModules: (opts) => {
         if (!modulesFetch)
             modulesFetch = get()
-                ._fetchModulesOnce()
+                ._fetchModulesOnce(opts?.quiet)
                 .finally(() => {
                     modulesFetch = null;
                 });
         return modulesFetch;
     },
 
-    _fetchModulesOnce: async () => {
+    _fetchModulesOnce: async (quiet = false) => {
         try {
             console.log('Fetching modules...');
             try {
@@ -272,13 +273,14 @@ export const useServerStore = create<ServerState>()((set, get) => ({
             } else if (data && data.error) {
                 console.error('Module fetch error:', data.error);
                 const errMsg = _translateError(data.error);
-                if (errMsg) safeShowToast(_t('modules.load_failed_toast', { error: errMsg }), 'error', 4000);
+                if (errMsg && !quiet) safeShowToast(_t('modules.load_failed_toast', { error: errMsg }), 'error', 4000);
             } else {
                 debugWarn('No modules data:', data);
-                safeShowToast(_t('modules.list_empty'), 'warning', 3000);
+                if (!quiet) safeShowToast(_t('modules.list_empty'), 'warning', 3000);
             }
         } catch (error) {
             console.error('Failed to fetch modules:', error);
+            if (quiet) return;
             const errMsg = _translateError((error as Error).message);
             if (errMsg) safeShowToast(_t('modules.fetch_failed_toast', { error: errMsg }), 'error', 5000);
             useUIStore.getState().openModal({
