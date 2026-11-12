@@ -3214,7 +3214,12 @@ mod tests {
             s.0.push(body);
             axum::Json(s.1.pop_front().unwrap_or(Value::Null))
         }
-        let shared: Shared = Arc::new(Mutex::new((Vec::new(), VecDeque::from([sample["response"].clone(), sample["response"].clone(), sample["needMetadataResponse"].clone()]))));
+        // 업데이트 알림(latestReleases·updateHint)은 이 시험이 보지 않는다: 실으면 실제 업데이트 확인이 시작된다
+        let mut response = sample["response"].clone();
+        for key in ["latestReleases", "updateHint"] {
+            response.as_object_mut().unwrap().remove(key);
+        }
+        let shared: Shared = Arc::new(Mutex::new((Vec::new(), VecDeque::from([response.clone(), response, sample["needMetadataResponse"].clone()]))));
         let app = axum::Router::new().route("/heartbeat", post(heartbeat)).with_state(shared.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
@@ -3298,6 +3303,7 @@ mod tests {
         let keys = |v: &Value| v.as_object().unwrap().keys().cloned().collect::<std::collections::BTreeSet<_>>();
         assert_eq!(keys(&module), keys(sample_module), "{module}");
         assert_eq!(keys(&module["commands"]["fields"][0]), keys(&sample_module["commands"]["fields"][0]), "{module}");
+        session.cancel.cancel();
     }
 
     /// 릴레이가 읽지 않는 값(기능 목록, 옛 전역 별명)은 하트비트에 싣지 않는다. 릴레이 스키마가 버리는 값이다
