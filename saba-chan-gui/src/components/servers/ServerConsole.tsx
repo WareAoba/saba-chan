@@ -114,6 +114,8 @@ interface ServerConsoleProps {
     highlightRules?: HighlightRule[] | null;
     quickCommands?: CommandField[];
     openConsole: (id: string, name: string) => void;
+    /** 이 콘솔이 화면에 떠 있다고 알린다 (해제 함수를 돌려준다) */
+    watchConsole?: (id: string) => () => void;
     setConsoleInput: (id: string, value: string) => void;
     sendConsoleCommand: (id: string) => void;
     poppedOut?: boolean;
@@ -129,6 +131,7 @@ export function ServerConsole({
     highlightRules,
     quickCommands = [],
     openConsole,
+    watchConsole,
     setConsoleInput,
     sendConsoleCommand,
     poppedOut,
@@ -160,6 +163,9 @@ export function ServerConsole({
     useEffect(() => {
         if (!state && !poppedOut) openConsole(server.id, server.name);
     }, [server.id, server.name, state, poppedOut, openConsole]);
+    useEffect(() => {
+        if (!poppedOut) return watchConsole?.(server.id);
+    }, [server.id, poppedOut, watchConsole]);
 
     const compiledRules = useMemo(
         () => (syntaxEnabled && highlightRules ? getCachedRules(server.module || '_', highlightRules) : []),

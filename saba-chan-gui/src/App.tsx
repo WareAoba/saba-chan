@@ -185,6 +185,7 @@ function App() {
     const {
         consolePopoutIds,
         openConsole,
+        watchConsole,
         popinConsole,
         setConsoleInput,
         sendConsoleCommand,
@@ -817,6 +818,7 @@ function App() {
                 highlightRules={mod?.syntax_highlight?.rules || null}
                 quickCommands={consoleQuickCommands(mod?.commands?.fields, mod?.command_aliases as null | undefined)}
                 openConsole={openConsole}
+                watchConsole={watchConsole}
                 setConsoleInput={setConsoleInput}
                 sendConsoleCommand={sendConsoleCommand}
             />
@@ -886,6 +888,7 @@ function App() {
     // ── 서버 페이지에 넘기는 묶음 ──
     const consoleProps = {
         openConsole,
+        watchConsole,
         setConsoleInput,
         sendConsoleCommand,
         consolePopoutIds,

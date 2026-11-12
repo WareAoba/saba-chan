@@ -72,7 +72,7 @@ interface ServerDetailProps {
 /** App이 서버 화면에 넘기는 콘솔 묶음 */
 export type ServerConsoleProps = Pick<
     ReturnType<typeof useMultiConsole>,
-    'openConsole' | 'setConsoleInput' | 'sendConsoleCommand' | 'consolePopoutIds' | 'popinConsole'
+    'openConsole' | 'watchConsole' | 'setConsoleInput' | 'sendConsoleCommand' | 'consolePopoutIds' | 'popinConsole'
 >;
 
 /** App이 서버 화면에 넘기는 설정 묶음: 닫기 상태는 isClosing 하나로 넘긴다 */
@@ -389,6 +389,7 @@ export function ServerDetail({
                                 highlightRules={moduleData?.syntax_highlight?.rules || null}
                                 quickCommands={consoleQuickCommands(moduleData?.commands?.fields, moduleData?.command_aliases)}
                                 openConsole={consoleProps.openConsole}
+                                watchConsole={consoleProps.watchConsole}
                                 setConsoleInput={consoleProps.setConsoleInput}
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}
                                 poppedOut={poppedOut}
