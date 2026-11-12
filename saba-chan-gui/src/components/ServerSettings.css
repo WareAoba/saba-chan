@@ -166,7 +166,7 @@
 .ss-changed-chip {
     height: 26px;
     padding: 0 var(--sp-2-5);
-    border: 1px solid color-mix(in oklch, var(--accent) 45%, var(--line));
+    border: 1px solid color-mix(in oklab, var(--accent) 45%, var(--line));
     border-radius: var(--r-pill);
     background: var(--accent-soft);
     color: var(--accent);
@@ -221,7 +221,7 @@
 
 /* 위험 구역 카드 */
 .ss-danger {
-    border-color: color-mix(in oklch, var(--stop) 40%, var(--line));
+    border-color: color-mix(in oklab, var(--stop) 40%, var(--line));
 }
 .ss-danger .ss-card-title {
     color: var(--stop);

@@ -1037,6 +1037,8 @@ const impl: Record<string, MockFn> = {
                     level: content.includes('/WARN]') ? 'warn' : 'info',
                     ...(opts?.spans ? { spans: mockSpans(content) } : {}),
                 }))
+                // 앱에서 보낸 명령 한 줄 (보낸 줄 모양 확인용)
+                .concat({ id: consoleLines.length + 1, content: 'list', source: 'input', level: 'info', by: { source: 'gui' } } as never)
                 .filter((l) => l.id >= since),
             stdin_available: true,
         }),

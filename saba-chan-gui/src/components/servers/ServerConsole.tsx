@@ -43,7 +43,8 @@ const ConsoleLine = memo(function ConsoleLine({ line, syntaxEnabled, compiledRul
         <div
             className={clsx(
                 'console-line',
-                `console-${line.source?.toLowerCase() || 'stdout'}`,
+                // 보낸 줄은 입력칸(.console-input)과 이름이 겹치지 않게 따로 부른다
+                input ? 'console-sent' : `console-${line.source?.toLowerCase() || 'stdout'}`,
                 `console-level-${line.level?.toLowerCase() || 'info'}`,
             )}
             data-find=""
@@ -62,14 +63,15 @@ const ConsoleLine = memo(function ConsoleLine({ line, syntaxEnabled, compiledRul
     );
 });
 
-/** 보낸 명령 한 줄: "› list · 디스코드 · jace" (#18) */
+/** 보낸 명령 한 줄: 옅은 띠에 "› list", 오른쪽 끝에 보낸 곳 "디스코드 · jace" (#18, 사용자 11-13 시안 B) */
 function InputEcho({ line }: { line: ConsoleLineData }) {
     const { t } = useTranslation('gui');
     const by = line.by?.source ? sourceText({ source: line.by.source, userName: line.by.userName }, t) : '';
     return (
         <>
-            <span className="console-echo">› {line.content}</span>
-            {by && <span className="console-echo-by"> · {by}</span>}
+            <span className="console-echo-prompt">›</span>
+            <span className="console-echo">{line.content}</span>
+            {by && <span className="console-echo-by">{by}</span>}
         </>
     );
 }
