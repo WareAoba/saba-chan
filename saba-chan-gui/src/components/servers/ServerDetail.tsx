@@ -177,8 +177,8 @@ export function ServerDetail({
     const defaultTab = defaultServerTab(interaction, server.status);
     const activeTab = tabs.some((x) => x.id === tab) ? (tab as string) : defaultTab;
     const activeExtTab = extTabs.find((p) => p.id === activeTab);
-    // Ctrl+F 찾기는 칸이 많은 설정·사바쨩·디스코드 탭에서만 (사용자 11-10)
-    const findable = ['settings', 'saba', 'discord'].includes(activeTab);
+    // Ctrl+F 찾기는 칸이 많은 설정·사바쨩·디스코드 탭(사용자 11-10)과 콘솔 탭의 줄(사용자 11-12)에서
+    const findable = ['console', 'settings', 'saba', 'discord'].includes(activeTab);
     const poppedOut = consoleProps.consolePopoutIds.includes(server.id);
     // 콘솔을 PIP 창으로 띄운다 (이미 떠 있으면 그 창을 앞으로). 창이 열리면 셸이 console:popoutOpened로 알려 준다. 못 열면 알린다 (G-C5)
     const popoutConsole = async () => {

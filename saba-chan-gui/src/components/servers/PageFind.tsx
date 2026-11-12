@@ -182,7 +182,9 @@ export function PageFind({ rootRef, enabled, pageKey, anchorRef, modal = false }
         if (!m) return;
         const el = m.el as HTMLElement;
         const r = el.getBoundingClientRect();
-        if (r.top < 80 || r.bottom > window.innerHeight - 40) {
+        // 안에서 따로 스크롤하는 곳(콘솔 출력)의 결과는 그 영역 안에 보여야 한다
+        const box = el.closest('[data-find-scroll]')?.getBoundingClientRect();
+        if (r.top < (box?.top ?? 80) || r.bottom > (box?.bottom ?? window.innerHeight - 40)) {
             const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
             el.scrollIntoView?.({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
         }

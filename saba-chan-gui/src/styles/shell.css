@@ -770,6 +770,64 @@
     padding: var(--sp-6) 0;
     text-align: center;
 }
+/* 수준 칩(전체·경고·오류): 콘솔 위에 늘 둔다. 모양은 "자주 쓰는 명령" 칩과 같다 */
+.term-levels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1-5);
+    padding: var(--sp-3) var(--sp-3) 0;
+}
+.term-chip.on {
+    background: color-mix(in oklch, var(--console-custom-text) 16%, transparent);
+    border-color: color-mix(in oklch, var(--console-custom-text) 35%, transparent);
+    color: var(--console-custom-text);
+    font-weight: 700;
+}
+.term-chip.level-warn {
+    color: var(--tok-warn);
+}
+.term-chip.level-error {
+    color: var(--tok-error);
+}
+.term-chip.level-warn.on {
+    background: color-mix(in oklch, var(--tok-warn) 16%, transparent);
+    border-color: color-mix(in oklch, var(--tok-warn) 50%, transparent);
+}
+.term-chip.level-error.on {
+    background: color-mix(in oklch, var(--tok-error) 16%, transparent);
+    border-color: color-mix(in oklch, var(--tok-error) 50%, transparent);
+}
+/* 출력과 그 위에 뜨는 "맨 아래로" 단추 */
+.term-view {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+.term-hidden {
+    padding-top: var(--sp-2);
+    color: color-mix(in oklch, var(--console-custom-text) 50%, transparent);
+}
+.term-jump {
+    position: absolute;
+    right: var(--sp-4);
+    bottom: var(--sp-2);
+    --btn-height: 30px;
+    --btn-padding: 0 12px;
+    --btn-font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklch, var(--console-custom-text) 22%, transparent);
+    background: color-mix(in oklch, var(--console-custom-bg) 86%, var(--console-custom-text));
+    color: var(--console-custom-text);
+    box-shadow: none;
+}
+.term-jump b {
+    color: var(--accent);
+}
 /* 입력줄: 콘솔 안에 떠 있는 둥근 칸. 콘솔은 테마와 상관없이 어두우므로 색은 콘솔 색에서만 파생한다 */
 .term-quick {
     display: flex;
@@ -943,6 +1001,13 @@
 /* 탭 줄 오른쪽 끝 */
 .detail-pip-btn {
     margin-left: auto;
+}
+/* 콘솔 탭: 찾기 단추와 PIP 단추가 함께 오른쪽 끝에 모인다 */
+.detail-tabrow > .page-find-btn {
+    margin-left: auto;
+}
+.page-find-btn + .detail-pip-btn {
+    margin-left: 0;
 }
 
 /* 줄 앞 시각 (설정에서 켤 때만). 줄 색과 상관없이 흐리게 */
