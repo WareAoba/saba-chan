@@ -108,6 +108,7 @@ impl Direct {
     }
 
     /// 싣는다. 결과는 `send_h2`와 같다
+    #[allow(clippy::result_large_err)] // 오류는 다시 보낼 요청을 그대로 돌려준다
     async fn send(self, req: Request<Body>) -> Result<Sent, Option<Request<Body>>> {
         let open = h2::Open::new(&self.opened);
         Ok(match send_h2(self.sender, req).await? {
@@ -333,6 +334,7 @@ async fn send(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, reques
 
 /// HTTP/2 연결에 싣는다. 연결이 끊겼으면 `Err`: 요청이 나가지 못하고 돌아왔으면 그 요청(새 연결로 다시 보내도 된다),
 /// 나간 뒤 끊겼으면 `None`
+#[allow(clippy::result_large_err)] // 오류는 다시 보낼 요청을 그대로 돌려준다
 async fn send_h2(mut sender: h2::Sender, mut req: Request<Body>) -> Result<Sent, Option<Request<Body>>> {
     h2::absolute(&mut req);
     if sender.ready().await.is_err() {
