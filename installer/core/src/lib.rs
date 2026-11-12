@@ -462,7 +462,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         }
     }
 
-    // 짧은 명령 `saba-chan`: Windows는 설치 폴더의 `bin`(실행기 하나)을 사용자 PATH에 넣는다. 리눅스는 install.sh가 링크를 만든다
+    // 짧은 명령 `saba-chan`: Windows는 설치 폴더의 `bin`(실행기 하나)을 사용자 PATH에 넣는다. 리눅스·맥은 `~/.local/bin`에 링크를 둔다
     match user_path::add(&install_dir) {
         Ok(true) => tracing::info!("[Install] Added {} to the user PATH", install_dir.join(user_path::BIN_DIR).display()),
         Ok(false) => {}

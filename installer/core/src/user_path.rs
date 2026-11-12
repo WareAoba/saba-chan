@@ -77,12 +77,18 @@ pub fn remove(install_dir: &Path) -> anyhow::Result<bool> {
     Ok(unlink_commands(&home()?, install_dir)?)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn home() -> anyhow::Result<std::path::PathBuf> {
     std::env::var_os("HOME").filter(|h| !h.is_empty()).map(Into::into).ok_or_else(|| anyhow::anyhow!("HOME is not set"))
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+/// 리눅스: `~/.local/bin`에 링크만 둔다 (install.sh를 거치지 않은 설치에도 `saba-chan` 명령이 생긴다). 지우는 것은 제거기가 한다
+#[cfg(all(unix, not(target_os = "macos")))]
+pub fn add(install_dir: &Path) -> anyhow::Result<bool> {
+    Ok(link_cli(&home()?, install_dir)?)
+}
+
+#[cfg(not(any(windows, unix)))]
 pub fn add(_install_dir: &Path) -> anyhow::Result<bool> {
     Ok(false)
 }
@@ -130,9 +136,31 @@ fn without_profile_line(text: &str) -> Option<String> {
 }
 
 /// `home/.local/bin`에 설치 폴더 CLI로 가는 링크를 두고 셸 설정에 PATH 줄을 넣는다. 바꾼 것이 있으면 true.
-/// 다른 곳을 가리키던 링크(옮기기 전 앱)는 바꾸고, 링크가 아닌 같은 이름의 파일은 건드리지 않는다. CLI가 없으면 아무것도 하지 않는다
+/// CLI가 없으면 아무것도 하지 않는다
 #[cfg(unix)]
 pub fn link_commands(home: &Path, install_dir: &Path) -> std::io::Result<bool> {
+    if !install_dir.join("saba-chan-cli").is_file() {
+        return Ok(false);
+    }
+    let mut changed = link_cli(home, install_dir)?;
+    let profile = home.join(PROFILE);
+    // 읽지 못한 파일(UTF-8이 아님·권한)을 빈 파일로 보고 덮어쓰면 사용자의 설정이 사라진다: 없을 때만 새로 만든다
+    let text = match std::fs::read_to_string(&profile) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e),
+    };
+    if let Some(next) = with_profile_line(&text) {
+        std::fs::write(&profile, next)?;
+        changed = true;
+    }
+    Ok(changed)
+}
+
+/// `home/.local/bin`에 설치 폴더 CLI로 가는 링크를 둔다. 바꾼 것이 있으면 true.
+/// 다른 곳을 가리키던 링크(옮기기 전 앱)는 바꾸고, 링크가 아닌 같은 이름의 파일은 건드리지 않는다. CLI가 없으면 아무것도 하지 않는다
+#[cfg(unix)]
+pub fn link_cli(home: &Path, install_dir: &Path) -> std::io::Result<bool> {
     let cli = install_dir.join("saba-chan-cli");
     if !cli.is_file() {
         return Ok(false);
@@ -149,17 +177,6 @@ pub fn link_commands(home: &Path, install_dir: &Path) -> std::io::Result<bool> {
             Err(_) => {}
         }
         std::os::unix::fs::symlink(&cli, &link)?;
-        changed = true;
-    }
-    let profile = home.join(PROFILE);
-    // 읽지 못한 파일(UTF-8이 아님·권한)을 빈 파일로 보고 덮어쓰면 사용자의 설정이 사라진다: 없을 때만 새로 만든다
-    let text = match std::fs::read_to_string(&profile) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => return Err(e),
-    };
-    if let Some(next) = with_profile_line(&text) {
-        std::fs::write(&profile, next)?;
         changed = true;
     }
     Ok(changed)
@@ -303,6 +320,23 @@ mod tests {
         assert!(unlink_commands(&home, &app).unwrap());
         assert!(std::fs::symlink_metadata(home.join(".local/bin/saba-chan")).is_err());
         assert_eq!(std::fs::read_to_string(home.join(".zprofile")).unwrap(), "eval \"$(/opt/homebrew/bin/brew shellenv)\"\n");
+    }
+
+    /// 리눅스: install.sh를 거치지 않고 `saba-chan-cli install`만 돌려도 `saba-chan` 명령이 생긴다.
+    /// 셸 설정은 건드리지 않는다 (배포판 대부분이 `~/.local/bin`을 이미 PATH에 넣는다)
+    #[cfg(unix)]
+    #[test]
+    fn linux_links_the_cli_without_touching_the_shell_profile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, dir) = (tmp.path().join("home"), tmp.path().join("saba-chan"));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("saba-chan-cli"), b"").unwrap();
+        assert!(link_cli(&home, &dir).unwrap());
+        for name in LINK_NAMES {
+            assert_eq!(std::fs::read_link(home.join(".local/bin").join(name)).unwrap(), dir.join("saba-chan-cli"));
+        }
+        assert!(!home.join(PROFILE).exists());
+        assert!(!link_cli(&home, &dir).unwrap(), "nothing changes the second time");
     }
 
     /// 링크가 아닌 같은 이름의 파일은 사용자 것이라 덮지 않는다
