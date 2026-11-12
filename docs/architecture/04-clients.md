@@ -227,7 +227,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | logs | `<dataDir>/logs/*.log` | 직접 쓰기 | — |
 | renderer localStorage | WebView 저장소(Windows WebView2) | 직접 | `i18nextLng`(i18n.ts `getInitialLanguage`·`getCachedLanguage`, SettingsModal.tsx:335), 테마 키(themeManager.ts:72-184), 공지 목록(NoticeModal.tsx:21-42) |
 
-**쓰기 분기(해결됨).** 예전에는 `settings:load/save`와 `saveSettings`가 "이 GUI가 daemon을 spawn했는가"(`daemonProcess !== null`)로 분기해서, 이미 떠 있던 daemon에 붙으면 settings.json을 직접 썼다. 지금은 "daemon이 응답하는가"로 나눈다. 데몬이 응답하면 API로만 쓰고, 오류 응답이면 로컬로 넘어가지 않고 실패로 끝낸다(`createApi.ts:111-130, 991-1005`, `native.rs:189-199`). Tauri로 옮기면서도 이 규칙은 그대로다. 남은 직접 접근은 **읽기**다. `load_settings()`는 데몬 상태와 상관없이 파일을 읽고, `language_get`, `create_main_window`, `refresh_ipc_base`, 데몬 기동 env, 창 크기 저장(`window.rs:159-188`, 파일에서 읽어 merge한 뒤 API로 저장)이 이 값을 쓴다.
+**쓰기 분기.** 쓰기는 "daemon이 응답하는가"로 나눈다. 데몬이 응답하면 API로만 쓰고, 오류 응답이면 로컬로 넘어가지 않고 실패로 끝낸다(`createApi.ts:111-130, 991-1005`, `native.rs:189-199`). 남은 직접 접근은 **읽기**다. `load_settings()`는 데몬 상태와 상관없이 파일을 읽고, `language_get`, `create_main_window`, `refresh_ipc_base`, 데몬 기동 env, 창 크기 저장(`window.rs:159-188`, 파일에서 읽어 merge한 뒤 API로 저장)이 이 값을 쓴다.
 
 ### 1.4 화면과 모달별 기능 (`src/`)
 
@@ -429,21 +429,12 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 
 ### 6.1 존재하지 않는 endpoint나 잘못된 HTTP 메서드 호출
 (예전 TUI CLI의 항목들은 CLI 리메이크에서 코드째 사라져 뺐다. §3 참조.)
-1. ~~`updater:setConfig`가 POST를 써서 405~~ 해결됨: 이제 PUT이다(옛 Electron main.js:2505, 지금은 `createApi.ts:982`).
-2. ~~CLI `update download`/`update apply`가 본문 없이 POST하는데 데몬은 JSON 본문을 요구했다~~ → 해결: PR #6 CLI는 `{components:[...]}`를 보낸다(`saba-chan-cli/src/client.rs:774-784`). 데몬도 본문이 없거나 공백이면 전체로 받고, 깨진 JSON은 400 `invalid_body`로 거부한다(`src/ipc/updates.rs:348-371, 475-480`).
 
 ### 6.2 죽은 코드와 stub
-- ~~(옛 Electron main.js:501-503) `syncGuiConfigToDaemon`(no-op)과 이를 부르는 `guiConfig:sync` 채널~~ → 해결: 함수, 채널, preload 항목이 모두 없어졌고, Tauri 브리지에도 없다.
-- ~~(옛 Electron main.js:1005-1011) `preloadLightData`~~ → 해결: 없어졌다. 셸의 `finish_background_init`이 로딩 상태 문구만 보낸다(`lifecycle.rs:93-116`).
 - renderer가 쓰지 않는 window.api(§1.2).
-- ~~(옛 Electron main.js:1223-1224) auto_download/auto_apply는 "향후 구현 예정"~~ → 해결: `auto_download`이면 데몬이 확인 때 미리 내려받아 둔다(`src/ipc/updates.rs:215-216, 236`). 동작하지 않던 `auto_apply`는 설정에서 빠졌다가, 사바 스토리지의 '업데이트를 찾으면'(알리기만·받아 두기·적용)으로 다시 생겼다. 지금은 데몬이 그 값대로 한다: 적용(`auto_apply`, 기본)은 묻지 않고 적용하고, 받아 두기·알리기만은 알약을 준비됨으로 두어 "지금 다시 시작"으로 적용한다(05 §1.6).
 
 ### 6.3 기능 버그
-- ~~**before-quit bot 정지 요청 누락**: (옛 Electron main.js:1536, 1559) `currentPort` 범위 오류로 ReferenceError~~ → 해결: 비정상 종료 경로(`on_exit` `lifecycle.rs:690-712`)는 봇을 건드리지 않고 unregister와 자기 데몬 정리만 한다.
-- ~~**SabaStorage bot 재시작 실패**: SabaStorage.tsx:326, 453가 `settings?.discordToken`을 읽음~~ → 해결: 로컬 봇이 없어져 SabaStorage는 봇을 재시작하지 않고, renderer에 `discordToken`을 읽는 곳이 없다.
-- ~~**settings 경로 분기 기준 오류**: (옛 Electron main.js:483, 2860, 2967) `daemonProcess`로 판단~~ → 해결: 데몬이 응답하는지로 나누고, 응답하면 API로만 쓴다(`createApi.ts:111-130, 991-1005`, `native.rs:189-199`). 읽기 직접 접근은 남아 있다(§1.3).
-- ~~**resolver 주석과 코드 불일치**: resolver.js:57(1분)과 60(5초)~~ → 해결: `resolver.js`는 로컬 봇(`discord_bot/`)과 함께 L1(7b5102f)에서 지워졌다.
-- ~~**updater exe 이름 하드코딩**: (옛 Electron main.js:1113-1148), 예전 TUI `commands.rs:1137-1142`~~ → 해결: GUI와 CLI는 `POST /api/updates/launch-updater`만 보내고, 데몬이 `saba-chan-updater{EXE_SUFFIX}`를 찾아 띄운다(`src/ipc/updates.rs:747-754`).
+- **settings 읽기 직접 접근이 남아 있다**(§1.3). 쓰기는 데몬이 응답하는지로 나누고, 응답하면 API로만 쓴다(`createApi.ts:111-130, 991-1005`, `native.rs:189-199`).
 
 ---
 
@@ -464,18 +455,12 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | G6 | i18n.rs:50-62 | FS-R | `locales/<lang>/common.json` 직접 읽기(없으면 exe 내장본) | |
 | G7 | lifecycle.rs:158-244, 389-436 | PROC | **saba-core spawn** (`--spawned`, env 주입). 콘솔 창 없이 분리해 띄운다(Windows `CREATE_NO_WINDOW`·`CREATE_NEW_PROCESS_GROUP`·`CREATE_BREAKAWAY_FROM_JOB`, job이 막으면 breakaway 없이 다시, Unix `process_group(0)`). 로그는 GUI가 사는 동안 파이프로 받는다. 인터페이스만 종료하면(`interface_only_quit` `:630-644`) 자식 핸들만 놓아 데몬이 남는다. GUI가 죽거나 강제 종료돼도 데몬은 남고, 다음 GUI 실행 때 `ensure_daemon`이 `/health`로 떠 있는 데몬을 찾아 다시 붙는다. 데몬을 끄는 것은 전체 종료(`clean_quit`, G8)뿐이다 | 불가피(daemon 부재 시 부트스트랩) |
 | G8 | lifecycle.rs:292-338 | PROC | daemon 종료: `POST /api/daemon/shutdown` 후 40초 안에 안 끝나면 **자기 PID만** kill(`taskkill /PID /F`, SIGKILL) | API 우선, kill은 대비책 |
-| G9 | — | — | ~~cleanQuit의 이름 기반 `taskkill /IM saba-core.exe`·`pkill -f saba-core`~~ → 해결: `clean_quit`(`lifecycle.rs:647-674`)은 unregister(shutdown=true) 후 `stop_daemon()`만 부르고, 이름 기반 kill은 없다(`:309-310` 주석) | |
 | G10 | lifecycle.rs:592-618 | PROC | `daemon_restart`: `stop_daemon()`(API 우선) 후 `start_daemon()`으로 직접 spawn | 재기동 API가 없다 |
 | G11 | tray.rs:447-459 | PROC | 트레이 메뉴: "데몬 종료"는 `stop_daemon()`, "데몬 시작"은 `start_daemon()` 직접 호출 | |
 | G12 | lifecycle.rs:690-712 | PROC | `RunEvent::Exit`(`clean_quit`을 거치지 않은 경로)에서 자기 데몬을 `force_kill`. 인터페이스만 종료한 경우(`keep_daemon_alive`)는 건너뛴다 | 자기가 띄운 프로세스만 |
-| G13 | — | — | ~~`node scripts/mock-release-server.js` spawn~~ 없어짐(f6ca7b6). 개발자가 직접 실행한다 | |
-| G14 | — | — | ~~updater exe detached spawn(`--apply --relaunch`)~~ → 해결: GUI는 `POST /api/updates/launch-updater {relaunch}`만 보내고 업데이터는 데몬이 띄운다(`native.rs:81-102`, `src/ipc/updates.rs:609-675`) | |
-| G15 | — | — | ~~updater exe 경로 탐색(`existsSync`)~~ → 해결: 데몬의 `updater_binary()`가 찾는다(`updates.rs:747-754`) | |
 | G16 | native.rs:151-184 | OS/PROC | 레지스트리 `HKCU\…\Uninstall\Saba-chan` `InstallLocation` 읽기(`winreg`), installer `--uninstall` 분리 spawn | |
-| G17 | — | — | ~~relay `PATCH /api/hosts/:hostId/bot-config` 직접 호출~~ 없어짐: 봇 설정은 `PUT /api/config/bot`, 릴레이 동기화는 에이전트 하트비트 | |
 | G18 | native.rs:342-395, window.rs:63-96 | OS | `shell_open_external`·탐색 잠금(http(s)만 바깥 브라우저), `shell_open_path`·`logs_open_folder`(로그 폴더, 인스턴스 폴더) | UI 성격 |
 | G19 | native.rs:304-338 | OS | 네이티브 파일/폴더/저장 다이얼로그(tauri-plugin-dialog) | UI 성격(경로 선택만 하고, 실제 스캔·내보내기는 daemon) |
-| G20 | — | — | ~~`http.request` 전역 monkey-patch~~ → 해결(D12): 토큰은 데몬 클라이언트(`daemon.rs:184-194`)가 데몬 요청에만 붙인다 | |
 
 ### 7.2 GUI renderer (`saba-chan-gui/src`)
 | # | 위치 | 분류 | 내용 |
@@ -484,7 +469,6 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | R2 | utils/themeManager.ts:72-184 | FS-W(localStorage) | 테마와 커스텀 테마. config.json `gui`에도 accent 계열을 저장하므로 저장소가 둘로 갈린다 |
 | R3 | Modals/NoticeModal.tsx:21-42 | FS-W(localStorage) | 공지와 알림 기록 |
 | R4 | i18n.ts, utils/localeBackend.ts | 빌드타임 + 데몬 API | 로케일 JSON 정적 번들은 폴백이다. 설치 폴더 번역은 데몬 `/api/locales/:lang/:ns`로 받고 `locales_version`이 바뀌면 다시 읽는다. 셸 문구는 설치 폴더 파일을 먼저 읽어 반영된다(`i18n.rs:50-58`) |
-| R5 | ~~components/ServerCard.js:419-421, App.js:494-501~~ | ~~규칙 중복~~ | → 해결: renderer는 `GET /api/servers`의 `managed`를 그대로 쓴다(`utils/serverView.ts:74-79` `isManaged`, 데몬 `handlers/server.rs:966`). 그 값이 없을 때(옛 데몬)만 데몬과 같은 규칙(`managed_start`가 우선, 없으면 managed, `supervisor/mod.rs:2246-2255`)으로 채운다 |
 
 (renderer는 `fetch`, `axios`, 직접 IP 접근을 하지 않는다. 모두 `window.api`(브리지 → `daemon_request` 명령)를 거친다.)
 
@@ -510,5 +494,5 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 ### 7.5 요약 판정
 - **원칙 위반 정도가 가장 큰 항목**:
   - G2: GUI가 daemon 상태와 상관없이 config.json `gui`를 직접 읽는다. 쓰기(G3, G4)는 daemon이 응답하지 않을 때만 하므로 부트스트랩 범위로 줄었다.
-- **부트스트랩상 불가피한 항목**(토큰 파일, ipcPort, daemon 최초 spawn): G1, G7, C1, C2, C9. daemon **종료**(G8, G11)는 이제 `/api/daemon/shutdown`을 먼저 쓰고, 강제 종료는 자기가 띄운 PID에만 한다(G12도 같다). 이름 기반 kill(G9)은 없어졌다.
-- **daemon에 API가 없어서 우회하는 항목**: daemon 재기동(G10), 언인스톨러(G16). updater 실행(G14)은 daemon API로 옮겨졌다.
+- **부트스트랩상 불가피한 항목**(토큰 파일, ipcPort, daemon 최초 spawn): G1, G7, C1, C2, C9. daemon **종료**(G8, G11)는 이제 `/api/daemon/shutdown`을 먼저 쓰고, 강제 종료는 자기가 띄운 PID에만 한다(G12도 같다).
+- **daemon에 API가 없어서 우회하는 항목**: daemon 재기동(G10), 언인스톨러(G16).

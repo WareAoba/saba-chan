@@ -337,7 +337,6 @@ patterns = ["FAILED TO BIND TO PORT", "Address already in use"]
   - `SABA_EXTENSION_DATA_ROOT` = 모듈이 import한 익스텐션(SteamCMD 등)이 받은 파일을 `<뿌리>/<익스텐션 id>`에 두는 뿌리(`sandbox::extension_data_root`). 보통은 `<data_dir>/extension-data`, 격리 실행은 구성요소마다 따로인 `<data_dir>/sandbox-data/<꼬리표>/extension-data`다(공용 폴더에 쓰게 하면 확인된 실행이 그 파일을 격리 없이 실행할 수 있다). 데몬이 만들고 격리 실행에는 쓰기를 준다.
   - `SABA_LOOPBACK_DIR` = 격리 실행에만 둔다. AppContainer는 127.0.0.1에 닿지 못하므로(능력은 `internetClient`뿐) 공용 도우미 `daemon_rcon.loopback_exchange`·`loopback_http`가 이 값이 있으면 직접 연결하지 않고 데몬에 맡긴다(`plugin/loopback.rs`). 도우미는 stderr에 `LOOPBACK:{id, port, data(base64), timeout, idle_ms?}` 한 줄을 쓰고, 데몬은 `127.0.0.1:port`와 주고받은 결과를 `<SABA_LOOPBACK_DIR>/<id>.json`(`{ok:true, data}` 또는 `{ok:false, error}`)으로 둔다. 도우미가 읽고 지운다. 허용 포트는 데몬이 만든 config의 `port`·`rest_port`뿐이고(다른 `*_port` 모듈 설정은 모듈이 `import_settings`로 바꿀 수 있어 넣지 않는다), 밖이거나 데몬 API 포트면 `port_not_allowed`로 거절하고 로그만 남긴다. 그 포트에서 듣는 프로세스가 모두 데몬이 추적하는 그 인스턴스의 서버이거나 그 자식이 아니면(다른 프로세스가 같은 포트를 다른 주소로 듣는 경우, 서버가 꺼져 있을 때 포함. REST 중계 `instance.rest`도 같은 판정) `port_not_served`로 거절한다. 서버 PID는 데몬이 `PluginCall::serving`으로 넘긴 값이고 config의 `pid`는 쓰지 않는다. 상한은 보내기 64 KiB, 받기 1 MiB, 요청당 30초, `idle_ms` 2초, 한 실행 64건이고, 넘친 요청은 `too_many_requests`로 바로 거절한다. 받기는 서버가 닫을 때까지이고, `idle_ms`가 있으면 답이 온 뒤 그만큼 조용할 때 끝난다(마인크래프트 상태 핑처럼 닫지 않는 프로토콜). `LOOPBACK:` 줄은 인증 머리글이 들 수 있어 로그에 남기지 않는다. 격리 준비에 실패해 사용자 동의로 격리 없이 도는 실행에는 두지 않는다.
   - `SABA_JAVA_RUNTIMES` = 데몬이 찾은 Java 런타임의 JSON 배열 `[{java, home, version, major, arch}]`(`sandbox::java_runtimes`). 순서는 데몬 환경의 `JAVA_HOME`, PATH의 모든 `java`, 알려진 설치 위치(Windows는 Program Files 두 곳, 그 밖은 `/usr/lib`의 `<공급자>/<jdk>`, 공급자 폴더는 `JAVA_VENDOR_DIRS`)다. `release` 파일이 있는 실제 JDK·JRE만 들고(Oracle `javapath` 같은 바로가기는 빠진다), `version`은 그 `JAVA_VERSION`, `major`는 주 버전(`1.8.0_381`→8), `arch`는 `release`의 `OS_ARCH`(`amd64`·`x86` 등, 없으면 빈 문자열)다. 모듈은 필요한 주 버전 이상의 64비트 런타임을 여기서 고르고, 격리 실행에서도 이 폴더들은 읽을 수 있다. 사용자가 정한 `java_path`는 따로 config로 온다.
-    - ~~문서는 `DAEMON_API_URL`을 주입한다고 한다~~ → 해결: 다시 쓴 개발 가이드는 `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`이라고 적는다(`M:docs/module-development-guide.md:31`). `daemon_rcon.py`는 `DAEMON_API_URL`이 있으면 그것을, 없으면 `SABA_IPC_URL`을, 둘 다 없으면 `http://127.0.0.1:57474`를 쓴다 (`D:modules/daemon_rcon.py:36-42`).
 
 **반환 경로와 `data_roots` (0.1.10)**
 
@@ -422,8 +421,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 **예전 개발 가이드의 "호출 순서"와 다른 점** (가이드는 a8b6c29에서 현재 데몬 기준으로 다시 쓰였다. 아래는 `__example__lifecycle.py:36-46` 주석과의 차이다):
 - "시작 시 `validate → configure → get_launch_command`"라고 되어 있다. 실제로는 `POST /api/instance/:id/start`가 `validate`를 시작 전 점검으로 부르고(critical 문제만 막고, 점검이 실패하면 막지 않는다) 이어서 `get_launch_command`를 부른다. `configure`는 시작 때 부르지 않는다. `/managed/start`와 `/server/:name/start`를 직접 부르면 점검도 없다.
 - "status 주기적 호출"이라고 되어 있지만, 실제로는 non-managed 인스턴스의 status API 요청 때만 호출된다. 모니터 루프는 PID 스냅샷만 본다.
-- ~~"rcon_template이 있으면 데몬이 직접 RCON을 보낸다"~~ → 해결: 개발 가이드가 다시 쓰여 `method = "console"` + `console_template`을 콘솔(stdin)로 보낸다고 적는다(`M:docs/module-development-guide.md:182-200`, `D:src/commands/mod.rs:173-174`). `__example__lifecycle.py` 주석도 `method="console"`로 고쳐졌다(`:44`, e1d7743).
-- ~~"config에 `instance_id`, `settings{}` 항상 포함"~~ → 부분 해결: `instance_id`는 인스턴스 필드를 넣는 호출(`insert_instance_fields`, `D:src/supervisor/mod.rs:481-498`)에 들어간다. 그 호출에서 `rest_port`는 인스턴스 값이 모듈 설정의 같은 키보다 먼저 들어간다(데몬이 접속하는 포트가 기준). `settings{}`는 여전히 `configure`에만 들어가고, 그 외 함수에서는 `module_settings`가 **최상위로 펼쳐져** 들어간다(템플릿 주석 `:58-63`은 아직 `settings`가 항상 온다고 적는다).
+- config에 `settings{}`가 항상 오지는 않는다. `instance_id`는 인스턴스 필드를 넣는 호출(`insert_instance_fields`, `D:src/supervisor/mod.rs:481-498`)에 들어가고, 그 호출에서 `rest_port`는 인스턴스 값이 모듈 설정의 같은 키보다 먼저 들어간다(데몬이 접속하는 포트가 기준). `settings{}`는 `configure`에만 들어가고, 그 외 함수에서는 `module_settings`가 **최상위로 펼쳐져** 들어간다(템플릿 주석 `:58-63`은 아직 `settings`가 항상 온다고 적는다).
 
 ### 2.4 함수 구현 매트릭스 (FUNCTIONS 딕셔너리 기준)
 
@@ -626,8 +624,8 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 실행 | `get_launch_command`가 `java -Xmx/-Xms{ram}`, 선택적 Aikar flags, `jvm_args`, 실행 대상(`server_types.launch_target`: `-jar <서버 jar> nogui` 또는 Forge/NeoForge 인자 파일)을 만든다. 시작 전에 `enable-rcon=false`를 강제한다(모든 모드) |
 | 설정 | `ServerPropertiesManager`가 공용 `read_key_values`·`update_key_values`(§2.5)로 `server.properties`를 읽고 쓴다(UTF-8로 쓴다). saba 키와 파일 키는 settings 필드의 `file_key`, 변환은 `settings_to_file`·`settings_from_file`이 한다. 값은 Java Properties 이스케이프로 읽고 쓴다(`minecraft\:normal` ↔ `minecraft:normal`, `_unescape_property`·`_escape_property`). 모듈 폴더에 동봉된 `server.properties`를 기본값으로 쓴다 (`_load_default_properties`) |
 | 명령 | `[commands] hook = true`(설치된 플러그인·모드 명령은 위 행). module.toml에는 22개, 전부 `method="console"`(콘솔 stdin): say, give, save-all, save-flush, save-off, save-on, list, weather, difficulty, gamemode(플레이어 필수), time, tp, kick, ban, pardon, op, deop, whitelist(on·off·list·reload), whitelist-add, whitelist-remove(플레이어 필수), seed, stop |
-| 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 공용 `graceful_stop`(§2.5)에 요청 함수만 넘긴다. force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 `force_kill`한다. 콘솔 없이 다시 붙은 managed 서버(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
-| 기타 | `EulaManager`(accept_agreements), diagnose_log(module.toml `[[diagnose]]` 규칙 + 공용 `diagnose_lines`), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 40개(Vanilla·Forge `[시각] [스레드/레벨]`과 Paper 콘솔 `[시각 레벨]`을 모두 받는다). 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.ts:53-70`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
+| 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 공용 `graceful_stop`(§2.5)에 요청 함수만 넘긴다. force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 `force_kill`한다. 콘솔 없이 다시 붙은 managed 서버(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
+| 기타 | `EulaManager`(accept_agreements), diagnose_log(module.toml `[[diagnose]]` 규칙 + 공용 `diagnose_lines`), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 40개(Vanilla·Forge `[시각] [스레드/레벨]`과 Paper 콘솔 `[시각 레벨]`을 모두 받는다). 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.ts:53-70`). |
 | 미등록 | `get_credentials`만 없다(RCON 값만 돌려주던 것이라 지웠다). `import_settings`, `reset_properties`, `reset_server`는 등록됨 |
 | 동봉 파일 | `_sample_log.txt`, `test_lifecycle.py`가 리포에 있고 zip에도 들어간다. 패키저는 `__pycache__`·`tests` 폴더와 `.pyc`만 뺀다 (`D:scripts/versions.py:196-208`) |
 
@@ -640,7 +638,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 실행 | `--port=<port>`. 실제 서버 `Pal/Binaries/Win64/PalServer-Win64-Shipping-Cmd.exe`가 있으면 런처 대신 그것을 직접 띄운다(`:322-331`). `[launch] console = "pty"`. 시작 전 `_enforce_rest_policy`로 INI에 RESTAPIEnabled와 AdminPassword를 보장하고, `AdminPassword`를 최상위로 돌려주어 데몬이 rest_password를 동기화하게 한다 (`:216-346`) |
 | 정지 | stdin이 없어 데몬이 모듈 `stop()`을 부른다. 공용 `graceful_stop`(§2.5)으로 REST 정지를 요청하고 `stop_timeout` 안에 안 끝나면 강제 종료한다. REST를 쓸 수 없으면 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4) |
 | 설정 | `PalWorldSettings.ini`의 `OptionSettings=(...)`를 **`extensions.ue4_ini`** 익스텐션으로 파싱한다. 파일 키는 settings 필드의 `file_key`이다. 로그 진단은 `[[diagnose]]` 규칙이다. 동봉된 `DefaultPalWorldSettings.ini`가 기본값이다. settings 117개. 목록 값 키(`_LIST_KEYS`, 지금은 `DenyTechnologyList`)는 화면의 `PALBOX,RepairBench`를 INI에 `("PALBOX","RepairBench")`로 쓰고 읽을 때 쉼표 형태로 되돌린다 (`:884-904, 927-928, 975-977`). `configure()`는 저장마다 `RCONEnabled=False`를 쓴다 (`:933`) |
-| 명령 | 10개, 모두 `/v1/api/...` REST로 간다. announce, info, players, metrics, settings, save, shutdown은 `method="rest"`라 데몬이 바로 보낸다. kick, ban, unban은 `method="module"`이라 lifecycle `command()`를 거친다. 거기서 `resolve_player_id`가 닉네임을 SteamID로 바꾼다. kick·ban은 이름이 정확히 같은 사람만 찾고, unban만 한 사람에게만 맞는 부분 일치를 받는다. `kick_command = "kick"`(자동 강퇴)이 닉네임을 넘기기 때문이다. 표시 이름은 다른 모듈과 맞춘다(shutdown → 정지, announce → 공지). `protocol_mode`와 상관없이 늘 REST로 보낸다. ~~`protocol_mode=rcon`이면 데몬 `/rcon`으로 보내는 RCON 명령 경로~~ → 해결: 지워졌다 (`:1224-`) |
+| 명령 | 10개, 모두 `/v1/api/...` REST로 간다. announce, info, players, metrics, settings, save, shutdown은 `method="rest"`라 데몬이 바로 보낸다. kick, ban, unban은 `method="module"`이라 lifecycle `command()`를 거친다. 거기서 `resolve_player_id`가 닉네임을 SteamID로 바꾼다. kick·ban은 이름이 정확히 같은 사람만 찾고, unban만 한 사람에게만 맞는 부분 일치를 받는다. `kick_command = "kick"`(자동 강퇴)이 닉네임을 넘기기 때문이다. 표시 이름은 다른 모듈과 맞춘다(shutdown → 정지, announce → 공지). `protocol_mode`와 상관없이 늘 REST로 보낸다. |
 | 의존성 | `extensions.ue4_ini`는 `try`로 불러온다(`:33-36`). 익스텐션이 없으면 모듈은 로드되고, INI를 만지는 함수만 `extension_required`를 돌려준다 (`:742-757, 1494-1502`) |
 | 미등록 | `get_installed_version` |
 | 기타 | `list_versions`는 Steam 단일 버전 |
@@ -654,7 +652,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 실행 | `StartServer64.bat`나 `start-server.sh`를 **파싱**해서(`_parse_bat`, `_parse_sh`, `_parse_java_cmdline` `:607-741`) 번들 Java, classpath, native lib을 찾는다. 그다음 `java ... zombie.network.GameServer -servername <name> -cachedir=...`를 직접 구성한다 |
 | 설정 | `IniManager`가 공용 `read_key_values`·`update_key_values`로 `Zomboid/Server/<servername>.ini`를 다룬다. saba 키 → INI 키는 settings 필드의 `file_key`이다. 로그 진단은 `[[diagnose]]` 규칙으로 `server-console.txt`를 본다. settings 117개. `[backup] hook = true`라 `backup_paths()`가 세이브 위치를 계산한다 |
 | 명령 | 23개. kick, banuser는 `method="module"`이라 lifecycle `command()`를 거친다(이유가 없으면 `-r`을 붙이지 않고, 서버가 콘솔에 찍은 답을 `message`로 돌려준다. 값의 큰따옴표는 `error_code="invalid_argument"`·`rule="quote"`로 거절). 나머지는 `console`(콘솔 stdin): servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |
-| 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 공용 `graceful_stop`으로 force가 아니면 콘솔 `quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 강제 종료한다. managed(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). ~~예전 버그(managed 기본 True, `input` 키, 토큰 없음)~~ → 해결. ~~`tasklist`·`os.kill`로 직접 확인·종료, RCON 폴백(stop·status·command)~~ → 해결: 지워졌다 |
+| 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 공용 `graceful_stop`으로 force가 아니면 콘솔 `quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 강제 종료한다. managed(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). |
 | 미구현 | `list_versions`, `get_version_details`, `get_installed_version`, `reset_properties` |
 
 ### 4.4 terraria (`M:terraria/`, lifecycle 627줄, toml 816줄)
@@ -723,62 +721,23 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 ## 6. 불일치, 죽은 코드, 미완성, 원칙 위반
 
 ### 6.1 로더와 모듈·문서 사이의 불일치
-1. ~~`[module].entry`가 쓰이지 않는다~~ 해결됨: 데몬이 `entry_path()`로 쓰고 로드 때 파일 존재를 확인한다 (§1.1).
-2. ~~command `inputs`의 `options`, `min`, `max`가 버려진다~~ → 해결: `CommandInputToml`·`CommandInput`이 받고 데몬이 입력 검사에 쓴다 (`module_loader.rs:373-390, 953-972`).
-3. ~~`[detection.linux]`, `install.beta_branch`, `detection.common_paths`, `config.*` 추가 키, `[errors]`, `game_name`, `display_name`이 무시된다~~ → 해결: schema v1이 모르는 키를 로드 오류로 내고, 모듈에서 그 키들이 지워졌다. `[errors]`·`game_name`·`display_name`은 메타데이터에 실린다 (`module_loader.rs:1193-1246`).
-4. ~~`CommandField.method` 주석은 `both`인데 인터페이스 분기는 `dual`이다~~ → 해결: 데몬 `crate::commands`가 `console`/`rest`/`module`을 해석하고 인터페이스는 분기하지 않는다 (`D:src/commands/mod.rs:167-191`).
-5. ~~`/api/modules` 응답에 `game_name`과 `display_name`이 없다~~ → 해결: `ExtensionInfo`에 둘 다 있다 (`D:src/ipc/mod.rs:246-249`).
-6. ~~ZIP 로딩에서 `ends_with("module.toml")`로 첫 엔트리를 고른다~~ → 해결: 이름이 정확히 `module.toml`인 가장 얕은 엔트리를 고른다 (`module_loader.rs:1559-1570`). `.extracted` 재추출 문제와, locales·설치 경로가 `<modules>/<name>`을 가정하는 문제는 남았다 (§1.1, §4.6).
+6. ZIP 모듈의 `.extracted` 재추출 문제와, locales·설치 경로가 `<modules>/<name>`을 가정하는 문제가 있다 (§1.1, §4.6). `module.toml`은 이름이 정확히 같은 가장 얕은 엔트리를 고른다 (`module_loader.rs:1559-1570`).
 
 ### 6.2 데몬 측 죽은 코드와 stub
-| 대상 | 위치 |
-|---|---|
-| ~~`state_machine.rs` 전체~~ → 해결: 파일이 지워졌다 | — |
-| ~~`SupervisorError` 전체~~ → 해결: `error.rs`가 지워졌다 | — |
-| ~~`ProcessTracker::get_status`, `mark_crashed`, `terminate`, `ProcessStatus::Crashed`~~ → 해결: 지워졌다 | `process.rs` |
-| ~~`Supervisor::monitor()` stub, `run()`~~ → 해결: 지워졌다 | `mod.rs` |
-| ~~`ModuleMetadata::steam_app_id`, `has_extension_config`~~ → 해결: 지워졌다 | `module_loader.rs` |
-| ~~`ModuleLoader.get_module`의 잘못된 `#[allow(dead_code)]`~~ → 해결: 속성이 없다 | `module_loader.rs:1616` |
-| ~~`LoadedModule.is_zip` 미사용~~ → 해결: 필드가 지워졌다 | `module_loader.rs:455-458` |
-| ~~`plugin::run_extension*`~~ → 해결: 지워졌다 | `plugin/mod.rs` |
-| ~~`ManagedProcess::wait_for_exit`, `subscribe`~~ → 해결: broadcast 채널과 함께 지워졌다 | `managed_process.rs` |
+현재 알려진 항목 없음.
 
 ### 6.3 모듈 측 미완성과 버그
-1. ~~FUNCTIONS 누락: minecraft의 `import_settings`, `reset_properties`, `reset_server`, palworld의 `import_settings`~~ → 해결: 모두 등록됐다 (§2.4).
-2. ~~모든 모듈의 `start()`가 죽은 코드다~~ → 해결: 모든 모듈에서 지워졌다.
-3. ~~모듈→데몬 HTTP 콜백이 인증 토큰을 보내지 않고 포트도 57474로 하드코딩돼 있다~~ → 해결: `daemon_post`가 `SABA_TOKEN_PATH`의 토큰을 `X-Saba-Token`으로 보내고 주소는 `SABA_IPC_URL`을 쓴다. palworld·zomboid도 이것을 쓴다 (`D:modules/daemon_rcon.py:36-82`). 0.1.12부터 모듈은 토큰을 받지 않고 HOST 통로만 쓴다(§2.5).
-4. ~~zomboid `stop`의 stdin 콜백은 payload 키가 틀리고(`input` vs `command`), managed 판정도 틀렸다~~ → 해결: 공용 `daemon_stdin_command`(`{"command": ...}`)를 쓰고 `managed` 분기는 없어졌다 (`M:zomboid/lifecycle.py:1052-1092`).
-5. ~~palworld가 최상위에서 `extensions.ue4_ini`를 import해서 익스텐션에 하드 의존한다~~ → 해결: `try`로 불러오고 없으면 해당 함수만 `extension_required`를 돌려준다 (`M:palworld/lifecycle.py:33-36, 742-757`).
-6. ~~`__example`의 `install_server`가 쓰는 steamcmd API(`install_game`)가 실제 모듈과 다르다~~ → 해결: `SteamCMD` 클래스를 쓴다 (`M:__example/__example__lifecycle.py:394-395`).
-7. ~~`get_installed_version`의 `jar_name` 기본값이 `"server.jar"`다~~ → 해결(MK7): `validate`와 같은 config를 받는다.
-8. ~~데몬의 `stop` config에 `instance_id`가 없어 모듈 `stop()`의 콘솔 정지가 실행되지 않는다~~ → 해결: 모듈 호출에 `instance_id`가 들어간다(`D:src/supervisor/mod.rs:494-495`, 59a93b8). 정지 경로는 이렇다. 콘솔이 있는 managed 서버는 데몬이 `stop_command`를 stdin으로 보내고 끝나기를 기다린다(`mod.rs:949-969`, 테스트 `normal_stop_asks_the_console_and_waits`). 모듈 `stop()`은 콘솔이 없을 때(non-managed, REST 전용, stdin 없는 재부착)만 불리므로, 그 안의 콘솔 정지 시도는 보통 실패하고 SIGTERM(POSIX)이나 대기 후 강제 종료로 넘어간다.
+현재 알려진 항목 없음.
 
 ### 6.4 데몬 프로토콜과 운영 문제
-1. ~~`SABA_ENABLED_EXTENSIONS`의 상태 파일 경로가 `ExtensionManager`와 다르다~~ → 해결: 둘 다 `<data_dir>/config.json`의 `extensions.enabled`를 읽는다 (`plugin/mod.rs:315-322`).
-2. ~~데몬이 `SABA_LANG`과 `DAEMON_API_URL`을 주입하지 않는다~~ → 해결: `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`을 넣는다 (`plugin/mod.rs:18-38`). 이름이 `DAEMON_API_URL`이 아니라 `SABA_IPC_URL`이라 모듈 문서와 다르다 (§2.1). 0.1.12부터 모듈은 토큰을 받지 않고 HOST 통로만 쓴다(§2.5).
-3. ~~`/api/module/:name/install` 경로의 타임아웃이 120초다~~ → 해결: 1800초 (`plugin::INSTALL_TIMEOUT_SECS`).
-4. ~~non-managed는 이름으로, 나머지는 ID로 추적한다~~ → 해결: non-managed도 인스턴스 ID로 추적한다 (`mod.rs:846-847`).
-5. ~~`managed/start`가 write lock을 잡은 채로 Python을 호출한다~~ → 해결: 시작은 단계마다 락을 짧게 잡고 Python은 락 밖에서 부른다 (`managed.rs:67-68`, C12).
-6. ~~`server.post_stop` hook을 정지 전에 dispatch한다~~ → 해결: hook 이름이 `server.stop`이고 정지 전에 부른다고 명시돼 있다 (`mod.rs:908-911`).
-7. ~~managed 모드에서는 RCON을 끄는데, 명령은 RCON으로 라우팅된다~~ → 해결: 데몬은 RCON을 쓰지 않고 명령은 모두 stdin으로 간다(RCON 정책).
-8. ~~RCON/REST 명령 하나마다 `get_credentials` Python 프로세스를 띄운다~~ → 해결: REST만 쓰고 결과를 캐시한다(`command.rs:660-687`).
-9. ~~모듈 설치에 sha256 검증, 경로 검증, 클린 설치가 없고, 업데이터의 버전 판정과 무결성 해시 대상이 맞지 않는다~~ → 해결: 설치는 SHA-256 검증·id 검사·staging 교체를 하고(`server.rs:525-590`), 버전은 manifest의 semver로 비교하며(`D:updater/src/lib.rs:482-557`), 무결성은 설치 때 기록한 파일별 해시를 본다 (`D:updater/src/integrity.rs:1-6`).
+현재 알려진 항목 없음.
 
 ### 6.5 [원칙 위반] 모듈 지식이 데몬 바깥이나 데몬 하드코딩에 있는 곳
 
 | # | 위치 | 내용 | 원칙 |
 |---|---|---|---|
-| 1 | ~~GUI·봇의 명령 실행 로직~~ | ~~`method` 분기, 템플릿 치환, 입력 검증을 인터페이스가 중복 구현~~ → 해결: `POST /api/instance/:id/command` 하나로 모이고 데몬 `crate::commands`가 해석한다. GUI는 그 경로만 부른다 (`D:src/commands/mod.rs:1-17`, `saba-chan-gui/src/api/createApi.ts:637-644`). 로컬 Discord 봇은 지워졌다 | — |
-| 2 | ~~GUI·봇의 시작 경로 선택~~ | ~~인터페이스가 `/managed/start`와 `/server/:name/start`를 고른다~~ → 해결: `POST /api/instance/:id/start`에서 데몬이 고른다 (`server.rs:649-710`, `saba-chan-gui/src/api/createApi.ts:212-219`) | — |
-| 3 | — | ~~`dir_signatures` 매칭을 GUI 마이그레이션 화면이 직접 한다~~ → 해결: `migrationScanDir`가 데몬 `POST /api/modules/detect`(`server.rs:423-443`)를 부르고 화면은 그 `matches`만 쓴다(`saba-chan-gui/src/api/createApi.ts:1012-1020`, `AddInstanceMigration.tsx:98-100`) | |
-| 4 | ~~`saba-chan-cli/src/module_registry.rs`의 fs 폴백~~ | ~~CLI가 데몬 응답 실패 시 `module.toml`을 파일시스템에서 직접 파싱~~ → 해결: PR #6 CLI는 모듈 목록을 `GET /api/modules`로만 받는다(`saba-chan-cli/src/resolve.rs:185-193`, `cmd/module.rs:108-109`). 실패하면 오류로 끝나고 로컬 폴백이 없다 | — |
-| 5 | ~~raw TOML로 `[errors]` 읽기~~ | ~~봇이 `/api/module/:name`의 raw TOML 덤프를 읽는다~~ → 해결: `[errors]`는 메타데이터 필드이고 `/command`가 `error_message`로 붙인다. `/api/module/:name`은 메타데이터를 돌려준다 (`server.rs:467-487`) | — |
-| 6 | ~~`D:src/ipc/handlers/instance.rs:1276-1303`~~ | ~~설정 동기화 제외 목록에 Minecraft 전용 키가 데몬에 하드코딩~~ → 해결(MK6): 데몬 필드만 데몬이 알고, 나머지는 모듈이 `group = "saba-chan"`으로 선언한 설정을 뺀다 | — |
-| 7 | ~~`D:src/supervisor/mod.rs`~~ | ~~`server_jar` 키 주입, `jar_name="server.jar"` 기본값~~ → 해결(MK7): 모듈에는 `server_executable`·`working_dir`만 넘기고, 설치 요청·config의 실행 파일 이름도 `server_executable`이다. 함수 이름 `manage_properties`·라우트 `/properties`는 남았지만 게임 설정 파일 일반을 뜻한다 | — |
-| 8 | ~~`ServerSettingsModal`의 `module === 'palworld'`, `useServerSettings`의 "Install Minecraft …" 문자열~~ | ~~GUI가 특정 게임 이름으로 분기~~ → 해결: GUI 제품 코드에 게임 이름 분기가 없다. 게임 이름은 개발용 목업(`saba-chan-gui/src/dev/mockApi.ts`)의 예시 데이터에만 남았다 | — |
 | 9 | `M:palworld/lifecycle.py:33-36`, `zomboid`/`palworld` `install_server` | 모듈이 플러그인(`extensions.*`)을 Python import로 직접 사용. 활성 여부도 스스로 `SABA_ENABLED_EXTENSIONS`로 확인. 데몬은 import 가드로 꺼진 익스텐션 import만 막는다 (`D:src/plugin/mod.rs:114-126`) | 플러그인 기능 주입은 데몬이 중개해야 하는데, 모듈과 플러그인이 직접 결합 |
-| 10 | `modules/daemon_rcon.py`, palworld, zomboid 콜백 | 모듈이 데몬 HTTP API를 역호출(rcon/rest/stdin). ~~인증 없이 호출하고 포트도 하드코딩~~ → 토큰과 `SABA_IPC_URL`을 쓴다 | "매뉴얼"인 모듈이 능동 클라이언트로 동작. 경계가 모호함 |
-| 11 | ~~`installer/gui/src-tauri/src/lib.rs`의 하드코딩 모듈 목록~~ | → 해결: 목록은 릴리즈 manifest에서만 만든다 (`lib.rs:169-188`) | — |
+| 10 | `modules/daemon_rcon.py`, palworld, zomboid 콜백 | 모듈이 데몬 HTTP API를 역호출(rcon/rest/stdin). 토큰과 `SABA_IPC_URL`을 쓴다 | "매뉴얼"인 모듈이 능동 클라이언트로 동작. 경계가 모호함 |
 
 ---
 
