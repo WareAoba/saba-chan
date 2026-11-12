@@ -33,13 +33,6 @@ const POLL_TIMEOUT: Duration = Duration::from_secs(40); // 릴레이 롱폴 25�
 const RETRY_BASE: Duration = Duration::from_secs(3);
 const RETRY_MAX: Duration = Duration::from_secs(60);
 
-/// 하트비트 `metadata.features`: 릴레이가 기능마다 이 PC를 가르는 이름 (전역 최소 버전 `MIN_AGENT_VERSION`과 따로).
-/// 옛 PC와 다르게 다뤄야 하는 변화를 넣을 때만 이름을 더하고, 릴레이 하한이 그 기능을 넘으면 이름과 릴레이 분기를 함께 지운다.
-/// - `confirm_by_daemon`: 되묻기를 데몬이 계획마다 정한다 (`actions::needs_confirm`). 릴레이는 스스로 위험을 판정하지 않고 `needsConfirm`을 따른다
-/// - `check_first`: `check` 액션 요청(`{id, instance?, input}` 또는 `{text}`)으로 확인을 묻기 전에 권한만 본다 (`actions::check`). 계획은 남지 않는다
-/// - `linked_guilds`: 하트비트 응답의 `linkedGuilds`(새로 묶인 길드)로 그 길드에 열 서버를 정한다 (`close_linked_guild`)
-const FEATURES: &[&str] = &["confirm_by_daemon", "linked_guilds", "check_first"];
-
 /// 알림 이벤트(I3): 처음 한 건이 오면 같은 순간에 난 것만 이만큼 모아 곧 보내고, 한 번에 이만큼까지 보낸다
 /// (사용자 11-02: 게임 채팅이 디스코드에 늦게 올라간다. 이벤트는 대부분 한 건씩 온다)
 const EVENT_GATHER: Duration = Duration::from_millis(20);
@@ -753,8 +746,6 @@ impl Session {
             "botConfig": {
                 // 비어 있으면 릴레이가 응답 언어의 기본값을 쓴다
                 "prefixes": bot.prefixes,
-                "moduleAliases": bot.module_aliases,
-                "commandAliases": command_aliases_json(&bot.command_aliases),
             },
         });
         // 길드별 허용 인스턴스. 목록이 있는 길드만 싣는다 (없으면 릴레이는 제한 없음으로 본다)
@@ -780,8 +771,6 @@ impl Session {
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
         meta["permissions"] = permissions_by_guild(&bot.node_settings);
         meta["permissionsAt"] = json!(permissions_at);
-        // 이 데몬이 가진 기능 (`FEATURES`): 릴레이는 버전 번호 대신 이 목록으로 기능마다 갈린다
-        meta["features"] = json!(FEATURES);
         // `/사바쨩 상태` 끝 줄의 다음 할 일 (J1-a, GUI·CLI와 같은 단계)
         meta["onboarding"] = crate::ipc::handlers::diagnostics::onboarding_now(&self.server).await;
         // 언어가 `auto`인 길드는 이 언어로 답한다 (I2)
@@ -1691,21 +1680,6 @@ fn relay_module_entry(m: &crate::chat::api::ModuleView) -> Value {
         relay_language_aliases(&mut entry, dir);
     }
     entry
-}
-
-/// 릴레이 스키마: commandAliases는 모듈 → (명령 → 콤마 문자열). 문자열이 아닌 값은 뺀다
-fn command_aliases_json(aliases: &std::collections::HashMap<String, Value>) -> serde_json::Map<String, Value> {
-    aliases
-        .iter()
-        .filter_map(|(module, cmds)| {
-            let cmds: serde_json::Map<String, Value> = cmds
-                .as_object()?
-                .iter()
-                .filter_map(|(c, a)| a.as_str().map(|a| (c.clone(), Value::String(a.to_string()))))
-                .collect();
-            Some((module.clone(), Value::Object(cmds)))
-        })
-        .collect()
 }
 
 /// 언어 → 모듈 locales 한 언어 전체 (없으면 Null). 명령마다·언어마다 부르므로 복제하지 않고 함께 쓴다
@@ -2805,11 +2779,16 @@ mod tests {
         assert!(host_load(&none).get("diskFree").is_none());
     }
 
-    /// 하트비트는 기능 목록을 싣는다 (릴레이가 기능마다 이 PC를 가른다)
-    #[test]
-    fn heartbeat_features_name_what_the_relay_branches_on() {
-        assert!(FEATURES.contains(&"confirm_by_daemon"));
-        assert!(FEATURES.iter().all(|f| !f.is_empty() && f.chars().all(|c| c.is_ascii_lowercase() || c == '_')));
+    /// 릴레이가 읽지 않는 값(기능 목록, 옛 전역 별명)은 하트비트에 싣지 않는다. 릴레이 스키마가 버리는 값이다
+    #[tokio::test]
+    async fn heartbeat_leaves_out_what_the_relay_drops() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session = test_session(&RelayAgent::new(), "http://127.0.0.1:9", "sbn_h1.secret", tmp.path()).await;
+        let meta = session.metadata().await;
+        assert!(meta.get("features").is_none());
+        assert_eq!(meta["botConfig"].as_object().unwrap().keys().collect::<Vec<_>>(), vec!["prefixes"]);
+        // 릴레이 스키마는 줄이지 않은 하트비트에 이 둘을 요구한다
+        assert!(meta["modules"].is_array() && meta["moduleDetails"].is_object());
     }
 
     /// 새로 묶인 길드를 적용했으면 다음 하트비트가 릴레이가 준 연결 id를 확인 응답(`linkedGuildsAckIds`)으로 싣는다.
