@@ -177,6 +177,7 @@
     "dm_notice_off": "關",
     "dm_kind": {
       "crash": "異常結束",
+      "unresponsive": "無回應",
       "externalStart": "在 Saba-chan 之外啟動",
       "schedule": "排程工作預告",
       "update": "Saba-chan 更新",

@@ -177,6 +177,7 @@
     "dm_notice_off": "desligado",
     "dm_kind": {
       "crash": "Travamentos",
+      "unresponsive": "Sem resposta",
       "externalStart": "Iniciado fora do Saba-chan",
       "schedule": "Avisos de tarefas agendadas",
       "update": "Atualizações do Saba-chan",

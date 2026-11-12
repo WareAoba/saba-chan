@@ -177,6 +177,7 @@
     "dm_notice_off": "выкл.",
     "dm_kind": {
       "crash": "Сбои",
+      "unresponsive": "Не отвечает",
       "externalStart": "Запуск в обход Saba-chan",
       "schedule": "Предупреждения о расписании",
       "update": "Обновления Saba-chan",

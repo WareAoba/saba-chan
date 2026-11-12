@@ -177,6 +177,7 @@
     "dm_notice_off": "꺼짐",
     "dm_kind": {
       "crash": "비정상 종료",
+      "unresponsive": "응답 없음",
       "externalStart": "사바쨩 밖에서 켜짐",
       "schedule": "예약 작업 예고",
       "update": "사바쨩 업데이트",

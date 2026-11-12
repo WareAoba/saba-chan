@@ -2344,6 +2344,7 @@ else:
             sup.instance_store.update(&id, inst).unwrap();
         }
         run_fake_server(&state, &id, &tmp, "stop) exit 0;;").await;
+        let mut events = crate::events::bus().subscribe(None);
         let generation = players::roster_start(&id);
         let now = saba_runner::now();
         let tick = |at| super::super::server::stop_idle_servers_at(&state, at);
@@ -2361,6 +2362,8 @@ else:
         let stop = crate::audit::log().recent(10, Some(&id)).into_iter().find(|e| e["action"] == "stop").expect("the stop is on record");
         assert_eq!(stop["source"], "idle");
         assert_eq!(crate::supervisor::idle::stopped(&id).map(|s| s.minutes), Some(10));
+        let stopped: Vec<Value> = std::iter::from_fn(|| events.rx.try_recv().ok()).filter(|e| e.kind == "instance.stopped" && e.data["instanceId"] == id.as_str()).map(|e| e.data.clone()).collect();
+        assert_eq!(stopped.iter().map(|d| (d["source"].as_str(), d["idleMinutes"].as_u64())).collect::<Vec<_>>(), [(Some("idle"), Some(10))], "{stopped:?}");
         players::roster_end(&id, generation);
     }
 

@@ -1316,6 +1316,8 @@
     "dm_crash_title": "Abstürze",
     "dm_crash_desc": "Meldet, wenn ein Server abstürzt. Ohne automatischen Neustart gibt es eine Schaltfläche zum Neustarten.",
     "dm_crash_off_warn": "Wenn aus, erfährst du auf Discord nichts von Abstürzen. In den App-Benachrichtigungen bleiben sie.",
+    "dm_unresponsive_title": "Reagiert nicht",
+    "dm_unresponsive_desc": "Meldet, wenn ein laufender Server nicht mehr auf Statusabfragen antwortet. Ist nur Benachrichtigen eingestellt, gibt es eine Schaltfläche zum Neustarten.",
     "dm_external_start_title": "Außerhalb von Saba-chan gestartet",
     "dm_external_start_desc": "Meldet, wenn ein Server ohne Saba-chan startet.",
     "dm_schedule_title": "Vorwarnung für Zeitpläne",

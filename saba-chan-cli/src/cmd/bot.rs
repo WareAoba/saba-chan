@@ -1294,9 +1294,10 @@ mod tests {
         assert_eq!(s["crash"], false);
         assert_eq!(s["disk"], true);
         assert_eq!(s["moderation"], true);
+        assert_eq!(s["unresponsive"], true);
         assert_eq!(s["offline"], false, "PC 연결 끊김은 켜야 보낸다");
         assert_eq!(super::dm_notice_states(&json!({ "dmNotice": { "offline": true } }))["offline"], true);
-        assert_eq!(s.as_object().unwrap().len(), 8);
+        assert_eq!(s.as_object().unwrap().len(), 9);
     }
 
     use super::*;

@@ -177,6 +177,7 @@
     "dm_notice_off": "desactivado",
     "dm_kind": {
       "crash": "Cierres inesperados",
+      "unresponsive": "No responde",
       "externalStart": "Iniciado fuera de Saba-chan",
       "schedule": "Avisos de tareas programadas",
       "update": "Actualizaciones de Saba-chan",

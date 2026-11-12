@@ -1471,6 +1471,7 @@ pub enum ConfigCmd {
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DmKind {
     Crash,
+    Unresponsive,
     ExternalStart,
     Schedule,
     Update,
@@ -1481,8 +1482,9 @@ pub enum DmKind {
 }
 
 impl DmKind {
-    pub const ALL: [DmKind; 8] = [
+    pub const ALL: [DmKind; 9] = [
         DmKind::Crash,
+        DmKind::Unresponsive,
         DmKind::ExternalStart,
         DmKind::Schedule,
         DmKind::Update,
@@ -1496,6 +1498,7 @@ impl DmKind {
     pub fn key(self) -> &'static str {
         match self {
             DmKind::Crash => "crash",
+            DmKind::Unresponsive => "unresponsive",
             DmKind::ExternalStart => "externalStart",
             DmKind::Schedule => "schedule",
             DmKind::Update => "update",

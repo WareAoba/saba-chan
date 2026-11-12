@@ -1316,6 +1316,8 @@
     "dm_crash_title": "Cierres inesperados",
     "dm_crash_desc": "Te avisa cuando un servidor se cae. Si el reinicio automático está apagado, incluye un botón Reiniciar.",
     "dm_crash_off_warn": "Si lo apagas, no sabrás de los cierres por Discord. Seguirán en las notificaciones de la app.",
+    "dm_unresponsive_title": "No responde",
+    "dm_unresponsive_desc": "Te avisa cuando un servidor en marcha deja de responder a las consultas de estado. Si solo está configurado para avisar, incluye un botón Reiniciar.",
     "dm_external_start_title": "Iniciado fuera de Saba-chan",
     "dm_external_start_desc": "Te avisa cuando un servidor se inicia sin pasar por Saba-chan.",
     "dm_schedule_title": "Avisos de tareas programadas",

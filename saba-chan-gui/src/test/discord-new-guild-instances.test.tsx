@@ -76,6 +76,7 @@ describe('새 디스코드 서버에 서버 열기', () => {
         render(<ConnectionView {...viewProps} />);
         expect(screen.getByRole('checkbox', { name: 'AI moderation reports' })).not.toBeChecked();
         expect(screen.getByRole('checkbox', { name: 'Low disk space' })).toBeChecked();
+        expect(screen.getByRole('checkbox', { name: 'Not responding' })).toBeChecked();
         expect(screen.getByRole('tab', { name: 'Failures' })).toHaveAttribute('aria-selected', 'true');
     });
 

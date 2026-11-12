@@ -1330,12 +1330,14 @@ pub(crate) async fn stop_idle_servers_at(state: &IPCServer, now: u64) {
             continue;
         }
         tracing::info!("Stopping '{}': no players for {} minutes", id, minutes);
+        // 정지 전에 적어 둔다: 정지 알림(`instance.stopped` `idleMinutes`)이 이 분을 싣는다
+        idle::mark_stopped(&id, minutes, saba_runner::now());
         let stop = crate::audit::with_origin(crate::audit::Origin::new("idle"), Box::pin(stop_instance(state.clone(), &id, false))).await;
         let stop = crate::ipc::internal::into_internal(stop).await;
         if stop.status.is_success() && stop.body.get("success").and_then(Value::as_bool) != Some(false) {
             idle::forget(&id);
-            idle::mark_stopped(&id, minutes, saba_runner::now());
         } else {
+            idle::clear_stopped(&id);
             tracing::warn!("Could not stop the idle server '{}': {}", id, stop.body);
         }
     }

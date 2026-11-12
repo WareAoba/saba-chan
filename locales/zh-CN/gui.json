@@ -1316,6 +1316,8 @@
     "dm_crash_title": "异常退出",
     "dm_crash_desc": "服务器崩溃时通知你。未开启自动重启时会附带［重启］按钮。",
     "dm_crash_off_warn": "关闭后无法在 Discord 上得知崩溃，但应用通知中仍会保留。",
+    "dm_unresponsive_title": "无响应",
+    "dm_unresponsive_desc": "运行中的服务器不再回应状态查询时通知你。设为仅通知时会附带［重启］按钮。",
     "dm_external_start_title": "在 Saba-chan 之外启动",
     "dm_external_start_desc": "服务器未经 Saba-chan 启动时通知你。",
     "dm_schedule_title": "计划任务预告",

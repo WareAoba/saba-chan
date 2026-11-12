@@ -26,6 +26,7 @@ export type BackupNotice = 'all' | 'failures' | 'off';
 /** PC 주인 DM 알림 종류 (데몬 `config_store::DmNotice`, 백업은 `backupNotice`) */
 export const DM_NOTICE_KINDS = [
     'crash',
+    'unresponsive',
     'externalStart',
     'schedule',
     'update',

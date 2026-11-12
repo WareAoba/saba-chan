@@ -177,6 +177,7 @@
     "dm_notice_off": "off",
     "dm_kind": {
       "crash": "Crashes",
+      "unresponsive": "Not responding",
       "externalStart": "Started outside Saba-chan",
       "schedule": "Schedule warnings",
       "update": "Saba-chan updates",

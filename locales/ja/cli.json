@@ -177,6 +177,7 @@
     "dm_notice_off": "オフ",
     "dm_kind": {
       "crash": "異常終了",
+      "unresponsive": "応答なし",
       "externalStart": "サバちゃんの外で起動",
       "schedule": "予約の予告",
       "update": "サバちゃんのアップデート",

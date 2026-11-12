@@ -1316,6 +1316,8 @@
     "dm_crash_title": "異常結束",
     "dm_crash_desc": "伺服器當機時通知你。未開啟自動重啟時會附上［重新啟動］按鈕。",
     "dm_crash_off_warn": "關閉後無法在 Discord 上得知當機，但應用程式通知中仍會保留。",
+    "dm_unresponsive_title": "無回應",
+    "dm_unresponsive_desc": "執行中的伺服器不再回應狀態查詢時通知你。設為僅通知時會附上［重新啟動］按鈕。",
     "dm_external_start_title": "在 Saba-chan 之外啟動",
     "dm_external_start_desc": "伺服器未經 Saba-chan 啟動時通知你。",
     "dm_schedule_title": "排程工作預告",

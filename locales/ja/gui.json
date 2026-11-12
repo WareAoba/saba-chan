@@ -1316,6 +1316,8 @@
     "dm_crash_title": "異常終了",
     "dm_crash_desc": "サーバーがクラッシュすると知らせます。自動再起動がオフなら［再起動］ボタンが付きます。",
     "dm_crash_off_warn": "オフにすると、クラッシュを Discord で知ることができません。アプリの通知には残ります。",
+    "dm_unresponsive_title": "応答なし",
+    "dm_unresponsive_desc": "起動中のサーバーが状態の問い合わせに応答しなくなると知らせます。通知だけの設定なら［再起動］ボタンが付きます。",
     "dm_external_start_title": "サバちゃんの外で起動",
     "dm_external_start_desc": "サバちゃんを通さずにサーバーが起動すると知らせます。",
     "dm_schedule_title": "予約の予告",

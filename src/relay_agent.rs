@@ -1442,7 +1442,7 @@ pub(crate) fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "instance.unresponsive" => pick(&["at", "instanceId", "instance", "minutes", "restarting"]),
         // 서버가 켜지고 꺼진 것과 시킨 쪽. 사바쨩 밖의 시작은 unexpected (크래시·원인 모를 종료는 instance.exit)
         "instance.started" => pick(&["at", "instanceId", "instance", "source", "userName", "unexpected"]),
-        "instance.stopped" => pick(&["at", "instanceId", "instance", "source", "userName", "kind"]),
+        "instance.stopped" => pick(&["at", "instanceId", "instance", "source", "userName", "kind", "idleMinutes"]),
         // 켠 서버의 모듈 새 버전·게임 서버 새 빌드 (시작을 시킨 사람에게만 알린다)
         "instance.update_notice" => pick(&["at", "instanceId", "instance", "kind", "module", "latest"]),
         // 게임 서버 업데이트가 끝났다 (예약·앱·디스코드 어디서 시켰든)
@@ -3423,11 +3423,11 @@ mod tests {
         dm_notice_meta(&mut meta, &BotConfig::default());
         assert_eq!(meta, json!({}));
 
-        let mut bot: BotConfig = serde_json::from_value(json!({ "backupNotice": "off", "dmNotice": { "crash": false, "chatbotUsage": false } })).unwrap();
+        let mut bot: BotConfig = serde_json::from_value(json!({ "backupNotice": "off", "dmNotice": { "crash": false, "unresponsive": false, "chatbotUsage": false } })).unwrap();
         assert_eq!(bot.backup_notice, BackupNotice::Off);
         assert!(bot.dm_notice.moderation, "빠진 칸은 켜짐");
         dm_notice_meta(&mut meta, &bot);
-        assert_eq!(meta, json!({ "backupNotice": "off", "dmOff": ["crash", "chatbotUsage"] }));
+        assert_eq!(meta, json!({ "backupNotice": "off", "dmOff": ["crash", "unresponsive", "chatbotUsage"] }));
 
         bot.backup_notice = BackupNotice::Failures;
         let mut meta = json!({});
@@ -3541,6 +3541,9 @@ mod tests {
         assert_eq!(relay_event(&started).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "external", "unexpected": true}));
         let stopped = ev("instance.stopped", json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "gui", "userName": "집 PC", "kind": "user_stop"}));
         assert_eq!(relay_event(&stopped).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "gui", "userName": "집 PC", "kind": "user_stop"}));
+        // 접속자가 없어 자동 정지: 비어 있던 분
+        let idle = ev("instance.stopped", json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "idle", "kind": "user_stop", "idleMinutes": 30}));
+        assert_eq!(relay_event(&idle).unwrap()["data"]["idleMinutes"], 30);
         // 여러 단계 실행은 디스코드에서 시작한 것만
         assert!(relay_event(&ev("plan.done", json!({"runId": "r", "ok": true}))).is_none());
         assert_eq!(relay_event(&ev("plan.done", json!({"runId": "r", "guildId": "g", "ok": true}))).unwrap()["data"]["guildId"], "g");

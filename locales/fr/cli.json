@@ -177,6 +177,7 @@
     "dm_notice_off": "désactivé",
     "dm_kind": {
       "crash": "Plantages",
+      "unresponsive": "Ne répond pas",
       "externalStart": "Démarré hors de Saba-chan",
       "schedule": "Annonces de tâches planifiées",
       "update": "Mises à jour de Saba-chan",

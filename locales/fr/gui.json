@@ -1316,6 +1316,8 @@
     "dm_crash_title": "Plantages",
     "dm_crash_desc": "Vous prévient quand un serveur plante. Sans redémarrage automatique, un bouton Redémarrer est ajouté.",
     "dm_crash_off_warn": "Désactivé, vous ne saurez pas qu'un serveur a planté sur Discord. Cela reste dans les notifications de l'appli.",
+    "dm_unresponsive_title": "Ne répond pas",
+    "dm_unresponsive_desc": "Vous prévient quand un serveur lancé ne répond plus aux demandes d'état. S'il est réglé pour seulement prévenir, un bouton Redémarrer est ajouté.",
     "dm_external_start_title": "Démarré hors de Saba-chan",
     "dm_external_start_desc": "Vous prévient quand un serveur démarre sans passer par Saba-chan.",
     "dm_schedule_title": "Annonces de tâches planifiées",

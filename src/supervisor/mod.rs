@@ -3582,8 +3582,6 @@ fn announce_started(instance_id: &str, name: &str, origin: &crate::audit::Origin
     crate::events::emit("instance.started", Value::Object(data));
 }
 
-/// `instance.stopped`: 사바쨩을 거쳐 끄거나(`user_stop`) 게임 안에서 끈(`in_game_stop`) 정상 정지.
-/// 크래시·원인 모를 종료는 `instance.exit`만 알린다
 /// 모듈 점검 결과에 설정 값 문제를 더한다: `issues`가 있으면 뒤에 붙이고, 치명 문제가 아니므로 `success`는 그대로 둔다
 fn with_setting_issues(mut result: Value, extra: Vec<Value>) -> Value {
     if extra.is_empty() {
@@ -3602,11 +3600,16 @@ fn with_setting_issues(mut result: Value, extra: Vec<Value>) -> Value {
     result
 }
 
+/// `instance.stopped`: 사바쨩을 거쳐 끄거나(`user_stop`) 게임 안에서 끈(`in_game_stop`) 정상 정지.
+/// 크래시·원인 모를 종료는 `instance.exit`만 알린다. 접속자가 없어 자동 정지(`idle`)는 비어 있던 분(`idleMinutes`)을 싣는다
 fn announce_stopped(instance_id: &str, name: &str, kind: crash::ExitKind, origin: &crate::audit::Origin) {
     let mut data = origin_fields(origin);
     data.insert("instanceId".into(), json!(instance_id));
     data.insert("instance".into(), json!(name));
     data.insert("kind".into(), json!(kind));
+    if let Some(stopped) = idle::stopped(instance_id).filter(|_| origin.source == "idle") {
+        data.insert("idleMinutes".into(), json!(stopped.minutes));
+    }
     crate::events::emit("instance.stopped", Value::Object(data));
 }
 
