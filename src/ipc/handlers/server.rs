@@ -94,6 +94,33 @@ pub async fn list_servers_internal(state: &IPCServer) -> axum::response::Respons
     server_list(state, Notices::After(0)).await
 }
 
+/// 서버마다의 `server.list_enrich` 답 (서버 id → 답). TTL 캐시에 답이 있으면 Python을 띄우지 않는다.
+/// 캐시에 없는 서버의 hook은 함께 돌린다: 차례로 돌리면 캐시가 끝날 때마다 목록이 (서버 수 × Python 기동 시간)만큼 늦는다.
+/// 동시에 도는 Python 수는 plugin 실행 자리가 제한한다
+async fn enrich_results<Fut>(cache: &crate::ipc::ExtensionStatusCache, contexts: Vec<(String, Value)>, run: impl Fn(Value) -> Fut) -> std::collections::HashMap<String, Value>
+where
+    Fut: std::future::Future<Output = Vec<(String, anyhow::Result<Value>)>>,
+{
+    let asks = contexts.into_iter().map(|(id, ctx)| {
+        let run = &run;
+        async move {
+            if let Some(cached) = cache.get(&id) {
+                return (id, cached);
+            }
+            // 첫 번째 성공 응답만 캐시한다 (실패는 다음 목록 요청에서 다시 시도)
+            let result = match run(ctx).await.into_iter().find_map(|(_id, r)| r.ok()) {
+                Some(result) => {
+                    cache.set(&id, result.clone());
+                    result
+                }
+                None => json!({"handled": false}),
+            };
+            (id, result)
+        }
+    });
+    futures_util::future::join_all(asks).await.into_iter().collect()
+}
+
 async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Response {
     let state = state.clone();
     // ── Phase 1: supervisor lock을 최소 시간만 잡고 필요한 데이터 복사 ──
@@ -194,36 +221,28 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
     };
 
     // ── Phase 2: Extension hooks (lock 없이 실행) ──
+    // Extension이 런타임 상태/통계를 제공할 수 있음 (TTL 캐시 적용)
+    let contexts = snapshots.iter().filter(|s| !s.info.extension_data.is_empty()).map(|s| {
+        let ctx = serde_json::json!({
+            "instance_id": &s.info.id,
+            "instance_name": &s.info.name,
+            "module": &s.info.module,
+            "extension_data": &s.info.extension_data,
+            "instance_dir": &s.instance_dir,
+            "process_patterns": &s.process_patterns,
+        });
+        (s.info.id.clone(), ctx)
+    }).collect();
+    let ext_mgr = state.extension_manager.clone();
+    let mut enriched = enrich_results(&state.extension_status_cache, contexts, |ctx| {
+        let ext_mgr = ext_mgr.clone();
+        async move { crate::extension::run_hook_timed(&ext_mgr, "server.list_enrich", ctx, 10).await }
+    }).await;
     let mut servers = Vec::new();
 
-    for InstanceSnapshot { info: mut server, instance_dir, process_patterns } in snapshots {
+    for InstanceSnapshot { info: mut server, .. } in snapshots {
         // ── Extension hook: server.list_enrich ──
-        // Extension이 런타임 상태/통계를 제공할 수 있음 (TTL 캐시 적용)
-        if !server.extension_data.is_empty() {
-            // 캐시 확인 — TTL 내 결과가 있으면 Python 프로세스 스폰 생략
-            let enrich_result = if let Some(cached_val) = state.extension_status_cache.get(&server.id) {
-                cached_val
-            } else {
-                let ext_mgr = state.extension_manager.clone();
-                let ctx = serde_json::json!({
-                    "instance_id": &server.id,
-                    "instance_name": &server.name,
-                    "module": &server.module,
-                    "extension_data": &server.extension_data,
-                    "instance_dir": &instance_dir,
-                    "process_patterns": &process_patterns,
-                });
-                let results = crate::extension::run_hook_timed(&ext_mgr, "server.list_enrich", ctx, 10).await;
-                // 첫 번째 성공 응답만 캐시한다 (실패는 다음 목록 요청에서 다시 시도)
-                match results.into_iter().find_map(|(_id, r)| r.ok()) {
-                    Some(result) => {
-                        state.extension_status_cache.set(&server.id, result.clone());
-                        result
-                    }
-                    None => json!({"handled": false}),
-                }
-            };
-
+        if let Some(enrich_result) = enriched.remove(&server.id) {
             // handled: true인 경우만 Extension이 서버 정보를 제공: 상태·PID·시작 시간·extension_status만 바꾼다
             let is_handled = enrich_result.get("handled")
                 .and_then(|h| h.as_bool()) == Some(true);
@@ -1976,6 +1995,36 @@ mod tests {
         };
         assert_eq!(managed("default"), json!(true), "managed is the default (C8b)");
         assert_eq!(managed("direct"), json!(false));
+    }
+
+    /// 캐시에 답이 없는 서버들의 `server.list_enrich`는 함께 돈다 (차례로 돌면 목록이 서버 수만큼 늦는다).
+    /// 캐시에 있는 서버는 부르지 않고, 받은 답은 캐시에 남는다
+    #[tokio::test]
+    async fn list_enrich_hooks_for_uncached_servers_run_together() {
+        let cache = crate::ipc::ExtensionStatusCache::new(30);
+        cache.set("cached", json!({ "handled": true, "status": "running" }));
+        let all_started = tokio::sync::Barrier::new(3);
+        let run = |ctx: Value| {
+            let all_started = &all_started;
+            async move {
+                assert_ne!(ctx["instance_id"], "cached", "a cached server is not asked again");
+                all_started.wait().await;
+                if ctx["instance_id"] == "failing" {
+                    return vec![("docker".to_string(), Err(anyhow::anyhow!("hook failed")))];
+                }
+                vec![("docker".to_string(), Ok(json!({ "handled": true, "status": "starting", "for": ctx["instance_id"] })))]
+            }
+        };
+        let contexts = ["a", "cached", "b", "failing"].map(|id| (id.to_string(), json!({ "instance_id": id }))).to_vec();
+        let results = tokio::time::timeout(std::time::Duration::from_secs(5), enrich_results(&cache, contexts, run))
+            .await
+            .expect("the hooks must not wait for each other");
+        assert_eq!(results["a"]["for"], "a");
+        assert_eq!(results["b"]["for"], "b");
+        assert_eq!(results["cached"]["status"], "running");
+        assert_eq!(results["failing"], json!({ "handled": false }));
+        assert_eq!(cache.get("a").unwrap()["for"], "a");
+        assert!(cache.get("failing").is_none(), "a failed hook is asked again on the next list");
     }
 
     /// 익스텐션이 맡았다고 답한 서버(`server.list_enrich`의 handled)는 상태·PID·시작 시간·extension_status만 익스텐션 답을 따르고
