@@ -8,6 +8,7 @@ import { CliText } from '../CliLine';
 import { Icon } from '../Icon';
 import '../ui/SabaArt.css';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { useContextMenu } from '../ui/ContextMenu';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import type { DiscordNode } from './types';
 import type { usePairing } from './usePairing';
@@ -198,6 +199,11 @@ export function PairingCard({ pairing, onCancel }: PairingCardProps) {
                     </div>
                 </li>
             </ol>
+            {/* 디스코드의 "다시 연결할 PC" 고르기에서 다른 PC를 고르면 그 PC의 토큰이 바뀌어 끊긴다 */}
+            <div className="notice tone-warn">
+                <Icon name="info" size="sm" />
+                <span>{t('discord.pair_pick_this_pc')}</span>
+            </div>
             <div className="dc-row-actions">
                 {/* 같은 일을 하는 CLI (J1-c) */}
                 <CliText line="saba-chan-cli bot pair" />
@@ -277,6 +283,15 @@ export function ConnectionView({
     const [confirmDisconnect, setConfirmDisconnect] = useState(false);
     const newGuildInstances = useDiscordStore((s) => s.discordNewGuildInstances);
     const reconnecting = useDiscordStore((s) => s.discordReconnecting);
+    // 릴레이 실패 종류: 토큰 거절이면 이 PC를 다시 연결하게 하고, 요청 한도면 곧 다시 붙는다고 알린다
+    const relayErrorKind = useDiscordStore((s) => s.relayErrorKind);
+    const openMenu = useContextMenu();
+    // 이 카드의 "다시 연결하기"·⋯ 메뉴로 시작한 페어링은 연결 카드 안에서 보인다
+    const [pairInConn, setPairInConn] = useState(false);
+    const infoRef = useRef<HTMLElement>(null);
+    useEffect(() => {
+        if (!pairing.active) setPairInConn(false);
+    }, [pairing.active]);
     // SleepAllButton이 알려 주는 "모든 서버를 재웠는지"
     const [asleep, setAsleep] = useState(false);
 
@@ -307,11 +322,21 @@ export function ConnectionView({
                     {!pairing.active && (
                         <div className="dc-hero-actions">
                             {onInviteBot && (
-                                <button data-spot="discord.invite" type="button" className="btn btn-ghost btn-lg" onClick={onInviteBot}>
+                                <button
+                                    data-spot="discord.invite"
+                                    type="button"
+                                    className="btn btn-ghost btn-lg"
+                                    onClick={onInviteBot}
+                                >
                                     <Icon name="externalLink" size="sm" /> {t('discord.invite_bot')}
                                 </button>
                             )}
-                            <button data-spot="discord.pair" type="button" className="btn btn-primary btn-lg" onClick={onStartPairing}>
+                            <button
+                                data-spot="discord.pair"
+                                type="button"
+                                className="btn btn-primary btn-lg"
+                                onClick={onStartPairing}
+                            >
                                 <Icon name="plug" size="sm" /> {t('discord.pair_start')}
                             </button>
                         </div>
@@ -331,6 +356,14 @@ export function ConnectionView({
     const flowing = agentRunning && connected && !asleep && !refused;
     // 릴레이에 닿지 못한 것은 "실패": 끊긴 자리를 빨간 X로 보인다 (재우기·연결 중은 그냥 이음줄이 없다)
     const relayFailed = cloudState === 'error';
+    const rejected = relayFailed && !refused && relayErrorKind === 'rejected';
+    const rateLimited = relayFailed && !refused && relayErrorKind === 'rate';
+    const pairHere = pairing.active && (pairInConn || rejected);
+    const repair = () => {
+        setPairInConn(true);
+        onStartPairing();
+    };
+    const showInfo = () => infoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return (
         <div className="dc-view">
             {/* 연결 카드: 제목·상태·재우기 + 사바쨩 → 릴레이 서버 → 디스코드 흐름 + 그림 칸 (여러 카드를 하나로) */}
@@ -360,7 +393,44 @@ export function ConnectionView({
                                     label={t('discord.relay_connecting')}
                                 />
                             )}
-                            {cloudState === 'error' && <StatusChip tone="stop" label={t('discord.relay_failed')} />}
+                            {cloudState === 'error' &&
+                                (rateLimited ? (
+                                    <StatusChip tone="warn" pulse label={t('discord.relay_recovering')} />
+                                ) : (
+                                    <StatusChip tone="stop" label={t('discord.relay_failed')} />
+                                ))}
+                            <button
+                                type="button"
+                                className="icon-btn"
+                                aria-label={t('discord.conn_menu')}
+                                data-tooltip={t('discord.conn_menu')}
+                                onClick={(e) =>
+                                    openMenu(e, [
+                                        {
+                                            id: 'pair',
+                                            label: t('discord.pair_again'),
+                                            icon: 'refresh',
+                                            onSelect: repair,
+                                        },
+                                        {
+                                            id: 'info',
+                                            label: t('discord.connection_info_show'),
+                                            icon: 'info',
+                                            onSelect: showInfo,
+                                        },
+                                        'separator',
+                                        {
+                                            id: 'disconnect',
+                                            label: t('discord.disconnect'),
+                                            icon: 'cloudOff',
+                                            danger: true,
+                                            onSelect: showInfo,
+                                        },
+                                    ])
+                                }
+                            >
+                                <Icon name="moreHorizontal" size="sm" />
+                            </button>
                         </div>
                         {refused && agentRunning ? null : agentRunning ? (
                             <SleepAllButton nodes={nodes} onAsleepChange={setAsleep} />
@@ -378,7 +448,38 @@ export function ConnectionView({
                 </div>
 
                 {/* 거절 이유는 아래 업데이트 안내가 말한다 */}
-                {cloudState === 'error' && !refused && (
+                {rejected && (
+                    <div className="notice tone-stop dc-conn-rejected">
+                        <Icon name="lock" size="sm" />
+                        <span className="dc-notice-text">
+                            <strong>{t('discord.relay_rejected_title')}</strong>
+                            <span>{t('discord.relay_rejected_body')}</span>
+                        </span>
+                        <span className="dc-notice-actions">
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={onReload}>
+                                {t('discord.reload')}
+                            </button>
+                            {!pairing.active && (
+                                <button type="button" className="btn btn-primary btn-sm" onClick={repair}>
+                                    <Icon name="plug" size="sm" /> {t('discord.repair_this_pc')}
+                                </button>
+                            )}
+                        </span>
+                    </div>
+                )}
+                {rateLimited && (
+                    <div className="notice tone-warn">
+                        <Icon name="clock" size="sm" />
+                        <span className="dc-notice-text">
+                            <strong>{t('discord.relay_rate_limited_title')}</strong>
+                            <span>{t('discord.relay_rate_limited_body')}</span>
+                        </span>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={onReload}>
+                            {t('discord.reload')}
+                        </button>
+                    </div>
+                )}
+                {cloudState === 'error' && !refused && !rejected && !rateLimited && (
                     <div className="notice tone-stop">
                         <Icon name="alertTriangle" size="sm" />
                         <span>{t('discord.relay_failed_body', { error: cloudError || '-' })}</span>
@@ -386,6 +487,15 @@ export function ConnectionView({
                             {t('discord.reload')}
                         </button>
                     </div>
+                )}
+                {pairHere && (
+                    <PairingCard
+                        pairing={pairing}
+                        onCancel={() => {
+                            setPairInConn(false);
+                            onCancelPairing();
+                        }}
+                    />
                 )}
                 {agentReplaced && !agentRunning && (
                     <div className="notice tone-warn">
@@ -465,9 +575,9 @@ export function ConnectionView({
                         }
                     />
                 </div>
-                {pairing.active ? (
+                {pairing.active && !pairHere ? (
                     <PairingCard pairing={pairing} onCancel={onCancelPairing} />
-                ) : (
+                ) : pairHere ? null : (
                     <div className="dc-row-actions">
                         {onInviteBot && (
                             <button type="button" className="btn btn-ghost" onClick={onInviteBot}>
@@ -483,7 +593,7 @@ export function ConnectionView({
 
             <PcNoticeCard />
 
-            <section className="dc-card">
+            <section className="dc-card" ref={infoRef}>
                 <div className="dc-card-head">
                     <h2>{t('discord.connection_info')}</h2>
                 </div>

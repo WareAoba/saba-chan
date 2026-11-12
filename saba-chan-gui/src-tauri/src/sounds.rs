@@ -198,40 +198,99 @@ fn play_bytes(_app: &AppHandle, cue: Cue) {
     }
 }
 
-/// macOS는 afplay, 리눅스는 paplay(없으면 aplay)로 앱 캐시 폴더에 풀어 둔 파일을 튼다.
-/// 여러 사용자가 함께 쓰는 임시 폴더는 쓰지 않는다 (남이 미리 만든 링크를 따라 덮어쓸 수 있다)
+/// macOS·리눅스는 앱 안 재생 스레드 하나가 실행 파일에 실은 바이트를 바로 튼다 (외부 재생 프로그램·임시 파일 없음).
+/// Windows처럼 새 소리는 울리던 소리를 끊는다. 소리가 다 끝나면 출력 장치를 놓는다
 #[cfg(not(windows))]
-fn play_bytes(app: &AppHandle, cue: Cue) {
-    let dir = match app.path().app_cache_dir() {
-        Ok(d) => d.join("sounds"),
-        Err(e) => return tracing::warn!("[Sound] No cache folder: {}", e),
-    };
-    std::thread::spawn(move || {
-        let path = dir.join(cue.file_name());
-        let fresh = std::fs::metadata(&path).is_ok_and(|m| m.len() == cue.bytes().len() as u64);
-        if !fresh {
-            if let Err(e) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, cue.bytes())) {
-                return tracing::warn!("[Sound] Could not write {}: {}", path.display(), e);
+fn play_bytes(_app: &AppHandle, cue: Cue) {
+    use std::sync::mpsc::{channel, Sender};
+    use std::sync::{Mutex, OnceLock};
+    static PLAYER: OnceLock<Mutex<Option<Sender<Cue>>>> = OnceLock::new();
+    let slot = PLAYER.get_or_init(|| Mutex::new(None));
+    let mut tx = slot.lock().unwrap_or_else(|e| e.into_inner());
+    if tx.as_ref().is_some_and(|t| t.send(cue).is_ok()) {
+        return;
+    }
+    let (t, rx) = channel();
+    let started = std::thread::Builder::new().name("sounds".into()).spawn(move || player_loop(rx));
+    match started {
+        Ok(_) if t.send(cue).is_ok() => *tx = Some(t),
+        Ok(_) => tracing::warn!("[Sound] Sound thread stopped before {}", cue.file_name()),
+        Err(e) => tracing::warn!("[Sound] Could not start the sound thread: {}", e),
+    }
+}
+
+/// 받은 소리를 차례로 튼다. 장치를 열지 못하면 그 소리만 건너뛴다 (다음 소리 때 다시 연다)
+#[cfg(not(windows))]
+fn player_loop(rx: std::sync::mpsc::Receiver<Cue>) {
+    use std::sync::mpsc::RecvTimeoutError;
+    use std::time::Duration;
+    while let Ok(first) = rx.recv() {
+        // 스트림 오류(장치를 놓을 때의 버퍼 부족 등)는 소리에 지장이 없어 디버그로만 남긴다
+        let opened = rodio::DeviceSinkBuilder::from_default_device().and_then(|b| {
+            b.with_error_callback(|e| tracing::debug!("[Sound] Audio stream: {}", e))
+                .open_sink_or_fallback()
+        });
+        let mut device = match opened {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("[Sound] No audio output for {}: {}", first.file_name(), e);
+                continue;
             }
-        }
-        let players: &[&str] = if cfg!(target_os = "macos") {
-            &["afplay"]
-        } else {
-            &["paplay", "aplay"]
         };
-        for player in players {
-            if let Ok(mut child) = std::process::Command::new(player).arg(&path).spawn() {
-                let _ = child.wait();
-                return;
+        device.log_on_drop(false);
+        let mut player = start(&device, first);
+        loop {
+            match rx.recv_timeout(Duration::from_millis(50)) {
+                Ok(next) => {
+                    if let Some(p) = player.take() {
+                        p.stop();
+                    }
+                    player = start(&device, next);
+                }
+                Err(RecvTimeoutError::Timeout) if player.as_ref().is_none_or(|p| p.empty()) => break,
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => return,
             }
         }
-        tracing::warn!("[Sound] No audio player found for {}", cue.file_name());
-    });
+    }
+}
+
+#[cfg(not(windows))]
+fn start(device: &rodio::MixerDeviceSink, cue: Cue) -> Option<rodio::Player> {
+    match decode(cue) {
+        Ok(source) => {
+            let player = rodio::Player::connect_new(device.mixer());
+            player.append(source);
+            Some(player)
+        }
+        Err(e) => {
+            tracing::warn!("[Sound] Could not decode {}: {}", cue.file_name(), e);
+            None
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn decode(cue: Cue) -> Result<rodio::Decoder<std::io::Cursor<&'static [u8]>>, rodio::decoder::DecoderError> {
+    rodio::Decoder::new_wav(std::io::Cursor::new(cue.bytes()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const ALL: [Cue; 10] = [
+        Cue::InstallSuccess,
+        Cue::InstallFailed,
+        Cue::Started,
+        Cue::Stopped,
+        Cue::Crashed,
+        Cue::StartFailed,
+        Cue::DaemonDown,
+        Cue::UpdateAvailable,
+        Cue::Startup,
+        Cue::GuideOpen,
+    ];
 
     fn ev(kind: &str, data: Value) -> SseEvent {
         SseEvent {
@@ -378,20 +437,20 @@ mod tests {
         assert!(!toast_silent(&crash_off, Some(Cue::Crashed)), "효과음을 껐으면 OS 알림음은 남긴다");
     }
 
+    // 앱 안 재생(맥·리눅스)은 실은 wav(48kHz 24비트)를 직접 디코딩한다
+    #[cfg(not(windows))]
+    #[test]
+    fn every_sound_decodes_for_in_app_playback() {
+        use rodio::Source;
+        for cue in ALL {
+            let source = decode(cue).unwrap_or_else(|e| panic!("{}: {e}", cue.file_name()));
+            assert!(source.total_duration().is_some_and(|d| d.as_millis() > 100), "{}", cue.file_name());
+        }
+    }
+
     #[test]
     fn every_sound_is_a_pcm_wav() {
-        for cue in [
-            Cue::InstallSuccess,
-            Cue::InstallFailed,
-            Cue::Started,
-            Cue::Stopped,
-            Cue::Crashed,
-            Cue::StartFailed,
-            Cue::DaemonDown,
-            Cue::UpdateAvailable,
-            Cue::Startup,
-            Cue::GuideOpen,
-        ] {
+        for cue in ALL {
             let b = cue.bytes();
             assert!(b.starts_with(b"RIFF") && &b[8..12] == b"WAVE", "{}", cue.file_name());
             assert_eq!(

@@ -19,6 +19,8 @@ pub mod events;
 pub mod i18n;
 pub mod lifecycle;
 pub mod logging;
+#[cfg(target_os = "macos")]
+mod mac_notify;
 pub mod native;
 pub mod overlay;
 pub mod settings;
@@ -165,7 +167,11 @@ pub fn run() {
         life: lifecycle::Lifecycle::default(),
     };
 
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // 바탕화면 오버레이 창을 NSPanel로 바꿀 때 쓴다 (`overlay::mac_panel`)
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(tauri_nspanel::init());
+    let app = builder
         // 두 번째 실행은 창을 새로 띄우지 않고 떠 있는 창을 앞으로 가져온다.
         // 여러 GUI가 한 데몬을 함께 쓰다 한쪽의 완전히 종료가 다른 쪽의 데몬을 꺼뜨리던 것을 막는다
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
