@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { memo, type MouseEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Server } from '../../stores/useServerStore';
-import { type ConsoleEntry, useConsoleStore } from '../../stores/useConsoleStore';
+import { type ConsoleEntry, type ConsoleLine as ConsoleLineData, useConsoleStore } from '../../stores/useConsoleStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { type CommandField, needsConfirm } from '../../utils/commandRisk';
 import { commandText } from '../../utils/serverView';
@@ -20,19 +20,6 @@ const historyOf = (id: string) => {
     if (!histories.has(id)) histories.set(id, []);
     return histories.get(id) as string[];
 };
-
-/** 콘솔 한 줄 (데몬이 준 줄 + 받을 때 붙이는 키) */
-interface ConsoleLineData {
-    key?: string | number;
-    id?: string | number;
-    source?: string;
-    level?: string;
-    timestamp?: number | null;
-    content: string;
-    spans?: unknown[];
-    /** 보낸 명령 줄(source: input)을 시킨 쪽 */
-    by?: { source?: string; userName?: string };
-}
 
 type Stamp = ((ts: number) => string) | null;
 

@@ -1,8 +1,7 @@
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { TITLEBAR_HEIGHT } from '../constants/layout';
-import { type Consoles, useConsoleStore } from '../stores/useConsoleStore';
+import { type ConsoleLine, type Consoles, useConsoleStore } from '../stores/useConsoleStore';
 import { useServerStore } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { commandErrorText, commandReplyLines } from '../utils/commandReply';
@@ -22,24 +21,13 @@ const setConsoles = (consolesOrUpdater: ConsolesOrUpdater) => useConsoleStore.ge
 // 줄마다 GUI가 매기는 key. 데몬 id는 프로세스·디스크 읽기마다 0부터 다시 세서 겹친다 (G-C1)
 let lineSeq = 0;
 
-/** 콘솔 한 줄 */
-interface ConsoleLine {
-    id: number;
-    content?: string;
-    source?: string;
-    level?: string;
-    timestamp?: string;
-    /** 보낸 명령 줄(source: input)을 시킨 쪽 */
-    by?: { source?: string; userName?: string };
-}
-
 /** 읽기 루프 하나의 ref (닫을 때 멈춘다) */
 interface PollRef {
     active: boolean;
     timer: ReturnType<typeof setTimeout> | null;
 }
 
-const keyed = (lines: ConsoleLine[]) => lines.map((line) => ({ ...line, key: ++lineSeq }));
+const keyed = (lines: ConsoleLine[]): ConsoleLine[] => lines.map((line) => ({ ...line, key: ++lineSeq }));
 
 /** 디스크 줄과 실행 중에 받은 줄을 맞춰 보는 값. 디스크 기록은 내용 앞 공백을 지우고 시각은 초까지 남긴다 */
 const lineMark = (line: ConsoleLine) => `${line.timestamp ?? ''}|${line.source ?? ''}|${String(line.content ?? '').trimStart()}`;
@@ -69,8 +57,7 @@ function unseenDiskTail(seen: string[], tail: ConsoleLine[]) {
 /**
  * Manages multiple simultaneous console instances with individual state.
  *
- * Each console instance tracks its own lines, input, polling, window position/size,
- * minimized state, pinned state, and z-index for focus ordering.
+ * Each console instance tracks its own lines, input and polling.
  *
  * @param {Object} params
  * @param {boolean} params.isPopoutMode - Whether the app is in popout console mode
@@ -88,45 +75,16 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     const { t } = useTranslation('gui');
     const translateError = createTranslateError(t);
 
-    // Global z-index counter for window stacking
-    const zCounterRef = useRef(100);
     // Map of instanceId -> polling interval id
     const pollingRefs = useRef<Record<string, PollRef>>({});
     // 따로 띄운 창에 가 있는 콘솔들 (여러 서버를 동시에 띄울 수 있다)
     const [consolePopoutIds, setConsolePopoutIds] = useState<string[]>([]);
 
-    // ── Helpers ─────────────────────────────────────────────
-
-    const getDefaultPosition = useCallback((existingCount: number) => {
-        const offset = existingCount * 30;
-        return {
-            x: 80 + offset,
-            y: TITLEBAR_HEIGHT + 20 + offset,
-        };
-    }, []);
-
-    const getDefaultSize = useCallback(() => ({
-        width: 700,
-        height: 400,
-    }), []);
-
     // ── Open a console ──────────────────────────────────────
 
     const openConsole = useCallback((instanceId: string, serverName: string) => {
         setConsoles((prev) => {
-            // Already open → just restore and focus
-            if (prev[instanceId]) {
-                return {
-                    ...prev,
-                    [instanceId]: {
-                        ...prev[instanceId],
-                        minimized: false,
-                        zIndex: zCounterRef.current += 1,
-                    },
-                };
-            }
-
-            const existingCount = Object.keys(prev).length;
+            if (prev[instanceId]) return prev;
             return {
                 ...prev,
                 [instanceId]: {
@@ -134,11 +92,6 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     lines: [],
                     input: '',
                     stdinDisabled: false,
-                    minimized: false,
-                    pinned: false,
-                    position: getDefaultPosition(existingCount),
-                    size: getDefaultSize(),
-                    zIndex: zCounterRef.current += 1,
                 },
             };
         });
@@ -268,106 +221,21 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             pollingRefs.current[instanceId] = myRef;
             schedulePoll();
         }
-    }, [consoleBufferRef, getDefaultPosition, getDefaultSize]);
+    }, [consoleBufferRef]);
 
     // ── Close a single console ──────────────────────────────
 
-    const closeConsole = useCallback((instanceId?: string) => {
-        // If called without id (legacy compat) close all
-        if (!instanceId) {
-            for (const id of Object.keys(pollingRefs.current)) {
-                const ref = pollingRefs.current[id];
-                if (ref && typeof ref === 'object') {
-                    ref.active = false;
-                    clearTimeout(ref.timer ?? undefined);
-                } else {
-                    clearInterval(ref);
-                }
-            }
-            pollingRefs.current = {};
-            setConsoles({});
-            return;
-        }
-
-        if (pollingRefs.current[instanceId]) {
-            const ref = pollingRefs.current[instanceId];
-            if (ref && typeof ref === 'object') {
-                ref.active = false;
-                clearTimeout(ref.timer ?? undefined);
-            } else {
-                clearInterval(ref);
-            }
+    const closeConsole = useCallback((instanceId: string) => {
+        const ref = pollingRefs.current[instanceId];
+        if (ref) {
+            ref.active = false;
+            clearTimeout(ref.timer ?? undefined);
             delete pollingRefs.current[instanceId];
         }
         setConsoles((prev) => {
             const next = { ...prev };
             delete next[instanceId];
             return next;
-        });
-    }, []);
-
-    // ── Minimize / Restore ──────────────────────────────────
-
-    const minimizeConsole = useCallback((instanceId: string) => {
-        setConsoles((prev) => {
-            if (!prev[instanceId]) return prev;
-            return {
-                ...prev,
-                [instanceId]: { ...prev[instanceId], minimized: true },
-            };
-        });
-    }, []);
-
-    const restoreConsole = useCallback((instanceId: string) => {
-        setConsoles((prev) => {
-            if (!prev[instanceId]) return prev;
-            const isPinned = prev[instanceId].pinned;
-            return {
-                ...prev,
-                [instanceId]: {
-                    ...prev[instanceId],
-                    minimized: false,
-                    zIndex: (isPinned ? PIN_Z_OFFSET : 0) + (zCounterRef.current += 1),
-                },
-            };
-        });
-    }, []);
-
-    // ── Focus (bring to front) ──────────────────────────────
-
-    const PIN_Z_OFFSET = 50000; // pinned windows sit far above normal ones but below modals
-
-    const focusConsole = useCallback((instanceId: string) => {
-        setConsoles((prev) => {
-            if (!prev[instanceId]) return prev;
-            const isPinned = prev[instanceId].pinned;
-            return {
-                ...prev,
-                [instanceId]: {
-                    ...prev[instanceId],
-                    zIndex: (isPinned ? PIN_Z_OFFSET : 0) + (zCounterRef.current += 1),
-                },
-            };
-        });
-    }, []);
-
-    // ── Pin (always on top) ─────────────────────────────────
-
-    const togglePin = useCallback((instanceId: string) => {
-        setConsoles((prev) => {
-            if (!prev[instanceId]) return prev;
-            const wasPinned = prev[instanceId].pinned;
-            const newPinned = !wasPinned;
-            return {
-                ...prev,
-                [instanceId]: {
-                    ...prev[instanceId],
-                    pinned: newPinned,
-                    zIndex: newPinned
-                        ? PIN_Z_OFFSET + (zCounterRef.current += 1)
-                        : (zCounterRef.current += 1),
-                },
-            };
         });
     }, []);
 
@@ -380,28 +248,6 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         } catch (err) {
             console.error('Popin failed:', err);
         }
-    }, []);
-
-    // ── Update position / size ──────────────────────────────
-
-    const updatePosition = useCallback((instanceId: string, position: { x: number; y: number }) => {
-        setConsoles((prev) => {
-            if (!prev[instanceId]) return prev;
-            return {
-                ...prev,
-                [instanceId]: { ...prev[instanceId], position },
-            };
-        });
-    }, []);
-
-    const updateSize = useCallback((instanceId: string, size: { width: number; height: number }) => {
-        setConsoles((prev) => {
-            if (!prev[instanceId]) return prev;
-            return {
-                ...prev,
-                [instanceId]: { ...prev[instanceId], size },
-            };
-        });
     }, []);
 
     // ── Update input ────────────────────────────────────────
@@ -474,23 +320,13 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         }
     }, [setConsoleInput, translateError, t]);
 
-    // Check if an instance has an open console (for ServerCard active state)
-    const isConsoleOpen = useCallback((instanceId: string) => {
-        return !!useConsoleStore.getState().consoles[instanceId];
-    }, []);
-
     // ── Cleanup on unmount ──────────────────────────────────
 
     useEffect(() => {
         return () => {
-            for (const id of Object.keys(pollingRefs.current)) {
-                const ref = pollingRefs.current[id];
-                if (ref && typeof ref === 'object') {
-                    ref.active = false;
-                    clearTimeout(ref.timer ?? undefined);
-                } else {
-                    clearInterval(ref);
-                }
+            for (const ref of Object.values(pollingRefs.current)) {
+                ref.active = false;
+                clearTimeout(ref.timer ?? undefined);
             }
         };
     }, []);
@@ -530,7 +366,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             // 메인 창 콘솔 자리에 흐리게 깔 마지막 줄을 남긴다
             const lines = useConsoleStore.getState().consoles[instanceId]?.lines;
             if (Array.isArray(lines) && lines.length) {
-                const ghost = lines.slice(-GHOST_LINES).map((l: { content?: string }) => String(l?.content ?? ''));
+                const ghost = lines.slice(-GHOST_LINES).map((l) => String(l?.content ?? ''));
                 useConsoleStore.setState((st) => ({ ghosts: { ...st.ghosts, [instanceId]: ghost } }));
             }
             // 띄운 창이 따로 읽으니 이 창은 읽기를 멈춘다. 돌아오면 상세 화면이 다시 연다
@@ -557,15 +393,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         consolePopoutIds,
         openConsole,
         closeConsole,
-        minimizeConsole,
-        restoreConsole,
-        focusConsole,
-        togglePin,
         popinConsole,
-        updatePosition,
-        updateSize,
         setConsoleInput,
         sendConsoleCommand,
-        isConsoleOpen,
     };
 }
