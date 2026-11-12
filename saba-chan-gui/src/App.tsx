@@ -63,6 +63,7 @@ import {
 } from './utils/opening';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
 import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice';
+import { warmTabArt } from './utils/warmArt';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import { useSlowProgressBubble } from './hooks/useSlowProgressBubble';
@@ -707,6 +708,10 @@ function App() {
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);
     }, [showLoading, switchedDaemon]);
+    // 오프닝이 끝나면 탭 그림·글꼴을 한가할 때 미리 받아 둔다
+    useEffect(() => {
+        if (openingPhase === 'done') warmTabArt();
+    }, [openingPhase]);
     // 메인 화면을 덮어 두고 그린 뒤, 글꼴·그림이 준비되고 메인 화면이 잠잠해지면(처음 그린 뒤 이어지는 렌더·번역
     // 불러오기가 끝나면) 무엇을 어떻게 재생할지 정해 로딩 화면에 넘긴다
     const prepareOpening = async (signal: AbortSignal): Promise<OpeningPlay | null> => {
