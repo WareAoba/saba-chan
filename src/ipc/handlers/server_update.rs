@@ -254,7 +254,7 @@ pub(crate) async fn stop_update_start(state: &IPCServer, id: &str) -> bool {
 /// 지금 접속자 수를 보고, 켜져 있는데 0명으로 확인되지 않으면 끄지 않고 None (잠금이 잡혀 있어도 None)
 /// 같은 서버 폴더를 쓰는 다른 인스턴스가 켜져 있거나 작업 중이어도 None (미룬다)
 async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool) -> Option<bool> {
-    // 시작은 이 잠금을 잡고 켠다(`server::start_instance`): 잡고 있는 동안에는 확인한 뒤 새로 켜지지 않는다
+    // 시작은 이 잠금을 잡고 켠다(`server::start`: `start_unmanaged`·`managed::start_managed`): 잡고 있는 동안에는 확인한 뒤 새로 켜지지 않는다
     let start_lock = if only_if_empty {
         let Some(lock) = super::backup::InstanceLock::take_for_writes(id).await else {
             postpone(id, false);
