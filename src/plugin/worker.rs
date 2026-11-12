@@ -105,7 +105,7 @@ enum Start {
     Ready(Worker),
     /// 이 준비로는 작업자가 되지 못한다 (SDK 진입점이 아님 등)
     Unusable(String),
-    /// 뜨는 사이에 호출 기한이 지났다
+    /// 뜨는 사이에 호출 기한이 지났다 (이 준비로는 작업자로 띄우지 않는다)
     TimedOut,
 }
 
@@ -139,6 +139,9 @@ pub(super) async fn call(mut launch: Launch, request: Request<'_>, deadline: &Ca
                 return Outcome::OneShot(on_progress, None);
             }
             Start::TimedOut => {
+                // 인사를 기다리는 동안 기한이 지났다: 기한이 짧은 호출이 매번 같은 자리에서 끝나지 않게 다음 호출부터 단발로 돌린다
+                tracing::warn!("{} did not start as a persistent worker before {} timed out; calling it once per request", module_name(&entry), request.function);
+                lock(&UNUSABLE).insert(entry.clone(), fingerprint);
                 busy.finished = true;
                 return Outcome::Done(Err(timed_out(&entry, request.function, request.timeout_secs, Vec::new())));
             }
@@ -369,6 +372,18 @@ mod tests {
         assert_eq!(first["success"], true, "{first}");
         let second = run_plugin_with_timeout(&entry, "partial", serde_json::json!({}), 10).await.unwrap_or_else(|e| error_response(&e));
         assert_eq!(second["pid"], first["pid"], "{second}");
+        stop_workers(Some(dir.path()));
+    }
+
+    /// 단발 계약대로 stdin을 먼저 읽는 진입점은 인사하지 않는다: 뜨는 사이에 기한이 지나도 다음 호출부터 단발로 돈다
+    #[tokio::test]
+    async fn an_entry_point_that_waits_for_stdin_runs_one_shot_after_its_start_timed_out() {
+        crate::python_env::get_python_path().await.expect("test Python ready");
+        let (dir, entry) = persistent_module("import json, sys\nsys.stdin.read()\nprint(json.dumps({'success': True, 'argv': sys.argv[1]}))\n");
+        let first = run_plugin_with_timeout(&entry, "probe", serde_json::json!({}), 3).await.unwrap_or_else(|e| error_response(&e));
+        assert_eq!(first["error_code"], "module_timeout", "{first}");
+        let second = run_plugin_with_timeout(&entry, "probe", serde_json::json!({}), 3).await.unwrap_or_else(|e| error_response(&e));
+        assert_eq!(second["argv"], "probe", "{second}");
         stop_workers(Some(dir.path()));
     }
 
