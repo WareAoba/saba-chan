@@ -9,6 +9,7 @@ import type { BackdropSupport, WindowBackdropConfig } from '../utils/themeManage
 import type {
     ApiBody,
     AgentStatus,
+    RelayLink,
     ApiResult,
     DaemonError,
     ExtensionListResponse,
@@ -901,14 +902,22 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         discordBotStatus: async (): Promise<AgentStatus> => {
             try {
                 const { data } = await get('/api/relay/agent', { timeout: 3000 });
+                // 에이전트가 하트비트로 아는 연결 상태 (0.1.14~). 있으면 화면이 릴레이에 따로 묻지 않는다
+                const link: RelayLink | undefined =
+                    typeof data?.connected === 'boolean' ? { connected: data.connected, error: String(data.lastError || '') } : undefined;
                 // 릴레이가 이 앱 버전을 받지 않는다: 세션은 살아 있어도 명령이 오지 않는다
                 if (data?.lastErrorCode === 'agent_too_old')
-                    return { status: 'too_old', running: !!data.running, minVersion: data.minVersion ?? null };
-                if (data?.running) return 'running';
-                // 같은 디스코드 계정이 다른 PC를 페어링해서 데몬이 에이전트를 멈췄다
-                if (data?.lastErrorCode === 'token_replaced') return 'replaced';
-                // 저장된 릴레이 주소가 https(루프백만 http)가 아니어서 데몬이 에이전트를 띄우지 않았다
-                return data?.lastErrorCode === 'invalid_relay_url' ? 'invalid_relay_url' : 'stopped';
+                    return { status: 'too_old', running: !!data.running, minVersion: data.minVersion ?? null, ...(link ? { link } : {}) };
+                const status = data?.running
+                    ? 'running'
+                    : // 같은 디스코드 계정이 다른 PC를 페어링해서 데몬이 에이전트를 멈췄다
+                      data?.lastErrorCode === 'token_replaced'
+                      ? 'replaced'
+                      : // 저장된 릴레이 주소가 https(루프백만 http)가 아니어서 데몬이 에이전트를 띄우지 않았다
+                        data?.lastErrorCode === 'invalid_relay_url'
+                        ? 'invalid_relay_url'
+                        : 'stopped';
+                return link ? { status, running: !!data?.running, link } : status;
             } catch (_e) {
                 // 늦거나 닿지 못했다: 꺼졌는지 모른다 (스토어가 두 번 연달아 모를 때만 꺼짐으로 본다)
                 return 'unknown';

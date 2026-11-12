@@ -1,8 +1,9 @@
 import type { TFunction } from 'i18next';
 import { create } from 'zustand';
-import type { AgentStatus, Json, JsonObject } from '../types/daemon';
+import type { AgentStatus, Json, JsonObject, RelayLink } from '../types/daemon';
 import { readPrefixes } from '../components/discord/prefixes';
 import type { DiscordNode, MembersByGuild } from '../components/discord/types';
+import { eventsAvailable, subscribeDaemonEvents } from '../utils/daemonEvents';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { mergePatchDiff } from '../utils/mergePatch';
 
@@ -68,6 +69,14 @@ let saveQueue: Promise<unknown> = Promise.resolve();
 let statusGeneration = 0;
 // 지금 확인 중인 대상 세대 (겹친 확인은 하나만 돌려 한 번의 실패를 두 번으로 세지 않는다)
 let checkingGeneration: number | null = null;
+/** 확인하는 동안 연결 상태가 바뀌었다 (이벤트): 끝나면 한 번 더 한다 */
+let checkAgain = false;
+/** 데몬이 에이전트의 연결 상태를 알려 준다 (0.1.14~). 그러면 이벤트로 알 수 있어 평소 확인을 느리게 한다 */
+let daemonKnowsLink = false;
+let offStatusEvents: (() => void) | null = null;
+/** 상태 확인 주기: 이벤트로 바뀜을 알 수 있으면 느리게, 아니면(옛 데몬·이벤트 없음) 예전처럼 */
+const STATUS_POLL_MS = 5000;
+const STATUS_SLOW_POLL_MS = 30_000;
 
 // 디스코드 봇 본체는 클라우드(릴레이 서버)에서 돌고, 로컬에서는 데몬 내장
 // 릴레이 에이전트가 명령을 받아 처리한다. 이 스토어는 bot-config와
@@ -107,7 +116,8 @@ export interface DiscordData {
     _saveErrorCode: string | null;
     _settingsReady: boolean;
     _botConfigLoaded: boolean;
-    _statusInterval: ReturnType<typeof setInterval> | null;
+    /** 다음 상태 확인 타이머 (확인이 끝나면 다음을 건다) */
+    _statusInterval: ReturnType<typeof setTimeout> | null;
     _statusTimeout: ReturnType<typeof setTimeout> | null;
 }
 
@@ -363,7 +373,10 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         if (checkingGeneration === generation) return;
         checkingGeneration = generation;
         try {
-            await get()._checkStatusNow(generation);
+            do {
+                checkAgain = false;
+                await get()._checkStatusNow(generation);
+            } while (checkAgain && generation === statusGeneration);
         } finally {
             if (checkingGeneration === generation) checkingGeneration = null;
         }
@@ -382,9 +395,16 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             /* unknown */
         }
 
+        // 에이전트가 하트비트로 아는 연결 상태. 돌고 있을 때만 믿는다 (꺼 둔 봇은 릴레이가 닿는지 모른다)
+        const info = typeof agent === 'object' ? agent : null;
+        const link: RelayLink | undefined = info?.link;
+        if (agent !== 'unknown') daemonKnowsLink = !!link;
         let relayOk = false;
         let relayFailure = '';
-        if (state.discordCloudHostId) {
+        if (state.discordCloudHostId && link && info?.running) {
+            relayOk = link.connected;
+            if (!relayOk) relayFailure = link.error || _t('errors.network_error');
+        } else if (state.discordCloudHostId) {
             const relayUrl = state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
             try {
                 // 이미 붙어 있거나 실패로 정해졌으면 '연결 중'으로 깜빡이지 않는다 (5초마다 확인)
@@ -404,16 +424,13 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         const agentFailures = agent === 'unknown' ? get()._agentFailures + 1 : 0;
         const prev = get();
         const keepAgent = agent === 'unknown' && agentFailures < 2;
-        // too_old는 { status, running, minVersion }으로 온다
-        const tooOld = typeof agent === 'object' ? agent : null;
-        const agentRunning = keepAgent
-            ? prev.discordBotStatus !== 'stopped'
-            : tooOld
-              ? tooOld.running
-              : agent === 'running';
+        // too_old는 { status, running, minVersion }으로 온다. 연결 상태를 주는 데몬은 다른 상태도 객체로 준다
+        const kind = info ? info.status : agent;
+        const tooOld = info?.status === 'too_old' ? info : null;
+        const agentRunning = keepAgent ? prev.discordBotStatus !== 'stopped' : info ? info.running : agent === 'running';
         const agentMinVersion = keepAgent ? prev.discordAgentMinVersion : tooOld ? tooOld.minVersion || '-' : null;
-        const agentReplaced = keepAgent ? prev.discordAgentReplaced : agent === 'replaced';
-        const agentRelayUrlInvalid = keepAgent ? prev.discordAgentRelayUrlInvalid : agent === 'invalid_relay_url';
+        const agentReplaced = keepAgent ? prev.discordAgentReplaced : kind === 'replaced';
+        const agentRelayUrlInvalid = keepAgent ? prev.discordAgentRelayUrlInvalid : kind === 'invalid_relay_url';
 
         // 두 번 연달아 실패해야 끊김·실패로 본다 (그 전까지는 지금 상태를 유지한다)
         const failures = relayFailure ? get()._relayFailures + 1 : 0;
@@ -443,22 +460,42 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
     },
 
     startStatusPolling: () => {
-        if (get()._statusInterval) return;
+        if (get()._statusInterval || get()._statusTimeout) return;
+        const generation = statusGeneration;
 
+        // 다음 확인. 데몬이 연결 상태를 알려 주고 이벤트를 받으면 바뀔 때 이벤트로 바로 읽으니 평소에는 드물게 본다
+        const schedule = () => {
+            if (generation !== statusGeneration) return;
+            const ms = daemonKnowsLink && eventsAvailable() ? STATUS_SLOW_POLL_MS : STATUS_POLL_MS;
+            set({
+                _statusInterval: setTimeout(async () => {
+                    await get().checkStatus();
+                    schedule();
+                }, ms),
+            });
+        };
+        offStatusEvents = subscribeDaemonEvents((ev) => {
+            if (ev.type !== 'relay.status' && ev.type !== 'resync') return;
+            // 확인하는 중에 바뀌었으면 그 답은 이미 옛것일 수 있다: 끝나고 한 번 더 본다
+            if (checkingGeneration === statusGeneration) checkAgain = true;
+            else get().checkStatus();
+        });
         // 첫 확인은 잠깐 미룬다. 멈추면 취소되도록 타이머를 들고 있는다
         const timeout = setTimeout(async () => {
             set({ _statusTimeout: null });
-            const generation = statusGeneration;
             await get().checkStatus();
-            if (generation === statusGeneration) set({ botStatusReady: true });
+            if (generation !== statusGeneration) return;
+            set({ botStatusReady: true });
+            schedule();
         }, 200);
-        const interval = setInterval(() => get().checkStatus(), 5000);
-        set({ _statusInterval: interval, _statusTimeout: timeout });
+        set({ _statusTimeout: timeout });
     },
 
     stopStatusPolling: () => {
         const state = get();
-        clearInterval(state._statusInterval ?? undefined);
+        offStatusEvents?.();
+        offStatusEvents = null;
+        clearTimeout(state._statusInterval ?? undefined);
         clearTimeout(state._statusTimeout ?? undefined);
         statusGeneration += 1;
         set({
@@ -474,7 +511,10 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
     // Test-only: reset to initial state
     _resetForTest: () => {
         const state = get();
-        clearInterval(state._statusInterval ?? undefined);
+        offStatusEvents?.();
+        offStatusEvents = null;
+        daemonKnowsLink = false;
+        clearTimeout(state._statusInterval ?? undefined);
         clearTimeout(state._statusTimeout ?? undefined);
         statusGeneration += 1;
         synced = {};
