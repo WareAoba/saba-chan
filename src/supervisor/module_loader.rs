@@ -574,6 +574,10 @@ pub struct SettingField {
     /// `daemon_rcon.settings_to_file`·`settings_from_file`이 이름과 파일 키를 이 한 곳에서 잇는다 (saba-core 0.1.11)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_key: Option<String>,
+    /// 이 설정이 있는 게임 버전 범위 (예: `<1.21.9`, `>=1.13 <1.20`). 설치된 버전(`server_version`)이 밖이면
+    /// 그 서버에는 없는 설정이라 화면이 숨긴다 (`crate::validator::version_hidden`). 없으면 모든 버전
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub versions: Option<String>,
 }
 
 /// `visible_when = { field, equals }` 또는 `{ field, in = [...] }` (06 §8.2)
@@ -1102,6 +1106,10 @@ struct SettingFieldToml {
     /// 게임 설정 파일의 키 (`SettingField::file_key`)
     #[serde(default)]
     file_key: Option<String>,
+    /// 이 설정이 있는 게임 버전 범위: 비교(`<` `<=` `>` `>=` `=`)와 점으로 나눈 숫자 버전을 공백이나 쉼표로 잇는다
+    /// (예: `<1.21.9`, `>=1.13 <1.20`). 설치된 버전이 밖이면 화면이 숨긴다 (`SettingField::versions`)
+    #[serde(default)]
+    versions: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1382,6 +1390,7 @@ impl ModuleToml {
                     any_of: v.any_of.map(|list| list.into_iter().filter_map(|e| serde_json::to_value(e).ok()).collect()),
                 }),
                 file_key: f.file_key,
+                versions: f.versions,
             }).collect();
             if fields.is_empty() { None } else { Some(ModuleSettings { fields }) }
         } else {
@@ -1865,6 +1874,9 @@ impl ModuleToml {
             }
             if let Some(Err(e)) = field.pattern.as_deref().map(regex::Regex::new) {
                 problems.push(format!("settings field '{}': pattern is not a valid regex: {}", field.name, e));
+            }
+            if let Some(problem) = field.versions.as_deref().and_then(crate::validator::version_range_problem) {
+                problems.push(format!("settings field '{}': versions {}", field.name, problem));
             }
             let args = match &field.arg {
                 Some(OneOrMany::One(s)) => std::slice::from_ref(s),
@@ -2880,6 +2892,17 @@ entry = "lifecycle.py"
     }
 
     const V1: &str = "[module]\nschema_version = 1\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
+
+    /// 설정의 게임 버전 범위(`versions`)를 읽고, 읽을 수 없는 범위는 로드 오류다
+    #[test]
+    fn setting_version_ranges_are_read_and_checked() {
+        let good = format!("{V1}\n[[settings.fields]]\nname = \"pvp\"\ntype = \"boolean\"\nversions = \"<1.21.9\"\n");
+        let meta = parse_module_toml(&good).unwrap();
+        assert!(meta.warnings.is_empty(), "{:?}", meta.warnings);
+        assert_eq!(meta.settings.unwrap().fields[0].versions.as_deref(), Some("<1.21.9"));
+        let bad = good.replace("<1.21.9", "before 1.21.9");
+        assert!(parse_module_toml(&bad).unwrap_err().to_string().contains("versions"));
+    }
 
     /// 0.1.11: 설정의 게임 파일 키(`file_key`)와 로그 진단 규칙(`[[diagnose]]`)은 module.toml 한 곳에 적고
     /// 공용 도우미가 읽는다. 데몬은 겹침·빈 값·심각도만 검사한다

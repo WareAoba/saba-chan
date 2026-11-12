@@ -174,6 +174,11 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     module_settings: instance.module_settings.clone(),
                     server_version: instance.server_version.clone(),
                     server_build: instance.server_build.clone(),
+                    version_hidden: module
+                        .as_ref()
+                        .and_then(|m| m.metadata.settings.as_ref())
+                        .map(|s| crate::validator::version_hidden(&s.fields, instance.server_version.as_deref()))
+                        .unwrap_or_default(),
                     last_api_action: None,
                     provisioning: false,
                     managed,

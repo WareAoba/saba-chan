@@ -423,6 +423,8 @@
     "saba_chan_group": "사바쨩 설정",
     "basic_group": "서버 설정",
     "advanced_group": "고급 설정",
+    "version_hidden": "설치된 버전({{version}})에 없는 설정 {{count}}개는 숨겼어요.",
+    "version_hidden_list": "목록 보기",
     "danger_zone": "위험 영역",
     "reset_server_label": "서버 초기화",
     "reset_server_desc": "이 서버의 데이터를 지우고 처음 상태로 되돌려요. 무엇을 지우는지는 게임마다 달라요. 이 작업은 되돌릴 수 없어요.",

@@ -423,6 +423,8 @@
     "saba_chan_group": "saba-chan Settings",
     "basic_group": "Server Settings",
     "advanced_group": "Advanced Settings",
+    "version_hidden": "{{count}} setting(s) that the installed version ({{version}}) does not have are hidden.",
+    "version_hidden_list": "Show list",
     "danger_zone": "Danger Zone",
     "reset_server_label": "Reset Server",
     "reset_server_desc": "Erase this server's data and return it to a fresh state. What gets erased depends on the game. This cannot be undone.",

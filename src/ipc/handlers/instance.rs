@@ -61,7 +61,12 @@ pub async fn get_instance(
             body["agreements"] = json!(supervisor.agreement_views(instance, &language));
             // 06 §8.2: 저장된 값 기준으로 지금 숨겨진 설정 (CLI가 쓴다)
             let fields = supervisor.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()).map(|s| s.fields).unwrap_or_default();
-            body["hidden"] = json!(crate::validator::hidden_fields(&fields, |k| stored_setting(&body, instance, k)));
+            // 설치된 버전에 없는 설정 (`versions` 밖). 숨긴 설정이므로 `hidden`에도 든다
+            let version_hidden = crate::validator::version_hidden(&fields, instance.server_version.as_deref());
+            let mut hidden = crate::validator::hidden_fields(&fields, |k| stored_setting(&body, instance, k));
+            hidden.extend(version_hidden.iter().filter(|name| !hidden.contains(name)).cloned().collect::<Vec<_>>());
+            body["hidden"] = json!(hidden);
+            body["version_hidden"] = json!(version_hidden);
             body["revision"] = json!(instance.settings_revision());
             (StatusCode::OK, Json(body)).into_response()
         }
@@ -649,6 +654,8 @@ async fn install_new_server(job: InstallJob) {
 
     // ── Phase 2: 플러그인 호출 (lock 없이 실행) ──
     // lifecycle.py install_server 호출 (SteamCMD / download 모두 처리)
+    // 설치한 버전 (고른 것, 고르지 않았으면 최신). 설치가 끝나면 인스턴스에 적는다
+    let installed_version;
     let result = {
         // download 방식 모듈은 먼저 list_versions로 최신 버전 조회.
         // 인스턴스 설정(서버 종류 등)을 넘겨, 그 설정으로 받을 수 있는 최신을 고르게 한다
@@ -674,6 +681,7 @@ async fn install_new_server(job: InstallJob) {
         } else {
             None // 익스텐션 방식은 version 불필요
         };
+        installed_version = version.clone();
 
         // 만들 수 없으면 고른 폴더에 바로 설치한다 (실패해도 아무것도 지우지 않는다)
         leftovers = leftovers_dir.as_deref().and_then(|dir| {
@@ -755,6 +763,9 @@ async fn install_new_server(job: InstallJob) {
                     match sup.instance_store.get(&id_done).cloned() {
                         Some(inst) => {
                             let mut updated = inst;
+                            if let Some(version) = &installed_version {
+                                updated.server_version = Some(version.clone());
+                            }
                             if let Some(ref exe) = exe_path {
                                 if !exe.is_empty() {
                                     updated.executable_path = Some(exe.clone());
@@ -1882,7 +1893,10 @@ pub(crate) fn settings_rejection(supervisor: &crate::supervisor::Supervisor, ins
                 // 부분 변경이므로 보낸 필드만 검증한다
                 // 숨겨진 설정은 required를 보지 않는다 (06 §8.2). 숨김은 저장된 값에 이번 요청을 얹어 계산한다
                 let view = serde_json::to_value(instance).unwrap_or_default();
-                let hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| stored_setting(&view, instance, k)));
+                let mut hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| stored_setting(&view, instance, k)));
+                // 설치된 버전에 없는 설정도 숨긴 설정이다 (이번 요청이 버전을 바꾸면 그 버전으로)
+                let version = settings_obj.get("server_version").and_then(Value::as_str).or(instance.server_version.as_deref());
+                hidden.extend(crate::validator::version_hidden(&settings_meta.fields, version));
                 let errors: Vec<_> = crate::validator::validate_settings_patch(
                     &settings_meta.fields,
                     settings_obj,
@@ -3951,12 +3965,16 @@ mod tests {
         let inst = state.supervisor.read().await.instance_store.get(id).cloned().unwrap();
         assert_eq!(inst.working_dir.as_deref(), Some(folder.to_string_lossy().as_ref()));
         assert_eq!(inst.module_settings["managed_start"], json!(false));
+        // 설치한 버전은 그때 안다 (사용자가 골랐다): 따로 읽어 올 때까지 비워 두지 않는다
+        assert_eq!(inst.server_version.as_deref(), Some("1.0"));
 
         // 버전을 고르지 않으면 최신이다
         let latest = create(json!({ "name": "b", "module_name": "game" })).await;
         assert!(latest.status.is_success(), "{}", latest.body);
         let progress = provisioned(&state, "b").await.expect("provisioning finished");
         assert_eq!(progress.error, None, "{:?}", progress.details);
+        let id = latest.body["id"].as_str().unwrap();
+        assert!(state.supervisor.read().await.instance_store.get(id).unwrap().server_version.is_some(), "the latest version it installed");
 
         // 파일이 든 폴더에는 새로 설치하지 않는다 (있는 서버는 가져오기로)
         let refused = create(json!({ "name": "c", "module_name": "game", "working_dir": folder.to_string_lossy() })).await;
@@ -4401,6 +4419,59 @@ mod tests {
         state.supervisor.read().await.tracker.untrack(&id).unwrap();
         let stored = std::fs::read_to_string(state.supervisor.read().await.instance_store.instance_dir(&id).join("settings.json")).unwrap();
         assert!(stored.contains("\"Alex\""), "{stored}");
+    }
+
+    /// 설치된 버전에 없는 설정(`versions` 밖)은 인스턴스 조회와 서버 목록이 `version_hidden`으로 알리고,
+    /// 숨긴 설정이라 `required`를 보지 않는다. 버전을 모르는 서버는 모든 설정을 보인다
+    #[tokio::test]
+    async fn settings_the_installed_version_does_not_have_are_reported_as_hidden() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 2\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"pvp\"\ntype = \"text\"\nrequired = true\nversions = \"<1.21.9\"\n\n\
+             [[settings.fields]]\nname = \"difficulty\"\ntype = \"text\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let get = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::get_instance(Path(id), State(state)).await).await.body }
+        };
+        let listed = || {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(crate::ipc::handlers::server::list_servers_internal(&state).await).await.body["servers"][0].clone() }
+        };
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+        assert_eq!(get().await["version_hidden"], json!([]), "the version is not known yet: every setting stays");
+        assert_eq!(listed().await.get("version_hidden"), None);
+        let empty = patch(json!({ "pvp": "" })).await;
+        assert_eq!(empty.status.as_u16(), 400, "still a required setting: {:?}", empty.body);
+
+        assert!(patch(json!({ "server_version": "1.21.10" })).await.status.is_success());
+        assert_eq!(get().await["version_hidden"], json!(["pvp"]));
+        assert_eq!(get().await["hidden"], json!(["pvp"]), "the CLI leaves it out with the other hidden settings");
+        assert_eq!(listed().await["version_hidden"], json!(["pvp"]));
+        let empty = patch(json!({ "pvp": "" })).await;
+        assert!(empty.status.is_success(), "a setting this version does not have is not required: {:?}", empty.body);
+
+        assert!(patch(json!({ "server_version": "1.21.8" })).await.status.is_success());
+        assert_eq!(get().await["version_hidden"], json!([]));
     }
 
     /// 리뷰 554: 숨김 조건은 인스턴스 칸에 저장되는 설정(port 등)의 지금 값을 보고, list 기본값은 만들 때 채우며,

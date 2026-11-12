@@ -423,6 +423,8 @@
     "saba_chan_group": "saba-chan 设置",
     "basic_group": "服务器设置",
     "advanced_group": "高级设置",
+    "version_hidden": "已隐藏当前安装版本（{{version}}）中没有的 {{count}} 项设置。",
+    "version_hidden_list": "查看列表",
     "danger_zone": "危险区域",
     "reset_server_label": "重置服务器",
     "reset_server_desc": "清除此服务器的数据并恢复到初始状态。具体清除的内容因游戏而异。此操作无法撤销。",

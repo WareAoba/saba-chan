@@ -423,6 +423,8 @@
     "saba_chan_group": "Paramètres Saba-chan",
     "basic_group": "Paramètres du serveur",
     "advanced_group": "Paramètres avancés",
+    "version_hidden": "{{count}} réglage(s) absent(s) de la version installée ({{version}}) sont masqués.",
+    "version_hidden_list": "Voir la liste",
     "danger_zone": "Zone Dangereuse",
     "reset_server_label": "Réinitialiser le Serveur",
     "reset_server_desc": "Efface les données de ce serveur et le remet à l'état initial. Ce qui est effacé dépend du jeu. Cette action est irréversible.",

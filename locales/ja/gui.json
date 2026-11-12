@@ -358,6 +358,8 @@
     "saba_chan_group": "saba-chan 設定",
     "basic_group": "サーバー設定",
     "advanced_group": "詳細設定",
+    "version_hidden": "インストール済みのバージョン（{{version}}）にない設定 {{count}} 個は非表示にしました。",
+    "version_hidden_list": "一覧を見る",
     "danger_zone": "危険ゾーン",
     "reset_server_label": "サーバーリセット",
     "reset_server_desc": "このサーバーのデータを消去し、初期状態に戻します。消去される内容はゲームによって異なります。この操作は元に戻せません。",

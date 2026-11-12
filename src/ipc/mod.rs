@@ -221,6 +221,9 @@ pub struct ServerInfo {
     /// 설치된 빌드 (`ServerInstance::server_build`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_build: Option<crate::instance::ServerBuild>,
+    /// 설치된 버전에 없어 숨기는 설정 이름 (모듈 `[[settings.fields]] versions` 밖, `validator::version_hidden`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub version_hidden: Vec<String>,
     /// API(CLI/Discord)를 통해 마지막으로 시작/정지가 요청된 시점 (epoch ms)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_api_action: Option<u64>,

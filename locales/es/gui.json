@@ -423,6 +423,8 @@
     "saba_chan_group": "Ajustes de saba-chan",
     "basic_group": "Ajustes del servidor",
     "advanced_group": "Ajustes avanzados",
+    "version_hidden": "Se ocultaron {{count}} ajuste(s) que no existen en la versión instalada ({{version}}).",
+    "version_hidden_list": "Ver lista",
     "danger_zone": "Zona de Peligro",
     "reset_server_label": "Restablecer Servidor",
     "reset_server_desc": "Borra los datos de este servidor y lo devuelve a su estado inicial. Lo que se borra depende del juego. No se puede deshacer.",

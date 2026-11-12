@@ -372,6 +372,8 @@ function GeneralTab({
     const advancedId = useId();
     // 초기화 확인 창에 보일 범위 (데몬이 알려 준 지울 항목). 모듈이 알려 주지 않으면 예전 확인 문구로 묻는다
     const [resetScopes, setResetScopes] = useState<ResetScope[] | null>(null);
+    // 버전 때문에 숨긴 설정의 이름을 펼쳤는가 ("목록 보기")
+    const [versionHiddenListed, setVersionHiddenListed] = useState(false);
     const askReset = async () => {
         const seen =
             typeof window.api?.instanceResetPreview === 'function'
@@ -386,8 +388,17 @@ function GeneralTab({
     const module = modules.find((m) => m.name === settingsServer.module);
     const hasModuleSettings = (module?.settings?.fields?.length ?? 0) > 0;
     const modNs = `mod_${settingsServer.module}`;
+    // 설치된 버전에 없는 설정 (데몬이 계산한 version_hidden): 그리지 않고 설정 탭 아래 안내 줄로 알린다
+    const versionHidden = new Set(settingsServer.version_hidden || []);
+    const versionHiddenFields =
+        showServer && hasModuleSettings
+            ? module!.settings!.fields.filter((f) => versionHidden.has(f.name) && f.group !== 'saba-chan')
+            : [];
     // visible_when으로 숨긴 설정은 그리지 않는다 (값은 지우지 않는다)
-    const hidden = new Set(hasModuleSettings ? hiddenFields(module!.settings!.fields, settingsValues, unsetSettings) : []);
+    const hidden = new Set([
+        ...(hasModuleSettings ? hiddenFields(module!.settings!.fields, settingsValues, unsetSettings) : []),
+        ...versionHidden,
+    ]);
     const fields = hasModuleSettings ? module!.settings!.fields.filter((f) => !hidden.has(f.name)) : [];
     const sabaFields = showSaba ? fields.filter((f) => f.group === 'saba-chan') : [];
     const basicFields = showServer ? fields.filter((f) => !f.group || f.group === 'basic') : [];
@@ -783,6 +794,35 @@ function GeneralTab({
                 </Card>
             )}
 
+            {/* 설치된 버전에 없어 숨긴 설정: 몇 개인지와 모듈이 적어 둔 까닭(locales settings_note.version_hidden) */}
+            {versionHiddenFields.length > 0 && (
+                <div className="notice tone-info idle-stopped-notice ss-version-hidden" role="status">
+                    <Icon name="info" size="sm" />
+                    <span>
+                        {t('server_settings.version_hidden', {
+                            version: settingsServer.server_version,
+                            count: versionHiddenFields.length,
+                        })}{' '}
+                        {t(`${modNs}:settings_note.version_hidden`, { defaultValue: '' })}
+                        {versionHiddenListed && (
+                            <span className="notice-detail">
+                                {versionHiddenFields
+                                    .map((f) => t(`${modNs}:settings.${f.name}.label`, { defaultValue: f.label }))
+                                    .join(', ')}
+                            </span>
+                        )}
+                    </span>
+                    <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        aria-expanded={versionHiddenListed}
+                        onClick={() => setVersionHiddenListed(!versionHiddenListed)}
+                    >
+                        {t('server_settings.version_hidden_list')}
+                    </button>
+                </div>
+            )}
+
             {/* 위험 구역: 초기화를 구현한 모듈만 (MK1). 무엇을 지우는지는 모듈 locales의 reset.label·description이 먼저 */}
             {showServer && moduleSupports(module, 'reset_server') && (
                 <Card icon="alertTriangle" title={t('server_settings.danger_zone', { defaultValue: 'Danger Zone' })} className="ss-danger">
@@ -931,11 +971,13 @@ export function ServerSettingsModal({
     );
     const { errors: validationErrors } = React.useMemo(() => {
         if (!module?.settings?.fields) return { valid: true, errors: {} };
-        return validateAllSettings(module.settings.fields, settingsValues, unsetSettings) as {
+        // 설치된 버전에 없어 숨긴 설정은 검사하지 않는다 (데몬도 required를 보지 않는다)
+        const shown = module.settings.fields.filter((f) => !settingsServer?.version_hidden?.includes(f.name));
+        return validateAllSettings(shown, settingsValues, unsetSettings) as {
             valid: boolean;
             errors: Record<string, SettingValidationError>;
         };
-    }, [module, settingsValues, unsetSettings]);
+    }, [module, settingsValues, unsetSettings, settingsServer?.version_hidden]);
 
     // ── Validation: 포트 충돌 검사 (모듈 프로토콜 인지) ──
     const moduleProtocols = React.useMemo(() => {

@@ -423,6 +423,8 @@
     "saba_chan_group": "saba-chan-Einstellungen",
     "basic_group": "Servereinstellungen",
     "advanced_group": "Erweiterte Einstellungen",
+    "version_hidden": "{{count}} Einstellung(en), die es in der installierten Version ({{version}}) nicht gibt, sind ausgeblendet.",
+    "version_hidden_list": "Liste anzeigen",
     "danger_zone": "Gefahrenzone",
     "reset_server_label": "Server zurücksetzen",
     "reset_server_desc": "Löscht die Daten dieses Servers und setzt ihn auf den Ausgangszustand zurück. Was gelöscht wird, hängt vom Spiel ab. Dies kann nicht rückgängig gemacht werden.",
