@@ -176,3 +176,54 @@ describe('익스텐션 GUI 번들 실행이 실패했을 때', () => {
         await waitFor(() => expect(window.SabaExtDocker).toBeDefined());
     });
 });
+
+// 펫 말풍선이 스타일 없이 그려졌다 (11-12): 번들은 받았는데 스타일 요청이 한 번 실패하면 다시 묻지 않았다
+describe('익스텐션 스타일을 받지 못했을 때', () => {
+    beforeEach(() => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        window.showToast = vi.fn();
+        window.api.extensionList = vi.fn(async () => ({
+            extensions: [{ ...docker, gui: { bundle: 'x.js', styles: 'x.css' } }],
+        })) as never;
+        window.api.extensionGuiBundle = vi.fn().mockResolvedValue('/* bundle */');
+        window.api.extensionGuiStyles = vi
+            .fn()
+            .mockRejectedValueOnce(new Error('daemon busy'))
+            .mockResolvedValue('.docker{}');
+        window.api.extensionI18n = vi.fn().mockResolvedValue(null);
+        const realAppend = document.head.appendChild.bind(document.head);
+        vi.spyOn(document.head, 'appendChild').mockImplementation((el) => {
+            realAppend(el);
+            if ((el as HTMLElement).tagName === 'SCRIPT') {
+                window.SabaExtDocker = { registerSlots: () => ({}) };
+                (el as HTMLScriptElement).onload!(new Event('load'));
+            }
+            return el;
+        });
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        delete window.SabaExtDocker;
+        document.querySelectorAll('style[data-extension]').forEach((el) => {
+            el.remove();
+        });
+        for (const k of ['extensionList', 'extensionGuiBundle', 'extensionGuiStyles', 'extensionI18n']) {
+            delete (window.api as unknown as Record<string, unknown>)[k];
+        }
+    });
+
+    it('목록을 다시 받지 않아도 조금 뒤 스타일을 다시 받는다', async () => {
+        const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(document.querySelector('style[data-extension="docker"]')).toBeNull();
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(5000);
+        });
+        await waitFor(() =>
+            expect(document.querySelector('style[data-extension="docker"]')?.textContent).toBe('.docker{}'),
+        );
+        expect(window.api.extensionGuiBundle).toHaveBeenCalledTimes(1);
+    });
+});

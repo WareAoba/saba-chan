@@ -76,6 +76,43 @@ const executedBy = new WeakMap<object, object>();
 // 전역 이름 → 마지막으로 오류 없이 실행된 번들의 전역. 늦게 실행돼 덮어쓴 뒤 실패한 번들은 이 값으로 되돌린다
 const lastExecuted = new Map<string, unknown>();
 
+const STYLE_RETRIES = 5;
+const STYLE_RETRY_MS = 2000;
+const stylesInFlight = new Set<string>();
+
+/**
+ * 익스텐션 스타일을 아직 넣지 못했으면 받아 넣는다.
+ * 받지 못하면(데몬이 바쁜 앱 시작 직후 등) 목록이 다시 오지 않아도 잠시 뒤 다시 받는다
+ */
+async function ensureStyles(ext: ExtensionListItem, attempt = 0): Promise<void> {
+    if (!ext.gui?.styles || stylesInFlight.has(ext.id)) return;
+    if (document.querySelector(`style[data-extension="${ext.id}"]`)) return;
+    stylesInFlight.add(ext.id);
+    let failed = false;
+    try {
+        const cssSource = await window.api.extensionGuiStyles(ext.id);
+        // 받는 사이 번들이 내려갔으면 넣지 않는다
+        if (
+            cssSource &&
+            window[`SabaExt${pascalCase(ext.id)}`] &&
+            !document.querySelector(`style[data-extension="${ext.id}"]`)
+        ) {
+            const style = document.createElement('style');
+            style.textContent = cssSource;
+            style.dataset.extension = ext.id;
+            document.head.appendChild(style);
+        }
+    } catch (e) {
+        console.warn(`[Extension] Failed to load GUI styles for '${ext.id}':`, e);
+        failed = true;
+    } finally {
+        stylesInFlight.delete(ext.id);
+    }
+    if (failed && attempt + 1 < STYLE_RETRIES) {
+        setTimeout(() => void ensureStyles(ext, attempt + 1), STYLE_RETRY_MS);
+    }
+}
+
 /**
  * 익스텐션 GUI 번들 동적 로드
  * IPC를 통해 JS 소스를 받아 blob URL로 <script> 태그 삽입
@@ -151,14 +188,7 @@ async function loadExtensionBundle(
         if (!window[globalName]) throw new Error(`Bundle for '${ext.id}' did not register ${globalName}`);
         mine = window[globalName];
 
-        // CSS 로드 (있으면)
-        const cssSource = await window.api.extensionGuiStyles(ext.id);
-        if (cssSource) {
-            const style = document.createElement('style');
-            style.textContent = cssSource;
-            style.dataset.extension = ext.id;
-            document.head.appendChild(style);
-        }
+        void ensureStyles(ext);
 
         return window[globalName] as ExtensionBundle;
     } catch (e) {
@@ -434,6 +464,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
                 if (loadedRef.current.has(ext.id)) {
                     const mod = window[globalName] as ExtensionBundle | undefined;
                     mergeSlots(ext, mod?.registerSlots?.());
+                    void ensureStyles(ext);
                     return;
                 }
 
