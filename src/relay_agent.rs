@@ -3201,7 +3201,7 @@ mod tests {
 
     #[test]
     fn game_chat_is_dropped_first_when_the_queue_is_full() {
-        let ev = |id: u64, kind: &str| crate::events::Event { id, kind: kind.into(), data: json!({"instanceId": "i", "kind": "crash", "text": "x"}), replay: true, hook_depth: 0 };
+        let ev = |id: u64, kind: &str| crate::events::Event { id, kind: kind.into(), data: json!({"instanceId": "i", "kind": "crash", "text": "x"}), replay: true };
         let mut pending = std::collections::VecDeque::new();
         queue_event(&mut pending, &ev(1, "instance.exit"));
         for id in 2..=(EVENT_PENDING as u64 + 5) {
@@ -3214,7 +3214,7 @@ mod tests {
 
     #[test]
     fn only_notifications_go_to_the_relay_without_paths_or_console_lines() {
-        let ev = |kind: &str, data: Value| crate::events::Event { id: 7, kind: kind.into(), data, replay: true, hook_depth: 0 };
+        let ev = |kind: &str, data: Value| crate::events::Event { id: 7, kind: kind.into(), data, replay: true };
         let crash = ev(
             "instance.exit",
             json!({"at": 1, "instanceId": "i", "instance": "마크", "kind": "crash", "exitCode": 1, "signal": null, "evidence": "crash file C:\\Users\\me\\crash.txt", "restartInSecs": 10, "note": null}),

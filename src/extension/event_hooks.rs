@@ -15,8 +15,6 @@ use tokio::sync::{broadcast, Notify, RwLock};
 pub const PREFIX: &str = "event:";
 /// 익스텐션 하나에 쌓아 두는 이벤트 수. 넘치면 가장 오래된 것을 버린다
 const QUEUE_CAP: usize = 32;
-/// hook을 부르는 작업 안에서 난 이벤트는 그 hook보다 한 단계 깊다. 이보다 깊은 것은 넘기지 않는다 (hook ↔ 이벤트 고리)
-const MAX_DEPTH: u32 = 3;
 
 /// `event:` 뒤가 이벤트 종류 모양(영문 소문자·숫자·`_`·`.`)인 hook 이름인가
 pub fn is_event_hook(name: &str) -> bool {
@@ -88,10 +86,6 @@ pub fn dispatch<R: Runner>(mut rx: broadcast::Receiver<Arc<Event>>, runner: Arc<
             if targets.is_empty() {
                 continue;
             }
-            if event.hook_depth > MAX_DEPTH {
-                tracing::warn!("[EventHooks] '{}' came from a chain of {} event hooks; not handing it on (hook loop)", event.kind, event.hook_depth);
-                continue;
-            }
             for ext_id in targets {
                 let worker = workers.entry(ext_id).or_insert_with_key(|id| start_worker(id.clone(), runner.clone()));
                 worker.push(Pending { hook: hook.clone(), event: event.clone() });
@@ -134,9 +128,9 @@ fn start_worker<R: Runner>(ext_id: String, runner: Arc<R>) -> Arc<Worker> {
                 continue;
             };
             let context = json!({ "event": item.event.kind, "id": item.event.id, "data": item.event.data });
-            let (runner, ext, depth) = (runner.clone(), ext_id.clone(), item.event.hook_depth + 1);
+            let (runner, ext) = (runner.clone(), ext_id.clone());
             // 따로 띄워 hook 하나가 패닉해도 이 익스텐션의 다음 이벤트는 이어진다
-            let run = tokio::spawn(crate::events::within_hook(depth, async move { runner.run(&ext, &item.hook, context).await }));
+            let run = tokio::spawn(async move { runner.run(&ext, &item.hook, context).await });
             if let Err(e) = run.await {
                 tracing::error!("[EventHooks] event hook of extension '{}' panicked: {}", ext_id, e);
             }
@@ -152,18 +146,17 @@ mod tests {
     use tokio::sync::Semaphore;
     use tokio::time::{sleep, timeout, Duration};
 
-    /// 익스텐션 → 받는 hook. `held`의 hook은 허가를 받아야 끝나고, `echo`의 hook은 받은 종류를 다시 낸다
+    /// 익스텐션 → 받는 hook. `held`의 hook은 허가를 받아야 끝난다
     struct Fake {
         bus: &'static Bus,
         hooks: Vec<(&'static str, &'static str)>,
         calls: Mutex<Vec<(String, Value)>>,
         held: Option<(&'static str, Semaphore)>,
-        echo: Option<&'static str>,
     }
 
     impl Fake {
         fn new(hooks: Vec<(&'static str, &'static str)>) -> Self {
-            Self { bus: Box::leak(Box::new(Bus::new())), hooks, calls: Mutex::default(), held: None, echo: None }
+            Self { bus: Box::leak(Box::new(Bus::new())), hooks, calls: Mutex::default(), held: None }
         }
 
         fn calls_of(&self, ext: &str) -> Vec<Value> {
@@ -192,9 +185,6 @@ mod tests {
 
         async fn run(&self, ext_id: &str, hook: &str, context: Value) {
             self.calls.lock().unwrap().push((ext_id.to_string(), context));
-            if self.echo == Some(ext_id) {
-                self.bus.emit(hook.strip_prefix(PREFIX).unwrap(), json!({}));
-            }
             if let Some((held, gate)) = &self.held {
                 if *held == ext_id {
                     gate.acquire().await.unwrap().forget();
@@ -241,21 +231,5 @@ mod tests {
         let slow: Vec<usize> = fake.calls_of("slow").iter().map(|c| c["data"]["n"].as_u64().unwrap() as usize).collect();
         assert!(slow.len() <= QUEUE_CAP + 1, "a stuck extension keeps at most its queue: {slow:?}");
         assert_eq!(slow.last(), Some(&(total - 1)), "the newest event is kept: {slow:?}");
-    }
-
-    #[tokio::test]
-    async fn an_event_a_hook_causes_does_not_loop_forever() {
-        let mut fake = Fake::new(vec![("loop", "event:x"), ("loop", "event:y")]);
-        fake.echo = Some("loop");
-        let fake = start(fake);
-        fake.bus.emit("x", json!({}));
-        fake.until("loop", MAX_DEPTH as usize + 1).await;
-        sleep(Duration::from_millis(100)).await;
-        assert_eq!(fake.calls_of("loop").len(), MAX_DEPTH as usize + 1, "the chain stops");
-
-        // 고리를 끊은 뒤에도 hook 밖에서 난 이벤트는 그대로 받는다
-        fake.bus.emit("y", json!({}));
-        let calls = fake.until("loop", MAX_DEPTH as usize + 2).await;
-        assert_eq!(calls[MAX_DEPTH as usize + 1]["event"], "y");
     }
 }

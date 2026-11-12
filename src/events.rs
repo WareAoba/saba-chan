@@ -22,17 +22,6 @@ pub struct Event {
     pub data: Value,
     /// 버퍼에 남아 다시 붙는 클라이언트에게 다시 보내는 건인가. 아니면(`emit_live`) 번호도 없다
     pub replay: bool,
-    /// 익스텐션 event hook을 부르는 작업 안에서 났으면 그 깊이(`within_hook`), 아니면 0
-    pub hook_depth: u32,
-}
-
-tokio::task_local! {
-    static HOOK_DEPTH: u32;
-}
-
-/// `work`가 낸 이벤트에 `depth`를 적는다 (`extension::event_hooks`가 hook ↔ 이벤트 고리를 끊는 데 쓴다)
-pub async fn within_hook<T>(depth: u32, work: impl std::future::Future<Output = T>) -> T {
-    HOOK_DEPTH.scope(depth, work).await
 }
 
 /// 구독을 시작할 때 받는 것: 먼저 보낼 것들과 이어서 받을 채널
@@ -86,13 +75,12 @@ impl Bus {
         if let Some(obj) = data.as_object_mut() {
             obj.insert("at".into(), Value::from(saba_runner::now()));
         }
-        let hook_depth = HOOK_DEPTH.try_with(|d| *d).unwrap_or(0);
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if !replay {
-            let _ = self.tx.send(Arc::new(Event { id: inner.next - 1, kind: kind.to_string(), data, replay, hook_depth }));
+            let _ = self.tx.send(Arc::new(Event { id: inner.next - 1, kind: kind.to_string(), data, replay }));
             return;
         }
-        let event = Arc::new(Event { id: inner.next, kind: kind.to_string(), data, replay, hook_depth });
+        let event = Arc::new(Event { id: inner.next, kind: kind.to_string(), data, replay });
         inner.next += 1;
         inner.recent.push_back(event.clone());
         while inner.recent.len() > KEPT {

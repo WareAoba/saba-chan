@@ -159,7 +159,6 @@ manifest에 발화되지 않는 hook을 새로 선언하면 `parse_manifest`가 
 - 넘기는 것: 버퍼에 남는 이벤트(`emit`)만. 지금 붙은 클라이언트에게만 가는 것(`emit_live`: `provision.progress`, `servers.changed`, `instance.update_checked`, `relay.status`)은 넘기지 않는다.
 - 인스턴스 문맥 없이 부른다: HOST 작업(`instance.stdin`·`instance.rcon`·`instance.rest`)은 `no_instance`다. 그래서 이벤트마다 게임 서버에 명령을 보내지 못한다.
 - 상한: 익스텐션마다 줄 하나와 일꾼 하나. 디스패처는 줄에 넣기만 하므로 버스를 막지 않는다. 한 익스텐션의 hook은 한 번에 하나씩(기본 120s 타임아웃) 돌고, 느리거나 실패하거나 패닉해도 다른 익스텐션의 hook은 기다리지 않는다. 줄은 32건까지, 넘치면 가장 오래된 것을 버리고 줄이 빌 때까지 경고를 한 번 남긴다. 디스패처가 버스(256)에 뒤처지면 놓친 수를 경고로 남긴다.
-- 고리: hook을 부르는 작업 안에서 난 이벤트에는 그 hook보다 한 단계 깊은 `hook_depth`가 붙는다(`events::within_hook`, 버스 밖에는 나가지 않는다). 깊이 3을 넘는 이벤트는 넘기지 않고 경고를 남긴다. hook 밖(다른 작업)에서 난 이벤트는 깊이 0이다.
 
 - 업데이트 적용(`POST /api/instance/:id/apply-update`, `handlers/instance.rs:1477-1761`)과 네이티브 프로비저닝(`:371-624`)은 hook을 거치지 않는다. **module의 `lifecycle.py install_server`를 직접 호출**하고, module이 `from extensions.steamcmd import SteamCMD`로 익스텐션을 Python 라이브러리처럼 import한다. apply-update는 `install_method_<방식>`이 켜진 인스턴스만 받는다(`:1547-1560`).
 
