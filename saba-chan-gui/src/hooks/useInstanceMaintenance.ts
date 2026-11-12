@@ -4,6 +4,7 @@ import type { Server } from '../stores/useServerStore';
 import type { ApiBody, ModuleInfo } from '../types/daemon';
 import { extensionInstallMethod } from '../utils/installMethod';
 
+/** 데몬이 목록에 확인 결과를 싣지 않는 옛 데몬일 때만 화면이 직접 확인을 시킨다 */
 const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3시간
 const PROVISION_POLL_MS = 1200;
 
@@ -44,8 +45,18 @@ export function useInstanceMaintenance(server: Server, module: ModuleInfo | unde
     const patch = useMaintenanceStore((s) => s.patch);
     const installMethod = extensionInstallMethod(server, module);
 
-    // 익스텐션 설치 방식으로 설치한 인스턴스의 게임 서버 업데이트 확인 (3시간 주기)
+    // 데몬이 주기적으로 확인한 결과 (0.1.14~): 목록에 실려 오므로 여기서는 읽기만 한다
+    const daemonChecks = server.update_check !== undefined;
+    const checkKey = JSON.stringify(server.update_check ?? null);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 결과가 바뀔 때만 (목록을 받을 때마다 새 객체다)
     useEffect(() => {
+        if (!daemonChecks) return;
+        patch(server.id, updateStateOf(server.update_check ?? null));
+    }, [server.id, daemonChecks, checkKey, patch]);
+
+    // 옛 데몬: 익스텐션 설치 방식으로 설치한 인스턴스의 게임 서버 업데이트를 화면이 확인시킨다 (3시간 주기)
+    useEffect(() => {
+        if (daemonChecks) return;
         if (server.provisioning) return;
         if (!installMethod) return;
         if (!window.api?.instanceCheckUpdate) return;
@@ -71,7 +82,7 @@ export function useInstanceMaintenance(server: Server, module: ModuleInfo | unde
             cancelled = true;
             clearInterval(timer);
         };
-    }, [server.id, server.provisioning, installMethod, patch]);
+    }, [server.id, server.provisioning, installMethod, patch, daemonChecks]);
 
     // 프로비저닝 진행률 폴링 — server.provisioning이 true인 동안
     useEffect(() => {
@@ -106,6 +117,12 @@ export function useInstanceMaintenance(server: Server, module: ModuleInfo | unde
             cancelled = true;
         };
     }, [server.id, server.provisioning, server.name, patch]);
+}
+
+/** 데몬의 확인 결과 → 줄에 보일 값. 실패는 경고로, 새 빌드가 있으면 업데이트 버튼으로 */
+function updateStateOf(check: ApiBody | null): Pick<Maintenance, 'updateInfo' | 'updateCheckError'> {
+    if (check?.reason === 'check_failed') return { updateInfo: null, updateCheckError: String(check.error || '') };
+    return { updateInfo: check?.update_available ? check : null, updateCheckError: null };
 }
 
 /** 게임 서버 업데이트 적용 (설치 방식 익스텐션; 지원 안 하면 데몬이 update_unsupported) */

@@ -85,7 +85,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | instanceCheck | POST /api/instances/check (만들기 마법사의 이름·포트 단계와 확인 단계. 이름·서버 폴더·포트 겹침) | ✓ |
 | instanceProvisionProgress (485) | GET /api/provision-progress/:name | ✓ 668 |
 | instanceDismissProvision (492) | DELETE /api/provision-progress/:name | ✓ 668 |
-| instanceCheckUpdate (499) | GET /api/instance/:id/check-update | ✓ 670 |
+| instanceCheckUpdate (499) | GET /api/instance/:id/check-update. 서버 목록에 `update_check`가 있으면(0.1.14~ 데몬) 부르지 않고 그 값을 쓴다(`useInstanceMaintenance`). 옛 데몬에만 목록 줄이 처음 보일 때와 3시간마다 부른다 | ✓ 670 |
 | instanceApplyUpdate (509) | POST /api/instance/:id/apply-update | ✓ 671 |
 | instanceDelete (519) | DELETE /api/instance/:id(`{keepSettings}`이면 `?keep_settings=true`). 서버 목록의 `linked_folder`가 있는 서버(가져온 서버)는 폴더가 남는다고 알리고, `restorable_settings`면 "설정 되돌리고 빼기"·"지금 설정 두고 빼기"를 고르게 한다. CLI `server rm --keep-settings`와 같다 | ✓ 665 |
 | instanceReorder (555) | PUT /api/instances/reorder {order} | ✓ 663 |

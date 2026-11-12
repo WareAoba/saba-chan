@@ -284,6 +284,10 @@ pub struct ServerInfo {
     /// 가져오기 전 게임 설정 파일을 보관해 두어, 삭제(연결 해제)할 때 되돌릴 수 있는가
     #[serde(default)]
     pub restorable_settings: bool,
+    /// 데몬이 마지막으로 한 게임 서버 업데이트 확인 결과 (`check-update`의 답 + `checked_at` unix 초, 0.1.14~).
+    /// 아직 확인하지 않았거나 확인하지 않는 서버면 null. 화면은 직접 확인하지 않고 이것을 읽는다 (`server_update::last_check`)
+    #[serde(default)]
+    pub update_check: Option<serde_json::Value>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)

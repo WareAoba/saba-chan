@@ -160,6 +160,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     revision: instance.settings_revision(),
                     port_conflicts: vec![],
                     slots: Default::default(),
+                    update_check: super::server_update::last_check(&instance.id),
                     players: None,
                     unresponsive: None,
                     // 폴더 판정은 아래 락 밖에서

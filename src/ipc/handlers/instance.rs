@@ -2480,7 +2480,10 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
     });
 
     let results = crate::plugin::with_instance(Some(state.host_context(id)), crate::extension::run_hook(&state.extension_manager, "server.check_update", ctx)).await;
-    Some(update_status_from_hooks(results))
+    let status = update_status_from_hooks(results);
+    // 누가 확인했든(데몬의 주기 확인·서버 시작·앱·디스코드) 결과를 기억해 목록에 싣는다
+    super::server_update::remember_check(id, &status);
+    Some(status)
 }
 
 /// `server.check_update` hook 결과를 확인 답으로: 첫 성공 결과, 모두 실패했으면 확인 실패(`check_failed`),
@@ -2810,6 +2813,8 @@ pub(crate) async fn begin_server_update_holding(
                     tracing::info!("Server update completed for '{}'", name_done);
                     // 켜짐·꺼짐 알림을 켠 길드의 알림 채널에 "업데이트 끝남" (릴레이)
                     crate::events::emit("instance.updated", json!({ "instanceId": backup_id, "instance": name_done }));
+                    // 받은 빌드가 최신이다: 지난 확인의 "새 빌드 있음"을 지운다 (다음 주기 확인이 다시 채운다)
+                    super::server_update::forget_check(&backup_id);
                     tracker_done.update(
                         &name_done,
                         crate::ipc::ProvisionProgress {
@@ -4950,6 +4955,48 @@ mod tests {
         assert_eq!(reason(imported).await, json!("update_unsupported"), "not installed through the extension");
         assert_eq!(reason(steam).await, json!("no_hook_handled"), "no steamcmd extension in this test");
         assert_eq!(reason(gone).await, json!("no_extension_data"), "a module that did not load is not called un-updatable");
+    }
+
+    /// 얇은 클라이언트 점검 2번: 화면이 서버마다 확인을 돌리지 않게 데몬이 한 확인의 결과를 기억해 목록에 싣는다.
+    /// 확인하지 않는 서버는 비워 둔다
+    #[tokio::test]
+    async fn the_server_list_carries_the_last_update_check() {
+        use std::sync::Arc;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        for (name, method) in [("dl", "download"), ("sc", "steamcmd")] {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = '{name}'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[install]\nmethod = '{method}'\n")).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        }
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let mut steam = crate::instance::ServerInstance::new("pal-list", "sc");
+        steam.apply_install_extension_data("steamcmd", &[]);
+        let terra = crate::instance::ServerInstance::new("terra-list", "dl");
+        let (steam_id, terra_id) = (steam.id.clone(), terra.id.clone());
+        state.supervisor.try_write().unwrap().instance_store.add(steam).unwrap();
+        state.supervisor.try_write().unwrap().instance_store.add(terra).unwrap();
+
+        let listed = |state: crate::ipc::IPCServer| async move {
+            crate::ipc::internal::into_internal(crate::ipc::handlers::server::list_servers_internal(&state).await).await.body
+        };
+        let check_of = |body: &serde_json::Value, id: &str| body["servers"].as_array().unwrap().iter().find(|s| s["id"] == json!(id)).unwrap()["update_check"].clone();
+        let before = listed(state.clone()).await;
+        assert_eq!(check_of(&before, &steam_id), serde_json::Value::Null, "not checked yet");
+
+        super::server_update_status(&state, &steam_id).await.unwrap();
+        super::server_update_status(&state, &terra_id).await.unwrap();
+        let after = listed(state.clone()).await;
+        let steam_check = check_of(&after, &steam_id);
+        assert_eq!(steam_check["reason"], json!("no_hook_handled"));
+        assert!(steam_check["checked_at"].as_u64().unwrap() > 0);
+        assert_eq!(check_of(&after, &terra_id), serde_json::Value::Null, "a server sabachan does not update has nothing to show");
+
+        crate::ipc::handlers::server_update::forget_check(&steam_id);
+        assert_eq!(check_of(&listed(state.clone()).await, &steam_id), serde_json::Value::Null, "an applied update clears the old result");
     }
 
     /// 확인 hook이 실패하면(시간 초과·예외) "업데이트 없음"이 아니라 확인 실패로 답한다. 성공한 답이 있으면 그것을 쓴다
