@@ -96,7 +96,10 @@ pub async fn list_servers_internal(state: &IPCServer) -> axum::response::Respons
 
 /// 서버마다의 `server.list_enrich` 답 (서버 id → 답). TTL 캐시에 답이 있으면 Python을 띄우지 않는다.
 /// 캐시에 없는 서버의 hook은 함께 돌린다: 차례로 돌리면 캐시가 끝날 때마다 목록이 (서버 수 × Python 기동 시간)만큼 늦는다.
-/// 동시에 도는 Python 수는 plugin 실행 자리가 제한한다
+/// 한 번에 `LIST_ENRICH_AT_ONCE`개까지만 돈다: hook의 시간 한도는 plugin 실행 자리를 기다리는 시간도 쓰므로, 자리 수(8)만큼
+/// 한꺼번에 줄을 세우면 뒤에 선 서버가 돌아 보지도 못하고 시간 초과가 되고 그동안 다른 모듈 호출도 줄을 선다
+const LIST_ENRICH_AT_ONCE: usize = 4;
+
 async fn enrich_results<Fut>(cache: &crate::ipc::ExtensionStatusCache, contexts: Vec<(String, Value)>, run: impl Fn(Value) -> Fut) -> std::collections::HashMap<String, Value>
 where
     Fut: std::future::Future<Output = Vec<(String, anyhow::Result<Value>)>>,
@@ -118,7 +121,7 @@ where
             (id, result)
         }
     });
-    futures_util::future::join_all(asks).await.into_iter().collect()
+    futures_util::StreamExt::collect(futures_util::StreamExt::buffer_unordered(futures_util::stream::iter(asks), LIST_ENRICH_AT_ONCE)).await
 }
 
 async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Response {
@@ -2025,6 +2028,29 @@ mod tests {
         assert_eq!(results["failing"], json!({ "handled": false }));
         assert_eq!(cache.get("a").unwrap()["for"], "a");
         assert!(cache.get("failing").is_none(), "a failed hook is asked again on the next list");
+    }
+
+    /// 서버가 많아도 `server.list_enrich`는 몇 개씩만 함께 돈다: plugin 실행 자리를 목록 요청 하나가 다 쥐지 않고,
+    /// 뒤에 선 서버가 자리를 기다리다 hook 시간 한도를 넘기지 않는다
+    #[tokio::test]
+    async fn list_enrich_hooks_for_many_servers_do_not_all_start_at_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let cache = crate::ipc::ExtensionStatusCache::new(30);
+        let (running, most) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let run = |ctx: Value| {
+            let (running, most) = (&running, &most);
+            async move {
+                most.fetch_max(running.fetch_add(1, Ordering::SeqCst) + 1, Ordering::SeqCst);
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                running.fetch_sub(1, Ordering::SeqCst);
+                vec![("docker".to_string(), Ok(json!({ "handled": true, "for": ctx["instance_id"] })))]
+            }
+        };
+        let contexts: Vec<_> = (0..12).map(|i| (format!("s{i}"), json!({ "instance_id": format!("s{i}") }))).collect();
+        let results = enrich_results(&cache, contexts, run).await;
+        assert_eq!(results.len(), 12);
+        assert_eq!(results["s11"]["for"], "s11");
+        assert_eq!(most.load(Ordering::SeqCst), 4);
     }
 
     /// 익스텐션이 맡았다고 답한 서버(`server.list_enrich`의 handled)는 상태·PID·시작 시간·extension_status만 익스텐션 답을 따르고
