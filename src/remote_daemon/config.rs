@@ -7,6 +7,7 @@
 //!   enabled 기본 켬                   디스코드 계정과 PC를 함께 빼앗기지 않는 한 짝을 맺을 수 없다 (사용자 확정 2026-10-30)
 //!   clients[]                        이 PC에 붙도록 짝 맺은 같은 주인의 PC. 토큰은 SHA-256만 둔다
 //!   daemons[]                        이 PC가 붙는 원격 데몬(D1b): 주소·고정한 지문·받은 토큰
+//!   thisName                         이 PC 이름의 사본 (원본은 릴레이 PC 이름, `sync_with_relay`가 맞춘다)
 
 use saba_chan_updater_lib::config_file::ConfigFile;
 use serde::{Deserialize, Serialize};
@@ -128,6 +129,21 @@ pub fn settings_in(file: &ConfigFile) -> Settings {
 pub fn save_settings_in(file: &ConfigFile, settings: &Settings) -> std::io::Result<()> {
     let Value::Object(values) = serde_json::to_value(settings).expect("settings serialize") else { unreachable!() };
     file.update(|doc| section(doc).extend(values)).map(|_| ())
+}
+
+/// 이 PC의 이름 (`remote.thisName`): 릴레이 내 PC 목록(`self`)에서 받아 둔 사본이다. 원본은 릴레이(디스코드 `/사바쨩 내pc`와 같은 값). 모르면 빈 값
+pub fn this_name_in(file: &ConfigFile) -> String {
+    file.peek_section("remote").get("thisName").and_then(Value::as_str).unwrap_or_default().to_string()
+}
+
+pub fn save_this_name_in(file: &ConfigFile, name: &str) -> std::io::Result<()> {
+    if this_name_in(file) == name {
+        return Ok(());
+    }
+    file.update(|doc| {
+        section(doc).insert("thisName".into(), json!(name));
+    })
+    .map(|_| ())
 }
 
 pub fn clients_in(file: &ConfigFile) -> Vec<Client> {

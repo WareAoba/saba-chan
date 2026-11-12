@@ -2106,14 +2106,13 @@
     height: 28px;
     padding: 0;
     border-radius: var(--r-md);
-    border: 1px solid transparent;
+    border: none;
     background: none;
     color: var(--text-2);
     cursor: pointer;
     opacity: 0.45;
 }
 .remote-pc-star:hover {
-    border-color: var(--line-strong);
     opacity: 1;
 }
 .remote-pc-star.on {
@@ -2320,6 +2319,23 @@
 }
 .pc-settings-section > .setting-description {
     margin: 0;
+}
+/* 수정 창 제목 자리: PC 이름 칸과 바로 오른쪽 메인 별 */
+.pc-settings-titlerow {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+.pc-settings-name {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-weight: 700;
+}
+.pc-settings-name-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 .pc-settings-heading {
     margin: 0;

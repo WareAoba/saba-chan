@@ -823,6 +823,10 @@ impl Api {
         // 데몬이 원격 데몬 하나를 30초까지 기다린다
         self.get_slow("/api/remote/servers").await
     }
+    /// PUT /api/remote/peers/:hostId/name — 내 PC 하나(이 PC 포함)의 이름 (서버쨩의 PC 이름)
+    pub async fn rename_pc(&self, host_id: &str, name: &str) -> Result<Value> {
+        self.put(&format!("/api/remote/peers/{}/name", seg(host_id)), json!({ "name": name })).await
+    }
     /// DELETE /api/remote/daemons/:hostId
     pub async fn forget_remote_daemon(&self, host_id: &str) -> Result<Value> {
         self.delete(&format!("/api/remote/daemons/{}", seg(host_id))).await

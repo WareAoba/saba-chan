@@ -1,4 +1,5 @@
-//! 가이드 (`crate::guides`): 목록·완료·new!·보던 단계. 화면 강조는 GUI가 한다
+//! 가이드 (`crate::guides`): 목록·완료·new!·보던 단계. 화면 강조는 GUI가 한다.
+//! 진행도는 내 PC 모두가 함께 본다 (사용자 11-12): 바뀌면 릴레이(`/api/remote/guides`)에 합치고, 목록을 볼 때 1분에 한 번 받아 합친다
 
 use super::super::IPCServer;
 use super::LooseJson;
@@ -69,11 +70,16 @@ static NEXT_SYNC: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mute
 
 /// 받을 차례면 다음 차례를 SYNC_EVERY 뒤로 잡고 true
 fn claim_sync(next: &std::sync::Mutex<Option<std::time::Instant>>, now: std::time::Instant) -> bool {
+    claim_at(next, now, SYNC_EVERY)
+}
+
+/// 차례면 다음 차례를 `every` 뒤로 잡고 true
+fn claim_at(next: &std::sync::Mutex<Option<std::time::Instant>>, now: std::time::Instant, every: std::time::Duration) -> bool {
     let mut next = next.lock().unwrap_or_else(|e| e.into_inner());
     if next.is_some_and(|t| now < t) {
         return false;
     }
-    *next = Some(now + SYNC_EVERY);
+    *next = Some(now + every);
     true
 }
 
@@ -145,14 +151,67 @@ pub async fn list(State(state): State<IPCServer>, Query(q): Query<ListQuery>) ->
     let lang = saba_chan_updater_lib::constants::resolve_locale(&lang).unwrap_or_else(|| "en".into());
     let guides = crate::guides::load(Some(&crate::guides::installed_dir()));
     let facts = facts(&state).await;
-    let (body, remember) = crate::guides::view(&guides, &state_of(&state), &facts, &lang);
-    if let Some(known) = remember {
-        // 처음 본 때 있던 가이드는 new!가 아니다. 남기지 못하면 다음에 다시 남긴다
-        if let Err(e) = state.config_store.merge_client_section(crate::guides::SECTION, json!({ "known": known })) {
-            tracing::warn!("Could not remember the guides seen so far: {}", e);
+    let current = state_of(&state);
+    let (body, remember) = crate::guides::view(&guides, &current, &facts, &lang);
+    if !remember.is_empty() {
+        // 처음 본 때 있던 가이드는 new!가 아니고, 이 PC에서 해낸 가이드는 다른 PC에서도 끝난 것이다. 남기지 못하면 다음에 다시 남긴다
+        let patch = remember.patch(&current);
+        match state.config_store.merge_client_section(crate::guides::SECTION, patch.clone()) {
+            Ok(_) => spawn_share(&state, patch),
+            Err(e) => tracing::warn!("Could not remember the guide progress: {}", e),
         }
     }
+    spawn_pull(&state);
     Json(body).into_response()
+}
+
+/// 내 PC 모두가 함께 보는 진행도(릴레이)를 이만큼마다 받는다 (목록을 볼 때)
+const PULL_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
+static NEXT_PULL: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+/// 받은(합친) 진행도를 이 PC에 맞춘다. 바뀌었으면 열린 앱이 목록을 다시 읽게 한다
+fn adopt(state: &IPCServer, shared: &crate::guides::State) {
+    let local = state_of(state);
+    let merged = crate::guides::merge(&local, shared);
+    if merged == local {
+        return;
+    }
+    let value = serde_json::to_value(&merged).unwrap_or_default();
+    match state.config_store.merge_client_section(crate::guides::SECTION, value) {
+        Ok(_) => crate::events::emit("guides.updated", json!({ "count": 0 })),
+        Err(e) => tracing::warn!("Could not save the shared guide progress: {}", e),
+    }
+}
+
+async fn relay_target(state: &IPCServer) -> Option<crate::remote_daemon::relay::Target> {
+    crate::remote_daemon::server::RelaySource::Configured(state.clone()).target().await
+}
+
+/// 이 PC에서 바뀐 진행도를 릴레이에 합치고, 합친 값을 이 PC에 맞춘다 (디스코드에 연결하지 않았으면 이 PC에만 남는다)
+fn spawn_share(state: &IPCServer, patch: Value) {
+    let state = state.clone();
+    tokio::spawn(async move {
+        let Some(target) = relay_target(&state).await else { return };
+        match crate::remote_daemon::relay::merge_guide_state(&target, &patch).await {
+            Ok(shared) => adopt(&state, &shared),
+            // 옛 릴레이·끊김: 이 PC 값은 남아 있고, 다음에 바꿀 때 다시 보낸다
+            Err(_) => tracing::debug!("Could not share the guide progress"),
+        }
+    });
+}
+
+/// 다른 PC가 바꾼 진행도를 받는다 (`PULL_EVERY`에 한 번)
+fn spawn_pull(state: &IPCServer) {
+    if !claim_at(&NEXT_PULL, std::time::Instant::now(), PULL_EVERY) {
+        return;
+    }
+    let state = state.clone();
+    tokio::spawn(async move {
+        let Some(target) = relay_target(&state).await else { return };
+        if let Ok(shared) = crate::remote_daemon::relay::guide_state(&target).await {
+            adopt(&state, &shared);
+        }
+    });
 }
 
 /// POST /api/guides/:id `{opened?, step?, finished?}` — 열었음(new! 끄기)·보던 단계·끝까지 봄
@@ -165,8 +224,11 @@ pub async fn update(State(state): State<IPCServer>, Path(id): Path<String>, Loos
     if patch.as_object().is_some_and(|o| o.is_empty()) {
         return Json(json!({ "ok": true })).into_response();
     }
-    match state.config_store.merge_client_section(crate::guides::SECTION, patch) {
-        Ok(_) => Json(json!({ "ok": true })).into_response(),
+    match state.config_store.merge_client_section(crate::guides::SECTION, patch.clone()) {
+        Ok(_) => {
+            spawn_share(&state, patch);
+            Json(json!({ "ok": true })).into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
     }
 }

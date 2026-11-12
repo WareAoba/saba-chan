@@ -2420,6 +2420,7 @@
     "err_bind_failed": "無法開啟連接埠",
     "err_invalid_port": "連接埠必須在 1 到 65535 之間",
     "err_invalid_address": "請輸入主機名稱或 IP 位址",
+    "err_invalid_name": "請輸入 1 到 64 個字元的電腦名稱。",
     "err_remote_not_found": "那台電腦不是你的電腦",
     "err_remote_no_endpoint": "那台電腦未開放遠端連線",
     "err_remote_unreachable": "無法連到遠端常駐程式。請確認那台電腦已開機且 saba-chan 正在執行",
@@ -2530,6 +2531,7 @@
     "err_invalid_code": "配對碼無效"
   },
   "daemon_switcher": {
+    "local_named": "{{name}}（這台電腦）",
     "label": "常駐程式",
     "local": "本機"
   },
@@ -2718,12 +2720,10 @@
     "fold_hits": "{{count}} 個相符"
   },
   "pc_settings": {
+    "name_title": "電腦名稱",
+    "name_desc": "你的所有電腦和 Discord 都會顯示這個名稱。",
     "edit": "編輯",
-    "title": "{{name}} 設定",
     "address_unavailable": "該電腦開機並連線時才能修改。",
-    "main_title": "開啟應用程式時優先顯示",
-    "main_desc": "開啟後，下次開啟應用程式時先顯示這台電腦的伺服器。",
-    "main_on_desc": "這台電腦已優先顯示。選擇其他電腦即可變更。",
     "update_desc": "將那台電腦上的 Saba-chan 更新為與本機相同的版本。",
     "remove_title": "從我的電腦中移除",
     "remove_desc": "中斷連線並從清單中移除。下一步再選擇要刪除的內容。"

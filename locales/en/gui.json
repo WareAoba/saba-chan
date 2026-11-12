@@ -2420,6 +2420,7 @@
     "err_bind_failed": "Could not open the port",
     "err_invalid_port": "The port must be between 1 and 65535",
     "err_invalid_address": "Enter a host name or an IP address",
+    "err_invalid_name": "Enter a PC name of 1 to 64 characters.",
     "err_remote_not_found": "That PC is not one of your PCs",
     "err_remote_no_endpoint": "That PC is not open for remote connections",
     "err_remote_unreachable": "Could not reach the remote daemon. Check that the PC is on and saba-chan is running",
@@ -2530,6 +2531,7 @@
     "err_invalid_code": "That pairing code is not valid"
   },
   "daemon_switcher": {
+    "local_named": "{{name}} (This PC)",
     "label": "Daemon",
     "local": "This PC"
   },
@@ -2718,12 +2720,10 @@
     "fold_hits": "Matches: {{count}}"
   },
   "pc_settings": {
+    "name_title": "PC name",
+    "name_desc": "All your PCs and Discord show this name.",
     "edit": "Edit",
-    "title": "{{name}} settings",
     "address_unavailable": "You can change this while that PC is on and connected.",
-    "main_title": "Show first when the app opens",
-    "main_desc": "Turn on to show this PC's servers first next time you open the app.",
-    "main_on_desc": "This PC is shown first. Pick another PC to change it.",
     "update_desc": "Updates Saba-chan on that PC to the same version as this PC.",
     "remove_title": "Remove from My PCs",
     "remove_desc": "Disconnects and removes it from the list. You choose what to delete in the next step."

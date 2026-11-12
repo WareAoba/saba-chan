@@ -2420,6 +2420,7 @@
     "err_bind_failed": "ポートを開けませんでした",
     "err_invalid_port": "ポートは1から65535の間にしてください",
     "err_invalid_address": "ホスト名かIPアドレスを入力してください",
+    "err_invalid_name": "PCの名前は1〜64文字で入力してください。",
     "err_remote_not_found": "そのPCは自分のPCではありません",
     "err_remote_no_endpoint": "そのPCはリモート接続を開いていません",
     "err_remote_unreachable": "リモートデーモンに届きませんでした。そのPCが起動していて、サバちゃんが動いているか確認してください",
@@ -2530,6 +2531,7 @@
     "err_invalid_code": "ペアリングコードが正しくありません"
   },
   "daemon_switcher": {
+    "local_named": "{{name}}(このPC)",
     "label": "デーモン",
     "local": "このPC"
   },
@@ -2718,12 +2720,10 @@
     "fold_hits": "{{count}}件一致"
   },
   "pc_settings": {
+    "name_title": "PCの名前",
+    "name_desc": "自分のすべてのPCとDiscordにこの名前で表示されます。",
     "edit": "編集",
-    "title": "{{name}} の設定",
     "address_unavailable": "そのPCが起動して接続されているときに変更できます。",
-    "main_title": "アプリを開いたら最初に表示",
-    "main_desc": "オンにすると、次にアプリを開いたときこのPCのサーバーから表示します。",
-    "main_on_desc": "このPCが最初に表示されます。変えるには別のPCを選んでください。",
     "update_desc": "そのPCのサバちゃんをこのPCと同じバージョンに更新します。",
     "remove_title": "マイPCから外す",
     "remove_desc": "接続を切って一覧から外します。何を消すかは次の画面で選びます。"

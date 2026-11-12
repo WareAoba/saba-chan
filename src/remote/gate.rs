@@ -198,6 +198,7 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/remote/clients"),
     deny("DELETE", "/api/remote/clients/{host_id}"),
     deny("GET", "/api/remote/peers"),
+    deny("PUT", "/api/remote/peers/{host_id}/name"),
     deny("GET", "/api/remote/daemons"),
     deny("GET", "/api/remote/servers"),
     // 데몬 PC의 폴더 보기 (원격 경로 고르기 D2, CLI `config browse --daemon`). 웹은 경로를 고르지 않는다
@@ -264,7 +265,8 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/chatbot/guilds/{guild}"),
     allow("PATCH", "/api/chatbot/guilds/{guild}"),
     // ── 릴레이 연결: 웹이 타고 있는 연결 자체다. 채널 배정은 웹이 릴레이 API(/relay/guilds/:g/channels)로 한다 ──
-    deny("GET", "/api/relay/host/{host_id}/status"),
+    // 봇 연결 상태 읽기: 짝 맺은 PC의 GUI가 고른 PC의 디스코드 탭에 쓴다 (사용자 11-12, 읽기만. 켜고 끄기는 그 PC에서)
+    not_on_web("GET", "/api/relay/host/{host_id}/status"),
     deny("GET", "/api/relay/node/{guild_id}/legacy-members"),
     deny("GET", "/api/relay/node/{guild_id}/channels"),
     deny("PUT", "/api/relay/node/{guild_id}/channels"),
@@ -279,7 +281,7 @@ pub static ROUTES: &[Route] = &[
     deny("DELETE", "/api/relay/mcp/grant"),
     deny("GET", "/api/relay/privacy/erase"),
     deny("POST", "/api/relay/privacy/erase"),
-    deny("GET", "/api/relay/agent"),
+    not_on_web("GET", "/api/relay/agent"),
     deny("POST", "/api/relay/agent/start"),
     deny("POST", "/api/relay/agent/stop"),
     deny("POST", "/api/chat/command"),
