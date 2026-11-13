@@ -27,7 +27,7 @@ import { AddServerOptions, addServerExtensionData } from '../DataSlots';
 import ExtensionSlot, { type SlotPage } from '../ExtensionSlot';
 import Icon from '../Icon';
 import { ModuleMakerCard } from '../ModuleMakerCard';
-import { Card, SettingRow, SettingsField } from '../ServerSettingsModal';
+import { Card, SettingRow, SettingsField } from '../ServerSettingsParts';
 import { PageFind, PageFindButton } from '../servers/PageFind';
 import { LinkedText } from '../ui/ScreenLink';
 import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
