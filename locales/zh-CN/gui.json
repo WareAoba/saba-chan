@@ -2312,9 +2312,13 @@
     "desc": "限制服务器及其子进程合计可用的内存。超过时会停止服务器。",
     "label": "内存上限 (MB)",
     "hint": "留空表示不限制。Java 服务器请设为比 -Xmx 大 1~2GB。仅在 Windows 上生效。",
+    "hint_locked": "留空表示不限制。Java 服务器请设为比 -Xmx 大 1~2GB。",
     "placeholder": "不限制",
     "restart_note": "重启后生效。",
-    "unsupported": "内存上限仅在 Windows 上生效。运行此服务器的电脑不是 Windows，因此没有保存。"
+    "unsupported": "内存上限仅在 Windows 上生效。运行此服务器的电脑不是 Windows，因此没有保存。",
+    "locked": "运行此服务器的电脑不是 Windows，因此无法使用内存上限。",
+    "stale": "此上限目前没有生效。运行此服务器的电脑不是 Windows，因此无法设置内存上限。这是以前保存的值。",
+    "clear": "清空"
   },
   "game_chat": {
     "title": "游戏聊天转发",

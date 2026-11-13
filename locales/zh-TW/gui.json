@@ -2312,9 +2312,13 @@
     "desc": "限制伺服器及其子程序合計可用的記憶體。超過時會停止伺服器。",
     "label": "記憶體上限 (MB)",
     "hint": "留空表示不限制。Java 伺服器請設為比 -Xmx 大 1~2GB。僅在 Windows 上生效。",
+    "hint_locked": "留空表示不限制。Java 伺服器請設為比 -Xmx 大 1~2GB。",
     "placeholder": "不限制",
     "restart_note": "重新啟動後生效。",
-    "unsupported": "記憶體上限僅在 Windows 上生效。執行此伺服器的電腦不是 Windows，因此沒有儲存。"
+    "unsupported": "記憶體上限僅在 Windows 上生效。執行此伺服器的電腦不是 Windows，因此沒有儲存。",
+    "locked": "執行此伺服器的電腦不是 Windows，因此無法使用記憶體上限。",
+    "stale": "此上限目前沒有生效。執行此伺服器的電腦不是 Windows，因此無法設定記憶體上限。這是以前儲存的值。",
+    "clear": "清空"
   },
   "game_chat": {
     "title": "遊戲聊天轉發",

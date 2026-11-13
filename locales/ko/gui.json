@@ -2312,9 +2312,13 @@
     "desc": "서버와 그 하위 프로세스가 함께 쓸 수 있는 메모리를 제한해요. 넘으면 서버를 멈춰요.",
     "label": "메모리 상한 (MB)",
     "hint": "비우면 제한이 없어요. Java 서버라면 -Xmx 값보다 1~2GB 크게 정하세요. Windows에서만 적용돼요.",
+    "hint_locked": "비우면 제한이 없어요. Java 서버라면 -Xmx 값보다 1~2GB 크게 정하세요.",
     "placeholder": "제한 없음",
     "restart_note": "다시 시작하면 적용돼요.",
-    "unsupported": "메모리 상한은 Windows에서만 적용돼요. 이 서버가 도는 PC는 Windows가 아니라서 저장하지 않았어요."
+    "unsupported": "메모리 상한은 Windows에서만 적용돼요. 이 서버가 도는 PC는 Windows가 아니라서 저장하지 않았어요.",
+    "locked": "이 서버가 도는 PC는 Windows가 아니라서 메모리 상한을 쓸 수 없어요.",
+    "stale": "이 상한은 지금 적용되지 않고 있어요. 이 서버가 도는 PC는 Windows가 아니라서 메모리 상한을 걸 수 없어요. 예전에 저장된 값이에요.",
+    "clear": "비우기"
   },
   "game_chat": {
     "title": "게임 채팅 전달",

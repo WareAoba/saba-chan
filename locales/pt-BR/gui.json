@@ -2312,9 +2312,13 @@
     "desc": "Limita a memória que o servidor e seus processos filhos podem usar juntos. O servidor é parado se passar disso.",
     "label": "Limite de memória (MB)",
     "hint": "Deixe vazio para não limitar. Em servidores Java, defina 1–2 GB acima do -Xmx. Só vale no Windows.",
+    "hint_locked": "Deixe vazio para não limitar. Em servidores Java, defina 1–2 GB acima do -Xmx.",
     "placeholder": "Sem limite",
     "restart_note": "Vale após reiniciar.",
-    "unsupported": "O limite de memória só vale no Windows. O PC que roda este servidor não usa Windows, então o limite não foi salvo."
+    "unsupported": "O limite de memória só vale no Windows. O PC que roda este servidor não usa Windows, então o limite não foi salvo.",
+    "locked": "O PC que roda este servidor não usa Windows, então não pode usar limite de memória.",
+    "stale": "Este limite não está sendo aplicado. O PC que roda este servidor não usa Windows, então não consegue impor limite de memória. É um valor salvo antes.",
+    "clear": "Limpar"
   },
   "game_chat": {
     "title": "Encaminhar chat do jogo",

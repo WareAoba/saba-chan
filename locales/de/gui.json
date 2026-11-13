@@ -2312,9 +2312,13 @@
     "desc": "Begrenzt den Speicher, den der Server und seine Unterprozesse zusammen nutzen dürfen. Bei Überschreitung wird der Server gestoppt.",
     "label": "Speicherlimit (MB)",
     "hint": "Leer lassen für kein Limit. Bei Java-Servern 1–2 GB über -Xmx setzen. Gilt nur unter Windows.",
+    "hint_locked": "Leer lassen für kein Limit. Bei Java-Servern 1–2 GB über -Xmx setzen.",
     "placeholder": "Kein Limit",
     "restart_note": "Gilt nach einem Neustart.",
-    "unsupported": "Speicherlimits gelten nur unter Windows. Der PC, auf dem dieser Server läuft, nutzt kein Windows, daher wurde das Limit nicht gespeichert."
+    "unsupported": "Speicherlimits gelten nur unter Windows. Der PC, auf dem dieser Server läuft, nutzt kein Windows, daher wurde das Limit nicht gespeichert.",
+    "locked": "Der PC, auf dem dieser Server läuft, nutzt kein Windows und kann daher kein Speicherlimit verwenden.",
+    "stale": "Dieses Limit wird derzeit nicht angewendet. Der PC, auf dem dieser Server läuft, nutzt kein Windows und kann daher kein Speicherlimit setzen. Der Wert wurde früher gespeichert.",
+    "clear": "Leeren"
   },
   "game_chat": {
     "title": "Spielchat weiterleiten",

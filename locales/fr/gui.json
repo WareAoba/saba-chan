@@ -2312,9 +2312,13 @@
     "desc": "Limite la mémoire que le serveur et ses processus enfants peuvent utiliser ensemble. Le serveur est arrêté s'il la dépasse.",
     "label": "Limite de mémoire (Mo)",
     "hint": "Laisse vide pour aucune limite. Pour les serveurs Java, mets 1 à 2 Go de plus que -Xmx. Uniquement sous Windows.",
+    "hint_locked": "Laisse vide pour aucune limite. Pour les serveurs Java, mets 1 à 2 Go de plus que -Xmx.",
     "placeholder": "Aucune limite",
     "restart_note": "S'applique après un redémarrage.",
-    "unsupported": "La limite de mémoire ne s'applique que sous Windows. Le PC qui fait tourner ce serveur n'est pas sous Windows, elle n'a donc pas été enregistrée."
+    "unsupported": "La limite de mémoire ne s'applique que sous Windows. Le PC qui fait tourner ce serveur n'est pas sous Windows, elle n'a donc pas été enregistrée.",
+    "locked": "Le PC qui fait tourner ce serveur n'est pas sous Windows, il ne peut donc pas utiliser de limite de mémoire.",
+    "stale": "Cette limite n'est pas appliquée. Le PC qui fait tourner ce serveur n'est pas sous Windows, il ne peut donc pas imposer de limite de mémoire. C'est une valeur enregistrée auparavant.",
+    "clear": "Vider"
   },
   "game_chat": {
     "title": "Relais du chat du jeu",
