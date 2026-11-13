@@ -131,21 +131,16 @@ fn cached_relay_client(
     {
         return Ok(client.clone());
     }
-    let client = build_relay_client()?;
+    let client = relay_client_with_timeout(RELAY_WAIT)?;
     *slot = Some((now, client.clone()));
     Ok(client)
 }
 
-fn build_relay_client() -> Result<reqwest::Client, reqwest::Error> {
+/// 릴레이에 붙는 HTTP 클라이언트 (`X-Saba-Client: 1`). 요청 API와 에이전트의 긴 폴링이 시간 제한만 달리해 같이 쓴다
+pub(crate) fn relay_client_with_timeout(timeout: std::time::Duration) -> Result<reqwest::Client, reqwest::Error> {
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(
-        "X-Saba-Client",
-        reqwest::header::HeaderValue::from_static("1"),
-    );
-    saba_chan_updater_lib::tls::http_client_builder()
-        .timeout(RELAY_WAIT)
-        .default_headers(headers)
-        .build()
+    headers.insert("X-Saba-Client", reqwest::header::HeaderValue::from_static("1"));
+    saba_chan_updater_lib::tls::http_client_builder().timeout(timeout).default_headers(headers).build()
 }
 
 /// Parse a node token (sbn_{nodeId}.{secret}) into (nodeId, secret).

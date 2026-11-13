@@ -93,8 +93,8 @@ impl UpdateState {
     /// 내장 기본값으로 업데이트 매니저 생성
     pub fn new() -> Self {
         let cfg = load_updater_config();
-        let modules_dir = resolve_modules_dir();
-        let mut mgr = UpdateManager::new(cfg, &modules_dir);
+        let modules_dir = crate::plugin::resolve_modules_dir();
+        let mut mgr = UpdateManager::new(cfg, &modules_dir.to_string_lossy());
         let live_path = LiveState::path();
         let mut live = LiveState::load_from(&live_path);
         #[cfg(not(test))]
@@ -2528,13 +2528,6 @@ async fn switch_addon(
     answer("applied", Vec::new())
 }
 
-fn resolve_modules_dir() -> String {
-    let dir = saba_chan_updater_lib::constants::resolve_modules_dir();
-    if !dir.exists() {
-        let _ = std::fs::create_dir_all(&dir);
-    }
-    dir.to_string_lossy().to_string()
-}
 
 
 

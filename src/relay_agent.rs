@@ -14,7 +14,7 @@
 //!
 //! 새 명령 종류는 `handle_payload`의 action 분기에 추가합니다.
 
-use crate::ipc::handlers::relay::{load_node_token, parse_node_token, resolve_relay_url, signed_request};
+use crate::ipc::handlers::relay::{load_node_token, parse_node_token, relay_client_with_timeout, resolve_relay_url, signed_request};
 use crate::ipc::IPCServer;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -206,7 +206,7 @@ impl RelayAgent {
 
         let agent = self.clone();
         tokio::spawn(async move {
-            let client = match http_client() {
+            let client = match relay_client_with_timeout(POLL_TIMEOUT) {
                 Ok(c) => c,
                 Err(e) => {
                     agent.finish(generation, Some(format!("http client: {}", e)));
@@ -267,7 +267,7 @@ impl RelayAgent {
                 _ => return Err("relay not connected".into()),
             }
         };
-        let client = http_client().map_err(|e| e.to_string())?;
+        let client = relay_client_with_timeout(POLL_TIMEOUT).map_err(|e| e.to_string())?;
         let body = serde_json::json!({ "etaSeconds": eta_seconds }).to_string();
         let req = crate::ipc::handlers::relay::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/updating", &token, Some(body))
             .ok_or("node token missing")?;
@@ -295,7 +295,7 @@ impl RelayAgent {
                 _ => return,
             }
         };
-        let Ok(client) = http_client() else { return };
+        let Ok(client) = relay_client_with_timeout(POLL_TIMEOUT) else { return };
         let Some(req) = crate::ipc::handlers::relay::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/stopping", &token, None)
         else {
             return;
@@ -477,12 +477,6 @@ fn poll_retry(error: &str, failures: u32) -> Duration {
     } else {
         backoff(failures)
     }
-}
-
-fn http_client() -> Result<reqwest::Client, reqwest::Error> {
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("X-Saba-Client", reqwest::header::HeaderValue::from_static("1"));
-    saba_chan_updater_lib::tls::http_client_builder().timeout(POLL_TIMEOUT).default_headers(headers).build()
 }
 
 struct Session {
@@ -2193,7 +2187,7 @@ mod tests {
         let session = Session {
             agent: agent.clone(),
             server,
-            client: http_client().unwrap(),
+            client: relay_client_with_timeout(POLL_TIMEOUT).unwrap(),
             base,
             token: "sbn_host.secret".into(),
             cancel,
@@ -2262,7 +2256,7 @@ mod tests {
         let session = Session {
             agent: agent.clone(),
             server,
-            client: http_client().unwrap(),
+            client: relay_client_with_timeout(POLL_TIMEOUT).unwrap(),
             base,
             token: "sbn_host.secret".into(),
             cancel,
@@ -2358,7 +2352,7 @@ mod tests {
         let session = Session {
             agent: RelayAgent::new(),
             server,
-            client: http_client().unwrap(),
+            client: relay_client_with_timeout(POLL_TIMEOUT).unwrap(),
             base,
             token: "sbn_host.secret".into(),
             cancel: CancellationToken::new(),
@@ -2457,7 +2451,7 @@ mod tests {
         Session {
             agent: agent.clone(),
             server,
-            client: http_client().unwrap(),
+            client: relay_client_with_timeout(POLL_TIMEOUT).unwrap(),
             base: base.into(),
             token: token.into(),
             cancel: CancellationToken::new(),

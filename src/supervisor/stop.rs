@@ -99,8 +99,7 @@ impl Supervisor {
                 // - 모듈이 stdin을 받고 stdin이 열려 있음: stop_command를 stdin으로
                 // - 그 밖(REST 전용 게임, stdin 없는 재부착): 모듈 lifecycle.py `stop()`에
                 //   PID와 managed=true를 넘겨 맡긴다. 시간 안에 안 끝나면 아래에서 강제 종료.
-                let module_has_stdin = module.metadata.protocols_supported.as_ref()
-                    .is_some_and(|p| p.iter().any(|s| s == "stdin"));
+                let module_has_stdin = module.metadata.supports_protocol("stdin");
                 let via_stdin = module_has_stdin && managed.is_stdin_available();
                 // 모듈에서 stop_command를 가져옴 (없으면 "stop" 기본값)
                 let stop_cmd = module.metadata.stop_command.clone().unwrap_or_else(|| "stop".to_string());

@@ -358,20 +358,17 @@ impl ModuleMetadata {
         self.protocols_supported.as_deref().unwrap_or(&[]).iter().any(|p| p == protocol)
     }
 
-    /// 명령을 RCON으로 보내는 모듈이면 그 기본 RCON 포트. `supported`에 rcon이 있고 stdin·rest가 없을 때만이다
-    /// (명령 경로 우선순위 STDIN → REST → RCON: 다른 경로가 있으면 RCON을 쓰지 않는다)
+    /// 명령을 RCON으로 보내는 모듈이면 그 기본 RCON 포트 (`RconRoute::Only`)
     pub fn rcon_only_port(&self) -> Option<u16> {
-        let supported = self.protocols_supported.as_deref()?;
-        let only_rcon = supported.iter().any(|p| p == "rcon") && !supported.iter().any(|p| p == "stdin" || p == "rest");
-        self.rcon_port.filter(|p| only_rcon && *p > 0)
+        let only = rcon_route(self.protocols_supported.as_deref()?) == RconRoute::Only;
+        self.rcon_port.filter(|p| only && *p > 0)
     }
 
     /// 콘솔 stdin이 없는 인스턴스(관리형 시작을 끔)가 명령을 RCON으로 받는 모듈이면 그 기본 RCON 포트.
-    /// `supported`에 rcon이 있고 rest가 없을 때다 (REST는 콘솔 없이도 쓸 수 있다). RCON만 받는 모듈도 포함한다
+    /// RCON만 받는 모듈도 포함한다 (`RconRoute::Only`·`WithoutConsole`)
     pub fn rcon_port_without_console(&self) -> Option<u16> {
-        let supported = self.protocols_supported.as_deref()?;
-        let rcon = supported.iter().any(|p| p == "rcon") && !supported.iter().any(|p| p == "rest");
-        self.rcon_port.filter(|p| rcon && *p > 0)
+        let route = rcon_route(self.protocols_supported.as_deref()?) != RconRoute::Never;
+        self.rcon_port.filter(|p| route && *p > 0)
     }
 
     /// 설정 필드의 기본값을 가져옵니다
@@ -791,6 +788,27 @@ const BASE_SCHEMA_VERSION: u32 = 1;
 /// 이 데몬이 받는 module.toml 스키마 버전들 (모듈 메이커 안내 `GET /api/maker`)
 pub fn supported_schema_versions() -> [u32; 2] {
     [BASE_SCHEMA_VERSION, MODULE_SCHEMA_VERSION]
+}
+
+/// 모듈이 명령을 RCON으로 받는 때. 명령 경로 우선순위는 STDIN → REST → RCON이라, REST가 있으면 RCON을 쓰지 않는다
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RconRoute {
+    /// RCON이 명령 길이 아니다 (rcon이 없거나 rest가 있다)
+    Never,
+    /// RCON만 받는다 (stdin·rest 없음)
+    Only,
+    /// 콘솔 stdin이 없는 인스턴스(관리형 시작을 끔)만 RCON으로 받는다 (stdin과 함께, rest 없음)
+    WithoutConsole,
+}
+
+/// `[protocols] supported`로 정한 RCON 명령 길
+pub fn rcon_route(supported: &[String]) -> RconRoute {
+    let has = |p: &str| supported.iter().any(|s| s == p);
+    match (has("rcon") && !has("rest"), has("stdin")) {
+        (false, _) => RconRoute::Never,
+        (true, false) => RconRoute::Only,
+        (true, true) => RconRoute::WithoutConsole,
+    }
 }
 
 /// 명령 위험도로 쓸 수 있는 값
@@ -2138,13 +2156,12 @@ impl ModuleToml {
                     problems.push(format!("protocols: '{}' must be one of {}", value, PROTOCOLS.join(", ")));
                 }
             }
-            let only_rcon = p.supported.as_ref().is_some_and(|s| s.iter().any(|v| v == "rcon") && !s.iter().any(|v| v == "stdin" || v == "rest"));
-            if only_rcon && p.rcon_port.unwrap_or(0) == 0 {
+            let route = p.supported.as_deref().map_or(RconRoute::Never, rcon_route);
+            if route == RconRoute::Only && p.rcon_port.unwrap_or(0) == 0 {
                 problems.push("protocols: rcon_port is required when rcon is the only protocol".to_string());
             }
             // stdin과 함께 쓰는 rcon은 관리형 시작을 끈 서버의 명령 길이다: 포트가 있어야 데몬이 접속 정보를 만든다
-            let console_rcon = p.supported.as_ref().is_some_and(|s| s.iter().any(|v| v == "rcon") && s.iter().any(|v| v == "stdin") && !s.iter().any(|v| v == "rest"));
-            if console_rcon && p.rcon_port.unwrap_or(0) == 0 {
+            if route == RconRoute::WithoutConsole && p.rcon_port.unwrap_or(0) == 0 {
                 problems.push("protocols: rcon_port is required when rcon is the command path without a console".to_string());
             }
         }

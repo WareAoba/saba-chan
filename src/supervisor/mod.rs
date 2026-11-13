@@ -727,8 +727,7 @@ impl Supervisor {
         modules
             .iter()
             .find(|m| m.metadata.name == instance.module_name)
-            .and_then(|m| m.metadata.protocols_supported.as_ref())
-            .is_some_and(|p| p.iter().any(|s| s == "stdin"))
+            .is_some_and(|m| m.metadata.supports_protocol("stdin"))
     }
 
     /// Send a command to a managed process's stdin
