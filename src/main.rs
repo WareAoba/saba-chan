@@ -453,6 +453,109 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    spawn_background_tasks(&ipc_server, &supervisor, &client_registry, &daemon_log_buffer, daemon_only);
+
+    // Windows가 GUI 알림(크래시 등 중대 알림)을 바로가기 없이도 띄우도록 앱 ID를 등록한다
+    tokio::task::spawn_blocking(|| {
+        if let Err(e) =
+            saba_chan_updater_lib::notify_app_id::ensure(include_bytes!("../saba-chan-gui/public/favicon.png"))
+        {
+            tracing::warn!("[Notify] Failed to register notification app id: {}", e);
+        }
+    });
+
+    // 트레이: 화면이 있으면 상주 GUI를 띄우고 데몬이 사는 동안 되살린다 (부트 모드와 상관없이, 데몬 온리 포함)
+    {
+        let tray_server = ipc_server.clone();
+        let port = ipc_port;
+        tokio::spawn(async move {
+            if boot_selector::wait_for_ipc_port(port, std::time::Duration::from_secs(15)).await {
+                tray_host::run(tray_server).await;
+            }
+        });
+    }
+
+    // ── Interface Spawn (부트 선택기 모드에 따른 인터페이스 기동) ──
+    // IPC 서버가 바인드된 후 인터페이스를 스폰하기 위해 백그라운드 태스크 사용.
+    // IPC 포트 연결 가능 확인 후 스폰 → GUI/CLI의 기존 데몬 감지 로직과 연동.
+    if let Some(mode) = boot_mode {
+        let port = ipc_port;
+        tokio::spawn(async move {
+            // IPC 서버가 리스닝을 시작할 때까지 대기
+            let ready = boot_selector::wait_for_ipc_port(
+                port,
+                std::time::Duration::from_secs(15),
+            )
+            .await;
+
+            if !ready {
+                eprintln!("[Boot] IPC server failed to start within timeout");
+                tracing::error!("[Boot] IPC server did not become ready in 15s");
+                return;
+            }
+
+            match mode {
+                boot_selector::BootMode::Gui => {
+                    // GUI 스폰 시도 — 성공한 경우에만 콘솔 숨김
+                    match boot_selector::spawn_gui() {
+                        Ok(()) => {
+                            tracing::info!("[Boot] GUI process launched, hiding console");
+                            boot_selector::hide_console_window();
+                        }
+                        Err(e) => {
+                            tracing::error!("[Boot] Failed to launch GUI: {}", e);
+                            boot_selector::clear_for_daemon_only(port);
+                        }
+                    }
+                }
+                boot_selector::BootMode::Cli => {
+                    // CLI를 현재 콘솔에 마운트
+                    match boot_selector::spawn_cli() {
+                        Ok(mut child) => {
+                            tracing::info!("[Boot] CLI process launched");
+                            // CLI 종료를 백그라운드에서 대기
+                            let _ = tokio::task::spawn_blocking(move || {
+                                let _ = child.wait();
+                                eprintln!();
+                                eprintln!("CLI exited. Daemon still running. Press Ctrl+C to shut down.");
+                            })
+                            .await;
+                        }
+                        Err(e) => {
+                            tracing::error!("[Boot] Failed to launch CLI: {}", e);
+                            boot_selector::clear_for_daemon_only(port);
+                        }
+                    }
+                }
+                boot_selector::BootMode::DaemonOnly => {
+                    tracing::info!("[Boot] Daemon-only mode — no interface spawned");
+                    boot_selector::clear_for_daemon_only(port);
+                }
+            }
+        });
+    }
+
+    // IPC 서버 시작 — shutdown_token.cancel() 시 graceful shutdown
+    if let Err(e) = ipc_server.start().await {
+        tracing::error!("IPC server error: {}", e);
+    }
+
+    tracing::info!("Core Daemon shutting down");
+    Ok(())
+}
+
+
+
+/// 데몬이 사는 동안 도는 백그라운드 일감을 한자리에서 띄운다: 프로세스 감시와 크래시 재시작, 업데이트 확인, 작업 기록 정리,
+/// 예약 작업, 게임 서버 자동 업데이트, 접속자 수·유휴 정지·무응답 감시, 클라이언트 만료 정리, 데몬 온리 터미널, 종료 처리.
+/// 모두 `ipc_server.shutdown_token`으로 함께 끝난다
+fn spawn_background_tasks(
+    ipc_server: &ipc::IPCServer,
+    supervisor: &Arc<RwLock<supervisor::Supervisor>>,
+    client_registry: &ipc::ClientRegistry,
+    daemon_log_buffer: &daemon_log::DaemonLogBuffer,
+    daemon_only: bool,
+) {
     // ── CancellationToken: 모든 백그라운드 태스크에 graceful shutdown 전파 ──
     let shutdown_token = ipc_server.shutdown_token.clone();
     let stop_requested_token = ipc_server.stop_requested.clone();
@@ -658,95 +761,7 @@ async fn main() -> anyhow::Result<()> {
         ctrl_c_cancel.cancel();
     });
 
-    // Windows가 GUI 알림(크래시 등 중대 알림)을 바로가기 없이도 띄우도록 앱 ID를 등록한다
-    tokio::task::spawn_blocking(|| {
-        if let Err(e) =
-            saba_chan_updater_lib::notify_app_id::ensure(include_bytes!("../saba-chan-gui/public/favicon.png"))
-        {
-            tracing::warn!("[Notify] Failed to register notification app id: {}", e);
-        }
-    });
-
-    // 트레이: 화면이 있으면 상주 GUI를 띄우고 데몬이 사는 동안 되살린다 (부트 모드와 상관없이, 데몬 온리 포함)
-    {
-        let tray_server = ipc_server.clone();
-        let port = ipc_port;
-        tokio::spawn(async move {
-            if boot_selector::wait_for_ipc_port(port, std::time::Duration::from_secs(15)).await {
-                tray_host::run(tray_server).await;
-            }
-        });
-    }
-
-    // ── Interface Spawn (부트 선택기 모드에 따른 인터페이스 기동) ──
-    // IPC 서버가 바인드된 후 인터페이스를 스폰하기 위해 백그라운드 태스크 사용.
-    // IPC 포트 연결 가능 확인 후 스폰 → GUI/CLI의 기존 데몬 감지 로직과 연동.
-    if let Some(mode) = boot_mode {
-        let port = ipc_port;
-        tokio::spawn(async move {
-            // IPC 서버가 리스닝을 시작할 때까지 대기
-            let ready = boot_selector::wait_for_ipc_port(
-                port,
-                std::time::Duration::from_secs(15),
-            )
-            .await;
-
-            if !ready {
-                eprintln!("[Boot] IPC server failed to start within timeout");
-                tracing::error!("[Boot] IPC server did not become ready in 15s");
-                return;
-            }
-
-            match mode {
-                boot_selector::BootMode::Gui => {
-                    // GUI 스폰 시도 — 성공한 경우에만 콘솔 숨김
-                    match boot_selector::spawn_gui() {
-                        Ok(()) => {
-                            tracing::info!("[Boot] GUI process launched, hiding console");
-                            boot_selector::hide_console_window();
-                        }
-                        Err(e) => {
-                            tracing::error!("[Boot] Failed to launch GUI: {}", e);
-                            boot_selector::clear_for_daemon_only(port);
-                        }
-                    }
-                }
-                boot_selector::BootMode::Cli => {
-                    // CLI를 현재 콘솔에 마운트
-                    match boot_selector::spawn_cli() {
-                        Ok(mut child) => {
-                            tracing::info!("[Boot] CLI process launched");
-                            // CLI 종료를 백그라운드에서 대기
-                            let _ = tokio::task::spawn_blocking(move || {
-                                let _ = child.wait();
-                                eprintln!();
-                                eprintln!("CLI exited. Daemon still running. Press Ctrl+C to shut down.");
-                            })
-                            .await;
-                        }
-                        Err(e) => {
-                            tracing::error!("[Boot] Failed to launch CLI: {}", e);
-                            boot_selector::clear_for_daemon_only(port);
-                        }
-                    }
-                }
-                boot_selector::BootMode::DaemonOnly => {
-                    tracing::info!("[Boot] Daemon-only mode — no interface spawned");
-                    boot_selector::clear_for_daemon_only(port);
-                }
-            }
-        });
-    }
-
-    // IPC 서버 시작 — shutdown_token.cancel() 시 graceful shutdown
-    if let Err(e) = ipc_server.start().await {
-        tracing::error!("IPC server error: {}", e);
-    }
-
-    tracing::info!("Core Daemon shutting down");
-    Ok(())
 }
-
 
 /// SIGTERM을 기다린다 (Unix). Windows에는 없으므로 끝나지 않는다
 async fn sigterm() {
