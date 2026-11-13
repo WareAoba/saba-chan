@@ -57,7 +57,7 @@ describe('켜져 있는 서버의 버전 설치·초기화', () => {
         act(() => result.current.handleSettingChange('server_version', '1.0'));
         await act(async () => result.current.handleInstallVersion());
         await act(async () => setModal.mock.calls.at(-1)![0].buttons[0].action());
-        expect(toasts('error')).toEqual(['Stop the server before installing a version']);
+        expect(toasts('error')).toEqual(['Cannot install a version while the server is running. Stop it first']);
     });
 
     it('모듈이 초기화를 {success:false}로 끝내면 성공으로 알리지 않는다', async () => {
@@ -83,7 +83,7 @@ describe('켜져 있는 서버의 버전 설치·초기화', () => {
             await act(async () => setModal.mock.calls.at(-1)![0].buttons[1].action());
         }
         expect(toasts('error')).toEqual([
-            'Reset failed: Stop the server before resetting it',
+            'Reset failed: Cannot reset a running server. Stop it first',
             'Reset failed: Another task (backup or restore) is running on this server. Try again when it finishes',
         ]);
     });

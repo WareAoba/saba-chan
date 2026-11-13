@@ -31,14 +31,14 @@ describe('DataTransferSection', () => {
         ) as never;
         render(<DataTransferSection />);
         fireEvent.click(screen.getByRole('button', { name: /Choose file to import/ }));
-        expect(await screen.findByText(/Skip Beta \(a server with this ID already exists\)/)).toBeTruthy();
+        expect(await screen.findByText(/Skip Beta \(a server with the same ID exists\)/)).toBeTruthy();
 
         // 재미리보기가 실패하면 토글을 되돌린다
         vi.mocked(window.api.dataImport).mockResolvedValueOnce({ success: false, error_code: 'INVALID_ARCHIVE' });
         fireEvent.click(screen.getByLabelText('Overwrite existing servers'));
-        expect(await screen.findByText(/isn't a Saba-chan export file/)).toBeTruthy();
+        expect(await screen.findByText(/Not a Saba-chan export file/)).toBeTruthy();
         expect((screen.getByLabelText('Overwrite existing servers') as HTMLInputElement).checked).toBe(false);
-        expect(screen.getByText(/Some modules aren't on this PC: zomboid/)).toBeTruthy();
+        expect(screen.getByText(/Modules not on this PC: zomboid/)).toBeTruthy();
         expect(window.api.dataImport).toHaveBeenNthCalledWith(1, { path: undefined, dryRun: true, overwrite: false });
 
         fireEvent.click(screen.getByLabelText('Overwrite existing servers'));
@@ -53,7 +53,7 @@ describe('DataTransferSection', () => {
                 overwrite: true,
             }),
         );
-        expect(await screen.findByText('Imported')).toBeTruthy();
+        expect(await screen.findByText('Import complete')).toBeTruthy();
     });
 
     it('취소하면 아무것도 보이지 않고, 데몬 오류는 코드별 문구로 보인다', async () => {
@@ -68,6 +68,6 @@ describe('DataTransferSection', () => {
         await waitFor(() => expect(window.api.dataExport).toHaveBeenCalledWith({ secrets: false }));
         expect(screen.queryByRole('alert')).toBeNull();
         fireEvent.click(btn);
-        expect(await screen.findByText(/Couldn't write the file/)).toBeTruthy();
+        expect(await screen.findByText(/File write failed/)).toBeTruthy();
     });
 });

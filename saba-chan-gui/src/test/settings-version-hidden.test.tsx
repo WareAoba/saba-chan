@@ -64,7 +64,7 @@ describe('설치된 버전에 없는 설정', () => {
         expect(screen.getByText('Difficulty')).toBeTruthy();
         for (const label of ['PVP', 'Allow Nether', 'Spawn Animals']) expect(screen.queryByText(label)).toBeNull();
         const notice = container.querySelector('.ss-version-hidden') as HTMLElement;
-        expect(notice.textContent).toContain('3 setting(s) that the installed version (1.21.10) does not have are hidden.');
+        expect(notice.textContent).toContain('3 setting(s) missing in the installed version (1.21.10) are hidden');
         const list = screen.getByRole('button', { name: 'Show list' });
         expect(list.getAttribute('aria-expanded')).toBe('false');
         fireEvent.click(list);

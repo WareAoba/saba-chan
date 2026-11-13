@@ -37,7 +37,7 @@ describe('서버 점검 (validate·diagnose)', () => {
         window.api.instanceDiagnose = vi.fn().mockResolvedValue({ error: 'boom' });
         render(<ServerCheck server={server as never} />);
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Check server/i })));
-        expect(screen.getByText(/No problems found/i)).toBeInTheDocument();
+        expect(screen.getByText(/No problems\. Ready to start/i)).toBeInTheDocument();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Diagnose log/i })));
         expect(window.api.instanceDiagnose).toHaveBeenCalledWith('a');
         expect(screen.getByRole('alert').textContent).toContain('boom');

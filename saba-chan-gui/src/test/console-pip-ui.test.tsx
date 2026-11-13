@@ -48,7 +48,7 @@ describe('PIP로 띄운 동안의 콘솔 자리', () => {
         const ghost = document.querySelector('.term-popped-ghost');
         expect(ghost?.getAttribute('aria-hidden')).toBe('true');
         expect(ghost?.textContent).toContain('There are 0 players');
-        expect(screen.getByRole('status').textContent).toContain('Watching in the PIP window');
+        expect(screen.getByRole('status').textContent).toContain('Viewing in PIP window');
         fireEvent.click(screen.getByRole('button', { name: /Show PIP window/ }));
         fireEvent.click(screen.getByRole('button', { name: 'Bring it back here' }));
         expect(onPopout).toHaveBeenCalledOnce();

@@ -53,7 +53,7 @@ describe('인스턴스 사용 모드', () => {
 
     it('접속을 읽지 못하는 서버는 자동 강퇴를 쓸 수 없다고 알린다', () => {
         render(<MembersKick server={server({ controllers_only_supported: false })} />);
-        expect(screen.getByText(/auto kick isn’t available/)).toBeTruthy();
+        expect(screen.getByText(/auto kick is unavailable/)).toBeTruthy();
         expect(screen.queryByRole('checkbox')).toBeNull();
     });
 });

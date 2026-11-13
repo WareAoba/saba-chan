@@ -104,7 +104,7 @@ describe('CLI로 전환 버튼', () => {
         await flush();
         fireEvent.click(screen.getByRole('button', { name: 'Switch to CLI' }));
         await flush();
-        expect(window.showToast).toHaveBeenCalledWith("Couldn't open the CLI. boom", 'warning', 6000, undefined);
+        expect(window.showToast).toHaveBeenCalledWith('CLI open failed. boom', 'warning', 6000, undefined);
         expect(window.api.closeResponse).not.toHaveBeenCalled();
     });
 });

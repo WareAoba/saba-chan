@@ -133,7 +133,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         vi.mocked(window.api.remoteConnect).mockResolvedValue({ error: 'remote_unreachable', error_code: 'remote_unreachable' });
         await act(async () => render(<RemoteDaemonSection />));
         await act(async () => fireEvent.click(within(card('게임 PC')).getByRole('button', { name: 'Connect' })));
-        expect(screen.getByRole('alert')).toHaveTextContent('Could not reach the remote daemon');
+        expect(screen.getByRole('alert')).toHaveTextContent('Remote daemon connection failed');
     });
 
     it('삭제는 한 창에서 고른다: 온라인 리눅스면 그 PC에서도 지우고 서버쨩 목록에서도 뺀다', async () => {
@@ -275,7 +275,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
             await act(async () => fireEvent.click(within(prompt).getByRole('button', { name: 'Send' })));
             expect(window.api.remoteInstallInput).toHaveBeenCalledWith('i1', 's3cret');
             await act(async () => vi.advanceTimersByTime(800));
-            expect(within(dialog).getByText('Added 김마무(nas)')).toBeInTheDocument();
+            expect(within(dialog).getByText('김마무(nas) connected')).toBeInTheDocument();
             expect(window.api.remotePeers).toHaveBeenCalledTimes(2);
         } finally {
             vi.useRealTimers();
@@ -292,7 +292,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         fireEvent.change(within(dialog).getByRole('textbox', { name: 'Pairing code' }), { target: { value: ' Abc123_xyz-0 ' } });
         await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Add' })));
         expect(window.api.remoteClaim).toHaveBeenCalledWith('Abc123_xyz-0');
-        expect(within(dialog).getByText('Added 김마무(nas)')).toBeInTheDocument();
+        expect(within(dialog).getByText('김마무(nas) connected')).toBeInTheDocument();
     });
 
     it('원격 데몬을 연결했으면 서버 목록 보기(고른 데몬만 / 합쳐 보기)를 고른다', async () => {
@@ -316,7 +316,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         await act(async () => fireEvent.click(screen.getByRole('checkbox', { name: 'Allow remote connections' })));
         expect(window.api.remoteSettingsSet).toHaveBeenCalledWith({ enabled: true, port: 57480 });
         expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
-        expect(screen.getByText('Your other PCs know about this PC')).toBeInTheDocument();
+        expect(screen.getByText('Your other PCs notified of this PC')).toBeInTheDocument();
     });
 
     it('포트를 바꾸면 저장 막대가 올라오고, 저장하면 켬 상태 그대로 새 포트를 보낸다', async () => {
@@ -353,7 +353,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         fireEvent.change(screen.getByRole('spinbutton', { name: 'Port' }), { target: { value: '57490' } });
         rerender(<Page show={false} />);
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save' })));
-        expect(window.showToast).toHaveBeenCalledWith('The port is already in use', 'error');
+        expect(window.showToast).toHaveBeenCalledWith('Port in use', 'error');
         expect(document.querySelector('.saba-savebar.dirty')).not.toBeNull();
     });
 
@@ -376,14 +376,14 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
     it('포트를 열지 못하면 이유를 번역해 보인다', async () => {
         vi.mocked(window.api.remoteSettings).mockResolvedValue({ ...settings, status: { listening: false, published: false, error: 'port_in_use' } });
         await act(async () => render(<RemoteDaemonSection />));
-        expect(screen.getByRole('alert')).toHaveTextContent('The port is already in use');
+        expect(screen.getByRole('alert')).toHaveTextContent('Port in use');
     });
 
     // 내 PC 카드 개편 뒤 쓸모가 없어진 "이 PC에 붙은 PC" 목록은 뺐다 (사용자 11-12)
     it('릴레이에 연결하지 않았으면 안내를 보이고, 이 PC에 붙은 PC 목록은 없다', async () => {
         vi.mocked(window.api.remotePeers).mockResolvedValue({ error: 'relay_not_paired', error_code: 'relay_not_paired' });
         await act(async () => render(<RemoteDaemonSection />));
-        expect(screen.getByText('This PC is not connected to Discord yet. Connect it on the Discord page first.')).toBeInTheDocument();
+        expect(screen.getByText('This PC is not connected to Discord. Connect it on the Discord page first.')).toBeInTheDocument();
         expect(screen.queryByRole('list', { name: 'PCs connected to this one' })).toBeNull();
     });
 

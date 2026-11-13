@@ -1,0 +1,320 @@
+{
+  "default_prefix": "사바쨩",
+  "top_level_words": {
+    "help": "도움, 도움말",
+    "list": "목록"
+  },
+  "schedule": {
+    "restart_warning": "{{minutes}}분 뒤 서버가 다시 시작됩니다.",
+    "update_warning": "{{minutes}}분 뒤 업데이트를 위해 서버가 다시 시작됩니다.",
+    "update_cancelled": "업데이트를 취소했습니다.",
+    "stop_warning": "{{minutes}}분 뒤 서버가 정지됩니다."
+  },
+  "provision": {
+    "installing": "서버를 설치하는 중…",
+    "install_failed": "설치에 실패했습니다.",
+    "installed": "서버를 설치했습니다.",
+    "updating": "서버를 업데이트하는 중…",
+    "update_failed": "업데이트에 실패했습니다.",
+    "updated": "서버를 업데이트했습니다.",
+    "module_missing": "모듈을 찾을 수 없습니다: {{error}}",
+    "no_latest_version": "최신 서버 버전을 확인하지 못했습니다.",
+    "script_failed": "설치 스크립트가 오류로 끝났습니다. 자세한 내용은 데몬 로그를 참조해 주세요.",
+    "save_failed": "서버 파일은 받았지만 서버 정보를 저장하지 못했습니다. 자세한 내용은 데몬 로그를 참조해 주세요.",
+    "backup_failed": "업데이트 전 백업에 실패했습니다: {{reason}}",
+    "version_installing": "{{version}} 버전을 설치하는 중…",
+    "version_installed": "{{version}} 설치 완료!",
+    "install_backup_failed": "백업에 실패해 설치하지 못했습니다: {{reason}}"
+  },
+  "server": {
+    "rest_port_closed": "REST 포트 {{port}}에 연결할 수 없습니다."
+  },
+  "errors": {
+    "agreement_required": "{{names}}에 동의해야 서버를 시작할 수 있습니다. PC의 사바쨩에서 동의해 주세요.",
+    "memory_limit_at_start": "시작 중 메모리 상한({{limit}} MiB)에 걸려 서버가 종료됐습니다. 상한을 램 설정보다 높이거나 비워 주세요.",
+    "runner_missing": "saba-runner가 없어 관리형 시작을 할 수 없습니다. 이 서버의 관리형 시작을 끄거나 사바쨩을 다시 설치해 주세요."
+  },
+  "chatbot": {
+    "memo_template": "<!-- 이렇게 생긴 안내 줄과 채우지 않은 제목은 말하는 사바쨩에게 보내지 않아요. 필요한 항목만 채워 주세요. -->\n\n## 방 분위기\n<!-- 이 서버의 대화 분위기와 허용하는 농담 수위를 적어 주세요. 비워 두면 기본 성격대로 대화해요. -->\n\n## 호칭\n<!-- 사바쨩이 특정한 사람을 부르는 호칭이 있으면 적어 주세요. 예: (오너)로 표시된 사람은 \"주인님\"이라고 부른다. -->\n\n## 이 서버에서 쓰는 말\n<!-- 이 서버에서만 통하는 별명, 밈, 줄임말과 그 뜻을 적어 주세요. -->\n\n## 게임 서버 안내\n<!-- 서버 규칙이나 운영 시간처럼 사바쨩이 물어보는 사람에게 알려 줘도 되는 내용을 적어 주세요. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "등록된 사람만 접속할 수 있는 서버입니다."
+  },
+  "backups": {
+    "kind": {
+      "manual": "직접",
+      "scheduled": "예약",
+      "pre-update": "업데이트 전",
+      "pre-restore": "복원 직전",
+      "snapshot": "게임 자동 백업 보관",
+      "game-snapshot": "게임 자동 백업",
+      "imported": "가져옴"
+    },
+    "unreadable": "⚠️ 열 수 없음"
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "서버 목록",
+        "description": "등록된 서버와 상태"
+      },
+      "events": {
+        "title": "시작·종료 기록",
+        "description": "언제 왜 시작되고 종료됐는지"
+      },
+      "create": {
+        "title": "서버 만들기"
+      },
+      "settings": {
+        "set": {
+          "title": "서버 설정 바꾸기"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "예약 작업 바꾸기"
+        },
+        "get": {
+          "title": "예약 작업 보기"
+        }
+      },
+      "delete": {
+        "title": "서버 삭제"
+      },
+      "start_notice": {
+        "set": {
+          "title": "시작·정지 알림",
+          "description": "디스코드 밖에서 이 서버가 시작·정지되면(크래시 포함) 이 디스코드 서버의 알림 채널에 알립니다",
+          "name": "시작·정지 알림"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "자리 꽉 참 알림",
+          "description": "이 서버 자리가 꽉 차거나 다시 나면 이 디스코드 서버의 알림 채널에 알립니다",
+          "name": "자리 꽉 참 알림"
+        }
+      },
+      "get": {
+        "title": "서버 설정 보기"
+      },
+      "rename": {
+        "title": "서버 이름 바꾸기"
+      },
+      "properties": {
+        "get": {
+          "title": "게임 설정 파일 보기"
+        },
+        "set": {
+          "title": "게임 설정 파일 바꾸기"
+        }
+      }
+    },
+    "server": {
+      "status": {
+        "title": "서버 상태",
+        "description": "서버 하나의 상태",
+        "name": "상태"
+      },
+      "start": {
+        "title": "서버 시작",
+        "name": "시작"
+      },
+      "stop": {
+        "title": "서버 정지",
+        "name": "정지"
+      },
+      "restart": {
+        "title": "서버 재시작",
+        "name": "재시작"
+      },
+      "console": {
+        "tail": {
+          "title": "콘솔 끝부분",
+          "description": "콘솔 마지막 20줄"
+        },
+        "send": {
+          "title": "콘솔 명령 보내기"
+        }
+      },
+      "logs": {
+        "read": {
+          "title": "로그 읽기",
+          "description": "서버 로그 세션을 끝에서부터 읽습니다"
+        },
+        "export": {
+          "title": "로그 내보내기",
+          "description": "서버 로그 세션 하나를 .log 파일로 내보냅니다"
+        }
+      },
+      "players": {
+        "title": "플레이어",
+        "description": "접속한 사람과 이름"
+      },
+      "address": {
+        "title": "서버 주소",
+        "name": "주소",
+        "description": "친구가 접속할 주소(IP:포트)를 부른 사람에게만 알려 줍니다"
+      },
+      "port_check": {
+        "title": "포트포워딩 확인",
+        "description": "밖에서 이 서버에 접속할 수 있는지 서버쨩이 확인합니다"
+      },
+      "chat": {
+        "title": "게임 채팅 보내기",
+        "description": "디스코드 글을 게임 채팅으로 보냅니다"
+      },
+      "chat_link": {
+        "title": "채팅 연동"
+      },
+      "update": {
+        "check": {
+          "title": "게임 서버 업데이트 확인",
+          "name": "업데이트확인",
+          "description": "Steam에 게임 서버 새 빌드가 있는지 봅니다"
+        },
+        "apply": {
+          "title": "게임 서버 업데이트",
+          "name": "업데이트",
+          "description": "게임 서버를 업데이트합니다. 켜져 있으면 게임 안에 5분 예고 후 끄고 업데이트한 뒤 다시 켭니다"
+        },
+        "cancel": {
+          "title": "예고 중인 업데이트 취소",
+          "name": "업데이트취소",
+          "description": "예고 중인 게임 서버 업데이트를 취소합니다 (끄기 전까지만)"
+        }
+      },
+      "diagnose": {
+        "title": "서버 진단"
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "자원 사용량",
+        "description": "CPU·메모리·디스크·네트워크"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "백업 목록"
+      },
+      "create": {
+        "title": "백업"
+      },
+      "restore": {
+        "title": "백업 복원",
+        "description": "지금 서버 파일을 백업으로 덮어씁니다"
+      },
+      "delete": {
+        "title": "백업 지우기"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "모듈 설치",
+        "description": "공식 카탈로그에서 받아 설치합니다"
+      },
+      "list": {
+        "title": "설치된 모듈"
+      },
+      "available": {
+        "title": "받을 수 있는 모듈"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "익스텐션 켜기"
+      },
+      "disable": {
+        "title": "익스텐션 끄기"
+      },
+      "list": {
+        "title": "설치된 익스텐션"
+      },
+      "available": {
+        "title": "받을 수 있는 익스텐션"
+      },
+      "install": {
+        "title": "익스텐션 설치"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "업데이트 확인"
+      },
+      "apply": {
+        "title": "업데이트 적용",
+        "description": "새 업데이트를 받아 설치하고 앱을 재시작합니다"
+      }
+    },
+    "discord": {
+      "settings": {
+        "set": {
+          "title": "디스코드 설정 바꾸기",
+          "description": "언어·잠자기·노래하는 사바쨩"
+        }
+      }
+    },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "말하는 사바쨩 설정 보기",
+          "description": "켜기·호출어·확인·도구 묶음"
+        },
+        "set": {
+          "title": "말하는 사바쨩 설정 바꾸기",
+          "description": "켜기·호출어·확인·도구 묶음"
+        }
+      },
+      "common": {
+        "set": {
+          "title": "내 PC 공통 말하는 사바쨩 설정 바꾸기",
+          "description": "모델·API 키 (이 PC의 모든 서버)"
+        }
+      }
+    },
+    "field": {
+      "action": "작업",
+      "instance": "서버",
+      "name": "이름",
+      "module_name": "모듈",
+      "module_settings": "모듈 설정",
+      "schedule": "예약",
+      "backup_keep": "보관할 백업 수",
+      "module": "모듈",
+      "extension": "익스텐션",
+      "backup": "백업",
+      "overwrites": "덮어쓸 대상",
+      "overwrites_instance": "지금 서버 파일",
+      "source": "출처",
+      "lines": "줄 수",
+      "before": "이전 위치",
+      "since": "시작 시각",
+      "until": "끝 시각",
+      "trust": "신뢰",
+      "version": "설치할 버전",
+      "installed": "설치된 버전",
+      "official_catalog": "공식 카탈로그",
+      "guild": "디스코드 서버",
+      "locale": "언어",
+      "sleeping": "잠자기",
+      "music": "노래하는 사바쨩",
+      "enabled": "켜기",
+      "model": "모델",
+      "memo": "서버 프롬프트",
+      "effort": "대화 추론 강도",
+      "ambient": "끼어들기",
+      "ambientMinutes": "끼어들기 주기(분)",
+      "ambientEffort": "끼어들기 판단 추론 강도",
+      "confirmLevel": "실행 전 확인 단계",
+      "memory": "기억",
+      "tools": "켠 도구",
+      "step": "단계",
+      "from_snapshot": "게임 자동 백업에서",
+      "text": "본문",
+      "apiKey": "API 키",
+      "command": "명령",
+      "settings": "설정"
+    }
+  }
+}

@@ -193,7 +193,7 @@ describe('서버 설정 창: 실제 설정', () => {
         await act(async () => result.current.handleSaveSettings());
         expect(window.api.instanceUpdateSettings).not.toHaveBeenCalled();
         const warned = vi.mocked(window.showToast!).mock.calls.map((c) => c[0]);
-        expect(warned).toEqual(['Invalid format.', "Couldn't check the extra launch arguments, so nothing was saved"]);
+        expect(warned).toEqual(['Invalid format', "Not saved: extra arguments could not be checked"]);
         delete (window.api as unknown as Record<string, unknown>).instanceLaunchPreview;
     });
 
@@ -231,7 +231,7 @@ describe('서버 설정 창: 실제 설정', () => {
         act(() => result.current.handleSettingChange('_launch_extra_args', '-Xmx4096'));
         await act(async () => result.current.handleSaveSettings());
         expect(window.api.instanceUpdateSettings).not.toHaveBeenCalled();
-        expect(vi.mocked(window.showToast!).mock.calls.map((c) => c[0])).toEqual(['Invalid format.']);
+        expect(vi.mocked(window.showToast!).mock.calls.map((c) => c[0])).toEqual(['Invalid format']);
         delete (window.api as unknown as Record<string, unknown>).instanceLaunchPreview;
     });
 });

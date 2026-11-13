@@ -115,7 +115,7 @@ describe('LaunchPreview', () => {
         await settle();
         expect(window.showToast).toHaveBeenCalledTimes(1);
         // 어느 칸인지 이름표로 알린다 (모듈 번역이 없으면 module.toml의 label, 그것도 없으면 이름)
-        expect(vi.mocked(window.showToast!).mock.calls[0][0]).toBe('Some values are not in the right format: RAM');
+        expect(vi.mocked(window.showToast!).mock.calls[0][0]).toBe('Values in the wrong format: RAM');
         rerender(<LaunchPreview {...props} extraArgs="-Xmx4096 " />);
         await settle();
         expect(window.showToast).toHaveBeenCalledTimes(1);

@@ -1,19 +1,19 @@
 {
   "module_errors": {
-    "module_timeout": "L’appel du module a dépassé le délai. Vérifiez le module.",
-    "module_execution_failed": "Le module n’a pas pu être exécuté. Vérifiez l’environnement et les journaux du module.",
-    "module_crashed": "Le processus du module s’est terminé avec une erreur. Vérifiez ses journaux.",
-    "module_bad_output": "Le module a renvoyé un résultat invalide. Mettez-le à jour ou contactez son auteur.",
-    "module_output_too_large": "La sortie du module a dépassé la limite de taille. Vérifiez ses journaux.",
-    "module_path_outside": "Le module a tenté d’accéder à un chemin hors du dossier autorisé. Vérifiez ses paramètres.",
-    "module_exception": "Une exception s’est produite dans le module. Vérifiez ses journaux.",
-    "isolation_unsupported": "Ce système d’exploitation ne prend pas en charge l’isolation requise.",
-    "module_platform_unsupported": "Ce module de jeu ne fonctionne pas sur l'OS de ce démon",
-    "module_arch_unsupported": "Ce module de jeu ne fonctionne pas sur le processeur de ce démon"
+    "module_timeout": "Délai d'appel du module dépassé. Vérifiez l'état du module.",
+    "module_execution_failed": "Échec de l'exécution du module. Vérifiez l'environnement d'exécution et les journaux du module.",
+    "module_crashed": "Processus du module arrêté anormalement. Vérifiez les journaux du module.",
+    "module_bad_output": "Résultat du module invalide. Mettez le module à jour ou contactez son auteur.",
+    "module_output_too_large": "Taille de sortie du module dépassée. Vérifiez les journaux du module.",
+    "module_path_outside": "Le module a tenté d'accéder à un chemin hors du dossier autorisé. Vérifiez les paramètres du module.",
+    "module_exception": "Exception dans le module. Vérifiez les journaux du module.",
+    "isolation_unsupported": "Isolation requise non prise en charge par ce système d'exploitation",
+    "module_platform_unsupported": "Module de jeu non compatible avec l'OS de ce daemon",
+    "module_arch_unsupported": "Module de jeu non compatible avec le processeur de ce daemon"
   },
   "sandbox": {
     "isolation_unsupported": {
-      "message": "Le composant n’a pas été exécuté, car ce système d’exploitation ne prend pas en charge l’isolation."
+      "message": "Isolation non prise en charge par ce système d'exploitation : composant non exécuté"
     }
   },
   "app_name": "Saba-chan",
@@ -33,10 +33,10 @@
   "no": "Non",
   "daemon": {
     "checking": "Vérification du daemon...",
-    "existing_running": "Le daemon existant est en cours d'exécution",
-    "starting": "Démarrage du daemon...",
+    "existing_running": "Daemon existant en cours d'exécution",
+    "starting": "Démarrage du daemon…",
     "started": "Daemon démarré",
-    "failed_to_start": "Impossible de démarrer le démon",
+    "failed_to_start": "Échec du démarrage du daemon",
     "check_warning": "Avertissement lors de la vérification du daemon: {{error}}"
   },
   "modules": {
@@ -48,26 +48,26 @@
     "start_failed": "Démarrage échoué: {{error}}",
     "stop_failed": "Arrêt échoué: {{error}}",
     "status_check_failed": "Vérification du statut échouée (HTTP {{status}}): {{error}}",
-    "module_not_found": "Module '{{module}}' non trouvé",
+    "module_not_found": "Module « {{module}} » introuvable",
     "invalid_request": "Demande invalide: {{error}}",
-    "not_found": "Serveur '{{name}}' non trouvé",
-    "already_running": "Le serveur '{{name}}' est déjà en cours d'exécution",
-    "missing_required_field": "Le champ obligatoire '{{field}}' est manquant",
+    "not_found": "Serveur « {{name}} » introuvable",
+    "already_running": "Serveur « {{name}} » déjà en cours d'exécution",
+    "missing_required_field": "Champ obligatoire « {{field}} » manquant",
     "creation_failed": "Impossible de créer l'instance: {{error}}",
     "delete_failed": "Impossible de supprimer l'instance: {{error}}",
     "update_failed": "Impossible de mettre à jour l'instance: {{error}}",
     "settings_save_failed": "Impossible d'enregistrer les paramètres: {{error}}"
   },
   "network": {
-    "connection_refused": "Impossible de se connecter au daemon. Vérifiez que le daemon est en cours d'exécution",
-    "timeout": "Délai d'attente de la demande dépassé: Le serveur n'a pas répondu"
+    "connection_refused": "Connexion au daemon impossible. Vérifiez que le daemon est en cours d'exécution.",
+    "timeout": "Délai de la requête dépassé : le serveur ne répond pas"
   },
   "port_conflict": {
     "force_stop_title": "Conflit de port : {{name}} arrêté",
-    "force_stop_body": "{{stopped}} a été arrêté de force car le port {{port}} est en conflit avec {{existing}}"
+    "force_stop_body": "Port {{port}} en conflit avec {{existing}} : {{stopped}} arrêté de force"
   },
   "init": {
-    "start": "Démarrage...",
+    "start": "Initialisation…",
     "modules": "Préparation des modules...",
     "instances": "Préparation des serveurs...",
     "ready": "Prêt",
@@ -77,63 +77,64 @@
   "tray": {
     "tooltip": "Saba-chan - Gestion de serveurs de jeu",
     "open_window": "Ouvrir la fenêtre",
-    "daemon_running": "Démon en cours d'exécution",
-    "daemon_stopped": "Démon arrêté",
-    "stop_daemon": "Arrêter le démon",
-    "start_daemon": "Démarrer le démon",
+    "daemon_running": "Daemon en cours d'exécution",
+    "daemon_stopped": "Daemon arrêté",
+    "stop_daemon": "Arrêter le daemon",
+    "start_daemon": "Démarrer le daemon",
     "quit_all": "Quitter complètement"
   },
   "updates": {
     "notification_title": "Mises à jour de Saba-chan",
     "notification_body": "{{count}} mises à jour : {{names}}",
-    "completed": "Mise à jour terminée !"
+    "completed": "Mise à jour terminée"
   },
   "errors": {
-    "invalid_input": "Requête invalide. Vérifiez la saisie",
-    "instance_name_taken": "Un serveur porte déjà ce nom",
+    "invalid_input": "Requête invalide. Vérifiez la saisie.",
+    "instance_name_taken": "Nom de serveur déjà utilisé",
     "internal": "erreur interne",
-    "create_error": "Impossible de créer le serveur : {{error}}",
-    "create_http": "Impossible de créer le serveur (HTTP {{status}}) : {{error}}",
+    "create_error": "Échec de la création du serveur : {{error}}",
+    "create_http": "Échec de la création du serveur (HTTP {{status}}) : {{error}}",
     "instance_not_found": "Serveur introuvable",
-    "instance_running": "Impossible de supprimer un serveur en cours d'exécution. Arrêtez-le d'abord",
-    "instance_busy": "Une autre tâche (sauvegarde ou restauration) est en cours sur ce serveur. Réessayez quand elle sera terminée",
-    "delete_error": "Impossible de supprimer le serveur : {{error}}",
-    "delete_http": "Impossible de supprimer le serveur (HTTP {{status}}) : {{error}}",
-    "reorder_failed": "Impossible de réordonner : {{error}}",
+    "instance_running": "Suppression impossible d'un serveur en cours d'exécution. Arrêtez-le d'abord.",
+    "instance_busy": "Autre tâche (sauvegarde ou restauration) en cours sur ce serveur. Réessayez après.",
+    "delete_error": "Échec de la suppression du serveur : {{error}}",
+    "delete_http": "Échec de la suppression du serveur (HTTP {{status}}) : {{error}}",
+    "reorder_failed": "Échec du changement d'ordre : {{error}}",
     "settings_invalid": "Valeur de paramètre invalide : {{error}}",
-    "settings_error": "Impossible d'enregistrer les paramètres : {{error}}",
-    "settings_http": "Impossible d'enregistrer les paramètres (HTTP {{status}}) : {{error}}",
+    "settings_error": "Échec de l'enregistrement des paramètres : {{error}}",
+    "settings_http": "Échec de l'enregistrement des paramètres (HTTP {{status}}) : {{error}}",
     "http": "Erreur (HTTP {{status}})",
-    "command_failed": "Impossible d'exécuter la commande : {{error}}",
-    "url_missing": "Aucune URL indiquée",
+    "command_failed": "Échec de l'exécution de la commande : {{error}}",
+    "url_missing": "URL manquante",
     "url_not_web": "Seules les adresses http(s) peuvent être ouvertes",
-    "path_missing": "Aucun chemin indiqué",
-    "path_not_folder": "Ce n'est pas un dossier",
+    "path_missing": "Chemin manquant",
+    "path_not_folder": "Pas un dossier",
     "no_log_folder": "Aucun dossier de journaux",
-    "open_folder_failed": "Impossible d'ouvrir le dossier",
-    "remote_local_path": "Impossible de choisir un chemin sur ce PC pendant que vous utilisez un daemon distant. Revenez à ce PC dans la barre du haut puis réessayez"
+    "open_folder_failed": "Échec de l'ouverture du dossier",
+    "remote_local_path": "Choix d'un chemin de ce PC impossible avec un daemon distant. Revenez à ce PC dans la barre du haut, puis réessayez."
   },
   "consent": {
     "allow": "Autoriser",
     "unisolated": {
       "title": "Exécuter sans isolation ?",
-      "message": "{{component}} n'est pas vérifié. Sans isolation, il peut accéder sans limite aux fichiers et programmes de ce PC. N'autorisez que si vous lui faites confiance."
+      "message": "{{component}} n'est pas vérifié. Sans isolation, il accède sans limite aux fichiers et programmes de ce PC. N'autorisez que s'il est fiable."
     },
     "extension_gui": {
       "title": "Charger l'écran de l'extension ?",
-      "message": "Le code d'écran de {{component}} n'est pas vérifié. S'il est chargé, il s'exécute dans la fenêtre de Saba-chan. N'autorisez que si vous lui faites confiance."
+      "message": "Le code d'écran de {{component}} n'est pas vérifié. Une fois chargé, il s'exécute dans la fenêtre de Saba-chan. N'autorisez que s'il est fiable."
     }
   },
   "notify": {
     "title": "Saba-chan",
-    "crash": "{{name}} a planté et s'est arrêté.",
-    "unknown_exit": "{{name}} s'est arrêté de façon inattendue.",
-    "restart_in": "Redémarrage dans {{secs}} s.",
-    "gave_up": "Le redémarrage auto a abandonné. Vérifiez le serveur.",
-    "restart_failed": "Impossible de redémarrer {{name}}.",
-    "daemon_down": "Saba-chan s'est arrêté de façon inattendue. La surveillance des serveurs et Discord sont en pause jusqu'à ce que vous le relanciez depuis l'app.",
-    "external_start": "{{name}} a été démarré en dehors de Saba-chan. Saba-chan n'a pas lancé ce processus.",
-    "backup_failed": "La sauvegarde automatique de {{name}} a échoué.",
+    "crash": "Serveur « {{name}} » arrêté par un crash",
+    "unknown_exit": "Serveur « {{name}} » arrêté de façon inattendue",
+    "restart_in": "Redémarrage dans {{secs}} s",
+    "with_next": "{{head}}. {{next}}",
+    "gave_up": "Redémarrage automatique abandonné. Vérifiez le serveur.",
+    "restart_failed": "Échec du redémarrage du serveur « {{name}} »",
+    "daemon_down": "Daemon Saba-chan arrêté anormalement. Surveillance des serveurs et liaison Discord suspendues : relancez-le depuis l'app.",
+    "external_start": "Serveur « {{name}} » démarré en dehors de Saba-chan (processus non lancé par Saba-chan)",
+    "backup_failed": "Échec de la sauvegarde automatique de {{name}}",
     "on_daemon": "Sur {{daemon}} : {{body}}"
   }
 }

@@ -27,7 +27,7 @@ describe('플러그인 사진', () => {
             { get: (t, k) => t[k as keyof typeof t] ?? vi.fn().mockResolvedValue({}) },
         );
         render(<ModulesTab api={mockApi(api)} />);
-        fireEvent.click(screen.getByRole('tab', { name: 'Plugins' }));
+        fireEvent.click(screen.getByRole('tab', { name: 'Extensions' }));
         await flush();
         await flush();
         expect(api.extensionIcon).toHaveBeenCalledTimes(1);

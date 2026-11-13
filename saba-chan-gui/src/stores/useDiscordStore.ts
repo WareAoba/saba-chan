@@ -139,7 +139,6 @@ interface DiscordState extends DiscordData {
     _saveNow: () => Promise<unknown>;
     applySavedNodeValue: (guildId: string, key: string, value: Json | undefined) => void;
     startBot: () => Promise<unknown>;
-    stopBot: () => Promise<unknown>;
     checkStatus: () => Promise<void>;
     _checkStatusNow: (generation: number) => Promise<void>;
     startStatusPolling: () => void;
@@ -397,35 +396,6 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         } catch (e) {
             safeShowToast(
                 _t('discord_bot.start_error_toast', { error: _translateError((e as Error).message) }),
-                'error',
-                4000,
-            );
-        }
-    },
-
-    stopBot: async () => {
-        try {
-            const result = await window.api.discordBotStop();
-            if (result?.error) {
-                safeShowToast(
-                    _t('discord_bot.stop_failed_toast', { error: _translateError(result.error) }),
-                    'error',
-                    4000,
-                );
-            } else {
-                set({
-                    discordBotStatus: 'stopped',
-                    discordReconnecting: false,
-                    relayConnected: false,
-                    relayError: '',
-                    relayErrorKind: '',
-                    _relayFailures: 0,
-                });
-                safeShowToast(_t('discord_bot.stopped_toast'), 'discord', 3000);
-            }
-        } catch (e) {
-            safeShowToast(
-                _t('discord_bot.stop_error_toast', { error: _translateError((e as Error).message) }),
                 'error',
                 4000,
             );

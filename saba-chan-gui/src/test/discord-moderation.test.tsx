@@ -152,7 +152,7 @@ describe('ModerationTab', () => {
         expect(confirm.textContent).toMatch(/Delete up to 100 messages in #chat/);
         fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }));
         await waitFor(() => expect(window.api.relayModClear).toHaveBeenCalledWith('g1', '111', { count: 100 }));
-        expect(await screen.findByText(/Deleted 87 messages/)).toBeTruthy();
+        expect(await screen.findByText(/87 messages deleted/)).toBeTruthy();
     });
 
     it('청소할 권한이 없으면 확인 창 없이 거절을 보인다', async () => {
@@ -247,7 +247,7 @@ describe('ModerationTab', () => {
             .fn()
             .mockResolvedValue({ ...moderation, botAvailable: false, channels: [] });
         render(<ModerationTab node={node} />);
-        expect(await screen.findByText(/isn't in this server/)).toBeTruthy();
+        expect(await screen.findByText(/is not in this server or not connected/)).toBeTruthy();
     });
 });
 

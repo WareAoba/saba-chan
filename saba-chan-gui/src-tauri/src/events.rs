@@ -239,7 +239,7 @@ pub fn critical_notice(ev: &SseEvent, i18n: &crate::i18n::I18n) -> Option<String
                 (None, Some("gave_up")) => Some(i18n.t("notify.gave_up", &[])),
                 _ => None,
             };
-            Some(tail.map_or(head.clone(), |t| format!("{head} {t}")))
+            Some(tail.map_or(head.clone(), |t| i18n.t("notify.with_next", &[("head", &head), ("next", &t)])))
         }
         "instance.restart_failed" => Some(text("notify.restart_failed")),
         "instance.started" if d["unexpected"].as_bool() == Some(true) => Some(text("notify.external_start")),
@@ -433,23 +433,23 @@ mod tests {
         let body = |kind: &str, data: Value| critical_notice(&ev(kind, data), &i18n);
         assert_eq!(
             body("instance.exit", json!({"instance": "Survival", "kind": "crash", "restartInSecs": 5})).as_deref(),
-            Some("Survival crashed and stopped. Restarting in 5s.")
+            Some("Server “Survival” stopped after a crash. Restarting in 5s")
         );
         assert_eq!(
             body("instance.exit", json!({"instance": "Survival", "kind": "unknown_exit", "noteCode": "gave_up"})).as_deref(),
-            Some("Survival stopped unexpectedly. Auto restart gave up. Please check the server.")
+            Some("Server “Survival” stopped unexpectedly. Auto restart stopped. Check the server.")
         );
         assert_eq!(
             body("instance.restart_failed", json!({"instance": "Survival", "noteArgs": {"reason": "C:\\x"}})).as_deref(),
-            Some("Could not restart Survival.")
+            Some("Server “Survival” restart failed")
         );
         assert_eq!(
             body("instance.started", json!({"instance": "Survival", "source": "external", "unexpected": true})).as_deref(),
-            Some("Survival was started outside Saba-chan. Saba-chan did not start this process.")
+            Some("Server “Survival” was started outside Saba-chan (a process Saba-chan did not start)")
         );
         assert_eq!(
             body("backup.done", json!({"instance": "Survival", "kind": "scheduled", "ok": false, "error": "D:\\x"})).as_deref(),
-            Some("Automatic backup of Survival failed.")
+            Some("Automatic backup of Survival failed")
         );
         for (kind, data) in [
             ("instance.exit", json!({"instance": "Survival", "kind": "user_stop"})),
@@ -463,7 +463,7 @@ mod tests {
             assert_eq!(body(kind, data.clone()), None, "{kind} {data}");
         }
         // 이름이 없으면 id
-        assert_eq!(body("instance.exit", json!({"instanceId": "i-1", "kind": "crash"})).as_deref(), Some("i-1 crashed and stopped."));
+        assert_eq!(body("instance.exit", json!({"instanceId": "i-1", "kind": "crash"})).as_deref(), Some("Server “i-1” stopped after a crash"));
     }
 
     /// 원격 데몬의 중대 알림은 그 데몬 이름을 붙인다 (이 PC 서버로 읽히지 않게). 이 PC의 것은 그대로

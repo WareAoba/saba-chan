@@ -18,7 +18,7 @@
 //! `webSearch`)은 길드 목록을 받았을 때 서버마다 적어 넣는다 (`settle_legacy`). 그 전까지는 옛 값으로 셈해 보낸다
 //! - `PATCH /api/chatbot/common` `{model?, apiKey?: string|null}` — 내 PC 공통 값만 (액션 `chatbot.common.set`)
 //! - `DELETE /api/chatbot/memory?guildId=` — 장기 기억 지우기 (guildId가 없으면 모든 길드)
-//! - `GET /api/chatbot/memo-template?locale=` — 서버 프롬프트 기본 틀 `{template, locale}` (bot.json `chatbot.memo_template`)
+//! - `GET /api/chatbot/memo-template?locale=` — 서버 프롬프트 기본 틀 `{template, locale}` (daemon.json `chatbot.memo_template`)
 
 use axum::{
     extract::{Path, Query, State},

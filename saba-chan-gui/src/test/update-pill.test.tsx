@@ -104,7 +104,7 @@ describe('업데이트 알약', () => {
         status.mockResolvedValue(phase('ready'));
         render(<UpdatePill />);
         fireEvent.click(await screen.findByText('Update ready'));
-        expect(screen.getByRole('dialog', { name: 'Restart to update to 0.1.14' })).toBeTruthy();
+        expect(screen.getByRole('dialog', { name: 'Restart required to update to 0.1.14' })).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Later' }));
         expect(screen.queryByRole('dialog')).toBeNull();
         expect(window.api.updaterRestart).not.toHaveBeenCalled();

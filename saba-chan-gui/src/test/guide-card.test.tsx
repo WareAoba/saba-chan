@@ -106,7 +106,7 @@ describe('화면 강조', () => {
         await act(async () => {});
         expect(screen.getByText('centered')).toBeInTheDocument();
         expect(window.api.guideUpdate).toHaveBeenCalledWith('b', { step: 1 });
-        fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Done' }));
         expect(useGuideStore.getState().active).toBeNull();
         expect(window.api.guideUpdate).toHaveBeenCalledWith('b', { finished: true, step: 0 });
         target.remove();
@@ -162,7 +162,7 @@ describe('화면 강조', () => {
         act(() => startGuide('p'));
         await act(async () => {});
         expect(screen.getByText('proto')).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Done' }));
         expect(useGuideStore.getState().active).toBeNull();
     });
 

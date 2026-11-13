@@ -89,16 +89,6 @@ pub enum Cmd {
     /// App settings
     #[command(subcommand, visible_alias = "settings")]
     Config(ConfigCmd),
-    /// Send a chat-style command, the same way Discord does (e.g. `chat palworld start`)
-    Chat {
-        #[arg(
-            required = true,
-            trailing_var_arg = true,
-            allow_hyphen_values = true,
-            value_name = "TEXT"
-        )]
-        text: Vec<String>,
-    },
     /// CPU, memory, disk and network use, and each server's share
     Monitor(MonitorArgs),
     /// Who started, stopped or sent commands to servers, and from where (GUI, CLI, Discord, schedule)
@@ -1780,8 +1770,8 @@ mod tests {
     #[test]
     fn a_lang_inside_command_text_is_not_the_global_option() {
         let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied())).unwrap();
-        assert_eq!(p(&["chat", "mc", "say", "--lang=ko"]).global.lang, None);
-        assert_eq!(p(&["--lang", "ko", "chat", "mc", "say", "hi"]).global.lang.as_deref(), Some("ko"));
+        assert_eq!(p(&["server", "rcon", "mc", "say", "--lang=ko"]).global.lang, None);
+        assert_eq!(p(&["--lang", "ko", "server", "rcon", "mc", "say", "hi"]).global.lang.as_deref(), Some("ko"));
     }
 
     #[test]
@@ -1960,6 +1950,42 @@ mod tests {
         let mut missing = Vec::new();
         walk(&Cli::command(), "", &mut missing);
         assert!(missing.is_empty(), "help.arg keys missing: {:?}", missing);
+    }
+
+    /// 없는 명령·인자의 도움말 줄은 남기지 않는다: 명령을 지우면 그 `help.cmd.*`·`help.arg.*`도 지운다
+    #[test]
+    fn no_help_line_outlives_its_command() {
+        fn walk(cmd: &clap::Command, path: &str, used: &mut std::collections::HashSet<String>) {
+            for a in cmd.get_arguments() {
+                let id = a.get_id().as_str();
+                used.insert(format!("help.arg.{}.{}", path, id));
+                used.insert(format!("help.arg.{}", id));
+            }
+            for s in cmd.get_subcommands() {
+                let p = if path.is_empty() { s.get_name().to_string() } else { format!("{}.{}", path, s.get_name()) };
+                used.insert(format!("help.cmd.{}", p));
+                walk(s, &p, used);
+            }
+        }
+        let mut used: std::collections::HashSet<String> = ["help.cmd._root".to_string()].into();
+        // clap이 만들어 넣는 `help` 하위 명령까지 보도록 build한 명령을 걷는다
+        let mut cli = Cli::command();
+        cli.build();
+        walk(&cli, "", &mut used);
+        let text = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../locales/ko/cli.json")).unwrap();
+        let help = &serde_json::from_str::<serde_json::Value>(&text).unwrap()["help"];
+        let mut stale = Vec::new();
+        for (kind, table) in help.as_object().unwrap() {
+            let Some(table) = table.as_object() else { continue };
+            for key in table.keys() {
+                let full = format!("help.{}.{}", kind, key);
+                if !used.contains(&full) {
+                    stale.push(full);
+                }
+            }
+        }
+        stale.sort();
+        assert!(stale.is_empty(), "help lines without a command: {:?}", stale);
     }
 
     /// 한국어 도움말 줄은 다른 언어에도 있어야 한다. 없으면 그 언어 사용자는 영어 doc 주석을 본다

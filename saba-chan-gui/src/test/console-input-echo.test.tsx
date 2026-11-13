@@ -61,6 +61,6 @@ describe('보낸 명령', () => {
             ['say “hi”', 'Discord · Kimchi', 'success'],
             ['kick Steve', 'Console · Saba-chan web', 'failure'],
         ]);
-        expect(history[2].detail).toBe('The server is still processing earlier input. Try again in a moment.');
+        expect(history[2].detail).toBe('The server is still processing earlier input. Try again shortly.');
     });
 });

@@ -25,13 +25,13 @@ describe('웹 서버 켜기 알림', () => {
 
     it('켜는 동안 정지했으면 오류가 아니라 안내로 보인다', async () => {
         expect(await start({ success: false, error_code: 'start_cancelled', error: 'x' })).toMatchObject({
-            message: expect.stringMatching(/stopped while it was starting/),
+            message: expect.stringMatching(/stop request arrived while starting/),
             tone: 'info',
         });
     });
 
     it('그냥 켜졌으면 켰다고 한다', async () => {
-        expect((await start({ success: true }))?.message).toBe('Started A.');
+        expect((await start({ success: true }))?.message).toBe('Server “A” started');
     });
 
     it('다시 켜려는데 서버가 아직 꺼지는 중이면 데몬의 영어 문장이 아니라 번역된 이유를 보인다', async () => {
@@ -47,7 +47,7 @@ describe('웹 서버 켜기 알림', () => {
             await restarting;
         });
         expect(useApp.getState().toasts.at(-1)).toMatchObject({
-            message: expect.stringMatching(/still shutting down/),
+            message: expect.stringMatching(/still stopping/),
             tone: 'error',
         });
     });

@@ -31,7 +31,7 @@ describe('처음 시작하기 가이드', () => {
     it('서버가 없으면 디스코드 연결부터, 나중에 하기를 누르면 불러오기·새로 만들기를 고른다', async () => {
         render(page());
         await act(async () => {});
-        expect(screen.getByText("Let's connect Discord first.")).toBeInTheDocument();
+        expect(screen.getByText("Connect Discord first.")).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Later' }));
         expect(screen.getByText('Do you already run a game server?')).toBeInTheDocument();
     });

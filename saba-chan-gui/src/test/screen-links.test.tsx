@@ -60,7 +60,7 @@ describe('주소로 화면 열기', () => {
         expect(useUIStore.getState().activeTab).toBe('servers');
         expect(useUIStore.getState().activeServerId).toBeNull();
         expect(window.showToast).toHaveBeenCalledWith(
-            "That server can't be found, so the server list is open instead.",
+            "Server not found. Opened the server list instead.",
             'info',
             expect.any(Number),
         );
@@ -106,7 +106,7 @@ describe('링크', () => {
             </p>,
         );
         const p = document.querySelector('p') as HTMLElement;
-        expect(p.textContent).toMatch(/Pick the alert channel in Discord›Server tools›Channels\.$/);
+        expect(p.textContent).toMatch(/Set the alert channel in Discord›Server tools›Channels\.$/);
         expect(p.textContent).not.toContain('<link');
     });
 
@@ -139,7 +139,7 @@ describe('디스코드 페이지가 요청한 화면을 연다', () => {
             );
         });
         expect(window.showToast).toHaveBeenCalledWith(
-            "That Discord server isn't connected, so the connection screen is open instead.",
+            "That Discord server is not connected. Opened the connection screen instead.",
             'info',
             expect.any(Number),
         );

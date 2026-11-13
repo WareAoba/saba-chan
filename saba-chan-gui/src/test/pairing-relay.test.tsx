@@ -126,7 +126,7 @@ describe('데몬이 노드 토큰을 저장했는지 (릴레이 2차 점검 R15)
         render(
             <PairingCard pairing={{ status: 'unsaved', code: 'C', start: () => {} } as never} onCancel={() => {}} />,
         );
-        expect(screen.getByText(/couldn't save the connection on this PC/)).toBeInTheDocument();
-        expect(screen.queryByText(/Connected!/)).not.toBeInTheDocument();
+        expect(screen.getByText(/saving the connection on this PC failed/)).toBeInTheDocument();
+        expect(screen.queryByText(/Connected/)).not.toBeInTheDocument();
     });
 });

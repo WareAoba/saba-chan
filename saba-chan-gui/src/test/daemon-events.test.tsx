@@ -60,7 +60,7 @@ describe('데몬 이벤트 스트림', () => {
         expect(eventToast({ type: 'action.run', data: discordStop }, t)).toBeNull();
         // 켜고 끄기에 실패했으면 이벤트가 없으니 실패 이유와 함께 토스트로
         const failedStop = eventToast({ type: 'action.run', data: { ...discordStop, ok: false, status: 409, code: 'server_not_running' } }, t);
-        expect(failedStop).toMatchObject({ message: 'Run from Discord: Kimchi · Survival · Stop · Failed · The server was off', type: 'warning' });
+        expect(failedStop).toMatchObject({ message: 'Run from Discord: Kimchi · Survival · Stop · Failed · Server stopped', type: 'warning' });
         expect(failedStop?.notice).toBeUndefined();
         // 게임 명령은 토스트로만 알리고, 빈 인자 {}는 보이지 않는다
         const say = { ...discordStop, action: 'command', command: 'say', args: '{"message":"hi"}' };
@@ -71,7 +71,7 @@ describe('데몬 이벤트 스트림', () => {
         );
         expect(
             eventToast({ type: 'action.run', data: { ...say, ok: false, status: 400, code: 'invalid_argument' } }, t)?.message,
-        ).toBe('Run from Discord: Kimchi · Survival · Command · say “hi” · Failed · An input value wasn\'t valid');
+        ).toBe('Run from Discord: Kimchi · Survival · Command · say “hi” · Failed · Invalid input value');
         expect(eventToast({ type: 'action.run', data: { ...say, source: 'gui' } }, t)).toBeNull();
         // 게임 서버를 대상으로 하지 않은 일(디스코드 설정 바꾸기 등)은 작업 기록에만 남는다
         const guildSetting = { source: 'discord', ok: true, userName: 'Kimchi', action: 'chatbot.settings.set' };
@@ -86,10 +86,10 @@ describe('데몬 이벤트 스트림', () => {
             },
             t,
         );
-        expect(crash?.message).toBe('Survival stopped (Crash). Hit the memory limit (4096 MiB). Restarting in 5s');
+        expect(crash?.message).toBe("'Survival' stopped (Crash) Memory limit reached (4096 MiB). Restarting in 5s");
         expect(crash?.notice).toEqual({
-            message: 'Crashed',
-            detail: 'Hit the memory limit (4096 MiB) · Restarting in 5s',
+            message: 'Exited by crash',
+            detail: 'Memory limit reached (4096 MiB) · Restarting in 5s',
             type: 'error',
             source: 'Survival',
             instanceId: 'srv-1',
@@ -98,7 +98,7 @@ describe('데몬 이벤트 스트림', () => {
             { type: 'instance.exit', data: { instanceId: 'srv-1', instance: 'Survival', kind: 'start_failed', evidenceCode: 'ended_early', evidenceArgs: { secs: 4 } } },
             t,
         );
-        expect(failed?.notice).toMatchObject({ message: 'Failed to start', detail: 'Ended 4s after starting' });
+        expect(failed?.notice).toMatchObject({ message: 'Start failed', detail: 'Exited 4s after start' });
         // 콘솔 줄이 근거인 것은 이유를 따로 적지 않는다
         const quiet = eventToast({ type: 'instance.exit', data: { instance: 'Survival', kind: 'unknown_exit', evidenceCode: 'console' } }, t)?.notice;
         expect(quiet?.message).toBe('Stopped unexpectedly');
@@ -109,14 +109,14 @@ describe('데몬 이벤트 스트림', () => {
         const nameOf = () => 'Survival';
         expect(eventToast({ type: 'backup.done', data: { kind: 'manual', ok: true } }, t, nameOf)).toBeNull();
         const scheduled = eventToast({ type: 'backup.done', data: { kind: 'scheduled', ok: true } }, t, nameOf);
-        expect(scheduled?.message).toBe('Backed up Survival (Scheduled).');
+        expect(scheduled?.message).toBe('Survival backup complete (Scheduled)');
         expect(scheduled?.notice).toBeUndefined();
         expect(
             eventToast({ type: 'backup.done', data: { kind: 'scheduled', ok: false, error: 'disk full' } }, t, nameOf)
                 ?.type,
         ).toBe('error');
         const warn = eventToast({ type: 'schedule.warn', data: { instance: 'Survival', action: 'restart', minutesLeft: 5 } }, t);
-        expect(warn?.message).toBe('Survival will restart as scheduled in 5 min.');
+        expect(warn?.message).toBe("'Survival' restarts as scheduled in 5 min.");
         expect(warn?.notice).toBeUndefined();
         expect(eventToast({ type: 'mystery', data: {} }, t)).toBeNull();
     });
@@ -124,14 +124,14 @@ describe('데몬 이벤트 스트림', () => {
     it('복원은 어디서 했든 알림에 남기고, 앱에서 한 것은 토스트를 다시 띄우지 않는다', () => {
         const restore = { at: 1700000000, source: 'web', action: 'restore', instanceId: 'srv-1', instance: 'Survival', ok: true, status: 200 };
         expect(eventToast({ type: 'action.run', data: restore }, t)).toMatchObject({
-            message: 'Survival was restored (Saba-chan web).',
+            message: "'Survival' restored (Saba-chan web)",
             type: 'success',
             notice: { message: 'Restored · Saba-chan web', type: 'success', source: 'Survival', instanceId: 'srv-1' },
         });
         const mine = eventToast({ type: 'action.run', data: { ...restore, source: 'gui' } }, t);
         expect(mine).toMatchObject({ silent: true, notice: { message: 'Restored · App', read: true } });
         const broken = eventToast({ type: 'action.run', data: { ...restore, source: 'discord', ok: false, status: 409, code: 'server_running' } }, t);
-        expect(broken?.notice).toMatchObject({ message: 'Restore failed', detail: 'The server was running', type: 'error' });
+        expect(broken?.notice).toMatchObject({ message: 'Restore failed', detail: 'Not possible while the server is running', type: 'error' });
     });
 
     it('켜고 끈 출처를 문구에 싣고, 사바쨩 밖에서 켠 것만 경고로 알린다', () => {
@@ -152,23 +152,23 @@ describe('데몬 이벤트 스트림', () => {
         ];
         for (const [source, label] of table) {
             const on = started({ source, unexpected: false });
-            expect(on).toMatchObject({ message: `Survival started (${label}).`, type: 'info' });
+            expect(on).toMatchObject({ message: `'Survival' started (${label})`, type: 'info' });
             expect(on?.silent).toBeFalsy();
             expect(on?.notice).toEqual({ message: `Started · ${label}`, type: 'info', source: 'Survival', instanceId: 'srv-1' });
             expect(stopped({ source, kind: 'user_stop' })).toMatchObject({
-                message: `Survival stopped (${label}).`,
+                message: `'Survival' stopped (${label})`,
                 type: 'info',
                 notice: { message: `Stopped · ${label}` },
             });
         }
         expect(started({ source: 'discord', userName: 'Kimchi', unexpected: false })?.notice?.message).toBe('Started · Discord · Kimchi');
         expect(stopped({ source: 'game', kind: 'in_game_stop' })).toMatchObject({
-            message: 'Survival was stopped from inside the game.',
+            message: "'Survival' stopped from inside the game",
             type: 'info',
             notice: { message: 'Stopped from inside the game' },
         });
         expect(started({ source: 'external', unexpected: true })).toMatchObject({
-            message: 'Survival was started outside Saba-chan. Saba-chan did not start this process.',
+            message: "'Survival' started outside Saba-chan. Saba-chan did not start this process.",
             type: 'warning',
             notice: { message: 'Started outside Saba-chan' },
         });
@@ -187,7 +187,7 @@ describe('데몬 이벤트 스트림', () => {
         await act(async () => vi.advanceTimersByTime(400));
         expect(refetch).toHaveBeenCalledTimes(1);
         expect(window.showToast).toHaveBeenCalledTimes(1);
-        expect(window.showToast).toHaveBeenCalledWith('Survival stopped (Discord · Kimchi).', 'info', 4000, undefined);
+        expect(window.showToast).toHaveBeenCalledWith("'Survival' stopped (Discord · Kimchi)", 'info', 4000, undefined);
         expect(window.__sabaNotice?.addNotice).toHaveBeenCalledTimes(1);
         expect(window.__sabaNotice?.addNotice).toHaveBeenCalledWith({
             message: 'Stopped · Discord · Kimchi',
@@ -214,7 +214,7 @@ describe('데몬 이벤트 스트림', () => {
         });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
             expect.objectContaining({
-                message: 'Pal: a new version 1.1.0 of the palworld module is out.',
+                message: 'Pal: new palworld module version 1.1.0 released',
                 action: 'openUpdateModal',
             }),
         );
@@ -225,7 +225,7 @@ describe('데몬 이벤트 스트림', () => {
         });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
             expect.objectContaining({
-                message: "Pal: a new game server version is out. If players can't join, update the server.",
+                message: 'Pal: new game server version released. Update the server if players cannot join.',
             }),
         );
         delete window.__sabaNotice;
@@ -243,7 +243,7 @@ describe('데몬 이벤트 스트림', () => {
         await stream.emit({ id: 2, type: 'instance.update_waiting', data: { instanceId: 'i', instance: 'Pal', players: 2 } });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
             expect.objectContaining({
-                message: 'Pal: a new game server version is out, but 2 player(s) are online, so auto-update is waiting.',
+                message: 'Pal: new game server version released. 2 player(s) online, auto update waiting',
                 action: SERVER_UPDATE_ACTION,
                 dedup: true,
             }),
@@ -252,12 +252,12 @@ describe('데몬 이벤트 스트림', () => {
         await stream.emit({ id: 4, type: 'instance.update_waiting', data: { instanceId: 'i', instance: 'Pal', players: null } });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
             expect.objectContaining({
-                message: 'Pal: a new game server version is out, but players are online, so auto-update is waiting.',
+                message: 'Pal: new game server version released. Players online, auto update waiting',
             }),
         );
         await stream.emit({ id: 3, type: 'instance.update_failed', data: { instanceId: 'i', instance: 'Pal', error: 'disk full' } });
         expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
-            expect.objectContaining({ message: "Pal: couldn't update the game server. disk full", type: 'error' }),
+            expect.objectContaining({ message: 'Pal: game server update failed. disk full', type: 'error' }),
         );
         delete window.__sabaNotice;
         unmount();
@@ -273,14 +273,14 @@ describe('데몬 이벤트 스트림', () => {
         expect(window.api.instanceApplyUpdate).toHaveBeenCalledWith('i');
         expect(removeNotice).toHaveBeenCalledWith(7);
         expect(window.showToast).toHaveBeenLastCalledWith(
-            'Pal: warned players in game. The update starts in 5 min.',
+            'Pal: warned in game. Update in 5 min.',
             'info',
             5000,
             undefined,
         );
         window.api.instanceApplyUpdate = vi.fn().mockResolvedValue({ success: false, error: 'already updating' }) as never;
         await applyServerUpdateFromNotice(notice, t);
-        expect(window.showToast).toHaveBeenLastCalledWith("Pal: couldn't start the update. already updating", 'error', 5000, undefined);
+        expect(window.showToast).toHaveBeenLastCalledWith('Pal: update start failed. already updating', 'error', 5000, undefined);
         delete window.__sabaNotice;
     });
 

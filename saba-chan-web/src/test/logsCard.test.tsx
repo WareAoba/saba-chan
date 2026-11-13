@@ -81,7 +81,7 @@ describe('지난 로그', () => {
         };
         render(<LogsCard api={mockApi(api)} server={{ id: 's1', name: 'Mc' }} />);
         await flush();
-        expect(screen.getByText('No logs yet. They appear after the server runs once.')).toBeTruthy();
+        expect(screen.getByText('No logs yet')).toBeTruthy();
         expect(screen.queryByRole('button', { name: 'Export' })).toBeNull();
     });
 });

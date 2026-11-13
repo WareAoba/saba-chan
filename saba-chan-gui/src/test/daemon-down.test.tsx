@@ -15,10 +15,10 @@ const page = (servers: unknown[]) => (
 describe('데몬이 꺼져 있을 때 서버 화면', () => {
     afterEach(() => useUIStore.setState({ backgroundDaemonStatus: 'checking' }));
 
-    it('서버가 비어 있으면 "서버가 없어요" 대신 데몬 연결 안내를 보인다', () => {
+    it('서버가 비어 있으면 "서버 없음" 대신 데몬 연결 안내를 보인다', () => {
         useUIStore.setState({ backgroundDaemonStatus: 'stopped' });
         render(page([]));
-        expect(screen.queryByText(/No servers yet|아직 서버가/)).toBeNull();
+        expect(screen.queryByText(/No servers added|아직 서버가/)).toBeNull();
         // 잠든 사바쨩 + 깨우기
         expect(screen.getByText("Shh! She's still asleep…!")).toBeTruthy();
     });
@@ -46,6 +46,6 @@ describe('데몬이 꺼져 있을 때 서버 화면', () => {
     it('데몬이 살아 있으면 원래 빈 화면이다', () => {
         useUIStore.setState({ backgroundDaemonStatus: 'running' });
         render(page([]));
-        expect(screen.getByText('No servers yet')).toBeTruthy();
+        expect(screen.getByText('No servers added')).toBeTruthy();
     });
 });

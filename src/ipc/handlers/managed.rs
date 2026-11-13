@@ -1112,9 +1112,10 @@ pub async fn install_server_handler(
                     // 모듈이 붙인 주의 한 줄 (`java_warning`은 마인크래프트 모듈이 버전 설치에 쓴다)
                     let warning = ["warning", "java_warning"].iter().find_map(|k| r.get(*k).and_then(Value::as_str)).filter(|w| !w.is_empty());
                     keep = warning.is_some();
+                    let installed = text.t("provision.version_installed", &[("version", r.get("version").and_then(Value::as_str).unwrap_or_default())]);
                     let message = match warning {
-                        Some(w) => format!("{}\n⚠️ {}", text.t("provision.version_installed", &[]), w),
-                        None => text.t("provision.version_installed", &[]),
+                        Some(w) => format!("{installed}\n⚠️ {w}"),
+                        None => installed,
                     };
                     version_progress(message, true, None)
                 }

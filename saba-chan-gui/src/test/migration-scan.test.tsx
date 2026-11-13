@@ -82,10 +82,10 @@ describe('AddInstanceMigration 폴더 스캔', () => {
             />,
         );
         fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
-        expect(await screen.findByText('This server is running right now')).toBeTruthy();
+        expect(await screen.findByText('This server is running')).toBeTruthy();
         fireEvent.click(screen.getByText('Next'));
-        expect(screen.getByText('This server is running right now')).toBeTruthy();
-        expect(screen.getByText('What changes when you import')).toBeTruthy();
+        expect(screen.getByText('This server is running')).toBeTruthy();
+        expect(screen.getByText('What changes on import')).toBeTruthy();
         expect(screen.getByText('Removing it from Saba-chan also deletes its backups')).toBeTruthy();
     });
 });

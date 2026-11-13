@@ -71,7 +71,6 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Chatbot(c) => chatbot::run(ctx, c).await,
         Cmd::Update(c) => update::run(ctx, c).await,
         Cmd::Config(c) => config::run(ctx, c).await,
-        Cmd::Chat { text } => chat(ctx, &text.join(" ")).await,
         Cmd::Events { kind, server, since } => events::run(ctx, &kind, server.as_deref(), since).await,
         Cmd::Help { command } => help(ctx, &command),
         Cmd::Completions { shell, install, install_shell } => completions::run(ctx, install_shell.or(shell), install),
@@ -133,19 +132,6 @@ pub async fn gui(ctx: &Ctx, server: Option<&str>) -> Result<()> {
     let r = ctx.api.launch("gui", id.as_deref()).await?;
     ctx.out.done(&t!("gui.opened"), &r);
     Ok(())
-}
-
-/// POST /api/chat/command — 디스코드와 같은 처리기
-pub async fn chat(ctx: &Ctx, text: &str) -> Result<()> {
-    let r = ctx.api.chat(text).await?;
-    // 답은 디스코드용 마크다운이다: 터미널에서는 강조 기호만 뗀다
-    ctx.out
-        .data(&r, |r| say!("{}", plain(crate::output::s(r, "reply"))));
-    Ok(())
-}
-
-fn plain(md: &str) -> String {
-    md.replace("**", "").replace('`', "")
 }
 
 /// 응답의 `warnings[{code, module|extension}]` (미검증·변경된 구성요소 알림)을 경고로 보인다

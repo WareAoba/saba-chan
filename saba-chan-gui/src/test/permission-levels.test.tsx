@@ -445,7 +445,7 @@ describe('권한 화면', () => {
 
     it('디스코드 멤버를 못 받았으면 레벨 목록 아래에 그렇다고 알린다', async () => {
         await openPeople({ members: [] });
-        expect(screen.getByText(/Couldn't load members/)).toBeInTheDocument();
+        expect(screen.getByText(/Member load failed/)).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /on the default level/ })).toBeNull();
     });
 
@@ -455,7 +455,7 @@ describe('권한 화면', () => {
         fireEvent.click(within(level('Admin')).getByRole('button', { name: 'Mint' }));
         pickOption(screen.getByLabelText('Level for Mint'), 'Lv 1 · User');
         await flush();
-        expect(window.showToast).toHaveBeenCalledWith("The owner's level can't be changed.", 'error', 5000, undefined);
+        expect(window.showToast).toHaveBeenCalledWith("Owner level cannot be changed", 'error', 5000, undefined);
         expect(within(level('Admin')).getByRole('button', { name: 'Mint' })).toBeInTheDocument();
     });
 
@@ -501,7 +501,7 @@ describe('권한 화면', () => {
         perm = base({ relayOwnerDiscordId: '1002' });
         await openPeople();
         expect(screen.getByRole('alert')).toHaveTextContent(
-            'Server-chan reported a different owner (Mint). The owner here stays Aoba.',
+            'Server-chan reports a different owner (Mint). Here the owner stays Aoba.',
         );
         vi.useFakeTimers({ shouldAdvanceTime: true });
         fireEvent.click(screen.getByRole('button', { name: 'Use this owner' }));
@@ -800,7 +800,7 @@ describe('권한 화면', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Pick Admin' }));
         expect(within(level('Admin')).getByText('Stop')).toBeInTheDocument();
         expect(within(level('User')).getByText('Create server')).toBeInTheDocument();
-        expect(screen.getByText(/User ⇄ Admin · People stay where they are/)).toBeInTheDocument();
+        expect(screen.getByText(/User ⇄ Admin · People stay as they are/)).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Pick User' })).toBeNull();
 
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));

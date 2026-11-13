@@ -8,7 +8,7 @@ use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 
 /// 내줄 수 있는 묶음 (설치 폴더 `locales/<lang>/<ns>.json`). 이 목록 밖의 이름은 읽지 않는다
-pub const NAMESPACES: &[&str] = &["common", "gui", "bot", "web", "cli"];
+pub const NAMESPACES: &[&str] = &["common", "gui", "daemon", "web", "cli"];
 
 /// 언어 코드 모양만 받는다: `^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$`
 fn valid_language(lang: &str) -> bool {

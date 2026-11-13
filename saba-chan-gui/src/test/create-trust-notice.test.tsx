@@ -33,7 +33,7 @@ describe('서버 만들 때 신뢰 안내', () => {
 
     it('설치 뒤 바뀐 모듈이면 바뀌었다고 알린다', async () => {
         await renderNew('modified');
-        expect(screen.getByRole('note').textContent).toMatch(/changed after installing/);
+        expect(screen.getByRole('note').textContent).toMatch(/changed after install/);
     });
 
     it('확인된 모듈이나 trust가 없는 옛 데몬이면 알리지 않는다', async () => {

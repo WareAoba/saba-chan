@@ -30,9 +30,9 @@ describe('신뢰 경고 알림', () => {
             t,
         );
         expect(window.showToast).toHaveBeenCalledTimes(2);
-        expect(vi.mocked(window.showToast!).mock.calls[0][0]).toMatch(/module \(minecraft\) changed after it was installed/);
+        expect(vi.mocked(window.showToast!).mock.calls[0][0]).toMatch(/Files of module \(minecraft\) changed after install/);
         expect(vi.mocked(window.showToast!).mock.calls[0][1]).toBe('warning');
-        expect(vi.mocked(window.showToast!).mock.calls[1][0]).toMatch(/\(palworld\) that did not come from the official catalog/);
+        expect(vi.mocked(window.showToast!).mock.calls[1][0]).toMatch(/\(palworld\) not from the official catalog/);
     });
 
     it('익스텐션을 켜면 경고를 띄우되 켜기는 그대로 성공한다', async () => {
@@ -52,7 +52,7 @@ describe('신뢰 경고 알림', () => {
         expect(ok).toBe(true);
         const warned = vi.mocked(window.showToast!).mock.calls.filter((c) => c[1] === 'warning');
         expect(warned).toHaveLength(1);
-        expect(warned[0][0]).toMatch(/extension \(music\) that did not come from the official catalog/);
+        expect(warned[0][0]).toMatch(/extension \(music\) not from the official catalog/);
     });
 
     it('시작이 막힌 이유는 아는 코드만 문구로 바꾸고, 나머지는 원래 흐름에 맡긴다', () => {
@@ -64,7 +64,7 @@ describe('신뢰 경고 알림', () => {
         );
         expect(
             blockedText({ action_required: 'server_in_sync_folder', file: 'C:/OneDrive/srv/PalServer.exe' }, t),
-        ).toMatch(/because C:\/OneDrive\/srv\/PalServer\.exe is inside a sync folder/);
+        ).toMatch(/Not started: C:\/OneDrive\/srv\/PalServer\.exe is inside a sync folder/);
         expect(blockedText({ action_required: 'extension_required' }, t)).toBeNull();
         expect(blockedText({ success: false, message: 'x' }, t)).toBeNull();
     });

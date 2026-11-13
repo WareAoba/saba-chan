@@ -53,17 +53,6 @@ impl Origin {
         matches!(self.source.as_str(), "discord" | "mcp")
     }
 
-    /// 채팅 명령을 보낸 사람·서버를 붙인다
-    pub fn requested_by(self, req: &crate::chat::ChatRequest) -> Self {
-        Self {
-            user: req.user_id.clone(),
-            guild: req.guild_id.clone(),
-            user_name: req.user_name.clone(),
-            guild_name: req.guild_name.clone(),
-            ..self
-        }
-    }
-
     /// `X-Saba-Client` 헤더 → 출처. 소문자·숫자·`-`만, 16자까지 (로그를 더럽히지 않게).
     /// 데몬 안에서만 붙이는 출처(`INTERNAL_SOURCES`)는 헤더로 받지 않는다
     pub fn from_headers(headers: &axum::http::HeaderMap) -> Self {

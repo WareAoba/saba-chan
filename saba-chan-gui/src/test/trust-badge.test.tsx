@@ -9,10 +9,10 @@ describe('TrustBadge', () => {
         rerender(<TrustBadge trust="verified" />);
         expect(screen.getByText('Verified').className).toContain('trust-verified');
         rerender(<TrustBadge trust="modified" />);
-        const badge = screen.getByRole('img', { name: /Files changed after installing/ });
+        const badge = screen.getByRole('img', { name: /Files changed after install/ });
         expect(badge.className).toContain('trust-modified');
         rerender(<TrustBadge trust="unverified" />);
-        expect(screen.getByText('Unverified').getAttribute('data-tooltip')).toMatch(/signed catalog/);
+        expect(screen.getByText('Unverified').getAttribute('data-tooltip')).toMatch(/official catalog/);
         rerender(<TrustBadge trust="bogus" />);
         expect(container.innerHTML).toBe('');
     });

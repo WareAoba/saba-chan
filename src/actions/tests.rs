@@ -386,57 +386,76 @@ async fn remote_results_carry_a_readable_summary() {
     let (state, id, _tmp) = server().await;
     open_everything(&state).await;
     let listed = query(&state, "instance.list", None, &json!({}), &relay("someone", false)).await.unwrap();
-    let text = listed["text"].as_str().unwrap();
-    assert!(text.contains("srv") && text.contains("정지됨"), "{text}");
-    assert!(query(&state, "backup.list", Some(&id), &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("백업이 없어요"));
-    assert!(query(&state, "instance.events", Some(&id), &json!({}), &relay("someone", true)).await.unwrap()["text"].as_str().unwrap().contains("기록이 없어요"));
-    assert!(query(&state, "monitor.summary", None, &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("CPU"));
+    let text = shown(&listed["text"]);
+    assert!(text.contains("name=srv") && text.contains("status.stopped"), "{text}");
+    assert!(shown(&query(&state, "backup.list", Some(&id), &json!({}), &relay("someone", false)).await.unwrap()["text"]).contains("backups_empty"));
+    assert!(shown(&query(&state, "instance.events", Some(&id), &json!({}), &relay("someone", true)).await.unwrap()["text"]).contains("events_empty"));
+    assert!(shown(&query(&state, "monitor.summary", None, &json!({}), &relay("someone", false)).await.unwrap()["text"]).contains("actions.summary.monitor cpu="));
     // GUI·CLI는 자기 화면으로 그린다
     assert!(run(&state, "instance.list", None, &json!({}), None, &gui()).await.unwrap().get("text").is_none());
+}
+
+/// 결과에 실린 답(`Text` JSON)을 `[키 이름=값]`으로 펼친 글
+fn shown(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Array(parts) => parts.iter().map(shown).collect(),
+        Value::Object(m) => {
+            let vars: String = m.get("vars").and_then(Value::as_object).into_iter().flatten().map(|(k, v)| format!(" {k}={}", shown(v))).collect();
+            format!("[{}{}]", m.get("key").and_then(Value::as_str).unwrap_or_default(), vars)
+        }
+        _ => String::new(),
+    }
+}
+
+/// 요약은 문구 키와 값으로 간다 (문장은 릴레이가 만든다). `plain()`은 `[키 이름=값]`으로 펼친 글이다
+fn summary_of(id: &str, result: Value) -> Option<String> {
+    summary::text(id, &result, &crate::chat::i18n::Catalog::for_language("ko")).map(|t| t.plain())
 }
 
 #[test]
 fn summaries_read_like_sentences() {
     let ko = crate::chat::i18n::Catalog::for_language("ko");
     let backups: Vec<Value> = (0..12).map(|n| json!({ "name": format!("b{n:02}"), "kind": "scheduled", "created": 1_700_000_000 + n * 60, "size": 1_536 * 1024 * 1024 })).collect();
-    let text = summary::text("backup.list", &json!({ "success": true, "backups": backups }), &ko).unwrap();
+    let text = summary_of("backup.list", json!({ "success": true, "backups": backups })).unwrap();
     let lines: Vec<&str> = text.lines().collect();
-    assert!(lines[0].contains("12"), "{text}");
+    assert!(lines[0].contains("count=12"), "{text}");
+    // 백업 종류 이름은 데몬 문구다 (복원 칸 이름표와 같다)
     assert!(lines[1].contains("b11") && lines[1].contains("예약") && lines[1].contains("1.5 GB"), "newest first: {text}");
-    assert!(lines.len() <= 12 && lines.last().unwrap().contains('2'), "the rest is counted: {text}");
+    assert!(lines.len() <= 12 && lines.last().unwrap().contains("[actions.summary.more count=2]"), "the rest is counted: {text}");
 
     let updates = json!({ "ok": true, "updates_available": 1, "components": [
         { "display_name": "Saba-chan GUI", "current_version": "0.1.7", "latest_version": "0.1.8", "update_available": true },
         { "display_name": "Saba-chan CLI", "current_version": "0.1.7", "latest_version": "0.1.7", "update_available": false },
     ] });
-    let text = summary::text("update.check", &updates, &ko).unwrap();
-    assert!(text.contains("Saba-chan GUI") && text.contains("0.1.7 → 0.1.8") && !text.contains("CLI"), "{text}");
-    assert!(summary::text("update.check", &json!({ "ok": true, "updates_available": 0, "components": [] }), &ko).unwrap().contains("최신"));
+    let text = summary_of("update.check", updates).unwrap();
+    assert!(text.contains("Saba-chan GUI") && text.contains("current=0.1.7 latest=0.1.8") && !text.contains("CLI"), "{text}");
+    assert!(summary_of("update.check", json!({ "ok": true, "updates_available": 0, "components": [] })).unwrap().contains("updates_none"));
 
     let events = json!({ "events": [{ "at": 1_700_000_000, "kind": "crash" }, { "at": 1_700_000_600, "kind": "user_stop" }] });
-    let text = summary::text("instance.events", &events, &ko).unwrap();
-    assert!(text.lines().nth(1).unwrap().contains("정지") && text.contains("비정상 종료"), "newest first: {text}");
+    let text = summary_of("instance.events", events).unwrap();
+    assert!(text.lines().nth(1).unwrap().contains("event_kind.user_stop") && text.contains("event_kind.crash"), "newest first: {text}");
 
     // 시각을 모르면 1970년으로 찍지 않는다
-    let unknown = summary::text("backup.list", &json!({ "backups": [{ "name": "old", "kind": "manual", "size": 0 }] }), &ko).unwrap();
+    let unknown = summary_of("backup.list", json!({ "backups": [{ "name": "old", "kind": "manual", "size": 0 }] })).unwrap();
     assert!(!unknown.contains("1970"), "{unknown}");
 
-    // 게임 자동 백업은 크기를 재지 않는다: 0 B로 쓰지 않는다
-    let game = summary::text("backup.list", &json!({ "backups": [{ "name": "game-snapshot:S1", "kind": "game-snapshot", "created": 1_700_000_000 }] }), &ko).unwrap();
-    assert!(!game.contains("0 B") && !game.trim_end().ends_with('·'), "{game}");
+    // 게임 자동 백업은 크기를 재지 않는다: 크기 자리가 없는 문구로
+    let game = summary_of("backup.list", json!({ "backups": [{ "name": "game-snapshot:S1", "kind": "game-snapshot", "created": 1_700_000_000 }] })).unwrap();
+    assert!(game.contains("backup_item_unsized") && !game.contains("size="), "{game}");
 
     // 열지 못하는 백업은 복원할 수 없다고 함께 알린다 (603 P3-8)
     let mut broken = json!({ "backups": [{ "name": "bad", "kind": "manual", "created": 1_700_000_000, "size": 9, "readable": false }, { "name": "ok", "kind": "manual", "created": 1_699_000_000, "size": 9, "readable": true }] });
-    let text = summary::text("backup.list", &broken, &ko).unwrap();
+    let text = summary_of("backup.list", broken.clone()).unwrap();
     assert!(text.lines().nth(1).unwrap().contains("열 수 없음") && !text.lines().nth(2).unwrap().contains("열 수 없음"), "{text}");
     summary::label_backups(&mut broken, &ko);
     assert!(broken["backups"][0]["label"].as_str().unwrap().contains("열 수 없음") && !broken["backups"][1]["label"].as_str().unwrap().contains("열 수 없음"), "{broken}");
 
     // 모듈 조회는 범용 포맷으로 (모양이 모듈마다 다르다)
-    let players = summary::text("server.query:players", &json!({ "success": true, "players": [{ "name": "steve" }] }), &ko).unwrap();
+    let players = summary_of("server.query:players", json!({ "success": true, "players": [{ "name": "steve" }] })).unwrap();
     assert!(players.contains("steve") && !players.contains("success"), "{players}");
     // 모르는 액션은 요약하지 않는다 (릴레이가 결과를 그대로 보인다)
-    assert!(summary::text("server.status", &json!({}), &ko).is_none());
+    assert!(summary_of("server.status", json!({})).is_none());
 }
 
 #[test]
@@ -1179,14 +1198,13 @@ async fn the_chatbot_reads_logs_with_inputs_and_without_local_details() {
 /// 플레이어 (검수 13번): 접속자 수와 이름을 한 문장으로, heartbeat 항목은 지원하는 모듈(`[status] players`)만 이름으로 싣는다
 #[tokio::test]
 async fn players_read_as_a_count_and_names_for_supporting_modules() {
-    let ko = crate::chat::i18n::Catalog::for_language("ko");
     let names: Vec<Value> = (0..12).map(|n| json!({ "name": format!("p{n}") })).collect();
-    let text = summary::text("server.players", &json!({ "success": true, "online": 12, "max": 20, "players": names }), &ko).unwrap();
+    let text = summary_of("server.players", json!({ "success": true, "online": 12, "max": 20, "players": names })).unwrap();
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines[0], "👥 접속 12/20명");
-    assert_eq!(lines[1], "• p0");
-    assert_eq!(lines.last().copied(), Some("…외 2명"));
-    assert_eq!(summary::text("server.players", &json!({ "success": true, "online": 0, "players": [] }), &ko).unwrap(), "👥 접속 0명");
+    assert_eq!(lines[0], "[actions.summary.players_max online=12 max=20]");
+    assert_eq!(lines[1], "[actions.summary.player_item name=p0]");
+    assert_eq!(lines.last().copied(), Some("[actions.summary.players_more count=2]"));
+    assert_eq!(summary_of("server.players", json!({ "success": true, "online": 0, "players": [] })).unwrap(), "[actions.summary.players online=0]");
 
     let (state, _id, _tmp) = server().await;
     let mut modules = state.supervisor.read().await.module_loader.discover_modules().unwrap();
@@ -1202,19 +1220,18 @@ async fn players_read_as_a_count_and_names_for_supporting_modules() {
 /// 챗봇에는 열지 않는다
 #[tokio::test]
 async fn port_check_reads_as_a_verdict_without_the_address() {
-    let ko = crate::chat::i18n::Catalog::for_language("ko");
     let report = json!({
         "verdict": "closed", "address": "203.0.114.7", "publicAddress": true, "nat": "router",
         "ports": [{ "field": "port", "port": 8211, "protocol": "udp", "status": "closed" }, { "field": "port", "port": 8211, "protocol": "tcp", "status": "open" }],
     });
-    let text = summary::text("server.port_check", &report, &ko).unwrap();
+    let text = summary_of("server.port_check", report).unwrap();
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines[0], "🚫 밖에서 접속할 수 없어요");
-    assert_eq!(lines[1], "• 8211/UDP · 닫힘");
-    assert_eq!(lines[2], "• 8211/TCP · 열림");
-    assert!(lines[3].contains("포트포워딩"), "{text}");
+    assert_eq!(lines[0], "[actions.summary.port_check.closed]");
+    assert_eq!(lines[1], "[actions.summary.port_item port=8211 protocol=UDP status=[actions.summary.port_status.closed]]");
+    assert_eq!(lines[2], "[actions.summary.port_item port=8211 protocol=TCP status=[actions.summary.port_status.open]]");
+    assert_eq!(lines[3], "[actions.summary.port_hint.closed]");
     assert!(!text.contains("203.0.114.7"));
-    assert_eq!(summary::text("server.port_check", &json!({ "verdict": "open", "ports": [] }), &ko).unwrap(), "✅ 밖에서 접속할 수 있어요");
+    assert_eq!(summary_of("server.port_check", json!({ "verdict": "open", "ports": [] })).unwrap(), "[actions.summary.port_check.open]");
 
     assert_eq!(find("server.port_check").unwrap().surfaces, &[Gui, Cli, Discord]);
     let (state, _id, _tmp) = server().await;
@@ -1273,7 +1290,7 @@ async fn a_failed_remote_action_carries_a_short_reason() {
     set_node(&state, json!({ "ownerDiscordId": "owner" })).await;
     let out = query(&state, "server.query:players", Some(&id), &json!({}), &relay("owner", false)).await.unwrap();
     assert_eq!(out["success"], false, "{out}");
-    assert_eq!(out["reason"], "이 게임은 지원하지 않아요", "{out}");
+    assert_eq!(shown(&out["reason"]), "[reasons.not_supported file=]", "{out}");
     // 이 PC 화면은 원문을 그대로 쓴다
     let local = query(&state, "server.query:players", Some(&id), &json!({}), &gui()).await.unwrap();
     assert!(local.get("reason").is_none(), "{local}");
@@ -1362,10 +1379,11 @@ async fn a_sentence_plans_the_action_it_names_and_runs_with_the_same_reply() {
     assert_eq!(done["success"], true, "{done}");
     assert_eq!(done["actionId"], "server.status");
     assert_eq!(done["instance"], json!(id));
-    let text = done["text"].as_str().unwrap();
-    assert!(text.contains("srv"), "{text}");
-    let req = crate::chat::ChatRequest { text: "srv status".into(), guild_id: Some("g".into()), user_id: Some("u1".into()), locale: Some("ko".into()), remote: caller.remote.clone(), ..Default::default() };
-    assert_eq!(text, crate::chat::api::run_with_daemon_settings(&state, &req).await.text);
+    let text = shown(&done["text"]);
+    assert!(text.starts_with("[server.status_check") && text.contains("name=srv"), "{text}");
+    let (settings, cat) = chat_settings(&state, &caller).await;
+    let reply = crate::chat::process(&state, &settings, &cat, &chat_request("srv status", &caller)).await;
+    assert_eq!(done["text"], reply.text.to_json());
 }
 
 /// 문장 계획도 실행할 때 지금 권한으로 다시 판정한다: 계획 뒤에 권한을 잃었으면 실행하지 않는다
@@ -1388,12 +1406,12 @@ async fn a_sentence_with_nothing_to_run_is_answered_without_a_plan() {
     let help = plan_text(&state, "help", &relay("u1", false)).await.unwrap();
     assert_eq!(help["success"], true);
     assert!(help.get("planId").is_none(), "{help}");
-    assert!(help["text"].as_str().is_some_and(|t| !t.is_empty()), "{help}");
+    assert!(!shown(&help["text"]).is_empty(), "{help}");
 
     let unknown = plan_text(&state, "srv dance", &relay("u1", false)).await.unwrap();
     assert_eq!(unknown["success"], false);
     assert_eq!(unknown["code"], "UNKNOWN_COMMAND");
-    assert!(unknown["text"].as_str().is_some_and(|t| !t.is_empty()), "{unknown}");
+    assert!(!shown(&unknown["text"]).is_empty(), "{unknown}");
     assert!(unknown.get("planId").is_none());
 }
 
@@ -1723,7 +1741,7 @@ async fn server_address_is_offered_only_where_the_reply_stays_with_the_caller() 
     for text in ["srv 주소", "srv address"] {
         let hint = plan_text(&state, text, &relay("owner", false)).await.unwrap();
         assert!(hint.get("planId").is_none() && hint.get("code").is_none(), "{text}: {hint}");
-        assert!(hint["text"].as_str().is_some_and(|t| t.contains("`/`") && t.contains("srv")), "{text}: {hint}");
+        assert!(shown(&hint["text"]).starts_with("[errors.slash_only") && shown(&hint["text"]).contains("name=srv"), "{text}: {hint}");
         assert_eq!(check_text(&state, text, &relay("owner", false)).await.unwrap()["text"], hint["text"], "{text}");
     }
 }
@@ -1743,17 +1761,16 @@ async fn server_address_joins_the_relay_address_with_the_public_ports() {
     state.relay_agent.set_seen_address_for_test(Some("203.0.113.5"));
     let known = query(&state, "server.address", Some(&id), &json!({}), &caller).await.unwrap();
     assert_eq!(known["result"]["address"], "203.0.113.5", "{known}");
-    let text = known["text"].as_str().unwrap();
-    assert!(text.contains("`203.0.113.5:8211`") && text.contains("`203.0.113.5:27015`"), "{text}");
+    let text = shown(&known["text"]);
+    assert!(text.contains("address=203.0.113.5:8211") && text.contains("address=203.0.113.5:27015"), "{text}");
 }
 
 /// 공개 주소를 정했으면 그 도메인으로, 디스코드에 알려 주지 않게 했으면 디스코드에만 주소·포트를 빼고 알린다 (사용자 결정 2026-11-10)
 #[test]
 fn server_address_uses_the_public_name_and_hides_it_from_discord_when_turned_off() {
-    let ko = crate::chat::i18n::Catalog::for_language("ko");
     let ports = json!([{ "field": "port", "label": "Port", "port": 25565, "protocols": ["tcp"] }]);
     let named = json!({ "address": "mc.example.com", "custom": true, "running": true, "ports": ports });
-    assert_eq!(summary::text("server.address", &named, &ko).unwrap(), "• `mc.example.com:25565`");
+    assert_eq!(summary_of("server.address", named).unwrap(), "[actions.summary.address.item address=mc.example.com:25565]");
 
     let hidden_result = json!({ "instanceId": "i1", "address": "mc.example.com", "shareAddress": false, "running": true, "ports": ports });
     for surface in [Gui, Cli] {
@@ -1764,8 +1781,8 @@ fn server_address_uses_the_public_name_and_hides_it_from_discord_when_turned_off
     let mut r = hidden_result.clone();
     hide_address(Discord, &mut r);
     assert_eq!(r, json!({ "instanceId": "i1", "hidden": true }));
-    let text = summary::text("server.address", &r, &ko).unwrap();
-    assert!(!text.contains("mc.example.com") && !text.contains('`') && text.contains("주인"), "{text}");
+    let text = summary_of("server.address", r).unwrap();
+    assert_eq!(text, "[actions.summary.address.hidden]");
     let mut shared = json!({ "shareAddress": true, "address": "mc.example.com", "ports": ports });
     hide_address(Discord, &mut shared);
     assert_eq!(shared["address"], "mc.example.com");
@@ -1773,24 +1790,23 @@ fn server_address_uses_the_public_name_and_hides_it_from_discord_when_turned_off
 
 #[test]
 fn server_address_reads_as_address_and_port() {
-    let ko = crate::chat::i18n::Catalog::for_language("ko");
     let one = json!({ "address": "203.0.113.5", "running": true, "ports": [{ "field": "port", "label": "Port", "port": 8211, "protocols": ["tcp", "udp"] }] });
-    assert_eq!(summary::text("server.address", &one, &ko).unwrap(), "• `203.0.113.5:8211`");
+    assert_eq!(summary_of("server.address", one.clone()).unwrap(), "[actions.summary.address.item address=203.0.113.5:8211]");
     let v6 = json!({ "address": "2001:db8::1", "running": true, "ports": [{ "field": "port", "label": "Port", "port": 25565, "protocols": ["tcp"] }] });
-    assert_eq!(summary::text("server.address", &v6, &ko).unwrap(), "• `[2001:db8::1]:25565`");
+    assert_eq!(summary_of("server.address", v6).unwrap(), "[actions.summary.address.item address=[2001:db8::1]:25565]");
     let two = json!({ "address": "203.0.113.5", "running": false, "ports": [
         { "field": "port", "label": "Game port", "port": 8211, "protocols": ["udp"] },
         { "field": "query_port", "label": "Query port", "port": 27015, "protocols": ["udp"] },
     ] });
-    let text = summary::text("server.address", &two, &ko).unwrap();
+    let text = summary_of("server.address", two).unwrap();
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines[0], "• Game port `203.0.113.5:8211`");
-    assert_eq!(lines[1], "• Query port `203.0.113.5:27015`");
-    assert!(lines[2].contains("정지"), "{text}");
-    let unknown = summary::text("server.address", &json!({ "address": null, "running": true, "ports": one["ports"] }), &ko).unwrap();
-    assert!(!unknown.contains('`') && unknown.contains("주소"), "{unknown}");
-    let no_ports = summary::text("server.address", &json!({ "address": "203.0.113.5", "running": true, "ports": [] }), &ko).unwrap();
-    assert!(!no_ports.contains("203.0.113.5") && no_ports.contains("포트"), "{no_ports}");
+    assert_eq!(lines[0], "[actions.summary.address.item_named label=Game port address=203.0.113.5:8211]");
+    assert_eq!(lines[1], "[actions.summary.address.item_named label=Query port address=203.0.113.5:27015]");
+    assert_eq!(lines[2], "[actions.summary.address.stopped]");
+    let unknown = summary_of("server.address", json!({ "address": null, "running": true, "ports": one["ports"] })).unwrap();
+    assert_eq!(unknown, "[actions.summary.address.unknown]");
+    let no_ports = summary_of("server.address", json!({ "address": "203.0.113.5", "running": true, "ports": [] })).unwrap();
+    assert_eq!(no_ports, "[actions.summary.address.no_ports]");
 }
 
 /// 사용 모드 (사용자 지정 2026-11-08): 서버 공용은 레벨만 따르고(시작·정지·재시작·백업은 기본 유저), 전용 멤버는

@@ -84,7 +84,7 @@ describe('PC 없는 사람의 웹', () => {
                 .getAttribute('aria-current'),
         ).toBe('page');
         fireEvent.click(within(tabs).getByRole('button', { name: /Servers/ }));
-        const locked = screen.getByRole('heading', { name: 'This needs a PC' }).closest('section') as HTMLElement;
+        const locked = screen.getByRole('heading', { name: 'PC required' }).closest('section') as HTMLElement;
         expect(within(locked).getByRole('link', { name: 'saba-chan.online' }).getAttribute('href')).toBe(
             'https://saba-chan.online',
         );
@@ -117,7 +117,7 @@ describe('PC 없는 사람의 웹', () => {
         const commands = within(card).getByRole<HTMLInputElement>('checkbox', { name: /Server control and alerts/ });
         expect(commands.disabled).toBe(true);
         expect(commands.checked).toBe(false);
-        expect(commands.closest('label')?.textContent).toContain('Available once a PC is linked');
+        expect(commands.closest('label')?.textContent).toContain('Available once a PC is connected');
         expect(within(card).getByRole<HTMLInputElement>('checkbox', { name: /Singing Saba-chan/ }).disabled).toBe(false);
         fireEvent.click(within(card).getByRole('checkbox', { name: /Put to sleep now/ }));
         await flush();

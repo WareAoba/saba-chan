@@ -75,7 +75,7 @@ describe('모델 고르기 (chatbot-settings-v2 §1)', () => {
             />
         );
         const { container, rerender } = render(field(0));
-        expect(await screen.findByText('Connected with a Claude key.')).toBeTruthy();
+        expect(await screen.findByText('Connected with a Claude key')).toBeTruthy();
         expect(container.querySelector('.cb-provider-logo svg')).toBeTruthy();
 
         // 같은 화면에서 키를 바꾸면 다시 묻는다
@@ -86,7 +86,7 @@ describe('모델 고르기 (chatbot-settings-v2 §1)', () => {
             effectiveModel: 'qwen-flash',
         }) as never;
         rerender(field(1));
-        expect(await screen.findByText('Connected with a Qwen China key.')).toBeTruthy();
+        expect(await screen.findByText('Connected with a Qwen China key')).toBeTruthy();
         expect(window.api.chatbotModels).toHaveBeenCalledTimes(1);
     });
 
@@ -107,14 +107,14 @@ describe('모델 고르기 (chatbot-settings-v2 §1)', () => {
         );
         expect(window.api.chatbotModels).not.toHaveBeenCalled();
         rerender(<ModelField value="m" saved="m" onChange={() => {}} guildId="g1" hasApiKey />);
-        expect(await screen.findByText(/API key was rejected/)).toBeTruthy();
+        expect(await screen.findByText(/API key rejected/)).toBeTruthy();
         expect(screen.getByLabelText('Model')).toBeDisabled();
     });
 
     it('권한이 모자란 키는 틀린 키와 다르게 알린다', async () => {
         window.api.chatbotModels = vi.fn().mockResolvedValue({ error: 'KEY_PERMISSION' }) as never;
         render(<ModelField value="m" saved="m" onChange={() => {}} guildId="g1" hasApiKey />);
-        expect(await screen.findByText(/lacks the permissions/)).toBeTruthy();
+        expect(await screen.findByText(/API key lacks permissions/)).toBeTruthy();
     });
 
     it('챗봇 화면에 대화 유지시간·끼어들기·호출어 칸이 없다', async () => {

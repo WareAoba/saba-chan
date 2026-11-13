@@ -32,7 +32,7 @@ describe('모듈 호출 실패 안내', () => {
         };
         const client = createDaemonClient(vi.fn().mockResolvedValue({ status: 500, data: body }));
         const result = await client.call('post', '/api/instance/id/install');
-        expect(result.error).toContain('The module raised an exception.');
+        expect(result.error).toContain('Module exception.');
         expect(result.error).toContain('plain.install_server');
         expect(result.error).toContain('traceback line');
         expect(result.error).toContain('ValueError: bad value');
@@ -56,7 +56,7 @@ describe('모듈 호출 실패 안내', () => {
             }),
         );
         expect((await timeout.call('post', '/api/instance/id/query')).error).toContain(
-            'The module call timed out.',
+            'Module call timed out.',
         );
     });
 
@@ -81,7 +81,7 @@ describe('모듈 호출 실패 안내', () => {
         ]) {
             const result = await run();
             expect(result).toMatchObject(body);
-            expect(result.error).toContain('The module call timed out.');
+            expect(result.error).toContain('Module call timed out.');
         }
     });
 
@@ -99,7 +99,7 @@ describe('모듈 호출 실패 안내', () => {
         });
         const result = await api.instanceUpdateSettings('id', { executable_path: '/x' });
         expect(result.error).toContain(
-            'These settings can only be changed on that PC itself: executable_path, java_path',
+            'Settings that must be changed on that PC itself: executable_path, java_path',
         );
         expect(result.error).not.toContain('{{');
     });

@@ -91,7 +91,7 @@ describe('저장하지 않은 서버 설정', () => {
         unmount();
         row(true);
         expect(document.querySelector('.server-row-flag.tone-warn')!.getAttribute('aria-label')).toBe(
-            'Settings have unsaved changes',
+            'Unsaved changes',
         );
     });
 });

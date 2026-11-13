@@ -1,4 +1,5 @@
-//! 채팅 응답용 번역 카탈로그 (locales/<lang>/bot.json)
+//! 데몬 문구 카탈로그 (locales/<lang>/daemon.json): 게임 안 공지·강퇴 사유, 설치 진행 문구, 액션 이름표, 채팅 명령 낱말.
+//! 디스코드 봇 답장 문장은 여기 없다 (릴레이가 만든다, `chat::Text`)
 //!
 //! 설치 폴더의 locales/가 있으면 그것을 우선 읽고, 없으면 바이너리에 내장된
 //! 사본을 씁니다. 그래서 locales 컴포넌트가 빠져 있어도 응답이 깨지지 않습니다.
@@ -9,16 +10,16 @@ use std::path::PathBuf;
 
 /// 지원 언어와 내장 사본. 새 언어는 이 표에 한 줄 추가하면 됩니다.
 const EMBEDDED: &[(&str, &str)] = &[
-    ("en", include_str!("../../locales/en/bot.json")),
-    ("ko", include_str!("../../locales/ko/bot.json")),
-    ("ja", include_str!("../../locales/ja/bot.json")),
-    ("zh-CN", include_str!("../../locales/zh-CN/bot.json")),
-    ("zh-TW", include_str!("../../locales/zh-TW/bot.json")),
-    ("es", include_str!("../../locales/es/bot.json")),
-    ("pt-BR", include_str!("../../locales/pt-BR/bot.json")),
-    ("ru", include_str!("../../locales/ru/bot.json")),
-    ("de", include_str!("../../locales/de/bot.json")),
-    ("fr", include_str!("../../locales/fr/bot.json")),
+    ("en", include_str!("../../locales/en/daemon.json")),
+    ("ko", include_str!("../../locales/ko/daemon.json")),
+    ("ja", include_str!("../../locales/ja/daemon.json")),
+    ("zh-CN", include_str!("../../locales/zh-CN/daemon.json")),
+    ("zh-TW", include_str!("../../locales/zh-TW/daemon.json")),
+    ("es", include_str!("../../locales/es/daemon.json")),
+    ("pt-BR", include_str!("../../locales/pt-BR/daemon.json")),
+    ("ru", include_str!("../../locales/ru/daemon.json")),
+    ("de", include_str!("../../locales/de/daemon.json")),
+    ("fr", include_str!("../../locales/fr/daemon.json")),
 ];
 
 pub const FALLBACK_LANGUAGE: &str = "en";
@@ -94,7 +95,7 @@ pub fn normalize_language(requested: &str) -> String {
 
 fn load_bundle(language: &str) -> Value {
     for dir in locale_dirs() {
-        let path = dir.join(language).join("bot.json");
+        let path = dir.join(language).join("daemon.json");
         if let Ok(text) = std::fs::read_to_string(&path) {
             match serde_json::from_str(&text) {
                 Ok(v) => return v,
@@ -163,8 +164,8 @@ mod tests {
     #[test]
     fn every_embedded_bundle_parses_and_has_core_keys() {
         for (code, text) in EMBEDDED {
-            let v: Value = serde_json::from_str(text).unwrap_or_else(|e| panic!("{} bot.json: {}", code, e));
-            for key in ["errors.unknown_input", "server.start_complete", "relay.command_complete"] {
+            let v: Value = serde_json::from_str(text).unwrap_or_else(|e| panic!("{} daemon.json: {}", code, e));
+            for key in ["default_prefix", "schedule.restart_warning", "actions.server.start.name"] {
                 assert!(lookup(&v, key).is_some(), "{} is missing {}", code, key);
             }
         }
@@ -196,8 +197,8 @@ mod tests {
     #[test]
     fn interpolates_and_falls_back_to_key() {
         let cat = Catalog::for_language("en");
-        let s = cat.t("server.start_complete", &[("name", "Pal")]);
-        assert!(s.contains("Pal") && !s.contains("{{"));
+        let s = cat.t("schedule.restart_warning", &[("minutes", "5")]);
+        assert!(s.contains('5') && !s.contains("{{"), "{s}");
         assert_eq!(cat.t("no.such.key", &[]), "no.such.key");
     }
 }

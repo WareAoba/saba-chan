@@ -141,10 +141,6 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
     tell!("{}", crate::output::dim(&t!("shell.help_line")));
 
     let mut rl = editor(names(&ctx).await)?;
-    let top: Vec<String> = crate::cli::command_words()
-        .into_iter()
-        .filter(|w| !w.contains(' '))
-        .collect();
     let prompt = format!("{} ", console::style("saba>").cyan().bold());
     let mut last_ctrl_c = false;
     loop {
@@ -189,13 +185,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             continue;
         }
         ctx.follow_daemon_port();
-        let is_cmd = top.contains(&words[0]) || words[0] == "help" || words[0].starts_with('-');
-        let result = if is_cmd {
-            one(&ctx, &words).await
-        } else {
-            crate::cmd::chat(&ctx, text).await
-        };
-        if let Err(e) = result {
+        if let Err(e) = one(&ctx, &words).await {
             ctx.out.error(&classify(&e));
         }
         // 서버를 더하거나 지웠을 수 있으니 이름 목록을 새로

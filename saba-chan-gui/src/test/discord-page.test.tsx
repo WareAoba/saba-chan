@@ -275,7 +275,7 @@ describe('DiscordPage', () => {
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow as Element));
         await openMemberLevels();
-        expect(screen.getByText(/only members with permissions are shown/)).toBeTruthy();
+        expect(screen.getByText(/Showing only members with permissions/)).toBeTruthy();
     });
 
     it('연결된 상태에서 노드 목록만 실패해도 실패를 알린다', async () => {

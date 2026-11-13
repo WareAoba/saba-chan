@@ -26,7 +26,7 @@ describe('격리를 준비하지 못했을 때 (sandbox_unavailable)', () => {
 
     it('OS가 격리를 지원하지 않으면 동의 창에도 그 이유를 번역해 표시한다', async () => {
         const unsupported = { ...unavailable, error_code: 'isolation_unsupported', detail: 'unsupported platform' };
-        const guidance = 'The component did not run because this operating system does not support isolation.';
+        const guidance = 'This OS does not support isolated execution; the component was not run';
         expect(blockedText(unsupported, t)).toBe(guidance);
         window.api.instanceStart = vi.fn().mockResolvedValue(unsupported);
         window.api.sandboxAllowUnisolated = vi.fn();
@@ -80,7 +80,7 @@ describe('격리를 준비하지 못했을 때 (sandbox_unavailable)', () => {
         await act(async () => result.current.startServer('p1'));
         expect(setModal).not.toHaveBeenCalled();
         expect(vi.mocked(window.showToast!).mock.calls.at(-1)![0]).toContain(
-            "Couldn't prepare an isolated environment for module-palworld",
+            'Not run: isolated environment setup failed for module-palworld',
         );
     });
 });
