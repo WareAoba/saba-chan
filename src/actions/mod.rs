@@ -1247,6 +1247,63 @@ fn preset_need(perms: &NodePermissions, kind: Kind, risk: &str) -> i64 {
     }
 }
 
+/// 요구 레벨 스냅샷의 재료: 디스코드·챗봇에서 부를 수 있는 액션과 모듈 명령, 서버 목록 (heartbeat가 싣는 것과 같은 목록)
+#[derive(Default)]
+pub struct RemoteTargets {
+    /// heartbeat `actions` 항목 (`heartbeat_actions`): `id`·`risk`·`scope`를 읽는다
+    pub actions: Vec<Value>,
+    /// 모듈 이름 → 원격으로 부르는 명령 (이름, risk)
+    pub commands: Vec<(String, Vec<(String, String)>)>,
+    /// (인스턴스 id, 모듈 이름)
+    pub instances: Vec<(String, String)>,
+}
+
+/// heartbeat `permissions[guild].required` (SINCE 0.1.15): 한 길드에서 액션·모듈 명령마다 지금 요구 레벨.
+/// 판정(`authorize`)·권한 계단과 같은 `required_level`로 세어, 릴레이가 규칙을 따로 갖지 않고 이 값만 읽게 한다.
+/// `actions`·`commands`는 덮어쓰기가 없는 서버에서의 값이고(서버 없는 액션은 최종값), `servers`에는 서버마다 그와 다른 것만 싣는다.
+/// `allowed`는 그 길드가 볼 수 있는 서버다 (없으면 모두)
+pub fn required_snapshot(perms: &NodePermissions, allowed: Option<&[&str]>, targets: &RemoteTargets) -> Value {
+    let instances: Vec<&(String, String)> = targets.instances.iter().filter(|(id, _)| allowed.is_none_or(|a| a.contains(&id.as_str()))).collect();
+    let mut actions = Map::new();
+    let mut commands = Map::new();
+    let mut servers: Map<String, Value> = Map::new();
+    for a in &targets.actions {
+        let Some(id) = a["id"].as_str() else { continue };
+        // 모듈 조회(`server.query:<이름>`)는 표에 없다: 권한 계단과 같이 조회로 본다
+        let def = find(id);
+        let kind = def.map_or(Kind::Query, |d| d.kind);
+        let risk = a["risk"].as_str().unwrap_or("safe");
+        let fixed = def.and_then(|d| d.discord_level);
+        if a["scope"] != "instance" {
+            actions.insert(id.to_string(), json!(required_level(perms, "", id, None, kind, risk, fixed)));
+            continue;
+        }
+        let base = fixed.unwrap_or_else(|| preset_need(perms, kind, risk));
+        actions.insert(id.to_string(), json!(base));
+        for (instance, _) in &instances {
+            let level = required_level(perms, instance, id, None, kind, risk, fixed);
+            if level != base {
+                servers.entry(instance.clone()).or_insert_with(|| json!({}))["actions"][id] = json!(level);
+            }
+        }
+    }
+    for (module, list) in &targets.commands {
+        let mut defaults = Map::new();
+        for (name, risk) in list {
+            let base = perms.default_required(name, risk);
+            defaults.insert(name.clone(), json!(base));
+            for (instance, _) in instances.iter().filter(|(_, m)| m == module) {
+                let level = perms.required(instance, name, risk);
+                if level != base {
+                    servers.entry(instance.clone()).or_insert_with(|| json!({}))["commands"][name.as_str()] = json!(level);
+                }
+            }
+        }
+        commands.insert(module.clone(), Value::Object(defaults));
+    }
+    json!({ "actions": actions, "commands": commands, "servers": servers })
+}
+
 /// 액션의 덮어쓰기 키 (먼저 보는 것부터). 내장 서버 액션은 명령 경로·권한 화면과 같은 키(`<instance>/stop` 등)가 먼저다
 fn override_keys(instance: &str, id: &str) -> Vec<String> {
     if instance.is_empty() {

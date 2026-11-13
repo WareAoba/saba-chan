@@ -1895,3 +1895,38 @@ else:\n    print(json.dumps({'success': True}))\n";
     assert_eq!(out["success"], true, "{out}");
     assert!(child.wait().is_ok());
 }
+
+/// heartbeat `permissions[guild].required`: 릴레이가 규칙을 따로 갖지 않게 데몬이 판정과 같은 함수로 요구 레벨을 싣는다.
+/// 덮어쓰기가 없는 서버의 값(`actions`·`commands`)과, 서버마다 그와 다른 것(`servers`)만 싣는다
+#[test]
+fn the_required_snapshot_carries_the_levels_authorize_would_ask() {
+    let action = |id: &str, kind: &str, risk: &str, scope: &str| json!({ "id": id, "kind": kind, "risk": risk, "scope": scope });
+    let targets = RemoteTargets {
+        actions: vec![
+            action("server.start", "command", "safe", "instance"),
+            action("server.status", "query", "safe", "instance"),
+            action("backup.restore", "admin", "danger", "instance"),
+            action("module.install", "admin", "caution", "none"),
+            action("server.query:tps", "query", "safe", "instance"),
+        ],
+        commands: vec![("mc".into(), vec![("say".into(), "safe".into()), ("kick".into(), "danger".into())])],
+        instances: vec![("i1".into(), "mc".into()), ("i2".into(), "mc".into()), ("i3".into(), "pal".into())],
+    };
+    // 엄격 프리셋: 시작은 위험도가 아니라 유저부터다 (릴레이가 따로 셈하다 어긋났던 값)
+    let strict = NodePermissions::from_node(Some(&json!({ "preset": "strict" })));
+    let plain = required_snapshot(&strict, None, &targets);
+    assert_eq!(plain["actions"], json!({ "server.start": 1, "server.status": 1, "backup.restore": 3, "module.install": 3, "server.query:tps": 1 }));
+    assert_eq!(plain["commands"], json!({ "mc": { "say": 1, "kick": 3 } }));
+    assert_eq!(plain["servers"], json!({}), "no overrides, nothing per server");
+
+    // 덮어쓰기: 내장 명령 키(`i1/start`)는 그 액션에, 모듈 명령 키는 그 서버의 명령에만 닿는다. 서버 없는 액션은 최종값을 싣는다
+    let levels = json!({ "i1/start": 2, "i1/kick": 2, "i2/server.status": 3, "module.install": 2, "i9/say": 3 });
+    let set = NodePermissions::from_node(Some(&json!({ "commandLevels": levels })));
+    let snap = required_snapshot(&set, Some(&["i1", "i2"]), &targets);
+    assert_eq!(snap["actions"]["module.install"], 2);
+    assert_eq!(snap["actions"]["server.start"], 1);
+    assert_eq!(snap["commands"]["mc"], json!({ "say": 0, "kick": 2 }));
+    assert_eq!(snap["servers"], json!({ "i1": { "actions": { "server.start": 2 } }, "i2": { "actions": { "server.status": 3 } } }), "only what differs; kick already is 2 by default");
+    let unlisted = required_snapshot(&set, Some(&["i2"]), &targets);
+    assert!(unlisted["servers"].get("i1").is_none(), "servers the guild cannot see are left out");
+}
