@@ -121,15 +121,14 @@ pub async fn daemon_status(app: AppHandle) -> Value {
             identity = client.identity_valid(1000).await;
         }
     }
-    daemon_status_body(health, identity, app.state::<AppState>().life.daemon_in_parent_job())
+    daemon_status_body(health, identity)
 }
 
-/// `in_parent_job`: 데몬을 띄운 프로그램이 꺼지면 데몬도 함께 꺼질 수 있다. 데몬의 `/health` `stops_with_launcher`가
-/// 먼저이고, 그 키가 없는 옛 데몬이면 이 GUI가 띄울 때 job에서 떨어지지 못했는지(`launched_in_job`)를 쓴다
-fn daemon_status_body(health: Result<Value, String>, identity_valid: bool, launched_in_job: bool) -> Value {
+/// `in_parent_job`: 데몬을 띄운 프로그램이 꺼지면 데몬도 함께 꺼질 수 있다 (데몬의 `/health` `stops_with_launcher`)
+fn daemon_status_body(health: Result<Value, String>, identity_valid: bool) -> Value {
     match health {
         Ok(v) if identity_valid => {
-            let in_parent_job = v["stops_with_launcher"].as_bool().unwrap_or(launched_in_job);
+            let in_parent_job = v["stops_with_launcher"].as_bool().unwrap_or(false);
             json!({ "running": true, "message": "Daemon is running", "in_parent_job": in_parent_job })
         }
         Ok(_) => {
@@ -282,7 +281,7 @@ async fn launch_updater_via(app: &AppHandle, path: &str) -> Value {
     }
 }
 
-/// GUI가 업데이트 대상이 아니면 데몬이 데몬만 다시 띄우고 GUI는 남는다. 이 값을 모르는 옛 데몬이면 예전처럼 끝난다
+/// GUI가 업데이트 대상이 아니면(`gui_restart: false`) 데몬이 데몬만 다시 띄우고 GUI는 남는다. 그 밖에는 끝난다
 fn quits_for_update(launch: &Value) -> bool {
     launch["gui_restart"].as_bool() != Some(false)
 }
@@ -734,7 +733,7 @@ mod tests {
         assert_eq!(uninstall_command(dir, Some(dir)), Some((dir.join("saba-chan-installer"), &["--uninstall"][..])));
     }
 
-    /// 데몬만 바뀌었으면 GUI는 끝나지 않는다. gui_restart를 보내지 않는 옛 데몬이면 예전처럼 끝난다
+    /// 데몬만 바뀌었으면 GUI는 끝나지 않는다
     #[test]
     fn the_gui_quits_for_an_update_only_when_it_is_replaced() {
         assert!(!quits_for_update(&json!({"ok": true, "gui_restart": false})));
@@ -745,45 +744,27 @@ mod tests {
     /// `/health` 본문 문자열만으로 데몬 신원을 인정하지 않는다.
     #[test]
     fn the_daemon_counts_as_running_only_when_our_token_is_valid() {
-        let running = |r: Result<Value, String>, identity| daemon_status_body(r, identity, false)["running"].clone();
+        let running = |r: Result<Value, String>, identity| daemon_status_body(r, identity)["running"].clone();
         assert_eq!(running(Ok(json!({ "ok": true, "token": "valid" })), false), json!(false));
         assert_eq!(running(Ok(json!({ "ok": true, "token": "invalid" })), false), json!(false));
         assert_eq!(running(Ok(json!({ "ok": true })), true), json!(true));
         assert_eq!(running(Err("connection refused".into()), false), json!(false));
         assert_eq!(
-            daemon_status_body(Ok(json!({ "token": "invalid" })), false, false)["error_code"],
+            daemon_status_body(Ok(json!({ "token": "invalid" })), false)["error_code"],
             json!("token_invalid")
         );
     }
 
-    /// 데몬을 job에서 떼어 내지 못해 GUI를 띄운 프로그램 안에서 돌면, 화면이 경고할 수 있게 알린다
-    #[test]
-    fn the_status_says_when_the_daemon_runs_inside_the_launchers_job() {
-        let valid = || Ok(json!({ "ok": true, "token": "valid" }));
-        assert_eq!(daemon_status_body(valid(), true, true)["in_parent_job"], json!(true));
-        assert_eq!(daemon_status_body(valid(), true, false)["in_parent_job"], json!(false));
-        assert_eq!(
-            daemon_status_body(Err("connection refused".into()), false, true)["in_parent_job"],
-            Value::Null
-        );
-    }
-
-    /// 데몬이 알려 주는 `stops_with_launcher`가 먼저다: CLI가 job 안에서 띄운 데몬도 경고한다.
-    /// 그 키가 없는 옛 데몬이면 이 GUI가 띄울 때 본 값을 쓴다 (L46)
+    /// 데몬이 알려 주는 `stops_with_launcher`로 GUI를 띄운 프로그램과 함께 끝날 수 있는지 알린다 (L46)
     #[test]
     fn the_daemons_own_answer_decides_whether_it_stops_with_its_launcher() {
         let health = |stops: Value| Ok(json!({ "ok": true, "token": "valid", "stops_with_launcher": stops }));
+        assert_eq!(daemon_status_body(health(json!(true)), true)["in_parent_job"], json!(true));
+        assert_eq!(daemon_status_body(health(json!(false)), true)["in_parent_job"], json!(false));
         assert_eq!(
-            daemon_status_body(health(json!(true)), true, false)["in_parent_job"],
-            json!(true)
+            daemon_status_body(Err("connection refused".into()), false)["in_parent_job"],
+            Value::Null
         );
-        assert_eq!(
-            daemon_status_body(health(json!(false)), true, true)["in_parent_job"],
-            json!(false)
-        );
-        let old = || Ok(json!({ "ok": true, "token": "valid" }));
-        assert_eq!(daemon_status_body(old(), true, true)["in_parent_job"], json!(true));
-        assert_eq!(daemon_status_body(old(), true, false)["in_parent_job"], json!(false));
     }
 
     #[test]

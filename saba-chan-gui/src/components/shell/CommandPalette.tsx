@@ -127,7 +127,7 @@ function paletteCommands(list: ApiBody[], module: ModuleInfo | undefined, t: Tra
             description: text.description,
             risk: own ? own.risk : c.risk === 'danger' ? 'danger' : undefined,
             inputs,
-            ready: typeof c.ready === 'boolean' ? c.ready : undefined,
+            ready: c.ready === true,
         };
     });
 }
@@ -228,14 +228,12 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
         };
     }, [serverIds]);
 
-    // 옛 데몬·브리지라 명령 목록 API가 없으면 모듈 명령만 쓴다 (켜져 있으면 보낼 수 있다고 본다)
-    const hasCatalog = !!window.api?.instanceCommands;
     const guides = useGuideStore((s) => s.guides);
     const data: PaletteData = useMemo(
         () => ({
             servers: servers.map((s) => {
                 const module = modules.find((m) => m.name === s.module);
-                const list = commandLists[s.id] ?? (hasCatalog ? undefined : module?.commands?.fields);
+                const list = commandLists[s.id];
                 return {
                     id: s.id,
                     name: s.name,
@@ -254,7 +252,7 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
             guilds: cloudNodes.map((n) => ({ id: n.guildId, name: n.guildName || n.guildId, tabs: guildTabs() })),
             guides: (guides ?? []).map((g) => ({ id: g.id, title: g.title, icon: g.icon })),
         }),
-        [servers, modules, commandLists, cloudNodes, tr, hasCatalog, guides],
+        [servers, modules, commandLists, cloudNodes, tr, guides],
     );
 
     // 지금 열린 화면 (칩이 없을 때 빈 검색의 기준)
@@ -709,7 +707,7 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
         if (!it) return null;
         const s = serverOf(it.serverId);
         if (it.group === 'eguild' || it.group === 'esrv') {
-            const cmds = s ? (s.commands || []).filter((c) => c.ready ?? s.status === 'running').length : 0;
+            const cmds = s ? (s.commands || []).filter((c) => c.ready).length : 0;
             return (
                 <>
                     {iconOf(it, true)}

@@ -70,6 +70,8 @@ export interface ServerInfo {
     rest_password: string | null;
     protocol_mode: string;
     module_settings: Record<string, Json>;
+    /** 모듈 설정 칸마다 저장된 값 (0.1.14-beta.2~, 데몬이 공통 칸·module_settings 중 진짜를 고른다. 값이 없는 칸은 없다) */
+    stored?: Record<string, Json>;
     server_version: string | null;
     /** 설치된 빌드: 설치 방식 익스텐션의 업데이트 확인이 알려 준 번호와 받은 때(유닉스 초). 데몬이 적어 둔 값 */
     server_build?: { id: string; time?: number } | null;
@@ -115,7 +117,7 @@ export interface ServerInfo {
     unresponsive_minutes?: number;
     linked_folder?: string;
     restorable_settings: boolean;
-    /** 데몬이 마지막으로 한 게임 서버 업데이트 확인 (`check-update`의 답 + `checked_at`). 확인 전·확인하지 않는 서버는 null, 옛 데몬은 없다 */
+    /** 데몬이 마지막으로 한 게임 서버 업데이트 확인 (`check-update`의 답 + `checked_at`). 확인 전·확인하지 않는 서버는 null */
     update_check?: ApiBody | null;
     /** 시작·정지 요청이 데몬에서 진행 중이면 `starting`·`stopping` (0.1.14~, 어디서 시켰든) */
     transition?: 'starting' | 'stopping';
@@ -123,7 +125,7 @@ export interface ServerInfo {
 
 /** 포트 충돌로 데몬이 강제로 끈 서버 알림 */
 export interface PortConflictStopEvent {
-    id?: number;
+    id: number;
     stopped_name: string;
     stopped_id?: string;
     existing_name: string;
@@ -465,7 +467,7 @@ export interface ExtensionListResponse {
 
 // ── 릴레이 에이전트 ──
 
-/** 에이전트가 하트비트로 아는 릴레이 연결 (`GET /api/relay/agent`의 `connected`·`lastError`, 0.1.14~) */
+/** 에이전트가 하트비트로 아는 릴레이 연결 (`GET /api/relay/agent`의 `connected`·`lastError`) */
 export interface RelayLink {
     connected: boolean;
     error: string;
@@ -474,18 +476,13 @@ export interface RelayLink {
 }
 
 /**
- * window.api.discordBotStatus: 데몬 릴레이 에이전트 상태. 릴레이가 이 앱 버전이나 상태 보고를 받지 않거나(`too_old`)
- * 데몬이 연결 상태를 알려 주면(`link`) 객체로 온다
+ * window.api.discordBotStatus: 데몬 릴레이 에이전트 상태(`state`)와 연결(`link`). 데몬에 닿지 못하면 'unknown'
  */
 export type AgentStatus =
-    | 'running'
-    | 'stopped'
-    | 'replaced'
-    | 'invalid_relay_url'
     | 'unknown'
-    | { status: 'too_old'; running: boolean; minVersion: string | null; link?: RelayLink }
+    | { status: 'too_old'; running: boolean; minVersion: string | null; link: RelayLink }
     | { status: 'running' | 'stopped' | 'replaced' | 'invalid_relay_url'; running: boolean; link: RelayLink }
-    | { status: 'rejected'; running: boolean; reason: HeartbeatReject; link?: RelayLink };
+    | { status: 'rejected'; running: boolean; reason: HeartbeatReject; link: RelayLink };
 
 /** 릴레이가 이 PC의 상태 보고(heartbeat)를 거절한 이유 (데몬 `heartbeatRejected`): 어느 칸이, 상한이면 상한과 보낸 크기 */
 export interface HeartbeatReject {

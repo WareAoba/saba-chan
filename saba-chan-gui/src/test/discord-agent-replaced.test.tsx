@@ -29,7 +29,7 @@ describe('다른 PC로 옮겨진 연결', () => {
 
     it('브리지가 replaced를 주면 꺼짐으로 두고 이유를 기억한다', async () => {
         window.api = {
-            discordBotStatus: vi.fn().mockResolvedValue('replaced'),
+            discordBotStatus: vi.fn().mockResolvedValue({ status: 'replaced', running: false, link: { connected: false, error: '', heard: true } }),
             relayCheckHostStatus: vi.fn().mockResolvedValue({ online: true }),
         } as unknown as typeof window.api;
         useDiscordStore.setState({ discordCloudHostId: 'host-1' });
@@ -37,7 +37,7 @@ describe('다른 PC로 옮겨진 연결', () => {
         expect(useDiscordStore.getState().discordBotStatus).toBe('stopped');
         expect(useDiscordStore.getState().discordAgentReplaced).toBe(true);
 
-        vi.mocked(window.api.discordBotStatus).mockResolvedValue('running');
+        vi.mocked(window.api.discordBotStatus).mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } });
         await useDiscordStore.getState().checkStatus();
         expect(useDiscordStore.getState().discordAgentReplaced).toBe(false);
     });

@@ -15,7 +15,7 @@ describe('신뢰 경고 알림', () => {
 
     it('warnings의 code별 문구를 경고 알림으로 띄우고, 없거나 모르는 code면 띄우지 않는다', () => {
         window.showToast = vi.fn();
-        showTrustWarnings({ success: true, id: 'x' }, t); // #36 이전 데몬
+        showTrustWarnings({ success: true, id: 'x' }, t); // trust 없음
         showTrustWarnings({ warnings: [{ code: 'something_new', module: 'm' }, null] }, t);
         expect(window.showToast).not.toHaveBeenCalled();
 

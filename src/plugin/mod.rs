@@ -103,11 +103,7 @@ pub fn resolve_extensions_dir() -> std::path::PathBuf {
 ///
 /// 디렉토리가 존재하지 않으면 생성을 시도합니다.
 pub fn resolve_modules_dir() -> std::path::PathBuf {
-    let candidate = saba_chan_updater_lib::constants::resolve_modules_dir();
-    if !candidate.exists() {
-        let _ = std::fs::create_dir_all(&candidate);
-    }
-    candidate
+    saba_chan_updater_lib::constants::ensure_modules_dir()
 }
 
 /// import 가드(`sitecustomize.py`)를 둔 폴더. 데이터 폴더에 한 번 쓰고, 내용이 바뀌었을 때만 다시 쓴다.

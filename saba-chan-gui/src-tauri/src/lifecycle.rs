@@ -26,8 +26,6 @@ pub struct Lifecycle {
     child: Mutex<Option<Child>>,
     /// 이 GUI가 띄우지 않았지만 이미 떠 있어 붙은 데몬 (트레이가 꺼짐으로 보이지 않게)
     attached_daemon: AtomicBool,
-    /// 이 GUI가 띄운 데몬이 job breakaway를 거절당해 GUI를 띄운 프로그램의 job 안에서 돈다
-    daemon_in_parent_job: AtomicBool,
     /// 사용자가 트레이에서 데몬을 껐다: 데몬이 없어도 상주 GUI는 남아 다시 켤 수 있게 한다 (`TRAY_STOP_*`)
     stopped_from_tray: AtomicU8,
     init_started: AtomicBool,
@@ -258,14 +256,8 @@ impl Lifecycle {
     }
 
     /// 이 GUI가 데몬을 새로 띄웠다: 예전에 붙었던 데몬 표시는 버린다 (이제는 띄운 데몬의 생사만 본다)
-    fn own_daemon_started(&self, in_parent_job: bool) {
+    fn own_daemon_started(&self) {
         self.attached_daemon.store(false, Ordering::SeqCst);
-        self.daemon_in_parent_job.store(in_parent_job, Ordering::SeqCst);
-    }
-
-    /// 지금 붙어 있는 데몬이 이 GUI가 job 안에 띄운 그 데몬인가 (붙기만 한 데몬이나 이미 끝난 데몬은 아니다)
-    pub fn daemon_in_parent_job(&self) -> bool {
-        self.daemon_in_parent_job.load(Ordering::SeqCst) && self.child.lock().unwrap().is_some()
     }
 }
 
@@ -384,17 +376,15 @@ pub fn start_daemon(app: &AppHandle) {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     detach(&mut cmd, true);
-    let mut in_parent_job = false;
     let spawned = cmd.spawn().or_else(|e| {
         // GUI를 띄운 쪽의 job이 breakaway를 막으면 CreateProcess가 거부된다: 그때는 떼지 않고 띄운다.
-        // 그러면 GUI를 띄운 프로그램이 꺼질 때 데몬도 함께 꺼질 수 있어 화면에 경고한다 (daemon_status `in_parent_job`)
+        // 그러면 GUI를 띄운 프로그램이 꺼질 때 데몬도 함께 꺼질 수 있어 데몬이 `/health` `stops_with_launcher`로 알린다
         if cfg!(windows) {
             tracing::warn!(
                 "[Daemon] spawn with job breakaway failed ({}), retrying without: the daemon will run inside the job of the program that launched this app and may stop when that program exits",
                 e
             );
             detach(&mut cmd, false);
-            in_parent_job = true;
             cmd.spawn()
         } else {
             Err(e)
@@ -414,7 +404,7 @@ pub fn start_daemon(app: &AppHandle) {
             }
             *state.life.child.lock().unwrap() = Some(child);
             state.life.daemon_stop_asked.store(false, Ordering::SeqCst);
-            state.life.own_daemon_started(in_parent_job);
+            state.life.own_daemon_started();
             watch_daemon_exit(app.clone(), pid);
         }
         Err(e) => tracing::error!("Failed to start Core Daemon: {}", e),
@@ -706,7 +696,7 @@ pub fn report_resident(app: &AppHandle, resident: bool) {
 }
 
 /// 업데이트 쪽에 GUI 창이 열려 있는지 알린다: 창이 열려 있으면 데몬이 GUI 교체를 '준비됨'으로 미루고,
-/// 트레이에만 있으면 자동으로 바꾼다. 이 경로를 모르는 옛 데몬은 404를 주므로 결과는 보지 않는다
+/// 트레이에만 있으면 자동으로 바꾼다. 알리기만 하므로 결과는 보지 않는다
 fn report_gui_window(app: &AppHandle, resident: bool) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -987,11 +977,8 @@ async fn check_for_updates(app: &AppHandle) {
         .into_iter()
         .flatten()
         .filter(|c| c["update_available"].as_bool().unwrap_or(false))
-        .filter(|c| {
-            c["component"]
-                .as_str()
-                .is_some_and(|k| k.starts_with("module-") || k.starts_with("ext-"))
-        })
+        // 종류는 데몬이 정한다(`kind`)
+        .filter(|c| matches!(c["kind"].as_str(), Some("module" | "extension")))
         .filter_map(|c| c["display_name"].as_str().map(String::from))
         .collect();
     let addon_key = {
@@ -1422,7 +1409,7 @@ mod tests {
     fn spawning_our_own_daemon_drops_the_attached_mark() {
         let life = Lifecycle::default();
         life.attached_daemon.store(true, Ordering::SeqCst);
-        life.own_daemon_started(false);
+        life.own_daemon_started();
         // 띄운 데몬이 죽으면 트레이에 꺼짐으로 보여야 한다
         assert!(!life.shows_running(false));
     }

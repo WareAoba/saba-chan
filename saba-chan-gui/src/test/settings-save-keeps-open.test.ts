@@ -16,7 +16,7 @@ const modules = [
         },
     },
 ];
-const server = { id: 's', name: 'S', module: 'game', revision: 'r1', module_settings: { title: 'old', motd: 'hi' } };
+const server = { id: 's', name: 'S', module: 'game', revision: 'r1', module_settings: { title: 'old', motd: 'hi' }, stored: { title: 'old', motd: 'hi' } };
 
 function setup() {
     const shown: boolean[] = [];
@@ -49,7 +49,7 @@ beforeEach(() => {
             settings: saved.module_settings,
         })),
         instanceUpdateSettings: vi.fn(async (_id: string, body: Record<string, string>) => {
-            saved = { ...saved, revision: 'r2', module_settings: { ...saved.module_settings, title: body.title } };
+            saved = { ...saved, revision: 'r2', module_settings: { ...saved.module_settings, title: body.title }, stored: { ...saved.stored, title: body.title } };
             return { success: true, synced: true };
         }),
     } as unknown as typeof window.api;

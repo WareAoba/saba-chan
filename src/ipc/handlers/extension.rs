@@ -39,15 +39,16 @@ fn extension_err_response(
             "id_mismatch" => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        (
-            status,
-            Json(json!({
-                "success": false,
-                "error": ext_err.message,
-                "error_code": ext_err.error_code,
-                "related": ext_err.related,
-            })),
-        )
+        let mut body = json!({
+            "success": false,
+            "error": ext_err.message,
+            "error_code": ext_err.error_code,
+            "related": ext_err.related,
+        });
+        if let Some(version) = ext_err.required_core() {
+            body["required_core"] = json!(version);
+        }
+        (status, Json(body))
     } else {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -555,8 +556,12 @@ pub(crate) async fn prepare_for_module(
 ) -> serde_json::Value {
     let failure = |id: &str, body: &serde_json::Value| {
         let field = |k: &str| body.get(k).cloned().unwrap_or_default();
-        // `related`: 켜기 실패의 관련 항목 (`app_version_unsatisfied`면 요구 버전, CLI·GUI의 "업데이트가 필요해요" 문구)
-        json!({ "id": id, "error": field("error"), "error_code": field("error_code"), "related": field("related") })
+        // `related`: 켜기 실패의 관련 항목. 사바쨩이 모자라면 `required_core`에 요구 버전 (CLI·GUI의 "업데이트 필요" 문구)
+        let mut entry = json!({ "id": id, "error": field("error"), "error_code": field("error_code"), "related": field("related") });
+        if let Some(version) = body.get("required_core") {
+            entry["required_core"] = version.clone();
+        }
+        entry
     };
     let mut installed: Vec<String> = Vec::new();
     let mut failed = Vec::new();
@@ -986,5 +991,28 @@ mod tests {
         assert_eq!(prepared[0].1, json!({ "installed": [], "enabled": [], "failed": [] }));
         assert!(!state.extension_manager.read().await.is_enabled(&id), "an installed extension keeps its state");
         assert!(prepare_after_update(&state, &marker).await.is_empty(), "once per update");
+    }
+
+    /// 모듈이 쓰는 익스텐션이 더 새 사바쨩을 요구해 켜지 못하면 실패 항목에 요구 버전을 required_core로 싣는다
+    #[tokio::test]
+    async fn an_extension_a_module_cannot_enable_names_the_required_core() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext = tempfile::Builder::new().prefix("modfuture").tempdir_in(crate::plugin::resolve_extensions_dir()).unwrap();
+        let id = ext.path().file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(
+            ext.path().join("manifest.json"),
+            json!({ "id": id, "name": "t", "version": "0.1.0", "min_app_version": "999.0.0" }).to_string(),
+        )
+        .unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        state.extension_manager.write().await.discover().unwrap();
+        let out = prepare_for_module(&state, &[id.clone()], &[]).await;
+        let failed = &out["failed"][0];
+        assert_eq!((failed["id"].as_str(), failed["error_code"].as_str()), (Some(id.as_str()), Some("app_version_unsatisfied")), "{out}");
+        assert_eq!(failed["required_core"], "999.0.0", "{out}");
     }
 }

@@ -5,10 +5,10 @@
 //! 되돌리기 직전 상태는 데몬이 `pre-restore` 백업으로 남긴다.
 
 use crate::cli::{BackupCmd, StartArgs};
-use crate::cmd::server::{runtime, shell_word, status_of, stop_server};
+use crate::cmd::server::{runtime, shell_word, stop_server};
 use crate::ctx::Ctx;
 use crate::error::Result;
-use crate::output::{self, s};
+use crate::output::{self, s, status_of};
 use crate::resolve::{self, Server};
 use serde_json::Value;
 
@@ -284,10 +284,10 @@ mod tests {
         crate::i18n::init("ko");
         assert!(links_missed(&json!({ "links_not_restored": 2 })).is_some_and(|m| m.contains('2')));
         assert_eq!(links_missed(&json!({ "links_not_restored": 0 })), None);
-        assert_eq!(links_missed(&json!({})), None, "an older daemon does not report it");
+        assert_eq!(links_missed(&json!({})), None);
     }
 
-    /// 열리지 않는 백업(`readable:false`, 데몬 #533)은 크기 대신 표시하고, 몇 개인지와 지우는 명령을 알린다. 옛 데몬은 칸이 없다
+    /// 열리지 않는 백업(`readable:false`, 데몬 #533)은 크기 대신 표시하고, 몇 개인지와 지우는 명령을 알린다
     #[test]
     fn backups_that_cannot_be_opened_are_marked_with_a_way_to_delete_them() {
         crate::i18n::init("en");
@@ -326,7 +326,7 @@ mod tests {
         assert_eq!(one("latest").as_deref(), Some("a-10"));
     }
 
-    /// 증분 백업(MK16)은 담은 크기와 새로 저장한 크기가 다르면 둘 다 보인다. 0.1.8 백업이나 옛 데몬은 크기만
+    /// 증분 백업(MK16)은 담은 크기와 새로 저장한 크기가 다르면 둘 다 보인다. 0.1.8 백업은 크기만
     #[test]
     fn an_incremental_backup_shows_what_it_newly_stored() {
         let ko = |b: &Value| {
@@ -346,7 +346,7 @@ mod tests {
         assert_eq!(
             ko(&json!({ "size": 120 * mb })),
             "120.0 MB",
-            "an older daemon does not send stored"
+            "a 0.1.8 backup has no stored size"
         );
         assert_eq!(ko(&json!({ "size": 120 * mb, "stored": "2" })), "120.0 MB");
         assert_eq!(ko(&json!({})), "");

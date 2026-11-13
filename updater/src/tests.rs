@@ -2365,3 +2365,14 @@ fn the_updater_applies_a_repair_at_the_installed_version() {
     assert_eq!(loaded.status.components.iter().map(|c| c.component.clone()).collect::<Vec<_>>(), vec![Component::CoreDaemon]);
     assert_eq!(loaded.already_installed, vec!["gui".to_string()], "only what was not marked for repair is skipped");
 }
+
+/// 업데이트 화면·알림이 구성요소 키 모양을 따지지 않게 종류를 하나로 준다: 모듈·익스텐션은 애드온, 나머지는 앱
+#[test]
+fn component_kind_tells_addons_from_the_app() {
+    let kind = |key: &str| Component::try_from_manifest_key(key).map(|c| c.kind());
+    assert_eq!(kind("module-minecraft"), Some("module"));
+    assert_eq!(kind("ext-docker"), Some("extension"));
+    for app in ["saba-core", "gui", "cli", "installer"] {
+        assert_eq!(kind(app), Some("app"), "{app}");
+    }
+}

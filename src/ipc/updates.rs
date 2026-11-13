@@ -350,6 +350,7 @@ async fn get_status(
                 // 사용자가 고른 판 `{version, until_newer_than}` (고정하지 않았으면 null)
                 "pinned": pins.get(&key).and_then(|p| p.pinned.as_ref()),
                 "component": key,
+                "kind": c.component.kind(),
             })
         }).collect();
 
@@ -391,6 +392,7 @@ async fn check_updates(
                     json!({
                         "pinned": pins.get(&c.component.manifest_key()).and_then(|p| p.pinned.as_ref()),
                         "component": c.component.manifest_key(),
+                        "kind": c.component.kind(),
                         "display_name": c.component.display_name(),
                         "current_version": c.current_version,
                         "latest_version": c.latest_version,
@@ -2527,9 +2529,6 @@ async fn switch_addon(
     }
     answer("applied", Vec::new())
 }
-
-
-
 
 #[cfg(test)]
 mod tests {

@@ -782,6 +782,9 @@ fn apply_module_definition(
     }
     let trust = Some(super::super::server::module_trust(&loaded_module.path));
     instance.process_name = loaded_module.metadata.process_name.clone();
+    if let Some(mode) = loaded_module.metadata.protocol_mode_for(&instance.protocol_mode) {
+        instance.protocol_mode = mode;
+    }
     if instance.port.is_none() {
         instance.port = loaded_module.metadata.default_port;
     }

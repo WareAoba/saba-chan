@@ -12,8 +12,8 @@ vi.mock('../contexts/ExtensionContext', () => ({
 import SabaStorage from '../components/Modals/SabaStorage';
 
 const components = [
-    { component: 'cli', display_name: 'CLI', update_available: true, downloaded: false },
-    { component: 'discord_bot', display_name: 'Bot', update_available: true, downloaded: false },
+    { component: 'cli', kind: 'app', display_name: 'CLI', update_available: true, downloaded: false },
+    { component: 'discord_bot', kind: 'app', display_name: 'Bot', update_available: true, downloaded: false },
 ];
 
 let finish: Record<string, (value?: unknown) => void>;

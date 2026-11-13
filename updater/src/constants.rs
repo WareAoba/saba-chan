@@ -34,6 +34,13 @@ pub const DEFAULT_IPC_PORT: u16 = 57474;
 /// 원격 데몬 TLS 포트 기본값 (D1, 설정 `remote.port`로 바꾼다. 사용자 확정 2026-10-26)
 pub const DEFAULT_REMOTE_PORT: u16 = 57480;
 
+/// 이 PC가 다루는 원격 데몬의 최소 판. 원격 포트가 답마다 싣는 판(`VERSION_HEADER`)이 이보다 낮거나 없으면 중계하지 않는다
+/// (`remote_too_old`). GUI·CLI는 이 판 아래 데몬을 위한 분기를 두지 않는다
+pub const MIN_REMOTE_DAEMON: &str = "0.1.14-beta.2";
+
+/// 원격 포트가 답마다 싣는 데몬 판 머리
+pub const VERSION_HEADER: &str = "x-saba-version";
+
 // ══════════════════════════════════════════════════════
 //  인스턴스 설정 칸
 // ══════════════════════════════════════════════════════
@@ -186,6 +193,15 @@ pub fn resolve_modules_dir() -> PathBuf {
     crate::component_dirs::resolve(crate::component_dirs::Kind::Modules).0
 }
 
+/// [`resolve_modules_dir`]가 없으면 만들어 두고 돌려준다 (데몬·업데이터 창이 모듈을 읽고 쓰기 전에). 만들지 못하면 경로만
+pub fn ensure_modules_dir() -> PathBuf {
+    let dir = resolve_modules_dir();
+    if !dir.exists() {
+        let _ = std::fs::create_dir_all(&dir);
+    }
+    dir
+}
+
 /// 익스텐션 디렉토리 경로: `SABA_EXTENSIONS_DIR` → `config.json`의 `paths.extensions` → `<data_dir>/extensions`
 pub fn resolve_extensions_dir() -> PathBuf {
     crate::component_dirs::resolve(crate::component_dirs::Kind::Extensions).0
@@ -289,11 +305,12 @@ pub fn generate_random_password() -> String {
 //  로케일 해석
 // ══════════════════════════════════════════════════════
 
-/// 앱 설정·시스템 로케일 문자열을 지원 언어로 정규화한다 (대소문자, `_`·`-` 구분 없이). 지원하지 않으면 None
+/// 앱 설정·시스템 로케일 문자열을 지원 언어로 정규화한다 (대소문자, `_`·`-` 구분 없이). 지원하지 않으면 None.
+/// 데몬·CLI·GUI 셸이 모두 이 규칙을 쓴다
 ///
-/// `"ko-KR"` → `"ko"`, `"zh-Hans"` → `"zh-CN"`, `"en-US"` → `"en"` 등
+/// `"ko-KR"` → `"ko"`, `"zh-Hans"` → `"zh-CN"`, `"zh-HK"` → `"zh-TW"`, `"en-US"` → `"en"` 등
 pub fn resolve_locale(locale: &str) -> Option<String> {
-    let lower = locale.trim().replace('_', "-").to_lowercase();
+    let lower = locale.trim().split('.').next().unwrap_or("").replace('_', "-").to_lowercase();
     let supported = |tag: &str| SUPPORTED_LANGUAGES.iter().find(|s| s.eq_ignore_ascii_case(tag)).map(|s| s.to_string());
 
     // 정확한 매칭
@@ -301,19 +318,16 @@ pub fn resolve_locale(locale: &str) -> Option<String> {
         return Some(exact);
     }
 
-    // zh-Hans / zh-Hant 특수 처리
-    if lower.starts_with("zh-cn") || lower.starts_with("zh-hans") {
-        return supported("zh-CN");
-    }
-    if lower.starts_with("zh-tw") || lower.starts_with("zh-hant") {
-        return supported("zh-TW");
-    }
-    if lower.starts_with("pt-br") {
-        return supported("pt-BR");
+    let mut tags = lower.split('-');
+    let base = tags.next().unwrap_or("");
+    // 중국어는 스크립트 태그(Hans·Hant)가 지역보다 먼저다(zh-Hans-HK는 간체). 번체를 쓰는 곳(Hant·대만·홍콩·마카오)이면 번체, 그 밖은 간체
+    if base == "zh" {
+        let subtags: Vec<&str> = tags.collect();
+        let traditional = !subtags.contains(&"hans") && subtags.iter().any(|t| ["hant", "tw", "hk", "mo"].contains(t));
+        return supported(if traditional { "zh-TW" } else { "zh-CN" });
     }
 
     // 기본 언어 코드로 매칭
-    let base = lower.split(['-', '.']).next().unwrap_or("");
     SUPPORTED_LANGUAGES
         .iter()
         .find(|s| {
@@ -327,19 +341,12 @@ pub fn resolve_locale(locale: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    /// GUI 설정 스토어(`useServerSettingsStore.ts` `TOP_LEVEL_FIELDS`)은 저장된 값을 이 표대로 고른다: 둘이 어긋나면 화면이 낡은 값을 보인다.
-    /// 표에서 빠지는 칸은 GUI가 따로 읽는 칸뿐이다 (메모리 상한·게임 채팅·사용 모드·자동 업데이트)
     #[test]
-    fn the_gui_reads_saved_values_by_the_same_instance_fields() {
-        let hook = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../saba-chan-gui/src/stores/useServerSettingsStore.ts");
-        let text = std::fs::read_to_string(hook).unwrap();
-        let start = text.find("const TOP_LEVEL_FIELDS = new Set([").expect("TOP_LEVEL_FIELDS");
-        let body = &text[start..start + text[start..].find("]);").unwrap()];
-        let gui: std::collections::BTreeSet<&str> = body.split('\'').skip(1).step_by(2).collect();
-        let read_apart = ["memory_limit_mb", "game_chat", "game_chat_keyword", "access", "controllers_only", "auto_update"];
-        let daemon: std::collections::BTreeSet<&str> =
-            INSTANCE_FIELDS.iter().map(|(k, _)| *k).filter(|k| !read_apart.contains(k)).collect();
-        assert_eq!(gui, daemon);
+    fn the_gui_offers_the_supported_languages() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../saba-chan-gui/src/utils/languages.ts");
+        let text = std::fs::read_to_string(path).unwrap();
+        let gui: Vec<&str> = text.split("value: '").skip(1).map(|s| &s[..s.find('\'').unwrap()]).collect();
+        assert_eq!(gui, SUPPORTED_LANGUAGES);
     }
 
     #[test]
@@ -372,6 +379,12 @@ mod tests {
         assert_eq!(resolve_locale("zh").as_deref(), Some("zh-CN"));
         assert_eq!(resolve_locale(" KO ").as_deref(), Some("ko"));
         assert_eq!(resolve_locale("de_DE.UTF-8").as_deref(), Some("de"));
+        // 중국어는 스크립트 태그가 지역보다 먼저다: 번체를 쓰는 곳(Hant·대만·홍콩·마카오)이면 번체, 그 밖은 간체
+        assert_eq!(resolve_locale("zh-HK").as_deref(), Some("zh-TW"));
+        assert_eq!(resolve_locale("zh_MO").as_deref(), Some("zh-TW"));
+        assert_eq!(resolve_locale("zh-Hant-SG").as_deref(), Some("zh-TW"));
+        assert_eq!(resolve_locale("zh-Hans-HK").as_deref(), Some("zh-CN"));
+        assert_eq!(resolve_locale("zh_SG.UTF-8").as_deref(), Some("zh-CN"));
     }
 
     /// 지원하지 않는 언어는 None: 부른 쪽이 다음 후보(앱 설정 → 시스템 로케일 → 영어)로 넘어간다

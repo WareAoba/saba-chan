@@ -1,15 +1,17 @@
 import { create } from 'zustand';
-import { changedForCli } from '../components/CliLine';
-import { launchDraft } from '../components/servers/LaunchPreview';
 import type { Json, ModuleInfo, SettingField } from '../types/daemon';
-import { busyMessage, installFailureText, moduleSupports, safeShowToast } from '../utils/helpers';
+import { changedForCli } from '../utils/cliValues';
+import { busyMessage, moduleSupports, safeShowToast } from '../utils/helpers';
 import { versionBranchMethod } from '../utils/installMethod';
+import { launchDraft } from '../utils/launchDraft';
+import { installFailure } from '../utils/serverControl';
 import { gameNameOf } from '../utils/serverView';
 import { blockedText } from '../utils/trustNotice';
 import { listItems } from '../utils/validation';
 import { t, translateError } from './serverI18n';
 import { type Server, useServerStore } from './useServerStore';
 import { setModal, setProgressBar } from './useUIStore';
+import { failed } from '../utils/apiResult';
 
 /*
  * 서버 설정 (서버 상세의 설정·사바쨩 탭): 연 서버의 칸 값·기준 값·저장·버전 설치·초기화.
@@ -64,22 +66,8 @@ const stopTimeoutOf = (server: Server | null | undefined) =>
 const fieldValue = (v: unknown): string | string[] | null =>
     v === undefined || v === null ? null : Array.isArray(v) ? v.map(String) : String(v);
 
-/** 데몬이 인스턴스 최상위에 저장하는 공통 필드 (updater constants::INSTANCE_FIELDS 중 설정 칸이 되는 것. 어긋나면 그쪽 테스트가 실패한다). 이 값들은 module_settings가 낡았을 수 있다 */
-const TOP_LEVEL_FIELDS = new Set([
-    'port',
-    'executable_path',
-    'working_dir',
-    'protocol_mode',
-    'server_version',
-    'extra_args',
-]);
-
-/** 저장된 값: 공통 필드는 최상위가, 나머지는 module_settings가 진짜다 */
-const savedValue = (server: Server, name: string) => {
-    const top = fieldValue(server[name as keyof Server]);
-    const cached = fieldValue(server.module_settings?.[name]);
-    return TOP_LEVEL_FIELDS.has(name) ? (top ?? cached) : (cached ?? top);
-};
+/** 저장된 값 (데몬이 칸마다 정한 `stored`) */
+const savedValue = (server: Server, name: string) => fieldValue(server.stored?.[name]);
 
 /**
  * 실제 설정 값을 칸 값으로. 문자열 칸에 숫자가 오면 (모듈이 "000123"을 123으로 바꾼 경우)
@@ -303,24 +291,6 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
                 initial[field.name] = value;
             });
 
-            // protocol_mode initialization
-            const protocols: Partial<NonNullable<ModuleInfo['protocols']>> = module?.protocols || {};
-            const supportedProtocols = protocols.supported || [];
-            if (
-                (latestServer.protocol_mode &&
-                    latestServer.protocol_mode !== 'auto' &&
-                    latestServer.protocol_mode !== 'rest') ||
-                (latestServer.protocol_mode === 'rest' && supportedProtocols.includes('rest'))
-            ) {
-                initial.protocol_mode = latestServer.protocol_mode;
-            } else if (protocols.default) {
-                initial.protocol_mode = protocols.default;
-            } else if (supportedProtocols.length > 0) {
-                initial.protocol_mode = supportedProtocols[0];
-            } else {
-                initial.protocol_mode = latestServer.protocol_mode || 'auto';
-            }
-
             // 익스텐션 데이터 패스스루 — 익스텐션 탭 컴포넌트가 자체 관리
             if (latestServer.extension_data) {
                 initial._extension_data = { ...latestServer.extension_data };
@@ -345,16 +315,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
             setSettingsValues(withTouched(initial));
             setOpenedSettings(initial);
         } else {
-            const protocols: Partial<NonNullable<ModuleInfo['protocols']>> = module?.protocols || {};
-            const defaultProto =
-                protocols.default || ((protocols.supported?.length ?? 0) > 0 ? protocols.supported?.[0] : null);
             const initial: SettingsValues = {
-                protocol_mode:
-                    latestServer.protocol_mode &&
-                    latestServer.protocol_mode !== 'auto' &&
-                    latestServer.protocol_mode !== 'rest'
-                        ? latestServer.protocol_mode
-                        : defaultProto || latestServer.protocol_mode || 'auto',
                 ...(latestServer.extension_data
                     ? {
                           _extension_data: { ...latestServer.extension_data },
@@ -589,36 +550,11 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
                                 background: true,
                             });
 
-                            const blocked = blockedText(installResult, t);
-                            if (blocked) {
+                            const failure = installFailure(t, installResult, translateError);
+                            if (failure) {
                                 setProgressBar(null);
                                 setVersionInstalling(false);
-                                safeShowToast(blocked, 'error', 8000);
-                                return;
-                            }
-
-                            if (installResult.error_code === 'extension_required') {
-                                setProgressBar(null);
-                                setVersionInstalling(false);
-                                const extList = (installResult.missing_extensions || []).join(', ');
-                                safeShowToast(
-                                    installResult.error ||
-                                        t('server_settings.extension_required_for_install', { extensions: extList }),
-                                    'error',
-                                    6000,
-                                );
-                                return;
-                            }
-
-                            if (installResult.error || installResult.success === false) {
-                                setProgressBar(null);
-                                safeShowToast(
-                                    busyMessage(t, installResult.error_code, 'install_server_running') ||
-                                        installFailureText(t, installResult, translateError),
-                                    'error',
-                                    8000,
-                                );
-                                setVersionInstalling(false);
+                                safeShowToast(failure, 'error', 8000);
                                 return;
                             }
 
@@ -654,7 +590,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
         try {
             const result = await window.api.instanceResetServer(settingsServer.id, choice);
             // 모듈은 200으로 {success:false}를 돌려줄 수 있다
-            if (!result || result.error || result.success === false) {
+            if (failed(result)) {
                 safeShowToast(
                     t('server_settings.reset_failed', {
                         error:
@@ -879,16 +815,6 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
                 const value = String(settingsValues[key] ?? '').trim();
                 if (settingsValues[key] !== undefined && value !== '' && value !== openedIdle[key])
                     convertedSettings[key] = value;
-            }
-
-            const protocols: Partial<NonNullable<ModuleInfo['protocols']>> = module?.protocols || {};
-            const supportedProtocols = protocols.supported || [];
-
-            // 모듈이 정한 프로토콜만 쓴다 (RCON은 데몬에서 빠졌다: 예전에 저장된 'rcon'도 여기서 바뀐다)
-            if (supportedProtocols.length > 0) {
-                convertedSettings.protocol_mode = protocols.default || supportedProtocols[0];
-            } else {
-                convertedSettings.protocol_mode = settingsValues.protocol_mode || 'auto';
             }
 
             if (launch?.extra_args) convertedSettings.extra_args = launch.extra_args;

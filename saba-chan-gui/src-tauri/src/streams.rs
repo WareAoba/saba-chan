@@ -35,7 +35,7 @@ pub fn is_stream_path(path: &str) -> bool {
     !id.is_empty() && !id.contains('/')
 }
 
-/// 연 스트림의 답: 열었으면 `{status:200}`, 데몬이 거절했으면 `{status, data}`(옛 데몬은 404), 연결 실패 `{status:0, code}`
+/// 연 스트림의 답: 열었으면 `{status:200}`, 데몬이 거절했으면 `{status, data}`, 연결 실패 `{status:0, code}`
 #[tauri::command(rename_all = "camelCase")]
 pub async fn daemon_stream_open(app: AppHandle, window: WebviewWindow, id: String, path: String, target: Option<String>) -> Value {
     if !is_stream_path(&path) || id.is_empty() || id.len() > 64 {

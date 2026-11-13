@@ -131,11 +131,13 @@ export const parseComponents = (comps?: ApiBody[] | null) =>
         })
         .map((c) => {
             const key = typeof c.component === 'string' ? c.component : String(c.component);
+            // 종류는 데몬이 준다 (`kind`)
+            const kind = c.kind;
             return {
                 key,
-                hidden: key.startsWith('module-') || key.startsWith('ext-'),
+                hidden: kind !== 'app',
                 display: c.display_name || key,
-                icon: key.startsWith('module-') ? 'gamepad' : COMPONENT_ICONS[key] || 'server',
+                icon: kind === 'module' ? 'gamepad' : COMPONENT_ICONS[key] || 'server',
                 current_version: c.current_version || '—',
                 latest_version: c.latest_version || null,
                 update_available: !!c.update_available,

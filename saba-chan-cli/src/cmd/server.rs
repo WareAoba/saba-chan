@@ -5,7 +5,7 @@ use crate::cli::{AddArgs, PropsCmd, RestartArgs, RunArgs, ServerCmd, StartArgs, 
 use crate::cmd::{split_pairs, typed};
 use crate::ctx::Ctx;
 use crate::error::{failed, usage, CliError, Result};
-use crate::output::{self, dim, s, show};
+use crate::output::{self, dim, s, show, status_of};
 use crate::resolve::{self, Server};
 use serde_json::{json, Map, Value};
 use std::time::{Duration, Instant};
@@ -68,15 +68,6 @@ pub async fn runtime(ctx: &Ctx, sv: &Server) -> Result<Value> {
         .and_then(Value::as_array)
         .and_then(|a| a.iter().find(|x| s(x, "id") == sv.id).cloned())
         .unwrap_or(Value::Null))
-}
-
-pub fn status_of(rt: &Value) -> &str {
-    let st = s(rt, "status");
-    if st.is_empty() {
-        "stopped"
-    } else {
-        st
-    }
 }
 
 /// `/api/modules` 항목 하나
@@ -1576,9 +1567,8 @@ async fn port_check(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             say!("  {}/{}  {}", port, s(p, "protocol").to_uppercase(), status);
         }
         if matches!(verdict, "firewall" | "router" | "closed" | "cgnat" | "unknown" | "host_mismatch" | "host_unresolved") {
-            // 고칠 곳은 데몬이 OS에 맞춰 고른다 (옛 데몬은 `hint`가 없다)
-            let hint = Some(s(r, "hint")).filter(|h| !h.is_empty()).unwrap_or(verdict);
-            say!("{}", output::dim(&t!(&format!("port_check.hint.{}", hint))));
+            // 고칠 곳은 데몬이 OS에 맞춰 고른다
+            say!("{}", output::dim(&t!(&format!("port_check.hint.{}", s(r, "hint")))));
         }
     });
     Ok(())

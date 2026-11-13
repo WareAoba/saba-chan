@@ -13,6 +13,13 @@ describe('모듈 없음 표시', () => {
     });
 });
 
+describe('켜는 중·끄는 중', () => {
+    it('데몬이 알린 transition을 상태보다 먼저 본다', () => {
+        expect(viewStatus({ id: 'a', status: 'stopped', transition: 'starting' }, true)).toBe('starting');
+        expect(viewStatus({ id: 'a', status: 'running', transition: 'stopping' }, true)).toBe('stopping');
+    });
+});
+
 describe('폴링 결과 합치기', () => {
     const a = { id: 'a', name: 'a', status: 'running', port: 1 };
     const b = { id: 'b', name: 'b', status: 'stopped', port: 2 };

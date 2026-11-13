@@ -83,7 +83,7 @@ struct Cursor {
     last: Option<String>,
     running: bool,
     disk: bool,
-    /// 콘솔 버퍼 세대. 모르는 응답(옛 데몬, 디스크 기록)이면 None
+    /// 콘솔 버퍼 세대. 모르는 응답(디스크 기록)이면 None
     epoch: Option<u64>,
 }
 
@@ -617,7 +617,7 @@ mod tests {
         assert!(reattached(&before, &after));
         let same = Cursor::from(&json!({"lines": [{"id": 901}], "running": true, "epoch": 1}));
         assert!(!reattached(&before, &same));
-        // 세대를 모르는 응답(옛 데몬, 디스크 기록)은 다시 붙은 것으로 보지 않는다
+        // 세대를 모르는 응답(디스크 기록)은 다시 붙은 것으로 보지 않는다
         let old = Cursor::from(&json!({"lines": [], "running": true}));
         assert!(!reattached(&before, &old));
         assert!(!reattached(&old, &after));
@@ -664,7 +664,7 @@ mod tests {
         assert_eq!(h12.at(at), "10-27 03:04:05 PM");
         let line = json!({ "content": "Done", "source": "stdout", "level": "info", "timestamp": at });
         assert_eq!(console::strip_ansi_codes(&format_line_with(&line, Some(&h24))), "15:04:05 Done");
-        // 시각이 없는 줄(옛 데몬)은 그대로
+        // 시각이 없는 줄은 그대로
         assert_eq!(console::strip_ansi_codes(&format_line_with(&json!({ "content": "x" }), Some(&h24))), "x");
     }
 

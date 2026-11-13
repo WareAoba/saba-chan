@@ -154,6 +154,14 @@ pub(crate) fn router(routes: Router, ctx: Ctx) -> Router {
     routes
         .merge(Router::new().route("/remote/pair", post(pair)).with_state(ctx.clone()))
         .layer(axum::middleware::from_fn_with_state(ctx, remote_auth))
+        // 답마다 이 데몬의 판을 싣는다: 붙는 쪽이 최소 판(`MIN_REMOTE_DAEMON`)을 본다
+        .layer(axum::middleware::map_response(|mut res: Response| async move {
+            res.headers_mut().insert(
+                saba_chan_updater_lib::constants::VERSION_HEADER,
+                header::HeaderValue::from_static(crate::extension::APP_VERSION),
+            );
+            res
+        }))
 }
 
 /// 짝 맺은 PC(감사 출처 `remote`)의 요청에 PC 전용 규칙을 거는 층 (`IPCServer::routes`가 씌운다).

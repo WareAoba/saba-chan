@@ -91,6 +91,14 @@ describe('Tauri 브리지 설치', () => {
 });
 
 describe('데몬 응답 가공', () => {
+    // F8: 에이전트 상태는 데몬이 정한 `state`를 그대로 쓴다 (오류 코드를 다시 해석하지 않는다)
+    it('디스코드 에이전트 상태는 데몬의 state를 따른다', async () => {
+        const { api } = await install({
+            daemon_request: daemon({ 'GET /api/relay/agent': { status: 200, data: { state: 'replaced', running: false, lastErrorCode: 'something_new' } } }),
+        });
+        expect(await api.discordBotStatus()).toMatchObject({ status: 'replaced', running: false });
+    });
+
     it('bot-config를 못 읽으면 기본값을 꾸며 내지 않고 실패한다 (저장이 디스크 값을 덮지 않게)', async () => {
         const { api } = await install({
             daemon_request: daemon({ 'GET /api/config/bot': { status: 0, error: 'timeout', code: 'ETIMEDOUT' } }),
@@ -193,18 +201,12 @@ describe('데몬 응답 가공', () => {
         expect(await api.instanceStop('a/b')).toEqual({ success: true });
     });
 
-    it('상태는 id로 묻고, 그 길이 없는 옛 데몬이면 이름으로 묻는다. 서버가 없다는 404는 그대로 서버 없음', async () => {
+    it('서버가 없다는 404는 서버 없음으로 돌려준다', async () => {
         const { api } = await install({
             daemon_request: daemon({
-                'GET /api/instance/new-id/status': { status: 200, data: { status: 'running' } },
-                // 옛 데몬: 라우트가 없어 본문 없는 404
-                'GET /api/instance/old-id/status': { status: 404, data: null },
-                'GET /api/server/Old%20One/status': { status: 200, data: { status: 'stopped' } },
                 'GET /api/instance/gone/status': { status: 404, data: { error_code: 'instance_not_found' } },
             }),
         });
-        expect(await api.instanceStatus('new-id', 'New')).toEqual({ status: 'running' });
-        expect(await api.instanceStatus('old-id', 'Old One')).toEqual({ status: 'stopped' });
         expect((await api.instanceStatus('gone', 'Gone')).error).toBeTruthy();
     });
 
@@ -323,17 +325,13 @@ describe('데몬 응답 가공', () => {
 });
 
 describe('원격 데몬 (G1)', () => {
-    it('짝 풀기·잊기는 204여도 성공으로, 다룰 데몬은 셸 명령으로 고른다', async () => {
+    it('원격 데몬에 짝을 맺고, 다룰 데몬은 셸 명령으로 고른다', async () => {
         const { api, tauri } = await install({
             daemon_request: daemon({
-                'DELETE /api/remote/daemons/host%20a': { status: 204, data: '' },
-                'DELETE /api/remote/daemons/host-b': { status: 404, data: { error: 'remote_unknown', error_code: 'remote_unknown' } },
                 'POST /api/remote/daemons': (args: Loose) => ({ status: 200, data: { hostId: args.body.hostId, name: '게임 PC' } }),
             }),
             daemon_target_set: (args: Loose) => ({ success: true, target: args.target }),
         });
-        expect(await api.remoteForget('host a')).toEqual({ ok: true });
-        expect(await api.remoteForget('host-b')).toMatchObject({ error_code: 'remote_unknown' });
         expect(await api.remoteConnect('host-b')).toEqual({ hostId: 'host-b', name: '게임 PC' });
         expect(await api.daemonTargetSet('')).toEqual({ success: true, target: null });
         expect(tauri.invoke).toHaveBeenCalledWith('daemon_target_set', { target: null });

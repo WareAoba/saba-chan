@@ -12,10 +12,10 @@ vi.mock('../contexts/ExtensionContext', () => ({
 import SabaStorage from '../components/Modals/SabaStorage';
 
 const components = [
-    { component: 'cli', display_name: 'CLI', update_available: true, downloaded: false },
-    { component: 'module-minecraft', display_name: 'Minecraft', update_available: true, downloaded: false },
-    { component: 'ext-steamcmd', display_name: 'SteamCMD', update_available: true, downloaded: false },
-    { component: 'module-palworld', display_name: 'Palworld', update_available: false, downloaded: false },
+    { component: 'cli', kind: 'app', display_name: 'CLI', update_available: true, downloaded: false },
+    { component: 'module-minecraft', kind: 'module', display_name: 'Minecraft', update_available: true, downloaded: false },
+    { component: 'ext-steamcmd', kind: 'extension', display_name: 'SteamCMD', update_available: true, downloaded: false },
+    { component: 'module-palworld', kind: 'module', display_name: 'Palworld', update_available: false, downloaded: false },
 ];
 
 beforeEach(() => {

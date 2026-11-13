@@ -38,6 +38,7 @@ import { ServersTab } from './settings/ServersTab';
 import { StorageTab } from './settings/StorageTab';
 import { TroubleshootTab } from './settings/TroubleshootTab';
 import { SaveBarHost } from '../ui/SaveBar';
+import { failed } from '../../utils/apiResult';
 
 const TAB_ICONS: Record<SettingsTab, string> = {
     general: 'settings',
@@ -180,7 +181,7 @@ function SettingsModal({
             // 저장하지 못하면 알린다: 화면은 바뀌어도 다음 실행에 옛 언어로 돌아간다 (G-U6)
             try {
                 const res = await window.api.languageSet(lng);
-                if (res?.success === false) safeShowToast(t('gui:settings.save_error'), 'error');
+                if (failed(res)) safeShowToast(t('gui:settings.save_error'), 'error');
             } catch (err) {
                 console.error('Failed to save language to settings:', err);
                 safeShowToast(t('gui:settings.save_error'), 'error');

@@ -679,6 +679,7 @@
   "run": {
     "confirm_danger": "{{label}} em {{name}} não pode ser desfeito. Executar?",
     "missing_arg": "{{label}} ausente. Uso: {{usage}}",
+    "must_be_boolean": "{{label}} deve ser true ou false (on/off, yes/no).",
     "must_be_number": "{{label}} deve ser um número.",
     "must_be_one_of": "{{label}} deve ser um destes: {{options}}",
     "no_commands": "Este jogo não define comandos. Envie direto ao console: saba-chan-cli server send NAME \"line\"",

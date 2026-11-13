@@ -38,9 +38,9 @@ const HELD = {
 const STATUS = {
     ok: true,
     components: [
-        { component: 'saba-core', display_name: 'Saba-Core', current_version: '0.1.13' },
-        { component: 'gui', display_name: 'GUI', current_version: '0.1.13' },
-        { component: 'module-minecraft', display_name: '마인크래프트 모듈', current_version: '1.2.0' },
+        { component: 'saba-core', kind: 'app', display_name: 'Saba-Core', current_version: '0.1.13' },
+        { component: 'gui', kind: 'app', display_name: 'GUI', current_version: '0.1.13' },
+        { component: 'module-minecraft', kind: 'module', display_name: '마인크래프트 모듈', current_version: '1.2.0' },
     ],
 };
 
@@ -128,7 +128,7 @@ describe('사바쨩 버전 줄', () => {
         expect(screen.getByRole('button', { name: ss('version_unpin') })).toBeTruthy();
     });
 
-    it('버전을 읽지 못하면(옛 데몬 포함) 줄을 그리지 않는다', async () => {
+    it('버전을 읽지 못하면 줄을 그리지 않는다', async () => {
         fakeApi({
             updaterVersions: vi.fn().mockResolvedValue({ ok: false, error: 'Request failed with status code 404' }),
         });

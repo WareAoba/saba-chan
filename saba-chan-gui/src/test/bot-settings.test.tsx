@@ -141,14 +141,6 @@ describe('디스코드 봇 설정 탭', () => {
         expect(list?.textContent ?? '').not.toContain('08:00');
     });
 
-    it('코코낸내: 원격의 0.1.11 데몬이라 값이 없으면 카드를 보이지 않는다', async () => {
-        const { sleepBlocks: _s, bedtime: _b, ...old } = base;
-        window.api.discordSettingsGet = vi.fn().mockResolvedValue(old) as never;
-        render(<BotSettingsTab node={node} section="bot" />);
-        await flush();
-        expect(screen.queryByRole('checkbox', { name: 'Good kid' })).toBeNull();
-    });
-
     it('이모지 업스케일: 릴레이를 못 읽어 값이 없으면 보이지 않는다', async () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue(base) as never;
         render(<BotSettingsTab node={node} section="bot" />);
@@ -321,7 +313,7 @@ describe('디스코드 봇 설정 탭', () => {
         window.api.discordSettingsSet = vi.fn().mockResolvedValue({ success: true, settings: base, sync: { ok: true } }) as never;
         render(<BotSettingsTab node={node} />);
         await flush();
-        // 값이 없으면(옛 데몬) 접두어 켜짐·인스턴스 이름·모두에게 보임
+        // 기본은 접두어 켜짐·인스턴스 이름·모두에게 보임
         expect((screen.getByRole('checkbox', { name: 'Saba-chan prefix on commands' }) as HTMLInputElement).checked).toBe(true);
         expect((screen.getByRole('checkbox', { name: 'Show query results only to the caller' }) as HTMLInputElement).checked).toBe(false);
         fireEvent.click(screen.getByRole('checkbox', { name: 'Saba-chan prefix on commands' }));

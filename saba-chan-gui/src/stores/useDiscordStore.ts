@@ -76,10 +76,10 @@ let statusGeneration = 0;
 let checkingGeneration: number | null = null;
 /** 확인하는 동안 연결 상태가 바뀌었다 (이벤트): 끝나면 한 번 더 한다 */
 let checkAgain = false;
-/** 데몬이 에이전트의 연결 상태를 알려 준다 (0.1.14~). 그러면 이벤트로 알 수 있어 평소 확인을 느리게 한다 */
+/** 데몬이 에이전트의 연결 상태를 알려 줬다. 그러면 이벤트로 알 수 있어 평소 확인을 느리게 한다 */
 let daemonKnowsLink = false;
 let offStatusEvents: (() => void) | null = null;
-/** 상태 확인 주기: 이벤트로 바뀜을 알 수 있으면 느리게, 아니면(옛 데몬·이벤트 없음) 예전처럼 */
+/** 상태 확인 주기: 이벤트로 바뀜을 알 수 있으면 느리게, 아니면(데몬에 닿지 못함·이벤트 없음) 자주 */
 const STATUS_POLL_MS = 5000;
 const STATUS_SLOW_POLL_MS = 30_000;
 
@@ -432,7 +432,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         // 에이전트가 하트비트로 아는 연결 상태. 돌고 있을 때만 믿는다 (꺼 둔 봇은 릴레이가 닿는지 모른다)
         const info = typeof agent === 'object' ? agent : null;
         const link: RelayLink | undefined = info?.link;
-        if (agent !== 'unknown') daemonKnowsLink = !!link;
+        daemonKnowsLink = !!link;
         const agentLink = state.discordCloudHostId && link && info?.running ? link : null;
         // 토큰이 거절된 동안은 릴레이를 30초에 한 번만 묻는다 (같은 공유기의 다른 PC와 릴레이 요청 한도를 나눠 쓴다).
         // 그 사이에는 거절을 그대로 두고, 에이전트 상태는 5초마다 반영한다
@@ -469,11 +469,10 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         const agentFailures = agent === 'unknown' ? get()._agentFailures + 1 : 0;
         const prev = get();
         const keepAgent = agent === 'unknown' && agentFailures < 2;
-        // too_old는 { status, running, minVersion }으로 온다. 연결 상태를 주는 데몬은 다른 상태도 객체로 준다
-        const kind = info ? info.status : agent;
+        const kind = info?.status;
         const tooOld = info?.status === 'too_old' ? info : null;
         const heartbeatReject = info?.status === 'rejected' ? info.reason : null;
-        const agentRunning = keepAgent ? prev.discordBotStatus !== 'stopped' : info ? info.running : agent === 'running';
+        const agentRunning = keepAgent ? prev.discordBotStatus !== 'stopped' : !!info?.running;
         const agentMinVersion = keepAgent ? prev.discordAgentMinVersion : tooOld ? tooOld.minVersion || '-' : null;
         const agentReplaced = keepAgent ? prev.discordAgentReplaced : kind === 'replaced';
         const agentRelayUrlInvalid = keepAgent ? prev.discordAgentRelayUrlInvalid : kind === 'invalid_relay_url';

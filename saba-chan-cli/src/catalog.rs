@@ -8,6 +8,7 @@
 //! 서버 하나에서 쓸 수 있는 명령은 `GET /api/instance/:id/commands`가 준다 (모듈 명령 + 켜진 익스텐션 명령).
 //! 모듈 명령은 모듈 문구로 번역된 것을 쓰고, 익스텐션 명령만 그 목록에서 더한다.
 
+use saba_chan_updater_lib::command_rules;
 use serde_json::{Map, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -18,12 +19,12 @@ pub enum Risk {
 }
 
 impl Risk {
-    /// 없으면 caution (데몬과 같다)
+    /// 데몬과 같은 규칙(`command_rules::risk_of`): 없으면 caution, 모르는 값은 danger
     fn parse(s: Option<&str>) -> Self {
-        match s {
-            Some("safe") => Risk::Safe,
-            Some("danger") => Risk::Danger,
-            _ => Risk::Caution,
+        match command_rules::risk_of(s) {
+            "safe" => Risk::Safe,
+            "caution" => Risk::Caution,
+            _ => Risk::Danger,
         }
     }
 
@@ -248,16 +249,10 @@ impl Command {
         if !rest.is_empty() && open.is_empty() {
             return Err(t!("run.too_many_args", usage = self.usage()));
         }
-        for (idx, input) in open.iter().enumerate() {
-            if idx >= rest.len() {
-                break;
+        for (input, value) in open.iter().zip(command_rules::spread(open.len(), &rest)) {
+            if let Some(value) = value {
+                named.insert(input.name.clone(), Value::String(value));
             }
-            let value = if idx == open.len() - 1 {
-                rest[idx..].join(" ")
-            } else {
-                rest[idx].clone()
-            };
-            named.insert(input.name.clone(), Value::String(value));
         }
 
         let mut out = Map::new();
@@ -276,44 +271,28 @@ impl Command {
 }
 
 impl Input {
-    /// 숫자·선택지 검사 (데몬과 같은 규칙). 선택지는 대소문자를 무시해 원래 표기로 맞춘다.
+    /// 칸 검사 (데몬과 같은 `command_rules::check`). 선택지는 먼저 대소문자를 무시해 원래 표기로 맞춘다.
     pub fn coerce(&self, v: Value) -> Result<Value, String> {
-        let text = v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string());
-        if self.kind == "number" {
-            let n: f64 = text
-                .trim()
-                .parse()
-                .map_err(|_| t!("run.must_be_number", label = self.label))?;
-            if self.min.is_some_and(|m| n < m) || self.max.is_some_and(|m| n > m) {
-                let fmt = |v: Option<f64>, inf: &str| v.map(|x| x.to_string()).unwrap_or_else(|| inf.into());
-                return Err(t!(
-                    "run.out_of_range",
-                    label = self.label,
-                    min = fmt(self.min, "-∞"),
-                    max = fmt(self.max, "∞")
-                ));
+        let v = match v.as_str().and_then(|text| self.options.iter().find(|o| o.eq_ignore_ascii_case(text))) {
+            Some(option) => Value::String(option.clone()),
+            None => v,
+        };
+        let rule = command_rules::Rule {
+            kind: Some(self.kind.as_str()),
+            min: self.min,
+            max: self.max,
+            options: (!self.options.is_empty()).then_some(self.options.as_slice()),
+        };
+        command_rules::check(&rule, &self.label, v).map_err(|e| {
+            let fmt = |v: Option<f64>, inf: &str| v.map(|x| x.to_string()).unwrap_or_else(|| inf.into());
+            match e.rule {
+                "not_number" => t!("run.must_be_number", label = self.label),
+                "out_of_range" => t!("run.out_of_range", label = self.label, min = fmt(self.min, "-∞"), max = fmt(self.max, "∞")),
+                "not_option" => t!("run.must_be_one_of", label = self.label, options = self.options.join(", ")),
+                "not_boolean" => t!("run.must_be_boolean", label = self.label),
+                _ => e.message,
             }
-            return Ok(if n.fract() == 0.0 && n.abs() < 9.0e15 {
-                Value::from(n as i64)
-            } else {
-                Value::from(n)
-            });
-        }
-        if !self.options.is_empty() {
-            return self
-                .options
-                .iter()
-                .find(|o| o.eq_ignore_ascii_case(&text))
-                .map(|o| Value::String(o.clone()))
-                .ok_or_else(|| {
-                    t!(
-                        "run.must_be_one_of",
-                        label = self.label,
-                        options = self.options.join(", ")
-                    )
-                });
-        }
-        Ok(Value::String(text))
+        })
     }
 }
 
@@ -337,7 +316,9 @@ mod tests {
                   "inputs": [ { "name": "message", "required": true } ] },
                 { "name": "difficulty", "label": "Difficulty", "risk": "danger",
                   "inputs": [ { "name": "level", "options": ["peaceful", "easy", "hard"], "required": true } ] },
-                { "name": "save-all", "label": "Save" }
+                { "name": "save-all", "label": "Save" },
+                { "name": "pvp", "label": "PvP", "method": "console", "risk": "Danger",
+                  "inputs": [ { "name": "enabled", "type": "boolean", "required": true } ] }
             ] },
             "command_aliases": { "give": { "aliases": ["지급", "줘"], "description": "Give an item" } }
         })
@@ -395,6 +376,17 @@ mod tests {
         assert_eq!(args["level"], "hard");
         assert!(cat.find("difficulty").unwrap().bind(&words("insane")).is_err());
         assert!(cat.find("save-all").unwrap().bind(&words("extra")).is_err());
+    }
+
+    /// 칸 검사·위험도는 데몬과 같은 규칙(`command_rules`)이다: 켜고 끄는 칸은 정해진 낱말만, 모르는 위험도는 danger
+    #[test]
+    fn checks_like_the_daemon() {
+        let cat = Catalog::from_module(&module(), None);
+        let pvp = cat.find("pvp").unwrap();
+        assert_eq!(pvp.bind(&words("on")).unwrap().0["enabled"], true);
+        assert_eq!(pvp.bind(&words("NO")).unwrap().0["enabled"], false);
+        assert!(pvp.bind(&words("maybe")).is_err());
+        assert_eq!(pvp.risk, Risk::Danger, "an unknown risk value counts as danger");
     }
 
     #[test]

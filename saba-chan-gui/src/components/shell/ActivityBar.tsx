@@ -78,9 +78,9 @@ function DaemonConsole() {
         const later = () => {
             if (alive) timer = setTimeout(poll, CONSOLE_POLL_MS);
         };
-        /** 받은 다음부터 스트림으로 받는다. 열지 못하면(옛 데몬·옛 릴레이) 한동안 기다리는 조회로 읽는다 */
+        /** 받은 다음부터 스트림으로 받는다. 열지 못하면(연결 실패·릴레이 경유) 한동안 기다리는 조회로 읽는다 */
         const stream = async () => {
-            // 스트림이 없는 브리지(옛 셸·개발용 가짜 API)도 null로 받는다
+            // 스트림이 없는 브리지(개발용 가짜 API)도 null로 받는다
             const open = () =>
                 window.api.daemonConsoleStream(
                     { since: next, epoch },
@@ -111,7 +111,7 @@ function DaemonConsole() {
         };
         const poll = async () => {
             try {
-                // 이어 읽을 때는 새 줄이 생길 때까지 데몬이 붙잡게 한다 (옛 데몬은 바로 답하고 1초 뒤 다시 묻는다)
+                // 이어 읽을 때는 새 줄이 생길 때까지 데몬이 붙잡게 한다
                 let res = await window.api.daemonConsole(next === undefined ? {} : { since: next, wait: CONSOLE_WAIT_S });
                 if (next !== undefined && res?.epoch !== undefined && res.epoch !== epoch) {
                     next = undefined;

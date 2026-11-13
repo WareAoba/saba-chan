@@ -35,17 +35,9 @@ static LANG: OnceLock<String> = OnceLock::new();
 /// TUI가 번역 판이 바뀌면 다시 읽으므로 바꿀 수 있게 둔다 (`reload`)
 static CATALOG: RwLock<Option<Catalog>> = RwLock::new(None);
 
-/// "ko-KR", "ko_KR.UTF-8" → "ko". 지역이 의미 있는 언어(zh-CN, pt-BR)는 그대로 둔다.
+/// "ko-KR", "ko_KR.UTF-8" → "ko", "pt" → "pt-BR". 해석은 GUI·데몬과 같고(`constants::resolve_locale`), 지원하지 않는 언어는 en
 pub fn normalize(lang: &str) -> String {
-    let base = lang.split('.').next().unwrap_or("").replace('_', "-");
-    let lower = base.to_ascii_lowercase();
-    match lower.as_str() {
-        "" | "c" | "posix" => "en".into(),
-        "zh-cn" | "zh-sg" | "zh-hans" => "zh-CN".into(),
-        "zh-tw" | "zh-hk" | "zh-hant" => "zh-TW".into(),
-        "pt-br" => "pt-BR".into(),
-        _ => lower.split('-').next().unwrap_or("en").to_string(),
-    }
+    saba_chan_updater_lib::constants::resolve_locale(lang).unwrap_or_else(|| "en".into())
 }
 
 fn installed(lang: &str) -> Option<Value> {
@@ -189,6 +181,19 @@ mod tests {
         assert_eq!(normalize("zh_CN"), "zh-CN");
         assert_eq!(normalize("pt-br"), "pt-BR");
         assert_eq!(normalize("C"), "en");
+        // GUI·데몬과 같은 해석(`constants::resolve_locale`): 지역 없는 pt·zh도 지원 언어로
+        assert_eq!(normalize("pt"), "pt-BR");
+        assert_eq!(normalize("zh"), "zh-CN");
+    }
+
+    /// 고를 수 있는 언어는 데몬·GUI의 지원 언어와 같다
+    #[test]
+    fn offers_the_supported_languages() {
+        let mut codes: Vec<&str> = LANGUAGES.iter().map(|(c, _)| *c).collect();
+        let mut supported = saba_chan_updater_lib::constants::SUPPORTED_LANGUAGES.to_vec();
+        codes.sort();
+        supported.sort();
+        assert_eq!(codes, supported);
     }
 
     /// 다시 읽어도 언어는 그대로이고 문구를 계속 찾는다

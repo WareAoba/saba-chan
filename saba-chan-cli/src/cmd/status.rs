@@ -154,7 +154,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
 
 /// 서버 상태 표시. 켜져 있지만 상태 질문에 답하지 않으면(`unresponsive`) 그것도 붙인다 (GUI 목록과 같게)
 pub fn state_badge(sv: &Value) -> String {
-    let mut state = output::status_badge(s(sv, "status"));
+    let mut state = output::status_badge(output::status_of(sv));
     if sv.get("unresponsive").and_then(Value::as_str).is_some() {
         state.push_str(&console::style(format!("  ⚠ {}", t!("server.unresponsive"))).yellow().to_string());
     }
@@ -234,7 +234,7 @@ pub fn print_server_table(servers: &[Value], modules: &Value) {
         let uptime = sv
             .get("start_time")
             .and_then(Value::as_u64)
-            .filter(|_| s(sv, "status") == "running")
+            .filter(|_| output::status_of(sv) == "running")
             .map(|st| {
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)

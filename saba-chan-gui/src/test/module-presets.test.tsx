@@ -23,7 +23,6 @@ describe('새 서버 만들기 — 모듈 추천 프리셋', () => {
         render(
             <AddInstanceNewServer
                 extensions={[minecraft]}
-                servers={[]}
                 onAddServer={onAddServer}
                 onClose={undefined as never}
             />,
@@ -47,7 +46,6 @@ describe('새 서버 만들기 — 모듈 추천 프리셋', () => {
         render(
             <AddInstanceNewServer
                 extensions={[minecraft]}
-                servers={[]}
                 onAddServer={onAddServer}
                 onClose={undefined as never}
             />,
@@ -61,7 +59,6 @@ describe('새 서버 만들기 — 모듈 추천 프리셋', () => {
         render(
             <AddInstanceNewServer
                 extensions={[{ ...minecraft, presets: undefined }]}
-                servers={[]}
                 onAddServer={vi.fn()}
                 onClose={undefined as never}
             />,

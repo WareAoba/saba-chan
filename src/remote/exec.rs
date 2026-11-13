@@ -309,7 +309,7 @@ fn new_server_pc_only_fields(supervisor: &crate::supervisor::Supervisor, module:
     body.into_iter().chain(settings).flat_map(|m| m.keys().cloned()).collect()
 }
 
-/// 인스턴스를 담은 응답에서 비밀값(REST 비밀번호, 모듈의 비밀번호 칸)을 뺀다.
+/// 인스턴스를 담은 응답에서 비밀값(REST 비밀번호, 모듈의 비밀번호 칸. `module_settings`와 `stored` 모두)을 뺀다.
 /// 인스턴스 객체는 `module_name`(인스턴스) 또는 `module`(서버 목록)과 `module_settings`를 가진 객체다
 async fn hide_secrets(server: &IPCServer, body: &mut Value) {
     let supervisor = server.supervisor.read().await;
@@ -333,6 +333,10 @@ async fn hide_secrets(server: &IPCServer, body: &mut Value) {
                         .or_insert_with(|| module_fields(&supervisor, &module, is_secret));
                     if let Some(settings) = map.get_mut("module_settings").and_then(Value::as_object_mut) {
                         settings.retain(|k, _| !secrets.contains(k));
+                    }
+                    // 칸마다 저장된 값(`stored`)도 같은 칸을 뺀다
+                    if let Some(stored) = map.get_mut("stored").and_then(Value::as_object_mut) {
+                        stored.retain(|k, _| k != "rest_password" && !secrets.contains(k));
                     }
                 }
                 stack.extend(map.values_mut());

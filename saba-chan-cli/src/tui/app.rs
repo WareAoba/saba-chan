@@ -790,7 +790,7 @@ impl App {
     }
 
     fn when(&self, w: When) -> bool {
-        let server = || self.selected_server().map(|v| s(v, "status")).unwrap_or("");
+        let server = || self.selected_server().map(crate::output::status_of).unwrap_or("");
         let enabled = || self.snap.extensions.get(self.selected_index()).and_then(|v| v.get("enabled")).and_then(Value::as_bool) == Some(true);
         let linked = || self.snap.agent.as_ref().and_then(|a| a.get("running")).and_then(Value::as_bool) == Some(true);
         match w {
@@ -1131,7 +1131,7 @@ impl App {
     /// 고른 서버 시작·정지 (s), 재시작 (r)
     fn server_key(&mut self, c: char) -> Option<Action> {
         let v = self.selected_server()?;
-        let running = matches!(s(v, "status"), "running" | "starting" | "provisioning");
+        let running = matches!(crate::output::status_of(v), "running" | "starting" | "provisioning");
         let name = quote(s(v, "name"));
         let line = match (c, running) {
             ('s', true) => format!("stop {name}"),
@@ -1796,7 +1796,7 @@ pub fn refuse(words: &[String]) -> Option<String> {
         Cmd::Gui { .. } => Some(t!("tui.use_switch")),
         Cmd::Monitor(a) if a.watch => Some(t!("tui.not_here")),
         // 모듈·익스텐션만 적용하는 것은 업데이터를 띄우지 않는다: 메뉴 안에서 된다
-        Cmd::Update(UpdateCmd::Apply { components }) if components.is_empty() || !components.iter().all(|c| c.starts_with("module-") || c.starts_with("ext-")) => {
+        Cmd::Update(UpdateCmd::Apply { components }) if components.is_empty() || !components.iter().all(|c| saba_chan_updater_lib::Component::try_from_manifest_key(c).is_some_and(|c| c.kind() != "app")) => {
             Some(t!("tui.not_here"))
         }
         _ => None,

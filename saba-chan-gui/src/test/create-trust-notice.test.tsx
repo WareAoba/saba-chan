@@ -15,7 +15,6 @@ const renderNew = async (trust: string) => {
     render(
         <AddInstanceNewServer
             extensions={[{ name: 'game', version: '1.0.0', trust }]}
-            servers={[]}
             onAddServer={vi.fn()}
         />,
     );
@@ -36,7 +35,7 @@ describe('서버 만들 때 신뢰 안내', () => {
         expect(screen.getByRole('note').textContent).toMatch(/changed after install/);
     });
 
-    it('확인된 모듈이나 trust가 없는 옛 데몬이면 알리지 않는다', async () => {
+    it('확인된 모듈이나 trust가 없으면 알리지 않는다', async () => {
         await renderNew('verified');
         expect(screen.queryByRole('note')).toBeNull();
     });

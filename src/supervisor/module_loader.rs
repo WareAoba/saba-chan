@@ -356,6 +356,18 @@ impl ModuleMetadata {
         self.protocols_supported.as_deref().unwrap_or(&[]).iter().any(|p| p == protocol)
     }
 
+    /// 인스턴스 `protocol_mode`로 쓸 값이 지금 값과 다르면 그 값. 모듈이 `[protocols] supported`를 선언했으면
+    /// `auto`·예전 값 `rcon`(RCON만 받는 모듈은 기본값이 `rcon`이라 그대로)·받지 않는 값을 모듈 기본값(없으면 `supported` 첫 값)으로 바꾼다.
+    /// 선언하지 않은 모듈은 그대로 둔다
+    pub fn protocol_mode_for(&self, current: &str) -> Option<String> {
+        let supported = self.protocols_supported.as_deref().filter(|s| !s.is_empty())?;
+        if current != "auto" && current != "rcon" && supported.iter().any(|p| p == current) {
+            return None;
+        }
+        let target = self.protocols_default.as_deref().filter(|d| !d.is_empty()).unwrap_or(&supported[0]);
+        (target != current).then(|| target.to_string())
+    }
+
     /// 명령을 RCON으로 보내는 모듈이면 그 기본 RCON 포트 (`RconRoute::Only`)
     pub fn rcon_only_port(&self) -> Option<u16> {
         let only = rcon_route(self.protocols_supported.as_deref()?) == RconRoute::Only;
@@ -756,6 +768,9 @@ pub struct ModuleLoadError {
     /// 못 맞춘 의존성 (`"saba-core >=0.3.0 (installed 0.1.1)"` 꼴)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub missing_dependencies: Vec<String>,
+    /// 데몬이 모자라면 요구하는 saba-core 버전 (`>=0.3.0` → `0.3.0`, 0.1.14-beta.2~). 클라이언트는 위 문구를 쪼개지 않고 이것을 읽는다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_core: Option<String>,
     /// `module_schema_invalid`일 때 무엇이 틀렸는지 (필드 이름과 이유, 경로 없음)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub problems: Vec<String>,
@@ -786,6 +801,7 @@ impl ModuleLoadError {
             missing_dependencies: unmet
                 .map(|u| vec![format!("{} {} (installed {})", CORE_COMPONENT, u.required, DAEMON_VERSION)])
                 .unwrap_or_default(),
+            required_core: unmet.map(|u| u.required.trim().trim_start_matches(">=").trim().to_string()),
             problems: invalid.map(|i| i.problems.clone()).unwrap_or_default(),
             required: unsupported.map(|u| u.version),
         }
@@ -2753,6 +2769,30 @@ mod tests {
         let rules = &meta.syntax_highlight.unwrap().rules;
         assert_eq!((rules[0].underline, rules[0].priority, rules[0].background.as_deref()), (false, 0, None));
         assert_eq!((rules[1].underline, rules[1].priority, rules[1].background.as_deref()), (true, 5, Some("dim")));
+    }
+
+    /// 인스턴스 `protocol_mode`는 모듈이 받는 프로토콜만: `auto`·예전 `rcon`·받지 않는 값은 모듈 기본값으로 (F13)
+    #[test]
+    fn protocol_mode_follows_the_module() {
+        let meta = |protocols: &str| {
+            parse_module_toml(&format!(
+                "[module]\nname = \"m\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\nschema_version = 1\n\n[protocols]\n{protocols}\n"
+            ))
+            .unwrap()
+        };
+        let mc = meta("supported = [\"stdin\", \"rcon\"]\ndefault = \"stdin\"\nrcon_port = 25575");
+        assert_eq!(mc.protocol_mode_for("auto").as_deref(), Some("stdin"));
+        assert_eq!(mc.protocol_mode_for("rcon").as_deref(), Some("stdin"));
+        assert_eq!(mc.protocol_mode_for("rest").as_deref(), Some("stdin"));
+        assert_eq!(mc.protocol_mode_for("stdin"), None);
+        let pal = meta("supported = [\"rest\"]");
+        assert_eq!(pal.protocol_mode_for("auto").as_deref(), Some("rest"));
+        assert_eq!(pal.protocol_mode_for("rest"), None);
+        let rcon_only = meta("supported = [\"rcon\"]\ndefault = \"rcon\"\nrcon_port = 27015");
+        assert_eq!(rcon_only.protocol_mode_for("rcon"), None);
+        // 프로토콜을 선언하지 않은 모듈은 그대로 둔다
+        let plain = parse_module_toml("[module]\nname = \"m\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\nschema_version = 1\n").unwrap();
+        assert_eq!(plain.protocol_mode_for("auto"), None);
     }
 
     /// 서버 목록·콘솔·감시 주기가 자주 부른다: 캐시한 목록을 복제하지 않고 함께 쓰고, 캐시를 비우면 다시 읽는다

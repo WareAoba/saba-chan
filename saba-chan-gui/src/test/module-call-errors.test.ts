@@ -103,4 +103,14 @@ describe('모듈 호출 실패 안내', () => {
         );
         expect(result.error).not.toContain('{{');
     });
+
+    it('최소 판보다 낮은 원격 데몬은 업데이트가 필요하다고 안내한다', async () => {
+        const body = { error: 'remote_too_old', error_code: 'remote_too_old', min_version: '0.1.14-beta.2' };
+        const { api } = createApi({
+            invoke: vi.fn().mockResolvedValue({ status: 426, data: body }),
+            hub: { dispatch: vi.fn(), on: vi.fn(), live: () => true },
+        });
+        const result = await api.instanceUpdateSettings('id', { motd: 'x' });
+        expect(result.error).toContain('Needs update to 0.1.14-beta.2');
+    });
 });

@@ -130,8 +130,11 @@ interface SettingsState extends SettingsValues {
     _resetForTest: () => void;
 }
 
-export const useSettingsStore = create<SettingsState>()((set, get) => ({
-    // ── State ──
+/**
+ * 화면 설정의 처음 값과 빈 칸의 값 (데몬이 꺼진 첫 화면, 설정 파일에 없는 칸). 원천은 데몬 `GuiSettings::default`이고
+ * 초기화도 데몬이 한다(`configReset('gui')`). 처음 값·불러오기·시험 초기화가 이 한 벌을 쓴다
+ */
+const SETTINGS_DEFAULTS = {
     autoRefresh: true,
     refreshInterval: 2000,
     ipcPort: DEFAULT_IPC_PORT,
@@ -145,8 +148,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     // 밖에서 켜고 끈 것·크래시·설치 결과·업데이트 발견 때 효과음 (셸이 낸다). 전체·종류별 스위치
     sounds: DEFAULT_SOUNDS,
     ...APP_OPTION_DEFAULTS,
-    settingsPath: '',
-    settingsReady: false,
 
     // ── Theme customization ──
     // 테마 모드(auto/light/dark)도 config.json이 원천이다. localStorage는 첫 화면 깜빡임 방지용 캐시.
@@ -176,6 +177,13 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     daemonView: 'switch',
     // 앱을 열면 먼저 볼 데몬: 원격 데몬 hostId, null이면 이 PC
     mainDaemon: null,
+} satisfies Partial<SettingsValues>;
+
+export const useSettingsStore = create<SettingsState>()((set, get) => ({
+    // ── State ──
+    ...SETTINGS_DEFAULTS,
+    settingsPath: '',
+    settingsReady: false,
 
     // ── Actions ──
     load: async () => {
@@ -186,14 +194,14 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
             if (!isTest) console.log('[Settings] Loaded:', settings);
             const patch: Partial<SettingsState> & Record<string, unknown> = {};
             if (settings) {
-                patch.autoRefresh = settings.autoRefresh ?? true;
-                patch.refreshInterval = settings.refreshInterval ?? 2000;
-                patch.ipcPort = settings.ipcPort ?? DEFAULT_IPC_PORT;
-                patch.consoleBufferSize = settings.consoleBufferSize ?? 2000;
-                patch.autoGeneratePasswords = settings.autoGeneratePasswords ?? true;
-                patch.portConflictCheck = settings.portConflictCheck ?? true;
-                patch.autoPortCheck = settings.autoPortCheck ?? false;
-                patch.osNotifications = settings.osNotifications ?? true;
+                patch.autoRefresh = settings.autoRefresh ?? SETTINGS_DEFAULTS.autoRefresh;
+                patch.refreshInterval = settings.refreshInterval ?? SETTINGS_DEFAULTS.refreshInterval;
+                patch.ipcPort = settings.ipcPort ?? SETTINGS_DEFAULTS.ipcPort;
+                patch.consoleBufferSize = settings.consoleBufferSize ?? SETTINGS_DEFAULTS.consoleBufferSize;
+                patch.autoGeneratePasswords = settings.autoGeneratePasswords ?? SETTINGS_DEFAULTS.autoGeneratePasswords;
+                patch.portConflictCheck = settings.portConflictCheck ?? SETTINGS_DEFAULTS.portConflictCheck;
+                patch.autoPortCheck = settings.autoPortCheck ?? SETTINGS_DEFAULTS.autoPortCheck;
+                patch.osNotifications = settings.osNotifications ?? SETTINGS_DEFAULTS.osNotifications;
                 patch.sounds = { ...DEFAULT_SOUNDS, ...settings.sounds };
                 for (const [k, v] of Object.entries(APP_OPTION_DEFAULTS)) patch[k] = settings[k as AppOptionKey] ?? v;
 
@@ -211,7 +219,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                 patch.consoleFontScale = settings.consoleFontScale ?? THEME_DEFAULTS.consoleFontScale;
                 patch.consoleTokenColors = settings.consoleTokenColors ?? THEME_DEFAULTS.consoleTokenColors;
                 patch.windowBackdrop = { ...WINDOW_BACKDROP_DEFAULTS, ...settings.windowBackdrop };
-                patch.systemMonitorExpanded = settings.systemMonitorExpanded ?? false;
+                patch.systemMonitorExpanded = settings.systemMonitorExpanded ?? SETTINGS_DEFAULTS.systemMonitorExpanded;
                 patch.monitorItems = Array.isArray(settings.monitorItems)
                     ? settings.monitorItems.filter((i): i is string => typeof i === 'string')
                     : null;
@@ -312,39 +320,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
     // Test-only: reset to initial state
     _resetForTest: () => {
-        set({
-            autoRefresh: true,
-            refreshInterval: 2000,
-            ipcPort: DEFAULT_IPC_PORT,
-            consoleBufferSize: 2000,
-            autoGeneratePasswords: true,
-            portConflictCheck: true,
-            autoPortCheck: false,
-            osNotifications: true,
-            sounds: DEFAULT_SOUNDS,
-            ...APP_OPTION_DEFAULTS,
-            settingsPath: '',
-            settingsReady: false,
-            theme: 'auto',
-            accentColor: THEME_DEFAULTS.accentColor,
-            accentSecondary: THEME_DEFAULTS.accentSecondary,
-            useGradient: THEME_DEFAULTS.useGradient,
-            fontScale: THEME_DEFAULTS.fontScale,
-            enableTransitions: THEME_DEFAULTS.enableTransitions,
-            consoleSyntaxHighlight: THEME_DEFAULTS.consoleSyntaxHighlight,
-            consoleBgColor: THEME_DEFAULTS.consoleBgColor,
-            consoleTextColor: THEME_DEFAULTS.consoleTextColor,
-            sidebarCompact: THEME_DEFAULTS.sidebarCompact,
-            consoleFontScale: THEME_DEFAULTS.consoleFontScale,
-            windowBackdrop: WINDOW_BACKDROP_DEFAULTS,
-            systemMonitorExpanded: false,
-            monitorItems: null,
-            systemMonitorMode: 'docked',
-            systemMonitorFloat: null,
-            closedGuides: [],
-            daemonView: 'switch',
-            mainDaemon: null,
-        });
+        set({ ...SETTINGS_DEFAULTS, settingsPath: '', settingsReady: false });
         dirtyKeys.clear();
     },
 }));

@@ -287,6 +287,7 @@ impl Supervisor {
 
     /// 저장된 인스턴스 설정을 지금 모듈 선언에 맞춘다. 모듈을 다시 읽은 뒤에도 부른다 (모듈이 없는 인스턴스는 그대로 둔다).
     /// - 모듈이 `list`로 바꾼 설정의 옛 문자열 값을 배열로 읽는다 (06 §8.1)
+    /// - `protocol_mode`의 `auto`·예전 `rcon`은 모듈 프로토콜로 맞춘다 (메모리에서만, 저장할 때 함께 적힌다)
     /// - 0.1.14-beta.1까지 인스턴스 칸에 있던 REST 접속값을 모듈 설정으로 옮겨 저장한다 (`[protocols.rest]`, 한 번)
     /// - 0.1.14-beta.1까지 인스턴스에 복사해 두던 모듈 `[install]` 값을 지워 저장한다 (한 번)
     pub fn migrate_settings(&mut self) {
@@ -296,6 +297,9 @@ impl Supervisor {
             let Ok(module) = loader.get_module(&instance.module_name) else { return };
             if let Some(settings) = &module.metadata.settings {
                 crate::validator::migrate_list_values(&settings.fields, &mut instance.module_settings);
+            }
+            if let Some(mode) = module.metadata.protocol_mode_for(&instance.protocol_mode) {
+                instance.protocol_mode = mode;
             }
             let rest_moved = instance.take_legacy_rest(module.metadata.rest());
             let copies_dropped = module.metadata.install.as_ref().is_some_and(|install| instance.drop_install_copies(&install.method));

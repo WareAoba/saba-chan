@@ -149,7 +149,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
     const discordSettingsPath = (guild: string) => `/api/discord/${encodeURIComponent(guild)}/settings`;
     /**
      * 콘솔 스트림 (셸 `daemon_stream_open`, 웹은 릴레이의 조각 답). 건마다 onUpdate(콘솔 조회와 같은 답, reset이면 처음부터 다시),
-     * 끝나거나 데몬이 오류를 보내면 onEnd. 열지 못하면(옛 데몬·옛 릴레이·연결 실패) null: 부른 쪽은 주기 조회로 읽는다.
+     * 끝나거나 데몬이 오류를 보내면 onEnd. 열지 못하면(옛 릴레이·연결 실패) null: 부른 쪽은 주기 조회로 읽는다.
      * 연 스트림은 돌려준 함수로 닫는다
      */
     let streamSeq = 0;
@@ -224,11 +224,9 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 if (Array.isArray(data?.port_conflict_stops)) {
                     // 겹친 조회는 같은 커서로 같은 알림을 받는다: 먼저 처리한 응답 뒤의 것만 남긴다
                     const seen = noticesAfter;
-                    data.port_conflict_stops = data.port_conflict_stops.filter(
-                        (evt) => !Number.isSafeInteger(evt.id) || (evt.id ?? 0) > seen,
-                    );
+                    data.port_conflict_stops = data.port_conflict_stops.filter((evt) => evt.id > seen);
                     for (const { id } of data.port_conflict_stops) {
-                        if (id !== undefined && Number.isSafeInteger(id) && id > noticesAfter) noticesAfter = id;
+                        if (id > noticesAfter) noticesAfter = id;
                     }
                 }
                 notifyConflicts(data);
@@ -273,17 +271,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 return connectionError(error);
             }
         },
-        // 상태는 id로 묻는다. 이 길이 없는 옛 데몬(원격 0.1.11, 라우트가 없어 error_code 없는 404)이면 이름으로
+        // 상태는 id로 묻는다. `name`은 오류 문구에만 쓴다
         instanceStatus: async (id: string, name = id): Promise<ApiBody> => {
-            const ask = async (path: string) => (await get(path)).data;
             try {
-                try {
-                    return await ask(`/api/instance/${encodeURIComponent(id)}/status`);
-                } catch (caught) {
-                    const error = caught as DaemonError;
-                    if (error.response?.status !== 404 || error.response.data?.error_code) throw error;
-                    return await ask(`/api/server/${encodeURIComponent(name)}/status`);
-                }
+                return (await get(`/api/instance/${encodeURIComponent(id)}/status`)).data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 if (error.response) {
@@ -351,11 +342,6 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         },
         // 모듈 코드가 쓰는 위험한 능력과 module.toml [permissions] 선언 비교 (데몬 응답 그대로)
         moduleAudit: (moduleName: string) => call('get', `/api/module/${encodeURIComponent(moduleName)}/audit`, undefined, 5000),
-        // 최근 종료 이력
-        instanceEvents: async (id: string) => {
-            const res = await call('get', instancePath(id, '/events'), undefined, 5000);
-            return failed(res) ? { ...res, events: [] } : res;
-        },
         // 지난 로그: 한 실행분의 끝에서부터 (`before`로 더 앞을 읽는다)
         instanceLogs: (
             id: string,
@@ -985,25 +971,15 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         discordBotStatus: async (): Promise<AgentStatus> => {
             try {
                 const { data } = await get('/api/relay/agent', { timeout: 3000 });
-                // 에이전트가 하트비트로 아는 연결 상태 (0.1.14~). 있으면 화면이 릴레이에 따로 묻지 않는다
-                const link: RelayLink | undefined =
-                    typeof data?.connected === 'boolean' ? { connected: data.connected, error: String(data.lastError || ''), heard: data.lastHeartbeatAt != null } : undefined;
+                // 에이전트가 하트비트로 아는 연결 상태. 화면은 릴레이에 따로 묻지 않는다
+                const link: RelayLink = { connected: !!data?.connected, error: String(data?.lastError || ''), heard: data?.lastHeartbeatAt != null };
+                // 화면이 보일 상태는 데몬이 정한다 (`state`): running·too_old·rejected·replaced·invalid_relay_url·stopped
+                const status = data?.state as 'running' | 'stopped' | 'replaced' | 'invalid_relay_url' | 'too_old' | 'rejected';
                 // 릴레이가 이 앱 버전을 받지 않는다: 세션은 살아 있어도 명령이 오지 않는다
-                if (data?.lastErrorCode === 'agent_too_old')
-                    return { status: 'too_old', running: !!data.running, minVersion: data.minVersion ?? null, ...(link ? { link } : {}) };
+                if (status === 'too_old') return { status, running: !!data.running, minVersion: data.minVersion ?? null, link };
                 // 세션은 살아 있지만 릴레이가 상태 보고를 검증에서 거절했다: 이대로면 디스코드에서 오프라인이 된다
-                if (data?.running && data?.heartbeatRejected)
-                    return { status: 'rejected', running: true, reason: data.heartbeatRejected, ...(link ? { link } : {}) };
-                const status = data?.running
-                    ? 'running'
-                    : // 같은 디스코드 계정이 다른 PC를 페어링해서 데몬이 에이전트를 멈췄다
-                      data?.lastErrorCode === 'token_replaced'
-                      ? 'replaced'
-                      : // 저장된 릴레이 주소가 https(루프백만 http)가 아니어서 데몬이 에이전트를 띄우지 않았다
-                        data?.lastErrorCode === 'invalid_relay_url'
-                        ? 'invalid_relay_url'
-                        : 'stopped';
-                return link ? { status, running: !!data?.running, link } : status;
+                if (status === 'rejected') return { status, running: true, reason: data.heartbeatRejected, link };
+                return { status, running: !!data?.running, link };
             } catch (_e) {
                 // 늦거나 닿지 못했다: 꺼졌는지 모른다 (스토어가 두 번 연달아 모를 때만 꺼짐으로 본다)
                 return 'unknown';
@@ -1200,8 +1176,6 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         remoteRenamePc: (hostId: string, name: string) =>
             call('put', `/api/remote/peers/${encodeURIComponent(hostId)}/name`, { name }, 15000),
         remoteConnect: (hostId: string) => call('post', '/api/remote/daemons', { hostId }, 30000),
-        remoteForget: async (hostId: string) =>
-            (await call('delete', `/api/remote/daemons/${encodeURIComponent(hostId)}`)) || { ok: true },
         // 내 PC 카드의 지우기: 그 PC에서 사바쨩 제거(리눅스·맥) → 서버쨩 목록에서 빼기 → 잊기. `{uninstalled, removedFromRelay}`
         remoteRemove: (hostId: string, body: { uninstall: boolean; keepSettings: boolean; keepInstances: boolean; removePc: boolean }) =>
             call('post', `/api/remote/daemons/${encodeURIComponent(hostId)}/remove`, body, 60000),

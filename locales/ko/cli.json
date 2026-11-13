@@ -679,6 +679,7 @@
   "run": {
     "confirm_danger": "{{name}}에서 {{label}}은(는) 되돌릴 수 없습니다. 실행할까요?",
     "missing_arg": "{{label}} 누락. 사용법: {{usage}}",
+    "must_be_boolean": "{{label}}은(는) 켜기·끄기(on/off, yes/no)여야 합니다.",
     "must_be_number": "{{label}}은(는) 숫자여야 합니다.",
     "must_be_one_of": "{{label}}은(는) 다음 중 하나여야 합니다: {{options}}",
     "no_commands": "이 게임은 정해진 명령 없음. 콘솔에 직접 보내기: saba-chan-cli server send 이름 \"줄\"",

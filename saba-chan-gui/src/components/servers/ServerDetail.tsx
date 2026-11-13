@@ -680,7 +680,7 @@ function InfoTab({
     const moreRows = [
         server.status === 'running' && server.pid && ['PID', server.pid],
         server.rest_port && ['REST', `${server.rest_host || '127.0.0.1'}:${server.rest_port}`],
-        moduleData && [t('shell.info_protocol'), protocolLabel(server, moduleData)],
+        moduleData && [t('shell.info_protocol'), protocolLabel(server)],
     ].filter(Boolean) as [string, ReactNode][];
     const busy = server.status === 'running' || server.status === 'starting' || server.status === 'stopping';
 

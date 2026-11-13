@@ -74,14 +74,7 @@ describe('웹 정보 탭', () => {
     beforeAll(() => initI18n('en'));
 
     it('통신 방식은 자세히 안에, 모르는 값은 줄째 숨기고, 최근 종료 기록은 없다', async () => {
-        const api = apiWith({
-            instanceEvents: vi.fn().mockResolvedValue({
-                events: [
-                    { at: 1_700_000_000, kind: 'user_stop', exit_code: 0 },
-                    { at: 1_699_000_000, kind: 'crash', exit_code: 3 },
-                ],
-            }),
-        });
+        const api = apiWith();
         const server = asServer({ id: 'abc-123', name: 'MC', module: 'minecraft', status: 'stopped', protocol_mode: 'stdin' });
         await act(async () => render(<InfoPanel api={api} server={server} moduleData={minecraft as never} />));
         const text = document.body.textContent || '';

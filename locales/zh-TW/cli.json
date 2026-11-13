@@ -679,6 +679,7 @@
   "run": {
     "confirm_danger": "在 {{name}} 執行 {{label}} 後無法復原。要執行嗎？",
     "missing_arg": "缺少 {{label}}。用法：{{usage}}",
+    "must_be_boolean": "{{label}} 必須是 true 或 false（on/off、yes/no）。",
     "must_be_number": "{{label}} 必須是數字。",
     "must_be_one_of": "{{label}} 必須是以下其中之一：{{options}}",
     "no_commands": "此遊戲沒有定義指令。直接傳送到主控台：saba-chan-cli server send 名稱 \"行\"",

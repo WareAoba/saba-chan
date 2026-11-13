@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CliLine, changedForCli, commandCli, fillCli, resetCliCache, splitQuoted } from '../components/CliLine';
+import { CliLine, commandCli, fillCli, resetCliCache, splitQuoted } from '../components/CliLine';
+import { changedForCli } from '../utils/cliValues';
 import { summaryValue } from '../components/shell/CommandPalette';
 
 const t = (k: string) => (k === 'palette.none' ? 'none' : k);
