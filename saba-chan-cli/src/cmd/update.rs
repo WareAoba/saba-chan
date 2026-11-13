@@ -97,6 +97,9 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
         }
         UpdateCmd::Repair => repair(ctx).await,
         UpdateCmd::Rollback => rollback(ctx).await,
+        UpdateCmd::Versions { name } => versions(ctx, &name).await,
+        UpdateCmd::Pin { name, version } => pin(ctx, &name, &version).await,
+        UpdateCmd::Unpin { name } => unpin(ctx, &name).await,
         UpdateCmd::Config { pairs } => config(ctx, &pairs).await,
     }
 }
@@ -242,6 +245,129 @@ async fn rollback(ctx: &Ctx) -> Result<()> {
     std::process::exit(0);
 }
 
+/// `update versions|pin|unpin`이 받는 이름(모듈 이름·익스텐션 id, 또는 키 `module-…`·`ext-…`)의 키와 보일 이름 ("마인크래프트 모듈")
+async fn addon_target(ctx: &Ctx, arg: &str) -> Result<(String, String)> {
+    let modules = ctx.api.modules().await?;
+    for m in modules.get("modules").and_then(Value::as_array).into_iter().flatten() {
+        let name = s(m, "name");
+        if !name.is_empty() && (arg == name || arg.strip_prefix("module-") == Some(name)) {
+            let shown = if s(m, "display_name").is_empty() { name } else { s(m, "display_name") };
+            return Ok((format!("module-{name}"), t!("update.name_module", name = shown)));
+        }
+    }
+    let extensions = ctx.api.extensions().await?;
+    for e in extensions.get("extensions").and_then(Value::as_array).into_iter().flatten() {
+        let id = s(e, "id");
+        if !id.is_empty() && (arg == id || arg.strip_prefix("ext-") == Some(id)) {
+            let shown = if s(e, "name").is_empty() { id } else { s(e, "name") };
+            return Ok((format!("ext-{id}"), t!("update.name_extension", name = shown)));
+        }
+    }
+    Err(crate::error::usage(t!("update.not_an_addon", name = arg)))
+}
+
+/// 판 목록의 줄: 판과 표시(설치됨 · 최신, 내려짐), 뺀 판 안내
+fn version_lines(r: &Value) -> Vec<String> {
+    let mut lines: Vec<String> = r
+        .get("versions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|v| {
+            let flag = |k: &str| v.get(k).and_then(Value::as_bool) == Some(true);
+            let marks: Vec<String> = if flag("yanked") {
+                vec![t!("update.version_yanked")]
+            } else {
+                [(flag("installed"), t!("update.current")), (flag("latest"), t!("update.latest"))].into_iter().filter(|(on, _)| *on).map(|(_, m)| m).collect()
+            };
+            format!("  {}  {}", s(v, "version"), marks.join(" · ")).trim_end().to_string()
+        })
+        .collect();
+    if lines.is_empty() {
+        lines.push(t!("update.versions_none"));
+    }
+    let excluded: Vec<&str> = r.get("excluded").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+    if !excluded.is_empty() {
+        lines.push(t!("update.versions_excluded", n = excluded.len(), list = excluded.join(", ")));
+    }
+    lines
+}
+
+/// `update versions <이름>`: 이 PC의 사바쨩으로 돌아가는 판 (데몬이 서명을 확인한 것)
+async fn versions(ctx: &Ctx, arg: &str) -> Result<()> {
+    let (key, name) = addon_target(ctx, arg).await?;
+    let r = ctx.api.addon_versions(&key).await.map_err(older_daemon)?;
+    ctx.out.data(&r, |r| {
+        say!("{}", t!("update.versions_title", name = name, core = s(r, "core")));
+        for line in version_lines(r) {
+            say!("{}", line);
+        }
+    });
+    Ok(())
+}
+
+/// 판 목록에서 고른 판이 고를 수 없는 까닭. 고를 수 있으면 None
+fn unpickable(list: &Value, version: &str, arg: &str) -> Option<String> {
+    let row = list.get("versions").and_then(Value::as_array).into_iter().flatten().find(|v| s(v, "version") == version);
+    match row {
+        Some(v) if v.get("yanked").and_then(Value::as_bool) != Some(true) => None,
+        Some(_) => Some(t!("update.pin_yanked", version = version, arg = arg)),
+        None => Some(t!("update.pin_unavailable", version = version, arg = arg)),
+    }
+}
+
+/// 판 바꾸기의 결과 줄: 바꿨으면 `done`, 켜진 서버를 기다리면 기다리는 까닭
+fn switch_outcome(r: &Value, done: String) -> String {
+    if s(r, "state") != "waiting" {
+        return done;
+    }
+    let servers: Vec<&str> = r.get("waiting_for").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+    if servers.is_empty() {
+        t!("update.pin_waiting_busy", version = s(r, "version"))
+    } else {
+        t!("update.pin_waiting", servers = servers.join(", "), version = s(r, "version"))
+    }
+}
+
+/// `update pin <이름> <판>`: 묻고, 데몬이 받아 바꾸고 고정한다
+async fn pin(ctx: &Ctx, arg: &str, version: &str) -> Result<()> {
+    let (key, name) = addon_target(ctx, arg).await?;
+    let list = ctx.api.addon_versions(&key).await.map_err(older_daemon)?;
+    if let Some(why) = unpickable(&list, version, arg) {
+        return Err(crate::error::usage(why));
+    }
+    let from = s(&list, "installed").to_string();
+    ctx.ask.ensure(&t!("update.pin_confirm", name = name, from = from, version = version))?;
+    let spin = crate::progress::spinner(&format!("{} {} {}", t!("update.downloading"), key, version));
+    let r = ctx.api.addon_pin(&key, version).await;
+    spin.finish_and_clear();
+    let r = r?;
+    ctx.out.done(&switch_outcome(&r, t!("update.pinned_done", name = name, version = version)), &r);
+    Ok(())
+}
+
+/// `update unpin <이름>`: 묻고, 고정을 풀고 가장 새 판으로 바로 바꾼다
+async fn unpin(ctx: &Ctx, arg: &str) -> Result<()> {
+    let (key, name) = addon_target(ctx, arg).await?;
+    let list = ctx.api.addon_versions(&key).await.map_err(older_daemon)?;
+    let newest = list
+        .get("versions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|v| v.get("latest").and_then(Value::as_bool) == Some(true))
+        .map(|v| s(v, "version").to_string())
+        .ok_or_else(|| crate::error::usage(t!("update.versions_none")))?;
+    ctx.ask.ensure(&t!("update.unpin_confirm", name = name, version = newest))?;
+    let spin = crate::progress::spinner(&format!("{} {} {}", t!("update.downloading"), key, newest));
+    let r = ctx.api.addon_unpin(&key).await;
+    spin.finish_and_clear();
+    let r = r?;
+    let version = s(&r, "version").to_string();
+    ctx.out.done(&switch_outcome(&r, t!("update.unpinned_done", name = name, version = version)), &r);
+    Ok(())
+}
+
 fn print_status(r: &Value) {
     let comps = r
         .get("components")
@@ -258,13 +384,15 @@ fn print_status(r: &Value) {
         t!("col.state"),
     ]);
     for c in &comps {
-        let state = match component_state(c) {
+        // 사용자가 고른 판은 그 판보다 새 판이 나올 때까지 그대로 둔다
+        let pinned = c.get("pinned").filter(|p| p.is_object()).map(|p| output::dim(&t!("update.status_pinned", until = s(p, "until_newer_than"))));
+        let state = pinned.unwrap_or_else(|| match component_state(c) {
             ComponentState::Ready => console::style(t!("update.ready")).cyan().to_string(),
             ComponentState::Update => console::style(t!("common.update_available")).yellow().to_string(),
             ComponentState::Reinstall => console::style(t!("update.reinstall_official")).yellow().to_string(),
             ComponentState::NotInstalled => output::dim(&t!("update.not_installed")),
             ComponentState::Latest => output::dim(&t!("update.up_to_date")),
-        };
+        });
         t.add_row(vec![
             component_name(c),
             output::show(c.get("current_version").unwrap_or(&Value::Null)),
@@ -671,6 +799,41 @@ mod tests {
         assert!(component_name(&json!({"component": "module-palworld", "display_name": "Module: palworld"})).contains("palworld"));
         assert!(!component_name(&json!({"component": "module-palworld", "display_name": "Module: palworld"})).contains("Module:"));
         assert_eq!(component_name(&json!({"component": "cli", "display_name": "CLI"})), "CLI");
+    }
+
+    /// 버전 목록: 설치된 것·최신 표시, 내려진 버전은 고를 수 없고, 목록에 없는 버전도 고를 수 없다
+    #[test]
+    fn the_version_list_marks_versions_and_refuses_yanked_or_missing_ones() {
+        crate::i18n::init("en");
+        let list = json!({
+            "versions": [
+                { "version": "1.3.0", "installed": false, "latest": true, "yanked": false },
+                { "version": "1.2.0", "installed": false, "latest": false, "yanked": true },
+                { "version": "1.1.0", "installed": true, "latest": false, "yanked": false },
+            ],
+            "excluded": ["2.0.0"],
+        });
+        let lines = version_lines(&list);
+        assert_eq!(lines[0], format!("  1.3.0  {}", t!("update.latest")));
+        assert_eq!(lines[1], format!("  1.2.0  {}", t!("update.version_yanked")));
+        assert_eq!(lines[2], format!("  1.1.0  {}", t!("update.current")));
+        assert!(lines[3].contains("2.0.0"));
+        assert_eq!(version_lines(&json!({ "versions": [], "excluded": [] })), vec![t!("update.versions_none")]);
+
+        assert_eq!(unpickable(&list, "1.3.0", "m"), None);
+        assert_eq!(unpickable(&list, "1.2.0", "m"), Some(t!("update.pin_yanked", version = "1.2.0", arg = "m")));
+        assert_eq!(unpickable(&list, "2.0.0", "m"), Some(t!("update.pin_unavailable", version = "2.0.0", arg = "m")));
+    }
+
+    /// 켜진 서버를 기다리는 판 바꾸기는 "바꿨어요"로 끝내지 않고 무엇을 기다리는지 말한다
+    #[test]
+    fn a_waiting_switch_names_what_it_waits_for() {
+        crate::i18n::init("en");
+        assert_eq!(switch_outcome(&json!({ "state": "applied", "version": "1.1.0" }), "done".into()), "done");
+        let waiting = switch_outcome(&json!({ "state": "waiting", "version": "1.1.0", "waiting_for": ["alpha"] }), "done".into());
+        assert_eq!(waiting, t!("update.pin_waiting", servers = "alpha", version = "1.1.0"));
+        let busy = switch_outcome(&json!({ "state": "waiting", "version": "1.1.0", "waiting_for": [] }), "done".into());
+        assert_eq!(busy, t!("update.pin_waiting_busy", version = "1.1.0"));
     }
 
     /// 데몬이 오류를 돌려준 적용은 "적용할 게 없어요"로 성공 처리하지 않는다 (cloud-review-300 P3-4)

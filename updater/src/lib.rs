@@ -14,6 +14,7 @@
 //! 경로는 모두 `install_root` 기준입니다.
 
 
+pub mod addon_pins;
 pub mod app_bundle;
 pub mod component_dirs;
 pub mod config_file;
@@ -829,7 +830,12 @@ impl UpdateManager {
         let catalog = client.fetch_addon_catalog(&core, &self.config.channel).await;
         // 깐 판이 내린 판인지는 목록의 서명된 내림 기록으로 안다
         let addons = catalog.as_ref().ok().and_then(Option::as_ref).map(|c| relay::AddonCatalog { components: HashMap::new(), yanked: c.yanked.clone() });
-        let release = relay::merge_addon_catalog(release, catalog, &core, &self.config.channel, &platform);
+        let mut release = relay::merge_addon_catalog(release, catalog, &core, &self.config.channel, &platform);
+        // 사용자가 고른 판: 고정한 것은 두고, 미뤄 둔 바꾸기는 고른 판으로 (`addon_pins::rule`)
+        let pins = match release.as_mut() {
+            Some(r) => self.apply_pins(&client, &mut r.manifest, &local_versions, addons.as_ref(), &core).await,
+            None => addon_pins::PinnedKeys::default(),
+        };
 
         let offered = release.as_ref().map(|r| r.latest.version.clone());
         let previous = std::mem::take(&mut self.status.components);
@@ -854,7 +860,11 @@ impl UpdateManager {
                     continue;
                 }
                 // 설치돼 있는데 로컬 버전을 모르면 알림 대신 최신으로 기록
-                let update_available = if installed
+                let update_available = if pins.keep.contains(key) {
+                    false
+                } else if pins.switch.contains(key) {
+                    installed && info.version != current
+                } else if installed
                     && (Self::reinstall_from_catalog(&component, &current, &info.version)
                         || (current.is_empty() && Self::unknown_version_needs_update(&component)))
                 {
@@ -985,13 +995,15 @@ impl UpdateManager {
         versions
     }
 
-    /// 디스크에 있는 모듈(`modules/*/module.toml`)과 익스텐션(`extensions/*/manifest.json`)의 키·버전
+    /// 디스크에 있는 모듈(`modules/*/module.toml`)과 익스텐션(`extensions/*/manifest.json`)의 키·버전.
+    /// 점으로 시작하는 폴더(교체가 옆에 둔 옛 판 `.<이름>.saba-old` 등)는 깔린 것이 아니다
     fn disk_addon_versions(&self) -> HashMap<String, String> {
         let mut versions = HashMap::new();
+        let installed = |entry: &std::fs::DirEntry| entry.path().is_dir() && !entry.file_name().to_string_lossy().starts_with('.');
         if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                if installed(&entry) {
                     if let Some((name, version)) = self.read_module_version(&path.join("module.toml")) {
                         versions.insert(format!("module-{}", name), version);
                     }
@@ -1001,7 +1013,7 @@ impl UpdateManager {
         if let Ok(entries) = std::fs::read_dir(&self.extensions_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                if installed(&entry) {
                     if let Some((name, version)) = read_extension_version(&path.join("manifest.json")) {
                         versions.insert(format!("ext-{}", name), version);
                     }
@@ -1160,7 +1172,9 @@ impl UpdateManager {
             if let Ok(mut prog) = self.download_progress.lock() {
                 prog.active = false;
             }
-            anyhow::bail!("Failed to download {}: {}", rc.filename, e);
+            // 원인(`DownloadError`)을 남겨 둔다: 데몬이 받지 못함과 검증 실패를 가른다
+            let message = format!("Failed to download {}: {}", rc.filename, e);
+            return Err(anyhow::Error::new(e).context(message));
         }
 
         // 진행률 완료

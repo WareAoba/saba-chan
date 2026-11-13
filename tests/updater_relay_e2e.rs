@@ -104,12 +104,20 @@ fn manager(relay_url: &str, modules_dir: &std::path::Path) -> UpdateManager {
     UpdateManager::new(cfg, &modules_dir.to_string_lossy())
 }
 
+/// 이 파일의 시험이 함께 믿는 시험 키 (`TEST_PUBKEY_ENV`는 프로세스에 하나라 시험마다 다른 키를 쓰면 서로 덮는다)
+fn test_key() -> &'static str {
+    static KEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    KEY.get_or_init(|| {
+        let (private, public) = signature::generate_key_pair().unwrap();
+        // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+        unsafe { std::env::set_var(signature::TEST_PUBKEY_ENV, &public) };
+        private
+    })
+}
+
 #[tokio::test]
 async fn relay_update_cycle_verifies_signature_and_hashes() {
-    let (private, public) = signature::generate_key_pair().unwrap();
-    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
-    unsafe { std::env::set_var(signature::TEST_PUBKEY_ENV, &public) };
-    let base = start_mock(&private, signature::TEST_KEY_ID).await;
+    let base = start_mock(test_key(), signature::TEST_KEY_ID).await;
     let modules = tempfile::tempdir().unwrap();
     // 업데이트 대상은 설치된 모듈뿐이다
     for name in ["good", "bad"] {
@@ -175,4 +183,85 @@ async fn manifest_signed_by_unknown_key_is_rejected() {
     let err = mgr.check_for_updates().await.expect_err("forged manifest must fail");
     assert!(err.to_string().contains("signature"), "{}", err);
     assert!(mgr.get_status().components.is_empty());
+}
+
+/// 판 고르기 시험용 릴레이: `/v1/addons/catalog`는 `offered` 판 하나, `/v1/addons/versions`는 `all` 판 전부를 낸다 (앱 릴리즈는 없다)
+struct AddonMock {
+    key: String,
+    private: String,
+    offered: std::sync::Mutex<String>,
+    all: Vec<&'static str>,
+}
+
+impl AddonMock {
+    fn entry(&self, version: &str) -> Value {
+        let manifest = json!({ "key": self.key, "version": version, "asset": format!("{}-{version}.zip", self.key),
+                               "sha256": "a".repeat(64), "url": format!("https://cdn.example/{}-{version}.zip", self.key) });
+        serde_json::to_value(signature::sign(manifest, signature::TEST_KEY_ID, &self.private).unwrap()).unwrap()
+    }
+}
+
+async fn start_addon_mock(mock: Arc<AddonMock>) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let app = Router::new()
+        .route("/v1/updates/check", get(|| async { Json(json!({ "upToDate": true })) }))
+        .route(
+            "/v1/addons/catalog",
+            get(|State(m): State<Arc<AddonMock>>| async move {
+                let offered = m.offered.lock().unwrap().clone();
+                Json(json!({ "addons": [m.entry(&offered)], "yanked": [] }))
+            }),
+        )
+        .route(
+            "/v1/addons/versions",
+            get(|State(m): State<Arc<AddonMock>>| async move {
+                Json(json!({ "key": m.key, "versions": m.all.iter().map(|v| m.entry(v)).collect::<Vec<_>>(), "yanked": [], "excluded": [] }))
+            }),
+        )
+        .with_state(mock);
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    base
+}
+
+/// 고른 판(고정)은 카탈로그가 바꾸기 전 판보다 새 판을 낼 때까지 업데이트로 내지 않는다. 그런 판이 나오면 고정을 풀고 다시 낸다.
+/// 켜진 서버를 기다리는 바꾸기는 확인을 다시 해도 고른 판을 받을 것으로 남는다
+#[tokio::test]
+async fn a_pinned_addon_is_left_alone_until_a_newer_version_than_the_replaced_one() {
+    use saba_chan_updater_lib::addon_pins::{self, AddonPin};
+    let private = test_key().to_string();
+    let name = format!("pinned{}", std::process::id());
+    let key = format!("module-{name}");
+    let mock = Arc::new(AddonMock { key: key.clone(), private, offered: std::sync::Mutex::new("0.1.13".into()), all: vec!["0.1.13", "0.1.12"] });
+    let base = start_addon_mock(mock.clone()).await;
+    let modules = tempfile::tempdir().unwrap();
+    let dir = modules.path().join(&name);
+    std::fs::create_dir_all(&dir).unwrap();
+    let installed = |v: &str| std::fs::write(dir.join("module.toml"), format!("[module]\nname = \"{name}\"\nversion = \"{v}\"\n")).unwrap();
+    let mut mgr = manager(&base, modules.path());
+    let offered = |status: &saba_chan_updater_lib::UpdateStatus| {
+        let c = status.components.iter().find(|c| c.component.manifest_key() == key).expect("listed");
+        (c.update_available, c.latest_version.clone().unwrap_or_default())
+    };
+    let pin = AddonPin { version: "0.1.12".into(), until_newer_than: "0.1.13".into() };
+
+    // 바꾸기를 기다리는 동안(0.1.13이 깔려 있다) 확인은 고른 0.1.12를 받을 것으로 둔다
+    installed("0.1.13");
+    addon_pins::update(&key, |c| {
+        c.pinned = Some(pin.clone());
+        c.pending_version = Some("0.1.12".into());
+    })
+    .unwrap();
+    assert_eq!(offered(&mgr.check_for_updates().await.unwrap()), (true, "0.1.12".to_string()));
+
+    // 고른 판이 깔리면 0.1.13은 업데이트로 나오지 않는다
+    installed("0.1.12");
+    addon_pins::update(&key, |c| c.pending_version = None).unwrap();
+    assert!(!offered(&mgr.check_for_updates().await.unwrap()).0);
+    assert_eq!(addon_pins::get(&key).pinned, Some(pin));
+
+    // 0.1.13보다 새 판이 나오면 고정을 풀고 자동 업데이트로 돌아간다
+    *mock.offered.lock().unwrap() = "0.1.14".into();
+    assert_eq!(offered(&mgr.check_for_updates().await.unwrap()), (true, "0.1.14".to_string()));
+    assert_eq!(addon_pins::get(&key).pinned, None);
 }

@@ -21,8 +21,10 @@ const BAD: &str = "bad_target";
 /// 고른 데몬과 상관없이 이 PC에서 처리하는 경로 (푼 조각 목록, `gate::path_segments`). 데몬 API(`/api/…`)가 아닌 것(`/health` 포함)도 이 PC다
 pub fn stays_local(segments: &[String]) -> bool {
     let segments: Vec<&str> = segments.iter().map(String::as_str).collect();
-    // 연결 관리, 이 PC의 인터페이스, 앱 설정, 이 PC 프로그램 업데이트·로그인 자동 실행, 이 데몬 종료
+    // 연결 관리, 이 PC의 인터페이스, 앱 설정, 이 PC 프로그램 업데이트·로그인 자동 실행, 이 데몬 종료.
+    // 모듈·익스텐션 판 고르기(`updates/addons`)는 고른 PC의 모듈을 바꾸므로 그 PC로 보낸다
     match segments.as_slice() {
+        ["api", "updates", "addons", ..] => false,
         ["api", rest @ ..] => matches!(
             rest,
             [] | ["remote" | "client" | "clients" | "updates", ..] | ["config", "gui" | "client", ..] | ["system", "autostart" | "net-trace", ..] | ["daemon", "shutdown"]
@@ -134,6 +136,9 @@ mod tests {
             "/api/clientsx",
             "/api/config/guix",
             "/api/daemon/console",
+            // 판 고르기는 고른 PC의 모듈·익스텐션을 바꾼다
+            "/api/updates/addons/module-minecraft/versions",
+            "/api/updates/addons/ext-steamcmd/pin",
             // 인코딩한 `/`는 조각 안의 글자라 `/api/remote` 아래가 아니다 (원격 데몬도 그 경로를 모른다)
             "/api/remote%2Fclients",
         ] {

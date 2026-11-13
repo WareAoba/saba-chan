@@ -186,6 +186,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     extension_data: instance.extension_data.clone(),
                     extra_args: instance.extra_args.clone(),
                     memory_limit_mb: instance.memory_limit_mb,
+                    memory_limit_supported: crate::instance::MEMORY_LIMIT_ENFORCED,
                     auto_update: instance.auto_update,
                     branch_of: instance.branch_of.clone(),
                     game_chat: instance.game_chat,
@@ -416,6 +417,7 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         })
     });
     let trust = module_trust(&m.path);
+    let addon = addon_choice(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, m.metadata.name), &m.metadata.version);
     let localized = crate::chat::api::locale_aliases(std::path::Path::new(&m.path), lang).unwrap_or_default();
     let unsupported_reason = m.metadata.unsupported_on(std::env::consts::OS, std::env::consts::ARCH).map(str::to_string);
     let mut meta = m.metadata;
@@ -459,7 +461,15 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         agreements: meta.agreements,
         lists: meta.lists,
         functions: None,
+        addon,
     }
+}
+
+/// 목록에 싣는 사용자가 고른 판 (`addon_pins`): 고정과, 깔린 판과 달라 아직 기다리는 고른 판
+pub(crate) fn addon_choice(key: &str, installed: &str) -> saba_chan_updater_lib::addon_pins::AddonChoice {
+    let mut choice = saba_chan_updater_lib::addon_pins::get(key);
+    choice.pending_version = choice.pending_version.filter(|v| v != installed);
+    choice
 }
 
 async fn module_list_response(

@@ -7,6 +7,8 @@
 //! - `GET  /v1/updates/latest?channel&platform&current` — 캐시되는 확인. 롤아웃은 클라이언트가 판정한다 (`in_rollout`)
 //! - `GET  /v1/updates/check?channel&platform&current&client_id` — 옛 릴레이(`latest`가 404·400)일 때만
 //! - `GET  /v1/updates/manifest/:version?release=<id>` — 받은 서명 원문은 `<staging>/manifests/<id>.json`에 둔다
+//! - `GET  /v1/addons/catalog?core&channel` — 이 코어로 돌아가는 모듈·익스텐션의 가장 새 판과 내림 기록
+//! - `GET  /v1/addons/versions?key&core&channel` — 한 모듈·익스텐션의 판 전부 (사용자가 판을 고른다)
 //!
 //! manifest의 `components`는 업데이터 컴포넌트 키(`saba-core`, `cli`, `gui`,
 //! `updater`, `locales`, `module-<name>`, `ext-<name>`)를 그대로 쓴다.
@@ -606,6 +608,20 @@ impl RelayClient {
         Ok((!catalog.components.is_empty() || !catalog.yanked.is_empty()).then_some(catalog))
     }
 
+    /// 한 모듈·익스텐션의 판 전부 (`GET /v1/addons/versions`). 판마다 번들 공개키로 서명을 확인하고 서명·경로가 틀린 판은 뺀다
+    pub async fn fetch_addon_versions(&self, key: &str, core: &str, channel: &str) -> Result<AddonVersions, RelayError> {
+        let url = format!("{}/v1/addons/versions", self.base_url);
+        let resp = self
+            .http
+            .get(&url)
+            .query(&[("key", key), ("core", core), ("channel", channel)])
+            .send()
+            .await
+            .map_err(|e| RelayError::Http(e.to_string()))?;
+        let body: AddonVersionsResponse = Self::json(resp).await?;
+        Ok(AddonVersions::from_signed_with(key, body.versions, body.yanked, body.excluded, signature::verify))
+    }
+
     async fn json<T: for<'de> Deserialize<'de>>(resp: reqwest::Response) -> Result<T, RelayError> {
         if !resp.status().is_success() {
             return Err(RelayError::Status(resp.status().as_u16()));
@@ -644,53 +660,11 @@ impl AddonCatalog {
         yanks: Vec<SignedManifest>,
         verify: impl Fn(&SignedManifest) -> Result<(), signature::SignatureError>,
     ) -> Self {
-        // 내림 기록: 서명이 맞고 `yanked: true`인 모듈·익스텐션 판만. 릴레이가 붙인 서명 없는 표시는 믿지 않는다
         let mut yanked: HashMap<String, Vec<String>> = HashMap::new();
-        for signed in yanks {
-            let m = &signed.manifest;
-            let (Some(key), Some(version)) = (m.get("key").and_then(|v| v.as_str()), m.get("version").and_then(|v| v.as_str())) else {
-                continue;
-            };
-            let addon = key.starts_with(MODULE_PREFIX) || key.starts_with(EXTENSION_PREFIX);
-            if m.get("yanked") != Some(&serde_json::Value::Bool(true)) || !addon || verify(&signed).is_err() {
-                tracing::warn!("[Updater] Ignoring a yank record for '{}' {}: not a signed addon yank", key, version);
-                continue;
-            }
-            yanked.entry(key.to_string()).or_default().push(version.to_string());
+        for (key, version) in yanks.iter().filter_map(|s| verified_yank(s, &verify)) {
+            yanked.entry(key).or_default().push(version);
         }
-        let mut components = HashMap::new();
-        for signed in entries {
-            let key = signed.manifest.get("key").and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
-            if let Err(e) = verify(&signed) {
-                tracing::warn!("[Updater] Dropping addon '{}' from the catalog: {}", key, e);
-                continue;
-            }
-            if !key.starts_with(MODULE_PREFIX) && !key.starts_with(EXTENSION_PREFIX) {
-                tracing::warn!("[Updater] Dropping catalog entry '{}': not a module or extension", key);
-                continue;
-            }
-            let component: ManifestComponent = match serde_json::from_value(signed.manifest.clone()) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::warn!("[Updater] Dropping addon '{}' from the catalog: {}", key, e);
-                    continue;
-                }
-            };
-            let single = ReleaseManifest {
-                version: component.version.clone(),
-                channel: String::new(),
-                platform: String::new(),
-                released_at: None,
-                is_critical: false,
-                components: HashMap::from([(key.clone(), component.clone())]),
-                platforms: HashMap::new(),
-            };
-            if let Err(e) = check_manifest_paths(&single) {
-                tracing::warn!("[Updater] Dropping addon '{}' from the catalog: {}", key, e);
-                continue;
-            }
-            components.insert(key, component);
-        }
+        let components = entries.iter().filter_map(|s| verified_addon(s, &verify)).collect();
         Self { components, yanked }
     }
 
@@ -705,6 +679,109 @@ impl AddonCatalog {
     pub fn overlay(&self, manifest: &mut ReleaseManifest) {
         manifest.components.extend(self.components.clone());
         manifest.components.retain(|key, c| !self.is_yanked(key, &c.version));
+    }
+}
+
+/// 서명된 내림 기록 하나의 `(키, 판)`: 서명이 맞고 `yanked: true`인 모듈·익스텐션 판만. 릴레이가 붙인 서명 없는 표시는 믿지 않는다
+fn verified_yank(
+    signed: &SignedManifest,
+    verify: &impl Fn(&SignedManifest) -> Result<(), signature::SignatureError>,
+) -> Option<(String, String)> {
+    let m = &signed.manifest;
+    let (key, version) = (m.get("key")?.as_str()?, m.get("version")?.as_str()?);
+    let addon = key.starts_with(MODULE_PREFIX) || key.starts_with(EXTENSION_PREFIX);
+    if m.get("yanked") != Some(&serde_json::Value::Bool(true)) || !addon || verify(signed).is_err() {
+        tracing::warn!("[Updater] Ignoring a yank record for '{}' {}: not a signed addon yank", key, version);
+        return None;
+    }
+    Some((key.to_string(), version.to_string()))
+}
+
+/// 서명된 판 기록 하나의 `(키, 판)`. 서명이 틀렸거나, 키가 모듈·익스텐션이 아니거나, 경로가 폴더 밖을 가리키면 None
+fn verified_addon(
+    signed: &SignedManifest,
+    verify: &impl Fn(&SignedManifest) -> Result<(), signature::SignatureError>,
+) -> Option<(String, ManifestComponent)> {
+    let key = signed.manifest.get("key").and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
+    if let Err(e) = verify(signed) {
+        tracing::warn!("[Updater] Dropping addon '{}' from the catalog: {}", key, e);
+        return None;
+    }
+    if !key.starts_with(MODULE_PREFIX) && !key.starts_with(EXTENSION_PREFIX) {
+        tracing::warn!("[Updater] Dropping catalog entry '{}': not a module or extension", key);
+        return None;
+    }
+    let component: ManifestComponent = match serde_json::from_value(signed.manifest.clone()) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("[Updater] Dropping addon '{}' from the catalog: {}", key, e);
+            return None;
+        }
+    };
+    let single = ReleaseManifest {
+        version: component.version.clone(),
+        channel: String::new(),
+        platform: String::new(),
+        released_at: None,
+        is_critical: false,
+        components: HashMap::from([(key.clone(), component.clone())]),
+        platforms: HashMap::new(),
+    };
+    if let Err(e) = check_manifest_paths(&single) {
+        tracing::warn!("[Updater] Dropping addon '{}' from the catalog: {}", key, e);
+        return None;
+    }
+    Some((key, component))
+}
+
+#[derive(Debug, Deserialize)]
+struct AddonVersionsResponse {
+    #[serde(default)]
+    versions: Vec<SignedManifest>,
+    #[serde(default)]
+    yanked: Vec<SignedManifest>,
+    #[serde(default)]
+    excluded: Vec<String>,
+}
+
+/// 한 모듈·익스텐션의 판 전부 (릴레이 `/v1/addons/versions`): 사용자가 판을 고른다
+#[derive(Debug, Clone, Default)]
+pub struct AddonVersions {
+    /// 이 코어로 돌아가고 서명이 맞는 판, 새 판부터. 내린 판은 없다
+    pub versions: Vec<ManifestComponent>,
+    /// 서명된 기록으로 내린 판, 새 판부터
+    pub yanked: Vec<String>,
+    /// 더 새 코어가 있어야 해서 뺀 판, 새 판부터 (릴레이가 알린 그대로)
+    pub excluded: Vec<String>,
+}
+
+impl AddonVersions {
+    fn from_signed_with(
+        key: &str,
+        entries: Vec<SignedManifest>,
+        yanks: Vec<SignedManifest>,
+        excluded: Vec<String>,
+        verify: impl Fn(&SignedManifest) -> Result<(), signature::SignatureError>,
+    ) -> Self {
+        let newest_first = |a: &str, b: &str| SemVer::parse(b).cmp(&SemVer::parse(a));
+        let mut yanked: Vec<String> =
+            yanks.iter().filter_map(|s| verified_yank(s, &verify)).filter(|(k, _)| k == key).map(|(_, v)| v).collect();
+        yanked.sort_by(|a, b| newest_first(a, b));
+        yanked.dedup();
+        let mut versions: Vec<ManifestComponent> = entries
+            .iter()
+            .filter_map(|s| verified_addon(s, &verify))
+            .filter(|(k, c)| k == key && !yanked.contains(&c.version))
+            .map(|(_, c)| c)
+            .collect();
+        versions.sort_by(|a, b| newest_first(&a.version, &b.version));
+        versions.dedup_by(|a, b| a.version == b.version);
+        Self { versions, yanked, excluded }
+    }
+
+    /// 고를 수 있는 판 (내리지 않았고 이 코어로 돈다)
+    pub fn find(&self, version: &str) -> Option<&ManifestComponent> {
+        self.versions.iter().find(|c| c.version == version)
     }
 }
 
@@ -1279,6 +1356,40 @@ mod tests {
         assert_eq!(release.components["module-terraria"].version, "0.1.5", "a module not in the catalog keeps the release's version");
         assert!(!release.components.contains_key("module-zomboid"), "a yanked release version is not offered again");
         assert!(release.components.contains_key("saba-core"), "app components stay");
+    }
+
+    /// 한 키의 판 목록: 서명이 맞는 그 키의 판만 새 판부터 남기고, 서명된 기록으로 내린 판은 고를 판에서 빼 내린 판으로 둔다
+    #[test]
+    fn the_version_list_keeps_signed_versions_of_the_key_newest_first_without_yanked_ones() {
+        let (private, public) = signature::generate_key_pair().unwrap();
+        let signed = |m: serde_json::Value| signature::sign(m, "k", &private).unwrap();
+        let entry = |key: &str, version: &str| {
+            signed(json!({ "key": key, "version": version, "asset": format!("{key}.zip"), "sha256": "a".repeat(64),
+                           "url": format!("https://cdn.example/{key}-{version}.zip") }))
+        };
+        let mut tampered = entry("module-minecraft", "0.1.9");
+        tampered.manifest["url"] = json!("https://evil.example/x.zip");
+        let entries = vec![
+            entry("module-minecraft", "0.1.10"),
+            entry("module-minecraft", "0.1.13"),
+            entry("module-minecraft", "0.1.11"),
+            entry("module-minecraft", "0.1.12"),
+            entry("module-palworld", "0.2.0"),
+            tampered,
+        ];
+        let yanked = vec![
+            signed(json!({ "key": "module-minecraft", "version": "0.1.11", "yanked": true })),
+            signed(json!({ "key": "module-palworld", "version": "0.1.0", "yanked": true })),
+        ];
+        let list = AddonVersions::from_signed_with("module-minecraft", entries, yanked, vec!["0.1.14".into()], |s| {
+            signature::verify_with(s, &[("k", public.as_str())])
+        });
+        let versions: Vec<&str> = list.versions.iter().map(|c| c.version.as_str()).collect();
+        assert_eq!(versions, ["0.1.13", "0.1.12", "0.1.10"]);
+        assert_eq!(list.yanked, ["0.1.11"]);
+        assert_eq!(list.excluded, ["0.1.14"]);
+        assert!(list.find("0.1.12").is_some());
+        assert!(list.find("0.1.11").is_none(), "a yanked version cannot be picked");
     }
 
     // L16: 키·파일 이름·install_dir가 폴더 밖을 가리키면 서명이 맞아도 manifest를 받지 않는다
