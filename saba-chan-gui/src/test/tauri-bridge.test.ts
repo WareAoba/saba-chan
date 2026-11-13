@@ -234,6 +234,22 @@ describe('데몬 응답 가공', () => {
         expect((await api.instanceStart('z')).error).toContain('z');
     });
 
+    it('instanceStart는 데몬이 켜기 전에 거절한 422(익스텐션·의존성·지원 OS)를 200으로 오던 본문 그대로 넘긴다', async () => {
+        const refused = {
+            success: false,
+            error: "Module 'pal' runs on windows only, not linux",
+            error_code: 'module_platform_unsupported',
+            module: 'pal',
+        };
+        const { api } = await install({
+            daemon_request: daemon({
+                'POST /api/instance/old/start': { status: 200, data: refused },
+                'POST /api/instance/new/start': { status: 422, data: refused },
+            }),
+        });
+        expect(await api.instanceStart('new')).toEqual(await api.instanceStart('old'));
+    });
+
     it('executeCommand는 명령을 다듬고 빈 args는 null로 보낸다', async () => {
         const seen: Loose[] = [];
         const { api } = await install({

@@ -64,7 +64,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | window.api 함수 (createApi.ts 줄) | 호출 대상 | 라우트 존재 |
 |---|---|---|
 | serverList (171) | GET /api/servers?notices_after=<본 마지막 알림 id> (port_conflict_stops가 있으면 `notify` 명령으로 OS 알림. 받은 가장 큰 `id`를 기억해 다음 조회에 실어 같은 알림을 두 번 띄우지 않는다, L50). 서버마다 `managed`(runner가 맡는지, `Supervisor::uses_managed_start`)가 실린다(`ipc/mod.rs:185-187`, `handlers/server.rs:87`) | ✓ 643 |
-| instanceStart (212) | POST /api/instance/:id/start (managed 여부와 포트 검사는 데몬이 정한다) | ✓ 646 |
+| instanceStart (212) | POST /api/instance/:id/start (managed 여부와 포트 검사는 데몬이 정한다. 404는 서버 없음 문구, 409는 데몬 문구, 422(데몬이 켜기 전에 거절: 익스텐션·의존성·지원 OS)는 본문 그대로, 그 밖은 시작 실패 문구로 감싼다) | ✓ 646 |
 | instanceStatus | GET /api/instance/:id/status (id가 없으면 이름으로 찾는다). | ✓ |
 | moduleList (269) | GET /api/modules | ✓ 651 |
 | moduleRefresh (281) | POST /api/modules/refresh | ✓ 652 |

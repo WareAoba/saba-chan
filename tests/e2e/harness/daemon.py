@@ -186,7 +186,7 @@ class Daemon:
 
     def start_instance(self, iid: str) -> dict:
         body = self.api.ok("POST", f"/api/instance/{iid}/start")
-        # 시작 실패도 200 + success:false로 오는 경로가 있다 (예: port_conflict)
+        # 모듈이 거절한 시작은 200 + success:false로 온다 (01 §2.1)
         if isinstance(body, dict) and body.get("success") is False:
             raise E2EError(f"시작 실패: {body}")
         return body
