@@ -406,6 +406,9 @@ pub struct ExtensionInfo {
     /// 모듈이 `functions`로 밝힌 lifecycle 함수 (MK1). null이면 모름: 클라이언트는 아무 기능도 숨기지 않는다
     #[serde(default)]
     pub functions: Option<Vec<String>>,
+    /// 사용자가 고른 판: `pinned {version, until_newer_than}`, 바꾸기가 켜진 서버를 기다리면 `pending_version` (없으면 둘 다 빠진다)
+    #[serde(flatten)]
+    pub addon: saba_chan_updater_lib::addon_pins::AddonChoice,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1354,6 +1357,7 @@ mod tests {
             agreements: Vec::new(),
             lists: Vec::new(),
             functions: None,
+            addon: Default::default(),
             commands: Some(crate::supervisor::module_loader::ModuleCommands {
                 fields: vec![
                     crate::supervisor::module_loader::CommandField {
@@ -1419,6 +1423,7 @@ mod tests {
             agreements: Vec::new(),
             lists: Vec::new(),
             functions: None,
+            addon: Default::default(),
             commands: None,
         };
 
@@ -1465,6 +1470,7 @@ mod tests {
                     agreements: Vec::new(),
                     lists: Vec::new(),
                     functions: None,
+                    addon: Default::default(),
                     commands: Some(crate::supervisor::module_loader::ModuleCommands {
                         fields: vec![
                             crate::supervisor::module_loader::CommandField {

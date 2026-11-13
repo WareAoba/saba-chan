@@ -995,13 +995,15 @@ impl UpdateManager {
         versions
     }
 
-    /// 디스크에 있는 모듈(`modules/*/module.toml`)과 익스텐션(`extensions/*/manifest.json`)의 키·버전
+    /// 디스크에 있는 모듈(`modules/*/module.toml`)과 익스텐션(`extensions/*/manifest.json`)의 키·버전.
+    /// 점으로 시작하는 폴더(교체가 옆에 둔 옛 판 `.<이름>.saba-old` 등)는 깔린 것이 아니다
     fn disk_addon_versions(&self) -> HashMap<String, String> {
         let mut versions = HashMap::new();
+        let installed = |entry: &std::fs::DirEntry| entry.path().is_dir() && !entry.file_name().to_string_lossy().starts_with('.');
         if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                if installed(&entry) {
                     if let Some((name, version)) = self.read_module_version(&path.join("module.toml")) {
                         versions.insert(format!("module-{}", name), version);
                     }
@@ -1011,7 +1013,7 @@ impl UpdateManager {
         if let Ok(entries) = std::fs::read_dir(&self.extensions_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                if installed(&entry) {
                     if let Some((name, version)) = read_extension_version(&path.join("manifest.json")) {
                         versions.insert(format!("ext-{}", name), version);
                     }
@@ -1170,7 +1172,9 @@ impl UpdateManager {
             if let Ok(mut prog) = self.download_progress.lock() {
                 prog.active = false;
             }
-            anyhow::bail!("Failed to download {}: {}", rc.filename, e);
+            // 원인(`DownloadError`)을 남겨 둔다: 데몬이 받지 못함과 검증 실패를 가른다
+            let message = format!("Failed to download {}: {}", rc.filename, e);
+            return Err(anyhow::Error::new(e).context(message));
         }
 
         // 진행률 완료
