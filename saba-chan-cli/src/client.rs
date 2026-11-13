@@ -1272,6 +1272,10 @@ impl Api {
     pub async fn update_rollback_info(&self) -> Result<Value> {
         self.get("/api/updates/rollback").await
     }
+    /// GET /api/updates/versions — `{installed, kept_previous, latest, held_until_newer_than}` (사용자가 되돌려 고정한 판 포함)
+    pub async fn update_versions(&self) -> Result<Value> {
+        self.get("/api/updates/versions").await
+    }
     /// POST /api/updates/rollback — 데몬이 업데이터를 띄워 직전 판으로 되돌리고 스스로 종료한다
     pub async fn update_rollback(&self, relaunch: &[String]) -> Result<Value> {
         self.post("/api/updates/rollback", json!({ "relaunch": relaunch })).await

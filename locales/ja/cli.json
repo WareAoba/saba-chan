@@ -872,6 +872,7 @@
     "unpin_confirm": "{{name}} を自動アップデートに戻し、最新バージョン {{version}} にすぐ変更します。続けますか？",
     "unpinned_done": "自動アップデートに戻しました: {{name}} {{version}}",
     "status_pinned": "固定 ({{until}} より新しいバージョンが出たら自動に戻ります)",
+    "status_app": "サバちゃん",
     "not_an_addon": "{{name}}: この PC にインストールされたモジュールや拡張機能ではありません。"
   },
   "validate": {

@@ -872,6 +872,7 @@
     "unpin_confirm": "将 {{name}} 恢复为自动更新，并立即改为最新版本 {{version}}。要继续吗？",
     "unpinned_done": "已恢复自动更新：{{name}} {{version}}",
     "status_pinned": "已固定(出现比 {{until}} 更新的版本后恢复自动)",
+    "status_app": "Saba-chan",
     "not_an_addon": "{{name}}：不是本机已安装的模块或扩展。"
   },
   "validate": {
