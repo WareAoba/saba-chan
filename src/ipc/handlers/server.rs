@@ -670,7 +670,11 @@ pub async fn install_module_from_manifest(
 
 /// 카탈로그 모듈의 `requires`를 못 맞춘 거절. 로드 실패·시작 응답과 같은 코드와 목록 꼴(`"saba-core >=0.1.10 (installed 0.1.9)"`)
 fn unmet_requires_body(module_id: &str, unmet: &[saba_chan_updater_lib::DependencyIssue]) -> Value {
-    json!({
+    let required_core = unmet
+        .iter()
+        .find(|i| i.required_component == "saba-core")
+        .map(|i| i.required_version.trim().trim_start_matches(">=").trim().to_string());
+    let mut body = json!({
         "ok": false,
         "error": unmet.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "),
         "error_code": "module_dependency_unsatisfied",
@@ -680,7 +684,11 @@ fn unmet_requires_body(module_id: &str, unmet: &[saba_chan_updater_lib::Dependen
             .map(|i| format!("{} {} ({})", i.required_component, i.required_version,
                 i.installed_version.as_ref().map_or("not installed".to_string(), |v| format!("installed {v}"))))
             .collect::<Vec<_>>(),
-    })
+    });
+    if let Some(version) = required_core {
+        body["required_core"] = json!(version);
+    }
+    body
 }
 
 async fn install_module_locked(state: IPCServer, module_id: String) -> axum::response::Response {
@@ -2447,6 +2455,7 @@ mod tests {
         assert_eq!((body["ok"].clone(), body["module"].clone()), (json!(false), json!("future")));
         assert_eq!(body["error_code"], "module_dependency_unsatisfied", "{body}");
         assert_eq!(body["missing_dependencies"], json!(["saba-core >=99.0.0 (installed 0.1.9)"]), "{body}");
+        assert_eq!(body["required_core"], "99.0.0", "{body}");
         let missing = saba_chan_updater_lib::unmet_requires("module-future", &requires, &Default::default());
         assert_eq!(unmet_requires_body("future", &missing)["missing_dependencies"], json!(["saba-core >=99.0.0 (not installed)"]));
     }

@@ -114,6 +114,16 @@ impl std::fmt::Display for ExtensionError {
 impl std::error::Error for ExtensionError {}
 
 impl ExtensionError {
+    /// 사바쨩(saba-core)이 모자라 거절했으면 요구 버전 (`>=0.1.10` → `0.1.10`). 응답의 `required_core`로 싣는다 (F8)
+    pub fn required_core(&self) -> Option<String> {
+        let required = match self.error_code.as_str() {
+            "app_version_unsatisfied" => self.related.first(),
+            "component_version_unsatisfied" if self.related.first().is_some_and(|c| c == "saba-core") => self.related.get(1),
+            _ => None,
+        }?;
+        Some(required.trim().trim_start_matches(">=").trim().to_string())
+    }
+
     pub(crate) fn not_found(ext_id: &str) -> Self {
         Self {
             error_code: "not_found".to_string(),
@@ -2384,6 +2394,12 @@ mod tests {
         let err = ExtensionManager::stage_package(tmp.path(), "future", &pkg, None).unwrap_err();
         let ext = err.downcast_ref::<ExtensionError>().expect("structured error");
         assert_eq!((ext.error_code.as_str(), ext.related.clone()), ("app_version_unsatisfied", vec!["999.0.0".to_string()]));
+        // F8: 사바쨩이 모자라 거절했으면 요구 버전을 따로 싣는다
+        assert_eq!(ext.required_core().as_deref(), Some("999.0.0"));
+        let core = ExtensionError::component_version_unsatisfied("x", "saba-core", ">=1.2.0", Some("1.0.0"));
+        assert_eq!(core.required_core().as_deref(), Some("1.2.0"));
+        let other = ExtensionError::component_version_unsatisfied("x", "ext-steamcmd", ">=1.2.0", None);
+        assert_eq!(other.required_core(), None);
     }
 
     #[test]

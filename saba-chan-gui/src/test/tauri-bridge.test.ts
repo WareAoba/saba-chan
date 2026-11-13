@@ -91,6 +91,14 @@ describe('Tauri 브리지 설치', () => {
 });
 
 describe('데몬 응답 가공', () => {
+    // F8: 에이전트 상태는 데몬이 정한 `state`를 그대로 쓴다 (오류 코드를 다시 해석하지 않는다)
+    it('디스코드 에이전트 상태는 데몬의 state를 따른다', async () => {
+        const { api } = await install({
+            daemon_request: daemon({ 'GET /api/relay/agent': { status: 200, data: { state: 'replaced', running: false, lastErrorCode: 'something_new' } } }),
+        });
+        expect(await api.discordBotStatus()).toBe('replaced');
+    });
+
     it('bot-config를 못 읽으면 기본값을 꾸며 내지 않고 실패한다 (저장이 디스크 값을 덮지 않게)', async () => {
         const { api } = await install({
             daemon_request: daemon({ 'GET /api/config/bot': { status: 0, error: 'timeout', code: 'ETIMEDOUT' } }),

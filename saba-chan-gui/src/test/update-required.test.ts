@@ -62,6 +62,14 @@ describe('업데이트가 필요해요', () => {
         ).toBeNull();
     });
 
+    // F8: 0.1.14-beta.2~ 데몬은 요구 버전을 required_core로 싣는다. 문구 꼴이 바뀌어도 안내를 잃지 않는다
+    it('데몬이 준 required_core를 그대로 쓴다', () => {
+        const module = updateRequiredText(t, { error_code: 'module_dependency_unsatisfied', required_core: '0.2.0', missing_dependencies: ['core needs 0.2'] }, 'mc');
+        expect(module).toContain('0.2.0');
+        const ext = updateRequiredText(t, { error_code: 'component_version_unsatisfied', related: ['saba-core'], required_core: '0.3.0' }, 'x');
+        expect(ext).toContain('0.3.0');
+    });
+
     it('버전과 상관없는 실패는 null', () => {
         expect(updateRequiredText(t, { error_code: 'not_found' }, 'x')).toBeNull();
         expect(updateRequiredText(t, null)).toBeNull();

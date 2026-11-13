@@ -390,14 +390,23 @@ impl Supervisor {
             _ => self.unmet_module_dependencies(module_name).await?,
         };
         tracing::warn!("Module '{}' dependencies unmet for '{}': {}", module_name, instance_name, unmet.join(", "));
-        Some(json!({
+        // 사바쨩이 모자라면 그 요구 버전 (`"saba-core >=0.1.10 (installed …)"`는 이 데몬이 만든 꼴이다)
+        let required_core = unmet
+            .iter()
+            .find_map(|d| d.strip_prefix("saba-core "))
+            .map(|d| d.split(" (").next().unwrap_or_default().trim_start_matches(">=").trim().to_string());
+        let mut body = json!({
             "success": false,
             "error": "module_dependency_unsatisfied",
             "error_code": "module_dependency_unsatisfied",
             "message": format!("Cannot start '{}': module '{}' needs {}", instance_name, module_name, unmet.join(", ")),
             "module": module_name,
             "missing_dependencies": unmet,
-        }))
+        });
+        if let Some(version) = required_core {
+            body["required_core"] = json!(version);
+        }
+        Some(body)
     }
 
     /// 모듈 `[module.dependencies]` 중 못 맞춘 것 (`"ext-steamcmd >=1.0.0 (installed 0.9.0)"` 꼴). 다 맞으면 None.
@@ -1368,10 +1377,13 @@ mod tests {
         assert!(supervisor.module_loader.get_module("future").unwrap_err().to_string().contains("requires saba-core"));
         let failed = supervisor.module_loader.load_failure("future").unwrap();
         assert_eq!(failed.error_code.as_deref(), Some("module_dependency_unsatisfied"));
+        assert_eq!(failed.required_core.as_deref(), Some("99.0.0"));
         let resp = supervisor.unmet_dependencies_response("future", "srv").await.unwrap();
         assert_eq!(resp["error_code"], "module_dependency_unsatisfied");
         assert_eq!(resp["module"], "future", "clients name the module in \"update required\"");
         assert!(resp["missing_dependencies"][0].as_str().unwrap().starts_with("saba-core >=99.0.0"));
+        // F8: 클라이언트는 문구를 쪼개지 않고 요구 버전을 그대로 읽는다
+        assert_eq!(resp["required_core"], "99.0.0");
     }
 
     /// D3·M1: 이 OS를 지원한다고 선언하지 않은 모듈의 서버는 켜지 않는다

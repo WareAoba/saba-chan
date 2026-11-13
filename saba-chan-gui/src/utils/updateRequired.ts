@@ -6,7 +6,10 @@ import type { ApiBody } from '../types/daemon';
  *
  * - 릴레이: 디스코드 상태의 lastErrorCode "agent_too_old" + minVersion
  * - 모듈: module_dependency_unsatisfied 중 saba-core 요구(`"saba-core >=0.1.10 (installed 0.1.9)"`), module_schema_unsupported
- * - 익스텐션: app_version_unsatisfied(related[0] = 요구 버전), component_version_unsatisfied 중 saba-core(related[1])
+ * - 익스텐션: app_version_unsatisfied, component_version_unsatisfied 중 saba-core
+ *
+ * 요구 버전은 데몬이 `required_core`로 싣는다(0.1.14-beta.2~). 그 전 데몬(0.1.14 정식)이면 문구·`related`에서 읽는다
+ * (원격 데몬 최소 버전이 beta.2를 넘을 때 그 대체를 지운다, `MIN_REMOTE_DAEMON` 참고)
  */
 
 const CORE = 'saba-core';
@@ -28,18 +31,19 @@ export const updateRequiredText = (t: TFunction, body?: ApiBody | null, name = '
     if (body.lastErrorCode === 'agent_too_old') {
         return t('update_required.relay', { version: body.minVersion || '?' });
     }
+    const required: string | null = body.required_core || null;
     switch (body.error_code) {
         case 'module_dependency_unsatisfied': {
-            const version = coreRequirement(body.missing_dependencies);
+            const version = required || coreRequirement(body.missing_dependencies);
             return version ? t('update_required.module', { name, version }) : null;
         }
         case 'module_schema_unsupported':
             return t('update_required.module_newer', { name });
         case 'app_version_unsatisfied':
-            return t('update_required.extension', { name, version: bare(body.related?.[0]) || '?' });
+            return t('update_required.extension', { name, version: required || bare(body.related?.[0]) || '?' });
         case 'component_version_unsatisfied':
             return body.related?.[0] === CORE
-                ? t('update_required.extension', { name, version: bare(body.related[1]) || '?' })
+                ? t('update_required.extension', { name, version: required || bare(body.related[1]) || '?' })
                 : null;
         default:
             return null;

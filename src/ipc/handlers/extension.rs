@@ -39,15 +39,16 @@ fn extension_err_response(
             "id_mismatch" => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        (
-            status,
-            Json(json!({
-                "success": false,
-                "error": ext_err.message,
-                "error_code": ext_err.error_code,
-                "related": ext_err.related,
-            })),
-        )
+        let mut body = json!({
+            "success": false,
+            "error": ext_err.message,
+            "error_code": ext_err.error_code,
+            "related": ext_err.related,
+        });
+        if let Some(version) = ext_err.required_core() {
+            body["required_core"] = json!(version);
+        }
+        (status, Json(body))
     } else {
         (
             StatusCode::INTERNAL_SERVER_ERROR,

@@ -323,10 +323,16 @@ async fn status(ctx: &Ctx) -> Result<()> {
         rows.push((t!("bot.last_heartbeat"), output::ago(secs)));
     }
     // 데몬이 코드를 주면 현지화한 문구로
-    let err = match s(&agent, "lastErrorCode") {
-        "token_replaced" => t!("bot.token_replaced"),
+    // 상태는 데몬이 정한다 (`state`, 0.1.14-beta.2~). 그 전 데몬이면 코드로 (최소 버전이 beta.2를 넘을 때 지운다)
+    let state = match (s(&agent, "state"), s(&agent, "lastErrorCode")) {
+        ("", "token_replaced") => "replaced",
+        ("", "agent_too_old") => "too_old",
+        (state, _) => state,
+    };
+    let err = match state {
+        "replaced" => t!("bot.token_replaced"),
         // 연결 줄이 이미 업데이트를 안내한다
-        "agent_too_old" => String::new(),
+        "too_old" => String::new(),
         _ => s(&agent, "lastError").to_string(),
     };
     if !err.is_empty() {

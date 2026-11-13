@@ -75,6 +75,10 @@ const ACK_BATCH: usize = 50;
 #[serde(rename_all = "camelCase")]
 pub struct AgentStatus {
     pub running: bool,
+    /// 화면이 보일 상태 하나 (0.1.14-beta.2~, `agent_state`): `running`·`too_old`(릴레이가 이 앱 버전을 받지 않음, `minVersion`)·
+    /// `rejected`(세션은 살아 있지만 하트비트를 거절당함, `heartbeatRejected`)·`replaced`(같은 계정이 다른 PC를 페어링)·
+    /// `invalid_relay_url`(저장된 릴레이 주소를 쓸 수 없어 띄우지 않음)·`stopped`
+    pub state: &'static str,
     pub relay_url: Option<String>,
     pub has_token: bool,
     pub agent_version: &'static str,
@@ -97,6 +101,18 @@ pub struct AgentStatus {
     /// 릴레이가 하트비트 답에 실어 준, 이 PC가 접속해 온 공인 주소 (서버 주소 `server.address`). 모르면 없다
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seen_address: Option<String>,
+}
+
+/// 에이전트 상태를 화면이 보일 값 하나로 (`AgentStatus::state`). GUI·CLI가 오류 코드를 따로 해석하지 않게 데몬이 정한다
+fn agent_state(s: &AgentStatus) -> &'static str {
+    match (s.running, s.last_error_code) {
+        (_, Some(TOO_OLD)) => "too_old",
+        (true, _) if s.heartbeat_rejected.is_some() => "rejected",
+        (true, _) => "running",
+        (false, Some("token_replaced")) => "replaced",
+        (false, Some("invalid_relay_url")) => "invalid_relay_url",
+        _ => "stopped",
+    }
 }
 
 /// 릴레이가 하트비트를 거절한 이유 (400 답의 `reason`): 어느 칸이 맞지 않았는지, 개수·길이 상한이면 상한과 보낸 크기.
@@ -166,6 +182,7 @@ impl RelayAgent {
         // GUI가 5초마다 부른다: 설정 파일이 그대로면 다시 읽지 않는다
         status.has_token = crate::ipc::handlers::relay::peek_node_token().as_deref().and_then(parse_node_token).is_some();
         status.connected = connected(&status, now_ms());
+        status.state = agent_state(&status);
         status
     }
 
@@ -2056,6 +2073,19 @@ mod tests {
     use super::*;
 
     /// 서버 주소(`server.address`)는 릴레이가 하트비트 답에 실어 준 접속 주소를 쓴다. IP가 아닌 값·없는 값은 모른다로 둔다
+    /// F8: 화면이 보일 상태 하나를 데몬이 정한다 (클라이언트가 오류 코드를 따로 해석하지 않는다)
+    #[test]
+    fn agent_state_is_one_value_for_every_client() {
+        let state = |s: AgentStatus| agent_state(&s);
+        assert_eq!(state(AgentStatus { running: true, ..Default::default() }), "running");
+        assert_eq!(state(AgentStatus { running: true, last_error_code: Some(TOO_OLD), ..Default::default() }), "too_old");
+        let rejected = HeartbeatReject { code: "TOO_BIG".into(), field: "x".into(), max: None, actual: None };
+        assert_eq!(state(AgentStatus { running: true, heartbeat_rejected: Some(rejected), ..Default::default() }), "rejected");
+        assert_eq!(state(AgentStatus { last_error_code: Some("token_replaced"), ..Default::default() }), "replaced");
+        assert_eq!(state(AgentStatus { last_error_code: Some("invalid_relay_url"), ..Default::default() }), "invalid_relay_url");
+        assert_eq!(state(AgentStatus::default()), "stopped");
+    }
+
     #[test]
     fn the_address_the_relay_saw_is_read_from_the_heartbeat_reply() {
         assert_eq!(relay_seen_address(&json!({ "status": "ok", "address": "203.0.113.5" })).as_deref(), Some("203.0.113.5"));

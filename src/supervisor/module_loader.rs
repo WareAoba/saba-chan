@@ -747,6 +747,9 @@ pub struct ModuleLoadError {
     /// 못 맞춘 의존성 (`"saba-core >=0.3.0 (installed 0.1.1)"` 꼴)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub missing_dependencies: Vec<String>,
+    /// 데몬이 모자라면 요구하는 saba-core 버전 (`>=0.3.0` → `0.3.0`, 0.1.14-beta.2~). 클라이언트는 위 문구를 쪼개지 않고 이것을 읽는다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_core: Option<String>,
     /// `module_schema_invalid`일 때 무엇이 틀렸는지 (필드 이름과 이유, 경로 없음)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub problems: Vec<String>,
@@ -777,6 +780,7 @@ impl ModuleLoadError {
             missing_dependencies: unmet
                 .map(|u| vec![format!("{} {} (installed {})", CORE_COMPONENT, u.required, DAEMON_VERSION)])
                 .unwrap_or_default(),
+            required_core: unmet.map(|u| u.required.trim().trim_start_matches(">=").trim().to_string()),
             problems: invalid.map(|i| i.problems.clone()).unwrap_or_default(),
             required: unsupported.map(|u| u.version),
         }

@@ -306,7 +306,7 @@ pub struct ServerInfo {
     /// 시작·정지 요청이 진행 중이면 `starting`·`stopping` (0.1.14~). 화면은 이것으로 "하는 중"을 보인다 (`instance::transition`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transition: Option<String>,
-    /// 모듈 설정 칸마다 저장된 값 (0.1.15~): 공통 칸(`constants::INSTANCE_FIELDS`)은 인스턴스 칸, 나머지는 `module_settings`.
+    /// 모듈 설정 칸마다 저장된 값 (0.1.14-beta.2~): 공통 칸(`constants::INSTANCE_FIELDS`)은 인스턴스 칸, 나머지는 `module_settings`.
     /// 값이 없는 칸은 빠진다. 화면은 어느 쪽이 진짜인지 고르지 않고 이것을 읽는다 (`instance::stored_settings`)
     #[serde(default)]
     pub stored: serde_json::Map<String, serde_json::Value>,
