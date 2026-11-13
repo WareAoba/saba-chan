@@ -205,6 +205,8 @@ const SAME_AS_EN: Record<string, string[]> = {
     ],
     fr: [
         'gui.json:palette.title',
+        'gui.json:saba_storage.version_kind_module',
+        'gui.json:saba_storage.version_kind_ext',
         'gui.json:audit.detail_action',
         'gui.json:audit.detail_args',
         'gui.json:monitor.ports_port',
