@@ -329,6 +329,18 @@ fn switch_outcome(r: &Value, done: String) -> String {
     }
 }
 
+/// 판 목록의 가장 새 판 (`latest` 줄): 데몬이 고정을 풀 기준(`until_newer_than`)으로 삼고, 고정 풀기가 바꿀 판
+fn newest(list: &Value) -> Option<String> {
+    let rows = list.get("versions").and_then(Value::as_array).into_iter().flatten();
+    rows.into_iter().find(|v| v.get("latest").and_then(Value::as_bool) == Some(true)).map(|v| s(v, "version").to_string())
+}
+
+/// 고정 확인 문장: 설치된 판에서 고른 판으로 바꾸고, 지금 가장 새 판보다 새 판이 나올 때까지 둔다
+fn pin_question(list: &Value, name: &str, version: &str) -> String {
+    let until = newest(list).unwrap_or_else(|| version.to_string());
+    t!("update.pin_confirm", name = name, from = s(list, "installed"), version = version, until = until)
+}
+
 /// `update pin <이름> <판>`: 묻고, 데몬이 받아 바꾸고 고정한다
 async fn pin(ctx: &Ctx, arg: &str, version: &str) -> Result<()> {
     let (key, name) = addon_target(ctx, arg).await?;
@@ -336,8 +348,7 @@ async fn pin(ctx: &Ctx, arg: &str, version: &str) -> Result<()> {
     if let Some(why) = unpickable(&list, version, arg) {
         return Err(crate::error::usage(why));
     }
-    let from = s(&list, "installed").to_string();
-    ctx.ask.ensure(&t!("update.pin_confirm", name = name, from = from, version = version))?;
+    ctx.ask.ensure(&pin_question(&list, &name, version))?;
     let spin = crate::progress::spinner(&format!("{} {} {}", t!("update.downloading"), key, version));
     let r = ctx.api.addon_pin(&key, version).await;
     spin.finish_and_clear();
@@ -350,14 +361,7 @@ async fn pin(ctx: &Ctx, arg: &str, version: &str) -> Result<()> {
 async fn unpin(ctx: &Ctx, arg: &str) -> Result<()> {
     let (key, name) = addon_target(ctx, arg).await?;
     let list = ctx.api.addon_versions(&key).await.map_err(older_daemon)?;
-    let newest = list
-        .get("versions")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .find(|v| v.get("latest").and_then(Value::as_bool) == Some(true))
-        .map(|v| s(v, "version").to_string())
-        .ok_or_else(|| crate::error::usage(t!("update.versions_none")))?;
+    let newest = newest(&list).ok_or_else(|| crate::error::usage(t!("update.versions_none")))?;
     ctx.ask.ensure(&t!("update.unpin_confirm", name = name, version = newest))?;
     let spin = crate::progress::spinner(&format!("{} {} {}", t!("update.downloading"), key, newest));
     let r = ctx.api.addon_unpin(&key).await;
@@ -823,6 +827,23 @@ mod tests {
         assert_eq!(unpickable(&list, "1.3.0", "m"), None);
         assert_eq!(unpickable(&list, "1.2.0", "m"), Some(t!("update.pin_yanked", version = "1.2.0", arg = "m")));
         assert_eq!(unpickable(&list, "2.0.0", "m"), Some(t!("update.pin_unavailable", version = "2.0.0", arg = "m")));
+    }
+
+    /// 고정 확인은 고정이 풀리는 기준으로 목록의 가장 새 버전을 말한다 (데몬의 `until_newer_than`): 설치된 버전이 최신이 아닐 때도
+    #[test]
+    fn the_pin_question_names_the_newest_version_as_the_end_of_the_pin() {
+        crate::i18n::init("en");
+        let list = json!({
+            "installed": "1.2.0",
+            "versions": [
+                { "version": "1.4.0", "installed": false, "latest": false, "yanked": true },
+                { "version": "1.3.0", "installed": false, "latest": true, "yanked": false },
+                { "version": "1.2.0", "installed": true, "latest": false, "yanked": false },
+                { "version": "1.1.0", "installed": false, "latest": false, "yanked": false },
+            ],
+        });
+        let q = pin_question(&list, "m", "1.1.0");
+        assert!(q.contains("from 1.2.0 to 1.1.0") && q.contains("newer than 1.3.0"), "{q}");
     }
 
     /// 켜진 서버를 기다리는 판 바꾸기는 "바꿨어요"로 끝내지 않고 무엇을 기다리는지 말한다

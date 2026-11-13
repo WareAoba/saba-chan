@@ -863,7 +863,7 @@
     "version_yanked": "zurückgezogen (nicht wählbar)",
     "versions_excluded": "{{n}} Version(en), die ein neueres Saba-chan brauchen, ausgelassen ({{list}}).",
     "versions_none": "Für Saba-chan auf diesem PC ist keine Version wählbar.",
-    "pin_confirm": "{{name}} wird von {{from}} auf {{version}} umgestellt. Automatische Updates ändern es nicht, bis eine neuere Version als {{from}} erscheint. Fortfahren?",
+    "pin_confirm": "{{name}} wird von {{from}} auf {{version}} umgestellt. Automatische Updates ändern es nicht, bis eine neuere Version als {{until}} erscheint. Fortfahren?",
     "pinned_done": "Umgestellt: {{name}} {{version}} (fixiert)",
     "pin_waiting": "Wird auf {{version}} umgestellt, sobald {{servers}} beendet ist.",
     "pin_waiting_busy": "Ein Server startet oder wird installiert. Danach wird auf {{version}} umgestellt.",

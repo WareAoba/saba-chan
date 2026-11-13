@@ -863,7 +863,7 @@
     "version_yanked": "내려짐 (고를 수 없어요)",
     "versions_excluded": "더 새 사바쨩이 필요한 버전 {{n}}개({{list}})는 뺐어요.",
     "versions_none": "이 PC의 사바쨩에서 고를 수 있는 버전이 없어요.",
-    "pin_confirm": "{{name}}을(를) {{from}}에서 {{version}}(으)로 바꿔요. {{from}}보다 새 버전이 나올 때까지는 자동 업데이트가 바꾸지 않아요. 계속할까요?",
+    "pin_confirm": "{{name}}을(를) {{from}}에서 {{version}}(으)로 바꿔요. {{until}}보다 새 버전이 나올 때까지는 자동 업데이트가 바꾸지 않아요. 계속할까요?",
     "pinned_done": "바꿨어요: {{name}} {{version}} (고정)",
     "pin_waiting": "{{servers}}이(가) 꺼지면 {{version}}(으)로 바꿔요.",
     "pin_waiting_busy": "서버를 시작하거나 설치하는 중이에요. 끝나면 {{version}}(으)로 바꿔요.",

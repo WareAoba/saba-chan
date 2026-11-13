@@ -863,7 +863,7 @@
     "version_yanked": "已撤回(無法選擇)",
     "versions_excluded": "已排除 {{n}} 個需要更新版 Saba-chan 的版本({{list}})。",
     "versions_none": "沒有可供本機 Saba-chan 選擇的版本。",
-    "pin_confirm": "將把 {{name}} 從 {{from}} 改為 {{version}}。在出現比 {{from}} 更新的版本之前，自動更新不會變更它。要繼續嗎？",
+    "pin_confirm": "將把 {{name}} 從 {{from}} 改為 {{version}}。在出現比 {{until}} 更新的版本之前，自動更新不會變更它。要繼續嗎？",
     "pinned_done": "已變更：{{name}} {{version}}(已固定)",
     "pin_waiting": "{{servers}} 停止後改為 {{version}}。",
     "pin_waiting_busy": "有伺服器正在啟動或安裝。完成後改為 {{version}}。",

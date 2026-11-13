@@ -863,7 +863,7 @@
     "version_yanked": "取り下げ済み (選べません)",
     "versions_excluded": "新しいサバちゃんが必要なバージョン {{n}} 件({{list}})は除きました。",
     "versions_none": "この PC のサバちゃんで選べるバージョンがありません。",
-    "pin_confirm": "{{name}} を {{from}} から {{version}} に変更します。{{from}} より新しいバージョンが出るまで、自動アップデートでは変更しません。続けますか？",
+    "pin_confirm": "{{name}} を {{from}} から {{version}} に変更します。{{until}} より新しいバージョンが出るまで、自動アップデートでは変更しません。続けますか？",
     "pinned_done": "変更しました: {{name}} {{version}} (固定)",
     "pin_waiting": "{{servers}} が停止したら {{version}} に変更します。",
     "pin_waiting_busy": "サーバーを起動またはインストール中です。終わったら {{version}} に変更します。",

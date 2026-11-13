@@ -863,7 +863,7 @@
     "version_yanked": "retirada (não pode ser escolhida)",
     "versions_excluded": "{{n}} versão(ões) que precisam de um Saba-chan mais novo ficaram de fora ({{list}}).",
     "versions_none": "Nenhuma versão pode ser escolhida para o Saba-chan neste PC.",
-    "pin_confirm": "{{name}} vai mudar de {{from}} para {{version}}. As atualizações automáticas não vão mudá-lo até sair uma versão mais nova que {{from}}. Continuar?",
+    "pin_confirm": "{{name}} vai mudar de {{from}} para {{version}}. As atualizações automáticas não vão mudá-lo até sair uma versão mais nova que {{until}}. Continuar?",
     "pinned_done": "Alterado: {{name}} {{version}} (fixada)",
     "pin_waiting": "Vai mudar para {{version}} quando {{servers}} parar.",
     "pin_waiting_busy": "Um servidor está iniciando ou sendo instalado. Vai mudar para {{version}} quando terminar.",
