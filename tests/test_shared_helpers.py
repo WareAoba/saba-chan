@@ -390,7 +390,8 @@ class SmallHelperTests(ModuleDirTest):
 
     def test_extension_data_dir(self):
         with patch.dict(os.environ, {"SABA_EXTENSION_DATA_ROOT": str(self.dir)}):
-            self.assertEqual(daemon_rcon.extension_data_dir("steamcmd"), self.dir / "steamcmd")
+            # safe_join은 링크를 푼 경로를 준다 (macOS 임시 폴더 /var → /private/var)
+            self.assertEqual(daemon_rcon.extension_data_dir("steamcmd"), (self.dir / "steamcmd").resolve())
             with self.assertRaises(daemon_rcon.PathOutside):
                 daemon_rcon.extension_data_dir("../x")
         with patch.dict(os.environ, {"SABA_EXTENSION_DATA_ROOT": ""}), self.assertRaises(EnvironmentError):
@@ -436,7 +437,8 @@ class ProcessTreeTests(unittest.TestCase):
             child = int(parent.stdout.readline())
             # /proc이 있으면 바깥 프로그램 없이 찾는다
             with patch.dict(os.environ, {"PATH": ""} if os.path.isdir("/proc") else {}):
-                self.assertEqual(daemon_rcon._descendants(os.getpid())[-1], parent.pid)
+                # /proc이 없으면(macOS) 목록을 읽는 ps도 이 프로세스의 자식으로 잡히므로 맨 끝이 아닐 수 있다
+                self.assertIn(parent.pid, daemon_rcon._descendants(os.getpid()))
                 self.assertEqual(daemon_rcon._descendants(parent.pid), [child])
                 ok, error = daemon_rcon.force_kill(parent.pid)
             self.assertEqual((ok, error), (True, None))
