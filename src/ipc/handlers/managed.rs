@@ -11,73 +11,53 @@ use std::collections::HashMap;
 use super::super::IPCServer;
 use crate::supervisor::Supervisor;
 
-/// 관리형 시작 (saba-runner가 콘솔 stdin/stdout을 잡는다). `POST /api/instance/:id/start`가 고르면 부른다 (감사는 그쪽이 남긴다)
-pub async fn start_managed_handler(
-    Path(id): Path<String>,
-    State(state): State<IPCServer>,
-    LooseJson(payload): LooseJson<serde_json::Value>,
-) -> impl IntoResponse {
+/// 관리형 시작 (saba-runner가 콘솔 stdin/stdout을 잡는다). 시작 서비스(`server::start`)가 고르면 부른다 (감사는 그쪽이 남긴다)
+pub(super) async fn start_managed(state: &IPCServer, id: &str) -> super::Outcome {
     // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
-    let Some(_guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
-        return super::backup::instance_busy();
+    let Some(_guard) = super::backup::InstanceLock::take_for_writes(id).await else {
+        return Err(super::Failure::busy());
     };
     // 포트포워딩 확인이 시험 리스너로 포트를 잡고 있으면 놓을 때까지 (몇 초). 시작하는 동안에는 새 확인이 포트를 잡지 않는다
-    let _starting = crate::port_check::begin_start(&id).await;
-    super::server::fill_passwords(&state, &id).await;
+    let _starting = crate::port_check::begin_start(id).await;
+    super::server::fill_passwords(state, id).await;
 
-    let (module_name, config) = {
+    let module_name = {
         let supervisor = state.supervisor.read().await;
 
-        let instance = match supervisor.instance_store.get(&id) {
-            Some(i) => i,
-            None => {
-                return (
-                    StatusCode::NOT_FOUND,
-                    Json(json!({"error": format!("Instance not found: {}", id)})),
-                )
-                    .into_response()
-            }
+        let Some(instance) = supervisor.instance_store.get(id) else {
+            return Err(super::Failure::new(StatusCode::NOT_FOUND, json!({"error": format!("Instance not found: {}", id)})));
         };
 
-        // API 경유 시작 기록 (name과 id 모두)
-        state.api_actions.record(&instance.name);
-        state.api_actions.record(&id);
+        // API 경유 시작 기록
+        state.api_actions.record(id);
 
-        let module_name = instance.module_name.clone();
-        let payload_val = payload.map(|j| j.0).unwrap_or(json!({}));
-        let config = payload_val.get("config").cloned().unwrap_or(json!({}));
-        (module_name, config)
+        instance.module_name.clone()
     };
 
     // 락은 start_managed_server가 단계마다 짧게 잡는다 (C12)
-    match Supervisor::start_managed_server(&state.supervisor, &id, &module_name, config).await {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-        Err(e) => match e.downcast_ref::<crate::supervisor::managed_process::MemoryLimitAtStart>() {
+    match Supervisor::start_managed_server(&state.supervisor, id, &module_name, json!({})).await {
+        Ok(result) => super::settled(result),
+        Err(e) => Err(match e.downcast_ref::<crate::supervisor::managed_process::MemoryLimitAtStart>() {
             Some(hit) => {
                 let language = state.config_store.ui_language().await;
                 let message = crate::chat::i18n::Catalog::for_language(&language)
                     .t("errors.memory_limit_at_start", &[("limit", &hit.limit_mb.to_string())]);
-                (
+                super::Failure::new(
                     StatusCode::UNPROCESSABLE_ENTITY,
-                    Json(json!({ "success": false, "error": message, "error_code": "memory_limit_reached", "limit_mb": hit.limit_mb })),
+                    json!({ "success": false, "error": message, "error_code": "memory_limit_reached", "limit_mb": hit.limit_mb }),
                 )
-                    .into_response()
             }
             None if e.downcast_ref::<crate::supervisor::managed_process::RunnerMissing>().is_some() => {
                 let language = state.config_store.ui_language().await;
                 let message = crate::chat::i18n::Catalog::for_language(&language).t("errors.runner_missing", &[]);
-                (
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    Json(json!({ "success": false, "error": message, "error_code": "runner_missing" })),
-                )
-                    .into_response()
+                super::Failure::coded(StatusCode::UNPROCESSABLE_ENTITY, "runner_missing", message)
             }
-            None => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(crate::plugin::error_response(&e)),
-            )
-                .into_response(),
-        },
+            // 시작하는 사이 지워졌다: 비관리 시작과 같은 404 `instance_not_found`
+            None if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() => {
+                super::server::lifecycle_failure(&e, "start", "start_failed")
+            }
+            None => super::Failure::new(StatusCode::INTERNAL_SERVER_ERROR, crate::plugin::error_response(&e)),
+        }),
     }
 }
 
@@ -408,7 +388,7 @@ pub async fn chat_link_handler(Path((id, guild)): Path<(String, String)>, State(
         Ok(d) => d,
         Err(e) => return fail(StatusCode::BAD_REQUEST, "invalid_input", e),
     };
-    let (reads_chat, sends_chat, running) = {
+    let (reads_chat, sends_chat, running, runtime) = {
         let sup = state.supervisor.read().await;
         let Some(instance) = sup.instance_store.get(&id) else {
             return fail(StatusCode::NOT_FOUND, "not_found", "Instance not found");
@@ -416,7 +396,7 @@ pub async fn chat_link_handler(Path((id, guild)): Path<(String, String)>, State(
         let module = sup.module_loader.get_module(&instance.module_name).ok();
         let reads = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
         let sends = module.as_ref().is_some_and(|m| m.metadata.chat_send_function.is_some());
-        (reads, sends, sup.tracker.get_pid(&id).is_ok())
+        (reads, sends, sup.tracker.get_pid(&id).is_ok(), sup.runtime.clone())
     };
     let result = chat_link::toggle(&id, &guild, channel, direction, |d| {
         if (d.to_discord() && !reads_chat) || (d.to_game() && !sends_chat) {
@@ -425,7 +405,7 @@ pub async fn chat_link_handler(Path((id, guild)): Path<(String, String)>, State(
         if !running {
             return Err(("server_not_running", "The server is not running"));
         }
-        match crate::supervisor::players::counted(&id) {
+        match crate::supervisor::players::counted(&runtime, &id) {
             None => Err(("players_unknown", "Players on this server are not counted")),
             Some(0) => Err(("no_players", "Nobody is on the server")),
             Some(_) => Ok(()),
@@ -539,7 +519,7 @@ pub async fn reset_properties_handler(
     };
     // 켜진 서버의 파일을 기본값으로 바꾸면 서버가 쓰는 값과 어긋난다
     if super::backup::is_running(&state, &id).await {
-        return server_running();
+        return server_running().into_response();
     }
     let resp = match Supervisor::manage_properties(&state.supervisor, &id, "reset", None).await {
         Ok(result) => {
@@ -567,9 +547,8 @@ async fn sync_after_file_change(state: &IPCServer, id: &str, result: &Value) {
 }
 
 /// 켜져 있는 서버의 파일을 바꾸는 작업을 거절하는 409
-fn server_running() -> axum::response::Response {
-    let error = json!({ "success": false, "error": "Stop the server first", "error_code": "server_running" });
-    (StatusCode::CONFLICT, Json(error)).into_response()
+fn server_running() -> super::Failure {
+    super::Failure::running(json!({ "success": false, "error": "Stop the server first", "error_code": "server_running" }))
 }
 
 /// `dir`과 겹치는 폴더(working_dir 또는 인스턴스 폴더, 그 안이나 바깥)를 쓰는 인스턴스 (`except`는 뺀다)
@@ -598,12 +577,11 @@ pub(super) async fn other_instances_busy(state: &IPCServer, dir: &str, except: O
 
 /// `dir`과 겹치는 폴더(working_dir 또는 인스턴스 폴더, 그 안이나 바깥)를 쓰는 인스턴스의 작업 잠금을 모두 잡는다.
 /// `except`(이미 잠금을 쥔 인스턴스)는 건너뛴다. 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
-#[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
-pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<super::backup::InstanceLock>, axum::response::Response> {
+pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<super::backup::InstanceLock>, super::Failure> {
     let mut guards = Vec::new();
     for id in other_instances_using(state, dir, except).await {
         let Some(guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
-            return Err(super::backup::instance_busy());
+            return Err(super::Failure::busy());
         };
         guards.push(guard);
         if super::backup::is_running(state, &id).await {
@@ -689,7 +667,7 @@ pub async fn reset_server_handler(
         return super::backup::instance_busy();
     };
     if super::backup::is_running(&state, &id).await {
-        return server_running();
+        return server_running().into_response();
     }
     // 요청이 끊겨도 모듈이 파일을 지우는 동안 잠금을 쥔다
     let reset = {
@@ -698,13 +676,13 @@ pub async fn reset_server_handler(
             let guard = guard;
             // 백업을 남기지 못했으면 지우지 않는다
             if backup_first {
-                super::backup::take_backup_held(&state, &id, crate::backup::BackupKind::Manual, &guard).await.map_err(Box::new)?;
+                super::backup::take_backup_held(&state, &id, crate::backup::BackupKind::Manual, &guard).await?;
             }
-            Ok::<_, Box<axum::response::Response>>(Supervisor::manage_properties(&state.supervisor, &id, "reset_server", scope).await)
+            Ok::<_, super::Failure>(Supervisor::manage_properties(&state.supervisor, &id, "reset_server", scope).await)
         })
     };
     let resp = match reset.await.unwrap_or_else(|e| Ok(Err(e.into()))) {
-        Err(refused) => *refused,
+        Err(refused) => refused.into_response(),
         Ok(Ok(result)) => (StatusCode::OK, Json(result)).into_response(),
         Ok(Err(e)) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -761,10 +739,10 @@ pub async fn accept_agreements_handler(
         Ok(Err(unknown)) => {
             super::instance::invalid_field("accept", format!("This server's module has no agreement '{}'", unknown))
         }
-        Err(e) if e.to_string().starts_with("Instance not found") => {
-            (StatusCode::NOT_FOUND, Json(json!({ "error": e.to_string(), "error_code": "not_found" }))).into_response()
-        }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
+        Err(e) => match e.downcast_ref::<crate::supervisor::InstanceNotFound>() {
+            Some(missing) => super::server::instance_not_found(&missing.0).into_response(),
+            None => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
+        },
     }
 }
 
@@ -954,7 +932,7 @@ pub async fn install_server_handler(
                 return super::backup::instance_busy();
             };
             if super::backup::is_running(&state, id).await {
-                return server_running();
+                return server_running().into_response();
             }
             let sup = state.supervisor.read().await;
             // 잡기 전에 지워졌을 수 있다
@@ -1019,16 +997,16 @@ pub async fn install_server_handler(
     // 설치를 마칠 때까지 잡고, 요청이 끊겨도 잠금이 설치와 함께 남게 따로 돌린다
     let others = match hold_other_instances_using(&state, &install_dir, instance_id.as_deref()).await {
         Ok(guards) => guards,
-        Err(resp) => return resp,
+        Err(failure) => return failure.into_response(),
     };
     // 인스턴스의 버전 설치는 뒤에서 돌릴 수 있다: 설치 전 백업이 길어도 요청 한도에 걸리지 않게 (진행은 provision-progress)
     let background = instance_id.is_some() && payload.get("background").and_then(Value::as_bool) == Some(true);
     let executable = executable.map(str::to_string);
     let keep_executable = instance.as_ref().and_then(|(_, _, exe, _, _)| exe.clone());
     let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
-    if let (true, Some(name)) = (background, &instance_name) {
-        state.provision_tracker.take_creating(name);
-        state.provision_tracker.update(name, version_progress(text.t("provision.version_installing", &[("version", &version)]), false, None));
+    if let (true, Some(id), Some(name)) = (background, &instance_id, &instance_name) {
+        state.provision_tracker.take_creating(id);
+        state.provision_tracker.update(id, name, version_progress(text.t("provision.version_installing", &[("version", &version)]), false, None));
     }
     let install = {
         let state = state.clone();
@@ -1042,7 +1020,7 @@ pub async fn install_server_handler(
                 Some((id, guard)) => match super::backup::take_backup_held(&state, id, crate::backup::BackupKind::PreUpdate, guard).await {
                     Ok(made) => made.map(|b| b.name),
                     Err(r) => {
-                        let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("backup failed").to_string();
+                        let reason = r.reason().unwrap_or("backup failed").to_string();
                         return Err(json!({ "success": false, "error": format!("Pre-install backup failed: {}", reason), "error_code": "backup_failed", "reason": reason }));
                     }
                 },
@@ -1103,7 +1081,7 @@ pub async fn install_server_handler(
                     match restored {
                         Ok(_) => body["restored_backup"] = json!(name),
                         Err(r) => {
-                            let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("restore failed").to_string();
+                            let reason = r.reason().unwrap_or("restore failed").to_string();
                             tracing::error!("Could not put back the pre-install backup '{}' for '{}': {}", name, id, reason);
                             body["kept_backup"] = json!(name);
                         }
@@ -1124,7 +1102,7 @@ pub async fn install_server_handler(
         }
         Err(body) => Err(body),
     };
-    if let (true, Some(name)) = (background, instance_name) {
+    if let (true, Some(id), Some(name)) = (background, instance_id.clone(), instance_name) {
         let tracker = state.provision_tracker.clone();
         tokio::spawn(async move {
             // 주의가 붙었거나 실패했으면 사용자가 닫을 때까지 남긴다
@@ -1155,10 +1133,10 @@ pub async fn install_server_handler(
                     version_progress(text.t("provision.install_failed", &[]), true, Some(error))
                 }
             };
-            tracker.update(&name, progress);
+            tracker.update(&id, &name, progress);
             if !keep {
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                tracker.remove(&name);
+                tracker.remove(&id);
             }
         });
         let body = json!({ "success": true, "provisioning": true, "id": instance_id, "version": version_label });
@@ -1500,15 +1478,16 @@ mod tests {
         assert_eq!(link("link-game", on.clone()).await.body["error_code"], "server_not_running");
         state.supervisor.read().await.tracker.track("link-game", std::process::id()).unwrap();
         assert_eq!(link("link-game", on.clone()).await.body["error_code"], "players_unknown", "players must be counted from join/leave lines");
-        let roster = crate::supervisor::players::roster_start("link-game");
+        let rt = state.supervisor.read().await.runtime.clone();
+        let roster = crate::supervisor::players::roster_start(&rt, "link-game");
         assert_eq!(link("link-game", on.clone()).await.body["error_code"], "no_players");
-        crate::supervisor::players::roster_change("link-game", roster, "Steve", true);
+        crate::supervisor::players::roster_change(&rt, "link-game", roster, "Steve", true);
         assert_eq!(link("link-game", on.clone()).await.body, json!({ "success": true, "state": "on", "direction": "both" }));
         let changed = link("link-game", json!({ "channel": "200000000000000001", "direction": "to_discord" })).await;
         assert_eq!(changed.body, json!({ "success": true, "state": "changed", "direction": "to_discord" }));
-        crate::supervisor::players::roster_change("link-game", roster, "Steve", false);
+        crate::supervisor::players::roster_change(&rt, "link-game", roster, "Steve", false);
         assert_eq!(link("link-game", on.clone()).await.body["state"], "off", "turning off needs no players");
-        crate::supervisor::players::roster_end("link-game", roster);
+        crate::supervisor::players::roster_end(&rt, "link-game", roster);
         let _ = state.supervisor.read().await.tracker.untrack("link-game");
 
         assert_eq!(link("link-readonly", on.clone()).await.body["error_code"], "not_supported", "both ways needs chat_send");
@@ -1870,7 +1849,7 @@ mod tests {
         };
         let finished = || async {
             for _ in 0..2400 {
-                if let Some(p) = state.provision_tracker.get("srv").filter(|p| p.done) {
+                if let Some(p) = state.provision_tracker.get(&id).filter(|p| p.done) {
                     return p;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -1884,7 +1863,7 @@ mod tests {
         assert_eq!(failed.error.as_deref(), Some("download failed"), "{failed:?}");
         assert_eq!(std::fs::read_to_string(files.join("world").join("level.dat")).unwrap(), "old", "the world comes back from the pre-install backup");
         assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().server_version, None);
-        state.provision_tracker.remove("srv");
+        state.provision_tracker.remove(&id);
 
         install("2.0").await;
         let done = finished().await;
@@ -1937,7 +1916,7 @@ mod tests {
         assert_eq!(started.status, StatusCode::OK, "{}", started.body);
         let mut done = None;
         for _ in 0..2400 {
-            done = state.provision_tracker.get("srv").filter(|p| p.done);
+            done = state.provision_tracker.get(&id).filter(|p| p.done);
             if done.is_some() {
                 break;
             }
@@ -1947,7 +1926,7 @@ mod tests {
         let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!(inst.extension_data.get("steamcmd_beta"), Some(&json!("unstable")));
         assert_eq!(inst.server_version, None, "a branch name is not a game version");
-        state.provision_tracker.remove("srv");
+        state.provision_tracker.remove(&id);
 
         // 업데이트는 고른 브랜치로 받는다
         std::fs::remove_file(files.join("branch.txt")).unwrap();

@@ -65,25 +65,6 @@ fn is_secret_env(name: &str) -> bool {
     SECRET_ENV_MARKERS.iter().any(|m| upper.contains(m))
 }
 
-/// 시간 초과한 Python과 그것이 띄운 프로세스를 함께 끝낸다.
-/// Unix는 자기 프로세스 그룹으로 띄우므로 그룹째, Windows는 `taskkill /T`
-pub(crate) fn kill_tree(pid: u32) {
-    #[cfg(unix)]
-    unsafe {
-        nix::libc::kill(-(pid as i32), nix::libc::SIGKILL);
-    }
-    #[cfg(windows)]
-    {
-        let mut cmd = std::process::Command::new(saba_chan_updater_lib::process::system_tool("taskkill"));
-        cmd.args(["/T", "/F", "/PID", &pid.to_string()]);
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        }
-        let _ = cmd.output();
-    }
-}
-
 /// Progress info emitted by Python extensions via stderr "PROGRESS:{json}" lines
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct ExtensionProgress {
@@ -623,7 +604,7 @@ impl Process {
             } => {
                 #[cfg(windows)]
                 if let Some(job) = job { windows_job::terminate(job); }
-                if let Some(pid) = pid.or(child.id()) { kill_tree(pid); }
+                if let Some(pid) = pid.or(child.id()) { let _ = crate::supervisor::process::force_kill_tree(pid); }
                 let _ = child.start_kill();
             }
             #[cfg(windows)]
@@ -675,7 +656,7 @@ impl Process {
                     windows_job::terminate(job);
                 }
                 if let Some(pid) = pid.or(child.id()) {
-                    kill_tree(pid);
+                    let _ = crate::supervisor::process::force_kill_tree(pid);
                 }
                 let _ = child.kill().await;
             }
@@ -726,7 +707,7 @@ pub(crate) async fn preparation_output(cmd: &mut Command) -> std::io::Result<std
             if let Some(pid) = self.pid {
                 #[cfg(windows)]
                 if let Some(job) = &self.job { windows_job::terminate(job); }
-                kill_tree(pid);
+                let _ = crate::supervisor::process::force_kill_tree(pid);
             }
         }
     }
@@ -2019,7 +2000,7 @@ print(json.dumps(codes))
             if pids.iter().all(|pid| !crate::supervisor::process::is_process_alive(*pid)) { return; }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
-        for pid in &pids { kill_tree(*pid); }
+        for pid in &pids { let _ = crate::supervisor::process::force_kill_tree(*pid); }
         panic!("cancelled module child survived: {pids:?}");
     }
 
@@ -2035,7 +2016,7 @@ print(json.dumps(codes))
         if let Ok(pid) = std::fs::read_to_string(path) {
             let pid = pid.trim().parse().unwrap();
             let alive = crate::supervisor::process::is_process_alive(pid);
-            kill_tree(pid);
+            let _ = crate::supervisor::process::force_kill_tree(pid);
             assert!(alive, "the explicitly requested breakaway server must survive the module job");
         }
     }
@@ -2120,37 +2101,6 @@ print(json.dumps(codes))
         for name in ["PATH", "APPDATA", "JAVA_HOME", "SYSTEMROOT", "KEYBOARD_LAYOUT"] {
             assert!(!is_secret_env(name), "{name}");
         }
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn a_timed_out_tree_is_killed_with_its_children() {
-        let dir = tempfile::tempdir().unwrap();
-        let pidfile = dir.path().join("child.pid");
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg(format!("sleep 30 & echo $! > {}; wait", pidfile.display())).process_group(0);
-        let mut child = cmd.spawn().unwrap();
-        let mut grandchild = None;
-        for _ in 0..50 {
-            if let Some(pid) = std::fs::read_to_string(&pidfile).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
-                grandchild = Some(pid);
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-        let grandchild = grandchild.expect("child started");
-        kill_tree(child.id().unwrap());
-        let _ = child.wait().await;
-        for _ in 0..50 {
-            // 거둘 부모가 없으면 좀비로 남으니 상태도 본다
-            let zombie = std::fs::read_to_string(format!("/proc/{grandchild}/stat"))
-                .is_ok_and(|s| s.rsplit(')').next().is_some_and(|r| r.trim_start().starts_with('Z')));
-            if zombie || !crate::supervisor::process::is_process_alive(grandchild) {
-                return;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-        panic!("grandchild {grandchild} survived");
     }
 
     /// 격리된 모듈(127.0.0.1에 못 닿음)이 공용 도우미 `loopback_http`로 자기 서버에 물으면 데몬이 대신 보내고 답을 돌려준다

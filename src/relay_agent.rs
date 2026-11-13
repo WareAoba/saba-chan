@@ -853,7 +853,7 @@ impl Session {
         };
         let schedules = {
             let supervisor = self.server.supervisor.read().await;
-            crate::ipc::handlers::backup::upcoming_runs(supervisor.instance_store.list(), SCHEDULES_MAX)
+            crate::scheduler::runner::upcoming_runs(supervisor.instance_store.list(), SCHEDULES_MAX)
         };
         // 모듈 locales 파일은 하트비트마다 읽으므로 async 작업자 밖에서 읽는다
         let views = self.server.modules().await;

@@ -218,11 +218,8 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
     command_reply(resp, &name, &errors)
 }
 
-/// 인스턴스별 명령 기억 (인스턴스 id → 읽은 때, 명령). 판정에 Python을 띄우므로 명령 실행 때는
+/// 인스턴스별 명령을 기억하는 시간 (`InstanceRuntime::commands`). 판정에 Python을 띄우므로 명령 실행 때는
 /// 잠깐 기억한 것을 쓰고, 목록 API는 매번 새로 읽는다 (플러그인을 넣고 빼면 바로 보이게).
-static INSTANCE_COMMANDS: std::sync::OnceLock<
-    std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, crate::commands::InstanceCommands)>>,
-> = std::sync::OnceLock::new();
 const INSTANCE_COMMANDS_TTL: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// 모듈 lifecycle `instance_commands()` (`[commands] hook = true`인 모듈만). 실패하면 빈 목록.
@@ -231,18 +228,16 @@ async fn instance_commands(
     instance: &crate::instance::ServerInstance,
     fresh: bool,
 ) -> crate::commands::InstanceCommands {
-    let cache = INSTANCE_COMMANDS.get_or_init(Default::default);
-    if !fresh {
-        if let Some((at, cached)) = cache.lock().ok().and_then(|c| c.get(&instance.id).cloned()) {
-            if at.elapsed() < INSTANCE_COMMANDS_TTL {
+    let (runtime, entry, instance_dir) = {
+        let supervisor = state.supervisor.read().await;
+        if !fresh {
+            let cached = supervisor.runtime.existing(&instance.id, |r| r.commands.clone()).flatten();
+            if let Some((_, cached)) = cached.filter(|(at, _)| at.elapsed() < INSTANCE_COMMANDS_TTL) {
                 return cached;
             }
         }
-    }
-    let (entry, instance_dir) = {
-        let supervisor = state.supervisor.read().await;
         match supervisor.module_loader.get_module(&instance.module_name) {
-            Ok(m) if m.metadata.commands.as_ref().is_some_and(|c| c.hook) => (m.entry_path(), supervisor.instance_store.instance_dir(&instance.id)),
+            Ok(m) if m.metadata.commands.as_ref().is_some_and(|c| c.hook) => (supervisor.runtime.clone(), m.entry_path(), supervisor.instance_store.instance_dir(&instance.id)),
             _ => return Default::default(),
         }
     };
@@ -265,9 +260,7 @@ async fn instance_commands(
             Default::default()
         }
     };
-    if let Ok(mut c) = cache.lock() {
-        c.insert(instance.id.clone(), (std::time::Instant::now(), loaded.clone()));
-    }
+    runtime.with(&instance.id, |r| r.commands = Some((std::time::Instant::now(), loaded.clone())));
     loaded
 }
 

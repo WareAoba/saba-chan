@@ -114,14 +114,24 @@ pub fn to_discord(instance_id: &str) -> Vec<Value> {
 /// 그 서버의 연동을 모두 끄고 연동마다 `instance.chat_link`를 낸다 (`reason`: `empty` 모두 나감, `stopped` 프로세스 끝남).
 /// `generation`은 부른 쪽이 센 접속자 목록(`players::roster_start`)이다. 그 사이 새 프로세스가 세기 시작했으면 새 연동이므로 그대로 둔다.
 /// 연동 락을 쥔 채 확인한다: 켜기(`toggle`)도 같은 락 안에서 접속자 수를 본다
-pub fn end(instance_id: &str, instance: &str, reason: &str, generation: u64) {
+pub fn end(rt: &super::runtime::Runtimes, instance_id: &str, instance: &str, reason: &str, generation: u64) {
     let removed = {
         let mut map = links().lock().unwrap_or_else(|e| e.into_inner());
-        if !super::players::is_current(instance_id, generation) {
+        if !super::players::is_current(rt, instance_id, generation) {
             return;
         }
         map.remove(instance_id).unwrap_or_default()
     };
+    announce_ended(instance_id, instance, reason, removed);
+}
+
+/// 인스턴스를 지운다: 프로세스와 상관없이 그 서버의 연동을 모두 끄고 `stopped`로 알린다 (`Supervisor::remove_instance`)
+pub fn forget(instance_id: &str, instance: &str) {
+    let removed = links().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id).unwrap_or_default();
+    announce_ended(instance_id, instance, "stopped", removed);
+}
+
+fn announce_ended(instance_id: &str, instance: &str, reason: &str, removed: Vec<Link>) {
     for link in removed {
         crate::events::emit("instance.chat_link", json!({ "instanceId": instance_id, "instance": instance, "guild": link.guild, "channel": link.channel, "active": false, "reason": reason }));
     }
@@ -204,7 +214,8 @@ mod tests {
         assert!(to_discord(id).is_empty());
         toggle(id, "100000000000000002", C2, None, ok).unwrap();
         assert_eq!(to_discord(id), vec![json!({ "guild": "100000000000000002", "channel": C2 })]);
-        end(id, "s", "empty", super::super::players::roster_start(id));
+        let rt = crate::supervisor::runtime::Runtimes::default();
+        end(&rt, id, "s", "empty", super::super::players::roster_start(&rt, id));
         assert!(list(id).is_empty());
     }
 
@@ -213,14 +224,15 @@ mod tests {
     fn an_old_process_ending_leaves_the_new_processes_links() {
         use super::super::players::{roster_change, roster_end, roster_start};
         let id = "link-generation";
-        let old = roster_start(id);
-        let new = roster_start(id);
-        roster_change(id, new, "Bob", true);
+        let rt = crate::supervisor::runtime::Runtimes::default();
+        let old = roster_start(&rt, id);
+        let new = roster_start(&rt, id);
+        roster_change(&rt, id, new, "Bob", true);
         toggle(id, G, C1, None, ok).unwrap();
-        end(id, "s", "stopped", old);
-        roster_end(id, old);
+        end(&rt, id, "s", "stopped", old);
+        roster_end(&rt, id, old);
         assert_eq!(list(id).len(), 1);
-        end(id, "s", "stopped", new);
+        end(&rt, id, "s", "stopped", new);
         assert!(list(id).is_empty());
     }
 

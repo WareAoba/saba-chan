@@ -88,7 +88,8 @@ fn assert_module_failure(body: &Value, function: &str) {
 async fn progress_http_keeps_module_failure_fields() {
     let _serial = TEST_LOCK.lock().await;
     let state = boot("progress").await;
-    state.provision_tracker.update("progress", ProvisionProgress {
+    let id = add_instance(&state, "progress").await;
+    state.provision_tracker.update(&id, "progress", ProvisionProgress {
         step: 0, total: 1, label: "done".into(), message: "install failed".into(), done: true,
         error: None, percent: Some(100), steps: None, details: Default::default(),
     }.with_failure(json!({
@@ -123,7 +124,7 @@ async fn nonmanaged_stop_http_keeps_the_modules_path_failure() {
         .kill_on_drop(true)
         .spawn().unwrap();
     state.supervisor.read().await.tracker.track(&id, process.id().unwrap()).unwrap();
-    let response = into_internal(server::stop_instance(state, &id, false).await).await;
+    let response = into_internal(server::stop_instance_handler(Path(id), State(state), saba_core::ipc::handlers::LooseJson(None)).await).await;
     let _ = process.kill().await;
     assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
     assert_module_failure(&response.body, "stop");
