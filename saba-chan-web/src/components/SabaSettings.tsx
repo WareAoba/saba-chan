@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { memoryLimitState } from '@gui/utils/serverView';
 import { useApp } from '../store';
 import { Dropdown } from './Dropdown';
 import { LinkedText } from './ScreenLink';
@@ -86,9 +87,10 @@ interface NumberFieldProps {
     value: string;
     onChange: (value: string) => void;
     note?: React.ReactNode;
+    disabled?: boolean;
 }
 
-function NumberField({ label, hint, placeholder, value, onChange, note }: NumberFieldProps) {
+function NumberField({ label, hint, placeholder, value, onChange, note, disabled }: NumberFieldProps) {
     return (
         <label className="field">
             <span>{label}</span>
@@ -98,6 +100,7 @@ function NumberField({ label, hint, placeholder, value, onChange, note }: Number
                 min="1"
                 value={value}
                 placeholder={placeholder}
+                disabled={disabled}
                 onChange={(e) => onChange(e.target.value)}
             />
             {hint && <small className="hint">{hint}</small>}
@@ -119,8 +122,9 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
     const [saving, setSaving] = useState(false);
     // 고치기 시작한 때의 revision 을 싣는다 (폴링의 최신 값을 실으면 다른 곳의 변경을 덮는다)
     const revision = useRef(server.revision || null);
-    const patch = sabaPatch(opened, values);
-    const dirty = Object.keys(patch).length > 0;
+    const dirty = Object.keys(sabaPatch(opened, values)).length > 0;
+    // 데몬이 이 서버에 상한을 걸 수 없다고 알리면 칸을 잠그고, 남은 예전 값은 비우게 한다
+    const memoryLimit = memoryLimitState(server);
 
     // 고치는 칸이 없으면 다른 곳에서 바뀐 값을 따라간다
     // biome-ignore lint/correctness/useExhaustiveDependencies: revision 이 바뀔 때만 본다
@@ -134,8 +138,10 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
 
     const set = (key: keyof SabaValues, v: string | boolean) => setValues((prev) => ({ ...prev, [key]: v }));
 
-    const save = async () => {
-        if (!dirty) return;
+    /** `next`(기본은 지금 칸 값)에서 바꾼 칸을 저장한다 */
+    const save = async (next = values) => {
+        const patch = sabaPatch(opened, next);
+        if (Object.keys(patch).length === 0) return;
         setSaving(true);
         const res = await api.instanceUpdateSettings(server.id, {
             ...patch,
@@ -162,7 +168,7 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
         if (res?.error_code === 'memory_limit_unsupported') return toast(tg('memory_limit.unsupported'), 'error');
         if (failed(res)) return toast(errorText(t, res), 'error');
         if (res?.revision) revision.current = res.revision;
-        setOpened(values);
+        setOpened(next);
         toast(running ? t('settings.saved_restart') : t('settings.saved'), 'ok');
     };
 
@@ -194,12 +200,29 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                 <div className="form">
                     <NumberField
                         label={tg('memory_limit.label')}
-                        hint={tg('memory_limit.hint')}
+                        hint={tg(memoryLimit === 'editable' ? 'memory_limit.hint' : 'memory_limit.hint_locked')}
                         placeholder={tg('memory_limit.placeholder')}
                         value={values.memory_limit_mb}
                         onChange={(v) => set('memory_limit_mb', v)}
                         note={running ? tg('memory_limit.restart_note') : null}
+                        disabled={memoryLimit !== 'editable'}
                     />
+                    {memoryLimit === 'locked' && <p className="banner banner-info">{tg('memory_limit.locked')}</p>}
+                    {memoryLimit === 'stale' && (
+                        <div className="banner banner-warn">
+                            <p>{tg('memory_limit.stale')}</p>
+                            <Button
+                                busy={saving}
+                                onClick={() => {
+                                    const cleared = { ...values, memory_limit_mb: '' };
+                                    setValues(cleared);
+                                    save(cleared);
+                                }}
+                            >
+                                {tg('memory_limit.clear')}
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </Card>
             {server.game_chat_supported && (
