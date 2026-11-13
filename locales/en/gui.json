@@ -2521,15 +2521,9 @@
     "stop_confirm_aria": "Confirm stop {{name}}"
   },
   "desktop_overlay": {
-    "menu_server": "{{name}} · {{status}}",
-    "menu_start": "Start",
-    "menu_stop": "Stop",
-    "menu_stop_confirm": "Stop now",
-    "menu_restart": "Restart",
-    "menu_restart_confirm": "Restart now",
-    "menu_no_servers": "No servers yet",
     "menu_open_app": "Open Saba-chan",
     "menu_hide": "Hide from desktop",
+    "menu_size": "Pet size",
     "setting_label": "Desktop overlay",
     "setting_description": "Show the small window extensions place in a corner of your desktop (such as a desktop pet). Drag it to move it.",
     "setting_unsupported": "This desktop (Wayland) can't show it."

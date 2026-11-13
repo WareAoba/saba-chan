@@ -143,11 +143,16 @@ pub struct DesktopOverlaySettings {
     pub x: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub y: Option<i32>,
+    /// 펫 크기 (%, `DESKTOP_OVERLAY_SCALE`). 우클릭 판의 크기 막대가 바꾼다
+    pub scale: u32,
 }
+
+/// 바탕화면 오버레이 크기 한도 (%)
+pub const DESKTOP_OVERLAY_SCALE: std::ops::RangeInclusive<u32> = 50..=200;
 
 impl Default for DesktopOverlaySettings {
     fn default() -> Self {
-        Self { enabled: true, x: None, y: None }
+        Self { enabled: true, x: None, y: None, scale: 100 }
     }
 }
 
@@ -360,6 +365,9 @@ impl GuiSettings {
         if self.new_server_backup_keep == 0 {
             return Err("newServerBackupKeep must be 1 or more".into());
         }
+        if !DESKTOP_OVERLAY_SCALE.contains(&self.desktop_overlay.scale) {
+            return Err(format!("desktopOverlay.scale must be {}..={}", DESKTOP_OVERLAY_SCALE.start(), DESKTOP_OVERLAY_SCALE.end()));
+        }
         if let Some(key) = self.console_token_colors.iter().find(|(k, v)| !token_color_ok(k, v)).map(|(k, _)| k) {
             return Err(format!("consoleTokenColors.{key} must be #rrggbb"));
         }
@@ -398,6 +406,9 @@ impl GuiSettings {
         }
         if self.new_server_backup_keep == 0 {
             self.new_server_backup_keep = default.new_server_backup_keep;
+        }
+        if !DESKTOP_OVERLAY_SCALE.contains(&self.desktop_overlay.scale) {
+            self.desktop_overlay.scale = default.desktop_overlay.scale;
         }
         if self.monitor_items.as_ref().is_some_and(|items| !monitor_items_ok(items)) {
             self.monitor_items = None;
@@ -2107,13 +2118,27 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let store = ConfigStore::new(tmp.path());
         let defaults = serde_json::to_value(store.get_gui_settings().await).unwrap();
-        assert_eq!(defaults["desktopOverlay"], serde_json::json!({ "enabled": true }));
+        assert_eq!(defaults["desktopOverlay"], serde_json::json!({ "enabled": true, "scale": 100 }));
         store
-            .set_gui_settings_from_json(serde_json::json!({ "desktopOverlay": { "enabled": false, "x": 1500, "y": -20 } }))
+            .set_gui_settings_from_json(serde_json::json!({ "desktopOverlay": { "enabled": false, "x": 1500, "y": -20, "scale": 150 } }))
             .await
             .unwrap();
         let saved = serde_json::to_value(ConfigStore::new(tmp.path()).get_gui_settings().await).unwrap();
-        assert_eq!(saved["desktopOverlay"], serde_json::json!({ "enabled": false, "x": 1500, "y": -20 }));
+        assert_eq!(saved["desktopOverlay"], serde_json::json!({ "enabled": false, "x": 1500, "y": -20, "scale": 150 }));
+    }
+
+    /// 펫 크기는 50~200%: 벗어난 값은 저장을 거절하고, 손으로 고친 파일에서는 기본값(100)으로 읽는다
+    #[tokio::test]
+    async fn the_desktop_overlay_scale_stays_between_50_and_200() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        for bad in [0, 49, 201] {
+            assert!(store.set_gui_settings_from_json(serde_json::json!({ "desktopOverlay": { "enabled": true, "scale": bad } })).await.is_err(), "{bad}");
+        }
+        let mut s = GuiSettings::default();
+        s.desktop_overlay.scale = 999;
+        s.sanitize();
+        assert_eq!(s.desktop_overlay.scale, 100);
     }
 
     #[tokio::test]

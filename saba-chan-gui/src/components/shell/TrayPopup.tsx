@@ -1,22 +1,13 @@
-import clsx from 'clsx';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ServerInfo } from '../../types/daemon';
-import { isTransitional, playersText, primaryAction, STATUS_TONE, viewStatus } from '../../utils/serverView';
 import { type HostWindow, HostWindowContext } from '../../extensions/host';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
-import { StatusChip } from '../ui/StatusChip';
-import './TrayPopup.css';
+import './QuickPanel.css';
+import { QuickPanelHead, ServerQuickList, usePanelFit, useQuickServers } from './ServerQuickList';
 
 /** 팝업이 열려 있는 동안 데몬·서버 상태를 다시 읽는 간격 */
 const REFRESH_MS = 3000;
-
-/** 고른 원격 데몬의 이름과 닿는지 */
-interface RemoteState {
-    name: string;
-    reachable: boolean;
-}
 
 /**
  * 트레이 아이콘을 누르면 아이콘 옆에 뜨는 작은 창 (셸 window.rs `toggle_tray_popup`).
@@ -28,48 +19,8 @@ interface RemoteState {
 export function TrayPopup() {
     const { t } = useTranslation('gui');
     const rootRef = useRef<HTMLDivElement>(null);
-    const [daemonUp, setDaemonUp] = useState<boolean | null>(null);
-    const [servers, setServers] = useState<ServerInfo[]>([]);
     const [canCli, setCanCli] = useState(false);
-    const [busy, setBusy] = useState<Record<string, boolean>>({});
-    const [failed, setFailed] = useState<Record<string, boolean>>({});
-    // 고른 원격 데몬: {name, reachable}, 이 PC면 null
-    const [remote, setRemote] = useState<RemoteState | null>(null);
-    const [armed, setArmed] = useState<string | null>(null); // 두 번 눌러 확정할 정지 (원격 서버 id)
-    /** 마지막으로 확인한 고른 데몬: 이 PC면 null, 아직 모르면 undefined (익스텐션 host.run이 본다) */
-    const targetRef = useRef<string | null | undefined>(undefined);
-
-    const refresh = useCallback(async () => {
-        const [status, current] = await Promise.all([
-            Promise.resolve(window.api?.daemonStatus?.()).catch(() => null),
-            Promise.resolve(window.api?.daemonTarget?.()).catch(() => null),
-        ]);
-        const up = status?.running === true;
-        const target = current?.target || null;
-        // 고를 수 없는 창이면 늘 이 PC 데몬, 물었는데 답을 못 받았으면 모른다
-        targetRef.current =
-            typeof window.api?.daemonTarget !== 'function' ? null : current && 'target' in current ? target : undefined;
-        setDaemonUp(up);
-        if (!up) {
-            setRemote(null);
-            setServers([]);
-            return;
-        }
-        const [list, daemons] = await Promise.all([
-            Promise.resolve(window.api?.serverList?.()).catch(() => null),
-            target ? Promise.resolve(window.api?.remoteDaemons?.()).catch(() => null) : null,
-        ]);
-        const reachable = Array.isArray(list?.servers);
-        if (target) {
-            const saved = Array.isArray(daemons?.daemons) ? daemons.daemons.find((d: { hostId: string }) => d.hostId === target) : null;
-            setRemote({ name: saved?.label || saved?.name || target, reachable });
-            // 닿지 않는 원격 데몬의 지난 목록을 남기지 않는다
-            if (!reachable) setServers([]);
-        } else {
-            setRemote(null);
-        }
-        if (reachable) setServers(list.servers as ServerInfo[]);
-    }, []);
+    const { daemonUp, servers, remote, targetRef, refresh } = useQuickServers();
 
     useEffect(() => {
         refresh();
@@ -88,16 +39,7 @@ export function TrayPopup() {
     }, [refresh]);
 
     // 내용이 바뀔 때마다 높이를 셸에 알린다 (첫 알림에 창이 보인다)
-    useLayoutEffect(() => {
-        const el = rootRef.current;
-        if (!el) return undefined;
-        const report = () => window.api?.trayPopupFit?.(Math.ceil(el.getBoundingClientRect().height));
-        report();
-        if (typeof ResizeObserver === 'undefined') return undefined;
-        const observer = new ResizeObserver(report);
-        observer.observe(el);
-        return () => observer.disconnect();
-    }, []);
+    usePanelFit(rootRef, (height) => window.api?.trayPopupFit?.(height));
 
     const act = (action: string) => window.api?.trayAction?.(action);
 
@@ -111,7 +53,11 @@ export function TrayPopup() {
             run: async (instanceId, action) => {
                 if (action !== 'start' && targetRef.current !== null) return false;
                 const call =
-                    action === 'start' ? window.api.instanceStart : action === 'stop' ? window.api.instanceStop : window.api.instanceRestart;
+                    action === 'start'
+                        ? window.api.instanceStart
+                        : action === 'stop'
+                          ? window.api.instanceStop
+                          : window.api.instanceRestart;
                 if (typeof call !== 'function') return false;
                 try {
                     const res = await call(instanceId);
@@ -124,115 +70,26 @@ export function TrayPopup() {
             },
             openApp: () => window.api?.trayAction?.('open_window'),
         }),
-        [refresh],
+        [refresh, targetRef],
     );
 
-    const toggleServer = async (server: ServerInfo, action: string) => {
-        if (action === 'stop' && remote && armed !== server.id) {
-            setArmed(server.id);
-            return;
-        }
-        setArmed(null);
-        setBusy((b) => ({ ...b, [server.id]: true }));
-        setFailed((f) => ({ ...f, [server.id]: false }));
-        try {
-            const res =
-                action === 'stop'
-                    ? await window.api.instanceStop(server.id)
-                    : await window.api.instanceStart(server.id);
-            if (res?.error || res?.success === false) setFailed((f) => ({ ...f, [server.id]: true }));
-        } catch {
-            setFailed((f) => ({ ...f, [server.id]: true }));
-        }
-        setBusy((b) => ({ ...b, [server.id]: false }));
-        refresh();
-    };
-
     return (
-        <div className="tray-popup" ref={rootRef}>
-            <header className="tray-popup-head">
-                <img className="tray-popup-logo" src="favicon.png" alt="" />
-                <span className="tray-popup-title">{t('tray_popup.title')}</span>
-                {daemonUp && remote && (
-                    <StatusChip
-                        tone={remote.reachable ? 'ok' : 'warn'}
-                        label={t(remote.reachable ? 'tray_popup.remote_connected' : 'tray_popup.remote_unreachable', {
-                            name: remote.name,
-                        })}
-                        className="bare"
-                    />
-                )}
-                {daemonUp !== null && !(daemonUp && remote) && (
-                    <StatusChip
-                        tone={daemonUp ? 'ok' : 'stop'}
-                        label={daemonUp ? t('tray_popup.daemon_running') : t('tray_popup.daemon_stopped')}
-                        className="bare"
-                    />
-                )}
-            </header>
+        <div className="quick-panel tray-popup" ref={rootRef}>
+            <QuickPanelHead daemonUp={daemonUp} remote={remote} />
 
-            {daemonUp &&
-                remote?.reachable !== false &&
-                (servers.length > 0 ? (
-                    <ul className="tray-popup-servers" aria-label={t('tray_popup.servers')}>
-                        {servers.map((server) => {
-                            // 팝업은 모듈 목록을 읽지 않는다: "모듈 없음"으로 판정하지 않는다
-                            const status = viewStatus(server, true);
-                            const action = busy[server.id] ? 'busy' : primaryAction(status);
-                            const players = playersText(server);
-                            const confirming = armed === server.id && action === 'stop';
-                            return (
-                                <li key={server.id} className="tray-popup-server" data-status={status}>
-                                    <span
-                                        className={clsx('tray-popup-dot', `tone-${STATUS_TONE[status]}`, { pulse: isTransitional(status) })}
-                                        aria-hidden="true"
-                                    />
-                                    <span className="tray-popup-server-name">{server.name}</span>
-                                    <span className={clsx('tray-popup-server-meta', { failed: failed[server.id] })}>
-                                        {failed[server.id]
-                                            ? t('tray_popup.action_failed')
-                                            : players || t(`shell.status_${status}`)}
-                                    </span>
-                                    {confirming ? (
-                                        <button
-                                            type="button"
-                                            className="btn btn-danger btn-sm tray-popup-server-confirm"
-                                            aria-label={t('tray_popup.stop_confirm_aria', { name: server.name })}
-                                            onClick={() => toggleServer(server, action)}
-                                        >
-                                            <Icon name="stop" size={12} />
-                                            {t('tray_popup.stop_confirm')}
-                                        </button>
-                                    ) : (
-                                        <button
-                                            type="button"
-                                            className="icon-btn tray-popup-server-action"
-                                            disabled={action === 'busy'}
-                                            aria-label={t(action === 'stop' ? 'tray_popup.stop' : 'tray_popup.start', {
-                                                name: server.name,
-                                            })}
-                                            onClick={() => action !== 'busy' && toggleServer(server, action)}
-                                        >
-                                            <Icon name={action === 'stop' ? 'stop' : 'play'} size={14} />
-                                        </button>
-                                    )}
-                                </li>
-                            );
-                        })}
-                    </ul>
-                ) : (
-                    <p className="tray-popup-empty">{t('tray_popup.no_servers')}</p>
-                ))}
+            {daemonUp && remote?.reachable !== false && (
+                <ServerQuickList servers={servers} confirmStop={!!remote} refresh={refresh} />
+            )}
 
             {daemonUp && (
                 <HostWindowContext.Provider value={hostWindow}>
-                    <div className="tray-popup-ext">
+                    <div className="quick-panel-ext">
                         <ExtensionSlot slotId="TrayPopup.section" servers={servers} t={t} />
                     </div>
                 </HostWindowContext.Provider>
             )}
 
-            <div className="tray-popup-actions">
+            <div className="quick-panel-actions">
                 <button type="button" className="btn btn-primary btn-sm" onClick={() => act('open_window')}>
                     <Icon name="monitor" size={14} />
                     {t('tray_popup.open_window')}
@@ -245,21 +102,21 @@ export function TrayPopup() {
                 )}
             </div>
 
-            <footer className="tray-popup-foot">
+            <footer className="quick-panel-foot">
                 {/* 상태를 읽기 전(데몬이 꺼져 있으면 1~2초)에는 켜기·끄기를 그리지 않는다 */}
                 {daemonUp === false && (
-                    <button type="button" className="tray-popup-link" onClick={() => act('start_daemon')}>
+                    <button type="button" className="quick-panel-link" onClick={() => act('start_daemon')}>
                         <Icon name="play" size={12} />
                         {t('tray_popup.start_daemon')}
                     </button>
                 )}
                 {daemonUp === true && (
-                    <button type="button" className="tray-popup-link" onClick={() => act('stop_daemon')}>
+                    <button type="button" className="quick-panel-link" onClick={() => act('stop_daemon')}>
                         <Icon name="stop" size={12} />
                         {t('tray_popup.stop_daemon')}
                     </button>
                 )}
-                <button type="button" className="tray-popup-link danger" onClick={() => act('quit_all')}>
+                <button type="button" className="quick-panel-link danger" onClick={() => act('quit_all')}>
                     <Icon name="power" size={12} />
                     {t('tray_popup.quit_all')}
                 </button>

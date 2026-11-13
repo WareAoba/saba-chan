@@ -8,15 +8,23 @@ html[data-desktop-overlay] #root {
     overflow: hidden;
 }
 
-/* 내용 크기를 재서 창을 맞추므로 내용만큼만 차지한다 */
+/* 내용 크기를 재서 창을 맞추므로 내용만큼만 차지한다. 지금 창 폭에 눌리면 창이 넓어지지 못하므로 폭은 내용대로 잰다 */
 .desktop-overlay {
     display: inline-flex;
+    width: max-content;
     flex-direction: column;
     align-items: center;
     justify-content: flex-end;
     user-select: none;
     -webkit-user-select: none;
     cursor: default;
+}
+
+.desktop-overlay-zoom {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
 }
 
 .desktop-overlay img {

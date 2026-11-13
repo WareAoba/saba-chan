@@ -6,6 +6,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import App from './App';
 import { ErrorFallback } from './components/ErrorFallback';
 import { DesktopOverlay } from './components/shell/DesktopOverlay';
+import { OverlayMenu } from './components/shell/OverlayMenu';
 import { TrayPopup } from './components/shell/TrayPopup';
 import { ExtensionProvider } from './contexts/ExtensionContext';
 import { ContextMenuProvider } from './components/ui/ContextMenu';
@@ -28,7 +29,9 @@ if (import.meta.env?.DEV && !window.api) installMockApi();
 // 트레이 아이콘을 눌러 뜬 작은 창은 앱 전체가 아니라 팝업만 그린다
 const query = new URLSearchParams(window.location.search);
 const trayPopup = query.has('tray-popup');
-if (trayPopup) document.documentElement.dataset.trayPopup = '';
+// 펫을 우클릭해 뜬 판(셸 overlay.rs)도 같은 작은 판 창이다
+const overlayMenu = query.has('overlay-menu');
+if (trayPopup || overlayMenu) document.documentElement.dataset.popup = '';
 // 바탕화면 오버레이 창(셸 overlay.rs)은 익스텐션 slot `Desktop.overlay`만 그린다
 const desktopOverlay = query.has('desktop-overlay');
 if (desktopOverlay) document.documentElement.dataset.desktopOverlay = '';
@@ -57,6 +60,8 @@ i18nReady.finally(() => {
                     <ExtensionProvider surface="tray">
                         <TrayPopup />
                     </ExtensionProvider>
+                ) : overlayMenu ? (
+                    <OverlayMenu />
                 ) : desktopOverlay ? (
                     <ExtensionProvider surface="desktop">
                         <DesktopOverlay />

@@ -3,13 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- JS 번들 로드 전에 테마 바탕색(tokens.css --bg-0)을 미리 칠해 흰 화면 플래시 방지 -->
-    <style>
-      html, body { margin: 0; background: #0d0e10; }
-      @media (prefers-color-scheme: light) {
-        html, body { background: #e6e8ed; }
-      }
-    </style>
+    <!-- JS 번들 로드 전에 테마 바탕색을 미리 칠한다 (public/boot.css) -->
+    <link rel="stylesheet" href="/boot.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&family=Noto+Sans+KR:wght@100..900&family=Noto+Sans+JP:wght@100..900&display=swap" rel="stylesheet" />

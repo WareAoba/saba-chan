@@ -383,13 +383,13 @@ button:disabled {
  * 글자 없는 점에서 구분이 사라지므로, 그때만 속 빈 고리로 그린다 (CLI ◐와 같은 생각)
  */
 @media (prefers-reduced-motion: reduce) {
-    :is(.status-chip.pulse .status-chip-dot, .conn-node.pulse .conn-dot, .server-row-dot.pulse, .tray-popup-dot.pulse) {
+    :is(.status-chip.pulse .status-chip-dot, .conn-node.pulse .conn-dot, .server-row-dot.pulse, .quick-panel-dot.pulse) {
         background: var(--bg-1);
         box-shadow: inset 0 0 0 2px var(--chip-color, var(--text-3));
     }
 }
 [data-no-transitions='true']
-    :is(.status-chip.pulse .status-chip-dot, .conn-node.pulse .conn-dot, .server-row-dot.pulse, .tray-popup-dot.pulse) {
+    :is(.status-chip.pulse .status-chip-dot, .conn-node.pulse .conn-dot, .server-row-dot.pulse, .quick-panel-dot.pulse) {
     background: var(--bg-1);
     box-shadow: inset 0 0 0 2px var(--chip-color, var(--text-3));
 }

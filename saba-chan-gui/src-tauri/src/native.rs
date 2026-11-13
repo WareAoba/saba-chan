@@ -25,8 +25,8 @@ pub async fn daemon_request(
     response_type: Option<String>,
     target: Option<String>,
 ) -> Value {
-    // 바탕화면 오버레이는 읽기와 서버 켜고 끄기만 (overlay::allows_request)
-    let overlay = window.label() == crate::overlay::OVERLAY;
+    // 바탕화면 오버레이와 그 우클릭 판은 읽기와 서버 켜고 끄기만 (overlay::allows_request)
+    let overlay = crate::overlay::limited(window.label());
     let allowed = |m: &reqwest::Method| is_allowed_request(m, &path) && (!overlay || crate::overlay::allows_request(m, &path));
     let Some(method) = parse_method(&method).filter(allowed) else {
         return json!({ "status": 0, "error": format!("Invalid daemon request: {path}"), "code": "EINVAL" });
@@ -176,7 +176,7 @@ pub async fn tray_action(app: AppHandle, action: String) -> Value {
 /// 트레이 팝업 렌더러가 잰 내용 높이(논리 px). 그 높이로 아이콘 옆에 놓고 보인다
 #[tauri::command]
 pub fn tray_popup_fit(app: AppHandle, height: f64) {
-    window::fit_tray_popup(&app, height);
+    window::fit_popup(&app, &window::TRAY, height);
 }
 
 // ── 바탕화면 오버레이 (`overlay.rs`) ──
@@ -187,10 +187,23 @@ pub fn overlay_fit(app: AppHandle, width: f64, height: f64) {
     crate::overlay::fit(&app, width, height);
 }
 
-/// 오버레이 우클릭 메뉴를 OS 메뉴로 띄운다. 고른 항목 id는 `overlay:menu` 이벤트로 간다
+/// 펫을 우클릭했다: 펫 옆의 우클릭 판(`overlay-menu`)을 열거나 닫는다.
+/// async: 창을 만든다 (동기 명령에서 창을 만들면 Windows에서 교착한다)
 #[tauri::command]
-pub fn overlay_menu(app: AppHandle, items: Vec<crate::overlay::MenuSpec>) -> bool {
-    crate::overlay::popup_menu(&app, items)
+pub async fn overlay_menu(app: AppHandle) -> bool {
+    crate::overlay::toggle_menu(&app)
+}
+
+/// 우클릭 판 렌더러가 잰 내용 높이(논리 px). 그 높이로 펫 옆에 놓고 보인다
+#[tauri::command]
+pub fn overlay_menu_fit(app: AppHandle, height: f64) {
+    crate::overlay::fit_menu(&app, height);
+}
+
+/// 우클릭 판의 크기 막대: 펫 크기(%)를 바꾸고 멈추면 저장한다. 고른 크기를 돌려준다
+#[tauri::command]
+pub fn overlay_set_scale(app: AppHandle, scale: f64) -> u32 {
+    crate::overlay::set_scale(&app, scale)
 }
 
 /// 오버레이의 셸 동작: open_app(+ `route` `server:<id>`면 그 서버) | hide. async: 메인 창을 새로 만들 수 있다
@@ -209,6 +222,12 @@ pub async fn overlay_state(app: AppHandle) -> Value {
 #[tauri::command]
 pub async fn overlay_set_enabled(app: AppHandle, enabled: bool) -> Value {
     json!({ "ok": crate::overlay::set_enabled(&app, enabled).await })
+}
+
+/// 오버레이를 끌기 시작한다. 셸이 끌어 옮긴 자리만 기억하도록(OS가 옮긴 자리와 가르도록) 창 끌기를 셸이 시작한다
+#[tauri::command]
+pub fn overlay_drag(app: AppHandle) {
+    crate::overlay::drag(&app);
 }
 
 /// 익스텐션을 켜고 끄거나 설치·삭제한 뒤 메인 창이 부른다: 오버레이 창을 띄울지 다시 본다
