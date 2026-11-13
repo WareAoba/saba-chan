@@ -618,6 +618,39 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`(채
 - 챗봇·음악 사용 한도(relay 메모리 기록, 재시작하면 비운다): 챗봇은 판단으로 가는 메시지(호출·세션 중 후속)를 사람마다 분당 12개, 판단을 길드마다 분당 20회·시간당 300회까지 받고 넘친 것은 답하지 않는다(`chatbot/callLimit.ts`). 운영 공용 키 도구는 길드마다 몫이 있다: 종목 조회(Alpha Vantage) 하루 8회(캐시 적중은 세지 않는다, 넘으면 `guild_quota`), Riot 2분에 요약 2번·계정 조회 20번(`riot_guild_quota`, 요약 한 번이 Riot 호출 40여 회라 따로 센다). Riot 도구가 한도로 실패하면 결과에 막은 쪽 `limited_by`(`riot` = Riot의 429와 그 `Retry-After`, `saba` = 사바쨩의 2분 95회 상한·길드 몫)와 `retry_after_seconds`를 붙이고, 길드 몫이면 `limit`·`window_seconds`도 붙인다. 모든 도구 실패는 relay 로그 `[Chatbot] 도구 <이름> 실패 (guild=…): <코드>`로 남는다(`toolkit/index.ts`). /전적은 `*_rate_limited`를 '게임 API가 바빠요'로, `*quota`를 '이 서버에서 너무 자주'로 보여 준다. `read_webpage`는 사람이 이번 새 메시지에 그대로 적은 주소만 읽는다(아니면 `url_not_from_user`, `toolkit/research.ts`). 음악은 길드마다 분당 10회에 더해 사람마다 모든 길드를 합쳐 분당 10회이고(`music_user_rate_limited`. 둘 다 통과할 때만 세고, 볼륨 버튼은 길드·사람 모두 따로 센다), 재생을 바꾸는 명령·버튼·대기열 메뉴(건너뛰기·정지·일시정지·볼륨·셔플·반복 등)는 봇이 음성 채널에 있으면 그 채널에 있는 사람만 쓴다(`music_not_listening`, 숨김 답. 곡 추가·조회는 누구나, `bot/music/handlers.ts` `admitMusic`).
 - 권한 판정의 주체는 데몬이다(`chat/permissions.rs`, 01 문서 BotConfig 절). 금지(-1) 멤버는 relay 게이트웨이가 음악·챗봇을 포함한 봇 기능 전체에서 먼저 막는다. 슬래시·버튼에는 숨김 답으로, 봇에게 한 메시지에는 10분에 한 번 짧은 안내로 답한다(`bot/gateway/gateway.ts`, `commandAccess.ts` `isBanned`). 설정이 없는 길드도 기본 레벨(유저)로 판정한다. relay의 `node_permissions`·`nodes.default_level`은 데몬 값의 캐시이고 relay 바깥 검사(`commandAccess.ts`)에 쓴다. `/사바쨩 권한 레벨:<…> [유저]` 명령은 `permission` action으로 데몬에 보낸다. 유저를 고르면 그 멤버에게 부여, 레벨 칸의 해제(`revoke`)를 고르면 그 멤버의 개별 레벨 해제, 유저를 비우면 기본 레벨이다(2026-10-30에 부여·해제·기본 하위 명령을 합쳤다, 해제를 유저 없이 고르면 `perm_revoke_needs_user`). 멤버 우클릭 → 앱 → "사바쨩 레벨 바꾸기"는 같은 사다리와 해제를 선택 메뉴(`perm:set:<id>:<사용자명>`)로 보이고, 고르면 노드 소유자인지 다시 본 뒤 같은 길로 보낸다(`coreService.ts` `grantLevel`·`revokeLevel`). 레벨 칸은 문자열 자동완성이다(유저를 골랐으면 맨 앞에 해제): heartbeat `permissions[길드].ladder`에서 소유자를 뺀 단계를 사다리 순서로(더한 단계는 그 이름) 보이고, 값은 단계 id다. 직접 친 이름도 받고(배포 직후 옛 정수 칸 값도 받는다), 그 서버에 없는 값이면 `perm_invalid_level`로 답한다(`coreService.ts` `levelChoicesFor`·`parseLevelChoice`). 릴레이가 레벨을 견줄 때는 사다리 순서를 쓴다(`catalog.ts` `levelAtLeast`, 사다리가 없는 옛 데몬은 기본 단계 숫자로 견주고 10 이상은 모자란 것으로 본다). 거부 문구는 need가 소유자면 `cmd_needs_owner`, 관리자면 `cmd_needs_admin`, 더한 단계면 그 이름을 넣은 `cmd_needs_level`, 그 밖은 `cmd_no_permission`이다(사다리에서 관리자보다 위로 옮긴 단계도 관리자 문구가 아니다, `dispatch.ts` `deniedOutcome`). prefix·길드 슬래시 명령의 되묻기는 데몬 문장 계획의 `needsConfirm`이 정한다: 참이면 확인 버튼을 띄우고(`actionCommands.ts` `commandConfirm`), 요청한 사람만 누를 수 있고, 누른 사람 이름으로 같은 문장의 계획(`plan {text}`)을 보낸다. relay가 카탈로그 risk로 따로 묻지 않는다. 챗봇 도구(`run_command`·`run_action`·`plan_actions`)는 모델이 도구를 부르게 한 새 메시지(`request_message_id`, 모델에는 대화록 번호 `#N`, 아래 판단 입력 줄)만 받고, 요청자는 릴레이가 그 메시지의 실제 작성자로 넣는다(문맥 메시지·봇 메시지는 `current_human_request_required`). `run_command`·`run_action`의 확인: danger와 관리 액션(`kind` admin)은 늘 확인, 그 밖은 챗봇 설정 `confirmLevel`을 따른다: `all`은 모두, `caution`은 caution 이상, `danger`는 danger와 관리 액션만 확인한다(`chatbot/tools.ts` `chatbotAsks`. 금지 명령은 단계와 상관없이 금지다. 액션은 데몬의 `needsConfirm`도 따르고, 조회는 확인 없이 실행한다). 확인 없이 실행하는 것은 요청 글이 사바쨩을 불렀고(멘션·호출어·답장) 모델이 읽은 문맥·새 글이 모두 요청자 본인 것이며(링크 미리보기·첨부 사진은 본인 글에 붙어 있어도 남의 자료로 본다) 이번 판단에서 기억·외부 자료 도구·조회·로그·명령 결과를 읽지 않았고 저장 자료(눈치 메모 `social_notes`, 롤 계정 `lol_accounts`, 도구 묶음의 `payloadExternal`)가 판단에 실리지 않았을 때뿐이다. 아니면 요청자 확인 버튼을 거친다. `plan_actions`는 늘 확인이다. 이번 묶음에 글을 쓴 사람이 여럿이면 위험도와 상관없이 확인을 거치고(조회는 `multiple_requesters`로 거절), 버튼은 요청자만 누른다. heartbeat `permissions[길드]`에 `chatbotCap`·`levels`가 있으면 릴레이는 요구 레벨((c)의 `required`, 0.1.15 미만 데몬이면 (c)의 예전 순서)을 `chatbotCap`과 비교해(`commandLevelsTruncated`이거나 `levels.admin`·`chatbotCap`이 없는 길드는 비교하지 않는다. `run_action`과 `plan_actions`의 단계도 (c)의 액션 순서로 세고, 앞 단계가 만들 서버 `@N`은 세지 않는다) 요구 레벨이 `chatbotCap`보다 높은 요청(누구든 챗봇으로는 닿지 못하는 요청)만 보내지 않고 `permission_denied`로 돌려주며(작성자 레벨이 모자란 요청은 데몬이 거절한다, (c)의 RA9 줄), 이 값을 모델에도 보인다(`describe_commands`의 `required_level`, payload `requester_levels`). 최종 판정은 데몬이다(`chatbot/tools.ts`).
 
+### 4.6 (계획 — 아직 구현하지 않았다) 디스코드 길드 설정의 원본을 릴레이 하나로
+
+> 이 절은 설계다. 코드는 아직 4.4의 "PC가 붙으면 데몬이 원본" 그대로다. 사용자 결정(2026-11-13): 디스코드 길드 설정의 원본은 릴레이 하나로 한다. 아래 "정해야 할 것"이 정해지면 구현하고, 구현한 PR에서 이 절을 4.4에 합친다.
+
+**지금 (코드 기준)**
+
+- PC가 붙은 길드: 데몬 `nodeSettings[길드].discord`(`ipc/handlers/discord.rs` `GuildSettings`)가 원본이다. 데몬은 값이 바뀔 때와 릴레이에 연결될 때(`sync_on_connect`) 다른 키만 `PATCH /api/nodes/:guildId/settings`로 보낸다. 릴레이는 그 값을 직접 바꾸려는 요청을 `409 PC_OWNED`로 막고(`services/relayApi.ts`), 디스코드 `/설정`·MCP는 데몬 액션(`discord.settings.set`)으로 돌려 보낸다.
+- PC 없는 길드: 릴레이 `nodes` 행이 원본이다. PC가 보내는 명령에만 쓰는 값(`prefixes`·`translateCommands`·`slashPrefix`·`slashRootName`·`privateQueries`)과 PC 채널 배정(`notify`·`gameChat`·`board`)은 `409 NEEDS_PC`다.
+- 늘 릴레이가 원본인 값: `bigEmoji`·`gameChatGuard`·`gameChatClearOnStop`·`gameChatAutoOpen`·`memberNotice`·`busyNotice`(데몬 `RELAY_OWNED`, 데몬은 그대로 릴레이에 넘긴다).
+- 연결을 풀면 릴레이는 `locale`·`music`·`tts`·`sleepBlocks`·`bedtime`만 남기고(`RELAY_KEPT`), 다시 붙이면 데몬이 그 값을 받아 사본을 맞춘다(`adopt_linked_guild`).
+- 데몬만 아는 값: `confirmLevel`·`commandRisks`(되묻기 판정 `actions::needs_confirm`). 릴레이에 보내지 않는다.
+- 말하는 사바쨩 설정(`/api/nodes/:guildId/chatbot`)도 같은 구조다: PC가 붙으면 데몬 `config.json chatbot`이 원본이고 릴레이는 `PC_OWNED`로 막는다.
+
+**목표**
+
+1. 원본: 릴레이 `nodes` 행 하나. PC가 붙었는지와 상관없이 같은 API(`/api/nodes/:guildId/settings`, 릴레이 `/설정`, MCP `change_discord_server`)가 같은 행을 읽고 쓴다. `PC_OWNED`·`NEEDS_PC`(설정)·`RELAY_OWNED`/`RELAY_KEPT`·`adopt_linked_guild`·`sync_on_connect`의 설정 밀어넣기를 지운다.
+2. 앱·웹·CLI(데몬 `GET/PATCH /api/discord/guilds/:guild/settings`, 액션 `discord.settings.*`): 데몬은 사본 없이 릴레이 API로 그대로 넘기는 통로가 된다(노드 토큰, 대표 PC·붙은 PC 모두). 릴레이에 닿지 않으면 읽기·쓰기 모두 실패로 답한다 — 오프라인에서 바꿔 두었다가 나중에 보내는 동작은 없어진다.
+3. 데몬이 판정에 쓰는 값은 릴레이가 내려 준다: `prefixes`(도움말·명령 문장 앞머리), 그리고 릴레이로 옮긴다면 `confirmLevel`·`commandRisks`. heartbeat 응답에 `guildSettings: { <길드>: { rev, prefixes, … } }`를 더하고(SINCE 0.1.15), 데몬은 heartbeat 요청에 자기가 가진 `rev`를 실어 바뀐 길드만 받는다. 데몬은 이 값을 메모리에만 두고(디스코드 요청은 릴레이를 거쳐서만 오므로 릴레이가 끊긴 동안에는 쓸 일이 없다) 저장하지 않는다.
+4. PC가 없는 길드에서도 PC용 값을 저장할 수 있게 한다(값은 PC가 붙으면 쓰인다). 화면에서는 "PC를 연결하면 쓰입니다"로 보이거나 감춘다 — 화면이 달라지므로 시안이 필요하다.
+5. 이사: 0.1.15 데몬은 첫 연결 때 지금의 `sync_on_connect`를 마지막으로 한 번 돌려 사본을 릴레이에 보내고(오프라인에서 바꿔 둔 값 포함), 성공하면 `nodeSettings[길드].discord`를 지우고 `discordSettingsMoved`를 적는다. 그 뒤로는 사본을 만들지 않는다. 릴레이에는 이미 같은 값이 있으므로(데몬이 바뀔 때마다 보내 왔다) 릴레이 쪽 migration은 `confirmLevel`·`commandRisks` 열을 더할 때만 필요하다.
+
+**정해야 할 것 (사용자 결정 필요 — 이 때문에 구현을 멈췄다)**
+
+- (가) 0.1.13–0.1.14 데몬. 이 데몬은 자기 사본을 원본으로 알고 연결할 때마다 다른 키를 PATCH한다. 릴레이가 직접 쓰기를 열면, 디스코드에서 바꾼 값을 옛 데몬이 다음 연결 때 되돌린다. 고를 수 있는 길:
+  1. 이 변경과 함께 릴레이 최저 버전을 0.1.15로 올린다. 이중 경로가 남지 않고 한 번에 지울 수 있다. 0.1.14 이하 사용자는 업데이트 전까지 릴레이를 쓰지 못한다. **추천**(0.1.15 앱이 충분히 퍼진 뒤 릴레이를 배포).
+  2. 호스트 버전으로 갈라 0.1.15 미만 PC가 붙은 길드는 지금처럼 `PC_OWNED`를 유지한다. 최저 버전이 오를 때까지 릴레이에 두 경로가 함께 남아, 그동안은 코드가 줄지 않고 는다.
+  3. 옛 데몬의 PATCH를 받고 버린다. 옛 앱의 디스코드 탭이 저장한 것처럼 보이고 반영되지 않는다. 권하지 않는다.
+- (나) `confirmLevel`·`commandRisks`. 되묻기는 데몬이 판정한다. (a) 권한(`commandLevels`·`members`)처럼 "실행 정책"으로 보고 데몬 `nodeSettings`에 그대로 두거나(릴레이 `/설정`은 이 두 값만 지금처럼 데몬 액션으로 바꾼다. PC마다 다를 수 있다), (b) 릴레이로 옮겨 3번 경로로 내려 준다(길드에 하나, PC가 여럿이어도 같다). **추천: (a)** — 권한과 같은 자리에 두면 "보이는 모양은 릴레이, 실행 정책은 데몬"으로 나뉘고 새 내려받기 계약이 `prefixes` 하나로 준다.
+- (다) 말하는 사바쨩 설정과 API 키. 모델·API 키는 "내 PC 공통 값"(`chatbot.common.set`)이라 길드 설정과 범위가 다르다. 길드별 값(켜기·도구·깊이·메모)만 릴레이 원본으로 옮기고 공통 값(모델·키)은 데몬에 둘지, 전부 옮길지 정해야 한다. 키를 릴레이만 갖게 하면 PC에서 키가 사라져, 앱의 "키 있음" 표시와 지우기도 릴레이 통로가 된다.
+- (라) PC 채널 배정(`notify`·`gameChat`·`board`)의 `NEEDS_PC`. 원본이 갈린 것이 아니라 "받을 PC가 없다"는 검사다. 그대로 둘지, 4번처럼 저장은 받고 화면에서 알릴지 정한다.
+
+**구현 순서 (결정 뒤)**: ① 릴레이: heartbeat 응답 `guildSettings` + 직접 쓰기 열기(버전 조건은 (가)에 따라) → ② 데몬: 통로화·사본 이사·`guild_prefixes`가 내려받은 값을 읽게 → ③ 릴레이: `PC_OWNED`/`NEEDS_PC`·`bot/settings/save.ts`의 데몬 액션 경로·`mcp/tools.ts` 안내 문구 삭제 → ④ 데몬: `RELAY_OWNED`·`RELAY_KEPT`·`adopt_*`·`sync_*` 삭제. 01 문서 BotConfig 절과 이 문서 4.2·4.4를 같은 PR에서 고친다.
+
 ---
 
 ## 5. server-chan 운영 구성요소와 운영 결함
