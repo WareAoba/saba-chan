@@ -866,7 +866,7 @@
     "pin_confirm": "{{name}}을(를) {{from}}에서 {{version}}(으)로 바꿔요. {{from}}보다 새 버전이 나올 때까지는 자동 업데이트가 바꾸지 않아요. 계속할까요?",
     "pinned_done": "바꿨어요: {{name}} {{version}} (고정)",
     "pin_waiting": "{{servers}}이(가) 꺼지면 {{version}}(으)로 바꿔요.",
-    "pin_waiting_busy": "서버를 켜거나 설치하는 중이에요. 끝나면 {{version}}(으)로 바꿔요.",
+    "pin_waiting_busy": "서버를 시작하거나 설치하는 중이에요. 끝나면 {{version}}(으)로 바꿔요.",
     "pin_yanked": "{{version}}은(는) 내려진 버전이라 고를 수 없어요. 고를 수 있는 버전: saba-chan update versions {{arg}}",
     "pin_unavailable": "{{version}}은(는) 이 PC의 사바쨩에서 고를 수 없는 버전이에요. 고를 수 있는 버전: saba-chan update versions {{arg}}",
     "unpin_confirm": "{{name}}을(를) 자동 업데이트로 돌려요. 가장 새 버전 {{version}}(으)로 바로 바꿔요. 계속할까요?",

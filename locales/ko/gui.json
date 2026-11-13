@@ -844,7 +844,7 @@
     "version_confirm_go": "바꾸기",
     "version_downloading": "{{version}} 받는 중...",
     "version_waiting": "{{servers}}이(가) 꺼지면 {{version}}(으)로 바꿔요.",
-    "version_waiting_any": "켜진 서버가 꺼지면 {{version}}(으)로 바꿔요.",
+    "version_waiting_any": "실행 중인 서버가 꺼지면 {{version}}(으)로 바꿔요.",
     "version_done": "{{name}} {{kind}}을 {{version}}(으)로 바꿨어요.",
     "version_failed": "{{name}} {{kind}}을 {{version}}(으)로 바꾸지 못했어요: {{reason}}. {{from}} 그대로예요.",
     "version_pinned": "고정",
