@@ -1,6 +1,6 @@
 //! 예약 작업 실행기: 30초마다 때가 된 작업을 돌리고, 결과를 인스턴스 폴더의 이력에 남긴다.
 //! 복원한 뒤 오래 돈 서버의 복원 전 안전 백업도 이때 치운다.
-//! 시작·정지·재시작·백업은 HTTP 핸들러와 같은 서비스 함수(`ipc::handlers::server`·`backup`)를 부른다
+//! 시작·정지·재시작·백업은 HTTP 핸들러와 같은 서비스 함수(`service::lifecycle`·`service::backup`)를 부른다
 
 use serde_json::{json, Value};
 use std::collections::HashSet;
