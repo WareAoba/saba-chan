@@ -20,7 +20,7 @@ async fn resolve(state: &IPCServer, id: &str) -> Option<String> {
 }
 
 fn not_found(id: &str) -> axum::response::Response {
-    (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response()
+    super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id))
 }
 
 /// POST /api/instance/:id/port-check
@@ -42,7 +42,13 @@ pub async fn check(Path(id): Path<String>, State(state): State<IPCServer>) -> ax
                 CheckError::Rejected => tracing::warn!("Port check for {} failed: relay answered 400", id),
                 _ => {}
             }
-            (status, Json(json!({ "success": false, "error": e.code(), "error_code": e.code() }))).into_response()
+            let message = match &e {
+                CheckError::NotPaired => "This PC is not linked to the relay",
+                CheckError::Busy => "A port check is already running",
+                CheckError::RateLimited => "Too many port checks; try again later",
+                CheckError::Rejected | CheckError::Relay(_) => "Could not reach the relay",
+            };
+            super::error(status, e.code(), message)
         }
     }
 }

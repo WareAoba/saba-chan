@@ -36,7 +36,7 @@ pub async fn diagnostics(State(state): State<IPCServer>) -> impl IntoResponse {
     });
 
     Json(json!({
-        "ok": true,
+        "success": true,
         "version": env!("CARGO_PKG_VERSION"),
         "pid": std::process::id(),
         "uptime_secs": STARTED.get().map(|t| t.elapsed().as_secs()),
@@ -96,7 +96,7 @@ pub struct AuditExportRequest {
 pub async fn audit_export(Json(req): Json<AuditExportRequest>) -> axum::response::Response {
     use axum::http::StatusCode;
     let fail = |status: StatusCode, code: &str, message: String| {
-        (status, Json(json!({ "success": false, "error": message, "error_code": code }))).into_response()
+        super::error(status, code, message)
     };
     let path = std::path::PathBuf::from(req.path.trim());
     if req.path.trim().is_empty() || !path.is_absolute() {

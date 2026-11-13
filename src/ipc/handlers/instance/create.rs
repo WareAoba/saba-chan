@@ -23,6 +23,7 @@ pub(crate) fn extension_required(action: &str, found: &crate::extension::Missing
         )
     };
     let error = json!({
+        "success": false,
         "error": msg,
         "error_code": "extension_required",
         "missing_extensions": found.missing,
@@ -43,7 +44,7 @@ pub async fn create_instance(
         Ok(response) => response,
         Err(e) => {
             tracing::error!("Instance creation task failed: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "instance creation failed" }))).into_response()
+            super::super::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", "instance creation failed")
         }
     }
 }
@@ -92,7 +93,7 @@ fn branch_request(supervisor: &crate::supervisor::Supervisor, payload: Value) ->
     let Some(wanted) = payload.get("branch_of").filter(|v| !v.is_null()) else {
         return Ok((payload, None));
     };
-    let refuse = |status: StatusCode, code: &str, error: &str| Box::new((status, Json(json!({ "success": false, "error": error, "error_code": code }))).into_response());
+    let refuse = |status: StatusCode, code: &str, error: &str| Box::new(super::super::error(status, code, error));
     let Some(parent) = wanted.as_str().and_then(|id| supervisor.instance_store.get(id)).cloned() else {
         return Err(refuse(StatusCode::NOT_FOUND, "branch_parent_not_found", "The server to branch from does not exist"));
     };
@@ -180,8 +181,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         // 채팅이 대소문자·공백 칸 수를 가리지 않고 찾으므로 그것만 다른 이름도 같은 이름이다
         let name_taken = |n: &str| supervisor.instance_store.list().iter().any(|i| crate::chat::words::same(&i.name, n));
         if name_taken(name) && !dry_run {
-            let error = json!({ "success": false, "error": format!("An instance named '{}' already exists", name), "error_code": "name_taken" });
-            return (StatusCode::CONFLICT, Json(error)).into_response();
+            return super::super::error(StatusCode::CONFLICT, "name_taken", format!("An instance named '{}' already exists", name));
         }
         // 문장 명령이 부르는 말을 쉼표로 나누므로 이름에 쉼표를 두지 않는다 (rename과 같은 400)
         let comma = name.contains(crate::chat::words::is_comma);
@@ -320,8 +320,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         if let (Some(src), Some(dest)) = (&moved_from, instance.working_dir.as_deref()) {
             if let Err(code) = crate::instance::migration::move_into(src, std::path::Path::new(dest)) {
                 let _ = std::fs::remove_dir_all(&instance_dir);
-                let error = json!({ "success": false, "error": format!("Could not move the server folder into saba-chan ({})", code), "error_code": code });
-                return (StatusCode::CONFLICT, Json(error)).into_response();
+                return super::super::error(StatusCode::CONFLICT, code, format!("Could not move the server folder into saba-chan ({})", code));
             }
         }
 
@@ -585,13 +584,11 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                 if let Some(dir) = instance.working_dir.as_deref().filter(|_| made_folder) {
                     let _ = std::fs::remove_dir(dir);
                 }
-                let error = json!({ "error": format!("Failed to create instance: {}", e) });
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+                super::super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", format!("Failed to create instance: {}", e))
             }
         }
     } else {
-        let error = json!({ "error": "Invalid request" });
-        (StatusCode::BAD_REQUEST, Json(error)).into_response()
+        super::super::error(StatusCode::BAD_REQUEST, "invalid_request", "Invalid request")
     }
 }
 
@@ -794,8 +791,7 @@ fn apply_module_definition(
         match loaded_module.metadata.presets.iter().find(|p| p.id == id) {
             Some(preset) => chosen.extend(preset.settings.clone()),
             None => {
-                let error = json!({ "error": format!("Module '{}' has no preset '{}'", module, id), "error_code": "preset_not_found" });
-                return Err(Box::new((StatusCode::BAD_REQUEST, Json(error)).into_response()));
+                return Err(Box::new(super::super::error(StatusCode::BAD_REQUEST, "preset_not_found", format!("Module '{}' has no preset '{}'", module, id))));
             }
         }
     }
@@ -828,7 +824,7 @@ fn apply_module_definition(
             let installable = payload.get("migration_source").is_some_and(|v| !v.is_null())
                 || field.install_options.as_ref().is_none_or(|ok| value.as_str().is_some_and(|v| ok.iter().any(|o| o == v)));
             if allowed && !installable {
-                let error = json!({ "error": format!("module_settings.{} cannot be installed by saba-chan", field.name), "error_code": "not_installable", "fields": [{"field": field.name}] });
+                let error = json!({ "success": false, "error": format!("module_settings.{} cannot be installed by saba-chan", field.name), "error_code": "not_installable", "fields": [{"field": field.name}] });
                 return Err(Box::new((StatusCode::BAD_REQUEST, Json(error)).into_response()));
             }
             if !allowed || crate::validator::validate_setting_value(field, Some(value)).is_err() {

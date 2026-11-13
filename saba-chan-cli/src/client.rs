@@ -241,7 +241,7 @@ impl Api {
     pub async fn paths(&self) -> Result<Value> {
         self.get("/api/system/paths").await
     }
-    /// GET /api/system/browse?path=&files= — 데몬 PC의 폴더 보기 `{ok, path, parent, home, sep, entries: [{name, path, dir}], truncated}`
+    /// GET /api/system/browse?path=&files= — 데몬 PC의 폴더 보기 `{success, path, parent, home, sep, entries: [{name, path, dir}], truncated}`
     pub async fn browse(&self, path: &str, files: Option<&str>) -> Result<Value> {
         self.get(&with_query("/api/system/browse", &[("path", Some(path.into())), ("files", files.map(Into::into))]))
             .await
@@ -1371,16 +1371,17 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    // 데몬이 그대로 넘긴 릴레이 본문은 `error`가 코드(`NODE_NOT_FOUND`)이고 error_code가 없다
+    // 데몬이 넘긴 릴레이 본문은 `error`가 코드(`NODE_NOT_FOUND`)이고 error_code는 `error`를 옮긴 값이다 (0.1.14까지의 데몬은 error_code가 없다)
     let relay_code = pick("error").filter(|e| e.len() > 2 && e.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'));
+    let own_code = pick("error_code").filter(|c| Some(c) != pick("error").as_ref());
     // 429 는 릴레이가 따로 알리는 코드(채널 이름 바꾸기 한도 RENAME_LIMIT 등)가 아니면 모두 RATE_LIMITED
     let known = |c: &str| crate::i18n::try_t(&format!("err.relay.{}", c.to_ascii_lowercase())).is_some();
-    let relay_code = if status == 429 && pick("error_code").is_none() && !relay_code.as_deref().is_some_and(known) {
+    let relay_code = if status == 429 && own_code.is_none() && !relay_code.as_deref().is_some_and(known) {
         Some("RATE_LIMITED".to_string())
     } else {
         relay_code
     };
-    if let (None, Some(rc)) = (pick("error_code"), relay_code) {
+    if let (None, Some(rc)) = (own_code, relay_code) {
         let code = rc.to_ascii_lowercase();
         // 같은 뜻의 릴레이 코드는 한 문장으로 묶는다
         let key = match code.as_str() {
@@ -1620,6 +1621,10 @@ mod tests {
         // 확인한 뒤 그 디스코드 서버가 다른 PC로 옮겨 갔다 (릴레이 409, 감사 R6)
         let moved = api_err(check(409, json!({ "error": "NODE_MOVED" })));
         assert_eq!(moved.to_string(), crate::i18n::try_t("err.relay.node_moved").unwrap_or_default(), "{}", moved);
+        // 새 데몬은 릴레이 본문에 `success: false`와 `error`를 옮긴 error_code를 더한다 (D7): 같은 문장이 나온다
+        let relayed = |status, error: &str| api_err(check(status, json!({ "success": false, "error": error, "error_code": error })));
+        assert_eq!((relayed(409, "NODE_MOVED").code(), relayed(409, "NODE_MOVED").to_string()), ("node_moved".to_string(), moved.to_string()));
+        assert_eq!(relayed(429, "Too Many Requests").code(), "rate_limited");
     }
 
     // 릴레이가 최소 버전보다 낮은 앱을 거절하면(426) 올려야 할 버전과 확인 명령을 알려 준다

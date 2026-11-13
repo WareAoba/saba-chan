@@ -849,10 +849,9 @@ impl Session {
         let monitor = self.server.system_monitor.clone();
         let snapshot = tokio::task::spawn_blocking(move || monitor.sample(&roots, &[], false, false)).await.ok();
         let usage = snapshot.as_ref().map(|s| s.instances.as_slice()).unwrap_or_default();
-        let servers: Vec<Value> = match crate::ipc::internal::into_internal(
+        let servers: Vec<Value> = match crate::ipc::internal::InternalResponse::from(
             crate::service::servers::list(&self.server, 0).await,
         )
-        .await
         .body
         .get("servers")
         {

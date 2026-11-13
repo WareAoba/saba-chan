@@ -2229,7 +2229,7 @@ async fn call(server: &IPCServer, method: &str, uri: &str, body: Option<Value>) 
 pub(crate) async fn call_as(server: &IPCServer, method: &str, uri: &str, body: Option<Value>, origin: Option<crate::audit::Origin>) -> InternalResponse {
     match route_once(server, method, uri, body, origin).await {
         Ok(resp) => into_internal(resp).await,
-        Err(e) => InternalResponse { status: axum::http::StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": e }) },
+        Err(e) => crate::service::Failure::coded(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", e).into(),
     }
 }
 
@@ -2240,12 +2240,12 @@ const RAW_BODY_LIMIT: usize = 4 * 1024 * 1024;
 pub(crate) async fn call_raw_as(server: &IPCServer, method: &str, uri: &str, origin: Option<crate::audit::Origin>) -> (axum::http::StatusCode, axum::body::Bytes) {
     let resp = match route_once(server, method, uri, None, origin).await {
         Ok(resp) => resp,
-        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "error": e }).to_string().into()),
+        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e, "error_code": "internal_server_error" }).to_string().into()),
     };
     let status = resp.status();
     match axum::body::to_bytes(resp.into_body(), RAW_BODY_LIMIT).await {
         Ok(bytes) => (status, bytes),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "error": e.to_string() }).to_string().into()),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string(), "error_code": "internal_server_error" }).to_string().into()),
     }
 }
 

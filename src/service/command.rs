@@ -1,28 +1,29 @@
 //! 게임 명령 실행: 요청 해석 결과(`crate::commands`)를 RCON·REST·stdin·모듈 경로로 보낸다.
 //! HTTP 라우트·채팅·백업·모듈 HOST 통로가 같은 함수를 부른다
 
-use axum::{http::StatusCode, response::IntoResponse, Json};
+use axum::http::StatusCode;
 use serde_json::{json, Value};
 
+use super::{Failure, Outcome};
 use crate::ipc::{CommandRequest, IPCServer};
 
 /// 게임 명령 하나를 실행하고 작업 기록에 `command` 한 줄로 남긴다 (`POST /api/instance/:id/command`와 채팅·백업이 같이 쓴다)
-pub(crate) async fn execute(state: &IPCServer, id: &str, req: CommandRequest) -> axum::response::Response {
+pub(crate) async fn execute(state: &IPCServer, id: &str, req: CommandRequest) -> Outcome {
     let (command, args) = (req.command.clone(), req.args.clone());
-    let resp = run_command(id, state, req).await;
-    super::audited(state, "command", id, Some(&command), Some(&args), resp).await
+    let result = run_command(id, state, req).await;
+    super::audited_result(state, "command", id, Some(&command), Some(&args), result).await
 }
 
-async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::response::Response {
+async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> Outcome {
     let id = id.to_string();
     let state = state.clone();
     use crate::commands::{Args, Plan, Request};
-    use crate::ipc::internal::{into_internal, InternalResponse};
+    use crate::ipc::internal::InternalResponse;
 
     let request = Request::parse(&req.command, &req.args);
     if request.name.is_empty() {
         return command_reply(
-            InternalResponse { status: StatusCode::BAD_REQUEST, body: json!({ "error": "Missing 'command' field" }) },
+            Failure::coded(StatusCode::BAD_REQUEST, "invalid_request", "Missing 'command' field").into(),
             "",
             &Default::default(),
         );
@@ -32,10 +33,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(&id).cloned() else {
             return command_reply(
-                InternalResponse {
-                    status: StatusCode::NOT_FOUND,
-                    body: json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }),
-                },
+                Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)).into(),
                 &request.name,
                 &Default::default(),
             );
@@ -115,7 +113,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
                         body
                     },
                 },
-                None => InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": "no handler" }) },
+                None => Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", "no handler").into(),
             };
             return command_reply(resp, &request.name, &errors);
         }
@@ -141,13 +139,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
 
     if !running && !stdin_route {
         return command_reply(
-            InternalResponse {
-                status: StatusCode::CONFLICT,
-                body: json!({
-                    "error": format!("Server '{}' is not running", instance.name),
-                    "error_code": "server_not_running",
-                }),
-            },
+            Failure::coded(StatusCode::CONFLICT, "server_not_running", format!("Server '{}' is not running", instance.name)).into(),
             &name,
             &errors,
         );
@@ -155,19 +147,19 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
 
     let resp = match plan {
         Plan::Console { line } => {
-            into_internal(rcon_for(&state.supervisor, &id, &json!({ "command": line })).await).await
+            rcon_for(&state.supervisor, &id, &json!({ "command": line })).await.into()
         }
         Plan::Rest { endpoint, http_method, body } => {
             let payload = json!({ "endpoint": endpoint, "method": http_method, "body": body });
-            into_internal(rest_for(&state.supervisor, &state.credentials, &id, payload, None).await).await
+            rest_for(&state.supervisor, &state.credentials, &id, payload, None).await.into()
         }
         Plan::Module { command, args } => run_module_command(&state, &instance, &command, Value::Object(args)).await,
         Plan::Raw { line } if stdin_route => {
-            into_internal(stdin(&state, &id, &json!({ "command": line })).await).await
+            stdin(&state, &id, &json!({ "command": line })).await.into()
         }
         // RCON만 받는 서버: 정의에 없는 한 줄도 콘솔 입력처럼 RCON으로 보낸다
         Plan::Raw { line } if rcon_route => {
-            into_internal(rcon_for(&state.supervisor, &id, &json!({ "command": line })).await).await
+            rcon_for(&state.supervisor, &id, &json!({ "command": line })).await.into()
         }
         Plan::Raw { line } => match &request.args {
             Args::Named(args) if !args.is_empty() => {
@@ -240,15 +232,11 @@ async fn instance_commands(
 }
 
 /// 이 인스턴스에서 쓸 수 있는 명령 전체 (모듈 + 인스턴스별 + 활성 익스텐션). 모양은 `GET /api/instance/:id/commands` 설명을 본다
-pub(crate) async fn list(state: &IPCServer, id: &str) -> axum::response::Response {
+pub(crate) async fn list(state: &IPCServer, id: &str) -> Outcome {
     let (instance, metadata, route) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id).cloned() else {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" })),
-            )
-                .into_response();
+            return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
         };
         let metadata = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
         let running = supervisor.is_running(&instance.id).await;
@@ -319,7 +307,7 @@ pub(crate) async fn list(state: &IPCServer, id: &str) -> axum::response::Respons
     if let Some(extra) = extra.filter(|e| !e.components.is_null()) {
         body["components"] = extra.components;
     }
-    Json(body).into_response()
+    Ok(body)
 }
 
 /// 지금 이 명령을 보낼 수 있는가: `run_command`의 경로 판정과 같다. 콘솔이 붙어 있으면(stdin) 무엇이든,
@@ -370,7 +358,7 @@ fn command_reply(
     resp: crate::ipc::internal::InternalResponse,
     command: &str,
     errors: &std::collections::HashMap<String, String>,
-) -> axum::response::Response {
+) -> Outcome {
     let mut body = match resp.body {
         Value::Object(map) => map,
         Value::Null => serde_json::Map::new(),
@@ -388,25 +376,20 @@ fn command_reply(
         }
         body.insert("error_code".into(), json!(code));
         body.entry("success").or_insert(json!(false));
+        return Err(Failure::new(resp.status, Value::Object(body)));
     }
-    (resp.status, Json(Value::Object(body))).into_response()
+    Ok(Value::Object(body))
 }
 
 /// 인스턴스 하나에 RCON 한 줄 (HTTP 라우트와 모듈 HOST `instance.rcon`이 같이 쓴다)
-pub(crate) async fn rcon_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> axum::response::Response {
+pub(crate) async fn rcon_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> Outcome {
     let supervisor_guard = supervisor.read().await;
 
     // 인스턴스 확인 (lock 해제 전에 clone)
     let instance = match supervisor_guard.instance_store.get(id).cloned() {
         Some(instance) => instance,
         None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "error": format!("Instance not found: {}", id)
-                })),
-            )
-                .into_response();
+            return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
         }
     };
 
@@ -421,61 +404,51 @@ pub(crate) async fn rcon_for(supervisor: &tokio::sync::RwLock<crate::supervisor:
     }
     if let Some(access) = rcon {
         if !running {
-            return (
-                StatusCode::CONFLICT,
-                Json(json!({ "error": format!("Server '{}' is not running", instance.name), "error_code": "server_not_running" })),
-            )
-                .into_response();
+            return Err(Failure::coded(StatusCode::CONFLICT, "server_not_running", format!("Server '{}' is not running", instance.name)));
         }
         return via_rcon(&access, payload).await;
     }
-    (
+    Err(Failure::coded(
         StatusCode::CONFLICT,
-        Json(json!({
-            "error": format!("'{}' has no saba-chan console attached, so it can't take commands: restart it in managed mode from saba-chan", instance.name),
-            "error_code": "no_command_path",
-        })),
-    )
-        .into_response()
+        "no_command_path",
+        format!("'{}' has no saba-chan console attached, so it can't take commands: restart it in managed mode from saba-chan", instance.name),
+    ))
 }
 
 /// RCON으로 한 줄을 실행한다. 답은 `data.response`. 실패 응답에 비밀번호·서버 답을 싣지 않는다
-async fn via_rcon(access: &crate::protocol::rcon::Access, payload: &serde_json::Value) -> axum::response::Response {
+async fn via_rcon(access: &crate::protocol::rcon::Access, payload: &serde_json::Value) -> Outcome {
     use crate::protocol::rcon::RconError;
     let Some(command) = payload.get("command").and_then(|v| v.as_str()) else {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Missing 'command' field" }))).into_response();
+        return Err(Failure::coded(StatusCode::BAD_REQUEST, "invalid_request", "Missing 'command' field"));
     };
     match crate::protocol::rcon::exec(access.port, &access.password, command).await {
-        Ok(response) => Json(json!({
+        Ok(response) => Ok(json!({
             "success": true,
             "message": format!("Sent over RCON: {}", command),
             "protocol": "rcon",
             "data": { "response": response },
-        }))
-        .into_response(),
+        })),
         Err(e) => {
             let status = match e {
                 RconError::InvalidCommand => StatusCode::BAD_REQUEST,
                 _ => StatusCode::BAD_GATEWAY,
             };
-            (status, Json(json!({ "success": false, "error": e.to_string(), "error_code": e.code(), "protocol": "rcon" }))).into_response()
+            Err(Failure::new(status, json!({ "success": false, "error": e.to_string(), "error_code": e.code(), "protocol": "rcon" })))
         }
     }
 }
 
 /// 콘솔 한 줄을 보내고 작업 기록에 `stdin` 한 줄로 남긴다 (`POST /api/instance/:id/stdin`과 명령 실행이 같이 쓴다)
-pub(crate) async fn stdin(state: &IPCServer, id: &str, payload: &Value) -> axum::response::Response {
+pub(crate) async fn stdin(state: &IPCServer, id: &str, payload: &Value) -> Outcome {
     // 콘솔 입력을 받지 않는 모듈(예: REST 전용)은 보낸 척하지 않는다: 클라이언트가 명령 API로 넘어가게
-    let resp = stdin_for(&state.supervisor, id, payload).await;
+    let result = stdin_for(&state.supervisor, id, payload).await;
     let line = payload.get("command").or_else(|| payload.get("line")).and_then(|v| v.as_str()).map(str::to_string);
-    super::audited(state, "stdin", id, line.as_deref(), None, resp).await
+    super::audited_result(state, "stdin", id, line.as_deref(), None, result).await
 }
 
-pub(crate) async fn stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> axum::response::Response {
+pub(crate) async fn stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> Outcome {
     if !supervisor.read().await.module_accepts_stdin(id) {
-        return (StatusCode::CONFLICT, Json(json!({
-            "error": "This server does not take console input; use its commands instead", "error_code": "stdin_not_supported",
-        }))).into_response();
+        return Err(Failure::coded(StatusCode::CONFLICT, "stdin_not_supported", "This server does not take console input; use its commands instead"));
     }
     // 관리형 시작을 꺼 콘솔이 없으면 RCON으로 보낸다 (`rcon_for`가 stdin → RCON → `no_command_path` 순으로 고른다)
     rcon_for(supervisor, id, payload).await
@@ -483,9 +456,9 @@ pub(crate) async fn stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor
 
 /// 관리 프로세스의 stdin으로 보낸다. 서버의 답은 콘솔로만 나오므로, 보낸 뒤 잠깐 새로 찍힌 줄을
 /// 모아 `data.response`로 돌려준다 (채팅·CLI가 결과를 보여 줄 수 있게)
-async fn via_stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> axum::response::Response {
+async fn via_stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> Outcome {
     let Some(command) = payload.get("command").and_then(|v| v.as_str()) else {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Missing 'command' field" }))).into_response();
+        return Err(Failure::coded(StatusCode::BAD_REQUEST, "invalid_request", "Missing 'command' field"));
     };
     let proc = supervisor.read().await.managed_store.get(id).await;
     // 보내기 직전의 커서: 그 뒤에 나온 줄만 답으로 모은다
@@ -497,18 +470,10 @@ async fn via_stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Super
     let message = match sent {
         Ok(m) => m,
         Err(e) if e.downcast_ref::<crate::supervisor::managed_process::StdinFull>().is_some() => {
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({ "error": format!("stdin command failed: {}", e), "error_code": "console_input_full" })),
-            )
-                .into_response()
+            return Err(Failure::coded(StatusCode::SERVICE_UNAVAILABLE, "console_input_full", format!("stdin command failed: {}", e)));
         }
         Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("stdin command failed: {}", e) })),
-            )
-                .into_response()
+            return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", format!("stdin command failed: {}", e)));
         }
     };
     let mut lines: Vec<String> = Vec::new();
@@ -536,11 +501,7 @@ async fn via_stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Super
         }
     }
     let data = if lines.is_empty() { Value::Null } else { json!({ "response": lines.join("\n"), "executed": command }) };
-    (
-        StatusCode::OK,
-        Json(json!({ "success": true, "message": message, "data": data, "protocol": "stdin" })),
-    )
-        .into_response()
+    Ok(json!({ "success": true, "message": message, "data": data, "protocol": "stdin" }))
 }
 
 pub(crate) async fn rest_for(
@@ -549,20 +510,14 @@ pub(crate) async fn rest_for(
     id: &str,
     payload: Value,
     response_limit: Option<usize>,
-) -> axum::response::Response {
+) -> Outcome {
     let supervisor = sup.read().await;
 
     // 인스턴스 확인 (lock 해제 전에 clone)
     let instance = match supervisor.instance_store.get(id).cloned() {
         Some(instance) => instance,
         None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "error": format!("Instance not found: {}", id)
-                })),
-            )
-                .into_response();
+            return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
         }
     };
 
@@ -583,20 +538,14 @@ pub(crate) async fn rest_for(
 
     let file_credentials = match instance_credentials(sup, credentials, id, &instance.module_name, module_path.as_deref(), &working_dir).await {
         Ok(credentials) => credentials,
-        Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&error))).into_response(),
+        Err(error) => return Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, crate::plugin::error_response(&error))),
     };
 
     // REST 엔드포인트 추출
     let endpoint = match payload.get("endpoint").and_then(|v| v.as_str()) {
         Some(ep) => ep,
         None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "Missing 'endpoint' field"
-                })),
-            )
-                .into_response();
+            return Err(Failure::coded(StatusCode::BAD_REQUEST, "invalid_request", "Missing 'endpoint' field"));
         }
     };
 
@@ -611,24 +560,10 @@ pub(crate) async fn rest_for(
     let rest_port = match payload_rest_port(&payload).map(|port| port.or(saved_port)) {
         Ok(Some(port)) => port,
         Ok(None) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "This server's module declares no REST port",
-                    "error_code": "rest_not_supported"
-                })),
-            )
-                .into_response();
+            return Err(Failure::coded(StatusCode::BAD_REQUEST, "rest_not_supported", "This server's module declares no REST port"));
         }
         Err(given) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": format!("rest_port out of range: {}", given),
-                    "error_code": "invalid_port"
-                })),
-            )
-                .into_response();
+            return Err(Failure::coded(StatusCode::BAD_REQUEST, "invalid_port", format!("rest_port out of range: {}", given)));
         }
     };
 
@@ -694,28 +629,19 @@ pub(crate) async fn rest_for(
     }
 
     match outcome {
-        Err(RestFailure::Connect(e)) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": format!("REST connection failed: {}", e)
-            })),
-        )
-            .into_response(),
-        Ok(response) => (
-            StatusCode::OK,
-            Json(json!({
-                "success": response.success,
-                "data": response.data,
-                "error": response.error,
-                "endpoint": endpoint,
-                "method": method,
-                "host": rest_host,
-                "port": rest_port,
-                "protocol": "rest"
-            })),
-        )
-            .into_response(),
-        Err(RestFailure::Execute(e)) => (StatusCode::INTERNAL_SERVER_ERROR, Json(rest_execute_failure(&e))).into_response(),
+        Err(RestFailure::Connect(e)) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", format!("REST connection failed: {}", e))),
+        // 서버가 답 없이 끊으면(종료 명령 등) `success: false`·`data.outcome: "unknown"`인 200이다
+        Ok(response) => super::settled(json!({
+            "success": response.success,
+            "data": response.data,
+            "error": response.error,
+            "endpoint": endpoint,
+            "method": method,
+            "host": rest_host,
+            "port": rest_port,
+            "protocol": "rest"
+        })),
+        Err(RestFailure::Execute(e)) => Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, rest_execute_failure(&e))),
     }
 }
 
@@ -735,7 +661,7 @@ fn payload_rest_port(payload: &Value) -> Result<Option<u16>, String> {
 /// REST 요청 실패의 응답 본문. 게임 서버가 401·403으로 거절하면(관리자 비밀번호가 다름) `auth_failed`로 나눠
 /// `/command`가 모듈의 `errors.auth_failed` 문구를 붙이게 한다 (데몬 토큰 실패와 섞이지 않게 HTTP 상태는 500 그대로)
 fn rest_execute_failure(e: &crate::protocol::ProtocolError) -> Value {
-    let mut body = json!({ "error": format!("REST execution failed: {}", e) });
+    let mut body = json!({ "success": false, "error": format!("REST execution failed: {}", e), "error_code": "internal_server_error" });
     if matches!(e, crate::protocol::ProtocolError::HttpStatus(401 | 403, _)) {
         body["error_code"] = json!("auth_failed");
     }
@@ -812,13 +738,11 @@ mod tests {
                 &errors,
             )
         };
-        let body = |r: axum::response::Response| async move {
-            serde_json::from_slice::<Value>(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap()
-        };
-        let rejected = body(reply(ProtocolError::HttpStatus(401, "HTTP GET x failed with status 401: ".into()))).await;
+        let body = |r: Outcome| r.unwrap_err().body;
+        let rejected = body(reply(ProtocolError::HttpStatus(401, "HTTP GET x failed with status 401: ".into())));
         assert_eq!(rejected["error_code"], "auth_failed");
         assert_eq!(rejected["error_message"], "비밀번호를 확인하세요");
-        let other = body(reply(ProtocolError::HttpStatus(500, "boom".into()))).await;
+        let other = body(reply(ProtocolError::HttpStatus(500, "boom".into())));
         assert_eq!(other["error_code"], "internal_server_error");
     }
 
@@ -890,9 +814,9 @@ mod tests {
             let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
             (state, id, tmp)
         }
-        let body = |r: axum::response::Response| async move {
-            let status = r.status();
-            (status, serde_json::from_slice::<Value>(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap())
+        let body = |r: Outcome| async move {
+            let r = crate::ipc::internal::InternalResponse::from(r);
+            (r.status, r.body)
         };
         let request = |line: &str| CommandRequest { command: line.into(), args: Value::Null };
 
@@ -984,8 +908,7 @@ mod tests {
         let id = inst.id.clone();
         sup.instance_store.add(inst).unwrap();
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
-        let r = list(&state, &id).await;
-        let body: Value = serde_json::from_slice(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap();
+        let body = list(&state, &id).await.unwrap();
         let say = body["commands"].as_array().unwrap().iter().find(|c| c["name"] == "say").expect("say listed").clone();
         assert_eq!(say["ready"], json!(false), "{body}");
     }

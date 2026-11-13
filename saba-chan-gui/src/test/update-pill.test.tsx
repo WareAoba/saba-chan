@@ -8,7 +8,7 @@ import { UpdatePill } from '../components/shell/UpdatePill';
 import { clickOutside } from './outside';
 
 const phase = (state: string, extra: Record<string, unknown> = {}) => ({
-    ok: true,
+    success: true,
     components: [{ component: 'saba-core', current_version: '0.1.13' }],
     phase: {
         state,
@@ -37,7 +37,7 @@ beforeEach(() => {
         listeners.add(cb);
         return () => listeners.delete(cb);
     }) as never;
-    window.api.updaterPhaseAck = vi.fn().mockResolvedValue({ ok: true }) as never;
+    window.api.updaterPhaseAck = vi.fn().mockResolvedValue({ success: true }) as never;
     window.api.updaterRestart = vi.fn().mockResolvedValue({ ok: true, gui_restart: true }) as never;
 });
 
@@ -198,7 +198,7 @@ describe('업데이트 알약', () => {
 
     it('데몬이 꺼진 동안(적용 중)엔 마지막 상태를 그대로 보인다', async () => {
         vi.useFakeTimers();
-        status.mockResolvedValueOnce(phase('applying')).mockResolvedValue({ ok: false, error_code: 'ECONNREFUSED' });
+        status.mockResolvedValueOnce(phase('applying')).mockResolvedValue({ success: false, error_code: 'ECONNREFUSED' });
         render(<UpdatePill />);
         await act(async () => {
             await vi.advanceTimersByTimeAsync(0);

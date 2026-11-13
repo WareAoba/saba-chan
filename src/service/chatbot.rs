@@ -380,6 +380,17 @@ pub(crate) async fn call(base: &str, method: reqwest::Method, path: &str, body: 
     }
 }
 
+/// 릴레이가 값을 거절한 길드의 줄을 실패 응답 본문으로 (`{success: false, error, error_code, guildId, status, details}`)
+pub(crate) fn refused_row(guild: &str, outcome: &Result<(StatusCode, Value), String>, code: &str) -> Value {
+    let mut row = result_row(guild, outcome);
+    if let Some(body) = row.as_object_mut() {
+        body.remove("ok");
+        body.insert("success".into(), json!(false));
+        body.insert("error_code".into(), json!(code));
+    }
+    row
+}
+
 pub(crate) fn result_row(guild: &str, outcome: &Result<(StatusCode, Value), String>) -> Value {
     match outcome {
         Ok((code, _)) if code.is_success() => json!({ "guildId": guild, "ok": true }),
@@ -580,13 +591,10 @@ pub(crate) async fn put(state: &IPCServer, patch: ChatbotPatch) -> Outcome {
     let pushed = push_all(state, &cfg, Some(&previous)).await;
     // 릴레이가 값을 거절했으면 저장하지 않는다(받은 길드는 push_all이 되돌렸다). 연결 실패는 저장하고 다음 연결 때 맞춘다
     if let Some((guild, outcome)) = pushed.iter().find(|(_, o)| matches!(o, Ok((c, _)) if *c == StatusCode::BAD_REQUEST)) {
-        let mut body = result_row(guild, outcome);
-        body["success"] = json!(false);
-        body["error_code"] = json!("validation_failed");
-        return Err(Failure::new(StatusCode::BAD_REQUEST, body));
+        return Err(Failure::new(StatusCode::BAD_REQUEST, refused_row(guild, outcome, "validation_failed")));
     }
     if let Err(e) = state.config_store.set_chatbot(&cfg) {
-        return Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string() })));
+        return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()));
     }
     let mut body = view(&cfg);
     body.insert("success".into(), json!(true));
@@ -601,7 +609,7 @@ pub(crate) async fn delete(state: &IPCServer) -> Outcome {
     let (done, rows) = delete_remote(state, &cfg).await;
     let cleared = ChatbotConfig { pending_relay_delete: !done, ..ChatbotConfig::default() };
     if let Err(e) = state.config_store.set_chatbot(&cleared) {
-        return Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string() })));
+        return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()));
     }
     Ok(json!({ "success": true, "sync": rows, "pendingRelayDelete": !done }))
 }

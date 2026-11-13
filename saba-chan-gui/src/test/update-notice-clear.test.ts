@@ -28,7 +28,7 @@ describe('업데이트 알림 정리', () => {
 
     it('업데이트를 마치면 업데이트 알림을 지우고, 여러 번 마쳐도 완료 알림은 하나만 남는다', async () => {
         window.api.updaterLastResult = vi.fn().mockResolvedValue({
-            ok: true,
+            success: true,
             version: '0.3.0',
             result: { success: true, updated_components: ['saba-core'], failed: [] },
         });
@@ -47,7 +47,7 @@ describe('업데이트 알림 정리', () => {
 
     it('적용이 실패했으면 성공으로 알리지 않고 업데이트 알림도 남긴다', async () => {
         window.api.updaterLastResult = vi.fn().mockResolvedValue({
-            ok: true,
+            success: true,
             version: '0.3.0',
             result: { success: false, updated_components: [], failed: ['saba-core'] },
         });
@@ -64,8 +64,8 @@ describe('업데이트 알림 정리', () => {
 
     it('수동 확인 결과 받을 것이 없으면(Locales만 있어도) 없음을 알린다', async () => {
         for (const data of [
-            { ok: true, update_names: [], components: [] },
-            { ok: true, update_names: ['Locales'], components: [{ display_name: 'Locales' }] },
+            { success: true, update_names: [], components: [] },
+            { success: true, update_names: ['Locales'], components: [{ display_name: 'Locales' }] },
         ]) {
             const hub = { dispatch: vi.fn() };
             const { api } = createApi({ invoke: vi.fn().mockResolvedValue({ status: 200, data }), hub: hub as never });
@@ -79,7 +79,7 @@ describe('업데이트 알림 정리', () => {
     it('확인이 실패하면 아무것도 알리지 않는다 (알림을 지우지 않는다)', async () => {
         const hub = { dispatch: vi.fn() };
         const { api } = createApi({
-            invoke: vi.fn().mockResolvedValue({ status: 200, data: { ok: false, error: 'relay down' } }),
+            invoke: vi.fn().mockResolvedValue({ status: 200, data: { success: false, error: 'relay down' } }),
             hub: hub as never,
         });
         await api.updaterCheck();

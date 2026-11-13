@@ -8,7 +8,7 @@ import { ModuleMakerCard } from '../components/ModuleMakerCard';
 import i18n from '../i18n';
 
 const INFO = {
-    ok: true,
+    success: true,
     repo: 'https://github.com/WareAoba/saba-chan-modules',
     guide: 'https://saba-chan.online/guide/module-maker',
 };

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';
 
 // 화면(진단 패널·서버 점검·익스텐션 설정)이 찾는 브리지가 없으면 그 화면이 숨겨진다
-const setup = (res: { status: number; data: Record<string, unknown> } = { status: 200, data: { ok: true } }) => {
+const setup = (res: { status: number; data: Record<string, unknown> } = { status: 200, data: { success: true } }) => {
     const invoke = vi.fn().mockResolvedValue(res);
     const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } as never });
     const sent = () => invoke.mock.calls.at(-1)![1];
@@ -12,7 +12,7 @@ const setup = (res: { status: number; data: Record<string, unknown> } = { status
 describe('데몬 점검·설정 브리지', () => {
     it('daemonDiagnostics는 GET /api/diagnostics', async () => {
         const { api, sent } = setup();
-        await expect(api.daemonDiagnostics()).resolves.toEqual({ ok: true });
+        await expect(api.daemonDiagnostics()).resolves.toEqual({ success: true });
         expect(sent()).toMatchObject({ method: 'GET', path: '/api/diagnostics' });
     });
 

@@ -97,7 +97,7 @@ pub async fn stream(server: &IPCServer, req: Request, user: Option<String>, stop
     origin.user = user;
     let res = match crate::actions::call_response_as(server, &req.method, &req.path, Some(origin)).await {
         Ok(res) => res,
-        Err(e) => return Some(Response { status: 500, body: json!({ "error": e }) }),
+        Err(e) => return Some(refusal(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", &e, None)),
     };
     let status = res.status();
     if !status.is_success() {
@@ -157,7 +157,7 @@ pub(crate) fn field_refusal(fields: Vec<String>) -> Value {
 }
 
 fn refusal(status: StatusCode, code: &str, error: &str, fields: Option<Vec<String>>) -> Response {
-    let mut body = json!({ "ok": false, "success": false, "error": error, "error_code": code });
+    let mut body = json!({ "success": false, "error": error, "error_code": code });
     if let Some(fields) = fields {
         body["fields"] = json!(fields);
     }

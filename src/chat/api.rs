@@ -3,7 +3,7 @@
 //! 처리기는 이 트레이트만 알고, 실제 구현은 IPCServer(기존 핸들러 재사용)가
 //! 맡습니다. 테스트에서는 가짜 구현을 꽂아 처리기만 따로 검증합니다.
 
-use crate::ipc::internal::{into_internal, InternalResponse};
+use crate::ipc::internal::InternalResponse;
 use crate::ipc::{CommandRequest, IPCServer};
 use crate::supervisor::module_loader::CommandField;
 use serde::Deserialize;
@@ -204,7 +204,7 @@ pub trait DaemonApi {
 
 impl DaemonApi for IPCServer {
     async fn servers(&self) -> Result<Vec<ServerView>, String> {
-        let resp = into_internal(crate::service::servers::list(self, 0).await).await;
+        let resp = InternalResponse::from(crate::service::servers::list(self, 0).await);
         if !resp.is_success() {
             return Err(resp.str_field("error").unwrap_or("failed to list servers").to_string());
         }
@@ -266,11 +266,11 @@ impl DaemonApi for IPCServer {
 
     async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse {
         let req = CommandRequest { command: command.to_string(), args: json!(args) };
-        into_internal(crate::service::command::execute(self, instance_id, req).await).await
+        crate::service::command::execute(self, instance_id, req).await.into()
     }
 
     async fn players(&self, server: &ServerView) -> InternalResponse {
-        into_internal(crate::service::servers::players(self, &server.id).await).await
+        crate::service::servers::players(self, &server.id).await.into()
     }
 }
 

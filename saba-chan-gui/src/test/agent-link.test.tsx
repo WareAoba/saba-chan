@@ -11,7 +11,7 @@ describe('AI 에이전트 연결', () => {
                 grants: [{ id: 'aaaa', clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' }],
                 url: 'https://relay.test/mcp',
             }),
-            relayMcpGrantRevoke: vi.fn().mockResolvedValue({ ok: true }),
+            relayMcpGrantRevoke: vi.fn().mockResolvedValue({ success: true }),
         } as unknown as typeof window.api;
     });
 

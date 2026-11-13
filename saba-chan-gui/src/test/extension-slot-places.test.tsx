@@ -64,7 +64,7 @@ describe('오른쪽 위 아이콘 버튼 (AppBar.actions)', () => {
 describe('설정 탭 (Settings.tab)', () => {
     beforeEach(() => {
         window.api.extensionConfigGet = vi.fn().mockResolvedValue({ config: { volume: 7 } });
-        window.api.extensionConfigSet = vi.fn().mockResolvedValue({ ok: true });
+        window.api.extensionConfigSet = vi.fn().mockResolvedValue({ success: true });
     });
     afterEach(() => {
         delete (window.api as unknown as Record<string, unknown>).extensionConfigGet;

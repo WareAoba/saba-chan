@@ -78,7 +78,7 @@ fn sessions(instance_dir: &FsPath) -> Vec<Session> {
 }
 
 fn not_found(what: &str) -> axum::response::Response {
-    (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("{} not found", what), "error_code": "not_found" }))).into_response()
+    super::error(StatusCode::NOT_FOUND, "not_found", format!("{} not found", what))
 }
 
 /// 숫자 query 값. 없으면 None, 숫자가 아니면 그 이름을 돌려준다

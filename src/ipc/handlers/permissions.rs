@@ -10,10 +10,10 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 
 fn invalid(code: &str) -> Response {
-    (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("Invalid permission change: {}", code), "error_code": code }))).into_response()
+    super::error(StatusCode::BAD_REQUEST, code, format!("Invalid permission change: {}", code))
 }
 
 async fn view(state: &IPCServer, guild_id: &str) -> Value {
@@ -45,7 +45,7 @@ async fn change(state: &IPCServer, guild_id: &str, changes: Vec<Change>) -> Resp
     match result {
         Ok(Ok(())) => Json(view(state, guild_id).await).into_response(),
         Ok(Err(code)) => invalid(code),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string(), "error_code": "save_failed" }))).into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
     }
 }
 
@@ -141,6 +141,7 @@ pub async fn remove_member(State(state): State<IPCServer>, Path((guild_id, disco
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn patch_bodies_put_the_owner_first_and_reject_unknown_keys() {

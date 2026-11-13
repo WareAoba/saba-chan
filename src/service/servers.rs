@@ -1,8 +1,9 @@
 //! 서버 목록과 접속자: 화면·채팅·릴레이 하트비트가 같이 읽는 서버 상태
 
-use axum::{http::StatusCode, response::IntoResponse, Json};
+use axum::http::StatusCode;
 use serde_json::{json, Value};
 
+use super::{Failure, Outcome};
 use crate::ipc::{IPCServer, PortConflictInfo, ServerInfo, ServerListResponse};
 
 /// 서버마다의 `server.list_enrich` 답 (서버 id → 답). TTL 캐시에 답이 있으면 Python을 띄우지 않는다.
@@ -36,7 +37,7 @@ where
 }
 
 /// `notices_after`: 이 번호 뒤의 포트 충돌 강제 정지 알림만 싣는다
-pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> axum::response::Response {
+pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
     let state = state.clone();
     // ── Phase 1: supervisor lock을 최소 시간만 잡고 필요한 데이터 복사 ──
     /// 목록 한 줄의 기본 모습(native 상태)과 hook·폴더 판정에 쓰는 값
@@ -151,8 +152,7 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> axum::respons
     {
         Ok(snapshots) => snapshots,
         Err(e) => {
-            let error = json!({ "success": false, "error": format!("Could not read the server folders: {}", e) });
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
+            return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", format!("Could not read the server folders: {}", e)));
         }
     };
 
@@ -260,19 +260,19 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> axum::respons
     // 포트 충돌 강제 정지 이벤트 (짧은 read lock)
     let port_conflict_stops = state.supervisor.read().await.port_conflict_stops_after(notices_after);
 
-    Json(ServerListResponse { servers, port_conflict_stops }).into_response()
+    Ok(json!(ServerListResponse { servers, port_conflict_stops }))
 }
 
 /// 접속자 목록 (`GET /api/instance/:id/players`와 채팅이 같이 쓴다)
-pub(crate) async fn players(state: &IPCServer, id: &str) -> axum::response::Response {
-    let fail = |status: StatusCode, code: &str, error: String| (status, Json(json!({ "success": false, "error_code": code, "error": error }))).into_response();
+pub(crate) async fn players(state: &IPCServer, id: &str) -> Outcome {
+    let fail = |status: StatusCode, code: &str, error: String| Err(Failure::coded(status, code, error));
     let call = {
         let sup = state.supervisor.read().await;
         let Some(instance) = sup.instance_store.get(id) else {
             return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
         };
         let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.players_function) else {
-            return fail(StatusCode::OK, "not_supported", "This server's module cannot list players".into());
+            return fail(StatusCode::NOT_IMPLEMENTED, "not_supported", "This server's module cannot list players".into());
         };
         if sup.tracker.get_pid(id).is_err() {
             return fail(StatusCode::CONFLICT, "server_not_running", "The server is not running".into());
@@ -304,19 +304,20 @@ pub(crate) async fn players(state: &IPCServer, id: &str) -> axum::response::Resp
                 if let Some(max) = count.max {
                     body["max"] = json!(max);
                 }
-                (StatusCode::OK, Json(body)).into_response()
+                Ok(body)
             }
             None => {
+                // 모듈이 거절한 답은 그대로다 (200 `success: false`)
                 if result.get("success").and_then(serde_json::Value::as_bool) == Some(false) {
-                    return (StatusCode::OK, Json(result)).into_response();
+                    return super::settled(result);
                 }
                 let message = result.get("message").and_then(serde_json::Value::as_str).unwrap_or("The module did not report players");
-                fail(StatusCode::OK, "players_failed", message.to_string())
+                fail(StatusCode::BAD_GATEWAY, "players_failed", message.to_string())
             }
         },
         Err(e) => {
             tracing::warn!("Player list for '{}' failed: {}", id, e);
-            (StatusCode::OK, Json(crate::plugin::error_response(&e))).into_response()
+            Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, crate::plugin::error_response(&e)))
         }
     }
 }

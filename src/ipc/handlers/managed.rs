@@ -30,11 +30,7 @@ pub async fn get_console_handler(
     let result = super::long_poll::read_waiting(changed, wait, known_epoch, || read_console(&state, &id, since_id, count, spans, disk_seen)).await;
     match result {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-        Err(e) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": e.to_string(), "error_code": "not_found"})),
-        )
-            .into_response(),
+        Err(e) => super::error(StatusCode::NOT_FOUND, "not_found", e.to_string()),
     }
 }
 
@@ -80,7 +76,7 @@ pub async fn send_stdin_handler(
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    crate::service::command::stdin(&state, &id, &payload).await
+    super::answer(crate::service::command::stdin(&state, &id, &payload).await)
 }
 
 /// POST /api/instance/:id/validate — Validate prerequisites
@@ -153,14 +149,14 @@ pub async fn query_instance_handler(
 /// GET /api/instance/:id/players — 접속자 수와 이름 (디스코드 검수 13번). 모듈 `[status] players` 함수를
 /// `players_detail: true`로 바로 부른다(1분 갱신은 이 키 없이 수만 읽는다). 항목은 `{name}`만 남긴다
 pub async fn players_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
-    crate::service::servers::players(&state, &id).await
+    super::answer(crate::service::servers::players(&state, &id).await)
 }
 
 /// GET /api/instance/:id/lists — 모듈이 선언한 플레이어 목록(`[[lists]]`: 화이트리스트·관리자·밴 등)과 지금 명단.
 /// 명단은 모듈 `read_lists`가 읽어 주고(서버가 꺼져 있어도 읽는다), 이름은 모듈 locales `lists.<id>`(없으면 id).
 /// `editable`은 넣기·빼기 명령을 지금 보낼 수 있는가다 (넣기·빼기는 `POST …/command`에 선언된 명령 이름으로 한다)
 pub async fn lists_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
-    let fail = |status: StatusCode, code: &str, error: String| (status, Json(json!({ "success": false, "error_code": code, "error": error }))).into_response();
+    let fail = |status: StatusCode, code: &str, error: String| super::error(status, code, error);
     let lang = state.config_store.ui_language().await;
     let mut lists: Vec<Value> = {
         let sup = state.supervisor.read().await;
@@ -168,7 +164,7 @@ pub async fn lists_handler(Path(id): Path<String>, State(state): State<IPCServer
             return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
         };
         let Some(module) = sup.module_loader.get_module(&instance.module_name).ok().filter(|m| !m.metadata.lists.is_empty()) else {
-            return fail(StatusCode::OK, "not_supported", "This server's module has no player lists".into());
+            return fail(StatusCode::NOT_IMPLEMENTED, "not_supported", "This server's module has no player lists".into());
         };
         let running = sup.is_running(&id).await;
         let stdin_route = sup.routes_commands_to_stdin(&id).await;
@@ -226,7 +222,7 @@ fn list_entry(entry: &Value) -> Option<Value> {
 /// POST /api/instance/:id/chat — 디스코드 글을 게임 채팅으로 (`{name, text}`, 액션 `server.chat`). 모듈 `chat_send` 함수를
 /// `chat_name`·`chat_text`로 부른다. 둘 다 한 줄로 다듬어 넘긴다: 줄바꿈이 남으면 콘솔 명령을 끼워 넣을 수 있다
 pub async fn chat_handler(Path(id): Path<String>, State(state): State<IPCServer>, LooseJson(body): LooseJson<Value>) -> impl IntoResponse {
-    let fail = |status: StatusCode, code: &str, error: String| (status, Json(json!({ "success": false, "error_code": code, "error": error }))).into_response();
+    let fail = |status: StatusCode, code: &str, error: String| super::error(status, code, error);
     let body = body.map(|b| b.0).unwrap_or(Value::Null);
     let field = |key: &str| body.get(key).and_then(Value::as_str).unwrap_or_default();
     let Some((name, text)) = crate::supervisor::game_chat::outgoing(field("name"), field("text")) else {
@@ -238,7 +234,7 @@ pub async fn chat_handler(Path(id): Path<String>, State(state): State<IPCServer>
             return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
         };
         let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.chat_send_function) else {
-            return fail(StatusCode::OK, "not_supported", "This server's module cannot send chat".into());
+            return fail(StatusCode::NOT_IMPLEMENTED, "not_supported", "This server's module cannot send chat".into());
         };
         if sup.tracker.get_pid(&id).is_err() {
             return fail(StatusCode::CONFLICT, "server_not_running", "The server is not running".into());
@@ -263,7 +259,7 @@ pub async fn chat_handler(Path(id): Path<String>, State(state): State<IPCServer>
         Err(e) => {
             crate::supervisor::game_chat::forget_sent(&id, &name, &text);
             tracing::warn!("Chat to '{}' failed: {}", id, e);
-            (StatusCode::OK, Json(crate::plugin::error_response(&e))).into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response()
         }
     }
 }
@@ -272,7 +268,7 @@ pub async fn chat_handler(Path(id): Path<String>, State(state): State<IPCServer>
 /// 켜거나 방향을 바꿀 때만 따진다: 그 방향을 모듈이 지원하는지, 서버가 켜져 있는지, 접속·퇴장 줄로 센 접속자가 있는지
 pub async fn chat_link_handler(Path((id, guild)): Path<(String, String)>, State(state): State<IPCServer>, LooseJson(body): LooseJson<Value>) -> impl IntoResponse {
     use crate::supervisor::chat_link;
-    let fail = |status: StatusCode, code: &str, error: &str| (status, Json(json!({ "success": false, "error_code": code, "error": error }))).into_response();
+    let fail = |status: StatusCode, code: &str, error: &str| super::error(status, code, error);
     let body = body.map(|b| b.0).unwrap_or(Value::Null);
     let channel = body.get("channel").and_then(Value::as_str).unwrap_or_default();
     if !chat_link::is_discord_id(&guild) || !chat_link::is_discord_id(channel) {
@@ -307,7 +303,7 @@ pub async fn chat_link_handler(Path((id, guild)): Path<(String, String)>, State(
     });
     match result {
         Ok((outcome, direction)) => (StatusCode::OK, Json(json!({ "success": true, "state": outcome, "direction": direction }))).into_response(),
-        Err((code, error)) => fail(StatusCode::OK, code, error),
+        Err((code, error)) => fail(if code == "not_supported" { StatusCode::NOT_IMPLEMENTED } else { StatusCode::CONFLICT }, code, error),
     }
 }
 
@@ -431,7 +427,7 @@ pub async fn reset_preview_handler(Path(id): Path<String>, State(state): State<I
     let (base, boundary) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(&id) else {
-            return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
+            return super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
         };
         let instance_dir = supervisor.instance_store.instance_dir(&id);
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
@@ -656,11 +652,7 @@ pub async fn get_installed_version_handler(
         let instance = match found {
             Some(i) => i,
             None => {
-                return (
-                    StatusCode::NOT_FOUND,
-                    Json(json!({"error": format!("Instance '{}' not found", id)})),
-                )
-                    .into_response()
+                return super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance '{}' not found", id));
             }
         };
 
@@ -728,11 +720,7 @@ pub async fn install_server_handler(
     let install_dir = match payload.get("install_dir").and_then(|v| v.as_str()) {
         Some(v) => v.to_string(),
         None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Missing 'install_dir' field"})),
-            )
-                .into_response()
+            return super::error(StatusCode::BAD_REQUEST, "invalid_request", "Missing 'install_dir' field");
         }
     };
 
@@ -752,7 +740,7 @@ pub async fn install_server_handler(
                 Some(_) => {
                     return super::instance::invalid_field("instance_id", format!("Instance '{}' is not a '{}' server", id, module_name));
                 }
-                None => return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response(),
+                None => return super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)),
             }
             let Some(guard) = crate::instance::lock::InstanceLock::take_for_writes(id).await else {
                 return super::backup::instance_busy();
@@ -763,7 +751,7 @@ pub async fn install_server_handler(
             let sup = state.supervisor.read().await;
             // 잡기 전에 지워졌을 수 있다
             let Some(inst) = sup.instance_store.get(id) else {
-                return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
+                return super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
             };
             let dir = sup.instance_store.instance_dir(id);
             let module = sup.module_loader.get_module(&module_name).ok();
@@ -779,11 +767,7 @@ pub async fn install_server_handler(
         let module = match found {
             Ok(m) => m,
             Err(e) => {
-                return (
-                    StatusCode::NOT_FOUND,
-                    Json(json!({"error": format!("Module '{}' not found: {}", module_name, e)})),
-                )
-                    .into_response()
+                return super::error(StatusCode::NOT_FOUND, "not_found", format!("Module '{}' not found: {}", module_name, e));
             }
         };
         if let Some(unknown) = accepted_agreements.iter().find(|id| !module.metadata.agreements.iter().any(|a| &a.id == *id)) {
@@ -804,7 +788,7 @@ pub async fn install_server_handler(
         None => {
             let module_path = match state.supervisor.read().await.module_loader.get_module(&module_name) {
                 Ok(m) => m.entry_path(),
-                Err(e) => return (StatusCode::NOT_FOUND, Json(json!({"error": format!("Module '{}' not found: {}", module_name, e)}))).into_response(),
+                Err(e) => return super::error(StatusCode::NOT_FOUND, "not_found", format!("Module '{}' not found: {}", module_name, e)),
             };
             let settings = instance.as_ref().map(|(target, _)| target.settings().clone()).unwrap_or_else(|| json!({}));
             match Supervisor::latest_version(&module_path, &settings).await {
@@ -812,7 +796,7 @@ pub async fn install_server_handler(
                 Err(e) => {
                     let error = if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
                         crate::plugin::error_response(&e)
-                    } else { json!({ "error": format!("Could not find the latest version of this server: {}", e), "error_code": "version_unknown" }) };
+                    } else { json!({ "success": false, "error": format!("Could not find the latest version of this server: {}", e), "error_code": "version_unknown" }) };
                     return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
                 }
             }
@@ -918,7 +902,7 @@ pub async fn install_server_handler(
         })
     };
     let version_label = version.clone();
-    let finish = move |outcome: Result<Result<Value, Value>, tokio::task::JoinError>| match outcome.unwrap_or_else(|e| Err(json!({ "error": e.to_string() }))) {
+    let finish = move |outcome: Result<Result<Value, Value>, tokio::task::JoinError>| match outcome.unwrap_or_else(|e| Err(json!({ "success": false, "error": e.to_string(), "error_code": "internal_server_error" }))) {
         Ok(mut result) => {
             // 버전을 비운 클라이언트도 무엇을 설치했는지 안다
             if let Some(obj) = result.as_object_mut() {
@@ -1167,7 +1151,7 @@ mod tests {
         let _ = state.supervisor.read().await.tracker.untrack("with");
 
         let unsupported = players("without").await;
-        assert_eq!((unsupported.status, unsupported.body["error_code"].as_str()), (StatusCode::OK, Some("not_supported")), "{}", unsupported.body);
+        assert_eq!((unsupported.status, unsupported.body["error_code"].as_str()), (StatusCode::NOT_IMPLEMENTED, Some("not_supported")), "{}", unsupported.body);
         assert_eq!(players("missing").await.status, StatusCode::NOT_FOUND);
     }
 
@@ -1226,7 +1210,7 @@ mod tests {
         let _ = state.supervisor.read().await.tracker.untrack("with");
 
         let unsupported = lists("without").await;
-        assert_eq!((unsupported.status, unsupported.body["error_code"].as_str()), (StatusCode::OK, Some("not_supported")), "{}", unsupported.body);
+        assert_eq!((unsupported.status, unsupported.body["error_code"].as_str()), (StatusCode::NOT_IMPLEMENTED, Some("not_supported")), "{}", unsupported.body);
         assert_eq!(lists("missing").await.status, StatusCode::NOT_FOUND);
     }
 

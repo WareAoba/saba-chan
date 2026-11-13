@@ -14,7 +14,7 @@ use crate::ipc::IPCServer;
 /// 답은 고른 경로의 답 그대로에 `managed`를 더한 것이다 (실패도 같다)
 pub(crate) async fn start(state: &IPCServer, id: &str) -> Outcome {
     let result = start_unrecorded(state, id).await;
-    audited_result(state, "start", id, result).await
+    audited_result(state, "start", id, None, None, result).await
 }
 
 async fn start_unrecorded(state: &IPCServer, id: &str) -> Outcome {
@@ -124,7 +124,7 @@ async fn instance_key_of(state: &IPCServer, key: &str) -> Option<(String, String
 }
 
 pub(crate) fn instance_not_found(id: &str) -> Failure {
-    Failure::new(StatusCode::NOT_FOUND, json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))
+    Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id))
 }
 
 /// 정지 뒤 시작. 꺼져 있으면 시작만 한다. 작업 기록에는 `restart` 한 줄로 남는다.
@@ -132,13 +132,13 @@ pub(crate) fn instance_not_found(id: &str) -> Failure {
 pub(crate) async fn restart(state: &IPCServer, id: &str, force: bool) -> Outcome {
     // 안에서 부르는 정지·시작은 따로 남기지 않는다
     let result = crate::audit::quietly(restart_unrecorded(state, id, StopMode::of(force, false))).await;
-    audited_result(state, "restart", id, result).await
+    audited_result(state, "restart", id, None, None, result).await
 }
 
 /// 사람이 부른 재시작 (`user_stop`과 같이 저장하지 못하는 서버도 끄고 다시 켠다)
 pub(crate) async fn user_restart(state: &IPCServer, id: &str, force: bool) -> Outcome {
     let result = crate::audit::quietly(restart_unrecorded(state, id, StopMode::of(force, true))).await;
-    audited_result(state, "restart", id, result).await
+    audited_result(state, "restart", id, None, None, result).await
 }
 
 /// 정지 방식. 저장 후 종료를 요청할 길이 없는 서버(MK10)를 사람이 부른 정지는 강제 정지로 잇고(`SaveIfPossible`),
@@ -230,7 +230,7 @@ async fn restart_unrecorded(state: &IPCServer, id: &str, mode: StopMode) -> Outc
             let error = json!({ "success": false, "error": "The server was started or removed while waiting", "error_code": "restart_cancelled", "stopped": running });
             return Err(Failure::new(StatusCode::CONFLICT, error));
         }
-        Err(e) => return Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string() }))),
+        Err(e) => return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", e.to_string())),
     };
     let body = match &mut result {
         Ok(body) => body,
@@ -337,7 +337,7 @@ fn lifecycle_failure(e: &anyhow::Error, action: &str, failed_code: &str) -> Fail
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, failed_code)
     };
-    Failure::new(code, json!({ "error": format!("Failed to {} server: {}", action, e), "error_code": error_code }))
+    Failure::coded(code, error_code, format!("Failed to {} server: {}", action, e))
 }
 
 /// 받아 둔 업데이트 확인 결과에서 이 모듈의 새 버전 `{module, current, latest}`
@@ -485,7 +485,7 @@ async fn stop_recorded(state: &IPCServer, key: &str, mode: StopMode) -> Outcome 
         }
         result => result,
     };
-    audited_result(state, "stop", key, result).await
+    audited_result(state, "stop", key, None, None, result).await
 }
 
 async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> Outcome {
@@ -537,11 +537,7 @@ async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> Outcome {
             Err(e) => Err(lifecycle_failure(&e, "stop", "stop_failed")),
         }
     } else {
-        let error = json!({
-            "error": format!("Server '{}' not found", name),
-            "error_code": "instance_not_found",
-        });
-        Err(Failure::new(StatusCode::NOT_FOUND, error))
+        Err(Failure::coded(StatusCode::NOT_FOUND, "instance_not_found", format!("Server '{}' not found", name)))
     }
 }
 

@@ -21,10 +21,10 @@ beforeEach(() => {
     window.showToast = vi.fn();
     window.api = new Proxy<Record<string | symbol, unknown>>(
         {
-            updaterStatus: vi.fn().mockResolvedValue({ ok: true, components }),
-            updaterDownload: vi.fn().mockResolvedValue({ ok: true }),
+            updaterStatus: vi.fn().mockResolvedValue({ success: true, components }),
+            updaterDownload: vi.fn().mockResolvedValue({ success: true }),
             updaterApply: vi.fn().mockResolvedValue({
-                ok: false,
+                success: false,
                 applied: ['cli'],
                 errors: ['discord_bot: disk full'],
                 needs_updater: [],
