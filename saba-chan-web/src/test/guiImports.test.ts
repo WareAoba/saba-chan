@@ -15,6 +15,8 @@ const ALLOWED = new Set([
     '@gui/utils/commandRisk',
     // 콘솔 줄의 시각 표시·수준 판정 (화면 없는 순수 함수, 앱 콘솔과 같은 규칙)
     '@gui/utils/consoleLine',
+    // 콘솔 답 → 넣을 줄·다음 자리 (화면 없는 순수 함수, 앱 콘솔과 같은 규칙)
+    '@gui/utils/consoleFeed',
     // 명령 줄 읽기와 입력 칸 값 → 인자 (데몬이 읽는 방식 그대로, 앱 명령 탭과 같은 규칙)
     '@gui/utils/commandSyntax',
     // 포트포워딩 확인 결과 읽기 (화면 없는 순수 함수)

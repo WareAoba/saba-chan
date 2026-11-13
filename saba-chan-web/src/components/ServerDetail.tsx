@@ -1,6 +1,7 @@
 import { HighlightedContent } from '@gui/components/ConsoleView';
 import { sourceText } from '@gui/utils/audit';
 import { commandOf, needsConfirm } from '@gui/utils/commandRisk';
+import { consoleStep, type FeedRules, feedCursor, newConsoleFeed, notePid } from '@gui/utils/consoleFeed';
 import { type ConsoleLevel, consoleStamper, levelOf, withoutOwnStamp } from '@gui/utils/consoleLine';
 import {
     commandText,
@@ -53,6 +54,13 @@ const MAX_LINES = 500;
 /** 콘솔 스트림을 열지 못했거나 끊긴 뒤 다시 열어 보기까지 (ms). 그동안은 주기 조회로 읽는다 */
 const STREAM_RETRY_MS = 30_000;
 let lineSeq = 0;
+/** 웹 콘솔 읽기 규칙 (앱과 다른 곳은 FeedRules 설명) */
+const FEED_RULES: FeedRules = {
+    diskUnseenOnly: false,
+    diskThenNewRun: true,
+    noStdinCloses: true,
+    pidResetsWithoutEpoch: false,
+};
 
 // 서버별 보낸 명령 기록 (탭을 오가도 남는다. 화면을 다시 열면 비운다, 앱 콘솔과 같다)
 const HISTORY_MAX = 50;
@@ -93,20 +101,15 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
     const confirmWhat = confirmCommand
         ? commandText(t, server.module, confirmCommand).description.replace(/[.。!?！？\s]+$/u, '')
         : '';
-    const since = useRef(0);
     const pid = useRef(server.pid);
     pid.current = server.pid;
     const box = useStickToBottom<HTMLPreElement>(shown);
 
     useEffect(() => {
         let stopped = false;
-        since.current = 0;
         setLines([]);
-        // 마지막으로 본 콘솔 버퍼 세대와 PID. 세대가 바뀌면 줄 번호가 0부터 다시 시작한다 (앱 useMultiConsole과 같은 규칙)
-        let seenEpoch: number | null = null;
-        let seenPid: number | null = null;
-        let replace = false;
-        let diskLoaded = false;
+        // 읽은 자리 (줄 번호·버퍼 세대·PID·디스크 기록)
+        let feed = newConsoleFeed();
         // 열린 콘솔 스트림을 닫는 함수. 열려 있는 동안 주기 조회는 쉰다
         let closeStream: (() => void) | null = null;
         let opening = false;
@@ -116,40 +119,19 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
          *  스트림은 세대가 바뀌면 PC가 이미 처음부터 보낸다 (reset) */
         const apply = (res: ApiBody | null | undefined, fromStream: boolean) => {
             if (stopped || !Array.isArray(res?.lines)) return true;
-            const pidChanged = pid.current != null && seenPid !== null && pid.current !== seenPid;
-            if (pid.current != null && pid.current > 0) seenPid = pid.current;
-            if (typeof res.epoch === 'number') {
-                const epochChanged = (seenEpoch !== null && res.epoch !== seenEpoch) || res.reset === true;
-                seenEpoch = res.epoch;
-                // 옛 번호로 받은 줄은 버리고 처음부터 다시 받는다. 새 프로세스면 이어 붙이고, 같은 프로세스에 다시 붙었으면 그 버퍼로 바꾼다
-                if (epochChanged) {
-                    since.current = 0;
-                    replace = !pidChanged && !diskLoaded;
-                    if (!fromStream) return false;
-                }
-            }
-            setStdin(!!res.stdin_available);
+            const noted = notePid(feed, pid.current, FEED_RULES);
+            const step = consoleStep<ConsoleLine>(noted.feed, res, { pidChanged: noted.changed, fromStream }, FEED_RULES);
+            feed = step.feed;
+            if (step.refetch) return false;
+            if (step.stdin !== undefined) setStdin(step.stdin);
+            if (!step.lines.length) return true;
             // 데몬 시각을 줄 앞에 붙이므로, 게임이 스스로 찍은 줄 앞 시각은 뺀다 (시각이 두 번 보이지 않게)
-            const received: ConsoleLine[] = res.lines.map((l: ConsoleLine) => ({
+            const received: ConsoleLine[] = step.lines.map((l) => ({
                 ...l,
                 ...(l.timestamp != null && withoutOwnStamp(l.content, l.spans)),
                 key: ++lineSeq,
             }));
-            if (res.source === 'disk') {
-                // 꺼진 서버의 지난 로그는 since와 상관없이 매번 같은 꼬리가 온다: 한 번만 보이고, 줄 번호(0부터)로 since를 올리지 않는다
-                if (!diskLoaded && received.length) {
-                    diskLoaded = true;
-                    setLines(received);
-                }
-                return true;
-            }
-            if (received.length) {
-                diskLoaded = false;
-                const swap = replace;
-                replace = false;
-                since.current = res.lines[res.lines.length - 1].id + 1;
-                setLines((prev) => (swap ? received : [...prev, ...received]).slice(-MAX_LINES));
-            }
+            setLines((prev) => (step.replace ? received : [...prev, ...received]).slice(-MAX_LINES));
             return true;
         };
         /** 받은 데부터 스트림으로 받는다 (릴레이·PC가 스트림을 모르면 주기 조회를 이어 간다) */
@@ -158,7 +140,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
             const close = await Promise.resolve(
                 api.managedConsoleStream?.(
                     server.id,
-                    { since: since.current, epoch: seenEpoch ?? undefined, diskSeen: diskLoaded || undefined, spans: true },
+                    { ...feedCursor(feed), spans: true },
                     (res) => {
                         apply(res, true);
                     },
@@ -175,7 +157,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
         };
         const poll = async (): Promise<void> => {
             if (closeStream || opening) return;
-            const res = await api.managedConsole(server.id, since.current, 200, { spans: true });
+            const res = await api.managedConsole(server.id, feed.since, 200, { spans: true });
             if (!apply(res, false)) return poll();
             if (!stopped && Array.isArray(res?.lines) && Date.now() >= streamRetryAt) await openStream();
         };
