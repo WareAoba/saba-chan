@@ -114,7 +114,7 @@ const KIND_TONE: Record<string, 'ok' | 'stop' | 'warn' | 'info' | 'idle'> = {
     imported: 'info',
     'game-snapshot': 'idle',
 };
-// 게임이 스스로 만든 자동 백업 (데몬 `game-snapshot:<id>`). 복원만 하고 사바쨩이 지우지 않는다
+// 게임이 스스로 만든 자동 백업 (데몬 `game-snapshot:<id>`). 내보내려면 먼저 보관한다
 const GAME_SNAPSHOT = 'game-snapshot';
 // 예전 경로로 가져오는 곳(시험)을 위해 다시 내보낸다
 export { draftProblems, formatBytes, fromDraft, toDraft, WEEKDAYS };
@@ -423,7 +423,7 @@ function BackupsCard({ server }: { server: Server }) {
                                         disabled: !!busy || unreadable,
                                         onSelect: () => exportBackup(b.name),
                                     },
-                                !game && {
+                                {
                                     id: 'delete',
                                     label: t('maintenance.delete'),
                                     icon: 'trash',
@@ -503,24 +503,22 @@ function BackupsCard({ server }: { server: Server }) {
                                     {busy === restoreKey && <SabaSpinner size="sm" />}
                                     {armed === restoreKey ? t('maintenance.restore_confirm') : t('maintenance.restore')}
                                 </button>
-                                {!game && (
-                                    <button
-                                        type="button"
-                                        className={clsx('btn btn-sm', armed === deleteKey ? 'btn-danger' : 'btn-ghost')}
-                                        disabled={!!busy}
-                                        onClick={() =>
-                                            armed === deleteKey
-                                                ? run(deleteKey, () =>
-                                                      window.api.instanceBackupDelete(server.id, b.name),
-                                                  )
-                                                : setArmed(deleteKey)
-                                        }
-                                    >
-                                        {armed === deleteKey
-                                            ? t('maintenance.delete_confirm')
-                                            : t('maintenance.delete')}
-                                    </button>
-                                )}
+                                <button
+                                    type="button"
+                                    className={clsx('btn btn-sm', armed === deleteKey ? 'btn-danger' : 'btn-ghost')}
+                                    disabled={!!busy}
+                                    onClick={() =>
+                                        armed === deleteKey
+                                            ? run(deleteKey, () =>
+                                                  window.api.instanceBackupDelete(server.id, b.name),
+                                              )
+                                            : setArmed(deleteKey)
+                                    }
+                                >
+                                    {armed === deleteKey
+                                        ? t('maintenance.delete_confirm')
+                                        : t('maintenance.delete')}
+                                </button>
                             </li>
                         );
                     })}

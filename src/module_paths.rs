@@ -220,6 +220,12 @@ impl Boundary {
             .then_some(path)
     }
 
+    /// 경계의 뿌리 자체인가 (그 안의 한 자리가 아니라)
+    pub(crate) fn is_root(&self, path: &Path) -> bool {
+        let Some(path) = checked_path(path) else { return false };
+        self.roots.iter().filter_map(|root| checked_path(root)).any(|root| root == path)
+    }
+
     pub(crate) fn returned_paths(&self, result: &mut Value, module: &str, function: &str) -> anyhow::Result<()> {
         for field in ["install_path", "executable_path"] {
             let Some(path) = result.get(field).and_then(Value::as_str) else {

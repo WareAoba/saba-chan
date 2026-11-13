@@ -556,6 +556,8 @@ struct GameSnapshot {
     /// 스냅샷이 zip 하나면 그 파일. 그때 `paths`의 앞쪽은 zip 안의 상대 경로다
     archive: Option<PathBuf>,
     paths: Vec<(PathBuf, PathBuf)>,
+    /// 이 스냅샷을 지우면 없앨 자리: `archive` 파일, 아니면 모듈이 준 스냅샷 폴더(`folder`), 둘 다 없으면 `paths`의 앞쪽
+    own: Vec<PathBuf>,
 }
 
 /// 모듈 `[backup] snapshots`의 lifecycle `backup_snapshots()`. 선언하지 않았으면 빈 목록.
@@ -605,12 +607,21 @@ async fn game_snapshots(state: &IPCServer, id: &str) -> Result<Vec<GameSnapshot>
             let from = if archive.is_some() { inner(from)? } else { resolve(from)? };
             paths.push((from, resolve(to)?));
         }
-        out.push(GameSnapshot { id: sid.to_string(), created: s["created"].as_u64().unwrap_or(0), archive, paths });
+        let own = match (&archive, s["folder"].as_str()) {
+            (Some(a), _) => vec![a.clone()],
+            (None, Some(f)) => vec![resolve(f)?],
+            (None, None) => paths.iter().map(|(from, _)| from.clone()).collect(),
+        };
+        // 지울 자리가 경계 자체이거나 되돌아갈 월드 자리를 품으면 받지 않는다 (지우다 월드를 잃지 않게)
+        if let Some(bad) = own.iter().find(|o| boundary.is_root(o) || paths.iter().any(|(_, to)| to.starts_with(o))) {
+            return Err(outside(&bad.to_string_lossy()));
+        }
+        out.push(GameSnapshot { id: sid.to_string(), created: s["created"].as_u64().unwrap_or(0), archive, paths, own });
     }
     Ok(out)
 }
 
-/// 백업 목록에 함께 보일 스냅샷 항목 (`kind: game-snapshot`, 지울 수 없다). 읽지 못하면 빼고 로그만 남긴다
+/// 백업 목록에 함께 보일 스냅샷 항목 (`kind: game-snapshot`). 읽지 못하면 빼고 로그만 남긴다
 async fn snapshot_items(state: &IPCServer, id: &str) -> Vec<Value> {
     match game_snapshots(state, id).await {
         Ok(list) => list
@@ -730,8 +741,11 @@ pub async fn create_backup(Path(id): Path<String>, State(state): State<IPCServer
 }
 
 pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state): State<IPCServer>) -> Response {
-    if name.starts_with(SNAPSHOT_PREFIX) {
-        return error(StatusCode::BAD_REQUEST, "snapshot_not_deletable", "The game manages its own automatic backups");
+    if let Some(sid) = name.strip_prefix(SNAPSHOT_PREFIX) {
+        return match delete_snapshot(&state, &id, sid).await {
+            Ok(()) => Json(json!({ "success": true })).into_response(),
+            Err(r) => r.into_response(),
+        };
     }
     let dir = match backups_dir(&state, &id).await {
         Ok(d) => d,
@@ -745,6 +759,34 @@ pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state
         Ok(Ok(())) => Json(json!({ "success": true })).into_response(),
         Ok(Err(e)) => delete_failed(e),
         Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string()),
+    }
+}
+
+/// 게임이 만든 스냅샷 하나를 지운다: 그 스냅샷 자리(zip 파일이나 폴더)만. 경계와 월드 자리는 `game_snapshots`가 걸렀다
+async fn delete_snapshot(state: &IPCServer, id: &str, sid: &str) -> Result<(), Failure> {
+    let Some(_guard) = InstanceLock::take(id) else {
+        return Err(Failure::coded(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
+    };
+    let snapshot = find_snapshot(state, id, Some(sid)).await?;
+    let removed = tokio::task::spawn_blocking(move || {
+        for path in &snapshot.own {
+            let gone = match std::fs::symlink_metadata(path) {
+                Ok(m) if m.is_dir() => std::fs::remove_dir_all(path),
+                Ok(_) => std::fs::remove_file(path),
+                Err(e) => Err(e),
+            };
+            match gone {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(anyhow::anyhow!("{}: {}", path.display(), e)),
+                _ => {}
+            }
+        }
+        Ok(())
+    })
+    .await;
+    match removed {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backup_delete_failed", format!("{:#}", e))),
+        Err(e) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backup_delete_failed", e.to_string())),
     }
 }
 
@@ -1600,7 +1642,7 @@ else:
 c = json.load(sys.stdin)
 w = os.path.join(c['working_dir'], 'world')
 snap = os.path.join(w, 'backup', 'S1')
-print(json.dumps({'success': True, 'snapshots': [{'id': 'S1', 'created': 1792800000, 'paths': [
+print(json.dumps({'success': True, 'snapshots': [{'id': 'S1', 'created': 1792800000, 'folder': snap, 'paths': [
     {'from': os.path.join(snap, 'Level.sav'), 'to': os.path.join(w, 'Level.sav')},
     {'from': os.path.join(snap, 'Players'), 'to': os.path.join(w, 'Players')}]}]}))
 "#;
@@ -1646,10 +1688,40 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'S1', 'created': 1792800
         assert_eq!(again.body["success"], true, "{:?}", again.body);
         assert_eq!(std::fs::read(world.join("Level.sav")).unwrap(), b"snap");
 
-        // 게임 자동 백업은 사바쨩이 지우지 않는다. 없는 스냅샷은 찾지 못한다
-        assert_eq!(code(delete_backup(Path((id.clone(), "game-snapshot:S1".into())), State(state.clone())).await).await, "snapshot_not_deletable");
+        // 없는 스냅샷은 찾지 못한다
         assert_eq!(code(restore_backup(Path((id.clone(), "game-snapshot:nope".into())), State(state.clone())).await).await, "snapshot_not_found");
         assert!(matches!(create_from(&state, &id, Source::Snapshot(Some("nope".into()))).await, Err(_)));
+    }
+
+    /// 게임 자동 백업도 사바쨩에서 지운다: 스냅샷 폴더(`folder`)만 지우고 월드는 그대로 둔다 (사용자 2026-11-13)
+    #[tokio::test]
+    async fn a_game_snapshot_folder_is_deleted_and_the_world_stays() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\nsnapshots = true\n");
+        let (state, id, tmp) = server_with(&toml, Some(SNAPSHOT_HOOK)).await;
+        let world = tmp.path().join("server").join("world");
+        std::fs::create_dir_all(world.join("backup/S1/Players")).unwrap();
+        std::fs::write(world.join("Level.sav"), b"live").unwrap();
+        std::fs::write(world.join("backup/S1/Level.sav"), b"snap").unwrap();
+        std::fs::write(world.join("backup/S1/Players/p.sav"), b"snap player").unwrap();
+
+        let done = crate::ipc::internal::into_internal(delete_backup(Path((id.clone(), "game-snapshot:S1".into())), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        assert!(!world.join("backup/S1").exists(), "the game's snapshot folder is gone");
+        assert_eq!(std::fs::read(world.join("Level.sav")).unwrap(), b"live", "the live world stays");
+        assert_eq!(code(delete_backup(Path((id.clone(), "game-snapshot:nope".into())), State(state.clone())).await).await, "snapshot_not_found");
+    }
+
+    /// 스냅샷 자리가 되돌아갈 월드 자리를 품으면(예: 월드 폴더 자체) 지우지 않는다
+    #[tokio::test]
+    async fn a_game_snapshot_that_holds_the_world_is_not_deleted() {
+        let hook = SNAPSHOT_HOOK.replace("'folder': snap", "'folder': w");
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\nsnapshots = true\n");
+        let (state, id, tmp) = server_with(&toml, Some(&hook)).await;
+        let world = tmp.path().join("server").join("world");
+        std::fs::create_dir_all(world.join("backup/S1")).unwrap();
+        std::fs::write(world.join("Level.sav"), b"live").unwrap();
+        assert_eq!(code(delete_backup(Path((id.clone(), "game-snapshot:S1".into())), State(state.clone())).await).await, "module_path_outside");
+        assert_eq!(std::fs::read(world.join("Level.sav")).unwrap(), b"live");
     }
 
     #[tokio::test]
@@ -1714,6 +1786,12 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         // 풀어 둔 자리는 남기지 않는다
         let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
         assert!(std::fs::read_dir(&dir).unwrap().flatten().all(|e| !e.file_name().to_string_lossy().starts_with(".snapshot-")));
+
+        // 지우면 그 zip 하나만 지운다
+        let gone = crate::ipc::internal::into_internal(delete_backup(Path((id.clone(), "game-snapshot:startup/backup_1".into())), State(state.clone())).await).await;
+        assert_eq!(gone.body["success"], true, "{:?}", gone.body);
+        assert!(!server.join("backups/startup/backup_1.zip").exists());
+        assert_eq!(std::fs::read(server.join("db/srv.db")).unwrap(), b"zipped db");
     }
 
     /// zip 안의 경로가 위로 올라가면(`..`) 받지 않는다 (zip slip)
