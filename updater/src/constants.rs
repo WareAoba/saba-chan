@@ -331,11 +331,11 @@ pub fn resolve_locale(locale: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    /// GUI 설정 스토어(`useServerSettingsStore.ts` `TOP_LEVEL_FIELDS`)은 저장된 값을 이 표대로 고른다: 둘이 어긋나면 화면이 낡은 값을 보인다.
+    /// `stored`가 없는 예전 데몬에서 GUI(`utils/storedValue.ts` `TOP_LEVEL_FIELDS`)는 저장된 값을 이 표대로 고른다: 둘이 어긋나면 화면이 낡은 값을 보인다.
     /// 표에서 빠지는 칸은 GUI가 따로 읽는 칸뿐이다 (메모리 상한·게임 채팅·사용 모드·자동 업데이트)
     #[test]
     fn the_gui_reads_saved_values_by_the_same_instance_fields() {
-        let hook = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../saba-chan-gui/src/stores/useServerSettingsStore.ts");
+        let hook = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../saba-chan-gui/src/utils/storedValue.ts");
         let text = std::fs::read_to_string(hook).unwrap();
         let start = text.find("const TOP_LEVEL_FIELDS = new Set([").expect("TOP_LEVEL_FIELDS");
         let body = &text[start..start + text[start..].find("]);").unwrap()];
