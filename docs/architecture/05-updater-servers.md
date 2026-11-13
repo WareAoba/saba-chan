@@ -286,7 +286,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`(채
 
 ## 4. Relay server (server-chan, 비공개 저장소)
 
-> server-chan `main` 기준(2026-10-18). 프레임워크는 **Fastify 5**, DB는 PostgreSQL + drizzle이고, 기동할 때 `./drizzle`(0000–0023)을 자동 migrate한다(`src/index.ts`). 앱 조립은 `src/app.ts` `buildApp`, 디스코드 봇은 같은 프로세스의 `src/bot/`, 챗봇은 `src/chatbot/`이다. **단일 인스턴스 전제**다: poll·result 대기열, ack를 보낸 호스트 목록(`services/redelivery.ts`), 노드 토큰 검증 캐시, 레이트리밋 카운터, 봇 캐시(prefix·잠자기·언어), 음악·공지·챗봇 진행 상태, poll의 빈 큐 표시는 프로세스 메모리에 있고 재시작하면 DB에서 다시 채우거나 사라진다(`src/index.ts` 머리 주석). heartbeat와 poll 생존 기록의 `hosts` 행 쓰기는 50ms 동안 모아 칸 모양이 같은 것끼리 `UPDATE … FROM (VALUES …)` 한 문장, 모두 한 트랜잭션으로 쓴다(`services/hostWrites.ts`). heartbeat는 자기 행이 쓰일 때까지 기다리고, 실패하면 그대로 503이다.
+> server-chan `main` 기준(2026-10-18). 프레임워크는 **Fastify 5**, DB는 PostgreSQL + drizzle이고, 기동할 때 `./drizzle`(0000–0023)을 자동 migrate한다(`src/index.ts`). 앱 조립은 `src/app.ts` `buildApp`, 디스코드 봇은 같은 프로세스의 `src/bot/`, 챗봇은 `src/chatbot/`이다. **단일 인스턴스 전제**다: poll·result 대기열, ack를 보낸 호스트 목록(`services/redelivery.ts`), 노드 토큰 검증 캐시, 레이트리밋 카운터, 봇 캐시(prefix·잠자기·언어), 음악·공지·챗봇 진행 상태, poll의 빈 큐 표시와 새 길드 알림의 빈 표시(`services/knownEmpty.ts`, 새 연결을 적은 쪽이 커밋 뒤 `linkPendingChanged`로 지운다)는 프로세스 메모리에 있고 재시작하면 DB에서 다시 채우거나 사라진다(`src/index.ts` 머리 주석). heartbeat와 poll 생존 기록의 `hosts` 행 쓰기는 50ms 동안 모아 칸 모양이 같은 것끼리 `UPDATE … FROM (VALUES …)` 한 문장, 모두 한 트랜잭션으로 쓴다(`services/hostWrites.ts`). heartbeat는 자기 행이 쓰일 때까지 기다리고, 실패하면 그대로 503이다.
 
 ### 4.1 전역 동작
 
