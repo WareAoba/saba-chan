@@ -4,7 +4,6 @@
 //! 앱에 함께 싣는 것은 저장소 `guides/`를 빌드 때 넣고(`build.rs`), 따로 받은 것은 데이터 폴더 `guides/`에 둔다.
 //! 같은 이름이면 받은 것이 이긴다. 완료·new!·진행 단계는 데몬이 판단하고 기억한다(config.json `guides` 칸).
 
-use saba_chan_updater_lib::version::SemVer;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
@@ -93,9 +92,9 @@ fn parse(id: &str, toml_text: &str, locales: &[(String, String)], core: &str) ->
         return Err("no steps".into());
     }
     if let Some(req) = &file.guide.requires {
-        let min = SemVer::parse(req.trim().trim_start_matches(">=").trim()).ok_or_else(|| format!("bad requires '{req}'"))?;
+        saba_chan_updater_lib::version::min_required(req.trim()).ok_or_else(|| format!("bad requires '{req}'"))?;
         // 이 앱에 아직 없는 화면을 짚는 가이드는 보이지 않는다 (앱을 올리면 보인다)
-        if SemVer::parse(core).is_none_or(|have| have < min) {
+        if !saba_chan_updater_lib::version::satisfies(core, req.trim()) {
             return Ok(None);
         }
     }

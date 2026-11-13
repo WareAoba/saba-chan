@@ -286,14 +286,7 @@ pub fn unmet_requires(component_key: &str, requires: &HashMap<String, String>, i
         .iter()
         .filter_map(|(dep_key, min_version_str)| {
             let dep_version = installed.get(dep_key);
-            let satisfied = dep_version.is_some_and(|v| {
-                // ">=" 접두사 제거 후 SemVer 비교
-                let min_clean = min_version_str.trim_start_matches(">=").trim();
-                match (SemVer::parse(v), SemVer::parse(min_clean)) {
-                    (Some(installed_v), Some(required_v)) => installed_v >= required_v,
-                    _ => false,
-                }
-            });
+            let satisfied = dep_version.is_some_and(|v| version::satisfies(v, min_version_str));
             (!satisfied).then(|| DependencyIssue {
                 required_component: dep_key.clone(),
                 required_version: min_version_str.clone(),

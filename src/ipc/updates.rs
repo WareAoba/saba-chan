@@ -532,15 +532,13 @@ async fn replace_addons_once(state: &UpdateState) -> Leftover {
         return Leftover::default();
     }
     // 이 코어로 돌아가지 않는 판(릴리즈 manifest에만 있는 더 새 판)은 앱을 올릴 때까지 둔다: 적용이 requires 검사로 거절한다
-    let core = std::collections::HashMap::from([("saba-core".to_string(), env!("CARGO_PKG_VERSION").to_string())]);
     let pending: Vec<Component> = state.manager.read().await.get_status().components.into_iter()
         .filter(|c| c.update_available && is_addon(&c.component))
         .filter(|c| enabled || chosen.contains(&c.component.manifest_key()))
-        .filter(|c| c.requires.as_ref().is_none_or(|r| {
-            let core_only: std::collections::HashMap<String, String> =
-                r.iter().filter(|(k, _)| k.as_str() == "saba-core").map(|(k, v)| (k.clone(), v.clone())).collect();
-            saba_chan_updater_lib::unmet_requires(&c.component.manifest_key(), &core_only, &core).is_empty()
-        }))
+        .filter(|c| {
+            let core = c.requires.as_ref().and_then(|r| r.get(crate::supervisor::module_loader::CORE_COMPONENT));
+            core.is_none_or(|req| saba_chan_updater_lib::version::satisfies(crate::supervisor::module_loader::DAEMON_VERSION, req))
+        })
         .map(|c| c.component)
         .collect();
     if pending.is_empty() {

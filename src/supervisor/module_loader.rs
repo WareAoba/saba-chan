@@ -419,27 +419,10 @@ impl ModuleMetadata {
         &self,
         installed_versions: &std::collections::HashMap<String, String>,
     ) -> Vec<(String, String, Option<String>)> {
-        use saba_chan_updater_lib::version::SemVer;
-
-        self.dependencies.iter().filter_map(|(component_key, min_version_str)| {
-            let min_clean = min_version_str.trim_start_matches(">=").trim();
-            let installed = installed_versions.get(component_key);
-            let satisfied = installed.is_some_and(|v| {
-                match (SemVer::parse(v), SemVer::parse(min_clean)) {
-                    (Some(installed_v), Some(required_v)) => installed_v >= required_v,
-                    _ => false,
-                }
-            });
-            if satisfied {
-                None
-            } else {
-                Some((
-                    component_key.clone(),
-                    min_version_str.clone(),
-                    installed.cloned(),
-                ))
-            }
-        }).collect()
+        saba_chan_updater_lib::unmet_requires(&self.name, &self.dependencies, installed_versions)
+            .into_iter()
+            .map(|issue| (issue.required_component, issue.required_version, issue.installed_version))
+            .collect()
     }
 }
 
@@ -1677,7 +1660,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 
 /// 데몬이 읽는 `[extensions.<이름>]` 표. 0.1.8 로더가 내용을 검사하지 않는 자리라 새 키를 여기 둔다.
 /// 그래서 이 이름의 익스텐션은 만들 수 없다 (`extension::is_valid_extension_id`)
-pub const DAEMON_TABLE: &str = "saba-core";
+pub const DAEMON_TABLE: &str = CORE_COMPONENT;
 /// 이 데몬이 읽는 `[extensions.saba-core]` 키
 const DAEMON_TABLE_KEYS: &[&str] =
     &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns", "chat_patterns", "chat_send", "data_roots", "progress_patterns", "platforms", "architectures"];

@@ -478,7 +478,7 @@ pub fn parse_manifest(content: &str) -> Result<(ExtensionManifest, Vec<String>)>
 /// `min_app_version`을 이 데몬이 만족하지 않으면 사용자에게 보일 이유
 fn app_version_problem(min_app_version: Option<&str>) -> Option<String> {
     min_app_version
-        .filter(|v| !version_satisfies(APP_VERSION, v))
+        .filter(|v| !saba_chan_updater_lib::version::satisfies(APP_VERSION, v))
         .map(|v| format!("requires saba-chan {} or newer (this is {})", v, APP_VERSION))
 }
 
@@ -513,17 +513,12 @@ fn unpack_package(
 
 /// `min_app_version`을 이 데몬이 만족하지 않으면 켜거나 설치하지 않는다
 fn require_app_version(ext_id: &str, min_app_version: Option<&str>) -> Result<()> {
-    match min_app_version.filter(|v| !version_satisfies(APP_VERSION, v)) {
+    match min_app_version.filter(|v| !saba_chan_updater_lib::version::satisfies(APP_VERSION, v)) {
         Some(required) => Err(ExtensionError::app_too_old(ext_id, required).into()),
         None => Ok(()),
     }
 }
 
-/// `">=1.2.0"` 또는 `"1.2.0"` 요구를 `have`가 만족하는가
-fn version_satisfies(have: &str, required: &str) -> bool {
-    let min = required.trim_start_matches(">=").trim();
-    matches!((SemVer::parse(have), SemVer::parse(min)), (Some(h), Some(m)) if h >= m)
-}
 
 // ═══════════════════════════════════════════════════════════════
 //  API 응답용 타입
@@ -1005,7 +1000,7 @@ impl ExtensionManager {
 
     /// 익스텐션 활성화 — 통합 dependencies 맵에서 의존성 전부 검증.
     pub fn enable(&mut self, ext_id: &str) -> Result<()> {
-        let installed = HashMap::from([("saba-core".to_string(), APP_VERSION.to_string())]);
+        let installed = HashMap::from([(crate::supervisor::module_loader::CORE_COMPONENT.to_string(), APP_VERSION.to_string())]);
         self.enable_with_versions(ext_id, &installed)
     }
 
@@ -1040,7 +1035,7 @@ impl ExtensionManager {
                     );
                 }
                 // 버전 검증 ("*"면 스킵)
-                if version_req != "*" && !version_satisfies(&dep_ext.manifest.version, version_req) {
+                if version_req != "*" && !saba_chan_updater_lib::version::satisfies(&dep_ext.manifest.version, version_req) {
                     return Err(
                         ExtensionError::component_version_unsatisfied(
                             ext_id, dep_key, version_req,
@@ -1057,7 +1052,7 @@ impl ExtensionManager {
                     );
                 }
                 let installed = installed_versions.get(dep_key);
-                let satisfied = installed.is_some_and(|v| version_satisfies(v, version_req));
+                let satisfied = installed.is_some_and(|v| saba_chan_updater_lib::version::satisfies(v, version_req));
                 if !satisfied {
                     return Err(
                         ExtensionError::component_version_unsatisfied(

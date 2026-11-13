@@ -417,7 +417,7 @@ impl Supervisor {
         if module.metadata.dependencies.is_empty() {
             return None;
         }
-        let mut installed = std::collections::HashMap::from([("saba-core".to_string(), env!("CARGO_PKG_VERSION").to_string())]);
+        let mut installed = std::collections::HashMap::from([(module_loader::CORE_COMPONENT.to_string(), module_loader::DAEMON_VERSION.to_string())]);
         {
             let mgr = self.extension_manager.read().await;
             let ready = mgr.installed_and_enabled_set();
@@ -429,7 +429,7 @@ impl Supervisor {
             .metadata
             .check_dependencies(&installed)
             .into_iter()
-            .filter(|(key, _, _)| key == "saba-core" || key.starts_with("ext-"))
+            .filter(|(key, _, _)| key == module_loader::CORE_COMPONENT || key.starts_with("ext-"))
             .map(|(key, req, got)| match got {
                 Some(v) => format!("{} {} (installed {})", key, req, v),
                 None => format!("{} {} (not installed)", key, req),

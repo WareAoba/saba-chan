@@ -41,7 +41,7 @@ pub fn scan_blocking(python: &Path, dir: &Path) -> Result<Vec<Finding>> {
         let manifest: toml::Value = toml::from_str(source.trim_start_matches('\u{feff}'))
             .with_context(|| format!("parse {}", manifest_path.display()))?;
         Some(manifest.get("module").and_then(|value| value.get("dependencies"))
-            .and_then(|value| value.get("saba-core")).and_then(toml::Value::as_str).unwrap_or("missing").to_string())
+            .and_then(|value| value.get(crate::supervisor::module_loader::CORE_COMPONENT)).and_then(toml::Value::as_str).unwrap_or("missing").to_string())
     } else {
         None
     };
