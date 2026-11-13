@@ -84,20 +84,34 @@ describe('업데이트 알약', () => {
         await waitFor(() => expect(container.querySelector('.appbar-pill')).toBeNull());
     });
 
-    // 알약을 누르지 않아도 앱을 쓰기 시작하면(완료가 뜨고 잠시 뒤 처음 누르거나 친 때) 지운다 (사용자 11-12)
-    it('완료가 뜬 뒤 앱을 쓰기 시작하면 데몬에 확인했다고 알리고 사라진다', async () => {
+    // 알약을 누르지 않아도 다른 동작(마우스를 움직이거나 누르거나 키를 침)을 하면 5초 뒤 지운다 (사용자 11-12, 11-13)
+    it('완료가 뜬 뒤 다른 동작을 하면 5초 뒤 데몬에 확인했다고 알리고 사라진다', async () => {
         status.mockResolvedValue(phase('done'));
-        let now = 1_000_000;
-        vi.spyOn(Date, 'now').mockImplementation(() => now);
         const { container } = render(<UpdatePill />);
         await screen.findByText('Update complete');
-        // 뜨자마자 누른 것은 알약을 보기 전이라 지우지 않는다
-        fireEvent.pointerDown(document.body);
+        vi.useFakeTimers();
+        // 알약 위에 올린 것은 보는 중이라 세지 않는다
+        fireEvent.pointerMove(container.querySelector('.appbar-pill') as Element);
+        act(() => vi.advanceTimersByTime(6_000));
         expect(window.api.updaterPhaseAck).not.toHaveBeenCalled();
-        now += 5_000;
-        fireEvent.keyDown(document.body, { key: 'a' });
+        // 다른 곳에서 마우스를 움직이면 5초 뒤 사라진다
+        fireEvent.pointerMove(document.body);
+        act(() => vi.advanceTimersByTime(4_900));
+        expect(container.querySelector('.appbar-pill')).not.toBeNull();
+        act(() => vi.advanceTimersByTime(200));
         expect(window.api.updaterPhaseAck).toHaveBeenCalledTimes(1);
-        await waitFor(() => expect(container.querySelector('.appbar-pill')).toBeNull());
+        act(() => vi.advanceTimersByTime(1_000));
+        expect(container.querySelector('.appbar-pill:not(.leaving)')).toBeNull();
+    });
+
+    it('팝오버를 열어 보는 중이면 5초가 지나도 지우지 않는다', async () => {
+        status.mockResolvedValue(phase('done'));
+        const { container } = render(<UpdatePill />);
+        fireEvent.click(await screen.findByText('Update complete'));
+        vi.useFakeTimers();
+        fireEvent.keyDown(document.body, { key: 'a' });
+        act(() => vi.advanceTimersByTime(6_000));
+        expect(container.querySelector('.appbar-pill')).not.toBeNull();
     });
 
     it('준비됨을 누르면 다시 시작할지 묻고, 나중에는 아무것도 하지 않는다', async () => {
