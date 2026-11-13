@@ -125,9 +125,10 @@ impl UpdateManager {
         versions.remove("saba-core").filter(|v| !v.is_empty()).unwrap_or_else(relay::core_version)
     }
 
-    /// 한 모듈·익스텐션의 판 전부 (지금 코어·채널, 서명 확인)
-    pub async fn addon_versions(&self, key: &str) -> Result<relay::AddonVersions, relay::RelayError> {
-        self.relay_client().fetch_addon_versions(key, &self.addon_core(), &self.config.channel).await
+    /// 한 모듈·익스텐션의 판 전부 (지금 코어·채널, 서명 확인). 업데이트 관리자를 잡지 않고 묻는다
+    pub fn addon_versions(&self, key: &str) -> impl std::future::Future<Output = Result<relay::AddonVersions, relay::RelayError>> + Send + 'static {
+        let (client, core, channel, key) = (self.relay_client(), self.addon_core(), self.config.channel.clone(), key.to_string());
+        async move { client.fetch_addon_versions(&key, &core, &channel).await }
     }
 
     /// 디스크에 있는 모듈·익스텐션의 판
