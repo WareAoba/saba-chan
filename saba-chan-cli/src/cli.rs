@@ -1395,6 +1395,12 @@ pub enum UpdateCmd {
     Repair,
     /// Go back to the version before the last update
     Rollback,
+    /// Versions of a module or extension you can choose
+    Versions { name: String },
+    /// Install a chosen version of a module or extension and keep it
+    Pin { name: String, version: String },
+    /// Stop keeping a chosen version and move to the newest one now
+    Unpin { name: String },
     /// Show or change update settings: KEY=VALUE ...
     Config {
         #[arg(value_name = "KEY=VALUE")]

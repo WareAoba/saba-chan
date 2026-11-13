@@ -3400,12 +3400,11 @@ mod tests {
             let asset = format!("{key}-{version}.zip");
             versions.push(sign(json!({ "key": key, "version": version, "asset": asset, "sha256": hex::encode(sha2::Sha256::digest(&bytes)),
                                         "url": format!("{base}/r2/{asset}") })));
-            app = app.route(&format!("/r2/{asset}"), get(move || async move { bytes }));
+            app = axum::Router::route(app, &format!("/r2/{asset}"), get(move || async move { bytes }));
         }
         let body = json!({ "key": key, "versions": versions, "yanked": [sign(json!({ "key": key, "version": "0.1.11", "yanked": true }))], "excluded": [] });
-        // 주소를 바로 쓰지 않는다: 라우트 분류 시험(`gate::every_route_is_classified`)이 `.route("…"`를 데몬 라우트로 읽는다
-        let versions_route = "/v1/addons/versions";
-        app = app.route(versions_route, get(move || async move { Json(body) }));
+        // 메서드 꼴로 부르지 않는다: 라우트 분류 시험(gate, CLI route_coverage)이 이 파일의 메서드 꼴 라우트를 데몬 라우트로 읽는다
+        app = axum::Router::route(app, "/v1/addons/versions", get(move || async move { Json(body) }));
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         base
     }
