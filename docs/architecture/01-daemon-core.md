@@ -1,8 +1,8 @@
 # 01. 데몬 코어 (saba-core) 분석
 
-> 범위: `src/main.rs`, `src/lib.rs`, `src/ipc/**`, `src/instance`, `src/instance_lock.rs`, `src/config_store`, `src/plugin`, `src/python_env`, `src/validator`, `src/process_monitor.rs`, `src/boot_selector.rs`, `src/daemon_log.rs`, `src/utils.rs`, `src/protocol/**`, `src/relay_agent.rs`, `tests/daemon_integration.rs`.
+> 범위: `src/main.rs`, `src/lib.rs`, `src/ipc/**`, `src/instance`, `src/instance_lock.rs`, `src/config_store`, `src/plugin`, `src/python_env`, `src/validator`, `src/process_monitor.rs`, `src/boot_selector.rs`, `src/daemon_log.rs`, `src/utils.rs`, `src/protocol/**`, `src/relay_agent/**`, `tests/daemon_integration.rs`.
 > 모든 내용은 코드에서 도출했다. 경로/상수 대부분은 공유 크레이트 `updater/src/constants.rs`(`saba_chan_updater_lib::constants`)에서 온다.
-> Supervisor/module_loader, extension/mod.rs 내부는 다른 문서 담당이며, 여기서는 코어가 그것들을 어떻게 호출하는지만 적는다.
+> Supervisor·module_loader, extension 내부는 다른 문서 담당이며, 여기서는 코어가 그것들을 어떻게 호출하는지만 적는다.
 
 
 > **2026-10-17 L3 이후**: 업데이트·모듈 목록·익스텐션 목록은 모두 릴레이의 서명된 릴리즈 manifest 하나에서 나온다. GitHub 업데이트 경로(`github.rs`, `api_base_url`, `github_owner`/`github_repo`, `include_prerelease`, 익스텐션 `manifest_url`, module.toml `[update]`, modules·extensions 저장소의 릴리즈 워크플로)는 없다. 근거 커밋: saba-chan 65e1763·8b840f7·60768a7, modules a26bdeb, extensions 301ff2c.
@@ -92,15 +92,15 @@
 - Python 모듈/익스텐션: `PYTHONIOENCODING`, `PYTHONUNBUFFERED`, `PYTHONPATH`, `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_LANG`(요청의 `Accept-Language`, 없으면 `config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 읽음), `SABA_ENABLED_EXTENSIONS`(`plugin/mod.rs:14-38, 304-322`), `SABA_EXTENSION_DATA_ROOT`(import된 익스텐션이 쓸 폴더의 뿌리, 02 §2.1), `SABA_JAVA_RUNTIMES`(데몬이 찾은 Java 런타임 `[{java, home, version, major, arch}]`. 설정 필드에 `runtime = "java"`를 선언한 모듈의 호출에만 넣는다, 02 §2.1). IPC 토큰(`SABA_TOKEN_PATH`)은 0.1.12부터 넘기지 않고 상속 환경에서도 지운다(`is_secret_env`). 모듈·익스텐션은 데몬 HTTP API를 직접 부르지 않고 HOST 통로(§7.1)만 쓴다. 이것은 계약이지 보안 경계가 아니다. 경계는 격리 실행이다(§7.1).
 - `SABA_LANG`는 GUI도 데몬에 넘기지만(`saba-chan-gui/src-tauri/src/lifecycle.rs:177`) **데몬 코어는 이 환경변수를 읽지 않는다.** 언어는 HTTP 요청에 `Accept-Language`가 있으면 그 요청 동안 첫 언어 태그(`ko-KR,ko;q=0.9` → `ko-KR`, 영문자·숫자·`-` 16자까지, `*`는 무시)를 쓰고(CLI `--lang`, 감사 출처 `Origin.lang`로 그 요청이 띄운 작업까지 이어진다), 없으면 `config.json`의 `gui.language`에서 읽고, 비었으면 OS 언어를 지원 언어로 맞춰 쓴다(`ConfigStore::ui_language`, `chat::i18n::os_language`. 중국어는 Hant·TW·HK·MO면 zh-TW, 그 밖은 zh-CN). 릴레이에 알리는 이 PC의 언어(하트비트·디스코드 설정의 `language`)는 요청 언어를 따르지 않는다(`ConfigStore::pc_language`).
 
-### 1.4 디스코드 릴레이 연결 (`src/relay_agent.rs`)
+### 1.4 디스코드 릴레이 연결 (`src/relay_agent/`)
 
 로컬 Discord 봇 실행 경로(`node_env`, `discord_bot` ext-process)는 L1(7b5102f)에서 지웠다. 디스코드 봇은 클라우드 릴레이에서만 돌고, 데몬은 릴레이 에이전트로 붙는다.
 
 1. IPC 서버가 뜬 뒤 `relay_agent::auto_start`를 띄운다(`ipc/mod.rs:860-866`). 수동 제어는 `/api/relay/agent{,/start,/stop}`. 페어링 완료(`POST /api/relay/pair/status`가 `claimed`로 토큰을 저장)나 `PUT /api/config/node-token`(저장된 토큰과 다를 때만) 뒤에는 `relay_agent::restart`가 돌던 세션을 멈추고 새 토큰으로 바로 다시 연결한다. 돌고 있는 에이전트의 릴레이 주소가 `PUT`·`PATCH /api/config/bot`으로 바뀌어도 같다. 세션은 시작할 때 읽은 주소·토큰 쌍만 쓰고(`Session.token`, `signed_headers_with`), 끝난 세션은 요청을 보내지 않는다.
-2. `GET /info`로 최소 에이전트 버전을 확인하고, 60초마다 `POST /heartbeat`로 서버·모듈·봇 설정 메타데이터를 올린다(`relay_agent.rs:23`).
+2. `GET /info`로 최소 에이전트 버전을 확인하고, 60초마다 `POST /heartbeat`로 서버·모듈·봇 설정 메타데이터를 올린다(`relay_agent/heartbeat.rs`).
 3. `GET /poll`(롱폴링)로 디스코드 명령을 받아 채팅 처리기(`crate::chat`)로 실행하고 `POST /result/:id`로 돌려준다. 명령은 실행을 시작할 때 `POST /ack`로 알리고(받아 두고 시작하지 못한 명령은 연결이 끝나면 잊어 릴레이가 다음 연결로 다시 보낸다. 이미 시작한 명령의 결과는 연결이 끝난 뒤에도 보낸다), 명령 id를 10분·1,000개까지 기억해 다시 온 명령은 실행하지 않는다(끝난 명령이면 기억한 결과를 다시 보낸다). 결과 전송이 연결 오류·5xx·408·429로 여섯 번 실패하면 명령 자리를 놓고 결과를 남긴다. 남긴 결과는 그 결과를 만든 릴레이 주소·노드 토큰의 세션만 16초 간격으로 다시 보낸다. 주소나 토큰이 다른 세션은 남긴 결과를 버린다. 남긴 결과의 명령이 다시 오면 실행하지 않고 ack만 한다. 남긴 결과가 100건이면 새 명령을 시작하지 않는다(받아 둔 명령은 ack하지 않는다). 그 밖의 4xx는 다시 보내지 않는다.
-   - 같은 연결에서 `POST /events {events:[{id, type, data}]}`로 디스코드 알림 채널(I3)에 띄울 이벤트를 올린다(`relay_agent.rs` `events_loop`·`relay_event`). 올리는 것은 `instance.exit`(`crash`·`start_failed`·`unknown_exit`만), `instance.started`(`at, instanceId, instance, source, userName?, unexpected`만), `instance.stopped`(`at, instanceId, instance, source, userName?, kind, idleMinutes?`만), `backup.done`, `update.available`, `schedule.warn`, `instance.ready`(`at, instanceId, instance, ok, code?`만), `instance.unresponsive`(`at, instanceId, instance, minutes, restarting`만. relay는 PC 주인 DM으로만 보낸다), `instance.chat`(`at, instanceId, instance, text?, links?, linkText?`만, 게임 채팅 전달을 켠 서버의 채팅을 데몬이 다 만든 한 줄 `text`와 채팅 연동 채널 `links:[{guild, channel}]`에 보낼 채팅 전체 한 줄 `linkText`, 02 §`[extensions.saba-core]`), `instance.update_waiting`(`at, instanceId, instance, players`만), `instance.update_failed`(`at, instanceId, instance`만, 오류 원문은 로컬 경로가 섞여 뺀다), `instance.chat_link`(`at, instanceId, instance, guild, channel, active:false, reason`만, 채팅 연동이 저절로 꺼짐: `empty` 모두 나감·`stopped` 프로세스 끝남), `plan.done`(뒤에서 마친 여러 단계 실행: `runId, guildId?, ok, steps, stoppedAt`, 단계 줄에는 원격이라 오류 코드만)뿐이다. 원격으로 나가므로 경로·콘솔 줄·오류 원문은 뺀다(게임 채팅은 사용자가 켠 서버의 채팅 본문만 예외로 싣는다. `evidence`는 `exit code …`·`signal …`일 때만, `backup.done`의 `error`는 빼고 `ok`만). 첫 건이 오면 같은 순간에 난 것만(0.02초) 모아 곧 20건씩 보내고, 보내기 사이는 0.2초 띄우고(relay 한도 노드당 초당 5건 안, 이어서 온 것은 그동안 묶인다, `EVENT_MIN_GAP`), 닿지 못하면 백오프하며 최근 50건만 들고 있는다. 4xx(429 말고, 404도 같다)는 그 묶음을 버리고 곧바로 다음 묶음으로 넘어가며, 429·5xx·네트워크 오류는 백오프 뒤 다시 보낸다.
-4. 인증은 노드 토큰(`config.json` `node.token`) HMAC 서명이다(`relay_agent.rs:1-11`).
+   - 같은 연결에서 `POST /events {events:[{id, type, data}]}`로 디스코드 알림 채널(I3)에 띄울 이벤트를 올린다(`relay_agent/events.rs` `events_loop`·`relay_event`). 올리는 것은 `instance.exit`(`crash`·`start_failed`·`unknown_exit`만), `instance.started`(`at, instanceId, instance, source, userName?, unexpected`만), `instance.stopped`(`at, instanceId, instance, source, userName?, kind, idleMinutes?`만), `backup.done`, `update.available`, `schedule.warn`, `instance.ready`(`at, instanceId, instance, ok, code?`만), `instance.unresponsive`(`at, instanceId, instance, minutes, restarting`만. relay는 PC 주인 DM으로만 보낸다), `instance.chat`(`at, instanceId, instance, text?, links?, linkText?`만, 게임 채팅 전달을 켠 서버의 채팅을 데몬이 다 만든 한 줄 `text`와 채팅 연동 채널 `links:[{guild, channel}]`에 보낼 채팅 전체 한 줄 `linkText`, 02 §`[extensions.saba-core]`), `instance.update_waiting`(`at, instanceId, instance, players`만), `instance.update_failed`(`at, instanceId, instance`만, 오류 원문은 로컬 경로가 섞여 뺀다), `instance.chat_link`(`at, instanceId, instance, guild, channel, active:false, reason`만, 채팅 연동이 저절로 꺼짐: `empty` 모두 나감·`stopped` 프로세스 끝남), `plan.done`(뒤에서 마친 여러 단계 실행: `runId, guildId?, ok, steps, stoppedAt`, 단계 줄에는 원격이라 오류 코드만)뿐이다. 원격으로 나가므로 경로·콘솔 줄·오류 원문은 뺀다(게임 채팅은 사용자가 켠 서버의 채팅 본문만 예외로 싣는다. `evidence`는 `exit code …`·`signal …`일 때만, `backup.done`의 `error`는 빼고 `ok`만). 첫 건이 오면 같은 순간에 난 것만(0.02초) 모아 곧 20건씩 보내고, 보내기 사이는 0.2초 띄우고(relay 한도 노드당 초당 5건 안, 이어서 온 것은 그동안 묶인다, `EVENT_MIN_GAP`), 닿지 못하면 백오프하며 최근 50건만 들고 있는다. 4xx(429 말고, 404도 같다)는 그 묶음을 버리고 곧바로 다음 묶음으로 넘어가며, 429·5xx·네트워크 오류는 백오프 뒤 다시 보낸다.
+4. 인증은 노드 토큰(`config.json` `node.token`) HMAC 서명이다(`relay_agent/mod.rs` 머리말, `relay_client.rs`).
 
 ### 1.4.1 사바쨩 웹 원격 (`src/remote/`)
 
@@ -127,7 +127,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 8. 합쳐 보기 `GET /api/remote/servers`(`remote_daemon.rs` `all_servers_with`, G1c): 이 PC(`hostId: null`)와 저장한 원격 데몬마다의 서버 목록 `{daemons:[{hostId, name, ok, error_code?, servers}]}`. 이 PC는 `list_servers_internal`(포트 충돌 알림을 비우지 않는다), 원격 데몬은 동시에 6의 중계로 `GET /api/servers?notices=keep`을 묻고 본문까지 30초(옛 주소 붙기 10초 → 새 주소로 다시 붙기 10초를 넘는 값)가 넘으면 `remote_timeout`. 닿지 않은 데몬은 `ok:false`와 6의 실패 코드로 남는다. `/api/remote` 아래라 7의 머리와 상관없이 이 PC가 답한다. GUI 합쳐 보기(04 §1.2 `OtherDaemons`)와 CLI `remote servers`가 쓴다.
 9. 터널 (`remote_daemon::tunnel`, T1, 릴레이 쪽 05 §4.4 (k), 사용자 결정 2026-10-26 "직접 연결 먼저, 안 되면 릴레이 터널"): 공인 주소가 없거나 직접 닿지 않는 원격 데몬에 릴레이를 거쳐 붙는다.
    - 붙는 쪽: 릴레이 `/node/tunnel?to=<hostId>` 웹소켓(노드 토큰, `X-Saba-Client: 1`)을 열고, 그 위에 지문을 고정한 TLS(ALPN `h2`)와 HTTP/2 연결을 맺는다. 릴레이 주소·원격 PC마다 연결 하나를 열어 두고 요청을 여러 개 싣는다(열어 둔 연결이 그새 끊겨 요청이 나가지 못하고 돌아오면 새 터널로 한 번 더 보낸다)(이벤트 스트림이 열려 있어도 같은 연결). 여는 데 20초까지이고, 끊겼으면 다음 요청이 다시 연다. 원격 데몬을 잊으면(`DELETE /api/remote/daemons/:hostId`) 그 PC까지의 연결을 놓는다(릴레이의 터널 수 한도를 쥐고 있지 않게). 주소가 있으면 직접 연결을 먼저 쓴다(사용자 결정 2026-11-08: 터널은 처음 짝 맺을 때와 직접 닿지 않을 때만). 직접 붙지 못한 주소(주소·포트·지문)는 15초(`peer::DIRECT_RETRY`) 동안 터널로만 보내고(NAT 뒤 PC에 직접 붙기를 요청마다 기다리지 않게), 그 뒤 첫 요청이 뒤에서 한 번 직접 붙어 보아 되면 다음 요청부터 직접 보낸다. 다시 붙어 봐도 안 되면 기다리는 시간을 두 배씩 5분(`peer::DIRECT_RETRY_MAX`)까지 늘린다. 닿았지만 원격 데몬이 TLS를 맺기 전에 끊은 것(연결 자리가 없음, 2의 한 곳 8개 상한)은 직접 실패로 적지 않고 그 요청만 터널로 보낸다. 직접 답을 받으면 열어 둔 터널을 놓는다(`tunnel::Tunnels::release`. 그 위에서 받던 이벤트 스트림은 끝날 때까지 가고, 그 뒤 터널이 닫힌다). 앱의 PC 카드가 보이는 길(`route`)은 `peer::Pool::route_of`(주소가 있고 직접 실패 기록이 없으면 `direct`, 아니면 `relay`)다. TLS를 맺기 전에 상대가 끊은 것(원격 데몬에 연결 자리가 없음)은 그 요청만 터널로 보내고 직접 실패로 적지 않지만, 직접 답 없이 잇달아 3번(`FULL_LIMIT`)이면 직접 실패로 적는다(그 주소에서 원격 데몬이 아닌 것이 받고 끊는 경우). 실패 기록이 없을 때도 직접 연결이 1.5초(`peer::DIRECT_HEAD_START`) 안에 열리지 않으면 터널도 함께 열기 시작해 먼저 열린 쪽으로 보낸다(말없이 버려지는 주소에 10초(`CONNECT_TIMEOUT`)를 기다리지 않게, 사용자 11-12). 터널이 먼저 열리면 직접 실패로 적고, 직접 연결은 뒤에서 마저 기다려 열리면(남겨 둔다) 또는 자리가 없다며 끊으면 기록을 지운다.
-   - 원격 쪽: 릴레이 명령 `remote_tunnel {tunnelId}`(`relay_agent.rs`)를 받으면 원격 포트가 열려 있을 때만 `/node/tunnel?accept=<tunnelId>`를 열고 이 PC의 원격 포트(`127.0.0.1`, 없으면 `::1`)에 TCP로 붙어 바이트를 잇는다. 원격 포트가 꺼져 있으면 `{success:false, error:"remote_off"}`. 웹소켓 바이너리 프레임 하나에 64KiB까지 싣는다.
+   - 원격 쪽: 릴레이 명령 `remote_tunnel {tunnelId}`(`relay_agent/poll.rs` `handle_payload`)를 받으면 원격 포트가 열려 있을 때만 `/node/tunnel?accept=<tunnelId>`를 열고 이 PC의 원격 포트(`127.0.0.1`, 없으면 `::1`)에 TCP로 붙어 바이트를 잇는다. 원격 포트가 꺼져 있으면 `{success:false, error:"remote_off"}`. 웹소켓 바이너리 프레임 하나에 64KiB까지 싣는다.
    - 원격 포트는 루프백에서 ALPN `h2`로 붙은 연결(터널)과 어디서든 ALPN `saba-h2`로 붙은 연결(6의 직접 연결)을 HTTP/2로 받고, 그 밖은 HTTP/1.1이다. HTTP/2에는 요청 머리 시간 제한이 없으므로 `saba-h2` 연결은 연 요청(답 본문이 끝날 때까지)이 하나도 없이 15초(`server::HEADER_TIMEOUT`, HTTP/1.1이 다음 요청 머리를 기다리는 시간과 같다)가 지나면 GOAWAY로 닫는다(시간은 마지막 요청이 열리거나 끝난 때부터 잰다)(닫는 데 15초를 더 넘기면 끊는다). 이벤트·콘솔 스트림이 열려 있는 동안은 닫지 않는다. HTTP/2 연결은 한 번에 요청 64개까지(`server::MAX_STREAMS`, 머리 목록은 hyper 기본 16KB) 받고, 25초마다 PING을 보내 20초 안에 답이 없으면 끊는다. TLS 핸드셰이크 10초와 연결 자리(2) 상한은 HTTP/1.1과 같다. 인증(3)과 짝 맺기(4)는 직접 연결과 같고, 짝 맺기 횟수 제한은 터널 연결을 모두 한 곳(루프백)으로 센다.
    - 릴레이가 아직 터널을 모르면(배포 전) 직접 연결만 된다.
 10. 릴레이 목록 맞추기 (`RemoteDaemon::sync_with_relay`): `GET /api/remote/peers`를 읽을 때와 10분마다 릴레이의 내 PC 목록으로 저장한 이름·주인 이름을 맞추고, 저장한 원격 데몬의 주소·지문이 바뀌었으면 따른다(터널로 짝 맺은 PC가 공인 주소를 올린 뒤 직접 붙게). 릴레이 목록에서 빠진 PC(디스코드에서 지웠거나 개인정보를 지운 PC)는 `clients[]`에서 빼 그 `sbr_` 토큰을 막는다. 릴레이가 준 이 PC 이름(`self.name`)은 `remote.thisName`에 사본으로 둔다(원본은 릴레이 PC 이름, 상단 바가 읽는다).
@@ -452,7 +452,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 
 `unregister`에 `shutdown=true`를 주고 남은 클라이언트가 0이면 데몬도 종료한다(`client.rs:99-103`). 둘 다 `request_shutdown`(`ipc/mod.rs:630-636`)을 거쳐 §1.1의 종료 경로로 간다.
 
-#### 익스텐션 (handlers/extension.rs; 구현은 `extension/mod.rs`)
+#### 익스텐션 (handlers/extension.rs; 구현은 `extension/`)
 
 | Method | Path | Handler | 비고 |
 |---|---|---|---|
@@ -645,7 +645,7 @@ spot = "server.tab.maintenance"    # 짚을 화면 요소의 data-spot
 2. **프로비저닝 추적**: `ProvisionTracker`가 **인스턴스 id**를 키로 쓴다(`ipc/mod.rs`). 이름은 `/api/provision-progress/:name` 입구에서 id로 바꾸고, `provision.progress` 알림의 `instance`에 싣기만 한다. API 경유 시작·정지 기록(`ApiActionTracker`, 서버 목록 `last_api_action`)과 `Supervisor::start_server`·`stop_server`·`get_server_status`도 id로만 찾는다.
    - 성공하면 5초 뒤 자동으로 지운다.
    - 실패하면 사용자가 dismiss할 때까지 남겨 두고, dismiss하면 **신규 생성이었던 경우만**(`mark_creating`/`take_creating`) 인스턴스를 롤백(삭제)한다.
-3. **시작**: 클라이언트는 `/api/instance/:id/start`를 쓴다. 데몬이 `uses_managed_start`(`supervisor/mod.rs:1690-1699`, 기본 managed)로 경로를 고르고, 모듈 validate의 critical 문제가 있으면 막는다.
+3. **시작**: 클라이언트는 `/api/instance/:id/start`를 쓴다. 데몬이 `uses_managed_start`(`supervisor/mod.rs`, 기본 managed)로 경로를 고르고, 모듈 validate의 critical 문제가 있으면 막는다.
    - 두 경로 모두 `server.rs` `launch`가 같은 준비를 하고, supervisor의 `plan_start`가 같은 시작 전 검사를 한다(라우트 없음)
    - 비관리: native/supervisor `start_server`
    - 관리: stdio를 캡처하는 managed 방식 `start_managed_server`
@@ -685,7 +685,7 @@ spot = "server.tab.maintenance"    # 짚을 화면 요소의 data-spot
 
 - `prefixes`(문자열 목록, 기본 `[]`: 비어 있으면 릴레이가 응답 언어의 기본값을 쓴다. ko `사바쨩`, ja `サバちゃん`, 그 밖 `Saba-chan`). 각각 공백 없는 1~32자, 10개까지이고 어기면 `PUT /api/config/bot`이 400이다. 예전 `prefix` 문자열은 읽을 때 옮긴다(`"!saba"`·빈 값 → `[]`, 그 밖 → `[값]`, `BotConfig::normalize`). `cloud{relayUrl,hostId}` (relayUrl은 빈 값(기본 릴레이)·https·루프백 http(`localhost`·`127.0.0.1`·`[::1]`, 모의 릴레이)만 받는다(`config_store::relay_url_problem`). 저장·가져오기(`check_sections`)에서 값이 바뀔 때만 보고, 이미 저장된 값은 읽기와 다른 키 저장을 막지 않는다. hostId는 노드 토큰 `sbn_<hostId>.…`을 따른다: 페어링 완료·`PUT`·`DELETE /api/config/node-token`이 같이 맞춘다)
 - `moduleAliases`, `commandAliases`, `instanceAliases`: 예전 전역 별명. 데몬이 시작할 때 아래 `serverWords`로 옮기고 비운다(`words::migrate_on_start`, `chat::words::migrate`). `instanceAliases[id]`는 그 서버 `words`로, 모듈 별명은 그 모듈 서버가 하나뿐일 때만 그 서버 `words`로(여럿이면 버리고 로그), `commandAliases[모듈]`은 그 모듈 서버마다 `commands`로 간다. 0.1.10의 길드별 낱말 `nodeSettings[guild].instances[id]`도 같은 때 길드 이름 순으로 그 서버 낱말에 합치고 길드에서 걷는다(지워진 인스턴스 것은 버린다). 다른 서버 이름·id와 겹치거나 다른 서버가 먼저(id 순) 가진 낱말은 버린다
-- `newGuildInstances`(`auto`|`manual`, 기본 `auto`): 페어링 코드로 새로 묶인 디스코드 서버에 이 PC의 서버를 모두 바로 열지(`auto`, `allowedInstances`를 두지 않는다), 아무것도 열지 않고 나중에 고를지(`manual`, `allowedInstances: []`). 코드 없이 `/사바쨩 연결`로 묶인 서버는 이 값과 상관없이 늘 `[]`로 둔다. 이미 `allowedInstances`가 있는 길드(다시 묶인 길드)는 건드리지 않는다. relay 하트비트 응답 `linkedGuilds`로 새 길드를 알고 정한다(`relay_agent.rs` `close_linked_guild`, 05 §4.4 (c)). GUI 디스코드 연결 화면의 서버 추가 카드 토글, CLI `bot new-guild`
+- `newGuildInstances`(`auto`|`manual`, 기본 `auto`): 페어링 코드로 새로 묶인 디스코드 서버에 이 PC의 서버를 모두 바로 열지(`auto`, `allowedInstances`를 두지 않는다), 아무것도 열지 않고 나중에 고를지(`manual`, `allowedInstances: []`). 코드 없이 `/사바쨩 연결`로 묶인 서버는 이 값과 상관없이 늘 `[]`로 둔다. 이미 `allowedInstances`가 있는 길드(다시 묶인 길드)는 건드리지 않는다. relay 하트비트 응답 `linkedGuilds`로 새 길드를 알고 정한다(`relay_agent/poll.rs` `close_linked_guild`, 05 §4.4 (c)). GUI 디스코드 연결 화면의 서버 추가 카드 토글, CLI `bot new-guild`
 - `backupNotice`(`all`|`failures`|`off`, 기본 `all`): 백업 결과를 PC 주인 DM으로 모두 알릴지, 실패만 알릴지, 보내지 않을지. 하트비트 `backupNotice`로 릴레이에 간다(05 §4.4 (c), 사용자 결정 2026-11-04, `off`는 2026-11-08)
 - `dmNotice`(`{crash, unresponsive, externalStart, schedule, update, disk, chatbotUsage, moderation, offline}`, 모두 bool, 빠진 칸은 `true`, `offline`만 `false`): PC 주인 DM 알림을 종류별로 켜고 끈다(사용자 요청 2026-11-08, `config_store::DmNotice`). 끈 종류는 하트비트 `dmOff`로 릴레이에 가고 릴레이가 DM에서 거른다(05 §4.4 (c)). `offline`(PC 연결 끊김, 사용자 요청 2026-11-12)은 켜야 보내는 종류라 켰을 때만 하트비트 `dmOn:['offline']`으로 간다(`DmNotice::on_kinds`). GUI 디스코드 연결 화면의 "PC 알림" 카드, CLI `bot dm-notice`
 - `nodeSettings`, `cloudNodes`, `cloudMembers`
@@ -729,7 +729,7 @@ spot = "server.tab.maintenance"    # 짚을 화면 요소의 data-spot
 ### 5.1 RCON은 없다
 
 - 데몬은 RCON을 쓰지 않는다. 예전 `protocol/rcon.rs`와 `rcon_pool.rs`는 지워졌다. 게임 명령은 모두 stdin으로 간다(§5.4, 02 RCON 정책).
-- 인스턴스 모델에서도 `rcon_port`, `rcon_password` 필드를 지웠다. 예전 파일에 남은 RCON 키는 로드할 때 지우고(§4.1), PATCH로 와도 버린다(`instance/settings.rs`). 모듈 config에도 RCON 키를 넘기지 않는다(`supervisor/mod.rs:1253-1262`).
+- 인스턴스 모델에서도 `rcon_port`, `rcon_password` 필드를 지웠다. 예전 파일에 남은 RCON 키는 로드할 때 지우고(§4.1), PATCH로 와도 버린다(`instance/settings.rs`). 모듈 config에도 RCON 키를 넘기지 않는다(`supervisor/instance_config.rs` `insert_instance_fields`).
 
 ### 5.2 REST (`protocol/rest.rs`)
 
@@ -746,8 +746,8 @@ spot = "server.tab.maintenance"    # 짚을 화면 요소의 data-spot
 
 | 경로 | 동작 |
 |---|---|
-| `POST /api/instance/:id/command` | 모든 인터페이스의 단일 명령 경로다. 요청 해석·검증은 `crate::commands`가 한다. 모듈에 없는 이름이면 활성 익스텐션 명령을 먼저 본다(`command.rs:80-124`). 그다음 모듈 정의대로 `/rcon`(stdin), `/rest`, `lifecycle.py command`, 원시 stdin 중 하나로 보낸다(`command.rs:158-183`). 꺼져 있고 콘솔도 없으면 409 `server_not_running`이다. `Supervisor::execute_command`(`supervisor/mod.rs:1220-1266`)는 config `{command,args,protocol_mode,working_dir,rest_host,rest_port,pid,instance_id}`를 락 안에서 만들고, 락을 놓은 뒤 Python을 실행한다 |
-| `POST /api/instance/:id/rcon` | 콘솔이 있으면 **stdin으로 보낸다.** 콘솔이 없고 모듈이 RCON만 받으면(`Supervisor::rcon_route`) 127.0.0.1 RCON으로 보낸다(02 RCON 정책). `routes_commands_to_stdin`(`supervisor/mod.rs:1704-1712`)이 콘솔 있는 서버(관리 모드, 재접속 후에도 saba-runner가 stdin 유지)를 확인하면 `via_stdin`(`command.rs:430-484`)이 한 줄을 쓰고 콘솔 출력을 최대 약 1.5초 모아 `data.response`로 돌려준다. 둘 다 없으면 409 `no_command_path`(`command.rs:392-`). 서버가 콘솔 입력을 읽지 않아 대기열(256줄)이 차 있으면 기다리지 않고 503 `console_input_full` |
+| `POST /api/instance/:id/command` | 모든 인터페이스의 단일 명령 경로다. 요청 해석·검증은 `crate::commands`가 한다. 모듈에 없는 이름이면 활성 익스텐션 명령을 먼저 본다(`command.rs:80-124`). 그다음 모듈 정의대로 `/rcon`(stdin), `/rest`, `lifecycle.py command`, 원시 stdin 중 하나로 보낸다(`command.rs:158-183`). 꺼져 있고 콘솔도 없으면 409 `server_not_running`이다. `Supervisor::execute_command`(`supervisor/console.rs`)는 config `{command,args,protocol_mode,working_dir,rest_host,rest_port,pid,instance_id}`를 락 안에서 만들고, 락을 놓은 뒤 Python을 실행한다 |
+| `POST /api/instance/:id/rcon` | 콘솔이 있으면 **stdin으로 보낸다.** 콘솔이 없고 모듈이 RCON만 받으면(`Supervisor::rcon_route`) 127.0.0.1 RCON으로 보낸다(02 RCON 정책). `routes_commands_to_stdin`(`supervisor/console.rs`)이 콘솔 있는 서버(관리 모드, 재접속 후에도 saba-runner가 stdin 유지)를 확인하면 `via_stdin`(`command.rs:430-484`)이 한 줄을 쓰고 콘솔 출력을 최대 약 1.5초 모아 `data.response`로 돌려준다. 둘 다 없으면 409 `no_command_path`(`command.rs:392-`). 서버가 콘솔 입력을 읽지 않아 대기열(256줄)이 차 있으면 기다리지 않고 503 `console_input_full` |
 | `POST /api/instance/:id/rest` | 접속 정보는 `get_credentials`(게임 설정 파일)에서 읽고 인스턴스별로 캐시한다(`CredentialsCache`, `ipc/mod.rs:302-328`; `command.rs:661-689`). 실패하면 캐시를 지운다. host와 port는 payload, instance, 모듈 기본값 순으로 정하고, 동기 `reqwest::blocking` 호출은 `spawn_blocking`으로 감싼다(`command.rs:614-621`) |
 | `POST /api/instance/:id/stdin` | `/rcon`과 같은 `via_stdin` 경로다(`managed.rs:118-137`) |
 
@@ -890,7 +890,7 @@ REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자�
 - `command` → `{success, message}`
 - 나머지(start/stop/status/properties/eula/diagnose 등)는 supervisor가 호출한다.
 
-예전 `run_extension*`(dead code)은 지워졌다. 익스텐션 훅 실행은 `extension/mod.rs`가 맡는다.
+예전 `run_extension*`(dead code)은 지워졌다. 익스텐션 훅 실행은 `extension/hooks.rs`가 맡는다.
 
 ### 7.2 `src/validator/mod.rs`
 
@@ -928,7 +928,7 @@ REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자�
   - 릴레이: `GET {relay_url}/v1/updates/check?channel&platform&current&client_id`, `GET /v1/updates/manifest/:version`. 모든 요청에 `X-Saba-Client: 1` 헤더(`updater/src/relay.rs:1-25, 160-195`).
   - manifest의 각 컴포넌트 `url`(R2 공개 주소). 받을 때 `sha256`을 확인한다(`updater/src/download.rs:40`).
   - manifest는 번들된 공개키로 Ed25519 서명을 검증하고, 플랫폼이 다르거나 현재보다 낮은 버전이면 거부한다(`relay.rs:233-252`, `signature.rs`).
-  - `/api/modules/manifest*`, 익스텐션 목록(`ExtensionManager::fetch_remote`), 설치기는 같은 함수 `relay::latest_catalog`를 쓴다(`relay.rs:107-115`). 데몬 쪽 호출은 모두 `None`을 넘기므로 기본 릴레이와 `stable` 채널을 쓰며 `relay_url` 설정을 보지 않는다(`server.rs:503, 533`, `extension/mod.rs:1396`).
+  - `/api/modules/manifest*`, 익스텐션 목록(`ExtensionManager::fetch_remote`), 설치기는 같은 함수 `relay::latest_catalog`를 쓴다(`relay.rs:107-115`). 데몬 쪽 호출은 모두 `None`을 넘기므로 기본 릴레이와 `stable` 채널을 쓰며 `relay_url` 설정을 보지 않는다(`server.rs:503, 533`, `extension/remote.rs` `fetch_remote`).
   - Python 런타임만 예외로 `github.com/indygreg/python-build-standalone` 릴리즈에서 받는다(고정 해시 검사, §6).
 - **apply 규칙**(`updates.rs:475-596`)
   - 대상에 GUI, Updater, CoreDaemon 중 하나라도 있으면 **전부** 업데이터 exe에 맡긴다. 이때 `needs_updater`를 채우고 `requires_updater:true`를 돌려준다.
@@ -953,7 +953,7 @@ REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자�
 7. **`get_module_locales`는 모듈 이름을 그대로 `join`한다**(`config.rs:209-211`). `POST /api/modules/manifest/:id/install`은 `..`, `/`, `\`를 거부한다(`server.rs:530-532`).
 8. **비밀값이 평문으로 응답에 실린다.** `GET /api/instances`, `/api/servers`에는 REST 비밀번호가 들어 있다.
 9. **익스텐션 설치에 사용자 지정 `download_url`을 허용하고 sha256은 선택**이다(`extension.rs:405-423`). 포터블 Python은 고정 해시로 검사한다(§6.1).
-13. **2초 모니터는 `monitor_processes` 동안 write lock을 잡는다**(`main.rs:436-437`). 나머지 supervisor 함수는 `&RwLock`을 받아 단계마다 짧게 잠그고 Python은 락 밖에서 실행한다(C12, `PluginCall`, `supervisor/mod.rs:1220-1266`). 마이그레이션 `import_settings`(`instance/create.rs` `migration_import_call`), managed 시작(`managed.rs:68`), 익스텐션 다운로드(`extension.rs:438-449`, write lock 전에 받음)도 락 밖이다.
+13. **2초 모니터는 `monitor_processes` 동안 write lock을 잡는다**(`main.rs:436-437`). 나머지 supervisor 함수는 `&RwLock`을 받아 단계마다 짧게 잠그고 Python은 락 밖에서 실행한다(C12, `PluginCall`, 예: `supervisor/console.rs` `execute_command`). 마이그레이션 `import_settings`(`instance/create.rs` `migration_import_call`), managed 시작(`managed.rs:68`), 익스텐션 다운로드(`extension.rs:438-449`, write lock 전에 받음)도 락 밖이다.
 
 ### 9.C 데드 코드와 반쯤 구현된 기능
 

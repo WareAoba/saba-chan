@@ -77,7 +77,7 @@ pub async fn list_servers(State(state): State<IPCServer>, Query(q): Query<ListSe
 pub async fn component_versions(state: &IPCServer) -> std::collections::BTreeMap<String, String> {
     let mut versions: std::collections::BTreeMap<String, String> =
         saba_chan_updater_lib::UpdateManager::load_installed_manifest().into_iter().collect();
-    versions.insert(crate::supervisor::module_loader::CORE_COMPONENT.to_string(), crate::supervisor::module_loader::DAEMON_VERSION.to_string());
+    versions.insert(crate::module_loader::CORE_COMPONENT.to_string(), crate::module_loader::DAEMON_VERSION.to_string());
     if let Ok(modules) = state.supervisor.read().await.list_modules() {
         for m in modules {
             versions.insert(format!("module-{}", m.metadata.name), m.metadata.version);
@@ -92,7 +92,7 @@ pub async fn component_versions(state: &IPCServer) -> std::collections::BTreeMap
 /// GET /api/version — 코어·모듈·익스텐션·인터페이스 버전을 한 번에
 pub async fn version_handler(State(state): State<IPCServer>) -> impl IntoResponse {
     Json(json!({
-        "version": crate::supervisor::module_loader::DAEMON_VERSION,
+        "version": crate::module_loader::DAEMON_VERSION,
         "components": component_versions(&state).await,
     }))
 }
@@ -119,7 +119,7 @@ pub(crate) fn trust_warnings(kind: &str, id: &str, trust: saba_chan_updater_lib:
 }
 
 /// 모듈 목록 한 줄. 별명은 module.toml(언어 없는 낱말)에 `lang`(앱 언어)의 모듈 locales 별명을 더한다 (`chat::api::locale_aliases`)
-fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>, lang: &str) -> ExtensionInfo {
+fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>, lang: &str) -> ExtensionInfo {
     let installed: std::collections::HashMap<String, String> = versions.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let unmet_dependencies = m
         .metadata
@@ -189,8 +189,8 @@ pub(crate) fn addon_choice(key: &str, installed: &str) -> saba_chan_updater_lib:
 }
 
 async fn module_list_response(
-    modules: anyhow::Result<Vec<crate::supervisor::module_loader::LoadedModule>>,
-    failed: Vec<crate::supervisor::module_loader::ModuleLoadError>,
+    modules: anyhow::Result<Vec<crate::module_loader::LoadedModule>>,
+    failed: Vec<crate::module_loader::ModuleLoadError>,
     versions: &std::collections::BTreeMap<String, String>,
     lang: &str,
 ) -> axum::response::Response {
@@ -239,7 +239,7 @@ pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoRespons
 
 /// GET /api/modules/schema - module.toml 스키마 v1 (JSON Schema)
 pub async fn module_schema() -> impl IntoResponse {
-    Json(crate::supervisor::module_loader::module_json_schema())
+    Json(crate::module_loader::module_json_schema())
 }
 
 /// POST /api/modules/detect `{path}` - 이 폴더가 어느 모듈의 게임 서버 폴더인지
@@ -341,7 +341,7 @@ fn catalog_module_info(comp: &saba_chan_updater_lib::relay::ManifestComponent, o
         Some(Value::Object(meta)) => meta.clone(),
         _ => serde_json::Map::new(),
     };
-    let reason = crate::supervisor::module_loader::catalog_unsupported_on(&Value::Object(info.clone()), os, arch);
+    let reason = crate::module_loader::catalog_unsupported_on(&Value::Object(info.clone()), os, arch);
     info.insert("version".into(), json!(comp.version));
     info.insert("sha256".into(), json!(comp.sha256));
     info.insert("size_bytes".into(), json!(comp.size_bytes));
@@ -410,7 +410,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     };
     // 설치된 것보다 낮은 버전은 받지 않는다
     let previous = state.supervisor.read().await.module_loader.get_module(&module_id).ok();
-    let previously_required = previous.as_ref().map(crate::supervisor::module_loader::LoadedModule::required_extensions).unwrap_or_default();
+    let previously_required = previous.as_ref().map(crate::module_loader::LoadedModule::required_extensions).unwrap_or_default();
     let installed = previous.map(|m| m.metadata.version.clone());
     if let Some(installed) = installed.filter(|v| saba_chan_updater_lib::version::is_downgrade(v, &comp.version)) {
         return super::error(StatusCode::CONFLICT, "older_than_installed", format!("Module '{}' {} is older than the installed {}", module_id, comp.version, installed));
@@ -461,7 +461,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
         let mut supervisor = state.supervisor.write().await;
         let _ = supervisor.refresh_modules();
         supervisor.migrate_settings();
-        supervisor.module_loader.get_module(&module_id).ok().as_ref().map(crate::supervisor::module_loader::LoadedModule::required_extensions).unwrap_or_default()
+        supervisor.module_loader.get_module(&module_id).ok().as_ref().map(crate::module_loader::LoadedModule::required_extensions).unwrap_or_default()
     };
     // 이 모듈이 쓰는 익스텐션을 받고 켠다 (새로 필요해진 것만 켠다: 예전 판부터 쓰던 것은 사용자가 껐을 수 있다)
     let extensions = crate::service::extensions::prepare_for_module(&state, &required, &previously_required).await;
@@ -492,7 +492,7 @@ fn module_install_paths(modules_dir: &std::path::Path, module_id: &str) -> (std:
 /// 풀어 둔 모듈 패키지를 데몬과 같은 규칙으로 읽어 본 뒤 설치 폴더와 바꾼다.
 /// 기존 폴더는 새 폴더가 자리를 잡을 때까지 옆에 두고, 바꾸다 실패하면 되돌린다
 fn install_staged_module(staging: &std::path::Path, target_dir: &std::path::Path) -> anyhow::Result<()> {
-    crate::supervisor::module_loader::load_module_dir(staging).map_err(|e| e.context("package is not a loadable module"))?;
+    crate::module_loader::load_module_dir(staging).map_err(|e| e.context("package is not a loadable module"))?;
     crate::utils::swap_dir(staging, target_dir)
 }
 

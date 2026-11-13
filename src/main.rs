@@ -20,7 +20,7 @@ const DAEMON_LOG_CAP: u64 = 5 * 1024 * 1024;
 /// `saba-core module audit <모듈 폴더>...` — Python 코드가 `[permissions]`에 없는 능력을 쓰면 종료 코드 1
 /// (Python은 `SABA_PYTHON`, 없으면 PATH의 python3/python)
 fn module_tool(args: &[String]) -> i32 {
-    use saba_core::supervisor::module_loader::{load_module_dir, module_json_schema};
+    use saba_core::module_loader::{load_module_dir, module_json_schema};
     match args.first().map(String::as_str) {
         Some("schema") => {
             println!("{}", serde_json::to_string_pretty(&module_json_schema()).unwrap_or_default());

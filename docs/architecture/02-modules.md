@@ -26,9 +26,9 @@
 |---|---|---|
 | 모듈 루트 | `SABA_MODULES_PATH` 환경변수 → `config.json` `paths.modules` → `resolve_data_dir()/modules`(Windows `%APPDATA%/saba-chan/modules`, Linux/macOS `$HOME/.config/saba-chan/modules`). 사용자가 GUI 설정·`saba-chan-cli config move modules`·설치기로 옮길 수 있다(01 §1.5) | `D:updater/src/component_dirs.rs` `resolve` |
 | GUI가 데몬을 띄울 때 | 모듈 폴더를 주입하지 않는다. 데몬이 위 순서로 정한다 | `D:saba-chan-gui/src-tauri/src/lifecycle.rs` |
-| 레거시 경로 | `Supervisor::run()`은 지워졌다. `"./modules"`는 테스트에만 남았다 | `D:src/supervisor/mod.rs:2633-` |
+| 레거시 경로 | `Supervisor::run()`은 지워졌다. `"./modules"`는 테스트에만 남았다 | `D:src/supervisor/tests.rs` |
 
-`ModuleLoader::discover_modules()` (`D:src/supervisor/module_loader/loader.rs:79-146`)의 동작은 다음과 같다.
+`ModuleLoader::discover_modules()` (`D:src/module_loader/loader.rs:79-146`)의 동작은 다음과 같다.
 
 - 모듈 루트의 **1단계 엔트리만** 순회하고 재귀하지 않는다.
 - **폴더 모듈**: `<dir>/module.toml`이 있는 디렉터리만 로드한다 (`:1521-1541`). 폴더 이름은 아무 것이나 되며, 식별자는 `[module].name`이다.
@@ -40,7 +40,7 @@
 - 로드에 실패한 모듈은 `warn` 로그를 남기고 `load_errors`에 기록한다. `GET /api/modules`가 `failed[]`로 돌려준다 (`:1511-1539`, `D:src/ipc/handlers/server.rs:391-392`).
 - `.py` 파일(`daemon_rcon.py`, `i18n.py`)이 같은 루트에 있어도 무시된다. 이 둘은 PYTHONPATH용 공용 라이브러리다 (§2.1).
 
-**진입점 파일**: `[module].entry`가 데몬이 실행하는 Python 파일이다(보통 `lifecycle.py`). `LoadedModule::entry_path()`가 `<모듈 폴더>/<entry>`를 만들고(`D:src/supervisor/module_loader/schema.rs:710-712`), 데몬의 모든 lifecycle 호출이 이 경로를 쓴다(예: `D:src/supervisor/mod.rs:791, 947, 1166, 1519`). 로드할 때 `check_loadable()`이 이 파일이 실제로 있는지 확인하고, 없으면 모듈을 로드하지 않는다(`module_loader/schema.rs:715-730`). 검증 단계는 `entry`가 비었거나 절대 경로이거나 모듈 폴더 밖을 가리키면(`..`·`.` 포함) 거부한다(`module_loader/raw.rs:1283-1289`, 익스텐션 `python_modules`와 같은 `utils::is_inner_relative_path`). (qcza9f 기준)
+**진입점 파일**: `[module].entry`가 데몬이 실행하는 Python 파일이다(보통 `lifecycle.py`). `LoadedModule::entry_path()`가 `<모듈 폴더>/<entry>`를 만들고(`D:src/module_loader/schema.rs:710-712`), 데몬의 모든 lifecycle 호출이 이 경로를 쓴다(예: `D:src/supervisor/status.rs`·`console.rs`·`queries.rs`·`stop.rs`). 로드할 때 `check_loadable()`이 이 파일이 실제로 있는지 확인하고, 없으면 모듈을 로드하지 않는다(`module_loader/schema.rs:715-730`). 검증 단계는 `entry`가 비었거나 절대 경로이거나 모듈 폴더 밖을 가리키면(`..`·`.` 포함) 거부한다(`module_loader/raw.rs:1283-1289`, 익스텐션 `python_modules`와 같은 `utils::is_inner_relative_path`). (qcza9f 기준)
 
 ### 1.2 module.toml 스키마 (Rust 역직렬화 기준, 전체)
 
@@ -511,7 +511,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 **예전 개발 가이드의 "호출 순서"와 다른 점** (가이드는 a8b6c29에서 현재 데몬 기준으로 다시 쓰였다. 아래는 `__example__lifecycle.py:36-46` 주석과의 차이다):
 - "시작 시 `validate → configure → get_launch_command`"라고 되어 있다. 실제로는 `POST /api/instance/:id/start`가 `validate`를 시작 전 점검으로 부르고(critical 문제만 막고, 점검이 실패하면 막지 않는다) 이어서 `get_launch_command`를 부른다. `configure`는 시작 때 부르지 않는다. `/managed/start`와 `/server/:name/start`를 직접 부르면 점검도 없다.
 - "status 주기적 호출"이라고 되어 있지만, 실제로는 non-managed 인스턴스의 status API 요청 때만 호출된다. 모니터 루프는 PID 스냅샷만 본다.
-- config에 `settings{}`가 항상 오지는 않는다. `instance_id`는 인스턴스 필드를 넣는 호출(`insert_instance_fields`, `D:src/supervisor/mod.rs:481-498`)에 들어가고, REST 접속값은 인스턴스에 따로 둔 값이 없어 다른 모듈 설정처럼 그 설정 이름으로 들어간다(0.1.14-beta.2). `settings{}`는 `configure`에만 들어가고, 그 외 함수에서는 `module_settings`가 **최상위로 펼쳐져** 들어간다(템플릿 주석 `:58-63`은 아직 `settings`가 항상 온다고 적는다).
+- config에 `settings{}`가 항상 오지는 않는다. `instance_id`는 인스턴스 필드를 넣는 호출(`insert_instance_fields`, `D:src/supervisor/instance_config.rs`)에 들어가고, REST 접속값은 인스턴스에 따로 둔 값이 없어 다른 모듈 설정처럼 그 설정 이름으로 들어간다(0.1.14-beta.2). `settings{}`는 `configure`에만 들어가고, 그 외 함수에서는 `module_settings`가 **최상위로 펼쳐져** 들어간다(템플릿 주석 `:58-63`은 아직 `settings`가 항상 온다고 적는다).
 
 ### 2.4 함수 구현 매트릭스 (FUNCTIONS 딕셔너리 기준)
 
@@ -617,7 +617,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 ### 3.1 두 가지 실행 경로
 
-시작 경로는 데몬이 고른다. `POST /api/instance/:id/start`가 `Supervisor::uses_managed_start`(인스턴스 설정 `managed_start`, 없으면 managed)로 경로를 정하고, 시작 전 점검(§2.3 `validate`)을 거쳐 아래 둘 중 하나를 부른다 (`D:src/ipc/handlers/server.rs:649-710`, `D:src/supervisor/mod.rs:1690-1700`). GUI는 이 경로만 부른다 (`D:saba-chan-gui/src/api/createApi.ts:212-219`).
+시작 경로는 데몬이 고른다. `POST /api/instance/:id/start`가 `Supervisor::uses_managed_start`(인스턴스 설정 `managed_start`, 없으면 managed)로 경로를 정하고, 시작 전 점검(§2.3 `validate`)을 거쳐 아래 둘 중 하나를 부른다 (`D:src/ipc/handlers/server.rs:649-710`, `D:src/supervisor/mod.rs` `uses_managed_start`). GUI는 이 경로만 부른다 (`D:saba-chan-gui/src/api/createApi.ts:212-219`).
 
 | | managed | non-managed |
 |---|---|---|

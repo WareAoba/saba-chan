@@ -388,7 +388,7 @@ fn declared(entry: &str) -> Option<Declared> {
                 .flatten()
                 .filter_map(|f| {
                     let name = f.get("name")?.as_str()?;
-                    let kind = crate::supervisor::module_loader::setting_runtime(name, f.get("runtime").and_then(|r| r.as_str()))?;
+                    let kind = crate::module_loader::setting_runtime(name, f.get("runtime").and_then(|r| r.as_str()))?;
                     Some((name.to_string(), kind.to_string()))
                 })
                 .collect();

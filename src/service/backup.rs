@@ -80,7 +80,7 @@ fn rejected(reply: &str, failures: &[regex::Regex]) -> Option<String> {
 /// 켜진 서버의 자동 저장을 멈추고 저장한다. 서버가 명령을 거절하면(명령 답이 실패 모양) 백업을 만들지 않는다.
 /// 저장 완료 줄이 선언돼 있으면 저장 명령을 보낸 뒤의 콘솔에 그 줄이 나올 때까지 기다리고, 나오지 않으면 백업을 만들지 않는다.
 /// 선언이 없으면 예전처럼 3초 기다린다
-async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::supervisor::module_loader::ModuleBackup, failures: &[String]) -> Result<(), SaveNotDone> {
+async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::module_loader::ModuleBackup, failures: &[String]) -> Result<(), SaveNotDone> {
     let proc = state.supervisor.read().await.managed_store.get(id).await;
     let failures: Vec<regex::Regex> = failures.iter().filter_map(|p| regex::Regex::new(p).ok()).collect();
     let done = spec.save_done_pattern.as_deref().and_then(|p| match regex::Regex::new(p) {
@@ -178,14 +178,14 @@ struct Plan {
     /// 훅이 더 돌려준 복원 허용 범위 (`restore_roots`). 백업 대상은 아니다 (MA3)
     restore_roots: Vec<PathBuf>,
     /// 켜진 서버에서의 저장·자동 저장 멈춤 명령과 뺄 파일 (`[backup]`, 선언이 없으면 빈 값)
-    spec: crate::supervisor::module_loader::ModuleBackup,
+    spec: crate::module_loader::ModuleBackup,
     keep: usize,
     boundary: crate::module_paths::Boundary,
     module_name: String,
 }
 
 /// 백업 경로의 기준 폴더: 작업 폴더, 없으면 모듈 설치 폴더
-fn server_base(instance: &crate::instance::ServerInstance, instance_dir: &FsPath, metadata: Option<&crate::supervisor::module_loader::ModuleMetadata>) -> PathBuf {
+fn server_base(instance: &crate::instance::ServerInstance, instance_dir: &FsPath, metadata: Option<&crate::module_loader::ModuleMetadata>) -> PathBuf {
     crate::module_paths::server_dir(instance, instance_dir, metadata)
 }
 

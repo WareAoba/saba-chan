@@ -395,18 +395,18 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 - 페어링으로 받은 노드 토큰(`sbn_<id>.<secret>`)이 있어야 에이전트가 뜬다. 페어링은 `/api/relay/pair/initiate`, `POST /api/relay/pair/status`(01 §4 Relay 프록시)로 하고, 토큰은 `/api/config/node-token`으로 다룬다.
 - AI 챗봇 설정의 원본은 데몬 config.json `chatbot`이다. `GET/PUT/DELETE /api/chatbot`, `DELETE /api/chatbot/memory?guildId=`로 다루고, 바뀔 때마다와 에이전트가 연결될 때 이 호스트의 길드마다 릴레이에 PUT해서 맞춘다. 릴레이 PUT은 받은 키만 합치므로 데몬은 늘 전체 설정을 보내고, 지운 키는 릴레이 기본값으로 채운다(`handlers/chatbot.rs:31-65`). DELETE가 릴레이에 닿지 못하면 `pendingRelayDelete: true`로 답하고 다음 연결 때 다시 지운다(`:218-238, 240-255, 287-295`). API 키는 데몬과 릴레이만 알고, 클라이언트에는 `hasApiKey`만 준다(`handlers/chatbot.rs:1-15`, `mod.rs:643-644`).
 
-### 4.2 릴레이 에이전트 (`src/relay_agent.rs`)
+### 4.2 릴레이 에이전트 (`src/relay_agent/`)
 
 | 단계 | 요청 | 내용 |
 |---|---|---|
 | 버전 확인 | `GET /info` | 릴레이가 요구하는 최소 에이전트 버전 확인 |
-| 하트비트 | `POST /heartbeat` (60초) | `agentVersion`, `os`, `metadata`(서버·모듈·봇 설정). 릴레이가 `UPDATE_REQUIRED`를 주면 경고 로그를 남긴다(`relay_agent.rs:281-327`). 지금 릴레이는 경고 대신 426 `AGENT_TOO_OLD`로 거부하고(05 §3 `/heartbeat`), 데몬은 이를 하트비트 오류로 남긴다. 잠자기는 길드 설정(I2)이라 폴링은 쉬지 않는다. 게임 서버 비밀번호(`rcon_password`, `rest_password`)는 메타데이터에서 뺀다(273-276) |
+| 하트비트 | `POST /heartbeat` (60초) | `agentVersion`, `os`, `metadata`(서버·모듈·봇 설정). 릴레이가 `UPDATE_REQUIRED`를 주면 경고 로그를 남긴다(`relay_agent/heartbeat.rs`). 지금 릴레이는 경고 대신 426 `AGENT_TOO_OLD`로 거부하고(05 §3 `/heartbeat`), 데몬은 이를 하트비트 오류로 남긴다. 잠자기는 길드 설정(I2)이라 폴링은 쉬지 않는다. 게임 서버 비밀번호(`rcon_password`, `rest_password`)는 메타데이터에서 뺀다(273-276) |
 | 명령 받기 | `GET /poll` (롱폴링) | 디스코드에서 온 명령. `payload.action`은 `plan`(문장 계획 `text`, 한 액션 `id`, 여러 단계 `steps`)·`run_plan`·`query`·`catalog`(원격 MCP만)·`permission`·`web_session`·`remote_tunnel` 등이다(05 §4.4) |
 | 결과 보내기 | `POST /result/:id` | 채팅 처리기의 응답 `{success, data:{text}}` (`:505-567`) |
 
-- 모든 요청은 노드 토큰으로 HMAC 서명하고 `X-Saba-Client: 1` 헤더를 붙인다(`relay_agent.rs:197-201, 215-229`, `handlers/relay.rs:117` `signed_headers`). 노드 토큰을 싣는 프록시 요청(`/api/relay/host/*`, `/node/*`)은 `?relayUrl=`이 설정된 릴레이와 같거나 루프백일 때만 따르고, 아니면 설정된 릴레이로 보낸다(`handlers/relay.rs:46-67`).
-- 데몬이 뜨면 `auto_start`가 에이전트를 켠다(토큰이 없으면 info 로그만 남기고 건너뜀, `ipc/mod.rs:860-866`, `relay_agent.rs:178-189`). 에이전트가 연결되면 첫 하트비트 응답을 처리한 뒤 AI 챗봇 설정도 릴레이에 맞춘다(`relay_agent.rs` `chatbot_sync_due`, 01 디스코드 길드 설정).
-- 상태 `GET /api/relay/agent`: `{running, relay_url, has_token, agent_version, last_heartbeat_at, last_error, commands_handled}` (`relay_agent.rs:43-55`). 켜고 끄기는 `POST /api/relay/agent/start`, `/stop`.
+- 모든 요청은 노드 토큰으로 HMAC 서명하고 `X-Saba-Client: 1` 헤더를 붙인다(`relay_agent/mod.rs` `Session::signed`·`send_signed`, `handlers/relay.rs:117` `signed_headers`). 노드 토큰을 싣는 프록시 요청(`/api/relay/host/*`, `/node/*`)은 `?relayUrl=`이 설정된 릴레이와 같거나 루프백일 때만 따르고, 아니면 설정된 릴레이로 보낸다(`handlers/relay.rs:46-67`).
+- 데몬이 뜨면 `auto_start`가 에이전트를 켠다(토큰이 없으면 info 로그만 남기고 건너뜀, `ipc/mod.rs:860-866`, `relay_agent/mod.rs` `auto_start`). 에이전트가 연결되면 첫 하트비트 응답을 처리한 뒤 AI 챗봇 설정도 릴레이에 맞춘다(`relay_agent/heartbeat.rs` `chatbot_sync_due`, 01 디스코드 길드 설정).
+- 상태 `GET /api/relay/agent`: `{running, relay_url, has_token, agent_version, last_heartbeat_at, last_error, commands_handled}` (`relay_agent/mod.rs` `AgentStatus`). 켜고 끄기는 `POST /api/relay/agent/start`, `/stop`.
 - 새 명령 종류는 `handle_payload`의 action 분기에 더한다.
 
 ### 4.3 채팅 처리기 (`src/chat/`)

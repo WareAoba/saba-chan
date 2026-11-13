@@ -12,7 +12,7 @@ use crate::service::Failure;
 fn check_update_context(
     instance: &crate::instance::ServerInstance,
     instance_dir: &std::path::Path,
-    install: Option<&crate::supervisor::module_loader::ModuleInstallConfig>,
+    install: Option<&crate::module_loader::ModuleInstallConfig>,
 ) -> Value {
     let branch = install.and_then(|cfg| instance.install_branch(&cfg.method).or(cfg.beta.as_deref()));
     json!({
@@ -132,7 +132,7 @@ pub(crate) async fn emit_update_failed(state: &IPCServer, id: &str, error: &str)
 pub(crate) fn updatable(
     supervisor: &crate::supervisor::Supervisor,
     id: &str,
-) -> Result<(crate::instance::ServerInstance, crate::supervisor::module_loader::ModuleInstallConfig), Failure> {
+) -> Result<(crate::instance::ServerInstance, crate::module_loader::ModuleInstallConfig), Failure> {
     let instance = match supervisor.instance_store.get(id) {
         Some(inst) => inst.clone(),
         None => {
@@ -413,7 +413,7 @@ pub(crate) async fn begin_server_update_holding(
 fn install_dir_of(
     instance: &crate::instance::ServerInstance,
     instance_dir: &std::path::Path,
-    install_config: Option<&crate::supervisor::module_loader::ModuleInstallConfig>,
+    install_config: Option<&crate::module_loader::ModuleInstallConfig>,
 ) -> std::path::PathBuf {
     if let Some(dir) = instance.working_dir.as_deref().filter(|d| !d.trim().is_empty()) {
         return std::path::PathBuf::from(dir);
@@ -526,7 +526,7 @@ mod tests {
     /// A-09: 업데이트 확인은 모듈 `[install]`을 그대로 받는다. 인스턴스에 남은 옛 사본(`steamcmd_app_id`)을 쓰지 않는다
     #[test]
     fn an_update_check_gets_the_install_values_from_the_module_not_from_instance_copies() {
-        let install: crate::supervisor::module_loader::ModuleInstallConfig =
+        let install: crate::module_loader::ModuleInstallConfig =
             serde_json::from_value(json!({ "method": "steamcmd", "app_id": 2394010, "beta": "preview", "install_subdir": "server", "download_size": 5700000000u64 })).unwrap();
         let mut inst = crate::instance::ServerInstance::new("pal", "pal");
         inst.extension_data.insert("steamcmd_app_id".into(), json!(111));

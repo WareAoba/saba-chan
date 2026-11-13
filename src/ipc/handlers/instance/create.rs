@@ -109,7 +109,7 @@ fn branch_request(supervisor: &crate::supervisor::Supervisor, payload: Value) ->
         .and_then(|m| m.settings.as_ref())
         .into_iter()
         .flat_map(|s| s.fields.iter())
-        .filter(|f| !f.port && !crate::supervisor::module_loader::CORE_PORT_FIELDS.contains(&f.name.as_str()) && f.field_type != "file" && f.format.as_deref() != Some("path"))
+        .filter(|f| !f.port && !crate::module_loader::CORE_PORT_FIELDS.contains(&f.name.as_str()) && f.field_type != "file" && f.format.as_deref() != Some("path"))
         .filter(|f| !f.default.as_ref().and_then(|d| d.as_str()).is_some_and(|d| d.contains(INSTANCE_DIR_PLACEHOLDER)))
         .filter_map(|f| parent.module_settings.get(&f.name).filter(|v| !v.is_null() && !inside_parent(v)).map(|v| (f.name.clone(), v.clone())))
         .collect();
@@ -773,7 +773,7 @@ fn apply_module_definition(
     let Ok(loaded_module) = supervisor.module_loader.get_module(module) else {
         return Ok(ModuleDefaults::default());
     };
-    if let Some(body) = crate::supervisor::module_loader::host_unsupported_body(module, &loaded_module.metadata) {
+    if let Some(body) = crate::module_loader::host_unsupported_body(module, &loaded_module.metadata) {
         return Err(Box::new((StatusCode::CONFLICT, Json(body)).into_response()));
     }
     let trust = Some(super::super::server::module_trust(&loaded_module.path));
@@ -911,7 +911,7 @@ struct ModuleDefaults {
     install: Option<ModuleInstall>,
 }
 
-type ModuleInstall = (Option<crate::supervisor::module_loader::ModuleInstallConfig>, String, Option<String>);
+type ModuleInstall = (Option<crate::module_loader::ModuleInstallConfig>, String, Option<String>);
 
 /// 가져오기의 모듈 `import_settings` 호출. instance_dir: 모듈이 서버 폴더 대신 인스턴스 폴더에 둘 것(가져온 서버의
 /// 포터블 런타임 등)의 자리. 런타임을 받을 수 있으므로 설치와 같은 시간 한도를 주고, 이 호출만 인스턴스 폴더에 쓴다
@@ -931,7 +931,7 @@ async fn save_migration_originals(
     state: &IPCServer,
     instance: &crate::instance::ServerInstance,
     instance_dir: &std::path::Path,
-    metadata: Option<&crate::supervisor::module_loader::ModuleMetadata>,
+    metadata: Option<&crate::module_loader::ModuleMetadata>,
 ) {
     let files = match crate::supervisor::Supervisor::manage_properties(&state.supervisor, &instance.id, "config_files", None).await {
         Ok(result) if result.get("success").and_then(Value::as_bool) == Some(true) => result,

@@ -1,4 +1,5 @@
 pub mod supervisor;
+pub mod module_loader;  // module.toml 계약: 메타데이터 타입·TOML 읽기·모듈 폴더 로더
 pub mod plugin;  // Keep - used for Python lifecycle integration
 pub mod python_env;  // Python 가상환경 관리 (venv 부트스트랩, pip)
 pub mod protocol;  // 새로운 프로토콜 통신 모듈

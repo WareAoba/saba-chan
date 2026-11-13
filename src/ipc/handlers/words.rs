@@ -191,7 +191,7 @@ pub async fn migrate_on_start(state: &IPCServer) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::supervisor::module_loader::CommandField;
+    use crate::module_loader::CommandField;
 
     #[test]
     fn a_module_command_named_like_a_builtin_is_one_row() {
