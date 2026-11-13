@@ -5,10 +5,10 @@
 //! 되돌리기 직전 상태는 데몬이 `pre-restore` 백업으로 남긴다.
 
 use crate::cli::{BackupCmd, StartArgs};
-use crate::cmd::server::{runtime, shell_word, status_of, stop_server};
+use crate::cmd::server::{runtime, shell_word, stop_server};
 use crate::ctx::Ctx;
 use crate::error::Result;
-use crate::output::{self, s};
+use crate::output::{self, s, status_of};
 use crate::resolve::{self, Server};
 use serde_json::Value;
 

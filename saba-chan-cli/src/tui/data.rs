@@ -117,7 +117,7 @@ impl Snapshot {
     }
 
     pub fn running(&self) -> usize {
-        self.servers.iter().filter(|v| s(v, "status") == "running").count()
+        self.servers.iter().filter(|v| crate::output::status_of(v) == "running").count()
     }
 }
 

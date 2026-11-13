@@ -33,9 +33,9 @@ export function reuseUnchanged<T extends { id: string }>(prev: T[], next: T[]) {
 export function viewStatus(server: Partial<ServerInfo>, moduleData?: unknown, modulesLoaded = true) {
     if (!moduleData && modulesLoaded) return 'missing';
     if (server.provisioning) return 'provisioning';
-    if (server.status === 'running' || server.status === 'starting' || server.status === 'stopping') {
-        return server.status;
-    }
+    // 켜는 중·끄는 중은 데몬이 `transition`에 싣는다 (어디서 시켰든)
+    const status = server.transition ?? server.status;
+    if (status === 'running' || status === 'starting' || status === 'stopping') return status;
     return 'stopped';
 }
 

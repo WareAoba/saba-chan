@@ -5,7 +5,7 @@ use crate::cli::{AddArgs, PropsCmd, RestartArgs, RunArgs, ServerCmd, StartArgs, 
 use crate::cmd::{split_pairs, typed};
 use crate::ctx::Ctx;
 use crate::error::{failed, usage, CliError, Result};
-use crate::output::{self, dim, s, show};
+use crate::output::{self, dim, s, show, status_of};
 use crate::resolve::{self, Server};
 use serde_json::{json, Map, Value};
 use std::time::{Duration, Instant};
@@ -68,15 +68,6 @@ pub async fn runtime(ctx: &Ctx, sv: &Server) -> Result<Value> {
         .and_then(Value::as_array)
         .and_then(|a| a.iter().find(|x| s(x, "id") == sv.id).cloned())
         .unwrap_or(Value::Null))
-}
-
-pub fn status_of(rt: &Value) -> &str {
-    let st = s(rt, "status");
-    if st.is_empty() {
-        "stopped"
-    } else {
-        st
-    }
 }
 
 /// `/api/modules` 항목 하나
