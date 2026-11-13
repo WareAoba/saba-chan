@@ -46,7 +46,6 @@ pub struct Lifecycle {
     events_stop: Arc<AtomicBool>,
     heartbeat_task: Mutex<Option<JoinHandle<()>>>,
     events_task: Mutex<Option<JoinHandle<()>>>,
-    update_task: Mutex<Option<JoinHandle<()>>>,
     /// 다른 인터페이스(CLI의 `gui`)가 이 GUI를 띄우며 고른 서버. 렌더러가 준비되면(app_ready) 넘긴다
     open_server: Mutex<Option<String>>,
     /// 렌더러가 리스너를 달았다 (app_ready를 한 번 받았다). open_server 잠금 안에서만 바꾼다
@@ -150,7 +149,6 @@ async fn finish_background_init(app: &AppHandle) {
     register_with_daemon(app).await;
     start_heartbeat(app);
     start_events(app);
-    start_update_checker(app);
     // 바탕화면 오버레이를 쓸 익스텐션이 켜져 있으면 띄운다
     crate::overlay::sync(app).await;
 
@@ -872,10 +870,12 @@ fn start_events(app: &AppHandle) {
                 if ev.kind == "update.restarting" && from.is_none() {
                     on_daemon_swap(&app2, &ev.data);
                 }
-                if ev.kind == "update.available" && from.is_none() {
-                    // 이 PC 데몬이 새 업데이트를 찾았다: 10분 주기를 기다리지 않고 바로 알린다
-                    let app3 = app2.clone();
-                    tauri::async_runtime::spawn(async move { check_for_updates(&app3).await });
+                if from.is_none() && matches!(ev.kind.as_str(), "update.status" | "update.progress") {
+                    // 이 PC 데몬의 업데이트 상태·받기 진행: 원격을 골라도 메인 창의 업데이트 화면은 이 PC 것을 보인다
+                    emit_main(&app2, "updates:event", &ev);
+                    if ev.kind == "update.status" {
+                        on_update_status(&app2, &ev.data);
+                    }
                 }
                 if feed == Feed::Chosen {
                     emit_main(&app2, "events:message", &ev);
@@ -886,6 +886,12 @@ fn start_events(app: &AppHandle) {
             move |up: bool| {
                 if feed == Feed::Chosen {
                     emit_main(&app_live, "events:live", up);
+                }
+                // 이 PC 데몬에 (다시) 붙었다: 붙지 못한 동안의 업데이트 상태를 한 번 읽는다 (데몬이 다시 뜬 처음 붙기에는 버퍼가 없다)
+                let local = feed == Feed::LocalWhileRemote || app_live.state::<AppState>().client.target().is_none();
+                if up && local {
+                    let app3 = app_live.clone();
+                    tauri::async_runtime::spawn(async move { read_update_status(&app3).await });
                 }
             },
         )
@@ -927,27 +933,22 @@ fn swap_closes_gui(data: &Value, own_pid: u32) -> bool {
         .is_some_and(|pids| pids.iter().any(|p| p.as_u64() == Some(u64::from(own_pid))))
 }
 
-fn start_update_checker(app: &AppHandle) {
-    let app2 = app.clone();
-    let task = tauri::async_runtime::spawn(async move {
-        let mut tick = tokio::time::interval(events::UPDATE_STATUS_POLL);
-        loop {
-            tick.tick().await;
-            check_for_updates(&app2).await;
-        }
-    });
-    replace_task(&app.state::<AppState>().life.update_task, Some(task));
-}
-
-/// 데몬이 마지막으로 확인한 결과를 읽어 새 업데이트가 생겼을 때만 알린다
-async fn check_for_updates(app: &AppHandle) {
+/// 이 PC 데몬의 업데이트 상태를 한 번 읽어 `update.status`를 받은 것처럼 다룬다 (메인 창에도 넘긴다)
+async fn read_update_status(app: &AppHandle) {
     let state = app.state::<AppState>();
     let data = match state.client.get("/api/updates/status", 5000).await {
         Ok(d) => d,
         Err(e) => return tracing::warn!("[UpdateChecker] Check failed: {}", e.message),
     };
-    let Some(notice) = events::update_notice(&data) else {
-        if events::updates_cleared(&data) {
+    emit_main(app, "updates:event", SseEvent { id: None, kind: "update.status".into(), data: data.clone() });
+    on_update_status(app, &data);
+}
+
+/// 데몬이 알린 업데이트 상태(`update.status`, 상태 조회와 같은 본문)를 보고 새 업데이트가 생겼을 때만 알린다
+fn on_update_status(app: &AppHandle, data: &Value) {
+    let state = app.state::<AppState>();
+    let Some(notice) = events::update_notice(data) else {
+        if events::updates_cleared(data) {
             // 받을 것이 없어졌다: 남은 업데이트 알림을 지우고, 다시 생기면 OS 알림도 다시 띄운다
             *state.life.last_update_key.lock().unwrap() = None;
             emit_main(
@@ -978,7 +979,7 @@ async fn check_for_updates(app: &AppHandle) {
         sorted.sort();
         sorted.join("\0")
     };
-    // 확인과 기록을 한 잠금 안에서: 이벤트로 부른 확인과 주기 확인이 겹쳐도 한 번만 알린다
+    // 확인과 기록을 한 잠금 안에서: 이벤트와 다시 붙을 때의 읽기가 겹쳐도 한 번만 알린다
     let is_new = !addon_names.is_empty() && {
         let mut last = state.life.last_update_key.lock().unwrap();
         let is_new = last.as_deref() != Some(addon_key.as_str());
@@ -1119,7 +1120,6 @@ pub async fn daemon_restart(app: &AppHandle) -> Value {
 fn stop_background(state: &AppState) {
     state.life.events_stop.store(true, Ordering::SeqCst);
     replace_task(&state.life.events_task, None);
-    replace_task(&state.life.update_task, None);
     replace_task(&state.life.heartbeat_task, None);
 }
 

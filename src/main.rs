@@ -515,6 +515,8 @@ async fn main() -> anyhow::Result<()> {
 
     // 업데이트 주기 확인 — GUI가 꺼져 있어도 데몬이 확인한다 (U6)
     ipc::updates::spawn_update_scheduler(ipc_server.update_state.clone(), shutdown_token.clone());
+    // 업데이트 상태가 바뀌면 클라이언트에 알린다 (`update.status`). 클라이언트는 상태를 주기로 묻지 않는다
+    ipc::updates::spawn_status_events(ipc_server.update_state.clone(), shutdown_token.clone());
     // 지난 앱 업데이트가 이 코어를 기다리게 둔 모듈·익스텐션을 마저 바꾼다
     ipc::updates::spawn_deferred_apply(ipc_server.update_state.clone());
     // 작업 기록 보관 기간 (앱 설정 auditKeepDays)

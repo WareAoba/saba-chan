@@ -22,7 +22,6 @@ beforeEach(() => {
             // 캐시가 있으면 열 때 릴레이에 다시 묻지 않는다
             updaterStatus: vi.fn().mockResolvedValue({ ok: true, components: [{ component: 'saba-core', current_version: '0.1.11' }] }),
             updaterCheck: vi.fn().mockResolvedValue({ ok: true, components: [] }),
-            updaterDownloadProgress: vi.fn().mockResolvedValue({ ok: true, active: false }),
         },
         {
             get(target, prop) {

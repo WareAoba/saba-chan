@@ -21,8 +21,6 @@ pub const EVENTS_IDLE: Duration = Duration::from_secs(45);
 /// 시험은 조용한 연결을 45초씩 기다리지 않는다
 #[cfg(test)]
 pub const EVENTS_IDLE: Duration = Duration::from_millis(300);
-/// 확인 주기는 데몬이 정한다 (U6). GUI는 데몬이 캐시한 결과를 가끔 읽는다
-pub const UPDATE_STATUS_POLL: Duration = Duration::from_secs(10 * 60);
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SseEvent {

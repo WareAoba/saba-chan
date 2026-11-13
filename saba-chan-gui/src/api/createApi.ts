@@ -880,9 +880,17 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             return data;
         },
         onLocalesVersion: (callback: Listener) => hub.on('locales:version', callback),
+        // 이 PC 데몬의 업데이트 상태(`update.status`)·받기 진행(`update.progress`). 원격 데몬을 골라도 이 PC 것만 온다.
+        // 돌려주는 함수로 해제
+        // 상태 본문의 번역 판도 `updaterStatus`처럼 `locales:version`으로 알린다
+        onUpdateEvent: (callback: Listener) =>
+            hub.on('updates:event', (ev: { type?: string; data?: ApiBody } | null) => {
+                if (ev?.type === 'update.status' && ev.data && 'locales_version' in ev.data)
+                    hub.dispatch('locales:version', ev.data.locales_version ?? null);
+                callback(ev);
+            }),
         updaterDownload: (components: string[]) =>
             call('post', '/api/updates/download', { components: Array.isArray(components) ? components : [] }, 600000),
-        updaterDownloadProgress: () => call('get', '/api/updates/download/progress', undefined, 5000),
         // 모듈은 데몬이 직접 적용, 데몬/GUI/CLI는 needs_updater에 들어간다
         updaterApply: async (components: string[]) => {
             const body = { components: Array.isArray(components) ? components : [] };
