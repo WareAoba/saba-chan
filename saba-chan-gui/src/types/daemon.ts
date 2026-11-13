@@ -125,7 +125,7 @@ export interface ServerInfo {
 
 /** 포트 충돌로 데몬이 강제로 끈 서버 알림 */
 export interface PortConflictStopEvent {
-    id?: number;
+    id: number;
     stopped_name: string;
     stopped_id?: string;
     existing_name: string;

@@ -414,7 +414,7 @@ const OPTIONAL: &[(&str, &str)] = &[
     ("validate", "server validate"),
 ];
 
-/// 모듈이 이 lifecycle 함수를 구현하는지. `functions`가 null이거나 없으면(옛 데몬·옛 모듈) 안다고 본다
+/// 모듈이 이 lifecycle 함수를 구현하는지. `functions`가 null이거나 없으면(옛 모듈) 안다고 본다
 pub fn supported(module: &Value, function: &str) -> bool {
     match module.get("functions").and_then(Value::as_array) {
         Some(list) => list.iter().any(|f| f.as_str() == Some(function)),
@@ -527,8 +527,7 @@ mod tests {
         assert_eq!(failed, vec![t!("module.extension_failed", id = "rcon", error = why)]);
 
         assert_eq!(extension_notes(&json!({ "ok": true, "extensions": { "installed": [], "enabled": [], "failed": [] } })), (None, vec![]));
-        assert_eq!(extension_notes(&json!({ "ok": true })), (None, vec![]), "older daemon");
-    }
+            }
 
     /// 모듈이 밝힌 함수 목록(MK1)에 없는 선택 함수의 명령만 지원하지 않음으로 보인다. 목록을 모르면(null·없음) 아무것도 숨기지 않는다
     #[test]

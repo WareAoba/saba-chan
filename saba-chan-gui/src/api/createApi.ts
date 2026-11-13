@@ -224,11 +224,9 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 if (Array.isArray(data?.port_conflict_stops)) {
                     // 겹친 조회는 같은 커서로 같은 알림을 받는다: 먼저 처리한 응답 뒤의 것만 남긴다
                     const seen = noticesAfter;
-                    data.port_conflict_stops = data.port_conflict_stops.filter(
-                        (evt) => !Number.isSafeInteger(evt.id) || (evt.id ?? 0) > seen,
-                    );
+                    data.port_conflict_stops = data.port_conflict_stops.filter((evt) => evt.id > seen);
                     for (const { id } of data.port_conflict_stops) {
-                        if (id !== undefined && Number.isSafeInteger(id) && id > noticesAfter) noticesAfter = id;
+                        if (id > noticesAfter) noticesAfter = id;
                     }
                 }
                 notifyConflicts(data);

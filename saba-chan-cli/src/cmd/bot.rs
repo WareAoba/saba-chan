@@ -70,7 +70,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
                 return Ok(());
             }
             let r = ctx.api.set_discord_settings(&guild, json!({ "prefixes": values })).await?;
-            ctx.out.done(&prefix_saved_message(&r, &values, default), &r);
+            ctx.out.done(&prefix_saved_message(&r, default), &r);
             if r.pointer("/sync/ok").and_then(Value::as_bool) == Some(false) {
                 ctx.out.warn(&t!("bot.discord_not_synced"));
             }
@@ -270,16 +270,12 @@ pub(crate) fn relay_of(cfg: &Value) -> Option<&str> {
 }
 
 /// 빈 목록은 앱 언어의 기본 접두사(릴레이가 고른다)
-/// 접두사 저장 문구: 데몬 응답의 저장된 접두사(`settings.prefixes`), 없으면(옛 데몬) 입력한 값
-fn prefix_saved_message(r: &Value, values: &[String], default: bool) -> String {
+/// 접두사 저장 문구: 데몬 응답의 저장된 접두사(`settings.prefixes`)
+fn prefix_saved_message(r: &Value, default: bool) -> String {
     if default {
         return t!("bot.prefix_reset");
     }
-    let prefix = match r.pointer("/settings/prefixes") {
-        Some(p @ Value::Array(_)) => prefixes_line(p),
-        _ => values.join(", "),
-    };
-    t!("bot.prefix_set", prefix = prefix)
+    t!("bot.prefix_set", prefix = prefixes_line(r.pointer("/settings/prefixes").unwrap_or(&Value::Null)))
 }
 
 fn prefixes_line(p: &Value) -> String {
@@ -921,7 +917,7 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         (t!("bot.prefix"), prefixes_line(r.get("prefixes").unwrap_or(&Value::Null))),
         // 값이 없으면 켜짐
         (t!("bot.translate_commands"), on_off(Some(r.get("translateCommands").and_then(Value::as_bool) != Some(false)))),
-        // 슬래시 모양: 값이 없으면(원격의 0.1.11 데몬) 접두어 켜짐·인스턴스 이름·모두에게 보임
+        // 슬래시 모양: 기본은 접두어 켜짐·인스턴스 이름·모두에게 보임
         (t!("bot.slash_prefix"), on_off(Some(r.get("slashPrefix").and_then(Value::as_bool) != Some(false)))),
         (
             t!("bot.slash_root_name"),
@@ -930,13 +926,11 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         (t!("bot.private_queries"), on_off(r.get("privateQueries").and_then(Value::as_bool))),
         (t!("bot.sleeping"), on_off(r.get("sleeping").and_then(Value::as_bool))),
     ];
-    // 코코낸내: 원격의 0.1.11 데몬은 값이 없다
-    if let Some(blocks) = r.get("sleepBlocks").and_then(Value::as_array) {
-        let names: Vec<&str> = blocks.iter().filter_map(Value::as_str).collect();
-        rows.push((t!("bot.sleep_blocks"), if names.is_empty() { t!("bot.sleep_blocks_none") } else { names.join(", ") }));
-        let bedtime = r.get("bedtime").filter(|b| b.is_object());
-        rows.push((t!("bot.bedtime"), bedtime.map_or_else(|| t!("bot.off"), |b| format!("{} ~ {}", s(b, "start"), s(b, "end")))));
-    }
+    // 코코낸내
+    let names: Vec<&str> = r.get("sleepBlocks").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+    rows.push((t!("bot.sleep_blocks"), if names.is_empty() { t!("bot.sleep_blocks_none") } else { names.join(", ") }));
+    let bedtime = r.get("bedtime").filter(|b| b.is_object());
+    rows.push((t!("bot.bedtime"), bedtime.map_or_else(|| t!("bot.off"), |b| format!("{} ~ {}", s(b, "start"), s(b, "end")))));
     // 이모지 업스케일·멤버 알림·과부하 공지·채팅 기본으로 열기: 릴레이가 가진 값이라 릴레이가 답하지 못하면 없다
     for (key, label) in [("bigEmoji", "bot.big_emoji"), ("memberNotice", "bot.member_notice"), ("busyNotice", "bot.busy_notice"), ("gameChatAutoOpen", "bot.chat_auto_open")] {
         if let Some(on) = r.get(key).and_then(Value::as_bool) {
@@ -949,7 +943,7 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         (t!("bot.music_queue_lines"), music("queueLines").map(|v| v.to_string()).unwrap_or_default()),
         (t!("bot.music_refresh"), music("refreshInterval").map(|v| format!("{} ms", v)).unwrap_or_default()),
         (t!("bot.music_normalize"), on_off(music("normalize").and_then(Value::as_bool))),
-        // 읽어주는 사바쨩: 값이 없으면(원격의 0.1.11 데몬) 기본값
+        // 읽어주는 사바쨩: 값이 없으면 기본값
         (t!("bot.tts_volume"), format!("{}%", tts("volume", 100))),
         (t!("bot.tts_speed"), t!("bot.tts_speed_value", value = format!("{}", tts("speed", 100) as f64 / 100.0))),
         (t!("bot.tts_pitch"), t!("bot.tts_pitch_value", value = tts("pitch", 0).to_string())),
@@ -1309,11 +1303,9 @@ mod tests {
     #[test]
     fn prefix_saved_message_shows_what_the_daemon_kept() {
         crate::i18n::init("ko");
-        let typed = vec![" 사바 ".to_string(), "사바".to_string()];
         let r = json!({ "success": true, "settings": { "prefixes": ["사바"] } });
-        assert_eq!(prefix_saved_message(&r, &typed, false), t!("bot.prefix_set", prefix = "사바"));
-        assert_eq!(prefix_saved_message(&json!({ "success": true }), &typed, false), t!("bot.prefix_set", prefix = " 사바 , 사바"));
-        assert_eq!(prefix_saved_message(&r, &[], true), t!("bot.prefix_reset"));
+        assert_eq!(prefix_saved_message(&r, false), t!("bot.prefix_set", prefix = "사바"));
+        assert_eq!(prefix_saved_message(&r, true), t!("bot.prefix_reset"));
     }
 
     #[test]
@@ -1326,7 +1318,7 @@ mod tests {
         let old = json!({ "locale": "ko", "music": {} });
         assert_eq!(row(&old, "bot.prefix"), Some(t!("bot.prefix_default")));
         assert_eq!(row(&old, "bot.translate_commands"), Some(t!("bot.on")));
-        // 슬래시 모양도 같은 줄에 (원격의 0.1.11 데몬이면 기본값)
+        // 슬래시 모양도 같은 줄에 (값이 없으면 기본값)
         assert_eq!(row(&old, "bot.slash_prefix"), Some(t!("bot.on")));
         assert_eq!(row(&old, "bot.slash_root_name"), Some(t!("bot.slash_root_name_name")));
         assert_eq!(row(&old, "bot.private_queries"), Some(t!("bot.off")));
@@ -1375,8 +1367,6 @@ mod tests {
         let off = json!({ "sleepBlocks": [], "bedtime": null, "music": {} });
         assert_eq!(row(&off, "bot.sleep_blocks"), Some(t!("bot.sleep_blocks_none")));
         assert_eq!(row(&off, "bot.bedtime"), Some(t!("bot.off")));
-        // 원격의 0.1.11 데몬은 값이 없다 — 줄을 두지 않는다
-        assert_eq!(row(&json!({ "music": {} }), "bot.bedtime"), None);
 
         assert_eq!(sleep_patch(Some(vec!["llm".into()]), Some("23:30-07:00".into()), false).unwrap(), json!({ "sleepBlocks": ["llm"], "bedtime": { "start": "23:30", "end": "07:00" } }));
         assert_eq!(sleep_patch(None, None, true).unwrap(), json!({ "bedtime": null }));
@@ -1408,7 +1398,7 @@ mod tests {
         assert_eq!(row(&r, "bot.tts_speed"), Some(t!("bot.tts_speed_value", value = "1.25")));
         assert_eq!(row(&r, "bot.tts_pitch"), Some(t!("bot.tts_pitch_value", value = "-3")));
         assert_eq!(row(&json!({ "tts": { "names": "always" } }), "bot.tts_names"), Some(t!("bot.tts_names_always")));
-        // 원격의 0.1.11 데몬(tts 없음)이면 기본값
+        // 값이 없으면 기본값
         assert_eq!(row(&json!({}), "bot.tts_names"), Some(t!("bot.tts_names_multi")));
         let on = json!({ "tts": { "voiceChatOnly": true, "keepRead": true, "autoChannels": ["1", "2"] } });
         assert_eq!(row(&on, "bot.tts_voice_chat_only"), Some(t!("bot.on")));

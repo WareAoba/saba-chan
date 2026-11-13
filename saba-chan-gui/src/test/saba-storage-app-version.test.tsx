@@ -128,7 +128,7 @@ describe('사바쨩 버전 줄', () => {
         expect(screen.getByRole('button', { name: ss('version_unpin') })).toBeTruthy();
     });
 
-    it('버전을 읽지 못하면(옛 데몬 포함) 줄을 그리지 않는다', async () => {
+    it('버전을 읽지 못하면 줄을 그리지 않는다', async () => {
         fakeApi({
             updaterVersions: vi.fn().mockResolvedValue({ ok: false, error: 'Request failed with status code 404' }),
         });

@@ -56,7 +56,7 @@ describe('실행 중이지만 응답이 없는 서버', () => {
         expect(flag!.getAttribute('data-tooltip')).toMatch(/connection refused/);
     });
 
-    it('필드가 없으면(옛 데몬이거나 답하는 중) 아무것도 보이지 않는다', () => {
+    it('필드가 없으면(답하는 중) 아무것도 보이지 않는다', () => {
         useServerStore.setState({ modulesLoaded: true });
         detail(base);
         row(base);

@@ -28,7 +28,7 @@ describe('설치 실패 문구', () => {
         expect(installFailureText(t, res, translate)).toBe(
             'tr(download failed) server_settings.install_kept_backups{"files":"PalServer → PalServer.1.bak, java → java.bak"}',
         );
-        // 옛 데몬은 kept_backups 없이 restore_failed만 준다
+        // kept_backups가 없으면 덧붙이지 않는다
         expect(installFailureText(t, { restore_failed: ['PalServer'], message: 'm' }, translate)).toBe('tr(m)');
     });
 
