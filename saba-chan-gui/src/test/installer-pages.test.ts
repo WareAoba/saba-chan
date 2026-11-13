@@ -11,6 +11,14 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = path.resolve(__dirname, '../../../installer/gui/src');
 
+/** 빌드가 만드는 translations.js(installer build.rs `share_translations`)와 같은 내용: 언어마다 locales/<lang>/installer.json */
+function translations() {
+    const locales = path.resolve(__dirname, '../../../locales');
+    const langs = fs.readdirSync(locales).filter((l) => fs.existsSync(path.join(locales, l, 'installer.json')));
+    const entries = langs.map((l) => `${JSON.stringify(l)}: ${fs.readFileSync(path.join(locales, l, 'installer.json'), 'utf8')}`);
+    return `window.SABA_TRANSLATIONS = {${entries.join(',')}};`;
+}
+
 type Invoke = Record<string, unknown>;
 type Listener = (ev: { payload: unknown }) => void;
 
@@ -54,7 +62,7 @@ function mount(page: string, invokes: Invoke) {
         },
         window: { getCurrentWindow: () => appWindow },
     };
-    for (const s of scripts) w.eval(fs.readFileSync(path.join(SRC, s), 'utf8'));
+    for (const s of scripts) w.eval(s === 'translations.js' ? translations() : fs.readFileSync(path.join(SRC, s), 'utf8'));
     const emit = (name: string, payload: unknown) => {
         for (const cb of listeners[name] || []) cb({ payload });
     };

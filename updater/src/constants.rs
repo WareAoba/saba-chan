@@ -302,11 +302,12 @@ pub fn generate_random_password() -> String {
 //  로케일 해석
 // ══════════════════════════════════════════════════════
 
-/// 앱 설정·시스템 로케일 문자열을 지원 언어로 정규화한다 (대소문자, `_`·`-` 구분 없이). 지원하지 않으면 None
+/// 앱 설정·시스템 로케일 문자열을 지원 언어로 정규화한다 (대소문자, `_`·`-` 구분 없이). 지원하지 않으면 None.
+/// 데몬·CLI·GUI 셸이 모두 이 규칙을 쓴다
 ///
-/// `"ko-KR"` → `"ko"`, `"zh-Hans"` → `"zh-CN"`, `"en-US"` → `"en"` 등
+/// `"ko-KR"` → `"ko"`, `"zh-Hans"` → `"zh-CN"`, `"zh-HK"` → `"zh-TW"`, `"en-US"` → `"en"` 등
 pub fn resolve_locale(locale: &str) -> Option<String> {
-    let lower = locale.trim().replace('_', "-").to_lowercase();
+    let lower = locale.trim().split('.').next().unwrap_or("").replace('_', "-").to_lowercase();
     let supported = |tag: &str| SUPPORTED_LANGUAGES.iter().find(|s| s.eq_ignore_ascii_case(tag)).map(|s| s.to_string());
 
     // 정확한 매칭
@@ -314,19 +315,16 @@ pub fn resolve_locale(locale: &str) -> Option<String> {
         return Some(exact);
     }
 
-    // zh-Hans / zh-Hant 특수 처리
-    if lower.starts_with("zh-cn") || lower.starts_with("zh-hans") {
-        return supported("zh-CN");
-    }
-    if lower.starts_with("zh-tw") || lower.starts_with("zh-hant") {
-        return supported("zh-TW");
-    }
-    if lower.starts_with("pt-br") {
-        return supported("pt-BR");
+    let mut tags = lower.split('-');
+    let base = tags.next().unwrap_or("");
+    // 중국어는 스크립트 태그(Hans·Hant)가 지역보다 먼저다(zh-Hans-HK는 간체). 번체를 쓰는 곳(Hant·대만·홍콩·마카오)이면 번체, 그 밖은 간체
+    if base == "zh" {
+        let subtags: Vec<&str> = tags.collect();
+        let traditional = !subtags.contains(&"hans") && subtags.iter().any(|t| ["hant", "tw", "hk", "mo"].contains(t));
+        return supported(if traditional { "zh-TW" } else { "zh-CN" });
     }
 
     // 기본 언어 코드로 매칭
-    let base = lower.split(['-', '.']).next().unwrap_or("");
     SUPPORTED_LANGUAGES
         .iter()
         .find(|s| {
@@ -353,6 +351,15 @@ mod tests {
         let daemon: std::collections::BTreeSet<&str> =
             INSTANCE_FIELDS.iter().map(|(k, _)| *k).filter(|k| !read_apart.contains(k)).collect();
         assert_eq!(gui, daemon);
+    }
+
+    /// GUI·웹이 고르는 언어(`utils/languages.ts` `LANGUAGE_OPTIONS`)는 이 목록과 같다
+    #[test]
+    fn the_gui_offers_the_supported_languages() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../saba-chan-gui/src/utils/languages.ts");
+        let text = std::fs::read_to_string(path).unwrap();
+        let gui: Vec<&str> = text.split("value: '").skip(1).map(|s| &s[..s.find('\'').unwrap()]).collect();
+        assert_eq!(gui, SUPPORTED_LANGUAGES);
     }
 
     #[test]
@@ -385,6 +392,12 @@ mod tests {
         assert_eq!(resolve_locale("zh").as_deref(), Some("zh-CN"));
         assert_eq!(resolve_locale(" KO ").as_deref(), Some("ko"));
         assert_eq!(resolve_locale("de_DE.UTF-8").as_deref(), Some("de"));
+        // 중국어는 스크립트 태그가 지역보다 먼저다: 번체를 쓰는 곳(Hant·대만·홍콩·마카오)이면 번체, 그 밖은 간체
+        assert_eq!(resolve_locale("zh-HK").as_deref(), Some("zh-TW"));
+        assert_eq!(resolve_locale("zh_MO").as_deref(), Some("zh-TW"));
+        assert_eq!(resolve_locale("zh-Hant-SG").as_deref(), Some("zh-TW"));
+        assert_eq!(resolve_locale("zh-Hans-HK").as_deref(), Some("zh-CN"));
+        assert_eq!(resolve_locale("zh_SG.UTF-8").as_deref(), Some("zh-CN"));
     }
 
     /// 지원하지 않는 언어는 None: 부른 쪽이 다음 후보(앱 설정 → 시스템 로케일 → 영어)로 넘어간다

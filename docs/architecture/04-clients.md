@@ -300,7 +300,7 @@ Tauri 셸과 CLI는 Rust 쪽 SSOT `saba_chan_updater_lib::constants`(`updater/sr
 |---|---|---|
 | APP_NAME | `saba-chan` | dataDir 이름(`constants.rs:22`) |
 | DEFAULT_IPC_PORT | `57474` | `constants.rs:32`. 셸 `settings.rs:8, 98-105`, CLI. renderer는 사본을 둔다(`useSettingsStore.ts:20`) |
-| SUPPORTED_LANGUAGES | en, ko, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr | `constants.rs:42`. 셸은 OS 로캘을 이 목록에 맞춘다(`settings.rs:127-150`). **중복 정의 위치**: `saba-chan-gui/src/i18n.ts:10`, `updater/gui/src/updater.js:10` |
+| SUPPORTED_LANGUAGES | en, ko, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr | `updater/src/constants.rs` `SUPPORTED_LANGUAGES`. 언어 태그 해석은 Rust 쪽(데몬 `chat::i18n::normalize_language`·CLI `i18n::normalize`·셸 `settings::system_language`)이 모두 `constants::resolve_locale` 하나를 부른다(중국어는 스크립트 태그 Hans·Hant가 지역보다 먼저, 그 밖은 언어 코드로, 지원하지 않으면 en). TS 쪽(GUI·웹)은 `saba-chan-gui/src/utils/languages.ts`의 `SUPPORTED_LANGUAGES`·`pickLanguage`(같은 규칙) 하나를 쓴다. 목록 대조: 업데이터 테스트 `the_gui_offers_the_supported_languages`, CLI `offers_the_supported_languages`. 설치기·업데이터 창 문구는 `locales/<lang>/installer.json`(`installer`·`updater`)이고 설치기 `build.rs`가 빌드 때 `installer/gui/src/translations.js`(저장소에 넣지 않는다)로 묶는다 |
 | resolve_data_dir() | `SABA_DATA_DIR`, Windows는 `%APPDATA%/saba-chan`, 그 외는 `$HOME/.config/saba-chan` | `constants.rs:55`. 셸 `lib.rs:79` |
 
 - 그 밖의 포트:
