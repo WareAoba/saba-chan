@@ -555,36 +555,37 @@ mod tests {
             "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"steamcmd\"\n",
         )
         .unwrap();
-        // 받은 설정은 서버 폴더에 적는다: 격리 실행이어도 설치가 쓸 수 있는 곳이다
         let server = tmp.path().join("server");
-        std::fs::create_dir_all(&server).unwrap();
-        let seen = server.join("install_config.json");
+        let instances = tmp.path().join("instances");
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        let cache = instances.join(&inst.id).join("cache");
+        // 받은 데이터 폴더 목록을 실패 이유로 돌려준다: 파일로 적으면 격리 실행(Windows, 확인되지 않은 시험 모듈)에서
+        // 쓸 곳이 시험 폴더 밖이라 막힌다
         std::fs::write(
             dir.join("lifecycle.py"),
             format!(
-                "import json, sys\ncfg = sys.stdin.read()\ntry:\n    if sys.argv[1] == 'install_server':\n        open({seen:?}, 'w').write(cfg)\n    print(json.dumps({{'success': True}}))\n\
-                 except Exception as e:\n    print(json.dumps({{'success': False, 'error': repr(e)}}))\n",
-                seen = seen.to_str().unwrap()
+                "import json, sys\ncfg = json.load(sys.stdin)\n\
+                 print(json.dumps({{'success': False, 'error': json.dumps(cfg.get({key:?}))}}))\n",
+                key = crate::sandbox::INSTANCE_DATA_DIRS
             ),
         )
         .unwrap();
         crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
-        let instances = tmp.path().join("instances");
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
         sup.initialize().await.unwrap();
-        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        assert_eq!(sup.instance_store.instance_dir(&inst.id), instances.join(&inst.id));
         inst.working_dir = Some(server.to_string_lossy().to_string());
         inst.extension_data.insert(crate::instance::install_method_key("steamcmd"), json!(true));
-        let cache = sup.instance_store.instance_dir(&inst.id).join("cache");
         inst.module_settings.insert("cache_dir".into(), json!(cache.to_string_lossy()));
         let id = inst.id.clone();
         sup.instance_store.add(inst).unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
 
         let done = super::begin_server_update(&state, &id).await.ok().expect("the update starts");
-        assert!(done.await.unwrap(), "the update succeeds: {:?}", state.provision_tracker.get(&id).and_then(|p| p.error));
-        let config: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&seen).unwrap()).unwrap();
-        assert_eq!(config[crate::sandbox::INSTANCE_DATA_DIRS], json!([cache.to_string_lossy()]), "{config}");
+        assert!(!done.await.unwrap(), "the test module answers with what it got as a failure");
+        let error = state.provision_tracker.get(&id).and_then(|p| p.error).expect("the failure reason");
+        let data_dirs: serde_json::Value = serde_json::from_str(&error).unwrap_or_else(|_| panic!("{error}"));
+        assert_eq!(data_dirs, json!([cache.to_string_lossy()]), "{error}");
     }
 
     /// A-09: 업데이트 확인은 모듈 `[install]`을 그대로 받는다. 인스턴스에 남은 옛 사본(`steamcmd_app_id`)을 쓰지 않는다
