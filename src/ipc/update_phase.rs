@@ -198,6 +198,8 @@ pub struct PlanInput<'a> {
     pub core_version: Option<&'a str>,
     /// 되돌린 코어 판 (`UpdateConfig::failed_release`, 설치기가 적는다)
     pub failed_release: Option<&'a str>,
+    /// 사용자가 고른 되돌리기다 (`UpdateConfig::user_held`): 그 코어는 준비됨으로도 알리지 않는다
+    pub user_held: bool,
     /// 이전 데몬이 끝나지 않아 미룬 릴리즈 판 (단계 `ready`/`wait_pid_timeout`의 판)
     pub deferred_release: Option<&'a str>,
     pub gui_window_open: bool,
@@ -211,6 +213,8 @@ pub enum Decision {
     /// 자동으로 적용할 앱 업데이트가 없다
     Nothing,
     Ready(ReadyReason),
+    /// 사용자가 되돌려 고정한 코어: 적용하지 않고 준비됨으로도 두지 않는다 (더 새 코어가 오면 고정이 풀린다)
+    Held,
     Wait(Vec<CoreSwapBlocker>),
     /// 이 키들을 적용한다 (켜진 CLI TUI가 있으면 `cli`는 다음 묶음으로 남는다)
     Apply(Vec<String>),
@@ -223,8 +227,12 @@ pub fn decide(input: PlanInput<'_>) -> Decision {
         return Decision::Nothing;
     }
     // 되돌린 코어는 다시 자동으로 적용하지 않는다 (13절): 사용자가 다시 시작을 누를 때까지.
-    // 부분 릴리즈는 안 바뀐 코어를 지난 판 번호 그대로 싣으므로 릴리즈 판이 아니라 코어 판으로 견준다
-    if input.failed_release.is_some() && input.failed_release == input.core_version {
+    // 사용자가 고른 되돌리기는 고정이라 준비됨으로도 알리지 않는다
+    if input.user_held {
+        if is_held_core(input.failed_release, input.core_version) {
+            return Decision::Held;
+        }
+    } else if is_rolled_back_core(input.failed_release, input.core_version) {
         return Decision::Ready(ReadyReason::FailedRelease);
     }
     // 이전 데몬이 끝나지 않아 미룬 묶음도 사용자가 다시 시작하거나 더 새 판이 올 때까지 다시 띄우지 않는다
@@ -245,6 +253,22 @@ pub fn decide(input: PlanInput<'_>) -> Decision {
         return Decision::Wait(input.blockers);
     }
     Decision::Apply(targets)
+}
+
+/// 받을 코어(`core_version`)가 되돌린 코어(`failed_release`)인가.
+/// 부분 릴리즈는 안 바뀐 코어를 지난 판 번호 그대로 싣으므로 릴리즈 판이 아니라 코어 판으로 견준다
+pub fn is_rolled_back_core(failed_release: Option<&str>, core_version: Option<&str>) -> bool {
+    failed_release.is_some() && failed_release == core_version
+}
+
+/// 받을 코어(`core_version`)가 사용자 고정에 묶이는가: 고정 기준(`failed_release`)과 그보다 옛 코어.
+/// 기준은 되돌릴 때 알던 가장 새 코어라, 그 판이 내려가 릴레이가 그보다 옛 판을 주어도 묶인다
+pub fn is_held_core(failed_release: Option<&str>, core_version: Option<&str>) -> bool {
+    use saba_chan_updater_lib::version::SemVer;
+    match (failed_release, core_version) {
+        (Some(held), Some(core)) => held == core || matches!((SemVer::parse(held), SemVer::parse(core)), (Some(h), Some(c)) if c <= h),
+        _ => false,
+    }
 }
 
 /// 되돌린 코어 판보다 새 코어가 왔으면 그 기록은 지운다 (`offered`: 받아 둔 묶음의 코어 판)
@@ -316,6 +340,7 @@ mod tests {
             version: Some("0.1.14"),
             core_version: Some("0.1.14"),
             failed_release: None,
+            user_held: false,
             deferred_release: None,
             gui_window_open: false,
             cli_running: false,
@@ -367,6 +392,19 @@ mod tests {
         // 코어가 없는 묶음(GUI만)은 되돌린 코어와 상관없다
         let gui = keys(&["gui"]);
         assert_eq!(decide(PlanInput { version: Some("0.1.16"), core_version: None, failed_release: Some("0.1.14"), ..input(&gui) }), Decision::Apply(gui.clone()));
+    }
+
+    /// 사용자가 고른 되돌리기는 고정이다: 되돌린 코어를 다시 받아 두어도 준비됨으로 알리지 않는다.
+    /// 업데이트가 실패해 되돌린 코어는 전처럼 준비됨이고, 더 새 코어는 고정과 상관없이 적용한다
+    #[test]
+    fn a_core_the_user_rolled_back_from_is_held_without_a_ready_phase() {
+        let pending = keys(&["saba-core", "gui"]);
+        assert_eq!(decide(PlanInput { failed_release: Some("0.1.14"), user_held: true, ..input(&pending) }), Decision::Held);
+        assert_eq!(decide(PlanInput { failed_release: Some("0.1.14"), ..input(&pending) }), Decision::Ready(ReadyReason::FailedRelease));
+        assert_eq!(decide(PlanInput { failed_release: Some("0.1.13"), user_held: true, ..input(&pending) }), Decision::Apply(pending.clone()));
+        // 고정 기준이 받을 코어보다 새 판이어도(되돌릴 때 이미 알던 판이 내려갔다) 묶인다. 업데이트 실패의 기록은 같은 판만 막는다
+        assert_eq!(decide(PlanInput { failed_release: Some("0.1.15"), user_held: true, ..input(&pending) }), Decision::Held);
+        assert_eq!(decide(PlanInput { failed_release: Some("0.1.15"), ..input(&pending) }), Decision::Apply(pending.clone()));
     }
 
     /// 이전 데몬이 끝나지 않아 미룬 묶음은 같은 릴리즈면 다시 띄우지 않는다. 더 새 릴리즈면 적용한다

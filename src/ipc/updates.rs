@@ -108,10 +108,12 @@ impl UpdateState {
         if changed {
             live.save_to(&live_path);
         }
-        // 되돌린 코어 판은 설치기가 설정에 남긴다. 남기지 못했으면 여기서 남긴다 (같은 코어를 다시 자동 적용하지 않게)
+        // 되돌린 코어 판은 설치기가 설정에 남긴다. 남기지 못했으면 여기서 남긴다 (같은 코어를 다시 자동 적용하지 않게).
+        // 이 마커는 업데이트 실패의 자동 되돌림이라 사용자 고정이 아니다
         if let Some(core) = rolled_back.filter(|_| mgr.config.failed_release.is_none()) {
             let mut cfg = mgr.get_config();
             cfg.failed_release = Some(core);
+            cfg.user_held = false;
             if let Err(e) = save_updater_config(&cfg) {
                 tracing::warn!("[Updates] Failed to persist update config: {}", e);
             }
@@ -296,6 +298,7 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/apply-on-launch", post(apply_on_launch))
         .route("/api/updates/launch-updater", post(launch_updater))
         .route("/api/updates/rollback", get(get_rollback).post(roll_back))
+        .route("/api/updates/versions", get(get_versions))
         .route("/api/updates/install", post(install_updates))
         .route("/api/updates/last-result", get(get_last_result).delete(clear_last_result))
         .route("/api/updates/integrity", get(check_integrity))
@@ -787,6 +790,10 @@ async fn core_apply(state: &UpdateState) {
                 }
                 return;
             }
+            Decision::Held => {
+                clear_held_phase(state);
+                return;
+            }
             Decision::Ready(reason) => {
                 state.set_phase(Phase::ready(reason, version, notes));
                 // 창을 숨기면(트레이) 이어서 적용한다
@@ -851,14 +858,32 @@ async fn hold_while_gui_window_open(state: &UpdateState, stop: &tokio_util::sync
     }
 }
 
-/// 자동 적용을 끈 설정: 받을 앱 업데이트가 있으면 `ready`(`manual`)로 두고, 없으면 그 단계를 걷는다
+/// 확인해 둔 코어 새 판 (없으면 None)
+fn core_update(status: &saba_chan_updater_lib::UpdateStatus) -> Option<&str> {
+    status.components.iter().find(|c| c.component == Component::CoreDaemon && c.update_available).and_then(|c| c.latest_version.as_deref())
+}
+
+/// 사용자가 되돌려 고정한 코어: 앞서 남은 준비됨·기다림을 걷는다 (고정한 판은 알약에 올리지 않는다)
+fn clear_held_phase(state: &UpdateState) {
+    if matches!(state.phase().state, PhaseState::Ready | PhaseState::Waiting) {
+        state.set_phase(Phase::default());
+    }
+}
+
+/// 자동 적용을 끈 설정: 받을 앱 업데이트가 있으면 `ready`(`manual`)로 두고, 없으면 그 단계를 걷는다.
+/// 받을 코어가 사용자가 되돌려 고정한 판이면 준비됨으로 두지 않는다 (`decide`의 `Held`와 같다)
 async fn hold_for_restart(state: &UpdateState) {
-    let (available, release) = {
+    let (available, held, release) = {
         let mgr = state.manager.read().await;
-        let available = mgr.get_status().components.iter().any(|c| c.update_available && update_phase::is_app_component(&c.component.manifest_key()));
-        (available, mgr.applying_release())
+        let status = mgr.get_status();
+        let available = status.components.iter().any(|c| c.update_available && update_phase::is_app_component(&c.component.manifest_key()));
+        let cfg = mgr.get_config();
+        let held = cfg.user_held && update_phase::is_held_core(cfg.failed_release.as_deref(), core_update(&status));
+        (available, held, mgr.applying_release())
     };
-    if available {
+    if held {
+        clear_held_phase(state);
+    } else if available {
         let version = release.as_ref().map(|r| r.version.clone());
         state.set_phase(Phase::ready(ReadyReason::Manual, version, release.map(|r| r.notes).filter(|n| !n.is_empty())));
     } else if state.phase().reason == Some(ReadyReason::Manual) {
@@ -868,7 +893,7 @@ async fn hold_for_restart(state: &UpdateState) {
 
 /// 받아 둔 앱 업데이트를 지금 적용할 수 있는가 (`update_phase::decide`)와 그 판·패치노트
 async fn plan_core_apply(state: &UpdateState) -> (Decision, Option<String>, Option<std::collections::HashMap<String, String>>) {
-    let (pending, release, core_version, failed, reads) = {
+    let (pending, release, core_version, failed, user_held, reads) = {
         let mut mgr = state.manager.write().await;
         restore_pending(&mut mgr);
         let pending: Vec<String> = mgr.get_pending_components().iter().map(|c| c.component.manifest_key()).collect();
@@ -879,7 +904,7 @@ async fn plan_core_apply(state: &UpdateState) -> (Decision, Option<String>, Opti
         // 되돌린 코어보다 새 코어를 받았으면 그 기록은 지운다 (코어가 그대로인 새 릴리즈는 지우지 않는다)
         if let (Some(failed), Some(core)) = (cfg.failed_release.as_deref(), core_version.as_deref()) {
             if update_phase::failed_release_outdated(failed, core) {
-                cfg.failed_release = None;
+                cfg.clear_failed_release();
                 if let Err(e) = save_updater_config(&cfg) {
                     tracing::warn!("[Updates] Failed to persist update config: {}", e);
                 }
@@ -887,7 +912,7 @@ async fn plan_core_apply(state: &UpdateState) -> (Decision, Option<String>, Opti
             }
         }
         let reads = mgr.core_reads_runner_formats().unwrap_or(saba_chan_updater_lib::relay::DEFAULT_READS_RUNNER_FORMATS);
-        (pending, release, core_version, cfg.failed_release, reads)
+        (pending, release, core_version, cfg.failed_release, cfg.user_held, reads)
     };
     let version = release.as_ref().map(|r| r.version.clone());
     let notes = release.map(|r| r.notes).filter(|n| !n.is_empty());
@@ -910,6 +935,7 @@ async fn plan_core_apply(state: &UpdateState) -> (Decision, Option<String>, Opti
         version: version.as_deref(),
         core_version: core_version.as_deref(),
         failed_release: failed.as_deref(),
+        user_held,
         deferred_release: deferred.as_deref(),
         gui_window_open,
         cli_running,
@@ -1552,13 +1578,78 @@ async fn get_rollback(State(state): State<UpdateState>) -> impl IntoResponse {
     Json(body)
 }
 
-/// `{ok, available, current}`, 되돌릴 수 있으면 `version`(돌아갈 판)·`updated_at`(지금 판으로 업데이트한 때)도.
-/// 지금 코어가 그 직전 판을 바꾼 판일 때만 되돌릴 수 있다
+/// `{ok, available, current}`, 되돌릴 수 있으면 `version`(돌아갈 판)·`updated_at`(지금 판으로 업데이트한 때)도
 fn rollback_body(previous: Option<&saba_chan_updater_lib::live_apply::PreviousVersion>, current: &str) -> Value {
-    match previous.filter(|p| p.replaced_by == current) {
+    match kept_previous(previous, current) {
         Some(p) => json!({ "ok": true, "available": true, "version": p.version, "current": current, "updated_at": p.updated_at }),
         None => json!({ "ok": true, "available": false, "current": current }),
     }
+}
+
+/// 되돌릴 수 있는 직전 판: 지금 코어(`current`)가 그 직전 판을 바꾼 판일 때만 (그 뒤 설치기로 다시 깔았으면 맞지 않는다)
+fn kept_previous<'a>(
+    previous: Option<&'a saba_chan_updater_lib::live_apply::PreviousVersion>,
+    current: &str,
+) -> Option<&'a saba_chan_updater_lib::live_apply::PreviousVersion> {
+    previous.filter(|p| p.replaced_by == current)
+}
+
+/// GET /api/updates/versions — 앱의 "다른 버전 선택": 지금 판, 이 PC에 남긴 직전 판, 가장 새 판, 사용자 고정 (네트워크 없음)
+async fn get_versions(State(state): State<UpdateState>) -> impl IntoResponse {
+    let installed = saba_chan_updater_lib::relay::core_version();
+    let previous = saba_chan_updater_lib::live_apply::PreviousVersion::load(&saba_chan_updater_lib::constants::resolve_data_dir());
+    let (cfg, latest, checked) = {
+        let mgr = state.manager.read().await;
+        let status = mgr.get_status();
+        (mgr.get_config(), core_update(&status).map(str::to_string), status.last_check.is_some())
+    };
+    let needs_newer_core = match kept_previous(previous.as_ref(), &installed) {
+        Some(p) => addons_needing_core(&p.version, installed_addon_requires(&state).await),
+        None => Vec::new(),
+    };
+    Json(versions_body(&cfg, &installed, previous.as_ref(), needs_newer_core, latest.as_deref(), checked))
+}
+
+/// `{ok, channel, installed, kept_previous, latest, held_until_newer_than}`.
+/// `kept_previous`: 되돌릴 수 있는 직전 판 `{version, updated_at, needs_newer_core, hold_until_newer_than}` (`GET /api/updates/rollback`과
+/// 같은 규칙). `hold_until_newer_than`은 되돌리면 고정할 기준(`hold_baseline`).
+/// `latest`: 확인한 코어 새 판(`latest_core`). 아직 확인하지 않았으면(`checked`가 거짓) 고정한 판. 지금 판보다 새 판만.
+/// `held_until_newer_than`: 사용자가 되돌려 고정한 기준 (`user_held`). 그 판이나 더 새 판을 깔았거나 더 새 코어가 나왔으면 남은 기록이라 싣지 않는다
+fn versions_body(
+    cfg: &saba_chan_updater_lib::UpdateConfig,
+    installed: &str,
+    previous: Option<&saba_chan_updater_lib::live_apply::PreviousVersion>,
+    needs_newer_core: Vec<String>,
+    latest_core: Option<&str>,
+    checked: bool,
+) -> Value {
+    let newer = |v: &&str| update_phase::failed_release_outdated(installed, v);
+    let latest_core = latest_core.filter(newer);
+    let held = cfg
+        .failed_release
+        .as_deref()
+        .filter(|_| cfg.user_held)
+        .filter(newer)
+        .filter(|held| !latest_core.is_some_and(|latest| update_phase::failed_release_outdated(held, latest)));
+    json!({
+        "ok": true,
+        "channel": cfg.channel,
+        "installed": installed,
+        "kept_previous": kept_previous(previous, installed).map(|p| json!({
+            "version": p.version,
+            "updated_at": p.updated_at,
+            "needs_newer_core": needs_newer_core,
+            "hold_until_newer_than": hold_baseline(installed, latest_core),
+        })),
+        "latest": latest_core.or(held.filter(|_| !checked)),
+        "held_until_newer_than": held,
+    })
+}
+
+/// 지금 되돌리면 고정할 기준: 이미 아는 더 새 코어(`latest_core`), 없으면 지금 판. 그 판보다 새 코어가 나와야 고정이 풀린다
+/// (되돌리자마자 이미 나와 있던 판으로 다시 올라가지 않게)
+fn hold_baseline<'a>(installed: &'a str, latest_core: Option<&'a str>) -> &'a str {
+    latest_core.filter(|latest| update_phase::failed_release_outdated(installed, latest)).unwrap_or(installed)
 }
 
 /// 설치된 모듈·익스텐션 키와 그 `saba-core` 요구 (모듈 `[module.dependencies]`, 익스텐션 `dependencies`·`min_app_version`)
@@ -1610,13 +1701,24 @@ async fn roll_back_with(
     body: LaunchUpdaterRequest,
     previous: Option<saba_chan_updater_lib::live_apply::PreviousVersion>,
 ) -> axum::response::Response {
-    let Some(previous) = previous.filter(|p| p.replaced_by == saba_chan_updater_lib::relay::core_version()) else {
+    let installed = saba_chan_updater_lib::relay::core_version();
+    let Some(mut previous) = previous.filter(|p| kept_previous(Some(p), &installed).is_some()) else {
         return (
             axum::http::StatusCode::CONFLICT,
             Json(json!({ "ok": false, "error": "No previous version is kept", "error_code": "no_previous_version" })),
         )
             .into_response();
     };
+    // 업데이터가 되돌린 뒤 적을 고정 기준 (`hold_baseline`): 지금 판이 아니면 직전 판 기록에 남겨 넘긴다
+    let hold = {
+        let status = state.manager.read().await.get_status();
+        Some(hold_baseline(&installed, core_update(&status))).filter(|hold| *hold != installed).map(str::to_string)
+    };
+    if previous.hold != hold
+        && let Err(e) = previous.hold_until(hold)
+    {
+        tracing::warn!("[Updates] Cannot record the version to hold until: {}", e);
+    }
     // 되돌리는 실행 파일에 GUI가 있으면 떠 있는 GUI를 끄고 다시 띄운다 (`gui_must_restart`가 보는 키)
     let targets = previous
         .exes
@@ -1984,7 +2086,7 @@ async fn restart_now(State(state): State<UpdateState>, body: LooseJson<LaunchUpd
     {
         let mut mgr = state.manager.write().await;
         let mut cfg = mgr.get_config();
-        if cfg.failed_release.take().is_some() {
+        if cfg.clear_failed_release() {
             if let Err(e) = save_updater_config(&cfg) {
                 tracing::warn!("[Updates] Failed to persist update config: {}", e);
             }
@@ -1998,6 +2100,13 @@ async fn restart_now(State(state): State<UpdateState>, body: LooseJson<LaunchUpd
         if downloaded.get("ok").and_then(Value::as_bool) == Some(false) && downloaded.get("downloaded").is_none() {
             return (axum::http::StatusCode::BAD_GATEWAY, Json(downloaded)).into_response();
         }
+    }
+    // 받을 것도 없다 (고정만 풀었거나 준비됨이던 판이 내려갔다): 완료로 알리지 않는다
+    if nothing_staged && state.manager.read().await.get_pending_components().is_empty() {
+        if state.phase().state == PhaseState::Ready {
+            state.set_phase(Phase::default());
+        }
+        return Json(json!({ "ok": true, "updater_launched": false, "daemon_stopping": false, "gui_restart": false, "errors": [] })).into_response();
     }
     let applied = into_internal(apply_updates_with(state.clone(), ApplyRequest::default()).await).await.body;
     if applied.get("requires_updater").and_then(Value::as_bool) == Some(true) {
@@ -3248,6 +3357,8 @@ mod tests {
         cfg.enabled = false;
         cfg.check_interval_hours = 6;
         cfg.auto_download = true;
+        cfg.failed_release = Some("0.1.14".into());
+        cfg.user_held = true;
         let dir = tempfile::tempdir().unwrap();
         save_updater_config_to(&ConfigFile::at(dir.path()), &cfg).unwrap();
 
@@ -3255,6 +3366,14 @@ mod tests {
         assert!(!loaded.enabled);
         assert_eq!(loaded.check_interval_hours, 6);
         assert!(loaded.auto_download);
+        assert_eq!((loaded.failed_release.as_deref(), loaded.user_held), (Some("0.1.14"), true));
+
+        // 고정을 지우면 두 기록이 함께 없어진다
+        let mut cleared = loaded;
+        assert!(cleared.clear_failed_release());
+        save_updater_config_to(&ConfigFile::at(dir.path()), &cleared).unwrap();
+        let section = ConfigFile::at(dir.path()).section("updates");
+        assert!(section.get("user_held").is_none() && section["failed_release"].is_null());
     }
 
     /// 0.1.1이 남긴 `updates` 설정: 채널과 릴레이 주소가 업데이트 뒤에도 남아야 한다
@@ -3311,6 +3430,7 @@ mod tests {
             updated_at: "2026-11-12T03:09:00Z".into(),
             copy: saba_chan_updater_lib::live_apply::KeptCopy { dir: "/d/s/1".into(), data_dir: "/d".into(), instances_dir: "/d/i".into() },
             exes: vec![("/d/s/1/exes/0/saba-core".into(), "/opt/saba/saba-core".into())],
+            hold: None,
         }
     }
 
@@ -3323,6 +3443,84 @@ mod tests {
         assert_eq!(body["updated_at"], json!("2026-11-12T03:09:00Z"));
         assert_eq!(super::rollback_body(Some(&kept("0.1.13", "0.1.14")), "0.1.15")["available"], json!(false));
         assert_eq!(super::rollback_body(None, "0.1.14")["available"], json!(false));
+    }
+
+    /// 앱의 "다른 버전 선택": 지금 판, 이 PC에 남긴 직전 판(되돌리기와 같은 규칙), 가장 새 판, 사용자 고정
+    #[test]
+    fn the_versions_body_lists_installed_kept_latest_and_held() {
+        let cfg = |failed: Option<&str>, user_held: bool| UpdateConfig { channel: "beta".into(), failed_release: failed.map(Into::into), user_held, ..Default::default() };
+
+        // 남긴 판 없음, 최신
+        let none = super::versions_body(&cfg(None, false), "0.1.14", None, Vec::new(), None, false);
+        assert_eq!(none, json!({ "ok": true, "channel": "beta", "installed": "0.1.14", "kept_previous": null, "latest": null, "held_until_newer_than": null }));
+
+        // 직전 판을 남겼고 더 새 판이 있다. 그 판을 바꾼 코어가 아니면 남긴 판으로 보이지 않는다
+        let previous = super::versions_body(&cfg(None, false), "0.1.14", Some(&kept("0.1.13", "0.1.14")), vec!["module-minecraft".into()], Some("0.1.15"), false);
+        // 이미 아는 더 새 판(0.1.15)이 있으면 되돌린 뒤 그 판까지 고정한다
+        assert_eq!(
+            previous["kept_previous"],
+            json!({ "version": "0.1.13", "updated_at": "2026-11-12T03:09:00Z", "needs_newer_core": ["module-minecraft"], "hold_until_newer_than": "0.1.15" })
+        );
+        let no_newer = super::versions_body(&cfg(None, false), "0.1.14", Some(&kept("0.1.13", "0.1.14")), Vec::new(), None, true);
+        assert_eq!(no_newer["kept_previous"]["hold_until_newer_than"], json!("0.1.14"));
+        assert_eq!(previous["latest"], json!("0.1.15"));
+        assert!(super::versions_body(&cfg(None, false), "0.1.15", Some(&kept("0.1.13", "0.1.14")), Vec::new(), None, false)["kept_previous"].is_null());
+        // 같은 판 다시 받기(`update_available`인데 같은 판)는 더 새 판이 아니다
+        assert!(super::versions_body(&cfg(None, false), "0.1.14", None, Vec::new(), Some("0.1.14"), false)["latest"].is_null());
+
+        // 되돌려 고정했고 확인한 새 판을 모른다: 가장 새 판은 고정한 판이다
+        let held = super::versions_body(&cfg(Some("0.1.14"), true), "0.1.13", None, Vec::new(), None, false);
+        assert_eq!((held["latest"].clone(), held["held_until_newer_than"].clone()), (json!("0.1.14"), json!("0.1.14")));
+        // 확인했는데 받을 새 판이 없다(고정한 판이 내려갔다): 바꿀 새 판은 없고 고정만 남는다
+        let withdrawn = super::versions_body(&cfg(Some("0.1.14"), true), "0.1.13", None, Vec::new(), None, true);
+        assert_eq!((withdrawn["latest"].clone(), withdrawn["held_until_newer_than"].clone()), (Value::Null, json!("0.1.14")));
+        // 고정 기준보다 새 코어가 나왔으면 고정은 풀린 것이다 (자동 적용을 끈 설정은 기록이 남아 있다)
+        let released = super::versions_body(&cfg(Some("0.1.14"), true), "0.1.13", None, Vec::new(), Some("0.1.15"), true);
+        assert_eq!((released["latest"].clone(), released["held_until_newer_than"].clone()), (json!("0.1.15"), Value::Null));
+        // 업데이트 실패로 되돌린 것은 고정이 아니다
+        assert!(super::versions_body(&cfg(Some("0.1.14"), false), "0.1.13", None, Vec::new(), None, false)["held_until_newer_than"].is_null());
+
+        // 남은 기록: 그 판이나 더 새 판을 깔았으면 고정이 아니다
+        let stale = super::versions_body(&cfg(Some("0.1.14"), true), "0.1.14", None, Vec::new(), None, false);
+        assert!(stale["held_until_newer_than"].is_null() && stale["latest"].is_null());
+    }
+
+    /// 사용자가 되돌려 고정한 코어를 받아 두어도 알약은 준비됨이 아니다 (자동 적용을 꺼도 같다). 앞서 남은 준비됨도 걷는다
+    #[tokio::test]
+    async fn a_held_core_leaves_no_ready_phase() {
+        let _staging = STAGING.lock().await;
+        let staging = saba_chan_updater_lib::constants::resolve_staging_dir();
+        std::fs::create_dir_all(&staging).unwrap();
+        let staged = staging.join("saba-core-held-test.zip");
+        std::fs::write(&staged, b"zip").unwrap();
+        let pending = json!([{
+            "component": "core_daemon", "current_version": "0.1.13", "latest_version": "99.0.0",
+            "update_available": true, "download_url": null, "asset_name": "saba-core-held-test.zip",
+            "release_notes": null, "published_at": null, "downloaded": true,
+            "downloaded_path": staged.to_string_lossy(), "installed": true
+        }]);
+        std::fs::write(staging.join("pending.json"), pending.to_string()).unwrap();
+
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        for auto_apply in [true, false] {
+            {
+                let mut mgr = state.manager.write().await;
+                super::restore_pending(&mut mgr);
+                let mut cfg = mgr.get_config();
+                cfg.auto_apply = auto_apply;
+                cfg.failed_release = Some("99.0.0".into());
+                cfg.user_held = true;
+                mgr.update_config(cfg);
+            }
+            state.set_phase(Phase::ready(ReadyReason::FailedRelease, Some("99.0.0".into()), None));
+            super::core_apply(&state).await;
+            assert_eq!(state.phase(), Phase::default(), "auto_apply={auto_apply}");
+            assert!(!state.updater_launched());
+        }
+
+        std::fs::remove_file(staging.join("pending.json")).unwrap();
+        std::fs::remove_file(&staged).unwrap();
     }
 
     /// 되돌려도 모듈·익스텐션은 그대로 남는다: 직전 판 코어가 읽지 않을 것(그 판보다 새 `saba-core`를 요구)을 미리 알린다
