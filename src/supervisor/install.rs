@@ -2,6 +2,131 @@
 
 use super::*;
 
+/// 인스턴스에 설치할 때 함께 싣는 것: 그 인스턴스의 설정, 격리 실행이 쓸 데이터 폴더, 받은 경로로 인정할 인스턴스 폴더, HOST 문맥
+pub(crate) struct InstanceInstall {
+    settings: Value,
+    data_dirs: Vec<String>,
+    boundary: crate::module_paths::Boundary,
+    host: crate::plugin::host::Context,
+}
+
+impl InstanceInstall {
+    pub(crate) fn of(
+        instance: &crate::instance::ServerInstance,
+        instance_dir: &std::path::Path,
+        metadata: Option<&module_loader::ModuleMetadata>,
+        host: crate::plugin::host::Context,
+    ) -> Self {
+        Self {
+            settings: json!(&instance.module_settings),
+            data_dirs: Supervisor::instance_data_dirs(instance, instance_dir),
+            boundary: crate::module_paths::Boundary::for_instance(instance, instance_dir, metadata),
+            host,
+        }
+    }
+
+    /// `install_server`에 넘기는 인스턴스 설정 (`list_versions`도 같은 값으로 최신을 고른다)
+    pub(crate) fn settings(&self) -> &Value {
+        &self.settings
+    }
+}
+
+/// 모듈 `install_server` 호출 하나 (D5). 설치 API·새 인스턴스 설치·서버 업데이트가 같은 키를 싣고 같은 한도로 부른다
+pub(crate) struct InstallCall {
+    module_name: String,
+    entry: String,
+    install_dir: String,
+    config: Value,
+    instance_boundary: Option<crate::module_paths::Boundary>,
+    host: Option<crate::plugin::host::Context>,
+    check_paths: bool,
+}
+
+impl InstallCall {
+    /// `install_dir`에 받는다. 받은 경로(`install_path` 등)는 그 폴더 안이어야 한다
+    pub(crate) fn new(module_name: &str, entry: impl Into<String>, install_dir: &str, accepted_agreements: &[String]) -> Self {
+        Self {
+            module_name: module_name.to_string(),
+            entry: entry.into(),
+            install_dir: install_dir.to_string(),
+            config: json!({ "install_dir": install_dir, "accepted_agreements": accepted_agreements }),
+            instance_boundary: None,
+            host: None,
+            check_paths: true,
+        }
+    }
+
+    pub(crate) fn version(mut self, version: Option<&str>) -> Self {
+        if let Some(version) = version {
+            self.config["version"] = json!(version);
+        }
+        self
+    }
+
+    /// 그 밖의 키 (`server_executable`, `initial_settings`)
+    pub(crate) fn with(mut self, key: &str, value: Value) -> Self {
+        self.config[key] = value;
+        self
+    }
+
+    /// 그 인스턴스의 설치: 설정과 데이터 폴더를 싣고, 받은 경로는 인스턴스의 폴더도 인정한다
+    pub(crate) fn instance(mut self, target: InstanceInstall) -> Self {
+        self.config["settings"] = target.settings;
+        self.config[crate::sandbox::INSTANCE_DATA_DIRS] = json!(target.data_dirs);
+        self.instance_boundary = Some(target.boundary);
+        self.host = Some(target.host);
+        self
+    }
+
+    /// 받은 경로는 부르는 쪽이 옮긴 뒤 확인한다 (준비 폴더에 받아 고른 폴더로 옮기는 새 인스턴스 설치)
+    pub(crate) fn paths_checked_by_caller(mut self) -> Self {
+        self.check_paths = false;
+        self
+    }
+
+    /// 부른다. `progress`가 있으면 모듈이 알린 진행을 넘긴다
+    pub(crate) async fn run(self, progress: Option<Box<dyn Fn(crate::plugin::ExtensionProgress) + Send>>) -> Result<Value> {
+        let Self { module_name, entry, install_dir, config, instance_boundary, host, check_paths } = self;
+        // 서버 파일과 Java를 받는다: 기본 120초로는 느린 회선에서 중간에 끊긴다
+        let call = crate::plugin::PluginCall::new(entry, "install_server", config).in_instance(host).timeout(crate::plugin::INSTALL_TIMEOUT_SECS);
+        let mut value = match progress {
+            Some(progress) => call.run_with_progress(progress).await?,
+            None => call.run().await?,
+        };
+        if check_paths && value.get("success").and_then(Value::as_bool) == Some(true) {
+            let boundary = crate::module_paths::Boundary::for_install(std::path::Path::new(&install_dir), instance_boundary);
+            boundary.returned_paths(&mut value, &module_name, "install_server")?;
+        }
+        Ok(value)
+    }
+}
+
+/// 모듈이 알린 설치 진행을 프로비저닝 추적에 옮긴다 (모듈이 단계 이름을 주지 않으면 `default_label`)
+pub(crate) fn progress_to_tracker(
+    tracker: crate::ipc::ProvisionTracker,
+    id: String,
+    name: String,
+    default_label: String,
+) -> Box<dyn Fn(crate::plugin::ExtensionProgress) + Send> {
+    Box::new(move |prog: crate::plugin::ExtensionProgress| {
+        tracker.update(
+            &id,
+            &name,
+            crate::ipc::ProvisionProgress {
+                step: prog.step.unwrap_or(0),
+                total: prog.total.unwrap_or(1),
+                label: prog.label.unwrap_or_else(|| default_label.clone()),
+                message: prog.message.unwrap_or_default(),
+                done: false,
+                error: None,
+                percent: Some(prog.percent.unwrap_or(0)),
+                steps: None,
+                details: Default::default(),
+            },
+        );
+    })
+}
+
 /// `original` 옆의 비어 있는 이름(`이름.bak`, `이름.1.bak`, …)에 복사본을 만든다. 이미 있는 파일은 덮지 않는다
 fn backup_beside(original: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
     let name = original.file_name().unwrap_or_default().to_string_lossy().into_owned();
@@ -109,7 +234,7 @@ impl Supervisor {
     /// `keep_executable`: 그 인스턴스가 실제로 띄우는 파일 (모듈 실행 파일과 다르면 함께 백업한다)
     /// `commit`: 설치가 성공하면 백업을 지우기 전에 부른다 (인스턴스 기록 저장). 실패하면 백업으로 되돌리고 그 오류를 돌려준다
     #[allow(clippy::too_many_arguments)]
-    pub async fn install_server(
+    pub(crate) async fn install_server(
         sup: &tokio::sync::RwLock<Self>,
         module_name: &str,
         version: &str,
@@ -117,7 +242,7 @@ impl Supervisor {
         executable: Option<&str>,
         accepted_agreements: &[String],
         initial_settings: Option<Value>,
-        instance: Option<(Value, Vec<String>, crate::module_paths::Boundary, crate::plugin::host::Context)>,
+        instance: Option<InstanceInstall>,
         keep_executable: Option<&str>,
         commit: Option<&InstallCommit<'_>>,
     ) -> Result<Value> {
@@ -202,35 +327,17 @@ impl Supervisor {
             failed
         };
 
-        let mut config = json!({
-            "version": version,
-            "install_dir": install_dir,
-            "accepted_agreements": accepted_agreements,
-        });
-
+        let mut call = InstallCall::new(module_name, module_path, install_dir, accepted_agreements).version(Some(version));
         if let Some(ref name) = effective_jar {
-            config["server_executable"] = json!(name);
+            call = call.with("server_executable", json!(name));
         }
         if let Some(settings) = initial_settings {
-            config["initial_settings"] = settings;
+            call = call.with("initial_settings", settings);
         }
-        let (path_boundary, host) = if let Some((settings, data_dirs, boundary, host)) = instance {
-            config["settings"] = settings;
-            config[crate::sandbox::INSTANCE_DATA_DIRS] = json!(data_dirs);
-            (crate::module_paths::Boundary::for_install(std::path::Path::new(install_dir), Some(boundary)), Some(host))
-        } else {
-            (crate::module_paths::Boundary::for_install(std::path::Path::new(install_dir), None), None)
-        };
-
-        // 서버 파일과 Java를 받는다: 기본 120초로는 느린 회선에서 중간에 끊긴다 (처음 설치와 같은 한도)
-        let result = crate::plugin::PluginCall::new(module_path, "install_server", config)
-            .in_instance(host).timeout(crate::plugin::INSTALL_TIMEOUT_SECS).run().await
-            .and_then(|mut value| {
-                if value.get("success").and_then(Value::as_bool) == Some(true) {
-                    path_boundary.returned_paths(&mut value, module_name, "install_server")?;
-                }
-                Ok(value)
-            });
+        if let Some(instance) = instance {
+            call = call.instance(instance);
+        }
+        let result = call.run(None).await;
 
         match result {
             Ok(ref val) => {

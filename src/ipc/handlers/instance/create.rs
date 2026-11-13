@@ -415,12 +415,11 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                         let tracker_done = tracker.clone();
                         let name_done = instance_name.clone();
                         let id_done = id.clone();
-                        // install_server가 보는 인스턴스 설정 (서버 종류처럼 받을 파일을 바꾸는 값)
-                        let install_settings = instance.module_settings.clone();
                         let accepted_agreements: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
-                        // 설치 중에 데이터 폴더에 첫 설정을 쓰는 모듈(좀보이드 첫 INI)도 격리 실행에서 쓸 수 있게 넘긴다
-                        let instance_data_dirs = crate::supervisor::Supervisor::instance_data_dirs(&instance, &instance_dir);
-                        let host_context = state.host_context(&id);
+                        // install_server가 보는 인스턴스 설정(서버 종류처럼 받을 파일을 바꾸는 값)과 데이터 폴더
+                        // (설치 중에 데이터 폴더에 첫 설정을 쓰는 모듈, 좀보이드 첫 INI)
+                        let meta = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
+                        let target = crate::supervisor::InstanceInstall::of(&instance, &instance_dir, meta.as_ref(), state.host_context(&id));
 
                         // Drop supervisor lock before spawning background task
                         drop(supervisor);
@@ -439,10 +438,8 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                             made_folder,
                             install_dir_str,
                             accepted_agreements,
-                            install_settings,
-                            instance_data_dirs,
+                            target,
                             provision_label,
-                            host_context,
                         }));
 
                         let response = json!({

@@ -18,6 +18,7 @@ mod exit;
 mod monitor;
 mod reattach;
 mod install;
+pub(crate) use install::{progress_to_tracker, InstallCall, InstanceInstall};
 
 use anyhow::Result;
 use process::ProcessTracker;

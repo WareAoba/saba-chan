@@ -281,12 +281,11 @@ pub(crate) async fn begin_server_update_holding(
     let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
     let instance_name = instance.name.clone();
     let module_name_owned = instance.module_name.clone();
-    let install_settings = instance.module_settings.clone();
     let branch = instance.install_branch(&method).map(str::to_string);
     let accepted_agreements: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
     let module = supervisor.module_loader.get_module(&instance.module_name).ok();
-    let boundary = crate::module_paths::Boundary::for_instance(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata));
-    let host_context = state.host_context(id);
+    // 처음 설치와 같은 인스턴스 설정·데이터 폴더·HOST 문맥 (D5)
+    let target = crate::supervisor::InstanceInstall::of(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata), state.host_context(id));
 
     // 프로비저닝 상태 등록 (기존 인스턴스 업데이트 — 실패해도 롤백 대상이 아니다)
     tracker.take_creating(id);
@@ -369,49 +368,16 @@ pub(crate) async fn begin_server_update_holding(
 
         // ── Phase 2: 플러그인 호출 (lock 없이 실행) ──
         let result = {
-            let mut config = serde_json::json!({
-                "install_dir": &install_dir_str,
-                "accepted_agreements": &accepted_agreements,
-                "settings": &install_settings,
-            });
             // 고른 브랜치가 있으면 그 브랜치로 받는다
-            if let Some(branch) = &branch {
-                config["version"] = json!(branch);
-            }
-
-            let tracker_progress = tracker_done.clone();
-            let (id_progress, name_progress) = (id_done.clone(), name_done.clone());
-            let on_progress = move |prog: crate::plugin::ExtensionProgress| {
-                let pct = prog.percent.unwrap_or(0);
-                let msg = prog.message.clone().unwrap_or_default();
-                tracker_progress.update(
-                    &id_progress,
-                    &name_progress,
-                    crate::ipc::ProvisionProgress {
-                        step: prog.step.unwrap_or(0),
-                        total: prog.total.unwrap_or(1),
-                        label: prog.label.unwrap_or_else(|| method.clone()),
-                        message: msg,
-                        done: false,
-                        error: None,
-                        percent: Some(pct),
-                        steps: None, details: Default::default(),
-                    },
-                );
-            };
+            let call = crate::supervisor::InstallCall::new(&module_name_owned, lifecycle_path, &install_dir_str, &accepted_agreements)
+                .version(branch.as_deref())
+                .instance(target);
+            let progress = crate::supervisor::progress_to_tracker(tracker_done.clone(), id_done.clone(), name_done.clone(), method.clone());
 
             // 업데이트가 끝날 때까지 모듈·익스텐션 자동 교체를 막는다
             let gate = supervisor_arc.read().await.addon_gate();
             let _addons = gate.hold_addons().await;
-            crate::plugin::PluginCall::new(&lifecycle_path, "install_server", config)
-                .in_instance(Some(host_context)).timeout(crate::plugin::INSTALL_TIMEOUT_SECS)
-                .run_with_progress(Box::new(on_progress)).await
-                .and_then(|mut value| {
-                    if value.get("success").and_then(Value::as_bool) == Some(true) {
-                        boundary.returned_paths(&mut value, &module_name_owned, "install_server")?;
-                    }
-                    Ok(value)
-                })
+            call.run(Some(progress)).await
         };
 
         let updated = match result {
@@ -568,6 +534,47 @@ mod tests {
         assert_eq!(refused.body["error_code"], "instance_busy");
         drop(other);
         assert!(super::super::super::backup::InstanceLock::take(&ids[0]).is_some(), "a refused update must not keep its own lock");
+    }
+
+    /// 업데이트의 `install_server`도 처음 설치와 같이 인스턴스의 데이터 폴더(`instance_data_dirs`)를 받는다 (D5).
+    /// 빠지면 확인되지 않은 모듈이 서버 폴더 밖 데이터 폴더(좀보이드 `cache_dir` 등)에 쓰지 못한다
+    #[tokio::test]
+    async fn an_update_gets_the_instance_data_folders_like_the_first_install() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"steamcmd\"\n",
+        )
+        .unwrap();
+        let seen = tmp.path().join("install_config.json");
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            format!(
+                "import json, sys\ncfg = sys.stdin.read()\nif sys.argv[1] == 'install_server':\n    open({seen:?}, 'w').write(cfg)\nprint(json.dumps({{'success': True}}))\n",
+                seen = seen.to_str().unwrap()
+            ),
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let instances = tmp.path().join("instances");
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.working_dir = Some(tmp.path().join("server").to_string_lossy().to_string());
+        inst.extension_data.insert(crate::instance::install_method_key("steamcmd"), json!(true));
+        let cache = sup.instance_store.instance_dir(&inst.id).join("cache");
+        inst.module_settings.insert("cache_dir".into(), json!(cache.to_string_lossy()));
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let done = super::begin_server_update(&state, &id).await.ok().expect("the update starts");
+        assert!(done.await.unwrap(), "the update succeeds");
+        let config: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&seen).unwrap()).unwrap();
+        assert_eq!(config[crate::sandbox::INSTANCE_DATA_DIRS], json!([cache.to_string_lossy()]), "{config}");
     }
 
     /// 다운로드·수동 설치 서버는 사바쨩이 업데이트를 확인하지 않는다: "설치 방법 기록이 없다"가 아니라 그렇다고 답한다

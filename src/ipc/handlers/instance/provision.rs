@@ -18,10 +18,8 @@ pub(super) async fn install_new_server(job: InstallJob) {
         made_folder,
         install_dir_str,
         accepted_agreements,
-        install_settings,
-        instance_data_dirs,
+        target,
         provision_label,
-        host_context,
     } = job;
     let leftovers: Option<InstallStaging>;
     // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
@@ -57,7 +55,7 @@ pub(super) async fn install_new_server(job: InstallJob) {
         let version = if let Some(version) = chosen_version {
             Some(version)
         } else if install_method == "download" {
-            match crate::supervisor::Supervisor::latest_version(&module_path, &serde_json::json!(&install_settings)).await {
+            match crate::supervisor::Supervisor::latest_version(&module_path, target.settings()).await {
                 Ok(version) => Some(version),
                 Err(e) => {
                     drop(install_guard.take());
@@ -85,40 +83,17 @@ pub(super) async fn install_new_server(job: InstallJob) {
                 .ok()
         });
         let target_dir = leftovers.as_ref().map_or_else(|| install_dir_str.clone(), |l| l.staging.to_string_lossy().to_string());
-        let mut config = serde_json::json!({
-            "install_dir": &target_dir,
-            "accepted_agreements": &accepted_agreements,
-            "settings": &install_settings,
-            crate::sandbox::INSTANCE_DATA_DIRS: &instance_data_dirs,
-        });
-        if let Some(ref ver) = version {
-            config["version"] = serde_json::json!(ver);
-        }
-
-        let tracker_progress = tracker_done.clone();
-        let (id_progress, name_progress) = (id_done.clone(), name_done.clone());
-        let on_progress = move |prog: crate::plugin::ExtensionProgress| {
-            let pct = prog.percent.unwrap_or(0);
-            let msg = prog.message.clone().unwrap_or_default();
-            tracker_progress.update(&id_progress, &name_progress, crate::ipc::ProvisionProgress {
-                step: prog.step.unwrap_or(0),
-                total: prog.total.unwrap_or(1),
-                label: prog.label.unwrap_or_else(|| provision_label.clone()),
-                message: msg,
-                done: false,
-                error: None,
-                percent: Some(pct),
-                steps: None, details: Default::default(),
-            });
-        };
+        // 받은 경로는 고른 폴더로 옮긴 뒤 확인한다 (아래)
+        let call = crate::supervisor::InstallCall::new(&module_name_owned, &module_path, &target_dir, &accepted_agreements)
+            .version(version.as_deref())
+            .instance(target)
+            .paths_checked_by_caller();
+        let progress = crate::supervisor::progress_to_tracker(tracker_done.clone(), id_done.clone(), name_done.clone(), provision_label);
 
         // 설치가 끝날 때까지 모듈·익스텐션 자동 교체를 막는다
         let gate = supervisor_arc.read().await.addon_gate();
         let _addons = gate.hold_addons().await;
-        crate::plugin::PluginCall::new(&module_path, "install_server", config)
-            .in_instance(Some(host_context))
-            .timeout(crate::plugin::INSTALL_TIMEOUT_SECS)
-            .run_with_progress(Box::new(on_progress)).await
+        call.run(Some(progress)).await
     };
 
     let result = match result {
@@ -270,10 +245,9 @@ pub(super) struct InstallJob {
     pub(super) made_folder: bool,
     pub(super) install_dir_str: String,
     pub(super) accepted_agreements: Vec<String>,
-    pub(super) install_settings: std::collections::HashMap<String, Value>,
-    pub(super) instance_data_dirs: Vec<String>,
+    /// 인스턴스 설정·데이터 폴더·HOST 문맥 (설치 중에 데이터 폴더에 첫 설정을 쓰는 모듈도 격리 실행에서 쓸 수 있게)
+    pub(super) target: crate::supervisor::InstanceInstall,
     pub(super) provision_label: String,
-    pub(super) host_context: crate::plugin::host::Context,
 }
 
 /// 고른 폴더에 처음 설치할 때 모듈이 받는 설치 폴더 (그 폴더 안). 점으로 시작해 탐색이 건너뛴다

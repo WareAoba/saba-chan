@@ -916,8 +916,8 @@ pub async fn install_server_handler(
             };
             let dir = sup.instance_store.instance_dir(id);
             let module = sup.module_loader.get_module(&module_name).ok();
-            let boundary = crate::module_paths::Boundary::for_instance(inst, &dir, module.as_ref().map(|m| &m.metadata));
-            (Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir), sup.resolve_executable(inst, &module_name), boundary, state.host_context(id))), Some(guard), Some(inst.name.clone()))
+            let target = crate::supervisor::InstanceInstall::of(inst, &dir, module.as_ref().map(|m| &m.metadata), state.host_context(id));
+            (Some((target, sup.resolve_executable(inst, &module_name))), Some(guard), Some(inst.name.clone()))
         }
         None => (None, None, None),
     };
@@ -955,7 +955,7 @@ pub async fn install_server_handler(
                 Ok(m) => m.entry_path(),
                 Err(e) => return (StatusCode::NOT_FOUND, Json(json!({"error": format!("Module '{}' not found: {}", module_name, e)}))).into_response(),
             };
-            let settings = instance.as_ref().map(|(s, _, _, _, _)| s.clone()).unwrap_or_else(|| json!({}));
+            let settings = instance.as_ref().map(|(target, _)| target.settings().clone()).unwrap_or_else(|| json!({}));
             match Supervisor::latest_version(&module_path, &settings).await {
                 Ok(v) => v,
                 Err(e) => {
@@ -977,7 +977,7 @@ pub async fn install_server_handler(
     // 인스턴스의 버전 설치는 뒤에서 돌릴 수 있다: 설치 전 백업이 길어도 요청 한도에 걸리지 않게 (진행은 provision-progress)
     let background = instance_id.is_some() && payload.get("background").and_then(Value::as_bool) == Some(true);
     let executable = executable.map(str::to_string);
-    let keep_executable = instance.as_ref().and_then(|(_, _, exe, _, _)| exe.clone());
+    let keep_executable = instance.as_ref().and_then(|(_, exe)| exe.clone());
     let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
     if let (true, Some(id), Some(name)) = (background, &instance_id, &instance_name) {
         state.provision_tracker.take_creating(id);
@@ -1015,7 +1015,7 @@ pub async fn install_server_handler(
                 executable.as_deref(),
                 &accepted_agreements,
                 initial_settings,
-                instance.map(|(settings, dirs, _, boundary, host)| (settings, dirs, boundary, host)),
+                instance.map(|(target, _)| target),
                 keep_executable.as_deref(),
                 Some(&commit),
             )
