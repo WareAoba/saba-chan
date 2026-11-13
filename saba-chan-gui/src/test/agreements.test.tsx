@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgreementDialog } from '../components/AgreementList';
 import { AddInstanceMigration as AddInstanceMigrationImpl } from '../components/Modals/AddInstanceMigration';
@@ -21,7 +21,6 @@ describe('약관 동의: 서버 만들기', () => {
         render(
             <AddInstanceNewServer
                 extensions={[{ name: 'game', version: '1.0.0', agreements: [eula] }]}
-                servers={[]}
                 onAddServer={onAddServer}
             />,
         );
@@ -31,7 +30,8 @@ describe('약관 동의: 서버 만들기', () => {
         expect(create).toBeDisabled();
 
         fireEvent.click(screen.getByRole('checkbox'));
-        expect(create).not.toBeDisabled();
+        // 이름 확인(데몬)이 끝나면 풀린다
+        await waitFor(() => expect(create).not.toBeDisabled());
         await act(async () => fireEvent.click(create));
         const payload = onAddServer.mock.calls[0][0];
         expect(payload.accept_agreements).toEqual(['eula']);
@@ -43,7 +43,6 @@ describe('약관 동의: 서버 만들기', () => {
         render(
             <AddInstanceNewServer
                 extensions={[{ name: 'game', version: '1.0.0' }]}
-                servers={[]}
                 onAddServer={onAddServer}
             />,
         );

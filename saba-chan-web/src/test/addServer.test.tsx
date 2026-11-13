@@ -37,35 +37,49 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
         useApp.setState({ toasts: [] });
     });
 
+    // 데몬 확인 답: 이름 규칙(대소문자·공백 칸 수 무시, 기본 이름, 쉼표)은 데몬이 정한다
+    const daemonCheck = (existing: string[]) =>
+        vi.fn(async (body: { name: string; module_name: string }) => {
+            const key = (n: string) => n.trim().replace(/\s+/g, ' ').toLowerCase();
+            const taken = (n: string) => existing.some((e) => key(e) === key(n));
+            let suggested = body.module_name;
+            for (let i = 2; taken(suggested); i++) suggested = `${body.module_name}-${i}`;
+            const invalid = /,/.test(body.name) ? { invalid: 'comma' } : {};
+            return { success: true, name: { value: body.name, taken: taken(body.name), suggested, ...invalid }, folder: {}, ports: [] };
+        });
+
     const mount = (servers: Partial<Server>[] = []) => {
         useData.setState({ modules: asModules([minecraft, windowsOnly]), servers: asServers(servers) });
-        const api = { instanceCreate: vi.fn().mockResolvedValue({ success: true, id: 'x' }) };
+        const api = {
+            instanceCreate: vi.fn().mockResolvedValue({ success: true, id: 'x' }),
+            instanceCheck: daemonCheck(servers.map((s) => s.name || '')),
+        };
         render(<AddServerSheet api={mockApi(api)} onClose={() => {}} />);
         return api;
     };
     const create = () => screen.getByRole<HTMLButtonElement>('button', { name: 'Create' });
 
-    it('기본 이름은 모듈 이름, 겹치면 -2', () => {
+    it('기본 이름은 데몬이 고른 이름 (모듈 이름, 겹치면 -2)', async () => {
         mount([{ name: 'minecraft', module: 'minecraft' }]);
-        expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Name' }).value).toBe('minecraft-2');
+        await waitFor(() => expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Name' }).value).toBe('minecraft-2'));
     });
 
-    it('이미 있는 이름이면 바로 알리고 만들기를 막는다', () => {
-        mount([{ name: 'lobby', module: 'minecraft' }]);
-        fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Lobby' } });
-        expect(screen.getByRole('alert')).toBeTruthy();
+    it('데몬이 같은 이름이라고 하면 알리고 만들기를 막는다 (사이 공백만 달라도)', async () => {
+        mount([{ name: 'my server', module: 'minecraft' }]);
+        fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'My  Server' } });
+        await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
         expect(create().disabled).toBe(true);
     });
 
     // 사용자 11-06 #2: 디스코드에서 부르는 말을 쉼표로 나누므로 서버 이름에 쉼표를 받지 않는다 (띄어쓰기는 된다)
-    it('쉼표가 든 이름은 바로 알리고 만들기를 막는다', () => {
+    it('쉼표가 든 이름은 알리고 만들기를 막는다', async () => {
         mount();
         const name = screen.getByRole('textbox', { name: 'Name' });
         fireEvent.change(name, { target: { value: '우리, 마크' } });
-        expect(screen.getByRole('alert').textContent).toMatch(/comma/);
+        await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/comma/));
         expect(create().disabled).toBe(true);
         fireEvent.change(name, { target: { value: '우리 마크' } });
-        expect(screen.queryByRole('alert')).toBeNull();
+        await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     });
 
     it('설치할 수 있는 서버 종류만 보이고, 약관에 동의해야 만들며, 고른 것을 보낸다', async () => {
@@ -76,6 +90,7 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
         fireEvent.click(screen.getByRole('option', { name: 'paper' }));
         expect(create().disabled).toBe(true);
         fireEvent.click(screen.getByRole('checkbox', { name: /Minecraft EULA/ }));
+        await waitFor(() => expect(create().disabled).toBe(false));
         fireEvent.click(create());
         await flush();
         expect(api.instanceCreate).toHaveBeenCalledWith({
@@ -127,6 +142,7 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
         expect(screen.queryByRole('option', { name: '24w10a' })).toBeNull();
         fireEvent.click(screen.getByRole('option', { name: '1.20.6' }));
         pickOption('Managed by saba-chan (recommended)', 'Manage it yourself');
+        await waitFor(() => expect(create().disabled).toBe(false));
         fireEvent.click(create());
         await flush();
         expect(api.instanceCreate).toHaveBeenCalledWith({

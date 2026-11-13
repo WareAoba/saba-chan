@@ -3,7 +3,6 @@ import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useExtensions } from '../../contexts/ExtensionContext';
-import type { Server } from '../../stores/useServerStore';
 import type { ApiBody, Json, ModuleInfo, SettingField } from '../../types/daemon';
 import {
     changedSettings,
@@ -12,14 +11,12 @@ import {
     createBody,
     installChoices,
     installFields,
-    nameHasComma,
-    nameTaken,
+    nameVerdict,
     optionLabel,
     latestRelease,
     presetBaseline,
     presetFields,
     releaseVersions,
-    suggestName,
     versionSettings,
 } from '../../utils/installFields';
 import { initials } from '../../utils/serverView';
@@ -50,7 +47,6 @@ import { isImeKey } from '../../utils/ime';
  */
 export interface AddInstanceNewServerProps {
     extensions: ModuleInfo[];
-    servers: Server[];
     onAddServer: (payload: AddServerPayload) => Promise<unknown>;
     /** 게임 목록의 "쓰던 서버 가져오기" 칸 (없으면 그리지 않는다) */
     onMigrate?: () => void;
@@ -64,7 +60,6 @@ type Step = 'select-game' | 'maker' | 'summary' | 'detail';
 
 export function AddInstanceNewServer({
     extensions,
-    servers,
     onAddServer,
     onMigrate,
     extMethods = [],
@@ -97,6 +92,7 @@ export function AddInstanceNewServer({
     const detailRef = useRef<HTMLDivElement>(null);
     const checkSeq = useRef(0);
     const advancedId = useId();
+    const [autoName, setAutoName] = useState(false); // 이름 칸을 아직 고치지 않았다
 
     const selectedModule = extensions.find((m) => m.name === selectedExtension);
     const customFolder = folderMode === 'custom' ? folder.trim() : '';
@@ -108,10 +104,11 @@ export function AddInstanceNewServer({
     const detailChanged = changedSettings(detailFields, edits, baseline);
     const changedCount = Object.keys(detailChanged).length;
 
-    // 게임 칸을 눌렀을 때: 자동 이름은 모듈 이름 그대로, 겹치면 -2부터 (CLI와 같다)
+    // 게임 칸을 눌렀을 때: 이름은 모듈 이름으로 두고, 겹치면 데몬 확인 답의 이름(-2부터)으로 바꾼다
     const handleGameSelect = (extName: string) => {
         setSelectedExtension(extName);
-        setNewServerName(suggestName(extName, servers));
+        setNewServerName(extName);
+        setAutoName(true);
         setInstallValues({});
         setPreset('');
         setVersion('');
@@ -207,6 +204,12 @@ export function AddInstanceNewServer({
         };
     }, [onForm, checkKey]);
 
+    // 고치지 않은 기본 이름이 겹치면 데몬이 고른 이름으로
+    const suggestedName = autoName && check?.name?.taken ? check.name.suggested : null;
+    useEffect(() => {
+        if (suggestedName) setNewServerName(suggestedName);
+    }, [suggestedName]);
+
     // 요약에 들어오면 이름 칸에 포커스
     useEffect(() => {
         if (step === 'summary' && nameInputRef.current) {
@@ -221,9 +224,9 @@ export function AddInstanceNewServer({
     };
 
     const agreements = selectedModule?.agreements || [];
-    const duplicateName =
-        nameTaken(servers, newServerName) || (check?.name?.value === newServerName.trim() && check?.name?.taken);
-    const nameComma = nameHasComma(newServerName);
+    const verdict = nameVerdict(check, newServerName);
+    const duplicateName = !!verdict?.taken;
+    const nameComma = verdict?.invalid === 'comma';
     const blockers = check && !check.failed ? checkBlockers(check) : [];
     // 데몬이 폴더 경로를 받지 않았다 (처음부터 적지 않은 경로)
     const folderNotAbsolute =
@@ -241,6 +244,7 @@ export function AddInstanceNewServer({
         port != null && port !== '' && !(Number.isInteger(Number(port)) && Number(port) >= 1 && Number(port) <= 65535);
     const formReady =
         newServerName.trim() &&
+        !checking &&
         !duplicateName &&
         !nameComma &&
         !blockers.length &&
@@ -537,7 +541,10 @@ export function AddInstanceNewServer({
                                     type="text"
                                     placeholder={t('add_server_modal.server_name_placeholder')}
                                     value={newServerName}
-                                    onChange={(e) => setNewServerName(e.target.value)}
+                                    onChange={(e) => {
+                                        setNewServerName(e.target.value);
+                                        setAutoName(false);
+                                    }}
                                     disabled={submitting}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && !isImeKey(e)) handleSubmit();

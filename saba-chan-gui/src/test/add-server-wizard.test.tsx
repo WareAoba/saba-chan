@@ -29,7 +29,7 @@ const minecraft = {
 // 데몬 확인: /full은 파일이 든 폴더, 포트 25575는 lobby도 쓴다
 const check = vi.fn(async (body) => ({
     success: true,
-    name: { value: body.name, taken: false, suggested: body.name },
+    name: { value: body.name, taken: false, suggested: body.name, ...(/,/.test(body.name) ? { invalid: 'comma' } : {}) },
     folder: {
         custom: !!body.working_dir,
         path: body.working_dir ?? null,
@@ -48,7 +48,7 @@ const open = () => {
         ],
     }) as never;
     const onAddServer = vi.fn().mockResolvedValue(undefined);
-    render(<AddInstanceNewServer extensions={[minecraft]} servers={[]} onAddServer={onAddServer} />);
+    render(<AddInstanceNewServer extensions={[minecraft]} onAddServer={onAddServer} />);
     fireEvent.click(screen.getByText('Minecraft'));
     return onAddServer;
 };
@@ -170,15 +170,30 @@ describe('새 서버 만들기 — 요약 한 장 (사용자 11-11)', () => {
         expect(onAddServer.mock.calls[0][0]).not.toHaveProperty('port');
     });
 
+    // 이름 규칙(겹침·기본 이름)은 데몬 하나가 정한다: 사이 공백만 다른 이름도 같은 이름이다 (chat::words::same)
+    it('기본 이름과 겹침은 데몬 확인 답을 따른다', async () => {
+        window.api.instanceCheck = vi.fn(async (body) => {
+            const taken = ['minecraft', 'my server'].includes(body.name.replace(/\s+/g, ' ').toLowerCase());
+            return { success: true, name: { value: body.name, taken, suggested: 'minecraft-2' }, folder: {}, ports: [] };
+        }) as never;
+        render(<AddInstanceNewServer extensions={[minecraft]} onAddServer={vi.fn()} />);
+        fireEvent.click(screen.getByText('Minecraft'));
+        const name = screen.getByLabelText<HTMLInputElement>(/Server Name/i);
+        await waitFor(() => expect(name.value).toBe('minecraft-2'));
+        await act(async () => fireEvent.change(name, { target: { value: 'my  server' } }));
+        await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+        expect(createButton()).toBeDisabled();
+    });
+
     // 사용자 11-06 #2: 디스코드에서 부르는 말을 쉼표로 나누므로 서버 이름에 쉼표를 받지 않는다 (띄어쓰기는 된다)
     it('쉼표가 든 이름은 알리고 만들기를 막는다', async () => {
         open();
         const name = screen.getByLabelText(/Server Name/i);
         await act(async () => fireEvent.change(name, { target: { value: '우리, 마크' } }));
-        expect(screen.getByRole('alert').textContent).toMatch(/comma/);
+        await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/comma/));
         expect(createButton()).toBeDisabled();
         await act(async () => fireEvent.change(name, { target: { value: '우리 마크' } }));
-        expect(screen.queryByText(/comma/)).toBeNull();
+        await waitFor(() => expect(screen.queryByText(/comma/)).toBeNull());
     });
 
     // 사용자 11-06 #13: 버전은 "숫자 (최신)"으로 보인다
@@ -191,7 +206,7 @@ describe('새 서버 만들기 — 요약 한 장 (사용자 11-11)', () => {
             ],
             latest: { release: '26.3' },
         }) as never;
-        render(<AddInstanceNewServer extensions={[minecraft]} servers={[]} onAddServer={vi.fn()} />);
+        render(<AddInstanceNewServer extensions={[minecraft]} onAddServer={vi.fn()} />);
         fireEvent.click(screen.getByText('Minecraft'));
         await waitFor(() => expect(screen.getByText('26.3 (latest)', { selector: '.custom-dropdown-label' })).toBeTruthy());
         fireEvent.click(screen.getByText('26.3 (latest)', { selector: '.custom-dropdown-label' }));
@@ -231,7 +246,7 @@ const openDetail = async () => {
     window.api.instanceCheck = check;
     window.api.moduleListVersions = vi.fn().mockResolvedValue({ versions: [] }) as never;
     const onAddServer = vi.fn().mockResolvedValue(undefined);
-    render(<AddInstanceNewServer extensions={[withSettings]} servers={[]} onAddServer={onAddServer} />);
+    render(<AddInstanceNewServer extensions={[withSettings]} onAddServer={onAddServer} />);
     fireEvent.click(screen.getByText('Minecraft'));
     await toNameStep();
     return onAddServer;

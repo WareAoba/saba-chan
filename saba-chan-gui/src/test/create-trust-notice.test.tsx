@@ -15,7 +15,6 @@ const renderNew = async (trust: string) => {
     render(
         <AddInstanceNewServer
             extensions={[{ name: 'game', version: '1.0.0', trust }]}
-            servers={[]}
             onAddServer={vi.fn()}
         />,
     );
