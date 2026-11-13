@@ -210,8 +210,8 @@ enum Interface {
 impl Interface {
     fn binary(self) -> &'static str {
         match self {
-            Interface::Cli => "saba-chan-cli",
-            Interface::Gui => "saba-chan-gui",
+            Interface::Cli => saba_chan_updater_lib::CLI_STEM,
+            Interface::Gui => saba_chan_updater_lib::GUI_STEM,
         }
     }
 }
@@ -367,7 +367,7 @@ async fn wait_for_tagged_cli(tag: &str, name: &str, timeout: std::time::Duration
 async fn spawn_in_new_console(cli: &std::path::Path, args: &[String], registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
     let tag = uuid::Uuid::new_v4().to_string();
     crate::boot_selector::spawn_cli_in_new_console(cli, args, &tag)?;
-    let name = cli.file_name().and_then(|n| n.to_str()).unwrap_or("saba-chan-cli");
+    let name = cli.file_name().and_then(|n| n.to_str()).unwrap_or(saba_chan_updater_lib::CLI_EXE);
     match wait_for_tagged_cli(&tag, name, CLI_APPEAR_TIMEOUT).await {
         Some(pid) => {
             registry.note_launched_cli(pid);

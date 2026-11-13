@@ -47,7 +47,7 @@ fn maker_info(paths: Paths) -> Value {
         },
         "shared_libs": paths.shared_libs,
         "modules_dir": paths.modules_dir,
-        "schema_versions": crate::supervisor::module_loader::supported_schema_versions(),
+        "schema_versions": crate::module_loader::supported_schema_versions(),
         "repo": MAKER_REPO,
         "guide": MAKER_GUIDE,
     })

@@ -2,7 +2,7 @@
 
 > 기준: saba-chan 저장소 (daemon, GUI, CLI) + saba-chan-extensions 저장소 (steamcmd, ue4_ini).
 > 모든 내용은 코드에서 직접 추출했다. README와 그 밖의 문서는 참고하지 않았다(오래된 문서로 간주).
-> 경로 약어: `ext/` = `saba-chan/src/extension/mod.rs`, `plg/` = `saba-chan/src/plugin/mod.rs`, `EXT/` = `saba-chan-extensions/`.
+> 경로 약어: `ext/` = `saba-chan/src/extension/` (`mod.rs` 매니저 구조체·목록, `manifest.rs` manifest 타입·검사·`FIRED_HOOKS`, `error.rs`, `discovery.rs` 탐색·마운트, `enable.rs` 켜기·끄기·지우기, `hooks.rs` hook·명령·slot·`HookPlan`, `remote.rs` 원격 목록·패키지 설치, `state.rs` 번역·설정 저장), `plg/` = `saba-chan/src/plugin/mod.rs`, `EXT/` = `saba-chan-extensions/`.
 
 ---
 
@@ -25,11 +25,11 @@
 
 | 코드상 이름 | 실제 의미 | 근거 |
 |---|---|---|
-| `crate::plugin` (`src/plugin/mod.rs`) | **개념이 아니라 실행기**다. "Python 파일 하나를 `python <file> <function>`로 띄우고 stdin JSON → stdout JSON을 주고받는 러너"일 뿐이다. **module의 `lifecycle.py`와 extension hook이 둘 다** 이 러너를 쓴다. | `plg/:168-317`. module 호출 예: `supervisor/mod.rs:791,1077,1178…`. extension 호출: `ext/:1583` |
-| `crate::extension` (`src/extension/mod.rs`) | 오너가 말하는 "plugin". manifest 기반이고, hook, 명령, GUI/CLI 슬롯, instance_fields, config_fields를 가진다. | `ext/:221-271` |
+| `crate::plugin` (`src/plugin/mod.rs`) | **개념이 아니라 실행기**다. "Python 파일 하나를 `python <file> <function>`로 띄우고 stdin JSON → stdout JSON을 주고받는 러너"일 뿐이다. **module의 `lifecycle.py`와 extension hook이 둘 다** 이 러너를 쓴다. | `plg/:168-317`. module 호출 예: `supervisor/status.rs`·`console.rs`·`queries.rs`…. extension 호출: `ext/hooks.rs` |
+| `crate::extension` (`src/extension/`) | 오너가 말하는 "plugin". manifest 기반이고, hook, 명령, GUI/CLI 슬롯, instance_fields, config_fields를 가진다. | `ext/manifest.rs` |
 | `ipc::ExtensionInfo` / `ExtensionListResponse { modules }` | 이름은 extension이지만 **실제로는 module 정보**다(명명 혼동). | `src/ipc/mod.rs:236-295`, `handlers/server.rs:10,334-392` |
 | GUI `selectedExtension` | AddServer 모달에서 **module 이름**을 담는 상태다. | `saba-chan-gui/src/components/Modals/AddInstanceNewServer.tsx:59,113` |
-| updater의 extension 업데이트 | 릴리즈 manifest의 `ext-<id>` 항목. 로컬 버전은 `extensions/*/manifest.json`의 id·version으로 읽는다. 데몬의 익스텐션 목록(`fetch_remote`)과 같은 manifest를 본다. | `updater/src/lib.rs:274-277,608-620`, `src/extension/mod.rs:1395` |
+| updater의 extension 업데이트 | 릴리즈 manifest의 `ext-<id>` 항목. 로컬 버전은 `extensions/*/manifest.json`의 id·version으로 읽는다. 데몬의 익스텐션 목록(`fetch_remote`)과 같은 manifest를 본다. | `updater/src/lib.rs:274-277,608-620`, `src/extension/remote.rs` `fetch_remote` |
 
 **결론**: 코드에서 "plugin"과 "extension"은 서로 다른 계층이다. `plugin`은 Python 프로세스 실행 프로토콜이고, `extension`은 그 위의 확장 시스템이다. 오너가 말하는 "plugin"은 코드의 `extension`에 해당하고, 코드의 `plugin` 모듈은 module과 extension이 공유하는 하위 런타임이다. 옛 레이아웃용 `run_extension`/`run_extension_with_progress`는 삭제되었다.
 
@@ -37,43 +37,43 @@
 
 ## 1. Extension manifest.json 스키마 (Rust 역직렬화 기준)
 
-### 1.1 `ExtensionManifest` (`ext/:221-271`)
+### 1.1 `ExtensionManifest` (`ext/manifest.rs`)
 
 | key | Rust 타입 | 필수/기본값 | 코드에서 실제 사용 여부 |
 |---|---|---|---|
-| `schema_version` | `u32` | `0` | `parse_manifest()`(`ext/:374-421`): `1`이면 모르는 키·발화되지 않는 hook·없는 python_modules 참조가 오류, `0`이면 같은 문제를 경고로만 남기고, 더 큰 값은 거부한다. 현재 세 manifest(steamcmd·ue4_ini·xna) 모두 `1`이다. |
-| `id` | `String` | **필수** | discovered 맵의 키. 영문·숫자·`-`·`_`만 허용한다(`ext/:359-368`). 스캔 시 폴더 이름이 id이거나 하이픈을 밑줄로 바꾼 이름이어야 한다(`ext/:763-769`). `mount()`는 `manifest.id == ext_id`를 검사한다(`ext/:811`). |
+| `schema_version` | `u32` | `0` | `parse_manifest()`(`ext/manifest.rs`): `1`이면 모르는 키·발화되지 않는 hook·없는 python_modules 참조가 오류, `0`이면 같은 문제를 경고로만 남기고, 더 큰 값은 거부한다. 현재 세 manifest(steamcmd·ue4_ini·xna) 모두 `1`이다. |
+| `id` | `String` | **필수** | discovered 맵의 키. 영문·숫자·`-`·`_`만 허용한다(`ext/manifest.rs`). 스캔 시 폴더 이름이 id이거나 하이픈을 밑줄로 바꾼 이름이어야 한다(`ext/discovery.rs`). `mount()`는 `manifest.id == ext_id`를 검사한다(`ext/discovery.rs`). |
 | `name` | `String` | **필수** | 목록과 로그 |
-| `version` | `String` | **필수** | 업데이트 비교(SemVer, 파싱 실패 시 문자열 비교 `ext/:1335-1342`), 익스텐션 간 의존성 버전 검사 |
+| `version` | `String` | **필수** | 업데이트 비교(SemVer, 파싱 실패 시 문자열 비교 `ext/remote.rs`), 익스텐션 간 의존성 버전 검사 |
 | `description` / `descriptions` | `String` / `HashMap` | `""` / `{}` | 목록. `GET /api/extensions?lang=`이 GUI 언어에 맞는 `descriptions` 항목으로 바꿔 준다(`handlers/extension.rs:67-91`). |
 | `author` | `String` | `""` | 목록 |
-| `min_app_version` | `Option<String>` | `None` | enable(`ext/:929-933`), 패키지 설치(`ext/:1405`)에서 강제하고, 목록·원격 목록에 `incompatible`로 표시한다(`ext/:1108,1289`). |
-| `dependencies` | `HashMap<String,String>` | `{}` | 커스텀 디시리얼라이저 `deserialize_dependencies` (`ext/:56-97`): 배열 `["a"]` → `{"a":"*"}`, 맵은 그대로 받는다. 공식 manifest는 맵(`{}`)을 쓰고, 배열은 0.1.13까지 배포한 공식 익스텐션의 설치된 사본(`[]`)을 읽으려고 남긴다. enable/disable/unmount 검증에 쓰인다(아래 3.3). |
-| `python_modules` | `HashMap<String,String>` | `{}` | 모듈 키 → 익스텐션 디렉토리 기준 상대경로. hook 바인딩과 명령이 참조한다(`ext/:1165,1240`). 값은 폴더 안 상대 경로만 받는다(모듈 `entry`와 같은 `utils::is_inner_relative_path`): 빈 값, 절대 경로, `..`·`.`가 든 경로는 `schema_version`과 무관하게 manifest 오류다. 신뢰 판정(`sandbox::component_in`)도 `..`·`.`가 든 진입점은 어느 구성요소에도 넣지 않는다. |
+| `min_app_version` | `Option<String>` | `None` | enable(`ext/enable.rs`), 패키지 설치(`ext/remote.rs`)에서 강제하고, 목록·원격 목록에 `incompatible`로 표시한다(`ext/mod.rs`·`ext/remote.rs`). |
+| `dependencies` | `HashMap<String,String>` | `{}` | 커스텀 디시리얼라이저 `deserialize_dependencies` (`ext/manifest.rs`): 배열 `["a"]` → `{"a":"*"}`, 맵은 그대로 받는다. 공식 manifest는 맵(`{}`)을 쓰고, 배열은 0.1.13까지 배포한 공식 익스텐션의 설치된 사본(`[]`)을 읽으려고 남긴다. enable/disable/unmount 검증에 쓰인다(아래 3.3). |
+| `python_modules` | `HashMap<String,String>` | `{}` | 모듈 키 → 익스텐션 디렉토리 기준 상대경로. hook 바인딩과 명령이 참조한다(`ext/hooks.rs`). 값은 폴더 안 상대 경로만 받는다(모듈 `entry`와 같은 `utils::is_inner_relative_path`): 빈 값, 절대 경로, `..`·`.`가 든 경로는 `schema_version`과 무관하게 manifest 오류다. 신뢰 판정(`sandbox::component_in`)도 `..`·`.`가 든 진입점은 어느 구성요소에도 넣지 않는다. |
 | `hooks` | `HashMap<String, HookBinding>` | `{}` | hook 이름 → 바인딩. 이름은 `FIRED_HOOKS`의 것이거나 이벤트 버스를 따르는 `event:<종류>`(§2.3 끝)다. |
 | `gui` | `Option<GuiManifest>` | `None` | 번들/스타일 서빙에 쓰인다(`handlers/extension.rs:240-334`). `gui.slots`는 GUI가 읽는다(4.2). |
 | `cli` | `Option<CliManifest>` | `None` | `/api/extensions` 응답에 그대로 실린다. `cli.slots`는 데이터 slot 선언이다(4.3). 인터페이스는 이 원본 대신 정규화된 `slots`를 읽는다. |
-| `module_config_section` | `Option<String>` | `None` | **읽는 코드가 없다(dead 필드)**. module.toml의 익스텐션별 설정은 범용 `[extensions.<id>]` 섹션으로 받아 그대로 넘긴다(`supervisor/module_loader/raw.rs:41-45, 751-760`). |
-| `instance_fields` | `HashMap<String, FieldDef>` | `{}` | disable/remove/unmount/install 시 "사용 중" 판정(`ext/:873-902`). **default 값을 인스턴스에 주입하는 코드는 없다.** |
+| `module_config_section` | `Option<String>` | `None` | **읽는 코드가 없다(dead 필드)**. module.toml의 익스텐션별 설정은 범용 `[extensions.<id>]` 섹션으로 받아 그대로 넘긴다(`module_loader/raw.rs:41-45, 751-760`). |
+| `instance_fields` | `HashMap<String, FieldDef>` | `{}` | disable/remove/unmount/install 시 "사용 중" 판정(`ext/discovery.rs`). **default 값을 인스턴스에 주입하는 코드는 없다.** |
 | `config_fields` | `HashMap<String, FieldDef>` | `{}` | 목록 응답에만 실린다. 값 저장은 `config.json`의 `extensions.settings.<id>`. 스키마 검증은 없다. |
-| `i18n_dir` | `Option<String>` | `None` | `load_i18n()` → `<dir>/<i18n_dir>/<locale>.json`. `i18n_dir`은 `..` 없는 상대 경로이며 실제 경로도 익스텐션 폴더 안이어야 한다. 중간 링크·정션도 거부한다. 위반하면 locales를 비우고 경고한다. locale은 한 단계 경로 이름이어야 한다(`ext/:1457-1469`). |
-| `priority` | `i32` | `100` | 같은 hook·명령을 여러 익스텐션이 가질 때의 순서. 작을수록 먼저, 같으면 id 순(`ext/:265-267,1116-1127`). |
-| `commands` | `Vec<ExtensionCommand>` | `[]` | 인스턴스 명령 카탈로그에 더하는 명령(`ext/:273-293`). `GET /api/instance/:id/commands`에 실리고(모듈 명령이 우선, `handlers/command.rs:296-300`), `POST /api/instance/:id/command`가 `plan_command`로 실행한다(`handlers/command.rs:90-102`, `ext/:1143-1176`). |
+| `i18n_dir` | `Option<String>` | `None` | `load_i18n()` → `<dir>/<i18n_dir>/<locale>.json`. `i18n_dir`은 `..` 없는 상대 경로이며 실제 경로도 익스텐션 폴더 안이어야 한다. 중간 링크·정션도 거부한다. 위반하면 locales를 비우고 경고한다. locale은 한 단계 경로 이름이어야 한다(`ext/state.rs`). |
+| `priority` | `i32` | `100` | 같은 hook·명령을 여러 익스텐션이 가질 때의 순서. 작을수록 먼저, 같으면 id 순(`ext/manifest.rs`·`ext/hooks.rs`). |
+| `commands` | `Vec<ExtensionCommand>` | `[]` | 인스턴스 명령 카탈로그에 더하는 명령(`ext/manifest.rs`). `GET /api/instance/:id/commands`에 실리고(모듈 명령이 우선, `handlers/command.rs:296-300`), `POST /api/instance/:id/command`가 `plan_command`로 실행한다(`handlers/command.rs:90-102`, `ext/hooks.rs`). |
 | `permissions` | `ModulePermissions` | 모두 false | 코드가 쓰는 위험한 능력 선언. 모듈 `[permissions]`와 같은 표다(02 문서 §1). 실행을 막거나 풀지 않고, `GET /api/extensions/:id/audit`(모듈 audit과 같은 모양)와 CLI 도구 `saba-core extension audit <폴더>...`가 코드와 대조해 선언하지 않은 능력을 알린다. |
 | `runtime` | `plugin::Runtime` | `{"persistent": false}` | 실행 방식. 모듈 `[runtime]`과 같은 표다(02 §1.2). `persistent: true`면 hook·명령의 Python을 진입 파일마다 오래 사는 작업자 하나로 부른다(02 §2.1 끝). 격리해서 돌리는 익스텐션(확인되지 않았거나 고친 것)은 단발로 돈다. 실행기가 호출 때 manifest.json에서 읽고, 기본값이면 목록 응답에 싣지 않는다. saba-core 0.1.14-0부터 받는다(옛 데몬은 `schema_version: 1` manifest를 모르는 키로 거부한다). |
 
 ### 1.2 하위 구조체
 
-- **`HookBinding`** (`ext/:299-305`): `module: String`(필수, `python_modules`의 키), `function: String`(필수), `condition: Option<String>`.
-- **`GuiManifest`** (`ext/:325-336`): `bundle`, `styles`, `assets: Option<String>`, `builtin: Option<bool>`, `slots: HashMap<String, Value>`.
+- **`HookBinding`** (`ext/manifest.rs`): `module: String`(필수, `python_modules`의 키), `function: String`(필수), `condition: Option<String>`.
+- **`GuiManifest`** (`ext/manifest.rs`): `bundle`, `styles`, `assets: Option<String>`, `builtin: Option<bool>`, `slots: HashMap<String, Value>`.
   - `assets`(saba-core 0.1.15-0): 번들이 처음 쓸 때 받는 정적 파일(그림 등) 폴더. 익스텐션 폴더 기준 상대 경로다(예: `gui/assets`). 데몬이 `GET /api/extensions/:id/gui/assets/*path`로 번들과 같은 조건에 서빙하고(4.1 보안), 번들은 `host.assetUrl(이름)`으로 받는다(4.5). 그림을 번들에 data URI로 넣지 않아도 되어, 번들이 작아지고 쓰지 않는 그림을 읽지 않는다. 이 키를 모르는 데몬은 schema v1 manifest를 모르는 키로 거부하므로, 쓰는 익스텐션은 `min_app_version`을 이 버전 이상으로 둔다. 목록 응답의 `gui`에는 선언했을 때만 실린다.
   - `builtin`은 daemon에서 읽지 않는다.
   - `slots`는 slot id → 표시 정보 `{label?, icon?, description?}`이다(옛 모양인 컴포넌트 이름 문자열도 받고 빈 표시 정보로 본다). 데몬은 검사하지 않고 `/api/extensions`의 `gui`에 그대로 싣는다. GUI가 slot 표와 대조하고, 창마다 읽을 번들을 고르고, 탭·버튼·카드 이름을 정한다(4.2). `bundle` 없이 `slots`만 써도 된다(설정 탭 자동 폼).
-- **`CliManifest`** (`ext/:320-326`): `slots: HashMap<String, Value>`. 데이터 slot 선언(4.3). 값은 항목 하나 또는 배열이다.
-- **`FieldDef`** (`ext/:328-336`): `type`(필수), `default: Option<Value>`, `optional: Option<bool>`.
-- **`ExtensionCommand`** (`ext/:275-293`): `name`, `label?`, `description?`, `risk?`(safe/caution/danger), `inputs[]`(모듈 명령과 같은 `CommandInput`), `module`, `function`, `condition?`.
+- **`CliManifest`** (`ext/manifest.rs`): `slots: HashMap<String, Value>`. 데이터 slot 선언(4.3). 값은 항목 하나 또는 배열이다.
+- **`FieldDef`** (`ext/manifest.rs`): `type`(필수), `default: Option<Value>`, `optional: Option<bool>`.
+- **`ExtensionCommand`** (`ext/manifest.rs`): `name`, `label?`, `description?`, `risk?`(safe/caution/danger), `inputs[]`(모듈 명령과 같은 `CommandInput`), `module`, `function`, `condition?`.
 
-알 수 없는 키는 `serde_ignored`로 모아 schema v1이면 오류, v0이면 경고(`warnings`, 목록 응답에 실림)로 처리한다(`ext/:374-421`).
+알 수 없는 키는 `serde_ignored`로 모아 schema v1이면 오류, v0이면 경고(`warnings`, 목록 응답에 실림)로 처리한다(`ext/manifest.rs`).
 
 ### 1.3 실제 manifest에는 있는데 코드가 무시하는 것
 
@@ -85,10 +85,10 @@
 
 - `gui` 전체: 현재 두 익스텐션 모두 `gui`가 없다. CSS 서빙 경로(`handlers/extension.rs:309-334`)와 번들 경로가 있지만 쓰는 익스텐션이 없다.
 - `commands`, `priority`, `i18n_dir`, `config_fields`, `cli`: 현재 manifest에서 쓰지 않는다.
-- `dependencies`의 비-익스텐션 컴포넌트 키: HTTP enable은 `enable()`이 `{"saba-core": APP_VERSION}`을 넘기므로(`ext/:905-908`) `saba-core` 버전 요구는 검사된다. 그 밖의 컴포넌트 키(`gui` 등)에 버전을 쓰면 설치 버전을 모르므로 활성화할 수 없다(`ext/:960-984`).
-- `condition` 패턴은 `instance.ext_data.<key>` 하나뿐이다(`ext/:1179-1195`). 그 외 패턴은 warn을 남기고 false로 처리한다.
+- `dependencies`의 비-익스텐션 컴포넌트 키: HTTP enable은 `enable()`이 `{"saba-core": APP_VERSION}`을 넘기므로(`ext/enable.rs`) `saba-core` 버전 요구는 검사된다. 그 밖의 컴포넌트 키(`gui` 등)에 버전을 쓰면 설치 버전을 모르므로 활성화할 수 없다(`ext/enable.rs`).
+- `condition` 패턴은 `instance.ext_data.<key>` 하나뿐이다(`ext/hooks.rs`). 그 외 패턴은 warn을 남기고 false로 처리한다.
 
-### 1.5 원격 목록 항목 (`RemoteExtensionInfo`, `ext/:476-518`)
+### 1.5 원격 목록 항목 (`RemoteExtensionInfo`, `ext/remote.rs`)
 
 ```
 릴리즈 manifest 컴포넌트 "ext-<id>": { version, url, sha256, asset, install_dir?,
@@ -97,7 +97,7 @@
                         install_dir?, min_app_version?, incompatible?, dependencies, has_gui, has_i18n, tags[], homepage? }
 ```
 
-`from_release`(`ext/:1295-1324`)가 `meta`를 바탕으로 `version`·`download_url`·`sha256`·`asset`·`install_dir`을 덮어쓰고, id는 컴포넌트 키에서 `ext-`를 뗀 값이다. `meta`는 코어 릴리즈 워크플로의 `versions.py`가 익스텐션 manifest에서 만든다(`D:scripts/versions.py:246-267`). `tags`/`homepage`는 넣지 않는다. `install_dir`은 폴더 이름을 쓰므로 `extensions/ue4_ini`다. `install_dir`과 `asset`은 daemon이 읽지 않는다(설치 폴더는 `ext_dir_on_disk`가 정한다, `ext/:596-616`).
+`from_release`(`ext/remote.rs`)가 `meta`를 바탕으로 `version`·`download_url`·`sha256`·`asset`·`install_dir`을 덮어쓰고, id는 컴포넌트 키에서 `ext-`를 뗀 값이다. `meta`는 코어 릴리즈 워크플로의 `versions.py`가 익스텐션 manifest에서 만든다(`D:scripts/versions.py:246-267`). `tags`/`homepage`는 넣지 않는다. `install_dir`은 폴더 이름을 쓰므로 `extensions/ue4_ini`다. `install_dir`과 `asset`은 daemon이 읽지 않는다(설치 폴더는 `ext_dir_on_disk`가 정한다, `ext/discovery.rs`).
 
 ---
 
@@ -122,20 +122,20 @@
 - **타임아웃과 자리**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`이다. 함수 이름이 `install_server`면 설치 자리 2개를 쓰고, 훅을 포함한 나머지 호출은 일반 자리 8개를 쓴다. 기한은 자리 대기·내부 선조회·Python 환경 준비·실행 전체를 포함한다. 내부 선조회는 바깥 자리와 절대 기한을 재사용한다. 재진입은 바깥 자리를 빌리거나 캐시만 쓰고 캐시가 없으면 실패한다. 상한·정리 규칙은 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)을 따른다.
 - **오류 필드**: 실행기와 훅은 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)의 공통 오류를 유지한다. `error_code`·`module`·`function`·`phase`·`stderr_tail`을 문자열 하나로 바꾸지 않는다. 로컬은 stderr 끝을 보존하고 원격은 빼며, 원격 문자열의 IP·비밀값·절대 경로를 가린다. 모듈이 정한 실패 코드와 메시지는 유지한다.
 
-### 2.2 디스패처 (`ext/:1213-1256`, `ext/:1557-1628`)
+### 2.2 디스패처 (`ext/hooks.rs`, `ext/hooks.rs`)
 
-- `hooks_for(name)`(`ext/:1116-1127`): **enabled**이면서 해당 hook을 가진 익스텐션 목록. `priority`, 그다음 id 순으로 정렬한다.
-- `plan_hook(name, ctx, only)`(`ext/:1213-1256`): 매니저 락 안에서 실행 목록만 정한다.
-  1. 부를 익스텐션마다 context를 따로 만들고, `extension_config`에는 그 익스텐션 자신의 설정만 `{<id>: {k: v}}` 형태로 넣는다(`ext/:1303-1312`). 다른 익스텐션의 설정은 넘기지 않는다. 명령(`plan_command`)도 같다.
+- `hooks_for(name)`(`ext/hooks.rs`): **enabled**이면서 해당 hook을 가진 익스텐션 목록. `priority`, 그다음 id 순으로 정렬한다.
+- `plan_hook(name, ctx, only)`(`ext/hooks.rs`): 매니저 락 안에서 실행 목록만 정한다.
+  1. 부를 익스텐션마다 context를 따로 만들고, `extension_config`에는 그 익스텐션 자신의 설정만 `{<id>: {k: v}}` 형태로 넣는다(`ext/hooks.rs`). 다른 익스텐션의 설정은 넘기지 않는다. 명령(`plan_command`)도 같다.
   2. `context.extension_data`로 `condition`을 평가한다(bool, 0이 아닌 숫자, 비어 있지 않은 문자열이면 true).
   3. `python_modules[binding.module]` 경로를 정한다. 없는 모듈이면 그 호출은 Err 결과가 된다.
-- `HookPlan::run(timeout)`(`ext/:1572-1600`): **락 밖에서** 순서대로 실행한다. 결과에 `handled == true`가 있으면 **나머지 익스텐션을 건너뛴다**. 에러가 나면 기록하고 계속 진행한다(graceful).
-- `run_hook` = `run_hook_timed(…, 120)`(`ext/:1605-1617`). `run_hook_to(ext_id, …)`(`ext/:1620-1628`)는 익스텐션 하나에만 보낸다.
+- `HookPlan::run(timeout)`(`ext/hooks.rs`): **락 밖에서** 순서대로 실행한다. 결과에 `handled == true`가 있으면 **나머지 익스텐션을 건너뛴다**. 에러가 나면 기록하고 계속 진행한다(graceful).
+- `run_hook` = `run_hook_timed(…, 120)`(`ext/hooks.rs`). `run_hook_to(ext_id, …)`(`ext/hooks.rs`)는 익스텐션 하나에만 보낸다.
 - 결과 병합: 디스패처는 병합하지 않고 `Vec<(ext_id, Result<Value>)>`를 반환한다. 해석은 호출부마다 다르다(아래 표).
 
 ### 2.3 daemon이 발화하는 hook 전수 목록
 
-`FIRED_HOOKS`(`ext/:23-34`)가 이 목록을 코드로 갖고 있고, manifest 검증이 이 목록을 기준으로 한다.
+`FIRED_HOOKS`(`ext/manifest.rs`)가 이 목록을 코드로 갖고 있고, manifest 검증이 이 목록을 기준으로 한다.
 
 | hook | 발화 위치 | 트리거 / 경로 | 동기성 · 타임아웃 | context 키 | 결과 사용 |
 |---|---|---|---|---|---|
@@ -144,7 +144,7 @@
 | `daemon.shutdown` | `src/main.rs:525-567` | 종료 경로(Ctrl-C/SIGTERM, 종료 API, 워치독) | 동기(await), hook 120s, 전체 30s 상한(`:545-554`) | `instances[] {id,name,module,extension_data,instance_dir}` | `handled` 여부를 로그로만 남긴다 |
 | `server.pre_start` | `supervisor/start.rs` `run_pre_start_hook` (non-managed start, managed start. 문맥은 `plan_start`) | 서버 시작, 시작 전 검사(이미 켜짐·모듈 의존성·필수 익스텐션·포트 충돌)를 통과한 뒤 | 동기, 120s | 공통 + `config`(시작 설정, 비밀 값은 `***`), `managed`(bool). 두 시작 방식이 같은 키를 받는다 | `handled:true` + `success!=true` → 에러를 반환한다. `success:true`이면 `log_follower{program,args,working_dir,description,interactive,strip_prefix,env_vars}`로 `ManagedProcess::spawn`(interactive) 또는 `spawn_log_follower`를 실행한다(`:682-753`, `:1409-1480`). 그 결과를 그대로 반환하고 기본 시작 로직을 건너뛴다. |
 | `server.stop` | `supervisor/stop.rs` `stop_server_inner` | `stop_server` 진입 직후, 정지 전 | 동기, 120s | 공통 | `handled:true`이면 cooldown을 기록하고 그대로 반환한다. 익스텐션이 Err이거나 `success:false`이면 실패를 반환한다 |
-| `server.status` | `supervisor/mod.rs:1131-1142` | `GET /api/instance/:id/status` | 동기, 120s | 공통 + `process_patterns` | `handled:true`이면 그대로 반환한다 |
+| `server.status` | `supervisor/status.rs` `get_server_status` | `GET /api/instance/:id/status` | 동기, 120s | 공통 + `process_patterns` | `handled:true`이면 그대로 반환한다 |
 | `server.list_enrich` | `handlers/server.rs` `enrich_results` | `GET /api/servers`, `extension_data`가 비어 있지 않고 캐시에 답이 없는 인스턴스마다 **함께** 실행(한 번에 4개까지, `LIST_ENRICH_AT_ONCE`) | 동기, **10s**, 결과를 30s TTL 캐시(`ipc/mod.rs:617`) | `instance_id, instance_name, module, extension_data, instance_dir, process_patterns` | `handled`와 무관하게 첫 번째 Ok를 캐시한다(실패는 캐시하지 않음). `handled:true`이면 `status`와 `extension_status[<res.extension_id or "default">]`를 채운다. `handled:true` 결과의 `status_line`(짧은 한 줄, 경로·비밀값 금지)은 디스코드 `/사바쨩 상태`에 나간다(05 §4 heartbeat `statusLine`) |
 | `server.post_create` | `handlers/instance/create.rs` `create_instance_inner` | 인스턴스 생성(`POST /api/instances`), `instance_store.add` 성공 직후 | `tokio::spawn` 백그라운드, 120s. 결과를 기다리지 않고 바로 네이티브 프로비저닝으로 넘어간다 | 공통 + `migration` | 결과를 버린다. 프로비저닝과 동시에 돈다 |
 | `server.pre_delete` | `handlers/instance/delete.rs` `pre_delete_hook` | 인스턴스 삭제 | 동기, 120s | 공통 | `handled`이면 2초 대기한다(파일 잠금 해제용) |
@@ -154,7 +154,7 @@
 
 서버 hook(`server.pre_start`·`stop`·`status`·`post_create`·`pre_delete`·`settings_changed`·`check_update`)과 익스텐션 명령은 공통 문맥을 받는다(`extension::hook_context`, 0.1.14-beta.2부터): `instance_id, instance_name, instance_dir, module, extension_data, instance`. `instance`는 REST 비밀번호와 비밀 설정 값(모듈이 password로 선언했거나 이름에 pass·token·secret 같은 낱말이 든 것)을 `***`로 가린 인스턴스다(D-E2, `extension::redact_for_hooks`). 표의 "+"는 그 hook만 더 받는 키다. `daemon.*`와 `server.list_enrich`는 공통 문맥을 받지 않는다.
 
-manifest에 발화되지 않는 hook을 새로 선언하면 `parse_manifest`가 v1에서 거부, v0에서 경고한다(`ext/:387-390`).
+manifest에 발화되지 않는 hook을 새로 선언하면 `parse_manifest`가 v1에서 거부, v0에서 경고한다(`ext/manifest.rs`).
 
 **이벤트 hook `event:<종류>`** (`extension/event_hooks.rs`): 데몬 이벤트 버스(01 §`GET /api/events`의 종류: `backup.done`, `instance.exit`, `instance.ready`, `instance.player` 등)에 난 일을 익스텐션이 받는다. 데몬은 익스텐션 이름을 모르고, 버스를 듣는 디스패처 하나가 `plan_hook` 경로(`run_hook_to`)로 넘긴다(`IPCServer::start`가 띄운다).
 
@@ -191,25 +191,25 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 ### 3.1 저장 위치
 
 - 익스텐션 디렉토리: `resolve_extensions_dir()` = `$SABA_EXTENSIONS_DIR` → `config.json` `paths.extensions` → `resolve_data_dir()/extensions` (`updater/src/component_dirs.rs` `resolve`). 옮길 때도 폴더 이름은 `extensions`로 둔다(01 §1.5). data_dir은 `$SABA_DATA_DIR`, Windows는 `%APPDATA%/saba-chan`, Unix는 `~/.config/saba-chan`이다(`:55-77`).
-- 활성 상태: `<data_dir>/config.json`의 `extensions.enabled`. 형식은 정렬된 enabled id 배열이다(`ext/:1500-1521`).
-- 익스텐션 글로벌 설정: 같은 파일의 `extensions.settings`. 형식은 `{ext_id:{k:v}}`(`ext/:1523-1549`). 옛 `extensions_state.json`, `extensionConfig.json`은 한 번 이 두 키로 옮겨진다(`updater/src/config_file.rs:43-44`).
-- 테스트 생성자 `new_isolated`는 config.json을 extensions 디렉토리 안에 둔다(`ext/:557-560`).
+- 활성 상태: `<data_dir>/config.json`의 `extensions.enabled`. 형식은 정렬된 enabled id 배열이다(`ext/state.rs`).
+- 익스텐션 글로벌 설정: 같은 파일의 `extensions.settings`. 형식은 `{ext_id:{k:v}}`(`ext/state.rs`). 옛 `extensions_state.json`, `extensionConfig.json`은 한 번 이 두 키로 옮겨진다(`updater/src/config_file.rs:43-44`).
+- 테스트 생성자 `new_isolated`는 config.json을 extensions 디렉토리 안에 둔다(`ext/mod.rs`).
 
 ### 3.2 발견 (discover / rescan / mount)
 
-- `discover()`(`ext/:623-648`): 루트에 있는 `*.zip`을 먼저 푼 뒤 `scan()`을 실행한다. 다운로드와 ZIP 파일은 128 MiB, 항목은 10,000개, 누적 해제 크기는 512 MiB로 제한한다. 모듈 ZIP과 익스텐션 패키지는 같은 해제기(`src/archive.rs`)로 푼다: 폴더 밖을 가리키는 경로와 링크 항목은 거부하고, 권한 비트(SUID 등)는 옮기지 않는다. zip은 `.staging-<id>`에 풀어 manifest를 검사하고, 기존 폴더가 있으면 **새 내용으로 바꿔 끼운 뒤** zip을 삭제한다(`ext/:652-721`).
-- `scan()`(`ext/:737-783`): 하위 디렉토리 중 `manifest.json`이 있는 것(`.`으로 시작하는 임시 폴더 제외)을 등록한다. **폴더 이름이 manifest.id(또는 하이픈→밑줄)와 다르면 건너뛰고**, 로드 실패와 함께 `load_errors`에 남긴다. 이 목록은 `GET /api/extensions`의 `failed`로 나간다(`handlers/extension.rs:85-90`).
-- `rescan()`(`ext/:792-796`): `scan()`과 같다. 기존 항목의 manifest를 다시 읽고 새 항목을 추가한다. 디스크에서 사라진 항목은 그대로 남긴다.
-- `mount(id)`(`ext/:800-821`): `ext_dir_on_disk`(discovered → `extension_dir`: 하이픈을 언더스코어로 바꾼 이름 → id 그대로. 둘 다 있으면 언더스코어 폴더로, `scan`·신뢰 판정(`sandbox`)도 같은 폴더를 쓴다)로 디렉토리를 찾고, `manifest.id == id`를 검사한다.
-- `IPCServer::new`(`src/ipc/mod.rs:590-598`)에서 discover를 한 번 실행한다. 상태에 enabled로 되어 있지만 디스크에 없는 익스텐션은 `enabled_but_not_installed()`로 구분한다(`ext/:1076`).
+- `discover()`(`ext/discovery.rs`): 루트에 있는 `*.zip`을 먼저 푼 뒤 `scan()`을 실행한다. 다운로드와 ZIP 파일은 128 MiB, 항목은 10,000개, 누적 해제 크기는 512 MiB로 제한한다. 모듈 ZIP과 익스텐션 패키지는 같은 해제기(`src/archive.rs`)로 푼다: 폴더 밖을 가리키는 경로와 링크 항목은 거부하고, 권한 비트(SUID 등)는 옮기지 않는다. zip은 `.staging-<id>`에 풀어 manifest를 검사하고, 기존 폴더가 있으면 **새 내용으로 바꿔 끼운 뒤** zip을 삭제한다(`ext/discovery.rs`).
+- `scan()`(`ext/discovery.rs`): 하위 디렉토리 중 `manifest.json`이 있는 것(`.`으로 시작하는 임시 폴더 제외)을 등록한다. **폴더 이름이 manifest.id(또는 하이픈→밑줄)와 다르면 건너뛰고**, 로드 실패와 함께 `load_errors`에 남긴다. 이 목록은 `GET /api/extensions`의 `failed`로 나간다(`handlers/extension.rs:85-90`).
+- `rescan()`(`ext/discovery.rs`): `scan()`과 같다. 기존 항목의 manifest를 다시 읽고 새 항목을 추가한다. 디스크에서 사라진 항목은 그대로 남긴다.
+- `mount(id)`(`ext/discovery.rs`): `ext_dir_on_disk`(discovered → `extension_dir`: 하이픈을 언더스코어로 바꾼 이름 → id 그대로. 둘 다 있으면 언더스코어 폴더로, `scan`·신뢰 판정(`sandbox`)도 같은 폴더를 쓴다)로 디렉토리를 찾고, `manifest.id == id`를 검사한다.
+- `IPCServer::new`(`src/ipc/mod.rs:590-598`)에서 discover를 한 번 실행한다. 상태에 enabled로 되어 있지만 디스크에 없는 익스텐션은 `enabled_but_not_installed()`로 구분한다(`ext/mod.rs`).
 
 ### 3.3 enable / disable / remove / unmount
 
 | 작업 | API | 동작 |
 |---|---|---|
-| enable | `POST /api/extensions/:id/enable` (`handlers/extension.rs:97-159`) | `enable()` → `enable_with_versions(id, {"saba-core": APP_VERSION})`(`ext/:905-991`). `min_app_version`을 먼저 확인한다. dependencies 맵의 각 키를 확인한다. (a) discovered에 있는 익스텐션이면 **enabled 상태여야 하고**, `">=x"`이면 SemVer를 비교한다(`>=`만 지원, `^`/`~` 미지원). (b) 없으면 컴포넌트로 간주하는데, `"*"`이면 `dependency_missing`, 아니면 설치 버전(`saba-core`만 앎)과 비교한다. **의존성을 자동으로 활성화하지 않는다.** 성공하면 상태를 저장하고 그 익스텐션의 `daemon.startup`만 발화한다. 응답에 신뢰 표시 `trust`를 싣고, `verified`가 아니면 `warnings[{code:"extension_unverified"\|"extension_modified", extension}]`도 싣는다(알림일 뿐 켜기는 막지 않는다). |
-| disable | `POST …/disable` | **실행 중인 인스턴스만** 검사한다(`handlers/extension.rs:166-167`). 역의존성(활성 익스텐션 중 이 id를 dependencies에 둔 것)이 있으면 409 `has_dependents`. 인스턴스의 `extension_data`에서 이 익스텐션의 instance_fields 키 중 하나라도 값이 있으면(true, 비어 있지 않은 문자열·배열·객체, 0이 아닌 숫자) 409 `in_use`(`ext/:873-902`). |
-| remove | `DELETE /api/extensions/:id` | **정지된 인스턴스까지** 사용 여부를 검사하고(`handlers/extension.rs:494-495`), 활성 상태면 disable 검사를 거친 뒤 discovered에서 제거하고, 디렉토리를 `remove_dir_all`하고, `extensions.settings` 항목을 삭제한다(`ext/:1023-1056`) |
+| enable | `POST /api/extensions/:id/enable` (`handlers/extension.rs:97-159`) | `enable()` → `enable_with_versions(id, {"saba-core": APP_VERSION})`(`ext/enable.rs`). `min_app_version`을 먼저 확인한다. dependencies 맵의 각 키를 확인한다. (a) discovered에 있는 익스텐션이면 **enabled 상태여야 하고**, `">=x"`이면 SemVer를 비교한다(`>=`만 지원, `^`/`~` 미지원). (b) 없으면 컴포넌트로 간주하는데, `"*"`이면 `dependency_missing`, 아니면 설치 버전(`saba-core`만 앎)과 비교한다. **의존성을 자동으로 활성화하지 않는다.** 성공하면 상태를 저장하고 그 익스텐션의 `daemon.startup`만 발화한다. 응답에 신뢰 표시 `trust`를 싣고, `verified`가 아니면 `warnings[{code:"extension_unverified"\|"extension_modified", extension}]`도 싣는다(알림일 뿐 켜기는 막지 않는다). |
+| disable | `POST …/disable` | **실행 중인 인스턴스만** 검사한다(`handlers/extension.rs:166-167`). 역의존성(활성 익스텐션 중 이 id를 dependencies에 둔 것)이 있으면 409 `has_dependents`. 인스턴스의 `extension_data`에서 이 익스텐션의 instance_fields 키 중 하나라도 값이 있으면(true, 비어 있지 않은 문자열·배열·객체, 0이 아닌 숫자) 409 `in_use`(`ext/discovery.rs`). |
+| remove | `DELETE /api/extensions/:id` | **정지된 인스턴스까지** 사용 여부를 검사하고(`handlers/extension.rs:494-495`), 활성 상태면 disable 검사를 거친 뒤 discovered에서 제거하고, 디렉토리를 `remove_dir_all`하고, `extensions.settings` 항목을 삭제한다(`ext/enable.rs`) |
 | mount / unmount | `POST …/mount`, `…/unmount` | 디스크를 건드리지 않고 메모리에서만 등록/해제한다. unmount는 실행 중인 인스턴스만 검사하고 enabled에서도 제거한다 |
 | rescan | `POST /api/extensions/rescan` | 위 3.2 |
 
@@ -217,10 +217,10 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 3.4 원격 목록 · 설치 · 업데이트
 
-- **출처**: 최신 릴리즈의 서명된 manifest에 든 `ext-<id>` 컴포넌트다. `ExtensionManager::fetch_remote()`가 `relay::latest_catalog`를 부르고 `from_release`가 `meta`(이름·설명·작성자·`min_app_version`·의존성)와 `version`, `download_url`(R2), `sha256`, `asset`을 목록 항목으로 만든다(`ext/:1283-1324`). `manifest_url`, `set_manifest_url`, raw `main/manifest.json`은 없다. 앱보다 새 버전을 요구하면 `incompatible`로 표시한다.
+- **출처**: 최신 릴리즈의 서명된 manifest에 든 `ext-<id>` 컴포넌트다. `ExtensionManager::fetch_remote()`가 `relay::latest_catalog`를 부르고 `from_release`가 `meta`(이름·설명·작성자·`min_app_version`·의존성)와 `version`, `download_url`(R2), `sha256`, `asset`을 목록 항목으로 만든다(`ext/remote.rs`). `manifest_url`, `set_manifest_url`, raw `main/manifest.json`은 없다. 앱보다 새 버전을 요구하면 `incompatible`로 표시한다.
 - `GET /api/extensions/manifest`: 원격 목록과 `check_updates_against` 결과를 돌려준다(`handlers/extension.rs:361-382`).
 - `GET /api/extensions/updates`: 업데이트 목록만 돌려준다(`handlers/extension.rs:468-487`).
-- `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없거나 `{}`이면 원격 목록(서명된 카탈로그)에서 URL과 sha256을 찾는다. `download_url`만 주면 그 id의 카탈로그 URL과 같을 때만 카탈로그 sha256으로 받고, 다르면 해시 확인 없이 받지 않고 `sha256_required`로 거부한다. 둘 다 주면 그대로 받되, 카탈로그의 URL·해시와 같을 때만 공식 설치로 기록한다(`install_source`, `handlers/extension.rs:396-422`). 받기·검사·압축 해제는 락 없이 `stage_package`로 하고(sha256(있으면), manifest 스키마, id, `min_app_version` 확인, `ext/:1376-1415`), 폴더 교체만 write 락 안에서 `install_staged`로 한다. 실행 중인 인스턴스가 쓰는 익스텐션이면 `in_use`로 거부하고, 바꿀 폴더의 `manifest.json` id가 설치할 id와 다르면(`a-b`와 `a_b`처럼 같은 폴더 이름이 되는 다른 익스텐션) `folder_in_use`(`related`: 설치할 id, 폴더 주인 id)로 거부한다(extensions/에 둔 zip도 같다, `ensure_folder_is_free_for`). 옛 폴더는 새 폴더가 자리 잡은 뒤에 지우며 실패하면 되돌린다(`ext/:695-721,1419-1440`). 빠진 익스텐션 의존성도 차례로 함께 설치한다(`handlers/extension.rs:400-465`). 원격 목록에서 받을 때 그 버전이 설치된 버전보다 낮으면 `older_than_installed`로 거부한다(예전 서명 manifest 재전송 방지).
+- `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없거나 `{}`이면 원격 목록(서명된 카탈로그)에서 URL과 sha256을 찾는다. `download_url`만 주면 그 id의 카탈로그 URL과 같을 때만 카탈로그 sha256으로 받고, 다르면 해시 확인 없이 받지 않고 `sha256_required`로 거부한다. 둘 다 주면 그대로 받되, 카탈로그의 URL·해시와 같을 때만 공식 설치로 기록한다(`install_source`, `handlers/extension.rs:396-422`). 받기·검사·압축 해제는 락 없이 `stage_package`로 하고(sha256(있으면), manifest 스키마, id, `min_app_version` 확인, `ext/remote.rs`), 폴더 교체만 write 락 안에서 `install_staged`로 한다. 실행 중인 인스턴스가 쓰는 익스텐션이면 `in_use`로 거부하고, 바꿀 폴더의 `manifest.json` id가 설치할 id와 다르면(`a-b`와 `a_b`처럼 같은 폴더 이름이 되는 다른 익스텐션) `folder_in_use`(`related`: 설치할 id, 폴더 주인 id)로 거부한다(extensions/에 둔 zip도 같다, `ensure_folder_is_free_for`). 옛 폴더는 새 폴더가 자리 잡은 뒤에 지우며 실패하면 되돌린다(`ext/discovery.rs`·`ext/remote.rs`). 빠진 익스텐션 의존성도 차례로 함께 설치한다(`handlers/extension.rs:400-465`). 원격 목록에서 받을 때 그 버전이 설치된 버전보다 낮으면 `older_than_installed`로 거부한다(예전 서명 manifest 재전송 방지).
 - 업데이터의 일괄 업데이트(`/api/updates/*`)는 설치된 `ext-*`만 비교하고, 적용 뒤 `rescan()`으로 다시 읽는다(`src/ipc/updates.rs:575-577`).
 - 배포: 익스텐션 저장소에는 릴리즈 워크플로도 생성된 `manifest.json`도 없다(CI는 pytest·ruff만, `E:.github/workflows/ci.yml`). 코어 릴리즈 워크플로가 `saba-chan-extensions`의 `main`을 checkout하고 `versions.py manifest --extensions-repo`가 `ext-<id>.zip`을 만들어 같은 릴리즈 manifest에 싣는다(`D:.github/workflows/publish.yml` `publish` 작업, `D:scripts/versions.py:246-267`). 지금 저장소에는 `steamcmd`, `ue4_ini`, `xna` 세 개가 있다.
 
@@ -292,7 +292,7 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 | `ServerDetail.status` | `InstanceDetail.status` | `[{label, value_from}]` | 같은 곳 `slots["ServerDetail.status"]` = `[{extension, label, value}]` |
 | `AddServer.options` | `CreateInstance.options` | `[{field, type, label, default?}]` | `GET /api/extensions` 각 익스텐션 `slots["AddServer.options"]` |
 
-- 판정은 데몬이 한 번만 한다(`ExtensionManager::server_slots`, `src/extension/mod.rs`). 켜진 익스텐션만, priority·id 순. `condition`은 `evaluate_condition`(`instance.ext_data.<키>`가 참). `value`는 `extension_status[<ext>][value_from]` → `extension_status.default[value_from]` → `extension_data[value_from]` 순으로 찾고, 없거나 `value_from`이 비밀값 이름(`password`·`token`·`secret`이거나 `_password` 등으로 끝남)이면 그 줄을 뺀다(목록은 원격으로도 나간다). 문자열이 아니면 JSON 문자열로 바꾼다. 항목이 없으면 `slots` 키 자체가 없다.
+- 판정은 데몬이 한 번만 한다(`ExtensionManager::server_slots`, `src/extension/hooks.rs`). 켜진 익스텐션만, priority·id 순. `condition`은 `evaluate_condition`(`instance.ext_data.<키>`가 참). `value`는 `extension_status[<ext>][value_from]` → `extension_status.default[value_from]` → `extension_data[value_from]` 순으로 찾고, 없거나 `value_from`이 비밀값 이름(`password`·`token`·`secret`이거나 `_password` 등으로 끝남)이면 그 줄을 뺀다(목록은 원격으로도 나간다). 문자열이 아니면 JSON 문자열로 바꾼다. 항목이 없으면 `slots` 키 자체가 없다.
 - `/api/extensions`의 `slots`는 `normalized_slots(cli)`: 통일 이름 키, 값은 늘 배열. 옛 이름과 새 이름을 함께 쓰면 이어 붙인다.
 - `AddServer.options`의 답은 `POST /api/instances` 본문 `extension_data: {field: value}`로 보낸다. 데몬이 null이 아닌 값을 새 인스턴스 `extension_data`에 넣는다(객체가 아니면 400 `invalid_format`). 설치 방식이 주는 값이 뒤에서 덮는다. 짝 맺은 PC(원격 포트)는 선언한 종류에 맞는 값만 보낼 수 있고(비밀번호·파일·경로 칸은 선언한 `default` 그대로만), 웹 원격은 `extension_data`를 보내지 못한다(01 §1.4.2 3·5).
 - CLI(`saba-chan-cli/src/slots.rs`)는 이 결과를 그대로 출력한다. GUI는 같은 자리에서 번들 컴포넌트와 데이터 slot을 함께 그린다.
@@ -352,7 +352,7 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 ### 5.5 module → extension 참조 방식
 
 1. `module.toml [install] requires_extensions = [...]`. 모듈을 설치하면(데몬 `POST /api/modules/manifest/:id/install`, 설치기) 요구하는 익스텐션을 받고 켠다(02-modules §5.2). 앱 업데이트로 모듈이 바뀌어도 새로 필요해진 것 중 없는 것을 받고 켠다(02-modules §5.3). 인스턴스에 복사하지 않는다: 인스턴스가 쓰는 익스텐션은 지금 모듈의 이 목록과 인스턴스 `required_extensions`(인스턴스가 더한 것, 예전 판이 만들 때 복사해 둔 모듈 목록도 그대로 읽는다)의 합이다(`Supervisor::effective_required_extensions`). 생성 시점에 검증하고(`handlers/instance/create.rs` `create_instance_inner`), 시작 시점에 관리형·비관리형 모두 다시 검증한다(`supervisor/start.rs` `plan_start` → `extension_required`, `installed_and_enabled_set`). module 기능 엔드포인트에서도 검사한다(`handlers/managed.rs:527-562`). `[module.dependencies]`의 `ext-<id>` 버전 요구도 시작 시 검사한다(`supervisor/start.rs` `unmet_module_dependencies`).
-2. `module.toml [extensions.<id>]` 섹션은 `metadata.extensions["<id>"]`로 그대로 파싱된다(`supervisor/module_loader/raw.rs:41-45`). settings_changed context의 `module_extensions`로 전달된다.
+2. `module.toml [extensions.<id>]` 섹션은 `metadata.extensions["<id>"]`로 그대로 파싱된다(`module_loader/raw.rs:41-45`). settings_changed context의 `module_extensions`로 전달된다.
 3. Python 레벨: `from extensions.<pkg> import …`. PYTHONPATH 주입과 import 가드에 의존한다. 모듈은 `SABA_ENABLED_EXTENSIONS`를 따로 읽지 않고, import가 실패하면(없음·꺼짐, 가드의 `ModuleNotFoundError`) `error_code: "extension_required"`, `missing_extensions`로 답한다(palworld·zomboid `install_server`).
 
 ---
@@ -366,14 +366,14 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 
 ### 7.1 Dead code / 미구현
 
-3. 읽는 코드가 없는 `module_config_section` 필드(`ext/:254-256`)가 남아 있다.
+3. 읽는 코드가 없는 `module_config_section` 필드(`ext/manifest.rs`)가 남아 있다.
 
 ### 7.2 버그 · 위험
 
 6. `daemon.startup` 120초 타임아웃(`main.rs:388` → `run_hook`)이 긴 설치 작업에는 짧을 수 있다.
-9. disable은 실행 중인 인스턴스만 본다. 정지된 인스턴스가 쓰는 익스텐션을 끈 뒤 시작하면 `extension_required` 에러가 난다. (빈 값은 미사용으로 보고(`ext/:891-898`), remove는 정지된 인스턴스까지 검사한다(`handlers/extension.rs:494-495`).)
+9. disable은 실행 중인 인스턴스만 본다. 정지된 인스턴스가 쓰는 익스텐션을 끈 뒤 시작하면 `extension_required` 에러가 난다. (빈 값은 미사용으로 보고(`ext/discovery.rs`), remove는 정지된 인스턴스까지 검사한다(`handlers/extension.rs:494-495`).)
 10. `get_extension_config` 핸들러 주석은 아직 `extensionConfig.json`이라고 적혀 있다(`:573`).
-11. `saba-core`가 아닌 컴포넌트 의존성(버전을 쓴 것)을 선언하면 켤 수 없다. `saba-core`는 데몬 버전으로 검사한다(`ext/:905-908`).
+11. `saba-core`가 아닌 컴포넌트 의존성(버전을 쓴 것)을 선언하면 켤 수 없다. `saba-core`는 데몬 버전으로 검사한다(`ext/enable.rs`).
 15. GUI 번들을 Blob script로 무검증 실행하고, `window.api`에 전체 접근할 수 있다.
 16. GUI i18n이 언어 변경 시 다시 로드되지 않는다(`ExtensionContext.tsx:370`).
 

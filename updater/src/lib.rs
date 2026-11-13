@@ -476,6 +476,97 @@ pub fn retire_legacy_updater_at(install_root: &Path, installed_manifest: &Path, 
     }
 }
 
+/// 관리자를 여럿이 함께 쓸 때(데몬)의 `download_component`: 준비와 기록만 잠깐 잠그고 내려받는 동안은 잠그지 않는다.
+/// 받는 중에도 상태 조회가 기다리지 않는다. 받기끼리는 `download_turn`으로 한 번에 하나씩 한다 (같은 staging 파일에 겹쳐 쓰지 않게)
+pub async fn download_shared(manager: &tokio::sync::RwLock<UpdateManager>, component: &Component) -> Result<String> {
+    let turn = manager.read().await.download_turn.clone();
+    let _turn = turn.lock().await;
+    let job = manager.read().await.download_job(component)?;
+    let done = job.run().await?;
+    Ok(manager.write().await.record_download(done))
+}
+
+/// 관리자를 함께 쓸 때의 `download_available_updates_report`: 내려받는 동안은 잠그지 않는다 (`download_shared`와 같다)
+pub async fn download_available_shared(manager: &tokio::sync::RwLock<UpdateManager>) -> Result<(Vec<String>, Vec<(String, String)>)> {
+    let turn = manager.read().await.download_turn.clone();
+    let _turn = turn.lock().await;
+    let (staging_dir, to_download) = {
+        let mgr = manager.read().await;
+        (mgr.staging_dir.clone(), mgr.available_downloads()?)
+    };
+    let (downloaded, failed) = fetch_available(&staging_dir, &to_download).await;
+    manager.write().await.record_available(&to_download, &downloaded);
+    Ok((downloaded, failed))
+}
+
+/// 받을 수 있는 업데이트를 차례로 받는다: `(받은 파일 이름, 실패한 (키, 이유))`. 하나가 실패해도 나머지는 받는다
+async fn fetch_available(staging_dir: &Path, to_download: &[(String, ManifestComponent)]) -> (Vec<String>, Vec<(String, String)>) {
+    let client = crate::tls::http_client_builder().build().unwrap();
+    let mut downloaded = Vec::new();
+    let mut failed = Vec::new();
+    for (key, rc) in to_download {
+        let dest = staging_dir.join(&rc.filename);
+        tracing::info!("[Updater] Downloading {}", key);
+        match download::download_verified(&client, &rc.url, &dest, Some(&rc.sha256), rc.size_bytes, None).await {
+            Ok(_) => {
+                tracing::info!("[Updater] Downloaded {}", rc.filename);
+                downloaded.push(rc.filename.clone());
+            }
+            Err(e) => {
+                tracing::warn!("[Updater] Download of {} failed: {}", key, e);
+                failed.push((key.clone(), e.to_string()));
+            }
+        }
+    }
+    (downloaded, failed)
+}
+
+/// 관리자를 빌리지 않고 내려받을 판 하나 (`UpdateManager::download_job`)
+struct DownloadJob {
+    component: Component,
+    key: String,
+    rc: ManifestComponent,
+    dest: PathBuf,
+    listener: Option<DownloadListener>,
+}
+
+/// 받아 검증을 마친 판. `UpdateManager::record_download`가 상태에 적는다
+struct Downloaded {
+    component: Component,
+    rc: ManifestComponent,
+    dest: PathBuf,
+}
+
+impl DownloadJob {
+    /// 내려받고 SHA-256을 검증한다 (불일치면 파일을 지운다). 받기 시작·받은 크기·끝을 듣는 곳에 알린다
+    async fn run(self) -> Result<Downloaded> {
+        let DownloadJob { component, key, rc, dest, listener } = self;
+        tracing::info!("[Updater] Downloading {} v{}", key, rc.version);
+
+        // 받기 시작·받은 크기·끝을 듣는 곳에 알린다
+        let tell = |bytes_received: u64, total_bytes: u64, active: bool| {
+            if let Some(listener) = &listener {
+                listener(&DownloadProgress { component: Some(key.clone()), bytes_received, total_bytes, active });
+            }
+        };
+        tell(0, 0, true);
+
+        // 스트리밍 다운로드 + SHA-256 검증 (불일치면 파일 삭제)
+        let client = crate::tls::http_client_builder().build().unwrap();
+        let result = download::download_reporting(&client, &rc.url, Some(&rc.sha256), &dest, rc.size_bytes, |received, total| {
+            tell(received, total.unwrap_or(0), true)
+        })
+        .await;
+        tell(0, 0, false);
+        if let Err(e) = result {
+            // 원인(`DownloadError`)을 남겨 둔다: 데몬이 받지 못함과 검증 실패를 가른다
+            let message = format!("Failed to download {}: {}", rc.filename, e);
+            return Err(anyhow::Error::new(e).context(message));
+        }
+        Ok(Downloaded { component, rc, dest })
+    }
+}
+
 /// 설치 폴더 바로 안의 GUI 실행 파일
 pub fn find_gui_exe(install_root: &Path) -> Option<PathBuf> {
     GUI_EXE_NAMES.iter().map(|n| install_root.join(n)).find(|p| p.is_file())
@@ -662,6 +753,8 @@ pub struct UpdateManager {
     already_installed: Vec<String>,
     /// 받는 동안 진행을 듣는 곳 (없으면 알리지 않는다)
     download_listener: Option<DownloadListener>,
+    /// 잠금 밖 받기(`download_shared`)의 차례. 받기끼리 겹치지 않게 한다
+    download_turn: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl UpdateManager {
@@ -710,6 +803,7 @@ impl UpdateManager {
             restored_release: None,
             already_installed: Vec::new(),
             download_listener: None,
+            download_turn: Default::default(),
         };
         // 지난 업데이트가 남긴 .exe.old: 적용 직후엔 옛 프로세스가 쥐고 있어 못 지운 것을 다음 실행 때 지운다
         mgr.cleanup_old_files();
@@ -1117,38 +1211,27 @@ impl UpdateManager {
     /// 받을 수 있는 업데이트를 모두 받고 `(받은 파일 이름, 실패한 (키, 이유))`를 돌려준다.
     /// 하나가 실패해도 나머지는 받고, 받은 것은 상태에 남긴다. 받기 전 준비가 안 되면 Err
     pub async fn download_available_updates_report(&mut self) -> Result<(Vec<String>, Vec<(String, String)>)> {
+        let to_download = self.available_downloads()?;
+        // 하나가 실패해도 나머지는 받고, 받은 것은 상태에 남긴다
+        let (downloaded, failed) = fetch_available(&self.staging_dir, &to_download).await;
+        self.record_available(&to_download, &downloaded);
+        Ok((downloaded, failed))
+    }
+
+    /// 업데이트 가능하고 아직 다운로드하지 않은 컴포넌트 목록. staging 폴더를 만들지 못하면 Err
+    fn available_downloads(&self) -> Result<Vec<(String, ManifestComponent)>> {
         std::fs::create_dir_all(&self.staging_dir)?;
-
-        let mut downloaded = Vec::new();
-
-        // 업데이트 가능하고 아직 다운로드하지 않은 컴포넌트 목록
-        let to_download: Vec<(String, ManifestComponent)> = self.status.components.iter()
+        Ok(self.status.components.iter()
             .filter(|c| c.update_available && !c.downloaded)
             .filter_map(|c| {
                 let key = c.component.manifest_key();
                 self.manifest_entry(&key).map(|rc| (key, rc.clone()))
             })
-            .collect();
+            .collect())
+    }
 
-        // 하나가 실패해도 나머지는 받고, 받은 것은 아래에서 상태에 남긴다
-        let client = crate::tls::http_client_builder().build().unwrap();
-        let mut failed = Vec::new();
-        for (key, rc) in &to_download {
-            let dest = self.staging_dir.join(&rc.filename);
-            tracing::info!("[Updater] Downloading {}", key);
-            match download::download_verified(&client, &rc.url, &dest, Some(&rc.sha256), rc.size_bytes, None).await {
-                Ok(_) => {
-                    tracing::info!("[Updater] Downloaded {}", rc.filename);
-                    downloaded.push(rc.filename.clone());
-                }
-                Err(e) => {
-                    tracing::warn!("[Updater] Download of {} failed: {}", key, e);
-                    failed.push((key.clone(), e.to_string()));
-                }
-            }
-        }
-
-        // 상태 업데이트: downloaded 플래그 설정
+    /// 받은 파일을 상태에 적는다: downloaded 플래그 설정
+    fn record_available(&mut self, to_download: &[(String, ManifestComponent)], downloaded: &[String]) {
         for comp in &mut self.status.components {
             if let Some(ref name) = comp.asset_name {
                 if downloaded.contains(name) {
@@ -1162,12 +1245,17 @@ impl UpdateManager {
                 }
             }
         }
-
-        Ok((downloaded, failed))
     }
 
     /// 특정 컴포넌트만 다운로드
     pub async fn download_component(&mut self, component: &Component) -> Result<String> {
+        let job = self.download_job(component)?;
+        let done = job.run().await?;
+        Ok(self.record_download(done))
+    }
+
+    /// 받을 판 하나를 준비한다 (상태만 읽는다): 받을 것이 있는지, 릴리즈 manifest의 어느 파일인지
+    fn download_job(&self, component: &Component) -> Result<DownloadJob> {
         std::fs::create_dir_all(&self.staging_dir)?;
 
         let comp_status = self.status.components.iter()
@@ -1183,43 +1271,21 @@ impl UpdateManager {
             .ok_or_else(|| anyhow::anyhow!("{} is not in the release manifest", component.display_name()))?;
 
         let dest = self.staging_dir.join(&rc.filename);
+        Ok(DownloadJob { component: component.clone(), key, rc, dest, listener: self.download_listener.clone() })
+    }
 
-        tracing::info!("[Updater] Downloading {} v{}", key, rc.version);
-
-        // 받기 시작·받은 크기·끝을 듣는 곳에 알린다
-        let listener = self.download_listener.clone();
-        let tell = |bytes_received: u64, total_bytes: u64, active: bool| {
-            if let Some(listener) = &listener {
-                listener(&DownloadProgress { component: Some(key.clone()), bytes_received, total_bytes, active });
-            }
-        };
-        tell(0, 0, true);
-
-        // 스트리밍 다운로드 + SHA-256 검증 (불일치면 파일 삭제)
-        let client = crate::tls::http_client_builder().build().unwrap();
-        let result = download::download_reporting(&client, &rc.url, Some(&rc.sha256), &dest, rc.size_bytes, |received, total| {
-            tell(received, total.unwrap_or(0), true)
-        })
-        .await;
-        tell(0, 0, false);
-        if let Err(e) = result {
-            // 원인(`DownloadError`)을 남겨 둔다: 데몬이 받지 못함과 검증 실패를 가른다
-            let message = format!("Failed to download {}: {}", rc.filename, e);
-            return Err(anyhow::Error::new(e).context(message));
-        }
-
-        let asset_name = rc.filename;
-        let sha256 = Some(rc.sha256);
-
+    /// 받은 판을 상태에 적고 받은 파일 이름을 돌려준다
+    fn record_download(&mut self, done: Downloaded) -> String {
+        let Downloaded { component, rc, dest } = done;
         // 상태 업데이트
-        if let Some(comp) = self.status.components.iter_mut().find(|c| &c.component == component) {
+        if let Some(comp) = self.status.components.iter_mut().find(|c| c.component == component) {
             comp.downloaded = true;
             comp.downloaded_path = Some(dest.to_string_lossy().to_string());
-            comp.staged_sha256 = sha256;
+            comp.staged_sha256 = Some(rc.sha256);
         }
-
-        Ok(asset_name)
+        rc.filename
     }
+
     fn manifest_entry(&self, key: &str) -> Option<&ManifestComponent> {
         self.cached_manifest.as_ref()?.components.get(key)
     }

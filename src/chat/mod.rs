@@ -22,7 +22,7 @@ pub mod words;
 
 use crate::config_store::BotConfig;
 use crate::ipc::internal::InternalResponse;
-use crate::supervisor::module_loader::CommandField;
+use crate::module_loader::CommandField;
 use aliases::ModuleAliases;
 use api::{DaemonApi, ModuleView, ServerView};
 use i18n::Catalog;

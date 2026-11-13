@@ -1,5 +1,5 @@
 use super::*;
-use crate::supervisor::module_loader::{CommandAliasInfo, ModuleCommands};
+use crate::module_loader::{CommandAliasInfo, ModuleCommands};
 use serde_json::json;
 
 fn input(name: &str, ty: &str, required: bool) -> CommandInput {
@@ -56,7 +56,7 @@ fn module() -> ModuleMetadata {
     }]);
     weather.console_template = Some("weather {type}".into());
 
-    let mut meta = crate::supervisor::module_loader::parse_module_toml(
+    let mut meta = crate::module_loader::parse_module_toml(
         "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
     )
     .expect("minimal module.toml");
@@ -342,7 +342,7 @@ mod properties {
 fn command_lines_read_like_the_shared_fixture() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/command-lines.json");
     let fixture: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-    let mut meta = crate::supervisor::module_loader::parse_module_toml(
+    let mut meta = crate::module_loader::parse_module_toml(
         "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
     )
     .expect("minimal module.toml");

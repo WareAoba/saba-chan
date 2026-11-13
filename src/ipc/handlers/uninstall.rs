@@ -58,7 +58,7 @@ pub async fn uninstall(body: Option<Json<UninstallBody>>) -> axum::response::Res
         return (StatusCode::NOT_IMPLEMENTED, Json(json!({ "ok": false, "error_code": "unsupported", "error": "Remote uninstall is not available on Windows" })))
             .into_response();
     }
-    let cli = std::env::current_exe().ok().and_then(|me| me.parent().map(|d| d.join("saba-chan-cli"))).filter(|p| p.is_file());
+    let cli = std::env::current_exe().ok().and_then(|me| me.parent().map(|d| d.join(saba_chan_updater_lib::CLI_EXE))).filter(|p| p.is_file());
     let Some(cli) = cli else {
         return (StatusCode::CONFLICT, Json(json!({ "ok": false, "error_code": "cli_missing", "error": "saba-chan-cli is not next to the daemon" }))).into_response();
     };

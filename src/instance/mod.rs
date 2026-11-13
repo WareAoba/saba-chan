@@ -318,7 +318,7 @@ impl ServerInstance {
     /// 0.1.14-beta.1까지 인스턴스 칸에 있던 REST 접속값을 `module_settings`로 옮긴다 (한 번). 옮길 것이 있었으면 true.
     /// `rest`: 모듈의 `[protocols.rest]` (REST를 받지 않는 모듈이면 None: 쓰이지 않던 값이라 버린다).
     /// 인스턴스 칸이 데몬이 접속하던 값이므로 같은 설정에 남아 있던 옛 값을 덮는다. 사용자 이름은 모듈이 선언한다
-    pub fn take_legacy_rest(&mut self, rest: Option<&crate::supervisor::module_loader::RestSettings>) -> bool {
+    pub fn take_legacy_rest(&mut self, rest: Option<&crate::module_loader::RestSettings>) -> bool {
         let legacy = std::mem::take(&mut self.legacy_rest);
         if legacy == LegacyRest::default() {
             return false;
@@ -356,7 +356,7 @@ pub(crate) fn stored_setting(view: &serde_json::Value, instance: &ServerInstance
 }
 
 /// 모듈 설정 칸마다 저장된 값 (`stored_setting`, 값이 없는 칸은 뺀다). 클라이언트는 이 값을 그대로 칸 값으로 쓴다
-pub(crate) fn stored_settings(instance: &ServerInstance, fields: &[crate::supervisor::module_loader::SettingField]) -> serde_json::Map<String, serde_json::Value> {
+pub(crate) fn stored_settings(instance: &ServerInstance, fields: &[crate::module_loader::SettingField]) -> serde_json::Map<String, serde_json::Value> {
     let view = serde_json::to_value(instance).unwrap_or_default();
     fields.iter().filter_map(|f| stored_setting(&view, instance, &f.name).map(|v| (f.name.clone(), v))).collect()
 }
@@ -962,7 +962,7 @@ mod tests {
     /// 인스턴스 칸이 데몬이 접속하던 값이라 같은 설정의 옛 값을 덮는다. REST를 받지 않는 모듈이면 버린다
     #[test]
     fn rest_fields_of_an_old_instance_file_move_into_module_settings_once() {
-        use crate::supervisor::module_loader::RestSettings;
+        use crate::module_loader::RestSettings;
         let old = serde_json::json!({
             "id": "i1", "name": "pal", "module_name": "palworld", "executable_path": null, "working_dir": null, "auto_detect": true,
             "process_name": null, "port": 8211, "rest_host": "127.0.0.1", "rest_port": 8242, "rest_username": "admin", "rest_password": "pw-from-field",

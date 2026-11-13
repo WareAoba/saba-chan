@@ -168,12 +168,12 @@ fn refusal(status: StatusCode, code: &str, error: &str, fields: Option<Vec<Strin
 }
 
 /// 모듈 설정 중 원격에서 읽지도 바꾸지도 않는 비밀값 칸
-fn is_secret(f: &crate::supervisor::module_loader::SettingField) -> bool {
+fn is_secret(f: &crate::module_loader::SettingField) -> bool {
     f.field_type == "password"
 }
 
 /// 모듈 설정 중 원격에서 바꾸지 않는 칸: 비밀값과 경로(실행 파일·런타임·폴더를 고르는 칸)
-fn is_pc_only(f: &crate::supervisor::module_loader::SettingField) -> bool {
+fn is_pc_only(f: &crate::module_loader::SettingField) -> bool {
     pc_only_type(&f.field_type, f.format.as_deref()) || f.runtime.is_some()
 }
 
@@ -185,7 +185,7 @@ pub(crate) fn pc_only_type(field_type: &str, format: Option<&str>) -> bool {
 fn module_fields(
     supervisor: &crate::supervisor::Supervisor,
     module: &str,
-    keep: fn(&crate::supervisor::module_loader::SettingField) -> bool,
+    keep: fn(&crate::module_loader::SettingField) -> bool,
 ) -> Vec<String> {
     let Ok(module) = supervisor.module_loader.get_module(module) else {
         return Vec::new();

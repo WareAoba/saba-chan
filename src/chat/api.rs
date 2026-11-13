@@ -5,7 +5,7 @@
 
 use crate::ipc::internal::{into_internal, InternalResponse};
 use crate::ipc::{CommandRequest, IPCServer};
-use crate::supervisor::module_loader::CommandField;
+use crate::module_loader::CommandField;
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
@@ -52,7 +52,7 @@ pub struct ModuleView {
     /// [errors] 오류 코드 → 문구
     pub errors: HashMap<String, String>,
     /// [[presets]] 추천 설정 묶음 (heartbeat로 relay에 id·이름만 나간다)
-    pub presets: Vec<crate::supervisor::module_loader::ModulePreset>,
+    pub presets: Vec<crate::module_loader::ModulePreset>,
     /// `[commands] failure_patterns`: 콘솔 답이 맞으면 실패
     pub failure_patterns: Vec<String>,
     /// 모듈 폴더 (`locales/<lang>.json`을 읽는다). 없으면 module.toml 문구만
@@ -60,7 +60,7 @@ pub struct ModuleView {
     /// `[status] players`를 선언했다 (채팅 `players`가 접속자 조회)
     pub players: bool,
     /// 설정 스키마 (명령 결과 칸 이름을 설정 이름으로, `commands::output::labels`)
-    pub settings: Vec<crate::supervisor::module_loader::SettingField>,
+    pub settings: Vec<crate::module_loader::SettingField>,
 }
 
 impl ModuleView {

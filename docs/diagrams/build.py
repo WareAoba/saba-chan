@@ -9,7 +9,7 @@
 - 소개 사이트:        public/assets/docs/<언어>/{architecture,discord-flow,pairing}.svg (다크 사이트라 다크만)
 
 그림 내용은 코드 기준이다. 바뀌면 문구(strings.py)와 배치를 고치고 다시 만든다.
-근거: 데몬 API·인증 src/ipc, 릴레이 연결 src/relay_agent.rs, 페어링 src/ipc/handlers/relay.rs +
+근거: 데몬 API·인증 src/ipc, 릴레이 연결 src/relay_agent/, 페어링 src/ipc/handlers/relay.rs +
 server-chan relay-server/src/routes/pair.ts·services/pairing.ts, 모듈 호출 src/plugin/mod.rs.
 """
 

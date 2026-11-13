@@ -1,5 +1,5 @@
 use super::*;
-use crate::supervisor::module_loader::CommandInput;
+use crate::module_loader::CommandInput;
 use axum::http::StatusCode;
 use serde_json::json;
 use std::sync::Mutex;
