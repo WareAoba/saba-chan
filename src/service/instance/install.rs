@@ -53,7 +53,7 @@ pub(crate) async fn install(state: &IPCServer, module_name: &str, payload: &Valu
     let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
     if let Some((id, name)) = &background {
         state.provision_tracker.take_creating(id);
-        state.provision_tracker.update(id, name, version_progress(text.t("provision.version_installing", &[("version", &version)]), false, None));
+        state.provision_tracker.update(id, name, installing(text.t("provision.version_installing", &[("version", &version)])));
     }
     let job = crate::audit::spawn(run(state.clone(), module_name.to_string(), version.clone(), request, target, others));
     let version_label = version.clone();
@@ -272,12 +272,11 @@ async fn report(tracker: crate::ipc::ProvisionTracker, text: &crate::chat::i18n:
                 Some(w) => format!("{installed}\n⚠️ {w}"),
                 None => installed,
             };
-            version_progress(message, true, None)
+            crate::ipc::ProvisionProgress::finished(message, None)
         }
         // 모듈이 정한 실패 문구는 그대로, 스크립트 오류(stderr·경로)는 로그에만
-        Ok(r) => version_progress(
+        Ok(r) => crate::ipc::ProvisionProgress::finished(
             text.t("provision.install_failed", &[]),
-            true,
             Some(r.get("message").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| text.t("provision.install_failed", &[]))),
         ),
         Err(body) => {
@@ -286,7 +285,7 @@ async fn report(tracker: crate::ipc::ProvisionTracker, text: &crate::chat::i18n:
                 Some("save_failed") => text.t("provision.save_failed", &[]),
                 _ => text.t("provision.script_failed", &[]),
             };
-            version_progress(text.t("provision.install_failed", &[]), true, Some(error))
+            crate::ipc::ProvisionProgress::finished(text.t("provision.install_failed", &[]), Some(error))
         }
     };
     tracker.update(id, name, progress);
@@ -296,19 +295,9 @@ async fn report(tracker: crate::ipc::ProvisionTracker, text: &crate::chat::i18n:
     }
 }
 
-/// 버전 설치의 진행 표시 한 줄 (인스턴스 업데이트와 같은 모양)
-fn version_progress(message: String, done: bool, error: Option<String>) -> crate::ipc::ProvisionProgress {
-    crate::ipc::ProvisionProgress {
-        step: 0,
-        total: 1,
-        label: if done { "done".to_string() } else { "install".to_string() },
-        message,
-        done,
-        error,
-        percent: done.then_some(100),
-        steps: None,
-        details: Default::default(),
-    }
+/// 버전 설치를 시작한 진행 표시 (인스턴스 업데이트와 같은 모양)
+fn installing(message: String) -> crate::ipc::ProvisionProgress {
+    crate::ipc::ProvisionProgress { label: "install".to_string(), done: false, percent: None, ..crate::ipc::ProvisionProgress::finished(message, None) }
 }
 
 /// 설치가 끝난 인스턴스에 버전과 받은 실행 파일·작업 폴더를 저장한다. 모듈이 경로를 알려 주지 않으면 버전만

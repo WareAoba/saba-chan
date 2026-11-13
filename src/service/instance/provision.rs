@@ -30,7 +30,7 @@ pub(crate) async fn install_new_server(job: InstallJob) {
             Ok(m) => m.entry_path(),
             Err(e) => {
                 drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
-                tracker_done.update(&id_done, &name_done, finished(text.t("provision.install_failed", &[]), Some(text.t("provision.module_missing", &[("error", &e.to_string())]))));
+                tracker_done.update(&id_done, &name_done, crate::ipc::ProvisionProgress::finished(text.t("provision.install_failed", &[]), Some(text.t("provision.module_missing", &[("error", &e.to_string())]))));
                 return;
             }
         }
@@ -52,7 +52,7 @@ pub(crate) async fn install_new_server(job: InstallJob) {
                 Ok(version) => Some(version),
                 Err(e) => {
                     drop(install_guard.take());
-                    tracker_done.update(&id_done, &name_done, finished(text.t("provision.install_failed", &[]), Some(text.t("provision.no_latest_version", &[]))).with_failure(crate::plugin::error_response(&e)));
+                    tracker_done.update(&id_done, &name_done, crate::ipc::ProvisionProgress::finished(text.t("provision.install_failed", &[]), Some(text.t("provision.no_latest_version", &[]))).with_failure(crate::plugin::error_response(&e)));
                     return;
                 }
             }
@@ -95,11 +95,11 @@ pub(crate) async fn install_new_server(job: InstallJob) {
                 // 실행 경로를 저장하지 못했으면 설치했다고 알리지 않는다 (시작할 실행 파일을 모른다)
                 if let Err(e) = saved {
                     tracing::warn!("Native provisioning for '{}' finished but the instance could not be saved: {}", name_done, e);
-                    tracker_done.update(&id_done, &name_done, finished(text.t("provision.install_failed", &[]), Some(text.t("provision.save_failed", &[]))));
+                    tracker_done.update(&id_done, &name_done, crate::ipc::ProvisionProgress::finished(text.t("provision.install_failed", &[]), Some(text.t("provision.save_failed", &[]))));
                     return;
                 }
                 tracing::info!("Native provisioning completed for '{}'", name_done);
-                tracker_done.update(&id_done, &name_done, finished(text.t("provision.installed", &[]), None));
+                tracker_done.update(&id_done, &name_done, crate::ipc::ProvisionProgress::finished(text.t("provision.installed", &[]), None));
 
                 // 5초 후 tracker 자동 정리
                 let tracker_cleanup = tracker_done.clone();
@@ -116,30 +116,15 @@ pub(crate) async fn install_new_server(job: InstallJob) {
                 tracing::warn!("Native provisioning failed for '{}': {}", name_done, err_msg);
                 if let Some(left) = &leftovers { left.clear() }
                 drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
-                tracker_done.update(&id_done, &name_done, finished(text.t("provision.install_failed", &[]), Some(err_msg)).with_failure(val));
+                tracker_done.update(&id_done, &name_done, crate::ipc::ProvisionProgress::finished(text.t("provision.install_failed", &[]), Some(err_msg)).with_failure(val));
             }
         }
         Err(e) => {
             tracing::warn!("Native provisioning error for '{}': {}", name_done, e);
             if let Some(left) = &leftovers { left.clear() }
             drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
-            tracker_done.update(&id_done, &name_done, finished(text.t("provision.install_failed", &[]), Some(text.t("provision.script_failed", &[]))).with_failure(crate::plugin::error_response(&e)));
+            tracker_done.update(&id_done, &name_done, crate::ipc::ProvisionProgress::finished(text.t("provision.install_failed", &[]), Some(text.t("provision.script_failed", &[]))).with_failure(crate::plugin::error_response(&e)));
         }
-    }
-}
-
-/// 설치가 끝난 진행 표시 (`error`가 있으면 실패)
-fn finished(message: String, error: Option<String>) -> crate::ipc::ProvisionProgress {
-    crate::ipc::ProvisionProgress {
-        step: 0,
-        total: 1,
-        label: "done".to_string(),
-        message,
-        done: true,
-        error,
-        percent: Some(100),
-        steps: None,
-        details: Default::default(),
     }
 }
 
