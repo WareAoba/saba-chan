@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { usePageActive } from '../../hooks/usePageActive';
 import { useSwapAnimation } from '../../hooks/useSwapAnimation';
 import { useWindowSize } from '../../hooks/useWindowSize';
 import { useDiscordStore } from '../../stores/useDiscordStore';
@@ -136,9 +137,10 @@ export function DiscordPage({
 
     // 화면을 열 때 데몬 설정을 다시 읽는다: GUI가 켜진 동안 CLI로 짝짓거나 가져온 설정을 보인다
     // (기동 때 읽기가 끝나기 전이면 그쪽이 읽는다. 화면에서 고친 값은 loadConfig가 덮지 않는다)
+    const active = usePageActive();
     useEffect(() => {
-        if (useDiscordStore.getState()._botConfigLoaded) useDiscordStore.getState().loadConfig({ attempts: 1 });
-    }, []);
+        if (active && useDiscordStore.getState()._botConfigLoaded) useDiscordStore.getState().loadConfig({ attempts: 1 });
+    }, [active]);
 
     useEffect(() => {
         if (initialView) {

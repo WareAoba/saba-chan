@@ -589,7 +589,7 @@ export function ConnectionView({
                     </ol>
                     <div className="dc-conn-art">
                         {/* 그림은 칸 안에서만: 다른 것이 침범하지 않는다. 명령 전달이 꺼지면 채도를 낮춘다 */}
-                        <img src="./saba/relay.webp" alt="" draggable={false} decoding="async" />
+                        <img src="./saba/relay.webp" alt="" draggable={false} decoding="sync" />
                     </div>
                 </div>
             </section>

@@ -185,3 +185,14 @@ describe('ActivityBar', () => {
         expect(ago(now / 1000 - 7200, now, 'en')).toBe('2 hours ago');
     });
 });
+
+// 바에 올리면 바 전체가 물든다: 전역 button의 둥근 모서리(--btn-radius)를 물려받지 않는다 (사용자 11-13)
+describe('활동 줄 모양', () => {
+    it('펼치기 줄은 모서리를 깎지 않는다', async () => {
+        const fs = await import('node:fs');
+        const path = await import('node:path');
+        const css = fs.readFileSync(path.resolve(__dirname, '../styles/shell.css'), 'utf8');
+        const body = css.match(/button\.activity-line\s*\{([^}]*)\}/)?.[1] ?? '';
+        expect(body).toMatch(/border-radius:\s*0/);
+    });
+});

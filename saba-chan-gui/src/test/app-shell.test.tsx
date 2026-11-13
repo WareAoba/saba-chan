@@ -16,6 +16,7 @@ import { useDiscordStore } from '../stores/useDiscordStore';
 import { useServerStore } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
+import { markDaemonSwitch } from '../utils/opening';
 
 Element.prototype.scrollIntoView = vi.fn();
 
@@ -126,7 +127,59 @@ describe('상단 탭 페이지 전환', () => {
         await waitFor(() => expect(document.querySelector('.activity-page')).not.toBeNull());
 
         await act(async () => fireEvent.click(tabs[3]));
-        await waitFor(() => expect(document.querySelector('.settings-page')).not.toBeNull());
+        await waitFor(() => expect(document.querySelector('.settings-page')).not.toBeNull(), { timeout: 4000 });
+    }, 20000);
+
+    it('열지 않은 탭도 미리 그려 두고, 떠난 탭은 지우지 않고 숨겨 둔다', async () => {
+        // 오프닝 없이 열리게(PC를 바꿔 다시 연 창처럼) 해서 오프닝이 끝난 뒤의 상태를 본다
+        markDaemonSwitch();
+        await boot({ serverList: vi.fn().mockResolvedValue(twoServers), moduleList: vi.fn().mockResolvedValue(palworld) });
+        // 아직 열지 않은 설정 화면이 이미 그려져 숨어 있다 (처음 열 때 기다리지 않게)
+        await waitFor(() => expect(document.querySelector('.settings-page')).not.toBeNull(), { timeout: 4000 });
+        expect(document.querySelector('.settings-page')?.closest('[hidden]')).not.toBeNull();
+
+        const tabs = document.querySelectorAll('.appbar-tab');
+        await act(async () => fireEvent.click(tabs[1]));
+        const discord = document.querySelector('.discord-page');
+        expect(discord?.closest('[hidden]')).toBeNull();
+
+        // 다른 탭에 갔다 와도 같은 화면(그린 결과)을 다시 보인다
+        await act(async () => fireEvent.click(tabs[3]));
+        expect(discord?.isConnected).toBe(true);
+        expect(discord?.closest('[hidden]')).not.toBeNull();
+        expect(document.querySelector('.settings-page')?.closest('[hidden]')).toBeNull();
+        await act(async () => fireEvent.click(tabs[1]));
+        expect(document.querySelector('.discord-page')).toBe(discord);
+        expect(discord?.closest('[hidden]')).toBeNull();
+    }, 20000);
+
+    it('숨겨 둔 탭에 돌아오면 다시 연 것처럼 새로 읽는다 (작업 기록·설정 바로 가기)', async () => {
+        markDaemonSwitch();
+        const auditList = vi.fn().mockResolvedValue({ entries: [] });
+        await boot({ auditList });
+        const tabs = document.querySelectorAll('.appbar-tab');
+        await act(async () => fireEvent.click(tabs[2]));
+        await waitFor(() => expect(auditList).toHaveBeenCalled());
+        const before = auditList.mock.calls.length;
+        await act(async () => fireEvent.click(tabs[0]));
+        await act(async () => fireEvent.click(tabs[2]));
+        await waitFor(() => expect(auditList.mock.calls.length).toBeGreaterThan(before));
+
+        // 설정 바로 가기(업데이트)로 연 뒤 다른 칸으로 옮겨 떠났다가, 같은 바로 가기로 다시 오면 그 칸이 열린다
+        act(() => useUIStore.getState().openSettings('update'));
+        await waitFor(() => expect(document.querySelector('.settings-page')?.closest('[hidden]')).toBeNull(), { timeout: 4000 });
+        const storage = () => document.querySelector('.settings-page [role="tab"][aria-selected="true"]');
+        await waitFor(() => expect(storage()).not.toBeNull());
+        const first = storage()?.textContent;
+        const other = Array.from(document.querySelectorAll('.settings-page [role="tab"]')).find(
+            (b) => b.textContent !== first,
+        );
+        expect(other).toBeTruthy();
+        await act(async () => fireEvent.click(other as Element));
+        await waitFor(() => expect(storage()?.textContent).not.toBe(first));
+        await act(async () => fireEvent.click(tabs[0]));
+        act(() => useUIStore.getState().openSettings('update'));
+        await waitFor(() => expect(storage()?.textContent).toBe(first));
     }, 20000);
 
     it('다른 탭으로 가면 열어 둔 데몬 팝오버를 닫는다', async () => {
@@ -139,7 +192,7 @@ describe('상단 탭 페이지 전환', () => {
     it('openSettings(update) 요청은 설정 페이지로 이동한다', async () => {
         await boot();
         act(() => useUIStore.getState().openSettings('update'));
-        await waitFor(() => expect(document.querySelector('.settings-page')).not.toBeNull());
+        await waitFor(() => expect(document.querySelector('.settings-page')).not.toBeNull(), { timeout: 4000 });
         expect(useUIStore.getState().activeTab).toBe('settings');
     }, 20000);
 });

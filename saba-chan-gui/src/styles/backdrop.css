@@ -124,6 +124,37 @@
     }
 }
 
+/* 상단바 오른쪽 아이콘: 창 투명도를 낮추면 바탕이 거의 다 비쳐 아이콘이 묻힌다 (사용자 11-13, 시안 B).
+   알림·콘솔 아이콘은 각자, 창 버튼 셋은 하나로 묶어 연결 알약(.conn-rail)과 같은 유리 홈 위에 둔다 */
+:root[data-backdrop="on"] .appbar-status .icon-btn {
+    --btn-height: 30px;
+    width: 30px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: var(--inset);
+    color: var(--text-1);
+}
+:root[data-backdrop="on"] .appbar .appbar-window {
+    height: 30px;
+    align-self: center;
+    gap: 0;
+    padding: 0 var(--sp-0-5);
+    margin-right: var(--sp-1-5);
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: var(--inset);
+}
+:root[data-backdrop="on"] .appbar .win-btn {
+    --btn-height: 26px;
+    width: 32px;
+    border-radius: var(--r-pill);
+    color: var(--text-1);
+}
+/* 숫자 배지: 평소의 바탕색 테두리는 비치는 상단바와 색이 안 맞아 검은·회색 테두리로 보인다. 그림자로만 띄운다 */
+:root[data-backdrop="on"] .badge-count {
+    box-shadow: 0 1px 3px color-mix(in oklab, black 35%, transparent);
+}
+
 /* 따로 띄운 콘솔 창: 틀은 앱 창과 같은 반투명 바탕 */
 :root[data-backdrop="on"] .App.console-popout-app {
     background: var(--window-bg);

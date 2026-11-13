@@ -11,7 +11,7 @@ import { AppBarPill, PillRing } from './AppBarPill';
 /** 업데이트가 진행 중이면 자주, 할 일이 없으면 드물게 읽는다 (이 PC 데몬에 묻는 로컬 요청) */
 const ACTIVE_POLL_MS = 5000;
 const IDLE_POLL_MS = 60000;
-/** '완료'가 뜬 뒤 이만큼 지나 앱을 쓰기 시작하면(누르거나 치면) 알약을 누르지 않아도 지운다 (뜨자마자 누른 것은 보기 전이다) */
+/** '완료'가 뜬 뒤 다른 동작(움직이기·누르기·치기)을 하면 이만큼 지나 알약을 누르지 않아도 지운다 (사용자 11-13) */
 const DONE_SEEN_MS = 5000;
 /** 팝오버에 먼저 보이는 패치노트 줄 수. 나머지는 "패치노트 전체 보기"로 편다 */
 const NOTES_PREVIEW = 3;
@@ -203,25 +203,31 @@ export function UpdatePill() {
         if (acked.current && stateRef.current === 'done') setDismissed(true);
     };
 
-    // 완료는 앱을 쓰기 시작하면 지운다: 알약·팝오버 밖을 누르거나 키를 치면 확인한 것으로 본다
+    // 완료는 다른 동작을 하면 5초 뒤 지운다: 알약·팝오버 밖에서 움직이거나 누르거나 치면 그때부터 잰다.
+    // 알약 위에 올리거나 팝오버를 열어 보는 중이면 지우지 않고 다음 동작을 기다린다
+    const openRef = useRef(open);
+    openRef.current = open;
     useEffect(() => {
         if (state !== 'done') return undefined;
-        const shownAt = Date.now();
+        let timer: ReturnType<typeof setTimeout> | undefined;
         const onUse = (e: Event) => {
-            if (Date.now() - shownAt < DONE_SEEN_MS) return;
             const target = e.target instanceof Element ? e.target : null;
-            if (target?.closest('.appbar-pill, .update-pill-pop')) return;
-            if (!acked.current) {
-                acked.current = true;
-                Promise.resolve(window.api?.updaterPhaseAck?.()).catch(() => {});
-            }
-            setDismissed(true);
+            if (timer || target?.closest('.appbar-pill, .update-pill-pop')) return;
+            timer = setTimeout(() => {
+                timer = undefined;
+                if (openRef.current || anchor.current?.matches(':hover')) return;
+                if (!acked.current) {
+                    acked.current = true;
+                    Promise.resolve(window.api?.updaterPhaseAck?.()).catch(() => {});
+                }
+                setDismissed(true);
+            }, DONE_SEEN_MS);
         };
-        window.addEventListener('pointerdown', onUse, true);
-        window.addEventListener('keydown', onUse, true);
+        const events = ['pointermove', 'pointerdown', 'keydown', 'wheel'];
+        for (const name of events) window.addEventListener(name, onUse, true);
         return () => {
-            window.removeEventListener('pointerdown', onUse, true);
-            window.removeEventListener('keydown', onUse, true);
+            clearTimeout(timer);
+            for (const name of events) window.removeEventListener(name, onUse, true);
         };
     }, [state]);
 
