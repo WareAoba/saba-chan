@@ -3,6 +3,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { useDevMode } from '../../hooks/useDevMode';
+import { usePageActive } from '../../hooks/usePageActive';
 import { useSettingsStore, DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
 import type { ModalConfig, ProgressBarConfig } from '../../stores/useUIStore';
 import type { ApiBody } from '../../types/daemon';
@@ -100,14 +101,17 @@ function SettingsModal({
     const devMode = useDevMode();
 
     // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입 (설정 탭 이름이면 그 탭: 화면 주소 settings/<탭>)
+    // 숨겨 둔 설정 탭에 같은 바로 가기로 다시 와도 그 칸을 연다
+    const active = usePageActive();
     useEffect(() => {
+        if (!active) return;
         if (initialView === 'update' || initialView === 'extensions' || initialView === 'modules') {
             setStorageTab(initialView === 'update' ? 'components' : initialView);
             setActiveTab('sabaStorage');
         } else if ((TABS as readonly string[]).includes(initialView ?? '') || initialView?.startsWith('ext:')) {
             setActiveTab(initialView as SettingsTab | `ext:${string}`);
         }
-    }, [initialView]);
+    }, [initialView, active]);
 
     // 앱 버전 & 컴포넌트 정보 가져오기
     useEffect(() => {

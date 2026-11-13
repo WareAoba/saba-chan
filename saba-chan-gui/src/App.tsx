@@ -66,6 +66,7 @@ import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice'
 import { warmTabArt, whenIdle } from './utils/warmArt';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
+import { PageActiveContext } from './hooks/usePageActive';
 import { useSlowProgressBubble } from './hooks/useSlowProgressBubble';
 import './styles/shell.css';
 import './styles/backdrop.css';
@@ -962,7 +963,9 @@ function KeptPage({ active, ready, children }: { active: boolean; ready: boolean
     if (!kept) return null;
     return (
         <div className="app-page" hidden={!active}>
-            <PageBody active={active}>{children}</PageBody>
+            <PageActiveContext.Provider value={active}>
+                <PageBody active={active}>{children}</PageBody>
+            </PageActiveContext.Provider>
         </div>
     );
 }

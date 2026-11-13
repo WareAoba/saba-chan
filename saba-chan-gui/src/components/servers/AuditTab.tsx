@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import type { ComponentProps, ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { usePageActive } from '../../hooks/usePageActive';
 import { useServerStore } from '../../stores/useServerStore';
 import {
     type AuditEntry,
@@ -122,9 +123,11 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
         }
     }, [instanceId, limit, rangeKey, t]);
 
+    // 탭을 다시 열 때마다 새로 읽는다 (떠난 탭은 숨겨 둘 뿐 지우지 않는다)
+    const active = usePageActive();
     useEffect(() => {
-        load();
-    }, [load]);
+        if (active) load();
+    }, [load, active]);
 
     // 기간을 바꾸면 처음 쪽부터 다시
     const changePeriod = (next: string) => {
