@@ -20,9 +20,7 @@ use axum::{
 use serde_json::{json, Value};
 
 use super::super::IPCServer;
-
-pub const KEY: &str = "startNotice";
-pub const FULL_KEY: &str = "fullNotice";
+use crate::service::discord::{FULL_NOTICE_KEY as FULL_KEY, START_NOTICE_KEY as KEY};
 
 fn ids(node: Option<&Value>, key: &str) -> Option<Vec<String>> {
     Some(node?.get(key)?.as_array()?.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())

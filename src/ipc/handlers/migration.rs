@@ -366,7 +366,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         keys
     } else {
         // 챗봇 절은 챗봇 저장과 같은 차례를 지킨다
-        let _turn = if sections.contains_key("chatbot") { Some(super::chatbot::SAVE_LOCK.lock().await) } else { None };
+        let _turn = if sections.contains_key("chatbot") { Some(crate::service::chatbot::SAVE_LOCK.lock().await) } else { None };
         match state.config_store.import_sections(sections).await {
             Ok(keys) => {
                 // 일반 설정 저장과 같이 실행 중인 포트 검사도 맞춘다
@@ -544,7 +544,7 @@ mod tests {
         config.insert("chatbot".into(), json!({}));
         let bundle = Bundle { meta: meta(), config, instances: vec![], node_token: None };
         let (state, path) = import_state(dir.path(), bundle, None).await;
-        let turn = super::super::chatbot::SAVE_LOCK.lock().await;
+        let turn = crate::service::chatbot::SAVE_LOCK.lock().await;
         let req: ImportRequest = serde_json::from_value(json!({ "path": path })).unwrap();
         let run = tokio::spawn(import(State(state), Json(req)));
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;

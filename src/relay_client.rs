@@ -336,6 +336,13 @@ pub(crate) fn store_node_token(file: &ConfigFile, token: Option<&str>) -> Stored
     }
 }
 
+/// 요청을 보내고 (릴레이의 상태 코드, JSON 본문)을 돌려준다. 본문이 JSON이 아니면 None
+pub(crate) async fn send(req: reqwest::RequestBuilder) -> Result<(axum::http::StatusCode, Option<Value>), reqwest::Error> {
+    let resp = req.send().await?;
+    let code = axum::http::StatusCode::from_u16(resp.status().as_u16()).unwrap_or(axum::http::StatusCode::BAD_GATEWAY);
+    Ok((code, resp.json::<Value>().await.ok()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

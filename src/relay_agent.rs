@@ -252,7 +252,7 @@ impl RelayAgent {
             tracing::info!("[RelayAgent] started (relay={})", session.base);
             // 디스코드 길드 설정과 챗봇 설정은 데몬이 원본 (I2): 연결될 때마다 릴레이에 맞춘다. 첫 하트비트 응답을 처리한 뒤에 보낸다:
             // 꺼져 있는 동안 다시 묶인 길드(`linkedGuilds`)는 릴레이 값을 먼저 받아야 옛 사본으로 덮지 않는다
-            crate::ipc::handlers::discord::request_sync();
+            crate::service::discord::request_sync();
             tokio::join!(session.heartbeat_loop(), session.poll_loop(), session.events_loop(), session.unsent_loop());
             agent.finish(generation, None);
             tracing::info!("[RelayAgent] stopped");
@@ -793,17 +793,17 @@ impl Session {
                     tokio::spawn(async move {
                         tokio::select! {
                             _ = cancel.cancelled() => {}
-                            _ = crate::ipc::handlers::chatbot::sync_on_connect(&server) => {}
+                            _ = crate::service::chatbot::sync_on_connect(&server) => {}
                         }
                     });
                 }
                 // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다 (세션과 함께 멈춘다)
-                if crate::ipc::handlers::discord::take_pending_sync() {
+                if crate::service::discord::take_pending_sync() {
                     let (server, cancel) = (self.server.clone(), self.cancel.clone());
                     tokio::spawn(async move {
                         tokio::select! {
                             _ = cancel.cancelled() => {}
-                            _ = crate::ipc::handlers::discord::sync_on_connect(&server) => {}
+                            _ = crate::service::discord::sync_on_connect(&server) => {}
                         }
                     });
                 }
@@ -899,11 +899,11 @@ impl Session {
         }
         dm_notice_meta(&mut meta, &bot);
         // 길드별 자리 꽉 참 알림을 켠 서버 (`/api/instance/:id/full-notice/:guild`). 켠 길드만 싣는다
-        if let Some(on) = ids_by_guild(&bot.node_settings, crate::ipc::handlers::start_notice::FULL_KEY) {
+        if let Some(on) = ids_by_guild(&bot.node_settings, crate::service::discord::FULL_NOTICE_KEY) {
             meta["fullNotice"] = on;
         }
         // 길드별 켜짐 알림을 켠 서버 (`/api/instance/:id/start-notice/:guild`). 켠 길드만 싣는다
-        if let Some(on) = ids_by_guild(&bot.node_settings, crate::ipc::handlers::start_notice::KEY) {
+        if let Some(on) = ids_by_guild(&bot.node_settings, crate::service::discord::START_NOTICE_KEY) {
             meta["startNotice"] = on;
         }
         // 인스턴스별로 서버와 명령을 부르는 낱말 (어느 길드에서나 같다, 릴레이는 찾기·위험 확인에 쓴다).
@@ -1159,8 +1159,8 @@ impl Session {
             let waiting = link_id.as_ref().is_some_and(|id| self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).contains(id));
             // 풀었다가 다시 묶은 길드는 PC 없는 동안 디스코드에서 바꾼 길드·챗봇 설정을 받는다. 못 받았으면 확인 응답을 미뤄 다음 하트비트에 다시 한다
             if !waiting
-                && !(crate::ipc::handlers::discord::adopt_linked_guild(&self.server, guild).await
-                    && crate::ipc::handlers::chatbot::adopt_linked_guild(&self.server, guild).await)
+                && !(crate::service::discord::adopt_linked_guild(&self.server, guild).await
+                    && crate::service::chatbot::adopt_linked_guild(&self.server, guild).await)
             {
                 tracing::warn!("[RelayAgent] could not read the settings of relinked guild {}; trying again at the next heartbeat", guild);
                 continue;

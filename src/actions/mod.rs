@@ -732,7 +732,7 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
     let bot = server.config_store.get_bot_config().await;
     let node = bot.node_settings.get(guild_id);
     let perms = NodePermissions::from_node(node);
-    let risks = crate::ipc::handlers::discord::GuildSettings::from_node(node).unwrap_or_default().command_risks;
+    let risks = crate::service::discord::GuildSettings::from_node(node).unwrap_or_default().command_risks;
     let allowed: Option<Vec<String>> =
         node.and_then(|n| n.get("allowedInstances")).and_then(Value::as_array).map(|l| l.iter().filter_map(|v| v.as_str().map(str::to_string)).collect());
     let instances: Vec<(String, String, String)> = {
@@ -1533,7 +1533,7 @@ pub async fn needs_confirm(server: &IPCServer, action: &str, instance: Option<&s
     };
     let guild = who.guild_id.as_deref().unwrap_or("");
     let node = server.config_store.get_bot_config().await.node_settings.get(guild).cloned();
-    let settings = crate::ipc::handlers::discord::GuildSettings::from_node(node.as_ref()).unwrap_or_default();
+    let settings = crate::service::discord::GuildSettings::from_node(node.as_ref()).unwrap_or_default();
     // 길드가 이 명령의 위험 단계를 바꿨으면 그 단계로 묻는다
     let key = instance.map_or_else(|| action.to_string(), |i| format!("{i}/{action}"));
     let risk = settings.command_risks.get(&key).map_or(risk, String::as_str);

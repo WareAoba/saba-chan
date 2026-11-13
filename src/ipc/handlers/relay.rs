@@ -50,12 +50,7 @@ pub(crate) fn client() -> Result<reqwest::Client, Response> {
 /// 요청을 보내고 (릴레이의 상태 코드, JSON 본문)을 돌려준다. 본문이 JSON이 아니면 None
 #[allow(clippy::result_large_err)]
 pub(crate) async fn send(req: reqwest::RequestBuilder) -> Result<(StatusCode, Option<Value>), Response> {
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| error(StatusCode::BAD_GATEWAY, format!("Relay connection failed: {}", e)))?;
-    let code = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-    Ok((code, resp.json::<Value>().await.ok()))
+    crate::relay_client::send(req).await.map_err(|e| error(StatusCode::BAD_GATEWAY, format!("Relay connection failed: {}", e)))
 }
 
 /// 서명한 GET을 보내고 답을 전달한다. 본문이 JSON이 아니면 `fallback(상태)`

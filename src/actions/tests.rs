@@ -1538,7 +1538,7 @@ async fn local_surfaces_ask_for_danger_and_for_stopping_a_server() {
 /// 확인 단계 값은 정해진 넷만 받는다
 #[test]
 fn the_direct_confirm_level_takes_only_known_values() {
-    let mut s = crate::ipc::handlers::discord::GuildSettings::default();
+    let mut s = crate::service::discord::GuildSettings::default();
     assert_eq!(s.confirm_level, "danger");
     s.apply(json!({ "confirmLevel": "none" }).as_object().unwrap()).unwrap();
     assert_eq!(s.confirm_level, "none");
@@ -1611,7 +1611,7 @@ async fn a_guild_can_retier_one_command_for_discord_confirms() {
 /// 명령별 위험 단계는 safe·caution·danger만 받고, null이면 지운다
 #[test]
 fn command_risks_take_known_tiers_and_null_removes() {
-    let mut s = crate::ipc::handlers::discord::GuildSettings::default();
+    let mut s = crate::service::discord::GuildSettings::default();
     s.apply(json!({ "commandRisks": { "i/server.start": "danger" } }).as_object().unwrap()).unwrap();
     assert_eq!(s.command_risks.get("i/server.start").map(String::as_str), Some("danger"));
     assert_eq!(s.apply(json!({ "commandRisks": { "i/x": "scary" } }).as_object().unwrap()).unwrap_err().0, "commandRisks.i/x");

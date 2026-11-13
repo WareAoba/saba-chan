@@ -3,7 +3,9 @@
 //! 핸들러는 요청을 풀어 여기를 부르고 결과를 응답으로 바꾸기만 한다
 
 pub(crate) mod backup;
+pub(crate) mod chatbot;
 pub(crate) mod command;
+pub(crate) mod discord;
 pub mod lifecycle;
 pub(crate) mod onboarding;
 pub mod server_update;
