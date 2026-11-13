@@ -78,7 +78,7 @@ mod tests {
         assert_eq!(status, 201, "{made}");
         let id = made["id"].as_str().unwrap().to_string();
         // 미검증 모듈은 알림을 싣는다
-        assert_eq!(made, json!({ "success": true, "id": id, "module_trust": "unverified", "warnings": [{ "code": "module_unverified", "isolated": false, "module": "game" }] }));
+        assert_eq!(made, json!({ "success": true, "id": id, "module_trust": "unverified", "warnings": [{ "code": "module_unverified", "isolated": cfg!(windows), "module": "game" }] }));
         let taken = answer(create(json!({ "name": "G", "module_name": "game" })).await);
         assert_eq!(taken, (409, json!({ "success": false, "error": "An instance named 'G' already exists", "error_code": "name_taken" })));
         let checked = answer(check(json!({ "name": "g", "module_name": "game" })).await).1;
