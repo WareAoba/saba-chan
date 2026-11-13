@@ -10,14 +10,7 @@ async fn server() -> (IPCServer, String, tempfile::TempDir) {
     server_with(MODULE).await
 }
 
-async fn server_with(module: &str) -> (IPCServer, String, tempfile::TempDir) {
-    crate::ipc::auth::ensure_test_token();
-    let tmp = tempfile::tempdir().unwrap();
-    let modules = tmp.path().join("modules");
-    let dir = modules.join("plain");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("module.toml"), module).unwrap();
-    std::fs::write(dir.join("lifecycle.py"), r#"import json, sys
+const LIFECYCLE: &str = r#"import json, sys
 json.load(sys.stdin)
 function = sys.argv[1]
 if function == "functions":
@@ -27,7 +20,20 @@ elif function in ("configure", "read_properties"):
 else:
     result = {"success": False, "error_code": "not_supported", "message": "Fixture function not supported"}
 print(json.dumps(result))
-"#).unwrap();
+"#;
+
+async fn server_with(module: &str) -> (IPCServer, String, tempfile::TempDir) {
+    server_running(module, LIFECYCLE).await
+}
+
+async fn server_running(module: &str, lifecycle: &str) -> (IPCServer, String, tempfile::TempDir) {
+    crate::ipc::auth::ensure_test_token();
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let dir = modules.join("plain");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("module.toml"), module).unwrap();
+    std::fs::write(dir.join("lifecycle.py"), lifecycle).unwrap();
     std::fs::create_dir_all(dir.join("locales")).unwrap();
     std::fs::write(dir.join("locales").join("ko.json"), MODULE_KO).unwrap();
     crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
@@ -1851,4 +1857,41 @@ async fn members_servers_listen_only_to_their_members_and_shared_servers_follow_
     let board = permission_board(&state, "g", "ko").await;
     let start = board["items"].as_array().unwrap().iter().find(|i| i["key"] == format!("{id}/start")).cloned().unwrap();
     assert_eq!((&start["level"], &start["controllers"]), (&json!(1), &json!(true)));
+}
+
+/// 저장 후 정지를 요청할 길이 없는 서버(MK10)도 디스코드·챗봇의 정지는 묻지 않고 바로 강제 정지한다 (사용자 2026-11-13).
+/// 이 PC 화면(GUI·CLI)은 그대로 `graceful_stop_unavailable`을 받아 사용자에게 묻는다
+#[cfg(unix)]
+#[tokio::test]
+async fn a_discord_stop_of_a_server_that_cannot_save_stops_it_anyway() {
+    let lifecycle = "import json, os, signal, sys\n\
+config = json.load(sys.stdin)\n\
+if sys.argv[1] == 'stop' and not config.get('force'):\n    \
+print(json.dumps({'success': False, 'error_code': 'graceful_stop_unavailable', 'message': 'no console'}))\n\
+elif sys.argv[1] == 'stop':\n    os.kill(config['pid'], signal.SIGKILL)\n    print(json.dumps({'success': True}))\n\
+else:\n    print(json.dumps({'success': True}))\n";
+    let (state, id, _tmp) = server_running(MODULE, lifecycle).await;
+    set_node(&state, json!({ "ownerDiscordId": "owner" })).await;
+    let spawn = || std::process::Command::new("sleep").arg("30").spawn().unwrap();
+    let stop = |caller: Caller| {
+        let (state, id) = (state.clone(), id.clone());
+        async move {
+            let planned = plan(&state, "server.stop", Some(&id), &json!({}), &caller).await.unwrap();
+            run(&state, "server.stop", Some(&id), &json!({}), planned["planId"].as_str(), &caller).await.unwrap()
+        }
+    };
+
+    let mut local = spawn();
+    state.supervisor.read().await.tracker.track(&id, local.id()).unwrap();
+    let out = stop(gui()).await;
+    assert_eq!(out["result"]["error_code"], "graceful_stop_unavailable", "{out}");
+    assert!(local.try_wait().unwrap().is_none(), "the app asks before stopping without saving");
+    let _ = local.kill();
+    let _ = local.wait();
+
+    let mut child = spawn();
+    state.supervisor.read().await.tracker.track(&id, child.id()).unwrap();
+    let out = stop(relay("owner", false)).await;
+    assert_eq!(out["success"], true, "{out}");
+    assert!(child.wait().is_ok());
 }
