@@ -223,7 +223,7 @@ zomboid의 `beta_branch` 키와 lifecycle의 `use_beta` 분기는 지워졌다. 
 
 #### `[aliases]`
 `module_aliases: Vec<String>`, `[aliases.commands.<cmd>] = { aliases = [...], description = "..." }`. 여기에는 언어가 없는 낱말(`pz`·`mc` 같은 약어)만 둔다. 이 낱말은 어느 언어에서나 맞춘다.
-언어마다의 별명은 모듈 locales `<lang>.json`의 `aliases`에 둔다: `{"module": [낱말], "commands": {"<명령>": [낱말]}}`. 명령 이름은 내장(`start`·`stop`·`status`), 접속자 조회(`players`), `[[commands.fields]]`의 이름이다. 별명이 없는 언어는 키를 두지 않아도 된다(conformance `alias_problems`). 게임명은 module.toml `display_name`과 그 언어 locales의 `module.display_name`이다.
+언어마다의 별명은 모듈 locales `<lang>.json`의 `aliases`에 둔다: `{"module": [낱말], "commands": {"<명령>": [낱말]}}`. 명령 이름은 내장(`start`·`stop`·`status`), 접속자 조회(`players`, `[status] players`를 선언한 모듈만), 채팅에서 부를 수 있는 `[[commands.fields]]`(`remote = false`가 아닌 것)의 이름이다. 별명이 없는 언어는 키를 두지 않아도 된다(conformance `alias_problems`). 게임명은 module.toml `display_name`과 그 언어 locales의 `module.display_name`이다.
 채팅(디스코드)은 답하는 언어(디스코드는 길드 봇 언어, 없으면 앱 언어)의 별명·게임명만 맞춘다(`ModuleView::in_language`, `chat::api::locale_aliases`). 모듈 이름·명령 이름·서버 이름은 언어와 상관없이 늘 맞춘다. 게임명·별명으로 서버를 부르는 것은 그 게임의 서버가 하나일 때만이다(01 §4 `serverWords`). `GET /api/modules`의 `module_aliases`·`command_aliases`는 module.toml 낱말에 앱 언어의 locales 별명을 더한 값이다(GUI·CLI가 쓴다).
 
 #### `[errors]`
@@ -513,7 +513,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | import_settings (호출) | ✔ | ✔ | ✔ | ✔ |
 | config_files (호출) | ✔ | ✔ | ✔ | – |
 | backup_paths (hook일 때 호출) | ✔ | ✔ | ✔ | – |
-| player_count (`[status] players`) | ✔ | ✔ | – | – |
+| player_count (`[status] players`) | ✔ | ✔ | ✔ | – |
 | instance_commands (호출) | ✔ | – | – | – |
 
 출처: 각 lifecycle의 최상위 `FUNCTIONS` 표 (2026-10-22 대조).
