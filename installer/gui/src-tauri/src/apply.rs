@@ -245,8 +245,8 @@ fn health_rule(launched: &Launched, old_pid: Option<u32>, since_ms: u64) -> live
 }
 
 fn is_daemon_exe(cmd: &str) -> bool {
-    let name = cmd.rsplit(['/', '\\']).next().unwrap_or(cmd);
-    name.eq_ignore_ascii_case("saba-core") || name.eq_ignore_ascii_case("saba-core.exe")
+    let name = cmd.rsplit(['/', '\\']).next().unwrap_or(cmd).to_ascii_lowercase();
+    name.strip_suffix(".exe").unwrap_or(&name) == saba_chan_updater_lib::CORE_STEM
 }
 
 /// 되돌린 뒤 이전 판을 띄우는 명령. 서비스는 이미 떠 있을 수 있으니(관리자가 새 판을 다시 띄움) 다시 시작한다:

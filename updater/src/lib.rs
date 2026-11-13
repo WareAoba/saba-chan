@@ -404,17 +404,37 @@ fn read_extension_version(manifest: &Path) -> Option<(String, String)> {
     Some((v.get("id")?.as_str()?.to_string(), v.get("version")?.as_str()?.to_string()))
 }
 
+/// 설치 폴더의 실행 파일 이름 표 (정본). `*_STEM`은 확장자 없는 이름(설치기가 끌 프로세스·지울 항목을 견준다),
+/// `*_EXE`는 이 OS의 파일 이름이다. 설치기·설치 창·GUI 셸·업데이터가 모두 여기서 가져온다
+macro_rules! exe_names {
+    ($($(#[$doc:meta])* $stem:ident, $exe:ident = $name:literal;)*) => {$(
+        $(#[$doc])*
+        pub const $stem: &str = $name;
+        $(#[$doc])*
+        pub const $exe: &str = if cfg!(windows) { concat!($name, ".exe") } else { $name };
+    )*};
+}
+
+exe_names! {
+    /// 데몬. 설치 목록의 폴더에 이것이 남아 있어야 설치본으로 친다
+    CORE_STEM, CORE_EXE = "saba-core";
+    /// 관리 모드 게임 서버를 잡(Job Object)에 묶는 러너
+    RUNNER_STEM, RUNNER_EXE = "saba-runner";
+    CLI_STEM, CLI_EXE = "saba-chan-cli";
+    GUI_STEM, GUI_EXE = "saba-chan-gui";
+    /// 0.1.1 Electron GUI의 productName (옛 설치본, Electron 폴더를 그대로 담은 0.1.1 GUI zip)
+    LEGACY_GUI_STEM, LEGACY_GUI_EXE = "Saba-chan";
+    /// 설치기가 설치 폴더에 남기는 자기 사본 (제거에 쓴다)
+    INSTALLER_STEM, INSTALLER_EXE = "saba-chan-installer";
+    /// 0.1.12 전에 업데이트를 적용하던 옛 업데이터. 지금은 설치기(`INSTALLER_EXE --apply`)가 적용한다
+    LEGACY_UPDATER_STEM, LEGACY_UPDATER_EXE = "saba-chan-updater";
+}
+
 /// GUI 실행 파일 이름들: 표준 이름과, 0.1.1 GUI zip처럼 Electron 폴더를 그대로 담은 경우의 productName
-pub const GUI_EXE_NAMES: &[&str] = if cfg!(windows) { &["saba-chan-gui.exe", "Saba-chan.exe"] } else { &["saba-chan-gui"] };
+pub const GUI_EXE_NAMES: &[&str] = if cfg!(windows) { &[GUI_EXE, LEGACY_GUI_EXE] } else { &[GUI_EXE] };
 
 /// 설치기가 업데이트 적용(`--apply`)을 맡은 첫 판. 이보다 옛 설치기(Windows 0.1.12-beta.1까지)는 `--apply`를 모르고 설치 창을 연다
 pub const INSTALLER_APPLIES_SINCE: &str = "0.1.12-beta.2";
-
-/// 설치기가 설치 폴더에 남기는 자기 사본 (제거에 쓴다)
-pub const INSTALLER_EXE: &str = if cfg!(windows) { "saba-chan-installer.exe" } else { "saba-chan-installer" };
-
-/// 0.1.12 전에 업데이트를 적용하던 옛 업데이터. 지금은 설치기(`INSTALLER_EXE --apply`)가 적용한다
-pub const LEGACY_UPDATER_EXE: &str = if cfg!(windows) { "saba-chan-updater.exe" } else { "saba-chan-updater" };
 
 /// 설치기가 있으면 설치 폴더에 남은 옛 업데이터와 그 버전·파일 기록을 지운다. 실패해도 다음에 다시 한다
 pub fn retire_legacy_updater() {

@@ -169,24 +169,16 @@ async fn finish_background_init(app: &AppHandle) {
 
 // ── 데몬 기동 ──
 
-pub fn daemon_file_name() -> &'static str {
-    if cfg!(windows) {
-        "saba-core.exe"
-    } else {
-        "saba-core"
-    }
-}
-
 /// 개발: 저장소의 target/release(없으면 debug), 배포: 설치 루트
 fn daemon_path(install_root: &Path) -> PathBuf {
     if cfg!(debug_assertions) {
-        let release = install_root.join("target").join("release").join(daemon_file_name());
+        let release = install_root.join("target").join("release").join(saba_chan_updater_lib::CORE_EXE);
         if release.exists() {
             return release;
         }
-        return install_root.join("target").join("debug").join(daemon_file_name());
+        return install_root.join("target").join("debug").join(saba_chan_updater_lib::CORE_EXE);
     }
-    install_root.join(daemon_file_name())
+    install_root.join(saba_chan_updater_lib::CORE_EXE)
 }
 
 impl Lifecycle {
