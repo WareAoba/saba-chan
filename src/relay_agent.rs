@@ -3190,6 +3190,8 @@ mod tests {
         const MAPS: &[&str] = &[
             "metadata.allowedInstances", "metadata.fullNotice", "metadata.startNotice", "metadata.serverWords", "metadata.serverWords.*.commands",
             "metadata.permissions", "metadata.permissions.*.members", "metadata.permissions.*.commandLevels",
+            "metadata.permissions.*.required.actions", "metadata.permissions.*.required.commands", "metadata.permissions.*.required.commands.*",
+            "metadata.permissions.*.required.servers", "metadata.permissions.*.required.servers.*.actions", "metadata.permissions.*.required.servers.*.commands",
             "metadata.actions[].title", "metadata.actions[].name", "metadata.actions[].description",
             "metadata.modules[].display_names", "metadata.modules[].module_aliases_by_language",
             "metadata.modules[].commands.fields[].titles", "metadata.modules[].commands.fields[].descriptions",
