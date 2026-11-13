@@ -1868,7 +1868,7 @@ pub async fn run_hook_timed(
     timeout_secs: u64,
 ) -> Vec<(String, Result<Value>)> {
     // 계획(옛 경로)부터 실행이 끝날 때까지 익스텐션 폴더를 옮기지 못하게 한다 (hook이 그 폴더의 파일을 실행하고 쓴다)
-    let _in_use = crate::ipc::handlers::paths::components_in_use().await;
+    let _in_use = crate::component_lock::in_use().await;
     let plan = mgr.read().await.plan_hook(hook_name, context, None);
     plan.run(timeout_secs).await
 }
@@ -1880,7 +1880,7 @@ pub async fn run_hook_to(
     hook_name: &str,
     context: Value,
 ) -> Option<Result<Value>> {
-    let _in_use = crate::ipc::handlers::paths::components_in_use().await;
+    let _in_use = crate::component_lock::in_use().await;
     let plan = mgr.read().await.plan_hook(hook_name, context, Some(ext_id));
     plan.run(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await.into_iter().next().map(|(_, r)| r)
 }

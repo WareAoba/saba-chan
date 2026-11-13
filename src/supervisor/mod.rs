@@ -669,7 +669,7 @@ impl Supervisor {
         let mut required = self
             .module_loader
             .get_module(&instance.module_name)
-            .map(|m| crate::ipc::handlers::server::required_extensions(&m))
+            .map(|m| m.required_extensions())
             .unwrap_or_default();
         for ext in &instance.required_extensions {
             if !required.contains(ext) {

@@ -64,8 +64,8 @@ pub async fn get_settings(State(state): State<IPCServer>) -> Json<Value> {
         "publicIp": state.relay_agent.seen_address(),
     });
     // 원격 데몬의 이벤트 중 이 PC가 시킨 것(`remoteHost`)을 가리는 데 쓴다 (셸 효과음)
-    let host = crate::ipc::handlers::relay::load_node_token();
-    v["hostId"] = json!(host.as_deref().and_then(|t| crate::ipc::handlers::relay::parse_node_token(t.trim())).map_or("", |(id, _)| id));
+    let host = crate::relay_client::load_node_token();
+    v["hostId"] = json!(host.as_deref().and_then(|t| crate::relay_client::parse_node_token(t.trim())).map_or("", |(id, _)| id));
     Json(v)
 }
 
@@ -497,7 +497,7 @@ async fn body_json(res: Response) -> Value {
 
 /// 이 PC와 저장한 원격 데몬마다의 서버 목록. 원격 데몬은 동시에 묻고, 포트 충돌 알림은 비우지 않는다(`notices=keep`)
 async fn all_servers_with(file: &ConfigFile, state: &IPCServer, timeout: std::time::Duration) -> Value {
-    let local = body_json(crate::ipc::handlers::server::list_servers_internal(state).await).await;
+    let local = body_json(crate::service::servers::list(state, 0).await).await;
     let mut daemons = vec![json!({ "hostId": null, "name": "", "label": "", "ok": true, "servers": local["servers"].as_array().cloned().unwrap_or_default() })];
     let relay = relay_target(state).await;
     let asks = config::daemons_in(file).into_iter().map(|d| {

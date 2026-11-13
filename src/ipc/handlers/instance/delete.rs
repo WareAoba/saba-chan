@@ -97,7 +97,7 @@ pub async fn delete_instance(
     Query(query): Query<DeleteQuery>,
 ) -> impl IntoResponse {
     // 백업·복원·업데이트 중에는 폴더를 지우지 않는다
-    let Some(guard) = super::super::backup::InstanceLock::take_for_writes(&id).await else {
+    let Some(guard) = crate::instance::lock::InstanceLock::take_for_writes(&id).await else {
         return super::super::backup::instance_busy();
     };
     // 요청이 끊겨도 정지·삭제를 끝까지 한다: 추적을 뺀 채 멈추면 돌던 서버가 추적 밖에 남는다
@@ -158,8 +158,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
                 supervisor.managed_store.insert(&id, m).await;
             }
             let _ = supervisor.tracker.track_since(&id, pid, started.unwrap_or_default());
-            let error = json!({ "success": false, "error": "The server is still running and could not be stopped", "error_code": "server_running" });
-            return (StatusCode::CONFLICT, Json(error)).into_response();
+            return super::super::error(StatusCode::CONFLICT, "server_running", "The server is still running and could not be stopped");
         }
     }
 
@@ -438,7 +437,7 @@ mod tests {
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let runtime = state.supervisor.read().await.runtime.clone();
         // 정지를 한 번 거치면 정지 문과 실행 세대가, 콘솔로 세기 시작하면 접속자 목록이 생긴다
-        let _ = super::super::super::server::stop(&state, &id, false).await;
+        let _ = crate::service::lifecycle::stop(&state, &id, false).await;
         let roster = crate::supervisor::players::roster_start(&runtime, &id);
         crate::supervisor::players::roster_change(&runtime, &id, roster, "alice", true);
         assert_eq!(crate::supervisor::players::counted(&runtime, &id), Some(1));

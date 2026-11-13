@@ -100,7 +100,7 @@ pub(crate) fn settings_rejection(supervisor: &crate::supervisor::Supervisor, ins
                 // 부분 변경이므로 보낸 필드만 검증한다
                 // 숨겨진 설정은 required를 보지 않는다 (06 §8.2). 숨김은 저장된 값에 이번 요청을 얹어 계산한다
                 let view = serde_json::to_value(instance).unwrap_or_default();
-                let mut hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| stored_setting(&view, instance, k)));
+                let mut hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| crate::instance::stored_setting(&view, instance, k)));
                 // 설치된 버전에 없는 설정도 숨긴 설정이다 (이번 요청이 버전을 바꾸면 그 버전으로)
                 let version = settings_obj.get("server_version").and_then(Value::as_str).or(instance.server_version.as_deref());
                 hidden.extend(crate::validator::version_hidden(&settings_meta.fields, version));
@@ -179,12 +179,12 @@ pub async fn update_instance_settings(
         supervisor.instance_store.get(&id).is_some_and(|i| settings.get("working_dir").is_some_and(|v| v.as_str() != i.working_dir.as_deref()))
     };
     let (_task, _saving) = if moves_folder {
-        match super::super::backup::InstanceLock::take_for_writes(&id).await {
+        match crate::instance::lock::InstanceLock::take_for_writes(&id).await {
             Some(task) => (Some(task), None),
             None => return super::super::backup::instance_busy(),
         }
     } else {
-        match super::super::backup::InstanceLock::files(&id).await {
+        match crate::instance::lock::InstanceLock::files(&id).await {
             Some(files) => (None, Some(files)),
             None => return super::super::backup::instance_busy(),
         }
@@ -423,7 +423,7 @@ pub async fn update_instance_settings(
             .map(|s| s.fields)
             .unwrap_or_default()
             .into_iter()
-            .filter(|f| f.restart_required && settings.get(&f.name).is_some_and(|v| stored_setting(&before, instance, &f.name).as_ref() != Some(v)))
+            .filter(|f| f.restart_required && settings.get(&f.name).is_some_and(|v| crate::instance::stored_setting(&before, instance, &f.name).as_ref() != Some(v)))
             .map(|f| f.name)
             .collect()
     } else {
@@ -655,7 +655,7 @@ mod tests {
             async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(json!({ "motd": motd }))).await).await }
         };
 
-        let update = super::super::super::backup::InstanceLock::take_for_writes(&id).await.unwrap();
+        let update = crate::instance::lock::InstanceLock::take_for_writes(&id).await.unwrap();
         let refused = save("during update").await;
         assert_eq!(refused.status, axum::http::StatusCode::CONFLICT);
         assert_eq!(refused.body["error_code"], "instance_busy");
@@ -666,7 +666,7 @@ mod tests {
         assert_eq!(agreement.status, axum::http::StatusCode::CONFLICT);
         drop(update);
 
-        let backup = super::super::super::backup::InstanceLock::take(&id).unwrap();
+        let backup = crate::instance::lock::InstanceLock::take(&id).unwrap();
         assert!(save("during backup").await.status.is_success());
         drop(backup);
         assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings["motd"], "during backup");
@@ -889,7 +889,7 @@ mod tests {
 
         // 다른 PC의 데몬을 보는 클라이언트는 자기 OS로 짐작하지 않는다: 단건 조회와 서버 목록이 이 데몬의 판정을 싣는다
         assert_eq!(body["memory_limit_supported"], json!(cfg!(windows)));
-        let list = crate::ipc::internal::into_internal(crate::ipc::handlers::server::list_servers_internal(&state).await).await.body;
+        let list = crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body;
         assert_eq!(list["servers"][0]["memory_limit_supported"], json!(cfg!(windows)));
     }
 
@@ -988,7 +988,7 @@ mod tests {
         };
         let listed = || {
             let state = state.clone();
-            async move { crate::ipc::internal::into_internal(crate::ipc::handlers::server::list_servers_internal(&state).await).await.body["servers"][0].clone() }
+            async move { crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body["servers"][0].clone() }
         };
         let patch = |body: serde_json::Value| {
             let (state, id) = (state.clone(), id.clone());
@@ -1159,7 +1159,7 @@ mod tests {
         sup.instance_store.add(inst).unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
 
-        let busy = super::super::super::backup::InstanceLock::take(&id).unwrap();
+        let busy = crate::instance::lock::InstanceLock::take(&id).unwrap();
         let elsewhere = tmp.path().join("elsewhere").to_string_lossy().into_owned();
         let moved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": elsewhere }))).await).await;
         assert_eq!(moved.status, 409, "{}", moved.body);

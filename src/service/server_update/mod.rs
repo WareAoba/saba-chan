@@ -3,16 +3,15 @@
 //! 접속자가 있으면 `instance.update_waiting`으로 알리고 모두 나가기를 기다린다 (알림의 버튼은 `apply-update`로 5분 예고 후 바로)
 #![allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
 
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Json,
-};
+use axum::http::StatusCode;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
-use super::super::IPCServer;
+use super::{Failure, Outcome};
+use crate::ipc::IPCServer;
+
+pub(crate) mod apply;
 
 /// 켜진 서버를 업데이트할 때 게임 안에 예고하는 기본 시간(분)
 pub const WARN_MINUTES: u32 = 5;
@@ -83,11 +82,11 @@ pub fn spawn_update_checks(state: IPCServer) {
             };
             for (id, _) in due {
                 // 설치·업데이트 중이면 다음 틱에 본다
-                if is_pending(&id) || super::backup::InstanceLock::held(&id) || state.provision_tracker.get(&id).is_some_and(|p| !p.done) {
+                if is_pending(&id) || crate::instance::lock::InstanceLock::held(&id) || state.provision_tracker.get(&id).is_some_and(|p| !p.done) {
                     continue;
                 }
                 tried.insert(id.clone(), std::time::Instant::now());
-                super::instance::server_update_status(&state, &id).await;
+                apply::server_update_status(&state, &id).await;
             }
         }
     });
@@ -157,13 +156,9 @@ pub fn auto_step(running: bool, players: Option<u32>) -> AutoStep {
 /// 켜진 서버의 업데이트를 뒤에서 시작한다: `warn_minutes`분 전부터 게임 안에 예고(5분·1분 전 중 그 안의 것) →
 /// 저장하고 정지 → 업데이트 → 다시 켜기. 업데이트가 실패해도 예전 버전으로 다시 켠다.
 /// 이미 진행 중이면 409 `update_pending`
-pub async fn begin_restart_update(state: &IPCServer, id: &str, warn_minutes: u32) -> Result<(), Response> {
+pub(crate) async fn begin_restart_update(state: &IPCServer, id: &str, warn_minutes: u32) -> Result<(), Failure> {
     let Some(mark) = Pending::take(id) else {
-        return Err(error(
-            StatusCode::CONFLICT,
-            "update_pending",
-            "An update of this server is already under way",
-        ));
+        return Err(Failure::coded(StatusCode::CONFLICT, "update_pending", "An update of this server is already under way"));
     };
     let token = tokio_util::sync::CancellationToken::new();
     warnings().lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), token.clone());
@@ -183,8 +178,8 @@ pub async fn begin_restart_update(state: &IPCServer, id: &str, warn_minutes: u32
         };
         if cancelled {
             let catalog = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
-            if super::backup::is_running(&state, &id).await {
-                super::backup::announce(&state, &id, &catalog.t("schedule.update_cancelled", &[])).await;
+            if crate::service::backup::is_running(&state, &id).await {
+                crate::service::backup::announce(&state, &id, &catalog.t("schedule.update_cancelled", &[])).await;
             }
             tracing::info!("Update of '{}' was cancelled during the warning", id);
             return;
@@ -202,24 +197,15 @@ fn warnings() -> &'static Mutex<HashMap<String, tokio_util::sync::CancellationTo
     WARNINGS.get_or_init(Default::default)
 }
 
-/// `DELETE /api/instance/:id/apply-update`: 예고 중인 업데이트를 취소한다. 서버는 그대로 둔다(게임 안에 취소를 알린다).
+/// 예고 중인 업데이트를 취소한다 (`DELETE /api/instance/:id/apply-update`). 서버는 그대로 둔다(게임 안에 취소를 알린다).
 /// 이미 끄기·업데이트를 시작했으면 409 `update_not_cancellable`, 걸린 업데이트가 없으면 404 `no_pending_update`
-pub async fn cancel_server_update(
-    axum::extract::Path(id): axum::extract::Path<String>,
-    axum::extract::State(_state): axum::extract::State<IPCServer>,
-) -> Response {
+pub(crate) fn cancel(id: &str) -> Outcome {
     // 예고 작업이 끄기로 넘어가는 결정과 같은 잠금 안에서 취소한다
-    let cancelled = warnings().lock().unwrap_or_else(|e| e.into_inner()).remove(&id).map(|token| token.cancel());
+    let cancelled = warnings().lock().unwrap_or_else(|e| e.into_inner()).remove(id).map(|token| token.cancel());
     match cancelled {
-        Some(()) => {
-            (StatusCode::OK, Json(json!({ "success": true, "id": id, "cancelled": true }))).into_response()
-        }
-        None if is_pending(&id) => error(
-            StatusCode::CONFLICT,
-            "update_not_cancellable",
-            "The update is already stopping or updating the server",
-        ),
-        None => error(StatusCode::NOT_FOUND, "no_pending_update", "No update of this server is waiting"),
+        Some(()) => Ok(json!({ "success": true, "id": id, "cancelled": true })),
+        None if is_pending(id) => Err(Failure::coded(StatusCode::CONFLICT, "update_not_cancellable", "The update is already stopping or updating the server")),
+        None => Err(Failure::coded(StatusCode::NOT_FOUND, "no_pending_update", "No update of this server is waiting")),
     }
 }
 
@@ -230,10 +216,10 @@ async fn warn(state: &IPCServer, id: &str, minutes: u32) -> bool {
     for mark in [5u32, 1].into_iter().filter(|m| *m <= minutes) {
         let at = fire - std::time::Duration::from_secs(u64::from(mark) * 60);
         tokio::time::sleep_until(at.into()).await;
-        if !super::backup::is_running(state, id).await {
+        if !crate::service::backup::is_running(state, id).await {
             break;
         }
-        super::backup::announce(
+        crate::service::backup::announce(
             state,
             id,
             &catalog.t("schedule.update_warning", &[("minutes", &mark.to_string())]),
@@ -256,7 +242,7 @@ pub(crate) async fn stop_update_start(state: &IPCServer, id: &str) -> bool {
 async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool) -> Option<bool> {
     // 시작은 이 잠금을 잡고 켠다(`server::start` → `server::launch`): 잡고 있는 동안에는 확인한 뒤 새로 켜지지 않는다
     let start_lock = if only_if_empty {
-        let Some(lock) = super::backup::InstanceLock::take_for_writes(id).await else {
+        let Some(lock) = crate::instance::lock::InstanceLock::take_for_writes(id).await else {
             postpone(id, false);
             return None;
         };
@@ -265,11 +251,11 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
         None
     };
     // 같은 서버 폴더를 쓰는 다른 인스턴스가 켜져 있거나 작업 중이면 업데이트를 시작하지 못한다: 끄지 않고 미룬다
-    if only_if_empty && super::instance::update_blocked_by_shared_folder(state, id).await {
+    if only_if_empty && apply::update_blocked_by_shared_folder(state, id).await {
         postpone(id, false);
         return None;
     }
-    let was_running = super::backup::is_running(state, id).await;
+    let was_running = crate::service::backup::is_running(state, id).await;
     if was_running && only_if_empty {
         let players = crate::supervisor::players::fresh(&state.supervisor, id).await;
         if players != Some(0) {
@@ -281,13 +267,13 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
     }
     if was_running {
         // 콘솔이 없어 저장 후 종료를 못 하는 서버(`graceful_stop_unavailable`)도 여기서 멈춘다: 강제 종료하지 않는다
-        if let Err(failure) = super::server::stop(state, id, false).await {
+        if let Err(failure) = crate::service::lifecycle::stop(state, id, false).await {
             tracing::warn!("Update of '{}': stop failed: {}", id, failure.body);
-            super::instance::emit_update_failed(state, id, failure.reason().unwrap_or("stop failed")).await;
+            apply::emit_update_failed(state, id, failure.reason().unwrap_or("stop failed")).await;
             return Some(false);
         }
         for _ in 0..STOP_POLLS {
-            if !super::backup::is_running(state, id).await {
+            if !crate::service::backup::is_running(state, id).await {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -296,7 +282,7 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
     tracing::info!("Updating '{}' (was running: {})", id, was_running);
     let generation = state.supervisor.read().await.run_generation_of(id);
     // 잡은 잠금은 업데이트에 넘긴다: 놓았다 다시 잡는 틈에 다른 작업이 끼어 업데이트를 못 하는 일이 없게
-    let updated = match super::instance::begin_server_update_holding(state, id, start_lock).await {
+    let updated = match apply::begin_server_update_holding(state, id, start_lock).await {
         Ok(job) => Some(job.await.unwrap_or(false)),
         Err(failure) => {
             tracing::warn!("Update of '{}' could not start: {}", id, failure.body);
@@ -305,7 +291,7 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
                 postpone(id, false);
                 None
             } else {
-                super::instance::emit_update_failed(state, id, failure.reason().unwrap_or("update failed")).await;
+                apply::emit_update_failed(state, id, failure.reason().unwrap_or("update failed")).await;
                 Some(false)
             }
         }
@@ -326,19 +312,11 @@ async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
         let supervisor = state.supervisor.read().await;
         supervisor.instance_store.get(id).is_some() && supervisor.run_generation_of(id) == generation
     };
-    match super::server::start_when_free(state, id, generation, wanted).await {
+    match crate::service::lifecycle::start_when_free(state, id, generation, wanted).await {
         None => tracing::info!("Scheduled update of '{}': not starting again, the server was started, stopped or removed meanwhile", id),
         Some(Err(failure)) => tracing::warn!("Scheduled update of '{}': could not start the server again: {}", id, failure.body),
         Some(Ok(_)) => {}
     }
-}
-
-fn error(status: StatusCode, code: &str, message: &str) -> Response {
-    (
-        status,
-        Json(json!({ "success": false, "error": message, "error_code": code })),
-    )
-        .into_response()
 }
 
 /// 끄기 직전에 미룬 자동 업데이트 (값: 기다림을 이미 알렸다). 다음 틱에 기다림으로 되돌려 1분마다 다시 본다
@@ -429,7 +407,7 @@ pub fn spawn_auto_updater(state: IPCServer) {
 }
 
 async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
-    if is_pending(id) || super::backup::InstanceLock::held(id) {
+    if is_pending(id) || crate::instance::lock::InstanceLock::held(id) {
         return;
     }
     resume_postponed(id, watch);
@@ -445,10 +423,10 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
         watch.notified = false;
     }
     // 같은 서버 폴더를 쓰는 다른 인스턴스가 켜져 있거나 작업 중이면 기다린다 (풀리면 다음 틱에 이어 간다)
-    if super::instance::update_blocked_by_shared_folder(state, id).await {
+    if apply::update_blocked_by_shared_folder(state, id).await {
         return;
     }
-    let running = super::backup::is_running(state, id).await;
+    let running = crate::service::backup::is_running(state, id).await;
     let runtime = state.supervisor.read().await.runtime.clone();
     let mut players = crate::supervisor::players::get(&runtime, id).map(|c| c.online);
     let mut step = auto_step(running, players);
@@ -466,7 +444,7 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
             }
         }
         // 기억한 접속자 수는 최대 1분 전이고 확인하는 동안 들어왔을 수 있다: 끄기 바로 전에 지금 수를 묻는다 (모르면 기다린다)
-        let running = super::backup::is_running(state, id).await;
+        let running = crate::service::backup::is_running(state, id).await;
         if running {
             players = crate::supervisor::players::fresh(&state.supervisor, id).await;
         }
@@ -523,7 +501,7 @@ enum Checked {
 /// 새 빌드가 있는지 확인한다 (확인 시각을 남기고, 확인하지 못했으면 경고 로그)
 async fn update_check(state: &IPCServer, id: &str, watch: &mut Watch) -> Checked {
     watch.checked = Some(std::time::Instant::now());
-    let Some(status) = super::instance::server_update_status(state, id).await else {
+    let Some(status) = apply::server_update_status(state, id).await else {
         return Checked::Unknown;
     };
     match status.get("reason").and_then(Value::as_str) {
@@ -550,13 +528,6 @@ async fn update_check(state: &IPCServer, id: &str, watch: &mut Watch) -> Checked
     Checked::Available
 }
 
-/// `apply-update`의 본문 (`warn_minutes`: 켜진 서버면 게임 안에 예고할 시간, 기본 5분)
-#[derive(Debug, Default, serde::Deserialize)]
-pub struct ApplyBody {
-    #[serde(default)]
-    pub warn_minutes: Option<u32>,
-}
-
 /// 예고 시간: 정한 값(최대 60분), 없으면 접속자가 없다고 확인될 때만 예고 없이, 아니면 5분
 fn warn_minutes_for(requested: Option<u32>, players: Option<u32>) -> u32 {
     match (requested, players) {
@@ -567,29 +538,34 @@ fn warn_minutes_for(requested: Option<u32>, players: Option<u32>) -> u32 {
 }
 
 /// 켜진 서버의 `apply-update`: 예고 뒤 업데이트를 걸고 바로 답한다
-pub async fn apply_to_running(state: &IPCServer, id: &str, body: &ApplyBody) -> Response {
+pub(crate) async fn apply_to_running(state: &IPCServer, id: &str, warn_minutes: Option<u32>) -> Outcome {
     // 업데이트할 수 없는 서버(직접 설치 등)는 예고하거나 끄기 전에 거절한다 (꺼진 서버와 같은 400)
-    if let Err(failure) = super::instance::updatable(&*state.supervisor.read().await, id) {
-        return failure.into_response();
-    }
+    apply::updatable(&*state.supervisor.read().await, id)?;
     // 예고 없이 끌지(0명)는 기억한 수(최대 1분 전)가 아니라 지금 수로 정한다 (모르면 예고한다)
     let players = crate::supervisor::players::fresh(&state.supervisor, id).await;
-    let minutes = warn_minutes_for(body.warn_minutes, players);
-    match begin_restart_update(state, id, minutes).await {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(json!({ "success": true, "id": id, "scheduled": true, "warn_minutes": minutes, "players": players })),
-        )
-            .into_response(),
-        Err(r) => r,
+    let minutes = warn_minutes_for(warn_minutes, players);
+    begin_restart_update(state, id, minutes).await?;
+    Ok(json!({ "success": true, "id": id, "scheduled": true, "warn_minutes": minutes, "players": players }))
+}
+
+/// 게임 서버 업데이트 적용 (`POST /api/instance/:id/apply-update`). 켜져 있으면 게임 안에 예고(기본 5분) → 저장하고 정지 →
+/// 업데이트 → 다시 켜기를 뒤에서 걸고, 꺼져 있으면 바로 업데이트를 시작한다
+pub(crate) async fn apply(state: &IPCServer, id: &str, warn_minutes: Option<u32>) -> Outcome {
+    if state.supervisor.read().await.is_running(id).await {
+        return apply_to_running(state, id, warn_minutes).await;
     }
+    if is_pending(id) {
+        return Err(Failure::coded(StatusCode::CONFLICT, "update_pending", "An update of this server is already under way"));
+    }
+    apply::begin_server_update(state, id).await?;
+    Ok(json!({ "success": true, "id": id, "provisioning": true }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ipc::handlers::backup::tests::{server_with, NO_BACKUP, WORK_DEADLINE};
-    use crate::ipc::handlers::backup::InstanceLock;
+    use crate::service::backup::tests::{server_with, NO_BACKUP, WORK_DEADLINE};
+    use crate::instance::lock::InstanceLock;
 
     /// 데몬의 주기 확인: 자동 업데이트를 켠 서버는 자동 업데이트 쪽이 보고, 나머지는 3시간에 한 번
     #[test]
@@ -648,7 +624,7 @@ mod tests {
             crate::daemon_log::DaemonLogBuffer::new(),
         );
         let id = "auto-update-lock-test";
-        let held = super::super::backup::InstanceLock::take(id).expect("free");
+        let held = crate::instance::lock::InstanceLock::take(id).expect("free");
         let decided = tokio::time::timeout(std::time::Duration::from_secs(5), stop_update_start_when(&state, id, true))
             .await
             .expect("does not wait for the lock");
@@ -699,8 +675,8 @@ mod tests {
             "127.0.0.1:0",
             crate::daemon_log::DaemonLogBuffer::new(),
         );
-        let other = super::super::backup::InstanceLock::take(&ids[1]).expect("free");
-        assert!(super::super::instance::update_blocked_by_shared_folder(&state, &ids[0]).await);
+        let other = crate::instance::lock::InstanceLock::take(&ids[1]).expect("free");
+        assert!(apply::update_blocked_by_shared_folder(&state, &ids[0]).await);
         let decided =
             tokio::time::timeout(std::time::Duration::from_secs(5), stop_update_start_when(&state, &ids[0], true))
                 .await
@@ -710,8 +686,8 @@ mod tests {
         resume_postponed(&ids[0], &mut watch);
         assert!(watch.waiting, "tried again from the next tick");
         drop(other);
-        assert!(!super::super::instance::update_blocked_by_shared_folder(&state, &ids[0]).await);
-        assert!(super::super::backup::InstanceLock::take(&ids[0]).is_some(), "a postponed update does not keep its lock");
+        assert!(!apply::update_blocked_by_shared_folder(&state, &ids[0]).await);
+        assert!(crate::instance::lock::InstanceLock::take(&ids[0]).is_some(), "a postponed update does not keep its lock");
     }
 
     /// 새 빌드를 보고 기다리던 중 끄기 전 재확인을 하지 못하면(잠깐의 장애) 기다림을 풀지 않는다: 다음 틱에 다시 본다

@@ -23,7 +23,7 @@
 
 ## 1. 기동 시퀀스, 부트 모드, CLI 인자/환경변수, 포트, 파일 레이아웃
 
-### 1.1 `main()` 흐름 (`src/main.rs:182-647`)
+### 1.1 `main()` 흐름 (`src/main.rs:186-546`, 데몬이 사는 동안 도는 백그라운드 일감은 `spawn_background_tasks` `main.rs:552-764`)
 
 1. **인자 처리** (`main.rs:187-209`)
    - `module schema|validate <폴더>...`와 `extension validate <폴더>...`는 데몬을 띄우지 않고 검사 결과만 찍은 뒤 종료 코드(실패 1, 사용법 오류 2)로 끝난다(`main.rs:39-152`).
@@ -49,20 +49,20 @@
 9. **IPC 서버 객체 생성** (`main.rs:352`): `IPCServer::new`(`ipc/mod.rs:584-627`)가 ExtensionManager를 만들고 `discover()`를 호출한다. ConfigStore(`config.json`)도 이때 만든다.
 10. Supervisor에 `extension_manager`와 `provision_tracker`를 주입한다(`main.rs:355-359`).
 11. **백그라운드 태스크 기동**
-    - 익스텐션 `daemon.startup` 훅 비동기 디스패치(`main.rs:364-410`). 진행 상황은 `ExtensionInitTracker`에 기록되고 `/api/extensions/init-status`로 노출된다.
-    - 프로세스 모니터: 2초 주기로 `process_monitor::get_running_processes_async()` 스냅샷을 찍고 `sup.monitor_processes_taken_at()`를 호출한다(`main.rs:416-463`). 스냅샷은 락 밖에서 찍으므로, 찍기 시작한 시각 뒤에 추적한 PID는 스냅샷에 없어도 끝났다고 보지 않고 다음 주기로 넘긴다. 이때 supervisor **write lock**을 잡는다. 크래시로 끝난 서버는 `take_pending_restarts`로 모아 락 밖에서 `server::auto_restart`로 다시 띄운다(`main.rs:456-461`). 작업 잠금이 잡혀 있으면(백업 중) 풀릴 때까지 최대 30분 기다리고, 그사이 사용자가 정지·시작하면 그만둔다.
-    - 업데이트 주기 확인 `spawn_update_scheduler`(`main.rs:466`)와 인스턴스 예약 작업(시작·정지·재시작·저장·백업·공지·업데이트·게임 명령) 실행기 `scheduler::runner::spawn_scheduler`(`main.rs`, 30초 주기)를 띄운다. 데몬이 켜질 때 있던 작업은 데몬 시작부터, 그 뒤에 더하거나 고친 작업은 그때부터 세고, 마지막 실행 시각(아직 돌지 않은 작업은 세기 시작한 시각)을 인스턴스 폴더 `schedule-runs.json`(`{작업 열쇠: "YYYY-MM-DDTHH:MM:SS"}`, 데몬 PC 벽시계)에 남겨 데몬을 다시 켜면 주기 작업(`every_minutes`)은 거기서 이어 세고(시각 작업은 지나간 시각을 따라잡지 않는다, `scheduler::read_runs`·`Clock::restore`·`scheduler/runner.rs` `save_runs`), 밀린 차례(PC 절전 등)는 가장 최근 것 한 번만 실행하고, 그 바로 뒤 차례의 예고가 이미 시작됐으면 밀린 것은 건너뛰고 그 차례만 한다. 예약 백업은 서버가 꺼져 있어도 가장 새 백업 뒤에 서버가 돈 적이 있으면(가장 최근 세션 로그가 그 백업보다 뒤에 쓰였으면) 만들고, 돈 적이 없으면 건너뛴다(`scheduler/runner.rs` `ran_since_last_backup`): PC가 꺼져 밀린 차례가 데몬이 켜진 직후에 지난 실행을 담는다. 검사를 통과하지 못하는 작업(손으로 고친 `every_minutes: 0` 등)은 실행하지 않는다(`scheduler::Clock`). 시각은 데몬 PC의 벽시계(`chrono::Local`의 naive 시각)로 견준다: 서머타임으로 건너뛴 시각의 작업은 시계가 이어지는 첫 확인에, 두 번 오는 시각은 처음 한 번만 돈다. 날 규칙은 `ScheduledTask::next_fire`가 정한다(아래 `schedule` 표). 정한 날 한 번(`date`) 작업은 돈 뒤에도 목록에 남지만 다시 돌지 않는다.
-    - 하트비트 reaper: 30초 주기로 90초 넘게 하트비트가 없는 클라이언트를 정리한다(`main.rs:483-497`, `handlers/client.rs:116-136`).
+    - 익스텐션 `daemon.startup` 훅 비동기 디스패치(`main.rs:397-443`). 진행 상황은 `ExtensionInitTracker`에 기록되고 `/api/extensions/init-status`로 노출된다.
+    - 프로세스 모니터: 2초 주기로 `process_monitor::get_running_processes_async()` 스냅샷을 찍고 `sup.monitor_processes_taken_at()`를 호출한다(`main.rs:563-617`). 스냅샷은 락 밖에서 찍으므로, 찍기 시작한 시각 뒤에 추적한 PID는 스냅샷에 없어도 끝났다고 보지 않고 다음 주기로 넘긴다. 이때 supervisor **write lock**을 잡는다. 크래시로 끝난 서버는 `take_pending_restarts`로 모아 락 밖에서 `server::auto_restart`로 다시 띄운다(`main.rs:456-461`). 작업 잠금이 잡혀 있으면(백업 중) 풀릴 때까지 최대 30분 기다리고, 그사이 사용자가 정지·시작하면 그만둔다.
+    - 업데이트 주기 확인 `spawn_update_scheduler`(`main.rs:620`)와 인스턴스 예약 작업(시작·정지·재시작·저장·백업·공지·업데이트·게임 명령) 실행기 `scheduler::runner::spawn_scheduler`(`main.rs`, 30초 주기)를 띄운다. 데몬이 켜질 때 있던 작업은 데몬 시작부터, 그 뒤에 더하거나 고친 작업은 그때부터 세고, 마지막 실행 시각(아직 돌지 않은 작업은 세기 시작한 시각)을 인스턴스 폴더 `schedule-runs.json`(`{작업 열쇠: "YYYY-MM-DDTHH:MM:SS"}`, 데몬 PC 벽시계)에 남겨 데몬을 다시 켜면 주기 작업(`every_minutes`)은 거기서 이어 세고(시각 작업은 지나간 시각을 따라잡지 않는다, `scheduler::read_runs`·`Clock::restore`·`scheduler/runner.rs` `save_runs`), 밀린 차례(PC 절전 등)는 가장 최근 것 한 번만 실행하고, 그 바로 뒤 차례의 예고가 이미 시작됐으면 밀린 것은 건너뛰고 그 차례만 한다. 예약 백업은 서버가 꺼져 있어도 가장 새 백업 뒤에 서버가 돈 적이 있으면(가장 최근 세션 로그가 그 백업보다 뒤에 쓰였으면) 만들고, 돈 적이 없으면 건너뛴다(`scheduler/runner.rs` `ran_since_last_backup`): PC가 꺼져 밀린 차례가 데몬이 켜진 직후에 지난 실행을 담는다. 검사를 통과하지 못하는 작업(손으로 고친 `every_minutes: 0` 등)은 실행하지 않는다(`scheduler::Clock`). 시각은 데몬 PC의 벽시계(`chrono::Local`의 naive 시각)로 견준다: 서머타임으로 건너뛴 시각의 작업은 시계가 이어지는 첫 확인에, 두 번 오는 시각은 처음 한 번만 돈다. 날 규칙은 `ScheduledTask::next_fire`가 정한다(아래 `schedule` 표). 정한 날 한 번(`date`) 작업은 돈 뒤에도 목록에 남지만 다시 돌지 않는다.
+    - 하트비트 reaper: 30초 주기로 90초 넘게 하트비트가 없는 클라이언트를 정리한다(`main.rs:651-666`, `handlers/client.rs:116-136`).
     - 렌더러 watchdog은 없다. 인터페이스가 모두 떠나도 데몬은 남는다. 다음에 켠 GUI·CLI가 다시 붙는다(C14).
     - 트레이 감독 `tray_host::run`(`src/tray_host.rs`, 부트 모드와 상관없이, 데몬 온리 포함): 화면이 있는 데스크톱 세션이고(`has_desktop`: Windows는 세션 0이 아니고 창 스테이션이 `WinSta0`, macOS는 늘, 그 밖은 `DISPLAY`·`WAYLAND_DISPLAY`) 데몬 옆에 `saba-chan-gui`가 있으면, IPC가 열린 뒤 3초부터 5초마다 트레이를 든 GUI가 있는지 본다. 등록된 GUI 클라이언트 중 프로세스가 살아 있는 것도, 이 감독이 띄운 그 프로세스(PID와 띄운 시각으로 본다. 등록을 못 했거나 잃었어도 센다)도 없으면 `saba-chan-gui --tray`(상주 GUI, 04 §1)를 띄운다(`IPC_BASE`는 `clients/launch`와 같다). 띄운 것이 30초 안에 사라지거나 띄우지 못하면 다음 시도까지 5초부터 두 배씩, 최대 5분 기다린다. `stop_requested`가 오거나 업데이터를 띄웠으면(`UpdateState::updater_launched`) 멈춘다. `SABA_NO_TRAY`가 비어 있지 않으면 띄우지 않는다(테스트 하네스). 데몬이 다시 띄우는 인터페이스는 이것뿐이다.
     - DaemonOnly 모드: `daemon_log::daemon_terminal_loop`가 500ms마다 각 인스턴스 콘솔을 stderr에 출력한다(`daemon_log.rs:199`).
-    - 종료 경로는 하나다(`main.rs:511-578`). Ctrl+C, SIGTERM(Unix) 또는 `stop_requested`(API `/api/daemon/shutdown`, `unregister?shutdown=true`, `launch-updater`)를 받으면 `daemon.shutdown` 훅(30초 상한), 클라이언트 정리, `shutdown_token` cancel 순으로 정리한다.
-12. **인터페이스 스폰** (`main.rs:580-638`)
+    - 종료 경로는 하나다(`main.rs:679-764`). Ctrl+C, SIGTERM(Unix) 또는 `stop_requested`(API `/api/daemon/shutdown`, `unregister?shutdown=true`, `launch-updater`)를 받으면 `daemon.shutdown` 훅(30초 상한), 클라이언트 정리, `shutdown_token` cancel 순으로 정리한다.
+12. **인터페이스 스폰** (`main.rs:478-536`)
     - IPC 포트가 열릴 때까지 최대 15초 기다린다(`boot_selector::wait_for_ipc_port`).
     - GUI 모드: `saba-chan-gui --spawned-by-daemon`을 detach로 띄우고 콘솔 창을 숨긴다(Windows만).
     - CLI 모드: `saba-chan-cli`를 stdio를 상속해 같은 콘솔에 붙인다. 인자 없이 터미널에서 열린 CLI는 대화형 셸로 들어간다(`saba-chan-cli/src/main.rs:128-132`, PR #6 기준).
     - 인터페이스 바이너리는 데몬 exe와 같은 디렉토리에서만 찾는다(`boot_selector.rs:445-462`).
-13. **`ipc_server.start().await`** (`main.rs:641`): 이 호출이 블로킹 메인 루프다. 바인드에 성공하면 릴레이 에이전트 자동 시작을 띄우고(`ipc/mod.rs:860-866`), `shutdown_token`이 cancel되면 graceful shutdown한다.
+13. **`ipc_server.start().await`** (`main.rs:539`): 이 호출이 블로킹 메인 루프다. 바인드에 성공하면 릴레이 에이전트 자동 시작을 띄우고(`ipc/mod.rs:860-866`), `shutdown_token`이 cancel되면 graceful shutdown한다.
 
 ### 1.2 부트 선택기 (`src/boot_selector.rs`)
 
@@ -150,7 +150,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
   .ipc_token                IPC 인증 토큰 (uuid v4, Unix 0600)          auth.rs:27-43
   config.json (+ .bak)      모든 사용자 설정 (gui, relay, updates, boot, extensions, chatbot, node, cli 등)
                             updater/src/config_file.rs. `node.token`은 cloud relay 노드 토큰(sbn_<id>.<secret>,
-                            handlers/relay.rs `load_node_token`·`write_node_token`). 내보내기 설정 절에서 뺀다
+                            relay_client.rs `load_node_token`·`write_node_token`). 내보내기 설정 절에서 뺀다
   settings.json 등           예전 개별 파일. 한 번 config.json으로 이관하고 원본은 두며 .migrated 사본을 남긴다.
                             예전 `.node_token`(0.1.8까지)은 `node.token`에 넣은 뒤 사본 없이 지운다(다시 생기면 예전 판이 새로 페어링한 것이라 그 값이 이긴다)
   remote-cert.der, remote-key.der   원격 데몬 포트의 자체 서명 인증서와 키(키는 주인만 읽는다)    remote_daemon/tls.rs
@@ -356,7 +356,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 | GET | `/api/instance/:id/address` | `port_check.rs` `address` | — | 서버 주소(2026-11-05 사용자 요청, 액션 `server.address`, 디스코드 `/<서버> 주소`). `{instanceId, address, custom, shareAddress, running, ports:[{field, label, port, protocols}]}`. `address`는 이 PC의 공개 주소(`remote_daemon::public_address`): 정한 도메인·IP(`remote.address`, `custom:true`)가 먼저이고, 없으면 relay가 heartbeat 응답 `address`로 알려 준 이 PC의 공인 주소(05 `/heartbeat`)이며, 에이전트가 연결돼 있지 않거나 relay가 알려 주지 않았으면(옛 relay, 사설 주소) null. `shareAddress`가 false면 디스코드 표면의 액션 결과는 `{instanceId, hidden:true}`로 바꾸고 요약은 `actions.summary.address.hidden` 한 줄이다(`actions::hide_address`, 사용자 결정 2026-11-10). 포트는 포트포워딩 확인과 같은 `public` 설정 칸(`port_check::public_ports`)이고 같은 포트의 TCP·UDP는 한 항목으로 합친다. `label`은 module.toml 칸 이름이고, 액션으로 부르면 요청 언어의 모듈 문구(`settings.<칸>.label`)로 바꾼다. 원격 요약은 `• \`주소:포트\``(호스트 이름은 그대로, IPv6는 `[주소]:포트`, 포트가 여럿이면 칸 이름을 앞에), 꺼진 서버면 그 말을 덧붙이고, 주소를 모르거나 포트가 없으면 그 이유만 보인다. 액션은 `private`·`secret`(늘 부른 사람에게만, 05 (c))이고 챗봇 표면은 없다. 디스코드 기본 요구 레벨은 유저(Lv1)이고 길드가 명령별로 옮길 수 있다(`discord_level` + `level_movable`, heartbeat `defaultLevel:1`, 2026-11-07 사용자 결정). 404 `not_found` |
 | GET | `/api/instance/:id/installed-version` | `managed.rs:420` | - | 결과 + `revision`(저장한 뒤의 인스턴스 revision). 감지에 성공하면 `server_version`에 자동 저장 |
 
-#### 백업과 예약 작업 (handlers/backup.rs, 예약 API는 handlers/schedule.rs, 실행기는 scheduler/runner.rs)
+#### 백업과 예약 작업 (본체는 service/backup.rs, 핸들러는 handlers/backup.rs, 예약 API는 handlers/schedule.rs, 실행기는 scheduler/runner.rs)
 
 시작·정지·재시작·백업은 서비스 함수(`server::start`·`stop`·`restart`, `backup::take_backup`)가 한다. HTTP 핸들러와 예약 실행기·자동 재시작·채팅 명령이 같은 함수를 부르고, 실패는 HTTP 응답과 같은 상태·본문을 담은 `handlers::Failure`로 받는다(모듈이 `success:false`로 답한 것은 200 그대로의 실패). 작업 잠금 때문에 거절한 시작은 `Failure::is_busy`로 가려 다시 시도한다(`start_when_free`). 업데이트 시작(`begin_server_update`)도 `Failure`로 거절하며, 자동 업데이트는 작업 잠금이나 켜진 서버 때문에 거절된 것(`Failure::is_in_use`)을 실패로 남기지 않고 미룬다. 실행기(`scheduler/runner.rs`)는 때가 된 작업을 돌리고 결과를 이력에 남기며, 복원 전 안전 백업 정리도 맡는다.
 

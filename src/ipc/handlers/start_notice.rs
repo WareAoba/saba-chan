@@ -20,9 +20,7 @@ use axum::{
 use serde_json::{json, Value};
 
 use super::super::IPCServer;
-
-pub const KEY: &str = "startNotice";
-pub const FULL_KEY: &str = "fullNotice";
+use crate::service::discord::{FULL_NOTICE_KEY as FULL_KEY, START_NOTICE_KEY as KEY};
 
 fn ids(node: Option<&Value>, key: &str) -> Option<Vec<String>> {
     Some(node?.get(key)?.as_array()?.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
@@ -90,7 +88,7 @@ async fn put_list(State(state): State<IPCServer>, Path((id, guild)): Path<(Strin
     match saved {
         Ok(Ok(list)) => Json(json!({ "success": true, "id": id, "guildId": guild, "enabled": enabled, "instances": list })).into_response(),
         Ok(Err(())) => invalid("instance", "not_allowed"),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string(), "error_code": "save_failed" }))).into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
     }
 }
 

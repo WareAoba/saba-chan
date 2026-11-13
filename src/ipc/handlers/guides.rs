@@ -32,7 +32,7 @@ fn state_of(state: &IPCServer) -> crate::guides::State {
 
 /// 완료 조건을 판단할 지금 상태
 async fn facts(state: &IPCServer) -> crate::guides::Facts {
-    let onboarding = super::diagnostics::onboarding_now(state).await;
+    let onboarding = crate::service::onboarding::now(state).await;
     let step_done = |id: &str| {
         onboarding["steps"].as_array().is_some_and(|a| a.iter().any(|s| s["id"] == id && s["done"] == true))
     };
@@ -114,7 +114,7 @@ fn spawn_sync(state: &IPCServer) {
         struct Body {
             guides: Vec<crate::guides::Served>,
         }
-        let base = super::chatbot::relay_base(&state).await;
+        let base = crate::service::chatbot::relay_base(&state).await;
         let failed = || sync_failed(&NEXT_SYNC, std::time::Instant::now());
         let Ok(http) = super::relay::client() else { return failed() };
         let url = format!("{}/v1/guides?core={}", base, env!("CARGO_PKG_VERSION"));

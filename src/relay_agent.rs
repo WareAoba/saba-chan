@@ -14,7 +14,7 @@
 //!
 //! 새 명령 종류는 `handle_payload`의 action 분기에 추가합니다.
 
-use crate::ipc::handlers::relay::{load_node_token, parse_node_token, relay_client_with_timeout, resolve_relay_url, signed_request};
+use crate::relay_client::{load_node_token, parse_node_token, relay_client_with_timeout, resolve_relay_url, signed_request};
 use crate::ipc::IPCServer;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -180,7 +180,7 @@ impl RelayAgent {
         let mut status = inner.status.clone();
         status.agent_version = AGENT_VERSION;
         // GUI가 5초마다 부른다: 설정 파일이 그대로면 다시 읽지 않는다
-        status.has_token = crate::ipc::handlers::relay::peek_node_token().as_deref().and_then(parse_node_token).is_some();
+        status.has_token = crate::relay_client::peek_node_token().as_deref().and_then(parse_node_token).is_some();
         status.connected = connected(&status, now_ms());
         status.state = agent_state(&status);
         status
@@ -252,7 +252,7 @@ impl RelayAgent {
             tracing::info!("[RelayAgent] started (relay={})", session.base);
             // 디스코드 길드 설정과 챗봇 설정은 데몬이 원본 (I2): 연결될 때마다 릴레이에 맞춘다. 첫 하트비트 응답을 처리한 뒤에 보낸다:
             // 꺼져 있는 동안 다시 묶인 길드(`linkedGuilds`)는 릴레이 값을 먼저 받아야 옛 사본으로 덮지 않는다
-            crate::ipc::handlers::discord::request_sync();
+            crate::service::discord::request_sync();
             tokio::join!(session.heartbeat_loop(), session.poll_loop(), session.events_loop(), session.unsent_loop());
             agent.finish(generation, None);
             tracing::info!("[RelayAgent] stopped");
@@ -286,7 +286,7 @@ impl RelayAgent {
         };
         let client = relay_client_with_timeout(POLL_TIMEOUT).map_err(|e| e.to_string())?;
         let body = serde_json::json!({ "etaSeconds": eta_seconds }).to_string();
-        let req = crate::ipc::handlers::relay::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/updating", &token, Some(body))
+        let req = crate::relay_client::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/updating", &token, Some(body))
             .ok_or("node token missing")?;
         let resp = tokio::time::timeout(std::time::Duration::from_secs(5), req.send())
             .await
@@ -313,7 +313,7 @@ impl RelayAgent {
             }
         };
         let Ok(client) = relay_client_with_timeout(POLL_TIMEOUT) else { return };
-        let Some(req) = crate::ipc::handlers::relay::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/stopping", &token, None)
+        let Some(req) = crate::relay_client::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/stopping", &token, None)
         else {
             return;
         };
@@ -793,17 +793,17 @@ impl Session {
                     tokio::spawn(async move {
                         tokio::select! {
                             _ = cancel.cancelled() => {}
-                            _ = crate::ipc::handlers::chatbot::sync_on_connect(&server) => {}
+                            _ = crate::service::chatbot::sync_on_connect(&server) => {}
                         }
                     });
                 }
                 // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다 (세션과 함께 멈춘다)
-                if crate::ipc::handlers::discord::take_pending_sync() {
+                if crate::service::discord::take_pending_sync() {
                     let (server, cancel) = (self.server.clone(), self.cancel.clone());
                     tokio::spawn(async move {
                         tokio::select! {
                             _ = cancel.cancelled() => {}
-                            _ = crate::ipc::handlers::discord::sync_on_connect(&server) => {}
+                            _ = crate::service::discord::sync_on_connect(&server) => {}
                         }
                     });
                 }
@@ -845,12 +845,12 @@ impl Session {
     async fn metadata(&self) -> Value {
         use crate::chat::api::DaemonApi;
         // `/사바쨩 상태`의 CPU·RAM과 PC 부하 (폴더 크기는 재지 않는다)
-        let roots = crate::ipc::handlers::system::instance_roots(&self.server).await;
+        let roots = self.server.supervisor.read().await.sample_roots();
         let monitor = self.server.system_monitor.clone();
         let snapshot = tokio::task::spawn_blocking(move || monitor.sample(&roots, &[], false, false)).await.ok();
         let usage = snapshot.as_ref().map(|s| s.instances.as_slice()).unwrap_or_default();
         let servers: Vec<Value> = match crate::ipc::internal::into_internal(
-            crate::ipc::handlers::server::list_servers_internal(&self.server).await,
+            crate::service::servers::list(&self.server, 0).await,
         )
         .await
         .body
@@ -899,11 +899,11 @@ impl Session {
         }
         dm_notice_meta(&mut meta, &bot);
         // 길드별 자리 꽉 참 알림을 켠 서버 (`/api/instance/:id/full-notice/:guild`). 켠 길드만 싣는다
-        if let Some(on) = ids_by_guild(&bot.node_settings, crate::ipc::handlers::start_notice::FULL_KEY) {
+        if let Some(on) = ids_by_guild(&bot.node_settings, crate::service::discord::FULL_NOTICE_KEY) {
             meta["fullNotice"] = on;
         }
         // 길드별 켜짐 알림을 켠 서버 (`/api/instance/:id/start-notice/:guild`). 켠 길드만 싣는다
-        if let Some(on) = ids_by_guild(&bot.node_settings, crate::ipc::handlers::start_notice::KEY) {
+        if let Some(on) = ids_by_guild(&bot.node_settings, crate::service::discord::START_NOTICE_KEY) {
             meta["startNotice"] = on;
         }
         // 인스턴스별로 서버와 명령을 부르는 낱말 (어느 길드에서나 같다, 릴레이는 찾기·위험 확인에 쓴다).
@@ -917,7 +917,7 @@ impl Session {
         meta["permissions"] = permissions_by_guild(&bot.node_settings, &targets);
         meta["permissionsAt"] = json!(permissions_at);
         // `/사바쨩 상태` 끝 줄의 다음 할 일 (J1-a, GUI·CLI와 같은 단계)
-        meta["onboarding"] = crate::ipc::handlers::diagnostics::onboarding_now(&self.server).await;
+        meta["onboarding"] = crate::service::onboarding::now(&self.server).await;
         // 언어가 `auto`인 길드는 이 언어로 답한다 (I2)
         // (릴레이 스키마는 10자까지. 넘으면 heartbeat 전체가 거절되므로 싣지 않는다)
         if let Some(language) = Some(self.server.config_store.pc_language().await).filter(|l| l.len() <= 10) {
@@ -1159,8 +1159,8 @@ impl Session {
             let waiting = link_id.as_ref().is_some_and(|id| self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).contains(id));
             // 풀었다가 다시 묶은 길드는 PC 없는 동안 디스코드에서 바꾼 길드·챗봇 설정을 받는다. 못 받았으면 확인 응답을 미뤄 다음 하트비트에 다시 한다
             if !waiting
-                && !(crate::ipc::handlers::discord::adopt_linked_guild(&self.server, guild).await
-                    && crate::ipc::handlers::chatbot::adopt_linked_guild(&self.server, guild).await)
+                && !(crate::service::discord::adopt_linked_guild(&self.server, guild).await
+                    && crate::service::chatbot::adopt_linked_guild(&self.server, guild).await)
             {
                 tracing::warn!("[RelayAgent] could not read the settings of relinked guild {}; trying again at the next heartbeat", guild);
                 continue;

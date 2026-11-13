@@ -24,6 +24,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::config::{self, Client};
 use super::h2;
+use super::peer::error;
 use super::relay::{self, Failure, Target};
 
 /// PC 전용 칸을 보려고 받아 두는 본문 (axum `Json`의 기본 한도와 같다)
@@ -61,8 +62,8 @@ impl RelaySource {
         match self {
             Self::Configured(server) => {
                 let configured = server.config_store.get_bot_config().await.cloud.relay_url;
-                let token = crate::ipc::handlers::relay::peek_node_token()?;
-                Some(Target { base: crate::ipc::handlers::relay::signed_relay_url(&configured, None), token })
+                let token = crate::relay_client::peek_node_token()?;
+                Some(Target { base: crate::relay_client::signed_relay_url(&configured, None), token })
             }
             #[cfg(test)]
             Self::Fixed(t) => Some(t.clone()),
@@ -144,10 +145,6 @@ impl Ctx {
         pairs.push((Instant::now(), from));
         true
     }
-}
-
-fn error(status: StatusCode, code: &str) -> Response {
-    (status, Json(json!({ "error": code, "error_code": code }))).into_response()
 }
 
 pub(crate) fn router(routes: Router, ctx: Ctx) -> Router {
@@ -287,7 +284,7 @@ async fn blocked_fields(server: &crate::ipc::IPCServer, method: &str, pattern: &
         if key == "extension_data" {
             return sent.as_object().is_none_or(|m| m.iter().any(|(k, v)| !same_value(v, instance.extension_data.get(k))));
         }
-        !same_value(sent, crate::ipc::handlers::instance::stored_setting(&view, instance, key).as_ref())
+        !same_value(sent, crate::instance::stored_setting(&view, instance, key).as_ref())
     });
     blocked
 }

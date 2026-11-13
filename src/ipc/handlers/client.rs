@@ -251,23 +251,6 @@ fn launch_args(body: &serde_json::Value) -> Result<LaunchLine, (&'static str, &'
     Ok((kind, args, instance))
 }
 
-/// 띄울 GUI가 붙을 데몬 주소 (`IPC_BASE`). GUI는 설정 포트(`gui.ipcPort`)를 읽으므로, 이 데몬이 그와 다른 포트에서
-/// 들을 때만(`SABA_IPC_PORT`) 알려 준다. 같으면 넘기지 않아 GUI가 나중에 바꾼 포트 설정을 따른다
-pub(crate) fn gui_ipc_base(listen_addr: &str, configured: u16) -> Option<String> {
-    let port = listen_addr.parse::<std::net::SocketAddr>().ok()?.port();
-    (port != configured).then(|| format!("http://127.0.0.1:{port}"))
-}
-
-/// GUI가 읽는 설정 포트 (main.rs와 같은 자리, 없으면 기본값)
-pub(crate) fn configured_gui_port() -> u16 {
-    saba_chan_updater_lib::config_file::ConfigFile::default_location()
-        .section("gui")
-        .get("ipcPort")
-        .and_then(|v| v.as_u64())
-        .and_then(|p| u16::try_from(p).ok())
-        .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT)
-}
-
 /// CLI는 새 콘솔 창이 있어야 한다: Windows·맥, 또는 화면과 터미널 프로그램이 있는 리눅스. GUI는 데스크톱 화면이 있어야 한다
 fn has_screen(kind: Interface) -> bool {
     match kind {
@@ -316,7 +299,7 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
             Interface::Cli => "No terminal program to open the CLI in",
             Interface::Gui => "This PC has no desktop screen to open the app on",
         };
-        return (StatusCode::NOT_IMPLEMENTED, Json(json!({ "success": false, "error": error, "error_code": "unsupported_platform" }))).into_response();
+        return super::error(StatusCode::NOT_IMPLEMENTED, "unsupported_platform", error);
     }
     let Some(binary) = crate::boot_selector::find_interface_binary(kind.binary()) else {
         let code = match kind {
@@ -328,7 +311,7 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
     let spawned = match kind {
         Interface::Cli => spawn_in_new_console(&binary, &args, &state.client_registry).await,
         Interface::Gui => {
-            let env: Vec<(&str, String)> = gui_ipc_base(&state.listen_addr, configured_gui_port()).map(|b| ("IPC_BASE", b)).into_iter().collect();
+            let env: Vec<(&str, String)> = crate::tray_host::gui_ipc_base(&state.listen_addr, crate::tray_host::configured_gui_port()).map(|b| ("IPC_BASE", b)).into_iter().collect();
             crate::boot_selector::spawn_gui_with(&binary, &args, &env)
         }
     };
@@ -466,10 +449,10 @@ mod launch_tests {
     /// 같으면 넘기지 않아 GUI가 나중에 바꾼 포트 설정을 따른다
     #[test]
     fn a_launched_gui_is_pointed_at_this_daemon() {
-        assert_eq!(super::gui_ipc_base("127.0.0.1:61234", 57474).as_deref(), Some("http://127.0.0.1:61234"));
-        assert_eq!(super::gui_ipc_base("0.0.0.0:61234", 57474).as_deref(), Some("http://127.0.0.1:61234"));
-        assert_eq!(super::gui_ipc_base("127.0.0.1:57474", 57474), None);
-        assert_eq!(super::gui_ipc_base("nope", 57474), None);
+        assert_eq!(crate::tray_host::gui_ipc_base("127.0.0.1:61234", 57474).as_deref(), Some("http://127.0.0.1:61234"));
+        assert_eq!(crate::tray_host::gui_ipc_base("0.0.0.0:61234", 57474).as_deref(), Some("http://127.0.0.1:61234"));
+        assert_eq!(crate::tray_host::gui_ipc_base("127.0.0.1:57474", 57474), None);
+        assert_eq!(crate::tray_host::gui_ipc_base("nope", 57474), None);
     }
 }
 

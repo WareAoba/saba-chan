@@ -160,9 +160,9 @@ pub async fn save_node_token(
         .and_then(|v| v.as_str())
         .unwrap_or("");
     // 페어링 완료 때 데몬이 이미 저장하고 재시작했으면 같은 토큰을 다시 받아도 재시작하지 않는다
-    match super::relay::write_node_token(Some(token)) {
+    match crate::relay_client::write_node_token(Some(token)) {
         Ok(changed) => {
-            super::relay::adopt_node_token(&state, token, changed).await;
+            crate::relay_client::adopt_node_token(&state, token, changed).await;
             (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
         }
         Err(e) => (
@@ -175,7 +175,7 @@ pub async fn save_node_token(
 
 /// DELETE /api/config/node-token — 연결 해제 (`relay::disconnect`)
 pub async fn delete_node_token(State(state): State<IPCServer>) -> impl IntoResponse {
-    if let Err(e) = super::relay::disconnect(&state).await {
+    if let Err(e) = crate::relay_client::disconnect(&state).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to delete node token: {}", e) })),

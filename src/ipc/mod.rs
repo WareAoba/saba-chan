@@ -874,7 +874,7 @@ impl IPCServer {
             .route("/api/provision-progress/{name}", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
             // ── Server update ──
             .route("/api/instance/{id}/check-update", get(handlers::instance::check_server_update))
-            .route("/api/instance/{id}/apply-update", post(handlers::instance::apply_server_update).delete(handlers::server_update::cancel_server_update))
+            .route("/api/instance/{id}/apply-update", post(handlers::instance::apply_server_update).delete(handlers::instance::cancel_server_update))
             // ── Command execution ──
             .route("/api/instance/{id}/command", post(handlers::command::execute_command))
             .route("/api/instance/{id}/commands", get(handlers::command::list_instance_commands))
@@ -1156,7 +1156,7 @@ impl IPCServer {
                     // 자동 포트포워딩 확인 (설정이 켜져 있을 때만, 자동 시작한 서버가 포트를 연 뒤)
                     tokio::spawn(crate::port_check::auto_on_start(self.clone()));
                     // 온보딩 "서버 시작해 보기": 처음 켜진 서버를 남긴다
-                    tokio::spawn(crate::ipc::handlers::diagnostics::watch_first_start(self.clone()));
+                    tokio::spawn(crate::service::onboarding::watch_first_start(self.clone()));
 
                     let shutdown_signal = self.shutdown_token.clone();
                     axum::serve(listener, router)
@@ -1181,6 +1181,10 @@ impl IPCServer {
         ))
     }
 }
+
+/// 데몬이 시작한 시각 (Unix ms). `main`이 맨 먼저 잰다. 업데이터가 서비스 관리자·GUI가 다시 띄운 데몬을
+/// PID 대신 판과 이 시각으로 새 데몬인지 가린다 (`live_apply::HealthRule::StartedAfter`)
+pub static STARTED_AT_MS: std::sync::LazyLock<u64> = std::sync::LazyLock::new(saba_chan_updater_lib::live_apply::now_ms);
 
 // ── Tests ──────────────────────────────────────────────────
 

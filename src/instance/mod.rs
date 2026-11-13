@@ -127,7 +127,7 @@ pub struct ServerInstance {
     /// 서버 공용 모드의 자동 강퇴: 이 닉네임들이 들어오면 내보낸다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub kick_players: Vec<String>,
-    /// 게임 서버 자동 업데이트: 새 빌드가 나오면 꺼져 있거나 접속자가 없을 때 업데이트한다 (`ipc::handlers::server_update`).
+    /// 게임 서버 자동 업데이트: 새 빌드가 나오면 꺼져 있거나 접속자가 없을 때 업데이트한다 (`service::server_update`).
     /// 이 PC(앱·CLI)에서만 바꾼다
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub auto_update: bool,
@@ -346,6 +346,19 @@ impl ServerInstance {
         self.module_settings.insert(password_setting.to_string(), serde_json::json!(generate_random_password()));
         true
     }
+}
+
+/// 설정의 저장된 값: 공통 칸(`constants::INSTANCE_FIELDS`, 예: port)은 PATCH가 인스턴스 칸에 쓰므로 그 값을,
+/// 아니면 `module_settings`를 본다. `view`는 그 인스턴스를 JSON으로 펼친 것
+pub(crate) fn stored_setting(view: &serde_json::Value, instance: &ServerInstance, key: &str) -> Option<serde_json::Value> {
+    let own = saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key);
+    own.then(|| view.get(key).filter(|v| !v.is_null()).cloned()).flatten().or_else(|| instance.module_settings.get(key).cloned())
+}
+
+/// 모듈 설정 칸마다 저장된 값 (`stored_setting`, 값이 없는 칸은 뺀다). 클라이언트는 이 값을 그대로 칸 값으로 쓴다
+pub(crate) fn stored_settings(instance: &ServerInstance, fields: &[crate::supervisor::module_loader::SettingField]) -> serde_json::Map<String, serde_json::Value> {
+    let view = serde_json::to_value(instance).unwrap_or_default();
+    fields.iter().filter_map(|f| stored_setting(&view, instance, &f.name).map(|v| (f.name.clone(), v))).collect()
 }
 
 /// 영어 대/소문자, 숫자로 이뤄진 16자 랜덤 비밀번호를 생성합니다.

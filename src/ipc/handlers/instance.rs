@@ -22,10 +22,7 @@ pub use provision::{dismiss_provision_progress, get_provision_progress};
 use settings::extra_args_from;
 pub(crate) use settings::settings_rejection;
 pub use settings::update_instance_settings;
-pub(crate) use update::{begin_server_update_holding, emit_update_failed, updatable, update_blocked_by_shared_folder};
-pub use update::{apply_server_update, check_server_update, server_update_status};
-#[cfg(test)]
-pub(crate) use update::begin_server_update;
+pub use update::{apply_server_update, cancel_server_update, check_server_update};
 
 /// GET /api/instances - 모든 인스턴스 목록
 pub async fn list_instances(State(state): State<IPCServer>) -> impl IntoResponse {
@@ -81,11 +78,11 @@ pub async fn get_instance(
             let fields = supervisor.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()).map(|s| s.fields).unwrap_or_default();
             // 설치된 버전에 없는 설정 (`versions` 밖). 숨긴 설정이므로 `hidden`에도 든다
             let version_hidden = crate::validator::version_hidden(&fields, instance.server_version.as_deref());
-            let mut hidden = crate::validator::hidden_fields(&fields, |k| stored_setting(&body, instance, k));
+            let mut hidden = crate::validator::hidden_fields(&fields, |k| crate::instance::stored_setting(&body, instance, k));
             hidden.extend(version_hidden.iter().filter(|name| !hidden.contains(name)).cloned().collect::<Vec<_>>());
             body["hidden"] = json!(hidden);
             body["version_hidden"] = json!(version_hidden);
-            body["stored"] = Value::Object(stored_settings(instance, &fields));
+            body["stored"] = Value::Object(crate::instance::stored_settings(instance, &fields));
             body["revision"] = json!(instance.settings_revision());
             // 이 데몬이 메모리 상한을 거는가 (다른 PC의 데몬을 보는 클라이언트가 자기 OS로 짐작하지 않게)
             body["memory_limit_supported"] = json!(crate::instance::MEMORY_LIMIT_ENFORCED);
@@ -142,7 +139,7 @@ pub async fn rename_instance(
         return invalid_name().into_response();
     }
     // 설치·업데이트·복원 중에는 바꾸지 않는다: 진행 알림(`provision.progress`)이 시작 때의 이름을 싣는다
-    let Some(_guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
+    let Some(_guard) = crate::instance::lock::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
     };
     let mut supervisor = state.supervisor.write().await;
@@ -193,19 +190,6 @@ pub async fn launch_preview(
         Err(e) if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() => (StatusCode::NOT_FOUND, Json(crate::plugin::error_response(&e))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
     }
-}
-
-/// 설정의 저장된 값: 공통 칸(`constants::INSTANCE_FIELDS`, 예: port)은 PATCH가 인스턴스 칸에 쓰므로 그 값을,
-/// 아니면 `module_settings`를 본다. `view`는 그 인스턴스를 JSON으로 펼친 것
-pub(crate) fn stored_setting(view: &Value, instance: &crate::instance::ServerInstance, key: &str) -> Option<Value> {
-    let own = saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key);
-    own.then(|| view.get(key).filter(|v| !v.is_null()).cloned()).flatten().or_else(|| instance.module_settings.get(key).cloned())
-}
-
-/// 모듈 설정 칸마다 저장된 값 (`stored_setting`, 값이 없는 칸은 뺀다). 클라이언트는 이 값을 그대로 칸 값으로 쓴다
-pub(crate) fn stored_settings(instance: &crate::instance::ServerInstance, fields: &[crate::supervisor::module_loader::SettingField]) -> serde_json::Map<String, Value> {
-    let view = serde_json::to_value(instance).unwrap_or_default();
-    fields.iter().filter_map(|f| stored_setting(&view, instance, &f.name).map(|v| (f.name.clone(), v))).collect()
 }
 
 #[cfg(test)]

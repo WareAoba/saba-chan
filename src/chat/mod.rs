@@ -395,7 +395,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
 
     /// 맞춰 볼 접두사. 설정이 비어 있으면 응답 언어의 기본값 하나
     fn prefixes(&self) -> Vec<String> {
-        let own = crate::ipc::handlers::discord::guild_prefixes(&self.settings.node_settings, self.req.guild_id.as_deref(), &self.settings.prefixes);
+        let own = crate::service::discord::guild_prefixes(&self.settings.node_settings, self.req.guild_id.as_deref(), &self.settings.prefixes);
         match own.is_empty() {
             true => vec![self.word("default_prefix")],
             false => own,

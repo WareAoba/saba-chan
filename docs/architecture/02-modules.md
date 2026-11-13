@@ -28,7 +28,7 @@
 | GUI가 데몬을 띄울 때 | 모듈 폴더를 주입하지 않는다. 데몬이 위 순서로 정한다 | `D:saba-chan-gui/src-tauri/src/lifecycle.rs` |
 | 레거시 경로 | `Supervisor::run()`은 지워졌다. `"./modules"`는 테스트에만 남았다 | `D:src/supervisor/mod.rs:2633-` |
 
-`ModuleLoader::discover_modules()` (`D:src/supervisor/module_loader.rs:1481-1548`)의 동작은 다음과 같다.
+`ModuleLoader::discover_modules()` (`D:src/supervisor/module_loader/loader.rs:79-146`)의 동작은 다음과 같다.
 
 - 모듈 루트의 **1단계 엔트리만** 순회하고 재귀하지 않는다.
 - **폴더 모듈**: `<dir>/module.toml`이 있는 디렉터리만 로드한다 (`:1521-1541`). 폴더 이름은 아무 것이나 되며, 식별자는 `[module].name`이다.
@@ -40,11 +40,11 @@
 - 로드에 실패한 모듈은 `warn` 로그를 남기고 `load_errors`에 기록한다. `GET /api/modules`가 `failed[]`로 돌려준다 (`:1511-1539`, `D:src/ipc/handlers/server.rs:391-392`).
 - `.py` 파일(`daemon_rcon.py`, `i18n.py`)이 같은 루트에 있어도 무시된다. 이 둘은 PYTHONPATH용 공용 라이브러리다 (§2.1).
 
-**진입점 파일**: `[module].entry`가 데몬이 실행하는 Python 파일이다(보통 `lifecycle.py`). `LoadedModule::entry_path()`가 `<모듈 폴더>/<entry>`를 만들고(`D:src/supervisor/module_loader.rs:462-464`), 데몬의 모든 lifecycle 호출이 이 경로를 쓴다(예: `D:src/supervisor/mod.rs:791, 947, 1166, 1519`). 로드할 때 `check_loadable()`이 이 파일이 실제로 있는지 확인하고, 없으면 모듈을 로드하지 않는다(`module_loader.rs:467-481`). 검증 단계는 `entry`가 비었거나 절대 경로이거나 모듈 폴더 밖을 가리키면(`..`·`.` 포함) 거부한다(`:1250-1256`, 익스텐션 `python_modules`와 같은 `utils::is_inner_relative_path`). (qcza9f 기준)
+**진입점 파일**: `[module].entry`가 데몬이 실행하는 Python 파일이다(보통 `lifecycle.py`). `LoadedModule::entry_path()`가 `<모듈 폴더>/<entry>`를 만들고(`D:src/supervisor/module_loader/schema.rs:710-712`), 데몬의 모든 lifecycle 호출이 이 경로를 쓴다(예: `D:src/supervisor/mod.rs:791, 947, 1166, 1519`). 로드할 때 `check_loadable()`이 이 파일이 실제로 있는지 확인하고, 없으면 모듈을 로드하지 않는다(`module_loader/schema.rs:715-730`). 검증 단계는 `entry`가 비었거나 절대 경로이거나 모듈 폴더 밖을 가리키면(`..`·`.` 포함) 거부한다(`module_loader/raw.rs:1283-1289`, 익스텐션 `python_modules`와 같은 `utils::is_inner_relative_path`). (qcza9f 기준)
 
 ### 1.2 module.toml 스키마 (Rust 역직렬화 기준, 전체)
 
-파서는 `parse_module_toml()` → `serde_ignored::deserialize::<ModuleToml>` → `into_metadata()`이다 (`module_loader.rs:1193-1246, 1037-1189`). 이 구조체들이 계약 그 자체이고, 같은 구조체에서 JSON Schema가 나온다(`module_json_schema()` `:1444-1446`, `GET /api/modules/schema`, `saba-core module schema`). 모듈 저장소는 이것을 `M:schema/module.schema.json`으로 두고 `M:.github/workflows/check-modules.yml`에서 검사한다.
+파서는 `parse_module_toml()` → `serde_ignored::deserialize::<ModuleToml>` → `into_metadata()`이다 (`module_loader/raw.rs:819-872, 628-816`). 이 구조체들이 계약 그 자체이고, 같은 구조체에서 JSON Schema가 나온다(`module_json_schema()` `module_loader/loader.rs:33-35`, `GET /api/modules/schema`, `saba-core module schema`). 모듈 저장소는 이것을 `M:schema/module.schema.json`으로 두고 `M:.github/workflows/check-modules.yml`에서 검사한다.
 
 - **스키마 2** (0.1.9, MK2·MK8): `schema_version = 2`는 스키마 1에 설정 타입 `list`·`multiline`과 설정 키 `min_items`·`max_items`·`max_length`·`restart_required`·`visible_when`을 더한 것이다(`MODULE_SCHEMA_VERSION = 2`, `SETTING_TYPES_V2`). 이 타입·키가 스키마 1 모듈에 있으면 로드에 실패하고, 스키마 이전 모듈은 경고만 남기고 이 키를 끄며, `list`·`multiline` 타입은 0.1.8처럼 `text`로 다룬다. 0.1.8 데몬은 스키마 2 모듈을 로드하지 않으므로 스키마 2 모듈은 `[module.dependencies] saba-core = ">=0.1.9"`도 적는다. 0.1.9로 낸 공식 모듈은 스키마 1이었고, 지금 네 공식 모듈은 모두 스키마 2다. 표시 없는 모듈에게 권하는 버전은 1이다.
 - **로드 실패 표시**: 스키마에 맞지 않으면 `failed[]`에 `error_code:"module_schema_invalid"`와 `problems`(`SchemaInvalid`. `schema_version`을 밝힌 모듈은 알려진 키의 타입 오류도 여기에 실린다), 데몬보다 새 스키마면 `"module_schema_unsupported"`와 `required`(`SchemaUnsupported`)가 실린다.
@@ -65,7 +65,7 @@
 | `description` | String | ○ | None |
 | `icon` | String | ○ | 모듈 폴더 기준 상대경로. `/api/modules`가 base64로 인코딩해 응답 (`D:src/ipc/handlers/server.rs:342-348`). MIME은 무조건 `image/png` |
 | `log_pattern` | String(regex) | ○ | `(?P<level>…)` 명명 그룹 필수. 콘솔 레벨 파싱에 쓰임 (§3.3) |
-| `dependencies` | Table<String,String> | ○ | `[module.dependencies]`, 값은 `">=x.y.z"`. 두 단계로 강제된다. ① 로드: `saba-core` 요구 버전이 데몬보다 높으면 모듈을 로드하지 않고 `GET /api/modules`의 `failed[]`에 `error_code: "module_dependency_unsatisfied"`, `missing_dependencies`와 함께 싣는다 (`module_loader.rs:467-481, 508-546`, `D:src/ipc/handlers/server.rs:391`). ② 시작: 인스턴스 시작 전에 `saba-core`와 켜진 익스텐션(`ext-<id>`) 요구를 다시 확인하고, 못 맞추면 `module_dependency_unsatisfied`와 `missing_dependencies`, `module`(모듈 이름)로 시작을 거부한다. 로드 실패 항목·시작 거부·카탈로그 설치 거부 모두 `saba-core`가 모자라면 그 요구 버전을 `required_core`(`">="`를 뺀 버전, 0.1.14-beta.2~)로 함께 싣고, 클라이언트는 `missing_dependencies` 글자를 풀지 않고 이 값을 쓴다 (`D:src/supervisor/start.rs` `unmet_dependencies_response`). 데몬보다 새 스키마라 로드되지 못한 모듈은 시작도 `module_schema_unsupported`와 `required`, `module`로 거부한다(로드 실패 항목은 `module`이 없으면 모듈 폴더 이름으로 찾는다, `load_failure`). 다른 키(`gui`, `cli` 등)는 데몬이 알 수 없어 넘긴다 |
+| `dependencies` | Table<String,String> | ○ | `[module.dependencies]`, 값은 `">=x.y.z"`. 두 단계로 강제된다. ① 로드: `saba-core` 요구 버전이 데몬보다 높으면 모듈을 로드하지 않고 `GET /api/modules`의 `failed[]`에 `error_code: "module_dependency_unsatisfied"`, `missing_dependencies`와 함께 싣는다 (`module_loader/schema.rs:715-730, 455-460`, `D:src/ipc/handlers/server.rs:391`). ② 시작: 인스턴스 시작 전에 `saba-core`와 켜진 익스텐션(`ext-<id>`) 요구를 다시 확인하고, 못 맞추면 `module_dependency_unsatisfied`와 `missing_dependencies`, `module`(모듈 이름)로 시작을 거부한다. 로드 실패 항목·시작 거부·카탈로그 설치 거부 모두 `saba-core`가 모자라면 그 요구 버전을 `required_core`(`">="`를 뺀 버전, 0.1.14-beta.2~)로 함께 싣고, 클라이언트는 `missing_dependencies` 글자를 풀지 않고 이 값을 쓴다 (`D:src/supervisor/start.rs` `unmet_dependencies_response`). 데몬보다 새 스키마라 로드되지 못한 모듈은 시작도 `module_schema_unsupported`와 `required`, `module`로 거부한다(로드 실패 항목은 `module`이 없으면 모듈 폴더 이름으로 찾는다, `load_failure`). 다른 키(`gui`, `cli` 등)는 데몬이 알 수 없어 넘긴다 |
 | `game_name`, `display_name`, `author` | String | ○ | 메타데이터에 실리고 `/api/modules` 응답에도 들어간다 (`D:src/ipc/mod.rs:246-251`) |
 
 #### `[update]` (없어짐)
@@ -102,7 +102,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 |---|---|---|
 | `process_patterns` | Vec<String> | extension hook `server.status` 컨텍스트로만 전달 (`mod.rs:1115-1126`). 네이티브 auto-detect에는 **미사용** |
 | `cmd_patterns` | Vec<String> | auto-detect 때 커맨드라인 필터 (`mod.rs:2515-2524`) |
-| `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs:423-443`, 항목은 전부 있어야 함). 한 항목 안의 `|`는 그중 하나, `*`는 그 폴더 바로 아래 파일 이름 패턴이다(`"server.jar|paper-*.jar"`, `module_loader.rs` `signature_present`). `..`가 든 항목은 맞지 않는다. GUI 마이그레이션 화면도 이 결과만 쓴다: `migrationScanDir`가 이 API를 부르고(`saba-chan-gui/src/api/createApi.ts:1012-1020`), 화면은 돌아온 `matches`로 모듈을 고른다(`AddInstanceMigration.tsx:98-100`) |
+| `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs:423-443`, 항목은 전부 있어야 함). 한 항목 안의 `|`는 그중 하나, `*`는 그 폴더 바로 아래 파일 이름 패턴이다(`"server.jar|paper-*.jar"`, `module_loader/schema.rs` `signature_present`). `..`가 든 항목은 맞지 않는다. GUI 마이그레이션 화면도 이 결과만 쓴다: `migrationScanDir`가 이 API를 부르고(`saba-chan-gui/src/api/createApi.ts:1012-1020`), 화면은 돌아온 `matches`로 모듈을 고른다(`AddInstanceMigration.tsx:98-100`) |
 | `graceful_exit_patterns` | Vec<String> | 정상 종료 문구(정규식). 종료 판정에 쓴다 (§3.6) |
 | `crash_artifacts` | Vec<String> | 크래시 때 생기는 파일. 종료 판정에 쓴다 (§3.6) |
 
@@ -357,7 +357,7 @@ persistent = true
 ```
 
 #### `[patterns]` (이름 붙인 정규식 조각, saba-core 0.1.15-0)
-여러 정규식이 같이 쓰는 머리(로그 머리, 플레이어 이름 규칙)를 이름 하나에 둔다(`ModuleToml.patterns`, `module_loader.rs` `resolve_pattern_fragments`·`expand_pattern_refs`). 값은 정규식 조각이고, 데몬이 읽는 정규식 키에서 `{이름}`으로 쓰면 로드할 때 `(?:조각)`으로 바뀐다. 클라이언트·러너·API(`GET /api/modules`)는 바뀐 정규식만 본다.
+여러 정규식이 같이 쓰는 머리(로그 머리, 플레이어 이름 규칙)를 이름 하나에 둔다(`ModuleToml.patterns`, `module_loader/raw.rs` `resolve_pattern_fragments`·`expand_pattern_refs`). 값은 정규식 조각이고, 데몬이 읽는 정규식 키에서 `{이름}`으로 쓰면 로드할 때 `(?:조각)`으로 바뀐다. 클라이언트·러너·API(`GET /api/modules`)는 바뀐 정규식만 본다.
 - 바뀌는 키: `[module] log_pattern`, `[launch] line_start`, `[detection] graceful_exit_patterns`, `[backup] save_done_pattern`, `[[settings.fields]] pattern`, `[commands] failure_patterns`, `[[commands.fields]] reply_pattern`, `[[syntax_highlight.rules]] pattern`, `[extensions.saba-core]`의 `ready_patterns`·`player_join_patterns`·`player_leave_patterns`·`chat_patterns`·`progress_patterns`. 정규식이 아닌 키(`[backup] paths`·`data_roots`의 `{설정 이름}` 등)는 바꾸지 않는다. `[[diagnose]] patterns`는 모듈 Python(`load_diagnose_rules`)이 module.toml에서 직접 읽으므로 바꾸지 않는다.
 - 참조 규칙: `{이름}`은 `[patterns]`에 선언한 이름일 때만 바뀐다. 이름은 글자·숫자·`_`이고 숫자로 시작하지 않으므로 반복 횟수 `{2}`·`{1,16}`은 그대로이고, 선언하지 않은 이름도 쓴 그대로 남는다. 선언한 이름을 글자로 쓰려면 `\{이름}`처럼 여는 괄호를 막는다.
 - 조각은 다른 조각을 참조할 수 있다. 자기 자신을 (다른 조각을 거쳐서라도) 참조하는 조각, 이름이 틀린 조각, 풀어서 `(?:…)`로 감싸도 정규식이 아닌 조각은 스키마 오류(`module_schema_invalid`의 `problems`: `patterns.<이름> refers to itself (a -> b -> a)` 등)이고, 스키마 이전 모듈은 경고만 남기고 그 조각을 쓰지 않는다(참조가 글자 그대로 남는다).
@@ -504,7 +504,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:2200-2249` | `validate`와 같은 config(`Supervisor::instance_call`: `server_executable`, `working_dir` 등). `server_executable`은 시작과 같이 `resolve_executable`로 정한다(인스턴스 경로, 옛 `module_settings.executable_path`, `working_dir` + 모듈 `server_executable` 순) |
 | `[[queries]]`의 `function` | `POST /api/instance/:id/query/:name`(액션 `server.query:<name>`) → `Supervisor::query_instance` | `validate`와 같은 config(`Supervisor::instance_call`) + `args{입력 이름: 값}`(명령 입력과 같이 검사·기본값 채움, 숫자는 숫자로). 돌려줄 것: `{"success": true, "data": <JSON>}` 또는 실패 `{"success": false, "message": "..."}`. `data`가 없으면 `success`·`message`를 뺀 나머지를 data로 본다. 읽기만 해야 한다(감사에 남지 않고 챗봇·일반 사용자도 부른다) |
 | `[status] players`의 함수 | 켜진 서버마다 1분에 한 번(`supervisor::players::refresh`, 10초 제한), 그리고 플레이어 목록 요청 때(`GET /api/instance/:id/players`·액션 `server.players`, 10초 제한) | `validate`와 같은 config. 목록 요청 때만 config에 `players_detail: true`가 더 실린다. 돌려줄 것: `{"success": true, "online": <0 이상 정수>, "max": <정수>?, "players": [{"name": "..."}]?}`(`max`가 없거나 0이면 최대를 모른다고 본다. `players`는 `players_detail`이 있을 때만 의미가 있고, 이름 말고 다른 필드는 데몬이 뺀다. 이름은 제어 문자를 빼고 64자로 자른다). 실패 `{"success": false, "message": "..."}`이거나 정수가 아니면 값을 비운다(0으로 보이지 않는다). 실패가 5분 넘게 이어지면 `message`가 `unresponsive`로 GUI에 보인다. 서버는 정상인데 수를 알 수 없으면(예: 상태 응답을 끈 설정) `online` 없이 `{"success": true}`를 돌려준다: 값은 비우고 실패로 세지 않는다. 읽기만 해야 한다 |
-| `backup_paths` | 백업 때 `[backup] hook = true`인 모듈 (`D:src/ipc/handlers/backup.rs:94-99`) | `working_dir`, `extension_data`, 인스턴스 값 |
+| `backup_paths` | 백업 때 `[backup] hook = true`인 모듈 (`D:src/service/backup.rs:200-220`) | `working_dir`, `extension_data`, 인스턴스 값 |
 
 모듈의 `start` 함수는 모든 모듈에서 지워졌다(FUNCTIONS에 없음). non-managed 모드도 `get_launch_command`로 데몬이 직접 spawn한다 (`mod.rs:773-847`).
 
@@ -825,7 +825,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 ## 6. 불일치, 죽은 코드, 미완성, 원칙 위반
 
 ### 6.1 로더와 모듈·문서 사이의 불일치
-6. ZIP 모듈의 `.extracted` 재추출 문제와, locales·설치 경로가 `<modules>/<name>`을 가정하는 문제가 있다 (§1.1, §4.6). `module.toml`은 이름이 정확히 같은 가장 얕은 엔트리를 고른다 (`module_loader.rs:1559-1570`).
+6. ZIP 모듈의 `.extracted` 재추출 문제와, locales·설치 경로가 `<modules>/<name>`을 가정하는 문제가 있다 (§1.1, §4.6). `module.toml`은 이름이 정확히 같은 가장 얕은 엔트리를 고른다 (`module_loader/loader.rs:173-190`).
 
 ### 6.2 데몬 측 죽은 코드와 stub
 현재 알려진 항목 없음.

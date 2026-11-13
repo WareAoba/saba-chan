@@ -201,7 +201,7 @@ pub async fn logs_handler(Path(id): Path<String>, State(state): State<IPCServer>
             }
             Json(body).into_response()
         }
-        _ => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": "Could not read the log", "error_code": "log_read_failed" }))).into_response(),
+        _ => super::error(StatusCode::INTERNAL_SERVER_ERROR, "log_read_failed", "Could not read the log"),
     }
 }
 
@@ -261,7 +261,7 @@ pub async fn export_handler(Path(id): Path<String>, State(state): State<IPCServe
             let file_name = format!("{}-{}-{}.log", file_safe(&name), file_safe(&session.id), chrono::Local::now().format("%Y%m%d-%H%M"));
             Json(json!({ "success": true, "fileName": file_name, "bytes": content.len(), "truncated": truncated, "content": content })).into_response()
         }
-        _ => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": "Could not read the log", "error_code": "log_read_failed" }))).into_response(),
+        _ => super::error(StatusCode::INTERNAL_SERVER_ERROR, "log_read_failed", "Could not read the log"),
     }
 }
 
@@ -295,7 +295,7 @@ pub async fn export_file_handler(Path(id): Path<String>, State(state): State<IPC
             }
             Json(out).into_response()
         }
-        _ => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": "Could not write the log file", "error_code": "write_failed" }))).into_response(),
+        _ => super::error(StatusCode::INTERNAL_SERVER_ERROR, "write_failed", "Could not write the log file"),
     }
 }
 
