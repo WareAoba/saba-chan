@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import i18n from 'i18next';
 import { type Mock, vi } from 'vitest';
-import { setServerConsole } from '../stores/serverActions';
+import { setServerConsole } from '../stores/serverActionsState';
 import { setServerI18n } from '../stores/serverI18n';
 import { useServerSettingsStore } from '../stores/useServerSettingsStore';
 import { type Server, useServerStore } from '../stores/useServerStore';

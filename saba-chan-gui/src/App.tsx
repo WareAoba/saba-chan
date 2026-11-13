@@ -38,7 +38,7 @@ import { useModalClose } from './hooks/useModalClose';
 import { useModulesRetry } from './hooks/useModulesRetry';
 import { useConsoleStore } from './stores/useConsoleStore';
 import { type DiscordData, setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
-import { setServerConsole } from './stores/serverActions';
+import { setServerConsole } from './stores/serverActionsState';
 import { setServerI18n } from './stores/serverI18n';
 import { useServerStore } from './stores/useServerStore';
 import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
