@@ -590,7 +590,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | PID 영속화 | `<instances>/.saba-state/<id>/managed.pid`, runner면 `<instances>/.saba-state/<id>/run/` (`InstanceStore::state_dir`. 인스턴스 폴더는 서버와 격리 실행도 쓰므로 그 안의 기록은 믿지 않는다. 인스턴스를 지우면 함께 지운다). 예전 배치(`<instance_dir>/managed.pid`·`run/`)는 처음 시작 때 한 번만 옮겨 받는다(`Supervisor::adopt_legacy_records`): `managed.pid`는 이름만 바꿔 옮기고(파일 시각 유지), 예전 자리에 `runner.json`이 있으면 그 러너가 끝날 때까지 예전 자리에서 읽는다는 표시 `<id>/legacy-run`을 둔다(`InstanceStore::runner_home`. 다시 붙지 못하거나 서버를 새로 띄우면 지우고, 인스턴스 폴더의 예전 `run/`에서 러너가 남긴 파일과 빈 폴더를 치운다, `clear_run_dir`. 링크는 따라가지 않는다. 러너가 이미 끝난 예전 `run/`은 옮겨 받을 때 치운다). 다 옮기면 `.saba-state/legacy-adopted`를 남기고, 그 뒤로는 예전 자리의 PID 기록을 보지 않는다(이 표시가 있는 PC를 예전 버전으로 되돌려 서버를 띄운 뒤 다시 올리면 그 서버에는 다시 붙지 않는다) | 없음 |
 | 자격증명 동기화 | `rest_credentials` 또는 `credential_map` | 없음 |
 
-- 필수 익스텐션은 두 경로 모두 검사한다: 모듈 `[install] requires_extensions`와 인스턴스 `required_extensions`의 합 중 꺼졌거나 설치되지 않은 것이 있으면 `{success:false, error_code:"extension_required", missing_extensions}`로 거절한다(`effective_required_extensions`, 0.1.15부터 managed도).
+- 필수 익스텐션은 두 경로 모두 검사한다: 모듈 `[install] requires_extensions`와 인스턴스 `required_extensions`의 합 중 꺼졌거나 설치되지 않은 것이 있으면 `{success:false, error_code:"extension_required", missing_extensions}`로 거절한다(`effective_required_extensions`, 0.1.14-beta.2부터 managed도).
 - 핸들러 쪽 준비(작업 잠금, 포트 확인 리스너 기다리기, 비밀번호 채우기, API 시작 기록, 익스텐션 상태 캐시 비우기)도 두 경로가 같다(`server.rs` `launch`). 작업 기록은 `server::start`가 한 줄 남긴다.
 - 두 경로 모두 인스턴스 ID로 추적하므로 모니터·포트 충돌 검사·정지·상태가 같은 키를 쓴다.
 - **확인되지 않은 모듈의 실행 대상 (Windows, bubblewrap으로 격리하는 리눅스)**: `get_launch_command`가 돌려준 `program`은 두 경로 모두 띄우기 전에 검사한다(`Supervisor::guard_launch`, `sandbox::check_launch`). 신뢰 표시가 `verified`인 모듈은 검사하지 않는다.
