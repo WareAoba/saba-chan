@@ -5,13 +5,7 @@ import { ConfirmIcon } from './Modals/Modals';
 import { Dialog } from './ui/Dialog';
 import { SabaCheckbox } from './ui/SabaUI';
 import type { TFunction } from 'i18next';
-
-/** module.toml [[agreements]] 한 항목 */
-export interface Agreement {
-    id: string;
-    label?: string;
-    url?: string;
-}
+import type { Agreement } from '../types/daemon';
 
 /** 약관 이름: 모듈 locales의 agreements.<id> → 데몬이 준 label → id */
 export const agreementName = (t: TFunction, module: string, a: Agreement) =>
@@ -52,7 +46,7 @@ export function AgreementList({ module, agreements, checked, onToggle, disabled 
                             <button
                                 type="button"
                                 className="btn btn-ghost btn-sm agreement-read"
-                                onClick={() => window.api?.shellOpenExternal?.(a.url as string)}
+                                onClick={() => window.api?.shellOpenExternal?.(a.url)}
                                 aria-label={t('agreements.read', { name })}
                             >
                                 <Icon name="externalLink" size="sm" /> {t('agreements.read_short')}

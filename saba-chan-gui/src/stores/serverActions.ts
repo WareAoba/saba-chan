@@ -1,6 +1,6 @@
 import type { StoreApi } from 'zustand';
 import { holdSavingOrder } from '../hooks/useDragReorder';
-import type { ApiBody, Json } from '../types/daemon';
+import type { Agreement, ApiBody, Json } from '../types/daemon';
 import { claimServerNotice, eventsLive, showPortMoved, watchInstance } from '../utils/daemonEvents';
 import {
     busyMessage,
@@ -10,6 +10,7 @@ import {
     retryWithBackoff,
     safeShowToast,
 } from '../utils/helpers';
+import { controlOutcome } from '../utils/serverControl';
 import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 import { updateRequiredText } from '../utils/updateRequired';
@@ -297,7 +298,7 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
     };
 
     // 약관 동의 창 (module.toml [[agreements]]). 동의하면 이 PC에서 기록하고 다시 켠다
-    const askAgreements = (srv: Server, title: string, message: string, agreements: unknown[]) => {
+    const askAgreements = (srv: Server, title: string, message: string, agreements: Agreement[]) => {
         setModal({
             type: 'agreements',
             title,
@@ -344,6 +345,7 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
 
             // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
             const result = await window.api.instanceStart(id);
+            const outcome = controlOutcome(result);
             const opt = internal.optimistic.get(id);
             if (opt?.pending) internal.optimistic.set(id, { status: 'starting', timestamp: Date.now() });
             notifyPortMoved(result, srv);
@@ -544,11 +546,10 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
             }
 
             // ── error_code: agreement_required — 모듈이 선언한 약관(EULA 등)에 아직 동의하지 않음 ──
-            if (result.error_code === 'agreement_required') {
+            if (outcome.kind === 'agreements') {
                 revertOptimistic(id);
-                const pending = Array.isArray(result.agreements) ? result.agreements : [];
-                if (pending.length && !!window.api.instanceAgreements) {
-                    askAgreements(srv, t('agreements.start_title'), t('agreements.start_message', { name }), pending);
+                if (outcome.agreements.length && !!window.api.instanceAgreements) {
+                    askAgreements(srv, t('agreements.start_title'), t('agreements.start_message', { name }), outcome.agreements);
                 } else {
                     // 데몬 문구는 이미 현지화돼 있다
                     setModal({ type: 'failure', title: t('agreements.start_title'), message: result.error || '' });
@@ -588,14 +589,14 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
             }
 
             // ── already_running — 이미 켜져 있다: "시작 완료" 대신 그렇다고만 알린다 (사용자 11-06 #10) ──
-            if (result.success !== false && result.already_running === true) {
+            if (outcome.kind === 'alreadyRunning') {
                 revertOptimistic(id);
                 safeShowToast(t('servers.already_running_toast', { name }), 'info', 3000);
                 return;
             }
 
             // ── error_code: start_cancelled — 켜는 동안 사용자가 정지했다: 실패가 아니므로 알리지 않는다 ──
-            if (result.error_code === 'start_cancelled') {
+            if (outcome.kind === 'cancelled') {
                 revertOptimistic(id);
                 return;
             }
@@ -765,7 +766,7 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
                     return;
                 }
 
-                if (result.error_code === 'graceful_stop_unavailable') {
+                if (controlOutcome(result).kind === 'forceStop') {
                     undo();
                     askForceStop(name, () => stopNow(true));
                     return;
@@ -843,16 +844,14 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
                 const force = forced || srv.module_settings?.graceful_stop === false;
                 const result = await window.api.instanceRestart(id, { force });
                 notifyPortMoved(result, srv);
-                const code = result?.error_code;
-                if (code === 'graceful_stop_unavailable') {
+                const outcome = controlOutcome(result);
+                if (outcome.kind === 'forceStop') {
                     revertOptimistic(id);
                     askForceStop(name, () => restartNow(true));
-                } else if (code === 'start_cancelled' || code === 'restart_cancelled') {
-                    // 그사이 다른 쪽에서 정지·시작·삭제했다: 실패가 아니라 그만둔 것
+                } else if (outcome.kind === 'cancelled') {
                     revertOptimistic(id);
-                    safeShowToast(t(`errors.${code}`), 'info', 4000);
-                } else if (code === 'still_stopping') {
-                    // 서버가 제때 꺼지지 않아 데몬이 다시 켜지 않았다
+                    safeShowToast(t(`errors.${outcome.code}`), 'info', 4000);
+                } else if (outcome.kind === 'stillStopping') {
                     revertOptimistic(id);
                     safeShowToast(t('errors.still_stopping'), 'error', 4000);
                 } else if (result?.error || result?.success === false) {

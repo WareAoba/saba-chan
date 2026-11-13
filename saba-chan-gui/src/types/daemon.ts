@@ -252,6 +252,9 @@ export interface ModuleAgreement {
     url: string;
 }
 
+/** 동의를 묻는 약관 한 건: 데몬이 409 agreement_required에 실어 줄 때는 모듈 언어로 옮긴 이름(label)이 붙는다 */
+export type Agreement = ModuleAgreement & { label?: string };
+
 /** [[lists]] (module_loader::ModuleList): 플레이어 목록 선언 */
 export interface ModuleList {
     id: string;
