@@ -32,6 +32,15 @@ impl AddonChoice {
     fn is_empty(&self) -> bool {
         self.pinned.is_none() && self.pending_version.is_none()
     }
+
+    /// 목록·상태에 싣는 것 (`installed`: 깔린 판). 깔린 판과 같은 미뤄 둔 판은 끝난 기다림이고,
+    /// 고른 판도 기다리는 판도 아닌 판이 깔린 고정(고른 뒤 지우고 다시 받기)은 다음 확인이 풀 것이라 싣지 않는다 (`rule`의 Drop)
+    pub fn as_installed(mut self, installed: &str) -> Self {
+        self.pending_version = self.pending_version.filter(|v| v != installed);
+        let pending = self.pending_version.as_deref();
+        self.pinned = self.pinned.filter(|p| p.version == installed || pending == Some(p.version.as_str()));
+        self
+    }
 }
 
 pub fn path() -> PathBuf {
@@ -288,6 +297,17 @@ mod tests {
         assert_eq!(rule(&p, "0.1.13", "0.1.13", false, Some("0.1.12")), PinRule::Switch);
         // 고른 뒤 다른 판이 깔렸으면(지우고 다시 받기, 손으로 넣기) 고정을 푼다
         assert_eq!(rule(&p, "0.1.13", "0.1.13", false, None), PinRule::Drop);
+    }
+
+    /// 목록·상태에는 고른 뒤 다른 판이 깔린 고정(지우고 다시 받기)을 싣지 않는다: 다음 확인이 풀 고정이다 (`rule`의 Drop).
+    /// 깔린 판과 같은 미뤄 둔 판은 끝난 기다림이다
+    #[test]
+    fn a_pin_left_behind_by_another_installed_version_is_not_shown() {
+        let choice = |pending: Option<&str>| AddonChoice { pinned: Some(pin("0.1.12", "0.1.13")), pending_version: pending.map(Into::into) };
+        assert_eq!(choice(None).as_installed("0.1.12"), choice(None));
+        assert_eq!(choice(Some("0.1.12")).as_installed("0.1.13"), choice(Some("0.1.12")), "the chosen version waits for a server");
+        assert_eq!(choice(Some("0.1.12")).as_installed("0.1.12"), choice(None));
+        assert_eq!(choice(None).as_installed("0.1.13"), AddonChoice::default(), "reinstalled after the pin");
     }
 
     /// 고정과 미뤄 둔 판은 파일에 남아 다시 켜도 그대로고, 둘 다 없어진 키는 지운다

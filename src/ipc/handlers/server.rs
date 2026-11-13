@@ -465,11 +465,9 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
     }
 }
 
-/// 목록에 싣는 사용자가 고른 판 (`addon_pins`): 고정과, 깔린 판과 달라 아직 기다리는 고른 판
+/// 목록에 싣는 사용자가 고른 판 (`addon_pins`): 고정과, 깔린 판과 달라 아직 기다리는 고른 판 (`AddonChoice::as_installed`)
 pub(crate) fn addon_choice(key: &str, installed: &str) -> saba_chan_updater_lib::addon_pins::AddonChoice {
-    let mut choice = saba_chan_updater_lib::addon_pins::get(key);
-    choice.pending_version = choice.pending_version.filter(|v| v != installed);
-    choice
+    saba_chan_updater_lib::addon_pins::get(key).as_installed(installed)
 }
 
 async fn module_list_response(

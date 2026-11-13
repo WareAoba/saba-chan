@@ -324,7 +324,14 @@ async fn get_status(
 ) -> impl IntoResponse {
     let mgr = state.manager.read().await;
     let status = mgr.get_status();
-    let pins = addon_pins::load();
+    // 고른 뒤 다른 판이 깔린 고정은 싣지 않는다 (`AddonChoice::as_installed`). 다음 확인이 푼다
+    let pins: std::collections::BTreeMap<String, addon_pins::AddonChoice> = addon_pins::load()
+        .into_iter()
+        .map(|(key, choice)| {
+            let installed = mgr.installed_addon_version(&key).unwrap_or_default();
+            (key, choice.as_installed(&installed))
+        })
+        .collect();
 
     // Locales는 UI에 표시하지 않음 — 백그라운드 자동 적용 대상
     let components: Vec<Value> = status.components.iter()
@@ -2309,7 +2316,10 @@ async fn get_addon_versions(State(state): State<UpdateState>, Path(key): Path<St
         (mgr.addon_versions(&key), mgr.addon_core(), mgr.installed_addon_version(&key))
     };
     match ask.await {
-        Ok(list) => Json(addon_versions_body(&key, &core, installed.as_deref(), &list, addon_pins::get(&key).pinned.as_ref())).into_response(),
+        Ok(list) => {
+            let pinned = addon_pins::get(&key).as_installed(installed.as_deref().unwrap_or_default()).pinned;
+            Json(addon_versions_body(&key, &core, installed.as_deref(), &list, pinned.as_ref())).into_response()
+        }
         Err(e) => relay_unreachable(e),
     }
 }
