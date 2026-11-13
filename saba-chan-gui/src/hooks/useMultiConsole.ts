@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { type ConsoleLine, type Consoles, useConsoleStore } from '../stores/useConsoleStore';
 import { useServerStore } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import type { ApiBody } from '../types/daemon';
 import { commandErrorText, commandReplyLines } from '../utils/commandReply';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 
@@ -14,6 +15,8 @@ const POLL_IDLE_MS = 5000;
 // 새 줄이 없으면 데몬이 이만큼(초) 붙잡는다. 붙잡는 데몬(답에 waits: true)에는 답을 받고 POLL_ACTIVE_MS 뒤 다시 묻는다
 // 원격 데몬 중계(remote_daemon peer)가 다시 쓴 연결의 답을 10초까지만 기다리므로 그보다 짧게 둔다
 const CONSOLE_WAIT_S = 8;
+/** 콘솔 스트림을 열지 못했거나 끊긴 뒤 다시 열어 보기까지 (ms). 그동안은 기다리는 조회로 읽는다 */
+const STREAM_RETRY_MS = 30_000;
 /** PIP로 띄울 때 메인 창 콘솔 자리에 흐리게 남기는 줄 수 */
 const GHOST_LINES = 40;
 
@@ -30,6 +33,8 @@ interface PollRef {
     timer: ReturnType<typeof setTimeout> | null;
     /** 기다리지 않고 지금 읽는다 (화면에 떴을 때, 창이 다시 보일 때) */
     wake: () => void;
+    /** 열린 콘솔 스트림을 닫는다 (화면에 보이는 콘솔만 연다) */
+    stream: (() => void) | null;
 }
 
 const keyed = (lines: ConsoleLine[]): ConsoleLine[] => lines.map((line) => ({ ...line, key: ++lineSeq }));
@@ -94,6 +99,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         if (ref) {
             ref.active = false;
             clearTimeout(ref.timer ?? undefined);
+            ref.stream?.();
             delete pollingRefs.current[instanceId];
         }
         setConsoles((prev) => {
@@ -138,15 +144,155 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             let polling = false;
             // 마지막 답이 데몬이 붙잡았다 온 것인가 (옛 데몬은 wait를 모르고 바로 답한다)
             let daemonWaits = false;
+            // 스트림을 여는 중이거나 열려 있다 (그동안은 주기 조회를 쉰다)
+            let streaming = false;
+            // 스트림을 열지 못했거나 끊긴 뒤 이때까지는 기다리는 조회로 읽는다
+            let streamRetryAt = 0;
+            // 연 스트림의 차례. 닫은 뒤에 열린 옛 스트림은 바로 닫는다
+            let streamGen = 0;
             // 이 루프의 ref. 닫았다 다시 열면 새 ref가 생기므로, 옛 루프는 자기 ref가 아니면 멈춘다(줄 중복 방지)
-            const myRef: PollRef = { active: true, timer: null, wake: () => {} };
+            const myRef: PollRef = { active: true, timer: null, wake: () => {}, stream: null };
             const isMine = () => pollingRefs.current[instanceId] === myRef && myRef.active;
             // 목록에서 본 적이 있는 서버가 사라지면 지워진 것이다 (목록을 받기 전에 연 콘솔은 닫지 않는다)
             let listed = false;
+            /** 지금 PID를 기억하고, 앞서 본 것과 다른 프로세스인지 */
+            const notePid = () => {
+                const pid = useServerStore.getState().servers.find((s) => s.id === instanceId)?.pid;
+                let changed = false;
+                if (pid != null && pid > 0) {
+                    if (seenPid !== null && pid !== seenPid) {
+                        changed = true;
+                        // 세대를 주는 데몬이면 세대 비교가 정한다 (PID가 늦게 바뀌어도 줄이 겹치지 않게)
+                        if (seenEpoch === null) sinceId = 0;
+                    }
+                    seenPid = pid;
+                }
+                return changed;
+            };
+            const append = (lines: ConsoleLine[], replace: boolean) =>
+                setConsoles((prev) => {
+                    if (!prev[instanceId]) return prev;
+                    const maxLines = consoleBufferRef.current || 2000;
+                    const newLines = replace ? lines : [...prev[instanceId].lines, ...lines];
+                    return {
+                        ...prev,
+                        [instanceId]: {
+                            ...prev[instanceId],
+                            lines: newLines.length > maxLines ? newLines.slice(-maxLines) : newLines,
+                        },
+                    };
+                });
+            /**
+             * 콘솔 조회·스트림의 답 한 건을 화면에 넣는다. 조회에서 세대가 바뀌었으면 받은 줄을 버리고 false(처음부터 다시 묻는다).
+             * 스트림은 세대가 바뀌면 데몬이 이미 처음부터 보낸다 (`reset`)
+             */
+            const apply = (data: ApiBody | null | undefined, pidChanged: boolean, fromStream: boolean) => {
+                if (!data) return true;
+                // epoch가 없는 응답(디스크 기록, 옛 데몬)은 지금처럼 이어 읽는다
+                if (typeof data?.epoch === 'number') {
+                    const epochChanged = (seenEpoch !== null && data.epoch !== seenEpoch) || data.reset === true;
+                    seenEpoch = data.epoch;
+                    // 옛 번호로 받은 줄은 버리고 처음부터 다시 받는다. 새 프로세스면 이어 붙이고(지난 실행 기록을 남긴다),
+                    // 같은 프로세스에 다시 붙었으면 그 버퍼로 바꾼다
+                    if (epochChanged) {
+                        sinceId = 0;
+                        replaceLines = !pidChanged;
+                        if (!fromStream) return false;
+                    }
+                }
+                // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
+                // 이미 한 번 로드했으면 다시 append하지 않음
+                if (data?.source === 'disk') {
+                    if (!diskLoaded && data.lines?.length > 0) {
+                        diskLoaded = true;
+                        const unseen = keyed(unseenDiskTail(seenTail, data.lines));
+                        seenTail = [];
+                        append(unseen, false);
+                    }
+                } else if (data?.lines?.length > 0) {
+                    diskLoaded = false; // managed process가 복구됨 → 리셋
+                    const replace = replaceLines;
+                    replaceLines = false;
+                    seenTail = [...(replace ? [] : seenTail), ...data.lines.map(lineMark)].slice(-5);
+                    append(keyed(data.lines), replace);
+                    sinceId = data.lines[data.lines.length - 1].id + 1;
+                }
+                // Track stdin availability from backend
+                if (data && typeof data.stdin_available === 'boolean') {
+                    setConsoles((prev) => {
+                        if (!prev[instanceId]) return prev;
+                        const disabled = !data.stdin_available;
+                        if (prev[instanceId].stdinDisabled === disabled) return prev;
+                        return {
+                            ...prev,
+                            [instanceId]: {
+                                ...prev[instanceId],
+                                stdinDisabled: disabled,
+                            },
+                        };
+                    });
+                }
+                return true;
+            };
+            const stopStream = () => {
+                myRef.stream?.();
+                myRef.stream = null;
+                streaming = false;
+                streamGen++;
+            };
+            /** 받은 데부터 스트림을 연다. 열지 못하면 한동안 기다리는 조회로 읽는다 */
+            const startStream = async () => {
+                streaming = true;
+                const gen = ++streamGen;
+                // 스트림이 없는 브리지(옛 셸·개발용 가짜 API)도 null로 받는다
+                const open = () =>
+                    window.api.managedConsoleStream(
+                        instanceId,
+                        {
+                            since: sinceId,
+                            epoch: seenEpoch ?? undefined,
+                            diskSeen: diskLoaded || undefined,
+                            spans: useSettingsStore.getState().consoleSyntaxHighlight || undefined,
+                        },
+                        (data) => {
+                            if (isMine()) apply(data, notePid(), true);
+                        },
+                        () => {
+                            if (!isMine() || gen !== streamGen) return;
+                            myRef.stream = null;
+                            streaming = false;
+                            streamRetryAt = Date.now() + STREAM_RETRY_MS;
+                            schedulePoll();
+                        },
+                    );
+                const close = await Promise.resolve()
+                    .then(open)
+                    .then(
+                        (c) => (typeof c === 'function' ? c : null),
+                        () => null,
+                    );
+                if (!isMine() || gen !== streamGen) {
+                    close?.();
+                    return;
+                }
+                if (!close) {
+                    streaming = false;
+                    streamRetryAt = Date.now() + STREAM_RETRY_MS;
+                    schedulePoll(true);
+                    return;
+                }
+                myRef.stream = close;
+            };
             const schedulePoll = (now = false) => {
                 if (!isMine()) return;
                 clearTimeout(myRef.timer ?? undefined);
                 myRef.timer = null;
+                // 화면에 보이는 콘솔만 데몬에 붙잡아 달라고 한다 (보이지 않는 콘솔은 5초마다 그냥 읽는다)
+                const watched = !!watching.current[instanceId] && !document.hidden;
+                if (streaming) {
+                    if (watched) return;
+                    stopStream();
+                }
                 if (document.hidden) return;
                 const servers = useServerStore.getState().servers;
                 const server = servers.find((s) => s.id === instanceId);
@@ -155,25 +301,19 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     closeConsole(instanceId);
                     return;
                 }
+                // 화면에 보이면 스트림으로 받는다 (스트림이 없는 데몬·브리지는 아래 기다리는 조회)
+                if (watched && !polling && Date.now() >= streamRetryAt) {
+                    void startStream();
+                    return;
+                }
                 const isRunning = server && server.pid != null && server.pid > 0;
-                // 화면에 보이는 콘솔만 데몬에 붙잡아 달라고 한다 (보이지 않는 콘솔은 5초마다 그냥 읽는다)
-                const watched = !!watching.current[instanceId];
                 const interval = now ? 0 : watched && (isRunning || daemonWaits) ? POLL_ACTIVE_MS : POLL_IDLE_MS;
                 const waitFor = now || !watched ? 0 : CONSOLE_WAIT_S;
                 myRef.timer = setTimeout(async () => {
                     if (polling) { schedulePoll(); return; }
                     polling = true;
                     try {
-                        const pid = useServerStore.getState().servers.find((s) => s.id === instanceId)?.pid;
-                        let pidChanged = false;
-                        if (pid != null && pid > 0) {
-                            if (seenPid !== null && pid !== seenPid) {
-                                pidChanged = true;
-                                // 세대를 주는 데몬이면 아래 세대 비교가 정한다 (PID가 늦게 바뀌어도 줄이 겹치지 않게)
-                                if (seenEpoch === null) sinceId = 0;
-                            }
-                            seenPid = pid;
-                        }
+                        const pidChanged = notePid();
                         // 하이라이트가 켜져 있으면 데몬에게 조각 토큰(spans)도 달라고 한다
                         const opts = {
                             spans: useSettingsStore.getState().consoleSyntaxHighlight || undefined,
@@ -184,73 +324,10 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                         const data = await window.api.managedConsole(instanceId, sinceId, 200, opts);
                         if (!isMine()) return;
                         daemonWaits = data?.waits === true;
-                        // epoch가 없는 응답(디스크 기록, 옛 데몬)은 지금처럼 이어 읽는다
-                        if (typeof data?.epoch === 'number') {
-                            const epochChanged = seenEpoch !== null && data.epoch !== seenEpoch;
-                            seenEpoch = data.epoch;
-                            // 옛 번호로 받은 줄은 버리고 처음부터 다시 받는다. 새 프로세스면 이어 붙이고(지난 실행 기록을 남긴다),
-                            // 같은 프로세스에 다시 붙었으면 그 버퍼로 바꾼다
-                            if (epochChanged) {
-                                sinceId = 0;
-                                replaceLines = !pidChanged;
-                                schedulePoll();
-                                return;
-                            }
-                        }
-                        // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
-                        // 이미 한 번 로드했으면 다시 append하지 않음
-                        if (data?.source === 'disk') {
-                            if (!diskLoaded && data.lines?.length > 0) {
-                                diskLoaded = true;
-                                const unseen = keyed(unseenDiskTail(seenTail, data.lines));
-                                seenTail = [];
-                                setConsoles((prev) => {
-                                    if (!prev[instanceId]) return prev;
-                                    const maxLines = consoleBufferRef.current || 2000;
-                                    const newLines = [...prev[instanceId].lines, ...unseen];
-                                    return {
-                                        ...prev,
-                                        [instanceId]: {
-                                            ...prev[instanceId],
-                                            lines: newLines.length > maxLines ? newLines.slice(-maxLines) : newLines,
-                                        },
-                                    };
-                                });
-                            }
-                        } else if (data?.lines?.length > 0) {
-                            diskLoaded = false; // managed process가 복구됨 → 리셋
-                            const replace = replaceLines;
-                            replaceLines = false;
-                            const received = keyed(data.lines);
-                            seenTail = [...(replace ? [] : seenTail), ...data.lines.map(lineMark)].slice(-5);
-                            setConsoles((prev) => {
-                                if (!prev[instanceId]) return prev;
-                                const maxLines = consoleBufferRef.current || 2000;
-                                const newLines = replace ? received : [...prev[instanceId].lines, ...received];
-                                return {
-                                    ...prev,
-                                    [instanceId]: {
-                                        ...prev[instanceId],
-                                        lines: newLines.length > maxLines ? newLines.slice(-maxLines) : newLines,
-                                    },
-                                };
-                            });
-                            sinceId = data.lines[data.lines.length - 1].id + 1;
-                        }
-                        // Track stdin availability from backend
-                        if (data && typeof data.stdin_available === 'boolean') {
-                            setConsoles((prev) => {
-                                if (!prev[instanceId]) return prev;
-                                const disabled = !data.stdin_available;
-                                if (prev[instanceId].stdinDisabled === disabled) return prev;
-                                return {
-                                    ...prev,
-                                    [instanceId]: {
-                                        ...prev[instanceId],
-                                        stdinDisabled: disabled,
-                                    },
-                                };
-                            });
+                        if (!apply(data, pidChanged, false)) {
+                            polling = false;
+                            schedulePoll();
+                            return;
                         }
                     } catch (_err) {
                         // silent — server might not be ready yet
@@ -276,12 +353,15 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         pollingRefs.current[instanceId]?.wake();
         return () => {
             watching.current[instanceId] -= 1;
+            // 안 보이게 됐으면 스트림을 닫고 느린 조회로 돌아간다
+            pollingRefs.current[instanceId]?.wake();
         };
     }, []);
 
     useEffect(() => {
+        // 다시 보이면 바로 읽고, 가려지면 스트림을 닫는다
         const onVisible = () => {
-            if (!document.hidden) for (const ref of Object.values(pollingRefs.current)) ref.wake();
+            for (const ref of Object.values(pollingRefs.current)) ref.wake();
         };
         document.addEventListener('visibilitychange', onVisible);
         return () => document.removeEventListener('visibilitychange', onVisible);
@@ -375,6 +455,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             for (const ref of Object.values(pollingRefs.current)) {
                 ref.active = false;
                 clearTimeout(ref.timer ?? undefined);
+                ref.stream?.();
             }
         };
     }, []);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createWebApi } from '../api';
 import type { PcEvent, SessionReply } from '../types';
 
@@ -38,5 +38,38 @@ describe('웹 브리지', () => {
         api.onDaemonEvent((e) => got.push(e));
         emit({ type: 'instance.exit', data: { id: 'a' } });
         expect(got).toEqual([{ type: 'instance.exit', data: { id: 'a' } }]);
+    });
+
+    it('콘솔 스트림을 세션의 조각 답으로 받는다', async () => {
+        let chunk: (body: unknown) => void = () => {};
+        let end: (r: SessionReply) => void = () => {};
+        const cancel = vi.fn();
+        const session = {
+            ...fakeSession({ status: 200, data: {} }),
+            stream: vi.fn((_m: string, _p: string, onChunk: (b: unknown) => void, onEnd: (r: SessionReply) => void) => {
+                chunk = onChunk;
+                end = onEnd;
+                return cancel;
+            }),
+        };
+        const { api } = createWebApi(session);
+        const got: unknown[] = [];
+        const ended = vi.fn();
+        const close = await api.daemonConsoleStream({ since: 3 }, (b) => got.push(b), ended);
+        expect(session.stream).toHaveBeenCalledWith('GET', '/api/daemon/console/stream?since=3&spans=1', expect.any(Function), expect.any(Function));
+        chunk({ lines: ['a'] });
+        expect(got).toEqual([{ lines: ['a'] }]);
+        end({ status: 200 });
+        expect(ended).toHaveBeenCalledTimes(1);
+        expect(typeof close).toBe('function');
+
+        await api.daemonConsoleStream({}, () => {}, () => {}).then((c) => c?.());
+        expect(cancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('스트림을 열 수 없는 세션이면 null: 화면은 주기 조회로 읽는다', async () => {
+        const session = { ...fakeSession({ status: 200, data: {} }), stream: () => null };
+        const { api } = createWebApi(session);
+        await expect(api.daemonConsoleStream({}, () => {}, () => {})).resolves.toBeNull();
     });
 });

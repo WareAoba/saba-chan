@@ -80,6 +80,7 @@ pub static ROUTES: &[Route] = &[
     allow("POST", "/api/instance/{id}/restart"),
     allow("GET", "/api/instance/{id}/events"),
     allow("GET", "/api/instance/{id}/console"),
+    allow("GET", "/api/instance/{id}/console/stream"),
     allow("POST", "/api/instance/{id}/stdin"),
     allow("GET", "/api/instance/{id}/logs"),
     allow("GET", "/api/instance/{id}/logs/export"),
@@ -247,6 +248,7 @@ pub static ROUTES: &[Route] = &[
     deny("DELETE", "/api/client/{id}/unregister"),
     deny("POST", "/api/daemon/shutdown"),
     allow("GET", "/api/daemon/console"),
+    allow("GET", "/api/daemon/console/stream"),
     // ── 멤버 권한과 길드별 서버 노출 ──
     allow("GET", "/api/permissions/{guild_id}"),
     allow("PATCH", "/api/permissions/{guild_id}"),
@@ -472,6 +474,11 @@ pub(crate) fn percent_decode(s: &str) -> Option<String> {
 /// 본문이 JSON이 아닌 그림이라 웹 원격에 base64 글자로 싣는 라우트 (GUI 브리지의 `responseType: 'base64'`와 같은 값)
 pub fn base64_body(method: &str, pattern: &str) -> bool {
     method == "GET" && pattern == "/api/extensions/{id}/icon"
+}
+
+/// 답을 콘솔 스트림(SSE)으로 흘려보내는 라우트: 웹 중계는 조각(`chunk`)으로 나눠 보낸다 (`link::dispatch`)
+pub fn streams(method: &str, pattern: &str) -> bool {
+    method == "GET" && matches!(pattern, "/api/instance/{id}/console/stream" | "/api/daemon/console/stream")
 }
 
 /// 응답에 인스턴스 설정을 담는 라우트 (비밀값을 빼고 돌려준다, `exec::hide_secrets`)

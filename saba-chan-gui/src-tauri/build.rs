@@ -3,6 +3,8 @@ use std::path::Path;
 /// 렌더러가 부를 수 있는 명령. capabilities/default.json의 allow-* 권한과 짝을 맞춘다
 const COMMANDS: &[&str] = &[
     "daemon_request",
+    "daemon_stream_open",
+    "daemon_stream_close",
     "app_ready",
     "daemon_status",
     "daemon_restart",

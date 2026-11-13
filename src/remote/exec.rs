@@ -81,6 +81,76 @@ pub async fn run(server: &IPCServer, req: Request, user: Option<String>) -> Resp
     }
 }
 
+/// 콘솔 스트림 요청인가 (문지기가 받는 경로일 때만)
+pub fn is_stream(req: &Request) -> bool {
+    gate::decide(&req.method, &req.path).is_ok_and(|pattern| gate::streams(&req.method, pattern))
+}
+
+/// 콘솔 스트림 한 건: 데몬 라우터의 SSE 답을 풀어 콘솔 답 하나마다 `chunk`를 부른다.
+/// 끝 답(`res`로 보낼 것)을 돌려준다. 거뒀거나(`stop`) 받는 쪽이 없어졌으면(`chunk`가 false) None
+pub async fn stream(server: &IPCServer, req: Request, user: Option<String>, stop: &tokio_util::sync::CancellationToken, mut chunk: impl FnMut(Value) -> bool) -> Option<Response> {
+    use futures_util::StreamExt;
+    if !is_stream(&req) {
+        return Some(refusal(StatusCode::FORBIDDEN, "remote_not_allowed", "This can only be done on the PC", None));
+    }
+    let mut origin = crate::audit::Origin::new("web");
+    origin.user = user;
+    let res = match crate::actions::call_response_as(server, &req.method, &req.path, Some(origin)).await {
+        Ok(res) => res,
+        Err(e) => return Some(Response { status: 500, body: json!({ "error": e }) }),
+    };
+    let status = res.status();
+    if !status.is_success() {
+        let bytes = axum::body::to_bytes(res.into_body(), 1 << 20).await.unwrap_or_default();
+        return Some(Response { status: status.as_u16(), body: serde_json::from_slice(&bytes).unwrap_or(Value::Null) });
+    }
+    let mut body = res.into_body().into_data_stream();
+    let mut buf = String::new();
+    loop {
+        let next = tokio::select! {
+            _ = stop.cancelled() => return None,
+            next = body.next() => next,
+        };
+        let Some(Ok(bytes)) = next else {
+            return Some(Response { status: 200, body: Value::Null });
+        };
+        buf.push_str(&String::from_utf8_lossy(&bytes));
+        while let Some(at) = buf.find("\n\n") {
+            let block: String = buf.drain(..at + 2).collect();
+            match sse_block(&block) {
+                Some((Some("error"), data)) => return Some(Response { status: 404, body: data }),
+                Some((_, data)) => {
+                    if !chunk(data) {
+                        return None;
+                    }
+                }
+                None => {}
+            }
+        }
+    }
+}
+
+/// SSE 한 덩어리 → (event 이름, data JSON). keep-alive 주석(ping)은 빈 data(Null): 릴레이에 조각으로 보내 스트림이 살아 있음을 알린다.
+/// data가 JSON이 아니면 None
+fn sse_block(block: &str) -> Option<(Option<&str>, Value)> {
+    let mut event = None;
+    let mut data = Vec::new();
+    let mut comment = false;
+    for line in block.lines() {
+        if line.starts_with(':') {
+            comment = true;
+        } else if let Some(v) = line.strip_prefix("event:") {
+            event = Some(v.trim());
+        } else if let Some(v) = line.strip_prefix("data:") {
+            data.push(v.strip_prefix(' ').unwrap_or(v));
+        }
+    }
+    if data.is_empty() {
+        return comment.then_some((None, Value::Null));
+    }
+    serde_json::from_str(&data.join("\n")).ok().map(|d| (event, d))
+}
+
 /// PC에서만 바꾸는 칸을 담은 요청의 거절 본문 (원격 포트도 같은 모양으로 거절한다)
 pub(crate) fn field_refusal(fields: Vec<String>) -> Value {
     refusal(StatusCode::FORBIDDEN, "remote_field_blocked", "These settings can only be changed on the PC", Some(fields)).body
@@ -302,6 +372,14 @@ fn hide_paths(body: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 데몬 SSE의 keep-alive(주석 줄)는 빈 조각이 된다: 릴레이는 2분 동안 아무것도 오지 않은 스트림을 끝낸다
+    #[test]
+    fn a_keep_alive_ping_becomes_an_empty_chunk() {
+        assert_eq!(sse_block(":ping\n\n"), Some((None, Value::Null)));
+        assert_eq!(sse_block("data: {\"a\":1}\n\n"), Some((None, json!({ "a": 1 }))));
+        assert_eq!(sse_block("event: error\ndata: {}\n\n"), Some((Some("error"), json!({}))));
+    }
 
     async fn server(tmp: &std::path::Path) -> IPCServer {
         crate::ipc::auth::ensure_test_token();

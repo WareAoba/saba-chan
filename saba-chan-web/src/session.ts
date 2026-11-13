@@ -4,6 +4,8 @@ import type { JsonObject, PcEvent, SessionReply, SessionState, WebSession } from
  *
  * 첫 프레임은 {t:'hello', link}. 열리면 {t:'ready', sid, key, expiresAt, hostId}.
  * 네트워크로 끊기면 30초 안에 {t:'resume', sid, key}로 다시 붙는다. 릴레이가 끝낸 세션(closed·error)은 다시 붙지 않는다.
+ * 흘려 받는 답(콘솔 스트림, ready.features에 'stream'이 있는 릴레이): {t:'chunk', id, body} 여럿 뒤 같은 id의 {t:'res'}로 끝난다.
+ * 그만 받을 때는 {t:'cancel', id}.
  */
 
 /** 릴레이가 끊긴 세션을 기다리는 시간(30초)보다 조금 짧게 */
@@ -25,6 +27,13 @@ interface Frame {
     data?: JsonObject;
     reason?: string;
     code?: string;
+    features?: string[];
+}
+
+/** 열린 스트림 하나 */
+interface Stream {
+    onChunk: (body: unknown) => void;
+    onEnd: (reply: SessionReply) => void;
 }
 
 interface SessionOptions {
@@ -50,6 +59,9 @@ export function createSession({
     let lostAt = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let nextId = 1;
+    // 릴레이가 흘려 받는 답을 아는가 (옛 릴레이면 화면은 주기 조회로 읽는다)
+    let canStream = false;
+    const streams = new Map<number, Stream>();
     const pending = new Map<number, { resolve: (r: SessionReply) => void; timer: ReturnType<typeof setTimeout> }>();
 
     const set = (patch: Partial<SessionState>) => {
@@ -66,6 +78,11 @@ export function createSession({
             clearTimeout(p.timer);
             p.resolve({ status: 0, code, error: code });
             pending.delete(id);
+        }
+        // 끊긴 스트림은 끝난 것으로 알린다: 다시 붙은 뒤 부른 쪽이 다시 연다
+        for (const [id, s] of streams) {
+            streams.delete(id);
+            s.onEnd({ status: 0, code, error: code });
         }
     };
 
@@ -96,9 +113,20 @@ export function createSession({
                     sid = frame.sid;
                     key = frame.key;
                     lostAt = 0;
+                    canStream = Array.isArray(frame.features) && frame.features.includes('stream');
                     set({ phase: 'ready', expiresAt: frame.expiresAt, hostId: frame.hostId ?? state.hostId });
                     break;
+                case 'chunk':
+                    // 빈 조각은 PC가 스트림을 붙잡고 있다는 keep-alive다
+                    if (frame.body != null) streams.get(frame.id)?.onChunk(frame.body);
+                    break;
                 case 'res': {
+                    const s = streams.get(frame.id);
+                    if (s) {
+                        streams.delete(frame.id);
+                        s.onEnd({ status: frame.status, data: frame.body });
+                        break;
+                    }
                     const p = pending.get(frame.id);
                     if (!p) break;
                     clearTimeout(p.timer);
@@ -164,6 +192,16 @@ export function createSession({
                 if (body !== undefined) frame.body = body;
                 send(frame);
             });
+        },
+        /** 흘려 받는 요청. 조각마다 onChunk, 끝나면(끊김 포함) onEnd. 열 수 없으면 null. 돌려준 함수로 그만 받는다 */
+        stream(method: string, path: string, onChunk: (body: unknown) => void, onEnd: (reply: SessionReply) => void) {
+            if (!canStream || state.phase !== 'ready' || ws?.readyState !== 1) return null;
+            const id = nextId++;
+            streams.set(id, { onChunk, onEnd });
+            send({ t: 'req', id, method: method.toUpperCase(), path });
+            return () => {
+                if (streams.delete(id)) send({ t: 'cancel', id });
+            };
         },
         extend() {
             send({ t: 'extend' });

@@ -1788,6 +1788,8 @@ mod route_coverage {
         ("/api/schedules/upcoming", "GUI 작업 기록 화면의 '다가오는 예약' 카드 (CLI는 `schedule show <서버>`로 서버마다 다음 실행을 본다)"),
         ("/api/guides", "GUI 가이드 카드·화면 강조 (GUI 화면을 짚는 안내라 CLI에는 그릴 곳이 없다)"),
         ("/api/guides/{id}", "GUI 가이드를 열었음·보던 단계·끝까지 봄"),
+        ("/api/instance/{id}/console/stream", "콘솔 스트림(SSE): 앱·웹용 (사용자 11-12). CLI는 `/api/instance/{id}/console`을 주기 조회한다"),
+        ("/api/daemon/console/stream", "데몬 로그 스트림(SSE): 앱·웹용. CLI는 `/api/daemon/console`을 주기 조회한다"),
         ("/api/remote/daemons/{host_id}/proxy/{*rest}", "원격 데몬 중계: 데몬 API 전체를 그 데몬으로 넘기는 길 (원격 데몬 고르기는 G1)"),
     ];
 

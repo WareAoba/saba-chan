@@ -141,6 +141,9 @@ function Metrics({ api }: { api: WebApi }) {
     );
 }
 
+/** 데몬 로그 스트림을 열지 못했거나 끊긴 뒤 다시 열어 보기까지 (ms). 그동안은 주기 조회로 읽는다 */
+const STREAM_RETRY_MS = 30_000;
+
 function DaemonLog({ api }: { api: WebApi }) {
     const { t, i18n } = useTranslation();
     const [lines, setLines] = useState<DaemonLogEntry[] | null>(null);
@@ -148,17 +151,68 @@ function DaemonLog({ api }: { api: WebApi }) {
     const box = useStickToBottom<HTMLPreElement>(lines);
     useEffect(() => {
         let stopped = false;
+        // 데몬 로그 버퍼 세대 (스트림이 받은 자리를 이어 가는 데 쓴다)
+        let epoch: number | undefined;
+        // 열린 스트림을 닫는 함수. 열려 있는 동안 주기 조회는 쉰다
+        let closeStream: (() => void) | null = null;
+        let opening = false;
+        // 스트림을 열지 못했거나 끊긴 뒤 이때까지는 주기 조회로 읽는다
+        let streamRetryAt = 0;
+        const add = (got: DaemonLogEntry[], replace: boolean) => {
+            if (got.length) next.current = got[got.length - 1].id + 1;
+            // 새 줄이 없으면 그대로 둔다
+            setLines((prev) =>
+                replace ? got.slice(-300) : prev && !got.length ? prev : [...(prev ?? []), ...got].slice(-300),
+            );
+        };
+        /** 받은 다음부터 스트림으로 받는다 (릴레이·PC가 스트림을 모르면 주기 조회를 이어 간다) */
+        const openStream = async () => {
+            opening = true;
+            const close = await Promise.resolve()
+                .then(() =>
+                    api.daemonConsoleStream(
+                        { since: next.current, epoch },
+                        (res) => {
+                            if (stopped) return;
+                            if (typeof res?.epoch === 'number') epoch = res.epoch;
+                            if (Array.isArray(res?.lines)) add(res.lines, res.reset === true);
+                        },
+                        () => {
+                            closeStream = null;
+                            streamRetryAt = Date.now() + STREAM_RETRY_MS;
+                        },
+                    ),
+                )
+                .then(
+                    (c) => (typeof c === 'function' ? c : null),
+                    () => null,
+                );
+            opening = false;
+            if (stopped || document.hidden) return close?.();
+            if (close) closeStream = close;
+            else streamRetryAt = Date.now() + STREAM_RETRY_MS;
+        };
         const load = async () => {
+            if (closeStream || opening) return;
             const res = await api.daemonConsole(next.current === undefined ? {} : { since: next.current });
             if (stopped || !Array.isArray(res?.lines)) return;
-            if (res.lines.length) next.current = res.lines[res.lines.length - 1].id + 1;
-            // 새 줄이 없으면 그대로 둔다
-            setLines((prev) => (prev && !res.lines.length ? prev : [...(prev ?? []), ...res.lines].slice(-300)));
+            if (typeof res.epoch === 'number') epoch = res.epoch;
+            add(res.lines, false);
+            if (Date.now() >= streamRetryAt) await openStream();
         };
+        // 탭이 가려지면 스트림을 닫는다 (다시 보이면 주기 조회가 읽고 다시 연다)
+        const onHidden = () => {
+            if (!document.hidden) return;
+            closeStream?.();
+            closeStream = null;
+        };
+        document.addEventListener('visibilitychange', onHidden);
         const stop = startPoll(load, 3000);
         return () => {
             stopped = true;
             stop();
+            document.removeEventListener('visibilitychange', onHidden);
+            closeStream?.();
         };
     }, [api]);
 

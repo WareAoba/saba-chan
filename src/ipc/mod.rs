@@ -892,6 +892,7 @@ impl IPCServer {
             .route("/api/instance/{id}/rest", post(handlers::command::rest_route))
             // ── Managed-process & module-feature endpoints ──
             .route("/api/instance/{id}/console", get(handlers::managed::get_console_handler))
+            .route("/api/instance/{id}/console/stream", get(handlers::managed::console_stream_handler))
             .route("/api/instance/{id}/logs", get(handlers::logs::logs_handler))
             .route("/api/instance/{id}/logs/export", get(handlers::logs::export_handler).post(handlers::logs::export_file_handler))
             .route("/api/instance/{id}/stdin", post(handlers::managed::send_stdin_handler))
@@ -991,6 +992,7 @@ impl IPCServer {
             // ── Daemon lifecycle ──
             .route("/api/daemon/shutdown", post(handlers::client::daemon_shutdown))
             .route("/api/daemon/console", get(handlers::client::daemon_console))
+            .route("/api/daemon/console/stream", get(handlers::client::daemon_console_stream))
             // ── Extension management ──
             .route("/api/extensions", get(handlers::extension::list_extensions))
             .route("/api/extensions/init-status", get(handlers::extension::extension_init_status))
@@ -1218,6 +1220,43 @@ mod tests {
             }
         };
         tokio::time::timeout(std::time::Duration::from_secs(5), attached).await.expect("the host channel must be attached once the lock is free");
+    }
+
+    /// 콘솔 스트림(SSE): 지금 있는 줄을 먼저 보내고, 새 줄이 생기면 그 줄만 이어서 보낸다 (데몬 로그로 확인)
+    #[tokio::test]
+    async fn the_daemon_console_stream_sends_new_lines_as_they_come() {
+        use futures_util::StreamExt;
+        use tower::ServiceExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let supervisor = Arc::new(RwLock::new(crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        )));
+        crate::ipc::auth::ensure_test_token();
+        let logs = crate::daemon_log::DaemonLogBuffer::new();
+        logs.push("INFO".into(), "t".into(), "first line".into());
+        let server = IPCServer::new(supervisor, "127.0.0.1:0", logs.clone());
+        let mut req = axum::http::Request::get("/api/daemon/console/stream").header("host", "127.0.0.1");
+        if let Some(token) = crate::ipc::auth::expected_token() {
+            req = req.header("X-Saba-Token", token);
+        }
+        let res = server.router().oneshot(req.body(axum::body::Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(res.status(), 200);
+        assert_eq!(res.headers()["content-type"], "text/event-stream");
+        let mut body = res.into_body().into_data_stream();
+        async fn next(body: &mut (impl futures_util::Stream<Item = Result<axum::body::Bytes, axum::Error>> + Unpin)) -> String {
+            loop {
+                let chunk = tokio::time::timeout(std::time::Duration::from_secs(3), body.next()).await.expect("no event").unwrap().unwrap();
+                let text = String::from_utf8_lossy(&chunk).to_string();
+                if text.starts_with("data:") {
+                    return text;
+                }
+            }
+        }
+        assert!(next(&mut body).await.contains("first line"));
+        logs.push("INFO".into(), "t".into(), "second line".into());
+        let got = next(&mut body).await;
+        assert!(got.contains("second line") && !got.contains("first line"), "{got}");
     }
 
     /// 시험이 만든 데몬은 이 PC의 실제 설정 파일을 읽거나 쓰지 않는다 (PC 관문 2026-10-26: 시험이 data 폴더 config.json에 길드 설정을 남김)

@@ -157,18 +157,18 @@ pub async fn daemon_console(
 
     // `?wait=<초>`: 새 줄이 없으면 생길 때까지 기다린다 (since가 있을 때만)
     let wait = if since_id.is_some() { super::long_poll::wait_of(&params) } else { std::time::Duration::ZERO };
+    let spans = params.get("spans").is_some_and(|v| v == "1" || v == "true");
+    let changed = &crate::daemon_log::DAEMON_LOG_CHANGED;
+    let read = || async { Ok(read_daemon_log(&state, since_id, count, spans)) };
+    let result = super::long_poll::read_waiting(changed, wait, None, read).await.unwrap_or_else(|_| json!({"lines": []}));
+    (StatusCode::OK, Json(result)).into_response()
+}
+
+/// 데몬 로그 한 번 읽기 (콘솔 조회와 스트림이 같이 쓴다). `spans`: 줄마다 구문 강조 토큰 구간 (인스턴스 콘솔과 같은 토큰, UTF-16 오프셋)
+fn read_daemon_log(state: &IPCServer, since: Option<u64>, count: Option<usize>, spans: bool) -> serde_json::Value {
     let buffer = &state.daemon_log_buffer;
-    let waited = super::long_poll::read_waiting(&crate::daemon_log::DAEMON_LOG_CHANGED, wait, None, || async {
-        Ok(json!({"lines": serde_json::to_value(buffer.get_since(since_id, count))?}))
-    })
-    .await
-    .unwrap_or_else(|_| json!({"lines": []}));
-    let waits = waited.get("waits").cloned();
-    let entries = waited.get("lines").cloned().unwrap_or_else(|| json!([]));
-    let count = entries.as_array().map_or(0, Vec::len);
-    let mut lines = entries;
-    // `spans=1`: 줄마다 구문 강조 토큰 구간 (인스턴스 콘솔과 같은 토큰, UTF-16 오프셋)
-    if params.get("spans").is_some_and(|v| v == "1" || v == "true") {
+    let mut lines = serde_json::to_value(buffer.get_since(since, count)).unwrap_or_else(|_| json!([]));
+    if spans {
         let hl = crate::supervisor::highlight::daemon_log();
         for line in lines.as_array_mut().into_iter().flatten() {
             let spans: Vec<serde_json::Value> = line
@@ -181,17 +181,23 @@ pub async fn daemon_console(
             }
         }
     }
+    let count = lines.as_array().map_or(0, Vec::len);
+    json!({ "lines": lines, "count": count, "epoch": buffer.epoch() })
+}
 
-    (
-        StatusCode::OK,
-        Json(json!({
-            "lines": lines,
-            "count": count,
-            "epoch": state.daemon_log_buffer.epoch(),
-            "waits": waits,
-        })),
-    )
-        .into_response()
+/// GET /api/daemon/console/stream?since=&epoch=&count=200&spans=1 — 데몬 로그 스트림 (SSE, 인스턴스 콘솔 스트림과 같은 모양)
+pub async fn daemon_console_stream(
+    State(state): State<IPCServer>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let count = params.get("count").and_then(|c| c.parse::<usize>().ok());
+    let spans = params.get("spans").is_some_and(|v| v == "1" || v == "true");
+    let stop = state.shutdown_token.clone();
+    let updates = super::long_poll::stream(&crate::daemon_log::DAEMON_LOG_CHANGED, stop, super::long_poll::Cursor::from_query(&params), move |cur| {
+        let state = state.clone();
+        async move { Ok(read_daemon_log(&state, cur.since, count, spans)) }
+    });
+    super::long_poll::sse(updates)
 }
 
 /// 띄울 수 있는 인터페이스 (`POST /api/clients/launch`의 `kind`)
