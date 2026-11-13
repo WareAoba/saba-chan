@@ -755,12 +755,12 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
     }
 
     async fn stop(&self, server: &ServerView) -> Done {
-        let resp = self.remote_response(self.api.stop(server).await);
-        let failed = !resp.is_success() || resp.body.get("success").and_then(|v| v.as_bool()) == Some(false);
-        // 저장 후 종료를 요청할 길이 없어 서버를 그대로 두었다 (MK10). 강제 종료는 이 PC에서만 고른다
+        let mut resp = self.remote_response(self.api.stop(server, false).await);
+        // 저장 후 종료를 요청할 길이 없는 서버(MK10)는 묻지 않고 그대로 강제 정지한다
         if resp.str_field("error_code") == Some("graceful_stop_unavailable") {
-            return Done::new(self.t("server.graceful_stop_unavailable", &[("name", &server.name)]), false);
+            resp = self.remote_response(self.api.stop(server, true).await);
         }
+        let failed = !resp.is_success() || resp.body.get("success").and_then(|v| v.as_bool()) == Some(false);
         if failed {
             let detail = resp.str_field("error").or(resp.str_field("message")).unwrap_or_default();
             tracing::warn!("[Chat] 정지 실패 {}: {}", server.name, detail);
