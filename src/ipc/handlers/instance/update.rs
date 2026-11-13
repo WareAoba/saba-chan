@@ -555,11 +555,15 @@ mod tests {
             "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"steamcmd\"\n",
         )
         .unwrap();
-        let seen = tmp.path().join("install_config.json");
+        // 받은 설정은 서버 폴더에 적는다: 격리 실행이어도 설치가 쓸 수 있는 곳이다
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&server).unwrap();
+        let seen = server.join("install_config.json");
         std::fs::write(
             dir.join("lifecycle.py"),
             format!(
-                "import json, sys\ncfg = sys.stdin.read()\nif sys.argv[1] == 'install_server':\n    open({seen:?}, 'w').write(cfg)\nprint(json.dumps({{'success': True}}))\n",
+                "import json, sys\ncfg = sys.stdin.read()\ntry:\n    if sys.argv[1] == 'install_server':\n        open({seen:?}, 'w').write(cfg)\n    print(json.dumps({{'success': True}}))\n\
+                 except Exception as e:\n    print(json.dumps({{'success': False, 'error': repr(e)}}))\n",
                 seen = seen.to_str().unwrap()
             ),
         )
@@ -569,7 +573,7 @@ mod tests {
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
-        inst.working_dir = Some(tmp.path().join("server").to_string_lossy().to_string());
+        inst.working_dir = Some(server.to_string_lossy().to_string());
         inst.extension_data.insert(crate::instance::install_method_key("steamcmd"), json!(true));
         let cache = sup.instance_store.instance_dir(&inst.id).join("cache");
         inst.module_settings.insert("cache_dir".into(), json!(cache.to_string_lossy()));
