@@ -72,6 +72,13 @@ export function primaryAction(status: string) {
     return 'busy';
 }
 
+/** 메모리 상한 칸의 상태 (데몬이 싣는 memory_limit_supported 로 판단한다. 다른 PC의 데몬일 수 있어 앱 OS로 짐작하지 않는다):
+ * 'editable' 걸 수 있음(싣지 않는 예전 데몬 포함), 'locked' 걸 수 없음, 'stale' 걸 수 없는데 예전에 저장된 값이 남음 */
+export function memoryLimitState(server: Partial<ServerInfo>): 'editable' | 'locked' | 'stale' {
+    if (server.memory_limit_supported !== false) return 'editable';
+    return server.memory_limit_mb == null ? 'locked' : 'stale';
+}
+
 /**
  * 데몬이 이 서버를 managed(saba-runner가 stdin/stdout을 쥔)로 켜는가.
  * 데몬이 알려 주는 `managed`가 있으면 그것을, 없으면 데몬 규칙(Supervisor::uses_managed_start)을 따른다:
