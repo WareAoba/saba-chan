@@ -299,8 +299,8 @@ pub async fn update_instance_settings(
     // 메모리 상한(MiB): 비우거나(null·"") 0이면 제한 없음
     if let Some(limit) = settings.get("memory_limit_mb") {
         match memory_limit_from(limit) {
-            // 러너는 Windows Job으로만 상한을 건다 (`runner/src/job.rs`): 다른 OS에 저장하면 걸린 줄 알고 그냥 돈다
-            Ok(Some(_)) if !cfg!(windows) => {
+            // 러너가 상한을 걸 수 없는 OS에 저장하면 걸린 줄 알고 그냥 돈다
+            Ok(Some(_)) if !crate::instance::MEMORY_LIMIT_ENFORCED => {
                 let message = "memory_limit_mb is only enforced on Windows; this daemon's OS cannot apply it";
                 let error = json!({ "error": message, "error_code": "memory_limit_unsupported", "message": message, "fields": [{"field": "memory_limit_mb"}] });
                 return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
@@ -956,6 +956,11 @@ mod tests {
         let body = read().await;
         assert_eq!(body["memory_limit_mb"], json!(2048));
         assert_eq!(body.get("memory_limit_unsupported"), (!cfg!(windows)).then_some(&json!(true)));
+
+        // 다른 PC의 데몬을 보는 클라이언트는 자기 OS로 짐작하지 않는다: 단건 조회와 서버 목록이 이 데몬의 판정을 싣는다
+        assert_eq!(body["memory_limit_supported"], json!(cfg!(windows)));
+        let list = crate::ipc::internal::into_internal(crate::ipc::handlers::server::list_servers_internal(&state).await).await.body;
+        assert_eq!(list["servers"][0]["memory_limit_supported"], json!(cfg!(windows)));
     }
 
     /// 06 §8.1·8.2 (스키마 2): 옛 문자열 값은 목록으로 읽고, 숨긴 설정은 required를 보지 않으며 `hidden`에 실린다.

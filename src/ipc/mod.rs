@@ -244,6 +244,9 @@ pub struct ServerInfo {
     /// 메모리 상한 MiB (`ServerInstance::memory_limit_mb`)
     #[serde(default)]
     pub memory_limit_mb: Option<u64>,
+    /// 이 데몬이 메모리 상한을 거는가 (`instance::MEMORY_LIMIT_ENFORCED`)
+    #[serde(default)]
+    pub memory_limit_supported: bool,
     /// 게임 서버 자동 업데이트 (`ServerInstance::auto_update`)
     #[serde(default)]
     pub auto_update: bool,
