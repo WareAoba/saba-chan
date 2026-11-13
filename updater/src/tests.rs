@@ -2376,3 +2376,43 @@ fn component_kind_tells_addons_from_the_app() {
         assert_eq!(kind(app), Some("app"), "{app}");
     }
 }
+
+/// 받는 동안 진행을 알릴 곳(`set_download_listener`)이 받기 시작·받은 크기·끝을 차례로 듣는다.
+/// 데몬은 이것으로 진행 이벤트를 내고, 클라이언트는 진행을 묻지 않는다
+#[tokio::test]
+async fn a_download_tells_its_listener_when_it_starts_how_far_it_got_and_when_it_ends() {
+    use sha2::Digest;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    const LEN: usize = 1_200_000;
+    let body = vec![b'm'; LEN];
+    let sha256: String = sha2::Sha256::digest(&body).iter().map(|b| format!("{:02x}", b)).collect();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/module-slow.zip", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        let (mut sock, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = sock.read(&mut buf).await;
+        let _ = sock.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {LEN}\r\n\r\n").as_bytes()).await;
+        let _ = sock.write_all(&body[..LEN / 2]).await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let _ = sock.write_all(&body[LEN / 2..]).await;
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    let entry: crate::relay::ManifestComponent =
+        serde_json::from_value(serde_json::json!({ "version": "1.0.0", "asset": "module-slow.zip", "sha256": sha256, "url": url })).unwrap();
+    manager.stage_addon("module-slow", &entry);
+    let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = heard.clone();
+    manager.set_download_listener(std::sync::Arc::new(move |p: &crate::DownloadProgress| sink.lock().unwrap().push(p.clone())));
+
+    manager.download_component(&Component::Module("slow".into())).await.unwrap();
+
+    let heard = heard.lock().unwrap().clone();
+    let first = heard.first().unwrap();
+    assert!(first.active && first.component.as_deref() == Some("module-slow") && first.bytes_received == 0, "{heard:?}");
+    assert!(heard.iter().any(|p| p.active && p.bytes_received > 0 && p.total_bytes == LEN as u64), "{heard:?}");
+    let last = heard.last().unwrap();
+    assert!(!last.active && last.component.as_deref() == Some("module-slow"), "{heard:?}");
+}

@@ -57,8 +57,6 @@ type ReleaseIds = std::collections::BTreeMap<String, u64>;
 #[derive(Clone)]
 pub struct UpdateState {
     pub manager: Arc<RwLock<UpdateManager>>,
-    /// 다운로드 진행률 (Manager 잠금 없이 폴링 가능)
-    pub download_progress: Arc<std::sync::Mutex<DownloadProgress>>,
     /// 모듈/익스텐션 업데이트 적용 후 핫로드를 위한 참조
     pub supervisor: Option<Arc<RwLock<crate::supervisor::Supervisor>>>,
     pub extension_manager: Option<Arc<RwLock<crate::extension::ExtensionManager>>>,
@@ -85,6 +83,10 @@ pub struct UpdateState {
     release_unconfirmed: Arc<std::sync::Mutex<Option<(ReleaseIds, std::time::Instant)>>>,
     /// 앱 업데이트 적용 반복이 도는 중인가 (`spawn_core_apply`, 한 번에 하나)
     core_applying: Arc<std::sync::atomic::AtomicBool>,
+    /// 상태가 바뀌었을 수 있다: 상태 알림 반복(`spawn_status_events`)을 깨운다
+    status_changed: Arc<tokio::sync::Notify>,
+    /// 마지막으로 `update.status`로 알린 본문
+    announced: Arc<std::sync::Mutex<Option<Value>>>,
     /// 적용 반복이 새로 받아 볼 확인이 있었다: 반복이 다음 차례에 받고, 끝난 뒤에 왔으면 반복을 다시 띄운다
     apply_recheck: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -119,11 +121,11 @@ impl UpdateState {
             }
             mgr.update_config(cfg);
         }
-        let progress = mgr.download_progress.clone();
+        // 받는 진행은 지금 붙은 클라이언트에게만 알린다: 클라이언트는 진행을 묻지 않는다
+        mgr.set_download_listener(Arc::new(|p: &DownloadProgress| crate::events::emit_live("update.progress", progress_event(p))));
         let manager = Arc::new(RwLock::new(mgr));
         Self {
             manager,
-            download_progress: progress,
             supervisor: None,
             extension_manager: None,
             stop_requested: None,
@@ -139,6 +141,8 @@ impl UpdateState {
             release_unconfirmed: Arc::default(),
             core_applying: Arc::default(),
             apply_recheck: Arc::default(),
+            status_changed: Arc::default(),
+            announced: Arc::default(),
         }
     }
 
@@ -164,6 +168,27 @@ impl UpdateState {
         }
         live.phase = phase;
         live.save_to(&self.live_path);
+        drop(live);
+        self.status_may_have_changed();
+    }
+
+    /// 클라이언트가 보는 상태(단계·구성요소·고정·번역 판)를 바꿨다: 상태 알림 반복이 다시 보고 달라졌으면 `update.status`를 낸다.
+    /// 잠금을 쥔 채 불러도 된다 (기다리지 않는다)
+    fn status_may_have_changed(&self) {
+        self.status_changed.notify_one();
+    }
+
+    /// 상태 본문이 지난번 알린 것과 다르면 `update.status`로 낸다
+    async fn announce_status(&self) {
+        let body = status_body(self).await;
+        {
+            let mut last = self.announced.lock().unwrap_or_else(|e| e.into_inner());
+            if last.as_ref() == Some(&body) {
+                return;
+            }
+            *last = Some(body.clone());
+        }
+        crate::events::emit("update.status", body);
     }
 
     /// 코어 업데이트가 데몬 작업만 기다리는 중이다: 새 예약 작업(백업·게임 서버 업데이트)은 업데이트 뒤로 미룬다.
@@ -293,7 +318,6 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/status", get(get_status))
         .route("/api/updates/check", post(check_updates))
         .route("/api/updates/download", post(download_components))
-        .route("/api/updates/download/progress", get(get_download_progress))
         .route("/api/updates/apply", post(apply_updates))
         .route("/api/updates/launch-updater", post(launch_updater))
         .route("/api/updates/rollback", get(get_rollback).post(roll_back))
@@ -324,6 +348,11 @@ pub fn updates_router(state: UpdateState) -> Router {
 async fn get_status(
     State(state): State<UpdateState>,
 ) -> impl IntoResponse {
+    Json(status_body(&state).await)
+}
+
+/// 상태 본문. 조회(`GET /api/updates/status`)와 상태 알림(`update.status`)이 같은 모양을 쓴다
+async fn status_body(state: &UpdateState) -> Value {
     let mgr = state.manager.read().await;
     let status = mgr.get_status();
     // 고른 뒤 다른 판이 깔린 고정은 싣지 않는다 (`AddonChoice::as_installed`). 다음 확인이 푼다
@@ -358,7 +387,7 @@ async fn get_status(
         .filter(|c| c.update_available && !matches!(c.component, Component::Locales))
         .count();
 
-    Json(json!({
+    json!({
         "ok": true,
         "last_check": status.last_check,
         "next_check": status.next_check,
@@ -371,7 +400,45 @@ async fn get_status(
         "stable_wait": status.stable_wait,
         // 설치된 번역 판 (locales/version). 바뀌면 GUI·TUI가 번역을 다시 읽는다
         "locales_version": crate::chat::i18n::installed_version(),
-    }))
+    })
+}
+
+/// 상태가 바뀔 때마다(`UpdateState::status_may_have_changed`) 상태 본문을 다시 만들어, 달라졌으면 `update.status`로 낸다.
+/// 띄우자마자 한 번 낸다: 데몬이 다시 뜬 뒤 마지막 번호로 다시 붙는 클라이언트가 버퍼에서 받는다
+pub fn spawn_status_events(state: UpdateState, shutdown: tokio_util::sync::CancellationToken) {
+    /// 한꺼번에 바뀌는 것(확인 → 받기 → 단계)을 한 번에 알린다
+    const SETTLE: std::time::Duration = std::time::Duration::from_millis(200);
+    tokio::spawn(async move {
+        loop {
+            state.announce_status().await;
+            tokio::select! {
+                _ = shutdown.cancelled() => break,
+                _ = state.status_changed.notified() => {}
+            }
+            tokio::time::sleep(SETTLE).await;
+        }
+    });
+}
+
+/// 받기·적용·판 고르기가 어느 길로 끝나든 상태가 바뀌었을 수 있다고 알린다 (`UpdateState::status_may_have_changed`)
+struct StatusTouched<'a>(&'a UpdateState);
+
+impl Drop for StatusTouched<'_> {
+    fn drop(&mut self) {
+        self.0.status_may_have_changed();
+    }
+}
+
+/// 받는 진행 한 번 → `update.progress` 본문. 퍼센트는 데몬이 계산한다(전체 크기를 모르면 null)
+fn progress_event(p: &DownloadProgress) -> Value {
+    let percent = (p.total_bytes > 0).then(|| (p.bytes_received as f64 * 100.0 / p.total_bytes as f64).round() as u64);
+    json!({
+        "component": p.component,
+        "active": p.active,
+        "bytesReceived": p.bytes_received,
+        "totalBytes": p.total_bytes,
+        "percent": percent,
+    })
 }
 
 /// POST /api/updates/check — 릴레이에서 최신 릴리즈 확인
@@ -436,6 +503,7 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
 async fn check_and_follow_up_hinted(state: &UpdateState, hint: Option<u64>) -> anyhow::Result<(saba_chan_updater_lib::UpdateStatus, Option<u64>)> {
     let (status, latest_id) = state.manager.write().await.check_for_updates_hinted(hint).await?;
     announce_new_updates(&status);
+    state.status_may_have_changed();
 
     // 모듈·익스텐션은 묻지 않고 바꿔 끼운다 (사용자 결정 2026-11-09). 확인을 끈 설정이면 주기 확인 자체가 돌지 않는다
     if status.components.iter().any(|c| c.update_available && is_addon(&c.component)) {
@@ -445,9 +513,11 @@ async fn check_and_follow_up_hinted(state: &UpdateState, hint: Option<u64>) -> a
     let has_locale_update = status.components.iter()
         .any(|c| matches!(c.component, Component::Locales) && c.update_available);
     if has_locale_update {
-        let mgr_clone = state.manager.clone();
+        let state = state.clone();
         tokio::spawn(async move {
-            silent_apply_locales(&mgr_clone).await;
+            silent_apply_locales(&state.manager).await;
+            // 번역 판이 바뀌었다
+            state.status_may_have_changed();
         });
     }
 
@@ -508,7 +578,15 @@ fn spawn_addon_replace(state: UpdateState) {
         return;
     }
     tokio::spawn(async move {
-        replace_addons_until_done(|| replace_addons_once(&state), &ADDON_RECHECK).await;
+        replace_addons_until_done(
+            || async {
+                let left = replace_addons_once(&state).await;
+                state.status_may_have_changed();
+                left
+            },
+            &ADDON_RECHECK,
+        )
+        .await;
         ADDON_REPLACING.store(false, Ordering::SeqCst);
     });
 }
@@ -1211,6 +1289,7 @@ async fn download_components(State(state): State<UpdateState>, raw: axum::body::
 }
 
 async fn download_components_with(state: UpdateState, body: DownloadRequest) -> impl IntoResponse {
+    let _touched = StatusTouched(&state);
     let mut mgr = state.manager.write().await;
 
     // 아직 체크하지 않았으면 먼저 체크
@@ -1283,22 +1362,6 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
     }
 }
 
-/// GET /api/updates/download/progress — 현재 다운로드 진행률 조회
-///
-/// Manager의 RwLock과 독립된 `std::sync::Mutex`를 사용하므로
-/// 다운로드 중에도 블로킹 없이 폴링 가능.
-async fn get_download_progress(
-    State(state): State<UpdateState>,
-) -> impl IntoResponse {
-    let prog = state.download_progress.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    Json(json!({
-        "ok": true,
-        "component": prog.component,
-        "bytes_received": prog.bytes_received,
-        "total_bytes": prog.total_bytes,
-        "active": prog.active,
-    }))
-}
 
 /// POST /api/updates/apply — 다운로드된 업데이트 적용
 ///
@@ -1323,6 +1386,7 @@ async fn apply_updates(State(state): State<UpdateState>, raw: axum::body::Bytes)
 }
 
 async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl IntoResponse {
+    let _touched = StatusTouched(&state);
     let mut mgr = state.manager.write().await;
 
     // 적용 대상 분류
@@ -2474,6 +2538,7 @@ async fn switch_addon(
     pin: Option<addon_pins::AddonPin>,
 ) -> axum::response::Response {
     use axum::http::StatusCode;
+    let _touched = StatusTouched(state);
     let key = component.manifest_key();
     let version = entry.version.clone();
     let previous = addon_pins::get(&key);
@@ -3731,5 +3796,54 @@ mod tests {
 
         let _ = addon_pins::update(&key, |c| *c = addon_pins::AddonChoice::default());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 알약·사바 스토리지·셸이 같은 상태를 따로 묻지 않게 데몬이 상태가 바뀔 때만 `update.status`(상태 조회와 같은 본문)를 낸다:
+    /// 띄우자마자 한 번(다시 붙는 클라이언트가 버퍼에서 받는다), 단계가 바뀔 때마다 한 번, 바뀐 것이 없으면 내지 않는다
+    #[tokio::test]
+    async fn status_changes_reach_clients_as_update_status_events() {
+        const VERSION: &str = "9.9.9-status-event";
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let mut events = crate::events::bus().subscribe(None).rx;
+        let stop = tokio_util::sync::CancellationToken::new();
+        spawn_status_events(state.clone(), stop.clone());
+        // 이 시험의 상태가 낸 것만: 다른 시험도 같은 버스를 쓴다
+        async fn collect(events: &mut tokio::sync::broadcast::Receiver<Arc<crate::events::Event>>, seen: &mut Vec<Value>, for_ms: u64) {
+            let until = tokio::time::Instant::now() + std::time::Duration::from_millis(for_ms);
+            while let Ok(Ok(e)) = tokio::time::timeout_at(until, events.recv()).await {
+                if e.kind == "update.status" && (e.data["phase"]["version"] == VERSION || seen.is_empty()) {
+                    seen.push(e.data.clone());
+                }
+            }
+        }
+        let mut seen = Vec::new();
+        collect(&mut events, &mut seen, 1000).await;
+        assert_eq!(seen.len(), 1, "one status right after the daemon starts: {seen:?}");
+        assert_eq!(seen[0]["ok"], true);
+        assert!(seen[0]["components"].is_array() && seen[0].get("locales_version").is_some(), "the same body as GET /api/updates/status");
+
+        state.set_phase(Phase::new(PhaseState::Waiting, Some(VERSION.into()), None));
+        collect(&mut events, &mut seen, 1000).await;
+        state.status_may_have_changed();
+        collect(&mut events, &mut seen, 1000).await;
+        state.set_phase(Phase::new(PhaseState::Done, Some(VERSION.into()), None));
+        collect(&mut events, &mut seen, 1000).await;
+        let phases: Vec<&Value> = seen[1..].iter().map(|s| &s["phase"]["state"]).collect();
+        assert_eq!(phases, [&json!("waiting"), &json!("done")], "only changes are announced");
+        stop.cancel();
+    }
+
+    /// 받는 진행은 데몬이 퍼센트까지 계산해 `update.progress`로 낸다. 전체 크기를 모르면 퍼센트는 null
+    #[test]
+    fn download_progress_events_carry_the_percent_the_daemon_computed() {
+        let progress = |received, total, active| DownloadProgress { component: Some("module-mc".into()), bytes_received: received, total_bytes: total, active };
+        assert_eq!(
+            progress_event(&progress(1, 3, true)),
+            json!({ "component": "module-mc", "active": true, "bytesReceived": 1, "totalBytes": 3, "percent": 33 })
+        );
+        assert_eq!(progress_event(&progress(2, 3, true))["percent"], 67);
+        assert_eq!(progress_event(&progress(5, 0, true))["percent"], Value::Null);
+        assert_eq!(progress_event(&progress(0, 0, false))["active"], false);
     }
 }

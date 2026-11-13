@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
+import { useUpdateStore, watchUpdates } from '../../stores/useUpdateStore';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
@@ -8,9 +9,8 @@ import { Dialog } from '../ui/Dialog';
 import { Popover } from '../ui/Popover';
 import { AppBarPill, PillRing } from './AppBarPill';
 
-/** 업데이트가 진행 중이면 자주, 할 일이 없으면 드물게 읽는다 (이 PC 데몬에 묻는 로컬 요청) */
-const ACTIVE_POLL_MS = 5000;
-const IDLE_POLL_MS = 60000;
+/** 적용 중에는 데몬이 내려갔다 새 판으로 돌아온다: 내려간 동안은 이벤트가 오지 않으므로 이 간격으로 묻는다 */
+const APPLYING_POLL_MS = 5000;
 /** '완료'가 뜬 뒤 다른 동작(움직이기·누르기·치기)을 하면 이만큼 지나 알약을 누르지 않아도 지운다 (사용자 11-13) */
 const DONE_SEEN_MS = 5000;
 /** 팝오버에 먼저 보이는 패치노트 줄 수. 나머지는 "패치노트 전체 보기"로 편다 */
@@ -25,7 +25,7 @@ interface WaitingFor {
     name?: string;
 }
 
-/** 데몬 GET /api/updates/status 의 phase (계약 D) */
+/** 데몬 업데이트 상태(`update.status`·GET /api/updates/status)의 phase (계약 D) */
 interface Phase {
     state: State;
     version: string | null;
@@ -122,7 +122,7 @@ export function RestartDialog({
 /**
  * 상단 바 업데이트 알약 (업데이트 알림 시안 v8, 계약 G). 데몬이 묻지 않고 적용하는 사바쨩 업데이트의 네 상태를 보인다:
  * 적용 중·완료·대기 중은 누르면 버전과 패치노트, 준비됨은 다시 시작할지 묻는다.
- * 데몬이 꺼진 동안(적용 중)은 읽기가 실패하므로 마지막 상태를 그대로 둔다.
+ * 상태는 데몬이 바뀔 때 알린다(업데이트 스토어). 적용 중에만 데몬이 돌아왔는지 묻고, 꺼진 동안은 마지막 상태를 그대로 둔다.
  * 모듈·익스텐션·번역 자동 교체는 여기 띄우지 않는다 (알림함 기록만).
  */
 export function UpdatePill() {
@@ -151,44 +151,44 @@ export function UpdatePill() {
         return !(since > restarting.current);
     };
 
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 한 번만 시작하는 읽기 반복이다 (참조는 ref로 본다)
+    const status = useUpdateStore((s) => s.status);
+    useEffect(() => watchUpdates(), []);
+
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 데몬이 알린 상태만 받는다 (참조는 ref로 본다)
     useEffect(() => {
-        if (!window.api?.updaterStatus) return undefined;
+        const next = readPhase(status);
+        if (!next || (next.state === 'ready' && stillRestarting(next))) return;
+        restarting.current = null;
+        if (next.state !== 'done') {
+            acked.current = false;
+            setDismissed(false);
+        }
+        stateRef.current = next.state;
+        setPhase(next);
+        const core = (Array.isArray(status?.components) ? status.components : []).find(
+            (c: ApiBody) => c?.component === 'saba-core',
+        );
+        if (core?.current_version) setCurrent(String(core.current_version));
+    }, [status]);
+
+    // 적용 중: 데몬이 내려갔다 돌아오는지 묻는다. 돌아온 데몬의 답은 위에서 받는다
+    const applying = phase?.state === 'applying';
+    useEffect(() => {
+        if (!applying) return undefined;
         let alive = true;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const poll = async () => {
-            let res: ApiBody | null = null;
-            try {
-                res = await window.api.updaterStatus();
-            } catch {
-                /* 데몬이 내려가 있다: 마지막 상태를 둔다 */
-            }
+            const res = await useUpdateStore.getState().refresh();
             if (!alive) return;
-            const next = readPhase(res);
-            if (!next && restarting.current !== null) daemonWentDown.current = true;
-            if (next && !(next.state === 'ready' && stillRestarting(next))) {
-                restarting.current = null;
-                if (next.state !== 'done') {
-                    acked.current = false;
-                    setDismissed(false);
-                }
-                stateRef.current = next.state;
-                setPhase(next);
-                const core = (Array.isArray(res?.components) ? res.components : []).find(
-                    (c: ApiBody) => c?.component === 'saba-core',
-                );
-                if (core?.current_version) setCurrent(String(core.current_version));
-            }
-            // 아직 한 번도 못 읽었거나 진행 중이면 자주 본다
-            const idle = stateRef.current === 'idle';
-            timer = setTimeout(poll, idle ? IDLE_POLL_MS : ACTIVE_POLL_MS);
+            if (!res && restarting.current !== null) daemonWentDown.current = true;
+            timer = setTimeout(poll, APPLYING_POLL_MS);
         };
-        poll();
+        timer = setTimeout(poll, APPLYING_POLL_MS);
         return () => {
             alive = false;
             clearTimeout(timer);
         };
-    }, []);
+    }, [applying]);
 
     const state: State = phase && !(phase.state === 'done' && dismissed) ? phase.state : 'idle';
     const visible = SHOWN.includes(state);

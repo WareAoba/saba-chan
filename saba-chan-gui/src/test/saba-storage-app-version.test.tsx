@@ -49,7 +49,6 @@ function fakeApi(overrides: Record<string, unknown>) {
         {
             updaterGetConfig: vi.fn().mockResolvedValue({ config: { enabled: true, channel: 'stable' } }),
             updaterStatus: vi.fn().mockResolvedValue(STATUS),
-            updaterDownloadProgress: vi.fn().mockResolvedValue({ ok: true, active: false }),
             daemonTarget: vi.fn().mockResolvedValue({ target: null }),
             updaterVersions: vi.fn().mockResolvedValue(VERSIONS),
             ...overrides,

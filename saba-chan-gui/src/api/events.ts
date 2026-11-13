@@ -12,6 +12,7 @@ export const EVENT_CHANNELS = [
     'events:message',
     'events:live',
     'updates:available',
+    'updates:event',
     'updates:completed',
     'app:closeRequest',
     'console:popoutOpened',

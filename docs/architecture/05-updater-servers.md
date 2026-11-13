@@ -145,7 +145,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 2. **다운로드**: `POST /api/updates/download` → staging 디렉터리로 받는다.
    - Windows: `%APPDATA%/saba-chan/updates/`
    - Unix: `~/.cache/saba-chan/updates/` (`constants.rs:148-167`)
-   - 진행률은 `GET /api/updates/download/progress`로 본다(`updates.rs:450`).
+   - 진행률은 데몬 이벤트 `update.progress`로 받는다(0.1.14-beta.2~, 01 §`GET /api/events`). updater-lib `UpdateManager::set_download_listener`가 받기 시작·0.2초마다 바뀐 받은 크기·끝을 듣고, 데몬이 퍼센트를 계산해 낸다. 단계·구성요소 상태가 바뀌면 `update.status`를 낸다.
 3. **apply 분기**: `POST /api/updates/apply {components:[…]}` (`updates.rs:475-596`). 본문이 없거나 공백이면 전체 대상, 깨진 JSON이면 400 `invalid_body`다(`:348-357`). download도 같다
    - 대상에 `Gui`, `Updater`, `CoreDaemon` 중 하나라도 있으면 **전부 updater exe에 맡긴다**(`updates.rs:511-520`). 이때 daemon은 `staging/pending.json`(`state.rs:19-45`)과 `staging/apply-targets.json`(`state.rs:109-116`)을 쓰고 `{requires_updater:true, needs_updater:[…]}`를 응답한다.
    - 그렇지 않으면 daemon이 직접 `apply_single_component`를 실행한다. 그 뒤 모듈은 `supervisor.refresh_modules()`, 익스텐션은 `extension_manager.rescan()`으로 hot-reload한다(`updates.rs:559-587`).
@@ -178,7 +178,6 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | PUT | `/api/updates/gui-window` | body `{open: bool}`. GUI가 창을 보이거나 숨길 때(트레이) 알린다. GUI 등록이 없으면 닫힘으로 보고, 알린 적이 없으면 트레이 표시(`resident`)로 판단한다. 숨기면 `gui_window_open`으로 미룬 적용을 이어 간다 |
 | POST | `/api/updates/check` | 릴레이를 조회한다 |
 | POST | `/api/updates/download` | body `{components:[]}`. 본문이 없으면 전부 받는다 |
-| GET | `/api/updates/download/progress` | 진행률 |
 | POST | `/api/updates/apply` | body `{components:[]}`(없으면 전부). 직접 적용하거나 updater 위임을 판단한다 |
 | POST | `/api/updates/launch-updater` | body `{relaunch:[exe, …], gui_stays?}`. 데몬이 updater를 띄우고 스스로 종료한다(`updates.rs:609-675`). 응답 `{ok, updater_launched, daemon_stopping, gui_restart}`. `gui_restart:false`면 GUI는 바뀌지 않아 남는다(위 4). 이미 띄웠으면 표를 새로 끊지 않고 409 `updater_already_launched` |
 | GET | `/api/updates/rollback` | 남겨 둔 직전 판 `{ok, available, current, version?, updated_at?, needs_newer_core?}`. 지금 코어 판(`relay::core_version`)이 그 판을 바꾼 판(`replaced_by`)일 때만 `available`. 되돌릴 수 있으면 `needs_newer_core`에 그 판 코어가 읽지 않을 설치된 모듈·익스텐션 키를 싣는다(`saba-core` 요구: 모듈 `[module.dependencies]`, 익스텐션 `dependencies`·`min_app_version`, `addons_needing_core`). 되돌리기는 실행 파일만이라 그것들은 지금 판으로 남는다 |

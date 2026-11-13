@@ -747,6 +747,13 @@ impl Api {
         Ok(Events { resp, buf: Vec::new() })
     }
 
+    /// 고른 원격 데몬과 상관없이 이 PC 데몬의 이벤트 스트림 (업데이트 받기 진행처럼 이 PC 데몬이 하는 일)
+    pub async fn local_events(&self) -> Result<Events> {
+        let mut api = self.clone();
+        api.target = None;
+        api.events(None).await
+    }
+
     async fn open_events(&self, since: Option<u64>) -> Result<reqwest::Response> {
         let mut req = self.targeted(self.http.get(format!("{}/api/events", self.base)).header("X-Saba-Client", client_name()), "/api/events");
         if let Some(t) = self.token.read().ok().and_then(|t| t.clone()) {
@@ -1244,9 +1251,6 @@ impl Api {
     pub async fn update_download(&self, components: &[String]) -> Result<Value> {
         self.post_long("/api/updates/download", json!({ "components": components }))
             .await
-    }
-    pub async fn update_progress(&self) -> Result<Value> {
-        self.get("/api/updates/download/progress").await
     }
     pub async fn update_apply(&self, components: &[String]) -> Result<Value> {
         self.post_long("/api/updates/apply", json!({ "components": components }))

@@ -22,6 +22,7 @@ import { createTranslateError, safeShowToast } from '../../utils/helpers';
 import type { ApiBody, ModuleInfo } from '../../types/daemon';
 import { failed } from '../../utils/apiResult';
 import { useInstallingIds } from './useStoreInstall';
+import { useUpdateStore, watchUpdates } from '../../stores/useUpdateStore';
 
 // ─────────────────────────────────────────────────────────────
 // 사바 스토리지 (구 업데이트 센터)
@@ -208,11 +209,9 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
     const [stableWait, setStableWait] = useState<string | null>(null);
     // 찾은 뒤 할 일: check(알리기만) / download(받아 두기) / apply(받고 다음 실행 때 적용). 적용은 데몬이 판단한다
     const [updateMode, setUpdateMode] = useState('check');
-    const [downloadProgress, setDownloadProgress] = useState<{ component: string | null; percent: number; active: boolean }>({ component: null, percent: 0, active: false });
-    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const progressPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    // 진행률 폴러를 같이 쓰는 다운로드 수. 마지막 것이 끝날 때 멈춘다 (G-U8)
-    const progressUsersRef = useRef(0);
+    // 받는 진행과 상태는 데몬이 알린다 (업데이트 스토어). 이 화면은 묻지 않는다
+    const downloadProgress = useUpdateStore((s) => s.progress);
+    const status = useUpdateStore((s) => s.status);
     const mountedRef = useRef(true);
     const appVersion = useAppVersion(
         (key) => components.find((c) => c.key === key)?.display || key,
@@ -229,32 +228,6 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
             }),
         [],
     );
-
-    // ── 다운로드 진행률 폴링 ─────────────────────────────────────────
-    const startProgressPolling = useCallback(() => {
-        progressUsersRef.current += 1;
-        if (progressPollRef.current) return;
-        progressPollRef.current = setInterval(async () => {
-            try {
-                const res = await window.api?.updaterDownloadProgress?.();
-                if (res?.ok && mountedRef.current) {
-                    const pct = res.total_bytes > 0
-                        ? Math.round((res.bytes_received / res.total_bytes) * 100)
-                        : -1; // -1 = indeterminate (총 크기 모름)
-                    setDownloadProgress({ component: res.component, percent: pct, active: res.active });
-                }
-            } catch (_) { /* ignore */ }
-        }, 250);
-    }, []);
-    const stopProgressPolling = useCallback(() => {
-        progressUsersRef.current = Math.max(0, progressUsersRef.current - 1);
-        if (progressUsersRef.current > 0) return;
-        if (progressPollRef.current) {
-            clearInterval(progressPollRef.current);
-            progressPollRef.current = null;
-        }
-        setDownloadProgress({ component: null, percent: 0, active: false });
-    }, []);
 
     const handleToggleMock = useCallback(async (toMock: boolean) => {
         setError(null);
@@ -277,14 +250,14 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
         }
     }, [t]);
 
+    // 데몬이 알린 상태 (`update.status`, 읽은 것 포함)
+    useEffect(() => {
+        if (!status?.ok) return;
+        setComponents(parseComponents(status.components));
+        setStableWait(status.stable_wait || null);
+    }, [status]);
     const refreshStatus = useCallback(async () => {
-        try {
-            const res = await window.api?.updaterStatus?.();
-            if (res?.ok && mountedRef.current) {
-                setComponents(parseComponents(res.components));
-                setStableWait(res.stable_wait || null);
-            }
-        } catch (_) {}
+        await useUpdateStore.getState().refresh();
     }, []);
 
     // 수동 새로고침 — 데몬이 릴레이(/v1/updates/check)에 묻는다 (사용자 명시적 요청 시에만)
@@ -309,7 +282,6 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
         async (key: string) => {
             markBusy(key);
             setError(null);
-            startProgressPolling();
             try {
                 const res = await window.api?.updaterDownload?.([key]);
                 if (!res?.ok) setError(`${key}: ${res?.error || 'Download failed'}`);
@@ -317,10 +289,9 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
             } catch (e) {
                 setError(`${key}: ${(e as Error).message}`);
             }
-            stopProgressPolling();
             clearBusy(key);
         },
-        [refreshStatus, markBusy, clearBusy, startProgressPolling, stopProgressPolling],
+        [refreshStatus, markBusy, clearBusy],
     );
 
     const handleApplyOne = useCallback(
@@ -386,7 +357,6 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
         setMessage(null);
         const allKeys = updatable.map((c) => c.key);
         for (const key of allKeys) markBusy(key);
-        startProgressPolling();
         for (const key of allKeys) {
             try {
                 const res = await window.api?.updaterDownload?.([key]);
@@ -400,7 +370,6 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
             }
             clearBusy(key);
         }
-        stopProgressPolling();
         await refreshStatus();
 
         // 데몬에 모든 컴포넌트를 보내고, 데몬이 라우팅을 결정하도록 한다.
@@ -446,7 +415,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
         if (daemonApplied.length > 0) setMessage(t('saba_storage.apply_completed', { names: daemonApplied.join(', ') }));
         else if (!hadError) setMessage(t('saba_storage.update_done'));
         setBusyAll(false);
-    }, [components, refreshStatus, markBusy, clearBusy, startProgressPolling, stopProgressPolling, t]);
+    }, [components, refreshStatus, markBusy, clearBusy, t]);
 
     const handleUpdateAll = useCallback(() => {
         const updatable = components.filter((c) => c.update_available);
@@ -534,14 +503,13 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
             }
         })();
 
-        // 마운트 시: 데몬 캐시 읽기 → 비어있으면 한 번만 check 실행
+        // 마운트 시: 상태를 보기 시작하고(이벤트 구독·한 번 읽기) 데몬 캐시가 비어 있으면 한 번만 check 실행
+        const unwatch = watchUpdates();
         (async () => {
             try {
-                const res = await window.api?.updaterStatus?.();
-                if (res?.ok && mountedRef.current) setStableWait(res.stable_wait || null);
-                if (res?.ok && res.components?.length && mountedRef.current) {
-                    setComponents(parseComponents(res.components));
-                } else if (mountedRef.current) {
+                // 읽은 상태는 위의 상태 효과가 화면에 싣는다
+                const res = await useUpdateStore.getState().refresh();
+                if (!res?.components?.length && mountedRef.current) {
                     // 캐시가 비어있음 (아직 check가 한 번도 안 됨) → 최초 1회 check
                     setChecking(true);
                     const checkRes = await window.api?.updaterCheck?.();
@@ -555,21 +523,9 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
             }
         })();
 
-        // 30초마다 캐시 폴링
-        pollRef.current = setInterval(async () => {
-            try {
-                const res = await window.api?.updaterStatus?.();
-                if (res?.ok && mountedRef.current) {
-                    setComponents(parseComponents(res.components));
-                    setStableWait(res.stable_wait || null);
-                }
-            } catch (_) {}
-        }, 30000);
-
         return () => {
             mountedRef.current = false;
-            clearInterval(pollRef.current!);
-            if (progressPollRef.current) clearInterval(progressPollRef.current);
+            unwatch();
         };
         // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only initialization — async tasks use refs for mount guard
     }, []);
@@ -650,7 +606,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
                     {components.filter((c) => !c.hidden).map((c) => {
                         const isBusy = busyKeys.has(c.key) || busyAll;
                         const isDownloading = isBusy && downloadProgress.active && downloadProgress.component === c.key;
-                        const pct = downloadProgress.percent;
+                        const pct = downloadProgress.percent ?? -1; // -1 = 전체 크기를 몰라 도는 링
                         return (
                             <div key={c.key} className="ss-card">
                                 <div className="ss-card-icon">

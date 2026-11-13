@@ -60,7 +60,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::Arc;
 
 use version::SemVer;
 
@@ -101,8 +101,8 @@ pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> std::res
 // 다운로드 진행률
 // ══════════════════════════════════════════════════════
 
-/// 다운로드 진행 상태 (Manager 외부에서 안전하게 폴링 가능)
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// 다운로드 진행 상태. 받는 동안 `DownloadListener`가 듣는다
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DownloadProgress {
     /// 현재 다운로드 중인 컴포넌트 키 (None = 대기 중)
     pub component: Option<String>,
@@ -113,6 +113,9 @@ pub struct DownloadProgress {
     /// 다운로드 활성 여부
     pub active: bool,
 }
+
+/// 받는 동안 진행을 듣는 곳 (`UpdateManager::set_download_listener`): 받기 시작, 0.2초마다 받은 크기, 끝(`active: false`)
+pub type DownloadListener = Arc<dyn Fn(&DownloadProgress) + Send + Sync>;
 
 // ══════════════════════════════════════════════════════
 // 컴포넌트 정의
@@ -637,8 +640,8 @@ pub struct UpdateManager {
     restored_release: Option<crate::marker::ReleaseSummary>,
     /// 받아 둔 목록을 되살릴 때 이미 같거나 더 새 판이 깔려 있어 뺀 키. 적용 대상 목록에서도 뺀다
     already_installed: Vec<String>,
-    /// 다운로드 진행 상태 (Arc로 공유 — Manager 잠금 없이 폴링 가능)
-    pub download_progress: Arc<StdMutex<DownloadProgress>>,
+    /// 받는 동안 진행을 듣는 곳 (없으면 알리지 않는다)
+    download_listener: Option<DownloadListener>,
 }
 
 impl UpdateManager {
@@ -686,7 +689,7 @@ impl UpdateManager {
             latest_release: None,
             restored_release: None,
             already_installed: Vec::new(),
-            download_progress: Arc::new(StdMutex::new(DownloadProgress::default())),
+            download_listener: None,
         };
         // 지난 업데이트가 남긴 .exe.old: 적용 직후엔 옛 프로세스가 쥐고 있어 못 지운 것을 다음 실행 때 지운다
         mgr.cleanup_old_files();
@@ -695,6 +698,11 @@ impl UpdateManager {
 
     fn resolve_staging_dir() -> PathBuf {
         crate::constants::resolve_staging_dir()
+    }
+
+    /// 받는 동안 진행을 들을 곳을 정한다 (데몬이 진행 이벤트로 낸다)
+    pub fn set_download_listener(&mut self, listener: DownloadListener) {
+        self.download_listener = Some(listener);
     }
 
     /// 모듈·익스텐션 폴더를 옮긴 뒤 새 폴더에 적용하게 한다 (데몬 `/api/system/paths/move`)
@@ -1158,39 +1166,26 @@ impl UpdateManager {
 
         tracing::info!("[Updater] Downloading {} v{}", key, rc.version);
 
-        // 진행률 초기화
-        {
-            let mut prog = self.download_progress.lock().unwrap();
-            prog.component = Some(key.clone());
-            prog.bytes_received = 0;
-            prog.total_bytes = 0;
-            prog.active = true;
-        }
+        // 받기 시작·받은 크기·끝을 듣는 곳에 알린다
+        let listener = self.download_listener.clone();
+        let tell = |bytes_received: u64, total_bytes: u64, active: bool| {
+            if let Some(listener) = &listener {
+                listener(&DownloadProgress { component: Some(key.clone()), bytes_received, total_bytes, active });
+            }
+        };
+        tell(0, 0, true);
 
         // 스트리밍 다운로드 + SHA-256 검증 (불일치면 파일 삭제)
         let client = crate::tls::http_client_builder().build().unwrap();
-        let result = download::download_verified(
-            &client,
-            &rc.url,
-            &dest,
-            Some(&rc.sha256),
-            rc.size_bytes,
-            Some(&self.download_progress),
-        )
+        let result = download::download_reporting(&client, &rc.url, Some(&rc.sha256), &dest, rc.size_bytes, |received, total| {
+            tell(received, total.unwrap_or(0), true)
+        })
         .await;
+        tell(0, 0, false);
         if let Err(e) = result {
-            if let Ok(mut prog) = self.download_progress.lock() {
-                prog.active = false;
-            }
             // 원인(`DownloadError`)을 남겨 둔다: 데몬이 받지 못함과 검증 실패를 가른다
             let message = format!("Failed to download {}: {}", rc.filename, e);
             return Err(anyhow::Error::new(e).context(message));
-        }
-
-        // 진행률 완료
-        {
-            let mut prog = self.download_progress.lock().unwrap();
-            prog.active = false;
         }
 
         let asset_name = rc.filename;
