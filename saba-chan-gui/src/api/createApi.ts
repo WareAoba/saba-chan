@@ -928,8 +928,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         },
         // 업데이터 실행은 데몬이 한다. 다시 띄울 exe 경로와 종료는 Rust가 맡는다
         updaterLaunchApply: (_targets?: unknown) => invoke('updater_launch_apply'),
-        // clear면 확인 처리, 아니면 이 언어의 패치노트를 고른다
-        updaterLastResult: async ({ clear = false } = {}) => {
+        // clear면 확인 처리, 아니면 이 언어의 패치노트를 고른다. includeSeen이면 확인한 결과도 acknowledged와 함께 받는다
+        updaterLastResult: async ({ clear = false, includeSeen = false } = {}) => {
             if (clear) return call('delete', '/api/updates/last-result', undefined, 5000);
             let lang: string | undefined;
             try {
@@ -937,12 +937,17 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             } catch (_) {
                 lang = i18n.language;
             }
-            return call('get', `/api/updates/last-result${queryString({ lang })}`, undefined, 5000);
+            const query = queryString({ lang, include_seen: includeSeen || undefined });
+            return call('get', `/api/updates/last-result${query}`, undefined, 5000);
         },
         // 상단 바 업데이트 알약: '완료'를 봤다고 알린다 (데몬이 phase를 idle로)
         updaterPhaseAck: () => call('post', '/api/updates/phase/ack', {}, 5000),
         // '준비됨'의 지금 다시 시작: 다시 띄울 자기 경로를 셸이 실어 보낸다. 응답은 updaterLaunchApply와 같다
         updaterRestart: () => invoke('updater_restart'),
+        // 사바쨩 버전 고르기: 지금·남겨 둔 직전·기다리는 새 버전과 고정 여부 (이 PC 데몬만)
+        updaterVersions: () => call('get', '/api/updates/versions', undefined, 5000),
+        // 남겨 둔 직전 버전으로 되돌리기: 다시 띄울 자기 경로를 셸이 실어 보낸다. 응답은 updaterLaunchApply와 같다
+        updaterRollback: () => invoke('updater_rollback'),
         updaterGetConfig: () => call('get', '/api/updates/config', undefined, 5000),
         updaterSetConfig: (config: ApiBody) => call('put', '/api/updates/config', config, 5000),
         // 모듈·익스텐션 버전 고르기 (key: module-<이름>·ext-<id>). 받기·서명 확인·설치와 켜진 서버 기다리기는 데몬이 한다

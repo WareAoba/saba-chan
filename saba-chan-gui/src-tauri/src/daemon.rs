@@ -133,10 +133,11 @@ pub fn is_allowed_request(method: &reqwest::Method, path: &str) -> bool {
 /// 확인되지 않은 구성요소 동의 기록 (native::sandbox_consent_allow가 확인 창을 띄운 뒤 보낸다)
 const CONSENT_ROUTES: &[&str] = &["/api/sandbox/unisolated", "/api/sandbox/extension-gui"];
 
-/// 업데이터 실행(relaunch 대상: launch-updater·restart), 클라이언트 등록, 데몬 종료는 셸 명령으로만 부른다
+/// 업데이터 실행(relaunch 대상: launch-updater·restart·rollback), 클라이언트 등록, 데몬 종료는 셸 명령으로만 부른다
 const RESERVED_ROUTES: &[&str] = &[
     "/api/updates/launch-updater",
     "/api/updates/restart",
+    "/api/updates/rollback",
     "/api/client",
     "/api/daemon/shutdown",
 ];
@@ -484,6 +485,7 @@ mod tests {
             "/api/x#frag",
             "/api/updates/launch-updater",
             "/api/updates/restart",
+            "/api/updates/rollback",
             "/api/client/register",
             "/api/Client/heartbeat",
             "/api/daemon/shutdown",

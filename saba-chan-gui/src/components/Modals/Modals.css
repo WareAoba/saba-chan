@@ -1161,6 +1161,35 @@
     padding-bottom: var(--sp-3);
 }
 
+/* 사바쨩 버전 줄 (AppVersion.tsx): 이름·설명 두 줄과 단추 */
+.app-version-row {
+    cursor: default;
+    /* 채널 줄과의 사이에 정식 기다림 줄이 끼어도 금을 긋는다 */
+    border-top: 1px solid var(--line);
+}
+.app-version-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    min-width: 0;
+}
+.app-version-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--sp-1-5);
+    flex-shrink: 0;
+}
+/* 되돌리는 중 줄 아래 안내: 알림 줄과 같은 들여쓰기 */
+.app-version-reopen {
+    margin: 0;
+    padding: var(--sp-2) var(--sp-5);
+}
+/* 되돌리기 전 버전 (지금 버전 앞) */
+.app-version-was {
+    color: var(--text-3);
+}
+
 .update-panel-actions {
     display: none;
 }
