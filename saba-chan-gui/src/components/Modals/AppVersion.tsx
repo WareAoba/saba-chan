@@ -183,7 +183,7 @@ export function useAppVersion(nameOf: (key: string) => string, core?: string) {
 
     const load = useCallback(async () => {
         const res: ApiBody | undefined = await window.api?.updaterVersions?.();
-        // 읽지 못했거나 이 길을 모르는 옛 데몬이면 줄을 그리지 않는다
+        // 읽지 못하면 줄을 그리지 않는다
         setVersions(!failed(res) && typeof res?.installed === 'string' ? (res as AppVersionsResponse) : null);
     }, []);
 

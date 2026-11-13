@@ -149,7 +149,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
     const discordSettingsPath = (guild: string) => `/api/discord/${encodeURIComponent(guild)}/settings`;
     /**
      * 콘솔 스트림 (셸 `daemon_stream_open`, 웹은 릴레이의 조각 답). 건마다 onUpdate(콘솔 조회와 같은 답, reset이면 처음부터 다시),
-     * 끝나거나 데몬이 오류를 보내면 onEnd. 열지 못하면(옛 데몬·옛 릴레이·연결 실패) null: 부른 쪽은 주기 조회로 읽는다.
+     * 끝나거나 데몬이 오류를 보내면 onEnd. 열지 못하면(옛 릴레이·연결 실패) null: 부른 쪽은 주기 조회로 읽는다.
      * 연 스트림은 돌려준 함수로 닫는다
      */
     let streamSeq = 0;

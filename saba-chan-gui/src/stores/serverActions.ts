@@ -50,7 +50,6 @@ export interface ServerActions {
 /** 화면이 버튼을 눌러 낙관적으로 바꿔 둔 상태 */
 interface OptimisticStatus {
     status: string;
-    timestamp: number;
     pending?: boolean;
 }
 
@@ -58,7 +57,7 @@ interface OptimisticStatus {
 const freshInternal = () => ({
     // 이 창이 시킨 켜기·끄기 (폴링이 밖에서 바뀐 것으로 알리지 않는다)
     guiOps: new Set<string>(),
-    optimistic: new Map<string, OptimisticStatus>(), // id → { status, timestamp, pending }
+    optimistic: new Map<string, OptimisticStatus>(), // id → { status, pending }
     lastErrorToast: 0,
     firstFetchDone: false,
     // 목록 요청 번호. 먼저 보낸 요청이 늦게 오면 그 목록은 버린다 (G-S4)
@@ -184,17 +183,14 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
                         const existing = prev.find((s) => s.id === newServer.id);
 
                         // 시작·정지가 진행 중인지는 데몬이 안다(`transition`, 어디서 시켰든). 이 창이 누른 것은
-                        // 데몬이 요청을 받기 전에도 보이게 요청이 끝날 때까지만 지킨다. 데몬이 그 값을 주지 않는 옛 데몬이면 끝난 뒤 60초까지
+                        // 데몬이 요청을 받기 전에도 보이게 요청이 끝날 때까지만 지킨다
                         let mergedStatus = newServer.transition || newServer.status;
                         const opt = internal.optimistic.get(newServer.id);
                         if (opt) {
-                            const elapsed = Date.now() - opt.timestamp;
-                            // 0.1.14~ 데몬은 `update_check`를 늘 싣는다 (`transition`은 진행 중일 때만 있어 판별에 못 쓴다)
-                            const GUARD_MS = newServer.update_check !== undefined ? 0 : 60_000;
                             const transitioned =
                                 (opt.status === 'starting' && newServer.status === 'running') ||
                                 (opt.status === 'stopping' && newServer.status === 'stopped');
-                            if (transitioned || (elapsed > GUARD_MS && !opt.pending)) {
+                            if (transitioned || !opt.pending) {
                                 internal.optimistic.delete(newServer.id);
                             } else {
                                 mergedStatus = opt.status;
@@ -339,14 +335,14 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
 
             // Optimistic update: 즉시 'starting' 상태 표시
             // 시작 요청이 끝날 때까지는(첫 시작은 몇 분) 목록 새로고침이 이 표시를 지우지 않는다
-            internal.optimistic.set(id, { status: 'starting', timestamp: Date.now(), pending: true });
+            internal.optimistic.set(id, { status: 'starting', pending: true });
             get().setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'starting' } : s)));
 
             // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
             const result = await window.api.instanceStart(id);
             const outcome = controlOutcome(result);
             const opt = internal.optimistic.get(id);
-            if (opt?.pending) internal.optimistic.set(id, { status: 'starting', timestamp: Date.now() });
+            if (opt?.pending) internal.optimistic.set(id, { status: 'starting' });
             notifyPortMoved(result, srv);
 
             // ── action_required: 서버 실행 파일 없음 (범용 코드, 예전 모듈은 server_jar_not_found) ──
@@ -698,14 +694,14 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
                 // Optimistic update: 즉시 'stopping' 상태 표시
                 // 데몬은 stop_timeout까지 기다린 뒤 답하므로, 요청이 끝날 때까지는 목록 새로고침이 이 표시를 지우지 않는다.
                 // 그사이 꺼진 것도 GUI가 한 정지로 본다
-                internal.optimistic.set(id, { status: 'stopping', timestamp: Date.now(), pending: true });
+                internal.optimistic.set(id, { status: 'stopping', pending: true });
                 internal.guiOps.add(id);
                 get().setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'stopping' } : s)));
 
                 const useGraceful = srv?.module_settings?.graceful_stop;
                 const result = await window.api.instanceStop(id, { force: useGraceful === false });
                 const opt = internal.optimistic.get(id);
-                if (opt?.pending) internal.optimistic.set(id, { status: 'stopping', timestamp: Date.now() });
+                if (opt?.pending) internal.optimistic.set(id, { status: 'stopping' });
 
                 // ── extension_required 처리 ──
                 if (result.action_required === 'extension_required') {
@@ -802,7 +798,7 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
         if (!srv || !window.api.instanceRestart) return;
         const { name } = srv;
         const restartNow = async () => {
-            internal.optimistic.set(id, { status: 'stopping', timestamp: Date.now() });
+            internal.optimistic.set(id, { status: 'stopping' });
             get().setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'stopping' } : s)));
             internal.guiOps.add(id);
             setProgressBar({ message: t('servers.restarting_toast', { name }), indeterminate: true });

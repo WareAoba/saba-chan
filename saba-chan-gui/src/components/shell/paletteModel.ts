@@ -29,8 +29,8 @@ export interface PaletteCommand {
     description?: string | null;
     risk?: string;
     inputs: CommandInput[];
-    /** 데몬 판정: 지금 보내면 받는가. 옛 데몬이라 없으면 켜져 있는지로 본다 */
-    ready?: boolean;
+    /** 데몬 판정: 지금 보내면 받는가 */
+    ready: boolean;
 }
 
 export interface PaletteServer {
@@ -144,7 +144,6 @@ const STORAGE_TABS = ['components', 'modules', 'extensions'];
 export const categoryOf = (g: Group): Category | null =>
     g === 'xcmd' ? 'cmd' : g === 'setting' ? 'jump' : g === 'esrv' || g === 'eguild' ? null : g;
 
-const commandReady = (s: PaletteServer, c: PaletteCommand) => c.ready ?? s.status === 'running';
 
 /** 지금 상태에서 할 수 있는 조작 */
 function controlsOf(status: string): Control[] {
@@ -179,7 +178,7 @@ function serverItems(s: PaletteServer, t: Translate): PaletteItem[] {
             path: [s.name],
         });
     }
-    for (const c of s.commands || []) if (commandReady(s, c)) out.push(commandItem('cmd', s, c));
+    for (const c of s.commands || []) if (c.ready) out.push(commandItem('cmd', s, c));
     for (const tab of s.tabs) {
         const title = t(SERVER_TAB_LABELS[tab] || tab);
         out.push({
@@ -382,7 +381,7 @@ export function visibleItems(state: PaletteState, data: PaletteData, t: Translat
     const features = baseItems(state, data, t);
     for (const s of data.servers) {
         if (context?.kind === 'server' && context.id === s.id) continue;
-        for (const c of s.commands || []) if (commandReady(s, c)) features.push(commandItem('xcmd', s, c));
+        for (const c of s.commands || []) if (c.ready) features.push(commandItem('xcmd', s, c));
     }
     const rows = state.category ? [] : entityRows(data, t);
     return ranked([...features.filter(inCategory), ...rows], q);

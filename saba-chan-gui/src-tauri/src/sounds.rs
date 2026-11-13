@@ -106,7 +106,7 @@ impl EventCues {
             "instance.started" => (d["source"] != "gui").then_some(Cue::Started),
             "instance.stopped" => (d["source"] != "gui").then_some(Cue::Stopped),
             // 예기치 않은 종료는 크래시와 원인 모를 종료(작업 관리자 강제 종료 등)뿐이다 (01 §이벤트).
-            // 시작 실패는 앱 밖에서 켠 것만: 시킨 쪽(`source`)이 없는 옛 데몬의 것은 앱 버튼일 수 있어 울리지 않는다
+            // 시작 실패는 앱 밖에서 켠 것만: 시킨 쪽(`source`)을 모르면 앱 버튼일 수 있어 울리지 않는다
             "instance.exit" => match d["kind"].as_str() {
                 Some("crash" | "unknown_exit") => Some(Cue::Crashed),
                 Some("start_failed") => d["source"].as_str().is_some_and(|s| s != "gui").then_some(Cue::StartFailed),
@@ -356,7 +356,7 @@ mod tests {
             assert_eq!(cues.cue_for(&failed(json!(source))), Some(Cue::StartFailed), "{source}");
         }
         assert_eq!(cues.cue_for(&failed(json!("gui"))), None, "앱 버튼으로 켠 것은 보고 있다");
-        assert_eq!(cues.cue_for(&failed(Value::Null)), None, "시킨 쪽을 싣지 않는 옛 데몬");
+        assert_eq!(cues.cue_for(&failed(Value::Null)), None, "시킨 쪽을 모른다");
         assert_eq!(
             cues.cue_for(&ev("instance.restart_failed", json!({"noteCode": "restart_failed"}))),
             Some(Cue::StartFailed)
