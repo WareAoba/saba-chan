@@ -205,7 +205,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | onOpenRoute | 셸의 `app:openRoute {route}`(바탕화면 오버레이가 고른 앱 탭)를 받는다. App은 앱 탭이면 `setActiveTab(route)`. 메인 창이 막 뜨는 중이면 놓칠 수 있다(그때는 기본 탭) | n/a |
 | onCloseRequest / closeResponse (1021-1025) | 셸의 `app:closeRequest`를 받고, Rust `app_close_response`로 답한다(기다리지 않음). App은 받자마자 `ack`를 보낸다. 앱 설정 `closeAction`이 `tray`면 묻지 않고 `exit-interface`, `quit`이면 모두 끄기(켜진 managed 서버가 있으면 그 경고는 그대로), `ask`(기본)면 종료 모달. 돌려주는 함수로 그 구독만 해제 | n/a |
 | onStatusUpdate (1403) | 셸의 `status:update`. 브리지가 마지막 값을 기억해 늦게 붙은 콜백에도 준다(`events.ts:68-76`). 돌려주는 함수로 그 구독만 해제 (채널 전체를 떼는 `off*`는 없다) | n/a |
-| daemonStatus (1404) | Rust `daemon_status` → GET /health. App.tsx가 5초마다 묻되 창이 숨어 있으면(최소화·트레이) 건너뛰고 다시 보이면 바로 묻는다(`utils/visibleTimer.ts`, 합쳐 보기 `OtherDaemons` 10초·코코낸내 구석 `SleepCorner` 60초도 같다). 응답의 `token`이 `valid`(필드가 없으면 예전 데몬이라 유효로 본다)일 때만 `running: true`. 어긋나면 토큰 파일을 한 번 다시 읽어 재시도하고, 그래도 어긋나면 `running: false, error_code: "token_invalid"`. 실행 중이면 `in_parent_job`(데몬을 띄운 프로그램과 함께 끝날 수 있는가: `/health` `stops_with_launcher`)도 준다 | ✓ 637 |
+| daemonStatus (1404) | Rust `daemon_status` → GET /health. App.tsx가 5초마다 묻되 창이 숨어 있으면(최소화·트레이) 건너뛰고 다시 보이면 바로 묻는다(`utils/poll.ts` `startPoll`, 합쳐 보기 `OtherDaemons` 10초·코코낸내 구석 `SleepCorner` 60초도 같다). 응답의 `token`이 `valid`(필드가 없으면 예전 데몬이라 유효로 본다)일 때만 `running: true`. 어긋나면 토큰 파일을 한 번 다시 읽어 재시도하고, 그래도 어긋나면 `running: false, error_code: "token_invalid"`. 실행 중이면 `in_parent_job`(데몬을 띄운 프로그램과 함께 끝날 수 있는가: `/health` `stops_with_launcher`)도 준다 | ✓ 637 |
 | daemonRestart (1405) | Rust `daemon_restart`: `stop_daemon()`(API 종료, 안 되면 자기 PID만 kill) 후 `/health`가 멎을 때까지 기다렸다가 **`start_daemon()`으로 직접 spawn**(`lifecycle.rs:592-618`) | 부분 |
 | minimize/maximize/closeWindow | Rust `window_minimize` / `window_maximize`(토글) / `window_close`. 호출한 창에 적용한다 | n/a |
 | windowIsMaximized | Rust `window_is_maximized`. 창 버튼이 최대화·복원 아이콘을 고른다 | n/a |
@@ -465,27 +465,27 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 ### 7.1 GUI Tauri 셸 (`saba-chan-gui/src-tauri/src`)
 | # | 위치 | 분류 | 내용 | 비고 |
 |---|---|---|---|---|
-| G1 | daemon.rs:154-181 | FS-R | `.ipc_token` 읽기 | 불가피(인증 부트스트랩) |
-| G2 | settings.rs:28-39, 71-84 | FS-R/CFG | `load_settings()`는 daemon 상태와 상관없이 **항상** config.json `gui`(깨졌으면 `.bak`, 없으면 예전 settings.json)를 직접 읽는다. 기동 시 포트·언어(`lib.rs:94-96`), `create_main_window`, 데몬 기동 env, `refresh_ipc_base`, 창 크기 저장, `language_get`, `settings_local_load`(브리지의 settings 폴백)가 이 함수를 쓴다 | ipcPort 부트스트랩만 불가피하고, 나머지는 API로 대체할 수 있다 |
-| G3 | settings.rs:47-61, native.rs:189-227 | FS-W/CFG | `write_gui_section()`: 데몬이 **응답하지 않을 때만** config.json `gui`를 직접 쓴다(데몬과 같은 `ConfigFile` writer). 셸 `save_settings()`(windowBounds 저장 `window.rs:186`, `language_set`)와 브리지가 부르는 `settings_local_save`(`createApi.ts:123`)가 이 경로를 탄다 | 부트스트랩 전용. 예전 `daemonProcess` 분기 버그는 해결(§6.3) |
-| G4 | createApi.ts:991-999 | FS-R/CFG | `settingsLoad`: API 실패 시 `settings_local_load`로 로컬 폴백 | 위와 같음 |
-| G5 | logging.rs:10-45 | FS-W | 로그 디렉터리 생성과 로그 파일 쓰기 | GUI 자체 로그 |
-| G6 | i18n.rs:50-62 | FS-R | `locales/<lang>/common.json` 직접 읽기(없으면 exe 내장본) | |
-| G7 | lifecycle.rs:158-244, 389-436 | PROC | **saba-core spawn** (`--spawned`, env 주입). 콘솔 창 없이 분리해 띄운다(Windows `CREATE_NO_WINDOW`·`CREATE_NEW_PROCESS_GROUP`·`CREATE_BREAKAWAY_FROM_JOB`, job이 막으면 breakaway 없이 다시, Unix `process_group(0)`). 로그는 GUI가 사는 동안 파이프로 받는다. 인터페이스만 종료하면(`interface_only_quit` `:630-644`) 자식 핸들만 놓아 데몬이 남는다. GUI가 죽거나 강제 종료돼도 데몬은 남고, 다음 GUI 실행 때 `ensure_daemon`이 `/health`로 떠 있는 데몬을 찾아 다시 붙는다. 데몬을 끄는 것은 전체 종료(`clean_quit`, G8)뿐이다 | 불가피(daemon 부재 시 부트스트랩) |
-| G8 | lifecycle.rs:292-338 | PROC | daemon 종료: `POST /api/daemon/shutdown` 후 40초 안에 안 끝나면 **자기 PID만** kill(`taskkill /PID /F`, SIGKILL) | API 우선, kill은 대비책 |
-| G10 | lifecycle.rs:592-618 | PROC | `daemon_restart`: `stop_daemon()`(API 우선) 후 `start_daemon()`으로 직접 spawn | 재기동 API가 없다 |
-| G11 | tray.rs:447-459 | PROC | 트레이 메뉴: "데몬 종료"는 `stop_daemon()`, "데몬 시작"은 `start_daemon()` 직접 호출 | |
-| G12 | lifecycle.rs:690-712 | PROC | `RunEvent::Exit`(`clean_quit`을 거치지 않은 경로)에서 자기 데몬을 `force_kill`. 인터페이스만 종료한 경우(`keep_daemon_alive`)는 건너뛴다 | 자기가 띄운 프로세스만 |
-| G16 | native.rs:151-184 | OS/PROC | 레지스트리 `HKCU\…\Uninstall\Saba-chan` `InstallLocation` 읽기(`winreg`), installer `--uninstall` 분리 spawn | |
-| G18 | native.rs:342-395, window.rs:63-96 | OS | `shell_open_external`·탐색 잠금(http(s)만 바깥 브라우저), `shell_open_path`·`logs_open_folder`(로그 폴더, 인스턴스 폴더) | UI 성격 |
-| G19 | native.rs:304-338 | OS | 네이티브 파일/폴더/저장 다이얼로그(tauri-plugin-dialog) | UI 성격(경로 선택만 하고, 실제 스캔·내보내기는 daemon) |
+| G1 | daemon.rs `load_token` | FS-R | `.ipc_token` 읽기 | 불가피(인증 부트스트랩) |
+| G2 | settings.rs `read_config_document`·`load_settings` | FS-R/CFG | `load_settings()`는 daemon 상태와 상관없이 **항상** config.json `gui`(깨졌으면 `.bak`, 없으면 예전 settings.json)를 직접 읽는다. 기동 시 포트·언어(`lib.rs` `run`), `create_main_window`, 데몬 기동 env, `refresh_ipc_base`, 창 크기 저장, `language_get`, `settings_local_load`(브리지의 settings 폴백)가 이 함수를 쓴다 | ipcPort 부트스트랩만 불가피하고, 나머지는 API로 대체할 수 있다 |
+| G3 | settings.rs `write_gui_section`, native.rs `save_settings`·`save_local` | FS-W/CFG | `write_gui_section()`: 데몬이 **응답하지 않을 때만** config.json `gui`를 직접 쓴다(데몬과 같은 `ConfigFile` writer). 셸 `save_settings()`(window.rs의 windowBounds 저장, `language_set`)와 브리지가 부르는 `settings_local_save`(`createApi.ts`)가 이 경로를 탄다 | 부트스트랩 전용. 예전 `daemonProcess` 분기 버그는 해결(§6.3) |
+| G4 | createApi.ts `settingsLoad` | FS-R/CFG | `settingsLoad`: API 실패 시 `settings_local_load`로 로컬 폴백 | 위와 같음 |
+| G5 | logging.rs `init` | FS-W | 로그 디렉터리 생성과 로그 파일 쓰기 | GUI 자체 로그 |
+| G6 | i18n.rs `load_common` | FS-R | `locales/<lang>/common.json` 직접 읽기(없으면 exe 내장본) | |
+| G7 | lifecycle.rs `start_daemon`·`detach`·`pipe_log` | PROC | **saba-core spawn** (`--spawned`, env 주입). 콘솔 창 없이 분리해 띄운다(Windows `CREATE_NO_WINDOW`·`CREATE_NEW_PROCESS_GROUP`·`CREATE_BREAKAWAY_FROM_JOB`, job이 막으면 breakaway 없이 다시, Unix `process_group(0)`). 로그는 GUI가 사는 동안 파이프로 받는다. 인터페이스만 종료하면(`interface_only_quit`) 자식 핸들만 놓아 데몬이 남는다. GUI가 죽거나 강제 종료돼도 데몬은 남고, 다음 GUI 실행 때 `ensure_daemon`이 `/health`로 떠 있는 데몬을 찾아 다시 붙는다. 데몬을 끄는 것은 전체 종료(`clean_quit`, G8)뿐이다 | 불가피(daemon 부재 시 부트스트랩) |
+| G8 | lifecycle.rs `stop_daemon`·`force_kill` | PROC | daemon 종료: `POST /api/daemon/shutdown` 후 40초 안에 안 끝나면 **자기 PID만** kill(`taskkill /PID /F`, SIGKILL) | API 우선, kill은 대비책 |
+| G10 | lifecycle.rs `daemon_restart` | PROC | `daemon_restart`: `stop_daemon()`(API 우선) 후 `start_daemon()`으로 직접 spawn | 재기동 API가 없다 |
+| G11 | tray.rs `action` | PROC | 트레이 메뉴: "데몬 종료"는 `stop_daemon()`, "데몬 시작"은 `start_daemon()` 직접 호출 | |
+| G12 | lifecycle.rs `on_exit` | PROC | `RunEvent::Exit`(`clean_quit`을 거치지 않은 경로)에서 자기 데몬을 `force_kill`. 인터페이스만 종료한 경우(`keep_daemon_alive`)는 건너뛴다 | 자기가 띄운 프로세스만 |
+| G16 | native.rs `registry_install_location`·`launch_uninstaller` | OS/PROC | 레지스트리 `HKCU\…\Uninstall\Saba-chan` `InstallLocation` 읽기(`winreg`), installer `--uninstall` 분리 spawn | |
+| G18 | native.rs `shell_open_external`·`shell_open_path`·`logs_open_folder`, window.rs `lock_navigation` | OS | `shell_open_external`·탐색 잠금(http(s)만 바깥 브라우저), `shell_open_path`·`logs_open_folder`(로그 폴더, 인스턴스 폴더) | UI 성격 |
+| G19 | native.rs `dialog_open_file`·`dialog_open_folder`·`dialog_save_file` | OS | 네이티브 파일/폴더/저장 다이얼로그(tauri-plugin-dialog) | UI 성격(경로 선택만 하고, 실제 스캔·내보내기는 daemon) |
 
 ### 7.2 GUI renderer (`saba-chan-gui/src`)
 | # | 위치 | 분류 | 내용 |
 |---|---|---|---|
-| R1 | i18n.ts:35-88, SettingsModal.tsx:335 | FS-W(localStorage) | 언어 캐시 `i18nextLng` |
-| R2 | utils/themeManager.ts:72-184 | FS-W(localStorage) | 테마와 커스텀 테마. config.json `gui`에도 accent 계열을 저장하므로 저장소가 둘로 갈린다 |
-| R3 | Modals/NoticeModal.tsx:21-42 | FS-W(localStorage) | 공지와 알림 기록 |
+| R1 | i18n.ts, Modals/SettingsModal.tsx | FS-W(localStorage) | 언어 캐시 `i18nextLng` |
+| R2 | utils/themeManager.ts | FS-W(localStorage) | 테마와 커스텀 테마. config.json `gui`에도 accent 계열을 저장하므로 저장소가 둘로 갈린다 |
+| R3 | Modals/NoticeModal.tsx | FS-W(localStorage) | 공지와 알림 기록 |
 | R4 | i18n.ts, utils/localeBackend.ts | 빌드타임 + 데몬 API | 로케일 JSON 정적 번들은 폴백이다. 설치 폴더 번역은 데몬 `/api/locales/:lang/:ns`로 받고 `locales_version`이 바뀌면 다시 읽는다. 셸 문구는 설치 폴더 파일을 먼저 읽어 반영된다(`i18n.rs:50-58`) |
 
 (renderer는 `fetch`, `axios`, 직접 IP 접근을 하지 않는다. 모두 `window.api`(브리지 → `daemon_request` 명령)를 거친다.)
@@ -495,14 +495,13 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 
 | # | 위치 | 분류 | 내용 | 비고 |
 |---|---|---|---|---|
-| C1 | client.rs:28-33 | FS-R | `.ipc_token` 읽기 (한 곳) | 불가피 |
-| C2 | bootstrap.rs:14-46 | FS-R/CFG | `config.json`에서 `gui.ipcPort`·`gui.language` 읽기 | 불가피 |
+| C1 | client.rs `read_token` | FS-R | `.ipc_token` 읽기 (한 곳) | 불가피 |
+| C2 | bootstrap.rs `gui_section`·`ipc_port`·`language` | FS-R/CFG | `config.json`에서 `gui.ipcPort`·`gui.language` 읽기 | 불가피 |
 | C2b | bootstrap.rs `live_port` | FS-R | `daemon.lock.owner`에서 실행 중 데몬의 pid·포트 읽기(설정 포트에 데몬이 없을 때만, `/health`의 pid로 확인) | 불가피(데몬을 찾는 단계) |
-| C8 | i18n.rs:36-52 | FS-R | 설치 폴더 `locales/<lang>/cli.json` 읽기 (없으면 내장본) | |
-| C9 | bootstrap.rs:49-90 | PROC | saba-core 분리 실행 | 불가피(부트스트랩) |
-| C10 | bootstrap.rs:92, cmd/daemon.rs:102 | PROC | API 종료가 안 될 때 데몬 PID만 강제 종료 | 이름 기반 kill 아님 |
-| C14 | cmd/chatbot.rs:109-114 | FS-R | `chatbot set KEY=@<파일>`이면 사용자가 지정한 파일 내용을 값으로 읽어 API로 보낸다 | 사용자 입력 편의, 데몬 파일 아님 |
-| C15 | cmd/server.rs:297-305 | FS-R | `server add`에서 폴더 중복 검사용 `canonicalize` | 경로 정규화만 |
+| C8 | i18n.rs `installed` | FS-R | 설치 폴더 `locales/<lang>/cli.json` 읽기 (없으면 내장본) | |
+| C9 | bootstrap.rs `spawn_daemon` | PROC | saba-core 분리 실행 | 불가피(부트스트랩) |
+| C10 | bootstrap.rs `kill_pid`, cmd/daemon.rs `stop` | PROC | API 종료가 안 될 때 데몬 PID만 강제 종료 | 이름 기반 kill 아님 |
+| C14 | cmd/chatbot.rs | FS-R | `chatbot set KEY=@<파일>`이면 사용자가 지정한 파일 내용을 값으로 읽어 API로 보낸다 | 사용자 입력 편의, 데몬 파일 아님 |
 | C16 | cmd/agent.rs | FS-RW/PROC | `agent link`가 `~/.codex/config.toml`의 `[mcp_servers.saba-chan-local]`만 고치고 `claude mcp add/remove`를 실행한다 | 데몬 데이터가 아니라 CLI·에이전트가 도는 그 PC의 에이전트 설정. `--daemon`으로 다른 PC의 데몬에 붙어 있어도 등록은 이 PC에 해야 하므로 데몬으로 옮길 수 없다 |
 | C17 | cmd/mcp.rs | PROC | 로컬 MCP가 같은 CLI를 자식으로 실행한다(`--json`) | 명령은 자식 CLI가 데몬 API로 한다 |
 | C18 | cmd/completions.rs | FS-W | `completions --install`이 이 사용자의 셸 완성 자리에 스크립트를 쓰고, zsh는 `.zshrc`를 읽기만 한다 | 데몬 데이터가 아니라 CLI가 도는 그 PC의 셸 설정 자리 |
