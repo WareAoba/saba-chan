@@ -32,7 +32,7 @@ fn state_of(state: &IPCServer) -> crate::guides::State {
 
 /// 완료 조건을 판단할 지금 상태
 async fn facts(state: &IPCServer) -> crate::guides::Facts {
-    let onboarding = super::diagnostics::onboarding_now(state).await;
+    let onboarding = crate::service::onboarding::now(state).await;
     let step_done = |id: &str| {
         onboarding["steps"].as_array().is_some_and(|a| a.iter().any(|s| s["id"] == id && s["done"] == true))
     };

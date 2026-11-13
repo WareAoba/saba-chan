@@ -17,10 +17,8 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use std::path::PathBuf;
 
 use super::super::IPCServer;
-use crate::system_monitor::InstanceRoot;
 
 #[derive(Deserialize)]
 pub struct MetricsQuery {
@@ -35,32 +33,8 @@ fn default_sizes() -> bool {
     true
 }
 
-/// 표본을 뜰 인스턴스 목록 (프로세스 PID와 폴더)
-pub(crate) async fn instance_roots(state: &IPCServer) -> Vec<InstanceRoot> {
-    let supervisor = state.supervisor.read().await;
-    supervisor
-        .instance_store
-        .list()
-        .iter()
-        .map(|inst| {
-            let mut dirs = vec![supervisor.instance_store.instance_dir(&inst.id)];
-            if let Some(wd) = inst.working_dir.as_deref().filter(|w| !w.is_empty()) {
-                dirs.push(PathBuf::from(wd));
-            }
-            let module = supervisor.module_loader.get_module(&inst.module_name).ok();
-            InstanceRoot {
-                id: inst.id.clone(),
-                name: inst.name.clone(),
-                pid: supervisor.tracker.get_pid(&inst.id).ok(),
-                dirs,
-                ports: crate::port_check::public_ports(inst, module.as_ref().and_then(|m| m.metadata.settings.as_ref())),
-            }
-        })
-        .collect()
-}
-
 pub async fn get_metrics(State(state): State<IPCServer>, Query(q): Query<MetricsQuery>) -> impl IntoResponse {
-    let roots = instance_roots(&state).await;
+    let roots = state.supervisor.read().await.sample_roots();
     let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
     let monitor = state.system_monitor.clone();
     monitor.set_net_trace(state.config_store.get_gui_settings().await.system_monitor_net_trace);

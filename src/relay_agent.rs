@@ -845,7 +845,7 @@ impl Session {
     async fn metadata(&self) -> Value {
         use crate::chat::api::DaemonApi;
         // `/사바쨩 상태`의 CPU·RAM과 PC 부하 (폴더 크기는 재지 않는다)
-        let roots = crate::ipc::handlers::system::instance_roots(&self.server).await;
+        let roots = self.server.supervisor.read().await.sample_roots();
         let monitor = self.server.system_monitor.clone();
         let snapshot = tokio::task::spawn_blocking(move || monitor.sample(&roots, &[], false, false)).await.ok();
         let usage = snapshot.as_ref().map(|s| s.instances.as_slice()).unwrap_or_default();
@@ -917,7 +917,7 @@ impl Session {
         meta["permissions"] = permissions_by_guild(&bot.node_settings, &targets);
         meta["permissionsAt"] = json!(permissions_at);
         // `/사바쨩 상태` 끝 줄의 다음 할 일 (J1-a, GUI·CLI와 같은 단계)
-        meta["onboarding"] = crate::ipc::handlers::diagnostics::onboarding_now(&self.server).await;
+        meta["onboarding"] = crate::service::onboarding::now(&self.server).await;
         // 언어가 `auto`인 길드는 이 언어로 답한다 (I2)
         // (릴레이 스키마는 10자까지. 넘으면 heartbeat 전체가 거절되므로 싣지 않는다)
         if let Some(language) = Some(self.server.config_store.pc_language().await).filter(|l| l.len() <= 10) {

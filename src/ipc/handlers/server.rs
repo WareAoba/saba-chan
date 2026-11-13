@@ -200,7 +200,7 @@ async fn server_list(state: &IPCServer, notices_after: u64) -> axum::response::R
                     restorable_settings: false,
                     stored: module
                         .and_then(|m| m.metadata.settings.as_ref())
-                        .map(|s| super::instance::stored_settings(instance, &s.fields))
+                        .map(|s| crate::instance::stored_settings(instance, &s.fields))
                         .unwrap_or_default(),
                 },
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
@@ -689,7 +689,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     };
     // 설치된 것보다 낮은 버전은 받지 않는다
     let previous = state.supervisor.read().await.module_loader.get_module(&module_id).ok();
-    let previously_required = previous.as_ref().map(required_extensions).unwrap_or_default();
+    let previously_required = previous.as_ref().map(crate::supervisor::module_loader::LoadedModule::required_extensions).unwrap_or_default();
     let installed = previous.map(|m| m.metadata.version.clone());
     if let Some(installed) = installed.filter(|v| saba_chan_updater_lib::version::is_downgrade(v, &comp.version)) {
         return fail(format!("Module '{}' {} is older than the installed {}", module_id, comp.version, installed));
@@ -705,7 +705,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     }
 
     // 여기부터 모듈 폴더에 쓴다: 폴더를 옮기는 중이면 끝나기를 기다리고, 끝날 때까지 옮기지 못하게 한다
-    let _dirs = super::paths::components_in_use().await;
+    let _dirs = crate::component_lock::in_use().await;
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())
@@ -740,17 +740,12 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
         let mut supervisor = state.supervisor.write().await;
         let _ = supervisor.refresh_modules();
         supervisor.migrate_settings();
-        supervisor.module_loader.get_module(&module_id).ok().as_ref().map(required_extensions).unwrap_or_default()
+        supervisor.module_loader.get_module(&module_id).ok().as_ref().map(crate::supervisor::module_loader::LoadedModule::required_extensions).unwrap_or_default()
     };
     // 이 모듈이 쓰는 익스텐션을 받고 켠다 (새로 필요해진 것만 켠다: 예전 판부터 쓰던 것은 사용자가 껐을 수 있다)
     let extensions = super::extension::prepare_for_module(&state, &required, &previously_required).await;
     (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version, "extensions": extensions })))
         .into_response()
-}
-
-/// 모듈 `[install] requires_extensions`
-pub(crate) fn required_extensions(module: &crate::supervisor::module_loader::LoadedModule) -> Vec<String> {
-    module.metadata.install.as_ref().map(|i| i.requires_extensions.clone()).unwrap_or_default()
 }
 
 /// 모듈 하나의 설치·제거는 한 번에 하나만 (같은 모듈을 GUI·CLI가 동시에 설치하면 서로의 파일을 지운다).
@@ -792,7 +787,7 @@ pub async fn remove_module(
     let Some(_removing) = module_install_guard(&module_id) else {
         return module_busy(&module_id);
     };
-    let _dirs = super::paths::components_in_use().await;
+    let _dirs = crate::component_lock::in_use().await;
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
         // 켜진 서버가 쓰는 모듈을 지우면 그 서버를 정지할 수 없다 (EE9). Windows 경로는 대소문자를 가리지 않는다

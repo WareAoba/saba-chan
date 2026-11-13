@@ -1156,7 +1156,7 @@ impl IPCServer {
                     // 자동 포트포워딩 확인 (설정이 켜져 있을 때만, 자동 시작한 서버가 포트를 연 뒤)
                     tokio::spawn(crate::port_check::auto_on_start(self.clone()));
                     // 온보딩 "서버 시작해 보기": 처음 켜진 서버를 남긴다
-                    tokio::spawn(crate::ipc::handlers::diagnostics::watch_first_start(self.clone()));
+                    tokio::spawn(crate::service::onboarding::watch_first_start(self.clone()));
 
                     let shutdown_signal = self.shutdown_token.clone();
                     axum::serve(listener, router)

@@ -287,7 +287,7 @@ async fn blocked_fields(server: &crate::ipc::IPCServer, method: &str, pattern: &
         if key == "extension_data" {
             return sent.as_object().is_none_or(|m| m.iter().any(|(k, v)| !same_value(v, instance.extension_data.get(k))));
         }
-        !same_value(sent, crate::ipc::handlers::instance::stored_setting(&view, instance, key).as_ref())
+        !same_value(sent, crate::instance::stored_setting(&view, instance, key).as_ref())
     });
     blocked
 }

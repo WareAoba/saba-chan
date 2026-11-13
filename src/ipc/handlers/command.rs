@@ -88,7 +88,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
         let mut context = crate::extension::hook_context(&instance, &instance_dir, metadata.as_ref());
         context["running"] = json!(running);
         // 계획(익스텐션 경로)부터 실행이 끝날 때까지 익스텐션 폴더를 옮기지 못하게 한다
-        let _in_use = super::paths::components_in_use().await;
+        let _in_use = crate::component_lock::in_use().await;
         let planned = state.extension_manager.read().await.plan_command(&request.name, &request.args, context);
         if let Some(Err(e)) = &planned {
             return command_reply(

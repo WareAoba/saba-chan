@@ -709,6 +709,11 @@ pub struct LoadedModule {
 }
 
 impl LoadedModule {
+    /// 모듈 `[install] requires_extensions`
+    pub(crate) fn required_extensions(&self) -> Vec<String> {
+        self.metadata.install.as_ref().map(|i| i.requires_extensions.clone()).unwrap_or_default()
+    }
+
     /// 데몬이 실행할 Python 진입 파일 (`[module] entry`)
     pub fn entry_path(&self) -> String {
         Path::new(&self.path).join(&self.metadata.entry).to_string_lossy().to_string()

@@ -474,7 +474,7 @@ pub async fn install_extension(
     LooseJson(body): LooseJson<serde_json::Value>,
 ) -> Json<serde_json::Value> {
     let field = |k: &str| body.as_ref().and_then(|Json(b)| b.get(k)).and_then(|v| v.as_str()).map(str::to_string);
-    let _dirs = super::paths::components_in_use().await;
+    let _dirs = crate::component_lock::in_use().await;
     match install_with_dependencies(&state, &ext_id, field("download_url"), field("sha256")).await {
         Ok(installed) => Json(json!({ "success": true, "id": ext_id, "installed": installed })),
         Err(body) => body,
@@ -628,11 +628,11 @@ pub async fn prepare_after_update(state: &IPCServer, marker_path: &std::path::Pa
     if modules.is_empty() {
         return Vec::new();
     }
-    let _dirs = super::paths::components_in_use().await;
+    let _dirs = crate::component_lock::in_use().await;
     let mut prepared = Vec::new();
     for module_id in modules {
         let required = match state.supervisor.read().await.module_loader.get_module(module_id) {
-            Ok(module) => super::server::required_extensions(&module),
+            Ok(module) => module.required_extensions(),
             Err(_) => continue,
         };
         if required.is_empty() {

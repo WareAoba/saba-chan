@@ -14,15 +14,6 @@ use std::path::{Path, PathBuf};
 
 use super::super::IPCServer;
 
-/// 모듈·익스텐션 폴더에 파일을 쓰는 작업(설치·제거)과 폴더 옮기기를 가른다.
-/// 작업은 읽기 잠금을 쥐고 하고, 옮기기는 쓰기 잠금을 바로 잡지 못하면 거절한다
-static IN_USE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
-
-/// 모듈·익스텐션 폴더에 쓰는 동안 쥔다 (옮기는 중이면 끝나기를 기다린다)
-pub(crate) async fn components_in_use() -> tokio::sync::RwLockReadGuard<'static, ()> {
-    IN_USE.read().await
-}
-
 fn dir_json(kind: Kind, data_dir: &Path) -> serde_json::Value {
     let (path, source) = component_dirs::resolve(kind);
     json!({ "path": path, "default": component_dirs::default_dir(kind, data_dir), "source": source })
@@ -106,7 +97,7 @@ async fn move_component_dir(
     }
     let source = layout.dir(kind).to_path_buf();
 
-    let Ok(_dirs) = IN_USE.try_write() else {
+    let Ok(_dirs) = crate::component_lock::IN_USE.try_write() else {
         return Err(busy("install"));
     };
     // 업데이트를 받거나 적용하는 중이면 그 작업이 매니저를 쥐고 있다: 기다리지 않고 거절한다
@@ -382,7 +373,7 @@ mod tests {
         let old = layout.modules.clone();
         let chosen = tmp.path().join("games");
         {
-            let _installing = components_in_use().await;
+            let _installing = crate::component_lock::in_use().await;
             let err = move_component_dir(&state, Kind::Modules, &chosen, layout.clone(), config.clone())
                 .await
                 .unwrap_err();

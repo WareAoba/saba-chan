@@ -4,6 +4,28 @@ use super::*;
 use super::start::announce_started;
 
 impl Supervisor {
+    /// 표본을 뜰 인스턴스 목록 (프로세스 PID와 폴더)
+    pub(crate) fn sample_roots(&self) -> Vec<crate::system_monitor::InstanceRoot> {
+        self.instance_store
+            .list()
+            .iter()
+            .map(|inst| {
+                let mut dirs = vec![self.instance_store.instance_dir(&inst.id)];
+                if let Some(wd) = inst.working_dir.as_deref().filter(|w| !w.is_empty()) {
+                    dirs.push(std::path::PathBuf::from(wd));
+                }
+                let module = self.module_loader.get_module(&inst.module_name).ok();
+                crate::system_monitor::InstanceRoot {
+                    id: inst.id.clone(),
+                    name: inst.name.clone(),
+                    pid: self.tracker.get_pid(&inst.id).ok(),
+                    dirs,
+                    ports: crate::port_check::public_ports(inst, module.as_ref().and_then(|m| m.metadata.settings.as_ref())),
+                }
+            })
+            .collect()
+    }
+
     /// 인스턴스 서버 파일이 있을 수 있는 폴더들 (작업 폴더, 실행 파일 폴더, 인스턴스 폴더)
     fn instance_roots(&self, instance: &crate::instance::ServerInstance) -> Vec<String> {
         let mut roots = Vec::new();
