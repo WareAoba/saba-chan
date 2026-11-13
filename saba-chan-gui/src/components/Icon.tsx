@@ -987,19 +987,6 @@ const icons: Record<string, React.JSX.Element> = {
         </svg>
     ),
     // 사바 스토리지 컴포넌트 목록 (사용자 10-26 고른 세트)
-    componentUpdater: (
-        <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-        >
-            <path d="M17.5 19H7a5 5 0 1 1 1.6-9.74A6 6 0 0 1 20 11a4 4 0 0 1-2.5 8z" />
-            <path d="M12 16v-6M9.5 12.5 12 10l2.5 2.5" />
-        </svg>
-    ),
     componentGui: (
         <svg
             viewBox="0 0 24 24"

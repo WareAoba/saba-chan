@@ -62,7 +62,8 @@ export interface ExtensionContextValue {
     availableUpdates: ApiBody[];
     manifestLoading: boolean;
     installingIds: Set<string>;
-    fetchManifest: () => Promise<ApiBody | null | undefined>;
+    /** 받을 수 있는 목록. `refresh`면 데몬도 새로 받는다 */
+    fetchManifest: (refresh?: boolean) => Promise<ApiBody | null | undefined>;
     installExtension: (extId: string, opts?: Record<string, unknown>) => Promise<boolean>;
 }
 
@@ -623,10 +624,10 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
     }, [surface, allPending, modalOpen, approveExtensionGui, t]);
 
     /** 원격 매니페스트에서 가용 익스텐션 목록을 가져옵니다. */
-    const fetchManifest = useCallback(async () => {
+    const fetchManifest = useCallback(async (refresh = false) => {
         setManifestLoading(true);
         try {
-            const data = await window.api.extensionFetchManifest?.();
+            const data = await window.api.extensionFetchManifest?.(refresh);
             if (data) {
                 setManifestExtensions(data.extensions || []);
                 setAvailableUpdates(data.updates || []);

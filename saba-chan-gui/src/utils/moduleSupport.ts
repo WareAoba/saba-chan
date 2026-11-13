@@ -31,6 +31,7 @@ export interface CatalogModule extends ModuleSupport {
     display_names?: Record<string, string>;
     description?: string;
     descriptions?: Record<string, string>;
-    icon?: string;
+    /** 데몬이 받아 둔 그림이 있는가 (`GET /api/store/icons/module-<id>`) */
+    has_icon?: boolean;
     size_bytes?: number;
 }
