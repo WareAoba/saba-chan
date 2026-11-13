@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import type { PlayerCount } from '../../types/daemon';
+import { failed } from '../../utils/apiResult';
 import { safeShowToast } from '../../utils/helpers';
+import { controlOutcome } from '../../utils/serverControl';
 import { gameNameOf, initials, isTransitional, STATUS_TONE, primaryAction } from '../../utils/serverView';
 import { type Agreement, AgreementDialog } from '../AgreementList';
 import { Icon } from '../Icon';
@@ -75,11 +77,12 @@ export function OtherDaemons({
         setBusy(server.id);
         try {
             const res = await window.api.remoteInstanceAction(hostId, server.id, action, force ? { force } : {});
-            if (res?.error_code === 'graceful_stop_unavailable') {
+            const outcome = controlOutcome(res);
+            if (outcome.kind === 'forceStop') {
                 setAsk({ ...target, kind: 'force' });
-            } else if (res?.error_code === 'agreement_required' && Array.isArray(res.agreements) && res.agreements.length) {
-                setAsk({ ...target, kind: 'agreements', agreements: res.agreements });
-            } else if (!res || res.success === false || res.ok === false || res.error) {
+            } else if (outcome.kind === 'agreements' && outcome.agreements.length) {
+                setAsk({ ...target, kind: 'agreements', agreements: outcome.agreements });
+            } else if (failed(res)) {
                 safeShowToast(res?.error || remoteErrorText(res, t), 'error', 5000);
             }
         } finally {

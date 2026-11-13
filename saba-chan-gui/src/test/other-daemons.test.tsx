@@ -140,6 +140,14 @@ describe('합쳐 보기: 다른 데몬의 서버 (G1c)', () => {
         expect(vi.mocked(window.showToast!).mock.calls[0].slice(0, 3)).toEqual(['동의가 필요해요', 'error', 5000]);
     });
 
+    it('error_code만 실린 답도 실패로 알린다 (앱의 다른 켜기·끄기와 같은 판정)', async () => {
+        vi.mocked(window.api.remoteInstanceAction).mockResolvedValue({ error_code: 'remote_unreachable' });
+        await act(async () => render(<OtherDaemons currentTarget="host-b" onSwitched={switched} />));
+        const pc = screen.getByRole('region', { name: 'This PC' });
+        await act(async () => fireEvent.click(within(pc).getByRole('button', { name: 'test-pal Start' })));
+        expect(vi.mocked(window.showToast!).mock.calls[0].slice(1, 3)).toEqual(['error', 5000]);
+    });
+
     it('"이 데몬 열기"는 그 데몬으로 바꾸고 화면을 다시 읽는다', async () => {
         await act(async () => render(<OtherDaemons currentTarget="host-b" onSwitched={switched} />));
         const pc = screen.getByRole('region', { name: 'This PC' });
