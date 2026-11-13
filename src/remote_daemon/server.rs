@@ -750,7 +750,7 @@ pub(crate) mod tests {
         let r = start(Some(fake_relay().await)).await;
         for body in [json!({ "ticketId": "good", "secret": "wrong" }), json!({ "ticketId": "../x", "secret": "s3cret" })] {
             let (s, res) = call(r.addr, &r.pin, "POST", "/remote/pair", None, Some(body)).await.unwrap();
-            assert_eq!((s, res["error"].as_str()), (401, Some("ticket_invalid")));
+            assert_eq!((s, res["error_code"].as_str()), (401, Some("ticket_invalid")));
             assert!(res.get("token").is_none());
         }
     }
@@ -760,7 +760,7 @@ pub(crate) mod tests {
         let r = start(None).await;
         let (s, res) =
             call(r.addr, &r.pin, "POST", "/remote/pair", None, Some(json!({ "ticketId": "good", "secret": "s3cret" }))).await.unwrap();
-        assert_eq!((s, res["error"].as_str()), (502, Some("relay_unreachable")));
+        assert_eq!((s, res["error_code"].as_str()), (502, Some("relay_unreachable")));
     }
 
     /// 실제 데몬 라우트(`IPCServer::routes`)를 원격 포트로 연다. 짝 맺은 PC 하나의 토큰과 함께

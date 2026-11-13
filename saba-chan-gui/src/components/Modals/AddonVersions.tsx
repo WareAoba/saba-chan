@@ -98,7 +98,7 @@ function VersionDialog({
     useEffect(() => {
         let live = true;
         (async () => {
-            const body = (await window.api?.addonVersions?.(card.key)) ?? { ok: false };
+            const body = (await window.api?.addonVersions?.(card.key)) ?? { success: false };
             if (live) setRes(body);
         })();
         return () => {
@@ -210,7 +210,7 @@ export function useAddonVersions(reload?: () => unknown) {
         async ({ card, version, from }: Change, send: () => Promise<ApiBody> | undefined) => {
             setBusy((prev) => ({ ...prev, [card.key]: version }));
             setBanner(null);
-            const res: ApiResult<AddonPinResponse> = (await send()) ?? { ok: false };
+            const res: ApiResult<AddonPinResponse> = (await send()) ?? { success: false };
             const label = { name: card.name, kind: kindWord(t, card) };
             if (failed(res)) {
                 setBanner({ tone: 'error', text: t('saba_storage.version_failed', { ...label, version, from, reason: reasonOf(t, res) }) });

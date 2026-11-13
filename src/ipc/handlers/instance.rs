@@ -44,8 +44,7 @@ pub async fn reorder_instances(
             .filter_map(|v| v.as_str().map(|s| s.to_string()))
             .collect(),
         None => {
-            let error = json!({ "error": "Missing 'order' array" });
-            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            return super::error(StatusCode::BAD_REQUEST, "invalid_request", "Missing 'order' array");
         }
     };
 
@@ -55,8 +54,7 @@ pub async fn reorder_instances(
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(e) => {
-            let error = json!({ "error": format!("Failed to reorder: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+            super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", format!("Failed to reorder: {}", e))
         }
     }
 }
@@ -93,11 +91,7 @@ pub async fn get_instance(
             (StatusCode::OK, Json(body)).into_response()
         }
         None => {
-            let error = json!({
-                "error": format!("Instance not found: {}", id),
-                "error_code": "instance_not_found",
-            });
-            (StatusCode::NOT_FOUND, Json(error)).into_response()
+            super::error(StatusCode::NOT_FOUND, "instance_not_found", format!("Instance not found: {}", id))
         }
     }
 }
@@ -112,7 +106,7 @@ fn open_user_runtime(module: &crate::module_loader::LoadedModule, instance: &cra
 
 /// 요청 값 하나가 잘못됐다는 400 응답: `error`에 이유
 pub(crate) fn invalid_field(field: &str, error: impl Into<String>) -> axum::response::Response {
-    let error = json!({ "error": error.into(), "error_code": "invalid_format", "fields": [{"field": field}] });
+    let error = json!({ "success": false, "error": error.into(), "error_code": "invalid_format", "fields": [{"field": field}] });
     (StatusCode::BAD_REQUEST, Json(error)).into_response()
 }
 
@@ -130,7 +124,7 @@ pub async fn rename_instance(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let fail = |status: StatusCode, error: String, code: &str| {
-        (status, Json(json!({ "success": false, "error": error, "error_code": code }))).into_response()
+        super::error(status, code, error)
     };
     let Some(new_name) = body.get("name").and_then(|v| v.as_str()).map(str::trim).filter(|n| !n.is_empty()) else {
         return fail(StatusCode::BAD_REQUEST, "Missing 'name'".into(), "invalid_request");
@@ -175,14 +169,14 @@ pub async fn launch_preview(
     let draft = match body.get("settings") {
         None | Some(Value::Null) => serde_json::Map::new(),
         Some(Value::Object(m)) => m.clone(),
-        Some(_) => return (StatusCode::BAD_REQUEST, Json(json!({ "error": "invalid_body", "message": "settings must be an object" }))).into_response(),
+        Some(_) => return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "settings must be an object", "error_code": "invalid_body", "message": "settings must be an object" }))).into_response(),
     };
     // 보내지 않으면 저장된 추가 인자로 본다
     let extra = match body.get("extra_args").map(extra_args_from) {
         None => None,
         Some(Some(args)) => Some(args),
         Some(None) => {
-            return (StatusCode::BAD_REQUEST, Json(json!({ "error": "invalid_format", "error_code": "invalid_format", "message": "extra_args must be a string or an array of strings" }))).into_response()
+            return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "extra_args must be a string or an array of strings", "error_code": "invalid_format", "message": "extra_args must be a string or an array of strings" }))).into_response()
         }
     };
     match crate::supervisor::Supervisor::launch_preview(&state.supervisor, &id, &draft, extra.as_deref()).await {

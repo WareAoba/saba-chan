@@ -27,7 +27,7 @@ def official(sandbox, daemon_factory) -> Daemon:
 
 def _install_module(daemon: Daemon, module: str) -> None:
     r = daemon.api.post(f"/api/modules/manifest/{module}/install", timeout=300)
-    assert r.status_code == 200 and r.json().get("ok"), f"{module} 카탈로그 설치 실패: {r.text[:500]}"
+    assert r.status_code == 200 and r.json().get("success"), f"{module} 카탈로그 설치 실패: {r.text[:500]}"
 
 
 def _install_extension(daemon: Daemon, ext: str) -> None:

@@ -22,7 +22,7 @@ use crate::relay_client::{
 use saba_chan_updater_lib::config_file::ConfigFile;
 
 fn invalid_relay_url(problem: String) -> Response {
-    (StatusCode::BAD_REQUEST, Json(json!({ "error": problem, "error_code": "invalid_relay_url" }))).into_response()
+    super::error(StatusCode::BAD_REQUEST, "invalid_relay_url", problem)
 }
 
 async fn signed_base(state: &IPCServer, requested: Option<&str>) -> String {
@@ -38,19 +38,32 @@ pub struct RelayQueryParams {
 
 // ── 공통: 릴레이로 보내고 답을 그대로 돌려준다 ──
 
-fn error(code: StatusCode, message: String) -> Response {
-    (code, Json(json!({ "error": message }))).into_response()
+/// 릴레이의 답을 그대로 전한다. 실패 본문(`{error: <릴레이 코드>, message?, …}`)에는 데몬의 오류 모양에 맞게
+/// `success: false`와 `error_code`(릴레이 코드)를 더한다. 릴레이가 준 칸은 바꾸지 않는다
+pub(crate) fn relayed(code: StatusCode, mut data: Value) -> Response {
+    if !code.is_success() && let Some(body) = data.as_object_mut() {
+        let relay_code = body.get("error").and_then(Value::as_str).unwrap_or("relay_error").to_string();
+        body.insert("success".into(), json!(false));
+        body.entry("error").or_insert_with(|| json!(relay_code));
+        body.entry("error_code").or_insert_with(|| json!(relay_code));
+    }
+    (code, Json(data)).into_response()
+}
+
+/// 릴레이에 닿지 못했거나 답을 읽지 못했다
+fn unreachable(message: String) -> Response {
+    super::error(StatusCode::BAD_GATEWAY, "relay_unreachable", message)
 }
 
 #[allow(clippy::result_large_err)] // 오류 응답은 드문 경로다
 pub(crate) fn client() -> Result<reqwest::Client, Response> {
-    relay_client().map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, format!("HTTP client error: {}", e)))
+    relay_client().map_err(|e| super::error(StatusCode::INTERNAL_SERVER_ERROR, "relay_client_failed", format!("HTTP client error: {}", e)))
 }
 
 /// 요청을 보내고 (릴레이의 상태 코드, JSON 본문)을 돌려준다. 본문이 JSON이 아니면 None
 #[allow(clippy::result_large_err)]
 pub(crate) async fn send(req: reqwest::RequestBuilder) -> Result<(StatusCode, Option<Value>), Response> {
-    crate::relay_client::send(req).await.map_err(|e| error(StatusCode::BAD_GATEWAY, format!("Relay connection failed: {}", e)))
+    crate::relay_client::send(req).await.map_err(|e| unreachable(format!("Relay connection failed: {}", e)))
 }
 
 /// 서명한 GET을 보내고 답을 전달한다. 본문이 JSON이 아니면 `fallback(상태)`
@@ -61,21 +74,25 @@ async fn signed_get(base: &str, api_path: &str, fallback: impl FnOnce(StatusCode
     };
     let req = client.get(format!("{}{}", base, api_path)).timeout(relay_wait(&reqwest::Method::GET, api_path));
     match send(apply_signed_headers(req, "GET", api_path, None)).await {
-        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, Some(data))) => relayed(code, data),
         Ok((code, None)) => fallback(code),
         Err(r) => r,
     }
 }
 
-fn empty_list(_: StatusCode) -> Response {
-    (StatusCode::BAD_GATEWAY, Json(json!([]))).into_response()
-}
-
 fn invalid_response(_: StatusCode) -> Response {
-    error(StatusCode::BAD_GATEWAY, "Invalid relay response".into())
+    unreachable("Invalid relay response".into())
 }
 
 // ── GET /api/relay/host/:host_id/status ──
+
+/// 릴레이가 JSON 본문 없이 답했다: 상태 코드만 전한다
+fn bare_status(code: StatusCode) -> Response {
+    if code.is_success() {
+        return Json(json!({ "success": true })).into_response();
+    }
+    super::error(code, "relay_error", format!("The relay answered {}", code.as_u16()))
+}
 
 pub async fn check_host_status(
     Path(host_id): Path<String>,
@@ -84,7 +101,7 @@ pub async fn check_host_status(
 ) -> Response {
     let base = signed_base(&state, params.relay_url.as_deref()).await;
     let path = format!("/api/hosts/{}", encode_path_segment(&host_id));
-    signed_get(&base, &path, |code| (code, Json(json!({ "ok": code.is_success() }))).into_response()).await
+    signed_get(&base, &path, bare_status).await
 }
 
 // ── GET /api/relay/host/:host_id/nodes ──
@@ -105,9 +122,9 @@ pub async fn list_host_nodes(
             if code.is_success() {
                 pin_listed_owners(&state.config_store, &data).await;
             }
-            (code, Json(data)).into_response()
+            relayed(code, data)
         }
-        Ok((code, None)) => empty_list(code),
+        Ok((code, None)) => invalid_response(code),
         Err(r) => r,
     }
 }
@@ -221,7 +238,7 @@ pub async fn put_node_moderation_mute(
 /// 서명한 JSON 본문 요청을 보내고 답을 전달한다 (본문은 객체만)
 async fn signed_json(base: &str, method: reqwest::Method, api_path: &str, body: &Value) -> Response {
     if !body.is_object() {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "INVALID_BODY" }))).into_response();
+        return super::error(StatusCode::BAD_REQUEST, "INVALID_BODY", "INVALID_BODY");
     }
     let client = match client() {
         Ok(c) => c,
@@ -233,7 +250,7 @@ async fn signed_json(base: &str, method: reqwest::Method, api_path: &str, body: 
         .header("Content-Type", "application/json")
         .body(text);
     match send(req).await {
-        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, Some(data))) => relayed(code, data),
         Ok((code, None)) => invalid_response(code),
         Err(r) => r,
     }
@@ -282,7 +299,7 @@ pub async fn put_node_channels(
     Json(body): Json<Value>,
 ) -> Response {
     if !body.is_object() {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "INVALID_BODY" }))).into_response();
+        return super::error(StatusCode::BAD_REQUEST, "INVALID_BODY", "INVALID_BODY");
     }
     let base = signed_base(&state, params.relay_url.as_deref()).await;
     let client = match client() {
@@ -295,7 +312,7 @@ pub async fn put_node_channels(
         .header("Content-Type", "application/json")
         .body(text);
     match send(req).await {
-        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, Some(data))) => relayed(code, data),
         Ok((code, None)) => invalid_response(code),
         Err(r) => r,
     }
@@ -329,7 +346,7 @@ pub async fn revoke_mcp_grant(Query(params): Query<RevokeGrantParams>, State(sta
     let path = match params.id.as_deref() {
         None => "/api/mcp/grant".to_string(),
         Some(id) if grant_id_ok(id) => format!("/api/mcp/grant?id={id}"),
-        Some(_) => return error(StatusCode::BAD_REQUEST, "Invalid grant id".into()),
+        Some(_) => return super::error(StatusCode::BAD_REQUEST, "invalid_request", "Invalid grant id"),
     };
     let base = signed_base(&state, params.relay_url.as_deref()).await;
     signed_delete(&base, &path).await
@@ -343,7 +360,7 @@ async fn signed_delete(base: &str, api_path: &str) -> Response {
     };
     match send(apply_signed_headers(client.delete(format!("{}{}", base, api_path)), "DELETE", api_path, None)).await {
         Ok((code, _)) if code.is_success() => StatusCode::NO_CONTENT.into_response(),
-        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, Some(data))) => relayed(code, data),
         Ok((code, None)) => invalid_response(code),
         Err(r) => r,
     }
@@ -393,11 +410,11 @@ pub async fn list_node_members(
     // Fallback: permission-based members (권한을 등록한 사람만이라 전체 목록이 아니다)
     let fallback_path = format!("/api/nodes/{}/members", encoded);
     if !with_status {
-        return signed_get(&base, &fallback_path, empty_list).await;
+        return signed_get(&base, &fallback_path, invalid_response).await;
     }
     match send(apply_signed_headers(client.get(format!("{}{}", base, fallback_path)), "GET", &fallback_path, None)).await {
         Ok((code, Some(data))) if code.is_success() => Json(json!({ "members": data, "partial": true, "reason": reason })).into_response(),
-        _ => (StatusCode::BAD_GATEWAY, Json(json!({ "members": [], "partial": true, "reason": reason }))).into_response(),
+        _ => (StatusCode::BAD_GATEWAY, Json(json!({ "success": false, "error": "Could not read the members from the relay", "error_code": reason, "members": [], "partial": true, "reason": reason }))).into_response(),
     }
 }
 
@@ -417,7 +434,7 @@ pub async fn list_node_legacy_members(
     let path = format!("/api/nodes/{}/members", encode_path_segment(&guild_id));
     match send(apply_signed_headers(client.get(format!("{}{}", base, path)), "GET", &path, None)).await {
         Ok((code, Some(data))) if code.is_success() && data.is_array() => (StatusCode::OK, Json(data)).into_response(),
-        Ok((code, Some(data))) if !code.is_success() => (code, Json(data)).into_response(),
+        Ok((code, Some(data))) if !code.is_success() => relayed(code, data),
         Ok(_) => invalid_response(StatusCode::BAD_GATEWAY),
         Err(r) => r,
     }
@@ -439,7 +456,7 @@ async fn bot_invite(base: &str) -> Response {
         Err(r) => return r,
     };
     match send(client.get(format!("{}/api/bot-invite", base))).await {
-        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, Some(data))) => relayed(code, data),
         Ok((code, None)) => invalid_response(code),
         Err(r) => r,
     }
@@ -470,7 +487,7 @@ pub async fn initiate_pairing(
     let url = format!("{}/api/pair/initiate", base);
     let body = pairing_body(&payload, &base, &configured, load_node_token().as_deref(), device_name().as_deref());
     match send(client.post(&url).json(&body)).await {
-        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, Some(data))) => relayed(code, data),
         Ok((code, None)) => invalid_response(code),
         Err(r) => r,
     }
@@ -560,7 +577,7 @@ async fn pairing_status_of(state: &IPCServer, code: &str, secret: Option<&str>, 
             obj.insert("tokenSaved".into(), json!(stored.saved));
         }
     }
-    (code_status, Json(data)).into_response()
+    relayed(code_status, data)
 }
 
 #[cfg(test)]
@@ -621,9 +638,9 @@ mod tests {
     #[tokio::test]
     async fn proxied_json_passes_through_and_non_json_uses_the_fallback() {
         let base = mock_relay().await;
-        let fallback = |code: StatusCode| (code, Json(json!({ "ok": code.is_success() }))).into_response();
-        assert_eq!(body(signed_get(&base, "/api/hosts/h1", fallback).await).await, (StatusCode::OK, json!({ "online": true })));
-        assert_eq!(body(signed_get(&base, "/api/hosts/h2", fallback).await).await, (StatusCode::NOT_FOUND, json!({ "ok": false })));
+        assert_eq!(body(signed_get(&base, "/api/hosts/h1", bare_status).await).await, (StatusCode::OK, json!({ "online": true })));
+        let (code, failed) = body(signed_get(&base, "/api/hosts/h2", bare_status).await).await;
+        assert_eq!((code, failed["success"].clone(), failed["error_code"].clone()), (StatusCode::NOT_FOUND, json!(false), json!("relay_error")));
         assert_eq!(body(bot_invite(&base).await).await.1["url"], "https://discord.com/x");
     }
 
@@ -671,7 +688,7 @@ mod tests {
     async fn revoking_the_agent_link_passes_the_relay_answer_through() {
         let base = mock_relay().await;
         assert_eq!(signed_delete(&base, "/api/mcp/grant").await.status(), StatusCode::NO_CONTENT);
-        assert_eq!(body(signed_delete(&base, "/api/mcp/gone").await).await, (StatusCode::NOT_FOUND, json!({ "error": "HOST_NOT_FOUND" })));
+        assert_eq!(body(signed_delete(&base, "/api/mcp/gone").await).await, (StatusCode::NOT_FOUND, json!({ "success": false, "error": "HOST_NOT_FOUND", "error_code": "HOST_NOT_FOUND" })));
         assert_eq!(signed_delete("http://127.0.0.1:9", "/api/mcp/grant").await.status(), StatusCode::BAD_GATEWAY);
         // 한 연결만 끊을 때는 릴레이가 준 16진수 id만 넘긴다 (사용자 요청 2026-11-08: 여러 에이전트)
         assert!(grant_id_ok("0123456789abcdef"));
@@ -707,8 +724,9 @@ mod tests {
 
     #[tokio::test]
     async fn an_unreachable_relay_is_a_bad_gateway() {
-        let (code, data) = body(signed_get("http://127.0.0.1:9", "/api/hosts/x", empty_list).await).await;
+        let (code, data) = body(signed_get("http://127.0.0.1:9", "/api/hosts/x", invalid_response).await).await;
         assert_eq!(code, StatusCode::BAD_GATEWAY);
         assert!(data["error"].as_str().unwrap().starts_with("Relay connection failed"));
+        assert_eq!((data["success"].clone(), data["error_code"].clone()), (json!(false), json!("relay_unreachable")));
     }
 }

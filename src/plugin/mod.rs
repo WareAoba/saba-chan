@@ -166,9 +166,10 @@ impl std::fmt::Display for ModuleCallError {
 
 impl std::error::Error for ModuleCallError {}
 
+/// 모듈 호출 실패 → 응답 본문. 모듈 호출 오류가 아니면 `internal_server_error`
 pub fn error_response(error: &anyhow::Error) -> Value {
     error.downcast_ref::<ModuleCallError>().map_or_else(
-        || serde_json::json!({"success": false, "error": error.to_string()}),
+        || serde_json::json!({"success": false, "error": error.to_string(), "error_code": "internal_server_error"}),
         |error| error.response.clone(),
     )
 }
@@ -1818,8 +1819,8 @@ print(json.dumps(codes))
 
     #[tokio::test]
     async fn an_http_credentials_callback_does_not_wait_for_a_full_general_lane() {
-        use axum::{extract::{Path, State}, http::StatusCode, Json};
-        use crate::ipc::{handlers::command, internal::into_internal, IPCServer};
+        use axum::http::StatusCode;
+        use crate::ipc::IPCServer;
         let dir = tempfile::tempdir().unwrap();
         let modules = dir.path().join("modules");
         let module = modules.join("credentials-boundary");
@@ -1838,7 +1839,7 @@ print(json.dumps(codes))
         let _slots = lanes.general.acquire_many(GENERAL_SLOTS as u32).await.unwrap();
         // HTTP 요청 작업은 바깥 모듈의 task-local을 물려받지 않는다
         let mut callback = tokio::spawn(async move {
-            into_internal(command::execute_rest_command(Path(id), State(state), Json(serde_json::json!({"endpoint": "info"}))).await).await
+            crate::ipc::internal::InternalResponse::from(crate::service::command::rest_for(&state.supervisor, &state.credentials, &id, serde_json::json!({"endpoint": "info"}), None).await)
         });
         let response = tokio::time::timeout(std::time::Duration::from_secs(1), &mut callback).await;
         if response.is_err() {

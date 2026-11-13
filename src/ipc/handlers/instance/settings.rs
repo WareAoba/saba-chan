@@ -2,9 +2,10 @@
 
 use super::*;
 
-/// 설정 값 하나가 잘못됐다는 400 응답: `error`는 "invalid_format", 이유는 `message`에
+/// 설정 값 하나가 잘못됐다는 400 응답 `invalid_format`: 이유는 `error`와 `message`에
 fn invalid_field_message(field: &str, message: impl Into<String>) -> axum::response::Response {
-    let error = json!({ "error": "invalid_format", "error_code": "invalid_format", "message": message.into(), "fields": [{"field": field}] });
+    let message = message.into();
+    let error = json!({ "success": false, "error": message, "error_code": "invalid_format", "message": message, "fields": [{"field": field}] });
     (StatusCode::BAD_REQUEST, Json(error)).into_response()
 }
 
@@ -128,7 +129,8 @@ pub(crate) fn settings_rejection(supervisor: &crate::supervisor::Supervisor, ins
                         "validation_failed"
                     };
                     let error = json!({
-                        "error": code,
+                        "success": false,
+                        "error": "Settings validation failed",
                         "error_code": code,
                         "message": "Settings validation failed",
                         "details": error_details,
@@ -152,6 +154,7 @@ pub(crate) fn settings_rejection(supervisor: &crate::supervisor::Supervisor, ins
             if !unknown.is_empty() {
                 let fields: Vec<Value> = unknown.iter().map(|k| json!({ "field": k })).collect();
                 let error = json!({
+                    "success": false,
                     "error": format!("Unknown setting: {}", unknown.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")),
                     "error_code": "unknown_setting",
                     "fields": fields,
@@ -195,8 +198,7 @@ pub async fn update_instance_settings(
     let instance = match supervisor.instance_store.get(&id) {
         Some(inst) => inst,
         None => {
-            let error = json!({ "error": "Instance not found" });
-            return (StatusCode::NOT_FOUND, Json(error)).into_response();
+            return super::super::error(StatusCode::NOT_FOUND, "not_found", "Instance not found");
         }
     };
 
@@ -275,7 +277,7 @@ pub async fn update_instance_settings(
             // 러너가 상한을 걸 수 없는 OS에 저장하면 걸린 줄 알고 그냥 돈다
             Ok(Some(_)) if !crate::instance::MEMORY_LIMIT_ENFORCED => {
                 let message = "memory_limit_mb is only enforced on Windows; this daemon's OS cannot apply it";
-                let error = json!({ "error": message, "error_code": "memory_limit_unsupported", "message": message, "fields": [{"field": "memory_limit_mb"}] });
+                let error = json!({ "success": false, "error": message, "error_code": "memory_limit_unsupported", "message": message, "fields": [{"field": "memory_limit_mb"}] });
                 return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
             }
             Ok(v) => updated.memory_limit_mb = v,
@@ -488,8 +490,7 @@ pub async fn update_instance_settings(
     // 모드·자동 강퇴·명단이 바뀌었으면 이미 들어와 있는 사람도 다시 본다
     let sweep = crate::controllers::sweep_needed(instance, &updated_clone);
     if let Err(e) = supervisor.instance_store.update(&id, updated) {
-        let error = json!({ "error": format!("Failed to update instance: {}", e) });
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
+        return super::super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", format!("Failed to update instance: {}", e));
     }
     // 켜 둔 서버의 게임 채팅도 바로 따른다
     crate::supervisor::game_chat::remember(&id, &updated_clone.game_chat());
@@ -889,7 +890,7 @@ mod tests {
 
         // 다른 PC의 데몬을 보는 클라이언트는 자기 OS로 짐작하지 않는다: 단건 조회와 서버 목록이 이 데몬의 판정을 싣는다
         assert_eq!(body["memory_limit_supported"], json!(cfg!(windows)));
-        let list = crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body;
+        let list = crate::ipc::internal::InternalResponse::from(crate::service::servers::list(&state, 0).await).body;
         assert_eq!(list["servers"][0]["memory_limit_supported"], json!(cfg!(windows)));
     }
 
@@ -988,7 +989,7 @@ mod tests {
         };
         let listed = || {
             let state = state.clone();
-            async move { crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body["servers"][0].clone() }
+            async move { crate::ipc::internal::InternalResponse::from(crate::service::servers::list(&state, 0).await).body["servers"][0].clone() }
         };
         let patch = |body: serde_json::Value| {
             let (state, id) = (state.clone(), id.clone());

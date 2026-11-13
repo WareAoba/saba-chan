@@ -517,7 +517,7 @@ mod tests {
     /// 모듈 설치 때 데몬이 켠 익스텐션과 준비하지 못한 것을 알린다. 익스텐션이 필요 없는 모듈은 아무 말도 없다
     #[test]
     fn module_install_reports_the_extensions_the_daemon_set_up() {
-        let r = json!({ "ok": true, "extensions": {
+        let r = json!({ "success": true, "extensions": {
             "installed": ["ue4-ini"], "enabled": ["steamcmd", "ue4-ini"],
             "failed": [{ "id": "rcon", "error": "Cannot enable 'rcon'", "error_code": "app_version_unsatisfied", "related": ["999.0.0"], "required_core": "999.0.0" }]
         }});
@@ -526,7 +526,7 @@ mod tests {
         let why = t!("update_required.extension", name = "rcon", version = "999.0.0");
         assert_eq!(failed, vec![t!("module.extension_failed", id = "rcon", error = why)]);
 
-        assert_eq!(extension_notes(&json!({ "ok": true, "extensions": { "installed": [], "enabled": [], "failed": [] } })), (None, vec![]));
+        assert_eq!(extension_notes(&json!({ "success": true, "extensions": { "installed": [], "enabled": [], "failed": [] } })), (None, vec![]));
             }
 
     /// 모듈이 밝힌 함수 목록(MK1)에 없는 선택 함수의 명령만 지원하지 않음으로 보인다. 목록을 모르면(null·없음) 아무것도 숨기지 않는다

@@ -22,9 +22,9 @@ beforeEach(() => {
     window.showToast = vi.fn();
     window.api = new Proxy<Record<string | symbol, unknown>>(
         {
-            updaterStatus: vi.fn().mockResolvedValue({ ok: true, components }),
-            updaterDownload: vi.fn().mockResolvedValue({ ok: true }),
-            updaterApply: vi.fn().mockResolvedValue({ ok: true, applied: [], needs_updater: [], requires_updater: false }),
+            updaterStatus: vi.fn().mockResolvedValue({ success: true, components }),
+            updaterDownload: vi.fn().mockResolvedValue({ success: true }),
+            updaterApply: vi.fn().mockResolvedValue({ success: true, applied: [], needs_updater: [], requires_updater: false }),
         },
         {
             get(target, prop) {

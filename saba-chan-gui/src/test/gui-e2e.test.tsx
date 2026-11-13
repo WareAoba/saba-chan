@@ -824,7 +824,7 @@ describe('업데이트 알림 이벤트', () => {
                 updateHandler = handler;
             }),
             updaterLastResult: vi.fn().mockResolvedValue({
-                ok: true,
+                success: true,
                 version: '0.3.0',
                 result: { success: true, updated_components: ['saba-core'], failed: [] },
             }),

@@ -125,7 +125,7 @@ function ModuleGuide() {
             try {
                 const res = await window.api?.moduleManifest?.();
                 if (!alive) return;
-                const mods = res?.ok && res.manifest?.modules ? (res.manifest.modules as Record<string, Omit<CatalogModule, 'id'>>) : null;
+                const mods = res?.success && res.manifest?.modules ? (res.manifest.modules as Record<string, Omit<CatalogModule, 'id'>>) : null;
                 if (mods) setCatalog(Object.entries(mods).map(([id, info]) => ({ ...info, id })));
                 else setFailed(true);
             } catch {
@@ -142,7 +142,7 @@ function ModuleGuide() {
         setError(null);
         try {
             const res = await window.api?.moduleInstallFromManifest?.(id);
-            if (!res?.ok) {
+            if (!res?.success) {
                 setError(t('guides.module_failed'));
                 return;
             }

@@ -110,17 +110,15 @@ pub async fn disable_extension(
 /// POST /api/extensions/rescan — 런타임 중 익스텐션 디렉토리 재스캔
 pub async fn rescan_extensions(
     State(state): State<IPCServer>,
-) -> Json<serde_json::Value> {
+) -> Response {
     let mut mgr = state.extension_manager.write().await;
     match mgr.rescan() {
         Ok(newly_found) => Json(json!({
             "success": true,
             "newly_found": newly_found,
-        })),
-        Err(e) => Json(json!({
-            "success": false,
-            "error": e.to_string(),
-        })),
+        }))
+        .into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "rescan_failed", e.to_string()),
     }
 }
 
@@ -255,6 +253,7 @@ async fn unapproved_gui(ext_id: &str, dir: std::path::PathBuf) -> Option<Respons
         return None;
     }
     let body = json!({
+        "success": false,
         "error": format!("The GUI of unverified extension '{}' needs your approval on this PC", ext_id),
         "error_code": "extension_gui_unapproved",
         "component": key,
@@ -317,7 +316,7 @@ pub async fn serve_i18n(
 /// ```
 pub async fn fetch_manifest(
     State(state): State<IPCServer>,
-) -> Json<serde_json::Value> {
+) -> Response {
     // 네트워크 요청은 매니저 락 밖에서 (C12)
     match ExtensionManager::fetch_remote().await {
         Ok(remote) => {
@@ -328,14 +327,19 @@ pub async fn fetch_manifest(
                 "extensions": remote,
                 "updates": updates,
             }))
+            .into_response()
         }
-        Err(e) => Json(json!({
-            "success": false,
-            "error": e.to_string(),
-            "extensions": [],
-            "updates": [],
-        })),
+        Err(e) => manifest_unavailable(&e, json!({ "extensions": [], "updates": [] })),
     }
+}
+
+/// 익스텐션 카탈로그를 받지 못했다 (502 `manifest_fetch_failed`). `empty`: 성공 때의 목록 칸을 빈 값으로 함께 싣는다
+fn manifest_unavailable(e: &anyhow::Error, empty: serde_json::Value) -> Response {
+    let mut failure = super::Failure::coded(StatusCode::BAD_GATEWAY, "manifest_fetch_failed", e.to_string());
+    if let (Some(body), Some(empty)) = (failure.body.as_object_mut(), empty.as_object()) {
+        body.extend(empty.clone());
+    }
+    failure.into_response()
 }
 
 /// POST /api/extensions/:id/install — 익스텐션 설치·업데이트 (`{download_url?, sha256?}`, `install_source` 참고)
@@ -346,19 +350,19 @@ pub async fn install_extension(
     State(state): State<IPCServer>,
     Path(ext_id): Path<String>,
     LooseJson(body): LooseJson<serde_json::Value>,
-) -> Json<serde_json::Value> {
+) -> Response {
     let field = |k: &str| body.as_ref().and_then(|Json(b)| b.get(k)).and_then(|v| v.as_str()).map(str::to_string);
     let _dirs = crate::component_lock::in_use().await;
     match crate::service::extensions::install_with_dependencies(&state, &ext_id, field("download_url"), field("sha256")).await {
-        Ok(installed) => Json(json!({ "success": true, "id": ext_id, "installed": installed })),
-        Err(body) => body,
+        Ok(installed) => Json(json!({ "success": true, "id": ext_id, "installed": installed })).into_response(),
+        Err(refusal) => refusal.into_response(),
     }
 }
 
 /// GET /api/extensions/updates — 설치된 익스텐션 업데이트 체크 (매니페스트 비교)
 pub async fn check_extension_updates(
     State(state): State<IPCServer>,
-) -> Json<serde_json::Value> {
+) -> Response {
     match ExtensionManager::fetch_remote().await {
         Ok(remote) => {
             let updates = state.extension_manager.read().await.check_updates_against(&remote);
@@ -367,13 +371,9 @@ pub async fn check_extension_updates(
                 "updates": updates,
                 "count": updates.len(),
             }))
+            .into_response()
         }
-        Err(e) => Json(json!({
-            "success": false,
-            "error": e.to_string(),
-            "updates": [],
-            "count": 0,
-        })),
+        Err(e) => manifest_unavailable(&e, json!({ "updates": [], "count": 0 })),
     }
 }
 
@@ -429,7 +429,7 @@ pub async fn audit_extension(State(state): State<IPCServer>, Path(ext_id): Path<
         mgr.discovered(&ext_id).map(|e| (e.dir.clone(), e.manifest.permissions.clone()))
     };
     let Some((dir, declared)) = found else {
-        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Extension '{}' not found", ext_id), "error_code": "not_found" }))).into_response();
+        return super::error(StatusCode::NOT_FOUND, "not_found", format!("Extension '{}' not found", ext_id));
     };
     let scanned = match crate::python_env::get_python_path().await {
         Ok(python) => crate::module_audit::scan(&python, &dir).await,
@@ -440,7 +440,7 @@ pub async fn audit_extension(State(state): State<IPCServer>, Path(ext_id): Path<
             let undeclared = crate::module_audit::undeclared(&declared, &findings);
             Json(json!({ "success": true, "declared": declared, "findings": findings, "undeclared": undeclared })).into_response()
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{:#}", e), "error_code": "audit_failed" }))).into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "audit_failed", format!("{:#}", e)),
     }
 }
 
@@ -491,6 +491,7 @@ pub async fn save_extension_config(
                 Json(json!({
                     "success": false,
                     "error": "Request body must be a JSON object",
+                    "error_code": "invalid_request",
                 })),
             ));
         }

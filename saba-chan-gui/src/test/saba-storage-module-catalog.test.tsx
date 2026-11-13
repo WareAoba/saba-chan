@@ -47,7 +47,7 @@ beforeEach(async () => {
     window.api = new Proxy<Record<string | symbol, unknown>>(
         {
             moduleList: vi.fn().mockResolvedValue({ modules: [] }),
-            moduleManifest: vi.fn().mockResolvedValue({ ok: true, manifest: { modules: CATALOG } }),
+            moduleManifest: vi.fn().mockResolvedValue({ success: true, manifest: { modules: CATALOG } }),
         },
         {
             get(target, prop) {
@@ -96,7 +96,7 @@ describe('받을 수 있는 모듈 목록', () => {
     });
 
     it('모두 이 기기에서 돌면 접힌 묶음을 그리지 않는다', async () => {
-        vi.mocked(window.api.moduleManifest).mockResolvedValue({ ok: true, manifest: { modules: { minecraft: CATALOG.minecraft } } });
+        vi.mocked(window.api.moduleManifest).mockResolvedValue({ success: true, manifest: { modules: { minecraft: CATALOG.minecraft } } });
         await openModules();
         expect(document.querySelector('details.ss-unsupported')).toBeNull();
     });

@@ -263,7 +263,7 @@ async fn launch_updater_via(app: &AppHandle, path: &str) -> Value {
         .post(path, &json!({ "relaunch": relaunch, "gui_stays": true }), 10000)
         .await
     {
-        Ok(data) if data["ok"].as_bool() == Some(true) => {
+        Ok(data) if data["success"].as_bool() == Some(true) => {
             if !quits_for_update(&data) {
                 tracing::info!("[Updater] Daemon launched the updater; the GUI is unchanged and stays open");
                 app.state::<AppState>().life.expect_daemon_update();

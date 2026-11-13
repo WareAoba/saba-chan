@@ -29,7 +29,7 @@ beforeEach(() => {
     listeners = new Set();
     window.api = new Proxy<Record<string | symbol, unknown>>(
         {
-            updaterStatus: vi.fn().mockResolvedValue({ ok: true, components }),
+            updaterStatus: vi.fn().mockResolvedValue({ success: true, components }),
             updaterDownload: vi.fn((keys: string[]) => new Promise((resolve) => (finish[keys[0]] = resolve))),
             onUpdateEvent: (cb: (ev: unknown) => void) => {
                 listeners.add(cb);
@@ -62,7 +62,7 @@ describe('구성요소를 받는 진행', () => {
 
         // cli가 끝나고 데몬은 이제 discord_bot을 받는다
         progress('cli', null, false);
-        await act(async () => finish.cli({ ok: true }));
+        await act(async () => finish.cli({ success: true }));
         progress('discord_bot', 40);
         await waitFor(() => expect(document.querySelector<HTMLElement>('.download-ring-wrapper')?.dataset.tooltip).toBe('40%'));
         // 전체 크기를 모르면 도는 링
@@ -70,7 +70,7 @@ describe('구성요소를 받는 진행', () => {
         await waitFor(() => expect(document.querySelector<HTMLElement>('.download-ring-wrapper')?.dataset.tooltip).toBe('...'));
 
         progress('discord_bot', null, false);
-        await act(async () => finish.discord_bot({ ok: true }));
+        await act(async () => finish.discord_bot({ success: true }));
         await waitFor(() => expect(document.querySelector('.download-ring-wrapper')).toBeNull());
     });
 
@@ -82,7 +82,7 @@ describe('구성요소를 받는 진행', () => {
             const asked = vi.mocked(window.api.updaterStatus).mock.calls.length;
             act(() => {
                 for (const l of listeners)
-                    l({ type: 'update.status', data: { ok: true, components: [{ ...components[0], update_available: false, current_version: '9.9.9' }] } });
+                    l({ type: 'update.status', data: { success: true, components: [{ ...components[0], update_available: false, current_version: '9.9.9' }] } });
             });
             await waitFor(() => expect(document.querySelectorAll('.ss-card .ss-icon-btn.accent')).toHaveLength(0));
             expect(document.body.textContent).toContain('v9.9.9');

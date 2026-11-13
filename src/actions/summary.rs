@@ -211,9 +211,9 @@ fn events(result: &Value) -> Text {
     with_rest(t("events", &[]), lines)
 }
 
-/// 확인에 실패한 결과(`ok:false`)는 요약하지 않는다 (실패 문구는 따로 보인다)
+/// 확인에 실패한 결과(`success:false`)는 요약하지 않는다 (실패 문구는 따로 보인다)
 fn updates(result: &Value) -> Option<Text> {
-    if result.get("ok").and_then(Value::as_bool) != Some(true) {
+    if result.get("success").and_then(Value::as_bool) != Some(true) {
         return None;
     }
     let lines: Vec<Text> = items(result, "components")

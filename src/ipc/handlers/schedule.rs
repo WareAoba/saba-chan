@@ -229,7 +229,7 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
     if !problems.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "validation_failed", "error_code": "validation_failed", "details": problems })),
+            Json(json!({ "success": false, "error": "invalid schedule", "error_code": "validation_failed", "details": problems })),
         )
             .into_response();
     }

@@ -38,10 +38,7 @@ async fn save_reply(state: &IPCServer, id: &str, name: &str, rcon_wait: Option<s
 async fn command_reply(state: &IPCServer, id: &str, name: &str, args: Value) -> Option<String> {
     let req = CommandRequest { command: name.to_string(), args };
     // 명령 실행 future는 크다: 백업 안에서 겹겹이 품지 않게 힙에 둔다 (디버그 빌드 스택 넘침)
-    let resp = crate::ipc::internal::into_internal(
-        Box::pin(super::command::execute(state, id, req)).await,
-    )
-    .await;
+    let resp = crate::ipc::internal::InternalResponse::from(Box::pin(super::command::execute(state, id, req)).await);
     let ok = resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false);
     ok.then(|| resp.body.pointer("/data/response").and_then(Value::as_str).unwrap_or_default().to_string())
 }

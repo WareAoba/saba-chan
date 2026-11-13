@@ -35,7 +35,7 @@ fn maker_info(paths: Paths) -> Value {
     let python = paths.python.filter(|p| p.is_file());
     let python_version = python.as_deref().and_then(venv_python_version);
     json!({
-        "ok": true,
+        "success": true,
         "saba_core": {
             "version": env!("CARGO_PKG_VERSION"),
             "path": paths.saba_core,

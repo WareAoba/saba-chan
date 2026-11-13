@@ -167,7 +167,7 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
 
     // 데몬이 알린 상태 (`update.status`, 읽은 것 포함)
     useEffect(() => {
-        if (!status?.ok) return;
+        if (!status?.success) return;
         setComponents(parseComponents(status.components));
         setStableWait(status.stable_wait || null);
     }, [status]);
@@ -182,7 +182,7 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
         setMessage(null);
         try {
             const res = await window.api?.updaterCheck?.();
-            if (res?.ok) {
+            if (res?.success) {
                 setComponents(parseComponents(res.components));
             } else {
                 setError(res?.error || 'Unknown error');
@@ -199,7 +199,7 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
             setError(null);
             try {
                 const res = await window.api?.updaterDownload?.([key]);
-                if (!res?.ok) setError(`${key}: ${res?.error || 'Download failed'}`);
+                if (!res?.success) setError(`${key}: ${res?.error || 'Download failed'}`);
                 await refreshStatus();
             } catch (e) {
                 setError(`${key}: ${(e as Error).message}`);
@@ -275,7 +275,7 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
         for (const key of allKeys) {
             try {
                 const res = await window.api?.updaterDownload?.([key]);
-                if (!res?.ok) {
+                if (!res?.success) {
                     hadError = true;
                     setError((prev) => (prev ? prev + '\n' : '') + `${key}: ${res?.error}`);
                 }
@@ -428,7 +428,7 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
                     // 캐시가 비어있음 (아직 check가 한 번도 안 됨) → 최초 1회 check
                     setChecking(true);
                     const checkRes = await window.api?.updaterCheck?.();
-                    if (checkRes?.ok && mountedRef.current) {
+                    if (checkRes?.success && mountedRef.current) {
                         setComponents(parseComponents(checkRes.components));
                     }
                     if (mountedRef.current) setChecking(false);

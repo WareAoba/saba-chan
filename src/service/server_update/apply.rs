@@ -136,13 +136,7 @@ pub(crate) fn updatable(
     let instance = match supervisor.instance_store.get(id) {
         Some(inst) => inst.clone(),
         None => {
-            return Err(Failure::new(
-                StatusCode::NOT_FOUND,
-                json!({
-                    "error": format!("Instance not found: {}", id),
-                    "error_code": "instance_not_found",
-                }),
-            ));
+            return Err(Failure::coded(StatusCode::NOT_FOUND, "instance_not_found", format!("Instance not found: {}", id)));
         }
     };
 
@@ -156,26 +150,14 @@ pub(crate) fn updatable(
     let (install_config, _module_path) = match module_info {
         Some((Some(cfg), path)) => (cfg, path),
         _ => {
-            return Err(Failure::new(
-                StatusCode::BAD_REQUEST,
-                json!({
-                    "error": "Module install configuration not found.",
-                    "error_code": "no_install_config",
-                }),
-            ));
+            return Err(Failure::coded(StatusCode::BAD_REQUEST, "no_install_config", "Module install configuration not found."));
         }
     };
 
     // 익스텐션이 설치한 인스턴스만 이 경로로 업데이트한다 (설치 방식 슬롯)
     let method = install_config.method.clone();
     if !installed_by_extension(&instance, &method) {
-        return Err(Failure::new(
-            StatusCode::BAD_REQUEST,
-            json!({
-                "error": "Only instances installed by an install-method extension can be updated this way.",
-                "error_code": "update_unsupported",
-            }),
-        ));
+        return Err(Failure::coded(StatusCode::BAD_REQUEST, "update_unsupported", "Only instances installed by an install-method extension can be updated this way."));
     }
 
     Ok((instance, install_config))
@@ -221,6 +203,7 @@ pub(crate) async fn begin_server_update_holding(
     // 실행 중이면 업데이트 불가
     if supervisor.is_running(id).await {
         return Err(Failure::running(json!({
+            "success": false,
             "error": "Cannot update while server is running. Stop the server first.",
             "error_code": "server_running",
         })));
@@ -608,7 +591,7 @@ mod tests {
         state.supervisor.write().await.instance_store.add(inst).unwrap();
         let listed = || {
             let state = state.clone();
-            async move { crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body["servers"][0].clone() }
+            async move { crate::ipc::internal::InternalResponse::from(crate::service::servers::list(&state, 0).await).body["servers"][0].clone() }
         };
         assert_eq!(listed().await.get("server_build"), None, "nothing is known before the first check");
 
@@ -649,7 +632,7 @@ mod tests {
         state.supervisor.try_write().unwrap().instance_store.add(terra).unwrap();
 
         let listed = |state: crate::ipc::IPCServer| async move {
-            crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body
+            crate::ipc::internal::InternalResponse::from(crate::service::servers::list(&state, 0).await).body
         };
         let check_of = |body: &serde_json::Value, id: &str| body["servers"].as_array().unwrap().iter().find(|s| s["id"] == json!(id)).unwrap()["update_check"].clone();
         let before = listed(state.clone()).await;

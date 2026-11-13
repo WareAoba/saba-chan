@@ -276,7 +276,7 @@ pub struct UpdateNotice {
 
 /// GET /api/updates/status 결과 → 알릴 것 (main.js checkForUpdates)
 pub fn update_notice(data: &Value) -> Option<UpdateNotice> {
-    let ok = data["ok"].as_bool().unwrap_or(false);
+    let ok = data["success"].as_bool().unwrap_or(false);
     let has_error = data.get("error").is_some_and(|e| !e.is_null() && e != "" && e != false);
     if !ok || has_error {
         if has_error {
@@ -318,7 +318,7 @@ pub fn update_notice(data: &Value) -> Option<UpdateNotice> {
 /// 데몬이 확인에 성공했고 알릴 업데이트가 없다 (적용을 마쳤거나 Locales만 남았다).
 /// 데몬이 막 떠 아직 확인하지 않았거나(`last_check` 없음) 확인하는 중이면 목록이 비어 있어도 "없음"이 아니다
 pub fn updates_cleared(data: &Value) -> bool {
-    let ok = data["ok"].as_bool().unwrap_or(false)
+    let ok = data["success"].as_bool().unwrap_or(false)
         && data["last_check"].is_string()
         && !data["checking"].as_bool().unwrap_or(false);
     let has_error = data.get("error").is_some_and(|e| !e.is_null() && e != "" && e != false);
@@ -566,10 +566,10 @@ mod tests {
 
     #[test]
     fn update_notice_skips_locales_only() {
-        let only_locales = json!({"ok": true, "updates_available": 1,
+        let only_locales = json!({"success": true, "updates_available": 1,
             "components": [{"display_name": "Locales", "update_available": true}]});
         assert_eq!(update_notice(&only_locales), None);
-        let mixed = json!({"ok": true, "updates_available": 2, "components": [
+        let mixed = json!({"success": true, "updates_available": 2, "components": [
             {"display_name": "Locales", "update_available": true},
             {"display_name": "GUI", "update_available": true},
             {"display_name": "CLI", "update_available": false}]});
@@ -584,26 +584,26 @@ mod tests {
     fn updates_cleared_only_when_the_check_succeeded_with_nothing_to_show() {
         let at = "2026-10-20T07:00:00Z";
         assert!(updates_cleared(
-            &json!({"ok": true, "last_check": at, "updates_available": 0, "components": []})
+            &json!({"success": true, "last_check": at, "updates_available": 0, "components": []})
         ));
         assert!(updates_cleared(
-            &json!({"ok": true, "last_check": at, "updates_available": 1,
+            &json!({"success": true, "last_check": at, "updates_available": 1,
             "components": [{"display_name": "Locales", "update_available": true}]})
         ));
         assert!(!updates_cleared(
-            &json!({"ok": true, "last_check": at, "updates_available": 1,
+            &json!({"success": true, "last_check": at, "updates_available": 1,
             "components": [{"display_name": "GUI", "update_available": true}]})
         ));
         assert!(!updates_cleared(
-            &json!({"ok": true, "last_check": at, "updates_available": 0, "error": "relay down"})
+            &json!({"success": true, "last_check": at, "updates_available": 0, "error": "relay down"})
         ));
-        assert!(!updates_cleared(&json!({"ok": false})));
+        assert!(!updates_cleared(&json!({"success": false})));
         // 데몬이 막 떠서 아직 확인한 적이 없으면(last_check 없음) "없음"이 아니다
         assert!(!updates_cleared(
-            &json!({"ok": true, "last_check": null, "updates_available": 0, "components": []})
+            &json!({"success": true, "last_check": null, "updates_available": 0, "components": []})
         ));
         assert!(!updates_cleared(
-            &json!({"ok": true, "last_check": "2026-10-20T07:00:00Z",
+            &json!({"success": true, "last_check": "2026-10-20T07:00:00Z",
             "checking": true, "updates_available": 0, "components": []})
         ));
     }

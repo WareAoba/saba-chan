@@ -107,8 +107,7 @@ pub async fn delete_instance(
         delete_instance_held(state, id, query.keep_settings).await
     });
     work.await.unwrap_or_else(|e| {
-        let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", e) });
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+        super::super::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", format!("Failed to delete instance: {}", e))
     })
 }
 
@@ -120,8 +119,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     let instance = match supervisor.instance_store.get(&id) {
         Some(inst) => inst.clone(),
         None => {
-            let error = json!({ "success": false, "error": "Instance not found" });
-            return (StatusCode::NOT_FOUND, Json(error)).into_response();
+            return super::super::error(StatusCode::NOT_FOUND, "not_found", "Instance not found");
         }
     };
 
@@ -188,8 +186,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     }
     let Some(detached) = detached else {
         let err_msg = last_err.map(|e| format!("{:#}", e)).unwrap_or_else(|| "Unknown error".to_string());
-        let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", err_msg) });
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
+        return super::super::error(StatusCode::INTERNAL_SERVER_ERROR, "delete_failed", format!("Failed to delete instance: {}", err_msg));
     };
 
     // ── 가져온 서버: 서버 폴더는 두고, 사바쨩이 남긴 것을 거둔다 ──
@@ -261,8 +258,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(e) => {
-            let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+            super::super::error(StatusCode::INTERNAL_SERVER_ERROR, "delete_failed", format!("Failed to delete instance: {}", e))
         }
     }
 }

@@ -14,7 +14,7 @@ describe('업데이트 결과 알림 (A5)', () => {
 
     it('결과가 있으면 알림 하나를 남기고, 다시 물어도 쌓이지 않는다', async () => {
         window.api.updaterLastResult = vi.fn().mockResolvedValue({
-            ok: true,
+            success: true,
             version: '0.1.3',
             notes: '- 새 기능',
             result: { success: true, updated_components: ['gui'], failed: [] },
@@ -29,13 +29,13 @@ describe('업데이트 결과 알림 (A5)', () => {
     });
 
     it('결과가 없으면 아무것도 남기지 않는다', async () => {
-        window.api.updaterLastResult = vi.fn().mockResolvedValue({ ok: true, result: null });
+        window.api.updaterLastResult = vi.fn().mockResolvedValue({ success: true, result: null });
         await announceLastUpdateResult(t);
         expect(window.__sabaNotice!.loadNotices()).toHaveLength(0);
     });
 
     it('알림을 누르면 패치노트가 열리고, 알림을 지우면 확인 처리한다', async () => {
-        window.api.updaterLastResult = vi.fn().mockResolvedValue({ ok: true });
+        window.api.updaterLastResult = vi.fn().mockResolvedValue({ success: true });
         const data = { version: '0.1.3', notes: null, result: { success: true, failed: [] } };
         window.__sabaNotice!.addNotice({ message: 'updated', action: PATCH_NOTES_ACTION, source: 'Updater', data });
         const onOpen = vi.fn();
@@ -48,7 +48,7 @@ describe('업데이트 결과 알림 (A5)', () => {
     });
 
     it('패치노트가 없으면 대체 문구, 실패 항목은 목록으로, 열면 확인 처리', async () => {
-        window.api.updaterLastResult = vi.fn().mockResolvedValue({ ok: true });
+        window.api.updaterLastResult = vi.fn().mockResolvedValue({ success: true });
         render(
             <PatchNotesModal
                 data={{ version: '0.1.3', notes: null, result: { success: true, failed: ['gui: locked'] } }}

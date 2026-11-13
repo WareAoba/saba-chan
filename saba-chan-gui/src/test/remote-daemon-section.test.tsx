@@ -53,11 +53,11 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
             remoteDaemons: vi.fn().mockResolvedValue({ daemons: [] }),
             remoteConnect: vi.fn(),
             remoteRemove: vi.fn().mockResolvedValue({ uninstalled: false, removedFromRelay: false }),
-            remoteDaemonUpdate: vi.fn().mockResolvedValue({ ok: true }),
+            remoteDaemonUpdate: vi.fn().mockResolvedValue({ success: true }),
             remoteInstallStart: vi.fn(),
             remoteInstall: vi.fn(),
-            remoteInstallInput: vi.fn().mockResolvedValue({ ok: true }),
-            remoteInstallCancel: vi.fn().mockResolvedValue({ ok: true }),
+            remoteInstallInput: vi.fn().mockResolvedValue({ success: true }),
+            remoteInstallCancel: vi.fn().mockResolvedValue({ success: true }),
             remoteClaim: vi.fn(),
         } as unknown as typeof window.api;
     });
