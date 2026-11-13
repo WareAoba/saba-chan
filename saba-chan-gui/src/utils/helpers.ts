@@ -125,6 +125,9 @@ export function moduleFailureText(t: TFunction, result: ApiBody | undefined) {
     return (known && result?.error) || result?.message || result?.error || '';
 }
 
+/** 이름 차례 비교 (사바 스토리지 목록 정렬) */
+export const byName = (a: unknown, b: unknown) => String(a).localeCompare(String(b));
+
 /** 모듈이 lifecycle 함수 `fn`을 구현했는가 (`GET /api/modules`의 `functions`). 목록을 모르면(null) 있다고 본다 */
 export const moduleSupports = (module: { functions?: string[] | null } | null | undefined, fn: string) => !Array.isArray(module?.functions) || module.functions.includes(fn);
 
