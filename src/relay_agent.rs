@@ -850,7 +850,7 @@ impl Session {
         let snapshot = tokio::task::spawn_blocking(move || monitor.sample(&roots, &[], false, false)).await.ok();
         let usage = snapshot.as_ref().map(|s| s.instances.as_slice()).unwrap_or_default();
         let servers: Vec<Value> = match crate::ipc::internal::into_internal(
-            crate::ipc::handlers::server::list_servers_internal(&self.server).await,
+            crate::service::servers::list(&self.server, 0).await,
         )
         .await
         .body

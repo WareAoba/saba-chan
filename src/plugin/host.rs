@@ -142,11 +142,11 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
     }
     // RCON만 받는 서버의 한 줄 (모듈 `stop()`의 정지 명령). 콘솔이 있으면 데몬이 stdin으로 보낸다
     if op == "instance.rcon" {
-        return response(crate::ipc::handlers::command::rcon_for(&supervisor, &context.id, &Value::Object(args.clone())).await).await;
+        return response(crate::service::command::rcon_for(&supervisor, &context.id, &Value::Object(args.clone())).await).await;
     }
     if op == "instance.stdin" {
         return response(
-            crate::ipc::handlers::command::stdin_for(&supervisor, &context.id, &Value::Object(args.clone())).await,
+            crate::service::command::stdin_for(&supervisor, &context.id, &Value::Object(args.clone())).await,
         )
         .await;
     }
@@ -193,7 +193,7 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
         payload["body"] = body.clone();
     }
     response(
-        crate::ipc::handlers::command::rest_for(
+        crate::service::command::rest_for(
             &supervisor,
             &context.runtime.credentials,
             &context.id,

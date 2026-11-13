@@ -6,8 +6,6 @@
 use crate::ipc::internal::{into_internal, InternalResponse};
 use crate::ipc::{CommandRequest, IPCServer};
 use crate::supervisor::module_loader::CommandField;
-use axum::extract::{Path, State};
-use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
@@ -206,7 +204,7 @@ pub trait DaemonApi {
 
 impl DaemonApi for IPCServer {
     async fn servers(&self) -> Result<Vec<ServerView>, String> {
-        let resp = into_internal(crate::ipc::handlers::server::list_servers_internal(self).await).await;
+        let resp = into_internal(crate::service::servers::list(self, 0).await).await;
         if !resp.is_success() {
             return Err(resp.str_field("error").unwrap_or("failed to list servers").to_string());
         }
@@ -268,12 +266,11 @@ impl DaemonApi for IPCServer {
 
     async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse {
         let req = CommandRequest { command: command.to_string(), args: json!(args) };
-        into_internal(crate::ipc::handlers::command::execute_command(Path(instance_id.to_string()), State(self.clone()), Json(req)).await).await
+        into_internal(crate::service::command::execute(self, instance_id, req).await).await
     }
 
     async fn players(&self, server: &ServerView) -> InternalResponse {
-        use axum::response::IntoResponse;
-        into_internal(crate::ipc::handlers::managed::players_handler(Path(server.id.clone()), State(self.clone())).await.into_response()).await
+        into_internal(crate::service::servers::players(self, &server.id).await).await
     }
 }
 

@@ -80,10 +80,7 @@ pub async fn send_stdin_handler(
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    // 콘솔 입력을 받지 않는 모듈(예: REST 전용)은 보낸 척하지 않는다: 클라이언트가 명령 API로 넘어가게
-    let resp = super::command::stdin_for(&state.supervisor, &id, &payload).await;
-    let line = payload.get("command").or_else(|| payload.get("line")).and_then(|v| v.as_str()).map(str::to_string);
-    super::audited(&state, "stdin", &id, line.as_deref(), None, resp).await
+    crate::service::command::stdin(&state, &id, &payload).await
 }
 
 /// POST /api/instance/:id/validate — Validate prerequisites
@@ -156,60 +153,7 @@ pub async fn query_instance_handler(
 /// GET /api/instance/:id/players — 접속자 수와 이름 (디스코드 검수 13번). 모듈 `[status] players` 함수를
 /// `players_detail: true`로 바로 부른다(1분 갱신은 이 키 없이 수만 읽는다). 항목은 `{name}`만 남긴다
 pub async fn players_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
-    let fail = |status: StatusCode, code: &str, error: String| (status, Json(json!({ "success": false, "error_code": code, "error": error }))).into_response();
-    let call = {
-        let sup = state.supervisor.read().await;
-        let Some(instance) = sup.instance_store.get(&id) else {
-            return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
-        };
-        let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.players_function) else {
-            return fail(StatusCode::OK, "not_supported", "This server's module cannot list players".into());
-        };
-        if sup.tracker.get_pid(&id).is_err() {
-            return fail(StatusCode::CONFLICT, "server_not_running", "The server is not running".into());
-        }
-        sup.instance_call(&id, &function)
-    };
-    let mut call = match call {
-        Ok(c) => c,
-        Err(e) => return fail(StatusCode::INTERNAL_SERVER_ERROR, "players_failed", e.to_string()),
-    };
-    if let serde_json::Value::Object(cfg) = call.config_mut() {
-        cfg.insert("players_detail".to_string(), json!(true));
-    }
-    match call.timeout(crate::supervisor::players::CALL_TIMEOUT_SECS).run().await {
-        Ok(result) => match crate::supervisor::players::parse(&result) {
-            Some(count) => {
-                let names: Vec<serde_json::Value> = result
-                    .get("players")
-                    .and_then(serde_json::Value::as_array)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|p| p.get("name").and_then(serde_json::Value::as_str))
-                    // 게임이 이름을 자유롭게 두는 경우: 제어 문자를 빼고 64자까지 (요약 줄이 깨지지 않게)
-                    .map(|name| name.chars().filter(|c| !c.is_control()).take(64).collect::<String>())
-                    .filter(|name| !name.is_empty())
-                    .map(|name| json!({ "name": name }))
-                    .collect();
-                let mut body = json!({ "success": true, "online": count.online, "players": names });
-                if let Some(max) = count.max {
-                    body["max"] = json!(max);
-                }
-                (StatusCode::OK, Json(body)).into_response()
-            }
-            None => {
-                if result.get("success").and_then(serde_json::Value::as_bool) == Some(false) {
-                    return (StatusCode::OK, Json(result)).into_response();
-                }
-                let message = result.get("message").and_then(serde_json::Value::as_str).unwrap_or("The module did not report players");
-                fail(StatusCode::OK, "players_failed", message.to_string())
-            }
-        },
-        Err(e) => {
-            tracing::warn!("Player list for '{}' failed: {}", id, e);
-            (StatusCode::OK, Json(crate::plugin::error_response(&e))).into_response()
-        }
-    }
+    crate::service::servers::players(&state, &id).await
 }
 
 /// GET /api/instance/:id/lists — 모듈이 선언한 플레이어 목록(`[[lists]]`: 화이트리스트·관리자·밴 등)과 지금 명단.
@@ -233,7 +177,7 @@ pub async fn lists_handler(Path(id): Path<String>, State(state): State<IPCServer
         let locales = [crate::actions::module_locale(&module, &lang), crate::actions::module_locale(&module, "en")];
         let ready = |command: &str| {
             let method = crate::commands::find(&module.metadata, command).and_then(|c| c.method.as_deref());
-            super::command::command_ready(method, running, stdin_route, rcon_route)
+            crate::service::command::command_ready(method, running, stdin_route, rcon_route)
         };
         module
             .metadata

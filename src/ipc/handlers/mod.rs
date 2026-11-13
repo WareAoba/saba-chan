@@ -51,27 +51,7 @@ where
     }
 }
 
-/// 감사 로그 (A10): 응답은 그대로 돌려주고, 출처(`crate::audit::current`)와 함께 한 건 남긴다.
-/// `key`는 인스턴스 id나 이름. 성공은 2xx이면서 본문의 `success`가 false가 아닐 때
-pub(crate) async fn audited(
-    state: &super::IPCServer,
-    action: &str,
-    key: &str,
-    command: Option<&str>,
-    args: Option<&serde_json::Value>,
-    resp: axum::response::Response,
-) -> axum::response::Response {
-    if crate::audit::is_quiet() {
-        return resp;
-    }
-    let (parts, body) = resp.into_parts();
-    let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap_or_default();
-    let parsed = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
-    record(state, action, key, command, args, parts.status, parsed.as_ref()).await;
-    axum::response::Response::from_parts(parts, axum::body::Body::from(bytes))
-}
-
-pub(crate) use crate::service::{record, Failure, Outcome};
+pub(crate) use crate::service::{audited, Failure, Outcome};
 
 /// 서비스 함수의 결과를 HTTP 응답으로 (성공은 200)
 pub(crate) fn answer(result: Outcome) -> axum::response::Response {

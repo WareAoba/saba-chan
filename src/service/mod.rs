@@ -2,8 +2,10 @@
 //! HTTP 핸들러(`ipc::handlers`)·채팅·예약·릴레이 에이전트·플러그인 호스트가 같은 함수를 부른다.
 //! 핸들러는 요청을 풀어 여기를 부르고 결과를 응답으로 바꾸기만 한다
 
+pub(crate) mod command;
 pub mod lifecycle;
 pub(crate) mod onboarding;
+pub(crate) mod servers;
 
 /// 서비스 함수(시작·정지·재시작·백업·복원)의 결과. 성공이면 응답 본문
 pub(crate) type Outcome = Result<serde_json::Value, Failure>;
@@ -128,4 +130,24 @@ pub(crate) async fn record(
         status: status.as_u16(),
         code: code.as_deref(),
     });
+}
+
+/// 감사 로그 (A10): 응답은 그대로 돌려주고, 출처(`crate::audit::current`)와 함께 한 건 남긴다.
+/// `key`는 인스턴스 id나 이름. 성공은 2xx이면서 본문의 `success`가 false가 아닐 때
+pub(crate) async fn audited(
+    state: &crate::ipc::IPCServer,
+    action: &str,
+    key: &str,
+    command: Option<&str>,
+    args: Option<&serde_json::Value>,
+    resp: axum::response::Response,
+) -> axum::response::Response {
+    if crate::audit::is_quiet() {
+        return resp;
+    }
+    let (parts, body) = resp.into_parts();
+    let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap_or_default();
+    let parsed = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
+    record(state, action, key, command, args, parts.status, parsed.as_ref()).await;
+    axum::response::Response::from_parts(parts, axum::body::Body::from(bytes))
 }

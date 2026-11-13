@@ -889,7 +889,7 @@ mod tests {
 
         // 다른 PC의 데몬을 보는 클라이언트는 자기 OS로 짐작하지 않는다: 단건 조회와 서버 목록이 이 데몬의 판정을 싣는다
         assert_eq!(body["memory_limit_supported"], json!(cfg!(windows)));
-        let list = crate::ipc::internal::into_internal(crate::ipc::handlers::server::list_servers_internal(&state).await).await.body;
+        let list = crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body;
         assert_eq!(list["servers"][0]["memory_limit_supported"], json!(cfg!(windows)));
     }
 
@@ -988,7 +988,7 @@ mod tests {
         };
         let listed = || {
             let state = state.clone();
-            async move { crate::ipc::internal::into_internal(crate::ipc::handlers::server::list_servers_internal(&state).await).await.body["servers"][0].clone() }
+            async move { crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body["servers"][0].clone() }
         };
         let patch = |body: serde_json::Value| {
             let (state, id) = (state.clone(), id.clone());

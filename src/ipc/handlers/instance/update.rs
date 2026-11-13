@@ -656,7 +656,7 @@ mod tests {
         state.supervisor.write().await.instance_store.add(inst).unwrap();
         let listed = || {
             let state = state.clone();
-            async move { crate::ipc::internal::into_internal(crate::ipc::handlers::server::list_servers_internal(&state).await).await.body["servers"][0].clone() }
+            async move { crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body["servers"][0].clone() }
         };
         assert_eq!(listed().await.get("server_build"), None, "nothing is known before the first check");
 
@@ -697,7 +697,7 @@ mod tests {
         state.supervisor.try_write().unwrap().instance_store.add(terra).unwrap();
 
         let listed = |state: crate::ipc::IPCServer| async move {
-            crate::ipc::internal::into_internal(crate::ipc::handlers::server::list_servers_internal(&state).await).await.body
+            crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body
         };
         let check_of = |body: &serde_json::Value, id: &str| body["servers"].as_array().unwrap().iter().find(|s| s["id"] == json!(id)).unwrap()["update_check"].clone();
         let before = listed(state.clone()).await;
