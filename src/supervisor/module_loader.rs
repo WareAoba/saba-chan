@@ -897,6 +897,14 @@ struct ModuleToml {
     /// [[diagnose]] 로그 진단 규칙 (`ModuleMetadata::diagnose`)
     #[serde(default)]
     diagnose: Vec<DiagnoseRule>,
+    /// [runtime] 실행 방식. 실행기가 호출 때 module.toml에서 읽는다 (`plugin::Runtime`)
+    #[serde(default)]
+    #[allow(dead_code)]
+    runtime: crate::plugin::Runtime,
+    /// [patterns] 이름 붙인 정규식 조각. 데몬이 읽는 정규식 키에서 `{이름}`으로 쓰면 로드할 때 `(?:조각)`으로 바뀐다
+    /// (이름은 글자·숫자·`_`, 숫자로 시작하지 않음. 조각끼리도 참조할 수 있지만 자기 자신은 안 된다)
+    #[serde(default)]
+    patterns: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1578,7 +1586,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     let content = content.trim_start_matches('\u{feff}');
     let mut unknown = Vec::new();
     let de = toml::Deserializer::parse(content).map_err(|e| anyhow::anyhow!("Failed to parse module.toml: {}", e))?;
-    let toml_data: ModuleToml = serde_ignored::deserialize(de, |path| {
+    let mut toml_data: ModuleToml = serde_ignored::deserialize(de, |path| {
         // serde_ignored는 Option 한 겹마다 `?`를 끼운다: "config.?.ram" → "config.ram"
         let key: Vec<String> = path.to_string().split('.').filter(|p| *p != "?").map(str::to_string).collect();
         unknown.push(key.join("."))
@@ -1594,10 +1602,13 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 
     // 모르는 키(더 새 데몬의 키나 오타)는 거부하지 않고 경고만 남긴다. 꼭 필요한 기능은 `saba-core` 버전 조건으로 막는다
     let unknown: Vec<String> = unknown.into_iter().map(|k| format!("unknown key '{}' (ignored)", k)).collect();
-    let mut problems: Vec<String> = toml_data.value_problems();
+    // 정규식 키의 `{이름}`은 값을 검사하기 전에 `[patterns]` 조각으로 바꾼다
+    let (mut fragments, mut problems) = resolve_pattern_fragments(&toml_data.patterns);
+    problems.extend(toml_data.expand_pattern_refs(&mut fragments));
+    problems.extend(toml_data.value_problems());
 
     let mut meta = toml_data.into_metadata();
-    let daemon_warnings = read_daemon_table(&mut meta);
+    let daemon_warnings = read_daemon_table(&mut meta, &mut fragments);
     if meta.schema_version >= 2 {
         problems.extend(list_default_problems(&meta));
     }
@@ -1708,20 +1719,190 @@ pub use saba_chan_updater_lib::module_support::{self, catalog_unsupported_on};
 /// `ready_timeout` 상한(초)
 pub const READY_TIMEOUT_MAX_SECS: u64 = 900;
 
-/// `[extensions.saba-core]`의 정규식 목록 하나를 읽는다. `needs_name`이면 `(?P<name>…)`이 없는 항목도 버린다
-fn read_pattern_list(table: &serde_json::Value, key: &str, groups: &[&str], warnings: &mut Vec<String>) -> Vec<String> {
+/// `[patterns]` 조각 이름인지: 글자나 `_`로 시작하고 글자·숫자·`_`만. 반복 횟수(`{2}`·`{1,16}`)는 이름이 아니다
+fn is_pattern_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// 정규식 안의 `{이름}` 참조 자리와 이름. `is_declared`가 아닌 이름과 `\{`로 막은 자리는 참조가 아니다
+fn pattern_refs(pattern: &str, is_declared: impl Fn(&str) -> bool) -> Vec<(std::ops::Range<usize>, &str)> {
+    let mut refs = Vec::new();
+    let mut from = 0;
+    while let Some(open) = pattern[from..].find('{').map(|i| from + i) {
+        from = open + 1;
+        let Some(len) = pattern[from..].find('}') else { break };
+        let name = &pattern[from..from + len];
+        if !pattern[..open].ends_with('\\') && is_declared(name) {
+            refs.push((open..from + len + 1, name));
+            from += len + 1;
+        }
+    }
+    refs
+}
+
+/// 한 모듈에서 `[patterns]` 조각을 풀어 넣을 수 있는 글자 수 (조각끼리 풀 때와 정규식 키에서 풀 때를 모두 센다)
+const PATTERN_EXPANSION_LIMIT: usize = 1 << 20;
+
+/// 풀어 둔 `[patterns]` 조각과, 이 모듈에서 더 풀어 넣을 수 있는 글자 수
+struct PatternFragments {
+    resolved: std::collections::HashMap<String, String>,
+    budget: usize,
+}
+
+impl PatternFragments {
+    /// 정규식 안의 `{이름}`을 풀어 둔 조각 `(?:조각)`으로 바꾼다. 조각에 없는 이름은 그대로 둔다.
+    /// 풀어 넣을 글자가 남은 한도를 넘으면 바꾸지 않고 그 까닭을 돌려준다
+    fn expand(&mut self, pattern: &str) -> Result<String, String> {
+        let refs = pattern_refs(pattern, |n| self.resolved.contains_key(n));
+        let inserted: usize = refs.iter().map(|(_, name)| self.resolved[*name].len() + 4).sum();
+        if inserted > self.budget {
+            return Err(format!("[patterns] expand to more than {} bytes in this module", PATTERN_EXPANSION_LIMIT));
+        }
+        self.budget -= inserted;
+        let mut out = String::with_capacity(pattern.len() + inserted);
+        let mut last = 0;
+        for (range, name) in refs {
+            out.push_str(&pattern[last..range.start]);
+            out.push_str("(?:");
+            out.push_str(&self.resolved[name]);
+            out.push(')');
+            last = range.end;
+        }
+        out.push_str(&pattern[last..]);
+        Ok(out)
+    }
+}
+
+/// `[patterns]` 조각을 서로의 참조까지 풀어 둔다. 이름이 틀렸거나, 자기 자신을 (다른 조각을 거쳐서라도) 참조하거나,
+/// 풀어도 정규식이 아니거나 한도를 넘는 조각과 그런 조각을 쓰는 조각은 빼고 그 까닭을 돌려준다: 빠진 조각의 `{이름}`은 글자 그대로 남는다
+fn resolve_pattern_fragments(raw: &std::collections::BTreeMap<String, String>) -> (PatternFragments, Vec<String>) {
+    use std::collections::HashMap;
+    /// `name`을 풀어 `fragments`에 넣는다. 못 쓰는 조각은 까닭과 함께 `failed`에 넣는다
+    fn resolve(
+        name: &str,
+        raw: &std::collections::BTreeMap<String, String>,
+        fragments: &mut PatternFragments,
+        failed: &mut HashMap<String, String>,
+        stack: &mut Vec<String>,
+    ) -> Result<(), String> {
+        if fragments.resolved.contains_key(name) {
+            return Ok(());
+        }
+        if let Some(problem) = failed.get(name) {
+            return Err(problem.clone());
+        }
+        if let Some(at) = stack.iter().position(|n| n == name) {
+            let chain: Vec<&str> = stack[at..].iter().map(String::as_str).chain([name]).collect();
+            return Err(format!("patterns.{} refers to itself ({})", name, chain.join(" -> ")));
+        }
+        stack.push(name.to_string());
+        let text = &raw[name];
+        let deps = pattern_refs(text, |n| raw.contains_key(n) && is_pattern_name(n));
+        let result = deps.iter().try_for_each(|(_, dep)| resolve(dep, raw, fragments, failed, stack)).and_then(|()| {
+            let expanded = fragments.expand(text).map_err(|e| format!("patterns.{}: {}", name, e))?;
+            match regex::Regex::new(&format!("(?:{})", expanded)) {
+                Ok(_) => Ok(expanded),
+                Err(e) => Err(format!("patterns.{} is not a valid regex ({})", name, e)),
+            }
+        });
+        stack.pop();
+        match result {
+            Ok(expanded) => {
+                fragments.resolved.insert(name.to_string(), expanded);
+                Ok(())
+            }
+            Err(problem) => {
+                failed.insert(name.to_string(), problem.clone());
+                Err(problem)
+            }
+        }
+    }
+
+    let mut problems: Vec<String> = raw.keys().filter(|n| !is_pattern_name(n))
+        .map(|n| format!("patterns.{}: a name is letters, digits and _, not starting with a digit", n))
+        .collect();
+    let mut fragments = PatternFragments { resolved: HashMap::new(), budget: PATTERN_EXPANSION_LIMIT };
+    let mut failed = HashMap::new();
+    for name in raw.keys().filter(|n| is_pattern_name(n)) {
+        if let Err(problem) = resolve(name, raw, &mut fragments, &mut failed, &mut Vec::new()) {
+            if !problems.contains(&problem) {
+                problems.push(problem);
+            }
+        }
+    }
+    (fragments, problems)
+}
+
+impl ModuleToml {
+    /// 데몬이 읽는 정규식 키의 `{이름}`을 `[patterns]` 조각으로 바꾼다.
+    /// `[extensions.saba-core]`의 정규식 목록은 `read_daemon_table`이 읽으면서 바꾼다. 한도를 넘는 키는 쓴 그대로 두고 그 까닭을 돌려준다
+    fn expand_pattern_refs(&mut self, fragments: &mut PatternFragments) -> Vec<String> {
+        if fragments.resolved.is_empty() {
+            return Vec::new();
+        }
+        let mut regexes: Vec<&mut String> = Vec::new();
+        regexes.extend(self.module.log_pattern.as_mut());
+        if let Some(launch) = self.launch.as_mut() {
+            regexes.extend(launch.line_start.as_mut());
+        }
+        if let Some(detection) = self.detection.as_mut() {
+            regexes.extend(detection.graceful_exit_patterns.iter_mut());
+        }
+        if let Some(backup) = self.backup.as_mut() {
+            regexes.extend(backup.save_done_pattern.as_mut());
+        }
+        if let Some(settings) = self.settings.as_mut() {
+            regexes.extend(settings.fields.iter_mut().filter_map(|f| f.pattern.as_mut()));
+        }
+        if let Some(commands) = self.commands.as_mut() {
+            regexes.extend(commands.failure_patterns.iter_mut());
+            regexes.extend(commands.fields.iter_mut().filter_map(|f| f.reply_pattern.as_mut()));
+        }
+        if let Some(highlight) = self.syntax_highlight.as_mut() {
+            regexes.extend(highlight.rules.iter_mut().map(|r| &mut r.pattern));
+        }
+        let mut problems = Vec::new();
+        for pattern in regexes {
+            match fragments.expand(pattern) {
+                Ok(expanded) => *pattern = expanded,
+                Err(e) => problems.push(format!("'{}': {}", pattern, e)),
+            }
+        }
+        problems
+    }
+}
+
+/// `[extensions.saba-core]`의 정규식 목록 하나를 읽는다 (`{이름}`은 `[patterns]` 조각으로 바꾼다). `needs_name`이면 `(?P<name>…)`이 없는 항목도 버린다
+fn read_pattern_list(
+    table: &serde_json::Value,
+    key: &str,
+    groups: &[&str],
+    fragments: &mut PatternFragments,
+    warnings: &mut Vec<String>,
+) -> Vec<String> {
     let mut out = Vec::new();
     match table.get(key) {
         None => {}
         Some(serde_json::Value::Array(items)) => {
             for item in items {
-                match item.as_str().map(|p| (p, regex::Regex::new(p))) {
-                    Some((p, Ok(re))) => match groups.iter().find(|g| !re.capture_names().any(|n| n == Some(**g))) {
-                        None => out.push(p.to_string()),
+                let Some(p) = item.as_str() else {
+                    warnings.push(format!("extensions.{}.{} must hold strings; ignored {}", DAEMON_TABLE, key, item));
+                    continue;
+                };
+                let pattern = match fragments.expand(p) {
+                    Ok(pattern) => pattern,
+                    Err(e) => {
+                        warnings.push(format!("extensions.{}.{} '{}': {}; ignored", DAEMON_TABLE, key, p, e));
+                        continue;
+                    }
+                };
+                match regex::Regex::new(&pattern) {
+                    Ok(re) => match groups.iter().find(|g| !re.capture_names().any(|n| n == Some(**g))) {
+                        None => out.push(pattern),
                         Some(g) => warnings.push(format!("extensions.{}.{} '{}' has no (?P<{}>...) group; ignored", DAEMON_TABLE, key, p, g)),
                     },
-                    Some((p, Err(_))) => warnings.push(format!("extensions.{}.{} '{}' is not a valid regex; ignored", DAEMON_TABLE, key, p)),
-                    None => warnings.push(format!("extensions.{}.{} must hold strings; ignored {}", DAEMON_TABLE, key, item)),
+                    Err(_) => warnings.push(format!("extensions.{}.{} '{}' is not a valid regex; ignored", DAEMON_TABLE, key, p)),
                 }
             }
         }
@@ -1734,7 +1915,7 @@ fn read_pattern_list(table: &serde_json::Value, key: &str, groups: &[&str], warn
 
 /// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`(R39), `player_join_patterns`·`player_leave_patterns`(MK8), `chat_patterns`(게임 채팅), `progress_patterns`를 읽는다.
 /// 틀린 값은 그 값만 빼고 경고로 남긴다
-fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
+fn read_daemon_table(meta: &mut ModuleMetadata, fragments: &mut PatternFragments) -> Vec<String> {
     let Some(table) = meta.extensions.get(DAEMON_TABLE).cloned() else { return Vec::new() };
     let mut warnings = Vec::new();
     // 이 표는 버전 사이를 잇는 자리라, 더 새 데몬의 키가 있어도 모듈을 거부하지 않는다
@@ -1743,11 +1924,11 @@ fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
             warnings.push(format!("extensions.{}.{} is not known to this saba-chan; ignored", DAEMON_TABLE, key));
         }
     }
-    meta.ready_patterns.extend(read_pattern_list(&table, "ready_patterns", &[], &mut warnings));
-    meta.player_join_patterns.extend(read_pattern_list(&table, "player_join_patterns", &["name"], &mut warnings));
-    meta.player_leave_patterns.extend(read_pattern_list(&table, "player_leave_patterns", &["name"], &mut warnings));
-    meta.chat_patterns.extend(read_pattern_list(&table, "chat_patterns", &["name", "message"], &mut warnings));
-    meta.progress_patterns.extend(read_pattern_list(&table, "progress_patterns", &[], &mut warnings));
+    meta.ready_patterns.extend(read_pattern_list(&table, "ready_patterns", &[], fragments, &mut warnings));
+    meta.player_join_patterns.extend(read_pattern_list(&table, "player_join_patterns", &["name"], fragments, &mut warnings));
+    meta.player_leave_patterns.extend(read_pattern_list(&table, "player_leave_patterns", &["name"], fragments, &mut warnings));
+    meta.chat_patterns.extend(read_pattern_list(&table, "chat_patterns", &["name", "message"], fragments, &mut warnings));
+    meta.progress_patterns.extend(read_pattern_list(&table, "progress_patterns", &[], fragments, &mut warnings));
     match table.get("chat_send") {
         None => {}
         Some(v) => match v.as_str().map(|f| (f, function_problem(f, ""))) {
@@ -3292,39 +3473,159 @@ player_join_patterns = [
 ]
 player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]]*\])?: (?P<name>[A-Za-z0-9_]{1,16}) left the game\s*$']
 "#;
-        let meta = parse_module_toml(&format!("{V1}{table}")).unwrap();
-        let ready = regex::Regex::new(&meta.ready_patterns[0]).unwrap();
-        assert!(ready.is_match(r#"[20:07:01] [Server thread/INFO]: Done (0.267s)! For help, type "help""#));
-        assert!(ready.is_match(r#"[20:07:01 INFO]: Done (12.5s)! For help, type "help""#), "Paper's header");
-        assert!(ready.is_match(r#"[20:07:01] [Server thread/INFO] [minecraft/DedicatedServer]: Done (9.1s)! For help, type "help""#), "Forge's logger field");
-        for chat in [
-            r#"[20:07:05] [Server thread/INFO]: <Steve> Done (0.267s)! For help, type "help""#,
-            r#"[20:07:05] [Server thread/INFO]: <Steve> ]: Done (0.267s)! For help, type "help""#,
-            r#"[20:07:05] [Server thread/INFO]: [Not Secure] <Steve> ]: Done (0.267s)! For help, type "help""#,
-            r#"[20:07:05] [Server thread/INFO] [minecraft/MinecraftServer]: <Steve> [x]: Done (0.267s)! For help, type "help""#,
-        ] {
-            assert!(!ready.is_match(chat), "a chat line is not the server: {chat}");
+        // 같은 표를 `[patterns]` 조각으로 쓴 것: 맞는 줄이 같아야 한다
+        let with_fragments = r#"
+[patterns]
+log_head = '^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]]*\])?: '
+player_name = '[A-Za-z0-9_]{1,16}'
+
+[extensions.saba-core]
+ready_patterns = ['{log_head}Done \(\d+(\.\d+)?s\)! For help, type "help"']
+player_join_patterns = [
+    '{log_head}(?P<name>{player_name}) joined the game\s*$',
+    '{log_head}(?P<name>{player_name}) \(formerly known as {player_name}\) joined the game\s*$',
+]
+player_leave_patterns = ['{log_head}(?P<name>{player_name}) left the game\s*$']
+"#;
+        for table in [table, with_fragments] {
+            let meta = parse_module_toml(&format!("{V1}{table}")).unwrap();
+            let ready = regex::Regex::new(&meta.ready_patterns[0]).unwrap();
+            assert!(ready.is_match(r#"[20:07:01] [Server thread/INFO]: Done (0.267s)! For help, type "help""#));
+            assert!(ready.is_match(r#"[20:07:01 INFO]: Done (12.5s)! For help, type "help""#), "Paper's header");
+            assert!(ready.is_match(r#"[20:07:01] [Server thread/INFO] [minecraft/DedicatedServer]: Done (9.1s)! For help, type "help""#), "Forge's logger field");
+            for chat in [
+                r#"[20:07:05] [Server thread/INFO]: <Steve> Done (0.267s)! For help, type "help""#,
+                r#"[20:07:05] [Server thread/INFO]: <Steve> ]: Done (0.267s)! For help, type "help""#,
+                r#"[20:07:05] [Server thread/INFO]: [Not Secure] <Steve> ]: Done (0.267s)! For help, type "help""#,
+                r#"[20:07:05] [Server thread/INFO] [minecraft/MinecraftServer]: <Steve> [x]: Done (0.267s)! For help, type "help""#,
+            ] {
+                assert!(!ready.is_match(chat), "a chat line is not the server: {chat}");
+            }
+            assert!(!ready.is_match("[20:06:58] [Server thread/INFO]: Preparing level \"world\""));
+            assert!(meta.warnings.is_empty(), "{:?}", meta.warnings);
+            assert_eq!((meta.player_join_patterns.len(), meta.player_leave_patterns.len()), (2, 1));
+            let players = crate::supervisor::player_events::Patterns::new(&meta.player_join_patterns, &meta.player_leave_patterns).unwrap();
+            use crate::supervisor::player_events::Change::{Join, Leave};
+            assert_eq!(players.parse("[20:07:05] [Server thread/INFO]: Steve joined the game"), Some(("Steve".into(), Join)));
+            assert_eq!(players.parse("[20:07:05 INFO]: Steve joined the game"), Some(("Steve".into(), Join)), "Paper's header");
+            assert_eq!(players.parse("[20:07:05] [Server thread/INFO] [minecraft/MinecraftServer]: Steve joined the game"), Some(("Steve".into(), Join)), "Forge's logger field");
+            assert_eq!(players.parse("[20:07:06] [Server thread/INFO]: Alex (formerly known as Al) joined the game"), Some(("Alex".into(), Join)));
+            assert_eq!(players.parse("[20:07:09] [Server thread/INFO]: Steve left the game"), Some(("Steve".into(), Leave)));
+            for chat in [
+                "[20:07:07] [Server thread/INFO]: <Steve> ]: Notch joined the game",
+                "[20:07:07] [Server thread/INFO]: [Not Secure] <Steve> ]: Notch joined the game",
+                "[20:07:07] [Server thread/INFO]: <Steve> Notch left the game",
+                "[20:07:07] [Server thread/INFO]: <Steve> [x]: Notch joined the game",
+                "[20:07:07] [Server thread/INFO] [minecraft/MinecraftServer]: <Steve> Notch joined the game",
+                "[20:07:07] [Server thread/INFO] [minecraft/MinecraftServer]: <Steve> [20:07:07] [Server thread/INFO]: Notch joined the game",
+            ] {
+                assert_eq!(players.parse(chat), None, "chat is not a player: {chat}");
+            }
         }
-        assert!(!ready.is_match("[20:06:58] [Server thread/INFO]: Preparing level \"world\""));
-        assert!(meta.warnings.is_empty(), "{:?}", meta.warnings);
-        assert_eq!((meta.player_join_patterns.len(), meta.player_leave_patterns.len()), (2, 1));
-        let players = crate::supervisor::player_events::Patterns::new(&meta.player_join_patterns, &meta.player_leave_patterns).unwrap();
-        use crate::supervisor::player_events::Change::{Join, Leave};
-        assert_eq!(players.parse("[20:07:05] [Server thread/INFO]: Steve joined the game"), Some(("Steve".into(), Join)));
-        assert_eq!(players.parse("[20:07:05 INFO]: Steve joined the game"), Some(("Steve".into(), Join)), "Paper's header");
-        assert_eq!(players.parse("[20:07:05] [Server thread/INFO] [minecraft/MinecraftServer]: Steve joined the game"), Some(("Steve".into(), Join)), "Forge's logger field");
-        assert_eq!(players.parse("[20:07:06] [Server thread/INFO]: Alex (formerly known as Al) joined the game"), Some(("Alex".into(), Join)));
-        assert_eq!(players.parse("[20:07:09] [Server thread/INFO]: Steve left the game"), Some(("Steve".into(), Leave)));
-        for chat in [
-            "[20:07:07] [Server thread/INFO]: <Steve> ]: Notch joined the game",
-            "[20:07:07] [Server thread/INFO]: [Not Secure] <Steve> ]: Notch joined the game",
-            "[20:07:07] [Server thread/INFO]: <Steve> Notch left the game",
-            "[20:07:07] [Server thread/INFO]: <Steve> [x]: Notch joined the game",
-            "[20:07:07] [Server thread/INFO] [minecraft/MinecraftServer]: <Steve> Notch joined the game",
-            "[20:07:07] [Server thread/INFO] [minecraft/MinecraftServer]: <Steve> [20:07:07] [Server thread/INFO]: Notch joined the game",
-        ] {
-            assert_eq!(players.parse(chat), None, "chat is not a player: {chat}");
+    }
+
+    /// `[patterns]` 조각은 데몬이 읽는 모든 정규식 키에서 `{이름}`으로 쓴다. 반복 횟수 `{2}`·`{1,16}`, 선언하지 않은 이름,
+    /// `\{`로 막은 자리, 정규식이 아닌 키(`[backup] paths`의 `{설정 이름}`)는 그대로다
+    #[test]
+    fn pattern_fragments_expand_in_every_regex_key() {
+        let source = format!(
+            r#"{V1}
+[patterns]
+head = '^\[\d{{2}}:\d{{2}}\] '
+name = '[A-Za-z0-9_]{{1,16}}'
+greeting = '{{head}}hello {{name}}'
+
+[launch]
+line_start = '{{head}}'
+
+[detection]
+graceful_exit_patterns = ['{{head}}bye']
+
+[backup]
+paths = ['{{name}}']
+save_done_pattern = '{{head}}saved'
+
+[[settings.fields]]
+name = 'admin'
+pattern = '^{{name}}$'
+
+[[commands.fields]]
+name = 'save'
+method = 'console'
+console_template = 'save'
+reply_pattern = '{{head}}(?P<what>{{name}}) saved'
+
+[commands]
+failure_patterns = ['{{head}}denied']
+
+[[syntax_highlight.rules]]
+name = 'time'
+pattern = '{{head}}'
+color = '#888888'
+
+[extensions.saba-core]
+ready_patterns = ['{{greeting}}!', '{{head}}x{{2}}', '{{head}}\{{name\}} \{{head}}']
+chat_patterns = ['{{head}}<(?P<name>{{name}})> (?P<message>.*)']
+progress_patterns = ['{{head}}{{progress}}']
+"#
+        );
+        let meta = parse_module_toml(&source).unwrap();
+        // 선언하지 않은 이름은 쓴 그대로 정규식이 된다 (Rust `regex`에선 틀린 반복이라 그 항목만 버린다)
+        assert_eq!(meta.warnings, vec!["extensions.saba-core.progress_patterns '{head}{progress}' is not a valid regex; ignored".to_string()]);
+        let matches = |pattern: &str, line: &str| regex::Regex::new(pattern).unwrap().is_match(line);
+        let ready = &meta.ready_patterns;
+        assert!(matches(&ready[0], "[12:34] hello Steve!"), "a fragment may use another fragment");
+        assert!(matches(&ready[1], "[12:34] xx") && !matches(&ready[1], "[12:34] x{2}"), "a quantifier is not a name");
+        assert!(matches(&ready[2], "[12:34] {name} {head}"), "an escaped brace stays literal: {}", ready[2]);
+        assert!(matches(&meta.chat_patterns[0], "[12:34] <Steve> hi"));
+        assert!(matches(meta.line_start.as_deref().unwrap(), "[12:34] "));
+        assert!(matches(&meta.graceful_exit_patterns[0], "[12:34] bye"));
+        let backup = meta.backup.as_ref().unwrap();
+        assert!(matches(backup.save_done_pattern.as_deref().unwrap(), "[12:34] saved"));
+        assert_eq!(backup.paths, vec!["{name}".to_string()], "only regex keys use fragments");
+        let admin = &meta.settings.as_ref().unwrap().fields[0];
+        assert!(matches(admin.pattern.as_deref().unwrap(), "Steve") && !matches(admin.pattern.as_deref().unwrap(), "Steve!"));
+        let commands = meta.commands.as_ref().unwrap();
+        assert!(matches(commands.fields[0].reply_pattern.as_deref().unwrap(), "[12:34] world saved"));
+        assert!(matches(&commands.failure_patterns[0], "[12:34] denied"));
+        assert!(matches(&meta.syntax_highlight.as_ref().unwrap().rules[0].pattern, "[12:34] "));
+    }
+
+    /// 자기 자신을 (다른 조각을 거쳐서라도) 참조하는 조각과 이름이나 정규식이 틀린 조각은 스키마 오류다.
+    /// 스키마 이전 모듈은 경고만 남기고 그 조각의 `{이름}`을 글자 그대로 둔다
+    #[test]
+    fn pattern_fragments_that_refer_to_themselves_are_rejected() {
+        let fragments = "[patterns]\nloop = 'a{loop}'\nping = '{pong}'\npong = '{ping}b'\nuser = '{ping}c'\n'1st' = 'x'\nbroken = '('\nfine = 'ok'\n\n[extensions.saba-core]\nready_patterns = ['{fine}']\n";
+        let err = parse_module_toml(&format!("{V1}\n{fragments}")).unwrap_err();
+        let failed = ModuleLoadError::new(Path::new("m"), &err);
+        assert_eq!(failed.error_code.as_deref(), Some("module_schema_invalid"));
+        for needle in ["patterns.loop refers to itself", "patterns.ping refers to itself", "patterns.1st", "patterns.broken"] {
+            assert!(failed.problems.iter().any(|p| p.contains(needle)), "{needle}: {:?}", failed.problems);
         }
+        assert!(!failed.problems.iter().any(|p| p.contains("patterns.fine")), "{:?}", failed.problems);
+
+        let legacy = parse_module_toml(&format!("{V1}\n{fragments}").replacen("schema_version = 1\n", "", 1)).unwrap();
+        assert!(legacy.warnings.iter().any(|w| w.contains("patterns.loop refers to itself")), "{:?}", legacy.warnings);
+        assert_eq!(legacy.ready_patterns, vec!["(?:ok)".to_string()]);
+    }
+
+    /// 조각을 풀어 늘어나는 글자는 모듈마다 `PATTERN_EXPANSION_LIMIT`까지다. 넘기는 조각과 키는 다른 조각 오류처럼 다룬다
+    #[test]
+    fn pattern_fragments_stop_growing_at_the_limit() {
+        // 조각마다 앞 조각을 두 번 써서 단계마다 두 배가 된다
+        let mut doubling = "[patterns]\np0 = 'aaaaaaaaaaaaaaaa'\n".to_string();
+        for i in 1..=20 {
+            doubling.push_str(&format!("p{i} = '{{p{}}}{{p{}}}'\n", i - 1, i - 1));
+        }
+        let err = parse_module_toml(&format!("{V1}\n{doubling}")).unwrap_err();
+        let failed = ModuleLoadError::new(Path::new("m"), &err);
+        assert!(failed.problems.iter().any(|p| p.starts_with("patterns.p") && p.contains("expand to more than")), "{:?}", failed.problems);
+
+        // 조각 하나는 작아도 여러 키에서 거듭 쓰면 같은 한도에 걸린다
+        let wide = format!("[patterns]\nbig = '{}'\n\n[extensions.saba-core]\nready_patterns = [{}]\n", "a".repeat(4096), vec!["'{big}'"; 300].join(", "));
+        let legacy = parse_module_toml(&format!("{V1}\n{wide}").replacen("schema_version = 1\n", "", 1)).unwrap();
+        assert!(legacy.ready_patterns.len() < 300 && !legacy.ready_patterns.is_empty(), "{}", legacy.ready_patterns.len());
+        assert!(legacy.warnings.iter().any(|w| w.contains("ready_patterns '{big}'") && w.contains("expand to more than")), "{:?}", legacy.warnings.first());
     }
 
     /// MK8 §8.3: 접속·퇴장 문구도 `[extensions.saba-core]`에 둔다. `(?P<name>…)`이 없거나 정규식이 아니면 그 항목만 버린다

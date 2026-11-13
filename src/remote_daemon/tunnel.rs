@@ -249,44 +249,47 @@ async fn dial(relay: &Target, host_id: &str, pin: &str) -> Option<Sender> {
     sender
 }
 
-/// 릴레이·원격 PC마다 연결 하나
-static OPEN: h2::Connections<(String, String)> = h2::Connections::new();
+/// 붙는 쪽이 열어 둔 터널: 릴레이·원격 PC마다 연결 하나 (`peer::Pool`이 쥔다)
+#[derive(Default)]
+pub struct Tunnels(h2::Connections<(String, String)>);
 
 fn key(relay: &Target, host_id: &str) -> (String, String) {
     (relay.base.clone(), host_id.to_string())
 }
 
-/// 이 PC까지 열린 터널이 있는가 (테스트가 잊기 뒤 터널을 놓았는지 본다)
-#[cfg(test)]
-pub async fn is_open(relay: Option<&Target>, host_id: &str) -> bool {
-    match relay {
-        Some(r) => h2::live(&OPEN.hold(key(r, host_id)).await).is_some(),
-        None => false,
+impl Tunnels {
+    /// 이 PC까지 열린 터널이 있는가 (테스트가 잊기 뒤 터널을 놓았는지 본다)
+    #[cfg(test)]
+    pub async fn is_open(&self, relay: Option<&Target>, host_id: &str) -> bool {
+        match relay {
+            Some(r) => h2::live(&self.0.hold(key(r, host_id)).await).is_some(),
+            None => false,
+        }
     }
-}
 
-/// 원격 데몬을 잊으면 그 PC까지 열어 둔 터널을 놓는다 (연결을 쥔 것과 그 위의 요청·스트림이 없어지면
-/// HTTP/2 연결과 터널이 닫힌다. 릴레이는 한 PC가 여는 터널 수를 묶는다)
-pub fn close(host_id: &str) {
-    OPEN.retain(|(_, h)| h != host_id);
-}
-
-/// 그 PC에 직접 닿게 되면 이 릴레이로 열어 둔 터널을 놓는다 (그 위에서 받던 스트림은 끝날 때까지 간다)
-pub fn release(relay: &Target, host_id: &str) {
-    OPEN.remove(&key(relay, host_id));
-}
-
-/// 열린 터널을 쓰고, 없거나 끊겼으면 새로 연다
-pub async fn sender(relay: &Target, host_id: &str, pin: &str) -> Option<Sender> {
-    let mut open = OPEN.hold(key(relay, host_id)).await;
-    if let Some(s) = h2::live(&open) {
-        return Some(s);
+    /// 원격 데몬을 잊으면 그 PC까지 열어 둔 터널을 놓는다 (연결을 쥔 것과 그 위의 요청·스트림이 없어지면
+    /// HTTP/2 연결과 터널이 닫힌다. 릴레이는 한 PC가 여는 터널 수를 묶는다)
+    pub fn close(&self, host_id: &str) {
+        self.0.retain(|(_, h)| h != host_id);
     }
-    *open = dial(relay, host_id, pin).await;
-    if open.is_some() {
-        tracing::info!("Opened a relay tunnel to remote daemon {}", host_id);
+
+    /// 그 PC에 직접 닿게 되면 이 릴레이로 열어 둔 터널을 놓는다 (그 위에서 받던 스트림은 끝날 때까지 간다)
+    pub fn release(&self, relay: &Target, host_id: &str) {
+        self.0.remove(&key(relay, host_id));
     }
-    open.clone()
+
+    /// 열린 터널을 쓰고, 없거나 끊겼으면 새로 연다
+    pub async fn sender(&self, relay: &Target, host_id: &str, pin: &str) -> Option<Sender> {
+        let mut open = self.0.hold(key(relay, host_id)).await;
+        if let Some(s) = h2::live(&open) {
+            return Some(s);
+        }
+        *open = dial(relay, host_id, pin).await;
+        if open.is_some() {
+            tracing::info!("Opened a relay tunnel to remote daemon {}", host_id);
+        }
+        open.clone()
+    }
 }
 
 #[cfg(test)]

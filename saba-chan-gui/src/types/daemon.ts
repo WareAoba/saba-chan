@@ -337,6 +337,8 @@ export interface ModuleListResponse {
 export interface ExtensionGuiManifest {
     bundle: string | null;
     styles: string | null;
+    /** 번들이 `host.assetUrl`로 받는 정적 파일 폴더 (익스텐션 폴더 기준) */
+    assets?: string;
     builtin: boolean | null;
     /** slot id → 표시 정보 (탭 이름·아이콘·설명, 이름과 설명은 익스텐션 i18n 키나 글자). 옛 모양은 컴포넌트 이름 문자열 */
     slots: Record<string, string | { label?: string; icon?: string; description?: string }>;

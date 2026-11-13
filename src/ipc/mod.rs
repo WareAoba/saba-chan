@@ -750,6 +750,8 @@ pub struct IPCServer {
     pub relay_agent: crate::relay_agent::RelayAgent,
     /// 시스템 모니터 (요청이 올 때만 표본을 뜬다)
     pub system_monitor: crate::system_monitor::SystemMonitor,
+    /// 원격 데몬 (원격 포트·주소 올리기·짝 맺은 PC·붙는 쪽 연결)
+    pub remote_daemon: crate::remote_daemon::RemoteDaemon,
 }
 
 impl IPCServer {
@@ -819,6 +821,7 @@ impl IPCServer {
             daemon_log_buffer,
             relay_agent,
             system_monitor: crate::system_monitor::SystemMonitor::new(),
+            remote_daemon: crate::remote_daemon::RemoteDaemon::default(),
         }
     }
 
@@ -1009,6 +1012,7 @@ impl IPCServer {
             .route("/api/extensions/{id}/config", get(handlers::extension::get_extension_config).put(handlers::extension::save_extension_config))
             .route("/api/extensions/{id}/gui", get(handlers::extension::serve_gui_bundle))
             .route("/api/extensions/{id}/gui/styles", get(handlers::extension::serve_gui_styles))
+            .route("/api/extensions/{id}/gui/assets/{*path}", get(handlers::extension::serve_gui_asset))
             .route("/api/extensions/{id}/icon", get(handlers::extension::serve_icon))
             .route("/api/extensions/{id}/audit", get(handlers::extension::audit_extension))
             .route("/api/extensions/{id}/i18n/{locale}", get(handlers::extension::serve_i18n))

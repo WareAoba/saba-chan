@@ -319,6 +319,31 @@ code = "PORT_IN_USE"
 severity = "critical"
 patterns = ["FAILED TO BIND TO PORT", "Address already in use"]
 ```
+
+#### `[runtime]` (`plugin::Runtime`, saba-core 0.1.14-0)
+실행 방식. 키는 `persistent`(불, 없으면 `false`) 하나다. `true`면 데몬이 호출마다 Python을 띄우지 않고 오래 사는 작업자 하나로 부른다(§2.1 끝). 격리해서 돌리는 구성요소(확인되지 않았거나 고친 것)는 선언해도 단발로 돈다. 함수·config·답은 그대로이고, 진입점이 공용 `run_lifecycle`이어야 한다. 모듈 로더는 이 키를 읽지 않고 실행기가 호출 때 module.toml에서 읽는다. 익스텐션 manifest의 `runtime`도 같은 표다(03 §1.1).
+
+```toml
+[runtime]
+persistent = true
+```
+
+#### `[patterns]` (이름 붙인 정규식 조각, saba-core 0.1.15-0)
+여러 정규식이 같이 쓰는 머리(로그 머리, 플레이어 이름 규칙)를 이름 하나에 둔다(`ModuleToml.patterns`, `module_loader.rs` `resolve_pattern_fragments`·`expand_pattern_refs`). 값은 정규식 조각이고, 데몬이 읽는 정규식 키에서 `{이름}`으로 쓰면 로드할 때 `(?:조각)`으로 바뀐다. 클라이언트·러너·API(`GET /api/modules`)는 바뀐 정규식만 본다.
+- 바뀌는 키: `[module] log_pattern`, `[launch] line_start`, `[detection] graceful_exit_patterns`, `[backup] save_done_pattern`, `[[settings.fields]] pattern`, `[commands] failure_patterns`, `[[commands.fields]] reply_pattern`, `[[syntax_highlight.rules]] pattern`, `[extensions.saba-core]`의 `ready_patterns`·`player_join_patterns`·`player_leave_patterns`·`chat_patterns`·`progress_patterns`. 정규식이 아닌 키(`[backup] paths`·`data_roots`의 `{설정 이름}` 등)는 바꾸지 않는다. `[[diagnose]] patterns`는 모듈 Python(`load_diagnose_rules`)이 module.toml에서 직접 읽으므로 바꾸지 않는다.
+- 참조 규칙: `{이름}`은 `[patterns]`에 선언한 이름일 때만 바뀐다. 이름은 글자·숫자·`_`이고 숫자로 시작하지 않으므로 반복 횟수 `{2}`·`{1,16}`은 그대로이고, 선언하지 않은 이름도 쓴 그대로 남는다. 선언한 이름을 글자로 쓰려면 `\{이름}`처럼 여는 괄호를 막는다.
+- 조각은 다른 조각을 참조할 수 있다. 자기 자신을 (다른 조각을 거쳐서라도) 참조하는 조각, 이름이 틀린 조각, 풀어서 `(?:…)`로 감싸도 정규식이 아닌 조각은 스키마 오류(`module_schema_invalid`의 `problems`: `patterns.<이름> refers to itself (a -> b -> a)` 등)이고, 스키마 이전 모듈은 경고만 남기고 그 조각을 쓰지 않는다(참조가 글자 그대로 남는다).
+- 한 모듈에서 조각을 풀어 넣는 글자는 조각끼리와 정규식 키를 합쳐 1 MiB까지다(`PATTERN_EXPANSION_LIMIT`). 넘기는 조각과 키는 위 오류처럼 다룬다(`patterns.<이름>: [patterns] expand to more than … bytes in this module`). 스키마 이전 모듈에서 넘긴 키는 쓴 그대로 남고, `[extensions.saba-core]` 목록의 그 항목은 버린다.
+- 이 키를 모르는 데몬은 `[patterns]`를 모르는 키 경고로 넘기고 `{이름}`을 글자 그대로 읽어 준비 문구 같은 것을 찾지 못한다. 그래서 `[patterns]`를 쓰는 모듈은 `[module.dependencies] saba-core`로 이 기능이 실린 버전 이상을 요구한다.
+
+```toml
+[patterns]
+log_head = '^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]]*\])?: '
+player_name = '[A-Za-z0-9_]{1,16}'
+
+[extensions.saba-core]
+player_join_patterns = ['{log_head}(?P<name>{player_name}) joined the game\s*$']
+```
 ---
 
 ## 2. lifecycle.py 프로토콜
@@ -378,6 +403,17 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 `data_roots`의 `{설정}` 값이 없고 그 설정의 보충을 시도한 적이 없으면 데몬은 시작 뒤 `import_settings`를 호출한다. 호출은 인스턴스별로 누락 설정을 모아 잠금 밖에서 일반 호출 제한으로 실행한다. `{home}`은 보충 대상이 아니다. 데몬은 반환한 누락 루트 설정만 저장하고 `imported_settings`에 기록한다. 기존 값과 사용자가 정한 키는 저장 직전에도 확인해 보존한다. 호출 전 `instance.json`의 `data_roots_backfill_attempted` 집합에 시도할 설정 이름을 저장한다. 이 집합이 비면 필드를 생략한다. 같은 설정의 빈 결과·실패·중단은 다음 시작에 반복하지 않는다. 모듈 업데이트로 새 루트 설정이 추가되면 아직 시도하지 않은 설정만 보충한다. 실패는 로그에 남기고 데몬 기동은 계속한다.
 
 좀보이드 모듈은 옛 외부 INI 배치에서 부모의 `Saves`·`db`를 유지하도록 `import_settings`에서 `data_home`을 돌려준다. 데몬의 시작 후 보충은 기존 인스턴스에도 이 값을 저장한다. 현재 선택한 INI 폴더는 이 계약으로 바꾸지 않는다.
+
+**오래 사는 작업자** (`[runtime] persistent = true`, `D:src/plugin/worker.rs`): 단발 실행이 기본이고, 선언한 구성요소 가운데 확인된 것(카탈로그에서 받은 그대로, `Trust::Verified`)만 진입 파일마다 작업자 하나를 쓴다. 격리해서 돌리는 구성요소(확인되지 않았거나 고친 것)는 선언해도 단발로 돈다: 격리가 그 호출에 준 권한(가져오기의 인스턴스 폴더 쓰기 등)은 호출이 끝나 프로세스 트리가 끝날 때 거둬진다. 떠 있던 작업자의 구성요소가 확인되지 않게 되면(파일을 고치면) 다음 호출이 그 작업자를 끝내고 단발로 돈다.
+
+- 띄우기: `<python> <진입 파일> --worker`. 명령·작업 폴더·환경은 단발 실행과 같은 준비(`Launch`)로 만든다. `SABA_HOST_DIR`은 호출마다 만들지 않고 작업자와 함께 산다. 작업자는 뜨면 stdout에 `{"saba_worker": 1}` 한 줄을 쓴다(20초 안).
+- 호출: 요청 `{"function": <이름>, "config": <단발 실행의 stdin과 같은 JSON>}` 한 줄을 stdin에 쓰면, 작업자는 stderr에 `WORKER:done` 한 줄을 쓴 뒤 stdout에 답 JSON 한 줄을 쓴다. 함수나 자식 프로세스의 출력이 줄바꿈 없이 끝났으면 표시가 그 줄 끝에 붙어 오므로, 데몬은 줄 끝의 표시를 알아보고 앞부분은 그 호출의 stderr로 받는다. 답은 단발 실행과 같은 규칙으로 읽는다(`module_bad_output`, 4 MiB 상한, `stderr_tail`, 익스텐션 확인 실패 안내). `PROGRESS:`·`HOST:` 줄도 그 호출 동안 같은 방식으로 처리한다. 호출 사이에 쓴 stderr는 debug 로그로만 남는다.
+- SDK `run_lifecycle`이 `--worker`를 받으면 요청을 줄마다 처리한다(`_serve_worker`). 함수의 `print`와 자식 프로세스가 물려받은 stdout은 stderr로 가고, stdin은 빈 입력이다. 호출마다 작업 폴더를 구성요소 폴더로 되돌린다. 모듈 전역 상태는 호출 사이에 남는다.
+- 한 번에 한 호출만 한다. 작업자가 다른 호출을 하는 중이면 그 호출은 기다리지 않고 단발로 돈다.
+- 단발로 돌리는 경우: 작업자가 뜨지 못하거나 첫 줄이 인사가 아니면(SDK 진입점이 아님), 또는 인사를 기다리는 사이에 호출 기한이 지나면(그 호출은 `module_timeout`) 그 준비가 바뀔 때까지 단발로만 돌리고 경고를 한 번 남긴다. 답하기 전에 작업자가 끝나면 작업자를 끝내고 그 호출을 단발로 다시 돌린다(함수가 두 번 돌 수 있다).
+- 기한을 넘기면 작업자를 끝내고 단발 실행의 시간 초과와 같은 `module_timeout`(`phase: "run"`)으로 답한다(기한이 이미 지나 단발로 다시 돌리지 않는다). 답이 4 MiB를 넘으면 작업자를 끝내고 `module_output_too_large`다.
+- 다시 띄우기: 명령·환경(`SABA_LANG`, 켠 익스텐션 목록 등), 진입 파일과 module.toml·manifest.json의 수정 시각이 바뀌면 다음 호출이 새로 띄운다. 진입 파일이 아닌 파일을 고치면 구성요소가 확인되지 않게 되어 단발로 돈다(위). zip 모듈(`.extracted/`)은 확인된 구성요소가 아니라 작업자가 되지 않는다.
+- 끝내기(`plugin::stop_workers`): 구성요소 폴더를 바꿀 때(`utils::swap_dir`의 설치·업데이트는 그 폴더의 작업자, 익스텐션이면 모든 작업자. 데몬이 직접 적용하는 업데이트(`ipc/updates.rs`)도 적용 전에 같은 규칙), 모듈·익스텐션을 지울 때, 익스텐션을 끌 때, 모듈·익스텐션 폴더를 옮길 때, 데몬이 끝날 때(`daemon.shutdown` hook 뒤). 호출 중인 작업자는 그 호출이 끝나면 끝낸다. 끝낼 때는 프로세스 트리를 끝낸다(Unix 프로세스 그룹, Windows Job·AppContainer). 데몬이 갑자기 끝나도 작업자는 stdin이 닫혀 스스로 끝난다.
 
 ### 2.2 모듈 측 디스패치 관례
 
@@ -742,6 +778,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 - 메이커 스킬과 도구는 모듈 저장소 `maker/`에 있고 앱에 싣지 않는다. 사용자는 에이전트별로 받는다: Claude Code는 받은 저장소의 `.claude/skills/`, Codex는 스킬 설치기, 그 밖은 저장소의 `AGENTS.md`. Claude Code 플러그인 마켓은 아직 열지 않았다(사용자 지시). 메이커 버전은 `maker/.claude-plugin/plugin.json`, 맞는 데몬은 `maker/SKILL.md` 머리의 `metadata.saba-core`다.
 - 데몬은 `GET /api/maker`(`D:src/ipc/handlers/maker.rs`)로 이 PC의 경로(`saba-core`·러너, 데몬 venv Python, 공용 런타임 `<data_dir>/python-shared`, 모듈 폴더)와 받는 스키마 버전, 저장소·가이드 주소만 알려 준다. CLI `module maker`(`--json`이면 그대로)와 GUI `ModuleMakerCard`가 이것을 쓰고, 메이커 `check.py`는 `saba-chan-cli module maker --json`으로 `--saba-core`·공용 런타임을 채운다.
+- 여러 정규식이 같은 머리나 이름 규칙을 쓰면 메이커는 그 조각을 `[patterns]`에 한 번 두고 `{이름}`으로 참조한다(§1.2 `[patterns]`, saba-core 0.1.15-0 이상을 요구한다). 조각을 고치면 그것을 쓰는 정규식이 모두 함께 바뀐다.
 - 직접 만든 모듈은 모듈 폴더에 두면 확인되지 않은 모듈로 격리 실행된다(§5.2 신뢰 표시). 공개하려면 모듈 저장소 PR을 거쳐 다음 릴리스 manifest에 실린다(§5.1).
 
 ---

@@ -814,8 +814,10 @@ pub async fn remove_module(
     let (modules_dir, zip) = modules_dir;
     let module_path = modules_dir.join(&module_id);
     let removed = if module_path.is_dir() {
+        crate::plugin::stop_workers(Some(&module_path));
         std::fs::remove_dir_all(&module_path)
     } else if let Some((zip, extracted)) = zip {
+        crate::plugin::stop_workers(Some(&extracted));
         std::fs::remove_file(&zip).map(|()| {
             // 풀어 둔 사본은 다시 만들 수 있다: 지우지 못해도 제거는 끝났다
             if extracted.starts_with(modules_dir.join(".extracted")) {

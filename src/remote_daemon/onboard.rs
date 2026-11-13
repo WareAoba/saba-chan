@@ -1,6 +1,6 @@
 //! 새 PC 붙이기: 다른 PC(새로 설치한 리눅스 등)가 낸 페어링 코드를 이 PC 주인의 것으로 받고, 그 PC의 원격 데몬과 짝을 맺는다.
 //!
-//!   claim_and_connect   릴레이에 코드를 받고(`relay::claim`) 그 PC가 원격 포트를 올릴 때까지 기다려 `peer::connect`
+//!   claim_and_connect   릴레이에 코드를 받고(`relay::claim`) 그 PC가 원격 포트를 올릴 때까지 기다려 `peer::Pool::connect`
 //!   Install             이 PC의 ssh로 원격 PC에 붙어 한 줄 설치(install.sh `--pair`)를 돌린다. ssh는 의사 터미널에서 돌려
 //!                       처음 접속 확인·비밀번호·sudo 물음을 앱에 넘긴다 (사바쨩은 열쇠·비밀번호를 받아 두지 않는다).
 //!                       설치가 찍은 `SABA_PAIR_CODE=<코드>` 줄을 보고 `claim_and_connect`를 한다
@@ -68,7 +68,7 @@ const READY_WAIT: Duration = if cfg!(test) { Duration::from_secs(2) } else { Dur
 const READY_POLL: Duration = if cfg!(test) { Duration::from_millis(100) } else { Duration::from_secs(3) };
 
 /// 코드를 이 PC 주인의 것으로 받고 그 PC와 짝을 맺는다. 짝을 맺으면 그 데몬의 자동 업데이트를 켠다 (사용자 결정 2026-11-08)
-pub async fn claim_and_connect(file: &ConfigFile, relay: Option<Target>, code: &str, stop: &CancellationToken) -> Result<Daemon, ClaimError> {
+pub async fn claim_and_connect(peers: &peer::Pool, file: &ConfigFile, relay: Option<Target>, code: &str, stop: &CancellationToken) -> Result<Daemon, ClaimError> {
     let target = relay.clone().ok_or(ClaimError::RelayNotPaired)?;
     let claimed = relay::claim(&target, code).await.map_err(|e| match e {
         ClaimFailure::NotFound => ClaimError::CodeNotFound,
@@ -79,7 +79,7 @@ pub async fn claim_and_connect(file: &ConfigFile, relay: Option<Target>, code: &
     tracing::info!("Claimed pairing code for PC {}", claimed.host_id);
     let deadline = tokio::time::Instant::now() + READY_WAIT;
     let daemon = loop {
-        match peer::connect(file, relay.clone(), &claimed.host_id).await {
+        match peers.connect(file, relay.clone(), &claimed.host_id).await {
             Ok(d) => break d,
             // 막 받은 PC는 노드 토큰을 받고 원격 포트를 올리기까지 몇 초 걸린다
             Err(ConnectError::NotFound | ConnectError::NoEndpoint | ConnectError::RemoteUnreachable) if tokio::time::Instant::now() < deadline => {}
@@ -91,18 +91,18 @@ pub async fn claim_and_connect(file: &ConfigFile, relay: Option<Target>, code: &
             _ = tokio::time::sleep(READY_POLL) => {}
         }
     };
-    set_auto_update(file, relay, &daemon.host_id, true, stop.clone()).await;
+    set_auto_update(peers, file, relay, &daemon.host_id, true, stop.clone()).await;
     Ok(daemon)
 }
 
 /// 원격 데몬의 자동 업데이트를 켜거나 끈다 (`PUT /api/daemon/update`). 옛 데몬은 이 경로가 없어 조용히 넘어간다
-pub async fn set_auto_update(file: &ConfigFile, relay: Option<Target>, host_id: &str, enabled: bool, stop: CancellationToken) -> bool {
+pub async fn set_auto_update(peers: &peer::Pool, file: &ConfigFile, relay: Option<Target>, host_id: &str, enabled: bool, stop: CancellationToken) -> bool {
     let body = json!({ "auto": enabled }).to_string();
     let req = Request::put("/api/daemon/update")
         .header(axum::http::header::CONTENT_TYPE, "application/json")
         .body(axum::body::Body::from(body))
         .unwrap_or_default();
-    let res = peer::forward(file, relay, host_id, "/api/daemon/update", req, stop).await;
+    let res = peers.forward(file, relay, host_id, "/api/daemon/update", req, stop).await;
     let ok = res.status().is_success();
     if !ok {
         tracing::info!("Remote daemon {} did not take the auto-update setting ({})", host_id, res.status());
@@ -394,7 +394,7 @@ pub enum StartError {
 }
 
 /// ssh로 설치를 시작한다. 설치 하나의 id를 돌려준다
-pub fn start_install(file: ConfigFile, relay: Option<Target>, options: &InstallOptions, stop: CancellationToken) -> Result<String, StartError> {
+pub fn start_install(peers: peer::Pool, file: ConfigFile, relay: Option<Target>, options: &InstallOptions, stop: CancellationToken) -> Result<String, StartError> {
     let program = ssh_program().ok_or(StartError::SshMissing)?;
     let mut cmd = portable_pty::CommandBuilder::new(program);
     cmd.args(ssh_args(options));
@@ -436,9 +436,9 @@ pub fn start_install(file: ConfigFile, relay: Option<Target>, options: &InstallO
             let text = String::from_utf8_lossy(&pending[..valid]).into_owned();
             pending.drain(..valid);
             if let Some(code) = reading.push(&strip_ansi(&text)) {
-                let (file, relay, session) = (file.clone(), relay.clone(), reading.clone());
+                let (peers, file, relay, session) = (peers.clone(), file.clone(), relay.clone(), reading.clone());
                 rt.spawn(async move {
-                    match claim_and_connect(&file, relay, &code, &session.cancel).await {
+                    match claim_and_connect(&peers, &file, relay, &code, &session.cancel).await {
                         Ok(d) => {
                             session.lock().daemon = Some((d.host_id.clone(), d.label()));
                             session.finish(Phase::Done, None);

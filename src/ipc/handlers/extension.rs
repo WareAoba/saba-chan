@@ -5,6 +5,7 @@
 //! POST /api/extensions/:id/disable  → 비활성화
 //! GET  /api/extensions/:id/gui      → GUI 번들 서빙 (확인된 것이거나 사용자가 허락한 것만)
 //! GET  /api/extensions/:id/gui/styles → CSS 서빙 (번들과 같은 조건)
+//! GET  /api/extensions/:id/gui/assets/*path → manifest `gui.assets` 폴더의 정적 파일 (번들과 같은 조건)
 //! GET  /api/extensions/:id/icon     → 아이콘 (icon.png) 서빙
 //! GET  /api/extensions/:id/audit    → 코드가 쓰는 위험한 능력과 manifest `permissions` 비교
 //! GET  /api/extensions/:id/i18n/:locale → i18n JSON
@@ -285,12 +286,38 @@ pub async fn serve_gui_bundle(
     serve_static_file(&bundle_path, "application/javascript").await
 }
 
+/// GET /api/extensions/:id/gui/assets/*path — 번들이 쓰는 정적 파일. manifest `gui.assets` 폴더 안의 파일만,
+/// 번들과 같은 조건(허락·경로 규칙)으로 준다. 형식은 보지 않는다 (`application/octet-stream`, GUI가 이름으로 정한다)
+pub async fn serve_gui_asset(
+    State(state): State<IPCServer>,
+    Path((ext_id, path)): Path<(String, String)>,
+) -> Result<Response, StatusCode> {
+    let mgr = state.extension_manager.read().await;
+    let manifests = mgr.gui_manifests();
+    let assets = manifests
+        .iter()
+        .find(|(id, _)| *id == ext_id)
+        .and_then(|(_, g)| g.assets.as_deref())
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let dir = mgr.discovered(&ext_id).map(|ext| ext.dir.clone()).ok_or(StatusCode::NOT_FOUND)?;
+    let file = gui_file(&dir, &format!("{}/{}", assets.trim_end_matches('/'), path)).ok_or(StatusCode::NOT_FOUND)?;
+    drop(mgr);
+    if let Some(refused) = unapproved_gui(&ext_id, dir).await {
+        return Ok(refused);
+    }
+
+    serve_static_file(&file, "application/octet-stream").await
+}
+
 /// manifest의 GUI 파일 경로를 익스텐션 폴더 안의 실제 파일로 푼다. 허락은 폴더 안 파일의 지문에 묶이므로
 /// 폴더 밖(`..`·절대 경로)이나 링크(파일이든 거쳐 가는 폴더든)를 가리키면 서빙하지 않는다.
-/// 지문이 빼는 `__pycache__` 안의 파일도 서빙하지 않는다 (허락 뒤에 바뀌어도 지문이 같다)
+/// 지문이 빼는 `__pycache__` 안의 파일도 서빙하지 않는다 (허락 뒤에 바뀌어도 지문이 같다).
+/// 이름에 `:`이 든 조각도 받지 않는다 (Windows에서 드라이브·파일 스트림으로 읽힌다)
 fn gui_file(dir: &std::path::Path, relative: &str) -> Option<std::path::PathBuf> {
     let rel = std::path::Path::new(relative);
-    let plain = |c: std::path::Component| matches!(c, std::path::Component::Normal(n) if !n.to_string_lossy().eq_ignore_ascii_case("__pycache__"));
+    let plain = |c: std::path::Component| {
+        matches!(c, std::path::Component::Normal(n) if !n.to_string_lossy().eq_ignore_ascii_case("__pycache__") && !n.to_string_lossy().contains(':'))
+    };
     if relative.is_empty() || !rel.components().all(plain) {
         return None;
     }
@@ -837,11 +864,13 @@ mod tests {
         let id = ext.path().file_name().unwrap().to_string_lossy().into_owned();
         std::fs::write(
             ext.path().join("manifest.json"),
-            json!({ "id": id, "name": "t", "version": "0.1.0", "gui": { "bundle": "gui.js", "styles": "gui.css" } }).to_string(),
+            json!({ "id": id, "name": "t", "version": "0.1.0", "gui": { "bundle": "gui.js", "styles": "gui.css", "assets": "img" } }).to_string(),
         )
         .unwrap();
         std::fs::write(ext.path().join("gui.js"), "window.x = 1").unwrap();
         std::fs::write(ext.path().join("gui.css"), "body{}").unwrap();
+        std::fs::create_dir_all(ext.path().join("img").join("cat")).unwrap();
+        std::fs::write(ext.path().join("img").join("cat").join("idle.webp"), "RIFF").unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
             tmp.path().join("modules").to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
@@ -855,6 +884,7 @@ mod tests {
         }
         let key = format!("ext-{}", id);
         let status = |r: Result<Response, StatusCode>| r.map(|r| r.status()).unwrap_or_else(|s| s);
+        let asset = |state: IPCServer, id: String, path: &str| serve_gui_asset(State(state), Path((id, path.to_string())));
         let listed = |state: IPCServer, id: String| async move {
             let mgr = state.extension_manager.read().await;
             mgr.list().into_iter().find(|e| e.id == id).and_then(|e| e.gui_allowed)
@@ -862,6 +892,7 @@ mod tests {
 
         assert_eq!(status(serve_gui_bundle(State(state.clone()), Path(id.clone())).await), StatusCode::FORBIDDEN);
         assert_eq!(status(serve_gui_styles(State(state.clone()), Path(id.clone())).await), StatusCode::FORBIDDEN);
+        assert_eq!(status(asset(state.clone(), id.clone(), "cat/idle.webp").await), StatusCode::FORBIDDEN);
         assert_eq!(listed(state.clone(), id.clone()).await, Some(false));
 
         // 원격에서는 허락할 수 없다
@@ -877,11 +908,19 @@ mod tests {
         assert_eq!(ok.status(), StatusCode::OK);
         assert_eq!(status(serve_gui_bundle(State(state.clone()), Path(id.clone())).await), StatusCode::OK);
         assert_eq!(status(serve_gui_styles(State(state.clone()), Path(id.clone())).await), StatusCode::OK);
+        // 정적 파일은 manifest `gui.assets` 폴더 안의 것만 준다
+        let served = asset(state.clone(), id.clone(), "cat/idle.webp").await.unwrap();
+        assert_eq!(served.status(), StatusCode::OK);
+        assert_eq!(&axum::body::to_bytes(served.into_body(), 1024).await.unwrap()[..], b"RIFF");
+        for outside in ["../gui.js", "cat/../../gui.js", "cat", "missing.webp"] {
+            assert_eq!(status(asset(state.clone(), id.clone(), outside).await), StatusCode::NOT_FOUND, "{outside}");
+        }
         assert_eq!(listed(state.clone(), id.clone()).await, Some(true));
 
         // 파일이 바뀌면 다시 묻는다
         std::fs::write(ext.path().join("gui.js"), "window.x = 2").unwrap();
         assert_eq!(status(serve_gui_bundle(State(state.clone()), Path(id.clone())).await), StatusCode::FORBIDDEN);
+        assert_eq!(status(asset(state.clone(), id.clone(), "cat/idle.webp").await), StatusCode::FORBIDDEN);
         let _ = super::super::sandbox::revoke_extension_gui(Path(key)).await;
     }
 
@@ -905,6 +944,10 @@ mod tests {
             std::os::unix::fs::symlink(tmp.path(), dir.join("linked")).unwrap();
             assert_eq!(gui_file(&dir, "link.js"), None);
             assert_eq!(gui_file(&dir, "linked/outside.js"), None);
+            // 이름에 `:`이 든 조각은 Windows에서 드라이브·스트림으로 읽히므로 어느 OS에서도 받지 않는다
+            std::fs::create_dir_all(dir.join("gui").join("C:")).unwrap();
+            std::fs::write(dir.join("gui").join("C:").join("a.js"), "x").unwrap();
+            assert_eq!(gui_file(&dir, "gui/C:/a.js"), None);
         }
     }
 

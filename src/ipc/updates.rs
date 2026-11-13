@@ -1285,6 +1285,13 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
                 },
                 _ => None,
             };
+            // 바꿀 폴더에서 떠 있는 작업자는 끝낸다 (Windows는 작업 폴더로 쓰는 폴더를 옮기지 못한다). 다음 호출이 새 판으로 띄운다.
+            // 익스텐션은 다른 구성요소의 작업자가 import해 두었을 수 있어 모든 작업자를 끝낸다 (`utils::swap_dir`와 같다)
+            match comp {
+                Component::Module(name) => crate::plugin::stop_workers(Some(&crate::plugin::resolve_modules_dir().join(name))),
+                Component::Extension(_) => crate::plugin::stop_workers(None),
+                _ => {}
+            }
             let applying = if body.untouched_only { mgr.apply_untouched_addon(comp).await } else { mgr.apply_single_component(comp).await };
             match applying {
                 Ok(result) if result.success => {

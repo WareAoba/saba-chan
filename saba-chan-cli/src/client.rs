@@ -1780,6 +1780,7 @@ mod route_coverage {
         ("/api/client/{id}/unregister", "GUI 창 수명"),
         ("/api/extensions/{id}/gui", "GUI 번들"),
         ("/api/extensions/{id}/gui/styles", "GUI 번들"),
+        ("/api/extensions/{id}/gui/assets/{*path}", "GUI 번들"),
         ("/api/extensions/{id}/icon", "GUI 그림"),
         ("/api/extensions/{id}/i18n/{locale}", "GUI 번들 문구"),
         ("/api/locales/{lang}/{ns}", "GUI 번역 (CLI는 설치 폴더 cli.json을 직접 읽고, TUI는 `locales_version`이 바뀌면 다시 읽는다)"),

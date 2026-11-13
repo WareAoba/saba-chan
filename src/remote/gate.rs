@@ -177,6 +177,7 @@ pub static ROUTES: &[Route] = &[
     // 웹은 플러그인 화면을 그리지 않는다. GUI는 slot에 넣는다 (확인되지 않은 번들은 그 PC의 동의가 있어야 준다)
     not_on_web("GET", "/api/extensions/{id}/gui"),
     not_on_web("GET", "/api/extensions/{id}/gui/styles"),
+    not_on_web("GET", "/api/extensions/{id}/gui/assets/{*path}"),
     // 웹은 프레임이 JSON 이라 그림을 base64 글자로 받는다 (`base64_body`)
     allow("GET", "/api/extensions/{id}/icon"),
     allow("GET", "/api/extensions/{id}/audit"),

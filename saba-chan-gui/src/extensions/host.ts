@@ -31,6 +31,8 @@ export interface ExtensionHost extends HostWindow {
     t: TFunction;
     /** 데몬 이벤트 구독. type `*`는 전부. 이 창이 이벤트를 받지 않으면(트레이 팝업) 부르지 않는다. 끊는 함수를 돌려준다 */
     on: (type: string, fn: (data: DaemonEvent['data'], type: string) => void) => () => void;
+    /** manifest `gui.assets` 폴더의 파일(그 폴더 기준 이름)을 그릴 수 있는 URL로. 처음 부를 때 받고 이 창에서 기억한다. 없으면 null */
+    assetUrl: (path: string) => Promise<string | null>;
 }
 
 /** openApp이 받는 메인 창 화면. 그 밖의 값은 무시한다 (빈 화면으로 가지 않게) */
@@ -49,6 +51,48 @@ const NO_WINDOW: HostWindow = {
 
 export const HostWindowContext = createContext<HostWindow>(NO_WINDOW);
 
+/** 데몬은 정적 파일의 형식을 보지 않는다: 이름으로 붙인다 (그 밖은 브라우저가 내용으로 안다) */
+const ASSET_TYPES: Record<string, string> = {
+    webp: 'image/webp',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    svg: 'image/svg+xml',
+    avif: 'image/avif',
+};
+/** 익스텐션 id → 이름 → 받는 중이거나 받은 URL. 이 창이 닫히거나 익스텐션을 내릴 때까지 둔다 */
+const assetUrls = new Map<string, Map<string, Promise<string | null>>>();
+
+function assetUrl(extension: string, path: string): Promise<string | null> {
+    let urls = assetUrls.get(extension);
+    if (!urls) assetUrls.set(extension, (urls = new Map()));
+    const known = urls.get(path);
+    if (known) return known;
+    const mine = urls;
+    const url = window.api.extensionGuiAsset(extension, path).then((base64) => {
+        if (typeof base64 !== 'string') {
+            // 받지 못했다 (데몬이 아직 안 떴거나 파일이 없다): 다음에 다시 받는다
+            mine.delete(path);
+            return null;
+        }
+        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+        const type = ASSET_TYPES[path.split('.').pop()?.toLowerCase() ?? ''] ?? '';
+        return URL.createObjectURL(new Blob([bytes], { type }));
+    });
+    urls.set(path, url);
+    return url;
+}
+
+/** 익스텐션을 내리거나 새 판으로 바꿀 때: 받은 URL을 놓는다 (다음 assetUrl은 다시 받는다) */
+export function forgetAssets(extension: string) {
+    const urls = assetUrls.get(extension);
+    assetUrls.delete(extension);
+    for (const url of urls?.values() ?? []) {
+        url.then((u) => u && URL.revokeObjectURL(u));
+    }
+}
+
 export function makeHost(extension: string, win: HostWindow): ExtensionHost {
     return {
         ...win,
@@ -59,6 +103,7 @@ export function makeHost(extension: string, win: HostWindow): ExtensionHost {
             subscribeDaemonEvents((ev) => {
                 if (type === '*' || ev.type === type) fn(ev.data, ev.type);
             }),
+        assetUrl: (path) => assetUrl(extension, path),
     };
 }
 

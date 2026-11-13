@@ -320,7 +320,7 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
-        let list = crate::remote_daemon::sync_with_relay(&file, &target).await.unwrap();
+        let list = crate::remote_daemon::RemoteDaemon::default().sync_with_relay(&file, &target).await.unwrap();
         assert_eq!(list.peers.len(), 1);
         assert_eq!(crate::remote_daemon::config::this_name_in(&file), "작업용");
     }
