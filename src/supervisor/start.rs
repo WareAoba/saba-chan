@@ -40,12 +40,13 @@ fn with_port_moved(mut result: Value, moved: Option<(u16, u16)>) -> Value {
 
 /// 시작 준비 중에 정지가 들어와 띄우지 않았다 (또는 띄운 것을 바로 껐다)
 fn start_cancelled(server_name: &str) -> Value {
-    json!({
-        "success": false,
-        "error": "start_cancelled",
-        "error_code": "start_cancelled",
-        "message": format!("Server '{}' was stopped while it was starting", server_name),
-    })
+    refusal("start_cancelled", format!("Server '{}' was stopped while it was starting", server_name))
+}
+
+/// 감독자가 시작을 거절한 답 (모듈 답이 아니다). 01 §2.1 모양이고, 서비스가 2xx가 아닌 상태로 답한다
+/// (`service::lifecycle::refused_status`). `message`는 `error`와 같은 문구로, 그것을 읽는 클라이언트를 위해 남긴다
+fn refusal(code: &str, message: String) -> Value {
+    json!({ "success": false, "error": message, "error_code": code, "message": message })
 }
 
 impl Drop for StartGuard {
@@ -187,13 +188,9 @@ impl Supervisor {
             return None;
         }
         tracing::warn!("Port conflict detected for '{}': {:?}", instance.name, details);
-        Some(json!({
-            "success": false,
-            "error": "port_conflict",
-            "error_code": "port_conflict",
-            "message": format!("Cannot start '{}': port conflict detected", instance.name),
-            "conflicts": details,
-        }))
+        let mut body = refusal("port_conflict", format!("Cannot start '{}': port conflict detected", instance.name));
+        body["conflicts"] = json!(details);
+        Some(body)
     }
 
     /// 실행 인자 미리보기: 저장된 설정 위에 초안(`draft`)을, 그 위에 추가 인자(`extra`, 없으면 저장된 것)에서 읽은 필드를 얹어
@@ -344,14 +341,10 @@ impl Supervisor {
         // 데몬보다 새 스키마는 그 이유 그대로 준다 (클라이언트가 "업데이트가 필요해요"로 보인다)
         if let Some(f) = failed.as_ref().filter(|f| f.error_code.as_deref() == Some("module_schema_unsupported")) {
             tracing::warn!("Module '{}' needs a newer saba-chan for '{}': {}", module_name, instance_name, f.error);
-            return Some(json!({
-                "success": false,
-                "error": "module_schema_unsupported",
-                "error_code": "module_schema_unsupported",
-                "message": format!("Cannot start '{}': {}", instance_name, f.error),
-                "module": module_name,
-                "required": f.required,
-            }));
+            let mut body = refusal("module_schema_unsupported", format!("Cannot start '{}': {}", instance_name, f.error));
+            body["module"] = json!(module_name);
+            body["required"] = json!(f.required);
+            return Some(body);
         }
         let unmet = match failed {
             // 의존성 때문에 로드하지 못한 것만. 스키마가 틀린 모듈 등은 빈 의존성 오류로 바꾸지 않는다
@@ -364,14 +357,9 @@ impl Supervisor {
             .iter()
             .find_map(|d| d.strip_prefix("saba-core "))
             .map(|d| d.split(" (").next().unwrap_or_default().trim_start_matches(">=").trim().to_string());
-        let mut body = json!({
-            "success": false,
-            "error": "module_dependency_unsatisfied",
-            "error_code": "module_dependency_unsatisfied",
-            "message": format!("Cannot start '{}': module '{}' needs {}", instance_name, module_name, unmet.join(", ")),
-            "module": module_name,
-            "missing_dependencies": unmet,
-        });
+        let mut body = refusal("module_dependency_unsatisfied", format!("Cannot start '{}': module '{}' needs {}", instance_name, module_name, unmet.join(", ")));
+        body["module"] = json!(module_name);
+        body["missing_dependencies"] = json!(unmet);
         if let Some(version) = required_core {
             body["required_core"] = json!(version);
         }
@@ -451,14 +439,10 @@ impl Supervisor {
             } else {
                 tracing::error!("Instance '{}' requires extensions {:?} but they are not enabled", instance_id, missing);
             }
-            return Ok(Err(json!({
-                "success": false,
-                "error": "extension_required",
-                "error_code": "extension_required",
-                "instance_name": instance_id,
-                "missing_extensions": missing,
-                "message": format!("Instance '{}' requires extension(s) {} to start. Please enable them first.", instance_id, missing.join(", "))
-            })));
+            let mut body = refusal("extension_required", format!("Instance '{}' requires extension(s) {} to start. Please enable them first.", instance_id, missing.join(", ")));
+            body["instance_name"] = json!(instance_id);
+            body["missing_extensions"] = json!(missing);
+            return Ok(Err(body));
         }
 
         // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
@@ -467,12 +451,7 @@ impl Supervisor {
         }
 
         let Some(starting) = StartGuard::claim(&self.runtime, &instance.id, start_baseline(self, &instance.id)) else {
-            return Ok(Err(json!({
-                "success": false,
-                "error": "start_in_progress",
-                "error_code": "start_in_progress",
-                "message": format!("Server '{}' is already starting", instance.name),
-            })));
+            return Ok(Err(refusal("start_in_progress", format!("Server '{}' is already starting", instance.name))));
         };
 
         // ── server.pre_start 문맥: 서버 hook 공통 문맥 + 시작 설정(비밀 값은 가린다)·시작 방식 ──

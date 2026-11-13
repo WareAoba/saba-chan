@@ -36,17 +36,98 @@ where
     futures_util::StreamExt::collect(futures_util::StreamExt::buffer_unordered(futures_util::stream::iter(asks), LIST_ENRICH_AT_ONCE)).await
 }
 
+/// 목록 한 줄의 기본 모습(native 상태)과 hook·폴더 판정에 쓰는 값
+struct InstanceSnapshot {
+    info: ServerInfo,
+    instance_dir: String,
+    process_patterns: Vec<String>,
+}
+
+/// 데몬 락 안에서 인스턴스 하나를 목록 한 줄로 옮긴다. `tracked`: (켜짐, PID, 시작 시간)
+fn snapshot(
+    supervisor: &crate::supervisor::Supervisor,
+    instance: &crate::instance::ServerInstance,
+    module: Option<&crate::module_loader::LoadedModule>,
+    (running, pid, start_time): (bool, Option<u32>, Option<u64>),
+) -> InstanceSnapshot {
+    let process_patterns = module.as_ref().map(|m| m.metadata.process_patterns.clone()).unwrap_or_default();
+    let chat_patterns = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
+    let kick_on_join = module.as_ref().is_some_and(|m| m.metadata.kick_command.is_some() && !m.metadata.player_join_patterns.is_empty());
+    let managed = supervisor.uses_managed_start(instance);
+    let counts_players = module.as_ref().is_some_and(|m| {
+        m.metadata.players_function.is_some() || (managed && !m.metadata.player_join_patterns.is_empty() && !m.metadata.player_leave_patterns.is_empty())
+    });
+    InstanceSnapshot {
+        info: ServerInfo {
+            id: instance.id.clone(),
+            name: instance.name.clone(),
+            module: instance.module_name.clone(),
+            // Native 모드: 스냅샷의 PID 및 시작 시간
+            status: if running { "running" } else { "stopped" }.to_string(),
+            pid,
+            start_time,
+            executable_path: instance.executable_path.clone(),
+            working_dir: instance.working_dir.clone(),
+            port: instance.port,
+            // REST 접속값은 모듈 설정에만 있다 (`[protocols.rest]`). 응답에는 예전 이름으로 풀어 싣는다
+            rest_host: module.as_ref().and_then(|m| m.metadata.rest_host(instance)),
+            rest_port: module.as_ref().and_then(|m| m.metadata.rest_port(instance)),
+            rest_username: module.as_ref().and_then(|m| m.metadata.rest()?.username.clone()),
+            rest_password: module.as_ref().and_then(|m| m.metadata.rest_password(instance)).map(str::to_string),
+            protocol_mode: instance.protocol_mode.clone(),
+            module_settings: instance.module_settings.clone(),
+            server_version: instance.server_version.clone(),
+            server_build: instance.server_build.clone(),
+            version_hidden: module
+                .as_ref()
+                .and_then(|m| m.metadata.settings.as_ref())
+                .map(|s| crate::validator::version_hidden(&s.fields, instance.server_version.as_deref()))
+                .unwrap_or_default(),
+            last_api_action: None,
+            provisioning: false,
+            managed,
+            extension_status: std::collections::HashMap::new(),
+            extension_data: instance.extension_data.clone(),
+            extra_args: instance.extra_args.clone(),
+            memory_limit_mb: instance.memory_limit_mb,
+            memory_limit_supported: crate::instance::MEMORY_LIMIT_ENFORCED,
+            auto_update: instance.auto_update,
+            branch_of: instance.branch_of.clone(),
+            game_chat: instance.game_chat,
+            game_chat_keyword: instance.game_chat_keyword.clone(),
+            access: instance.access,
+            controllers: instance.controllers.clone(),
+            controllers_only: instance.controllers_only,
+            kick_players: instance.kick_players.clone(),
+            game_chat_supported: chat_patterns && managed,
+            controllers_only_supported: kick_on_join && managed,
+            idle_stop_supported: counts_players,
+            idle_stopped: if running { None } else { crate::supervisor::idle::stopped(&instance.id) },
+            revision: instance.settings_revision(),
+            port_conflicts: vec![],
+            slots: Default::default(),
+            update_check: crate::service::server_update::last_check(&instance.id),
+            transition: crate::instance::transition::of(&instance.id).map(|k| k.as_str().to_string()),
+            players: None,
+            unresponsive: None,
+            unresponsive_minutes: None,
+            // 폴더 판정은 아래 락 밖에서
+            linked_folder: None,
+            restorable_settings: false,
+            stored: module
+                .and_then(|m| m.metadata.settings.as_ref())
+                .map(|s| crate::instance::stored_settings(instance, &s.fields))
+                .unwrap_or_default(),
+        },
+        instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
+        process_patterns,
+    }
+}
+
 /// `notices_after`: 이 번호 뒤의 포트 충돌 강제 정지 알림만 싣는다
 pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
     let state = state.clone();
     // ── Phase 1: supervisor lock을 최소 시간만 잡고 필요한 데이터 복사 ──
-    /// 목록 한 줄의 기본 모습(native 상태)과 hook·폴더 판정에 쓰는 값
-    struct InstanceSnapshot {
-        info: ServerInfo,
-        instance_dir: String,
-        process_patterns: Vec<String>,
-    }
-
     let (snapshots, all_instances, module_protocols): (Vec<InstanceSnapshot>, Vec<_>, _) = {
         let supervisor = state.supervisor.read().await;
         let instances = supervisor.instance_store.list();
@@ -57,82 +138,10 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
         for instance in instances {
             states.insert(instance.id.as_str(), supervisor.tracked_state(&instance.id).await);
         }
-        let snapshots =         instances.iter().map(|instance| {
-            let (running, pid, start_time) = states[instance.id.as_str()];
-            let module = modules.iter().find(|m| m.metadata.name == instance.module_name);
-            let process_patterns = module.as_ref().map(|m| m.metadata.process_patterns.clone()).unwrap_or_default();
-            let chat_patterns = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
-            let kick_on_join = module.as_ref().is_some_and(|m| m.metadata.kick_command.is_some() && !m.metadata.player_join_patterns.is_empty());
-            let managed = supervisor.uses_managed_start(instance);
-            let counts_players = module.as_ref().is_some_and(|m| {
-                m.metadata.players_function.is_some() || (managed && !m.metadata.player_join_patterns.is_empty() && !m.metadata.player_leave_patterns.is_empty())
-            });
-            InstanceSnapshot {
-                info: ServerInfo {
-                    id: instance.id.clone(),
-                    name: instance.name.clone(),
-                    module: instance.module_name.clone(),
-                    // Native 모드: 스냅샷의 PID 및 시작 시간
-                    status: if running { "running" } else { "stopped" }.to_string(),
-                    pid,
-                    start_time,
-                    executable_path: instance.executable_path.clone(),
-                    working_dir: instance.working_dir.clone(),
-                    port: instance.port,
-                    // REST 접속값은 모듈 설정에만 있다 (`[protocols.rest]`). 응답에는 예전 이름으로 풀어 싣는다
-                    rest_host: module.as_ref().and_then(|m| m.metadata.rest_host(instance)),
-                    rest_port: module.as_ref().and_then(|m| m.metadata.rest_port(instance)),
-                    rest_username: module.as_ref().and_then(|m| m.metadata.rest()?.username.clone()),
-                    rest_password: module.as_ref().and_then(|m| m.metadata.rest_password(instance)).map(str::to_string),
-                    protocol_mode: instance.protocol_mode.clone(),
-                    module_settings: instance.module_settings.clone(),
-                    server_version: instance.server_version.clone(),
-                    server_build: instance.server_build.clone(),
-                    version_hidden: module
-                        .as_ref()
-                        .and_then(|m| m.metadata.settings.as_ref())
-                        .map(|s| crate::validator::version_hidden(&s.fields, instance.server_version.as_deref()))
-                        .unwrap_or_default(),
-                    last_api_action: None,
-                    provisioning: false,
-                    managed,
-                    extension_status: std::collections::HashMap::new(),
-                    extension_data: instance.extension_data.clone(),
-                    extra_args: instance.extra_args.clone(),
-                    memory_limit_mb: instance.memory_limit_mb,
-                    memory_limit_supported: crate::instance::MEMORY_LIMIT_ENFORCED,
-                    auto_update: instance.auto_update,
-                    branch_of: instance.branch_of.clone(),
-                    game_chat: instance.game_chat,
-                    game_chat_keyword: instance.game_chat_keyword.clone(),
-                    access: instance.access,
-                    controllers: instance.controllers.clone(),
-                    controllers_only: instance.controllers_only,
-                    kick_players: instance.kick_players.clone(),
-                    game_chat_supported: chat_patterns && managed,
-                    controllers_only_supported: kick_on_join && managed,
-                    idle_stop_supported: counts_players,
-                    idle_stopped: if running { None } else { crate::supervisor::idle::stopped(&instance.id) },
-                    revision: instance.settings_revision(),
-                    port_conflicts: vec![],
-                    slots: Default::default(),
-                    update_check: crate::service::server_update::last_check(&instance.id),
-                    transition: crate::instance::transition::of(&instance.id).map(|k| k.as_str().to_string()),
-                    players: None,
-                    unresponsive: None,
-                    unresponsive_minutes: None,
-                    // 폴더 판정은 아래 락 밖에서
-                    linked_folder: None,
-                    restorable_settings: false,
-                    stored: module
-                        .and_then(|m| m.metadata.settings.as_ref())
-                        .map(|s| crate::instance::stored_settings(instance, &s.fields))
-                        .unwrap_or_default(),
-                },
-                instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
-                process_patterns,
-            }
-        }).collect();
+        let snapshots = instances
+            .iter()
+            .map(|instance| snapshot(&supervisor, instance, modules.iter().find(|m| m.metadata.name == instance.module_name), states[instance.id.as_str()]))
+            .collect();
         (snapshots, all_instances, module_protocols)
     };
     // supervisor read lock 해제됨 — 이후 extension dispatch에 의해 블로킹되어도
@@ -179,22 +188,7 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
     for InstanceSnapshot { info: mut server, .. } in snapshots {
         // ── Extension hook: server.list_enrich ──
         if let Some(enrich_result) = enriched.remove(&server.id) {
-            // handled: true인 경우만 Extension이 서버 정보를 제공: 상태·PID·시작 시간·extension_status만 바꾼다
-            let is_handled = enrich_result.get("handled")
-                .and_then(|h| h.as_bool()) == Some(true);
-
-            if is_handled {
-                server.status = enrich_result.get("status").and_then(|s| s.as_str())
-                    .unwrap_or("stopped").to_string();
-                server.pid = None;
-                server.start_time = None;
-                // hook 응답에서 extension_id 필드가 있으면 해당 키로, 아니면 "default"
-                let ext_key = enrich_result.get("extension_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("default")
-                    .to_string();
-                server.extension_status.insert(ext_key, enrich_result);
-            }
+            take_enrichment(&mut server, enrich_result);
         }
 
         // API(CLI/Discord)를 통한 마지막 시작/정지 타임스탬프 조회
@@ -234,26 +228,10 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
     // ── 포트 충돌 계산: 시작 시 검사(check_port_conflicts)와 같은 기준 ──
     // 모듈이 지원하지 않는 프로토콜의 포트는 제외한다. 목록은 "켜면 부딪힐" 서버를
     // 미리 보여주는 용도라 정지된 서버끼리도 비교한다(시작 시에는 실행 중인 것만).
-    {
-        let every_id: std::collections::HashSet<String> =
-            all_instances.iter().map(|i| i.id.clone()).collect();
-        for srv in servers.iter_mut() {
-            let Some(target) = all_instances.iter().find(|i| i.id == srv.id) else { continue };
-            srv.port_conflicts = crate::validator::check_port_conflicts(
-                target,
-                &all_instances,
-                &every_id,
-                &module_protocols,
-            )
-            .into_iter()
-            .map(|c| PortConflictInfo {
-                port: c.port,
-                port_type: c.port_type,
-                conflict_name: c.conflicting_instance_name,
-                conflict_id: c.conflicting_instance_id,
-                conflict_port_type: c.conflicting_port_type,
-            })
-            .collect();
+    let every_id: std::collections::HashSet<String> = all_instances.iter().map(|i| i.id.clone()).collect();
+    for srv in servers.iter_mut() {
+        if let Some(target) = all_instances.iter().find(|i| i.id == srv.id) {
+            srv.port_conflicts = port_conflicts(target, &all_instances, &every_id, &module_protocols);
         }
     }
 
@@ -261,6 +239,37 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
     let port_conflict_stops = state.supervisor.read().await.port_conflict_stops_after(notices_after);
 
     Ok(json!(ServerListResponse { servers, port_conflict_stops }))
+}
+
+/// `server.list_enrich` 답: handled: true인 경우만 Extension이 서버 정보를 제공한다 (상태·PID·시작 시간·extension_status만 바꾼다)
+fn take_enrichment(server: &mut ServerInfo, enrich_result: Value) {
+    if enrich_result.get("handled").and_then(|h| h.as_bool()) != Some(true) {
+        return;
+    }
+    server.status = enrich_result.get("status").and_then(|s| s.as_str()).unwrap_or("stopped").to_string();
+    server.pid = None;
+    server.start_time = None;
+    // hook 응답에서 extension_id 필드가 있으면 해당 키로, 아니면 "default"
+    let ext_key = enrich_result.get("extension_id").and_then(|v| v.as_str()).unwrap_or("default").to_string();
+    server.extension_status.insert(ext_key, enrich_result);
+}
+
+fn port_conflicts(
+    target: &crate::instance::ServerInstance,
+    all_instances: &[crate::instance::ServerInstance],
+    every_id: &std::collections::HashSet<String>,
+    module_protocols: &std::collections::HashMap<String, String>,
+) -> Vec<PortConflictInfo> {
+    crate::validator::check_port_conflicts(target, all_instances, every_id, module_protocols)
+        .into_iter()
+        .map(|c| PortConflictInfo {
+            port: c.port,
+            port_type: c.port_type,
+            conflict_name: c.conflicting_instance_name,
+            conflict_id: c.conflicting_instance_id,
+            conflict_port_type: c.conflicting_port_type,
+        })
+        .collect()
 }
 
 /// 접속자 목록 (`GET /api/instance/:id/players`와 채팅이 같이 쓴다)

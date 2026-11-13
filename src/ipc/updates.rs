@@ -497,7 +497,7 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
 
 /// `check_and_follow_up`에 heartbeat가 알린 릴리즈 id를 릴레이 캐시 키로 붙인다. 확인 결과와 `/latest` 응답에 담긴 가장 큰 릴리즈 id
 async fn check_and_follow_up_hinted(state: &UpdateState, hint: Option<u64>) -> anyhow::Result<(saba_chan_updater_lib::UpdateStatus, Option<u64>)> {
-    let (status, latest_id) = state.manager.write().await.check_for_updates_hinted(hint).await?;
+    let (status, latest_id) = saba_chan_updater_lib::check_shared(&state.manager, hint).await?;
     announce_new_updates(&status);
     state.status_may_have_changed();
 
@@ -1285,17 +1285,15 @@ async fn download_components(State(state): State<UpdateState>, raw: axum::body::
 
 async fn download_components_with(state: UpdateState, body: DownloadRequest) -> axum::response::Response {
     let _touched = StatusTouched(&state);
-    {
-        let mut mgr = state.manager.write().await;
-        // 아직 체크하지 않았으면 먼저 체크
-        if mgr.get_status().components.is_empty() {
-            if let Err(e) = mgr.check_for_updates().await {
-                return crate::ipc::handlers::error(axum::http::StatusCode::BAD_GATEWAY, "update_check_failed", format!("Auto-check failed: {}", e));
-            }
+    // 아직 체크하지 않았으면 먼저 체크. 묻고 받는 동안은 관리자를 잠그지 않는다 (`check_shared`·`download_shared`):
+    // 상태 조회·`update.status`가 기다리지 않는다
+    let unchecked = state.manager.read().await.get_status().components.is_empty();
+    if unchecked {
+        if let Err(e) = saba_chan_updater_lib::check_shared(&state.manager, None).await {
+            return crate::ipc::handlers::error(axum::http::StatusCode::BAD_GATEWAY, "update_check_failed", format!("Auto-check failed: {}", e));
         }
     }
 
-    // 받는 동안은 관리자를 잠그지 않는다 (`download_shared`): 상태 조회·`update.status`가 기다리지 않는다
     if body.components.is_empty() {
         // 전체 다운로드. 하나가 실패해도 받은 것은 적용할 수 있게 남기고, 선택 다운로드처럼 받은 것과 실패한 것을 함께 알린다
         match saba_chan_updater_lib::download_available_shared(&state.manager).await {
@@ -2165,11 +2163,11 @@ async fn check_integrity(
 /// `mark`면 고칠 것을 다시 받을 수 있게 표시한다
 async fn repair_plan(state: &UpdateState, mark: bool) -> Result<Value, String> {
     let report = state.manager.read().await.verify_integrity();
-    let mut mgr = state.manager.write().await;
     let broken = report.components.iter().any(|c| matches!(c.status, IntegrityStatus::Tampered | IntegrityStatus::FileNotFound));
-    if broken && mgr.get_status().components.is_empty() {
-        mgr.check_for_updates().await.map_err(|e| format!("Update check failed: {}", e))?;
+    if broken && state.manager.read().await.get_status().components.is_empty() {
+        saba_chan_updater_lib::check_shared(&state.manager, None).await.map_err(|e| format!("Update check failed: {}", e))?;
     }
+    let mut mgr = state.manager.write().await;
     let plan = mgr.repair_plan(&report);
     if mark && !plan.repair.is_empty() {
         mgr.mark_for_repair(&plan);

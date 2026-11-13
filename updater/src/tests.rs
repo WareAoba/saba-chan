@@ -2457,3 +2457,37 @@ async fn a_shared_download_does_not_hold_the_manager_while_it_downloads() {
     let slow = status.components.iter().find(|c| c.component == Component::Module("slow".into())).unwrap();
     assert!(slow.downloaded, "{slow:?}");
 }
+
+/// 데몬처럼 관리자를 함께 쓰면(`check_shared`) 릴레이에 묻는 동안 관리자를 잠그지 않는다:
+/// 확인하는 중에도 상태 조회가 기다리지 않고, 확인이 실패하면 그 까닭이 상태에 남는다
+#[tokio::test]
+async fn a_shared_check_does_not_hold_the_manager_while_it_asks_the_relay() {
+    use tokio::io::AsyncReadExt;
+    // 요청을 받고 0.5초 뒤 답 없이 끊는 릴레이
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let relay_url = format!("http://{}", listener.local_addr().unwrap());
+    let (asked, mut was_asked) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        let (mut sock, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = sock.read(&mut buf).await;
+        let _ = asked.send(());
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let config = UpdateConfig { relay_url: Some(relay_url), ..UpdateConfig::default() };
+    let mut manager = UpdateManager::new(config, tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    let manager = std::sync::Arc::new(tokio::sync::RwLock::new(manager));
+
+    let shared = manager.clone();
+    let check = tokio::spawn(async move { crate::check_shared(&shared, None).await });
+    tokio::time::timeout(std::time::Duration::from_secs(5), was_asked.recv()).await.expect("the check asked the relay");
+    let read = tokio::time::timeout(std::time::Duration::from_millis(100), manager.read()).await;
+    assert!(read.as_ref().is_ok_and(|m| m.get_status().checking), "the status can be read while the check waits on the relay");
+    drop(read);
+
+    assert!(check.await.unwrap().is_err());
+    let status = manager.read().await.get_status();
+    assert!(!status.checking && status.error.as_deref().is_some_and(|e| e.starts_with("Relay check failed")), "{status:?}");
+}

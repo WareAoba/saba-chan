@@ -509,6 +509,11 @@ pub struct ProvisionProgress {
 }
 
 impl ProvisionProgress {
+    /// 끝난 진행 표시 한 단계짜리 (`error`가 있으면 실패)
+    pub fn finished(message: String, error: Option<String>) -> Self {
+        Self { step: 0, total: 1, label: "done".to_string(), message, done: true, error, percent: Some(100), steps: None, details: Default::default() }
+    }
+
     pub fn with_failure(mut self, failure: Value) -> Self {
         if let Value::Object(mut fields) = failure {
             self.error = fields.remove("error").and_then(|v| v.as_str().map(str::to_string))

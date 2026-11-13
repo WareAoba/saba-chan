@@ -264,6 +264,9 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                             return { ...data, error: t('server.not_found', { name: instanceId }) };
                         case 409:
                             return { ...data, error: message || t('server.already_running', { name: instanceId }) };
+                        // 데몬이 켜기 전에 거절했다 (익스텐션·의존성·지원 OS, 0.1.14까지는 200): 화면이 코드로 문구를 고른다
+                        case 422:
+                            return data;
                         default:
                             return { ...data, error: t('server.start_failed', { error: message || error.message }) };
                     }

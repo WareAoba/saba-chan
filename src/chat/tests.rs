@@ -288,6 +288,17 @@ async fn a_start_says_which_port_it_moved() {
     assert!(out.contains("port in use") && out.contains("8242"), "{}", out);
 }
 
+/// 감독자가 시작 전에 거절한 것(포트 충돌 등)은 409·422로 와도 200으로 오던 때와 같은 한 줄이다
+#[tokio::test]
+async fn a_start_the_daemon_refused_reads_as_before() {
+    let mut api = fixture();
+    let refused = json!({"success": false, "error": "Cannot start 'mc': port conflict detected", "error_code": "port_conflict", "message": "Cannot start 'mc': port conflict detected", "conflicts": ["Port 25565 (port) is in use by another program"]});
+    api.reply = Some(InternalResponse { status: StatusCode::OK, body: json!({"success": false, "error": "port_conflict", "error_code": "port_conflict", "message": "Cannot start 'mc': port conflict detected"}) });
+    let before = run(&api, &settings(), "mc start").await;
+    api.reply = Some(InternalResponse { status: StatusCode::CONFLICT, body: refused });
+    assert_eq!(run(&api, &settings(), "mc start").await, before);
+}
+
 /// 켜기 전 점검에 막히면 점검 코드와 모듈이 준 해결 방법을 보이고, 경로가 든 문제 문구는 내보내지 않는다
 #[tokio::test]
 async fn start_blocked_by_a_preflight_check_shows_the_solution() {

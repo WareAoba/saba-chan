@@ -521,6 +521,52 @@ async fn fetch_available(staging_dir: &Path, to_download: &[(String, ManifestCom
     (downloaded, failed)
 }
 
+/// 관리자를 여럿이 함께 쓸 때(데몬)의 `check_for_updates_hinted`: 준비와 기록만 잠깐 잠그고 릴레이에 묻는 동안은 잠그지 않는다.
+/// 확인하는 중에도 상태 조회가 기다리지 않는다. 확인끼리는 `check_turn`으로 한 번에 하나씩 한다
+pub async fn check_shared(manager: &tokio::sync::RwLock<UpdateManager>, hint: Option<u64>) -> Result<(UpdateStatus, Option<u64>)> {
+    let turn = manager.read().await.check_turn.clone();
+    let _turn = turn.lock().await;
+    let job = manager.write().await.check_job(hint);
+    let fetched = job.fetch().await;
+    manager.write().await.record_check(job, fetched)
+}
+
+/// 관리자를 빌리지 않고 릴레이에 묻는 확인 한 번 (`UpdateManager::check_job`)
+struct CheckJob {
+    client: relay::RelayClient,
+    channel: String,
+    platform: String,
+    /// 지금 깐 코어 판 (모르면 빈 글자)
+    current: String,
+    local_versions: HashMap<String, String>,
+}
+
+/// 릴레이가 답한 릴리즈(모듈·익스텐션 판 목록과 고른 판을 합친 것)
+struct CheckedRelease {
+    release: Option<relay::VerifiedRelease>,
+    addons: Option<relay::AddonCatalog>,
+    pins: addon_pins::PinnedKeys,
+}
+
+impl CheckJob {
+    async fn fetch(&self) -> Result<CheckedRelease> {
+        let release = self.client.fetch_verified_release(&self.channel, &self.platform, &self.current, &relay::anon_client_id()).await?;
+        // 모듈·익스텐션은 앱 릴리즈와 따로 내는 판 목록에서, 지금 코어로 돌아가는 가장 새 판으로 고른다 (릴레이 `/v1/addons/catalog`).
+        // 목록이 없으면(옛 릴레이, 아직 올린 판 없음) 릴리즈 manifest의 판을 그대로 쓰고, 읽지 못하면 이번에는 모듈·익스텐션을 내지 않는다
+        let core = if self.current.is_empty() { relay::core_version() } else { self.current.clone() };
+        let catalog = self.client.fetch_addon_catalog(&core, &self.channel).await;
+        // 깐 판이 내린 판인지는 목록의 서명된 내림 기록으로 안다
+        let addons = catalog.as_ref().ok().and_then(Option::as_ref).map(|c| relay::AddonCatalog { components: HashMap::new(), yanked: c.yanked.clone() });
+        let mut release = relay::merge_addon_catalog(release, catalog, &core, &self.channel, &self.platform);
+        // 사용자가 고른 판: 고정한 것은 두고, 미뤄 둔 바꾸기는 고른 판으로 (`addon_pins::rule`)
+        let pins = match release.as_mut() {
+            Some(r) => UpdateManager::apply_pins(&self.channel, &self.client, &mut r.manifest, &self.local_versions, addons.as_ref(), &core).await,
+            None => addon_pins::PinnedKeys::default(),
+        };
+        Ok(CheckedRelease { release, addons, pins })
+    }
+}
+
 /// 관리자를 빌리지 않고 내려받을 판 하나 (`UpdateManager::download_job`)
 struct DownloadJob {
     component: Component,
@@ -755,6 +801,8 @@ pub struct UpdateManager {
     download_listener: Option<DownloadListener>,
     /// 잠금 밖 받기(`download_shared`)의 차례. 받기끼리 겹치지 않게 한다
     download_turn: Arc<tokio::sync::Mutex<()>>,
+    /// 함께 쓰는 확인(`check_shared`)이 한 번에 하나씩 돌게 한다
+    check_turn: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl UpdateManager {
@@ -804,6 +852,7 @@ impl UpdateManager {
             already_installed: Vec::new(),
             download_listener: None,
             download_turn: Default::default(),
+            check_turn: Default::default(),
         };
         // 지난 업데이트가 남긴 .exe.old: 적용 직후엔 옛 프로세스가 쥐고 있어 못 지운 것을 다음 실행 때 지운다
         mgr.cleanup_old_files();
@@ -935,39 +984,38 @@ impl UpdateManager {
     /// `check_for_updates`에 heartbeat가 알린 릴리즈 id(`hint`)를 캐시 키로 붙인다. 확인 결과와,
     /// 릴레이 `/latest` 응답에 담긴 가장 큰 릴리즈 id(옛 릴레이면 None)를 준다
     pub async fn check_for_updates_hinted(&mut self, hint: Option<u64>) -> Result<(UpdateStatus, Option<u64>)> {
+        let job = self.check_job(hint);
+        let fetched = job.fetch().await;
+        self.record_check(job, fetched)
+    }
+
+    /// 확인 한 번을 준비한다 (`checking` 표시): 지금 깐 판과 물을 릴레이
+    fn check_job(&mut self, hint: Option<u64>) -> CheckJob {
         self.status.checking = true;
         self.status.error = None;
-
         let local_versions = self.collect_local_versions();
-        let client = self.relay_client().with_release_hint(hint);
-        let platform = relay::current_platform();
         let current = local_versions.get("saba-core").cloned().unwrap_or_default();
+        CheckJob {
+            client: self.relay_client().with_release_hint(hint),
+            channel: self.config.channel.clone(),
+            platform: relay::current_platform(),
+            current,
+            local_versions,
+        }
+    }
 
-        let release = match client
-            .fetch_verified_release(&self.config.channel, &platform, &current, &relay::anon_client_id())
-            .await
-        {
-            Ok(r) => r,
+    /// 받아 온 확인 결과를 상태에 남긴다
+    fn record_check(&mut self, job: CheckJob, fetched: Result<CheckedRelease>) -> Result<(UpdateStatus, Option<u64>)> {
+        let CheckedRelease { release, addons, pins } = match fetched {
+            Ok(found) => found,
             Err(e) => {
                 tracing::error!("[Updater] Relay check failed: {}", e);
                 self.status.checking = false;
                 self.status.error = Some(format!("Relay check failed: {}", e));
-                return Err(e.into());
+                return Err(e);
             }
         };
-
-        // 모듈·익스텐션은 앱 릴리즈와 따로 내는 판 목록에서, 지금 코어로 돌아가는 가장 새 판으로 고른다 (릴레이 `/v1/addons/catalog`).
-        // 목록이 없으면(옛 릴레이, 아직 올린 판 없음) 릴리즈 manifest의 판을 그대로 쓰고, 읽지 못하면 이번에는 모듈·익스텐션을 내지 않는다
-        let core = if current.is_empty() { relay::core_version() } else { current.clone() };
-        let catalog = client.fetch_addon_catalog(&core, &self.config.channel).await;
-        // 깐 판이 내린 판인지는 목록의 서명된 내림 기록으로 안다
-        let addons = catalog.as_ref().ok().and_then(Option::as_ref).map(|c| relay::AddonCatalog { components: HashMap::new(), yanked: c.yanked.clone() });
-        let mut release = relay::merge_addon_catalog(release, catalog, &core, &self.config.channel, &platform);
-        // 사용자가 고른 판: 고정한 것은 두고, 미뤄 둔 바꾸기는 고른 판으로 (`addon_pins::rule`)
-        let pins = match release.as_mut() {
-            Some(r) => self.apply_pins(&client, &mut r.manifest, &local_versions, addons.as_ref(), &core).await,
-            None => addon_pins::PinnedKeys::default(),
-        };
+        let CheckJob { client, channel, current, local_versions, .. } = job;
 
         let offered = release.as_ref().map(|r| r.latest.version.clone());
         let previous = std::mem::take(&mut self.status.components);
@@ -1037,7 +1085,7 @@ impl UpdateManager {
         // 주기 확인은 24시간마다다 (연결된 데몬은 heartbeat의 판 번호로 안다). `check_interval_hours`는 읽기만 한다
         let next = time::iso_after_hours(CHECK_EVERY_HOURS);
         // 같은 판 베타를 받는 동안 기다리는 정식 판. 정식(그 판 이상)을 받으면 사라진다
-        let stable_wait = relay::stable_wait_base(&self.config.channel, &current)
+        let stable_wait = relay::stable_wait_base(&channel, &current)
             .filter(|_| offered.as_deref().and_then(SemVer::parse).is_none_or(|v| v.is_prerelease()));
         self.status = UpdateStatus {
             last_check: Some(now),

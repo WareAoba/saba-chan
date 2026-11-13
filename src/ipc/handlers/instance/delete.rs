@@ -1,6 +1,7 @@
 //! 인스턴스 지우기: 삭제 전 hook, 가져온 서버 폴더 떼어 두기
 
 use super::*;
+use crate::service::instance::{other_instance_folders, pre_delete_hook};
 
 /// 가져온 서버를 지우기 전에 거둔 결과
 struct Unlinked {
@@ -50,36 +51,6 @@ async fn unlink_server_folder(state: &IPCServer, instance: &crate::instance::Ser
     .await
     .unwrap_or_default();
     Some(Unlinked { folder, restored })
-}
-
-/// `id` 말고 다른 인스턴스들의 인스턴스 폴더와 서버 폴더 (`sandbox::release`가 그들이 함께 쓰는 위 폴더를 둔다)
-pub(super) fn other_instance_folders(supervisor: &crate::supervisor::Supervisor, id: &str) -> Vec<std::path::PathBuf> {
-    supervisor.instance_store.list().iter()
-        .filter(|i| i.id != id)
-        .flat_map(|i| [Some(supervisor.instance_store.instance_dir(&i.id)), i.working_dir.as_deref().map(std::path::PathBuf::from)])
-        .flatten()
-        .collect()
-}
-
-/// 인스턴스를 지우기 전 익스텐션 hook `server.pre_delete`. 익스텐션이 정리했으면 파일 잠금이 풀리기를 잠깐 기다린다
-pub(super) async fn pre_delete_hook(state: &IPCServer, instance: &crate::instance::ServerInstance) {
-    let ext_mgr = state.extension_manager.clone();
-    let ctx = {
-        let sup = state.supervisor.read().await;
-        let module = sup.module_loader.get_module(&instance.module_name).ok();
-        crate::extension::hook_context(instance, &sup.instance_store.instance_dir(&instance.id), module.as_ref().map(|m| &m.metadata))
-    };
-    let results = crate::plugin::with_instance(Some(state.host_context(&instance.id)), crate::extension::run_hook(&ext_mgr, "server.pre_delete", ctx)).await;
-    let handled = results.iter().any(|(_id, r)| {
-        r.as_ref()
-            .map(|v| v.get("handled").and_then(|h| h.as_bool()) == Some(true))
-            .unwrap_or(false)
-    });
-    if handled {
-        tracing::info!("Extension handled pre_delete cleanup for '{}'", instance.name);
-        // 익스텐션 정리 후 파일 잠금 해제 대기
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    }
 }
 
 /// `DELETE /api/instance/:id`의 선택 값
