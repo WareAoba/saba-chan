@@ -295,7 +295,6 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/download", post(download_components))
         .route("/api/updates/download/progress", get(get_download_progress))
         .route("/api/updates/apply", post(apply_updates))
-        .route("/api/updates/apply-on-launch", post(apply_on_launch))
         .route("/api/updates/launch-updater", post(launch_updater))
         .route("/api/updates/rollback", get(get_rollback).post(roll_back))
         .route("/api/updates/versions", get(get_versions))
@@ -1462,49 +1461,12 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     }))
 }
 
-/// 앱을 열 때 적용할 것과 미룰 것. 코어 교체를 막는 것이 있으면(`blocked`) 다시 시작해야 하는 것(데몬·GUI·업데이터)은 미룬다.
-/// 모듈·익스텐션은 어느 쪽에도 넣지 않는다: 사용자 변경과 켜진 서버를 살피는 자동 교체(`replace_addons_once`)가 맡는다
-fn launch_targets(pending: &[Component], blocked: bool) -> (Vec<Component>, Vec<Component>) {
-    pending
-        .iter()
-        .filter(|c| !is_addon(c))
-        .cloned()
-        .partition(|c| !(blocked && matches!(c, Component::Gui | Component::Updater | Component::CoreDaemon)))
-}
-
 /// 데몬을 다시 켠 뒤 아직 확인 전이면(상태가 비어 있음) 지난번에 받아 둔 목록(`pending.json`)을 되살린다.
 /// 이미 확인했으면 그 상태를 그대로 쓴다 (확인이 받아 둔 파일을 알아본다)
 fn restore_pending(mgr: &mut saba_chan_updater_lib::UpdateManager) {
     if mgr.get_status().components.is_empty() {
         let _ = mgr.load_pending_manifest();
     }
-}
-
-/// POST /api/updates/apply-on-launch — `auto_apply`가 켜져 있으면 받아 둔 업데이트를 적용한다 (GUI가 열릴 때 부른다).
-/// 꺼져 있거나 받아 둔 것이 없으면 `{ok:true, skipped:"off"|"nothing"}`. 그 밖에는 apply의 답에 미룬 것 `held`
-/// (코어 교체를 막는 것이 있어 다시 시작하지 않은 구성요소 키)와 그 까닭 `waiting_for`를 붙인다. `requires_updater`면 부른 쪽이 업데이터를 띄운다
-async fn apply_on_launch(State(state): State<UpdateState>) -> axum::response::Response {
-    let pending = {
-        let mut mgr = state.manager.write().await;
-        if !mgr.get_config().auto_apply {
-            return Json(json!({ "ok": true, "skipped": "off" })).into_response();
-        }
-        restore_pending(&mut mgr);
-        mgr.get_pending_components().into_iter().map(|c| c.component.clone()).collect::<Vec<_>>()
-    };
-    // 켜진 서버가 있어도 바꾼다. 데몬 작업이나 다시 붙지 못하는 서버가 있을 때만 미룬다 (자동 적용과 같은 판정)
-    let reads = state.manager.read().await.core_reads_runner_formats().unwrap_or(saba_chan_updater_lib::relay::DEFAULT_READS_RUNNER_FORMATS);
-    let blockers = core_blockers(&state, reads).await;
-    let (targets, held) = launch_targets(&pending, !blockers.is_empty());
-    let held: Vec<String> = held.iter().map(|c| c.manifest_key()).collect();
-    if targets.is_empty() {
-        return Json(json!({ "ok": true, "skipped": if held.is_empty() { "nothing" } else { "blocked" }, "held": held, "waiting_for": blockers })).into_response();
-    }
-    let body = ApplyRequest { components: targets.iter().map(|c| c.manifest_key()).collect(), ..Default::default() };
-    let mut answer = crate::ipc::internal::into_internal(apply_updates_with(state, body).await.into_response()).await.body;
-    answer["held"] = json!(held);
-    answer["waiting_for"] = json!(if held.is_empty() { Vec::new() } else { blockers });
-    Json(answer).into_response()
 }
 
 /// POST /api/updates/install — 확인 → 받을 것 전부 받기 → 적용. 데몬·GUI처럼 재시작이 필요한 것이 있으면 업데이터를 띄운다
@@ -2597,16 +2559,6 @@ mod tests {
         let err = super::spawn_and_confirm(sh, &["-c".to_string(), "exit 127".to_string()], quick).await.unwrap_err();
         assert!(err.to_string().contains("127"), "{err}");
         super::spawn_and_confirm(sh, &["-c".to_string(), "sleep 3".to_string()], quick).await.unwrap();
-    }
-
-    /// 실행할 때 적용: 받아 둔 것을 고르되, 서버가 켜져 있으면 다시 시작해야 하는 것(데몬·GUI·업데이터)은 미룬다.
-    /// 모듈·익스텐션은 고르지 않는다: 사용자 변경·켜진 서버를 살피는 자동 교체(`replace_addons_once`)만 바꾼다
-    #[test]
-    fn applying_on_launch_holds_restarts_while_servers_run() {
-        use saba_chan_updater_lib::Component as C;
-        let pending = vec![C::CoreDaemon, C::Module("minecraft".into()), C::Gui, C::Extension("xna".into()), C::Locales];
-        assert_eq!(super::launch_targets(&pending, false), (vec![C::CoreDaemon, C::Gui, C::Locales], vec![]));
-        assert_eq!(super::launch_targets(&pending, true), (vec![C::Locales], vec![C::CoreDaemon, C::Gui]));
     }
 
     /// 상태 응답은 설치된 번역 판(`locales_version`, 없으면 null)을 늘 싣는다: GUI·TUI가 바뀌면 번역을 다시 읽는다
