@@ -273,17 +273,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 return connectionError(error);
             }
         },
-        // 상태는 id로 묻는다. 이 길이 없는 옛 데몬(원격 0.1.11, 라우트가 없어 error_code 없는 404)이면 이름으로
+        // 상태는 id로 묻는다. `name`은 오류 문구에만 쓴다
         instanceStatus: async (id: string, name = id): Promise<ApiBody> => {
-            const ask = async (path: string) => (await get(path)).data;
             try {
-                try {
-                    return await ask(`/api/instance/${encodeURIComponent(id)}/status`);
-                } catch (caught) {
-                    const error = caught as DaemonError;
-                    if (error.response?.status !== 404 || error.response.data?.error_code) throw error;
-                    return await ask(`/api/server/${encodeURIComponent(name)}/status`);
-                }
+                return (await get(`/api/instance/${encodeURIComponent(id)}/status`)).data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 if (error.response) {

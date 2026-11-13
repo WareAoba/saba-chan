@@ -50,7 +50,7 @@ describe('거절된 릴레이 주소로 멈춘 에이전트', () => {
 
     it('상태가 invalid_relay_url이면 꺼짐으로 두고 이유를 기억한다', async () => {
         window.api = {
-            discordBotStatus: vi.fn().mockResolvedValue('invalid_relay_url'),
+            discordBotStatus: vi.fn().mockResolvedValue({ status: 'invalid_relay_url', running: false, link: { connected: false, error: '', heard: true } }),
             relayCheckHostStatus: vi.fn().mockResolvedValue({ online: true }),
         } as unknown as typeof window.api;
         useDiscordStore.setState({ discordCloudHostId: 'host-1' });
@@ -58,7 +58,7 @@ describe('거절된 릴레이 주소로 멈춘 에이전트', () => {
         expect(useDiscordStore.getState().discordBotStatus).toBe('stopped');
         expect(useDiscordStore.getState().discordAgentRelayUrlInvalid).toBe(true);
 
-        vi.mocked(window.api.discordBotStatus).mockResolvedValue('running');
+        vi.mocked(window.api.discordBotStatus).mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } });
         await useDiscordStore.getState().checkStatus();
         expect(useDiscordStore.getState().discordAgentRelayUrlInvalid).toBe(false);
     });

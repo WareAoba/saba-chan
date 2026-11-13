@@ -44,7 +44,7 @@ describe('릴레이가 거절한 상태 보고', () => {
         expect(useDiscordStore.getState().discordHeartbeatReject).toEqual(TOO_MANY);
         expect(useDiscordStore.getState().discordAgentMinVersion).toBeNull();
 
-        vi.mocked(window.api.discordBotStatus).mockResolvedValue('running');
+        vi.mocked(window.api.discordBotStatus).mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } });
         await useDiscordStore.getState().checkStatus();
         expect(useDiscordStore.getState().discordHeartbeatReject).toBeNull();
     });

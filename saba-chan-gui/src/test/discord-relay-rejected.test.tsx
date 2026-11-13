@@ -23,7 +23,7 @@ beforeEach(() => {
     useDiscordStore.getState()._resetForTest();
     useDiscordStore.setState({ _botConfigLoaded: true, discordCloudHostId: 'host' });
     window.api = {
-        discordBotStatus: vi.fn().mockResolvedValue('running'),
+        discordBotStatus: vi.fn().mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } }),
         relayCheckHostStatus: vi.fn(),
         relayListHostNodes: vi.fn(),
     } as unknown as typeof window.api;
@@ -89,7 +89,7 @@ describe('릴레이 실패 종류', () => {
             vi.mocked(window.api.relayCheckHostStatus).mockResolvedValue({ error: 'INVALID_TOKEN' });
             await useDiscordStore.getState().checkStatus();
             await useDiscordStore.getState().checkStatus();
-            vi.mocked(window.api.discordBotStatus).mockResolvedValue('stopped');
+            vi.mocked(window.api.discordBotStatus).mockResolvedValue({ status: 'stopped', running: false, link: { connected: false, error: '', heard: true } });
             vi.advanceTimersByTime(5_000);
             await useDiscordStore.getState().checkStatus();
             await useDiscordStore.getState().checkStatus();

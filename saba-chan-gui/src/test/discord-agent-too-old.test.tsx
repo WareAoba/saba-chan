@@ -48,7 +48,7 @@ describe('릴레이가 받지 않는 앱 버전', () => {
         expect(useDiscordStore.getState().discordAgentMinVersion).toBe('0.1.9');
         expect(useDiscordStore.getState().discordBotStatus).not.toBe('stopped');
 
-        vi.mocked(window.api.discordBotStatus).mockResolvedValue('running');
+        vi.mocked(window.api.discordBotStatus).mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } });
         await useDiscordStore.getState().checkStatus();
         expect(useDiscordStore.getState().discordAgentMinVersion).toBeNull();
     });

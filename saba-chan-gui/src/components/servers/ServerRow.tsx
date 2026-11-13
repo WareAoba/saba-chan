@@ -73,7 +73,7 @@ export function ServerRow({
     unsaved,
 }: ServerRowProps) {
     const { t } = useTranslation('gui');
-    useInstanceMaintenance(server, moduleData);
+    useInstanceMaintenance(server);
     const { updateInfo, updateCheckError } = useMaintenanceOf(server.id);
     const modulesLoaded = useServerStore((s) => s.modulesLoaded);
     const status = viewStatus(server, moduleData, modulesLoaded);

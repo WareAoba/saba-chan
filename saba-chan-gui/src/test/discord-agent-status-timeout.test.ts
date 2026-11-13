@@ -19,7 +19,7 @@ describe('에이전트 상태 확인이 한 번 실패할 때', () => {
 
     it('한 번 모르면 지금 상태를 두고, 두 번 연달아 모르면 꺼짐으로 본다', async () => {
         window.api = {
-            discordBotStatus: vi.fn().mockResolvedValue('running'),
+            discordBotStatus: vi.fn().mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } }),
             relayCheckHostStatus: vi.fn().mockResolvedValue({ online: true }),
         } as unknown as typeof window.api;
         useDiscordStore.setState({ discordCloudHostId: 'host-1', _botConfigLoaded: true });
@@ -34,7 +34,7 @@ describe('에이전트 상태 확인이 한 번 실패할 때', () => {
         expect(useDiscordStore.getState().discordBotStatus).toBe('stopped');
 
         // 다시 답하면 세던 실패는 지운다
-        vi.mocked(window.api.discordBotStatus).mockResolvedValue('running');
+        vi.mocked(window.api.discordBotStatus).mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } });
         await useDiscordStore.getState().checkStatus();
         vi.mocked(window.api.discordBotStatus).mockResolvedValue('unknown');
         await useDiscordStore.getState().checkStatus();

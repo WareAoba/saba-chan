@@ -13,7 +13,7 @@ beforeEach(() => {
     vi.useFakeTimers();
     useDiscordStore.getState()._resetForTest();
     window.api = {
-        discordBotStatus: vi.fn().mockResolvedValue('running'),
+        discordBotStatus: vi.fn().mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } }),
         relayCheckHostStatus: vi.fn().mockResolvedValue({ error: 'offline' }),
     } as unknown as typeof window.api;
 });
