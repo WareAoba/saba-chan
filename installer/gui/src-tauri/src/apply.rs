@@ -443,12 +443,6 @@ fn resolve_gui_exe() -> Option<PathBuf> {
     saba_chan_updater_lib::find_gui_exe(&resolve_install_root_from_exe()?)
 }
 
-fn resolve_modules_dir() -> String {
-    let p = constants::resolve_modules_dir();
-    if !p.exists() { let _ = std::fs::create_dir_all(&p); }
-    p.to_string_lossy().to_string()
-}
-
 /// 다시 띄울 실행 파일: `--relaunch`로 받은 것, 없으면 설치된 GUI.
 /// 받은 것이 GUI인데 업데이트로 비켜났으면(0.1.1의 `Saba-chan.exe` → `saba-chan-gui.exe`) 설치된 GUI
 fn relaunch_command(requested: Option<String>, installed_gui: Option<PathBuf>) -> Option<String> {
@@ -636,7 +630,7 @@ pub(crate) fn run(args: &[String]) {
         tracing::info!("[Apply] Install root (from exe): {}", root_str);
         cfg.install_root = Some(root_str);
     }
-    let modules_dir = resolve_modules_dir();
+    let modules_dir = constants::ensure_modules_dir().to_string_lossy().to_string();
 
     if headless {
         std::process::exit(run_headless(UpdateManager::new(cfg, &modules_dir), relaunch_exe, relaunch_extra, wait_pid));

@@ -224,38 +224,12 @@ pub(crate) async fn install_addon(key: &str, info: &ManifestComponent, target: &
 
 /// 받은 zip을 `target`에 새로 풀고, 서명된 카탈로그에서 받은 것으로 기록한다.
 /// 기록이 없으면 데몬이 "unverified"로 보고 격리해 실행한다 (데몬 카탈로그 설치와 같은 기록).
-/// 옆 폴더에 다 푼 뒤에 바꿔 넣는다: 풀다가 실패하면(깨진 zip, 디스크 부족) 있던 폴더를 그대로 둔다
+/// 바꿔 넣기는 업데이터와 같다(`replace_dir`): 풀다가 실패하면(깨진 zip, 디스크 부족) 있던 폴더를 그대로 두고,
+/// 점(.) 항목·`__pycache__`는 남긴다
 fn install_addon_zip(key: &str, zip: &Path, target: &Path) -> Result<(), String> {
-    let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let staged = target.with_file_name(format!(".{}.new-{}", name, std::process::id()));
-    let old = target.with_file_name(format!(".{}.old-{}", name, std::process::id()));
-    let extracted = (|| {
-        if staged.exists() {
-            std::fs::remove_dir_all(&staged)?;
-        }
-        std::fs::create_dir_all(&staged)?;
-        saba_chan_updater_lib::extract_zip(zip, &staged, |_| Ok(())).map(|_| ())
-    })();
-    if let Err(e) = extracted {
-        let _ = std::fs::remove_dir_all(&staged);
-        return Err(e.to_string());
-    }
-    let swapped = (|| {
-        if target.exists() {
-            std::fs::rename(target, &old)?;
-        }
-        if let Err(e) = std::fs::rename(&staged, target) {
-            // 새 폴더를 못 넣었으면 있던 폴더를 되돌린다
-            if old.exists() {
-                let _ = std::fs::rename(&old, target);
-            }
-            return Err(e);
-        }
-        Ok(())
-    })();
-    let _ = std::fs::remove_dir_all(&staged);
-    swapped.map_err(|e| e.to_string())?;
-    let _ = std::fs::remove_dir_all(&old);
+    let staging = work_dir();
+    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
+    saba_chan_updater_lib::replace_dir(target, zip, &staging, &format!("{key}.backup")).map_err(|e| e.to_string())?;
     saba_chan_updater_lib::integrity::record_dir(key, target)
         .and_then(|_| saba_chan_updater_lib::integrity::set_official(key, true))
         .map_err(|e| format!("Could not record installed files: {}", e))
@@ -469,9 +443,12 @@ mod tests {
         let target = data.join("modules").join("palworld");
         std::fs::create_dir_all(&target).unwrap();
         std::fs::write(target.join("old.py"), "stale").unwrap();
+        std::fs::write(target.join(".user.json"), "mine").unwrap();
         install_addon_zip("module-palworld", &zip_path, &target).unwrap();
 
         assert!(!target.join("old.py").exists(), "the folder is replaced, not merged");
+        // 업데이터로 바꿀 때와 같이 점(.) 항목은 남긴다
+        assert_eq!(std::fs::read_to_string(target.join(".user.json")).unwrap(), "mine");
         assert_eq!(
             saba_chan_updater_lib::integrity::trust_of("module-palworld", &target),
             saba_chan_updater_lib::integrity::Trust::Verified

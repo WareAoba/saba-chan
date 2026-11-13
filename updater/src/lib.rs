@@ -53,9 +53,7 @@ pub use relay::{ReleaseManifest, ManifestComponent};
 pub use integrity::{IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity};
 pub use marker::UpdateCompletionMarker;
 pub(crate) use apply::swap_dir_untouched;
-#[cfg(test)]
-pub(crate) use apply::replace_dir;
-pub use apply::{carry_swap_dot_entries, Replacing, SWAP_FINGERPRINT};
+pub use apply::{carry_swap_dot_entries, replace_dir, Replacing, SWAP_FINGERPRINT};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -711,14 +709,9 @@ impl UpdateManager {
     /// 익스텐션 ID에서 디스크 상의 디렉토리 경로를 해석합니다.
     /// Python import 호환을 위해 하이픈→언더스코어 변환도 시도합니다.
     fn resolve_ext_dir(&self, ext_name: &str) -> PathBuf {
-        // 데몬(`extension::extension_dir`)과 같은 순서: Python-safe 이름(하이픈→언더스코어) 먼저, 다음 원본 이름.
-        // 둘 다 없으면 Python-safe 이름 (신규 설치용)
-        let safe = self.extensions_dir.join(ext_name.replace('-', "_"));
-        let exact = self.extensions_dir.join(ext_name);
-        if !safe.exists() && exact.exists() {
-            return exact;
-        }
-        safe
+        // 데몬과 같은 폴더(`component_dirs::extension_dir`). 둘 다 없으면 Python-safe 이름 (신규 설치용)
+        component_dirs::extension_dir(&self.extensions_dir, ext_name)
+            .unwrap_or_else(|| self.extensions_dir.join(ext_name.replace('-', "_")))
     }
 
     /// 현재 업데이트 상태를 반환

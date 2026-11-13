@@ -492,11 +492,7 @@ fn app_version_problem(min_app_version: Option<&str>) -> Option<String> {
         .map(|v| format!("requires saba-chan {} or newer (this is {})", v, APP_VERSION))
 }
 
-/// 익스텐션 폴더: 설치는 id의 '-'를 '_'로 바꾼 이름(Python import 호환)에 한다. 그 폴더가 없으면 id 그대로 (예전 설치).
-/// 둘 다 있으면 '_' 이름이다 (발견 `scan`도 그 폴더를 쓴다). 둘 다 없으면 None
-pub fn extension_dir(root: &std::path::Path, ext_id: &str) -> Option<PathBuf> {
-    [root.join(ExtensionManager::python_safe_dir_name(ext_id)), root.join(ext_id)].into_iter().find(|d| d.is_dir())
-}
+pub use saba_chan_updater_lib::component_dirs::extension_dir;
 
 /// 익스텐션 zip을 `staging`에 풀고 맨 위 manifest.json을 읽어 `check`로 확인한다. 실패하면 `staging`을 지운다
 fn unpack_package(

@@ -190,6 +190,15 @@ pub fn resolve_modules_dir() -> PathBuf {
     crate::component_dirs::resolve(crate::component_dirs::Kind::Modules).0
 }
 
+/// [`resolve_modules_dir`]가 없으면 만들어 두고 돌려준다 (데몬·업데이터 창이 모듈을 읽고 쓰기 전에). 만들지 못하면 경로만
+pub fn ensure_modules_dir() -> PathBuf {
+    let dir = resolve_modules_dir();
+    if !dir.exists() {
+        let _ = std::fs::create_dir_all(&dir);
+    }
+    dir
+}
+
 /// 익스텐션 디렉토리 경로: `SABA_EXTENSIONS_DIR` → `config.json`의 `paths.extensions` → `<data_dir>/extensions`
 pub fn resolve_extensions_dir() -> PathBuf {
     crate::component_dirs::resolve(crate::component_dirs::Kind::Extensions).0
