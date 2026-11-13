@@ -788,7 +788,8 @@
     "requested": "Detención de {{name}} solicitada",
     "waiting": "Deteniendo {{name}}...",
     "no_graceful": "{{name}} no tiene forma (consola) de pedirle que guarde y se detenga. Si se fuerza, puede perderse el progreso posterior al último guardado.",
-    "force_confirm": "¿Detener sin guardar?"
+    "force_confirm": "¿Detener sin guardar?",
+    "confirm": "¿Está seguro de que desea detener el servidor {{name}}?"
   },
   "time": {
     "day_ago": "hace {{n}} d",
@@ -1369,7 +1370,8 @@
   },
   "restart": {
     "waiting": "Reiniciando {{name}}...",
-    "done": "{{name}} reiniciado"
+    "done": "{{name}} reiniciado",
+    "confirm": "¿Detener e iniciar de nuevo '{{name}}'? Los jugadores conectados se desconectarán un momento."
   },
   "rename": {
     "done": "{{old}} renombrado a {{name}}"

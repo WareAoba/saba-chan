@@ -788,7 +788,8 @@
     "requested": "Parada de {{name}} solicitada",
     "waiting": "Parando {{name}}...",
     "no_graceful": "{{name}} não tem como (console) pedir salvamento antes de parar. Forçar a parada pode perder o progresso desde o último salvamento.",
-    "force_confirm": "Parar sem salvar?"
+    "force_confirm": "Parar sem salvar?",
+    "confirm": "Tem certeza de que deseja parar o servidor {{name}}?"
   },
   "time": {
     "day_ago": "há {{n}}d",
@@ -1369,7 +1370,8 @@
   },
   "restart": {
     "waiting": "Reiniciando {{name}}...",
-    "done": "{{name}} reiniciado"
+    "done": "{{name}} reiniciado",
+    "confirm": "Parar e iniciar '{{name}}' de novo? Os jogadores conectados cairão por um momento."
   },
   "rename": {
     "done": "{{old}} renomeado para {{name}}"

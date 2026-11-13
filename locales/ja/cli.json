@@ -788,7 +788,8 @@
     "no_graceful": "{{name}} に保存して停止を依頼する手段 (コンソール) がありません。強制停止すると、最後の保存以降の進行が失われる可能性があります。",
     "not_yet": "{{name}} はまだ停止していません。強制停止: saba-chan-cli stop --force {{name}}",
     "requested": "{{name}} の停止を要求済み",
-    "waiting": "{{name}} を停止しています..."
+    "waiting": "{{name}} を停止しています...",
+    "confirm": "「{{name}}」サーバーを停止してもよろしいですか?"
   },
   "time": {
     "day_ago": "{{n}}日前",
@@ -1369,7 +1370,8 @@
   },
   "restart": {
     "waiting": "{{name}} を再起動しています...",
-    "done": "{{name}} 再起動済み"
+    "done": "{{name}} 再起動済み",
+    "confirm": "'{{name}}' を停止して再起動しますか？接続中のプレイヤーは一時的に切断されます。"
   },
   "rename": {
     "done": "{{old}} の名前を {{name}} に変更済み"

@@ -788,7 +788,8 @@
     "requested": "已要求停止 {{name}}",
     "waiting": "正在停止 {{name}}...",
     "no_graceful": "{{name}} 沒有請求儲存後停止的方法（主控台）。強制停止可能遺失上次儲存後的進度。",
-    "force_confirm": "不儲存就停止嗎？"
+    "force_confirm": "不儲存就停止嗎？",
+    "confirm": "確定要停止 「{{name}}」伺服器嗎？"
   },
   "time": {
     "day_ago": "{{n}} 天前",
@@ -1369,7 +1370,8 @@
   },
   "restart": {
     "waiting": "正在重新啟動 {{name}}...",
-    "done": "{{name}} 已重新啟動"
+    "done": "{{name}} 已重新啟動",
+    "confirm": "要停止並重新啟動 '{{name}}' 嗎？已連線的玩家會短暫斷線。"
   },
   "rename": {
     "done": "{{old}} 已改名為 {{name}}"

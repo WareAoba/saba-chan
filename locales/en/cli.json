@@ -788,7 +788,8 @@
     "no_graceful": "{{name}} has no way (console) to request save-then-stop. Forcing it to stop may lose progress since the last save.",
     "not_yet": "{{name}} not stopped yet. Force it: saba-chan-cli stop --force {{name}}",
     "requested": "{{name}} stop requested",
-    "waiting": "Stopping {{name}}..."
+    "waiting": "Stopping {{name}}...",
+    "confirm": "Are you sure you want to stop “{{name}}” server?"
   },
   "time": {
     "day_ago": "{{n}}d ago",
@@ -1057,7 +1058,8 @@
   },
   "restart": {
     "waiting": "Restarting {{name}}...",
-    "done": "{{name}} restarted"
+    "done": "{{name}} restarted",
+    "confirm": "Stop and start '{{name}}' again? Connected players will be dropped for a moment."
   },
   "rename": {
     "done": "{{old}} renamed to {{name}}"

@@ -788,7 +788,8 @@
     "no_graceful": "无法（没有控制台）请求 {{name}} 保存后停止。强制停止可能丢失上次保存之后的进度。",
     "not_yet": "{{name}} 尚未停止。强制停止：saba-chan-cli stop --force {{name}}",
     "requested": "已请求停止 {{name}}",
-    "waiting": "正在停止 {{name}}..."
+    "waiting": "正在停止 {{name}}...",
+    "confirm": "确定要停止 “{{name}}”服务器吗？"
   },
   "time": {
     "day_ago": "{{n}} 天前",
@@ -1369,7 +1370,8 @@
   },
   "restart": {
     "waiting": "正在重启 {{name}}...",
-    "done": "{{name}} 已重启"
+    "done": "{{name}} 已重启",
+    "confirm": "要停止并重新启动 '{{name}}' 吗？已连接的玩家会短暂断开。"
   },
   "rename": {
     "done": "{{old}} 已重命名为 {{name}}"

@@ -788,7 +788,8 @@
     "requested": "Arrêt de {{name}} demandé",
     "waiting": "Arrêt de {{name}}...",
     "no_graceful": "Aucune console pour demander à {{name}} de sauvegarder avant l'arrêt. Un arrêt forcé peut faire perdre la progression depuis la dernière sauvegarde.",
-    "force_confirm": "Arrêter sans sauvegarder ?"
+    "force_confirm": "Arrêter sans sauvegarder ?",
+    "confirm": "Êtes-vous sûr de vouloir arrêter le serveur {{name}}?"
   },
   "time": {
     "day_ago": "il y a {{n}} j",
@@ -1369,7 +1370,8 @@
   },
   "restart": {
     "waiting": "Redémarrage de {{name}}...",
-    "done": "{{name}} redémarré"
+    "done": "{{name}} redémarré",
+    "confirm": "Arrêter puis redémarrer « {{name}} » ? Les joueurs connectés seront déconnectés un instant."
   },
   "rename": {
     "done": "{{old}} renommé en {{name}}"
