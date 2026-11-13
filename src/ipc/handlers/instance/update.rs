@@ -578,7 +578,7 @@ mod tests {
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
 
         let done = super::begin_server_update(&state, &id).await.ok().expect("the update starts");
-        assert!(done.await.unwrap(), "the update succeeds");
+        assert!(done.await.unwrap(), "the update succeeds: {:?}", state.provision_tracker.get(&id).and_then(|p| p.error));
         let config: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&seen).unwrap()).unwrap();
         assert_eq!(config[crate::sandbox::INSTANCE_DATA_DIRS], json!([cache.to_string_lossy()]), "{config}");
     }
