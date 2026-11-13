@@ -100,6 +100,14 @@ aliases = ["말"]
 
 [errors]
 server_not_running = "The test server is off"
+
+[patterns]
+stamp = '\[\d{2}:\d{2}\]'
+
+[[syntax_highlight.rules]]
+name = "time"
+pattern = '{stamp} '
+color = 'info'
 "#,
     )
     .expect("write test module.toml");
@@ -276,6 +284,20 @@ async fn e2e_module_discovery_and_metadata_schema() {
             );
         }
     }
+
+    task.abort();
+    cleanup_dirs(&m_dir, &i_dir, &d_dir);
+}
+
+/// module.toml `[patterns]` 조각은 데몬이 로드할 때 푼다: API에는 풀린 정규식만 실린다
+#[tokio::test]
+async fn e2e_module_patterns_reach_the_api_expanded() {
+    let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
+
+    let json: Value = client.get(format!("{}/api/modules", base_url)).send().await.unwrap().json().await.unwrap();
+    let module = json["modules"].as_array().unwrap().iter().find(|m| m["name"] == "test-module").expect("test-module");
+    assert_eq!(module["syntax_highlight"]["rules"][0]["pattern"], r"(?:\[\d{2}:\d{2}\]) ", "{}", module["syntax_highlight"]);
 
     task.abort();
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
@@ -957,6 +979,43 @@ if __name__ == "__main__":
     assert_eq!((seen["data"]["instanceId"].as_str(), seen["data"]["ok"].as_bool()), (Some("probe-1"), Some(true)));
     assert!(seen["id"].is_u64() && seen["data"]["at"].is_u64(), "{}", seen);
 
+    task.abort();
+    cleanup_dirs(&m_dir, &i_dir, &d_dir);
+}
+
+/// manifest `gui.assets`: 허락한 익스텐션 GUI가 그 폴더 안의 파일을 여러 단계 경로로 받는다
+#[tokio::test]
+async fn extension_gui_assets_are_served_from_the_manifest_folder() {
+    let _extension_list = EXTENSION_LIST.lock().await;
+    let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
+
+    let root = saba_chan_updater_lib::constants::resolve_extensions_dir();
+    fs::create_dir_all(&root).unwrap();
+    let ext = tempfile::Builder::new().prefix("e2e-assets-").tempdir_in(&root).unwrap();
+    let id = ext.path().file_name().unwrap().to_string_lossy().into_owned();
+    fs::write(
+        ext.path().join("manifest.json"),
+        json!({ "schema_version": 1, "id": id, "name": "Assets", "version": "0.0.1", "gui": { "bundle": "gui.js", "assets": "img" } }).to_string(),
+    )
+    .unwrap();
+    fs::write(ext.path().join("gui.js"), "window.x = 1").unwrap();
+    fs::create_dir_all(ext.path().join("img").join("cat")).unwrap();
+    fs::write(ext.path().join("img").join("cat").join("idle.webp"), "RIFF").unwrap();
+    client.post(format!("{}/api/extensions/rescan", base_url)).send().await.unwrap();
+    let enabled = client.post(format!("{}/api/extensions/{}/enable", base_url, id)).send().await.unwrap();
+    assert!(enabled.status().is_success(), "{}", enabled.text().await.unwrap());
+    let key = format!("ext-{id}");
+    saba_core::sandbox::set_consent(saba_core::sandbox::Consent::ExtensionGui, &key, true).unwrap();
+
+    let served = client.get(format!("{}/api/extensions/{}/gui/assets/cat/idle.webp", base_url, id)).send().await.unwrap();
+    assert_eq!(served.status(), reqwest::StatusCode::OK);
+    assert_eq!(served.text().await.unwrap(), "RIFF");
+    let missing = client.get(format!("{}/api/extensions/{}/gui/assets/cat/run.webp", base_url, id)).send().await.unwrap();
+    assert_eq!(missing.status(), reqwest::StatusCode::NOT_FOUND);
+
+    saba_core::sandbox::set_consent(saba_core::sandbox::Consent::ExtensionGui, &key, false).unwrap();
+    client.post(format!("{}/api/extensions/{}/disable", base_url, id)).send().await.unwrap();
     task.abort();
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
