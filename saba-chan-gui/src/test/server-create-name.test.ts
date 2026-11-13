@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 
 describe('서버 만들기: 같은 이름', () => {
     beforeEach(() => {
@@ -12,25 +12,10 @@ describe('서버 만들기: 같은 이름', () => {
         window.api.instanceCreate = vi
             .fn()
             .mockResolvedValue({ success: false, error: 'Name already in use', error_code: 'name_taken' });
-        const setModal = vi.fn();
-        const { result } = renderHook(() =>
-            useServerActions({
-                servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' } as never],
-                setServers: vi.fn(),
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal,
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                closeConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-                formatUptime: vi.fn(),
-            } as never),
-        );
+        const { result, setModal } = setupServerStore({ servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' } as never] });
         let created: unknown;
         await act(async () => {
-            created = await result.current.handleAddServer({ name: 'A', module_name: 'game' });
+            created = await result.current.addServer({ name: 'A', module_name: 'game' });
         });
         // 만들기 화면이 입력을 지우지 않도록 실패를 돌려준다
         expect(created).toBe(false);
@@ -50,21 +35,9 @@ describe('서버 만들기: 마법사에서 고른 값', () => {
     });
 
     it('버전·폴더·실행 방식·포트를 데몬 만들기 요청에 그대로 싣는다', async () => {
-        const { result } = renderHook(() =>
-            useServerActions({
-                servers: [],
-                setServers: vi.fn(),
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-            } as never),
-        );
+        const { result } = setupServerStore();
         await act(async () => {
-            await result.current.handleAddServer({
+            await result.current.addServer({
                 name: 'A',
                 module_name: 'game',
                 version: '1.21.4',

@@ -1,12 +1,11 @@
-import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgreementDialog } from '../components/AgreementList';
 import { AddInstanceMigration as AddInstanceMigrationImpl } from '../components/Modals/AddInstanceMigration';
 import { AddInstanceNewServer as AddInstanceNewServerImpl } from '../components/Modals/AddInstanceNewServer';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import { createButton, submitWizard, toConfirmStep } from './addServerWizard';
 import type { ComponentType } from 'react';
-import type { Server } from '../stores/useServerStore';
 
 /** 시험에 필요한 props만 넘기려고 느슨하게 받는다 */
 const AddInstanceMigration = AddInstanceMigrationImpl as unknown as ComponentType<Record<string, unknown>>;
@@ -111,25 +110,12 @@ describe('약관 동의: 확인 창', () => {
 
 describe('약관 동의: 시작', () => {
     beforeEach(() => {
-        window.api = { serverList: vi.fn().mockResolvedValue({ servers: [] }) } as unknown as typeof window.api;
+        window.api = { serverList: vi.fn().mockResolvedValue({ servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }] }) } as unknown as typeof window.api;
         window.showToast = vi.fn();
     });
 
     function setup() {
-        const setModal = vi.fn();
-        const { result } = renderHook(() =>
-            useServerActions({
-                servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }] as Server[],
-                setServers: vi.fn(),
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal,
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-            }),
-        );
+        const { result, setModal } = setupServerStore({ servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }] });
         return { result, setModal };
     }
 
@@ -145,7 +131,7 @@ describe('약관 동의: 시작', () => {
         window.api.instanceAgreements = vi.fn().mockResolvedValue({ success: true }) as never;
         window.api.instanceStatus = vi.fn().mockResolvedValue({ status: 'running' }) as never;
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.startServer('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.type).toBe('agreements');
         expect(modal.agreements).toEqual(required.agreements);
@@ -158,7 +144,7 @@ describe('약관 동의: 시작', () => {
         window.api.instanceCreate = vi.fn().mockResolvedValue({ success: true, provisioning: true }) as never;
         const { result } = setup();
         await act(async () =>
-            result.current.handleAddServer({ name: 'B', module_name: 'game', accept_agreements: ['eula'] }),
+            result.current.addServer({ name: 'B', module_name: 'game', accept_agreements: ['eula'] }),
         );
         expect(vi.mocked(window.api.instanceCreate).mock.calls[0][0].accept_agreements).toEqual(['eula']);
     });
@@ -166,7 +152,7 @@ describe('약관 동의: 시작', () => {
     it('동의 채널이 없으면 데몬 문구를 실패 창으로 보인다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(required) as never;
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.startServer('a'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.type).toBe('failure');
         expect(modal.message).toContain('Minecraft EULA');

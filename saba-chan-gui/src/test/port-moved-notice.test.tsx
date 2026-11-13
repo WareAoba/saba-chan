@@ -1,7 +1,7 @@
-import { act, render, renderHook } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DaemonEvents } from '../components/shell/DaemonEvents';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import i18n from '../i18n';
 import type { Server } from '../stores/useServerStore';
 
@@ -14,25 +14,12 @@ const startWith = async (response: Record<string, unknown>, action = 'start') =>
         instanceStart: vi.fn(async () => response),
         instanceRestart: vi.fn(async () => response),
     } as unknown as typeof window.api;
-    const setModal = vi.fn();
-    const { result } = renderHook(() =>
-        useServerActions({
-            servers: list,
-            setServers: vi.fn(),
-            modules: [],
-            loading: false,
-            setLoading: vi.fn(),
-            setModal,
-            setProgressBar: vi.fn(),
-            openConsole: vi.fn(),
-            setShowModuleManager: vi.fn(),
-        }),
-    );
+    const { result, setModal } = setupServerStore({ servers: list });
     if (action === 'restart') {
-        await act(async () => result.current.handleRestart('A'));
+        await act(async () => result.current.restartServer('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
     } else {
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.startServer('a'));
     }
     return vi.mocked(window.showToast!).mock.calls.map((c) => c[0]);
 };

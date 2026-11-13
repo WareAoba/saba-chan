@@ -1,8 +1,9 @@
 import type { ComponentProps } from 'react';
-import { act, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ServerSettingsModal } from '../components/ServerSettingsModal';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { unsavedServerIds } from '../stores/useServerSettingsStore';
+import { setupSettingsStore } from './serverStore';
 
 // 저장 막대의 "N개 바뀜" 칩: 누르면 칸마다 이전 → 새 값과 칸 하나 되돌리기를 보인다 (사용자 11-12)
 const modules = [
@@ -69,22 +70,20 @@ describe('저장 막대의 바뀐 칸 목록', () => {
     it('되돌린 칸은 기준 값으로 가고 다른 칸은 고친 값 그대로다', async () => {
         window.showToast = vi.fn();
         window.api = { serverList: vi.fn().mockResolvedValue({ servers: [server] }) } as unknown as typeof window.api;
-        const { result } = renderHook(() =>
-            useServerSettings({
-                servers: [server] as never,
-                modules: modules as never,
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                fetchServers: vi.fn(),
-            }),
-        );
+        const { result } = setupSettingsStore({
+            servers: [server] as never,
+            modules: modules as never,
+            setModal: vi.fn(),
+            setProgressBar: vi.fn(),
+            fetchServers: vi.fn(),
+        });
         await act(async () => result.current.handleOpenSettings(server as never));
         act(() => result.current.handleSettingChange('motd', 'b'));
         act(() => result.current.handleSettingChange('port', '2'));
         act(() => result.current.revertSetting('port'));
         expect(result.current.settingsValues).toMatchObject({ motd: 'b', port: '1' });
-        expect(result.current.unsavedServers).toEqual(['s1']);
+        expect(unsavedServerIds(result.current, modules as never)).toEqual(['s1']);
         act(() => result.current.revertSetting('motd'));
-        expect(result.current.unsavedServers).toEqual([]);
+        expect(unsavedServerIds(result.current, modules as never)).toEqual([]);
     });
 });

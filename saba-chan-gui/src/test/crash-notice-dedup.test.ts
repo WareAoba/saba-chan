@@ -1,36 +1,18 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import i18n from '../i18n';
 import { showEventToast } from '../utils/daemonEvents';
-import type { Server } from '../stores/useServerStore';
+import { type Server, useServerStore } from '../stores/useServerStore';
 
 const t = i18n.getFixedT('en', 'gui');
 
 // G-S6: 크래시 한 번을 이벤트(instance.exit)와 목록 폴링(실행 → 멈춤)이 따로 알려 알림이 두 번 떴다
 describe('크래시 알림은 한 번만', () => {
-    let servers: Server[];
-    const setServers = vi.fn((update) => {
-        servers = typeof update === 'function' ? update(servers) : update;
-    });
     const running = { id: 'c1', name: 'Crashy', module: 'game', status: 'running' };
-    const hook = () =>
-        renderHook(() =>
-            useServerActions({
-                servers,
-                setServers,
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-            }),
-        );
+    const hook = () => setupServerStore();
     beforeEach(() => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
-        servers = [];
         window.api = { serverList: vi.fn().mockResolvedValue({ servers: [running] }) } as unknown as typeof window.api;
         window.showToast = vi.fn();
     });
@@ -53,7 +35,7 @@ describe('크래시 알림은 한 번만', () => {
         await act(async () => result.current.fetchServers());
         await act(async () => vi.advanceTimersByTime(31_000));
         vi.mocked(window.api.serverList).mockResolvedValue({ servers: [{ ...running, id: 'c2', status: 'stopped' }] } as never);
-        servers = servers.map((s: Server) => ({ ...s, id: 'c2' }));
+        useServerStore.setState({ servers: useServerStore.getState().servers.map((s: Server) => ({ ...s, id: 'c2' })) });
         await act(async () => result.current.fetchServers());
         showEventToast({ type: 'instance.exit', data: { instanceId: 'c2', instance: 'Crashy', kind: 'crash' } }, t);
         expect(errorToasts()).toHaveLength(1);

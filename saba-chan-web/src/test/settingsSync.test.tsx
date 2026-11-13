@@ -7,7 +7,7 @@ import { useApp } from '../store';
 import type { Module } from '../types';
 import { asServer, mockApi } from './mocks';
 
-// 데몬은 설정을 저장했지만 모듈이 게임 설정 파일에 쓰지 못하면 synced:false를 준다 (GUI useServerSettings와 같게 알린다)
+// 데몬은 설정을 저장했지만 모듈이 게임 설정 파일에 쓰지 못하면 synced:false를 준다 (GUI useServerSettingsStore와 같게 알린다)
 const moduleData = { settings: { fields: [{ name: 'motd', field_type: 'text' }] } };
 const server = { id: 's1', name: 'survival', module: 'mc', revision: 'r1', module_settings: { motd: 'old' } };
 

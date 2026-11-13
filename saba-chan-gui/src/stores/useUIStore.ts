@@ -223,6 +223,11 @@ export const useUIStore = create<UIState>()((set, _get) => ({
         }),
 }));
 
+/** 다른 스토어(서버 동작·서버 설정)가 띄우는 창: 설정을 주면 띄우고 null이면 닫는다 */
+export const setModal = (modal: ModalConfig | null) =>
+    modal ? useUIStore.getState().openModal(modal) : useUIStore.getState().closeModal();
+export const setProgressBar = (config: ProgressBarConfig | null) => useUIStore.getState().setProgressBar(config);
+
 // ── Vite HMR: preserve store state across hot module replacement ──
 if (import.meta.hot) {
     import.meta.hot.dispose((data) => {

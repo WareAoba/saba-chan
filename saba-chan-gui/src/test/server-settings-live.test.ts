@@ -1,6 +1,6 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 
 function deferred() {
     let resolve!: (value?: unknown) => void;
@@ -24,9 +24,7 @@ const modules = [
 ];
 
 const setup = () =>
-    renderHook(() =>
-        useServerSettings({ servers: [], modules: modules as never, setModal: vi.fn(), setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-    );
+    setupSettingsStore({ servers: [], modules: modules as never, setModal: vi.fn(), setProgressBar: vi.fn(), fetchServers: vi.fn() });
 
 beforeEach(() => {
     window.api = {
@@ -141,15 +139,13 @@ describe('서버 설정 창: 실제 설정', () => {
         (window.api as unknown as Record<string, unknown>).instanceGetInstalledVersion = vi.fn((id) =>
             id === 'a' ? firstDetect.promise : Promise.resolve({ success: true, version: '2.0' }),
         );
-        const { result } = renderHook(() =>
-            useServerSettings({
-                servers: [],
-                modules: dl as never,
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                fetchServers: vi.fn(),
-            }),
-        );
+        const { result } = setupSettingsStore({
+            servers: [],
+            modules: dl as never,
+            setModal: vi.fn(),
+            setProgressBar: vi.fn(),
+            fetchServers: vi.fn(),
+        });
         let firstOpen: Promise<unknown>;
         await act(async () => {
             firstOpen = result.current.handleOpenSettings({ id: 'a', name: 'A', module: 'dl' } as never);

@@ -1,11 +1,12 @@
 import type { ComponentProps, ComponentType } from 'react';
-import { act, render, renderHook } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../components/ExtensionSlot', () => ({ default: () => null, SlotView: () => null, useSlotPages: () => [] }));
 
 import { ServerRow as ServerRowFull } from '../components/servers/ServerRow';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
+import { unsavedServerIds } from '../stores/useServerSettingsStore';
 import { useServerStore } from '../stores/useServerStore';
 
 const ServerRow = ServerRowFull as unknown as ComponentType<Partial<ComponentProps<typeof ServerRowFull>>>;
@@ -16,15 +17,13 @@ const srvA = { id: 'a', name: 'A', module: 'dl', status: 'stopped', module_setti
 const srvB = { id: 'b', name: 'B', module: 'dl', status: 'stopped', module_settings: { motd: 'b-saved' } };
 
 const setup = () =>
-    renderHook(() =>
-        useServerSettings({
-            servers: [srvA, srvB] as never,
-            modules: modules as never,
-            setModal: vi.fn(),
-            setProgressBar: vi.fn(),
-            fetchServers: vi.fn(),
-        }),
-    );
+    setupSettingsStore({
+        servers: [srvA, srvB] as never,
+        modules: modules as never,
+        setModal: vi.fn(),
+        setProgressBar: vi.fn(),
+        fetchServers: vi.fn(),
+    });
 
 describe('저장하지 않은 서버 설정', () => {
     beforeEach(() => {
@@ -42,18 +41,18 @@ describe('저장하지 않은 서버 설정', () => {
     it('다른 서버를 열었다 돌아오면 고치던 값이 그대로이고, 저장하면 그 값이 간다', async () => {
         const { result } = setup();
         await act(async () => result.current.handleOpenSettings(srvA as never));
-        expect(result.current.unsavedServers).toEqual([]);
+        expect(unsavedServerIds(result.current, modules as never)).toEqual([]);
         act(() => result.current.handleSettingChange('motd', 'a-edited'));
-        expect(result.current.unsavedServers).toEqual(['a']);
+        expect(unsavedServerIds(result.current, modules as never)).toEqual(['a']);
 
         await act(async () => result.current.handleOpenSettings(srvB as never));
         expect(result.current.settingsValues.motd).toBe('b-saved');
-        expect(result.current.unsavedServers).toEqual(['a']);
+        expect(unsavedServerIds(result.current, modules as never)).toEqual(['a']);
 
         await act(async () => result.current.handleOpenSettings(srvA as never));
         expect(result.current.settingsValues.motd).toBe('a-edited');
         expect(result.current.openedSettings.motd).toBe('a-saved');
-        expect(result.current.unsavedServers).toEqual(['a']);
+        expect(unsavedServerIds(result.current, modules as never)).toEqual(['a']);
 
         await act(async () => result.current.handleSaveSettings());
         expect(window.api.instanceUpdateSettings).toHaveBeenCalledWith('a', expect.objectContaining({ motd: 'a-edited' }));
@@ -64,11 +63,11 @@ describe('저장하지 않은 서버 설정', () => {
         await act(async () => result.current.handleOpenSettings(srvA as never));
         act(() => result.current.handleSettingChange('motd', 'a-edited'));
         act(() => result.current.revertSettings());
-        expect(result.current.unsavedServers).toEqual([]);
+        expect(unsavedServerIds(result.current, modules as never)).toEqual([]);
         await act(async () => result.current.handleOpenSettings(srvB as never));
         await act(async () => result.current.handleOpenSettings(srvA as never));
         expect(result.current.settingsValues.motd).toBe('a-saved');
-        expect(result.current.unsavedServers).toEqual([]);
+        expect(unsavedServerIds(result.current, modules as never)).toEqual([]);
     });
 
     it('서버 카드에 경고 표시를 붙인다', () => {

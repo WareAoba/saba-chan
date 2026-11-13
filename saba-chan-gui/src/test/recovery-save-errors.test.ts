@@ -1,27 +1,16 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { createApi } from '../api/createApi';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import type { Server } from '../stores/useServerStore';
 
 // 서버 jar를 찾지 못했을 때의 복구(경로 바꾸기, 새로 설치)는 설정 저장이 실패하면 성공이라고 하지 않는다
 describe('jar 복구의 설정 저장 실패', () => {
     let setModal: Mock;
     const setup = () => {
-        setModal = vi.fn();
-        return renderHook(() =>
-            useServerActions({
-                servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }] as unknown as Server[],
-                setServers: vi.fn(),
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal,
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-            }),
-        );
+        const store = setupServerStore({ servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }] });
+        setModal = store.setModal;
+        return store;
     };
     beforeEach(() => {
         window.api = {
@@ -40,7 +29,7 @@ describe('jar 복구의 설정 저장 실패', () => {
 
     it('경로 바꾸기: 저장이 실패하면 오류를 보이고 다시 시작하지 않는다', async () => {
         const { result } = setup();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.startServer('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].buttons[0].action());
         expect(toastTypes()).toEqual(['error']);
         expect(window.api.instanceStart).toHaveBeenCalledTimes(1);
@@ -54,7 +43,7 @@ describe('jar 복구의 설정 저장 실패', () => {
             error_code: 'save_failed',
         });
         const { result } = setup();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.startServer('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].buttons[1].action());
         expect(toastTypes()).toEqual(['error']);
     });

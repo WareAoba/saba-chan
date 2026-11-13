@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import i18n from '../i18n';
 import { blockedText, showTrustWarnings } from '../utils/trustNotice';
 
@@ -14,28 +14,13 @@ const unavailable = {
 };
 
 function setup() {
-    const setModal = vi.fn();
-    const { result } = renderHook(() =>
-        useServerActions({
-            servers: [{ id: 'p1', name: 'Pal', module: 'palworld', status: 'stopped' } as never],
-            setServers: vi.fn(),
-            modules: [],
-            loading: false,
-            setLoading: vi.fn(),
-            setModal,
-            setProgressBar: vi.fn(),
-            openConsole: vi.fn(),
-            closeConsole: vi.fn(),
-            setShowModuleManager: vi.fn(),
-            formatUptime: vi.fn(),
-        } as never),
-    );
+    const { result, setModal } = setupServerStore({ servers: [{ id: 'p1', name: 'Pal', module: 'palworld', status: 'stopped' }] });
     return { result, setModal };
 }
 
 describe('격리를 준비하지 못했을 때 (sandbox_unavailable)', () => {
     beforeEach(() => {
-        window.api = { serverList: vi.fn().mockResolvedValue({ servers: [] }) } as unknown as typeof window.api;
+        window.api = { serverList: vi.fn().mockResolvedValue({ servers: [{ id: 'p1', name: 'Pal', module: 'palworld', status: 'stopped' }] }) } as unknown as typeof window.api;
         window.showToast = vi.fn();
     });
 
@@ -46,7 +31,7 @@ describe('격리를 준비하지 못했을 때 (sandbox_unavailable)', () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(unsupported);
         window.api.sandboxAllowUnisolated = vi.fn();
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('Pal', 'palworld'));
+        await act(async () => result.current.startServer('p1'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.title).toBe('Run without isolation?');
         expect(modal.message).toContain(guidance);
@@ -57,7 +42,7 @@ describe('격리를 준비하지 못했을 때 (sandbox_unavailable)', () => {
         window.api.instanceStart = vi.fn().mockResolvedValueOnce(unavailable).mockResolvedValue({ success: false });
         window.api.sandboxAllowUnisolated = vi.fn().mockResolvedValue({ success: true, component: 'module-palworld' });
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('Pal', 'palworld'));
+        await act(async () => result.current.startServer('p1'));
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.type).toBe('question');
         expect(modal.title).toBe('Run without isolation?');
@@ -73,7 +58,7 @@ describe('격리를 준비하지 못했을 때 (sandbox_unavailable)', () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(unavailable);
         window.api.sandboxAllowUnisolated = vi.fn().mockResolvedValue({ success: false, error_code: 'canceled' });
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('Pal', 'palworld'));
+        await act(async () => result.current.startServer('p1'));
         await act(async () => setModal.mock.calls.at(-1)![0].buttons[0].action());
         expect(vi.mocked(window.showToast!).mock.calls.filter((c) => c[1] === 'error')).toEqual([]);
         expect(window.api.instanceStart).toHaveBeenCalledTimes(1);
@@ -83,7 +68,7 @@ describe('격리를 준비하지 못했을 때 (sandbox_unavailable)', () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(unavailable);
         window.api.sandboxAllowUnisolated = vi.fn();
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('Pal', 'palworld'));
+        await act(async () => result.current.startServer('p1'));
         act(() => setModal.mock.calls.at(-1)![0].buttons[1].action());
         expect(window.api.sandboxAllowUnisolated).not.toHaveBeenCalled();
         expect(window.api.instanceStart).toHaveBeenCalledTimes(1);
@@ -92,7 +77,7 @@ describe('격리를 준비하지 못했을 때 (sandbox_unavailable)', () => {
     it('동의 채널이 없으면 묻지 않고 이유만 알린다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(unavailable);
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('Pal', 'palworld'));
+        await act(async () => result.current.startServer('p1'));
         expect(setModal).not.toHaveBeenCalled();
         expect(vi.mocked(window.showToast!).mock.calls.at(-1)![0]).toContain(
             "Couldn't prepare an isolated environment for module-palworld",

@@ -7,7 +7,7 @@ import i18n from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ServerConsole } from '../components/servers/ServerConsole';
 import { useMultiConsole } from '../hooks/useMultiConsole';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import { type ConsoleEntry, useConsoleStore } from '../stores/useConsoleStore';
 import { useServerStore } from '../stores/useServerStore';
 import type { Server } from '../stores/useServerStore';
@@ -60,9 +60,8 @@ describe('꺼진 서버의 콘솔', () => {
 
     it('끄기를 눌러도 콘솔을 닫지 않는다 (지난 로그가 남는다)', async () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
-        let servers = [{ id: 'a', name: 'A', module: 'game', status: 'running', pid: 5 }] as Server[];
+        const servers = [{ id: 'a', name: 'A', module: 'game', status: 'running', pid: 5 }] as Server[];
         const closeConsole = vi.fn();
-        const setModal = vi.fn();
         window.api = {
             ...window.api,
             serverList: vi.fn().mockResolvedValue({ servers }),
@@ -70,23 +69,8 @@ describe('꺼진 서버의 콘솔', () => {
             instanceStatus: vi.fn().mockResolvedValue({ status: 'stopped' }),
         } as unknown as typeof window.api;
         window.showToast = vi.fn();
-        const { result } = renderHook(() =>
-            useServerActions({
-                servers,
-                setServers: (u: Server[] | ((prev: Server[]) => Server[])) => {
-                    servers = typeof u === 'function' ? u(servers) : u;
-                },
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal,
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                closeConsole,
-                setShowModuleManager: vi.fn(),
-            } as never),
-        );
-        await act(async () => result.current.handleStop('A'));
+        const { result, setModal } = setupServerStore({ servers });
+        await act(async () => result.current.stopServer('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
         await act(async () => vi.advanceTimersByTimeAsync(1500));
         expect(window.api.instanceStop).toHaveBeenCalled();

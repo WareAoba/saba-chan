@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 
 // 저장 막대의 기준(연 때 값)은 설정 훅이 쥔다: 캐시로 연 뒤 실제 파일 값이 오면 그 값이 기준이고,
 // 되돌리기는 그 기준으로 돌아가며 고친 칸 표시도 지운다 (캐시 값을 파일에 덮어쓰지 않게)
@@ -8,9 +8,7 @@ const modules = [{ name: 'game', settings: { fields: [{ name: 'title', field_typ
 const server = { id: 's', name: 'S', module: 'game', module_settings: { title: 'cached' } };
 
 function setup() {
-    return renderHook(() =>
-        useServerSettings({ servers: [], modules: modules as never, setModal: vi.fn(), setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-    );
+    return setupSettingsStore({ servers: [], modules: modules as never, setModal: vi.fn(), setProgressBar: vi.fn(), fetchServers: vi.fn() });
 }
 
 beforeEach(() => {

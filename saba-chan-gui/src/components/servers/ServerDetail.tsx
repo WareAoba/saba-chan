@@ -9,15 +9,15 @@ import {
 import type { useMultiConsole } from '../../hooks/useMultiConsole';
 import { useExtensions } from '../../contexts/ExtensionContext';
 import { extensionInstallMethod } from '../../utils/installMethod';
-import type { useServerSettings } from '../../hooks/useServerSettings';
 import { useConsoleStore } from '../../stores/useConsoleStore';
+import { useServerSettingsStore } from '../../stores/useServerSettingsStore';
 import { type Server, useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
 import { openWithNotice, safeShowToast } from '../../utils/helpers';
 import { isImeKey } from '../../utils/ime';
 import { screenFallbackNotice } from '../../utils/openScreen';
-import { type ModalConfig, useUIStore } from '../../stores/useUIStore';
+import { useUIStore } from '../../stores/useUIStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { withCommandAliases } from '../../utils/commandRisk';
 import {
@@ -55,23 +55,13 @@ import { ModuleAuditNotice } from './ModuleAuditNotice';
 import { ServerConsole } from './ServerConsole';
 import { StartCoach } from './OnboardingCard';
 
-type ServerSetter = (updater: (prev: Server[]) => Server[]) => void;
-
 interface ServerDetailProps {
     server: Server;
     moduleData?: ModuleInfo;
     modules: ModuleInfo[];
     servers: Server[];
-    setServers: ServerSetter;
-    onStart: (name: string, moduleName: string) => void;
-    onStop: (name: string) => void;
-    onRestart?: (name: string) => void;
-    onRename?: (id: string, name: string) => Promise<boolean> | boolean;
-    onDelete: (server: Server) => void;
     onBack?: (() => void) | null;
-    setModal?: (modal: ModalConfig | null) => void;
     consoleProps: ServerConsoleProps;
-    settingsProps: ServerSettingsProps;
 }
 
 /** App이 서버 화면에 넘기는 콘솔 묶음 */
@@ -79,12 +69,6 @@ export type ServerConsoleProps = Pick<
     ReturnType<typeof useMultiConsole>,
     'openConsole' | 'watchConsole' | 'setConsoleInput' | 'sendConsoleCommand' | 'consolePopoutIds' | 'popinConsole'
 >;
-
-/** App이 서버 화면에 넘기는 설정 묶음: 닫기 상태는 isClosing 하나로 넘긴다 */
-export type ServerSettingsProps = Omit<
-    ReturnType<typeof useServerSettings>,
-    'isSettingsClosing' | 'requestSettingsClose'
-> & { isClosing: boolean };
 
 /**
  * 오른쪽 서버 상세. 머리(이름·상태·켜기/끄기) + 탭(콘솔 · 명령 · 설정 · 백업·예약 · 정보).
@@ -95,17 +79,16 @@ export function ServerDetail({
     moduleData,
     modules,
     servers,
-    setServers,
-    onStart,
-    onStop,
-    onRestart,
-    onRename,
-    onDelete,
     onBack,
     consoleProps,
-    settingsProps,
 }: ServerDetailProps) {
     const { t, i18n } = useTranslation('gui');
+    const setServers = useServerStore((s) => s.setServers);
+    const onStart = useServerStore((s) => s.startServer);
+    const onStop = useServerStore((s) => s.stopServer);
+    const onRestart = useServerStore((s) => s.restartServer);
+    const onRename = useServerStore((s) => s.renameServer);
+    const onDelete = useServerStore((s) => s.deleteServer);
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
     const { provisionProgress, cooked, updateInfo, updatingServer } = useMaintenanceOf(server.id);
     const { extensions } = useExtensions();
@@ -222,18 +205,18 @@ export function ServerDetail({
         }
         return action === 'stop' ? (
             <>
-                {onRestart && typeof window.api?.instanceRestart === 'function' && (
+                {typeof window.api?.instanceRestart === 'function' && (
                     <button
                         type="button"
                         className="icon-btn"
-                        onClick={() => onRestart(server.name)}
+                        onClick={() => onRestart(server.id)}
                         data-tooltip={t('shell.restart')}
                         aria-label={t('shell.restart')}
                     >
                         <Icon name="refresh" size="sm" />
                     </button>
                 )}
-                <button type="button" className="btn btn-danger btn-lg" onClick={() => onStop(server.name)}>
+                <button type="button" className="btn btn-danger btn-lg" onClick={() => onStop(server.id)}>
                     <Icon name="stop" size="sm" /> {t('shell.stop')}
                 </button>
             </>
@@ -242,7 +225,7 @@ export function ServerDetail({
                 <button data-spot="server.start"
                     type="button"
                     className="btn btn-primary btn-lg"
-                    onClick={() => onStart(server.name, server.module)}
+                    onClick={() => onStart(server.id)}
                 >
                     <Icon name="play" size="sm" /> {t('shell.start')}
                 </button>
@@ -271,7 +254,7 @@ export function ServerDetail({
                     {moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>}
                 </div>
                 <div className="detail-title">
-                    <ServerName server={server} canRename={!!onRename && status === 'stopped'} onRename={onRename} />
+                    <ServerName server={server} canRename={status === 'stopped'} onRename={onRename} />
                     <div className="detail-sub">
                         <span>{gameName}</span>
                         {versionTag && <span className="tag">{versionTag}</span>}
@@ -336,8 +319,8 @@ export function ServerDetail({
                             {t('server_status.unresponsive', { reason: server.unresponsive })}
                         </span>
                     </span>
-                    {onRestart && typeof window.api?.instanceRestart === 'function' && (
-                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRestart(server.name)}>
+                    {typeof window.api?.instanceRestart === 'function' && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRestart(server.id)}>
                             <Icon name="refresh" size="sm" /> {t('shell.restart')}
                         </button>
                     )}
@@ -379,7 +362,7 @@ export function ServerDetail({
                     <button
                         type="button"
                         className="btn btn-primary btn-sm"
-                        onClick={() => onStart(server.name, server.module)}
+                        onClick={() => onStart(server.id)}
                     >
                         <Icon name="play" size="sm" /> {t('shell.start')}
                     </button>
@@ -421,7 +404,7 @@ export function ServerDetail({
                         }
                         onDismiss={() => dismissInstanceProvision(server, setServers)}
                         onClose={() => closeCookedCard(server)}
-                        onStart={() => onStart(server.name, server.module)}
+                        onStart={() => onStart(server.id)}
                         onSettings={() => setTab('settings')}
                     />
                 </div>
@@ -480,7 +463,6 @@ export function ServerDetail({
                             <SettingsTab
                                 section={activeTab === 'saba' ? 'saba' : 'server'}
                                 server={server}
-                                settingsProps={settingsProps}
                                 modules={modules}
                                 servers={servers}
                             />
@@ -534,7 +516,7 @@ function ServerName({
 }: {
     server: Server;
     canRename: boolean;
-    onRename?: ServerDetailProps['onRename'];
+    onRename: (id: string, name: string) => Promise<boolean>;
 }) {
     const { t } = useTranslation('gui');
     const [editing, setEditing] = useState(false);
@@ -573,7 +555,7 @@ function ServerName({
             return;
         }
         setSaving(true);
-        const ok = await (onRename as NonNullable<typeof onRename>)(server.id, next);
+        const ok = await onRename(server.id, next);
         setSaving(false);
         if (ok) setEditing(false);
     };
@@ -602,25 +584,24 @@ function ServerName({
 function SettingsTab({
     section,
     server,
-    settingsProps,
     modules,
     servers,
 }: {
     section: 'server' | 'saba';
     server: Server;
-    settingsProps: ServerDetailProps['settingsProps'];
     modules: ModuleInfo[];
     servers: Server[];
 }) {
     const { t } = useTranslation('gui');
-    const { showSettingsModal, settingsServer, handleOpenSettings } = settingsProps;
+    const settings = useServerSettingsStore();
+    const { showSettingsModal, settingsServer, handleOpenSettings } = settings;
     const ready = showSettingsModal && settingsServer?.id === server.id;
 
     // 탭을 열거나 설정 창이 닫히면(버전 설치 등) 최신 값으로 다시 연다
-    // biome-ignore lint/correctness/useExhaustiveDependencies: handleOpenSettings는 매 렌더 새로 만들어진다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 서버 객체는 목록을 받을 때마다 바뀐다 (서버가 바뀔 때만)
     useEffect(() => {
         if (!ready) handleOpenSettings(server);
-    }, [ready, server.id]);
+    }, [ready, server.id, handleOpenSettings]);
 
     if (!ready) {
         return (
@@ -632,8 +613,8 @@ function SettingsTab({
     }
     return (
         <ServerSettingsModal
-            {...settingsProps}
-            settingsServer={settingsProps.settingsServer as Server}
+            {...settings}
+            settingsServer={settingsServer as Server}
             section={section}
             modules={modules}
             servers={servers}

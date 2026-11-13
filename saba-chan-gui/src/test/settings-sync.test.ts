@@ -1,14 +1,12 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 
 const modules = [{ name: 'game', settings: { fields: [{ name: 'title', field_type: 'text' }] } }];
 
 function setup() {
     const setModal = vi.fn();
-    const hook = renderHook(() =>
-        useServerSettings({ servers: [], modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-    );
+    const hook = setupSettingsStore({ servers: [], modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() });
     return { ...hook, setModal };
 }
 

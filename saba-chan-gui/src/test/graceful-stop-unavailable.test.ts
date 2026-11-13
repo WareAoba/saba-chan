@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import i18n from '../i18n';
 import type { Server } from '../stores/useServerStore';
 
@@ -15,20 +15,7 @@ const refused = {
 
 const render = () => {
     const list = [{ id: 'a', name: 'A', module: 'game', status: 'running', pid: 10 }] as unknown as Server[];
-    const setModal = vi.fn();
-    const { result } = renderHook(() =>
-        useServerActions({
-            servers: list,
-            setServers: vi.fn(),
-            modules: [],
-            loading: false,
-            setLoading: vi.fn(),
-            setModal,
-            setProgressBar: vi.fn(),
-            openConsole: vi.fn(),
-            setShowModuleManager: vi.fn(),
-        }),
-    );
+    const { result, setModal } = setupServerStore({ servers: list });
     window.api.serverList = vi.fn(async () => ({ servers: list })) as never;
     window.api.instanceStatus = vi.fn(async () => ({ status: 'stopped' }));
     return { result, setModal };
@@ -44,7 +31,7 @@ describe('저장 후 종료를 할 수 없는 서버', () => {
             instanceStop: vi.fn().mockResolvedValueOnce(refused).mockResolvedValueOnce({ success: true }),
         } as unknown as typeof window.api;
         const { result, setModal } = render();
-        await act(async () => result.current.handleStop('A'));
+        await act(async () => result.current.stopServer('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
 
         const ask = setModal.mock.calls.at(-1)![0];
@@ -62,7 +49,7 @@ describe('저장 후 종료를 할 수 없는 서버', () => {
     it('정지: 취소하면 다시 요청하지 않는다', async () => {
         window.api = { instanceStop: vi.fn().mockResolvedValue(refused) } as unknown as typeof window.api;
         const { result, setModal } = render();
-        await act(async () => result.current.handleStop('A'));
+        await act(async () => result.current.stopServer('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
         await act(async () => setModal.mock.calls.at(-1)![0].buttons[1].action());
         expect(window.api.instanceStop).toHaveBeenCalledTimes(1);
@@ -73,7 +60,7 @@ describe('저장 후 종료를 할 수 없는 서버', () => {
             instanceRestart: vi.fn().mockResolvedValueOnce(refused).mockResolvedValueOnce({ success: true }),
         } as unknown as typeof window.api;
         const { result, setModal } = render();
-        await act(async () => result.current.handleRestart('A'));
+        await act(async () => result.current.restartServer('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
 
         const ask = setModal.mock.calls.at(-1)![0];

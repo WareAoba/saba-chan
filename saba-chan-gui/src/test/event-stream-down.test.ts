@@ -2,11 +2,11 @@
  * 이벤트 스트림이 끊긴 동안(셸의 `events:live` false)에는 목록 폴링이 켜짐·꺼짐을 알리고,
  * 다시 붙으면 이벤트에 맡긴다. 셸이 아무 말도 하지 않았으면 붙은 것으로 본다
  */
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';
 import { createEventHub } from '../api/events';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import i18n from '../i18n';
 import type { Server } from '../stores/useServerStore';
 import { eventsLive, showEventToast } from '../utils/daemonEvents';
@@ -14,17 +14,12 @@ import { eventsLive, showEventToast } from '../utils/daemonEvents';
 const t = i18n.getFixedT('en', 'gui');
 
 describe('이벤트 스트림이 끊긴 동안', () => {
-    let servers: Server[];
     let shell: Map<string, (payload: unknown) => void>;
-    const setServers = vi.fn((update) => {
-        servers = typeof update === 'function' ? update(servers) : update;
-    });
     const running = { id: 's1', name: 'Survival', module: 'game', status: 'running' };
     const stopped = { ...running, status: 'stopped' };
 
     beforeEach(async () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
-        servers = [];
         shell = new Map();
         const hub = createEventHub();
         await hub.start(async (name, cb) => {
@@ -37,20 +32,7 @@ describe('이벤트 스트림이 끊긴 동안', () => {
     });
     afterEach(() => vi.useRealTimers());
 
-    const hook = () =>
-        renderHook(() =>
-            useServerActions({
-                servers,
-                setServers,
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-            }),
-        );
+    const hook = () => setupServerStore();
     const stopToasts = () => vi.mocked(window.showToast as NonNullable<typeof window.showToast>).mock.calls.filter((c) => c[1] === 'error');
     const pollOnce = async (result: { current: { fetchServers: () => Promise<unknown> } }, list: object[]) => {
         vi.mocked(window.api.serverList).mockResolvedValue({ servers: list } as never);

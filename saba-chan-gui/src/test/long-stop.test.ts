@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import type { Server } from '../stores/useServerStore';
 
 // 데몬은 정지 요청에 stop_timeout(최대 3600초)까지 기다린 뒤 답한다(MK14, #458). 그동안 목록은 running으로 온다.
@@ -26,39 +26,22 @@ describe('오래 걸리는 정지', () => {
             instanceStop: vi.fn(() => new Promise((r) => (release = r))),
             instanceStatus: vi.fn(async () => ({ status: 'stopped' })),
         } as unknown as typeof window.api;
-        let servers = list;
-        const setServers = (u: Server[] | ((s: Server[]) => Server[])) => {
-            servers = typeof u === 'function' ? u(servers) : u;
-        };
-        const setModal = vi.fn();
-        const { result } = renderHook(() =>
-            useServerActions({
-                servers,
-                setServers,
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal,
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-            }),
-        );
+        const { result, setModal } = setupServerStore({ servers: list });
         await act(async () => result.current.fetchServers());
         tick(40_000); // 데몬이 막 켜진 뒤의 유예(30초)를 넘긴다
-        await act(async () => result.current.handleStop('A'));
+        await act(async () => result.current.stopServer('a'));
         act(() => {
             setModal.mock.calls.at(-1)![0].onConfirm();
         });
         tick(61_000);
         await act(async () => result.current.fetchServers());
-        expect(servers[0].status).toBe('stopping');
+        expect(result.current.servers[0].status).toBe('stopping');
 
         list = [{ ...list[0], last_api_action: now - 61_000 }];
         tick(11 * 60_000);
         list = [{ ...list[0], status: 'stopped', pid: null }];
         await act(async () => result.current.fetchServers());
-        expect(servers[0].status).toBe('stopped');
+        expect(result.current.servers[0].status).toBe('stopped');
         const unexpected = vi
             .mocked(window.showToast!)
             .mock.calls.filter(([, level]) => level === 'error' || level === 'info');
