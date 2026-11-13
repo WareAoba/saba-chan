@@ -54,6 +54,13 @@ fn relay(user: &str, chatbot: bool) -> Caller {
     Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who), origin: crate::audit::Origin::new("discord"), locale: "ko".into() }
 }
 
+/// 챗봇은 읽은 판(`revision`)을 실어야 예약을 바꾼다: 지금 판을 붙인 입력
+async fn with_revision(state: &IPCServer, id: &str, mut input: Value) -> Value {
+    let got = query(state, "instance.schedule.get", Some(id), &json!({}), &gui()).await.unwrap();
+    input["revision"] = got["result"]["revision"].clone();
+    input
+}
+
 /// 확인 버튼을 누른 요청자 (릴레이 `confirmedBy`)
 fn pressed(user: &str) -> Caller {
     let mut c = relay(user, false);
@@ -190,7 +197,7 @@ async fn plans_belong_to_their_requester_and_keep_the_chatbot_cap() {
 async fn a_chatbot_plan_runs_as_the_chatbot_whoever_confirms_it() {
     let (state, id, _tmp) = server().await;
     open_everything(&state).await;
-    let lower = json!({ "schedule": [], "backup_keep": 1 });
+    let lower = with_revision(&state, &id, json!({ "schedule": [], "backup_keep": 1 })).await;
     let made = plan(&state, "instance.schedule.set", Some(&id), &lower, &relay("owner", true)).await.unwrap();
     let plan_id = made["planId"].as_str().unwrap().to_string();
     let ran = run(&state, "", None, &Value::Null, Some(&plan_id), &pressed("owner")).await.unwrap();
@@ -1112,8 +1119,9 @@ async fn scheduling_a_command_needs_the_requesters_permission_for_it() {
         let err = plan(&state, "instance.schedule.set", Some(&id), &input, &admin).await.unwrap_err();
         assert_eq!((err.code, &err.data["args"]["need"]), ("PERMISSION_DENIED", &json!(3)), "{}", what);
     }
-    assert!(plan(&state, "instance.schedule.set", Some(&id), &task("start", None), &admin).await.is_ok(), "only the limited commands");
-    let off = json!({ "schedule": [{ "action": "command", "at": "04:00", "command": "say", "enabled": false }] });
+    let start = with_revision(&state, &id, task("start", None)).await;
+    assert!(plan(&state, "instance.schedule.set", Some(&id), &start, &admin).await.is_ok(), "only the limited commands");
+    let off = with_revision(&state, &id, json!({ "schedule": [{ "action": "command", "at": "04:00", "command": "say", "enabled": false }] })).await;
     assert!(plan(&state, "instance.schedule.set", Some(&id), &off, &admin).await.is_ok(), "a disabled task never runs");
 }
 
@@ -1634,9 +1642,11 @@ async fn an_mcp_owner_reaches_what_the_app_screens_do() {
         "backup.delete",
     ] {
         assert!(ids.contains(&want), "{want} missing from the app catalog");
-        // 디스코드·챗봇 표면은 넓히지 않는다. 게임 서버 업데이트만 디스코드에도 연다 (사용자 결정 2026-11-10, 챗봇은 아니다)
+        // 디스코드·챗봇 표면은 넓히지 않는다. 게임 서버 업데이트만 디스코드에도 연다 (사용자 결정 2026-11-10, 챗봇은 아니다).
+        // 예약 읽기는 말하는 사바쨩에도 연다 (사용자 결정 2026-11-13)
         let discord_ok = want.starts_with("server.update.");
-        assert!(!find(want).unwrap().surfaces.iter().any(|s| matches!(s, Chatbot) || (matches!(s, Discord) && !discord_ok)), "{want}");
+        let chatbot_ok = want == "instance.schedule.get";
+        assert!(!find(want).unwrap().surfaces.iter().any(|s| (matches!(s, Chatbot) && !chatbot_ok) || (matches!(s, Discord) && !discord_ok)), "{want}");
     }
 
     let got = query(&state, "instance.get", Some(&id), &json!({}), &owner).await.unwrap();
@@ -1929,4 +1939,68 @@ fn the_required_snapshot_carries_the_levels_authorize_would_ask() {
     assert_eq!(snap["servers"], json!({ "i1": { "actions": { "server.start": 2 } }, "i2": { "actions": { "server.status": 3 } } }), "only what differs; kick already is 2 by default");
     let unlisted = required_snapshot(&set, Some(&["i2"]), &targets);
     assert!(unlisted["servers"].get("i1").is_none(), "servers the guild cannot see are left out");
+}
+
+/// 말하는 사바쨩의 예약 편집 (사용자 결정 2026-11-13): 목록을 읽을 수 있고, 읽은 판(`revision`)을 실어야 바꾼다.
+/// 확인 글은 달라지는 작업만 적고, 확인을 기다리는 사이 다른 곳에서 바뀐 일정은 덮어쓰지 않는다
+#[tokio::test]
+async fn the_chatbot_reads_the_schedule_and_changes_it_only_from_what_it_read() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let chatbot = relay("owner", true);
+    let listed = list(&state, Some(Chatbot), None, "en").await;
+    let offered = |want: &str| listed["actions"].as_array().unwrap().iter().any(|a| a["id"] == want);
+    assert!(offered("instance.schedule.get") && offered("instance.schedule.set"));
+
+    let restart = json!({ "action": "restart", "at": "04:00", "enabled": true });
+    let saved = run(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [restart] }), None, &gui()).await.unwrap();
+    assert_eq!(saved["success"], true, "{saved}");
+    let read = query(&state, "instance.schedule.get", Some(&id), &json!({}), &chatbot).await.unwrap();
+    assert_eq!(read["result"]["schedule"], json!([restart]), "{read}");
+    // 실행 이력은 길어서 모델에 주지 않는다 (일정과 판이 잘리지 않게)
+    assert!(read["result"].get("history").is_none(), "{read}");
+    let revision = read["result"]["revision"].clone();
+
+    let later = json!({ "action": "restart", "at": "05:00", "enabled": true });
+    let blind = plan(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [later] }), &chatbot).await.unwrap_err();
+    assert_eq!((blind.code, &blind.data["field"]), ("invalid_input", &json!("revision")), "the chatbot must read first");
+    let stale = plan(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [later], "revision": "old" }), &chatbot).await.unwrap_err();
+    assert_eq!((stale.status, stale.code), (409, "schedule_changed"));
+    // 여러 단계 계획으로 돌아가도 같다
+    let steps = json!([{ "id": "instance.schedule.set", "instance": id, "input": { "schedule": [later] } }]);
+    assert_eq!(plan_steps(&state, &steps, &chatbot).await.unwrap_err().code, "invalid_input");
+
+    let made = plan(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [later], "revision": revision }), &chatbot).await.unwrap();
+    assert_eq!(made["text"][0]["key"], "actions.summary.schedule.changed", "{made}");
+    // 이 PC 화면의 계획에는 원격용 글을 싣지 않는다
+    let local = plan(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [later] }), &gui()).await.unwrap();
+    assert!(local.get("text").is_none(), "{local}");
+
+    // 확인을 기다리는 사이 앱에서 일정이 바뀌면 덮어쓰지 않는다
+    let saved = run(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [] }), None, &gui()).await.unwrap();
+    assert_eq!(saved["success"], true, "{saved}");
+    let ran = run(&state, "", None, &Value::Null, made["planId"].as_str(), &pressed("owner")).await.unwrap();
+    assert_eq!((&ran["success"], &ran["status"], &ran["result"]["error_code"]), (&json!(false), &json!(409), &json!("schedule_changed")), "{ran}");
+    let now = query(&state, "instance.schedule.get", Some(&id), &json!({}), &gui()).await.unwrap();
+    assert_eq!(now["result"]["schedule"], json!([]), "{now}");
+    assert!(now["result"]["history"].is_array(), "the app still gets the run history");
+}
+
+/// 챗봇에 싣는 예약 작업 모양(`schedule.items`)은 실제 작업 구조와 같은 칸을 가진다
+#[test]
+fn the_schedule_item_schema_names_the_fields_of_a_task() {
+    let (actions, _) = heartbeat_actions(&["en"], &[]);
+    let items = actions.iter().find(|a| a["id"] == "instance.schedule.set").unwrap()["input"]["properties"]["schedule"]["items"].clone();
+    let full = json!({
+        "action": "command", "every_minutes": 30, "at": "04:00", "every_days": 2, "start_date": "2026-01-01", "weekdays": ["mon"], "date": "2026-01-01",
+        "warn_minutes": [5], "message": "m", "command": "say", "args": { "a": 1 }, "enabled": true
+    });
+    let task: crate::scheduler::ScheduledTask = serde_json::from_value(full.clone()).unwrap();
+    let mut fields: Vec<String> = serde_json::to_value(&task).unwrap().as_object().unwrap().keys().cloned().collect();
+    let mut declared: Vec<String> = items["properties"].as_object().unwrap().keys().cloned().collect();
+    fields.sort();
+    declared.sort();
+    assert_eq!(declared, fields);
+    let all = crate::scheduler::TaskAction::Command;
+    assert!(items["properties"]["action"]["enum"].as_array().unwrap().contains(&serde_json::to_value(all).unwrap()));
 }
