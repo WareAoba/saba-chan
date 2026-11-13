@@ -7,6 +7,7 @@ use crate::ipc::IPCServer;
 use crate::service::Failure;
 
 pub(crate) mod create;
+pub(crate) mod install;
 pub(crate) mod provision;
 pub(crate) mod settings;
 
