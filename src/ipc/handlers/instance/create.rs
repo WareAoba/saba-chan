@@ -634,8 +634,7 @@ fn choose_server_folder(
             let subdir = module_install.as_ref().and_then(|(install, _, _)| install.as_ref()).and_then(|i| i.install_subdir.clone()).unwrap_or_else(|| "server".to_string());
             let Some(dest) = crate::instance::migration::move_target(&supervisor.instance_store.instance_dir(&instance.id), &subdir) else {
                 tracing::warn!("Migration: module install_subdir '{}' is not a folder inside the instance, not moving", subdir);
-                let error = json!({ "success": false, "error": "The module's install folder is not inside the instance folder", "error_code": "move_failed" });
-                return Err(Box::new((StatusCode::CONFLICT, Json(error)).into_response()));
+                return Err(Box::new(super::super::error(StatusCode::CONFLICT, "move_failed", "The module's install folder is not inside the instance folder")));
             };
             instance.working_dir = Some(dest.to_string_lossy().into_owned());
             moved_from = Some(std::path::PathBuf::from(src));

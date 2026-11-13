@@ -299,7 +299,7 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
             Interface::Cli => "No terminal program to open the CLI in",
             Interface::Gui => "This PC has no desktop screen to open the app on",
         };
-        return (StatusCode::NOT_IMPLEMENTED, Json(json!({ "success": false, "error": error, "error_code": "unsupported_platform" }))).into_response();
+        return super::error(StatusCode::NOT_IMPLEMENTED, "unsupported_platform", error);
     }
     let Some(binary) = crate::boot_selector::find_interface_binary(kind.binary()) else {
         let code = match kind {

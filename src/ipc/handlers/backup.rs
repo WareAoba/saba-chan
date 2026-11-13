@@ -19,10 +19,6 @@ use serde_json::json;
 use super::super::IPCServer;
 use crate::service::backup as service;
 
-pub(super) fn error(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
-    Failure::coded(status, code, message).into_response()
-}
-
 /// 다른 작업이 잡고 있을 때의 응답 (시작·업데이트·삭제)
 pub(crate) fn instance_busy() -> Response {
     Failure::busy().into_response()
@@ -50,7 +46,7 @@ pub async fn create_backup(Path(id): Path<String>, State(state): State<IPCServer
         None if body.from_snapshot => service::Source::Snapshot(body.snapshot),
         None | Some("current") => service::Source::Current,
         Some("snapshot") => service::Source::Snapshot(body.snapshot),
-        Some(other) => return error(StatusCode::BAD_REQUEST, "invalid_request", format!("Unknown backup source: {}", other)),
+        Some(other) => return super::error(StatusCode::BAD_REQUEST, "invalid_request", format!("Unknown backup source: {}", other)),
     };
     let resp = match service::create_from(&state, &id, source).await {
         Ok(made) => Json(json!({ "success": true, "backup": made })).into_response(),

@@ -3,7 +3,7 @@
 //! - `GET/PUT /api/instance/:id/schedule` — `{schedule: [...], backup_keep}`
 //! - `GET /api/schedules/upcoming` — 모든 인스턴스의 다가오는 예약
 
-use super::backup::error;
+use super::error;
 use crate::service::backup::DEFAULT_KEEP;
 use axum::{
     extract::{Path, State},

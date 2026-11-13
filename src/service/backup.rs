@@ -828,9 +828,9 @@ pub(crate) async fn import(state: &IPCServer, id: &str, path: &str, preview: boo
         }
     };
     if seen.module != at.module {
-        let mut body = json!({ "success": false, "error": "This backup was made for a different kind of server", "error_code": "import_other_module" });
-        body["module"] = json!(seen.module);
-        return Err(Failure::new(StatusCode::BAD_REQUEST, body));
+        let mut refused = Failure::coded(StatusCode::BAD_REQUEST, "import_other_module", "This backup was made for a different kind of server");
+        refused.body["module"] = json!(seen.module);
+        return Err(refused);
     }
     if preview {
         return Ok(json!({ "success": true, "preview": seen }));

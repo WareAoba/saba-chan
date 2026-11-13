@@ -106,7 +106,7 @@ pub async fn put(State(state): State<IPCServer>, Path(id): Path<String>, Json(bo
     match saved {
         Ok(Ok(())) => Json(json!({ "success": true, "id": id, "words": want.words, "commands": want.commands })).into_response(),
         Ok(Err(problems)) => validation(problems.into_iter().map(|p| serde_json::to_value(p).unwrap_or_default()).collect()),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string(), "error_code": "save_failed" }))).into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
     }
 }
 
@@ -150,7 +150,7 @@ pub async fn put_allowed(State(state): State<IPCServer>, Path(guild): Path<Strin
         .await;
     match saved {
         Ok(()) => Json(json!({ "guildId": guild, "allowedInstances": want })).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string(), "error_code": "save_failed" }))).into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
     }
 }
 

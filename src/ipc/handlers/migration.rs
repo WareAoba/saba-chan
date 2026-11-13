@@ -25,6 +25,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
+use super::error;
 use super::super::IPCServer;
 use crate::instance::ServerInstance;
 
@@ -32,10 +33,6 @@ const FORMAT: &str = "saba-chan-export";
 const FORMAT_VERSION: u64 = 1;
 /// 읽을 항목 하나의 최대 크기 (설정·인스턴스 JSON만 들어 있다)
 const MAX_ENTRY_BYTES: u64 = 16 * 1024 * 1024;
-
-fn error(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
-    (status, Json(json!({ "success": false, "error": message.into(), "error_code": code }))).into_response()
-}
 
 /// 상대 경로는 어디를 가리킬지 모호하다: 절대 경로만 받는다
 fn absolute_path(path: &str) -> Result<PathBuf, Response> {

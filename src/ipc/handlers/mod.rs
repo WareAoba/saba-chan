@@ -52,6 +52,12 @@ where
 
 pub(crate) use crate::service::{audited, Failure, Outcome};
 
+/// 실패 응답 `{success: false, error, error_code}` (`Failure::coded`). 핸들러가 오류 응답을 만드는 공용 모양
+pub(crate) fn error(status: axum::http::StatusCode, code: &str, message: impl Into<String>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    Failure::coded(status, code, message).into_response()
+}
+
 /// 서비스 함수의 결과를 HTTP 응답으로 (성공은 200)
 pub(crate) fn answer(result: Outcome) -> axum::response::Response {
     use axum::response::IntoResponse;

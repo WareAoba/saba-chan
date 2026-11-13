@@ -533,8 +533,7 @@ pub(crate) fn requested_agreements(payload: &Value, key: &str) -> Result<Vec<Str
         }
     };
     if !ids.is_empty() && crate::audit::current().is_relay() {
-        let error = json!({ "success": false, "error": "Agreements can only be accepted on this PC", "error_code": "agreement_local_only" });
-        return Err(Box::new((StatusCode::FORBIDDEN, Json(error)).into_response()));
+        return Err(Box::new(super::error(StatusCode::FORBIDDEN, "agreement_local_only", "Agreements can only be accepted on this PC")));
     }
     Ok(ids)
 }

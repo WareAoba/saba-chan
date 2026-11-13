@@ -24,6 +24,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::config::{self, Client};
 use super::h2;
+use super::peer::error;
 use super::relay::{self, Failure, Target};
 
 /// PC 전용 칸을 보려고 받아 두는 본문 (axum `Json`의 기본 한도와 같다)
@@ -144,10 +145,6 @@ impl Ctx {
         pairs.push((Instant::now(), from));
         true
     }
-}
-
-fn error(status: StatusCode, code: &str) -> Response {
-    (status, Json(json!({ "error": code, "error_code": code }))).into_response()
 }
 
 pub(crate) fn router(routes: Router, ctx: Ctx) -> Router {
