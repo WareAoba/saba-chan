@@ -570,7 +570,7 @@ async fn replace_addons_once(state: &UpdateState) -> Leftover {
     }
     // 여기부터 교체가 끝날 때까지 서버 시작을 막는다: 사용 확인과 교체 사이에 켜진 서버가 쓰던 판을 바꾸지 않게
     // 시작·설치가 진행 중이면 기다리지 않고 다음 차례로 미룬다 (받은 파일은 남는다)
-    let Some(_starts) = crate::supervisor::Supervisor::try_hold_starts() else {
+    let Some(_starts) = try_hold_starts(state).await else {
         tracing::info!("[Updates] A server is starting or installing; replacing modules and extensions later");
         return Leftover { held: true, failed };
     };
@@ -624,7 +624,7 @@ async fn apply_deferred_once(state: &UpdateState, staging: &std::path::Path) -> 
         return None;
     }
     // 교체가 끝날 때까지 서버 시작을 막는다: 사용 확인과 교체 사이에 켜진 서버가 쓰던 판을 바꾸지 않게
-    let Some(_starts) = crate::supervisor::Supervisor::try_hold_starts() else {
+    let Some(_starts) = try_hold_starts(state).await else {
         return Some(ADDON_HOLD_RETRY);
     };
     let (busy_modules, busy_extensions) = busy_addons(state).await;
@@ -708,6 +708,15 @@ async fn running_addon_users(state: &UpdateState) -> Vec<AddonUser> {
         }
     }
     users
+}
+
+/// 이 데몬의 서버 시작·설치를 막는다(`AddonSwapGate::try_hold_starts`). 감독자가 없으면 막을 시작도 없다
+async fn try_hold_starts(state: &UpdateState) -> Option<tokio::sync::OwnedRwLockWriteGuard<()>> {
+    let gate = match &state.supervisor {
+        Some(sup) => sup.read().await.addon_gate(),
+        None => crate::supervisor::AddonSwapGate::default(),
+    };
+    gate.try_hold_starts()
 }
 
 /// 켜진 서버 중 이 모듈·익스텐션을 쓰는 것의 이름
@@ -2499,7 +2508,7 @@ async fn switch_addon(
     }
     record(addon_pins::AddonChoice { pinned: pin, pending_version: Some(version.clone()) });
     // 여기부터 바꿀 때까지 서버 시작을 막는다 (자동 교체와 같다). 시작·설치 중이거나 켜진 서버가 쓰면 서버가 꺼진 뒤 자동 교체 반복이 바꾼다
-    let starts = crate::supervisor::Supervisor::try_hold_starts();
+    let starts = try_hold_starts(state).await;
     let waiting_for = if starts.is_some() { servers_using(state, component).await } else { Vec::new() };
     if starts.is_none() || !waiting_for.is_empty() {
         drop(starts);
