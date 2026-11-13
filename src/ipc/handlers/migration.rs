@@ -139,7 +139,7 @@ pub(crate) fn keep_local_pairing(sections: &mut Map<String, Value>) {
 
 /// zip의 노드 토큰을 이 PC에 쓸 것인가: 이 PC가 아직 페어링되지 않았을 때만
 fn takes_node_token(bundle: &Bundle) -> bool {
-    bundle.node_token.is_some() && super::relay::load_node_token().is_none()
+    bundle.node_token.is_some() && crate::relay_client::load_node_token().is_none()
 }
 
 /// 가져올 인스턴스마다 넣을지 건너뛸지
@@ -216,7 +216,7 @@ pub async fn export(State(state): State<IPCServer>, Json(req): Json<ExportReques
     };
     let config = state.config_store.portable_sections(req.secrets);
     let node_token = if req.secrets {
-        super::relay::load_node_token()
+        crate::relay_client::load_node_token()
     } else {
         None
     };
@@ -344,7 +344,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         None => Value::Null,
         Some(_) if !takes => json!("kept"),
         Some(_) if req.dry_run => json!("imported"),
-        Some(token) => match super::relay::write_node_token(Some(&token)) {
+        Some(token) => match crate::relay_client::write_node_token(Some(&token)) {
             Ok(changed) => {
                 adopted = Some((token, changed));
                 json!("imported")
@@ -379,7 +379,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
             Err(e) => {
                 // 토큰은 이미 저장했다: 다음 기동까지 미루지 않고 지금 그 토큰으로 잇는다
                 if let Some((token, _)) = &adopted {
-                    super::relay::adopt_node_token(&state, token, true).await;
+                    crate::relay_client::adopt_node_token(&state, token, true).await;
                 }
                 return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string());
             }
@@ -387,7 +387,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
     };
     // 토큰 저장 API와 같이: 가져온 토큰(과 릴레이 주소)으로 데몬 재시작 없이 연결한다. 토큰이 같아도 주소가 바뀌었을 수 있다
     if let Some((token, _)) = adopted {
-        super::relay::adopt_node_token(&state, &token, true).await;
+        crate::relay_client::adopt_node_token(&state, &token, true).await;
     }
 
     Json(json!({

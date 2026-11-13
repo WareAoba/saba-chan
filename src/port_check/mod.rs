@@ -479,7 +479,7 @@ async fn ask_relay(relay: &Relay, nonce: &str, ports: &[(u16, Protocol)]) -> Res
         body["host"] = json!(host);
     }
     let body = body.to_string();
-    let req = crate::ipc::handlers::relay::signed_request(&relay_client()?, reqwest::Method::POST, &relay.base, path, &relay.token, Some(body))
+    let req = crate::relay_client::signed_request(&relay_client()?, reqwest::Method::POST, &relay.base, path, &relay.token, Some(body))
         .ok_or(CheckError::NotPaired)?;
     let res = req.header("X-Saba-Client", "1").send().await.map_err(|e| CheckError::Relay(e.to_string()))?;
     match res.status().as_u16() {
@@ -731,10 +731,10 @@ pub async fn targets(state: &crate::ipc::IPCServer, ids: &[String]) -> Vec<Targe
 }
 
 async fn relay_target(state: &crate::ipc::IPCServer) -> Result<Relay, CheckError> {
-    let token = crate::ipc::handlers::relay::load_node_token().ok_or(CheckError::NotPaired)?;
+    let token = crate::relay_client::load_node_token().ok_or(CheckError::NotPaired)?;
     let configured = state.config_store.get_bot_config().await.cloud.relay_url;
     let host = crate::remote_daemon::configured_address(&crate::remote_daemon::config::settings_in(&saba_chan_updater_lib::config_file::ConfigFile::default_location()));
-    Ok(Relay { base: crate::ipc::handlers::relay::signed_relay_url(&configured, None), token, host })
+    Ok(Relay { base: crate::relay_client::signed_relay_url(&configured, None), token, host })
 }
 
 fn bind_ip() -> IpAddr {
@@ -772,7 +772,7 @@ pub async fn check(state: &crate::ipc::IPCServer, ids: &[String]) -> Result<Vec<
 
 /// 자동 확인이 켜져 있고 릴레이에 연결돼 있으면 조용히 확인한다 (실패는 로그만)
 pub async fn auto_check(state: &crate::ipc::IPCServer, ids: Vec<String>) {
-    if !state.config_store.get_gui_settings().await.auto_port_check || crate::ipc::handlers::relay::load_node_token().is_none() {
+    if !state.config_store.get_gui_settings().await.auto_port_check || crate::relay_client::load_node_token().is_none() {
         return;
     }
     // 릴레이 한 번에 실을 수 있는 만큼씩 나눈다

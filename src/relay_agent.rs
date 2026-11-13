@@ -14,7 +14,7 @@
 //!
 //! 새 명령 종류는 `handle_payload`의 action 분기에 추가합니다.
 
-use crate::ipc::handlers::relay::{load_node_token, parse_node_token, relay_client_with_timeout, resolve_relay_url, signed_request};
+use crate::relay_client::{load_node_token, parse_node_token, relay_client_with_timeout, resolve_relay_url, signed_request};
 use crate::ipc::IPCServer;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -180,7 +180,7 @@ impl RelayAgent {
         let mut status = inner.status.clone();
         status.agent_version = AGENT_VERSION;
         // GUI가 5초마다 부른다: 설정 파일이 그대로면 다시 읽지 않는다
-        status.has_token = crate::ipc::handlers::relay::peek_node_token().as_deref().and_then(parse_node_token).is_some();
+        status.has_token = crate::relay_client::peek_node_token().as_deref().and_then(parse_node_token).is_some();
         status.connected = connected(&status, now_ms());
         status.state = agent_state(&status);
         status
@@ -286,7 +286,7 @@ impl RelayAgent {
         };
         let client = relay_client_with_timeout(POLL_TIMEOUT).map_err(|e| e.to_string())?;
         let body = serde_json::json!({ "etaSeconds": eta_seconds }).to_string();
-        let req = crate::ipc::handlers::relay::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/updating", &token, Some(body))
+        let req = crate::relay_client::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/updating", &token, Some(body))
             .ok_or("node token missing")?;
         let resp = tokio::time::timeout(std::time::Duration::from_secs(5), req.send())
             .await
@@ -313,7 +313,7 @@ impl RelayAgent {
             }
         };
         let Ok(client) = relay_client_with_timeout(POLL_TIMEOUT) else { return };
-        let Some(req) = crate::ipc::handlers::relay::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/stopping", &token, None)
+        let Some(req) = crate::relay_client::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/stopping", &token, None)
         else {
             return;
         };

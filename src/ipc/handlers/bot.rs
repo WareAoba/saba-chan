@@ -36,8 +36,8 @@ async fn write_bot_config(state: &IPCServer, mut config: Value, how: crate::conf
                 crate::relay_agent::restart(state).await;
             }
             // hostId는 노드 토큰이 기준이다: 클라이언트가 예전 값을 다시 보내도 토큰에 맞춘다
-            let token = super::relay::load_node_token();
-            super::relay::sync_host_id(state, token.as_deref()).await;
+            let token = crate::relay_client::load_node_token();
+            crate::relay_client::sync_host_id(state, token.as_deref()).await;
             // hostId를 토큰에 맞춘 뒤의 값
             let revision = state.config_store.bot_revision().await;
             let mut body = json!({ "success": true, "message": "Bot config saved", "revision": revision });

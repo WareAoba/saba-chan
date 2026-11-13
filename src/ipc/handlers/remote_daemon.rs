@@ -64,8 +64,8 @@ pub async fn get_settings(State(state): State<IPCServer>) -> Json<Value> {
         "publicIp": state.relay_agent.seen_address(),
     });
     // 원격 데몬의 이벤트 중 이 PC가 시킨 것(`remoteHost`)을 가리는 데 쓴다 (셸 효과음)
-    let host = crate::ipc::handlers::relay::load_node_token();
-    v["hostId"] = json!(host.as_deref().and_then(|t| crate::ipc::handlers::relay::parse_node_token(t.trim())).map_or("", |(id, _)| id));
+    let host = crate::relay_client::load_node_token();
+    v["hostId"] = json!(host.as_deref().and_then(|t| crate::relay_client::parse_node_token(t.trim())).map_or("", |(id, _)| id));
     Json(v)
 }
 

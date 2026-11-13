@@ -30,7 +30,8 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
 
-use super::relay::{apply_signed_headers, client, encode_path_segment, resolve_relay_url, send};
+use super::relay::{client, send};
+use crate::relay_client::{apply_signed_headers, encode_path_segment, resolve_relay_url};
 use super::super::IPCServer;
 use crate::config_store::ChatbotConfig;
 use crate::chat::i18n::Catalog;
@@ -413,7 +414,7 @@ type PushOutcome = Result<(StatusCode, Value), String>;
 /// 설정 전체를 길드마다 PUT. 노드 토큰이 없으면 아무것도 하지 않는다.
 /// `previous`가 있으면 거절(400)된 길드에서 멈추고 이미 받은 길드를 그 값으로 되돌린다
 pub async fn push_all(state: &IPCServer, cfg: &ChatbotConfig, previous: Option<&ChatbotConfig>) -> Vec<(String, PushOutcome)> {
-    if super::relay::load_node_token().is_none() {
+    if crate::relay_client::load_node_token().is_none() {
         return Vec::new();
     }
     let base = relay_base(state).await;
@@ -467,7 +468,7 @@ where
 
 /// 릴레이에서 이 호스트 길드들의 설정과 키를 지운다. 모두 지워졌으면 true
 async fn delete_remote(state: &IPCServer, cfg: &ChatbotConfig) -> (bool, Vec<Value>) {
-    if super::relay::load_node_token().is_none() {
+    if crate::relay_client::load_node_token().is_none() {
         return (true, Vec::new());
     }
     let base = relay_base(state).await;
@@ -518,7 +519,7 @@ pub async fn sync_on_connect(state: &IPCServer) {
 /// 이 서버의 값을 데몬 사본으로 받는다 (다음 동기화가 옛 사본으로 덮지 않게). 공통 값(모델)과 키는 이 PC 것을 둔다.
 /// 릴레이를 읽지 못해 맞추지 못했으면 false (부른 쪽이 다음 하트비트에 다시 한다)
 pub async fn adopt_linked_guild(state: &IPCServer, guild: &str) -> bool {
-    if super::relay::load_node_token().is_none() {
+    if crate::relay_client::load_node_token().is_none() {
         return true;
     }
     let _turn = SAVE_LOCK.lock().await;
@@ -565,7 +566,7 @@ pub(super) static SAVE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_
 /// 옛 설정이 남았고 길드 목록을 받을 수 있으면 서버마다 적어 넣고 저장한다 (SAVE_LOCK 안에서).
 /// 페어링 전이거나 목록을 못 받으면 그대로 둔다: 빠진 서버의 옛 값이 사라지지 않게
 async fn settled(state: &IPCServer, mut cfg: ChatbotConfig) -> ChatbotConfig {
-    if !has_legacy(&cfg) || super::relay::load_node_token().is_none() {
+    if !has_legacy(&cfg) || crate::relay_client::load_node_token().is_none() {
         return cfg;
     }
     // 호스트 id가 없으면 길드 목록을 받은 것이 아니다 (host_guilds는 빈 목록을 준다)
@@ -705,7 +706,7 @@ pub struct MemoryQuery {
 }
 
 pub async fn delete_memory(State(state): State<IPCServer>, Query(q): Query<MemoryQuery>) -> Response {
-    if super::relay::load_node_token().is_none() {
+    if crate::relay_client::load_node_token().is_none() {
         return (StatusCode::CONFLICT, Json(json!({ "success": false, "error": "node token missing", "error_code": "not_paired" }))).into_response();
     }
     let cfg = state.config_store.get_chatbot();

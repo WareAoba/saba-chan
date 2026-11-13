@@ -61,8 +61,8 @@ impl RelaySource {
         match self {
             Self::Configured(server) => {
                 let configured = server.config_store.get_bot_config().await.cloud.relay_url;
-                let token = crate::ipc::handlers::relay::peek_node_token()?;
-                Some(Target { base: crate::ipc::handlers::relay::signed_relay_url(&configured, None), token })
+                let token = crate::relay_client::peek_node_token()?;
+                Some(Target { base: crate::relay_client::signed_relay_url(&configured, None), token })
             }
             #[cfg(test)]
             Self::Fixed(t) => Some(t.clone()),

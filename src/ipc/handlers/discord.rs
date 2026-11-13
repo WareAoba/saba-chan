@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::chatbot::{call, host_guilds, relay_base, result_row};
-use super::relay::{encode_path_segment, load_node_token};
+use crate::relay_client::{encode_path_segment, load_node_token};
 use super::super::IPCServer;
 use crate::config_store::{BotConfig, PREFIXES_MAX, PREFIX_MAX_CHARS};
 
@@ -952,7 +952,7 @@ mod tests {
             let (base, seen) = serve(bulk).await;
             let dir = tempfile::tempdir().unwrap();
             let state = test_state(dir.path()).await;
-            crate::ipc::handlers::relay::sync_host_id(&state, Some("sbn_host-1.secret")).await;
+            crate::relay_client::sync_host_id(&state, Some("sbn_host-1.secret")).await;
             save(&state, "a", &GuildSettings::default()).await.unwrap();
             for (guild, locale) in [("b", "ko"), ("c", "ja")] {
                 let mut s = GuildSettings::default();
