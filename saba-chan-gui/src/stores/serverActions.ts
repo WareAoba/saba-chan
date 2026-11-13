@@ -3,14 +3,12 @@ import { holdSavingOrder } from '../hooks/useDragReorder';
 import type { Agreement, ApiBody, Json } from '../types/daemon';
 import { claimServerNotice, eventsLive, showPortMoved, watchInstance } from '../utils/daemonEvents';
 import {
-    busyMessage,
-    installFailureText,
     moduleFailureText,
     moduleSupports,
     retryWithBackoff,
     safeShowToast,
 } from '../utils/helpers';
-import { controlOutcome } from '../utils/serverControl';
+import { controlOutcome, installFailure } from '../utils/serverControl';
 import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 import { updateRequiredText } from '../utils/updateRequired';
@@ -415,17 +413,10 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
                                         install_dir: installDir,
                                     });
 
-                                    if (installResult.error || installResult.success === false) {
+                                    const failure = installFailure(t, installResult, translateError);
+                                    if (failure) {
                                         setProgressBar(null);
-                                        const code = installResult.error_code;
-                                        safeShowToast(
-                                            busyMessage(t, code, 'install_server_running') ||
-                                                (code === 'version_unknown'
-                                                    ? t('servers.version_unknown', { error: installResult.error })
-                                                    : installFailureText(t, installResult, translateError)),
-                                            'error',
-                                            8000,
-                                        );
+                                        safeShowToast(failure, 'error', 8000);
                                         return;
                                     }
 

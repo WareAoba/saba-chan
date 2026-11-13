@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import { changedForCli } from '../components/CliLine';
 import { launchDraft } from '../components/servers/LaunchPreview';
 import type { Json, ModuleInfo, SettingField } from '../types/daemon';
-import { busyMessage, installFailureText, moduleSupports, safeShowToast } from '../utils/helpers';
+import { busyMessage, moduleSupports, safeShowToast } from '../utils/helpers';
 import { versionBranchMethod } from '../utils/installMethod';
+import { installFailure } from '../utils/serverControl';
 import { gameNameOf } from '../utils/serverView';
 import { blockedText } from '../utils/trustNotice';
 import { listItems } from '../utils/validation';
@@ -593,36 +594,11 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
                                 background: true,
                             });
 
-                            const blocked = blockedText(installResult, t);
-                            if (blocked) {
+                            const failure = installFailure(t, installResult, translateError);
+                            if (failure) {
                                 setProgressBar(null);
                                 setVersionInstalling(false);
-                                safeShowToast(blocked, 'error', 8000);
-                                return;
-                            }
-
-                            if (installResult.error_code === 'extension_required') {
-                                setProgressBar(null);
-                                setVersionInstalling(false);
-                                const extList = (installResult.missing_extensions || []).join(', ');
-                                safeShowToast(
-                                    installResult.error ||
-                                        t('server_settings.extension_required_for_install', { extensions: extList }),
-                                    'error',
-                                    6000,
-                                );
-                                return;
-                            }
-
-                            if (installResult.error || installResult.success === false) {
-                                setProgressBar(null);
-                                safeShowToast(
-                                    busyMessage(t, installResult.error_code, 'install_server_running') ||
-                                        installFailureText(t, installResult, translateError),
-                                    'error',
-                                    8000,
-                                );
-                                setVersionInstalling(false);
+                                safeShowToast(failure, 'error', 8000);
                                 return;
                             }
 
