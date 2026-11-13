@@ -331,8 +331,8 @@ fn switch_outcome(r: &Value, done: String) -> String {
 
 /// 판 목록의 가장 새 판 (`latest` 줄): 데몬이 고정을 풀 기준(`until_newer_than`)으로 삼고, 고정 풀기가 바꿀 판
 fn newest(list: &Value) -> Option<String> {
-    let rows = list.get("versions").and_then(Value::as_array).into_iter().flatten();
-    rows.into_iter().find(|v| v.get("latest").and_then(Value::as_bool) == Some(true)).map(|v| s(v, "version").to_string())
+    let mut rows = list.get("versions").and_then(Value::as_array).into_iter().flatten();
+    rows.find(|v| v.get("latest").and_then(Value::as_bool) == Some(true)).map(|v| s(v, "version").to_string())
 }
 
 /// 고정 확인 문장: 설치된 판에서 고른 판으로 바꾸고, 지금 가장 새 판보다 새 판이 나올 때까지 둔다
