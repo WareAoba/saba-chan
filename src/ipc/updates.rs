@@ -1433,7 +1433,7 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
                 match sup.refresh_modules() {
                     Ok(modules) => {
                         tracing::info!("[Updates] Hot-reloaded {} module(s) after update", modules.len());
-                        sup.migrate_list_settings();
+                        sup.migrate_settings();
                     }
                     Err(e) => {
                         tracing::warn!("[Updates] Failed to hot-reload modules after update: {}", e);

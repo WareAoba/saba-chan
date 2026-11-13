@@ -67,10 +67,6 @@ const fieldValue = (v: unknown): string | string[] | null =>
 /** 데몬이 인스턴스 최상위에 저장하는 공통 필드 (updater constants::INSTANCE_FIELDS 중 설정 칸이 되는 것. 어긋나면 그쪽 테스트가 실패한다). 이 값들은 module_settings가 낡았을 수 있다 */
 const TOP_LEVEL_FIELDS = new Set([
     'port',
-    'rest_host',
-    'rest_port',
-    'rest_username',
-    'rest_password',
     'executable_path',
     'working_dir',
     'protocol_mode',

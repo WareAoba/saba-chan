@@ -1885,7 +1885,6 @@ mod tests {
     #[test]
     fn hooks_get_the_instance_without_its_secrets() {
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
-        inst.rest_password = Some("hunter2-rest".into());
         inst.module_settings.insert("server_password".into(), serde_json::json!("hunter2-join"));
         inst.module_settings.insert("max_players".into(), serde_json::json!(16));
         let value = crate::extension::hook_context(&inst, std::path::Path::new("/data/srv"), None)["instance"].clone();
@@ -1899,11 +1898,11 @@ mod tests {
         // 비밀값과 같은 글자의 이름·경로는 비밀이 아니다: 값 대신 키 이름으로만 가린다
         let mut same = crate::instance::ServerInstance::new("palworld", "game");
         same.working_dir = Some("C:/srv/palworld/data".into());
-        same.rest_password = Some("palworld".into());
+        same.module_settings.insert("server_password".into(), serde_json::json!("palworld"));
         let value = crate::extension::hook_context(&same, std::path::Path::new("/data/srv"), None)["instance"].clone();
         assert_eq!(value["name"], "palworld");
         assert_eq!(value["working_dir"], "C:/srv/palworld/data");
-        assert_ne!(value["rest_password"], "palworld");
+        assert_ne!(value["module_settings"]["server_password"], "palworld");
     }
 
     #[test]

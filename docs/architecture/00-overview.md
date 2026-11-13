@@ -102,7 +102,7 @@
 
 ### 4.2 데몬이 게임·플러그인 지식을 하드코딩 ("모듈=설명서, 플러그인=자유 교체" 위반)
 
-- 게임 지식 하드코딩: `java_path`, `ram`, `server.jar` 등이 데몬 공용 코드에 남아 있다. GUI도 `module === 'palworld'`로 분기한다(02 §6.5 #6–#8).
+- 게임 지식 하드코딩: `ram`, `server.jar` 등이 데몬 공용 코드에 남아 있다(`java_path`와 REST 기본값 `admin`·8212는 0.1.14-beta.2에서 module.toml 선언 `runtime`·`[protocols.rest]`로 옮겼다. 선언 전 모듈용 이름 `java_path` 하나만 `LEGACY_RUNTIME_SETTINGS`에 남았다). GUI도 `module === 'palworld'`로 분기한다(02 §6.5 #6–#8).
 - 모듈이 플러그인을 `from extensions.x import`로 직접 import한다. 비활성 익스텐션 import는 실행기의 import 가드가 막는다. 모듈→데몬 역호출은 이제 토큰을 보낸다(02 §6.5 #9, #10).
 
 ## 5. 남은 문제 (판독 기준, 재현 전)

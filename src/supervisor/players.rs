@@ -231,9 +231,8 @@ pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
             let module = s.module_loader.get_module(&instance.module_name).ok();
             let function = module.as_ref().and_then(|m| m.metadata.players_function.clone());
             let pid = s.tracker.get_pid(&instance.id).ok();
-            let probe = module.as_ref().filter(|m| m.metadata.supports_protocol("rest")).zip(pid).map(|(m, pid)| {
-                let host = instance.rest_host.clone().unwrap_or_else(|| m.metadata.default_rest_host());
-                (instance.id.clone(), pid, host, instance.rest_port.unwrap_or_else(|| m.metadata.default_rest_port()))
+            let probe = module.as_ref().zip(pid).and_then(|(m, pid)| {
+                Some((instance.id.clone(), pid, m.metadata.rest_host(instance)?, m.metadata.rest_port(instance)?))
             });
             let call = match (function, pid) {
                 (Some(f), Some(pid)) => s.instance_call(&instance.id, &f).ok().map(|c| (pid, c)),

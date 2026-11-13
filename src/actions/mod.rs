@@ -318,8 +318,7 @@ pub(crate) fn is_secret_key(key: &str, password_fields: &[String]) -> bool {
     password_fields.iter().any(|f| f == key) || SECRET_KEYS.iter().any(|s| lower == *s || lower.ends_with(&format!("_{}", s)))
 }
 
-/// 원격(디스코드·챗봇)에서 바꿀 수 없는 인스턴스 키: 실행 파일·폴더·인자·메모리 상한과 그 밖으로 새는 연결 대상.
-/// `java_path`는 모듈이 어떤 형식으로 선언하든 실행 대상 검사가 인정하는 런타임이라 늘 막는다
+/// 원격(디스코드·챗봇)에서 바꿀 수 없는 인스턴스 키: 실행 파일·폴더·인자·메모리 상한과 그 밖으로 새는 연결 대상
 const LAUNCH_KEYS: &[&str] = &[
     "executable_path",
     "working_dir",
@@ -328,7 +327,6 @@ const LAUNCH_KEYS: &[&str] = &[
     "extension_data",
     "rest_host",
     "memory_limit_mb",
-    "java_path",
     // 사용 모드와 그 명단·자동 강퇴: PC 앱·웹에서만 바꾼다 (디스코드·말하는 사바쨩 불가, 사용자 지정 2026-11-08)
     "access",
     "controllers",
@@ -343,7 +341,8 @@ const LAUNCH_KEYS: &[&str] = &[
 struct FieldRules {
     /// password 형식
     secret: Vec<String>,
-    /// 실행 대상·인자가 되는 값: file 형식, path 형식, 형식·정규식 없이 실행 인자로 들어가는 글자 값
+    /// 실행 대상·인자가 되는 값: file 형식, path 형식, 형식·정규식 없이 실행 인자로 들어가는 글자 값,
+    /// 런타임 경로 설정(`runtime`: 어떤 형식으로 선언하든 실행 대상 검사가 런타임으로 인정한다), REST 접속 대상
     launch: Vec<String>,
 }
 
@@ -354,10 +353,12 @@ fn field_rules(module: &crate::supervisor::module_loader::LoadedModule) -> Field
             rules.secret.push(f.name.clone());
         }
         let free_text_arg = !f.arg.is_empty() && f.field_type == "text" && f.format.is_none() && f.pattern.is_none();
-        if f.field_type == "file" || f.format.as_deref() == Some("path") || free_text_arg {
+        if f.field_type == "file" || f.format.as_deref() == Some("path") || free_text_arg || f.runtime.is_some() {
             rules.launch.push(f.name.clone());
         }
     }
+    // 데몬이 REST로 붙을 곳을 정하는 설정 (`[protocols.rest]`)
+    rules.launch.extend(module.metadata.rest_target_settings().into_iter().map(str::to_string));
     rules
 }
 

@@ -247,46 +247,19 @@ pub async fn update_instance_settings(
 
 
     // common settings
-    // port·rest_port: 1~65535의 숫자 또는 숫자 문자열 (범위 밖 값을 다른 숫자로 저장하지 않는다)
-    for key in ["port", "rest_port"] {
-        // null(rest_port 지우기)과 빈 문자열(바꾸지 않음)은 예전처럼 받는다
-        let given = settings.get(key).filter(|v| !v.is_null() && v.as_str() != Some(""));
-        if given.is_some_and(|v| port_value(v).is_none()) {
-            return invalid_field(key, format!("{} must be a number from 1 to 65535", key));
-        }
+    // port: 1~65535의 숫자 또는 숫자 문자열 (범위 밖 값을 다른 숫자로 저장하지 않는다). 빈 문자열(바꾸지 않음)은 예전처럼 받는다
+    let given_port = settings.get("port").filter(|v| !v.is_null() && v.as_str() != Some(""));
+    if given_port.is_some_and(|v| port_value(v).is_none()) {
+        return invalid_field("port", "port must be a number from 1 to 65535");
     }
     if let Some(port) = settings.get("port").and_then(port_value) {
         updated.port = Some(port);
     }
 
     // NOTE: REST 비밀번호 자동 생성은 인스턴스 실행 시점에 supervisor에서 처리합니다.
-    // REST 설정과 executable_path는 null이면 지정을 지워 기본값으로 되돌린다
+    // REST 접속값은 모듈 설정이다 (`[protocols.rest]`): 아래 모듈 설정 저장이 다룬다
+    // executable_path는 null이면 지정을 지워 기본값으로 되돌린다
     let cleared = |key: &str| settings.get(key).is_some_and(Value::is_null);
-    if cleared("rest_host") {
-        updated.rest_host = None;
-    }
-    if cleared("rest_port") {
-        updated.rest_port = None;
-    }
-    if cleared("rest_username") {
-        updated.rest_username = None;
-    }
-    if cleared("rest_password") {
-        updated.rest_password = None;
-    }
-
-    if let Some(rest_host) = settings.get("rest_host").and_then(|v| v.as_str()) {
-        updated.rest_host = Some(rest_host.to_string());
-    }
-    if let Some(rest_port) = settings.get("rest_port").and_then(port_value) {
-        updated.rest_port = Some(rest_port);
-    }
-    if let Some(rest_username) = settings.get("rest_username").and_then(|v| v.as_str()) {
-        updated.rest_username = Some(rest_username.to_string());
-    }
-    if let Some(rest_password) = settings.get("rest_password").and_then(|v| v.as_str()) {
-        updated.rest_password = Some(rest_password.to_string());
-    }
     // 설정 필드에 없는 추가 실행 인자: 문자열(따옴표로 묶기)이나 문자열 배열
     if let Some(extra) = settings.get("extra_args") {
         match extra_args_from(extra) {
@@ -377,38 +350,6 @@ pub async fn update_instance_settings(
         }
         other => other.map(Result::unwrap_or_default),
     };
-    // credential_map 범용 역동기화: module_settings 키 → daemon first-class 필드
-    // 예: Palworld credential_map { rest_password = "AdminPassword" }
-    //   → module_settings의 "admin_password" (snake_case) 값을 instance.rest_password에 동기화
-    if let Ok(module) = supervisor.module_loader.get_module(&instance.module_name) {
-        for (daemon_key, game_key) in &module.metadata.credential_map {
-            // game_key를 snake_case로 변환하여 module_settings에서 탐색
-            let snake_key = game_key
-                .chars()
-                .enumerate()
-                .fold(String::new(), |mut acc, (i, c)| {
-                    if c.is_uppercase() && i > 0 {
-                        acc.push('_');
-                    }
-                    acc.push(c.to_lowercase().next().unwrap());
-                    acc
-                });
-            let value = settings.get(&snake_key)
-                .or_else(|| settings.get(game_key.as_str()))
-                .and_then(|v| v.as_str());
-            if let Some(pwd) = value {
-                if !pwd.is_empty() {
-                    match daemon_key.as_str() {
-                        "rest_password" if updated.rest_password.as_deref().unwrap_or("").is_empty() => {
-                            updated.rest_password = Some(pwd.to_string());
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-    }
-
     if cleared("executable_path") {
         updated.executable_path = None;
     }
@@ -526,7 +467,7 @@ pub async fn update_instance_settings(
     // 모듈이 사바쨩 설정으로 선언한 값은 뺀다
     const DAEMON_FIELDS: &[&str] = &[
         "protocol_mode", "executable_path", "working_dir", "server_version", "extension_data", "extra_args", "memory_limit_mb",
-        "game_chat", "game_chat_keyword", "access", "controllers", "controllers_only", "kick_players", "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon", "auto_update",
+        "game_chat", "game_chat_keyword", "access", "controllers", "controllers_only", "kick_players", "rcon_port", "rcon_password", "enable_rcon", "auto_update",
     ];
     let saba_fields: Vec<String> = supervisor.module_loader.get_module(&updated.module_name).ok()
         .and_then(|m| m.metadata.settings.as_ref().map(|s| s.saba_fields().into_iter().map(str::to_string).collect()))
@@ -557,10 +498,8 @@ pub async fn update_instance_settings(
     let instance_dir = supervisor.instance_store.instance_dir(&id);
     // 모듈의 모든 익스텐션 설정을 범용으로 전달 (특정 익스텐션 이름 참조 없음)
     let module = supervisor.module_loader.get_module(&updated_clone.module_name).ok();
-    if settings.get("java_path").is_some() {
-        if let Some(m) = &module {
-            open_user_runtime(m.entry_path(), &updated_clone);
-        }
+    if let Some(m) = module.as_ref().filter(|m| m.metadata.runtime_settings().iter().any(|(name, _)| settings.get(*name).is_some())) {
+        open_user_runtime(m, &updated_clone);
     }
     let mut hook_ctx = crate::extension::hook_context(&updated_clone, &instance_dir, module.as_ref().map(|m| &m.metadata));
     hook_ctx["settings"] = crate::extension::redact_for_hooks(module.as_ref().map(|m| &m.metadata), &settings);
@@ -785,16 +724,15 @@ mod tests {
         assert_eq!(*done.lock().unwrap(), ["first", "second"], "the second save waited for the first one's game file write");
         assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings["motd"], "second");
 
-        for (key, value) in [("port", json!(65537)), ("port", json!(0)), ("port", json!("70000")), ("rest_port", json!(65537)), ("rest_port", json!("x"))] {
+        for (key, value) in [("port", json!(65537)), ("port", json!(0)), ("port", json!("70000"))] {
             let bad = patch(json!({ key: value.clone() })).await;
             assert_eq!((bad.status.as_u16(), bad.body["error_code"].as_str(), bad.body["fields"][0]["field"].as_str()), (400, Some("invalid_format"), Some(key)), "{key}={value}");
         }
         let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_ne!(inst.port, Some(1));
-        assert_eq!(inst.rest_port, None);
-        assert!(patch(json!({ "port": 25570, "rest_port": "8213" })).await.status.is_success());
+        assert!(patch(json!({ "port": "25570" })).await.status.is_success());
         let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
-        assert_eq!((inst.port, inst.rest_port), (Some(25570), Some(8213)));
+        assert_eq!(inst.port, Some(25570));
     }
 
     #[tokio::test]
@@ -971,7 +909,7 @@ mod tests {
              [[settings.fields]]\nname = \"pvp\"\ntype = \"boolean\"\ndefault = false\n\n\
              [[settings.fields]]\nname = \"damage\"\ntype = \"text\"\nrequired = true\nvisible_when = { field = \"pvp\", equals = true }\n\n\
              [[settings.fields]]\nname = \"admins\"\ntype = \"list\"\nrestart_required = true\n\n\
-             [[settings.fields]]\nname = \"rest_host\"\ntype = \"text\"\nrestart_required = true\n\n\
+             [[settings.fields]]\nname = \"port\"\ntype = \"number\"\nrestart_required = true\n\n\
              [[settings.fields]]\nname = \"motd\"\ntype = \"multiline\"\n",
         )
         .unwrap();
@@ -983,7 +921,7 @@ mod tests {
         inst.module_settings.insert("admins".into(), json!("Steve, Alex"));
         let id = inst.id.clone();
         sup.instance_store.add(inst).unwrap();
-        sup.migrate_list_settings();
+        sup.migrate_settings();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let get = || {
             let (state, id) = (state.clone(), id.clone());
@@ -1009,10 +947,10 @@ mod tests {
         assert_eq!(running.body["restart_required"], json!([]), "unchanged values ask for nothing");
         let running = patch(json!({ "admins": ["Alex"], "motd": "y" })).await;
         assert_eq!(running.body["restart_required"], json!(["admins"]));
-        // 인스턴스 칸에 저장되는 설정(rest_host)은 그 칸의 지금 값과 비교한다
-        let running = patch(json!({ "rest_host": "10.0.0.2" })).await;
-        assert_eq!(running.body["restart_required"], json!(["rest_host"]));
-        let running = patch(json!({ "rest_host": "10.0.0.2" })).await;
+        // 인스턴스 칸에 저장되는 설정(port)은 그 칸의 지금 값과 비교한다
+        let running = patch(json!({ "port": 25570 })).await;
+        assert_eq!(running.body["restart_required"], json!(["port"]));
+        let running = patch(json!({ "port": 25570 })).await;
         assert_eq!(running.body["restart_required"], json!([]), "saving the same value again asks for nothing");
         state.supervisor.read().await.tracker.untrack(&id).unwrap();
         let stored = std::fs::read_to_string(state.supervisor.read().await.instance_store.instance_dir(&id).join("settings.json")).unwrap();
@@ -1349,7 +1287,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn null_clears_the_executable_and_rest_overrides() {
+    async fn null_clears_the_executable_override() {
         use axum::extract::{Path, State};
         use axum::Json;
         let tmp = tempfile::tempdir().unwrap();
@@ -1372,13 +1310,10 @@ mod tests {
             async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
         };
         let exe = tmp.path().join("server").join("run.sh");
-        let set = json!({ "executable_path": exe.to_str().unwrap(), "rest_host": "10.0.0.2", "rest_port": 9000, "rest_username": "admin", "rest_password": "hunter22" });
-        assert!(patch(set).await.status.is_success());
-        let cleared = json!({ "executable_path": null, "rest_host": null, "rest_port": null, "rest_username": null, "rest_password": null });
-        assert!(patch(cleared).await.status.is_success());
+        assert!(patch(json!({ "executable_path": exe.to_str().unwrap() })).await.status.is_success());
+        assert!(patch(json!({ "executable_path": null })).await.status.is_success());
         let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!(inst.executable_path, None);
-        assert_eq!((inst.rest_host, inst.rest_port, inst.rest_username, inst.rest_password), (None, None, None, None));
         assert!(!inst.module_settings.contains_key("executable_path"));
 
         // 작업 폴더 없이 실행 파일만 정했던 인스턴스: 지울 때 옛 실행 파일 폴더로 작업 폴더를 채우지 않는다

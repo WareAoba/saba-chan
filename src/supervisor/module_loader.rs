@@ -82,11 +82,9 @@ pub struct ModuleMetadata {
     /// 예: { "saba-core": ">=0.3.0", "ext-steamcmd": ">=1.0.0" }
     #[serde(default)]
     pub dependencies: std::collections::HashMap<String, String>,
-    /// 데몬 표준 키 ↔ 게임별 설정 키 매핑
-    /// 예: { "rest_password": "AdminPassword" } → 데몬의 rest_password가 게임 INI의 AdminPassword에 대응
-    /// 모듈의 get_launch_command 반환 시 이 맵을 통해 자동 동기화
+    /// `[protocols.rest]`: REST 접속값(호스트·포트·비밀번호)이 든 설정 이름과 사용자 이름 (`ModuleMetadata::rest`)
     #[serde(default)]
-    pub credential_map: std::collections::HashMap<String, String>,
+    pub rest: RestSettings,
     /// [extension.*] 섹션들을 범용으로 저장 (예: extensions["<ext_id>"] = {...})
     #[serde(default)]
     pub extensions: std::collections::HashMap<String, serde_json::Value>,
@@ -388,16 +386,54 @@ impl ModuleMetadata {
         })
     }
     
-    /// REST API 기본 포트를 가져옵니다 (모듈에 정의되지 않으면 8212)
-    pub fn default_rest_port(&self) -> u16 {
-        self.get_setting_default("rest_port").unwrap_or(8212)
-    }
-    
-    /// REST API 기본 호스트를 가져옵니다 (모듈에 정의되지 않으면 127.0.0.1)
-    pub fn default_rest_host(&self) -> String {
-        self.get_setting_default("rest_host").unwrap_or_else(|| "127.0.0.1".to_string())
+    /// REST 접속값이 든 설정 (`[protocols.rest]`). REST를 받지 않는 모듈이면 None.
+    /// 접속값은 인스턴스 `module_settings`에만 있다: 인스턴스에 따로 두지 않는다
+    pub fn rest(&self) -> Option<&RestSettings> {
+        self.supports_protocol("rest").then_some(&self.rest)
     }
 
+    /// 데몬이 REST로 붙을 포트: 인스턴스 설정 값, 없으면 그 설정의 모듈 기본값
+    pub fn rest_port(&self, instance: &crate::instance::ServerInstance) -> Option<u16> {
+        let key = &self.rest()?.port_setting;
+        match instance.module_settings.get(key) {
+            Some(serde_json::Value::Number(n)) => n.as_u64().and_then(|p| u16::try_from(p).ok()),
+            Some(serde_json::Value::String(s)) if !s.trim().is_empty() => s.trim().parse().ok(),
+            _ => self.get_setting_default(key),
+        }
+        .filter(|p| *p > 0)
+    }
+
+    /// 데몬이 REST로 붙을 호스트: 인스턴스 설정 값, 없으면 그 설정의 모듈 기본값, 그것도 없으면 이 PC
+    pub fn rest_host(&self, instance: &crate::instance::ServerInstance) -> Option<String> {
+        let key = &self.rest()?.host_setting;
+        let saved = instance.module_settings.get(key).and_then(|v| v.as_str()).map(str::trim).filter(|h| !h.is_empty()).map(str::to_string);
+        Some(saved.or_else(|| self.get_setting_default(key)).unwrap_or_else(|| "127.0.0.1".to_string()))
+    }
+
+    /// 데몬이 REST로 붙을 곳을 정하는 설정 이름 (호스트·포트). 원격에서는 바꾸지 못한다: 다른 곳으로 돌리면 관리자 비밀번호가 실려 나간다
+    pub fn rest_target_settings(&self) -> Vec<&str> {
+        self.rest().map(|r| vec![r.host_setting.as_str(), r.port_setting.as_str()]).unwrap_or_default()
+    }
+
+    /// 인스턴스 설정에 든 REST 비밀번호 (`password_setting`). 비어 있으면 None
+    pub fn rest_password<'a>(&self, instance: &'a crate::instance::ServerInstance) -> Option<&'a str> {
+        instance.module_settings.get(self.rest()?.password_setting.as_deref()?).and_then(|v| v.as_str()).filter(|p| !p.is_empty())
+    }
+
+    /// 런타임 실행 파일 경로인 설정 `(설정 이름, 런타임 종류)` (설정 필드 `runtime`)
+    pub fn runtime_settings(&self) -> Vec<(&str, &str)> {
+        self.settings.iter().flat_map(|s| &s.fields).filter_map(|f| Some((f.name.as_str(), f.runtime.as_deref()?))).collect()
+    }
+
+    /// 사용자가 직접 정한 런타임 실행 파일 경로. 실행 대상 검사와 격리 실행은 이것만 런타임으로 인정한다:
+    /// 모듈 기본값·프리셋·가져온 값처럼 사용자가 정하지 않은 값은 인정하지 않는다
+    pub fn user_runtime_paths<'a>(&self, instance: &'a crate::instance::ServerInstance) -> Vec<&'a str> {
+        self.runtime_settings()
+            .into_iter()
+            .filter(|(name, _)| instance.user_settings.contains(*name))
+            .filter_map(|(name, _)| instance.module_settings.get(name)?.as_str())
+            .collect()
+    }
 
     /// 설정 이름 → 필드 타입 (`number`, `text`, `password`…). 파일에서 읽은 값을 타입대로 저장할 때 쓴다
     pub fn setting_types(&self) -> std::collections::HashMap<String, String> {
@@ -581,6 +617,11 @@ pub struct SettingField {
     /// 그 서버에는 없는 설정이라 화면이 숨긴다 (`crate::validator::version_hidden`). 없으면 모든 버전
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub versions: Option<String>,
+    /// 이 설정 값이 서버를 띄우는 런타임 실행 파일의 경로면 그 종류 (`crate::sandbox::RUNTIME_KINDS`의 id, 예: `java`).
+    /// 사용자가 정한 값만 실행 대상 검사가 런타임으로 인정하고 격리 실행에 읽기로 연다. 원격에서는 바꿀 수 없다.
+    /// 데몬은 이 종류를 선언한 모듈의 호출에만 찾은 런타임 목록(환경 변수)을 넘긴다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
 }
 
 /// `visible_when = { field, equals }` 또는 `{ field, in = [...] }` (06 §8.2)
@@ -629,8 +670,8 @@ const NOT_A_CONDITION: &[&str] = &["list", "multiline", "password", "file"];
 /// 명령 입력 `inputs[].type`으로 받는 값
 pub const COMMAND_INPUT_TYPES: &[&str] = &["text", "password", "number", "select", "boolean"];
 
-/// 인스턴스 필드로도 저장되는 포트 설정 이름 (`ServerInstance::port` 등)
-pub const CORE_PORT_FIELDS: &[&str] = &["port", "rest_port"];
+/// 인스턴스 필드로도 저장되는 포트 설정 이름 (`ServerInstance::port`)
+pub const CORE_PORT_FIELDS: &[&str] = &["port"];
 
 /// 사바쨩 설정 묶음: 실행 방식(Java 경로·메모리·실행 인자 등)처럼 사바쨩이 쓰는 값. 게임 설정 파일로 넘기지 않는다
 pub const SABA_SETTINGS_GROUP: &str = "saba-chan";
@@ -859,10 +900,6 @@ struct ModuleToml {
     /// [launch] 실행 관련 선언 (C8b)
     #[serde(default)]
     launch: Option<LaunchSection>,
-    /// [credential_map] 데몬 표준 키 ↔ 게임별 설정 키 매핑
-    /// 예: rest_password = "AdminPassword" → 데몬의 rest_password가 게임 INI의 AdminPassword에 대응
-    #[serde(default)]
-    credential_map: Option<std::collections::HashMap<String, String>>,
     /// [aliases] 모듈 및 명령어 별명 (Discord/CLI 다국어 지원)
     #[serde(default)]
     aliases: Option<AliasesSection>,
@@ -898,6 +935,10 @@ struct ModuleToml {
     /// [[diagnose]] 로그 진단 규칙 (`ModuleMetadata::diagnose`)
     #[serde(default)]
     diagnose: Vec<DiagnoseRule>,
+    /// [remote_access] 사바쨩이 정하는 원격 접속 값
+    #[serde(default)]
+    #[allow(dead_code)]
+    remote_access: Option<RemoteAccessSection>,
     /// [runtime] 실행 방식. 실행기가 호출 때 module.toml에서 읽는다 (`plugin::Runtime`)
     #[serde(default)]
     #[allow(dead_code)]
@@ -980,6 +1021,40 @@ struct LaunchSection {
     /// 없으면 나누지 않는다. 빈 글자에 맞는 정규식은 받지 않는다
     #[serde(default)]
     line_start: Option<String>,
+    /// 로그 진단이 콘솔 줄이 없을 때 끝부분을 읽는 로그 파일 (서버 폴더 기준 상대 경로, 앞에서부터 줄이 있는 첫 파일).
+    /// 데몬은 모양만 검사하고, 공용 도우미 `daemon_rcon.diagnose_log`가 읽는다 (saba-core >=0.1.14-beta.2)
+    #[serde(default)]
+    diagnose_files: Vec<String>,
+}
+
+/// `[remote_access]`: 사바쨩이 정하는 원격 접속(RCON·REST) 값. 키는 게임 설정 파일의 키다 (saba-core >=0.1.14-beta.2).
+/// 데몬은 읽지 않는다: 공용 도우미 `daemon_rcon.remote_access_values`가 설정 저장·첫 설치·실행 전에 같은 값을 쓴다
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+#[allow(dead_code)]
+struct RemoteAccessSection {
+    /// 늘 이 값으로 둔다 (예: `{ RESTAPIEnabled = "True", RCONEnabled = "False" }`)
+    #[serde(default)]
+    forced: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    rcon: Option<RemoteAccessRcon>,
+}
+
+/// `[remote_access.rcon]`: 관리형 시작을 끈 서버만 데몬이 만든 포트·비밀번호로 RCON을 켠다
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+#[allow(dead_code)]
+struct RemoteAccessRcon {
+    /// RCON을 켤 때 함께 쓰는 값
+    #[serde(default)]
+    on: std::collections::BTreeMap<String, String>,
+    /// RCON을 끌 때 쓰는 값 (관리형 시작, 또는 데몬이 접속 정보를 주지 않았을 때)
+    #[serde(default)]
+    off: std::collections::BTreeMap<String, String>,
+    /// 데몬이 준 RCON 포트를 쓰는 키
+    port: String,
+    /// 데몬이 준 RCON 비밀번호를 쓰는 키
+    password: String,
 }
 
 /// saba-runner가 서버 콘솔을 잇는 방식 (`[launch] console`)
@@ -1023,6 +1098,47 @@ struct ProtocolsSection {
     /// 게임의 기본 RCON 포트. `supported`에 rcon만 있을 때 데몬이 이 포트로 접속한다
     #[serde(default)]
     rcon_port: Option<u16>,
+    /// `[protocols.rest]` REST 접속값이 든 설정 (saba-core >=0.1.14-beta.2)
+    #[serde(default)]
+    rest: Option<RestSettings>,
+}
+
+/// 0.1.14-beta.1까지의 모듈은 선언 없이 이 이름의 설정을 런타임 실행 파일 경로로 썼다 (설정 이름 → 런타임 종류).
+/// 그 모듈이 새 데몬에서도 돌도록 `runtime`이 없으면 이 표로 읽는다. 모듈이 모두 `runtime`을 선언하면 지운다
+const LEGACY_RUNTIME_SETTINGS: &[(&str, &str)] = &[("java_path", "java")];
+
+/// 설정 필드의 런타임 종류: 선언한 `runtime`, 없으면 선언 전 모듈이 쓰던 이름(`LEGACY_RUNTIME_SETTINGS`)
+pub fn setting_runtime<'a>(name: &str, declared: Option<&'a str>) -> Option<&'a str> {
+    declared.or_else(|| LEGACY_RUNTIME_SETTINGS.iter().find(|(legacy, _)| *legacy == name).map(|(_, kind)| *kind))
+}
+
+/// `[protocols.rest]`: 데몬이 REST로 붙을 때 쓰는 값이 어느 설정에 있는가 (saba-core >=0.1.14-beta.2).
+/// 값은 인스턴스 `module_settings`의 그 설정에만 있고, 모듈은 다른 설정처럼 그 설정 이름으로 받는다
+/// (`command` 호출 config에는 데몬이 붙을 주소를 `rest_host`·`rest_port`로도 싣는다)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct RestSettings {
+    /// 호스트가 든 설정 이름. 기본 `rest_host` (값도 기본값도 없으면 127.0.0.1)
+    #[serde(default = "default_rest_host_setting")]
+    pub host_setting: String,
+    /// 포트가 든 설정 이름. 기본 `rest_port`
+    #[serde(default = "default_rest_port_setting")]
+    pub port_setting: String,
+    /// 비밀번호가 든 설정 이름. 있으면 "비밀번호 자동 생성"이 빈 값을 채우고 모듈이 준 `rest_credentials`를 여기에 적는다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password_setting: Option<String>,
+    /// 게임이 정한 사용자 이름 (기본 인증). 없으면 모듈 `get_credentials`가 준 이름만 쓴다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+}
+
+fn default_rest_host_setting() -> String { "rest_host".to_string() }
+fn default_rest_port_setting() -> String { "rest_port".to_string() }
+
+impl Default for RestSettings {
+    fn default() -> Self {
+        Self { host_setting: default_rest_host_setting(), port_setting: default_rest_port_setting(), password_setting: None, username: None }
+    }
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1145,6 +1261,9 @@ struct SettingFieldToml {
     /// (예: `<1.21.9`, `>=1.13 <1.20`). 설치된 버전이 밖이면 화면이 숨긴다 (`SettingField::versions`)
     #[serde(default)]
     versions: Option<String>,
+    /// 이 설정 값이 서버를 띄우는 런타임 실행 파일의 경로면 그 종류 (`SettingField::runtime`, saba-core >=0.1.14-beta.2)
+    #[serde(default)]
+    runtime: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1198,6 +1317,9 @@ struct InstallSectionToml {
     /// 예: requires_extensions = ["steamcmd"]
     #[serde(default)]
     requires_extensions: Vec<String>,
+    /// 받을 파일의 대략적인 크기(바이트). 설치 방식 익스텐션이 진행률을 어림하는 데 쓴다 (saba-core >=0.1.14-beta.2)
+    #[serde(default)]
+    download_size: Option<u64>,
 }
 
 /// ModuleMetadata에서 사용하는 공개 설치 설정
@@ -1220,29 +1342,12 @@ pub struct ModuleInstallConfig {
     /// 예: ["steamcmd"]
     #[serde(default)]
     pub requires_extensions: Vec<String>,
+    /// 받을 파일의 대략적인 크기(바이트). 설치 방식 익스텐션이 진행률을 어림하는 데 쓴다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_size: Option<u64>,
 }
 
 fn default_true_mod() -> bool { true }
-
-impl ModuleInstallConfig {
-    /// 설치 방식 익스텐션에 넘기는 값 (`Instance::apply_install_extension_data`)
-    pub fn extension_fields(&self) -> Vec<(&'static str, serde_json::Value)> {
-        let mut fields = vec![("anonymous", serde_json::json!(self.anonymous))];
-        if let Some(id) = self.app_id {
-            fields.push(("app_id", serde_json::json!(id)));
-        }
-        if let Some(beta) = &self.beta {
-            fields.push(("beta", serde_json::json!(beta)));
-        }
-        if let Some(platform) = &self.platform {
-            fields.push(("platform", serde_json::json!(platform)));
-        }
-        if let Some(url) = &self.download_url {
-            fields.push(("download_url", serde_json::json!(url)));
-        }
-        fields
-    }
-}
 
 /// module.toml [aliases] 섹션
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1397,6 +1502,7 @@ impl ModuleToml {
     fn into_metadata(self) -> ModuleMetadata {
         let settings = if let Some(s) = self.settings {
             let fields: Vec<SettingField> = s.fields.into_iter().map(|f| SettingField {
+                runtime: setting_runtime(&f.name, f.runtime.as_deref()).map(str::to_string),
                 name: f.name.clone(),
                 field_type: f.field_type,
                 label: f.label.unwrap_or(f.name),
@@ -1486,7 +1592,7 @@ impl ModuleToml {
             line_start: self.launch.as_ref().and_then(|l| l.line_start.clone()),
             log_files: self.launch.map(|l| l.log_files).unwrap_or_default(),
             dependencies: self.module.dependencies,
-            credential_map: self.credential_map.unwrap_or_default(),
+            rest: self.protocols.as_ref().and_then(|p| p.rest.clone()).unwrap_or_default(),
             process_name: self.config.as_ref().and_then(|c| c.process_name.clone()),
             default_port: self.config.as_ref().and_then(|c| c.default_port),
             executable_path: self.config.as_ref().and_then(|c| c.executable_path.clone()),
@@ -1514,6 +1620,7 @@ impl ModuleToml {
                 download_url: i.download_url,
                 beta: i.beta,
                 requires_extensions: i.requires_extensions,
+                download_size: i.download_size,
             }),
             extensions: {
                 let ext_map: std::collections::HashMap<String, serde_json::Value> = self.extensions
@@ -2067,6 +2174,10 @@ impl ModuleToml {
             } else {
                 problems.extend(v2_field_problems(field, &fields));
             }
+            if let Some(runtime) = field.runtime.as_deref().filter(|r| crate::sandbox::runtime_kind(r).is_none()) {
+                let known: Vec<&str> = crate::sandbox::RUNTIME_KINDS.iter().map(|k| k.id).collect();
+                problems.push(format!("settings field '{}': unknown runtime '{}' (one of {})", field.name, runtime, known.join(", ")));
+            }
             if let Some(format) = field.format.as_deref().filter(|f| !SETTING_FORMATS.contains(f)) {
                 problems.push(format!("settings field '{}': unknown format '{}' (one of {})", field.name, format, SETTING_FORMATS.join(", ")));
             }
@@ -2150,6 +2261,11 @@ impl ModuleToml {
             }
         }
         problems.extend(self.launch.as_ref().and_then(|l| l.line_start.as_deref()).and_then(line_start_problem));
+        for file in self.launch.iter().flat_map(|l| &l.diagnose_files) {
+            if !crate::utils::is_inner_relative_path(file) {
+                problems.push(format!("launch.diagnose_files '{}' must be a path inside the server folder", file));
+            }
+        }
         if let Some(p) = &self.protocols {
             for value in p.supported.iter().flatten().chain(&p.default) {
                 if !PROTOCOLS.contains(&value.as_str()) {
@@ -2163,6 +2279,23 @@ impl ModuleToml {
             // stdin과 함께 쓰는 rcon은 관리형 시작을 끈 서버의 명령 길이다: 포트가 있어야 데몬이 접속 정보를 만든다
             if route == RconRoute::WithoutConsole && p.rcon_port.unwrap_or(0) == 0 {
                 problems.push("protocols: rcon_port is required when rcon is the command path without a console".to_string());
+            }
+            if let Some(rest) = &p.rest {
+                // 호스트 설정은 없어도 된다 (이 PC로 붙는다). 포트는 `port = true` 설정을, 비밀번호는 password 설정을 가리켜야 한다:
+                // 데몬이 포트 충돌·비밀값 가리기를 그 표시로 한다
+                let field = |name: &str| fields.iter().find(|f| f.name == name);
+                match field(&rest.port_setting) {
+                    None => problems.push(format!("protocols.rest: port_setting '{}' is not a [[settings.fields]] name", rest.port_setting)),
+                    Some(f) if !f.port => problems.push(format!("protocols.rest: port_setting '{}' must be a `port = true` setting", rest.port_setting)),
+                    Some(_) => {}
+                }
+                if let Some(name) = &rest.password_setting {
+                    match field(name) {
+                        None => problems.push(format!("protocols.rest: password_setting '{}' is not a [[settings.fields]] name", name)),
+                        Some(f) if f.field_type != "password" => problems.push(format!("protocols.rest: password_setting '{}' must be a `type = \"password\"` setting", name)),
+                        Some(_) => {}
+                    }
+                }
             }
         }
         // 공지·저장 명령은 [commands.fields]의 이름을 가리킨다
@@ -3299,6 +3432,63 @@ entry = "lifecycle.py"
             let err = field(keys).unwrap_err().to_string();
             assert!(err.contains("public") && err.contains(needle), "{keys}: {err}");
         }
+    }
+
+    /// D3 (0.1.14-beta.2): REST 접속값은 모듈이 선언한 설정에 있다. 선언이 없으면 `rest_host`·`rest_port` 설정을 본다
+    #[test]
+    fn rest_connection_values_come_from_the_declared_settings() {
+        let fields = "[[settings.fields]]\nname = \"api_port\"\ntype = \"number\"\nport = true\ndefault = 8212\n\n\
+                      [[settings.fields]]\nname = \"admin_pw\"\ntype = \"password\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n";
+        let module = |rest: &str| parse_module_toml(&format!("{V1}\n[protocols]\nsupported = [\"rest\"]\n\n[protocols.rest]\n{rest}\n\n{fields}"));
+        let meta = module("port_setting = \"api_port\"\npassword_setting = \"admin_pw\"\nusername = \"admin\"").unwrap();
+        let mut inst = crate::instance::ServerInstance::new("s", "m");
+        assert_eq!((meta.rest_host(&inst), meta.rest_port(&inst), meta.rest_password(&inst)), (Some("127.0.0.1".into()), Some(8212), None), "module defaults");
+        inst.module_settings.extend([("api_port".to_string(), serde_json::json!("9000")), ("rest_host".to_string(), serde_json::json!("10.0.0.2")), ("admin_pw".to_string(), serde_json::json!("pw"))]);
+        assert_eq!((meta.rest_host(&inst), meta.rest_port(&inst), meta.rest_password(&inst)), (Some("10.0.0.2".into()), Some(9000), Some("pw")));
+        assert_eq!((meta.rest().unwrap().username.as_deref(), meta.rest_target_settings()), (Some("admin"), vec!["rest_host", "api_port"]));
+
+        for (rest, needle) in [
+            ("port_setting = \"nope\"", "port_setting 'nope'"),
+            ("port_setting = \"motd\"", "port = true"),
+            ("port_setting = \"api_port\"\npassword_setting = \"motd\"", "password"),
+        ] {
+            let err = module(rest).unwrap_err().to_string();
+            assert!(err.contains("protocols.rest") && err.contains(needle), "{rest}: {err}");
+        }
+
+        // 선언이 없는 모듈(0.1.14-beta.1까지): 기본 설정 이름. REST를 받지 않는 모듈에는 접속값이 없다
+        let old = parse_module_toml(&format!("{V1}\n[protocols]\nsupported = [\"rest\"]\n\n[[settings.fields]]\nname = \"rest_port\"\ntype = \"number\"\nport = true\ndefault = 8212\n")).unwrap();
+        assert_eq!((old.rest_port(&inst), old.rest_password(&inst)), (Some(8212), None));
+        let console = parse_module_toml(&format!("{V1}\n[protocols]\nsupported = [\"stdin\"]\n")).unwrap();
+        inst.module_settings.insert("rest_port".into(), serde_json::json!(8212));
+        assert_eq!((console.rest().is_some(), console.rest_port(&inst), console.rest_target_settings().len()), (false, None, 0));
+    }
+
+    /// D4·A-02·A-07·A-09 (0.1.14-beta.2): 런타임 경로 설정, 진단 로그 파일, 원격 접속 강제 값, 내려받는 크기
+    #[test]
+    fn runtime_settings_diagnose_files_remote_access_and_download_size_are_declared() {
+        let toml = format!(
+            "{V1}\n[launch]\ndiagnose_files = [\"logs/latest.log\"]\n\n[install]\nmethod = \"steamcmd\"\napp_id = 1\ndownload_size = 4096\n\n\
+             [remote_access]\nforced = {{ \"enable-query\" = \"false\" }}\n\n[remote_access.rcon]\non = {{ \"enable-rcon\" = \"true\" }}\noff = {{ \"enable-rcon\" = \"false\" }}\nport = \"rcon.port\"\npassword = \"rcon.password\"\n\n\
+             [[settings.fields]]\nname = \"jre\"\ntype = \"file\"\nruntime = \"java\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n"
+        );
+        let meta = parse_module_toml(&toml).unwrap();
+        assert_eq!(meta.runtime_settings(), vec![("jre", "java")]);
+        assert_eq!(meta.install.as_ref().unwrap().download_size, Some(4096));
+        // 사용자가 정한 값만 런타임으로 인정한다 (기본값·가져온 값은 아니다)
+        let mut inst = crate::instance::ServerInstance::new("s", "g");
+        inst.module_settings.insert("jre".into(), serde_json::json!("/opt/jdk/bin/java"));
+        assert!(meta.user_runtime_paths(&inst).is_empty());
+        inst.user_settings.insert("jre".into());
+        assert_eq!(meta.user_runtime_paths(&inst), ["/opt/jdk/bin/java"]);
+        // 선언 전 모듈(0.1.14-beta.1까지)의 `java_path`는 선언 없이도 Java 런타임 경로로 읽는다
+        let legacy = parse_module_toml(&format!("{V1}\n[[settings.fields]]\nname = \"java_path\"\ntype = \"file\"\n")).unwrap();
+        assert_eq!(legacy.runtime_settings(), vec![("java_path", "java")]);
+
+        let err = parse_module_toml(&toml.replace("runtime = \"java\"", "runtime = \"cobol\"")).unwrap_err().to_string();
+        assert!(err.contains("jre") && err.contains("runtime"), "{err}");
+        let err = parse_module_toml(&toml.replace("logs/latest.log", "../outside.log")).unwrap_err().to_string();
+        assert!(err.contains("diagnose_files"), "{err}");
     }
 
     #[test]

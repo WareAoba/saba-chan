@@ -41,7 +41,6 @@ async fn server_running(module: &str, lifecycle: &str) -> (IPCServer, String, te
     let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
     sup.initialize().await.unwrap();
     let mut inst = crate::instance::ServerInstance::new("srv", "plain");
-    inst.rest_password = Some("S3CRET-REST".into());
     inst.module_settings.insert("admin_pass".into(), json!("S3CRET-MOD"));
     let id = inst.id.clone();
     sup.instance_store.add(inst).unwrap();
@@ -524,8 +523,11 @@ async fn remote_settings_cannot_touch_launch_values_at_any_depth() {
     assert!(ok.is_ok(), "{:?}", ok);
     let create = json!({ "name": "n", "module_name": "plain", "module_settings": { "java_path": "x" } });
     assert_eq!(plan(&state, "instance.create", None, &create, &owner_bot).await.unwrap_err().code, "invalid_input");
-    // java_path는 모듈이 글자 형식으로 선언해도 막는다
-    assert_eq!(forbidden_remote_key(&json!({ "java_path": "x" }), &FieldRules::default()).as_deref(), Some("java_path"));
+    // 런타임 경로 설정(`runtime`)은 모듈이 글자 형식으로 선언해도 막는다
+    let (state, id, _tmp) = server_with(&format!("{MODULE}\n[[settings.fields]]\nname = \"jre\"\ntype = \"text\"\nlabel = \"jre\"\nruntime = \"java\"\n")).await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 2 })).await;
+    assert_eq!(plan(&state, "instance.settings.set", Some(&id), &json!({ "jre": "x" }), &owner_bot).await.unwrap_err().code, "invalid_input");
+    assert!(plan(&state, "instance.settings.set", Some(&id), &json!({ "jre": "x" }), &gui()).await.is_ok());
 }
 
 #[tokio::test]
@@ -859,11 +861,11 @@ async fn plan_summaries_never_show_stored_or_new_secrets() {
     let (state, id, _tmp) = server().await;
     set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 2 })).await;
     run(&state, "instance.settings.set", Some(&id), &json!({ "players": 2 }), None, &gui()).await.unwrap();
-    assert_eq!(run(&state, "instance.settings.set", Some(&id), &json!({ "rest_password": "OLD-PW" }), None, &gui()).await.unwrap()["success"], true);
+    assert_eq!(run(&state, "instance.settings.set", Some(&id), &json!({ "admin_pass": "OLD-PW" }), None, &gui()).await.unwrap()["success"], true);
     let row = |planned: &Value, key: &str| planned["summary"].as_array().unwrap().iter().find(|r| r["labelKey"] == format!("actions.field.{}", key)).cloned().unwrap();
     // 로컬도 요약에는 가린 값만
-    let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "rest_password": "NEW-PW" }), &gui()).await.unwrap();
-    assert_eq!((row(&planned, "rest_password")["before"].clone(), row(&planned, "rest_password")["value"].clone()), (json!("***"), json!("***")));
+    let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "admin_pass": "NEW-PW" }), &gui()).await.unwrap();
+    assert_eq!((row(&planned, "admin_pass")["before"].clone(), row(&planned, "admin_pass")["value"].clone()), (json!("***"), json!("***")));
     // 묶음 값의 이전 값은 바꾸는 칸만
     let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "module_settings": { "players": 4 } }), &gui()).await.unwrap();
     assert_eq!(row(&planned, "module_settings")["before"], json!({ "players": 2 }));
@@ -1642,7 +1644,7 @@ async fn an_mcp_owner_reaches_what_the_app_screens_do() {
     let got = query(&state, "instance.get", Some(&id), &json!({}), &owner).await.unwrap();
     let text = got.to_string();
     assert_eq!(got["result"]["name"], "srv", "{got}");
-    assert!(!text.contains("S3CRET-REST") && !text.contains("S3CRET-MOD"), "{text}");
+    assert!(!text.contains("S3CRET-MOD"), "{text}");
     let schedule = query(&state, "instance.schedule.get", Some(&id), &json!({}), &owner).await.unwrap();
     assert!(schedule["result"]["schedule"].is_array(), "{schedule}");
     let modules = query(&state, "module.list", None, &json!({}), &owner).await.unwrap();

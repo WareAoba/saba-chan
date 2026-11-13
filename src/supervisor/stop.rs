@@ -150,9 +150,6 @@ impl Supervisor {
                     config_obj.insert("managed".to_string(), json!(true));
                     config_obj.insert("force".to_string(), json!(false));
                     config_obj.insert("stop_call_limit".to_string(), json!(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS));
-                    if let Some(port) = instance.rest_port {
-                        config_obj.insert("rest_port".to_string(), json!(port));
-                    }
                     match crate::plugin::PluginCall::new(module_path.clone(), "stop", Value::Object(config_obj)).serving(Some(managed.pid)).in_instance(host_context.clone()).run().await {
                         // 저장 후 종료를 요청할 길이 없다: 기다렸다 강제 종료하지 않고 사용자가 고르게 돌려준다 (MK10)
                         Ok(result) if is_graceful_stop_unavailable(&result) => return Ok(graceful_stop_unavailable(server_name, &result)),

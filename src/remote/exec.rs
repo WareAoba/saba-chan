@@ -174,7 +174,7 @@ fn is_secret(f: &crate::supervisor::module_loader::SettingField) -> bool {
 
 /// 모듈 설정 중 원격에서 바꾸지 않는 칸: 비밀값과 경로(실행 파일·런타임·폴더를 고르는 칸)
 fn is_pc_only(f: &crate::supervisor::module_loader::SettingField) -> bool {
-    pc_only_type(&f.field_type, f.format.as_deref())
+    pc_only_type(&f.field_type, f.format.as_deref()) || f.runtime.is_some()
 }
 
 /// 원격에서 바꾸지 않는 칸 종류: 비밀번호, 파일·경로, 경로 형식 글 (모듈 설정과 익스텐션이 묻는 칸이 같은 규칙)
@@ -198,6 +198,15 @@ fn module_fields(
         .filter(|f| keep(f))
         .map(|f| f.name.clone())
         .collect()
+}
+
+/// 모듈의 PC 전용 설정 키: `is_pc_only` 칸과 데몬이 REST로 붙을 곳을 정하는 설정 (`[protocols.rest]`)
+fn pc_only_module_fields(supervisor: &crate::supervisor::Supervisor, module: &str) -> Vec<String> {
+    let mut fields = module_fields(supervisor, module, is_pc_only);
+    if let Ok(module) = supervisor.module_loader.get_module(module) {
+        fields.extend(module.metadata.rest_target_settings().into_iter().map(str::to_string));
+    }
+    fields
 }
 
 /// 서버를 만들 때 켜진 익스텐션이 물은 칸(`AddServer.options`, `options`는 그 선언)의 답(`given`)을 원격에서 받는가.
@@ -287,13 +296,13 @@ fn pc_only_fields(
         "/api/instances" | "/api/instances/check" => body.and_then(|b| b.get("module_name")).and_then(Value::as_str),
         _ => instance.map(|i| i.module_name.as_str()),
     };
-    module.map(|m| module_fields(supervisor, m, is_pc_only)).unwrap_or_default()
+    module.map(|m| pc_only_module_fields(supervisor, m)).unwrap_or_default()
 }
 
 /// 아직 없는 서버 모듈(`module`)의 PC 전용 설정 키. 그 모듈을 찾지 못하면 본문의 설정 칸을 모두 PC 전용으로 본다
 fn new_server_pc_only_fields(supervisor: &crate::supervisor::Supervisor, module: &str, body: Option<&Value>) -> Vec<String> {
     if supervisor.module_loader.get_module(module).is_ok() {
-        return module_fields(supervisor, module, is_pc_only);
+        return pc_only_module_fields(supervisor, module);
     }
     let body = body.and_then(Value::as_object);
     let settings = body.and_then(|b| b.get("settings")).and_then(Value::as_object);
@@ -565,7 +574,6 @@ mod tests {
         std::fs::write(dir.join("lifecycle.py"), "").unwrap();
         let server = server(tmp).await;
         let mut inst = crate::instance::ServerInstance::new("s1", "secret");
-        inst.rest_password = Some("rest-secret".into());
         inst.module_settings
             .insert("rcon_password".into(), json!("rcon-secret"));
         inst.module_settings.insert("motd".into(), json!("hi"));
@@ -587,7 +595,7 @@ mod tests {
             assert_eq!(res.status, 200, "{path}: {:?}", res.body);
             let text = res.body.to_string();
             assert!(
-                !text.contains("rest-secret") && !text.contains("rcon-secret"),
+                !text.contains("rcon-secret"),
                 "{path}: {text}"
             );
             assert!(text.contains("\"motd\":\"hi\""), "{path}: {text}");

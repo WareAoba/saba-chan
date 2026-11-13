@@ -23,6 +23,23 @@ pub async fn check_server_update(
     }
 }
 
+/// `server.check_update` hook이 공통 문맥(`extension::hook_context`) 위에 더 받는 값. 설치 값은 모듈 `[install]` 그대로(`install`)이고 인스턴스에 복사해 두지 않는다:
+/// 모듈이 앱 ID를 바꾸면 기존 서버의 확인도 따라간다. `branch`는 사용자가 고른 브랜치(`<방식>_beta`), 없으면 모듈 `[install] beta`.
+/// `app_id`는 `install.app_id`와 같은 값이다 (0.1.14-beta.1까지의 익스텐션이 읽는다)
+fn check_update_context(
+    instance: &crate::instance::ServerInstance,
+    instance_dir: &std::path::Path,
+    install: Option<&crate::supervisor::module_loader::ModuleInstallConfig>,
+) -> Value {
+    let branch = install.and_then(|cfg| instance.install_branch(&cfg.method).or(cfg.beta.as_deref()));
+    json!({
+        "install_dir": install_dir_of(instance, instance_dir, install).to_string_lossy(),
+        "install": install,
+        "app_id": install.and_then(|cfg| cfg.app_id),
+        "branch": branch,
+    })
+}
+
 /// 게임 서버 업데이트 확인 결과 (`check-update`의 답). 인스턴스가 없으면 None.
 /// 서버를 켤 때도 뒤에서 불러 새 빌드가 있으면 알린다 (`server.rs` `announce_updates`)
 pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> {
@@ -51,23 +68,12 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
     }
 
     let instance_dir = supervisor.instance_store.instance_dir(id);
-
-    let install_dir = install_dir_of(&instance, &instance_dir, install_config.as_ref());
-    let install_dir_str = install_dir.to_string_lossy().to_string();
-
-    // app_id: extension_data(`<방식>_app_id`)에서 우선, 없으면 module config에서
-    let app_id = install_config
-        .as_ref()
-        .and_then(|cfg| instance.extension_data.get(&format!("{}_app_id", cfg.method)))
-        .and_then(|v| v.as_u64())
-        .or_else(|| install_config.as_ref().and_then(|cfg| cfg.app_id.map(|id| id as u64)));
-
     let mut ctx = crate::extension::hook_context(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata));
+    if let (Value::Object(ctx), Value::Object(extra)) = (&mut ctx, check_update_context(&instance, &instance_dir, install_config.as_ref())) {
+        ctx.extend(extra);
+    }
     // supervisor lock 해제 (hook 실행 중 필요 없음)
     drop(supervisor);
-
-    ctx["install_dir"] = json!(&install_dir_str);
-    ctx["app_id"] = json!(app_id);
 
     let results = crate::plugin::with_instance(Some(state.host_context(id)), crate::extension::run_hook(&state.extension_manager, "server.check_update", ctx)).await;
     let status = update_status_from_hooks(results);
@@ -575,6 +581,24 @@ mod tests {
         assert!(done.await.unwrap(), "the update succeeds");
         let config: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&seen).unwrap()).unwrap();
         assert_eq!(config[crate::sandbox::INSTANCE_DATA_DIRS], json!([cache.to_string_lossy()]), "{config}");
+    }
+
+    /// A-09: 업데이트 확인은 모듈 `[install]`을 그대로 받는다. 인스턴스에 남은 옛 사본(`steamcmd_app_id`)을 쓰지 않는다
+    #[test]
+    fn an_update_check_gets_the_install_values_from_the_module_not_from_instance_copies() {
+        let install: crate::supervisor::module_loader::ModuleInstallConfig =
+            serde_json::from_value(json!({ "method": "steamcmd", "app_id": 2394010, "beta": "preview", "install_subdir": "server", "download_size": 5700000000u64 })).unwrap();
+        let mut inst = crate::instance::ServerInstance::new("pal", "pal");
+        inst.extension_data.insert("steamcmd_app_id".into(), json!(111));
+        let dir = std::path::Path::new("/data/instances/pal");
+        let ctx = super::check_update_context(&inst, dir, Some(&install));
+        assert_eq!((ctx["app_id"].clone(), ctx["install"]["app_id"].clone(), ctx["install"]["download_size"].clone()), (json!(2394010), json!(2394010), json!(5700000000u64)));
+        assert_eq!(ctx["branch"], "preview", "the module's branch when the user chose none");
+        assert!(ctx["install_dir"].as_str().unwrap().ends_with("server"), "{ctx}");
+        inst.record_installed_version("steamcmd", "unstable");
+        assert_eq!(super::check_update_context(&inst, dir, Some(&install))["branch"], "unstable", "the branch the user installed");
+        let unknown = super::check_update_context(&inst, dir, None);
+        assert_eq!((unknown["app_id"].clone(), unknown["install"].clone(), unknown["branch"].clone()), (json!(null), json!(null), json!(null)));
     }
 
     /// 다운로드·수동 설치 서버는 사바쨩이 업데이트를 확인하지 않는다: "설치 방법 기록이 없다"가 아니라 그렇다고 답한다

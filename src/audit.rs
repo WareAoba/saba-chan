@@ -468,7 +468,7 @@ pub fn redact(
             .iter()
             .filter(|f| f.field_type == "password" || sensitive(&f.name))
             .filter_map(|f| inst.module_settings.get(&f.name).and_then(Value::as_str).map(str::to_string))
-            .chain(inst.rest_password.clone())
+            .chain(inst.legacy_rest.rest_password.clone())
             .collect::<Vec<_>>()
     })
     .filter(|v| v.chars().count() >= 4)

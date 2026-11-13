@@ -42,10 +42,6 @@ pub const DEFAULT_REMOTE_PORT: u16 = 57480;
 /// 인스턴스 필드로 받고, CLI `server set`·`server settings`가 같은 표를 쓴다
 pub const INSTANCE_FIELDS: &[(&str, &str)] = &[
     ("port", "number"),
-    ("rest_host", "text"),
-    ("rest_port", "number"),
-    ("rest_username", "text"),
-    ("rest_password", "password"),
     ("executable_path", "text"),
     ("working_dir", "text"),
     ("protocol_mode", "text"),

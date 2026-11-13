@@ -471,11 +471,9 @@ pub(crate) async fn refresh_settings_from_files(state: &IPCServer, id: &str) -> 
     if let (true, Some(settings)) = (ok, settings) {
         let mut supervisor = state.supervisor.write().await;
         if let Some(mut inst) = supervisor.instance_store.get(id).cloned() {
-            let (credential_map, types) = supervisor.module_loader.get_module(&inst.module_name)
-                .map(|m| (m.metadata.credential_map.clone(), m.metadata.setting_types()))
-                .unwrap_or_default();
-            // 포트·비밀번호 같은 인스턴스 필드도 파일 값으로 맞춘다 (GUI는 그쪽을 먼저 읽는다)
-            inst.apply_imported_settings(settings, &credential_map, &types);
+            let types = supervisor.module_loader.get_module(&inst.module_name).map(|m| m.metadata.setting_types()).unwrap_or_default();
+            // 게임 포트 같은 인스턴스 필드도 파일 값으로 맞춘다 (GUI는 그쪽을 먼저 읽는다)
+            inst.apply_imported_settings(settings, &types);
             if let Err(e) = supervisor.instance_store.update(id, inst) {
                 tracing::warn!("Settings refresh from game files failed for {}: {}", id, e);
             }
@@ -1084,8 +1082,8 @@ pub async fn install_server_handler(
             let mut keep = true;
             let progress = match finish(install.await) {
                 Ok(r) if r.get("success").and_then(Value::as_bool) == Some(true) => {
-                    // 모듈이 붙인 주의 한 줄 (`java_warning`은 마인크래프트 모듈이 버전 설치에 쓴다)
-                    let warning = ["warning", "java_warning"].iter().find_map(|k| r.get(*k).and_then(Value::as_str)).filter(|w| !w.is_empty());
+                    // 모듈이 붙인 주의 한 줄 (`warning`)
+                    let warning = r.get("warning").and_then(Value::as_str).filter(|w| !w.is_empty());
                     keep = warning.is_some();
                     let installed = text.t("provision.version_installed", &[("version", r.get("version").and_then(Value::as_str).unwrap_or_default())]);
                     let message = match warning {

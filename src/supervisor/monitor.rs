@@ -161,8 +161,7 @@ impl Supervisor {
                                     .filter(|i| i.id != instance.id && self.tracker.get_pid(&i.id).is_ok())
                                     .map(|i| i.id.clone())
                                     .collect();
-                                let module_protocols = self.build_module_protocols_map();
-                                let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, Some(&module_protocols));
+                                let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, &self.rest_port_settings());
                                 if !conflicts.is_empty() {
                                     let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
                                     tracing::warn!(

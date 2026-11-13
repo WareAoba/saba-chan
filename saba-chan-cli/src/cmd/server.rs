@@ -2630,7 +2630,7 @@ mod tests {
         let inst = json!({ "module_settings": {} });
         assert!(typed_setting(&[], &inst, "working_dir", "").is_err());
         assert!(typed_setting(&[], &inst, "port", " ").is_err());
-        assert_eq!(typed_setting(&[], &inst, "rest_port", "").unwrap().1, Value::Null);
+        assert_eq!(typed_setting(&[], &inst, "memory_limit_mb", "").unwrap().1, Value::Null);
         assert_eq!(typed_setting(&[], &inst, "working_dir", "C:/srv").unwrap().1, json!("C:/srv"));
     }
 

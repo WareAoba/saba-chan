@@ -441,13 +441,12 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
                                         ),
                                         version: installResult.version || '',
                                     });
-                                    const msg = installResult.java_warning
-                                        ? `${done}\n${installResult.java_warning}`
-                                        : done;
+                                    // 모듈이 붙인 주의 한 줄 (`warning`, 데몬의 설치 진행 알림과 같은 키)
+                                    const msg = installResult.warning ? `${done}\n${installResult.warning}` : done;
                                     safeShowToast(msg, 'success', 5000);
                                     await fetchServers();
 
-                                    if (!installResult.java_warning) {
+                                    if (!installResult.warning) {
                                         startServer(id);
                                     }
                                 } catch (err) {

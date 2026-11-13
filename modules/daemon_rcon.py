@@ -18,13 +18,18 @@ Modules reach the daemon only through the HOST channel; they get no IPC token.
     setting_file_keys() / settings_to_file() / settings_from_file() / setting_defaults_to_file()
                                                  setting name <-> game file key from module.toml `file_key`
     read_key_values() / update_key_values()      `key=value` config files, keeping comments, order, newlines, encoding
+    remote_access_values() / enforce_remote_access() / rcon_access()
+                                                 RCON·REST values saba-chan decides, from module.toml `[remote_access]`
+    auto_heap_mb() / java_release_major()        JVM heap default for this PC, major version of a bundled JRE
     graceful_stop() / request_console() / request_terminate() / stop_timeout() / stop_command()
                                                  the save-then-stop procedure of a module `stop()`
     delete_paths()                               delete files and folders for a reset, collecting errors
-    chat_reply()                                 the reply of a module `send_chat()`
-    load_diagnose_rules() / diagnose_lines() / tail_lines()
+    chat_reply() / extension_required()          the reply of a module `send_chat()`, the reply when an extension is missing
+    diagnose_log() / load_diagnose_rules() / diagnose_lines() / tail_lines()
                                                  log diagnosis from module.toml `[[diagnose]]`
-    progress() / download() / safe_extract()     install progress, verified downloads, contained archive extraction
+    progress() / download() / fetch_json() / safe_extract()
+                                                 install progress, verified downloads, JSON GET, contained archive extraction
+    list_dir() / extension_data_dir()            folder entries (missing folder = empty), an extension's data folder
     run_lifecycle()                              the `python lifecycle.py <function>` entry point
 
 Environment (the daemon sets these for every Python run):
@@ -86,6 +91,16 @@ SINCE = {
     "stop_command": "0.1.14-0",
     "delete_paths": "0.1.14-0",
     "chat_reply": "0.1.14-0",
+    "rcon_access": "0.1.14-beta.2",
+    "remote_access_values": "0.1.14-beta.2",
+    "enforce_remote_access": "0.1.14-beta.2",
+    "auto_heap_mb": "0.1.14-beta.2",
+    "java_release_major": "0.1.14-beta.2",
+    "diagnose_log": "0.1.14-beta.2",
+    "extension_required": "0.1.14-beta.2",
+    "list_dir": "0.1.14-beta.2",
+    "fetch_json": "0.1.14-beta.2",
+    "extension_data_dir": "0.1.14-beta.2",
 }
 
 
@@ -337,15 +352,42 @@ def wait_for_exit(pid, timeout=30, interval=1.0):
     return True
 
 
-def _descendants(pid):
-    """pid의 자손 PID를 맨 아래부터 (Unix, pgrep 사용). 못 구하면 빈 목록"""
-    try:
-        out = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
-        return []
+def _children():
+    """부모 PID → 자식 PID 목록 (Unix). Linux는 /proc에서 바로 읽고, 없으면(macOS) ps를 쓴다. 못 구하면 {}"""
+    pairs = []
+    if os.path.isdir("/proc"):
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            try:
+                with open(f"/proc/{entry}/stat", encoding="utf-8", errors="replace") as f:
+                    # comm에 공백·괄호가 들어갈 수 있어 마지막 ')' 뒤에서 읽는다: state ppid ...
+                    ppid = int(f.read().rsplit(")", 1)[1].split()[1])
+            except (OSError, ValueError, IndexError):
+                continue
+            pairs.append((ppid, int(entry)))
+    else:
+        try:
+            out = subprocess.run(["ps", "-A", "-o", "pid=,ppid="], capture_output=True, text=True, timeout=5).stdout
+        except (OSError, subprocess.SubprocessError):
+            out = ""
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                pairs.append((int(parts[1]), int(parts[0])))
+    children = {}
+    for ppid, child in pairs:
+        children.setdefault(ppid, []).append(child)
+    return children
+
+
+def _descendants(pid, children=None):
+    """pid의 자손 PID를 맨 아래부터 (Unix). 못 구하면 빈 목록"""
+    if children is None:
+        children = _children()
     result = []
-    for child in (int(p) for p in out.split() if p.isdigit()):
-        result.extend(_descendants(child))
+    for child in children.pop(int(pid), []):
+        result.extend(_descendants(child, children))
         result.append(child)
     return result
 
@@ -770,6 +812,82 @@ def update_key_values(path, updates, *, encodings=_KV_ENCODINGS, case_insensitiv
     atomic_write(path, (b"\xef\xbb\xbf" if bom else b"") + data)
 
 
+# ─── 원격 접속 ─────────────────────────────────────────────────
+
+def rcon_access(config):
+    """관리형 시작을 끈 서버의 RCON 접속 정보 (포트, 비밀번호) 문자열 쌍 (0.1.14-beta.2). 데몬이 만들어 config
+    `rcon_port`·`rcon_password`로 준다. 관리형이거나(콘솔로 명령을 보낸다) 데몬이 주지 않았으면 None"""
+    config = config or {}
+    if config.get("managed", True) is not False:
+        return None
+    password, port = config.get("rcon_password"), config.get("rcon_port")
+    return (str(port), str(password)) if password and port else None
+
+
+def remote_access_values(module_dir, config=None):
+    """사바쨩이 정하는 원격 접속 값 {게임 설정 파일 키: 값} (0.1.14-beta.2). module.toml `[remote_access]`에만 적는다:
+    `forced`는 늘 그 값, `[remote_access.rcon]`은 `rcon_access(config)`가 있으면 `on` 값과 `port`·`password` 키에
+    데몬이 준 값, 없으면 `off` 값. 설정 저장(configure)·첫 설치·실행 전이 모두 이 값을 쓴다"""
+    declared = _module_toml(module_dir).get("remote_access")
+    if not isinstance(declared, dict):
+        return {}
+    values = dict(declared.get("forced") or {})
+    rcon = declared.get("rcon")
+    if isinstance(rcon, dict):
+        access = rcon_access(config)
+        if access:
+            values.update(rcon.get("on") or {})
+            values[rcon["port"]], values[rcon["password"]] = access
+        else:
+            values.update(rcon.get("off") or {})
+    return values
+
+
+def enforce_remote_access(module_dir, config, current, update):
+    """실행 전: 게임 설정 파일에서 읽은 current {키: 값}와 다른 `remote_access_values`만 update(바뀔 {키: 값})로 쓴다 (0.1.14-beta.2).
+    파일에 없는 키는 빈 값으로 본다(빈 값으로 맞출 키를 새로 적지 않는다). 쓴 값을 돌려준다(없으면 {}, update를 부르지 않는다)"""
+    changes = {key: value for key, value in remote_access_values(module_dir, config).items() if current.get(key, "") != value}
+    if changes:
+        update(changes)
+        print(f"[saba] remote access settings set: {', '.join(sorted(changes))}", file=sys.stderr)
+    return changes
+
+
+# ─── Java 실행 기본값 ──────────────────────────────────────────
+
+# 자동 힙 크기: 8G. PC 몫으로 1.5GB를 남기지 못하면 4G, 그것도 못 남기면 PC − 1.5GB(2G 아래로는 내리지 않는다).
+# 남길 몫은 Paper 문서의 권장(전체에서 1~1.5GB를 남긴다, https://docs.papermc.io/paper/aikars-flags)
+_AUTO_HEAP_MB = 8 * 1024
+_SMALL_HEAP_MB = 4 * 1024
+_HOST_RESERVE_MB = 1536
+_MIN_AUTO_HEAP_MB = 2 * 1024
+
+
+def auto_heap_mb():
+    """메모리 설정을 비운 Java 서버의 힙 크기(MB) (0.1.14-beta.2). 데몬이 넘긴 PC 전체 메모리(`SABA_HOST_MEMORY`, 바이트)로 정한다. 모르면 8G"""
+    try:
+        host_mb = int(os.environ.get("SABA_HOST_MEMORY") or 0) // (1024 * 1024)
+    except ValueError:
+        host_mb = 0
+    if host_mb <= 0 or host_mb - _HOST_RESERVE_MB >= _AUTO_HEAP_MB:
+        return _AUTO_HEAP_MB
+    if host_mb - _HOST_RESERVE_MB >= _SMALL_HEAP_MB:
+        return _SMALL_HEAP_MB
+    return max(host_mb - _HOST_RESERVE_MB, _MIN_AUTO_HEAP_MB)
+
+
+def java_release_major(java_home):
+    """JRE 폴더의 주 버전 (0.1.14-beta.2): `release` 파일의 JAVA_VERSION을 읽는다(실행하지 않는다). "1.8.0_462"는 8. 모르면 0"""
+    try:
+        with open(os.path.join(java_home, "release"), encoding="utf-8", errors="replace") as f:
+            match = re.search(r'^JAVA_VERSION="(\d+)(?:\.(\d+))?', f.read(), re.MULTILINE)
+    except OSError:
+        return 0
+    if not match:
+        return 0
+    return int(match.group(2) or 0) if match.group(1) == "1" else int(match.group(1))
+
+
 # ─── 정지 ─────────────────────────────────────────────────────
 
 # 데몬이 호출 제한(stop_call_limit)을 알려 주지 않으면(0.1.8) 120초 제한 안에서 끝낸다
@@ -862,6 +980,29 @@ def chat_reply(send, i18n):
     return {"success": False, "message": i18n.t("errors.chat_failed", error=result.get("message") or result.get("error") or "")}
 
 
+def extension_required(i18n, *extension_ids):
+    """필요한 익스텐션이 없거나 꺼져 있을 때의 답 (0.1.14-beta.2). 데몬이 `missing_extensions`로 설치·켜기 안내를 띄운다.
+    문구는 공용 문구 `errors.extension_required`"""
+    return {"success": False, "error_code": "extension_required", "missing_extensions": list(extension_ids),
+            "message": i18n.t("errors.extension_required", extension=", ".join(extension_ids))}
+
+
+def list_dir(path):
+    """폴더 항목 이름(정렬) (0.1.14-beta.2). 없는 폴더는 빈 목록, 읽지 못하는 폴더는 OSError (빈 폴더로 보고 넘어가지 않게)"""
+    try:
+        return sorted(os.listdir(path))
+    except FileNotFoundError:
+        return []
+
+
+def extension_data_dir(extension_id):
+    """익스텐션이 받은 파일을 두는 폴더 (0.1.14-beta.2): 데몬이 준 `SABA_EXTENSION_DATA_ROOT/<id>` (격리된 실행은 구성요소마다 다른 뿌리를 받는다)"""
+    root = os.environ.get("SABA_EXTENSION_DATA_ROOT", "")
+    if not root:
+        raise EnvironmentError("SABA_EXTENSION_DATA_ROOT environment variable not set")
+    return safe_join(root, extension_id)
+
+
 def graceful_stop(config, request, i18n, *, module_dir=None):
     """모듈 `stop()`의 공용 절차. request()는 저장 후 종료를 요청하고 요청이 들어갔으면 True를 돌려준다.
 
@@ -927,6 +1068,25 @@ def diagnose_lines(lines, rules, i18n, *, message="errors.detect.{code}", soluti
                 "solution": i18n.t(solution.format(code=code)),
             })
     return issues
+
+
+def diagnose_log(config, module_dir, i18n, *, files=None):
+    """모듈 `diagnose_log()`의 공용 절차 (0.1.14-beta.2). 데몬이 준 이번 실행의 콘솔 줄(`log_lines`)을 먼저 보고, 없으면 로그 파일
+    끝부분을 본다: files(모듈이 계산한 경로)가 먼저, 다음이 module.toml `[launch] diagnose_files`(서버 폴더 기준).
+    줄이 있는 첫 파일만 읽는다. 규칙은 `[[diagnose]]`, 문구는 `errors.detect.<code>`·`errors.solutions.<code>`"""
+    lines = config.get("log_lines") or []
+    if isinstance(lines, str):
+        lines = lines.splitlines()
+    if not lines:
+        candidates = list(files or [])
+        if config.get("working_dir"):
+            declared = _module_toml(module_dir).get("launch", {}).get("diagnose_files") or []
+            candidates += [safe_join(config["working_dir"], *name.split("/")) for name in declared]
+        for path in candidates:
+            lines = tail_lines(path)
+            if lines:
+                break
+    return {"success": True, "issues": diagnose_lines(lines, load_diagnose_rules(module_dir), i18n), "lines_analyzed": len(lines)}
 
 
 def tail_lines(path, limit=500, max_bytes=1024 * 1024):
@@ -1003,6 +1163,14 @@ def download(url, dest, *, on_progress=None, timeout=60, checksums=None, user_ag
             pass
         raise
     return digests
+
+
+def fetch_json(url, *, timeout=15, user_agent="saba-chan"):
+    """url의 JSON 응답 (0.1.14-beta.2). HTTP 오류(urllib.error.HTTPError)·연결 실패·JSON이 아닌 답(ValueError)은 그대로 올린다"""
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
 
 
 def _link_inside(dest, link_rel, target):
