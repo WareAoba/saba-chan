@@ -9,9 +9,9 @@ html[data-popup] body {
 }
 
 .quick-panel {
-    --qp-bg: color-mix(in oklch, var(--bg-1-solid) 82%, transparent);
-    --qp-faint: color-mix(in oklch, var(--text-1) 7%, transparent);
-    --qp-border: color-mix(in oklch, var(--text-1) 12%, transparent);
+    --qp-bg: color-mix(in oklab, var(--bg-1-solid) 82%, transparent);
+    --qp-faint: color-mix(in oklab, var(--text-1) 7%, transparent);
+    --qp-border: color-mix(in oklab, var(--text-1) 12%, transparent);
     width: 100%;
     display: flex;
     flex-direction: column;
