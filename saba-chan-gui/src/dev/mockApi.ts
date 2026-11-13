@@ -406,20 +406,6 @@ const impl: Record<string, MockFn> = {
     },
     moduleManifest: () =>
         ok({ ok: true, manifest: { modules: Object.fromEntries(Object.entries(catalog).map(([id, info]) => [id, judged(info)])) } }),
-    instanceEvents: () =>
-        ok({
-            events: [
-                { at: now() - 7200, kind: 'user_stop', exit_code: 0 },
-                {
-                    at: now() - 3600,
-                    kind: 'crash',
-                    exit_code: -1073741819,
-                    evidence: 'hs_err_pid4120.log',
-                    restart_in_secs: 10,
-                },
-                { at: now() - 600, kind: 'crash', exit_code: 1, note: 'auto_restart is off' },
-            ],
-        }),
     instanceScheduleGet: () =>
         ok({
             success: true,

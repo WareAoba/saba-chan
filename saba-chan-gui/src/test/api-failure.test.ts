@@ -43,7 +43,6 @@ describe('데몬 호출 실패 모양', () => {
         expect(await api.chatbotGet()).toEqual(expected);
         expect(await api.makerInfo()).toEqual(expected);
         expect(await api.updaterStatus()).toEqual(expected);
-        expect(await api.instanceEvents('a')).toEqual({ ...expected, events: [] });
     });
 });
 

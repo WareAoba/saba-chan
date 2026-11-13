@@ -9,6 +9,7 @@ import { Avatar } from '../discord/Avatar';
 import type { MembersByGuild } from '../discord/types';
 import { Icon } from '../Icon';
 import { addController, memberChoices, removeController } from './controllers';
+import { failed } from '../../utils/apiResult';
 
 /** 디스코드 멤버 목록: 디스코드 화면이 받아 둔 것, 없으면 이은 서버마다 한 번 받는다 (5곳까지) */
 function useMemberChoices() {
@@ -55,7 +56,7 @@ export function ControllersTab({ server }: { server: Server }) {
         setBusy(true);
         try {
             const res = await window.api.instanceUpdateSettings(server.id, { controllers: next });
-            if (!res || res.success === false || res.error) {
+            if (failed(res)) {
                 const gateOn = res?.fields?.some?.((f: { field?: string }) => f.field === 'controllers_only');
                 safeShowToast(
                     gateOn ? t('controllers.err_gate_on') : t('controllers.save_failed', { error: res?.error || '-' }),

@@ -10,6 +10,7 @@ import { Avatar } from '../discord/Avatar';
 import { Icon } from '../Icon';
 import { SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
+import { failed } from '../../utils/apiResult';
 
 /** 이 모듈이 플레이어 목록(`[[lists]]`)을 선언했고 데몬이 그 목록을 읽어 줄 수 있는가 */
 export const playerListsAvailable = (moduleData?: ModuleInfo | null) =>
@@ -93,7 +94,7 @@ export function PlayersTab({ server, moduleData }: { server: Server; moduleData?
         setBusy(true);
         try {
             const res = await window.api.executeCommand(server.id, { command, args });
-            if (!res || res.error || res.success === false) {
+            if (failed(res)) {
                 safeShowToast(t('players.failed', { error: commandErrorText(res, t) ?? res?.error ?? '-' }), 'error', 5000);
                 return false;
             }
@@ -118,7 +119,7 @@ export function PlayersTab({ server, moduleData }: { server: Server; moduleData?
         setBusy(true);
         try {
             const res = await window.api.instanceUpdateSettings(server.id, { [setting.name]: next });
-            if (!res || res.success === false || res.error) {
+            if (failed(res)) {
                 safeShowToast(t('players.setting_failed', { error: res?.error || '-' }), 'error', 5000);
                 return;
             }

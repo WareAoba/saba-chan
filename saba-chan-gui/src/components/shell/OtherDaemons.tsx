@@ -96,7 +96,7 @@ export function OtherDaemons({
     const accept = async (target: Ask, ids: string[]) => {
         setAsk(null);
         const res = await window.api.remoteInstanceAgreements(target.hostId, target.server.id, ids).catch(() => null);
-        if (!res || res.success === false || res.error) {
+        if (failed(res)) {
             safeShowToast(t('other_daemons.open_to_continue', { pc: target.pc }), 'error', 5000);
             return;
         }

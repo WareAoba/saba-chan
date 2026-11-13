@@ -15,6 +15,7 @@ import { updateRequiredText } from '../utils/updateRequired';
 import { t, translateError } from './serverI18n';
 import type { Server, ServerState } from './useServerStore';
 import { setModal, setProgressBar, useUIStore } from './useUIStore';
+import { failed } from '../utils/apiResult';
 
 /** 만들기 요청 본문 (AddServer 모달 → 데몬 POST /api/instances). 예전 호출은 이름 문자열만 넘겼다 */
 export interface AddServerPayload {
@@ -275,7 +276,7 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
                         try {
                             const res = await window.api.sandboxAllowUnisolated(component);
                             if (res?.error_code === 'canceled') return;
-                            if (!res || res.success === false || res.error) {
+                            if (failed(res)) {
                                 safeShowToast(
                                     t('trust.sandbox.allow_failed', { error: translateError(res?.error || '') }),
                                     'error',
@@ -307,7 +308,7 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
                 setModal(null);
                 try {
                     const res = await window.api.instanceAgreements(srv.id, ids);
-                    if (!res || res.success === false || res.error) {
+                    if (failed(res)) {
                         safeShowToast(translateError(res?.error || ''), 'error', 5000);
                         return;
                     }
@@ -381,7 +382,7 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
                                             working_dir: dir,
                                             executable_path: filePath,
                                         });
-                                        if (!saved || saved.error || saved.success === false) {
+                                        if (failed(saved)) {
                                             safeShowToast(translateError(saved?.error || saved?.message || ''), 'error', 4000);
                                             return;
                                         }

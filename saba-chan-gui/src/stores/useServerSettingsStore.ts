@@ -1,9 +1,9 @@
 import { create } from 'zustand';
-import { changedForCli } from '../components/CliLine';
-import { launchDraft } from '../components/servers/LaunchPreview';
 import type { Json, ModuleInfo, SettingField } from '../types/daemon';
+import { changedForCli } from '../utils/cliValues';
 import { busyMessage, moduleSupports, safeShowToast } from '../utils/helpers';
 import { versionBranchMethod } from '../utils/installMethod';
+import { launchDraft } from '../utils/launchDraft';
 import { installFailure } from '../utils/serverControl';
 import { gameNameOf } from '../utils/serverView';
 import { blockedText } from '../utils/trustNotice';
@@ -11,6 +11,7 @@ import { listItems } from '../utils/validation';
 import { t, translateError } from './serverI18n';
 import { type Server, useServerStore } from './useServerStore';
 import { setModal, setProgressBar } from './useUIStore';
+import { failed } from '../utils/apiResult';
 
 /*
  * 서버 설정 (서버 상세의 설정·사바쨩 탭): 연 서버의 칸 값·기준 값·저장·버전 설치·초기화.
@@ -634,7 +635,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
         try {
             const result = await window.api.instanceResetServer(settingsServer.id, choice);
             // 모듈은 200으로 {success:false}를 돌려줄 수 있다
-            if (!result || result.error || result.success === false) {
+            if (failed(result)) {
                 safeShowToast(
                     t('server_settings.reset_failed', {
                         error:

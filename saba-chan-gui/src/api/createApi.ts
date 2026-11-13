@@ -351,11 +351,6 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         },
         // 모듈 코드가 쓰는 위험한 능력과 module.toml [permissions] 선언 비교 (데몬 응답 그대로)
         moduleAudit: (moduleName: string) => call('get', `/api/module/${encodeURIComponent(moduleName)}/audit`, undefined, 5000),
-        // 최근 종료 이력
-        instanceEvents: async (id: string) => {
-            const res = await call('get', instancePath(id, '/events'), undefined, 5000);
-            return failed(res) ? { ...res, events: [] } : res;
-        },
         // 지난 로그: 한 실행분의 끝에서부터 (`before`로 더 앞을 읽는다)
         instanceLogs: (
             id: string,
@@ -1200,8 +1195,6 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         remoteRenamePc: (hostId: string, name: string) =>
             call('put', `/api/remote/peers/${encodeURIComponent(hostId)}/name`, { name }, 15000),
         remoteConnect: (hostId: string) => call('post', '/api/remote/daemons', { hostId }, 30000),
-        remoteForget: async (hostId: string) =>
-            (await call('delete', `/api/remote/daemons/${encodeURIComponent(hostId)}`)) || { ok: true },
         // 내 PC 카드의 지우기: 그 PC에서 사바쨩 제거(리눅스·맥) → 서버쨩 목록에서 빼기 → 잊기. `{uninstalled, removedFromRelay}`
         remoteRemove: (hostId: string, body: { uninstall: boolean; keepSettings: boolean; keepInstances: boolean; removePc: boolean }) =>
             call('post', `/api/remote/daemons/${encodeURIComponent(hostId)}/remove`, body, 60000),

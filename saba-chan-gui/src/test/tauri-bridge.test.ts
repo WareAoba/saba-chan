@@ -323,17 +323,13 @@ describe('데몬 응답 가공', () => {
 });
 
 describe('원격 데몬 (G1)', () => {
-    it('짝 풀기·잊기는 204여도 성공으로, 다룰 데몬은 셸 명령으로 고른다', async () => {
+    it('원격 데몬에 짝을 맺고, 다룰 데몬은 셸 명령으로 고른다', async () => {
         const { api, tauri } = await install({
             daemon_request: daemon({
-                'DELETE /api/remote/daemons/host%20a': { status: 204, data: '' },
-                'DELETE /api/remote/daemons/host-b': { status: 404, data: { error: 'remote_unknown', error_code: 'remote_unknown' } },
                 'POST /api/remote/daemons': (args: Loose) => ({ status: 200, data: { hostId: args.body.hostId, name: '게임 PC' } }),
             }),
             daemon_target_set: (args: Loose) => ({ success: true, target: args.target }),
         });
-        expect(await api.remoteForget('host a')).toEqual({ ok: true });
-        expect(await api.remoteForget('host-b')).toMatchObject({ error_code: 'remote_unknown' });
         expect(await api.remoteConnect('host-b')).toEqual({ hostId: 'host-b', name: '게임 PC' });
         expect(await api.daemonTargetSet('')).toEqual({ success: true, target: null });
         expect(tauri.invoke).toHaveBeenCalledWith('daemon_target_set', { target: null });

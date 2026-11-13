@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { TFunction } from 'i18next';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { changedForCli } from '../components/CliLine';
+import { changedForCli } from '../utils/cliValues';
 import { SettingsField } from '../components/ServerSettingsModal';
 import { settleLaunchArgs } from '../stores/useServerSettingsStore';
 import type { Server } from '../stores/useServerStore';
