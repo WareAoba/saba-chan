@@ -172,7 +172,7 @@ pub async fn run(server: crate::ipc::IPCServer) {
         tracing::info!("[Tray] No desktop session; the tray is not shown");
         return;
     }
-    let Some(gui) = crate::boot_selector::find_interface_binary("saba-chan-gui") else {
+    let Some(gui) = crate::boot_selector::find_interface_binary(saba_chan_updater_lib::GUI_STEM) else {
         tracing::info!("[Tray] saba-chan-gui was not found next to the daemon; the tray is not shown");
         return;
     };

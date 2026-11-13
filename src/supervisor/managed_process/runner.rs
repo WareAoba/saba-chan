@@ -102,11 +102,10 @@ pub fn runner_binary() -> Option<PathBuf> {
         return path.is_file().then_some(path);
     }
     let exe = std::env::current_exe().ok()?;
-    let name = format!("saba-runner{}", std::env::consts::EXE_SUFFIX);
     exe.ancestors()
         .skip(1)
         .take(2)
-        .map(|dir| dir.join(&name))
+        .map(|dir| dir.join(saba_chan_updater_lib::RUNNER_EXE))
         .find(|p| p.is_file())
 }
 
