@@ -42,6 +42,10 @@ on:
         description: '릴레이 등록 롤아웃 비율 (1~100, 기본 100). 일부만 받게 하고 나중에 릴레이 PATCH로 올린다'
         type: number
         default: 100
+      source:
+        description: '빌드할 소스 브랜치 (비우면 main). release/<버전>만 받는다: 지난 발행 소스에 번호를 다시 붙여 낼 때'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -80,8 +84,19 @@ jobs:
         run: |
           echo "::error::Run this workflow on main (got $GITHUB_REF)"; exit 1
 
+      # 워크플로 파일과 비밀은 늘 main의 것이다. 소스만 release/<버전> 브랜치에서 가져올 수 있다
+      - name: Check source
+        env:
+          SOURCE: ${{ inputs.source }}
+        run: |
+          if [ -n "$SOURCE" ] && ! [[ "$SOURCE" =~ ^release/[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$ ]]; then
+            echo "::error::source must be release/<version> (got $SOURCE)"; exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source || github.sha }}
 
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
