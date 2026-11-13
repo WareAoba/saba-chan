@@ -562,9 +562,9 @@ pub async fn update_instance_settings(
             open_user_runtime(m.entry_path(), &updated_clone);
         }
     }
-    let hook_instance = instance_for_hooks(module.as_ref().map(|m| &m.metadata), &updated_clone);
-    let hook_settings = settings_for_hooks(module.as_ref().map(|m| &m.metadata), &settings);
-    let module_extensions = module
+    let mut hook_ctx = crate::extension::hook_context(&updated_clone, &instance_dir, module.as_ref().map(|m| &m.metadata));
+    hook_ctx["settings"] = crate::extension::redact_for_hooks(module.as_ref().map(|m| &m.metadata), &settings);
+    hook_ctx["module_extensions"] = module
         .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
         .unwrap_or_else(|| serde_json::json!({}));
     let runtime = supervisor.runtime.clone();
@@ -604,15 +604,7 @@ pub async fn update_instance_settings(
     // instance_dir + 모듈 익스텐션 설정을 범용으로 전달 → 각 extension이 자체 판단
     if !updated_clone.extension_data.is_empty() {
         let ext_mgr = state.extension_manager.clone();
-        let ctx = serde_json::json!({
-            "instance_id": &id,
-            "instance_dir": instance_dir.to_string_lossy(),
-            "instance": hook_instance,
-            "module_extensions": module_extensions,
-            "extension_data": &updated_clone.extension_data,
-            "settings": hook_settings,
-        });
-        let _results = crate::plugin::with_instance(Some(state.host_context(&id)), crate::extension::run_hook(&ext_mgr, "server.settings_changed", ctx)).await;
+        let _results = crate::plugin::with_instance(Some(state.host_context(&id)), crate::extension::run_hook(&ext_mgr, "server.settings_changed", hook_ctx)).await;
     }
 
     // 게임 설정 파일의 비밀번호·포트가 바뀌었을 수 있다

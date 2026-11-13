@@ -62,18 +62,12 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
         .and_then(|v| v.as_u64())
         .or_else(|| install_config.as_ref().and_then(|cfg| cfg.app_id.map(|id| id as u64)));
 
+    let mut ctx = crate::extension::hook_context(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata));
     // supervisor lock 해제 (hook 실행 중 필요 없음)
     drop(supervisor);
 
-    let ctx = json!({
-        "instance_id": id,
-        "instance_name": &instance.name,
-        "module": &instance.module_name,
-        "instance_dir": instance_dir.to_string_lossy(),
-        "install_dir": &install_dir_str,
-        "app_id": app_id,
-        "extension_data": &instance.extension_data,
-    });
+    ctx["install_dir"] = json!(&install_dir_str);
+    ctx["app_id"] = json!(app_id);
 
     let results = crate::plugin::with_instance(Some(state.host_context(id)), crate::extension::run_hook(&state.extension_manager, "server.check_update", ctx)).await;
     let status = update_status_from_hooks(results);

@@ -98,6 +98,16 @@ fn sync_rest_credentials(
     creds_changed
 }
 
+/// `server.pre_start`를 부를 익스텐션 매니저와 문맥
+type PreStartHook = (std::sync::Arc<tokio::sync::RwLock<crate::extension::ExtensionManager>>, Value);
+
+/// 시작 전 검사를 통과한 시작 (`Supervisor::plan_start`)
+struct StartPlan {
+    instance: crate::instance::ServerInstance,
+    starting: StartGuard,
+    hook: PreStartHook,
+}
+
 /// `get_launch_command`가 돌려준 실행 명령 (실행 검사를 거친 프로그램)
 struct LaunchSpec {
     program: String,
@@ -408,8 +418,8 @@ impl Supervisor {
             return None;
         }
         let mut installed = std::collections::HashMap::from([("saba-core".to_string(), env!("CARGO_PKG_VERSION").to_string())]);
-        if let Some(ext_mgr) = &self.extension_manager {
-            let mgr = ext_mgr.read().await;
+        {
+            let mgr = self.extension_manager.read().await;
             let ready = mgr.installed_and_enabled_set();
             for ext in mgr.list().into_iter().filter(|e| ready.contains(&e.id)) {
                 installed.insert(format!("ext-{}", ext.id), ext.version);
@@ -426,6 +436,84 @@ impl Supervisor {
             })
             .collect();
         (!unmet.is_empty()).then_some(unmet)
+    }
+
+    /// 시작 전 검사 (D2). 관리형·비관리형 시작이 같은 검사를 같은 순서로 받는다:
+    /// 이미 켜져 있음 → 모듈 의존성·지원 OS → 필수 익스텐션 → 포트 충돌 → 시작 중 표시.
+    /// 막으면 그대로 돌려줄 응답을 `Err`로, 통과하면 시작 중 표시와 `server.pre_start` 문맥을 돌려준다
+    async fn plan_start(&self, instance_id: &str, module_name: &str, config: &Value, managed: bool) -> Result<std::result::Result<StartPlan, Value>> {
+        let instance = self.instance_store.get(instance_id).cloned().ok_or_else(|| InstanceNotFound(instance_id.to_string()))?;
+
+        // ── 중복 시작 방어: 돌고 있는 managed 프로세스나 살아 있는 추적 PID가 있으면 새로 띄우지 않는다 (추적을 덮어쓰지 않게) ──
+        let running = match self.managed_store.get(&instance.id).await.filter(|p| p.is_running()) {
+            Some(existing) => Some(existing.pid),
+            None => match self.tracker.get_pid(&instance.id) {
+                Ok(pid) if process::is_process_alive(pid) => Some(pid),
+                Ok(pid) => {
+                    tracing::info!("Cleaning stale tracker entry for '{}' (PID {} no longer alive)", instance.name, pid);
+                    let _ = self.tracker.untrack(&instance.id);
+                    None
+                }
+                Err(_) => None,
+            },
+        };
+        if let Some(pid) = running {
+            tracing::info!("Server '{}' is already running (PID {}), skipping duplicate start", instance.name, pid);
+            return Ok(Err(json!({
+                "success": true,
+                "server": instance.name,
+                "pid": pid,
+                "managed": managed,
+                "already_running": true,
+                "message": format!("Server '{}' is already running with PID {}", instance.name, pid)
+            })));
+        }
+
+        // ── 모듈 의존성 버전 검사 ([module.dependencies]의 saba-core, ext-<id>)와 지원 OS·CPU ──
+        if let Some(blocked) = self.unmet_dependencies_response(module_name, &instance.name).await {
+            return Ok(Err(blocked));
+        }
+
+        // ── 필수 익스텐션: 모듈 `[install] requires_extensions`와 인스턴스가 더한 것 ──
+        let required = self.effective_required_extensions(&instance);
+        let crate::extension::MissingExtensions { missing, not_installed } = self.extension_manager.read().await.missing_required(&required);
+        if !missing.is_empty() {
+            if !not_installed.is_empty() {
+                tracing::error!("Instance '{}' requires extensions {:?} which are enabled but not installed on disk", instance_id, not_installed);
+            } else {
+                tracing::error!("Instance '{}' requires extensions {:?} but they are not enabled", instance_id, missing);
+            }
+            return Ok(Err(json!({
+                "success": false,
+                "error": "extension_required",
+                "error_code": "extension_required",
+                "instance_name": instance_id,
+                "missing_extensions": missing,
+                "message": format!("Instance '{}' requires extension(s) {} to start. Please enable them first.", instance_id, missing.join(", "))
+            })));
+        }
+
+        // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
+        if let Some(blocked) = self.port_conflict_response(&instance) {
+            return Ok(Err(blocked));
+        }
+
+        let Some(starting) = StartGuard::claim(&self.runtime, &instance.id, start_baseline(self, &instance.id)) else {
+            return Ok(Err(json!({
+                "success": false,
+                "error": "start_in_progress",
+                "error_code": "start_in_progress",
+                "message": format!("Server '{}' is already starting", instance.name),
+            })));
+        };
+
+        // ── server.pre_start 문맥: 서버 hook 공통 문맥 + 시작 설정(비밀 값은 가린다)·시작 방식 ──
+        let module = self.module_loader.get_module(module_name).ok();
+        let metadata = module.as_ref().map(|m| &m.metadata);
+        let mut ctx = crate::extension::hook_context(&instance, &self.instance_store.instance_dir(&instance.id), metadata);
+        ctx["config"] = crate::extension::redact_for_hooks(metadata, config);
+        ctx["managed"] = json!(managed);
+        Ok(Ok(StartPlan { instance, starting, hook: (self.extension_manager.clone(), ctx) }))
     }
 
     /// 인스턴스 id로 서버를 시작한다
@@ -467,17 +555,16 @@ impl Supervisor {
     }
 
     /// `server.pre_start` hook을 부른다 (락 밖). 익스텐션이 시작을 맡았으면(handled) 그 결과를 돌려주고, 맡은 곳이 없으면 `None`.
-    /// 맡아 띄웠으면 익스텐션이 준 `log_follower`를 붙인다. `ctx`는 부르는 쪽이 만든다 (관리형은 비밀 값을 가린 인스턴스·설정을 싣는다)
+    /// 맡아 띄웠으면 익스텐션이 준 `log_follower`를 붙인다. 문맥은 `plan_start`가 만든다
     async fn run_pre_start_hook(
         sup: &tokio::sync::RwLock<Self>,
         instance: &crate::instance::ServerInstance,
         module_name: &str,
         starting: &StartGuard,
-        hook: Option<(std::sync::Arc<tokio::sync::RwLock<crate::extension::ExtensionManager>>, Value)>,
-        managed: bool,
+        hook: PreStartHook,
     ) -> Option<Value> {
-        let (ext_mgr, ctx) = hook?;
-        let hook_label = if managed { "server.pre_start' (managed)" } else { "server.pre_start'" };
+        let (ext_mgr, ctx) = hook;
+        let hook_label = if ctx["managed"] == true { "server.pre_start' (managed)" } else { "server.pre_start'" };
         let server_name = instance.name.as_str();
         let host_context = sup.read().await.host_context(&instance.id);
         let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.pre_start", ctx)).await;
@@ -679,101 +766,15 @@ impl Supervisor {
     }
 
     async fn start_server_inner(sup: &tokio::sync::RwLock<Self>, instance_id: &str, module_name: &str, config: Value) -> Result<Value> {
-
         // ── 검사 (읽기 락) ──
-        let (instance, starting, hook) = {
-            let s = sup.read().await;
-            // Find instance to get executable_path and working_dir
-            let instance = s.instance_store.get(instance_id)
-                .cloned()
-                .ok_or_else(|| InstanceNotFound(instance_id.to_string()))?;
-
-            // ── 중복 시작 방어: 추적 중인 PID가 살아 있으면 새로 띄우지 않는다 (추적을 덮어쓰지 않게) ──
-            if let Ok(existing_pid) = s.tracker.get_pid(&instance.id) {
-                if process::is_process_alive(existing_pid) {
-                    return Ok(json!({
-                        "success": true,
-                        "server": instance.name,
-                        "pid": existing_pid,
-                        "already_running": true,
-                        "message": format!("Server '{}' is already running with PID {}", instance.name, existing_pid)
-                    }));
-                }
-            }
-
-            // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
-            if let Some(blocked) = s.port_conflict_response(&instance) {
-                return Ok(blocked);
-            }
-
-            // ── 모듈 의존성 버전 검사 ([module.dependencies]의 saba-core, ext-<id>) ──
-            if let Some(blocked) = s.unmet_dependencies_response(module_name, &instance.name).await {
-                return Ok(blocked);
-            }
-
-            // ── 인스턴스 필수 익스텐션 검증 ──
-            // 기존 인스턴스의 required_extensions가 비어있으면 모듈의 install.requires_extensions에서 보충
-            let effective_required = s.effective_required_extensions(&instance);
-
-            if !effective_required.is_empty() {
-                if let Some(ref ext_mgr) = s.extension_manager {
-                    let crate::extension::MissingExtensions { missing, not_installed } = ext_mgr.read().await.missing_required(&effective_required);
-                    if !missing.is_empty() {
-                        // 활성화되었지만 설치되지 않은 항목 구분
-                        if !not_installed.is_empty() {
-                            tracing::error!(
-                                "Instance '{}' requires extensions {:?} which are enabled but not installed on disk",
-                                instance_id, not_installed
-                            );
-                        } else {
-                            tracing::error!(
-                                "Instance '{}' requires extensions {:?} but they are not enabled",
-                                instance_id, missing
-                            );
-                        }
-                        return Ok(json!({
-                            "success": false,
-                            "error": "extension_required",
-                            "error_code": "extension_required",
-                            "instance_name": instance_id,
-                            "missing_extensions": missing,
-                            "message": format!(
-                                "Instance '{}' requires extension(s) {} to start. Please enable them first.",
-                                instance_id,
-                                missing.join(", ")
-                            )
-                        }));
-                    }
-                }
-            }
-
-
-            let Some(starting) = StartGuard::claim(&s.runtime, &instance.id, start_baseline(&s, &instance.id)) else {
-                return Ok(json!({
-                    "success": false,
-                    "error": "start_in_progress",
-                    "error_code": "start_in_progress",
-                    "message": format!("Server '{}' is already starting", instance_id),
-                }));
-            };
-
-            // ── Extension hook: server.pre_start ──
-            let hook = s.extension_manager.clone().map(|ext_mgr| {
-                let instance_dir = s.instance_store.instance_dir(&instance.id);
-                let ctx = json!({
-                    "instance_id": instance.id.clone(),
-                    "instance_dir": instance_dir.to_string_lossy(),
-                    "module": module_name,
-                    "extension_data": &instance.extension_data,
-                });
-                (ext_mgr, ctx)
-            });
-            (instance, starting, hook)
+        let StartPlan { instance, starting, hook } = match sup.read().await.plan_start(instance_id, module_name, &config, false).await? {
+            Ok(plan) => plan,
+            Err(answer) => return Ok(answer),
         };
         // 받은 키가 id여도 메시지·응답에는 이름을 쓴다
         let server_name = instance.name.as_str();
 
-        if let Some(handled) = Self::run_pre_start_hook(sup, &instance, module_name, &starting, hook, false).await {
+        if let Some(handled) = Self::run_pre_start_hook(sup, &instance, module_name, &starting, hook).await {
             return Ok(handled);
         }
 
@@ -915,91 +916,13 @@ impl Supervisor {
     ) -> Result<Value> {
 
         // ── 1) 검사 (읽기 락) ──
-        let (mut instance, starting, hook) = {
-            let s = sup.read().await;
-            let instance = s.instance_store.get(instance_id).cloned()
-                .ok_or_else(|| InstanceNotFound(instance_id.to_string()))?;
-
-            // ── 중복 프로세스 방어: 이미 실행 중인 managed 프로세스가 있으면 새로 생성하지 않음 ──
-            if let Some(existing) = s.managed_store.get(instance_id).await {
-                if existing.is_running() {
-                    tracing::info!(
-                        "Managed process for '{}' already running (PID {}), skipping duplicate start",
-                        instance.name, existing.pid
-                    );
-                    return Ok(json!({
-                        "success": true,
-                        "server": instance.name,
-                        "pid": existing.pid,
-                        "managed": true,
-                        "already_running": true,
-                        "message": format!("Server '{}' is already running with PID {} (managed mode)", instance.name, existing.pid)
-                    }));
-                }
-            }
-            // managed_store에 없더라도 tracker에 PID가 있고 프로세스가 살아있으면 중복 방지
-            if let Ok(existing_pid) = s.tracker.get_pid(instance_id) {
-                if crate::supervisor::process::is_process_alive(existing_pid) {
-                    tracing::warn!(
-                        "Tracked process for '{}' still alive (PID {}) but not in managed store — preventing duplicate start",
-                        instance.name, existing_pid
-                    );
-                    return Ok(json!({
-                        "success": true,
-                        "server": instance.name,
-                        "pid": existing_pid,
-                        "managed": true,
-                        "already_running": true,
-                        "message": format!("Server '{}' has a tracked process (PID {}) still alive", instance.name, existing_pid)
-                    }));
-                } else {
-                    // 프로세스가 죽어있으면 tracker 정리
-                    tracing::info!("Cleaning stale tracker entry for '{}' (PID {} no longer alive)", instance.name, existing_pid);
-                    let _ = s.tracker.untrack(instance_id);
-                }
-            }
-
-            if let Some(blocked) = s.unmet_dependencies_response(module_name, &instance.name).await {
-                return Ok(blocked);
-            }
-
-            // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
-            if let Some(blocked) = s.port_conflict_response(&instance) {
-                return Ok(blocked);
-            }
-
-
-            let Some(starting) = StartGuard::claim(&s.runtime, instance_id, start_baseline(&s, instance_id)) else {
-                return Ok(json!({
-                    "success": false,
-                    "error": "start_in_progress",
-                    "error_code": "start_in_progress",
-                    "message": format!("Server '{}' is already starting", instance.name),
-                }));
-            };
-
-            // ── Extension hook: server.pre_start (managed) ──
-            let hook = s.extension_manager.clone().map(|ext_mgr| {
-                let instance_dir = s.instance_store.instance_dir(&instance.id);
-                // 인스턴스와 시작 설정의 비밀 값은 post_create·settings_changed와 같은 기준으로 가린다 (D-E2)
-                let module = s.module_loader.get_module(module_name).ok();
-                let hidden = |v: &Value| crate::audit::redact(module.as_ref().map(|m| &m.metadata), None, None, Some(v)).1.unwrap_or_default();
-                let ctx = json!({
-                    "instance_id": instance_id,
-                    "instance_dir": instance_dir.to_string_lossy(),
-                    "module": module_name,
-                    "instance": hidden(&serde_json::to_value(&instance).unwrap_or_default()),
-                    "config": hidden(&config),
-                    "managed": true,
-                    "extension_data": &instance.extension_data,
-                });
-                (ext_mgr, ctx)
-            });
-            (instance, starting, hook)
+        let StartPlan { mut instance, starting, hook } = match sup.read().await.plan_start(instance_id, module_name, &config, true).await? {
+            Ok(plan) => plan,
+            Err(answer) => return Ok(answer),
         };
 
         // ── 2) 익스텐션 hook (락 밖) ──
-        if let Some(handled) = Self::run_pre_start_hook(sup, &instance, module_name, &starting, hook, true).await {
+        if let Some(handled) = Self::run_pre_start_hook(sup, &instance, module_name, &starting, hook).await {
             return Ok(handled);
         }
 
@@ -1482,7 +1405,7 @@ mod tests {
             std::fs::create_dir_all(ext_root.join("foo")).unwrap();
             std::fs::write(ext_root.join("foo").join("manifest.json"), format!(r#"{{"id":"foo","name":"Foo","version":"{version}"}}"#)).unwrap();
         };
-        let mut supervisor = Supervisor::new_with_instances_dir(
+        let supervisor = Supervisor::new_with_instances_dir(
             tmp.path().join("modules").to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
@@ -1494,11 +1417,11 @@ mod tests {
         let mut mgr = crate::extension::ExtensionManager::new_isolated(ext_root.to_str().unwrap());
         mgr.discover().unwrap();
         mgr.enable("foo").unwrap();
-        supervisor.extension_manager = Some(std::sync::Arc::new(tokio::sync::RwLock::new(mgr)));
+        *supervisor.extension_manager.write().await = mgr;
         assert_eq!(supervisor.unmet_module_dependencies("game").await.unwrap(), vec!["ext-foo >=0.2.0 (installed 0.1.0)".to_string()]);
 
         write_ext("0.2.0");
-        supervisor.extension_manager.as_ref().unwrap().write().await.discover().unwrap();
+        supervisor.extension_manager.write().await.discover().unwrap();
         assert!(supervisor.unmet_module_dependencies("game").await.is_none());
     }
 
@@ -1806,7 +1729,7 @@ mod tests {
         let mut mgr = crate::extension::ExtensionManager::new_isolated(ext_root.to_str().unwrap());
         mgr.discover().unwrap();
         mgr.enable("box").unwrap();
-        sup.extension_manager = Some(std::sync::Arc::new(tokio::sync::RwLock::new(mgr)));
+        *sup.extension_manager.write().await = mgr;
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
         inst.id = "stop-during-ext-start".into();
         sup.instance_store.add(inst).unwrap();
@@ -1862,7 +1785,7 @@ mod tests {
         let mut mgr = crate::extension::ExtensionManager::new_isolated(ext_root.to_str().unwrap());
         mgr.discover().unwrap();
         mgr.enable("box").unwrap();
-        sup.extension_manager = Some(std::sync::Arc::new(tokio::sync::RwLock::new(mgr)));
+        *sup.extension_manager.write().await = mgr;
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
         inst.id = "pre-start-secrets".into();
         inst.rest_password = Some("hunter2-rest".into());

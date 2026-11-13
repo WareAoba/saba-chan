@@ -234,18 +234,10 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
             }
         }
 
-        // ── 모듈의 install.requires_extensions → 인스턴스 required_extensions 자동 채우기 ──
-        if let Some((Some(ref install), _, _)) = module_install {
-            for ext_id in &install.requires_extensions {
-                if !instance.required_extensions.contains(ext_id) {
-                    instance.required_extensions.push(ext_id.clone());
-                }
-            }
-        }
-
-        // ── 필수 익스텐션 활성화 검증 ──
-        if !instance.required_extensions.is_empty() {
-            let found = state.extension_manager.read().await.missing_required(&instance.required_extensions);
+        // ── 필수 익스텐션 활성화 검증: 모듈 `[install] requires_extensions`는 인스턴스에 복사하지 않고 시작 때마다 모듈에서 읽는다 (D2) ──
+        let required = supervisor.effective_required_extensions(&instance);
+        if !required.is_empty() {
+            let found = state.extension_manager.read().await.missing_required(&required);
             if !found.missing.is_empty() {
                 return extension_required("create instance", &found);
             }
@@ -356,13 +348,8 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                 {
                     let ext_mgr = state.extension_manager.clone();
                     let meta = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
-                    let ctx = serde_json::json!({
-                        "instance_id": &id,
-                        "instance_dir": instance_dir.to_string_lossy(),
-                        "instance": instance_for_hooks(meta.as_ref(), &instance),
-                        "module": &module_name_owned,
-                        "migration": migration_mode,
-                    });
+                    let mut ctx = crate::extension::hook_context(&instance, &instance_dir, meta.as_ref());
+                    ctx["migration"] = serde_json::json!(migration_mode);
                     let host_context = Some(state.host_context(&id));
                     tokio::spawn(async move {
                         let _ = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.post_create", ctx)).await;

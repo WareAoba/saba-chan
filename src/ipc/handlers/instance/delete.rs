@@ -64,12 +64,11 @@ pub(super) fn other_instance_folders(supervisor: &crate::supervisor::Supervisor,
 /// 인스턴스를 지우기 전 익스텐션 hook `server.pre_delete`. 익스텐션이 정리했으면 파일 잠금이 풀리기를 잠깐 기다린다
 pub(super) async fn pre_delete_hook(state: &IPCServer, instance: &crate::instance::ServerInstance) {
     let ext_mgr = state.extension_manager.clone();
-    let ctx = serde_json::json!({
-        "instance_id": &instance.id,
-        "instance_name": &instance.name,
-        "module": &instance.module_name,
-        "extension_data": &instance.extension_data,
-    });
+    let ctx = {
+        let sup = state.supervisor.read().await;
+        let module = sup.module_loader.get_module(&instance.module_name).ok();
+        crate::extension::hook_context(instance, &sup.instance_store.instance_dir(&instance.id), module.as_ref().map(|m| &m.metadata))
+    };
     let results = crate::plugin::with_instance(Some(state.host_context(&instance.id)), crate::extension::run_hook(&ext_mgr, "server.pre_delete", ctx)).await;
     let handled = results.iter().any(|(_id, r)| {
         r.as_ref()

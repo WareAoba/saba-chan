@@ -86,10 +86,10 @@ pub struct Supervisor {
     pub instance_store: InstanceStore,
     /// Store for processes spawned and managed directly by the daemon (with stdio capture)
     pub managed_store: ManagedProcessStore,
-    /// 익스텐션 매니저 (Phase 3에서 optional로 추가)
-    pub extension_manager: Option<std::sync::Arc<tokio::sync::RwLock<crate::extension::ExtensionManager>>>,
-    /// 프로비저닝 진행 상태 추적 (auto-detect 억제용)
-    pub provision_tracker: Option<crate::ipc::ProvisionTracker>,
+    /// 익스텐션 매니저. 감독자가 만들어 들고, IPC 서버·업데이트 상태는 같은 것을 나눠 쓴다
+    pub extension_manager: std::sync::Arc<tokio::sync::RwLock<crate::extension::ExtensionManager>>,
+    /// 프로비저닝 진행 상태 추적 (auto-detect 억제용). IPC 서버와 같은 것을 나눠 쓴다
+    pub provision_tracker: crate::ipc::ProvisionTracker,
     /// 포트 충돌로 인한 강제 정지 알림 (클라이언트가 `GET /api/servers`로 읽는다)
     port_conflict_stops: std::sync::Mutex<PortConflictStops>,
     /// GUI 설정: 포트 충돌 검사 건너뛰기 (portConflictCheck 비활성화 시 true)
@@ -243,8 +243,8 @@ impl Supervisor {
             module_loader: ModuleLoader::new(modules_dir),
             instance_store: InstanceStore::new(instances_dir),
             managed_store: ManagedProcessStore::new(),
-            extension_manager: None,
-            provision_tracker: None,
+            extension_manager: Self::new_extension_manager(),
+            provision_tracker: crate::ipc::ProvisionTracker::new(),
             port_conflict_stops: std::sync::Mutex::new(PortConflictStops::default()),
             skip_port_check: std::sync::Arc::new(AtomicBool::new(false)),
             first_scan_done: false,
@@ -255,6 +255,12 @@ impl Supervisor {
         }
     }
 
+    /// 데몬의 익스텐션 폴더를 보는 익스텐션 매니저 (아직 발견 전. `initialize`가 발견한다)
+    pub(crate) fn new_extension_manager() -> std::sync::Arc<tokio::sync::RwLock<crate::extension::ExtensionManager>> {
+        let dir = crate::plugin::resolve_extensions_dir();
+        std::sync::Arc::new(tokio::sync::RwLock::new(crate::extension::ExtensionManager::new(&dir.to_string_lossy())))
+    }
+
     pub async fn initialize(&mut self) -> Result<()> {
         // 모듈 발견
         let modules = self.module_loader.discover_modules()?;
@@ -263,6 +269,11 @@ impl Supervisor {
             tracing::info!("  - {} v{}", module.metadata.name, module.metadata.version);
         }
         
+        // 익스텐션 발견
+        if let Err(e) = self.extension_manager.write().await.discover() {
+            tracing::warn!("Failed to discover extensions: {}", e);
+        }
+
         // 인스턴스 로드
         self.instance_store.load()?;
         tracing::info!("Loaded {} server instances", self.instance_store.list().len());
@@ -416,25 +427,16 @@ impl Supervisor {
             let instance = s.instance_store.get(instance_id)
                 .cloned()
                 .ok_or_else(|| InstanceNotFound(instance_id.to_string()))?;
-            let hook = s.extension_manager.clone().map(|ext_mgr| {
-                let instance_dir = s.instance_store.instance_dir(&instance.id);
-                let process_patterns = s.module_loader.get_module(module_name)
-                    .map(|m| m.metadata.process_patterns.clone())
-                    .unwrap_or_default();
-                let ctx = json!({
-                    "instance_id": instance.id.clone(),
-                    "instance_dir": instance_dir.to_string_lossy(),
-                    "module": module_name,
-                    "extension_data": &instance.extension_data,
-                    "process_patterns": process_patterns,
-                });
-                (ext_mgr, ctx)
-            });
+            let module = s.module_loader.get_module(module_name).ok();
+            let mut ctx = crate::extension::hook_context(&instance, &s.instance_store.instance_dir(&instance.id), module.as_ref().map(|m| &m.metadata));
+            ctx["process_patterns"] = json!(module.map(|m| m.metadata.process_patterns).unwrap_or_default());
+            let hook = (s.extension_manager.clone(), ctx);
             (instance, hook)
         };
 
         // ── Extension hook: server.status ──
-        if let Some((ext_mgr, ctx)) = hook {
+        {
+            let (ext_mgr, ctx) = hook;
             let host_context = sup.read().await.host_context(&instance.id);
             let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.status", ctx)).await;
             for (_ext_id, result) in &results {
@@ -635,15 +637,20 @@ impl Supervisor {
         self.addon_swap_gate.clone()
     }
 
-    /// 인스턴스가 쓰는 익스텐션: 인스턴스의 목록, 비어 있으면(옛 인스턴스) 모듈의 `[install] requires_extensions`
+    /// 인스턴스가 쓰는 익스텐션: 지금 모듈의 `[install] requires_extensions`와 인스턴스가 더한 것 (D2).
+    /// 모듈을 업데이트해 요구가 바뀌면 기존 인스턴스에도 바로 맞는다. 예전에 만들 때 복사해 둔 모듈 목록은 그대로 읽는다
     pub fn effective_required_extensions(&self, instance: &crate::instance::ServerInstance) -> Vec<String> {
-        if !instance.required_extensions.is_empty() {
-            return instance.required_extensions.clone();
-        }
-        self.module_loader
+        let mut required = self
+            .module_loader
             .get_module(&instance.module_name)
             .map(|m| crate::ipc::handlers::server::required_extensions(&m))
-            .unwrap_or_default()
+            .unwrap_or_default();
+        for ext in &instance.required_extensions {
+            if !required.contains(ext) {
+                required.push(ext.clone());
+            }
+        }
+        required
     }
 
     /// 켜져 있는 서버 인스턴스 id (`is_running` 판정)
@@ -1601,9 +1608,10 @@ mod tests {
         drop((install, another));
     }
 
-    /// 필수 익스텐션 목록이 빈 옛 인스턴스는 모듈의 `[install] requires_extensions`를 쓴다 (시작 검사와 자동 교체 보류가 같은 답)
+    /// 필수 익스텐션은 지금 모듈의 `[install] requires_extensions`에 인스턴스가 더한 것이다 (시작 검사와 자동 교체 보류가 같은 답).
+    /// 만들 때의 모듈 목록만 들고 있는 인스턴스도 모듈이 새로 요구하는 것을 받는다
     #[tokio::test]
-    async fn an_instance_without_its_own_list_uses_the_module_requirements() {
+    async fn an_instance_needs_the_module_requirements_and_its_own() {
         let tmp = tempfile::tempdir().unwrap();
         let modules_dir = tmp.path().join("modules");
         let dir = modules_dir.join("game");
@@ -1618,8 +1626,8 @@ mod tests {
         supervisor.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
         assert_eq!(supervisor.effective_required_extensions(&inst), vec!["steamcmd".to_string()]);
-        inst.required_extensions = vec!["docker".into()];
-        assert_eq!(supervisor.effective_required_extensions(&inst), vec!["docker".to_string()]);
+        inst.required_extensions = vec!["docker".into(), "steamcmd".into()];
+        assert_eq!(supervisor.effective_required_extensions(&inst), vec!["steamcmd".to_string(), "docker".to_string()]);
     }
 
     /// 시작·정지마다 누가 시켰는지 `instance.started`·`instance.stopped`에 싣는다 (출처는 요청의 `audit::Origin`).

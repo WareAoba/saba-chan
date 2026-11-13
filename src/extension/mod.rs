@@ -1831,6 +1831,29 @@ impl HookPlan {
     }
 }
 
+/// 서버 hook(`server.*`, 익스텐션 명령)이 모두 받는 문맥 (D10): `instance_id`, `instance_name`, `instance_dir`, `module`,
+/// `extension_data`, `instance`(비밀 값을 가린 인스턴스). hook마다 다른 키는 부르는 쪽이 덧붙인다
+pub(crate) fn hook_context(
+    instance: &crate::instance::ServerInstance,
+    instance_dir: &std::path::Path,
+    module: Option<&crate::supervisor::module_loader::ModuleMetadata>,
+) -> Value {
+    serde_json::json!({
+        "instance_id": &instance.id,
+        "instance_name": &instance.name,
+        "instance_dir": instance_dir.to_string_lossy(),
+        "module": &instance.module_name,
+        "extension_data": &instance.extension_data,
+        "instance": redact_for_hooks(module, &serde_json::to_value(instance).unwrap_or_default()),
+    })
+}
+
+/// hook에 넘기는 값(인스턴스·설정)에서 비밀을 가린다: REST 비밀번호, 모듈이 password로 선언했거나 이름이 비밀스러운 값 (D-E2).
+/// 키 이름으로만 가린다: 인스턴스를 넘기면 비밀값과 같은 글자가 이름·경로에서도 지워진다
+pub(crate) fn redact_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMetadata>, value: &Value) -> Value {
+    crate::audit::redact(module, None, None, Some(value)).1.unwrap_or_default()
+}
+
 /// 매니저 락은 실행 목록을 정할 때만 잡고, Python은 락 밖에서 부른다 (C12).
 /// 오래 걸리는 hook 동안에도 익스텐션 켜기·끄기와 다른 hook이 막히지 않는다.
 pub async fn run_hook(mgr: &tokio::sync::RwLock<ExtensionManager>, hook_name: &str, context: Value) -> Vec<(String, Result<Value>)> {
@@ -1863,6 +1886,31 @@ pub async fn run_hook_to(
 
 #[cfg(test)]
 mod tests {
+    /// 익스텐션 hook에 넘기는 인스턴스는 REST 비밀번호와 비밀스러운 설정 값을 가리고, 나머지는 그대로 둔다 (D-E2)
+    #[test]
+    fn hooks_get_the_instance_without_its_secrets() {
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.rest_password = Some("hunter2-rest".into());
+        inst.module_settings.insert("server_password".into(), serde_json::json!("hunter2-join"));
+        inst.module_settings.insert("max_players".into(), serde_json::json!(16));
+        let value = crate::extension::hook_context(&inst, std::path::Path::new("/data/srv"), None)["instance"].clone();
+        let text = value.to_string();
+        assert!(!text.contains("hunter2"), "{text}");
+        assert_eq!(value["module_settings"]["max_players"], 16);
+        assert_eq!(value["name"], "srv");
+        let settings = crate::extension::redact_for_hooks(None, &serde_json::json!({ "rest_password": "hunter2-new", "port": 7777 }));
+        assert!(!settings.to_string().contains("hunter2"), "{settings}");
+        assert_eq!(settings["port"], 7777);
+        // 비밀값과 같은 글자의 이름·경로는 비밀이 아니다: 값 대신 키 이름으로만 가린다
+        let mut same = crate::instance::ServerInstance::new("palworld", "game");
+        same.working_dir = Some("C:/srv/palworld/data".into());
+        same.rest_password = Some("palworld".into());
+        let value = crate::extension::hook_context(&same, std::path::Path::new("/data/srv"), None)["instance"].clone();
+        assert_eq!(value["name"], "palworld");
+        assert_eq!(value["working_dir"], "C:/srv/palworld/data");
+        assert_ne!(value["rest_password"], "palworld");
+    }
+
     #[test]
     fn extension_archives_respect_file_count_and_expanded_size_limits() {
         use std::io::Write;

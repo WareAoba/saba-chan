@@ -739,17 +739,6 @@ impl IPCServer {
         listen_addr: &str,
         daemon_log_buffer: crate::daemon_log::DaemonLogBuffer,
     ) -> Self {
-        // ExtensionManager 초기화
-        let extensions_dir = crate::plugin::resolve_extensions_dir();
-        let mut ext_mgr = crate::extension::ExtensionManager::new(
-            extensions_dir.to_str().unwrap_or("./extensions"),
-        );
-        if let Err(e) = ext_mgr.discover() {
-            tracing::warn!("Failed to discover extensions: {}", e);
-        }
-
-        let extension_manager = Arc::new(RwLock::new(ext_mgr));
-
         // ConfigStore 초기화 (기존 JSON 파일에서 로드)
         #[cfg(not(test))]
         let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
@@ -761,23 +750,38 @@ impl IPCServer {
         let stop_requested = tokio_util::sync::CancellationToken::new();
         let client_registry = ClientRegistry::new();
         let credentials = CredentialsCache::default();
-        // 모듈의 HOST 통로. 시작 때 다른 작업(data_roots 보충)이 잠금을 쥐고 있으면 풀린 뒤 붙인다:
-        // 건너뛰면 감독자가 부르는 모듈(정지·접속자)이 데몬이 꺼질 때까지 `no_instance`로 실패한다
+        // 익스텐션 매니저와 프로비저닝 추적은 감독자가 만든 것을 나눠 쓴다 (감독자의 시작 검사·hook과 API가 같은 상태를 본다).
+        // 모듈의 HOST 통로도 여기서 붙인다: 건너뛰면 감독자가 부르는 모듈(정지·접속자)이 `no_instance`로 실패한다.
+        // 시작 때 다른 작업(data_roots 보충)이 잠금을 쥐고 있으면 새로 만들어 쓰고, 잠금이 풀린 뒤 감독자에 붙인다
         let runtime = crate::plugin::host::Runtime::new(&supervisor, credentials.clone());
-        match supervisor.try_read() {
+        let (extension_manager, provision_tracker) = match supervisor.try_read() {
             Ok(sup) => {
                 let _ = sup.host_runtime.set(runtime);
+                (sup.extension_manager.clone(), sup.provision_tracker.clone())
             }
-            Err(_) => match tokio::runtime::Handle::try_current() {
-                Ok(handle) => {
-                    let supervisor = supervisor.clone();
-                    handle.spawn(async move {
-                        let _ = supervisor.read().await.host_runtime.set(runtime);
-                    });
+            Err(_) => {
+                let extension_manager = crate::supervisor::Supervisor::new_extension_manager();
+                if let Ok(mut mgr) = extension_manager.try_write() {
+                    if let Err(e) = mgr.discover() {
+                        tracing::warn!("Failed to discover extensions: {}", e);
+                    }
                 }
-                Err(_) => tracing::warn!("[Host] no async runtime to attach the module host channel"),
-            },
-        }
+                let provision_tracker = ProvisionTracker::new();
+                match tokio::runtime::Handle::try_current() {
+                    Ok(handle) => {
+                        let (supervisor, extension_manager, provision_tracker) = (supervisor.clone(), extension_manager.clone(), provision_tracker.clone());
+                        handle.spawn(async move {
+                            let mut sup = supervisor.write().await;
+                            let _ = sup.host_runtime.set(runtime);
+                            sup.extension_manager = extension_manager;
+                            sup.provision_tracker = provision_tracker;
+                        });
+                    }
+                    Err(_) => tracing::warn!("[Host] no async runtime to attach the module host channel"),
+                }
+                (extension_manager, provision_tracker)
+            }
+        };
         let relay_agent = crate::relay_agent::RelayAgent::new();
         Self {
             supervisor: supervisor.clone(),
@@ -789,7 +793,7 @@ impl IPCServer {
                 .with_clients(client_registry)
                 .with_relay(relay_agent.clone()),
             api_actions: ApiActionTracker::new(),
-            provision_tracker: ProvisionTracker::new(),
+            provision_tracker,
             extension_manager,
             extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL
             extension_init_tracker: ExtensionInitTracker::new(),

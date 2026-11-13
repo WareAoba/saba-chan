@@ -581,16 +581,17 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 시작 경로는 데몬이 고른다. `POST /api/instance/:id/start`가 `Supervisor::uses_managed_start`(인스턴스 설정 `managed_start`, 없으면 managed)로 경로를 정하고, 시작 전 점검(§2.3 `validate`)을 거쳐 아래 둘 중 하나를 부른다 (`D:src/ipc/handlers/server.rs:649-710`, `D:src/supervisor/mod.rs:1690-1700`). GUI는 이 경로만 부른다 (`D:saba-chan-gui/src/api/createApi.ts:212-219`).
 
-| | managed (`start_managed`) | non-managed (`start_unmanaged`) |
+| | managed | non-managed |
 |---|---|---|
-| 엔트리 | `Supervisor::start_managed_server` `mod.rs:1298-1686` | `Supervisor::start_server` `mod.rs:550-855` |
-| 사전 검사 | 중복 실행 방지(managed_store와 tracker PID 생존 확인), 모듈 의존성, 포트 충돌, 시작 중 표시(`StartGuard`), extension `server.pre_start` hook | 포트 충돌, 모듈 의존성, `requires_extensions` 검증, 시작 중 표시, `server.pre_start` hook |
+| 엔트리 | `Supervisor::start_managed_server` | `Supervisor::start_server` |
+| 사전 검사 | 같다(`Supervisor::plan_start`): 중복 실행 방지(managed_store와 tracker PID 생존 확인, 죽은 tracker 항목은 지운다), 모듈 의존성·지원 OS, 필수 익스텐션(`extension_required`), 포트 충돌, 시작 중 표시(`StartGuard`), extension `server.pre_start` hook | (왼쪽과 같다) |
 | spawn | `ManagedProcess::spawn_with_runner`(러너가 10초 안에 `runner.json`을 쓰지 못하면 러너와 그 자식을 끝내고 시작 실패). saba-runner가 없으면 시작하지 않고 `RunnerMissing`(422 `runner_missing`)으로 거절한다 (`supervisor/start.rs` `start_managed_server_inner`) | `TokioCommand` — stdio 모두 `null`, 콘솔 없음 |
 | 추적 키 | `tracker.track(instance.id, pid)` | `tracker.track(instance.id, pid)` (`mod.rs:846-847`) |
 | PID 영속화 | `<instances>/.saba-state/<id>/managed.pid`, runner면 `<instances>/.saba-state/<id>/run/` (`InstanceStore::state_dir`. 인스턴스 폴더는 서버와 격리 실행도 쓰므로 그 안의 기록은 믿지 않는다. 인스턴스를 지우면 함께 지운다). 예전 배치(`<instance_dir>/managed.pid`·`run/`)는 처음 시작 때 한 번만 옮겨 받는다(`Supervisor::adopt_legacy_records`): `managed.pid`는 이름만 바꿔 옮기고(파일 시각 유지), 예전 자리에 `runner.json`이 있으면 그 러너가 끝날 때까지 예전 자리에서 읽는다는 표시 `<id>/legacy-run`을 둔다(`InstanceStore::runner_home`. 다시 붙지 못하거나 서버를 새로 띄우면 지우고, 인스턴스 폴더의 예전 `run/`에서 러너가 남긴 파일과 빈 폴더를 치운다, `clear_run_dir`. 링크는 따라가지 않는다. 러너가 이미 끝난 예전 `run/`은 옮겨 받을 때 치운다). 다 옮기면 `.saba-state/legacy-adopted`를 남기고, 그 뒤로는 예전 자리의 PID 기록을 보지 않는다(이 표시가 있는 PC를 예전 버전으로 되돌려 서버를 띄운 뒤 다시 올리면 그 서버에는 다시 붙지 않는다) | 없음 |
 | 자격증명 동기화 | `rest_credentials` 또는 `credential_map` | 없음 |
 
-- `requires_extensions` 검증은 **non-managed 경로에만 있다** (`mod.rs:572-629`). managed 경로는 `[module.dependencies]`의 `ext-<id>` 검사만 한다.
+- 필수 익스텐션은 두 경로 모두 검사한다: 모듈 `[install] requires_extensions`와 인스턴스 `required_extensions`의 합 중 꺼졌거나 설치되지 않은 것이 있으면 `{success:false, error_code:"extension_required", missing_extensions}`로 거절한다(`effective_required_extensions`, 0.1.15부터 managed도).
+- 핸들러 쪽 준비(작업 잠금, 포트 확인 리스너 기다리기, 비밀번호 채우기, API 시작 기록, 익스텐션 상태 캐시 비우기)도 두 경로가 같다(`server.rs` `launch`). 작업 기록은 `server::start`가 한 줄 남긴다.
 - 두 경로 모두 인스턴스 ID로 추적하므로 모니터·포트 충돌 검사·정지·상태가 같은 키를 쓴다.
 - **확인되지 않은 모듈의 실행 대상 (Windows, bubblewrap으로 격리하는 리눅스)**: `get_launch_command`가 돌려준 `program`은 두 경로 모두 띄우기 전에 검사한다(`Supervisor::guard_launch`, `sandbox::check_launch`). 신뢰 표시가 `verified`인 모듈은 검사하지 않는다.
   - 허용: 실제 경로(링크·`..`를 푼 것)가 인스턴스 폴더나 사용자가 정한 서버 폴더(`working_dir`) 안에 있는 파일. 모듈이 돌려준 `working_dir`은 허용 위치로 쓰지 않는다.
@@ -602,7 +603,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   - 실행 인자가 가리키는 파일(인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일`, 상대 경로는 작업 폴더 기준)도 로컬 드라이브 경로여야 한다. 아니면 `launch_outside_instance`다.
 - **서버 폴더의 낮은 수준 표시 걷기 (Windows)**: 격리 실행에 쓰기를 준 폴더에는 낮은 수준 표시가 붙고, 그 안에 받은 서버 파일(Java 등)도 표시를 상속한다. 낮은 수준 표시가 걸린 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 뜨지 못한다(예: `0xC0000135`, `0xC0000022`). 프로세스 수준은 실행 파일의 표시만 따르므로, 데몬은 서버를 띄우기 전에(모듈이 띄우든 익스텐션 시작 훅이 띄우든, 모든 실행이 지나는 `sandbox::guard_launch_for`에서) 신뢰 표시와 상관없이 인스턴스 폴더와 사용자가 정한 서버 폴더, 그 아래 폴더의 실행 파일(`.exe`·`.com`, 대소문자 무시) 중 낮은 수준이 걸린 것에 중간 수준 표시를 직접 붙인다(`sandbox::restore_server_folders` → `appcontainer::clear_low_labels`). 띄울 파일 자체가 그 폴더 안에 있으면 확장자와 상관없이 그 파일도 덮는다(확장자가 다른 PE도 Windows가 띄운다, `appcontainer::clear_low_label_of`, L38). 직접 붙인 표시는 상속받은 표시보다 앞에 와서 그 파일의 수준이 되고, 위 폴더 표시가 다시 퍼져도 남는다. 폴더와 다른 파일의 표시는 그대로 둔다: 폴더 표시를 걷으면 모든 하위 파일에 상속 계산이 퍼지고 다음 격리 실행이 다시 붙이며 또 퍼져, 큰 서버 폴더(파일 4만 개)는 시작마다 수십 초가 걸렸다. 그래서 격리된 모듈은 서버 설정 파일 등을 계속 쓸 수 있고, 중간 수준이 된 실행 파일은 낮은 수준 프로세스가 고치지 못한다(지우고 새로 만든 파일은 상속 표시를 받아 다음 시작 때 다시 덮인다). 0.1.6까지 격리되어 표시가 남은 폴더도 다음 시작 때 고쳐진다. 덮기부터 서버 프로세스를 띄울 때까지는 격리 실행이 권한을 주지 못하게 잠근다(`sandbox::LaunchGate`, 격리 실행은 권한을 주기 전에 같은 잠금을 잡는다). 한 폴더에서 실패해도 나머지를 마저 보고, 낮은 수준이 걸린 실행 파일을 덮지 못했거나 그 표시를 읽지 못했거나 폴더 목록을 읽지 못했으면(실행 파일이 남았는지 알 수 없다) 띄우지 않고 `{success:false, action_required:"server_folder_label", file, detail}`을 돌려준다. 볼륨이 파일 보안 정보를 두지 않으면(FAT·exFAT, `GetVolumeInformationW`에 `FILE_PERSISTENT_ACLS` 없음) 표시가 있을 수 없으므로 넘어간다. 걷기는 실제 경로(`canonicalize`, `\\?\` 긴 이름)에서 시작하고, 각 경로를 열 때 `GetFinalPathNameByHandleW` 결과와 비교해 중간 폴더가 정션이면 고치지 않는다(`\\?\` 머리·짧은 이름(8.3)·대소문자·끝 구분자는 같게 본다, `appcontainer::same_final_path`). 링크가 아닌 재분석 지점(목록의 속성으로 거른다)은 실행 파일이 아니어도 열어 보고(압축(WOF)·중복 제거 파일·폴더는 보통처럼 다룬다), 폴더 자체나 그 아래 파일·폴더가 동기화 폴더(OneDrive 등)의 클라우드 파일(재분석 태그 `0x9000_?01A`)이면 실행 파일 여부와 상관없이 막되 `action_required: "server_in_sync_folder"`(file은 그 파일)로 알린다. 사용자 결정으로 동기화 폴더 아래 서버는 지원하지 않는다(폴더를 옮기라고 안내).
 
-**잠금**: `start_managed`는 비밀번호 자동 생성 때만 write lock을 잡고, `start_managed_server`는 검사·준비·등록 때만 락을 짧게 잡는다. 익스텐션 hook, `get_launch_command`, 프로세스 띄우기는 락 밖에서 한다 (`D:src/ipc/handlers/managed.rs:29-68`, `mod.rs:1289-1297`, C12).
+**잠금**: `launch`는 비밀번호 자동 생성 때만 write lock을 잡고, `start_managed_server`는 검사·준비·등록 때만 락을 짧게 잡는다. 익스텐션 hook, `get_launch_command`, 프로세스 띄우기는 락 밖에서 한다 (`D:src/ipc/handlers/server.rs` `launch`, C12).
 
 ### 3.2 상태와 종료 판정
 

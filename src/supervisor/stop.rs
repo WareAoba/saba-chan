@@ -36,16 +36,9 @@ impl Supervisor {
                 r.run_generation
             });
             let _ = STOPPED_AT.try_with(|at| at.set(Some(generation)));
-            let hook = s.extension_manager.clone().map(|ext_mgr| {
-                let instance_dir = s.instance_store.instance_dir(&instance.id);
-                let ctx = json!({
-                    "instance_id": instance.id.clone(),
-                    "instance_dir": instance_dir.to_string_lossy(),
-                    "module": module_name,
-                    "extension_data": &instance.extension_data,
-                });
-                (ext_mgr, ctx)
-            });
+            let module = s.module_loader.get_module(module_name).ok();
+            let ctx = crate::extension::hook_context(&instance, &s.instance_store.instance_dir(&instance.id), module.as_ref().map(|m| &m.metadata));
+            let hook = (s.extension_manager.clone(), ctx);
             let managed = s.managed_store.get(&instance.id).await;
             (instance, hook, managed, s.runtime.clone())
         };
@@ -54,7 +47,8 @@ impl Supervisor {
 
         // ── Extension hook: server.stop ──
         // 정지 전에 불린다. 익스텐션(예: 컨테이너)이 정지를 맡으면 handled=true를 돌려준다.
-        if let Some((ext_mgr, ctx)) = hook {
+        {
+            let (ext_mgr, ctx) = hook;
             let host_context = sup.read().await.host_context(&instance.id);
             let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.stop", ctx)).await;
             for (_ext_id, result) in &results {

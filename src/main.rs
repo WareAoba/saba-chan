@@ -391,13 +391,6 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(supervisor::Supervisor::backfill_server_versions(supervisor.clone()));
     tokio::spawn(supervisor::Supervisor::backfill_data_roots(supervisor.clone()));
 
-    // Supervisor에 ExtensionManager 연결
-    {
-        let mut sup = supervisor.write().await;
-        sup.extension_manager = Some(ipc_server.extension_manager.clone());
-        sup.provision_tracker = Some(ipc_server.provision_tracker.clone());
-    }
-
     let client_registry = ipc_server.client_registry.clone();
     tracing::info!("Starting IPC server on {}", ipc_addr);
 
@@ -613,7 +606,8 @@ async fn main() -> anyhow::Result<()> {
                 .collect();
 
             // Extension hook: daemon.shutdown — 익스텐션이 자체 정리 수행
-            if let Some(ref ext_mgr) = sup.extension_manager {
+            {
+                let ext_mgr = &sup.extension_manager;
                 let ctx = serde_json::json!({
                     "instances": all_instances.iter().map(|i| {
                         serde_json::json!({

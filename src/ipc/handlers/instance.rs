@@ -200,17 +200,6 @@ pub(crate) fn stored_setting(view: &Value, instance: &crate::instance::ServerIns
     own.then(|| view.get(key).filter(|v| !v.is_null()).cloned()).flatten().or_else(|| instance.module_settings.get(key).cloned())
 }
 
-/// 익스텐션 hook에 넘기는 인스턴스: REST 비밀번호, 모듈이 password로 선언했거나 이름이 비밀스러운 설정 값은 가린다 (D-E2)
-fn instance_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMetadata>, instance: &crate::instance::ServerInstance) -> Value {
-    settings_for_hooks(module, &serde_json::to_value(instance).unwrap_or_default())
-}
-
-/// hook에 넘기는 설정 값에서 같은 기준으로 비밀을 가린다. 키 이름으로만 가린다:
-/// 인스턴스를 넘기면 비밀값과 같은 글자가 이름·경로에서도 지워진다
-fn settings_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMetadata>, settings: &Value) -> Value {
-    crate::audit::redact(module, None, None, Some(settings)).1.unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     /// 미리보기의 404는 인스턴스가 없을 때뿐이다. 인스턴스의 모듈이 없는 것("Module 'gone' not found")은 404가 아니다
@@ -231,32 +220,5 @@ mod tests {
         assert_eq!((missing.status.as_u16(), missing.body["error"].as_str()), (404, Some("Instance 'nope' not found")), "{}", missing.body);
         let orphan = preview("orphan").await;
         assert_eq!(orphan.status.as_u16(), 500, "{}", orphan.body);
-    }
-
-    use serde_json::json;
-
-    /// 익스텐션 hook에 넘기는 인스턴스는 REST 비밀번호와 비밀스러운 설정 값을 가리고, 나머지는 그대로 둔다 (D-E2)
-    #[test]
-    fn hooks_get_the_instance_without_its_secrets() {
-        let mut inst = crate::instance::ServerInstance::new("srv", "game");
-        inst.rest_password = Some("hunter2-rest".into());
-        inst.module_settings.insert("server_password".into(), json!("hunter2-join"));
-        inst.module_settings.insert("max_players".into(), json!(16));
-        let value = super::instance_for_hooks(None, &inst);
-        let text = value.to_string();
-        assert!(!text.contains("hunter2"), "{text}");
-        assert_eq!(value["module_settings"]["max_players"], 16);
-        assert_eq!(value["name"], "srv");
-        let settings = super::settings_for_hooks(None, &json!({ "rest_password": "hunter2-new", "port": 7777 }));
-        assert!(!settings.to_string().contains("hunter2"), "{settings}");
-        assert_eq!(settings["port"], 7777);
-        // 비밀값과 같은 글자의 이름·경로는 비밀이 아니다: 값 대신 키 이름으로만 가린다
-        let mut same = crate::instance::ServerInstance::new("palworld", "game");
-        same.working_dir = Some("C:/srv/palworld/data".into());
-        same.rest_password = Some("palworld".into());
-        let value = super::instance_for_hooks(None, &same);
-        assert_eq!(value["name"], "palworld");
-        assert_eq!(value["working_dir"], "C:/srv/palworld/data");
-        assert_ne!(value["rest_password"], "palworld");
     }
 }

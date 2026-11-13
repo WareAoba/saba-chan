@@ -1492,7 +1492,7 @@ else:
         let guard = InstanceLock::take(&id).expect("free");
         let start = super::super::server::start_instance_handler(Path(id.clone()), State(state.clone())).await;
         assert_eq!(code(start).await, "instance_busy");
-        let managed = super::super::managed::start_managed(&state, &id).await.unwrap_err();
+        let managed = super::super::server::launch(&state, &id, "plain", true).await.unwrap_err();
         assert!(managed.is_busy(), "a retrying start must tell the lock apart from other refusals");
         assert_eq!(code(managed).await, "instance_busy");
         let update = super::super::instance::begin_server_update(&state, &id).await.err().expect("update must wait");

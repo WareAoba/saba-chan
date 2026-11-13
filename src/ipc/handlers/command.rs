@@ -84,13 +84,9 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
     // 모듈에 없는 이름이면 익스텐션 명령인지 본다 (서버가 꺼져 있어도 부를 수 있다)
     let module_has_it = metadata.as_ref().is_some_and(|m| crate::commands::find(m, &request.name).is_some());
     if !module_has_it {
-        let context = json!({
-            "instance_id": &instance.id,
-            "instance_name": &instance.name,
-            "module": &instance.module_name,
-            "extension_data": &instance.extension_data,
-            "running": running,
-        });
+        let instance_dir = state.supervisor.read().await.instance_store.instance_dir(&instance.id);
+        let mut context = crate::extension::hook_context(&instance, &instance_dir, metadata.as_ref());
+        context["running"] = json!(running);
         // 계획(익스텐션 경로)부터 실행이 끝날 때까지 익스텐션 폴더를 옮기지 못하게 한다
         let _in_use = super::paths::components_in_use().await;
         let planned = state.extension_manager.read().await.plan_command(&request.name, &request.args, context);

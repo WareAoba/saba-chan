@@ -82,15 +82,13 @@ impl Supervisor {
             }
             
             // 프로비저닝 중인 인스턴스는 auto-detect 건너뛰기
-            if let Some(ref pt) = self.provision_tracker {
-                if let Some(progress) = pt.get(&instance.id) {
-                    if !progress.done {
-                        tracing::debug!(
-                            "Skipping auto-detect for '{}' (provisioning in progress)",
-                            instance.name
-                        );
-                        continue;
-                    }
+            if let Some(progress) = self.provision_tracker.get(&instance.id) {
+                if !progress.done {
+                    tracing::debug!(
+                        "Skipping auto-detect for '{}' (provisioning in progress)",
+                        instance.name
+                    );
+                    continue;
                 }
             }
 

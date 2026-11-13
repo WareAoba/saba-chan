@@ -924,12 +924,8 @@ async fn start_checked(state: &IPCServer, instance: crate::instance::ServerInsta
         return Err(blocked);
     }
 
-    let mut result = if managed {
-        super::managed::start_managed(state, &instance.id).await
-    } else {
-        // id로 넘긴다 (이름은 겹칠 수 있다)
-        start_unmanaged(state, &instance.id, &instance.module_name).await
-    };
+    // id로 넘긴다 (이름은 겹칠 수 있다)
+    let mut result = launch(state, &instance.id, &instance.module_name, managed).await;
     let body = match &mut result {
         Ok(body) => body,
         Err(failure) => &mut failure.body,
@@ -1206,36 +1202,33 @@ pub async fn instance_events_handler(Path(id): Path<String>, State(state): State
     Json(json!({ "events": supervisor.exit_events(&id) })).into_response()
 }
 
-/// 비관리 시작 (`start_checked`가 id로 부른다)
-async fn start_unmanaged(state: &IPCServer, id: &str, module: &str) -> super::Outcome {
+/// 시작 준비와 띄우기 (`start_checked`가 id로 부른다). 관리형·비관리형이 같은 준비를 거치고,
+/// 시작 전 검사는 감독자(`Supervisor::plan_start`)가 두 방식에 같게 한다 (D2). 작업 기록은 `start`가 남긴다
+pub(super) async fn launch(state: &IPCServer, id: &str, module: &str, managed: bool) -> super::Outcome {
+    // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
+    let Some(_guard) = super::backup::InstanceLock::take_for_writes(id).await else {
+        return Err(super::Failure::busy());
+    };
+    // 포트포워딩 확인이 시험 리스너로 포트를 잡고 있으면 놓을 때까지 (몇 초). 시작하는 동안에는 새 확인이 포트를 잡지 않는다
+    let _starting = crate::port_check::begin_start(id).await;
+    fill_passwords(state, id).await;
     // API 경유 시작 기록 (GUI 외부 시작 감지용)
     state.api_actions.record(id);
     // 익스텐션 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
-    let exists = state.supervisor.read().await.instance_store.get(id).is_some();
-    if exists {
-        state.extension_status_cache.invalidate(id);
+    state.extension_status_cache.invalidate(id);
+
+    // 락은 감독자의 시작이 단계마다 짧게 잡는다 (C12)
+    if managed {
+        match crate::supervisor::Supervisor::start_managed_server(&state.supervisor, id, module, json!({})).await {
+            Ok(result) => super::settled(result),
+            Err(e) => Err(super::managed::start_failure(state, &e).await),
+        }
+    } else {
+        match crate::supervisor::Supervisor::start_server(&state.supervisor, id, module, json!({})).await {
+            Ok(result) => super::settled(result),
+            Err(e) => Err(lifecycle_failure(&e, "start", "start_failed")),
+        }
     }
-    // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
-    let _guard = match exists {
-        true => match super::backup::InstanceLock::take_for_writes(id).await {
-            None => return super::audited_result(state, "start", id, Err(super::Failure::busy())).await,
-            guard => guard,
-        },
-        false => None,
-    };
-    // 포트포워딩 확인이 시험 리스너로 포트를 잡고 있으면 놓을 때까지 (몇 초). 시작하는 동안에는 새 확인이 포트를 잡지 않는다
-    let _starting = match exists {
-        true => Some(crate::port_check::begin_start(id).await),
-        false => None,
-    };
-
-    fill_passwords(state, id).await;
-
-    let result = match crate::supervisor::Supervisor::start_server(&state.supervisor, id, module, json!({})).await {
-        Ok(result) => super::settled(result),
-        Err(e) => Err(lifecycle_failure(&e, "start", "start_failed")),
-    };
-    super::audited_result(state, "start", id, result).await
 }
 
 /// 시작·정지가 실패한 응답. 상태는 오류 문구가 아니라 종류로 고른다: 인스턴스가 없으면 404 `instance_not_found`,
@@ -2578,5 +2571,43 @@ mod tests {
         outside.kill().ok();
         outside.wait().ok();
         assert_eq!(busy.body["notices"], json!(["server_running"]), "{}", busy.body);
+    }
+
+    /// 시작 한 번은 작업 기록에 `start` 한 줄이다 (비관리 시작이 안에서 또 남기지 않는다, D2)
+    #[tokio::test]
+    async fn an_unmanaged_start_is_one_audit_record() {
+        use crate::ipc::handlers::backup::tests::{server_with, NO_BACKUP};
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("managed_start".into(), json!(false));
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        // 백업이 잡고 있어 시작이 거절돼도 기록은 한 줄
+        let lock = crate::ipc::handlers::backup::InstanceLock::take(&id).expect("free");
+        let refused = start(&state, &id).await.unwrap_err();
+        drop(lock);
+        assert_eq!(refused.body["error_code"], "instance_busy", "{}", refused.body);
+        let entries = crate::audit::log().recent(10, Some(&id));
+        let starts = entries.iter().filter(|e| e["action"] == "start").count();
+        assert_eq!(starts, 1, "{entries:?}");
+    }
+
+    /// 관리형 시작도 모듈 `[install] requires_extensions`가 꺼져 있으면 `extension_required`로 거절한다 (D2)
+    #[tokio::test]
+    async fn a_managed_start_needs_the_module_required_extensions() {
+        use crate::ipc::handlers::backup::tests::{server_with, NO_BACKUP};
+        let toml = format!("{NO_BACKUP}\n[install]\nrequires_extensions = [\"needed-for-test\"]\n");
+        let (state, id, _tmp) = server_with(&toml, None).await;
+        assert!(state.supervisor.read().await.uses_managed_start(state.supervisor.read().await.instance_store.get(&id).unwrap()));
+        let refused = start(&state, &id).await;
+        let body = match refused {
+            Ok(body) => body,
+            Err(failure) => failure.body,
+        };
+        assert_eq!(body["error_code"], "extension_required", "{body}");
+        assert_eq!(body["missing_extensions"], json!(["needed-for-test"]), "{body}");
+        assert_eq!(body["managed"], true, "{body}");
     }
 }
