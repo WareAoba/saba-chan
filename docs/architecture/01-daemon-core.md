@@ -267,7 +267,8 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 | GET | `/api/modules/schema` | `server.rs:419` | - | module.toml JSON Schema |
 | GET | `/api/maker` | `handlers/maker.rs` | - | 모듈 메이커 안내 `{ok, saba_core:{version, path, runner}, python:{path, version}, shared_libs, modules_dir, schema_versions, repo, guide}`. 읽기만 한다. 원격 웹(`remote/gate.rs`)에는 열지 않는다 |
 | POST | `/api/modules/detect` | `server.rs:425` | `{path}` | `{matches:[{name, display_name}], notices:[…]}` (`dir_signatures`가 맞는 모듈. `notices`는 아래 `POST /api/instances`의 `notices`와 같은 판정이라 가져오기 전에 "사바쨩 밖에서 켜져 있음"을 미리 보인다) / 400 / 404 |
-| GET | `/api/modules/manifest` | `server.rs:502` | - | `{ok, manifest}` 또는 `{ok:false,error}`. 항상 200 |
+| GET | `/api/modules/manifest` | `server.rs:502` | query `refresh?` | `{ok, manifest}` 또는 `{ok:false,error}`. 항상 200. 데몬이 받아 둔 목록(`ipc/store_cache.rs`)으로 답하고 `refresh=true`면 새로 받는다 |
+| GET | `/api/store/icons/:key` | `store_cache.rs` `serve_icon` | - | 받을 수 있는 모듈·익스텐션(`module-<이름>`·`ext-<id>`)의 아이콘 PNG. 없으면 404 |
 | POST | `/api/modules/manifest/:id/install` | `server.rs:525` | - | `{ok, module_id, version, extensions:{installed, enabled, failed}}` 또는 `{ok:false,error}`. 항상 200. 카탈로그 버전이 설치된 버전보다 낮으면 받지 않는다. 모듈이 요구하는 익스텐션을 받고 켠다(02-modules §5.2) |
 | DELETE | `/api/modules/:id` | `server.rs:593` | - | `{ok, id}`. 항상 200 |
 | GET | `/api/module/:name` | `server.rs:467` | - | `{name, version, description, path, metadata}` / 404 |
@@ -280,6 +281,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 - `server_executable`: 모듈 `[config] server_executable`(서버 실행 파일 이름, 예 `server.jar`·`PalServer.exe`). 선언이 없으면 빠진다. 클라이언트는 `action_required: "executable_not_found"`의 파일 고르기 창에서 이 확장자로 파일 종류를 정한다.
 - `functions`(MK1): 모듈이 예약 lifecycle 함수 `functions`로 밝힌 구현 함수 이름 배열, 모르면 `null`. 데몬은 데몬 시작·`POST /api/modules/refresh` 때 미리 묻고, 진입 파일마다 한 번만 부른다(15초 제한, 동시에 온 요청은 같은 실행의 답을 기다린다). 진입 파일의 수정 시각이 바뀌면(모듈 업데이트) 다시 묻는다. 목록 응답은 캐시에 없으면 2초까지만 기다리고 `null`로 답하며 묻기는 뒤에서 마저 한다. `functions`를 모르는 옛 모듈(`Unknown function`)은 `null`이고 다시 묻지 않는다. 실패(시간 초과·격리 차단 등)도 `null`이지만 60초 뒤 다시 묻는다. 클라이언트는 `null`이면 아무 기능도 숨기지 않고, 배열이면 빠진 선택 함수의 기능을 숨긴다: `reset_server`(서버 초기화), `list_versions`·`get_version_details`·`get_installed_version`(버전 목록·상세·설치된 버전), `diagnose_log`(로그 진단), `read_properties`·`reset_properties`·`configure`(게임 설정 읽기·초기화·저장), `import_settings`(설정 가져오기), `install_server`(설치·업데이트), `validate`(시작 전 점검), `config_files`(가져온 서버의 원래 설정 보관, 데몬만 부른다). 데몬도 같은 표(`plugin::OPTIONAL_MODULE_FUNCTIONS`)로, 목록이 있는데 빠진 선택 함수가 불리면 Python을 띄우지 않고 `{success:false, error_code:"not_supported", function, message}`(HTTP는 그 경로의 성공 응답과 같다)로 답한다.
 - `/api/modules/manifest`는 최신 릴리즈 서명 manifest의 `module-*` 컴포넌트를 `{ok, manifest:{modules:{<이름>:{version, sha256, size_bytes, display_name, ..., platform_supported, unsupported_reason?}}}}`로 돌려준다(`relay::latest_catalog`, `handlers/server.rs` `catalog_module_info`). `platform_supported`·`unsupported_reason`(`os`·`arch`)은 설치된 모듈 목록과 같은 뜻이고, meta의 `platforms`·`architectures`로 이 데몬의 OS·CPU를 판정한다(02 §카탈로그). 값이 없는 옛 카탈로그 모듈은 막지 않는다.
+- 사바 스토리지 목록 캐시(`ipc/store_cache.rs`): `/api/modules/manifest`·`/api/extensions/manifest`는 채널별로 받아 둔 카탈로그로 바로 답한다. 30분이 지난 목록은 가진 것으로 답하고 뒤에서 새로 받으며(실패하면 가진 것을 둔다), 채널이 바뀌었거나 `refresh=true`면 받을 때까지 기다린다. 업데이트 주기 확인(`spawn_update_scheduler`) 때마다 뒤에서 새로 받는다. 카탈로그 meta의 `icon`(GitHub raw 주소)은 응답에서 빼고 `has_icon`만 싣는다. 아이콘은 목록을 받을 때 미리 받아 데이터 폴더 `cache/store-icons/<키>-<주소 해시>.png`에 두고(PNG·1MB 이하만, 주소가 바뀌면 지난 파일을 지운다) `GET /api/store/icons/:key`로 준다. 설치·업데이트는 이 캐시를 쓰지 않고 그때 새로 받는다.
 - `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 데몬이 읽을 수 있는 모듈일 때만(`load_module_dir`) `modules/<id>`와 바꾸고(기존 폴더는 바꾼 뒤에 지운다) refresh한다(`:524-591`). `id`의 `..`, `/`, `\`는 거부한다. 받은 zip과 staging은 요청마다 다른 이름(`.tmp-module-<id>-<uuid>.zip`, `.staging-<id>-<uuid>`)이고, 같은 모듈의 설치·제거(`DELETE /api/modules/:id`)·업데이트 적용(`POST /api/updates/apply`의 모듈)은 한 번에 하나만 한다(id는 대소문자를 가리지 않는다). 설치는 잠금을 쥔 채 따로 돌아, 요청이 끊겨도 받은 파일을 치우고 잠금을 푸는 일이 작업 끝에 함께 일어난다. 다른 요청이 진행 중이면 `{ok:false, error_code:"module_busy"}`다. 제거는 그 모듈을 쓰는 서버가 켜져 있으면 `{ok:false, error_code:"module_in_use"}`로 거절한다.
 
 #### 인스턴스 (handlers/instance.rs)
@@ -454,7 +456,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 | GET | `/api/extensions` | `extension.rs:68` | `{extensions:[...]}`. 설명은 `?lang=`(없으면 GUI 언어) |
 | GET | `/api/extensions/init-status` | `extension.rs:513` | `{initializing, in_progress:{id:msg}, completed:[{ext_id,success,message,timestamp}]}` |
 | POST | `/api/extensions/rescan` | `extension.rs:182` | `{success, newly_found}` |
-| GET | `/api/extensions/manifest` | `extension.rs:361` | `{success, extensions, updates}` (원격) |
+| GET | `/api/extensions/manifest` | `extension.rs:361` | `{success, extensions, updates}` (원격). query `refresh?`: 받아 둔 목록 대신 새로. 항목에 `descriptions`(언어별 설명)·`has_icon` |
 | GET | `/api/extensions/updates` | `extension.rs:468` | `{success, updates, count}` |
 | POST | `/api/extensions/:id/enable` | `extension.rs:97` | `{success,id,startup_dispatched,trust,warnings[]}`. `warnings`는 `verified`가 아닐 때 `{code:"extension_unverified"\|"extension_modified", extension}`(막지 않는다). `daemon.startup` 훅을 비동기 실행 |
 | POST | `/api/extensions/:id/disable` | `extension.rs:162` | 실행 중인 managed 인스턴스 참조 검사 |

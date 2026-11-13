@@ -1108,6 +1108,8 @@ pub fn spawn_update_scheduler(state: UpdateState, shutdown: tokio_util::sync::Ca
                 _ = tokio::time::sleep(wait) => {}
             }
             let cfg = state.manager.read().await.get_config();
+            // 사바 스토리지 목록·아이콘도 이때 받아 둔다: 창을 열면 바로 보이게
+            crate::ipc::store_cache::store().refresh_in_background(&cfg.channel);
             if !cfg.enabled {
                 wait = RETRY;
                 continue;

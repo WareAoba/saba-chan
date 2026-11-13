@@ -78,7 +78,8 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | moduleInstallServer (379) | POST /api/module/:name/install. 설정 창의 버전 설치는 `instance_id`·`background:true`로 시작만 시키고 창을 닫는다(진행은 서버 목록의 설치 표시). 받은 실행 파일·작업 폴더 기록은 데몬이 한다 | ✓ 697 |
 | instanceGetInstalledVersion (392) | GET /api/instance/:id/installed-version | ✓ 698 |
 | makerInfo | GET /api/maker | ✓ |
-| moduleManifest (411) | GET /api/modules/manifest | ✓ 656 |
+| moduleManifest (411) | GET /api/modules/manifest (`refresh`면 `?refresh=true`) | ✓ 656 |
+| storeIcon | GET /api/store/icons/:key (받을 수 있는 모듈·익스텐션 아이콘, data URL) | |
 | moduleInstallFromManifest (419) | POST /api/modules/manifest/:id/install | ✓ 657 |
 | moduleRemove (429) | DELETE /api/modules/:id | ✓ 658 |
 | instanceCreate (437) | POST /api/instances | ✓ 662 |

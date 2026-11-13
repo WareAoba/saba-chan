@@ -57,6 +57,18 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         }
     };
 
+    /** 데몬이 주는 PNG → data URL. 없으면(404) null */
+    const pngDataUrl = async (path: string): Promise<string | null> => {
+        try {
+            const { data } = await get(path, { responseType: 'base64' });
+            return typeof data === 'string' ? `data:image/png;base64,${data}` : null;
+        } catch (caught) {
+            const error = caught as DaemonError;
+            if (error.response?.status !== 404) console.warn(`[Icon] Failed to load ${path}:`, error.message);
+            return null;
+        }
+    };
+
     // 경로 고르기. 원격 데몬을 다루는 중이면 이 PC의 대화상자 대신 그 데몬의 폴더에서 고른다:
     // 이 PC의 경로는 그 PC 데몬에 가면 엉뚱한 곳을 가리킨다 (G1, D2)
     const KINDS = { dialog_open_file: 'file', dialog_open_folder: 'folder', dialog_save_file: 'save' } as const;
@@ -388,7 +400,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         instanceGetInstalledVersion: (instanceId: string) => call('get', `/api/instance/${encodeURIComponent(instanceId)}/installed-version`, undefined, 10000),
         /** GET /api/maker — 모듈 메이커 안내 (저장소·가이드 주소, 이 PC의 경로) */
         makerInfo: () => call('get', '/api/maker', undefined, 5000),
-        moduleManifest: () => call('get', '/api/modules/manifest', undefined, 15000),
+        // 데몬이 받아 둔 목록. refresh면 새로 받는다 (새로고침 버튼)
+        moduleManifest: (refresh = false) => call('get', `/api/modules/manifest${refresh ? '?refresh=true' : ''}`, undefined, 15000),
         moduleInstallFromManifest: (moduleId: string) => call('post', `/api/modules/manifest/${encodeURIComponent(moduleId)}/install`, {}, 120000),
         moduleRemove: (moduleId: string) => call('delete', `/api/modules/${encodeURIComponent(moduleId)}`, undefined, 15000),
         instanceCreate: async (data: ApiBody) => {
@@ -732,24 +745,13 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 return null;
             }
         },
-        // 익스텐션 아이콘 (PNG → data:image/png;base64)
-        extensionIcon: async (extId: string) => {
+        // 설치된 익스텐션 아이콘 (PNG → data:image/png;base64)
+        extensionIcon: (extId: string) => pngDataUrl(`/api/extensions/${encodeURIComponent(extId)}/icon`),
+        // 받을 수 있는 모듈·익스텐션 아이콘 (`module-<이름>`·`ext-<id>`). 데몬이 받아 둔 그림
+        storeIcon: (key: string) => pngDataUrl(`/api/store/icons/${encodeURIComponent(key)}`),
+        extensionFetchManifest: async (refresh = false) => {
             try {
-                const { data } = await get(`/api/extensions/${encodeURIComponent(extId)}/icon`, {
-                    responseType: 'base64',
-                });
-                return typeof data === 'string' ? `data:image/png;base64,${data}` : null;
-            } catch (caught) {
-                const error = caught as DaemonError;
-                if (error.response?.status !== 404) {
-                    console.warn(`[Extension] Failed to load icon for '${extId}':`, error.message);
-                }
-                return null;
-            }
-        },
-        extensionFetchManifest: async () => {
-            try {
-                return (await get('/api/extensions/manifest', { timeout: 15000 })).data;
+                return (await get(`/api/extensions/manifest${refresh ? '?refresh=true' : ''}`, { timeout: 15000 })).data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 console.warn('[Extension] Failed to fetch manifest:', error.message);

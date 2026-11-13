@@ -1797,6 +1797,7 @@ mod route_coverage {
         ("/api/extensions/{id}/gui/styles", "GUI 번들"),
         ("/api/extensions/{id}/gui/assets/{*path}", "GUI 번들"),
         ("/api/extensions/{id}/icon", "GUI 그림"),
+        ("/api/store/icons/{key}", "GUI 그림 (받을 수 있는 모듈·익스텐션 아이콘)"),
         ("/api/extensions/{id}/i18n/{locale}", "GUI 번들 문구"),
         ("/api/locales/{lang}/{ns}", "GUI 번역 (CLI는 설치 폴더 cli.json을 직접 읽고, TUI는 `locales_version`이 바뀌면 다시 읽는다)"),
         ("/api/instance/{id}/status", "GUI가 시작·정지가 끝났는지 묻는 길 (CLI `server info`·`list`는 /api/servers 상태를 쓴다)"),

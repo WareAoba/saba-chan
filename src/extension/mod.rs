@@ -627,6 +627,12 @@ pub struct RemoteExtensionInfo {
     pub tags: Vec<String>,
     #[serde(default)]
     pub homepage: Option<String>,
+    /// 언어별 설명 (manifest `descriptions`). GUI가 앱 언어로 고른다
+    #[serde(default)]
+    pub descriptions: HashMap<String, String>,
+    /// 아이콘이 있는가. 그림은 `/api/store/icons/ext-<id>`로 받는다
+    #[serde(default)]
+    pub has_icon: bool,
 }
 
 /// 업데이트 가용 정보 (로컬 버전 vs 원격 버전 비교 결과)
@@ -1488,11 +1494,26 @@ impl ExtensionManager {
         let catalog = saba_chan_updater_lib::relay::latest_catalog(None, &crate::ipc::updates::load_updater_config().channel)
             .await
             .context("Failed to fetch the release manifest")?;
-        let mut list = catalog.map(|m| Self::from_release(&m)).unwrap_or_default();
+        Ok(catalog.map(|m| Self::remote_list(&m)).unwrap_or_default())
+    }
+
+    /// 사바 스토리지 목록용: 데몬이 받아 둔 카탈로그(`store_cache`)에서. `refresh`면 새로 받는다
+    pub async fn cached_remote(refresh: bool) -> Result<Vec<RemoteExtensionInfo>> {
+        let channel = crate::ipc::updates::load_updater_config().channel;
+        let catalog = crate::ipc::store_cache::store()
+            .catalog(&channel, refresh)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fetch the release manifest: {}", e))?;
+        Ok(catalog.map(|m| Self::remote_list(&m)).unwrap_or_default())
+    }
+
+    /// 카탈로그의 익스텐션 목록에 이 데몬에서 설치할 수 없는 이유를 채운다
+    fn remote_list(manifest: &saba_chan_updater_lib::relay::ReleaseManifest) -> Vec<RemoteExtensionInfo> {
+        let mut list = Self::from_release(manifest);
         for ext in &mut list {
             ext.incompatible = app_version_problem(ext.min_app_version.as_deref());
         }
-        Ok(list)
+        list
     }
 
     /// 릴리즈 manifest의 `ext-<id>` 컴포넌트를 익스텐션 목록으로 (meta에 이름·설명·의존성)
@@ -1501,10 +1522,7 @@ impl ExtensionManager {
             .addons(saba_chan_updater_lib::relay::EXTENSION_PREFIX)
             .into_iter()
             .filter_map(|(id, comp)| {
-                let mut info = match &comp.meta {
-                    Some(Value::Object(meta)) => meta.clone(),
-                    _ => serde_json::Map::new(),
-                };
+                let mut info = crate::ipc::store_cache::public_meta(comp.meta.as_ref());
                 info.entry("name").or_insert_with(|| Value::String(id.to_string()));
                 info.insert("version".into(), Value::String(comp.version.clone()));
                 info.insert("download_url".into(), Value::String(comp.url.clone()));
@@ -3022,6 +3040,8 @@ mod tests {
             has_i18n: false,
             tags: vec![],
             homepage: None,
+            descriptions: HashMap::new(),
+            has_icon: false,
         }];
 
         let updates = mgr.check_updates_against(&remote);
@@ -3060,6 +3080,8 @@ mod tests {
             has_i18n: false,
             tags: vec![],
             homepage: None,
+            descriptions: HashMap::new(),
+            has_icon: false,
         }];
 
         let updates = mgr.check_updates_against(&remote);
@@ -3380,7 +3402,8 @@ mod tests {
                 "ext-ue4-ini": {
                     "version": "0.1.2", "asset": "ext-ue4-ini.zip", "sha256": "c", "url": "https://r2/e.zip",
                     "install_dir": "extensions/ue4_ini",
-                    "meta": {"name": "UE4 INI", "dependencies": ["steamcmd"], "min_app_version": "0.1.0"}
+                    "meta": {"name": "UE4 INI", "dependencies": ["steamcmd"], "min_app_version": "0.1.0",
+                             "descriptions": {"ko": "UE4 INI 파서"}, "icon": "https://raw.example/ue4_ini/icon.png"}
                 }
             }
         })).unwrap();
@@ -3392,6 +3415,10 @@ mod tests {
         assert_eq!(ext.sha256.as_deref(), Some("c"));
         assert_eq!(ext.install_dir.as_deref(), Some("extensions/ue4_ini"));
         assert!(ext.dependencies.contains_key("steamcmd"));
+        // 받기 전 목록도 언어별 설명과 아이콘이 있다 (아이콘 주소는 데몬만 안다)
+        assert_eq!(ext.descriptions.get("ko").map(String::as_str), Some("UE4 INI 파서"));
+        assert!(ext.has_icon);
+        assert!(serde_json::to_value(ext).unwrap().get("icon").is_none());
     }
 
     #[test]

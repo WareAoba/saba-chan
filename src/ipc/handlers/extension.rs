@@ -317,9 +317,10 @@ pub async fn serve_i18n(
 /// ```
 pub async fn fetch_manifest(
     State(state): State<IPCServer>,
+    axum::extract::Query(query): axum::extract::Query<crate::ipc::store_cache::RefreshQuery>,
 ) -> Json<serde_json::Value> {
-    // 네트워크 요청은 매니저 락 밖에서 (C12)
-    match ExtensionManager::fetch_remote().await {
+    // 데몬이 받아 둔 목록으로 바로 답한다 (`?refresh=true`면 새로). 네트워크 요청은 매니저 락 밖에서 (C12)
+    match ExtensionManager::cached_remote(query.refresh).await {
         Ok(remote) => {
             // 설치된 익스텐션 중 업데이트 가능한 항목 계산
             let updates = state.extension_manager.read().await.check_updates_against(&remote);
