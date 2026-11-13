@@ -26,6 +26,11 @@ impl Text {
         Self::Key { key: key.into(), vars: Vec::new(), or: None }
     }
 
+    /// 문구 하나와 `{{name}}` 자리 값들
+    pub fn key_with(key: impl Into<String>, vars: &[(&str, &str)]) -> Self {
+        vars.iter().fold(Self::key(key), |t, (k, v)| t.var(k, *v))
+    }
+
     /// `{{name}}` 자리에 들어갈 값
     pub fn var(mut self, name: &str, value: impl Into<Text>) -> Self {
         if let Self::Key { vars, .. } = &mut self {
@@ -46,16 +51,21 @@ impl Text {
         Self::Seq(parts.into_iter().collect())
     }
 
-    /// 줄바꿈으로 잇는다
-    pub fn lines(parts: impl IntoIterator<Item = Text>) -> Self {
+    /// 사이에 `sep`을 넣어 잇는다
+    pub fn join(sep: &str, parts: impl IntoIterator<Item = Text>) -> Self {
         let mut out = Vec::new();
         for (i, part) in parts.into_iter().enumerate() {
             if i > 0 {
-                out.push(Text::from("\n"));
+                out.push(Text::from(sep));
             }
             out.push(part);
         }
         Self::Seq(out)
+    }
+
+    /// 줄바꿈으로 잇는다
+    pub fn lines(parts: impl IntoIterator<Item = Text>) -> Self {
+        Self::join("\n", parts)
     }
 
     pub fn is_empty(&self) -> bool {

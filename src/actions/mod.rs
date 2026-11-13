@@ -1665,9 +1665,6 @@ fn chat_request(text: &str, caller: &Caller) -> crate::chat::ChatRequest {
         text: text.to_string(),
         guild_id: who.and_then(|w| w.guild_id.clone()),
         user_id: who.and_then(|w| w.user_id.clone()),
-        user_name: caller.origin.user_name.clone(),
-        guild_name: caller.origin.guild_name.clone(),
-        locale: Some(caller.locale.clone()),
         remote: caller.remote.clone(),
     }
 }

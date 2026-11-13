@@ -52,27 +52,15 @@ impl From<&BotConfig> for ChatSettings {
     }
 }
 
-/// 채팅 명령 한 건
-#[derive(Debug, Clone, Default, serde::Deserialize)]
+/// 채팅 명령 한 건 (릴레이 문장 계획·문장 `check`가 만든다, `actions::chat_request`)
+#[derive(Debug, Clone, Default)]
 pub struct ChatRequest {
     pub text: String,
     /// 디스코드 길드 ID — 노드별 허용 인스턴스/멤버 권한 조회 키
-    #[serde(default, alias = "guildId")]
     pub guild_id: Option<String>,
     /// 요청한 사용자 ID — 멤버 권한 조회 키
-    #[serde(default, alias = "userId")]
     pub user_id: Option<String>,
-    /// 감사 로그에 남길 표시 이름·서버 이름 (권한 판단에는 쓰지 않는다)
-    #[serde(default, alias = "userName")]
-    pub user_name: Option<String>,
-    #[serde(default, alias = "guildName")]
-    pub guild_name: Option<String>,
-    /// 답을 쓸 언어 (릴레이가 실어 보낸 디스코드 길드 언어). 없으면 데몬 GUI 언어
-    #[serde(default)]
-    pub locale: Option<String>,
-    /// 디스코드(릴레이)에서 온 요청이면 판정에 쓸 출처. None이면 로컬(GUI·CLI)이라 판정하지 않는다.
-    /// HTTP 본문으로는 채울 수 없다 (릴레이 경로만 채운다)
-    #[serde(skip)]
+    /// 디스코드(릴레이)에서 온 요청이면 판정에 쓸 출처. None이면 판정하지 않는다
     pub remote: Option<permissions::Requester>,
 }
 
@@ -397,7 +385,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
 
     /// 봇 답장 문구 (문장은 릴레이가 만든다)
     fn t(&self, key: &str, vars: &[(&str, &str)]) -> Text {
-        vars.iter().fold(Text::key(key), |t, (k, v)| t.var(k, *v))
+        Text::key_with(key, vars)
     }
 
     /// 데몬이 아는 말 (`locales/<lang>/daemon.json`: 기본 접두사·내장 명령 이름처럼 입력을 알아보는 데 쓰는 것)
@@ -821,14 +809,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
                 parts.push(up);
             }
         }
-        let mut status = Vec::new();
-        for (i, part) in parts.into_iter().enumerate() {
-            if i > 0 {
-                status.push(" · ".into());
-            }
-            status.push(part);
-        }
-        self.t("server.status_check", &[("name", &server.name)]).var("status", Text::seq(status))
+        self.t("server.status_check", &[("name", &server.name)]).var("status", Text::join(" · ", parts))
     }
 
     /// 켜진 시간 ("켜진 지 1시간 2분"). 시작 시각이 앞날이면 None
@@ -891,15 +872,16 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
     }
 
     /// `❌ 명령어 실행 오류: <자세히>` (자세히가 없으면 앞만)
-    fn error_line(&self, detail: &str) -> Text {
+    fn error_line(&self, detail: impl Into<Text>) -> Text {
         Text::seq(["❌ ".into(), self.error_detail(detail)])
     }
 
-    fn error_detail(&self, detail: &str) -> Text {
+    fn error_detail(&self, detail: impl Into<Text>) -> Text {
         let title = self.t("errors.error_title", &[]);
+        let detail = detail.into();
         match detail.is_empty() {
             true => title,
-            false => Text::seq([title, format!(": {}", detail).into()]),
+            false => Text::seq([title, ": ".into(), detail]),
         }
     }
 
@@ -984,7 +966,6 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         if let Some(detail) = resp.str_field("error") {
             tracing::warn!("[Chat] {} {} 실패 ({}): {}", server.name, field.name, resp.status, detail);
         }
-        let titled = |detail: Text| Text::seq(["❌ ".into(), self.t("errors.error_title", &[]), ": ".into(), detail]);
 
         match code.as_str() {
             "missing_argument" => {
@@ -1006,9 +987,9 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
             }
             "no_command_path" => Text::seq(["❌ ".into(), self.t("errors.no_command_path", &[("name", &server.name)])]),
             "invalid_argument" => self.invalid_text(module, field, &resp),
-            "auth_failed" => titled(module_text.map(Text::from).unwrap_or_else(|| self.t("errors.auth_failed", &[]))),
-            "not_found" => titled(resp.str_field("error").map(Text::from).unwrap_or_else(|| self.t("errors.not_found", &[]))),
-            _ => titled(
+            "auth_failed" => self.error_line(module_text.map(Text::from).unwrap_or_else(|| self.t("errors.auth_failed", &[]))),
+            "not_found" => self.error_line(resp.str_field("error").map(Text::from).unwrap_or_else(|| self.t("errors.not_found", &[]))),
+            _ => self.error_line(
                 module_text
                     .or_else(|| module.errors.get("internal_server_error").cloned())
                     .map(Text::from)

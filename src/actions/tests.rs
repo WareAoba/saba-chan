@@ -1381,6 +1381,9 @@ async fn a_sentence_plans_the_action_it_names_and_runs_with_the_same_reply() {
     assert_eq!(done["instance"], json!(id));
     let text = shown(&done["text"]);
     assert!(text.starts_with("[server.status_check") && text.contains("name=srv"), "{text}");
+    let (settings, cat) = chat_settings(&state, &caller).await;
+    let reply = crate::chat::process(&state, &settings, &cat, &chat_request("srv status", &caller)).await;
+    assert_eq!(done["text"], reply.text.to_json());
 }
 
 /// 문장 계획도 실행할 때 지금 권한으로 다시 판정한다: 계획 뒤에 권한을 잃었으면 실행하지 않는다

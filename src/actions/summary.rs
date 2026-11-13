@@ -9,7 +9,7 @@ use serde_json::Value;
 const MAX_ITEMS: usize = 10;
 
 fn t(key: &str, vars: &[(&str, &str)]) -> Text {
-    vars.iter().fold(Text::key(format!("actions.summary.{key}")), |t, (k, v)| t.var(k, *v))
+    Text::key_with(format!("actions.summary.{key}"), vars)
 }
 
 /// 액션 결과(`execute`의 `result`) → 요약. 요약할 줄 모르는 액션이면 None
