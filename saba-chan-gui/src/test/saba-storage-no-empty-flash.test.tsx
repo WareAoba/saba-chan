@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 let ctx: Record<string, unknown>;
 vi.mock('../contexts/ExtensionContext', () => ({ useExtensions: () => ctx }));
 
-import SabaStorage, { parseComponents } from '../components/Modals/SabaStorage';
+import SabaStorage from '../components/Modals/SabaStorage';
+import { parseComponents } from '../components/Modals/SabaStorageComponents';
 
 let resolveModules!: (value?: unknown) => void;
 beforeEach(() => {

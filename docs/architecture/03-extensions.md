@@ -303,7 +303,7 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 
 ### 4.4 GUI에서 노출되지 않는 API
 
-- `extension:icon` → SabaStorage(`SabaStorage.tsx:1168`), `extension:initStatus` → `hooks/useExtensionInitStatus.ts`.
+- `extension:icon` → 사바 스토리지 익스텐션 탭(`SabaStorageExtensions.tsx`, `window.api.extensionIcon`), `extension:initStatus` → `hooks/useExtensionInitStatus.ts`.
 
 
 ### 4.5 `host` (익스텐션 화면의 공식 통로, `src/extensions/host.ts`)

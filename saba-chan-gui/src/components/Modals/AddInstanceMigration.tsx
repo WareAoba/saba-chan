@@ -5,7 +5,7 @@ import type { ApiBody, ModuleInfo } from '../../types/daemon';
 import { AgreementList, allChecked } from '../AgreementList';
 import clsx from 'clsx';
 import Icon from '../Icon';
-import { Card, SettingRow } from '../ServerSettingsModal';
+import { Card, SettingRow } from '../ServerSettingsParts';
 import { SabaSpinner } from '../ui/SabaUI';
 import { TrustCreateNotice } from '../ui/TrustBadge';
 import type { AddServerPayload } from '../../stores/serverActions';
