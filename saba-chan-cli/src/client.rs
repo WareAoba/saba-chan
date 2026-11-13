@@ -1791,7 +1791,6 @@ mod route_coverage {
         ("/api/updates/phase/ack", "GUI 상단 바 알약의 '업데이트 완료'를 지운다 (CLI는 `update status`로 상태만 본다)"),
         ("/api/updates/restart", "GUI 알약 '업데이트 준비됨'의 다시 시작 (CLI는 `update apply`로 받아 둔 것을 바로 적용한다)"),
         ("/api/updates/gui-window", "GUI 창이 열려 있는지 알린다 (GUI 교체를 미룰지 정하는 값)"),
-        ("/api/updates/apply-on-launch", "GUI가 열릴 때 '받고 다음 실행 때 적용' (CLI는 `update apply`로 바로 적용한다)"),
         ("/api/client/{id}/heartbeat", "GUI 창 수명"),
         ("/api/client/{id}/unregister", "GUI 창 수명"),
         ("/api/extensions/{id}/gui", "GUI 번들"),

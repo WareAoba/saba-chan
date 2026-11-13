@@ -199,7 +199,6 @@ describe('앱 부팅 파이프라인', () => {
 
     it('앱을 열어도 업데이트 적용을 부르지 않는다 (받은 판은 데몬이 스스로 적용한다)', async () => {
         window.api = createApiMock({
-            updaterApplyOnLaunch: vi.fn().mockResolvedValue({ ok: true, requires_updater: true, needs_updater: ['gui'] }),
             updaterLaunchApply: vi.fn().mockResolvedValue({ ok: true }),
         });
         await act(async () => {
@@ -207,7 +206,6 @@ describe('앱 부팅 파이프라인', () => {
         });
         await waitFor(() => expect(window.api.daemonStatus).toHaveBeenCalled(), { timeout: 6000 });
         await new Promise((r) => setTimeout(r, 800));
-        expect(window.api.updaterApplyOnLaunch).not.toHaveBeenCalled();
         expect(window.api.updaterLaunchApply).not.toHaveBeenCalled();
     }, 15000);
 

@@ -126,7 +126,6 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | updaterDownload (920) | POST /api/updates/download `{components}` (빈 배열이면 전부) | ✓ 102 |
 | updaterDownloadProgress (928) | GET /api/updates/download/progress | ✓ 103 |
 | updaterApply (930) | POST /api/updates/apply `{components}` (빈 배열이면 전부) | ✓ 104 |
-| updaterApplyOnLaunch | POST /api/updates/apply-on-launch. 화면은 더 부르지 않는다: 받은 판은 데몬이 묻지 않고 적용한다(05 실시간 업데이트) | ✓ |
 | updaterLaunchApply (969) | Rust `updater_launch_apply` → POST /api/updates/launch-updater {relaunch:[current_exe]}. 업데이터는 데몬이 띄운다 | ✓ 105 |
 | updaterPhaseAck | POST /api/updates/phase/ack. 상단 바 업데이트 알약의 '완료'를 누르면 한 번 (`UpdatePill`) | 계약 D |
 | updaterRestart | Rust `updater_restart` → POST /api/updates/restart {relaunch:[current_exe], gui_stays:true}. 알약 '준비됨'의 지금 다시 시작. 응답 처리는 updaterLaunchApply와 같다 | 계약 D |

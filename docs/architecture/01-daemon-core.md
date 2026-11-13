@@ -543,7 +543,6 @@ Relay 서명 방식(`relay.rs:115-161`):
 | GET/DELETE | `/api/updates/last-result` | `updates.rs` `get_last_result`/`clear_last_result` | GET `?lang=`, `?include_seen=true` | 마지막 적용 결과 `{result, version, notes, acknowledged}` / 확인 처리(마커는 남기고 `acknowledged`만 적는다, 05 참고) |
 | GET | `/api/updates/integrity` | `updates.rs:814` | - | `{ok,checked_at,overall,total,verified,failed,skipped,components[...]}` |
 | GET/POST | `/api/updates/repair` | `updates.rs` `get_repair`/`repair` | - | 설치 점검·복구. GET `{ok, verified, failed, skipped, repair:[{component, display_name, installed, offered}], unavailable:[…]}`: 무결성 검사에서 `Tampered`·`FileNotFound`인 구성요소 중 확인한 릴리즈가 설치된 판을 그대로 내주는 것(`repair`)과 아닌 것(`unavailable`). POST는 `repair`만 그 판으로 다시 받아(`download_components_with`) 적용하고(`apply_updates_with`) 답에 `repaired`·`needs_updater`·`requires_updater`·`errors`를 더한다. 데몬·GUI·업데이터가 끼면 `apply`처럼 부른 쪽이 `launch-updater`를 부른다. 05 문서 참고 |
-| POST | `/api/updates/apply-on-launch` | `updates.rs` `apply_on_launch` | - | GUI가 열릴 때 한 번 부른다. `auto_apply`가 꺼져 있으면 `{ok, skipped:"off"}`. 켜져 있으면 받아 둔 컴포넌트를 apply와 같이 적용하되(데몬을 다시 켜 아직 확인 전이면 `pending.json`에서 되살린다, `restore_pending`), 켜진 서버가 있으면 재시작이 필요한 것(saba-core·GUI·업데이터)은 미루고 `held`에 담는다. 모듈·익스텐션은 고르지 않는다(사용자 변경·켜진 서버를 살피는 자동 교체가 맡는다, `launch_targets`). 적용할 것이 없으면 `{ok, skipped:"nothing"\|"servers_running", held}`, 아니면 apply 답 + `held`. 원격(웹·데몬 중계)에서는 막는다 |
 | GET | `/api/updates/config` | `updates.rs:844` | - | `{ok, config, mock_relay}` |
 | PUT | `/api/updates/config` | `updates.rs:859` | 부분 `{enabled,check_interval_hours(1-8),auto_download,auto_apply,install_root,relay_url,channel}` | `{ok, config}`. `channel`은 `stable`·`rc`·`beta`만 받고 그 밖은 400 `invalid_channel`(05 §1 채널). `config.json`의 `updates` 절에 저장한다(`:899-902, 936-942`). 비어 있지 않은 `relay_url`은 개발 빌드(`mock-relay`)만 받고, 릴리즈 빌드는 403 `relay_url_not_settable`(D7: 출처는 config.json에서만) |
 
@@ -919,7 +918,7 @@ REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자�
 - `UpdateState`가 `UpdateManager`(updater 크레이트)를 `Arc<RwLock>`으로 감싼다. 설정은 `config.json`의 `updates` 절에서 읽고(`load_updater_config`, `updates.rs:916-934`), 없거나 깨졌으면 `UpdateConfig::default()`를 쓴다.
   - 필드(`updater/src/lib.rs:236-271`): `enabled`(기본 true), `check_interval_hours`(3), `auto_download`(false), `auto_apply`(false, 받고 다음 실행 때 적용), `install_root`, `relay_url`(None이면 `https://saba-chan.online`), `channel`(`stable`).
 - `PUT /api/updates/config`는 바꾼 설정을 `config.json`에 저장한다(`updates.rs:900-902`).
-- 주기 확인은 데몬의 `spawn_update_scheduler`가 한다(`updates.rs:256`). `check_interval_hours`마다 확인하고 `auto_download`나 `auto_apply`이면 받아 둔다. `auto_apply`이면 GUI가 열릴 때 `POST /api/updates/apply-on-launch`로 받아 둔 것을 적용한다(켜진 서버가 있으면 재시작이 필요한 것은 미룬다).
+- 주기 확인은 데몬의 `spawn_update_scheduler`가 한다(`updates.rs:256`). `check_interval_hours`마다 확인하고 `auto_download`나 `auto_apply`이면 받아 둔다. `auto_apply`이면 받아 둔 것을 데몬이 스스로 적용한다(05 §1.6 자동 적용). 끄면 사용자가 다시 시작을 누를 때 적용한다.
 - **접속하는 외부 URL**
   - 릴레이: `GET {relay_url}/v1/updates/check?channel&platform&current&client_id`, `GET /v1/updates/manifest/:version`. 모든 요청에 `X-Saba-Client: 1` 헤더(`updater/src/relay.rs:1-25, 160-195`).
   - manifest의 각 컴포넌트 `url`(R2 공개 주소). 받을 때 `sha256`을 확인한다(`updater/src/download.rs:40`).
