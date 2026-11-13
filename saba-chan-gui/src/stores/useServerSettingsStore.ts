@@ -309,24 +309,6 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
                 initial[field.name] = value;
             });
 
-            // protocol_mode initialization
-            const protocols: Partial<NonNullable<ModuleInfo['protocols']>> = module?.protocols || {};
-            const supportedProtocols = protocols.supported || [];
-            if (
-                (latestServer.protocol_mode &&
-                    latestServer.protocol_mode !== 'auto' &&
-                    latestServer.protocol_mode !== 'rest') ||
-                (latestServer.protocol_mode === 'rest' && supportedProtocols.includes('rest'))
-            ) {
-                initial.protocol_mode = latestServer.protocol_mode;
-            } else if (protocols.default) {
-                initial.protocol_mode = protocols.default;
-            } else if (supportedProtocols.length > 0) {
-                initial.protocol_mode = supportedProtocols[0];
-            } else {
-                initial.protocol_mode = latestServer.protocol_mode || 'auto';
-            }
-
             // 익스텐션 데이터 패스스루 — 익스텐션 탭 컴포넌트가 자체 관리
             if (latestServer.extension_data) {
                 initial._extension_data = { ...latestServer.extension_data };
@@ -351,16 +333,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
             setSettingsValues(withTouched(initial));
             setOpenedSettings(initial);
         } else {
-            const protocols: Partial<NonNullable<ModuleInfo['protocols']>> = module?.protocols || {};
-            const defaultProto =
-                protocols.default || ((protocols.supported?.length ?? 0) > 0 ? protocols.supported?.[0] : null);
             const initial: SettingsValues = {
-                protocol_mode:
-                    latestServer.protocol_mode &&
-                    latestServer.protocol_mode !== 'auto' &&
-                    latestServer.protocol_mode !== 'rest'
-                        ? latestServer.protocol_mode
-                        : defaultProto || latestServer.protocol_mode || 'auto',
                 ...(latestServer.extension_data
                     ? {
                           _extension_data: { ...latestServer.extension_data },
@@ -860,16 +833,6 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
                 const value = String(settingsValues[key] ?? '').trim();
                 if (settingsValues[key] !== undefined && value !== '' && value !== openedIdle[key])
                     convertedSettings[key] = value;
-            }
-
-            const protocols: Partial<NonNullable<ModuleInfo['protocols']>> = module?.protocols || {};
-            const supportedProtocols = protocols.supported || [];
-
-            // 모듈이 정한 프로토콜만 쓴다 (RCON은 데몬에서 빠졌다: 예전에 저장된 'rcon'도 여기서 바뀐다)
-            if (supportedProtocols.length > 0) {
-                convertedSettings.protocol_mode = protocols.default || supportedProtocols[0];
-            } else {
-                convertedSettings.protocol_mode = settingsValues.protocol_mode || 'auto';
             }
 
             if (launch?.extra_args) convertedSettings.extra_args = launch.extra_args;

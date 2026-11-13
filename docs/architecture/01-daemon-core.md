@@ -603,7 +603,7 @@ spot = "server.tab.maintenance"    # 짚을 화면 요소의 data-spot
 | `process_name` | Option<String> | 모듈 metadata에서 채운다 |
 | `port` | Option<u16> | |
 | `rest_host`, `rest_port`, `rest_username`, `rest_password` | Option | `rest_username`은 항상 "admin"으로 강제한다(`instance/mod.rs:218-223`) |
-| `protocol_mode` | String | 기본 `"auto"` |
+| `protocol_mode` | String | 기본 `"auto"`. 모듈이 `[protocols] supported`를 선언했으면 만들 때와 데몬이 인스턴스를 읽을 때(모듈을 다시 읽은 뒤 포함, `Supervisor::migrate_list_settings`) `auto`·예전 값 `rcon`·모듈이 받지 않는 값을 모듈 `default`(없으면 `supported` 첫 값)로 바꾼다(`ModuleMetadata::protocol_mode_for`, 0.1.15). 클라이언트는 이 값을 그대로 보이고 정하지 않는다 |
 | `module_settings` | HashMap<String,Value> | settings.json으로 분리 저장 |
 | `user_settings` | BTreeSet<String> | 사용자가 직접 고른 설정 키. 외부 데이터 루트의 출처 판정에도 쓴다(02 §2.1) |
 | `imported_settings` | BTreeSet<String> | 마이그레이션 `import_settings`가 판정한 path형 설정 키. 기본은 빈 집합이며 값이 실제 바뀌면 해당 출처를 지운다. 값은 `module_settings`에만 둔다 |

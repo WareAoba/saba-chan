@@ -46,11 +46,12 @@ describe('서버를 처음 열 때의 탭', () => {
 });
 
 describe('콘솔 빠른 명령', () => {
-    it('console(예전 rcon) 명령 중 템플릿이 이름으로 시작하는 것만', async () => {
+    // 예전 이름 rcon·rcon_template은 데몬이 console·console_template으로 읽어 준다 (module_loader)
+    it('console 명령 중 템플릿이 이름으로 시작하는 것만', async () => {
         const { consoleQuickCommands } = await import('../utils/serverView');
         const fields = [
             { name: 'say', method: 'console', console_template: 'say {message}' },
-            { name: 'save-all', method: 'rcon', rcon_template: 'save-all' },
+            { name: 'save-all', method: 'console', console_template: 'save-all' },
             { name: 'kickall', method: 'console', console_template: 'kick @a' },
             { name: 'players', method: 'rest' },
             { name: 'backup' },

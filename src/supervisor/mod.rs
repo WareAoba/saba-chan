@@ -275,12 +275,17 @@ impl Supervisor {
         Ok(())
     }
 
-    /// 모듈이 `list`로 바꾼 설정의 옛 문자열 값을 배열로 읽는다 (06 §8.1). 모듈을 다시 읽은 뒤에도 부른다
+    /// 모듈에 맞춰 예전 값을 읽는다. 모듈을 다시 읽은 뒤에도 부른다.
+    /// 모듈이 `list`로 바꾼 설정의 옛 문자열 값은 배열로 (06 §8.1), `protocol_mode`의 `auto`·예전 `rcon`은 모듈 프로토콜로
     pub fn migrate_list_settings(&mut self) {
         let loader = &self.module_loader;
         self.instance_store.adjust_in_memory(|instance| {
-            if let Some(settings) = loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()) {
+            let Ok(module) = loader.get_module(&instance.module_name) else { return };
+            if let Some(settings) = &module.metadata.settings {
                 crate::validator::migrate_list_values(&settings.fields, &mut instance.module_settings);
+            }
+            if let Some(mode) = module.metadata.protocol_mode_for(&instance.protocol_mode) {
+                instance.protocol_mode = mode;
             }
         });
     }

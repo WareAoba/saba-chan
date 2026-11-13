@@ -115,14 +115,13 @@ export function defaultServerTab(interaction: ReturnType<typeof interactionOf>, 
 
 /**
  * 콘솔에 그대로 쳐도 되는 명령만 (콘솔 빠른 명령 칩).
- * 데몬 method "console"(예전 이름 "rcon")이고 console_template이 명령 이름으로 시작할 때만:
+ * 데몬 method "console"이고 console_template이 명령 이름으로 시작할 때만 (예전 이름 `rcon`·`rcon_template`은 데몬이 바꿔 준다):
  * 칩은 이름을 입력칸에 채울 뿐이라, 템플릿이 다른 말로 바뀌는 명령이나 "module"/"rest" 명령은 콘솔에서 안 통한다.
  */
 export function consoleQuickCommands(fields: CommandField[] = [], commandAliases: Record<string, CommandAliasInfo> | null = null) {
     return withCommandAliases(fields, commandAliases).filter((c) => {
-        const method = c.method === 'rcon' || c.method === 'stdin' ? 'console' : c.method;
-        if (method !== 'console') return false;
-        const template = c.console_template ?? (c as { rcon_template?: string | null }).rcon_template;
+        if (c.method !== 'console') return false;
+        const template = c.console_template;
         return !template || template.trim().split(/\s+/)[0].toLowerCase() === String(c.name).toLowerCase();
     });
 }
@@ -148,16 +147,9 @@ export function initials(name = '') {
 }
 
 /** 모듈이 정한 프로토콜 표시 이름 */
-export function protocolLabel(server: Partial<ServerInfo>, moduleData?: Partial<ModuleInfo> | null) {
-    const proto = server.protocol_mode;
-    // 'rcon'은 데몬에서 빠졌다: 예전 값이면 모듈 기본으로 보여 준다
-    if (proto === 'auto' || proto === 'rest' || proto === 'rcon') {
-        const supported = moduleData?.protocols?.supported || [];
-        if (proto === 'rest' && supported.includes('rest')) return 'REST';
-        if (moduleData?.protocols?.default) return moduleData.protocols.default.toUpperCase();
-        if (supported.length > 0) return supported[0].toUpperCase();
-    }
-    return proto?.toUpperCase() || 'AUTO';
+export function protocolLabel(server: Partial<ServerInfo>) {
+    // `auto`·예전 `rcon`은 데몬이 모듈 프로토콜로 바꿔 준다 (`ModuleMetadata::protocol_mode_for`)
+    return server.protocol_mode?.toUpperCase() || 'AUTO';
 }
 
 /** 빌드를 받은(올라온) 날짜 (유닉스 초): 올해면 월·일, 다른 해면 연도까지. 모르면 빈 글자 */
