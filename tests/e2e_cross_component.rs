@@ -1325,7 +1325,9 @@ async fn persistent_module_reuses_one_worker_and_falls_back_to_one_shot_when_it_
     }
     let _extension_list = EXTENSION_LIST.lock().await;
     setup_e2e_modules_dir();
-    let dir = tempfile::Builder::new().prefix("e2e-worker-").tempdir_in(saba_core::plugin::resolve_modules_dir()).unwrap();
+    // 점으로 시작하는 폴더는 모듈 탐색이 건너뛴다: 함께 도는 다른 시험의 데몬이 이 모듈을 찾아 부르면(`functions` 등)
+    // 죽은 작업자를 그 호출이 먼저 만나 아래 단발 판정이 흔들린다
+    let dir = tempfile::Builder::new().prefix(".e2e-worker-").tempdir_in(saba_core::plugin::resolve_modules_dir()).unwrap();
     let name = dir.path().file_name().unwrap().to_string_lossy().into_owned();
     fs::write(
         dir.path().join("module.toml"),
