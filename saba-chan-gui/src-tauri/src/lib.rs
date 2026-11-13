@@ -25,6 +25,7 @@ pub mod native;
 pub mod overlay;
 pub mod settings;
 pub mod sounds;
+pub mod streams;
 pub mod tray;
 pub mod window;
 
@@ -189,8 +190,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .manage(state)
+        .manage(streams::Streams::default())
         .invoke_handler(tauri::generate_handler![
             native::daemon_request,
+            streams::daemon_stream_open,
+            streams::daemon_stream_close,
             sounds::sound_play,
             native::app_ready,
             native::daemon_status,

@@ -27,6 +27,8 @@ export const ACTIVITY_SLOW_POLL_MS = 30000;
 export const CONSOLE_POLL_MS = 1000;
 /** 이어 읽을 때 새 줄이 없으면 데몬이 붙잡는 시간(초). 원격 데몬 중계가 다시 쓴 연결의 답을 10초까지만 기다린다 */
 export const CONSOLE_WAIT_S = 8;
+/** 데몬 로그 스트림을 열지 못했거나 끊긴 뒤 다시 열어 보기까지 (ms). 그동안은 기다리는 조회로 읽는다 */
+const STREAM_RETRY_MS = 30_000;
 const CONSOLE_MAX = 2000;
 const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon', 'web', 'remote', 'mcp', 'agent', 'restart'];
 
@@ -63,6 +65,50 @@ function DaemonConsole() {
         let timer: ReturnType<typeof setTimeout> | undefined;
         let next: number | undefined; // 처음엔 최근 것부터, 그 뒤로는 받은 다음 id부터 (since는 그 id를 포함한다)
         let epoch: number | undefined; // 데몬 로그 버퍼 세대. 데몬이 다시 켜지면 id가 1부터라 바뀌면 처음부터 다시 받는다 (L55)
+        let closeStream: (() => void) | null = null;
+        let streamRetryAt = 0;
+        const add = (got: DaemonLogEntry[], replace: boolean) => {
+            if (got.length) next = got[got.length - 1].id + 1;
+            if (!got.length && !replace) return;
+            setLines((prev) => {
+                const all = replace ? got : prev.concat(got);
+                return all.length > CONSOLE_MAX ? all.slice(-CONSOLE_MAX) : all;
+            });
+        };
+        const later = () => {
+            if (alive) timer = setTimeout(poll, CONSOLE_POLL_MS);
+        };
+        /** 받은 다음부터 스트림으로 받는다. 열지 못하면(옛 데몬·옛 릴레이) 한동안 기다리는 조회로 읽는다 */
+        const stream = async () => {
+            // 스트림이 없는 브리지(옛 셸·개발용 가짜 API)도 null로 받는다
+            const open = () =>
+                window.api.daemonConsoleStream(
+                    { since: next, epoch },
+                    (body) => {
+                        const res = body as { epoch?: number; reset?: boolean; lines?: DaemonLogEntry[] };
+                        if (!alive) return;
+                        if (res?.epoch !== undefined) epoch = res.epoch;
+                        if (Array.isArray(res?.lines)) add(res.lines, res.reset === true);
+                    },
+                    () => {
+                        closeStream = null;
+                        streamRetryAt = Date.now() + STREAM_RETRY_MS;
+                        later();
+                    },
+                );
+            const close = await Promise.resolve()
+                .then(open)
+                .then(
+                    (c) => (typeof c === 'function' ? c : null),
+                    () => null,
+                );
+            if (!alive) return close?.();
+            if (close) closeStream = close;
+            else {
+                streamRetryAt = Date.now() + STREAM_RETRY_MS;
+                later();
+            }
+        };
         const poll = async () => {
             try {
                 // 이어 읽을 때는 새 줄이 생길 때까지 데몬이 붙잡게 한다 (옛 데몬은 바로 답하고 1초 뒤 다시 묻는다)
@@ -77,22 +123,18 @@ function DaemonConsole() {
                 if (!alive) return;
                 if (!got) throw new Error(res?.error || tRef.current('activity.console_failed'));
                 setError(null);
-                if (got.length) {
-                    next = got[got.length - 1].id + 1;
-                    setLines((prev) => {
-                        const all = prev.concat(got);
-                        return all.length > CONSOLE_MAX ? all.slice(-CONSOLE_MAX) : all;
-                    });
-                }
+                add(got, false);
+                if (Date.now() >= streamRetryAt) return void stream();
             } catch (err) {
                 if (alive) setError((err as Error).message || String(err));
             }
-            if (alive) timer = setTimeout(poll, CONSOLE_POLL_MS);
+            later();
         };
         poll();
         return () => {
             alive = false;
             clearTimeout(timer);
+            closeStream?.();
         };
     }, []);
 

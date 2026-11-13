@@ -6,9 +6,34 @@ import { createApi } from '@gui/api/createApi';
 import { createEventHub } from '@gui/api/events';
 import type { PcEvent, WebSession } from './types';
 
-export function createWebApi(session: Pick<WebSession, 'request'>) {
+export function createWebApi(session: Pick<WebSession, 'request'> & Partial<Pick<WebSession, 'stream'>>) {
     const hub = createEventHub();
-    const invoke = async (cmd: string, args: { method?: string; path?: string; body?: unknown; timeoutMs?: number } = {}) => {
+    // 연 콘솔 스트림 (셸의 daemon_stream_open과 같은 약속: 조각은 hub 'daemon:stream' {id, event, data})
+    const streams = new Map<string, () => void>();
+    const openStream = (id: string, path: string) => {
+        const cancel = session.stream?.(
+            'GET',
+            path,
+            (data) => hub.dispatch('daemon:stream', { id, event: 'message', data }),
+            (reply) => {
+                streams.delete(id);
+                hub.dispatch('daemon:stream', { id, event: reply.status === 200 ? 'end' : 'error', data: reply.data });
+            },
+        );
+        if (!cancel) return { status: 0 };
+        streams.set(id, cancel);
+        return { status: 200 };
+    };
+    const invoke = async (
+        cmd: string,
+        args: { method?: string; path?: string; body?: unknown; timeoutMs?: number; id?: string } = {},
+    ) => {
+        if (cmd === 'daemon_stream_open') return openStream(args.id as string, args.path as string);
+        if (cmd === 'daemon_stream_close') {
+            streams.get(args.id as string)?.();
+            streams.delete(args.id as string);
+            return null;
+        }
         if (cmd !== 'daemon_request') throw new Error('not_supported');
         return session.request(args.method as string, args.path as string, args.body, args.timeoutMs);
     };

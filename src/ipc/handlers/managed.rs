@@ -97,19 +97,7 @@ pub async fn get_console_handler(
     // `disk=seen`: 꺼진 서버의 디스크 기록을 이미 받았다. 디스크 기록은 since를 몰라 매번 같은 줄을 주므로, 기다릴 때는 빼고 준다
     let disk_seen = !wait.is_zero() && params.get("disk").is_some_and(|v| v == "seen");
     let changed = &crate::supervisor::managed_process::CONSOLE_CHANGED;
-    let result = super::long_poll::read_waiting(changed, wait, known_epoch, || async {
-        let supervisor = state.supervisor.read().await;
-        let mut result = if spans {
-            supervisor.get_console_output_with_spans(&id, since_id, count).await?
-        } else {
-            supervisor.get_console_output(&id, since_id, count).await?
-        };
-        if disk_seen && result.get("source").and_then(Value::as_str) == Some("disk") {
-            result["lines"] = json!([]);
-        }
-        Ok(result)
-    })
-    .await;
+    let result = super::long_poll::read_waiting(changed, wait, known_epoch, || read_console(&state, &id, since_id, count, spans, disk_seen)).await;
     match result {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
@@ -118,6 +106,42 @@ pub async fn get_console_handler(
         )
             .into_response(),
     }
+}
+
+/// 콘솔 한 번 읽기. `disk_seen`이면 꺼진 서버의 디스크 기록(since를 모른다)은 줄을 빼고 준다. supervisor 잠금은 읽는 동안만 쥔다
+async fn read_console(state: &IPCServer, id: &str, since: Option<u64>, count: Option<usize>, spans: bool, disk_seen: bool) -> anyhow::Result<Value> {
+    let supervisor = state.supervisor.read().await;
+    let mut result = if spans {
+        supervisor.get_console_output_with_spans(id, since, count).await?
+    } else {
+        supervisor.get_console_output(id, since, count).await?
+    };
+    if disk_seen && result.get("source").and_then(Value::as_str) == Some("disk") {
+        result["lines"] = json!([]);
+    }
+    Ok(result)
+}
+
+/// GET /api/instance/:id/console/stream?since=&epoch=&disk=seen&count=200&spans=1 — 콘솔 스트림 (SSE, `long_poll::stream`).
+/// 한 건의 data는 콘솔 조회의 답과 같고, 프로세스를 다시 켜면 처음부터 다시 보내며 `reset: true`를 붙인다
+pub async fn console_stream_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let count = params.get("count").and_then(|c| c.parse::<usize>().ok());
+    let spans = params.get("spans").is_some_and(|v| v == "1" || v == "true");
+    let stop = state.shutdown_token.clone();
+    let updates = super::long_poll::stream(
+        &crate::supervisor::managed_process::CONSOLE_CHANGED,
+        stop,
+        super::long_poll::Cursor::from_query(&params),
+        move |cur| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { read_console(&state, &id, cur.since, count, spans, cur.disk_seen).await }
+        },
+    );
+    super::long_poll::sse(updates)
 }
 
 /// POST /api/instance/:id/stdin — Send command to stdin

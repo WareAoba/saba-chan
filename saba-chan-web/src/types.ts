@@ -39,6 +39,12 @@ export interface SessionReply {
 /** 릴레이 세션이 밖에 내미는 것 (createSession 의 반환) */
 export interface WebSession {
     request(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<SessionReply>;
+    stream(
+        method: string,
+        path: string,
+        onChunk: (body: unknown) => void,
+        onEnd: (reply: SessionReply) => void,
+    ): (() => void) | null;
     extend(): void;
     leave(): void;
 }

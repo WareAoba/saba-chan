@@ -84,4 +84,31 @@ describe('웹 콘솔 읽기', () => {
         });
         expect(lines).toEqual(['disk0', 'disk1', 'disk2', 'disk3', 'disk4', 'boot']);
     });
+
+    it('처음 읽은 뒤로는 스트림으로 받아 주기 조회를 쉬고, 프로세스에 다시 붙으면 그 버퍼로 바꾼다', async () => {
+        const managedConsole = vi.fn().mockResolvedValue({ epoch: 1, stdin_available: true, lines: [{ id: 0, content: 'hello' }] });
+        let update: (body: unknown) => void = () => {};
+        const close = vi.fn();
+        const managedConsoleStream = vi.fn(async (_id: string, _opts: object, onUpdate: (body: unknown) => void) => {
+            update = onUpdate;
+            return close;
+        });
+        const server = asServer({ id: 's1', name: 'MC', module: 'minecraft', status: 'running' });
+        let view!: ReturnType<typeof render>;
+        await act(async () => {
+            view = render(<ServerDetail api={apiWith({ managedConsole, managedConsoleStream })} server={server} />);
+        });
+        expect(managedConsoleStream).toHaveBeenCalledWith('s1', expect.objectContaining({ since: 1, epoch: 1 }), expect.any(Function), expect.any(Function));
+        const text = () => [...view.container.querySelectorAll('.console-lines .line')].map((el) => el.textContent);
+        await act(async () => update({ epoch: 1, lines: [{ id: 1, content: 'world' }] }));
+        expect(text()).toEqual(['hello', 'world']);
+        await act(async () => update({ epoch: 2, reset: true, lines: [{ id: 0, content: 'again' }] }));
+        expect(text()).toEqual(['again']);
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(10_000);
+        });
+        expect(managedConsole).toHaveBeenCalledTimes(1);
+        view.unmount();
+        expect(close).toHaveBeenCalledTimes(1);
+    });
 });
