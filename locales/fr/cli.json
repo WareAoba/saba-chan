@@ -679,6 +679,7 @@
   "run": {
     "confirm_danger": "{{label}} sur {{name}} est irréversible. L'exécuter ?",
     "missing_arg": "{{label}} manquant. Utilisation : {{usage}}",
+    "must_be_boolean": "{{label}} doit être true ou false (on/off, yes/no).",
     "must_be_number": "{{label}} doit être un nombre.",
     "must_be_one_of": "{{label}} doit être l'un de : {{options}}",
     "no_commands": "Aucune commande définie pour ce jeu. Envoi direct à la console : saba-chan-cli server send NOM \"ligne\"",

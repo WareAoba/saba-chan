@@ -679,6 +679,7 @@
   "run": {
     "confirm_danger": "{{name}} の {{label}} は元に戻せません。実行しますか？",
     "missing_arg": "{{label}} がありません。使い方: {{usage}}",
+    "must_be_boolean": "{{label}} は true か false (on/off, yes/no) で指定してください。",
     "must_be_number": "{{label}} は数値で指定してください。",
     "must_be_one_of": "{{label}} は次のいずれかにしてください: {{options}}",
     "no_commands": "このゲームに定義済みのコマンドなし。コンソールに直接送信: saba-chan-cli server send NAME \"line\"",

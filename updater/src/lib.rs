@@ -16,6 +16,7 @@
 
 pub mod addon_pins;
 pub mod app_bundle;
+pub mod command_rules;
 pub mod component_dirs;
 pub mod config_file;
 pub mod constants;

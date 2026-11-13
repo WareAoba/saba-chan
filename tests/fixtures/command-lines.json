@@ -1,0 +1,53 @@
+{
+  "about": "명령 줄 읽기 표본. 데몬(src/commands)과 GUI(saba-chan-gui/src/utils/commandSyntax.ts)가 같은 줄을 같게 읽는지 함께 시험한다. 형식은 docs/architecture/04-clients.md 명령 줄 표본 절",
+  "commands": [
+    {
+      "name": "give",
+      "label": "Give",
+      "method": "console",
+      "inputs": [
+        { "name": "player", "type": "text", "required": true },
+        { "name": "item", "type": "text", "required": true },
+        { "name": "amount", "type": "number", "required": true, "default": 1, "min": 1, "max": 64 }
+      ]
+    },
+    {
+      "name": "say",
+      "label": "Say",
+      "method": "console",
+      "aliases": ["말"],
+      "inputs": [{ "name": "message", "type": "text", "required": true }]
+    },
+    {
+      "name": "weather",
+      "label": "Weather",
+      "method": "console",
+      "inputs": [{ "name": "type", "type": "text", "required": true, "options": ["clear", "rain"] }]
+    },
+    {
+      "name": "pvp",
+      "label": "PvP",
+      "method": "console",
+      "inputs": [{ "name": "enabled", "type": "boolean", "required": true }]
+    },
+    { "name": "save-all", "label": "Save", "method": "console", "inputs": [] }
+  ],
+  "lines": [
+    { "line": "give steve diamond 5", "command": "give", "args": { "player": "steve", "item": "diamond", "amount": 5 } },
+    { "line": "GIVE steve diamond", "command": "give", "args": { "player": "steve", "item": "diamond", "amount": 1 } },
+    { "line": "give steve diamond 65", "command": "give", "error": { "rule": "out_of_range", "field": "amount" } },
+    { "line": "give steve diamond lots", "command": "give", "error": { "rule": "not_number", "field": "amount" } },
+    { "line": "give steve", "command": "give", "error": { "rule": "missing", "field": "item" } },
+    { "line": "say hello  there", "command": "say", "args": { "message": "hello there" } },
+    { "line": "말 안녕", "command": "say", "args": { "message": "안녕" } },
+    { "line": "weather rain", "command": "weather", "args": { "type": "rain" } },
+    { "line": "weather snow", "command": "weather", "error": { "rule": "not_option", "field": "type" } },
+    { "line": "weather Rain", "command": "weather", "error": { "rule": "not_option", "field": "type" } },
+    { "line": "pvp on", "command": "pvp", "args": { "enabled": true } },
+    { "line": "pvp NO", "command": "pvp", "args": { "enabled": false } },
+    { "line": "pvp maybe", "command": "pvp", "error": { "rule": "not_boolean", "field": "enabled" } },
+    { "line": "save-all", "command": "save-all", "args": {} },
+    { "line": "save-all now", "command": "save-all", "error": { "rule": "too_many", "field": null } },
+    { "line": "time set day", "command": null }
+  ]
+}
