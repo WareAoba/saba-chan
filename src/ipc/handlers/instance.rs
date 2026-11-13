@@ -104,11 +104,12 @@ pub async fn get_instance(
     }
 }
 
-/// 사용자가 정한 `java_path`를 그 모듈의 격리 실행에 연다 (폴더 권한 고치기는 오래 걸릴 수 있어 따로)
-fn open_user_runtime(entry: String, instance: &crate::instance::ServerInstance) {
-    let Some(java) = instance.module_settings.get("java_path").and_then(Value::as_str).filter(|_| instance.user_settings.contains("java_path")) else { return };
-    let java = java.to_string();
-    tokio::task::spawn_blocking(move || crate::sandbox::open_user_runtime(std::path::Path::new(&entry), &java));
+/// 사용자가 런타임 경로 설정(`runtime`)에 정한 값을 그 모듈의 격리 실행에 연다 (폴더 권한 고치기는 오래 걸릴 수 있어 따로)
+fn open_user_runtime(module: &crate::supervisor::module_loader::LoadedModule, instance: &crate::instance::ServerInstance) {
+    for path in module.metadata.user_runtime_paths(instance) {
+        let (entry, path) = (module.entry_path(), path.to_string());
+        tokio::task::spawn_blocking(move || crate::sandbox::open_user_runtime(std::path::Path::new(&entry), &path));
+    }
 }
 
 /// 요청 값 하나가 잘못됐다는 400 응답: `error`에 이유
@@ -239,7 +240,6 @@ mod tests {
     #[test]
     fn hooks_get_the_instance_without_its_secrets() {
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
-        inst.rest_password = Some("hunter2-rest".into());
         inst.module_settings.insert("server_password".into(), json!("hunter2-join"));
         inst.module_settings.insert("max_players".into(), json!(16));
         let value = super::instance_for_hooks(None, &inst);
@@ -253,10 +253,10 @@ mod tests {
         // 비밀값과 같은 글자의 이름·경로는 비밀이 아니다: 값 대신 키 이름으로만 가린다
         let mut same = crate::instance::ServerInstance::new("palworld", "game");
         same.working_dir = Some("C:/srv/palworld/data".into());
-        same.rest_password = Some("palworld".into());
+        same.module_settings.insert("server_password".into(), json!("palworld"));
         let value = super::instance_for_hooks(None, &same);
         assert_eq!(value["name"], "palworld");
         assert_eq!(value["working_dir"], "C:/srv/palworld/data");
-        assert_ne!(value["rest_password"], "palworld");
+        assert_ne!(value["module_settings"]["server_password"], "palworld");
     }
 }

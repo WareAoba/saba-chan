@@ -63,14 +63,9 @@ pub struct ServerInstance {
     pub auto_detect: bool,
     pub process_name: Option<String>,
     pub port: Option<u16>,
-    #[serde(default)]
-    pub rest_host: Option<String>,
-    #[serde(default)]
-    pub rest_port: Option<u16>,
-    #[serde(default)]
-    pub rest_username: Option<String>,
-    #[serde(default)]
-    pub rest_password: Option<String>,
+    /// 0.1.14-beta.1까지 instance.json에 있던 REST 접속 칸. 지금은 `module_settings`에만 둔다 (`take_legacy_rest`)
+    #[serde(flatten)]
+    pub legacy_rest: LegacyRest,
     #[serde(default = "default_protocol_mode")]
     pub protocol_mode: String,
     /// 모듈별 동적 게임 설정 — 런타임에는 settings.json에서 머지됩니다.
@@ -154,6 +149,20 @@ fn default_protocol_mode() -> String {
     "auto".to_string()
 }
 
+/// 0.1.14-beta.1까지의 instance.json이 인스턴스 칸으로 저장한 REST 접속값. 읽기만 하고, 모듈의 `[protocols.rest]`를 아는
+/// Supervisor가 한 번 `module_settings`로 옮긴다. 옮기기 전(모듈을 못 찾은 동안)에는 파일에 그대로 남는다
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LegacyRest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rest_host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rest_port: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rest_username: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rest_password: Option<String>,
+}
+
 /// 데몬이 직접 처리하는 설치 방식. 그 밖의 방식은 같은 이름의 익스텐션이 맡는다
 pub const BUILTIN_INSTALL_METHODS: &[&str] = &["manual", "download"];
 
@@ -185,10 +194,7 @@ impl ServerInstance {
             auto_detect: true,
             process_name: None,
             port: None,
-            rest_host: None,
-            rest_port: None,
-            rest_username: None,
-            rest_password: None,
+            legacy_rest: LegacyRest::default(),
             protocol_mode: "auto".to_string(),
             module_settings: HashMap::new(),
             server_version: None,
@@ -233,11 +239,12 @@ impl ServerInstance {
         self.extension_data.get(key).and_then(|v| v.as_str())
     }
 
-    /// 모듈 `[install]` 설정을 설치 방식 익스텐션이 읽는 extension_data로 옮긴다.
+    /// 설치 방식 익스텐션으로 받는 서버라는 표시와, 그 인스턴스만의 값(사용자가 고른 브랜치)을 extension_data에 적는다.
+    /// 모듈 `[install]`의 값(앱 ID 등)은 적지 않는다: 익스텐션은 hook ctx의 `install`이나 module.toml에서 읽는다.
     ///
     /// `manual`·`download`(데몬이 직접 처리) 밖의 방식은 같은 이름의 익스텐션이 맡는다.
-    /// 키 규칙: `install_method_<방식>` = true, 설정 값마다 `<방식>_<이름>`
-    /// (예: steamcmd → `install_method_steamcmd`, `steamcmd_app_id`). 익스텐션 manifest의
+    /// 키 규칙: `install_method_<방식>` = true, 값마다 `<방식>_<이름>`
+    /// (예: steamcmd → `install_method_steamcmd`, `steamcmd_beta`). 익스텐션 manifest의
     /// `instance_fields`와 hook `condition`이 이 이름을 쓴다.
     /// 반환: 바뀐 것이 있으면 true
     pub fn apply_install_extension_data(&mut self, method: &str, fields: &[(&str, serde_json::Value)]) -> bool {
@@ -258,6 +265,15 @@ impl ServerInstance {
         changed
     }
 
+    /// 0.1.14-beta.1까지 인스턴스에 복사해 두던 모듈 `[install]` 값(`<방식>_app_id` 등)을 지운다. 지운 것이 있으면 true
+    pub fn drop_install_copies(&mut self, method: &str) -> bool {
+        let before = self.extension_data.len();
+        for name in ["app_id", "anonymous", "platform", "download_url"] {
+            self.extension_data.remove(&format!("{}_{}", method, name));
+        }
+        self.extension_data.len() != before
+    }
+
     /// 설치한 버전을 적는다. 설치 방식 익스텐션으로 받는 서버에서 고른 버전은 그 방식의 브랜치라
     /// `<방식>_beta`에 적고(업데이트 확인과 업데이트가 그 브랜치를 쓴다), 그 밖에는 게임 버전으로 적는다
     pub fn record_installed_version(&mut self, method: &str, version: &str) {
@@ -274,14 +290,12 @@ impl ServerInstance {
     }
 
     /// 게임 설정 파일에서 읽어 온 값(`import_settings` 결과)을 반영한다: `module_settings`에 넣고,
-    /// 같은 값을 가리키는 인스턴스 필드(포트·REST 비밀번호)도 맞춘다. 안 그러면 인스턴스 필드가
+    /// 같은 값을 가리키는 인스턴스 필드(게임 포트)도 맞춘다. 안 그러면 인스턴스 필드가
     /// 옛 값으로 남아 다음 저장에서 파일을 되돌린다.
-    /// `credential_map`: 데몬 키(`rest_password` 등) → 게임 키(`AdminPassword` 등)
     /// `types`: 설정 이름 → module.toml 필드 타입. 값은 그 타입으로 저장한다(문자열 필드는 문자열 그대로)
     pub fn apply_imported_settings(
         &mut self,
         settings: &serde_json::Map<String, serde_json::Value>,
-        credential_map: &std::collections::HashMap<String, String>,
         types: &std::collections::HashMap<String, String>,
     ) {
         for (key, value) in settings {
@@ -293,47 +307,44 @@ impl ServerInstance {
             self.module_settings.insert(key.clone(), typed);
         }
         // 인스턴스 필드는 이번에 읽은 키로만 맞춘다 (캐시에 남은 옛 값으로 되돌리지 않는다)
-        let port = |key: &str| {
-            settings.get(key).and(self.module_settings.get(key)).and_then(|v| match v {
-                serde_json::Value::Number(n) => n.as_u64(),
-                serde_json::Value::String(s) => s.trim().parse().ok(),
-                _ => None,
-            }).and_then(|p| u16::try_from(p).ok())
-        };
-        if let Some(p) = port("port") { self.port = Some(p); }
-        if let Some(p) = port("rest_port") { self.rest_port = Some(p); }
-        {
-            let daemon_key = "rest_password";
-            let game_key = credential_map.get(daemon_key).map(String::as_str).unwrap_or(daemon_key);
-            let value = self.module_settings.iter()
-                .find(|(k, _)| settings.contains_key(k.as_str()) && (k.eq_ignore_ascii_case(game_key) || k.as_str() == daemon_key))
-                .and_then(|(_, v)| v.as_str())
-                .map(str::to_string);
-            // 파일이 비어 있으면 비어 있는 것이 사실이다: 옛 캐시 값을 남기지 않는다
-            if let Some(pwd) = value {
-                self.rest_password = Some(pwd);
-            }
-        }
+        let port = settings.get("port").and(self.module_settings.get("port")).and_then(|v| match v {
+            serde_json::Value::Number(n) => n.as_u64(),
+            serde_json::Value::String(s) => s.trim().parse().ok(),
+            _ => None,
+        }).and_then(|p| u16::try_from(p).ok());
+        if let Some(p) = port { self.port = Some(p); }
     }
 
-    /// REST 비밀번호가 비어있으면 랜덤 비밀번호로 채웁니다.
+    /// 0.1.14-beta.1까지 인스턴스 칸에 있던 REST 접속값을 `module_settings`로 옮긴다 (한 번). 옮길 것이 있었으면 true.
+    /// `rest`: 모듈의 `[protocols.rest]` (REST를 받지 않는 모듈이면 None: 쓰이지 않던 값이라 버린다).
+    /// 인스턴스 칸이 데몬이 접속하던 값이므로 같은 설정에 남아 있던 옛 값을 덮는다. 사용자 이름은 모듈이 선언한다
+    pub fn take_legacy_rest(&mut self, rest: Option<&crate::supervisor::module_loader::RestSettings>) -> bool {
+        let legacy = std::mem::take(&mut self.legacy_rest);
+        if legacy == LegacyRest::default() {
+            return false;
+        }
+        let Some(rest) = rest else { return true };
+        if let Some(host) = legacy.rest_host.filter(|h| !h.is_empty()) {
+            self.module_settings.insert(rest.host_setting.clone(), serde_json::json!(host));
+        }
+        if let Some(port) = legacy.rest_port {
+            self.module_settings.insert(rest.port_setting.clone(), serde_json::json!(port));
+        }
+        if let (Some(key), Some(password)) = (&rest.password_setting, legacy.rest_password.filter(|p| !p.is_empty())) {
+            self.module_settings.insert(key.clone(), serde_json::json!(password));
+        }
+        true
+    }
+
+    /// REST 비밀번호 설정(`[protocols.rest] password_setting`)이 비어 있으면 랜덤 비밀번호로 채운다 (GUI "비밀번호 자동 생성").
     /// 변경이 발생하면 true를 반환합니다.
-    /// `generate`: 빈 REST 비밀번호를 채우는가 (GUI "비밀번호 자동 생성")
-    pub fn ensure_passwords(&mut self, generate: bool) -> bool {
-        let mut changed = false;
-        if generate && self.rest_password.as_deref().unwrap_or("").is_empty() {
-            let pw = generate_random_password();
-            tracing::info!("Auto-generated REST password for instance {}", self.id);
-            self.rest_password = Some(pw);
-            changed = true;
+    pub fn ensure_rest_password(&mut self, password_setting: &str) -> bool {
+        if self.module_settings.get(password_setting).and_then(|v| v.as_str()).is_some_and(|p| !p.is_empty()) {
+            return false;
         }
-        // REST username은 항상 "admin"으로 고정
-        if self.rest_username.as_deref() != Some("admin") {
-            tracing::info!("Forced rest_username to 'admin' for instance {}", self.id);
-            self.rest_username = Some("admin".to_string());
-            changed = true;
-        }
-        changed
+        tracing::info!("Auto-generated REST password for instance {}", self.id);
+        self.module_settings.insert(password_setting.to_string(), serde_json::json!(generate_random_password()));
+        true
     }
 }
 
@@ -894,10 +905,10 @@ mod tests {
         instance.module_settings.insert("data_home".into(), serde_json::json!("/selected"));
         instance.user_settings.insert("data_home".into());
         let types = std::collections::HashMap::from([("data_home".to_string(), "file".to_string())]);
-        instance.apply_imported_settings(serde_json::json!({"data_home":"/selected"}).as_object().unwrap(), &Default::default(), &types);
+        instance.apply_imported_settings(serde_json::json!({"data_home":"/selected"}).as_object().unwrap(), &types);
         assert!(instance.user_settings.contains("data_home"));
         instance.imported_settings.insert("data_home".into());
-        instance.apply_imported_settings(serde_json::json!({"data_home":"/changed"}).as_object().unwrap(), &Default::default(), &types);
+        instance.apply_imported_settings(serde_json::json!({"data_home":"/changed"}).as_object().unwrap(), &types);
         assert!(!instance.user_settings.contains("data_home"));
         assert!(!instance.imported_settings.contains("data_home"));
     }
@@ -919,21 +930,50 @@ mod tests {
         let mut inst = ServerInstance::new("a", "palworld");
         inst.port = Some(27015);
         let settings = serde_json::json!({"port": "28015", "AdminPassword": "pw", "Other": 1});
-        let map: std::collections::HashMap<String, String> = [("rest_password".to_string(), "adminpassword".to_string())].into();
         let types: std::collections::HashMap<String, String> =
             [("port", "number"), ("AdminPassword", "password")].map(|(k, t)| (k.to_string(), t.to_string())).into();
-        inst.apply_imported_settings(settings.as_object().unwrap(), &map, &types);
+        inst.apply_imported_settings(settings.as_object().unwrap(), &types);
         let raw = serde_json::json!({"AdminPassword": "000123"});
         inst.port = Some(30000); // 사용자가 포트만 바꾼 뒤
-        inst.apply_imported_settings(raw.as_object().unwrap(), &map, &types);
+        inst.apply_imported_settings(raw.as_object().unwrap(), &types);
         assert_eq!(inst.port, Some(30000), "a password-only import must not revert the port");
         inst.port = Some(28015);
         assert_eq!(inst.module_settings.get("AdminPassword"), Some(&serde_json::json!("000123")));
-        assert_eq!(inst.rest_password.as_deref(), Some("000123"));
-        inst.apply_imported_settings(serde_json::json!({"AdminPassword": "pw"}).as_object().unwrap(), &map, &types);
+        inst.apply_imported_settings(serde_json::json!({"AdminPassword": "pw"}).as_object().unwrap(), &types);
         assert_eq!(inst.port, Some(28015));
-        assert_eq!(inst.rest_password.as_deref(), Some("pw"));
         assert_eq!(inst.module_settings.get("Other"), Some(&serde_json::json!(1)));
+    }
+
+    /// D3: REST 접속값은 `module_settings`에만 둔다. 0.1.14-beta.1까지의 instance.json이 인스턴스 칸으로 저장한 값은
+    /// 모듈이 선언한 설정(`[protocols.rest]`)으로 한 번 옮기고, 다시 저장한 파일에는 옛 칸이 없다.
+    /// 인스턴스 칸이 데몬이 접속하던 값이라 같은 설정의 옛 값을 덮는다. REST를 받지 않는 모듈이면 버린다
+    #[test]
+    fn rest_fields_of_an_old_instance_file_move_into_module_settings_once() {
+        use crate::supervisor::module_loader::RestSettings;
+        let old = serde_json::json!({
+            "id": "i1", "name": "pal", "module_name": "palworld", "executable_path": null, "working_dir": null, "auto_detect": true,
+            "process_name": null, "port": 8211, "rest_host": "127.0.0.1", "rest_port": 8242, "rest_username": "admin", "rest_password": "pw-from-field",
+        });
+        let mut inst: ServerInstance = serde_json::from_value(old.clone()).unwrap();
+        inst.module_settings.insert("rest_port".into(), serde_json::json!(8212));
+        // 모듈을 알기 전에는 파일에 그대로 남는다
+        assert_eq!(serde_json::to_value(&inst).unwrap()["rest_port"], 8242);
+        let rest = RestSettings { password_setting: Some("admin_password".into()), username: Some("admin".into()), ..Default::default() };
+        assert!(inst.take_legacy_rest(Some(&rest)));
+        assert_eq!(inst.module_settings["rest_port"], 8242);
+        assert_eq!(inst.module_settings["rest_host"], "127.0.0.1");
+        assert_eq!(inst.module_settings["admin_password"], "pw-from-field");
+        assert!(!inst.module_settings.contains_key("rest_username"));
+        let saved = serde_json::to_value(&inst).unwrap();
+        for key in ["rest_host", "rest_port", "rest_username", "rest_password"] {
+            assert!(saved.get(key).is_none(), "{key}");
+        }
+        assert!(!inst.take_legacy_rest(Some(&rest)), "nothing left to move");
+
+        let mut plain: ServerInstance = serde_json::from_value(old).unwrap();
+        assert!(plain.take_legacy_rest(None));
+        assert!(plain.module_settings.is_empty());
+        assert!(serde_json::to_value(&plain).unwrap().get("rest_port").is_none());
     }
 
     /// 리뷰 P1 (2026-11-08): 사용 모드 전에 "조작 가능한 사람만 접속"을 켜 둔 서버는 access가 없어 서버 공용으로 읽혀
@@ -1299,7 +1339,6 @@ mod tests {
 
         let mut inst = make_test_instance("struct-test", "minecraft");
         inst.module_settings.insert("ram".to_string(), serde_json::json!(4));
-        inst.rest_password = Some("secret123".to_string());
         let id = inst.id.clone();
         store.add(inst).unwrap();
 

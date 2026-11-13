@@ -151,7 +151,7 @@ async fn move_component_dir(
             if let Err(e) = supervisor.refresh_modules() {
                 tracing::warn!("[Paths] Could not reload modules from {}: {}", target.display(), e);
             }
-            supervisor.migrate_list_settings();
+            supervisor.migrate_settings();
         }
         Kind::Extensions => {
             if let Err(e) = extensions.set_extensions_dir(target.clone()) {

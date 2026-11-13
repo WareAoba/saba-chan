@@ -138,7 +138,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         let supervisor = state.supervisor.read().await;
         let instances = supervisor.instance_store.list();
         let all_instances = instances.to_vec();
-        let module_protocols = supervisor.build_module_protocols_map();
+        let module_protocols = supervisor.rest_port_settings();
         let modules = supervisor.module_loader.modules().unwrap_or_default();
         let mut states = std::collections::HashMap::new();
         for instance in instances {
@@ -166,10 +166,11 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     executable_path: instance.executable_path.clone(),
                     working_dir: instance.working_dir.clone(),
                     port: instance.port,
-                    rest_host: instance.rest_host.clone(),
-                    rest_port: instance.rest_port,
-                    rest_username: instance.rest_username.clone(),
-                    rest_password: instance.rest_password.clone(),
+                    // REST 접속값은 모듈 설정에만 있다 (`[protocols.rest]`). 응답에는 예전 이름으로 풀어 싣는다
+                    rest_host: module.as_ref().and_then(|m| m.metadata.rest_host(instance)),
+                    rest_port: module.as_ref().and_then(|m| m.metadata.rest_port(instance)),
+                    rest_username: module.as_ref().and_then(|m| m.metadata.rest()?.username.clone()),
+                    rest_password: module.as_ref().and_then(|m| m.metadata.rest_password(instance)).map(str::to_string),
                     protocol_mode: instance.protocol_mode.clone(),
                     module_settings: instance.module_settings.clone(),
                     server_version: instance.server_version.clone(),
@@ -326,7 +327,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                 target,
                 &all_instances,
                 &every_id,
-                Some(&module_protocols),
+                &module_protocols,
             )
             .into_iter()
             .map(|c| PortConflictInfo {
@@ -508,7 +509,7 @@ pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoRespons
     let modules = {
         let mut supervisor = state.supervisor.write().await;
         let modules = supervisor.refresh_modules();
-        supervisor.migrate_list_settings();
+        supervisor.migrate_settings();
         modules
     };
     if let Ok(m) = &modules {
@@ -745,7 +746,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     let required = {
         let mut supervisor = state.supervisor.write().await;
         let _ = supervisor.refresh_modules();
-        supervisor.migrate_list_settings();
+        supervisor.migrate_settings();
         supervisor.module_loader.get_module(&module_id).ok().as_ref().map(required_extensions).unwrap_or_default()
     };
     // 이 모듈이 쓰는 익스텐션을 받고 켠다 (새로 필요해진 것만 켠다: 예전 판부터 쓰던 것은 사용자가 껐을 수 있다)
@@ -842,7 +843,7 @@ pub async fn remove_module(
     // 캐시 갱신 (write lock)
     let mut supervisor = state.supervisor.write().await;
     let _ = supervisor.refresh_modules();
-    supervisor.migrate_list_settings();
+    supervisor.migrate_settings();
     (StatusCode::OK, Json(json!({ "ok": true, "id": module_id }))).into_response()
 }
 
@@ -1459,22 +1460,15 @@ async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> super::Ou
 
 // NOTE: sync_gui_config は config::save_gui_config に統合されました (portConflictCheck 同期含む)
 /// 실행 전 비밀번호: 빈 REST 비밀번호는 GUI "비밀번호 자동 생성"(`autoGeneratePasswords`, 기본 켬)이 켜져 있을 때만 채운다.
-/// 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만든다(`credential_map`으로 데몬에 돌아온다).
-/// REST를 지원하지 않는 모듈(`[protocols] supported`에 rest가 없음)의 서버에는 REST 계정을 만들지 않고, 남아 있던 것은 지운다. `key`: 인스턴스 id 또는 이름
+/// 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만든다(`rest_credentials`로 데몬에 돌아온다).
+/// 채우는 곳은 모듈이 선언한 설정(`[protocols.rest] password_setting`)이다: 선언이 없으면 만들지 않는다. `key`: 인스턴스 id 또는 이름
 pub(super) async fn fill_passwords(state: &IPCServer, key: &str) {
     let generate = state.config_store.get_gui_settings().await.auto_generate_passwords;
     let mut supervisor = state.supervisor.write().await;
     let found = supervisor.instance_store.find(key).cloned();
     let Some(mut inst) = found else { return };
-    let changed = match supervisor.module_loader.get_module(&inst.module_name).map(|m| m.metadata.supports_protocol("rest")) {
-        Ok(true) => inst.ensure_passwords(generate),
-        // 예전 데몬이 만들어 둔 계정도 치운다 (REST 없는 모듈은 이 값을 쓰지 않는다)
-        Ok(false) if inst.rest_username.is_some() || inst.rest_password.is_some() => {
-            (inst.rest_username, inst.rest_password) = (None, None);
-            true
-        }
-        _ => false,
-    };
+    let password_setting = supervisor.module_loader.get_module(&inst.module_name).ok().and_then(|m| m.metadata.rest()?.password_setting.clone());
+    let changed = generate && password_setting.is_some_and(|key| inst.ensure_rest_password(&key));
     if changed {
         let id = inst.id.clone();
         if let Err(e) = supervisor.instance_store.update(&id, inst) {
@@ -1549,7 +1543,13 @@ mod tests {
         for (name, supported) in [("game", "rest"), ("console", "stdin")] {
             let dir = modules.join(name);
             std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[protocols]\nsupported = [\"{supported}\"]\n")).unwrap();
+            let toml = format!(
+                "[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[protocols]\nsupported = [\"{supported}\"]\n\n\
+                 [protocols.rest]\nport_setting = \"api_port\"\npassword_setting = \"admin_pw\"\n\n\
+                 [[settings.fields]]\nname = \"api_port\"\ntype = \"number\"\nport = true\nlabel = \"api\"\n\n\
+                 [[settings.fields]]\nname = \"admin_pw\"\ntype = \"password\"\nlabel = \"pw\"\n"
+            );
+            std::fs::write(dir.join("module.toml"), toml).unwrap();
             std::fs::write(dir.join("lifecycle.py"), "").unwrap();
         }
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
@@ -1558,9 +1558,7 @@ mod tests {
         state.config_store = Arc::new(crate::config_store::ConfigStore::new(&tmp.path().join("data")));
         let inst = crate::instance::ServerInstance::new("srv", "game");
         let id = inst.id.clone();
-        let mut plain = crate::instance::ServerInstance::new("terra", "console");
-        // 0.1.10이 만들어 둔 값
-        (plain.rest_username, plain.rest_password) = (Some("admin".into()), Some("left-over".into()));
+        let plain = crate::instance::ServerInstance::new("terra", "console");
         let plain_id = plain.id.clone();
         state.supervisor.write().await.instance_store.add(inst).unwrap();
         state.supervisor.write().await.instance_store.add(plain).unwrap();
@@ -1568,19 +1566,18 @@ mod tests {
             let state = state.clone();
             async move {
                 let sup = state.supervisor.read().await;
-                let i = sup.instance_store.get(&id).unwrap();
-                (i.rest_username.clone(), i.rest_password.clone())
+                sup.instance_store.get(&id).unwrap().module_settings.get("admin_pw").and_then(|p| p.as_str()).map(str::to_string)
             }
         };
 
         state.config_store.set_gui_settings_from_json(json!({ "autoGeneratePasswords": false })).await.unwrap();
         fill_passwords(&state, &id).await;
-        assert_eq!(rest(id.clone()).await.1, None, "the setting is off");
+        assert_eq!(rest(id.clone()).await, None, "the setting is off");
         state.config_store.set_gui_settings_from_json(json!({ "autoGeneratePasswords": true })).await.unwrap();
         fill_passwords(&state, "srv").await;
-        assert_eq!(rest(id.clone()).await.1.map(|p| p.len()), Some(16), "found by name too");
+        assert_eq!(rest(id.clone()).await.map(|p| p.len()), Some(16), "found by name too");
         fill_passwords(&state, &plain_id).await;
-        assert_eq!(rest(plain_id).await, (None, None), "a module without REST keeps no REST account");
+        assert_eq!(rest(plain_id).await, None, "a module without REST gets no REST password");
     }
 
     /// 상태는 인스턴스 id로도 묻는다(이름이 바뀌어도 끊기지 않게). 이름으로 불러도 같은 답, 없으면 404

@@ -6,6 +6,7 @@ import os
 import sys
 import tarfile
 import tempfile
+import time
 import unittest
 import zipfile
 from pathlib import Path
@@ -60,6 +61,18 @@ patterns = ["("]
 code = "oom"
 severity = "nonsense"
 patterns = ["OutOfMemoryError"]
+
+[launch]
+diagnose_files = ["logs/none.log", "logs/latest.log"]
+
+[remote_access]
+forced = { "rest-enabled" = "true" }
+
+[remote_access.rcon]
+on = { "enable-rcon" = "true", "broadcast-rcon-to-ops" = "false" }
+off = { "enable-rcon" = "false" }
+port = "rcon.port"
+password = "rcon.password"
 """
 
 
@@ -71,8 +84,7 @@ class ModuleDirTest(unittest.TestCase):
         (self.dir / "locales").mkdir()
         (self.dir / "locales" / "en.json").write_text(json.dumps({
             "messages": {"graceful_stop": "module wording"},
-            "errors": {"detect": {"port_in_use": "port busy"}, "solutions": {"port_in_use": "change port"},
-                       "chat_failed": "chat failed: {{error}}"},
+            "errors": {"detect": {"port_in_use": "port busy"}, "solutions": {"port_in_use": "change port"}},
         }), encoding="utf-8")
         self.i18n = I18n(str(self.dir))
 
@@ -266,11 +278,11 @@ class ChatTests(ModuleDirTest):
         self.assertEqual(daemon_rcon.chat_reply(lambda: {"ok": 1}, self.i18n), {"success": True})
         self.assertEqual(daemon_rcon.chat_reply(lambda: None, self.i18n), {"success": True})
         self.assertEqual(daemon_rcon.chat_reply(lambda: {"success": False, "error": "busy"}, self.i18n),
-                         {"success": False, "message": "chat failed: busy"})
+                         {"success": False, "message": "Game chat send failed: busy"})
 
         def down():
             raise ConnectionError("no daemon")
-        self.assertEqual(daemon_rcon.chat_reply(down, self.i18n), {"success": False, "message": "chat failed: no daemon"})
+        self.assertEqual(daemon_rcon.chat_reply(down, self.i18n), {"success": False, "message": "Game chat send failed: no daemon"})
 
         def outside():
             raise daemon_rcon.PathOutside("x")
@@ -294,6 +306,148 @@ class DiagnoseTests(ModuleDirTest):
         log.write_text("".join(f"line {i}\n" for i in range(1000)), encoding="utf-8")
         self.assertEqual(daemon_rcon.tail_lines(log, 3), ["line 997", "line 998", "line 999"])
         self.assertEqual(daemon_rcon.tail_lines(self.dir / "none.log"), [])
+
+
+    def test_diagnose_log_reads_console_lines_or_the_declared_files(self):
+        """모듈 `diagnose_log()`의 공용 절차 (0.1.14-beta.2): 데몬이 준 줄이 먼저, 없으면 `[launch] diagnose_files` 중 처음 읽히는 파일의 끝"""
+        given = daemon_rcon.diagnose_log({"log_lines": "ok\nFAILED TO BIND"}, self.dir, self.i18n)
+        self.assertEqual((given["success"], given["lines_analyzed"], [i["code"] for i in given["issues"]]), (True, 2, ["PORT_IN_USE"]))
+        work = self.dir / "server"
+        (work / "logs").mkdir(parents=True)
+        (work / "logs" / "latest.log").write_text("boot\njava.lang.OutOfMemoryError\n", encoding="utf-8")
+        read = daemon_rcon.diagnose_log({"log_lines": [], "working_dir": str(work)}, self.dir, self.i18n)
+        self.assertEqual((read["lines_analyzed"], [i["code"] for i in read["issues"]]), (2, ["oom"]))
+        # 모듈이 계산한 파일(files)이 선언보다 먼저다. 읽을 줄이 없으면 문제도 없다
+        other = self.dir / "other.txt"
+        other.write_text("Address already in use\n", encoding="utf-8")
+        chosen = daemon_rcon.diagnose_log({"working_dir": str(work)}, self.dir, self.i18n, files=[other])
+        self.assertEqual([i["code"] for i in chosen["issues"]], ["PORT_IN_USE"])
+        self.assertEqual(daemon_rcon.diagnose_log({}, self.dir, self.i18n), {"success": True, "issues": [], "lines_analyzed": 0})
+
+
+class RemoteAccessTests(ModuleDirTest):
+    """module.toml `[remote_access]`: 사바쨩이 정하는 원격 접속 값 (0.1.14-beta.2)"""
+    ON = {"managed": False, "rcon_port": 25580, "rcon_password": "pw"}
+
+    def test_rcon_is_on_only_for_an_unmanaged_server_with_daemon_credentials(self):
+        self.assertEqual(daemon_rcon.remote_access_values(self.dir, self.ON),
+                         {"rest-enabled": "true", "enable-rcon": "true", "broadcast-rcon-to-ops": "false",
+                          "rcon.port": "25580", "rcon.password": "pw"})
+        off = {"rest-enabled": "true", "enable-rcon": "false"}
+        for config in (None, {}, {"managed": True, "rcon_port": 1, "rcon_password": "pw"}, {"managed": False, "rcon_port": 25580}):
+            self.assertEqual(daemon_rcon.remote_access_values(self.dir, config), off, config)
+
+    def test_a_module_without_the_table_forces_nothing(self):
+        (self.dir / "module.toml").write_text('[module]\nname = "g"\n', encoding="utf-8")
+        self.assertEqual(daemon_rcon.remote_access_values(self.dir, self.ON), {})
+
+    def test_enforce_writes_only_the_values_that_differ(self):
+        written = []
+        current = {"rest-enabled": "true", "enable-rcon": "true", "motd": "hi"}
+        self.assertEqual(daemon_rcon.enforce_remote_access(self.dir, {}, current, written.append), {"enable-rcon": "false"})
+        self.assertEqual(written, [{"enable-rcon": "false"}])
+        self.assertEqual(daemon_rcon.enforce_remote_access(self.dir, {}, {"rest-enabled": "true", "enable-rcon": "false"}, written.append), {})
+        self.assertEqual(len(written), 1)
+        # 빈 값으로 맞출 키가 파일에 없으면 이미 빈 것이다: 새로 적지 않는다
+        (self.dir / "module.toml").write_text(
+            '[module]\nname = "g"\n\n[remote_access.rcon]\nport = "RCONPort"\npassword = "RCONPassword"\noff = { RCONPassword = "" }\n',
+            encoding="utf-8")
+        self.assertEqual(daemon_rcon.enforce_remote_access(self.dir, {}, {}, written.append), {})
+        self.assertEqual(daemon_rcon.enforce_remote_access(self.dir, {}, {"RCONPassword": "old"}, written.append), {"RCONPassword": ""})
+
+
+class JavaDefaultsTests(unittest.TestCase):
+    def test_auto_heap_follows_the_host_memory(self):
+        gib = 1024 ** 3
+        for host, heap in ((None, 8192), ("junk", 8192), (32 * gib, 8192), (8 * gib, 4096), (4 * gib, 2560), (2 * gib, 2048)):
+            env = {} if host is None else {"SABA_HOST_MEMORY": str(host)}
+            with patch.dict(os.environ, env, clear=False):
+                if host is None:
+                    os.environ.pop("SABA_HOST_MEMORY", None)
+                self.assertEqual(daemon_rcon.auto_heap_mb(), heap, host)
+
+    def test_java_release_major(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(daemon_rcon.java_release_major(tmp), 0)
+            for text, major in (('IMPLEMENTOR="x"\nJAVA_VERSION="25.0.1"\n', 25), ('JAVA_VERSION="1.8.0_462"\n', 8),
+                                ('JAVA_VERSION="21"\n', 21), ('JAVA_RUNTIME_VERSION="17.0.2"\n', 0)):
+                Path(tmp, "release").write_text(text, encoding="utf-8")
+                self.assertEqual(daemon_rcon.java_release_major(tmp), major, text)
+
+
+class SmallHelperTests(ModuleDirTest):
+    def test_extension_required_names_the_missing_extensions(self):
+        reply = daemon_rcon.extension_required(self.i18n, "steamcmd", "ue4-ini")
+        self.assertEqual(reply, {"success": False, "error_code": "extension_required", "missing_extensions": ["steamcmd", "ue4-ini"],
+                                 "message": "steamcmd, ue4-ini extension required. Install and enable it in Settings → Extensions."})
+
+    def test_list_dir(self):
+        (self.dir / "b").mkdir()
+        self.assertEqual(daemon_rcon.list_dir(self.dir), ["b", "locales", "module.toml"])
+        self.assertEqual(daemon_rcon.list_dir(self.dir / "none"), [])
+        with self.assertRaises(OSError):
+            daemon_rcon.list_dir(self.dir / "module.toml")
+
+    def test_extension_data_dir(self):
+        with patch.dict(os.environ, {"SABA_EXTENSION_DATA_ROOT": str(self.dir)}):
+            self.assertEqual(daemon_rcon.extension_data_dir("steamcmd"), self.dir / "steamcmd")
+            with self.assertRaises(daemon_rcon.PathOutside):
+                daemon_rcon.extension_data_dir("../x")
+        with patch.dict(os.environ, {"SABA_EXTENSION_DATA_ROOT": ""}), self.assertRaises(EnvironmentError):
+            daemon_rcon.extension_data_dir("steamcmd")
+
+    def test_fetch_json(self):
+        import http.server
+        import threading
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = json.dumps({"agent": self.headers.get("User-Agent")}).encode()
+                self.send_response(200 if self.path == "/ok" else 404)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            base = f"http://127.0.0.1:{server.server_port}"
+            self.assertEqual(daemon_rcon.fetch_json(base + "/ok"), {"agent": "saba-chan"})
+            import urllib.error
+            with self.assertRaises(urllib.error.HTTPError):
+                daemon_rcon.fetch_json(base + "/missing")
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
+@unittest.skipIf(os.name == "nt", "POSIX process tree")
+class ProcessTreeTests(unittest.TestCase):
+    def test_descendants_are_found_without_pgrep(self):
+        """자식·손자를 /proc(없으면 ps)에서 찾는다: pgrep이 없는 PC에서도 서버가 띄운 프로세스를 함께 끝낸다. 맨 아래부터"""
+        import subprocess
+        code = ("import subprocess, sys, time; "
+                "c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); print(c.pid, flush=True); time.sleep(60)")
+        parent = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+        try:
+            child = int(parent.stdout.readline())
+            # /proc이 있으면 바깥 프로그램 없이 찾는다
+            with patch.dict(os.environ, {"PATH": ""} if os.path.isdir("/proc") else {}):
+                self.assertEqual(daemon_rcon._descendants(os.getpid())[-1], parent.pid)
+                self.assertEqual(daemon_rcon._descendants(parent.pid), [child])
+                ok, error = daemon_rcon.force_kill(parent.pid)
+            self.assertEqual((ok, error), (True, None))
+            parent.wait(timeout=10)
+            deadline = time.monotonic() + 10
+            while daemon_rcon.is_process_alive(child) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertFalse(daemon_rcon.is_process_alive(child))
+        finally:
+            parent.kill()
+            parent.stdout.close()
 
 
 class ExtractTests(unittest.TestCase):
@@ -522,6 +676,9 @@ class ProgressAndLocaleTests(ModuleDirTest):
     def test_new_helpers_are_listed_with_their_version(self):
         for name in ("graceful_stop", "update_key_values", "settings_to_file", "diagnose_lines", "safe_extract", "download", "progress"):
             self.assertEqual(daemon_rcon.SINCE[name], "0.1.11-0", name)
+        for name in ("rcon_access", "remote_access_values", "enforce_remote_access", "auto_heap_mb", "java_release_major",
+                     "diagnose_log", "extension_required", "list_dir", "fetch_json", "extension_data_dir"):
+            self.assertEqual(daemon_rcon.SINCE[name], "0.1.14-beta.2", name)
 
 
 class ImportCostTests(unittest.TestCase):

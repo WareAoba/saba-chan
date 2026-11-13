@@ -73,11 +73,7 @@ pub fn public_ports(instance: &ServerInstance, settings: Option<&ModuleSettings>
     let mut out = Vec::new();
     for field in settings.map(|s| s.fields.as_slice()).unwrap_or_default() {
         let Some(protocols) = field.public.as_deref().and_then(protocols_of) else { continue };
-        let core = match field.name.as_str() {
-            "port" => instance.port,
-            "rest_port" => instance.rest_port,
-            _ => None,
-        };
+        let core = if field.name == "port" { instance.port } else { None };
         let value = core
             .or_else(|| instance.module_settings.get(&field.name).and_then(as_port))
             .or_else(|| field.default.as_ref().and_then(|d| serde_json::to_value(d).ok()).as_ref().and_then(as_port));

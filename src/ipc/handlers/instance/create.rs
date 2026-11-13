@@ -380,8 +380,8 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                             .and_then(|(install, _, _)| install.clone())
                             .unwrap();
 
-                        // ── 설치 방식 익스텐션이 읽을 extension_data (신규 생성) ──
-                        instance.apply_install_extension_data(&install_config.method, &install_config.extension_fields());
+                        // ── 설치 방식 표시 (신규 생성): hook 조건이 본다. 설치 값은 모듈 `[install]`에만 있다 ──
+                        instance.apply_install_extension_data(&install_config.method, &[]);
                         // 인스턴스 재저장 (extension_data 업데이트)
                         let _ = supervisor.instance_store.update(&id, instance.clone());
 
@@ -470,10 +470,10 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                 } else {
                     // 마이그레이션: 기존 디렉토리에 직접 연결, 추가 설치 없음
 
-                    // ── 설치 방식 익스텐션이 읽을 extension_data (마이그레이션) ──
+                    // ── 설치 방식 표시 (마이그레이션) ──
                     // hook 조건(`instance.ext_data.install_method_<방식>`)이 맞게 동작하도록
                     if let Some((Some(ref install), _, _)) = module_install {
-                        instance.apply_install_extension_data(&install.method, &install.extension_fields());
+                        instance.apply_install_extension_data(&install.method, &[]);
                     }
 
                     // ── executable_path 자동 계산 ──
@@ -492,7 +492,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                     // ── 기존 INI 설정 import ──
                     // 모듈 호출은 데몬 락 밖에서 (C12). 필요한 값만 챙기고 락을 놓는다.
                     let metadata = supervisor.module_loader.get_module(&module_name_owned).ok().map(|m| m.metadata);
-                    let (credential_map, setting_types) = metadata.as_ref().map(|m| (m.credential_map.clone(), m.setting_types())).unwrap_or_default();
+                    let setting_types = metadata.as_ref().map(|m| m.setting_types()).unwrap_or_default();
                     drop(supervisor);
                     let mut detected: Option<Value> = None;
                     if let Some((_, ref lifecycle_path, ref _server_exe)) = module_install {
@@ -501,7 +501,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                                 if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
                                     let mut imported = instance.clone();
                                     if let Some(settings) = result.get("settings").and_then(|v| v.as_object()) {
-                                        imported.apply_imported_settings(settings, &credential_map, &setting_types);
+                                        imported.apply_imported_settings(settings, &setting_types);
                                         for field in metadata.iter().flat_map(|m| m.settings.iter()).flat_map(|s| &s.fields) {
                                             if (field.field_type == "file" || field.format.as_deref() == Some("path")) && settings.contains_key(&field.name) {
                                                 imported.imported_settings.insert(field.name.clone());
@@ -767,16 +767,14 @@ fn choose_ports(
             tracing::info!("Instance '{}': ports moved by +{} to stay clear of other instances and reserved ports", instance.name, delta);
         }
     }
-    // 기본 REST 포트가 Windows 예약 범위에 들면(팰월드 8212가 Hyper-V 범위 8135-8234 안에 든 PC) 서버가 REST를
+    // 기본 REST 포트가 Windows 예약 범위에 들면(예: 8212가 Hyper-V 범위 8135-8234 안에 든 PC) 서버가 REST를
     // 열지 못한다: 게임 포트를 직접 정했어도, 사용자가 정하지 않은 REST 포트는 예약 범위와 다른 인스턴스의
-    // 포트를 피해 옮긴다. 설치가 모듈 설정 값으로 게임 설정 파일을 쓰므로 같은 이름의 모듈 설정도 맞춘다
-    if let Some(default) = instance.rest_port.filter(|&p| rest_port_defaulted && crate::validator::port_reserved_by_windows(p)) {
+    // 포트를 피해 옮긴다. 설치가 모듈 설정 값으로 게임 설정 파일을 쓴다
+    let rest = supervisor.module_loader.get_module(module).ok().and_then(|m| Some((m.metadata.rest()?.port_setting.clone(), m.metadata.rest_port(instance)?)));
+    if let Some((setting, default)) = rest.filter(|(_, p)| rest_port_defaulted && crate::validator::port_reserved_by_windows(*p)) {
         if let Some(free) = crate::validator::next_free_port(default, taken_or_reserved) {
             tracing::info!("Instance '{}': REST port {} is reserved by Windows, using {}", instance.name, default, free);
-            instance.rest_port = Some(free);
-            if instance.module_settings.contains_key("rest_port") {
-                instance.module_settings.insert("rest_port".to_string(), json!(free));
-            }
+            instance.module_settings.insert(setting, json!(free));
         }
     }
     Ok(port_users)
@@ -795,8 +793,6 @@ fn apply_module_definition(
     let Ok(loaded_module) = supervisor.module_loader.get_module(module) else {
         return Ok(ModuleDefaults::default());
     };
-    // REST 포트를 모듈 기본값으로 채웠는가 (사용자가 정하지 않은 값만 예약 범위 밖으로 옮긴다)
-    let mut rest_port_defaulted = false;
     if let Some(body) = crate::supervisor::module_loader::host_unsupported_body(module, &loaded_module.metadata) {
         return Err(Box::new((StatusCode::CONFLICT, Json(body)).into_response()));
     }
@@ -804,12 +800,6 @@ fn apply_module_definition(
     instance.process_name = loaded_module.metadata.process_name.clone();
     if instance.port.is_none() {
         instance.port = loaded_module.metadata.default_port;
-    }
-    // rest_port 기본값은 모듈이 REST를 지원할 때만 설정
-    let supported = loaded_module.metadata.protocols_supported.as_deref().unwrap_or(&[]);
-    if instance.rest_port.is_none() && supported.iter().any(|s| s == "rest") {
-        instance.rest_port = Some(loaded_module.metadata.default_rest_port());
-        rest_port_defaulted = true;
     }
 
     // 고른 프리셋(`[[presets]]`)의 설정이 바탕이 되고, 따로 보낸 설정이 그 위를 덮는다
@@ -826,9 +816,9 @@ fn apply_module_definition(
     if let Some(given) = payload.get("module_settings").and_then(|v| v.as_object()) {
         chosen.extend(given.clone());
     }
-    if chosen.get("rest_port").is_some_and(|v| !v.is_null()) {
-        rest_port_defaulted = false;
-    }
+    // REST 포트를 모듈 기본값으로 채우는가 (사용자가 정하지 않은 값만 예약 범위 밖으로 옮긴다)
+    let rest_port_defaulted =
+        loaded_module.metadata.rest().is_some_and(|rest| !chosen.get(&rest.port_setting).is_some_and(|v| !v.is_null()));
 
     // 만들 때 동의한 약관 (`[[agreements]]` id). 이 PC에서만 받는다
     let accepted = super::super::managed::requested_agreements(payload, "accept_agreements")?;
@@ -915,7 +905,7 @@ fn apply_module_definition(
         instance.module_settings.insert("managed_start".into(), json!(managed));
     }
     if !dry_run {
-        open_user_runtime(loaded_module.entry_path(), instance);
+        open_user_runtime(&loaded_module, instance);
     }
 
     Ok(ModuleDefaults {

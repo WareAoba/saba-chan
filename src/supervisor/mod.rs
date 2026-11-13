@@ -267,7 +267,7 @@ impl Supervisor {
         self.instance_store.load()?;
         tracing::info!("Loaded {} server instances", self.instance_store.list().len());
 
-        self.migrate_list_settings();
+        self.migrate_settings();
 
         // 고아 managed 프로세스 재연결
         self.reattach_orphaned_managed().await;
@@ -275,28 +275,46 @@ impl Supervisor {
         Ok(())
     }
 
-    /// 모듈이 `list`로 바꾼 설정의 옛 문자열 값을 배열로 읽는다 (06 §8.1). 모듈을 다시 읽은 뒤에도 부른다
-    pub fn migrate_list_settings(&mut self) {
+    /// 저장된 인스턴스 설정을 지금 모듈 선언에 맞춘다. 모듈을 다시 읽은 뒤에도 부른다 (모듈이 없는 인스턴스는 그대로 둔다).
+    /// - 모듈이 `list`로 바꾼 설정의 옛 문자열 값을 배열로 읽는다 (06 §8.1)
+    /// - 0.1.14-beta.1까지 인스턴스 칸에 있던 REST 접속값을 모듈 설정으로 옮겨 저장한다 (`[protocols.rest]`, 한 번)
+    /// - 0.1.14-beta.1까지 인스턴스에 복사해 두던 모듈 `[install]` 값을 지워 저장한다 (한 번)
+    pub fn migrate_settings(&mut self) {
         let loader = &self.module_loader;
+        let mut moved = Vec::new();
         self.instance_store.adjust_in_memory(|instance| {
-            if let Some(settings) = loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()) {
+            let Ok(module) = loader.get_module(&instance.module_name) else { return };
+            if let Some(settings) = &module.metadata.settings {
                 crate::validator::migrate_list_values(&settings.fields, &mut instance.module_settings);
             }
+            let rest_moved = instance.take_legacy_rest(module.metadata.rest());
+            let copies_dropped = module.metadata.install.as_ref().is_some_and(|install| instance.drop_install_copies(&install.method));
+            if rest_moved || copies_dropped {
+                moved.push(instance.clone());
+            }
         });
-    }
-
-    /// 로드된 모듈로부터 module_name → protocols_supported 맵을 빌드합니다.
-    /// `check_port_conflicts`에 전달하여 미지원 프로토콜 포트를 충돌 검사에서 제외합니다.
-    pub(crate) fn build_module_protocols_map(&self) -> HashMap<String, Vec<String>> {
-        let mut map = HashMap::new();
-        if let Ok(modules) = self.module_loader.modules() {
-            for m in modules.iter() {
-                if let Some(protocols) = &m.metadata.protocols_supported {
-                    map.insert(m.metadata.name.clone(), protocols.clone());
-                }
+        for instance in moved {
+            let id = instance.id.clone();
+            if let Err(e) = self.instance_store.update(&id, instance) {
+                tracing::warn!("Could not save the migrated settings of instance {}: {}", id, e);
             }
         }
-        map
+    }
+
+    /// REST를 받는 모듈의 REST 포트 설정 이름 (module_name → `[protocols.rest] port_setting`).
+    /// `check_port_conflicts`가 그 설정 값을 REST 포트로 비교한다
+    pub(crate) fn rest_port_settings(&self) -> HashMap<String, String> {
+        let modules = self.module_loader.modules().unwrap_or_default();
+        modules.iter().filter_map(|m| Some((m.metadata.name.clone(), m.metadata.rest()?.port_setting.clone()))).collect()
+    }
+
+    /// 인스턴스가 저장해 둔 포트: 게임 포트와 모듈의 포트 설정 값
+    pub(crate) fn saved_ports(&self, instance: &crate::instance::ServerInstance) -> Vec<u16> {
+        let fields: Vec<String> = self.module_loader.get_module(&instance.module_name).ok()
+            .and_then(|m| m.metadata.settings.as_ref().map(|s| s.port_fields().into_iter().map(str::to_string).collect()))
+            .unwrap_or_default();
+        let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
+        crate::validator::instance_ports(instance, &fields).into_iter().map(|(_, p)| p).collect()
     }
 
     /// 인스턴스의 실행 파일 경로를 자동 해석합니다.
@@ -347,7 +365,8 @@ impl Supervisor {
         }
     }
 
-    /// 모듈 함수가 인스턴스를 알아보는 데 쓰는 값 (포트·비밀번호·모듈 설정·REST·데이터 폴더 등).
+    /// 모듈 함수가 인스턴스를 알아보는 데 쓰는 값 (포트·비밀번호·모듈 설정·데이터 폴더 등). REST 접속값도 모듈 설정이라
+    /// 모듈이 선언한 설정 이름 그대로 실린다 (`[protocols.rest]`).
     /// 시작·정지·설정·초기화 모두 같은 값을 받아야 같은 서버 파일을 다룬다. 이미 있는 키는 두다.
     pub(crate) fn insert_instance_fields(cfg: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance, instance_dir: &std::path::Path) {
         // 모듈이 서버 폴더 옆에 둔 데이터(좀보이드 cache_dir 등): 격리 실행이 쓸 수 있는 폴더로 싣는다
@@ -360,9 +379,6 @@ impl Supervisor {
         let mut put = |key: &str, value: Value| {
             cfg.entry(key.to_string()).or_insert(value);
         };
-        // REST 포트는 데몬이 접속하는 인스턴스 값이 기준이다 (정지도 그 값을 쓴다). 모듈 설정에 남은 옛 값
-        // (예: 설치가 기본 INI에서 읽어 온 8212)이 먼저 들어가면 모듈이 INI를 그 값으로 맞춰 데몬이 못 붙는다
-        if let Some(v) = instance.rest_port { put("rest_port", json!(v)); }
         // 인스턴스 폴더: 모듈이 그 안에 받아 둔 것(가져온 서버의 포터블 런타임 등)을 시작·점검 모두 같은 자리에서 본다
         put("instance_dir", json!(instance_dir.to_string_lossy()));
         for (key, value) in &instance.module_settings {
@@ -372,9 +388,6 @@ impl Supervisor {
                 put(key, value.clone());
             }
         }
-        if let Some(v) = &instance.rest_host { put("rest_host", json!(v)); }
-        if let Some(v) = &instance.rest_username { put("rest_username", json!(v)); }
-        if let Some(v) = &instance.rest_password { put("rest_password", json!(v)); }
         put("protocol_mode", json!(&instance.protocol_mode));
         if let Some(v) = &instance.server_version { put("server_version", json!(v)); }
         // 모듈 도우미(daemon_stdin_command 등)가 데몬 API로 이 인스턴스를 가리킬 때 쓴다
@@ -446,7 +459,7 @@ impl Supervisor {
             }
         }
 
-        let call = {
+        let (call, tracked_pid) = {
             let s = sup.read().await;
             // Managed 프로세스가 있으면 plugin 호출 없이 직접 판단
             if s.managed_store.get(&instance.id).await.is_some() {
@@ -479,12 +492,26 @@ impl Supervisor {
             for (key, value) in instance.module_settings.iter().filter(|(key, _)| !crate::sandbox::grants_write(key)) {
                 config_obj.entry(key.clone()).or_insert_with(|| value.clone());
             }
-            crate::plugin::PluginCall::new(module_path, "status", Value::Object(config_obj)).serving(tracked_pid).in_instance(s.host_context(&instance.id))
+            (crate::plugin::PluginCall::new(module_path, "status", Value::Object(config_obj)).serving(tracked_pid).in_instance(s.host_context(&instance.id)), tracked_pid)
         };
 
         // Ask module for status
         match call.run().await {
             Ok(result) => {
+                // 모듈에 status가 없다: 데몬이 추적하는 PID가 살아 있는지로 답한다
+                if result.get("error_code").and_then(Value::as_str) == Some("not_supported") {
+                    let pid = tracked_pid.filter(|pid| process::is_process_alive(*pid));
+                    let start_time = match pid {
+                        Some(_) => sup.read().await.tracker.get_start_time(&instance.id).ok(),
+                        None => None,
+                    };
+                    return Ok(json!({
+                        "server": instance.name,
+                        "status": if pid.is_some() { "running" } else { "stopped" },
+                        "pid": pid,
+                        "start_time": start_time,
+                    }));
+                }
                 if result.get("success").and_then(Value::as_bool) == Some(false) {
                     return Ok(result);
                 }
@@ -548,10 +575,6 @@ impl Supervisor {
             let module = s.module_loader.get_module(module_name)?;
             let module_path = module.entry_path();
 
-            // 모듈의 기본값 가져오기 (하드코딩 대신 모듈 설정 사용)
-            let default_rest_port = module.metadata.default_rest_port();
-            let default_rest_host = module.metadata.default_rest_host();
-
             // 명령어 config 구성
             let pid = s.tracker.get_pid(&instance.id).ok();
             let instance_dir = s.instance_store.instance_dir(&instance.id);
@@ -562,8 +585,8 @@ impl Supervisor {
                 "args": args,
                 "protocol_mode": &instance.protocol_mode,
                 "working_dir": &working_dir,
-                "rest_host": instance.rest_host.clone().unwrap_or(default_rest_host),
-                "rest_port": instance.rest_port.unwrap_or(default_rest_port),
+                "rest_host": module.metadata.rest_host(instance),
+                "rest_port": module.metadata.rest_port(instance),
                 "pid": pid,
                 "instance_id": instance_id,
             });
@@ -686,7 +709,7 @@ impl Supervisor {
         // 두 인스턴스가 동시에 처음 켜져도 같은 포트를 고르지 않게, 고르고 저장하는 동안 하나씩만
         static PICKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _picking = PICKING.lock().unwrap_or_else(|e| e.into_inner());
-        // 다른 인스턴스의 RCON·게임·REST 포트는 고르지 않는다
+        // 다른 인스턴스의 RCON 포트와 저장해 둔 포트(게임·REST 등), 이 인스턴스의 포트는 고르지 않는다
         let taken: Vec<u16> = self
             .instance_store
             .list()
@@ -694,11 +717,9 @@ impl Supervisor {
             .filter(|other| other.id != instance.id)
             .flat_map(|other| {
                 let rcon = crate::protocol::rcon::load(&self.instance_store.instance_dir(&other.id)).map(|a| a.port);
-                [rcon, other.port, other.rest_port]
+                rcon.into_iter().chain(self.saved_ports(other))
             })
-            .flatten()
-            .chain(instance.port)
-            .chain(instance.rest_port)
+            .chain(self.saved_ports(instance))
             .collect();
         crate::protocol::rcon::ensure(&dir, port, &taken)
             .map(|_| ())
@@ -1045,15 +1066,15 @@ impl Supervisor {
         Ok(result)
     }
 
-    /// 인스턴스마다 사용자가 정한 `java_path`: `(모듈 진입 파일, java_path)` (`sandbox::reconcile_runtimes`)
+    /// 인스턴스마다 사용자가 런타임 경로 설정에 정한 값: `(모듈 진입 파일, 런타임 실행 파일 경로)` (`sandbox::reconcile_runtimes`)
     pub fn user_runtimes(&self) -> Vec<(String, String)> {
         self.instance_store
             .list()
             .iter()
-            .filter(|inst| inst.user_settings.contains("java_path"))
-            .filter_map(|inst| {
-                let java = inst.module_settings.get("java_path")?.as_str()?.to_string();
-                Some((self.module_loader.get_module(&inst.module_name).ok()?.entry_path(), java))
+            .filter_map(|inst| Some((inst, self.module_loader.get_module(&inst.module_name).ok()?)))
+            .flat_map(|(inst, module)| {
+                let entry = module.entry_path();
+                module.metadata.user_runtime_paths(inst).into_iter().map(|path| (entry.clone(), path.to_string())).collect::<Vec<_>>()
             })
             .collect()
     }
@@ -1250,6 +1271,84 @@ mod tests {
             json!({"source": "discord", "userName": "주인님", "guildName": "사바쨩 서버"})
         );
         assert_eq!(Value::Object(origin_fields(&crate::audit::Origin::new("gui"))), json!({"source": "gui"}));
+    }
+
+    /// D3·A-09: 0.1.14-beta.1까지 instance.json에 있던 REST 접속값은 모듈이 선언한 설정으로 옮겨 저장한다.
+    /// 모듈을 아직 모르는 인스턴스의 값은 파일에 그대로 둔다 (모듈이 생긴 뒤 옮긴다)
+    #[tokio::test]
+    async fn rest_values_of_old_instance_files_move_to_the_declared_settings_on_load() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("pal");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"pal\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[protocols]\nsupported = [\"rest\"]\n\n\
+             [protocols.rest]\nhost_setting = \"api_host\"\nport_setting = \"api_port\"\npassword_setting = \"admin_pw\"\nusername = \"admin\"\n\n\
+             [install]\nmethod = \"steamcmd\"\napp_id = 2394010\n\n\
+             [[settings.fields]]\nname = \"api_port\"\ntype = \"number\"\nport = true\nlabel = \"api\"\ndefault = 8212\n\n\
+             [[settings.fields]]\nname = \"admin_pw\"\ntype = \"password\"\nlabel = \"pw\"\n",
+        )
+        .unwrap();
+        let instances = tmp.path().join("instances");
+        for (id, module) in [("old-pal", "pal"), ("old-gone", "gone")] {
+            std::fs::create_dir_all(instances.join(id)).unwrap();
+            let install_copies = json!({ "install_method_steamcmd": true, "steamcmd_app_id": 111, "steamcmd_anonymous": true, "steamcmd_beta": "unstable" });
+            let file = json!({
+                "id": id, "name": id, "module_name": module, "port": 8211, "extension_data": install_copies,
+                "rest_host": "127.0.0.1", "rest_port": 8242, "rest_username": "admin", "rest_password": "pw",
+            });
+            std::fs::write(instances.join(id).join("instance.json"), file.to_string()).unwrap();
+            std::fs::write(instances.join(id).join("settings.json"), json!({ "api_port": 8212 }).to_string()).unwrap();
+        }
+        let mut sup = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), instances.to_str().unwrap());
+        sup.initialize().await.unwrap();
+
+        let saved = |id: &str, file: &str| -> Value { serde_json::from_str(&std::fs::read_to_string(instances.join(id).join(file)).unwrap()).unwrap() };
+        let moved = sup.instance_store.get("old-pal").unwrap();
+        assert_eq!(moved.module_settings, saved("old-pal", "settings.json").as_object().unwrap().clone().into_iter().collect());
+        assert_eq!(saved("old-pal", "settings.json"), json!({ "api_host": "127.0.0.1", "api_port": 8242, "admin_pw": "pw" }), "the port the daemon used wins over a stale setting");
+        assert!(saved("old-pal", "instance.json").get("rest_port").is_none());
+        // A-09: 인스턴스에 복사해 두던 `[install]` 값은 지우고, 설치 방식 표시와 사용자가 고른 브랜치만 남긴다
+        assert_eq!(saved("old-pal", "instance.json")["extension_data"], json!({ "install_method_steamcmd": true, "steamcmd_beta": "unstable" }));
+        let module = sup.module_loader.get_module("pal").unwrap();
+        assert_eq!((module.metadata.rest_host(moved), module.metadata.rest_port(moved), module.metadata.rest_password(moved)), (Some("127.0.0.1".into()), Some(8242), Some("pw")));
+
+        assert_eq!(saved("old-gone", "instance.json")["rest_port"], 8242, "kept until its module is known");
+        assert_eq!(saved("old-gone", "settings.json"), json!({ "api_port": 8212 }));
+    }
+
+    /// A-06: 모듈에 `status`가 없으면 데몬이 추적하는 PID가 살아 있는지로 답한다 (PID만 보던 모듈 status 세 개를 대신한다)
+    #[tokio::test]
+    async fn a_module_without_status_is_answered_from_the_tracked_pid() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\nsys.stdin.read()\nok = sys.argv[1] == 'functions'\n\
+             print(json.dumps({'success': True, 'functions': ['stop']} if ok else {'success': False, 'message': 'Unknown function: ' + sys.argv[1]}))\n",
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let sup = tokio::sync::RwLock::new(sup);
+
+        let stopped = Supervisor::get_server_status(&sup, &id, "game").await.unwrap();
+        assert_eq!((stopped["status"].as_str(), stopped["pid"].as_u64()), (Some("stopped"), None), "{stopped}");
+        sup.read().await.tracker.track(&id, std::process::id()).unwrap();
+        let running = Supervisor::get_server_status(&sup, &id, "game").await.unwrap();
+        assert_eq!((running["status"].as_str(), running["pid"].as_u64()), (Some("running"), Some(std::process::id() as u64)), "{running}");
+        assert!(running["start_time"].is_number(), "{running}");
+        // 추적표에 남았지만 이미 끝난 프로세스는 꺼진 것이다
+        sup.read().await.tracker.track(&id, 4_000_001).unwrap();
+        let gone = Supervisor::get_server_status(&sup, &id, "game").await.unwrap();
+        assert_eq!(gone["status"], "stopped", "{gone}");
     }
 
     #[tokio::test]
@@ -1461,18 +1560,6 @@ mod tests {
         let merged = with_setting_issues(json!({ "success": true, "issues": [{ "code": "X" }] }), issues.clone());
         assert_eq!((merged["success"].clone(), merged["issues"].as_array().unwrap().len()), (json!(true), 5));
         assert_eq!(with_setting_issues(json!({ "success": true }), issues)["issues"].as_array().unwrap().len(), 4);
-    }
-
-    // 실제 PC: 새 팰월드의 REST 포트를 예약 범위 밖(8242)으로 옮겼는데 모듈 설정에 기본 INI의 8212가 남아,
-    // 모듈이 시작 때 INI를 8212로 맞추고 데몬은 8242로 접속해 REST가 끝내 닿지 않았다
-    #[test]
-    fn modules_get_the_instance_rest_port_over_a_stale_module_setting() {
-        let mut inst = crate::instance::ServerInstance::new("pal", "palworld");
-        inst.rest_port = Some(8242);
-        inst.module_settings.insert("rest_port".into(), json!(8212));
-        let mut cfg = serde_json::Map::new();
-        Supervisor::insert_instance_fields(&mut cfg, &inst, std::path::Path::new("/data/instances/pal"));
-        assert_eq!(cfg["rest_port"], json!(8242));
     }
 
     /// 06 §2: 1분 접속자 수 갱신에 사용자 설정 `players_detail`이 따라가지 않는다

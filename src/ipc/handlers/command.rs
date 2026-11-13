@@ -620,16 +620,12 @@ pub(crate) async fn rest_for(
         }
     };
 
-    // 모듈에서 기본값 가져오기
-    let (default_rest_port, default_rest_host, module_path) =
-        match supervisor.module_loader.get_module(&instance.module_name) {
-            Ok(module) => (
-                module.metadata.default_rest_port(),
-                module.metadata.default_rest_host(),
-                Some(module.entry_path()),
-            ),
-            Err(_) => (8212, "127.0.0.1".to_string(), None),
-        };
+    // 모듈이 선언한 REST 접속값 (`[protocols.rest]`: 인스턴스 설정, 없으면 그 설정의 기본값)
+    let module = supervisor.module_loader.get_module(&instance.module_name).ok();
+    let module_path = module.as_ref().map(|m| m.entry_path());
+    let saved_host = module.as_ref().and_then(|m| m.metadata.rest_host(&instance));
+    let saved_port = module.as_ref().and_then(|m| m.metadata.rest_port(&instance));
+    let declared_username = module.as_ref().and_then(|m| m.metadata.rest()?.username.clone());
 
     // 게임 설정 파일에서 실제 credential을 읽어옴 (메모리 동기화 문제 방지)
     let instance_dir = supervisor.instance_store.instance_dir(id);
@@ -658,16 +654,26 @@ pub(crate) async fn rest_for(
         }
     };
 
-    // REST 정보 확인 - payload에서 먼저 찾고, 없으면 instance에서 찾음, 그래도 없으면 모듈 기본값
+    // REST 정보 확인 - payload에서 먼저 찾고, 없으면 모듈이 선언한 설정 값
     let rest_host = payload
         .get("rest_host")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .or_else(|| instance.rest_host.clone())
-        .unwrap_or(default_rest_host);
+        .or(saved_host)
+        .unwrap_or_else(|| "127.0.0.1".to_string());
 
-    let rest_port = match payload_rest_port(&payload) {
-        Ok(port) => port.or(instance.rest_port).unwrap_or(default_rest_port),
+    let rest_port = match payload_rest_port(&payload).map(|port| port.or(saved_port)) {
+        Ok(Some(port)) => port,
+        Ok(None) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "This server's module declares no REST port",
+                    "error_code": "rest_not_supported"
+                })),
+            )
+                .into_response();
+        }
         Err(given) => {
             return (
                 StatusCode::BAD_REQUEST,
@@ -699,9 +705,10 @@ pub(crate) async fn rest_for(
 
     // Basic Auth — 게임 설정 파일에서만 읽음
     if let Some(ref creds) = file_credentials {
-        let username = creds.get("rest_username").and_then(|v| v.as_str()).unwrap_or("admin");
-        if let Some(pass) = creds.get("rest_password").and_then(|v| v.as_str()) {
-            client.set_basic_auth(username.to_string(), pass.to_string());
+        // 사용자 이름: 모듈이 파일에서 읽어 준 값, 없으면 모듈이 선언한 값 (`[protocols.rest] username`)
+        let username = creds.get("rest_username").and_then(|v| v.as_str()).map(str::to_string).or(declared_username);
+        if let (Some(username), Some(pass)) = (username, creds.get("rest_password").and_then(|v| v.as_str())) {
+            client.set_basic_auth(username, pass.to_string());
         }
     }
 

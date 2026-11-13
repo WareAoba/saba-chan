@@ -79,7 +79,7 @@
 
 | 키 / 값 | 위치 | 상태 |
 |---|---|---|
-| `instance_fields.ue4_ini_enabled`, `ue4_ini_section` | `EXT/ue4_ini/manifest.json` | 이 값을 설정하는 코드가 어디에도 없다. "사용 중" 판정에만 쓰이므로 사실상 항상 미사용이다. |
+| (닫힘) `instance_fields.ue4_ini_enabled`, `ue4_ini_section` | `EXT/ue4_ini/manifest.json` | 값을 넣는 코드가 없어 지웠다(palworld는 `requires_extensions`로 사용 중이 된다). |
 
 ### 1.4 코드는 지원하는데 실제 manifest에서 안 쓰는 것
 
@@ -117,7 +117,7 @@
   - import 가드: 데이터 폴더의 `python-guard/sitecustomize.py`(`plg/:84-96`, `src/plugin/sitecustomize.py`)가 `SABA_ENABLED_EXTENSIONS`에 없는 `extensions.<이름>` import를 `ModuleNotFoundError`로 막는다(`-`와 `_`는 같게 본다).
   - 공용 모듈 `i18n.py`, `daemon_rcon.py`를 modules 디렉토리에 내장본과 같게 맞춘다(`plg/:98-116,217-224`).
 - **확인되지 않은 익스텐션**: 플랫폼과 관계없이 모듈과 같은 거부·동의 정책을 따른다(02 문서 §2.1). Windows는 AppContainer를, 리눅스는 bubblewrap을 쓴다. `bwrap`을 쓸 수 없는 리눅스와 macOS는 격리할 수 없으므로 현재 파일 지문에 대한 동의가 없으면 `sandbox_unavailable`·`isolation_unsupported`와 `component`를 돌려준다. 모듈이 import하는 익스텐션도 각각 자기 동의가 있어야 격리 없이 실행할 수 있다. 모듈의 동의로 다른 익스텐션까지 승인하지 않는다.
-  - hook은 확인된 모듈의 인스턴스에도 불리므로 config의 `instance_dir`·`working_dir`·`install_dir`은 읽기만 준다. 쓸 수 있는 곳은 익스텐션 전용 `<data_dir>/extension-data/<이름>`이고 경로는 환경 변수 `SABA_EXTENSION_DATA_DIR`로 받는다. 모듈이 익스텐션을 import해 쓸 때(SteamCMD 등)는 `SABA_EXTENSION_DATA_ROOT/<id>`에 쓴다(격리된 모듈은 그 모듈만의 뿌리를 받는다, 02 §2.1). 인스턴스 폴더에 써야 하는 익스텐션은 비격리 동의가 있어야 한다. 데몬의 비밀 파일과 `backups/`는 상속을 끊어 두어 이 읽기 권한이 닿지 않는다(02 §2.1).
+  - hook은 확인된 모듈의 인스턴스에도 불리므로 config의 `instance_dir`·`working_dir`·`install_dir`은 읽기만 준다. 쓸 수 있는 곳은 익스텐션 전용 `<data_dir>/extension-data/<이름>`이고 경로는 환경 변수 `SABA_EXTENSION_DATA_DIR`로 받는다. 모듈이 익스텐션을 import해 쓸 때(SteamCMD 등)는 `SABA_EXTENSION_DATA_ROOT/<id>`에 쓴다(격리된 모듈은 그 모듈만의 뿌리를 받는다, 02 §2.1). 이 경로는 공용 도우미 `daemon_rcon.extension_data_dir(<id>)`(saba-core 0.1.14-beta.2, 02 §2.5)로 얻는다: steamcmd의 포터블 SteamCMD 폴더와 xna의 받은 파일 보관 폴더가 쓴다. 인스턴스 폴더에 써야 하는 익스텐션은 비격리 동의가 있어야 한다. 데몬의 비밀 파일과 `backups/`는 상속을 끊어 두어 이 읽기 권한이 닿지 않는다(02 §2.1).
   - `server.pre_start`가 돌려준 `log_follower.program`도 모듈의 실행 대상과 같이 검사한다(인스턴스 폴더·사용자가 정한 서버 폴더 안, 셸 거부, `env_vars`의 `PATH`·`PATHEXT` 버림). 막히면 시작 결과가 `launch_outside_instance`다.
 - **타임아웃과 자리**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`이다. 함수 이름이 `install_server`면 설치 자리 2개를 쓰고, 훅을 포함한 나머지 호출은 일반 자리 8개를 쓴다. 기한은 자리 대기·내부 선조회·Python 환경 준비·실행 전체를 포함한다. 내부 선조회는 바깥 자리와 절대 기한을 재사용한다. 재진입은 바깥 자리를 빌리거나 캐시만 쓰고 캐시가 없으면 실패한다. 상한·정리 규칙은 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)을 따른다.
 - **오류 필드**: 실행기와 훅은 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)의 공통 오류를 유지한다. `error_code`·`module`·`function`·`phase`·`stderr_tail`을 문자열 하나로 바꾸지 않는다. 로컬은 stderr 끝을 보존하고 원격은 빼며, 원격 문자열의 IP·비밀값·절대 경로를 가린다. 모듈이 정한 실패 코드와 메시지는 유지한다.
@@ -149,7 +149,7 @@
 | `server.post_create` | `handlers/instance/create.rs` `create_instance_inner` | 인스턴스 생성(`POST /api/instances`), `instance_store.add` 성공 직후 | `tokio::spawn` 백그라운드, 120s. 결과를 기다리지 않고 바로 네이티브 프로비저닝으로 넘어간다 | `instance_id, instance_dir, instance, module, migration`. `instance`의 REST 비밀번호와 비밀 설정 값(모듈이 password로 선언했거나 이름에 pass·token·secret 같은 낱말이 든 것)은 `***`로 가린다(D-E2) | 결과를 버린다. 프로비저닝과 동시에 돈다 |
 | `server.pre_delete` | `handlers/instance/delete.rs` `pre_delete_hook` | 인스턴스 삭제 | 동기, 120s | `instance_id, instance_name, module, extension_data` | `handled`이면 2초 대기한다(파일 잠금 해제용) |
 | `server.settings_changed` | `handlers/instance/settings.rs` `update_instance_settings` | 인스턴스 설정 PATCH, `extension_data`가 비어 있지 않을 때 | 동기, 120s | `instance_id, instance_dir, instance, module_extensions(module.toml [extensions.*] 전체), extension_data, settings`. `instance`와 `settings`의 비밀 값은 `server.post_create`와 같이 `***`로 가린다(D-E2) | 결과를 버린다(`_results`) |
-| `server.check_update` | `handlers/instance/update.rs` `server_update_status` | `GET /api/instance/:id/check-update`, 그리고 `/api/instance/:id/start`로 새로 켠 뒤 뒤에서(`update_available:true`면 `instance.update_notice {kind:"server"}`, `server.rs` `announce_updates`) | 동기(시작 뒤에는 spawn), 120s | `instance_id, instance_name, module, instance_dir, install_dir, app_id, extension_data` | 설치 방식 익스텐션이 설치한 인스턴스에만 부른다(아니면 hook 없이 `{update_available:false, reason:"update_unsupported"}`, 모듈을 읽지 못했으면 판단하지 않고 아래로). 첫 번째 Ok를 그대로 응답한다. 모두 실패하면 오류 응답에 `update_available:false, reason:"check_failed"`를 붙인다(`update_status_from_hooks`). hook이 없으면 `{update_available:false, reason:"no_hook_handled"}`. `app_id`는 `extension_data["<방식>_app_id"]`, 없으면 module.toml `[install].app_id`(`:1433-1437`). 결과에서 데몬과 화면이 읽는 키(모두 선택): `update_available`, `local_buildid`·`remote_buildid`(설치된 빌드와 새 빌드의 번호), `local_build_time`·`remote_build_time`(그 빌드를 받은 때·올라온 때, 유닉스 초), `reason`·`error`. 데몬은 `local_buildid`·`local_build_time`을 인스턴스 `server_build`에 적어 두고(01 인스턴스 필드), GUI는 새 버전 안내 줄과 정보 탭의 새 버전 줄에 `remote_*`를 보인다 |
+| `server.check_update` | `handlers/instance/update.rs` `server_update_status` | `GET /api/instance/:id/check-update`, 그리고 `/api/instance/:id/start`로 새로 켠 뒤 뒤에서(`update_available:true`면 `instance.update_notice {kind:"server"}`, `server.rs` `announce_updates`) | 동기(시작 뒤에는 spawn), 120s | `instance_id, instance_name, module, instance_dir, install_dir, install, branch, app_id, extension_data` | 설치 방식 익스텐션이 설치한 인스턴스에만 부른다(아니면 hook 없이 `{update_available:false, reason:"update_unsupported"}`, 모듈을 읽지 못했으면 판단하지 않고 아래로). 첫 번째 Ok를 그대로 응답한다. 모두 실패하면 오류 응답에 `update_available:false, reason:"check_failed"`를 붙인다(`update_status_from_hooks`). hook이 없으면 `{update_available:false, reason:"no_hook_handled"}`. `install`은 그 모듈 module.toml `[install]` 표 그대로(`method`, `app_id`, `anonymous`, `beta`, `download_size` 등, 없는 키는 빠진다)이고 인스턴스에 복사해 둔 값이 아니다: 모듈이 앱 ID를 바꾸면 기존 서버의 확인도 따라간다. `branch`는 사용자가 고른 브랜치(`extension_data["<방식>_beta"]`), 없으면 `[install].beta`, 그것도 없으면 null. `app_id`는 `install.app_id`와 같은 값으로, 0.1.14-beta.1까지의 익스텐션이 읽는다(`instance/update.rs` `check_update_context`, saba-core 0.1.14-beta.2). 결과에서 데몬과 화면이 읽는 키(모두 선택): `update_available`, `local_buildid`·`remote_buildid`(설치된 빌드와 새 빌드의 번호), `local_build_time`·`remote_build_time`(그 빌드를 받은 때·올라온 때, 유닉스 초), `reason`·`error`. 데몬은 `local_buildid`·`local_build_time`을 인스턴스 `server_build`에 적어 두고(01 인스턴스 필드), GUI는 새 버전 안내 줄과 정보 탭의 새 버전 줄에 `remote_*`를 보인다 |
 | `command.<name>` (익스텐션 명령) | `handlers/command.rs:90-102` | `POST /api/instance/:id/command`에서 모듈에 없는 명령 | 동기, 120s | `instance_id, instance_name, module, extension_data, running, args` | 결과를 명령 응답으로 돌려준다 |
 
 manifest에 발화되지 않는 hook을 새로 선언하면 `parse_manifest`가 v1에서 거부, v0에서 경고한다(`ext/:387-390`).
@@ -179,7 +179,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 | 파일 | `__main__` 디스패치 | daemon context와 맞는지 |
 |---|---|---|
-| `EXT/steamcmd/steamcmd.py:879-915` | `FUNCTIONS = check_update, ensure, status`. `_run_cli`는 실패도 `{success:false,error,message}`로 출력하고 0으로 종료한다. BOM을 제거한다(`:891-912`) | `check_update`는 `app_id, install_dir`, 브랜치는 `branch` → `extension_data.steamcmd_beta` → `"public"` 순으로 읽는다(`:846-876`). daemon은 `app_id, install_dir, extension_data`를 준다. 원격 buildid를 읽지 못하면(SteamCMD 없음·`app_info_print` 실패·그 브랜치 buildid 없음) `reason:"check_failed", error`를 붙인다. OK |
+| `EXT/steamcmd/steamcmd.py` | `FUNCTIONS = check_update, ensure, status`. 진입점은 공용 `run_lifecycle`이다 | `check_update`는 `install.app_id`, `install_dir`, 브랜치는 `branch`(없으면 `"public"`)를 읽는다. daemon은 `install, branch, app_id, install_dir, extension_data`를 준다(위 hook 표). 원격 buildid를 읽지 못하면(SteamCMD 없음·`app_info_print` 실패·그 브랜치 buildid 없음) `reason:"check_failed", error`를 붙인다. OK |
 | `EXT/ue4_ini/ue4_ini.py` | **`__main__`가 없다.** 함수 시그니처도 `(ini_path, …)`라 hook 프로토콜과 맞지 않는다 | hook을 선언하지 않으므로 문제없다. module이 `from extensions.ue4_ini import …`로 쓰는 **순수 라이브러리**다 |
 
 ---
@@ -334,18 +334,18 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 
 ## 5. 익스텐션별 기능 요약 · module과의 연결
 
-### 5.2 steamcmd (v0.1.0)
+### 5.2 steamcmd
 
-- `SteamCMD` 클래스(`steamcmd.py:151-622`): 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. `check_update`는 설치된 빌드를 받은 때(appmanifest `LastUpdated`)와 그 브랜치의 빌드가 올라온 때(`app_info_print` branches의 `timeupdated`)를 `local_build_time`·`remote_build_time`으로 함께 답한다(Steam이 주지 않으면 `null`). 압축 해제는 경로 탈출을 막는다(`:799-827`).
-- daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `from extensions.steamcmd import SteamCMD`로 직접 수행한다(`M:palworld/lifecycle.py:1175`, `M:zomboid/lifecycle.py:1457`).
-- `install_for_module(module_dir, install_dir, beta=None)`(steamcmd 다음 판): 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. `beta` 인자(인스턴스가 고른 브랜치, 02 §3.3 `list_versions`)가 있으면 `[install].beta`보다 먼저 쓴다. 반환은 `SteamCMD.install`과 같다.
-- 설치 진행률은 SteamCMD 출력의 `progress:` 줄 → 설치 폴더 appmanifest의 `BytesDownloaded`/`BytesToDownload`(`_manifest_progress`) → 늘어난 디스크 크기와 앱별 어림 총량(`_disk_progress`) 순으로 읽는다. 출력은 파이프에서 버퍼에 묶이기 쉽다. 디스크 크기가 어림 총량을 넘으면(미리 잡은 파일 크기·받기 임시 파일) 진행률을 올리지 않고 직전 값을 유지한다.
-- instance_fields `install_method_steamcmd`, `steamcmd_app_id` 등은 daemon이 module의 `[install] method`를 보고 **범용 규칙**(`install_method_<방식>`, `<방식>_<이름>`)으로 채운다(`src/instance/mod.rs:142-166` `apply_install_extension_data`). core에 steamcmd 이름은 없다.
+- `SteamCMD` 클래스: 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. `check_update`는 설치된 빌드를 받은 때(appmanifest `LastUpdated`)와 그 브랜치의 빌드가 올라온 때(`app_info_print` branches의 `timeupdated`)를 `local_build_time`·`remote_build_time`으로 함께 답한다(Steam이 주지 않으면 `null`). 받은 SteamCMD 압축은 데몬 공용 `safe_extract`(02 §2.5)로 포터블 폴더에 바로 풀고, 풀기가 실패하면 실행 파일을 지워 다음 호출이 다시 받게 한다. 설치 시간 초과 때의 프로세스 트리 종료는 데몬 공용 `force_kill`이다.
+- daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `from extensions.steamcmd import SteamCMD`로 직접 수행한다(palworld·zomboid `install_server`의 `install_for_module`).
+- `install_for_module(module_dir, install_dir, beta=None)`(steamcmd 다음 판): 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`, `download_size`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. `beta` 인자(인스턴스가 고른 브랜치, 02 §3.3 `list_versions`)가 있으면 `[install].beta`보다 먼저 쓴다. 반환은 `SteamCMD.install`과 같다.
+- 설치 진행률은 SteamCMD 출력의 `progress:` 줄 → 설치 폴더 appmanifest의 `BytesDownloaded`/`BytesToDownload`(`_manifest_progress`) → 늘어난 디스크 크기와 모듈이 적은 어림 총량(module.toml `[install] download_size`, `_disk_progress`) 순으로 읽는다. 익스텐션 안의 앱 ID별 크기 표(`_KNOWN_APP_SIZES`)는 지웠다: 게임 지식은 그 게임의 module.toml에만 둔다. `download_size`가 없는 모듈은 디스크 크기로 어림하지 않는다. 출력은 파이프에서 버퍼에 묶이기 쉽다. 디스크 크기가 어림 총량을 넘으면(미리 잡은 파일 크기·받기 임시 파일) 진행률을 올리지 않고 직전 값을 유지한다.
+- instance_fields는 `install_method_steamcmd`(설치 방식 표시, hook 조건)와 `steamcmd_beta`(사용자가 고른 브랜치) 둘뿐이다. daemon이 module의 `[install] method`를 보고 **범용 규칙**(`install_method_<방식>`, `<방식>_beta`)으로 채운다(`ServerInstance::apply_install_extension_data`, `record_installed_version`). 앱 ID·익명 로그인·플랫폼 같은 모듈 값은 인스턴스에 복사하지 않아 `steamcmd_app_id`·`steamcmd_anonymous`·`steamcmd_platform` 필드는 지웠다(0.1.14-beta.2, `min_app_version` 0.1.14-beta.2). core에 steamcmd 이름은 없다.
 
-### 5.4 ue4-ini (v0.1.0, 디렉토리명 `ue4_ini`)
+### 5.4 ue4-ini (디렉토리명 `ue4_ini`)
 
-- `parse_option_settings(ini_path)`와 `write_option_settings(ini_path, props, section, quoted_keys, bare_keys)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py:23,163`). hook은 선언하지 않는다. 쓰기는 같은 폴더 임시 파일에 쓰고 바꾸되, 격리 실행처럼 권한을 옮기지 못하거나 임시 파일을 만들 수 없으면 원래 파일을 제자리에서 덮어쓴다(데몬 `atomic_write`와 같은 규칙, 02-modules §2.5). 값의 따옴표는 기본으로 값 모양(True/False·숫자·괄호 목록은 그대로, 나머지는 따옴표)으로 정하고, 모듈이 형식을 아는 키는 `quoted_keys`(숫자처럼 보여도 문자열)·`bare_keys`(열거형·빈 목록)로 덮어쓴다. 줄바꿈이 든 값은 OptionSettings 줄을 깨므로 쓰지 않고 False를 돌려준다.
-- palworld가 `requires_extensions = ["steamcmd", "ue4-ini"]`로 요구한다(`M:palworld/module.toml:51`). `try/except ImportError`로 import하고 INI를 건드리는 함수만 `extension_required`를 돌려준다(`M:palworld/lifecycle.py:32-37`). disable하면 import 가드가 import를 막는다(2.1).
+- `parse_option_settings(ini_path)`와 `write_option_settings(ini_path, props, section, quoted_keys, bare_keys)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py:23,163`). hook도 권한(`permissions`)도 선언하지 않는다. 쓰기는 데몬 공용 `atomic_write`(02-modules §2.5)를 그대로 쓴다(`min_app_version` 0.1.12): 같은 폴더 임시 파일에 쓰고 바꾸되, 격리 실행처럼 권한을 옮기지 못하거나 임시 파일을 만들 수 없으면 원래 파일을 제자리에서 덮어쓴다. 값의 따옴표는 기본으로 값 모양(True/False·숫자·괄호 목록은 그대로, 나머지는 따옴표)으로 정하고, 모듈이 형식을 아는 키는 `quoted_keys`(숫자처럼 보여도 문자열)·`bare_keys`(열거형·빈 목록)로 덮어쓴다. 줄바꿈이 든 값은 OptionSettings 줄을 깨므로 쓰지 않고 False를 돌려준다.
+- palworld가 `requires_extensions = ["steamcmd", "ue4-ini"]`로 요구한다(`M:palworld/module.toml`). `try/except ImportError`로 import하고 INI를 건드리는 함수만 `extension_required`를 돌려준다. disable하면 import 가드가 import를 막는다(2.1).
 
 ### 5.5 module → extension 참조 방식
 
@@ -365,7 +365,6 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 ### 7.1 Dead code / 미구현
 
 3. 읽는 코드가 없는 `module_config_section` 필드(`ext/:254-256`)가 남아 있다.
-9. `ue4_ini_enabled` instance_field: 설정하는 경로가 없다.
 
 ### 7.2 버그 · 위험
 

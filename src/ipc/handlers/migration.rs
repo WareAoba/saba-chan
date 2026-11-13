@@ -46,10 +46,10 @@ fn absolute_path(path: &str) -> Result<PathBuf, Response> {
     Ok(p)
 }
 
-/// 비밀값을 뺀 인스턴스: REST 비밀번호와 모듈이 `password`로 선언한 설정.
+/// 비밀값을 뺀 인스턴스: 모듈이 `password`로 선언한 설정(REST 비밀번호 포함)과 옛 파일의 REST 비밀번호 칸.
 /// 모듈을 읽지 못해 설정 종류를 모르면(`types`가 None) 모듈 설정을 모두 뺀다
 pub(crate) fn strip_instance_secrets(instance: &mut ServerInstance, types: Option<&HashMap<String, String>>) {
-    instance.rest_password = None;
+    instance.legacy_rest.rest_password = None;
     match types {
         Some(types) => instance.module_settings.retain(|k, _| types.get(k).map(String::as_str) != Some("password")),
         None => instance.module_settings.clear(),
@@ -332,6 +332,10 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
             }
             if verdict == Verdict::Add { added.push(entry) } else { replaced.push(entry) }
         }
+        // 옛 버전에서 내보낸 묶음의 인스턴스 칸(REST 접속값 등)을 지금 모양으로
+        if !req.dry_run {
+            sup.migrate_settings();
+        }
     }
 
     // 이 PC가 이미 페어링돼 있으면 그 토큰을 둔다
@@ -413,12 +417,12 @@ mod tests {
     #[test]
     fn export_without_secrets_drops_passwords_but_keeps_other_settings() {
         let mut i = inst("a", None);
-        i.rest_password = Some("pw".into());
+        i.legacy_rest.rest_password = Some("pw".into());
         i.module_settings.insert("AdminPassword".into(), json!("secret"));
         i.module_settings.insert("port".into(), json!(25565));
         let types = HashMap::from([("AdminPassword".to_string(), "password".to_string()), ("port".to_string(), "number".to_string())]);
         strip_instance_secrets(&mut i, Some(&types));
-        assert_eq!(i.rest_password, None);
+        assert_eq!(i.legacy_rest.rest_password, None);
         assert!(!i.module_settings.contains_key("AdminPassword"));
         assert_eq!(i.module_settings.get("port"), Some(&json!(25565)));
     }

@@ -26,10 +26,6 @@ const PC_ONLY = new Set([
 /** 데몬이 인스턴스 최상위에 두는 공통 칸 (GUI useServerSettingsStore 와 같다): 최상위가 진짜다 */
 const TOP_LEVEL = new Set([
     'port',
-    'rest_host',
-    'rest_port',
-    'rest_username',
-    'rest_password',
     'executable_path',
     'working_dir',
     'protocol_mode',

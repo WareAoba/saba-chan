@@ -10,7 +10,9 @@
       "no_settings": "설정 값이 제공되지 않았습니다",
       "no_command": "명령이 지정되지 않았습니다",
       "server_not_running": "서버가 실행 중이 아닙니다. 먼저 서버를 시작해주세요.",
-      "timeout": "서버 응답 시간이 초과되었습니다. 서버 상태를 확인해주세요."
+      "timeout": "서버 응답 시간이 초과되었습니다. 서버 상태를 확인해주세요.",
+      "chat_failed": "게임 채팅 전송 실패: {{error}}",
+      "extension_required": "{{extension}} 익스텐션 필요. 설정 → 익스텐션에서 설치하고 활성화해 주세요."
     },
     "messages": {
       "force_killed": "서버 프로세스 {{pid}}를 강제로 끝냈습니다",
@@ -32,7 +34,9 @@
       "no_settings": "No settings provided",
       "no_command": "No command specified",
       "server_not_running": "Server is not running. Please start the server first.",
-      "timeout": "Server response timed out. Please check the server status."
+      "timeout": "Server response timed out. Please check the server status.",
+      "chat_failed": "Game chat send failed: {{error}}",
+      "extension_required": "{{extension}} extension required. Install and enable it in Settings → Extensions."
     },
     "messages": {
       "force_killed": "Server process {{pid}} was force stopped",
@@ -54,7 +58,9 @@
       "no_settings": "設定が提供されていません",
       "no_command": "コマンドが指定されていません",
       "server_not_running": "サーバーが起動していません。先にサーバーを起動してください。",
-      "timeout": "サーバーの応答がタイムアウトしました。サーバーの状態を確認してください。"
+      "timeout": "サーバーの応答がタイムアウトしました。サーバーの状態を確認してください。",
+      "chat_failed": "ゲームチャット送信失敗: {{error}}",
+      "extension_required": "{{extension}} 拡張機能が必要です。設定 → 拡張機能 でインストールして有効にしてください。"
     },
     "messages": {
       "force_killed": "サーバープロセス {{pid}} を強制終了しました",
@@ -76,7 +82,9 @@
       "no_settings": "未提供设置",
       "no_command": "未指定命令",
       "server_not_running": "服务器未运行。请先启动服务器。",
-      "timeout": "服务器响应超时。请检查服务器状态。"
+      "timeout": "服务器响应超时。请检查服务器状态。",
+      "chat_failed": "游戏聊天发送失败:{{error}}",
+      "extension_required": "需要 {{extension}} 扩展。请在 设置 → 扩展 中安装并启用。"
     },
     "messages": {
       "force_killed": "已强制结束服务器进程 {{pid}}",
@@ -98,7 +106,9 @@
       "no_settings": "未提供設定",
       "no_command": "未指定指令",
       "server_not_running": "伺服器未執行。請先啟動伺服器。",
-      "timeout": "伺服器回應逾時。請檢查伺服器狀態。"
+      "timeout": "伺服器回應逾時。請檢查伺服器狀態。",
+      "chat_failed": "傳送至遊戲聊天失敗：{{error}}",
+      "extension_required": "需要 {{extension}} 擴充功能。在設定 → 擴充功能中安裝並啟用。"
     },
     "messages": {
       "force_killed": "已強制結束伺服器處理程序 {{pid}}",
@@ -120,7 +130,9 @@
       "no_settings": "No se proporcionaron ajustes",
       "no_command": "No se especificó ningún comando",
       "server_not_running": "El servidor no está en ejecución. Inicia primero el servidor.",
-      "timeout": "Se agotó el tiempo de respuesta del servidor. Comprueba el estado del servidor."
+      "timeout": "Se agotó el tiempo de respuesta del servidor. Comprueba el estado del servidor.",
+      "chat_failed": "Error al enviar al chat del juego: {{error}}",
+      "extension_required": "Se requiere la extensión {{extension}}. Instálala y actívala en Ajustes → Extensiones."
     },
     "messages": {
       "force_killed": "Se forzó el cierre del proceso {{pid}}",
@@ -142,7 +154,9 @@
       "no_settings": "Nenhuma configuração fornecida",
       "no_command": "Nenhum comando especificado",
       "server_not_running": "O servidor não está em execução. Inicie o servidor primeiro.",
-      "timeout": "O servidor demorou demais para responder. Verifique o status do servidor."
+      "timeout": "O servidor demorou demais para responder. Verifique o status do servidor.",
+      "chat_failed": "Falha ao enviar ao chat do jogo: {{error}}",
+      "extension_required": "Extensão {{extension}} necessária. Instale e ative-a em Configurações → Extensões."
     },
     "messages": {
       "force_killed": "O processo {{pid}} foi encerrado à força",
@@ -164,7 +178,9 @@
       "no_settings": "Настройки не предоставлены",
       "no_command": "Не указана команда",
       "server_not_running": "Сервер не запущен. Сначала запустите сервер.",
-      "timeout": "Сервер не ответил вовремя. Проверьте состояние сервера."
+      "timeout": "Сервер не ответил вовремя. Проверьте состояние сервера.",
+      "chat_failed": "Не удалось отправить в игровой чат: {{error}}",
+      "extension_required": "Требуется расширение {{extension}}. Установите и включите его в разделе Настройки → Расширения."
     },
     "messages": {
       "force_killed": "Процесс {{pid}} принудительно остановлен",
@@ -186,7 +202,9 @@
       "no_settings": "Keine Einstellungen angegeben",
       "no_command": "Kein Befehl angegeben",
       "server_not_running": "Der Server läuft nicht. Bitte starte zuerst den Server.",
-      "timeout": "Zeitüberschreitung bei der Serverantwort. Bitte prüfe den Serverstatus."
+      "timeout": "Zeitüberschreitung bei der Serverantwort. Bitte prüfe den Serverstatus.",
+      "chat_failed": "Senden an Spielchat fehlgeschlagen: {{error}}",
+      "extension_required": "Erweiterung {{extension}} erforderlich. Installiere und aktiviere sie unter Einstellungen → Erweiterungen."
     },
     "messages": {
       "force_killed": "Serverprozess {{pid}} wurde erzwungen beendet",
@@ -208,7 +226,9 @@
       "no_settings": "Aucun paramètre fourni",
       "no_command": "Aucune commande indiquée",
       "server_not_running": "Le serveur n'est pas démarré. Démarrez d'abord le serveur.",
-      "timeout": "Le serveur n'a pas répondu à temps. Vérifiez l'état du serveur."
+      "timeout": "Le serveur n'a pas répondu à temps. Vérifiez l'état du serveur.",
+      "chat_failed": "Échec de l'envoi au chat du jeu : {{error}}",
+      "extension_required": "Extension {{extension}} requise. Installez-la et activez-la dans Paramètres → Extensions."
     },
     "messages": {
       "force_killed": "Le processus {{pid}} a été arrêté de force",

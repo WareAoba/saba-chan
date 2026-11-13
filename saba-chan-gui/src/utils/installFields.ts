@@ -68,7 +68,7 @@ export const latestRelease = (res?: ApiBody | null): string => {
 };
 
 /** 데몬이 인스턴스 포트로 다루는 칸 (module_loader CORE_PORT_FIELDS) */
-const CORE_PORT_FIELDS = ['port', 'rest_port'];
+const CORE_PORT_FIELDS = ['port'];
 
 /** 상세 설정에서 뺄 칸 종류: 비밀번호(데몬이 정한다)·파일 경로는 만든 뒤 서버 설정에서 */
 const NOT_PRESET_TYPES = ['password', 'file'];
