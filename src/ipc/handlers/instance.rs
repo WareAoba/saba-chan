@@ -18,8 +18,6 @@ mod update;
 pub use create::{check_new_instance, create_instance};
 pub use delete::{delete_instance, DeleteQuery};
 pub use provision::{dismiss_provision_progress, get_provision_progress};
-use settings::extra_args_from;
-pub(crate) use settings::settings_rejection;
 pub use settings::update_instance_settings;
 pub use update::{apply_server_update, cancel_server_update, check_server_update};
 
@@ -151,7 +149,7 @@ pub async fn launch_preview(
         Some(_) => return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "settings must be an object", "error_code": "invalid_body", "message": "settings must be an object" }))).into_response(),
     };
     // 보내지 않으면 저장된 추가 인자로 본다
-    let extra = match body.get("extra_args").map(extra_args_from) {
+    let extra = match body.get("extra_args").map(crate::service::instance::settings::extra_args_from) {
         None => None,
         Some(Some(args)) => Some(args),
         Some(None) => {

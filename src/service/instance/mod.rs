@@ -8,6 +8,7 @@ use crate::service::Failure;
 
 pub(crate) mod create;
 pub(crate) mod provision;
+pub(crate) mod settings;
 
 /// 요청 값 하나가 잘못됐다는 400 `invalid_format`: `error`에 이유
 pub(crate) fn invalid_field(field: &str, error: impl Into<String>) -> Failure {

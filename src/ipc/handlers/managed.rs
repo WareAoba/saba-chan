@@ -335,8 +335,8 @@ pub async fn write_properties_handler(
     // PATCH와 같은 검사(타입·범위·선택지·형식, 모르는 키)를 지난 값만 게임 파일에 쓴다
     if let Some(settings) = &settings {
         let supervisor = state.supervisor.read().await;
-        if let Some(rejected) = supervisor.instance_store.get(&id).and_then(|inst| super::instance::settings_rejection(&supervisor, inst, &id, settings)) {
-            return rejected;
+        if let Some(rejected) = supervisor.instance_store.get(&id).and_then(|inst| crate::service::instance::settings::settings_rejection(&supervisor, inst, &id, settings)) {
+            return rejected.into_response();
         }
     }
     let resp = match Supervisor::manage_properties(&state.supervisor, &id, "write", settings.clone()).await {
