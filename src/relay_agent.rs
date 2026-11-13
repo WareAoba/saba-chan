@@ -851,6 +851,7 @@ impl Session {
         };
         // 모듈 locales 파일은 하트비트마다 읽으므로 async 작업자 밖에서 읽는다
         let views = self.server.modules().await;
+        let commands = remote_commands(&views);
         let modules: Vec<Value> = tokio::task::spawn_blocking(move || views.iter().map(relay_module_entry).collect())
         .await
         .unwrap_or_else(|e| if e.is_panic() { std::panic::resume_unwind(e.into_panic()) } else { Vec::new() });
@@ -891,8 +892,12 @@ impl Session {
         // 인스턴스별로 서버와 명령을 부르는 낱말 (어느 길드에서나 같다, 릴레이는 찾기·위험 확인에 쓴다).
         // 비어도 싣는다: 이 키가 있으면 릴레이는 옛 길드별 `instanceWords`·전역 별명을 보지 않는다
         meta["serverWords"] = crate::chat::words::heartbeat(&bot.server_words);
-        // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
-        meta["permissions"] = permissions_by_guild(&bot.node_settings);
+        // 디스코드·챗봇에서 쓸 수 있는 액션 (P2). 상한을 넘으면 잘라 표시한다
+        let loaded = self.server.supervisor.read().await.list_modules().unwrap_or_default();
+        let (actions, truncated) = crate::actions::heartbeat_actions(&crate::chat::i18n::languages(), &loaded);
+        // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다. 요구 레벨은 위 서버·모듈·액션 목록 그대로 센다
+        let targets = crate::actions::RemoteTargets { actions, commands, instances: remote_instances(&servers) };
+        meta["permissions"] = permissions_by_guild(&bot.node_settings, &targets);
         meta["permissionsAt"] = json!(permissions_at);
         // `/사바쨩 상태` 끝 줄의 다음 할 일 (J1-a, GUI·CLI와 같은 단계)
         meta["onboarding"] = crate::ipc::handlers::diagnostics::onboarding_now(&self.server).await;
@@ -901,10 +906,7 @@ impl Session {
         if let Some(language) = Some(self.server.config_store.pc_language().await).filter(|l| l.len() <= 10) {
             meta["language"] = Value::String(language);
         }
-        // 디스코드·챗봇에서 쓸 수 있는 액션 (P2). 상한을 넘으면 잘라 표시한다
-        let loaded = self.server.supervisor.read().await.list_modules().unwrap_or_default();
-        let (actions, truncated) = crate::actions::heartbeat_actions(&crate::chat::i18n::languages(), &loaded);
-        meta["actions"] = Value::Array(actions);
+        meta["actions"] = Value::Array(targets.actions);
         if truncated {
             meta["actionsTruncated"] = Value::Bool(true);
         }
@@ -1708,9 +1710,8 @@ async fn permission_action(server: &crate::ipc::IPCServer, who: &crate::chat::pe
         .await;
     match result {
         Ok(Ok(node)) => {
-            let p = crate::chat::permissions::NodePermissions::from_node(Some(&Value::Object(node)));
             // 저장을 마친 뒤의 시각: 릴레이는 이보다 먼저 읽은 heartbeat 권한을 버린다
-            let mut data = permission_entry(&p);
+            let mut data = permission_entry(&Value::Object(node), &remote_targets(server).await);
             data["permissionsAt"] = json!(now_ms());
             json!({ "success": true, "data": data })
         }
@@ -1722,21 +1723,18 @@ async fn permission_action(server: &crate::ipc::IPCServer, who: &crate::chat::pe
 /// 길드당 싣는 명령별 덮어쓰기 수. 넘으면 키 순으로 자르고 `commandLevelsTruncated`를 둔다 (릴레이는 데몬 판정에 맡긴다)
 const COMMAND_LEVELS_PER_GUILD: usize = 200;
 
-/// 길드별 `{defaultLevel, members, chatbotCap, levels, commandLevels}` (릴레이 바깥 검사용). `nodeSettings`에 있는 길드는
+/// 길드별 `{defaultLevel, members, chatbotCap, levels, commandLevels, required}` (릴레이 바깥 검사용). `nodeSettings`에 있는 길드는
 /// 값이 없어도 늘 싣는다 (부여값을 다 지운 길드도 릴레이가 데몬 행을 지우게). 릴레이에서만 부여한 행은 릴레이가 남긴다.
 /// `levels`는 그 길드 프리셋으로 푼 risk별 요구 레벨이다. 최종 판정은 데몬이 다시 한다
-fn permissions_by_guild(node_settings: &Value) -> Value {
-    let map: serde_json::Map<String, Value> = node_settings
-        .as_object()
-        .into_iter()
-        .flatten()
-        .map(|(guild, node)| (guild.clone(), permission_entry(&crate::chat::permissions::NodePermissions::from_node(Some(node)))))
-        .collect();
+fn permissions_by_guild(node_settings: &Value, targets: &crate::actions::RemoteTargets) -> Value {
+    let map: serde_json::Map<String, Value> =
+        node_settings.as_object().into_iter().flatten().map(|(guild, node)| (guild.clone(), permission_entry(node, targets))).collect();
     Value::Object(map)
 }
 
-/// 한 길드의 권한 스냅샷 (heartbeat `permissions[guild]`, `permission` action 응답이 같은 모양)
-fn permission_entry(p: &crate::chat::permissions::NodePermissions) -> Value {
+/// 한 길드(`nodeSettings[guild]`)의 권한 스냅샷 (heartbeat `permissions[guild]`, `permission` action 응답이 같은 모양)
+fn permission_entry(node: &Value, targets: &crate::actions::RemoteTargets) -> Value {
+    let p = &crate::chat::permissions::NodePermissions::from_node(Some(node));
     let mut keys: Vec<&String> = p.command_levels.keys().collect();
     keys.sort();
     let command_levels: serde_json::Map<String, Value> =
@@ -1758,9 +1756,40 @@ fn permission_entry(p: &crate::chat::permissions::NodePermissions) -> Value {
         "ladder": p.ladder,
     });
     if keys.len() > COMMAND_LEVELS_PER_GUILD {
+        // 덮어쓰기가 이만큼 많으면 서버별 요구 레벨도 그만큼 커지므로 싣지 않는다 (릴레이는 모르는 것으로 보고 데몬 판정에 맡긴다)
         entry["commandLevelsTruncated"] = json!(true);
+    } else {
+        // 액션·명령마다 지금 요구 레벨 (SINCE 0.1.14-beta.2). 릴레이는 이 값만 읽고 규칙을 따로 갖지 않는다
+        let allowed: Option<Vec<&str>> = node.get("allowedInstances").and_then(Value::as_array).map(|l| l.iter().filter_map(Value::as_str).collect());
+        entry["required"] = crate::actions::required_snapshot(p, allowed.as_deref(), targets);
     }
     entry
+}
+
+/// 모듈 이름 → 디스코드·챗봇에 내보내는 명령 (이름, risk). heartbeat `modules[].commands.fields`와 같은 목록이다
+fn remote_commands(views: &[crate::chat::api::ModuleView]) -> Vec<(String, Vec<(String, String)>)> {
+    views
+        .iter()
+        .map(|m| {
+            let list = m.commands.iter().filter(|c| c.remote).map(|c| (c.name.clone(), crate::commands::risk_of(c.risk.as_deref()).to_string())).collect();
+            (m.name.clone(), list)
+        })
+        .collect()
+}
+
+/// heartbeat `servers` 항목 → (인스턴스 id, 모듈 이름)
+fn remote_instances(servers: &[Value]) -> Vec<(String, String)> {
+    let text = |s: &Value, key: &str| s.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+    servers.iter().map(|s| (text(s, "id"), text(s, "module"))).collect()
+}
+
+/// 요구 레벨을 셀 대상 (`permission` action 응답용. heartbeat는 이미 읽은 목록을 쓴다)
+async fn remote_targets(server: &crate::ipc::IPCServer) -> crate::actions::RemoteTargets {
+    use crate::chat::api::DaemonApi;
+    let loaded = server.supervisor.read().await.list_modules().unwrap_or_default();
+    let (actions, _) = crate::actions::heartbeat_actions(&crate::chat::i18n::languages(), &loaded);
+    let instances = server.supervisor.read().await.instance_store.list().iter().map(|i| (i.id.clone(), i.module_name.clone())).collect();
+    crate::actions::RemoteTargets { actions, commands: remote_commands(&server.modules().await), instances }
 }
 
 /// `bot.node_settings[guild].allowedInstances` → `{ guild: [instance id, ...] }`. 하나도 없으면 None
@@ -2691,7 +2720,7 @@ mod tests {
         let at = res["data"]["permissionsAt"].as_u64().unwrap_or_else(|| panic!("no permissionsAt: {res}"));
         assert!(at >= before && at <= now_ms());
         // 응답은 heartbeat `permissions[guild]`와 같은 모양이다
-        for key in ["defaultLevel", "members", "chatbotCap", "levels", "commandLevels", "ladder"] {
+        for key in ["defaultLevel", "members", "chatbotCap", "levels", "commandLevels", "ladder", "required"] {
             assert!(res["data"].get(key).is_some(), "no {key}: {res}");
         }
     }
@@ -3155,6 +3184,8 @@ mod tests {
         const MAPS: &[&str] = &[
             "metadata.allowedInstances", "metadata.fullNotice", "metadata.startNotice", "metadata.serverWords", "metadata.serverWords.*.commands",
             "metadata.permissions", "metadata.permissions.*.members", "metadata.permissions.*.commandLevels",
+            "metadata.permissions.*.required.actions", "metadata.permissions.*.required.commands", "metadata.permissions.*.required.commands.*",
+            "metadata.permissions.*.required.servers", "metadata.permissions.*.required.servers.*.actions", "metadata.permissions.*.required.servers.*.commands",
             "metadata.actions[].title", "metadata.actions[].name", "metadata.actions[].description",
             "metadata.modules[].display_names", "metadata.modules[].module_aliases_by_language",
             "metadata.modules[].commands.fields[].titles", "metadata.modules[].commands.fields[].descriptions",
@@ -3365,18 +3396,29 @@ mod tests {
         // 릴레이가 요구 레벨을 미리 셀 수 있게 프리셋을 푼 risk별 레벨, 챗봇 상한, 명령별 덮어쓰기도 싣는다
         let default_levels = json!({ "safe": 0, "caution": 1, "danger": 2, "admin": 2 });
         let ladder = json!([{ "id": 3 }, { "id": 2 }, { "id": 1 }, { "id": 0 }, { "id": -1 }]);
+        let nothing = json!({ "actions": {}, "commands": {}, "servers": {} });
         assert_eq!(
-            permissions_by_guild(&nodes),
+            permissions_by_guild(&nodes, &Default::default()),
             json!({
-                "g1": { "defaultLevel": 1, "members": { "a": 2 }, "chatbotCap": 1, "levels": default_levels, "commandLevels": { "i/stop": 3 }, "ladder": ladder },
-                "g2": { "defaultLevel": 1, "members": {}, "chatbotCap": 0, "levels": { "safe": 1, "caution": 2, "danger": 3, "admin": 3 }, "commandLevels": {}, "ladder": ladder },
-                "g3": { "defaultLevel": -1, "members": {}, "chatbotCap": 0, "levels": default_levels, "commandLevels": {}, "ladder": ladder }
+                "g1": { "defaultLevel": 1, "members": { "a": 2 }, "chatbotCap": 1, "levels": default_levels, "commandLevels": { "i/stop": 3 }, "ladder": ladder, "required": nothing },
+                "g2": { "defaultLevel": 1, "members": {}, "chatbotCap": 0, "levels": { "safe": 1, "caution": 2, "danger": 3, "admin": 3 }, "commandLevels": {}, "ladder": ladder, "required": nothing },
+                "g3": { "defaultLevel": -1, "members": {}, "chatbotCap": 0, "levels": default_levels, "commandLevels": {}, "ladder": ladder, "required": nothing }
             })
         );
+        // 요구 레벨은 그 길드가 볼 수 있는 서버만, 권한 판정과 같은 값으로 싣는다 (`actions::required_snapshot`)
+        let targets = crate::actions::RemoteTargets {
+            actions: vec![json!({ "id": "server.stop", "risk": "safe", "scope": "instance" })],
+            commands: Vec::new(),
+            instances: vec![("i".into(), "mc".into()), ("x".into(), "mc".into())],
+        };
+        let listed = permissions_by_guild(&nodes, &targets);
+        assert_eq!(listed["g1"]["required"], json!({ "actions": { "server.stop": 1 }, "commands": {}, "servers": { "i": { "actions": { "server.stop": 3 } } } }));
+        assert_eq!(listed["g2"]["required"]["servers"], json!({}));
         let many: serde_json::Map<String, Value> = (0..COMMAND_LEVELS_PER_GUILD + 5).map(|i| (format!("i/c{i:04}"), json!(2))).collect();
-        let big = permissions_by_guild(&json!({ "g": { "commandLevels": many } }));
+        let big = permissions_by_guild(&json!({ "g": { "commandLevels": many } }), &Default::default());
         assert_eq!(big["g"]["commandLevels"].as_object().unwrap().len(), COMMAND_LEVELS_PER_GUILD);
         assert_eq!(big["g"]["commandLevelsTruncated"], true);
+        assert!(big["g"].get("required").is_none(), "left to the daemon when the overrides do not fit");
     }
 
     #[test]

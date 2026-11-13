@@ -80,6 +80,11 @@
                     "levels": { "safe": 1, "caution": 2, "danger": 3, "admin": 3 },
                     "commandLevels": { "say": 1 },
                     "commandLevelsTruncated": true,
+                    "required": {
+                        "actions": { "server.start": 1, "module.install": 3 },
+                        "commands": { "minecraft": { "say": 2 } },
+                        "servers": { "inst-0001": { "actions": { "server.stop": 3 }, "commands": { "say": 1 } } }
+                    },
                     "ladder": [{ "id": 3 }, { "id": 2, "name": "운영진" }, { "id": 1 }, { "id": 0 }, { "id": -1 }]
                 }
             },

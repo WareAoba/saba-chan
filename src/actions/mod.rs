@@ -71,6 +71,8 @@ pub struct Field {
     pub in_path: bool,
     /// 다른 조회 액션의 결과에서 고르는 값 (스키마의 `optionsFrom`)
     pub options_from: Option<OptionsFrom>,
+    /// 배열 칸의 항목 모양 (JSON Schema 글, 스키마의 `items`). 말하는 사바쨩이 항목을 만들 때 본다
+    pub items: Option<&'static str>,
 }
 
 /// 입력 칸의 값을 고를 목록: 같은 인스턴스에서 `action`을 부른 결과의 `list` 배열, 항목의 `value` 키가 값이고 `label` 키가 보일 이름
@@ -83,11 +85,11 @@ pub struct OptionsFrom {
 }
 
 const fn field(name: &'static str, ty: &'static str, required: bool) -> Field {
-    Field { name, ty, required, in_path: false, options_from: None }
+    Field { name, ty, required, in_path: false, options_from: None, items: None }
 }
 
 const fn path_field(name: &'static str) -> Field {
-    Field { name, ty: "string", required: true, in_path: true, options_from: None }
+    Field { name, ty: "string", required: true, in_path: true, options_from: None, items: None }
 }
 
 /// 액션 선언
@@ -126,6 +128,27 @@ use Surface::{Chatbot, Cli, Discord, Gui};
 const ALL: &[Surface] = &[Gui, Cli, Discord, Chatbot];
 const LOCAL: &[Surface] = &[Gui, Cli];
 const LOCAL_AND_CHATBOT: &[Surface] = &[Gui, Cli, Chatbot];
+
+/// 예약 작업 하나의 모양 (`scheduler::ScheduledTask`). 시각은 데몬 PC의 시간대다
+const SCHEDULE_ITEM: &str = r#"{
+  "type": "object",
+  "required": ["action"],
+  "description": "Set every_minutes, or at (HH:MM, the PC's local time). With at, at most one of weekdays, every_days or date; none means every day.",
+  "properties": {
+    "action": { "enum": ["backup", "restart", "announce", "update", "start", "stop", "save", "command"] },
+    "every_minutes": { "type": "integer" },
+    "at": { "type": "string" },
+    "weekdays": { "type": "array", "items": { "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] } },
+    "every_days": { "type": "integer" },
+    "start_date": { "type": "string", "description": "YYYY-MM-DD, with every_days" },
+    "date": { "type": "string", "description": "YYYY-MM-DD, once" },
+    "warn_minutes": { "type": "array", "items": { "type": "integer" }, "description": "restart, update, stop: in-game warnings this many minutes before" },
+    "message": { "type": "string", "description": "announce" },
+    "command": { "type": "string", "description": "command: a game command name" },
+    "args": { "type": "object", "description": "command: input name to value" },
+    "enabled": { "type": "boolean" }
+  }
+}"#;
 const LOCAL_AND_DISCORD: &[Surface] = &[Gui, Cli, Discord];
 
 const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'static [Surface], instance: bool, method: &'static str, path: &'static str) -> Def {
@@ -192,8 +215,14 @@ pub static ACTIONS: &[Def] = &[
         ..def("instance.create", Kind::Admin, "caution", LOCAL_AND_CHATBOT, false, "POST", "/api/instances")
     },
     Def { open_input: true, ..def("instance.settings.set", Kind::Admin, "caution", LOCAL_AND_CHATBOT, true, "PATCH", "/api/instance/:id") },
+    // 목록을 통째로 바꾼다: `revision`은 `instance.schedule.get`에서 읽은 판이다. 그사이 바뀐 일정은 덮어쓰지 않는다.
+    // 말하는 사바쨩은 읽은 판을 꼭 실어야 한다 (`refuse_unread_schedule`)
     Def {
-        fields: &[field("schedule", "array", true), field("backup_keep", "integer", false)],
+        fields: &[
+            Field { items: Some(SCHEDULE_ITEM), ..field("schedule", "array", true) },
+            field("backup_keep", "integer", false),
+            field("revision", "string", false),
+        ],
         ..def("instance.schedule.set", Kind::Admin, "caution", LOCAL_AND_CHATBOT, true, "PUT", "/api/instance/:id/schedule")
     },
     def("instance.delete", Kind::Admin, "danger", LOCAL, true, "DELETE", "/api/instance/:id"),
@@ -258,7 +287,8 @@ pub static ACTIONS: &[Def] = &[
     },
     // 앱 화면에서 하던 일을 액션으로 (원격 MCP가 앱과 같은 표면으로 닿게). 디스코드·챗봇 표면은 넓히지 않는다
     def("instance.get", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id"),
-    def("instance.schedule.get", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id/schedule"),
+    // 말하는 사바쨩도 읽는다: 읽어야 기존 예약을 지우지 않고 더하거나 고친다 (SINCE 0.1.14-beta.2)
+    def("instance.schedule.get", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/schedule"),
     Def { fields: &[field("name", "string", true)], ..def("instance.rename", Kind::Admin, "caution", LOCAL, true, "POST", "/api/instance/:id/rename") },
     def("module.list", Kind::Query, "safe", LOCAL, false, "GET", "/api/modules"),
     def("module.available", Kind::Query, "safe", LOCAL, false, "GET", "/api/modules/manifest"),
@@ -509,6 +539,9 @@ fn schema(def: &Def) -> Value {
             let mut prop = json!({ "type": f.ty });
             if let Some(o) = &f.options_from {
                 prop["optionsFrom"] = json!({ "action": o.action, "list": o.list, "value": o.value, "label": o.label });
+            }
+            if let Some(items) = f.items.and_then(|s| serde_json::from_str::<Value>(s).ok()) {
+                prop["items"] = items;
             }
             (f.name.to_string(), prop)
         })
@@ -1248,6 +1281,63 @@ fn preset_need(perms: &NodePermissions, kind: Kind, risk: &str) -> i64 {
     }
 }
 
+/// 요구 레벨 스냅샷의 재료: 디스코드·챗봇에서 부를 수 있는 액션과 모듈 명령, 서버 목록 (heartbeat가 싣는 것과 같은 목록)
+#[derive(Default)]
+pub struct RemoteTargets {
+    /// heartbeat `actions` 항목 (`heartbeat_actions`): `id`·`risk`·`scope`를 읽는다
+    pub actions: Vec<Value>,
+    /// 모듈 이름 → 원격으로 부르는 명령 (이름, risk)
+    pub commands: Vec<(String, Vec<(String, String)>)>,
+    /// (인스턴스 id, 모듈 이름)
+    pub instances: Vec<(String, String)>,
+}
+
+/// heartbeat `permissions[guild].required` (SINCE 0.1.14-beta.2): 한 길드에서 액션·모듈 명령마다 지금 요구 레벨.
+/// 판정(`authorize`)·권한 계단과 같은 `required_level`로 세어, 릴레이가 규칙을 따로 갖지 않고 이 값만 읽게 한다.
+/// `actions`·`commands`는 덮어쓰기가 없는 서버에서의 값이고(서버 없는 액션은 최종값), `servers`에는 서버마다 그와 다른 것만 싣는다.
+/// `allowed`는 그 길드가 볼 수 있는 서버다 (없으면 모두)
+pub fn required_snapshot(perms: &NodePermissions, allowed: Option<&[&str]>, targets: &RemoteTargets) -> Value {
+    let instances: Vec<&(String, String)> = targets.instances.iter().filter(|(id, _)| allowed.is_none_or(|a| a.contains(&id.as_str()))).collect();
+    let mut actions = Map::new();
+    let mut commands = Map::new();
+    let mut servers: Map<String, Value> = Map::new();
+    for a in &targets.actions {
+        let Some(id) = a["id"].as_str() else { continue };
+        // 모듈 조회(`server.query:<이름>`)는 표에 없다: 권한 계단과 같이 조회로 본다
+        let def = find(id);
+        let kind = def.map_or(Kind::Query, |d| d.kind);
+        let risk = a["risk"].as_str().unwrap_or("safe");
+        let fixed = def.and_then(|d| d.discord_level);
+        if a["scope"] != "instance" {
+            actions.insert(id.to_string(), json!(required_level(perms, "", id, None, kind, risk, fixed)));
+            continue;
+        }
+        let base = fixed.unwrap_or_else(|| preset_need(perms, kind, risk));
+        actions.insert(id.to_string(), json!(base));
+        for (instance, _) in &instances {
+            let level = required_level(perms, instance, id, None, kind, risk, fixed);
+            if level != base {
+                servers.entry(instance.clone()).or_insert_with(|| json!({}))["actions"][id] = json!(level);
+            }
+        }
+    }
+    for (module, list) in &targets.commands {
+        let mut defaults = Map::new();
+        for (name, risk) in list {
+            let base = perms.default_required(name, risk);
+            defaults.insert(name.clone(), json!(base));
+            for (instance, _) in instances.iter().filter(|(_, m)| m == module) {
+                let level = perms.required(instance, name, risk);
+                if level != base {
+                    servers.entry(instance.clone()).or_insert_with(|| json!({}))["commands"][name.as_str()] = json!(level);
+                }
+            }
+        }
+        commands.insert(module.clone(), Value::Object(defaults));
+    }
+    json!({ "actions": actions, "commands": commands, "servers": servers })
+}
+
 /// 액션의 덮어쓰기 키 (먼저 보는 것부터). 내장 서버 액션은 명령 경로·권한 화면과 같은 키(`<instance>/stop` 등)가 먼저다
 fn override_keys(instance: &str, id: &str) -> Vec<String> {
     if instance.is_empty() {
@@ -1524,10 +1614,11 @@ async fn plan_one(server: &IPCServer, id: &str, instance: Option<&str>, input: &
     let r = resolve(server, id, instance, input, caller).await?;
     authorize(server, &r, caller).await?;
     refuse_restore_while_running(server, &r).await?;
+    refuse_unread_schedule(server, &r, caller).await?;
     let summary = summarize(server, &r, &caller.locale).await;
     let plan_id = new_plan_id();
     let confirm = !confirmed && needs_confirm(server, &r.id, r.instance.as_deref(), r.kind, &r.risk, caller).await;
-    let view = json!({
+    let mut view = json!({
         "success": true,
         "planId": plan_id,
         "actionId": r.id,
@@ -1537,6 +1628,12 @@ async fn plan_one(server: &IPCServer, id: &str, instance: Option<&str>, input: &
         "needsConfirm": confirm,
         "expiresAt": expires_at(),
     });
+    // 원격 화면은 요약 줄 대신 이 글을 보인다 (`Text`, 문장은 릴레이가 만든다). 글이 없는 액션은 요약 줄 그대로
+    if caller.remote.is_some() {
+        if let Some(text) = plan_text_of(server, &r).await {
+            view["text"] = text.to_json();
+        }
+    }
     store_plan(plan_id, StoredPlan::new(PlanBody::One(Box::new(r)), caller, confirm));
     Ok(view)
 }
@@ -1699,6 +1796,34 @@ async fn refuse_restore_while_running(server: &IPCServer, r: &Resolved) -> Resul
         }
         _ => Ok(()),
     }
+}
+
+/// 예약 바꾸기는 목록을 통째로 보낸다: 읽은 판(`revision`)이 지금과 다르면 계획부터 거절한다 (저장 때 한 번 더 본다).
+/// 말하는 사바쨩은 읽은 판 없이 바꾸지 못한다 (읽지 않고 보내면 기존 예약이 지워진다)
+async fn refuse_unread_schedule(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<(), ActionError> {
+    let ("instance.schedule.set", Some(i)) = (r.id.as_str(), &r.instance) else { return Ok(()) };
+    let sup = server.supervisor.read().await;
+    let Some(instance) = sup.instance_store.get(i) else { return Ok(()) };
+    match r.input.get("revision").and_then(Value::as_str) {
+        Some(read) if read != crate::ipc::handlers::schedule::schedule_revision(instance) => {
+            Err(ActionError::new(409, "schedule_changed", "The schedule was changed elsewhere; read it again"))
+        }
+        None if caller.surface == Chatbot || caller.remote.as_ref().is_some_and(|w| w.via_chatbot) => {
+            Err(bad_input("revision", "read the schedule first (instance.schedule.get) and send its revision"))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// 계획의 원격용 확인 글. 예약 바꾸기는 달라지는 작업만 적는다
+async fn plan_text_of(server: &IPCServer, r: &Resolved) -> Option<crate::chat::Text> {
+    let ("instance.schedule.set", Some(i)) = (r.id.as_str(), &r.instance) else { return None };
+    let after: Vec<crate::scheduler::ScheduledTask> = serde_json::from_value(r.input.get("schedule")?.clone()).ok()?;
+    let sup = server.supervisor.read().await;
+    let instance = sup.instance_store.get(i)?;
+    let keep = instance.backup_keep.unwrap_or(crate::ipc::handlers::backup::DEFAULT_KEEP as u32);
+    let keep_after = r.input.get("backup_keep").and_then(Value::as_u64).map_or(keep, |k| k as u32);
+    Some(summary::schedule_changes(&instance.schedule, &after, (keep, keep_after)))
 }
 
 /// 원격 설정 변경의 바꾸기 전 값 (`input`의 키마다). 인스턴스 칸에 없으면 모듈 설정에서, 그것도 없으면 Null
@@ -1954,6 +2079,12 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
     if let (true, "server.address", Some(instance)) = (ok, r.id.as_str(), &r.instance) {
         localize_port_labels(server, instance, &mut result, &caller.locale).await;
         hide_address(caller.surface, &mut result);
+    }
+    // 예약의 실행 이력은 길다: 말하는 사바쨩에는 일정과 판이 잘리지 않게 뺀다
+    if r.id == "instance.schedule.get" && caller.surface == Chatbot {
+        if let Some(map) = result.as_object_mut() {
+            map.remove("history");
+        }
     }
     // 백업 목록 항목에 사람이 읽을 이름을 붙인다 (복원 칸에서 고를 때 보인다)
     if ok && r.id == "backup.list" {

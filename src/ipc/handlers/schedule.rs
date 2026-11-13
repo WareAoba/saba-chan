@@ -34,7 +34,7 @@ pub struct ScheduleBody {
 }
 
 /// 일정과 보관 수의 지문. 목록 전체를 다시 보내는 편집이 그사이 바뀐 일정을 덮어쓰지 않게 한다
-fn schedule_revision(instance: &crate::instance::ServerInstance) -> String {
+pub(crate) fn schedule_revision(instance: &crate::instance::ServerInstance) -> String {
     crate::config_store::patch::revision(&json!({ "schedule": instance.schedule, "backup_keep": instance.backup_keep }))
 }
 

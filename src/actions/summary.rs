@@ -3,6 +3,7 @@
 
 use crate::chat::i18n::Catalog;
 use crate::chat::Text;
+use crate::scheduler::{ScheduledTask, TaskAction};
 use serde_json::Value;
 
 /// 목록은 이만큼만 줄로 보이고 나머지는 개수로 센다
@@ -295,6 +296,105 @@ fn server_update_apply(result: &Value) -> Text {
     }
 }
 
+fn sched(key: &str) -> Text {
+    Text::key(format!("actions.summary.schedule.{key}"))
+}
+
+/// 예약 바꾸기 계획의 확인 글 (`plan`의 `text`): 더해지는 작업, 바뀌는 작업, 지워지는 작업을 한 줄씩. 그대로인 작업은 적지 않는다.
+/// `keep`은 보관할 백업 수의 (지금, 바꾼 뒤)이고 달라질 때만 적는다
+pub(crate) fn schedule_changes(before: &[ScheduledTask], after: &[ScheduledTask], keep: (u32, u32)) -> Text {
+    // 그대로인 작업을 하나씩 짝지어 뺀다 (같은 작업이 둘이면 둘 다 남아야 그대로다)
+    let mut added: Vec<&ScheduledTask> = after.iter().collect();
+    let mut removed: Vec<&ScheduledTask> = Vec::new();
+    for task in before {
+        match added.iter().position(|a| *a == task) {
+            Some(i) => drop(added.remove(i)),
+            None => removed.push(task),
+        }
+    }
+    // 빠진 작업과 같은 종류의 새 작업은 그 작업을 고친 것으로 본다
+    let mut changed: Vec<(&ScheduledTask, &ScheduledTask)> = Vec::new();
+    removed.retain(|old| match added.iter().position(|a| a.action == old.action && a.command == old.command) {
+        Some(i) => {
+            changed.push((old, added.remove(i)));
+            false
+        }
+        None => true,
+    });
+    let whole = |task: &ScheduledTask| Text::seq([schedule_when(task), Text::from(" "), schedule_what(task)]);
+    let mut lines: Vec<Text> = added.iter().map(|task| sched("added").var("task", whole(task))).collect();
+    lines.extend(changed.iter().map(|(old, new)| {
+        let (before, after) = schedule_change(old, new);
+        sched("changed").var("before", before).var("after", after)
+    }));
+    lines.extend(removed.iter().map(|task| sched("removed").var("task", whole(task))));
+    if keep.0 != keep.1 {
+        lines.push(sched("keep").var("before", keep.0.to_string()).var("after", keep.1.to_string()));
+    }
+    if lines.is_empty() {
+        return sched("none");
+    }
+    Text::lines(lines)
+}
+
+/// 언제 도는지: N분마다, 또는 규칙(매일·요일·N일마다·그날 한 번)과 시각
+fn schedule_when(task: &ScheduledTask) -> Text {
+    let time = task.at.as_deref().unwrap_or_default();
+    if let Some(minutes) = task.every_minutes {
+        return sched("when.every_minutes").var("minutes", minutes.to_string());
+    }
+    if let Some(date) = &task.date {
+        return sched("when.once").var("date", date).var("time", time);
+    }
+    if !task.weekdays.is_empty() {
+        let days = Text::join(", ", task.weekdays.iter().map(|d| sched(&format!("weekday.{d}")).or(d)));
+        return sched("when.weekly").var("days", days).var("time", time);
+    }
+    match task.every_days {
+        Some(days) => sched("when.every_days").var("days", days.to_string()).var("time", time),
+        None => sched("when.daily").var("time", time),
+    }
+}
+
+/// 무엇을 하는지: 작업 이름(공지 문구·게임 명령 포함), 예고, 꺼 둠
+fn schedule_what(task: &ScheduledTask) -> Text {
+    let name = serde_json::to_value(task.action).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+    let mut what = sched(&format!("action.{name}"));
+    match task.action {
+        TaskAction::Announce => what = what.var("message", task.message.as_deref().unwrap_or_default()),
+        TaskAction::Command => {
+            let args = task.args.iter().flat_map(|a| a.values()).map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_string));
+            let line: Vec<String> = task.command.iter().cloned().chain(args).collect();
+            what = what.var("command", line.join(" "));
+        }
+        _ => {}
+    }
+    if !task.warn_minutes.is_empty() {
+        let minutes: Vec<String> = task.warn_minutes.iter().map(u32::to_string).collect();
+        what = sched("warned").var("what", what).var("minutes", minutes.join(", "));
+    }
+    if !task.enabled {
+        what = sched("off").var("what", what);
+    }
+    what
+}
+
+/// 바뀐 작업의 (전, 후). 같은 부분은 한 번만 적는다: 하는 일이 같으면 때만, 같은 규칙에서 시각만 다르면 시각만 ("매일 04:00 → 05:00 재시작")
+fn schedule_change(old: &ScheduledTask, new: &ScheduledTask) -> (Text, Text) {
+    let with = |when: Text, what: Text| Text::seq([when, Text::from(" "), what]);
+    let (when_old, when_new) = (schedule_when(old), schedule_when(new));
+    let (what_old, what_new) = (schedule_what(old), schedule_what(new));
+    if when_old == when_new {
+        return (with(when_old, what_old), what_new);
+    }
+    if what_old != what_new {
+        return (with(when_old, what_old), with(when_new, what_new));
+    }
+    let same_rule = new.at.is_some() && old.at.is_some() && old.weekdays == new.weekdays && old.every_days == new.every_days && old.date == new.date;
+    let after = if same_rule { Text::from(new.at.as_deref().unwrap_or_default()) } else { when_new };
+    (when_old, with(after, what_new))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,5 +420,51 @@ mod tests {
         assert!(scheduled.contains("minutes=5") && scheduled.contains("count=2"), "{scheduled}");
         let started = text("server.update.apply", json!({"success": true, "provisioning": true}));
         assert!(started.contains("server_update.started"), "{started}");
+    }
+
+    /// 예약 바꾸기의 확인 글: 더해지고 바뀌고 지워지는 작업만 한 줄씩. 그대로인 작업은 적지 않는다 (사용자 시안 2026-11-13)
+    #[test]
+    fn a_schedule_change_lists_only_what_is_added_changed_and_removed() {
+        let tasks = |v: Value| serde_json::from_value::<Vec<crate::scheduler::ScheduledTask>>(v).unwrap();
+        let before = tasks(json!([
+            { "action": "restart", "at": "04:00" },
+            { "action": "backup", "at": "03:00", "weekdays": ["mon"] },
+            { "action": "save", "every_minutes": 30 },
+        ]));
+        let lines = |after: Value, keep: (u32, u32)| schedule_changes(&before, &tasks(after), keep).plain();
+
+        let added = lines(
+            json!([
+                { "action": "restart", "at": "04:00" },
+                { "action": "backup", "at": "03:00", "weekdays": ["mon"] },
+                { "action": "save", "every_minutes": 30 },
+                { "action": "announce", "at": "06:00", "message": "5분 뒤 점검" },
+            ]),
+            (7, 7),
+        );
+        assert_eq!(added, "[actions.summary.schedule.added task=[actions.summary.schedule.when.daily time=06:00] [actions.summary.schedule.action.announce message=5분 뒤 점검]]");
+
+        // 시각만 바뀌면 바뀐 시각만 다시 적는다 ("매일 04:00 → 05:00 재시작"). 빠진 작업은 지움
+        let changed = lines(json!([{ "action": "restart", "at": "05:00" }, { "action": "save", "every_minutes": 30 }]), (7, 7));
+        let restart_moved = "[actions.summary.schedule.changed before=[actions.summary.schedule.when.daily time=04:00] after=05:00 [actions.summary.schedule.action.restart]]";
+        let backup_removed = "[actions.summary.schedule.removed task=[actions.summary.schedule.when.weekly days=[actions.summary.schedule.weekday.mon] time=03:00] [actions.summary.schedule.action.backup]]";
+        assert_eq!(changed, format!("{restart_moved}\n{backup_removed}"));
+
+        // 끄기·예고·주기 바꾸기도 바뀜이다. 보관 수는 달라질 때만
+        let other = lines(
+            json!([
+                { "action": "restart", "at": "04:00", "warn_minutes": [10, 1] },
+                { "action": "backup", "at": "03:00", "weekdays": ["mon"], "enabled": false },
+                { "action": "save", "every_minutes": 60 },
+            ]),
+            (7, 10),
+        );
+        assert!(other.contains("before=[actions.summary.schedule.when.daily time=04:00] [actions.summary.schedule.action.restart] after=[actions.summary.schedule.warned what=[actions.summary.schedule.action.restart] minutes=10, 1]"), "{other}");
+        assert!(other.contains("after=[actions.summary.schedule.off what=[actions.summary.schedule.action.backup]]"), "{other}");
+        assert!(other.contains("before=[actions.summary.schedule.when.every_minutes minutes=30] after=[actions.summary.schedule.when.every_minutes minutes=60] [actions.summary.schedule.action.save]"), "{other}");
+        assert!(other.ends_with("[actions.summary.schedule.keep before=7 after=10]"), "{other}");
+
+        let same = schedule_changes(&before, &before, (7, 7)).plain();
+        assert_eq!(same, "[actions.summary.schedule.none]");
     }
 }

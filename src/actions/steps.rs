@@ -93,6 +93,7 @@ pub async fn plan_steps(server: &IPCServer, steps: &Value, caller: &Caller) -> R
                 if !stopped_first {
                     refuse_restore_while_running(server, &r).await.map_err(|e| step_error(n, e))?;
                 }
+                refuse_unread_schedule(server, &r, caller).await.map_err(|e| step_error(n, e))?;
                 (Step::Ready(r.clone()), r, None)
             }
         };

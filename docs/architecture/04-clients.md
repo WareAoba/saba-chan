@@ -411,7 +411,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 ### 4.3 채팅 처리기 (`src/chat/`)
 
 - 디스코드 명령만 쓴다. 릴레이 문장 계획·문장 `check`(05 §4.4)로 들어온다. 로컬 봇 시절의 `POST /api/chat/command`와 CLI `chat`(디스코드처럼 말하기)은 없어졌다.
-- 데몬은 디스코드에 보낼 문장을 만들지 않는다. 답(`text`)·실패 이유(`reason`)·모르는 명령의 `args.help`는 문구 트리 `Text`(`src/chat/text.rs`)다: 글자 `"…"`, 이어 붙이기 `[…]`, 문구 `{key, vars?, or?}`. 릴레이가 길드 언어 문구 표(server-chan `relay-server/src/locales/daemon/<lang>.ts`)로 문장을 만든다. 표에 키가 없으면 영어 → `or` → 키 이름 순이다. 모듈 locales처럼 PC에만 있는 글(명령 이름, 백업 종류 이름)은 데몬이 번역한 글자로 싣는다.
+- 데몬은 디스코드에 보낼 문장을 만들지 않는다. 답(`text`, 계획의 확인 글 `text` 포함)·실패 이유(`reason`)·모르는 명령의 `args.help`는 문구 트리 `Text`(`src/chat/text.rs`)다: 글자 `"…"`, 이어 붙이기 `[…]`, 문구 `{key, vars?, or?}`. 릴레이가 길드 언어 문구 표(server-chan `relay-server/src/locales/daemon/<lang>.ts`)로 문장을 만든다. 표에 키가 없으면 영어 → `or` → 키 이름 순이다. 모듈 locales처럼 PC에만 있는 글(명령 이름, 백업 종류 이름)은 데몬이 번역한 글자로 싣는다.
 - 문장은 `<서버> <명령> [덧붙이는 말]`이다. 서버와 명령은 띄어 쓴 말이어도 되고, 앞에서부터 가장 많은 낱말이 맞는 것을 고른다(대소문자와 공백 칸 수는 가리지 않는다, `chat/mod.rs` `longest_phrase`). 서버 후보는 인스턴스 이름·id·서버 낱말·모듈 이름·게임명·별명, 명령 후보는 그 서버의 명령 낱말 → 별명·명령 이름 → 내장 명령(start·stop·status·players)과 답하는 언어의 이름(`actions.server.<명령>.name`) → 답하는 언어로 보이는 명령 이름(모듈 locales `commands.<명령>.label`, 없으면 영어, 그것도 없으면 module.toml `label`) 순이다. 게임명·별명은 module.toml의 언어 없는 낱말과 답하는 언어의 locales 낱말만이다(02 §`[aliases]`). 최상위 말은 `help`·`list`와 답하는 언어의 `top_level_words.help`·`list`(daemon.json, 쉼표로 나눈 목록. 지금은 ko만 `도움, 도움말`·`목록`)다. 서버 이름과 낱말에는 쉼표를 둘 수 없다.
 - 비밀 액션(부른 사람에게만 답하는 것, `server.address`)의 이름은 문장으로 실행하지 않고 `errors.slash_only`로 슬래시 명령을 안내한다(`actions` `slash_only`). 답이 채널 모두에게 보이기 때문이다.
 - 도움말은 서버마다 그 서버를 부르는 말을, 서버만 부르면 그 서버에서 칠 수 있는 말(응답 언어의 명령 이름·칸 이름·설명)을 보인다. 상태 답은 상태·접속자(모듈이 지원할 때)·켜진 시간이고, 시작 중에 접속자를 물으면 `server.still_starting`으로 답한다.
