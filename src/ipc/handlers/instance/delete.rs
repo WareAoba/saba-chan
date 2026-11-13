@@ -438,7 +438,7 @@ mod tests {
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let runtime = state.supervisor.read().await.runtime.clone();
         // 정지를 한 번 거치면 정지 문과 실행 세대가, 콘솔로 세기 시작하면 접속자 목록이 생긴다
-        let _ = super::super::super::server::stop(&state, &id, false).await;
+        let _ = crate::service::lifecycle::stop(&state, &id, false).await;
         let roster = crate::supervisor::players::roster_start(&runtime, &id);
         crate::supervisor::players::roster_change(&runtime, &id, roster, "alice", true);
         assert_eq!(crate::supervisor::players::counted(&runtime, &id), Some(1));

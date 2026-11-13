@@ -1402,7 +1402,7 @@ else:
         let rt = state.supervisor.read().await.runtime.clone();
         let generation = players::roster_start(&rt, &id);
         let now = saba_runner::now();
-        let tick = |at| super::super::server::stop_idle_servers_at(&state, at);
+        let tick = |at| crate::service::lifecycle::stop_idle_servers_at(&state, at);
 
         tick(now).await;
         players::roster_change(&rt, &id, generation, "Bob", true);
@@ -1442,8 +1442,8 @@ else:
         let rt = state.supervisor.read().await.runtime.clone();
         let generation = players::roster_start(&rt, &id);
         let now = saba_runner::now();
-        super::super::server::stop_idle_servers_at(&state, now).await;
-        super::super::server::stop_idle_servers_at(&state, now + 10 * 60).await;
+        crate::service::lifecycle::stop_idle_servers_at(&state, now).await;
+        crate::service::lifecycle::stop_idle_servers_at(&state, now + 10 * 60).await;
         assert!(is_running(&state, &id).await, "the stop failed");
         assert_eq!(crate::supervisor::idle::stopped(&id), None);
         players::roster_end(&rt, &id, generation);
@@ -1465,7 +1465,7 @@ else:
         let rt = state.supervisor.read().await.runtime.clone();
         players::fail_for_test(&rt, &id, None, "connection refused", start);
         players::fail_for_test(&rt, &id, None, "connection refused", minutes(6));
-        let tick = |at| super::super::server::watch_unresponsive_at(&state, at);
+        let tick = |at| crate::service::lifecycle::watch_unresponsive_at(&state, at);
 
         tick(minutes(6)).await;
         assert!(announced(&mut events).is_empty(), "the default wait is ten minutes");
@@ -1492,7 +1492,7 @@ else:
         let guard = InstanceLock::take(&id).expect("free");
         let start = super::super::server::start_instance_handler(Path(id.clone()), State(state.clone())).await;
         assert_eq!(code(start).await, "instance_busy");
-        let managed = super::super::server::launch(&state, &id, "plain", true).await.unwrap_err();
+        let managed = crate::service::lifecycle::launch(&state, &id, "plain", true).await.unwrap_err();
         assert!(managed.is_busy(), "a retrying start must tell the lock apart from other refusals");
         assert_eq!(code(managed).await, "instance_busy");
         let update = super::super::instance::begin_server_update(&state, &id).await.err().expect("update must wait");
@@ -1508,7 +1508,7 @@ else:
     async fn a_crash_restart_waits_for_a_running_backup_instead_of_giving_up() {
         let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
         let guard = InstanceLock::take(&id).expect("free");
-        let restart = tokio::spawn(super::super::server::auto_restart(state.clone(), id.clone(), std::time::Duration::ZERO, 0));
+        let restart = tokio::spawn(crate::service::lifecycle::auto_restart(state.clone(), id.clone(), std::time::Duration::ZERO, 0));
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         assert!(!restart.is_finished(), "the restart must wait for the backup, not fail with instance_busy");
         drop(guard);

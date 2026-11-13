@@ -71,55 +71,7 @@ pub(crate) async fn audited(
     axum::response::Response::from_parts(parts, axum::body::Body::from(bytes))
 }
 
-/// `audited`와 같되 서비스 함수의 결과를 남기고 그대로 돌려준다 (성공은 200)
-pub(crate) async fn audited_result(state: &super::IPCServer, action: &str, key: &str, result: Outcome) -> Outcome {
-    if !crate::audit::is_quiet() {
-        let (status, body) = match &result {
-            Ok(body) => (axum::http::StatusCode::OK, body),
-            Err(failure) => (failure.status, &failure.body),
-        };
-        record(state, action, key, None, None, status, Some(body)).await;
-    }
-    result
-}
-
-async fn record(
-    state: &super::IPCServer,
-    action: &str,
-    key: &str,
-    command: Option<&str>,
-    args: Option<&serde_json::Value>,
-    status: axum::http::StatusCode,
-    body: Option<&serde_json::Value>,
-) {
-    let (id, name, command, args) = {
-        let sup = state.supervisor.read().await;
-        let instance = sup.instance_store.find(key);
-        let module = instance.and_then(|i| sup.module_loader.get_module(&i.module_name).ok()).map(|m| m.metadata);
-        // 비밀 인자·설정값은 가려서 남긴다
-        let (command, args) = crate::audit::redact(module.as_ref(), instance, command, args);
-        match instance {
-            Some(i) => (i.id.clone(), Some(i.name.clone()), command, args),
-            None => (key.to_string(), None, command, args),
-        }
-    };
-    let declined = body.and_then(|v| v.get("success").and_then(serde_json::Value::as_bool)) == Some(false);
-    let ok = status.is_success() && !declined;
-    let code = if ok { None } else { body.and_then(crate::audit::failure_code) };
-    crate::audit::record(crate::audit::Event {
-        action,
-        instance_id: &id,
-        instance: name.as_deref(),
-        command: command.as_deref(),
-        args: args.as_ref(),
-        daemon: None,
-        ok,
-        status: status.as_u16(),
-        code: code.as_deref(),
-    });
-}
-
-pub(crate) use crate::service::{settled, Failure, Outcome};
+pub(crate) use crate::service::{record, Failure, Outcome};
 
 /// 서비스 함수의 결과를 HTTP 응답으로 (성공은 200)
 pub(crate) fn answer(result: Outcome) -> axum::response::Response {

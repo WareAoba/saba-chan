@@ -281,7 +281,7 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
     }
     if was_running {
         // 콘솔이 없어 저장 후 종료를 못 하는 서버(`graceful_stop_unavailable`)도 여기서 멈춘다: 강제 종료하지 않는다
-        if let Err(failure) = super::server::stop(state, id, false).await {
+        if let Err(failure) = crate::service::lifecycle::stop(state, id, false).await {
             tracing::warn!("Update of '{}': stop failed: {}", id, failure.body);
             super::instance::emit_update_failed(state, id, failure.reason().unwrap_or("stop failed")).await;
             return Some(false);
@@ -326,7 +326,7 @@ async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
         let supervisor = state.supervisor.read().await;
         supervisor.instance_store.get(id).is_some() && supervisor.run_generation_of(id) == generation
     };
-    match super::server::start_when_free(state, id, generation, wanted).await {
+    match crate::service::lifecycle::start_when_free(state, id, generation, wanted).await {
         None => tracing::info!("Scheduled update of '{}': not starting again, the server was started, stopped or removed meanwhile", id),
         Some(Err(failure)) => tracing::warn!("Scheduled update of '{}': could not start the server again: {}", id, failure.body),
         Some(Ok(_)) => {}

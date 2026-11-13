@@ -11,7 +11,7 @@ use super::{Clock, ScheduledTask, TaskAction};
 use crate::backup::{self, BackupKind};
 use crate::ipc::handlers::backup::{announce, backups_dir, is_running, run_command, take_backup, InstanceLock};
 use crate::ipc::handlers::schedule::save_command_of;
-use crate::ipc::handlers::{server, server_update};
+use crate::ipc::handlers::server_update;
 use crate::ipc::IPCServer;
 
 /// 실행기의 시계와 데몬 시작 시각 (화면에 다음 실행 시각을 보일 때 읽는다)
@@ -419,7 +419,7 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
                 return failed(Some("not_running".into()));
             }
             tracing::info!("Scheduled restart of '{}'", id);
-            let result = Box::pin(server::restart(state, id, false)).await;
+            let result = Box::pin(crate::service::lifecycle::restart(state, id, false)).await;
             if let Err(failure) = &result {
                 tracing::warn!("Scheduled restart of '{}' failed: {}", id, failure.body);
             }
@@ -428,7 +428,7 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
         TaskAction::Update => Box::pin(run_update(state, id, task, fire, key)).await,
         TaskAction::Start if !running => {
             tracing::info!("Scheduled start of '{}'", id);
-            let result = Box::pin(server::start(state, id)).await;
+            let result = Box::pin(crate::service::lifecycle::start(state, id)).await;
             if let Err(failure) = &result {
                 tracing::warn!("Scheduled start of '{}' failed: {}", id, failure.body);
             }
@@ -444,7 +444,7 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
             }
             tracing::info!("Scheduled stop of '{}'", id);
             // 예약 작업은 강제 종료하지 않는다 (저장 후 종료를 못 하는 서버는 그대로 둔다)
-            let result = Box::pin(server::stop(state, id, false)).await;
+            let result = Box::pin(crate::service::lifecycle::stop(state, id, false)).await;
             if let Err(failure) = &result {
                 tracing::warn!("Scheduled stop of '{}' failed: {}", id, failure.body);
             }

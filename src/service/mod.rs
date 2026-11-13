@@ -2,6 +2,7 @@
 //! HTTP 핸들러(`ipc::handlers`)·채팅·예약·릴레이 에이전트·플러그인 호스트가 같은 함수를 부른다.
 //! 핸들러는 요청을 풀어 여기를 부르고 결과를 응답으로 바꾸기만 한다
 
+pub mod lifecycle;
 pub(crate) mod onboarding;
 
 /// 서비스 함수(시작·정지·재시작·백업·복원)의 결과. 성공이면 응답 본문
@@ -79,4 +80,52 @@ pub(crate) fn settled(body: serde_json::Value) -> Outcome {
     } else {
         Ok(body)
     }
+}
+
+/// `audited`와 같되 서비스 함수의 결과를 남기고 그대로 돌려준다 (성공은 200)
+pub(crate) async fn audited_result(state: &crate::ipc::IPCServer, action: &str, key: &str, result: Outcome) -> Outcome {
+    if !crate::audit::is_quiet() {
+        let (status, body) = match &result {
+            Ok(body) => (axum::http::StatusCode::OK, body),
+            Err(failure) => (failure.status, &failure.body),
+        };
+        record(state, action, key, None, None, status, Some(body)).await;
+    }
+    result
+}
+
+pub(crate) async fn record(
+    state: &crate::ipc::IPCServer,
+    action: &str,
+    key: &str,
+    command: Option<&str>,
+    args: Option<&serde_json::Value>,
+    status: axum::http::StatusCode,
+    body: Option<&serde_json::Value>,
+) {
+    let (id, name, command, args) = {
+        let sup = state.supervisor.read().await;
+        let instance = sup.instance_store.find(key);
+        let module = instance.and_then(|i| sup.module_loader.get_module(&i.module_name).ok()).map(|m| m.metadata);
+        // 비밀 인자·설정값은 가려서 남긴다
+        let (command, args) = crate::audit::redact(module.as_ref(), instance, command, args);
+        match instance {
+            Some(i) => (i.id.clone(), Some(i.name.clone()), command, args),
+            None => (key.to_string(), None, command, args),
+        }
+    };
+    let declined = body.and_then(|v| v.get("success").and_then(serde_json::Value::as_bool)) == Some(false);
+    let ok = status.is_success() && !declined;
+    let code = if ok { None } else { body.and_then(crate::audit::failure_code) };
+    crate::audit::record(crate::audit::Event {
+        action,
+        instance_id: &id,
+        instance: name.as_deref(),
+        command: command.as_deref(),
+        args: args.as_ref(),
+        daemon: None,
+        ok,
+        status: status.as_u16(),
+        code: code.as_deref(),
+    });
 }

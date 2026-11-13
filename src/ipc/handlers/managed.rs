@@ -11,31 +11,6 @@ use std::collections::HashMap;
 use super::super::IPCServer;
 use crate::supervisor::Supervisor;
 
-/// 관리형 시작(saba-runner가 콘솔 stdin/stdout을 잡는다)이 실패한 응답
-pub(super) async fn start_failure(state: &IPCServer, e: &anyhow::Error) -> super::Failure {
-    match e.downcast_ref::<crate::supervisor::managed_process::MemoryLimitAtStart>() {
-        Some(hit) => {
-            let language = state.config_store.ui_language().await;
-            let message = crate::chat::i18n::Catalog::for_language(&language)
-                .t("errors.memory_limit_at_start", &[("limit", &hit.limit_mb.to_string())]);
-            super::Failure::new(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                json!({ "success": false, "error": message, "error_code": "memory_limit_reached", "limit_mb": hit.limit_mb }),
-            )
-        }
-        None if e.downcast_ref::<crate::supervisor::managed_process::RunnerMissing>().is_some() => {
-            let language = state.config_store.ui_language().await;
-            let message = crate::chat::i18n::Catalog::for_language(&language).t("errors.runner_missing", &[]);
-            super::Failure::coded(StatusCode::UNPROCESSABLE_ENTITY, "runner_missing", message)
-        }
-        // 시작하는 사이 지워졌다: 비관리 시작과 같은 404 `instance_not_found`
-        None if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() => {
-            super::server::lifecycle_failure(e, "start", "start_failed")
-        }
-        None => super::Failure::new(StatusCode::INTERNAL_SERVER_ERROR, crate::plugin::error_response(e)),
-    }
-}
-
 /// GET /api/instance/:id/console?since=0&count=100&spans=1 — Get console output
 /// (`spans=1`이면 줄마다 하이라이팅 토큰 구간을 붙인다)
 pub async fn get_console_handler(
@@ -713,7 +688,7 @@ pub async fn accept_agreements_handler(
             super::instance::invalid_field("accept", format!("This server's module has no agreement '{}'", unknown))
         }
         Err(e) => match e.downcast_ref::<crate::supervisor::InstanceNotFound>() {
-            Some(missing) => super::server::instance_not_found(&missing.0).into_response(),
+            Some(missing) => crate::service::lifecycle::instance_not_found(&missing.0).into_response(),
             None => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
         },
     }

@@ -259,11 +259,11 @@ impl DaemonApi for IPCServer {
     }
 
     async fn start(&self, server: &ServerView) -> InternalResponse {
-        crate::ipc::handlers::server::start(self, &server.id).await.into()
+        crate::service::lifecycle::start(self, &server.id).await.into()
     }
 
     async fn stop(&self, server: &ServerView) -> InternalResponse {
-        crate::ipc::handlers::server::user_stop(self, &server.id, false).await.into()
+        crate::service::lifecycle::user_stop(self, &server.id, false).await.into()
     }
 
     async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse {

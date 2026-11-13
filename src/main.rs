@@ -1,6 +1,6 @@
 // 데몬 모듈은 lib(saba_core) 하나로만 컴파일한다. 바이너리가 같은 모듈을 다시 `mod`로 선언하면
 // 데몬 전체가 두 번 컴파일되고 단위 시험도 두 번 돈다
-use saba_core::{supervisor, plugin, ipc, process_monitor, system_monitor, python_env, utils, extension, boot_selector, daemon_log, instance_lock, module_audit, audit, sandbox, controllers, tray_host};
+use saba_core::{service, supervisor, plugin, ipc, process_monitor, system_monitor, python_env, utils, extension, boot_selector, daemon_log, instance_lock, module_audit, audit, sandbox, controllers, tray_host};
 
 use std::sync::Arc;
 use std::io::IsTerminal;
@@ -508,7 +508,7 @@ async fn main() -> anyhow::Result<()> {
             let restarts = sup.take_pending_restarts();
             drop(sup);
             for (instance_id, delay, generation) in restarts {
-                tokio::spawn(ipc::handlers::server::auto_restart(restart_ipc.clone(), instance_id, delay, generation));
+                tokio::spawn(service::lifecycle::auto_restart(restart_ipc.clone(), instance_id, delay, generation));
             }
         }
     });
@@ -539,9 +539,9 @@ async fn main() -> anyhow::Result<()> {
             }
             supervisor::players::refresh(&players_sup).await;
             // 접속자 없을 때 자동 정지: 방금 갱신한 수만 본다 (따로 묻지 않는다)
-            ipc::handlers::server::stop_idle_servers(&idle_state).await;
+            service::lifecycle::stop_idle_servers(&idle_state).await;
             // 응답 없는 서버 감시: 방금 모은 응답 실패 기록만 본다
-            ipc::handlers::server::watch_unresponsive(&idle_state).await;
+            service::lifecycle::watch_unresponsive(&idle_state).await;
         }
     });
 
