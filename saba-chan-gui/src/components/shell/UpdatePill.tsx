@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import type { ApiBody } from '../../types/daemon';
@@ -76,6 +76,48 @@ const pillIcon = (state: State) => {
     if (state === 'ready') return <Icon name="arrowUp" size="sm" />;
     return <PillRing />;
 };
+
+/**
+ * 다시 시작해 {version}으로 업데이트할지 묻는 창. 상단 바 알약 '준비됨'과 사바 스토리지의 사바쨩 버전 고르기가 같이 쓴다.
+ * children은 안내 위에 보인다(패치노트)
+ */
+export function RestartDialog({
+    open,
+    version,
+    onClose,
+    onRestart,
+    children,
+}: {
+    open: boolean;
+    version: string;
+    onClose: () => void;
+    onRestart: () => void;
+    children?: ReactNode;
+}) {
+    const { t } = useTranslation('gui');
+    return (
+        <Dialog
+            open={open}
+            onOpenChange={(o) => !o && onClose()}
+            size="sm"
+            className="update-pill-dialog"
+            title={t('update_pill.restart_title', { version })}
+            footer={
+                <>
+                    <button type="button" className="btn" onClick={onClose}>
+                        {t('update_pill.later')}
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={onRestart}>
+                        {t('update_pill.restart_now')}
+                    </button>
+                </>
+            }
+        >
+            {children}
+            <p className="update-pill-note">{t('update_pill.restart_note')}</p>
+        </Dialog>
+    );
+}
 
 /**
  * 상단 바 업데이트 알약 (업데이트 알림 시안 v8, 계약 G). 데몬이 묻지 않고 적용하는 사바쨩 업데이트의 네 상태를 보인다:
@@ -279,26 +321,9 @@ export function UpdatePill() {
     );
 
     const dialog = (
-        <Dialog
-            open={asking}
-            onOpenChange={setAsking}
-            size="sm"
-            className="update-pill-dialog"
-            title={t('update_pill.restart_title', { version })}
-            footer={
-                <>
-                    <button type="button" className="btn" onClick={() => setAsking(false)}>
-                        {t('update_pill.later')}
-                    </button>
-                    <button type="button" className="btn btn-primary" onClick={restartNow}>
-                        {t('update_pill.restart_now')}
-                    </button>
-                </>
-            }
-        >
+        <RestartDialog open={asking} version={version} onClose={() => setAsking(false)} onRestart={restartNow}>
             {notesList(lines)}
-            <p className="update-pill-note">{t('update_pill.restart_note')}</p>
-        </Dialog>
+        </RestartDialog>
     );
 
     return (

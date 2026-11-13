@@ -23,4 +23,20 @@ describe('업데이트 단계 브리지', () => {
         await api.updaterRestart();
         expect(invoke).toHaveBeenCalledWith('updater_restart');
     });
+
+    // 되돌리기도 다시 띄울 GUI 경로가 있어야 하므로 셸 명령 updater_rollback(데몬 POST /api/updates/rollback)으로 간다
+    it('직전 버전으로 되돌리기는 셸 명령으로 간다', async () => {
+        const { api, invoke } = make();
+        await api.updaterRollback();
+        expect(invoke).toHaveBeenCalledWith('updater_rollback');
+    });
+
+    it('확인한 결과까지 물으면 include_seen을 싣는다', async () => {
+        const { api, invoke } = make();
+        await api.updaterLastResult({ includeSeen: true });
+        expect(invoke).toHaveBeenCalledWith(
+            'daemon_request',
+            expect.objectContaining({ method: 'GET', path: expect.stringContaining('include_seen=true') }),
+        );
+    });
 });

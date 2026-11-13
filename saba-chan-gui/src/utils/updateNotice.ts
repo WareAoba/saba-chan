@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import { useUIStore } from '../stores/useUIStore';
 import type { ApiBody } from '../types/daemon';
 import { announceLastUpdateResult, updateResultMessage } from '../components/Modals/PatchNotesModal';
 
@@ -17,6 +18,10 @@ export function syncUpdateNotice(_data: ApiBody | null | undefined, _t: TFunctio
  */
 export async function announceUpdateCompleted(data: ApiBody | null | undefined, t: TFunction) {
     const res = await announceLastUpdateResult(t);
+    // 사용자가 되돌린 것은 업데이트가 아니다: 되돌린 결과 알림만 둔다
+    if (res?.result?.result === 'reverted') return;
+    // 그 뒤의 업데이트: 컴포넌트 탭 위에 남은 되돌린 결과 줄은 지난 일이다
+    useUIStore.getState().setRevertResult(null);
     const failed = res?.result?.success === false;
     if (!failed) window.__sabaNotice?.removeNoticesByAction('Updater', 'openUpdateModal');
     if (typeof window.showToast === 'function') {

@@ -872,6 +872,7 @@
     "unpin_confirm": "Return {{name}} to automatic updates and change it to the newest version {{version}} now. Continue?",
     "unpinned_done": "Back to automatic updates: {{name}} {{version}}",
     "status_pinned": "pinned (automatic again once a version newer than {{until}} comes out)",
+    "status_app": "Saba-chan",
     "not_an_addon": "{{name}}: not a module or extension installed on this PC."
   },
   "validate": {

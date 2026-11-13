@@ -715,6 +715,9 @@ pub struct PreviousVersion {
     pub copy: KeptCopy,
     /// 남긴 실행 파일 → 제자리
     pub exes: Vec<(PathBuf, PathBuf)>,
+    /// 되돌릴 때 고정 기준으로 적을 코어 판: 데몬이 되돌리기 직전에 이미 아는 더 새 코어를 적는다 (`hold_until`). 없으면 `replaced_by`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold: Option<String>,
 }
 
 impl PreviousVersion {
@@ -732,6 +735,12 @@ impl PreviousVersion {
         write_atomic(&Self::record(&self.copy.data_dir), &body)
     }
 
+    /// 되돌린 뒤 `version`보다 새 코어가 나올 때까지 고정하게 적어 둔다 (`None`이면 `replaced_by`가 기준이다)
+    pub fn hold_until(&mut self, version: Option<String>) -> std::io::Result<()> {
+        self.hold = version;
+        self.save()
+    }
+
     /// 사본 폴더와 그 밖에 둔 실행 파일(`update-recovery`)을 지운다. 기록은 다음 직전 판이 덮거나 `restore`가 지운다
     fn discard_copy(self) {
         for (kept, _) in &self.exes {
@@ -746,7 +755,7 @@ impl PreviousVersion {
         }
     }
 
-    /// 데몬이 끝난 뒤 직전 판으로 되돌린다: 실행 파일, 데이터 사본, `failed_release`(지금 판을 다시 자동 적용하지 않게), 완료 마커 `reverted`
+    /// 데몬이 끝난 뒤 직전 판으로 되돌린다: 실행 파일, 데이터 사본, `failed_release`·`user_held`(더 새 코어가 나올 때까지 지금 판을 다시 자동 적용하지 않게), 완료 마커 `reverted`
     /// 차례. 되돌린 판을 돌려준다. 다 되돌리지 못하면 사본을 남기고 되살리는 법(`Recovery`)을 준다: 섞인 판이니 다시 띄우지 않는다
     #[allow(clippy::result_large_err)] // 오류는 되돌림이 끝날 때 한 번 받아 보이는 되살리는 법이다
     pub fn restore(self, config: &ConfigFile, marker_path: &Path) -> Result<String, Recovery> {
@@ -759,7 +768,7 @@ impl PreviousVersion {
         let done = restore_exes(self.exes.clone());
         let snapshot = DataSnapshot { dir: self.copy.dir.clone(), data_dir: self.copy.data_dir.clone(), instances_dir: self.copy.instances_dir.clone() };
         let data_restored = snapshot.restore().inspect_err(|e| tracing::error!("[Apply] Cannot restore the data snapshot {}: {}", snapshot.path().display(), e)).is_ok();
-        if let Err(e) = record_failed_release(config, &self.replaced_by) {
+        if let Err(e) = record_failed_release(config, self.hold.as_deref().unwrap_or(&self.replaced_by), true) {
             tracing::error!("[Apply] Cannot record the rolled back release {}: {}", self.replaced_by, e);
         }
         // 기록은 지운다: 되돌린 판을 다시 되돌리지 않는다 (다 되돌리지 못했으면 사본 폴더는 손으로 쓰게 남는다)
@@ -788,8 +797,9 @@ impl PreviousVersion {
 // ═══════════════════════════════════════════════════════
 
 /// 되돌린 판을 업데이트 설정(`config.json`의 `updates.failed_release`)에 적는다. 완료 마커는 읽으면 지워지므로
-/// 같은 판을 다시 자동 적용하지 않게 하는 기록은 여기에 둔다. 다른 키는 그대로 둔다
-pub fn record_failed_release(config: &ConfigFile, version: &str) -> std::io::Result<()> {
+/// 같은 판을 다시 자동 적용하지 않게 하는 기록은 여기에 둔다. `user_held`는 사용자가 고른 되돌리기인가(`UpdateConfig::user_held`,
+/// 거짓이면 키를 지운다). 다른 키는 그대로 둔다
+pub fn record_failed_release(config: &ConfigFile, version: &str, user_held: bool) -> std::io::Result<()> {
     config
         .update(|doc| {
             let updates = doc.entry("updates").or_insert_with(|| serde_json::json!({}));
@@ -797,6 +807,11 @@ pub fn record_failed_release(config: &ConfigFile, version: &str) -> std::io::Res
                 *updates = serde_json::json!({});
             }
             updates["failed_release"] = serde_json::json!(version);
+            if user_held {
+                updates["user_held"] = serde_json::json!(true);
+            } else if let Some(obj) = updates.as_object_mut() {
+                obj.remove("user_held");
+            }
         })
         .map(|_| ())
 }
@@ -925,6 +940,7 @@ impl LiveApply {
             updated_at: chrono::Utc::now().to_rfc3339(),
             copy,
             exes,
+            hold: None,
         };
         let saved = if all { previous.save() } else { Err(std::io::Error::other("not every exe backup could be kept")) };
         match saved {
@@ -1016,7 +1032,7 @@ impl LiveApply {
                 false
             }
         };
-        if let Err(e) = record_failed_release(config, &self.target_version) {
+        if let Err(e) = record_failed_release(config, &self.target_version, false) {
             tracing::error!("[Apply] Cannot record the failed release {}: {}", self.target_version, e);
         }
         let previous = UpdateCompletionMarker::load_from(marker_path);
@@ -1497,7 +1513,8 @@ mod tests {
         let data = tmp.path().join("data");
         let inst = data.join("instances");
         let config = ConfigFile::at(&data);
-        config.set_section("updates", serde_json::json!({ "channel": "beta", "auto_apply": true })).unwrap();
+        // 예전 사용자 되돌리기의 고정이 남은 설정: 자동 되돌림은 그 고정을 잇지 않는다
+        config.set_section("updates", serde_json::json!({ "channel": "beta", "auto_apply": true, "failed_release": "0.1.12", "user_held": true })).unwrap();
         let marker = data.join("update-complete.json");
 
         let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
@@ -1542,6 +1559,8 @@ mod tests {
         std::fs::remove_file(&marker).unwrap();
         let saved = saved_update_config(&config);
         assert_eq!(saved.failed_release.as_deref(), Some("0.1.14"));
+        assert!(!saved.user_held, "a failed update is not the user's hold");
+        assert!(config.section("updates").get("user_held").is_none());
         assert_eq!(saved.channel, "beta", "the snapshot restored the settings first");
         assert!(saved.auto_apply);
     }
@@ -1960,12 +1979,31 @@ mod tests {
         assert_eq!(std::fs::read(core).unwrap(), b"0.1.13");
         let config = ConfigFile::at(&data);
         assert_eq!(config.section("gui")["language"], "0.1.13", "the data snapshot is restored");
-        assert_eq!(saved_update_config(&config).failed_release.as_deref(), Some("0.1.14"));
+        let saved = saved_update_config(&config);
+        assert_eq!(saved.failed_release.as_deref(), Some("0.1.14"));
+        assert!(saved.user_held, "the user's rollback holds the app until a newer core");
         let m = UpdateCompletionMarker::load_from(&marker).unwrap();
         assert_eq!((m.result.as_deref(), m.version.as_deref(), m.success), (Some("reverted"), Some("0.1.13"), true));
         assert_eq!(m.replaced_by.as_deref(), Some("0.1.14"), "update last shows both versions");
         assert!(m.acknowledged, "the app does not announce a rollback as an update; update last still shows it");
         assert!(PreviousVersion::load(&data).is_none(), "a version is rolled back to once");
+    }
+
+    // 되돌릴 때 더 새 코어(0.1.15)가 이미 나와 있었으면 그 판까지 고정한다: 되돌리자마자 그 판으로 올라가지 않는다
+    #[test]
+    fn a_rollback_holds_up_to_the_newer_core_known_at_that_time() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        write(&data.join("config.json"), "{}");
+        let manager = manager_at(tmp.path());
+        healthy_update(&manager, &data, "0.1.13", "0.1.14");
+
+        PreviousVersion::load(&data).unwrap().hold_until(Some("0.1.15".into())).unwrap();
+        let back = PreviousVersion::load(&data).unwrap().restore(&ConfigFile::at(&data), &data.join("update-complete.json"));
+
+        assert_eq!(back, Ok("0.1.13".to_string()));
+        let saved = saved_update_config(&ConfigFile::at(&data));
+        assert_eq!((saved.failed_release.as_deref(), saved.user_held), (Some("0.1.15"), true));
     }
 
     // 사용자 되돌리기는 업데이트 며칠 뒤에도 한다: 그 사이 지운 서버는 되살리지 않고, 덮어쓰기 전 지금 데이터를 한 벌 남긴다

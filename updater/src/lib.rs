@@ -357,6 +357,18 @@ pub struct UpdateConfig {
     /// 적용했다가 되돌린 판 (버전 문자열). 이 판은 자동 적용하지 않는다. 더 새 판이 나오거나 사용자가 다시 시작을 누르면 지운다
     #[serde(default)]
     pub failed_release: Option<String>,
+    /// 사용자가 일부러 되돌렸다 (`PreviousVersion::restore`): 앱은 `failed_release`보다 새 코어가 나올 때까지 그 판에 고정이다.
+    /// `failed_release`와 함께 적고 함께 지운다 (`clear_failed_release`). 업데이트 실패로 되돌렸으면 거짓이다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub user_held: bool,
+}
+
+impl UpdateConfig {
+    /// 되돌린 기록(`failed_release`와 `user_held`)을 함께 지운다. 지운 기록이 있었으면 참
+    pub fn clear_failed_release(&mut self) -> bool {
+        self.user_held = false;
+        self.failed_release.take().is_some()
+    }
 }
 
 /// 빈 주소는 "설정 안 함" (0.1.1은 비워 두면 `""`로 저장했다)
@@ -379,6 +391,7 @@ impl Default for UpdateConfig {
             // 고르지 않았으면 이 빌드의 채널(`versions.toml` `[release] channel`): 베타 빌드가 정식의 옛 판을 내림으로 거절하지 않게
             channel: crate::versions::bundled().channel.clone(),
             failed_release: None,
+            user_held: false,
         }
     }
 }

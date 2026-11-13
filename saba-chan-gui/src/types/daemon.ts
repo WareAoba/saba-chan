@@ -354,6 +354,40 @@ export interface AddonPinResponse {
     waiting_for: string[];
 }
 
+// ── 사바쨩 버전 고르기 (GET /api/updates/versions, 이 PC 데몬만) ──
+
+/** 이 PC에 남겨 둔 직전 버전. 되돌리면 그때 업데이트하기 전의 설정도 돌아온다 */
+export interface KeptVersion {
+    version: string;
+    /** 이 버전에서 지금 버전으로 업데이트한 때 (RFC 3339) */
+    updated_at: string;
+    /** 이 버전에서 쓸 수 없는 구성요소 키 (module-<이름>·ext-<id>) */
+    needs_newer_core: string[];
+    /** 되돌리면 자동 업데이트가 다시 바꾸기 시작하는 기준 버전: 이미 나온 더 새 버전, 없으면 지금 버전 */
+    hold_until_newer_than?: string;
+}
+
+/** GET /api/updates/versions */
+export interface AppVersionsResponse {
+    channel: string;
+    installed: string;
+    kept_previous: KeptVersion | null;
+    /** 지금보다 새 버전이 기다리면 그 버전 (고정한 채 받을 새 버전이 없으면 null) */
+    latest: string | null;
+    /** 직접 고른 버전이면 자동 업데이트가 다시 바꾸기 시작하는 기준 버전 */
+    held_until_newer_than: string | null;
+}
+
+/** GET /api/updates/last-result 의 result 중 사용자가 되돌린 것 (`result: "reverted"`) */
+export interface RevertResult {
+    /** 돌아간 버전 */
+    version: string;
+    /** 되돌리기 전 버전 */
+    replaced_by: string;
+    success: boolean;
+    timestamp: string;
+}
+
 /** module_loader::ModuleLoadError */
 export interface ModuleLoadError {
     path: string;

@@ -34,7 +34,52 @@ interface Change {
     until: string;
 }
 
-type Banner = { tone: 'success' | 'error'; text: string } | null;
+export type Banner = { tone: 'success' | 'error'; text: string } | null;
+
+/** 탭 위 한 줄 알림 (모듈·익스텐션·사바쨩 버전 고르기가 같이 쓴다) */
+export function StatusBanner({ banner }: { banner: Banner }) {
+    if (!banner) return null;
+    return (
+        <div className={`update-modal-status-bar ${banner.tone}`}>
+            <Icon name={banner.tone === 'success' ? 'checkCircle' : 'xCircle'} size="sm" /> {banner.text}
+        </div>
+    );
+}
+
+/** 버전 고르기 창의 한 줄 (모듈·익스텐션·사바쨩이 같이 쓴다): 버전과 표시, 그 아래 설명 줄 */
+export function VersionRadio({
+    version,
+    chips,
+    hints,
+    checked,
+    disabled,
+    onChoose,
+}: {
+    version: string;
+    chips?: ReactNode;
+    hints?: ReactNode;
+    checked: boolean;
+    disabled?: boolean;
+    onChoose: () => void;
+}) {
+    return (
+        // biome-ignore lint/a11y/useSemanticElements: 버전 줄은 버전과 표시를 함께 담는 버튼 모양 칸이다
+        <button
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            className="radio-card"
+            disabled={disabled}
+            onClick={onChoose}
+        >
+            <span className="radio-card-title">
+                {version}
+                {chips}
+            </span>
+            {hints}
+        </button>
+    );
+}
 
 /** 데몬이 준 버전 목록을 보여 주고 하나를 고르게 한다 */
 function VersionDialog({
@@ -100,24 +145,21 @@ function VersionDialog({
                 <>
                     <div className="ss-versions" role="radiogroup" aria-label={t('saba_storage.version_choose')}>
                         {versions.map((v) => (
-                            // biome-ignore lint/a11y/useSemanticElements: 버전 줄은 버전과 표시를 함께 담는 버튼 모양 칸이다
-                            <button
+                            <VersionRadio
                                 key={v.version}
-                                type="button"
-                                role="radio"
-                                aria-checked={chosen === v.version}
-                                className="radio-card"
+                                version={v.version}
+                                checked={chosen === v.version}
                                 disabled={v.yanked || v.installed}
-                                onClick={() => setChosen(v.version)}
-                            >
-                                <span className="radio-card-title">
-                                    {v.version}
-                                    {v.installed && <StatusChip tone="ok" label={t('saba_storage.version_installed')} />}
-                                    {v.latest && <StatusChip tone="info" label={t('saba_storage.version_latest')} />}
-                                    {v.yanked && <StatusChip tone="stop" label={t('saba_storage.version_yanked')} />}
-                                </span>
-                                {v.yanked && <span className="ss-version-hint">{t('saba_storage.version_yanked_hint')}</span>}
-                            </button>
+                                onChoose={() => setChosen(v.version)}
+                                chips={
+                                    <>
+                                        {v.installed && <StatusChip tone="ok" label={t('saba_storage.version_installed')} />}
+                                        {v.latest && <StatusChip tone="info" label={t('saba_storage.version_latest')} />}
+                                        {v.yanked && <StatusChip tone="stop" label={t('saba_storage.version_yanked')} />}
+                                    </>
+                                }
+                                hints={v.yanked && <span className="ss-version-hint">{t('saba_storage.version_yanked_hint')}</span>}
+                            />
                         ))}
                     </div>
                     {versions.length === 0 && <p className="ss-version-note">{t('saba_storage.version_none')}</p>}
@@ -141,7 +183,7 @@ const kindWord = (t: T, card: AddonCard) =>
  * 데몬이 준 error_code를 문장으로. 직접 고친 폴더 거절은 모듈·익스텐션이 같은 문장을 쓰고(`module_modified` → `modified`),
  * 모르는 코드는 일반 실패 문장으로. 코드가 없으면(데몬에 닿지 못함) 원문을 번역한다
  */
-const reasonOf = (t: T, res: ApiBody) =>
+export const reasonOf = (t: T, res: ApiBody) =>
     res.error_code
         ? t(`saba_storage.version_error.${res.error_code.replace(/^(module|extension)_/, '')}`, {
               defaultValue: t('saba_storage.version_error.other'),
@@ -234,11 +276,7 @@ export function useAddonVersions(reload?: () => unknown) {
             <span className="ss-card-desc">{t('saba_storage.version_pinned_note', { until: card.pinned.until_newer_than })}</span>
         );
 
-    const bannerEl = banner && (
-        <div className={`update-modal-status-bar ${banner.tone}`}>
-            <Icon name={banner.tone === 'success' ? 'checkCircle' : 'xCircle'} size="sm" /> {banner.text}
-        </div>
-    );
+    const bannerEl = <StatusBanner banner={banner} />;
 
     const dialogs = (
         <>

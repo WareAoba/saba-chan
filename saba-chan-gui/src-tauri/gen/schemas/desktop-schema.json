@@ -603,6 +603,12 @@
           "markdownDescription": "Enables the updater_restart command without any pre-configured scope."
         },
         {
+          "description": "Enables the updater_rollback command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-updater-rollback",
+          "markdownDescription": "Enables the updater_rollback command without any pre-configured scope."
+        },
+        {
           "description": "Enables the window_close command without any pre-configured scope.",
           "type": "string",
           "const": "allow-window-close",
@@ -895,6 +901,12 @@
           "type": "string",
           "const": "deny-updater-restart",
           "markdownDescription": "Denies the updater_restart command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the updater_rollback command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-updater-rollback",
+          "markdownDescription": "Denies the updater_rollback command without any pre-configured scope."
         },
         {
           "description": "Denies the window_close command without any pre-configured scope.",

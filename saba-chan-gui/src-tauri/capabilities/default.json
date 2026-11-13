@@ -17,6 +17,7 @@
     "allow-app-close-response",
     "allow-updater-launch-apply",
     "allow-updater-restart",
+    "allow-updater-rollback",
     "allow-launch-uninstaller",
     "allow-settings-local-load",
     "allow-settings-local-save",

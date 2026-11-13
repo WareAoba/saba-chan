@@ -872,6 +872,7 @@
     "unpin_confirm": "{{name}} revient aux mises à jour automatiques et passe tout de suite à la version la plus récente {{version}}. Continuer ?",
     "unpinned_done": "Retour aux mises à jour automatiques : {{name}} {{version}}",
     "status_pinned": "épinglée (de nouveau automatique dès qu'une version plus récente que {{until}} sort)",
+    "status_app": "Saba-chan",
     "not_an_addon": "{{name}} : ce n'est ni un module ni une extension installés sur ce PC."
   },
   "validate": {

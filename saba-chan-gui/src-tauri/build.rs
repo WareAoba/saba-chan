@@ -11,6 +11,7 @@ const COMMANDS: &[&str] = &[
     "app_close_response",
     "updater_launch_apply",
     "updater_restart",
+    "updater_rollback",
     "launch_uninstaller",
     "settings_local_load",
     "settings_local_save",

@@ -202,6 +202,7 @@ pub fn run() {
             native::app_close_response,
             native::updater_launch_apply,
             native::updater_restart,
+            native::updater_rollback,
             native::launch_uninstaller,
             native::settings_local_load,
             native::settings_local_save,

@@ -16,7 +16,9 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
     match cmd {
         UpdateCmd::Status => {
             let r = ctx.api.update_status().await?;
-            ctx.out.data(&r, print_status);
+            // 사용자가 되돌려 고정한 사바쨩 (`GET /api/updates/versions`)
+            let held = without_route(ctx.api.update_versions().await)?.as_ref().and_then(held_row);
+            ctx.out.data(&r, |r| print_status(r, held));
             Ok(())
         }
         UpdateCmd::Check => {
@@ -25,7 +27,7 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
             spin.finish_and_clear();
             let r = r?;
             ctx.out.data(&r, |r| {
-                print_status(r);
+                print_status(r, None);
                 if r.get("updates_available").and_then(Value::as_u64).unwrap_or(0) > 0 {
                     say!();
                     say!(
@@ -203,6 +205,29 @@ fn integrity_summary(r: &Value) -> String {
     )
 }
 
+/// 라우트가 없는 옛 데몬(404)이면 None. 다른 오류는 그대로
+fn without_route(r: Result<Value>) -> Result<Option<Value>> {
+    match r {
+        Ok(v) => Ok(Some(v)),
+        Err(e) => match e.downcast::<crate::error::CliError>() {
+            Ok(crate::error::CliError::Api { status: 404, .. }) => Ok(None),
+            Ok(other) => Err(other.into()),
+            Err(e) => Err(e),
+        },
+    }
+}
+
+/// 사용자가 되돌려 고정했으면 상태 표의 사바쨩 줄 (이름·지금·최신·고정). 고정이 아니면 None
+fn held_row(v: &Value) -> Option<Vec<String>> {
+    let until = v.get("held_until_newer_than").and_then(Value::as_str)?;
+    Some(vec![
+        t!("update.status_app"),
+        output::show(v.get("installed").unwrap_or(&Value::Null)),
+        output::show(v.get("latest").unwrap_or(&Value::Null)),
+        output::dim(&t!("update.status_pinned", until = until)),
+    ])
+}
+
 /// 되돌릴 수 있는 판을 알리는 줄. 남긴 판이 없으면 None
 fn rollback_offer(r: &Value) -> Option<String> {
     (r.get("available").and_then(Value::as_bool) == Some(true)).then(|| {
@@ -372,7 +397,8 @@ async fn unpin(ctx: &Ctx, arg: &str) -> Result<()> {
     Ok(())
 }
 
-fn print_status(r: &Value) {
+/// 상태 표. `held`는 사용자가 되돌려 고정한 사바쨩 줄 (`held_row`)
+fn print_status(r: &Value, held: Option<Vec<String>>) {
     let comps = r
         .get("components")
         .and_then(Value::as_array)
@@ -404,7 +430,11 @@ fn print_status(r: &Value) {
             state,
         ]);
     }
-    if !comps.is_empty() {
+    let has_held = held.is_some();
+    if let Some(row) = held {
+        t.add_row(row);
+    }
+    if !comps.is_empty() || has_held {
         output::print_table(t);
     }
     let err = s(r, "error");
@@ -938,6 +968,24 @@ mod tests {
         };
         assert_eq!(older_daemon(api(404)).to_string(), t!("update.daemon_too_old"));
         assert_eq!(older_daemon(api(409)).to_string(), "HTTP 409");
+    }
+
+    /// 사용자가 되돌려 고정했을 때만 상태 표에 사바쨩 고정 줄을 더한다. 라우트가 없는 옛 데몬(404)이면 줄 없이 보인다
+    #[test]
+    fn the_status_shows_the_app_hold_only_when_held() {
+        let row: Vec<String> = held_row(&json!({ "installed": "0.1.13", "latest": "0.1.14", "held_until_newer_than": "0.1.14" }))
+            .unwrap()
+            .iter()
+            .map(|c| console::strip_ansi_codes(c).to_string())
+            .collect();
+        assert_eq!(row, [t!("update.status_app"), "0.1.13".into(), "0.1.14".into(), t!("update.status_pinned", until = "0.1.14")]);
+        assert!(held_row(&json!({ "installed": "0.1.14", "latest": null, "held_until_newer_than": null })).is_none());
+
+        let api = |status: u16| -> anyhow::Error {
+            crate::error::CliError::Api { status, code: None, message: format!("HTTP {status}"), body: Value::Null }.into()
+        };
+        assert!(without_route(Err(api(404))).unwrap().is_none());
+        assert!(without_route(Err(api(500))).is_err());
     }
 
     /// 사용자 되돌리기 결과는 돌아간 판과 그 전 판을 사용자 언어로 보인다 (마커의 영어 원문이 아니라)

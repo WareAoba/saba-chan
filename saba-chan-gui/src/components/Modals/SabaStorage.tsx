@@ -10,6 +10,7 @@ import { ModuleMakerCard } from '../ModuleMakerCard';
 import { useContextMenu } from '../ui/ContextMenu';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { type AddonCard, useAddonVersions } from './AddonVersions';
+import { useAppVersion } from './AppVersion';
 import { QuestionModal } from './Modals';
 import { localizedDescription, localizedName } from '../../utils/localizedText';
 import { type CatalogModule, unsupportedText } from '../../utils/moduleSupport';
@@ -211,6 +212,10 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
     // 진행률 폴러를 같이 쓰는 다운로드 수. 마지막 것이 끝날 때 멈춘다 (G-U8)
     const progressUsersRef = useRef(0);
     const mountedRef = useRef(true);
+    const appVersion = useAppVersion(
+        (key) => components.find((c) => c.key === key)?.display || key,
+        components.find((c) => c.key === 'saba-core')?.current_version,
+    );
 
     const markBusy = useCallback((key: string) => setBusyKeys((prev) => new Set(prev).add(key)), []);
     const clearBusy = useCallback(
@@ -609,6 +614,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
                         <Icon name="checkCircle" size="sm" /> {message}
                     </div>
                 )}
+                {appVersion.banner}
 
                 <div className="ss-store-header">
                     <div className="ss-section-label" style={{ margin: 0 }}>
@@ -655,7 +661,9 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
                                             <span className="ss-update-badge">v{c.latest_version}</span>
                                         )}
                                     </span>
-                                    <span className="ss-card-version">v{c.current_version}</span>
+                                    <span className="ss-card-version">
+                                        {appVersion.was(c.current_version)}v{c.current_version}
+                                    </span>
                                 </div>
                                 <div className="ss-card-actions">
                                     {c.update_available && !c.downloaded && (
@@ -755,10 +763,12 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
                     />
                 </div>
                 {stableWait && <p className="setting-description update-stable-wait">{t('updates.stable_wait', { version: stableWait })}</p>}
+                {appVersion.row}
             </div>
 
             <div className="update-panel-actions" />
 
+            {appVersion.dialogs}
             {confirmRestart && (
                 <QuestionModal
                     title={t('saba_storage.restart_required_title')}

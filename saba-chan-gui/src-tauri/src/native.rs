@@ -248,7 +248,13 @@ pub async fn updater_restart(app: AppHandle) -> Value {
     launch_updater_via(&app, "/api/updates/restart").await
 }
 
-/// 업데이터를 띄우는 데몬 경로(`launch-updater`·`restart`, 둘 다 응답이 같다)에 다시 띄울 자기 경로를 실어 보낸다
+/// 사바 스토리지 '사바쨩 버전'의 직전 버전으로 되돌리기 — 데몬이 업데이터를 되돌리기로 띄우고 같은 길을 탄다
+#[tauri::command]
+pub async fn updater_rollback(app: AppHandle) -> Value {
+    launch_updater_via(&app, "/api/updates/rollback").await
+}
+
+/// 업데이터를 띄우는 데몬 경로(`launch-updater`·`restart`·`rollback`, 응답이 같다)에 다시 띄울 자기 경로를 실어 보낸다
 async fn launch_updater_via(app: &AppHandle, path: &str) -> Value {
     let relaunch: Vec<String> = std::env::current_exe()
         .map(|p| vec![p.to_string_lossy().into_owned()])

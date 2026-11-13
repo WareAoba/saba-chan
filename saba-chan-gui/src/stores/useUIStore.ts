@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { RevertResult } from '../types/daemon';
 
 /** 상단 페이지 */
 /** 상단 페이지. `ext:<id>`는 익스텐션 화면 (`App.page` slot) */
@@ -61,6 +62,8 @@ interface UIState {
     commandHistoryMap: Record<string, CommandHistoryEntry[]>;
     /** checking · running · stopped · … */
     backgroundDaemonStatus: string;
+    /** 이번 실행에서 처음 알린 사바쨩 되돌리기 결과. 사바 스토리지 컴포넌트 탭이 앱을 끌 때까지 보인다 */
+    revertResult: RevertResult | null;
 
     openModal: (config: ModalConfig) => void;
     closeModal: () => void;
@@ -87,6 +90,7 @@ interface UIState {
     setShowNoticeSection: (val: boolean) => void;
     setUnreadNoticeCount: (count: number) => void;
     setBackgroundDaemonStatus: (status: string) => void;
+    setRevertResult: (result: RevertResult | null) => void;
     togglePanel: (panelName: Panel) => void;
     _resetForTest: () => void;
 }
@@ -128,6 +132,7 @@ export const useUIStore = create<UIState>()((set, _get) => ({
 
     // ── Background ──
     backgroundDaemonStatus: 'checking',
+    revertResult: null,
 
     // ── Actions ──
     openModal: (config) => set({ modal: config }),
@@ -193,6 +198,7 @@ export const useUIStore = create<UIState>()((set, _get) => ({
     setUnreadNoticeCount: (count) => set({ unreadNoticeCount: count }),
 
     setBackgroundDaemonStatus: (status) => set({ backgroundDaemonStatus: status }),
+    setRevertResult: (result) => set({ revertResult: result }),
 
     togglePanel: (panelName) =>
         set((state) => ({
@@ -220,6 +226,7 @@ export const useUIStore = create<UIState>()((set, _get) => ({
             showNoticeSection: false,
             unreadNoticeCount: 0,
             backgroundDaemonStatus: 'checking',
+            revertResult: null,
         }),
 }));
 
