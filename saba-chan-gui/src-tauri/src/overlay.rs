@@ -43,6 +43,8 @@ const DRAG_START_MS: u64 = 10_000;
 const DRAG_MOVE_MS: u64 = 2_000;
 /// 모니터를 꽂고 빼거나 OS가 창을 옮겼는지 보는 간격
 const WATCH_MS: u64 = 3_000;
+/// 화면 밖에 걸친 펫을 그 모니터의 것으로 볼 거리 (물리 px). 뺀 모니터의 자리는 보통 이보다 멀다
+const NEAR_SCREEN: f64 = 600.0;
 
 /// 사용자가 고른 아래 가운데 점 (물리 px). 끌어 옮길 때만 바뀐다: 크기가 바뀌어 가장자리에서 당겨도,
 /// 그 모니터를 빼서 다른 모니터에 놓아도 이 점은 그대로다
@@ -365,11 +367,28 @@ fn rect(position: tauri::PhysicalPosition<i32>, size: tauri::PhysicalSize<u32>) 
     }
 }
 
-/// 아래 가운데 점이 있는 모니터의 번호. 없으면(점이 없거나 그 모니터를 뺐다) None.
+/// 아래 가운데 점이 있는 모니터의 번호. 점이 화면 가장자리 밖에 걸쳐 있으면 `NEAR_SCREEN` 안의 가장 가까운 모니터.
+/// 없으면(점이 없거나 그 모니터를 뺐다) None.
 /// 모니터 전체로 본다: 작업 표시줄 위에 내려놓아도 그 모니터다 (작업 영역 안으로는 `settle`이 당긴다)
 fn screen_for(anchor: Option<(f64, f64)>, screens: &[PxRect]) -> Option<usize> {
     let (x, y) = anchor?;
-    screens.iter().position(|w| x >= w.x && x <= w.x + w.w && y > w.y && y <= w.y + w.h)
+    let gap = |w: &PxRect| {
+        let dx = (w.x - x).max(x - (w.x + w.w)).max(0.0);
+        let dy = (w.y - y).max(y - (w.y + w.h)).max(0.0);
+        dx.hypot(dy)
+    };
+    screens
+        .iter()
+        .position(|w| x >= w.x && x <= w.x + w.w && y > w.y && y <= w.y + w.h)
+        .or_else(|| {
+            screens
+                .iter()
+                .enumerate()
+                .map(|(i, w)| (i, gap(w)))
+                .filter(|&(_, d)| d <= NEAR_SCREEN)
+                .min_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(i, _)| i)
+        })
 }
 
 fn now_ms() -> u64 {
@@ -717,6 +736,15 @@ mod tests {
         assert_eq!(screen_for(chosen, &[WORK, right]), Some(1), "plugged back in");
         assert_eq!(screen_for(Some((500.0, 900.0)), &[right, WORK]), Some(1));
         assert_eq!(screen_for(None, &[WORK, right]), None, "never moved");
+    }
+
+    /// 펫을 화면 아래 가장자리 밖으로 걸쳐 놓아도 그 모니터에 둔다 (`settle`이 안으로 당긴다)
+    #[test]
+    fn a_pet_dragged_past_the_screen_edge_stays_on_that_monitor() {
+        let below = Some((900.0, WORK.y + WORK.h + 120.0));
+        assert_eq!(screen_for(below, &[WORK]), Some(0));
+        let left = Some((WORK.x - 80.0, 500.0));
+        assert_eq!(screen_for(left, &[WORK]), Some(0));
     }
 
     /// 사용자가 끈 동안의 이동만 기억한다. 모니터를 빼서 OS가 옮긴 것은 기억하지 않는다
