@@ -132,6 +132,8 @@ pub fn phase_from_marker(marker: &serde_json::Value, marker_seen: Option<&str>) 
         Some("rolled_back") => return Some(Phase::ready(ReadyReason::RolledBack, version, notes)),
         // 파일을 바꾸지 않았다(이전 데몬이 끝나지 않음 `wait_pid_timeout`, 데이터 스냅샷 실패 `snapshot_failed`): 사용자가 다시 시작할 때까지 둔다
         Some("deferred") => return Some(Phase::ready(ReadyReason::WaitPidTimeout, version, notes)),
+        // 사용자가 직전 버전으로 되돌렸다: 떠난 판의 완료·준비됨 알약은 걷는다 (되돌림 알림은 `last-result`가 한다)
+        Some("reverted") => return Some(Phase::default()),
         _ => {}
     }
     let success = marker.get("success").and_then(serde_json::Value::as_bool) == Some(true);
@@ -449,6 +451,16 @@ mod tests {
         // 모듈·익스텐션만 바꾼 기록은 알약을 움직이지 않는다
         let addons = json!({ "timestamp": "t4", "updated_components": ["module-palworld", "locales"], "success": true });
         assert!(phase_from_marker(&addons, None).is_none());
+    }
+
+    /// 사용자가 직전 버전으로 되돌리면(`reverted`) 되돌리기 전 판의 '업데이트 완료' 알약을 걷는다
+    #[test]
+    fn a_user_rollback_clears_the_done_pill_of_the_version_it_left() {
+        let mut live = LiveState { phase: Phase::new(PhaseState::Done, Some("0.1.15".into()), None), ..Default::default() };
+        let reverted = json!({ "timestamp": "t9", "updated_components": [], "success": true, "result": "reverted", "version": "0.1.14", "replaced_by": "0.1.15" });
+        assert_eq!(adopt_startup_marker(&mut live, Some(&reverted), || None), (true, None));
+        assert_eq!(live.phase, Phase::default());
+        assert_eq!(live.marker_seen.as_deref(), Some("t9"));
     }
 
     /// 이전 데몬이 적용을 시작한 채 끝났는데 마커가 없으면 단계를 걷는다. 이미 읽은 마커는 단계를 되살리지 않는다
