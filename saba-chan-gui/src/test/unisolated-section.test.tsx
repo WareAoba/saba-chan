@@ -26,13 +26,13 @@ describe('격리 없이 돌리기 동의 목록', () => {
         render(<UnisolatedSection />);
         await flush();
         expect(screen.getByText('module-palworld')).toBeInTheDocument();
-        expect(screen.getByText(/Files changed since you agreed/)).toBeInTheDocument();
+        expect(screen.getByText(/Files changed after you agreed/)).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: 'Remove consent for module-palworld' }));
         await flush();
         expect(window.api.sandboxRevokeUnisolated).toHaveBeenCalledWith('module-palworld');
         expect(window.showToast).toHaveBeenCalledWith(
-            'Removed the consent to run module-palworld without isolation.',
+            'Consent to run module-palworld without isolation removed',
             'info',
             4000,
             undefined,
@@ -45,6 +45,6 @@ describe('격리 없이 돌리기 동의 목록', () => {
         window.api.sandboxRevokeUnisolated = vi.fn();
         render(<UnisolatedSection />);
         await flush();
-        expect(screen.getByText('No components run without isolation.')).toBeInTheDocument();
+        expect(screen.getByText('No components running without isolation')).toBeInTheDocument();
     });
 });

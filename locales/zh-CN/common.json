@@ -1,19 +1,19 @@
 {
   "module_errors": {
     "module_timeout": "模块调用超时。请检查模块状态。",
-    "module_execution_failed": "无法运行模块。请检查运行环境和模块日志。",
-    "module_crashed": "模块进程因错误退出。请检查模块日志。",
-    "module_bad_output": "模块返回了无效结果。请更新模块或联系作者。",
-    "module_output_too_large": "模块输出超过了大小限制。请检查模块日志。",
-    "module_path_outside": "模块尝试访问允许文件夹之外的路径。请检查模块设置。",
+    "module_execution_failed": "模块运行失败。请检查运行环境和模块日志。",
+    "module_crashed": "模块进程异常退出。请检查模块日志。",
+    "module_bad_output": "模块结果无效。请更新模块或联系作者。",
+    "module_output_too_large": "模块输出超过大小限制。请检查模块日志。",
+    "module_path_outside": "模块试图访问允许文件夹之外的路径。请检查模块设置。",
     "module_exception": "模块发生异常。请检查模块日志。",
-    "isolation_unsupported": "此操作系统不支持所需的隔离功能。",
-    "module_platform_unsupported": "此游戏模块无法在该守护进程的系统上运行",
-    "module_arch_unsupported": "此游戏模块无法在该守护进程的 CPU 上运行"
+    "isolation_unsupported": "此操作系统不支持所需的隔离功能",
+    "module_platform_unsupported": "此游戏模块不支持该守护进程的操作系统",
+    "module_arch_unsupported": "此游戏模块不支持该守护进程的 CPU"
   },
   "sandbox": {
     "isolation_unsupported": {
-      "message": "此操作系统不支持隔离运行，因此未运行该组件。"
+      "message": "此操作系统不支持隔离运行，未运行组件"
     }
   },
   "app_name": "Saba-chan",
@@ -33,10 +33,10 @@
   "no": "否",
   "daemon": {
     "checking": "检查守护程序...",
-    "existing_running": "现有守护程序正在运行",
-    "starting": "启动守护程序...",
+    "existing_running": "现有守护进程正在运行",
+    "starting": "守护进程启动中...",
     "started": "守护程序已启动",
-    "failed_to_start": "无法启动守护进程",
+    "failed_to_start": "守护进程启动失败",
     "check_warning": "检查守护程序时出现警告：{{error}}"
   },
   "modules": {
@@ -48,26 +48,26 @@
     "start_failed": "启动失败：{{error}}",
     "stop_failed": "停止失败：{{error}}",
     "status_check_failed": "状态检查失败（HTTP {{status}}）：{{error}}",
-    "module_not_found": "找不到模块'{{module}}'",
+    "module_not_found": "找不到模块“{{module}}”",
     "invalid_request": "无效请求：{{error}}",
-    "not_found": "找不到服务器'{{name}}'",
-    "already_running": "服务器'{{name}}'已在运行",
-    "missing_required_field": "缺少必需字段'{{field}}'",
+    "not_found": "找不到服务器“{{name}}”",
+    "already_running": "服务器“{{name}}”已在运行",
+    "missing_required_field": "缺少必填项“{{field}}”",
     "creation_failed": "创建实例失败：{{error}}",
     "delete_failed": "删除实例失败：{{error}}",
     "update_failed": "更新实例失败：{{error}}",
     "settings_save_failed": "保存设置失败：{{error}}"
   },
   "network": {
-    "connection_refused": "无法连接到守护程序。请检查守护程序是否正在运行",
-    "timeout": "请求超时：服务器未响应"
+    "connection_refused": "守护进程连接失败。请确认守护进程正在运行。",
+    "timeout": "请求超时：服务器无响应"
   },
   "port_conflict": {
     "force_stop_title": "端口冲突：{{name}} 已停止",
-    "force_stop_body": "{{stopped}} 因端口 {{port}} 与 {{existing}} 冲突而被强制停止"
+    "force_stop_body": "端口 {{port}} 与 {{existing}} 冲突，{{stopped}} 已被强制停止"
   },
   "init": {
-    "start": "正在初始化...",
+    "start": "初始化中...",
     "modules": "正在准备模块列表...",
     "instances": "正在准备服务器列表...",
     "ready": "准备就绪",
@@ -75,7 +75,7 @@
     "extensions": "正在准备扩展..."
   },
   "tray": {
-    "tooltip": "Saba酱 - 游戏服务器管理",
+    "tooltip": "Saba-chan - 游戏服务器管理",
     "open_window": "打开窗口",
     "daemon_running": "守护进程运行中",
     "daemon_stopped": "守护进程已停止",
@@ -84,56 +84,56 @@
     "quit_all": "完全退出"
   },
   "updates": {
-    "notification_title": "Saba酱 更新通知",
+    "notification_title": "Saba-chan 更新通知",
     "notification_body": "{{count}} 个更新: {{names}}",
-    "completed": "更新完成!"
+    "completed": "更新完成"
   },
   "errors": {
-    "invalid_input": "请求无效,请检查输入",
-    "instance_name_taken": "已存在同名服务器",
+    "invalid_input": "请求无效。请检查输入值。",
+    "instance_name_taken": "服务器名称已存在",
     "internal": "内部错误",
-    "create_error": "无法创建服务器: {{error}}",
-    "create_http": "无法创建服务器 (HTTP {{status}}): {{error}}",
+    "create_error": "服务器创建失败：{{error}}",
+    "create_http": "服务器创建失败（HTTP {{status}}）：{{error}}",
     "instance_not_found": "找不到服务器",
-    "instance_running": "无法删除运行中的服务器,请先停止",
-    "instance_busy": "此服务器上正在进行其他任务（备份或恢复）。完成后请重试",
-    "delete_error": "无法删除服务器: {{error}}",
-    "delete_http": "无法删除服务器 (HTTP {{status}}): {{error}}",
-    "reorder_failed": "无法调整顺序: {{error}}",
-    "settings_invalid": "设置值无效: {{error}}",
-    "settings_error": "无法保存设置: {{error}}",
-    "settings_http": "无法保存设置 (HTTP {{status}}): {{error}}",
+    "instance_running": "运行中的服务器无法删除。请先停止。",
+    "instance_busy": "此服务器正在进行其他任务（备份·恢复）。完成后重试。",
+    "delete_error": "服务器删除失败：{{error}}",
+    "delete_http": "服务器删除失败（HTTP {{status}}）：{{error}}",
+    "reorder_failed": "顺序更改失败：{{error}}",
+    "settings_invalid": "设置值无效：{{error}}",
+    "settings_error": "设置保存失败：{{error}}",
+    "settings_http": "设置保存失败（HTTP {{status}}）：{{error}}",
     "http": "错误 (HTTP {{status}})",
-    "command_failed": "无法执行命令: {{error}}",
-    "url_missing": "未指定网址",
+    "command_failed": "命令执行失败：{{error}}",
+    "url_missing": "无地址",
     "url_not_web": "只能打开 http(s) 地址",
-    "path_missing": "未指定路径",
+    "path_missing": "无路径",
     "path_not_folder": "不是文件夹",
-    "no_log_folder": "没有日志文件夹",
-    "open_folder_failed": "无法打开文件夹",
-    "remote_local_path": "操作远程守护进程时无法选择本机路径。请在顶部栏切换到本机后重试"
+    "no_log_folder": "无日志文件夹",
+    "open_folder_failed": "文件夹打开失败",
+    "remote_local_path": "使用远程守护进程时无法选择此电脑的路径。请在顶部栏切换到此电脑后重试。"
   },
   "consent": {
     "allow": "允许",
     "unisolated": {
-      "title": "要在不隔离的情况下运行吗？",
-      "message": "{{component}} 未经验证。不隔离运行时，它可以不受限制地访问此电脑上的文件和程序。仅在信任时允许。"
+      "title": "不隔离运行吗？",
+      "message": "{{component}} 未经验证。不隔离运行时，它可不受限制地访问此电脑上的文件和程序。仅在信任时允许。"
     },
     "extension_gui": {
-      "title": "要加载扩展界面吗？",
-      "message": "{{component}} 的界面代码未经验证。加载后它将在 Saba-chan 窗口内运行。仅在信任时允许。"
+      "title": "加载扩展界面吗？",
+      "message": "{{component}} 的界面代码未经验证。加载后会在 Saba-chan 窗口内运行。仅在信任时允许。"
     }
   },
   "notify": {
     "title": "Saba-chan",
-    "crash": "{{name}} 崩溃并停止了。",
-    "unknown_exit": "{{name}} 意外停止了。",
-    "restart_in": "{{secs}} 秒后重新启动。",
-    "gave_up": "已放弃自动重启，请检查服务器。",
-    "restart_failed": "无法重新启动 {{name}}。",
-    "daemon_down": "Saba-chan 本体意外停止了。服务器监控和 Discord 联动已暂停，请在应用中重新启动。",
-    "external_start": "{{name}} 在 Saba-chan 之外启动。这不是 Saba-chan 启动的进程。",
-    "backup_failed": "{{name}} 自动备份失败。",
+    "crash": "服务器“{{name}}”崩溃停止",
+    "unknown_exit": "服务器“{{name}}”意外停止",
+    "restart_in": "{{secs}} 秒后重启",
+    "gave_up": "自动重启已中止。请手动确认。",
+    "restart_failed": "服务器“{{name}}”重启失败",
+    "daemon_down": "Saba-chan 守护进程异常退出。服务器监控和 Discord 联动已停止，请在应用中重新启动。",
+    "external_start": "服务器“{{name}}”在 Saba-chan 之外启动（不是 Saba-chan 启动的进程）",
+    "backup_failed": "{{name}} 自动备份失败",
     "on_daemon": "在 {{daemon}} 上：{{body}}"
   }
 }

@@ -59,9 +59,9 @@ describe('새 디스코드 서버에 서버 열기', () => {
         render(<ConnectionView {...viewProps} />);
         const crash = screen.getByRole('checkbox', { name: 'Crashes' });
         expect(crash).toBeChecked();
-        expect(screen.queryByText(/you won't hear about crashes/)).toBeNull();
+        expect(screen.queryByText(/crashes are not reported on Discord/)).toBeNull();
         fireEvent.click(crash);
-        expect(screen.getByText(/you won't hear about crashes/)).toBeInTheDocument();
+        expect(screen.getByText(/crashes are not reported on Discord/)).toBeInTheDocument();
         await waitFor(() =>
             // 바뀐 칸만 (JSON Merge Patch)
             expect(window.api.botConfigSave).toHaveBeenCalledWith({ dmNotice: { crash: false } }),

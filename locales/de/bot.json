@@ -23,7 +23,7 @@
     "help_start": "Server starten",
     "help_stop": "Server stoppen",
     "help_status": "Server-Status überprüfen",
-    "enter_command": "Gib einen Befehl ein."
+    "enter_command": "Befehl eingeben."
   },
   "list": {
     "title": "🎮 **Serverliste**",
@@ -38,20 +38,20 @@
   "server": {
     "start_request": "⏳ Starten von **{{name}}**-Server...",
     "start_complete": "✅ **{{name}}** · Starten",
-    "already_running": "ℹ️ **{{name}}** läuft bereits.",
+    "already_running": "ℹ️ **{{name}}** läuft bereits",
     "stop_request": "⏳ Stoppen von **{{name}}**-Server...",
     "stop_complete": "✅ **{{name}}** · Stoppen",
-    "graceful_stop_unavailable": "⚠️ **{{name}}** wurde nicht gestoppt: Es gibt keinen Weg (Konsole oder REST), zu speichern und zu beenden. Um ihn ohne Speichern zu beenden, wähle in saba-chan auf diesem PC einen erzwungenen Stopp.",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** nicht gestoppt: kein Weg (Konsole oder REST) zum Speichern und Stoppen. Zum Stoppen ohne Speichern in Saba-chan auf diesem PC erzwungenes Beenden wählen.",
     "status_check": "📊 **{{name}}** · {{status}}",
     "uptime_hm": "läuft seit {{h}} Std. {{m}} Min.",
     "uptime_m": "läuft seit {{m}} Min.",
-    "still_starting": "⏳ **{{name}}** startet noch. Frag gleich noch einmal.",
-    "not_found": "❌ Kein Server gefunden für Modul \"{{alias}}\" ({{resolved}})",
+    "still_starting": "⏳ **{{name}}** startet noch. Gleich erneut prüfen.",
+    "not_found": "❌ Kein Server für Modul \"{{alias}}\" ({{resolved}}) gefunden",
     "not_running": "❌ **{{name}}**: {{error}}",
-    "not_running_default": "Der Server läuft nicht. Starten Sie zuerst den Server",
-    "module_missing": "❌ Das Modul '{{module}}' ist nicht installiert. Dieser Server kann nicht gesteuert werden.",
-    "port_moved": "🔀 Windows hat den REST-Port {{from}} reserviert, daher wurde er auf {{to}} geändert.",
-    "rest_port_closed": "REST-Port {{port}} nimmt keine Verbindungen an"
+    "not_running_default": "Server läuft nicht. Zuerst den Server starten.",
+    "module_missing": "❌ Modul '{{module}}' nicht gefunden, Server nicht steuerbar",
+    "port_moved": "🔀 Windows hat den REST-Port {{from}} reserviert, daher auf {{to}} geändert.",
+    "rest_port_closed": "Verbindung zu REST-Port {{port}} fehlgeschlagen"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` wird ausgeführt...",
@@ -63,15 +63,15 @@
     "failed": "❌ **{{name}}** · {{label}}: {{reason}}",
     "players": "Spieler",
     "invalid": {
-      "missing": "Bitte {{label}} angeben.",
+      "missing": "{{label}} eingeben.",
       "not_number": "{{label}} muss eine Zahl sein. Erhalten: {{value}}",
       "out_of_range": "{{label}} muss zwischen {{min}} und {{max}} liegen. Erhalten: {{value}}",
       "not_option": "{{label}} muss eines davon sein: {{options}}. Erhalten: {{value}}",
       "not_boolean": "{{label}} muss on oder off sein. Erhalten: {{value}}",
-      "line_break": "{{label}} darf keine Zeilenumbrüche enthalten.",
+      "line_break": "{{label}} darf keine Zeilenumbrüche enthalten",
       "one_word": "{{label}} muss ein Wort ohne Leerzeichen sein. Erhalten: {{value}}",
-      "quote": "{{label}} darf keine Anführungszeichen enthalten.",
-      "too_many": "Dieser Befehl nimmt keine zusätzlichen Wörter an. Erhalten: {{value}}"
+      "quote": "{{label}} darf keine Anführungszeichen enthalten",
+      "too_many": "Dieser Befehl nimmt keine zusätzliche Eingabe an. Erhalten: {{value}}"
     }
   },
   "responses": {
@@ -81,31 +81,31 @@
   "errors": {
     "error_title": "Fehler beim Ausführen des Befehls",
     "unknown": "Unbekannter Fehler",
-    "agreement_required": "Du musst {{names}} zustimmen, bevor dieser Server starten kann. Stimme in Saba-chan auf dem PC zu.",
-    "memory_limit_at_start": "Der Server hat beim Start sein Speicherlimit von {{limit}} MiB erreicht und wurde gestoppt. Setze das Limit über die RAM-Einstellung oder leere es.",
-    "runner_missing": "saba-runner fehlt, daher ist der verwaltete Start nicht möglich. Schalte den verwalteten Start für diesen Server aus oder installiere saba-chan neu.",
-    "preflight_failed": "Die Prüfung vor dem Start hat ein Problem gefunden, daher wurde der Server nicht gestartet ({{code}}). Details siehst du in Saba-chan auf dem PC.",
-    "agreement_local_only": "Vereinbarungen können nur in Saba-chan auf diesem PC angenommen werden.",
-    "no_command_path": "'{{name}}' ist mit keiner saba-chan-Konsole verbunden und kann keine Befehle annehmen. Starte den Server in saba-chan auf dem PC im verwalteten Modus neu.",
-    "alias_conflict": "❌ Alias '{{alias}}' ist mehrdeutig. Er passt auf mehrere Module: {{modules}}. Verwende einen spezifischeren Alias.",
-    "multiple_instances": "⚠️ Mehrere '{{module}}'-Instanzen vorhanden. Verwende den Instanznamen statt des Modul-Alias.",
-    "danger_needs_name": "⚠️ Gefährliche Befehle laufen nicht über den Spielnamen. Rufe den Server mit seinem Namen '{{name}}' auf.",
-    "slash_only": "🔒 {{command}} sieht nur, wer fragt – deshalb gibt es das nur als Slash-Befehl. Tippe `/` und wähle **{{name}}** › {{command}}.",
+    "agreement_required": "Zustimmung zu {{names}} nötig, um den Server zu starten. In Saba-chan auf dem PC zustimmen.",
+    "memory_limit_at_start": "Server beim Start am Speicherlimit ({{limit}} MiB) beendet. Limit über die RAM-Einstellung erhöhen oder leeren.",
+    "runner_missing": "saba-runner fehlt, verwalteter Start nicht möglich. Verwalteten Start für diesen Server ausschalten oder Saba-chan neu installieren.",
+    "preflight_failed": "Start wegen fehlgeschlagener Prüfung vor dem Start abgebrochen ({{code}}). Details in Saba-chan auf dem PC.",
+    "agreement_local_only": "Zustimmung nur in Saba-chan auf diesem PC möglich",
+    "no_command_path": "'{{name}}' hat keine Saba-chan-Konsole und nimmt keine Befehle an. Server in Saba-chan auf dem PC im verwalteten Modus neu starten.",
+    "alias_conflict": "❌ Alias '{{alias}}' mehrfach vergeben: {{modules}}. Spezifischeren Alias verwenden.",
+    "multiple_instances": "⚠️ Mehrere '{{module}}'-Instanzen, Modul-Alias nicht eindeutig. Instanznamen verwenden.",
+    "danger_needs_name": "⚠️ Gefährliche Befehle nicht über den Spielnamen ausführbar. Server mit seinem Namen '{{name}}' aufrufen.",
+    "slash_only": "🔒 {{command}} ist nur für die aufrufende Person sichtbar und daher nur als Slash-Befehl verfügbar. `/` tippen und **{{name}}** › {{command}} wählen.",
     "auth_failed": "Authentifizierung fehlgeschlagen",
     "player_not_found": "Spieler nicht gefunden",
     "internal_server_error": "Interner Serverfehler",
     "rest_api_disabled": "REST-API deaktiviert",
     "rcon_disabled": "RCON deaktiviert",
-    "not_found": "Angeforderte Ressource nicht gefunden",
-    "connection_refused": "Verbindung zum Server fehlgeschlagen",
-    "timeout": "Anfragezeitüberschreitung",
+    "not_found": "Ressource nicht gefunden",
+    "connection_refused": "Serververbindung fehlgeschlagen",
+    "timeout": "Zeitüberschreitung",
     "host_not_found": "Server-Host nicht gefunden",
     "service_unavailable": "Dienst nicht verfügbar",
     "unknown_input": "❌ Unbekannter Befehl.",
     "command_not_found": "❌ Befehl existiert nicht.",
-    "permission_denied": "❌ Du hast keine Berechtigung, diesen Befehl zu verwenden.",
-    "members_only": "❌ Nur die Mitglieder dieses Servers können ihn nutzen. Bitte den Serverbesitzer, dich zur Mitgliederliste hinzuzufügen.",
-    "local_single_guild_only": "⚠️ Der lokale Bot kann nur auf einem Server verwendet werden. Dieser Bot ist auf {{count}} Servern. Entferne ihn von den Servern, die du nicht nutzt."
+    "permission_denied": "❌ Keine Berechtigung für diesen Befehl",
+    "members_only": "❌ Nur für Mitglieder nutzbar. Den Serverbesitzer bitten, dich zur Mitgliederliste hinzuzufügen.",
+    "local_single_guild_only": "⚠️ Lokaler Bot nur auf einem Server nutzbar, aktuell auf {{count}} Servern. Bot von ungenutzten Servern entfernen."
   },
   "messages": {
     "command_error": "Fehler beim Ausführen des Befehls"
@@ -121,24 +121,24 @@
   "schedule": {
     "restart_warning": "Der Server startet in {{minutes}} Min. neu.",
     "update_warning": "Der Server startet in {{minutes}} Min. für ein Update neu.",
-    "update_cancelled": "Das geplante Update wurde abgebrochen. Der Server läuft weiter.",
+    "update_cancelled": "Geplantes Update abgebrochen. Server läuft weiter.",
     "stop_warning": "Der Server wird in {{minutes}} Min. gestoppt."
   },
   "provision": {
     "installing": "Server wird installiert…",
     "install_failed": "Installation fehlgeschlagen",
-    "installed": "Server installiert",
+    "installed": "Serverinstallation abgeschlossen",
     "updating": "Server wird aktualisiert…",
-    "update_failed": "Aktualisierung fehlgeschlagen",
-    "updated": "Server aktualisiert",
+    "update_failed": "Update fehlgeschlagen",
+    "updated": "Serverupdate abgeschlossen",
     "module_missing": "Modul nicht gefunden: {{error}}",
-    "no_latest_version": "Die neueste Serverversion konnte nicht ermittelt werden",
-    "script_failed": "Das Installationsskript wurde mit einem Fehler beendet. Details stehen im Daemon-Log",
-    "save_failed": "Die Serverdateien wurden heruntergeladen, aber die Serverdaten konnten nicht gespeichert werden. Details stehen im Daemon-Log",
-    "backup_failed": "Sicherung vor dem Update fehlgeschlagen: {{reason}}",
+    "no_latest_version": "Neueste Serverversion nicht ermittelbar",
+    "script_failed": "Fehler im Installationsskript. Details im Daemon-Log.",
+    "save_failed": "Serverdateien geladen, Serverdaten aber nicht gespeichert. Details im Daemon-Log.",
+    "backup_failed": "Backup vor dem Update fehlgeschlagen: {{reason}}",
     "version_installing": "Version {{version}} wird installiert…",
     "version_installed": "Version installiert",
-    "install_backup_failed": "Die Sicherung vor der Installation ist fehlgeschlagen, daher wurde nichts installiert: {{reason}}"
+    "install_backup_failed": "Backup vor der Installation fehlgeschlagen, nicht installiert: {{reason}}"
   },
   "actions": {
     "instance": {
@@ -172,14 +172,14 @@
       "start_notice": {
         "set": {
           "title": "Start-Hinweis",
-          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn dieser Server ohne Discord-Befehl startet oder stoppt (auch Abstürze)",
+          "description": "Meldet im Hinweiskanal dieses Discord-Servers, wenn dieser Server außerhalb von Discord startet oder stoppt (auch bei Absturz)",
           "name": "Start-Hinweis"
         }
       },
       "full_notice": {
         "set": {
           "title": "Voll-Hinweis",
-          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn dieser Server voll ist oder wieder ein Platz frei wird",
+          "description": "Meldet im Hinweiskanal dieses Discord-Servers, wenn dieser Server voll ist oder wieder Platz frei wird",
           "name": "Voll-Hinweis"
         }
       },
@@ -246,7 +246,7 @@
       },
       "port_check": {
         "title": "Portweiterleitung prüfen",
-        "description": "Das Relay prüft, ob dieser Server aus dem Internet erreichbar ist"
+        "description": "Server-chan prüft, ob dieser Server aus dem Internet erreichbar ist"
       },
       "chat": {
         "title": "Spielchat senden",
@@ -300,7 +300,7 @@
     "module": {
       "install": {
         "title": "Modul installieren",
-        "description": "Lädt es aus dem offiziellen Katalog herunter und installiert es"
+        "description": "Lädt aus dem offiziellen Katalog und installiert"
       },
       "list": {
         "title": "Installierte Module"
@@ -332,7 +332,7 @@
       },
       "apply": {
         "title": "Update anwenden",
-        "description": "Lädt das neue Update herunter, installiert es und startet die App neu"
+        "description": "Lädt das neue Update, installiert es und startet die App neu"
       }
     },
     "discord": {
@@ -431,7 +431,7 @@
         "unknown_exit": "aus unbekanntem Grund beendet"
       },
       "updates": "⬆️ **{{count}} Updates**",
-      "updates_none": "✅ Alles ist aktuell",
+      "updates_none": "✅ Alles aktuell",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · Speicher {{used}} / {{total}}",
       "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
@@ -442,21 +442,21 @@
       "address": {
         "item": "• `{{address}}`",
         "item_named": "• {{label}} `{{address}}`",
-        "stopped": "💤 Der Server ist aus. Starte ihn, damit andere sich verbinden können",
-        "unknown": "❔ Server-chan kennt die öffentliche Adresse dieses PCs noch nicht. Versuche es gleich noch einmal",
-        "no_ports": "📭 Dieses Spiel gibt keinen Verbindungsport an",
-        "hidden": "🔒 Der Serverbesitzer teilt die Adresse nicht auf Discord. Bitte frag direkt nach"
+        "stopped": "💤 Server gestoppt. Zum Verbinden zuerst starten.",
+        "unknown": "❔ Server-chan kennt die öffentliche Adresse dieses PCs nicht. Gleich erneut versuchen.",
+        "no_ports": "📭 Dieses Spiel hat keinen Verbindungsport",
+        "hidden": "🔒 Der Serverbesitzer gibt die Adresse nicht auf Discord frei. Direkt beim Besitzer nachfragen."
       },
       "port_check": {
-        "open": "✅ Aus dem Internet erreichbar",
-        "firewall": "🧱 Von der PC-Firewall blockiert",
-        "router": "📡 Am Router ist keine Portweiterleitung eingerichtet",
-        "closed": "🚫 Aus dem Internet nicht erreichbar",
-        "cgnat": "⚠️ Dein Router hat keine öffentliche IP (CGNAT)",
-        "unknown": "❔ Einige Ports konnten nicht geprüft werden",
-        "no_ports": "📭 Dieses Spiel gibt keine zu prüfenden Ports an",
-        "host_mismatch": "🌐 Die öffentliche Adresse zeigt nicht auf diesen PC",
-        "host_unresolved": "🌐 Die öffentliche Adresse wurde nicht gefunden"
+        "open": "✅ Von außen erreichbar",
+        "firewall": "🧱 Von PC-Firewall blockiert",
+        "router": "📡 Keine Portweiterleitung am Router",
+        "closed": "🚫 Von außen nicht erreichbar",
+        "cgnat": "⚠️ Router ohne öffentliche IP (CGNAT)",
+        "unknown": "❔ Einige Ports nicht prüfbar",
+        "no_ports": "📭 Keine Portinformationen zum Prüfen für dieses Spiel",
+        "host_mismatch": "🌐 Öffentliche Adresse zeigt nicht auf diesen PC",
+        "host_unresolved": "🌐 Öffentliche Adresse nicht gefunden"
       },
       "port_status": {
         "open": "Offen",
@@ -468,50 +468,50 @@
       },
       "port_item": "• {{port}}/{{protocol}} · {{status}}",
       "port_hint": {
-        "closed": "Prüfe, ob der Router diesen Port an diesen PC weiterleitet und die PC-Firewall ihn erlaubt.",
-        "firewall": "Die Windows-Firewall blockiert eingehende Verbindungen auf diesem Port. Erlaube für das Netzwerk, mit dem du gerade verbunden bist (privat oder öffentlich), in den Einstellungen der Windows-Firewall saba-core, wenn der Server gestoppt ist, oder das Programm des Spielservers, wenn er läuft, und prüfe erneut.",
-        "router": "Die PC-Firewall lässt diesen Port zu. Leite diesen Port in den Router-Einstellungen an diesen PC weiter und prüfe erneut.",
-        "cgnat": "Dein Anbieter teilt eine öffentliche IP unter vielen Haushalten, daher lässt sie sich nicht per Portweiterleitung öffnen. Frag deinen Anbieter nach einer öffentlichen IP oder nutze ein VPN wie Tailscale.",
-        "unknown": "UDP-Ports eines laufenden Servers und Ports, die ein anderes Programm belegt, lassen sich nicht prüfen. Stoppe den Server und prüfe erneut."
+        "closed": "Prüfen, ob der Router diesen Port an diesen PC weiterleitet und die PC-Firewall ihn erlaubt.",
+        "firewall": "Die Windows-Firewall blockiert eingehende Verbindungen auf diesem Port. Im aktuellen Netzwerk (privat oder öffentlich) in den Windows-Firewall-Einstellungen saba-core erlauben (Server gestoppt) oder das Spielserver-Programm (Server läuft), dann erneut prüfen.",
+        "router": "Die PC-Firewall erlaubt diesen Port. Port in den Router-Einstellungen an diesen PC weiterleiten, dann erneut prüfen.",
+        "cgnat": "Der Anbieter teilt eine öffentliche IP unter mehreren Haushalten, Portweiterleitung funktioniert daher nicht. Öffentliche IP beim Anbieter anfragen oder ein VPN wie Tailscale nutzen.",
+        "unknown": "UDP-Ports eines laufenden Servers und von anderen Programmen belegte Ports sind nicht prüfbar. Server stoppen und erneut prüfen."
       },
       "server_update": {
-        "available": "Eine neue Version ist da (Build {{local}} → {{remote}}).",
-        "latest": "Aktuell (Build {{build}}).",
-        "check_failed": "Update konnte nicht geprüft werden: {{error}}",
-        "unsupported": "Saba-chan aktualisiert diesen Server nicht (manuell installiert).",
-        "unchecked": "Für diesen Server können keine Updates geprüft werden.",
-        "started": "Das Update läuft. Ich melde mich, wenn es fertig ist.",
-        "cancelled": "Das angekündigte Update wurde abgebrochen. Der Server läuft weiter.",
-        "scheduled": "Ich warne {{minutes}} Minuten vorher im Spiel, dann speichern, stoppen, aktualisieren und neu starten.",
-        "players": "Gerade sind {{count}} Spieler online."
+        "available": "Neue Version verfügbar (Build {{local}} → {{remote}})",
+        "latest": "Aktuell (Build {{build}})",
+        "check_failed": "Update-Prüfung fehlgeschlagen: {{error}}",
+        "unsupported": "Wird nicht von Saba-chan aktualisiert (manuell installierter Server)",
+        "unchecked": "Update-Prüfung für diesen Server nicht möglich",
+        "started": "Update gestartet. Meldung nach Abschluss.",
+        "cancelled": "Angekündigtes Update abgebrochen. Server läuft weiter.",
+        "scheduled": "Warnung {{minutes}} Minuten vorher im Spiel, dann speichern, stoppen, aktualisieren und neu starten.",
+        "players": "Aktuell {{count}} Spieler online"
       }
     }
   },
   "reasons": {
-    "failed": "Konnte nicht ausgeführt werden",
-    "rejected": "Der Server hat den Befehl nicht angenommen",
-    "server_not_running": "Der Server ist aus",
-    "not_supported": "Dieses Spiel unterstützt das nicht",
+    "failed": "Ausführung fehlgeschlagen",
+    "rejected": "Server hat Befehl abgelehnt",
+    "server_not_running": "Server gestoppt",
+    "not_supported": "Von diesem Spiel nicht unterstützt",
     "not_found": "Nicht gefunden",
-    "timeout": "Der Server hat nicht rechtzeitig geantwortet",
-    "auth_failed": "Die Anmeldung am Server ist fehlgeschlagen",
-    "players_failed": "Die Spieler konnten nicht gelesen werden",
-    "backup_file_locked": "Der Server benutzt eine Datei ({{file}}), daher konnte kein Backup erstellt werden. Server stoppen und erneut versuchen",
-    "backup_failed": "Das Backup konnte nicht erstellt werden",
-    "backup_unsupported": "Dieses Spiel unterstützt keine Backups",
-    "nothing_to_back_up": "Es gibt noch keine Welt zum Sichern",
-    "backup_limit": "Das Limit für Remote-Backups ist erreicht. Alte Backups am PC löschen",
-    "backup_busy": "Ein anderes Backup oder eine Wiederherstellung läuft",
-    "backups_unreadable": "Der Backup-Ordner konnte nicht gelesen werden. Prüfe Ordnerberechtigungen und Datenträger am PC",
-    "server_running": "Der Server läuft. Zuerst stoppen",
-    "no_command_path": "Der Server wurde außerhalb von Saba-chan gestartet und nimmt keine Befehle an",
-    "autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten",
-    "backup_failed_autosave_off": "Das Backup ist fehlgeschlagen, und das Autospeichern des Servers ließ sich auch nicht wieder einschalten. Server neu starten",
-    "backup_save_rejected": "Der Server hat den Speicherbefehl abgelehnt, daher wurde kein Backup erstellt. Halte den Server an und sichere erneut",
-    "backup_save_unconfirmed": "Der Server hat nicht gemeldet, dass das Speichern fertig ist, daher wurde kein Backup erstellt. Versuche es gleich noch einmal oder halte den Server vor dem Backup an",
-    "backup_server_stopped": "Der Server wurde während des Backups gestoppt, daher wurde dieses Backup verworfen. Server prüfen und erneut sichern",
-    "snapshot_not_found": "Das Spiel hat kein automatisches Backup",
-    "snapshot_not_deletable": "Saba-chan kann die eigenen Backups des Spiels nicht löschen"
+    "timeout": "Zeitüberschreitung beim Server",
+    "auth_failed": "Serveranmeldung fehlgeschlagen",
+    "players_failed": "Spielerabfrage fehlgeschlagen",
+    "backup_file_locked": "Datei ({{file}}) vom Server belegt, Backup fehlgeschlagen. Server stoppen und erneut versuchen.",
+    "backup_failed": "Backup fehlgeschlagen",
+    "backup_unsupported": "Backups für dieses Spiel nicht unterstützt",
+    "nothing_to_back_up": "Keine Welt zum Sichern",
+    "backup_limit": "Limit für Remote-Backups erreicht. Alte Backups am PC löschen.",
+    "backup_busy": "Anderes Backup oder Wiederherstellung läuft",
+    "backups_unreadable": "Backup-Ordner nicht lesbar. Ordnerberechtigungen und Datenträger am PC prüfen.",
+    "server_running": "Server läuft. Zuerst stoppen.",
+    "no_command_path": "Server außerhalb von Saba-chan gestartet, Befehle nicht sendbar",
+    "autosave_not_resumed": "Backup erstellt, Autospeichern des Servers aber nicht wieder aktiviert. Server neu starten.",
+    "backup_failed_autosave_off": "Backup fehlgeschlagen, Autospeichern des Servers ebenfalls nicht wieder aktiviert. Server neu starten.",
+    "backup_save_rejected": "Server hat Speicherbefehl abgelehnt, kein Backup. Server stoppen und erneut sichern.",
+    "backup_save_unconfirmed": "Keine Speicherbestätigung vom Server, kein Backup. Gleich erneut versuchen oder Server stoppen und sichern.",
+    "backup_server_stopped": "Server während des Backups beendet, Backup verworfen. Serverstatus prüfen und erneut sichern.",
+    "snapshot_not_found": "Kein automatisches Backup des Spiels",
+    "snapshot_not_deletable": "Automatische Spiel-Backups nicht über Saba-chan löschbar"
   },
   "chatbot": {
     "memo_template": "<!-- Hinweiszeilen wie diese und leere Überschriften werden nicht an Sprechende Saba-chan geschickt. Fülle nur aus, was du brauchst. -->\n\n## Stimmung\n<!-- Beschreibe, wie hier geredet wird und wie derb Witze sein dürfen. Leer = Standardpersönlichkeit. -->\n\n## Anreden\n<!-- Besondere Anreden, die Saba-chan für jemanden benutzen soll. Beispiel: Die als (Besitzer) markierte Person „Meister“ nennen. -->\n\n## Begriffe dieses Servers\n<!-- Spitznamen, Memes und Abkürzungen, die nur hier verstanden werden, mit Bedeutung. -->\n\n## Infos zum Spielserver\n<!-- Regeln, Öffnungszeiten und anderes, das Saba-chan Fragenden sagen darf. -->\n"

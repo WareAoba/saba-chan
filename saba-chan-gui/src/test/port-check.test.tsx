@@ -43,7 +43,7 @@ describe('포트포워딩 확인', () => {
         render(<PortCheck server={server} />);
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Check port forwarding/i })));
         expect(window.api.instancePortCheck).toHaveBeenCalledWith('a');
-        expect(screen.getByText(/Not reachable from the internet/)).toBeInTheDocument();
+        expect(screen.getByText(/Not reachable from outside/)).toBeInTheDocument();
         expect(screen.getByText(/8\.8\.4\.4/)).toBeInTheDocument();
         const items = screen.getAllByRole('listitem').map((li) => li.textContent);
         expect(items).toEqual(['7777/TCP · Closed', '7777/UDP · Open']);
@@ -87,7 +87,7 @@ describe('포트포워딩 확인', () => {
         const retry = await screen.findByRole('button', { name: /Check again/i });
         await act(async () => fireEvent.click(retry));
         expect(window.api.instancePortCheck).toHaveBeenCalledWith('a');
-        expect(screen.getByText(/Port forwarding is not set up on the router/)).toBeInTheDocument();
+        expect(screen.getByText(/Router port forwarding not set/)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Check again/i })).toBeInTheDocument();
     });
 

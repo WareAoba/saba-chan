@@ -34,10 +34,10 @@ describe('콘솔 수준 필터', () => {
         expect(chips().getByRole('button', { name: 'All' }).getAttribute('aria-pressed')).toBe('true');
         fireEvent.click(chips().getByRole('button', { name: 'Warnings 2' }));
         expect(shownLines()).toEqual([LINES[1].content, LINES[3].content]);
-        expect(screen.getByText('Other lines hidden: 2')).toBeTruthy();
+        expect(screen.getByText('2 other lines hidden')).toBeTruthy();
         fireEvent.click(chips().getByRole('button', { name: 'Errors 1' }));
         expect(shownLines()).toHaveLength(3);
-        expect(screen.getByText('Other lines hidden: 1')).toBeTruthy();
+        expect(screen.getByText('1 other lines hidden')).toBeTruthy();
         fireEvent.click(chips().getByRole('button', { name: 'All' }));
         expect(shownLines()).toHaveLength(4);
         expect(screen.queryByText(/hidden:/)).toBeNull();

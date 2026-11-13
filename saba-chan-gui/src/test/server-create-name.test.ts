@@ -21,7 +21,7 @@ describe('서버 만들기: 같은 이름', () => {
         expect(created).toBe(false);
         const modal = setModal.mock.calls.at(-1)![0];
         expect(modal.type).toBe('failure');
-        expect(modal.message).toBe("'A' is already taken");
+        expect(modal.message).toBe("'A' name already in use");
     });
 });
 

@@ -38,20 +38,20 @@
   "server": {
     "start_request": "⏳ Démarrage du serveur **{{name}}**...",
     "start_complete": "✅ **{{name}}** · Démarrer",
-    "already_running": "ℹ️ **{{name}}** est déjà en marche.",
+    "already_running": "ℹ️ **{{name}}** : déjà en cours d'exécution",
     "stop_request": "⏳ Arrêt du serveur **{{name}}**...",
     "stop_complete": "✅ **{{name}}** · Arrêter",
-    "graceful_stop_unavailable": "⚠️ **{{name}}** n'a pas été arrêté : il n'a aucun moyen (console ou REST) de sauvegarder et de quitter. Pour l'arrêter sans sauvegarder, choisissez un arrêt forcé dans saba-chan sur ce PC.",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** non arrêté : aucun moyen (console ou REST) de sauvegarder avant l'arrêt. Pour l'arrêter sans sauvegarder, choisissez l'arrêt forcé dans Saba-chan sur ce PC.",
     "status_check": "📊 **{{name}}** · {{status}}",
     "uptime_hm": "en ligne depuis {{h}} h {{m}} min",
     "uptime_m": "en ligne depuis {{m}} min",
-    "still_starting": "⏳ **{{name}}** est encore en train de démarrer. Redemande dans un instant.",
-    "not_found": "❌ Aucun serveur trouvé pour le module \"{{alias}}\" ({{resolved}})",
+    "still_starting": "⏳ **{{name}}** : démarrage en cours. Revérifiez dans un instant.",
+    "not_found": "❌ Aucun serveur trouvé pour le module « {{alias}} » ({{resolved}})",
     "not_running": "❌ **{{name}}** : {{error}}",
-    "not_running_default": "Le serveur n'est pas en cours d'exécution. Démarrez d'abord le serveur",
-    "module_missing": "❌ Le module '{{module}}' n'est pas installé. Ce serveur ne peut pas être contrôlé.",
-    "port_moved": "🔀 Windows a réservé le port REST {{from}}, il a donc été changé en {{to}}.",
-    "rest_port_closed": "Le port REST {{port}} n’accepte pas les connexions"
+    "not_running_default": "Serveur non démarré. Démarrez-le d'abord.",
+    "module_missing": "❌ Module « {{module}} » introuvable : contrôle de ce serveur impossible",
+    "port_moved": "🔀 Windows réserve le port REST d'administration {{from}} : remplacé par {{to}}.",
+    "rest_port_closed": "Connexion au port REST {{port}} impossible"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` en cours d'exécution...",
@@ -65,13 +65,13 @@
     "invalid": {
       "missing": "Indiquez {{label}}.",
       "not_number": "{{label}} doit être un nombre. Reçu : {{value}}",
-      "out_of_range": "{{label}} doit être entre {{min}} et {{max}}. Reçu : {{value}}",
-      "not_option": "{{label}} doit être l’un de : {{options}}. Reçu : {{value}}",
+      "out_of_range": "{{label}} doit être compris entre {{min}} et {{max}}. Reçu : {{value}}",
+      "not_option": "{{label}} doit être l'un de : {{options}}. Reçu : {{value}}",
       "not_boolean": "{{label}} doit être on ou off. Reçu : {{value}}",
-      "line_break": "{{label}} ne peut pas contenir de saut de ligne.",
-      "one_word": "{{label}} doit être un seul mot sans espace. Reçu : {{value}}",
-      "quote": "{{label}} ne peut pas contenir de guillemets doubles.",
-      "too_many": "Cette commande ne prend pas de mots en plus. Reçu : {{value}}"
+      "line_break": "Saut de ligne interdit dans {{label}}",
+      "one_word": "{{label}} doit être un seul mot, sans espace. Reçu : {{value}}",
+      "quote": "Guillemets doubles interdits dans {{label}}",
+      "too_many": "Cette commande n'accepte aucun mot supplémentaire. Reçu : {{value}}"
     }
   },
   "responses": {
@@ -81,31 +81,31 @@
   "errors": {
     "error_title": "Erreur lors de l'exécution de la commande",
     "unknown": "Erreur inconnue",
-    "agreement_required": "Vous devez accepter {{names}} avant de pouvoir démarrer ce serveur. Acceptez dans Saba-chan sur le PC.",
-    "memory_limit_at_start": "Le serveur a atteint sa limite de mémoire de {{limit}} Mio au démarrage et a été arrêté. Mettez la limite au-dessus de sa RAM ou videz-la.",
-    "runner_missing": "saba-runner est introuvable, le démarrage géré est donc impossible. Désactivez le démarrage géré pour ce serveur ou réinstallez saba-chan.",
-    "preflight_failed": "La vérification avant démarrage a trouvé un problème, le serveur n'a donc pas été démarré ({{code}}). Voyez les détails dans Saba-chan sur le PC.",
-    "agreement_local_only": "Les accords ne peuvent être acceptés que dans Saba-chan sur ce PC.",
-    "no_command_path": "'{{name}}' n'a pas de console saba-chan connectée et ne peut pas recevoir de commandes. Redémarrez-le en mode géré depuis saba-chan sur le PC.",
-    "alias_conflict": "❌ L'alias '{{alias}}' est ambigu. Il correspond à plusieurs modules : {{modules}}. Utilisez un alias plus spécifique.",
-    "multiple_instances": "⚠️ Plusieurs instances de '{{module}}' existent. Utilisez le nom de l'instance au lieu de l'alias du module.",
-    "danger_needs_name": "⚠️ Les commandes dangereuses ne s'exécutent pas via le nom du jeu. Appelez le serveur par son nom '{{name}}'.",
-    "slash_only": "🔒 {{command}} n'est visible que par la personne qui le demande, c'est donc une commande slash. Tape `/` et choisis **{{name}}** › {{command}}.",
+    "agreement_required": "Acceptez {{names}} pour pouvoir démarrer le serveur. Acceptation dans Saba-chan sur le PC.",
+    "memory_limit_at_start": "Serveur arrêté : limite de mémoire ({{limit}} Mio) atteinte au démarrage. Placez la limite au-dessus du paramètre de RAM, ou videz-la.",
+    "runner_missing": "saba-runner introuvable : démarrage géré impossible. Désactivez le démarrage géré de ce serveur ou réinstallez Saba-chan.",
+    "preflight_failed": "Démarrage annulé : échec de la vérification avant démarrage ({{code}}). Détails dans Saba-chan sur le PC.",
+    "agreement_local_only": "Acceptation possible uniquement dans Saba-chan sur ce PC",
+    "no_command_path": "« {{name}} » n'a pas de console Saba-chan connectée : commandes impossibles. Redémarrez le serveur en mode géré depuis Saba-chan sur le PC.",
+    "alias_conflict": "❌ L'alias « {{alias}} » correspond à plusieurs modules : {{modules}}. Utilisez un alias plus précis.",
+    "multiple_instances": "⚠️ Plusieurs instances du module « {{module}} » : l'alias ne suffit pas. Utilisez le nom de l'instance.",
+    "danger_needs_name": "⚠️ Une commande dangereuse ne s'exécute pas via le nom du jeu. Appelez le serveur par son nom « {{name}} ».",
+    "slash_only": "🔒 « {{command}} » n'est visible que par la personne qui la demande : c'est une commande slash. Tape `/` et choisis **{{name}}** › {{command}}.",
     "auth_failed": "Échec de l'authentification",
     "player_not_found": "Joueur introuvable",
     "internal_server_error": "Erreur interne du serveur",
     "rest_api_disabled": "API REST désactivée",
     "rcon_disabled": "RCON désactivé",
-    "not_found": "Ressource demandée introuvable",
-    "connection_refused": "Impossible de se connecter au serveur",
+    "not_found": "Ressource introuvable",
+    "connection_refused": "Connexion au serveur impossible",
     "timeout": "Délai de la requête dépassé",
     "host_not_found": "Hôte du serveur introuvable",
     "service_unavailable": "Service indisponible",
     "unknown_input": "❌ Commande inconnue.",
     "command_not_found": "❌ La commande n'existe pas.",
-    "permission_denied": "❌ Vous n'avez pas la permission d'utiliser cette commande.",
-    "members_only": "❌ Seuls les membres de ce serveur peuvent l’utiliser. Demandez au propriétaire du serveur de vous ajouter à sa liste de membres.",
-    "local_single_guild_only": "⚠️ Le bot local ne peut être utilisé que sur un seul serveur. Ce bot est sur {{count}} serveurs. Retirez-le des serveurs que vous n'utilisez pas."
+    "permission_denied": "❌ Permission insuffisante pour cette commande",
+    "members_only": "❌ Serveur réservé à ses membres. Demandez au propriétaire de vous ajouter à la liste des membres.",
+    "local_single_guild_only": "⚠️ Le bot local ne fonctionne que sur un seul serveur. Il est actuellement sur {{count}} serveurs. Retirez-le de ceux que vous n'utilisez pas."
   },
   "messages": {
     "command_error": "Erreur lors de l'exécution de la commande"
@@ -121,7 +121,7 @@
   "schedule": {
     "restart_warning": "Le serveur redémarre dans {{minutes}} min.",
     "update_warning": "Le serveur redémarre pour une mise à jour dans {{minutes}} min.",
-    "update_cancelled": "La mise à jour prévue a été annulée. Le serveur reste allumé.",
+    "update_cancelled": "Mise à jour prévue annulée. Le serveur reste en marche.",
     "stop_warning": "Le serveur s'arrête dans {{minutes}} min."
   },
   "provision": {
@@ -132,13 +132,13 @@
     "update_failed": "Échec de la mise à jour",
     "updated": "Serveur mis à jour",
     "module_missing": "Module introuvable : {{error}}",
-    "no_latest_version": "Impossible de trouver la dernière version du serveur",
-    "script_failed": "Le script d'installation s'est terminé par une erreur. Consultez le journal du daemon pour plus de détails",
-    "save_failed": "Les fichiers du serveur ont été téléchargés, mais ses informations n'ont pas pu être enregistrées. Consultez le journal du daemon pour plus de détails",
+    "no_latest_version": "Échec de la vérification de la dernière version du serveur",
+    "script_failed": "Erreur du script d'installation. Détails dans le journal du daemon.",
+    "save_failed": "Fichiers du serveur téléchargés, mais échec de l'enregistrement des informations du serveur. Détails dans le journal du daemon.",
     "backup_failed": "Échec de la sauvegarde avant mise à jour : {{reason}}",
     "version_installing": "Installation de la version {{version}}…",
     "version_installed": "Version installée",
-    "install_backup_failed": "La sauvegarde avant installation a échoué, rien n'a été installé : {{reason}}"
+    "install_backup_failed": "Échec de la sauvegarde avant installation, rien n'a été installé : {{reason}}"
   },
   "actions": {
     "instance": {
@@ -172,14 +172,14 @@
       "start_notice": {
         "set": {
           "title": "Alerte de démarrage",
-          "description": "Annoncer dans le canal d’alertes de ce serveur Discord quand ce serveur démarre ou s’arrête sans commande Discord (plantages compris)",
+          "description": "Annonce dans le canal d'alertes de ce serveur Discord quand ce serveur démarre ou s'arrête en dehors de Discord (plantages compris)",
           "name": "Alerte de démarrage"
         }
       },
       "full_notice": {
         "set": {
           "title": "Alerte serveur plein",
-          "description": "Prévenir dans le canal d’alertes de ce serveur Discord quand ce serveur est plein ou qu'une place se libère",
+          "description": "Annonce dans le canal d'alertes de ce serveur Discord quand ce serveur est plein ou qu'une place se libère",
           "name": "Alerte plein"
         }
       },
@@ -300,7 +300,7 @@
     "module": {
       "install": {
         "title": "Installer un module",
-        "description": "Le télécharge et l'installe depuis le catalogue officiel"
+        "description": "Télécharge depuis le catalogue officiel et installe"
       },
       "list": {
         "title": "Modules installés"
@@ -332,7 +332,7 @@
       },
       "apply": {
         "title": "Appliquer la mise à jour",
-        "description": "Télécharge la nouvelle mise à jour, l'installe et redémarre l'application"
+        "description": "Télécharge et installe la nouvelle mise à jour, puis redémarre l'app"
       }
     },
     "discord": {
@@ -442,21 +442,21 @@
       "address": {
         "item": "• `{{address}}`",
         "item_named": "• {{label}} `{{address}}`",
-        "stopped": "💤 Le serveur est éteint. Démarrez-le pour que d'autres puissent se connecter",
-        "unknown": "❔ Server-chan ne connaît pas encore l'adresse publique de ce PC. Réessayez dans un instant",
-        "no_ports": "📭 Ce jeu n'indique pas de port de connexion",
-        "hidden": "🔒 Le propriétaire du serveur a choisi de ne pas partager l'adresse sur Discord. Demande-la-lui directement"
+        "stopped": "💤 Serveur arrêté. Démarrez-le pour permettre la connexion.",
+        "unknown": "❔ Adresse publique de ce PC non confirmée par Server-chan. Réessayez dans un instant.",
+        "no_ports": "📭 Aucun port de connexion pour ce jeu",
+        "hidden": "🔒 Le propriétaire du serveur a choisi de ne pas partager l'adresse sur Discord. Demande-la-lui directement."
       },
       "port_check": {
         "open": "✅ Accessible depuis Internet",
         "firewall": "🧱 Bloqué par le pare-feu du PC",
-        "router": "📡 La redirection de port n’est pas configurée sur le routeur",
+        "router": "📡 Redirection de port non configurée sur le routeur",
         "closed": "🚫 Inaccessible depuis Internet",
-        "cgnat": "⚠️ Votre routeur n’a pas d’IP publique (CGNAT)",
-        "unknown": "❔ Certains ports n’ont pas pu être vérifiés",
-        "no_ports": "📭 Ce jeu n’indique pas quels ports vérifier",
+        "cgnat": "⚠️ Routeur sans IP publique (CGNAT)",
+        "unknown": "❔ Vérification impossible pour certains ports",
+        "no_ports": "📭 Aucun port à vérifier pour ce jeu",
         "host_mismatch": "🌐 L'adresse publique ne pointe pas vers ce PC",
-        "host_unresolved": "🌐 L'adresse publique est introuvable"
+        "host_unresolved": "🌐 Adresse publique introuvable"
       },
       "port_status": {
         "open": "Ouvert",
@@ -468,55 +468,55 @@
       },
       "port_item": "• {{port}}/{{protocol}} · {{status}}",
       "port_hint": {
-        "closed": "Vérifiez que le routeur redirige ce port vers ce PC et que le pare-feu du PC l’autorise.",
-        "firewall": "Le pare-feu Windows bloque les connexions entrantes sur ce port. Pour le réseau auquel vous êtes connecté (privé ou public), autorisez saba-core si le serveur est arrêté, ou le programme du serveur de jeu s’il est en marche, dans les paramètres du pare-feu Windows, puis vérifiez à nouveau.",
-        "router": "Le pare-feu du PC autorise ce port. Redirigez ce port vers ce PC dans les paramètres du routeur, puis vérifiez à nouveau.",
-        "cgnat": "Votre fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l’ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
-        "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau."
+        "closed": "Vérifiez que le routeur redirige ce port vers ce PC et que le pare-feu du PC l'autorise.",
+        "firewall": "Le pare-feu Windows bloque les connexions entrantes sur ce port. Pour le réseau connecté (privé ou public), autorisez saba-core si le serveur est arrêté, ou le programme du serveur de jeu s'il est en marche, dans les paramètres du pare-feu Windows, puis revérifiez.",
+        "router": "Le pare-feu du PC autorise ce port. Redirigez ce port vers ce PC dans les paramètres du routeur, puis revérifiez.",
+        "cgnat": "Le fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l'ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
+        "unknown": "Les ports UDP d'un serveur en marche et les ports utilisés par un autre programme ne sont pas vérifiables. Arrêtez le serveur et revérifiez."
       },
       "server_update": {
-        "available": "Une nouvelle version est disponible (build {{local}} → {{remote}}).",
-        "latest": "À jour (build {{build}}).",
-        "check_failed": "Impossible de vérifier la mise à jour : {{error}}",
-        "unsupported": "Saba-chan ne met pas à jour ce serveur (installé à la main).",
-        "unchecked": "Impossible de vérifier les mises à jour de ce serveur.",
-        "started": "La mise à jour a commencé. Je vous préviens quand c'est fini.",
-        "cancelled": "La mise à jour annoncée a été annulée. Le serveur reste allumé.",
-        "scheduled": "Je préviens en jeu {{minutes}} minutes avant, puis j'enregistre, j'arrête, je mets à jour et je relance.",
-        "players": "{{count}} joueurs sont connectés."
+        "available": "Nouvelle version disponible (build {{local}} → {{remote}})",
+        "latest": "À jour (build {{build}})",
+        "check_failed": "Échec de la vérification de la mise à jour : {{error}}",
+        "unsupported": "Serveur non mis à jour par Saba-chan (installé manuellement)",
+        "unchecked": "Serveur dont les mises à jour sont invérifiables",
+        "started": "Mise à jour lancée. Notification à la fin.",
+        "cancelled": "Mise à jour annoncée annulée. Le serveur reste en marche.",
+        "scheduled": "Annonce en jeu {{minutes}} minutes avant, puis sauvegarde, arrêt, mise à jour et redémarrage.",
+        "players": "{{count}} joueurs connectés"
       }
     }
   },
   "reasons": {
-    "failed": "Impossible de le faire",
-    "rejected": "Le serveur n’a pas accepté la commande",
-    "server_not_running": "Le serveur est arrêté",
-    "not_supported": "Ce jeu ne le prend pas en charge",
+    "failed": "Échec de l'exécution",
+    "rejected": "Commande refusée par le serveur",
+    "server_not_running": "Serveur arrêté",
+    "not_supported": "Non pris en charge par ce jeu",
     "not_found": "Introuvable",
-    "timeout": "Le serveur n’a pas répondu à temps",
-    "auth_failed": "Le serveur a refusé la connexion",
-    "players_failed": "Impossible de lire les joueurs",
-    "backup_file_locked": "Le serveur utilise un fichier ({{file}}), la sauvegarde n’a pas pu être faite. Arrêtez le serveur et réessayez",
-    "backup_failed": "La sauvegarde n’a pas pu être faite",
-    "backup_unsupported": "Ce jeu ne prend pas en charge les sauvegardes",
-    "nothing_to_back_up": "Il n’y a pas encore de monde à sauvegarder",
-    "backup_limit": "La limite de sauvegardes à distance est atteinte. Supprimez d’anciennes sauvegardes sur le PC",
-    "backup_busy": "Une autre sauvegarde ou restauration est en cours",
-    "backups_unreadable": "Impossible de lire le dossier de sauvegarde. Vérifiez les permissions du dossier et le disque sur le PC",
-    "server_running": "Le serveur est allumé. Arrêtez-le d’abord",
-    "no_command_path": "Le serveur a été lancé hors de Saba-chan et ne peut pas recevoir de commandes",
-    "autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur",
-    "backup_failed_autosave_off": "La sauvegarde a échoué et la sauvegarde automatique du serveur n’a pas pu être réactivée non plus. Redémarrez le serveur",
-    "backup_save_rejected": "Le serveur a refusé la commande de sauvegarde, aucune sauvegarde n’a donc été faite. Arrêtez le serveur puis recommencez",
-    "backup_save_unconfirmed": "Le serveur n’a pas signalé la fin de l’enregistrement, aucune sauvegarde n’a donc été faite. Réessayez dans un instant ou arrêtez le serveur avant de sauvegarder",
-    "backup_server_stopped": "Le serveur s’est arrêté pendant la sauvegarde, elle a donc été supprimée. Vérifiez le serveur puis sauvegardez à nouveau",
-    "snapshot_not_found": "Le jeu n’a pas de sauvegarde automatique",
-    "snapshot_not_deletable": "Saba-chan ne peut pas supprimer les sauvegardes automatiques du jeu"
+    "timeout": "Délai de réponse du serveur dépassé",
+    "auth_failed": "Authentification refusée par le serveur",
+    "players_failed": "Échec de la lecture des joueurs connectés",
+    "backup_file_locked": "Fichier utilisé par le serveur ({{file}}) : sauvegarde impossible. Arrêtez le serveur et réessayez.",
+    "backup_failed": "Échec de la sauvegarde",
+    "backup_unsupported": "Sauvegarde non prise en charge par ce jeu",
+    "nothing_to_back_up": "Aucun monde à sauvegarder",
+    "backup_limit": "Limite de sauvegardes à distance atteinte. Supprimez d'anciennes sauvegardes sur le PC.",
+    "backup_busy": "Autre sauvegarde ou restauration en cours",
+    "backups_unreadable": "Échec de la lecture du dossier de sauvegarde. Vérifiez les permissions du dossier et le disque sur le PC.",
+    "server_running": "Serveur en marche. Arrêtez-le d'abord.",
+    "no_command_path": "Serveur lancé en dehors de Saba-chan : envoi de commandes impossible",
+    "autosave_not_resumed": "Sauvegarde terminée, mais échec de la reprise de la sauvegarde auto du serveur. Redémarrez le serveur.",
+    "backup_failed_autosave_off": "Échec de la sauvegarde et de la reprise de la sauvegarde auto du serveur. Redémarrez le serveur.",
+    "backup_save_rejected": "Commande de sauvegarde refusée par le serveur : aucune sauvegarde faite. Arrêtez le serveur puis recommencez.",
+    "backup_save_unconfirmed": "Fin d'enregistrement non confirmée par le serveur : aucune sauvegarde faite. Réessayez dans un instant ou arrêtez le serveur avant de sauvegarder.",
+    "backup_server_stopped": "Serveur arrêté pendant la sauvegarde : sauvegarde supprimée. Vérifiez le serveur puis sauvegardez à nouveau.",
+    "snapshot_not_found": "Aucune sauvegarde automatique du jeu",
+    "snapshot_not_deletable": "Suppression des sauvegardes automatiques du jeu impossible depuis Saba-chan"
   },
   "chatbot": {
     "memo_template": "<!-- Les lignes d’aide comme celle-ci et les titres laissés vides ne sont pas envoyés à Saba-chan qui parle. Remplis seulement ce qu’il faut. -->\n\n## Ambiance\n<!-- Décris comment on parle ici et jusqu’où les blagues peuvent aller. Vide = personnalité par défaut. -->\n\n## Comment appeler les gens\n<!-- Les surnoms que Saba-chan doit utiliser. Exemple : appeler la personne marquée (propriétaire) « maître ». -->\n\n## Mots de ce serveur\n<!-- Surnoms, mèmes et abréviations propres à ce serveur, avec leur sens. -->\n\n## Infos du serveur de jeu\n<!-- Règles, horaires et autres infos que Saba-chan peut donner à qui demande. -->\n"
   },
   "controllers": {
-    "kick_reason": "Seuls les joueurs enregistrés peuvent rejoindre ce serveur."
+    "kick_reason": "Serveur réservé aux joueurs enregistrés."
   }
 }

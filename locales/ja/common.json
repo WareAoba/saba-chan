@@ -1,19 +1,19 @@
 {
   "module_errors": {
-    "module_timeout": "モジュールの呼び出しがタイムアウトしました。モジュールの状態を確認してください。",
-    "module_execution_failed": "モジュールを実行できませんでした。実行環境とログを確認してください。",
-    "module_crashed": "モジュールのプロセスがエラーで終了しました。ログを確認してください。",
-    "module_bad_output": "モジュールが無効な結果を返しました。更新するか、作者に問い合わせてください。",
-    "module_output_too_large": "モジュールの出力が上限を超えました。ログを確認してください。",
-    "module_path_outside": "モジュールが許可されたフォルダーの外にアクセスしようとしました。設定を確認してください。",
-    "module_exception": "モジュールで例外が発生しました。ログを確認してください。",
-    "isolation_unsupported": "このOSは必要な隔離機能をサポートしていません。",
-    "module_platform_unsupported": "このゲームモジュールはこのデーモンのOSでは動きません",
-    "module_arch_unsupported": "このゲームモジュールはこのデーモンのCPUでは動きません"
+    "module_timeout": "モジュール呼び出しのタイムアウト。モジュールの状態を確認してください。",
+    "module_execution_failed": "モジュールの実行失敗。実行環境とモジュールのログを確認してください。",
+    "module_crashed": "モジュールのプロセスが異常終了。モジュールのログを確認してください。",
+    "module_bad_output": "モジュールの結果が不正です。モジュールを更新するか、作者に問い合わせてください。",
+    "module_output_too_large": "モジュールの出力サイズ上限超過。モジュールのログを確認してください。",
+    "module_path_outside": "モジュールが許可されたフォルダー外のパスにアクセスしようとしました。モジュールの設定を確認してください。",
+    "module_exception": "モジュールで例外が発生。モジュールのログを確認してください。",
+    "isolation_unsupported": "この OS は必要な隔離機能に非対応",
+    "module_platform_unsupported": "このゲームモジュールはこのデーモンの OS に非対応",
+    "module_arch_unsupported": "このゲームモジュールはこのデーモンの CPU に非対応"
   },
   "sandbox": {
     "isolation_unsupported": {
-      "message": "このオペレーティングシステムは分離実行をサポートしていないため、コンポーネントを実行しませんでした。"
+      "message": "この OS は隔離実行に非対応のため、コンポーネントを実行しませんでした"
     }
   },
   "app_name": "サバちゃん",
@@ -33,10 +33,10 @@
   "no": "いいえ",
   "daemon": {
     "checking": "デーモンをチェック中...",
-    "existing_running": "既存のデーモンが実行されています",
-    "starting": "デーモンを起動中...",
+    "existing_running": "既存のデーモンが実行中",
+    "starting": "デーモン起動中...",
     "started": "デーモンが起動しました",
-    "failed_to_start": "デーモンを起動できませんでした",
+    "failed_to_start": "デーモンの起動失敗",
     "check_warning": "デーモンチェック警告: {{error}}"
   },
   "modules": {
@@ -51,23 +51,23 @@
     "module_not_found": "モジュール '{{module}}' が見つかりません",
     "invalid_request": "無効なリクエスト: {{error}}",
     "not_found": "サーバー '{{name}}' が見つかりません",
-    "already_running": "サーバー '{{name}}' は既に実行中です",
-    "missing_required_field": "必須フィールド '{{field}}' がありません",
+    "already_running": "サーバー '{{name}}' は既に実行中",
+    "missing_required_field": "必須項目 '{{field}}' がありません",
     "creation_failed": "インスタンスの作成に失敗しました: {{error}}",
     "delete_failed": "インスタンスの削除に失敗しました: {{error}}",
     "update_failed": "インスタンスの更新に失敗しました: {{error}}",
     "settings_save_failed": "設定の保存に失敗しました: {{error}}"
   },
   "network": {
-    "connection_refused": "デーモンに接続できません。デーモンが実行されているか確認してください",
-    "timeout": "リクエストタイムアウト: サーバーが応答しません"
+    "connection_refused": "デーモン接続失敗。デーモンが実行中か確認してください。",
+    "timeout": "リクエストのタイムアウト: サーバーの応答なし"
   },
   "port_conflict": {
     "force_stop_title": "ポート競合: {{name}} 停止",
-    "force_stop_body": "ポート {{port}} が {{existing}} と競合したため、{{stopped}} が強制停止されました"
+    "force_stop_body": "ポート {{port}} が {{existing}} と競合したため {{stopped}} を強制停止"
   },
   "init": {
-    "start": "初期化を開始しています...",
+    "start": "初期化を開始中...",
     "modules": "モジュール一覧を準備中...",
     "instances": "サーバー一覧を準備中...",
     "ready": "準備完了",
@@ -86,54 +86,54 @@
   "updates": {
     "notification_title": "サバちゃん 更新のお知らせ",
     "notification_body": "{{count}}件の更新: {{names}}",
-    "completed": "更新が完了しました!"
+    "completed": "アップデート完了"
   },
   "errors": {
-    "invalid_input": "無効なリクエストです。入力内容を確認してください",
-    "instance_name_taken": "同じ名前のサーバーがすでにあります",
+    "invalid_input": "不正なリクエスト。入力内容を確認してください。",
+    "instance_name_taken": "既に存在するサーバー名",
     "internal": "内部エラー",
-    "create_error": "サーバーを作成できませんでした: {{error}}",
-    "create_http": "サーバーを作成できませんでした (HTTP {{status}}): {{error}}",
+    "create_error": "サーバー作成失敗: {{error}}",
+    "create_http": "サーバー作成失敗 (HTTP {{status}}): {{error}}",
     "instance_not_found": "サーバーが見つかりません",
-    "instance_running": "実行中のサーバーは削除できません。先に停止してください",
-    "instance_busy": "このサーバーで別の作業（バックアップまたは復元）が実行中です。終わってからもう一度お試しください",
-    "delete_error": "サーバーを削除できませんでした: {{error}}",
-    "delete_http": "サーバーを削除できませんでした (HTTP {{status}}): {{error}}",
-    "reorder_failed": "並べ替えできませんでした: {{error}}",
-    "settings_invalid": "無効な設定値です: {{error}}",
-    "settings_error": "設定を保存できませんでした: {{error}}",
-    "settings_http": "設定を保存できませんでした (HTTP {{status}}): {{error}}",
+    "instance_running": "実行中のサーバーは削除できません。先に停止してください。",
+    "instance_busy": "このサーバーで別の作業 (バックアップ・復元) が進行中。完了後に再試行してください。",
+    "delete_error": "サーバー削除失敗: {{error}}",
+    "delete_http": "サーバー削除失敗 (HTTP {{status}}): {{error}}",
+    "reorder_failed": "順序変更失敗: {{error}}",
+    "settings_invalid": "不正な設定値: {{error}}",
+    "settings_error": "設定の保存失敗: {{error}}",
+    "settings_http": "設定の保存失敗 (HTTP {{status}}): {{error}}",
     "http": "エラー (HTTP {{status}})",
-    "command_failed": "コマンドを実行できませんでした: {{error}}",
-    "url_missing": "URLが指定されていません",
-    "url_not_web": "http(s)のアドレスのみ開けます",
-    "path_missing": "パスが指定されていません",
+    "command_failed": "コマンド実行失敗: {{error}}",
+    "url_missing": "URL なし",
+    "url_not_web": "http(s) のアドレスのみ開けます",
+    "path_missing": "パスなし",
     "path_not_folder": "フォルダーではありません",
-    "no_log_folder": "ログフォルダーがありません",
+    "no_log_folder": "ログフォルダーなし",
     "open_folder_failed": "フォルダーを開けませんでした",
-    "remote_local_path": "リモートデーモンを操作している間はこのPCのパスを選べません。上部バーでこのPCに切り替えてからもう一度お試しください"
+    "remote_local_path": "リモートデーモンの操作中はこの PC のパスを選べません。上部バーでこの PC に切り替えてから再試行してください。"
   },
   "consent": {
     "allow": "許可",
     "unisolated": {
-      "title": "分離せずに実行しますか？",
-      "message": "{{component}} は確認されていないコンポーネントです。分離せずに実行すると、このPCのファイルやプログラムに制限なくアクセスできます。信頼できる場合のみ許可してください。"
+      "title": "隔離せずに実行しますか？",
+      "message": "{{component}} は確認されていない構成要素です。隔離せずに実行すると、この PC のファイルやプログラムに制限なくアクセスできます。信頼できる場合のみ許可してください。"
     },
     "extension_gui": {
       "title": "拡張機能の画面を読み込みますか？",
-      "message": "{{component}} の画面コードは確認されていません。読み込むとサバちゃんのウィンドウ内で実行されます。信頼できる場合のみ許可してください。"
+      "message": "{{component}} の画面コードは確認されていません。読み込むと サバちゃん のウィンドウ内で実行されます。信頼できる場合のみ許可してください。"
     }
   },
   "notify": {
     "title": "サバちゃん",
-    "crash": "{{name}} がクラッシュして停止しました。",
-    "unknown_exit": "{{name}} が予期せず停止しました。",
-    "restart_in": "{{secs}}秒後に再起動します。",
-    "gave_up": "自動再起動をやめました。サーバーを確認してください。",
-    "restart_failed": "{{name}} を再起動できませんでした。",
-    "daemon_down": "サバちゃん本体が突然停止しました。サーバー監視とDiscord連携が止まっているので、アプリから起動し直してください。",
-    "external_start": "{{name}} がサバちゃんの外で起動されました。サバちゃんが起動したプロセスではありません。",
-    "backup_failed": "{{name}} の自動バックアップに失敗しました。",
+    "crash": "サーバー “{{name}}” がクラッシュして停止",
+    "unknown_exit": "サーバー “{{name}}” が予期せず停止",
+    "restart_in": "{{secs}} 秒後に再起動",
+    "gave_up": "自動再起動を中止。サーバーを確認してください。",
+    "restart_failed": "サーバー “{{name}}” の再起動失敗",
+    "daemon_down": "サバちゃん デーモンが異常終了。サーバー監視と Discord 連携が停止しているため、アプリから再起動してください。",
+    "external_start": "サーバー “{{name}}” が サバちゃん の外で起動 (サバちゃん が起動していないプロセス)",
+    "backup_failed": "{{name}} の自動バックアップ失敗",
     "on_daemon": "{{daemon}} で: {{body}}"
   }
 }

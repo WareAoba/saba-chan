@@ -56,7 +56,7 @@ describe('업데이트 결과 알림 (A5)', () => {
             />,
         );
         expect(screen.getByText('Saba-chan 0.1.3 patch notes')).toBeTruthy();
-        expect(screen.getByText('There are no patch notes for this version.')).toBeTruthy();
+        expect(screen.getByText('No patch notes for this version')).toBeTruthy();
         expect(screen.getByText('gui: locked')).toBeTruthy();
         await waitFor(() => expect(window.api.updaterLastResult).toHaveBeenCalledWith({ clear: true }));
     });

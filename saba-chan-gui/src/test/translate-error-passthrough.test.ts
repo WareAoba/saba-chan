@@ -27,8 +27,8 @@ describe('오류 문구 옮기기', () => {
         await i18n.loadLanguages('ko');
         const ko = createTranslateError(i18n.getFixedT('ko', 'gui'));
         for (const msg of ['start_cancelled', "Server 'A' was stopped while it was starting"]) {
-            expect(ko(msg)).toMatch(/시작하는 동안/);
-            expect(translateError(msg)).toMatch(/while it was starting/);
+            expect(ko(msg)).toMatch(/시작 중 정지 요청/);
+            expect(translateError(msg)).toMatch(/stop requested during start/);
             expect(translateError(msg)).not.toMatch(/'A'/);
         }
     });

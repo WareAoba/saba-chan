@@ -1,19 +1,19 @@
 {
   "module_errors": {
-    "module_timeout": "Der Modulaufruf hat das Zeitlimit überschritten. Prüfen Sie das Modul.",
-    "module_execution_failed": "Das Modul konnte nicht ausgeführt werden. Prüfen Sie die Laufzeitumgebung und das Modulprotokoll.",
-    "module_crashed": "Der Modulprozess wurde mit einem Fehler beendet. Prüfen Sie das Modulprotokoll.",
-    "module_bad_output": "Das Modul hat ein ungültiges Ergebnis geliefert. Aktualisieren Sie es oder kontaktieren Sie den Autor.",
-    "module_output_too_large": "Die Modulausgabe hat die Größenbegrenzung überschritten. Prüfen Sie das Modulprotokoll.",
-    "module_path_outside": "Das Modul wollte auf einen Pfad außerhalb des erlaubten Ordners zugreifen. Prüfen Sie die Moduleinstellungen.",
-    "module_exception": "Im Modul ist eine Ausnahme aufgetreten. Prüfen Sie das Modulprotokoll.",
-    "isolation_unsupported": "Dieses Betriebssystem unterstützt die erforderliche Isolation nicht.",
-    "module_platform_unsupported": "Dieses Spielmodul läuft nicht auf dem OS dieses Daemons",
-    "module_arch_unsupported": "Dieses Spielmodul läuft nicht auf der CPU dieses Daemons"
+    "module_timeout": "Zeitüberschreitung beim Modulaufruf. Modulstatus prüfen.",
+    "module_execution_failed": "Modulausführung fehlgeschlagen. Laufzeitumgebung und Modul-Log prüfen.",
+    "module_crashed": "Modulprozess abnormal beendet. Modul-Log prüfen.",
+    "module_bad_output": "Ungültiges Modulergebnis. Modul aktualisieren oder den Autor kontaktieren.",
+    "module_output_too_large": "Größenlimit der Modulausgabe überschritten. Modul-Log prüfen.",
+    "module_path_outside": "Modul wollte auf einen Pfad außerhalb des erlaubten Ordners zugreifen. Moduleinstellungen prüfen.",
+    "module_exception": "Ausnahme im Modul. Modul-Log prüfen.",
+    "isolation_unsupported": "Dieses Betriebssystem unterstützt die nötige Isolation nicht",
+    "module_platform_unsupported": "Dieses Spielmodul unterstützt das Betriebssystem dieses Daemons nicht",
+    "module_arch_unsupported": "Dieses Spielmodul unterstützt die CPU dieses Daemons nicht"
   },
   "sandbox": {
     "isolation_unsupported": {
-      "message": "Die Komponente wurde nicht ausgeführt, da dieses Betriebssystem keine Isolation unterstützt."
+      "message": "Isolierte Ausführung auf diesem Betriebssystem nicht unterstützt, Komponente nicht ausgeführt"
     }
   },
   "app_name": "Saba-chan",
@@ -36,7 +36,7 @@
     "existing_running": "Vorhandener Daemon läuft",
     "starting": "Daemon wird gestartet...",
     "started": "Daemon gestartet",
-    "failed_to_start": "Der Daemon konnte nicht gestartet werden",
+    "failed_to_start": "Daemon-Start fehlgeschlagen",
     "check_warning": "Warnung beim Überprüfen des Daemon: {{error}}"
   },
   "modules": {
@@ -52,22 +52,22 @@
     "invalid_request": "Ungültige Anfrage: {{error}}",
     "not_found": "Server '{{name}}' nicht gefunden",
     "already_running": "Server '{{name}}' läuft bereits",
-    "missing_required_field": "Erforderliches Feld '{{field}}' fehlt",
+    "missing_required_field": "Pflichtfeld '{{field}}' fehlt",
     "creation_failed": "Instanz-Erstellung fehlgeschlagen: {{error}}",
     "delete_failed": "Instanz-Löschung fehlgeschlagen: {{error}}",
     "update_failed": "Instanz-Aktualisierung fehlgeschlagen: {{error}}",
     "settings_save_failed": "Speichern der Einstellungen fehlgeschlagen: {{error}}"
   },
   "network": {
-    "connection_refused": "Verbindung zum Daemon nicht möglich. Prüfen Sie, ob der Daemon läuft",
-    "timeout": "Anfrage-Zeitüberschreitung: Server antwortete nicht"
+    "connection_refused": "Daemon-Verbindung fehlgeschlagen. Prüfen, ob der Daemon läuft.",
+    "timeout": "Zeitüberschreitung: Server antwortet nicht"
   },
   "port_conflict": {
     "force_stop_title": "Portkonflikt: {{name}} gestoppt",
-    "force_stop_body": "{{stopped}} wurde erzwungen gestoppt, da Port {{port}} mit {{existing}} kollidiert"
+    "force_stop_body": "{{stopped}} zwangsgestoppt, Port {{port}} kollidiert mit {{existing}}"
   },
   "init": {
-    "start": "Wird gestartet...",
+    "start": "Initialisierung läuft...",
     "modules": "Module werden vorbereitet...",
     "instances": "Server werden vorbereitet...",
     "ready": "Bereit",
@@ -86,54 +86,54 @@
   "updates": {
     "notification_title": "Saba-chan Updates",
     "notification_body": "{{count}} Updates: {{names}}",
-    "completed": "Update abgeschlossen!"
+    "completed": "Update abgeschlossen"
   },
   "errors": {
-    "invalid_input": "Ungültige Anfrage. Bitte Eingaben prüfen",
-    "instance_name_taken": "Ein Server mit diesem Namen existiert bereits",
+    "invalid_input": "Ungültige Anfrage. Eingaben prüfen.",
+    "instance_name_taken": "Servername bereits vergeben",
     "internal": "interner Fehler",
-    "create_error": "Server konnte nicht erstellt werden: {{error}}",
-    "create_http": "Server konnte nicht erstellt werden (HTTP {{status}}): {{error}}",
+    "create_error": "Servererstellung fehlgeschlagen: {{error}}",
+    "create_http": "Servererstellung fehlgeschlagen (HTTP {{status}}): {{error}}",
     "instance_not_found": "Server nicht gefunden",
-    "instance_running": "Ein laufender Server kann nicht gelöscht werden. Bitte zuerst stoppen",
-    "instance_busy": "Auf diesem Server läuft gerade eine andere Aufgabe (Sicherung oder Wiederherstellung). Versuchen Sie es erneut, wenn sie fertig ist",
-    "delete_error": "Server konnte nicht gelöscht werden: {{error}}",
-    "delete_http": "Server konnte nicht gelöscht werden (HTTP {{status}}): {{error}}",
-    "reorder_failed": "Reihenfolge konnte nicht geändert werden: {{error}}",
+    "instance_running": "Laufende Server nicht löschbar. Zuerst stoppen.",
+    "instance_busy": "Andere Aufgabe (Backup oder Wiederherstellung) auf diesem Server aktiv. Nach Abschluss erneut versuchen.",
+    "delete_error": "Serverlöschung fehlgeschlagen: {{error}}",
+    "delete_http": "Serverlöschung fehlgeschlagen (HTTP {{status}}): {{error}}",
+    "reorder_failed": "Neuordnung fehlgeschlagen: {{error}}",
     "settings_invalid": "Ungültiger Einstellungswert: {{error}}",
-    "settings_error": "Einstellungen konnten nicht gespeichert werden: {{error}}",
-    "settings_http": "Einstellungen konnten nicht gespeichert werden (HTTP {{status}}): {{error}}",
+    "settings_error": "Speichern der Einstellungen fehlgeschlagen: {{error}}",
+    "settings_http": "Speichern der Einstellungen fehlgeschlagen (HTTP {{status}}): {{error}}",
     "http": "Fehler (HTTP {{status}})",
-    "command_failed": "Befehl konnte nicht ausgeführt werden: {{error}}",
-    "url_missing": "Keine URL angegeben",
-    "url_not_web": "Nur http(s)-Adressen können geöffnet werden",
-    "path_missing": "Kein Pfad angegeben",
-    "path_not_folder": "Das ist kein Ordner",
+    "command_failed": "Befehl fehlgeschlagen: {{error}}",
+    "url_missing": "Keine URL",
+    "url_not_web": "Nur http(s)-Adressen öffenbar",
+    "path_missing": "Kein Pfad",
+    "path_not_folder": "Kein Ordner",
     "no_log_folder": "Kein Logordner",
-    "open_folder_failed": "Der Ordner konnte nicht geöffnet werden",
-    "remote_local_path": "Solange du einen entfernten Daemon bedienst, kannst du keinen Pfad auf diesem PC wählen. Wechsle oben zu diesem PC und versuche es erneut"
+    "open_folder_failed": "Ordner nicht geöffnet",
+    "remote_local_path": "Mit einem Remote-Daemon ist kein Pfad auf diesem PC wählbar. Oben zu diesem PC wechseln und erneut versuchen."
   },
   "consent": {
     "allow": "Erlauben",
     "unisolated": {
       "title": "Ohne Isolation ausführen?",
-      "message": "{{component}} ist nicht verifiziert. Ohne Isolation kann es uneingeschränkt auf Dateien und Programme dieses PCs zugreifen. Nur erlauben, wenn Sie ihm vertrauen."
+      "message": "{{component}} ist nicht verifiziert. Ohne Isolation hat es uneingeschränkten Zugriff auf Dateien und Programme dieses PCs. Nur erlauben, wenn du vertraust."
     },
     "extension_gui": {
       "title": "Erweiterungsansicht laden?",
-      "message": "Der Ansichtscode von {{component}} ist nicht verifiziert. Wenn er geladen wird, läuft er im Saba-chan-Fenster. Nur erlauben, wenn Sie ihm vertrauen."
+      "message": "Ansichtscode von {{component}} nicht verifiziert. Er läuft im Saba-chan-Fenster. Nur erlauben, wenn du vertraust."
     }
   },
   "notify": {
     "title": "Saba-chan",
-    "crash": "{{name}} ist abgestürzt.",
-    "unknown_exit": "{{name}} wurde unerwartet beendet.",
-    "restart_in": "Neustart in {{secs}} s.",
-    "gave_up": "Der automatische Neustart wurde aufgegeben. Bitte den Server prüfen.",
-    "restart_failed": "{{name}} konnte nicht neu gestartet werden.",
-    "daemon_down": "Saba-chan wurde unerwartet beendet. Serverüberwachung und Discord sind pausiert, bis du es in der App wieder startest.",
-    "external_start": "{{name}} wurde außerhalb von Saba-chan gestartet. Saba-chan hat diesen Prozess nicht gestartet.",
-    "backup_failed": "Automatische Sicherung von {{name}} fehlgeschlagen.",
+    "crash": "Server „{{name}}“ abgestürzt",
+    "unknown_exit": "Server „{{name}}“ unerwartet beendet",
+    "restart_in": "Neustart in {{secs}} s",
+    "gave_up": "Automatischer Neustart abgebrochen. Selbst prüfen.",
+    "restart_failed": "Neustart von Server „{{name}}“ fehlgeschlagen",
+    "daemon_down": "Saba-chan-Daemon abnormal beendet. Serverüberwachung und Discord sind pausiert, in der App neu starten.",
+    "external_start": "Server „{{name}}“ außerhalb von Saba-chan gestartet (nicht von Saba-chan gestarteter Prozess)",
+    "backup_failed": "Automatisches Backup von {{name}} fehlgeschlagen",
     "on_daemon": "Auf {{daemon}}: {{body}}"
   }
 }

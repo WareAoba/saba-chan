@@ -27,7 +27,7 @@
   },
   "list": {
     "title": "🎮 **服务器列表**",
-    "empty": "📭 未注册服务器",
+    "empty": "📭 无已注册的服务器",
     "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
@@ -38,20 +38,20 @@
   "server": {
     "start_request": "⏳ 正在启动 **{{name}}** 服务器...",
     "start_complete": "✅ **{{name}}** · 启动",
-    "already_running": "ℹ️ **{{name}}** 已在运行。",
+    "already_running": "ℹ️ **{{name}}** 已在运行",
     "stop_request": "⏳ 正在停止 **{{name}}** 服务器...",
     "stop_complete": "✅ **{{name}}** · 停止",
-    "graceful_stop_unavailable": "⚠️ **{{name}}** 未停止：它没有可以保存并退出的途径（控制台或 REST）。如需不保存直接结束，请在这台电脑上的 saba-chan 中选择强制停止。",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** 服务器没有可请求保存后停止的方式（控制台·REST），未停止。要不保存直接关闭，请在此电脑的 Saba-chan 中选择强制结束。",
     "status_check": "📊 **{{name}}** · {{status}}",
     "uptime_hm": "已运行 {{h}} 小时 {{m}} 分钟",
     "uptime_m": "已运行 {{m}} 分钟",
-    "still_starting": "⏳ **{{name}}** 仍在启动中，请稍后再问。",
-    "not_found": "❌ 找不到模块 \"{{alias}}\" 的服务器（{{resolved}}）",
+    "still_starting": "⏳ **{{name}}** 仍在启动中。请稍后再确认。",
+    "not_found": "❌ 找不到与模块 \"{{alias}}\"（{{resolved}}）对应的服务器",
     "not_running": "❌ **{{name}}**：{{error}}",
-    "not_running_default": "服务器未运行。请先启动服务器",
-    "module_missing": "❌ 模块 '{{module}}' 未安装。此服务器无法控制。",
-    "port_moved": "🔀 Windows 预留了管理用 REST 端口 {{from}}，已改为 {{to}}。",
-    "rest_port_closed": "REST 端口 {{port}} 未接受连接"
+    "not_running_default": "服务器未运行。请先启动服务器。",
+    "module_missing": "❌ 找不到模块“{{module}}”，无法控制此服务器",
+    "port_moved": "🔀 Windows 保留了管理用 REST 端口 {{from}}，已改为 {{to}}。",
+    "rest_port_closed": "REST 端口 {{port}} 连接失败"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 执行中...",
@@ -64,14 +64,14 @@
     "players": "玩家",
     "invalid": {
       "missing": "请输入{{label}}。",
-      "not_number": "{{label}}必须是数字。收到：{{value}}",
-      "out_of_range": "{{label}}必须在{{min}}到{{max}}之间。收到：{{value}}",
+      "not_number": "{{label}}请输入数字。收到：{{value}}",
+      "out_of_range": "{{label}}范围为 {{min}} 到 {{max}}。收到：{{value}}",
       "not_option": "{{label}}必须是以下之一：{{options}}。收到：{{value}}",
-      "not_boolean": "{{label}}必须是 on 或 off。收到：{{value}}",
-      "line_break": "{{label}}不能包含换行。",
-      "one_word": "{{label}}必须是不含空格的一个词。收到：{{value}}",
-      "quote": "{{label}}不能包含双引号。",
-      "too_many": "此命令不接受额外的内容。收到：{{value}}"
+      "not_boolean": "{{label}}请输入开启（on）或关闭（off）。收到：{{value}}",
+      "line_break": "{{label}}不能换行",
+      "one_word": "{{label}}请输入不含空格的一个词。收到：{{value}}",
+      "quote": "{{label}}不能含双引号",
+      "too_many": "此命令不接受额外输入。收到：{{value}}"
     }
   },
   "responses": {
@@ -81,16 +81,16 @@
   "errors": {
     "error_title": "执行命令出错",
     "unknown": "未知错误",
-    "agreement_required": "必须同意{{names}}才能启动服务器。请在电脑上的 Saba-chan 中同意。",
-    "memory_limit_at_start": "服务器启动时达到内存上限（{{limit}} MiB）并已停止。请把上限设得比内存设置高，或清空上限。",
-    "runner_missing": "找不到 saba-runner，无法进行托管启动。请关闭此服务器的托管启动，或重新安装 saba-chan。",
-    "preflight_failed": "启动前检查发现问题，因此未启动服务器（{{code}}）。详情请在电脑上的 Saba-chan 中查看。",
-    "agreement_local_only": "只能在这台电脑上的 Saba-chan 中同意协议。",
-    "no_command_path": "“{{name}}”没有连接 saba-chan 控制台，无法接收命令。请在电脑上的 saba-chan 中以托管模式重新启动服务器。",
-    "alias_conflict": "❌ 别名 '{{alias}}' 不明确。它匹配多个模块：{{modules}}。请使用更具体的别名。",
-    "multiple_instances": "⚠️ 存在多个 '{{module}}' 实例。请使用实例名称代替模块别名。",
-    "danger_needs_name": "⚠️ 危险命令不能用游戏名执行。请使用服务器名称“{{name}}”。",
-    "slash_only": "🔒 「{{command}}」只让提问的人看到，所以只能用斜杠命令查看。请输入 `/`，然后选择 **{{name}}** › {{command}}。",
+    "agreement_required": "需先同意{{names}}才能启动服务器。请在电脑的 Saba-chan 中同意。",
+    "memory_limit_at_start": "启动中达到内存上限（{{limit}} MiB），服务器已退出。请把上限调到高于内存设置，或清空上限。",
+    "runner_missing": "找不到 saba-runner，无法托管启动。请关闭此服务器的托管启动，或重新安装 Saba-chan。",
+    "preflight_failed": "启动前检查失败，未启动（{{code}}）。详情请在电脑的 Saba-chan 中查看。",
+    "agreement_local_only": "条款只能在此电脑的 Saba-chan 中同意",
+    "no_command_path": "“{{name}}”未连接 Saba-chan 控制台，无法接收命令。请在电脑的 Saba-chan 中以托管模式重启服务器。",
+    "alias_conflict": "❌ 别名“{{alias}}”在多个模块中重复注册：{{modules}}。请使用更具体的别名。",
+    "multiple_instances": "⚠️ “{{module}}”模块有多个，无法用别名区分。请使用实例名称。",
+    "danger_needs_name": "⚠️ 危险命令不能用游戏名执行。请用服务器名称“{{name}}”呼叫。",
+    "slash_only": "🔒 “{{command}}”仅对呼叫者可见，因此用斜杠命令告知。请在聊天框输入 `/`，然后选择 **{{name}}** › {{command}}。",
     "auth_failed": "身份验证失败",
     "player_not_found": "找不到玩家",
     "internal_server_error": "内部服务器错误",
@@ -103,9 +103,9 @@
     "service_unavailable": "服务不可用",
     "unknown_input": "❌ 未知命令。",
     "command_not_found": "❌ 命令不存在。",
-    "permission_denied": "❌ 您没有使用此命令的权限。",
-    "members_only": "❌ 只有此服务器的专属成员才能使用。请让服务器主人把你加入专属成员名单。",
-    "local_single_guild_only": "⚠️ 本地机器人只能在一个服务器中使用。当前已加入{{count}}个服务器，请从不使用的服务器中移除机器人。"
+    "permission_denied": "❌ 无权使用此命令",
+    "members_only": "❌ 此服务器仅限专属成员使用。请让服务器主人把你加入专属成员名单。",
+    "local_single_guild_only": "⚠️ 本地机器人只能在一个服务器中使用。当前加入了 {{count}} 个服务器。请从不使用的服务器中移除机器人。"
   },
   "messages": {
     "command_error": "执行命令出错"
@@ -121,24 +121,24 @@
   "schedule": {
     "restart_warning": "服务器将在 {{minutes}} 分钟后重启。",
     "update_warning": "服务器将在 {{minutes}} 分钟后重启以进行更新。",
-    "update_cancelled": "已取消计划的更新，服务器继续运行。",
+    "update_cancelled": "计划的更新已取消。服务器继续运行。",
     "stop_warning": "服务器将在 {{minutes}} 分钟后停止。"
   },
   "provision": {
     "installing": "正在安装服务器…",
     "install_failed": "安装失败",
-    "installed": "服务器已安装",
+    "installed": "服务器安装完成",
     "updating": "正在更新服务器…",
     "update_failed": "更新失败",
-    "updated": "服务器已更新",
-    "module_missing": "找不到模块: {{error}}",
-    "no_latest_version": "无法获取最新的服务器版本",
-    "script_failed": "安装脚本出错退出。详情请查看守护进程日志",
-    "save_failed": "服务器文件已下载，但无法保存服务器信息。详情请查看守护进程日志",
-    "backup_failed": "更新前备份失败: {{reason}}",
+    "updated": "服务器更新完成",
+    "module_missing": "找不到模块：{{error}}",
+    "no_latest_version": "最新服务器版本获取失败",
+    "script_failed": "安装脚本出错。详情见守护进程日志。",
+    "save_failed": "服务器文件已下载，但服务器信息保存失败。详情见守护进程日志。",
+    "backup_failed": "更新前备份失败：{{reason}}",
     "version_installing": "正在安装版本 {{version}}…",
-    "version_installed": "已安装该版本",
-    "install_backup_failed": "安装前备份失败，因此未进行安装：{{reason}}"
+    "version_installed": "版本安装完成",
+    "install_backup_failed": "安装前备份失败，未安装：{{reason}}"
   },
   "actions": {
     "instance": {
@@ -172,14 +172,14 @@
       "start_notice": {
         "set": {
           "title": "启动通知",
-          "description": "此服务器不通过 Discord 命令启动或停止时(包括崩溃)，在此 Discord 服务器的通知频道告知",
+          "description": "此服务器在 Discord 之外启动或停止时（包括崩溃），会通知此 Discord 服务器的通知频道",
           "name": "启动通知"
         }
       },
       "full_notice": {
         "set": {
           "title": "满员提醒",
-          "description": "此服务器满员或重新有空位时，在此 Discord 服务器的通知频道提醒",
+          "description": "此服务器满员或重新有空位时，会通知此 Discord 服务器的通知频道",
           "name": "满员提醒"
         }
       },
@@ -291,7 +291,7 @@
       },
       "restore": {
         "title": "恢复备份",
-        "description": "用备份覆盖当前的服务器文件"
+        "description": "用备份覆盖当前服务器文件"
       },
       "delete": {
         "title": "删除备份"
@@ -332,7 +332,7 @@
       },
       "apply": {
         "title": "应用更新",
-        "description": "下载新的更新、安装并重启应用"
+        "description": "下载并安装新更新，然后重启应用"
       }
     },
     "discord": {
@@ -408,7 +408,7 @@
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
       "more": "…另有 {{count}} 项",
       "backups": "💾 **{{count}} 个备份**",
-      "backups_empty": "📭 没有备份",
+      "backups_empty": "📭 无备份",
       "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
       "backup_unreadable": "⚠️ 无法打开",
       "backup_kind": {
@@ -421,7 +421,7 @@
         "imported": "已导入"
       },
       "events": "📜 **最近的启动与停止记录**",
-      "events_empty": "📭 没有记录",
+      "events_empty": "📭 无记录",
       "event_item": "• {{when}} · {{kind}}",
       "event_kind": {
         "user_stop": "已停止",
@@ -431,7 +431,7 @@
         "unknown_exit": "未知原因退出"
       },
       "updates": "⬆️ **{{count}} 个更新**",
-      "updates_none": "✅ 全部已是最新",
+      "updates_none": "✅ 全部最新",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · 内存 {{used}} / {{total}}",
       "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
@@ -442,20 +442,20 @@
       "address": {
         "item": "• `{{address}}`",
         "item_named": "• {{label}} `{{address}}`",
-        "stopped": "💤 服务器已关闭。启动后才能连接",
-        "unknown": "❔ 服务器酱还不知道这台电脑的公网地址。请稍后再试",
-        "no_ports": "📭 此游戏没有提供连接端口",
-        "hidden": "🔒 服务器主人设置为不在 Discord 上公开地址，请直接询问主人"
+        "stopped": "💤 服务器已停止。启动后才能连接。",
+        "unknown": "❔ Server-chan 无法确认这台电脑的公网地址。请稍后重试。",
+        "no_ports": "📭 此游戏没有连接端口信息",
+        "hidden": "🔒 服务器主人设置了不在 Discord 公开地址。请直接询问主人。"
       },
       "port_check": {
-        "open": "✅ 可以从外网连接",
+        "open": "✅ 可从外网连接",
         "firewall": "🧱 被电脑防火墙阻止",
         "router": "📡 路由器未设置端口转发",
         "closed": "🚫 无法从外网连接",
-        "cgnat": "⚠️ 路由器没有获得公网 IP（CGNAT）",
-        "unknown": "❔ 部分端口无法检查",
-        "no_ports": "📭 此游戏没有声明要检查的端口",
-        "host_mismatch": "🌐 公开地址没有指向这台电脑",
+        "cgnat": "⚠️ 路由器未获得公网 IP（CGNAT）",
+        "unknown": "❔ 部分端口检查失败",
+        "no_ports": "📭 此游戏没有可检查的端口信息",
+        "host_mismatch": "🌐 公开地址未指向此电脑",
         "host_unresolved": "🌐 找不到公开地址"
       },
       "port_status": {
@@ -468,50 +468,50 @@
       },
       "port_item": "• {{port}}/{{protocol}} · {{status}}",
       "port_hint": {
-        "closed": "请确认路由器已将此端口转发到这台电脑，并且电脑防火墙已放行。",
-        "firewall": "Windows 防火墙正在阻止此端口的入站连接。请针对当前连接的网络（专用或公用），在 Windows 防火墙设置中允许 saba-core（服务器已停止时）或游戏服务器程序（服务器运行时），然后再检查。",
-        "router": "电脑防火墙已允许此端口。请在路由器设置中把此端口转发到这台电脑，然后再检查。",
-        "cgnat": "运营商让多户共用一个公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
-        "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。"
+        "closed": "请确认路由器已将此端口转发到这台电脑，且电脑防火墙已放行。",
+        "firewall": "Windows 防火墙阻止了此端口的入站连接。请在当前连接的网络（专用·公用）中，于 Windows 防火墙设置里允许 saba-core（服务器停止时）或游戏服务器程序（运行时），然后重新检查。",
+        "router": "电脑防火墙已允许此端口。请在路由器设置中将此端口转发到这台电脑，然后重新检查。",
+        "cgnat": "运营商让多户共用公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
+        "unknown": "无法检查运行中服务器的 UDP 端口和其他程序使用的端口。请停止服务器后重新检查。"
       },
       "server_update": {
-        "available": "有新版本（版本 {{local}} → {{remote}}）。",
-        "latest": "已是最新（版本 {{build}}）。",
-        "check_failed": "无法检查更新：{{error}}",
-        "unsupported": "Saba-chan 不会更新此服务器（手动安装的服务器）。",
-        "unchecked": "无法检查此服务器的更新。",
-        "started": "已开始更新，完成后会通知你。",
-        "cancelled": "已取消预告中的更新，服务器继续运行。",
-        "scheduled": "将在游戏内提前 {{minutes}} 分钟通知，然后保存、停止、更新并重新启动。",
-        "players": "当前有 {{count}} 人在线。"
+        "available": "有新版本（构建 {{local}} → {{remote}}）",
+        "latest": "最新（构建 {{build}}）",
+        "check_failed": "更新检查失败：{{error}}",
+        "unsupported": "Saba-chan 不更新的服务器（手动安装的服务器）",
+        "unchecked": "无法检查更新的服务器",
+        "started": "更新已开始。完成后会通知。",
+        "cancelled": "预告中的更新已取消。服务器继续运行。",
+        "scheduled": "提前 {{minutes}} 分钟在游戏内通知，然后保存、停止、更新并重新启动。",
+        "players": "当前在线 {{count}} 人"
       }
     }
   },
   "reasons": {
-    "failed": "无法执行",
-    "rejected": "服务器未接受该命令",
-    "server_not_running": "服务器已关闭",
+    "failed": "执行失败",
+    "rejected": "服务器拒绝了命令",
+    "server_not_running": "服务器已停止",
     "not_supported": "此游戏不支持",
     "not_found": "未找到",
-    "timeout": "服务器未及时响应",
+    "timeout": "服务器响应超时",
     "auth_failed": "服务器认证失败",
-    "players_failed": "无法读取玩家",
-    "backup_file_locked": "服务器正在使用文件（{{file}}），无法备份。请关闭服务器后重试",
-    "backup_failed": "无法备份",
+    "players_failed": "在线玩家查询失败",
+    "backup_file_locked": "服务器正在使用文件（{{file}}），备份失败。请停止服务器后重试。",
+    "backup_failed": "备份失败",
     "backup_unsupported": "此游戏不支持备份",
-    "nothing_to_back_up": "还没有可备份的世界",
-    "backup_limit": "远程备份数量已满。请在电脑上删除旧备份",
-    "backup_busy": "另一个备份或还原正在进行",
-    "backups_unreadable": "无法读取备份文件夹。请检查电脑上的文件夹权限和磁盘状态",
-    "server_running": "服务器正在运行。请先关闭",
-    "no_command_path": "服务器是在 Saba-chan 之外启动的，无法接收命令",
-    "autosave_not_resumed": "备份已完成，但无法重新开启服务器的自动保存。请重启服务器",
-    "backup_failed_autosave_off": "备份失败，服务器的自动保存也未能重新开启。请重启服务器",
-    "backup_save_rejected": "服务器拒绝了保存命令，因此没有进行备份。请停止服务器后重新备份",
-    "backup_save_unconfirmed": "服务器未报告保存完成，因此没有进行备份。请稍后重试，或停止服务器后再备份",
-    "backup_server_stopped": "备份期间服务器已停止，因此已丢弃该备份。请检查服务器后重新备份",
-    "snapshot_not_found": "游戏没有自动备份",
-    "snapshot_not_deletable": "Saba-chan 不能删除游戏自己的自动备份"
+    "nothing_to_back_up": "没有可备份的世界",
+    "backup_limit": "远程备份数量超限。请在电脑上删除旧备份。",
+    "backup_busy": "另一个备份或恢复正在进行",
+    "backups_unreadable": "备份文件夹读取失败。请检查电脑上的文件夹权限或磁盘状态。",
+    "server_running": "服务器运行中。请先停止。",
+    "no_command_path": "在 Saba-chan 之外启动的服务器，无法发送命令",
+    "autosave_not_resumed": "备份已完成，但服务器自动保存恢复失败。请重启服务器。",
+    "backup_failed_autosave_off": "备份失败，服务器自动保存也恢复失败。请重启服务器。",
+    "backup_save_rejected": "服务器拒绝了保存命令，未备份。请停止服务器后重新备份。",
+    "backup_save_unconfirmed": "服务器未返回保存完成的响应，未备份。请稍后重试，或停止服务器后备份。",
+    "backup_server_stopped": "备份期间服务器已退出，该备份已删除。请确认服务器状态后重新备份。",
+    "snapshot_not_found": "无游戏自动备份",
+    "snapshot_not_deletable": "游戏自动备份无法在 Saba-chan 中删除"
   },
   "chatbot": {
     "memo_template": "<!-- 这样的说明行和没有填写的标题不会发送给会说话的 Saba-chan。只填写需要的项目即可。 -->\n\n## 聊天氛围\n<!-- 写下这个服务器的聊天氛围，以及可以接受的玩笑尺度。留空则按默认性格聊天。 -->\n\n## 称呼\n<!-- 如果 Saba-chan 要用特别的称呼叫某人，请写在这里。例：标有 (所有者) 的人称为“主人”。 -->\n\n## 本服务器的用语\n<!-- 写下只在本服务器通用的昵称、梗、缩写及其含义。 -->\n\n## 游戏服务器说明\n<!-- 写下服务器规则、开放时间等 Saba-chan 可以告诉提问者的内容。 -->\n"

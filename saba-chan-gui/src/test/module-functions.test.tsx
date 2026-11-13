@@ -118,7 +118,7 @@ describe('설정 열기: 모듈이 구현하지 않은 버전 조회', () => {
         await act(async () => result.current.handleResetServer());
         await act(async () => setModal.mock.calls.at(-1)![0].buttons[1].action());
         expect(vi.mocked(window.showToast!).mock.calls.map((c) => c[0])).toEqual([
-            "Reset failed: This server's module doesn't support this feature.",
+            "Reset failed: This server's module does not support this feature",
         ]);
     });
 });
@@ -143,6 +143,6 @@ describe('서버 점검: 모듈이 구현하지 않은 점검', () => {
         window.api.instanceValidate = vi.fn().mockResolvedValue({ ...NOT_SUPPORTED, function: 'validate' });
         render(<ServerCheck server={srv} />);
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Check server/i })));
-        expect(screen.getByRole('alert').textContent).toContain("This server's module doesn't support this feature");
+        expect(screen.getByRole('alert').textContent).toContain("This server's module does not support this feature");
     });
 });

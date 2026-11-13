@@ -44,7 +44,7 @@ describe('설정 > 게임 서버: 포트·서버별 네트워크 (/api/system/ne
         });
         await act(async () => render(<NetTraceSetting />));
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Grant permission' })));
-        expect(screen.getByRole('alert')).toHaveTextContent('administrator');
+        expect(screen.getByRole('alert')).toHaveTextContent('Administrator confirmation failed');
         expect(screen.getByRole('button', { name: 'Grant permission' })).toBeInTheDocument();
     });
 

@@ -23,7 +23,7 @@ describe('개인정보 모두 지우기', () => {
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Erase all my data/i })));
         expect(window.api.relayPrivacyErase).toHaveBeenCalledWith('en');
         expect(window.api.shellOpenExternal).toHaveBeenCalledWith('https://saba-chan.online/legal/erase#e.s');
-        expect(screen.getByText(/Waiting for your consent/i)).toBeInTheDocument();
+        expect(screen.getByText(/Waiting for consent/i)).toBeInTheDocument();
         await act(async () => vi.advanceTimersByTimeAsync(3000));
         expect(onErased).not.toHaveBeenCalled();
         await act(async () => vi.advanceTimersByTimeAsync(3000));

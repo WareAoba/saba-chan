@@ -43,7 +43,7 @@ describe('이미 실행 중인 서버 시작 (already_running)', () => {
         await act(async () => result.current.startServer('a'));
         expect(setProgressBar).not.toHaveBeenCalled();
         expect(window.api.instanceStatus).not.toHaveBeenCalled();
-        expect(vi.mocked(window.showToast!).mock.calls.at(-1)!.slice(0, 3)).toEqual(['ℹ️ “A” is already running', 'info', 3000]);
+        expect(vi.mocked(window.showToast!).mock.calls.at(-1)!.slice(0, 3)).toEqual(["ℹ️ 'A' already running", 'info', 3000]);
     });
 });
 
@@ -64,7 +64,7 @@ describe('이름 바꾸기: 다른 작업 중 (instance_busy)', () => {
         });
         expect(ok).toBe(false);
         expect(vi.mocked(window.showToast!).mock.calls.at(-1)![0]).toMatch(
-            /another task \(starting, installing, updating, backing up or restoring\)/,
+            /another task \(start, install, update, backup, restore, etc\.\)/,
         );
     });
 });

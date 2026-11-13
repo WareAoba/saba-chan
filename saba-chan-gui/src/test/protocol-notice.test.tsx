@@ -7,6 +7,6 @@ describe('모듈 프로토콜 안내', () => {
         const { container } = render(<ProtocolNotice protocol={'rest</strong><img src=x>'} />);
         expect(container.querySelector('img')).toBeNull();
         expect(container.querySelector('strong')!.textContent).toBe('REST</STRONG><IMG SRC=X>');
-        expect(container.textContent).toBe('This module only supports the REST</STRONG><IMG SRC=X> protocol.');
+        expect(container.textContent).toBe('This game is controlled only via REST</STRONG><IMG SRC=X>.');
     });
 });

@@ -14,7 +14,7 @@ describe('SaveBar', () => {
         const onSave = vi.fn();
         const onRevert = vi.fn();
         render(<SaveBar dirty saving={false} onSave={onSave} onRevert={onRevert} />);
-        const bar = screen.getByRole('region', { name: 'You have unsaved changes' });
+        const bar = screen.getByRole('region', { name: 'Unsaved changes' });
         expect(bar.classList).toContain('dirty');
         fireEvent.click(screen.getByRole('button', { name: 'Revert' }));
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));

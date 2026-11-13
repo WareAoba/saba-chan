@@ -448,7 +448,7 @@ describe('원격 데몬 (G1)', () => {
         });
         expect(await api.instanceStop('a')).toMatchObject({
             error_code: 'remote_unreachable',
-            error: 'Could not reach the remote daemon. Check that the PC is on and saba-chan is running',
+            error: 'Remote daemon connection failed. Check that the PC is on and Saba-chan is running.',
         });
     });
 });

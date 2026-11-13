@@ -388,8 +388,8 @@ async fn remote_results_carry_a_readable_summary() {
     let listed = query(&state, "instance.list", None, &json!({}), &relay("someone", false)).await.unwrap();
     let text = listed["text"].as_str().unwrap();
     assert!(text.contains("srv") && text.contains("정지됨"), "{text}");
-    assert!(query(&state, "backup.list", Some(&id), &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("백업이 없어요"));
-    assert!(query(&state, "instance.events", Some(&id), &json!({}), &relay("someone", true)).await.unwrap()["text"].as_str().unwrap().contains("기록이 없어요"));
+    assert!(query(&state, "backup.list", Some(&id), &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("백업 없음"));
+    assert!(query(&state, "instance.events", Some(&id), &json!({}), &relay("someone", true)).await.unwrap()["text"].as_str().unwrap().contains("기록 없음"));
     assert!(query(&state, "monitor.summary", None, &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("CPU"));
     // GUI·CLI는 자기 화면으로 그린다
     assert!(run(&state, "instance.list", None, &json!({}), None, &gui()).await.unwrap().get("text").is_none());
@@ -1209,12 +1209,12 @@ async fn port_check_reads_as_a_verdict_without_the_address() {
     });
     let text = summary::text("server.port_check", &report, &ko).unwrap();
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines[0], "🚫 밖에서 접속할 수 없어요");
+    assert_eq!(lines[0], "🚫 외부 접속 불가");
     assert_eq!(lines[1], "• 8211/UDP · 닫힘");
     assert_eq!(lines[2], "• 8211/TCP · 열림");
     assert!(lines[3].contains("포트포워딩"), "{text}");
     assert!(!text.contains("203.0.114.7"));
-    assert_eq!(summary::text("server.port_check", &json!({ "verdict": "open", "ports": [] }), &ko).unwrap(), "✅ 밖에서 접속할 수 있어요");
+    assert_eq!(summary::text("server.port_check", &json!({ "verdict": "open", "ports": [] }), &ko).unwrap(), "✅ 외부 접속 가능");
 
     assert_eq!(find("server.port_check").unwrap().surfaces, &[Gui, Cli, Discord]);
     let (state, _id, _tmp) = server().await;
@@ -1273,7 +1273,7 @@ async fn a_failed_remote_action_carries_a_short_reason() {
     set_node(&state, json!({ "ownerDiscordId": "owner" })).await;
     let out = query(&state, "server.query:players", Some(&id), &json!({}), &relay("owner", false)).await.unwrap();
     assert_eq!(out["success"], false, "{out}");
-    assert_eq!(out["reason"], "이 게임은 지원하지 않아요", "{out}");
+    assert_eq!(out["reason"], "이 게임은 지원하지 않음", "{out}");
     // 이 PC 화면은 원문을 그대로 쓴다
     let local = query(&state, "server.query:players", Some(&id), &json!({}), &gui()).await.unwrap();
     assert!(local.get("reason").is_none(), "{local}");

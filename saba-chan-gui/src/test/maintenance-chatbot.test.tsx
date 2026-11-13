@@ -258,7 +258,7 @@ describe('MaintenanceTab', () => {
             .fn()
             .mockResolvedValue({ success: true, backup: { name: 'x-snapshot.zip' } });
         render(<MaintenanceTab server={stopped} />);
-        expect(await screen.findByText(/Made by the game/)).toBeInTheDocument();
+        expect(await screen.findByText(/Automatic backup made by the game/)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Restore' })).toBeEnabled();
         expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: /Keep game backup/ }));
@@ -335,7 +335,7 @@ describe('ChatbotView', () => {
             pendingRelayDelete: true,
         });
         render(<ChatbotView nodes={nodes} />);
-        expect(await screen.findByText(/retry on the next connection/)).toBeTruthy();
+        expect(await screen.findByText(/retried on the next connection/)).toBeTruthy();
     });
 
     it('사바쨩 설정에는 API 키·모델·크레딧만 있고, 모델만 공통으로 저장한다', async () => {
@@ -444,7 +444,7 @@ describe('ChatbotView', () => {
         });
         render(<ChatbotView nodes={nodes} />);
         expect(await screen.findByText(/OpenAI does not report the balance/)).toBeTruthy();
-        expect(screen.getByText(/Credit ran out/)).toBeTruthy();
+        expect(screen.getByText(/Credit exhausted/)).toBeTruthy();
     });
 
     it('남은 크레딧: 못 불러온 서버도 줄로 보이고, 키를 지우면 예전 잔액을 치운다', async () => {
@@ -467,7 +467,7 @@ describe('ChatbotView', () => {
         );
         render(<ChatbotView nodes={nodes} />);
         expect(await screen.findByText('$12.50')).toBeTruthy();
-        expect(screen.getByText('Could not load this server.')).toBeTruthy();
+        expect(screen.getByText('This server could not be loaded')).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Remove key' }));
         fireEvent.click(screen.getByRole('button', { name: 'Click to remove' }));
         await waitFor(() => expect(screen.queryByText('$12.50')).toBeNull());
@@ -513,13 +513,13 @@ describe('ChatbotView', () => {
         render(<ChatbotGuildTab node={nodes[0]} />);
         const on = await screen.findByLabelText<HTMLInputElement>('Use Talking Saba-chan in this server');
         expect(on.checked).toBe(false);
-        expect(await screen.findByText('Could not load the tool list.')).toBeTruthy();
+        expect(await screen.findByText('Tool list load failed')).toBeTruthy();
         fireEvent.click(screen.getAllByRole('button', { name: 'Retry' }).at(-1)!);
         const lol = await screen.findByLabelText<HTMLInputElement>('LoL stats');
         expect(lol.checked).toBe(false);
         expect(screen.getByLabelText('TFT stats')).toBeTruthy();
         expect(screen.getByText('TFT stats hint')).toBeTruthy();
-        expect(screen.getByText('The Saba-chan server cannot use this tool right now.')).toBeTruthy();
+        expect(screen.getByText('The Saba-chan server cannot use this tool right now')).toBeTruthy();
         fireEvent.click(on);
         fireEvent.click(lol);
         const memo = screen.getByLabelText('Server prompt for My Guild');
@@ -550,7 +550,7 @@ describe('ChatbotView', () => {
         render(<ChatbotGuildTab node={nodes[0]} />);
         const limit = await screen.findByLabelText<HTMLInputElement>('Monthly token limit');
         expect(limit.value).toBe('2');
-        expect(await screen.findByText(/OpenAI does not report the remaining credit/)).toBeTruthy();
+        expect(await screen.findByText(/OpenAI does not report remaining credit/)).toBeTruthy();
         fireEvent.change(limit, { target: { value: '3.5' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await waitFor(() =>
@@ -579,7 +579,7 @@ describe('ChatbotView', () => {
         render(<ChatbotGuildTab node={nodes[0]} />);
         fireEvent.click(await screen.findByLabelText('Use Talking Saba-chan in this server'));
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-        expect(await screen.findByText(/sync on the next connection/)).toBeTruthy();
+        expect(await screen.findByText(/sync automatically on the next connection/)).toBeTruthy();
     });
 
     it('서버 탭: 옛 공통 설정이 남아 있으면 그 값(guildDefault)으로 보이고, 릴레이 400과 기억 지우기', async () => {

@@ -1,19 +1,19 @@
 {
   "module_errors": {
-    "module_timeout": "The module call timed out. Check the module status.",
-    "module_execution_failed": "The module could not run. Check the runtime and the module logs.",
-    "module_crashed": "The module process exited with an error. Check the module logs.",
-    "module_bad_output": "The module returned an invalid result. Update the module or contact its author.",
-    "module_output_too_large": "The module output exceeded the limit. Check the module logs.",
-    "module_path_outside": "The module tried to access a path outside the allowed folder. Check the module settings.",
-    "module_exception": "The module raised an exception. Check the module logs.",
-    "isolation_unsupported": "This operating system does not support the required isolation.",
-    "module_platform_unsupported": "This game module doesn't run on this daemon's OS",
-    "module_arch_unsupported": "This game module doesn't run on this daemon's CPU"
+    "module_timeout": "Module call timed out. Check the module status.",
+    "module_execution_failed": "Module execution failed. Check the runtime and module logs.",
+    "module_crashed": "Module process exited abnormally. Check the module logs.",
+    "module_bad_output": "Invalid module result. Update the module or contact its author.",
+    "module_output_too_large": "Module output size limit exceeded. Check the module logs.",
+    "module_path_outside": "Module tried to access a path outside the allowed folder. Check the module settings.",
+    "module_exception": "Module exception. Check the module logs.",
+    "isolation_unsupported": "This OS does not support the required isolation",
+    "module_platform_unsupported": "This game module doesn't support this daemon's OS",
+    "module_arch_unsupported": "This game module doesn't support this daemon's CPU"
   },
   "sandbox": {
     "isolation_unsupported": {
-      "message": "The component did not run because this operating system does not support isolation."
+      "message": "This OS does not support isolated execution; the component was not run"
     }
   },
   "app_name": "Saba-chan",
@@ -33,10 +33,10 @@
   "no": "No",
   "daemon": {
     "checking": "Checking daemon...",
-    "existing_running": "Existing daemon is running",
+    "existing_running": "Existing daemon running",
     "starting": "Starting daemon...",
     "started": "Daemon started",
-    "failed_to_start": "Couldn't start the daemon",
+    "failed_to_start": "Daemon start failed",
     "check_warning": "Warning checking daemon: {{error}}"
   },
   "modules": {
@@ -59,12 +59,12 @@
     "settings_save_failed": "Failed to save settings: {{error}}"
   },
   "network": {
-    "connection_refused": "Cannot connect to the daemon. Check that the daemon is running",
-    "timeout": "Request timeout: Server did not respond"
+    "connection_refused": "Daemon connection failed. Check that the daemon is running.",
+    "timeout": "Request timed out: no response from server"
   },
   "port_conflict": {
     "force_stop_title": "Port conflict: {{name}} stopped",
-    "force_stop_body": "{{stopped}} was force-stopped because port {{port}} conflicts with {{existing}}"
+    "force_stop_body": "{{stopped}} force-stopped: port {{port}} conflicts with {{existing}}"
   },
   "init": {
     "start": "Starting up...",
@@ -86,54 +86,54 @@
   "updates": {
     "notification_title": "Saba-chan updates",
     "notification_body": "{{count}} updates: {{names}}",
-    "completed": "Update complete!"
+    "completed": "Update complete"
   },
   "errors": {
-    "invalid_input": "Invalid request. Check your input",
-    "instance_name_taken": "A server with that name already exists",
+    "invalid_input": "Invalid request. Check your input.",
+    "instance_name_taken": "Server name already exists",
     "internal": "internal error",
-    "create_error": "Couldn't create the server: {{error}}",
-    "create_http": "Couldn't create the server (HTTP {{status}}): {{error}}",
+    "create_error": "Server creation failed: {{error}}",
+    "create_http": "Server creation failed (HTTP {{status}}): {{error}}",
     "instance_not_found": "Server not found",
-    "instance_running": "A running server can't be deleted. Stop it first",
-    "instance_busy": "Another task (backup or restore) is running on this server. Try again when it finishes",
-    "delete_error": "Couldn't delete the server: {{error}}",
-    "delete_http": "Couldn't delete the server (HTTP {{status}}): {{error}}",
-    "reorder_failed": "Couldn't reorder: {{error}}",
+    "instance_running": "A running server can't be deleted. Stop it first.",
+    "instance_busy": "Another task (backup or restore) is running on this server. Try again when it finishes.",
+    "delete_error": "Server deletion failed: {{error}}",
+    "delete_http": "Server deletion failed (HTTP {{status}}): {{error}}",
+    "reorder_failed": "Reorder failed: {{error}}",
     "settings_invalid": "Invalid setting: {{error}}",
-    "settings_error": "Couldn't save settings: {{error}}",
-    "settings_http": "Couldn't save settings (HTTP {{status}}): {{error}}",
+    "settings_error": "Saving settings failed: {{error}}",
+    "settings_http": "Saving settings failed (HTTP {{status}}): {{error}}",
     "http": "Error (HTTP {{status}})",
-    "command_failed": "Couldn't run the command: {{error}}",
-    "url_missing": "No URL given",
+    "command_failed": "Command failed: {{error}}",
+    "url_missing": "No URL",
     "url_not_web": "Only http(s) addresses can be opened",
-    "path_missing": "No path given",
+    "path_missing": "No path",
     "path_not_folder": "Not a folder",
     "no_log_folder": "No log folder",
-    "open_folder_failed": "Couldn't open the folder",
-    "remote_local_path": "You can't pick a path on this PC while working with a remote daemon. Switch to this PC in the top bar and try again"
+    "open_folder_failed": "Failed to open folder",
+    "remote_local_path": "A path on this PC can't be picked while using a remote daemon. Switch to this PC in the top bar and try again."
   },
   "consent": {
     "allow": "Allow",
     "unisolated": {
       "title": "Run without isolation?",
-      "message": "{{component}} is not verified. Without isolation it can access files and programs on this PC without limits. Allow only if you trust it."
+      "message": "{{component}} is unverified. Without isolation it can access this PC's files and programs without limits. Allow only if you trust it."
     },
     "extension_gui": {
       "title": "Load extension screen?",
-      "message": "The screen code of {{component}} is not verified. If loaded, it runs inside the Saba-chan window. Allow only if you trust it."
+      "message": "The screen code of {{component}} is unverified. Once loaded, it runs inside the Saba-chan window. Allow only if you trust it."
     }
   },
   "notify": {
     "title": "Saba-chan",
-    "crash": "{{name}} crashed and stopped.",
-    "unknown_exit": "{{name}} stopped unexpectedly.",
-    "restart_in": "Restarting in {{secs}}s.",
-    "gave_up": "Auto restart gave up. Please check the server.",
-    "restart_failed": "Could not restart {{name}}.",
-    "daemon_down": "Saba-chan stopped unexpectedly. Server monitoring and Discord are paused until you start it again from the app.",
-    "external_start": "{{name}} was started outside Saba-chan. Saba-chan did not start this process.",
-    "backup_failed": "Automatic backup of {{name}} failed.",
+    "crash": "Server “{{name}}” stopped after a crash",
+    "unknown_exit": "Server “{{name}}” stopped unexpectedly",
+    "restart_in": "Restarting in {{secs}}s",
+    "gave_up": "Auto restart stopped. Check the server.",
+    "restart_failed": "Server “{{name}}” restart failed",
+    "daemon_down": "Saba-chan daemon exited abnormally. Server monitoring and Discord are paused. Start it again from the app.",
+    "external_start": "Server “{{name}}” was started outside Saba-chan (a process Saba-chan did not start)",
+    "backup_failed": "Automatic backup of {{name}} failed",
     "on_daemon": "On {{daemon}}: {{body}}"
   }
 }

@@ -1628,12 +1628,12 @@ mod tests {
         crate::i18n::init("ko");
         let e = api_err(check(426, json!({ "error": "AGENT_TOO_OLD", "minVersion": "0.1.9", "message": "Update Saba-chan to 0.1.9 or later." })));
         assert_eq!(e.code(), "agent_too_old");
-        assert!(e.to_string().starts_with("업데이트가 필요해요"), "{}", e);
+        assert!(e.to_string().starts_with("업데이트 필요"), "{}", e);
         assert!(e.to_string().contains("0.1.9") && !e.to_string().contains("AGENT_TOO_OLD"), "{}", e);
         assert!(e.hint().is_some_and(|h| h.contains("saba-chan-cli update check")), "{:?}", e.hint());
     }
 
-    // 모듈·익스텐션이 더 새 사바쨩을 요구해 거절되면 일반 실패 대신 "업데이트가 필요해요"와 그 이름·버전을 보인다
+    // 모듈·익스텐션이 더 새 사바쨩을 요구해 거절되면 일반 실패 대신 "업데이트 필요"와 그 이름·버전을 보인다
     #[test]
     fn a_dependency_that_wants_a_newer_app_asks_for_an_update() {
         crate::i18n::init("ko");
@@ -1644,17 +1644,17 @@ mod tests {
         })));
         assert_eq!(module.code(), "module_dependency_unsatisfied");
         let text = module.to_string();
-        assert!(text.starts_with("업데이트가 필요해요") && text.contains("palworld") && text.contains("0.1.10") && !text.contains(">="), "{text}");
+        assert!(text.starts_with("업데이트 필요") && text.contains("palworld") && text.contains("0.1.10") && !text.contains(">="), "{text}");
         assert!(module.hint().is_some_and(|h| h.contains("saba-chan-cli update check")), "{:?}", module.hint());
 
         let newer = api_err(check(200, json!({ "success": false, "error_code": "module_schema_unsupported", "module": "ark", "required": 3 }))).to_string();
-        assert!(newer.starts_with("업데이트가 필요해요") && newer.contains("ark"), "{newer}");
+        assert!(newer.starts_with("업데이트 필요") && newer.contains("ark"), "{newer}");
 
         let ext = api_err(check(422, json!({
             "success": false, "error": "raw", "error_code": "app_version_unsatisfied", "related": ["0.1.10"], "extension": "steamcmd",
         })));
         let text = ext.to_string();
-        assert!(text.starts_with("업데이트가 필요해요") && text.contains("steamcmd") && text.contains("0.1.10"), "{text}");
+        assert!(text.starts_with("업데이트 필요") && text.contains("steamcmd") && text.contains("0.1.10"), "{text}");
         assert!(ext.hint().is_some_and(|h| h.contains("saba-chan-cli update check")), "{:?}", ext.hint());
 
         // 익스텐션만 모자라면 업데이트 안내가 아니다

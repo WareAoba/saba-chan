@@ -88,7 +88,7 @@ describe('원격 경로 고르기 창', () => {
             result = pickRemotePath({ kind: 'save', extensions: ['zip'], defaultName: 'export.zip' });
         });
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Up' })));
-        expect(screen.getByRole('alert')).toHaveTextContent("You can't open that folder");
+        expect(screen.getByRole('alert')).toHaveTextContent("Folder inaccessible");
         const name = screen.getByRole('textbox', { name: 'File name' });
         expect(name).toHaveValue('export.zip');
         fireEvent.change(name, { target: { value: 'mine' } });

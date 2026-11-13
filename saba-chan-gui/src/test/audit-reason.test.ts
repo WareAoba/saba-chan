@@ -21,7 +21,7 @@ describe('작업 기록 한 줄', () => {
     it('실패는 숫자 대신 번역한 이유를 보인다', () => {
         const failed = { ...base, ok: false, status: 400, code: 'invalid_argument' };
         expect(auditResult(failed, t)).toEqual({ tone: 'stop', label: 'Failed' });
-        expect(auditReason(failed, t)).toBe("An input value wasn't valid");
+        expect(auditReason(failed, t)).toBe("Invalid input value");
         // 모듈 오류와 백업 오류도 그쪽 문구로
         expect(auditReason({ ...failed, code: 'module_timeout' }, t)).toBe(
             i18n.getFixedT('en', 'common')('module_errors.module_timeout'),

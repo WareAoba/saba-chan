@@ -45,7 +45,7 @@ describe('합쳐 보기: 다른 데몬의 서버 (G1c)', () => {
         await act(async () => render(<OtherDaemons currentTarget="host-b" onSwitched={switched} />));
         expect(screen.getByRole('region', { name: 'This PC' })).toHaveTextContent('test-pal');
         expect(screen.queryByRole('region', { name: '게임 PC' })).toBeNull();
-        expect(screen.getByRole('region', { name: '클라우드' })).toHaveTextContent('Could not reach the remote daemon');
+        expect(screen.getByRole('region', { name: '클라우드' })).toHaveTextContent('Remote daemon connection failed');
     });
 
     it('켜기는 그 데몬에 바로 보내고, 끝나면 목록을 다시 읽는다', async () => {
@@ -63,7 +63,7 @@ describe('합쳐 보기: 다른 데몬의 서버 (G1c)', () => {
         expect(window.api.remoteInstanceAction).not.toHaveBeenCalled();
         const dialog = screen.getByRole('dialog', { name: 'Stop Server' });
         expect(dialog).toHaveTextContent('test-pal');
-        expect(dialog).toHaveTextContent('Running on 게임 PC. 5 player(s) are online now.');
+        expect(dialog).toHaveTextContent('Running on 게임 PC 5 player(s) online');
         await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' })));
         expect(window.api.remoteInstanceAction).toHaveBeenCalledWith('host-b', 'b1', 'stop', {});
         expect(screen.queryByRole('dialog')).toBeNull();
@@ -107,7 +107,7 @@ describe('합쳐 보기: 다른 데몬의 서버 (G1c)', () => {
         await act(async () => fireEvent.click(within(pc).getByRole('button', { name: 'test-pal Start' })));
         const dialog = screen.getByRole('dialog', { name: 'Agreement required' });
         expect(window.showToast).not.toHaveBeenCalled();
-        expect(dialog).toHaveTextContent('Your consent is recorded on the daemon of This PC.');
+        expect(dialog).toHaveTextContent('Consent is recorded on the daemon of This PC.');
         fireEvent.click(within(dialog).getByRole('checkbox'));
         await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Agree and start' })));
         expect(window.api.remoteInstanceAgreements).toHaveBeenCalledWith(null, 'l1', ['eula']);
@@ -180,7 +180,7 @@ describe('합쳐 보기: 다른 데몬의 서버 (G1c)', () => {
                 />,
             ),
         );
-        expect(screen.getByText('No servers yet')).toBeTruthy();
+        expect(screen.getByText('No servers added')).toBeTruthy();
         expect(screen.getByRole('region', { name: '게임 PC' })).toHaveTextContent('test-pal');
         useSettingsStore.setState({ daemonView: 'switch' });
     });

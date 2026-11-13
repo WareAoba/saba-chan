@@ -1,19 +1,19 @@
 {
   "module_errors": {
     "module_timeout": "模組呼叫逾時。請檢查模組狀態。",
-    "module_execution_failed": "無法執行模組。請檢查執行環境和模組記錄。",
-    "module_crashed": "模組程序因錯誤結束。請檢查模組記錄。",
-    "module_bad_output": "模組傳回無效結果。請更新模組或聯絡作者。",
+    "module_execution_failed": "模組執行失敗。請檢查執行環境與模組記錄。",
+    "module_crashed": "模組程序異常結束。請檢查模組記錄。",
+    "module_bad_output": "模組結果無效。請更新模組或聯絡作者。",
     "module_output_too_large": "模組輸出超過大小限制。請檢查模組記錄。",
     "module_path_outside": "模組嘗試存取允許資料夾以外的路徑。請檢查模組設定。",
     "module_exception": "模組發生例外。請檢查模組記錄。",
-    "isolation_unsupported": "此作業系統不支援所需的隔離功能。",
-    "module_platform_unsupported": "此遊戲模組無法在該常駐程式的系統上執行",
-    "module_arch_unsupported": "此遊戲模組無法在該常駐程式的 CPU 上執行"
+    "isolation_unsupported": "此作業系統不支援所需的隔離功能",
+    "module_platform_unsupported": "此遊戲模組不支援此常駐程式的作業系統",
+    "module_arch_unsupported": "此遊戲模組不支援此常駐程式的 CPU"
   },
   "sandbox": {
     "isolation_unsupported": {
-      "message": "此作業系統不支援隔離執行，因此未執行該元件。"
+      "message": "此作業系統不支援隔離執行，未執行該元件"
     }
   },
   "app_name": "Saba-chan",
@@ -32,12 +32,12 @@
   "yes": "是",
   "no": "否",
   "daemon": {
-    "checking": "檢查守護程序...",
-    "existing_running": "現有守護程序正在執行",
-    "starting": "啟動守護程序...",
-    "started": "守護程序已啟動",
-    "failed_to_start": "無法啟動常駐程式",
-    "check_warning": "檢查守護程序時出現警告：{{error}}"
+    "checking": "檢查常駐程式...",
+    "existing_running": "現有常駐程式執行中",
+    "starting": "常駐程式啟動中...",
+    "started": "常駐程式已啟動",
+    "failed_to_start": "常駐程式啟動失敗",
+    "check_warning": "檢查常駐程式時出現警告：{{error}}"
   },
   "modules": {
     "refreshing": "重新整理模組...",
@@ -48,26 +48,26 @@
     "start_failed": "啟動失敗：{{error}}",
     "stop_failed": "停止失敗：{{error}}",
     "status_check_failed": "狀態檢查失敗（HTTP {{status}}）：{{error}}",
-    "module_not_found": "找不到模組'{{module}}'",
+    "module_not_found": "找不到模組「{{module}}」",
     "invalid_request": "無效的請求：{{error}}",
-    "not_found": "找不到伺服器'{{name}}'",
-    "already_running": "伺服器'{{name}}'已在執行",
-    "missing_required_field": "缺少必要欄位'{{field}}'",
+    "not_found": "找不到伺服器「{{name}}」",
+    "already_running": "伺服器「{{name}}」已在執行",
+    "missing_required_field": "缺少必要欄位「{{field}}」",
     "creation_failed": "建立實例失敗：{{error}}",
     "delete_failed": "刪除實例失敗：{{error}}",
     "update_failed": "更新實例失敗：{{error}}",
     "settings_save_failed": "儲存設定失敗：{{error}}"
   },
   "network": {
-    "connection_refused": "無法連線到守護程序。請檢查守護程序是否在執行",
+    "connection_refused": "常駐程式連線失敗。請確認常駐程式正在執行。",
     "timeout": "請求逾時：伺服器無回應"
   },
   "port_conflict": {
     "force_stop_title": "連接埠衝突：{{name}} 已停止",
-    "force_stop_body": "{{stopped}} 因連接埠 {{port}} 與 {{existing}} 衝突而被強制停止"
+    "force_stop_body": "連接埠 {{port}} 與 {{existing}} 衝突，已強制停止 {{stopped}}"
   },
   "init": {
-    "start": "正在初始化...",
+    "start": "初始化中...",
     "modules": "正在準備模組清單...",
     "instances": "正在準備伺服器清單...",
     "ready": "準備就緒",
@@ -86,54 +86,54 @@
   "updates": {
     "notification_title": "Saba醬 更新通知",
     "notification_body": "{{count}} 個更新: {{names}}",
-    "completed": "更新完成!"
+    "completed": "更新完成"
   },
   "errors": {
-    "invalid_input": "請求無效,請檢查輸入",
-    "instance_name_taken": "已有同名的伺服器",
+    "invalid_input": "請求無效。請檢查輸入值。",
+    "instance_name_taken": "伺服器名稱已存在",
     "internal": "內部錯誤",
-    "create_error": "無法建立伺服器: {{error}}",
-    "create_http": "無法建立伺服器 (HTTP {{status}}): {{error}}",
+    "create_error": "伺服器建立失敗：{{error}}",
+    "create_http": "伺服器建立失敗（HTTP {{status}}）：{{error}}",
     "instance_not_found": "找不到伺服器",
-    "instance_running": "無法刪除執行中的伺服器,請先停止",
-    "instance_busy": "此伺服器上正在進行其他工作（備份或還原）。完成後請再試一次",
-    "delete_error": "無法刪除伺服器: {{error}}",
-    "delete_http": "無法刪除伺服器 (HTTP {{status}}): {{error}}",
-    "reorder_failed": "無法調整順序: {{error}}",
-    "settings_invalid": "設定值無效: {{error}}",
-    "settings_error": "無法儲存設定: {{error}}",
-    "settings_http": "無法儲存設定 (HTTP {{status}}): {{error}}",
+    "instance_running": "執行中的伺服器無法刪除。請先停止。",
+    "instance_busy": "此伺服器正在進行其他作業（備份·還原）。完成後再試。",
+    "delete_error": "伺服器刪除失敗：{{error}}",
+    "delete_http": "伺服器刪除失敗（HTTP {{status}}）：{{error}}",
+    "reorder_failed": "順序變更失敗：{{error}}",
+    "settings_invalid": "設定值無效：{{error}}",
+    "settings_error": "設定儲存失敗：{{error}}",
+    "settings_http": "設定儲存失敗（HTTP {{status}}）：{{error}}",
     "http": "錯誤 (HTTP {{status}})",
-    "command_failed": "無法執行指令: {{error}}",
-    "url_missing": "未指定網址",
-    "url_not_web": "只能開啟 http(s) 位址",
-    "path_missing": "未指定路徑",
+    "command_failed": "指令執行失敗：{{error}}",
+    "url_missing": "沒有網址",
+    "url_not_web": "只能開啟 http(s) 網址",
+    "path_missing": "沒有路徑",
     "path_not_folder": "不是資料夾",
     "no_log_folder": "沒有記錄資料夾",
-    "open_folder_failed": "無法開啟資料夾",
-    "remote_local_path": "操作遠端守護程式時無法選擇本機路徑。請在頂部列切換到本機後再試一次"
+    "open_folder_failed": "資料夾開啟失敗",
+    "remote_local_path": "使用遠端常駐程式時，無法選擇這台電腦的路徑。請在上方列切換為這台電腦後再試。"
   },
   "consent": {
     "allow": "允許",
     "unisolated": {
-      "title": "要在不隔離的情況下執行嗎？",
-      "message": "{{component}} 未經驗證。不隔離執行時，它可以不受限制地存取此電腦上的檔案與程式。僅在信任時允許。"
+      "title": "要不隔離執行嗎？",
+      "message": "{{component}} 是未驗證的元件。不隔離執行時，可無限制存取這台電腦的檔案與程式。僅在可信時允許。"
     },
     "extension_gui": {
       "title": "要載入擴充功能畫面嗎？",
-      "message": "{{component}} 的畫面程式碼未經驗證。載入後它會在 Saba-chan 視窗內執行。僅在信任時允許。"
+      "message": "{{component}} 的畫面程式碼未驗證。載入後會在 Saba-chan 視窗內執行。僅在可信時允許。"
     }
   },
   "notify": {
     "title": "Saba-chan",
-    "crash": "{{name}} 當機並停止了。",
-    "unknown_exit": "{{name}} 意外停止了。",
-    "restart_in": "{{secs}} 秒後重新啟動。",
-    "gave_up": "已放棄自動重新啟動，請檢查伺服器。",
-    "restart_failed": "無法重新啟動 {{name}}。",
-    "daemon_down": "Saba-chan 本體意外停止了。伺服器監控與 Discord 連動已暫停，請在應用程式中重新啟動。",
-    "external_start": "{{name}} 在 Saba-chan 之外啟動。這不是 Saba-chan 啟動的程序。",
-    "backup_failed": "{{name}} 自動備份失敗。",
+    "crash": "「{{name}}」伺服器因當機而停止",
+    "unknown_exit": "「{{name}}」伺服器意外停止",
+    "restart_in": "{{secs}} 秒後重新啟動",
+    "gave_up": "自動重新啟動已中止。請自行確認。",
+    "restart_failed": "「{{name}}」伺服器重新啟動失敗",
+    "daemon_down": "Saba-chan 常駐程式異常結束。伺服器監控與 Discord 連動已停止，請在應用程式中重新啟動。",
+    "external_start": "「{{name}}」伺服器在 Saba-chan 外啟動（不是 Saba-chan 啟動的程序）",
+    "backup_failed": "{{name}} 自動備份失敗",
     "on_daemon": "在 {{daemon}} 上：{{body}}"
   }
 }

@@ -24,18 +24,18 @@ const viewProps = {
 describe('연결 카드 부제', () => {
     it('명령 전달이 켜져 있으면 연결됐다고 한다', () => {
         render(<ConnectionView {...viewProps} />);
-        expect(screen.getByText('Successfully connected to Discord')).toBeInTheDocument();
+        expect(screen.getByText('Connected to Discord')).toBeInTheDocument();
     });
 
     it('명령 전달이 꺼져 있으면 연결됐다고만 하지 않는다', () => {
         render(<ConnectionView {...viewProps} botStatus="stopped" />);
-        expect(screen.queryByText('Successfully connected to Discord')).toBeNull();
-        expect(screen.getByText(/command relay is off/i)).toBeInTheDocument();
+        expect(screen.queryByText('Connected to Discord')).toBeNull();
+        expect(screen.getByText(/Command relay off/i)).toBeInTheDocument();
     });
 
     it('사바쨩 서버에 닿지 못하면 디스코드 탓으로 말하지 않는다', () => {
         render(<ConnectionView {...viewProps} cloudState="error" cloudError="timeout" />);
         expect(screen.queryByText("Couldn't reach Discord")).toBeNull();
-        expect(screen.getByText("Couldn't reach the Saba-chan server")).toBeInTheDocument();
+        expect(screen.getByText("Server-chan connection failed")).toBeInTheDocument();
     });
 });

@@ -135,9 +135,9 @@ describe('트레이 팝업', () => {
             window.api.serverList = vi.fn().mockResolvedValue({ error: 'unreachable' });
             render(<TrayPopup />);
             await flush();
-            expect(screen.getByText("Can't reach 거실 PC")).toBeTruthy();
+            expect(screen.getByText('거실 PC connection failed')).toBeTruthy();
             expect(screen.queryByText('야생 서버')).toBeNull();
-            expect(screen.queryByText('No servers yet')).toBeNull();
+            expect(screen.queryByText('No servers added')).toBeNull();
         });
 
         it('원격 서버 정지는 한 번 더 눌러야 보낸다', async () => {

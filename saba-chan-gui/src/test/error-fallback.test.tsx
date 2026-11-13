@@ -11,7 +11,7 @@ describe('크래시 화면', () => {
         window.api.closeResponse = vi.fn() as never;
         render(<ErrorFallback error={new Error('boom')} resetErrorBoundary={vi.fn()} />);
 
-        expect(screen.getByText('Something went wrong')).toBeTruthy();
+        expect(screen.getByText('Display failed')).toBeTruthy();
         expect(screen.getByRole('button', { name: /close/i })).toBeTruthy();
         (onClose as unknown as () => void)();
         expect(window.api.closeResponse).toHaveBeenCalledWith('exit-interface');

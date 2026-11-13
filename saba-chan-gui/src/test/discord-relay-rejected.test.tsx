@@ -113,18 +113,18 @@ describe('연결 카드', () => {
             .mockResolvedValue({ code: 'CODE-123', pollSecret: 's', expiresAt: Date.now() + 300_000 }) as never;
         window.api.relayPollPairingStatus = vi.fn().mockResolvedValue({ status: 'pending' }) as never;
         await act(async () => render(<DiscordPage {...props} />));
-        expect(screen.getByText(/isn't accepting this PC's connection key/)).toBeTruthy();
+        expect(screen.getByText(/rejected this PC's connection key/)).toBeTruthy();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Reconnect this PC/ })));
         expect(window.api.relayInitiatePairing).toHaveBeenCalled();
         // 코드는 아래 "새 서버 추가"가 아니라 연결 카드 안에 나온다
-        const card = screen.getByText(/isn't accepting this PC's connection key/).closest('section');
+        const card = screen.getByText(/rejected this PC's connection key/).closest('section');
         expect(card?.textContent).toContain('CODE-123');
     });
 
     it('요청 한도로 끊긴 것은 다시 연결 버튼 없이 곧 다시 붙는다고 알린다', async () => {
         useDiscordStore.setState({ relayError: 'ERROR', relayErrorKind: 'rate' });
         await act(async () => render(<DiscordPage {...props} />));
-        expect(screen.getByText(/slow down for a moment/)).toBeTruthy();
+        expect(screen.getByText(/Server-chan rate limit/)).toBeTruthy();
         expect(screen.queryByRole('button', { name: /Reconnect this PC/ })).toBeNull();
     });
 

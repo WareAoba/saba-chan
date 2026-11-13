@@ -334,7 +334,7 @@ mod tests {
         crate::i18n::init("ko");
         let line = |v: Value| console::strip_ansi_codes(&discord_line(&v)).to_string();
         let old = line(json!({ "running": true, "hasToken": true, "lastErrorCode": "agent_too_old", "minVersion": "0.1.9" }));
-        assert!(old.contains("업데이트가 필요해요") && old.contains("0.1.9") && old.contains("saba-chan-cli update check"), "{old}");
+        assert!(old.contains("업데이트 필요") && old.contains("0.1.9") && old.contains("saba-chan-cli update check"), "{old}");
         assert!(!old.contains(&t!("status.connected")), "{old}");
         assert!(line(json!({ "running": true, "hasToken": true })).contains(&t!("status.connected")));
     }

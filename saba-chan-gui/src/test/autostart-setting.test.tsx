@@ -36,7 +36,7 @@ describe('설정 > 일반: 로그인할 때 자동 실행 (/api/system/autostart
         const select = screen.getByRole('combobox', { name: 'Start at sign-in' });
         pickOption(select, 'Everything with the GUI');
         await act(async () => {});
-        expect(screen.getByRole('alert')).toHaveTextContent('The GUI is not installed');
+        expect(screen.getByRole('alert')).toHaveTextContent('GUI not installed, so GUI and daemon cannot be chosen');
         expect(select).toHaveTextContent('Off');
     });
 

@@ -80,7 +80,7 @@ describe('메모리 상한 칸', () => {
         act(() => result.current.handleSettingChange('memory_limit_mb', '4096'));
         await act(async () => result.current.handleSaveSettings());
         expect(setModal).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'failure', message: expect.stringMatching(/only apply on Windows/) }),
+            expect.objectContaining({ type: 'failure', message: expect.stringMatching(/apply only on Windows/) }),
         );
     });
 

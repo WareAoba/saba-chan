@@ -57,8 +57,8 @@ describe('처음 시작하기 체크리스트 (GET /api/onboarding)', () => {
     it('다음 단계가 첫 시작이면 시작 버튼 말풍선을 보이고, 닫으면 숨긴다', async () => {
         await load(['discord', 'module', 'server'], 'start');
         render(<StartCoach />);
-        expect(screen.getByText('Press Start to run your server')).toBeInTheDocument();
+        expect(screen.getByText('Press Start to start the server')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-        expect(screen.queryByText('Press Start to run your server')).toBeNull();
+        expect(screen.queryByText('Press Start to start the server')).toBeNull();
     });
 });

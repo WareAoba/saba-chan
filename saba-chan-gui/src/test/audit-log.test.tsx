@@ -212,7 +212,7 @@ describe('AuditLog', () => {
             instance: 'mc-1',
             since: new Date(2026, 9, 26).getTime() / 1000,
         });
-        expect(vi.mocked(window.showToast).mock.calls[0].slice(0, 2)).toEqual(['Exported 42 records.', 'success']);
+        expect(vi.mocked(window.showToast).mock.calls[0].slice(0, 2)).toEqual(['42 records exported', 'success']);
     });
 
     it('저장 창을 닫으면 아무것도 알리지 않는다', async () => {
@@ -262,7 +262,7 @@ describe('AuditLog', () => {
         await screen.findByText('Command · say hi');
         const rows = () => document.querySelectorAll('.audit-list li').length;
         expect(rows()).toBe(4);
-        expect(screen.getByText('A crash report file appeared')).toBeTruthy();
+        expect(screen.getByText('Crash report file created')).toBeTruthy();
         // 거르기 단추를 열고 체크하면 고른 것 중 하나라도 드는 기록만 (여럿 고를 수 있다)
         fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
         const check = async (name: string, n: number) => {

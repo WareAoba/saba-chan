@@ -186,7 +186,7 @@ describe('useMultiConsole 콘솔 입력', () => {
         await act(async () => result.current.sendConsoleCommand('f'));
         expect(window.api.executeCommand).not.toHaveBeenCalled();
         expect(vi.mocked(window.showToast).mock.calls.map((c) => c[0])).toEqual([
-            "Couldn't confirm the command was sent. Check the console before trying again.",
+            "Could not confirm the command was sent. Check the console before resending.",
         ]);
         act(() => result.current.closeConsole('f'));
     });
@@ -202,7 +202,7 @@ describe('useMultiConsole 콘솔 입력', () => {
         await act(async () => result.current.sendConsoleCommand('g'));
         expect(window.api.executeCommand).not.toHaveBeenCalled();
         expect(vi.mocked(window.showToast).mock.calls.map((c) => c[0])).toEqual([
-            "Couldn't confirm the command was sent. Check the console before trying again.",
+            "Could not confirm the command was sent. Check the console before resending.",
         ]);
         act(() => result.current.closeConsole('g'));
     });

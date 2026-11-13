@@ -46,8 +46,8 @@ describe('서버 파일이 없을 때 새로 설치', () => {
     // 데몬의 영어 원문 대신 이유를 현지화해 보인다 (리뷰 343 P3-1)
     it.each([
         ['instance_busy', /Another task/],
-        ['server_running', /Stop the server/],
-        ['version_unknown', /latest version.*no releases/],
+        ['server_running', /Cannot install a version while the server is running/],
+        ['version_unknown', /Latest version check failed.*no releases/],
     ])('설치를 거절한 이유(%s)를 현지화해 보인다', async (code, text) => {
         const toast = await installNew({ success: false, error_code: code, error: 'no releases' });
         expect(toast).toMatch(text);

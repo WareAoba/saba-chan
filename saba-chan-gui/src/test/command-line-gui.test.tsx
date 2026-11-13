@@ -61,16 +61,16 @@ describe('명령 입력 안내', () => {
             'tok-ok',
             'tok-bad',
         ]);
-        expect(screen.getByRole('status').textContent).toBe('amount takes 1–64. Got: 99');
+        expect(screen.getByRole('status').textContent).toBe('amount allows only 1–64. Got: 99');
     });
 
     it('빠진 칸을 알리고, 다 채우면 보낼 수 있다고 알린다', () => {
         open('mc');
         const line = screen.getByRole('textbox');
         fireEvent.change(line, { target: { value: 'give Steve ' } });
-        expect(screen.getByRole('status').textContent).toBe('Add item too.');
+        expect(screen.getByRole('status').textContent).toBe('Enter item too.');
         fireEvent.change(line, { target: { value: 'give Steve diamond 3' } });
-        expect(screen.getByRole('status').textContent).toBe('Ready. Press Enter to send.');
+        expect(screen.getByRole('status').textContent).toBe('Ready to send. Press Enter to send.');
     });
 
     // WebKit(맥·리눅스 웹뷰)은 변환을 확정하는 Enter를 조합이 끝난 뒤 keyCode 229로 보낸다
@@ -90,7 +90,7 @@ describe('명령 입력 안내', () => {
         open('mc');
         const line = screen.getByRole('textbox');
         fireEvent.change(line, { target: { value: 'tp Steve Alex' } });
-        expect(screen.getByRole('status').textContent).toMatch(/sent to the server exactly as typed/);
+        expect(screen.getByRole('status').textContent).toMatch(/Sent to the server exactly as typed/);
         await act(async () => fireEvent.keyDown(line, { key: 'Enter' }));
         expect(window.api.executeCommand).toHaveBeenCalledWith('s1', { command: 'tp Steve Alex' });
     });

@@ -31,7 +31,7 @@ describe('ModuleAuditNotice (데몬 M12)', () => {
             ],
         });
         render(<ModuleAuditNotice moduleName="game" />);
-        expect(await screen.findByText(/uses capabilities it doesn't declare/)).toBeTruthy();
+        expect(await screen.findByText(/uses undeclared capabilities/)).toBeTruthy();
         expect(screen.getByText(/network access, running other programs/)).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Details (3)' }));
         expect(screen.getByText('helper.py:3')).toBeTruthy();
@@ -47,13 +47,13 @@ describe('ModuleAuditNotice (데몬 M12)', () => {
         // 검사하지 못했으면 깨끗하다고 보이지 않게 알린다
         expect(
             await screen.findByText(
-                "Couldn't check the code of 'Music'. It will be checked again when you open it next time.",
+                "Code check failed for 'Music'. It is checked again on next open.",
             ),
         ).toBeTruthy();
         expect(container.querySelector('.tone-warn')).toBeNull();
         unmount();
         render(<ExtensionAuditNotice extId="music" name="Music" />);
-        expect(await screen.findByText("Extension 'Music' uses capabilities it doesn't declare.")).toBeTruthy();
+        expect(await screen.findByText("Extension 'Music' uses undeclared capabilities")).toBeTruthy();
         expect(screen.getAllByText(/running dynamic code/).length).toBeGreaterThan(0);
         expect(window.api.extensionAudit).toHaveBeenCalledWith('music');
     });

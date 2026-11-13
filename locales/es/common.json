@@ -1,19 +1,19 @@
 {
   "module_errors": {
-    "module_timeout": "La llamada al módulo agotó el tiempo de espera. Revisa el módulo.",
-    "module_execution_failed": "No se pudo ejecutar el módulo. Revisa el entorno de ejecución y los registros.",
-    "module_crashed": "El proceso del módulo terminó con un error. Revisa los registros.",
-    "module_bad_output": "El módulo devolvió un resultado no válido. Actualízalo o contacta con su autor.",
-    "module_output_too_large": "La salida del módulo superó el límite de tamaño. Revisa los registros.",
-    "module_path_outside": "El módulo intentó acceder a una ruta fuera de la carpeta permitida. Revisa su configuración.",
-    "module_exception": "Se produjo una excepción en el módulo. Revisa los registros.",
-    "isolation_unsupported": "Este sistema operativo no admite el aislamiento requerido.",
-    "module_platform_unsupported": "Este módulo de juego no funciona en el SO de este daemon",
-    "module_arch_unsupported": "Este módulo de juego no funciona en la CPU de este daemon"
+    "module_timeout": "Tiempo de espera de la llamada al módulo agotado. Revisa el estado del módulo.",
+    "module_execution_failed": "Error al ejecutar el módulo. Revisa el entorno de ejecución y los registros del módulo.",
+    "module_crashed": "El proceso del módulo terminó de forma anómala. Revisa los registros del módulo.",
+    "module_bad_output": "Resultado del módulo no válido. Actualiza el módulo o contacta con su autor.",
+    "module_output_too_large": "La salida del módulo superó el límite de tamaño. Revisa los registros del módulo.",
+    "module_path_outside": "El módulo intentó acceder a una ruta fuera de la carpeta permitida. Revisa la configuración del módulo.",
+    "module_exception": "Excepción en el módulo. Revisa los registros del módulo.",
+    "isolation_unsupported": "Este sistema operativo no admite el aislamiento requerido",
+    "module_platform_unsupported": "Este módulo de juego no admite el SO de este daemon",
+    "module_arch_unsupported": "Este módulo de juego no admite la CPU de este daemon"
   },
   "sandbox": {
     "isolation_unsupported": {
-      "message": "El componente no se ejecutó porque este sistema operativo no admite el aislamiento."
+      "message": "Este sistema operativo no admite ejecución aislada; componente no ejecutado"
     }
   },
   "app_name": "Saba-chan",
@@ -33,10 +33,10 @@
   "no": "No",
   "daemon": {
     "checking": "Verificando demonio...",
-    "existing_running": "El demonio existente se está ejecutando",
-    "starting": "Iniciando demonio...",
+    "existing_running": "Daemon existente en ejecución",
+    "starting": "Iniciando daemon...",
     "started": "Demonio iniciado",
-    "failed_to_start": "No se pudo iniciar el daemon",
+    "failed_to_start": "Error al iniciar el daemon",
     "check_warning": "Advertencia al verificar demonio: {{error}}"
   },
   "modules": {
@@ -51,20 +51,20 @@
     "module_not_found": "Módulo '{{module}}' no encontrado",
     "invalid_request": "Solicitud inválida: {{error}}",
     "not_found": "Servidor '{{name}}' no encontrado",
-    "already_running": "El servidor '{{name}}' ya se está ejecutando",
-    "missing_required_field": "Falta el campo requerido '{{field}}'",
+    "already_running": "El servidor '{{name}}' ya está en ejecución",
+    "missing_required_field": "Falta el campo obligatorio '{{field}}'",
     "creation_failed": "Error al crear instancia: {{error}}",
     "delete_failed": "Error al eliminar instancia: {{error}}",
     "update_failed": "Error al actualizar instancia: {{error}}",
     "settings_save_failed": "Error al guardar configuración: {{error}}"
   },
   "network": {
-    "connection_refused": "No se puede conectar al demonio. Verifique que el demonio se esté ejecutando",
-    "timeout": "Tiempo de solicitud agotado: El servidor no respondió"
+    "connection_refused": "Error al conectar con el daemon. Comprueba que esté en ejecución.",
+    "timeout": "Tiempo de solicitud agotado: el servidor no respondió"
   },
   "port_conflict": {
     "force_stop_title": "Conflicto de puerto: {{name}} detenido",
-    "force_stop_body": "{{stopped}} fue detenido forzosamente porque el puerto {{port}} entra en conflicto con {{existing}}"
+    "force_stop_body": "{{stopped}} detenido a la fuerza: el puerto {{port}} choca con {{existing}}"
   },
   "init": {
     "start": "Iniciando...",
@@ -86,54 +86,54 @@
   "updates": {
     "notification_title": "Actualizaciones de Saba-chan",
     "notification_body": "{{count}} actualizaciones: {{names}}",
-    "completed": "¡Actualización completada!"
+    "completed": "Actualización completada"
   },
   "errors": {
-    "invalid_input": "Solicitud no válida. Revisa los datos",
-    "instance_name_taken": "Ya existe un servidor con ese nombre",
+    "invalid_input": "Solicitud no válida. Revisa los datos.",
+    "instance_name_taken": "Nombre de servidor ya existente",
     "internal": "error interno",
-    "create_error": "No se pudo crear el servidor: {{error}}",
-    "create_http": "No se pudo crear el servidor (HTTP {{status}}): {{error}}",
+    "create_error": "Error al crear el servidor: {{error}}",
+    "create_http": "Error al crear el servidor (HTTP {{status}}): {{error}}",
     "instance_not_found": "Servidor no encontrado",
-    "instance_running": "No se puede eliminar un servidor en ejecución. Detenlo primero",
-    "instance_busy": "Hay otra tarea (copia de seguridad o restauración) en curso en este servidor. Inténtalo de nuevo cuando termine",
-    "delete_error": "No se pudo eliminar el servidor: {{error}}",
-    "delete_http": "No se pudo eliminar el servidor (HTTP {{status}}): {{error}}",
-    "reorder_failed": "No se pudo reordenar: {{error}}",
+    "instance_running": "No se puede eliminar un servidor en ejecución. Detenlo primero.",
+    "instance_busy": "Otra tarea (copia o restauración) en curso en este servidor. Inténtalo de nuevo al terminar.",
+    "delete_error": "Error al eliminar el servidor: {{error}}",
+    "delete_http": "Error al eliminar el servidor (HTTP {{status}}): {{error}}",
+    "reorder_failed": "Error al reordenar: {{error}}",
     "settings_invalid": "Valor de ajuste no válido: {{error}}",
-    "settings_error": "No se pudieron guardar los ajustes: {{error}}",
-    "settings_http": "No se pudieron guardar los ajustes (HTTP {{status}}): {{error}}",
+    "settings_error": "Error al guardar los ajustes: {{error}}",
+    "settings_http": "Error al guardar los ajustes (HTTP {{status}}): {{error}}",
     "http": "Error (HTTP {{status}})",
-    "command_failed": "No se pudo ejecutar el comando: {{error}}",
-    "url_missing": "No se indicó la URL",
+    "command_failed": "Error al ejecutar el comando: {{error}}",
+    "url_missing": "Sin URL",
     "url_not_web": "Solo se pueden abrir direcciones http(s)",
-    "path_missing": "No se indicó la ruta",
+    "path_missing": "Sin ruta",
     "path_not_folder": "No es una carpeta",
-    "no_log_folder": "No hay carpeta de registros",
-    "open_folder_failed": "No se pudo abrir la carpeta",
-    "remote_local_path": "No puedes elegir una ruta de este PC mientras usas un daemon remoto. Cambia a este PC en la barra superior e inténtalo de nuevo"
+    "no_log_folder": "Sin carpeta de registros",
+    "open_folder_failed": "Error al abrir la carpeta",
+    "remote_local_path": "No se puede elegir una ruta de este PC con un daemon remoto en uso. Cambia a este PC en la barra superior e inténtalo de nuevo."
   },
   "consent": {
     "allow": "Permitir",
     "unisolated": {
       "title": "¿Ejecutar sin aislamiento?",
-      "message": "{{component}} no está verificado. Sin aislamiento puede acceder sin límites a los archivos y programas de este PC. Permítelo solo si confías en él."
+      "message": "{{component}} es un componente sin verificar. Sin aislamiento, tiene acceso sin límites a los archivos y programas de este PC. Permítelo solo si confías en él."
     },
     "extension_gui": {
       "title": "¿Cargar la pantalla de la extensión?",
-      "message": "El código de pantalla de {{component}} no está verificado. Si se carga, se ejecuta dentro de la ventana de Saba-chan. Permítelo solo si confías en él."
+      "message": "El código de pantalla de {{component}} no está verificado. Al cargarlo se ejecuta dentro de la ventana de Saba-chan. Permítelo solo si confías en él."
     }
   },
   "notify": {
     "title": "Saba-chan",
-    "crash": "{{name}} falló y se detuvo.",
-    "unknown_exit": "{{name}} se detuvo inesperadamente.",
-    "restart_in": "Se reiniciará en {{secs}} s.",
-    "gave_up": "El reinicio automático se rindió. Revisa el servidor.",
-    "restart_failed": "No se pudo reiniciar {{name}}.",
-    "daemon_down": "Saba-chan se detuvo inesperadamente. La supervisión de servidores y Discord están en pausa hasta que lo vuelvas a iniciar desde la app.",
-    "external_start": "{{name}} se inició fuera de Saba-chan. Saba-chan no inició este proceso.",
-    "backup_failed": "Falló la copia de seguridad automática de {{name}}.",
+    "crash": "Servidor “{{name}}” detenido por fallo",
+    "unknown_exit": "Servidor “{{name}}” detenido inesperadamente",
+    "restart_in": "Reinicio en {{secs}} s",
+    "gave_up": "Reinicio automático interrumpido. Revisa el servidor.",
+    "restart_failed": "Error al reiniciar el servidor “{{name}}”",
+    "daemon_down": "El daemon de Saba-chan se cerró de forma anómala. La supervisión de servidores y la integración con Discord están detenidas; reinícialo desde la app.",
+    "external_start": "Servidor “{{name}}” iniciado fuera de Saba-chan (proceso no iniciado por Saba-chan)",
+    "backup_failed": "Error en la copia automática de {{name}}",
     "on_daemon": "En {{daemon}}: {{body}}"
   }
 }

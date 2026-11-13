@@ -942,7 +942,7 @@ mod tests {
         assert_eq!(warn, t!("update.rollback_addons", version = "0.1.13", list = format!("{}, {}", t!("update.name_module", name = "minecraft"), t!("update.name_extension", name = "music"))));
         assert!(rollback_addons_warning(&json!({ "available": true, "version": "0.1.13", "needs_newer_core": [] })).is_none());
         let confirm = crate::i18n::try_t_in("ko", "update.rollback_confirm").unwrap();
-        assert_eq!(crate::i18n::fill(&confirm, &[("version", "0.1.13".into())]), "0.1.13으로 되돌리면 사바쨩이 다시 시작되고, 업데이트 뒤에 바꾼 설정은 업데이트 전으로 돌아가요. 계속할까요?");
+        assert_eq!(crate::i18n::fill(&confirm, &[("version", "0.1.13".into())]), "0.1.13으로 되돌릴까요?");
     }
 
     /// update last는 원시 객체 대신 버전·결과·구성요소·실패를 줄로 보인다 (C16)

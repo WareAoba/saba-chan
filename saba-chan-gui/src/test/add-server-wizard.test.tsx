@@ -287,7 +287,7 @@ describe('새 서버 만들기 — 상세 설정', () => {
                 : ({ success: true, name: { value: body.name, taken: false }, folder: {}, ports: [] } as never),
         );
         await act(async () => fireEvent.change(screen.getByLabelText(/Max Players/), { target: { value: '99999' } }));
-        await waitFor(() => expect(screen.getByText(/Max Players.*(not|can't|cannot)/i)).toBeTruthy());
+        await waitFor(() => expect(screen.getByText(/Max Players.*unusable value/i)).toBeTruthy());
         expect(createButton()).toBeDisabled();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Summary' })));
         expect(createButton()).toBeDisabled();

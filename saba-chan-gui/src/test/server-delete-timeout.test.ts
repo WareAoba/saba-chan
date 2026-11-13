@@ -30,7 +30,7 @@ describe('서버 삭제: 답을 기다리다 시간이 다 됐을 때', () => {
         const { result, setModal } = setup();
         const modal = await remove(result, setModal);
         expect(modal.type).toBe('notification');
-        expect(modal.message).toBe("'A' is still being deleted. Check the server list again in a moment.");
+        expect(modal.message).toBe("Deleting 'A'. Check the server list again shortly.");
     });
 
     it('목록도 못 받아 오면 지우는 중이라 단정하지 않고 확인하지 못했다고 알린다', async () => {
@@ -38,6 +38,6 @@ describe('서버 삭제: 답을 기다리다 시간이 다 됐을 때', () => {
         const { result, setModal } = setup();
         const modal = await remove(result, setModal);
         expect(modal.type).toBe('failure');
-        expect(modal.message).toBe("Couldn't confirm whether 'A' was deleted. Check the server list once the daemon responds.");
+        expect(modal.message).toBe("Could not confirm whether 'A' was deleted. Check the server list once the daemon responds.");
     });
 });

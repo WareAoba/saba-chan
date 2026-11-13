@@ -38,20 +38,20 @@
   "server": {
     "start_request": "⏳ Starting **{{name}}** server...",
     "start_complete": "✅ **{{name}}** · Start",
-    "already_running": "ℹ️ **{{name}}** is already running.",
+    "already_running": "ℹ️ **{{name}}** is already running",
     "stop_request": "⏳ Stopping **{{name}}** server...",
     "stop_complete": "✅ **{{name}}** · Stop",
-    "graceful_stop_unavailable": "⚠️ **{{name}}** was not stopped: it has no way (console or REST) to save and exit. To end it without saving, choose a force stop in saba-chan on this PC.",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** was not stopped: it has no way (console or REST) to request save-then-stop. To end it without saving, choose force quit in Saba-chan on this PC.",
     "status_check": "📊 **{{name}}** · {{status}}",
     "uptime_hm": "up {{h}}h {{m}}m",
     "uptime_m": "up {{m}}m",
-    "still_starting": "⏳ **{{name}}** is still starting. Ask again in a moment.",
+    "still_starting": "⏳ **{{name}}** is still starting. Check again shortly.",
     "not_found": "❌ No server found for module \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
-    "not_running_default": "The server is not running. Start the server first",
-    "module_missing": "❌ Module '{{module}}' is not installed. This server cannot be controlled.",
+    "not_running_default": "Server not running. Start the server first.",
+    "module_missing": "❌ Module '{{module}}' not found, so this server can't be controlled",
     "port_moved": "🔀 Windows reserved the REST port {{from}}, so it was changed to {{to}}.",
-    "rest_port_closed": "REST port {{port}} is not accepting connections"
+    "rest_port_closed": "REST port {{port}} connection failed"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` executing...",
@@ -63,15 +63,15 @@
     "failed": "❌ **{{name}}** · {{label}}: {{reason}}",
     "players": "Players",
     "invalid": {
-      "missing": "Please enter {{label}}.",
-      "not_number": "{{label}} must be a number. Got: {{value}}",
-      "out_of_range": "{{label}} must be from {{min}} to {{max}}. Got: {{value}}",
+      "missing": "Enter {{label}}.",
+      "not_number": "Enter a number for {{label}}. Got: {{value}}",
+      "out_of_range": "{{label}} must be {{min}} to {{max}}. Got: {{value}}",
       "not_option": "{{label}} must be one of: {{options}}. Got: {{value}}",
-      "not_boolean": "{{label}} must be on or off. Got: {{value}}",
-      "line_break": "{{label}} cannot contain line breaks.",
-      "one_word": "{{label}} must be one word without spaces. Got: {{value}}",
-      "quote": "{{label}} cannot contain double quotes.",
-      "too_many": "This command takes no extra words. Got: {{value}}"
+      "not_boolean": "Enter on or off for {{label}}. Got: {{value}}",
+      "line_break": "{{label}} can't contain line breaks",
+      "one_word": "Enter {{label}} as a single word without spaces. Got: {{value}}",
+      "quote": "{{label}} can't contain double quotes",
+      "too_many": "This command takes no extra input. Got: {{value}}"
     }
   },
   "responses": {
@@ -81,31 +81,31 @@
   "errors": {
     "error_title": "Error executing command",
     "unknown": "Unknown error",
-    "agreement_required": "You need to accept {{names}} before this server can start. Accept it in Saba-chan on the PC.",
-    "memory_limit_at_start": "The server hit its memory limit of {{limit}} MiB while starting and was stopped. Set the limit above its RAM setting or clear it.",
-    "runner_missing": "saba-runner is missing, so managed start is not possible. Turn off managed start for this server or reinstall saba-chan.",
-    "preflight_failed": "The pre-start check found a problem, so the server was not started ({{code}}). See Saba-chan on the PC for details.",
-    "agreement_local_only": "Agreements can only be accepted in Saba-chan on this PC.",
-    "no_command_path": "'{{name}}' has no saba-chan console attached, so it can't take commands. Restart it in managed mode from saba-chan on the PC.",
-    "alias_conflict": "❌ Alias '{{alias}}' is ambiguous. It matches multiple modules: {{modules}}. Use a more specific alias.",
-    "multiple_instances": "⚠️ Multiple '{{module}}' instances exist. Use an instance name instead of the module alias.",
-    "danger_needs_name": "⚠️ Dangerous commands don't run by game name. Call the server by its name '{{name}}'.",
-    "slash_only": "🔒 {{command}} is shown only to the person who asks, so it is a slash command. Type `/` and pick **{{name}}** › {{command}}.",
+    "agreement_required": "Accept {{names}} before the server can start. Accept in Saba-chan on the PC.",
+    "memory_limit_at_start": "The server hit the memory limit ({{limit}} MiB) while starting and was stopped. Set the limit above the RAM setting or clear it.",
+    "runner_missing": "saba-runner missing, so managed start is unavailable. Turn off managed start for this server or reinstall Saba-chan.",
+    "preflight_failed": "Not started: pre-start check failed ({{code}}). See Saba-chan on the PC for details.",
+    "agreement_local_only": "Agreements can only be accepted in Saba-chan on this PC",
+    "no_command_path": "'{{name}}' has no Saba-chan console attached and can't accept commands. Restart the server in managed mode from Saba-chan on the PC.",
+    "alias_conflict": "❌ Alias '{{alias}}' is registered for multiple modules: {{modules}}. Use a more specific alias.",
+    "multiple_instances": "⚠️ Multiple '{{module}}' modules exist, so the alias can't distinguish them. Use an instance name.",
+    "danger_needs_name": "⚠️ Dangerous commands can't run by game name. Use the server name '{{name}}'.",
+    "slash_only": "🔒 '{{command}}' is shown only to the person who asks, so it is a slash command. Type `/` in chat and pick **{{name}}** › {{command}}.",
     "auth_failed": "Authentication failed",
     "player_not_found": "Player not found",
     "internal_server_error": "Internal server error",
     "rest_api_disabled": "REST API disabled",
     "rcon_disabled": "RCON disabled",
     "not_found": "Requested resource not found",
-    "connection_refused": "Cannot connect to server",
+    "connection_refused": "Server connection failed",
     "timeout": "Request timed out",
     "host_not_found": "Server host not found",
     "service_unavailable": "Service unavailable",
     "unknown_input": "❌ Unknown command.",
     "command_not_found": "❌ Command does not exist.",
-    "permission_denied": "❌ You don't have permission to use this command.",
-    "members_only": "❌ Only this server’s members can use it. Ask the server owner to add you to its member list.",
-    "local_single_guild_only": "⚠️ Local bots can only be used in one server. This bot is in {{count}} servers. Remove it from the servers you do not use."
+    "permission_denied": "❌ No permission to use this command",
+    "members_only": "❌ This server is for designated members only. Ask the server owner to add you to the member list.",
+    "local_single_guild_only": "⚠️ A local bot can be used in only one server. It is currently in {{count}} servers. Remove the bot from servers you don't use."
   },
   "messages": {
     "command_error": "Error executing command"
@@ -121,24 +121,24 @@
   "schedule": {
     "restart_warning": "The server restarts in {{minutes}} min.",
     "update_warning": "The server restarts for an update in {{minutes}} min.",
-    "update_cancelled": "The planned update was cancelled. The server stays on.",
+    "update_cancelled": "Scheduled update canceled. The server keeps running.",
     "stop_warning": "The server stops in {{minutes}} min."
   },
   "provision": {
     "installing": "Installing server…",
-    "install_failed": "Installation failed",
+    "install_failed": "Install failed",
     "installed": "Server installed",
     "updating": "Updating server…",
     "update_failed": "Update failed",
     "updated": "Server updated",
     "module_missing": "Module not found: {{error}}",
-    "no_latest_version": "Couldn't find the latest server version",
-    "script_failed": "The install script ended with an error. See the daemon log for details",
-    "save_failed": "The server files were downloaded, but the server details could not be saved. See the daemon log for details",
+    "no_latest_version": "Failed to check the latest server version",
+    "script_failed": "Install script error. Details are in the daemon log.",
+    "save_failed": "Server files downloaded, but saving the server info failed. Details are in the daemon log.",
     "backup_failed": "Pre-update backup failed: {{reason}}",
     "version_installing": "Installing version {{version}}…",
-    "version_installed": "Installed the version",
-    "install_backup_failed": "The pre-install backup failed, so nothing was installed: {{reason}}"
+    "version_installed": "Version installed",
+    "install_backup_failed": "Not installed: pre-install backup failed: {{reason}}"
   },
   "actions": {
     "instance": {
@@ -172,14 +172,14 @@
       "start_notice": {
         "set": {
           "title": "Start alert",
-          "description": "Post in this Discord server's alert channel when this server starts or stops without a Discord command (crashes included)",
+          "description": "Announces in this Discord server's alert channel when this server starts or stops outside Discord (including crashes)",
           "name": "Start alert"
         }
       },
       "full_notice": {
         "set": {
           "title": "Full server alert",
-          "description": "Post in this Discord server's alert channel when this server fills up or a slot opens again",
+          "description": "Announces in this Discord server's alert channel when this server fills up or a slot opens again",
           "name": "Full alert"
         }
       },
@@ -300,7 +300,7 @@
     "module": {
       "install": {
         "title": "Install module",
-        "description": "Downloads and installs it from the official catalog"
+        "description": "Downloads and installs from the official catalog"
       },
       "list": {
         "title": "Installed modules"
@@ -332,7 +332,7 @@
       },
       "apply": {
         "title": "Apply update",
-        "description": "Downloads the new update, installs it and restarts the app"
+        "description": "Downloads and installs the new update, then restarts the app"
       }
     },
     "discord": {
@@ -431,7 +431,7 @@
         "unknown_exit": "exited for an unknown reason"
       },
       "updates": "⬆️ **{{count}} updates**",
-      "updates_none": "✅ Everything is up to date",
+      "updates_none": "✅ All up to date",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · Memory {{used}} / {{total}}",
       "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
@@ -442,21 +442,21 @@
       "address": {
         "item": "• `{{address}}`",
         "item_named": "• {{label}} `{{address}}`",
-        "stopped": "💤 The server is off. Start it so others can connect",
-        "unknown": "❔ Server-chan does not know this PC's public address yet. Try again in a moment",
-        "no_ports": "📭 This game does not say which port to connect to",
-        "hidden": "🔒 The server owner chose not to share the address on Discord. Please ask them directly"
+        "stopped": "💤 Server stopped. Start it to allow connections.",
+        "unknown": "❔ Server-chan can't determine this PC's public address. Try again shortly.",
+        "no_ports": "📭 No connection port information for this game",
+        "hidden": "🔒 The server owner chose not to share the address on Discord. Ask the owner directly."
       },
       "port_check": {
-        "open": "✅ Reachable from the internet",
+        "open": "✅ Reachable from outside",
         "firewall": "🧱 Blocked by the PC firewall",
-        "router": "📡 Port forwarding is not set up on the router",
-        "closed": "🚫 Not reachable from the internet",
-        "cgnat": "⚠️ Your router has no public IP (CGNAT)",
-        "unknown": "❔ Some ports could not be checked",
-        "no_ports": "📭 This game does not say which ports to check",
-        "host_mismatch": "🌐 The public address does not point to this PC",
-        "host_unresolved": "🌐 The public address could not be found"
+        "router": "📡 Router port forwarding not set",
+        "closed": "🚫 Not reachable from outside",
+        "cgnat": "⚠️ Router has no public IP (CGNAT)",
+        "unknown": "❔ Some ports couldn't be checked",
+        "no_ports": "📭 No port information to check for this game",
+        "host_mismatch": "🌐 Public address doesn't point to this PC",
+        "host_unresolved": "🌐 Public address not found"
       },
       "port_status": {
         "open": "Open",
@@ -468,50 +468,50 @@
       },
       "port_item": "• {{port}}/{{protocol}} · {{status}}",
       "port_hint": {
-        "closed": "Check that your router forwards this port to this PC and that the PC firewall allows it.",
-        "firewall": "Windows Firewall is blocking incoming connections on this port. For the network you are connected to now (private or public), allow saba-core if the server is stopped, or the game server program if it is running, in Windows Firewall settings, then check again.",
+        "closed": "Check that your router forwards this port to this PC and the PC firewall allows it.",
+        "firewall": "Windows Firewall is blocking incoming connections on this port. For the network you're connected to now (private or public), allow saba-core in Windows Firewall settings if the server is stopped, or the game server program if it is running, then check again.",
         "router": "The PC firewall allows this port. Forward this port to this PC in your router settings, then check again.",
-        "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
-        "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
+        "cgnat": "Your provider shares one public IP among several homes, so port forwarding can't open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
+        "unknown": "UDP ports of a running server and ports used by other programs can't be checked. Stop the server and check again."
       },
       "server_update": {
-        "available": "A new version is available (build {{local}} → {{remote}}).",
-        "latest": "Up to date (build {{build}}).",
-        "check_failed": "Couldn't check for an update: {{error}}",
-        "unsupported": "Saba-chan doesn't update this server (installed by hand).",
-        "unchecked": "Couldn't check this server for updates.",
-        "started": "The update has started. I'll let you know when it's done.",
-        "cancelled": "Cancelled the planned update. The server stays on.",
-        "scheduled": "I'll warn in game {{minutes}} minutes ahead, then save, stop, update and start it again.",
-        "players": "{{count}} players are online now."
+        "available": "New version available (build {{local}} → {{remote}})",
+        "latest": "Up to date (build {{build}})",
+        "check_failed": "Update check failed: {{error}}",
+        "unsupported": "Server not updated by Saba-chan (installed manually)",
+        "unchecked": "Server can't be checked for updates",
+        "started": "Update started. You will be notified when it finishes.",
+        "cancelled": "Scheduled update canceled. The server keeps running.",
+        "scheduled": "Warns in game from {{minutes}} minutes ahead, then saves, stops, updates, and starts it again.",
+        "players": "{{count}} players online now"
       }
     }
   },
   "reasons": {
-    "failed": "It could not be done",
-    "rejected": "The server did not accept the command",
-    "server_not_running": "The server is off",
-    "not_supported": "This game does not support it",
+    "failed": "Execution failed",
+    "rejected": "Server rejected the command",
+    "server_not_running": "Server stopped",
+    "not_supported": "Not supported by this game",
     "not_found": "Not found",
-    "timeout": "The server did not answer in time",
-    "auth_failed": "The server rejected the login",
-    "players_failed": "Could not read the players",
-    "backup_file_locked": "The server is using a file ({{file}}), so the backup could not be made. Stop the server and try again",
-    "backup_failed": "The backup could not be made",
+    "timeout": "Server response timed out",
+    "auth_failed": "Server authentication failed",
+    "players_failed": "Failed to get players",
+    "backup_file_locked": "Backup failed: the server is using a file ({{file}}). Stop the server and try again.",
+    "backup_failed": "Backup failed",
     "backup_unsupported": "This game does not support backups",
-    "nothing_to_back_up": "There is no world to back up yet",
-    "backup_limit": "The remote backup limit is full. Delete old backups on the PC",
-    "backup_busy": "Another backup or restore is in progress",
-    "backups_unreadable": "Couldn't read the backup folder. Check the folder permissions and the disk on the PC",
-    "server_running": "The server is on. Stop it first",
-    "no_command_path": "The server was started outside Saba-chan, so it cannot take commands",
-    "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server",
-    "backup_failed_autosave_off": "The backup failed, and the server’s autosave could not be turned back on either. Restart the server",
-    "backup_save_rejected": "The server refused the save command, so no backup was made. Stop the server and back up again",
-    "backup_save_unconfirmed": "The server did not report that saving finished, so no backup was made. Try again shortly or stop the server and back up",
-    "backup_server_stopped": "The server stopped while it was being backed up, so that backup was discarded. Check the server and back up again",
-    "snapshot_not_found": "The game has no automatic backup",
-    "snapshot_not_deletable": "Saba-chan cannot delete the game’s own automatic backups"
+    "nothing_to_back_up": "No world to back up",
+    "backup_limit": "Remote backup limit exceeded. Delete old backups on the PC.",
+    "backup_busy": "Another backup or restore in progress",
+    "backups_unreadable": "Failed to read the backup folder. Check folder permissions and disk status on the PC.",
+    "server_running": "Server running. Stop it first.",
+    "no_command_path": "Server was started outside Saba-chan; commands can't be sent",
+    "autosave_not_resumed": "Backup complete, but resuming server autosave failed. Restart the server.",
+    "backup_failed_autosave_off": "Backup failed, and resuming server autosave failed too. Restart the server.",
+    "backup_save_rejected": "The server refused the save command; no backup made. Stop the server and back up again.",
+    "backup_save_unconfirmed": "The server did not confirm the save; no backup made. Try again shortly, or stop the server and back up.",
+    "backup_server_stopped": "The server stopped during backup, so that backup was deleted. Check the server status and back up again.",
+    "snapshot_not_found": "No automatic backup made by the game",
+    "snapshot_not_deletable": "Saba-chan can't delete the game's automatic backups"
   },
   "chatbot": {
     "memo_template": "<!-- Guide lines like this one and headings you leave empty are not sent to Talking Saba-chan. Fill in only what you need. -->\n\n## Room vibe\n<!-- Describe how people talk here and how edgy jokes can get. Leave empty to use the default personality. -->\n\n## How to address people\n<!-- Write down special names Saba-chan should call people. Example: Call the person marked (owner) \"Master\". -->\n\n## Words used on this server\n<!-- List nicknames, memes and abbreviations only this server uses, with their meaning. -->\n\n## Game server info\n<!-- Rules, opening hours and other things Saba-chan may tell anyone who asks. -->\n"

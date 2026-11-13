@@ -14,7 +14,7 @@ const ServersPage = ServersPageImpl as unknown as ComponentType<Record<string, u
 const ConnectionRail = ConnectionRailImpl as unknown as ComponentType<Record<string, unknown>>;
 
 // 데몬은 떠 있지만 이 앱의 토큰을 받지 않을 때(token_invalid): 다시 시작해도 안 되므로 "꺼짐"·재시작 대신 따로 알린다 (cloud-review-333 P3)
-const TOKEN_TEXT = /doesn't accept this app's connection key/;
+const TOKEN_TEXT = /rejects this app's connection key/;
 
 describe('데몬이 이 앱의 토큰을 받지 않을 때', () => {
     afterEach(() => useUIStore.setState({ backgroundDaemonStatus: 'checking' }));

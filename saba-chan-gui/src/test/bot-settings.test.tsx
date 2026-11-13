@@ -256,10 +256,10 @@ describe('디스코드 봇 설정 탭', () => {
         window.api.discordSettingsSet = vi.fn().mockResolvedValue({ success: false, error_code: 'not_paired' }) as never;
         render(<BotSettingsTab node={node} section="music" />);
         await flush();
-        expect(screen.getByText(/not applied to Discord yet/)).toBeInTheDocument();
+        expect(screen.getByText(/Not yet applied in Discord/)).toBeInTheDocument();
         fireEvent.click(screen.getByRole('checkbox', { name: 'Turn on Singing Saba-chan' }));
         await flush();
-        expect(window.showToast).toHaveBeenCalledWith("This server isn't paired.", 'error', 6000, undefined);
+        expect(window.showToast).toHaveBeenCalledWith("Not paired with this server", 'error', 6000, undefined);
     });
 
     it('릴레이에서 설정을 못 읽었으면(loaded:false) 알리고 바꾸지 못하게 한다', async () => {
@@ -267,7 +267,7 @@ describe('디스코드 봇 설정 탭', () => {
         window.api.discordSettingsSet = vi.fn() as never;
         render(<BotSettingsTab node={node} section="music" />);
         await flush();
-        expect(screen.getByText(/Couldn't read this server's settings from Server-chan/)).toBeTruthy();
+        expect(screen.getByText(/Reading this server's settings from Server-chan failed/)).toBeTruthy();
         expect(screen.getByRole('checkbox', { name: 'Volume normalization' })).toBeDisabled();
 
         vi.mocked(window.api.discordSettingsGet).mockResolvedValue(base);
