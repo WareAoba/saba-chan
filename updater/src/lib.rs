@@ -476,7 +476,6 @@ pub fn retire_legacy_updater_at(install_root: &Path, installed_manifest: &Path, 
     }
 }
 
-/// 설치 폴더 바로 안의 GUI 실행 파일
 /// 관리자를 여럿이 함께 쓸 때(데몬)의 `download_component`: 준비와 기록만 잠깐 잠그고 내려받는 동안은 잠그지 않는다.
 /// 받는 중에도 상태 조회가 기다리지 않는다. 받기끼리는 `download_turn`으로 한 번에 하나씩 한다 (같은 staging 파일에 겹쳐 쓰지 않게)
 pub async fn download_shared(manager: &tokio::sync::RwLock<UpdateManager>, component: &Component) -> Result<String> {
@@ -523,7 +522,7 @@ async fn fetch_available(staging_dir: &Path, to_download: &[(String, ManifestCom
 }
 
 /// 관리자를 빌리지 않고 내려받을 판 하나 (`UpdateManager::download_job`)
-pub struct DownloadJob {
+struct DownloadJob {
     component: Component,
     key: String,
     rc: ManifestComponent,
@@ -532,7 +531,7 @@ pub struct DownloadJob {
 }
 
 /// 받아 검증을 마친 판. `UpdateManager::record_download`가 상태에 적는다
-pub struct Downloaded {
+struct Downloaded {
     component: Component,
     rc: ManifestComponent,
     dest: PathBuf,
@@ -540,7 +539,7 @@ pub struct Downloaded {
 
 impl DownloadJob {
     /// 내려받고 SHA-256을 검증한다 (불일치면 파일을 지운다). 받기 시작·받은 크기·끝을 듣는 곳에 알린다
-    pub async fn run(self) -> Result<Downloaded> {
+    async fn run(self) -> Result<Downloaded> {
         let DownloadJob { component, key, rc, dest, listener } = self;
         tracing::info!("[Updater] Downloading {} v{}", key, rc.version);
 
@@ -568,6 +567,7 @@ impl DownloadJob {
     }
 }
 
+/// 설치 폴더 바로 안의 GUI 실행 파일
 pub fn find_gui_exe(install_root: &Path) -> Option<PathBuf> {
     GUI_EXE_NAMES.iter().map(|n| install_root.join(n)).find(|p| p.is_file())
 }
@@ -1255,7 +1255,7 @@ impl UpdateManager {
     }
 
     /// 받을 판 하나를 준비한다 (상태만 읽는다): 받을 것이 있는지, 릴리즈 manifest의 어느 파일인지
-    pub fn download_job(&self, component: &Component) -> Result<DownloadJob> {
+    fn download_job(&self, component: &Component) -> Result<DownloadJob> {
         std::fs::create_dir_all(&self.staging_dir)?;
 
         let comp_status = self.status.components.iter()
@@ -1275,7 +1275,7 @@ impl UpdateManager {
     }
 
     /// 받은 판을 상태에 적고 받은 파일 이름을 돌려준다
-    pub fn record_download(&mut self, done: Downloaded) -> String {
+    fn record_download(&mut self, done: Downloaded) -> String {
         let Downloaded { component, rc, dest } = done;
         // 상태 업데이트
         if let Some(comp) = self.status.components.iter_mut().find(|c| c.component == component) {
