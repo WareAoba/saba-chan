@@ -1030,7 +1030,7 @@ mod tests {
     /// 시작 한 번은 작업 기록에 `start` 한 줄이다 (비관리 시작이 안에서 또 남기지 않는다, D2)
     #[tokio::test]
     async fn an_unmanaged_start_is_one_audit_record() {
-        use crate::ipc::handlers::backup::tests::{server_with, NO_BACKUP};
+        use crate::service::backup::tests::{server_with, NO_BACKUP};
         let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
         {
             let mut sup = state.supervisor.write().await;
@@ -1039,7 +1039,7 @@ mod tests {
             sup.instance_store.update(&id, inst).unwrap();
         }
         // 백업이 잡고 있어 시작이 거절돼도 기록은 한 줄
-        let lock = crate::ipc::handlers::backup::InstanceLock::take(&id).expect("free");
+        let lock = crate::instance::lock::InstanceLock::take(&id).expect("free");
         let refused = start(&state, &id).await.unwrap_err();
         drop(lock);
         assert_eq!(refused.body["error_code"], "instance_busy", "{}", refused.body);
@@ -1051,7 +1051,7 @@ mod tests {
     /// 관리형 시작도 모듈 `[install] requires_extensions`가 꺼져 있으면 `extension_required`로 거절한다 (D2)
     #[tokio::test]
     async fn a_managed_start_needs_the_module_required_extensions() {
-        use crate::ipc::handlers::backup::tests::{server_with, NO_BACKUP};
+        use crate::service::backup::tests::{server_with, NO_BACKUP};
         let toml = format!("{NO_BACKUP}\n[install]\nrequires_extensions = [\"needed-for-test\"]\n");
         let (state, id, _tmp) = server_with(&toml, None).await;
         assert!(state.supervisor.read().await.uses_managed_start(state.supervisor.read().await.instance_store.get(&id).unwrap()));

@@ -1791,7 +1791,7 @@ fn chat_json(reply: crate::chat::Reply, ok: bool, caller: &Caller) -> Value {
 /// 켜진 서버의 복원은 계획부터 거절한다 (먼저 끄는 단계가 앞에 있는 여러 단계 계획은 실행 때 라우트가 본다)
 async fn refuse_restore_while_running(server: &IPCServer, r: &Resolved) -> Result<(), ActionError> {
     match (r.id.as_str(), &r.instance) {
-        ("backup.restore", Some(i)) if crate::ipc::handlers::backup::is_running(server, i).await => {
+        ("backup.restore", Some(i)) if crate::service::backup::is_running(server, i).await => {
             Err(ActionError::new(409, "server_running", "Stop the server before restoring a backup"))
         }
         _ => Ok(()),
@@ -1805,7 +1805,7 @@ async fn refuse_unread_schedule(server: &IPCServer, r: &Resolved, caller: &Calle
     let sup = server.supervisor.read().await;
     let Some(instance) = sup.instance_store.get(i) else { return Ok(()) };
     match r.input.get("revision").and_then(Value::as_str) {
-        Some(read) if read != crate::ipc::handlers::schedule::schedule_revision(instance) => {
+        Some(read) if read != crate::scheduler::schedule_revision(instance) => {
             Err(ActionError::new(409, "schedule_changed", "The schedule was changed elsewhere; read it again"))
         }
         None if caller.surface == Chatbot || caller.remote.as_ref().is_some_and(|w| w.via_chatbot) => {
@@ -1821,7 +1821,7 @@ async fn plan_text_of(server: &IPCServer, r: &Resolved) -> Option<crate::chat::T
     let after: Vec<crate::scheduler::ScheduledTask> = serde_json::from_value(r.input.get("schedule")?.clone()).ok()?;
     let sup = server.supervisor.read().await;
     let instance = sup.instance_store.get(i)?;
-    let keep = instance.backup_keep.unwrap_or(crate::ipc::handlers::backup::DEFAULT_KEEP as u32);
+    let keep = instance.backup_keep.unwrap_or(crate::service::backup::DEFAULT_KEEP as u32);
     let keep_after = r.input.get("backup_keep").and_then(Value::as_u64).map_or(keep, |k| k as u32);
     Some(summary::schedule_changes(&instance.schedule, &after, (keep, keep_after)))
 }

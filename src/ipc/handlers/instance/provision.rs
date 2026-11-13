@@ -231,7 +231,7 @@ pub(super) async fn install_new_server(job: InstallJob) {
 
 /// `install_new_server`가 받는 값 (만들기 요청이 정한 것)
 pub(super) struct InstallJob {
-    pub(super) install_guard: Option<super::super::backup::InstanceLock>,
+    pub(super) install_guard: Option<crate::instance::lock::InstanceLock>,
     pub(super) supervisor_arc: std::sync::Arc<tokio::sync::RwLock<crate::supervisor::Supervisor>>,
     pub(super) module_name_owned: String,
     pub(super) tracker_done: crate::ipc::ProvisionTracker,
@@ -353,7 +353,7 @@ pub async fn dismiss_provision_progress(
     let mut rolled_back = false;
     if creating && had_error {
         // 다른 작업(업데이트·복원·삭제)이 그 폴더를 쓰는 중이면 지우지 않는다
-        match super::super::backup::InstanceLock::take_for_writes(&id).await {
+        match crate::instance::lock::InstanceLock::take_for_writes(&id).await {
             None => tracing::warn!("Skipping rollback of '{}' (id={}): another task holds the instance", name, id),
             Some(_guard) => {
                 let mut supervisor = state.supervisor.write().await;
@@ -856,12 +856,12 @@ mod tests {
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let created = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
         let id = created.body["id"].as_str().unwrap().to_string();
-        assert!(super::super::super::backup::InstanceLock::take(&id).is_none(), "the install holds the lock");
+        assert!(crate::instance::lock::InstanceLock::take(&id).is_none(), "the install holds the lock");
         // 시간이 아니라 설치가 끝났다는 표시를 기다린다. 잠금은 그 표시보다 먼저 풀린다
         let done = provisioned(&state, "a").await;
         let done = done.expect("the install never finished");
         assert!(done.error.is_none(), "{:?}", done.error);
-        assert!(super::super::super::backup::InstanceLock::take(&id).is_some(), "the lock is released once the install is done");
+        assert!(crate::instance::lock::InstanceLock::take(&id).is_some(), "the lock is released once the install is done");
     }
 
     /// 설치 실패를 dismiss하면 그 설치의 인스턴스만 지운다: 그 사이 이름이 바뀌고 같은 이름의 다른 인스턴스가 생겨도

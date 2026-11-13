@@ -211,7 +211,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
 
         // ── 앱 설정의 새 서버 기본값. 기본값과 같으면 비워 둬 지금처럼 읽을 때 기본값을 쓴다 ──
         let app = state.config_store.get_gui_settings().await;
-        if app.new_server_backup_keep as usize != crate::ipc::handlers::backup::DEFAULT_KEEP {
+        if app.new_server_backup_keep as usize != crate::service::backup::DEFAULT_KEEP {
             instance.backup_keep = Some(app.new_server_backup_keep);
         }
         if !app.new_server_auto_restart && !instance.module_settings.contains_key("auto_restart") {
@@ -314,7 +314,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         // 가져오기는 이 요청이 끝날 때까지 쥔다: 격리된 `import_settings`가 끝나면 그때 없던 데몬 항목 자리를 지우므로
         // 그 사이 시작·설정 저장·백업이 데몬 항목을 만들지 않게 한다.
         // 목록에 보이기 전에 잡는다 (보인 뒤에 잡으면 그 틈의 삭제가 먼저 잡아 설치가 지워지는 폴더로 돈다)
-        let install_guard = super::super::backup::InstanceLock::try_take_for_writes(&id).map(|g| g.purpose(super::super::backup::Purpose::Provision));
+        let install_guard = crate::instance::lock::InstanceLock::try_take_for_writes(&id).map(|g| g.purpose(crate::instance::lock::Purpose::Provision));
 
         // 가져오기 "옮기기": 목록에 보이기 전에 옮긴다 (실패하면 아무것도 만들지 않는다)
         if let (Some(src), Some(dest)) = (&moved_from, instance.working_dir.as_deref()) {
@@ -564,7 +564,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                         let backup_state = state.clone();
                         let backup_id = id.clone();
                         tokio::spawn(async move {
-                            match super::super::backup::take_backup(&backup_state, &backup_id, crate::backup::BackupKind::Manual).await {
+                            match crate::service::backup::take_backup(&backup_state, &backup_id, crate::backup::BackupKind::Manual).await {
                                 Ok(Some(b)) => tracing::info!("Migration: first backup '{}' of '{}'", b.name, backup_id),
                                 Ok(None) => tracing::info!("Migration: nothing to back up for '{}'", backup_id),
                                 Err(failure) => tracing::warn!("Migration: first backup of '{}' failed ({})", backup_id, failure.status),
@@ -1241,12 +1241,12 @@ mod tests {
             }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         };
-        assert!(super::super::super::backup::InstanceLock::take(&id).is_none(), "the import holds the lock");
+        assert!(crate::instance::lock::InstanceLock::take(&id).is_none(), "the import holds the lock");
         let saved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "motd": "theirs" }))).await).await;
         assert_eq!(saved.status, 409, "{}", saved.body);
         let created = crate::ipc::internal::into_internal(request.await.unwrap()).await;
         assert_eq!(created.status, 201, "{}", created.body);
-        assert!(super::super::super::backup::InstanceLock::take(&id).is_some(), "the lock is released once the import is done");
+        assert!(crate::instance::lock::InstanceLock::take(&id).is_some(), "the lock is released once the import is done");
     }
 
     /// 가져올 서버 폴더는 절대 경로여야 한다: 상대 경로는 데몬의 작업 폴더 기준으로 풀려 엉뚱한 폴더를 연결하거나 옮긴다

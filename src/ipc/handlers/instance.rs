@@ -142,7 +142,7 @@ pub async fn rename_instance(
         return invalid_name().into_response();
     }
     // 설치·업데이트·복원 중에는 바꾸지 않는다: 진행 알림(`provision.progress`)이 시작 때의 이름을 싣는다
-    let Some(_guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
+    let Some(_guard) = crate::instance::lock::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
     };
     let mut supervisor = state.supervisor.write().await;

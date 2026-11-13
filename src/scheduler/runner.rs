@@ -9,8 +9,9 @@ use std::sync::Mutex;
 
 use super::{Clock, ScheduledTask, TaskAction};
 use crate::backup::{self, BackupKind};
-use crate::ipc::handlers::backup::{announce, backups_dir, is_running, run_command, take_backup, InstanceLock};
-use crate::ipc::handlers::schedule::save_command_of;
+use crate::instance::lock::InstanceLock;
+use crate::service::backup::{announce, backups_dir, is_running, run_command, take_backup};
+use super::save_command_of;
 use crate::ipc::handlers::server_update;
 use crate::ipc::IPCServer;
 
@@ -61,7 +62,7 @@ fn skipped(code: &str) -> Option<TaskOutcome> {
 }
 
 /// 서비스 함수의 결과 → 작업 결과. 실패면 그 `error_code`를 이유로 남긴다
-fn outcome_of(result: &crate::ipc::handlers::Outcome) -> Option<TaskOutcome> {
+fn outcome_of(result: &crate::service::Outcome) -> Option<TaskOutcome> {
     match result {
         Ok(_) => done(),
         Err(failure) => failed(failure.code()),
@@ -517,9 +518,9 @@ async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chr
 mod tests {
     use super::*;
     use crate::ipc::handlers::schedule::get_schedule;
-    use crate::ipc::handlers::backup::tests::{live_module, server_with, NO_BACKUP};
+    use crate::service::backup::tests::{live_module, server_with, NO_BACKUP};
     #[cfg(unix)]
-    use crate::ipc::handlers::backup::tests::{run_fake_server, WORK_DEADLINE};
+    use crate::service::backup::tests::{run_fake_server, WORK_DEADLINE};
     use axum::extract::{Path, State};
 
     #[tokio::test]

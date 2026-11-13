@@ -2,10 +2,12 @@
 //! HTTP 핸들러(`ipc::handlers`)·채팅·예약·릴레이 에이전트·플러그인 호스트가 같은 함수를 부른다.
 //! 핸들러는 요청을 풀어 여기를 부르고 결과를 응답으로 바꾸기만 한다
 
+pub(crate) mod backup;
 pub(crate) mod command;
 pub mod lifecycle;
 pub(crate) mod onboarding;
 pub(crate) mod servers;
+pub(crate) mod settings;
 
 /// 서비스 함수(시작·정지·재시작·백업·복원)의 결과. 성공이면 응답 본문
 pub(crate) type Outcome = Result<serde_json::Value, Failure>;

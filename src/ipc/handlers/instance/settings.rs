@@ -179,12 +179,12 @@ pub async fn update_instance_settings(
         supervisor.instance_store.get(&id).is_some_and(|i| settings.get("working_dir").is_some_and(|v| v.as_str() != i.working_dir.as_deref()))
     };
     let (_task, _saving) = if moves_folder {
-        match super::super::backup::InstanceLock::take_for_writes(&id).await {
+        match crate::instance::lock::InstanceLock::take_for_writes(&id).await {
             Some(task) => (Some(task), None),
             None => return super::super::backup::instance_busy(),
         }
     } else {
-        match super::super::backup::InstanceLock::files(&id).await {
+        match crate::instance::lock::InstanceLock::files(&id).await {
             Some(files) => (None, Some(files)),
             None => return super::super::backup::instance_busy(),
         }
@@ -655,7 +655,7 @@ mod tests {
             async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(json!({ "motd": motd }))).await).await }
         };
 
-        let update = super::super::super::backup::InstanceLock::take_for_writes(&id).await.unwrap();
+        let update = crate::instance::lock::InstanceLock::take_for_writes(&id).await.unwrap();
         let refused = save("during update").await;
         assert_eq!(refused.status, axum::http::StatusCode::CONFLICT);
         assert_eq!(refused.body["error_code"], "instance_busy");
@@ -666,7 +666,7 @@ mod tests {
         assert_eq!(agreement.status, axum::http::StatusCode::CONFLICT);
         drop(update);
 
-        let backup = super::super::super::backup::InstanceLock::take(&id).unwrap();
+        let backup = crate::instance::lock::InstanceLock::take(&id).unwrap();
         assert!(save("during backup").await.status.is_success());
         drop(backup);
         assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings["motd"], "during backup");
@@ -1159,7 +1159,7 @@ mod tests {
         sup.instance_store.add(inst).unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
 
-        let busy = super::super::super::backup::InstanceLock::take(&id).unwrap();
+        let busy = crate::instance::lock::InstanceLock::take(&id).unwrap();
         let elsewhere = tmp.path().join("elsewhere").to_string_lossy().into_owned();
         let moved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": elsewhere }))).await).await;
         assert_eq!(moved.status, 409, "{}", moved.body);

@@ -97,7 +97,7 @@ pub async fn delete_instance(
     Query(query): Query<DeleteQuery>,
 ) -> impl IntoResponse {
     // 백업·복원·업데이트 중에는 폴더를 지우지 않는다
-    let Some(guard) = super::super::backup::InstanceLock::take_for_writes(&id).await else {
+    let Some(guard) = crate::instance::lock::InstanceLock::take_for_writes(&id).await else {
         return super::super::backup::instance_busy();
     };
     // 요청이 끊겨도 정지·삭제를 끝까지 한다: 추적을 뺀 채 멈추면 돌던 서버가 추적 밖에 남는다

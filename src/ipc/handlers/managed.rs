@@ -333,7 +333,7 @@ pub async fn write_properties_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let settings = payload.get("settings").cloned();
-    let Some(_files) = super::backup::InstanceLock::files(&id).await else {
+    let Some(_files) = crate::instance::lock::InstanceLock::files(&id).await else {
         return super::backup::instance_busy();
     };
     // PATCH와 같은 검사(타입·범위·선택지·형식, 모르는 키)를 지난 값만 게임 파일에 쓴다
@@ -366,10 +366,10 @@ pub async fn read_live_settings_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let Some(_files) = super::backup::InstanceLock::files(&id).await else {
+    let Some(_files) = crate::instance::lock::InstanceLock::files(&id).await else {
         return super::backup::instance_busy();
     };
-    match refresh_settings_from_files(&state, &id).await {
+    match crate::service::settings::refresh_from_files(&state, &id).await {
         Ok(mut result) => {
             // 캐시를 맞춘 뒤의 revision: 설정 창이 연 때의 값으로 저장하면 이 읽기 때문에 409가 된다
             if let (Some(inst), true) = (state.supervisor.read().await.instance_store.get(&id), result.is_object()) {
@@ -381,36 +381,16 @@ pub async fn read_live_settings_handler(
     }
 }
 
-/// 게임 설정 파일을 모듈 `import_settings`로 읽어 `module_settings`와 인스턴스 필드(포트·비밀번호)를 맞춘다.
-/// 호출자가 설정 파일 잠금(`InstanceLock::files`나 `take_for_writes`)을 쥐고 있어야 한다. 모듈의 답을 그대로 돌려준다. `success`가 아니거나 설정이 비어 있으면 아무것도 바꾸지 않는다
-pub(crate) async fn refresh_settings_from_files(state: &IPCServer, id: &str) -> anyhow::Result<serde_json::Value> {
-    let result = Supervisor::manage_properties(&state.supervisor, id, "import", None).await?;
-    let ok = result.get("success").and_then(|v| v.as_bool()) == Some(true);
-    let settings = result.get("settings").and_then(|v| v.as_object()).filter(|s| !s.is_empty());
-    if let (true, Some(settings)) = (ok, settings) {
-        let mut supervisor = state.supervisor.write().await;
-        if let Some(mut inst) = supervisor.instance_store.get(id).cloned() {
-            let types = supervisor.module_loader.get_module(&inst.module_name).map(|m| m.metadata.setting_types()).unwrap_or_default();
-            // 게임 포트 같은 인스턴스 필드도 파일 값으로 맞춘다 (GUI는 그쪽을 먼저 읽는다)
-            inst.apply_imported_settings(settings, &types);
-            if let Err(e) = supervisor.instance_store.update(id, inst) {
-                tracing::warn!("Settings refresh from game files failed for {}: {}", id, e);
-            }
-        }
-    }
-    Ok(result)
-}
-
 /// POST /api/instance/:id/properties/reset — 게임 설정 파일을 기본값으로
 pub async fn reset_properties_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let Some(_files) = super::backup::InstanceLock::files(&id).await else {
+    let Some(_files) = crate::instance::lock::InstanceLock::files(&id).await else {
         return super::backup::instance_busy();
     };
     // 켜진 서버의 파일을 기본값으로 바꾸면 서버가 쓰는 값과 어긋난다
-    if super::backup::is_running(&state, &id).await {
+    if crate::service::backup::is_running(&state, &id).await {
         return server_running().into_response();
     }
     let resp = match Supervisor::manage_properties(&state.supervisor, &id, "reset", None).await {
@@ -433,7 +413,7 @@ async fn sync_after_file_change(state: &IPCServer, id: &str, result: &Value) {
     if result.get("success").and_then(Value::as_bool) != Some(true) {
         return;
     }
-    if let Err(e) = refresh_settings_from_files(state, id).await {
+    if let Err(e) = crate::service::settings::refresh_from_files(state, id).await {
         tracing::warn!("Settings refresh after a game file change failed for {}: {}", id, e);
     }
 }
@@ -460,7 +440,7 @@ async fn other_instances_using(state: &IPCServer, dir: &str, except: Option<&str
 /// `hold_other_instances_using`이 지금 거절할지를 잠금을 잡지 않고 본다: 그 인스턴스 중 작업 중이거나 켜진 것이 있다
 pub(super) async fn other_instances_busy(state: &IPCServer, dir: &str, except: Option<&str>) -> bool {
     for id in other_instances_using(state, dir, except).await {
-        if super::backup::InstanceLock::held(&id) || super::backup::is_running(state, &id).await {
+        if crate::instance::lock::InstanceLock::held(&id) || crate::service::backup::is_running(state, &id).await {
             return true;
         }
     }
@@ -469,14 +449,14 @@ pub(super) async fn other_instances_busy(state: &IPCServer, dir: &str, except: O
 
 /// `dir`과 겹치는 폴더(working_dir 또는 인스턴스 폴더, 그 안이나 바깥)를 쓰는 인스턴스의 작업 잠금을 모두 잡는다.
 /// `except`(이미 잠금을 쥔 인스턴스)는 건너뛴다. 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
-pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<super::backup::InstanceLock>, super::Failure> {
+pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<crate::instance::lock::InstanceLock>, super::Failure> {
     let mut guards = Vec::new();
     for id in other_instances_using(state, dir, except).await {
-        let Some(guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
+        let Some(guard) = crate::instance::lock::InstanceLock::take_for_writes(&id).await else {
             return Err(super::Failure::busy());
         };
         guards.push(guard);
-        if super::backup::is_running(state, &id).await {
+        if crate::service::backup::is_running(state, &id).await {
             return Err(server_running());
         }
     }
@@ -503,7 +483,7 @@ pub async fn reset_preview_handler(Path(id): Path<String>, State(state): State<I
         let metadata = module.as_ref().map(|m| &m.metadata);
         (crate::module_paths::server_dir(instance, &instance_dir, metadata), crate::module_paths::Boundary::for_instance(instance, &instance_dir, metadata))
     };
-    let backed_up = super::backup::backup_targets(&state, &id).await;
+    let backed_up = crate::service::backup::backup_targets(&state, &id).await;
     let scopes = result["scopes"].take();
     let scopes = tokio::task::spawn_blocking(move || {
         let scopes: Vec<Value> = scopes.as_array().into_iter().flatten().map(|scope| reset_scope(scope, &base, &boundary, &backed_up)).collect();
@@ -555,10 +535,10 @@ pub async fn reset_server_handler(
     let payload = payload.map(|Json(v)| v).unwrap_or(Value::Null);
     let scope = payload.get("scope").filter(|s| s.is_string()).cloned();
     let backup_first = payload.get("backup").and_then(Value::as_bool) == Some(true);
-    let Some(guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
+    let Some(guard) = crate::instance::lock::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
     };
-    if super::backup::is_running(&state, &id).await {
+    if crate::service::backup::is_running(&state, &id).await {
         return server_running().into_response();
     }
     // 요청이 끊겨도 모듈이 파일을 지우는 동안 잠금을 쥔다
@@ -568,7 +548,7 @@ pub async fn reset_server_handler(
             let guard = guard;
             // 백업을 남기지 못했으면 지우지 않는다
             if backup_first {
-                super::backup::take_backup_held(&state, &id, crate::backup::BackupKind::Manual, &guard).await?;
+                crate::service::backup::take_backup_held(&state, &id, crate::backup::BackupKind::Manual, &guard).await?;
             }
             Ok::<_, super::Failure>(Supervisor::manage_properties(&state.supervisor, &id, "reset_server", scope).await)
         })
@@ -615,7 +595,7 @@ pub async fn accept_agreements_handler(
         Err(resp) => return *resp,
     };
     // 모듈이 eula.txt 같은 게임 파일을 쓴다: 설정 저장과 한 줄로, 서버 파일을 바꾸는 작업 중에는 거절
-    let Some(_files) = super::backup::InstanceLock::files(&id).await else {
+    let Some(_files) = crate::instance::lock::InstanceLock::files(&id).await else {
         return super::backup::instance_busy();
     };
     match Supervisor::accept_agreements(&state.supervisor, &id, &ids).await {
@@ -741,7 +721,7 @@ pub async fn get_installed_version_handler(
             // 설치·업데이트가 인스턴스를 잡고 있으면 파일이 바뀌는 중이라 저장하지 않는다 (D-S12)
             if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
                 if let Some(version) = result.get("version").and_then(|v| v.as_str()) {
-                    if !super::backup::InstanceLock::held(&id) {
+                    if !crate::instance::lock::InstanceLock::held(&id) {
                         match state.supervisor.write().await.save_detected_version(&id, seen.as_deref(), version) {
                             Ok(true) => tracing::info!("Auto-saved detected server version '{}' for instance '{}'", version, id),
                             Ok(false) => {}
@@ -820,10 +800,10 @@ pub async fn install_server_handler(
                 }
                 None => return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response(),
             }
-            let Some(guard) = super::backup::InstanceLock::take_for_writes(id).await else {
+            let Some(guard) = crate::instance::lock::InstanceLock::take_for_writes(id).await else {
                 return super::backup::instance_busy();
             };
-            if super::backup::is_running(&state, id).await {
+            if crate::service::backup::is_running(&state, id).await {
                 return server_running().into_response();
             }
             let sup = state.supervisor.read().await;
@@ -909,7 +889,7 @@ pub async fn install_server_handler(
             let own = instance_id.as_deref().zip(own_guard.as_ref());
             // 설치 전 백업 (결정 3): 백업할 것이 없으면 그냥 진행하고, 실패하면 설치하지 않는다
             let before = match own {
-                Some((id, guard)) => match super::backup::take_backup_held(&state, id, crate::backup::BackupKind::PreUpdate, guard).await {
+                Some((id, guard)) => match crate::service::backup::take_backup_held(&state, id, crate::backup::BackupKind::PreUpdate, guard).await {
                     Ok(made) => made.map(|b| b.name),
                     Err(r) => {
                         let reason = r.reason().unwrap_or("backup failed").to_string();
@@ -965,7 +945,7 @@ pub async fn install_server_handler(
             let mut result = result;
             // 실패: 설치 전 백업으로 되돌린다
             if let Some(name) = before {
-                let restored = super::backup::restore_held(&state, id, &name, guard, false).await;
+                let restored = crate::service::backup::restore_held(&state, id, &name, guard, false).await;
                 let body = match &mut result {
                     Ok(body) | Err(body) => body,
                 };
@@ -1471,7 +1451,7 @@ mod tests {
             assert_eq!(wrong.body["error_code"], "invalid_format");
         }
         // 그 인스턴스가 다른 작업(백업·복원·삭제 등)에 잡혀 있으면 그 데이터 폴더를 모듈에 넘기지 않는다
-        let busy = super::super::backup::InstanceLock::take(&id).unwrap();
+        let busy = crate::instance::lock::InstanceLock::take(&id).unwrap();
         let held = install(json!({ "install_dir": tmp.path().join("elsewhere"), "instance_id": id })).await;
         assert_eq!(held.status, StatusCode::CONFLICT, "{}", held.body);
         drop(busy);
@@ -1876,7 +1856,7 @@ mod tests {
         assert_eq!(saved().await.as_deref(), Some("2.0"), "a stale detection must not overwrite a newer version");
 
         // 설치·업데이트 같은 작업이 인스턴스를 잡고 있으면 감지 결과는 알려 주되 저장하지 않는다
-        let busy = super::super::backup::InstanceLock::take(&id).unwrap();
+        let busy = crate::instance::lock::InstanceLock::take(&id).unwrap();
         let held = detect().await;
         assert_eq!(held.body["version"], "1.0", "{}", held.body);
         assert_eq!(saved().await.as_deref(), Some("2.0"), "files may be mid-change while the instance is busy");

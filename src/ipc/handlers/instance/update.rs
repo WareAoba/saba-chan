@@ -251,14 +251,14 @@ pub(crate) async fn begin_server_update(state: &IPCServer, id: &str) -> Result<t
 pub(crate) async fn begin_server_update_holding(
     state: &IPCServer,
     id: &str,
-    held: Option<super::super::backup::InstanceLock>,
+    held: Option<crate::instance::lock::InstanceLock>,
 ) -> Result<tokio::task::JoinHandle<bool>, super::super::Failure> {
     // 업데이트가 끝날 때까지 시작·복원·삭제를 막는다 (작업 안으로 넘긴다)
     let held = match held {
         Some(lock) => Some(lock),
-        None => super::super::backup::InstanceLock::take_for_writes(id).await,
+        None => crate::instance::lock::InstanceLock::take_for_writes(id).await,
     };
-    let Some(guard) = held.map(|g| g.purpose(super::super::backup::Purpose::ServerUpdate)) else {
+    let Some(guard) = held.map(|g| g.purpose(crate::instance::lock::Purpose::ServerUpdate)) else {
         return Err(super::super::Failure::busy());
     };
     let supervisor = state.supervisor.read().await;
@@ -323,7 +323,7 @@ pub(crate) async fn begin_server_update_holding(
         let _guard = guard;
         let _others = others;
         // ── Phase 0: 업데이트 전 백업 (A2). 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
-        if let Err(r) = super::super::backup::take_backup_held(&backup_state, &backup_id, crate::backup::BackupKind::PreUpdate, &_guard).await {
+        if let Err(r) = crate::service::backup::take_backup_held(&backup_state, &backup_id, crate::backup::BackupKind::PreUpdate, &_guard).await {
             let reason = r.reason().unwrap_or("backup failed").to_string();
             let failure = r.body;
             tracing::error!("Pre-update backup failed for '{}': {}", name_done, reason);
@@ -533,13 +533,13 @@ mod tests {
             sup.instance_store.add(inst).unwrap();
         }
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
-        let other = super::super::super::backup::InstanceLock::take(&ids[1]).expect("free");
+        let other = crate::instance::lock::InstanceLock::take(&ids[1]).expect("free");
         let refused = super::begin_server_update(&state, &ids[0]).await.err().expect("the other instance is busy");
         // 자동 업데이트는 이 거절을 실패로 남기지 않고 미룬다: 본문의 코드를 읽지 않고 가려낸다
         assert!(refused.is_in_use(), "{}", refused.body);
         assert_eq!(refused.body["error_code"], "instance_busy");
         drop(other);
-        assert!(super::super::super::backup::InstanceLock::take(&ids[0]).is_some(), "a refused update must not keep its own lock");
+        assert!(crate::instance::lock::InstanceLock::take(&ids[0]).is_some(), "a refused update must not keep its own lock");
     }
 
     /// 업데이트의 `install_server`도 처음 설치와 같이 인스턴스의 데이터 폴더(`instance_data_dirs`)를 받는다 (D5).

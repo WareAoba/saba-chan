@@ -3,7 +3,8 @@
 //! - `GET/PUT /api/instance/:id/schedule` — `{schedule: [...], backup_keep}`
 //! - `GET /api/schedules/upcoming` — 모든 인스턴스의 다가오는 예약
 
-use super::backup::{error, DEFAULT_KEEP};
+use super::backup::error;
+use crate::service::backup::DEFAULT_KEEP;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -16,7 +17,7 @@ use std::collections::HashSet;
 
 use super::super::IPCServer;
 use crate::scheduler::runner::{history_of, next_runs};
-use crate::scheduler::{daily_runs, ScheduledTask, TaskAction};
+use crate::scheduler::{daily_runs, save_command_of, schedule_revision, ScheduledTask, TaskAction};
 
 /// 원격에서 넣는 반복 작업의 가장 짧은 간격(분)과 보관 개수 상한
 const REMOTE_MIN_EVERY_MINUTES: u32 = 30;
@@ -31,11 +32,6 @@ pub struct ScheduleBody {
     /// GET에서 받은 `revision`. 있으면 그사이 일정이 바뀌었을 때 덮어쓰지 않고 409로 거절한다 (L51)
     #[serde(default)]
     revision: Option<String>,
-}
-
-/// 일정과 보관 수의 지문. 목록 전체를 다시 보내는 편집이 그사이 바뀐 일정을 덮어쓰지 않게 한다
-pub(crate) fn schedule_revision(instance: &crate::instance::ServerInstance) -> String {
-    crate::config_store::patch::revision(&json!({ "schedule": instance.schedule, "backup_keep": instance.backup_keep }))
 }
 
 #[derive(Deserialize)]
@@ -128,10 +124,6 @@ pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>
         "utc_offset_minutes": chrono::Local::now().offset().local_minus_utc() / 60,
     }))
     .into_response()
-}
-
-pub(crate) fn save_command_of(meta: &crate::supervisor::module_loader::ModuleMetadata) -> Option<String> {
-    meta.backup.as_ref().and_then(|b| b.save_command.clone())
 }
 
 pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>, Json(mut body): Json<ScheduleBody>) -> Response {
@@ -263,7 +255,7 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ipc::handlers::backup::tests::{server_with, NO_BACKUP};
+    use crate::service::backup::tests::{server_with, NO_BACKUP};
 
     // 모든 서버의 다음 예약을 시각 순서로 한 번에 주고, 같은 PC에서 가까운 시각에 겹치는 무거운 작업을 짚는다
     #[tokio::test]
