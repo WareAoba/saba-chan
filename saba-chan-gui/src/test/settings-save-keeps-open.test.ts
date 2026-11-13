@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { useServerSettingsStore } from '../stores/useServerSettingsStore';
+import { setupSettingsStore } from './serverStore';
 
 // 저장한 뒤에도 설정 화면은 그대로 있다: 닫았다 다시 열면 탭 전체가 로딩 표시로 바뀌고 스크롤이 맨 위로 간다.
 // 값·기준·revision은 그 자리에서 다시 읽는다
@@ -19,14 +20,9 @@ const server = { id: 's', name: 'S', module: 'game', revision: 'r1', module_sett
 
 function setup() {
     const shown: boolean[] = [];
+    setupSettingsStore({ modules });
     const hook = renderHook(() => {
-        const settings = useServerSettings({
-            servers: [],
-            modules: modules as never,
-            setModal: vi.fn(),
-            setProgressBar: vi.fn(),
-            fetchServers: vi.fn(),
-        });
+        const settings = useServerSettingsStore();
         shown.push(settings.showSettingsModal);
         return settings;
     });
@@ -123,15 +119,13 @@ describe('서버 설정 저장 뒤', () => {
 
     it('버전 목록이 오기 전에 저장해도 버전 목록을 끝까지 받는다', async () => {
         const game = { ...modules[0], install: { method: 'download' }, functions: ['list_versions', 'install_server'] };
-        const { result } = renderHook(() =>
-            useServerSettings({
-                servers: [],
-                modules: [game] as never,
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                fetchServers: vi.fn(),
-            }),
-        );
+        const { result } = setupSettingsStore({
+            servers: [],
+            modules: [game] as never,
+            setModal: vi.fn(),
+            setProgressBar: vi.fn(),
+            fetchServers: vi.fn(),
+        });
         // 처음 열 때의 버전 목록은 저장이 끝난 뒤에야 온다
         const arrive: Array<() => void> = [];
         let calls = 0;

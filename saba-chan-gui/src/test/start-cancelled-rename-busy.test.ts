@@ -1,24 +1,9 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 
 function setup() {
-    const setModal = vi.fn();
-    const { result } = renderHook(() =>
-        useServerActions({
-            servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' } as never],
-            setServers: vi.fn(),
-            modules: [],
-            loading: false,
-            setLoading: vi.fn(),
-            setModal,
-            setProgressBar: vi.fn(),
-            openConsole: vi.fn(),
-            closeConsole: vi.fn(),
-            setShowModuleManager: vi.fn(),
-            formatUptime: vi.fn(),
-        } as never),
-    );
+    const { result, setModal } = setupServerStore({ servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' } as never] });
     return { result, setModal };
 }
 
@@ -36,7 +21,7 @@ describe('시작 중에 사용자가 정지함 (start_cancelled)', () => {
             message: "Server 'A' was stopped while it was starting",
         });
         const { result, setModal } = setup();
-        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => result.current.startServer('a'));
         expect(setModal).not.toHaveBeenCalled();
         expect(window.showToast).not.toHaveBeenCalled();
         // 낙관적 'starting'을 지우고 데몬 상태를 다시 읽는다
@@ -54,23 +39,8 @@ describe('이미 실행 중인 서버 시작 (already_running)', () => {
     it('시작 진행 막대를 띄우지 않고 이미 실행 중이라고만 알린다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue({ success: true, already_running: true, pid: 1 });
         window.api.instanceStatus = vi.fn();
-        const setProgressBar = vi.fn();
-        const { result } = renderHook(() =>
-            useServerActions({
-                servers: [{ id: 'a', name: 'A', module: 'game', status: 'running' } as never],
-                setServers: vi.fn(),
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal: vi.fn(),
-                setProgressBar,
-                openConsole: vi.fn(),
-                closeConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-                formatUptime: vi.fn(),
-            } as never),
-        );
-        await act(async () => result.current.handleStart('A', 'game'));
+        const { result, setProgressBar } = setupServerStore({ servers: [{ id: 'a', name: 'A', module: 'game', status: 'running' } as never] });
+        await act(async () => result.current.startServer('a'));
         expect(setProgressBar).not.toHaveBeenCalled();
         expect(window.api.instanceStatus).not.toHaveBeenCalled();
         expect(vi.mocked(window.showToast!).mock.calls.at(-1)!.slice(0, 3)).toEqual(['ℹ️ “A” is already running', 'info', 3000]);
@@ -90,7 +60,7 @@ describe('이름 바꾸기: 다른 작업 중 (instance_busy)', () => {
         const { result } = setup();
         let ok: unknown;
         await act(async () => {
-            ok = await result.current.handleRename('a', 'B');
+            ok = await result.current.renameServer('a', 'B');
         });
         expect(ok).toBe(false);
         expect(vi.mocked(window.showToast!).mock.calls.at(-1)![0]).toMatch(

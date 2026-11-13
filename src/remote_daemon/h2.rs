@@ -23,11 +23,13 @@ pub type Held<V = Sender> = tokio::sync::OwnedMutexGuard<Option<V>>;
 /// 키(원격 PC)마다 연결 하나. 여는 동안 같은 키의 다른 요청은 그 연결을 기다렸다가 같이 쓴다
 pub struct Connections<K, V = Sender>(Mutex<BTreeMap<K, Slot<V>>>);
 
-impl<K: Ord, V> Connections<K, V> {
-    pub const fn new() -> Self {
+impl<K, V> Default for Connections<K, V> {
+    fn default() -> Self {
         Self(Mutex::new(BTreeMap::new()))
     }
+}
 
+impl<K: Ord, V> Connections<K, V> {
     fn map(&self) -> std::sync::MutexGuard<'_, BTreeMap<K, Slot<V>>> {
         self.0.lock().unwrap_or_else(|e| e.into_inner())
     }

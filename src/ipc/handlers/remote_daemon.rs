@@ -12,7 +12,7 @@
 //! 붙는 쪽 (D1b, `remote_daemon::peer`):
 //!   GET    /api/remote/peers                         {self:{hostId, name}|null, peers:[{hostId, name, ownerName, label, status, hasEndpoint, saved, platform, agentVersion,
 //!                                                     createdAt, lastSeenAt, publicIp, route}]} 같은 주인의 다른 PC (릴레이). 읽을 때 릴레이 목록에 맞춘다
-//!                                                     (`remote_daemon::sync_with_relay`). route = 저장한 PC에 지금 붙는 길 `direct`|`relay` (저장 안 했으면 null)
+//!                                                     (`RemoteDaemon::sync_with_relay`). route = 저장한 PC에 지금 붙는 길 `direct`|`relay` (저장 안 했으면 null)
 //!   PUT    /api/remote/peers/:hostId/name {name}     내 PC 하나(이 PC 포함)의 이름을 바꾼다 (릴레이 PC 이름, 디스코드 `/사바쨩 내pc`와 같은 값) → {hostId, name}
 //!                                                    400 invalid_name | 404 not_found | 502 relay_unreachable | 503 relay_not_paired
 //!   GET    /api/remote/daemons                       {daemons:[{hostId, name, ownerName, label, address, port, pairedAt}], thisName} 이 PC가 붙는 원격 데몬.
@@ -57,7 +57,7 @@ fn view(settings: &config::Settings, status: &remote_daemon::Status) -> Value {
 
 pub async fn get_settings(State(state): State<IPCServer>) -> Json<Value> {
     let settings = config::settings_in(&ConfigFile::default_location());
-    let mut v = view(&settings, &remote_daemon::status().await);
+    let mut v = view(&settings, &state.remote_daemon.status().await);
     v["thisPc"] = json!({
         "platform": crate::relay_agent::platform(),
         "agentVersion": crate::relay_agent::AGENT_VERSION,
@@ -160,7 +160,7 @@ pub async fn put_public_address(State(state): State<IPCServer>, Json(patch): Jso
         Ok((settings, changed)) => {
             if changed {
                 // 원격 포트가 열려 있으면 새 주소를 릴레이에 올린다 (포트는 다시 열지 않는다)
-                remote_daemon::on_seen_address(&state).await;
+                remote_daemon::on_seen_address(&state);
             }
             Json(public_address_view(&settings, &state)).into_response()
         }
@@ -179,11 +179,11 @@ pub async fn list_clients() -> Json<Value> {
     Json(json!({ "clients": clients }))
 }
 
-pub async fn revoke_client(Path(host_id): Path<String>) -> Response {
+pub async fn revoke_client(State(state): State<IPCServer>, Path(host_id): Path<String>) -> Response {
     let file = ConfigFile::default_location();
     match config::revoke_in(&file, &host_id) {
         Ok(true) => {
-            remote_daemon::reload_clients(&file);
+            state.remote_daemon.clients.reload(&file);
             StatusCode::NO_CONTENT.into_response()
         }
         Ok(false) => (StatusCode::NOT_FOUND, Json(json!({ "error": "Not paired", "error_code": "not_paired" }))).into_response(),
@@ -201,7 +201,7 @@ pub async fn list_peers(State(state): State<IPCServer>) -> Response {
     };
     let file = ConfigFile::default_location();
     // 릴레이의 목록이 기준이다: 이름을 맞추고, 빠진 PC의 짝을 풀고, 바뀐 주소를 따른다
-    let Ok(list) = remote_daemon::sync_with_relay(&file, &target).await else {
+    let Ok(list) = state.remote_daemon.sync_with_relay(&file, &target).await else {
         return peer::error(StatusCode::BAD_GATEWAY, "relay_unreachable");
     };
     let saved = config::daemons_in(&file);
@@ -225,7 +225,7 @@ pub async fn list_peers(State(state): State<IPCServer>) -> Response {
                 "lastSeenAt": p.last_seen_at,
                 "publicIp": p.public_ip,
                 "pairedAt": saved.map(|d| d.paired_at.clone()),
-                "route": saved.map(peer::route_of),
+                "route": saved.map(|d| state.remote_daemon.peers.route_of(d)),
             })
         })
         .collect();
@@ -250,7 +250,7 @@ pub async fn rename_peer(State(state): State<IPCServer>, Path(host_id): Path<Str
     match remote_daemon::relay::rename(&target, &host_id, &name).await {
         Ok(name) => {
             // 저장한 이름(원격 데몬·짝 맺은 PC·이 PC)을 바로 맞춘다. 닿지 않으면 10분마다 맞출 때 따른다
-            let _ = remote_daemon::sync_with_relay(&ConfigFile::default_location(), &target).await;
+            let _ = state.remote_daemon.sync_with_relay(&ConfigFile::default_location(), &target).await;
             Json(json!({ "hostId": host_id, "name": name })).into_response()
         }
         Err(remote_daemon::relay::RenameFailure::Empty) => bad("invalid_name", "PC name must not be empty"),
@@ -292,7 +292,7 @@ pub async fn connect_daemon(State(state): State<IPCServer>, Json(body): Json<Con
     if host_id.is_empty() {
         return bad("invalid_host", "hostId is required");
     }
-    match peer::connect(&ConfigFile::default_location(), relay_target(&state).await, host_id).await {
+    match state.remote_daemon.peers.connect(&ConfigFile::default_location(), relay_target(&state).await, host_id).await {
         Ok(d) => Json(json!({ "hostId": d.host_id, "name": d.name, "label": d.label() })).into_response(),
         Err(e) => peer::error(e.status(), e.code()),
     }
@@ -303,7 +303,7 @@ const TELL_REMOTE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 
 async fn tell_remote_to_unpair(file: &ConfigFile, state: &IPCServer, host_id: &str) {
     let req = Request::delete("/remote/self").body(Body::empty()).unwrap_or_default();
-    let ask = peer::forward(file, relay_target(state).await, host_id, "/remote/self", req, state.shutdown_token.clone());
+    let ask = state.remote_daemon.peers.forward(file, relay_target(state).await, host_id, "/remote/self", req, state.shutdown_token.clone());
     match tokio::time::timeout(TELL_REMOTE_TIMEOUT, ask).await {
         Ok(res) if res.status().is_success() => {}
         _ => tracing::info!("Could not tell remote daemon {} to unpair; forgetting it here only", host_id),
@@ -311,10 +311,10 @@ async fn tell_remote_to_unpair(file: &ConfigFile, state: &IPCServer, host_id: &s
 }
 
 /// 이 PC에서 잊는다. 실패하면 그 답
-fn forget_here(file: &ConfigFile, host_id: &str) -> Option<Response> {
+fn forget_here(file: &ConfigFile, state: &IPCServer, host_id: &str) -> Option<Response> {
     match config::forget_daemon_in(file, host_id) {
         Ok(true) => {
-            crate::remote_daemon::tunnel::close(host_id);
+            state.remote_daemon.peers.tunnels().close(host_id);
             None
         }
         Ok(false) => Some(peer::error(StatusCode::NOT_FOUND, "remote_unknown")),
@@ -328,7 +328,7 @@ pub async fn forget_daemon(State(state): State<IPCServer>, Path(host_id): Path<S
         return peer::error(StatusCode::NOT_FOUND, "remote_unknown");
     }
     tell_remote_to_unpair(&file, &state, &host_id).await;
-    forget_here(&file, &host_id).unwrap_or_else(|| StatusCode::NO_CONTENT.into_response())
+    forget_here(&file, &state, &host_id).unwrap_or_else(|| StatusCode::NO_CONTENT.into_response())
 }
 
 #[derive(Deserialize)]
@@ -361,7 +361,7 @@ pub async fn remove_daemon(State(state): State<IPCServer>, Path(host_id): Path<S
             .header(axum::http::header::CONTENT_TYPE, "application/json")
             .body(Body::from(json!({ "keepSettings": body.keep_settings, "keepInstances": body.keep_instances }).to_string()))
             .unwrap_or_default();
-        let res = peer::forward(&file, relay.clone(), &host_id, "/api/system/uninstall", req, state.shutdown_token.clone()).await;
+        let res = state.remote_daemon.peers.forward(&file, relay.clone(), &host_id, "/api/system/uninstall", req, state.shutdown_token.clone()).await;
         if !res.status().is_success() {
             // 지우지 못했으면 잊지 않는다 (다시 해 볼 수 있게). 그 PC의 오류 코드를 그대로 알린다
             let status = res.status();
@@ -383,7 +383,7 @@ pub async fn remove_daemon(State(state): State<IPCServer>, Path(host_id): Path<S
         }
     }
     if saved {
-        if let Some(res) = forget_here(&file, &host_id) {
+        if let Some(res) = forget_here(&file, &state, &host_id) {
             return res;
         }
     }
@@ -401,7 +401,7 @@ pub async fn claim(State(state): State<IPCServer>, Json(body): Json<ClaimBody>) 
     if !remote_daemon::onboard::valid_code(code) {
         return bad("invalid_code", "Pairing code is not valid");
     }
-    match remote_daemon::onboard::claim_and_connect(&ConfigFile::default_location(), relay_target(&state).await, code, &state.shutdown_token).await {
+    match remote_daemon::onboard::claim_and_connect(&state.remote_daemon.peers, &ConfigFile::default_location(), relay_target(&state).await, code, &state.shutdown_token).await {
         Ok(d) => Json(json!({ "hostId": d.host_id, "name": d.name, "label": d.label() })).into_response(),
         Err(e) => peer::error(e.status(), e.code()),
     }
@@ -435,7 +435,7 @@ pub async fn start_install(State(state): State<IPCServer>, Json(body): Json<Inst
         return bad("invalid_port", "Port must be between 1 and 65535");
     }
     let options = InstallOptions { host: host.to_string(), user: user.to_string(), port, linger: body.linger, steam_libs: body.steam_libs };
-    match onboard::start_install(ConfigFile::default_location(), relay_target(&state).await, &options, state.shutdown_token.clone()) {
+    match onboard::start_install(state.remote_daemon.peers.clone(), ConfigFile::default_location(), relay_target(&state).await, &options, state.shutdown_token.clone()) {
         Ok(id) => Json(json!({ "id": id })).into_response(),
         Err(StartError::SshMissing) => peer::error(StatusCode::CONFLICT, "ssh_missing"),
         Err(StartError::SpawnFailed) => peer::error(StatusCode::INTERNAL_SERVER_ERROR, "ssh_spawn_failed"),
@@ -483,7 +483,7 @@ pub async fn cancel_install(Path(id): Path<String>) -> Response {
 }
 
 /// 원격 데몬 하나의 서버 목록을 기다리는 시간. 하나가 늦어도 합쳐 보기 전체가 멈추지 않게.
-/// 옛 주소 붙기(10초) → 릴레이에서 새 주소 → 다시 붙기(10초)까지는 끝나야 한다 (`peer::forward`)
+/// 옛 주소 붙기(10초) → 릴레이에서 새 주소 → 다시 붙기(10초)까지는 끝나야 한다 (`peer::Pool::forward`)
 const REMOTE_LIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub async fn list_all_servers(State(state): State<IPCServer>) -> Json<Value> {
@@ -506,7 +506,7 @@ async fn all_servers_with(file: &ConfigFile, state: &IPCServer, timeout: std::ti
             let req = Request::get("/api/servers").body(Body::empty()).unwrap_or_default();
             // 본문까지 시간 안에 받는다 (머리만 오고 연결이 끊기면 본문을 기다리며 매달린다)
             let ask = async {
-                let res = peer::forward(file, relay, &d.host_id, "/api/servers?notices=keep", req, state.shutdown_token.clone()).await;
+                let res = state.remote_daemon.peers.forward(file, relay, &d.host_id, "/api/servers?notices=keep", req, state.shutdown_token.clone()).await;
                 (res.status().is_success(), body_json(res).await)
             };
             let (ok, body) = tokio::time::timeout(timeout, ask)
@@ -536,7 +536,7 @@ pub async fn proxy(State(state): State<IPCServer>, Path((host_id, _)): Path<(Str
     let Some(path) = peer::forward_path(rest, req.uri().query()) else {
         return peer::error(StatusCode::NOT_FOUND, "not_found");
     };
-    peer::forward(&ConfigFile::default_location(), relay_target(&state).await, &host_id, &path, req, state.shutdown_token.clone()).await
+    state.remote_daemon.peers.forward(&ConfigFile::default_location(), relay_target(&state).await, &host_id, &path, req, state.shutdown_token.clone()).await
 }
 
 #[cfg(test)]

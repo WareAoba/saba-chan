@@ -268,7 +268,7 @@ impl ManagedProcess {
         #[cfg(windows)]
         let runner_pid = runner_pid.filter(|_| matches!(child.try_wait(), Ok(None)));
         if let Some(pid) = runner_pid {
-            let _ = tokio::task::spawn_blocking(move || crate::plugin::kill_tree(pid)).await;
+            let _ = tokio::task::spawn_blocking(move || crate::supervisor::process::force_kill_tree(pid)).await;
         }
         let _ = tokio::time::timeout(std::time::Duration::from_secs(5), reap(child)).await;
         Err(anyhow::anyhow!("saba-runner did not start '{}' in time", program))

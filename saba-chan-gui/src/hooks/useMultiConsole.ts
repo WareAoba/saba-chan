@@ -6,6 +6,7 @@ import { useServerStore } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import type { ApiBody } from '../types/daemon';
 import { commandErrorText, commandReplyLines } from '../utils/commandReply';
+import { consoleStep, type FeedRules, feedCursor, newConsoleFeed, notePid } from '../utils/consoleFeed';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 
 /** @constant 서버 Running이고 콘솔이 화면에 보일 때 polling 간격 (ms) */
@@ -19,6 +20,13 @@ const CONSOLE_WAIT_S = 8;
 const STREAM_RETRY_MS = 30_000;
 /** PIP로 띄울 때 메인 창 콘솔 자리에 흐리게 남기는 줄 수 */
 const GHOST_LINES = 40;
+/** 앱 콘솔 읽기 규칙 (웹과 다른 곳은 FeedRules 설명) */
+const FEED_RULES: FeedRules = {
+    diskUnseenOnly: true,
+    diskThenNewRun: false,
+    noStdinCloses: false,
+    pidResetsWithoutEpoch: true,
+};
 
 // Map of instanceId -> console state. 이 훅을 쓰는 App이 줄마다 다시 그려지지 않도록 구독하지 않고 쓰기만 한다
 type ConsolesOrUpdater = Consoles | ((prev: Consoles) => Consoles);
@@ -38,31 +46,6 @@ interface PollRef {
 }
 
 const keyed = (lines: ConsoleLine[]): ConsoleLine[] => lines.map((line) => ({ ...line, key: ++lineSeq }));
-
-/** 디스크 줄과 실행 중에 받은 줄을 맞춰 보는 값. 디스크 기록은 내용 앞 공백을 지우고 시각은 초까지 남긴다 */
-const lineMark = (line: ConsoleLine) => `${line.timestamp ?? ''}|${line.source ?? ''}|${String(line.content ?? '').trimStart()}`;
-
-/**
- * 디스크 꼬리에서 이미 본 줄 뒤의 것만 (G-C3). 마지막으로 본 실행 줄들(seen)과 겹치는 곳을
- * 앞에서부터 찾는다: 같은 줄이 되풀이된 로그에서 모호하면 못 본 줄을 버리기보다 다시 보이는 쪽을 고른다.
- * 못 찾으면 다른 기록이라 보고 전부 준다
- */
-function unseenDiskTail(seen: string[], tail: ConsoleLine[]) {
-    if (seen.length === 0) return tail;
-    const marks = tail.map(lineMark);
-    for (let end = 0; end < tail.length; end++) {
-        const span = Math.min(seen.length, end + 1);
-        let match = true;
-        for (let k = 0; k < span; k++) {
-            if (marks[end - k] !== seen[seen.length - 1 - k]) {
-                match = false;
-                break;
-            }
-        }
-        if (match) return tail.slice(end + 1);
-    }
-    return tail;
-}
 
 /**
  * Manages multiple simultaneous console instances with individual state.
@@ -131,16 +114,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         //   Stopped / 화면에 없음                  → 5000ms (리소스 절약, since로 이어 받는다)
         //   창이 가려짐                            → 쉰다 (다시 보이면 바로 읽는다)
         if (!pollingRefs.current[instanceId]) {
-            let sinceId = 0;
-            // 마지막으로 본 실행 PID. 바뀌면 새 프로세스라 줄 번호가 0부터 다시 시작한다
-            let seenPid: number | null = null;
-            // 마지막으로 본 콘솔 버퍼 세대(epoch). PID가 같아도 데몬이 다시 붙으면 바뀌고 줄 번호가 0부터 다시 시작한다
-            let seenEpoch: number | null = null;
-            // 세대가 바뀐 뒤 처음 받는 줄은 이어 붙이지 않고 그 버퍼로 바꾼다 (다시 붙은 버퍼는 이미 본 줄을 다시 담는다)
-            let replaceLines = false;
-            let diskLoaded = false;
-            // 실행 중에 받은 마지막 몇 줄의 표시(lineMark). 꺼진 뒤 디스크 꼬리와 겹치는 곳을 찾는 데 쓴다
-            let seenTail: string[] = [];
+            // 읽은 자리 (줄 번호·버퍼 세대·PID·디스크 기록)
+            let feed = newConsoleFeed();
             let polling = false;
             // 마지막 답이 데몬이 붙잡았다 온 것인가 (옛 데몬은 wait를 모르고 바로 답한다)
             let daemonWaits = false;
@@ -156,18 +131,10 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             // 목록에서 본 적이 있는 서버가 사라지면 지워진 것이다 (목록을 받기 전에 연 콘솔은 닫지 않는다)
             let listed = false;
             /** 지금 PID를 기억하고, 앞서 본 것과 다른 프로세스인지 */
-            const notePid = () => {
-                const pid = useServerStore.getState().servers.find((s) => s.id === instanceId)?.pid;
-                let changed = false;
-                if (pid != null && pid > 0) {
-                    if (seenPid !== null && pid !== seenPid) {
-                        changed = true;
-                        // 세대를 주는 데몬이면 세대 비교가 정한다 (PID가 늦게 바뀌어도 줄이 겹치지 않게)
-                        if (seenEpoch === null) sinceId = 0;
-                    }
-                    seenPid = pid;
-                }
-                return changed;
+            const pidChanged = () => {
+                const noted = notePid(feed, useServerStore.getState().servers.find((s) => s.id === instanceId)?.pid, FEED_RULES);
+                feed = noted.feed;
+                return noted.changed;
             };
             const append = (lines: ConsoleLine[], replace: boolean) =>
                 setConsoles((prev) => {
@@ -182,46 +149,17 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                         },
                     };
                 });
-            /**
-             * 콘솔 조회·스트림의 답 한 건을 화면에 넣는다. 조회에서 세대가 바뀌었으면 받은 줄을 버리고 false(처음부터 다시 묻는다).
-             * 스트림은 세대가 바뀌면 데몬이 이미 처음부터 보낸다 (`reset`)
-             */
+            /** 콘솔 조회·스트림의 답 한 건을 화면에 넣는다. 조회에서 세대가 바뀌었으면 받은 줄을 버리고 false(처음부터 다시 묻는다) */
             const apply = (data: ApiBody | null | undefined, pidChanged: boolean, fromStream: boolean) => {
-                if (!data) return true;
-                // epoch가 없는 응답(디스크 기록, 옛 데몬)은 지금처럼 이어 읽는다
-                if (typeof data?.epoch === 'number') {
-                    const epochChanged = (seenEpoch !== null && data.epoch !== seenEpoch) || data.reset === true;
-                    seenEpoch = data.epoch;
-                    // 옛 번호로 받은 줄은 버리고 처음부터 다시 받는다. 새 프로세스면 이어 붙이고(지난 실행 기록을 남긴다),
-                    // 같은 프로세스에 다시 붙었으면 그 버퍼로 바꾼다
-                    if (epochChanged) {
-                        sinceId = 0;
-                        replaceLines = !pidChanged;
-                        if (!fromStream) return false;
-                    }
-                }
-                // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
-                // 이미 한 번 로드했으면 다시 append하지 않음
-                if (data?.source === 'disk') {
-                    if (!diskLoaded && data.lines?.length > 0) {
-                        diskLoaded = true;
-                        const unseen = keyed(unseenDiskTail(seenTail, data.lines));
-                        seenTail = [];
-                        append(unseen, false);
-                    }
-                } else if (data?.lines?.length > 0) {
-                    diskLoaded = false; // managed process가 복구됨 → 리셋
-                    const replace = replaceLines;
-                    replaceLines = false;
-                    seenTail = [...(replace ? [] : seenTail), ...data.lines.map(lineMark)].slice(-5);
-                    append(keyed(data.lines), replace);
-                    sinceId = data.lines[data.lines.length - 1].id + 1;
-                }
+                const step = consoleStep<ConsoleLine>(feed, data, { pidChanged, fromStream }, FEED_RULES);
+                feed = step.feed;
+                if (step.refetch) return false;
+                if (step.lines.length) append(keyed(step.lines), step.replace);
                 // Track stdin availability from backend
-                if (data && typeof data.stdin_available === 'boolean') {
+                if (step.stdin !== undefined) {
+                    const disabled = !step.stdin;
                     setConsoles((prev) => {
                         if (!prev[instanceId]) return prev;
-                        const disabled = !data.stdin_available;
                         if (prev[instanceId].stdinDisabled === disabled) return prev;
                         return {
                             ...prev,
@@ -249,13 +187,11 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     window.api.managedConsoleStream(
                         instanceId,
                         {
-                            since: sinceId,
-                            epoch: seenEpoch ?? undefined,
-                            diskSeen: diskLoaded || undefined,
+                            ...feedCursor(feed),
                             spans: useSettingsStore.getState().consoleSyntaxHighlight || undefined,
                         },
                         (data) => {
-                            if (isMine()) apply(data, notePid(), true);
+                            if (isMine()) apply(data, pidChanged(), true);
                         },
                         () => {
                             if (!isMine() || gen !== streamGen) return;
@@ -313,18 +249,19 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     if (polling) { schedulePoll(); return; }
                     polling = true;
                     try {
-                        const pidChanged = notePid();
+                        const changed = pidChanged();
+                        const { since, epoch, diskSeen } = feedCursor(feed);
                         // 하이라이트가 켜져 있으면 데몬에게 조각 토큰(spans)도 달라고 한다
                         const opts = {
                             spans: useSettingsStore.getState().consoleSyntaxHighlight || undefined,
                             wait: waitFor || undefined,
-                            epoch: waitFor && seenEpoch !== null ? seenEpoch : undefined,
-                            diskSeen: (waitFor && diskLoaded) || undefined,
+                            epoch: waitFor ? epoch : undefined,
+                            diskSeen: waitFor ? diskSeen : undefined,
                         };
-                        const data = await window.api.managedConsole(instanceId, sinceId, 200, opts);
+                        const data = await window.api.managedConsole(instanceId, since, 200, opts);
                         if (!isMine()) return;
                         daemonWaits = data?.waits === true;
-                        if (!apply(data, pidChanged, false)) {
+                        if (!apply(data, changed, false)) {
                             polling = false;
                             schedulePoll();
                             return;

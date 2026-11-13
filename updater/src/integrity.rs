@@ -228,6 +228,8 @@ pub fn set_official(component_key: &str, official: bool) -> Result<(), String> {
 }
 
 fn set_official_at(path: &Path, component_key: &str, official: bool) -> Result<(), String> {
+    // 설치 기록처럼 읽고-고치고-쓴다: 같은 프로세스의 두 설치가 겹치면 한쪽 표시가 사라진다
+    let _guard = RECORDS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut keys: BTreeSet<String> = crate::read_json(path)?.unwrap_or_default();
     let changed = if official { keys.insert(component_key.to_string()) } else { keys.remove(component_key) };
     if !changed {

@@ -140,12 +140,7 @@ describe('플레이어 탭', () => {
                     moduleData={data}
                     modules={[]}
                     servers={[running] as never}
-                    setServers={() => {}}
-                    onStart={() => {}}
-                    onStop={() => {}}
-                    setModal={() => {}}
                     consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
-                    settingsProps={{} as never}
                 />,
             );
         const tab = i18n.t('gui:shell.tab_players');

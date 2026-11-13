@@ -8,9 +8,9 @@
 use serde::{Deserialize, Serialize};
 use futures_util::StreamExt;
 use serde_json::{json, Value};
-use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
+use super::runtime::Runtimes;
 use super::Supervisor;
 
 /// 다시 묻는 간격
@@ -29,24 +29,36 @@ pub struct PlayerCount {
     pub max: Option<u32>,
 }
 
-fn counts() -> &'static Mutex<HashMap<String, PlayerCount>> {
-    static COUNTS: OnceLock<Mutex<HashMap<String, PlayerCount>>> = OnceLock::new();
-    COUNTS.get_or_init(Default::default)
+/// 인스턴스 하나의 접속자 상태 (`runtime::InstanceRuntime::players`)
+#[derive(Default)]
+pub(crate) struct Players {
+    /// 모듈 함수가 알려 준 마지막 수
+    count: Option<PlayerCount>,
+    /// 접속·퇴장 문구로 센 접속자. 콘솔을 처음부터 읽는 프로세스에서만 센다
+    roster: Option<Roster>,
+    /// 센 수에 붙일 최대 인원: 모듈에 접속자 함수가 없거나(`Some(None)`), 함수가 수 없이 답했다
+    /// (`{"success": true, "max": 8}` → `Some(Some(8))`). 함수가 실패하면 빠진다
+    fallback: Option<Option<u32>>,
+    /// 계속 실패한 상태 질문
+    failure: Option<Failure>,
 }
 
 /// 인스턴스의 마지막 접속자 수. 접속·퇴장 문구로 센 수가 먼저고(최대 인원은 모듈 답에서 빌린다),
 /// 콘솔을 처음부터 읽지 못한 서버(데몬 재시작 뒤 다시 붙음 등)는 모듈이 알려 준 수. 둘 다 없으면 None
-pub fn get(instance_id: &str) -> Option<PlayerCount> {
-    let counted = rosters().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).map(|r| u32::try_from(r.names.len()).unwrap_or(u32::MAX));
-    let reported = counts().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).copied();
-    let Some(online) = counted else { return reported };
-    let max = reported.and_then(|c| c.max).or_else(|| fallbacks().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).copied().flatten());
-    Some(PlayerCount { online, max })
+pub fn get(rt: &Runtimes, instance_id: &str) -> Option<PlayerCount> {
+    rt.existing(instance_id, |r| {
+        let p = &r.players;
+        let reported = p.count;
+        let Some(roster) = &p.roster else { return reported };
+        let max = reported.and_then(|c| c.max).or_else(|| p.fallback.flatten());
+        Some(PlayerCount { online: roster.online(), max })
+    })
+    .flatten()
 }
 
 /// 접속·퇴장 줄로 센 접속자 수만 (모듈 함수가 알려 준 수는 보지 않는다). 세지 않는 서버면 None. 채팅 연동(`chat_link`)이 쓴다
-pub fn counted(instance_id: &str) -> Option<u32> {
-    rosters().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).map(|r| u32::try_from(r.names.len()).unwrap_or(u32::MAX))
+pub fn counted(rt: &Runtimes, instance_id: &str) -> Option<u32> {
+    rt.existing(instance_id, |r| r.players.roster.as_ref().map(Roster::online)).flatten()
 }
 
 /// 접속·퇴장 문구로 센 접속자 이름. 같은 이름이 다시 들어오면 하나로 본다(퇴장 줄을 놓쳐도 다시 들어오면 바로잡힌다).
@@ -56,128 +68,123 @@ struct Roster {
     names: std::collections::HashSet<String>,
 }
 
-fn rosters() -> &'static Mutex<HashMap<String, Roster>> {
-    static ROSTERS: OnceLock<Mutex<HashMap<String, Roster>>> = OnceLock::new();
-    ROSTERS.get_or_init(Default::default)
-}
-
-/// 센 수에 붙일 최대 인원: 모듈에 접속자 함수가 없거나(None), 함수가 수 없이 답했다
-/// (`{"success": true, "max": 8}` → Some(8)). 함수가 실패하면 빠진다. 락은 한 번에 하나만 잡는다
-fn fallbacks() -> &'static Mutex<HashMap<String, Option<u32>>> {
-    static FALLBACKS: OnceLock<Mutex<HashMap<String, Option<u32>>>> = OnceLock::new();
-    FALLBACKS.get_or_init(Default::default)
+impl Roster {
+    fn online(&self) -> u32 {
+        u32::try_from(self.names.len()).unwrap_or(u32::MAX)
+    }
 }
 
 /// 새 프로세스의 콘솔을 처음부터 보기 시작한다: 0명에서 센다. 돌려준 값을 `roster_change`·`roster_end`에 넘긴다
-pub fn roster_start(instance_id: &str) -> u64 {
+pub fn roster_start(rt: &Runtimes, instance_id: &str) -> u64 {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let generation = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    rosters().lock().unwrap_or_else(|e| e.into_inner()).insert(instance_id.to_string(), Roster { generation, names: Default::default() });
+    rt.with(instance_id, |r| r.players.roster = Some(Roster { generation, names: Default::default() }));
     generation
 }
 
 /// 접속(`joined`)·퇴장 한 줄. 모르는 이름의 퇴장은 무시한다. 다른 프로세스의 것이면 무시한다
-pub fn roster_change(instance_id: &str, generation: u64, name: &str, joined: bool) {
-    let mut map = rosters().lock().unwrap_or_else(|e| e.into_inner());
-    let Some(roster) = map.get_mut(instance_id).filter(|r| r.generation == generation) else { return };
-    if joined {
-        roster.names.insert(name.to_string());
-    } else {
-        roster.names.remove(name);
-    }
+pub fn roster_change(rt: &Runtimes, instance_id: &str, generation: u64, name: &str, joined: bool) {
+    rt.existing(instance_id, |r| {
+        let Some(roster) = r.players.roster.as_mut().filter(|r| r.generation == generation) else { return };
+        if joined {
+            roster.names.insert(name.to_string());
+        } else {
+            roster.names.remove(name);
+        }
+    });
 }
 
 /// 접속·퇴장 줄로 센 지금 접속자: (인스턴스 ID, 이름). `instance_id`가 없으면 세는 모든 서버.
 /// 다시 붙은 서버는 세지 않으므로 빠진다 (`player_events::after_reattach`)
-pub fn present(instance_id: Option<&str>) -> Vec<(String, String)> {
-    let map = rosters().lock().unwrap_or_else(|e| e.into_inner());
-    map.iter()
-        .filter(|(id, _)| instance_id.is_none_or(|want| want == id.as_str()))
-        .flat_map(|(id, r)| r.names.iter().map(move |name| (id.clone(), name.clone())))
-        .collect()
+pub fn present(rt: &Runtimes, instance_id: Option<&str>) -> Vec<(String, String)> {
+    rt.all(|map| {
+        map.iter()
+            .filter(|(id, _)| instance_id.is_none_or(|want| want == id.as_str()))
+            .filter_map(|(id, r)| r.players.roster.as_ref().map(|roster| (id, roster)))
+            .flat_map(|(id, r)| r.names.iter().map(move |name| (id.clone(), name.clone())))
+            .collect()
+    })
 }
 
 /// 지금 세는 목록이 `generation`의 것인가 (그 사이 새 프로세스가 세기 시작하지 않았다)
-pub fn is_current(instance_id: &str, generation: u64) -> bool {
-    rosters().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).is_some_and(|r| r.generation == generation)
+pub fn is_current(rt: &Runtimes, instance_id: &str, generation: u64) -> bool {
+    rt.existing(instance_id, |r| r.players.roster.as_ref().is_some_and(|r| r.generation == generation)).unwrap_or(false)
 }
 
 /// 프로세스가 끝났다. 그 사이 새 프로세스가 세기 시작했으면 그대로 둔다
-pub fn roster_end(instance_id: &str, generation: u64) {
-    let mut map = rosters().lock().unwrap_or_else(|e| e.into_inner());
-    if map.get(instance_id).is_some_and(|r| r.generation == generation) {
-        map.remove(instance_id);
-    }
+pub fn roster_end(rt: &Runtimes, instance_id: &str, generation: u64) {
+    rt.existing(instance_id, |r| {
+        if r.players.roster.as_ref().is_some_and(|r| r.generation == generation) {
+            r.players.roster = None;
+        }
+    });
 }
 
-fn set(instance_id: &str, count: Option<PlayerCount>) {
-    let mut map = counts().lock().unwrap_or_else(|e| e.into_inner());
+fn set(rt: &Runtimes, instance_id: &str, count: Option<PlayerCount>) {
     match count {
-        Some(c) => map.insert(instance_id.to_string(), c),
-        None => map.remove(instance_id),
-    };
+        Some(c) => rt.with(instance_id, |r| r.players.count = Some(c)),
+        None => {
+            rt.existing(instance_id, |r| r.players.count = None);
+        }
+    }
 }
 
 /// 계속 실패한 서버: 그 프로세스의 pid, 처음 실패한 때, 마지막 실패 이유, 로그에 남겼는지.
 /// pid가 다르면 재시작한 새 프로세스이므로 이전 기록을 잇지 않는다
 type Failure = (Option<u32>, std::time::Instant, String, bool);
 
-fn failures() -> &'static Mutex<HashMap<String, Failure>> {
-    static FAILURES: OnceLock<Mutex<HashMap<String, Failure>>> = OnceLock::new();
-    FAILURES.get_or_init(Default::default)
-}
-
 /// 한 번의 결과를 적는다. 답하면 실패 기록을 지우고, 실패하면 처음 실패한 때는 두고 이유만 바꾼다.
 /// 수 없이 `{"success": true}`만 돌려준 것도 답이다 (모듈이 수를 알 수 없는 설정, 예: 마인크래프트 enable-status=false)
-fn record(instance_id: &str, pid: Option<u32>, result: Result<&Value, String>, now: std::time::Instant) {
+fn record(rt: &Runtimes, instance_id: &str, pid: Option<u32>, result: Result<&Value, String>, now: std::time::Instant) {
     let reason = match result {
         Ok(value) if parse(value).is_some() || answered_without_count(value) => {
-            failures().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id);
+            forget(rt, instance_id);
             return;
         }
         Ok(value) => value.get("message").and_then(Value::as_str).unwrap_or("no answer").to_string(),
         Err(e) => e,
     };
-    let mut map = failures().lock().unwrap_or_else(|e| e.into_inner());
-    let entry = map.entry(instance_id.to_string()).or_insert((pid, now, String::new(), false));
-    if entry.0 != pid {
-        *entry = (pid, now, String::new(), false);
-    }
-    entry.2 = reason;
-    if !entry.3 && now.duration_since(entry.1) >= UNRESPONSIVE_AFTER {
-        entry.3 = true;
-        tracing::warn!("Server {} has not answered its status query for {:?}: {}", instance_id, now.duration_since(entry.1), entry.2);
-    }
+    rt.with(instance_id, |r| {
+        let entry = r.players.failure.get_or_insert((pid, now, String::new(), false));
+        if entry.0 != pid {
+            *entry = (pid, now, String::new(), false);
+        }
+        entry.2 = reason;
+        if !entry.3 && now.duration_since(entry.1) >= UNRESPONSIVE_AFTER {
+            entry.3 = true;
+            tracing::warn!("Server {} has not answered its status query for {:?}: {}", instance_id, now.duration_since(entry.1), entry.2);
+        }
+    });
 }
 
 fn answered_without_count(value: &Value) -> bool {
     value.get("success").and_then(Value::as_bool) == Some(true) && value.get("online").is_none_or(Value::is_null)
 }
 
-fn forget(instance_id: &str) {
-    failures().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id);
+fn forget(rt: &Runtimes, instance_id: &str) {
+    rt.existing(instance_id, |r| r.players.failure = None);
 }
 
 /// 켜진 서버가 `UNRESPONSIVE_AFTER` 넘게 상태 질문(접속자 수)에 답하지 않으면 마지막 실패 이유.
 /// 그 pid의 프로세스에서 센 것만 본다. 팰월드처럼 REST 포트를 열지 못하면 명령·정상 종료도 닿지 않는다
-pub fn unresponsive(instance_id: &str, pid: Option<u32>, now: std::time::Instant) -> Option<String> {
-    let map = failures().lock().unwrap_or_else(|e| e.into_inner());
-    let (failed_pid, since, reason, logged) = map.get(instance_id)?;
-    // 데몬 로그에 경고를 남긴 뒤에만 알린다: 화면과 로그가 어긋나지 않게
-    (*failed_pid == pid && *logged && now.duration_since(*since) >= UNRESPONSIVE_AFTER).then(|| reason.clone())
+pub fn unresponsive(rt: &Runtimes, instance_id: &str, pid: Option<u32>, now: std::time::Instant) -> Option<String> {
+    silent_for(rt, instance_id, pid, now).map(|(_, reason)| reason)
 }
 
 /// `unresponsive`와 같은 판정에 답하지 않은 시간을 더한 것 (응답 없음 감시 `watchdog`와 서버 목록이 인스턴스 설정의 시간과 견준다)
-pub fn silent_for(instance_id: &str, pid: Option<u32>, now: std::time::Instant) -> Option<(std::time::Duration, String)> {
-    let reason = unresponsive(instance_id, pid, now)?;
-    let since = failures().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id)?.1;
-    Some((now.duration_since(since), reason))
+pub fn silent_for(rt: &Runtimes, instance_id: &str, pid: Option<u32>, now: std::time::Instant) -> Option<(std::time::Duration, String)> {
+    rt.existing(instance_id, |r| {
+        let (failed_pid, since, reason, logged) = r.players.failure.as_ref()?;
+        // 데몬 로그에 경고를 남긴 뒤에만 알린다: 화면과 로그가 어긋나지 않게
+        (*failed_pid == pid && *logged && now.duration_since(*since) >= UNRESPONSIVE_AFTER).then(|| (now.duration_since(*since), reason.clone()))
+    })
+    .flatten()
 }
 
 /// 시험이 응답 실패 한 번을 적는다
 #[cfg(test)]
-pub(crate) fn fail_for_test(instance_id: &str, pid: Option<u32>, reason: &str, at: std::time::Instant) {
-    record(instance_id, pid, Err(reason.to_string()), at);
+pub(crate) fn fail_for_test(rt: &Runtimes, instance_id: &str, pid: Option<u32>, reason: &str, at: std::time::Instant) {
+    record(rt, instance_id, pid, Err(reason.to_string()), at);
 }
 
 /// 모듈 응답을 읽는다. 실패 응답이나 정수가 아닌 값은 None (모르는 값을 0으로 보이지 않는다)
@@ -193,11 +200,11 @@ pub fn parse(result: &Value) -> Option<PlayerCount> {
 /// 지금 접속자 수 — 끄기 직전 판단(자동 업데이트)용. 접속·퇴장 줄로 세는 서버는 그 수(실시간),
 /// 아니면 모듈 접속자 함수를 한 번 불러 묻는다(기억한 값은 최대 1분 전이다). 묻지 못하면 None. 주기 호출이 아니다
 pub async fn fresh(sup: &tokio::sync::RwLock<Supervisor>, instance_id: &str) -> Option<u32> {
-    if let Some(n) = counted(instance_id) {
-        return Some(n);
-    }
     let call = {
         let s = sup.read().await;
+        if let Some(n) = counted(&s.runtime, instance_id) {
+            return Some(n);
+        }
         let module_name = s.instance_store.get(instance_id)?.module_name.clone();
         let function = s.module_loader.get_module(&module_name).ok()?.metadata.players_function.clone()?;
         s.instance_call(instance_id, &function).ok()?
@@ -215,7 +222,7 @@ fn max_of(result: &Value) -> Option<u32> {
 /// REST 서버(`[protocols] supported`에 rest)는 응답 없음을 REST 포트에 붙어 보기만 해서 정한다: 요청을 보내면
 /// 서버 로그에 접근 줄이 남는다(팰월드 `REST accessed endpoint`). 주기 경로는 콘솔·RCON·REST 요청을 보내지 않는다(사용자 지정)
 pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
-    let (mut calls, idle, probes): (Vec<_>, Vec<_>, Vec<_>) = {
+    let (rt, mut calls, idle, probes) = {
         let s = sup.read().await;
         let mut calls = Vec::new();
         let mut idle = Vec::new();
@@ -238,7 +245,7 @@ pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
             }
             probes.extend(probe);
         }
-        (calls, idle, probes)
+        (s.runtime.clone(), calls, idle, probes)
     };
     // 목록에 보이는 칸(접속자 수·응답 없음)이 이번 갱신으로 바뀌면 화면이 목록을 다시 읽게 알린다 (`servers.changed`)
     let watched: Vec<(String, Option<u32>)> = calls
@@ -247,41 +254,43 @@ pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
         .chain(idle.iter().map(|(id, _)| (id.clone(), None)))
         .chain(probes.iter().map(|(id, pid, _, _)| (id.clone(), Some(*pid))))
         .collect();
-    let before = shown(&watched);
+    let before = shown(&rt, &watched);
     for (id, probed) in idle {
-        set(&id, None);
+        set(&rt, &id, None);
         if !probed {
-            forget(&id);
+            forget(&rt, &id);
         }
-        fallbacks().lock().unwrap_or_else(|e| e.into_inner()).insert(id, None);
+        rt.with(&id, |r| r.players.fallback = Some(None));
     }
     static START: Mutex<usize> = Mutex::new(0);
     calls.sort_by(|a, b| a.0.cmp(&b.0));
     rotate_calls(&mut calls, &mut START.lock().unwrap_or_else(|e| e.into_inner()));
     let mut asks = futures_util::stream::FuturesUnordered::new();
     for (id, pid, call, records) in calls {
+        let rt = rt.clone();
         asks.push(Box::pin(async move {
             // 앞에서 돌린 순서로 자리를 시도한다. 기다리는 인스턴스는 이번 갱신을 건너뛴다
             let result = call.timeout(CALL_TIMEOUT_SECS).try_run().await;
-            apply_refresh(&id, Some(pid), result, std::time::Instant::now(), records);
+            apply_refresh(&rt, &id, Some(pid), result, std::time::Instant::now(), records);
         }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>);
     }
     for (id, pid, host, port) in probes {
+        let rt = rt.clone();
         asks.push(Box::pin(async move {
             let result = port_open(&host, port).await;
-            apply_probe(&id, Some(pid), result, std::time::Instant::now());
+            apply_probe(&rt, &id, Some(pid), result, std::time::Instant::now());
         }));
     }
     while asks.next().await.is_some() {}
-    if shown(&watched) != before {
+    if shown(&rt, &watched) != before {
         crate::events::emit_live("servers.changed", serde_json::json!({}));
     }
 }
 
 /// 서버 목록에 보이는 접속자 칸: 서버마다 (수, 응답 없음 이유)
-fn shown(watched: &[(String, Option<u32>)]) -> Vec<(Option<PlayerCount>, Option<String>)> {
+fn shown(rt: &Runtimes, watched: &[(String, Option<u32>)]) -> Vec<(Option<PlayerCount>, Option<String>)> {
     let now = std::time::Instant::now();
-    watched.iter().map(|(id, pid)| (get(id), unresponsive(id, *pid, now))).collect()
+    watched.iter().map(|(id, pid)| (get(rt, id), unresponsive(rt, id, *pid, now))).collect()
 }
 
 /// 포트 확인 실패 이유의 머리. 화면에 낼 때 `reason_text`가 화면 언어 문구로 바꾼다
@@ -303,9 +312,9 @@ pub fn reason_text(reason: &str, catalog: &crate::chat::i18n::Catalog) -> String
     }
 }
 
-fn apply_probe(id: &str, pid: Option<u32>, result: Result<(), String>, now: std::time::Instant) {
+fn apply_probe(rt: &Runtimes, id: &str, pid: Option<u32>, result: Result<(), String>, now: std::time::Instant) {
     let ok = json!({ "success": true });
-    record(id, pid, result.map(|()| &ok), now);
+    record(rt, id, pid, result.map(|()| &ok), now);
 }
 
 fn rotate_calls<T>(calls: &mut [T], start: &mut usize) {
@@ -316,7 +325,7 @@ fn rotate_calls<T>(calls: &mut [T], start: &mut usize) {
 }
 
 /// `records`가 false면 응답 없음 기록은 포트 확인(`apply_probe`)이 맡는다
-fn apply_refresh(id: &str, pid: Option<u32>, result: anyhow::Result<Option<Value>>, now: std::time::Instant, records: bool) {
+fn apply_refresh(rt: &Runtimes, id: &str, pid: Option<u32>, result: anyhow::Result<Option<Value>>, now: std::time::Instant, records: bool) {
     if matches!(result, Ok(None)) {
         return;
     }
@@ -324,16 +333,15 @@ fn apply_refresh(id: &str, pid: Option<u32>, result: anyhow::Result<Option<Value
     if let Err(e) = &result {
         tracing::debug!("player count for {} failed: {}", id, e);
     }
-    set(id, result.as_ref().ok().and_then(parse));
-    {
-        let mut fallbacks = fallbacks().lock().unwrap_or_else(|e| e.into_inner());
-        match result.as_ref() {
-            Ok(value) if answered_without_count(value) => fallbacks.insert(id.to_string(), max_of(value)),
-            _ => fallbacks.remove(id),
-        };
+    set(rt, id, result.as_ref().ok().and_then(parse));
+    match result.as_ref() {
+        Ok(value) if answered_without_count(value) => rt.with(id, |r| r.players.fallback = Some(max_of(value))),
+        _ => {
+            rt.existing(id, |r| r.players.fallback = None);
+        }
     }
     if records {
-        record(id, pid, result.as_ref().map_err(|e| e.to_string()), now);
+        record(rt, id, pid, result.as_ref().map_err(|e| e.to_string()), now);
     }
 }
 
@@ -346,53 +354,52 @@ mod tests {
     #[test]
     fn join_and_leave_lines_count_players_before_the_module_count() {
         let id = "roster-count-test";
-        assert_eq!(get(id), None);
-        let generation = roster_start(id);
-        assert_eq!(get(id), Some(PlayerCount { online: 0, max: None }), "counting starts at zero right away");
-        roster_change(id, generation, "Bob", true);
-        roster_change(id, generation, "사바쨩", true);
-        roster_change(id, generation, "Ghost", false);
-        assert_eq!(get(id), Some(PlayerCount { online: 2, max: None }));
-        roster_change(id, generation, "Bob", true);
-        assert_eq!(get(id).unwrap().online, 2, "a rejoin after a missed leave is one player");
-        roster_change(id, generation, "Bob", false);
-        roster_change(id, generation, "Bob", false);
-        assert_eq!(get(id).unwrap().online, 1, "a second leave does not go below zero");
-        assert_eq!(present(Some(id)), [(id.to_string(), "사바쨩".to_string())], "the counted roster names who is in now");
-        assert!(present(None).contains(&(id.to_string(), "사바쨩".to_string())));
+        let rt = Runtimes::default();
+        assert_eq!(get(&rt, id), None);
+        let generation = roster_start(&rt, id);
+        assert_eq!(get(&rt, id), Some(PlayerCount { online: 0, max: None }), "counting starts at zero right away");
+        roster_change(&rt, id, generation, "Bob", true);
+        roster_change(&rt, id, generation, "사바쨩", true);
+        roster_change(&rt, id, generation, "Ghost", false);
+        assert_eq!(get(&rt, id), Some(PlayerCount { online: 2, max: None }));
+        roster_change(&rt, id, generation, "Bob", true);
+        assert_eq!(get(&rt, id).unwrap().online, 2, "a rejoin after a missed leave is one player");
+        roster_change(&rt, id, generation, "Bob", false);
+        roster_change(&rt, id, generation, "Bob", false);
+        assert_eq!(get(&rt, id).unwrap().online, 1, "a second leave does not go below zero");
+        assert_eq!(present(&rt, Some(id)), [(id.to_string(), "사바쨩".to_string())], "the counted roster names who is in now");
+        assert!(present(&rt, None).contains(&(id.to_string(), "사바쨩".to_string())));
 
         // 모듈이 수 없이 최대 인원만 알려 주면 그 값을 붙인다
-        apply_refresh(id, Some(1), Ok(Some(json!({ "success": true, "max": 8 }))), std::time::Instant::now(), true);
-        assert_eq!(get(id), Some(PlayerCount { online: 1, max: Some(8) }));
+        apply_refresh(&rt, id, Some(1), Ok(Some(json!({ "success": true, "max": 8 }))), std::time::Instant::now(), true);
+        assert_eq!(get(&rt, id), Some(PlayerCount { online: 1, max: Some(8) }));
         // 모듈이 수를 줘도 센 수가 먼저고, 최대 인원만 빌린다
-        apply_refresh(id, Some(1), Ok(Some(json!({ "success": true, "online": 5, "max": 32 }))), std::time::Instant::now(), true);
-        assert_eq!(get(id), Some(PlayerCount { online: 1, max: Some(32) }));
+        apply_refresh(&rt, id, Some(1), Ok(Some(json!({ "success": true, "online": 5, "max": 32 }))), std::time::Instant::now(), true);
+        assert_eq!(get(&rt, id), Some(PlayerCount { online: 1, max: Some(32) }));
         // 모듈 함수가 실패해도 센 수는 그대로 보인다
-        apply_refresh(id, Some(1), Err(anyhow::anyhow!("timeout")), std::time::Instant::now(), true);
-        assert_eq!(get(id), Some(PlayerCount { online: 1, max: None }));
+        apply_refresh(&rt, id, Some(1), Err(anyhow::anyhow!("timeout")), std::time::Instant::now(), true);
+        assert_eq!(get(&rt, id), Some(PlayerCount { online: 1, max: None }));
 
-        roster_end(id, generation);
-        assert_eq!(get(id), None, "a stopped server has no count");
+        roster_end(&rt, id, generation);
+        assert_eq!(get(&rt, id), None, "a stopped server has no count");
         // 콘솔을 처음부터 못 읽은 서버(데몬 재시작 뒤 다시 붙음)는 모듈이 준 수를 쓴다
-        apply_refresh(id, Some(1), Ok(Some(json!({ "success": true, "online": 5, "max": 32 }))), std::time::Instant::now(), true);
-        assert_eq!(get(id), Some(PlayerCount { online: 5, max: Some(32) }));
-        set(id, None);
-        forget(id);
-        fallbacks().lock().unwrap().remove(id);
+        apply_refresh(&rt, id, Some(1), Ok(Some(json!({ "success": true, "online": 5, "max": 32 }))), std::time::Instant::now(), true);
+        assert_eq!(get(&rt, id), Some(PlayerCount { online: 5, max: Some(32) }));
     }
 
     #[test]
     fn a_restart_starts_from_zero_and_the_old_watch_cannot_touch_it() {
         let id = "roster-restart-test";
-        let old = roster_start(id);
-        roster_change(id, old, "Bob", true);
-        let new = roster_start(id);
-        assert_eq!(get(id).unwrap().online, 0);
-        roster_change(id, old, "Alex", true);
-        roster_end(id, old);
-        assert_eq!(get(id), Some(PlayerCount { online: 0, max: None }));
-        roster_end(id, new);
-        assert_eq!(get(id), None);
+        let rt = Runtimes::default();
+        let old = roster_start(&rt, id);
+        roster_change(&rt, id, old, "Bob", true);
+        let new = roster_start(&rt, id);
+        assert_eq!(get(&rt, id).unwrap().online, 0);
+        roster_change(&rt, id, old, "Alex", true);
+        roster_end(&rt, id, old);
+        assert_eq!(get(&rt, id), Some(PlayerCount { online: 0, max: None }));
+        roster_end(&rt, id, new);
+        assert_eq!(get(&rt, id), None);
     }
 
     // REST 서버는 포트에 붙어 보기만 한다 (요청을 보내면 서버 로그에 접근 줄이 1분마다 남는다, 사용자 지정)
@@ -406,23 +413,21 @@ mod tests {
 
         // 함수가 답해도 포트가 닫혀 있으면 응답 없음이다. 함수 결과는 응답 없음을 정하지 않는다
         let id = "probe-test";
+        let rt = Runtimes::default();
         let now = std::time::Instant::now();
-        apply_refresh(id, Some(7), Ok(Some(json!({ "success": true, "max": 32 }))), now, false);
+        apply_refresh(&rt, id, Some(7), Ok(Some(json!({ "success": true, "max": 32 }))), now, false);
         let closed = port_open("127.0.0.1", port).await.unwrap_err();
-        apply_probe(id, Some(7), Err(closed.clone()), now);
-        apply_probe(id, Some(7), Err(closed), now + UNRESPONSIVE_AFTER);
+        apply_probe(&rt, id, Some(7), Err(closed.clone()), now);
+        apply_probe(&rt, id, Some(7), Err(closed), now + UNRESPONSIVE_AFTER);
         // 사용자에게 보이는 이유는 화면 언어로 (locales bot.json)
-        let reason = unresponsive(id, Some(7), now + UNRESPONSIVE_AFTER).unwrap();
+        let reason = unresponsive(&rt, id, Some(7), now + UNRESPONSIVE_AFTER).unwrap();
         let ko = reason_text(&reason, &crate::chat::i18n::Catalog::for_language("ko"));
         assert!(ko.contains(&port.to_string()) && ko.contains("REST"), "{ko}");
         assert!(!ko.contains("closed"), "{ko}");
         assert_eq!(reason_text("connection refused", &crate::chat::i18n::Catalog::for_language("ko")), "connection refused");
-        apply_refresh(id, Some(7), Err(anyhow::anyhow!("x")), now + UNRESPONSIVE_AFTER, false);
-        apply_probe(id, Some(7), Ok(()), now + UNRESPONSIVE_AFTER);
-        assert!(unresponsive(id, Some(7), now + UNRESPONSIVE_AFTER).is_none(), "an open port clears it");
-        set(id, None);
-        forget(id);
-        fallbacks().lock().unwrap().remove(id);
+        apply_refresh(&rt, id, Some(7), Err(anyhow::anyhow!("x")), now + UNRESPONSIVE_AFTER, false);
+        apply_probe(&rt, id, Some(7), Ok(()), now + UNRESPONSIVE_AFTER);
+        assert!(unresponsive(&rt, id, Some(7), now + UNRESPONSIVE_AFTER).is_none(), "an open port clears it");
     }
 
     #[test]
@@ -441,15 +446,14 @@ mod tests {
     #[test]
     fn skipping_a_busy_lane_preserves_count_and_failure_history() {
         let id = "busy-lane-test";
+        let rt = Runtimes::default();
         let now = std::time::Instant::now();
-        set(id, Some(PlayerCount { online: 3, max: None }));
-        record(id, Some(123), Err("previous failure".into()), now);
-        apply_refresh(id, Some(123), Ok(None), now + UNRESPONSIVE_AFTER, true);
-        assert_eq!(get(id), Some(PlayerCount { online: 3, max: None }));
-        assert_eq!(unresponsive(id, Some(123), now + UNRESPONSIVE_AFTER), None);
-        assert_eq!(failures().lock().unwrap()[id].1, now);
-        set(id, None);
-        forget(id);
+        set(&rt, id, Some(PlayerCount { online: 3, max: None }));
+        record(&rt, id, Some(123), Err("previous failure".into()), now);
+        apply_refresh(&rt, id, Some(123), Ok(None), now + UNRESPONSIVE_AFTER, true);
+        assert_eq!(get(&rt, id), Some(PlayerCount { online: 3, max: None }));
+        assert_eq!(unresponsive(&rt, id, Some(123), now + UNRESPONSIVE_AFTER), None);
+        assert_eq!(rt.existing(id, |r| r.players.failure.as_ref().unwrap().1), Some(now));
     }
 
     #[test]
@@ -467,28 +471,29 @@ mod tests {
     #[test]
     fn a_server_that_keeps_failing_its_status_query_is_reported_unresponsive() {
         let id = "unresponsive-test";
+        let rt = Runtimes::default();
         let pid = Some(100);
         let start = std::time::Instant::now();
         let refused = json!({ "success": false, "message": "connection refused" });
         // 막 켜진 서버는 아직 답하지 않는다: 바로 알리지 않는다
-        record(id, pid, Err("connection refused".into()), start);
-        assert_eq!(unresponsive(id, pid, start + std::time::Duration::from_secs(60)), None);
-        record(id, pid, Ok(&refused), start + std::time::Duration::from_secs(60));
+        record(&rt, id, pid, Err("connection refused".into()), start);
+        assert_eq!(unresponsive(&rt, id, pid, start + std::time::Duration::from_secs(60)), None);
+        record(&rt, id, pid, Ok(&refused), start + std::time::Duration::from_secs(60));
         let later = start + UNRESPONSIVE_AFTER;
         // PC 확인: 화면에는 떴는데 데몬 로그에 경고가 없었다. 경고를 남긴 질문 뒤에야 알린다
-        assert_eq!(unresponsive(id, pid, later), None, "not yet logged");
-        record(id, pid, Ok(&refused), later);
-        assert_eq!(unresponsive(id, pid, later).as_deref(), Some("connection refused"));
-        assert_eq!(silent_for(id, pid, later + std::time::Duration::from_secs(120)), Some((UNRESPONSIVE_AFTER + std::time::Duration::from_secs(120), "connection refused".to_string())));
+        assert_eq!(unresponsive(&rt, id, pid, later), None, "not yet logged");
+        record(&rt, id, pid, Ok(&refused), later);
+        assert_eq!(unresponsive(&rt, id, pid, later).as_deref(), Some("connection refused"));
+        assert_eq!(silent_for(&rt, id, pid, later + std::time::Duration::from_secs(120)), Some((UNRESPONSIVE_AFTER + std::time::Duration::from_secs(120), "connection refused".to_string())));
 
         // 한 번이라도 답하면 지운다
-        record(id, pid, Ok(&json!({ "success": true, "online": 0 })), later);
-        assert_eq!(unresponsive(id, pid, later + UNRESPONSIVE_AFTER), None);
+        record(&rt, id, pid, Ok(&json!({ "success": true, "online": 0 })), later);
+        assert_eq!(unresponsive(&rt, id, pid, later + UNRESPONSIVE_AFTER), None);
 
         // 꺼진 서버는 기억하지 않는다
-        record(id, pid, Ok(&refused), later);
-        forget(id);
-        assert_eq!(unresponsive(id, pid, later + UNRESPONSIVE_AFTER * 2), None);
+        record(&rt, id, pid, Ok(&refused), later);
+        forget(&rt, id);
+        assert_eq!(unresponsive(&rt, id, pid, later + UNRESPONSIVE_AFTER * 2), None);
     }
 
     // 리뷰 282: 마인크래프트 enable-status=false면 핑이 늘 실패해 서버가 꺼질 때까지 거짓 경보가 떴다.
@@ -496,23 +501,25 @@ mod tests {
     #[test]
     fn a_server_that_answers_without_a_count_is_not_unresponsive() {
         let id = "answers-without-count-test";
+        let rt = Runtimes::default();
         let start = std::time::Instant::now();
-        record(id, Some(1), Err("timeout".into()), start);
-        record(id, Some(1), Ok(&json!({ "success": true })), start + UNRESPONSIVE_AFTER);
-        assert_eq!(unresponsive(id, Some(1), start + UNRESPONSIVE_AFTER * 2), None);
+        record(&rt, id, Some(1), Err("timeout".into()), start);
+        record(&rt, id, Some(1), Ok(&json!({ "success": true })), start + UNRESPONSIVE_AFTER);
+        assert_eq!(unresponsive(&rt, id, Some(1), start + UNRESPONSIVE_AFTER * 2), None);
     }
 
     // 리뷰 282: 60초 사이에 끝난 재시작이 이전 프로세스의 실패 시각을 이어받아 곧바로 응답 없음으로 보였다
     #[test]
     fn a_restarted_server_does_not_inherit_the_old_process_failures() {
         let id = "restart-inherits-test";
+        let rt = Runtimes::default();
         let start = std::time::Instant::now();
-        record(id, Some(1), Err("timeout".into()), start);
-        record(id, Some(1), Err("timeout".into()), start + UNRESPONSIVE_AFTER);
-        assert!(unresponsive(id, Some(1), start + UNRESPONSIVE_AFTER).is_some());
+        record(&rt, id, Some(1), Err("timeout".into()), start);
+        record(&rt, id, Some(1), Err("timeout".into()), start + UNRESPONSIVE_AFTER);
+        assert!(unresponsive(&rt, id, Some(1), start + UNRESPONSIVE_AFTER).is_some());
         // 새 프로세스: 이전 기록은 보이지 않고, 새로 실패하면 그때부터 다시 센다
-        assert_eq!(unresponsive(id, Some(2), start + UNRESPONSIVE_AFTER), None);
-        record(id, Some(2), Err("timeout".into()), start + UNRESPONSIVE_AFTER);
-        assert_eq!(unresponsive(id, Some(2), start + UNRESPONSIVE_AFTER + std::time::Duration::from_secs(60)), None);
+        assert_eq!(unresponsive(&rt, id, Some(2), start + UNRESPONSIVE_AFTER), None);
+        record(&rt, id, Some(2), Err("timeout".into()), start + UNRESPONSIVE_AFTER);
+        assert_eq!(unresponsive(&rt, id, Some(2), start + UNRESPONSIVE_AFTER + std::time::Duration::from_secs(60)), None);
     }
 }

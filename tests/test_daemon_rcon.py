@@ -91,6 +91,32 @@ class SdkLifecycleTests(unittest.TestCase):
                 self.assertEqual(result["error_code"], "module_bad_output")
                 self.assertTrue(result["message"])
 
+    def test_worker_answers_each_request_line_in_one_process(self):
+        script = (
+            f"import sys; sys.path.insert(0, {str(Path(daemon_rcon.__file__).parent)!r})\n"
+            "import daemon_rcon, os\n"
+            "sys.argv = ['lifecycle.py', '--worker']\n"
+            "calls = []\n"
+            "def target(config):\n"
+            "    calls.append(config['n'])\n"
+            "    print('stray output')\n"
+            "    return {'success': True, 'calls': calls, 'pid': os.getpid()}\n"
+            "daemon_rcon.run_lifecycle({'target': target})"
+        )
+        requests = "".join(json.dumps({"function": name, "config": {"n": n}}) + "\n"
+                           for name, n in (("target", 1), ("target", 2), ("missing", 3)))
+        output = subprocess.run([sys.executable, "-c", script], input=requests, capture_output=True, text=True)
+        self.assertEqual(output.returncode, 0, output.stderr)
+        lines = output.stdout.splitlines()
+        self.assertEqual(lines[0], daemon_rcon.WORKER_READY)
+        first, second, missing = (json.loads(line) for line in lines[1:])
+        self.assertEqual(first["calls"], [1])
+        self.assertEqual(second["calls"], [1, 2])
+        self.assertEqual(first["pid"], second["pid"])
+        self.assertTrue(missing["message"].startswith("Unknown function"))
+        self.assertEqual(output.stderr.count(daemon_rcon.WORKER_DONE), 3)
+        self.assertIn("stray output", output.stderr)
+
 
 class HostDaemon(io.StringIO):
     def __init__(self, directory, reply, prefix="HOST:"):

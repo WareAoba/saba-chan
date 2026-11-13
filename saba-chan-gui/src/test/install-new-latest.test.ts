@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import i18n from '../i18n';
 import type { Server } from '../stores/useServerStore';
 import type { ModuleInfo } from '../types/daemon';
@@ -11,7 +11,6 @@ async function openJarModal(
     install?: Record<string, unknown>,
 ) {
     const servers = [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }] as unknown as Server[];
-    const setModal = vi.fn();
     window.api = {
         instanceStart: vi.fn().mockResolvedValue({ success: false, action_required: 'server_jar_not_found' }),
         openFolderDialog: vi.fn().mockResolvedValue('/srv/a'),
@@ -21,20 +20,8 @@ async function openJarModal(
         serverList: vi.fn().mockResolvedValue({ servers }),
     } as unknown as typeof window.api;
     window.showToast = vi.fn();
-    const { result } = renderHook(() =>
-        useServerActions({
-            servers,
-            setServers: vi.fn(),
-            modules,
-            loading: false,
-            setLoading: vi.fn(),
-            setModal,
-            setProgressBar: vi.fn(),
-            openConsole: vi.fn(),
-            setShowModuleManager: vi.fn(),
-        }),
-    );
-    await act(async () => result.current.handleStart('A', 'game'));
+    const { result, setModal } = setupServerStore({ servers, modules });
+    await act(async () => result.current.startServer('a'));
     return setModal.mock.calls[0][0];
 }
 

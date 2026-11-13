@@ -759,8 +759,7 @@ impl Session {
                 });
                 // 원격 포트의 직접 연결 주소를 따로 적지 않았으면 릴레이가 본 공인 IP를 올린다
                 if seen_changed {
-                    let server = self.server.clone();
-                    tokio::spawn(async move { crate::remote_daemon::on_seen_address(&server).await });
+                    crate::remote_daemon::on_seen_address(&self.server);
                 }
                 // 릴레이가 받은 확인 응답은 지운다. 그 사이 새로 적용한 길드는 남는다
                 self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).retain(|g| !acks.contains(g));
@@ -854,7 +853,7 @@ impl Session {
         };
         let schedules = {
             let supervisor = self.server.supervisor.read().await;
-            crate::ipc::handlers::backup::upcoming_runs(supervisor.instance_store.list(), SCHEDULES_MAX)
+            crate::scheduler::runner::upcoming_runs(supervisor.instance_store.list(), SCHEDULES_MAX)
         };
         // 모듈 locales 파일은 하트비트마다 읽으므로 async 작업자 밖에서 읽는다
         let views = self.server.modules().await;
@@ -1120,7 +1119,7 @@ impl Session {
                 if !crate::remote_daemon::relay::valid_ticket_id(id) {
                     return json!({ "success": false, "data": { "error": "invalid remote_tunnel" } });
                 }
-                if !crate::remote_daemon::status().await.listening {
+                if !self.server.remote_daemon.status().await.listening {
                     return json!({ "success": false, "data": { "error": "remote_off" } });
                 }
                 let port = crate::remote_daemon::config::settings_in(&saba_chan_updater_lib::config_file::ConfigFile::default_location()).port;

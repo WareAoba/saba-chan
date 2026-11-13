@@ -9,12 +9,16 @@ const ALLOWED = new Set([
     '@gui/utils/serverView',
     // 데몬 호출 결과가 실패인지 (앱과 같은 판정)
     '@gui/utils/apiResult',
+    // 켜기·끄기·다시 켜기 답 해석 (약관·저장 없이 끄기·이미 켜짐·그만둠, 앱과 같은 판정)
+    '@gui/utils/serverControl',
     '@gui/utils/localizedText',
     // 주기 읽기 (숨으면 쉬고 보이면 바로 읽기, 앱과 같다)
     '@gui/utils/poll',
     '@gui/utils/commandRisk',
     // 콘솔 줄의 시각 표시·수준 판정 (화면 없는 순수 함수, 앱 콘솔과 같은 규칙)
     '@gui/utils/consoleLine',
+    // 콘솔 답 → 넣을 줄·다음 자리 (화면 없는 순수 함수, 앱 콘솔과 같은 규칙)
+    '@gui/utils/consoleFeed',
     // 명령 줄 읽기와 입력 칸 값 → 인자 (데몬이 읽는 방식 그대로, 앱 명령 탭과 같은 규칙)
     '@gui/utils/commandSyntax',
     // 포트포워딩 확인 결과 읽기 (화면 없는 순수 함수)

@@ -2,11 +2,11 @@
  * 응답 없는 서버 감시 (데몬 module_settings: unresponsive_action·unresponsive_minutes, 이벤트 instance.unresponsive).
  * 사바쨩 탭에서 할 일과 시간을 고르고, 판정되면 토스트로 알린다.
  */
-import { act, render, renderHook, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServerSettingsModal } from '../components/ServerSettingsModal';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 import i18n from '../i18n';
 import { eventToast } from '../utils/daemonEvents';
 import { pickOption } from './dropdown';
@@ -16,9 +16,7 @@ const t = (k: string, o?: Record<string, unknown>) => i18n.t(`gui:${k}`, o ?? {}
 const modules = [{ name: 'game', settings: { fields: [{ name: 'title', field_type: 'text' }] } }];
 
 const setup = () =>
-    renderHook(() =>
-        useServerSettings({ servers: [], modules: modules as never, setModal: vi.fn(), setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-    );
+    setupSettingsStore({ servers: [], modules: modules as never, setModal: vi.fn(), setProgressBar: vi.fn(), fetchServers: vi.fn() });
 
 beforeEach(() => {
     window.showToast = vi.fn();

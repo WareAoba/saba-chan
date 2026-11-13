@@ -1,7 +1,7 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 
 // 첫 시작은 데몬이 준비하느라 몇 분이 걸릴 수 있다 (L35: 105초): 그동안 실패로 보이면 안 된다
 describe('오래 걸리는 서버 시작', () => {
@@ -14,9 +14,6 @@ describe('오래 걸리는 서버 시작', () => {
 
     describe('시작 요청이 끝나기 전', () => {
         let servers: Record<string, unknown>[];
-        const setServers = vi.fn((update: unknown) => {
-            servers = typeof update === 'function' ? update(servers) : update;
-        });
         beforeEach(() => {
             vi.useFakeTimers({ shouldAdvanceTime: true });
             servers = [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }];
@@ -31,29 +28,15 @@ describe('오래 걸리는 서버 시작', () => {
         afterEach(() => vi.useRealTimers());
 
         it('1분이 넘어도 목록 새로고침이 시작 중 표시를 지우지 않는다', async () => {
-            const { result } = renderHook(() =>
-                useServerActions({
-                    servers,
-                    setServers,
-                    modules: [],
-                    loading: false,
-                    setLoading: vi.fn(),
-                    setModal: vi.fn(),
-                    setProgressBar: vi.fn(),
-                    openConsole: vi.fn(),
-                    closeConsole: vi.fn(),
-                    setShowModuleManager: vi.fn(),
-                    formatUptime: vi.fn(),
-                } as never),
-            );
+            const { result } = setupServerStore({ servers });
             await act(async () => result.current.fetchServers()); // 첫 목록
             act(() => {
-                result.current.handleStart('A', 'game');
+                result.current.startServer('a');
             });
-            expect(servers[0].status).toBe('starting');
+            expect(result.current.servers[0].status).toBe('starting');
             await act(async () => vi.advanceTimersByTime(90_000));
             await act(async () => result.current.fetchServers());
-            expect(servers[0].status).toBe('starting');
+            expect(result.current.servers[0].status).toBe('starting');
             expect(window.showToast).not.toHaveBeenCalled();
         });
     });

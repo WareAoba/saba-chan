@@ -21,7 +21,7 @@ const GAME_CHAT_MODES = ['off', 'all', 'keyword'];
 /** 'true'·'false' 글자로 저장된 값도 있다. 기본값은 데몬과 같다 (크래시 재시작 켜짐, 원인 모를 종료 꺼짐) */
 const asFlag = (v: unknown, dflt: boolean) => (v === true || v === 'true' ? true : v === false || v === 'false' ? false : dflt);
 
-/** 저장된 사바쨩 칸 값 (GUI useServerSettings 와 같은 자리에서 읽는다) */
+/** 저장된 사바쨩 칸 값 (GUI useServerSettingsStore 와 같은 자리에서 읽는다) */
 export function sabaValues(server: Partial<Server> | ApiBody | null | undefined): SabaValues {
     const ms = server?.module_settings || {};
     return {

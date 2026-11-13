@@ -11,11 +11,11 @@ import { type CommandField, withCommandAliases } from './commandRisk';
  * 폴링으로 받은 새 목록에서 내용이 그대로인 서버는 이전 객체를 쓰고, 전부 그대로면 이전 배열을 돌려준다.
  * 서버 목록은 몇 초마다 새로 오므로, 바뀐 게 없을 때 화면 전체를 다시 그리지 않게 한다.
  */
-export function reuseUnchanged<T extends { name: string }>(prev: T[], next: T[]) {
-    const byName = new Map(prev.map((s) => [s.name, s]));
+export function reuseUnchanged<T extends { id: string }>(prev: T[], next: T[]) {
+    const byId = new Map(prev.map((s) => [s.id, s]));
     let same = prev.length === next.length;
     const out = next.map((s, i) => {
-        const old = byName.get(s.name);
+        const old = byId.get(s.id);
         if (old && JSON.stringify(old) === JSON.stringify(s)) {
             if (prev[i] !== old) same = false;
             return old;

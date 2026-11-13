@@ -6,7 +6,7 @@ import { useApp } from '../store';
 import type { Module } from '../types';
 import { asServer, mockApi } from './mocks';
 
-// 감사 P2-3: 4초 폴링이 새 revision을 줘도 저장은 고치기 시작한 때의 revision을 싣는다 (GUI useServerSettings와 같다)
+// 감사 P2-3: 4초 폴링이 새 revision을 줘도 저장은 고치기 시작한 때의 revision을 싣는다 (GUI useServerSettingsStore와 같다)
 const moduleData = { settings: { fields: [{ name: 'motd', field_type: 'text' }] } };
 const at = (revision: string, motd: string) => ({
     id: 's1',

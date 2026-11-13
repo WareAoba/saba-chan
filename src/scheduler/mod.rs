@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
+pub mod runner;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskAction {
@@ -392,6 +394,15 @@ pub fn push_run(history: &mut History, key: &str, run: Run) -> bool {
 /// 정지·시작·공지처럼 짧거나 기다림을 끝낼 수 있는 것은 그대로 한다. 사용자가 직접 누른 작업은 이 판정을 거치지 않는다
 pub fn waits_for_update(action: &TaskAction) -> bool {
     matches!(action, TaskAction::Backup | TaskAction::Update)
+}
+
+/// 켜진 `action` 작업들이 하루에 도는 횟수 (매일 시각 작업은 1번, N분마다는 하루를 N으로 나눈 만큼)
+pub fn daily_runs(schedule: &[ScheduledTask], action: TaskAction) -> u32 {
+    schedule
+        .iter()
+        .filter(|t| t.enabled && t.action == action)
+        .map(|t| t.every_minutes.map_or(1, |m| (24 * 60u32).div_ceil(m.max(1))))
+        .sum()
 }
 
 /// 작업마다 고유한 열쇠 (인스턴스 id + 작업 내용). 작업을 고치면 새 작업으로 센다

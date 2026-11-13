@@ -2,7 +2,7 @@
  * 브랜치 서버: 서버 줄을 우클릭해 그 서버 아래에 묶이는 새 서버를 만든다. 설정은 만들 때 데몬이 한 번 옮기고,
  * 목록에서는 상위 서버 바로 아래에 가지로 붙어 접을 수 있다. 브랜치는 한 단계만 둔다.
  */
-import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import i18n from 'i18next';
 import type { ComponentType } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,7 +13,7 @@ vi.mock('../components/Modals/CommandModal', () => ({ default: () => null }));
 
 import { ServersPage as ServersPageImpl } from '../components/servers/ServersPage';
 import { ContextMenuProvider } from '../components/ui/ContextMenu';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 import { useServerStore } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
@@ -30,20 +30,15 @@ const LIST = [
 
 function page(onCreateBranch = vi.fn().mockResolvedValue(true)) {
     useServerStore.getState().setServers(LIST as never);
+    useServerStore.setState({ addServer: onCreateBranch });
     render(
         <ContextMenuProvider allowNative={false}>
             <ServersPage
                 servers={useServerStore.getState().servers}
-                setServers={() => {}}
                 modules={[]}
                 onAddServer={() => {}}
-                onStart={() => {}}
-                onStop={() => {}}
-                onDelete={() => {}}
-                onCreateBranch={onCreateBranch}
                 drag={{ cardRefs: { current: {} }, skipNextClick: { current: false }, handleCardPointerDown: () => {} }}
                 consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] }}
-                settingsProps={{}}
             />
         </ContextMenuProvider>,
     );
@@ -104,21 +99,9 @@ describe('브랜치 서버', () => {
             serverList: vi.fn().mockResolvedValue({ servers: [] }),
             instanceCreate: vi.fn().mockResolvedValue({ success: true, id: 'new' }),
         } as unknown as typeof window.api;
-        const { result } = renderHook(() =>
-            useServerActions({
-                servers: [],
-                setServers: vi.fn(),
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal: vi.fn(),
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-            } as never),
-        );
+        const { result } = setupServerStore();
         await act(async () => {
-            await result.current.handleAddServer({ name: 'Friends test', module_name: 'game', branch_of: 's1', port: 25566 } as never);
+            await result.current.addServer({ name: 'Friends test', module_name: 'game', branch_of: 's1', port: 25566 } as never);
         });
         expect(window.api.instanceCreate).toHaveBeenCalledWith({ name: 'Friends test', module_name: 'game', branch_of: 's1', port: 25566 });
     });

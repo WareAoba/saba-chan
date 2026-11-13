@@ -36,11 +36,11 @@ import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
 import { useModalClose } from './hooks/useModalClose';
 import { useModulesRetry } from './hooks/useModulesRetry';
-import { useServerActions } from './hooks/useServerActions';
-import { useServerSettings } from './hooks/useServerSettings';
 import { useConsoleStore } from './stores/useConsoleStore';
 import { type DiscordData, setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
-import { setServerI18n, useServerStore } from './stores/useServerStore';
+import { setServerConsole } from './stores/serverActions';
+import { setServerI18n } from './stores/serverI18n';
+import { useServerStore } from './stores/useServerStore';
 import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
@@ -77,8 +77,6 @@ const INIT_STALL_MS = 60_000;
 
 function App() {
     const { t, i18n } = useTranslation('gui');
-    const tRef = useRef(t);
-    tRef.current = t;
 
     // ── Console Popout Mode Detection ──────────────────────
     const popoutParams = useMemo(() => {
@@ -106,7 +104,6 @@ function App() {
     const servers = useServerStore((s) => s.servers);
     const setServers = useServerStore((s) => s.setServers);
     const modules = useServerStore((s) => s.modules);
-    const loading = useServerStore((s) => s.loading);
     const moduleAliasesPerModule = useServerStore((s) => s.moduleAliasesPerModule);
     const daemonReady = useServerStore((s) => s.daemonReady);
     const setDaemonReady = useServerStore((s) => s.setDaemonReady);
@@ -188,7 +185,7 @@ function App() {
     // 서버를 끄면 PIP를 닫고, 다시 켜거나 앱을 다시 열면 기억된 PIP를 띄운다
     usePopoutLifecycle({ enabled: !isPopoutMode, servers, popoutIds: consolePopoutIds });
 
-    const { draggedName, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
+    const { draggedId, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
 
     // 익스텐션 초기화 상태 (daemon.startup hook 진행 중이면 스피너 표시)
     const { initializing: extInitializing, inProgress: extInitInProgress } = useExtensionInitStatus();
@@ -197,35 +194,21 @@ function App() {
     const handleStartDiscordBot = useDiscordStore((s) => s.startBot);
     const handleStopDiscordBot = useDiscordStore((s) => s.stopBot);
 
-    const { fetchServers, handleStart, handleStop, handleRestart, handleRename, handleAddServer, handleDeleteServer } =
-        useServerActions({
-            servers,
-            setServers,
-            modules,
-            loading,
-            setLoading: (val: boolean) => useServerStore.setState({ loading: val }),
-            setModal,
-            setProgressBar,
-            openConsole,
-            setShowModuleManager,
-            openSettingsToExtensions: () => {
-                useUIStore.getState().openSettings('extensions');
-            },
-        });
+    // 서버 동작은 스토어 액션이다 (stores/serverActions). 관리 모드로 켜면 여는 콘솔은 이 창의 콘솔 훅이 들고 있다
+    useEffect(() => setServerConsole(openConsole), [openConsole]);
+    const fetchServers = useServerStore((s) => s.fetchServers);
+    const addServer = useServerStore((s) => s.addServer);
 
-    // 익스텐션 화면의 host가 쓰는 이 창의 동작 (extensions/host). 손잡이는 바뀌어도 host는 그대로 둔다
-    const serverActionsRef = useRef({ handleStart, handleStop, handleRestart });
-    serverActionsRef.current = { handleStart, handleStop, handleRestart };
+    // 익스텐션 화면의 host가 쓰는 이 창의 동작 (extensions/host)
     const hostWindow = useMemo<HostWindow>(
         () => ({
             servers: () => useServerStore.getState().servers,
             run: async (instanceId, action) => {
-                const server = useServerStore.getState().servers.find((x) => x.id === instanceId);
-                if (!server) return false;
-                const { handleStart: start, handleStop: stop, handleRestart: restart } = serverActionsRef.current;
-                if (action === 'start') await start(server.name, server.module);
-                else if (action === 'stop') await stop(server.name);
-                else if (action === 'restart') await restart(server.name);
+                const store = useServerStore.getState();
+                if (!store.servers.some((x) => x.id === instanceId)) return false;
+                if (action === 'start') await store.startServer(instanceId);
+                else if (action === 'stop') await store.stopServer(instanceId);
+                else if (action === 'restart') await store.restartServer(instanceId);
                 else return false;
                 return true;
             },
@@ -242,44 +225,6 @@ function App() {
 
     // Store-based fetchModules
     const fetchModules = useServerStore((s) => s.fetchModules);
-
-    const {
-        showSettingsModal,
-        settingsServer,
-        settingsValues,
-        unsetSettings,
-        settingsSource,
-        settingsActiveTab,
-        setSettingsActiveTab,
-        advancedExpanded,
-        setAdvancedExpanded,
-        availableVersions,
-        versionsLoading,
-        versionInstalling,
-        resettingServer,
-        savingSettings,
-        isSettingsClosing,
-        handleOpenSettings,
-        handleSettingChange,
-        handleSettingLoaded,
-        revertSettings,
-        revertSetting,
-        openedSettings,
-        unsavedServers,
-        handleInstallVersion,
-        handleResetServer,
-        handleSaveSettings,
-        restartPending,
-        restartNow,
-        dismissRestart,
-    } = useServerSettings({
-        servers,
-        modules,
-        setModal,
-        setProgressBar,
-        fetchServers,
-        onRestart: handleRestart,
-    });
 
     // ── Modal Close Animations ─────────────────────────────
     // biome-ignore lint/correctness/useExhaustiveDependencies: useState setters are stable
@@ -606,13 +551,12 @@ function App() {
 
     // 목록 자동 새로고침 (데몬 준비 전에는 스킵). 데몬 이벤트가 바뀜을 바로 알리면(DaemonEvents) 놓친 것만 메우게 느리게 돈다
     const extensionStatus = useServerStore((s) => s.servers.some((srv) => Object.keys(srv.extension_status || {}).length > 0));
-    // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers는 렌더마다 새 함수다 (주기만 따른다)
     useEffect(() => {
         if (!autoRefresh || !daemonReady) return;
         // 스트림이 끊긴 동안에는 사용자 주기로 돌아간다: 주기는 돌 때마다 다시 정한다
         const ms = () => serverListPollMs(refreshInterval, { events: eventsLive(), extensionStatus });
         return startPoll(fetchServers, ms, { immediate: false });
-    }, [autoRefresh, refreshInterval, daemonReady, extensionStatus]);
+    }, [autoRefresh, refreshInterval, daemonReady, extensionStatus, fetchServers]);
 
     // ══════════════════════════════════════════════════════════
     // ── Render ───────────────────────────────────────────────
@@ -855,36 +799,6 @@ function App() {
         consolePopoutIds,
         popinConsole,
     };
-    const settingsProps = {
-        showSettingsModal,
-        settingsServer,
-        handleOpenSettings,
-        settingsValues,
-        unsetSettings,
-        settingsSource,
-        settingsActiveTab,
-        setSettingsActiveTab,
-        advancedExpanded,
-        setAdvancedExpanded,
-        availableVersions,
-        versionsLoading,
-        versionInstalling,
-        handleSettingChange,
-        handleSettingLoaded,
-        revertSettings,
-        revertSetting,
-        openedSettings,
-        unsavedServers,
-        handleInstallVersion,
-        handleSaveSettings,
-        handleResetServer,
-        resettingServer,
-        savingSettings,
-        isClosing: isSettingsClosing,
-        restartPending,
-        restartNow,
-        dismissRestart,
-    };
 
     const openingOverlay =
         openingPhase === 'loading' || openingPhase === 'prepare' ? (
@@ -956,26 +870,17 @@ function App() {
                         extensions={modules}
                         servers={servers}
                         onRefreshextensions={fetchModules}
-                        onAddServer={handleAddServer}
+                        onAddServer={addServer}
                     />
 
                     <div className="app-body" data-page={page}>
                         {page === 'servers' && (
                             <ServersPage
                                 servers={servers}
-                                setServers={setServers}
                                 modules={modules}
                                 onAddServer={() => setShowModuleManager(true)}
-                                onCreateBranch={handleAddServer}
-                                onStart={handleStart}
-                                onStop={handleStop}
-                                onRestart={handleRestart}
-                                onRename={handleRename}
-                                onDelete={handleDeleteServer}
-                                setModal={setModal}
-                                drag={{ draggedName, cardRefs, skipNextClick, handleCardPointerDown }}
+                                drag={{ draggedId, cardRefs, skipNextClick, handleCardPointerDown }}
                                 consoleProps={consoleProps}
-                                settingsProps={settingsProps}
                             />
                         )}
                         {page === 'discord' && <DiscordPage {...discordPageProps} />}

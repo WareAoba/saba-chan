@@ -28,13 +28,13 @@ interface ServerRowProps {
     moduleData?: ModuleInfo;
     selected: boolean;
     onSelect: (id: string) => void;
-    onStart: (name: string, moduleName: string) => void;
-    onStop: (name: string) => void;
+    onStart: (id: string) => void;
+    onStop: (id: string) => void;
     rowRef: (el: HTMLDivElement | null) => void;
     dragging: boolean;
     onPointerDown: (e: PointerEvent<HTMLDivElement>, index: number) => void;
     skipNextClick: MutableRefObject<boolean>;
-    onRestart?: (name: string) => void;
+    onRestart?: (id: string) => void;
     onDelete?: (server: Server) => void;
     /** 브랜치 서버 줄: 상위 서버 아래에 가지 선으로 붙는다 */
     branch?: boolean;
@@ -44,7 +44,7 @@ interface ServerRowProps {
     onToggleBranches?: (id: string) => void;
     /** 이 서버의 브랜치 서버 만들기 (브랜치에는 주지 않는다: 한 단계만 둔다) */
     onBranch?: (server: Server) => void;
-    /** 저장하지 않은 설정이 메모리에 남아 있다 (useServerSettings `unsavedServers`) */
+    /** 저장하지 않은 설정이 메모리에 남아 있다 (useServerSettingsStore `unsavedServerIds`) */
     unsaved?: boolean;
 }
 
@@ -90,12 +90,12 @@ export function ServerRow({
     };
     const dir = (server.module_settings?.working_dir || server.working_dir || null) as string | null;
     const menuItems = (): ContextMenuItem[] => [
-        action === 'stop' && { id: 'stop', label: t('shell.stop'), icon: 'stop', onSelect: () => onStop(server.name) },
+        action === 'stop' && { id: 'stop', label: t('shell.stop'), icon: 'stop', onSelect: () => onStop(server.id) },
         action === 'start' && {
             id: 'start',
             label: t('shell.start'),
             icon: 'play',
-            onSelect: () => onStart(server.name, server.module),
+            onSelect: () => onStart(server.id),
         },
         status === 'running' &&
             onRestart &&
@@ -103,7 +103,7 @@ export function ServerRow({
                 id: 'restart',
                 label: t('shell.restart'),
                 icon: 'refresh',
-                onSelect: () => onRestart(server.name),
+                onSelect: () => onRestart(server.id),
             },
         interactionOf(server, moduleData).console && {
             id: 'console',
@@ -266,8 +266,8 @@ export function ServerRow({
                 disabled={action === 'busy'}
                 onClick={(e) => {
                     e.stopPropagation();
-                    if (action === 'stop') onStop(server.name);
-                    else if (action === 'start') onStart(server.name, server.module);
+                    if (action === 'stop') onStop(server.id);
+                    else if (action === 'start') onStart(server.id);
                 }}
                 data-tooltip={action === 'stop' ? t('shell.stop') : action === 'start' ? t('shell.start') : statusLabel}
                 aria-label={`${server.name} ${action === 'stop' ? t('shell.stop') : t('shell.start')}`}

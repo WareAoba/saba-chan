@@ -81,9 +81,9 @@ pub fn spawn_update_checks(state: IPCServer) {
                 tried.retain(|id, _| list.iter().any(|i| &i.id == id));
                 due_checks(list, &tried, std::time::Instant::now())
             };
-            for (id, name) in due {
+            for (id, _) in due {
                 // 설치·업데이트 중이면 다음 틱에 본다
-                if is_pending(&id) || super::backup::InstanceLock::held(&id) || state.provision_tracker.get(&name).is_some_and(|p| !p.done) {
+                if is_pending(&id) || super::backup::InstanceLock::held(&id) || state.provision_tracker.get(&id).is_some_and(|p| !p.done) {
                     continue;
                 }
                 tried.insert(id.clone(), std::time::Instant::now());
@@ -245,7 +245,7 @@ async fn warn(state: &IPCServer, id: &str, minutes: u32) -> bool {
 }
 
 /// 켜져 있으면 저장하고 정지 → 업데이트 → 켜져 있었으면 다시 켠다. 정지하지 못하면 업데이트하지 않는다.
-/// 예약 업데이트(`backup::run_update`)와 켜진 서버의 업데이트가 함께 쓴다. 업데이트가 됐으면 true
+/// 예약 업데이트(`scheduler::runner::run_update`)와 켜진 서버의 업데이트가 함께 쓴다. 업데이트가 됐으면 true
 pub(crate) async fn stop_update_start(state: &IPCServer, id: &str) -> bool {
     stop_update_start_when(state, id, false).await.unwrap_or(false)
 }
@@ -254,7 +254,7 @@ pub(crate) async fn stop_update_start(state: &IPCServer, id: &str) -> bool {
 /// 지금 접속자 수를 보고, 켜져 있는데 0명으로 확인되지 않으면 끄지 않고 None (잠금이 잡혀 있어도 None)
 /// 같은 서버 폴더를 쓰는 다른 인스턴스가 켜져 있거나 작업 중이어도 None (미룬다)
 async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool) -> Option<bool> {
-    // 시작은 이 잠금을 잡고 켠다(`server::start_instance`): 잡고 있는 동안에는 확인한 뒤 새로 켜지지 않는다
+    // 시작은 이 잠금을 잡고 켠다(`server::start`: `start_unmanaged`·`managed::start_managed`): 잡고 있는 동안에는 확인한 뒤 새로 켜지지 않는다
     let start_lock = if only_if_empty {
         let Some(lock) = super::backup::InstanceLock::take_for_writes(id).await else {
             postpone(id, false);
@@ -280,18 +280,10 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
         }
     }
     if was_running {
-        let stop =
-            crate::ipc::internal::into_internal(super::server::stop_instance(state.clone(), id, false).await).await;
         // 콘솔이 없어 저장 후 종료를 못 하는 서버(`graceful_stop_unavailable`)도 여기서 멈춘다: 강제 종료하지 않는다
-        if !stop.status.is_success() || stop.body.get("success").and_then(Value::as_bool) == Some(false) {
-            tracing::warn!("Update of '{}': stop failed: {}", id, stop.body);
-            let error = stop
-                .body
-                .get("error")
-                .and_then(Value::as_str)
-                .unwrap_or("stop failed")
-                .to_string();
-            super::instance::emit_update_failed(state, id, &error).await;
+        if let Err(failure) = super::server::stop(state, id, false).await {
+            tracing::warn!("Update of '{}': stop failed: {}", id, failure.body);
+            super::instance::emit_update_failed(state, id, failure.reason().unwrap_or("stop failed")).await;
             return Some(false);
         }
         for _ in 0..STOP_POLLS {
@@ -306,24 +298,14 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
     // 잡은 잠금은 업데이트에 넘긴다: 놓았다 다시 잡는 틈에 다른 작업이 끼어 업데이트를 못 하는 일이 없게
     let updated = match super::instance::begin_server_update_holding(state, id, start_lock).await {
         Ok(job) => Some(job.await.unwrap_or(false)),
-        Err(r) => {
-            let body = crate::ipc::internal::into_internal(r).await.body;
-            tracing::warn!("Update of '{}' could not start: {}", id, body);
+        Err(failure) => {
+            tracing::warn!("Update of '{}' could not start: {}", id, failure.body);
             // 위에서 본 뒤 끄는 사이에 같은 폴더의 다른 인스턴스가 켜졌거나 작업을 시작했다: 자동 업데이트는 실패로 남기지 않고 미룬다
-            let in_use = matches!(
-                body.get("error_code").and_then(Value::as_str),
-                Some("instance_busy" | "server_running")
-            );
-            if only_if_empty && in_use {
+            if only_if_empty && failure.is_in_use() {
                 postpone(id, false);
                 None
             } else {
-                super::instance::emit_update_failed(
-                    state,
-                    id,
-                    body.get("error").and_then(Value::as_str).unwrap_or("update failed"),
-                )
-                .await;
+                super::instance::emit_update_failed(state, id, failure.reason().unwrap_or("update failed")).await;
                 Some(false)
             }
         }
@@ -332,9 +314,23 @@ async fn stop_update_start_when(state: &IPCServer, id: &str, only_if_empty: bool
         if updated != Some(true) {
             tracing::warn!("Update of '{}' did not finish; starting the old version again", id);
         }
-        super::backup::start_after_update(state, id, generation).await;
+        start_after_update(state, id, generation).await;
     }
     updated
+}
+
+/// 업데이트가 끈 서버를 다시 켠다. 그 순간 다른 작업(백업·복원)이 잠금을 쥐고 있으면 끝나기를 기다린다.
+/// 그사이 사용자가 켜거나 끄거나 인스턴스를 지우면(`generation`이 바뀌면) 그만둔다
+async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
+    let wanted = || async {
+        let supervisor = state.supervisor.read().await;
+        supervisor.instance_store.get(id).is_some() && supervisor.run_generation_of(id) == generation
+    };
+    match super::server::start_when_free(state, id, generation, wanted).await {
+        None => tracing::info!("Scheduled update of '{}': not starting again, the server was started, stopped or removed meanwhile", id),
+        Some(Err(failure)) => tracing::warn!("Scheduled update of '{}': could not start the server again: {}", id, failure.body),
+        Some(Ok(_)) => {}
+    }
 }
 
 fn error(status: StatusCode, code: &str, message: &str) -> Response {
@@ -453,7 +449,8 @@ async fn auto_tick(state: &IPCServer, id: &str, watch: &mut Watch) {
         return;
     }
     let running = super::backup::is_running(state, id).await;
-    let mut players = crate::supervisor::players::get(id).map(|c| c.online);
+    let runtime = state.supervisor.read().await.runtime.clone();
+    let mut players = crate::supervisor::players::get(&runtime, id).map(|c| c.online);
     let mut step = auto_step(running, players);
     if step != AutoStep::Wait {
         // 기다리는 동안 알림 버튼·앱·예약으로 이미 업데이트했을 수 있다: 끄기 전에 한 번 더 본다
@@ -572,8 +569,8 @@ fn warn_minutes_for(requested: Option<u32>, players: Option<u32>) -> u32 {
 /// 켜진 서버의 `apply-update`: 예고 뒤 업데이트를 걸고 바로 답한다
 pub async fn apply_to_running(state: &IPCServer, id: &str, body: &ApplyBody) -> Response {
     // 업데이트할 수 없는 서버(직접 설치 등)는 예고하거나 끄기 전에 거절한다 (꺼진 서버와 같은 400)
-    if let Err(r) = super::instance::updatable(&*state.supervisor.read().await, id) {
-        return r;
+    if let Err(failure) = super::instance::updatable(&*state.supervisor.read().await, id) {
+        return failure.into_response();
     }
     // 예고 없이 끌지(0명)는 기억한 수(최대 1분 전)가 아니라 지금 수로 정한다 (모르면 예고한다)
     let players = crate::supervisor::players::fresh(&state.supervisor, id).await;
@@ -591,6 +588,8 @@ pub async fn apply_to_running(state: &IPCServer, id: &str, body: &ApplyBody) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ipc::handlers::backup::tests::{server_with, NO_BACKUP, WORK_DEADLINE};
+    use crate::ipc::handlers::backup::InstanceLock;
 
     /// 데몬의 주기 확인: 자동 업데이트를 켠 서버는 자동 업데이트 쪽이 보고, 나머지는 3시간에 한 번
     #[test]
@@ -795,5 +794,21 @@ mod tests {
         assert!(is_pending("srv-pending-test"));
         drop(first);
         assert!(Pending::take("srv-pending-test").is_some());
+    }
+
+    /// 예약 업데이트가 끝난 뒤 다시 켤 때도, 그 순간 다른 작업(백업)이 잠금을 쥐면 끝나기를 기다린다 (꺼진 채 남지 않게)
+    #[tokio::test]
+    async fn a_scheduled_update_restart_waits_for_a_running_backup() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let generation = state.supervisor.read().await.run_generation_of(&id);
+        let guard = InstanceLock::take(&id).expect("free");
+        let restart = tokio::spawn({
+            let (state, id) = (state.clone(), id.clone());
+            async move { start_after_update(&state, &id, generation).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        assert!(!restart.is_finished(), "the restart must wait for the backup, not fail with instance_busy");
+        drop(guard);
+        tokio::time::timeout(WORK_DEADLINE, restart).await.expect("starts once the lock is free").unwrap();
     }
 }

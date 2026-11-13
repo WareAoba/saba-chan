@@ -85,33 +85,33 @@ impl Patterns {
 }
 
 /// 시작 결과를 받는다. 새로 띄운 managed 프로세스이고 문구가 있으면 프로세스가 끝날 때까지 콘솔을 본다
-pub fn after_start(instance_id: &str, instance: &str, result: &anyhow::Result<Value>, console: Option<Arc<ManagedProcess>>, join: &[String], leave: &[String], chat: &[String]) {
+pub fn after_start(rt: &super::runtime::Runtimes, instance_id: &str, instance: &str, result: &anyhow::Result<Value>, console: Option<Arc<ManagedProcess>>, join: &[String], leave: &[String], chat: &[String]) {
     let Ok(body) = result else { return };
     if body.get("success").and_then(Value::as_bool) != Some(true) || body.get("already_running").and_then(Value::as_bool) == Some(true) {
         return;
     }
     let (Some(proc), Some(patterns)) = (console, Patterns::with_chat(join, leave, chat)) else { return };
-    let (id, name) = (instance_id.to_string(), instance.to_string());
-    tokio::spawn(async move { watch(id, name, proc, patterns).await });
+    let (rt, id, name) = (rt.clone(), instance_id.to_string(), instance.to_string());
+    tokio::spawn(async move { watch(rt, id, name, proc, patterns).await });
 }
 
 /// 데몬이 다시 켜져 아직 도는 서버(saba-runner)에 다시 붙었다. 붙기 전 줄은 알리지 않고, 그 줄에서 아직 들어와 있는
 /// 것으로 보이는 사람을 `instance.players_present {instanceId, instance, players}`로 한 번 알린 뒤 새 줄부터 알린다
 /// (조작 가능한 사람만 접속이 데몬이 꺼진 동안 들어온 사람도 본다). 접속자는 세지 않는다(모듈이 알려 준 수를 쓴다)
-pub fn after_reattach(instance_id: &str, instance: &str, console: Arc<ManagedProcess>, join: &[String], leave: &[String], chat: &[String]) {
+pub fn after_reattach(rt: &super::runtime::Runtimes, instance_id: &str, instance: &str, console: Arc<ManagedProcess>, join: &[String], leave: &[String], chat: &[String]) {
     let Some(patterns) = Patterns::with_chat(join, leave, chat) else { return };
-    let (id, name) = (instance_id.to_string(), instance.to_string());
-    tokio::spawn(async move { watch_from(id, name, console, patterns, true).await });
+    let (rt, id, name) = (rt.clone(), instance_id.to_string(), instance.to_string());
+    tokio::spawn(async move { watch_from(rt, id, name, console, patterns, true).await });
 }
 
-async fn watch(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Patterns) {
-    watch_from(id, name, proc, patterns, false).await
+async fn watch(rt: super::runtime::Runtimes, id: String, name: String, proc: Arc<ManagedProcess>, patterns: Patterns) {
+    watch_from(rt, id, name, proc, patterns, false).await
 }
 
-async fn watch_from(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Patterns, reattached: bool) {
+async fn watch_from(rt: super::runtime::Runtimes, id: String, name: String, proc: Arc<ManagedProcess>, patterns: Patterns, reattached: bool) {
     // 다시 붙은 서버는 접속자를 세지 않는다: 되살린 콘솔은 끝부분만이라(러너 로그 꼬리) 센 수가 모자랄 수 있고,
     // 센 수는 모듈이 알려 준 수보다 앞선다 (`players::get`)
-    let roster = (patterns.can_count() && !reattached).then(|| super::players::roster_start(&id));
+    let roster = (patterns.can_count() && !reattached).then(|| super::players::roster_start(&rt, &id));
     let mut next_line = 0;
     if reattached {
         // 되살린 줄에서 아직 들어와 있는 것으로 보이는 사람 (알 수 있는 만큼만)
@@ -141,9 +141,9 @@ async fn watch_from(id: String, name: String, proc: Arc<ManagedProcess>, pattern
             }
             if let Some((player, change)) = patterns.parse(&line.content) {
                 if let Some(roster) = roster {
-                    super::players::roster_change(&id, roster, &player, change == Change::Join);
-                    if change == Change::Leave && super::players::counted(&id) == Some(0) {
-                        super::chat_link::end(&id, &name, "empty", roster);
+                    super::players::roster_change(&rt, &id, roster, &player, change == Change::Join);
+                    if change == Change::Leave && super::players::counted(&rt, &id) == Some(0) {
+                        super::chat_link::end(&rt, &id, &name, "empty", roster);
                     }
                 }
                 crate::events::emit("instance.player", json!({ "instanceId": id, "instance": name, "player": player, "change": change.as_str() }));
@@ -160,8 +160,8 @@ async fn watch_from(id: String, name: String, proc: Arc<ManagedProcess>, pattern
         if !running {
             // 연동은 접속자를 셀 때만 켜진다. 이 프로세스의 목록일 때만 끈다 (새 프로세스의 연동은 그대로 둔다)
             if let Some(roster) = roster {
-                super::chat_link::end(&id, &name, "stopped", roster);
-                super::players::roster_end(&id, roster);
+                super::chat_link::end(&rt, &id, &name, "stopped", roster);
+                super::players::roster_end(&rt, &id, roster);
             }
             return;
         }
@@ -189,7 +189,8 @@ mod tests {
         let id = "reattach-test";
         let mut sub = crate::events::bus().subscribe(None);
         let (join, leave) = ([r"^(?P<name>\w+) joined$".to_string()], [r"^(?P<name>\w+) left$".to_string()]);
-        after_reattach(id, "Test", proc.clone(), &join, &leave, &[]);
+        let rt = crate::supervisor::runtime::Runtimes::default();
+        after_reattach(&rt, id, "Test", proc.clone(), &join, &leave, &[]);
         tokio::time::sleep(Duration::from_millis(300)).await;
         proc.send_command("go").await.unwrap();
         let mut seen = Vec::new();
@@ -203,7 +204,7 @@ mod tests {
         }
         assert_eq!(seen, [("instance.players_present".to_string(), json!(["Steve"])), ("instance.player".to_string(), json!("Alex"))]);
         // 되살린 콘솔은 끝부분만일 수 있어 세지 않는다: 접속자 수는 모듈이 알려 준 수를 쓴다
-        assert_eq!(super::super::players::counted(id), None);
+        assert_eq!(super::super::players::counted(&rt, id), None);
         let _ = proc.force_kill().await;
     }
 

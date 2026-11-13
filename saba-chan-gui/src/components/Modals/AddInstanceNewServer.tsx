@@ -37,7 +37,7 @@ import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { unsupportedText } from '../../utils/moduleSupport';
 import { Segmented } from '../ui/StatusChip';
 import { TrustCreateNotice } from '../ui/TrustBadge';
-import type { AddServerPayload } from '../../hooks/useServerActions';
+import type { AddServerPayload } from '../../stores/serverActions';
 import { AddServerFrame } from './AddServerFrame';
 import { isImeKey } from '../../utils/ime';
 

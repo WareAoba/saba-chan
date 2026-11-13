@@ -100,6 +100,14 @@ aliases = ["말"]
 
 [errors]
 server_not_running = "The test server is off"
+
+[patterns]
+stamp = '\[\d{2}:\d{2}\]'
+
+[[syntax_highlight.rules]]
+name = "time"
+pattern = '{stamp} '
+color = 'info'
 "#,
     )
     .expect("write test module.toml");
@@ -276,6 +284,20 @@ async fn e2e_module_discovery_and_metadata_schema() {
             );
         }
     }
+
+    task.abort();
+    cleanup_dirs(&m_dir, &i_dir, &d_dir);
+}
+
+/// module.toml `[patterns]` 조각은 데몬이 로드할 때 푼다: API에는 풀린 정규식만 실린다
+#[tokio::test]
+async fn e2e_module_patterns_reach_the_api_expanded() {
+    let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
+
+    let json: Value = client.get(format!("{}/api/modules", base_url)).send().await.unwrap().json().await.unwrap();
+    let module = json["modules"].as_array().unwrap().iter().find(|m| m["name"] == "test-module").expect("test-module");
+    assert_eq!(module["syntax_highlight"]["rules"][0]["pattern"], r"(?:\[\d{2}:\d{2}\]) ", "{}", module["syntax_highlight"]);
 
     task.abort();
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
@@ -890,9 +912,14 @@ async fn event_stream_reports_who_ran_what_and_replays_after_reconnect() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
+/// 켠 익스텐션 목록은 이 프로세스의 테스트가 함께 쓰는 설정이다. 작업자는 그 목록이 바뀌면 새로 뜨므로,
+/// 목록을 바꾸는 테스트와 작업자 재사용을 보는 테스트는 겹치지 않게 돈다
+static EXTENSION_LIST: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// manifest `hooks`의 `event:<종류>`: 이벤트 버스에 난 일을 익스텐션 Python이 데이터와 함께 받는다
 #[tokio::test]
 async fn extension_event_hook_receives_bus_event_with_its_data() {
+    let _extension_list = EXTENSION_LIST.lock().await;
     if find_python().is_none() {
         eprintln!("SKIP: Python not found");
         return;
@@ -952,6 +979,43 @@ if __name__ == "__main__":
     assert_eq!((seen["data"]["instanceId"].as_str(), seen["data"]["ok"].as_bool()), (Some("probe-1"), Some(true)));
     assert!(seen["id"].is_u64() && seen["data"]["at"].is_u64(), "{}", seen);
 
+    task.abort();
+    cleanup_dirs(&m_dir, &i_dir, &d_dir);
+}
+
+/// manifest `gui.assets`: 허락한 익스텐션 GUI가 그 폴더 안의 파일을 여러 단계 경로로 받는다
+#[tokio::test]
+async fn extension_gui_assets_are_served_from_the_manifest_folder() {
+    let _extension_list = EXTENSION_LIST.lock().await;
+    let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
+
+    let root = saba_chan_updater_lib::constants::resolve_extensions_dir();
+    fs::create_dir_all(&root).unwrap();
+    let ext = tempfile::Builder::new().prefix("e2e-assets-").tempdir_in(&root).unwrap();
+    let id = ext.path().file_name().unwrap().to_string_lossy().into_owned();
+    fs::write(
+        ext.path().join("manifest.json"),
+        json!({ "schema_version": 1, "id": id, "name": "Assets", "version": "0.0.1", "gui": { "bundle": "gui.js", "assets": "img" } }).to_string(),
+    )
+    .unwrap();
+    fs::write(ext.path().join("gui.js"), "window.x = 1").unwrap();
+    fs::create_dir_all(ext.path().join("img").join("cat")).unwrap();
+    fs::write(ext.path().join("img").join("cat").join("idle.webp"), "RIFF").unwrap();
+    client.post(format!("{}/api/extensions/rescan", base_url)).send().await.unwrap();
+    let enabled = client.post(format!("{}/api/extensions/{}/enable", base_url, id)).send().await.unwrap();
+    assert!(enabled.status().is_success(), "{}", enabled.text().await.unwrap());
+    let key = format!("ext-{id}");
+    saba_core::sandbox::set_consent(saba_core::sandbox::Consent::ExtensionGui, &key, true).unwrap();
+
+    let served = client.get(format!("{}/api/extensions/{}/gui/assets/cat/idle.webp", base_url, id)).send().await.unwrap();
+    assert_eq!(served.status(), reqwest::StatusCode::OK);
+    assert_eq!(served.text().await.unwrap(), "RIFF");
+    let missing = client.get(format!("{}/api/extensions/{}/gui/assets/cat/run.webp", base_url, id)).send().await.unwrap();
+    assert_eq!(missing.status(), reqwest::StatusCode::NOT_FOUND);
+
+    saba_core::sandbox::set_consent(saba_core::sandbox::Consent::ExtensionGui, &key, false).unwrap();
+    client.post(format!("{}/api/extensions/{}/disable", base_url, id)).send().await.unwrap();
     task.abort();
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
@@ -1177,4 +1241,59 @@ async fn command_endpoint_validates_and_maps_module_errors() {
 
     server_task.abort();
     cleanup_dirs(&modules_dir, &instances_dir, &data_dir);
+}
+
+/// `[runtime] persistent = true` 모듈: 두 호출이 같은 작업자 프로세스를 쓰고,
+/// 작업자가 죽으면 그 호출은 단발로 돌고 다음 호출은 새 작업자를 띄운다
+#[tokio::test]
+async fn persistent_module_reuses_one_worker_and_falls_back_to_one_shot_when_it_dies() {
+    if find_python().is_none() {
+        eprintln!("SKIP: Python not found");
+        return;
+    }
+    let _extension_list = EXTENSION_LIST.lock().await;
+    setup_e2e_modules_dir();
+    let dir = tempfile::Builder::new().prefix("e2e-worker-").tempdir_in(saba_core::plugin::resolve_modules_dir()).unwrap();
+    let name = dir.path().file_name().unwrap().to_string_lossy().into_owned();
+    fs::write(
+        dir.path().join("module.toml"),
+        format!("[module]\nname = \"{name}\"\nversion = \"0.0.1\"\nentry = \"lifecycle.py\"\n\n[runtime]\npersistent = true\n"),
+    )
+    .unwrap();
+    let entry = dir.path().join("lifecycle.py");
+    fs::write(
+        &entry,
+        "import os, sys\nfrom daemon_rcon import run_lifecycle\n\
+         def pid(config):\n    return {'success': True, 'pid': os.getpid(), 'argv': sys.argv[1]}\n\
+         if __name__ == '__main__':\n    run_lifecycle({'pid': pid})\n",
+    )
+    .unwrap();
+    // 작업자는 확인된 구성요소만: 카탈로그에서 받은 그대로라고 기록해 둔다
+    let key = format!("module-{name}");
+    saba_chan_updater_lib::integrity::record_dir(&key, dir.path()).unwrap();
+    saba_chan_updater_lib::integrity::set_official(&key, true).unwrap();
+    let entry = entry.to_str().unwrap();
+    let call = || async { saba_core::plugin::run_plugin(entry, "pid", json!({})).await.expect("pid call") };
+
+    let first = call().await;
+    let second = call().await;
+    assert_eq!(first["argv"], "--worker", "{first}");
+    assert_eq!(second["pid"], first["pid"], "the second call reuses the worker: {first} {second}");
+
+    let pid = first["pid"].as_u64().unwrap().to_string();
+    let killed = if cfg!(windows) {
+        std::process::Command::new("taskkill").args(["/F", "/T", "/PID", &pid]).output()
+    } else {
+        std::process::Command::new("kill").args(["-9", &pid]).output()
+    };
+    assert!(killed.unwrap().status.success());
+    sleep(Duration::from_millis(200)).await;
+
+    let fallback = call().await;
+    assert_eq!(fallback["argv"], "pid", "the call after the worker died runs one-shot: {fallback}");
+    let restarted = call().await;
+    assert_eq!(restarted["argv"], "--worker", "{restarted}");
+    assert_ne!(restarted["pid"], first["pid"]);
+
+    saba_core::plugin::stop_workers(Some(dir.path()));
 }

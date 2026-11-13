@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../contexts/ExtensionContext', async (original) => ({
@@ -8,7 +8,7 @@ vi.mock('../contexts/ExtensionContext', async (original) => ({
 }));
 
 import { ServerSettingsModal } from '../components/ServerSettingsModal';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 
 // 시안 10: 설치 방식 익스텐션(Steam 등)으로 받는 서버는 버전 칸에서 브랜치를 고른다.
 // 내부 동작은 버전 설치와 같다: 단추를 눌러 그 브랜치로 받고, 받은 브랜치를 데몬이 적는다
@@ -96,9 +96,7 @@ describe('브랜치 목록 읽기', () => {
     });
     const open = async (server: Record<string, unknown>) => {
         const setModal = vi.fn();
-        const hook = renderHook(() =>
-            useServerSettings({ servers: [server] as never, modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-        );
+        const hook = setupSettingsStore({ servers: [server] as never, modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() });
         await act(async () => hook.result.current.handleOpenSettings(server as never));
         return { ...hook, setModal };
     };

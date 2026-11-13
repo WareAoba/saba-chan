@@ -1,9 +1,9 @@
-import { act, render, renderHook } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentProps } from 'react';
 import { ServerSettingsModal } from '../components/ServerSettingsModal';
 import type { Server } from '../stores/useServerStore';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 
 const modules = [
     {
@@ -16,9 +16,7 @@ const server = (status: string) => ({ id: 's1', name: 'S', module: 'dl', status,
 
 function setupHook(servers: Partial<Server>[]) {
     const setModal = vi.fn();
-    const hook = renderHook(() =>
-        useServerSettings({ servers: servers as Server[], modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-    );
+    const hook = setupSettingsStore({ servers: servers as Server[], modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() });
     return { ...hook, setModal };
 }
 

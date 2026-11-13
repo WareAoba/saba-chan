@@ -6,6 +6,9 @@ use crate::utils::apply_creation_flags;
 
 mod loopback;
 pub(crate) mod host;
+mod worker;
+
+pub use worker::stop_workers;
 
 /// 데몬 IPC 포트. 모듈이 데몬 API를 역호출할 때 쓴다(main이 기동 시 한 번 설정).
 static IPC_PORT: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
@@ -60,25 +63,6 @@ const SECRET_ENV_MARKERS: &[&str] = &["TOKEN", "SECRET", "PASSWORD", "PASSWD", "
 fn is_secret_env(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     SECRET_ENV_MARKERS.iter().any(|m| upper.contains(m))
-}
-
-/// 시간 초과한 Python과 그것이 띄운 프로세스를 함께 끝낸다.
-/// Unix는 자기 프로세스 그룹으로 띄우므로 그룹째, Windows는 `taskkill /T`
-pub(crate) fn kill_tree(pid: u32) {
-    #[cfg(unix)]
-    unsafe {
-        nix::libc::kill(-(pid as i32), nix::libc::SIGKILL);
-    }
-    #[cfg(windows)]
-    {
-        let mut cmd = std::process::Command::new(saba_chan_updater_lib::process::system_tool("taskkill"));
-        cmd.args(["/T", "/F", "/PID", &pid.to_string()]);
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        }
-        let _ = cmd.output();
-    }
 }
 
 /// Progress info emitted by Python extensions via stderr "PROGRESS:{json}" lines
@@ -364,19 +348,56 @@ fn call_lanes() -> std::sync::Arc<CallLanes> {
         .entry(tokio::runtime::Handle::current().id()).or_insert_with(|| std::sync::Arc::new(CallLanes::new())).clone()
 }
 
-fn module_name(entry: &str) -> String {
+/// 구성요소가 module.toml `[runtime]`·manifest.json `runtime`으로 밝히는 실행 방식
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct Runtime {
+    /// true면 호출마다 Python을 띄우지 않고 오래 사는 작업자 하나에 줄 단위 JSON으로 부른다 (`worker.rs`).
+    /// 진입점이 SDK `run_lifecycle`이어야 한다. 없으면 false(단발 실행)
+    #[serde(default)]
+    pub persistent: bool,
+}
+
+impl Runtime {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// 진입 파일이 속한 구성요소의 선언: 위로 올라가며 처음 찾은 module.toml(`[module] name`)이나 manifest.json(`id`)
+struct Declared {
+    file: std::path::PathBuf,
+    name: String,
+    runtime: Runtime,
+}
+
+fn declared(entry: &str) -> Option<Declared> {
     let path = std::path::Path::new(entry);
     for dir in path.parent().into_iter().flat_map(std::path::Path::ancestors) {
-        if let Some(name) = std::fs::read_to_string(dir.join("module.toml")).ok().and_then(|text| text.parse::<toml::Table>().ok())
-            .and_then(|value| value.get("module")?.get("name")?.as_str().map(str::to_string)) {
-            return name;
+        let file = dir.join("module.toml");
+        if let Some(declared) = std::fs::read_to_string(&file).ok().and_then(|text| text.parse::<toml::Table>().ok()).and_then(|value| {
+            let name = value.get("module")?.get("name")?.as_str()?.to_string();
+            let runtime = value.get("runtime").and_then(|r| r.clone().try_into().ok()).unwrap_or_default();
+            Some(Declared { file: file.clone(), name, runtime })
+        }) {
+            return Some(declared);
         }
-        if let Some(id) = std::fs::read_to_string(dir.join("manifest.json")).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok())
-            .and_then(|value| value.get("id")?.as_str().map(str::to_string)) {
-            return id;
+        let file = dir.join("manifest.json");
+        if let Some(declared) = std::fs::read_to_string(&file).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()).and_then(|value| {
+            let name = value.get("id")?.as_str()?.to_string();
+            let runtime = value.get("runtime").and_then(|r| serde_json::from_value(r.clone()).ok()).unwrap_or_default();
+            Some(Declared { file: file.clone(), name, runtime })
+        }) {
+            return Some(declared);
         }
     }
-    path.parent().and_then(std::path::Path::file_name).unwrap_or_default().to_string_lossy().into_owned()
+    None
+}
+
+fn module_name(entry: &str) -> String {
+    declared(entry).map(|d| d.name).unwrap_or_else(|| {
+        std::path::Path::new(entry).parent().and_then(std::path::Path::file_name).unwrap_or_default().to_string_lossy().into_owned()
+    })
 }
 
 fn call_error(entry: &str, function: &str, code: &str, phase: &str, error: impl std::fmt::Display, stderr_tail: Vec<String>) -> anyhow::Error {
@@ -565,6 +586,15 @@ enum Process {
 }
 
 impl Process {
+    /// 띄운 프로세스의 PID (AppContainer는 PID 대신 핸들로 끝낸다)
+    fn pid(&self) -> Option<u32> {
+        match self {
+            Process::Plain { child, .. } => child.id(),
+            #[cfg(windows)]
+            Process::Contained(_) => None,
+        }
+    }
+
     fn kill_now(&mut self, pid: Option<u32>) {
         match self {
             Process::Plain {
@@ -574,7 +604,7 @@ impl Process {
             } => {
                 #[cfg(windows)]
                 if let Some(job) = job { windows_job::terminate(job); }
-                if let Some(pid) = pid.or(child.id()) { kill_tree(pid); }
+                if let Some(pid) = pid.or(child.id()) { let _ = crate::supervisor::process::force_kill_tree(pid); }
                 let _ = child.start_kill();
             }
             #[cfg(windows)]
@@ -626,7 +656,7 @@ impl Process {
                     windows_job::terminate(job);
                 }
                 if let Some(pid) = pid.or(child.id()) {
-                    kill_tree(pid);
+                    let _ = crate::supervisor::process::force_kill_tree(pid);
                 }
                 let _ = child.kill().await;
             }
@@ -677,7 +707,7 @@ pub(crate) async fn preparation_output(cmd: &mut Command) -> std::io::Result<std
             if let Some(pid) = self.pid {
                 #[cfg(windows)]
                 if let Some(job) = &self.job { windows_job::terminate(job); }
-                kill_tree(pid);
+                let _ = crate::supervisor::process::force_kill_tree(pid);
             }
         }
     }
@@ -960,7 +990,7 @@ fn unsupported_reply(function: &str, known: Option<&[String]>) -> Option<Value> 
     }))
 }
 
-async fn run_requested_plugin(call: PluginCall, on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>) -> Result<Value> {
+async fn run_requested_plugin(call: PluginCall, on_progress: Option<Progress>) -> Result<Value> {
     let (module_path, function) = (call.entry.as_str(), call.function.as_str());
     // 모듈(옆에 module.toml이 있는 진입 파일)만: 익스텐션 hook 이름은 이 표와 상관없다
     let is_module = std::path::Path::new(module_path).parent().is_some_and(|d| d.join("module.toml").is_file());
@@ -973,7 +1003,9 @@ async fn run_requested_plugin(call: PluginCall, on_progress: Option<Box<dyn Fn(E
     Box::pin(spawn_plugin(call, on_progress)).await
 }
 
-async fn spawn_plugin(call: PluginCall, on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>) -> Result<Value> {
+type Progress = Box<dyn Fn(ExtensionProgress) + Send>;
+
+async fn spawn_plugin(call: PluginCall, on_progress: Option<Progress>) -> Result<Value> {
     let PluginCall { entry, function, config, server, timeout_secs, .. } = call;
     let (module_path, function) = (entry.as_str(), function.as_str());
     tracing::debug!("Executing plugin: {} -> {}", module_path, function);
@@ -983,132 +1015,25 @@ async fn spawn_plugin(call: PluginCall, on_progress: Option<Box<dyn Fn(Extension
         return Err(call_error(module_path, function, "module_execution_failed", "prepare", "Module entry file does not exist", Vec::new()));
     }
     let config_json = serde_json::to_string(&config).map_err(|error| call_error(module_path, function, "module_execution_failed", "prepare", error, Vec::new()))?;
-    let python_exe = prepare(module_path, function, deadline.clone(), crate::python_env::get_python_path()).await?;
-    tracing::debug!("Using Python: {}", python_exe.display());
-
-    let mut cmd = Command::new(&python_exe);
-    // 실행 시 제한 (M12): 비밀값처럼 보이는 변수는 물려주지 않고, 작업 폴더는 모듈·익스텐션 폴더로 고정
-    for (name, _) in std::env::vars_os() {
-        if name.to_str().is_some_and(is_secret_env) {
-            cmd.env_remove(&name);
+    let (mut on_progress, mut prepared) = (on_progress, None);
+    if let Some(declared) = declared(module_path).filter(|d| d.runtime.persistent) {
+        let launch = Launch::prepare(module_path, function, &config, &deadline).await?;
+        let request = worker::Request { function, config: &config, server, timeout_secs, declaration: &declared.file };
+        match Box::pin(worker::call(launch, request, &deadline, on_progress)).await {
+            worker::Outcome::Done(result) => return result,
+            worker::Outcome::OneShot(progress, launch) => (on_progress, prepared) = (progress, launch),
         }
     }
-    if let Some(dir) = std::path::Path::new(module_path).parent().filter(|d| d.is_dir()) {
-        cmd.current_dir(dir);
-    }
-    #[cfg(unix)]
-    cmd.process_group(0);
-    // 바이트코드 캐시는 데이터 폴더에만: 모듈 폴더의 __pycache__에 넣어 둔 .pyc가 소스 대신 실행되지 않게
-    cmd.env("PYTHONPYCACHEPREFIX", saba_chan_updater_lib::constants::resolve_data_dir().join("pycache"));
-    cmd.arg(module_path)
-        .arg(function)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .env("PYTHONIOENCODING", "utf-8")
-        .env("PYTHONUNBUFFERED", "1")
-        .envs(daemon_env());
-
-    // 공용 모듈 유틸리티 경로 (daemon_rcon.py, i18n.py 등). 익스텐션 폴더가 없어도 필요하다.
-    // 격리 권한은 있는 폴더에만 주므로 격리 계획보다 먼저 쓴다 (첫 실행에 import i18n이 실패하지 않게)
-    static SHARED: std::sync::Once = std::sync::Once::new();
-    let modules_lib_dir = saba_chan_updater_lib::constants::resolve_data_dir().join("python-shared");
-    SHARED.call_once(|| {
-        if let Err(e) = ensure_shared_modules(&modules_lib_dir) {
-            tracing::warn!("Cannot write shared Python modules to {}: {}", modules_lib_dir.display(), e);
-        }
-    });
-
-    // 활성 익스텐션만 import되게 하는 가드 (M6, sitecustomize.py). 공용 모듈처럼 격리 계획보다 먼저 쓴다
-    let import_guard = import_guard_dir();
-
-    // 확인되지 않은 구성요소: AppContainer(Windows)·bubblewrap(리눅스) 안에서 돌린다. 토큰 파일 경로는 주지 않는다
-    let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), &config, &python_exe);
-
-    // PYTHONPATH 경로 리스트 구분자 (Windows: ';', Unix: ':')
-    #[cfg(windows)]
-    const PYPATH_SEP: char = ';';
-    #[cfg(not(windows))]
-    const PYPATH_SEP: char = ':';
-    let mut paths: Vec<String> = Vec::new();
-    // 활성화된 익스텐션 목록을 Python에 전달 (비활성 익스텐션 import 방지용)
-    let mut enabled_extensions: Option<Vec<String>> = None;
-    let mut unverified_extensions = Vec::new();
-    let extensions_dir = resolve_extensions_dir();
-    if extensions_dir.is_dir() {
-        let enabled = saba_chan_updater_lib::config_file::ConfigFile::default_location()
-            .peek_section("extensions")
-            .get("enabled")
-            .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
-        // 목록이 없으면 활성 익스텐션도 없다 (ExtensionManager와 같은 규칙)
-        enabled_extensions = Some(enabled.unwrap_or_default());
-        unverified_extensions = set_extension_env(&mut cmd, enabled_extensions.clone().unwrap_or_default(), isolation.is_some(), None);
-
-        let mut pypath = extensions_dir.parent()
-            .unwrap_or(&extensions_dir)
-            .to_string_lossy()
-            .into_owned();
-        if let Some(guard) = &import_guard {
-            pypath = format!("{}{}{}", guard.display(), PYPATH_SEP, pypath);
-        }
-        paths.push(pypath);
-    }
-    if modules_lib_dir.is_dir() {
-        paths.push(modules_lib_dir.display().to_string());
-    }
-    if !paths.is_empty() {
-        if let Ok(existing) = std::env::var("PYTHONPATH") {
-            paths.push(existing);
-        }
-        cmd.env("PYTHONPATH", paths.join(&PYPATH_SEP.to_string()));
-    }
-
-    // 데몬이 찾은 Java 런타임 (`[{java, home, version, major}]`, JAVA_HOME·PATH·설치 위치 순). 모듈은 필요한 주 버전을 여기서 고른다
-    if let Ok(runtimes) = serde_json::to_string(&crate::sandbox::java_runtimes()) {
-        cmd.env("SABA_JAVA_RUNTIMES", runtimes);
-    }
-    // PC 전체 메모리(바이트). 모듈이 힙 크기 같은 기본값을 PC에 맞춰 정할 때 쓴다
-    if let Some(total) = crate::system_monitor::host_memory_bytes() {
-        cmd.env("SABA_HOST_MEMORY", total.to_string());
-    }
-
-    // 격리 실행은 127.0.0.1에 닿지 못한다: 자기 인스턴스 포트로 가는 요청은 데몬이 대신 보낸다 (loopback.rs)
-    let mut loopback = isolation.as_ref().and_then(|iso| {
-        let dir = iso.temp.join("loopback");
-        std::fs::create_dir_all(&dir).map_err(|e| tracing::warn!("[Loopback] cannot create {}: {}", dir.display(), e)).ok()?;
-        cmd.env("SABA_LOOPBACK_DIR", &dir);
-        Some(loopback::Proxy { dir, ports: loopback::instance_ports(&config), server })
-    });
-    if let Some(iso) = &isolation {
-        cmd.env("PYTHONPYCACHEPREFIX", &iso.pycache)
-            .env("TEMP", &iso.temp)
-            .env("TMP", &iso.temp)
-            .env("TMPDIR", &iso.temp);
-        if let Some(data) = &iso.data {
-            cmd.env("SABA_EXTENSION_DATA_DIR", data);
-        }
-    }
-    // import된 익스텐션(SteamCMD 등)이 받은 파일을 둘 곳: `<뿌리>/<익스텐션 id>`
-    let extension_root = match &isolation {
-        Some(iso) => iso.extension_root.clone(),
-        None => crate::sandbox::extension_data_root(&saba_chan_updater_lib::constants::resolve_data_dir(), None),
+    let mut launch = match prepared {
+        Some(launch) => launch,
+        None => Launch::prepare(module_path, function, &config, &deadline).await?,
     };
-    cmd.env("SABA_EXTENSION_DATA_ROOT", extension_root);
 
-    let host_root = isolation.as_ref().map(|iso| iso.temp.clone())
-        .unwrap_or_else(|| saba_chan_updater_lib::constants::resolve_data_dir().join("host-temp"));
-    std::fs::create_dir_all(&host_root).map_err(|error| call_error(module_path, function, "module_execution_failed", "prepare", error, Vec::new()))?;
-    let host_dir = tempfile::Builder::new().prefix("host-").tempdir_in(&host_root)
+    std::fs::create_dir_all(&launch.host_root).map_err(|error| call_error(module_path, function, "module_execution_failed", "prepare", error, Vec::new()))?;
+    let host_dir = tempfile::Builder::new().prefix("host-").tempdir_in(&launch.host_root)
         .map_err(|error| call_error(module_path, function, "module_execution_failed", "prepare", error, Vec::new()))?;
-    cmd.env("SABA_HOST_DIR", host_dir.path());
-    // 격리된 구성요소는 HOST에서 자기 인스턴스의 REST만 쓴다 (host.rs `sandboxed`)
-    let sandboxed = isolation.as_ref()
-        .filter(|iso| !crate::sandbox::unisolated_allowed(&iso.key, &iso.dir))
-        .map(|_| std::path::PathBuf::from(module_path));
     let host_context = HOST_CONTEXT.try_with(Clone::clone).ok().flatten();
-    let host_proxy = host::Proxy { dir: host_dir.path().into(), context: host_context, server, sandboxed };
-
-    apply_creation_flags(&mut cmd);
+    let host_proxy = host::Proxy { dir: host_dir.path().into(), context: host_context, server, sandboxed: launch.sandboxed.clone() };
 
     if deadline.remaining().is_zero() {
         return Err(call_error(module_path, function, "module_timeout", "prepare", "Process preparation exceeded the deadline", Vec::new()));
@@ -1116,39 +1041,13 @@ async fn spawn_plugin(call: PluginCall, on_progress: Option<Box<dyn Fn(Extension
     // 실행이 어떻게 끝나든(이 호출을 기다리던 요청이 끊겨 버려져도) 데몬 항목 자리를 치운다
     // child보다 먼저 선언해 나중에 놓인다: 버려질 때 `drive`의 실행 표가 먼저 끝내라는 신호를 보낸다.
     // 놓는 자리에서는 종료를 기다릴 수 없어, 끝나기 직전 그 자리에 새로 생긴 것은 남을 수 있다
+    let isolation = launch.isolation.clone();
     let clear_entries = isolation.as_ref().map(crate::sandbox::Isolation::clear_daemon_entries_on_drop);
-    let mut child = match &isolation {
-        None => plain(&mut cmd).map_err(|error| {
-            crate::python_env::forget_python(&python_exe);
-            call_error(module_path, function, "module_execution_failed", "run", error, Vec::new())
-        })?,
-        Some(iso) => match deadline.paused(crate::sandbox::spawn_isolated(cmd.as_std(), iso)).await {
-            Ok(crate::sandbox::Spawned::Unisolated) => {
-                // 사용자가 격리 없이 돌리기로 한 것은 이 구성요소뿐이다: 확인되지 않은 다른 익스텐션은 import하지 못하게
-                if let Some(enabled) = enabled_extensions {
-                    unverified_extensions = set_extension_env(&mut cmd, enabled, false, Some(&iso.key));
-                }
-                // 격리 없이 돌면 루프백에 직접 닿는다
-                cmd.env_remove("SABA_LOOPBACK_DIR");
-                loopback = None;
-                plain(&mut cmd).map_err(|error| call_error(module_path, function, "module_execution_failed", "run", error, Vec::new()))?
-            }
-            #[cfg(windows)]
-            Ok(crate::sandbox::Spawned::Contained(contained)) => Process::Contained(contained),
-            #[cfg(not(windows))]
-            Ok(crate::sandbox::Spawned::Wrapped(wrapped)) => {
-                let mut wrapped = Command::from(wrapped);
-                wrapped.process_group(0)
-                    .stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped());
-                plain(&mut wrapped).map_err(|error| call_error(module_path, function, "module_execution_failed", "run", error, Vec::new()))?
-            }
-            Err(blocked) => {
-                return Ok(sandbox_failure(module_path, function, &iso.key, &blocked));
-            }
-        },
+    let mut child = match launch.spawn(function, false, host_dir.path(), &deadline).await? {
+        Ok(child) => child,
+        Err(blocked) => return Ok(blocked),
     };
+    let loopback = launch.loopback_dir.take().map(|dir| loopback::Proxy { dir, ports: loopback::instance_ports(&config), server });
     let status = drive(&mut child, config_json.as_bytes(), on_progress, loopback, Some(host_proxy), deadline.remaining()).await;
     drop(clear_entries);
 
@@ -1156,35 +1055,233 @@ async fn spawn_plugin(call: PluginCall, on_progress: Option<Box<dyn Fn(Extension
         Ok(Ok((exit_status, stdout_str, stderr_str))) => {
             if !exit_status.success() {
                 tracing::error!("Plugin failed (exit {:?}):\n  stderr: {}\n  stdout: {}", exit_status.code(), stderr_str, stdout_str.trim());
-                tokio::spawn(crate::python_env::recheck_python(python_exe));
+                tokio::spawn(crate::python_env::recheck_python(launch.python_exe));
                 return Err(call_error(module_path, function, "module_crashed", "run", format!("{}.{} exited with {:?}", module_name(module_path), function, exit_status.code()), stderr_tail(&stderr_str)));
             }
-
-            match parse_plugin_output(&stdout_str) {
-                Ok(mut result) => {
-                    tracing::debug!("Plugin result (raw): {}", stdout_str.trim());
-                    explain_unverified_extensions(&mut result, &unverified_extensions);
-                    Ok(decorate_result(module_path, function, result, &stderr_str))
-                }
-                Err(e) => {
-                    tracing::error!("Failed to parse plugin JSON: {} | stdout: {}", e, stdout_str);
-                    Err(call_error(module_path, function, "module_bad_output", "run", format!("Invalid JSON from {}.{}: {}", module_name(module_path), function, e), stderr_tail(&stderr_str)))
-                }
-            }
+            plugin_reply(module_path, function, &stdout_str, &stderr_str, &launch.unverified_extensions)
         }
         Ok(Err(e)) => {
             tracing::error!("Plugin process error: {}", e);
             let code = if e.error.get_ref().is_some_and(|error| error.is::<OutputTooLarge>()) { "module_output_too_large" } else { "module_execution_failed" };
             Err(call_error(module_path, function, code, "run", &e.error, e.stderr_tail))
         }
-        Err(error) => {
-            // 타임아웃 — drive가 프로세스 트리를 이미 끝냈다
-            tracing::warn!(
-                "Plugin timed out after {}s: {} -> {} — killed process",
-                timeout_secs, module_path, function
-            );
-            Err(call_error(module_path, function, "module_timeout", "run", format!("{}.{} did not finish in {} s", module_name(module_path), function, timeout_secs), error.stderr_tail))
+        // 타임아웃 — drive가 프로세스 트리를 이미 끝냈다
+        Err(error) => Err(timed_out(module_path, function, timeout_secs, error.stderr_tail)),
+    }
+}
+
+/// 실행이 낸 답(stdout)을 호출 결과로 읽는다. 단발 실행과 작업자가 같은 규칙을 쓴다
+fn plugin_reply(entry: &str, function: &str, stdout: &str, stderr: &str, unverified_extensions: &[String]) -> Result<Value> {
+    match parse_plugin_output(stdout) {
+        Ok(mut result) => {
+            tracing::debug!("Plugin result (raw): {}", stdout.trim());
+            explain_unverified_extensions(&mut result, unverified_extensions);
+            Ok(decorate_result(entry, function, result, stderr))
         }
+        Err(e) => {
+            tracing::error!("Failed to parse plugin JSON: {} | stdout: {}", e, stdout);
+            Err(call_error(entry, function, "module_bad_output", "run", format!("Invalid JSON from {}.{}: {}", module_name(entry), function, e), stderr_tail(stderr)))
+        }
+    }
+}
+
+/// 기한을 넘긴 실행 (프로세스 트리는 이미 끝냈다)
+fn timed_out(entry: &str, function: &str, timeout_secs: u64, stderr_tail: Vec<String>) -> anyhow::Error {
+    tracing::warn!("Plugin timed out after {}s: {} -> {} — killed process", timeout_secs, entry, function);
+    call_error(entry, function, "module_timeout", "run", format!("{}.{} did not finish in {} s", module_name(entry), function, timeout_secs), stderr_tail)
+}
+
+/// Python 하나를 띄울 준비: `<python> <진입 파일>`과 작업 폴더·환경, 격리 계획, import할 수 있는 익스텐션.
+/// 함수 인자와 HOST 폴더는 띄울 때(`spawn`) 붙인다. 단발 실행과 작업자(`worker.rs`)가 같은 준비로 띄운다
+struct Launch {
+    entry: String,
+    python_exe: std::path::PathBuf,
+    cmd: Command,
+    isolation: Option<crate::sandbox::Isolation>,
+    enabled_extensions: Option<Vec<String>>,
+    unverified_extensions: Vec<String>,
+    /// 격리 실행이 루프백 응답을 읽는 폴더 (`SABA_LOOPBACK_DIR`). 격리 없이 띄우면 없다
+    loopback_dir: Option<std::path::PathBuf>,
+    /// HOST 응답 폴더(`SABA_HOST_DIR`)를 만드는 곳
+    host_root: std::path::PathBuf,
+    /// 격리된 실행이면 그 진입 파일 (`host::Proxy::sandboxed`)
+    sandboxed: Option<std::path::PathBuf>,
+}
+
+impl Launch {
+    async fn prepare(module_path: &str, function: &str, config: &Value, deadline: &CallDeadline) -> Result<Self> {
+        let python_exe = prepare(module_path, function, deadline.clone(), crate::python_env::get_python_path()).await?;
+        tracing::debug!("Using Python: {}", python_exe.display());
+
+        let mut cmd = Command::new(&python_exe);
+        // 실행 시 제한 (M12): 비밀값처럼 보이는 변수는 물려주지 않고, 작업 폴더는 모듈·익스텐션 폴더로 고정
+        for (name, _) in std::env::vars_os() {
+            if name.to_str().is_some_and(is_secret_env) {
+                cmd.env_remove(&name);
+            }
+        }
+        if let Some(dir) = std::path::Path::new(module_path).parent().filter(|d| d.is_dir()) {
+            cmd.current_dir(dir);
+        }
+        #[cfg(unix)]
+        cmd.process_group(0);
+        // 바이트코드 캐시는 데이터 폴더에만: 모듈 폴더의 __pycache__에 넣어 둔 .pyc가 소스 대신 실행되지 않게
+        cmd.env("PYTHONPYCACHEPREFIX", saba_chan_updater_lib::constants::resolve_data_dir().join("pycache"));
+        cmd.arg(module_path)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .env("PYTHONIOENCODING", "utf-8")
+            .env("PYTHONUNBUFFERED", "1")
+            .envs(daemon_env());
+
+        // 공용 모듈 유틸리티 경로 (daemon_rcon.py, i18n.py 등). 익스텐션 폴더가 없어도 필요하다.
+        // 격리 권한은 있는 폴더에만 주므로 격리 계획보다 먼저 쓴다 (첫 실행에 import i18n이 실패하지 않게)
+        static SHARED: std::sync::Once = std::sync::Once::new();
+        let modules_lib_dir = saba_chan_updater_lib::constants::resolve_data_dir().join("python-shared");
+        SHARED.call_once(|| {
+            if let Err(e) = ensure_shared_modules(&modules_lib_dir) {
+                tracing::warn!("Cannot write shared Python modules to {}: {}", modules_lib_dir.display(), e);
+            }
+        });
+
+        // 활성 익스텐션만 import되게 하는 가드 (M6, sitecustomize.py). 공용 모듈처럼 격리 계획보다 먼저 쓴다
+        let import_guard = import_guard_dir();
+
+        // 확인되지 않은 구성요소: AppContainer(Windows)·bubblewrap(리눅스) 안에서 돌린다. 토큰 파일 경로는 주지 않는다
+        let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), config, &python_exe);
+
+        // PYTHONPATH 경로 리스트 구분자 (Windows: ';', Unix: ':')
+        #[cfg(windows)]
+        const PYPATH_SEP: char = ';';
+        #[cfg(not(windows))]
+        const PYPATH_SEP: char = ':';
+        let mut paths: Vec<String> = Vec::new();
+        // 활성화된 익스텐션 목록을 Python에 전달 (비활성 익스텐션 import 방지용)
+        let mut enabled_extensions: Option<Vec<String>> = None;
+        let mut unverified_extensions = Vec::new();
+        let extensions_dir = resolve_extensions_dir();
+        if extensions_dir.is_dir() {
+            let enabled = saba_chan_updater_lib::config_file::ConfigFile::default_location()
+                .peek_section("extensions")
+                .get("enabled")
+                .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
+            // 목록이 없으면 활성 익스텐션도 없다 (ExtensionManager와 같은 규칙)
+            enabled_extensions = Some(enabled.unwrap_or_default());
+            unverified_extensions = set_extension_env(&mut cmd, enabled_extensions.clone().unwrap_or_default(), isolation.is_some(), None);
+
+            let mut pypath = extensions_dir.parent()
+                .unwrap_or(&extensions_dir)
+                .to_string_lossy()
+                .into_owned();
+            if let Some(guard) = &import_guard {
+                pypath = format!("{}{}{}", guard.display(), PYPATH_SEP, pypath);
+            }
+            paths.push(pypath);
+        }
+        if modules_lib_dir.is_dir() {
+            paths.push(modules_lib_dir.display().to_string());
+        }
+        if !paths.is_empty() {
+            if let Ok(existing) = std::env::var("PYTHONPATH") {
+                paths.push(existing);
+            }
+            cmd.env("PYTHONPATH", paths.join(&PYPATH_SEP.to_string()));
+        }
+
+        // 데몬이 찾은 Java 런타임 (`[{java, home, version, major}]`, JAVA_HOME·PATH·설치 위치 순). 모듈은 필요한 주 버전을 여기서 고른다
+        if let Ok(runtimes) = serde_json::to_string(&crate::sandbox::java_runtimes()) {
+            cmd.env("SABA_JAVA_RUNTIMES", runtimes);
+        }
+        // PC 전체 메모리(바이트). 모듈이 힙 크기 같은 기본값을 PC에 맞춰 정할 때 쓴다
+        if let Some(total) = crate::system_monitor::host_memory_bytes() {
+            cmd.env("SABA_HOST_MEMORY", total.to_string());
+        }
+
+        // 격리 실행은 127.0.0.1에 닿지 못한다: 자기 인스턴스 포트로 가는 요청은 데몬이 대신 보낸다 (loopback.rs)
+        let loopback_dir = isolation.as_ref().and_then(|iso| {
+            let dir = iso.temp.join("loopback");
+            std::fs::create_dir_all(&dir).map_err(|e| tracing::warn!("[Loopback] cannot create {}: {}", dir.display(), e)).ok()?;
+            cmd.env("SABA_LOOPBACK_DIR", &dir);
+            Some(dir)
+        });
+        if let Some(iso) = &isolation {
+            cmd.env("PYTHONPYCACHEPREFIX", &iso.pycache)
+                .env("TEMP", &iso.temp)
+                .env("TMP", &iso.temp)
+                .env("TMPDIR", &iso.temp);
+            if let Some(data) = &iso.data {
+                cmd.env("SABA_EXTENSION_DATA_DIR", data);
+            }
+        }
+        // import된 익스텐션(SteamCMD 등)이 받은 파일을 둘 곳: `<뿌리>/<익스텐션 id>`
+        let extension_root = match &isolation {
+            Some(iso) => iso.extension_root.clone(),
+            None => crate::sandbox::extension_data_root(&saba_chan_updater_lib::constants::resolve_data_dir(), None),
+        };
+        cmd.env("SABA_EXTENSION_DATA_ROOT", extension_root);
+
+        let host_root = isolation.as_ref().map(|iso| iso.temp.clone())
+            .unwrap_or_else(|| saba_chan_updater_lib::constants::resolve_data_dir().join("host-temp"));
+        // 격리된 구성요소는 HOST에서 자기 인스턴스의 REST만 쓴다 (host.rs `sandboxed`)
+        let sandboxed = isolation.as_ref()
+            .filter(|iso| !crate::sandbox::unisolated_allowed(&iso.key, &iso.dir))
+            .map(|_| std::path::PathBuf::from(module_path));
+
+        apply_creation_flags(&mut cmd);
+        Ok(Self { entry: module_path.to_string(), python_exe, cmd, isolation, enabled_extensions, unverified_extensions, loopback_dir, host_root, sandboxed })
+    }
+
+    /// 같은 준비인지 가리는 값: 명령·작업 폴더·환경과 진입 파일·선언 파일(`declaration`)의 수정 시각.
+    /// 작업자는 이것이 바뀌면(업데이트·설정·언어·익스텐션 목록) 새로 띄운다
+    fn fingerprint(&self, declaration: &std::path::Path) -> String {
+        let cmd = self.cmd.as_std();
+        let modified = |path: &std::path::Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        format!(
+            "{:?} {:?} {:?} {:?} {:?} {:?}",
+            cmd.get_program(),
+            cmd.get_args().collect::<Vec<_>>(),
+            cmd.get_current_dir(),
+            cmd.get_envs().collect::<Vec<_>>(),
+            modified(std::path::Path::new(&self.entry)),
+            modified(declaration),
+        )
+    }
+
+    /// `<python> <진입 파일> <function>`(작업자면 `--worker`)을 띄운다 (한 번만 부른다). 격리할 수 없어 막히면 Ok(Err(답))
+    async fn spawn(&mut self, function: &str, as_worker: bool, host_dir: &std::path::Path, deadline: &CallDeadline) -> Result<std::result::Result<Process, Value>> {
+        let (entry, cmd) = (self.entry.as_str(), &mut self.cmd);
+        cmd.arg(if as_worker { worker::ARG } else { function }).env("SABA_HOST_DIR", host_dir);
+        Ok(Ok(match &self.isolation {
+            None => plain(cmd).map_err(|error| {
+                crate::python_env::forget_python(&self.python_exe);
+                call_error(entry, function, "module_execution_failed", "run", error, Vec::new())
+            })?,
+            Some(iso) => match deadline.paused(crate::sandbox::spawn_isolated(cmd.as_std(), iso)).await {
+                Ok(crate::sandbox::Spawned::Unisolated) => {
+                    // 사용자가 격리 없이 돌리기로 한 것은 이 구성요소뿐이다: 확인되지 않은 다른 익스텐션은 import하지 못하게
+                    if let Some(enabled) = self.enabled_extensions.take() {
+                        self.unverified_extensions = set_extension_env(cmd, enabled, false, Some(&iso.key));
+                    }
+                    // 격리 없이 돌면 루프백에 직접 닿는다
+                    cmd.env_remove("SABA_LOOPBACK_DIR");
+                    self.loopback_dir = None;
+                    plain(cmd).map_err(|error| call_error(entry, function, "module_execution_failed", "run", error, Vec::new()))?
+                }
+                #[cfg(windows)]
+                Ok(crate::sandbox::Spawned::Contained(contained)) => Process::Contained(contained),
+                #[cfg(not(windows))]
+                Ok(crate::sandbox::Spawned::Wrapped(wrapped)) => {
+                    let mut wrapped = Command::from(wrapped);
+                    wrapped.process_group(0)
+                        .stdin(std::process::Stdio::piped())
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped());
+                    plain(&mut wrapped).map_err(|error| call_error(entry, function, "module_execution_failed", "run", error, Vec::new()))?
+                }
+                Err(blocked) => return Ok(Err(sandbox_failure(entry, function, &iso.key, &blocked))),
+            },
+        }))
     }
 }
 
@@ -1254,95 +1351,116 @@ async fn next_stderr_line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R, li
     }
 }
 
+/// 실행 하나의 stderr 줄을 가른다: HOST·루프백 요청은 중계하고, `PROGRESS:`는 콜백으로, 나머지는 진단용으로 남긴다.
+/// 놓으면 아직 처리 중인 중계 요청도 멈춘다
+struct StderrSink {
+    on_progress: Option<Progress>,
+    loopback: Option<loopback::Proxy>,
+    host: Option<host::Proxy>,
+    deadline: Option<CallDeadline>,
+    log: std::sync::Arc<std::sync::Mutex<StderrLog>>,
+    relayed: usize,
+    requests: tokio::task::JoinSet<()>,
+    hide_continuation: bool,
+}
+
+impl StderrSink {
+    fn new(
+        on_progress: Option<Progress>,
+        loopback: Option<loopback::Proxy>,
+        host: Option<host::Proxy>,
+        deadline: Option<CallDeadline>,
+        log: std::sync::Arc<std::sync::Mutex<StderrLog>>,
+    ) -> Self {
+        Self { on_progress, loopback, host, deadline, log, relayed: 0, requests: tokio::task::JoinSet::new(), hide_continuation: false }
+    }
+
+    fn line(&mut self, line: String, ended: bool) {
+        if self.hide_continuation {
+            self.hide_continuation = !ended;
+            return;
+        }
+        if let Some(request) = line.strip_prefix(host::PREFIX) {
+            self.hide_continuation = !ended;
+            match &self.host {
+                Some(proxy) if self.relayed < loopback::MAX_REQUESTS => {
+                    self.relayed += 1;
+                    let (proxy, request) = (proxy.clone(), request.to_string());
+                    let deadline = self.deadline.clone();
+                    self.requests.spawn(async move {
+                        let serve = host::serve(&proxy, &request);
+                        if let Some(deadline) = deadline { CALL_DEADLINE.scope(deadline, serve).await; }
+                        else { serve.await; }
+                    });
+                }
+                Some(proxy) => host::refuse(proxy, request, "too_many_requests"),
+                None => tracing::warn!("[Host] request without a channel ignored"),
+            }
+            return;
+        }
+        // 중계 요청은 로그에 남기지 않는다 (인증 머리글이 들어 있을 수 있다)
+        if let Some(request) = line.strip_prefix(loopback::PREFIX) {
+            self.hide_continuation = !ended;
+            match &self.loopback {
+                Some(proxy) if self.relayed < loopback::MAX_REQUESTS => {
+                    self.relayed += 1;
+                    let (proxy, request) = (proxy.clone(), request.to_string());
+                    let deadline = self.deadline.clone();
+                    self.requests.spawn(async move {
+                        let serve = loopback::serve(&proxy, &request);
+                        if let Some(deadline) = deadline {
+                            CALL_DEADLINE.scope(deadline, serve).await;
+                        } else {
+                            serve.await;
+                        }
+                    });
+                }
+                Some(proxy) => {
+                    tracing::warn!("[Loopback] request limit of {} reached", loopback::MAX_REQUESTS);
+                    loopback::refuse(proxy, request, "too_many_requests");
+                }
+                None => tracing::warn!("[Loopback] request from an unisolated run ignored"),
+            }
+            return;
+        }
+        if let Some(json_str) = line.strip_prefix("PROGRESS:") {
+            if let Ok(prog) = serde_json::from_str::<ExtensionProgress>(json_str) {
+                if let Some(ref cb) = self.on_progress {
+                    cb(prog);
+                }
+            }
+            return;
+        }
+        tracing::debug!("Plugin stderr: {}", line);
+        self.log.lock().unwrap_or_else(|e| e.into_inner()).push(line);
+    }
+}
+
 /// 입력 쓰기부터 종료 대기, stdout·stderr 수집까지 한 기한 안에 한다.
 /// 기한을 넘기거나 입출력이 실패하면 프로세스 트리를 끝내고 읽기 작업을 멈춘다.
 /// (손자 프로세스가 파이프를 물려받아 쥐고 있으면 부모가 끝나도 출력이 닫히지 않는다)
 async fn drive(
     child: &mut Process,
     input: &[u8],
-    on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
+    on_progress: Option<Progress>,
     loopback: Option<loopback::Proxy>,
     host: Option<host::Proxy>,
     timeout: std::time::Duration,
 ) -> std::result::Result<Collected, RunTimeout> {
-    let pid = match child {
-        Process::Plain { child, .. } => child.id(),
-        #[cfg(windows)]
-        Process::Contained(_) => None,
-    };
+    let pid = child.pid();
     let (stdin_pipe, stdout_pipe, stderr_pipe) = child.pipes();
 
     let stderr = std::sync::Arc::new(std::sync::Mutex::new(StderrLog::default()));
-    let captured = stderr.clone();
     let deadline = CALL_DEADLINE.try_with(Clone::clone).ok();
     let run_deadline = deadline.clone().unwrap_or_else(|| CallDeadline::new(tokio::time::Instant::now() + timeout));
+    let mut sink = StderrSink::new(on_progress, loopback, host, deadline, stderr.clone());
     let stderr_handle = tokio::spawn(async move {
         if let Some(pipe) = stderr_pipe {
             let mut reader = BufReader::new(pipe);
             let mut lines = saba_runner::Lines::default();
-            let mut relayed = 0;
-            let mut requests = tokio::task::JoinSet::new();
-            let mut hide_continuation = false;
             // UTF-8이 아닌 줄에서 멈추면 stderr 파이프가 차서 모듈이 시간 초과까지 멈춘다
             while let Some((line, ended)) = next_stderr_line(&mut reader, &mut lines).await? {
-                if hide_continuation {
-                    hide_continuation = !ended;
-                    continue;
-                }
-                if let Some(request) = line.strip_prefix(host::PREFIX) {
-                    hide_continuation = !ended;
-                    match &host {
-                        Some(proxy) if relayed < loopback::MAX_REQUESTS => {
-                            relayed += 1;
-                            let (proxy, request) = (proxy.clone(), request.to_string());
-                            let deadline = deadline.clone();
-                            requests.spawn(async move {
-                                let serve = host::serve(&proxy, &request);
-                                if let Some(deadline) = deadline { CALL_DEADLINE.scope(deadline, serve).await; }
-                                else { serve.await; }
-                            });
-                        }
-                        Some(proxy) => host::refuse(proxy, request, "too_many_requests"),
-                        None => tracing::warn!("[Host] request without a channel ignored"),
-                    }
-                    continue;
-                }
-                // 중계 요청은 로그에 남기지 않는다 (인증 머리글이 들어 있을 수 있다)
-                if let Some(request) = line.strip_prefix(loopback::PREFIX) {
-                    hide_continuation = !ended;
-                    match &loopback {
-                        Some(proxy) if relayed < loopback::MAX_REQUESTS => {
-                            relayed += 1;
-                            let (proxy, request) = (proxy.clone(), request.to_string());
-                            let deadline = deadline.clone();
-                            requests.spawn(async move {
-                                let serve = loopback::serve(&proxy, &request);
-                                if let Some(deadline) = deadline {
-                                    CALL_DEADLINE.scope(deadline, serve).await;
-                                } else {
-                                    serve.await;
-                                }
-                            });
-                        }
-                        Some(proxy) => {
-                            tracing::warn!("[Loopback] request limit of {} reached", loopback::MAX_REQUESTS);
-                            loopback::refuse(proxy, request, "too_many_requests");
-                        }
-                        None => tracing::warn!("[Loopback] request from an unisolated run ignored"),
-                    }
-                    continue;
-                }
-                if let Some(json_str) = line.strip_prefix("PROGRESS:") {
-                    if let Ok(prog) = serde_json::from_str::<ExtensionProgress>(json_str) {
-                        if let Some(ref cb) = on_progress {
-                            cb(prog);
-                        }
-                    }
-                    continue;
-                } else {
-                    tracing::debug!("Plugin stderr: {}", line);
-                }
-                captured.lock().unwrap_or_else(|e| e.into_inner()).push(line);
+                sink.line(line, ended);
             }
         }
         Ok::<_, std::io::Error>(())
@@ -1886,7 +2004,7 @@ print(json.dumps(codes))
             if pids.iter().all(|pid| !crate::supervisor::process::is_process_alive(*pid)) { return; }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
-        for pid in &pids { kill_tree(*pid); }
+        for pid in &pids { let _ = crate::supervisor::process::force_kill_tree(*pid); }
         panic!("cancelled module child survived: {pids:?}");
     }
 
@@ -1902,7 +2020,7 @@ print(json.dumps(codes))
         if let Ok(pid) = std::fs::read_to_string(path) {
             let pid = pid.trim().parse().unwrap();
             let alive = crate::supervisor::process::is_process_alive(pid);
-            kill_tree(pid);
+            let _ = crate::supervisor::process::force_kill_tree(pid);
             assert!(alive, "the explicitly requested breakaway server must survive the module job");
         }
     }
@@ -1987,37 +2105,6 @@ print(json.dumps(codes))
         for name in ["PATH", "APPDATA", "JAVA_HOME", "SYSTEMROOT", "KEYBOARD_LAYOUT"] {
             assert!(!is_secret_env(name), "{name}");
         }
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn a_timed_out_tree_is_killed_with_its_children() {
-        let dir = tempfile::tempdir().unwrap();
-        let pidfile = dir.path().join("child.pid");
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg(format!("sleep 30 & echo $! > {}; wait", pidfile.display())).process_group(0);
-        let mut child = cmd.spawn().unwrap();
-        let mut grandchild = None;
-        for _ in 0..50 {
-            if let Some(pid) = std::fs::read_to_string(&pidfile).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
-                grandchild = Some(pid);
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-        let grandchild = grandchild.expect("child started");
-        kill_tree(child.id().unwrap());
-        let _ = child.wait().await;
-        for _ in 0..50 {
-            // 거둘 부모가 없으면 좀비로 남으니 상태도 본다
-            let zombie = std::fs::read_to_string(format!("/proc/{grandchild}/stat"))
-                .is_ok_and(|s| s.rsplit(')').next().is_some_and(|r| r.trim_start().starts_with('Z')));
-            if zombie || !crate::supervisor::process::is_process_alive(grandchild) {
-                return;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-        panic!("grandchild {grandchild} survived");
     }
 
     /// 격리된 모듈(127.0.0.1에 못 닿음)이 공용 도우미 `loopback_http`로 자기 서버에 물으면 데몬이 대신 보내고 답을 돌려준다

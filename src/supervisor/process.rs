@@ -89,23 +89,17 @@ pub fn force_kill_pid(pid: u32) -> Result<()> {
     kill(pid, false)
 }
 
-/// 게임 서버 강제 종료. Windows는 자식까지 끝낸다: 런처형 서버(PalServer.exe 등)는 런처만 죽이면
-/// 실제 서버가 남는다. Unix는 `force_kill_pid`와 같다 (러너로 띄운 서버의 자식은 `force_kill_group`)
+/// `pid`와 그것이 띄운 프로세스를 함께 강제로 끝낸다. 게임 서버·러너·플러그인 Python을 강제로 끝내는 길은 모두 이것이다
+/// (런처형 서버는 런처만 죽이면 실제 서버가 남는다). OS마다 끝내는 단위:
+/// - Unix: `pid`가 이끄는 프로세스 그룹 전체, 그다음 `pid`. 사바쨩이 그룹 리더로 띄운 것(러너, 의사 콘솔의 서버,
+///   플러그인 Python)은 자식까지 끝난다. 그룹 리더가 아닌 프로세스(러너 없이 띄운 서버 등)는 그 PID 하나만 끝난다.
+///   데몬 자신의 그룹은 건드리지 않는다
+/// - Windows: `taskkill /F /T`로 프로세스 트리. 부모가 먼저 끝나 트리에서 떨어진 손자는 Job Object를 쥔 쪽이 끝낸다
+///   (러너는 서버를 넣은 Job을 러너가 끝날 때 닫혀 끝나게 만들고, 플러그인 실행기는 Python을 넣은 Job을 먼저 끝낸다)
 pub fn force_kill_tree(pid: u32) -> Result<()> {
     kill(pid, true)
 }
 
-/// `pid`가 이끄는 프로세스 그룹을 통째로 끝낸다. 그런 그룹이 없으면 아무 일도 없다.
-/// 러너와 의사 콘솔의 서버처럼 사바쨩이 그룹 리더로 띄운 것에만 쓴다
-#[cfg(unix)]
-pub fn force_kill_group(pid: u32) {
-    // 0·-1은 호출한 쪽의 그룹·모든 프로세스를 뜻한다
-    if let Some(pid) = i32::try_from(pid).ok().filter(|p| *p > 1) {
-        unsafe { libc::kill(-pid, libc::SIGKILL) };
-    }
-}
-
-#[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
 fn kill(pid: u32, tree: bool) -> Result<()> {
     #[cfg(target_os = "windows")]
     {
@@ -132,6 +126,10 @@ fn kill(pid: u32, tree: bool) -> Result<()> {
     }
     #[cfg(not(target_os = "windows"))]
     {
+        // 0·-1은 호출한 쪽의 그룹·모든 프로세스를 뜻한다. 그런 그룹이 없으면(그룹 리더가 아니면) 아무 일도 없다
+        if let Some(group) = i32::try_from(pid).ok().filter(|p| tree && *p > 1 && *p != unsafe { libc::getpgrp() }) {
+            unsafe { libc::kill(-group, libc::SIGKILL) };
+        }
         let ret = unsafe { libc::kill(pid as i32, libc::SIGKILL) };
         if ret != 0 {
             let err = std::io::Error::last_os_error();
@@ -252,6 +250,43 @@ fn current_timestamp() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Unix에서는 그룹 리더를 끝내면 그 그룹의 자식(손자)까지 끝난다
+    #[cfg(unix)]
+    #[test]
+    fn force_kill_tree_ends_the_leaders_whole_group() {
+        use std::os::unix::process::CommandExt;
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("child.pid");
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("sleep 30 & echo $! > {}; wait", pidfile.display()))
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let wait = || std::thread::sleep(std::time::Duration::from_millis(20));
+        let mut grandchild = None;
+        for _ in 0..50 {
+            if let Some(pid) = std::fs::read_to_string(&pidfile).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
+                grandchild = Some(pid);
+                break;
+            }
+            wait();
+        }
+        let grandchild = grandchild.expect("child started");
+        force_kill_tree(child.id()).unwrap();
+        let _ = child.wait();
+        for _ in 0..50 {
+            // 거둘 부모가 없으면 좀비로 남으니 상태도 본다
+            let zombie = std::fs::read_to_string(format!("/proc/{grandchild}/stat"))
+                .is_ok_and(|s| s.rsplit(')').next().is_some_and(|r| r.trim_start().starts_with('Z')));
+            if zombie || !is_process_alive(grandchild) {
+                return;
+            }
+            wait();
+        }
+        panic!("grandchild {grandchild} survived");
+    }
 
     /// 재부팅 뒤 같은 PID를 다른 프로세스가 쓰면, 그 프로세스는 기록보다 늦게 시작했다
     #[test]

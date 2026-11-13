@@ -421,6 +421,25 @@ describe('원격 데몬 (G1)', () => {
         expect(calls[1]).toMatchObject({ method: 'GET', path: '/api/extensions/ext%20a/gui/styles', target: 'local' });
     });
 
+    it('익스텐션 GUI 정적 파일은 이름의 조각마다 인코딩해 이 PC 데몬에서 base64로 받고, 없으면 null', async () => {
+        const calls: Loose[] = [];
+        const { api } = await install({
+            daemon_target_get: { target: 'host-b' },
+            daemon_request: (args: Loose) => {
+                calls.push(args);
+                return args.path.endsWith('missing.webp') ? { status: 404, data: '' } : { status: 200, data: 'UklGRg==' };
+            },
+        });
+        expect(await api.extensionGuiAsset('ext a', 'sprites/idle me.webp')).toBe('UklGRg==');
+        expect(calls[0]).toMatchObject({
+            method: 'GET',
+            path: '/api/extensions/ext%20a/gui/assets/sprites/idle%20me.webp',
+            responseType: 'base64',
+            target: 'local',
+        });
+        expect(await api.extensionGuiAsset('ext a', 'missing.webp')).toBeNull();
+    });
+
     it('고른 원격 데몬에 닿지 못한 오류는 어느 화면에서든 문구로 온다', async () => {
         const { api } = await install({
             daemon_request: daemon({

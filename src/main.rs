@@ -527,7 +527,7 @@ async fn main() -> anyhow::Result<()> {
     // 작업 기록 보관 기간 (앱 설정 auditKeepDays)
     audit::spawn_retention(ipc_server.config_store.clone(), shutdown_token.clone());
     // 인스턴스 예약 작업: 백업·재시작·공지·업데이트 (A3)
-    ipc::handlers::backup::spawn_scheduler(ipc_server.clone());
+    saba_core::scheduler::runner::spawn_scheduler(ipc_server.clone());
     // 인스턴스별 게임 서버 자동 업데이트 (auto_update)
     ipc::handlers::server_update::spawn_auto_updater(ipc_server.clone());
     // 나머지 서버의 게임 서버 업데이트 확인 (화면은 목록의 결과만 읽는다)
@@ -648,6 +648,9 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
+
+        // 모듈·익스텐션 작업자를 끝낸다 (daemon.shutdown hook도 작업자로 불렸을 수 있다)
+        plugin::stop_workers(None);
 
         // 2. 등록된 클라이언트 정리
         let timeout = std::time::Duration::from_secs(0); // 즉시 모든 클라이언트 만료 처리

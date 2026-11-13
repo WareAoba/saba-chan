@@ -20,6 +20,7 @@ import {
     useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { forgetAssets } from '../extensions/host';
 import { declaredSlots, loadsOn, type SlotMeta, type SlotSurface, slotProblems } from '../extensions/slotTable';
 import { clearModuleAuditCache } from '../components/servers/ModuleAuditNotice';
 import i18n from '../i18n';
@@ -278,6 +279,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         lastExecuted.delete(`SabaExt${pascalCase(id)}`);
         loadedRef.current.delete(id);
         delete loadedVersionsRef.current[id];
+        forgetAssets(id);
     };
     /** GUI 번들을 허락받아야 하는 활성 익스텐션 (확인 안 됨, 이 PC에서 허락 안 함) */
     const [guiPending, setGuiPending] = useState<ExtensionListItem[]>([]);
@@ -419,6 +421,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
                     document.querySelectorAll(`style[data-extension="${ext.id}"]`).forEach((el) => {
                         el.remove();
                     });
+                    forgetAssets(ext.id);
                     console.info(`[Extension] Bundle invalidated for '${ext.id}' (${prevVersion} → ${ext.version})`);
                 }
 

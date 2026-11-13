@@ -14,8 +14,8 @@ describe('모듈 없음 표시', () => {
 });
 
 describe('폴링 결과 합치기', () => {
-    const a = { name: 'a', status: 'running', port: 1 };
-    const b = { name: 'b', status: 'stopped', port: 2 };
+    const a = { id: 'a', name: 'a', status: 'running', port: 1 };
+    const b = { id: 'b', name: 'b', status: 'stopped', port: 2 };
 
     it('바뀐 게 없으면 이전 배열을 그대로 돌려준다', () => {
         const prev = [a, b];
@@ -28,6 +28,12 @@ describe('폴링 결과 합치기', () => {
         expect(next).not.toBe(prev);
         expect(next[0]).toBe(a);
         expect(next[1].status).toBe('running');
+    });
+
+    it('서버는 id로 맞춘다: 이름이 같은 서버가 있어도 바뀐 게 없으면 이전 배열이다', () => {
+        const twin = { ...b, id: 'b2', name: 'b' };
+        const prev = [a, b, twin];
+        expect(reuseUnchanged(prev, [{ ...a }, { ...b }, { ...twin }])).toBe(prev);
     });
 
     it('순서가 바뀌면 새 배열이다', () => {

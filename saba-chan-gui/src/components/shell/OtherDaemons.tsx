@@ -2,10 +2,12 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
-import type { PlayerCount } from '../../types/daemon';
+import type { Agreement, PlayerCount } from '../../types/daemon';
+import { failed } from '../../utils/apiResult';
 import { safeShowToast } from '../../utils/helpers';
+import { controlOutcome } from '../../utils/serverControl';
 import { gameNameOf, initials, isTransitional, STATUS_TONE, primaryAction } from '../../utils/serverView';
-import { type Agreement, AgreementDialog } from '../AgreementList';
+import { AgreementDialog } from '../AgreementList';
 import { Icon } from '../Icon';
 import { QuestionModal } from '../Modals/Modals';
 import { remoteErrorText } from '../Modals/RemoteDaemonSection';
@@ -35,7 +37,7 @@ type Ask = { hostId: string | null; pc: string; server: RemoteServer } & (
 /**
  * 합쳐 보기 (G1c, 설정 `gui.daemonView = unified`): 서버 목록 아래에 고른 데몬이 아닌 데몬(이 PC 포함)의 서버를 데몬별로 보인다.
  * 서버는 id로 그 데몬에 켜고 끈다(`remoteInstanceAction`). 정지 확인·저장 없이 정지·약관 동의는 이 PC의 서버와 같은 창을 거친다. 설정·콘솔 같은 나머지는 "이 데몬 열기"로 그 데몬을 고른 뒤 쓴다.
- * 이름으로 서버를 찾는 목록(useServerActions)에 섞지 않는다: 데몬이 다르면 이름이 겹칠 수 있다.
+ * 고른 데몬의 목록(useServerStore)에 섞지 않는다: 동작은 그 데몬으로 보내고(`remoteInstanceAction`), 화면도 데몬별로 나뉜다.
  */
 export function OtherDaemons({
     currentTarget,
@@ -75,11 +77,12 @@ export function OtherDaemons({
         setBusy(server.id);
         try {
             const res = await window.api.remoteInstanceAction(hostId, server.id, action, force ? { force } : {});
-            if (res?.error_code === 'graceful_stop_unavailable') {
+            const outcome = controlOutcome(res);
+            if (outcome.kind === 'forceStop') {
                 setAsk({ ...target, kind: 'force' });
-            } else if (res?.error_code === 'agreement_required' && Array.isArray(res.agreements) && res.agreements.length) {
-                setAsk({ ...target, kind: 'agreements', agreements: res.agreements });
-            } else if (!res || res.success === false || res.ok === false || res.error) {
+            } else if (outcome.kind === 'agreements' && outcome.agreements.length) {
+                setAsk({ ...target, kind: 'agreements', agreements: outcome.agreements });
+            } else if (failed(res)) {
                 safeShowToast(res?.error || remoteErrorText(res, t), 'error', 5000);
             }
         } finally {

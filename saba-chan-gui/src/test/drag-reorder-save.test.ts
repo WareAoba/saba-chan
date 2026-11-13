@@ -19,7 +19,7 @@ function setup() {
     const cards = initial.map((s, i) => {
         const el = document.createElement('div');
         el.getBoundingClientRect = () => ({ left: 0, top: i * 100, width: 100, height: 80 }) as DOMRect;
-        hook.result.current.cardRefs.current[s.name] = el;
+        hook.result.current.cardRefs.current[s.id] = el;
         return el;
     });
     const point = (type: string, x: number, y: number) =>

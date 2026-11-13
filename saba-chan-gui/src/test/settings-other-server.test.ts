@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 
 const modules = [
     {
@@ -26,9 +26,7 @@ const srvB = {
 
 function setup() {
     const setModal = vi.fn();
-    const hook = renderHook(() =>
-        useServerSettings({ servers: [srvA, srvB] as never, modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-    );
+    const hook = setupSettingsStore({ servers: [srvA, srvB] as never, modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() });
     return { ...hook, setModal };
 }
 

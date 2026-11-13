@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { AddServerPayload } from '../../hooks/useServerActions';
+import type { AddServerPayload } from '../../stores/serverActions';
 import type { Server } from '../../stores/useServerStore';
 import { ConfirmIcon } from '../Modals/Modals';
 import { Dialog } from '../ui/Dialog';

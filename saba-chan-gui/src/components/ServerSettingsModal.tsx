@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import React, { type ReactNode, useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type RestartPending, unsavedSettingKeys } from '../hooks/useServerSettings';
+import { type RestartPending, unsavedSettingKeys } from '../stores/useServerSettingsStore';
 import type { Server } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
@@ -1033,7 +1033,7 @@ interface ServerSettingsModalProps extends Omit<GeneralTabProps, 'portConflicts'
     restartPending?: RestartPending | null;
     restartNow?: () => void;
     dismissRestart?: () => void;
-    /** 저장 막대의 기준: 이 서버를 연 때의 값 (useServerSettings) */
+    /** 저장 막대의 기준: 이 서버를 연 때의 값 (useServerSettingsStore) */
     openedSettings?: SettingValues;
     /** 기준 값으로 되돌린다 */
     revertSettings?: () => void;

@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerActions } from '../hooks/useServerActions';
+import { setupServerStore } from './serverStore';
 
 describe('재시작이 끝난 뒤 상태', () => {
     beforeEach(() => {
@@ -17,31 +17,12 @@ describe('재시작이 끝난 뒤 상태', () => {
                 return { success: true };
             }),
         } as unknown as typeof window.api;
-        let servers = list;
-        const setServers = (u: unknown) => {
-            servers = typeof u === 'function' ? u(servers) : u;
-        };
-        const setModal = vi.fn();
-        const { result } = renderHook(() =>
-            useServerActions({
-                servers: servers as never,
-                setServers,
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal,
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                closeConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-                formatUptime: vi.fn(),
-            } as never),
-        );
+        const { result, setModal } = setupServerStore({ servers: list });
         await act(async () => result.current.fetchServers());
-        await act(async () => result.current.handleRestart('A'));
+        await act(async () => result.current.restartServer('a'));
         await act(async () => setModal.mock.calls.at(-1)![0].onConfirm());
         await act(async () => result.current.fetchServers());
-        expect(servers[0].status).toBe('running');
+        expect(result.current.servers[0].status).toBe('running');
     });
 
     it('이미 재시작을 고른 곳에서 부르면 다시 묻지 않고 바로 재시작한다', async () => {
@@ -49,23 +30,8 @@ describe('재시작이 끝난 뒤 상태', () => {
             serverList: vi.fn(async () => ({ servers: [] })),
             instanceRestart: vi.fn(async () => ({ success: true })),
         } as unknown as typeof window.api;
-        const setModal = vi.fn();
-        const { result } = renderHook(() =>
-            useServerActions({
-                servers: [{ id: 'a', name: 'A', module: 'game', status: 'running' } as never],
-                setServers: vi.fn(),
-                modules: [],
-                loading: false,
-                setLoading: vi.fn(),
-                setModal,
-                setProgressBar: vi.fn(),
-                openConsole: vi.fn(),
-                closeConsole: vi.fn(),
-                setShowModuleManager: vi.fn(),
-                formatUptime: vi.fn(),
-            } as never),
-        );
-        await act(async () => result.current.handleRestart('A', { confirmed: true }));
+        const { result, setModal } = setupServerStore({ servers: [{ id: 'a', name: 'A', module: 'game', status: 'running' } as never] });
+        await act(async () => result.current.restartServer('a', { confirmed: true }));
         expect(setModal).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'question' }));
         expect(window.api.instanceRestart).toHaveBeenCalledWith('a', { force: false });
     });

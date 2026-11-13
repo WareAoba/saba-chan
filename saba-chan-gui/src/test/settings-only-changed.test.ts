@@ -1,6 +1,6 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { setupSettingsStore } from './serverStore';
 
 // 창이 열린 동안 CLI·디스코드·익스텐션이 바꾼 값을, 손대지 않은 칸이 연 때의 값으로 되돌리지 않는다.
 // 인스턴스 설정 저장도 앱 설정(#509)처럼 바뀐 것만 보낸다
@@ -26,15 +26,13 @@ const srv = {
 };
 
 const open = async () => {
-    const { result } = renderHook(() =>
-        useServerSettings({
-            servers: [srv] as never,
-            modules: modules as never,
-            setModal: vi.fn(),
-            setProgressBar: vi.fn(),
-            fetchServers: vi.fn(),
-        }),
-    );
+    const { result } = setupSettingsStore({
+        servers: [srv] as never,
+        modules: modules as never,
+        setModal: vi.fn(),
+        setProgressBar: vi.fn(),
+        fetchServers: vi.fn(),
+    });
     await act(async () => result.current.handleOpenSettings(srv as never));
     return result;
 };
@@ -100,9 +98,7 @@ describe('서버 설정 저장은 바뀐 것만 보낸다', () => {
         window.api.serverList = vi.fn().mockResolvedValue({ servers: [srv] });
         window.api.instanceResetServer = vi.fn().mockResolvedValue({ success: true, deleted: ['PalWorldSettings.ini'] });
         const setModal = vi.fn();
-        const { result } = renderHook(() =>
-            useServerSettings({ servers: [srv] as never, modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
-        );
+        const { result } = setupSettingsStore({ servers: [srv] as never, modules: modules as never, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() });
         await act(async () => result.current.handleOpenSettings(srv as never));
         await act(async () => result.current.handleResetServer());
         await act(async () => setModal.mock.calls.at(-1)![0].buttons[1].action());
