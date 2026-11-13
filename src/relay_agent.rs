@@ -1765,7 +1765,7 @@ fn permission_entry(node: &Value, targets: &crate::actions::RemoteTargets) -> Va
         // 덮어쓰기가 이만큼 많으면 서버별 요구 레벨도 그만큼 커지므로 싣지 않는다 (릴레이는 모르는 것으로 보고 데몬 판정에 맡긴다)
         entry["commandLevelsTruncated"] = json!(true);
     } else {
-        // 액션·명령마다 지금 요구 레벨 (SINCE 0.1.15). 릴레이는 이 값만 읽고 규칙을 따로 갖지 않는다
+        // 액션·명령마다 지금 요구 레벨 (SINCE 0.1.14-beta.2). 릴레이는 이 값만 읽고 규칙을 따로 갖지 않는다
         let allowed: Option<Vec<&str>> = node.get("allowedInstances").and_then(Value::as_array).map(|l| l.iter().filter_map(Value::as_str).collect());
         entry["required"] = crate::actions::required_snapshot(p, allowed.as_deref(), targets);
     }

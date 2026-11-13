@@ -1258,7 +1258,7 @@ pub struct RemoteTargets {
     pub instances: Vec<(String, String)>,
 }
 
-/// heartbeat `permissions[guild].required` (SINCE 0.1.15): 한 길드에서 액션·모듈 명령마다 지금 요구 레벨.
+/// heartbeat `permissions[guild].required` (SINCE 0.1.14-beta.2): 한 길드에서 액션·모듈 명령마다 지금 요구 레벨.
 /// 판정(`authorize`)·권한 계단과 같은 `required_level`로 세어, 릴레이가 규칙을 따로 갖지 않고 이 값만 읽게 한다.
 /// `actions`·`commands`는 덮어쓰기가 없는 서버에서의 값이고(서버 없는 액션은 최종값), `servers`에는 서버마다 그와 다른 것만 싣는다.
 /// `allowed`는 그 길드가 볼 수 있는 서버다 (없으면 모두)
