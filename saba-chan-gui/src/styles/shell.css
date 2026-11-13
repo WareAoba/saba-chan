@@ -1213,6 +1213,8 @@ body:has(.activity-bar) .toast-container {
 }
 button.activity-line {
     cursor: pointer;
+    /* 올리면 바 전체가 물든다: 전역 button의 둥근 모서리를 쓰지 않는다 */
+    border-radius: 0;
 }
 button.activity-line:hover {
     color: var(--text-1);
