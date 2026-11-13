@@ -1097,22 +1097,23 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let modules = tmp.path().join("modules");
         std::fs::create_dir_all(&modules).unwrap();
-        let zip_path = modules.join("plain-1.0.zip");
+        // 설치 문은 프로세스에 하나다: 다른 시험과 겹치지 않는 모듈 id를 쓴다
+        let zip_path = modules.join("zip-mod-1.0.zip");
         let mut writer = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
         let options = zip::write::SimpleFileOptions::default();
         writer.start_file("module.toml", options).unwrap();
-        writer.write_all(b"[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        writer.write_all(b"[module]\nschema_version = 1\nname = \"zip-mod\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
         writer.start_file("lifecycle.py", options).unwrap();
         writer.finish().unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
 
-        let removed = crate::ipc::internal::into_internal(remove_module(Path("plain".into()), State(state.clone())).await.into_response()).await.body;
+        let removed = crate::ipc::internal::into_internal(remove_module(Path("zip-mod".into()), State(state.clone())).await.into_response()).await.body;
         assert_eq!(removed["ok"], true, "{removed}");
         assert!(!zip_path.exists());
-        assert!(!modules.join(".extracted/plain").exists());
-        assert!(state.supervisor.read().await.module_loader.get_module("plain").is_err());
+        assert!(!modules.join(".extracted/zip-mod").exists());
+        assert!(state.supervisor.read().await.module_loader.get_module("zip-mod").is_err());
     }
 
     /// 같은 모듈을 동시에 두 번 설치하지 않고, 설치마다 다른 임시 경로를 쓴다 (D-S2)
@@ -1124,23 +1125,25 @@ mod tests {
             tmp.path().join("instances").to_str().unwrap(),
         );
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
-        let held = module_install_guard("plain").expect("free");
+        // 다른 시험이 쓰는 모듈 id와 겹치면(설치 문은 프로세스에 하나다) 그쪽이 module_busy를 받는다
+        let module = "busy-mod";
+        let held = module_install_guard(module).expect("free");
         let body = crate::ipc::internal::into_internal(
-            install_module_from_manifest(Path("plain".into()), State(state.clone())).await.into_response(),
+            install_module_from_manifest(Path(module.into()), State(state.clone())).await.into_response(),
         )
         .await
         .body;
         assert_eq!(body["error_code"], "module_busy", "{body}");
-        let removed = crate::ipc::internal::into_internal(remove_module(Path("plain".into()), State(state)).await.into_response()).await.body;
+        let removed = crate::ipc::internal::into_internal(remove_module(Path(module.into()), State(state)).await.into_response()).await.body;
         assert_eq!(removed["error_code"], "module_busy", "{removed}");
         drop(held);
-        assert!(module_install_guard("plain").is_some(), "refused requests must not keep the lock");
+        assert!(module_install_guard(module).is_some(), "refused requests must not keep the lock");
 
-        let (zip_a, staging_a) = module_install_paths(tmp.path(), "plain");
-        let (zip_b, staging_b) = module_install_paths(tmp.path(), "plain");
+        let (zip_a, staging_a) = module_install_paths(tmp.path(), module);
+        let (zip_b, staging_b) = module_install_paths(tmp.path(), module);
         assert!(zip_a != zip_b && staging_a != staging_b);
         let name = staging_a.file_name().unwrap().to_string_lossy().to_string();
-        assert!(name.starts_with(".staging-plain-") && zip_a.file_name().unwrap().to_string_lossy().starts_with(".tmp-module-plain-"));
+        assert!(name.starts_with(".staging-busy-mod-") && zip_a.file_name().unwrap().to_string_lossy().starts_with(".tmp-module-busy-mod-"));
     }
 
     #[test]
