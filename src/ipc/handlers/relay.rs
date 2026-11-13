@@ -44,7 +44,9 @@ pub(crate) fn relayed(code: StatusCode, mut data: Value) -> Response {
     if !code.is_success() && let Some(body) = data.as_object_mut() {
         let relay_code = body.get("error").and_then(Value::as_str).unwrap_or("relay_error").to_string();
         body.insert("success".into(), json!(false));
-        body.entry("error").or_insert_with(|| json!(relay_code));
+        // 코드 없이 설명만 준 실패(스키마 검사 등)는 그 설명을 `error`로
+        let error = body.get("message").filter(|m| m.is_string()).cloned().unwrap_or_else(|| json!(relay_code));
+        body.entry("error").or_insert(error);
         body.entry("error_code").or_insert_with(|| json!(relay_code));
     }
     (code, Json(data)).into_response()
@@ -584,6 +586,19 @@ async fn pairing_status_of(state: &IPCServer, code: &str, secret: Option<&str>, 
 mod tests {
     use super::pairing_body;
     use serde_json::json;
+
+    /// 릴레이가 `error` 없이 `message`만 준 실패는 그 문구를 `error`로 넘긴다 (화면이 `relay_error`를 보이지 않게).
+    /// 코드는 여전히 `relay_error`, 릴레이 코드(`error`)가 있으면 그대로다
+    #[tokio::test]
+    async fn a_relay_failure_with_only_a_message_carries_it_as_the_error() {
+        let read = |code, data| async move { crate::ipc::internal::into_internal(super::relayed(code, data)).await.body };
+        let only_message = read(axum::http::StatusCode::BAD_REQUEST, json!({ "message": "body/name must be a string" })).await;
+        assert_eq!(only_message, json!({ "success": false, "error": "body/name must be a string", "error_code": "relay_error", "message": "body/name must be a string" }));
+        let coded = read(axum::http::StatusCode::NOT_FOUND, json!({ "error": "NODE_NOT_FOUND", "message": "no node" })).await;
+        assert_eq!((coded["error"].clone(), coded["error_code"].clone()), (json!("NODE_NOT_FOUND"), json!("NODE_NOT_FOUND")));
+        let bare = read(axum::http::StatusCode::BAD_GATEWAY, json!({})).await;
+        assert_eq!(bare, json!({ "success": false, "error": "relay_error", "error_code": "relay_error" }));
+    }
 
     /// 페어링 요청은 정한 칸만 보낸다. 지금 토큰은 그 토큰을 준 릴레이(설정 주소)에만 싣는다:
     /// 릴레이는 그 토큰의 PC 를 다시 연결하고(계정 하나에 PC 여러 대), PC 이름은 새 PC 의 이름이 된다

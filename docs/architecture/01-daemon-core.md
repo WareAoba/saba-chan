@@ -206,7 +206,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
     - `/health`(이 PC·원격 포트)는 `{ok:true, …}`로 답한다. 작업의 성공 여부가 아니라 데몬이 떠 있다는 표시이고, 설치기·옛 클라이언트가 판이 달라도 읽는다.
     - 모듈이 답한 본문은 그대로 넘긴다. 모듈이 `success:false`와 `message`로 거절하면 200이고(`service::settled`. 시작에서 감독자가 모듈을 부르기 전에 거절한 것은 모듈 답이 아니라 409·422다, `service::lifecycle::refused_status`), 모듈 호출이 실패하면 모듈 오류 본문(`error_code`, `stderr_tail` 등)이 4xx·5xx로 나간다.
     - 여러 항목을 다루는 답(업데이트 받기·적용·복구·`install`)은 일부만 됐을 때 200에 `success:false`와 항목별 `errors`를 싣는다. 하나도 하지 못했으면 다른 실패처럼 2xx가 아닌 상태다.
-    - 릴레이 답을 넘기는 `/api/relay/*`는 릴레이 본문을 바꾸지 않는다: `error`는 릴레이 코드(`NODE_NOT_FOUND`)이고 데몬이 `success:false`와 같은 값의 `error_code`를 더한다(`handlers/relay.rs` `relayed`). 릴레이에 닿지 못하면 502 `relay_unreachable`.
+    - 릴레이 답을 넘기는 `/api/relay/*`는 릴레이 본문을 바꾸지 않는다: `error`는 릴레이 코드(`NODE_NOT_FOUND`)이고 데몬이 `success:false`와 같은 값의 `error_code`를 더한다(`handlers/relay.rs` `relayed`). 릴레이가 코드 없이 `message`만 주면 `error`는 그 문구, `error_code`는 `relay_error`다. 릴레이에 닿지 못하면 502 `relay_unreachable`.
     - 파일을 주는 라우트(번역, 익스텐션 GUI 번들·그림)는 실패하면 본문 없는 상태 코드다.
     - 항목 하나하나의 결과 줄은 `ok`를 그대로 쓴다: `GET /api/remote/servers`의 `daemons[].ok`, 디스코드·챗봇 설정의 `sync`, 감사 기록, 이벤트(`backup.done` 등), 익스텐션 HOST 채널(§7).
 - **릴레이 읽기 기억** (`handlers/relay_cache.rs`, 인증·감사 층 안쪽): 디스코드 탭이 읽는 릴레이 GET(`/api/relay/host/:id/nodes`, `/api/relay/node/:guild_id/{members,channels,moderation,chatbot/models,chatbot/tools}`)의 200 답을 쿼리까지 같은 요청 단위로 60초 기억해 그대로 준다. `/api/relay/`·`/api/chatbot`·`/api/chat/`·`/api/config`·`/api/guilds`·`/api/actions`·`/api/discord`·`/api/bot`로 가는 쓰기(GET이 아닌 요청)가 끝나면 모두 잊는다. 연결 확인(`/status`)과 크레딧은 기억하지 않는다. 디스코드에서 직접 바뀐 것(새 멤버 등)은 최대 60초 늦게 보인다.
