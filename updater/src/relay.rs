@@ -1111,6 +1111,7 @@ mod tests {
     fn a_beta_client_on_0_1_14_takes_the_next_higher_beta_only() {
         let picked = |list: Vec<LatestRelease>| select_release("beta", "0.1.14", "c", list).map(|r| r.version);
         assert_eq!(picked(vec![release("0.1.15-beta.1", "beta", 100), release("0.1.13", "stable", 100)]).as_deref(), Some("0.1.15-beta.1"));
+        assert_eq!(picked(vec![release("0.1.15", "beta", 100)]).as_deref(), Some("0.1.15"));
         assert_eq!(picked(vec![release("0.1.14-beta.2", "beta", 100)]), None);
     }
 
