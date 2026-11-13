@@ -9,6 +9,8 @@ const ALLOWED = new Set([
     '@gui/utils/serverView',
     // 데몬 호출 결과가 실패인지 (앱과 같은 판정)
     '@gui/utils/apiResult',
+    // 켜기·끄기·다시 켜기 답 해석 (약관·저장 없이 끄기·이미 켜짐·그만둠, 앱과 같은 판정)
+    '@gui/utils/serverControl',
     '@gui/utils/localizedText',
     // 주기 읽기 (숨으면 쉬고 보이면 바로 읽기, 앱과 같다)
     '@gui/utils/poll',
